@@ -104,6 +104,7 @@ type RoadmapEventCarrierScopedLayout {
   repo_root: FilePath
   git_program: String
   directory_program: String
+  realpath_program: String
   remote: String
 }
 
@@ -176,6 +177,7 @@ fn roadmap_event_carrier_ci_layout(
     repo_root: checkout_root,
     git_program: instance_layout.git_program,
     directory_program: instance_layout.directory_program,
+    realpath_program: "realpath",
   }
 }
 
@@ -426,8 +428,16 @@ fn roadmap_event_private_snapshot(layout: RoadmapEventCarrierLayout) -> CarrierS
 // collapses into closed. (Whether a given consumer then stops is its own decision: the read-after-close
 // folds return the read regardless of the close, exactly as they already do for a command-failed close;
 // this variant changes what the standing SAYS, not whether those folds gate on it.)
+// THE REGISTRATION SIDE HAS THE SAME THREE OUTCOMES AS THE DIRECTORY SIDE. A surviving registration
+// (`CloseVerifyRegistrationPersists`) is git ANSWERING that the worktree is still listed; but if `git
+// worktree list` itself did not answer (nonzero exit -- a `.git` lock, or the very ownership refusal this
+// family is about), that is NOT a surviving registration and must not be reported as one. The listing
+// failure is `CloseVerifyRegistrationPresenceUnobservable`, carrying the listing's exit and stderr, so a
+// consumer never confuses "git said it could not remove it" with "git never told us." The Bool-merging of
+// these two was the earlier defect.
 type CarrierCloseVerification
   = CloseVerifyRegistrationPersists
+  | CloseVerifyRegistrationPresenceUnobservable { reason: String }
   | CloseVerifyDirectoryPersists
   | CloseVerifyDirectoryPresenceUnobservable { reason: String }
 
@@ -467,6 +477,7 @@ fn carrier_snapshot_close_failure(close: CarrierSnapshotClose) -> String? {
 fn carrier_close_verification_reason(verification: CarrierCloseVerification) -> String {
   match verification {
     CloseVerifyRegistrationPersists => "the worktree registration is still listed by `worktree list --porcelain -z` after the removals"
+    CloseVerifyRegistrationPresenceUnobservable { reason } => join(["the worktree registration's absence is not established: ", reason], "")
     CloseVerifyDirectoryPersists => "the scratch directory is still present after the removals"
     CloseVerifyDirectoryPresenceUnobservable { reason } => join(["the scratch directory's absence is not established: ", reason], "")
   }
@@ -959,12 +970,27 @@ fn roadmap_events_read_all_scoped_detached(scoped: RoadmapEventCarrierScopedLayo
     // `worktree list` will record is the CANONICAL path, not the mktemp spelling. Establish it NOW, while the
     // scratch still exists, and register the worktree AT THE CANONICAL PATH; carry that identity (and the original
     // mktemp allocation) through every arm into the close, which verifies against the carried values and never
-    // re-resolves. If realpath cannot be established we have NOT opened a worktree, so this is the genuine
-    // SnapshotNotOpened -- refuse and take the scratch directory with us (nothing could have registered).
-    match canonical_scratch_identity(scratch: scratch.path) {
+    // re-resolves. If realpath cannot be established we have NOT opened a worktree, but we DO own the scratch
+    // mktemp just created -- so removal is observed, not trusted, before `SnapshotNotOpened` is claimed.
+    match canonical_scratch_identity(scoped: scoped, scratch: scratch.path) {
       ScratchIdentityUnestablishable { reason } => {
+        // realpath failed, so no worktree was registered -- `SnapshotNotOpened` is right ONLY IF the scratch we
+        // just allocated is established GONE. Remove it, then OBSERVE the end state: a surviving or unobservable
+        // scratch is a typed leak, never a silent `SnapshotNotOpened`. Previously this arm did `let _ = rm` and
+        // claimed NotOpened unconditionally, so a removal that failed (e.g. a leading '-' mis-parsed as an
+        // option) leaked the owned directory unreported. The RESULT stays the identity refusal; only the close
+        // standing is corrected.
         let _ = shell.Remove.RecursiveForce(path: scratch.path)
-        CarrierClosed { result: AllEventsReadRefused { step: "identity", reason: reason }, close: SnapshotNotOpened }
+        let close = match roadmap_event_scratch_dir_presence(path: scratch.path) {
+          FilesystemEntryAbsent(_) => SnapshotNotOpened
+          FilesystemEntryListed { directory: _, name: _ } =>
+            SnapshotCloseVerificationFailed { worktree: scratch.path, verification: CloseVerifyDirectoryPersists }
+          FilesystemEntryPresenceIndeterminate { cause } =>
+            SnapshotCloseVerificationFailed { worktree: scratch.path, verification: CloseVerifyDirectoryPresenceUnobservable { reason: join(["scratch ", scratch.path as String, ": ", cause], "") } }
+          FilesystemEntrySubjectRefused { cause } =>
+            SnapshotCloseVerificationFailed { worktree: scratch.path, verification: CloseVerifyDirectoryPresenceUnobservable { reason: join(["the scratch was not an admissible listing subject: ", cause], "") } }
+        }
+        CarrierClosed { result: AllEventsReadRefused { step: "identity", reason: reason }, close: close }
       }
       ScratchIdentityEstablished { canonical } => match carrier_exec_program(program: scoped.git_program, workdir: scoped.repo_root as String,
         args: ["worktree", "add", "--detach", canonical, "HEAD"]) {
@@ -1031,10 +1057,12 @@ fn roadmap_event_scratch_close(scoped: RoadmapEventCarrierScopedLayout, canonica
   } else {
     "a removal reported a nonzero exit"
   }
-  if roadmap_event_scratch_registration_present(scoped: scoped, identity: canonical) {
-    SnapshotCloseVerificationFailed { worktree: original, verification: CloseVerifyRegistrationPersists }
-  } else {
-    match roadmap_event_scratch_dir_presence(path: canonical_path) {
+  match roadmap_event_scratch_registration_presence(scoped: scoped, identity: canonical) {
+    RegistrationListed =>
+      SnapshotCloseVerificationFailed { worktree: original, verification: CloseVerifyRegistrationPersists }
+    RegistrationPresenceUnobservable { reason } =>
+      SnapshotCloseVerificationFailed { worktree: original, verification: CloseVerifyRegistrationPresenceUnobservable { reason: join([reason, " (", removal_note, ")"], "") } }
+    RegistrationAbsent => match roadmap_event_scratch_dir_presence(path: canonical_path) {
       FilesystemEntryAbsent(_) => match roadmap_event_scratch_dir_presence(path: original) {
         FilesystemEntryAbsent(_) => SnapshotClosed
         FilesystemEntryListed { directory: _, name: _ } =>
@@ -1064,8 +1092,8 @@ type CarrierScratchIdentity
   = ScratchIdentityEstablished { canonical: String }
   | ScratchIdentityUnestablishable { reason: String }
 
-fn canonical_scratch_identity(scratch: FilePath) -> CarrierScratchIdentity {
-  match carrier_exec_program(program: "realpath", workdir: "/", args: [scratch as String]) {
+fn canonical_scratch_identity(scoped: RoadmapEventCarrierScopedLayout, scratch: FilePath) -> CarrierScratchIdentity {
+  match carrier_exec_program(program: scoped.realpath_program, workdir: "/", args: ["-e", "--", scratch as String]) {
     CarrierExecOk { stdout } => {
       let canonical = strip_single_trailing_newline(s: stdout)
       if canonical == "" {
@@ -1099,10 +1127,26 @@ fn strip_single_trailing_newline(s: String) -> String {
 // not split and missed -- which is how a newline-containing path once read as absent and closed the snapshot
 // falsely. A failure to list is treated as "present" — absence of a registration must be ESTABLISHED, never
 // assumed from a suppressed failure.
-fn roadmap_event_scratch_registration_present(scoped: RoadmapEventCarrierScopedLayout, identity: String) -> Bool {
+// Three outcomes, never two. A nonzero `worktree list` is NOT a surviving registration -- it is git never
+// answering -- so it must not collapse into `RegistrationListed` (which would report "git said it is still
+// there" for a listing that never ran). Only an ANSWERED listing that names the carried canonical identity is
+// `RegistrationListed`; an answered listing that omits it is `RegistrationAbsent`; a failed listing is
+// `RegistrationPresenceUnobservable` carrying the exit and stderr.
+type CarrierRegistrationPresence
+  = RegistrationAbsent
+  | RegistrationListed
+  | RegistrationPresenceUnobservable { reason: String }
+
+fn roadmap_event_scratch_registration_presence(scoped: RoadmapEventCarrierScopedLayout, identity: String) -> CarrierRegistrationPresence {
   match carrier_exec_program(program: scoped.git_program, workdir: scoped.repo_root as String, args: ["worktree", "list", "--porcelain", "-z"]) {
-    CarrierExecOk { stdout } => any(split(s: stdout, delimiter: "\u{0}"), l => l == join(["worktree ", identity], ""))
-    CarrierExecFailed { exit_code: _, stderr: _ } => true
+    CarrierExecOk { stdout } =>
+      if any(split(s: stdout, delimiter: "\u{0}"), l => l == join(["worktree ", identity], "")) {
+        RegistrationListed
+      } else {
+        RegistrationAbsent
+      }
+    CarrierExecFailed { exit_code, stderr } =>
+      RegistrationPresenceUnobservable { reason: join(["`worktree list --porcelain -z` exited ", to_string(value: exit_code), ": ", strip_single_trailing_newline(s: stderr)], "") }
   }
 }
 
