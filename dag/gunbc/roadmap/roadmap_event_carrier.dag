@@ -13,8 +13,13 @@ import extdeps.filesystem.filesystem_io {
   FilesystemReadRefused,
   FilesystemReadSucceeded,
   filesystem_read_outcome,
+  FilesystemEntryPresence,
+  FilesystemEntryAbsent,
+  FilesystemEntryListed,
+  FilesystemEntryPresenceIndeterminate,
+  FilesystemEntrySubjectRefused,
 }
-import gunbc.filesystem_file_observe { filesystem_file_observation_of_path }
+import gunbc.filesystem_file_observe { filesystem_file_observation_of_path, filesystem_entry_presence_of_path }
 import std.algebra { trim }
 import std.content_hash { content_hash_of_value, content_hash_atom, content_hash_tagged_structural, lower_hex_16 }
 import std.durable_compare_and_set { CasGeneration, CasReadableSlot, CasReadableAbsent, CasReadablePresent, CasSlotVersion, ExpectSlotAbsent, ExpectSlotGeneration, cas_expectation_admits }
@@ -399,10 +404,29 @@ fn roadmap_event_private_snapshot(layout: RoadmapEventCarrierLayout) -> CarrierS
 // a worktree the operation left behind, named with what the removal answered. It is a fact beside
 // the operation's result and never a rewrite of it: an event that was published stays published
 // whether or not its scratch worktree could be removed.
+// THE TWO WAYS A CLOSE FAILS ARE DIFFERENT KINDS OF FAILURE AND MUST NOT SHARE A TAG. A failed
+// REMOVAL COMMAND (`SnapshotCloseFailed`) carries the command's own exit code and stderr: the host
+// answered, the answer was failure, and there is a status to quote. A CLOSE VERIFICATION FAILURE
+// (`SnapshotCloseVerificationFailed`) is not a command that failed -- the removals ran and their exit
+// codes were DISCARDED by design (removing a never-registered worktree must not read as failure, and
+// a scratch that is already gone must not read as failure), so there is NO exit code to carry. What
+// failed is the ESTABLISHMENT of the clean end state. Fabricating `exit_code: 0` for it would print
+// "exit 0" beside a failure that never ran a command -- a lie the type must make unwritable. It
+// carries a typed CAUSE instead, so a consumer can DISTINGUISH "could not establish" from "the host
+// said it could not remove" and choose its own policy on each, and so an unobservable absence never
+// collapses into closed. (Whether a given consumer then stops is its own decision: the read-after-close
+// folds return the read regardless of the close, exactly as they already do for a command-failed close;
+// this variant changes what the standing SAYS, not whether those folds gate on it.)
+type CarrierCloseVerification
+  = CloseVerifyRegistrationPersists
+  | CloseVerifyDirectoryPersists
+  | CloseVerifyDirectoryPresenceUnobservable { reason: String }
+
 type CarrierSnapshotClose
   = SnapshotNotOpened
   | SnapshotClosed
   | SnapshotCloseFailed { worktree: FilePath, exit_code: Int, stderr: String }
+  | SnapshotCloseVerificationFailed { worktree: FilePath, verification: CarrierCloseVerification }
 
 // EVERY SNAPSHOT-OWNING OPERATION ANSWERS WITH BOTH: its own result, unchanged, and the standing of
 // the snapshot it owned. The caller is the one that has a surface for a leaked worktree, so the
@@ -426,6 +450,16 @@ fn carrier_snapshot_close_failure(close: CarrierSnapshotClose) -> String? {
     SnapshotClosed => none
     SnapshotCloseFailed { worktree, exit_code, stderr } =>
       Present { value: join(["roadmap event snapshot worktree ", worktree as String, " was not removed (exit ", to_string(value: exit_code), "): ", trim(stderr)], "") }
+    SnapshotCloseVerificationFailed { worktree, verification } =>
+      Present { value: join(["roadmap event snapshot worktree ", worktree as String, " close could not be verified clean: ", carrier_close_verification_reason(verification: verification)], "") }
+  }
+}
+
+fn carrier_close_verification_reason(verification: CarrierCloseVerification) -> String {
+  match verification {
+    CloseVerifyRegistrationPersists => "the worktree registration is still listed by `worktree list --porcelain -z` after the removals"
+    CloseVerifyDirectoryPersists => "the scratch directory is still present after the removals"
+    CloseVerifyDirectoryPresenceUnobservable { reason } => join(["the scratch directory's absence is not established: ", reason], "")
   }
 }
 
@@ -960,28 +994,45 @@ fn roadmap_event_scratch_close(scoped: RoadmapEventCarrierScopedLayout, path: Fi
   let _ = carrier_exec_program(program: scoped.git_program, workdir: scoped.repo_root as String, args: ["worktree", "remove", "--force", path as String])
   let _ = carrier_exec_program(program: scoped.git_program, workdir: scoped.repo_root as String, args: ["worktree", "prune"])
   let _ = shell.Remove.RecursiveForce(path: path)
+  // The verdict is the established END STATE, not the exit codes of the removals above: a cleanup
+  // that did not run is caught here, and a nothing-to-remove is not misreported. Absence must be
+  // ESTABLISHED for both halves; an unobservable half is a typed verification failure, never closed.
   if roadmap_event_scratch_registration_present(scoped: scoped, path: path) {
-    SnapshotCloseFailed { worktree: path, exit_code: 0, stderr: "worktree registration persists in the runner repository after cleanup" }
-  } else if roadmap_event_scratch_dir_present(path: path) {
-    SnapshotCloseFailed { worktree: path, exit_code: 0, stderr: "scratch directory persists after cleanup" }
+    SnapshotCloseVerificationFailed { worktree: path, verification: CloseVerifyRegistrationPersists }
   } else {
-    SnapshotClosed
+    match roadmap_event_scratch_dir_presence(path: path) {
+      FilesystemEntryAbsent(_) => SnapshotClosed
+      FilesystemEntryListed { directory: _, name: _ } =>
+        SnapshotCloseVerificationFailed { worktree: path, verification: CloseVerifyDirectoryPersists }
+      FilesystemEntryPresenceIndeterminate { cause } =>
+        SnapshotCloseVerificationFailed { worktree: path, verification: CloseVerifyDirectoryPresenceUnobservable { reason: cause } }
+      FilesystemEntrySubjectRefused { cause } =>
+        SnapshotCloseVerificationFailed { worktree: path, verification: CloseVerifyDirectoryPresenceUnobservable { reason: join(["the scratch path was not an admissible listing subject: ", cause], "") } }
+    }
   }
 }
 
-// Is this path still a registered worktree of the runner repository? `worktree list --porcelain` names every
-// registered worktree on a `worktree <path>` line. A failure to list is treated as "present" — absence of a
-// registration must be ESTABLISHED, never assumed from a suppressed failure.
+// Is this path still a registered worktree of the runner repository? `worktree list --porcelain -z`
+// is the DOCUMENTED STABLE FORM (git-worktree(1) directs callers to it) and it is NUL-terminated:
+// a `worktree <path>` record is a single field ending at NUL, so a path containing a NEWLINE is not
+// split into two lines and missed -- which is how a newline-containing path once read as absent and
+// closed the snapshot falsely. A failure to list is treated as "present" — absence of a registration
+// must be ESTABLISHED, never assumed from a suppressed failure.
 fn roadmap_event_scratch_registration_present(scoped: RoadmapEventCarrierScopedLayout, path: FilePath) -> Bool {
-  match carrier_exec_program(program: scoped.git_program, workdir: scoped.repo_root as String, args: ["worktree", "list", "--porcelain"]) {
-    CarrierExecOk { stdout } => any(split(s: stdout, delimiter: "\n"), l => trim(l) == join(["worktree ", path as String], ""))
+  match carrier_exec_program(program: scoped.git_program, workdir: scoped.repo_root as String, args: ["worktree", "list", "--porcelain", "-z"]) {
+    CarrierExecOk { stdout } => any(split(s: stdout, delimiter: "\u{0}"), l => l == join(["worktree ", path as String], ""))
     CarrierExecFailed { exit_code: _, stderr: _ } => true
   }
 }
 
-// Does the scratch directory itself still exist? Filesystem.List reports success only for an existing directory.
-fn roadmap_event_scratch_dir_present(path: FilePath) -> Bool {
-  Filesystem.List(path: path as String).success
+// Is the scratch directory gone, present, or UNOBSERVABLE? `Filesystem.List(...).success` cannot hold
+// this: a directory that still EXISTS but is UNREADABLE fails the listing the same way a gone one
+// does, and reading that as absent closes the snapshot on a lie. `filesystem_entry_presence_of_path`
+// folds the parent listing through `filesystem_entry_presence`, so absence is admitted only from a
+// SUCCESSFUL listing that omits the entry, a failed listing is indeterminate (with an ancestor climb),
+// and only ESTABLISHED absence may count towards `SnapshotClosed` in the close above.
+fn roadmap_event_scratch_dir_presence(path: FilePath) -> FilesystemEntryPresence {
+  filesystem_entry_presence_of_path(path: path as String)
 }
 
 // WHOSE RESULT THIS IS, DERIVED FROM THE ATTEMPT'S OWN RECORD AND NOTHING THE CALLER SAYS. Given the

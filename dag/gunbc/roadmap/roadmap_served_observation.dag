@@ -10,7 +10,7 @@ import gunbc.roadmap.roadmap_standings_document { roadmap_standings_document_jso
 import gunbc.roadmap.roadmap_event_carrier {
   roadmap_standings_at_head_read, StandingsAtHead, StandingsAtHeadUnobserved,
   roadmap_event_carrier_layout_for_instance, roadmap_standings_read, roadmap_events_read_all,
-  CarrierClosed, SnapshotNotOpened, SnapshotClosed, SnapshotCloseFailed,
+  CarrierClosed, SnapshotNotOpened, SnapshotClosed, SnapshotCloseFailed, SnapshotCloseVerificationFailed, carrier_close_verification_reason,
   RoadmapAllEventsRead, AllEventsRead, AllEventsReadRefused,
   CarrierReadAttached,
 }
@@ -309,6 +309,7 @@ fn served_standings_after_snapshot_close(read: CarrierClosed<RoadmapStandings>) 
     SnapshotNotOpened => read.result
     SnapshotClosed => read.result
     SnapshotCloseFailed { worktree: _, exit_code: _, stderr: _ } => read.result
+    SnapshotCloseVerificationFailed { worktree: _, verification: _ } => read.result
   }
 }
 
@@ -876,6 +877,14 @@ fn served_events_after_snapshot_close(read: CarrierClosed<RoadmapAllEventsRead>)
         step: "snapshot-close",
         reason: join([
           "the event-log snapshot was not closed (", worktree as String, "): ", stderr,
+        ], ""),
+      }
+    SnapshotCloseVerificationFailed { worktree, verification } =>
+      AllEventsReadRefused {
+        step: "snapshot-close",
+        reason: join([
+          "the event-log snapshot close could not be verified clean (", worktree as String, "): ",
+          carrier_close_verification_reason(verification: verification),
         ], ""),
       }
   }

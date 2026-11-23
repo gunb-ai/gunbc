@@ -61,7 +61,7 @@ import gunbc.roadmap.roadmap_event_carrier {
   CarrierReadAttached,
   RoadmapAllEventsRead, AllEventsRead, AllEventsReadRefused, EventsRead, EventsReadRefused,
   EventAppended, EventAlreadyPresent, EventAppendRefused, CarrierClosed, CarrierSnapshotClose,
-  SnapshotNotOpened, SnapshotClosed, SnapshotCloseFailed,
+  SnapshotNotOpened, SnapshotClosed, SnapshotCloseFailed, SnapshotCloseVerificationFailed,
 }
 import gunbc.roadmap.roadmap_issue_command { IssueCommandSubject, AcceptNode, issue_command_apply }
 import gunbc.roadmap.roadmap_dashboard_instance {
@@ -163,6 +163,7 @@ fn roadmap_all_events_after_snapshot_close(read: CarrierClosed<RoadmapAllEventsR
     SnapshotNotOpened => read.result
     SnapshotClosed => read.result
     SnapshotCloseFailed { worktree: _, exit_code: _, stderr: _ } => read.result
+    SnapshotCloseVerificationFailed { worktree: _, verification: _ } => read.result
   }
 }
 

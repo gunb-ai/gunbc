@@ -188,7 +188,7 @@ import gunbc.roadmap.roadmap_event_carrier {
   EventsRead, EventsReadRefused, EventAppended, EventAlreadyPresent, EventAppendRefused,
   AllEventsRead, AllEventsReadRefused,
   RoadmapEventsRead, RoadmapAllEventsRead, RoadmapEventAppend,
-  CarrierClosed, SnapshotNotOpened, SnapshotClosed, SnapshotCloseFailed,
+  CarrierClosed, SnapshotNotOpened, SnapshotClosed, SnapshotCloseFailed, SnapshotCloseVerificationFailed,
 }
 import gunbc.roadmap.roadmap_event_log {
   RoadmapEvent, RoadmapEventId, Claimed, CommentCreated,
@@ -2691,6 +2691,7 @@ fn serve_history_after_snapshot_close(read: CarrierClosed<RoadmapEventsRead>) ->
     SnapshotNotOpened => read.result
     SnapshotClosed => read.result
     SnapshotCloseFailed { worktree: _, exit_code: _, stderr: _ } => read.result
+    SnapshotCloseVerificationFailed { worktree: _, verification: _ } => read.result
   }
 }
 
@@ -2699,6 +2700,7 @@ fn serve_all_events_after_snapshot_close(read: CarrierClosed<RoadmapAllEventsRea
     SnapshotNotOpened => read.result
     SnapshotClosed => read.result
     SnapshotCloseFailed { worktree: _, exit_code: _, stderr: _ } => read.result
+    SnapshotCloseVerificationFailed { worktree: _, verification: _ } => read.result
   }
 }
 
@@ -2707,5 +2709,6 @@ fn serve_append_after_snapshot_close(appended: CarrierClosed<RoadmapEventAppend>
     SnapshotNotOpened => appended.result
     SnapshotClosed => appended.result
     SnapshotCloseFailed { worktree: _, exit_code: _, stderr: _ } => appended.result
+    SnapshotCloseVerificationFailed { worktree: _, verification: _ } => appended.result
   }
 }

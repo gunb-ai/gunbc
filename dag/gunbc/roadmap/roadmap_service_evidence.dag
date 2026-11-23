@@ -29,7 +29,7 @@ import gunbc.roadmap.roadmap_result_returned {
   ResultReturnedObservation, ResultReturnedObserved, ResultNotReturned, ResultNotOwed, ResultReturnedUnobserved,
   result_returned_observe_for_attempt,
 }
-import gunbc.roadmap.roadmap_event_carrier { CarrierClosed, CarrierSnapshotClose, SnapshotNotOpened, SnapshotClosed, SnapshotCloseFailed }
+import gunbc.roadmap.roadmap_event_carrier { CarrierClosed, CarrierSnapshotClose, SnapshotNotOpened, SnapshotClosed, SnapshotCloseFailed, SnapshotCloseVerificationFailed, carrier_close_verification_reason }
 import gunbc.roadmap.roadmap_event_log { AttemptResultOutcome, attempt_result_outcome_word, attempt_result_outcome_members, attempt_result_outcome_decode }
 import gunbc.roadmap.roadmap_launch_admission {
   attempt_launch_record_of_json, AttemptLaunchBound, AttemptLaunchUnbound, AttemptLaunchUnreadable,
@@ -453,6 +453,7 @@ fn result_of_attempt(i: ResultReturnedInput, binding: AttemptBinding) -> ResultO
     ResultReturnedRead { observation, close } =>
       match close {
         SnapshotCloseFailed { worktree: _, exit_code: _, stderr } => ResultRefused { reason: refusal_reason(reason: join(["the event-log snapshot the result was read from was not closed: ", stderr], "")) }
+        SnapshotCloseVerificationFailed { worktree: _, verification } => ResultRefused { reason: refusal_reason(reason: join(["the event-log snapshot the result was read from could not be verified closed: ", carrier_close_verification_reason(verification: verification)], "")) }
         SnapshotNotOpened => result_of_observation(o: observation, binding: binding)
         SnapshotClosed => result_of_observation(o: observation, binding: binding)
       }

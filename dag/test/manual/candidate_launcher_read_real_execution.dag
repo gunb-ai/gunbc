@@ -39,7 +39,7 @@ import gunbc.roadmap.roadmap_event_carrier {
   RoadmapEventCarrierRead, CarrierReadAttached, CarrierReadScopedDetached,
   roadmap_event_carrier_ci_layout, roadmap_event_carrier_layout,
   roadmap_events_read_all, carrier_exec_program, RoadmapAllEventsRead, AllEventsRead, AllEventsReadRefused,
-  CarrierExec, CarrierExecOk, CarrierExecFailed, CarrierSnapshotClose, SnapshotClosed, SnapshotNotOpened, SnapshotCloseFailed,
+  CarrierExec, CarrierExecOk, CarrierExecFailed, CarrierSnapshotClose, SnapshotClosed, SnapshotNotOpened, SnapshotCloseFailed, SnapshotCloseVerificationFailed,
 }
 import gunbc.roadmap.roadmap_event_log { RoadmapEventEnvelope }
 
@@ -67,13 +67,15 @@ fn launcher_refusal_step(read: RoadmapAllEventsRead) -> String {
 }
 
 // Did the read's close report a fully-established Closed (registration and directory verified gone), as opposed to
-// a not-opened or a close-failure? A scoped read that created a worktree — even one whose add later failed — must
-// report Closed after cleanup, never SnapshotNotOpened for state that may exist.
+// a not-opened, a failed removal, or a close whose cleanliness could NOT be established? A scoped read that created
+// a worktree — even one whose add later failed — must report Closed after cleanup; an UNVERIFIABLE close (missing
+// directory, unreadable, still-registered) is NOT closed and must not pass a control.
 fn launcher_close_is_closed(close: CarrierSnapshotClose) -> Bool {
   match close {
     SnapshotClosed => true
     SnapshotNotOpened => false
     SnapshotCloseFailed { worktree: _, exit_code: _, stderr: _ } => false
+    SnapshotCloseVerificationFailed { worktree: _, verification: _ } => false
   }
 }
 
@@ -119,13 +121,14 @@ fn launcher_layout_for(runner: String) -> RoadmapEventCarrierRead {
   CarrierReadScopedDetached { scoped: roadmap_event_carrier_ci_layout(checkout_root: runner as FilePath, instance_layout: service_layout) }
 }
 
-// Count runner worktree registrations by parsing `git worktree list --porcelain` records, not by substring
-// counting: the header record is always present, so a substring test on "worktree " is always true. A record
-// counts only when its path is not the runner checkout itself.
+// Count runner worktree registrations by parsing `git worktree list --porcelain -z` NUL records, not by substring
+// counting and not by newline splitting: the header record is always present, and a path containing a NEWLINE must
+// not be split into two fields and missed (the same reason the close parses -z). A record counts only when its path
+// is not the runner checkout itself.
 fn launcher_registry_count(runner: String) -> Int {
-  let out = launcher_git_stdout(workdir: runner, args: ["worktree", "list", "--porcelain"])
-  let paths = filter(split(s: out, delimiter: "\n"), line => string_contains(s: trim(line), pattern: "worktree "))
-  let others = filter(paths, line => trim(line) != join(["worktree ", runner], ""))
+  let out = launcher_git_stdout(workdir: runner, args: ["worktree", "list", "--porcelain", "-z"])
+  let paths = filter(split(s: out, delimiter: "\u{0}"), line => string_contains(s: line, pattern: "worktree "))
+  let others = filter(paths, line => line != join(["worktree ", runner], ""))
   length(values: others)
 }
 
@@ -204,8 +207,15 @@ fn launcher_control_repeats_and_cleans_up(repo: String) -> String {
     let second_tag = launcher_roster_tag(read: second.result)
     let registry_after = launcher_registry_count(runner: c.runner)
     let branch_state = launcher_ref_presence(workdir: c.runner, ref: "refs/heads/roadmap-events")
-    let cleaned = launcher_prune(runner: c.runner) && shell.Remove.RecursiveForce(path: c.base).success && shell.Remove.RecursiveForce(path: scratch.path).success
-    let ok = first_tag != "" && first_tag != "<refused:snapshot>" && second_tag == first_tag && registry_after == 0 && branch_state == RefAbsent && scratch_used && cleaned && launcher_close_is_closed(close: first.close) && launcher_close_is_closed(close: second.close)
+    let pruned = launcher_prune(runner: c.runner)
+    let base_removed = shell.Remove.RecursiveForce(path: c.base).success
+    let scratch_removed = shell.Remove.RecursiveForce(path: scratch.path).success
+    let cleaned = pruned && base_removed && scratch_removed
+    // BOTH reads must be RENDERED, not merely equal. Two identical REFUSALS (both <refused:fetch>, both with a
+    // Closed close after a post-add failure) share a tag and would satisfy a bare tag-equality check while proving
+    // nothing -- that is the gap this control existed to close. launcher_is_rendered admits only a rendered roster
+    // whose close was verified clean, for both the first and the second read.
+    let ok = launcher_is_rendered(read: first.result) && launcher_is_rendered(read: second.result) && launcher_close_is_closed(close: first.close) && launcher_close_is_closed(close: second.close) && first_tag != "" && second_tag == first_tag && registry_after == 0 && branch_state == RefAbsent && scratch_used && cleaned
     if ok { "PASS" } else { control_result(ok: false, note: join(["first:", first_tag, " second:", second_tag, " registry:", to_string(value: registry_after), " branch:", launcher_ref_presence_tag(presence: branch_state), " close1_closed:", to_string(value: if launcher_close_is_closed(close: first.close) { 1 } else { 0 }), " close2_closed:", to_string(value: if launcher_close_is_closed(close: second.close) { 1 } else { 0 }), " scratch_ok:", to_string(value: if scratch_used { 1 } else { 0 }), " cleaned:", to_string(value: if cleaned { 1 } else { 0 })], "") ) }
   }
 }
