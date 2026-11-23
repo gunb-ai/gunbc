@@ -1280,6 +1280,23 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
     ),
 
     roadmap_node(
+      identity: "rn_ZGAW39FNPPF9T1TMMXJSDD2CWW",
+      id: "claim-batch-false-verdict-carries-a-located-reason",
+      owner: "compiler-guarantee",
+      carriers: carrier(path: "src/v1/stage0/src/bin/claim_batch.rs"),
+      line: ticket(t: fields(
+        headline: "A claim that answers Bool(false) can say why under claim_batch",
+        boundary: "claim_batch prints only PASS and FAIL with the claim name for a test fn that returns Bool(false). The arms that print a reason are the ClaimOutcome::ExitFailure arms, and those change the verdict class (code 2 renders as unobserved), so a witness cannot both answer false and say why. The companion convention, a <x>_passes fn with a <x>_failure_receipt fn, fires only through seed_runner_bool_false_failure_detail, which is reached only when a witness calls its builtin itself on the seed runner path; claim_batch never calls it for a test fn returning Bool(false). A red wall therefore prints a bare FAIL line (bold-lynx-262: retained_rust_kernel_wall_holds_against_live_tree, at main and at his head), and the offender is known only from a count derived outside the claim. Reported by warm-fox-517, who checked it against the source. The seed is semantics-frozen (gunbc.v1.v1_maintenance_standing::v1_seed_standing): the repair is admitted only if it serves the v2 self-host program, and that is a question for the owning lane, not settled here.",
+        displaced_cost: "Every control of the shape wall-returns-false is red with no reason, so each reader re-derives the offender by hand outside the claim (gunbc.design_argument::fail_closed, a refusal is loud, typed and located).",
+        first_slice: "On the native runner, project the companion convention's detail into the FAIL line of a Bool(false) verdict, leaving verdict class and exit code unchanged.",
+        red_control: "NONE OBSERVED YET: red_at and green_at are OPEN and no sha is claimed. The control is two witnesses: one plants a single offender and shows its name in the FAIL line, and one shows the verdict class and the exit code unchanged for the same claim. Each is executed on a named route with its PASS/FAIL lines pasted.",
+        out_of_scope: "Changing any verdict class or exit code. Which route (seed claim_batch or native runner) carries it; the owning lane decides.",
+        handback: "Return the change, both witnesses with PASS/FAIL lines and the commit they were built from, and the bare FAIL line of the wall above now carrying its offender."
+      )),
+      parent: in_project(project: "compiler-guarantee", contribution: "A refusal is loud, typed and located, including a red wall reported through the claim runner."),
+    ),
+
+    roadmap_node(
       identity: "rn_JXW6HYEDDAHGZ77HCGTYSF3FX3",
       id: "parse-comment-gap-attachment",
       owner: "parse",
