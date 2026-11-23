@@ -364,6 +364,15 @@ fn first_contact_hop_context(host: HostIdentity) -> FirstContactHopContext {
   }
 }
 
+// Pins a fold element to its declared LanEndpointHostKey type. `fold` resolves the element type from
+// a global list, but not from a record-field list (`ctx.hop_rows`), which leaves the matched value
+// inferred as Unit. Passing the matched value through this identity -- exactly how hop_lease_row_for
+// pins its fold value through lan_endpoint_host_key_row(observation: _) -- is what ties the fold's
+// element to LanEndpointHostKey so the field accesses below typecheck.
+fn as_lan_endpoint_host_key(row: LanEndpointHostKey) -> LanEndpointHostKey {
+  row
+}
+
 fn first_contact_ssh_target_in(
   ctx: FirstContactHopContext,
   host: HostIdentity,
@@ -380,10 +389,7 @@ fn first_contact_ssh_target_in(
           SshTargetRefused { endpoint: host as String, refusal: FirstContactHopSupersededByAnchor { host: host as String } }
         Absent =>
       match fold(ctx.hop_rows, init: none, f: fn(acc, o) {
-        match acc {
-          Present { value: v } => Present { value: v }
-          Absent => if host_identity_eq(a: o.host, b: host) { Present { value: o } } else { none }
-        }
+        if host_identity_eq(a: o.host, b: host) { Present { value: as_lan_endpoint_host_key(row: o) } } else { acc }
       }) {
         Absent => SshTargetRefused { endpoint: host as String, refusal: TargetAnchorRowAbsent { host: host as String } }
         Present { value: o } =>
@@ -395,9 +401,9 @@ fn first_contact_ssh_target_in(
               // host's hop row with another host's lease row resolves to nothing (TargetAnchorRowAbsent),
               // so the fork the comment above forbids ("the address dialed and the key verified cannot
               // disagree") can never reach an SshTargetResolved -- it is refused at resolve time.
-              if host_identity_eq(a: row.host, b: o.host)
-                && row.public_key_base64 == o.public_key_base64
-                && row.sha256_fingerprint == o.sha256_fingerprint {
+              if host_identity_eq(a: row.host, b: as_lan_endpoint_host_key(row: o).host)
+                && row.public_key_base64 == as_lan_endpoint_host_key(row: o).public_key_base64
+                && row.sha256_fingerprint == as_lan_endpoint_host_key(row: o).sha256_fingerprint {
                 SshTargetResolved { target: SshTarget { address: row.address, principal: principal } }
               } else {
                 SshTargetRefused { endpoint: host as String, refusal: TargetAnchorRowAbsent { host: host as String } }
