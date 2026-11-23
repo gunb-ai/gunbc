@@ -72,7 +72,7 @@ import extdeps.posix.test_utility { test_directory_command, test_executable_comm
 // format authority, so the converge writer and the serve reader cannot drift) and carries the result as
 // the SidecarRead sum (Absent / Malformed / Recorded), never a string sentinel.
 import gunbc.compute.remote_build_serve { parse_serve_binary_identity, ServeIdentityObserved }
-import gunbc.compute.remote_build_serving_setup { SidecarRead, SidecarAbsent, SidecarMalformed, SidecarRecorded }
+import gunbc.compute.remote_build_serving_setup { SidecarRead, SidecarAbsent, SidecarMalformed, SidecarRecorded, serving_host_needs_native_build }
 import extdeps.crypto.hash { sha256sum_file_command }
 import extdeps.git {git_rev_parse_head_command, git_clone_command, git_fetch_revision_command, git_checkout_detached_command }
 import extdeps.tools.uname { uname_machine_command, uname_linux_machine_architecture }
@@ -222,7 +222,10 @@ fn serving_leg_serve_identity(elevation: ObservationAttempt<Bool, ServingLegFail
           false => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("test -f exit ", to_string(t.exit_code)) } }
           true => match serving_leg_read(item: item, target: target, context: context, argv: serving_cat_sudo(path)) {
             ObservationEstablished { observed: content } => match parse_serve_binary_identity(content: content) {
-              ServeIdentityObserved { revision: _, sha256: s } => ObservationEstablished { observed: SidecarRecorded { sha256: s } }
+              // The reader KEEPS the revision (it was previously discarded at this boundary). The sidecar
+              // writer (converge_record_serve_identity) and its parser both carry it; on a native-build host
+              // it is the only binding of the running binary to a revision (review 97463 finding 1).
+              ServeIdentityObserved { revision: r, sha256: s } => ObservationEstablished { observed: SidecarRecorded { revision: r, sha256: s } }
               _ => ObservationEstablished { observed: SidecarMalformed }
             }
             ObservationRefused { cause: c } => ObservationRefused { cause: c }
@@ -1335,9 +1338,20 @@ fn converge_step(acc: ConvergeDraft, d: RemoteBuildServingDesired, pin: ServingP
     UserWorkSliceUncapped { unit_name: _ } => converge_install_user_work_slice_plan(acc, d)
     ServeBinaryModeMismatch { path: _, declared: _, observed: _ } => converge_install_binary(acc, d, pin, target_arch)
     // PR-1c: a drifted identity sidecar on a host whose binary is already settled (the deviation is
-    // only minted when the binary is present and its sha read) records the identity on its OWN — it
-    // reuses the RecordServeIdentity write + its read-back route from PR-1b, without a reinstall.
-    ServeIdentityDrift { path: _, reason: _ } => converge_record_identity_standalone(acc, d, pin)
+    // only minted when the binary is present and its sha read). HOST-AWARE (review 97463 finding 1):
+    // - Upload host (row arch == executor arch): its binary is the trusted POOL build, so only the sidecar
+    //   file is missing -- re-record the identity on its own (converge_record_identity_standalone), no reinstall.
+    // - Native-build host (row arch != executor arch): the sidecar must describe a binary BUILT on this host
+    //   at the dispatched revision; re-recording it over whatever binary is currently there would FABRICATE a
+    //   revision binding -- silent wrongness below the guarantee ladder. So ANY native identity drift
+    //   (missing / malformed / sha-mismatch / revision-stale) routes to the binary action: BuildServeBinary
+    //   at the dispatched revision, which records the sidecar from its own build receipt.
+    ServeIdentityDrift { path: _, reason: _ } =>
+      if serving_host_needs_native_build(host: d.host, executor_arch: pin.executor_arch) {
+        converge_install_binary(acc, d, pin, target_arch)
+      } else {
+        converge_record_identity_standalone(acc, d, pin)
+      }
     // An existing account at the wrong login shell is NOT auto-fixed: rewriting a live account's shell
     // is a usermod, which the apply must not run (fail_closed). It goes unhandled and the wet apply REFUSES.
     AccountShellMismatch { desired: _, observed: _ } => converge_draft_unhandled(acc, serving_deviation_item(dev: dev))

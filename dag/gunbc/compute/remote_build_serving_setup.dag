@@ -97,6 +97,12 @@ type ServeIdentityDriftReason
   = IdentitySidecarMissing
   | IdentitySidecarMalformed
   | IdentityShaMismatch { sidecar_sha: String, binary_sha: String }
+  // NATIVE-build hosts only: the sidecar's sha matches the running binary (integrity intact), but the
+  // REVISION it records is not the dispatched revision. On an upload host this is NOT a drift (a .dag-only
+  // main yields a byte-identical pool binary and the pin sha already binds it), but a native host has no
+  // pinned sha, so a recorded-but-stale revision means the binary predates the revision it should serve.
+  // Routing (converge): re-build it (BuildServeBinary), never re-record a sidecar over the stale binary.
+  | IdentityRevisionStale { sidecar_revision: String, dispatched_revision: String }
 
 // A PROVED mismatch: the leg was read successfully and the host differs from the declaration
 // (absent, or present-but-wrong). Only these may be written by the apply. It is a COPRODUCT over
@@ -190,7 +196,15 @@ type ServingDeviation
 type SidecarRead
   = SidecarAbsent
   | SidecarMalformed
-  | SidecarRecorded { sha256: String }
+  // The sidecar carries BOTH members the writer emits (converge_record_serve_identity): the sha of the
+  // binary it was recorded against AND the REVISION that binary was built at. The sha alone cannot bind
+  // the binary to a revision: on an upload host the PIN sha supplies that binding (the pool binary is by
+  // construction the dispatched-revision build), but on a NATIVE-build host there is no pinned sha, so the
+  // recorded revision is the ONLY thing that says which revision the running binary came from. Dropping it
+  // let a native host read settled on a stale binary (review 97463 finding 1) -- a silent-wrongness below the
+  // guarantee ladder (gunbc.design_argument::guarantee_ladder). So the reader keeps the revision (PR-1a parse
+  // already returns it; it was being discarded at the SidecarRecorded boundary).
+  | SidecarRecorded { revision: String, sha256: String }
 
 // The canonical item LABEL for an arm. It is what the receipt names a drift by and what the apply
 // matches toward, but it is DERIVED from the arm — never stored on it — so the coproduct stays the
@@ -239,6 +253,7 @@ fn serve_identity_drift_reason_text(reason: ServeIdentityDriftReason) -> String 
     IdentitySidecarMissing => "(confirmed absent)"
     IdentitySidecarMalformed => "(present but not the documented two-member object)"
     IdentityShaMismatch { sidecar_sha, binary_sha } => concat("(records ", sidecar_sha, ", the binary runs ", binary_sha, ")")
+    IdentityRevisionStale { sidecar_revision, dispatched_revision } => concat("(built at ", sidecar_revision, ", the pin dispatches ", dispatched_revision, ")")
   }
 }
 
@@ -406,6 +421,20 @@ fn serving_subject_value_unknown(item: String, leg: ServingSubjectValue) -> List
   }
 }
 
+// The single native-build relation (RB-M3). A serving host must BUILD its own serve binary (rather than
+// receive the pool binary) exactly when its authored architecture row -- the ONE authority,
+// executor_host_architecture on gunbc.fabric.fabric_executor_class -- is KNOWN and differs from the
+// executor's Architecture. An unauthored host (Unclassified) is NOT a native-build host: its plan step
+// refuses it upstream (typed), never defaults it to native. This one predicate is read by the settle
+// predicate, the identity revision binding below, and the converge's identity routing, so all three agree
+// on which hosts build natively (one authority over the relation, per clever-raven-401).
+fn serving_host_needs_native_build(host: HostIdentity, executor_arch: Architecture) -> Bool {
+  match executor_host_architecture(host: host) {
+    HostArchitectureUnclassified { host: _ } => false
+    HostArchitectureKnown { host: _, arch: row_arch } => row_arch != executor_arch
+  }
+}
+
 // The identity-sidecar compare over its reading (PR-1c, clever-raven-401). Unlike
 // serving_subject_value_deviation (which compares to a fixed PIN), the sidecar must equal the sha of the
 // binary the host ACTUALLY RUNS -- a read value, not a constant -- so it needs this one-off. The reading
@@ -416,16 +445,26 @@ fn serving_subject_value_unknown(item: String, leg: ServingSubjectValue) -> List
 // observed binary sha is settled EVEN AT AN OLDER REVISION (the revision is not a drift signal -- a
 // .dag-only main yields a byte-identical binary); a differing sha is drift. A refused read is neither
 // drift nor (here) unknown -- the unknown fn owns that, so a refusal never silently rewrites.
-fn serving_serve_identity_deviation(binary_sha: String?, leg: ObservationAttempt<SidecarRead, ServingLegFailure>?, path: String) -> List<ServingDeviation> {
+fn serving_serve_identity_deviation(binary_sha: String?, leg: ObservationAttempt<SidecarRead, ServingLegFailure>?, path: String, bound_revision: String?) -> List<ServingDeviation> {
   match binary_sha {
     Absent => []
     Present { value: want } => match leg {
       Absent => []
       Present { value: ObservationEstablished { observed: SidecarAbsent } } => [ServeIdentityDrift { path: path, reason: IdentitySidecarMissing }]
       Present { value: ObservationEstablished { observed: SidecarMalformed } } => [ServeIdentityDrift { path: path, reason: IdentitySidecarMalformed }]
-      Present { value: ObservationEstablished { observed: SidecarRecorded { sha256: v } } } => match v == want {
-        true => []
+      Present { value: ObservationEstablished { observed: SidecarRecorded { revision: r, sha256: v } } } => match v == want {
         false => [ServeIdentityDrift { path: path, reason: IdentityShaMismatch { sidecar_sha: v, binary_sha: want } }]
+        // sha matches the running binary. Whether a STALE recorded revision is drift depends on the host:
+        // bound_revision is the dispatched revision for a NATIVE-build host (its only binding of binary to
+        // revision), and Absent for an upload host (whose pin sha supplies the binding, so an older revision
+        // with an identical sha stays settled -- a .dag-only main yields a byte-identical pool binary).
+        true => match bound_revision {
+          Absent => []
+          Present { value: disp } => match r == disp {
+            true => []
+            false => [ServeIdentityDrift { path: path, reason: IdentityRevisionStale { sidecar_revision: r, dispatched_revision: disp } }]
+          }
+        }
       }
       Present { value: ObservationRefused { cause: _ } } => []
     }
@@ -1354,16 +1393,17 @@ fn serving_assess(d: RemoteBuildServingDesired, o: ServingObserved, pin: Serving
           // carry the pool binary, so its serve-binary sha must never be demanded to equal the pool pin
           // (pin.local_binary_sha256) -- that comparison would fire forever and rebuild the host endlessly.
           // Such a host settles instead on: the checkout pinned at the dispatched revision (below), the
-          // identity sidecar matching the binary the host actually runs (host-relative, judged in
-          // serving_serve_identity_deviation), and the binary being present (the seed deviation). An upload
-          // host (row arch == executor arch) and an unauthored host (Unclassified, whose plan step refuses
-          // it upstream) both keep the pin-sha comparison exactly as before. Same match shape as host.arch.
-          match executor_host_architecture(host: d.host) {
-            HostArchitectureUnclassified { host: _ } => serving_subject_value_deviation(item: "serve_binary.sha256", expected: pin.local_binary_sha256, leg: o.serve_binary_sha256)
-            HostArchitectureKnown { host: _, arch: row_arch } => match row_arch == pin.executor_arch {
-              true => serving_subject_value_deviation(item: "serve_binary.sha256", expected: pin.local_binary_sha256, leg: o.serve_binary_sha256)
-              false => []
-            }
+          // binary being present (the seed deviation), and -- THE BINDING -- the identity sidecar recording
+          // the DISPATCHED revision and matching the sha of the binary the host actually runs (bound-revision
+          // compare in serving_serve_identity_deviation). Dropping the pin-sha compare is NOT a gap: the
+          // revision binding replaces it, so a native host that keeps an older binary now DRIFTS and rebuilds
+          // (review 97463 finding 1; the guarantee ladder forbids reading settled on a stale binary). An
+          // upload host (row arch == executor arch) and an unauthored host (Unclassified, refused upstream)
+          // both keep the pin-sha comparison exactly as before.
+          if serving_host_needs_native_build(host: d.host, executor_arch: pin.executor_arch) {
+            []
+          } else {
+            serving_subject_value_deviation(item: "serve_binary.sha256", expected: pin.local_binary_sha256, leg: o.serve_binary_sha256)
           },
           serving_subject_value_deviation(item: "checkout.revision", expected: pin.dispatched_revision, leg: o.checkout_revision),
         ),
@@ -1444,7 +1484,11 @@ fn serving_assess(d: RemoteBuildServingDesired, o: ServingObserved, pin: Serving
         ObservationEstablished { observed: true } => match o.serve_binary_sha256 { SubjectValueRead { read: ObservationEstablished { observed: v } } => Present { value: v }  _ => Absent }
         _ => Absent
       }
-      let identity_deviations = serving_serve_identity_deviation(binary_sha: serve_identity_binary_sha, leg: o.serve_identity, path: (d.serve_binary as String))
+      // RB-M3: on a NATIVE-build host the sidecar's recorded revision is the only thing binding the running
+      // binary to a revision, so it is bound to the dispatched revision here (a stale one drifts and rebuilds).
+      // On an upload host it is left unbound (Absent) -- the pin sha already carries the binding (see above).
+      let identity_bound_revision = if serving_host_needs_native_build(host: d.host, executor_arch: pin.executor_arch) { Present { value: pin.dispatched_revision } } else { Absent }
+      let identity_deviations = serving_serve_identity_deviation(binary_sha: serve_identity_binary_sha, leg: o.serve_identity, path: (d.serve_binary as String), bound_revision: identity_bound_revision)
       let identity_unknowns = serving_serve_identity_unknown(binary_sha: serve_identity_binary_sha, leg: o.serve_identity)
       // The seat census: a STALE seat (the recovery write authorized THROUGH THE MODEL, by
       // gunbc.compute.attempt_lifecycle::recovery_write_authorization inside the census) plans a

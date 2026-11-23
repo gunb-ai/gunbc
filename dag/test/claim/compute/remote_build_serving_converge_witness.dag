@@ -21,7 +21,7 @@ import std.algebra { string_contains, non_empty_to_list }
 import extdeps.systemd.systemctl { systemctl_user_machine_connector }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused }
 import std.list { first_duplicate_by_key, first_where, list_member }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_e2d4b7 }
 // RB-M3: ServingPlanInput.executor_arch is now an Architecture (projected from uname -m by the producer).
 // Witnesses construct the variant directly from the upstream enum module; target_arch stays a String
 // spelling (it models the raw `uname -m` read), and its value must agree with the host's authored row or
@@ -1964,11 +1964,16 @@ fn fully_matched_identity(d: RemoteBuildServingDesired, line: String, sidecar: O
 
 fn sidecar_absent() -> ObservationAttempt<SidecarRead, ServingLegFailure> { ObservationEstablished { observed: SidecarAbsent } }
 fn sidecar_malformed() -> ObservationAttempt<SidecarRead, ServingLegFailure> { ObservationEstablished { observed: SidecarMalformed } }
-fn sidecar_recorded(sha: String) -> ObservationAttempt<SidecarRead, ServingLegFailure> { ObservationEstablished { observed: SidecarRecorded { sha256: sha } } }
+// Upload-host fixture: the revision is irrelevant there (the pin sha carries the binding), so this records
+// the sha with a placeholder revision. Native-host fixtures use sidecar_recorded_at, where revision matters.
+fn sidecar_recorded(sha: String) -> ObservationAttempt<SidecarRead, ServingLegFailure> { ObservationEstablished { observed: SidecarRecorded { revision: "irrelevant-for-upload", sha256: sha } } }
+fn sidecar_recorded_at(revision: String, sha: String) -> ObservationAttempt<SidecarRead, ServingLegFailure> { ObservationEstablished { observed: SidecarRecorded { revision: revision, sha256: sha } } }
 fn sidecar_refused() -> ObservationAttempt<SidecarRead, ServingLegFailure> { ObservationRefused { cause: ServingLegFailure { item: "serve.binary.identity", cause: "ssh read refused" } } }
 
 fn count_identity(ws: List<ConvergeAction>) -> Int { length(filter(ws, a => match a { RecordServeIdentity { install_path: _, revision: _, sha256: _ } => true  _ => false })) }
 fn count_binary_install(ws: List<ConvergeAction>) -> Int { length(filter(ws, a => match a { InstallServeBinary { upload_path: _, install_path: _, expected_sha256: _ } => true  _ => false })) }
+// RB-M3: the native-build action (build on the host, not upload) -- the route a native identity drift must take.
+fn count_binary_build(ws: List<ConvergeAction>) -> Int { length(filter(ws, a => match a { BuildServeBinary { checkout_dir: _, revision: _, package: _, bin: _, target_dir: _, install_path: _, as_user: _ } => true  _ => false })) }
 fn planned_identity_sha(ws: List<ConvergeAction>) -> String {
   match first_where(ws, keep: a => match a { RecordServeIdentity { install_path: _, revision: _, sha256: _ } => true  _ => false }) {
     Absent => ""
@@ -2052,6 +2057,86 @@ test fn an_unspoken_sidecar_on_a_settled_binary_stays_a_no_op() -> Bool {
     Present { value: d } => {
       let plan = plan_identity(d: d, line: forced_line(d), sidecar: Absent)
       plan_is_settled(plan) && count_identity(plan_writes(plan)) == 0 && count_binary_install(plan_writes(plan)) == 0
+    }
+  }
+}
+
+// ---- NATIVE-BUILD IDENTITY BINDING (review 97463 finding 1) ----
+// ken (operator_host_e2d4b7, an X86_64 row) against an Aarch64 executor (pin_ok) is a NATIVE-build host: it
+// builds its own serve binary, so there is no pinned pool sha to bind the binary to a revision -- the
+// sidecar's recorded REVISION is that binding. A native host must therefore drift (and rebuild) when the
+// recorded revision is not the dispatched one, and must NEVER be "fixed" by re-recording a sidecar over a
+// stale binary (that would fabricate a revision binding: silent wrongness below the guarantee ladder).
+// Upload hosts keep the opposite behaviour (an identical sha at an older revision is settled; a missing
+// sidecar is re-recorded alone) -- proved by the witnesses above on operator_host_srv1.
+// The on-host uname is the host's OWN arch ("x86_64") so the host.arch consistency check PASSES (it agrees
+// with the X86_64 row); only the identity revision leg varies across these fixtures.
+fn native_arch() -> String { "x86_64" }
+
+fn fully_matched_native_identity(d: RemoteBuildServingDesired, line: String, sidecar: ObservationAttempt<SidecarRead, ServingLegFailure>?) -> ServingObserved {
+  serving_observed_from_reads(
+    elevation: est_elevation(), account_name: d.account_name,
+    passwd: est_s("gunbc-build:x:1005:1005:remote-build:/home/gunbc-build:/bin/bash\n"),
+    group: est_s(converged_groups()), authorized_keys: est_s(line),
+    store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+    scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d),
+    checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
+    serve_binary_sha256: Present { value: est_s(pin_sha()) }, checkout_revision: Present { value: est_s(pin_rev()) },
+    authorized_keys_mode: Present { value: est_s(text: file_mode_octal(mode: d.authorized_keys_mode)) },
+    serve_binary_mode: Present { value: est_s(text: file_mode_octal(mode: d.serve_binary_mode)) },
+    serve_identity: sidecar,
+    user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
+    user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
+    user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
+    user_manager_linger: ObservationEstablished { observed: true },
+    target_arch: est_s(native_arch()), ledger_rows: matched_ledger(d: d),
+  
+  seat_census: RecoverCatalogLegEstablished { entries: [] },)
+}
+
+fn plan_native_identity(d: RemoteBuildServingDesired, line: String, sidecar: ObservationAttempt<SidecarRead, ServingLegFailure>?) -> ConvergeDecision {
+  converge_plan(d: d, a: serving_assess(d: d, o: fully_matched_native_identity(d: d, line: line, sidecar: sidecar), pin: pin_ok()), pin: pin_ok(), target_arch: est_s(native_arch()), rustup: est_ok())
+}
+
+// THE BLOCKING BUG, NOW RED-CAUGHT: a native host whose sidecar sha matches the running binary but whose
+// recorded revision is OLDER than the dispatched one reads settled under the old code. It must instead plan
+// a REBUILD (BuildServeBinary), and must NOT re-record the sidecar (count_identity==0) nor upload (install==0).
+test fn a_stale_native_revision_rebuilds_rather_than_rerecords() -> Bool {
+  match remote_build_serving_desired(host: operator_host_e2d4b7) {
+    Absent => false
+    Present { value: d } => {
+      let plan = plan_native_identity(d: d, line: forced_line(d), sidecar: Present { value: sidecar_recorded_at("ffffffffffffffffffffffffffffffffffffffff", pin_sha()) })
+      let ws = plan_writes(plan)
+      plan_is_refused(plan) == false && plan_is_unhandled(plan) == false
+        && count_binary_build(ws) == 1 && count_binary_install(ws) == 0 && count_identity(ws) == 0
+    }
+  }
+}
+
+// POSITIVE CONTROL: the same native host, sidecar recorded AT the dispatched revision and matching the
+// binary sha -> fully settled, nothing written.
+test fn a_native_revision_matching_the_pin_settles() -> Bool {
+  match remote_build_serving_desired(host: operator_host_e2d4b7) {
+    Absent => false
+    Present { value: d } => {
+      let plan = plan_native_identity(d: d, line: forced_line(d), sidecar: Present { value: sidecar_recorded_at(pin_rev(), pin_sha()) })
+      let ws = plan_writes(plan)
+      plan_is_settled(plan) && count_binary_build(ws) == 0 && count_binary_install(ws) == 0 && count_identity(ws) == 0
+    }
+  }
+}
+
+// RED: a native host with a CONFIRMED-ABSENT sidecar must rebuild (its binary is unbound to any revision),
+// NOT take the upload-host route of re-recording the identity alone. Contrast a_missing_sidecar_records_the_
+// identity_alone (srv1, upload) which asserts count_identity==1.
+test fn a_missing_native_sidecar_rebuilds_not_rerecords() -> Bool {
+  match remote_build_serving_desired(host: operator_host_e2d4b7) {
+    Absent => false
+    Present { value: d } => {
+      let plan = plan_native_identity(d: d, line: forced_line(d), sidecar: Present { value: sidecar_absent() })
+      let ws = plan_writes(plan)
+      plan_is_refused(plan) == false && plan_is_unhandled(plan) == false
+        && count_binary_build(ws) == 1 && count_identity(ws) == 0 && count_binary_install(ws) == 0
     }
   }
 }
