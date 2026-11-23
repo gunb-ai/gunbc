@@ -31,7 +31,7 @@ import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, typed_argv_exec_o
 // the census and read-back grammars (both live beside their doors), and the typed `gunbc run` argv
 // shape every host-side door run shares. The leg itself decides nothing.
 import gunbc.compute.work_provider_local {
-  RecoverCatalogLegReading, RecoverCatalogLegUnknown, recover_catalog_leg_reading,
+  RecoverCatalogLegReading, RecoverCatalogLegUnknown, RecoverCatalogLegDeferred, recover_catalog_leg_reading,
   RecoverDoorSettled, RecoverDoorDeclined, RecoverDoorUnknown, RecoverDoorUnmapped, recover_door_verdict,
   RecoverReadbackFacts, RecoverReadbackUnknown, recover_readback_reading,
   ReadbackRecordTerminal, ReadbackRecordActive, ReadbackRecordAbsent, ReadbackChargeStillHeld,
@@ -618,6 +618,21 @@ fn observe_host_reads(target: SshTarget, context: FleetSshExecutionContext, d: R
   }
   let serving_uid = serving_passwd_uid(text: passwd_opt, name: d.account_name)
   let slice_cap = serving_leg_slice_cap(target: target, context: context, uid: serving_uid)
+  // THE CENSUS DOOR IS CARRIED BY THE CHECKOUT, so it is asked only where it exists — the decision is
+  // census_door_gate, a pure function over the read values so a claim exercises it without a host. The
+  // recovery doors (compute_recover_catalog_cli and its two apply siblings) live in the checkout's dag;
+  // a checkout not yet detached at the dispatched revision does not contain them, and asking its stale
+  // tree answers "function compute_recover_catalog_cli is not in the loaded entry" — measured on srv1,
+  // run 44984397614, 2026-11-22. An unknown census dominates the assessment (fail_closed), and an
+  // indeterminate assessment plans nothing — so asking a door that cannot exist would strand the very
+  // checkout write that carries it, forever. The leg DEFERS with the reason when the gate says DEFER:
+  // no door runs, the plan carries no recovery write, the receipt says so, and the next assessment —
+  // with the checkout detached at the pin — asks the door. Never a fabricated empty census, and never
+  // an unknown for a door that was simply not asked.
+  let seat_census = match census_door_gate(checkout_revision: checkout_revision_value, dispatched_revision: pin.dispatched_revision) {
+    CensusGateAsk => serving_leg_seat_census(elevation: elevation, target: target, context: context, d: d, uid: serving_uid)
+    CensusGateDefer { reason: r } => RecoverCatalogLegDeferred { reason: r }
+  }
   // The user manager's linger state, read unelevated alongside the cap: it is the precondition for that
   // cgroup to persist, so it is observed in the same pass. It is GATED on the account being present, exactly
   // as the rustup/toolchain legs are: a confirmed-absent account (a fresh host) has no user manager to ask
@@ -657,7 +672,7 @@ fn observe_host_reads(target: SshTarget, context: FleetSshExecutionContext, d: R
     user_manager_linger: linger,
     target_arch: serving_leg_arch(item: "host.arch", target: target, context: context),
     ledger_rows: map(d.ledger_dirs, t => serving_ledger_row_read(target: target, context: context, t: t)),
-    seat_census: serving_leg_seat_census(elevation: elevation, target: target, context: context, d: d, uid: serving_uid),
+    seat_census: seat_census,
   )
   ServingObservedView { desired: d, observed: o }
 }
@@ -1281,6 +1296,12 @@ fn converge_step(acc: ConvergeDraft, d: RemoteBuildServingDesired, pin: ServingP
     // classify step refuses rather than silently dropping the write.
     StaleSeatDetected { reference: ref } =>
       ConvergeDraft { writes: concat([RecoverStaleSeat { reference: ref }], acc.writes), unhandled: acc.unhandled }
+    // The census was deferred (the checkout does not carry the door yet): NO recovery write, and NOT
+    // unhandled — there is nothing for a human to do; the checkout write this same plan carries is the
+    // remedy, and the next assessment asks the door. It can never stand alone as the only divergence:
+    // deferring means the checkout is not at the pin, which is itself the checkout drift that plans the
+    // detach (an unreadable revision is an unknown, which indeterminate-blocks before this fold).
+    StaleSeatCensusDeferred { reason: _ } => acc
   }
 }
 
@@ -1428,6 +1449,27 @@ fn converge_as_user_outcome(target: SshTarget, context: FleetSshExecutionContext
     context: context,
     argv: argv_words(command: sudo_elevate_as_command(user: account as NonEmptyStr, command: argv))
   )
+}
+
+// Whether the census door may be asked at all, decided over the READ values so a claim exercises the
+// gate without a host (witness_one_interface: the witness supplies the reads at the boundary). The door
+// is carried by the serving checkout, so it exists only where that checkout stands AT the dispatched
+// revision; an unestablished or refused revision defers too — a checkout whose revision is not settled
+// cannot be known to carry the door. DEFER is not UNKNOWN: nothing was read and refused (fail_closed
+// reserves unknown for that), and it is never an established-empty census.
+type CensusGate
+  = CensusGateAsk
+  | CensusGateDefer { reason: String }
+
+fn census_door_gate(checkout_revision: Optional<ObservationAttempt<String, ServingLegFailure>>, dispatched_revision: String) -> CensusGate {
+  match checkout_revision {
+    Present { value: ObservationEstablished { observed: v } } => match v == dispatched_revision {
+      true => CensusGateAsk
+      false => CensusGateDefer { reason: join(["the serving checkout stands at ", v, ", not the dispatched revision ", dispatched_revision, "; the recovery door lives in the checkout, so the census waits for the assessment after the checkout write detaches it"], "") }
+    }
+    Absent => CensusGateDefer { reason: join(["the serving checkout's revision is not established against the dispatched revision ", dispatched_revision, "; the census door is asked only from a checkout known to carry it"], "") }
+    Present { value: ObservationRefused { cause: c } } => CensusGateDefer { reason: join(["the serving checkout's revision read was refused (", c.cause, "), so the census door — which that checkout carries — cannot be known to exist"], "") }
+  }
 }
 
 // The observe's seat census: the recovery door's census, run as the serving account (the seats and the
