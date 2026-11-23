@@ -26,6 +26,9 @@ import gunbc.roadmap.roadmap_execution_contract {
   dispatch_required_capabilities,
   gunbc_claim_execution_contract,
   validation_operation_command,
+  ValidationCommandBuilt,
+  ValidationCommandCapabilityUnrealized,
+  ValidationCommandSubjectUnnameable,
   contract_awaits_closing_validation_authoring,
 }
 
@@ -131,10 +134,11 @@ test fn claim_validation_projects_exact_typed_argv() -> Bool {
     environment: claim_runner_environment(),
     source_roots: PublicWorktreeLayout,
   ) {
-    Present { value: command } =>
+    ValidationCommandBuilt { command: command } =>
       command.program == ("/opt/gunbc/bin/gunbc" as FilePath)
         && join(command.args, " ") == "test --source-root dag --source-root src/v2 //test/claim/example_test:example_holds"
-    Absent => false
+    ValidationCommandCapabilityUnrealized => false
+    ValidationCommandSubjectUnnameable { entry: _, function: _, reason: _ } => false
   }
 }
 
@@ -183,4 +187,24 @@ test fn non_agent_work_does_not_await_closing_validation_authoring() -> Bool {
         function: "example_holds" as NonEmptyStr,
       ),
     )
+}
+
+// The claim-entrypoints-cutover control: an entry outside the claim universe
+// produces ValidationCommandSubjectUnnameable, not ValidationCommandCapabilityUnrealized.
+// A contract naming a non-claim entry is a typed refusal with the subject's identity
+// and reason, not a host missing a runner.
+test fn claim_validation_outside_the_claim_universe_refuses_unnameable() -> Bool {
+  match validation_operation_command(
+    validation: GunbcClaimValidation {
+      entry: "dag/gunbc/roadmap/roadmap_belt_actuate.dag" as FilePath,
+      function: "some_function" as NonEmptyStr,
+    },
+    environment: claim_runner_environment(),
+    source_roots: PublicWorktreeLayout,
+  ) {
+    ValidationCommandBuilt { command: _ } => false
+    ValidationCommandCapabilityUnrealized => false
+    ValidationCommandSubjectUnnameable { entry: e, function: f, reason: _ } =>
+      e == "dag/gunbc/roadmap/roadmap_belt_actuate.dag" && f == "some_function"
+  }
 }

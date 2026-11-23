@@ -12,6 +12,10 @@ import gunbc.roadmap.roadmap_execution_contract {
   ExecutionContract,
   ValidationOperation,
   ModeledValidationCommand,
+  ValidationOperationCommandResult,
+  ValidationCommandBuilt,
+  ValidationCommandCapabilityUnrealized,
+  ValidationCommandSubjectUnnameable,
   validation_operation_command,
   modeled_validation_command_wire,
   ClaimSourceRootLayout,
@@ -223,13 +227,19 @@ fn verification_run_one(
     environment: instance.execution_environment,
     source_roots: source_roots,
   ) {
-    Absent =>
+    ValidationCommandCapabilityUnrealized =>
       VerificationRefused {
         node_id: node_id,
         label: "unrealized-capability" as NonEmptyStr,
         reason: "the instance environment realizes no executable for this validation's capability",
       }
-    Present { value: cmd } =>
+    ValidationCommandSubjectUnnameable { entry: e, function: f, reason: r } =>
+      VerificationRefused {
+        node_id: node_id,
+        label: "subject-unnameable" as NonEmptyStr,
+        reason: join([e, ":", f, " ", r], ""),
+      }
+    ValidationCommandBuilt { command: cmd } =>
       match verification_exec(instance: instance, workdir: workdir, command: cmd) {
         VerificationExecTransportRefused { reason } =>
           VerificationRefused {
@@ -463,7 +473,7 @@ fn verify_attempt(
         environment: instance.execution_environment,
         source_roots: contract_source_roots(contract: node.execution),
       ) {
-        Absent =>
+        ValidationCommandCapabilityUnrealized =>
           AttemptVerified {
             outcome: VerificationRefused {
               node_id: node_id,
@@ -484,7 +494,28 @@ fn verify_attempt(
               evidence: "",
             },
           }
-        Present { value: cmd } =>
+        ValidationCommandSubjectUnnameable { entry: e, function: f, reason: r } =>
+          AttemptVerified {
+            outcome: VerificationRefused {
+              node_id: node_id,
+              label: "subject-unnameable" as NonEmptyStr,
+              reason: join([e, ":", f, " ", r], ""),
+            },
+            receipt: LegacySingleValidationVerificationReceipt {
+              node_id: node_id,
+              attempt_key: attempt_key,
+              host: verification_execution_host(instance: instance),
+              worktree: worktree,
+              revision: revision,
+              validation_label: "subject-unnameable" as NonEmptyStr,
+              command_wire: "",
+              exit: ExitNotObserved {
+                reason: "the validation subject is outside the claim universe",
+              },
+              evidence: "",
+            },
+          }
+        ValidationCommandBuilt { command: cmd } =>
           match verification_exec(
             instance: instance,
             workdir: worktree,

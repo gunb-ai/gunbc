@@ -300,6 +300,10 @@ import gunbc.roadmap.roadmap_execution_contract {
   ClaimSourceRootLayout,
   ValidationOperation,
   ModeledValidationCommand,
+  ValidationOperationCommandResult,
+  ValidationCommandBuilt,
+  ValidationCommandCapabilityUnrealized,
+  ValidationCommandSubjectUnnameable,
   validation_operation_command,
   modeled_validation_command_wire,
   execution_contract_validation_summary,
@@ -437,6 +441,7 @@ import gunbc.roadmap.roadmap_validation_oracle { ValidationRefusalCause,
   ValidationRefused,
   ValidationNotRun,
   ValidationCommandUnrealized,
+  ValidationSubjectUnnameable,
   ValidationCommandRefused,
   ValidationChangeWindowRefused,
   ValidationContractUnspecified,
@@ -9362,12 +9367,19 @@ fn belt_run_bounded_validation_units(
             environment: instance.execution_environment,
             source_roots: source_roots,
           ) {
-            Absent =>
+            ValidationCommandCapabilityUnrealized =>
               BeltValidationRun {
                 executions: acc.executions,
                 verdict: ValidationRefused { cause: ValidationCommandUnrealized },
               }
-            Present { value: command } => {
+            ValidationCommandSubjectUnnameable { entry: e, function: f, reason: r } =>
+              BeltValidationRun {
+                executions: acc.executions,
+                verdict: ValidationRefused {
+                  cause: ValidationSubjectUnnameable { entry: e, function: f, reason: r },
+                },
+              }
+            ValidationCommandBuilt { command: command } => {
               let wire = modeled_validation_command_wire(command: command)
               let exec_outcome = if validation_consumes_affected_set_window(
                 validation: validation,
