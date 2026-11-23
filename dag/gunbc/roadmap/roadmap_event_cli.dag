@@ -611,6 +611,37 @@ fn roadmap_event_publication_report(repo_root: String, node: String, event_id: S
   }
 }
 
+// THE TYPED QUESTION behind the read-back's words: is this event on the checkout of the durable branch?
+// Kept apart from the sentence so the command line's verdict and the words the witness reads cannot drift.
+fn roadmap_event_is_recorded(layout: RoadmapEventCarrierLayout, node: String, event_id: String) -> Bool {
+  match roadmap_events_read(layout: layout, node: node as NonEmptyStr as RoadmapNodeId).result {
+    EventsReadRefused { node: _, step: _, reason: _ } => false
+    EventsRead { node: _, envelopes } =>
+      count(filter(xs: envelopes, predicate: e => (e.id as String) == event_id)) > 0
+  }
+}
+
+// WHERE DID THE RECORDING LAND — the operator's door. The host maps a run's verdict to an exit code and
+// only ProcessExit carries one, so a successful check exits 0 and an absent record refuses with the whole
+// sentence as its reason: the ref, the remote, the tip the REMOTE states, and the fetch-and-show to run
+// against it. Success has no text channel here (that is the host's rule, not this file's): what a
+// successful recording names is carried by the record itself and by the append's EventPublication, which
+// is why both spell the commit and the ref. The words come from the same reader the witness reads.
+fn roadmap_event_publication_check_cli(repo_root: String, node: String, event_id: String) -> ProcessExit {
+  match dashboard_instance_for_repo_root(repo_root: repo_root) {
+    DashboardInstanceRootUnknown { repo_root: w } =>
+      ExitFailure { code: 1, reason: join(["roadmap_event_publication_check_cli: no dashboard instance is rooted at ", w], "") }
+    DashboardInstanceResolved { instance } => {
+      let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
+      if roadmap_event_is_recorded(layout: layout, node: node, event_id: event_id) {
+        ExitSuccess
+      } else {
+        ExitFailure { code: 1, reason: roadmap_event_publication_report_over(layout: layout, node: node, event_id: event_id) }
+      }
+    }
+  }
+}
+
 // THE READ-BACK ITSELF, over a layout the caller owns — the same words whether the caller resolved the
 // instance from a root or stood up its own scratch ledger.
 fn roadmap_event_publication_report_over(layout: RoadmapEventCarrierLayout, node: String, event_id: String) -> String {
@@ -620,8 +651,10 @@ fn roadmap_event_publication_report_over(layout: RoadmapEventCarrierLayout, node
         text: match history.result {
           EventsReadRefused { node: _, step, reason } =>
             join(["roadmap_event_publication_report: read refused at ", step, ": ", reason], "")
-          EventsRead { node: _, envelopes } => {
-            let on_checkout = count(filter(xs: envelopes, predicate: e => (e.id as String) == event_id)) > 0
+          // The verdict is read by the same typed question the command line answers with, so the sentence and
+          // the exit cannot disagree about whether the record is there.
+          EventsRead { node: _, envelopes: _ } => {
+            let on_checkout = roadmap_event_is_recorded(layout: layout, node: node, event_id: event_id)
             let ref_name = join(["refs/heads/", roadmap_events_branch as String], "")
             match roadmap_event_branch_tip(layout: layout) {
               Absent => join([node, ": event ", event_id,
