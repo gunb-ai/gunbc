@@ -102,7 +102,7 @@ test fn the_record_words_reach_the_route_with_their_store() -> Bool {
 // (one call) and the route's own tally must show the shared identity selected and run once.
 test fn overlapping_operands_select_the_shared_claim_once() -> Bool {
   let command = gunbc_test_batch_command(
-    operands: ["//test/claim/run_verdict_exit_status_fixture", clap_fixture_label()],
+    operands: ["//test/claim/run_verdict_exit_status_fixture/...", clap_fixture_label()],
     mode: HermeticBatch {},
     source_roots: ["dag", "src/v2"]
   )
