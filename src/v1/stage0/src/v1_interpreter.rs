@@ -29930,9 +29930,9 @@ mod argv_arg_limit_test {
     use crate::v1_std_core::{make_text_part_node, no_span, shell_transport_node, Node};
 
     use super::{
-        argv_arg_limit_refusal, dispatch_shell, wait_child_honoring_wall_deadline, Env,
-        ExecutionMode, ExpectedOutcome, InterpContext, InterpError, StreamCapturePolicy, Value,
-        HOST_ARG_MAX_STRLEN_BYTES,
+        argv_arg_limit_refusal, configure_shell_process_group_for_wall_kill, dispatch_shell,
+        variant_value, wait_child_honoring_wall_deadline, Env, ExecutionMode, ExpectedOutcome,
+        InterpContext, InterpError, Value, HOST_ARG_MAX_STRLEN_BYTES,
     };
 
     fn argv_limit_test_context() -> InterpContext {
@@ -30202,33 +30202,38 @@ mod argv_arg_limit_test {
         ])
     }
 
-    /// A declared transport ceiling spelled the way the corpus spells it: the transport block's
-    /// `wall_deadline:` field NAMES the caller's Optional<Second>, so the node is a variable and the
-    /// value -- `Present` carrying a `Second` -- is bound in the parameter environment the dispatch
-    /// evaluates it in.
-    fn bound_leg_ceiling(ctx: &InterpContext, name: &str, secs: i64) -> (Rc<Node>, Rc<Env>) {
+    /// A declared transport ceiling spelled exactly as the corpus spells it -- the same shape the
+    /// per-leg kill controls build: the transport block's `wall_deadline:` field NAMES the caller's
+    /// Optional<Second>, so the node is a variable carrying a kernel name span, and the value
+    /// (`Present` holding `Second.MeasureSecond { count }`) is bound in the parameter environment
+    /// the dispatch evaluates the declaration in.
+    fn bound_leg_ceiling(ctx: &InterpContext, secs: i64) -> (Rc<Node>, Rc<Env>) {
         let ceiling_node = crate::v1_std_core::make_named_expr_node(
             synthetic_occ(),
-            name.to_string(),
+            "test_leg_ceiling".to_string(),
             Rc::new(crate::v1_std_core::ExprData::ExprVar { binding_kind: None }),
             Rc::new(im_vec![]),
             None,
             no_span(),
-            no_span(),
+            crate::v1_std_core::kernel_span("test_leg_ceiling".to_string()),
         );
-        let second = Value::Variant {
-            type_name: ctx.sym("Second"),
-            variant_name: ctx.sym("Second"),
-            fields: Rc::new(vec![(ctx.sym("count"), Value::Int(secs))]),
-        };
         let env = Env::with_binding(
             &Env::empty(),
-            ctx.sym(name),
-            Value::Variant {
-                type_name: ctx.sym("OptionalSecond"),
-                variant_name: ctx.sym("Present"),
-                fields: Rc::new(vec![(ctx.sym("value"), second)]),
-            },
+            ctx.sym("test_leg_ceiling"),
+            variant_value(
+                ctx,
+                "Optional",
+                "Present",
+                vec![(
+                    "value",
+                    variant_value(
+                        ctx,
+                        "Second",
+                        "MeasureSecond",
+                        vec![("count", Value::Int(secs))],
+                    ),
+                )],
+            ),
         );
         (ceiling_node, env)
     }
@@ -30241,10 +30246,10 @@ mod argv_arg_limit_test {
 
     #[test]
     fn dispatch_shell_stdin_leg_with_escaped_pipe_holder_still_returns_the_typed_overrun() {
-        let ctx = InterpContext::witness();
+        let ctx = argv_limit_test_context();
         let script = escaped_stream_holder_script("");
         let argv = leg_argv("sh", "-c", &script);
-        let (ceiling_node, param_env) = bound_leg_ceiling(&ctx, "test_leg_ceiling", 2);
+        let (ceiling_node, param_env) = bound_leg_ceiling(&ctx, 2);
         let transport = shell_transport_node(
             synthetic_occ(),
             argv,
@@ -30254,7 +30259,13 @@ mod argv_arg_limit_test {
             no_span(),
         );
         let start = std::time::Instant::now();
-        let outcome = dispatch_shell(&transport, &param_env, &ctx, "test stdin leg overrun", None);
+        let outcome = dispatch_shell(
+            &transport,
+            &param_env,
+            &ctx,
+            "test stdin leg overrun",
+            ExpectedOutcome::ExpectSuccess,
+        );
         let elapsed = start.elapsed();
         kill_escaped_stream_holder();
         let result = match outcome {
@@ -30276,11 +30287,11 @@ mod argv_arg_limit_test {
 
     #[test]
     fn dispatch_shell_stdin_leg_under_a_generous_ceiling_completes_with_its_payload_written() {
-        let ctx = InterpContext::witness();
+        let ctx = argv_limit_test_context();
         // The green half: a reader that consumes stdin, under a ceiling it never reaches. The
         // bounded settle must not cost a real leg its payload or its completion.
         let argv = leg_argv("sh", "-c", "cat > /dev/null");
-        let (ceiling_node, param_env) = bound_leg_ceiling(&ctx, "test_leg_ceiling", 30);
+        let (ceiling_node, param_env) = bound_leg_ceiling(&ctx, 30);
         let transport = shell_transport_node(
             synthetic_occ(),
             argv,
@@ -30304,12 +30315,12 @@ mod argv_arg_limit_test {
 
     #[test]
     fn dispatch_shell_stdin_leg_whose_child_never_reads_is_a_completion_not_an_error() {
-        let ctx = InterpContext::witness();
+        let ctx = argv_limit_test_context();
         // The child exits without touching stdin, so the writer dies on a broken pipe. That stays a
         // completion: the child's exit status is authoritative, and a refused write is ordinary
         // pipe behaviour -- the bounded settle must not turn it into a refusal.
         let argv = leg_argv("sh", "-c", "exit 3");
-        let (ceiling_node, param_env) = bound_leg_ceiling(&ctx, "test_leg_ceiling", 30);
+        let (ceiling_node, param_env) = bound_leg_ceiling(&ctx, 30);
         let transport = shell_transport_node(
             synthetic_occ(),
             argv,
@@ -30323,7 +30334,7 @@ mod argv_arg_limit_test {
             &param_env,
             &ctx,
             "test stdin leg broken pipe",
-            None,
+            ExpectedOutcome::ExpectSuccess,
         ) {
             Ok(result) => result,
             Err(err) => panic!("a child that exits without reading stdin is a completion: {err}"),
@@ -30339,25 +30350,30 @@ mod argv_arg_limit_test {
         // The outer whole-receipt bound used to join its drain worker after its own 2s grace, so an
         // escaped holder of the stderr WRITE end delayed the refusal indefinitely. The refusal is
         // the same value either way: what this control fixes is that it ARRIVES.
-        let ctx = InterpContext::witness();
+        let ctx = argv_limit_test_context();
         ctx.arm_wall_deadline(2000);
         let script = escaped_stream_holder_script(">&2");
-        let child = OsCommand::new("sh")
-            .arg("-c")
+        let mut cmd = OsCommand::new("/bin/sh");
+        cmd.arg("-c")
             .arg(script)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .process_group(0)
-            .spawn()
-            .expect("sh starts");
+            .stderr(Stdio::piped());
+        // The same group configuration the dispatch itself installs, so the control exercises the
+        // group-kill shape the seed actually uses.
+        configure_shell_process_group_for_wall_kill(
+            &mut cmd,
+            &ctx,
+            Some(std::time::Duration::from_secs(2)),
+        );
+        let child = cmd.spawn().expect("sh starts");
         let start = std::time::Instant::now();
         let outcome = wait_child_honoring_wall_deadline(
             child,
             &ctx,
             "sh",
-            StreamCapturePolicy::RetainText,
-            StreamCapturePolicy::RetainText,
+            super::bounded_shell_host_drain::default_shell_stdout_capture_policy(),
+            super::bounded_shell_host_drain::default_shell_stderr_capture_policy(),
             None,
         );
         let elapsed = start.elapsed();
