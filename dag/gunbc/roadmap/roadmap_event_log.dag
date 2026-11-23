@@ -705,24 +705,20 @@ fn roadmap_pull_request_merge_admission(
   envs: List<RoadmapEventEnvelope>, merge: PullRequestMergeEvidence,
 ) -> PullRequestMergeAdmission {
   if !roadmap_pull_request_merge_evidence_holds(merge: merge) {
-    MergeRefused { rule: "malformed-merge-evidence" as NonEmptyStr, detail:
-      "a merge event names a pull request, the head that merged, the time it merged and the merge sha, and both shas are 40 hex digits" as NonEmptyStr }
+    MergeRefused { rule: "malformed-merge-evidence" as NonEmptyStr, detail: "a merge event names a pull request, the head that merged, the time it merged and the merge sha, and both shas are 40 hex digits" as NonEmptyStr }
   }
   else if roadmap_node_standing_key(s: roadmap_node_standing(envs: envs)) != "accepted" {
     // The standing is the single authority for "is there a live acceptance" — it is what the fold decides and
     // what ctrl's gate reads, so the merge law cannot quietly disagree with it about which acceptance is live.
-    MergeRefused { rule: "no-live-acceptance" as NonEmptyStr, detail:
-      "this node has no live acceptance to merge: the acceptance is recorded first, on the head that was accepted, and a merge event appends to it" as NonEmptyStr }
+    MergeRefused { rule: "no-live-acceptance" as NonEmptyStr, detail: "this node has no live acceptance to merge: the acceptance is recorded first, on the head that was accepted, and a merge event appends to it" as NonEmptyStr }
   }
   else {
     match roadmap_live_acceptance_evidence(envs: envs) {
-      Absent => MergeRefused { rule: "no-live-acceptance" as NonEmptyStr, detail:
-        "this node's standing says accepted but its history states no acceptance event to merge against" as NonEmptyStr }
+      Absent => MergeRefused { rule: "no-live-acceptance" as NonEmptyStr, detail: "this node's standing says accepted but its history states no acceptance event to merge against" as NonEmptyStr }
       Present { value: evidence } => match evidence {
         // A migration acceptance names no thread, so there is nothing for a merge event to name either. The
         // rows written before the ruling carry a thread and stay mergeable through EarnedByPullRequest.
-        NoPullRequest => MergeRefused { rule: "no-accepted-thread" as NonEmptyStr, detail:
-          "the acceptance on this node names no pull request, so there is no thread whose merge can be recorded" as NonEmptyStr }
+        NoPullRequest => MergeRefused { rule: "no-accepted-thread" as NonEmptyStr, detail: "the acceptance on this node names no pull request, so there is no thread whose merge can be recorded" as NonEmptyStr }
         AcceptedOnPullRequestHead { pr_url, head_sha } =>
           roadmap_merge_against_accepted_head(merge: merge, accepted_url: pr_url as String, accepted_head: head_sha as String, envs: envs)
         EarnedByPullRequest { pr_url, merged_at: _, head_sha } =>
@@ -751,8 +747,7 @@ fn roadmap_merge_against_accepted_head(
       accepted_head, ") — a new head needs a new acceptance, recorded before the merge it gates"], "") as NonEmptyStr }
   }
   else if roadmap_node_has_merge_event(envs: envs) {
-    MergeRefused { rule: "already-merged" as NonEmptyStr, detail:
-      "this node's history already carries a merge event, and a merge lands once — an append-only log does not re-merge a head" as NonEmptyStr }
+    MergeRefused { rule: "already-merged" as NonEmptyStr, detail: "this node's history already carries a merge event, and a merge lands once — an append-only log does not re-merge a head" as NonEmptyStr }
   }
   else { MergeAdmitted }
 }
