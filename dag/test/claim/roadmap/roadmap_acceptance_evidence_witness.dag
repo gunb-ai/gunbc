@@ -57,7 +57,7 @@ import gunbc.roadmap.roadmap_model {
   RoadmapNodeId, RoadmapAcceptanceReceipt, RoadmapAcceptanceEvent, AcceptanceRecorded, AcceptanceRevoked,
   AcceptanceNodeRemainsSuperseded, roadmap_criteria_digest, roadmap_acceptance_line_of_receipt,
 }
-import gunbc.roadmap.roadmap_status { TicketFields, TicketUpdate, RedObservedOnMain, RedControlExecuted, HandbackDelivered }
+import gunbc.roadmap.roadmap_status { TicketFields, TicketUpdate, RedObservedOnMain, RedControlExecuted, RedControlTreeUnrecorded, RedControlNotRun, HandbackDelivered }
 import gunbc.roadmap.roadmap_event_log {
   AcceptancePrEvidence, NoPullRequest, EarnedByPullRequest,
   roadmap_acceptance_migration_problems, EventPrincipalAuthenticated,
@@ -76,6 +76,7 @@ import gunbc.roadmap.roadmap_acceptance_history_carrier {
 import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_object, json_kv, json_string, serialize_json }
 import gunbc.roadmap.roadmap_operator_acceptance {
   roadmap_operator_acceptance_receipt_line, roadmap_acceptance_migration_decide,
+  roadmap_acceptance_line_of, AcceptanceLineParsed, AcceptanceLineRefused,
   RoadmapAcceptanceMigrationOutcome, MigrationVerified, MigrationRefused,
   roadmap_acceptance_migration_refusal_report,
 }
@@ -428,18 +429,95 @@ test fn every_pinned_seed_line_parses_to_an_acceptance_the_grammar_admits() -> B
       init: true, f: fn(acc, ok) { acc && ok }))
 }
 
-// The arm the byte-for-byte version could not have: the pinned file was not written by
-// roadmap_operator_acceptance_receipt_line (compact JSON, older than the writer), so what the closed set is
-// entitled to assume is that the two readers agree on the FACTS — a structural round trip, not a spacing
-// match. Each guard is repeated inside so this claim cannot pass on a line that never parsed.
+// THE LOG'S OWN LINE, from the member writer that owns the spelling. This exists so a test can hand the
+// READERS a line built by the log itself; it is NOT a second authority, because the next claim pins it
+// byte-for-byte against roadmap_operator_acceptance_receipt_line on every receipt that law admits.
+fn log_acceptance_line(r: RoadmapAcceptanceReceipt) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "variant", value: json_string(s: "acceptance_recorded")),
+    json_kv(key: "receipt", value: json_object(members: roadmap_acceptance_receipt_members(r: r))),
+  ]))
+}
+
+fn seed_line_receipt(text: String) -> RoadmapAcceptanceReceipt? {
+  match roadmap_acceptance_line_of(text: text) {
+    AcceptanceLineRefused { reason: _ } => none
+    AcceptanceLineParsed { line: e } => match e {
+      AcceptanceRecorded { receipt: r } => Present { value: r }
+      _ => none
+    }
+  }
+}
+
+fn seed_line_carries_its_observation(text: String) -> Bool {
+  match seed_line_receipt(text: text) {
+    Absent => false
+    Present { value: r } => match r.red_control {
+      RedControlExecuted { witness_module: _, witness_fn: _, executed_on: _, observation: _ } => true
+      RedControlTreeUnrecorded { witness_module: _, witness_fn: _, executed_on: _ } => false
+      RedControlNotRun {} => false
+    }
+  }
+}
+
+fn carrier_admits_line(r: RoadmapAcceptanceReceipt) -> Bool {
+  match parse_roadmap_acceptance_event_history_carrier(text: join([log_acceptance_line(r: r), ""], "\n")) {
+    RoadmapAcceptanceEventHistoryParseRefused { detail: _ } => false
+    RoadmapAcceptanceEventHistoryParsed { events: parsed } => match parsed {
+      Cons { head: AcceptanceRecorded { receipt: admitted }, tail: _ } =>
+        receipt_facts(receipt: admitted) == receipt_facts(receipt: r)
+      Empty => false
+      _ => false
+    }
+  }
+}
+
+fn readers_admit_line(r: RoadmapAcceptanceReceipt) -> Bool {
+  match seed_line_receipt(text: log_acceptance_line(r: r)) {
+    Absent => false
+    Present { value: read } => receipt_facts(receipt: read) == receipt_facts(receipt: r)
+  }
+}
+
+// Rendering a rendered line must change nothing; the guard is inside so a line that never parsed fails.
+fn log_line_render_is_stable(text: String) -> Bool {
+  match seed_line_receipt(text: text) {
+    Absent => false
+    Present { value: r } => {
+      let once = log_acceptance_line(r: r)
+      match seed_line_receipt(text: once) {
+        Absent => false
+        Present { value: again } => log_acceptance_line(r: again) == once
+      }
+    }
+  }
+}
+
+// THE ARM THE BYTE-FOR-BYTE VERSION COULD NOT HAVE, rewritten for what #16914's law says. What it used to
+// assert — every pinned line round-trips through the OPERATOR writer — was true only while an unrecorded
+// red control was an unremarkable receipt. Since executed_red_control_names_its_failing_commit, a receipt
+// that names no commits its witness failed and passed on is NOT valid red evidence and the close route
+// refuses it, so the writer returns "" for every one of the eighteen pinned lines. Asserting the old
+// round trip would be asserting a route does what the law now forbids; asserting nothing would drop the
+// coverage. So each half is said on its own terms, and each guard is repeated inside so no claim can pass
+// on a line that never parsed.
 test fn each_pinned_seed_line_survives_a_round_trip_through_the_operator_writer() -> Bool {
-  claim("parse, render through the operator law's own writer, parse again: the receipt's canonical identity is unchanged",
+  claim("every pinned line is read by the model that writes the line back, and its canonical identity is unchanged when the log's own member writer renders it",
     fold(map(seed_acceptance_lines(), l => identity_of_seed_line(text: l) != ""
-      && identity_of_seed_line(text: rendered_seed_line(text: l)) == identity_of_seed_line(text: l)),
+      && identity_of_seed_line(text: log_acceptance_line(r: match seed_line_receipt(text: l) {
+           Absent => sample_receipt("line-never-parsed"), Present { value: r } => r }))
+         == identity_of_seed_line(text: l)),
       init: true, f: fn(acc, ok) { acc && ok }))
-  && claim("the writer is a fixed point after its first pass: rendering a rendered line changes nothing",
-    fold(map(seed_acceptance_lines(), l => rendered_seed_line(text: rendered_seed_line(text: l)) == rendered_seed_line(text: l)),
+  && claim("not one pinned line carries its observation, so the operator close writer refuses every one of them — the refusal is the ruling, and a writer that rendered these would be backdating red evidence",
+    fold(map(seed_acceptance_lines(), l => !seed_line_carries_its_observation(text: l)
+      && rendered_seed_line(text: l) == ""),
       init: true, f: fn(acc, ok) { acc && ok }))
+  && claim("the log's line writer is a fixed point after its first pass: rendering a rendered line changes nothing, on every pinned line",
+    fold(map(seed_acceptance_lines(), l => log_line_render_is_stable(text: l)),
+      init: true, f: fn(acc, ok) { acc && ok }))
+  && claim("where the law DOES admit a receipt — one that carries its observation — the operator writer and the log's member writer agree byte for byte, so the wrapper above is not a second spelling",
+    roadmap_operator_acceptance_receipt_line(receipt: sample_receipt("node-writers-agree"))
+      == log_acceptance_line(r: sample_receipt("node-writers-agree")))
 }
 
 test fn the_absence_of_a_pull_request_is_admitted_only_for_a_migration_receipt() -> Bool {
@@ -784,27 +862,36 @@ test fn an_acceptance_revocation_reads_back_naming_the_receipt_it_revokes() -> B
   }
 }
 
-// THE ONE GRAMMAR, CHECKED AGAINST THE TRUSTED LAW. The receipt the log nests, wrapped in the acceptance
-// line's envelope, must parse under the carrier's own parser — the native seed law that read the eighteen
-// lines and that the migration replays. This is the row that fails if the log and the line ever spell the
-// same fact differently: the variant words, the nesting, the digest and the member order are the parser's,
-// because the parser is the law and the log is its newest reader, not a second authority beside it.
+// THE ONE GRAMMAR, WITH THE TWO READERS NAMED. This row used to say "the parser is the law and the log is
+// its newest reader". That was true until #16914 gave an executed red control its observation in the MODEL
+// and left the native carrier parser holding its own three-field copy of that struct (JsonRedControl, with
+// deny_unknown_fields). It still reads the pre-ruling line, which is all the committed carrier it exists to
+// migrate holds; it cannot read a line that names the commits its witness failed and passed on, and it is
+// NOT the production read path — its only consumer is the one-time migration reader, as
+// gunbc.primitive_egress.dispositions_text says of parse_roadmap_acceptance_event_history_jsonl. So both
+// halves are pinned: the log's readers admit both spellings with the standing each one holds, and the
+// carrier parser's remaining reach — and its refusal — is stated as a fact rather than left for the next
+// lane to rediscover. The dissolution of that seed copy is filed as its own rung_drop row.
 test fn the_receipt_the_log_nests_is_the_line_the_carrier_parser_admits() -> Bool {
-  let receipt = sample_receipt("node-one-grammar")
-  let line = serialize_json(v: json_object(members: [
-    json_kv(key: "variant", value: json_string(s: "acceptance_recorded")),
-    json_kv(key: "receipt", value: json_object(members: roadmap_acceptance_receipt_members(r: receipt))),
-  ]))
-  match parse_roadmap_acceptance_event_history_carrier(text: join([line, ""], "\n")) {
-    RoadmapAcceptanceEventHistoryParseRefused { detail: _ } => false
-    RoadmapAcceptanceEventHistoryParsed { events: parsed } =>
-      count(parsed) == 1 && match parsed {
-        Cons { head: AcceptanceRecorded { receipt: admitted }, tail: _ } =>
-          receipt_facts(receipt: admitted) == receipt_facts(receipt: receipt)
-        Empty => false
-        _ => false
-      }
+  let carrying = sample_receipt("node-one-grammar")
+  let pre_ruling = RoadmapAcceptanceReceipt {
+    node: "node-one-grammar-pre-ruling" as NonEmptyStr as RoadmapNodeId,
+    criteria_digest: carrying.criteria_digest,
+    red_control: RedControlTreeUnrecorded {
+      witness_module: "test/claim/roadmap/roadmap_acceptance_evidence_witness" as NonEmptyStr,
+      witness_fn: "witness_executes" as NonEmptyStr,
+      executed_on: "2026-11-03",
+    },
+    handback: carrying.handback, accepted_by: carrying.accepted_by, accepted_on: carrying.accepted_on,
   }
+  claim("the pre-ruling line the committed carrier actually holds still parses under the carrier's own parser, facts intact",
+    carrier_admits_line(r: pre_ruling))
+  && claim("the modelled readers admit that same line, and read it as the standing it holds — the unrecorded one",
+    readers_admit_line(r: pre_ruling) && !seed_line_carries_its_observation(text: log_acceptance_line(r: pre_ruling)))
+  && claim("the modelled readers admit the line that carries its observation, facts intact — this is the production read path",
+    readers_admit_line(r: carrying))
+  && claim("the carrier parser refuses the observation-carrying line: its own copy of the red control has three fields and denies the rest — pinned so the gap is a known fact, and the reason the dissolution row exists",
+    !carrier_admits_line(r: carrying))
 }
 
 // ── THE VERDICT ITSELF, GREEN BY EXECUTION ─────────────────────────────────────────────
