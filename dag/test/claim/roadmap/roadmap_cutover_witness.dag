@@ -35,7 +35,7 @@ import gunbc.witness.roadmap_cutover {
 import std.content_hash { Fnv1a64Structural, Fnv1a64StructuralDigestHex }
 import gunbc.roadmap.roadmap_model {
   RoadmapNodeId, RoadmapAcceptanceEvent, RoadmapAcceptanceReceipt,
-  AcceptanceRecorded, RedControlExecuted, HandbackDelivered,
+  AcceptanceRecorded, RedObservedOnMain, RedControlExecuted, HandbackDelivered,
 }
 import gunbc.roadmap.roadmap_event_log {
   RoadmapRetiredNodeIds, RetiredNodeIdsLoaded, RetiredNodeIdsRefused,
@@ -166,7 +166,7 @@ fn precheck_receipt(node: String, digest: String) -> RoadmapAcceptanceReceipt {
     red_control: RedControlExecuted {
       witness_module: "test/claim/roadmap/roadmap_cutover_witness" as NonEmptyStr,
       witness_fn: "an_acceptance_already_recorded_refuses_naming_its_identity" as NonEmptyStr,
-      executed_on: "2026-11-12",
+      executed_on: "2026-11-12", observation: RedObservedOnMain { red_at: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", green_at: "0f1e2d3c4b5a69788796a5b4c3d2e1f001234567" },
     },
     handback: HandbackDelivered {
       first_artifact: "commit precheck-fixture" as NonEmptyStr,

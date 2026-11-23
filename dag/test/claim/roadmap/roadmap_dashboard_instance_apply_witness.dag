@@ -13,6 +13,7 @@ import gunbc.roadmap.roadmap_dashboard_instance_apply {
   AnchorPresent,
   AnchorAbsent,
   AnchorUnverifiable,
+  AnchorVerifyNotSpawned,
 }
 import extdeps.git {
   shape_git_bundle_create_argv,
@@ -705,8 +706,9 @@ test fn an_unverifiable_anchor_passes_the_command_failure_through_not_the_absent
   }
 }
 
-// The exit code is the discriminator: 0 is present, 1 is the witnessed absence, anything else
-// (and a command that never ran) is unverifiable with the raw detail kept.
+// The exit code is the discriminator: 0 is present, 1 is the witnessed absence, anything else is
+// unverifiable with the raw detail kept; a command that never ran is a separate arm carrying no exit
+// status at all.
 test fn the_verify_exit_code_discriminates_absence_from_unverifiable() -> Bool {
   let present = match dashboard_anchor_verify_of_ran(
     ran: TargetRan { exit_code: 0, success: true, stdout: "abc123\n", stderr: "" },
@@ -727,10 +729,37 @@ test fn the_verify_exit_code_discriminates_absence_from_unverifiable() -> Bool {
     _ => false
   }
   let not_run = match dashboard_anchor_verify_of_ran(ran: TargetNotRun { reason: "transport down" }) {
-    AnchorUnverifiable { exit_code: _, detail: detail } => detail == "transport down"
+    AnchorVerifyNotSpawned { detail: detail } => detail == "transport down"
     _ => false
   }
   present && absent && broken && not_run
+}
+
+// fail-closed control, RED on the fabricated value. A verify command that NEVER RAN must carry no
+// exit status. Had `dashboard_anchor_verify_of_ran` mapped `TargetNotRun` to
+// `AnchorUnverifiable { exit_code: -1, detail: ... }` -- a plausible git status for a git process
+// that was never spawned -- the first arm here would be false and the fabricated arm would match, so
+// this claim goes red on the fabrication. It also drives the real consumer: the reset admission must
+// refuse stating the command never ran, and must NOT hand the operator an invented "exit -1".
+test fn a_verify_command_that_never_ran_reports_no_exit_status() -> Bool {
+  let ran_form = match dashboard_anchor_verify_of_ran(ran: TargetNotRun { reason: "transport died" }) {
+    AnchorVerifyNotSpawned { detail: detail } => detail == "transport died"
+    AnchorUnverifiable { exit_code: _, detail: _ } => false
+    _ => false
+  }
+  let admission = match dashboard_source_repo_reset_admission(
+    repo: "/srv/gunbc/instances/srv1-live/source",
+    anchor_ref: "refs/gunbc/srv1-lab-admitted",
+    verify: AnchorVerifyNotSpawned { detail: "transport died" },
+  ) {
+    Present { value: detail } =>
+      string_contains(s: detail, pattern: "never ran on the target")
+        && string_contains(s: detail, pattern: "transport died")
+        && !string_contains(s: detail, pattern: "exit -1")
+        && !string_contains(s: detail, pattern: "convergence must populate")
+    Absent => false
+  }
+  ran_form && admission
 }
 
 // THE RED FOR AN ABSENT ADMITTED REF: the convergence arm's preflight reads the ref in the instance repo,
