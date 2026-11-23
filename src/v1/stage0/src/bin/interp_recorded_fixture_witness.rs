@@ -7,7 +7,7 @@
 //! cannot exercise record/replay host effects, so the executing coverage lives
 //! in this witness binary and is driven by the floor through a shell transport.
 //!
-//! Each check drives the real `claim_batch` binary with `--record` / `--hermetic`
+//! Each check drives the real `gunbc test` route with `--record` / `--hermetic`
 //! / `--fixture-store`, mutates fixtures on disk, and asserts the fail-closed
 //! diagnostics actually fire — green by execution, red on a real regression.
 //! SCAFFOLD — dissolves when the hermetic-fixture record/replay lifecycle is
@@ -33,13 +33,13 @@ macro_rules! ensure {
     };
 }
 
-fn claim_batch_exe() -> Result<PathBuf, String> {
+fn gunbc_test_exe() -> Result<PathBuf, String> {
     let ws = workspace_root();
-    let release = ws.join("target/release/claim_batch");
+    let release = ws.join("target/release/gunbc");
     if release.is_file() {
         return Ok(release);
     }
-    let debug = ws.join("target/debug/claim_batch");
+    let debug = ws.join("target/debug/gunbc");
     if debug.is_file() {
         return Ok(debug);
     }
@@ -47,24 +47,17 @@ fn claim_batch_exe() -> Result<PathBuf, String> {
     // transport's pre-build step.
     let status = Command::new("cargo")
         .current_dir(&ws)
-        .args([
-            "build",
-            "-p",
-            "v1-compiler",
-            "--release",
-            "--bin",
-            "claim_batch",
-        ])
+        .args(["build", "-p", "v1-compiler", "--release", "--bin", "gunbc"])
         .status()
-        .map_err(|e| format!("failed to spawn cargo build for claim_batch: {e}"))?;
+        .map_err(|e| format!("failed to spawn cargo build for gunbc: {e}"))?;
     if !status.success() {
-        return Err("cargo build -p v1-compiler --bin claim_batch failed".to_string());
+        return Err("cargo build -p v1-compiler --bin gunbc failed".to_string());
     }
     if release.is_file() {
         Ok(release)
     } else {
         Err(format!(
-            "claim_batch binary still missing at {}",
+            "gunbc binary still missing at {}",
             release.display()
         ))
     }
@@ -178,14 +171,110 @@ fn closure_scale_witness_entry(ws: &Path, scratch: &Path) -> Result<PathBuf, Str
     Ok(entry)
 }
 
-fn run_claim_batch(args: &[&str]) -> Result<Output, String> {
-    let exe = claim_batch_exe()?;
+/// TRANSLATE ONE LEGACY CLAIM-BATCH REQUEST INTO THE ONE ROUTE'S WORDS, HERE AND ONCE.
+///
+/// The check bodies still state what they always stated -- roots, an entry, a function, a mode.
+/// What they may no longer say is the ENTRYPOINT: `claim_batch --entry E --function F` and
+/// `gunbc run --claim-run` are deleted, so this is where a request becomes the caller contract:
+/// the entry/function pair is named as a claim identity (`test/claim/...` under the corpus),
+/// every root is handed to the route repo-relative (the route reads the checkout as its workspace,
+/// and an absolute root outside it is a refusal at the option's admission), and the corpus order
+/// puts a check's scratch store FIRST, because multi-root index build is primary-precedence:
+/// root[0] owns an overlapping module path, and these checks mutate a COPY of an in-tree module
+/// whose copy must be the one that executes.
+fn run_gunbc_test(args: &[&str]) -> Result<Output, String> {
+    let ws = workspace_root();
+    let ws_s = ws.to_str().unwrap_or("").trim_end_matches('/').to_string();
+    let rel = |v: &str| -> String {
+        if v == ws_s {
+            ".".to_string()
+        } else if let Some(rest) = v.strip_prefix(&format!("{ws_s}/")) {
+            rest.to_string()
+        } else {
+            v.to_string()
+        }
+    };
+    let mut extra_roots: Vec<String> = Vec::new();
+    let mut entry: Option<String> = None;
+    let mut function: Option<String> = None;
+    let mut mode: Vec<String> = Vec::new();
+    let mut i = 0;
+    let legacy = args.to_vec();
+    while i < legacy.len() {
+        match legacy[i] {
+            "--source-root" => {
+                if i + 1 < legacy.len() {
+                    let r = rel(legacy[i + 1]);
+                    if r != "." && r != "dag" && r != "src/v2" && !extra_roots.contains(&r) {
+                        extra_roots.push(r);
+                    }
+                    i += 2;
+                    continue;
+                }
+                i += 1;
+            }
+            "--entry" => {
+                entry = legacy.get(i + 1).map(|v| rel(v));
+                i += 2;
+            }
+            "--function" | "--functions" => {
+                function = legacy.get(i + 1).map(|v| v.to_string());
+                i += 2;
+            }
+            "--claim-run" | "--wet=true" => {
+                i += 1;
+            }
+            other => {
+                mode.push(other.to_string());
+                i += 1;
+            }
+        }
+    }
+    let label = match (entry.as_deref(), function.as_deref()) {
+        (Some(e), Some(f)) => {
+            let e = e.trim_end_matches(".dag");
+            match e.find("test/claim/") {
+                Some(at) => format!("//{}", format!("{}/{}", &e[at..], f)),
+                None => {
+                    return Err(format!(
+                        "interp witness: entry {e} names no test/claim identity — the route's \
+                         universe is //test/claim/... and a non-claim entry is a refusal, not a \
+                         guess"
+                    ))
+                }
+            }
+        }
+        (Some(e), None) => {
+            return Err(format!(
+                "interp witness: entry {e} arrived without a function — one claim is named by \
+                 both, and a package pattern here would widen the request"
+            ))
+        }
+        (None, _) => return Err("interp witness: a request arrived with no --entry".to_string()),
+    };
+    let mut all: Vec<String> = vec!["test".to_string()];
+    for r in extra_roots.iter() {
+        all.push("--source-root".to_string());
+        all.push(r.clone());
+    }
+    all.push("--source-root".to_string());
+    all.push("dag".to_string());
+    all.push("--source-root".to_string());
+    all.push("src/v2".to_string());
+    all.push(label);
+    all.extend(mode);
+    let refs: Vec<&str> = all.iter().map(|a| a.as_str()).collect();
+    run_gunbc_test_words(&refs)
+}
+
+fn run_gunbc_test_words(args: &[&str]) -> Result<Output, String> {
+    let exe = gunbc_test_exe()?;
     let mut cmd = Command::new(&exe);
     cmd.current_dir(workspace_root());
     for arg in args {
         cmd.arg(arg);
     }
-    cmd.output().map_err(|e| format!("claim_batch spawn: {e}"))
+    cmd.output().map_err(|e| format!("gunbc test spawn: {e}"))
 }
 
 fn combined_output(out: &Output) -> String {
@@ -280,7 +369,7 @@ fn filesystem_write_witness_record_then_hermetic_replay_holds() -> Result<(), St
     fs::create_dir_all(&store_dir).map_err(|e| format!("fixture dir: {e}"))?;
     let entry = unique_fs_witness_entry(&ws, &store_dir)?;
 
-    let record = run_claim_batch(&[
+    let record = run_gunbc_test(&[
         "--source-root",
         ws.to_str().unwrap(),
         "--source-root",
@@ -306,7 +395,7 @@ fn filesystem_write_witness_record_then_hermetic_replay_holds() -> Result<(), St
         store_dir
     );
 
-    let hermetic = run_claim_batch(&[
+    let hermetic = run_gunbc_test(&[
         "--source-root",
         ws.to_str().unwrap(),
         "--source-root",
@@ -336,7 +425,7 @@ fn filesystem_write_closure_scale_record_then_hermetic_replay_holds() -> Result<
     fs::create_dir_all(&store_dir).map_err(|e| format!("fixture dir: {e}"))?;
     let entry = closure_scale_witness_entry(&ws, &store_dir)?;
 
-    let record = run_claim_batch(&[
+    let record = run_gunbc_test(&[
         "--source-root",
         ws.to_str().unwrap(),
         "--source-root",
@@ -358,7 +447,7 @@ fn filesystem_write_closure_scale_record_then_hermetic_replay_holds() -> Result<
         String::from_utf8_lossy(&record.stderr)
     );
 
-    let hermetic = run_claim_batch(&[
+    let hermetic = run_gunbc_test(&[
         "--source-root",
         ws.to_str().unwrap(),
         "--source-root",
@@ -388,7 +477,7 @@ fn hermetic_fixture_staleness_fails_closed() -> Result<(), String> {
     fs::create_dir_all(&store_dir).map_err(|e| format!("fixture dir: {e}"))?;
     let entry = unique_fs_witness_entry(&ws, &store_dir)?;
 
-    let record = run_claim_batch(&[
+    let record = run_gunbc_test(&[
         "--source-root",
         ws.to_str().unwrap(),
         "--source-root",
@@ -419,7 +508,7 @@ fn hermetic_fixture_staleness_fails_closed() -> Result<(), String> {
         .map_err(|e| format!("write: {e}"))?;
     }
 
-    let hermetic = run_claim_batch(&[
+    let hermetic = run_gunbc_test(&[
         "--source-root",
         ws.to_str().unwrap(),
         "--source-root",
@@ -611,7 +700,7 @@ fn hermetic_replay_rejects_corrupted_fixture_response() -> Result<(), String> {
     fs::create_dir_all(&store_dir).map_err(|e| format!("fixture dir: {e}"))?;
     let entry = unique_fs_witness_entry(&ws, &store_dir)?;
 
-    let record = run_claim_batch(&[
+    let record = run_gunbc_test(&[
         "--source-root",
         ws.to_str().unwrap(),
         "--source-root",
@@ -648,7 +737,7 @@ fn hermetic_replay_rejects_corrupted_fixture_response() -> Result<(), String> {
         .map_err(|e| format!("write tampered fixture: {e}"))?;
     }
 
-    let hermetic = run_claim_batch(&[
+    let hermetic = run_gunbc_test(&[
         "--source-root",
         ws.to_str().unwrap(),
         "--source-root",
@@ -684,7 +773,7 @@ fn hermetic_replay_uses_fixture_not_live_fs_after_mutation() -> Result<(), Strin
     let entry = unique_fs_witness_entry(&ws, &store_dir)?;
     let target = store_dir.join("fs_witness.txt");
 
-    let record = run_claim_batch(&[
+    let record = run_gunbc_test(&[
         "--source-root",
         ws.to_str().unwrap(),
         "--source-root",
@@ -703,7 +792,7 @@ fn hermetic_replay_uses_fixture_not_live_fs_after_mutation() -> Result<(), Strin
 
     fs::write(&target, b"MUTATED-LIVE-FS-CONTENT").map_err(|e| format!("mutate live file: {e}"))?;
 
-    let hermetic = run_claim_batch(&[
+    let hermetic = run_gunbc_test(&[
         "--source-root",
         ws.to_str().unwrap(),
         "--source-root",
@@ -732,7 +821,7 @@ fn filesystem_hermetic_without_fixture_store_fails_closed() -> Result<(), String
     let scratch = fixture_store_dir("fs-no-store-fails-closed");
     fs::create_dir_all(&scratch).map_err(|e| format!("scratch dir: {e}"))?;
     let entry = unique_fs_witness_entry(&ws, &scratch)?;
-    let hermetic = run_claim_batch(&[
+    let hermetic = run_gunbc_test(&[
         "--source-root",
         ws.to_str().unwrap(),
         "--source-root",
@@ -766,7 +855,7 @@ fn filesystem_read_hermetic_without_fixture_fails_closed() -> Result<(), String>
     // dag/std/filesystem.dag). A read of HOST STATE the carve-out does NOT confirm as a
     // committed input — here a `target/` build-artifact path — must still fail closed with no
     // fixture and no mock_response: no silent disk read of non-deterministic host state.
-    let hermetic = run_claim_batch(&[
+    let hermetic = run_gunbc_test(&[
         "--source-root",
         ws.to_str().unwrap(),
         "--source-root",
@@ -802,7 +891,7 @@ fn filesystem_read_record_then_hermetic_replay_holds() -> Result<(), String> {
     let store_path = store_dir.to_str().unwrap().to_string();
 
     let common = |mode_flag: &str| -> Result<Output, String> {
-        run_claim_batch(&[
+        run_gunbc_test(&[
             "--source-root",
             ws.to_str().unwrap(),
             "--source-root",
@@ -842,7 +931,7 @@ fn filesystem_read_record_then_hermetic_replay_holds() -> Result<(), String> {
 fn m4_governed_service_published_realizes_unpublished_fails_closed() -> Result<(), String> {
     let ws = workspace_root();
     let common = |func: &str| -> Result<Output, String> {
-        run_claim_batch(&[
+        run_gunbc_test(&[
             "--source-root",
             ws.to_str().unwrap(),
             "--source-root",
@@ -860,7 +949,7 @@ fn m4_governed_service_published_realizes_unpublished_fails_closed() -> Result<(
     let green = common("witness_published_realizes")?;
     ensure!(
         green.status.success(),
-        "published op must realize hermetically on the claim_batch path; stderr={}",
+        "published op must realize hermetically on the claim route; stderr={}",
         String::from_utf8_lossy(&green.stderr)
     );
 
@@ -882,7 +971,7 @@ fn gcp_oauth_access_token_materializer_holds() -> Result<(), String> {
     let entry = ws.join("dag/test/claim/gcp_oauth_access_token_witness.dag");
     let store = ws.join("dag/test/fixture/gcp_oauth_access_token_store");
     let common = |func: &str| -> Result<Output, String> {
-        run_claim_batch(&[
+        run_gunbc_test(&[
             "--source-root",
             ws.to_str().unwrap(),
             "--source-root",
@@ -916,7 +1005,7 @@ fn gcp_oauth_access_token_materializer_holds() -> Result<(), String> {
 fn m4_universal_corpus_published_realizes_unpublished_fails_closed() -> Result<(), String> {
     let ws = workspace_root();
     let common = |func: &str| -> Result<Output, String> {
-        run_claim_batch(&[
+        run_gunbc_test(&[
             "--source-root",
             ws.to_str().unwrap(),
             "--source-root",
@@ -962,7 +1051,7 @@ fn clock_now_record_then_hermetic_replay_holds() -> Result<(), String> {
         entry.display()
     );
 
-    let record = run_claim_batch(&[
+    let record = run_gunbc_test(&[
         "--source-root",
         ws.to_str().unwrap(),
         "--source-root",
@@ -986,7 +1075,7 @@ fn clock_now_record_then_hermetic_replay_holds() -> Result<(), String> {
         store_dir
     );
 
-    let hermetic = run_claim_batch(&[
+    let hermetic = run_gunbc_test(&[
         "--source-root",
         ws.to_str().unwrap(),
         "--source-root",
@@ -1014,7 +1103,7 @@ fn hermetic_clock_fixture_staleness_fails_closed() -> Result<(), String> {
     fs::create_dir_all(&store_dir).map_err(|e| format!("fixture dir: {e}"))?;
     let entry = ws.join("dag/test/claim/clock_freshness_witness.dag");
 
-    let record = run_claim_batch(&[
+    let record = run_gunbc_test(&[
         "--source-root",
         ws.to_str().unwrap(),
         "--source-root",
@@ -1043,7 +1132,7 @@ fn hermetic_clock_fixture_staleness_fails_closed() -> Result<(), String> {
         .map_err(|e| format!("write: {e}"))?;
     }
 
-    let hermetic = run_claim_batch(&[
+    let hermetic = run_gunbc_test(&[
         "--source-root",
         ws.to_str().unwrap(),
         "--source-root",
@@ -1076,7 +1165,7 @@ fn env_get_record_then_hermetic_replay_holds() -> Result<(), String> {
     fs::create_dir_all(&store_dir).map_err(|e| format!("fixture dir: {e}"))?;
     let entry = ws.join("dag/test/claim/env_freshness_witness.dag");
 
-    let record = run_claim_batch(&[
+    let record = run_gunbc_test(&[
         "--source-root",
         ws.to_str().unwrap(),
         "--source-root",
@@ -1095,7 +1184,7 @@ fn env_get_record_then_hermetic_replay_holds() -> Result<(), String> {
         String::from_utf8_lossy(&record.stderr)
     );
 
-    let hermetic = run_claim_batch(&[
+    let hermetic = run_gunbc_test(&[
         "--source-root",
         ws.to_str().unwrap(),
         "--source-root",
@@ -1123,7 +1212,7 @@ fn hermetic_env_fixture_staleness_fails_closed() -> Result<(), String> {
     fs::create_dir_all(&store_dir).map_err(|e| format!("fixture dir: {e}"))?;
     let entry = ws.join("dag/test/claim/env_freshness_witness.dag");
 
-    let record = run_claim_batch(&[
+    let record = run_gunbc_test(&[
         "--source-root",
         ws.to_str().unwrap(),
         "--source-root",
@@ -1152,7 +1241,7 @@ fn hermetic_env_fixture_staleness_fails_closed() -> Result<(), String> {
         .map_err(|e| format!("write: {e}"))?;
     }
 
-    let hermetic = run_claim_batch(&[
+    let hermetic = run_gunbc_test(&[
         "--source-root",
         ws.to_str().unwrap(),
         "--source-root",
@@ -1182,7 +1271,7 @@ fn hermetic_env_fixture_staleness_fails_closed() -> Result<(), String> {
 fn env_hermetic_without_fixture_store_fails_closed() -> Result<(), String> {
     let ws = workspace_root();
     let entry = ws.join("dag/test/claim/env_freshness_witness.dag");
-    let hermetic = run_claim_batch(&[
+    let hermetic = run_gunbc_test(&[
         "--source-root",
         ws.to_str().unwrap(),
         "--source-root",
@@ -1216,7 +1305,7 @@ fn diagnostic_redfish_record_then_hermetic_replay_holds() -> Result<(), String> 
         entry.display()
     );
 
-    let record = run_claim_batch(&[
+    let record = run_gunbc_test(&[
         "--source-root",
         ws.to_str().unwrap(),
         "--source-root",
@@ -1235,7 +1324,7 @@ fn diagnostic_redfish_record_then_hermetic_replay_holds() -> Result<(), String> 
         String::from_utf8_lossy(&record.stderr)
     );
 
-    let hermetic = run_claim_batch(&[
+    let hermetic = run_gunbc_test(&[
         "--source-root",
         ws.to_str().unwrap(),
         "--source-root",
@@ -1260,7 +1349,7 @@ fn diagnostic_redfish_record_then_hermetic_replay_holds() -> Result<(), String> 
 fn diagnostic_redfish_hermetic_without_fixture_store_fails_closed() -> Result<(), String> {
     let ws = workspace_root();
     let entry = ws.join("dag/test/claim/diagnostic_redfish_witness.dag");
-    let hermetic = run_claim_batch(&[
+    let hermetic = run_gunbc_test(&[
         "--source-root",
         ws.to_str().unwrap(),
         "--source-root",
@@ -1290,7 +1379,7 @@ fn hermetic_http_pilot_fixture_staleness_fails_closed() -> Result<(), String> {
     write_http_pilot_fixture(&store_dir, 0)?;
     let entry = ws.join("dag/test/claim/http_pilot_rest_witness.dag");
 
-    let hermetic = run_claim_batch(&[
+    let hermetic = run_gunbc_test(&[
         "--source-root",
         ws.to_str().unwrap(),
         "--source-root",
@@ -1320,7 +1409,7 @@ fn hermetic_http_pilot_fixture_staleness_fails_closed() -> Result<(), String> {
 fn hermetic_http_pilot_without_fixture_store_fails_closed() -> Result<(), String> {
     let ws = workspace_root();
     let entry = ws.join("dag/test/claim/http_pilot_rest_witness.dag");
-    let hermetic = run_claim_batch(&[
+    let hermetic = run_gunbc_test(&[
         "--source-root",
         ws.to_str().unwrap(),
         "--source-root",
