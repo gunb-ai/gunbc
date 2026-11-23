@@ -392,6 +392,17 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.git", decl_name: "git_config_local_set_command"),
     decl_ref(module_path: "extdeps.git", decl_name: "git_absolute_git_dir_premise_argv"),
     decl_ref(module_path: "extdeps.git", decl_name: "git_shared_repository_group_config_command"),
+    // THE DEPLOYED-TREE OBSERVATION'S FIVE TYPED CALLS (PR #16918 review 97601, 2026-11-23): the fold
+    // delivers its git legs as typed ArgvCommands through gunbc.host.host_effect_realize's shared
+    // dispatcher, and the words are built here because an argv shape is git's fact, not the fold's
+    // (the rationale, including why GIT_INDEX_FILE is a typed binding and the index is never a shared
+    // name, is at each builder in extdeps/git.dag). One builder per operation, no verbs parameter, so
+    // no caller composes a git invocation it was not given.
+    decl_ref(module_path: "extdeps.git", decl_name: "git_in_trusted_repository_head_revision_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_in_trusted_repository_head_root_tree_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_in_trusted_repository_read_tree_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_in_trusted_repository_status_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_in_trusted_repository_ls_files_ignored_command"),
     decl_ref(module_path: "extdeps.git", decl_name: "git_clone_command"),
     decl_ref(module_path: "extdeps.git", decl_name: "git_fetch_revision_command"),
     decl_ref(module_path: "extdeps.git", decl_name: "git_checkout_detached_command"),
