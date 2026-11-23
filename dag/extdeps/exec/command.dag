@@ -182,6 +182,13 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_other_children_exec_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_symlink_targets_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_direct_children_metadata_command"),
+    // THE INDEPENDENT FRAMING COUNT for the tree-install readback (the newline-framing fix): two
+    // read-only `-printf .` enumerations whose bounds match the metadata walks they count. Same
+    // already-admitted `find` program, read-only, no write fold, no sudo -- a name cannot add a dot,
+    // so the dot count is an independent check that the newline-delimited metadata listing saw exactly
+    // as many entries as exist, refusing a crafted name that forges extra well-formed rows.
+    decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_direct_children_count_command"),
+    decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_tree_entry_count_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_self_metadata_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_regular_file_size_mtime_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "mv_exact_destination_command"),

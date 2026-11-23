@@ -128,7 +128,7 @@ import gunbc.live_deploy.emit {
   path_ancestors_inclusive,
 }
 import extdeps.crypto.hash { sha256sum_file_command, sha256sum_line_digest }
-import extdeps.tools.findutils { find_regular_files_sha256_command, find_tree_entry_metadata_command, find_direct_children_metadata_command, find_self_metadata_command, find_self_metadata_printf }
+import extdeps.tools.findutils { find_regular_files_sha256_command, find_tree_entry_metadata_command, find_direct_children_metadata_command, find_direct_children_count_command, find_tree_entry_count_command, find_self_metadata_command, find_self_metadata_printf }
 import gunbc.live_deploy.release_locus { release_locus_record, ReleaseLocus, release_locus_tree_subdirs, release_revision_execstart_text, RevisionNotInstalled }
 import gunbc.live_deploy.emit { install_d_shared_mode, install_file_shared_mode, install_executable_shared_mode }
 import gunbc.ci.ci_release_bins { gunbc_release_bin_name }
@@ -6687,15 +6687,18 @@ fn tree_metadata_fields_of(fields: List<String>) -> Optional<TreeMetadataFieldWa
 
 // One `<rel>|<y>|<m>|<u>|<g>|<link>|<size>` line, rebased under `sub`, or Absent for a line the
 // grammar refuses -- the count guard turns Absent parses into a refusal, exactly as the hash
-// parser's does. The starting point's own row (find %P prints the empty string for it) is not an
-// entry of the tree: refused here AND excluded from the counted lines, the same rule stated once.
-// A line `find <root> -maxdepth 1` prints for the WALK ROOT ITSELF: an empty %P, i.e. an empty first
-// field over EXACTLY the seven fields of the shared grammar. This is the one deliberately-skipped row
-// (the walk root's own metadata is observed by the separate -maxdepth 0 self walk). Crucially this is
-// NARROW: a real child whose NAME starts with "|" (a rogue "|rogue" at the locus root, or "src/|extra")
-// splits to a DIFFERENT field count and is NOT a starting-point record -- it must reach the collector and
-// be refused, never dropped. Distinguishing these two is what keeps the fail-closed gate from silently
-// swallowing an unnameable row.
+// parser's does.
+// A line `find <root>` (the FULL subtree walk, which keeps its starting point) prints for the WALK
+// ROOT ITSELF: an empty %P, i.e. an empty first field over EXACTLY the seven fields of the shared
+// grammar. This is the ONLY deliberately-skipped row, and it exists only for the full-subtree walk
+// (observe_tree_entry_metadata); the direct-children listing excludes the starting point at the
+// producer with `-mindepth 1`, so it never reaches a skip rule (see find_direct_children_metadata_command).
+// `starting_point_expected` carries that distinction: true for the full walk, false for the children
+// listing. When false, an empty-rel row is NOT skipped -- it is malformed and the count guard refuses
+// it, which is what stops a child NAMED with a newline from printing an empty-%P row that would
+// otherwise be swallowed as a starting point. Crucially even when true the predicate is NARROW: a real
+// child whose NAME starts with "|" (a rogue "|rogue" at the locus root, or "src/|extra") splits to a
+// DIFFERENT field count, is not a starting-point record, and must reach the collector and be refused.
 fn tree_metadata_line_is_starting_point(line: String) -> Bool {
   if !starts_with(s: line, prefix: "|") {
     false
@@ -6707,8 +6710,10 @@ fn tree_metadata_line_is_starting_point(line: String) -> Bool {
   }
 }
 
-fn tree_metadata_entry_of_line(line: String, sub: String) -> Optional<TreeMetadataEntry> {
-  if line == "" || tree_metadata_line_is_starting_point(line: line) {
+fn tree_metadata_entry_of_line(line: String, sub: String, starting_point_expected: Bool) -> Optional<TreeMetadataEntry> {
+  if line == "" {
+    Absent
+  } else if starting_point_expected && tree_metadata_line_is_starting_point(line: line) {
     Absent
   } else {
     match tree_metadata_fields_of(fields: split(s: line, delimiter: "|")) {
@@ -6750,8 +6755,8 @@ fn tree_metadata_entry_of_fields(f: TreeMetadataFieldWalk, sub: String) -> Optio
   }
 }
 
-fn tree_metadata_entries_of_stdout(stdout: String, sub: String) -> List<TreeMetadataEntry> {
-  flat_map(split(s: stdout, delimiter: "\n"), line => match tree_metadata_entry_of_line(line: line, sub: sub) { Absent => [], Present { value: e } => [e] })
+fn tree_metadata_entries_of_stdout(stdout: String, sub: String, starting_point_expected: Bool) -> List<TreeMetadataEntry> {
+  flat_map(split(s: stdout, delimiter: "\n"), line => match tree_metadata_entry_of_line(line: line, sub: sub, starting_point_expected: starting_point_expected) { Absent => [], Present { value: e } => [e] })
 }
 
 // THE SELF-METADATA OF ONE PATH. find_self_metadata_command prints the seven-field line
@@ -6767,7 +6772,7 @@ fn tree_self_metadata_entry_of_stdout(stdout: String, path: String) -> Optional<
     Cons { head: line, tail: rest } =>
       if count(rest) != 0 { Absent }
       else {
-        match tree_metadata_entry_of_line(line: line, sub: "") {
+        match tree_metadata_entry_of_line(line: line, sub: "", starting_point_expected: false) {
           Absent => Absent
           Present { value: e } => if e.path == path { Present { value: e } } else { Absent }
         }
@@ -7078,9 +7083,19 @@ fn observe_tree_entry_metadata(root: String, subs: List<String>, transport: Host
           RunArgvTransportObserved { observed: o } =>
             if !o.success { TreeMetadataObservationFailed { reason: join(["find entry-metadata exit ", to_string(o.exit_code), ": ", o.stderr], "") } }
             else {
-              match tree_metadata_entries_of_stdout_checked(root: join([root, "/", sub], ""), stdout: o.stdout, sub: sub) {
-                TreeMetadataObservationFailed { reason: r } => TreeMetadataObservationFailed { reason: r }
-                TreeMetadataObserved { entries: parsed } => TreeMetadataObserved { entries: concat(es, parsed) }
+              match run_argv_over_elevation_route(
+                command: find_tree_entry_count_command(root: join([root, "/", sub], "")),
+                transport: transport,
+              ) {
+                RunArgvTransportRefused { reason: r } => TreeMetadataObservationFailed { reason: r }
+                RunArgvTransportObserved { observed: c } =>
+                  if !c.success { TreeMetadataObservationFailed { reason: join(["find entry-count exit ", to_string(c.exit_code), ": ", c.stderr], "") } }
+                  else {
+                    match tree_metadata_entries_of_stdout_checked(root: join([root, "/", sub], ""), stdout: o.stdout, dot_stdout: c.stdout, sub: sub, starting_point_expected: true) {
+                      TreeMetadataObservationFailed { reason: r } => TreeMetadataObservationFailed { reason: r }
+                      TreeMetadataObserved { entries: parsed } => TreeMetadataObserved { entries: concat(es, parsed) }
+                    }
+                  }
               }
             }
         }
@@ -7124,25 +7139,62 @@ fn observe_direct_children_one(root: String, sub: String, transport: HostEffectE
     RunArgvTransportRefused { reason: r } => TreeMetadataObservationFailed { reason: r }
     RunArgvTransportObserved { observed: o } =>
       if !o.success { TreeMetadataObservationFailed { reason: join(["find direct-children exit ", to_string(o.exit_code), ": ", o.stderr], "") } }
-      else { tree_metadata_entries_of_stdout_checked(root: root, stdout: o.stdout, sub: sub) }
+      else {
+        match run_argv_over_elevation_route(
+          command: find_direct_children_count_command(root: root),
+          transport: transport,
+        ) {
+          RunArgvTransportRefused { reason: r } => TreeMetadataObservationFailed { reason: r }
+          RunArgvTransportObserved { observed: c } =>
+            if !c.success { TreeMetadataObservationFailed { reason: join(["find direct-children count exit ", to_string(c.exit_code), ": ", c.stderr], "") } }
+            else { tree_metadata_entries_of_stdout_checked(root: root, stdout: o.stdout, dot_stdout: c.stdout, sub: sub, starting_point_expected: false) }
+        }
+      }
   }
 }
 
-// THE COLLECTOR WITH ITS VALIDATION GUARD: every non-empty line the walk printed that is NOT the
-// established starting-point record must parse into a well-formed entry. A line that does not -- a rogue
-// child whose NAME breaks the delimiter grammar (a leading "|", a "|" in the name), an entry with an empty
-// owner/group, a non-decimal size, or a truncated field -- makes the counts disagree and FAILS the
-// observation: an unnameable row is REFUSED, never dropped. Exposed as a pure function over the captured
-// find stdout so both the executor above and the fixtures drive the SAME validation without elevation.
-fn tree_metadata_entries_of_stdout_checked(root: String, stdout: String, sub: String) -> TreeMetadataObservation {
-  let parsed = tree_metadata_entries_of_stdout(stdout: stdout, sub: sub)
-  let lines = count(flat_map(split(s: stdout, delimiter: "\n"), l =>
-    if string_length(s: l) > 0 && !tree_metadata_line_is_starting_point(line: l) { [l] } else { [] }
-  ))
-  if lines != count(parsed) {
-    TreeMetadataObservationFailed { reason: join(["find direct-children under ", root, " printed ", to_string(lines), " entry lines but ", to_string(count(parsed)), " parsed; a row the entry grammar cannot name is refused, not dropped"], "") }
+// THE COLLECTOR WITH ITS TWO VALIDATION GUARDS, exposed as a pure function over the captured find
+// stdout AND the independent dot-count stdout, so both the executors above and the fixtures drive the
+// SAME validation without elevation. `starting_point_expected` is true only for the full-subtree walk
+// (which keeps its own starting-point row); the direct-children listing passes false because its find
+// uses -mindepth 1 and so prints NO starting-point row -- an empty-rel row there is therefore MALFORMED,
+// not a starting point. Two independent guards, both fail-closed:
+//  (1) FRAMING. `dot_stdout` is a second `-printf .` enumeration of the SAME set (one dot per entry,
+//      which a name cannot change). It must equal the number of rows the metadata listing printed. A
+//      crafted name embedding a newline (e.g. `x|f|755|u|g||0<LF>foo`) splits into two WELL-FORMED rows
+//      that both parse, so only this independent count reveals the forgery. Refuses with the row text.
+//  (2) NAMING. Every printed row that is not a legitimate starting point must parse into a well-formed
+//      entry. A child NAMED with a leading newline prints a row with an empty rel; with the skip rule
+//      removed (starting_point_expected=false) it is unparseable and this guard names it and refuses,
+//      rather than the row silently vanishing under a count that agreed.
+fn tree_metadata_entries_of_stdout_checked(root: String, stdout: String, dot_stdout: String, sub: String, starting_point_expected: Bool) -> TreeMetadataObservation {
+  let non_empty = filter(split(s: stdout, delimiter: "\n"), l => string_length(s: l) > 0)
+  let enumerated = count(non_empty)
+  let dots = string_length(s: dot_stdout)
+  let parsed = tree_metadata_entries_of_stdout(stdout: stdout, sub: sub, starting_point_expected: starting_point_expected)
+  if dots != enumerated {
+    TreeMetadataObservationFailed { reason: join(["find under ", root, ": the independent dot enumeration counted ", to_string(dots), " entries but the metadata listing printed ", to_string(enumerated), " rows; a name that embeds a newline forges extra rows -- refused, not accepted. rows=[", join(non_empty, " ;; "), "]"], "") }
   } else {
-    TreeMetadataObserved { entries: parsed }
+    let bad = filter(non_empty, l => tree_metadata_row_is_bad(l: l, sub: sub, starting_point_expected: starting_point_expected))
+    if count(bad) > 0 {
+      TreeMetadataObservationFailed { reason: join(["find under ", root, " printed ", to_string(count(bad)), " row(s) the entry grammar cannot name: [", join(bad, " ;; "), "]; an unnameable row is refused, not dropped"], "") }
+    } else {
+      TreeMetadataObserved { entries: parsed }
+    }
+  }
+}
+
+// Is this printed row one the entry grammar cannot name? A legitimate starting point (only when
+// starting_point_expected) is not bad; otherwise a row that does not parse into a well-formed entry is
+// bad -- including the empty-rel row a newline-named child injects, which the skip rule no longer hides.
+fn tree_metadata_row_is_bad(l: String, sub: String, starting_point_expected: Bool) -> Bool {
+  if starting_point_expected && tree_metadata_line_is_starting_point(line: l) {
+    false
+  } else {
+    match tree_metadata_entry_of_line(line: l, sub: sub, starting_point_expected: starting_point_expected) {
+      Absent => true
+      Present { value: _e } => false
+    }
   }
 }
 

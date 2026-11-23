@@ -153,12 +153,37 @@ fn find_tree_entry_metadata_command(root: String) -> ArgvCommand {
 }
 
 // THE DIRECT CHILDREN OF A DIRECTORY, printed with the SAME seven-field grammar as the full walk.
-// -maxdepth 1 bounds the enumeration: only entries whose %P is a bare name (no slash) appear. The
-// starting point itself prints with an empty %P and is refused by the parser, same rule as the full
-// walk. Used by the locus-root readback to observe the metadata of executables, subtree roots, and
-// intermediate directories alongside any unexpected entries at the same level.
+// -mindepth 1 AND -maxdepth 1 bound the enumeration to the DIRECT children only: the starting point
+// is NOT printed at all, so the listing has no empty-%P record to skip. That closes a framing hole: a
+// child literally NAMED with a newline would otherwise print a record whose newline splits into an
+// empty line plus an empty-%P row that a skip rule cannot tell apart from the starting point, letting
+// an unnameable extra vanish. Here such a row has an empty rel and is malformed (refused), and the
+// independent dot count below catches a crafted name that forges extra well-formed rows. Used by the
+// locus-root readback to observe executables, subtree roots and intermediate directories alongside any
+// unexpected entries at the same level.
 fn find_direct_children_metadata_command(root: String) -> ArgvCommand {
-  argv_command(program: find_program(), arguments: [root, "-maxdepth", "1", "-xdev", "-printf", find_tree_entry_metadata_printf()])
+  argv_command(program: find_program(), arguments: [root, "-mindepth", "1", "-maxdepth", "1", "-xdev", "-printf", find_tree_entry_metadata_printf()])
+}
+
+// THE INDEPENDENT FRAMING COUNT for a listing. `-printf .` prints EXACTLY one dot per enumerated
+// entry, and a file NAME can never add or remove a dot (a dot is emitted per entry, not per byte of
+// name). So the dot count is the true number of entries the walk saw, independent of how the names
+// split under the newline-delimited metadata grammar. A crafted name such as `x|f|755|u|g||0<LF>foo`
+// splits into two well-formed metadata rows but still prints ONE dot; the collector refuses unless the
+// dot count equals the number of metadata rows. The dot enumeration must match the metadata walk's
+// bounds exactly (same -mindepth/-maxdepth/-xdev) so the two counts enumerate the same set.
+data find_entry_count_printf: String = "."
+
+// One dot per DIRECT child (bounds match find_direct_children_metadata_command: -mindepth 1 -maxdepth 1,
+// so the starting point is excluded from BOTH counts).
+fn find_direct_children_count_command(root: String) -> ArgvCommand {
+  argv_command(program: find_program(), arguments: [root, "-mindepth", "1", "-maxdepth", "1", "-xdev", "-printf", find_entry_count_printf])
+}
+
+// One dot per entry of the FULL subtree walk (bounds match find_tree_entry_metadata_command: no
+// -mindepth, so the starting point is counted in BOTH the metadata rows and the dots).
+fn find_tree_entry_count_command(root: String) -> ArgvCommand {
+  argv_command(program: find_program(), arguments: [root, "-xdev", "-printf", find_entry_count_printf])
 }
 
 // THE SELF-METADATA OF ONE PATH (a directory or file) as a single seven-field line:
