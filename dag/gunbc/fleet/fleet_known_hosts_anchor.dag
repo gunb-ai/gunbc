@@ -307,6 +307,7 @@ fn first_contact_admission_for_tailscale_join_mode() -> FirstContactAdmission
     decl_ref(module_path: "gunbc.tailscale_join_converge", decl_name: "tailscale_join_host"),
     decl_ref(module_path: "test.claim.fleet.fleet_known_hosts_anchor_witness", decl_name: "the_hop_admits_only_the_token_holding_modes"),
     decl_ref(module_path: "test.claim.fleet.fleet_known_hosts_anchor_witness", decl_name: "the_hop_admits_nothing_for_a_host_with_no_pinned_key"),
+    decl_ref(module_path: "test.claim.fleet.fleet_known_hosts_anchor_witness", decl_name: "a_lease_row_from_another_host_does_not_resolve"),
     decl_ref(module_path: "test.claim.host_credential_custody_converge_witness", decl_name: "the_join_mode_admits_the_pre_anchor_host_over_the_hop"),
     decl_ref(module_path: "test.claim.host_credential_custody_converge_witness", decl_name: "an_anchored_host_is_reached_on_its_anchor_even_when_the_hop_is_admitted"),
     decl_ref(module_path: "test.claim.host_credential_custody_converge_witness", decl_name: "an_anchored_host_has_no_hop_row_at_all"),
