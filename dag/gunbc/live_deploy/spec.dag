@@ -218,14 +218,15 @@ fn deployment_step_ownership(step: DeploymentStep) -> Ownership {
 // scope.\n\nThe disposition is per-layer and total, so a new OwnedArtifactKind cannot inherit a
 // teardown answer by omission — the match fails to compile until the new kind states its own.\n\nTHE FABRIC
 // ENDPOINT'S UNIT CARRIED A REFUSAL IT SHOULD NOT HAVE. The ruling of 2026-11-10
-// (gunbc.design_ruling::t6_fabric_storage_excluded_from_live_deploy_2026_11_10) kept that unit out of the
-// live deploy, and this arm was still transcribing it after the ruling of 2026-11-21 (gunbc.design_ruling::
-// fabric_storage_returned_to_live_deploy_supersedes_t6_exclusion_2026_11_21) put the unit back — a refusal
-// that the retract legs never honoured. That ruling also records the unit was never a DATABASE endpoint, so
-// the wording the arm carried named a thing that does not exist. A disposition is a fact about the layer that
-// owns the step, not a transcription of whichever ruling is current; the per-kind arm is what made the stale
-// answer visible (the kind was present, its answer was not), and test.claim.live_deploy.emit::
-// the_fabric_storage_unit_teardown_acts_where_its_retract_legs_act is what keeps it from coming back.
+// (#gunbc.design_ruling::t6_fabric_storage_excluded_from_live_deploy_2026_11_10) kept that unit out of the
+// live deploy, and this arm was still transcribing it after the ruling of 2026-11-21
+// (#gunbc.design_ruling::fabric_storage_returned_to_live_deploy_supersedes_t6_exclusion_2026_11_21) put the
+// unit back — a refusal the retract legs never honoured. That ruling also records the unit was never a
+// DATABASE endpoint, so the wording the arm carried named a thing that does not exist. A disposition is a fact
+// about the layer that owns the step, not a transcription of whichever ruling is current; the per-kind arm is
+// what made the stale answer visible (the kind was present, its answer was not), and
+// #test.claim.live_deploy.emit::the_fabric_storage_unit_teardown_acts_where_its_retract_legs_act is what keeps
+// it from coming back.
 
 type TeardownRefusalCause
   = | TeardownOutsideOwnership
@@ -240,14 +241,15 @@ fn owned_artifact_teardown_disposition(kind: OwnedArtifactKind) -> TeardownDispo
       SystemdUnit => TeardownActs
       FleetConvergeTimerUnit => TeardownActs
       // The endpoint's unit is DEPLOYMENT STATE: the operator's ruling of 2026-11-21
-      // (gunbc.design_ruling::fabric_storage_returned_to_live_deploy_supersedes_t6_exclusion_2026_11_21)
-      // supersedes t6_fabric_storage_excluded_from_live_deploy_2026_11_10, and this arm had not caught up with
-      // it -- it stated a refusal the legs never honour. gunbc.live_deploy.retract_legs::
-      // deploy_retract_artifact_plan builds a real teardown for exactly this kind (retract_unit_teardown over
-      // deployment_fabric_storage_unit_name, then the paths removed and the daemon reload), so the disposition
-      // that agrees with the retract is `TeardownActs`. The unit left the deployment model once and came back;
-      // this arm returns to the superseded refusal only if it leaves again, and the ruling saying so must be
-      // named here, not implied.
+      // (#gunbc.design_ruling::fabric_storage_returned_to_live_deploy_supersedes_t6_exclusion_2026_11_21)
+      // supersedes #gunbc.design_ruling::t6_fabric_storage_excluded_from_live_deploy_2026_11_10, and this arm
+      // had not caught up with it -- it stated a refusal the legs never honour.
+      // #gunbc.live_deploy.retract_legs::deploy_retract_artifact_plan builds a real teardown for exactly this
+      // kind (#gunbc.live_deploy.retract_legs::retract_unit_teardown over
+      // #gunbc.live_deploy.spec::deployment_fabric_storage_unit_name, then the paths removed and the daemon
+      // reload), so the disposition that agrees with the retract is `TeardownActs`. The unit left the
+      // deployment model once and came back; this arm returns to a refusal only if it leaves again, and the
+      // ruling saying so must be named here, not implied.
       FabricStorageServeUnit => TeardownActs
       FabricStorageServeMapping => TeardownActs
       TailnetDoorServeUnit => TeardownActs

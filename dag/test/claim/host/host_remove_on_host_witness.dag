@@ -685,10 +685,10 @@ test fn a_symlinked_ancestor_does_not_borrow_its_referents_search_bit() -> Bool 
 // entries under its own name -- so the verdict is a refusal either way, and that is exactly why the wrong
 // cause here went unseen: no verdict changed. What changed is what the operator is told. The reason used to
 // read "`test -x /p/dir` could not be read", about a level whose `test -x` had answered cleanly two probes
-// earlier, sending whoever follows it to a probe that is working. extdeps.posix.test_utility::
-// AncestorLinkReadingUnreadable is the cause that carries this shape, and this control is what fails if a
-// driver folds it back into the `-x` one or the law re-words it: the refusal must name the operand that
-// actually failed, and must not name one that answered.
+// earlier, sending whoever follows it to a probe that is working.
+// #extdeps.posix.test_utility::AncestorLinkReadingUnreadable is the cause that carries this shape, and this
+// control is what fails if a driver folds it back into the `-x` one or the law re-words it: the refusal must
+// name the operand that actually failed, and must not name one that answered.
 test fn an_unreadable_link_probe_refuses_naming_the_operand_that_failed() -> Bool {
   let st = host_remove_entry_state(
     path: "/p/dir/missing/leaf",
