@@ -26,7 +26,13 @@ import gunbc.source_root_read { SourceRootPathsRead, SourceRootPathsRefused, Sou
 data corpus_roots: List<String> = ["dag", "src/v1", "src/v2"]
 
 // Paths the wall is EXPECTED to newly refuse, each with its reason in the comment beside it.
-// Empty by design: after the migration the corpus contains no juxtaposed list.
+// Empty by design: after the migration the corpus contains no juxtaposed list. It is not decorative -- the
+// slice claim below only passes when the number of non-accepted verdicts EQUALS the number of roster
+// entries falling under that slice, so a new refusal anywhere in the corpus fails its slice unless it is
+// named here with a reason. Where the refusal itself is witnessed (this witness pins the opposite
+// direction, that nothing refuses):
+// v2.test.claim.parse.list_separator_formation_wall::corpus_shaped_juxtaposed_records_refuse_holds,
+// minimized from the real `instrument_source_roots_rows` list at main.
 data expected_new_refusals: List<String> = []
 
 // Disjoint slices covering the corpus. The census claim checks the coverage, so a slice set that misses

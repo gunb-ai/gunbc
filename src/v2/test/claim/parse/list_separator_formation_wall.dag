@@ -48,6 +48,30 @@ test fn separator_dropped_first_comma_refuses_holds() -> Bool {
   separator_refused(parse_acceptance_of_text(text: sep_drop_first_source, path: "probe/sep_drop_first.dag"))
 }
 
+// ---- CORPUS-SHAPED SPECIMEN (the wall, on the shape the corpus actually used): minimized from
+// dag/gunbc/instrument_targets.dag::instrument_source_roots_rows at main, where five
+// `InstrumentSourceRootsRow { name: ".." roots: .. }` elements sat in one bracketed list with no separator
+// between them. Record fields carry no separator at all (that is the record form), so the missing comma was
+// exactly at the list level -- invisible to every check except a human diff read (review 45347), and the
+// list silently held five elements either way. Kept small so the witness is readable; the shape, not the
+// size, is what is being pinned.
+
+data corpus_shaped_juxtaposed_source: String =
+  "module p\ntype Row {\n  name: String\n  roots: List<String>\n}\ndata rows: List<Row> = [Row { name: \"a\" roots: [\"x\"] } Row { name: \"b\" roots: [\"y\"] }]\n"
+
+data corpus_shaped_separated_source: String =
+  "module p\ntype Row {\n  name: String\n  roots: List<String>\n}\ndata rows: List<Row> = [Row { name: \"a\" roots: [\"x\"] }, Row { name: \"b\" roots: [\"y\"] }]\n"
+
+test fn corpus_shaped_juxtaposed_records_refuse_holds() -> Bool {
+  separator_refused(
+    parse_acceptance_of_text(text: corpus_shaped_juxtaposed_source, path: "probe/corpus_juxtaposed.dag")
+  )
+}
+
+test fn corpus_shaped_separated_records_parse_holds() -> Bool {
+  parse_acceptance_of_text(text: corpus_shaped_separated_source, path: "probe/corpus_separated.dag") == "accepted"
+}
+
 // ---- LEGITIMATE-LIST CONTROLS (green): the legitimate list shapes the wall must never refuse.
 
 data list_commas_source: String = "module p\ndata v: List<Int> = [1, 2, 3]\n"
