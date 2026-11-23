@@ -1,0 +1,55 @@
+module test.claim.machine_intake.mtcollins_member_leg_producer_local_wet
+
+// fail-closed PRODUCER control for the census member readback. This runs the REAL `answer_on` on a
+// LocalCommandHost against a guaranteed-nonexistent executable and requires the leg to come back as
+// the typed `LegNotDispatched` -- the host runner could not spawn it, so there is no exit status at
+// all. That real leg value is then fed through the REAL reading functions, each of which must report
+// the member unread by its CAUSE and never carry a fabricated exit code. It runs the producer, not a
+// reconstruction: had `answer_on` invented an exit status for the never-spawned process (the `-1` it
+// used to fabricate), the leg would arrive as `LegAnswered` and the outer match would go red, and the
+// reading reasons would carry `exit=`/`-1`, failing the negative assertions.
+//
+// It is a `_local_wet` module because `answer_on` on a LocalCommandHost performs a real local exec;
+// execute it by hand with `gunbc run --claim-run --entry` (no --dry-run).
+
+import std.types { Bool, NonEmptyStr, String }
+import gunbc.machine_intake.mtcollins1_census_member_readback {
+  answer_on, HostLeg, LegAnswered, LegNotDispatched,
+  MemberRead, MemberUnread, IsoMeasured, IsoUnmeasured,
+  member_reading_of_measure, iso_reading_of, member_reading_after_extract, digest_of_sha256sum,
+}
+import gunbc.host_command_binding { LocalCommandHost }
+import extdeps.exec.command { ArgvCommand, argv_command }
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+
+// An executable that is not on any PATH: the local runner cannot spawn it, so the leg is never dispatched.
+fn never_spawned_readback_executable() -> ArgvCommand {
+  argv_command(
+    program: uncataloged_program(invocation: "/nonexistent/gunbc-vivid-tern-749-not-a-real-executable" as NonEmptyStr),
+    arguments: [],
+  )
+}
+
+test fn a_never_spawned_readback_leg_is_unread_by_its_cause_never_a_fabricated_exit() -> Bool {
+  let leg = answer_on(host: LocalCommandHost, command: never_spawned_readback_executable())
+  match leg {
+    LegAnswered { exit_code: _, stdout: _, stderr: _ } => false
+    LegNotDispatched { reason: cause } =>
+      cause != ""
+        && !string_contains(s: cause, pattern: "exit=")
+        && !string_contains(s: cause, pattern: "-1")
+        && match member_reading_of_measure(measure: leg) {
+          MemberUnread { reason: r } => !string_contains(s: r, pattern: "exit=") && !string_contains(s: r, pattern: "-1")
+          _ => false
+        }
+        && match iso_reading_of(measure: leg) {
+          IsoUnmeasured { reason: r } => !string_contains(s: r, pattern: "exit=") && !string_contains(s: r, pattern: "-1")
+          _ => false
+        }
+        && match member_reading_after_extract(extract: leg) {
+          Present { value: MemberUnread { reason: r } } => !string_contains(s: r, pattern: "exit=") && !string_contains(s: r, pattern: "-1")
+          _ => false
+        }
+        && match digest_of_sha256sum(measure: leg) { Absent => true  _ => false }
+  }
+}

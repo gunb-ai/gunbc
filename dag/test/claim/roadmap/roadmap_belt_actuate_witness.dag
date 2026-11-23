@@ -3,7 +3,7 @@ module test.claim.roadmap.roadmap_belt_actuate_witness
 import extdeps.shell
 import gunbc.host.host_layout { srv1_host_layout }
 import gunbc.deployment_risk { deployment_id }
-import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision, dashboard_instance_dispatch_worktree_root }
 import gunbc.roadmap.roadmap_attempt_state_store { AttemptDirectoryRoot, AttemptDirectoryPublication, attempt_state_directory_text }
 import gunbc.roadmap.dispatch_worker_unit_confinement { CodexDispatchProvider, dispatch_worktree_path_for_instance }
 import gunbc.roadmap.roadmap_session_placement { SessionPlacementAbsent, SessionWorkerOrdinals }
@@ -182,6 +182,7 @@ import gunbc.roadmap.roadmap_belt_actuate {
   belt_publish_gate,
   belt_publish_attempt_receipt,
   belt_publish_worktree_listing_refusal,
+  belt_publish_project_worktree,
   BeltPublishOutcome,
   PublishRecorded, PublishAlreadyRecorded, PublishEvidenceUnreadable, PublishRequested,
   PublishWriteFailed, PublishDeferred,
@@ -441,14 +442,16 @@ fn exec_refused_reason(o: BeltExecOutcome) -> String {
 // this claim would fail. It also asserts the route: the refusal names that no process was spawned
 // and carries the underlying listing cause.
 test fn a_worktree_listing_failure_refuses_never_spawning_rather_than_inventing_a_git_exit() -> Bool {
-  let o = belt_publish_worktree_listing_refusal(
-    root: "/srv/gunbc/belt/dispatch/worktrees/inst-9",
-    error: "No such file or directory",
-  )
+  // Drive the REAL producer into its unlistable-root branch: the derived dispatch worktree root is an
+  // "attempts" directory under the owned temp fixture that is never created, so Filesystem.List cannot list it.
+  let inst = belt_pub_fresh_instance(tag: "listingrefuse")
+  let root = dashboard_instance_dispatch_worktree_root(instance: inst) as String
+  let _gone = shell.Remove.RecursiveForce(path: dashboard_instance_dispatch_worktree_root(instance: inst))
+  let o = belt_publish_project_worktree(instance: inst, project_key: "proj-a", base_sha: "feedfacefeedface")
   is_exec_refused(o: o)
     && !is_exec_failed(o: o)
     && string_contains(s: exec_refused_reason(o: o), pattern: "no git worktree process was spawned")
-    && string_contains(s: exec_refused_reason(o: o), pattern: "No such file or directory")
+    && string_contains(s: exec_refused_reason(o: o), pattern: root)
 }
 
 test fn witness_exec_all_runs_every_step_when_ok() -> Bool {

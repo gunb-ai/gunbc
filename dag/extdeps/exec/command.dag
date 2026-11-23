@@ -471,6 +471,10 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "gunbc.repo.repo_local_git_config", decl_name: "reconcile_install_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "install_directory_owned_argv_command"),
     decl_ref(module_path: "gunbc.harness.harness_shell_job", decl_name: "harness_backstopped_shell_command"),
+    // The census member readback fail-closed producer control builds a guaranteed-nonexistent executable
+    // so answer_on/LocalCommandHost genuinely cannot spawn it and the leg comes back as the typed
+    // LegNotDispatched, never a fabricated exit code (gunbc.design_argument::fail_closed).
+    decl_ref(module_path: "test.claim.machine_intake.mtcollins_member_leg_producer_local_wet", decl_name: "never_spawned_readback_executable"),
   ]
   = ArgvCommand { program: program, arguments: arguments }
 
