@@ -619,10 +619,11 @@ fn realization_edges_producer_body() {
     // declared-but-unrealized deep-only name refuses and names the reading check (spelled is first
     // in the fold, so it is the edge the dedup-by-name audit records).
     let module_name = "test.fixture.demanded_scope.realization_edges_producer".to_string();
-    let messages: Vec<String> = infer::realization_audit(realization.clone(), edges.clone(), module_name.clone())
-        .iter()
-        .map(|d| crate::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
-        .collect();
+    let messages: Vec<String> =
+        infer::realization_audit(realization.clone(), edges.clone(), module_name.clone())
+            .iter()
+            .map(|d| crate::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
+            .collect();
     assert!(
         messages
             .iter()
