@@ -15894,6 +15894,91 @@ fn target_value_expr_transform_shape_invalid(node: Node) -> Outcome<TargetValueE
   )
 }
 
+// CONJ AND DISJ IN VALUE POSITION ARE BOOLEAN CONNECTIVES, not type-shaped expressions to refuse: they
+// lower to the target's realisation of the PROVEN `and` / `or` canonical operations, whose Rust rows are
+// InfixToken && / || (src/v2/extdeps/languages/rust.dag rust_operator_realizations_catalog_node
+// rust_token_andand / rust_token_barbar). Each operand is lowered through the SAME single body-expression
+// lowering; an n-ary connective folds RIGHT-NESTED into binary applies because the InfixToken realisation
+// renders exactly two operands (target_operator_shape_emit_primitive_apply_tokens). An operand that is not
+// a value the realisation can bind (a prefix operator with no realization, a nested computation) refuses
+// at the operand, which is reported rather than widened here.
+fn target_value_expr_project_logical_connective_in_arrow_scope(
+  arrow: Node,
+  body: Node,
+  connective_op: CanonicalOperation,
+  target: TargetModel,
+  source_bool_form: TargetBoolLiteralShape,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
+) -> Outcome<TargetValueExpression> {
+  target_value_expr_lower_logical_connective_operands(
+    arrow: arrow,
+    operands: positional_child_target_nodes(node: body),
+    connective_op: connective_op,
+    target: target,
+    source_bool_form: source_bool_form,
+    handle_transform: handle_transform
+  )
+}
+
+fn target_value_expr_lower_logical_connective_operands(
+  arrow: Node,
+  operands: List<Node>,
+  connective_op: CanonicalOperation,
+  target: TargetModel,
+  source_bool_form: TargetBoolLiteralShape,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
+) -> Outcome<TargetValueExpression> {
+  match operands {
+    Empty =>
+      outcome_rejected(
+        target_value_expr_diagnostic(
+          reason: ^target_value_expr_reason_logical_connective_operand_count_invalid,
+          node: arrow
+        )
+      )
+    Cons { head: operand, tail: rest } =>
+      if is_empty(xs: rest) {
+        target_value_expr_project_body_subexpression(
+          arrow: arrow,
+          node: operand,
+          target: target,
+          source_bool_form: source_bool_form,
+          handle_transform: handle_transform
+        )
+      } else {
+        bind_outcome(
+          o: target_value_expr_project_body_subexpression(
+            arrow: arrow,
+            node: operand,
+            target: target,
+            source_bool_form: source_bool_form,
+            handle_transform: handle_transform
+          ),
+          f: fn(left) {
+            bind_outcome(
+              o: target_value_expr_lower_logical_connective_operands(
+                arrow: arrow,
+                operands: rest,
+                connective_op: connective_op,
+                target: target,
+                source_bool_form: source_bool_form,
+                handle_transform: handle_transform
+              ),
+              f: fn(right) {
+                outcome_accepted(
+                  target_value_expression_primitive_apply(
+                    operation: connective_op,
+                    operands: [left, right]
+                  )
+                )
+              }
+            )
+          }
+        )
+      }
+  }
+}
+
 fn target_value_expr_project_atom_literal_or(
   node: Node,
   source_bool_form: TargetBoolLiteralShape,
@@ -16853,11 +16938,13 @@ fn target_value_expr_project_body_subexpression(
         if declaration_reference_body_marked(target: node) {
           handle_transform(arrow, node, target)
         } else {
-          outcome_rejected(
-            target_value_expr_diagnostic(
-              reason: ^target_value_expr_reason_transform_shape_invalid,
-              node: node
-            )
+          target_value_expr_project_logical_connective_in_arrow_scope(
+            arrow: arrow,
+            body: node,
+            connective_op: canonical_operation_op_and(),
+            target: target,
+            source_bool_form: source_bool_form,
+            handle_transform: handle_transform
           )
         }
       }
@@ -16877,9 +16964,34 @@ fn target_value_expr_project_body_subexpression(
         target: target,
         source_bool_form: source_bool_form
       )
-    TypeNode { connective: Disj } => target_value_expr_transform_shape_invalid(node: node)
-    TypeNode { connective: Instantiation } => target_value_expr_transform_shape_invalid(node: node)
-    ComputationNode { behavior: Value } => target_value_expr_transform_shape_invalid(node: node)
+    TypeNode { connective: Disj } =>
+      target_value_expr_project_logical_connective_in_arrow_scope(
+        arrow: arrow,
+        body: node,
+        connective_op: canonical_operation_op_or(),
+        target: target,
+        source_bool_form: source_bool_form,
+        handle_transform: handle_transform
+      )
+    // A type Instantiation reaching value position is a TYPE application, not a value expression: it has
+    // no operand value the target could spell, so it is refused by name rather than as a transform shape.
+    TypeNode { connective: Instantiation } =>
+      outcome_rejected(
+        target_value_expr_diagnostic(
+          reason: ^target_value_expr_reason_type_instantiation_not_a_value_expression,
+          node: node
+        )
+      )
+    // A bare ComputationNode in value position is a computation, not a value expression; the shapes the
+    // lowering admits (Transform/Branch/Bind/Loop/Match/RecordConstruct) are handled above. This residual
+    // behavior carries no value spelling, so it is refused by name rather than as a transform shape.
+    ComputationNode { behavior: Value } =>
+      outcome_rejected(
+        target_value_expr_diagnostic(
+          reason: ^target_value_expr_reason_computation_value_not_a_value_expression,
+          node: node
+        )
+      )
   }
 }
 

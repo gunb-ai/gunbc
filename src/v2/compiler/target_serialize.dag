@@ -41,6 +41,8 @@ import v2.std.compilers.target_model {
   target_value_expression_conditional,
   target_project_transform_primitive_apply_in_arrow_scope,
   target_project_transform_callable_apply_in_arrow_scope,
+  canonical_operation_op_and,
+  canonical_operation_op_or,
   target_transform_operator_child,
   target_value_expr_arrow_has_value_expression_body,
   target_value_expr_diagnostic,
@@ -783,11 +785,27 @@ fn translate_project_transform_surface_or_callable_in_arrow_scope(
             }
           )
       }
-    TypeNode { connective: Conj } => outcome_rejected(d: target_value_expr_diagnostic(reason: ^target_value_expr_reason_transform_shape_invalid, node: operator_child))
-    TypeNode { connective: Disj } => outcome_rejected(d: target_value_expr_diagnostic(reason: ^target_value_expr_reason_transform_shape_invalid, node: operator_child))
-    TypeNode { connective: Arrow } => outcome_rejected(d: target_value_expr_diagnostic(reason: ^target_value_expr_reason_transform_shape_invalid, node: operator_child))
-    TypeNode { connective: Instantiation } => outcome_rejected(d: target_value_expr_diagnostic(reason: ^target_value_expr_reason_transform_shape_invalid, node: operator_child))
-    ComputationNode { behavior: _ } => outcome_rejected(d: target_value_expr_diagnostic(reason: ^target_value_expr_reason_transform_shape_invalid, node: operator_child))
+    // A Conj/Disj in the transform operator position lowers to the proven `and`/`or` realisation (the
+    // enclosing transform supplies its two operands), mirroring target_model.dag. Arrow/Instantiation and a
+    // residual ComputationNode are refused BY NAME: none has an operand the target can spell, so the generic
+    // transform-shape reason is not the honest diagnosis.
+    TypeNode { connective: Conj } =>
+      target_project_transform_primitive_apply_in_arrow_scope(
+        arrow: arrow,
+        body: body,
+        canonical_op: canonical_operation_op_and(),
+        target: target
+      )
+    TypeNode { connective: Disj } =>
+      target_project_transform_primitive_apply_in_arrow_scope(
+        arrow: arrow,
+        body: body,
+        canonical_op: canonical_operation_op_or(),
+        target: target
+      )
+    TypeNode { connective: Arrow } => outcome_rejected(d: target_value_expr_diagnostic(reason: ^target_value_expr_reason_type_arrow_not_a_value_expression, node: operator_child))
+    TypeNode { connective: Instantiation } => outcome_rejected(d: target_value_expr_diagnostic(reason: ^target_value_expr_reason_type_instantiation_not_a_value_expression, node: operator_child))
+    ComputationNode { behavior: _ } => outcome_rejected(d: target_value_expr_diagnostic(reason: ^target_value_expr_reason_computation_value_not_a_value_expression, node: operator_child))
   }
 }
 
