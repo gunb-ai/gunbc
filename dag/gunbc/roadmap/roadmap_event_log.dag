@@ -1451,6 +1451,29 @@ fn roadmap_node_standing_key(s: RoadmapNodeStanding) -> String {
   }
 }
 
+// THE STANDING VOCABULARY, AS DATA (gunb-ai/gunbc#16890). The ten words
+// `roadmap_node_standing_key` emits, in the fold's own declaration order, for a consumer that must
+// recognise a standing key without writing this enum a second time -- the ctrl roadmap bridge today,
+// which kept its own copy of the ten and paid for it in review. It is EXPORTED, not copied: one
+// rename here renames it there, on the same commit, and the witness
+// `roadmap_standing_key_export_matches_the_fold` in
+// dag/test/claim/roadmap/roadmap_event_log_witness.dag refuses drift in both directions -- every
+// value here is what the fold emits for some standing, and every standing emits a value that is
+// here. A consumer that needs the sentence a standing deserves uses `roadmap_node_standing_text`,
+// never this list: the list names the leaf, the sentence says which one.
+data roadmap_node_standing_keys: List<String> = [
+  "open",
+  "claimed",
+  "in_progress",
+  "blocked",
+  "handed_back",
+  "retired",
+  "accepted",
+  "ready_for_review",
+  "forked",
+  "history_incomplete",
+]
+
 fn roadmap_node_standing_text(s: RoadmapNodeStanding) -> String {
   roadmap_node_standing_text_naming(s: s, name: fn(p) { event_principal_label(p: p) })
 }
