@@ -48,7 +48,7 @@ import gunbc.live_deploy.unit_standing {
   DashboardServiceConverged, DashboardServiceRefused, BeltOneshotConverged, BeltOneshotRefused,
   BeltEventPathStanding, BeltEventPathConverged, BeltEventPathRefused,
   BeltTimerStanding, BeltTimerConverged, BeltTimerRefused,
-  dashboard_service_standing_text, belt_event_path_standing_text, belt_oneshot_standing_text, launch_unit_standing_text,
+  dashboard_service_standing_text, belt_event_path_standing_text, belt_oneshot_standing_text, belt_timer_standing_text, launch_unit_standing_text,
 }
 import gunbc.roadmap.roadmap_belt_actuate {
   BeltTickReceipt, BeltTickReceiptRead, BeltTickReceiptPresent, BeltTickReceiptAbsent, BeltTickReceiptUnreadable,

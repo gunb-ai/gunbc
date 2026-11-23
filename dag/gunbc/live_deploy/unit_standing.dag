@@ -701,28 +701,43 @@ fn judge_belt_timer(
   }
 }
 
-fn observe_belt_timer_standing(unit: NonEmptyStr) -> BeltTimerStanding {
-  match read_unit_property(unit: unit, property: LoadState) {
+// THE PURE FOLD of the timer standing: the three readings, as delivered, decide. observe calls this
+// after its reads; the witness drives THIS fold over supplied readings, so the claims cover the exact
+// code path production runs.
+fn belt_timer_standing_of_readings(
+  unit: NonEmptyStr,
+  load: UnitPropertyRead,
+  file_state: UnitPropertyRead,
+  active: UnitPropertyRead,
+) -> BeltTimerStanding {
+  match load {
     UnitPropertyUnreadable { unit: u, property: p } =>
       BeltTimerRefused { why: join([u, ": ", p, " unreadable"], "") }
-    UnitPropertyValue { value: load } =>
-      if load != "loaded" { BeltTimerRefused { why: join(["LoadState is '", load, "', not 'loaded'"], "") } } else {
-        match read_unit_property(unit: unit, property: UnitFileState) {
+    UnitPropertyValue { value: l } =>
+      if l != "loaded" { BeltTimerRefused { why: join(["LoadState is '", l, "', not 'loaded'"], "") } } else {
+        match file_state {
           UnitPropertyUnreadable { unit: u, property: p } =>
             BeltTimerRefused { why: join([u, ": ", p, " unreadable"], "") }
-          UnitPropertyValue { value: file_state } =>
-            if file_state != "enabled" { BeltTimerRefused { why: join(["UnitFileState is '", file_state, "', not 'enabled'"], "") } } else {
-              match read_unit_property(unit: unit, property: ActiveState) {
-                UnitPropertyUnreadable { unit: u, property: p } =>
-                  BeltTimerRefused { why: join([u, ": ", p, " unreadable"], "") }
-                UnitPropertyValue { value: active } =>
-                  if active != "active" { BeltTimerRefused { why: join(["ActiveState is '", active, "', not 'active' (hand-stopped?)"], "") } } else {
-                    BeltTimerConverged { active_state: active, unit_file_state: file_state }
-                  }
-              }
+          UnitPropertyValue { value: f } =>
+            match active {
+              UnitPropertyUnreadable { unit: u, property: p } =>
+                BeltTimerRefused { why: join([u, ": ", p, " unreadable"], "") }
+              // THE JUDGMENT LIVES IN judge_belt_timer ONLY: the fold reads, the judge decides
+              // (single authority, the same shape observe_belt_oneshot_standing follows).
+              UnitPropertyValue { value: a } =>
+                judge_belt_timer(active_state: a, unit_file_state: f)
             }
         }
       }
   }
+}
+
+fn observe_belt_timer_standing(unit: NonEmptyStr) -> BeltTimerStanding {
+  belt_timer_standing_of_readings(
+    unit: unit,
+    load: read_unit_property(unit: unit, property: LoadState),
+    file_state: read_unit_property(unit: unit, property: UnitFileState),
+    active: read_unit_property(unit: unit, property: ActiveState),
+  )
 }
 

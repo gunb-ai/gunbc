@@ -63,8 +63,10 @@ import gunbc.live_deploy.unit_standing {
   BeltEventPathConverged,
   BeltEventPathRefused,
   BeltEventPathStanding,
+  BeltTimerStanding,
   DashboardServiceConverged,
   LaunchUnitStanding,
+  judge_belt_timer,
 }
 import gunbc.roadmap.roadmap_belt { AutomaticReady, ManualReady, SpawnMode }
 import gunbc.roadmap.roadmap_belt_actuate {
@@ -294,6 +296,7 @@ fn rlm_units(exit_path: BeltEventPathStanding, oneshot: BeltOneshotStanding) -> 
     publication_path: BeltEventPathConverged { unit: "gunbc-roadmap-publication.path" },
     publication_helper: BeltOneshotConverged { unit: "gunbc-roadmap-publication.service", active_state: "inactive" },
     oneshot: oneshot,
+    standings_refresh_timer: judge_belt_timer(active_state: "active", unit_file_state: "enabled"),
   }
 }
 
