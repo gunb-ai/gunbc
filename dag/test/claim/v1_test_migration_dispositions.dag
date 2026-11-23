@@ -1,6 +1,8 @@
 module test.claim.v1_test_migration_dispositions
 
-import std.types { List }
+import std.types { List, Bool, String, string_non_empty }
+import test.retirement.model { retained_legacy_rust_test_modules, RetainedLegacyRustTestModule }
+import std.dissolution { DissolutionCondition, BoundDissolution, UnboundDissolution }
 import gunbc.v1.v1_deletion_plan { v1_migrated_test_modules, V1TestMigrationDisposition, ReplacedByWitness, RetainedRustTest }
 import v2.lens.test_migration_debt { discovered_rust_test_modules, list_contains_name, names_are_duplicate_free }
 
@@ -39,4 +41,33 @@ test fn every_replaced_module_is_discharged_by_an_exact_stem_witness() -> Bool {
 // RED control: a planted duplicate must be refused by the exactly-once judgment.
 test fn a_duplicated_module_is_refused() -> Bool {
   !names_are_duplicate_free(xs: ["a_test.rs", "a_test.rs"])
+}
+
+// A retained row must state both what stays in Rust (check) and why it cannot move (why), as text that is not
+// empty. The row type declares NonEmptyStr, but a where-refinement is not enforced at construction, so the
+// judgment is made here, once, over a (check, why) pair; the live rows are projected into the same pair.
+fn retained_row_is_complete(check: String, why: String) -> Bool {
+  string_non_empty(value: check) && string_non_empty(value: why)
+}
+
+fn dissolution_text(d: DissolutionCondition) -> String {
+  match d {
+    UnboundDissolution { description: t } => t
+    BoundDissolution { trigger: _ } => "bound"
+  }
+}
+
+// The live rows: every retained module states a check (purpose) and a reason it cannot move (dissolution).
+test fn every_retained_row_names_its_check_and_why() -> Bool {
+  retained_legacy_rust_test_modules() |> all(r => retained_row_is_complete(check: r.purpose, why: dissolution_text(d: r.dissolution)))
+}
+
+// Plant 1: a populated row is admitted.
+test fn planted_populated_retained_row_is_admitted() -> Bool {
+  retained_row_is_complete(check: "asserts the message text", why: "the census carries no message text")
+}
+
+// Plant 2: a row with either field empty is refused.
+test fn planted_retained_row_with_empty_check_or_why_is_refused() -> Bool {
+  !retained_row_is_complete(check: "", why: "the census carries no message text") && !retained_row_is_complete(check: "asserts the message text", why: "")
 }

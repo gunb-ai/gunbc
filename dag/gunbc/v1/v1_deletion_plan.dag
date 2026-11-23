@@ -165,5 +165,51 @@ fn v1_migrated_test_modules() -> List<V1MigratedTestModule> {
       rust_module: "anonymous_record_struct_resolution_test",
       disposition: RetainedRustTest,
     },
+    // #test.claim.emitted_symbol_collision::a_type_spelled_into_the_service_space_is_refused_with_exactly_one_collision_and_emits_nothing
+    // #test.claim.emitted_symbol_collision::the_live_git_worktree_shape_has_no_collision_row_and_no_diagnostic
+    // #test.claim.emitted_symbol_collision_witness::the_live_git_worktree_shape_emits_both_structs
+    // The emitted struct text, with the allow attribute, is read from the sibling witness; the exact count and the no-files outcome are the new file.
+    V1MigratedTestModule {
+      rust_module: "emitted_symbol_collision_test",
+      disposition: ReplacedByWitness {
+        coverage_gap: PortedByReadingEmittedTextOnly,
+      },
+    },
+    // #test.retirement.model::retained_item_kind_dispatch_totality
+    // Retained: the variant name in the refusal message is not a census field; the count half is witnessed beside it.
+    V1MigratedTestModule {
+      rust_module: "item_kind_dispatch_totality_test",
+      disposition: RetainedRustTest,
+    },
+    // #test.retirement.model::retained_unimported_bare_name_floor
+    // Retained: multi-file fixtures and message text; the census takes one source string.
+    V1MigratedTestModule {
+      rust_module: "unimported_bare_name_floor_test",
+      disposition: RetainedRustTest,
+    },
+    // #test.retirement.model::retained_map_insert_record_shaped_refusal
+    // Retained: an interpreter TypeError, call counters and step sublinearity; no claim reads them.
+    V1MigratedTestModule {
+      rust_module: "map_insert_record_shaped_refusal_test",
+      disposition: RetainedRustTest,
+    },
+    // #test.retirement.model::retained_native_driver_cost_refusal
+    // Retained: thread-CPU controls and emitted-driver marker text stay; the law tests are covered by test.claim.native_driver_cost_partition.
+    V1MigratedTestModule {
+      rust_module: "native_driver_cost_refusal_test",
+      disposition: RetainedRustTest,
+    },
+    // #test.retirement.model::retained_record_literal_names_a_union_type_refusal
+    // Retained: message variant list, wording pin and the three-file pool control stay; the rest is witnessed beside it.
+    V1MigratedTestModule {
+      rust_module: "record_literal_names_a_union_type_refusal_test",
+      disposition: RetainedRustTest,
+    },
+    // #test.retirement.model::retained_record_literal_declared_type_inhabitance
+    // Retained: fully witnessed through the census; Rust kept because its unarmed compile path is the production one.
+    V1MigratedTestModule {
+      rust_module: "record_literal_declared_type_inhabitance_test",
+      disposition: RetainedRustTest,
+    },
   ]
 }

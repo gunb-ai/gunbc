@@ -1,0 +1,72 @@
+module test.claim.record_literal_names_a_union_type_refusal
+
+import std.types { String, Bool, Int, List }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus, CompileDiagnosticCensusRow, CensusObserved, CensusNotRunnable,
+  census_blocking_rows, census_blocking_rows_of_class, census_blocking_rows_of_class_at_subject, census_total_count,
+}
+
+// Replaces six of the seven tests of src/v1/tests/src/record_literal_names_a_union_type_refusal_test.rs. A
+// record literal whose type name declares a union carries no record constructor and is refused as
+// TypeNameCarriesNoRecordConstructor; the census subject of that class is the type name as written at the
+// literal, so "one refusal located at the name" is a count on (class, subject) at data, return, list and
+// call-argument positions, for a shape no variant satisfies and a field no variant declares, and through
+// an alias (subject is the name the author wrote). The unknown name keeps its own refusal, and the
+// variant constructions and record and aliased-record literals produce no blocking row.
+// NOT carried over, and retained in Rust (named in #gunbc.v1.v1_deletion_plan::v1_migrated_test_modules):
+// the variant list inside the message text, the_refusal_message_says_what_it_says wording, and the
+// three-file pool-collision control, whose fixture needs three modules where the census takes one source.
+
+data in_data: String = "module zz_union_probe\ntype ZzA \{ x: Int }\ntype ZzU = ZzNamed \{ property: ZzA, value: Int } | ZzEmpty\ndata zz_d: ZzU = ZzU \{ property: ZzA \{ x: 1 }, value: 2 }\n"
+data in_return: String = "module zz_union_probe\ntype ZzA \{ x: Int }\ntype ZzU = ZzNamed \{ property: ZzA, value: Int } | ZzEmpty\nfn zz_ret() -> ZzU \{ ZzU \{ property: ZzA \{ x: 1 }, value: 2 } }\n"
+data in_list: String = "module zz_union_probe\ntype ZzA \{ x: Int }\ntype ZzU = ZzNamed \{ property: ZzA, value: Int } | ZzEmpty\nfn zz_props() -> List<ZzU> \{ [ZzU \{ property: ZzA \{ x: 1 }, value: 2 }] }\n"
+data in_call: String = "module zz_union_probe\ntype ZzA \{ x: Int }\ntype ZzU = ZzNamed \{ property: ZzA, value: Int } | ZzEmpty\nfn zz_take(property: List<ZzU>) -> Int \{ 1 }\nfn zz_call() -> Int \{ zz_take(property: [ZzU \{ property: ZzA \{ x: 1 }, value: 2 }]) }\n"
+data missing_field: String = "module zz_union_probe\ntype ZzA \{ x: Int }\ntype ZzU = ZzNamed \{ property: ZzA, value: Int } | ZzEmpty\nfn zz_ret() -> ZzU \{ ZzU \{ property: ZzA \{ x: 1 } } }\n"
+data bogus_field: String = "module zz_union_probe\ntype ZzA \{ x: Int }\ntype ZzU = ZzNamed \{ property: ZzA, value: Int } | ZzEmpty\nfn zz_ret() -> ZzU \{ ZzU \{ not_a_field: 1 } }\n"
+data unknown_name: String = "module zz_union_probe\ntype ZzA \{ x: Int }\ntype ZzU = ZzNamed \{ property: ZzA, value: Int } | ZzEmpty\nfn zz_ret() -> Int \{ ZzNowhere \{ anything: 1 } }\n"
+data variants_ok: String = "module zz_union_probe\ntype ZzA \{ x: Int }\ntype ZzU = ZzNamed \{ property: ZzA, value: Int } | ZzEmpty\nfn zz_named() -> ZzU \{ ZzNamed \{ property: ZzA \{ x: 1 }, value: 2 } }\nfn zz_empty() -> ZzU \{ ZzEmpty }\n"
+data records_ok: String = "module zz_record_ok\ntype ZzA \{ x: Int }\ntype ZzAlias = ZzA\nfn f() -> ZzA \{ ZzA \{ x: 1 } }\nfn g() -> ZzAlias \{ ZzAlias \{ x: 2 } }\n"
+data aliased_union: String = "module zz_union_alias\ntype ZzA \{ x: Int }\ntype ZzU = ZzNamed \{ property: ZzA, value: Int } | ZzEmpty\ntype ZzT = ZzU\nfn f() -> ZzT \{ ZzT \{ property: ZzA \{ x: 1 }, value: 2 } }\n"
+
+fn blocking_total(c: CompileDiagnosticCensus) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+  }
+}
+
+fn refused_at(source: String, name: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_blocking_rows_of_class_at_subject(rows: rows, wanted_class: "TypeNameCarriesNoRecordConstructor", wanted_subject: name))
+  }
+}
+
+fn refused_anywhere(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_blocking_rows_of_class(rows: rows, wanted: "TypeNameCarriesNoRecordConstructor"))
+  }
+}
+
+test fn a_record_literal_naming_a_union_is_refused_once_at_the_name_at_every_position() -> Bool {
+  refused_at(source: in_data, name: "ZzU") == 1 && refused_at(source: in_return, name: "ZzU") == 1 && refused_at(source: in_list, name: "ZzU") == 1 && refused_at(source: in_call, name: "ZzU") == 1
+}
+
+test fn the_refusal_does_not_depend_on_the_fields_written() -> Bool {
+  refused_at(source: missing_field, name: "ZzU") == 1 && refused_at(source: bogus_field, name: "ZzU") == 1
+}
+
+test fn an_aliased_union_name_is_refused_at_the_name_the_author_wrote() -> Bool {
+  refused_at(source: aliased_union, name: "ZzT") == 1
+}
+
+test fn an_undeclared_name_keeps_its_own_refusal_and_is_not_a_union_refusal() -> Bool {
+  refused_anywhere(source: unknown_name) == 0 && blocking_total(c: compile_dag_diagnostic_census(unknown_name)) > 0
+}
+
+test fn variant_constructions_and_record_and_aliased_record_literals_are_not_refused() -> Bool {
+  blocking_total(c: compile_dag_diagnostic_census(variants_ok)) == 0 && blocking_total(c: compile_dag_diagnostic_census(records_ok)) == 0
+}

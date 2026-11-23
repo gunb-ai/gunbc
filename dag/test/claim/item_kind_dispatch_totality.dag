@@ -1,0 +1,39 @@
+module test.claim.item_kind_dispatch_totality
+
+import std.types { String, Bool, Int, List }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus, CensusObserved, CensusNotRunnable, census_blocking_rows_of_class, census_total_count,
+}
+
+// Replaces the count half of src/v1/tests/src/item_kind_dispatch_totality_test.rs. A match over a closed
+// seven-variant coproduct that omits one arm is refused as NonExhaustiveMatch (one blocking row), and
+// the same dispatch with all seven arms produces no diagnostic of any severity. The Rust test also
+// asserted that the message names the omitted variant (FixNotAnItem); the census row for this class
+// carries the fixed subject "(non-exhaustive)" and no variant, so that half stays in Rust and is named
+// in #gunbc.v1.v1_deletion_plan::v1_migrated_test_modules.
+
+data red_source: String = "module kinddispatch.red\ntype FixItemKind = FixTypeDeclaration | FixFunction | FixDataValue | FixService | FixResource | FixUnrecognized | FixNotAnItem\nfn dispatch(k: FixItemKind) -> String \{\n  match k \{\n    FixTypeDeclaration => \"type\"\n    FixFunction => \"fn\"\n    FixDataValue => \"data\"\n    FixService => \"service\"\n    FixResource => \"resource\"\n    FixUnrecognized => \"unrecognized\"\n  }\n}\n"
+
+data green_source: String = "module kinddispatch.green\ntype FixItemKind = FixTypeDeclaration | FixFunction | FixDataValue | FixService | FixResource | FixUnrecognized | FixNotAnItem\nfn dispatch(k: FixItemKind) -> String \{\n  match k \{\n    FixTypeDeclaration => \"type\"\n    FixFunction => \"fn\"\n    FixDataValue => \"data\"\n    FixService => \"service\"\n    FixResource => \"resource\"\n    FixUnrecognized => \"unrecognized\"\n    FixNotAnItem => \"not-an-item\"\n  }\n}\n"
+
+fn non_exhaustive_count(c: CompileDiagnosticCensus) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows_of_class(rows: rows, wanted: "NonExhaustiveMatch"))
+  }
+}
+
+fn all_diagnostics(c: CompileDiagnosticCensus) -> Int {
+  match c {
+    CensusNotRunnable { cause: _ } => -1
+    CensusObserved { rows: rows } => census_total_count(rows: rows)
+  }
+}
+
+test fn a_dispatch_missing_one_item_kind_arm_is_refused_as_non_exhaustive() -> Bool {
+  non_exhaustive_count(c: compile_dag_diagnostic_census(red_source)) == 1
+}
+
+test fn a_dispatch_covering_all_seven_item_kinds_is_not_refused() -> Bool {
+  all_diagnostics(c: compile_dag_diagnostic_census(green_source)) == 0
+}
