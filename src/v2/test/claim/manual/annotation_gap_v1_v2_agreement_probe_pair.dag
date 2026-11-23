@@ -1,6 +1,6 @@
 module v2.test.claim.manual.annotation_gap_v1_v2_agreement_probe_pair
 
-import std.types { CommitSha, String }
+import std.types { CommitSha, String, commit_sha_text_holds }
 
 // THE PROBE PAIR THAT SHOWS THE AGREEMENT CONTROL IS NOT VACUOUS, recorded as data rather than as prose
 // a reader has to trust. The fields are the receipt: kind, the ref the red tree is durable on, the main
@@ -27,3 +27,16 @@ data annotation_gap_v1_v2_agreement_probe_red_base: CommitSha = "8c86ee47f68ec1f
 data annotation_gap_v1_v2_agreement_probe_red_at: CommitSha = "RED_AT_SHA_PLACEHOLDER"
 data annotation_gap_v1_v2_agreement_probe_green_at: CommitSha = "GREEN_AT_SHA_PLACEHOLDER"
 data annotation_gap_v1_v2_agreement_probe_executed_on: String = "2026-11-23"
+
+// WHY A CLAIM AND NOT A REVIEWER. CommitSha is an unvalidated String alias (dag/std/types.dag:201), and
+// its comment says so: the predicate beside it is a validating CHECK a caller must remember to run, not a
+// construction wall. A field holding a placeholder therefore parses, typechecks and passes CI as a receipt
+// that looks complete -- which is a fiction that merges. Running this claim refuses that: any value that is
+// not forty lowercase hex characters fails it, so an unfilled placeholder cannot survive an executed run.
+// test.claim.std_commit_sha_text_witness is the oracle for the predicate itself; this claim is a CONSUMER
+// of it, refusing on the three fields this receipt publishes.
+test fn probe_pair_receipt_shas_are_real_commit_shas() -> Bool {
+  commit_sha_text_holds(head: annotation_gap_v1_v2_agreement_probe_red_base)
+    && commit_sha_text_holds(head: annotation_gap_v1_v2_agreement_probe_red_at)
+    && commit_sha_text_holds(head: annotation_gap_v1_v2_agreement_probe_green_at)
+}
