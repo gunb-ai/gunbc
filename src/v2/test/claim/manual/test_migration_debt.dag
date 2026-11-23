@@ -132,34 +132,3 @@ test fn live_populations_are_nonempty() -> Bool {
     && count(retained_declared_source_files()) > 0
     && count(discovered_legacy_behavior_ids()) > 0
 }
-
-// OFFENDER LISTING. Plain fns, not tests: the claim runner prints a bare
-// `FAIL <test>` for a false verdict and has no reason channel, so the wall
-// cannot name offenders itself. These return them for `gunbc run`; the wall's
-// verdict expression above is untouched.
-fn offenders_undeclared(discovered: List<String>, declared: List<String>) -> List<String> {
-  discovered |> filter(f => !list_contains_name(xs: declared, needle: f))
-}
-
-fn offenders_stale(discovered: List<String>, declared: List<String>) -> List<String> {
-  declared |> filter(f => !list_contains_name(xs: discovered, needle: f))
-}
-
-// Live tree: discovered Rust test modules with no retained row.
-fn live_modules_with_no_retained_row() -> List<String> {
-  offenders_undeclared(discovered: discovered_rust_test_modules(), declared: retained_declared_source_files())
-}
-
-// Live tree: retained rows naming no discovered module.
-fn live_retained_rows_with_no_module() -> List<String> {
-  offenders_stale(discovered: discovered_rust_test_modules(), declared: retained_declared_source_files())
-}
-
-// Planted fixture: gamma_test.rs is the fake undeclared module.
-fn planted_modules_with_no_retained_row() -> List<String> {
-  offenders_undeclared(discovered: fixture_discovered_with_undeclared(), declared: fixture_declared())
-}
-
-fn planted_retained_rows_with_no_module() -> List<String> {
-  offenders_stale(discovered: fixture_discovered_missing_one(), declared: fixture_declared())
-}
