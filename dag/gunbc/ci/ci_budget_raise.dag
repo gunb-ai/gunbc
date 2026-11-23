@@ -34,6 +34,9 @@ type BudgetRaiseGrant sole_constructor {
 // today; it is the real ruling the negative controls cite (test.claim.ci.ci_budget_raise_witness). The printer card's
 // ruling fits the same shape as two grants (its job backstop 319 and its converge step 289) and is transcribed when
 // that budget reads its admission.
+// HISTORY, NOT A STANDING RAISE: the serve-entry step's bound returned to 30 (the step stopped doing the
+// whole-closure compile in #16518), so this grant covers nothing the budget now requires; it stays as the typed
+// transcription of a real ruling, which the negative controls cite, and the budget does not read it.
 data serve_entry_verdict_step_raised_to_45_minutes_grant: BudgetRaiseGrant = BudgetRaiseGrant {
   ruling: serve_entry_verdict_step_raised_to_45_minutes,
   budget: decl_ref(module_path: "gunbc.fleet.fleet_workflow_steps", decl_name: "gunbc_ci_plan_serve_entry_verdict_step_timeout_minutes"),
