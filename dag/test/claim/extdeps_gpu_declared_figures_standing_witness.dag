@@ -16,16 +16,18 @@ import extdeps.storage.types { Gen5, PcieLink }
 import extdeps.vendor.amd { amd }
 import extdeps.gpu.amd {
   amd_radeon_ai_pro_r9700_catalog, amd_radeon_ai_pro_r9700_board_facts, r9700_figures_standing,
-  r9700_product_page_authority, amd_board_catalogs,
+  r9700_product_page_authority, amd_board_catalogs, amd_radeon_ai_pro_r9700_board_catalog,
 }
 import extdeps.gpu.gigabyte {
   gigabyte_r9700_ai_top_32g_board_facts, gigabyte_r9700_ai_top_figures_standing,
-  gigabyte_r9700_ai_top_spec_authority, gigabyte_board_catalogs,
+  gigabyte_r9700_ai_top_spec_authority, gigabyte_board_catalogs, gigabyte_r9700_ai_top_32g_board_catalog,
 }
 import extdeps.gpu.declared_figures_standing {
   declared_board_figure_standings, declared_device_figure_standings, declared_gpu_standing_rows,
   gpu_board_power_ceiling_with_standing, gpu_catalog_memory_with_standing, gpu_figure_read_obligation,
+  AdmittedBoardFigures, FiguresCarried, FiguresUnmarked, gpu_admitted_board_figures,
 }
+import extdeps.gpu.nvidia_a16 { nvidia_a16_board_catalog }
 
 // THE CLASS THIS WITNESS KILLS: a row carrying a marked figure consumed as if complete
 // (gunbc.recurring_failure_mode.declared_uncitedness_ignored_by_admission, Tier 5 of the operator's
@@ -168,4 +170,48 @@ test fn the_read_obligation_reaches_a_refusal_unchanged() -> Bool {
     && string_contains(s: obligation, pattern: "figure_citations")
     && gpu_figure_read_obligation(standing: gigabyte_r9700_ai_top_figures_standing) != ""
     && gpu_figure_read_obligation(standing: CitedToAuthority { authority: r9700_product_page_authority }) == ""
+}
+
+// THE ADMISSION PATH CANNOT HAND OVER THESE FIGURES UNMARKED. This is the seam the roadmap row names -- the
+// accessor a roster fold reaches for -- so the claim is not that a standing exists somewhere, but that the
+// way IN for an admitted board's facts carries it. The same function on a board no module qualifies says so
+// in words rather than returning a bare figure and implying it was vetted.
+test fn the_r9700_admission_cannot_be_read_without_its_standing() -> Bool {
+  match gpu_admitted_board_figures(admission: amd_radeon_ai_pro_r9700_board_catalog) {
+    FiguresCarried { facts: f, standing: st, declared_by: d } =>
+      f == amd_radeon_ai_pro_r9700_board_facts && is_transcribed_uncited(standing: st)
+        && d == ("extdeps.gpu.amd" as NonEmptyStr)
+        && gpu_figure_read_obligation(standing: st) != ""
+    _ => false
+  }
+}
+
+test fn the_gigabyte_admission_cannot_be_read_without_its_standing() -> Bool {
+  match gpu_admitted_board_figures(admission: gigabyte_r9700_ai_top_32g_board_catalog) {
+    FiguresCarried { facts: f, standing: st, declared_by: d } =>
+      f == gigabyte_r9700_ai_top_32g_board_facts && is_transcribed_uncited(standing: st)
+        && d == ("extdeps.gpu.gigabyte" as NonEmptyStr)
+    _ => false
+  }
+}
+
+// An unmarked board stays unmarked: the answer names the basis instead of falling through to silence, which
+// is the same failure the row records -- absence of a warning read as absence of a problem.
+test fn a_board_no_module_qualifies_is_returned_unmarked_with_a_basis() -> Bool {
+  match gpu_admitted_board_figures(admission: nvidia_a16_board_catalog) {
+    FiguresUnmarked { facts: _, basis: b } =>
+      string_contains(s: b, pattern: "transcribed from the vendor")
+        && string_contains(s: b, pattern: "no figure_citations entry carries a standing")
+    _ => false
+  }
+}
+
+// The two R9700 bindings are two boards, not one board seen twice: distinct models, so the lookup above
+// cannot attach the wrong module's standing to a figure.
+test fn the_declared_bindings_name_two_distinct_boards() -> Bool {
+  let amd_model = amd_radeon_ai_pro_r9700_board_facts.model
+  let gigabyte_model = gigabyte_r9700_ai_top_32g_board_facts.model
+  amd_model != gigabyte_model
+    && count(declared_board_figure_standings) == 2
+    && all(declared_board_figure_standings, entry => entry.facts.model == amd_model || entry.facts.model == gigabyte_model)
 }

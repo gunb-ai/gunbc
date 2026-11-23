@@ -47,7 +47,8 @@ import std.decl_ref { NamedField, decl_field_eq }
 import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, TranscribedUncited, ObservedByReceipt }
 import extdeps.memory.types { MemoryKind }
 import extdeps.gpu.types {
-  GpuDeviceCatalogRow, GpuBoardCatalogFacts, gpu_board_power_ceiling, gpu_catalog_row_eq,
+  GpuDeviceCatalogRow, GpuBoardCatalogFacts, GpuBoardAdmission, gpu_board_admission_facts,
+  gpu_board_power_ceiling, gpu_catalog_row_eq,
 }
 import extdeps.gpu.amd {
   amd_radeon_ai_pro_r9700_catalog, amd_radeon_ai_pro_r9700_board_facts, r9700_figures_standing,
@@ -190,4 +191,34 @@ fn gpu_figure_read_obligation(standing: CitedFigureStanding) -> String {
 // this file's own entries, so a standing row written and never bound is a count that no longer matches.
 fn declared_gpu_standing_rows() -> List<CitedFigureStanding> {
   [r9700_figures_standing, gigabyte_r9700_ai_top_figures_standing]
+}
+
+// WHAT AN ADMISSION HANDS THE DECISION THAT ASKS IT, MARK INCLUDED. extdeps.gpu.types'
+// `gpu_board_admission_facts` answers an admission with a bare `GpuBoardCatalogFacts` -- the figures, with
+// nothing said about where they came from -- and that is the accessor a roster fold reaches for. Today only
+// witnesses call it, which is the report's tier 5 in its purest form: a row consumed as complete while the
+// module that wrote it says its figures are a transcription nobody has verified. This is the accessor that
+// path should go through instead. Both arms say something about provenance; neither hands over figures and
+// leaves the consumer to wonder. An unmarked board is not thereby laundered into a clean one: its arm names
+// the basis, that the figures are transcribed from the vendor's page and no standing was declared.
+//
+// WHO CONSUMES IT, said plainly: the item on this same plan that admits hosts to the build and serving
+// rosters -- `fleet-truth-follows-the-machine/-rosters-consume-the-read`. Until that lands nothing in
+// production calls this, and this module says so rather than claiming the gap is closed
+// (gunbc.design_argument::consumption, "consumed by a named later change (a declared frontier, with its
+// trigger)"). It is here, and bound, because the roster item should not have to invent the standing lookup
+// -- or forget it -- on its own.
+type AdmittedBoardFigures
+  = FiguresCarried { facts: GpuBoardCatalogFacts, standing: CitedFigureStanding, declared_by: NonEmptyStr }
+  | FiguresUnmarked { facts: GpuBoardCatalogFacts, basis: String }
+
+fn gpu_admitted_board_figures(admission: GpuBoardAdmission) -> AdmittedBoardFigures {
+  let facts = gpu_board_admission_facts(admission: admission)
+  match first_where(xs: declared_board_figure_standings, keep: entry => entry.facts == facts) {
+    Present { value: entry } => FiguresCarried { facts: facts, standing: entry.standing, declared_by: entry.declared_by }
+    Absent => FiguresUnmarked {
+      facts: facts,
+      basis: "no GPU module declares a standing about this board's figures: they are transcribed from the vendor's page, which is its own citation, and no figure_citations entry carries a standing either, so a decision built on them is built on a transcription"
+    }
+  }
 }
