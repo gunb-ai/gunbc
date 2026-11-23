@@ -7651,9 +7651,11 @@ fn approval_broker_tree_install_observed(
 // digest the certified entry-metadata lines the same way, then write the three-line receipt through
 // install(1) from stdin as the locus owner. metadata_digest is ADDITIVE: a reader that pins only
 // candidate_revision and installed_digest keeps reading what it always read; the metadata digest
-// extends the receipt to cover what the content digest cannot: entry kinds, link targets, modes, and
-// ownership. The metadata TEXT stays in the tree it describes; the digest is the part the broker
-// carries.
+// extends the receipt to cover what the content digest cannot: the per-file source entries' kinds,
+// link targets, modes, and owner. This covers only those per-file entries (certified = the installed
+// source entries); the locus-root, walk-root, spine and self rows are enforced by the
+// tree_locus_agreement readback gate and are NOT part of this digest. The metadata TEXT stays in the
+// tree it describes; the digest is the part the broker carries.
 fn approval_broker_tree_receipt_write(
   realm: TreeInstallRealm,
   locus: String,
