@@ -111,10 +111,14 @@ type HostTruthReadCause
   | HostTruthProbeThrew { where: String }
   | HostTruthHostUnreachable { route: String }
   | HostTruthOutputUnparseable { raw: String }
-  // The read ran and the machine gave nothing at that path. systemd's three answers -- a number, "infinity",
-  // and the property unset at this leaf -- are three facts, and the third is neither of the first two: a
-  // limit inherited from a parent slice is a question this leaf did not answer.
-  | HostTruthNoValueAtThatPath { path: String }
+  // A cgroup property answered with neither a number nor "infinity". What the reader knows is that the leaf
+  // gave it nothing to relate; what it does NOT know is which of two things happened, because
+  // extdeps.systemd's MemoryLimitAbsent covers both a property that printed nothing and one whose text nobody
+  // can decode. Naming either one would be a claim the read cannot support
+  // (gunbc.design_argument::epistemic_humility), so the cause says the weaker true thing. The distinction is
+  // owed an arm on SystemdCgroupMemoryLimit and is tracked by
+  // gunbc.recurring_failure_mode::failed_value_read_scored_as_value_absent -- owed, not worked around.
+  | HostTruthCgroupLimitUnreadable { property: String }
 
 fn host_truth_read_cause_explains(cause: HostTruthReadCause) -> String {
   match cause {
@@ -122,7 +126,7 @@ fn host_truth_read_cause_explains(cause: HostTruthReadCause) -> String {
     HostTruthProbeThrew { where: w } => "the probe threw away from the sampling thread: " + w
     HostTruthHostUnreachable { route: r } => "the host did not answer on the route read through (" + r + "); pings-but-refuses-TCP is an ACL answer, not a network one"
     HostTruthOutputUnparseable { raw: v } => "the read returned something this model cannot project: " + v
-    HostTruthNoValueAtThatPath { path: pa } => "the read ran and the machine gave no value at that path (" + pa + "); an inherited limit is neither zero nor unbounded"
+    HostTruthCgroupLimitUnreadable { property: p } => "the read ran and the machine gave nothing to relate for " + p + ": a leaf that sets a limit inherits nothing here, and an inherited limit is neither zero nor unbounded; whether the property printed nothing or printed text nobody can decode is owed an arm on SystemdCgroupMemoryLimit, tracked by failed_value_read_scored_as_value_absent"
   }
 }
 
