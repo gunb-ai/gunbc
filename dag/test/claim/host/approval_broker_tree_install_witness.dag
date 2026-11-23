@@ -725,7 +725,7 @@ test fn real_microvm_locus_extras_are_tolerated_by_readback() -> Bool {
 // REAL APPROVAL BROKER LOCUS LISTING: uses the real srv1 approval-broker locus root.
 test fn real_approval_broker_locus_extras_are_tolerated_by_readback() -> Bool {
   let subs = ["dag", "src/v2"]
-  let execs = ["gunbc", "approval_device_crypto_serve"]
+  let execs = ["gunbc"]
   match tree_locus_children_expectation_owned(subdirs: subs, executables: execs, owner: gnbc()) {
     Absent => false
     Present { value: locus_expected } =>
@@ -737,8 +737,8 @@ test fn real_approval_broker_locus_extras_are_tolerated_by_readback() -> Bool {
             TreeMetadataEntry { path: "src", kind: TreeDirectory, mode: fm("755"), owner: gnbc() },
             TreeMetadataEntry { path: "src/v2", kind: TreeDirectory, mode: fm("755"), owner: gnbc() },
             TreeMetadataEntry { path: "gunbc", kind: TreeRegular, mode: fm("755"), owner: gnbc() },
-            TreeMetadataEntry { path: "approval_device_crypto_serve", kind: TreeRegular, mode: fm("755"), owner: gnbc() },
             TreeMetadataEntry { path: ".gunbc-tree-receipt", kind: TreeRegular, mode: fm("644"), owner: gnbc() },
+            TreeMetadataEntry { path: "approval_device_crypto_serve", kind: TreeRegular, mode: fm("755"), owner: gnbc() },
             TreeMetadataEntry { path: "device-crypto-deployed-digest.env", kind: TreeRegular, mode: fm("644"), owner: gnbc() },
           ]
           match tree_locus_agreement(
