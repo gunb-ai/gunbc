@@ -1,0 +1,73 @@
+module test.claim.bracketed_list_separator_wall_answer_witness
+
+// THE GENERALIZATION ANSWER IS A RECORD, NOT A COMMENT. gunbc.design_argument::root_generalization
+// rejects a repeated pattern that is fixed at one site and left at its siblings unless the deferral names
+// why, the trigger, and the follow-up -- and no answer is a reject. The bracketed-list separator wall
+// (v2.extdeps.languages.dag, dag_grammar_list_literal_seq) answers that way for the other forms of the
+// same optional-separator combinator, and the answer lives in the integration-concern register. These
+// claims make the answer CHECKABLE: if the row is deleted, closed while the deferral still stands, or
+// stops naming the combinator it defers at, or loses the trigger and the obligations that keep the
+// deferral from becoming a false refusal, a claim here goes RED.
+
+import gunbc.integration_concern { Distinct, Integrated, IntegrationConcern, Open, PreservedObligation, SuspectedFork, SuspectedCapabilityGap, Triaged, Withdrawn, concern_is_open }
+import gunbc.integration_concern.optional_comma_list_separator_outside_the_bracketed_list_wall { optional_comma_list_separator_outside_the_bracketed_list_wall }
+import std.algebra { Cons, Empty }
+import std.types { Bool, List, String }
+
+data deferred_combinator_module: String = "v2.extdeps.languages.dag"
+
+data deferred_combinator_name: String = "dag_grammar_comma_list_expr"
+
+data match_arm_form: String = "dag_grammar_match_expr_expr"
+
+fn row() -> IntegrationConcern {
+  optional_comma_list_separator_outside_the_bracketed_list_wall
+}
+
+fn names_combinator(path: String, name: String) -> Bool {
+  path == deferred_combinator_module && name == deferred_combinator_name
+}
+
+fn holds_the_match_arm_form(o: PreservedObligation) -> Bool {
+  (o.holder.decl_name as String) == match_arm_form
+}
+
+fn preserves_the_separator_free_form(obligations: List<PreservedObligation>) -> Bool {
+  match obligations {
+    Empty => false
+    Cons { head: o, tail: rest } => holds_the_match_arm_form(o: o) || preserves_the_separator_free_form(obligations: rest)
+  }
+}
+
+test fn the_deferral_is_recorded_in_the_concern_register_holds() -> Bool {
+  concern_is_open(row: row())
+}
+
+test fn the_recorded_deferral_names_the_one_combinator_it_defers_at_holds() -> Bool {
+  match row().kind {
+    SuspectedFork { authorities: _ } => false
+    SuspectedCapabilityGap { model: m, requirement: _, standing: _ } => names_combinator(path: (m.module_path as String), name: (m.decl_name as String))
+  }
+}
+
+// The reason the wall does not climb the combinator is the match-arm form, which takes no separator at
+// all; the row must carry that as an obligation to preserve, or a future climb breaks legitimate arms.
+test fn the_recorded_deferral_carries_the_reason_it_is_not_a_blanket_refusal_holds() -> Bool {
+  match row().disposition {
+    Open => false
+    Triaged { home: _, preserve: ps, next: _ } => preserves_the_separator_free_form(obligations: ps)
+    Distinct { reason: _, scope_examined: _ } => false
+    Withdrawn { reason: _ } => false
+    Integrated { evidence: _ } => false
+  }
+}
+
+test fn the_recorded_deferral_names_a_trigger_for_the_next_rung_holds() -> Bool {
+  match row().disposition {
+    Open => false
+    Triaged { home: _, preserve: _, next: t } => t.capability != ""
+    Distinct { reason: _, scope_examined: _ } => false
+    Withdrawn { reason: _ } => false
+    Integrated { evidence: _ } => false
+  }
+}

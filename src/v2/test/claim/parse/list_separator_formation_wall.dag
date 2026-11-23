@@ -11,7 +11,10 @@ import std.algebra { is_prefix_of }
 // comma is still admitted, and `[]` / `[x]` still parse): the juxtaposition refuses at parse as
 // parse_list_element_separator_missing, located at the juxtaposed element. These probes are the pair:
 // they are RED while the separator is optional (the classifier says "accepted") and GREEN once the
-// refusal lands. Call-argument and record-init comma-lists are out of this wall's scope and stay green.
+// refusal lands. The call-argument and record-init controls below are NO-REGRESSION controls only: they
+// pin that this wall did not spill outside the bracketed list. Juxtaposition in THOSE forms (`g(1 2)`,
+// `{ a: 1 b: 2 }`) is the same silent-arity defect and is NOT claimed correct here -- it is recorded, with
+// its reason and its trigger, as gunbc.integration_concern.optional_comma_list_separator_outside_the_bracketed_list_wall.
 
 // ---- SEPARATOR PROBES (the wall): a dropped list separator refuses, located at the juxtaposed element.
 

@@ -1,0 +1,109 @@
+module gunbc.integration_concern.optional_comma_list_separator_outside_the_bracketed_list_wall
+
+// ONE COMBINATOR BACKS EVERY COMMA LIST IN THE LANGUAGE, AND THE SEPARATOR WALL WAS BUILT FOR ONE FORM.
+// A bracketed list (`[1, 2, 3]`, and the subscript) now requires its separators: a dropped comma refuses
+// at parse as parse_list_element_separator_missing instead of reading the neighbours as juxtaposed
+// elements and silently changing the list's arity. Every OTHER comma list still reads through
+// dag_grammar_comma_list_expr, which makes every separator optional, so `g(1 2)` and `{ a: 1 b: 2 }` are
+// still two elements read from a form whose shape depends on which commas the author typed -- the same
+// silent-arity defect, one form to the right of the wall.
+//
+// WHY IT IS NOT FIXED AT THE COMBINATOR (gunbc.design_argument::root_generalization: a repeated pattern
+// is answered by generalizing it, or by naming why not now, the trigger, and the follow-up; no answer is
+// a reject). The combinator's optional separator is LOAD-BEARING at one of its sites: the match-arm list
+// (dag_grammar_match_expr_expr) takes NO separator at all, because a statement body ends where the next
+// arm begins -- a refusal placed on the combinator would refuse legitimate programs, which is a worse
+// silent change than the one it catches. The remaining sites each close over a DIFFERENT lookahead class:
+// what may legally follow an element with no separator differs per form (call arguments vs. field inits
+// vs. params vs. type arguments vs. import lists ...), and the parse census the wall was probed against
+// names only the bracketed list. Out-of-scope, verbatim, on that node's ticket: "lookahead classes the
+// census does not name".
+//
+// TRIGGER: the parse census naming one of those classes. FOLLOW-UP: the named class gets its own
+// required-separator sequence (like dag_grammar_list_literal_seq, composed on
+// dag_grammar_required_comma_list_expr), its probe pair that flips RED-then-GREEN, and its corpus
+// migration in the same change -- a wall without its own probes is how the last one nearly shipped wrong.
+
+import gunbc.integration_concern { ConcernSighting, CitesDeclaration, ExistingHome, IntegrationConcern, PreservedObligation, RequirementEstablished, SuspectedCapabilityGap, Triaged }
+import gunbc.guarantee_stall { climbs_when }
+import std.algebra { FreeSemigroup }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.optional { Present }
+import std.types { String }
+
+fn combinator_site(name: String) -> DeclarationRef {
+  decl_ref(module_path: "v2.extdeps.languages.dag", decl_name: name)
+}
+
+data optional_comma_list_separator_outside_the_bracketed_list_wall: IntegrationConcern = IntegrationConcern {
+  identity: "optional_comma_list_separator_outside_the_bracketed_list_wall",
+  kind: SuspectedCapabilityGap {
+    model: combinator_site(name: "dag_grammar_comma_list_expr"),
+    requirement: "a comma list whose separators the author omitted REFUSES at parse, instead of reading the neighbours as juxtaposed elements and silently changing the form's arity",
+    standing: RequirementEstablished {
+      by: CitesDeclaration { declaration: combinator_site(name: "dag_grammar_list_literal_seq") }
+    },
+  },
+  affected: FreeSemigroup {
+    head: combinator_site(name: "dag_grammar_comma_list_expr"),
+    tail: [
+      combinator_site(name: "dag_grammar_arg_list_helper"),
+      combinator_site(name: "dag_grammar_field_init_list_helper"),
+      combinator_site(name: "dag_grammar_record_field_init_list_helper"),
+      combinator_site(name: "dag_grammar_field_decl_list_helper"),
+      combinator_site(name: "dag_grammar_field_pattern_list_helper"),
+      combinator_site(name: "dag_grammar_pattern_list_helper"),
+      combinator_site(name: "dag_grammar_param_list_expr"),
+      combinator_site(name: "dag_grammar_untyped_params_helper"),
+      combinator_site(name: "dag_grammar_generic_params_expr"),
+      combinator_site(name: "dag_grammar_qualified_type_expr"),
+      combinator_site(name: "dag_grammar_type_list_expr"),
+      combinator_site(name: "dag_grammar_import_block_expr"),
+      combinator_site(name: "dag_grammar_io_block_expr"),
+      combinator_site(name: "dag_grammar_service_config_expr"),
+      combinator_site(name: "dag_grammar_where_predicate_expr"),
+      combinator_site(name: "dag_grammar_match_expr_expr"),
+    ],
+  },
+  question: "The optional-separator defect is refused at one call site of one combinator and left standing at its other fifteen. Should the wall climb the combinator? Not as written: the match-arm site takes no separator by design, so a refusal at the combinator refuses legitimate programs. Each remaining form is its own lookahead class the census does not yet name, so each needs its own probe pair and its own corpus migration. The row stays open until a class is named, and then that class climbs with its probes.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "700b8b0f76b87f7d2af4a7fd13078500c7e08c0c",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: combinator_site(name: "dag_grammar_arg_list_helper") },
+        tail: [
+          CitesDeclaration { declaration: combinator_site(name: "dag_grammar_field_init_list_helper") },
+          CitesDeclaration { declaration: combinator_site(name: "dag_grammar_param_list_expr") },
+          CitesDeclaration { declaration: combinator_site(name: "dag_grammar_qualified_type_expr") },
+          CitesDeclaration { declaration: combinator_site(name: "dag_grammar_import_block_expr") },
+          CitesDeclaration { declaration: combinator_site(name: "dag_grammar_match_expr_expr") },
+          CitesDeclaration { declaration: decl_ref(module_path: "v2.test.claim.parse.sibling_comma_gap_probe", decl_name: "call_args_juxtaposed_accepted_holds") },
+        ],
+      },
+      account: "MEASURED, NOT INFERRED FROM THE GRAMMAR (which is how this defect was nearly missed once). Each juxtaposed form above was fed to the live parse classifier, v2.compiler.parse_acceptance_census.parse_acceptance_of_text, by the witness module v2.test.claim.parse.sibling_comma_gap_probe, and every one of them classified as accepted: g(1 2) reads as two call arguments, { a: 1 b: 2 } as two field inits, fn f(a: Nat b: Nat) as two parameters, Box<Nat Int> as two generic arguments, and import m { a b } as two imported names. So the arity of each of those forms still depends on which commas the author typed -- the same silent program change the bracketed-list wall closes, one form to the right of it. The run was made against source at this revision with the parser binary built at 4cb919e4a1094b400179f749cce83b4e6a2a6a62 (a main tree, not the wall's own lineage). The match-arm form (match x { 1 => 1 2 => 2 }) is accepted too, and that one is RIGHT: a statement body ends where the next arm begins, so juxtaposition there is the program the author wrote. That is why the refusal sits on the bracketed-list sequence and cannot sit on the shared combinator. The claim pinning each class is that module's <class>_juxtaposed_accepted_holds; climbing a class turns its claim red and replaces it with a refusal probe of its own.",
+    },
+    tail: [],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: combinator_site(name: "dag_grammar_comma_list_expr") },
+    preserve: [
+      PreservedObligation {
+        holder: combinator_site(name: "dag_grammar_match_expr_expr"),
+        control: Present {
+          value: decl_ref(module_path: "v2.test.claim.parse.list_separator_formation_wall", decl_name: "legitimate_list_trailing_comma_parses_holds")
+        },
+        statement: "the match-arm list takes NO separator -- a statement body ends where the next arm begins -- so any climb of the combinator must keep juxtaposed arms parsing; a blanket refusal there is a false refusal, which is the failure this row exists to avoid",
+      },
+      PreservedObligation {
+        holder: combinator_site(name: "dag_grammar_list_literal_seq"),
+        control: Present {
+          value: decl_ref(module_path: "v2.test.claim.parse.list_separator_formation_wall", decl_name: "separator_dropped_all_commas_refuses_holds")
+        },
+        statement: "the bracketed list already walled keeps refusing a dropped separator, and every legitimate list in the corpus keeps parsing; a generalization that turns this probe red is a regression, not a climb",
+      },
+    ],
+    next: climbs_when(
+      capability: "the parse census names one juxtaposition class outside the bracketed list (call arguments, field and record init, field and record patterns, typed or untyped params, generic params, generic arguments or type lists, import lists, io field decls, service config, or where-predicates); that class then gets its own required-separator sequence composed on dag_grammar_required_comma_list_expr, a probe pair that flips RED-then-GREEN, and its corpus migration in the same change"
+    ),
+  },
+}

@@ -1,0 +1,57 @@
+module v2.test.claim.parse.sibling_comma_gap_probe
+
+// WHERE THE OPTIONAL SEPARATOR STILL STANDS -- MEASURED, NOT ASSUMED. One combinator,
+// dag_grammar_comma_list_expr, backs every comma list in the language except the bracketed list literal
+// and the subscript, which dag_grammar_list_literal_seq now walls off (list_separator_formation_wall).
+// Each claim below parses ONE juxtaposed form of a sibling class -- an element that follows another with
+// no comma -- through the live parse classifier, and pins that it is still ACCEPTED today: the same
+// silent-arity defect the list wall closes, one form to the right of it. These are not endorsements of
+// those forms and they are not controls for this wall; they are the sighting the deferral is recorded on,
+// so the deferral cannot quietly become forgotten. Climbing one class (its own required-separator
+// sequence, probe pair, and corpus migration) must turn that class's claim here RED, and the row
+// gunbc.integration_concern.optional_comma_list_separator_outside_the_bracketed_list_wall is where that
+// climb is tracked. The match-arm pair is here because its juxtaposition is DELIBERATE -- a statement
+// body ends where the next arm begins -- which is exactly why the refusal cannot sit on the combinator.
+
+import v2.compiler.parse_acceptance_census { parse_acceptance_of_text }
+import v2.std.text { String }
+
+fn accepted(observed: String) -> Bool {
+  observed == "accepted"
+}
+
+data call_args_juxtaposed_source: String = "module p\ndata n: Nat = g(1 2)\n"
+
+test fn call_args_juxtaposed_accepted_holds() -> Bool {
+  accepted(parse_acceptance_of_text(text: call_args_juxtaposed_source, path: "probe/g1.dag"))
+}
+
+data field_init_juxtaposed_source: String = "module p\ndata r: Rec = { a: 1 b: 2 }\n"
+
+test fn field_init_juxtaposed_accepted_holds() -> Bool {
+  accepted(parse_acceptance_of_text(text: field_init_juxtaposed_source, path: "probe/g2.dag"))
+}
+
+data typed_params_juxtaposed_source: String = "module p\nfn f(a: Nat b: Nat) -> Nat { a }\n"
+
+test fn typed_params_juxtaposed_accepted_holds() -> Bool {
+  accepted(parse_acceptance_of_text(text: typed_params_juxtaposed_source, path: "probe/g3.dag"))
+}
+
+data generic_args_juxtaposed_source: String = "module p\ndata t: Box<Nat Int> = x\n"
+
+test fn generic_args_juxtaposed_accepted_holds() -> Bool {
+  accepted(parse_acceptance_of_text(text: generic_args_juxtaposed_source, path: "probe/g4.dag"))
+}
+
+data import_list_juxtaposed_source: String = "module p\nimport m { a b }\n"
+
+test fn import_list_juxtaposed_accepted_holds() -> Bool {
+  accepted(parse_acceptance_of_text(text: import_list_juxtaposed_source, path: "probe/g5.dag"))
+}
+
+data match_arms_juxtaposed_source: String = "module p\ndata n: Nat = match x { 1 => 1 2 => 2 }\n"
+
+test fn match_arms_juxtaposed_accepted_holds() -> Bool {
+  accepted(parse_acceptance_of_text(text: match_arms_juxtaposed_source, path: "probe/g6.dag"))
+}

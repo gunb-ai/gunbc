@@ -984,8 +984,9 @@ fn dag_grammar_required_comma_list_expr(item: GrammarExpr) -> GrammarExpr {
   )
 }
 
-// A BRACKETED-LIST SEQUENCE WITH A REQUIRED SEPARATOR: `item (',' item)* ','?`. The bracketed list
-// literal and the subscript used dag_grammar_comma_list_expr, whose combinator makes EVERY inter-
+// A BRACKETED-LIST SEQUENCE WITH A REQUIRED SEPARATOR: `item (',' item)* ','?` -- the comma-required
+// list right above, plus the trailing comma these bracketed forms allow, plus the refusal. The bracketed
+// list literal and the subscript used dag_grammar_comma_list_expr, whose combinator makes EVERY inter-
 // element comma optional -- so `[a b c]` parsed as three juxtaposed elements and a dropped `,` silently
 // changed the list's arity (the measured below-floor census row; a program whose shape depends on which
 // commas the author typed is below the floor). This form requires the separator between elements and
@@ -996,23 +997,29 @@ fn dag_grammar_required_comma_list_expr(item: GrammarExpr) -> GrammarExpr {
 // element cannot match, so the optional lets a legitimate list -- where the only thing after the
 // elements is the caller's `]`, never a bare element -- pass through it untouched; and where the element
 // DOES match (the juxtaposition) it raises a REFUSAL, which the optional preserves in the parse table
-// rather than swallowing, so the refusal still stops the parse. Call-argument and record-init
-// comma-lists are NOT this helper; only a bracketed list is.
+// rather than swallowing, so the refusal still stops the parse.
+// WHY THE WALL SITS ON THIS FORM AND NOT ON THE COMBINATOR (gunbc.design_argument::root_generalization
+// asks the repeated pattern be generalized, or the deferral named with a trigger and a follow-up -- this
+// is that answer, and it is recorded as a live concern, not a comment alone). ONE combinator,
+// dag_grammar_comma_list_expr, backs every other comma list in the language, and its optional separator
+// is LOAD-BEARING at some of them: the match-arm list (dag_grammar_match_expr_expr) takes NO separator,
+// because a statement body ends where the next arm begins, so a refusal placed at the combinator refuses
+// legitimate programs. Each remaining site -- call arguments and arg lists (dag_grammar_arg_list_helper),
+// field and record init (dag_grammar_field_init_list_helper, dag_grammar_record_field_init_list_helper),
+// field patterns and pattern lists, typed and untyped params (dag_grammar_param_list_expr,
+// dag_grammar_untyped_params_helper), generic params, generic args and type lists, import blocks, io
+// field decls (dag_grammar_io_block_expr), service config, where-predicates -- closes over a DIFFERENT
+// lookahead class: what may legally follow an element with no separator differs per form, and the census
+// names only the bracketed list. Trigger: the parse census naming one of those classes. Follow-up: that
+// class gets its own required-separator sequence like this one, its probe pair, and its corpus migration
+// in the same change. Recorded as gunbc.integration_concern.optional_comma_list_separator_outside_the_bracketed_list_wall.
 fn dag_grammar_list_literal_seq(item: GrammarExpr) -> GrammarExpr {
   dag_grammar_sequence(
-    left: item,
+    left: dag_grammar_required_comma_list_expr(item: item),
     right: dag_grammar_sequence(
-      left: dag_grammar_repeat(
-        element: dag_grammar_sequence(
-          left: dag_grammar_terminal(token_class: ^dag_token_comma),
-          right: item
-        )
-      ),
-      right: dag_grammar_sequence(
-        left: dag_grammar_optional(element: dag_grammar_terminal(token_class: ^dag_token_comma)),
-        right: dag_grammar_optional(
-          element: grammar_expr_refuse_on_match(element: item, reason: ListElementSeparatorMissing)
-        )
+      left: dag_grammar_optional(element: dag_grammar_terminal(token_class: ^dag_token_comma)),
+      right: dag_grammar_optional(
+        element: grammar_expr_refuse_on_match(element: item, reason: ListElementSeparatorMissing)
       )
     )
   )
