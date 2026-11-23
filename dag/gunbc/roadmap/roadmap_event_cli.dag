@@ -606,8 +606,15 @@ fn roadmap_event_publication_report(repo_root: String, node: String, event_id: S
   match dashboard_instance_for_repo_root(repo_root: repo_root) {
     DashboardInstanceRootUnknown { repo_root: w } =>
       join(["roadmap_event_publication_report: no dashboard instance is rooted at ", w], "")
-    DashboardInstanceResolved { instance } => {
-      let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
+    DashboardInstanceResolved { instance } => roadmap_event_publication_report_over(
+      layout: roadmap_event_carrier_layout_for_instance(instance: instance), node: node, event_id: event_id)
+  }
+}
+
+// THE READ-BACK ITSELF, over a layout the caller owns — the same words whether the caller resolved the
+// instance from a root or stood up its own scratch ledger.
+fn roadmap_event_publication_report_over(layout: RoadmapEventCarrierLayout, node: String, event_id: String) -> String {
+
       let history = roadmap_events_read(layout: layout, node: node as NonEmptyStr as RoadmapNodeId)
       carrier_report_with_snapshot_close(
         text: match history.result {
@@ -635,9 +642,8 @@ fn roadmap_event_publication_report(repo_root: String, node: String, event_id: S
           }
         },
         close: history.close)
-    }
-  }
 }
+
 
 fn roadmap_event_standing_report(repo_root: String, node: String) -> String {
   match dashboard_instance_for_repo_root(repo_root: repo_root) {
