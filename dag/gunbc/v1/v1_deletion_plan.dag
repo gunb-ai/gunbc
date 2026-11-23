@@ -82,8 +82,9 @@ fn v1_finish_lines_accepted_count(accepted: List<RoadmapNodeId>) -> Int {
   count(v1_exit_finish_lines() |> filter(s => v1_finish_line_accepted(spec: s, accepted: accepted)))
 }
 
-// THE V1 TEST MIGRATION DISPOSITION: for each hand-written v1 Rust test module that left
-// src/v1/tests/src/, what now covers its behaviour, or why nothing does, in a form a reader who did
+// THE V1 TEST MIGRATION DISPOSITION: for each hand-written v1 Rust test module that is leaving
+// src/v1/tests/src/ (still present until the seed-Rust deletion lands; a row is the witness that will
+// replace it), what covers its behaviour, or why nothing does, in a form a reader who did
 // not write it can answer from. The enforcing control is the wall claim
 // test.claim.manual.test_migration_debt retained_rust_kernel_wall_holds_against_live_tree, which
 // requires a retained row or an exact-stem floor witness per module; this carrier is the readable

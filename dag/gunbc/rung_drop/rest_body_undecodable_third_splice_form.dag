@@ -5,7 +5,8 @@ import std.algebra { FreeSemigroup }
 import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
 
-// The Rust test rest_body_undecodable_emitted_cause_test.rs refused any splice of the runtime error
+// STAGED: the lowering takes effect when the Rust test below is deleted; until then the Rust allow-list
+// still runs beside the witness. The Rust test rest_body_undecodable_emitted_cause_test.rs refused any splice of the runtime error
 // into a RestBodyUndecodable cause that it did not anticipate (an allow-list over the emitted
 // causes). Its replacement, test.claim.rest_body_undecodable_emitted_cause, names two forbidden
 // spellings and nothing else, so a third splice form passes undetected. Raised by review 97514.
