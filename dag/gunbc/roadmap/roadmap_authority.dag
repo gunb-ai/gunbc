@@ -3328,6 +3328,23 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "demand-engine", contribution: "The served program is materialized once per key and reused across restarts."),
     ),
     roadmap_node(
+      identity: "rn_KS6BDNA0MQ3EYSS115JRW3GRPG",
+      id: "standing-names-the-revision-it-evaluated",
+      owner: "factory",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_serve.dag"),
+      line: ticket(t: fields(
+        headline: "A standing names the plan revision and carrier sha it was computed from, and a stale one refuses instead of rendering as accepted",
+        boundary: "Requested by vivid-swift-693 and endorsed by neat-badger-614. The /standings.json response (StandingsJsonHandler in gunbc.roadmap.roadmap_serve) carries no statement of the plan revision or carrier sha its standings were computed from. A standing whose row criteria_digest differs from the row at the revision a consumer reads must not render as accepted: it refuses as stale, naming both digests. Evidence: the lab runs c48e06d826 (2026-11-16) whose roadmap_authority.dag is 776,180 bytes against main's 1,160,496, and the srv1 carrier is 02c95a06 (2026-10-03), so an acceptance recorded against an old row can read as current against a new one. Distinct from the carrier sync and lab advance themselves, which this row does not perform.",
+        displaced_cost: "A consumer cannot tell an acceptance of the current criteria from one of criteria since edited, so a stale accepted reads as done.",
+        first_slice: "Add the plan revision and carrier sha to the standings response, compare each accepted standing's recorded criteria_digest with the row's digest at that revision, and render a mismatch as a stale refusal naming both digests.",
+        red_control: "OPEN: red_at and green_at are not measured. The control is a standings read where a row's recorded criteria_digest differs from its digest at the read revision: RED renders accepted, green refuses as stale naming both digests; and a matching digest still renders accepted.",
+        out_of_scope: "Advancing the lab, syncing the srv1 carrier, and re-recording acceptances against edited rows.",
+        handback: "The response fields, the stale refusal with both digests named, and the mismatch and match controls with their raw PASS/FAIL lines and exit status."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "factory", contribution: "The daily workspace shows only what the tree at its revision supports."),
+    ),
+    roadmap_node(
       identity: "rn_P9G8YTMA3YVQTW194Z3MBG3RM8",
       id: "list-append-refuses-an-element-argument",
       owner: "compiler-guarantee",
