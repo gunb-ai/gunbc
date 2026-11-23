@@ -13,7 +13,7 @@ import gunbc.roadmap.roadmap_event_log {
   RoadmapEventDecode, RoadmapEventDecoded, RoadmapEventUndecodable, roadmap_event_decode,
   RoadmapNodeStanding, NodeOpen, NodeClaimed, NodeInProgress, NodeBlocked, NodeHandedBack, NodeForked, NodeHistoryIncomplete,
   roadmap_node_standing, roadmap_history_unordered_reason, roadmap_node_standing_key, roadmap_node_standing_text,
-  roadmap_node_standing_keys, roadmap_node_standing_samples, roadmap_node_standing_sample_rebuilt, NodeAccepted,
+  NodeAccepted,
   IssueAssignmentProjection, roadmap_issue_assignment,
   IssueComment, roadmap_issue_comments, roadmap_comment_created_key_present, roadmap_comment_retry_present, issue_comment_anchor,
   roadmap_recent_claimed_assignees, roadmap_events_newest_first, roadmap_result_returned_event, ResultReturned, AttemptResultOutcome, ResultPublished, ResultVerificationFailed, ResultHandedBack, NodeReadyForReview,
@@ -27,6 +27,7 @@ import gunbc.roadmap.roadmap_event_log {
   roadmap_migration_retirement_ids, roadmap_migration_retirement_authority,
 }
 import gunbc.roadmap.roadmap_authority { declared_roadmap_nodes }
+import gunbc.roadmap.roadmap_authority_fixture { roadmap_node_standing_keys }
 import gunbc.roadmap.roadmap_model {
   roadmap_node_ids_contain, RoadmapNode,
   RoadmapAcceptanceReceipt, RedControlExecuted, HandbackDelivered,
@@ -993,22 +994,29 @@ test fn witness_a_roster_retirement_event_retires_its_node() -> Bool {
   }
 }
 
-// ONE SAMPLE PER STANDING — the witness's OWN hand-written copy of the enumeration, kept separate
-// from the production module's `roadmap_node_standing_samples` so a disagreement between the two
-// copies is caught: if production's list omits a standing its own fold run cannot see it, but the fold
-// run over THIS list still names the word, the lengths disagree, and the test is red.
+// ONE SAMPLE PER STANDING — the witness's OWN hand-written enumeration, kept deliberately separate
+// from the fixture list the export is built over
+// (#gunbc.roadmap.roadmap_authority_fixture::roadmap_authority_fixture_standing_samples). The export is
+// derived, not written: it is `roadmap_node_standing_key` mapped over that fixture list. So the check
+// available here is to require the derived list to equal the fold over an INDEPENDENT enumeration --
+// this one. Each way the two can disagree fails on its own:
+//   - the fixture list omits a standing: this list still names its word, the lengths disagree, red;
+//   - a reordered export: list equality is positional, and order is part of the contract because the
+//     ctrl bridge serves readiness in the authority's declaration order -- a reader comparing sorted
+//     copies would pass while the two orders disagreed;
+//   - a standing sampled twice: the fold-over-this-list comparison catches a length change on its own,
+//     and `deduped` below catches the case where BOTH copies repeat it, which equality alone would wave
+//     through.
 //
-// WHAT THIS DOES NOT CATCH, said plainly: both lists are hand-written, so an author who adds an
-// eleventh variant to the type, to the fold, and to both no-wildcard matches — and adds it to NEITHER
-// list — leaves every comparison below equal and the export silently short one word. Nothing here, and
-// nothing in the compiler, enforces adding a variant to a sample list: the language cannot be asked for
-// the constructors of a closed sum. The rung this test establishes is "the export is the fold over the
-// samples written, and the two written copies agree" — not "one entry per constructor". The ctrl bridge
-// refuses an unknown key rather than treating it as absent, so the residual surfaces at the consumer as
-// a refusal; the rung above it is the language feature tracked as gunb-ai/gunbc#16925.
-//
-// Order is asserted because the ctrl bridge serves readiness in the authority's declaration order, and
-// a reader comparing sorted copies would pass while the two orders disagreed.
+// WHAT THIS DOES NOT CATCH, said plainly rather than claimed as coverage. Both lists are hand-written.
+// Growing the type forces the fold's no-wildcard match to grow -- so the WORD gets written -- but
+// nothing here, and nothing in the compiler, forces the new variant into EITHER list; a variant absent
+// from both leaves every comparison above equal and the export one word short. The rung this pair
+// establishes is "the export is the fold over the samples written, and the two written copies agree" --
+// not "one entry per constructor". The reader's failure mode for the residual is a refusal, not a
+// mis-staffing: the ctrl bridge refuses an unknown standing key instead of treating the node as
+// absent. The rung above it -- the language handing a witness the constructors of a closed sum, so the
+// list is checked rather than asserted -- is gunb-ai/gunbc#16925.
 fn canonical_standing_samples() -> List<RoadmapNodeStanding> {
   [
     NodeOpen,
@@ -1024,59 +1032,15 @@ fn canonical_standing_samples() -> List<RoadmapNodeStanding> {
   ]
 }
 
-// The typed empty the folds below start from: `init: []` alone leaves the accumulator's element type
-// unjudged, and the compiler refuses `==` on it ('' has no declaration identity) rather than
+// The typed empty the dedup fold below starts from: `init: []` alone leaves the accumulator's element
+// type unjudged, and the compiler refuses `==` on it ('' has no declaration identity) rather than
 // admitting the comparison unseen.
 data no_standing_keys: List<String> = []
 
-// THE TRIPWIRE, witness-side: a match with NO WILDCARD whose every arm rebuilds its own variant from
-// the fields the arm binds and asks the FOLD what that variant is called. Adding a
-// `RoadmapNodeStanding` variant makes this match non-exhaustive and the compiler refuses — the rule
-// #extdeps.ssh.client_options::serialize_ssh_config_file_flag states for the same reason: a wildcard
-// would let a new variant answer as nothing. Rebuilding from the bound fields, rather than passing
-// `s` through, is what makes each arm re-enter the fold instead of echoing a word.
-fn standing_key_per_arm(s: RoadmapNodeStanding) -> List<String> {
-  match s {
-    NodeOpen => [roadmap_node_standing_key(s: NodeOpen)]
-    NodeClaimed { by: b, since: t } => [roadmap_node_standing_key(s: NodeClaimed { by: b, since: t })]
-    NodeInProgress { by: b, last_note: n } => [roadmap_node_standing_key(s: NodeInProgress { by: b, last_note: n })]
-    NodeBlocked { by: b, reason: r } => [roadmap_node_standing_key(s: NodeBlocked { by: b, reason: r })]
-    NodeHandedBack { by: b, reason: r } => [roadmap_node_standing_key(s: NodeHandedBack { by: b, reason: r })]
-    NodeRetired { by: b, reason: r } => [roadmap_node_standing_key(s: NodeRetired { by: b, reason: r })]
-    NodeAccepted { by: b, receipt: rc } => [roadmap_node_standing_key(s: NodeAccepted { by: b, receipt: rc })]
-    NodeReadyForReview { by: b, pr: p, head: h } => [roadmap_node_standing_key(s: NodeReadyForReview { by: b, pr: p, head: h })]
-    NodeForked { heads: hs } => [roadmap_node_standing_key(s: NodeForked { heads: hs })]
-    NodeHistoryIncomplete { missing_parents: mp } => [roadmap_node_standing_key(s: NodeHistoryIncomplete { missing_parents: mp })]
-  }
-}
-
-// THE EXPORT IS THE FOLD, checked against a second hand-written copy of the enumeration.
-// `roadmap_node_standing_keys` is derived in the production module — the fold mapped over that
-// module's own samples — so this witness supplies its OWN copy (`canonical_standing_samples`, built
-// from this file's fixtures) and requires the export to equal the fold over it, in order. Each
-// direction that the two copies can disagree in fails on its own:
-//   - a word the fold never emits, in the export: `from_witness` (or `from_arms`) disagrees;
-//   - a word the fold emits, missing from the export because PRODUCTION's sample list dropped it:
-//     `from_witness` still names it, the lengths disagree, and this is red;
-//   - a reordered export: list equality is positional, and order matters because the ctrl bridge
-//     serves readiness in the authority's declaration order (a reader comparing sorted copies would
-//     pass while the two orders disagreed);
-//   - a duplicated word: the order-preserving dedup equals the list only when nothing repeats.
-// `from_production` and `samples_rebuilt` hold the production derivation to its own samples and to the
-// no-wildcard rebuild beside it. THE RESIDUAL NO CHECK HERE REACHES: a variant present in the type, in
-// the fold, and in both no-wildcard matches, but absent from BOTH hand-written sample lists — every
-// comparison above stays equal and the export ships short one word, because neither list is derived
-// from the type and the language cannot enumerate a closed sum's constructors. Stated where the checks
-// are, not only where the derivation is; the rung above it is tracked as gunb-ai/gunbc#16925.
+// THE EXPORT IS THE FOLD, checked against an independent enumeration of it.
 test fn roadmap_standing_key_export_matches_the_fold() -> Bool {
   let from_witness = map(canonical_standing_samples(), s => roadmap_node_standing_key(s: s))
-  let from_arms = fold(canonical_standing_samples(), init: no_standing_keys, f: (acc, s) => concat(acc, standing_key_per_arm(s: s)))
-  let from_production = map(roadmap_node_standing_samples, s => roadmap_node_standing_key(s: s))
-  let samples_rebuilt = map(roadmap_node_standing_samples, s => roadmap_node_standing_sample_rebuilt(s: s)) == roadmap_node_standing_samples
   let deduped = fold(roadmap_node_standing_keys, init: no_standing_keys, f: (acc, k) => if any(acc, x => x == k) { acc } else { concat(acc, [k]) })
   from_witness == roadmap_node_standing_keys
-    && from_arms == roadmap_node_standing_keys
-    && from_production == roadmap_node_standing_keys
-    && samples_rebuilt
     && deduped == roadmap_node_standing_keys
 }
