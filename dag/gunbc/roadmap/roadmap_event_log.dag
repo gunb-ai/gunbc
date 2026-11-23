@@ -1451,40 +1451,89 @@ fn roadmap_node_standing_key(s: RoadmapNodeStanding) -> String {
   }
 }
 
-// THE STANDING VOCABULARY, AS DATA (gunb-ai/gunbc#16890). The ten words
-// `roadmap_node_standing_key` emits, in the fold's own declaration order, for a consumer that must
-// recognise a standing key without writing this enum a second time -- the ctrl roadmap bridge today,
-// which kept its own copy of the ten and paid for it in review. It is EXPORTED, not copied: one
-// rename here renames it there, on the same commit.
+// THE TWO FIXTURES BELOW exist only so the derivation under `roadmap_node_standing_keys` can hold
+// the fields the WORDS do not read: who signed a standing and what the acceptance receipt said are
+// irrelevant to what a standing is called. They are samples, not authority — nothing outside this
+// derivation reads them, and the witness rebuilds the same ten standings through its own fixtures to
+// show the words do not move with them.
+data roadmap_node_standing_sample_principal: EventPrincipal =
+  EventPrincipalAuthenticated { ref: fabric_workflow_principal }
+
+data roadmap_node_standing_sample_receipt: RoadmapAcceptanceReceipt = RoadmapAcceptanceReceipt {
+  node: "vocabulary-sample" as RoadmapNodeId,
+  criteria_digest: content_hash_atom(value: "0000000000000000" as NonEmptyStr),
+  red_control: RedControlExecuted {
+    witness_module: "gunbc.roadmap.roadmap_event_log" as NonEmptyStr,
+    witness_fn: "roadmap_node_standing_samples" as NonEmptyStr,
+    executed_on: "2026-11-23" as NonEmptyStr,
+  },
+  handback: HandbackDelivered {
+    first_artifact: "vocabulary-sample" as NonEmptyStr,
+    further_artifacts: [],
+  },
+  accepted_by: "vocabulary-sample" as NonEmptyStr,
+  accepted_on: "2026-11-23" as NonEmptyStr,
+}
+
+// ONE SAMPLE PER STANDING, in the fold's declaration order below. This is the enumeration the
+// vocabulary is built from; `roadmap_node_standing_sample_rebuilt` beside it is the tripwire that
+// makes growing the type a compile refusal at this pair rather than a silent omission.
+data roadmap_node_standing_samples: List<RoadmapNodeStanding> = [
+  NodeOpen,
+  NodeClaimed { by: roadmap_node_standing_sample_principal, since: "2026-11-23" },
+  NodeInProgress { by: roadmap_node_standing_sample_principal, last_note: "sample" as NonEmptyStr },
+  NodeBlocked { by: roadmap_node_standing_sample_principal, reason: "sample" as NonEmptyStr },
+  NodeHandedBack { by: roadmap_node_standing_sample_principal, reason: "sample" as NonEmptyStr },
+  NodeRetired { by: roadmap_node_standing_sample_principal, reason: "superseded by the operator" as NonEmptyStr },
+  NodeAccepted { by: roadmap_node_standing_sample_principal, receipt: roadmap_node_standing_sample_receipt },
+  NodeReadyForReview { by: roadmap_node_standing_sample_principal, pr: "16890" as NonEmptyStr, head: "abc1234" as NonEmptyStr },
+  NodeForked { heads: ["e1" as RoadmapEventId, "e2" as RoadmapEventId] },
+  NodeHistoryIncomplete { missing_parents: ["e0" as RoadmapEventId] },
+]
+
+// THE TRIPWIRE: a match with NO WILDCARD that rebuilds every variant from the fields the arm binds,
+// so it cannot answer for a standing it does not name. Adding a `RoadmapNodeStanding` variant makes
+// this match non-exhaustive and the compiler refuses — the rule
+// #extdeps.ssh.client_options::serialize_ssh_config_file_flag states for the same reason: a wildcard
+// would let a new variant render as nothing.
+fn roadmap_node_standing_sample_rebuilt(s: RoadmapNodeStanding) -> RoadmapNodeStanding {
+  match s {
+    NodeOpen => NodeOpen
+    NodeClaimed { by: b, since: t } => NodeClaimed { by: b, since: t }
+    NodeInProgress { by: b, last_note: n } => NodeInProgress { by: b, last_note: n }
+    NodeBlocked { by: b, reason: r } => NodeBlocked { by: b, reason: r }
+    NodeHandedBack { by: b, reason: r } => NodeHandedBack { by: b, reason: r }
+    NodeRetired { by: b, reason: r } => NodeRetired { by: b, reason: r }
+    NodeAccepted { by: b, receipt: rc } => NodeAccepted { by: b, receipt: rc }
+    NodeReadyForReview { by: b, pr: p, head: h } => NodeReadyForReview { by: b, pr: p, head: h }
+    NodeForked { heads: hs } => NodeForked { heads: hs }
+    NodeHistoryIncomplete { missing_parents: mp } => NodeHistoryIncomplete { missing_parents: mp }
+  }
+}
+
+// THE STANDING VOCABULARY, AS DATA (gunb-ai/gunbc#16890): the words `roadmap_node_standing_key`
+// emits, in the fold's declaration order, for a consumer that must recognise a standing key without
+// writing this enum a second time. DERIVED, NOT WRITTEN — the list is the fold mapped over
+// `roadmap_node_standing_samples`, so no word can enter it that the fold does not emit, and a rename
+// in the fold renames it here and at every reader on the same commit.
 //
-// WHAT HOLDS THIS LIST TO THE FOLD, AND WHAT DOES NOT. It is a written list, so the witness
-// `roadmap_standing_key_export_matches_the_fold` rebuilds the same words twice and refuses anything
-// that disagrees: once by mapping the fold over one sample per standing, once through
-// `standing_key_per_arm`, a match with NO WILDCARD whose arms rebuild each variant from the fields
-// the arm binds and ask the fold what it is called. A word here the fold never emits, a fold word
-// missing here, a reordered list, and a duplicated word each go red. A new variant makes that match
-// NON-EXHAUSTIVE -- a compile refusal at this file pair, the rule
-// gunbc.extdeps.ssh.client_options states at `serialize_ssh_config_file_flag`, not a silent gap.
-// WHAT NO CONSTRUCT HERE ENFORCES: the samples list lives in the witness, so an author who adds the
-// fold arm and the match arm and forgets the sample ships an export missing the new word; the
-// witness cannot be given a variant that was never written. The consumer's failure mode for that
-// residual is a refusal, not a mis-staffing: the ctrl bridge refuses an unknown standing key rather
-// than treating it as absent, which is the same reason this list is exported instead of guessed.
+// THE CONSUMER, as a declared frontier (#gunbc.design_argument::consumption): the ctrl session
+// dashboard's roadmap bridge, `scripts/session-dashboard/dag/roadmap_spawner_bridge.dag` in
+// gunb-ai/ctrl (PR gunb-ai/ctrl#2495), which gated readiness on a standing key and carried its own
+// copy of the ten until this export replaced it. Its trigger: the bridge — and with it the only
+// reader of this list outside this repository — is deleted the day this repository serves a ready set
+// that carries each node's lane; the bridge's header names the same condition.
+//
+// WHAT NO CONSTRUCT HERE CLOSES: an author who adds a variant to the type and to the fold, and
+// satisfies `roadmap_node_standing_sample_rebuilt` by adding its arm, could still leave it out of
+// `roadmap_node_standing_samples` — the compiler forces the arm, not the sample. The reader's failure
+// mode for that residual is a refusal, not a mis-staffing: the ctrl bridge refuses an unknown standing
+// key rather than treating it as absent.
 //
 // A consumer that needs the sentence a standing deserves uses `roadmap_node_standing_text`, never
 // this list: the list names the leaf, the sentence says which one.
-data roadmap_node_standing_keys: List<String> = [
-  "open",
-  "claimed",
-  "in_progress",
-  "blocked",
-  "handed_back",
-  "retired",
-  "accepted",
-  "ready_for_review",
-  "forked",
-  "history_incomplete",
-]
+data roadmap_node_standing_keys: List<String> =
+  map(roadmap_node_standing_samples, s => roadmap_node_standing_key(s: s))
 
 fn roadmap_node_standing_text(s: RoadmapNodeStanding) -> String {
   roadmap_node_standing_text_naming(s: s, name: fn(p) { event_principal_label(p: p) })

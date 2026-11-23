@@ -13,7 +13,7 @@ import gunbc.roadmap.roadmap_event_log {
   RoadmapEventDecode, RoadmapEventDecoded, RoadmapEventUndecodable, roadmap_event_decode,
   RoadmapNodeStanding, NodeOpen, NodeClaimed, NodeInProgress, NodeBlocked, NodeHandedBack, NodeForked, NodeHistoryIncomplete,
   roadmap_node_standing, roadmap_history_unordered_reason, roadmap_node_standing_key, roadmap_node_standing_text,
-  roadmap_node_standing_keys, NodeAccepted,
+  roadmap_node_standing_keys, roadmap_node_standing_samples, roadmap_node_standing_sample_rebuilt, NodeAccepted,
   IssueAssignmentProjection, roadmap_issue_assignment,
   IssueComment, roadmap_issue_comments, roadmap_comment_created_key_present, roadmap_comment_retry_present, issue_comment_anchor,
   roadmap_recent_claimed_assignees, roadmap_events_newest_first, roadmap_result_returned_event, ResultReturned, AttemptResultOutcome, ResultPublished, ResultVerificationFailed, ResultHandedBack, NodeReadyForReview,
@@ -993,19 +993,15 @@ test fn witness_a_roster_retirement_event_retires_its_node() -> Bool {
   }
 }
 
-// DISCRIMINATING: the exported vocabulary IS the fold's, in the fold's declaration order, and in
-// neither direction can it drift. Both halves are checked because the list is IMPORTED by consumers
-// (the ctrl roadmap bridge, gunb-ai/gunbc#16890) who read a standing they did not construct: a word
-// here the fold never emits would have a consumer waiting for a standing that does not exist, and a
-// word the fold emits that is missing here would be read as "not a standing" by something that was
-// right about the fold. The order is asserted too, because the bridge serves readiness in the
-// authority's declaration order and a reader who compared sorted copies would pass while the two
-// orders disagreed.
-// ONE SAMPLE PER STANDING. This list is the enumeration the exported vocabulary is checked
-// against. See the comment on `roadmap_node_standing_keys` in gunbc.roadmap.roadmap_event_log for
-// exactly what enforces its coverage (a new variant makes the match below NON-EXHAUSTIVE, which is a
-// compile refusal) and what no construct here can enforce (an author who adds both arms and forgets
-// the sample here ships an export missing the new word -- stated there, not claimed away here).
+// ONE SAMPLE PER STANDING — the witness's OWN enumeration, independent of the production module's
+// `roadmap_node_standing_samples`. The export is derived there from that list, so this one is what
+// catches a standing missing from it: the fold run over this list still names the missing word, the
+// lengths disagree, and the test is red. A new variant therefore has to be added in three places
+// before it can ship at all — the fold (its word), the production sample list (the export's content),
+// and this list (the check) — and the no-wildcard matches in both files refuse to compile until the
+// variant is named there too. The order is asserted because the ctrl bridge serves readiness in the
+// authority's declaration order, and a reader comparing sorted copies would pass while the two orders
+// disagreed.
 fn canonical_standing_samples() -> List<RoadmapNodeStanding> {
   [
     NodeOpen,
@@ -1021,12 +1017,17 @@ fn canonical_standing_samples() -> List<RoadmapNodeStanding> {
   ]
 }
 
-// THE TRIPWIRE: a match with NO WILDCARD, whose every arm rebuilds its own variant from the fields
-// the arm binds and asks the FOLD what that variant is called. Adding a `RoadmapNodeStanding`
-// variant makes this match non-exhaustive and the compiler refuses -- the rule
-// gunbc.extdeps.ssh.client_options states at `serialize_ssh_client_option` for the same reason: a
-// wildcard would let a new variant answer as nothing. Rebuilding from the bound fields, rather than
-// passing `s` through, is what makes each arm re-enter the fold instead of echoing a word.
+// The typed empty the folds below start from: `init: []` alone leaves the accumulator's element type
+// unjudged, and the compiler refuses `==` on it ('' has no declaration identity) rather than
+// admitting the comparison unseen.
+data no_standing_keys: List<String> = []
+
+// THE TRIPWIRE, witness-side: a match with NO WILDCARD whose every arm rebuilds its own variant from
+// the fields the arm binds and asks the FOLD what that variant is called. Adding a
+// `RoadmapNodeStanding` variant makes this match non-exhaustive and the compiler refuses — the rule
+// #extdeps.ssh.client_options::serialize_ssh_config_file_flag states for the same reason: a wildcard
+// would let a new variant answer as nothing. Rebuilding from the bound fields, rather than passing
+// `s` through, is what makes each arm re-enter the fold instead of echoing a word.
 fn standing_key_per_arm(s: RoadmapNodeStanding) -> List<String> {
   match s {
     NodeOpen => [roadmap_node_standing_key(s: NodeOpen)]
@@ -1042,22 +1043,32 @@ fn standing_key_per_arm(s: RoadmapNodeStanding) -> List<String> {
   }
 }
 
-// THE EXPORT IS THE FOLD. `roadmap_node_standing_keys` is a written list, so it is checked against
-// the fold twice rather than trusted: once by mapping the fold over one sample per standing, once
-// through the no-wildcard match above, which is the site that forces a new standing to be visited.
-// Refused, each on its own: a word here the fold never emits; a word the fold emits that is missing
-// here; a reordered list (the ctrl bridge serves readiness in the authority's declaration order, so
-// a reader comparing sorted copies would pass while the two orders disagreed); a duplicated word
-// (the order-preserving dedup above equals the list only when nothing repeats). What this test
-// CANNOT see is a variant absent from `canonical_standing_samples` AND from the match -- the match
-// closes that only by refusing to compile, which is the honest boundary stated in
-// `roadmap_node_standing_keys`.
+// THE EXPORT IS THE FOLD, checked from an enumeration the production module does not own.
+// `roadmap_node_standing_keys` is derived there — the fold mapped over that module's own samples —
+// so this witness supplies a SECOND, independent enumeration (`canonical_standing_samples`, built
+// from this file's fixtures) and requires the export to equal the fold over it, in order. Each
+// direction fails on its own:
+//   - a word the fold never emits, in the export: `from_witness` (or `from_arms`) disagrees;
+//   - a word the fold emits, missing from the export — including the case where production's sample
+//     list forgets a standing: `from_witness` still has it, so the lengths disagree and this is red;
+//   - a reordered export: list equality is positional, and order matters because the ctrl bridge
+//     serves readiness in the authority's declaration order (a reader comparing sorted copies would
+//     pass while the two orders disagreed);
+//   - a duplicated word: the order-preserving dedup equals the list only when nothing repeats.
+// `from_production` and `samples_rebuilt` then hold the production derivation to its own samples and
+// to the no-wildcard rebuild beside it. What remains outside every check here is an author who adds
+// the type variant, the fold arm, the production sample AND this canonical list, and misnames one of
+// them with the same word — which is a misnaming of the fold itself, and the fold's own witnesses
+// are where that would surface.
 test fn roadmap_standing_key_export_matches_the_fold() -> Bool {
-  let samples = canonical_standing_samples()
-  let from_fold = map(samples, s => roadmap_node_standing_key(s: s))
-  let from_arms = fold(samples, init: [], f: (acc, s) => concat(acc, standing_key_per_arm(s: s)))
-  let deduped = fold(roadmap_node_standing_keys, init: [], f: (acc, k) => if any(acc, x => x == k) { acc } else { concat(acc, [k]) })
-  from_fold == roadmap_node_standing_keys
+  let from_witness = map(canonical_standing_samples(), s => roadmap_node_standing_key(s: s))
+  let from_arms = fold(canonical_standing_samples(), init: no_standing_keys, f: (acc, s) => concat(acc, standing_key_per_arm(s: s)))
+  let from_production = map(roadmap_node_standing_samples, s => roadmap_node_standing_key(s: s))
+  let samples_rebuilt = map(roadmap_node_standing_samples, s => roadmap_node_standing_sample_rebuilt(s: s)) == roadmap_node_standing_samples
+  let deduped = fold(roadmap_node_standing_keys, init: no_standing_keys, f: (acc, k) => if any(acc, x => x == k) { acc } else { concat(acc, [k]) })
+  from_witness == roadmap_node_standing_keys
     && from_arms == roadmap_node_standing_keys
+    && from_production == roadmap_node_standing_keys
+    && samples_rebuilt
     && deduped == roadmap_node_standing_keys
 }
