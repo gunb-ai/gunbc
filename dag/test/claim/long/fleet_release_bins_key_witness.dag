@@ -13,7 +13,7 @@ import gunbc.fleet.fleet_release_bins_key {
   lit, var, words, cmd, cmdl, assign_sub, test_words, seq,
   release_bins_emitted, release_bins_transport,
   release_bins_key_statements, fleet_release_bins_product, release_bins_pack_statements, release_bins_outcome_statements,
-  release_bins_consumer_statements, release_bins_download_dir, release_bins_main_lookup_ref, lookup_decode_statements,
+  release_bins_consumer_statements, release_bins_lab_consumer_statements, release_bins_key_kind, release_bins_download_dir, release_bins_main_lookup_ref, lookup_decode_statements,
   release_bins_dispatch_lookup_ref, release_bins_dispatch_scope_ref_env,
   release_bins_lookup_file, release_bins_staging_dir, release_bins_manifest_name,
   release_bins_preimage_name, source_closure_statements, release_bins_environment_statements,
@@ -371,6 +371,71 @@ test fn release_bins_RED_restore_duplicate_member_refuses() -> Bool {
 
 test fn release_bins_RED_consumer_duplicate_member_refuses() -> Bool {
   refused_as(script: script_RED_consumer_duplicate_member_refuses, refusal: "PackListingNotRoster")
+}
+
+// ── THE LAB CONSUMER over a pack the PRODUCER made ─────────────────────────────────────────────────────────
+// The serving host admits the producing run's artifact as `gh run download` lands it: the three entry files, flat,
+// in a per-revision pack dir. The pack below is made by the real producer statements over the fixture members
+// (part_produced_store); only the preimage's kind line is rewritten to the fleet product's kind, because the
+// supplied key writes kind=fixture and the lab admits the fleet pack. The source tree the lab admits against is
+// the fixture checkout ($T/ws), whose tree the preimage names. Each red mutates one fact and must refuse by its
+// OWN name, so no red can go green through another's refusal.
+data part_lab_prep_files: Outcome<String> = e(statements: [
+  cmd(ws: [fx(t: "mkdir"), fx(t: "-p"), in_t(path: "/pack")]),
+  cmd(ws: [fx(t: "cp"), in_t(path: join(["/store/", release_bins_preimage_name], "")), in_t(path: join(["/store/", release_bins_manifest_name], "")), in_t(path: join(["/store/", ci_release_bins_archive_name], "")), in_t(path: "/pack/")]),
+])
+data part_lab_kind: Outcome<String> = e(statements: [
+  cmd(ws: [fx(t: "sed"), fx(t: "-i"), fx(t: join(["s/^kind=fixture$/kind=", release_bins_key_kind, "/"], "")), in_t(path: join(["/pack/", release_bins_preimage_name], ""))]),
+])
+data part_lab_consumer: Outcome<String> = e(statements: release_bins_lab_consumer_statements(product: fleet_release_bins_product(), pack_dir: in_t(path: "/pack"), source_dir: in_t(path: "/ws")))
+// After admission every promoted member still matches the manifest, read from the promotion directory.
+data part_lab_promoted_check: Outcome<String> = e(statements: [
+  cmd(ws: [fx(t: "cd"), in_t(path: "/pack/target/release")]),
+  cmd(ws: [fx(t: "sha256sum"), fx(t: "--strict"), fx(t: "--quiet"), fx(t: "-c"), in_t(path: join(["/pack/", release_bins_manifest_name], ""))]),
+  cmdl(ls: ["echo", "lab promoted members match their manifest"]),
+])
+// The checkout moves on after the pack was made: the tree the lab holds is not the tree the pack was keyed on.
+data part_lab_source_moved_on: Outcome<String> = e(statements: [
+  write_file(path: in_t(path: "/ws/src.txt"), lines: ["fixture source, moved on"]),
+  cmd(ws: [fx(t: "git"), fx(t: "-C"), in_t(path: "/ws"), fx(t: "add"), fx(t: "src.txt")]),
+  cmd(ws: [fx(t: "git"), fx(t: "-C"), in_t(path: "/ws"), fx(t: "-c"), fx(t: "user.email=fixture@example.invalid"), fx(t: "-c"), fx(t: "user.name=fixture"), fx(t: "commit"), fx(t: "-qm"), fx(t: "moved on")]),
+])
+data part_lab_manifest_removed: Outcome<String> = e(statements: [cmd(ws: [fx(t: "rm"), in_t(path: join(["/pack/", release_bins_manifest_name], ""))])])
+data mutation_missing_member: Outcome<String> = e(statements: repack(edit: [], names: filter(xs: ci_floor_required_artifact_names(), predicate: n => n != "claim_batch")))
+
+fn lab_after(mutation: Outcome<String>, before_consumer: List<Outcome<String>>) -> List<Outcome<String>> {
+  concat([part_produced_store, mutation, part_lab_prep_files], concat(before_consumer, [part_lab_consumer]))
+}
+
+data script_lab_positive_admits_and_promotes: TransportScript? = release_bins_transport(parts: concat(lab_after(mutation: part_no_mutation, before_consumer: [part_lab_kind]), [part_lab_promoted_check]))
+data script_RED_lab_tampered_member_refuses: TransportScript? = release_bins_transport(parts: lab_after(mutation: mutation_altered_gunbc, before_consumer: [part_lab_kind]))
+data script_RED_lab_other_source_tree_refuses: TransportScript? = release_bins_transport(parts: lab_after(mutation: part_no_mutation, before_consumer: [part_lab_kind, part_lab_source_moved_on]))
+data script_RED_lab_missing_member_refuses: TransportScript? = release_bins_transport(parts: lab_after(mutation: mutation_missing_member, before_consumer: [part_lab_kind]))
+data script_RED_lab_other_product_kind_refuses: TransportScript? = release_bins_transport(parts: lab_after(mutation: part_no_mutation, before_consumer: []))
+data script_RED_lab_missing_manifest_refuses: TransportScript? = release_bins_transport(parts: lab_after(mutation: part_no_mutation, before_consumer: [part_lab_kind, part_lab_manifest_removed]))
+
+test fn release_bins_lab_consumer_admits_a_producer_pack_and_promotes_verified_members() -> Bool {
+  succeeded_with(script: script_lab_positive_admits_and_promotes, marker: "lab promoted members match their manifest")
+}
+
+test fn release_bins_RED_lab_tampered_member_refuses() -> Bool {
+  refused_as(script: script_RED_lab_tampered_member_refuses, refusal: "MemberDigestMismatch")
+}
+
+test fn release_bins_RED_lab_other_source_tree_refuses() -> Bool {
+  refused_as(script: script_RED_lab_other_source_tree_refuses, refusal: "ConsumerSourceTreeMismatch")
+}
+
+test fn release_bins_RED_lab_missing_member_refuses() -> Bool {
+  refused_as(script: script_RED_lab_missing_member_refuses, refusal: "PackListingNotRoster")
+}
+
+test fn release_bins_RED_lab_other_product_kind_refuses() -> Bool {
+  refused_as(script: script_RED_lab_other_product_kind_refuses, refusal: "ConsumerProductKindMismatch")
+}
+
+test fn release_bins_RED_lab_missing_manifest_refuses() -> Bool {
+  refused_as(script: script_RED_lab_missing_manifest_refuses, refusal: "ConsumerFileMissing")
 }
 
 // ── P2-3: only one complete, admitted-shape cache-API answer decides standing ───────────────────
