@@ -30,7 +30,7 @@ test fn the_admitted_condition_form_still_parses_holds() -> Bool {
   accepted(classify(text: admitted_condition_source, path: "probe/w1.dag"))
 }
 
-data index_suffix_source: String = "module p\ndata x: Nat = xs\n  [1]\n"
+data index_suffix_source: String = "module p\ndata x: Nat = xs[1]\n"
 
 test fn the_index_suffix_still_parses_holds() -> Bool {
   accepted(classify(text: index_suffix_source, path: "probe/w2.dag"))
