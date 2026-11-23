@@ -665,19 +665,25 @@ test fn the_evidence_carrier_declares_its_scaffold_and_trigger_holds() -> Bool {
   let trigger = dissolution_description(
     condition: compiler_gate_contract_stamp_evidence_shell_emit_dissolution_trigger
   )
-  string_contains(s: trigger, pattern: "dissolve-on: compiler_gate_contract_stamp_evidence_statements")
-    && string_contains(s: trigger, pattern: "instrument_targets")
-    // MATCH, NOT `as String`: this is the corpus idiom (merge_admission_enforcement_witness.dag:47),
-    // and it also pins WHICH KIND of disposition the carrier is -- a Scaffold dissolving to a single
-    // authority, bound by DeclarationRef to the fn that emits the shell. Terminal would mean the
-    // residual was declared permanent, which is a different claim and a different policy.
-    match compiler_gate_contract_stamp_evidence_shell_emit_scaffold {
-      Scaffold { dissolves_to: SingleAuthority,
-                 bind: DeclarationRef { module_path: "gunbc.witness.compiler_gate_contract_stamp",
-                                        decl_name: "compiler_gate_contract_stamp_evidence_statements",
-                                        field: WholeDeclaration } } => true
-      _ => false
-    }
+  // BOTH claims now DECIDE the result. Until now the && chain below was a non-terminal
+  // statement -- computed and thrown away (census instrument: dropped ExprBinOp{op: And} at
+  // this line), so the test passed on the match alone no matter what the chain said. Named
+  // lets force every claim to evaluate; no `let _ =` anywhere -- acknowledging the drop is
+  // the opposite of the fix. See node://discarded-bool-result-wall.
+  let c1 = string_contains(s: trigger, pattern: "dissolve-on: compiler_gate_contract_stamp_evidence_statements")
+  let c2 = string_contains(s: trigger, pattern: "instrument_targets")
+  // MATCH, NOT `as String`: this is the corpus idiom (merge_admission_enforcement_witness.dag:47),
+  // and it also pins WHICH KIND of disposition the carrier is -- a Scaffold dissolving to a single
+  // authority, bound by DeclarationRef to the fn that emits the shell. Terminal would mean the
+  // residual was declared permanent, which is a different claim and a different policy.
+  let scaffold_ok = match compiler_gate_contract_stamp_evidence_shell_emit_scaffold {
+    Scaffold { dissolves_to: SingleAuthority,
+               bind: DeclarationRef { module_path: "gunbc.witness.compiler_gate_contract_stamp",
+                                      decl_name: "compiler_gate_contract_stamp_evidence_statements",
+                                      field: WholeDeclaration } } => true
+    _ => false
+  }
+  c1 && c2 && scaffold_ok
 }
 
 type EvidencePosition {
