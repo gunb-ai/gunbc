@@ -26557,7 +26557,7 @@ fn record_list_cons_tail_split(receiver_len: usize) {
 
 /// Hypothesis-A instrumentation (adhoc-c328b166-bca residual hunt): call frequency for the
 /// grammar-analysis entry points S1's brief named as candidates for a fixed,
-/// file-size-independent per-parse-module recompute (`grammar_validate_for_parse`,
+/// file-size-independent per-parse-module recompute (`grammar_validate_and_analyze`,
 /// `compute_nullable_set`, `compute_production_first_rows`). A tiny named watchlist, not a
 /// general profiler, answering "how many times, relative to file size" by execution.
 static CALL_FREQUENCY_WATCHLIST: std::sync::Mutex<
@@ -26569,7 +26569,7 @@ fn record_call_frequency(func_name: &str) {
         return;
     }
     const WATCHLIST: &[&str] = &[
-        "grammar_validate_for_parse",
+        "grammar_validate_and_analyze",
         "compute_nullable_set",
         "compute_production_first_rows",
         "parse_diags_to_diagnostics",
