@@ -89,6 +89,7 @@ import extdeps.posix.test_utility {
   AncestorExistenceProbe,
   AncestorSearchable,
   AncestorSearchUnreadable,
+  AncestorLinkReadingUnreadable,
   AncestorNotSearchable,
   AncestorNotADirectory,
   AncestorIsNotADirectory,
@@ -9563,7 +9564,10 @@ fn host_remove_ancestors(path: String) -> List<String> {
 //    rather than borrowing the referent's search bit.
 // So a level is admitted as `AncestorSearchable` only when `test -x` AND `test -d` both answer present
 // and `test -L` answers absent: present, a directory, and not a link. Anything else is either "not there"
-// (the entry decides whether the walk climbs) or "unreadable" (the law refuses).
+// (the entry decides whether the walk climbs) or "a probe could not be read" -- and WHICH probe is carried,
+// not folded: this function's `-L` and the walk's `-x` are different readings of different levels, and the
+// law in extdeps.posix.test_utility words each refusal from the alternative named, so an unreadable `-L`
+// must never be reported as an unreadable `-x`.
 fn host_remove_directory_admission(
   ancestor: String,
   run: fn(ArgvCommand) -> RunArgvTransportOutcome,
@@ -9576,8 +9580,12 @@ fn host_remove_directory_admission(
         // A real directory, not a link: this level could have been searched for the level under it.
         PathAbsentOrUnstattable => AncestorSearchable
         PathPresent => AncestorNotADirectory { cause: AncestorIsASymlink }
-        // The link could not be told from a plain entry: what the level IS was not answered.
-        PathExistenceUnreadable { reason: r } => AncestorSearchUnreadable { reason: r }
+        // The link could not be told from a plain entry: what the level IS was not answered. This is NOT an
+        // unreadable search reading -- `test -x` was answered by the caller and `test -d` was answered here,
+        // so the only probe that failed is `-L`, and the alternative named here is what makes the law below
+        // name `-L` too. Naming `AncestorSearchUnreadable` instead would have told the operator that a probe
+        // which answered cleanly could not be read.
+        PathExistenceUnreadable { reason: r } => AncestorLinkReadingUnreadable { reason: r }
       }
     }
     // `test -x` true and `test -d` false: a file with an execute bit, or a link to one. It has no

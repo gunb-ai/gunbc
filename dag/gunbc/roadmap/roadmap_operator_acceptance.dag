@@ -50,7 +50,8 @@ import gunbc.roadmap.roadmap_model {
   roadmap_acceptance_line_of_receipt, roadmap_acceptance_line_acceptance_receipt,
   roadmap_acceptance_line_revocation_facts,
 }
-import gunbc.roadmap.roadmap_status { TicketFields, RedControlExecuted, RedControlNotRun, HandbackDelivered, HandbackNotDelivered }
+import gunbc.roadmap.roadmap_status { TicketFields, RedControlExecuted, RedControlNotRun, HandbackDelivered, HandbackNotDelivered, red_control_evidence_is_valid_red, red_observation_holds, RedObservation }
+import std.types { CommitSha }
 import gunbc.roadmap.roadmap_event_log {
   RoadmapNodeStanding, NodeReadyForReview, RoadmapEventId, RoadmapEventEnvelope, RoadmapAcceptanceEventRow,
   EventPrincipal, EventPrincipalAuthenticated,
@@ -58,9 +59,10 @@ import gunbc.roadmap.roadmap_event_log {
 }
 import gunbc.roadmap.roadmap_event_carrier {
   RoadmapEventCarrierLayout, roadmap_event_carrier_layout_for_instance, roadmap_events_read_all, roadmap_events_read,
+  CarrierReadAttached,
   RoadmapAllEventsRead, AllEventsRead, AllEventsReadRefused, EventsRead, EventsReadRefused,
   EventAppended, EventAlreadyPresent, EventAppendRefused, CarrierClosed, CarrierSnapshotClose,
-  SnapshotNotOpened, SnapshotClosed, SnapshotCloseFailed,
+  SnapshotNotOpened, SnapshotClosed, SnapshotCloseFailed, SnapshotCloseVerificationFailed,
 }
 import gunbc.roadmap.roadmap_issue_command { IssueCommandSubject, AcceptNode, issue_command_apply }
 import gunbc.roadmap.roadmap_dashboard_instance {
@@ -95,7 +97,7 @@ import gunbc.roadmap.roadmap_acceptance_history_carrier {
 // event is filed under. A receipt whose red control never ran, or whose handback was never delivered, has no
 // closable line -- "" says so rather than closing on an evidence-free acceptance.
 fn roadmap_operator_acceptance_receipt_is_closable(receipt: RoadmapAcceptanceReceipt) -> Bool {
-  let red_ran = match receipt.red_control { RedControlExecuted { witness_module: _, witness_fn: _, executed_on: _ } => true  RedControlNotRun => false }
+  let red_ran = red_control_evidence_is_valid_red(e: receipt.red_control)
   let handback_given = match receipt.handback { HandbackDelivered { first_artifact: _, further_artifacts: _ } => true  HandbackNotDelivered => false }
   red_ran && handback_given
 }
@@ -162,6 +164,7 @@ fn roadmap_all_events_after_snapshot_close(read: CarrierClosed<RoadmapAllEventsR
     SnapshotNotOpened => read.result
     SnapshotClosed => read.result
     SnapshotCloseFailed { worktree: _, exit_code: _, stderr: _ } => read.result
+    SnapshotCloseVerificationFailed { worktree: _, verification: _ } => read.result
   }
 }
 
@@ -169,10 +172,20 @@ fn roadmap_all_events_after_snapshot_close(read: CarrierClosed<RoadmapAllEventsR
 // page use, or the located reason it cannot be had. This is the ONLY way an acceptance fact reaches a
 // reader.
 fn roadmap_operator_acceptance_history_load(layout: RoadmapEventCarrierLayout) -> RoadmapAcceptanceEventHistoryLoad {
-  // The read opens a temporary snapshot worktree; this is a read-only load whose callers are pure
-  // readers, and it is closed the way the serve display path closes the same read
-  // (roadmap_serve::serve_all_events_after_snapshot_close) — by the reader that took it.
-  match roadmap_all_events_after_snapshot_close(read: roadmap_events_read_all(layout: layout)) {
+  // The read opens a temporary snapshot worktree; this is a read-only load whose callers are pure readers, and
+  // it is closed the way the serve display path closes the same read (roadmap_serve::serve_all_events_after_
+  // snapshot_close) — by the reader that took it. It reaches the log through the ATTACHED arm of the single read
+  // entry point; the fold over what it read is SHARED with the launcher's scoped read (the _of_read below), so a
+  // log nobody opened refuses identically on both paths — one fold, not two (gunbc.design_argument::root_generalization).
+  roadmap_operator_acceptance_history_of_read(read: roadmap_all_events_after_snapshot_close(read: roadmap_events_read_all(read: CarrierReadAttached { attached: layout })))
+}
+
+// THE SHARED ACCEPTANCE-HISTORY FOLD, over an ALREADY-READ log feed. The service record path (above) and the
+// launcher scoped path (roadmap_plan_projection_over_scoped) read through roadmap_events_read_all and hand the
+// result HERE, so the fold — and the located refusal a read-nobody-opened must produce — exists once. An empty
+// history read off a log nobody opened is the fail-open this change closes; here it is LoadRefused, never empty.
+fn roadmap_operator_acceptance_history_of_read(read: RoadmapAllEventsRead) -> RoadmapAcceptanceEventHistoryLoad {
+  match read {
     AllEventsReadRefused { step, reason } =>
       RoadmapAcceptanceEventHistoryLoadRefused { detail: join(["event log read refused at ", step, ": ", reason], "") as NonEmptyStr }
     AllEventsRead { envelopes } => match roadmap_operator_acceptance_history_of(envelopes: envelopes) {
@@ -301,6 +314,7 @@ type OperatorCloseInputs {
   accepted_on: Iso8601CivilDate
   witness_module: NonEmptyStr
   witness_fn: NonEmptyStr
+  observation: RedObservation
   first_artifact: NonEmptyStr
   further_artifacts: List<NonEmptyStr>
   at: EpochSecs
@@ -360,7 +374,7 @@ fn roadmap_operator_close(
           Present { value: refusal } => CloseRefused { reason: refusal }
           Absent => {
             let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
-            match roadmap_all_events_after_snapshot_close(read: roadmap_events_read_all(layout: layout)) {
+            match roadmap_all_events_after_snapshot_close(read: roadmap_events_read_all(read: CarrierReadAttached { attached: layout })) {
               AllEventsReadRefused { step, reason } => CloseRefused {
                 reason: CloseHistoryUnreadable { reason: join(["event log read refused at ", step, ": ", reason], "") as NonEmptyStr } }
               AllEventsRead { envelopes } =>
@@ -517,7 +531,7 @@ fn roadmap_operator_close_receipt(inputs: OperatorCloseInputs) -> RoadmapAccepta
   RoadmapAcceptanceReceipt {
     node: inputs.node,
     criteria_digest: roadmap_criteria_digest(t: inputs.ticket),
-    red_control: RedControlExecuted { witness_module: inputs.witness_module, witness_fn: inputs.witness_fn, executed_on: roadmap_operator_render_civil_date(date: inputs.accepted_on) },
+    red_control: RedControlExecuted { witness_module: inputs.witness_module, witness_fn: inputs.witness_fn, executed_on: roadmap_operator_render_civil_date(date: inputs.accepted_on), observation: inputs.observation },
     handback: HandbackDelivered { first_artifact: inputs.first_artifact, further_artifacts: inputs.further_artifacts },
     accepted_by: inputs.accepted_by,
     accepted_on: roadmap_operator_render_civil_date(date: inputs.accepted_on),
@@ -534,7 +548,11 @@ fn roadmap_operator_close_record(inputs: OperatorCloseInputs) -> OperatorCloseRe
   // witness_module/witness_fn/first_artifact emptiness branches were deleted for the same reason:
   // NonEmptyStr already holds that constraint, so a check restating it is a second representation
   // (gunbc.design_argument::minimize_redundancy, gunbc.design_argument::single_authority). What is actually unchecked below is the receipt LINE — a String — so it is checked.
-  if roadmap_operator_acceptance_receipt_line(receipt: roadmap_operator_close_receipt(inputs: inputs)) == "" { Present { value: CloseEvidenceMissing { field: "red_control/handback" as NonEmptyStr } } } else { none }
+  // THE FAILING COMMIT IS NAMED OR THE CLOSE IS REFUSED, with the fields called out (ruling
+  // gunbc.design_ruling::executed_red_control_names_its_failing_commit): red_at and green_at are two
+  // well-formed Git heads and they differ.
+  if !red_observation_holds(o: inputs.observation) { Present { value: CloseEvidenceMissing { field: "red observation (well-formed commits: where the witness failed, where it passed, and for a probe its red_base and red-control/<row-id> ref)" as NonEmptyStr } } }
+  else if roadmap_operator_acceptance_receipt_line(receipt: roadmap_operator_close_receipt(inputs: inputs)) == "" { Present { value: CloseEvidenceMissing { field: "red_control/handback" as NonEmptyStr } } } else { none }
 }
 
 // Idempotency by operation key, read from the chain itself: the same key carrying the same close
@@ -789,7 +807,7 @@ fn roadmap_acceptance_migration_verify_instance(
   instance: HostDashboardInstance, expected_manifest: String, retired_roster: String
 ) -> RoadmapAcceptanceMigrationOutcome {
   let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
-  match roadmap_all_events_after_snapshot_close(read: roadmap_events_read_all(layout: layout)) {
+  match roadmap_all_events_after_snapshot_close(read: roadmap_events_read_all(read: CarrierReadAttached { attached: layout })) {
     AllEventsReadRefused { step, reason } =>
       MigrationRefused { cause: LogReadRefused { step: step, reason: reason } }
     AllEventsRead { envelopes } =>

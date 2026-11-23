@@ -10,7 +10,7 @@ import gunbc.fleet.fleet_host_identity {
   operator_host_e2d4b7, operator_host_srv10, operator_host_srv11, operator_host_srv12, operator_host_srv14, operator_host_srv9,
 }
 import gunbc.fleet.fleet_host_key_enrollment { fleet_host_key_enrollments, known_host_row_field }
-import gunbc.fleet.fleet_known_hosts_anchor { first_contact_known_host_rows, fleet_known_hosts_rows, known_hosts_file_rows }
+import gunbc.fleet.fleet_known_hosts_anchor { first_contact_known_host_rows, fleet_known_hosts_rows, known_hosts_file_rows, anchored_host_key_row }
 import gunbc.fleet.fleet_intent_network {
   fleet_intent_network, host_lan_address, ken_host_lan_endpoint, operator_lan_gateway_endpoint, printer_01_lan_endpoint, printer_01_lan_reservation, printer_02_lan_endpoint, printer_02_lan_reservation, srv14_host_lan_endpoint, srv1_bmc_endpoint, srv1_host_lan_endpoint, srv1_tailscale_endpoint, srv2_bmc_endpoint, srv2_host_lan_endpoint, srv2_tailscale_endpoint, srv3_bmc_endpoint, srv3_host_lan_endpoint, srv4_bmc_endpoint, srv4_host_lan_endpoint,
 }
@@ -158,7 +158,18 @@ test fn fleet_intent_network_srv14_lease_row_holds_kind_and_hop_discipline() -> 
     && srv14_host_lan_endpoint.role == HostOperatingSystem
     && srv14_host_lan_endpoint.locality == Lan
     && srv14_host_lan_endpoint.subject == EndpointHost { host: operator_host_srv14 }
-    && !any(fleet_host_key_enrollments, k => (k.host as String) == (operator_host_srv14 as String))
+    // AFTER THE JOIN (operator 2026-11-21): srv14 is now enrolled AND anchored, so the old
+    // "not enrolled while it is only a hop" conjunct is obsolete. The discipline that SURVIVES -- and is
+    // what the lease row still guards -- is that srv14's anchor lands at the DERIVED tailnet name, NEVER
+    // at the LAN lease address: an anchored row must not masquerade the lease (the register records that
+    // address-as-identity rot separately; this claim only guards the lease row never becoming an anchor).
+    && match host_lan_address(host: operator_host_srv14) {
+      Present { value: lease } => match anchored_host_key_row(host: operator_host_srv14) {
+        Present { value: r } => known_host_row_field(k: r) != (lease as String)
+        Absent => false
+      }
+      Absent => false
+    }
     && all(first_contact_known_host_rows(), r => any(known_hosts_file_rows(), k => known_host_row_field(k: k) == known_host_row_field(k: r)))
     && host_lan_address(host: operator_host_srv11) == none
 }
