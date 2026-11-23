@@ -21,6 +21,8 @@ import gunbc.live_deploy.deployed_tree_observation {
   TreeLegNotAttempted,
 }
 import gunbc.live_deploy.deployed_tree_report {
+import extdeps.exec.command { argv_words, ArgvCommand }
+import extdeps.git { git_in_trusted_repository_head_revision_command }
   deployed_tree_standing_line,
   deployed_tree_standing_is_publication_converged,
   DeployedTreeStandingUnobserved,
