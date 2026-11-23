@@ -33,6 +33,11 @@ import gunbc.roadmap.roadmap_event_log {
 }
 import gunbc.roadmap.roadmap_event_cli { roadmap_event_kind_from_words }
 
+// The witness voice: a named assertion, checked by its own line. The label documents the row;
+// the boolean is what the runner reports. It must be DECLARED here, in the module that calls it:
+// the effect analysis refuses a call whose callee identity it cannot establish.
+fn claim(label: String, satisfied: Bool) -> Bool { satisfied }
+
 fn node() -> RoadmapNodeId { "merge-node" as RoadmapNodeId }
 fn red() -> String { "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678" }
 fn green() -> String { "0f1e2d3c4b5a69788796a5b4c3d2e1f001234567" }

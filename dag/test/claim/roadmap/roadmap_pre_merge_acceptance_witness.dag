@@ -58,6 +58,11 @@ import std.optional { Optional, Present, Absent }
 // THE NODE THE PINNED LINE SPEAKS OF. line_spelling is imported from the tree witness rather than
 // re-spelled here, so the bytes under test are the bytes that witness already pins the readers against —
 // one spelling of a receipt line in the whole test tree (gunbc.design_ruling::single_authority).
+// The witness voice: a named assertion, checked by its own line. The label documents the row;
+// the boolean is what the runner reports. It must be DECLARED here, in the module that calls it:
+// the effect analysis refuses a call whose callee identity it cannot establish.
+fn claim(label: String, satisfied: Bool) -> Bool { satisfied }
+
 fn ledger_node() -> String { "tree-node" }
 
 // THE RULING'S LINE: an executed red control carrying the pair, and no merge fact anywhere in it.
@@ -93,8 +98,8 @@ fn ledger_judgement(fn_with: fn(RoadmapEventCarrierLayout, RoadmapEventCarrierSc
   }
 }
 
-fn recorder_author() -> Optional<PrincipalRef> {
-  principal_ref_parse_label(s: "principal:google-oidc/accounts/116084671989231734979")
+fn recorder_author() -> PrincipalRef {
+  PrincipalRef { authority: "google-oidc" as NonEmptyStr, namespace: "accounts" as NonEmptyStr, subject: "116084671989231734979" as NonEmptyStr }
 }
 
 fn acceptance_choice() -> Optional<AcceptanceCommandChoice> {
@@ -122,9 +127,8 @@ test fn an_acceptance_recorded_on_a_head_is_accepted_before_any_merge() -> Bool 
 }
 
 fn pre_merge_witness(layout: RoadmapEventCarrierLayout) -> Bool {
-  match recorder_author() {
-    Absent => claim("the fixture author is not a principal the law spells", false)
-    Present { value: author } => match acceptance_choice() {
+  let author = recorder_author()
+  match acceptance_choice() {
     Absent => claim("the fixture line or its pull-request pair was refused", false)
     Present { value: choice } => {
       let appended = roadmap_acceptance_command_over(
@@ -192,7 +196,6 @@ fn pre_merge_witness(layout: RoadmapEventCarrierLayout) -> Bool {
       }
       }
     }
-  }
 }
 
 // APPEND-ONLY, NO REVOCATION: the same acceptance offered twice answers the FIRST recording and writes
@@ -204,9 +207,8 @@ test fn the_same_acceptance_offered_twice_answers_the_first_recording() -> Bool 
 }
 
 fn replay_witness(layout: RoadmapEventCarrierLayout) -> Bool {
-  match recorder_author() {
-    Absent => claim("the fixture author is not a principal the law spells", false)
-    Present { value: author } => match acceptance_choice() {
+  let author = recorder_author()
+  match acceptance_choice() {
       Absent => claim("the fixture line or its pull-request pair was refused", false)
       Present { value: choice } => {
         let first = roadmap_acceptance_command_over(layout: layout, author_ref: author, node: ledger_node(), choice: choice)
@@ -234,5 +236,4 @@ fn replay_witness(layout: RoadmapEventCarrierLayout) -> Bool {
         }
       }
     }
-  }
 }
