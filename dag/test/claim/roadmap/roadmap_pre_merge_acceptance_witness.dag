@@ -53,6 +53,7 @@ import test.claim.roadmap.roadmap_red_control_tree_witness {
   line_spelling, pair_members, pair_url, pair_head,
 }
 import std.algebra { string_contains }
+import std.optional { Optional, Present, Absent }
 
 // THE NODE THE PINNED LINE SPEAKS OF. line_spelling is imported from the tree witness rather than
 // re-spelled here, so the bytes under test are the bytes that witness already pins the readers against —
@@ -60,7 +61,7 @@ import std.algebra { string_contains }
 fn ledger_node() -> String { "tree-node" }
 
 // THE RULING'S LINE: an executed red control carrying the pair, and no merge fact anywhere in it.
-fn accepted_line() -> String { join(["", line_spelling(observation: pair_members()), ""], "") }
+fn accepted_line() -> String { line_spelling(observation: pair_members()) }
 
 type LedgerRun {
   result: Bool
