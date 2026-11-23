@@ -2247,6 +2247,117 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "fabric-bringup", contribution: "The fleet becomes a fabric that places work by itself, so bringing up a host means joining it, not hand-arranging its slots."),
     ),
     roadmap_node(
+      identity: "rn_TPS3J4RXCSR3Y4RA1NZJNKDKVX",
+      id: "machine-shapes-join-the-cluster",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/plans/new_server_bringup.dag"),
+      line: ticket(t: level_fields(
+          headline: "Every machine shape already held installs over PXE and joins one cluster as a schedulable node, its accelerators exposed and its power caps held",
+          boundary: "Shapes held today: the Supermicro H11SSL-i hosts with T10 and R9700 cards, the ASRock ALTRAD8UD, the Ampere Mt. Collins board moved onto a printed cassette, and 2018-2022 server boards carrying V100 cards. The install route is PXE (gunbc.design_ruling pxe_default_install_and_no_standing_erase_2026_11_10) through the one boot transaction (one_physical_machine_boot_transaction); the cluster is whatever backend work-exec-1-placement-backend-selection records. No workflow branches on a board name: a shape differs only in its declared facts and adapters (boot_delivery_persistence_and_role_are_independent_axes).",
+          approach: "Six members: the cluster on the selected backend first; then one member per shape family (H11SSL, ALTRAD8UD, Mt. Collins on its cassette); the GPU families with caps held across a cold boot; and the printed tray the cassette shape needs, realized from the derived partition.",
+          red_control: "The project bar: a held unit of each shape, powered from bare metal with nobody present, installs over PXE, joins the cluster, and accepts a scheduled job on its CPU and on each of its card families with the declared caps read back; re-running the install on a converged unit changes nothing.",
+          displaced_cost: "Each shape is brought up by hand, differently, and the fleet's capacity cannot be scheduled as one pool; the Mt. Collins lot stays undeployed.",
+          handback: "Per member: its accepted controls. Per shape: the install receipt from bare metal and the no-drift rerun."
+        )),
+      parent: in_project(project: "fabric-bringup", contribution: "The fabric places work only on machines that have joined it; this is how every held shape joins."),
+    ),
+    roadmap_node(
+      identity: "rn_JQPAHM7MHKV641PDD38RBW7ZAK",
+      id: "cluster-bringup-on-the-selected-backend",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/plans/new_server_bringup.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "One cluster runs on held machines on the backend the placement spike selected, and a new node joins it through the install route",
+        boundary: "The production counterpart of work-exec-1-placement-backend-selection, whose spike excludes production cutover: the control plane on a held host, node join performed by the install route rather than by hand, and the admission controls the spike proved (memory request equal to limit, waiting when full, thermal taint) carried into it.",
+        displaced_cost: "Without a cluster there is nothing for a converged machine to join, and each shape's install ends at an idle host.",
+        first_slice: "Install the selected backend's control plane on one held host and join one already-converged worker through the install route.",
+        red_control: "(1) A worker joined by the install route appears Ready without a manual step. (2) With the cluster full, a submitted job waits. (3) Restarting the control-plane host leaves running work running and re-observed.",
+        out_of_scope: "Multi-host control-plane high availability. Tenant isolation beyond the spike's.",
+        handback: "The control-plane receipt, the join receipt and the three controls."
+      ), on: "2026-11-23", note: "Declared 2026-11-23 from the operator's direction that every machine shape already held joins one cluster by the PXE install route (gunbc.design_ruling pxe_default_install_and_no_standing_erase_2026_11_10, one_physical_machine_boot_transaction). Unstarted; v2 leads the operator's priorities, so the schedule reads this project's estimates behind the v2 program.")),
+      parent: in_project(project: "machine-shapes-join-the-cluster", contribution: "The pool every held shape joins."),
+    ),
+    roadmap_node(
+      identity: "rn_EP012BFWCTH3AQMNRR5S1786ZY",
+      id: "h11ssl-shape-joins-the-cluster",
+      owner: "fleet",
+      carriers: carrier(path: "dag/extdeps/boards/supermicro_h11ssl.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "An H11SSL-i host installs over PXE from bare metal and joins the cluster with its T10 and R9700 cards schedulable",
+        boundary: "The H11SSL-i hosts held today carry Tesla T10 and Radeon AI PRO R9700 cards. The install is the PXE route with the host's declared facts; the AMD card needs its own device exposure beside the NVIDIA one.",
+        displaced_cost: "The serving hosts are rebuilt by hand and their cards cannot be scheduled from the pool.",
+        first_slice: "PXE-install one H11SSL-i from bare metal and join it as a cluster node with its CPU schedulable.",
+        red_control: "(1) Install from bare metal with nobody present ends Ready. (2) A job requesting a T10 runs on it and reads the device. (3) A job requesting the R9700 runs and reads the device. (4) A second install run reports no drift.",
+        out_of_scope: "Choosing which model a card serves.",
+        handback: "The install receipt, the device-read receipts and the no-drift rerun."
+      ), on: "2026-11-23", note: "Declared 2026-11-23 from the operator's direction that every machine shape already held joins one cluster by the PXE install route (gunbc.design_ruling pxe_default_install_and_no_standing_erase_2026_11_10, one_physical_machine_boot_transaction). Unstarted; v2 leads the operator's priorities, so the schedule reads this project's estimates behind the v2 program.")),
+      parent: in_project(project: "machine-shapes-join-the-cluster", contribution: "The first shape, already serving, so the route is proven where the cards are."),
+    ),
+    roadmap_node(
+      identity: "rn_XXP5QRR15QRZ0VC8MDA7QSDQV9",
+      id: "altrad8ud-shape-joins-the-cluster",
+      owner: "fleet",
+      carriers: carrier(path: "dag/extdeps/boards/asrock_rack.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "An ALTRAD8UD host installs over PXE from bare metal and joins the cluster as an arm64 node",
+        boundary: "The ASRock ALTRAD8UD carries one Ampere Altra socket; its firmware facts are in extdeps.boards. The install is the same PXE route with the board's declared facts and an arm64 image.",
+        displaced_cost: "The Altra boards held stay outside the pool, and arm64 work has nowhere to be scheduled but the hand-built hosts.",
+        first_slice: "PXE-install one ALTRAD8UD from bare metal and join it as an arm64 node.",
+        red_control: "(1) Install from bare metal with nobody present ends Ready. (2) An arm64 job is placed on it and an amd64-only job is not. (3) A second install run reports no drift.",
+        out_of_scope: "Accelerators on this board.",
+        handback: "The install receipt, the placement controls and the no-drift rerun."
+      ), on: "2026-11-23", note: "Declared 2026-11-23 from the operator's direction that every machine shape already held joins one cluster by the PXE install route (gunbc.design_ruling pxe_default_install_and_no_standing_erase_2026_11_10, one_physical_machine_boot_transaction). Unstarted; v2 leads the operator's priorities, so the schedule reads this project's estimates behind the v2 program.")),
+      parent: in_project(project: "machine-shapes-join-the-cluster", contribution: "Brings the Altra boards and arm64 work into the pool."),
+    ),
+    roadmap_node(
+      identity: "rn_7EXCACE4E19AX6JBF9G6RYJVWM",
+      id: "printed-tray-realized-from-derived-partition",
+      owner: "fleet",
+      carriers: carrier(path: "dag/product/printed_chassis/cassette_layout.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "The cassette tray's printed bodies come from the derived partition for a selected printer, with generated joins and no added fastening hardware",
+        boundary: "Today the tray is four hand-listed panels joined by M3 clamps, and the residential assembly takes them from that fixed roster while bed_partition::allocate_axis already derives a minimum partition; cassette_layout::panel_print_policy reads one printer's envelope directly. The printer and process become inputs, the bodies and both sides of every remaining connection are generated from the partition, and the realization reports its physical pieces, connections and added hardware. Joins follow one shared construction in three sizes, with a positional code per connection so pieces that do not belong together cannot seat.",
+        displaced_cost: "The tray is fragmented by a fixed roster rather than by the printer, screws hold printed parts together, and holes are cut that nothing mates.",
+        first_slice: "Pass the printer and process into the tray policy and generate the tray's bodies and one hardware-free connection from the derived partition.",
+        red_control: "(1) A printer whose bed fits the whole tray yields one body and no seam. (2) A smaller printer yields the derived partition with connector projections counted in bed fit. (3) A separate retaining key raises the reported piece count. (4) Two same-size connections with different codes cannot be seated in each other's places.",
+        out_of_scope: "The stack posts, fan bank, ducts and bought-part retention, which follow once the tray's connection is qualified.",
+        handback: "The realization report for two printers, the four controls, and a printed specimen."
+      ), on: "2026-11-23", note: "Declared 2026-11-23 from the operator's direction that every machine shape already held joins one cluster by the PXE install route (gunbc.design_ruling pxe_default_install_and_no_standing_erase_2026_11_10, one_physical_machine_boot_transaction). Unstarted; v2 leads the operator's priorities, so the schedule reads this project's estimates behind the v2 program.")),
+      parent: in_project(project: "machine-shapes-join-the-cluster", contribution: "The cassette shape cannot be built until its tray can."),
+    ),
+    roadmap_node(
+      identity: "rn_KMN8EA32TJZ1SES7DVCCDAC8WX",
+      id: "mtcollins-cassette-shape-joins-the-cluster",
+      owner: "fleet",
+      carriers: carrier(path: "dag/product/printed_chassis/cassette_profiles.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "A Mt. Collins board on its printed cassette installs over PXE from bare metal and joins the cluster",
+        boundary: "The Mt. Collins lot is held undeployed and without memory; the board moves out of its 1U chassis onto a cassette (cassette_profiles mt_collins_profile) keeping its native power assembly. The install is the PXE route with the board's declared facts, and the CPU frequency ceiling is applied by the install before work runs.",
+        displaced_cost: "The largest block of held compute stays undeployed.",
+        first_slice: "One cassette-mounted Mt. Collins board PXE-installed from bare metal and joined as a node.",
+        red_control: "(1) Install from bare metal with nobody present ends Ready. (2) The declared frequency ceiling is read back after a cold boot. (3) A second install run reports no drift.",
+        out_of_scope: "Memory purchase for the lot, which follows a working unit.",
+        handback: "The install receipt, the ceiling read-back and the no-drift rerun."
+      ), on: "2026-11-23", note: "Declared 2026-11-23 from the operator's direction that every machine shape already held joins one cluster by the PXE install route (gunbc.design_ruling pxe_default_install_and_no_standing_erase_2026_11_10, one_physical_machine_boot_transaction). Unstarted; v2 leads the operator's priorities, so the schedule reads this project's estimates behind the v2 program.")),
+      parent: in_project(project: "machine-shapes-join-the-cluster", contribution: "Brings the Mt. Collins lot into the pool once its cassette exists."),
+    ),
+    roadmap_node(
+      identity: "rn_JMRKDG5PY2MC4DCM7MBYTJ3H3T",
+      id: "gpu-families-schedulable-with-caps-held",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/fleet/gpu_power_cap_converge.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "Each held GPU family is schedulable from the cluster, and its declared power cap holds across an unattended cold boot",
+        boundary: "Families held: Tesla T10, Tesla V100 (16 and 32 GB; compute capability 7.0, which pins its toolkit to CUDA 12), Radeon AI PRO R9700. gunbc.fleet.gpu_power_cap_converge writes a cap and reads it back; this node makes the cap part of the install, applied before any workload can run, and read back after a cold boot with nobody present.",
+        displaced_cost: "A cap that resets on reboot forces every circuit to be sized for uncapped draw, and cards of a family are exposed one host at a time by hand.",
+        first_slice: "Apply and read back the declared cap for one T10 host as part of its install, then cold-boot it unattended and read it again.",
+        red_control: "(1) After an unattended cold boot every card reads its declared cap before the first job starts. (2) A job is refused placement while a card's cap is unread. (3) A V100 job runs on the CUDA 12 toolchain.",
+        out_of_scope: "Choosing the cap values, which are operator decisions.",
+        handback: "The read-back receipts per family and the three controls."
+      ), on: "2026-11-23", note: "Declared 2026-11-23 from the operator's direction that every machine shape already held joins one cluster by the PXE install route (gunbc.design_ruling pxe_default_install_and_no_standing_erase_2026_11_10, one_physical_machine_boot_transaction). Unstarted; v2 leads the operator's priorities, so the schedule reads this project's estimates behind the v2 program.")),
+      parent: in_project(project: "machine-shapes-join-the-cluster", contribution: "Makes capped draw a fact the circuits can be sized on."),
+    ),
+    roadmap_node(
       identity: "rn_P8TZEXXCDR0NBS11CFB3TA0BVV",
       id: "work-exec-0-identity-estimate-split",
       owner: "fleet",
@@ -6560,6 +6671,14 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
 // centering plans, not a dependency, and the graph has no exclusion-edge vocabulary.
 fn declared_roadmap_edges() -> List<RoadmapEdge> {
   concat([
+    // machine-shapes-join-the-cluster (2026-11-23): the cluster waits on the backend choice; each shape joins the
+    // cluster; the cassette shape also waits on its printed tray.
+    edge(child: "cluster-bringup-on-the-selected-backend", parent: "work-exec-1-placement-backend-selection"),
+    edge(child: "h11ssl-shape-joins-the-cluster", parent: "cluster-bringup-on-the-selected-backend"),
+    edge(child: "altrad8ud-shape-joins-the-cluster", parent: "cluster-bringup-on-the-selected-backend"),
+    edge(child: "mtcollins-cassette-shape-joins-the-cluster", parent: "cluster-bringup-on-the-selected-backend"),
+    edge(child: "mtcollins-cassette-shape-joins-the-cluster", parent: "printed-tray-realized-from-derived-partition"),
+    edge(child: "gpu-families-schedulable-with-caps-held", parent: "h11ssl-shape-joins-the-cluster"),
     edge(child: "claim-entrypoints-cutover", parent: "claim-result-contract"),
     edge(child: "dp-m3-subject-ref-resolved", parent: "extdeps-subject-ref-facts-host-census"),
     edge(child: "lab-converges-release-pair", parent: "lab-standings-track-main"),

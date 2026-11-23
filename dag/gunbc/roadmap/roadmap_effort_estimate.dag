@@ -1434,6 +1434,48 @@ data roadmap_estimate_entries: List<EstimateEntry> = [
     value: days_estimate(working_days: 30),
     basis: "Five distinct non-success endings each need an unambiguous billing disposition and an exercising drill, independent of commercial prices.",
   )),
+  // cluster-bringup-on-the-selected-backend
+  estimate_recorded(row: estimate_row(
+    subject: "rn_JQPAHM7MHKV641PDD38RBW7ZAK" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 23),
+    value: days_estimate(working_days: 10),
+    basis: "A control plane on one held host plus install-route join and three admission controls the spike already exercised.",
+  )),
+  // h11ssl-shape-joins-the-cluster
+  estimate_recorded(row: estimate_row(
+    subject: "rn_EP012BFWCTH3AQMNRR5S1786ZY" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 23),
+    value: days_estimate(working_days: 8),
+    basis: "The PXE route already installs this board family; the new work is cluster join and exposing two GPU vendors.",
+  )),
+  // altrad8ud-shape-joins-the-cluster
+  estimate_recorded(row: estimate_row(
+    subject: "rn_XXP5QRR15QRZ0VC8MDA7QSDQV9" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 23),
+    value: days_estimate(working_days: 10),
+    basis: "An arm64 image and the board's firmware facts through the same route, plus architecture-aware placement.",
+  )),
+  // printed-tray-realized-from-derived-partition
+  estimate_recorded(row: estimate_row(
+    subject: "rn_7EXCACE4E19AX6JBF9G6RYJVWM" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 23),
+    value: days_estimate(working_days: 15),
+    basis: "The allocator exists; the printer input, body generation, one generated connection and the piece-count report are new, plus a printed specimen.",
+  )),
+  // mtcollins-cassette-shape-joins-the-cluster
+  estimate_recorded(row: estimate_row(
+    subject: "rn_KMN8EA32TJZ1SES7DVCCDAC8WX" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 23),
+    value: days_estimate(working_days: 10),
+    basis: "The board has booted over PXE before; the cassette mount, the frequency ceiling and cluster join are the new work.",
+  )),
+  // gpu-families-schedulable-with-caps-held
+  estimate_recorded(row: estimate_row(
+    subject: "rn_JMRKDG5PY2MC4DCM7MBYTJ3H3T" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 23),
+    value: days_estimate(working_days: 8),
+    basis: "The cap writer and read-back exist; folding them into install and proving them across an unattended cold boot for three families is the work.",
+  )),
 ]
 
 // STRICT DATE ORDER, from the total order this file already keeps: a revocation must come after the row it withdraws,
