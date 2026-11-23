@@ -7,7 +7,7 @@ import std.algebra { list_map, list_head, list_append }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.languages.yaml.emit { emit_yaml, EmittedYaml, YamlEmitRefused, yaml_emit_refusal_text }
-import extdeps.languages.yaml.types { yaml_string, yaml_bool, kv }
+import extdeps.languages.yaml.types { yaml_string, yaml_bool, kv, YamlKeyValue }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep, RunnerSpec, HostedRunner, Bash,
@@ -498,9 +498,9 @@ fn shadow_gate_remote_build_step() -> Step {
     run: shadow_gate_plumbing_proof_run(),
     shell: Present { value: Bash },
     working_directory: none,
-    env: Present { value: [
+    env: Present { value: concat(shadow_gate_push_credential_env(), [
       kv(key: shadow_gate_pattern_env, value: yaml_string(s: shadow_gate_pattern_input_expression)),
-    ] },
+    ]) },
     if_condition: none,
     continue_on_error: none,
     timeout_minutes: none
@@ -579,7 +579,7 @@ fn shadow_gate_remote_gate_step(row: EmittedSubjectBuildRow) -> Step {
     },
     shell: Present { value: Bash },
     working_directory: none,
-    env: none,
+    env: Present { value: shadow_gate_push_credential_env() },
     if_condition: none,
     continue_on_error: none,
     timeout_minutes: none
@@ -594,6 +594,28 @@ fn shadow_gate_remote_build_steps() -> List<Step> {
     left: [shadow_gate_remote_build_step()],
     right: list_map(xs: emitted_subject_build_rows(), f: shadow_gate_remote_gate_step)
   )
+}
+
+// ── THE PUSH CREDENTIAL (narrowly scoped; the granting decision is the ruling cited below) ───────
+// #gunbc.design_ruling::hosted_shadow_gate_push_credential_scoped_write_2026_11_22
+//
+// The protocol's hidden-ref push (remote_build_client_source_ref / remote_build_client_push_argv:
+// ONLY refs/remote-build/<commit>.<millis>, a one-level hidden ref the client deletes after the
+// request) authenticates with the job's own GITHUB_TOKEN, so this dispatch@main-only job holds
+// contents: write. Scope holds it honest: checkout keeps persist-credentials: false (nothing enters
+// .git/config), the token rides ONLY the three remote-build client steps' env (not job env, not any
+// other step), the helper is injected through git's own GIT_CONFIG_* environment mechanism so no
+// file is written at all, and branch protection still guards main. A public repository means the
+// push can exfiltrate nothing that read access could not already reach.
+fn shadow_gate_push_credential_env() -> List<YamlKeyValue> {
+  [
+    kv(key: "GIT_CONFIG_COUNT", value: yaml_string(s: "2")),
+    kv(key: "GIT_CONFIG_KEY_0", value: yaml_string(s: "credential.https://github.com/helper")),
+    kv(key: "GIT_CONFIG_VALUE_0", value: yaml_string(s: "")),
+    kv(key: "GIT_CONFIG_KEY_1", value: yaml_string(s: "credential.https://github.com/helper")),
+    kv(key: "GIT_CONFIG_VALUE_1", value: yaml_string(s: "!f(){ echo username=x-access-token; echo password=$GITHUB_TOKEN; };f")),
+    kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ secrets.GITHUB_TOKEN }}")),
+  ]
 }
 
 // ── THE BUILD STEPS (hosted prelude: checkout, build gunbc) ──────────────────────────────────────
@@ -641,10 +663,13 @@ fn shadow_gate_job() -> Job {
     if_condition: Present { value: shadow_gate_main_job_if },
     needs: shadow_gate_main_job_needs,
     outputs: none,
-    // contents: read feeds checkout; id-token: write belongs to exactly one step -- the WIF auth
-    // step -- and the pin (hosted_ci_secrets_attribute_condition) bounds who can answer it.
+    // contents: write exists for ONE effect: the remote-build client's hidden-ref push
+    // (refs/remote-build/<commit>.<millis> only -- see shadow_gate_push_credential_env); branch
+    // protection still guards main and the job is dispatch@main-only. id-token: write belongs to
+    // exactly one step -- the WIF auth step -- and the pin (hosted_ci_secrets_attribute_condition)
+    // bounds who can answer it.
     permissions: Present { value: WorkflowPermissions {
-      contents: Present { value: PermRead },
+      contents: Present { value: PermWrite },
       pull_requests: none,
       issues: none,
       actions: none,
@@ -717,9 +742,17 @@ fn shadow_gate_generated_header() -> String {
       "# HAND-SHELL GATE: run: steps are scaffold strings; dissolution trigger is v2.workflow.bash_emit / bash_emit_stmts (#5828).\n",
       "# DISSOLUTION (fail-closed): this carrier DISSOLVES WHEN "
     ),
-    concat(dissolution_description(condition: shadow_gate_dissolution), ".\n")
+    concat(
+      concat(dissolution_description(condition: shadow_gate_dissolution), ".\n"),
+      shadow_gate_push_credential_header_note
+    )
   )
 }
+
+// The push-credential fact, carried at the bytes boundary where it is reviewed: WHAT may be pushed
+// (protocol-bounded hidden refs), HOW far the permission reaches (client steps' env only), and that
+// main stays guarded. The operator scoped it; the record belongs on the artifact.
+data shadow_gate_push_credential_header_note: String = "# PUSH CREDENTIAL (gunbc.design_ruling::hosted_shadow_gate_push_credential_scoped_write_2026_11_22, decided 2026-11-22): the remote-build client pushes ONLY hidden refs refs/remote-build/<commit>.<millis> (gunbc.compute.remote_build_client remote_build_client_source_ref), deleted after the request; contents: write is held by this dispatch@main-only job and the token rides ONLY the client steps' env (GIT_CONFIG_* helper, never .git/config); checkout persists no credential; branch protection still guards main.\n"
 
 fn expected_hosted_runner_shadow_gate_yml_with(workflow: Workflow) -> ShadowGateWorkflowGenerationOutcome {
   match admit_workflow_action_uses(workflow: workflow) {
