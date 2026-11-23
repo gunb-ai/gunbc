@@ -201,9 +201,30 @@ fn launcher_prune(runner: String) -> Bool {
 // false the base removal never ran and the whole controlled tree leaked. Each step runs, then the outcomes
 // are AND-ed, so a failed prune still removes the base and the failure is still reported.
 fn launcher_cleanup_all(runner: String, base: String) -> Bool {
+  // Unlock every registration first (a control may have LOCKED one so `worktree remove`/`prune` refuse; unlocking
+  // a non-locked worktree is a harmless error we ignore), THEN run every removal and combine -- never && -chain.
+  let _ = launcher_unlock_all_registered(runner: runner)
   let pruned = launcher_prune(runner: runner)
   let removed = shell.Remove.RecursiveForce(path: base).success
   pruned && removed
+}
+
+// Unlock each registered worktree of the runner so a locked registration can be pruned. Paths come from
+// `worktree list --porcelain -z` NUL records (a path with a newline is not split). Per-record unlock failures
+// (already unlocked, or the main checkout) are ignored -- this is best-effort cleanup, not a verdict.
+fn launcher_unlock_all_registered(runner: String) -> Bool {
+  let out = launcher_git_stdout(workdir: runner, args: ["worktree", "list", "--porcelain", "-z"])
+  let _ = any(split(s: out, delimiter: "\u{0}"), rec =>
+    if string_contains(s: rec, pattern: "worktree ") {
+      match launcher_git(workdir: runner, args: ["worktree", "unlock", substring(s: rec, start: 9, end: string_length(s: rec))]) {
+        CarrierExecOk { stdout: _ } => true
+        CarrierExecFailed { exit_code: _, stderr: _ } => true
+      }
+    } else {
+      true
+    }
+  )
+  true
 }
 
 // CONTROL 1 — the real launcher read, TWICE, one checkout, origin unchanged.
@@ -263,7 +284,8 @@ fn launcher_control_branch_attached_lifecycle_collides(repo: String) -> String {
       let branch_state = launcher_ref_presence(workdir: c.runner, ref: "refs/heads/roadmap-events")
       let removed_mk1 = shell.Remove.RecursiveForce(path: mk1.path).success
       let removed_mk2 = shell.Remove.RecursiveForce(path: mk2.path).success
-      let cleaned = removed_mk1 && removed_mk2 && launcher_cleanup_all(runner: c.runner, base: c.base)
+      let cleaned_all = launcher_cleanup_all(runner: c.runner, base: c.base)
+      let cleaned = removed_mk1 && removed_mk2 && cleaned_all
       let ok = first_read && !second_read && registry_now > 0 && branch_state == RefPresent && cleaned
       if ok { "PASS" } else { control_result(ok: false, note: join(["first_read:", to_string(value: if first_read { 1 } else { 0 }), " second_read:", to_string(value: if second_read { 1 } else { 0 }), " registry:", to_string(value: registry_now), " branch:", launcher_ref_presence_tag(presence: branch_state), " cleaned:", to_string(value: if cleaned { 1 } else { 0 })], "") ) }
     }
@@ -394,14 +416,29 @@ fn launcher_control_dir_presence_distinguishes_unreadable() -> String {
     } else {
       let scratch = under(base.path, "roadmap-events") as FilePath
       let present0 = launcher_presence_present(p: roadmap_event_scratch_dir_presence(path: scratch))
-      let _ = launcher_exec(program: "chmod", workdir: base.path, args: ["000", "roadmap-events"])
-      let present_unreadable = launcher_presence_present(p: roadmap_event_scratch_dir_presence(path: scratch))
-      let _ = launcher_exec(program: "chmod", workdir: base.path, args: ["755", "roadmap-events"])
-      let removed = shell.Remove.RecursiveForce(path: scratch).success
-      let absent = launcher_presence_absent(p: roadmap_event_scratch_dir_presence(path: scratch))
-      let base_removed = shell.Remove.RecursiveForce(path: base.path).success
-      let ok = present0 && present_unreadable && removed && absent && base_removed
-      if ok { "PASS" } else { control_result(ok: false, note: join(["present0:", to_string(value: if present0 { 1 } else { 0 }), " present_unreadable:", to_string(value: if present_unreadable { 1 } else { 0 }), " removed:", to_string(value: if removed { 1 } else { 0 }), " absent:", to_string(value: if absent { 1 } else { 0 }), " base_removed:", to_string(value: if base_removed { 1 } else { 0 })], "") ) }
+      let chmod000 = launcher_exec_ok(e: launcher_exec(program: "chmod", workdir: base.path, args: ["000", "roadmap-events"]))
+      // PROVE THE PREMISE before relying on it: mode 000 must actually block the owner from LISTING the scratch.
+      // A direct listing that still SUCCEEDS means the process is root (or the fs ignores mode), so the whole
+      // "unreadable" scenario is void -- SKIP with a stated reason instead of asserting something we cannot set up.
+      let child_listing = Filesystem.List(path: scratch)
+      if !chmod000 {
+        let _ = launcher_exec(program: "chmod", workdir: base.path, args: ["755", "roadmap-events"])
+        let _ = shell.Remove.RecursiveForce(path: base.path)
+        control_result(ok: false, note: "chmod 000 did not take (required for this control)")
+      } else if child_listing.success {
+        let _ = launcher_exec(program: "chmod", workdir: base.path, args: ["755", "roadmap-events"])
+        let _ = shell.Remove.RecursiveForce(path: base.path)
+        "SKIP(root: mode 000 does not block listing, cannot make the directory unreadable)"
+      } else {
+        // The premise holds (the child listing genuinely failed): the parent-folding helper must STILL say Present.
+        let present_unreadable = launcher_presence_present(p: roadmap_event_scratch_dir_presence(path: scratch))
+        let restore = launcher_exec_ok(e: launcher_exec(program: "chmod", workdir: base.path, args: ["755", "roadmap-events"]))
+        let removed = shell.Remove.RecursiveForce(path: scratch).success
+        let absent = launcher_presence_absent(p: roadmap_event_scratch_dir_presence(path: scratch))
+        let base_removed = shell.Remove.RecursiveForce(path: base.path).success
+        let ok = present0 && present_unreadable && restore && removed && absent && base_removed
+        if ok { "PASS" } else { control_result(ok: false, note: join(["present0:", to_string(value: if present0 { 1 } else { 0 }), " present_unreadable:", to_string(value: if present_unreadable { 1 } else { 0 }), " restore:", to_string(value: if restore { 1 } else { 0 }), " removed:", to_string(value: if removed { 1 } else { 0 }), " absent:", to_string(value: if absent { 1 } else { 0 }), " base_removed:", to_string(value: if base_removed { 1 } else { 0 })], "") ) }
+      }
     }
   }
 }
@@ -416,45 +453,46 @@ fn launcher_close_tag(close: CarrierSnapshotClose) -> String {
   }
 }
 
-// CONTROL 7 — WORKTREE IDENTITY under a symlinked TMPDIR. git canonicalizes a worktree path when it registers
-// it, so under a symlinked scratch root the mktemp SPELLING is not what `worktree list` records. The pre-fix
-// verifier compared the registration to the SPELLING, so a surviving registration compared unequal, read as
-// absent, and the close minted a FALSE SnapshotClosed -- the reviewer reproduced this with real git and mktemp.
-// Here a DETACHED worktree is added via a symlink path (git records the canonical path), LOCKED so removal and
-// prune both refuse, and the REAL roadmap_event_scratch_close is driven on the symlink spelling: the directory
-// is removed, but the locked canonical registration survives, so a correct verifier must report a LEAK, not
-// Closed. RED on the spelling-comparing verifier (which saw no registration and said closed); GREEN on the
-// canonical-identity verifier (which finds the registration and reports CloseVerifyRegistrationPersists).
-fn launcher_control_symlinked_tmpdir_locked_worktree_is_caught(repo: String) -> String {
-  let c = launcher_build_controlled(repo: repo, base_name: "launcher-symlock")
+// CONTROL 7 — the REAL scoped reader + close under a sabotaged add. The post-checkout hook runs DURING
+// `git worktree add`, AFTER git has registered the worktree: it LOCKS the worktree (so `worktree remove --force`
+// and `prune` both refuse), MOVES the checked-out directory to a known path, SYMLINKS the vacated path to it, and
+// fails the add. So the registration survives at the CANONICAL path while the directory is reached only via a
+// symlink. The pre-fix verifier (realpath at CLOSE) canonicalized the symlink AFTER the sabotage, resolved it to
+// the MOVED tree, compared the registration to the WRONG string, saw nothing, and minted a FALSE SnapshotClosed.
+// The reader establishes the canonical identity BEFORE the add (before the hook runs), so its close compares against
+// the true registration and MUST report a leak -- never Closed. GREEN only on the bind-identity-to-the-add design;
+// RED on realpath-at-close. The read must also refuse at the snapshot step (the add failed).
+fn launcher_control_real_reader_locked_moved_add_is_caught(repo: String) -> String {
+  let c = launcher_build_controlled(repo: repo, base_name: "launcher-leak")
   if !c.ok {
     let _ = shell.Remove.RecursiveForce(path: c.base)
     control_result(ok: false, note: join(["controlled build failed: ", c.note], ""))
   } else {
-    let made = launcher_exec(program: "mkdir", workdir: c.base, args: ["-p", "realdir"])
-    let linked = launcher_exec(program: "ln", workdir: c.base, args: ["-s", "realdir", "link"])
-    if !launcher_exec_ok(e: made) || !launcher_exec_ok(e: linked) {
+    let moved = under(c.base, "hook-moved")
+    let hook = under(c.runner, ".git/hooks/post-checkout")
+    let body = join([
+      "#!/bin/sh\n",
+      "wt=\"$(pwd)\"\n",
+      "git -C \"$wt\" worktree lock . >/dev/null 2>&1 || true\n",
+      "cd /\n",
+      "mv \"$wt\" \"", moved, "\" >/dev/null 2>&1 || true\n",
+      "ln -s \"", moved, "\" \"$wt\" >/dev/null 2>&1 || true\n",
+      "exit 1\n"
+    ], "")
+    let planted = Filesystem.Write(path: hook, content: body).success
+      && match carrier_exec_program(program: "chmod", workdir: c.runner, args: ["+x", hook]) { CarrierExecOk { stdout: _ } => true CarrierExecFailed { exit_code: _, stderr: _ } => false }
+    if !planted {
       let _ = shell.Remove.RecursiveForce(path: c.base)
-      control_result(ok: false, note: "symlinked scratch root not set up")
+      control_result(ok: false, note: "post-checkout hook not planted")
     } else {
-      // base/link -> base/realdir, so base/link/wt and base/realdir/wt are the SAME directory reached two ways;
-      // git records the canonical (realdir) spelling while we hand the close the symlink (link) spelling.
-      let wt_spelling = join([c.base, "/link/wt"], "")
-      let added = match launcher_git(workdir: c.runner, args: ["worktree", "add", "--detach", wt_spelling, "HEAD"]) { CarrierExecOk { stdout: _ } => true CarrierExecFailed { exit_code: _, stderr: _ } => false }
-      let locked = match launcher_git(workdir: c.runner, args: ["worktree", "lock", wt_spelling]) { CarrierExecOk { stdout: _ } => true CarrierExecFailed { exit_code: _, stderr: _ } => false }
-      // Drive the REAL cleanup + verifier route on the symlink spelling.
-      let close = roadmap_event_scratch_close(scoped: launcher_scoped_layout_for(runner: c.runner), path: wt_spelling as FilePath)
-      let _ = launcher_git(workdir: c.runner, args: ["worktree", "unlock", wt_spelling])
+      let read = roadmap_events_read_all(read: launcher_layout_for(runner: c.runner))
+      let step = launcher_refusal_step(read: read.result)
+      let registry_after = launcher_registry_count(runner: c.runner)
+      let not_closed = !launcher_close_is_closed(close: read.close)
+      // cleanup_all now unlocks every registration first, so the locked one is prunable and the base is removable.
       let cleaned = launcher_cleanup_all(runner: c.runner, base: c.base)
-      let is_leak = match close {
-        SnapshotCloseVerificationFailed { worktree: _, verification: CloseVerifyRegistrationPersists } => true
-        SnapshotClosed => false
-        SnapshotNotOpened => false
-        SnapshotCloseFailed { worktree: _, exit_code: _, stderr: _ } => false
-        SnapshotCloseVerificationFailed { worktree: _, verification: _ } => false
-      }
-      let ok = added && locked && is_leak && cleaned
-      if ok { "PASS" } else { control_result(ok: false, note: join(["added:", to_string(value: if added { 1 } else { 0 }), " locked:", to_string(value: if locked { 1 } else { 0 }), " is_leak:", to_string(value: if is_leak { 1 } else { 0 }), " cleaned:", to_string(value: if cleaned { 1 } else { 0 }), " close:", launcher_close_tag(close: close)], "") ) }
+      let ok = step == "snapshot" && registry_after >= 1 && not_closed && cleaned
+      if ok { "PASS" } else { control_result(ok: false, note: join(["step:", step, " registry_after:", to_string(value: registry_after), " not_closed:", to_string(value: if not_closed { 1 } else { 0 }), " cleaned:", to_string(value: if cleaned { 1 } else { 0 }), " close:", launcher_close_tag(close: read.close)], "") ) }
     }
   }
 }
@@ -478,7 +516,7 @@ fn candidate_launcher_read_real_execution(repo: String) -> ProcessExit {
   let four = launcher_control_ref_assertion_discriminates(repo: repo)
   let five = launcher_control_failed_add_is_cleaned_up(repo: repo)
   let six = launcher_control_dir_presence_distinguishes_unreadable()
-  let seven = launcher_control_symlinked_tmpdir_locked_worktree_is_caught(repo: repo)
+  let seven = launcher_control_real_reader_locked_moved_add_is_caught(repo: repo)
   if one == "PASS" && two == "PASS" && three == "PASS" && four == "PASS" && five == "PASS" && six == "PASS" && seven == "PASS" { ExitSuccess }
   else { exit_failure(reason: join(["launcher real-read controls failed\nobserved: 1:", one, " 2:", two, " 3:", three, " 4:", four, " 5:", five, " 6:", six, " 7:", seven, "\n(all seven must PASS)\n"], "")) }
 }
