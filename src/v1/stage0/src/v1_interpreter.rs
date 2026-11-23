@@ -30300,11 +30300,16 @@ mod argv_arg_limit_test {
             Some(ceiling_node),
             no_span(),
         );
-        let result =
-            match dispatch_shell(&transport, &param_env, &ctx, "test stdin leg green", None) {
-                Ok(result) => result,
-                Err(err) => panic!("a stdin leg under its ceiling must not be an error: {err}"),
-            };
+        let result = match dispatch_shell(
+            &transport,
+            &param_env,
+            &ctx,
+            "test stdin leg green",
+            ExpectedOutcome::ExpectSuccess,
+        ) {
+            Ok(result) => result,
+            Err(err) => panic!("a stdin leg under its ceiling must not be an error: {err}"),
+        };
         assert!(
             matches!(result.leg_exec, super::ShellLegExec::Completed),
             "a leg that finished is Completed, got {:?}",
