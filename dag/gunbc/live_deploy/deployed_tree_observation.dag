@@ -548,6 +548,9 @@ fn observe_deployed_tree_owned(
   locus: DeployedTreeLocus,
   index_path: String,
 ) -> DeployedTreeObservation {
+  // Bound once, from the module's own incident-leg accessor, so the overrun cause carries the
+  // argv the leg was actually given rather than a value recomputed somewhere else.
+  let revision_argv = argv_words(command: deployed_tree_incident_leg_command(repo: deployed_tree_locus_repo(locus: locus)))
   match deployed_tree_leg(
     locus: locus,
     command: deployed_tree_incident_leg_command(repo: deployed_tree_locus_repo(locus: locus)),
