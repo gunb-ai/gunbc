@@ -62,10 +62,19 @@ import extdeps.gpu.types {
 }
 import extdeps.gpu.amd {
   amd_radeon_ai_pro_r9700_catalog, amd_radeon_ai_pro_r9700_board_facts, r9700_figures_standing,
+  amd_declared_figure_standings,
 }
 import extdeps.gpu.gigabyte {
   gigabyte_r9700_ai_top_32g_board_facts, gigabyte_r9700_ai_top_figures_standing,
+  gigabyte_declared_figure_standings,
 }
+import extdeps.gpu.nvidia {
+  nvidia_rtx_pro_6000_max_q_catalog, rtx_pro_6000_max_q_cuda_core_standing,
+  nvidia_declared_figure_standings,
+}
+import extdeps.gpu.nvidia_a2 { nvidia_a2_declared_figure_standings }
+import extdeps.gpu.nvidia_a16 { nvidia_a16_declared_figure_standings }
+import extdeps.gpu.nvidia_t4 { nvidia_t4_declared_figure_standings }
 
 // A BOARD ROW AND THE STANDING ITS OWN MODULE DECLARES ABOUT ITS FIGURES. The row is carried by value, not by
 // name: a consumer holding a board's facts can ask about them directly, and the binding cannot be pointed at
@@ -76,10 +85,15 @@ type DeclaredBoardFiguresStanding {
   declared_by: NonEmptyStr
 }
 
-// Every standing row the GPU board modules declare. A standing row added to a GPU module without an entry
-// here is the failure mode again, and RED_every_declared_gpu_standing_row_is_bound goes red when the count
-// of imported standing rows and these entries part company -- which is why the standings are imported by
-// value rather than named as refs.
+// The board rows that carry a standing their own module declares. The completeness guard is NOT a count of
+// these entries against a hand list -- a count copied from the tree is a change detector (design_argument::
+// fail_closed). The roster every standing must appear in is derived from the GPU modules' own declarations
+// (declared_gpu_standing_rows below), and the guard is the real witness claim
+// test.claim.fleet.gpu_declared_figures_standing_witness::RED_every_declared_gpu_standing_row_is_bound: every
+// TranscribedUncited standing in that derived roster is bound here or in the device bindings, so a standing
+// added to a GPU module without an entry goes red by an identity join, not by anyone editing a number. The
+// standings are imported by value rather than named as refs, so a binding cannot be pointed at a row since
+// edited.
 data declared_board_figure_standings: List<DeclaredBoardFiguresStanding> = [
   DeclaredBoardFiguresStanding {
     facts: amd_radeon_ai_pro_r9700_board_facts,
@@ -93,8 +107,8 @@ data declared_board_figure_standings: List<DeclaredBoardFiguresStanding> = [
   },
 ]
 
-// A DEVICE ROW AND THE STANDING ITS OWN MODULE DECLARES ABOUT ITS FIGURES: the memory size and kind and the
-// bandwidth are carried on the device row, so the binding for those runs here rather than at the board.
+// A DEVICE ROW AND THE STANDING ITS OWN MODULE DECLARES ABOUT ITS FIGURES: figures carried on the device row
+// -- the memory size and kind and bandwidth, and the CUDA-core count -- bind here rather than at the board.
 type DeclaredDeviceFiguresStanding {
   row: GpuDeviceCatalogRow
   standing: CitedFigureStanding
@@ -106,6 +120,14 @@ data declared_device_figure_standings: List<DeclaredDeviceFiguresStanding> = [
     row: amd_radeon_ai_pro_r9700_catalog,
     standing: r9700_figures_standing,
     declared_by: "extdeps.gpu.amd" as NonEmptyStr,
+  },
+  // The Max-Q CUDA-core standing is TranscribedUncited: NVIDIA states no CUDA-core count for that edition, and
+  // the equal 24,064 is assumed from the shared GB202 die, not read. With no citation to ground it, the only
+  // thing that reads it is this binding -- leaving it out was the recurring failure mode the review caught.
+  DeclaredDeviceFiguresStanding {
+    row: nvidia_rtx_pro_6000_max_q_catalog,
+    standing: rtx_pro_6000_max_q_cuda_core_standing,
+    declared_by: "extdeps.gpu.nvidia" as NonEmptyStr,
   },
 ]
 
@@ -199,10 +221,17 @@ fn gpu_figure_read_obligation(standing: CitedFigureStanding) -> String? {
   }
 }
 
-// HOW MANY STANDING ROWS THE GPU MODULES DECLARE, counted from the imported declarations rather than from
-// this file's own entries, so a standing row written and never bound is a count that no longer matches.
+// EVERY STANDING ROW THE GPU MODULES DECLARE, derived from each module's own export rather than a hand list
+// written here: a standing added to any GPU module enters this roster without anyone editing this file, which
+// is what lets RED_every_declared_gpu_standing_row_is_bound be an identity join rather than a count copied
+// from the tree (design_argument::fail_closed).
 fn declared_gpu_standing_rows() -> List<CitedFigureStanding> {
-  [r9700_figures_standing, gigabyte_r9700_ai_top_figures_standing]
+  amd_declared_figure_standings
+    .concat(gigabyte_declared_figure_standings)
+    .concat(nvidia_declared_figure_standings)
+    .concat(nvidia_a2_declared_figure_standings)
+    .concat(nvidia_a16_declared_figure_standings)
+    .concat(nvidia_t4_declared_figure_standings)
 }
 
 // WHAT AN ADMISSION HANDS THE DECISION THAT ASKS IT, MARK INCLUDED. extdeps.gpu.types'

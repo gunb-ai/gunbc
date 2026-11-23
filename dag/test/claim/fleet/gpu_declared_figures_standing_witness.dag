@@ -149,9 +149,11 @@ fn facts_of_admission(admission: GpuBoardAdmission) -> GpuBoardCatalogFacts {
 test fn every_board_the_standing_declaring_modules_admit_carries_a_bound_standing() -> Bool {
   let boards = amd_board_catalogs.map(admission => facts_of_admission(admission: admission))
     .concat(gigabyte_board_catalogs.map(admission => facts_of_admission(admission: admission)))
-  count(boards) == 2
-    && all(boards, facts => any(declared_board_figure_standings, entry => entry.facts == facts
-      && any(declared_gpu_standing_rows(), declared => declared == entry.standing)))
+  // Forward direction of the identity join: every board the standing-declaring modules admit is bound to a
+  // standing, and that standing is one the modules declare. No count of the admitted boards -- a new board
+  // admitted by extdeps.gpu.amd or extdeps.gpu.gigabyte is covered without anyone editing a number here.
+  all(boards, facts => any(declared_board_figure_standings, entry => entry.facts == facts
+    && any(declared_gpu_standing_rows(), declared => declared == entry.standing)))
 }
 
 test fn no_binding_carries_a_standing_the_gpu_modules_do_not_declare() -> Bool {
@@ -215,9 +217,32 @@ test fn a_board_no_module_qualifies_is_returned_unmarked_with_a_basis() -> Bool 
 // The two R9700 bindings are two boards, not one board seen twice: distinct models, so the lookup above
 // cannot attach the wrong module's standing to a figure.
 test fn the_declared_bindings_name_two_distinct_boards() -> Bool {
-  let amd_model = amd_radeon_ai_pro_r9700_board_facts.model
-  let gigabyte_model = gigabyte_r9700_ai_top_32g_board_facts.model
-  amd_model != gigabyte_model
-    && count(declared_board_figure_standings) == 2
-    && all(declared_board_figure_standings, entry => entry.facts.model == amd_model || entry.facts.model == gigabyte_model)
+  let boards = amd_board_catalogs.map(admission => facts_of_admission(admission: admission))
+    .concat(gigabyte_board_catalogs.map(admission => facts_of_admission(admission: admission)))
+  // Reverse direction of the identity join: every board binding names an actual admitted board and carries a
+  // standing the modules declare -- a binding cannot invent a board or a standing, and no count is copied from
+  // the tree (design_argument::fail_closed). Together with the forward join above this is the whole join.
+  all(declared_board_figure_standings, entry =>
+    any(boards, facts => facts == entry.facts)
+      && any(declared_gpu_standing_rows(), declared => declared == entry.standing))
+  // Distinct, not one board seen twice: the standing-declaring modules admit two genuinely different boards,
+  // and no two admitted boards share a model under different facts.
+    && amd_radeon_ai_pro_r9700_board_facts.model != gigabyte_r9700_ai_top_32g_board_facts.model
+    && all(boards, a => all(boards, b => a.model != b.model || a == b))
+}
+
+// THE GUARD THE MODULE'S HEADER NAMES, AS A REAL CLAIM. The roster is now derived from every GPU module's own
+// declaration (declared_gpu_standing_rows), so a standing written into a module but never bound is IN the
+// roster and unbound -- which is exactly the recurring failure mode (a figure marked unverified that nothing
+// reads). A TranscribedUncited standing has no citation that reads it, so it must appear as the standing of a
+// board or device binding; a CitedToAuthority standing is grounded through the citation path instead (the
+// claim a_figure_one_citation_names_is_read_cited_to_that_authority above), so it needs no binding here. This
+// is an identity join, not a count: it moves when a row is added to a module, not when someone edits a number.
+test fn RED_every_declared_gpu_standing_row_is_bound() -> Bool {
+  all(declared_gpu_standing_rows(), entry =>
+    match entry {
+      CitedToAuthority { authority: _ } => true
+      _ => any(declared_board_figure_standings, binding => binding.standing == entry)
+        || any(declared_device_figure_standings, binding => binding.standing == entry)
+    })
 }

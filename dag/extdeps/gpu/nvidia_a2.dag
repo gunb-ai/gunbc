@@ -126,6 +126,11 @@ data a2_product_brief_authority: ExternalAuthority = ExternalAuthority {
 
 data a2_brief_standing: CitedFigureStanding = CitedToAuthority { authority: a2_product_brief_authority }
 
+// EVERY STANDING THIS MODULE DECLARES, for the consumer's derived roster (see extdeps.gpu.amd's export).
+data nvidia_a2_declared_figure_standings: List<CitedFigureStanding> = [
+  a2_brief_standing,
+]
+
 data a2_card_row: CardRow = CardRow {
   id: "a2",
   product: "NVIDIA A2 (PG179 SKU 220)",

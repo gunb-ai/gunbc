@@ -107,6 +107,11 @@ data t4_product_brief_authority: ExternalAuthority = ExternalAuthority {
 
 data t4_brief_standing: CitedFigureStanding = CitedToAuthority { authority: t4_product_brief_authority }
 
+// EVERY STANDING THIS MODULE DECLARES, for the consumer's derived roster (see extdeps.gpu.amd's export).
+data nvidia_t4_declared_figure_standings: List<CitedFigureStanding> = [
+  t4_brief_standing,
+]
+
 // The height is the drawing's MAX, not its nominal: a part fitted around the card has to clear the
 // largest card the drawing admits.
 data t4_card_row: CardRow = CardRow {

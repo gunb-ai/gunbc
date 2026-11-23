@@ -43,6 +43,14 @@ data gigabyte_r9700_ai_top_figures_standing: CitedFigureStanding = TranscribedUn
   read_obligation: "Fetch Gigabyte's GV-R9700AI TOP-32GD specification page (Rev. 1.0 and 1.1) and cite the PCIe interface, clocks and power connector to it; read the revision off the operator's cards.",
 }
 
+// EVERY STANDING THIS MODULE DECLARES, exported for the same reason as extdeps.gpu.amd's: the consumer's
+// roster concatenates per-module lists rather than keeping a hand list, so a standing added here is in the
+// roster automatically -- completeness is an identity join, not a count copied from the tree
+// (gunbc.design_argument::fail_closed).
+data gigabyte_declared_figure_standings: List<CitedFigureStanding> = [
+  gigabyte_r9700_ai_top_figures_standing,
+]
+
 data gigabyte_r9700_ai_top_32g_board_facts: GpuBoardCatalogFacts = GpuBoardCatalogFacts {
   vendor: gigabyte,
   model: "Radeon AI PRO R9700 AI TOP 32G",

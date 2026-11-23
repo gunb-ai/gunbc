@@ -3,7 +3,7 @@ module extdeps.gpu.nvidia_a16
 import std.measure { Micrometer, micrometer, watt, hertz, gibibyte, gibibyte_to_byte_size }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_field_ref }
 import std.optional { Present, Absent }
-import std.types { NonEmptyStr }
+import std.types { List, NonEmptyStr }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.gpu.types {
   GpuDeviceCatalogRow, GpuBoardCatalogFacts, GpuBoardAdmission, admit_gpu_board, ConfigurableBoardPower, GpuNamedPowerPoint,
@@ -167,3 +167,8 @@ data a16_card_row: CardRow = CardRow {
 }
 
 data a16_brief_standing: CitedFigureStanding = CitedToAuthority { authority: extdeps_external_authority_anchor }
+
+// EVERY STANDING THIS MODULE DECLARES, for the consumer's derived roster (see extdeps.gpu.amd's export).
+data nvidia_a16_declared_figure_standings: List<CitedFigureStanding> = [
+  a16_brief_standing,
+]

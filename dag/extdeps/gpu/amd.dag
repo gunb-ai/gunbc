@@ -45,6 +45,14 @@ data r9700_figures_standing: CitedFigureStanding = TranscribedUncited {
   read_obligation: "Read AMD's Radeon AI PRO R9700 specification table (memory size and type, memory bandwidth, architecture, PCIe interface, total board power, cooling) and cite each figure to it in figure_citations, in place of the partner and retailer transcription.",
 }
 
+// EVERY STANDING THIS MODULE DECLARES. The consumer's roster (gunbc.fleet.gpu_declared_figures_standing)
+// concatenates each GPU module's list rather than keeping a hand list, so a standing added here lands in the
+// roster without anyone editing a number elsewhere -- completeness is an identity join, not a count copied
+// from the tree (gunbc.design_argument::fail_closed).
+data amd_declared_figure_standings: List<CitedFigureStanding> = [
+  r9700_figures_standing,
+]
+
 data amd_radeon_ai_pro_r9700_catalog: GpuDeviceCatalogRow = GpuDeviceCatalogRow {
   vendor: amd,
   model: "Radeon AI PRO R9700",
