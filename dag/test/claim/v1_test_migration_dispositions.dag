@@ -1,0 +1,43 @@
+module test.claim.v1_test_migration_dispositions
+
+import std.types { List }
+import gunbc.v1.v1_deletion_plan { V1MigratedTestModule, ReplacedByWitness, v1_migrated_test_modules }
+import v2.lens.test_migration_debt { discovered_rust_test_modules, list_contains_name, names_are_duplicate_free }
+
+// The mapping-completeness control for the v1 test migration. The retention wall
+// (v2.test.claim.manual.test_migration_debt) judges the Rust side and is deliberately untouched; this
+// judges the disposition rows in gunbc.v1.v1_deletion_plan::v1_migrated_test_modules, so a row cannot
+// name a replacement that the discovery does not honour. A Rust module is discharged by a floor
+// witness only on an exact .dag file-stem match (test_migration_debt_stem_covered), so a row whose
+// module is still discovered as debt names a witness the wall does not accept.
+
+fn migrated_rust_files() -> List<String> {
+  v1_migrated_test_modules() |> map(m => concat(m.rust_module, ".rs"))
+}
+
+// Each module is dispositioned exactly once.
+test fn every_migrated_module_appears_exactly_once() -> Bool {
+  names_are_duplicate_free(xs: migrated_rust_files()) && !is_empty(migrated_rust_files())
+}
+
+// A replaced module no longer appears in the discovered debt: its exact-stem floor witness exists.
+test fn every_replaced_module_is_discharged_by_an_exact_stem_witness() -> Bool {
+  migrated_rust_files() |> all(f => !list_contains_name(xs: discovered_rust_test_modules(), needle: f))
+}
+
+// A replacement states its gap, and names at least one witness function.
+test fn every_replacement_names_witnesses_and_a_gap() -> Bool {
+  v1_migrated_test_modules() |> all(m => replacement_is_stated(m: m))
+}
+
+fn replacement_is_stated(m: V1MigratedTestModule) -> Bool {
+  match m.disposition {
+    ReplacedByWitness { witness_module, witness_functions, coverage_gap } =>
+      !is_empty(witness_functions) && witness_module != "" && coverage_gap != ""
+  }
+}
+
+// RED control: a planted duplicate must be refused by the exactly-once judgment.
+test fn a_duplicated_module_is_refused() -> Bool {
+  !names_are_duplicate_free(xs: ["a_test.rs", "a_test.rs"])
+}
