@@ -96,6 +96,7 @@ data primitive_symbol_intern_lexeme: PrimitiveIdentity = primitive_identity_slug
 data primitive_data_init_decl_facts_live: PrimitiveIdentity = primitive_identity_slug(name: "data_init_decl_facts_live")
 data primitive_bytes_octets: PrimitiveIdentity = primitive_identity_slug(name: "bytes_octets")
 data primitive_utf8_encode_bytes: PrimitiveIdentity = primitive_identity_slug(name: "utf8_encode_bytes")
+data primitive_utf8_decode_bytes: PrimitiveIdentity = primitive_identity_slug(name: "utf8_decode_bytes")
 data primitive_octets_bytes: PrimitiveIdentity = primitive_identity_slug(name: "octets_bytes")
 data primitive_pure_dag_seam_unreachable: PrimitiveIdentity = primitive_identity_slug(name: "pure_dag_seam_unreachable")
 data primitive_to_string: PrimitiveIdentity = primitive_identity_slug(name: "to_string")
@@ -184,6 +185,22 @@ fn primitive_projection_roster() -> List<PrimitiveProjection> {
     primitive_projection_row(primitive: primitive_data_init_decl_facts_live, module_path: "v2.std.data_index", decl_name: "data_init_decl_facts_live", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_bytes_octets, module_path: "std.bytes", decl_name: "bytes_octets", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_utf8_encode_bytes, module_path: "std.bytes", decl_name: "utf8_encode_bytes", fidelity: HostRealizedSeam),
+    // A HOST SEAM THAT IS ALSO AN AUTHORED `fn` NEEDS ITS ROW, OR A BOUND CALL EVALUATES THE PLACEHOLDER.
+    // std.encoding::utf8_decode_bytes carries the placeholder a host seam declaration has
+    // ({ pure_dag_seam_unreachable_string() }), and its realization already exists in
+    // v1_rt::utf8_decode_bytes. The interpreter answers an EXPLICITLY BOUND call -- one from a module
+    // that lists the import -- out of the declaration index, and consults the builtin tier only when
+    // nothing declared the name (v1_interpreter's eval_call). So the row, not the spelling, is what
+    // lowers such a call to the runtime primitive, through resolved_declaration_call_target's
+    // HostRealizedSeam arm. Without it the placeholder is evaluated: every successful Secret Manager
+    // access died in secret_manager's utf8_secret_from_access_payload, which imports std.encoding, with
+    // TypeError pure_dag_seam_unreachable -- fleet-converge arrival-converge run 45059586538, step 7. The
+    // identical call from a module without the import reached the builtin, which is why no witness
+    // covering the decode leg could see it: the three decode claims in
+    // test.claim.secret_manager_access_version_witness were red on main, and the failure side redacts an
+    // undecodable payload into an empty body. This is the rule #16761 (b88745ec6e2) applied to
+    // std.algebra::trim, carried to its sibling.
+    primitive_projection_row(primitive: primitive_utf8_decode_bytes, module_path: "std.encoding", decl_name: "utf8_decode_bytes", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_octets_bytes, module_path: "std.bytes", decl_name: "octets_bytes", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_pure_dag_seam_unreachable, module_path: "std.error_primitives", decl_name: "pure_dag_seam_unreachable", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_list_push, module_path: "std.algebra", decl_name: "list_push", fidelity: HostRealizedSeam),

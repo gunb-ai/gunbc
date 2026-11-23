@@ -1,15 +1,18 @@
 module test.claim.compute.remote_build_execution_requirements_witness
 
-import std.types { Bool, List, FilePath }
-import std.optional { Present, Absent }
+import std.types { Bool, List, NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.optional { Optional, Present, Absent }
 import product.host_identity { HostIdentity }
 import product.fabric.work { ExecutionRequirements, ControlPlaneCapacity, RevocationAccepted }
 import product.fabric.isolation { FreshWritableRoot }
-import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }
+import extdeps.git.object_store { GitObjectId, GitSha1ObjectId }
+import std.content_hash { Sha1Digest, Sha1DigestHex }
 import extdeps.toolchain.types { Aarch64, X86_64, architecture_diagnostic_name }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv14, operator_host_e2d4b7 }
 import gunbc.fabric.fabric_executor_class {
   ExecutorExecutionClass, HostArchitectureKnown, HostArchitectureUnclassified,
+  ExecutionClassStanding, ExecutionClassObserved, ExecutionClassExpected,
   ExecutionClassAdmitted, ExecutionClassArchitectureRefused, ExecutionClassUnclassified,
   admit_execution_class, executor_host_architecture, executor_execution_class_roster,
 }
@@ -22,7 +25,7 @@ import gunbc.compute.remote_build {
   remote_build_answer_moves_on, remote_build_next_step, remote_build_pinned_candidates,
 }
 import gunbc.compute.remote_build_client { remote_build_placement_gate, RemoteBuildPlacementOpen, RemoteBuildPlacementBlocked }
-import gunbc.compute.remote_build_hosts { remote_build_serving_hosts }
+import gunbc.compute.remote_build_hosts { remote_build_serving_hosts, remote_build_serving_candidate_hosts }
 
 // HERMETIC CONTROLS for the request carrying its execution requirements and for placement checking them
 // against the fleet's executor-class authority (roadmap row
@@ -38,38 +41,51 @@ import gunbc.compute.remote_build_hosts { remote_build_serving_hosts }
 // gunbc.design_ruling::remote_build_ssh_dispatch_is_an_admitted_scaffold, and nothing here ranks them.
 data mixed_roster: List<HostIdentity> = [operator_host_srv3, operator_host_srv4, operator_host_e2d4b7]
 
-fn x86_only() -> ExecutionRequirements {
-  remote_build_execution_requirements(architecture: Present { value: X86_64 })
+// THE FIXTURES, BUILT THROUGH THE VALIDATORS THAT OWN THEM. The source word is built by
+// remote_build_source_ref, whose module is the only one allowed to construct that record; the commit
+// goes through git's own digest type the way the heal and merge-admission witnesses build theirs. A
+// fixture built any other way could drift from what the wire actually admits, and if a validator ever
+// refuses one of these words the request comes back Absent and every claim that needs it fails LOUD --
+// there is no hand-built fallback invented to fit an answer.
+data x86_only: ExecutionRequirements = remote_build_execution_requirements(architecture: Present { value: X86_64 })
+
+data arm64_only: ExecutionRequirements = remote_build_execution_requirements(architecture: Present { value: Aarch64 })
+
+data arch_unstated: ExecutionRequirements = remote_build_execution_requirements(architecture: none)
+
+data w_operation: RemoteBuildOperation = RemoteCompileEntry { entry: "dag/gunbc/compute/remote_build.dag" }
+
+fn w_oid(hex: String) -> GitObjectId {
+  GitSha1ObjectId { digest: Sha1Digest { hex: hex as Sha1DigestHex } }
 }
 
-fn arm64_only() -> ExecutionRequirements {
-  remote_build_execution_requirements(architecture: Present { value: Aarch64 })
-}
-
-fn arch_unstated() -> ExecutionRequirements {
-  remote_build_execution_requirements(architecture: none)
-}
-
-fn w_commit() -> GitObjectId {
-  match git_object_id_from_untagged_hex(hex: "0123456789abcdef0123456789abcdef01234567") {
-    Present { value: c } => c
-    Absent => w_commit()
-  }
-}
-
-fn w_source() -> RemoteBuildSourceRef {
+fn w_work() -> Optional<RemoteBuildWork> {
   match remote_build_source_ref(id: "requirements.1") {
-    Present { value: r } => r
-    Absent => w_source()
+    Present { value: source } =>
+      Present {
+        value: RemoteBuildWork {
+          commit: w_oid(hex: "0123456789abcdef0123456789abcdef01234567"),
+          source: source,
+          operation: w_operation,
+        }
+      }
+    Absent => Absent
   }
 }
 
-fn w_operation() -> RemoteBuildOperation {
-  RemoteCompileEntry { entry: "dag/gunbc/compute/remote_build.dag" as FilePath }
-}
-
-fn w_request(requirements: ExecutionRequirements) -> RemoteBuildRequest {
-  RemoteBuildRequest { commit: w_commit(), source: w_source(), operation: w_operation(), requirements: requirements }
+fn w_request(requirements: ExecutionRequirements) -> Optional<RemoteBuildRequest> {
+  match w_work() {
+    Present { value: work } =>
+      Present {
+        value: RemoteBuildRequest {
+          commit: work.commit,
+          source: work.source,
+          operation: work.operation,
+          requirements: requirements,
+        }
+      }
+    Absent => Absent
+  }
 }
 
 // THE FLEET AUTHORS WHAT A BUILD REQUIRES, IN THE RECORD THE FABRIC JOIN READS. The requirements are
@@ -79,13 +95,13 @@ fn w_request(requirements: ExecutionRequirements) -> RemoteBuildRequest {
 // state stays unstated: it does not default to the architecture the fleet happens to run today, because
 // that would silently refuse the host the ken lane is about to admit.
 test fn the_fleet_authors_the_requirements_a_build_carries() -> Bool {
-  let x86 = x86_only()
-  let unstated = arch_unstated()
+  let x86 = x86_only
+  let unstated = arch_unstated
   x86.capacity_class == ControlPlaneCapacity
     && x86.revocation == RevocationAccepted
     && any(x86.isolation.guarantees, g => g == FreshWritableRoot)
-    && match x86.shape.envelope.cpu { Present { value: cpu } => cpu.architecture == Present { value: X86_64 }  Absent => false }
-    && match unstated.shape.envelope.cpu { Present { value: cpu } => cpu.architecture == none  Absent => false }
+    && match x86.shape.envelope.cpu { Present { value: cpu } => match cpu.architecture { Present { value: a } => a == X86_64  Absent => false }  Absent => false }
+    && match unstated.shape.envelope.cpu { Present { value: cpu } => match cpu.architecture { Present { value: _ } => false  Absent => true }  Absent => false }
 }
 
 // THE REQUEST CARRIES THEM; THE WORDS DO NOT. Two requests that differ only in the architecture they
@@ -94,13 +110,25 @@ test fn the_fleet_authors_the_requirements_a_build_carries() -> Bool {
 // versioned by that install and not by this request; a requirements word would make every host whose
 // install predates the change refuse every request, which is a deployment skew dressed up as a protocol.
 test fn the_requirements_ride_the_request_and_not_the_wire() -> Bool {
-  let work = RemoteBuildWork { commit: w_commit(), source: w_source(), operation: w_operation() }
-  let words_x86 = remote_build_request_text(r: remote_build_request_work(r: w_request(requirements: x86_only())))
-  let words_arm = remote_build_request_text(r: remote_build_request_work(r: w_request(requirements: arm64_only())))
-  let words_work = remote_build_request_text(r: work)
-  words_x86 == words_arm
-    && words_x86 == words_work
-    && words_x86 == concat(concat(concat("remote-build-v1 ", "0123456789abcdef0123456789abcdef01234567"), " requirements.1"), " compile dag/gunbc/compute/remote_build.dag")
+  match w_request(requirements: x86_only) {
+    Absent => false
+    Present { value: rx } => match w_request(requirements: arm64_only) {
+      Absent => false
+      Present { value: ra } => match w_work() {
+        Absent => false
+        Present { value: work } =>
+          // the request holds the requirements it was given, on the enum the join reads
+          rx.requirements.capacity_class == ControlPlaneCapacity
+            && match rx.requirements.shape.envelope.cpu { Present { value: cpu } => match cpu.architecture { Present { value: a } => a == X86_64  Absent => false }  Absent => false }
+            && match ra.requirements.shape.envelope.cpu { Present { value: cpu } => match cpu.architecture { Present { value: a } => a == Aarch64  Absent => false }  Absent => false }
+            // and the words are the work's identity alone: the same words for both architectures, the
+            // same words as the bare work, and exactly this string
+            && remote_build_request_text(r: remote_build_request_work(r: rx)) == remote_build_request_text(r: remote_build_request_work(r: ra))
+            && remote_build_request_text(r: remote_build_request_work(r: rx)) == remote_build_request_text(r: work)
+            && remote_build_request_text(r: work) == concat(concat(concat("remote-build-v1 ", "0123456789abcdef0123456789abcdef01234567"), " requirements.1"), " compile dag/gunbc/compute/remote_build.dag")
+      }
+    }
+  }
 }
 
 // THE CHECK IS ON THE ARCHITECTURE ENUM, NEVER ON A RENDERED LABEL. The refusal below is matched against
@@ -108,7 +136,7 @@ test fn the_requirements_ride_the_request_and_not_the_wire() -> Bool {
 // produced FROM the verdict by the diagnostics renderer, which is the only direction rendering is
 // allowed to go in.
 test fn an_x86_only_request_is_refused_by_an_arm64_host_on_the_enum() -> Bool {
-  match admit_execution_class(requirements: x86_only(), roster: executor_execution_class_roster, host: operator_host_srv3) {
+  match admit_execution_class(requirements: x86_only, roster: executor_execution_class_roster, host: operator_host_srv3) {
     ExecutionClassArchitectureRefused { host: h, required: r, host_arch: a } =>
       h == operator_host_srv3
         && r == X86_64
@@ -125,7 +153,7 @@ test fn an_x86_only_request_is_refused_by_an_arm64_host_on_the_enum() -> Bool {
 // THE ADMITTING PAIR, SAME AUTHORITY, OPPOSITE ANSWER: the same host admits a request that asks for
 // what it executes, and the verdict says which architecture it checked.
 test fn an_arm64_request_is_admitted_by_the_arm64_host() -> Bool {
-  match admit_execution_class(requirements: arm64_only(), roster: executor_execution_class_roster, host: operator_host_srv3) {
+  match admit_execution_class(requirements: arm64_only, roster: executor_execution_class_roster, host: operator_host_srv3) {
     ExecutionClassAdmitted { host: h, host_arch: a } => h == operator_host_srv3 && a == Aarch64
     ExecutionClassArchitectureRefused { host: _, required: _, host_arch: _ } => false
     ExecutionClassUnclassified { host: _, required: _ } => false
@@ -137,12 +165,12 @@ test fn an_arm64_request_is_admitted_by_the_arm64_host() -> Bool {
 // it asked for and the one the host runs. Nothing about ken is a preference -- the roster order is
 // untouched, and ken is last on this fixture roster exactly as it would be on the live one.
 test fn an_x86_only_request_walks_past_the_arm64_hosts_and_lands_only_on_ken() -> Bool {
-  let placed = remote_build_admissible_hosts(requirements: x86_only(), classes: executor_execution_class_roster, hosts: mixed_roster)
-  let srv3_refused = remote_build_host_placement(requirements: x86_only(), classes: executor_execution_class_roster, host: operator_host_srv3)
-  let srv4_refused = remote_build_host_placement(requirements: x86_only(), classes: executor_execution_class_roster, host: operator_host_srv4)
-  let ken_admitted = remote_build_host_placement(requirements: x86_only(), classes: executor_execution_class_roster, host: operator_host_e2d4b7)
+  let placed = remote_build_admissible_hosts(requirements: x86_only, classes: executor_execution_class_roster, hosts: mixed_roster)
+  let srv3_refused = remote_build_host_placement(requirements: x86_only, classes: executor_execution_class_roster, host: operator_host_srv3)
+  let srv4_refused = remote_build_host_placement(requirements: x86_only, classes: executor_execution_class_roster, host: operator_host_srv4)
+  let ken_admitted = remote_build_host_placement(requirements: x86_only, classes: executor_execution_class_roster, host: operator_host_e2d4b7)
   placed == [operator_host_e2d4b7]
-    && remote_build_any_host_admits(requirements: x86_only(), classes: executor_execution_class_roster, hosts: mixed_roster)
+    && remote_build_any_host_admits(requirements: x86_only, classes: executor_execution_class_roster, hosts: mixed_roster)
     && match srv3_refused {
         Present { value: HostExecutionClassRefused { admission: ExecutionClassArchitectureRefused { host: h, required: rq, host_arch: ha }, detail: _ } } => h == operator_host_srv3 && rq == X86_64 && ha == Aarch64
         _ => false
@@ -151,7 +179,7 @@ test fn an_x86_only_request_walks_past_the_arm64_hosts_and_lands_only_on_ken() -
         Present { value: HostExecutionClassRefused { admission: ExecutionClassArchitectureRefused { host: h, required: rq, host_arch: ha }, detail: _ } } => h == operator_host_srv4 && rq == X86_64 && ha == Aarch64
         _ => false
       }
-    && ken_admitted == none
+    && match ken_admitted { Absent => true  Present { value: _ } => false }
 }
 
 // RED CONTROL, THE OTHER DIRECTION: a request that would be placed on a host of the wrong architecture
@@ -162,15 +190,15 @@ test fn an_x86_only_request_walks_past_the_arm64_hosts_and_lands_only_on_ken() -
 test fn a_request_no_host_can_execute_is_refused_before_anything_is_pushed() -> Bool {
   let live = remote_build_pinned_candidates(pin: none) |> map(c => c.host)
   live == remote_build_serving_hosts()
-    && !remote_build_any_host_admits(requirements: x86_only(), classes: executor_execution_class_roster, hosts: live)
-    && match remote_build_placement_gate(requirements: x86_only(), pin: none) {
+    && !remote_build_any_host_admits(requirements: x86_only, classes: executor_execution_class_roster, hosts: live)
+    && match remote_build_placement_gate(requirements: x86_only, pin: none) {
         RemoteBuildPlacementBlocked { detail } => detail.contains("srv3") && detail.contains("srv4") && detail.contains("X86")
         RemoteBuildPlacementOpen => false
       }
     // The same run with requirements the roster can execute is open, so the refusal above is the
     // architecture and not the gate failing closed on everything.
-    && match remote_build_placement_gate(requirements: arm64_only(), pin: none) { RemoteBuildPlacementOpen => true  RemoteBuildPlacementBlocked { detail: _ } => false }
-    && match remote_build_placement_gate(requirements: arch_unstated(), pin: none) { RemoteBuildPlacementOpen => true  RemoteBuildPlacementBlocked { detail: _ } => false }
+    && match remote_build_placement_gate(requirements: arm64_only, pin: none) { RemoteBuildPlacementOpen => true  RemoteBuildPlacementBlocked { detail: _ } => false }
+    && match remote_build_placement_gate(requirements: arch_unstated, pin: none) { RemoteBuildPlacementOpen => true  RemoteBuildPlacementBlocked { detail: _ } => false }
 }
 
 // A WRONG-ARCHITECTURE REFUSAL MOVES THE WALK ON. A host the class refused says nothing about the next
@@ -196,16 +224,24 @@ test fn a_refused_host_is_walked_past_rather_than_settling_the_run() -> Bool {
 // set, with a different remedy -- author the row -- so it gets its own typed answer, and it is refused
 // even when the request states no architecture: "nobody classified this" is not "this host can run it".
 test fn an_unclassified_host_refuses_with_its_own_typed_cause() -> Bool {
-  let unclassified_roster: List<ExecutorExecutionClass> = [
-    ExecutorExecutionClass { host: operator_host_srv3, architecture: Aarch64 },
+  let roster_lacking_ken: List<ExecutorExecutionClass> = [
+    ExecutorExecutionClass {
+      host: operator_host_srv3,
+      architecture: Aarch64,
+      standing: ExecutionClassObserved {
+        evidence: decl_ref(module_path: "gunbc.compute.remote_build_serving_converge", decl_name: "converge_install_binary"),
+      },
+    },
   ]
-  match admit_execution_class(requirements: x86_only(), roster: unclassified_roster, host: operator_host_e2d4b7) {
-    ExecutionClassUnclassified { host: h, required: r } => h == operator_host_e2d4b7 && match r { Present { value: X86_64 } => true  Absent => false }
+  match admit_execution_class(requirements: x86_only, roster: roster_lacking_ken, host: operator_host_e2d4b7) {
+    ExecutionClassUnclassified { host: h, required: r } =>
+      h == operator_host_e2d4b7
+        && match r { Present { value: req } => req == X86_64  Absent => false }
     ExecutionClassAdmitted { host: _, host_arch: _ } => false
     ExecutionClassArchitectureRefused { host: _, required: _, host_arch: _ } => false
   }
-    && !remote_build_any_host_admits(requirements: arch_unstated(), classes: unclassified_roster, hosts: [operator_host_e2d4b7])
-    && remote_build_any_host_admits(requirements: arch_unstated(), classes: unclassified_roster, hosts: [operator_host_srv3])
+    && !remote_build_any_host_admits(requirements: arch_unstated, classes: roster_lacking_ken, hosts: [operator_host_e2d4b7])
+    && remote_build_any_host_admits(requirements: arch_unstated, classes: roster_lacking_ken, hosts: [operator_host_srv3])
 }
 
 // THE ROW IS THE ONE AUTHORITY FOR A HOST'S ARCHITECTURE. The public lookup answers for every host the
@@ -223,4 +259,39 @@ test fn the_execution_class_row_is_the_architecture_authority() -> Bool {
     // the CI-only host, neither on the dispatch roster nor on the candidate roster the serving converge
     // reads this row for.
     && match executor_host_architecture(host: operator_host_srv14) { HostArchitectureUnclassified { host: h } => h == operator_host_srv14  _ => false }
+}
+
+// THE STANDING OF THE EVIDENCE IS IN THE ROW, NOT ONLY IN ITS COMMENT, because placement consumes these
+// rows as a hard fact and a comment cannot be checked. Every host the remote-build walk can be placed on
+// today -- the dispatch roster and the serving candidates -- carries Observed standing; the one host left
+// off the fleet roster carries no row at all rather than a guessed one. And standing is honesty, not
+// policy: the join never reads it, so a row cannot be quietly weakened into a refusal by editing it.
+test fn the_placed_upon_rows_cite_what_they_rest_on() -> Bool {
+  let placed = remote_build_serving_hosts()
+  let candidates = remote_build_serving_candidate_hosts()
+  all(placed, h => match executor_host_architecture(host: h) {
+        HostArchitectureKnown { host: _, arch: _ } => row_is_observed(host: h)
+        HostArchitectureUnclassified { host: _ } => false
+      })
+    && all(candidates, h => match executor_host_architecture(host: h) {
+        HostArchitectureKnown { host: _, arch: _ } => true
+        HostArchitectureUnclassified { host: _ } => false
+      })
+    && match executor_host_architecture(host: operator_host_srv14) { HostArchitectureUnclassified { host: _ } => true  _ => false }
+}
+
+fn row_standing(host: HostIdentity) -> Optional<ExecutionClassStanding> {
+  fold(
+    executor_execution_class_roster,
+    init: Absent,
+    f: (acc, row) => if row.host == host { Present { value: row.standing } } else { acc },
+  )
+}
+
+fn row_is_observed(host: HostIdentity) -> Bool {
+  match row_standing(host: host) {
+    Present { value: ExecutionClassObserved { evidence: _ } } => true
+    Present { value: ExecutionClassExpected { catalog: _, what_would_ground_it: _ } } => false
+    Absent => false
+  }
 }

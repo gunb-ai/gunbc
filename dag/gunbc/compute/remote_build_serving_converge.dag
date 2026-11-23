@@ -31,14 +31,12 @@ import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, typed_argv_exec_o
 // the census and read-back grammars (both live beside their doors), and the typed `gunbc run` argv
 // shape every host-side door run shares. The leg itself decides nothing.
 import gunbc.compute.work_provider_local {
-  RecoverCatalogLegReading, RecoverCatalogLegUnknown, recover_catalog_leg_reading,
+  RecoverCatalogLegReading, RecoverCatalogLegUnknown, RecoverCatalogLegDeferred, recover_catalog_leg_reading,
   RecoverDoorSettled, RecoverDoorDeclined, RecoverDoorUnknown, RecoverDoorUnmapped, recover_door_verdict,
   RecoverReadbackFacts, RecoverReadbackUnknown, recover_readback_reading,
   ReadbackRecordTerminal, ReadbackRecordActive, ReadbackRecordAbsent, ReadbackChargeStillHeld,
 }
-import gunbc.gunbc_cli_command { NamedArgumentRequest, gunbc_installed_run_with_named_arguments_command, gunbc_command_argv }
-import extdeps.tools.env { env_prefixed_argv }
-import gunbc.cli_run_workspace_root_scaffold { gunbc_workspace_root_env_name }
+import gunbc.gunbc_cli_command { NamedArgumentRequest, gunbc_installed_run_with_named_arguments_command }
 import gunbc.runner.runner_host_file_converge { administrator_ssh_target }
 import gunbc.compute.remote_build_serving_setup { serving_toolchain_line_names_channel,
   remote_build_serving_desired, RemoteBuildServingDesired, ServingObserved,
@@ -66,7 +64,7 @@ import extdeps.github.github { github_https_clone_url }
 import gunbc.repository { gunbc_repository }
 import extdeps.tools.stat { stat_owner_user_name_command, stat_owner_group_name_command, stat_mode_argv }
 import extdeps.sudo.elevation { sudo_elevate_argv, sudo_elevate_as_command }
-import extdeps.exec.command { ArgvCommand, argv_words, LocalExec, env_prefixed_command }
+import extdeps.exec.command { ArgvCommand, argv_words, LocalExec, env_prefixed_command, env_prefixed_command_in }
 import extdeps.shadow.account_creation { groupadd_with_gid_argv, useradd_declared_account_argv, usermod_append_group_argv }
 import extdeps.tools.gnu_coreutils {true_command, cat_command, mktemp_directory_command, coreutils_install_file_owned_argv, install_directory_owned_argv_command }
 import extdeps.posix.test_utility { test_directory_command, test_executable_command, test_regular_file_command }
@@ -629,6 +627,21 @@ fn observe_host_reads(target: SshTarget, context: FleetSshExecutionContext, d: R
   }
   let serving_uid = serving_passwd_uid(text: passwd_opt, name: d.account_name)
   let slice_cap = serving_leg_slice_cap(target: target, context: context, uid: serving_uid)
+  // THE CENSUS DOOR IS CARRIED BY THE CHECKOUT, so it is asked only where it exists — the decision is
+  // census_door_gate, a pure function over the read values so a claim exercises it without a host. The
+  // recovery doors (compute_recover_catalog_cli and its two apply siblings) live in the checkout's dag;
+  // a checkout not yet detached at the dispatched revision does not contain them, and asking its stale
+  // tree answers "function compute_recover_catalog_cli is not in the loaded entry" — measured on srv1,
+  // run 44984397614, 2026-11-22. An unknown census dominates the assessment (fail_closed), and an
+  // indeterminate assessment plans nothing — so asking a door that cannot exist would strand the very
+  // checkout write that carries it, forever. The leg DEFERS with the reason when the gate says DEFER:
+  // no door runs, the plan carries no recovery write, the receipt says so, and the next assessment —
+  // with the checkout detached at the pin — asks the door. Never a fabricated empty census, and never
+  // an unknown for a door that was simply not asked.
+  let seat_census = match census_door_gate(checkout_revision: checkout_revision_value, dispatched_revision: pin.dispatched_revision) {
+    CensusGateAsk => serving_leg_seat_census(elevation: elevation, target: target, context: context, d: d, uid: serving_uid)
+    CensusGateDefer { reason: r } => RecoverCatalogLegDeferred { reason: r }
+  }
   // The user manager's linger state, read unelevated alongside the cap: it is the precondition for that
   // cgroup to persist, so it is observed in the same pass. It is GATED on the account being present, exactly
   // as the rustup/toolchain legs are: a confirmed-absent account (a fresh host) has no user manager to ask
@@ -668,7 +681,7 @@ fn observe_host_reads(target: SshTarget, context: FleetSshExecutionContext, d: R
     user_manager_linger: linger,
     target_arch: serving_leg_arch(item: "host.arch", target: target, context: context),
     ledger_rows: map(d.ledger_dirs, t => serving_ledger_row_read(target: target, context: context, t: t)),
-    seat_census: serving_leg_seat_census(elevation: elevation, target: target, context: context, d: d, uid: serving_uid),
+    seat_census: seat_census,
   )
   ServingObservedView { desired: d, observed: o }
 }
@@ -1333,6 +1346,12 @@ fn converge_step(acc: ConvergeDraft, d: RemoteBuildServingDesired, pin: ServingP
     // classify step refuses rather than silently dropping the write.
     StaleSeatDetected { reference: ref } =>
       ConvergeDraft { writes: concat([RecoverStaleSeat { reference: ref }], acc.writes), unhandled: acc.unhandled }
+    // The census was deferred (the checkout does not carry the door yet): NO recovery write, and NOT
+    // unhandled — there is nothing for a human to do; the checkout write this same plan carries is the
+    // remedy, and the next assessment asks the door. It can never stand alone as the only divergence:
+    // deferring means the checkout is not at the pin, which is itself the checkout drift that plans the
+    // detach (an unreadable revision is an unknown, which indeterminate-blocks before this fold).
+    StaleSeatCensusDeferred { reason: _ } => acc
   }
 }
 
@@ -1445,18 +1464,29 @@ fn converge_gunbc_door_argv(d: RemoteBuildServingDesired, function: String, argu
     arguments: arguments
   ) {
     Absent => Absent
-    Present { value: cmd } => Present { value: env_prefixed_argv(
-      // The account's OWN user-session bindings, beside the workspace root. A door run through sudo
-      // inherits neither XDG_RUNTIME_DIR nor the session bus (gunbc.host.user_session_runtime), and a
-      // door that bears host effects is REFUSED before it reads anything unless its user manager is
-      // reachable to wrap it into the capped gunbc-user-work.slice — the seed's user-work-scope gate
+    Present { value: cmd } => Present { value: argv_words(command: env_prefixed_command_in(
+      // THE DOOR STARTS IN THE SERVING CHECKOUT, and GUNBC_WORKSPACE_ROOT is NOT bound. Two measured
+      // refusals on srv1 (runs 44976395909 and 44980662577, 2026-11-22) name this seam: the seed's
+      // cli_run workspace-root scaffold (src/v1/stage0/src/cli_run.rs, workspace_root_resolve) treats a
+      // SET GUNBC_WORKSPACE_ROOT as THE AUTHORITY and validates it as a release locus — a plain git
+      // checkout like the serving one has no .gunbc-tree-receipt, and the scaffold refuses rather than
+      // falling back ("A fallback to a different directory is a false success"). Unset, it binds by the
+      // .git walk from the STARTING DIRECTORY — so the door is started in the checkout, exactly how the
+      // admitted serve route's forced command runs its door (gunbc.compute.remote_build_serve
+      // remote_build_forced_command_words, same refusal observed there on 2026-11-15). env -C is
+      // extdeps.tools.env's own chdir flag through extdeps.exec.command's one env builder.
+      directory: repo,
+      // The account's OWN user-session bindings. A door run through sudo inherits neither
+      // XDG_RUNTIME_DIR nor the session bus (gunbc.host.user_session_runtime), and a door that bears
+      // host effects is REFUSED before it reads anything unless its user manager is reachable to wrap
+      // it into the capped gunbc-user-work.slice — the seed's user-work-scope gate
       // (src/v1/stage0/src/cli_run/user_work_scope.rs) answers exit 2 "cannot wrap into
       // gunbc-user-work.slice (UserSessionAbsent)" for such a command. These bindings are the account's
       // login environment for that one manager: they grant no privilege and skip no bound — with them
-      // the door RUNS INSIDE the slice this converge itself installs and caps.
-      bindings: concat([EnvSet { name: gunbc_workspace_root_env_name, value: repo }], user_session_launcher_env(runtime_dir: runtime_dir)),
-      command_argv: gunbc_command_argv(cmd: cmd)
-    ) }
+      // the door RUNS INSIDE the slice this converge itself installs and caps (measured: run-r…scope).
+      bindings: user_session_launcher_env(runtime_dir: runtime_dir),
+      command: cmd
+    )) }
   }
 }
 
@@ -1469,6 +1499,27 @@ fn converge_as_user_outcome(target: SshTarget, context: FleetSshExecutionContext
     context: context,
     argv: argv_words(command: sudo_elevate_as_command(user: account as NonEmptyStr, command: argv))
   )
+}
+
+// Whether the census door may be asked at all, decided over the READ values so a claim exercises the
+// gate without a host (witness_one_interface: the witness supplies the reads at the boundary). The door
+// is carried by the serving checkout, so it exists only where that checkout stands AT the dispatched
+// revision; an unestablished or refused revision defers too — a checkout whose revision is not settled
+// cannot be known to carry the door. DEFER is not UNKNOWN: nothing was read and refused (fail_closed
+// reserves unknown for that), and it is never an established-empty census.
+type CensusGate
+  = CensusGateAsk
+  | CensusGateDefer { reason: String }
+
+fn census_door_gate(checkout_revision: Optional<ObservationAttempt<String, ServingLegFailure>>, dispatched_revision: String) -> CensusGate {
+  match checkout_revision {
+    Present { value: ObservationEstablished { observed: v } } => match v == dispatched_revision {
+      true => CensusGateAsk
+      false => CensusGateDefer { reason: join(["the serving checkout stands at ", v, ", not the dispatched revision ", dispatched_revision, "; the recovery door lives in the checkout, so the census waits for the assessment after the checkout write detaches it"], "") }
+    }
+    Absent => CensusGateDefer { reason: join(["the serving checkout's revision is not established against the dispatched revision ", dispatched_revision, "; the census door is asked only from a checkout known to carry it"], "") }
+    Present { value: ObservationRefused { cause: c } } => CensusGateDefer { reason: join(["the serving checkout's revision read was refused (", c.cause, "), so the census door — which that checkout carries — cannot be known to exist"], "") }
+  }
 }
 
 // The observe's seat census: the recovery door's census, run as the serving account (the seats and the
