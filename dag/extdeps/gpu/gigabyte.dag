@@ -43,10 +43,9 @@ data gigabyte_r9700_ai_top_figures_standing: CitedFigureStanding = TranscribedUn
   read_obligation: "Fetch Gigabyte's GV-R9700AI TOP-32GD specification page (Rev. 1.0 and 1.1) and cite the PCIe interface, clocks and power connector to it; read the revision off the operator's cards.",
 }
 
-// EVERY STANDING THIS MODULE DECLARES, exported for the same reason as extdeps.gpu.amd's: the consumer's
-// roster concatenates per-module lists rather than keeping a hand list, so a standing added here is in the
-// roster automatically -- completeness is an identity join, not a count copied from the tree
-// (gunbc.design_argument::fail_closed).
+// EVERY STANDING THIS MODULE DECLARES. HAND-MAINTAINED: add a standing here when you declare one, and join
+// this list into gunbc.fleet.gpu_declared_figures_standing::declared_gpu_standing_rows -- see that function's
+// comment for the two hand-maintained levels and the trigger that would replace them with an identity join.
 data gigabyte_declared_figure_standings: List<CitedFigureStanding> = [
   gigabyte_r9700_ai_top_figures_standing,
 ]

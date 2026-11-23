@@ -203,14 +203,13 @@ test fn the_gigabyte_admission_cannot_be_read_without_its_standing() -> Bool {
   }
 }
 
-// An unmarked board stays unmarked: the answer names the basis instead of falling through to silence, which
-// is the same failure the row records -- absence of a warning read as absence of a problem.
-test fn a_board_no_module_qualifies_is_returned_unmarked_with_a_basis() -> Bool {
+// An unmarked board stays unmarked: it comes back in the FiguresUnmarked arm, a typed marker that itself says
+// no standing was declared about the board, rather than falling through to the carried arm or to silence -- the
+// failure the row records is absence of a warning read as absence of a problem, and the variant is the warning.
+test fn a_board_no_module_qualifies_is_returned_unmarked() -> Bool {
   match gpu_admitted_board_figures(admission: nvidia_a16_board_catalog) {
-    FiguresUnmarked { facts: _, basis: b } =>
-      string_contains(s: b, pattern: "transcribed from the vendor")
-        && string_contains(s: b, pattern: "no figure_citations entry carries a standing")
-    _ => false
+    FiguresUnmarked { facts: _ } => true
+    FiguresCarried { facts: _, standing: _, declared_by: _ } => false
   }
 }
 
