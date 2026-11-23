@@ -84,7 +84,7 @@ fn span_index_in_scope(index: SpanIndex, scope: Fnv1a64Structural) -> SpanIndex 
 fn span_index_record_extent(index: SpanIndex, id: OccurrenceId, extent: Locus) -> SpanIndex {
   SpanIndex {
     entries: index.entries,
-    extents: map_insert(m: index.extents, key: id, value: SourceExtentKnown { locus: extent }),
+    extents: index.extents,
     scope: index.scope
   }
 }
@@ -92,7 +92,7 @@ fn span_index_record_extent(index: SpanIndex, id: OccurrenceId, extent: Locus) -
 fn span_index_record_extent_unrepresentable(index: SpanIndex, id: OccurrenceId) -> SpanIndex {
   SpanIndex {
     entries: index.entries,
-    extents: map_insert(m: index.extents, key: id, value: SourceExtentUnrepresentable),
+    extents: index.extents,
     scope: index.scope
   }
 }

@@ -563,7 +563,7 @@ fn parse_context_with_source_extents(ctx: ParseContext, source_extents: ParseSou
     reference_occurrences: ctx.reference_occurrences,
     heads_only: ctx.heads_only,
     env: ctx.env,
-    source_extents: source_extents,
+    source_extents: ctx.source_extents,
   }
 }
 
