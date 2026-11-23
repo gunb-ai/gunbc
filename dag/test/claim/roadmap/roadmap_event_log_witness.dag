@@ -129,6 +129,7 @@ test fn a_v2_claimed_event_decodes_as_a_legacy_email_principal_never_auto_matche
           HandedBack { reason: _ } => false
           Retired { reason: _ } => false
           ReceiptReferenced { obligation: _, address: _, verdict: _ } => false
+          RedTreeRecorded { red_at: _, green_at: _ } => false
           CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => false
           CommentEdited { comment: _, body: _ } => false
           CommentDeleted { comment: _ } => false
@@ -160,6 +161,7 @@ test fn a_v1_claimed_event_still_reads_as_a_legacy_self_claim() -> Bool {
           HandedBack { reason: _ } => false
           Retired { reason: _ } => false
           ReceiptReferenced { obligation: _, address: _, verdict: _ } => false
+          RedTreeRecorded { red_at: _, green_at: _ } => false
           CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => false
           CommentEdited { comment: _, body: _ } => false
           CommentDeleted { comment: _ } => false
@@ -556,7 +558,7 @@ fn receipt_fixture() -> RoadmapAcceptanceReceipt {
     red_control: RedControlExecuted {
       witness_module: "test.claim.roadmap.roadmap_event_log_witness" as NonEmptyStr,
       witness_fn: "fixture" as NonEmptyStr,
-      executed_on: "2026-11-09" as NonEmptyStr,
+      executed_on: "2026-11-09" as NonEmptyStr, red_at: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", green_at: "0f1e2d3c4b5a69788796a5b4c3d2e1f001234567",
     },
     handback: HandbackDelivered {
       first_artifact: "fixture-artifact" as NonEmptyStr,
@@ -574,7 +576,7 @@ fn receipt_for(other: RoadmapNodeId) -> RoadmapAcceptanceReceipt {
     red_control: RedControlExecuted {
       witness_module: "test.claim.roadmap.roadmap_event_log_witness" as NonEmptyStr,
       witness_fn: "fixture" as NonEmptyStr,
-      executed_on: "2026-11-09" as NonEmptyStr,
+      executed_on: "2026-11-09" as NonEmptyStr, red_at: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", green_at: "0f1e2d3c4b5a69788796a5b4c3d2e1f001234567",
     },
     handback: HandbackDelivered {
       first_artifact: "fixture-artifact" as NonEmptyStr,
@@ -608,7 +610,7 @@ fn receipt_dated(day: String) -> RoadmapAcceptanceReceipt {
     red_control: RedControlExecuted {
       witness_module: "test.claim.roadmap.roadmap_event_log_witness" as NonEmptyStr,
       witness_fn: "fixture" as NonEmptyStr,
-      executed_on: "2026-11-09" as NonEmptyStr,
+      executed_on: "2026-11-09" as NonEmptyStr, red_at: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", green_at: "0f1e2d3c4b5a69788796a5b4c3d2e1f001234567",
     },
     handback: HandbackDelivered {
       first_artifact: "fixture-artifact" as NonEmptyStr,

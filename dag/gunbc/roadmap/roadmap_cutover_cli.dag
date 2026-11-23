@@ -429,17 +429,19 @@ fn roadmap_cutover_acceptance_record_cli(
   merged_at: String,
   head_sha: String,
   author: String,
-  report_path: String
+  report_path: String,
+  red_at: String,
+  green_at: String
 ) -> ProcessExit {
   let report = Filesystem.Read(path: report_path)
   match roadmap_acceptance_line_of(text: receipt_line) {
     Absent => roadmap_acceptance_record_cli(
       repo_root: repo_root, receipt_line: receipt_line, pr_url: pr_url,
-      merged_at: merged_at, head_sha: head_sha, author: author)
+      merged_at: merged_at, head_sha: head_sha, author: author, red_at: red_at, green_at: green_at)
     Present { value: line } => match roadmap_acceptance_line_acceptance_receipt(line: line) {
       Absent => roadmap_acceptance_record_cli(
         repo_root: repo_root, receipt_line: receipt_line, pr_url: pr_url,
-        merged_at: merged_at, head_sha: head_sha, author: author)
+        merged_at: merged_at, head_sha: head_sha, author: author, red_at: red_at, green_at: green_at)
       Present { value: _ } => {
         let gate = roadmap_cutover_migration_gate_decide_acceptance(
           identity: roadmap_acceptance_migration_identity(e: line),
@@ -452,7 +454,7 @@ fn roadmap_cutover_acceptance_record_cli(
               "; the acceptance was NOT handed to the carrier (report ", report_path, ")"], "") }
           GateAdmitted { fact: _ } => roadmap_acceptance_record_cli(
             repo_root: repo_root, receipt_line: receipt_line, pr_url: pr_url,
-            merged_at: merged_at, head_sha: head_sha, author: author)
+            merged_at: merged_at, head_sha: head_sha, author: author, red_at: red_at, green_at: green_at)
         }
       }
     }

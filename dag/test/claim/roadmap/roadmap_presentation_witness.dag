@@ -2068,7 +2068,7 @@ fn fx_accepted_receipt() -> RoadmapAcceptanceReceipt {
     red_control: RedControlExecuted {
       witness_module: "test.claim.roadmap.roadmap_presentation_witness" as NonEmptyStr,
       witness_fn: "fx_accepted_receipt" as NonEmptyStr,
-      executed_on: "2026-11-11" as NonEmptyStr,
+      executed_on: "2026-11-11" as NonEmptyStr, red_at: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", green_at: "0f1e2d3c4b5a69788796a5b4c3d2e1f001234567",
     },
     handback: HandbackDelivered {
       first_artifact: "fixture-artifact" as NonEmptyStr,

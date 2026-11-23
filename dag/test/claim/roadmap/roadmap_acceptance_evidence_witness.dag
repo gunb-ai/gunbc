@@ -130,7 +130,7 @@ fn sample_receipt(node: String) -> RoadmapAcceptanceReceipt {
     red_control: RedControlExecuted {
       witness_module: "test/claim/roadmap/roadmap_acceptance_evidence_witness" as NonEmptyStr,
       witness_fn: "witness_executes" as NonEmptyStr,
-      executed_on: "2026-11-03",
+      executed_on: "2026-11-03", red_at: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", green_at: "0f1e2d3c4b5a69788796a5b4c3d2e1f001234567",
     },
     handback: HandbackDelivered { first_artifact: "commit abc", further_artifacts: [] as List<NonEmptyStr> },
     accepted_by: "briansrls" as NonEmptyStr,
@@ -146,7 +146,7 @@ fn sample_receipt_on(node: String, day: String) -> RoadmapAcceptanceReceipt {
     red_control: RedControlExecuted {
       witness_module: "test/claim/roadmap/roadmap_acceptance_evidence_witness" as NonEmptyStr,
       witness_fn: "witness_executes" as NonEmptyStr,
-      executed_on: "2026-11-03",
+      executed_on: "2026-11-03", red_at: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", green_at: "0f1e2d3c4b5a69788796a5b4c3d2e1f001234567",
     },
     handback: HandbackDelivered { first_artifact: "commit abc", further_artifacts: [] as List<NonEmptyStr> },
     accepted_by: "briansrls" as NonEmptyStr,
@@ -163,7 +163,7 @@ fn sample_receipt_other_executed_day(node: String) -> RoadmapAcceptanceReceipt {
     red_control: RedControlExecuted {
       witness_module: "test/claim/roadmap/roadmap_acceptance_evidence_witness" as NonEmptyStr,
       witness_fn: "witness_executes" as NonEmptyStr,
-      executed_on: "2026-11-06",
+      executed_on: "2026-11-06", red_at: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", green_at: "0f1e2d3c4b5a69788796a5b4c3d2e1f001234567",
     },
     handback: HandbackDelivered { first_artifact: "commit abc", further_artifacts: [] as List<NonEmptyStr> },
     accepted_by: "briansrls" as NonEmptyStr,
@@ -192,7 +192,7 @@ fn sample_receipt_other_criteria(node: String) -> RoadmapAcceptanceReceipt {
     red_control: RedControlExecuted {
       witness_module: "test/claim/roadmap/roadmap_acceptance_evidence_witness" as NonEmptyStr,
       witness_fn: "witness_executes" as NonEmptyStr,
-      executed_on: "2026-11-03",
+      executed_on: "2026-11-03", red_at: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", green_at: "0f1e2d3c4b5a69788796a5b4c3d2e1f001234567",
     },
     handback: HandbackDelivered { first_artifact: "commit abc", further_artifacts: [] as List<NonEmptyStr> },
     accepted_by: "briansrls" as NonEmptyStr,

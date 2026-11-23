@@ -1175,6 +1175,8 @@ fn serve_issue_close_response_over(
                     accepted_on: roadmap_operator_date_from_epoch_secs(secs: epoch_secs_of_millis(millis: ms)),
                     witness_module: get("witness_module") as NonEmptyStr,
                     witness_fn: get("witness_fn") as NonEmptyStr,
+                    red_at: get("red_at"),
+                    green_at: get("green_at"),
                     first_artifact: get("first_artifact") as NonEmptyStr,
                     further_artifacts: filter(
                       map(split(s: get("further_artifacts"), delimiter: ","), a => trim(a) as NonEmptyStr),

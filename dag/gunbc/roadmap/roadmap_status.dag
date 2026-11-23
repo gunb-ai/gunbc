@@ -2,7 +2,7 @@ module gunbc.roadmap.roadmap_status
 
 import extdeps.github.pulls { PullRequest }
 
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, CommitSha, commit_sha_text_holds }
 
 // The ticket decomposition (remodel W2, operator direction 2026-07-24; the model half of
 // ts-wf-node-schema): an AuthoredLine's single content String fuses headline, brief, workflow
@@ -58,9 +58,26 @@ type RoadmapItem
 // inside RedControlExecuted is not mechanically joined to the prose red_control it discharges
 // (gunbc.roadmap.roadmap_model roadmap_acceptance_receipt_note).
 
+// RED_AT / GREEN_AT (operator ruling 2026-11-23, gunbc.design_ruling::executed_red_control_names_its_failing_commit):
+// an executed red control is evidence only if the witness was OBSERVED FAILING on some tree and that tree is
+// recorded as data. RedControlExecuted therefore carries red_at (the commit where the witness failed) and
+// green_at (the commit where the same witness passed), both the existing std.types CommitSha. A receipt with
+// no red_at has no RedControlExecuted to write: the field is required, so the omission is unwritable rather
+// than a validation branch. TWO RESIDUES, counted not implied: CommitSha is still an unvalidated String alias
+// and red_at != green_at is a relation between two fields, so neither is a constructor wall; both are judged by
+// gunbc.roadmap.roadmap_status red_control_pair_holds at the one place a receipt is made closable (rung:
+// mechanically preventable; trigger: CommitSha gains a validating constructor, std.types commit_sha_text_holds).
+//
+// RedControlTreeUnrecorded is DECODE-ONLY HISTORY: the receipts recorded before the ruling carry
+// witness_module/witness_fn/executed_on and no tree. They are never revoked and never read as valid red
+// evidence: this arm is their distinct standing. It is not writable by any recorder (the closable predicate
+// refuses it); a later appended RedTreeRecorded event upgrades a receipt's standing
+// (gunbc.roadmap.roadmap_event_log roadmap_receipt_effective_red_control). Its wire form is the old one, byte for
+// byte, so a stored event's id still verifies against its own bytes.
 type RedControlEvidence
   = RedControlNotRun
-  | RedControlExecuted { witness_module: NonEmptyStr, witness_fn: NonEmptyStr, executed_on: NonEmptyStr }
+  | RedControlExecuted { witness_module: NonEmptyStr, witness_fn: NonEmptyStr, executed_on: NonEmptyStr, red_at: CommitSha, green_at: CommitSha }
+  | RedControlTreeUnrecorded { witness_module: NonEmptyStr, witness_fn: NonEmptyStr, executed_on: NonEmptyStr }
 
 type HandbackEvidence
   = HandbackNotDelivered
@@ -69,8 +86,28 @@ type HandbackEvidence
 fn red_control_evidence_satisfied(e: RedControlEvidence) -> Bool {
   match e {
     RedControlNotRun => false
-    RedControlExecuted { witness_module: _, witness_fn: _, executed_on: _ } => true
+    RedControlExecuted { witness_module: _, witness_fn: _, executed_on: _, red_at: r, green_at: g } => red_control_pair_holds(red_at: r, green_at: g)
+    // NOT false: an accepted receipt recorded before the ruling stays accepted ("never revoke"); reading it
+    // as unsatisfied would silently return its node to the active set, which is a revocation by another
+    // name. What it is NOT is valid red evidence: red_control_evidence_is_valid_red says so.
+    RedControlTreeUnrecorded { witness_module: _, witness_fn: _, executed_on: _ } => true
   }
+}
+
+// VALID RED EVIDENCE, the ruling's own question: executed, and observed failing on a recorded tree that
+// differs from the passing one. The unrecorded standing answers false here and true above.
+fn red_control_evidence_is_valid_red(e: RedControlEvidence) -> Bool {
+  match e {
+    RedControlNotRun => false
+    RedControlExecuted { witness_module: _, witness_fn: _, executed_on: _, red_at: r, green_at: g } => red_control_pair_holds(red_at: r, green_at: g)
+    RedControlTreeUnrecorded { witness_module: _, witness_fn: _, executed_on: _ } => false
+  }
+}
+
+// The pair is two well-formed Git heads that differ: a witness seen failing and passing on ONE tree was
+// not seen to change. Judged here because CommitSha is an alias, not a constructor.
+fn red_control_pair_holds(red_at: CommitSha, green_at: CommitSha) -> Bool {
+  commit_sha_text_holds(head: red_at) && commit_sha_text_holds(head: green_at) && red_at != green_at
 }
 
 fn handback_evidence_satisfied(e: HandbackEvidence) -> Bool {
