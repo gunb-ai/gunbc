@@ -2227,6 +2227,18 @@ fn test_operand_set_form_refusal_rendered(operand: &str) -> String {
     )
 }
 
+/// WHY A PACKAGE-WIDE `:all` / `:*` IS REFUSED *INSIDE* THE CLAIM UNIVERSE (distinct from
+/// `test_operand_set_form_refusal_rendered`, which is for a set form outside every universe). Here the
+/// population is real -- it is the claims of one package -- but `:all` is not a claim selection: the route
+/// runs claims named exactly by label, or a whole package/subtree by their own forms. The typed cause names
+/// the contract (the operand's doc, the generated help, and
+/// `gunbc.design_ruling::claim_execution_has_one_v1_entrypoint`) so the refusal says why, not just that.
+fn claim_route_all_refusal_rendered(operand: &str) -> String {
+    format!(
+        "gunbc test: {operand} names a package-wide target set (`:all`/`:*`), which is not a claim selection on the claim route; cause: ClaimRouteAllNotAClaimSelection -- name each claim by its exact label, or take a whole package or subtree by its own form; `:all` is refused here so one entrypoint keeps one selection rule"
+    )
+}
+
 /// `gunbc.discovery_census` `claim_route_universe`, mirrored: `//test/claim/...`, the subtree
 /// `site_label` maps every `test.claim.*` claim into. An operand contained in it (and not in the
 /// native universe, which is asked first) belongs to the claim route.
@@ -3666,7 +3678,24 @@ fn classify_test_operands(
         if target_pattern_within(&pattern, native_universe) {
             native.push(pattern);
         } else if target_pattern_within(&pattern, claim_universe) {
-            claim.push(pattern);
+            match pattern {
+                // A package-wide set form (`:all`, `:*`) is NOT a claim selection on the claim route.
+                // The operand's own doc (gunbc_cli_dispatch_surface `CliClaimNameOperand`), the generated
+                // help (gunbc_cli_dispatch_generated), and
+                // gunbc.design_ruling::claim_execution_has_one_v1_entrypoint all refuse it here; a route
+                // that silently expanded `:all` into the package's claims was the defect. A claim is named
+                // exactly by label, or a whole package/subtree is taken by its own form -- never `:all`.
+                // `PackageTargets` is exactly the `:all`/`:*` spelling (parse_target_pattern strips those
+                // suffixes into it), so this refuses `:all` while leaving a bare package (SingleTarget) and
+                // a subtree (`/...`, SubtreeTargets) admitted, as the operand doc permits.
+                TargetPattern::PackageTargets(_) => {
+                    return Err(InvocationOutcome {
+                        termination: Termination::Refused,
+                        message: claim_route_all_refusal_rendered(operand),
+                    })
+                }
+                admitted => claim.push(admitted),
+            }
         } else {
             match pattern {
                 // An exact label outside both universes is the registry's to answer (an instrument
@@ -5768,19 +5797,48 @@ mod test_batch_admission_controls {
     }
 
     /// AN OVERLAP SELECTS ONCE, at the fold: the same operand text twice is one selection, so a caller that
-    /// builds an argv by concatenation cannot run a claim twice and read two outcomes for one identity.
+    /// builds an argv by concatenation cannot run a claim twice and read two outcomes for one identity. Two
+    /// DISTINCT exact labels plus one of them repeated select two -- the dedup is on operand text, so the
+    /// second selection is another exact label (a package-wide `:all` is no longer an admissible claim
+    /// operand to test with; see `a_package_wide_all_refuses_on_the_claim_route`).
     #[test]
     fn a_repeated_operand_selects_once() {
         let classes = admitted(&[
             "//test/claim/x:y",
             "//test/claim/x:y",
-            "//test/claim/two:all",
+            "//test/claim/two:fn",
         ]);
         assert_eq!(
             classes.selected, 2,
             "the duplicate operand must not select twice"
         );
         assert_eq!(classes.claim.len(), 2);
+    }
+
+    /// A PACKAGE-WIDE `:all` (`:*` likewise) IS NOT A CLAIM SELECTION ON THE CLAIM ROUTE. It names a real
+    /// population (a package's claims), so it is not the "outside every universe" refusal; it is refused
+    /// because one entrypoint keeps one selection rule, per the operand doc, the generated help, and
+    /// gunbc.design_ruling::claim_execution_has_one_v1_entrypoint. The typed cause is named so the refusal
+    /// says why. A bare package and a subtree (`/...`) remain admissible; only `:all`/`:*` refuses.
+    #[test]
+    fn a_package_wide_all_refuses_on_the_claim_route() {
+        let refused = refused(&["//test/claim/x:all"]);
+        assert_eq!(refused.termination, Termination::Refused);
+        assert!(
+            refused.message.contains("ClaimRouteAllNotAClaimSelection"),
+            "{}",
+            refused.message
+        );
+        assert!(
+            refused.message.contains("not a claim selection"),
+            "{}",
+            refused.message
+        );
+        let colon_star = refused(&["//test/claim/x:*"]);
+        assert_eq!(colon_star.termination, Termination::Refused);
+        // A subtree over the same package stays admitted (the operand doc permits it).
+        let subtree = admitted(&["//test/claim/x/..."]);
+        assert_eq!(subtree.claim.len(), 1);
     }
 
     /// A SET FORM OUTSIDE EVERY UNIVERSE REFUSES RATHER THAN WIDENING: `//not/a/universe/...` names no
