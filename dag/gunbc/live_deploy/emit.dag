@@ -2174,7 +2174,6 @@ fn microvm_controller_stage_tarball_path(stage: String) -> String {
 // these are the installer's, so they are permitted (their writer owns their postconditions), never
 // authorized in another locus.
 data microvm_controller_vmm_receipt_name: String = ".gunbc-vmm-receipt"
-data microvm_controller_images_dir_name: String = "images"
 
 fn microvm_controller_vmm_receipt_path(revision: ReleaseRevisionBinding) -> String {
   join([microvm_controller_release_dir(revision: revision), "/", microvm_controller_vmm_receipt_name], "")

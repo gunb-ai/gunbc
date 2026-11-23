@@ -133,7 +133,8 @@ import gunbc.live_deploy.release_locus { release_locus_record, ReleaseLocus, rel
 import gunbc.live_deploy.emit { install_d_shared_mode, install_file_shared_mode, install_executable_shared_mode }
 import gunbc.ci.ci_release_bins { gunbc_release_bin_name }
 import gunbc.live_deploy.release_locus { approval_broker_release_locus_executables }
-import gunbc.live_deploy.emit { live_deploy_device_crypto_sidecar_unit_file, device_crypto_sidecar_binary_path, device_crypto_deployed_digest_env_file_path, device_crypto_deployed_digest_env_file_name, microvm_controller_vmm_receipt_name, microvm_controller_images_dir_name }
+import gunbc.live_deploy.emit { live_deploy_device_crypto_sidecar_unit_file, device_crypto_sidecar_binary_path, device_crypto_deployed_digest_env_file_path, device_crypto_deployed_digest_env_file_name, microvm_controller_vmm_receipt_name }
+import gunbc.runner.release_images_location { release_images_dir_name }
 import gunbc.live_deploy.spec { gunbc_device_crypto_sidecar_unit_name, gunbc_device_crypto_sidecar_unit_path }
 import gunbc.auth.approval_device_crypto_realization { approval_device_crypto_deployed_digest_env_name, device_crypto_gate, approval_device_crypto_realization }
 import gunbc.auth.approval_device_crypto_client { device_crypto_sidecar_readback, device_crypto_readback_expectation, SidecarReplied, SidecarReplyFailed }
@@ -6688,8 +6689,26 @@ fn tree_metadata_fields_of(fields: List<String>) -> Optional<TreeMetadataFieldWa
 // grammar refuses -- the count guard turns Absent parses into a refusal, exactly as the hash
 // parser's does. The starting point's own row (find %P prints the empty string for it) is not an
 // entry of the tree: refused here AND excluded from the counted lines, the same rule stated once.
+// A line `find <root> -maxdepth 1` prints for the WALK ROOT ITSELF: an empty %P, i.e. an empty first
+// field over EXACTLY the seven fields of the shared grammar. This is the one deliberately-skipped row
+// (the walk root's own metadata is observed by the separate -maxdepth 0 self walk). Crucially this is
+// NARROW: a real child whose NAME starts with "|" (a rogue "|rogue" at the locus root, or "src/|extra")
+// splits to a DIFFERENT field count and is NOT a starting-point record -- it must reach the collector and
+// be refused, never dropped. Distinguishing these two is what keeps the fail-closed gate from silently
+// swallowing an unnameable row.
+fn tree_metadata_line_is_starting_point(line: String) -> Bool {
+  if !starts_with(s: line, prefix: "|") {
+    false
+  } else {
+    match tree_metadata_fields_of(fields: split(s: line, delimiter: "|")) {
+      Absent => false
+      Present { value: f } => f.rel == ""
+    }
+  }
+}
+
 fn tree_metadata_entry_of_line(line: String, sub: String) -> Optional<TreeMetadataEntry> {
-  if line == "" || starts_with(s: line, prefix: "|") {
+  if line == "" || tree_metadata_line_is_starting_point(line: line) {
     Absent
   } else {
     match tree_metadata_fields_of(fields: split(s: line, delimiter: "|")) {
@@ -7059,11 +7078,10 @@ fn observe_tree_entry_metadata(root: String, subs: List<String>, transport: Host
           RunArgvTransportObserved { observed: o } =>
             if !o.success { TreeMetadataObservationFailed { reason: join(["find entry-metadata exit ", to_string(o.exit_code), ": ", o.stderr], "") } }
             else {
-              let parsed = tree_metadata_entries_of_stdout(stdout: o.stdout, sub: sub)
-              let lines = count(flat_map(split(s: o.stdout, delimiter: "\n"), l => if string_length(s: l) > 0 && !starts_with(s: l, prefix: "|") { [l] } else { [] }))
-              if lines != count(parsed) {
-                TreeMetadataObservationFailed { reason: join(["find entry-metadata under ", root, "/", sub, " printed ", to_string(lines), " entry lines but ", to_string(count(parsed)), " parsed as ", find_tree_entry_metadata_printf(), "; an entry the grammar cannot name (a device, a fifo, a socket, a path carrying a `|`) is refused, not dropped"], "") }
-              } else { TreeMetadataObserved { entries: concat(es, parsed) } }
+              match tree_metadata_entries_of_stdout_checked(root: join([root, "/", sub], ""), stdout: o.stdout, sub: sub) {
+                TreeMetadataObservationFailed { reason: r } => TreeMetadataObservationFailed { reason: r }
+                TreeMetadataObserved { entries: parsed } => TreeMetadataObserved { entries: concat(es, parsed) }
+              }
             }
         }
     }
@@ -7106,13 +7124,25 @@ fn observe_direct_children_one(root: String, sub: String, transport: HostEffectE
     RunArgvTransportRefused { reason: r } => TreeMetadataObservationFailed { reason: r }
     RunArgvTransportObserved { observed: o } =>
       if !o.success { TreeMetadataObservationFailed { reason: join(["find direct-children exit ", to_string(o.exit_code), ": ", o.stderr], "") } }
-      else {
-        let parsed = tree_metadata_entries_of_stdout(stdout: o.stdout, sub: sub)
-        let lines = count(flat_map(split(s: o.stdout, delimiter: "\n"), l => if string_length(s: l) > 0 && !starts_with(s: l, prefix: "|") { [l] } else { [] }))
-        if lines != count(parsed) {
-          TreeMetadataObservationFailed { reason: join(["find direct-children under ", root, " printed ", to_string(lines), " entry lines but ", to_string(count(parsed)), " parsed; an entry the grammar cannot name is refused, not dropped"], "") }
-        } else { TreeMetadataObserved { entries: parsed } }
-      }
+      else { tree_metadata_entries_of_stdout_checked(root: root, stdout: o.stdout, sub: sub) }
+  }
+}
+
+// THE COLLECTOR WITH ITS VALIDATION GUARD: every non-empty line the walk printed that is NOT the
+// established starting-point record must parse into a well-formed entry. A line that does not -- a rogue
+// child whose NAME breaks the delimiter grammar (a leading "|", a "|" in the name), an entry with an empty
+// owner/group, a non-decimal size, or a truncated field -- makes the counts disagree and FAILS the
+// observation: an unnameable row is REFUSED, never dropped. Exposed as a pure function over the captured
+// find stdout so both the executor above and the fixtures drive the SAME validation without elevation.
+fn tree_metadata_entries_of_stdout_checked(root: String, stdout: String, sub: String) -> TreeMetadataObservation {
+  let parsed = tree_metadata_entries_of_stdout(stdout: stdout, sub: sub)
+  let lines = count(flat_map(split(s: stdout, delimiter: "\n"), l =>
+    if string_length(s: l) > 0 && !tree_metadata_line_is_starting_point(line: l) { [l] } else { [] }
+  ))
+  if lines != count(parsed) {
+    TreeMetadataObservationFailed { reason: join(["find direct-children under ", root, " printed ", to_string(lines), " entry lines but ", to_string(count(parsed)), " parsed; a row the entry grammar cannot name is refused, not dropped"], "") }
+  } else {
+    TreeMetadataObserved { entries: parsed }
   }
 }
 
@@ -7349,7 +7379,7 @@ fn approval_broker_sibling_writer_footprint() -> List<String> {
 fn microvm_controller_sibling_writer_footprint() -> List<String> {
   [
     microvm_controller_vmm_receipt_name,
-    microvm_controller_images_dir_name,
+    release_images_dir_name,
     microvm_controller_vmm_name,
     microvm_controller_jailer_name,
     workspace_executor_helper_name,

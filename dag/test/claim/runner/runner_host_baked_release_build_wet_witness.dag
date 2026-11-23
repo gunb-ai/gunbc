@@ -170,6 +170,7 @@ test fn the_staged_route_refuses_a_target_outside_its_staging_root() -> Bool {
     source_root: concat(dir, "/src"),
     revision: RevisionBoundAtEmission { revision: revision },
     executables: ["gunbc"],
+    permitted_extras: [],
     transport: one_transport_route(transport: LocalShell),
   ) {
     TreeInstallRefused { step: s, reason: r } =>
