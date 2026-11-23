@@ -2889,6 +2889,41 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
     ),
     
     roadmap_node(
+      identity: "rn_8V8XSA9VQN7C0X0GVW8MSWEZZ1",
+      id: "import-less-v2-claim-file-is-executed",
+      owner: "self-host",
+      carriers: carrier(path: "src/v2/test/claim/provenance/parse_production_extent.dag"),
+      line: ticket(t: fields(
+        headline: "A v2 claim file with no top-level imports is executed by a claim route, or refused where it is written",
+        boundary: "Measured by vivid-swift-693 and eager-bear-290 with a main-built binary on srv1: claim_batch --entry refuses all 9 members of src/v2/test/claim/provenance/parse_production_extent.dag at the checker (unresolved bare std types, RC=1); the native lane (gunbc test //v2/test/claim/provenance/parse_production_extent:all) selects 7 and refuses all 7 at prepare with resolve_reason_unbound_symbol, REFUSED positive_population_empty, RC=2; parse_stamp_span_index shows the same, 0 of 2. The loader's bare-reference edge index binds those names for discovery, but the checker and the native preparer need lexical bindings, so CI parses and typechecks these files and no executor ever runs them. The file was created like this in #13719 (04363f36ef8f, 2026-10-11) and backed an accepted node. Population: 139 of 1129 files under src/v2/test/claim carry no top-level imports; not all are necessarily refused. Related to, and not a duplicate of, gunbc.recurring_failure_mode bare_name_resolved_by_proximity_standing_in_for_resolution, whose standing this row's exit discharges for this population. The design argument is single authority (gunbc.design_argument::single_authority): name binding must not differ between discovery and execution.",
+        displaced_cost: "A witness that nothing executes reads as coverage: the roadmap accepts nodes on witnesses that no route has ever run, and the next author of an import-less claim file repeats the shape.",
+        first_slice: "The census first: run each of the 139 import-less files on the production claim route, record executed against refused-at-resolve with the reason, and list every ACCEPTED roadmap node whose cited witness is in the refused set. Then the fix, and the row's centering chooses one and states why: make the checker and the native preparer resolve through the same edge index the loader builds, or refuse such a file at parse so it cannot sit in the tree unexecuted.",
+        red_control: "After the fix, parse_production_extent and parse_stamp_span_index either execute to a terminal verdict on both claim_batch and the native lane, or are refused at parse with a named reason; on main they are refused at the checker (RC=1) and at prepare (RC=2) and nothing executes them. The exit is the executed whole-corpus resolve that bare_name_resolved_by_proximity_standing_in_for_resolution already demands.",
+        out_of_scope: "Adding imports to the individual files as the repair (that hides the divergence between discovery and execution), and widening any budget.",
+        handback: "The census table of the 139 files (executed or refused, with reason), the accepted nodes whose witness is in the refused set, the chosen route with its reason, and the before and after runs of the two named files on both routes with their exit statuses."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "compiler-guarantee", contribution: "What a claim file declares is what an executor runs: name binding is one authority across discovery and execution."),
+      centering: plan(text: "Target: the claim checker and the native preparer's name binding against the loader's bare-reference edge index; the chosen route is stated here when the census lands."),
+    ),
+    roadmap_node(
+      identity: "rn_XX3GY9X9YR95W5WB5YYC9VMJ0A",
+      id: "lab-release-bins-delivery",
+      owner: "debt",
+      carriers: carrier(path: "dag/gunbc/live_deploy/release_pair_delivery.dag"),
+      line: ticket(t: fields(
+        headline: "The lab consumes the CI release-bins pack: verify against the target revision's tree, then extract",
+        boundary: "Realizes lab-converges-release-pair's delivery leg; stern-wren-746 has started it ad hoc. The chain is complete without a lab-side --verify-build-artifacts: the manifest digests plus the source_closure check are the proof. Criteria from stern-wren-746: (a) a lab consumer site takes the pack dir plus the TARGET revision's tree and checks kind and source_closure, listing equals roster, manifest equals roster and per-member digests, then extracts; (b) the serve member is derived from gunbc.fleet.fleet_release_bins_key::fleet_release_bins_product().roster ('gunbc'), deleting the free gunbc_serve row; (c) VerifiedOn binds pack_dir plus the target tree.",
+        displaced_cost: "The lab installs a pack whose members it did not check against the revision it is serving, or a person moves the artifact by hand; a free gunbc_serve row is a second answer to which member is the served binary.",
+        first_slice: "The consumer site of criterion (a), the derivation of the serve member in (b) with the free row deleted, and the VerifiedOn binding of (c), under the same parent as lab-converges-release-pair.",
+        red_control: "The discriminator builds a fixture with the real producer's pack statements and adds three reds, each refusing with its own reason: a tampered member, a wrong source_closure and a missing member. Plus an srv1 inhabitance run against the real b691 artifact that refuses at main and admits at head.",
+        out_of_scope: "A lab-side --verify-build-artifacts, the pairing decision (lab-standings-track-main), srv1 provisioning, and any building on srv1.",
+        handback: "The consumer site and the derivation of the serve member, the three reds each with its refusal reason, and the srv1 inhabitance run's two raw outcomes (main refuses, head admits) with their exit statuses."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "convergence-coverage", contribution: "Convergence that needs a person is not convergence: the lab's release pair has a producer in CI and a consumer on the host, and nothing modeled joins them."),
+    ),
+    roadmap_node(
       identity: "rn_TTZHRWWETX4EQ6HDABTT8AKMCV",
       id: "factory",
       owner: "harness",
