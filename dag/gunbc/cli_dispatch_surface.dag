@@ -702,19 +702,77 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
       ],
       operands: [
         CliOperandRow {
-          field: "target",
+          field: "operands",
           placeholder: "TARGET_PATTERN",
           value: CliTargetPatternOperand {},
-          arity: CliExactlyOneOperand {},
+          arity: CliOneOrMoreOperands {},
           doc: [
-            "Absolute label of one target, or a pattern denoting a set:",
-            "`//gunbc/instruments:heads-reading-differential`,",
-            "`//dag/test/claim/roadmap:all`, `//dag/test/claim/roadmap/...`."
+            "Names of the claims to run: absolute labels (`//dag/test/claim/x:the_claim`),",
+            "a package (`//dag/test/claim/x`) or a subtree (`//dag/test/claim/...`).",
+            "Several operands run exactly the claims they denote, together in ONE",
+            "process; an identity two operands both denote is selected once.",
+            "`:all` is not a claim selection here -- it is refused on the claim route.",
           ],
           emission: CarriedByGeneratedDispatch
         }
       ],
-      options: [],
+      options: [
+        CliOptionRow {
+          field: "hermetic",
+          long: "hermetic",
+          value: CliToggleValue {},
+          arity: CliRequired {},
+          doc: [
+            "Hermetic execution (the default): no clock, entropy, random, wall time,",
+            "host tool or ambient state reaches a claim.",
+          ],
+          emission: CarriedByGeneratedDispatch
+        },
+        CliOptionRow {
+          field: "wet",
+          long: "wet",
+          value: CliToggleValue {},
+          arity: CliRequired {},
+          doc: [
+            "Wet execution: the claim may read the ambient checkout, git and host state",
+            "through the host prelude's own admission. Conflicts with --hermetic.",
+          ],
+          emission: CarriedByGeneratedDispatch
+        },
+        CliOptionRow {
+          field: "record",
+          long: "record",
+          value: CliToggleValue {},
+          arity: CliRequired {},
+          doc: [
+            "Record mode: host tool calls run wet and are written to --fixture-store.",
+            "Requires --fixture-store.",
+          ],
+          emission: CarriedByGeneratedDispatch
+        },
+        CliOptionRow {
+          field: "fixture_store",
+          long: "fixture-store",
+          value: CliTextValue { text_default: none },
+          arity: CliAtMostOne {},
+          doc: [
+            "Fixture-store directory for --record and replay; refused outside record mode.",
+          ],
+          emission: CarriedByGeneratedDispatch
+        },
+        CliOptionRow {
+          field: "source_roots",
+          long: "source-root",
+          value: CliTextValue { text_default: none },
+          arity: CliRepeated {},
+          doc: [
+            "Claim corpus root. Replaces the default pair (dag, src/v2) when given; repeat",
+            "once per root the request spans. Claim-route only: a route that cannot",
+            "honour the corpus it is asked to read refuses rather than reading the default.",
+          ],
+          emission: CarriedByGeneratedDispatch
+        }
+      ],
       realization: CliInvokesBoundTargetProducer,
       emission: CarriedByGeneratedDispatch
     }
