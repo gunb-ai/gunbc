@@ -329,6 +329,10 @@ data excl_run_verdict_exit_status_reason: String = "SUBSTANTIATED per-row (found
 
 data excl_run_verdict_exit_status_dissolve: DissolutionCondition = unbound_dissolution(description: "the driver's exit-status seam becomes observable without a subprocess — i.e. the verdict boundary migrates under the execution-corpus scope prefix and enrolls as ExecutionWitnessKind rows in gunbc.commit_workflow, the same terminal excl_bin_wet_dissolve names; then this row and the four roster entries delete together. Publishing a mock_response for Run/IsExecutable does NOT discharge it: a mocked status is authored data, so the assertions would be re-checked against the fixture rather than against the seam, which is the vacuous pass this file's refusal-polarity note already records once.")
 
+data excl_clap_surface_reason: String = "SUBSTANTIATED per-row (authored 2026-11-23 beside the surface it covers): every fn in this file hands the words rendered by gunbc.gunbc_cli_command to the BUILT gunbc through gunbc.WitnessBin.Run and adjudicates the child's located lines and exit status — the controls that the caller contract actually crosses the GENERATED argv surface (authority gunbc.cli_dispatch_surface), which no in-process control can see: 58 controls drove the route directly while a whole option layer sat unexercised until a rebuilt binary rejected --source-root at parse time. The hermetic envelope refuses each row by construction ('no mock_response for operation Run'), the refusal is correct, and the file cannot be made hermetic: the subject IS the child's parse of the words, and mocking the invocation would let the rows pass against a fabricated surface — the exact failure class this file exists to detect. Enrolled in bin_witness_wet_entries beside the run_verdict exit-status rows, the same class excl_run_verdict_exit_status_reason substantiates."
+
+data excl_clap_surface_dissolve: DissolutionCondition = unbound_dissolution(description: "the generated clap surface becomes observable in-process — i.e. the argv parse and the route admission move under one host boundary the execution-corpus scope prefix can enroll, the same terminal excl_bin_wet_dissolve names; then this row and the five roster entries delete together. Publishing a mock_response for Run does NOT discharge it: a mocked child is authored data, and the rows would re-check the fixture rather than the surface.")
+
 data excl_closing_contract_execution_reason: String = "SUBSTANTIATED per-row (authored 2026-09-20 beside the mechanism it covers): every fn in this file drives shell.Mktemp.DirWithTemplate, Filesystem.Write, gunbc.WitnessBin.Run and shell.Remove.RecursiveForce to spawn a REAL child claim-run of a PLANTED witness and adjudicate its exit status — the behavioral discrimination controls for the execution arm of gunbc.roadmap.roadmap_closing_contract_authoring (a witness that resolves and passes → PASS; unresolvable imports → typed resolve refusal; a resolved-but-false arm → typed failure). The hermetic envelope refuses each of those effects by construction ('no mock_response for operation Run'), the refusal is correct, and the file cannot be made hermetic: the subject IS the child process's exit status, which no in-process assertion observes, and mocking the invocation would let the discrimination claims pass against a fabricated status — precisely the defect (a textual oracle greening a witness that cannot resolve) this file exists to detect. The fixtures are planted into a mktemp source root under target/ at run time rather than committed, because a committed witness with unresolvable imports would fail every whole-root resolve it was swept into. Enrolled in bin_witness_wet_entries beside the run_verdict exit-status rows, the same class excl_run_verdict_exit_status_reason substantiates; the file's production inhabitance is the belt verify route, which executes closing_contract_authored itself."
 
 data excl_closing_contract_execution_dissolve: DissolutionCondition = unbound_dissolution(description: "the claim runner's exit-status seam becomes observable without a subprocess (the terminal excl_bin_wet_dissolve names); then this file's three claims re-enroll as ordinary hermetic discovery rows, the bin_witness_wet_entries rows and this exclusion row delete together. A mock_response for Run does NOT discharge it: a mocked status is authored data, so the discrimination claims would be re-checked against the mock rather than against a real child claim-run — the vacuous pass the file's header records.")
@@ -938,6 +942,11 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     classification: FalsifierRehomedBinWet,
     reason: excl_expectation_frontier_reason,
     dissolution: excl_expectation_frontier_dissolve},
+  WitnessExclusionRow {
+    pattern: "gunbc_test_clap_surface_witness.dag",
+    classification: BinWitnessWet,
+    reason: excl_clap_surface_reason,
+    dissolution: excl_clap_surface_dissolve},
   WitnessExclusionRow {
     pattern: "run_verdict_exit_status_witness.dag",
     classification: BinWitnessWet,
@@ -1858,6 +1867,11 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/self_host_artifact_materialization_real_execution_witness.dag", f: "rebuilding_identical_source_in_place_moves_no_axis"),
   bin_wet(entry: "dag/test/claim/stage0_regen_convergence_real_execution_witness.dag", f: "a_real_regen_stage0_verify_run_reports_zero_divergence"),
   bin_wet(entry: "dag/test/claim/stage0_regen_convergence_real_execution_witness.dag", f: "w_RED_an_unrecognized_flag_does_not_report_the_success_marker"),
+  bin_wet(entry: "dag/test/claim/gunbc_test_clap_surface_witness.dag", f: "the_hermetic_words_reach_the_route_held"),
+  bin_wet(entry: "dag/test/claim/gunbc_test_clap_surface_witness.dag", f: "the_wet_words_reach_the_route_held"),
+  bin_wet(entry: "dag/test/claim/gunbc_test_clap_surface_witness.dag", f: "the_record_words_reach_the_route_with_their_store"),
+  bin_wet(entry: "dag/test/claim/gunbc_test_clap_surface_witness.dag", f: "overlapping_operands_select_the_shared_claim_once"),
+  bin_wet(entry: "dag/test/claim/gunbc_test_clap_surface_witness.dag", f: "a_source_root_does_not_license_a_non_claim_operand"),
   bin_wet(entry: "dag/test/claim/run_verdict_exit_status_witness.dag", f: "run_failure_verdict_reaches_nonzero_exit"),
   bin_wet(entry: "dag/test/claim/run_verdict_exit_status_witness.dag", f: "run_success_verdict_reaches_zero_exit"),
   bin_wet(entry: "dag/test/claim/run_verdict_exit_status_witness.dag", f: "run_non_process_exit_return_refuses"),
