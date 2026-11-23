@@ -3311,6 +3311,23 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "ci-end-to-end-execution", contribution: "A claim in the required population passes or is named as failing."),
     ),
     roadmap_node(
+      identity: "rn_8C203SGK4BRDSWTPEM7J0BPQD4",
+      id: "serve-entry-verdict-path-is-per-run",
+      owner: "demand-engine",
+      carriers: carrier(path: "dag/gunbc/fleet/pre_swap_admission.dag"),
+      line: ticket(t: fields(
+        headline: "The serve-entry verdict path is per run, so two runs on one machine do not collide",
+        boundary: "gunbc.fleet.pre_swap_admission serve_entry_verdict_path builds the verdict path as join([fleet_converge_plan_artifact_dir, \"/serve_entry_verdict.json\"]), and gunbc.fleet.fleet_plan_artifact_location fleet_converge_plan_artifact_dir is a constant data row, /tmp/fleet-converge-plan, with no argument, spec field or environment override. Measured by gentle-tern-663 on srv1 (raw lines at https://github.com/gunb-ai/gunbc/pull/16891#issuecomment-7103879443): the demand-serve step's own command ran 15:43.26 and 8,639,588 kB, then exited 1 with Permission denied writing that shared fixed path, after the witness completed. So the served step lands on the refusal path for every session on the machine, and any two runs collide. This is a defect to repair, not a measurement artifact to work around. Related to demand-serve-program-image, whose restated row lands separately.",
+        displaced_cost: "A run that did all its work fails at the last write because another session owns the fixed path, and two concurrent runs overwrite each other's verdict.",
+        first_slice: "Make the verdict path a parameter of the run (an argument, a spec field or an environment value, whichever the existing run-input model already carries), defaulting to no shared fixed path, and read it at both the writing and the reading site.",
+        red_control: "OPEN: red_at and green_at are not measured on main. The measured failure is the Permission denied exit 1 from gentle-tern-663's run on srv1 (cited above). Green is a witness in which two concurrent runs with distinct run inputs each write and read back their own verdict without clobbering the other; RED is the same witness with the fixed path.",
+        out_of_scope: "The 15:43 and 8.6 GB cost of the step, the verdict's content, and any change to what pre-swap admission decides.",
+        handback: "The run-input route chosen, the two-concurrent-runs witness with its raw PASS/FAIL lines and exit status, and the old constant's consumers named."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "demand-engine", contribution: "The served program is materialized once per key and reused across restarts."),
+    ),
+    roadmap_node(
       identity: "rn_P9G8YTMA3YVQTW194Z3MBG3RM8",
       id: "list-append-refuses-an-element-argument",
       owner: "compiler-guarantee",
