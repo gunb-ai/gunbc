@@ -3314,7 +3314,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "seed-claim-loader-loads-modeled-realization-callees",
       owner: "self-host",
       carriers: carrier(path: "src/v1/stage0/src/v1_interpreter.rs"),
-      line: ticket(t: updated(t: fields(
+      line: ticket(t: updated(t: updated(t: fields(
         headline: "The seed's per-function claim loader puts the modeled-realization dispatcher's callees in the run's index",
         boundary: "GATED on the operator's pending ruling on seed growth; not staffed and not dispatchable until that ruling is recorded by the operator. Measured by warm-fox-517 on srv1 under heavy-slot (PR 16912 head e11f468a merged with main 6d2115d1, gunbc 145e3307, claim_batch 3dd86534): the per-function run of two_contenders_for_one_unit_get_one_hold FAILs with REAL_EXIT=1 on main and on the branch, while the whole-tree claim_batch PASSes on both. The branch-side change does not close it, so the repair is on the seed side: the loader that builds a per-function run's index. This row owns that seed-side loader; per-function-claim-run-loads-string-dispatched-names keeps the verdict (the per-function run agrees with the whole-tree one) and depends on this row. v1 is semantics-frozen (gunbc.v1.v1_maintenance_standing::v1_seed_standing): a seed change is admitted only when it serves the v2 self-host program, and a SeedGrowthJustification (gunbc.seed_growth::SeedGrowthJustification) is owed with the change. The carrier is the seed interpreter named in the sibling row; the exact loader function is to be verified by the worker.",
         displaced_cost: "Every affected control runs only as a whole-tree claim_batch (about 15 GiB and 30 minutes on #16519), and a per-function false failure reads as a real one.",
@@ -3322,7 +3322,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         red_control: "OPEN: red_at and green_at are not yet measured. The measured disagreement to turn green is two_contenders_for_one_unit_get_one_hold: per-function REAL_EXIT=1 and whole-tree claim_batch PASS, at the same sha, on main (gunbc 145e3307, claim_batch 3dd86534). Green is the per-function run passing and agreeing with the whole-tree verdict.",
         out_of_scope: "Any change to the dispatcher's semantics, the whole-tree claim_batch memory cost, and the branch-side change of PR 16912.",
         handback: "The loader change with its SeedGrowthJustification, the per-function run and the whole-tree run agreeing at one sha, and the v1 standing classification."
-      ), on: "2026-11-23", note: "Relayed, not recorded in gunbc.design_ruling: operator to neat-badger-614, verbatim '16910 - yeah agreed with your recommendation', about 22:12Z; the recommendation was no hand-written seed Rust for the per-function claim loader. This row's seed-side route is therefore not the route; the capability is owned by per-function-claim-loader-modeled-dag-route. The measurements here stay as the record. Its disposition (withdrawn or kept as the abandoned route) is not decided here.")),
+      ), on: "2026-11-23", note: "Relayed, not recorded in gunbc.design_ruling: operator to neat-badger-614, verbatim '16910 - yeah agreed with your recommendation', about 22:12Z; the recommendation was no hand-written seed Rust for the per-function claim loader. This row's seed-side route is therefore not the route; the capability is owned by per-function-claim-loader-modeled-dag-route. The measurements here stay as the record. Its disposition (withdrawn or kept as the abandoned route) is not decided here."), on: "2026-11-23", note: "RETIRED, superseded by per-function-claim-loader-modeled-dag-route (disposition decided by neat-badger-614 after #16967 merged as 652b24ca). The operator ruled out hand-written seed Rust for the loader (relayed, not yet recorded in gunbc.design_ruling), so this seed-side route is not a pending route. Its measurements are kept as the record. The edge from per-function-claim-run-loads-string-dispatched-names to this row is removed in the same change, so the verdict does not depend on a rejected route (gunbc.design_argument::replacement_migration). The ruling symbol replaces 'relayed' in a follow-up when the row merges.")),
       parent: in_project(project: "compiler-guarantee", contribution: "A witness's verdict does not depend on how much of the tree the run loaded."),
     ),
     roadmap_node(
@@ -8993,7 +8993,6 @@ fn guarantee_ladder_edges() -> List<RoadmapEdge> {
     edge(child: "p256-verify-cost-cut", parent: "v1-interpreter-p256-verify-cost-shape"),
     edge(child: "per-function-claim-run-loads-string-dispatched-names", parent: "per-function-claim-loader-modeled-dag-route"),
     edge(child: "v2-emitter-production-compatible-corpus-module", parent: "v2-core-emitter-lowers-conjunction-in-value-position"),
-    edge(child: "per-function-claim-run-loads-string-dispatched-names", parent: "seed-claim-loader-loads-modeled-realization-callees"),
   ]
 }
 
