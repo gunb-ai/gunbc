@@ -500,7 +500,11 @@ fn a_read_outside_the_realized_set_refuses_typed() {
 /// The last two blocks are the load-bearing proof. Drop the produced edges and the refusal vanishes
 /// (so the refusal is genuinely the producer's work, not a fixture artifact); drop one reader family
 /// and the seven-family coverage collapses (so a producer that lost a family trips the coverage
-/// assert above). Both go RED by construction on any producer regression.
+/// assert above). Concretely, the asserts go RED on: a reader family omitted from the producer, an
+/// emitted family list that is empty, a produced edge missing the deep-only read, or an extra row-edge
+/// reader appearing on the deep-only name. (The producer-level "drop all edges" mutant is NOT a red --
+/// a bare early `return` before the fold is rejected by the crate's `deny(warnings)` as an unreachable
+/// statement, so it does not compile; the executed reds are the family-drop and the in-test drops.)
 #[test]
 fn realization_edges_producer_drives_active_audit_for_a_deep_only_read() {
     // Same 256 MB stack the sibling tests run on: the resolver and the deep extent walk recurse deeply,
@@ -563,6 +567,32 @@ fn realization_edges_producer_body() {
     assert_eq!(
         ghost_readers, expected,
         "the deep-only name must be read by exactly the seven families and by no row-edge reader"
+    );
+
+    // Strengthening (reviewer): RealizedRow sits in the SAME field extent as GhostDeepName, so the
+    // seven-family block must read it under all seven families too. A family that keeps the deep-only
+    // name but drops the realized read trips here. Compared as a SET (order is unspecified).
+    let realized_readers: HashSet<String> = edges
+        .iter()
+        .filter(|e| qualified_last_segment(e.name.clone()) == "RealizedRow")
+        .map(|e| e.reader.clone())
+        .collect();
+    assert_eq!(
+        realized_readers, expected,
+        "the realized row read by the same deep walk must carry the same seven-family reader set"
+    );
+    // Every edge the producer emits for the controlled declaration carries ITS span (the deep walk
+    // stamps n.span), so a mis-stamped edge cannot masquerade as this declaration's read.
+    let carrier_span = carrier.span.clone();
+    assert!(
+        edges
+            .iter()
+            .filter(|e| {
+                let nm = qualified_last_segment(e.name.clone());
+                nm == "GhostDeepName" || nm == "RealizedRow"
+            })
+            .all(|e| e.span == carrier_span),
+        "each produced edge must carry the controlled declaration's own span"
     );
 
     let census = infer::build_symbol_index_census(modules.clone(), si.clone());

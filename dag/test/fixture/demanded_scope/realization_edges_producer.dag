@@ -29,6 +29,7 @@ type GhostDeepName { v: Int }
 // producer_entry through a different path) AND the deep-only, declared-but-unrealized name
 // (GhostDeepName). No demanded declaration names GhostCarrier, so it is read by nobody and realized
 // by nobody -- but the control asks the producer for ITS edges and feeds them to an ACTIVE audit. The
-// audit must keep the realized RealizedRow silent and refuse the declared-but-unrealized GhostDeepName,
-// naming it under all seven reader families.
+// PRODUCER emits a GhostDeepName edge under each of the seven reader families; the audit dedups by
+// name and records ONE reader (spelled first), so it keeps the realized RealizedRow silent and refuses
+// the declared-but-unrealized GhostDeepName naming a single reader family.
 type GhostCarrier { known: RealizedRow, ghost: GhostDeepName }
