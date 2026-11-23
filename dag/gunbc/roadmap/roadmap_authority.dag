@@ -5071,7 +5071,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       line: ticket(t: fields(
         headline: "Cut the step count and memory of one interpreted P-256 verification at the site the measurement names",
         boundary: "Follows v1-interpreter-p256-verify-cost-shape, which measures: about 48.3M steps, 78-101 s and about 15 GB per verification, about 93% in one modular-multiplication routine. The cut has two candidate sites and the measurement chooses between them: the v1 interpreter's fold realization (hand-written seed Rust, so a v1 change needs the v2 self-host purpose test) or std.bignat's number representation (v1 stdlib, which means regenerated Rust and heal rounds). Its terminal shape stays the natively emitted verifier noted in the measurement row.",
-        displaced_cost: "Every interpreted consumer of std.bignat pays the cost: the approval device routes, the App Attest chain and any future big-integer fold; the eight P-256 witnesses cannot be enrolled in the floor while one verification costs about 48.3M steps.",
+        displaced_cost: "Every interpreted consumer of std.bignat pays the cost: the approval device routes, the App Attest chain and any future big-integer fold; the P-256 witnesses cannot be enrolled in the floor while one verification costs about 48.3M steps.",
         first_slice: "The cost cut itself, at whichever of the two candidate sites the measurement names.",
         red_control: "A measured step and VmHWM reduction on the same instrument (one claim_batch --hermetic run of test.claim.p256_dag_ecdsa_witness the_rfc6979_sample_signature_verifies), with every vector verdict unchanged, the RFC 6979 and Wycheproof refusal members still refusing.",
         out_of_scope: "No host-Rust verification primitive (operator refusal on #11588/#11592 stands); no widening of the floor budget to admit the current cost; no change to the P-256 arithmetic's semantics -- the vectors are the oracle.",
@@ -8565,6 +8565,7 @@ fn guarantee_ladder_edges() -> List<RoadmapEdge> {
     edge(child: "parse-comment-gap-attachment", parent: "parse-node-source-extent"),
     edge(child: "parse-comment-gap-attachment-v2", parent: "parse-comment-gap-attachment"),
     edge(child: "v2-parse-final-token-retained", parent: "parse-node-source-extent"),
+    edge(child: "p256-verify-cost-cut", parent: "v1-interpreter-p256-verify-cost-shape"),
   ]
 }
 
