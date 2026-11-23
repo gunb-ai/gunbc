@@ -3210,6 +3210,22 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "compiler-guarantee", contribution: "A witness's verdict does not depend on how much of the tree the run loaded."),
     ),
     roadmap_node(
+      identity: "rn_YN2MB7ZBG60N2T4AG5826NZ5SM",
+      id: "seed-loader-edges-the-dispatchers-string-dispatched-names",
+      owner: "self-host",
+      carriers: carrier(path: "src/v1/stage0/src/v1_interpreter.rs"),
+      line: ticket(t: fields(
+        headline: "The seed loader gives the modeled-realization dispatcher's string-dispatched names a real dependency edge",
+        boundary: "Evidence from warm-fox-517 (gunbc#16912, review 97475): a per-function --claim-run of two_contenders_for_one_unit_get_one_hold refuses because the five string-dispatched dispatcher names (modeled_realization_admitted_in, operation_realization_duplicate, operation_realization_index, operation_handler_selection, virtual_clock_after) are not loaded. The model-side edit that loads them works only through dead-let references, which is a workaround. The root fix is the v1 loader in src/v1/stage0/src/v1_interpreter.rs giving those names a dependency edge. This is seed Rust: it needs an operator ruling before anyone edits it, and this row authorises nothing by itself (gunbc.v1.v1_maintenance_standing::v1_seed_standing). It is an independent sibling of per-function-claim-refuses-after-admission, not chained to it.",
+        displaced_cost: "Without an edge, an affected witness runs only as a whole-tree batch, or carries dead-let references that read as code and hide the real dependency.",
+        first_slice: "Observation and design only until the ruling: read how the loader builds the run's index and where a string-dispatched name could be edged, and record the five names' present route.",
+        red_control: "The per-function claim run admits the five names with no dead-let in the source, and the whole-tree verdict is unchanged.",
+        out_of_scope: "Any edit to the seed before the operator ruling, the dead-let workaround, and the post-admission observation owned by the sibling row.",
+        handback: "The operator ruling, then the loader change with the per-function run admitting the five names with no dead-let, and the unchanged whole-tree verdict at the same sha."
+      )),
+      parent: in_project(project: "compiler-guarantee", contribution: "A witness's verdict does not depend on how much of the tree the run loaded."),
+    ),
+    roadmap_node(
       identity: "rn_P9G8YTMA3YVQTW194Z3MBG3RM8",
       id: "list-append-refuses-an-element-argument",
       owner: "compiler-guarantee",
@@ -8529,6 +8545,7 @@ fn guarantee_ladder_edges() -> List<RoadmapEdge> {
     edge(child: "parse-comment-gap-attachment-v2", parent: "parse-comment-gap-attachment"),
     edge(child: "v2-parse-final-token-retained", parent: "parse-node-source-extent"),
     edge(child: "per-function-claim-refuses-after-admission", parent: "per-function-claim-run-loads-string-dispatched-names"),
+    edge(child: "seed-loader-edges-the-dispatchers-string-dispatched-names", parent: "per-function-claim-run-loads-string-dispatched-names"),
   ]
 }
 
