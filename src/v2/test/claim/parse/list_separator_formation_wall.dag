@@ -4,8 +4,8 @@ import v2.compiler.parse_acceptance_census { parse_acceptance_of_text }
 import v2.std.text { String, char_eq }
 import std.algebra { is_prefix_of }
 
-// THE SEPARATOR WALL, PROBE-PAIRED. A bracketed list (`[ .. ]`, and the subscript `[ .. ]`) used the
-// comma-list combinator that makes EVERY inter-element comma optional, so a dropped `,` parsed the two
+// THE SEPARATOR WALL, PROBE-PAIRED. The bracketed list literal (`[ .. ]`) used the comma-list
+// combinator that makes EVERY inter-element comma optional, so a dropped `,` parsed the two
 // neighbours as juxtaposed elements and silently changed the list's arity -- a program whose shape
 // depends on which commas the author typed. Now the separator is REQUIRED between elements (a trailing
 // comma is still admitted, and `[]` / `[x]` still parse): the juxtaposition refuses at parse as

@@ -1,8 +1,10 @@
 module v2.test.claim.parse.sibling_comma_gap_probe
 
 // WHERE THE OPTIONAL SEPARATOR STILL STANDS -- MEASURED, NOT ASSUMED. One combinator,
-// dag_grammar_comma_list_expr, backs every comma list in the language except the bracketed list literal
-// and the subscript, which dag_grammar_list_literal_seq now walls off (list_separator_formation_wall).
+// dag_grammar_comma_list_expr, backs every comma list in the language except the bracketed list
+// literal, which dag_grammar_list_literal_seq now walls off (list_separator_formation_wall). The postfix
+// index suffix keeps the optional separator by measured necessity: its bracket carries the host-effect
+// admission `[when ..]`, which a required separator refuses -- see v2.test.claim.parse.when_guard_probe.
 // Each claim below parses ONE juxtaposed form of a sibling class -- an element that follows another with
 // no comma -- through the live parse classifier, and pins that it is still ACCEPTED today: the same
 // silent-arity defect the list wall closes, one form to the right of it. These are not endorsements of

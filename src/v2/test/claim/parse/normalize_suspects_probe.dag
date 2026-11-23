@@ -1,0 +1,106 @@
+module v2.test.claim.parse.normalize_suspects_probe
+
+// WHO FAILED TO NORMALIZE. CI's reference check refused 241 marked references with
+// RunStepTargetCallerUnread / 'cited module read but did not normalize' and truncates its report to the
+// first 40 lines, so the modules that actually failed to normalize are not named there. Each file below
+// gets two claims: that it classifies accepted, and that it does not refuse with the wall's own cause --
+// so a refusal this change caused is distinguishable from one it did not, in one run.
+
+import v2.compiler.parse_acceptance_census { parse_acceptance_of_text }
+import v2.std.text { String, char_eq }
+import std.algebra { is_prefix_of }
+
+fn verdict(path: String) -> String {
+  parse_acceptance_of_text(text: filesystem_read(path: path).content, path: path)
+}
+
+fn accepted(path: String) -> Bool { verdict(path: path) == "accepted" }
+
+fn not_wall(path: String) -> Bool {
+  !is_prefix_of(prefix: "refused parse_list_element_separator_missing", xs: verdict(path: path), eq: char_eq)
+}
+
+test fn f_dag_extdeps_llm_openai_dag_accepted_holds() -> Bool { accepted(path: "dag/extdeps/llm/openai.dag") }
+test fn f_dag_extdeps_llm_openai_dag_not_wall_holds() -> Bool { not_wall(path: "dag/extdeps/llm/openai.dag") }
+test fn f_dag_gunbc_auth_approval_ci_step_dag_accepted_holds() -> Bool { accepted(path: "dag/gunbc/auth/approval_ci_step.dag") }
+test fn f_dag_gunbc_auth_approval_ci_step_dag_not_wall_holds() -> Bool { not_wall(path: "dag/gunbc/auth/approval_ci_step.dag") }
+test fn f_dag_gunbc_auth_github_app_credential_step_dag_accepted_holds() -> Bool { accepted(path: "dag/gunbc/auth/github_app_credential_step.dag") }
+test fn f_dag_gunbc_auth_github_app_credential_step_dag_not_wall_holds() -> Bool { not_wall(path: "dag/gunbc/auth/github_app_credential_step.dag") }
+test fn f_dag_gunbc_auth_optional_impersonation_dag_accepted_holds() -> Bool { accepted(path: "dag/gunbc/auth/optional_impersonation.dag") }
+test fn f_dag_gunbc_auth_optional_impersonation_dag_not_wall_holds() -> Bool { not_wall(path: "dag/gunbc/auth/optional_impersonation.dag") }
+test fn f_dag_gunbc_design_argument_dag_accepted_holds() -> Bool { accepted(path: "dag/gunbc/design_argument.dag") }
+test fn f_dag_gunbc_design_argument_dag_not_wall_holds() -> Bool { not_wall(path: "dag/gunbc/design_argument.dag") }
+test fn f_dag_gunbc_design_ruling_dag_accepted_holds() -> Bool { accepted(path: "dag/gunbc/design_ruling.dag") }
+test fn f_dag_gunbc_design_ruling_dag_not_wall_holds() -> Bool { not_wall(path: "dag/gunbc/design_ruling.dag") }
+test fn f_dag_gunbc_fleet_branch_run_grant_broker_workflow_dag_accepted_holds() -> Bool { accepted(path: "dag/gunbc/fleet/branch_run_grant_broker_workflow.dag") }
+test fn f_dag_gunbc_fleet_branch_run_grant_broker_workflow_dag_not_wall_holds() -> Bool { not_wall(path: "dag/gunbc/fleet/branch_run_grant_broker_workflow.dag") }
+test fn f_dag_gunbc_fleet_fleet_plan_apply_ci_step_dag_accepted_holds() -> Bool { accepted(path: "dag/gunbc/fleet/fleet_plan_apply_ci_step.dag") }
+test fn f_dag_gunbc_fleet_fleet_plan_apply_ci_step_dag_not_wall_holds() -> Bool { not_wall(path: "dag/gunbc/fleet/fleet_plan_apply_ci_step.dag") }
+test fn f_dag_gunbc_fleet_srv1_root_mutation_approval_step_dag_accepted_holds() -> Bool { accepted(path: "dag/gunbc/fleet/srv1_root_mutation_approval_step.dag") }
+test fn f_dag_gunbc_fleet_srv1_root_mutation_approval_step_dag_not_wall_holds() -> Bool { not_wall(path: "dag/gunbc/fleet/srv1_root_mutation_approval_step.dag") }
+test fn f_dag_gunbc_heal_workflow_dag_accepted_holds() -> Bool { accepted(path: "dag/gunbc/heal_workflow.dag") }
+test fn f_dag_gunbc_heal_workflow_dag_not_wall_holds() -> Bool { not_wall(path: "dag/gunbc/heal_workflow.dag") }
+test fn f_dag_gunbc_host_fleet_keypair_mint_dag_accepted_holds() -> Bool { accepted(path: "dag/gunbc/host/fleet_keypair_mint.dag") }
+test fn f_dag_gunbc_host_fleet_keypair_mint_dag_not_wall_holds() -> Bool { not_wall(path: "dag/gunbc/host/fleet_keypair_mint.dag") }
+test fn f_dag_gunbc_host_host_effect_realize_dag_accepted_holds() -> Bool { accepted(path: "dag/gunbc/host/host_effect_realize.dag") }
+test fn f_dag_gunbc_host_host_effect_realize_dag_not_wall_holds() -> Bool { not_wall(path: "dag/gunbc/host/host_effect_realize.dag") }
+test fn f_dag_gunbc_image_ci_step_dag_accepted_holds() -> Bool { accepted(path: "dag/gunbc/image_ci_step.dag") }
+test fn f_dag_gunbc_image_ci_step_dag_not_wall_holds() -> Bool { not_wall(path: "dag/gunbc/image_ci_step.dag") }
+test fn f_dag_gunbc_instrument_targets_dag_accepted_holds() -> Bool { accepted(path: "dag/gunbc/instrument_targets.dag") }
+test fn f_dag_gunbc_instrument_targets_dag_not_wall_holds() -> Bool { not_wall(path: "dag/gunbc/instrument_targets.dag") }
+test fn f_dag_gunbc_integration_concern_optional_comma_list_separator_outside_the_bracketed_list_wall_dag_accepted_holds() -> Bool { accepted(path: "dag/gunbc/integration_concern/optional_comma_list_separator_outside_the_bracketed_list_wall.dag") }
+test fn f_dag_gunbc_integration_concern_optional_comma_list_separator_outside_the_bracketed_list_wall_dag_not_wall_holds() -> Bool { not_wall(path: "dag/gunbc/integration_concern/optional_comma_list_separator_outside_the_bracketed_list_wall.dag") }
+test fn f_dag_gunbc_machine_intake_mtcollins1_boot_step_dag_accepted_holds() -> Bool { accepted(path: "dag/gunbc/machine_intake/mtcollins1_boot_step.dag") }
+test fn f_dag_gunbc_machine_intake_mtcollins1_boot_step_dag_not_wall_holds() -> Bool { not_wall(path: "dag/gunbc/machine_intake/mtcollins1_boot_step.dag") }
+test fn f_dag_gunbc_machine_intake_mtcollins1_probe_step_dag_accepted_holds() -> Bool { accepted(path: "dag/gunbc/machine_intake/mtcollins1_probe_step.dag") }
+test fn f_dag_gunbc_machine_intake_mtcollins1_probe_step_dag_not_wall_holds() -> Bool { not_wall(path: "dag/gunbc/machine_intake/mtcollins1_probe_step.dag") }
+test fn f_dag_gunbc_recurring_failure_mode_a_claim_module_red_on_main_with_its_cause_unread_dag_accepted_holds() -> Bool { accepted(path: "dag/gunbc/recurring_failure_mode/a_claim_module_red_on_main_with_its_cause_unread.dag") }
+test fn f_dag_gunbc_recurring_failure_mode_a_claim_module_red_on_main_with_its_cause_unread_dag_not_wall_holds() -> Bool { not_wall(path: "dag/gunbc/recurring_failure_mode/a_claim_module_red_on_main_with_its_cause_unread.dag") }
+test fn f_dag_gunbc_recurring_failure_mode_accepted_source_emits_uncompilable_target_dag_accepted_holds() -> Bool { accepted(path: "dag/gunbc/recurring_failure_mode/accepted_source_emits_uncompilable_target.dag") }
+test fn f_dag_gunbc_recurring_failure_mode_accepted_source_emits_uncompilable_target_dag_not_wall_holds() -> Bool { not_wall(path: "dag/gunbc/recurring_failure_mode/accepted_source_emits_uncompilable_target.dag") }
+test fn f_dag_gunbc_recurring_failure_mode_adding_a_seed_module_refuses_convergence_on_an_unowned_lib_rs_dag_accepted_holds() -> Bool { accepted(path: "dag/gunbc/recurring_failure_mode/adding_a_seed_module_refuses_convergence_on_an_unowned_lib_rs.dag") }
+test fn f_dag_gunbc_recurring_failure_mode_adding_a_seed_module_refuses_convergence_on_an_unowned_lib_rs_dag_not_wall_holds() -> Bool { not_wall(path: "dag/gunbc/recurring_failure_mode/adding_a_seed_module_refuses_convergence_on_an_unowned_lib_rs.dag") }
+test fn f_dag_gunbc_recurring_failure_mode_an_exhaustive_nested_variant_match_is_emitted_with_every_arm_guarded_dag_accepted_holds() -> Bool { accepted(path: "dag/gunbc/recurring_failure_mode/an_exhaustive_nested_variant_match_is_emitted_with_every_arm_guarded.dag") }
+test fn f_dag_gunbc_recurring_failure_mode_an_exhaustive_nested_variant_match_is_emitted_with_every_arm_guarded_dag_not_wall_holds() -> Bool { not_wall(path: "dag/gunbc/recurring_failure_mode/an_exhaustive_nested_variant_match_is_emitted_with_every_arm_guarded.dag") }
+test fn f_dag_gunbc_recurring_failure_mode_an_untyped_empty_map_fold_seed_is_emitted_with_a_bare_alias_head_dag_accepted_holds() -> Bool { accepted(path: "dag/gunbc/recurring_failure_mode/an_untyped_empty_map_fold_seed_is_emitted_with_a_bare_alias_head.dag") }
+test fn f_dag_gunbc_recurring_failure_mode_an_untyped_empty_map_fold_seed_is_emitted_with_a_bare_alias_head_dag_not_wall_holds() -> Bool { not_wall(path: "dag/gunbc/recurring_failure_mode/an_untyped_empty_map_fold_seed_is_emitted_with_a_bare_alias_head.dag") }
+test fn f_dag_gunbc_recurring_failure_mode_arity_proxy_for_callability_misroutes_a_found_local_dag_accepted_holds() -> Bool { accepted(path: "dag/gunbc/recurring_failure_mode/arity_proxy_for_callability_misroutes_a_found_local.dag") }
+test fn f_dag_gunbc_recurring_failure_mode_arity_proxy_for_callability_misroutes_a_found_local_dag_not_wall_holds() -> Bool { not_wall(path: "dag/gunbc/recurring_failure_mode/arity_proxy_for_callability_misroutes_a_found_local.dag") }
+test fn f_dag_gunbc_recurring_failure_mode_behavior_named_edge_label_validated_not_constructed_dag_accepted_holds() -> Bool { accepted(path: "dag/gunbc/recurring_failure_mode/behavior_named_edge_label_validated_not_constructed.dag") }
+test fn f_dag_gunbc_recurring_failure_mode_behavior_named_edge_label_validated_not_constructed_dag_not_wall_holds() -> Bool { not_wall(path: "dag/gunbc/recurring_failure_mode/behavior_named_edge_label_validated_not_constructed.dag") }
+test fn f_dag_gunbc_recurring_failure_mode_check_subject_shape_cannot_represent_the_state_the_check_detects_dag_accepted_holds() -> Bool { accepted(path: "dag/gunbc/recurring_failure_mode/check_subject_shape_cannot_represent_the_state_the_check_detects.dag") }
+test fn f_dag_gunbc_recurring_failure_mode_check_subject_shape_cannot_represent_the_state_the_check_detects_dag_not_wall_holds() -> Bool { not_wall(path: "dag/gunbc/recurring_failure_mode/check_subject_shape_cannot_represent_the_state_the_check_detects.dag") }
+test fn f_dag_gunbc_recurring_failure_mode_declared_type_wall_keyed_on_the_value_being_a_kernel_dag_accepted_holds() -> Bool { accepted(path: "dag/gunbc/recurring_failure_mode/declared_type_wall_keyed_on_the_value_being_a_kernel.dag") }
+test fn f_dag_gunbc_recurring_failure_mode_declared_type_wall_keyed_on_the_value_being_a_kernel_dag_not_wall_holds() -> Bool { not_wall(path: "dag/gunbc/recurring_failure_mode/declared_type_wall_keyed_on_the_value_being_a_kernel.dag") }
+test fn f_dag_gunbc_recurring_failure_mode_kernel_type_float_has_no_v2_value_type_node_dag_accepted_holds() -> Bool { accepted(path: "dag/gunbc/recurring_failure_mode/kernel_type_float_has_no_v2_value_type_node.dag") }
+test fn f_dag_gunbc_recurring_failure_mode_kernel_type_float_has_no_v2_value_type_node_dag_not_wall_holds() -> Bool { not_wall(path: "dag/gunbc/recurring_failure_mode/kernel_type_float_has_no_v2_value_type_node.dag") }
+test fn f_dag_gunbc_recurring_failure_mode_lowering_accessor_collapses_a_sequence_operand_dag_accepted_holds() -> Bool { accepted(path: "dag/gunbc/recurring_failure_mode/lowering_accessor_collapses_a_sequence_operand.dag") }
+test fn f_dag_gunbc_recurring_failure_mode_lowering_accessor_collapses_a_sequence_operand_dag_not_wall_holds() -> Bool { not_wall(path: "dag/gunbc/recurring_failure_mode/lowering_accessor_collapses_a_sequence_operand.dag") }
+test fn f_dag_gunbc_recurring_failure_mode_string_interpolates_a_name_that_is_not_a_value_in_scope_dag_accepted_holds() -> Bool { accepted(path: "dag/gunbc/recurring_failure_mode/string_interpolates_a_name_that_is_not_a_value_in_scope.dag") }
+test fn f_dag_gunbc_recurring_failure_mode_string_interpolates_a_name_that_is_not_a_value_in_scope_dag_not_wall_holds() -> Bool { not_wall(path: "dag/gunbc/recurring_failure_mode/string_interpolates_a_name_that_is_not_a_value_in_scope.dag") }
+test fn f_dag_gunbc_recurring_failure_mode_type_parameter_kind_deferral_never_collected_dag_accepted_holds() -> Bool { accepted(path: "dag/gunbc/recurring_failure_mode/type_parameter_kind_deferral_never_collected.dag") }
+test fn f_dag_gunbc_recurring_failure_mode_type_parameter_kind_deferral_never_collected_dag_not_wall_holds() -> Bool { not_wall(path: "dag/gunbc/recurring_failure_mode/type_parameter_kind_deferral_never_collected.dag") }
+test fn f_dag_gunbc_runner_microvm_ci_step_dag_accepted_holds() -> Bool { accepted(path: "dag/gunbc/runner/microvm_ci_step.dag") }
+test fn f_dag_gunbc_runner_microvm_ci_step_dag_not_wall_holds() -> Bool { not_wall(path: "dag/gunbc/runner/microvm_ci_step.dag") }
+test fn f_dag_gunbc_spark_spark_ci_step_dag_accepted_holds() -> Bool { accepted(path: "dag/gunbc/spark/spark_ci_step.dag") }
+test fn f_dag_gunbc_spark_spark_ci_step_dag_not_wall_holds() -> Bool { not_wall(path: "dag/gunbc/spark/spark_ci_step.dag") }
+test fn f_dag_product_p4261_e1_b_dag_accepted_holds() -> Bool { accepted(path: "dag/product/p4261/e1_b.dag") }
+test fn f_dag_product_p4261_e1_b_dag_not_wall_holds() -> Bool { not_wall(path: "dag/product/p4261/e1_b.dag") }
+test fn f_dag_test_claim_bracketed_list_separator_wall_answer_witness_dag_accepted_holds() -> Bool { accepted(path: "dag/test/claim/bracketed_list_separator_wall_answer_witness.dag") }
+test fn f_dag_test_claim_bracketed_list_separator_wall_answer_witness_dag_not_wall_holds() -> Bool { not_wall(path: "dag/test/claim/bracketed_list_separator_wall_answer_witness.dag") }
+test fn f_dag_test_claim_fold_carrier_copies_disagree_witness_dag_accepted_holds() -> Bool { accepted(path: "dag/test/claim/fold_carrier_copies_disagree_witness.dag") }
+test fn f_dag_test_claim_fold_carrier_copies_disagree_witness_dag_not_wall_holds() -> Bool { not_wall(path: "dag/test/claim/fold_carrier_copies_disagree_witness.dag") }
+test fn f_src_v2_compiler_decl_ref_disposition_roster_dag_accepted_holds() -> Bool { accepted(path: "src/v2/compiler/decl_ref_disposition_roster.dag") }
+test fn f_src_v2_compiler_decl_ref_disposition_roster_dag_not_wall_holds() -> Bool { not_wall(path: "src/v2/compiler/decl_ref_disposition_roster.dag") }
+test fn f_src_v2_extdeps_languages_dag_dag_accepted_holds() -> Bool { accepted(path: "src/v2/extdeps/languages/dag.dag") }
+test fn f_src_v2_extdeps_languages_dag_dag_not_wall_holds() -> Bool { not_wall(path: "src/v2/extdeps/languages/dag.dag") }
+test fn f_src_v2_std_parse_refusal_reason_dag_accepted_holds() -> Bool { accepted(path: "src/v2/std/parse_refusal_reason.dag") }
+test fn f_src_v2_std_parse_refusal_reason_dag_not_wall_holds() -> Bool { not_wall(path: "src/v2/std/parse_refusal_reason.dag") }
+test fn f_src_v2_test_claim_parse_corpus_list_separator_no_regression_dag_accepted_holds() -> Bool { accepted(path: "src/v2/test/claim/parse/corpus_list_separator_no_regression.dag") }
+test fn f_src_v2_test_claim_parse_corpus_list_separator_no_regression_dag_not_wall_holds() -> Bool { not_wall(path: "src/v2/test/claim/parse/corpus_list_separator_no_regression.dag") }
+test fn f_src_v2_test_claim_parse_list_separator_formation_wall_dag_accepted_holds() -> Bool { accepted(path: "src/v2/test/claim/parse/list_separator_formation_wall.dag") }
+test fn f_src_v2_test_claim_parse_list_separator_formation_wall_dag_not_wall_holds() -> Bool { not_wall(path: "src/v2/test/claim/parse/list_separator_formation_wall.dag") }
+test fn f_src_v2_test_claim_parse_sibling_comma_gap_probe_dag_accepted_holds() -> Bool { accepted(path: "src/v2/test/claim/parse/sibling_comma_gap_probe.dag") }
+test fn f_src_v2_test_claim_parse_sibling_comma_gap_probe_dag_not_wall_holds() -> Bool { not_wall(path: "src/v2/test/claim/parse/sibling_comma_gap_probe.dag") }
+test fn f_src_v2_test_claim_parse_when_guard_probe_dag_accepted_holds() -> Bool { accepted(path: "src/v2/test/claim/parse/when_guard_probe.dag") }
+test fn f_src_v2_test_claim_parse_when_guard_probe_dag_not_wall_holds() -> Bool { not_wall(path: "src/v2/test/claim/parse/when_guard_probe.dag") }

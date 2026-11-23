@@ -48,8 +48,8 @@ import v2.std.node { Symbol }
 //                                     one the author meant by rule, so it refuses rather than pick:
 //                                     parenthesize, or join the comparisons with `&&`. Located at
 //                                     the second operator (v2.std.grammar InfixTable).
-//   ListElementSeparatorMissing    -- an element of a bracketed list (the `[ .. ]` list literal or a
-//                                     subscript) follows a complete element with no `,` between them
+//   ListElementSeparatorMissing    -- an element of the bracketed list literal (`[ .. ]`) follows a
+//                                     complete element with no `,` between them
 //                                     (`[a b]`, `[a, b c]`). The comma-list combinator that used to
 //                                     make every separator optional read the juxtaposition as two
 //                                     elements and silently changed the list's arity -- the measured
