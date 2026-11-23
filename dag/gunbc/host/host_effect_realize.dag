@@ -6733,65 +6733,24 @@ fn tree_metadata_entries_of_stdout(stdout: String, sub: String) -> List<TreeMeta
   flat_map(split(s: stdout, delimiter: "\n"), line => match tree_metadata_entry_of_line(line: line, sub: sub) { Absent => [], Present { value: e } => [e] })
 }
 
-// THE SELF-METADATA OF ONE PATH, parsed from the six-field line that
-// find_self_metadata_command prints: kind|mode|owner|group|link_target|size. The
-// caller already knows the path (it ran the find on it), so %P is absent from the
-// wire and the caller pairs the parsed fields with the path. Returns the entry or
-// Absent if the grammar does not parse.
-type TreeSelfFieldWalk {
-  i: Int
-  kind: String
-  mode: String
-  owner: String
-  group: String
-  link_target: String
-  size: String
-  ok: Bool
-}
-
-fn tree_self_metadata_of_fields(fields: List<String>) -> Optional<TreeMetadataEntry> {
-  let walked = fold(fields, init: TreeSelfFieldWalk { i: 0, kind: "", mode: "", owner: "", group: "", link_target: "", size: "", ok: true }, f: (acc, field) =>
-    if !acc.ok { acc }
-    else if acc.i == 0 { TreeSelfFieldWalk { i: 1, kind: field, mode: acc.mode, owner: acc.owner, group: acc.group, link_target: acc.link_target, size: acc.size, ok: true } }
-    else if acc.i == 1 { TreeSelfFieldWalk { i: 2, kind: acc.kind, mode: field, owner: acc.owner, group: acc.group, link_target: acc.link_target, size: acc.size, ok: true } }
-    else if acc.i == 2 { TreeSelfFieldWalk { i: 3, kind: acc.kind, mode: acc.mode, owner: field, group: acc.group, link_target: acc.link_target, size: acc.size, ok: true } }
-    else if acc.i == 3 { TreeSelfFieldWalk { i: 4, kind: acc.kind, mode: acc.mode, owner: acc.owner, group: field, link_target: acc.link_target, size: acc.size, ok: true } }
-    else if acc.i == 4 { TreeSelfFieldWalk { i: 5, kind: acc.kind, mode: acc.mode, owner: acc.owner, group: acc.group, link_target: field, size: acc.size, ok: true } }
-    else if acc.i == 5 { TreeSelfFieldWalk { i: 6, kind: acc.kind, mode: acc.mode, owner: acc.owner, group: acc.group, link_target: acc.link_target, size: field, ok: true } }
-    else { TreeSelfFieldWalk { i: acc.i, kind: acc.kind, mode: acc.mode, owner: acc.owner, group: acc.group, link_target: acc.link_target, size: acc.size, ok: false } }
-  )
-  if walked.i == 6 && walked.ok && walked.owner != "" && walked.group != "" && tree_metadata_text_is_decimal_digits(text: walked.size) {
-    let names = PosixOwnerNames { user: walked.owner as NonEmptyStr, group: walked.group as NonEmptyStr }
-    match file_mode_of_octal_text(text: walked.mode) {
-      Absent => Absent
-      Present { value: m } =>
-        if walked.kind == "d" && walked.link_target == "" {
-          Present { value: TreeMetadataEntry { path: "", kind: TreeDirectory, mode: m, owner: names } }
-        } else if walked.kind == "f" && walked.link_target == "" {
-          Present { value: TreeMetadataEntry { path: "", kind: TreeRegular, mode: m, owner: names } }
-        } else if walked.kind == "l" && walked.link_target != "" {
-          Present { value: TreeMetadataEntry { path: "", kind: TreeLink { link_target: walked.link_target as NonEmptyStr }, mode: m, owner: names } }
-        } else {
-          Absent
-        }
-    }
-  } else { Absent }
-}
-
-fn tree_self_metadata_entry_of_line(line: String, path: String) -> Optional<TreeMetadataEntry> {
-  let fields = split(s: line, delimiter: "|")
-  match tree_self_metadata_of_fields(fields: fields) {
-    Absent => Absent
-    Present { value: e } => Present { value: TreeMetadataEntry { path: path, kind: e.kind, mode: e.mode, owner: e.owner } }
-  }
-}
-
+// THE SELF-METADATA OF ONE PATH. find_self_metadata_command prints the seven-field line
+// `<path>|<y>|<m>|<u>|<g>|<link>|<size>` -- %p carries the queried path in the rel field, so this is
+// the SAME grammar the tree walks parse. There is ONE field walk (tree_metadata_fields_of), ONE
+// grammar decision chain (tree_metadata_entry_of_fields), and ONE kind dispatch, shared with the
+// walks -- not a second hand-written fold. Exactly one non-empty line is expected; the parsed path
+// must equal the path that was asked about, so a find that answered about a different file is
+// refused rather than mispaired.
 fn tree_self_metadata_entry_of_stdout(stdout: String, path: String) -> Optional<TreeMetadataEntry> {
   let lines = filter(split(s: stdout, delimiter: "\n"), l => l != "")
   match lines {
     Cons { head: line, tail: rest } =>
       if count(rest) != 0 { Absent }
-      else { tree_self_metadata_entry_of_line(line: line, path: path) }
+      else {
+        match tree_metadata_entry_of_line(line: line, sub: "") {
+          Absent => Absent
+          Present { value: e } => if e.path == path { Present { value: e } } else { Absent }
+        }
+      }
     Empty => Absent
   }
 }
@@ -6936,27 +6895,29 @@ fn tree_walk_root_expectation_owned(subdirs: List<String>, owner: PosixOwnerName
   }
 }
 
-// THE LOCUS-ROOT CONTAINMENT AGREEMENT: the tree install's readback establishes only what
-// the tree install writes. At the locus-root level (and for walk-root parents), the comparison
-// is containment: filter observed entries to those whose path appears in the expected set,
-// then delegate to tree_metadata_disagreement. This tolerates entries placed by other deploy
-// legs (firecracker, images/, .gunbc-vmm-receipt, device-crypto-deployed-digest.env) while
-// still refusing when a tree-install entry is missing or has wrong metadata. Within dag/ and
-// src/v2/ (which the tree install owns entirely), the caller uses full set agreement directly.
-fn tree_locus_root_contain_agreement(
-  expected: List<TreeMetadataEntry>,
+// THE LOCUS-ROOT CONTAINMENT FILTER, the one place the containment rule is stated. The tree install's
+// readback establishes only what the tree install writes, so at the locus-root level the comparison is
+// containment: keep only the observed entries whose path is an expected one (a subtree-root directory,
+// a walk-root path, or a release executable), so entries placed by OTHER deploy legs -- firecracker,
+// images/, .gunbc-vmm-receipt, device-crypto-deployed-digest.env -- are tolerated, while a missing or
+// wrong-metadata tree-install entry still survives into the comparison and is refused. Consumed by
+// tree_locus_agreement, the single comparison authority; within dag/ and src/v2/ (which the tree
+// install owns entirely) that authority uses full set agreement, not this filter.
+fn tree_locus_children_contained(
+  locus_children_expected: List<TreeMetadataEntry>,
+  walk_root_expected: List<TreeMetadataEntry>,
   observed: List<TreeMetadataEntry>,
-) -> Optional<String> {
-  let expected_paths = flat_map(expected, e => [e.path])
-  let filtered = filter(observed, e => any(expected_paths, p => p == e.path))
-  tree_metadata_disagreement(expected: expected, observed: filtered)
+) -> List<TreeMetadataEntry> {
+  let expected_paths = flat_map(concat(locus_children_expected, walk_root_expected), e => [e.path])
+  filter(observed, e => any(expected_paths, p => p == e.path))
 }
 
 // THE FULL TREE AGREEMENT: the single comparison authority that the production readback calls.
 // It merges the source-walk expectation with the locus-children, walk-root, and spine expectations,
-// applies the containment filter to the locus-children entries (tolerating extras from other legs),
-// keeps full set agreement on the source-walk entries within dag/ and src/v2/ and the spine
-// self-metadata, and calls tree_metadata_disagreement ONCE on the merged pair.
+// applies the containment filter (tree_locus_children_contained) to the locus-children entries so
+// extras from other legs are tolerated, keeps full set agreement on the source-walk entries within
+// dag/ and src/v2/ and the spine self-metadata, and calls tree_metadata_disagreement ONCE on the
+// merged pair.
 fn tree_locus_agreement(
   source_expected: List<TreeMetadataEntry>,
   source_observed: List<TreeMetadataEntry>,
@@ -6966,8 +6927,11 @@ fn tree_locus_agreement(
   spine_expected: List<TreeMetadataEntry>,
   spine_observed: List<TreeMetadataEntry>,
 ) -> Optional<String> {
-  let expected_paths = flat_map(concat(locus_children_expected, walk_root_expected), e => [e.path])
-  let locus_filtered = filter(locus_children_observed, e => any(expected_paths, p => p == e.path))
+  let locus_filtered = tree_locus_children_contained(
+    locus_children_expected: locus_children_expected,
+    walk_root_expected: walk_root_expected,
+    observed: locus_children_observed,
+  )
   let merged_expected = concat(concat(concat(source_expected, locus_children_expected), walk_root_expected), spine_expected)
   let merged_observed = concat(concat(source_observed, locus_filtered), spine_observed)
   tree_metadata_disagreement(expected: merged_expected, observed: merged_observed)

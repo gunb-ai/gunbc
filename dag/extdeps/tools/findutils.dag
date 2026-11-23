@@ -161,11 +161,13 @@ fn find_direct_children_metadata_command(root: String) -> ArgvCommand {
   argv_command(program: find_program(), arguments: [root, "-maxdepth", "1", "-xdev", "-printf", find_tree_entry_metadata_printf()])
 }
 
-// THE SELF-METADATA OF ONE PATH (a directory or file) as a single six-field line:
-// %y|%m|%u|%g|%l|%s. No %P (find prints it empty at -maxdepth 0 and the caller supplies the path
-// it already knows). The line is parsed by the receiver's self-metadata parser and paired with the
-// caller-supplied path.
-data find_self_metadata_printf: String = "%y|%m|%u|%g|%l|%s\\n"
+// THE SELF-METADATA OF ONE PATH (a directory or file) as a single seven-field line:
+// %p|%y|%m|%u|%g|%l|%s. %p (the queried path) occupies the rel field, so the line is the SAME
+// seven-field grammar as find_tree_entry_metadata_command and is parsed by the one receiver parser
+// (tree_metadata_entry_of_line) with the same kind dispatch and the same refusals. At -maxdepth 0
+// find prints %p as the path it was handed, and the caller refuses a line whose path is not the one
+// it asked about. The escapes \n and the raw %l are find's own, as above.
+data find_self_metadata_printf: String = "%p|%y|%m|%u|%g|%l|%s\\n"
 
 fn find_self_metadata_command(path: String) -> ArgvCommand {
   argv_command(program: find_program(), arguments: [path, "-maxdepth", "0", "-xdev", "-printf", find_self_metadata_printf])
