@@ -2,7 +2,7 @@ module test.claim.fleet.fleet_host_truth_read_witness
 
 import std.types { Bool, NonEmptyStr, String }
 import std.algebra { string_contains }
-import std.list { distinct_by_key }
+import std.list { distinct_by_key, first_where }
 import gunbc.fleet.fleet_host_truth_read {
   HostTruthAxis,
   TruthDeclaredHardwareEnumerates,
@@ -32,6 +32,8 @@ import gunbc.fleet.fleet_host_truth_read {
   TruthNoReadSupplied,
   TruthNoExpectationForRead,
   TruthOutsideTheModel,
+  TruthDuplicateRead,
+  TruthDuplicateExpectation,
   TruthPairingRefused,
   host_truth_compare,
   host_truth_compare_roster,
@@ -85,6 +87,10 @@ fn diverges(read: HostTruthRead, expectation: HostTruthExpectation) -> Bool {
     TruthNoReadSupplied { host: _, axis: _ } => false
     TruthNoExpectationForRead { host: _, axis: _ } => false
     TruthOutsideTheModel { host: _, axis: _, because: _ } => false
+    TruthDuplicateRead { host: _, axis: _, read_count: _ } => false
+    TruthDuplicateExpectation { host: _, axis: _, declaration_count: _ } => false
+    TruthDuplicateRead { host: _, axis: _, read_count: _ } => false
+    TruthDuplicateExpectation { host: _, axis: _, declaration_count: _ } => false
     TruthPairingRefused { why: _, pairing: _ } => false
   }
 }
@@ -161,6 +167,10 @@ test fn a_question_the_model_does_not_ask_answers_as_outside_the_model_not_as_a_
     TruthReadBlank { host: _, axis: _ } => false
     TruthNoReadSupplied { host: _, axis: _ } => false
     TruthNoExpectationForRead { host: _, axis: _ } => false
+    TruthDuplicateRead { host: _, axis: _, read_count: _ } => false
+    TruthDuplicateExpectation { host: _, axis: _, declaration_count: _ } => false
+    TruthDuplicateRead { host: _, axis: _, read_count: _ } => false
+    TruthDuplicateExpectation { host: _, axis: _, declaration_count: _ } => false
     TruthPairingRefused { why: _, pairing: _ } => false
   }
 }
@@ -208,6 +218,10 @@ test fn RED_a_mispaired_read_and_declaration_refuse_though_the_values_match() ->
     read: observed(host: "srv3" as NonEmptyStr, axis: TruthCapBindsDeclaredWorkingSet, value: "memory.high=48G"),
     expectation: declared(host: "srv4" as NonEmptyStr, axis: TruthCapBindsDeclaredWorkingSet, expected: "memory.high=48G", by: "the build roster's slot row"),
   ) {
+    TruthDuplicateRead { host: _, axis: _, read_count: _ } => true
+    TruthDuplicateExpectation { host: _, axis: _, declaration_count: _ } => true
+    TruthDuplicateRead { host: _, axis: _, read_count: _ } => true
+    TruthDuplicateExpectation { host: _, axis: _, declaration_count: _ } => true
     TruthPairingRefused { why: _, pairing: _ } => true
     TruthAgrees { host: _, axis: _, at_run: _, receipt: _ } => false
     TruthDivergent { host: _, axis: _, observed: _, expected: _, declared_by: _ } => false
@@ -221,6 +235,8 @@ test fn RED_a_mispaired_read_and_declaration_refuse_though_the_values_match() ->
       read: observed(host: "srv3" as NonEmptyStr, axis: TruthCapBindsDeclaredWorkingSet, value: "memory.high=48G"),
       expectation: declared(host: "srv3" as NonEmptyStr, axis: TruthSlotSwapBackingDeclared, expected: "memory.high=48G", by: "the build roster's slot row"),
     ) {
+      TruthDuplicateRead { host: _, axis: _, read_count: _ } => true
+      TruthDuplicateExpectation { host: _, axis: _, declaration_count: _ } => true
       TruthPairingRefused { why: _, pairing: _ } => true
       TruthAgrees { host: _, axis: _, at_run: _, receipt: _ } => false
       TruthDivergent { host: _, axis: _, observed: _, expected: _, declared_by: _ } => false
@@ -242,7 +258,9 @@ test fn RED_an_expectation_with_no_read_supplied_refuses() -> Bool {
   )
   match verdict {
     HostTruthRefused { host: h, refusals: r } => host_truth_host_text(host: h) == "srv4"
-      && r.all(comparison => match comparison { TruthNoReadSupplied { host: _, axis: _ } => true TruthAgrees { host: _, axis: _, at_run: _, receipt: _ } => false TruthDivergent { host: _, axis: _, observed: _, expected: _, declared_by: _ } => false TruthUnread { host: _, axis: _, cause: _ } => false TruthReadBlank { host: _, axis: _ } => false TruthNoExpectationForRead { host: _, axis: _ } => false TruthOutsideTheModel { host: _, axis: _, because: _ } => false TruthPairingRefused { why: _, pairing: _ } => false })
+      && r.all(comparison => match comparison { TruthNoReadSupplied { host: _, axis: _ } => true TruthAgrees { host: _, axis: _, at_run: _, receipt: _ } => false TruthDivergent { host: _, axis: _, observed: _, expected: _, declared_by: _ } => false TruthUnread { host: _, axis: _, cause: _ } => false TruthReadBlank { host: _, axis: _ } => false TruthNoExpectationForRead { host: _, axis: _ } => false TruthOutsideTheModel { host: _, axis: _, because: _ } => false TruthDuplicateRead { host: _, axis: _, read_count: _ } => false TruthDuplicateExpectation { host: _, axis: _, declaration_count: _ } => false TruthDuplicateRead { host: _, axis: _, read_count: _ } => false
+ TruthDuplicateExpectation { host: _, axis: _, declaration_count: _ } => false
+ TruthPairingRefused { why: _, pairing: _ } => false })
     HostTruthNothingRead { host: _, why: _ } => false
     HostTruthFollowsDesiredState { host: _, compared: _, undeclared: _ } => false
     HostTruthDiverges { host: _, divergences: _ } => false
@@ -273,7 +291,9 @@ test fn RED_a_read_with_nothing_declared_against_it_refuses_the_roster() -> Bool
   match verdict {
     HostTruthRefused { host: h, refusals: r } => host_truth_host_text(host: h) == "dan"
       && r.length() == 2
-      && r.all(comparison => match comparison { TruthNoExpectationForRead { host: _, axis: _ } => true TruthNoReadSupplied { host: _, axis: _ } => true TruthAgrees { host: _, axis: _, at_run: _, receipt: _ } => false TruthDivergent { host: _, axis: _, observed: _, expected: _, declared_by: _ } => false TruthUnread { host: _, axis: _, cause: _ } => false TruthReadBlank { host: _, axis: _ } => false TruthOutsideTheModel { host: _, axis: _, because: _ } => false TruthPairingRefused { why: _, pairing: _ } => false })
+      && r.all(comparison => match comparison { TruthNoExpectationForRead { host: _, axis: _ } => true TruthNoReadSupplied { host: _, axis: _ } => true TruthAgrees { host: _, axis: _, at_run: _, receipt: _ } => false TruthDivergent { host: _, axis: _, observed: _, expected: _, declared_by: _ } => false TruthUnread { host: _, axis: _, cause: _ } => false TruthReadBlank { host: _, axis: _ } => false TruthOutsideTheModel { host: _, axis: _, because: _ } => false TruthDuplicateRead { host: _, axis: _, read_count: _ } => false TruthDuplicateExpectation { host: _, axis: _, declaration_count: _ } => false TruthDuplicateRead { host: _, axis: _, read_count: _ } => false
+ TruthDuplicateExpectation { host: _, axis: _, declaration_count: _ } => false
+ TruthPairingRefused { why: _, pairing: _ } => false })
     HostTruthNothingRead { host: _, why: _ } => false
     HostTruthFollowsDesiredState { host: _, compared: _, undeclared: _ } => false
     HostTruthDiverges { host: _, divergences: _ } => false
@@ -396,4 +416,42 @@ test fn the_roster_compares_every_pair_and_keeps_the_refusals_visible() -> Bool 
   compared.length() == 2
     && compared.any(comparison => match comparison { TruthAgrees { host: _, axis: _, at_run: _, receipt: _ } => true  _ => false })
     && compared.any(comparison => match comparison { TruthNoReadSupplied { host: _, axis: _ } => true  _ => false })
+}
+
+// RED -- ONE HOST AND AXIS ANSWERED TWICE. Two probes, one of them stale, is how a per-host read starts
+// failing open: the roster taking the first of two answers is a silent choice of which reader is the
+// authority, and when that first answer happens to agree with the model the host would be admitted on a
+// contradiction. So the pair is refused by name and the host is not admitted.
+test fn RED_two_reads_answering_one_host_and_axis_refuse_the_host() -> Bool {
+  let reads = [
+    observed(host: "butch" as NonEmptyStr, axis: TruthDeclaredHardwareEnumerates, value: "nvidia-functions=4"),
+    observed(host: "butch" as NonEmptyStr, axis: TruthDeclaredHardwareEnumerates, value: "nvidia-functions=0"),
+  ]
+  let expectations = [declared(host: "butch" as NonEmptyStr, axis: TruthDeclaredHardwareEnumerates, expected: "nvidia-functions=4", by: "the serving layout's pool row")]
+  let verdict = fleet_host_truth_verdict_for_host(host: "butch" as NonEmptyStr, reads: reads, expectations: expectations)
+  match verdict {
+    HostTruthRefused { host: h, refusals: r } => host_truth_host_text(host: h) == "butch"
+      && fleet_truth_admits_host(verdict: verdict) == false
+      && r.any(comparison => string_contains(s: host_truth_divergence_locator(comparison: comparison), pattern: "read more than once"))
+    HostTruthFollowsDesiredState { host: _, compared: _, undeclared: _ } => false
+    HostTruthDiverges { host: _, divergences: _ } => false
+    HostTruthNothingRead { host: _, why: _ } => false
+  }
+}
+
+// RED -- ONE HOST AND AXIS DECLARED TWICE. Two rows claim the same fact with different values and nothing in
+// the roster says which row is the authority. Even where one of the two happens to agree with the read, the
+// doubled declaration is named and the host is not admitted: a contradiction inside the model is drift, not
+// a choice of comparator.
+test fn RED_two_declarations_covering_one_host_and_axis_are_named_and_refuse() -> Bool {
+  let reads = [observed(host: "dan" as NonEmptyStr, axis: TruthSlotSwapBackingDeclared, value: "memory.swap.max=0")]
+  let expectations = [
+    declared(host: "dan" as NonEmptyStr, axis: TruthSlotSwapBackingDeclared, expected: "memory.swap.max=0", by: "gunbc.host.memory_envelope"),
+    declared(host: "dan" as NonEmptyStr, axis: TruthSlotSwapBackingDeclared, expected: "memory.swap.max=8G", by: "an older slot row"),
+  ]
+  let compared = host_truth_compare_roster(reads: reads, expectations: expectations)
+  let verdict = fleet_host_truth_verdict_for_host(host: "dan" as NonEmptyStr, reads: reads, expectations: expectations)
+  compared.length() == 3
+    && compared.any(comparison => string_contains(s: host_truth_divergence_locator(comparison: comparison), pattern: "declared more than once"))
+    && fleet_truth_admits_host(verdict: verdict) == false
 }

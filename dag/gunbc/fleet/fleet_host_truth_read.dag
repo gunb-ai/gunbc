@@ -146,6 +146,8 @@ type HostTruthComparison
   | TruthReadBlank { host: NonEmptyStr, axis: HostTruthAxis }
   | TruthNoReadSupplied { host: NonEmptyStr, axis: HostTruthAxis }
   | TruthNoExpectationForRead { host: NonEmptyStr, axis: HostTruthAxis }
+  | TruthDuplicateRead { host: NonEmptyStr, axis: HostTruthAxis, read_count: Int }
+  | TruthDuplicateExpectation { host: NonEmptyStr, axis: HostTruthAxis, declaration_count: Int }
   | TruthOutsideTheModel { host: NonEmptyStr, axis: HostTruthAxis, because: String }
   | TruthPairingRefused { why: String, pairing: HostTruthPairing }
 
@@ -227,49 +229,65 @@ type HostTruthVerdict
   | HostTruthRefused { host: NonEmptyStr, refusals: List<HostTruthComparison> }
   | HostTruthNothingRead { host: NonEmptyStr, why: String }
 
-fn host_truth_is_divergence(comparison: HostTruthComparison) -> Bool {
+// ONE CLASSIFICATION, IN ONE PLACE. Every comparison arm is classed exactly once and the verdict fold
+// filters on the class. Three hand-matched Bool predicates over the same sum is how a new arm would come to
+// mean "not a refusal, not a divergence, not undeclared" -- that is, agreement -- without anyone deciding
+// it; with one classification the compiler asks the question at the single site that answers it.
+type HostTruthClass
+  = TruthClassAgreement
+  | TruthClassDivergence
+  | TruthClassRefusal
+  | TruthClassUndeclared
+
+fn host_truth_class(comparison: HostTruthComparison) -> HostTruthClass {
   match comparison {
-    TruthDivergent { host: _, axis: _, observed: _, expected: _, declared_by: _ } => true
-    TruthAgrees { host: _, axis: _, at_run: _, receipt: _ } => false
-    TruthUnread { host: _, axis: _, cause: _ } => false
-    TruthReadBlank { host: _, axis: _ } => false
-    TruthNoReadSupplied { host: _, axis: _ } => false
-    TruthNoExpectationForRead { host: _, axis: _ } => false
-    TruthOutsideTheModel { host: _, axis: _, because: _ } => false
-    TruthPairingRefused { why: _, pairing: _ } => false
+    TruthAgrees { host: _, axis: _, at_run: _, receipt: _ } => TruthClassAgreement
+    TruthDivergent { host: _, axis: _, observed: _, expected: _, declared_by: _ } => TruthClassDivergence
+    TruthUnread { host: _, axis: _, cause: _ } => TruthClassRefusal
+    TruthReadBlank { host: _, axis: _ } => TruthClassRefusal
+    TruthNoReadSupplied { host: _, axis: _ } => TruthClassRefusal
+    TruthNoExpectationForRead { host: _, axis: _ } => TruthClassRefusal
+    // Two reads answer the same host on the same axis, or two declarations cover it. Picking one of the two
+    // and comparing against it silently chooses an authority the model never named, and the pair of answers
+    // may itself be the drift. So the host is refused, not adjudicated.
+    TruthDuplicateRead { host: _, axis: _, read_count: _ } => TruthClassRefusal
+    TruthDuplicateExpectation { host: _, axis: _, declaration_count: _ } => TruthClassRefusal
+    // The model's own gap. It neither blocks a host nor passes it silently: the verdict carries the count.
+    TruthOutsideTheModel { host: _, axis: _, because: _ } => TruthClassUndeclared
+    TruthPairingRefused { why: _, pairing: _ } => TruthClassRefusal
   }
 }
 
+fn host_truth_is_divergence(comparison: HostTruthComparison) -> Bool {
+  match host_truth_class(comparison: comparison) {
+    TruthClassDivergence => true
+    TruthClassAgreement => false
+    TruthClassRefusal => false
+    TruthClassUndeclared => false
+  }
+}
 // A refusal is anything that is NOT an answer: an unread, a blank, a one-sided pairing, or a read and a
 // declaration that were matched wrongly.
+// A refusal is anything that is NOT an answer: an unread, a blank, a one-sided pairing, a duplicated read or
+// declaration, or a read and a declaration that were matched wrongly.
 fn host_truth_is_refusal(comparison: HostTruthComparison) -> Bool {
-  match comparison {
-    TruthUnread { host: _, axis: _, cause: _ } => true
-    TruthReadBlank { host: _, axis: _ } => true
-    TruthNoReadSupplied { host: _, axis: _ } => true
-    TruthNoExpectationForRead { host: _, axis: _ } => true
-    TruthPairingRefused { why: _, pairing: _ } => true
-    TruthDivergent { host: _, axis: _, observed: _, expected: _, declared_by: _ } => false
-    TruthAgrees { host: _, axis: _, at_run: _, receipt: _ } => false
-    TruthOutsideTheModel { host: _, axis: _, because: _ } => false
+  match host_truth_class(comparison: comparison) {
+    TruthClassRefusal => true
+    TruthClassDivergence => false
+    TruthClassAgreement => false
+    TruthClassUndeclared => false
   }
 }
-
 // The model's own gap: an expectation arm that says nothing is declared. It neither blocks a host nor
 // passes it silently -- the verdict carries the count, and the refusal text lists the axes.
 fn host_truth_is_undeclared(comparison: HostTruthComparison) -> Bool {
-  match comparison {
-    TruthOutsideTheModel { host: _, axis: _, because: _ } => true
-    TruthDivergent { host: _, axis: _, observed: _, expected: _, declared_by: _ } => false
-    TruthAgrees { host: _, axis: _, at_run: _, receipt: _ } => false
-    TruthUnread { host: _, axis: _, cause: _ } => false
-    TruthReadBlank { host: _, axis: _ } => false
-    TruthNoReadSupplied { host: _, axis: _ } => false
-    TruthNoExpectationForRead { host: _, axis: _ } => false
-    TruthPairingRefused { why: _, pairing: _ } => false
+  match host_truth_class(comparison: comparison) {
+    TruthClassUndeclared => true
+    TruthClassDivergence => false
+    TruthClassAgreement => false
+    TruthClassRefusal => false
   }
 }
-
 fn host_truth_find_expectation(expectations: List<HostTruthExpectation>, read: HostTruthRead) -> HostTruthExpectation? {
   let axis = axis_of_read(read: read)
   let host = host_truth_host_text(host: host_of_read(read: read))
@@ -297,22 +315,60 @@ fn host_truth_find_read(reads: List<HostTruthRead>, expectation: HostTruthExpect
 // BOTH SIDES, COMPARED. Expectations without a read and reads without an expectation are different gaps
 // and are named differently: the first is a host the roster asked about and did not look at; the second is
 // a read nobody will consult, which is how an instrument starts failing open.
-fn host_truth_compare_roster(reads: List<HostTruthRead>, expectations: List<HostTruthExpectation>) -> List<HostTruthComparison> {
-  let from_expectations = expectations.map(expectation =>
-    match host_truth_find_read(reads: reads, expectation: expectation) {
+// HOW MANY READS ANSWER THIS HOST ON THIS AXIS, and how many declarations cover it. The count, not the
+// first hit, is what the roster fold decides on: taking the first of two answers is a silent choice of
+// authority, and it is also how a doubled reader (two probes, one stale) becomes invisible.
+fn host_truth_reads_matching(reads: List<HostTruthRead>, host: NonEmptyStr, axis: HostTruthAxis) -> List<HostTruthRead> {
+  let key = host_truth_host_text(host: host)
+  reads.filter(read => host_truth_axes_match(left: axis_of_read(read: read), right: axis)
+    && host_truth_host_text(host: host_of_read(read: read)) == key)
+}
+
+fn host_truth_expectations_matching(expectations: List<HostTruthExpectation>, host: NonEmptyStr, axis: HostTruthAxis) -> List<HostTruthExpectation> {
+  let key = host_truth_host_text(host: host)
+  expectations.filter(expectation => host_truth_axes_match(left: axis_of_expectation(expectation: expectation), right: axis)
+    && host_truth_host_text(host: host_of_expectation(expectation: expectation)) == key)
+}
+
+// ONE EXPECTANCE, DECIDED: duplicated read, missing read, or the comparison itself.
+fn host_truth_compare_for_expectation(reads: List<HostTruthRead>, expectation: HostTruthExpectation) -> HostTruthComparison {
+  let host = host_of_expectation(expectation: expectation)
+  let axis = axis_of_expectation(expectation: expectation)
+  let matches = host_truth_reads_matching(reads: reads, host: host, axis: axis)
+  if matches.length() > 1 {
+    TruthDuplicateRead { host: host, axis: axis, read_count: matches.length() }
+  } else if matches.length() == 0 {
+    TruthNoReadSupplied { host: host, axis: axis }
+  } else {
+    match first_where(xs: matches, keep: read => true) {
       Present { value: read } => host_truth_compare(read: read, expectation: expectation)
-      Absent => TruthNoReadSupplied { host: host_of_expectation(expectation: expectation), axis: axis_of_expectation(expectation: expectation) }
+      Absent => TruthNoReadSupplied { host: host, axis: axis }
     }
-  )
+  }
+}
+
+// BOTH SIDES, COMPARED. Expectations without a read and reads without an expectation are different gaps
+// and are named differently: the first is a host the roster asked about and did not look at; the second is
+// a read nobody will consult, which is how an instrument starts failing open. A host+axis answered more than
+// once, or declared more than once, is a third gap and is named by itself: the model has two authorities for
+// one fact, and no comparison against either is safe until the roster says which one it means.
+fn host_truth_compare_roster(reads: List<HostTruthRead>, expectations: List<HostTruthExpectation>) -> List<HostTruthComparison> {
+  let from_expectations = expectations.map(expectation => host_truth_compare_for_expectation(reads: reads, expectation: expectation))
+  let duplicated_declarations = reads
+    .filter(read => host_truth_expectations_matching(expectations: expectations, host: host_of_read(read: read), axis: axis_of_read(read: read)).length() > 1)
+    .map(read => TruthDuplicateExpectation {
+      host: host_of_read(read: read),
+      axis: axis_of_read(read: read),
+      declaration_count: host_truth_expectations_matching(expectations: expectations, host: host_of_read(read: read), axis: axis_of_read(read: read)).length(),
+    })
   let orphan_reads = reads.filter(read =>
     match host_truth_find_expectation(expectations: expectations, read: read) {
       Absent => true
       Present { value: _ } => false
     }
   ).map(read => TruthNoExpectationForRead { host: host_of_read(read: read), axis: axis_of_read(read: read) })
-  from_expectations.concat(orphan_reads)
+  from_expectations.concat(duplicated_declarations).concat(orphan_reads)
 }
-
 fn host_truth_reads_for(host: NonEmptyStr, reads: List<HostTruthRead>) -> List<HostTruthRead> {
   reads.filter(read => host_truth_host_text(host: host_of_read(read: read)) == host_truth_host_text(host: host))
 }
@@ -388,6 +444,8 @@ fn host_truth_divergence_locator(comparison: HostTruthComparison) -> String {
     TruthNoReadSupplied { host: h, axis: a } => host_truth_axis_rule(axis: a) + " -- no read supplied for host " + host_truth_host_text(host: h)
     TruthNoExpectationForRead { host: h, axis: a } => host_truth_axis_rule(axis: a) + " -- a read for host " + host_truth_host_text(host: h) + " has nothing declared to compare it to"
     TruthOutsideTheModel { host: h, axis: a, because: b } => host_truth_axis_rule(axis: a) + " -- nothing declared for host " + host_truth_host_text(host: h) + ": " + b
+    TruthDuplicateRead { host: h, axis: a, read_count: _ } => host_truth_axis_rule(axis: a) + " -- host " + host_truth_host_text(host: h) + " was read more than once on this axis; the roster has no authority to pick which answer to believe"
+    TruthDuplicateExpectation { host: h, axis: a, declaration_count: _ } => host_truth_axis_rule(axis: a) + " -- host " + host_truth_host_text(host: h) + " is declared more than once on this axis; the model names two authorities for one fact"
     TruthPairingRefused { why: w, pairing: p } => w + " (read axis " + host_truth_axis_rule(axis: p.read_axis) + " on host " + host_truth_host_text(host: p.read_host) + ", declaration axis " + host_truth_axis_rule(axis: p.expectation_axis) + " on host " + host_truth_host_text(host: p.expectation_host) + ")"
   }
 }
@@ -406,9 +464,10 @@ fn host_truth_divergence_locator(comparison: HostTruthComparison) -> String {
 // any axis removes the host from admission. The roster helpers above exist so a batch of hosts is admitted
 // one at a time, never on an average.
 //
-// DISCRIMINATOR: one comparison per host per axis, discriminated eight ways -- agrees, divergent, unread,
-// blank, no read supplied, no expectation for a read, nothing declared, pairing refused -- so a partial
-// read, a mispaired read, a gap in the model and a genuine drift are four different answers, not one.
+// DISCRIMINATOR: one comparison per host per axis, discriminated ten ways -- agrees, divergent, unread,
+// blank, no read supplied, no expectation for a read, duplicated read, duplicated declaration, nothing
+// declared, pairing refused -- so a partial read, a mispaired read, a doubled reader, a gap in the model and
+// a genuine drift are five different answers, not one.
 //
 // COST: the mode reads each host once per axis over a single ssh round trip, so a host's five compares are
 // bounded by that round trip's own converge step budget rather than by a number invented here; the step
