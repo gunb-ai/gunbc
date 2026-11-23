@@ -24,9 +24,18 @@ import std.types { CommitSha, String, commit_sha_text_holds }
 data annotation_gap_v1_v2_agreement_probe_kind: String = "deliberate-break"
 data annotation_gap_v1_v2_agreement_probe_ref: String = "refs/heads/red-control/parse-comment-gap-attachment-v2-consumed"
 data annotation_gap_v1_v2_agreement_probe_red_base: CommitSha = "8c86ee47f68ec1f451e25a8cb8f594a868e5c384"
-data annotation_gap_v1_v2_agreement_probe_red_at: CommitSha = "RED_AT_SHA_PLACEHOLDER"
-data annotation_gap_v1_v2_agreement_probe_green_at: CommitSha = "GREEN_AT_SHA_PLACEHOLDER"
+// red_at's FIRST PARENT is green_at: the break is one commit on top of the tree whose witness it runs
+// unchanged, which is the strictest form of the pair -- the two runs differ by the roster arm alone.
+data annotation_gap_v1_v2_agreement_probe_red_at: CommitSha = "1013d02dace7f8a95ac78a10fc1bcbbc46488a5c"
+// green_at is the commit the control was EXECUTED at, on this PR lineage. The head carrying this receipt
+// is green_at plus one commit that touches only this receipt module, so the witness bytes are the same in
+// green_at, in the head, and in red_at (proven by git hash-object in the run log).
+data annotation_gap_v1_v2_agreement_probe_green_at: CommitSha = "5b84464bb27acbe00542b35ef008b808a7712aa0"
 data annotation_gap_v1_v2_agreement_probe_executed_on: String = "2026-11-23"
+// The witness this pair is about, named as data so a reader never has to infer it from a file path.
+data annotation_gap_v1_v2_agreement_probe_witness_module: String = "v2.test.claim.manual.annotation_gap_v1_v2_agreement"
+data annotation_gap_v1_v2_agreement_probe_witness_fn: String = "v1_and_v2_agree_on_neighbour_text_holds"
+data annotation_gap_v1_v2_agreement_probe_roster_arm: String = "v2.compiler.parse parse_node_is_source_region || parse_node_has_authored_edge(name: ^grammar_infix_left_node_projection)"
 
 // WHY A CLAIM AND NOT A REVIEWER. CommitSha is an unvalidated String alias (dag/std/types.dag:201), and
 // its comment says so: the predicate beside it is a validating CHECK a caller must remember to run, not a
