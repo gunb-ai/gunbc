@@ -107,7 +107,7 @@ test fn witness_the_local_arm_names_no_fleetssh_transport() -> Bool {
   match local_locus_for_srv1() {
     Present { value: locus } =>
       match deployed_tree_locus_transport(locus: locus) {
-        FleetSsh { target: _, context: _, kind: _, kind: _ } => false
+        FleetSsh { target: _, context: _, kind: _} => false
         _ => true
       }
     Absent => false

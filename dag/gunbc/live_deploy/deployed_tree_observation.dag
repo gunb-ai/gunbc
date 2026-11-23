@@ -107,7 +107,7 @@ fn deployed_tree_locus_transport(locus: DeployedTreeLocus) -> HostEffectTranspor
     // writes itself -- rev-parse HEAD, rev-parse HEAD^{tree}, read-tree, status --porcelain, ls-files
     // --ignored, and an rm -f -- so this is the fixed-argv case of the wrapper rule and the wrapper
     // declares, rather than taking a kind from a caller who cannot see the command.
-    FleetSshTreeLocus { target: t, context: c } => FleetSsh { target: t, context: c, kind: ProbeLeg, kind: _ }
+    FleetSshTreeLocus { target: t, context: c } => FleetSsh { target: t, context: c, kind: ProbeLeg}
     // THE LOCAL ARM CARRIES NO KIND BECAUSE IT IS NOT A FLEET LEG: it is shell.Exec.RunArgv on this host,
     // with no ssh session to bound. Reading the tree you are standing in needs no ceiling on a remote
     // machine, and pretending otherwise is how the observation came to depend on an agent it never used.

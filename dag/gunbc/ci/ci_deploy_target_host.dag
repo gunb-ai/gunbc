@@ -216,7 +216,7 @@ fn deploy_local_apply_refused_for_observed_host(
       )
     SshShell { ssh_host: _ } =>
       !deploy_target_ssh_proof_structurally_valid(proof: proof)
-    FleetSsh { target: _, context: _, kind: _, kind: _ } =>
+    FleetSsh { target: _, context: _, kind: _} =>
       !deploy_target_ssh_proof_structurally_valid(proof: proof)
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => true
   }

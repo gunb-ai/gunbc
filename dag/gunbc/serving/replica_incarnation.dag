@@ -190,7 +190,7 @@ fn bind_executable(transport: HostEffectTransport, launch: ReplicaEndpointLaunch
 
 fn after_host_facts(transport: HostEffectTransport, launch: ReplicaEndpointLaunch, engine_pattern: NonEmptyStr, exported: ExactDecimal, boot: EpochSecs, ticks: Hertz) -> ReplicaIncarnationStanding {
   match transport {
-    FleetSsh { target: target, context: context , kind: kind, kind: _ } =>
+    FleetSsh { target: target, context: context , kind: kind} =>
       match typed_argv_exec_over_fleet_ssh(kind: kind,target: target, context: context, argv: pgrep_match_full_command_line_argv(pattern: engine_pattern)) {
       TypedArgvExecOverran { deadline: d } => replica_incarnation_unread(cause: join(["the pgrep leg did not run: ", typed_argv_exec_overran_reason(leg_hint: "replica incarnation", deadline: d)], ""))
         TypedArgvExecRefused { reason: why } => replica_incarnation_unread(cause: join(["the pgrep leg did not run: ", why], ""))

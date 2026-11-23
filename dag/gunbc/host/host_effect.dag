@@ -149,7 +149,7 @@ type ThinInvocation {
 type HostEffectTransport =
     LocalShell
   | SshShell { ssh_host: NonEmptyStr }
-  | FleetSsh { target: SshTarget, context: FleetSshExecutionContext, kind: FleetLegKind, kind: _ }
+  | FleetSsh { target: SshTarget, context: FleetSshExecutionContext, kind: FleetLegKind}
   | EmitArtifactThenThinRun { bootstrap: BootstrapFragment, invocation: ThinInvocation }
 
 // THE FLEETSSH LEAF FRONTIER. A leaf that BUILDS an invocation cannot be migrated by routing FleetSsh

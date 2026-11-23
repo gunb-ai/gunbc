@@ -124,7 +124,7 @@ fn observation_arm(transport: HostEffectTransport) -> ObservationArm {
   match transport {
     LocalShell => OnTheHostItself
     SshShell { ssh_host: _ } => OverTransport { transport: transport, listing: BareListing }
-    FleetSsh { target: _, context: _, kind: _, kind: _ } => OverTransport { transport: transport, listing: BareListing }
+    FleetSsh { target: _, context: _, kind: _} => OverTransport { transport: transport, listing: BareListing }
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => OverTransport { transport: transport, listing: BareListing }
   }
 }

@@ -196,7 +196,7 @@ fn systemd_run_transient_wait_read(
   match transport {
     LocalShell => systemd_run_transient_wait_local(command: command)
     SshShell { ssh_host: h } => systemd_run_transient_wait_ssh(host: h, command: command)
-    FleetSsh { target: _, context: _, kind: _, kind: _ } => SystemdRunTransientWaitTransportRefused {
+    FleetSsh { target: _, context: _, kind: _} => SystemdRunTransientWaitTransportRefused {
       reason: "systemd-run transient wait refused FleetSsh until exact remote status is distinguished from transport status",
     }
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>

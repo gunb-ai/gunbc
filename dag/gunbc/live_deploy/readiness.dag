@@ -393,7 +393,7 @@ fn live_deploy_healthz_get_for_socket(socket: NonEmptyStr, spec: DeploymentSpec,
             Absent => healthz_effective_read_from_outcome(outcome: typed_argv_exec_over_ssh(host: h, argv: argv))
           }
         }
-        FleetSsh { target: t, context: c , kind: kind, kind: _ } =>
+        FleetSsh { target: t, context: c , kind: kind} =>
           healthz_effective_read_from_outcome(
             outcome: typed_argv_exec_over_fleet_ssh(kind: kind,target: t, context: c, argv: http_client_get_unix_socket_argv(socket: socket, url: url, max_time: deadline)),
           )
@@ -454,7 +454,7 @@ fn live_deploy_healthz_get_for_url(url: NonEmptyStr, spec: DeploymentSpec, trans
           healthz_effective_read_from_status_get(success: got.success, stdout: got.body, error: "http client GET through the tailnet route failed within the probe deadline")
         }
         SshShell { ssh_host: h } => live_deploy_healthz_get_ssh_within(url: url, host: h, deadline: deadline)
-        FleetSsh { target: t, context: c , kind: kind, kind: _ } =>
+        FleetSsh { target: t, context: c , kind: kind} =>
           healthz_effective_read_from_status_outcome(outcome: typed_argv_exec_over_fleet_ssh(kind: kind,target: t, context: c, argv: http_client_get_with_status_argv(url: url, max_time: deadline)))
         EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
           HealthzProbeRefused { probe_error: "health probe refused EmitArtifactThenThinRun transport" }

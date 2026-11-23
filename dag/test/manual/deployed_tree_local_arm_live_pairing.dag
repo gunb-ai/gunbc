@@ -234,7 +234,7 @@ fn live_pairing_local_route_and_index_ownership() -> ProcessExit {
             return exit_failure(reason: join([pairing_label, " the admitted locus does not seal the claimed host the roster joined", ""], ""))
           }
         }
-        FleetSsh { target: _, context: _, kind: _, kind: _ } => {
+        FleetSsh { target: _, context: _, kind: _} => {
           let _cleanup = deliver_local(command: rm_recursive_force_command(path: repo_dir))
           return exit_failure(reason: join([pairing_label, " the LOCAL arm selected a FleetSsh transport -- the disconnect this pairing exists to catch", ""], ""))
         }
