@@ -2,7 +2,15 @@ module test.claim.resolved_host_realization
 
 import std.host_text { HostText, chars }
 import std.types { Char, List }
-import std.algebra { trim }
+import std.algebra { trim, count_where }
+import std.encoding { utf8_decode_bytes }
+import std.bytes { octets_bytes }
+import std.optional { Present, Absent }
+import std.primitive_identity {
+  primitive_identity_eq, primitive_identity_is_declared, primitive_traversal_order_for_identity,
+  primitive_utf8_decode_bytes
+}
+import std.primitive_projection { primitive_projection_roster }
 import test.claim.unbound_host_spelling { an_unbound_legacy_position_read_keeps_its_legacy_contract }
 
 test fn an_unrelated_host_module_does_not_create_an_explicit_binding() -> Bool {
@@ -45,4 +53,42 @@ test fn a_callable_local_keeps_the_source_declaration_it_holds() -> Bool {
 
 test fn a_callable_local_keeps_the_host_declaration_it_holds() -> Bool {
   call_through_local(text_of_chars: std.host_text.text_of_chars) == ""
+}
+
+// THE SIBLING OF trim ABOVE, AND THE ARM THAT STOPPED THE srv15 ARRIVAL. utf8_decode_bytes' declared
+// body is the unreachable seam in std.encoding while its realization is v1_rt::utf8_decode_bytes, so the
+// projection row -- not the spelling -- is what makes a BOUND call evaluate the host. With no row, a
+// bound call evaluated the placeholder and died with TypeError pure_dag_seam_unreachable: that is how
+// fleet-converge arrival-converge run 45059586538 ended at step 7, on the SUCCESS side of its version-1
+// Secret Manager access, having never contacted the BMC. The credential path itself now reads through
+// std.encoding's fallible pure decoder instead (test.claim.secret_manager_access_version_witness covers
+// that), so what this claim owns is the routing for every OTHER module that imports the seam --
+// gunbc.machine_intake.mtcollins1_ui_status_asset_observation, gunbc.roadmap.authority and the rest.
+// Nothing else caught the missing row because an UNBOUND call answers from the builtin tier, and
+// redact_response_body turns an undecodable payload into an empty body on the refusal side.
+test fn an_imported_utf8_decode_uses_its_declared_host_projection() -> Bool {
+  utf8_decode_bytes(payload: octets_bytes(o: [104, 105])) == "hi"
+    && utf8_decode_bytes(payload: octets_bytes(o: [195, 169, 97])) == "\u{00e9}a"
+}
+
+// THE NO-GROWTH CONTROL for that row, in the idiom of
+// test.claim.compile_dag_diagnostic_census_declared_home: the seam keeps exactly one roster row, its
+// fidelity is the HostRealizedSeam that binds the EXISTING host implementation rather than a second
+// realization, the primitive is declared in std.primitive_identity, and it owes -- has -- the
+// traversal-order fact. Drop the row and the claim above goes red; drop the declaration or the
+// traversal fact and this one goes red with primitive_projection_authority_witness.
+test fn the_utf8_decode_host_seam_keeps_exactly_one_declared_row() -> Bool {
+  count_where(primitive_projection_roster(), row =>
+    primitive_identity_eq(left: row.primitive, right: primitive_utf8_decode_bytes)) == 1
+    && count_where(primitive_projection_roster(), row =>
+      match row.fidelity {
+        HostRealizedSeam => primitive_identity_eq(left: row.primitive, right: primitive_utf8_decode_bytes)
+        _ => false
+      }
+    ) == 1
+    && primitive_identity_is_declared(primitive_utf8_decode_bytes)
+    && match primitive_traversal_order_for_identity(identity: primitive_utf8_decode_bytes) {
+      Present { value: _ } => true
+      Absent => false
+    }
 }

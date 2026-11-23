@@ -32,6 +32,10 @@ import gunbc.toolchain_home_standing {
 import gunbc.repo.repo_identity { gunbc_default_branch_name }
 import gunbc.compute.remote_build_hosts { remote_build_serving_hosts }
 import gunbc.compute.remote_build_client { remote_gate_exit_code, GateNoHostAdmitted }
+// The client line reads the CHECKOUT as a source tree; the root directory names come
+// from the layout authority itself (gunbc.source_layout layout_tree_directory: root of the dag
+// tree and of the v2 tree), never retyped here.
+import gunbc.source_layout { layout_tree_directory, LayoutTreeDag, LayoutTreeV2 }
 import std.integer { int_to_decimal_string }
 import gunbc.generated_artifact { HostedRunnerShadowGateYamlArtifact }
 import gunbc.generated_workflow_provenance { generated_workflow_provenance_header, GeneratedWorkflowProvenanceHeaderProduced, GeneratedWorkflowProvenanceHeaderNotApplicable }
@@ -412,9 +416,17 @@ fn shadow_gate_ci_credentials_fetch_step() -> Step {
 // emitted_subject_build_rows replaces this step, and each step will then be named after the row it
 // actually runs.
 
-// THE PLUMBING-PROOF PATTERN: one small witness package that exercises the remote-build path
+// THE PLUMBING-PROOF PATTERN: one small witness target that exercises the remote-build path
 // without needing a full witness roster. This is the remote_test_cli pattern argument.
-data shadow_gate_plumbing_proof_pattern: String = "//dag/test/claim/compute/host_capacity_seal_witness.dag"
+//
+// The pattern is a Bazel TARGET LABEL, not a filesystem path: run 45008834135 was refused at
+// 'selection' with 'the pattern selected no module with a planned claim:
+// //dag/test/claim/compute/host_capacity_seal_witness.dag:host_capacity_seal_witness.dag', because
+// extdeps/bazel/target_pattern parses the trailing component as a TARGET NAME and
+// compute/test_selection::witness_label_of_path derives the target name from a source file by
+// DROPPING the .dag suffix. Written with the suffix, the target never matches any module, so the
+// selection is empty and the run is refused before a single request leaves the runner.
+data shadow_gate_plumbing_proof_pattern: String = "//dag/test/claim/compute:host_capacity_seal_witness"
 
 // The remote-build account to SSH into. This is the forced-command account, not root, not operator.
 data shadow_gate_remote_user: String = "gunbc-build"
@@ -454,7 +466,11 @@ fn shadow_gate_first_serving_host() -> String? {
 // (gunbc.compute.remote_build_client remote_gate_exit_code, the GateNoHostAdmitted arm), so the step and the
 // client cannot drift apart -- a step whose refusal exit disagreed with the client's would be a second path
 // beside a modeled route.
-data shadow_gate_no_host_run: String = join(["set -euo pipefail && echo '::error::remote_build_serving_hosts names no serving host: the plumbing proof cannot be dispatched, and this step refuses to name one from memory' && exit ", int_to_decimal_string(value: remote_gate_exit_code(o: GateNoHostAdmitted))], "")
+fn shadow_gate_no_host_run_text(description: String) -> String {
+  join(["set -euo pipefail && echo '::error::remote_build_serving_hosts names no serving host: ", description, " cannot be dispatched, and this step refuses to name one from memory' && exit ", int_to_decimal_string(value: remote_gate_exit_code(o: GateNoHostAdmitted))], "")
+}
+
+data shadow_gate_no_host_run: String = shadow_gate_no_host_run_text(description: "the plumbing proof")
 
 // The tailnet name for a host identity (the standard pattern from gunbc.fleet.fleet_tailnet).
 fn shadow_gate_host_tailnet_name(host: String) -> String {
@@ -463,6 +479,13 @@ fn shadow_gate_host_tailnet_name(host: String) -> String {
 
 // The gunbc binary the CI builds (same as the required gate).
 data shadow_gate_gunbc_binary: String = "target/release/gunbc"
+
+// THE SOURCE-ROOT PAIR for every `gunbc run` the workflow emits -- ONE admission (single_authority).
+// The directory names are RENDERED from the layout authority (layout_tree_directory binds the dag
+// tree to 'dag' and the v2 tree to 'src/v2', relative to the repository root); the runner's
+// repository root is $GITHUB_WORKSPACE, so the pair is absolute against the checkout. A layout move
+// retargets these lines automatically.
+data shadow_gate_source_root_args: String = join(["--source-root \"$GITHUB_WORKSPACE/", layout_tree_directory(tree: LayoutTreeDag{}), "\" --source-root \"$GITHUB_WORKSPACE/", layout_tree_directory(tree: LayoutTreeV2{}), "\""], "")
 
 // THE ONE PLUMBING-PROOF STEP. Name and identity say exactly what runs: remote_test_cli over the
 // plumbing-proof pattern, on the first serving host. It is NOT named after any gate row because it
@@ -490,6 +513,10 @@ fn shadow_gate_remote_build_step() -> Step {
 // ('a request needs at least five words; saw 1' -- run 44960617832, where the probe killed the
 // step before the client ever ran). Reachability and admission are the protocol client's own
 // typed outcomes (exit 3 when no host is admitted; a refusal prints the server's reason).
+// SCAFFOLD MARKER (hand-shell gate policy): this is a hand-assembled run: string; it joins the
+// other hand-assembled strings in this workflow rather than starting a new lane, and dissolves
+// with them at the orchestration-to-shell capability v2.workflow.bash_emit / bash_emit_stmts
+// (tracking #5828), where the step is authored as modeled Nodes.
 fn shadow_gate_plumbing_proof_run() -> String {
   match shadow_gate_first_serving_host() {
     Absent => shadow_gate_no_host_run
@@ -497,7 +524,7 @@ fn shadow_gate_plumbing_proof_run() -> String {
       join([
         "set -euo pipefail",
         "echo '--- remote gate step ---'",
-        concat(concat(concat(concat(concat(concat(shadow_gate_gunbc_binary, " run --entry dag/gunbc/compute/remote_build_client.dag --function remote_test_cli --arg worktree=$PWD --arg pattern=\"${"), shadow_gate_pattern_env), ":-"), shadow_gate_plumbing_proof_pattern), "}\" --arg receipt_path=/tmp/shadow-gate-receipt-plumbing-proof.json --arg identity_file="), shadow_gate_ci_ssh_key_file),
+        concat(concat(concat(concat(concat(concat(concat(concat(concat(shadow_gate_gunbc_binary, concat(" run ", shadow_gate_source_root_args)), " --entry dag/gunbc/compute/remote_build_client.dag --function remote_test_cli --arg worktree=$PWD --arg pattern=\"${"), shadow_gate_pattern_env), ":-"), shadow_gate_plumbing_proof_pattern), "}\" --arg host="), _host), " --arg receipt_path=/tmp/shadow-gate-receipt-plumbing-proof.json --arg identity_file="), shadow_gate_ci_ssh_key_file),
         "cat /tmp/shadow-gate-receipt-plumbing-proof.json",
       ], " && ")
   }
@@ -516,16 +543,27 @@ fn shadow_gate_plumbing_proof_run() -> String {
 // nothing and tells the truth); 4 = code verdict held but the client could not delete the origin
 // ref -> step green with a countable ::warning:: (cleanup fact, not a verdict on the code). The
 // receipt is cat-ed to the log on EVERY outcome, so the run always carries the typed attempts.
+// SCAFFOLD MARKER (hand-shell gate policy): the exit-rendering block below is a hand-assembled
+// run: string; it joins the other hand-assembled strings in this workflow rather than starting a
+// new lane, and dissolves with them at the orchestration-to-shell capability v2.workflow.bash_emit
+// / bash_emit_stmts (tracking #5828), where the case arms become modeled Nodes.
 fn shadow_gate_remote_gate_step(row: EmittedSubjectBuildRow) -> Step {
   let label_text = emitted_subject_build_label_text(row: row)
   RunStep {
     name: Present { value: concat("Remote gate: ", label_text) },
     id: Present { value: concat("gate-", row.step_id) },
-    run: concat(
+    // The roster selection is the ONE typed source for the host pin, here exactly as in the
+    // plumbing proof: with a Present roster the request is PINNED to that host (--arg host= is the
+    // client's own pin, which must be a DISPATCH-roster host or the client refuses); with an empty
+    // roster the step carries the typed no-host refusal, because the CLI contract counts the pin
+    // among required arguments and calling without it is a contract error, not an omission.
+    run: match shadow_gate_first_serving_host() {
+      Absent => shadow_gate_no_host_run_text(description: concat("gate ", label_text))
+      Present { value: host } => concat(
       join([
         "set -uo pipefail",
         "rc=0",
-        concat(concat(concat(concat(concat(concat(concat(shadow_gate_gunbc_binary, " run --entry dag/gunbc/compute/remote_build_client.dag --function remote_gate_cli --arg worktree=$GITHUB_WORKSPACE --arg label='"), label_text), "' --arg receipt_path=\"$RUNNER_TEMP/gate-"), row.step_id), ".json\" --arg identity_file="), shadow_gate_ci_ssh_key_file), " || rc=$?"),
+        concat(concat(concat(concat(concat(concat(concat(concat(concat(concat(shadow_gate_gunbc_binary, concat(" run ", shadow_gate_source_root_args)), " --entry dag/gunbc/compute/remote_build_client.dag --function remote_gate_cli --arg worktree=$GITHUB_WORKSPACE --arg label='"), label_text), "' --arg host="), host), " --arg receipt_path=\"$RUNNER_TEMP/gate-"), row.step_id), ".json\" --arg identity_file="), shadow_gate_ci_ssh_key_file), " || rc=$?"),
         concat(concat("cat \"$RUNNER_TEMP/gate-", row.step_id), ".json\" || true"),
         "case \"$rc\" in",
         "  0) exit 0;;",
@@ -537,7 +575,8 @@ fn shadow_gate_remote_gate_step(row: EmittedSubjectBuildRow) -> Step {
         "esac"
       ], "\n"),
       "\n"
-    ),
+    )
+    },
     shell: Present { value: Bash },
     working_directory: none,
     env: none,

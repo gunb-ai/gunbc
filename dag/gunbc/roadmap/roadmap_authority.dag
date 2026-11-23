@@ -808,6 +808,45 @@ fn edge(child: String, parent: String) -> RoadmapEdge {
 // gunbc.roadmap.roadmap_centering; the graph has no exclusion-edge vocabulary to carry it.
 fn declared_roadmap_nodes() -> List<RoadmapNode> {
   concat([
+    // ---- gunbc.plans.claim_execution_consolidation (operator, 2026-11-22,
+    // gunbc.design_ruling::claim_execution_has_one_v1_entrypoint): two slices. The cutover depends on the
+    // result contract (edge below), and its public authority transition stays one atomic change.
+    roadmap_node(
+      identity: "rn_E730R1GNB3TG65E6TWZKBWEKAJ",
+      id: "claim-result-contract",
+      owner: "harness",
+      carriers: carrier(path: "dag/gunbc/plans/claim_execution_consolidation.dag"),
+      line: ticket(t: fields(
+          headline: "gunbc test reports one located outcome per selected claim, and its seed adapter realizes the existing verdict rule",
+          boundary: "Serves gunbc.plans.claim_execution_consolidation, layer 0. Keep the verdict policy in gunbc.target_invocation and repair its seed realization: claim_route_verdict stops reading every ExitFailure as did-not-hold, so a typed ProcessExit failure with code 2 is unobserved. The claim route establishes the selected claim identities once, gives each exactly one outcome, and derives both the printed lines and the exit status from that collection; a resolve failure is located and the other claims still run.",
+          displaced_cost: "The same witness reads red, unreached or absent depending on the tool that ran it, so every caller and reviewer pays to know which reading they hold; a short report can read as held.",
+          first_slice: "Fixture claims for held, false, non-Bool, runtime error, unwind, budget interrupt and ExitFailure code 2 and code 1, each run through the real gunbc test path with its printed verdict and exit status asserted; then the identity-keyed result collection in the seed claim route.",
+          red_control: "Held, false and unobserved each map as gunbc.target_invocation says; false together with unobserved exits 1 and reports both; an empty selection exits 2; ExitFailure code 2 exits 2; A holds, B cannot resolve, C holds runs A and C, locates B and does not exit 0; a duplicated outcome for A cannot satisfy B. The checks execute the seed adapter and invocation path, not only the model's pure fold.",
+          out_of_scope: "Repeated operands, the execution-mode option, caller migration and the deletion of claim_batch and gunbc run --claim-run (claim-entrypoints-cutover). Any change to the verdict policy itself, which already exists.",
+          handback: "The repaired adapter and the identity-keyed result path, with each red control's command, revision and output; executed locally or on a fleet host and stated as such, not as required-CI enforcement."
+        )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "factory", contribution: "One meaning for a claim result, the factory's most trusted verdict channel."),
+      centering: plan(text: "Work in src/v1/stage0/src/target_invocation_host.rs and the seed claim route in cli_run.rs against dag/gunbc/target_invocation.dag; author the fixture claims under dag/test/claim; run them with gunbc test on a fleet host under the memory envelope, one claim run at a time."),
+    ),
+    roadmap_node(
+      identity: "rn_GZNX0MEATVZC3JHN1ZF1E8AG4M",
+      id: "claim-entrypoints-cutover",
+      owner: "harness",
+      carriers: carrier(path: "dag/gunbc/plans/claim_execution_consolidation.dag"),
+      line: ticket(t: fields(
+          headline: "Every claim_batch and gunbc run --claim-run caller names claims through gunbc test, and both old entrypoints are deleted in one change",
+          boundary: "Serves gunbc.plans.claim_execution_consolidation, layer 1. Give every caller named in the plan's observation a disposition: migrated, retired, or blocked on native support, whose route then stays frozen. gunbc test accepts several operands and runs exactly the claims they denote in one process, with overlapping operands selected once and no widening to a subtree. Add only the execution-mode option (std.execution_mode::ExecutionMode, Hermetic by default) and fixture-store support callers need; unsupported route combinations refuse. Never send a //v2/... label to the interpreter.",
+          displaced_cost: "Three argument grammars and three outcome readings for one evaluator; every caller, instrument and release roster carries a second binary and its build.",
+          first_slice: "The disposition of each named caller, read from its source: what observation its consumer needs, which source roots it passes and whether they matter, and whether any src/v2/test/claim or out-of-universe function it evaluates needs claim evaluation or native-execution evidence.",
+          red_control: "A caller with no disposition, or one whose observation is lost, keeps the cutover open; a sparse request widened to :all or a subtree, or split into one process per claim, is refused; a mode the native or instrument route cannot honour refuses explicitly; a //v2/... label reaching the interpreter is refused. The cost comparison (one exact label against claim_batch on github_pull_request_decode_witness, and one representative pooled request) shows no repeated closure construction, unrelated discovery or material resource regression.",
+          out_of_scope: "The verdict and result-collection repair (claim-result-contract); native claim execution itself; adding any CI claim-executing step, which gunbc.design_ruling::no_ci_claim_execution_until_native_frontier_clears forbids.",
+          handback: "The caller disposition table, the migrated callers, the deletion of claim_batch, gunbc run --claim-run, their build and release entries and their own witnesses, a cited grep stating what it inspected, and the two cost readings with producer and revision."
+        )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "factory", contribution: "One command for running claims, inherited unchanged by the native compiler."),
+      centering: plan(text: "Read each named caller first and write the disposition table into the pull request before any deletion; land the operand and mode support, the caller migrations and the deletions as one change; measure on a fleet host under the memory envelope."),
+    ),
     roadmap_node(
       identity: "rn_44VKSHNX2ZNTDRCPGGNSFJWCWN",
       id: "2-scm-git-upstream-model",
@@ -3402,6 +3441,133 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "v2-compiler-live", contribution: "The vision's library law: one std."),
     ),
     roadmap_node(
+      identity: "rn_RW47VTM7V7K4MZ0GYB9D8Y9TTZ",
+      id: "one-source-tree",
+      owner: "self-host",
+      carriers: carrier(path: "dag/gunbc/plans/one_source_tree.dag"),
+      line: ticket(t: level_fields(
+          headline: "One source tree: dag/ is the only tree, no module is named v2, and users name declarations rather than paths",
+          boundary: "Serves gunbc.plans.one_source_tree (gunbc.design_ruling::one_source_tree_and_the_v2_namespace_dissolves, 2026-11-22). Owns the storage layout, the v2 namespace and the CLI's source-naming boundary. It does not own the compiler's post-ingest file-freedom (universe-ingest-replaces-file-acquisition) or the binding rule (gunbc.plans.names_without_imports); the std reconciliation is the existing one-standard-library, consumed here.",
+          approach: "Members in dependency order: the root manifest (source-workspace-manifest), the test harness (harness-runs-in-the-workspace), the other callers (workspace-derived-source-roots), the one-tree cut, then the uncontested renames and the extdeps reconciliation beside one-standard-library, then the namespace's last trace (v2-namespace-dissolved).",
+          red_control: "Met only through its members: the intention's done-when holds on the tree (no src/v2, no v2.* module, no root-passing caller, every surveyed pair resolved).",
+          displaced_cost: "Two trees and two standard libraries answer one question; every caller restates the split by hand and fails when it drops a root; a reader cannot tell which Int is the integer.",
+          handback: "The one-tree layout, the dissolved namespace, and a CLI that takes a declaration path from anywhere in the checkout."
+        )),
+      parent: in_project(project: "v2-compiler-live", contribution: "The compiler's source stored once, under one rule, in the tree the model already lives in."),
+    ),
+    roadmap_node(
+      identity: "rn_DZRM8ZD9MPKWMNFEQ36RS5QNPH",
+      id: "source-workspace-manifest",
+      owner: "self-host",
+      carriers: carrier(path: "dag/gunbc/source_layout.dag"),
+      line: ticket(t: fields(
+          headline: "A workspace is a root manifest: one .dag declaration holding its trees, namespaces and composed workspaces, found by walking up from the working directory",
+          boundary: "gunbc.plans.one_source_tree section 4, ruling (e). Model before implement: the manifest's type (home and name decided here; not 'workspace', which is taken) and gunbc's own manifest, carrying gunbc.source_layout's policy and gunbc.layout_namespace_row's rows as its content. Read by nothing yet; the callers move in workspace-derived-source-roots.",
+          displaced_cost: "The layout, the namespace rows and the workspace root are three separately kept facts, the root found by a .git walk or an environment variable.",
+          first_slice: "The manifest type and gunbc's manifest, with source_layout's rows derived from it and its existing controls still green.",
+          red_control: "A manifest declaring one namespace twice refuses naming both; a manifest that imports anything outside std refuses.",
+          out_of_scope: "Moving any caller; fetching composed workspaces; the lockfile question.",
+          handback: "The manifest model, gunbc's manifest, and source_layout reading from it."
+        )),
+      parent: in_project(project: "one-source-tree", contribution: "The workspace is declared before anything is derived from it."),
+    ),
+    roadmap_node(
+      identity: "rn_DJMT5SSSHAE1FT1TKT97RCKKZH",
+      id: "harness-runs-in-the-workspace",
+      owner: "self-host",
+      carriers: carrier(path: "dag/gunbc/target_binding.dag"),
+      line: ticket(t: fields(
+          headline: "The test harness names claims and targets by declaration and runs them in a manifest-declared workspace; no harness route passes a source root",
+          boundary: "gunbc.plans.one_source_tree section 4a, the test harness, first by ruling (g). Instrument root rows deleted; TargetProducer entry becomes a DeclarationRef; claim callers reach gunbc test once claim-entrypoints-cutover lands; fixture trees and mktemp second-root tests get their own manifests; pool_roots becomes a namespace selection. The seed's harness sites change under ruling (f).",
+          displaced_cost: "Five root lists for one layout, a test-only second-root path with two recorded refusal classes, and claim entries addressed by where a file is stored.",
+          first_slice: "One instrument target and one mktemp fixture test run with no root argument, the fixture under its own manifest.",
+          red_control: "A harness route given --source-root refuses it as an unknown option; a fixture manifest composing a workspace it cannot find refuses naming it.",
+          out_of_scope: "Non-harness callers (workspace-derived-source-roots); the remote-build wire.",
+          handback: "The harness consumer list of section 4a emptied, each with its control."
+        )),
+      parent: in_project(project: "one-source-tree", contribution: "The harness, the largest consumer and the one with real second universes, answered first."),
+    ),
+    roadmap_node(
+      identity: "rn_N7CYAJ1TRWG4F44XW4X91GN4PF",
+      id: "workspace-derived-source-roots",
+      owner: "self-host",
+      carriers: carrier(path: "dag/gunbc/source_layout.dag"),
+      line: ticket(t: fields(
+          headline: "No caller passes --source-root or an entry file: the command finds its workspace and reads its trees from gunbc.source_layout",
+          boundary: "gunbc.plans.one_source_tree sections 4 and 4a. The workspace is the manifest found from the working directory, the bundle is its trees, and the entry is a declaration path in std.decl_ref's one current spelling. Both CLIs (seed and native) and every root-passing caller found by grep (409 files at 00de8d4c88da), generated workflows changed at their generators. A seed edit is admitted only under the R8 reading the plan's open question puts to the operator.",
+          displaced_cost: "Every caller restates the layout as arguments; dropping one root fails at run time (the shadow gate, 2026-11-22), and users must know where source is stored.",
+          first_slice: "gunbc run with no --source-root derives both trees from gunbc.source_layout and reads the same closure as today, run from the checkout root and from a subdirectory; then fleet-converge's generator stops emitting roots.",
+          red_control: "A run from a subdirectory with no root argument resolves the same closure as one from the root; a run outside any checkout refuses with a typed cause naming where it searched; a --source-root argument is an unknown option.",
+          out_of_scope: "The harness (harness-runs-in-the-workspace); making stages after ingest file-free; output locations.",
+          handback: "The derived-roots CLI on both routes, the caller list emptied, and the two controls."
+        )),
+      parent: in_project(project: "one-source-tree", contribution: "Callers stop restating the layout, so the cut changes one row instead of every caller."),
+    ),
+    roadmap_node(
+      identity: "rn_27YK6YN5ZK623A033A2SBP9HTB",
+      id: "one-source-tree-cut",
+      owner: "self-host",
+      carriers: carrier(path: "dag/gunbc/source_layout.dag"),
+      line: ticket(t: fields(
+          headline: "src/v2 is stored under dag/v2 in one motion: one governed tree, no namespace row, no cross-tree admission",
+          boundary: "gunbc.plans.one_source_tree section 3. One PR, precedent source_layout_rulings R7: the layout row deleted, git mv src/v2 dag/v2 (1,856 .dag files, no module renamed), every src/v2 path rewritten except dated records, the seed's source_layout_lookup.rs and hard-coded roots changed as R8 allows, v2.std.cross_tree and the active-root denials deleted with their REDs re-pointed, the CI contract epoch bumped, DESIGN.md's single-authority claim regenerated. Pinned remote-build hosts updated after merge.",
+          displaced_cost: "A second tree, a namespace row that elides itself, and a cross-tree admission model that exist only because the source sits in two places.",
+          first_slice: "Measure the four reference families at one revision, then change gunbc.source_layout and its two consumers so v2.x.y resolves to dag/v2/x/y.dag, with the seed lookup agreeing.",
+          red_control: "Any .dag file under src/v2 refuses the layout check; a module in a namespace no row declares still refuses; a duplicate storage path still refuses naming both files; v2-bootstrap and heal green on the cut.",
+          out_of_scope: "Renaming any module; composed repositories (open question); src/v1's .dag files.",
+          handback: "The merged tree, the deleted cross-tree machinery with its controls still enrolled, and the post-merge host update receipt."
+        )),
+      parent: in_project(project: "one-source-tree", contribution: "One tree, one storage rule."),
+    ),
+    roadmap_node(
+      identity: "rn_511NDY5ZAKNHKJV5N0T12FWB0G",
+      id: "v2-uncontested-families-renamed",
+      owner: "self-host",
+      carriers: carrier(path: "src/v2/compiler/compile.dag"),
+      line: ticket(t: fields(
+          headline: "v2.compiler, v2.lens, v2.workflow, v2.cli and v2.test carry names without v2",
+          boundary: "gunbc.plans.one_source_tree section 5. These families have no counterpart to reconcile, so each is a rename and an import rewrite inside dag/, one family per change. Proposed names: compiler, lens or compiler.lens, workflow, cli, and test merged into the existing test namespace (0 shared paths at 00de8d4c88da); each decided at its cut. A rename onto a full path already declared refuses at ingest.",
+          displaced_cost: "A generation label carried in every name of the compiler, its lenses, its workflows and its tests.",
+          first_slice: "v2.cli (9 files) renamed and every importer rewritten, with the required job green.",
+          red_control: "After each family's change no module of that family is named v2.*, and no import names the old path.",
+          out_of_scope: "v2.std and v2.extdeps, which duplicate existing concepts and are reconciled, not renamed.",
+          handback: "Each family's rename, with its importer count and the required job's verdict."
+        )),
+      parent: in_project(project: "one-source-tree", contribution: "The families with nothing to reconcile leave the v2 namespace."),
+    ),
+    roadmap_node(
+      identity: "rn_Z0X2AKGBZ9R69JA7TVXWARP5XT",
+      id: "v2-extdeps-reconciled",
+      owner: "self-host",
+      carriers: carrier(path: "src/v2/extdeps/file_system.dag"),
+      line: ticket(t: fields(
+          headline: "Every v2.extdeps module is an upstream fact in its extdeps home or a compiler shape renamed out of extdeps",
+          boundary: "gunbc.plans.one_source_tree section 5. 75 files; 5 directories shared with extdeps (bmc, cache, formats, github, languages) and 7 type names declared in both (Component, Filesystem, GoFloatWidth, SqlDialect and three SqlMigration types) at 00de8d4c88da. Each module either merges into the extdeps module owning that upstream, citing it (gunbc.design_argument::external_upstreams), or is renamed into the compiler's namespace.",
+          displaced_cost: "Two homes for upstream facts, and a second Filesystem beside the effect service the native route admits.",
+          first_slice: "v2.extdeps.file_system Filesystem against extdeps.filesystem.filesystem_io: one service declaration, its importers rewritten.",
+          red_control: "No v2.extdeps module remains; a type name the survey found in both trees is declared once or carries a name stating why it differs.",
+          out_of_scope: "Remodeling an upstream beyond what the merge requires.",
+          handback: "The per-module disposition and the deleted v2.extdeps namespace."
+        )),
+      parent: in_project(project: "one-source-tree", contribution: "Upstream facts held once."),
+    ),
+    roadmap_node(
+      identity: "rn_G3NA8ENV6148DNSP0F2SAYDBRB",
+      id: "v2-namespace-dissolved",
+      owner: "self-host",
+      carriers: carrier(path: "dag/gunbc/source_layout.dag"),
+      line: ticket(t: fields(
+          headline: "No module is named v2, and nothing about v2 is left in the layout or in any fixture's layout rows",
+          boundary: "gunbc.plans.one_source_tree done-when. The terminal of the intention: after the renames, the extdeps reconciliation and one-standard-library, the remaining v2 traces (v2.program, v2.native_lane_fixture, the V2Tree fixture rows, any layout or epoch field naming v2) are removed and the intention's done-when is assessed against the tree.",
+          displaced_cost: "A namespace kept alive by a few residual modules and fixtures, which keeps the layout's special case and its vocabulary alive with it.",
+          first_slice: "A grep of the governed tree for module and import lines naming v2, with each survivor dispositioned.",
+          red_control: "A module declared as v2.* refuses the layout check once the last family is cut.",
+          out_of_scope: "Plan and node names that say v2 for the compiler generation; they retire with the seed.",
+          handback: "The empty v2 grep at a named revision and the intention's done-when assessment."
+        )),
+      parent: in_project(project: "one-source-tree", contribution: "The namespace's last trace removed."),
+    ),
+    roadmap_node(
       identity: "rn_5CQTJHEEPD2TXTARM3W7CNR50D",
       id: "external-specimen-compiles",
       owner: "self-host",
@@ -3476,6 +3642,148 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
           handback: "The plan's own deletion condition: M7 exit holds and every milestone's deletions are census-verified."
         )),
       parent: in_project(project: "v2-compiler-live", contribution: "The live compiler's driver is a demand over its universe, so a run pays only for what changed. The engine is how v2 stays affordable as the required route."),
+    ),
+    // ---- heal's regeneration round, realizing gunbc.plans.read_set_convergence (2026-11-22, operator, after an
+    // external review relayed in session stern-wren-746). The P7 milestone and the work that serves it, plus
+    // reuse and terminal-emission elision as separately accepted items. The base-start bootstrap
+    // (gunbc.recurring_failure_mode::heal_round_one_bootstraps_from_the_mirror_the_change_must_repair) and the
+    // compatibility-aware stage planner (v2.workflow.regen_convergence_transaction regen_plan_next_stage) are kept;
+    // no item replaces either. Edges encode only real prerequisites, not an implementation order.
+    roadmap_node(
+      identity: "rn_NFVQAYKT70VJF1T47S6AJRYPS6",
+      id: "heal-scope-relation-without-typecheck",
+      owner: "ci-control",
+      carriers: carrier(path: "dag/gunbc/plans/read_set_convergence.dag"),
+      line: ticket(t: fields(
+        headline: "Heal's scope reads the same dependency relation without typechecking the pool",
+        boundary: "gunbc.plans.read_set_convergence P7 (1). The scope child (required_regen_host regen_module_edges) builds a whole-pool index that typechecks every module to read its edges: 9 to 12 minutes and about 16 GB per heal run. Derive the SAME relation, dotted references (imports included) and bare references, from parsing and name resolution alone, using the authoritative resolution semantics and its refusals.",
+        displaced_cost: "Every heal run, including one that changes nothing, pays 9 to 12 minutes and about 16 GB to read edges a parse and a resolve already give.",
+        first_slice: "An equivalence test against the current whole-pool edge index over the live pool: the edge sets are equal, with a bare-reference specimen an imports-only graph would miss.",
+        red_control: "A bare-reference edge dropped by the cheaper path makes the equivalence test fail; a reference the cheaper path cannot resolve refuses the scope instead of being dropped; a planted ambiguous bare name refuses rather than picking one binding.",
+        out_of_scope: "Recorded per-mirror read sets (P4) and the add/delete rule (heal-scope-population-evidence). No new CI job and no raised time or memory budget.",
+        handback: "The equivalence receipt over the live pool, the refusal outputs, a before/after heal scope-step time and peak memory, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "demand-engine", contribution: "The file-grain dependency relation heal scopes by is the demand engine's read set at its first consumer; deriving it without typechecking is what makes a scope cheap enough to ask every run."),
+    ),
+    roadmap_node(
+      identity: "rn_APDCTBWQY09JWTACX5M07SYZS4",
+      id: "heal-scope-population-evidence",
+      owner: "ci-control",
+      carriers: carrier(path: "dag/gunbc/regen_affected_change.dag"),
+      line: ticket(t: fields(
+        headline: "An added or deleted .dag file widens heal's round only when the dependency and output evidence says it must",
+        boundary: "gunbc.regen_affected_change regen_affected_set_over_change answers WholePopulation for any added or deleted .dag file. Replace that rule with one derived from old and new evidence: what was reachable from the seed roots before and after, whether any resolved dependency changed, and which outputs must be created, regenerated or retired. WholePopulation stays where it is the derived answer, and a scope that cannot be established refuses. Exclusion follows from dependencies, never from a directory or category name. This can be established on the current authoritative graph; it does not wait for heal-scope-relation-without-typecheck.",
+        displaced_cost: "In the six sampled heal runs (2026-11-22), every run that did work used the whole population, each because it added a .dag file, including two plan-only pull requests: about 35 minutes each where an unrelated addition needs none.",
+        first_slice: "The five cases below as discriminating controls against the current graph, then the rule switched in regen_affected_change.",
+        red_control: "An added module unreachable from the seed roots selects no mirror; an added module that becomes reachable is emitted and admitted; a deleted reachable module whose old mirror is still committed is regenerated or retired, never left orphaned; a changed binding between files that were already members selects the affected mirrors; a new bare-name ambiguity or an unresolvable reference refuses.",
+        out_of_scope: "Making the relation cheaper (heal-scope-relation-without-typecheck); recorded read sets (P4).",
+        handback: "The five control outputs, one real heal receipt for an unrelated plan-file addition answering NoAffectedMirrors, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "demand-engine", contribution: "Population changes are invalidations of the read set like any other; deciding them from evidence keeps the selection denominated in the change."),
+    ),
+    roadmap_node(
+      identity: "rn_4BRXDWRM94116QCG25DENVJ2NT",
+      id: "heal-seed-build-artifacts-scoped",
+      owner: "ci-control",
+      carriers: carrier(path: "dag/gunbc/heal_candidate_stage0.dag"),
+      line: ticket(t: fields(
+        headline: "Heal regenerates a seed-build artifact only when its generator's read set changed",
+        boundary: "gunbc.plans.read_set_convergence P7 (3). Each of the 13 seed-build artifacts (gunbc.seed_build_artifact_emit seed_build_artifacts) gets the read set its generator reads, validated through the read-set authority with the product-validity states of the plan's section 2.3: cold, stale, result diverged and missing result all regenerate; only all checks passing is valid.",
+        displaced_cost: "About a minute per heal run regenerating artifacts no input of which changed; and a no-op heal cannot be declared while the artifacts are always rebuilt.",
+        first_slice: "Read sets for the 13 artifacts, then the heal tail regenerating only the invalid ones.",
+        red_control: "A change outside every artifact's read set regenerates none; a change to one artifact's input regenerates that one; a hand-edited artifact under a valid read set is result diverged and regenerates; a missing artifact regenerates.",
+        out_of_scope: "Mirror scoping. No change to the publication boundary.",
+        handback: "The four control outputs, a real heal receipt showing zero artifacts regenerated for an unrelated change, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "demand-engine", contribution: "The seed-build artifacts are file-grain products validated by the same read-set rule as the mirrors."),
+    ),
+    roadmap_node(
+      identity: "rn_BPQ3Q3CTSK0TP02ECZC74B8ZDP",
+      id: "heal-noop-before-regenerator-build",
+      owner: "ci-control",
+      carriers: carrier(path: "dag/gunbc/heal_workflow.dag"),
+      line: ticket(t: fields(
+        headline: "Heal decides a no-op before it builds the regenerator",
+        boundary: "gunbc.plans.read_set_convergence P7 (2). After recovering any interrupted round, heal decides whether any of its products (mirrors and seed-build artifacts) needs work, and a valid no-op ends the job before the regenerator's cargo build. A no-op needs valid inputs AND valid outputs (the plan's section 2.3): an unchanged read set does not excuse a missing or hand-edited product. A change that touches a seed build input still builds and runs its own regenerator.",
+        displaced_cost: "About 5 minutes of cargo build on every heal run whose answer is that nothing needs regenerating.",
+        first_slice: "Answer the scope with an already-built binary that is valid for the question (main's native CLI from the fast-lane unit, as P7 (2) names), then move the regenerator build behind that answer in gunbc.heal_workflow.",
+        red_control: "A planning-only change ends before the regenerator build with a NoAffectedMirrors receipt; a change to a seed build input still builds; a missing or hand-edited mirror under unchanged sources is not a no-op; an interrupted round's journal is recovered before a no-op is declared.",
+        out_of_scope: "Bootstrap-executable reuse for affected rounds (heal-bootstrap-seed-reuse).",
+        handback: "The four control outputs, a real planning-only heal log with no regenerator build step, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "demand-engine", contribution: "Deciding validity before paying for the producer is the demand engine's order: a valid product costs a lookup, not a build."),
+    ),
+    roadmap_node(
+      identity: "rn_7ETF92EY55VC9N781F531F4NSD",
+      id: "heal-planning-only-in-a-minute",
+      owner: "ci-control",
+      carriers: carrier(path: "dag/gunbc/plans/read_set_convergence.dag"),
+      line: ticket(t: fields(
+        headline: "A planning-only heal completes in about a minute, including plan-file additions and deletions",
+        boundary: "The acceptance of gunbc.plans.read_set_convergence P7, unchanged in owner and in bar: a real planning-only pull request's heal completes in about one minute with a NoAffectedMirrors receipt and no regenerator build, a one-module edit still regenerates exactly the mirrors the dry run names, and a seed-input edit still builds and runs its own regenerator. The evidence is broadened so an edit-only example cannot stand for the whole claim: one real pull request that edits a plan file, one that adds one, and one that deletes one.",
+        displaced_cost: "Every planning-only pull request pays 10 minutes of heal, or about 35 if it adds a file, for no regenerated byte.",
+        first_slice: "Run the three planning-only pull requests and the two ordinary controls once the members have landed, and record the receipts.",
+        red_control: "Any of the three planning-only heals taking a regenerator build or selecting a mirror fails acceptance; the one-module edit selecting more or fewer mirrors than the dry run fails it; the seed-input edit skipping its regenerator fails it.",
+        out_of_scope: "Affected-round savings: reuse and terminal-emission elision are accepted on their own.",
+        handback: "Five heal run receipts with their step timings, at one named revision."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "demand-engine", contribution: "The first consumer whose cost is visibly denominated in the change: a planning edit costs heal a minute."),
+    ),
+    roadmap_node(
+      identity: "rn_SWYW46X2J67VK4597BVQ2CGJ80",
+      id: "heal-observation-reuse-by-subject",
+      owner: "ci-control",
+      carriers: carrier(path: "src/v1/stage0/src/required_regen_host.rs"),
+      line: ticket(t: fields(
+        headline: "Heal observes its source closure once per identified subject and carries the observation",
+        boundary: "One heal run computes the stage0 source closure several times: the scope child, the checkpoint-subject child and every generation's corpus load. Share one file observation with correctly identified views, each naming its source snapshot, roots and discovery population, parser and resolver semantics, configuration, and the relation it supplies. The dag+src/v2 versus src/v1+dag shared-index refusal is a real subject mismatch and stays a refusal. Carry compact identities, edges and digests across processes, never a resident previous generation.",
+        displaced_cost: "About 3.5 minutes for the checkpoint subject and about 3.5 minutes per generation re-deriving a closure an earlier step of the same run already observed.",
+        first_slice: "State the observation identity and its validity contract, then carry it from the checkpoint subject to generation 0.",
+        red_control: "A reused observation under a changed root set, resolver identity or source snapshot is invalidated and re-observed; a generation whose generator changes parsing or name resolution invalidates the views it computed; an observation offered for a different pool refuses; the slot's memory peak does not rise.",
+        out_of_scope: "The cheaper relation itself (heal-scope-relation-without-typecheck); bootstrap-executable reuse.",
+        handback: "The invalidation control outputs, before/after phase times and peak memory from one affected heal run, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "demand-engine", contribution: "One observation per subject, reused only while its identity holds, is the demand engine's reuse rule applied to heal's own inputs."),
+    ),
+    roadmap_node(
+      identity: "rn_R4QMB048BX168JHDZZXXV355HW",
+      id: "heal-bootstrap-seed-reuse",
+      owner: "ci-control",
+      carriers: carrier(path: "src/v1/stage0/src/required_regen_host.rs"),
+      line: ticket(t: fields(
+        headline: "Heal reuses the base-policy bootstrap executable under its complete build identity",
+        boundary: "Round 1 builds the seed from the base commit's whole src/v1/stage0 crate on every affected heal run, and pull requests on one base build the same artifact. Reuse a valid artifact, or build that same artifact on a miss: a miss changes how it is obtained, never which bootstrap policy runs. Its identity is every effective build input (restored base crate, kept head-added paths, manifests and lockfile, toolchain, target, profile, flags, relevant environment), through the existing materialization identity (std.materialization_provider request_key, std.computation_identity), not a new cache key.",
+        displaced_cost: "4 to 5.5 minutes of identical cargo build per affected heal run on a shared base.",
+        first_slice: "Write the bootstrap artifact's identity from the existing materialization authority and show that two heal runs on one base derive the same identity and different bases derive different ones.",
+        red_control: "A changed toolchain, lockfile, build flag or head-added path under stage0 invalidates the reuse and rebuilds; a reused artifact whose digest disagrees with its recorded identity refuses; the base-start policy is unchanged on a hit and on a miss.",
+        out_of_scope: "Changing where generation 0 starts (the base-start ruling stands). A store that needs a new CI job or a raised budget is not admitted here and goes to the operator first.",
+        handback: "The identity derivation, the invalidation control outputs, two heal runs on one base with the second reusing, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "demand-engine", contribution: "A build product reused under its derived identity is the materialization ladder's provider step, admitted only once the identity is complete."),
+    ),
+    roadmap_node(
+      identity: "rn_23V8SF4BCP22Y499DQE08TZCAE",
+      id: "heal-terminal-emission-elision",
+      owner: "ci-control",
+      carriers: carrier(path: "src/v2/workflow/regen_convergence_transaction.dag"),
+      line: ticket(t: fields(
+        headline: "Heal's convergence skips a terminal emission only when the next emitting computation is established to be unchanged",
+        boundary: "A stopping rule inside the existing planner (v2.workflow.regen_convergence_transaction regen_plan_next_stage), keeping its compatibility and stage-admission rules. Compare the executable that would perform the next emission, after all required installations and builds, with the executable that produced the retained candidate, and validate that candidate's complete emission inputs and result binding at the same boundary; only when both hold is the next emission skipped. Correct mirrors on disk are not evidence about the producing executable. Skipping an emission never skips an undischarged build or publication obligation. The first identity is the executable's own.",
+        displaced_cost: "An affected round pays a final confirming generation (about 15 minutes) whose answer an earlier fact already established; heal run 44976008640 is the specimen to read, not a proof that its passes were redundant.",
+        first_slice: "The discriminating pair below as planner-level controls, then the stopping rule.",
+        red_control: "Positive: the next producer and the complete emission inputs are unchanged, so no further emission runs. Negative: the head's mirrors are correct on disk but the candidate came from the older base-built producer, so the round must advance. A terminal stage whose final candidate has not been built still builds.",
+        out_of_scope: "A semantic-equivalence classifier for producers; caching, scoping and the bootstrap policy. It does not depend on heal-bootstrap-seed-reuse or heal-observation-reuse-by-subject.",
+        handback: "The pair's outputs, one affected heal run's receipt showing the elided generation and the build still performed, and the diff."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "demand-engine", contribution: "Not recomputing a result whose producer and inputs are unchanged is the demand engine's first question, asked of heal's own fixed-point loop."),
     ),
     roadmap_node(
       identity: "rn_CFZ5DNH7FEND59ZAXKRZS55XAR",
@@ -6091,6 +6399,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
 // centering plans, not a dependency, and the graph has no exclusion-edge vocabulary.
 fn declared_roadmap_edges() -> List<RoadmapEdge> {
   concat([
+    edge(child: "claim-entrypoints-cutover", parent: "claim-result-contract"),
     edge(child: "dp-m3-subject-ref-resolved", parent: "extdeps-subject-ref-facts-host-census"),
     edge(child: "lab-converges-release-pair", parent: "lab-standings-track-main"),
     // ---- dispatch from the simulated execution (gunbc.plans.planning_consolidation, 2026-11-17):
@@ -6248,6 +6557,15 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "second-generation", parent: "compiler-closure-names-homed-and-types-merged"),
     edge(child: "corpus-names-homed-and-collisions-discharged", parent: "compiler-closure-names-homed-and-types-merged"),
     edge(child: "import-grammar-and-lines-deleted", parent: "corpus-names-homed-and-collisions-discharged"),
+    edge(child: "harness-runs-in-the-workspace", parent: "source-workspace-manifest"),
+    edge(child: "harness-runs-in-the-workspace", parent: "claim-entrypoints-cutover"),
+    edge(child: "workspace-derived-source-roots", parent: "harness-runs-in-the-workspace"),
+    edge(child: "one-source-tree-cut", parent: "workspace-derived-source-roots"),
+    edge(child: "v2-uncontested-families-renamed", parent: "one-source-tree-cut"),
+    edge(child: "v2-extdeps-reconciled", parent: "one-source-tree-cut"),
+    edge(child: "v2-namespace-dissolved", parent: "v2-uncontested-families-renamed"),
+    edge(child: "v2-namespace-dissolved", parent: "v2-extdeps-reconciled"),
+    edge(child: "v2-namespace-dissolved", parent: "one-standard-library"),
     edge(child: "import-grammar-and-lines-deleted", parent: "names-bind-to-the-unique-declaration"),
     edge(child: "import-grammar-and-lines-deleted", parent: "namespace-ambiguity-discharge"),
     edge(child: "native-production-admission", parent: "import-grammar-and-lines-deleted"),
@@ -6261,6 +6579,12 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "factory", parent: "factory-dogfood-route"),
     edge(child: "factory", parent: "work-exec-6-one-ledger-per-host"),
     edge(child: "factory", parent: "serve-held-open-response"),
+    // ---- heal's regeneration round (gunbc.plans.read_set_convergence): only the real prerequisites. A no-op needs
+    // the artifacts' validity; the P7 milestone needs the cheap relation, the population rule and the early no-op.
+    edge(child: "heal-noop-before-regenerator-build", parent: "heal-seed-build-artifacts-scoped"),
+    edge(child: "heal-planning-only-in-a-minute", parent: "heal-noop-before-regenerator-build"),
+    edge(child: "heal-planning-only-in-a-minute", parent: "heal-scope-relation-without-typecheck"),
+    edge(child: "heal-planning-only-in-a-minute", parent: "heal-scope-population-evidence"),
     edge(child: "fabric-worker-event-log", parent: "factory-dogfood-route"),
     edge(child: "external-specimen-compiles", parent: "universe-ingest-replaces-file-acquisition"),
     edge(child: "external-specimen-compiles", parent: "one-declaration-identity-carrier"),
