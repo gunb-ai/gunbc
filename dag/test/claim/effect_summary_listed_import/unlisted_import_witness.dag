@@ -1,0 +1,8 @@
+module test.claim.effect_summary_listed_import.unlisted_import_witness
+
+import test.claim.effect_summary_listed_import.listed_decl_with_effect { ListedImportProbe }
+import test.claim.effect_summary_listed_import.rival_decl_same_name { rival_marker }
+
+test fn unlisted_import_must_not_bind_the_bare_call() -> Bool {
+  rival_marker() == "rival-marker" && shared_listed_probe_fn() == "listed"
+}
