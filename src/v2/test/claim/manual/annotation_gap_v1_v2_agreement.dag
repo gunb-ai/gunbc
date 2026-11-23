@@ -47,7 +47,7 @@ import std.host_text { chars }
 // same for 'span_index_extent'). That refusal is why this control, though it has sat under manual/ since it
 // was written, had never been executed by anything until this node.
 
-data agreement_source: String = "module zqx.agree\n\n// above the data row\ndata zqx_d: Int = 1\n\n// between the items\nfn zqx_f(a: Int, b: Int) -> Int \{\n  let x = zqx_g(\n    a,\n    // between the arguments\n    b,\n    // before the product\n    1 + 2 * 3\n  )\n  // between the statements\n  x\n\}\n\nfn zqx_g(p: Int, q: Int) -> Int \{\n  p\n\}\n"
+data agreement_source: String = "module zqx.agree\n\n// above the data row\ndata zqx_d: Int = 1\n\n// between the items\nfn zqx_f(a: Int, b: Int) -> Int \{\n  let x = zqx_g(\n    a,\n    // between the arguments\n    b,\n    1 +\n    // before the product\n    2 * 3\n  )\n  // between the statements\n  x\n\}\n\nfn zqx_g(p: Int, q: Int) -> Int \{\n  p\n\}\n"
 
 data agreement_texts: List<String> = ["above the data row", "between the items", "between the arguments", "before the product", "between the statements"]
 
@@ -126,6 +126,36 @@ fn v2_neighbours(source: String) -> List<String> {
   }
 }
 
+// After-neighbour only, for the pinned conjunct: the row's `gap.after` text, without the before side, so
+// the assertion names the region the roster is supposed to have produced and nothing else.
+fn v1_after_products(source: String) -> List<String> {
+  let file = "zqx_agree.dag"
+  let artifact = tokenize_artifact(source: source, file: file, env: dag_parse_environment)
+  let parsed = parse_with_table(
+    tokens: artifact.tokens,
+    source_indices: map_insert(empty_map(), file, build_newline_index(file: file, source: source)),
+    intern_table: empty_intern_table(),
+  )
+  let graph = bind_annotations(transport: parsed.occurrence_transport, extents: parsed.source_extents, captures: artifact.annotations)
+  source_annotation_graph_rows(graph: graph)
+    |> filter(r => agreement_texts |> any(t => t == row_text(row: r)))
+    |> map(r => v1_scope_text(source: source, scope: row_after(row: r)))
+}
+
+fn v2_after_products(source: String) -> List<String> {
+  match lex_walk_artifact(source: chars(text: source), file: ^zqx_agree, rules: dag_lex_rules()) {
+    Rejected { diagnostics: _ } => ["<no lex>"]
+    Accepted { value: artifact, diagnostics: _ } =>
+      match parse_module_authored(artifact: artifact, grammar: dag_language_model().grammar, annotation_text: fn(t) { strip_line_comment_delimiter(lexeme: t) }) {
+        Rejected { diagnostics: _ } => ["<no parse>"]
+        Accepted { value: authored, diagnostics: _ } =>
+          source_annotation_graph_rows(graph: authored_parse_annotations(artifact: authored))
+            |> filter(r => agreement_texts |> any(t => t == row_text(row: r)))
+            |> map(r => v2_scope_text(source: source, index: parse_artifact_span_index(artifact: authored_parse_semantic(artifact: authored)), scope: row_after(row: r)))
+      }
+  }
+}
+
 fn v2_rows_text(source: String, rows: List<SourceAnnotationDebt>, index: v2.std.provenance.SpanIndex) -> List<String> {
   rows
     |> filter(r => agreement_texts |> any(t => t == row_text(row: r)))
@@ -176,4 +206,14 @@ test fn v1_and_v2_agree_on_neighbour_text_holds() -> Bool {
     && list_at_optional(xs: v1, index: 4) == list_at_optional(xs: v2, index: 4)
     && list_at_optional(xs: v1, index: 0) == Present { value: "above the data row | <none> | data zqx_d: Int = 1" }
     && list_at_optional(xs: v2, index: 0) == Present { value: "above the data row | module zqx.agree | data zqx_d: Int = 1" }
+    // PINNED, not merely agreed. Both parsers must name the PRODUCT `2 * 3` as the neighbour after the
+    // "before the product" gap. An agreement claim alone is insensitive to the roster: v1 and v2 can agree
+    // on the wrong neighbour and stay green, which is exactly what happened when this comment sat before
+    // the whole `1 + 2 * 3` (measured: the deliberate-break tree passed the agreement conjuncts, rc=0).
+    // src/v2/compiler/parse.dag's roster comment says the infix-application arm exists precisely so
+    // `1 + 2 * 3` has a region for `2 * 3`; without it the neighbour is `2`. Pinning the text is what turns
+    // that roster arm into something a run can lose.
+    && list_at_optional(xs: v2_after_products(source: agreement_source), index: 3) == Present { value: "2 * 3" }
+    && list_at_optional(xs: v1_after_products(source: agreement_source), index: 3) == Present { value: "2 * 3" }
+    && list_at_optional(xs: v1, index: 3) == list_at_optional(xs: v2, index: 3)
 }
