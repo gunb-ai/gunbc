@@ -19,7 +19,7 @@ module gunbc.fleet.fleet_host_truth_sources
 // both a property that printed nothing and one whose text nobody can decode, so naming either one would be a
 // fabricated located cause even inside a refusal. What that means for the read is spelled out at
 // #gunbc.fleet.fleet_host_truth_sources::host_truth_cap_read, and what is owed to close the gap is tracked by
-// #gunbc.recurring_failure_mode::failed_value_read_scored_as_value_absent.
+// #gunbc.recurring_failure_mode.failed_value_read_scored_as_value_absent::failed_value_read_scored_as_value_absent.
 //
 // THREE OF THE FIVE AXES are inhabited here, the three the report's own specimens named: the cap that
 // surfaced as 5.1 tok/s with 41.5 GB read per request instead of refusing (3.2, srv4's leaf), the swap
@@ -30,16 +30,16 @@ module gunbc.fleet.fleet_host_truth_sources
 // FRONTIER, not a dangling declaration (gunbc.design_argument::consumption): the observe-only converge mode
 // authorized by gunbc.design_ruling::fleet_truth_read_rides_the_converge_timer_2026_11_21 reads both at the
 // same firing it takes the three here, and the inhabitance claims for them fall due with that mode, together
-// with the roster admission that consumes the verdict (the -rosters-consume-the-read item in
+// with the roster admission that consumes the verdict (the "fleet-truth-rosters-consume-the-read" node in
 // gunbc.roadmap.roadmap_authority). A per-axis producer that is not written yet is absent from this module;
 // nothing here answers for it.
 // CONSUMPTION, CLASSIFIED (gunbc.design_argument::consumption). The producers here --
 // host_truth_cap_read, host_truth_leaf_swap_read, host_truth_identity_expectation,
 // host_truth_identity_read and host_truth_verdict_for_host -- have exactly one consumer named: the
 // observe-only converge mode authorized by
-// gunbc.design_ruling::fleet_truth_read_rides_the_converge_timer_2026_11_21, on the row
-// gunbc.roadmap.roadmap_authority::fleet-truth-follows-the-machine-per-host-read, whose verdict
-// gunbc.roadmap.roadmap_authority::fleet-truth-follows-the-machine-rosters-consume-the-read admits on.
+// gunbc.design_ruling::fleet_truth_read_rides_the_converge_timer_2026_11_21, on the roadmap node
+// "fleet-truth-per-host-read" in gunbc.roadmap.roadmap_authority, whose verdict the node
+// "fleet-truth-rosters-consume-the-read" admits on.
 // They are NOT consumed in this change: no production caller lands here, because the mode is the next
 // increment and this PR does not stack on it, and the only callers in the tree today are this module's
 // witness. Saying so is the classification the argument asks for; the frontier paragraph above is what
