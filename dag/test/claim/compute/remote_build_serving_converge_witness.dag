@@ -2144,7 +2144,7 @@ test fn a_missing_native_sidecar_rebuilds_not_rerecords() -> Bool {
 // ---- THE SEAT RECOVERY LEG (increment 2) ----
 // The census arrives ALREADY JUDGED: its entries come from
 // gunbc.compute.attempt_lifecycle::recovery_write_authorization through the recovery door
-// (gunbc.compute.work_provider_local::compute_recover_catalog_cli), rendered and parsed back through
+// (gunbc.compute.work_provider_local::compute_recover_catalog_serving_cli), rendered and parsed back through
 // the door's own grammar. The plan only RENDERS them, and only when the identity leg is Met. These
 // cells hold the red controls: a live holder plans nothing, an unreadable slot refuses the plan, and
 // an unmet identity refuses the recovery alongside it.
@@ -2333,8 +2333,8 @@ test fn the_recovery_door_argv_binds_the_accounts_own_user_session() -> Bool {
     Absent => false
     Present { value: d } => match converge_gunbc_door_argv(
       d: d,
-      function: "compute_recover_catalog_cli",
-      arguments: [NamedArgumentRequest { name: "repo_root", value: d.checkout_dir as String }],
+      function: "compute_recover_catalog_serving_cli",
+      arguments: [NamedArgumentRequest { name: "host", value: d.host as String }],
       runtime_dir: user_session_runtime_dir(uid: 999)
     ) {
       Absent => false
@@ -2342,7 +2342,9 @@ test fn the_recovery_door_argv_binds_the_accounts_own_user_session() -> Bool {
         let words = join(argv, " ")
         string_contains(s: words, pattern: concat(concat(concat("-C ", d.checkout_dir as String), " XDG_RUNTIME_DIR=/run/user/999"), " DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/999/bus"))
           && (!string_contains(s: words, pattern: concat(gunbc_workspace_root_env_name, "=")))
-          && string_contains(s: words, pattern: "compute_recover_catalog_cli")
+          && string_contains(s: words, pattern: "compute_recover_catalog_serving_cli")
+          && string_contains(s: words, pattern: "host")
+          && (!string_contains(s: words, pattern: "repo_root"))
       }
     }
   }
