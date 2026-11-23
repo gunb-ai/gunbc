@@ -3,6 +3,7 @@ module test.claim.host.boot_medium_reader_key_witness
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, NonEmptyStr, String }
 import std.optional { Present, Absent }
+import gunbc.host_command_binding { HostLeg, LegAnswered }
 import extdeps.ssh.keys {
   SshPublicKey, Ed25519, authorized_key_entry_line, authorized_key_forced_command,
 }
@@ -13,7 +14,7 @@ import gunbc.host.boot_medium_reader_key {
   boot_medium_served_link_path, boot_medium_reader_entry_for, boot_medium_reader_authorized_entry, boot_medium_reader_ssh_key,
 }
 import gunbc.host.boot_medium_served_readback {
-  RemoteAnswer, BootMediumServedReadback, BootMediumServedHeld, BootMediumServedUnreadable, BootMediumServedMeasureMalformed, BootMediumServedDiverged,
+  BootMediumServedReadback, BootMediumServedHeld, BootMediumServedUnreadable, BootMediumServedMeasureMalformed, BootMediumServedDiverged,
   BootMediumServedRecordUnreadable, BootMediumServedRecordMalformed, BootMediumServedRecordDisagrees, BootMediumServedNotAdmitted,
   BootMediumServedHeldThroughLink, BootMediumServedNoReaderForRecord,
   BootMediumServedMeasureOnly, BootMediumServedRecordFirst,
@@ -36,9 +37,7 @@ fn medium() -> BootMedium {
 
 data supplied_key: SshPublicKey = SshPublicKey { algorithm: Ed25519, material: "AAAAC3NzaC1lZDI1NTE5AAAAIB5ObOQw+v/Rd5xdurhZpwI9awQNqCWNgFWbZCQsXJfN", comment: "boot-medium-reader" }
 
-fn answer(stdout: String) -> RemoteAnswer {
-  RemoteAnswer { exit_code: 0, stdout: stdout, stderr: "" }
-}
+fn answer(stdout: String) -> HostLeg { LegAnswered { exit_code: 0, stdout: stdout, stderr: "" } }
 
 fn link() -> NonEmptyStr {
   boot_medium_served_link_path()
@@ -116,7 +115,7 @@ test fn any_output_other_than_the_one_sha256sum_line_for_the_link_refuses() -> B
     && word(r: join_over(stdout: join([digest_a as String, "  /srv/bmc/other.iso"], ""))) == "malformed"
     && word(r: join_over(stdout: "uid=0(root) gid=0(root) groups=0(root)")) == "malformed"
     && word(r: join_over(stdout: join([digest_a as String, " ", link() as String], ""))) == "malformed"
-    && word(r: boot_medium_served_reader_join(medium: medium(), host: "srv2", link_path: link(), measure: RemoteAnswer { exit_code: 1, stdout: "", stderr: "sha256sum: No such file" })) == "unreadable"
+    && word(r: boot_medium_served_reader_join(medium: medium(), host: "srv2", link_path: link(), measure: LegAnswered { exit_code: 1, stdout: "", stderr: "sha256sum: No such file" })) == "unreadable"
 }
 
 // RED: a medium that owes its derivation record before it is measured has no reader over this key and
@@ -130,7 +129,7 @@ test fn a_record_first_medium_has_no_reader_and_refuses_by_name() -> Bool {
 // THE PRODUCER WHILE THE KEY IS UNMINTED: it refuses by that name and dispatches nothing.
 test fn the_reader_producer_refuses_while_the_key_is_unminted() -> Bool {
   match boot_medium_served_readback_over_reader(medium: medium(), check: BootMediumServedMeasureOnly, attempt: "boot-medium-reader-readback") {
-    BootMediumServedUnreadable { host: _, served_path: p, reason: r } => p == link() && r.contains("not minted")
+    BootMediumServedUnreadable { host: _, served_path: p, reason: r } => p == link() && r.contains("not minted") && !r.contains("exit=")
     BootMediumServedHeld { host: _, image_name: _, served_path: _, measured_digest: _ } => false
     BootMediumServedHeldThroughLink { host: _, link_path: _, target_name_derived: _, measured_digest: _ } => false
     BootMediumServedMeasureMalformed { served_path: _, content: _ } => false
