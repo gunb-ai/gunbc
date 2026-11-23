@@ -1,0 +1,9 @@
+module test.claim.effect_summary_listed_import.rival_decl_same_name
+
+fn shared_listed_probe_fn() -> String {
+  "rival"
+}
+
+fn rival_marker() -> String {
+  "rival-marker"
+}
