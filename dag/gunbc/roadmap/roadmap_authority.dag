@@ -1713,15 +1713,15 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "v1-test-migration",
       owner: "self-host",
       carriers: carrier(path: "dag/gunbc/v1/v1_deletion_plan.dag"),
-      line: ticket(t: updated(t: updated(t: fields(
+      line: ticket(t: updated(t: updated(t: updated(t: fields(
         headline: "Make sure deleting the old tests loses no coverage",
         boundary: "Every old test file removed has equivalent coverage that would actually catch the bug it was written for.",
         displaced_cost: "A guard that stays quiet is not the same as coverage; without this, deletion silently drops real protection.",
         first_slice: "Match one old test file to the checks that cover it now.",
-        red_control: "Any old test file with nothing covering it keeps deletion blocked.",
+        red_control: "The migration wall claim, which is a bare Bool and prints no module names, FAILs while any module remains unmigrated and PASSes when none do. That is the executable form; naming the unmigrated modules in the wall output is a change to the wall schema and needs an operator ruling, so this row does not claim it.",
         out_of_scope: "No line-by-line rewriting of the old tests. Adding a new test written only in Rust, with no authority the substrate owns, is out of bounds here: it grows the very population this node exists to drain, so it counts against the finish line rather than toward it.",
         handback: "The per-file coverage mapping with nothing unmatched."
-      ), on: "2026-09-30", note: "Not yet centered: test-migration population not bounded yet."), on: "2026-11-19", note: "Source review at 398136026b345e087968a9db4ba42ec551c5ca4c (2026-11-19); source presence is not acceptance. Reuse existing replacement witnesses and map each retired seed test to the behavior it covered. File counts do not measure the number of missing behaviors. This review did not execute the full seed/replacement suite, so no zero-unmatched or acceptance claim is made.")),
+      ), on: "2026-09-30", note: "Not yet centered: test-migration population not bounded yet."), on: "2026-11-19", note: "Source review at 398136026b345e087968a9db4ba42ec551c5ca4c (2026-11-19); source presence is not acceptance. Reuse existing replacement witnesses and map each retired seed test to the behavior it covered. File counts do not measure the number of missing behaviors. This review did not execute the full seed/replacement suite, so no zero-unmatched or acceptance claim is made."), on: "2026-11-23", note: "Red control rewritten to the executable wall form (warm-fox-517): the wall claim is a bare Bool and prints no module names.")),
       dispatch: dispatchable(),
       execution: bound(contract: v1_test_migration_execution_contract()),
       parent: in_project(project: "v1-deletion-program", contribution: "Matching every deleted old test to coverage that would actually catch its bug keeps deletion from silently dropping the protection the old tests existed for."),
