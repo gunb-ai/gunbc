@@ -1,6 +1,6 @@
 module test.claim.runner.runner_throughput_qualification_witness
 
-import std.logic { Bool }
+import std.logic { Bool, Royalnewtphantommember }
 import std.types { Int, List, NonEmptyStr, String }
 import extdeps.github.workflow_runs { GitHubWorkflowRunId, github_workflow_run_id_wire_text }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
