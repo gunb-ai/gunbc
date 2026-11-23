@@ -1950,17 +1950,22 @@ fn converge_build_serve_binary(target: SshTarget, context: FleetSshExecutionCont
       match gunbc_user_work_scope_command(properties: [], command_argv: build_argv) {
         SystemdRunCommandRefused { cause: c } => StepFailed { cause: join(["the native build could not be wrapped into the capped gunbc-user-work.slice: ", systemd_run_option_words_refused_cause_detail(cause: c), "; the build was refused rather than run outside the capped slice"], "") }
         SystemdRunCommandReady { command: scoped } => {
+          // The build starts in the serving CHECKOUT (env -C), exactly as the #16862 door does: a plain
+          // checkout is not a release locus, so GUNBC_WORKSPACE_ROOT is deliberately NOT bound, and the
+          // account's session bindings make its capped user-work slice reachable. cargo is pinned by
+          // --manifest-path/--target-dir so the build is revision-anchored regardless of cwd.
           let run = converge_as_user_outcome(
             target: target,
             context: context,
             account: as_user,
-            argv: env_prefixed_argv(
+            argv: argv_words(command: env_prefixed_command_in(
+              directory: checkout_dir,
               bindings: concat(
                 user_session_launcher_env(runtime_dir: runtime_dir),
                 [EnvSet { name: "RUSTUP_HOME", value: d.rustup_home }, EnvSet { name: "CARGO_HOME", value: concat(d.account_home, "/.cargo") }]
               ),
-              command_argv: argv_words(command: scoped)
-            )
+              command: scoped
+            ))
           )
           match run {
             TypedArgvExecRefused { reason: r } => StepFailed { cause: join(["the native build run was refused before it executed: ", r], "") }
