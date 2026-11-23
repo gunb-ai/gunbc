@@ -867,7 +867,48 @@ fn observe_plan_serve_entry_verdict(spec: DeploymentSpec) -> ServeEntryCompileVe
   }
 }
 
+type ServeEntryVerdictDirAdmission
+  = ServeEntryVerdictDirWritable
+  | ServeEntryVerdictDirRefused { dir: String, reason: String }
+
+// THE VERDICT'S DESTINATION IS ADMITTED BEFORE THE WITNESS RUNS. The served-command witness costs
+// minutes; a destination that cannot take the verdict used to be discovered only at the final write,
+// after the witness had completed (pull/16891#issuecomment-7103879443). The probe outcome is read
+// from the same directory the verdict is written to (fleet_converge_plan_artifact_dir), so no second
+// location is decided here.
+fn serve_entry_verdict_dir_admission(dir: String, probe_success: Bool, probe_error: String) -> ServeEntryVerdictDirAdmission {
+  if probe_success {
+    ServeEntryVerdictDirWritable
+  } else {
+    ServeEntryVerdictDirRefused { dir: dir, reason: probe_error }
+  }
+}
+
+fn serve_entry_verdict_dir_refusal_text(dir: String, reason: String) -> String {
+  join(["live_deploy: record_plan_serve_entry_compile_verdict — the verdict directory ", dir, " is not writable (", reason, "); refused before the served-command witness ran, so no verdict can be lost at the final write"], "")
+}
+
+fn probe_serve_entry_verdict_dir() -> ServeEntryVerdictDirAdmission {
+  let probe_path = join([fleet_converge_plan_artifact_dir, "/.serve_entry_verdict.probe"], "")
+  let probe = Filesystem.Write(path: probe_path, content: "")
+  let admission = serve_entry_verdict_dir_admission(dir: fleet_converge_plan_artifact_dir, probe_success: probe.success, probe_error: probe.error)
+  if probe.success {
+    let _ = Filesystem.Delete(path: probe_path)
+    admission
+  } else {
+    admission
+  }
+}
+
 fn record_plan_serve_entry_verdict_for(row: DesiredDeployment) -> ProcessExit {
+  match probe_serve_entry_verdict_dir() {
+    ServeEntryVerdictDirRefused { dir, reason } =>
+      exit_failure(reason: serve_entry_verdict_dir_refusal_text(dir: dir, reason: reason))
+    ServeEntryVerdictDirWritable => record_plan_serve_entry_verdict_after_dir_admitted(row: row)
+  }
+}
+
+fn record_plan_serve_entry_verdict_after_dir_admitted(row: DesiredDeployment) -> ProcessExit {
   let spec = selected_deployment_spec(row: row)
   let root = git.Inspect.Toplevel()
   let root_path = root.path as String
