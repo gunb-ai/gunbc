@@ -363,8 +363,10 @@ fn roadmap_authority_fixture_json_is_a_written_event(content: String, node: Stri
 }
 
 // ONE SAMPLE PER STANDING, and the vocabulary derived from it. `roadmap_node_standing_key` in
-// #gunbc.roadmap.roadmap_event_log::roadmap_node_standing_key is the one authority for what a standing
-// is called; a consumer that needs the CLOSED LIST of those words -- today the ctrl roadmap bridge
+// gunbc.roadmap.roadmap_event_log is the one authority for what a standing is called -- mentioned,
+// not cited, the way the other consumers of that module write it; the machine-checked link is this
+// file's own import of the declaration, which is what makes the derivation below a use and not a
+// claim. A consumer that needs the CLOSED LIST of those words -- today the ctrl roadmap bridge
 // `scripts/session-dashboard/dag/roadmap_spawner_bridge.dag` in gunb-ai/ctrl#2495, which refuses an
 // unknown key instead of reading a node as absent (named per
 // #gunbc.design_argument::consumption; the bridge's own text names the condition that deletes it) --
