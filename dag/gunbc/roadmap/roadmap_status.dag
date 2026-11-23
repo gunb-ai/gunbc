@@ -120,13 +120,11 @@ type RedObservation
   = RedObservedOnMain { red_at: CommitSha, green_at: CommitSha }
   | RedProbe { red_at: CommitSha, red_base: CommitSha, green_at: CommitSha, probe_ref: NonEmptyStr }
 
-// THE ANCESTRY OBLIGATIONS, STATED ONCE AS DATA, and NOT JUDGED OFFLINE: judging them needs the Git graph.
-// Offline judgment (red_observation_holds) covers only shape: well-formed shas, the distinctness named below,
-// and the probe ref's spelling.
-data red_observation_ancestry_obligations_not_judged_offline: List<String> = [
-  "RedObservedOnMain: red_at is an ancestor of green_at on main",
-  "RedProbe: red_base is red_at's first parent, red_at's diff from red_base is the named break and nothing else, probe_ref is pushed to gunb-ai/gunbc and never deleted, and green_at is red_base itself or a later main sha",
-]
+// ANCESTRY IS NOT JUDGED OFFLINE (judging it needs the Git graph; red_observation_holds covers shape only: well-formed
+// shas, the distinctness it names, and the probe ref's spelling). Unchecked obligations, an annotation and not a
+// carrier because nothing consumes them until an online checker exists: RedObservedOnMain, red_at is an ancestor
+// of green_at on main; RedProbe, red_base is red_at's first parent, red_at's diff from red_base is the named
+// break and nothing else, probe_ref stays pushed to gunb-ai/gunbc, and green_at is red_base or a later main sha.
 
 fn red_observation_holds(o: RedObservation) -> Bool {
   match o {

@@ -235,7 +235,7 @@ fn roadmap_event_record_cli(repo_root: String, node: String, kind: String, text:
 //   THE RED OBSERVATION: --red-at and --green-at are required. --red-base and --probe-ref are given TOGETHER
 //   for a PROBE (a red_at off main, pushed to red-control/<row-id>); OMITTING BOTH IS A CHOICE: the red control
 //   is then recorded as OBSERVED ON MAIN (red_at an ancestor of green_at on main — an obligation the CLI does
-//   not judge offline, gunbc.roadmap.roadmap_status red_observation_ancestry_obligations_not_judged_offline).
+//   not judge offline, the ancestry note above red_observation_holds in gunbc.roadmap.roadmap_status).
 fn roadmap_acceptance_record_cli(repo_root: String, receipt_line: String, pr_url: String, merged_at: String, head_sha: String, author: String, red_at: String, green_at: String, red_base: String, probe_ref: String) -> ProcessExit {
   // THE FAILING COMMIT IS DATA, OR THE RECORD IS REFUSED (ruling
   // gunbc.design_ruling::executed_red_control_names_its_failing_commit). Each refusal has its own name.
