@@ -1,0 +1,38 @@
+module test.claim.design_ruling_roster_witness
+
+import std.types { Bool, List, String }
+import v2.std.decl_index { DeclFact, DataItem, decl_facts }
+import gunbc.design_ruling { DesignRuling, design_rulings }
+
+// EVERY DECLARED RULING IS ROSTERED. gunbc.design_ruling declares one `data <name>: DesignRuling`
+// row per ruling and lists them again in design_rulings(); the document, the citation resolver and
+// the ruling view read only the list, so a declared row missing from it is silently uncited. The
+// language has no declaration enumeration inside a function, so the list cannot be derived; this
+// reads the declaration census (the live pool, not a planted copy) and joins it to the roster.
+fn declared_ruling_names() -> List<String> {
+  map(
+    filter(xs: decl_facts(pool_roots: ["dag"]), predicate: fn(f) {
+      f.kind == DataItem && starts_with(s: f.qualified_name, prefix: "gunbc.design_ruling.")
+    }),
+    f => f.name,
+  )
+}
+
+fn rostered_ruling_names(rulings: List<DesignRuling>) -> List<String> {
+  map(rulings, r => r.reference.decl_name as String)
+}
+
+fn unrostered(declared: List<String>, rostered: List<String>) -> List<String> {
+  filter(xs: declared, predicate: fn(n) { !any(rostered, m => m == n) })
+}
+
+test fn design_ruling_every_declared_ruling_is_rostered() -> Bool {
+  length(xs: unrostered(declared: declared_ruling_names(), rostered: rostered_ruling_names(rulings: design_rulings()))) == 0
+}
+
+// Control: the census is non-empty and sees the real rows, and a roster missing one name is caught.
+test fn design_ruling_roster_control_detects_a_missing_row() -> Bool {
+  let declared = declared_ruling_names()
+  let short = filter(xs: rostered_ruling_names(rulings: design_rulings()), predicate: fn(n) { n != "executed_red_control_names_its_failing_commit" })
+  length(xs: declared) > 100 && length(xs: unrostered(declared: declared, rostered: short)) == 1
+}

@@ -1478,6 +1478,12 @@ fn design_rulings() -> List<DesignRuling> {
     pxe_default_install_and_no_standing_erase_2026_11_10,
     runner_capacity_counts_only_when_observed_2026_11_10,
     pxe_witnesses_need_no_required_ci_2026_11_10,
+    fleet_observation_deferral_2026_11_12,
+    refreshes_regularly_every_10_minutes_2026_11_16,
+    claim_execution_has_one_v1_entrypoint,
+    fleet_truth_read_rides_the_converge_timer_2026_11_21,
+    hosted_shadow_gate_push_credential_scoped_write_2026_11_22,
+    executed_red_control_names_its_failing_commit,
   ]
 }
 
