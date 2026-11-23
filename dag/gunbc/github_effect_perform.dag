@@ -757,6 +757,9 @@ fn mint_publisher_installation_token(cloud_access_token: Secret, key_path: NonEm
       match decode_sm_access_version_secret_wire(data_b64: answer.data_b64) {
         SmAccessVersionSecretDecodeRefused { cause: _ } =>
           PublisherTokenNotMinted { cause: "HealPublisherAppKeyUnreadable: the Secret Manager payload did not decode" }
+        // A key stored as bytes that are not text is not an undecodable payload and is not a key: the
+        // bytes are exactly what was stored. Naming it separately keeps the PEM path's answer intact --
+        // this secret holds an app key, which may be any bytes the API returns -- and mints nothing.
         SmAccessVersionSecretNotText =>
           PublisherTokenNotMinted { cause: "HealPublisherAppKeyUnreadable: the Secret Manager payload is bytes that are not UTF-8 text" }
         SmAccessVersionSecretDecoded { credential: key } =>
