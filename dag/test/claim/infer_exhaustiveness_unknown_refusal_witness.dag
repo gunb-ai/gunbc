@@ -1,0 +1,77 @@
+module test.claim.infer_exhaustiveness_unknown_refusal_witness
+
+import gunbc.compile_census_probe { blocking_class_census, census_delta_verdict, census_verdict, census_verdict_all, total_blocking_census, census_exit }
+import std.process { ProcessExit }
+import std.types { Bool, Int, List, String }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// floor-exhaustiveness-refusal (gunbc roadmap node floor-exhaustiveness-refusal):
+// a match whose coproduct lookup is BLOCKED (the scrutinee type is a compiler-error
+// node, so `lookup_variant_in_type` / `lookup_field_in_variant` answer
+// PatternLookupBlocked with diagnostics: []) used to pass as SUCCESS-ADJACENT -- the
+// caller's `PatternLookupBlocked => []` short-circuit let a non-exhaustive match over
+// an unestablishable roster compile clean. It now refuses as ExhaustivenessUnknown
+// (SeverityError / GateBlocking), unless an irrefutable arm already covers every case.
+//
+// The blockage is produced by the PROVEN idiom the sibling
+// infer_present_arm_unresolved_scrutinee_witness uses: a generic variant
+// (ProbeAttempt<T,E>) built with no expected type, drained through an untyped flat_map,
+// leaves the element compiler-error. A `match` whose scrutinee is that blocked element
+// cannot establish its constructor roster.
+//
+// Fixture type names carry a Probe prefix: bare names resolve by global uniqueness, so
+// `Cause`/`Bad` could bind a corpus declaration instead of the fixture's own.
+//
+// The red and its IRREFUTABLE control differ ONLY in the inner match's arm shape, so the
+// delta cancels everything else (including the pre-existing PresentArmScrutineeTypeUnresolved
+// the outer Optional binding already earns): the ONLY added blocking row is the one refusal.
+
+data exhaustiveness_unknown_red_source: String = "module probe_exh_unknown_red\ntype ProbeCause = | ProbeBad { detail: String } | ProbeWarn { detail: String }\ntype ProbeAttempt<T, E> = ProbeKept { observed: T } | ProbeRefused { cause: E }\nfn f() -> Int {\n  let attempts = [ProbeRefused { cause: ProbeBad { detail: \"x\" } }]\n  let causes = flat_map(attempts, a => match a { ProbeRefused { cause: c } => [c]  _ => [] })\n  match first(causes) { Present { value: c } => match c { ProbeBad { detail: _ } => 1 }  _ => 0 }\n}\n"
+
+// IRREFUTABLE CONTROL for the red: the identical blocked program, but the inner match ends in a
+// wildcard. A wildcard covers the whole domain regardless of the (unestablishable) roster, so this
+// is genuinely exhaustive and MUST still compile -- the refusal must not fire.
+data exhaustiveness_unknown_irrefutable_control_source: String = "module probe_exh_unknown_irrefutable\ntype ProbeCause = | ProbeBad { detail: String } | ProbeWarn { detail: String }\ntype ProbeAttempt<T, E> = ProbeKept { observed: T } | ProbeRefused { cause: E }\nfn f() -> Int {\n  let attempts = [ProbeRefused { cause: ProbeBad { detail: \"x\" } }]\n  let causes = flat_map(attempts, a => match a { ProbeRefused { cause: c } => [c]  _ => [] })\n  match first(causes) { Present { value: c } => match c { ProbeBad { detail: _ } => 1  _ => 0 }  _ => 0 }\n}\n"
+
+// THE RESOLVED CONTROL the red_control names: with the producing let given its declared type the
+// element resolves, the inner match is exhaustive, and the whole program compiles with ZERO blocking.
+data exhaustiveness_unknown_resolved_control_source: String = "module probe_exh_unknown_resolved\ntype ProbeCause = | ProbeBad { detail: String } | ProbeWarn { detail: String }\ntype ProbeAttempt<T, E> = ProbeKept { observed: T } | ProbeRefused { cause: E }\nfn f() -> Int {\n  let attempts: List<ProbeAttempt<Int, ProbeCause>> = [ProbeRefused { cause: ProbeBad { detail: \"x\" } }]\n  let causes = flat_map(attempts, a => match a { ProbeRefused { cause: c } => [c]  _ => [] })\n  match first(causes) { Present { value: c } => match c { ProbeBad { detail: _ } => 1  ProbeWarn { detail: _ } => 2 }  _ => 0 }\n}\n"
+
+// RESOLVED NON-EXHAUSTIVE PROOF the resolved-type algorithm is untouched: the same typed producer,
+// but the inner match omits ProbeWarn -> it still reports NonExhaustiveMatch (the pre-existing path).
+data exhaustiveness_unknown_resolved_missing_source: String = "module probe_exh_unknown_resolved_missing\ntype ProbeCause = | ProbeBad { detail: String } | ProbeWarn { detail: String }\ntype ProbeAttempt<T, E> = ProbeKept { observed: T } | ProbeRefused { cause: E }\nfn f() -> Int {\n  let attempts: List<ProbeAttempt<Int, ProbeCause>> = [ProbeRefused { cause: ProbeBad { detail: \"x\" } }]\n  let causes = flat_map(attempts, a => match a { ProbeRefused { cause: c } => [c]  _ => [] })\n  match first(causes) { Present { value: c } => match c { ProbeBad { detail: _ } => 1 }  _ => 0 }\n}\n"
+
+data exhaustiveness_unknown_class: String = "ExhaustivenessUnknown"
+
+// PROBE: a match whose coproduct lookup is blocked refuses as exhaustiveness-not-established.
+// RED on main @4cb919e4 (ExhaustivenessUnknown observed 0), GREEN after the change (observed 1).
+test fn w_blocked_coproduct_match_refuses_as_exhaustiveness_not_established() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_class_census(source: exhaustiveness_unknown_red_source, wanted_class: exhaustiveness_unknown_class), holds: fn(n) { n == 1 }))
+}
+
+// CONTROL (red_control): every resolved exhaustive match compiles -- zero blocking, and it is the
+// resolved type doing it (not NotRunnable), proven by the resolved-missing probe reporting below.
+test fn w_resolved_exhaustive_match_compiles() -> ProcessExit {
+  census_exit(census_verdict(census: total_blocking_census(source: exhaustiveness_unknown_resolved_control_source), holds: fn(n) { n == 0 }))
+}
+
+// CONTROL: a blocked match covered by an irrefutable (wildcard) arm is still accepted -- the refusal
+// never fires where coverage is genuinely established.
+test fn w_blocked_match_with_irrefutable_arm_is_accepted() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_class_census(source: exhaustiveness_unknown_irrefutable_control_source, wanted_class: exhaustiveness_unknown_class), holds: fn(n) { n == 0 }))
+}
+
+// CONTROL: the resolved-type exhaustiveness algorithm is untouched -- a resolved missing arm still
+// reports NonExhaustiveMatch (1), exactly as before.
+test fn w_resolved_missing_arm_still_reports_non_exhaustive() -> ProcessExit {
+  census_exit(census_verdict(census: blocking_class_census(source: exhaustiveness_unknown_resolved_missing_source, wanted_class: "NonExhaustiveMatch"), holds: fn(n) { n == 1 }))
+}
+
+// THE PAIRING (shape evidence): the red and its irrefutable control share the same live-tree
+// baseline (same outer Optional binding, same pre-existing Present-arm diagnostic); the ONLY added
+// blocking row is the one refusal -> total delta is exactly 1.
+test fn the_refusal_is_the_only_delta_against_the_irrefutable_control() -> ProcessExit {
+  census_exit(census_delta_verdict(red: total_blocking_census(source: exhaustiveness_unknown_red_source), control: total_blocking_census(source: exhaustiveness_unknown_irrefutable_control_source), holds: fn(n) { n == 1 }))
+}

@@ -19,7 +19,7 @@ import v1.std.core { Unmarked,
   Connective, Disj, NoConnective,
   CardOptional,
   ErrorNode, make_error_node,
-  VariantNotFound, FieldNotFound, NonExhaustiveMatch,
+  VariantNotFound, FieldNotFound, NonExhaustiveMatch, ExhaustivenessUnknown,
   MatchPattern, LitPattern, arm_pattern,
   Wildcard, Bind, VariantPattern,
   field_binding_pattern, field_binding_name_at,
@@ -830,4 +830,83 @@ fn check_match_exhaustiveness(
         []
       }
   }
+}
+
+// ============================================================================
+// floor-exhaustiveness-refusal: the three-way exhaustiveness verdict.
+// A blocked coproduct/field lookup (`PatternLookupBlocked`, answered by
+// `lookup_variant_in_type` / `lookup_field_in_variant` with `diagnostics: []`)
+// leaves exhaustiveness NOT ESTABLISHED. That used to pass as success-adjacent
+// (`[]` diagnostics). It now splits into an explicit third verdict and REFUSES
+// into the accepted artifact (the emitted error nodes a compiled module may
+// carry) so a blocked match is never mistaken for an exhaustive one. Out of
+// scope (per the ticket): the resolved-type exhaustiveness algorithm and
+// `PatternDynamic` (already diagnoses) are untouched -- only blocked lookups
+// that previously answered `[]` gain the Unknown verdict + refusal.
+// ============================================================================
+
+// THE THREE-WAY EXHAUSTIVENESS VERDICT. Case names are prefixed `Verdict` so they
+// do not collide (variant names are globally unique in the v1 universe) with the
+// `ExhaustivenessUnknown` / `NonExhaustiveMatch` DIAGNOSTIC variants in 00_core.
+// Conceptually: Exhaustive | NonExhaustive {missing} | ExhaustivenessUnknown.
+type ExhaustivenessVerdict
+  = VerdictExhaustive
+  | VerdictNonExhaustive { missing: List<String> }
+  | VerdictUnknown { scrutinee: String }
+
+// A match arm is irrefutable when its pattern is a wildcard or a binding -- it
+// covers the whole domain regardless of the coproduct roster, so a blocked
+// lookup under such an arm does NOT leave coverage unestablished.
+fn match_arm_is_irrefutable(arm: Node) -> Bool {
+  match_pattern_is_irrefutable(pattern: arm_pattern(n: arm))
+}
+
+// The verdict for a match whose scrutinee's coproduct/field lookup is BLOCKED
+// (the scrutinee is a compiler-error node). Coverage cannot be enumerated, so
+// the verdict is Unknown UNLESS an irrefutable arm already covers the whole
+// domain, in which case the match is genuinely Exhaustive.
+fn blocked_scrutinee_exhaustiveness_verdict(
+  arms: List<Node>,
+  scrutinee_node: Node,
+  env: TypeEnv
+) -> ExhaustivenessVerdict {
+  if any(arms, a => match_arm_is_irrefutable(arm: a)) {
+    VerdictExhaustive
+  } else {
+    VerdictUnknown { scrutinee: scrutinee_verdict_name(scrutinee_node: scrutinee_node, env: env) }
+  }
+}
+
+// THE TWO CLOSED ARMS' CONSUMER. The blocked answer from
+// `lookup_variant_in_type` / `lookup_field_in_variant` used to be swallowed by
+// `constructor_fields` (`LookupFailed => []`) and by the caller's
+// `PatternLookupBlocked => []` short-circuit. This is the single place that
+// turns "blocked" into a refusal: it computes the three-way verdict and REFUSES
+// the Unknown verdict into the accepted artifact (a blocking `ExhaustivenessUnknown`
+// error node, SeverityError / GateBlocking in the 00_core disposition table) so a
+// blocked match cannot flow into an accepted executable artifact as success.
+fn blocked_scrutinee_exhaustiveness_diags(
+  arms: List<Node>,
+  scrutinee_node: Node,
+  env: TypeEnv,
+  span: SourceSpan,
+  module_name: String
+) -> List<ErrorNode> {
+  match blocked_scrutinee_exhaustiveness_verdict(arms: arms, scrutinee_node: scrutinee_node, env: env) {
+    VerdictExhaustive => []
+    VerdictNonExhaustive { missing: _ } => []
+    VerdictUnknown { scrutinee: scrutinee } => [make_error_node(
+      diagnostic: ExhaustivenessUnknown { scrutinee: scrutinee, span: span },
+      module_name: module_name
+    )]
+  }
+}
+
+// The diagnostic must NAME what is unestablished and how to make it
+// establishable. Prefer the scrutinee's authored name; when the subject is a
+// compiler-error node with no authored slice, fall back to a fixed, actionable
+// phrase (never a fabricated plausible type name).
+fn scrutinee_verdict_name(scrutinee_node: Node, env: TypeEnv) -> String {
+  let name = authored_name_at(source_indices: env.source_indices, node: scrutinee_node)
+  if name == "" { "<scrutinee: declare its concrete coproduct type>" } else { name }
 }

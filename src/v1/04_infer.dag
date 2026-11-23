@@ -241,6 +241,7 @@ import v1.compiler.infer_patterns {
   pattern_subject_from_inferred, pattern_subject_from_node,
   lookup_result_subject, pattern_binding_type,
   check_match_exhaustiveness,
+  blocked_scrutinee_exhaustiveness_diags,
   node_is_never_declaration,
   constructor_roster_for,
   ConstructorRoster, ConstructorsClosed, ConstructorsOpen,
@@ -12409,7 +12410,13 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             module_name: scope.module_name
           )
         PatternDynamic { span: _ } => []
-        PatternLookupBlocked => []
+        PatternLookupBlocked => blocked_scrutinee_exhaustiveness_diags(
+        arms: typed_arms,
+        scrutinee_node: scrut_typed,
+        env: scope.type_env,
+        span: span,
+        module_name: scope.module_name
+      )
       }
       let unresolved_present_arm_diags = match resolve_pattern_subject(scope: scope, scrutinee_subject: scrut_subject) {
         PatternLookupBlocked => present_arms_over_unresolved_scrutinee(arms: typed_arms, span: span, module_name: scope.module_name)
