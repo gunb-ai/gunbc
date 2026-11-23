@@ -3278,6 +3278,22 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "compiler-guarantee", contribution: "A witness's verdict does not depend on how much of the tree the run loaded."),
     ),
     roadmap_node(
+      identity: "rn_RS81HSP5Y9RCE4TE935FXJE1PM",
+      id: "seed-claim-loader-loads-modeled-realization-callees",
+      owner: "self-host",
+      carriers: carrier(path: "src/v1/stage0/src/v1_interpreter.rs"),
+      line: ticket(t: fields(
+        headline: "The seed's per-function claim loader puts the modeled-realization dispatcher's callees in the run's index",
+        boundary: "GATED on the operator's pending ruling on seed growth; not staffed and not dispatchable until that ruling is recorded by the operator. Measured by warm-fox-517 on srv1 under heavy-slot (PR 16912 head e11f468a merged with main 6d2115d1, gunbc 145e3307, claim_batch 3dd86534): the per-function run of two_contenders_for_one_unit_get_one_hold FAILs with REAL_EXIT=1 on main and on the branch, while the whole-tree claim_batch PASSes on both. The branch-side change does not close it, so the repair is on the seed side: the loader that builds a per-function run's index. This row owns that seed-side loader; per-function-claim-run-loads-string-dispatched-names keeps the verdict (the per-function run agrees with the whole-tree one) and depends on this row. v1 is semantics-frozen (gunbc.v1.v1_maintenance_standing::v1_seed_standing): a seed change is admitted only when it serves the v2 self-host program, and a SeedGrowthJustification (gunbc.seed_growth::SeedGrowthJustification) is owed with the change. The carrier is the seed interpreter named in the sibling row; the exact loader function is to be verified by the worker.",
+        displaced_cost: "Every affected control runs only as a whole-tree claim_batch (about 15 GiB and 30 minutes on #16519), and a per-function false failure reads as a real one.",
+        first_slice: "Verify the loader entry point on the sibling row's carrier, then make the run's loaded index contain the functions the dispatcher looks up by name, with a SeedGrowthJustification naming the dissolution trigger.",
+        red_control: "OPEN: red_at and green_at are not yet measured. The measured disagreement to turn green is two_contenders_for_one_unit_get_one_hold: per-function REAL_EXIT=1 and whole-tree claim_batch PASS, at the same sha, on main (gunbc 145e3307, claim_batch 3dd86534). Green is the per-function run passing and agreeing with the whole-tree verdict.",
+        out_of_scope: "Any change to the dispatcher's semantics, the whole-tree claim_batch memory cost, and the branch-side change of PR 16912.",
+        handback: "The loader change with its SeedGrowthJustification, the per-function run and the whole-tree run agreeing at one sha, and the v1 standing classification."
+      )),
+      parent: in_project(project: "compiler-guarantee", contribution: "A witness's verdict does not depend on how much of the tree the run loaded."),
+    ),
+    roadmap_node(
       identity: "rn_P9G8YTMA3YVQTW194Z3MBG3RM8",
       id: "list-append-refuses-an-element-argument",
       owner: "compiler-guarantee",
@@ -8741,6 +8757,7 @@ fn guarantee_ladder_edges() -> List<RoadmapEdge> {
     edge(child: "parse-comment-gap-attachment-v2", parent: "parse-comment-gap-attachment"),
     edge(child: "v2-parse-final-token-retained", parent: "parse-node-source-extent"),
     edge(child: "p256-verify-cost-cut", parent: "v1-interpreter-p256-verify-cost-shape"),
+    edge(child: "per-function-claim-run-loads-string-dispatched-names", parent: "seed-claim-loader-loads-modeled-realization-callees"),
   ]
 }
 
