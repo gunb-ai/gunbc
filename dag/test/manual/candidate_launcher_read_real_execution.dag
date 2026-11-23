@@ -40,7 +40,7 @@ import gunbc.roadmap.roadmap_event_carrier {
   roadmap_event_carrier_ci_layout, roadmap_event_carrier_layout,
   roadmap_events_read_all, carrier_exec_program, RoadmapAllEventsRead, AllEventsRead, AllEventsReadRefused,
   CarrierExec, CarrierExecOk, CarrierExecFailed, CarrierSnapshotClose, SnapshotClosed, SnapshotNotOpened, SnapshotCloseFailed, SnapshotCloseVerificationFailed,
-  roadmap_event_scratch_dir_presence,
+  roadmap_event_scratch_dir_presence, roadmap_event_scratch_close, RoadmapEventCarrierScopedLayout, CloseVerifyRegistrationPersists, carrier_close_verification_reason,
 }
 import extdeps.filesystem.filesystem_io { FilesystemEntryPresence, FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused }
 import gunbc.roadmap.roadmap_event_log { RoadmapEventEnvelope }
@@ -118,9 +118,13 @@ fn launcher_ref_presence_tag(presence: LauncherRefPresence) -> String {
 
 // THE LAUNCHER LAYOUT, built through the REAL roadmap_event_carrier_ci_layout (so reverting that layout turns the
 // control red), wrapped in the ScopedDetached arm of the read boundary it is read through.
-fn launcher_layout_for(runner: String) -> RoadmapEventCarrierRead {
+fn launcher_scoped_layout_for(runner: String) -> RoadmapEventCarrierScopedLayout {
   let service_layout = roadmap_event_carrier_layout(repo_root: runner as FilePath, instance_root: runner, git_program: "git", directory_program: "install")
-  CarrierReadScopedDetached { scoped: roadmap_event_carrier_ci_layout(checkout_root: runner as FilePath, instance_layout: service_layout) }
+  roadmap_event_carrier_ci_layout(checkout_root: runner as FilePath, instance_layout: service_layout)
+}
+
+fn launcher_layout_for(runner: String) -> RoadmapEventCarrierRead {
+  CarrierReadScopedDetached { scoped: launcher_scoped_layout_for(runner: runner) }
 }
 
 // Count runner worktree registrations by parsing `git worktree list --porcelain -z` NUL records, not by substring
@@ -193,6 +197,15 @@ fn launcher_prune(runner: String) -> Bool {
   }
 }
 
+// Run EVERY cleanup step and combine the results — never && -chain, which short-circuits: if prune returned
+// false the base removal never ran and the whole controlled tree leaked. Each step runs, then the outcomes
+// are AND-ed, so a failed prune still removes the base and the failure is still reported.
+fn launcher_cleanup_all(runner: String, base: String) -> Bool {
+  let pruned = launcher_prune(runner: runner)
+  let removed = shell.Remove.RecursiveForce(path: base).success
+  pruned && removed
+}
+
 // CONTROL 1 — the real launcher read, TWICE, one checkout, origin unchanged.
 fn launcher_control_repeats_and_cleans_up(repo: String) -> String {
   let c = launcher_build_controlled(repo: repo, base_name: "launcher-repeat")
@@ -248,7 +261,9 @@ fn launcher_control_branch_attached_lifecycle_collides(repo: String) -> String {
       // Under the branch-attached lifecycle the named branch is ATTACHED in the runner — the corrected assertion
       // must report it PRESENT here, where control 1 reported it ABSENT.
       let branch_state = launcher_ref_presence(workdir: c.runner, ref: "refs/heads/roadmap-events")
-      let cleaned = shell.Remove.RecursiveForce(path: mk1.path).success && shell.Remove.RecursiveForce(path: mk2.path).success && launcher_prune(runner: c.runner) && shell.Remove.RecursiveForce(path: c.base).success
+      let removed_mk1 = shell.Remove.RecursiveForce(path: mk1.path).success
+      let removed_mk2 = shell.Remove.RecursiveForce(path: mk2.path).success
+      let cleaned = removed_mk1 && removed_mk2 && launcher_cleanup_all(runner: c.runner, base: c.base)
       let ok = first_read && !second_read && registry_now > 0 && branch_state == RefPresent && cleaned
       if ok { "PASS" } else { control_result(ok: false, note: join(["first_read:", to_string(value: if first_read { 1 } else { 0 }), " second_read:", to_string(value: if second_read { 1 } else { 0 }), " registry:", to_string(value: registry_now), " branch:", launcher_ref_presence_tag(presence: branch_state), " cleaned:", to_string(value: if cleaned { 1 } else { 0 })], "") ) }
     }
@@ -272,7 +287,7 @@ fn launcher_control_two_readers_agree(repo: String) -> String {
       let b = roadmap_events_read_all(read: launcher_layout_for(runner: runner_b))
       let ta = launcher_roster_tag(read: a.result)
       let tb = launcher_roster_tag(read: b.result)
-      let cleaned = launcher_prune(runner: c.runner) && shell.Remove.RecursiveForce(path: c.base).success
+      let cleaned = launcher_cleanup_all(runner: c.runner, base: c.base)
       let ok = ta != "" && launcher_is_rendered(read: a.result) && ta == tb && cleaned
       if ok { "PASS" } else { control_result(ok: false, note: join(["readerA:", ta, " readerB:", tb, " cleaned:", to_string(value: if cleaned { 1 } else { 0 })], "") ) }
     }
@@ -294,7 +309,7 @@ fn launcher_control_ref_assertion_discriminates(repo: String) -> String {
     // Now the prohibited operand: fetch that DOES map the branch. Same assertion must catch it.
     let forced = match launcher_git(workdir: c.runner, args: ["fetch", "-q", "origin", "roadmap-events:roadmap-events"]) { CarrierExecOk { stdout: _ } => true CarrierExecFailed { exit_code: _, stderr: _ } => false }
     let after_forced = launcher_ref_presence(workdir: c.runner, ref: "refs/heads/roadmap-events")
-    let cleaned = launcher_prune(runner: c.runner) && shell.Remove.RecursiveForce(path: c.base).success
+    let cleaned = launcher_cleanup_all(runner: c.runner, base: c.base)
     let scoped_read = launcher_is_rendered(read: scoped.result)
     let ok = scoped_read && after_scoped == RefAbsent && forced && after_forced == RefPresent && cleaned
     if ok { "PASS" } else { control_result(ok: false, note: join(["scoped_rendered:", to_string(value: if scoped_read { 1 } else { 0 }), " after_scoped:", launcher_ref_presence_tag(presence: after_scoped), " forced_ok:", to_string(value: if forced { 1 } else { 0 }), " after_forced:", launcher_ref_presence_tag(presence: after_forced), " cleaned:", to_string(value: if cleaned { 1 } else { 0 })], "") ) }
@@ -323,7 +338,7 @@ fn launcher_control_failed_add_is_cleaned_up(repo: String) -> String {
       let read = roadmap_events_read_all(read: launcher_layout_for(runner: c.runner))
       let step = launcher_refusal_step(read: read.result)
       let registry_after = launcher_registry_count(runner: c.runner)
-      let cleaned = launcher_prune(runner: c.runner) && shell.Remove.RecursiveForce(path: c.base).success
+      let cleaned = launcher_cleanup_all(runner: c.runner, base: c.base)
       // The read must REFUSE at the snapshot step (the add failed), the close must report a real Closed (it
       // verified the registration AND the directory are gone — never SnapshotNotOpened for state that existed),
       // and the runner must hold no registration.
@@ -391,6 +406,59 @@ fn launcher_control_dir_presence_distinguishes_unreadable() -> String {
   }
 }
 
+// Short summary of a close standing, for control diagnostics.
+fn launcher_close_tag(close: CarrierSnapshotClose) -> String {
+  match close {
+    SnapshotClosed => "closed"
+    SnapshotNotOpened => "not-opened"
+    SnapshotCloseFailed { worktree: _, exit_code, stderr: _ } => join(["close-failed:", to_string(value: exit_code)], "")
+    SnapshotCloseVerificationFailed { worktree: _, verification } => join(["unverified:", carrier_close_verification_reason(verification: verification)], "")
+  }
+}
+
+// CONTROL 7 — WORKTREE IDENTITY under a symlinked TMPDIR. git canonicalizes a worktree path when it registers
+// it, so under a symlinked scratch root the mktemp SPELLING is not what `worktree list` records. The pre-fix
+// verifier compared the registration to the SPELLING, so a surviving registration compared unequal, read as
+// absent, and the close minted a FALSE SnapshotClosed -- the reviewer reproduced this with real git and mktemp.
+// Here a DETACHED worktree is added via a symlink path (git records the canonical path), LOCKED so removal and
+// prune both refuse, and the REAL roadmap_event_scratch_close is driven on the symlink spelling: the directory
+// is removed, but the locked canonical registration survives, so a correct verifier must report a LEAK, not
+// Closed. RED on the spelling-comparing verifier (which saw no registration and said closed); GREEN on the
+// canonical-identity verifier (which finds the registration and reports CloseVerifyRegistrationPersists).
+fn launcher_control_symlinked_tmpdir_locked_worktree_is_caught(repo: String) -> String {
+  let c = launcher_build_controlled(repo: repo, base_name: "launcher-symlock")
+  if !c.ok {
+    let _ = shell.Remove.RecursiveForce(path: c.base)
+    control_result(ok: false, note: join(["controlled build failed: ", c.note], ""))
+  } else {
+    let made = launcher_exec(program: "mkdir", workdir: c.base, args: ["-p", "realdir"])
+    let linked = launcher_exec(program: "ln", workdir: c.base, args: ["-s", "realdir", "link"])
+    if !launcher_exec_ok(e: made) || !launcher_exec_ok(e: linked) {
+      let _ = shell.Remove.RecursiveForce(path: c.base)
+      control_result(ok: false, note: "symlinked scratch root not set up")
+    } else {
+      // base/link -> base/realdir, so base/link/wt and base/realdir/wt are the SAME directory reached two ways;
+      // git records the canonical (realdir) spelling while we hand the close the symlink (link) spelling.
+      let wt_spelling = join([c.base, "/link/wt"], "")
+      let added = match launcher_git(workdir: c.runner, args: ["worktree", "add", "--detach", wt_spelling, "HEAD"]) { CarrierExecOk { stdout: _ } => true CarrierExecFailed { exit_code: _, stderr: _ } => false }
+      let locked = match launcher_git(workdir: c.runner, args: ["worktree", "lock", wt_spelling]) { CarrierExecOk { stdout: _ } => true CarrierExecFailed { exit_code: _, stderr: _ } => false }
+      // Drive the REAL cleanup + verifier route on the symlink spelling.
+      let close = roadmap_event_scratch_close(scoped: launcher_scoped_layout_for(runner: c.runner), path: wt_spelling as FilePath)
+      let _ = launcher_git(workdir: c.runner, args: ["worktree", "unlock", wt_spelling])
+      let cleaned = launcher_cleanup_all(runner: c.runner, base: c.base)
+      let is_leak = match close {
+        SnapshotCloseVerificationFailed { worktree: _, verification: CloseVerifyRegistrationPersists } => true
+        SnapshotClosed => false
+        SnapshotNotOpened => false
+        SnapshotCloseFailed { worktree: _, exit_code: _, stderr: _ } => false
+        SnapshotCloseVerificationFailed { worktree: _, verification: _ } => false
+      }
+      let ok = added && locked && is_leak && cleaned
+      if ok { "PASS" } else { control_result(ok: false, note: join(["added:", to_string(value: if added { 1 } else { 0 }), " locked:", to_string(value: if locked { 1 } else { 0 }), " is_leak:", to_string(value: if is_leak { 1 } else { 0 }), " cleaned:", to_string(value: if cleaned { 1 } else { 0 }), " close:", launcher_close_tag(close: close)], "") ) }
+    }
+  }
+}
+
 // A raw program run in a workdir (git via launcher_git; cp/mkdir here), returning the typed CarrierExec so the
 // exit status is available.
 fn launcher_exec(program: String, workdir: String, args: List<String>) -> CarrierExec {
@@ -410,6 +478,7 @@ fn candidate_launcher_read_real_execution(repo: String) -> ProcessExit {
   let four = launcher_control_ref_assertion_discriminates(repo: repo)
   let five = launcher_control_failed_add_is_cleaned_up(repo: repo)
   let six = launcher_control_dir_presence_distinguishes_unreadable()
-  if one == "PASS" && two == "PASS" && three == "PASS" && four == "PASS" && five == "PASS" && six == "PASS" { ExitSuccess }
-  else { exit_failure(reason: join(["launcher real-read controls failed\nobserved: 1:", one, " 2:", two, " 3:", three, " 4:", four, " 5:", five, " 6:", six, "\n(all six must PASS)\n"], "")) }
+  let seven = launcher_control_symlinked_tmpdir_locked_worktree_is_caught(repo: repo)
+  if one == "PASS" && two == "PASS" && three == "PASS" && four == "PASS" && five == "PASS" && six == "PASS" && seven == "PASS" { ExitSuccess }
+  else { exit_failure(reason: join(["launcher real-read controls failed\nobserved: 1:", one, " 2:", two, " 3:", three, " 4:", four, " 5:", five, " 6:", six, " 7:", seven, "\n(all seven must PASS)\n"], "")) }
 }

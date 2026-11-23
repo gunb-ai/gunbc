@@ -421,6 +421,7 @@ type CarrierCloseVerification
   = CloseVerifyRegistrationPersists
   | CloseVerifyDirectoryPersists
   | CloseVerifyDirectoryPresenceUnobservable { reason: String }
+  | CloseVerifyIdentityUnestablished { reason: String }
 
 type CarrierSnapshotClose
   = SnapshotNotOpened
@@ -460,6 +461,7 @@ fn carrier_close_verification_reason(verification: CarrierCloseVerification) -> 
     CloseVerifyRegistrationPersists => "the worktree registration is still listed by `worktree list --porcelain -z` after the removals"
     CloseVerifyDirectoryPersists => "the scratch directory is still present after the removals"
     CloseVerifyDirectoryPresenceUnobservable { reason } => join(["the scratch directory's absence is not established: ", reason], "")
+    CloseVerifyIdentityUnestablished { reason } => join(["the scratch's registered identity could not be established: ", reason], "")
   }
 }
 
@@ -991,36 +993,75 @@ fn roadmap_event_scratch_sync(scoped: RoadmapEventCarrierScopedLayout, path: Fil
 // what remains. So a cleanup that did not happen is reported as a leak, and a nothing-to-remove is reported
 // honestly as closed, and SnapshotNotOpened is never claimed from here.
 fn roadmap_event_scratch_close(scoped: RoadmapEventCarrierScopedLayout, path: FilePath) -> CarrierSnapshotClose {
-  let _ = carrier_exec_program(program: scoped.git_program, workdir: scoped.repo_root as String, args: ["worktree", "remove", "--force", path as String])
-  let _ = carrier_exec_program(program: scoped.git_program, workdir: scoped.repo_root as String, args: ["worktree", "prune"])
-  let _ = shell.Remove.RecursiveForce(path: path)
-  // The verdict is the established END STATE, not the exit codes of the removals above: a cleanup
-  // that did not run is caught here, and a nothing-to-remove is not misreported. Absence must be
-  // ESTABLISHED for both halves; an unobservable half is a typed verification failure, never closed.
-  if roadmap_event_scratch_registration_present(scoped: scoped, path: path) {
-    SnapshotCloseVerificationFailed { worktree: path, verification: CloseVerifyRegistrationPersists }
-  } else {
-    match roadmap_event_scratch_dir_presence(path: path) {
-      FilesystemEntryAbsent(_) => SnapshotClosed
-      FilesystemEntryListed { directory: _, name: _ } =>
-        SnapshotCloseVerificationFailed { worktree: path, verification: CloseVerifyDirectoryPersists }
-      FilesystemEntryPresenceIndeterminate { cause } =>
-        SnapshotCloseVerificationFailed { worktree: path, verification: CloseVerifyDirectoryPresenceUnobservable { reason: cause } }
-      FilesystemEntrySubjectRefused { cause } =>
-        SnapshotCloseVerificationFailed { worktree: path, verification: CloseVerifyDirectoryPresenceUnobservable { reason: join(["the scratch path was not an admissible listing subject: ", cause], "") } }
+  // ESTABLISH THE IDENTITY GIT REGISTERED THIS WORKTREE UNDER, WHILE THE SCRATCH STILL EXISTS. git canonicalizes
+  // a worktree path at `add` time, so under a symlinked TMPDIR (e.g. /tmp -> /private/tmp, or any symlinked
+  // component) the mktemp SPELLING is not the string `worktree list` records. Verifying the registration against
+  // the spelling compares a surviving (locked) registration to the wrong string, calls it absent, and mints a
+  // FALSE SnapshotClosed -- reproduced with real git and mktemp. Establish the canonical path HERE, while the
+  // scratch exists, and carry it into the removals and the verification; NEVER realpath after removal, when the
+  // path would be gone. If it cannot be established, verification is UNOBSERVABLE -- never Closed.
+  match canonical_scratch_identity(scoped: scoped, scratch: path) {
+    ScratchIdentityUnestablishable { reason } =>
+      SnapshotCloseVerificationFailed { worktree: path, verification: CloseVerifyIdentityUnestablished { reason: reason } }
+    ScratchIdentityEstablished { canonical } => {
+      let canonical_path = canonical as FilePath
+      let _ = carrier_exec_program(program: scoped.git_program, workdir: scoped.repo_root as String, args: ["worktree", "remove", "--force", canonical])
+      let _ = carrier_exec_program(program: scoped.git_program, workdir: scoped.repo_root as String, args: ["worktree", "prune"])
+      let _ = shell.Remove.RecursiveForce(path: canonical_path)
+      // The verdict is the established END STATE, not the exit codes of the removals above: a cleanup that did
+      // not run is caught here, and a nothing-to-remove is not misreported. Absence must be ESTABLISHED for both
+      // halves -- registration (against the CANONICAL identity git recorded) and directory -- and an unobservable
+      // half is a typed verification failure, never closed.
+      if roadmap_event_scratch_registration_present(scoped: scoped, identity: canonical) {
+        SnapshotCloseVerificationFailed { worktree: path, verification: CloseVerifyRegistrationPersists }
+      } else {
+        match roadmap_event_scratch_dir_presence(path: canonical_path) {
+          FilesystemEntryAbsent(_) => SnapshotClosed
+          FilesystemEntryListed { directory: _, name: _ } =>
+            SnapshotCloseVerificationFailed { worktree: path, verification: CloseVerifyDirectoryPersists }
+          FilesystemEntryPresenceIndeterminate { cause } =>
+            SnapshotCloseVerificationFailed { worktree: path, verification: CloseVerifyDirectoryPresenceUnobservable { reason: cause } }
+          FilesystemEntrySubjectRefused { cause } =>
+            SnapshotCloseVerificationFailed { worktree: path, verification: CloseVerifyDirectoryPresenceUnobservable { reason: join(["the scratch path was not an admissible listing subject: ", cause], "") } }
+        }
+      }
     }
   }
 }
 
-// Is this path still a registered worktree of the runner repository? `worktree list --porcelain -z`
-// is the DOCUMENTED STABLE FORM (git-worktree(1) directs callers to it) and it is NUL-terminated:
-// a `worktree <path>` record is a single field ending at NUL, so a path containing a NEWLINE is not
-// split into two lines and missed -- which is how a newline-containing path once read as absent and
-// closed the snapshot falsely. A failure to list is treated as "present" — absence of a registration
-// must be ESTABLISHED, never assumed from a suppressed failure.
-fn roadmap_event_scratch_registration_present(scoped: RoadmapEventCarrierScopedLayout, path: FilePath) -> Bool {
+// The canonical path git will register this worktree under, established while the scratch exists. realpath
+// resolves every symlink component, so it equals git's own canonicalization. A realpath failure (missing tool,
+// vanished path, unreadable component) is NOT silent and NOT treated as a canonical value: the identity is
+// unestablishable and the close then refuses to claim Closed, rather than verifying against a guessed string.
+type CarrierScratchIdentity
+  = ScratchIdentityEstablished { canonical: String }
+  | ScratchIdentityUnestablishable { reason: String }
+
+fn canonical_scratch_identity(scoped: RoadmapEventCarrierScopedLayout, scratch: FilePath) -> CarrierScratchIdentity {
+  match carrier_exec_program(program: "realpath", workdir: scoped.repo_root as String, args: [scratch as String]) {
+    CarrierExecOk { stdout } =>
+      if trim(stdout) == "" {
+        ScratchIdentityUnestablishable { reason: "realpath returned an empty path" }
+      } else {
+        ScratchIdentityEstablished { canonical: trim(stdout) }
+      }
+    CarrierExecFailed { exit_code, stderr } =>
+      ScratchIdentityUnestablishable { reason: join(["realpath exit ", to_string(value: exit_code), ": ", trim(stderr)], "") }
+  }
+}
+
+// Is the CANONICAL identity still a registered worktree of the runner repository? `identity` is the path git
+// will have REGISTERED — the CANONICAL (realpath) spelling, established by the caller while the scratch exists.
+// git canonicalizes a worktree path at `add` time, so under a symlinked TMPDIR the mktemp spelling is NOT what
+// `worktree list` names; comparing against the spelling would miss a surviving registration and close falsely.
+// `worktree list --porcelain -z` is the DOCUMENTED STABLE FORM (git-worktree(1) directs callers to it) and it is
+// NUL-terminated: a `worktree <path>` record is a single field ending at NUL, so a path containing a NEWLINE is
+// not split and missed -- which is how a newline-containing path once read as absent and closed the snapshot
+// falsely. A failure to list is treated as "present" — absence of a registration must be ESTABLISHED, never
+// assumed from a suppressed failure.
+fn roadmap_event_scratch_registration_present(scoped: RoadmapEventCarrierScopedLayout, identity: String) -> Bool {
   match carrier_exec_program(program: scoped.git_program, workdir: scoped.repo_root as String, args: ["worktree", "list", "--porcelain", "-z"]) {
-    CarrierExecOk { stdout } => any(split(s: stdout, delimiter: "\u{0}"), l => l == join(["worktree ", path as String], ""))
+    CarrierExecOk { stdout } => any(split(s: stdout, delimiter: "\u{0}"), l => l == join(["worktree ", identity], ""))
     CarrierExecFailed { exit_code: _, stderr: _ } => true
   }
 }
