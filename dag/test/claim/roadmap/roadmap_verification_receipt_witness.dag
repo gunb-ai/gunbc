@@ -94,7 +94,7 @@ fn exact_head_receipt(head: CommitSha) -> VerificationReceipt {
       },
     ],
     verdict: ValidationPassed {
-      command: "/opt/gunbc/bin/gunbc run --claim-run",
+      command: "/opt/gunbc/bin/gunbc test",
       oracle_identity: content_hash_of_value(value: "pinned-oracle"),
     },
   }

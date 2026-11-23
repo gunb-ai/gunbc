@@ -133,7 +133,7 @@ test fn claim_validation_projects_exact_typed_argv() -> Bool {
   ) {
     Present { value: command } =>
       command.program == ("/opt/gunbc/bin/gunbc" as FilePath)
-        && join(command.args, " ") == "run --source-root dag --source-root src/v2 --entry dag/test/claim/example_test.dag --function example_holds --claim-run"
+        && join(command.args, " ") == "test --source-root dag --source-root src/v2 //test/claim/example_test:example_holds"
     Absent => false
   }
 }

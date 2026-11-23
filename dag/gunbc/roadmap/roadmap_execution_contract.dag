@@ -6,6 +6,7 @@ import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution }
 import std.decl_ref { decl_ref }
 import gunbc.ensure { EnsurePolicy }
+import gunbc.instruments.host_prelude { ClaimOperand, ClaimOperandUnnameable, claim_identity_operand }
 import extdeps.languages.json.emit {
   JsonValue,
   json_kv,
@@ -521,18 +522,21 @@ fn validation_operation_command(
         capability: GunbcClaimRunnerCapability,
       ) {
         Present { value: realization } =>
-          Present { value: ModeledValidationCommand {
-            label: "gunbc-claim" as NonEmptyStr,
-            program: realization.executable,
-            args: concat(
-              concat(["run"], claim_source_root_args(layout: source_roots)),
-              [
-                "--entry", entry as String,
-                "--function", function as String,
-                "--claim-run",
-              ],
-            ),
-          } }
+          match claim_identity_operand(
+            entry: entry as String,
+            function: function as String,
+          ) {
+            ClaimOperand { label: claim_label } =>
+              Present { value: ModeledValidationCommand {
+                label: "gunbc-claim" as NonEmptyStr,
+                program: realization.executable,
+                args: concat(
+                  concat(["test"], claim_source_root_args(layout: source_roots)),
+                  [claim_label],
+                ),
+              } }
+            ClaimOperandUnnameable { entry: _, function: _, reason: _ } => none
+          }
         Absent => none
       }
     CargoTestValidation { filter } =>
