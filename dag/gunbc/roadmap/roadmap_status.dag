@@ -138,7 +138,16 @@ fn red_observation_holds(o: RedObservation) -> Bool {
 // red-control/<row-id>: exactly one slash, the fixed prefix, a nonempty row id with no space.
 fn red_probe_ref_holds(ref: String) -> Bool {
   let parts = split(s: ref, delimiter: "/")
-  count(parts) == 2 && parts[0] == "red-control" && parts[1] != "" && !string_contains(s: parts[1], pattern: " ")
+  if count(parts) != 2 { false } else {
+    match parts.first() {
+      Absent => false
+      Present { value: prefix } =>
+        match parts.skip(n: 1).first() {
+          Absent => false
+          Present { value: row } => prefix == "red-control" && row != "" && !string_contains(s: row, pattern: " ")
+        }
+    }
+  }
 }
 
 // ONE CONSTRUCTOR FROM THE UNTYPED EDGE (CLI, form): both red_base and probe_ref absent is the on-main kind,
