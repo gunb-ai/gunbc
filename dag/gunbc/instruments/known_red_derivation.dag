@@ -29,15 +29,18 @@ import extdeps.git.object_store { git_object_id_from_untagged_hex }
 import std.content_hash { Fnv1a64Structural, content_hash_atom }
 import gunbc.output_policy { ExpectSuccess }
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
+import gunbc.gunbc_cli_command { TestBatchMode, WetBatch, HermeticBatch }
+import gunbc.ci.ci_release_bins { gunbc_release_bin_name }
 import gunbc.instruments.host_prelude {
   ClaimRun,
+  TestClaimsArgv,
+  TestClaimsArgvBuilt,
+  TestClaimsArgvRefused,
   WitnessBinReadiness,
   WitnessBinRefusalReason,
-  claim_batch_claims_argv,
-  // Declared rather than left to same-package resolution: this is the builder whose argv the fold's parsed
-  // stdout is matched against, so a reader of the import list should not have to guess that the dispatch and
-  // the gate share it (review 83981).
-  claim_batch_claims_argv_route,
+  // The single v1 claim entrypoint's argv builder and its sum: the fold's parsed located-line stdout is matched
+  // against this argv, so the dispatch and the gate share one builder (the cutover's one-entrypoint ruling).
+  gunbc_test_claims_argv,
   gunbc_claims_readiness,
   witness_bin_release_path
 }
@@ -742,37 +745,52 @@ fn known_red_entries_owed(placed: List<KnownRedPlacedSubject>) -> Int {
   length(xs: known_red_entry_groups(placed: placed))
 }
 
-// THE SPAWN, THROUGH THE READINESS GATE. `gunbc_claims_readiness` is the gate: a binary that is
-// unenrolled, unbuilt, absent, empty, or not executable is a refusal the caller can NAME, not a child that
-// silently never started. `witness_bin_release_path` is the same path the gate checked, and
-// `claim_batch_claims_argv_route` is the same builder the gate's pooled call uses, so what is parsed below
-// is exactly what was executed and the receipt cannot be filed against a different binary. THE ROUTE IS THE
-// PLAN'S, NOT THE BUILDER'S DEFAULT: the wet lane is asked `--wet`, the `floor_expected_red` roster's own
-// subjects on the hermetic route (the roster's governing route), so no subject is ever run on a route its
-// expectation does not govern. `Invoked` still carries only the claims, because verdict matching is by
-// `(entry, function)` and the lane was the spawn-time decision it no longer needs.
+// THE SPAWN, THROUGH THE READINESS GATE. `gunbc_claims_readiness` is the gate: a binary that is unenrolled,
+// unbuilt, absent, empty, or not executable is a refusal the caller can NAME, not a child that silently never
+// started. `witness_bin_release_path` derives the SAME path the gate checked and from the SAME roster name, so
+// what is parsed below is exactly what was executed and the receipt cannot be filed against a different
+// binary. THE ROUTE IS THE PLAN'S, NOT THE BUILDER'S DEFAULT: the wet lane is asked `--wet`, the
+// `floor_expected_red` roster's own subjects on the hermetic route, so no subject is ever run on a route its
+// expectation does not govern. A row that `gunbc_test_claims_argv` refuses (a function that is not a module of
+// the claim universe) is carried as an un-started child with its reason -- it never silently vanishes into an
+// empty list. `Invoked` still carries only the claims, because verdict matching is by `(entry, function)` and
+// the lane was the spawn-time decision it no longer needs.
 fn known_red_run_child(root: String, plan: KnownRedChildPlan) -> KnownRedChildRun {
-  let result = gunbc.WitnessBin.Run(
-    workdir: root,
-    bin_path: witness_bin_release_path(root: root, bin_name: "claim_batch"),
-    args: claim_batch_claims_argv_route(
-      source_roots: witness_layer_roots(),
-      claims: plan.claims,
-      mode: known_red_subject_population_execution_mode(p: plan.lane)
-    ),
-    stderr_capture: BoundedTail { bytes: known_red_stderr_tail }
-  )
-  Invoked {
+  match gunbc_test_claims_argv(
+    source_roots: witness_layer_roots(),
     claims: plan.claims,
-    exit_code: result.exit_code,
-    stdout: result.stdout,
-    // THE TRUNCATION FLAG IS SPOKEN, NOT DISCARDED. A cause text printed as if it were the harness's whole
-    // message would misrepresent the evidence when the tail was cut, so the fact travels with the text.
-    stderr: known_red_stderr_text(
-      text: result.stderr,
-      truncated: result.stderr_truncated,
-      total: result.stderr_total_bytes
-    )
+    mode: known_red_subject_population_batch_mode(p: plan.lane)
+  ) {
+    TestClaimsArgvRefused { entry: _, function: _, reason: reason } =>
+      known_red_uninvoked_child(claims: plan.claims, cause: concat("route argv refused: ", reason))
+    TestClaimsArgvBuilt { argv: argv } => {
+      let result = gunbc.WitnessBin.Run(
+        workdir: root,
+        bin_path: witness_bin_release_path(root: root, bin_name: gunbc_release_bin_name),
+        args: argv,
+        stderr_capture: BoundedTail { bytes: known_red_stderr_tail }
+      )
+      Invoked {
+        claims: plan.claims,
+        exit_code: result.exit_code,
+        stdout: result.stdout,
+        // THE TRUNCATION FLAG IS SPOKEN, NOT DISCARDED. A cause text printed as if it were the harness's whole
+        // message would misrepresent the evidence when the tail was cut, so the fact travels with the text.
+        stderr: known_red_stderr_text(
+          text: result.stderr,
+          truncated: result.stderr_truncated,
+          total: result.stderr_total_bytes
+        )
+      }
+    }
+  }
+}
+
+// THE LANE'S ROUTE, as the route's own batch mode rather than `claim_batch`'s flag axis.
+fn known_red_subject_population_batch_mode(p: KnownRedSubjectPopulation) -> TestBatchMode {
+  match p {
+    WetLane => WetBatch
+    RequiredFloor => HermeticBatch
   }
 }
 
@@ -1997,33 +2015,25 @@ fn known_red_entry_exists(entry: String) -> Bool {
   shell.Test.IsFile(path: entry, expect: ExpectSuccess).is_file
 }
 
-// THE SHAPE THE HARNESS REFUSES: its builder carries one --entry and one --function per ClaimRun, so a
-// row whose qualified name does not split, or whose function is empty, is refused. Derived from the
-// builder's OWN output (it must emit both flags and exactly one pair), never from a predicate here.
-// THE WELL-FORMEDNESS TEST RUNS ON THE SUBJECT, BEFORE IT IS PLACED, because it asks whether the harness's
-// own builder would carry the row at all -- and it builds the argv from the placement the subject already
-// carries. Feeding it a `KnownRedPlacedSubject` would make the test unfalsifiable: by the time a subject is
-// placed its path exists, so an empty function would be the only thing left to catch.
+// THE SHAPE THE ROUTE REFUSES: `gunbc_test_claims_argv` is the single entrypoint's own builder and it refuses a
+// row whose qualified name does not resolve to a module of the claim universe (the row and reason arrive on the
+// Refused arm). Well-formedness is therefore read off the route's OWN verdict -- Built carries the row, Refused
+// does not -- derived from the builder's output, never from a predicate here. THE TEST RUNS ON THE SUBJECT,
+// BEFORE IT IS PLACED, because it asks whether the route's builder would carry the row at all; feeding it a
+// `KnownRedPlacedSubject` would make it unfalsifiable (by placement the path already exists).
 fn known_red_argv_is_well_formed(subject: KnownRedSubject) -> Bool {
   match subject.entry {
     Placed { path: p } =>
-      known_red_has_pair(
-        argv: claim_batch_claims_argv(
-          source_roots: witness_layer_roots(),
-          claims: [ClaimRun { entry: p, function: subject.function }]
-        )
-      )
+      match gunbc_test_claims_argv(
+        source_roots: witness_layer_roots(),
+        claims: [ClaimRun { entry: p, function: subject.function }],
+        mode: HermeticBatch
+      ) {
+        TestClaimsArgvBuilt { argv: _ } => true
+        TestClaimsArgvRefused { entry: _, function: _, reason: _ } => false
+      }
     Underivable { name: _, cause: _ } => false
   }
-}
-
-fn known_red_has_pair(argv: List<String>) -> Bool {
-  known_red_has_flag(argv: argv, flag: "--entry")
-    && known_red_has_flag(argv: argv, flag: "--function")
-}
-
-fn known_red_has_flag(argv: List<String>, flag: String) -> Bool {
-  length(xs: filter(xs: argv, predicate: fn(a) { a == flag })) == 1
 }
 
 // WHY NEITHER ARM IS FILTERED. A dropped subject is the exact bug class this file exists to make loud:

@@ -224,10 +224,14 @@ type ClaimRun {
 }
 
 fn gunbc_claims_readiness() -> WitnessBinReadiness {
+  // STEP 5 cutover: the single v1 claim entrypoint is `gunbc test`, so the readiness gate probes the SAME
+  // binary the pooled spawn executes (`gunbc_release_bin_name`), not the retired `claim_batch`. Before this
+  // the gate probed `claim_batch` while `run_gunbc_claims_ready` spawned `gunbc` -- spawn and probe disagreed;
+  // one entrypoint means one binary on both sides. This also gates the floor lane's `run_gunbc_claims`.
   let root = git.Inspect.Toplevel()
   witness_bin_ensure_built_typed(
     root: root.path,
-    bin: witness_bin(var_name: "CLAIM_BATCH", bin_name: "claim_batch")
+    bin: witness_bin(var_name: "GUNBC", bin_name: gunbc_release_bin_name)
   )
 }
 
