@@ -15,6 +15,7 @@ import extdeps.posix.test_utility {
   AncestorNotSearchable,
   AncestorSearchable,
   AncestorSearchUnreadable,
+  AncestorLinkReadingUnreadable,
   AncestorNotADirectory,
   AncestorIsNotADirectory,
   AncestorIsASymlink,
@@ -352,6 +353,56 @@ test fn a_symlinked_ancestor_never_establishes_the_absence() -> Bool {
 test fn a_symlinked_level_refuses_on_its_face() -> Bool {
   match ancestor_walk_step(path: srv1_path(), probe: symlinked_ancestor(srv1_grandparent())) {
     AncestorRefuses { reason: _ } => true
+    _ => false
+  }
+}
+
+// THE THIRD UNREADABLE LEVEL, the one the two unreadable shapes above cannot see: `test -x` AND `test -d`
+// answered for the level and its LINK probe could not be read, so what is missing is whether the level is a
+// plain searcher or a symlink answering for its referent. The verdict is a refusal either way, which is exactly
+// how the wrong cause survived: no verdict moved, only the sentence the operator is handed -- and the sentence
+// named `test -x`, a probe that had answered cleanly two readings earlier.
+// extdeps.posix.test_utility::AncestorLinkReadingUnreadable carries this case, and the operand-carrying needles
+// below are what fails if a driver folds it back into `AncestorSearchUnreadable` or the law re-words it: the
+// refusal has to name the operand that failed and must not name one that answered.
+fn unreadable_link_reading_chain() -> List<AncestorExistenceProbe> {
+  Cons {
+    head: absent_ancestor(srv1_parent()),
+    tail: Cons {
+      head: AncestorExistenceProbe {
+        ancestor: srv1_grandparent(),
+        search: AncestorLinkReadingUnreadable { reason: "test exited 2" as NonEmptyStr },
+      },
+      tail: Empty,
+    },
+  }
+}
+
+fn link_operand() -> String {
+  join(["`test -L ", srv1_grandparent()], "")
+}
+
+fn search_operand() -> String {
+  join(["`test -x ", srv1_grandparent()], "")
+}
+
+test fn an_unreadable_link_reading_refuses_naming_the_operand_that_failed() -> Bool {
+  let verdict = walk_of(unreadable_link_reading_chain())
+  refused_because(verdict, link_operand())
+    && !refused_because(verdict, search_operand())
+}
+
+test fn an_unreadable_link_level_refuses_on_its_face_naming_the_link_operand() -> Bool {
+  match ancestor_walk_step(
+    path: srv1_path(),
+    probe: AncestorExistenceProbe {
+      ancestor: srv1_grandparent(),
+      search: AncestorLinkReadingUnreadable { reason: "test exited 2" as NonEmptyStr },
+    },
+  ) {
+    AncestorRefuses { reason: r } =>
+      string_contains(s: r as String, pattern: link_operand())
+        && !string_contains(s: r as String, pattern: search_operand())
     _ => false
   }
 }

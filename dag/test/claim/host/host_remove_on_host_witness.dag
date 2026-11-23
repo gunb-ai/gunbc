@@ -680,6 +680,35 @@ test fn a_symlinked_ancestor_does_not_borrow_its_referents_search_bit() -> Bool 
   )
 }
 
+// CONTROL 4c -- THE THIRD SHAPE: `test -x` present, `test -d` present, and `test -L` NOT ANSWERED. The level
+// is still not admitted -- a directory that MIGHT be a link answering for its referent cannot vouch for the
+// entries under its own name -- so the verdict is a refusal either way, and that is exactly why the wrong
+// cause here went unseen: no verdict changed. What changed is what the operator is told. The reason used to
+// read "`test -x /p/dir` could not be read", about a level whose `test -x` had answered cleanly two probes
+// earlier, sending whoever follows it to a probe that is working. extdeps.posix.test_utility::
+// AncestorLinkReadingUnreadable is the cause that carries this shape, and this control is what fails if a
+// driver folds it back into the `-x` one or the law re-words it: the refusal must name the operand that
+// actually failed, and must not name one that answered.
+test fn an_unreadable_link_probe_refuses_naming_the_operand_that_failed() -> Bool {
+  let st = host_remove_entry_state(
+    path: "/p/dir/missing/leaf",
+    run: fn(c) {
+      probe_by_command(
+        present: ["test -x /p/dir", "test -d /p/dir"],
+        refused: ["test -L /p/dir"],
+        command: c,
+      )
+    },
+  )
+  match st {
+    HostRemovePathUnreadable { reason: r } =>
+      string_contains(s: r, pattern: "test -L /p/dir")
+        && !string_contains(s: r, pattern: "test -x /p/dir")
+    HostRemovePathPresent => false
+    HostRemovePathAbsent => false
+  }
+}
+
 // CONTROL 5 -- A RELATIVE PATH'S ABSENCE IS NEVER ESTABLISHED BY A WALK. `HostRemoveTarget` carries
 // NonEmptyStr, not an absolute path, so a relative name is an admitted input. With the probe's working
 // directory at mode 000, `a/b` reads false and `a` reads false because the directory they live in cannot
