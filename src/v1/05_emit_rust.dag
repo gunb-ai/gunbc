@@ -20371,7 +20371,12 @@ fn emit_cargo_features_section(features: List<CargoFeature>) -> String {
 
 fn cli_dispatch_field_type(sub: CliSubcommandRow, field: String) -> String {
   match cli_subcommand_generated_dispatch_operands(sub: sub) |> filter(o => o.field == field) |> first {
-    Present { value: _ } => "String"
+    Present { value: operand } => match operand.arity {
+      // The field's type is the arity's fact, the same mapping emit_modeled_operand_field
+      // writes into the clap struct -- host and surface cannot disagree by construction.
+      CliExactlyOneOperand => "String"
+      CliOneOrMoreOperands => "Vec<String>"
+    }
     Absent => match cli_subcommand_generated_dispatch_options(sub: sub) |> filter(o => o.field == field) |> first {
       Present { value: opt } => cli_option_rust_type(opt: opt)
       Absent => "compile_error!(\"REFUSED: generated CLI dispatch field has no modeled type\")"
