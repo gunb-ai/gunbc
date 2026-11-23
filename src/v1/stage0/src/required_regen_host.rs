@@ -14439,6 +14439,10 @@ mod regen_affected_set_tests {
             "the refusal is located and cause-neutral: {err}"
         );
         assert!(
+            err.contains("merge-base --all") && err.contains("failed"),
+            "the refusal carries the git cause verbatim, as the name and doc promise: {err}"
+        );
+        assert!(
             !err.contains("unrelated histories"),
             "the label must not assert one specific cause for every merge-base failure: {err}"
         );
