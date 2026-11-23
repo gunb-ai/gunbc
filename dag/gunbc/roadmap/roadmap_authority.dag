@@ -3040,6 +3040,23 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "fabric-bringup", contribution: "A host's runner slots stay healthy across its own convergence."),
     ),
     roadmap_node(
+      identity: "rn_Q3X3MA0XF1FQRFQ3D17QEYDFZ7",
+      id: "foreign-whole-root-primary-source-root-admitted",
+      owner: "self-host",
+      carriers: carrier(path: "src/v1/stage0/src/cli_run.rs"),
+      line: ticket(t: fields(
+        headline: "gunbc compile admits a whole-root primary source root from a declared foreign repository",
+        boundary: "gunbc compile admits a primary --source-root belonging to another repository when the caller declares it. Today process_workspace_root (src/v1/stage0/src/cli_run.rs; it panics when no workspace root resolves) requires a Cargo.toml and a dag/ workspace, and root-admission in compile_emission_over_inner (cli_run.rs) refuses any primary root outside it, ignoring the --repository and --measured-root-demands declaration, although the governor already joins on (repository, primary_root, dependency_pools) in whole_corpus_compile_admission (src/v1/stage0/src/memory_governor.rs). When the declared repository differs from the interpreter's own, admit a real directory of .dag modules under the process cwd and key its modules under the DECLARED repository id, so no foreign module can collide with a gunbc module path; namespace safety, not containment, is what the check protects. Blocked: ctrl's 11 whole-root compiles (9 in scripts/run-ctrl-dag-tests.sh, plus run-scheduling-gate.sh and run-image-publish-gate.sh), which pass today only because ctrl's pin 60b137cf predates both checks. Operator approved this direction (A+C) in chat on 2026-11-23; a seed change, admitted because it serves the v2 self-host program (gunbc.v1.v1_maintenance_standing::v1_seed_standing).",
+        displaced_cost: "ctrl cannot advance its gunbc pin past 60b137cf without losing eleven compiles, and carries a locus fixture in scripts/lib/gunbc_toolchain.sh as the stand-in.",
+        first_slice: "Admit the primary root when --repository is declared and differs from the interpreter's own, the root is a real directory of .dag modules, and it lies under the process cwd; key its modules under the declared repository id. Keep every other refusal as it is.",
+        red_control: "The admitting arm: a whole-root compile whose primary root is outside the workspace root, inside the cwd, declared with a foreign --repository plus a projection naming it, admits, with module paths namespaced under the declared id; RED before the change, GREEN after, as a historical before/after pair with red_at and green_at shas and exit statuses (the claim_batch built at each tree). Three refusals stay green across the change: no --repository refuses WholeCorpusCompileRepositoryUndeclared (raised in compile_emission_over_inner, cli_run.rs); a projection for another repository refuses RefusedDemandsForAnotherRepository (whole_corpus_compile_admission, memory_governor.rs); a root outside the cwd refuses. No measurement exists yet: the pair is OPEN, to be measured.",
+        out_of_scope: "Containment of foreign modules, any change to the three standing refusals, and ctrl's own pin advance (ctrl owns it).",
+        handback: "The change, the measured before/after pair for the admitting arm, the three standing refusals green at both trees, and the node id given to ctrl so it deletes its locus fixture (the R12 marker in scripts/lib/gunbc_toolchain.sh names this node) in the commit that advances its pin past this node."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "compiler-guarantee", contribution: "A seed compile admits a declared foreign root without losing its namespace refusals."),
+    ),
+    roadmap_node(
       identity: "rn_D3470QB6GPYD3PWSJMNGGMFV27",
       id: "native-emit-match-binding-keeps-its-type",
       owner: "self-host",
