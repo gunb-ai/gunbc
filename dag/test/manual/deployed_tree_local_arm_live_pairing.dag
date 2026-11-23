@@ -1,0 +1,397 @@
+module test.manual.deployed_tree_local_arm_live_pairing
+
+// THE REAL-ROUTE PAIRINGS FOR THE LOCAL ARM, executed WET against machinery this repo owns.
+//
+// WHAT THE CLAIM SUITE CANNOT DO, AND THIS DOES. dag/test/claim/live_deploy/deployed_tree_local_arm_witness.dag
+// proves everything decidable before a process is spawned -- which transport an arm selects, that the
+// admission refuses a host the kernel does not answer to, that a refusal never becomes an exit code,
+// and that two runs deliver two index paths. What it cannot prove is the thing the six-week outage was:
+// that on a real machine, with no credential agent, the REAL admission and the REAL production fold
+// actually deliver a real reading over the LOCAL route. That is a wet execution, and the house pattern
+// for wet executions is this directory (see test.manual.systemd_unit_run_live_observation, added under
+// the same rule: what production does when production runs is observed by RUNNING it, and a manual
+// entry that cannot reach its subject says so in typed prose rather than passing on a mock).
+//
+// HOW TO RUN IT (from the repo root; gunbc built from this tree). SSH_AUTH_SOCK is unset in this
+// invocation on purpose: a FleetSsh route CANNOT succeed here, so a converged observation is itself
+// evidence of the local route -- the arm selection is asserted, not assumed.
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/test/manual/deployed_tree_local_arm_live_pairing.dag \
+//     --function live_pairing_local_route_and_index_ownership
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/test/manual/deployed_tree_local_arm_live_pairing.dag \
+//     --function live_pairing_timer_standing --arg unit=gunbc-roadmap-belt-standings-refresh.timer
+//
+// THE FIXTURE, SPOKEN PLAINLY. The admission joins the kernel's hostname with a claimed host through
+// the SAME production join (observed_host_selector_join_in, the roster threaded, not bypassed). This
+// container is not a fleet machine, so the roster it joins against is a ONE-ROW FIXTURE built here:
+// this container's `hostname -s`, recorded by reading it on 2026-11-23 (it is a docker container id,
+// and if the container is rebuilt the read and the row stop agreeing -- the pairing then REFUSES,
+// which is the admission doing its job, not this test passing quietly). Nothing else is fixture: the
+// hostname read, the join, the mint, the four legs, the dispatcher and the fold are production.
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.resources { Filesystem }
+import std.algebra { trim }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.optional { Optional, Present, Absent }
+import product.host_identity { HostIdentity }
+import extdeps.dns.domain_name { DnsLabel }
+import extdeps.git {
+  git_in_trusted_repository_head_revision_command,
+  git_in_trusted_repository_read_tree_command,
+  git_in_trusted_repository_status_command,
+  git_init_quiet_command,
+  git_add_all_force_command,
+  git_commit_snapshot_command,
+}
+import extdeps.git.object_store { git_object_id_from_untagged_hex, git_object_id_wire_hex }
+import extdeps.exec.command { ArgvCommand }
+import extdeps.tools.gnu_coreutils { mktemp_directory_command, rm_force_command, rm_recursive_force_command }
+import gunbc.host.host_effect { HostEffectTransport, LocalShell, FleetSsh }
+import gunbc.host.host_effect_realize {
+  run_argv_over_host_effect_transport,
+  RunArgvTransportOutcome,
+  RunArgvTransportObserved,
+  RunArgvTransportRefused,
+}
+import gunbc.hostname_allocation { HostnameAllocation, LegacyHostname }
+import gunbc.live_deploy.deployed_tree_observation {
+  DeployedTreeLocus,
+  DeployedTreeLocalAdmission,
+  DeployedTreeLocalAdmitted,
+  DeployedTreeLocalAdmissionRefused,
+  deployed_tree_local_locus_admit_in,
+  deployed_tree_locus_transport,
+  deployed_tree_locus_host,
+  deployed_tree_temp_index_path,
+  observe_deployed_tree,
+  deployed_tree_unobservable_text,
+  DeployedTreeObservation,
+  DeployedTreeObserved,
+  DeployedTreeUnobservable,
+  DeployedTreeContentState,
+  DeployedScopeMatchesCommit,
+  DeployedScopeDiverged,
+}
+import gunbc.live_deploy.unit_standing {
+  observe_belt_timer_standing,
+  BeltTimerStanding,
+  BeltTimerConverged,
+  BeltTimerRefused,
+  belt_timer_standing_text,
+}
+
+data pairing_label: String = "[deployed-tree-live-pairing]"
+data pairing_host_raw: String = "live-pairing"
+// This container's `hostname -s`, read 2026-11-23. See the module head: the ONE fixture datum.
+data pairing_hostname_raw: String = "108c563f9ca1"
+
+fn pairing_host() -> HostIdentity {
+  pairing_host_raw as HostIdentity
+}
+
+fn pairing_fixture_roster() -> List<HostnameAllocation> {
+  [
+    HostnameAllocation {
+      fleet_slot: pairing_host(),
+      name: LegacyHostname { label: pairing_hostname_raw as DnsLabel },
+      next_name: Absent,
+    },
+  ]
+}
+
+fn deliver_local(command: ArgvCommand) -> RunArgvTransportOutcome {
+  run_argv_over_host_effect_transport(command: command, transport: LocalShell as HostEffectTransport)
+}
+
+fn outcome_stdout(outcome: RunArgvTransportOutcome) -> String {
+  match outcome {
+    RunArgvTransportObserved { observed: o } => o.stdout
+    RunArgvTransportRefused { reason: _ } => ""
+  }
+}
+
+fn outcome_succeeded(outcome: RunArgvTransportOutcome) -> Bool {
+  match outcome {
+    RunArgvTransportObserved { observed: o } => o.exit_code == 0
+    RunArgvTransportRefused { reason: _ } => false
+  }
+}
+
+fn outcome_refusal(outcome: RunArgvTransportOutcome) -> String {
+  match outcome {
+    RunArgvTransportObserved { observed: _ } => ""
+    RunArgvTransportRefused { reason: why } => why
+  }
+}
+
+fn trim_stdout(outcome: RunArgvTransportOutcome) -> String {
+  trim(s: outcome_stdout(outcome: outcome))
+}
+
+// TEARDOWN OF WHAT THE PAIRING OWNS. The control's index FILES go by FILE removal (rm -f on the
+// file itself, never a recursive pass); the allocated fixture repository goes last, recursively,
+// because it is a directory this run created via mktemp. Every failure path below calls these
+// before exiting, so a red run leaves no partial fixture behind.
+fn pairing_drop_indices(path_a: String, path_b: String, shared: String) -> Bool {
+  let _a = deliver_local(command: rm_force_command(path: path_a))
+  let _b = deliver_local(command: rm_force_command(path: path_b))
+  let _s = deliver_local(command: rm_force_command(path: shared))
+  true
+}
+
+fn pairing_drop_repo(repo_dir: String) -> Bool {
+  let _r = deliver_local(command: rm_recursive_force_command(path: repo_dir))
+  true
+}
+
+// THE PAIRING. Every failure exits nonzero with the stage named, so a green run is the whole chain:
+// admit -> route -> observe -> own-index reads, over a repository this run created and destroyed.
+fn live_pairing_local_route_and_index_ownership() -> ProcessExit {
+  let dir_outcome = deliver_local(command: mktemp_directory_command(template: "/tmp/gunbc-deployed-tree-live-XXXXXX" as NonEmptyStr))
+  if !outcome_succeeded(outcome: dir_outcome) {
+    return exit_failure(reason: join([pairing_label, " mktemp refused: ", outcome_refusal(outcome: dir_outcome)], ""))
+  }
+  let repo_dir = trim_stdout(outcome: dir_outcome)
+  // STAGE TWO REVISIONS, each captured by the production revision command over the same transport.
+  let wrote_one = Filesystem.Write(path: join([repo_dir, "/hello.txt"], ""), content: "one\n")
+  if !wrote_one.success {
+    let _cleanup = pairing_drop_repo(repo_dir: repo_dir)
+    return exit_failure(reason: join([pairing_label, " could not stage hello.txt (revision one) in ", repo_dir], ""))
+  }
+  let inited = outcome_succeeded(outcome: deliver_local(command: git_init_quiet_command(repository_dir: repo_dir)))
+  let staged_one = outcome_succeeded(outcome: deliver_local(command: git_add_all_force_command(repository_dir: repo_dir)))
+  let committed_one = outcome_succeeded(
+    outcome: deliver_local(
+      command: git_commit_snapshot_command(
+        repository_dir: repo_dir,
+        identity_name: "gunbc live pairing",
+        identity_email: "pairing@invalid",
+        message: "pairing revision one",
+      ),
+    ),
+  )
+  if !inited || !staged_one || !committed_one {
+    let _cleanup = pairing_drop_repo(repo_dir: repo_dir)
+    return exit_failure(reason: join([pairing_label, " could not commit revision one in ", repo_dir], ""))
+  }
+  let rev_a_outcome = deliver_local(command: git_in_trusted_repository_head_revision_command(repo: repo_dir as NonEmptyStr))
+  let rev_a = trim_stdout(outcome: rev_a_outcome)
+  let rev_a_decodes = match git_object_id_from_untagged_hex(hex: rev_a) {
+    Present { value: _ } => true
+    Absent => false
+  }
+  if !outcome_succeeded(outcome: rev_a_outcome) || !rev_a_decodes {
+    let _cleanup = pairing_drop_repo(repo_dir: repo_dir)
+    return exit_failure(reason: join([pairing_label, " the production revision command did not answer revision one: ", outcome_stdout(outcome: rev_a_outcome)], ""))
+  }
+  let wrote_two = Filesystem.Write(path: join([repo_dir, "/hello.txt"], ""), content: "two\n")
+  if !wrote_two.success {
+    let _cleanup = pairing_drop_repo(repo_dir: repo_dir)
+    return exit_failure(reason: join([pairing_label, " could not restage hello.txt (revision two) in ", repo_dir], ""))
+  }
+  let staged_two = outcome_succeeded(outcome: deliver_local(command: git_add_all_force_command(repository_dir: repo_dir)))
+  let committed_two = outcome_succeeded(
+    outcome: deliver_local(
+      command: git_commit_snapshot_command(
+        repository_dir: repo_dir,
+        identity_name: "gunbc live pairing",
+        identity_email: "pairing@invalid",
+        message: "pairing revision two",
+      ),
+    ),
+  )
+  if !staged_two || !committed_two {
+    let _cleanup = pairing_drop_repo(repo_dir: repo_dir)
+    return exit_failure(reason: join([pairing_label, " could not commit revision two in ", repo_dir], ""))
+  }
+  let rev_b_outcome = deliver_local(command: git_in_trusted_repository_head_revision_command(repo: repo_dir as NonEmptyStr))
+  let rev_b = trim_stdout(outcome: rev_b_outcome)
+  if !outcome_succeeded(outcome: rev_b_outcome) || rev_b == rev_a {
+    let _cleanup = pairing_drop_repo(repo_dir: repo_dir)
+    return exit_failure(reason: join([pairing_label, " revision two is not a distinct revision: ", rev_b], ""))
+  }
+  // THE REAL ADMISSION: the kernel's own hostname read, joined to the claimed host against the fixture
+  // roster through the production join, minting the locus only on agreement.
+  match deployed_tree_local_locus_admit_in(
+    allocations: pairing_fixture_roster(),
+    host: pairing_host(),
+    repo: repo_dir as NonEmptyStr,
+  ) {
+    DeployedTreeLocalAdmissionRefused { cause: why } => {
+      let _cleanup = deliver_local(command: rm_recursive_force_command(path: repo_dir))
+      return exit_failure(reason: join([pairing_label, " the admission refused the container's own hostname: ", why], ""))
+    }
+    DeployedTreeLocalAdmitted { locus: locus } => {
+      // THE ROUTE IS ASSERTED, NOT ASSUMED: the dispatcher consumes LocalShell for this locus, and the
+      // invocation carries no SSH_AUTH_SOCK, so any remote route below would refuse rather than answer.
+      match deployed_tree_locus_transport(locus: locus) {
+        LocalShell => {
+          let route_asserted = deployed_tree_locus_host(locus: locus) == pairing_host()
+          if !route_asserted {
+            let _cleanup = pairing_drop_repo(repo_dir: repo_dir)
+            return exit_failure(reason: join([pairing_label, " the admitted locus does not seal the claimed host the roster joined", ""], ""))
+          }
+        }
+        FleetSsh { target: _, context: _, kind: _, kind: _ } => {
+          let _cleanup = deliver_local(command: rm_recursive_force_command(path: repo_dir))
+          return exit_failure(reason: join([pairing_label, " the LOCAL arm selected a FleetSsh transport -- the disconnect this pairing exists to catch", ""], ""))
+        }
+        _ => {
+          let _cleanup = deliver_local(command: rm_recursive_force_command(path: repo_dir))
+          return exit_failure(reason: join([pairing_label, " the local arm selected an unexpected transport", ""], ""))
+        }
+      }
+      // THE PRODUCTION FOLD, NONEMPTY, OVER THE LOCAL ROUTE. A converged reading with the revision this
+      // run committed is only reachable by local delivery here: with no agent, the remote route cannot
+      // produce a single successful leg.
+      match observe_deployed_tree(locus: locus) {
+        DeployedTreeUnobservable { cause: why } => {
+          let _cleanup = deliver_local(command: rm_recursive_force_command(path: repo_dir))
+          return exit_failure(reason: join([pairing_label, " the production fold refused over the local route: ", deployed_tree_unobservable_text(cause: why)], ""))
+        }
+        DeployedTreeObserved { revision: revision, tree: _, content: content } => {
+          let observed_hex = git_object_id_wire_hex(oid: revision) as String
+          if observed_hex != rev_a && observed_hex != rev_b {
+            let _cleanup = pairing_drop_repo(repo_dir: repo_dir)
+            return exit_failure(reason: join([pairing_label, " the fold answered a revision this run never created", ""], ""))
+          }
+          match content {
+            DeployedScopeMatchesCommit => {
+              let fold_delivered = observed_hex == rev_b
+              if !fold_delivered {
+                let _cleanup = pairing_drop_repo(repo_dir: repo_dir)
+                return exit_failure(reason: join([pairing_label, " the fold converged on revision ", observed_hex, " while the worktree and HEAD stand at ", rev_b, " -- not a reading of this repo", ""], ""))
+              }
+            }
+            DeployedScopeDiverged { changed_paths: paths } => {
+              let _cleanup = pairing_drop_repo(repo_dir: repo_dir)
+              return exit_failure(reason: join([pairing_label, " a freshly committed pairing repo reads diverged: ", paths as String], ""))
+            }
+          }
+          // THE SHARED-INDEX INTERLEAVING, RUN FOR REAL (review 97601 B1). Reader A binds its own index
+          // to revision one; reader B -- the concurrent sibling the fold now must tolerate -- binds its
+          // OWN index to revision two; A then answers from ITS index. Because the worktree stands at
+          // revision two, the honest answer about revision one is "modified", and the control requires
+          // A to report exactly that. The shared-name tail of this same sequence is run second to keep
+          // the hazard visible: with one constant name, A's status comes back EMPTY -- the false clean
+          // the reviewers reproduced with real git. If git's status semantics ever change, the tail
+          // fails LOUDLY rather than silently, which is the point of keeping it in the same run.
+          // Production naming must still separate two runs of ONE locus (this is the naming the fold
+          // itself uses), asserted here; the pairing then pins ITS OWN control files under the
+          // allocated fixture directory, so a failed run leaves nothing loose in /tmp.
+          let produced_a = deployed_tree_temp_index_path(locus: locus, run_nonce: "pairing-run-a")
+          let produced_b = deployed_tree_temp_index_path(locus: locus, run_nonce: "pairing-run-b")
+          if produced_a == produced_b {
+            let _cleanup = pairing_drop_repo(repo_dir: repo_dir)
+            return exit_failure(reason: join([pairing_label, " two runs of one locus named ONE index: ", produced_a], ""))
+          }
+          // Inside the fixture, under .git/: a plain file there is invisible to `git status
+          // --porcelain` (which would otherwise report the control's own index as an untracked
+          // entry and pollute the very comparison this control makes), while still being an ordinary
+          // FILE this run removes by rm -f, not by recursion.
+          let path_a = join([repo_dir, "/.git/index-pairing-run-a"], "")
+          let path_b = join([repo_dir, "/.git/index-pairing-run-b"], "")
+          let shared = join([repo_dir, "/.git/index-shared"], "")
+          if !outcome_succeeded(outcome: deliver_local(command: git_in_trusted_repository_read_tree_command(repo: repo_dir as NonEmptyStr, index_path: path_a, revision_hex: rev_a)))
+            || !outcome_succeeded(outcome: deliver_local(command: git_in_trusted_repository_read_tree_command(repo: repo_dir as NonEmptyStr, index_path: path_b, revision_hex: rev_b))) {
+            let _ci = pairing_drop_indices(path_a: path_a, path_b: path_b, shared: shared)
+            let _cleanup = pairing_drop_repo(repo_dir: repo_dir)
+            return exit_failure(reason: join([pairing_label, " a read-tree over its own index failed", ""], ""))
+          }
+          let status_a_outcome = deliver_local(command: git_in_trusted_repository_status_command(repo: repo_dir as NonEmptyStr, index_path: path_a))
+          let status_b_outcome = deliver_local(command: git_in_trusted_repository_status_command(repo: repo_dir as NonEmptyStr, index_path: path_b))
+          // AN OBSERVED EXIT ZERO COMES BEFORE ANY stdout COMPARISON: a refusal maps its stdout to
+          // "", and for `git status` "" is exactly CLEAN -- a refused read must never reach below.
+          if !outcome_succeeded(outcome: status_a_outcome) || !outcome_succeeded(outcome: status_b_outcome) {
+            let _ci = pairing_drop_indices(path_a: path_a, path_b: path_b, shared: shared)
+            let _cr = pairing_drop_repo(repo_dir: repo_dir)
+            return exit_failure(reason: join([pairing_label, " a status read did not run to exit zero: A refused [", outcome_refusal(outcome: status_a_outcome), "] B refused [", outcome_refusal(outcome: status_b_outcome), "]", ""], ""))
+          }
+          let status_a = outcome_stdout(outcome: status_a_outcome)
+          let status_b = outcome_stdout(outcome: status_b_outcome)
+          if status_a == "" {
+            let _ci = pairing_drop_indices(path_a: path_a, path_b: path_b, shared: shared)
+            let _cleanup = pairing_drop_repo(repo_dir: repo_dir)
+            return exit_failure(reason: join([pairing_label, " reader A reported CLEAN against its own index while the worktree stood at another revision -- the false clean of a shared index", ""], ""))
+          }
+          if status_b != "" {
+            let _ci = pairing_drop_indices(path_a: path_a, path_b: path_b, shared: shared)
+            let _cleanup = pairing_drop_repo(repo_dir: repo_dir)
+            return exit_failure(reason: join([pairing_label, " reader B did not report its own revision clean -- the pairing staged its revisions wrong", ""], ""))
+          }
+          let interleave_passed = status_a != "" && status_b == ""
+          if !interleave_passed {
+            let _ci = pairing_drop_indices(path_a: path_a, path_b: path_b, shared: shared)
+            let _cleanup = pairing_drop_repo(repo_dir: repo_dir)
+            return exit_failure(reason: join([pairing_label, " interleaving control failed: A=[", trim(s: status_a), "] B=[", trim(s: status_b), "]", ""], ""))
+          }
+          if !outcome_succeeded(outcome: deliver_local(command: git_in_trusted_repository_read_tree_command(repo: repo_dir as NonEmptyStr, index_path: shared, revision_hex: rev_a)))
+            || !outcome_succeeded(outcome: deliver_local(command: git_in_trusted_repository_read_tree_command(repo: repo_dir as NonEmptyStr, index_path: shared, revision_hex: rev_b))) {
+            let _ci = pairing_drop_indices(path_a: path_a, path_b: path_b, shared: shared)
+            let _cleanup = pairing_drop_repo(repo_dir: repo_dir)
+            return exit_failure(reason: join([pairing_label, " the shared-index hazard leg could not materialize -- git semantics changed under this pairing", ""], ""))
+          }
+          let status_shared_outcome = deliver_local(command: git_in_trusted_repository_status_command(repo: repo_dir as NonEmptyStr, index_path: shared))
+          // SAME RULE: exit zero first; only an ANSWERED empty status is the false clean.
+          if !outcome_succeeded(outcome: status_shared_outcome) {
+            let _ci = pairing_drop_indices(path_a: path_a, path_b: path_b, shared: shared)
+            let _cr = pairing_drop_repo(repo_dir: repo_dir)
+            return exit_failure(reason: join([pairing_label, " the shared-index status read did not run to exit zero: [", outcome_refusal(outcome: status_shared_outcome), "]", ""], ""))
+          }
+          let status_shared = outcome_stdout(outcome: status_shared_outcome)
+          if status_shared != "" {
+            let _ci = pairing_drop_indices(path_a: path_a, path_b: path_b, shared: shared)
+            let _cleanup = pairing_drop_repo(repo_dir: repo_dir)
+            return exit_failure(reason: join([pairing_label, " the shared-index hazard leg did NOT reproduce the false clean -- the class this control pins may have moved; investigate before trusting the per-run names. shared=[", trim(s: status_shared), "]", ""], ""))
+          }
+          let hazard_reproduced = status_shared == ""
+          if !hazard_reproduced {
+            let _ci = pairing_drop_indices(path_a: path_a, path_b: path_b, shared: shared)
+            let _cleanup = pairing_drop_repo(repo_dir: repo_dir)
+            return exit_failure(reason: join([pairing_label, " the shared-index hazard leg did NOT reproduce the false clean -- the class this control pins may have moved; investigate before trusting the per-run names. shared=[", trim(s: status_shared), "]", ""], ""))
+          }
+          // CLEANUP of what this pairing owns: the control's three index FILES by file removal,
+          // then the allocated fixture repository last (it is a directory). The fold already cleaned
+          // its own two indices on its own terminal paths; this run leaves no nonce-named residue,
+          // which is the cleanup claim witnessed at the fold.
+          let _index_a_cleanup = deliver_local(command: rm_force_command(path: path_a))
+          let _index_b_cleanup = deliver_local(command: rm_force_command(path: path_b))
+          let _index_s_cleanup = deliver_local(command: rm_force_command(path: shared))
+          let _repo_cleanup = pairing_drop_repo(repo_dir: repo_dir)
+          let report = join(
+            [
+              pairing_label,
+              " PASS: admitted through the production join; locus routed LocalShell; production fold delivered revision ",
+              observed_hex,
+              " scope-matches-commit with SSH_AUTH_SOCK unset; interleaving control: A reported [",
+              trim(s: status_a),
+              "] while B read clean; shared-index hazard reproduced (empty). Indices: ",
+              path_a,
+              " | ",
+              path_b,
+              "\n",
+            ],
+            "",
+          )
+          let _logged = Filesystem.Write(path: "/tmp/gunbc-deployed-tree-live-pairing.log", content: report)
+          return ExitSuccess
+        }
+      }
+    }
+  }
+}
+
+// THE TIMER READ-BACK, EXECUTED AGAINST A REAL UNIT. On a host with no systemd the underlying
+// systemctl reads refuse, and this entry SAYS SO AND EXITS NONZERO -- it does not pretend to pair.
+// (2026-11-23: this development container has no systemd; the pairing was recorded there as
+// typechecked-not-executed, and the srv1 deploy of this PR is the first run that pairs it for real.)
+fn live_pairing_timer_standing(unit: String) -> ProcessExit {
+  let standing = observe_belt_timer_standing(unit: unit as NonEmptyStr)
+  match standing {
+    BeltTimerConverged { active_state: _, unit_file_state: _ } => ExitSuccess
+    BeltTimerRefused { why: reason } =>
+      exit_failure(reason: join([pairing_label, " timer standing refused: ", reason], ""))
+  }
+}

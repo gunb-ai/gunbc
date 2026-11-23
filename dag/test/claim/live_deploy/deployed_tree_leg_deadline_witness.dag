@@ -12,7 +12,6 @@ import gunbc.fleet.fleet_known_hosts_anchor {
   fleet_leg_wall_deadline,
 }
 import gunbc.live_deploy.deployed_tree_observation {
-  deployed_tree_revision_argv,
   deployed_tree_leg_overran_cause,
   deployed_tree_unobservable_text,
   DeployedTreeUnobservableCause,
@@ -59,7 +58,7 @@ test fn the_four_ceiling_are_distinct_and_none_is_zero() -> Bool {
 
 // THE INCIDENT LEG'S OWN ARGV, named rather than paraphrased: `git -C <repo> rev-parse HEAD`.
 test fn the_incident_leg_is_git_rev_parse_head() -> Bool {
-  let argv = deployed_tree_revision_argv(repo: "repo" as NonEmptyStr)
+  let argv = argv_words(command: git_in_trusted_repository_head_revision_command(repo: "repo" as NonEmptyStr))
   string_contains(s: join(argv, " "), pattern: "rev-parse")
     && string_contains(s: join(argv, " "), pattern: "HEAD")
     && string_contains(s: join(argv, " "), pattern: "git")
@@ -69,7 +68,7 @@ test fn the_incident_leg_is_git_rev_parse_head() -> Bool {
 // (leg, host, argv, deadline) has one spelling.
 test fn an_overrun_carries_the_leg_the_host_the_argv_and_the_deadline() -> Bool {
   let host = "srv1" as String
-  let argv = deployed_tree_revision_argv(repo: "repo" as NonEmptyStr)
+  let argv = argv_words(command: git_in_trusted_repository_head_revision_command(repo: "repo" as NonEmptyStr))
   let deadline = fleet_leg_wall_deadline(kind: ProbeLeg)
   let cause = deployed_tree_leg_overran_cause(
     leg: "revision",
@@ -90,7 +89,7 @@ test fn an_overrun_carries_the_leg_the_host_the_argv_and_the_deadline() -> Bool 
 // ceiling, without re-running anything.
 test fn the_receipt_line_names_host_argv_and_deadline() -> Bool {
   let host = "srv1" as String
-  let argv = deployed_tree_revision_argv(repo: "repo" as NonEmptyStr)
+  let argv = argv_words(command: git_in_trusted_repository_head_revision_command(repo: "repo" as NonEmptyStr))
   let cause = deployed_tree_leg_overran_cause(
     leg: "revision",
     host: host,
@@ -109,7 +108,7 @@ test fn the_deadline_arm_still_writes_its_receipt_line_and_is_not_converged() ->
   let cause = deployed_tree_leg_overran_cause(
     leg: "revision",
     host: "srv1" as String,
-    argv: deployed_tree_revision_argv(repo: "repo" as NonEmptyStr),
+    argv: argv_words(command: git_in_trusted_repository_head_revision_command(repo: "repo" as NonEmptyStr)),
     deadline: fleet_leg_wall_deadline(kind: ProbeLeg),
   )
   let line = deployed_tree_standing_line(standing: DeployedTreeStandingUnobserved { cause: cause })

@@ -184,7 +184,7 @@ fn record_converge_readback_wet(
 
 fn network_read_outcome(transport: HostEffectTransport, op: ExecutorPrivilegedOperation) -> ProcessOutcome {
   match transport {
-    FleetSsh { target, context } => admin_read_outcome(target: target, context: context, op: op)
+    FleetSsh { target, context, kind: _ } => admin_read_outcome(target: target, context: context, op: op)
     LocalShell => run_shell_command_capture(command: executor_privileged_operation_elevated_command(op: op), transport: LocalExec)
     SshShell { ssh_host: _ } => ProcessRefused { exit_code: -1, stderr: "network readback requires the local administrator or a verified fleet session" }
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => ProcessRefused { exit_code: -1, stderr: "network readback requires a live host" }

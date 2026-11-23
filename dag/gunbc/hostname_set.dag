@@ -134,7 +134,7 @@ fn hostname_set_apply(
   match transport {
     LocalShell => hostname_set_local(desired: desired)
     SshShell { ssh_host: h } => hostname_set_ssh(hostnamectl_path: hostnamectl_path, host: h, desired: desired)
-    FleetSsh { target: t, context: c } => hostname_set_fleet_ssh(hostnamectl_path: hostnamectl_path, target: t, context: c, desired: desired)
+    FleetSsh { target: t, context: c, kind: _ } => hostname_set_fleet_ssh(hostnamectl_path: hostnamectl_path, target: t, context: c, desired: desired)
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       HostnameSetCasApplyFailed { stderr: "EmitArtifactThenThinRun unsupported for hostname set" }
   }

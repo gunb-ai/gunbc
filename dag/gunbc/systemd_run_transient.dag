@@ -114,7 +114,7 @@ fn systemd_run_transient_read(
   match transport {
     LocalShell => systemd_run_transient_local(command: command)
     SshShell { ssh_host: h } => systemd_run_transient_ssh(host: h, command: command)
-    FleetSsh { target: t, context: c } => systemd_run_transient_fleet_ssh(target: t, context: c, command: command, kind: kind)
+    FleetSsh { target: t, context: c, kind: _ } => systemd_run_transient_fleet_ssh(target: t, context: c, command: command, kind: kind)
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       SystemdRunTransientRefused {
         reason: "systemd-run transient start refused EmitArtifactThenThinRun transport",
@@ -196,7 +196,7 @@ fn systemd_run_transient_wait_read(
   match transport {
     LocalShell => systemd_run_transient_wait_local(command: command)
     SshShell { ssh_host: h } => systemd_run_transient_wait_ssh(host: h, command: command)
-    FleetSsh { target: _, context: _, kind: _ } => SystemdRunTransientWaitTransportRefused {
+    FleetSsh { target: _, context: _, kind: _, kind: _ } => SystemdRunTransientWaitTransportRefused {
       reason: "systemd-run transient wait refused FleetSsh until exact remote status is distinguished from transport status",
     }
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>

@@ -54,8 +54,14 @@ import gunbc.live_deploy.release_locus { ReleaseRevisionBinding, RevisionBoundAt
 import gunbc.live_deploy.readiness { live_deploy_healthz_get_for_port, healthz_release_identity_refusal, healthz_refusal_reason }
 import gunbc.roadmap.roadmap_site_surface_types { HealthzEffectiveRead, HealthzBodyRead, HealthzAnsweredUnhealthy, HealthzProbeRefused }
 import gunbc.running_release_identity { observe_running_release_identity, RunningReleaseIdentified, RunningReleaseUnidentified }
+import extdeps.git {
+  git_in_trusted_repository_head_revision_command,
+  git_in_trusted_repository_read_tree_command,
+  git_in_trusted_repository_status_command,
+  git_in_trusted_repository_ls_files_ignored_command,
+}
+import extdeps.exec.command { argv_words }
 import gunbc.live_deploy.deployed_tree_observation {
-  deployed_tree_revision_argv, deployed_tree_read_tree_argv, deployed_tree_status_argv, deployed_tree_ignored_argv,
   deployed_tree_content_reading, ContentRead, ContentUnreadable,
   DeployedScopeMatchesCommit, DeployedScopeDiverged,
 }
@@ -118,7 +124,7 @@ fn observation_arm(transport: HostEffectTransport) -> ObservationArm {
   match transport {
     LocalShell => OnTheHostItself
     SshShell { ssh_host: _ } => OverTransport { transport: transport, listing: BareListing }
-    FleetSsh { target: _, context: _, kind: _ } => OverTransport { transport: transport, listing: BareListing }
+    FleetSsh { target: _, context: _, kind: _, kind: _ } => OverTransport { transport: transport, listing: BareListing }
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => OverTransport { transport: transport, listing: BareListing }
   }
 }
@@ -584,7 +590,7 @@ fn head_leg(arm: ObservationArm, repo: String) -> Leg {
       let r = git.Inspect.HeadCommitIn(repository_path: repo)
       leg_of(success: r.success, stdout: r.sha, stderr: r.stderr, leg: "head")
     }
-    OverTransport { transport: transport, listing: _ } => remote_leg(transport: transport, argv: deployed_tree_revision_argv(repo: repo as NonEmptyStr), leg: "head")
+    OverTransport { transport: transport, listing: _ } => remote_leg(transport: transport, argv: argv_words(command: git_in_trusted_repository_head_revision_command(repo: repo as NonEmptyStr)), leg: "head")
   }
 }
 
@@ -623,7 +629,11 @@ fn read_tree_leg(arm: ObservationArm, repo: NonEmptyStr, revision_hex: String, i
       let r = git.Inspect.ReadTreeIntoIndex(repository_path: repo as String, revision_hex: revision_hex, index_path: index_path)
       leg_of(success: r.success, stdout: "", stderr: r.stderr, leg: "index materialization")
     }
-    OverTransport { transport: transport, listing: _ } => remote_leg(transport: transport, argv: deployed_tree_read_tree_argv(repo: repo, revision_hex: revision_hex, index_path: index_path), leg: "index materialization")
+    OverTransport { transport: transport, listing: _ } => remote_leg(
+        transport: transport,
+        argv: argv_words(command: git_in_trusted_repository_read_tree_command(repo: repo, index_path: index_path, revision_hex: revision_hex)),
+        leg: "index materialization",
+      )
   }
 }
 
@@ -633,7 +643,11 @@ fn status_leg(arm: ObservationArm, repo: NonEmptyStr, index_path: String) -> Leg
       let r = git.Inspect.StatusAgainstIndex(repository_path: repo as String, index_path: index_path)
       leg_of(success: r.success, stdout: r.entries_nul, stderr: r.stderr, leg: "worktree comparison")
     }
-    OverTransport { transport: transport, listing: _ } => remote_leg(transport: transport, argv: deployed_tree_status_argv(repo: repo, index_path: index_path), leg: "worktree comparison")
+    OverTransport { transport: transport, listing: _ } => remote_leg(
+        transport: transport,
+        argv: argv_words(command: git_in_trusted_repository_status_command(repo: repo, index_path: index_path)),
+        leg: "worktree comparison",
+      )
   }
 }
 
@@ -643,7 +657,11 @@ fn ignored_leg(arm: ObservationArm, repo: NonEmptyStr, index_path: String) -> Le
       let r = git.Inspect.IgnoredAgainstIndex(repository_path: repo as String, index_path: index_path)
       leg_of(success: r.success, stdout: r.paths_nul, stderr: r.stderr, leg: "ignored deployed paths")
     }
-    OverTransport { transport: transport, listing: _ } => remote_leg(transport: transport, argv: deployed_tree_ignored_argv(repo: repo, index_path: index_path), leg: "ignored deployed paths")
+    OverTransport { transport: transport, listing: _ } => remote_leg(
+        transport: transport,
+        argv: argv_words(command: git_in_trusted_repository_ls_files_ignored_command(repo: repo, index_path: index_path)),
+        leg: "ignored deployed paths",
+      )
   }
 }
 

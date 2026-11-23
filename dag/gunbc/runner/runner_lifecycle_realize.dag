@@ -130,7 +130,7 @@ fn runner_lifecycle_realize_activate_runner_slot(
   match intent.effect {
     ActivateRunnerSlot { slot: slot } =>
       match intent.transport {
-        FleetSsh { target: t, context: c } =>
+        FleetSsh { target: t, context: c, kind: _ } =>
           runner_slot_actuation_reconciliation(intent: intent, outcome: activate_runner_slot_over(target: t, context: c, kind: ActuationLeg, unit: runner_slot_unit_name(slot: slot)))
         LocalShell => runner_slot_actuation_wrong_transport(effect_label: "ActivateRunnerSlot", intent: intent)
         SshShell { ssh_host: _ } => runner_slot_actuation_wrong_transport(effect_label: "ActivateRunnerSlot", intent: intent)
@@ -146,7 +146,7 @@ fn runner_lifecycle_realize_drain_and_mask_runner_slot(
   match intent.effect {
     DrainAndMaskRunnerSlot { slot: slot } =>
       match intent.transport {
-        FleetSsh { target: t, context: c } =>
+        FleetSsh { target: t, context: c, kind: _ } =>
           runner_slot_actuation_reconciliation(intent: intent, outcome: drain_and_mask_runner_slot_over(target: t, context: c, unit: runner_slot_unit_name(slot: slot)))
         LocalShell => runner_slot_actuation_wrong_transport(effect_label: "DrainAndMaskRunnerSlot", intent: intent)
         SshShell { ssh_host: _ } => runner_slot_actuation_wrong_transport(effect_label: "DrainAndMaskRunnerSlot", intent: intent)
@@ -179,7 +179,7 @@ fn runner_lifecycle_realize_observe_runner_local_state(
   match intent.effect {
     ObserveRunnerLocalState { slot: slot } =>
       match intent.transport {
-        FleetSsh { target: t, context: c } =>
+        FleetSsh { target: t, context: c, kind: _ } =>
           runner_slot_local_observation_reconciliation(intent: intent, o: observe_runner_slot_local_state_over(target: t, context: c, unit: runner_slot_unit_name(slot: slot)))
         LocalShell => runner_slot_actuation_wrong_transport(effect_label: "ObserveRunnerLocalState", intent: intent)
         SshShell { ssh_host: _ } => runner_slot_actuation_wrong_transport(effect_label: "ObserveRunnerLocalState", intent: intent)

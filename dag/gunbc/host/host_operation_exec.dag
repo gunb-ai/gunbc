@@ -570,7 +570,7 @@ fn host_operation_exec(transport: HostEffectTransport, operation: HostOperation)
   match transport {
     LocalShell => host_operation_exec_local(operation: operation)
     SshShell { ssh_host: h } => host_operation_exec_ssh(operation: operation, host: h)
-    FleetSsh { target: t, context: c } =>
+    FleetSsh { target: t, context: c, kind: _ } =>
       host_operation_exec_fleet_ssh(operation: operation, target: t, context: c)
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       HostOperationRefused {
