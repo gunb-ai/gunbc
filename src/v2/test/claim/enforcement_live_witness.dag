@@ -113,7 +113,7 @@ fn self_status_is_absent(s: SelfApplicationStatus) -> Bool {
 }
 
 data synthetic_self_fn_fact: DeclFact = {
-  qualified_name: "lens.cost.cost_lens",
+  qualified_name: "v2.lens.cost.cost_lens",
   name: "cost_lens",
   kind: FnItem,
   node: enforcement_red_probe_body_leaf,
@@ -121,7 +121,7 @@ data synthetic_self_fn_fact: DeclFact = {
 }
 
 data synthetic_other_fn_fact: DeclFact = {
-  qualified_name: "workflow.other_fn",
+  qualified_name: "v2.workflow.other_fn",
   name: "other_fn",
   kind: FnItem,
   node: enforcement_red_probe_body_leaf,
@@ -129,7 +129,7 @@ data synthetic_other_fn_fact: DeclFact = {
 }
 
 data synthetic_self_type_fact: DeclFact = {
-  qualified_name: "lens.cost.some_cost_type",
+  qualified_name: "v2.lens.cost.some_cost_type",
   name: "some_cost_type",
   kind: TypeItem,
   node: enforcement_red_probe_body_leaf,
@@ -138,13 +138,13 @@ data synthetic_self_type_fact: DeclFact = {
 
 test fn self_application_liveness_discriminates() -> Bool {
   self_status_is_observed(
-    s: self_application_for(facts: [synthetic_self_fn_fact], module_prefix: "lens.cost.")
+    s: self_application_for(facts: [synthetic_self_fn_fact], module_prefix: "v2.lens.cost.")
   )
     && self_status_is_absent(
-      s: self_application_for(facts: [synthetic_other_fn_fact], module_prefix: "lens.cost.")
+      s: self_application_for(facts: [synthetic_other_fn_fact], module_prefix: "v2.lens.cost.")
     )
     && self_status_is_absent(
-      s: self_application_for(facts: [synthetic_self_type_fact], module_prefix: "lens.cost.")
+      s: self_application_for(facts: [synthetic_self_type_fact], module_prefix: "v2.lens.cost.")
     )
 }
 
@@ -201,17 +201,49 @@ fn facts_contain_qualified_name(facts: List<DeclFact>, name: String) -> Bool {
   })
 }
 
+// The sentinel's OWN reading, not a count: it asks the same predicate the census counter uses
+// (`v2.lens.enforcement.receipts` `subject_is_body_judged`) of one named declaration, so a corpus
+// where the arms partition the population but this fn is mis-judged still goes red.
+fn named_fn_fact_is_body_judged(facts: List<DeclFact>, name: String) -> Bool {
+  fold(facts, init: false, f: fn(acc, fact) {
+    acc || (fact_has_qualified_name(fact: fact, name: name) && subject_is_body_judged(fact: fact))
+  })
+}
+
+// The three roots the census must key in ONE walk. Their spellings are the census key, which
+// `v1.compiler.coproduct_reflection::decl_qualified_name` builds as the module's own qualified name
+// with `v2.` KEPT -- see the note there on two declarations sharing one identity once the layer
+// prefix is stripped. The cost row therefore reads `v2.lens.cost.cost_lens`: the declaration lives
+// in `src/v2/lens/cost.dag` under `module v2.lens.cost`, and no module named `lens.cost` exists.
 test fn per_root_sentinels_hold_in_one_walk() -> Bool {
   let facts = enforcement_corpus_facts()
   facts_contain_qualified_name(facts: facts, name: "gunbc.commit_workflow.commit_gate_roster")
     && facts_contain_qualified_name(facts: facts, name: "v1.compiler.infer.build_type_env")
-    && facts_contain_qualified_name(facts: facts, name: "lens.cost.cost_lens")
+    && facts_contain_qualified_name(facts: facts, name: "v2.lens.cost.cost_lens")
 }
 
-test fn live_corpus_is_currently_all_body_unavailable() -> Bool {
+// WHAT THIS LEG ASSERTS, AND WHAT IT USED TO ASSERT. It used to assert
+// `body_unavailable_count_of(facts) == fn_item_count_of(facts)` -- that the whole live corpus is
+// body-unavailable. That was a FROZEN POPULATION SNAPSHOT (the leg name said "currently"), and it
+// stopped being true when the fn-arrow body skeleton learned that a call is a call: see
+// `v1.compiler.coproduct_reflection::transform_record`. Before that change every skeleton node was
+// a TypeNode, so `node_contains_computation` could not fire and the equality was VACUOUSLY true for
+// any corpus; after it, any fn whose body contains a call judges as BodyJudged. The census was not
+// broken -- the snapshot had been measuring a carrier that could not yet exist.
+// This leg now asserts the countable invariant the snapshot stood in for. The two arms are counted
+// INDEPENDENTLY (see `v2.lens.enforcement.receipts` `body_judged_count_of`), so the partition
+// conjunct is a check between two folds rather than an identity: if one arm's predicate drifts, or
+// `judge_subject_node` grows an arm neither counter knows, this goes red. A corpus where either arm
+// collapses to zero -- everything judged, or nothing judged -- also goes red, which the snapshot
+// could not see in either direction.
+test fn live_corpus_body_judgment_partitions_the_population() -> Bool {
   let facts = enforcement_corpus_facts()
   (fn_item_count_of(facts: facts) > 500)
-    && (body_unavailable_count_of(facts: facts) == fn_item_count_of(facts: facts))
+    && (body_judged_count_of(facts: facts) > 0)
+    && (body_unavailable_count_of(facts: facts) > 0)
+    && (body_judged_count_of(facts: facts) + body_unavailable_count_of(facts: facts)
+        == fn_item_count_of(facts: facts))
+    && named_fn_fact_is_body_judged(facts: facts, name: "v2.lens.cost.cost_lens")
 }
 
 test fn unbound_contracts_remain_enumerable() -> Bool {
