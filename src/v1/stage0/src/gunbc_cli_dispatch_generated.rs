@@ -107,11 +107,33 @@ pub enum Commands {
     /// route, never the interpreter. A form the pattern grammar does not admit, or
     /// an unbound or unknown target, refuses rather than reporting a pass.
     Test {
-        /// Absolute label of one target, or a pattern denoting a set:
-        /// `//gunbc/instruments:heads-reading-differential`,
-        /// `//dag/test/claim/roadmap:all`, `//dag/test/claim/roadmap/...`.
-        #[arg(value_name = "TARGET_PATTERN")]
-        target: String,
+        /// Names of the claims to run: absolute labels (`//dag/test/claim/x:the_claim`),
+        /// a package (`//dag/test/claim/x`) or a subtree (`//dag/test/claim/...`).
+        /// Several operands run exactly the claims they denote, together in ONE
+        /// process; an identity two operands both denote is selected once.
+        /// `:all` is not a claim selection here -- it is refused on the claim route.
+        #[arg(value_name = "TARGET_PATTERN", num_args = 1..)]
+        operands: Vec<String>,
+        /// Hermetic execution (the default): no clock, entropy, random, wall time,
+        /// host tool or ambient state reaches a claim.
+        #[arg(long)]
+        hermetic: bool,
+        /// Wet execution: the claim may read the ambient checkout, git and host state
+        /// through the host prelude's own admission. Conflicts with --hermetic.
+        #[arg(long)]
+        wet: bool,
+        /// Record mode: host tool calls run wet and are written to --fixture-store.
+        /// Requires --fixture-store.
+        #[arg(long)]
+        record: bool,
+        /// Fixture-store directory for --record and replay; refused outside record mode.
+        #[arg(long)]
+        fixture_store: Option<String>,
+        /// Claim corpus root. Replaces the default pair (dag, src/v2) when given; repeat
+        /// once per root the request spans. Claim-route only: a route that cannot
+        /// honour the corpus it is asked to read refuses rather than reading the default.
+        #[arg(long = "source-root")]
+        source_roots: Vec<String>,
     },
 }
 
@@ -135,7 +157,15 @@ pub trait CliDispatchHost {
         claim_run: bool,
         args: Vec<String>,
     ) -> !;
-    fn invoke_bound_target_producer(&self, target: String) -> !;
+    fn invoke_bound_target_producer(
+        &self,
+        operands: Vec<String>,
+        hermetic: bool,
+        wet: bool,
+        record: bool,
+        fixture_store: Option<String>,
+        source_roots: Vec<String>,
+    ) -> !;
 }
 
 pub fn dispatch<H: CliDispatchHost>(
@@ -221,8 +251,23 @@ pub fn dispatch<H: CliDispatchHost>(
             "receipt_path",
             ".gunbc-converge-receipts",
         ),
-        (Commands::Test { target }, _) => {
-            __gunbc_dispatch_executor_0.invoke_bound_target_producer(target)
-        }
+        (
+            Commands::Test {
+                operands,
+                hermetic,
+                wet,
+                record,
+                fixture_store,
+                source_roots,
+            },
+            _,
+        ) => __gunbc_dispatch_executor_0.invoke_bound_target_producer(
+            operands,
+            hermetic,
+            wet,
+            record,
+            fixture_store,
+            source_roots,
+        ),
     }
 }
