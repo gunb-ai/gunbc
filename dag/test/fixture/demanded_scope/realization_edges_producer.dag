@@ -1,0 +1,35 @@
+module test.fixture.demanded_scope.realization_edges_producer
+
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+
+// THE CONTROLLED PRODUCER FIXTURE. This file exists for the realization_edges PRODUCER control
+// (cli_run/demanded_typecheck_equivalence.rs::realization_edges_producer_drives_active_audit_for_a_deep_only_read).
+// It is separate from declaration_grain.dag on purpose: that fixture's witnesses hand-build their
+// edges, so it cannot prove the PRODUCER is what supplies a name. Here nothing hand-builds anything --
+// the only fact the control trusts is the edge set v1.compiler.infer.realization_edges emits.
+
+// The seed the control realizes. It names RealizedRow, so the naming closure realizes RealizedRow
+// (and its field row). Nothing here names GhostCarrier, so neither GhostCarrier nor GhostDeepName is
+// ever realized: their names are DECLARED (they are items) but stay out of the realized set.
+fn producer_entry() -> ProcessExit {
+  let r: RealizedRow = RealizedRow { a: 1 }
+  if r.a == 1 { ExitSuccess } else { ExitFailure { code: 1, reason: "producer_entry: wrong discriminator" } }
+}
+
+type RealizedRow { a: Int }
+
+// THE NAME REACHED ONLY BY THE DEEP WALK. GhostDeepName lives in GhostCarrier's FIELD EXTENT, which
+// realization_read_names reaches via spelled_names_into(deep=true). There is no alias `=` on
+// GhostCarrier, so realization_row_edges contributes nothing for it -- the ONLY producer of a
+// GhostDeepName edge is the seven-family block over the shared deep read inventory. That is exactly
+// the code the read-inventory hoist touched.
+type GhostDeepName { v: Int }
+
+// THE CONTROLLED DECLARATION. Its field extent names BOTH a realized row (RealizedRow, realized via
+// producer_entry through a different path) AND the deep-only, declared-but-unrealized name
+// (GhostDeepName). No demanded declaration names GhostCarrier, so it is read by nobody and realized
+// by nobody -- but the control asks the producer for ITS edges and feeds them to an ACTIVE audit. The
+// PRODUCER emits a GhostDeepName edge under each of the seven reader families; the audit dedups by
+// name and records ONE reader (spelled first), so it keeps the realized RealizedRow silent and refuses
+// the declared-but-unrealized GhostDeepName naming a single reader family.
+type GhostCarrier { known: RealizedRow, ghost: GhostDeepName }
