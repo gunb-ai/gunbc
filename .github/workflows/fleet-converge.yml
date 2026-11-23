@@ -2665,7 +2665,7 @@ jobs:
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
         if: github.event.inputs.mode == 'host_memory_observe'
         timeout-minutes: 15
-      - name: "Host truth read: observe-only cgroup cap, leaf swap ceiling and identity anchor per host (no writes; PCI count and enabled-unit read as typed refusals)"
+      - name: "Host truth read: observe-only cgroup cap and leaf swap ceiling per host (no writes; identity, PCI count and enabled-unit read as typed refusals)"
         id: host_truth_read_observe
         run: |-
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)

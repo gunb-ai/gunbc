@@ -3,26 +3,31 @@ module gunbc.fleet.fleet_host_truth_observe
 // THE OBSERVE-ONLY HOST-TRUTH READ riding the converge timer (roadmap fleet-truth-per-host-read, plan
 // gunbc.plans.desired_state_follows_the_machine, ruling
 // gunbc.design_ruling::fleet_truth_read_rides_the_converge_timer_2026_11_21; manager option A). One wet
-// entry, dispatched per host like gunbc.host.host_memory_envelope_observe, reads the three axes that have
-// PRODUCERS and never a mutation:
+// entry, dispatched per host like gunbc.host.host_memory_envelope_observe, reads the TWO axes that have an
+// ON-ROUTE producer and never a mutation:
 //   * the cgroup cap and the leaf swap ceiling, by CONSUMING gunbc.host.host_memory_envelope_observe's slice
-//     readings (the manager's order: do not call systemctl a second time; the envelope is the single reader),
-//   * the identity anchor, by comparing the fingerprint the host-key scan observed (its receipt) against the
-//     enrolled anchor (gunbc.fleet.fleet_host_key_enrollment::enrolled_fingerprint_for, reached through
-//     gunbc.fleet.fleet_host_truth_sources::host_truth_identity_expectation).
-// The two axes with no producer -- the per-host PCI enumeration count and the per-host enabled-unit list --
-// come back as TYPED REFUSALS and are given NO expectation, so the model scores them TruthNoExpectationForRead,
-// a refusal class. That is what makes option A fail-closed: with two refusals always present, the fold can
-// only return HostTruthRefused or HostTruthDiverges, never HostTruthFollowsDesiredState, so a host is never
-// reported as following its desired state while those two are unread. Divergence on a readable axis is the
-// non-zero exit. Mutates nothing; adds no scheduled job -- it rides the converge timer.
+//     readings (the manager's order: do not call systemctl a second time; the envelope is the single reader).
+// The other THREE axes -- the identity anchor, the per-host PCI enumeration count, and the per-host enabled-unit
+// list -- come back as TYPED REFUSALS and are given NO expectation, so the model scores them
+// TruthNoExpectationForRead, a refusal class. That is what makes option A fail-closed: with refusals always
+// present the fold can only return HostTruthRefused or HostTruthDiverges, never HostTruthFollowsDesiredState, so
+// a host is never reported as following its desired state while an axis is unread. Divergence on a readable axis
+// is the non-zero exit. Mutates nothing; adds no scheduled job -- it rides the converge timer.
+//
+// WHY IDENTITY REFUSES HERE THOUGH IT HAS A PRODUCER SOMEWHERE ELSE: the identity anchor compares the fingerprint
+// the host-key scan observed against the enrolled anchor (gunbc.fleet.fleet_host_key_enrollment::
+// enrolled_fingerprint_for). But each converge dispatch runs exactly ONE mode, so on a host_truth_read_observe
+// dispatch the fleet_host_key_scan step never ran and its receipt is not present in this job -- reading that
+// path would always return Absent (the rung honesty review 97705 caught), and splitting the fingerprint out of
+// free-form receipt text would be a second, hand-rolled authority beside the modelled one. So identity is a
+// TYPED REFUSAL on this route, alongside PCI and enabled units, until the scan observation reaches this entry as
+// a value through the modelled gunbc.extdeps.ssh.known_hosts authority -- a follow-up producer item, listed with
+// the PCI and enabled-unit producers.
 //
 // Declared frontiers, recorded here so review can see them and a producer retires them:
 //   * the cap/swap reading is taken at the runner parent slice (system-actions-runner.slice), the slice the
 //     runner workload runs under, not a per-role leaf cgroup -- no carrier reads a per-role leaf yet, so the
 //     envelope's slot set is the unit set (manager).
-//   * the presented fingerprint is parsed once, from the host-key scan receipt, because no carrier returns a
-//     presented fingerprint as a value; this is the single parse point and the single field authority here.
 
 import std.types { String, NonEmptyStr, Bool, List }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -59,9 +64,8 @@ import gunbc.fleet.fleet_host_truth_read {
   fleet_host_truth_verdict_for_host,
 }
 import gunbc.fleet.fleet_host_truth_sources {
-  host_truth_cap_read, host_truth_leaf_swap_read, host_truth_identity_expectation, host_truth_identity_read,
+  host_truth_cap_read, host_truth_leaf_swap_read,
 }
-import gunbc.fleet.fleet_host_key_enrollment { fleet_host_key_scan_receipt_path }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 import gunbc.ci.ci_run_step_target { gunbc_run_step_target, GunbcRunStepTarget }
 import gunbc.ci.ci_layer_roots { witness_layer_roots }
@@ -70,15 +74,17 @@ import v2.workflow.gunbc_invoke_step_emit { gunbc_run_step_script_for_target }
 // THE RECEIPT the observe writes per host. Named by the run-step row below, the scan's receipt, and nowhere else.
 data host_truth_read_observe_receipt_path: String = "target/fleet-host-truth-read-receipt.txt"
 
-// WHO DECLARES each expectation, recorded in the comparison so a reader sees the authority consulted.
+// WHO DECLARES each readable expectation, recorded in the comparison so a reader sees the authority consulted.
 data host_truth_observe_cap_declared_by: String = "gunbc.runner.runner_slot_desired (the same memory_max the memory envelope judges against)"
 data host_truth_observe_swap_declared_by: String = "gunbc.runner.runner_slot_desired memory_swap_max (the same authority gunbc.host.memory_envelope::memory_envelope_verdict judges against)"
-data host_truth_observe_identity_declared_by: String = "the enrolled host-key anchor in gunbc.fleet.fleet_host_key_enrollment"
 
-// THE TWO AXES WITH NO PRODUCER, named once with the probe a later producer would run. These are the
-// follow-up items (PCI-enumeration count, enabled-unit list); until a producer exists the observe refuses.
+// THE THREE REFUSED AXES, named once with the probe a producer would run. The two with no producer anywhere
+// (PCI-enumeration count, enabled-unit list) and the one whose producer does not reach this route (the scan
+// observation behind the identity anchor) are all follow-up producer items; until each reaches the observe the
+// axis refuses. None is given an expectation, so each is scored TruthNoExpectationForRead -- a refusal.
 data host_truth_observe_pci_probe: String = "per-host PCI class enumeration count (lspci class count; the missing producer item)"
 data host_truth_observe_unit_probe: String = "per-host enabled-unit list (systemctl list-unit-files --state=enabled; the missing producer item)"
+data host_truth_observe_identity_probe: String = "the presented host-key fingerprint, as the modelled gunbc.extdeps.ssh.known_hosts scan observation (the host-key scan produces it on its own route but not on this converge-timer route)"
 
 // THE SLICE THE OBSERVE READS ITS CAP AND SWAP AT: the runner parent slice, the slice the runner workload
 // runs under. Not a hand-list of roles -- it is gunbc.host.host_memory_envelope_observe's own constant.
@@ -118,32 +124,44 @@ fn host_truth_observe_unit_refusal(host: NonEmptyStr) -> HostTruthRead {
   }
 }
 
-// THE READS FOR ONE HOST: the three axes that have producers (supplied readings), then the two refusals.
-fn host_truth_observe_reads(host: NonEmptyStr, at_run: NonEmptyStr, cap_limit: SystemdCgroupMemoryLimit, swap_limit: SystemdCgroupMemoryLimit, presented: NonEmptyStr?) -> List<HostTruthRead> {
+// THE IDENTITY TYPED REFUSAL. The anchor has a producer (the host-key scan) but it does not reach this route --
+// one dispatch runs one mode, so the scan never ran here and its receipt is absent; the scan observation must
+// arrive as a value via the modelled gunbc.extdeps.ssh.known_hosts authority before this axis can be read
+// (follow-up producer item, review 97705). No expectation is paired with it, so it is refused, never silence.
+fn host_truth_observe_identity_refusal(host: NonEmptyStr) -> HostTruthRead {
+  HostTruthReadRefused {
+    host: host,
+    axis: TruthIdentityAnchoredNotAddressed,
+    cause: HostTruthProbeAbsent { probe: host_truth_observe_identity_probe },
+  }
+}
+
+// THE READS FOR ONE HOST: the two axes that have an on-route producer (cap, leaf swap; the supplied readings),
+// then the three typed refusals (identity, PCI, enabled units). Five reads, never an omission.
+fn host_truth_observe_reads(host: NonEmptyStr, at_run: NonEmptyStr, cap_limit: SystemdCgroupMemoryLimit, swap_limit: SystemdCgroupMemoryLimit) -> List<HostTruthRead> {
   [
     host_truth_cap_read(host: host, at_run: at_run, limit: cap_limit),
     host_truth_leaf_swap_read(host: host, at_run: at_run, limit: swap_limit),
-    host_truth_identity_read(host: host, at_run: at_run, presented: presented),
+    host_truth_observe_identity_refusal(host: host),
     host_truth_observe_pci_refusal(host: host),
     host_truth_observe_unit_refusal(host: host),
   ]
 }
 
-// THE EXPECTATIONS FOR ONE HOST: the three axes that have declarations. The two refused axes are absent here
-// on purpose -- giving them an expectation would move them out of the refusal class.
+// THE EXPECTATIONS FOR ONE HOST: the two readable axes that have declarations. The three refused axes are absent
+// here on purpose -- giving one an expectation would move it out of the refusal class into a comparison.
 fn host_truth_observe_expectations(host: NonEmptyStr) -> List<HostTruthExpectation> {
   [
     host_truth_observe_cap_expectation(host: host),
     host_truth_observe_swap_expectation(host: host),
-    host_truth_identity_expectation(host: host, declared_by: host_truth_observe_identity_declared_by),
   ]
 }
 
 // THE VERDICT FOR ONE HOST, from the readings the carriers supplied.
-fn host_truth_observe_verdict(host: NonEmptyStr, at_run: NonEmptyStr, cap_limit: SystemdCgroupMemoryLimit, swap_limit: SystemdCgroupMemoryLimit, presented: NonEmptyStr?) -> HostTruthVerdict {
+fn host_truth_observe_verdict(host: NonEmptyStr, at_run: NonEmptyStr, cap_limit: SystemdCgroupMemoryLimit, swap_limit: SystemdCgroupMemoryLimit) -> HostTruthVerdict {
   fleet_host_truth_verdict_for_host(
     host: host,
-    reads: host_truth_observe_reads(host: host, at_run: at_run, cap_limit: cap_limit, swap_limit: swap_limit, presented: presented),
+    reads: host_truth_observe_reads(host: host, at_run: at_run, cap_limit: cap_limit, swap_limit: swap_limit),
     expectations: host_truth_observe_expectations(host: host),
   )
 }
@@ -198,27 +216,6 @@ fn host_truth_comparison_text(comparison: HostTruthComparison) -> String {
   }
 }
 
-// THE PRESENTED FINGERPRINT, taken ONCE from the host-key scan receipt the scan step wrote. The scan writes,
-// per host, a "scan host=<host> ..." block whose third line is "fingerprint <text>"; this reads that line for
-// the host. This is the single parse point: no carrier returns a presented fingerprint as a value, and a host the
-// scan never observed -- or whose fingerprint answered empty -- comes back absent, never as the empty string.
-fn host_truth_presented_fingerprint_for_host(receipt_text: String, host: NonEmptyStr) -> NonEmptyStr? {
-  let prefix = join([host, " "], "")
-  let blocks = split(s: receipt_text, delimiter: "scan host=")
-  let block_opt: String? = first_where(xs: blocks, keep: fn(b) { b.starts_with(prefix) })
-  match block_opt {
-    Absent => Absent { }
-    Present { value: block } =>
-      let fp_opt: String? = first_where(xs: split(s: block, delimiter: "\n"), keep: fn(l) { l.starts_with("fingerprint ") })
-      match fp_opt {
-        Absent => Absent { }
-        Present { value: line } =>
-          let text = trim(s: line.substring(start: 12, end: line.length()))
-          if text == "" { Absent { } } else { Present { value: text as NonEmptyStr } }
-      }
-  }
-}
-
 // THE CAP AND SWAP LIMITS at the runner parent slice, from the envelope observation. When the envelope read
 // no such slice the limits are absent (the producers score blank then), so an unread slice never fabricates.
 type HostTruthObserveSliceLimits {
@@ -234,16 +231,10 @@ fn host_truth_observe_slice_limits(observation: HostMemoryEnvelopeObservation) -
   }
 }
 
-// READ A TEXT FILE, or nothing when it cannot be read (an unread scan receipt is absent, never an empty pass).
-fn host_truth_observe_read_text(path: String) -> String? {
-  let r = Filesystem.Read(path: path)
-  if r.success { Present { value: r.content } } else { Absent { } }
-}
-
 // THE WET ENTRY. One dispatched host per run, named by the converge matrix through the expected-host env var
 // -- the same shape gunbc.host.host_memory_envelope_observe uses -- so no step body names a host. It reads
-// the host's memory envelope, reads the host-key scan receipt for the presented fingerprint, forms the verdict
-// through gunbc.fleet.fleet_host_truth_read, writes a per-host receipt, and exits non-zero only on divergence.
+// the host's memory envelope, forms the two-axis verdict (cap, leaf swap) with the three refused axes through
+// gunbc.fleet.fleet_host_truth_read, writes a per-host receipt, and exits non-zero only on divergence.
 fn host_truth_read_observe_ci_wet() -> ProcessExit {
   let dispatch = actions_variable_read(name: fleet_converge_expected_host_env_name)
   let dispatched = match dispatch {
@@ -264,18 +255,12 @@ fn host_truth_read_observe_ci_wet() -> ProcessExit {
         HostMemoryEnvelopeRefused { host: _, reason: why } => exit_failure(reason: why)
         HostMemoryEnvelopeObserved { observation: obs } => {
           let limits = host_truth_observe_slice_limits(observation: obs)
-          let scan_receipt = host_truth_observe_read_text(path: fleet_host_key_scan_receipt_path)
-          let presented = match scan_receipt {
-            Present { value: text } => host_truth_presented_fingerprint_for_host(receipt_text: text, host: identity)
-            Absent => Absent { }
-          }
           let at_run = obs.probed_at
           let verdict = host_truth_observe_verdict(
             host: identity,
             at_run: at_run,
             cap_limit: limits.cap_limit,
             swap_limit: limits.swap_limit,
-            presented: presented,
           )
           let text = join([
             "fleet host-truth read (observe-only) -- host=", (identity as String), " at_run=", (at_run as String), "\n",
