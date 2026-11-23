@@ -763,3 +763,46 @@ test fn spine_expectation_covers_spine_and_locus() -> Bool {
       && all(entries, e => is_dir(e.kind) && to_string(e.mode) == "0755")
   }
 }
+
+// RED-ON-TODAY'S-CODE PROOF: the OLD expectation (tree_installed_expectation_owned)
+// covers ONLY entries from source_metadata (files under dag/ and src/v2/). Executables
+// at the locus root (path "gunbc") are NOT in that expected set, so a same-byte
+// executable at the wrong mode PASSES the old tree_metadata_disagreement (the path
+// is never compared). The extension adds it via tree_locus_children_expectation_owned,
+// closing the gap. This claim shows the OLD comparison returns Absent (agree) for
+// a scenario that SHOULD refuse.
+test fn old_expectation_silently_accepts_wrong_mode_executable() -> Bool {
+  // Simulate source_metadata: one file under dag/ (this is what the OLD expectation covers)
+  let source_entry = TreeMetadataEntry { path: "dag/gunbc/x.dag", kind: TreeRegular, mode: fm("644"), owner: PosixOwnerNames { user: "gunbc" as NonEmptyStr, group: "gunbc" as NonEmptyStr } }
+  let old_expected = expectation_of(sources: [source_entry])
+  // The OLD readback observed only entries inside dag/ and src/v2/ (not the executable at "gunbc")
+  let old_observed = [source_entry]
+  // The OLD comparison agrees: it never sees the executable
+  match tree_metadata_disagreement(expected: old_expected, observed: old_observed) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+// With the NEW expectation (including locus-children for executables), the same
+// executable at mode 0644 IS caught. Together these two claims demonstrate red-on-
+// today's-code: old=pass, new=refuse for the same tampered executable.
+test fn new_expectation_catches_wrong_mode_executable_same_scenario() -> Bool {
+  let subs = ["dag", "src/v2"]
+  let execs = ["gunbc"]
+  match tree_locus_children_expectation_owned(subdirs: subs, executables: execs, owner: deploy_owner) {
+    Absent => false
+    Present { value: locus_expected } =>
+      // Observed: the executable exists but at the wrong mode
+      let observed_exe = TreeMetadataEntry { path: "gunbc", kind: TreeRegular, mode: fm("644"), owner: gnbc() }
+      let observed_dag = TreeMetadataEntry { path: "dag", kind: TreeDirectory, mode: fm("755"), owner: gnbc() }
+      let observed_src = TreeMetadataEntry { path: "src", kind: TreeDirectory, mode: fm("755"), owner: gnbc() }
+      let expected_paths = flat_map(locus_expected, e => [e.path])
+      let observed_all = [observed_dag, observed_src, observed_exe]
+      let filtered = filter(observed_all, e => any(expected_paths, p => p == e.path))
+      match tree_metadata_disagreement(expected: locus_expected, observed: filtered) {
+        Absent => false
+        Present { value: why } => string_contains(s: why, pattern: "gunbc")
+      }
+  }
+}
