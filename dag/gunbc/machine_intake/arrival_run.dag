@@ -241,7 +241,8 @@ fn arrival_converge_under_archive_interlock(subject: ArrivalSubjectAdmitted) -> 
           subject: subject,
           owner: join(["arrival/", subject.host as String, "/", run_id], "") as DurableHoldOwnerRef,
           // The same run id the owner is minted from: it is what lets the interlock tell "somebody else
-          // is inside the door" from "this run re-ran while still holding the slot".          self_run_id: run_id,
+          // is inside the door" from "this run re-ran while still holding the slot".
+          self_run_id: run_id,
           // Production liveness is the DECLARED github GET, passed EXPLICITLY (no default to fall into a test
           // value): the acquire reads the holder's run status through the same declared op the fold uses.
           live_reader: arrival_holder_run_liveness,
