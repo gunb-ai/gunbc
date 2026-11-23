@@ -145,7 +145,9 @@ fn roadmap_event_branch_tip(layout: RoadmapEventCarrierLayout) -> Optional<Strin
         Absent => ""
         Present { value: v } => v
       })
-      if sha == "" { none } else { Present { value: sha } }
+      // Absent, not none: this if is the tail of a match arm, where a bare `none` resolves to Product(Unit)
+      // and the reader calls the arms incompatible. The constructor spells the type the arm must have.
+      if sha == "" { Absent } else { Present { value: sha } }
     }
   }
 }
