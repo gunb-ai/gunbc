@@ -1,4 +1,4 @@
-module gunbc.test.claim.fleet.fleet_host_truth_sources_witness
+module test.claim.fleet.fleet_host_truth_sources_witness
 
 // CLAIMS ON THE SOURCES (gunbc.fleet.fleet_host_truth_sources). The comparison module is witnessed by
 // dag/test/claim/fleet/fleet_host_truth_read_witness.dag; these claims are the OTHER half of the frontier
@@ -43,6 +43,8 @@ import gunbc.fleet.fleet_host_truth_read {
   HostTruthNothingDeclared,
   HostTruthVerdict,
   HostTruthNothingRead,
+  HostTruthNoValueAtThatPath,
+  HostTruthOutputUnparseable,
   HostTruthComparison,
   HostTruthClass,
   TruthClassAgreement,
@@ -80,17 +82,33 @@ fn declared_swap(host: NonEmptyStr, gib: Nat) -> HostTruthExpectation {
 // (which would pass the very leaf the report found thrashing at 5.1 tok/s). The source refuses and says
 // which path went unanswered, and the refusal cannot be mistaken for agreement by the module downstream.
 test fn RED_a_cgroup_limit_unset_at_the_leaf_refuses_rather_than_answering_zero_or_infinity() -> Bool {
-  let read = host_truth_cap_read(host: "srv4" as NonEmptyStr, at_run: "converge-2026-11-21", limit: MemoryLimitAbsent)
+  let read = host_truth_cap_read(host: "srv4" as NonEmptyStr, at_run: "converge-2026-11-21", limit: MemoryLimitAbsent, shown: "")
   match read {
-    HostTruthReadRefused { host: _, axis: _, cause: _ } =>
-      !(host_truth_class(comparison: host_truth_compare(read: read, expectation: declared_cap("srv4" as NonEmptyStr, 40))) == TruthClassAgreement)
+    HostTruthReadRefused { host: _, axis: _, cause: HostTruthNoValueAtThatPath { path: p } } =>
+      p.contains(substring: "memory.high")
+        && p.contains(substring: "printed no value")
+        && !(host_truth_class(comparison: host_truth_compare(read: read, expectation: declared_cap("srv4" as NonEmptyStr, 40))) == TruthClassAgreement)
+    _ => false
+  }
+}
+
+// RED -- THE OTHER "NO", WHICH THE PARSER CANNOT TELL APART. extdeps/systemd.dag:524-530 answers both "the
+// property printed nothing" and "it printed something parse_int cannot read" with MemoryLimitAbsent -- which
+// is why dag/gunbc/compile_pool_observe.dag:83 labels that arm "empty or unparseable". A refusal that said
+// "printed no value" over output like "8G" would misstate the machine, which is a fabricated located cause
+// even inside a refusal (gunbc.design_argument::epistemic_humility, gunbc.design_argument::fail_closed). So
+// the read takes the shown text beside the parsed limit, and unreadable output is the arm that already fits.
+test fn RED_unreadable_cgroup_output_refuses_as_unparseable_and_not_as_a_leaf_that_set_nothing() -> Bool {
+  match host_truth_cap_read(host: "srv4" as NonEmptyStr, at_run: "converge-2026-11-21", limit: MemoryLimitAbsent, shown: "8G") {
+    HostTruthReadRefused { host: _, axis: TruthCapBindsDeclaredWorkingSet, cause: HostTruthOutputUnparseable { raw: r } } =>
+      r == "8G"
     _ => false
   }
 }
 
 // "infinity" is the machine saying it set no ceiling, which is its own answer and not the absence of one.
 test fn a_cgroup_limit_of_infinity_is_a_cap_the_machine_does_not_set() -> Bool {
-  match host_truth_cap_read(host: "srv4" as NonEmptyStr, at_run: "converge-2026-11-21", limit: MemoryLimitUnbounded) {
+  match host_truth_cap_read(host: "srv4" as NonEmptyStr, at_run: "converge-2026-11-21", limit: MemoryLimitUnbounded, shown: "infinity") {
     HostTruthObserved { host: _, axis: _, observed: TruthUnbounded, at_run: _, receipt: _ } => true
     _ => false
   }
@@ -104,11 +122,13 @@ test fn RED_the_leaf_cap_the_machine_reports_diverges_from_the_working_set_the_r
     host: "srv4" as NonEmptyStr,
     at_run: "converge-2026-11-21",
     limit: MemoryLimitBytes { bytes: gibibyte_to_byte_size(g: gibibyte(count: 40)) },
+    shown: "42949672960",
   )
   let roomy = host_truth_cap_read(
     host: "srv4" as NonEmptyStr,
     at_run: "converge-2026-11-21",
     limit: MemoryLimitBytes { bytes: byte_size(count: 68719476736) },
+    shown: "68719476736",
   )
   host_truth_class(comparison: host_truth_compare(read: low, expectation: declared_cap("srv4" as NonEmptyStr, 56))) == TruthClassDivergence
     && host_truth_class(comparison: host_truth_compare(read: roomy, expectation: declared_cap("srv4" as NonEmptyStr, 56))) == TruthClassAgreement
@@ -134,8 +154,23 @@ test fn RED_a_host_carrying_swap_where_the_envelope_declares_none_diverges() -> 
 
 // THE LEAF'S OWN SWAP CEILING is a separate fact from the host's backing, taken from the same reading.
 test fn the_leaf_swap_ceiling_is_read_from_the_same_observation_as_the_cap() -> Bool {
-  match host_truth_leaf_swap_read(host: "srv4" as NonEmptyStr, at_run: "converge-2026-11-21", limit: MemoryLimitBytes { bytes: byte_size(count: 0) }) {
+  match host_truth_leaf_swap_read(host: "srv4" as NonEmptyStr, at_run: "converge-2026-11-21", limit: MemoryLimitBytes { bytes: byte_size(count: 0) }, shown: "0") {
     HostTruthObserved { host: _, axis: TruthSlotSwapBackingDeclared, observed: _, at_run: _, receipt: r } => string_contains(s: r, pattern: "gunbc.host.host_memory_envelope_observe")
+    _ => false
+  }
+}
+
+// An unset leaf ceiling is a refusal naming its own property; unreadable output on the same property is the
+// unparseable arm. The two facts stay two causes, on both cgroup properties this module reads.
+test fn the_leaf_swap_ceiling_keeps_absent_and_unreadable_apart() -> Bool {
+  match host_truth_leaf_swap_read(host: "srv4" as NonEmptyStr, at_run: "converge-2026-11-21", limit: MemoryLimitAbsent, shown: "") {
+    HostTruthReadRefused { axis: TruthSlotSwapBackingDeclared, cause: HostTruthNoValueAtThatPath { path: p } } =>
+      p.contains(substring: "memory.swap.max") && (
+        match host_truth_leaf_swap_read(host: "srv4" as NonEmptyStr, at_run: "converge-2026-11-21", limit: MemoryLimitAbsent, shown: "max") {
+          HostTruthReadRefused { axis: TruthSlotSwapBackingDeclared, cause: HostTruthOutputUnparseable { raw: r } } => r == "max"
+          _ => false
+        }
+      )
     _ => false
   }
 }
