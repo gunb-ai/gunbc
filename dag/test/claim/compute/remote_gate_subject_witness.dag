@@ -25,7 +25,7 @@ import gunbc.gunbc_cli_command { gunbc_test_invocation_words }
 import gunbc.cli_invoke { invocation_words_bare }
 import gunbc.compute.remote_build {
   RemoteBuildOperation, RemoteGateSubject, remote_build_decode_request,
-  RemoteBuildRequestDecoded, RemoteBuildRequestRefused, RemoteBuildRequestRefusal,
+  RemoteBuildWorkDecoded, RemoteBuildRequestRefused, RemoteBuildRequestRefusal,
   RequestGateLabelNotAGateRow, RequestGateLabelUnparsable, RequestGateTakesOneLabel,
   RequestGateLabelAmbiguousRows, remote_build_gate_row_refusal,
   remote_build_work_operation, remote_build_operation_words, remote_build_dependency_rule,
@@ -65,13 +65,13 @@ fn g_request_text(label_text: String) -> String {
 fn g_decode(text: String) -> RemoteBuildOperation? {
   match remote_build_decode_request(text: text) {
     RemoteBuildRequestRefused { cause: _ } => none
-    RemoteBuildRequestDecoded { request } => Present { value: request.operation }
+    RemoteBuildWorkDecoded { work } => Present { value: work.operation }
   }
 }
 
 fn g_refusal(text: String) -> RemoteBuildRequestRefusal? {
   match remote_build_decode_request(text: text) {
-    RemoteBuildRequestDecoded { request: _ } => none
+    RemoteBuildWorkDecoded { work: _ } => none
     RemoteBuildRequestRefused { cause } => Present { value: cause }
   }
 }

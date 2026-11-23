@@ -1,0 +1,45 @@
+module gunbc.recurring_failure_mode.a_fleet_route_keyed_by_an_unanchored_address_outlives_its_address
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode, BelowCeiling, FoundOnRung, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyImpossible }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+import std.decl_ref { DeclarationRef }
+
+data a_fleet_route_keyed_by_an_unanchored_address_outlives_its_address: RecurringFailureMode = RecurringFailureMode {
+  // THE ROUTE WAS KEYED BY WHERE THE HOST WAS, NOT BY WHICH HOST IT IS. The address moved, the key
+  // that answered was another machine's, and the failure looked exactly like an attack.
+
+  identity: "a_fleet_route_keyed_by_an_unanchored_address_outlives_its_address" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundOnRung { rung: Mitigatable },
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: StructurallyImpossible,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "every fleet route to a host is named by a fleet name the model owns and is gated on the enrolled host-key fingerprint (gunbc.fleet.fleet_host_key_enrollment into extdeps.ssh.known_hosts), and the per-host identity read compares the key the host answers with against that anchor -- so an address change cannot present as an identity change, and a key that does not match the anchor refuses loudly with the two fingerprints side by side instead of being resolved by hand at a terminal"
+    }
+  },
+
+  receipts: [
+    "**INVALID STATE: an operator or a lane reaches a machine by an address, remembers the address as the machine, and the address later answers with a DIFFERENT machine -- or with the same machine at a different address while the remembered address now belongs to someone else. The remembered route is not stale-but-harmless: it is a trust statement about a location, and locations are reassigned.**",
+
+    "SPECIMEN, 2026-11-21, butch (operator_host_srv14): the lease moved 192.168.1.205 -> 192.168.1.238 in nine days, and the NIC moved with it (enP2p4s0, MAC ..ca:9c -> enP3p3s0f1, MAC ..ca:9b). The address it landed on carried a previous occupant's host key, so connecting produced host key verification failed -- the SAME symptom as an active interception, indistinguishable from the outside. It was resolved by matching the ed25519 fingerprint by hand against the key the tree had enrolled, which is the correct act, performed manually, under ambiguity, once.",
+
+    "TWO MORE, SAME SHAPE, NO KEY INVOLVED: srv3 was unreachable at its former address, and the address rows themselves carry their own instability -- gunbc.fleet.fleet_intent_network::srv14_host_lan_endpoint is labeled a DHCP LEASE OBSERVATION rather than intent since the operator withdrew butch's router rows, and the same table states that srv4's host (192.168.1.196) and BMC (192.168.1.195) 'remain only as stable as their leases until the operator reserves them' (srv1/srv2's hosts were converted to static reservations on 2026-07-24, so the report's srv2 example is now the resolved case rather than the live one). In every instance the model's only mistake was letting a location stand in for a machine.",
+
+    "WHAT THE TREE ALREADY OWNS (this row does not fork it): gunbc.plans.fleet_machine_authority owns machine identity and the ruling of 2026-11-17 that fleet hosts are reached by tailnet name; gunbc.fleet.fleet_tailnet carries the domain; gunbc.fleet.fleet_host_key_enrollment enrolls each host's host key with an explicit provenance standing, and its own commentary names the hazard precisely -- the 2026-11-10 scan of butch 'proved who WE are to the host, not WHICH machine we reached... whatever answered at .205 was trusted on first contact'. Enrollment exists for srv1-srv4 and ken; it is not closed over the fleet, and nothing re-reads the anchor against what the host now answers with. The operator has since ruled that butch's tailnet join is done by hand and that the repository owes the model the result (gunbc.design_ruling::butch_tailnet_join_is_operator_handled_2026_11_21, words: \"I will do the tailnet join + engine retirement now\", \"but you'll need to record/model that in the repo\") -- which places the whole weight of this axis on the read: the anchor has to be re-read whether or not any route performed the join.",
+
+    "RECOGNITION RULE: when a route to a host fails on identity (key verification, certificate, tag, or an unreachable remembered address), compare fingerprints before anything else, and ask what the route was keyed by. If the answer is an address the model does not anchor -- a DHCP lease, a tailnet IP copied into a note, a NIC -- the route is the defect, not the host.",
+
+    "CEILING AND WHY IT IS THE TOP OF THE LADDER: StructurallyImpossible, because the state can be made unnameable: if every fleet route is a fleet NAME gated on an enrolled fingerprint, there is no expression for 'the machine at .238', so a reassignment cannot be mistaken for the machine. This is one rung above the untagged-join row (gunbc.recurring_failure_mode::a_host_joined_off_the_route_carries_no_tag_the_acl_grants_on), whose ceiling is only StructurallyGuaranteed: a hand-join can always happen and must be refused, whereas an address-keyed fleet route can simply be unrepresentable.",
+
+    "NEXT TRIGGER: the next host whose lease or NIC changes, the next key-verification failure resolved by hand, or the identity axis of gunbc.plans.desired_state_follows_the_machine reading each roster host's presented key against its enrolled anchor and refusing the gap. The enrollment roster closing over every fleet host is the halfway mark and is checkable against the tree.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.fleet.fleet_host_key_enrollment", decl_name: "fleet_host_key_enrollments", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.fleet.fleet_intent_network", decl_name: "srv14_host_lan_endpoint", field: WholeDeclaration },
+  ]
+}
