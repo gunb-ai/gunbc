@@ -27,16 +27,26 @@ import std.types { CommitSha, String, commit_sha_text_holds }
 // 1 -- a defect in this branch's own fixture edit, invisible until something ran the file, which nothing
 // had, because it lives under manual/. The pair was re-cut at the head carrying the fixed accessor; the
 // old break commit is not lost, because the durable ref's history keeps it as an ancestor of the new one.
+// RE-CUT AGAIN, NAMED. The second pair (red_at c65a78eec60b9b8c9a458b59c0230a96278b327b, green_at
+// 74e3818cadf75413242bbff9bd138a0851f4b504) WAS executed with the same main-built binary, and the control
+// again refused to resolve: the effect checker reported "effect summary incomplete: call to
+// 'dag_language_model' ... has no established callee identity" and the same for 'span_index_extent', exit 1
+// -- two callees the control has called bare since it was written, with no top-level import, another defect
+// nothing under manual/ had ever exposed. Both are imported now (7a6fd7924b0e8cec3988628eb129cad1e4a545e8),
+// which is green_at below; that commit's first parent is the head the refusal was observed at, so the pair
+// moved forward one fix rather than sideways. Both earlier break commits stay reachable: the durable ref's
+// newest commit carries the previous one as a second parent, so no break is rewritten away -- read
+// `git log <probe_ref>` to see all three.
 data annotation_gap_v1_v2_agreement_probe_kind: String = "deliberate-break"
 data annotation_gap_v1_v2_agreement_probe_ref: String = "refs/heads/red-control/parse-comment-gap-attachment-v2-consumed"
 data annotation_gap_v1_v2_agreement_probe_red_base: CommitSha = "8c86ee47f68ec1f451e25a8cb8f594a868e5c384"
 // red_at's FIRST PARENT is green_at: the break is one commit on top of the tree whose witness it runs
 // unchanged, which is the strictest form of the pair -- the two runs differ by the roster arm alone.
-data annotation_gap_v1_v2_agreement_probe_red_at: CommitSha = "c65a78eec60b9b8c9a458b59c0230a96278b327b"
-// green_at is the commit the control was EXECUTED at, on this PR lineage. The head carrying this receipt
+data annotation_gap_v1_v2_agreement_probe_red_at: CommitSha = "fd8fc90a048581364791b970cda34b224d7089cc"
+// green_at is the commit the control was EXECUTED at and PASSED, on this PR lineage. The head carrying this receipt
 // is green_at plus one commit that touches only this receipt module, so the witness bytes are the same in
 // green_at, in the head, and in red_at (proven by git hash-object in the run log).
-data annotation_gap_v1_v2_agreement_probe_green_at: CommitSha = "74e3818cadf75413242bbff9bd138a0851f4b504"
+data annotation_gap_v1_v2_agreement_probe_green_at: CommitSha = "7a6fd7924b0e8cec3988628eb129cad1e4a545e8"
 data annotation_gap_v1_v2_agreement_probe_executed_on: String = "2026-11-23"
 // The witness this pair is about, named as data so a reader never has to infer it from a file path.
 data annotation_gap_v1_v2_agreement_probe_witness_module: String = "v2.test.claim.manual.annotation_gap_v1_v2_agreement"
