@@ -434,18 +434,26 @@ impl v1_compiler::gunbc_cli_dispatch_generated::CliDispatchHost for RetainedCliH
         )
     }
 
-    fn invoke_bound_target_producer(&self, target: String) -> ! {
-        // The producer hand-off names ONE target and asks for no options: the default corpus, the
-        // default (hermetic) mode. A batch or a spelled mode is a caller's request, not something
-        // this hand-off invents.
+    fn invoke_bound_target_producer(
+        &self,
+        operands: Vec<String>,
+        hermetic: bool,
+        wet: bool,
+        record: bool,
+        fixture_store: Option<String>,
+        source_roots: Vec<String>,
+    ) -> ! {
+        // The producer hand-off carries what clap parsed and invents nothing: no corpus root is
+        // added to a request that named none (the route applies the default pair), and no mode
+        // word is spelled for a request that named none (the route's default is hermetic).
         retained_dispatch(
             RetainedCommands::Test {
-                operands: vec![target],
-                hermetic: false,
-                wet: false,
-                record: false,
-                fixture_store: None,
-                source_roots: Vec::new(),
+                operands,
+                hermetic,
+                wet,
+                record,
+                fixture_store,
+                source_roots,
             },
             self.dry_run,
         )
