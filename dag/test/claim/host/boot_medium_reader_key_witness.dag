@@ -129,7 +129,7 @@ test fn a_record_first_medium_has_no_reader_and_refuses_by_name() -> Bool {
 // THE PRODUCER WHILE THE KEY IS UNMINTED: it refuses by that name and dispatches nothing.
 test fn the_reader_producer_refuses_while_the_key_is_unminted() -> Bool {
   match boot_medium_served_readback_over_reader(medium: medium(), check: BootMediumServedMeasureOnly, attempt: "boot-medium-reader-readback") {
-    BootMediumServedUnreadable { host: _, served_path: p, reason: r } => p == link() && r.contains("not minted")
+    BootMediumServedUnreadable { host: _, served_path: p, reason: r } => p == link() && r.contains("not minted") && !r.contains("exit=")
     BootMediumServedHeld { host: _, image_name: _, served_path: _, measured_digest: _ } => false
     BootMediumServedHeldThroughLink { host: _, link_path: _, target_name_derived: _, measured_digest: _ } => false
     BootMediumServedMeasureMalformed { served_path: _, content: _ } => false
