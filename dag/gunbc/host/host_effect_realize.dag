@@ -7224,6 +7224,71 @@ fn tree_executables_disagreement(executables: List<String>, source_root: String,
     })
 }
 
+// DOES THE LOCUS ALREADY CARRY EXACTLY WHAT THE VERBATIM READBACK CERTIFIES? One content readback
+// (tree_entries_agree: every source file's bytes at its path, set-equal so an EXTRA file refuses), the
+// binary agreement (tree_executables_disagreement: each release binary hashes equal to its source), and
+// one kind/mode/owner readback (tree_metadata_disagreement against tree_installed_expectation_owned over
+// the source's own entries). These are THE SAME three predicates the readback in
+// approval_broker_tree_install_observed runs below, over the SAME paths and the SAME realm owner -- no
+// new observation, no new comparison, no new grant. A first install (the locus has no tree yet, so the
+// content observe fails) or ANY disagreement returns false and the caller takes the full write path.
+// Used ONLY to decide whether the redundant per-file write folds may be skipped; it never certifies a
+// tree, because the readback below re-runs unconditionally and stays the fail-closed gate.
+fn tree_locus_already_converged(
+  realm: TreeInstallRealm,
+  source_root: String,
+  locus: String,
+  source: List<TreeFileHash>,
+  source_metadata: List<TreeMetadataEntry>,
+  executables: List<String>,
+  transport: HostEffectElevationRoute,
+) -> Bool {
+  match observe_tree_hashes(root: locus, subs: release_locus_tree_subdirs, transport: transport) {
+    TreeObservationFailed { reason: _ } => false
+    TreeObserved { entries: already } =>
+      if !tree_entries_agree(source: source, installed: already) {
+        false
+      } else match tree_executables_disagreement(executables: executables, source_root: source_root, locus: locus, transport: transport) {
+        Present { value: _ } => false
+        Absent => match observe_tree_entry_metadata(root: locus, subs: release_locus_tree_subdirs, transport: transport) {
+          TreeMetadataObservationFailed { reason: _ } => false
+          TreeMetadataObserved { entries: already_entries } =>
+            match tree_realm_readback_owner(realm: realm, observed: already_entries) {
+              Absent => false
+              Present { value: readback_owner } => match tree_installed_expectation_owned(entries: source_metadata, owner: readback_owner) {
+                Absent => false
+                Present { value: expected } => match tree_metadata_disagreement(expected: expected, observed: already_entries) {
+                  Present { value: _ } => false
+                  Absent => true
+                }
+              }
+            }
+        }
+      }
+  }
+}
+
+// Witness/consumer convenience: derive the source's own content and metadata observations from
+// source_root, then ask the skip question. The fold itself passes its ALREADY-observed source lists to
+// tree_locus_already_converged (no second source read); this wrapper is for callers that hold only the
+// two paths. Same observes, same predicates, no new authority.
+fn tree_locus_matches_source_root(
+  realm: TreeInstallRealm,
+  source_root: String,
+  locus: String,
+  executables: List<String>,
+  transport: HostEffectElevationRoute,
+) -> Bool {
+  match observe_tree_hashes(root: source_root, subs: release_locus_tree_subdirs, transport: transport) {
+    TreeObservationFailed { reason: _ } => false
+    TreeObserved { entries: src } => match observe_tree_entry_metadata(root: source_root, subs: release_locus_tree_subdirs, transport: transport) {
+      TreeMetadataObservationFailed { reason: _ } => false
+      TreeMetadataObserved { entries: src_meta } =>
+        tree_locus_already_converged(realm: realm, source_root: source_root, locus: locus, source: src, source_metadata: src_meta, executables: executables, transport: transport)
+    }
+  }
+}
+
 fn approval_broker_tree_install_observed(
   realm: TreeInstallRealm,
   spine: List<String>,
@@ -7235,26 +7300,52 @@ fn approval_broker_tree_install_observed(
   executables: List<String>,
   transport: HostEffectElevationRoute,
 ) -> ApprovalBrokerTreeInstallVerdict {
-  let after_spine = fold(list_snoc_item(xs: spine, item: locus), init: TreeStepsOk, f: (st, d) => tree_install_directory_step(state: st, realm: realm, path: d, transport: transport))
-  let after_dirs = fold(tree_directory_targets(files: source, metadata: source_metadata), init: after_spine, f: (st, d) =>
-    tree_install_directory_step(state: st, realm: realm, path: join([locus, "/", d], ""), transport: transport))
-  let after_files = fold(source, init: after_dirs, f: (st, e) =>
-    tree_run_realm_write(state: st, step: TreeStepInstallFile, transport: transport, write: tree_realm_file_write(
-      realm: realm, mode: install_file_shared_mode,
-      source: join([source_root, "/", e.path], ""), dest: join([locus, "/", e.path], ""))))
-  let after_binary = fold(executables, init: after_files, f: (st, name) =>
-    tree_run_realm_write(state: st, step: TreeStepInstallBinary, transport: transport, write: tree_realm_file_write(
-      realm: realm, mode: install_executable_shared_mode,
-      source: join([cargo_default_release_dir(build_root: source_root), "/", name], ""),
-      dest: join([locus, "/", name], ""))))
-  // THE LINKS LAST OF THE WRITES, each as ONE entry: cp -P writes the link as the link (install(1)
-  // would have followed it and written the target's contents as a regular file -- the silent
-  // materialization this stage exists to refuse); in the elevated realm chown --no-dereference then
-  // gives the LINK ITSELF to the deploy owner, because cp leaves the link root-owned and the readback
-  // below names the installed ownership as a certified fact (tree_realm_link_write).
-  let after_links = fold(tree_symlink_entries(entries: source_metadata), init: after_binary, f: (st, e) =>
-    tree_run_realm_write(state: st, step: TreeStepInstallLink, transport: transport, write: tree_realm_link_write(
-      realm: realm, source: join([source_root, "/", e.path], ""), dest: join([locus, "/", e.path], ""))))
+  // STEADY-STATE SKIP (work item adhoc-0952dae0): the per-file/dir/binary/link write folds below are
+  // authored work, not an invariant -- their ONLY purpose is to bring the locus to the state the
+  // verbatim readback below certifies. If the locus ALREADY carries exactly that state, the folds are a
+  // no-op the readback would re-certify unchanged, so run none of them. This collapses a redeploy of an
+  // UNCHANGED tree from one `sudo install` effect per file (~10,642 per locus x the release subtrees = the
+  // ~34k RunArgv the deploy was spending ~11 minutes on) to ZERO per-file effects.
+  //
+  // NO NEW AUTHORITY: the skip decision runs the SAME bulk observes (observe_tree_hashes,
+  // observe_tree_entry_metadata) and the SAME comparison predicates (tree_entries_agree,
+  // tree_executables_disagreement, tree_metadata_disagreement against the realm's expectation) that the
+  // readback below already runs over this exact locus -- no new effect kind, no new sudo grant, no new
+  // vocabulary (gunbc.design_argument::consumption). It returns true ONLY when every one of those
+  // predicates already agrees, so it can never skip past a tree the readback would refuse.
+  //
+  // FAIL-CLOSED IS UNCHANGED: a first install (no locus yet), OR any file/entry/binary out of agreement,
+  // returns false and falls through to the full write path exactly as before. The readback below stays
+  // the sole fail-closed per-file gate in EVERY case -- it re-runs regardless of the skip, so a file
+  // tampered between this pre-read and the readback is still caught there and refuses the receipt.
+  let after_links = if tree_locus_already_converged(
+    realm: realm, source_root: source_root, locus: locus, source: source,
+    source_metadata: source_metadata, executables: executables, transport: transport,
+  ) {
+    TreeStepsOk
+  } else {
+    let after_spine = fold(list_snoc_item(xs: spine, item: locus), init: TreeStepsOk, f: (st, d) => tree_install_directory_step(state: st, realm: realm, path: d, transport: transport))
+    let after_dirs = fold(tree_directory_targets(files: source, metadata: source_metadata), init: after_spine, f: (st, d) =>
+      tree_install_directory_step(state: st, realm: realm, path: join([locus, "/", d], ""), transport: transport))
+    let after_files = fold(source, init: after_dirs, f: (st, e) =>
+      tree_run_realm_write(state: st, step: TreeStepInstallFile, transport: transport, write: tree_realm_file_write(
+        realm: realm, mode: install_file_shared_mode,
+        source: join([source_root, "/", e.path], ""), dest: join([locus, "/", e.path], ""))))
+    let after_binary = fold(executables, init: after_files, f: (st, name) =>
+      tree_run_realm_write(state: st, step: TreeStepInstallBinary, transport: transport, write: tree_realm_file_write(
+        realm: realm, mode: install_executable_shared_mode,
+        source: join([cargo_default_release_dir(build_root: source_root), "/", name], ""),
+        dest: join([locus, "/", name], ""))))
+    // THE LINKS LAST OF THE WRITES, each as ONE entry: cp -P writes the link as the link (install(1)
+    // would have followed it and written the target's contents as a regular file -- the silent
+    // materialization this stage exists to refuse); in the elevated realm chown --no-dereference then
+    // gives the LINK ITSELF to the deploy owner, because cp leaves the link root-owned and the readback
+    // below names the installed ownership as a certified fact (tree_realm_link_write).
+    let after_links = fold(tree_symlink_entries(entries: source_metadata), init: after_binary, f: (st, e) =>
+      tree_run_realm_write(state: st, step: TreeStepInstallLink, transport: transport, write: tree_realm_link_write(
+        realm: realm, source: join([source_root, "/", e.path], ""), dest: join([locus, "/", e.path], ""))))
+    after_links
+  }
   match after_links {
     TreeStepFailed { step: s, reason: why } => TreeInstallRefused { step: s, reason: why }
     TreeStepsOk =>
