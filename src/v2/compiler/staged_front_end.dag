@@ -6,7 +6,7 @@ import v2.compiler.parse { authored_parse_annotations, authored_parse_semantic, 
 import v2.compiler.resolve { ResolvedTree, resolve }
 import v2.compiler.tokenize { tokenize_artifact }
 import v2.extdeps.languages.dag { dag_language_model }
-import v2.extdeps.languages.dag.syntax { strip_line_comment_delimiter }
+import extdeps.languages.dag.syntax { strip_line_comment_delimiter }
 import std.algebra { fold_list, length, list_snoc_item }
 import std.host_text { chars }
 import std.source_annotation { SourceAnnotationDebt, SourceAnnotationGraph, code_point_is_line_feed, source_annotation_graph_rows }
