@@ -1297,6 +1297,24 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
     ),
 
     roadmap_node(
+      identity: "rn_MX72H51BBE6ZH57APJDRG7VA22",
+      id: "serve-entry-compile-inhabitance-wet-lane-cost",
+      owner: "self-host",
+      carriers: carrier(path: "dag/test/claim/live_deploy/pre_swap_admission_serve_compile_inhabitance_witness.dag"),
+      line: ticket(t: fields(
+        headline: "The serve-entry compile inhabitance claim stops paying a 31-minute whole-closure compile",
+        boundary: "observe_serve_entry_compile_clean (gunbc.live_deploy.pre_swap_admission) has two callers, both claims. pre_swap_admission_serve_compile_inhabitance_witness imports and calls it, and its own real_execution_home_doc says the checkout's built gunbc compiles a serve entry to the dag target, so it is a LocalRepoWetLane claim; the other caller, pre_swap_admission_witness, is a fixture with repo_root and bin_path set to /nonexistent and costs nothing. The deploy step no longer runs this compile (it runs the served command), so the cost is the wet lane's, not a deploy's. Measured baseline (gentle-tern-663, 957fa04f, gunbc 83c2770d): 1,871.79 s wall, 1,858.81 s user, 14,794,308 kB peak RSS, exit 0, closure about 3,666 files, of which 1,798,764 ms sits unattributed inside one compile_transaction. The claim pays that to prove a verdict fold reads an exit code and some error lines. If the wet-lane claim is the wrong shape and should not compile the whole closure at all, the owning lane decides between making the compile cheaper and making the claim smaller.",
+        displaced_cost: "The wet lane's wall clock and the CI budget that absorbs it: about 31 minutes and 14.8 GB for one inhabitance claim (gunbc.design_argument::how_to_work, a proven cost-shape defect is always fixed).",
+        first_slice: "Attribute the 1,798,764 ms unattributed inside compile_transaction before anyone optimises it.",
+        red_control: "NONE OBSERVED YET: no before and after pair exists and no sha is claimed. The control is the same claim at a named revision with a receipt under its stated budget, against the baseline above, with the verdict fold still discriminating a refused compile from a clean one.",
+        out_of_scope: "Changing what the deploy step runs. Persisting the program across restarts (demand-serve-program-image).",
+        handback: "The attribution of the unattributed time, the change (cheaper compile or smaller claim, with the reason), the measured wall and RSS before and after at the same revision, and the claim still red on a refused compile."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "demand-engine", contribution: "A deploy pays for the serve entry's compile only what the change requires."),
+    ),
+
+    roadmap_node(
       identity: "rn_JXW6HYEDDAHGZ77HCGTYSF3FX3",
       id: "parse-comment-gap-attachment",
       owner: "parse",
@@ -3069,7 +3087,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         red_control: "The budget governs the program the step runs, not the compile form: gunbc run with entry spec.service.serve_entry and the http ingress binding arguments (record_plan_serve_entry_verdict_for via observe_served_command_reaches_bind). At a named revision that program completes under 30 minutes on srv1 with its receipt, and only then the step bound returns to 30. A whole-closure gunbc compile of the entry is a different program, measured separately below and not governed by this budget.",
         out_of_scope: "Persisting the program across restarts (demand-serve-program-image).",
         handback: "The phase breakdown, the change, the measured compile time before and after at the same revision, and the lowered bound."
-      ), on: "2026-11-23", note: "Premise restated (warm-fox-517 from gentle-tern-663, read at 957fa04f with gunbc 83c2770d): the step no longer runs the compile form. record_plan_serve_entry_compile_verdict reaches observe_served_command_reaches_bind, which runs gunbc run, not observe_serve_entry_compile_clean (the compile-to-dag argv), and the in-file comment records that the step was changed from the whole-closure compile for that reason. Measured: the compile form the boundary names is 1871.79 s wall, user 1858.81, max RSS 14,794,308 kB, exit 0, closure about 3666 files, 1,798,764 of 1,871,790 ms unattributed inside compile_transaction; the step command is 943.26 s wall, user 930.85, max RSS 8,639,588 kB, closure_files 1454, resolve_entry_graph_inclusive 212,718 ms, exit 1 only at the final write to /tmp/fleet-converge-plan/serve_entry_verdict.json (Permission denied, os error 13). So the 45-minute bound guards a program the step no longer runs. The 27-minute displaced cost in this row belongs to the whole-closure compile and no longer to the deploy step; whether to keep it as a runtime-reduction row against that compile, or retire it, is the owner decision this note leaves open.")),
+      ), on: "2026-11-23", note: "Premise restated (warm-fox-517 from gentle-tern-663, read at 957fa04f with gunbc 83c2770d): the step no longer runs the compile form. record_plan_serve_entry_compile_verdict reaches observe_served_command_reaches_bind, which runs gunbc run, not observe_serve_entry_compile_clean (the compile-to-dag argv), and the in-file comment records that the step was changed from the whole-closure compile for that reason. Measured: the compile form the boundary names is 1871.79 s wall, user 1858.81, max RSS 14,794,308 kB, exit 0, closure about 3666 files, 1,798,764 of 1,871,790 ms unattributed inside compile_transaction; the step command is 943.26 s wall, user 930.85, max RSS 8,639,588 kB, closure_files 1454, resolve_entry_graph_inclusive 212,718 ms, exit 1 only at the final write to /tmp/fleet-converge-plan/serve_entry_verdict.json (Permission denied, os error 13). So the 45-minute bound guards a program the step no longer runs. The 27-minute displaced cost in this row belongs to the whole-closure compile and no longer to the deploy step; owner decision (warm-fox-517): the runtime reduction is kept, but not under this row's deploy framing; it is filed as its own row, serve-entry-compile-inhabitance-wet-lane-cost.")),
       dispatch: dispatchable(),
       parent: in_project(project: "demand-engine", contribution: "A deploy pays for the serve entry's compile only what the change requires."),
     ),
