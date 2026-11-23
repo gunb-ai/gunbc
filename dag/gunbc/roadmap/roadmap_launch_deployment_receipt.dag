@@ -47,6 +47,7 @@ import gunbc.live_deploy.unit_standing {
   LaunchUnitStanding,
   DashboardServiceConverged, DashboardServiceRefused, BeltOneshotConverged, BeltOneshotRefused,
   BeltEventPathStanding, BeltEventPathConverged, BeltEventPathRefused,
+  BeltTimerStanding, BeltTimerConverged, BeltTimerRefused,
   dashboard_service_standing_text, belt_event_path_standing_text, belt_oneshot_standing_text, launch_unit_standing_text,
 }
 import gunbc.roadmap.roadmap_belt_actuate {
@@ -485,7 +486,11 @@ fn unit_standing_blockers(f: LaunchUnitStanding) -> List<RoadmapLaunchDeployment
     BeltOneshotConverged { unit: _, active_state: _ } => []
     BeltOneshotRefused { unit: _, property: _, expected: _, observed: _ } => blocker(member: "unit_standing", detail: belt_oneshot_standing_text(s: f.oneshot))
   }
-  concat(concat(concat(concat(concat(dashboard, exit_path), answer_path), publication_path), publication_helper), oneshot)
+  let timer = match f.standings_refresh_timer {
+    BeltTimerConverged { active_state: _, unit_file_state: _ } => []
+    BeltTimerRefused { why: _ } => blocker(member: "unit_standing", detail: belt_timer_standing_text(s: f.standings_refresh_timer))
+  }
+  concat(concat(concat(concat(concat(concat(dashboard, exit_path), answer_path), publication_path), publication_helper), oneshot), timer)
 }
 
 fn tick_blockers(s: RoadmapLaunchDeploymentSubject, f: TickFact) -> List<RoadmapLaunchDeploymentBlocker> {
@@ -972,6 +977,10 @@ fn facts_json(f: RoadmapLaunchDeploymentFacts) -> JsonValue {
       json_kv(key: "oneshot", value: match f.unit_standing.oneshot {
         BeltOneshotConverged { unit: u, active_state: a } => fact_arm(arm: "converged", members: [json_kv(key: "unit", value: json_string(s: u)), json_kv(key: "active_state", value: json_string(s: a))])
         BeltOneshotRefused { unit: u, property: pr, expected: e, observed: o } => fact_arm(arm: "refused", members: [json_kv(key: "unit", value: json_string(s: u)), json_kv(key: "property", value: json_string(s: pr)), json_kv(key: "expected", value: json_string(s: e)), json_kv(key: "observed", value: json_string(s: o))])
+      }),
+      json_kv(key: "standings_refresh_timer", value: match f.unit_standing.standings_refresh_timer {
+        BeltTimerConverged { active_state: a, unit_file_state: f2 } => fact_arm(arm: "converged", members: [json_kv(key: "active_state", value: json_string(s: a)), json_kv(key: "unit_file_state", value: json_string(s: f2))])
+        BeltTimerRefused { why: w } => fact_arm(arm: "refused", members: [json_kv(key: "why", value: json_string(s: w))])
       }),
     ])),
     json_kv(key: "tick_standing", value: match f.tick_standing {

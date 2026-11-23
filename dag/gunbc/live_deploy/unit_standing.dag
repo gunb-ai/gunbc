@@ -508,6 +508,7 @@ type LaunchUnitStanding {
   publication_path: BeltEventPathStanding
   publication_helper: BeltOneshotStanding
   oneshot: BeltOneshotStanding
+  standings_refresh_timer: BeltTimerStanding
 }
 
 fn dashboard_service_standing_text(s: DashboardServiceStanding) -> String {
@@ -541,7 +542,8 @@ fn launch_unit_standing_text(s: LaunchUnitStanding) -> String {
     belt_event_path_standing_text(s: s.answer_path), "; ",
     belt_event_path_standing_text(s: s.publication_path), "; ",
     belt_oneshot_standing_text(s: s.publication_helper), "; ",
-    belt_oneshot_standing_text(s: s.oneshot),
+    belt_oneshot_standing_text(s: s.oneshot), "; ",
+    belt_timer_standing_text(s: s.standings_refresh_timer),
   ], "")
 }
 
@@ -667,3 +669,60 @@ fn service_has_exec_start(file: SystemdUnitFile) -> Bool {
     _ => false
   }
 }
+
+// THE STANDINGS-REFRESH BACKSTOP TIMER, read back as its OWN standing (operator ruling 2026-11-23:
+// the timer was hand-stopped on srv1 at 06:42:26Z; the deploy carrying this PR restores it via
+// apply_enable_restart_legs, and the standing read-back is what CERTIFIES the restoration). An enabled
+// timer whose ActiveState is not "active" is stopped -- the exact fault that froze the observation.
+// Both facts must hold: enabled (unit_file_state == "enabled") AND active (active_state == "active").
+
+type BeltTimerStanding sole_constructor
+  = BeltTimerConverged { active_state: String, unit_file_state: String }
+  | BeltTimerRefused { why: String }
+
+fn belt_timer_standing_text(s: BeltTimerStanding) -> String {
+  match s {
+    BeltTimerConverged { active_state: a, unit_file_state: f } =>
+      join(["timer ", a, " unit-file ", f], "")
+    BeltTimerRefused { why: w } => join(["refused: ", w], "")
+  }
+}
+
+fn judge_belt_timer(
+  active_state: String,
+  unit_file_state: String,
+) -> BeltTimerStanding {
+  if unit_file_state != "enabled" {
+    BeltTimerRefused { why: join(["timer unit-file state is '", unit_file_state, "', not 'enabled'"], "") }
+  } else if active_state != "active" {
+    BeltTimerRefused { why: join(["timer active state is '", active_state, "', not 'active' (hand-stopped?)"], "") }
+  } else {
+    BeltTimerConverged { active_state: active_state, unit_file_state: unit_file_state }
+  }
+}
+
+fn observe_belt_timer_standing(unit: NonEmptyStr) -> BeltTimerStanding {
+  match read_unit_property(unit: unit, property: LoadState) {
+    UnitPropertyUnreadable { unit: u, property: p } =>
+      BeltTimerRefused { why: join([u, ": ", p, " unreadable"], "") }
+    UnitPropertyValue { value: load } =>
+      if load != "loaded" { BeltTimerRefused { why: join(["LoadState is '", load, "', not 'loaded'"], "") } } else {
+        match read_unit_property(unit: unit, property: UnitFileState) {
+          UnitPropertyUnreadable { unit: u, property: p } =>
+            BeltTimerRefused { why: join([u, ": ", p, " unreadable"], "") }
+          UnitPropertyValue { value: file_state } =>
+            if file_state != "enabled" { BeltTimerRefused { why: join(["UnitFileState is '", file_state, "', not 'enabled'"], "") } } else {
+              match read_unit_property(unit: unit, property: ActiveState) {
+                UnitPropertyUnreadable { unit: u, property: p } =>
+                  BeltTimerRefused { why: join([u, ": ", p, " unreadable"], "") }
+                UnitPropertyValue { value: active } =>
+                  if active != "active" { BeltTimerRefused { why: join(["ActiveState is '", active, "', not 'active' (hand-stopped?)"], "") } } else {
+                    BeltTimerConverged { active_state: active, unit_file_state: file_state }
+                  }
+              }
+            }
+        }
+      }
+  }
+}
+

@@ -72,7 +72,7 @@ fn deployed_tree_locus_repo(locus: DeployedTreeLocus) -> NonEmptyStr {
 // the local arm's is the identity the join admitted against the kernel's own answer.
 fn deployed_tree_locus_host(locus: DeployedTreeLocus) -> String {
   match locus {
-    FleetSshTreeLocus { target: t } => t.host as String
+    FleetSshTreeLocus { target: t } => t.principal as String
     LocalTreeLocus { host: h } => h as String
   }
 }
@@ -667,10 +667,11 @@ fn deployed_tree_local_admission_verdict(
   observed_host_selector_join(expected: host as String, observed: observed_hostname)
 }
 
-// THE ONLY MINT FOR THE LOCAL ARM. It reads this machine's hostname over LocalShell (a typed host
-// operation, not a caller-supplied command line) and admits only when the registry join agrees; the
+// THE SANCTIONED MINT FOR THE LOCAL ARM. It reads this machine's hostname over LocalShell (a typed
+// host operation, not a caller-supplied command line) and admits only when the registry join agrees; the
 // admitted locus then seals the JOINED identity with the repo path, exactly as the ssh arm seals the
-// resolved target with its repo path.
+// resolved target with its repo path. sole_constructor confines construction to this module; the
+// admission IS the security boundary at production sites.
 fn deployed_tree_local_locus_admit(
   host: HostIdentity,
   repo: NonEmptyStr,
@@ -681,19 +682,36 @@ fn deployed_tree_local_locus_admit(
         cause: join(["the local host identity is unobservable, so the deployed tree is undecidable locally: ", why], ""),
       }
     HostnameShortCaptured { value: observed } =>
-      match deployed_tree_local_admission_verdict(host: host, observed_hostname: observed) {
-        ObservedHostSelectorAgreed { host: agreed } =>
-          DeployedTreeLocalAdmitted {
-            locus: LocalTreeLocus {
-              host: agreed,
-              repo: repo,
-              attempt: deployed_tree_local_attempt_raw,
-            },
-          }
-        ObservedHostSelectorJoinRefused { cause: c } =>
-          DeployedTreeLocalAdmissionRefused {
-            cause: join(["this machine is not the host the deployed tree is claimed to sit on: ", observed_host_join_refusal_text(cause: c)], ""),
-          }
+      local_admission_from_verdict(
+        verdict: deployed_tree_local_admission_verdict(host: host, observed_hostname: observed),
+        repo: repo,
+      )
+  }
+}
+
+// PURE locus construction from an already-computed verdict. sole_constructor confines LocalTreeLocus
+// to this module; admit_callers restricts who outside may call this mint. The witness module is listed
+// so that structural claims on the locus accessors can proceed without spawning a hostname binary.
+fn local_admission_from_verdict(
+  verdict: ObservedHostSelectorJoin,
+  repo: NonEmptyStr,
+) -> DeployedTreeLocalAdmission admit_callers: [
+  decl_ref(module_path: "gunbc.live_deploy.deployed_tree_observation", decl_name: "deployed_tree_local_locus_admit"),
+  decl_ref(module_path: "test.claim.live_deploy.deployed_tree_local_arm_witness", decl_name: "local_locus_for_srv1"),
+  decl_ref(module_path: "test.claim.live_deploy.deployed_tree_local_arm_witness", decl_name: "witness_a_mismatched_host_is_never_admitted"),
+] {
+  match verdict {
+    ObservedHostSelectorAgreed { host: agreed } =>
+      DeployedTreeLocalAdmitted {
+        locus: LocalTreeLocus {
+          host: agreed,
+          repo: repo,
+          attempt: deployed_tree_local_attempt_raw,
+        },
+      }
+    ObservedHostSelectorJoinRefused { cause: c } =>
+      DeployedTreeLocalAdmissionRefused {
+        cause: join(["this machine is not the host the deployed tree is claimed to sit on: ", observed_host_join_refusal_text(cause: c)], ""),
       }
   }
 }

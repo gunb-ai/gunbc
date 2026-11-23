@@ -9,17 +9,20 @@ module test.claim.live_deploy.deployed_tree_local_arm_witness
 // used where executor and subject are the same machine. These claims hold the repair to that boundary:
 // the arm chooses the transport, the arm is not caller-chosen, and the repo travels with the arm.
 //
-// What these claims CANNOT say, and the PR says so: the join itself is a live registry reading, so the
-// admit path needs a wet witness on the host (posted as the command and count in the PR body), and a
-// mock here would certify the test's own assumption about what `hostname -s` answers.
+// sole_constructor on LocalTreeLocus confines construction to the declaring module. The witnesses get
+// their locus from local_admission_from_verdict (admit_callers-listed), which is the same code path
+// deployed_tree_local_locus_admit takes after hostname_short_read and the verdict.
 
 import std.types { String, NonEmptyStr, List, Bool }
+import std.optional { Optional, Present, Absent }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.host.host_effect { HostEffectTransport, LocalShell, FleetSsh }
-import gunbc.product.host_identity { HostIdentity }
+import product.host_identity { HostIdentity }
+import gunbc.hostname_allocation { ObservedHostSelectorAgreed }
 import gunbc.live_deploy.deployed_tree_observation {
   DeployedTreeLocus,
-  LocalTreeLocus,
+  DeployedTreeLocalAdmitted,
+  DeployedTreeLocalAdmissionRefused,
   deployed_tree_locus_transport,
   deployed_tree_locus_repo,
   deployed_tree_locus_host,
@@ -27,47 +30,59 @@ import gunbc.live_deploy.deployed_tree_observation {
   DeployedTreeLegOutcome,
   DeployedTreeLegNotAttempted,
   deployed_tree_local_admission_verdict,
-  ObservedHostSelectorAgreed,
+  local_admission_from_verdict,
 }
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn probe_host() -> HostIdentity {
-  "srv1" as HostIdentity
+// The claimed host comes from the srv1 instance declaration, not a re-typed literal.
+fn srv1_claimed_host() -> HostIdentity {
+  srv1_live_dashboard_instance().host_identity as HostIdentity
 }
 
 fn probe_repo() -> NonEmptyStr {
   "/opt/gunbc/gunbc" as NonEmptyStr
 }
 
+// Extract the locus from the admission, via the pure mint path.
+fn local_locus_for_srv1() -> Optional<DeployedTreeLocus> {
+  match local_admission_from_verdict(
+    verdict: deployed_tree_local_admission_verdict(
+      host: srv1_claimed_host(),
+      observed_hostname: "srv1",
+    ),
+    repo: probe_repo(),
+  ) {
+    DeployedTreeLocalAdmitted { locus: l } => Present { value: l }
+    DeployedTreeLocalAdmissionRefused { cause: _ } => Absent
+  }
+}
+
 // THE ARM IS THE TRANSPORT, AND THE LOCAL ARM IS NOT AN SSH LEG: no context, no agent, no endpoint. If
 // the local arm were wired to reuse the remote delivery, this is the claim that fails -- which is the
 // exact shape of the production fault.
 test fn witness_the_local_arm_is_delivered_locally() -> Bool {
-  match deployed_tree_locus_transport(
-    locus: LocalTreeLocus {
-      host: probe_host(),
-      repo: probe_repo(),
-      attempt: "claim" as NonEmptyStr,
-    },
-  ) {
-    LocalShell => true
-    _ => false
+  match local_locus_for_srv1() {
+    Present { value: locus } =>
+      match deployed_tree_locus_transport(locus: locus) {
+        LocalShell => true
+        _ => false
+      }
+    Absent => false
   }
 }
 
 // THE LOCAL ARM DOES NOT LEAK A CREDENTIAL LEG: it is not the FleetSsh arm under another name, so it
 // cannot fail closed on a host with no agent -- the failure that froze the observation for six weeks.
 test fn witness_the_local_arm_names_no_fleetssh_transport() -> Bool {
-  match deployed_tree_locus_transport(
-    locus: LocalTreeLocus {
-      host: probe_host(),
-      repo: probe_repo(),
-      attempt: "claim" as NonEmptyStr,
-    },
-  ) {
-    FleetSsh { target: _, context: _ } => false
-    _ => true
+  match local_locus_for_srv1() {
+    Present { value: locus } =>
+      match deployed_tree_locus_transport(locus: locus) {
+        FleetSsh { target: _, context: _ } => false
+        _ => true
+      }
+    Absent => false
   }
 }
 
@@ -75,25 +90,40 @@ test fn witness_the_local_arm_names_no_fleetssh_transport() -> Bool {
 // repo, and the observation can only be read at the repo the locus sealed. A cross-host conflation --
 // reading some other path while claiming this host -- has no mint.
 test fn witness_the_local_locus_seals_its_repo_and_host() -> Bool {
-  let locus = LocalTreeLocus {
-    host: probe_host(),
-    repo: probe_repo(),
-    attempt: "claim" as NonEmptyStr,
+  match local_locus_for_srv1() {
+    Present { value: locus } =>
+      deployed_tree_locus_repo(locus: locus) == probe_repo()
+        && deployed_tree_locus_host(locus: locus) == srv1_claimed_host()
+    Absent => false
   }
-  deployed_tree_locus_repo(locus: locus) == probe_repo()
-    && deployed_tree_locus_host(locus: locus) == "srv1"
 }
 
-// THE JOIN IS THE ADMISSION, NOT THE CALLER'S WORD: a claimed host whose spelling is not the observed
+// THE JOIN ADMITS THE REAL HOST: the srv1 instance's claimed host joined with the observed hostname
+// "srv1" (read on srv1 by the operator 2026-11-23) produces Agreed. This is the accept path standing
+// in for the wet admit until the deploy.
+test fn witness_srv1_observed_hostname_is_admitted() -> Bool {
+  match deployed_tree_local_admission_verdict(
+    host: srv1_claimed_host(),
+    observed_hostname: "srv1",
+  ) {
+    ObservedHostSelectorAgreed { host: _ } => true
+    _ => false
+  }
+}
+
+// THE JOIN REFUSES A MISMATCHED HOST: a claimed host whose spelling is not the observed
 // one is not Agreed, so a process cannot mint the local arm for a machine it is not standing on by
 // naming that machine. (Refused or Unjoinable both satisfy this; only Agreed would be the hole.)
 test fn witness_a_mismatched_host_is_never_admitted() -> Bool {
-  match deployed_tree_local_admission_verdict(
-    host: probe_host(),
-    observed_hostname: "srv2",
+  match local_admission_from_verdict(
+    verdict: deployed_tree_local_admission_verdict(
+      host: srv1_claimed_host(),
+      observed_hostname: "srv2",
+    ),
+    repo: probe_repo(),
   ) {
-    ObservedHostSelectorAgreed { host: _ } => false
-    _ => true
+    DeployedTreeLocalAdmitted { locus: _ } => false
+    DeployedTreeLocalAdmissionRefused { cause: _ } => true
   }
 }
 

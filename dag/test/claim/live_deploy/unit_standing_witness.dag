@@ -7,6 +7,8 @@ import gunbc.live_deploy.spec { deployment_belt_exit_drain_service_unit_name }
 import gunbc.live_deploy.unit_standing {
   BeltOneshotConverged,
   BeltOneshotRefused,
+  BeltTimerConverged,
+  BeltTimerRefused,
   DashboardServiceConverged,
   DashboardServiceRefused,
   ExecStartArgv,
@@ -17,6 +19,7 @@ import gunbc.live_deploy.unit_standing {
   ServiceUnitObserved,
   exec_start_argv_of_show_value,
   judge_belt_oneshot,
+  judge_belt_timer,
   judge_dashboard_service,
   service_unit_expectation_of,
   path_unit_target_of,
@@ -136,6 +139,37 @@ test fn witness_systemd_duration_normalizes_equal_spellings() -> Bool {
     && (match systemd_duration_usec(text: "") { Present { value: _ } => false  Absent => true })
     && (match systemd_duration_usec(text: "1min 30fortnights") { Present { value: _ } => false  Absent => true })
     && (match systemd_duration_usec(text: "min") { Present { value: _ } => false  Absent => true })
+}
+
+// ---------------------------------------------------------------- the standings-refresh backstop timer
+// The deploy enables and restarts the timer; this standing read-back CERTIFIES the restoration.
+// If the standing row is removed (LaunchUnitStanding loses standings_refresh_timer, or
+// unit_standing_blockers drops it), these claims go red -- the witness is the gate.
+
+// An enabled AND active timer converges.
+test fn witness_belt_timer_judge_converges_when_enabled_and_active() -> Bool {
+  match judge_belt_timer(active_state: "active", unit_file_state: "enabled") {
+    BeltTimerConverged { active_state: a, unit_file_state: f } => a == "active" && f == "enabled"
+    BeltTimerRefused { why: _ } => false
+  }
+}
+
+// A stopped timer (ActiveState != "active") is refused -- the hand-stop fault the operator ruled on
+// 2026-11-23T06:42:26Z. Without this claim, the receipt would go green on a timer that was
+// hand-stopped.
+test fn witness_belt_timer_judge_refuses_inactive_timer() -> Bool {
+  match judge_belt_timer(active_state: "inactive", unit_file_state: "enabled") {
+    BeltTimerRefused { why: _ } => true
+    BeltTimerConverged { active_state: _, unit_file_state: _ } => false
+  }
+}
+
+// A disabled timer is refused even if momentarily active.
+test fn witness_belt_timer_judge_refuses_disabled_timer() -> Bool {
+  match judge_belt_timer(active_state: "active", unit_file_state: "disabled") {
+    BeltTimerRefused { why: _ } => true
+    BeltTimerConverged { active_state: _, unit_file_state: _ } => false
+  }
 }
 
 
