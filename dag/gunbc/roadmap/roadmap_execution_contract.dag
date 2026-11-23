@@ -68,7 +68,7 @@ data pinned_public_plus_local_root_production_consumer_frontier: FrontierRow = f
 
 data not_agent_work_production_constructor_frontier: FrontierRow = frontier_row_decl(
   ref: decl_ref(module_path: "gunbc.roadmap.roadmap_execution_contract", decl_name: "WorkItemExecutionContract"),
-  reason: "launch, serve, verify, and contract_closure already refuse by NonAgentWorkMode; no RoadmapNode.execution is constructed as NotAgentWork",
+  reason: "launch, serve, verify, and contract_closure already refuse by NonAgentWorkMode. The Boot GH200 roadmap now constructs operator-exclusive bench/repair nodes and external-lead mapping nodes as NotAgentWork; the production dispatch/validation refusal for these real rows has not yet been observed",
   dissolution: unbound_dissolution(
     description: "a RoadmapNode the belt looks up — on gunbc.roadmap.roadmap_authority or a plan supplied as a parameter — is constructed with execution: NotAgentWork { mode }, so LaunchNotAgentWork and ValidationNotAgentWork fire on a production tick. Not satisfied by not_agent_work_execution existing, nor by a witness constructing the arm, nor by minting a public node whose work is not operator-exclusive, external-lead, or calendar-observation"
   ),

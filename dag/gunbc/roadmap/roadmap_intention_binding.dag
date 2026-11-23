@@ -43,7 +43,43 @@ data one_source_tree_intention: String = "gunbc.plans.one_source_tree"
 data read_set_convergence_intention: String = "gunbc.plans.read_set_convergence"
 data claim_execution_consolidation_intention: String = "gunbc.plans.claim_execution_consolidation"
 
+data boot_gh200_intention: String = "gunbc.plans.boot_gh200"
+data p4261_board_mapping_intention: String = "gunbc.plans.p4261_board_mapping"
+data p4261_repair_pool_intention: String = "gunbc.plans.p4261_repair_pool"
+
 data roadmap_intention_bindings: List<IntentionBinding> = [
+  // Physical GH200 service and the two independent supporting intentions (operator, 2026-11-23).
+  // Groups express membership only; every bound work item reaches its own intention terminal.
+  serves(node: "gh200-assembly-evidence", module_path: boot_gh200_intention, plan: "boot_gh200_plan", layer: 0),
+  serves(node: "gh200-request-contract", module_path: boot_gh200_intention, plan: "boot_gh200_plan", layer: 0),
+  serves(node: "gh200-control-route", module_path: boot_gh200_intention, plan: "boot_gh200_plan", layer: 1),
+  serves(node: "gh200-connector-access", module_path: boot_gh200_intention, plan: "boot_gh200_plan", layer: 1),
+  serves(node: "gh200-early-standby-interface", module_path: boot_gh200_intention, plan: "boot_gh200_plan", layer: 2),
+  serves(node: "gh200-early-standby-sequence", module_path: boot_gh200_intention, plan: "boot_gh200_plan", layer: 2),
+  serves(node: "gh200-bmc-ready-contract", module_path: boot_gh200_intention, plan: "boot_gh200_plan", layer: 2),
+  serves(node: "gh200-run-interface", module_path: boot_gh200_intention, plan: "boot_gh200_plan", layer: 2),
+  serves(node: "gh200-power-cooling", module_path: boot_gh200_intention, plan: "boot_gh200_plan", layer: 1),
+  serves(node: "gh200-console-route", module_path: boot_gh200_intention, plan: "boot_gh200_plan", layer: 1),
+  serves(node: "gh200-arm64-boot-media", module_path: boot_gh200_intention, plan: "boot_gh200_plan", layer: 1),
+  serves(node: "gh200-early-standby-observed", module_path: boot_gh200_intention, plan: "boot_gh200_plan", layer: 3),
+  serves(node: "gh200-bmc-ready-observed", module_path: boot_gh200_intention, plan: "boot_gh200_plan", layer: 4),
+  serves(node: "gh200-run-observed", module_path: boot_gh200_intention, plan: "boot_gh200_plan", layer: 5),
+  serves(node: "gh200-firmware-boot", module_path: boot_gh200_intention, plan: "boot_gh200_plan", layer: 6),
+  serves(node: "gh200-linux-remote", module_path: boot_gh200_intention, plan: "boot_gh200_plan", layer: 7),
+  serves(node: "gh200-cuda-observed", module_path: boot_gh200_intention, plan: "boot_gh200_plan", layer: 8),
+  serves(node: "gh200-runtime-admission", module_path: boot_gh200_intention, plan: "boot_gh200_plan", layer: 1),
+  serves(node: "gh200-runtime-launch", module_path: boot_gh200_intention, plan: "boot_gh200_plan", layer: 9),
+  serves(node: "gh200-first-request", module_path: boot_gh200_intention, plan: "boot_gh200_plan", layer: 10),
+  serves(node: "gh200-repeatable-service", module_path: boot_gh200_intention, plan: "boot_gh200_plan", layer: 11),
+  serves(node: "p4261-map-scope", module_path: p4261_board_mapping_intention, plan: "p4261_board_mapping_plan", layer: 0),
+  serves(node: "p4261-map-pilot", module_path: p4261_board_mapping_intention, plan: "p4261_board_mapping_plan", layer: 1),
+  serves(node: "p4261-map-delivered", module_path: p4261_board_mapping_intention, plan: "p4261_board_mapping_plan", layer: 2),
+  serves(node: "p4261-repair-148", module_path: p4261_repair_pool_intention, plan: "p4261_repair_pool_plan", layer: 0),
+  serves(node: "p4261-repair-k1", module_path: p4261_repair_pool_intention, plan: "p4261_repair_pool_plan", layer: 0),
+  serves(node: "p4261-repair-e1b", module_path: p4261_repair_pool_intention, plan: "p4261_repair_pool_plan", layer: 0),
+  serves(node: "p4261-repair-pool-disposed", module_path: p4261_repair_pool_intention, plan: "p4261_repair_pool_plan", layer: 1),
+  serves(node: "gh200-bmc-ready-interface", module_path: boot_gh200_intention, plan: "boot_gh200_plan", layer: 2),
+  serves(node: "gh200-host-io-path", module_path: boot_gh200_intention, plan: "boot_gh200_plan", layer: 1),
   // gunbc.plans.one_source_tree: layers follow the dependency edges (1 the manifest, 2 the harness, 3 the other callers, 4 the cut,
   // 5 the renames and the extdeps reconciliation, 6 the terminal). one-standard-library is a prerequisite of the
   // terminal but stays bound to gunbc.plans.v2_self_host, which already owns it.
@@ -194,6 +230,9 @@ type IntentionTerminals {
 }
 
 data intention_terminals: List<IntentionTerminals> = [
+  IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.boot_gh200", decl_name: "boot_gh200_plan"), terminals: [nid(s: "gh200-repeatable-service")] },
+  IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.p4261_board_mapping", decl_name: "p4261_board_mapping_plan"), terminals: [nid(s: "p4261-map-delivered")] },
+  IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.p4261_repair_pool", decl_name: "p4261_repair_pool_plan"), terminals: [nid(s: "p4261-repair-pool-disposed")] },
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.claim_execution_consolidation", decl_name: "claim_execution_consolidation_plan"), terminals: [nid(s: "claim-entrypoints-cutover")] },
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.v2_self_host", decl_name: "v2_self_host_plan"), terminals: [nid(s: "external-specimen-compiles"), nid(s: "v1-products-v1-free")] },
   // namespace-unique-on-chain joins as the program milestone's own terminal (2026-11-23): the review of

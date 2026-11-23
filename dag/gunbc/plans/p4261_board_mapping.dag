@@ -1,0 +1,35 @@
+module gunbc.plans.p4261_board_mapping
+
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
+import std.markdown { MarkdownBlock }
+import gunbc.markdown_helpers { h2, p }
+
+fn p4261_board_mapping_body() -> List<MarkdownBlock> {
+  [
+    h2(text: "Intention"),
+    p(text: "**What:** obtain reusable revision-bound connectivity knowledge for the owned P4261 boards, including the full-board netlist/schematic extraction the operator requested if feasible. Targeted connector and control-network results are useful early deliveries within that objective."),
+    p(text: "**Why:** one-off contact probing costs operator time and can put fine-pitch contacts at risk. A competent external mapping service can displace that work and produce knowledge usable across the board pool. Requesting a pilot or pricing connector stages must not silently reduce the operator's full-board objective."),
+    p(text: "**Authority and independence:** this supporting intention is separate from #gunbc.plans.boot_gh200::boot_gh200_plan. Mapping can supply a needed boot fact, but a vendor's response, full-board feasibility or completion is not a universal boot prerequisite. Actual work and its alternative methods live in gunbc.roadmap."),
+    h2(text: "Done when"),
+    p(text: "The selected scope and deliverables are explicit: complete-board reconstruction where feasible, or the operator's explicitly accepted lesser scope/refusal. A price quote, nearby-component candidate sheet or photograph does not count as a map."),
+    p(text: "Delivered connectivity names the board revision, connector orientation/contact identity, component terminal and the supporting method/evidence. Unresolved inner-layer/BGA routes and confidence limits are visible, with no silent invented joins."),
+    p(text: "Each sample's role, pre-existing alterations, permitted operations, return/disposal and any destructive work have an explicit agreement. Offering a damaged board for assessment does not itself authorize destruction; an intact reference is not altered by default."),
+    p(text: "Technical deliverables are reusable and shared publicly only within the agreed permission. Correspondent identity, prices, addresses, payment and private files remain in their private authority. Permitted partial results can be returned to the running-tray correspondent without waiting for the whole board."),
+    p(text: "Physical map fidelity and the tradeoff between cost, method and specimen loss require operator judgement against the concrete delivery. Existing known connections provide validation without a new general measurement sweep."),
+    h2(text: "Grounding and scope"),
+    p(text: "#product.p4261.e1_photographs, #product.p4261.e1_position_receipts and #product.p4261.interface_registry own existing atlas and interface evidence. #extdeps.nvidia.ranger_tray owns the reference cable destinations; controller GPIO balls in #extdeps.nvidia.gracebmc_ranger do not supply board connector contacts."),
+    p(text: "The existing request to PCBSay includes separately quoted stages: a representative pilot, J13/J14 and selected J7/J8 sidebands, management/power sequencing and the whole board. The private correspondence record owns actual sending/reply/shipping status; the public roadmap owns technical purpose and dependency order."),
+    p(text: "A provider using another suitable method is an alternative. A fixed number of comparison quotes, an arbitrary contact count or a promise to finish in one evening is not a technical prerequisite."),
+    p(text: "The original E1-b alteration record remains relevant to any extraction; ...218 remains the active bring-up carrier, and no PG530 module is needed merely to reconstruct a bare carrier's connectivity. Any change to sample roles is assessed concretely."),
+  ]
+}
+
+data p4261_board_mapping_plan: Plan = Plan {
+  projection: PlanIsAuthorityOnly,
+  slug: "p4261-board-mapping",
+  title: "P4261 board mapping: preserve the whole-board objective without blocking boot",
+  body: p4261_board_mapping_body(),
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "The agreed revision-bound mapping scope has a usable evidence-backed delivery, or the operator explicitly accepts a scoped refusal/disposition; the resulting board knowledge lives in its technical authority and this procurement/mapping intention is retired.") },
+}
+

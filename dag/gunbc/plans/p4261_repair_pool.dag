@@ -1,0 +1,35 @@
+module gunbc.plans.p4261_repair_pool
+
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
+import std.markdown { MarkdownBlock }
+import gunbc.markdown_helpers { h2, p }
+
+fn p4261_repair_pool_body() -> List<MarkdownBlock> {
+  [
+    h2(text: "Intention"),
+    p(text: "**What:** resolve the known repair obligations on ...148, original E1-b and K1-a, preserving physical identity, intervention history and the distinction between repair of inflicted damage and an original startup fault."),
+    p(text: "**Why:** the operator committed to repairing the board pool and wants productive repair work when bring-up is physically blocked. That obligation should remain visible without turning every damaged spare into a prerequisite for work on intact ...218."),
+    p(text: "**Authority:** #product.p4261.lot_e1_readings, #product.p4261.e1_b and #product.p4261.k1_a own the relevant board observations. Intervention states are not overwritten by later measurements. Work order and acceptance events belong to gunbc.roadmap; private parts orders and contact records remain private."),
+    h2(text: "Done when"),
+    p(text: "Each board's known intervention damage is localized and repaired with proportionate evidence, and its remaining startup/rail faults are resolved sufficiently to demonstrate the intended board function, unless the operator explicitly authorizes a different final disposition for that specimen. Merely recording an unresolved fault does not fulfill the repair commitment. A fitted component is not an assertion of whole-board health."),
+    p(text: "Any destructive board-mapping use is explicitly approved for that specimen and recorded as its disposition. A quote or shipping proposal cannot silently cancel the repair commitment."),
+    p(text: "Rework uses the established preparation and orientation evidence, then checks the newly changed electrical connections. Existing adequate readings are reused; only a specific next decision or newly introduced hazard justifies another measurement."),
+    p(text: "The operator can distinguish a board ready for its next admitted test from one still held by an unresolved fault. A component is not condemned solely from an unexplained in-circuit resistance."),
+    h2(text: "Evidence boundaries"),
+    p(text: "The ...148 B branch was localized, removed and its footprint checked; the later fit is reported in gunb-ai/gunbc#16892. Do not create another fitting task for an already fitted part. The gate-to-gate path question and the older L-gate/Q300 in-circuit differences are separate evidence questions."),
+    p(text: "E1-b retains its U10_P2 and photo capacitor 2 removal history. Capacitor 2's removal did not clear the residual rail fault; capacitors 1 and 3 remain candidates rather than diagnosed failures. Unchanged high-current injection that mainly heats the lead is not progress."),
+    p(text: "K1-a's converter refit uses its own pin orientation and retained footprint readings. Returning the removed part does not establish that its earlier startup stall is solved, and K1 power/control assumptions are not imported from E1."),
+    p(text: "All powered diagnostics use mechanically secure leads installed with power off and a purpose-specific run envelope. A steady hand on a live fine-pitch lead is not the agreed method."),
+    p(text: "Repair outcomes support availability and knowledge. No edge from this repair pool to first boot on the selected intact carrier is justified merely by the existence of the repair obligation."),
+  ]
+}
+
+data p4261_repair_pool_plan: Plan = Plan {
+  projection: PlanIsAuthorityOnly,
+  slug: "p4261-repair-pool",
+  title: "P4261 repair pool: resolve intervention damage without holding intact-board bring-up",
+  body: p4261_repair_pool_body(),
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Each affected board demonstrates intended board function after repair or has an explicit operator-authorized alternative final disposition. Intervention history and any accepted operating limitations live in the board records; documenting an unresolved fault alone does not retire this repair obligation.") },
+}
+
