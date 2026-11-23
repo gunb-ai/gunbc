@@ -126,7 +126,7 @@ fn host_truth_read_cause_explains(cause: HostTruthReadCause) -> String {
     HostTruthProbeThrew { where: w } => "the probe threw away from the sampling thread: " + w
     HostTruthHostUnreachable { route: r } => "the host did not answer on the route read through (" + r + "); pings-but-refuses-TCP is an ACL answer, not a network one"
     HostTruthOutputUnparseable { raw: v } => "the read returned something this model cannot project: " + v
-    HostTruthCgroupLimitUnreadable { property: p } => "the read ran and the machine gave nothing to relate for " + p + ": a leaf that sets a limit inherits nothing here, and an inherited limit is neither zero nor unbounded; whether the property printed nothing or printed text nobody can decode is owed an arm on SystemdCgroupMemoryLimit, tracked by failed_value_read_scored_as_value_absent"
+    HostTruthCgroupLimitUnreadable { property: p } => "the read ran and the machine gave nothing to relate for " + p + "; holding no value for a limit is not the same as having read a limit of zero or of none, so this refuses instead of picking one; whether the property printed nothing or printed text nobody can decode is owed an arm on SystemdCgroupMemoryLimit, tracked by failed_value_read_scored_as_value_absent"
   }
 }
 

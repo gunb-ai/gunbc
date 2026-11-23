@@ -13,11 +13,13 @@ module gunbc.fleet.fleet_host_truth_sources
 //
 // WHAT IT DOES WHEN A SOURCE HAS NO ANSWER is the report's tier 4 applied to this module: a source that came
 // back empty is a typed refusal, never a zero, never an empty column, never agreement. So a cgroup property
-// unset at the leaf refuses (an inherited limit is neither zero nor infinity), a slice the envelope did not
-// report refuses, and a host that presented nothing is the blank arm rather than a fingerprint of the empty
-// string. And the two ways a cgroup property fails to answer -- it printed nothing, or it printed something
-// nobody can read -- are kept apart, by host_truth_absent_cause below, because a refusal that names the wrong
-// one is a fabricated located cause even though it still refuses.
+// that yields no limit refuses rather than answering zero or infinity, a slice the envelope did not report
+// refuses, and a host that presented nothing is the blank arm rather than a fingerprint of the empty string.
+// And the refusal does not say WHICH kind of "no" the machine gave: extdeps.systemd's MemoryLimitAbsent covers
+// both a property that printed nothing and one whose text nobody can decode, so naming either one would be a
+// fabricated located cause even inside a refusal. What that means for the read is spelled out at
+// #gunbc.fleet.fleet_host_truth_sources::host_truth_cap_read, and what is owed to close the gap is tracked by
+// #gunbc.recurring_failure_mode::failed_value_read_scored_as_value_absent.
 //
 // THREE OF THE FIVE AXES are inhabited here, the three the report's own specimens named: the cap that
 // surfaced as 5.1 tok/s with 41.5 GB read per request instead of refusing (3.2, srv4's leaf), the swap

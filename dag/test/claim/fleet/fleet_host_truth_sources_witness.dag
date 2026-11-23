@@ -77,10 +77,11 @@ fn declared_swap(host: NonEmptyStr, gib: Nat) -> HostTruthExpectation {
   }
 }
 
-// RED -- THE THREE ANSWERS systemd GIVES ARE THREE FACTS. A leaf whose memory.high is unset inherits from a
-// parent slice: that is neither a cap of zero (which would refuse a healthy host) nor a cap of infinity
-// (which would pass the very leaf the report found thrashing at 5.1 tok/s). The source refuses, and the
-// refusal cannot be mistaken for agreement by the module downstream.
+// RED -- THE ANSWERS systemd GIVES ARE NOT ONE FACT WITH THREE SPELLINGS. A leaf whose memory.high yields no
+// limit is neither a cap of zero (which would refuse a healthy host) nor a cap of infinity (which would pass
+// the very leaf the report found thrashing at 5.1 tok/s): the reader holds no value at all, so it refuses
+// rather than picking one. And the refusal cannot be mistaken for agreement downstream -- the comparison has
+// no agreement arm to fall into when the read never happened.
 test fn RED_a_cgroup_limit_unset_at_the_leaf_refuses_rather_than_answering_zero_or_infinity() -> Bool {
   let read = host_truth_cap_read(host: "srv4" as NonEmptyStr, at_run: "converge-2026-11-21", limit: MemoryLimitAbsent)
   match read {
