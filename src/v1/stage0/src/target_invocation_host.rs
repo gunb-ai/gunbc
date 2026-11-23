@@ -4068,7 +4068,11 @@ mod claim_route_result_contract_tests {
             status, 2,
             "one unobserved among held siblings, no definite failure -> subject unreached (exit 2)"
         );
-        assert_eq!(fold.count(ClaimRouteVerdict::ClaimHeld), 2, "A and C still run");
+        assert_eq!(
+            fold.count(ClaimRouteVerdict::ClaimHeld),
+            2,
+            "A and C still run"
+        );
         assert_eq!(
             fold.count(ClaimRouteVerdict::ClaimUnobserved),
             1,
@@ -4076,12 +4080,10 @@ mod claim_route_result_contract_tests {
         );
         assert_eq!(fold.count(ClaimRouteVerdict::ClaimDidNotHold), 0);
         assert!(
-            lines
-                .iter()
-                .any(|l| l.contains("b_broken")
-                    && l.contains("UNOBSERVED")
-                    && l.contains("outcome=ClosureDiagnostics")
-                    && l.contains("phantom_fn")),
+            lines.iter().any(|l| l.contains("b_broken")
+                && l.contains("UNOBSERVED")
+                && l.contains("outcome=ClosureDiagnostics")
+                && l.contains("phantom_fn")),
             "B is located as unobserved with its typed arm keyed and text in detail: {lines:?}"
         );
         // A and C report their own held lines -- one resolve failure does not abort the others.
@@ -4167,14 +4169,19 @@ mod claim_route_result_contract_tests {
             member("test.claim.zz", "a", O::Pass),
             member("test.claim.zz", "b", O::Fail),
         ]);
-        assert_eq!(status, 1, "a definite failure still gives 1 despite the duplicate");
+        assert_eq!(
+            status, 1,
+            "a definite failure still gives 1 despite the duplicate"
+        );
         assert!(
             fold.duplicate.as_deref().is_some(),
             "the duplicate is still recorded (it blocks success)"
         );
         assert_eq!(fold.count(ClaimRouteVerdict::ClaimDidNotHold), 1);
         assert!(
-            lines.iter().any(|l| l.contains("b") && l.contains("DID-NOT-HOLD")),
+            lines
+                .iter()
+                .any(|l| l.contains("b") && l.contains("DID-NOT-HOLD")),
             "B's definite failure is reported on its own line: {lines:?}"
         );
     }
