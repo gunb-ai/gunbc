@@ -108,7 +108,9 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.curl", decl_name: "curl_download_command"),
     decl_ref(module_path: "extdeps.tools.gh", decl_name: "gh_run_download_command"),
     decl_ref(module_path: "extdeps.tools.gh", decl_name: "gh_main_head_command"),
-    decl_ref(module_path: "extdeps.tools.gh", decl_name: "gh_release_bins_run_list_command"),
+    decl_ref(module_path: "extdeps.tools.gh", decl_name: "gh_commit_ancestry_command"),
+    decl_ref(module_path: "extdeps.tools.gh", decl_name: "gh_branch_artifact_runs_command"),
+    decl_ref(module_path: "extdeps.tools.gh", decl_name: "gh_run_job_conclusion_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "cat_file_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_path_probe_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_owned_regular_files_exec_command"),
@@ -471,6 +473,10 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "gunbc.repo.repo_local_git_config", decl_name: "reconcile_install_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "install_directory_owned_argv_command"),
     decl_ref(module_path: "gunbc.harness.harness_shell_job", decl_name: "harness_backstopped_shell_command"),
+    // The census member readback fail-closed producer control builds a guaranteed-nonexistent executable
+    // so answer_on/LocalCommandHost genuinely cannot spawn it and the leg comes back as the typed
+    // LegNotDispatched, never a fabricated exit code (gunbc.design_argument::fail_closed).
+    decl_ref(module_path: "test.claim.machine_intake.mtcollins_member_leg_producer_local_wet", decl_name: "never_spawned_readback_executable"),
   ]
   = ArgvCommand { program: program, arguments: arguments }
 

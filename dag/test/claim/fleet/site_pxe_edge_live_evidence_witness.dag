@@ -2,8 +2,7 @@ module test.claim.fleet.site_pxe_edge_live_evidence_witness
 
 import std.types { Bool, Int, NonEmptyStr, String }
 import std.content_hash { ContentHash, Sha256Hash, Sha256Digest, content_hash_equal }
-import gunbc.host.boot_medium_served_readback { RemoteAnswer }
-import gunbc.machine_intake.mtcollins1_census_member_readback { MemberRead, MemberUnread, MemberReading, IsoReading, IsoMeasured, IsoUnmeasured }
+import gunbc.machine_intake.mtcollins1_census_member_readback { MemberRead, MemberUnread, MemberReading, IsoReading, IsoMeasured, IsoUnmeasured, HostLeg, LegAnswered }
 import gunbc.fleet.site_pxe_edge_live_boot_pair { ServedBootFileMeasured, ServedBootFileUnread, SitePxeEdgeLiveServedReading }
 import gunbc.fleet.site_pxe_edge_live_evidence {
   site_pxe_edge_live_served_reading,
@@ -25,8 +24,8 @@ data hex_three: String = "333333333333333333333333333333333333333333333333333333
 data asked_rel: NonEmptyStr = "casper/vmlinuz" as NonEmptyStr
 data asked_abs: NonEmptyStr = "/srv/gunbc-site-pxe-edge/tftp/casper/vmlinuz" as NonEmptyStr
 
-fn answered(exit_code: Int, stdout: String) -> RemoteAnswer {
-  RemoteAnswer { exit_code: exit_code, stdout: stdout, stderr: "" }
+fn answered(exit_code: Int, stdout: String) -> HostLeg {
+  LegAnswered { exit_code: exit_code, stdout: stdout, stderr: "" }
 }
 
 fn hash_of(hex: String) -> ContentHash {
@@ -37,7 +36,7 @@ fn line_for(hex: String, path: String) -> String {
   concat(hex, concat("  ", concat(path, "\n")))
 }
 
-fn served(answer: RemoteAnswer) -> SitePxeEdgeLiveServedReading {
+fn served(answer: HostLeg) -> SitePxeEdgeLiveServedReading {
   site_pxe_edge_live_served_reading(tftp_path: asked_rel, absolute: asked_abs, answer: answer)
 }
 

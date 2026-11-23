@@ -117,8 +117,9 @@ fn srv1_production_desired_deployment() -> DesiredDeployment {
   }
 }
 
-// THE LAB ADMITS ITS OWN INTEGRATION BRANCH, read from the instance rather than restated. The lab
-// publishes into that branch and deploys builds of it, so the branch is one fact of the instance.
+// THE LAB ADMITS ITS PUBLICATION BRANCH, read from the instance rather than restated. The lab publishes
+// into that branch and deploys builds of it, so the branch is one fact of the instance; since 2026-11-22
+// it is main (gunbc.design_ruling::lab_tracks_main_lab_dev_retired_2026_11_22).
 fn srv1_lab_desired_deployment() -> DesiredDeployment {
   let instance = srv1_lab_dashboard_instance()
   DesiredDeployment {
