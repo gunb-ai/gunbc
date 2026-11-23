@@ -6879,8 +6879,9 @@ fn tree_walk_parents(subs: List<String>) -> List<String> {
 // THE EXPECTED METADATA AT THE LOCUS ROOT LEVEL: the directory names that appear as direct
 // children of the locus (first components of each sub in release_locus_tree_subdirs, deduped),
 // each expected as a directory with install_d_shared_mode, and the executables each expected as
-// a regular file with install_executable_shared_mode. The receipt is NOT included: it is written
-// AFTER the readback, and any residue from a previous install is allowed as a known name.
+// a regular file with install_executable_shared_mode. The comparison is a containment check:
+// these entries must be present with correct metadata, but entries the tree install does not
+// write (from other deploy legs that run after the tree install) are tolerated.
 fn tree_locus_children_expectation_owned(
   subdirs: List<String>,
   executables: List<String>,
@@ -7035,10 +7036,11 @@ fn observe_tree_entry_metadata(root: String, subs: List<String>, transport: Host
 // OBSERVE THE DIRECT CHILDREN OF THE LOCUS: one maxdepth-1 find on the locus itself. This
 // establishes the metadata (kind, mode, owner) of every entry the install writes at the locus
 // root: the subtree-root directories (dag, src), intermediate directories (src, visible as a
-// child of the locus), the executables, and the receipt. Any entry present at this level that the
-// expectation does not name is caught as an extra by tree_metadata_disagreement. The starting
-// point (the locus) itself prints with an empty %P and is refused by the parser; it is observed
-// separately by observe_directory_self_entries.
+// child of the locus), the executables, and the receipt. The comparison is a CONTAINMENT CHECK:
+// every expected entry must be present with correct metadata, but entries NOT in the expected
+// set (placed by other deploy legs that run after the tree install — firecracker, images/, the
+// VMM receipt, device-crypto-deployed-digest.env, etc.) are tolerated. Without containment,
+// a rerun over an existing locus (where earlier-leg output persists) would brick the deploy.
 //
 // OBSERVE EACH WALK-ROOT PARENT: for multi-component subs (e.g. "src/v2"), the walk root itself
 // (src/v2) is a child of src, not of the locus. A maxdepth-1 walk on the parent (locus/src)
@@ -7513,7 +7515,8 @@ fn approval_broker_tree_install_observed(
                                             match tree_spine_expectation_owned(spine: spine, locus: locus, owner: readback_owner) {
                                               Absent => TreeInstallRefused { step: TreeStepMetadataReadback, reason: "the shared install modes are not readable as octal permissions; the spine expectation cannot be stated, so no receipt was written" }
                                               Present { value: spine_expected } =>
-                                                let locus_children_observed = filter(locus_children_raw, e => e.path != release_locus_tree_receipt_name)
+                                                let expected_paths = flat_map(concat(locus_children_expected, walk_root_expected), e => [e.path])
+                                                let locus_children_observed = filter(locus_children_raw, e => any(expected_paths, p => p == e.path))
                                                 let merged_expected = concat(concat(concat(expected, locus_children_expected), walk_root_expected), spine_expected)
                                                 let merged_observed = concat(concat(installed_entries, locus_children_observed), spine_observed)
                                                 match tree_metadata_disagreement(expected: merged_expected, observed: merged_observed) {

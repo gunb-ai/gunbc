@@ -513,16 +513,18 @@ test fn two_installs_of_one_tree_reproduce_one_receipt_digest() -> Bool {
 // ===========================================================================
 // LOCUS-ROOT READBACK EXTENSION: the gaps closed by the extended observation
 // ===========================================================================
-// Three claims:
+// Claims:
 //   1. A same-byte executable at the wrong mode (0644 instead of 0755) is caught
 //      as a disagreement in the merged expected/observed comparison, even though
 //      the content hash agrees (the gap was: executables were only hash-compared).
 //   2. A wrong-mode subtree root (e.g. "dag" at 0777 instead of 0755) is caught,
 //      which today's readback does not observe (the walk starts inside dag/, not at it).
-//   3. An arbitrary extra file at the locus root (outside dag/ and src/v2/) is
-//      caught as an extra. Decision: extras at the locus root are NOT intended;
-//      they are refused by the readback. The receipt name is the sole exception
-//      (it is written after the readback and allowed to persist from a previous install).
+//   3. Extras at the locus root are tolerated. Decision: the tree install's readback
+//      establishes only what the tree install writes. Files placed by other deploy
+//      legs (firecracker, images/, .gunbc-vmm-receipt, device-crypto-deployed-digest.env)
+//      run AFTER the tree install and persist across reruns. Refusing them would brick
+//      a working redeploy. The containment check verifies expected entries exist with
+//      correct metadata while tolerating non-tree-install entries.
 
 fn gnbc() -> PosixOwnerNames {
   PosixOwnerNames { user: "gunbc" as NonEmptyStr, group: "gunbc" as NonEmptyStr }
@@ -612,22 +614,94 @@ test fn spine_wrong_mode_disagrees() -> Bool {
   }
 }
 
-// EXTRA FILE AT THE LOCUS ROOT: an entry not in the expected set is caught as extra.
-// Decision: arbitrary extra files directly under the locus are NOT intended.
-test fn extra_file_at_locus_root_disagrees() -> Bool {
+// EXTRAS AT THE LOCUS ROOT ARE TOLERATED. Decision: the tree install's readback
+// establishes only what the tree install writes (subtree roots, executables, the
+// receipt). Entries placed by other legs (firecracker, images/, the VMM receipt,
+// device-crypto-deployed-digest.env, etc.) are outside this locus's authority for
+// this readback; their own legs certify them. The comparison at the locus-root level
+// is a containment check: every expected entry must be present with correct metadata,
+// but unexpected entries are allowed. Without this, a rerun over an existing locus
+// (where earlier-leg output persists) would brick the deploy.
+test fn extras_at_locus_root_are_tolerated() -> Bool {
   let subs = ["dag", "src/v2"]
   let execs = ["gunbc"]
   match tree_locus_children_expectation_owned(subdirs: subs, executables: execs, owner: deploy_owner) {
     Absent => false
     Present { value: expected } =>
+      let expected_paths = flat_map(expected, e => [e.path])
       let observed_dag = TreeMetadataEntry { path: "dag", kind: TreeDirectory, mode: fm("755"), owner: gnbc() }
       let observed_src = TreeMetadataEntry { path: "src", kind: TreeDirectory, mode: fm("755"), owner: gnbc() }
       let observed_exe = TreeMetadataEntry { path: "gunbc", kind: TreeRegular, mode: fm("755"), owner: gnbc() }
-      let observed_extra = TreeMetadataEntry { path: "malware", kind: TreeRegular, mode: fm("644"), owner: gnbc() }
-      let observed_all = [observed_dag, observed_src, observed_exe, observed_extra]
-      match tree_metadata_disagreement(expected: expected, observed: observed_all) {
-        Absent => false
-        Present { value: why } => string_contains(s: why, pattern: "malware")
+      let observed_firecracker = TreeMetadataEntry { path: "firecracker", kind: TreeRegular, mode: fm("755"), owner: PosixOwnerNames { user: "root" as NonEmptyStr, group: "root" as NonEmptyStr } }
+      let observed_images = TreeMetadataEntry { path: "images", kind: TreeDirectory, mode: fm("755"), owner: PosixOwnerNames { user: "root" as NonEmptyStr, group: "root" as NonEmptyStr } }
+      let observed_all = [observed_dag, observed_src, observed_exe, observed_firecracker, observed_images]
+      let filtered = filter(observed_all, e => any(expected_paths, p => p == e.path))
+      match tree_metadata_disagreement(expected: expected, observed: filtered) {
+        Present { value: _ } => false
+        Absent => true
+      }
+  }
+}
+
+// REAL MICROVM LOCUS LISTING: the tree install readback at the microvm controller's
+// locus root must tolerate firecracker, jailer, images/, workspace-commissioning-helper,
+// workspace-commissioning-executor.sh, and .gunbc-vmm-receipt (all from later legs).
+// The tree install's entries (dag/, src/, executables) must still be verified.
+test fn real_microvm_locus_extras_are_tolerated_by_readback() -> Bool {
+  let subs = ["dag", "src/v2"]
+  let execs = ["gunbc"]
+  match tree_locus_children_expectation_owned(subdirs: subs, executables: execs, owner: deploy_owner) {
+    Absent => false
+    Present { value: expected } =>
+      let expected_paths = flat_map(expected, e => [e.path])
+      let root = PosixOwnerNames { user: "root" as NonEmptyStr, group: "root" as NonEmptyStr }
+      // The real microvm locus root listing from srv1 (read-only observation by the manager)
+      let real_listing = [
+        TreeMetadataEntry { path: "dag", kind: TreeDirectory, mode: fm("755"), owner: gnbc() },
+        TreeMetadataEntry { path: "src", kind: TreeDirectory, mode: fm("755"), owner: gnbc() },
+        TreeMetadataEntry { path: "gunbc", kind: TreeRegular, mode: fm("755"), owner: gnbc() },
+        TreeMetadataEntry { path: ".gunbc-tree-receipt", kind: TreeRegular, mode: fm("644"), owner: gnbc() },
+        TreeMetadataEntry { path: ".gunbc-vmm-receipt", kind: TreeRegular, mode: fm("644"), owner: root },
+        TreeMetadataEntry { path: "images", kind: TreeDirectory, mode: fm("755"), owner: root },
+        TreeMetadataEntry { path: "firecracker", kind: TreeRegular, mode: fm("755"), owner: root },
+        TreeMetadataEntry { path: "jailer", kind: TreeRegular, mode: fm("755"), owner: root },
+        TreeMetadataEntry { path: "workspace-commissioning-helper", kind: TreeRegular, mode: fm("755"), owner: root },
+        TreeMetadataEntry { path: "workspace-commissioning-executor.sh", kind: TreeRegular, mode: fm("755"), owner: root },
+      ]
+      let filtered = filter(real_listing, e => any(expected_paths, p => p == e.path))
+      match tree_metadata_disagreement(expected: expected, observed: filtered) {
+        Present { value: _ } => false
+        Absent => true
+      }
+  }
+}
+
+// REAL APPROVAL BROKER LOCUS LISTING: the approval broker locus root has
+// device-crypto-deployed-digest.env (0644) and approval_device_crypto_serve (0755)
+// alongside dag/, src/, gunbc, and .gunbc-tree-receipt. approval_device_crypto_serve
+// IS an expected executable (in approval_broker_release_locus_executables), so the
+// filter includes it. device-crypto-deployed-digest.env is from a later leg and is
+// tolerated.
+test fn real_approval_broker_locus_extras_are_tolerated_by_readback() -> Bool {
+  let subs = ["dag", "src/v2"]
+  let execs = ["gunbc", "approval_device_crypto_serve"]
+  match tree_locus_children_expectation_owned(subdirs: subs, executables: execs, owner: deploy_owner) {
+    Absent => false
+    Present { value: expected } =>
+      let expected_paths = flat_map(expected, e => [e.path])
+      // The real approval-broker locus root listing from srv1
+      let real_listing = [
+        TreeMetadataEntry { path: "dag", kind: TreeDirectory, mode: fm("755"), owner: gnbc() },
+        TreeMetadataEntry { path: "src", kind: TreeDirectory, mode: fm("755"), owner: gnbc() },
+        TreeMetadataEntry { path: "gunbc", kind: TreeRegular, mode: fm("755"), owner: gnbc() },
+        TreeMetadataEntry { path: "approval_device_crypto_serve", kind: TreeRegular, mode: fm("755"), owner: gnbc() },
+        TreeMetadataEntry { path: ".gunbc-tree-receipt", kind: TreeRegular, mode: fm("644"), owner: gnbc() },
+        TreeMetadataEntry { path: "device-crypto-deployed-digest.env", kind: TreeRegular, mode: fm("644"), owner: gnbc() },
+      ]
+      let filtered = filter(real_listing, e => any(expected_paths, p => p == e.path))
+      match tree_metadata_disagreement(expected: expected, observed: filtered) {
+        Present { value: _ } => false
+        Absent => true
       }
   }
 }
