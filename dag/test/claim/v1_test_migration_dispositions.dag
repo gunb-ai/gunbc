@@ -25,7 +25,8 @@ test fn every_replaced_module_is_discharged_by_an_exact_stem_witness() -> Bool {
   migrated_rust_files() |> all(f => !list_contains_name(xs: discovered_rust_test_modules(), needle: f))
 }
 
-// A replacement states its gap, and names at least one witness function.
+// A replacement names its witness module and at least one witness function; its gap is a typed status
+// (V1CoverageGap), and the names themselves are checked as #-markers in the plan by reference_check.
 test fn every_replacement_names_witnesses_and_a_gap() -> Bool {
   v1_migrated_test_modules() |> all(m => replacement_is_stated(m: m))
 }
@@ -33,7 +34,7 @@ test fn every_replacement_names_witnesses_and_a_gap() -> Bool {
 fn replacement_is_stated(m: V1MigratedTestModule) -> Bool {
   match m.disposition {
     ReplacedByWitness { witness_module, witness_functions, coverage_gap } =>
-      !is_empty(witness_functions) && witness_module != "" && coverage_gap != ""
+      !is_empty(witness_functions) && witness_module != ""
   }
 }
 

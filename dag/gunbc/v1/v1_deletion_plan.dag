@@ -91,8 +91,16 @@ type V1TestMigrationDisposition
   = ReplacedByWitness {
       witness_module: String,
       witness_functions: List<String>,
-      coverage_gap: String,
+      coverage_gap: V1CoverageGap,
     }
+
+// What a replacement does not cover, as a status and not as prose. PortedByReadingEmittedTextOnly: the
+// witness's needles were ported by reading the Rust assertions, not proved equivalent by a mutation
+// control, and it reads emitted Rust text only. WeakerThanRustTest: a guarantee was lowered; the typed
+// declaration is the named gunbc.rung_drop row.
+type V1CoverageGap
+  = PortedByReadingEmittedTextOnly
+  | WeakerThanRustTest { rung_drop: String }
 
 type V1MigratedTestModule {
   rust_module: String
@@ -104,36 +112,46 @@ type V1MigratedTestModule {
 // test.claim.v1_test_migration_dispositions, which the node does not require.
 fn v1_migrated_test_modules() -> List<V1MigratedTestModule> {
   [
+    // #test.claim.sort_by_decorate_once::w_sort_by_decorates_once_sorts_stored_key_and_undecorates_test
+    // #test.claim.sort_by_decorate_once::w_sort_by_does_not_apply_the_selector_inside_the_comparator_test
     V1MigratedTestModule {
       rust_module: "sort_by_decorate_once_test",
       disposition: ReplacedByWitness {
         witness_module: "test.claim.sort_by_decorate_once",
         witness_functions: ["w_sort_by_decorates_once_sorts_stored_key_and_undecorates_test", "w_sort_by_does_not_apply_the_selector_inside_the_comparator_test"],
-        coverage_gap: "None identified when porting: the emitted-text needles were ported by reading the Rust assertions, not proved equivalent by a mutation control. The witness reads emitted Rust text only; like the Rust test it never executes the emitted sort.",
+        coverage_gap: PortedByReadingEmittedTextOnly,
       },
     },
+    // #test.claim.grounded_shared_carrier_wrap::w_grounded_empty_is_shared_once_test
+    // #test.claim.grounded_shared_carrier_wrap::w_grounded_empty_is_never_shared_twice_test
     V1MigratedTestModule {
       rust_module: "grounded_shared_carrier_wrap_test",
       disposition: ReplacedByWitness {
         witness_module: "test.claim.grounded_shared_carrier_wrap",
         witness_functions: ["w_grounded_empty_is_shared_once_test", "w_grounded_empty_is_never_shared_twice_test"],
-        coverage_gap: "None identified when porting: needles ported by reading, not proved equivalent by a mutation control. Emitted text only.",
+        coverage_gap: PortedByReadingEmittedTextOnly,
       },
     },
+    // #test.claim.rest_body_undecodable_emitted_cause::w_rest_body_undecodable_causes_are_declared_side_constants_test
+    // #test.claim.rest_body_undecodable_emitted_cause::w_rest_body_undecodable_cause_never_splices_the_runtime_error_test
+    // #gunbc.rung_drop.rest_body_undecodable_third_splice_form::rest_body_undecodable_third_splice_form
+    // The Rust test accepted a cause only as a single quoted declared-side literal; the witness pins two literals present and two leaking spellings absent, so a third splice form passes.
     V1MigratedTestModule {
       rust_module: "rest_body_undecodable_emitted_cause_test",
       disposition: ReplacedByWitness {
         witness_module: "test.claim.rest_body_undecodable_emitted_cause",
         witness_functions: ["w_rest_body_undecodable_causes_are_declared_side_constants_test", "w_rest_body_undecodable_cause_never_splices_the_runtime_error_test"],
-        coverage_gap: "Declared drop gunbc.rung_drop.rest_body_undecodable_third_splice_form. WEAKER THAN THE RUST TEST. The Rust test walked every RestBodyUndecodable construction and accepted a cause only if it was a single quoted literal equal to one of two declared-side forms, so any unforeseen splice failed it. This witness pins two declared-side literals present and two named leaking spellings absent (error.to_string() and format!( in the RestBodyUndecodable constructor); a third splice form (a helper call, string +, a differently named binding) passes undetected.",
+        coverage_gap: WeakerThanRustTest { rung_drop: "gunbc.rung_drop.rest_body_undecodable_third_splice_form" },
       },
     },
+    // #test.claim.unknown_pipeline_driver_refusal::w_unrecognised_driver_reading_refuses_and_names_the_reading_test
+    // #test.claim.unknown_pipeline_driver_refusal::w_unrecognised_driver_does_not_render_the_direct_ingest_main_test
     V1MigratedTestModule {
       rust_module: "unknown_pipeline_driver_refusal_test",
       disposition: ReplacedByWitness {
         witness_module: "test.claim.unknown_pipeline_driver_refusal",
         witness_functions: ["w_unrecognised_driver_reading_refuses_and_names_the_reading_test", "w_unrecognised_driver_does_not_render_the_direct_ingest_main_test"],
-        coverage_gap: "None identified when porting: needles ported by reading, not proved equivalent by a mutation control. Emitted text only.",
+        coverage_gap: PortedByReadingEmittedTextOnly,
       },
     },
   ]
