@@ -18531,8 +18531,16 @@ fn wait_child_honoring_wall_deadline(
         // OUTER bound: still a refusal, never a per-leg overrun.
         if let Some(err) = ctx.wall_deadline_exceeded_error() {
             kill_shell_process_group(pid);
-            let _ = rx.recv_timeout(std::time::Duration::from_secs(2));
-            let _ = worker.join();
+            // The settlement is BOUNDED, under the same contract as the per-leg trip below. A
+            // descendant that escaped the group with `setsid` can hold a stream open, so the
+            // drain worker may never return; the unconditional `worker.join()` that followed the
+            // 2s grace waited forever, delaying the outer refusal without changing it. Settle on
+            // the grace, and if the worker has not returned, detach it.
+            if rx.recv_timeout(std::time::Duration::from_secs(2)).is_ok() {
+                let _ = worker.join();
+            } else {
+                drop(worker);
+            }
             return Err(err);
         }
         // PER-LEG bound: its trip is a value. Kill the group, drain, report overran.
@@ -18587,6 +18595,42 @@ fn wait_child_honoring_wall_deadline(
                     msg: format!("shell wait worker for '{}' disconnected", argv0),
                 });
             }
+        }
+    }
+}
+
+/// The stdin writer is part of the leg, so its completion settles on the SAME bounded contract as
+/// the drain worker. A descendant that escapes the process group with `setsid` keeps stdin's READ
+/// end open without ever reading it; with a payload larger than the pipe capacity the writer is
+/// parked inside `write_all` when the group kill lands, because the escapee still holds the pipe.
+/// An unconditional `writer.join()` after the wait returned then blocked the dispatch forever: the
+/// wait helper had already reported the trip, and the typed overrun was never handed back (the
+/// wait helper alone cannot show this — it never owns the writer). Bounded settle, exactly like the
+/// drain: wait the grace, and if the writer has not returned, detach it and let the leg's own
+/// outcome stand. Only a PANICKED writer is an error, as before; a refused write stays ordinary
+/// pipe behaviour and the child's exit status stays authoritative.
+const SHELL_STDIN_SETTLE_GRACE: std::time::Duration = std::time::Duration::from_secs(2);
+
+fn settle_shell_stdin_writer(
+    writer: std::thread::JoinHandle<std::io::Result<()>>,
+    done: std::sync::mpsc::Receiver<()>,
+    argv0: &str,
+) -> InterpResult<()> {
+    match done.recv_timeout(SHELL_STDIN_SETTLE_GRACE) {
+        // The writer returned, or its sender died with it: the join is immediate either way, and a
+        // panicked writer is still the typed refusal it was. The write's own io::Error is NOT
+        // reported (broken pipe on a child that exited early is ordinary), as before.
+        Ok(()) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => match writer.join() {
+            Ok(_) => Ok(()),
+            Err(_) => Err(InterpError::TypeError {
+                msg: format!("shell transport stdin writer for '{}' panicked", argv0),
+            }),
+        },
+        // Still parked on a pipe someone else holds open. Detach, as the drain worker is detached:
+        // the leg's outcome — completion or overrun — is already decided and must not be stranded.
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+            drop(writer);
+            Ok(())
         }
     }
 }
@@ -18805,10 +18849,16 @@ fn dispatch_shell(
             configure_shell_process_group_for_wall_kill(&mut cmd, ctx, leg_deadline);
             let mut child = cmd.spawn().map_err(|e| shell_spawn_refused(&argv[0], &e))?;
 
-            let stdin_writer = child
-                .stdin
-                .take()
-                .map(|mut stdin| std::thread::spawn(move || stdin.write_all(&stdin_bytes)));
+            let (stdin_done_tx, stdin_done_rx) = std::sync::mpsc::channel();
+            let stdin_writer = child.stdin.take().map(|mut stdin| {
+                std::thread::spawn(move || {
+                    let wrote = stdin.write_all(&stdin_bytes);
+                    // The completion signal is sent whether or not the write succeeded: the
+                    // settlement below asks only whether the writer is still parked.
+                    let _ = stdin_done_tx.send(());
+                    wrote
+                })
+            });
 
             let (capture_opt, overran) = wait_child_honoring_wall_deadline(
                 child,
@@ -18823,10 +18873,9 @@ fn dispatch_shell(
                 // A stdin-write error (e.g. broken pipe) is not the failure to report: the child
                 // may have exited before consuming all of stdin, ordinary POSIX pipe behavior. The
                 // child's exit_code/stdout/stderr in `output` is authoritative and already flows
-                // to the `exit { .. }` clause of the .dag transport declaration.
-                let _ = writer.join().map_err(|_| InterpError::TypeError {
-                    msg: format!("shell transport stdin writer for '{}' panicked", argv[0]),
-                })?;
+                // to the `exit { .. }` clause of the .dag transport declaration. The settle is
+                // BOUNDED, so an escaped pipe holder cannot strand the outcome the wait returned.
+                settle_shell_stdin_writer(writer, stdin_done_rx, &argv[0])?;
             }
             if let Some(ref capture) = capture_opt {
                 render_shell_completion_trace(
@@ -29881,8 +29930,9 @@ mod argv_arg_limit_test {
     use crate::v1_std_core::{make_text_part_node, no_span, shell_transport_node, Node};
 
     use super::{
-        argv_arg_limit_refusal, dispatch_shell, Env, ExecutionMode, ExpectedOutcome, InterpContext,
-        InterpError, HOST_ARG_MAX_STRLEN_BYTES,
+        argv_arg_limit_refusal, dispatch_shell, wait_child_honoring_wall_deadline, Env,
+        ExecutionMode, ExpectedOutcome, InterpContext, InterpError, StreamCapturePolicy, Value,
+        HOST_ARG_MAX_STRLEN_BYTES,
     };
 
     fn argv_limit_test_context() -> InterpContext {
@@ -30096,6 +30146,232 @@ mod argv_arg_limit_test {
             Ok(result) => assert_eq!(result.exit_code, 0),
             Err(other) => panic!("`true` must spawn and exit 0, got {other:?}"),
         }
+    }
+
+    // ── The stdin writer settles on a BOUND, like every other participant of the leg ──────────
+    //
+    // Side-chat review of #16737 at f7ea34833c (P1): the wait helper is bounded, but
+    // `dispatch_shell` joined its stdin writer UNCONDITIONALLY after the wait returned. A
+    // descendant that escapes the process group with `setsid` keeps stdin's READ end open without
+    // ever reading it; with a payload past the pipe capacity the writer is parked inside
+    // `write_all` when the group kill lands, so the dispatch never handed back the typed overrun
+    // the wait had already reported. These controls therefore drive the WHOLE stdin-bearing
+    // dispatch, not the wait helper with Stdio::null(): a null stdin cannot exhibit the mechanism.
+    // The bound assertions are what make them red on an unbounded settle rather than merely slow.
+
+    const ESCAPED_HOLDER_PIDFILE: &str = "/tmp/gunbc_seed_leg_escape.pid";
+
+    /// The escapee: it inherits the leg's stream, writes its own pid for cleanup, then sleeps far
+    /// past every bound in these tests. It is started by the leg's own shell, and the only thing
+    /// that takes it out of the killable group is `setsid` -- the shape an ordinary build script
+    /// leaves behind. `stream_redirect` aims the held stream ("" is stdin, ">&2" is stderr).
+    fn escaped_stream_holder_script(stream_redirect: &str) -> String {
+        format!(
+            "setsid sh -c 'echo $$ > {pid}; exec sleep 120' {redir} & sleep 120",
+            pid = ESCAPED_HOLDER_PIDFILE,
+            redir = stream_redirect
+        )
+    }
+
+    /// The escapee is a real process, so the control cleans it up: its recorded pid is a session
+    /// and process-group leader after `setsid`, so the group is killed as well as the pid.
+    fn kill_escaped_stream_holder() {
+        if let Ok(text) = std::fs::read_to_string(ESCAPED_HOLDER_PIDFILE) {
+            if let Ok(pid) = text.trim().parse::<i64>() {
+                let _ = std::process::Command::new("sh")
+                    .arg("-c")
+                    .arg(format!(
+                        "kill -KILL -{pid} 2>/dev/null; kill -KILL {pid} 2>/dev/null"
+                    ))
+                    .status();
+            }
+        }
+        let _ = std::fs::remove_file(ESCAPED_HOLDER_PIDFILE);
+    }
+
+    fn synthetic_occ() -> Rc<crate::std_occurrence_identity::NodeOccurrenceIdentity> {
+        Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic)
+    }
+
+    /// A three-word argv (`sh -c <script>`, or a plain command) as text-part nodes.
+    fn leg_argv(word: &str, second: &str, third: &str) -> Rc<im::Vector<Rc<Node>>> {
+        Rc::new(im_vec![
+            make_text_part_node(synthetic_occ(), word.to_string(), no_span()),
+            make_text_part_node(synthetic_occ(), second.to_string(), no_span()),
+            make_text_part_node(synthetic_occ(), third.to_string(), no_span()),
+        ])
+    }
+
+    /// A declared transport ceiling spelled the way the corpus spells it: the transport block's
+    /// `wall_deadline:` field NAMES the caller's Optional<Second>, so the node is a variable and the
+    /// value -- `Present` carrying a `Second` -- is bound in the parameter environment the dispatch
+    /// evaluates it in.
+    fn bound_leg_ceiling(ctx: &InterpContext, name: &str, secs: i64) -> (Rc<Node>, Rc<Env>) {
+        let ceiling_node = crate::v1_std_core::make_named_expr_node(
+            synthetic_occ(),
+            name.to_string(),
+            Rc::new(crate::v1_std_core::ExprData::ExprVar { binding_kind: None }),
+            Rc::new(im_vec![]),
+            None,
+            no_span(),
+            no_span(),
+        );
+        let second = Value::Variant {
+            type_name: ctx.sym("Second"),
+            variant_name: ctx.sym("Second"),
+            fields: Rc::new(vec![(ctx.sym("count"), Value::Int(secs))]),
+        };
+        let env = Env::with_binding(
+            &Env::empty(),
+            ctx.sym(name),
+            Value::Variant {
+                type_name: ctx.sym("OptionalSecond"),
+                variant_name: ctx.sym("Present"),
+                fields: Rc::new(vec![(ctx.sym("value"), second)]),
+            },
+        );
+        (ceiling_node, env)
+    }
+
+    /// `bytes` bytes of stdin payload. Past the 64 KiB pipe capacity is the point: a payload that
+    /// fits never blocks the writer, so an unbounded join looks harmless.
+    fn stdin_payload_node(bytes: usize) -> Rc<Node> {
+        make_text_part_node(synthetic_occ(), "x".repeat(bytes), no_span())
+    }
+
+    #[test]
+    fn dispatch_shell_stdin_leg_with_escaped_pipe_holder_still_returns_the_typed_overrun() {
+        let ctx = InterpContext::witness();
+        let script = escaped_stream_holder_script("");
+        let argv = leg_argv("sh", "-c", &script);
+        let (ceiling_node, param_env) = bound_leg_ceiling(&ctx, "test_leg_ceiling", 2);
+        let transport = shell_transport_node(
+            synthetic_occ(),
+            argv,
+            Rc::new(im_vec![]),
+            Some(stdin_payload_node(1 << 18)),
+            Some(ceiling_node),
+            no_span(),
+        );
+        let start = std::time::Instant::now();
+        let outcome = dispatch_shell(&transport, &param_env, &ctx, "test stdin leg overrun", None);
+        let elapsed = start.elapsed();
+        kill_escaped_stream_holder();
+        let result = match outcome {
+            Ok(result) => result,
+            Err(err) => panic!("the stdin-bearing dispatch must return a value, got {err}"),
+        };
+        assert!(
+            matches!(result.leg_exec, super::ShellLegExec::Overran { .. }),
+            "an escaped-holder stdin leg past its ceiling must be Overran, got {:?}",
+            result.leg_exec
+        );
+        assert!(
+            elapsed < std::time::Duration::from_secs(20),
+            "the typed overrun surfaced {elapsed:?} after the dispatch began: the stdin writer's \
+             settlement is unbounded (the escapee sleeps 120s and holds stdin's read end), so the \
+             dispatch stranded the overrun the wait helper had already reported"
+        );
+    }
+
+    #[test]
+    fn dispatch_shell_stdin_leg_under_a_generous_ceiling_completes_with_its_payload_written() {
+        let ctx = InterpContext::witness();
+        // The green half: a reader that consumes stdin, under a ceiling it never reaches. The
+        // bounded settle must not cost a real leg its payload or its completion.
+        let argv = leg_argv("sh", "-c", "cat > /dev/null");
+        let (ceiling_node, param_env) = bound_leg_ceiling(&ctx, "test_leg_ceiling", 30);
+        let transport = shell_transport_node(
+            synthetic_occ(),
+            argv,
+            Rc::new(im_vec![]),
+            Some(stdin_payload_node(1 << 17)),
+            Some(ceiling_node),
+            no_span(),
+        );
+        let result =
+            match dispatch_shell(&transport, &param_env, &ctx, "test stdin leg green", None) {
+                Ok(result) => result,
+                Err(err) => panic!("a stdin leg under its ceiling must not be an error: {err}"),
+            };
+        assert!(
+            matches!(result.leg_exec, super::ShellLegExec::Completed),
+            "a leg that finished is Completed, got {:?}",
+            result.leg_exec
+        );
+        assert_eq!(result.exit_code, 0, "cat consumed the payload and exited 0");
+    }
+
+    #[test]
+    fn dispatch_shell_stdin_leg_whose_child_never_reads_is_a_completion_not_an_error() {
+        let ctx = InterpContext::witness();
+        // The child exits without touching stdin, so the writer dies on a broken pipe. That stays a
+        // completion: the child's exit status is authoritative, and a refused write is ordinary
+        // pipe behaviour -- the bounded settle must not turn it into a refusal.
+        let argv = leg_argv("sh", "-c", "exit 3");
+        let (ceiling_node, param_env) = bound_leg_ceiling(&ctx, "test_leg_ceiling", 30);
+        let transport = shell_transport_node(
+            synthetic_occ(),
+            argv,
+            Rc::new(im_vec![]),
+            Some(stdin_payload_node(1 << 17)),
+            Some(ceiling_node),
+            no_span(),
+        );
+        let result = match dispatch_shell(
+            &transport,
+            &param_env,
+            &ctx,
+            "test stdin leg broken pipe",
+            None,
+        ) {
+            Ok(result) => result,
+            Err(err) => panic!("a child that exits without reading stdin is a completion: {err}"),
+        };
+        assert_eq!(result.exit_code, 3);
+        assert!(matches!(result.leg_exec, super::ShellLegExec::Completed));
+    }
+
+    #[test]
+    fn outer_budget_refusal_with_an_escaped_stderr_holder_returns_within_bound() {
+        use std::process::Command as OsCommand;
+        use std::process::Stdio;
+        // The outer whole-receipt bound used to join its drain worker after its own 2s grace, so an
+        // escaped holder of the stderr WRITE end delayed the refusal indefinitely. The refusal is
+        // the same value either way: what this control fixes is that it ARRIVES.
+        let ctx = InterpContext::witness();
+        ctx.arm_wall_deadline(2000);
+        let script = escaped_stream_holder_script(">&2");
+        let child = OsCommand::new("sh")
+            .arg("-c")
+            .arg(script)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .process_group(0)
+            .spawn()
+            .expect("sh starts");
+        let start = std::time::Instant::now();
+        let outcome = wait_child_honoring_wall_deadline(
+            child,
+            &ctx,
+            "sh",
+            StreamCapturePolicy::RetainText,
+            StreamCapturePolicy::RetainText,
+            None,
+        );
+        let elapsed = start.elapsed();
+        kill_escaped_stream_holder();
+        let refused = matches!(outcome, Err(_));
+        assert!(
+            refused,
+            "an outer-budget trip is a refusal, never a completion"
+        );
+        assert!(
+            elapsed < std::time::Duration::from_secs(20),
+            "the outer refusal surfaced {elapsed:?} after the wait began: the drain worker's join \
+             after the 2s grace is unbounded against an escaped holder of the stream"
+        );
     }
 }
 
