@@ -7251,7 +7251,7 @@ fn tree_executables_disagreement(executables: List<String>, source_root: String,
 // this single gate.
 type TreeLocusAgreement
   = TreeLocusAgrees { installed: List<TreeFileHash>, certified: List<TreeMetadataEntry> }
-  | TreeLocusRefused { step: TreeStep, reason: String }
+  | TreeLocusRefused { step: TreeInstallStep, reason: String }
 
 fn tree_locus_agreement_given(
   realm: TreeInstallRealm,
