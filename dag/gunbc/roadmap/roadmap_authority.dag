@@ -1238,9 +1238,27 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         displaced_cost: "Consumers that need containment (annotation attachment, import editing) cannot tell whether a position is inside a node or after its closing delimiter, so each reconstructs a range from descendants or tokens -- an approximate second answer to a fact the parser had and discarded (gunbc.design_argument::minimize_redundancy, gunbc.design_argument::earliest_unjustified_boundary).",
         first_slice: "v2: production wrappers record their interval at completion (block reaches its closing brace); then infix, repeat and root paths; then v1 through the same contract.",
         red_control: "Discriminating cases on BOTH parsers: a position between a block's last statement and its closing brace is inside the block and one after the brace is outside (an interval ending at the last child is RED); `((x))` retains both paren scopes around one occurrence; a singleton block retains its scope; `Int?` covers the `?`; an import's interval stops before its trailing newlines; an empty production and an abandoned speculative branch record nothing.",
-        out_of_scope: "Comment attachment itself (parse-comment-gap-attachment). Changing what span means in v1.",
+        out_of_scope: "Comment attachment itself (parse-comment-gap-attachment). Changing what span means in v1. The v2 half, which is its own row (v2-parse-node-source-extent-witness-is-executable).",
         handback: "BOTH PARSERS COMPLETE under the one contract, with every red control above green on each and the import rescan deleted. A passing v2 block check alone does not close this node."
-      ), on: "2026-10-11", note: "Authored 2026-10-11 from the in-body comment design: the producer boundary is the parser's published result (gunbc.design_argument::earliest_unjustified_boundary), so the repair is here, not in the annotation binder.")),
+      ), on: "2026-10-11", note: "Authored 2026-10-11 from the in-body comment design: the producer boundary is the parser's published result (gunbc.design_argument::earliest_unjustified_boundary), so the repair is here, not in the annotation binder."), on: "2026-11-23", note: "Split (vivid-swift-693, neat-badger-614): the v1 half keeps a probe-form red control, given below the discriminating cases; the v2 half is its own defect row, v2-parse-node-source-extent-witness-is-executable, because its witness is never executable on any route yet. This row's red_control text is otherwise unchanged. V1 PROBE: red_at 007830dc294bc7013e9942ce6a9cb9f38fa3a624 on red-control/parse-node-source-extent, whose first parent is red_base 6d2115d1e6e700671f0ee8317ae6a2e1dfa66da6; green_at 6d2115d1e6e700671f0ee8317ae6a2e1dfa66da6. The plant touches src/v1/02_parse.dag and src/v2/std/provenance.dag (2 files, 3 insertions, 3 deletions) so that no parser records source extents; the v1 witness is src/v1/tests/claim/parse_source_extent_control_test.dag.")),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-compiler-live", contribution: "The live compiler's parse result must carry the source facts its consumers need instead of leaving each to re-derive them."),
+    ),
+
+    roadmap_node(
+      identity: "rn_WTYZMZ8DGPYGZF730BASZ18RAH",
+      id: "v2-parse-node-source-extent-witness-is-executable",
+      owner: "parse",
+      carriers: carrier(path: "src/v2/compiler/parse.dag"),
+      line: ticket(t: fields(
+        headline: "The v2 half of parse-node-source-extent has a witness that runs",
+        boundary: "The v2 witness for the source-extent contract of parse-node-source-extent is import-less and is never executable on any route, so no v2 reading of that contract exists. The repair is the import repair gunbc#16911; this row owns the v2 half only and the v1 half stays on parse-node-source-extent. The contract itself is not restated here: it is the producer contract of that row.",
+        displaced_cost: "A witness that never executes reads as coverage of the v2 parser while checking nothing, so a v2 extent defect is invisible and the v1 half's probe says nothing about it (gunbc.design_argument::fail_closed, done means executed).",
+        first_slice: "Land gunbc#16911 so the witness is admitted and executed on a route, then run it against the v2 parser unchanged.",
+        red_control: "NONE CLAIMED YET: green_at is OPEN. The witness is never executable on any route until gunbc#16911 merges, so no red or green has been observed and none is claimed; the pair is written as data only once the witness executes (red_at, green_at, and a probe's red_base and probe_ref).",
+        out_of_scope: "The v1 half (parse-node-source-extent). Changing the source-extent contract.",
+        handback: "Return the merged import repair, the witness executing on a named route, and its red and green shas."
+      )),
       dispatch: dispatchable(),
       parent: in_project(project: "v2-compiler-live", contribution: "The live compiler's parse result must carry the source facts its consumers need instead of leaving each to re-derive them."),
     ),
@@ -5498,10 +5516,10 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         boundary: "One witness imports two members from a module that declares neither of them. The declarations phase reports both as absent.",
         displaced_cost: "The module declares a differently-named member whose spelling contains one of the requested names as a substring, so a casual search appears to confirm the import and does not. The finding is real and sits on the main line, where it was only visible because another change happened to surface the phase's output.",
         first_slice: "Decide whether the witness wants the member that does exist under its real name, or whether the source should export what the witness asks for.",
-        red_control: "The declarations phase reports no absent member for this file, and a deliberately reintroduced bad import is reported again.",
+        red_control: "PROBE (the plant is a committed, fetchable break, not a tree observed red on main). red_at 48906a752ddedf045b54a8bc9d2b29ded7b03f3d, whose first parent is red_base bef04740bb51142a8d591f93c9e432cba5c712ea; green_at bef04740bb51142a8d591f93c9e432cba5c712ea; probe_ref red-control/runner-throughput-witness-imports-absent-members. The plant is one added member on one line: at line 3 of dag/test/claim/runner/runner_throughput_qualification_witness.dag, `import std.logic { Bool }` becomes `import std.logic { Bool, Royalnewtphantommember }` (1 file, 1 insertion, 1 deletion). It makes v1_src_dag_parse report `IMPORT-MEMBER-ABSENT dag/test/claim/runner/runner_throughput_qualification_witness.dag:3:26: `test.claim.runner.runner_throughput_qualification_witness` imports `Royalnewtphantommember` from `std.logic`, which declares no such name`; the phantom name appears zero times without the plant and once with it (stderr 421 to 422 lines), so that finding at :3:26 is the only delta. Green half: the full sweep at red_base produced 524 findings and none names this witness. The witness blob differs between the two trees, so the closing commit did change the file, but no tree was ever observed red for it; that is why this is a probe and not an observation on main. The accepted pair is recorded through gunbc.roadmap.roadmap_status RedProbe (the sum added by gunbc#16914).",
         out_of_scope: "Not a rework of the witness's subject, and not the separate question of whether a failed phase should fail the run.",
         handback: "Return the corrected import and a phase run that reports it clean."
-      )),
+      ), on: "2026-11-23", note: "Red control rewritten to the probe form (royal-newt-240, neat-badger-614): the plant is committed at red-control/runner-throughput-witness-imports-absent-members.")),
       dispatch: dispatchable(),
       parent: in_project(project: "ci-end-to-end-execution", contribution: "The required run is the factory verification half; a gap in what it counts, bills or reports is a gap in every landing it gates."),
     ),
