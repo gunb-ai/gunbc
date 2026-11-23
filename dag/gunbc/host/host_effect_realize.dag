@@ -128,7 +128,7 @@ import gunbc.live_deploy.emit {
   path_ancestors_inclusive,
 }
 import extdeps.crypto.hash { sha256sum_file_command, sha256sum_line_digest }
-import extdeps.tools.findutils { find_regular_files_sha256_command, find_tree_entry_metadata_command }
+import extdeps.tools.findutils { find_regular_files_sha256_command, find_tree_entry_metadata_command, find_direct_children_metadata_command, find_self_metadata_command, find_self_metadata_printf }
 import gunbc.live_deploy.release_locus { release_locus_record, ReleaseLocus, release_locus_tree_subdirs, release_revision_execstart_text, RevisionNotInstalled }
 import gunbc.live_deploy.emit { install_d_shared_mode, install_file_shared_mode, install_executable_shared_mode }
 import gunbc.ci.ci_release_bins { gunbc_release_bin_name }
@@ -6712,15 +6712,16 @@ fn tree_metadata_entry_of_fields(f: TreeMetadataFieldWalk, sub: String) -> Optio
     Absent
   } else {
     let names = PosixOwnerNames { user: f.owner as NonEmptyStr, group: f.group as NonEmptyStr }
+    let entry_path = if sub == "" { f.rel } else { join([sub, "/", f.rel], "") }
     match file_mode_of_octal_text(text: f.mode) {
       Absent => Absent
       Present { value: m } =>
         if f.kind == "f" && f.link_target == "" {
-          Present { value: TreeMetadataEntry { path: join([sub, "/", f.rel], ""), kind: TreeRegular, mode: m, owner: names } }
+          Present { value: TreeMetadataEntry { path: entry_path, kind: TreeRegular, mode: m, owner: names } }
         } else if f.kind == "d" && f.link_target == "" {
-          Present { value: TreeMetadataEntry { path: join([sub, "/", f.rel], ""), kind: TreeDirectory, mode: m, owner: names } }
+          Present { value: TreeMetadataEntry { path: entry_path, kind: TreeDirectory, mode: m, owner: names } }
         } else if f.kind == "l" && f.link_target != "" {
-          Present { value: TreeMetadataEntry { path: join([sub, "/", f.rel], ""), kind: TreeLink { link_target: f.link_target as NonEmptyStr }, mode: m, owner: names } }
+          Present { value: TreeMetadataEntry { path: entry_path, kind: TreeLink { link_target: f.link_target as NonEmptyStr }, mode: m, owner: names } }
         } else {
           Absent
         }
@@ -6730,6 +6731,66 @@ fn tree_metadata_entry_of_fields(f: TreeMetadataFieldWalk, sub: String) -> Optio
 
 fn tree_metadata_entries_of_stdout(stdout: String, sub: String) -> List<TreeMetadataEntry> {
   flat_map(split(s: stdout, delimiter: "\n"), line => match tree_metadata_entry_of_line(line: line, sub: sub) { Absent => [], Present { value: e } => [e] })
+}
+
+// THE SELF-METADATA OF ONE PATH, parsed from the six-field line that
+// find_self_metadata_command prints: kind|mode|owner|group|link_target|size. The
+// caller already knows the path (it ran the find on it), so %P is absent from the
+// wire and the caller pairs the parsed fields with the path. Returns the entry or
+// Absent if the grammar does not parse.
+type TreeSelfFieldWalk {
+  i: Int
+  kind: String
+  mode: String
+  owner: String
+  group: String
+  link_target: String
+  size: String
+  ok: Bool
+}
+
+fn tree_self_metadata_of_fields(fields: List<String>) -> Optional<TreeMetadataEntry> {
+  let walked = fold(fields, init: TreeSelfFieldWalk { i: 0, kind: "", mode: "", owner: "", group: "", link_target: "", size: "", ok: true }, f: (acc, field) =>
+    if !acc.ok { acc }
+    else if acc.i == 0 { TreeSelfFieldWalk { i: 1, kind: field, mode: acc.mode, owner: acc.owner, group: acc.group, link_target: acc.link_target, size: acc.size, ok: true } }
+    else if acc.i == 1 { TreeSelfFieldWalk { i: 2, kind: acc.kind, mode: field, owner: acc.owner, group: acc.group, link_target: acc.link_target, size: acc.size, ok: true } }
+    else if acc.i == 2 { TreeSelfFieldWalk { i: 3, kind: acc.kind, mode: acc.mode, owner: field, group: acc.group, link_target: acc.link_target, size: acc.size, ok: true } }
+    else if acc.i == 3 { TreeSelfFieldWalk { i: 4, kind: acc.kind, mode: acc.mode, owner: acc.owner, group: field, link_target: acc.link_target, size: acc.size, ok: true } }
+    else if acc.i == 4 { TreeSelfFieldWalk { i: 5, kind: acc.kind, mode: acc.mode, owner: acc.owner, group: acc.group, link_target: field, size: acc.size, ok: true } }
+    else if acc.i == 5 { TreeSelfFieldWalk { i: 6, kind: acc.kind, mode: acc.mode, owner: acc.owner, group: acc.group, link_target: acc.link_target, size: field, ok: true } }
+    else { TreeSelfFieldWalk { i: acc.i, kind: acc.kind, mode: acc.mode, owner: acc.owner, group: acc.group, link_target: acc.link_target, size: acc.size, ok: false } }
+  )
+  if walked.i == 6 && walked.ok && walked.owner != "" && walked.group != "" && tree_metadata_text_is_decimal_digits(text: walked.size) {
+    let names = PosixOwnerNames { user: walked.owner as NonEmptyStr, group: walked.group as NonEmptyStr }
+    match file_mode_of_octal_text(text: walked.mode) {
+      Absent => Absent
+      Present { value: m } =>
+        if walked.kind == "d" && walked.link_target == "" {
+          Present { value: TreeMetadataEntry { path: "", kind: TreeDirectory, mode: m, owner: names } }
+        } else if walked.kind == "f" && walked.link_target == "" {
+          Present { value: TreeMetadataEntry { path: "", kind: TreeRegular, mode: m, owner: names } }
+        } else if walked.kind == "l" && walked.link_target != "" {
+          Present { value: TreeMetadataEntry { path: "", kind: TreeLink { link_target: walked.link_target as NonEmptyStr }, mode: m, owner: names } }
+        } else {
+          Absent
+        }
+    }
+  } else { Absent }
+}
+
+fn tree_self_metadata_entry_of_stdout(stdout: String, path: String) -> Optional<TreeMetadataEntry> {
+  let lines = filter(split(s: stdout, delimiter: "\n"), l => l != "")
+  match lines {
+    Cons { head: line, tail: rest } =>
+      if count(rest) != 0 { Absent }
+      else {
+        match tree_self_metadata_of_fields(fields: split(s: line, delimiter: "|")) {
+          Absent => Absent
+          Present { value: e } => Present { value: TreeMetadataEntry { path: path, kind: e.kind, mode: e.mode, owner: e.owner } }
+        }
+      }
+    Empty => Absent
+  }
 }
 
 // THE CANONICAL TEXT of one entry: exactly what the installed readback compares over and what the
@@ -6800,6 +6861,89 @@ fn tree_installed_expectation_owned(entries: List<TreeMetadataEntry>, owner: Pos
           }
         ) }
       }
+    }
+  }
+}
+
+// THE WALK PARENTS: for multi-component entries in release_locus_tree_subdirs (e.g. "src/v2"),
+// the walk root's metadata is never observed by the per-sub walk (the starting point prints with
+// an empty %P and is discarded). The parent (e.g. "src") gets a maxdepth-1 walk so the walk root
+// appears as a child with proper rebasing. For single-component subs (e.g. "dag"), the locus-root
+// walk already observes them; no parent walk needed.
+fn tree_walk_parents(subs: List<String>) -> List<String> {
+  tree_sorted_unique_paths(xs: flat_map(subs, sub =>
+    tree_path_prefixes(path: sub)
+  ))
+}
+
+// THE EXPECTED METADATA AT THE LOCUS ROOT LEVEL: the directory names that appear as direct
+// children of the locus (first components of each sub in release_locus_tree_subdirs, deduped),
+// each expected as a directory with install_d_shared_mode, and the executables each expected as
+// a regular file with install_executable_shared_mode. The receipt is NOT included: it is written
+// AFTER the readback, and any residue from a previous install is allowed as a known name.
+fn tree_locus_children_expectation_owned(
+  subdirs: List<String>,
+  executables: List<String>,
+  owner: PosixOwnerNames,
+) -> Optional<List<TreeMetadataEntry>> {
+  match file_mode_of_octal_text(text: coreutils_directory_mode_operand(mode: install_d_shared_mode)) {
+    Absent => Absent
+    Present { value: dir_m } => match file_mode_of_octal_text(text: install_executable_shared_mode as String) {
+      Absent => Absent
+      Present { value: exe_m } =>
+        let dir_names = tree_sorted_unique_paths(xs: flat_map(subdirs, sub => {
+          let parts = split(s: sub, delimiter: "/")
+          let walked = fold(parts, init: LocusFirstWalk { seen: 0, first: "" }, f: (w, part) =>
+            if w.seen == 0 { LocusFirstWalk { seen: 1, first: part } } else { w }
+          )
+          if walked.first != "" { [walked.first] } else { [] }
+        }))
+        let dir_entries = flat_map(dir_names, name =>
+          [TreeMetadataEntry { path: name, kind: TreeDirectory, mode: dir_m, owner: owner }]
+        )
+        let exe_entries = flat_map(executables, name =>
+          [TreeMetadataEntry { path: name, kind: TreeRegular, mode: exe_m, owner: owner }]
+        )
+        Present { value: concat(dir_entries, exe_entries) }
+    }
+  }
+}
+
+type LocusFirstWalk {
+  seen: Int
+  first: String
+}
+
+// THE EXPECTED METADATA FOR EACH WALK PARENT: each walk parent is expected as a directory (at
+// depth 1 under the locus). Its children include the walk root, which must be a directory with
+// install_d_shared_mode. This builds the expected entry for the walk root (observed via the
+// parent's maxdepth-1 walk), keyed by the full sub path.
+fn tree_walk_root_expectation_owned(subdirs: List<String>, owner: PosixOwnerNames) -> Optional<List<TreeMetadataEntry>> {
+  match file_mode_of_octal_text(text: coreutils_directory_mode_operand(mode: install_d_shared_mode)) {
+    Absent => Absent
+    Present { value: dir_m } =>
+      let entries = flat_map(subdirs, sub => {
+        let parts = split(s: sub, delimiter: "/")
+        if count(parts) > 1 {
+          [TreeMetadataEntry { path: sub, kind: TreeDirectory, mode: dir_m, owner: owner }]
+        } else { [] }
+      })
+      Present { value: entries }
+  }
+}
+
+// THE EXPECTED METADATA FOR SPINE AND LOCUS: every spine directory and the locus itself must be a
+// directory with install_d_shared_mode and the realm's owner. Their paths are absolute (the spine
+// paths are passed as-is to the install); they participate in the same merge walk by sorting
+// naturally before the relative paths.
+fn tree_spine_expectation_owned(spine: List<String>, locus: String, owner: PosixOwnerNames) -> Optional<List<TreeMetadataEntry>> {
+  match file_mode_of_octal_text(text: coreutils_directory_mode_operand(mode: install_d_shared_mode)) {
+    Absent => Absent
+    Present { value: dir_m } => {
+      let all_paths = list_snoc_item(xs: spine, item: locus)
+      Present { value: flat_map(all_paths, p =>
+        [TreeMetadataEntry { path: p, kind: TreeDirectory, mode: dir_m, owner: owner }]
+      ) }
     }
   }
 }
@@ -6882,6 +7026,75 @@ fn observe_tree_entry_metadata(root: String, subs: List<String>, transport: Host
               if lines != count(parsed) {
                 TreeMetadataObservationFailed { reason: join(["find entry-metadata under ", root, "/", sub, " printed ", to_string(lines), " entry lines but ", to_string(count(parsed)), " parsed as ", find_tree_entry_metadata_printf(), "; an entry the grammar cannot name (a device, a fifo, a socket, a path carrying a `|`) is refused, not dropped"], "") }
               } else { TreeMetadataObserved { entries: concat(es, parsed) } }
+            }
+        }
+    }
+  )
+}
+
+// OBSERVE THE DIRECT CHILDREN OF THE LOCUS: one maxdepth-1 find on the locus itself. This
+// establishes the metadata (kind, mode, owner) of every entry the install writes at the locus
+// root: the subtree-root directories (dag, src), intermediate directories (src, visible as a
+// child of the locus), the executables, and the receipt. Any entry present at this level that the
+// expectation does not name is caught as an extra by tree_metadata_disagreement. The starting
+// point (the locus) itself prints with an empty %P and is refused by the parser; it is observed
+// separately by observe_directory_self_entries.
+//
+// OBSERVE EACH WALK-ROOT PARENT: for multi-component subs (e.g. "src/v2"), the walk root itself
+// (src/v2) is a child of src, not of the locus. A maxdepth-1 walk on the parent (locus/src)
+// observes it with the correct rebasing.
+fn observe_locus_children(locus: String, walk_parents: List<String>, transport: HostEffectElevationRoute) -> TreeMetadataObservation {
+  let locus_children = observe_direct_children_one(root: locus, sub: "", transport: transport)
+  fold(walk_parents, init: locus_children, f: (acc, parent) =>
+    match acc {
+      TreeMetadataObservationFailed { reason: _ } => acc
+      TreeMetadataObserved { entries: es } =>
+        match observe_direct_children_one(root: join([locus, "/", parent], ""), sub: parent, transport: transport) {
+          TreeMetadataObservationFailed { reason: why } => TreeMetadataObservationFailed { reason: why }
+          TreeMetadataObserved { entries: ps } => TreeMetadataObserved { entries: concat(es, ps) }
+        }
+    }
+  )
+}
+
+fn observe_direct_children_one(root: String, sub: String, transport: HostEffectElevationRoute) -> TreeMetadataObservation {
+  match run_argv_over_elevation_route(
+    command: find_direct_children_metadata_command(root: root),
+    transport: transport,
+  ) {
+    RunArgvTransportRefused { reason: r } => TreeMetadataObservationFailed { reason: r }
+    RunArgvTransportObserved { observed: o } =>
+      if !o.success { TreeMetadataObservationFailed { reason: join(["find direct-children exit ", to_string(o.exit_code), ": ", o.stderr], "") } }
+      else {
+        let parsed = tree_metadata_entries_of_stdout(stdout: o.stdout, sub: sub)
+        let lines = count(flat_map(split(s: o.stdout, delimiter: "\n"), l => if string_length(s: l) > 0 && !starts_with(s: l, prefix: "|") { [l] } else { [] }))
+        if lines != count(parsed) {
+          TreeMetadataObservationFailed { reason: join(["find direct-children under ", root, " printed ", to_string(lines), " entry lines but ", to_string(count(parsed)), " parsed; an entry the grammar cannot name is refused, not dropped"], "") }
+        } else { TreeMetadataObserved { entries: parsed } }
+      }
+  }
+}
+
+// OBSERVE THE SELF-METADATA OF EACH PATH (spine directories and the locus). Each path is
+// observed with find -maxdepth 0 -printf in the six-field self format. The parsed entry
+// gets its path from the caller. All paths must parse successfully or the observation fails.
+fn observe_directory_self_entries(paths: List<String>, transport: HostEffectElevationRoute) -> TreeMetadataObservation {
+  fold(paths, init: TreeMetadataObserved { entries: [] }, f: (acc, p) =>
+    match acc {
+      TreeMetadataObservationFailed { reason: _ } => acc
+      TreeMetadataObserved { entries: es } =>
+        match run_argv_over_elevation_route(
+          command: find_self_metadata_command(path: p),
+          transport: transport,
+        ) {
+          RunArgvTransportRefused { reason: r } => TreeMetadataObservationFailed { reason: r }
+          RunArgvTransportObserved { observed: o } =>
+            if !o.success { TreeMetadataObservationFailed { reason: join(["find self-metadata on ", p, " exit ", to_string(o.exit_code), ": ", o.stderr], "") } }
+            else {
+              match tree_self_metadata_entry_of_stdout(stdout: o.stdout, path: p) {
+                Absent => TreeMetadataObservationFailed { reason: join(["find self-metadata on ", p, " produced an unparseable line under ", find_self_metadata_printf], "") }
+                Present { value: e } => TreeMetadataObserved { entries: list_snoc_item(xs: es, item: e) }
+              }
             }
         }
     }
@@ -7285,19 +7498,42 @@ fn approval_broker_tree_install_observed(
                         match tree_installed_expectation_owned(entries: source_metadata, owner: readback_owner) {
                           Absent => TreeInstallRefused { step: TreeStepMetadataReadback, reason: "the shared install modes are not readable as octal permissions; the expectation cannot be stated, so no receipt was written" }
                           Present { value: expected } =>
-                            match tree_metadata_disagreement(expected: expected, observed: installed_entries) {
-                              Present { value: why } =>
-                                TreeInstallRefused { step: TreeStepMetadataReadback, reason: join(["the installed tree under ", locus, " does not carry the source entries as the same kinds, link targets, shared modes, and owner (", why, "); no receipt was written"], "") }
-                              Absent =>
-                                // The receipt certifies the tree where it is consumed: under the realm's
-                                // receipt owner (the deploy owner, or the owner the archive declares).
-                                match tree_installed_expectation(entries: source_metadata, owner: tree_install_realm_receipt_owner(realm: realm)) {
-                                  Absent => TreeInstallRefused { step: TreeStepMetadataReadback, reason: "the shared install modes are not readable as octal permissions; the expectation cannot be stated, so no receipt was written" }
-                                  Present { value: certified } =>
-                                    approval_broker_tree_receipt_write(
-                                      realm: realm, locus: locus, revision: revision, lines: tree_hash_lines(entries: installed),
-                                      metadata_lines: tree_metadata_lines(entries: certified),
-                                      files: count(installed), transport: transport)
+                            match observe_locus_children(locus: locus, walk_parents: tree_walk_parents(subs: release_locus_tree_subdirs), transport: transport) {
+                              TreeMetadataObservationFailed { reason: why } => TreeInstallRefused { step: TreeStepMetadataReadback, reason: why }
+                              TreeMetadataObserved { entries: locus_children_raw } =>
+                                match observe_directory_self_entries(paths: list_snoc_item(xs: spine, item: locus), transport: transport) {
+                                  TreeMetadataObservationFailed { reason: why } => TreeInstallRefused { step: TreeStepMetadataReadback, reason: why }
+                                  TreeMetadataObserved { entries: spine_observed } =>
+                                    match tree_locus_children_expectation_owned(subdirs: release_locus_tree_subdirs, executables: executables, owner: readback_owner) {
+                                      Absent => TreeInstallRefused { step: TreeStepMetadataReadback, reason: "the shared install modes are not readable as octal permissions; the locus-children expectation cannot be stated, so no receipt was written" }
+                                      Present { value: locus_children_expected } =>
+                                        match tree_walk_root_expectation_owned(subdirs: release_locus_tree_subdirs, owner: readback_owner) {
+                                          Absent => TreeInstallRefused { step: TreeStepMetadataReadback, reason: "the shared install modes are not readable as octal permissions; the walk-root expectation cannot be stated, so no receipt was written" }
+                                          Present { value: walk_root_expected } =>
+                                            match tree_spine_expectation_owned(spine: spine, locus: locus, owner: readback_owner) {
+                                              Absent => TreeInstallRefused { step: TreeStepMetadataReadback, reason: "the shared install modes are not readable as octal permissions; the spine expectation cannot be stated, so no receipt was written" }
+                                              Present { value: spine_expected } =>
+                                                let locus_children_observed = filter(locus_children_raw, e => e.path != release_locus_tree_receipt_name)
+                                                let merged_expected = concat(concat(concat(expected, locus_children_expected), walk_root_expected), spine_expected)
+                                                let merged_observed = concat(concat(installed_entries, locus_children_observed), spine_observed)
+                                                match tree_metadata_disagreement(expected: merged_expected, observed: merged_observed) {
+                                                  Present { value: why } =>
+                                                    TreeInstallRefused { step: TreeStepMetadataReadback, reason: join(["the installed tree under ", locus, " does not carry the source entries as the same kinds, link targets, shared modes, and owner (", why, "); no receipt was written"], "") }
+                                                  Absent =>
+                                                    // The receipt certifies the tree where it is consumed: under the realm's
+                                                    // receipt owner (the deploy owner, or the owner the archive declares).
+                                                    match tree_installed_expectation(entries: source_metadata, owner: tree_install_realm_receipt_owner(realm: realm)) {
+                                                      Absent => TreeInstallRefused { step: TreeStepMetadataReadback, reason: "the shared install modes are not readable as octal permissions; the expectation cannot be stated, so no receipt was written" }
+                                                      Present { value: certified } =>
+                                                        approval_broker_tree_receipt_write(
+                                                          realm: realm, locus: locus, revision: revision, lines: tree_hash_lines(entries: installed),
+                                                          metadata_lines: tree_metadata_lines(entries: certified),
+                                                          files: count(installed), transport: transport)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }

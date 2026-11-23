@@ -152,6 +152,25 @@ fn find_tree_entry_metadata_command(root: String) -> ArgvCommand {
   argv_command(program: find_program(), arguments: [root, "-xdev", "-printf", find_tree_entry_metadata_printf()])
 }
 
+// THE DIRECT CHILDREN OF A DIRECTORY, printed with the SAME seven-field grammar as the full walk.
+// -maxdepth 1 bounds the enumeration: only entries whose %P is a bare name (no slash) appear. The
+// starting point itself prints with an empty %P and is refused by the parser, same rule as the full
+// walk. Used by the locus-root readback to observe the metadata of executables, subtree roots, and
+// intermediate directories alongside any unexpected entries at the same level.
+fn find_direct_children_metadata_command(root: String) -> ArgvCommand {
+  argv_command(program: find_program(), arguments: [root, "-maxdepth", "1", "-xdev", "-printf", find_tree_entry_metadata_printf()])
+}
+
+// THE SELF-METADATA OF ONE PATH (a directory or file) as a single six-field line:
+// %y|%m|%u|%g|%l|%s. No %P (find prints it empty at -maxdepth 0 and the caller supplies the path
+// it already knows). The line is parsed by the receiver's self-metadata parser and paired with the
+// caller-supplied path.
+data find_self_metadata_printf: String = "%y|%m|%u|%g|%l|%s\\n"
+
+fn find_self_metadata_command(path: String) -> ArgvCommand {
+  argv_command(program: find_program(), arguments: [path, "-maxdepth", "0", "-xdev", "-printf", find_self_metadata_printf])
+}
+
 // THE DIRECT CHILDREN OF A DIRECTORY WHOSE NAME MATCHES A GLOB, one bare name per line (-maxdepth 1,
 // %f is the entry's final component). The matching entry's own subtree is never walked.
 fn find_children_named_command(root: String, name_glob: String) -> ArgvCommand {
