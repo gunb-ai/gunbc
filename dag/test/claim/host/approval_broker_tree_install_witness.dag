@@ -1039,12 +1039,12 @@ data srv1_microvm_locus: String = "/opt/gunbc/microvm-controller/releases/e1f753
 data srv1_helper_base: String = "/opt/gunbc/approval-broker-helpers"
 data srv1_helper_locus: String = "/opt/gunbc/approval-broker-helpers/66474e06a94499cd062e10290826cccb5a18b70a"
 
-// children listings, as PRODUCTION now collects them: `find <root> -mindepth 1 -maxdepth 1` (the manager's
-// option-(b) framing fix), i.e. the srv1 capture with the starting point's own "|d|..." row REMOVED -- find
-// under -mindepth 1 does not print the starting point at all, so the child listing carries no empty-%P row
-// to skip. The `_dots` fixtures are the matching `-printf .` enumeration (one dot per entry); the collector
-// refuses unless the dot count equals the number of printed rows. These represent real srv1 output at this
-// shape; a listing whose dots and rows disagree is a framing attack and is refused.
+// children listings, as PRODUCTION collects them: a FRESH read-only srv1 capture (this review round)
+// taken with the exact `find <root> -mindepth 1 -maxdepth 1 -xdev -printf '%P|%y|%m|%u|%g|%l|%s\n'`
+// argv plus the matching `-printf .` dot count. Under -mindepth 1 find does NOT print the starting point,
+// so the child listing carries no empty-%P row to skip. The `_dots` fixtures are the captured dot strings
+// (one dot per entry); the collector refuses unless the dot count equals the number of printed rows. These
+// are real srv1 output verbatim; a listing whose dots and rows disagree is a framing attack and is refused.
 data srv1_broker_children: String = "approval_device_crypto_serve|f|755|briansrls|briansrls||3537656\ndag|d|755|briansrls|briansrls||4096\ndevice-crypto-deployed-digest.env|f|644|briansrls|briansrls||101\ngunbc|f|755|briansrls|briansrls||40996456\n.gunbc-tree-receipt|f|644|briansrls|briansrls||223\nsrc|d|755|briansrls|briansrls||4096\n"
 data srv1_broker_children_dots: String = "......"
 data srv1_broker_src_children: String = "v2|d|755|briansrls|briansrls||4096\n"
@@ -1303,8 +1303,9 @@ test fn walk_parents_are_the_parent_of_multicomponent_subs_only() -> Bool {
 }
 
 // ============================================================================================
-// P2 NEWLINE FRAMING — regressions on REAL `find` output through the PRODUCTION checked
-// collector. Fixtures are authentic `find <dir> -mindepth 1 -maxdepth 1 -xdev -printf
+// P2 NEWLINE FRAMING — hermetic controls feeding captured output from REAL local `find` runs
+// through the PRODUCTION checked collector (not live find invocations in the claim host). Fixtures
+// are authentic `find <dir> -mindepth 1 -maxdepth 1 -xdev -printf
 // '%P|%y|%m|%u|%g|%l|%s\n'` stdout captured locally, with the matching `-printf .` dot string
 // from the independent count command. Names were created byte-exact with python3 (a file/dir
 // literally named LF; a file named `x|f|755|u|g||0<LF>foo`). None is elevation, none is srv1/srv2.
@@ -1318,7 +1319,7 @@ data fr_root_nl_file: String = "\n|f|644|node|node||1\n.gunbc-tree-receipt|f|644
 test fn newline_named_file_at_root_refuses() -> Bool {
   match tree_metadata_entries_of_stdout_checked(root: srv1_broker_locus, stdout: fr_root_nl_file, dot_stdout: ".....", sub: "", starting_point_expected: false) {
     TreeMetadataObserved { entries: _ } => false
-    TreeMetadataObservationFailed { reason: r } => string_contains(s: r, pattern: "cannot name") && string_contains(s: r, pattern: "|f|644|node|node||1")
+    TreeMetadataObservationFailed { reason: r } => string_contains(s: r, pattern: "empty line fragment") && string_contains(s: r, pattern: "|f|644|node|node||1")
   }
 }
 
@@ -1327,7 +1328,7 @@ data fr_root_nl_dir: String = "\n|d|755|node|node||4096\n.gunbc-tree-receipt|f|6
 test fn newline_named_directory_at_root_refuses() -> Bool {
   match tree_metadata_entries_of_stdout_checked(root: srv1_broker_locus, stdout: fr_root_nl_dir, dot_stdout: ".....", sub: "", starting_point_expected: false) {
     TreeMetadataObserved { entries: _ } => false
-    TreeMetadataObservationFailed { reason: r } => string_contains(s: r, pattern: "cannot name") && string_contains(s: r, pattern: "|d|755|node|node||4096")
+    TreeMetadataObservationFailed { reason: r } => string_contains(s: r, pattern: "empty line fragment") && string_contains(s: r, pattern: "|d|755|node|node||4096")
   }
 }
 
@@ -1336,7 +1337,7 @@ data fr_src_nl_file: String = "v2|d|755|node|node||4096\n\n|f|644|node|node||1\n
 test fn newline_named_file_under_src_refuses() -> Bool {
   match tree_metadata_entries_of_stdout_checked(root: join([srv1_broker_locus, "/src"], ""), stdout: fr_src_nl_file, dot_stdout: "..", sub: "src", starting_point_expected: false) {
     TreeMetadataObserved { entries: _ } => false
-    TreeMetadataObservationFailed { reason: r } => string_contains(s: r, pattern: "cannot name") && string_contains(s: r, pattern: "|f|644|node|node||1")
+    TreeMetadataObservationFailed { reason: r } => string_contains(s: r, pattern: "empty line fragment") && string_contains(s: r, pattern: "|f|644|node|node||1")
   }
 }
 
@@ -1345,7 +1346,7 @@ data fr_src_nl_dir: String = "v2|d|755|node|node||4096\n\n|d|755|node|node||4096
 test fn newline_named_directory_under_src_refuses() -> Bool {
   match tree_metadata_entries_of_stdout_checked(root: join([srv1_broker_locus, "/src"], ""), stdout: fr_src_nl_dir, dot_stdout: "..", sub: "src", starting_point_expected: false) {
     TreeMetadataObserved { entries: _ } => false
-    TreeMetadataObservationFailed { reason: r } => string_contains(s: r, pattern: "cannot name") && string_contains(s: r, pattern: "|d|755|node|node||4096")
+    TreeMetadataObservationFailed { reason: r } => string_contains(s: r, pattern: "empty line fragment") && string_contains(s: r, pattern: "|d|755|node|node||4096")
   }
 }
 
@@ -1356,6 +1357,48 @@ data fr_root_crafted: String = "x|f|755|u|g||0\nfoo|f|644|node|node||1\n.gunbc-t
 test fn crafted_pipe_and_newline_name_refuses_by_framing() -> Bool {
   match tree_metadata_entries_of_stdout_checked(root: srv1_broker_locus, stdout: fr_root_crafted, dot_stdout: ".....", sub: "", starting_point_expected: false) {
     TreeMetadataObserved { entries: _ } => false
-    TreeMetadataObservationFailed { reason: r } => string_contains(s: r, pattern: "dot enumeration counted") && string_contains(s: r, pattern: "forges extra rows") && string_contains(s: r, pattern: "x|f|755|u|g||0")
+    TreeMetadataObservationFailed { reason: r } => string_contains(s: r, pattern: "newline-delimited records") && string_contains(s: r, pattern: "forges extra records") && string_contains(s: r, pattern: "x|f|755|u|g||0")
+  }
+}
+
+// ============================================================================================
+// P2 NEWLINE FRAMING (round 2) — the reviewer's reproduced cases, on REAL local `find` output
+// through the PRODUCTION checked collector. Fixtures are authentic `-mindepth 1 -maxdepth 1`
+// (children) and `-xdev` (full walk) stdout captured locally with byte-exact names (python3) and
+// the matching `-printf .` dot string.
+// ============================================================================================
+
+// A FILE NAMED "<LF>.gunbc-tree-receipt" at the locus root. Its record's leading LF makes find print
+// an empty fragment then ".gunbc-tree-receipt|f|644|node|node||223" -- the EXACT identity of the
+// permitted installer receipt. Filtering empty fragments before counting (the old collector) would
+// accept this undeclared file AS the receipt (3 rows == 3 dots). The empty-fragment guard refuses it.
+data fr_root_nl_receipt: String = "\n.gunbc-tree-receipt|f|644|node|node||223\ndag|d|755|node|node||4096\nsrc|d|755|node|node||4096\n"
+test fn newline_named_receipt_masquerade_refuses() -> Bool {
+  match tree_metadata_entries_of_stdout_checked(root: srv1_broker_locus, stdout: fr_root_nl_receipt, dot_stdout: "...", sub: "", starting_point_expected: false) {
+    TreeMetadataObserved { entries: e } => false
+    TreeMetadataObservationFailed { reason: r } => string_contains(s: r, pattern: "empty line fragment") && string_contains(s: r, pattern: ".gunbc-tree-receipt|f|644|node|node||223")
+  }
+}
+
+// A DIRECTORY NAMED "<LF>" under dag/ on the FULL-WALK route. find prints the walk root ("|d|...") then,
+// for the LF-named directory, an empty fragment plus a SECOND "|d|755|node|node||4096" empty-%P row. The
+// old collector (skip every empty-%P row when a starting point is expected) swallowed it as another
+// starting point (3 rows == 3 dots). Now the empty-fragment guard refuses it AND the starting-point
+// invariant allows exactly one empty-%P row -- only the walk root, first row.
+data fr_dag_nl_dir: String = "|d|755|node|node||4096\na|f|755|node|node||1\n\n|d|755|node|node||4096\n"
+test fn full_walk_newline_named_directory_refuses() -> Bool {
+  match tree_metadata_entries_of_stdout_checked(root: join([srv1_broker_locus, "/dag"], ""), stdout: fr_dag_nl_dir, dot_stdout: "...", sub: "dag", starting_point_expected: true) {
+    TreeMetadataObserved { entries: _ } => false
+    TreeMetadataObservationFailed { reason: r } => string_contains(s: r, pattern: "empty line fragment") && string_contains(s: r, pattern: "|d|755|node|node||4096")
+  }
+}
+
+// The clean full-walk positive, so the starting_point_expected=true path is exercised on a GOOD listing
+// too (walk root row skipped, one entry survives) -- proving the invariant is not a blanket refusal.
+data fr_dag_clean: String = "|d|755|node|node||4096\na|f|755|node|node||1\n"
+test fn clean_full_walk_with_starting_point_observes() -> Bool {
+  match tree_metadata_entries_of_stdout_checked(root: join([srv1_broker_locus, "/dag"], ""), stdout: fr_dag_clean, dot_stdout: "..", sub: "dag", starting_point_expected: true) {
+    TreeMetadataObservationFailed { reason: _ } => false
+    TreeMetadataObserved { entries: e } => count(e) == 1 && any(e, x => x.path == "dag/a")
   }
 }

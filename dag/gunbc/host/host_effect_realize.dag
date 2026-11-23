@@ -6880,13 +6880,12 @@ fn tree_locus_children_expectation_owned(
     Present { value: dir_m } => match file_mode_of_octal_text(text: install_executable_shared_mode as String) {
       Absent => Absent
       Present { value: exe_m } =>
-        let dir_names = tree_sorted_unique_paths(xs: flat_map(subdirs, sub => {
-          let parts = split(s: sub, delimiter: "/")
-          let walked = fold(parts, init: LocusFirstWalk { seen: 0, first: "" }, f: (w, part) =>
-            if w.seen == 0 { LocusFirstWalk { seen: 1, first: part } } else { w }
-          )
-          if walked.first != "" { [walked.first] } else { [] }
-        }))
+        let dir_names = tree_sorted_unique_paths(xs: flat_map(subdirs, sub =>
+          match list_head(xs: split(s: sub, delimiter: "/")) {
+            Absent => []
+            Present { value: comp } => if comp == "" { [] } else { [comp] }
+          }
+        ))
         let dir_entries = flat_map(dir_names, name =>
           [TreeMetadataEntry { path: name, kind: TreeDirectory, mode: dir_m, owner: owner }]
         )
@@ -6896,11 +6895,6 @@ fn tree_locus_children_expectation_owned(
         Present { value: concat(dir_entries, exe_entries) }
     }
   }
-}
-
-type LocusFirstWalk {
-  seen: Int
-  first: String
 }
 
 // THE EXPECTED METADATA FOR EACH WALK PARENT: each walk parent is expected as a directory (at
@@ -7153,42 +7147,62 @@ fn observe_direct_children_one(root: String, sub: String, transport: HostEffectE
   }
 }
 
-// THE COLLECTOR WITH ITS TWO VALIDATION GUARDS, exposed as a pure function over the captured find
-// stdout AND the independent dot-count stdout, so both the executors above and the fixtures drive the
-// SAME validation without elevation. `starting_point_expected` is true only for the full-subtree walk
-// (which keeps its own starting-point row); the direct-children listing passes false because its find
-// uses -mindepth 1 and so prints NO starting-point row -- an empty-rel row there is therefore MALFORMED,
-// not a starting point. Two independent guards, both fail-closed:
-//  (1) FRAMING. `dot_stdout` is a second `-printf .` enumeration of the SAME set (one dot per entry,
-//      which a name cannot change). It must equal the number of rows the metadata listing printed. A
-//      crafted name embedding a newline (e.g. `x|f|755|u|g||0<LF>foo`) splits into two WELL-FORMED rows
-//      that both parse, so only this independent count reveals the forgery. Refuses with the row text.
-//  (2) NAMING. Every printed row that is not a legitimate starting point must parse into a well-formed
-//      entry. A child NAMED with a leading newline prints a row with an empty rel; with the skip rule
-//      removed (starting_point_expected=false) it is unparseable and this guard names it and refuses,
-//      rather than the row silently vanishing under a count that agreed.
+// THE COLLECTOR WITH ITS FRAMING GUARDS, exposed as a pure function over the captured find stdout AND
+// the independent dot-count stdout, so both the executors above and the fixtures drive the SAME
+// validation without elevation. `starting_point_expected` is true only for the full-subtree walk (which
+// keeps its own starting-point row); the direct-children listing passes false because its find uses
+// -mindepth 1 and so prints NO starting-point row. It counts FRAMING, never surviving rows -- filtering
+// out empty fragments before counting would let a newline inside a name cost no row. Fail-closed:
+//  (1) EMPTY FRAGMENTS. Every genuine record ends in exactly ONE LF, so a well-formed listing has EXACTLY
+//      one empty fragment -- the trailing one after the final LF. Any other empty fragment can only come
+//      from a newline inside a name (a child named "<LF>...", e.g. "<LF>.gunbc-tree-receipt" masquerading
+//      as the receipt) -> refused.
+//  (2) LF-VS-DOTS. `dot_stdout` is a second `-printf .` enumeration of the SAME set (one dot per entry,
+//      which a name cannot change). The number of LF-delimited records in the raw stdout must equal the
+//      dot count. A crafted name embedding a newline (e.g. `x|f|755|u|g||0<LF>foo`) splits into two
+//      WELL-FORMED records but the entry prints one dot -> LF count exceeds dots -> refused.
+//  (3) STARTING-POINT, FIRST ROW ONLY. Exactly one empty-%P row may exist and only for the full walk (the
+//      walk root). A second empty-relative-path row anywhere is a newline-named entry -> refused.
+//  Then the NAMING guard: every non-empty, non-starting fragment must parse into a well-formed entry.
 fn tree_metadata_entries_of_stdout_checked(root: String, stdout: String, dot_stdout: String, sub: String, starting_point_expected: Bool) -> TreeMetadataObservation {
-  let non_empty = filter(split(s: stdout, delimiter: "\n"), l => string_length(s: l) > 0)
-  let enumerated = count(non_empty)
+  let fragments = split(s: stdout, delimiter: "\n")
   let dots = string_length(s: dot_stdout)
-  let parsed = tree_metadata_entries_of_stdout(stdout: stdout, sub: sub, starting_point_expected: starting_point_expected)
-  if dots != enumerated {
-    TreeMetadataObservationFailed { reason: join(["find under ", root, ": the independent dot enumeration counted ", to_string(dots), " entries but the metadata listing printed ", to_string(enumerated), " rows; a name that embeds a newline forges extra rows -- refused, not accepted. rows=[", join(non_empty, " ;; "), "]"], "") }
-  } else {
-    let bad = filter(non_empty, l => tree_metadata_row_is_bad(l: l, sub: sub, starting_point_expected: starting_point_expected))
-    if count(bad) > 0 {
-      TreeMetadataObservationFailed { reason: join(["find under ", root, " printed ", to_string(count(bad)), " row(s) the entry grammar cannot name: [", join(bad, " ;; "), "]; an unnameable row is refused, not dropped"], "") }
+  if stdout == "" {
+    if dots == 0 {
+      TreeMetadataObserved { entries: [] }
     } else {
-      TreeMetadataObserved { entries: parsed }
+      TreeMetadataObservationFailed { reason: join(["find under ", root, " printed no rows but the dot enumeration counted ", to_string(dots), " entries; the population is not stable between the two reads -- refused, not accepted"], "") }
+    }
+  } else {
+    let empty_frags = count(filter(fragments, f => string_length(s: f) == 0))
+    let lf_bytes = count(fragments) - 1
+    let sp_rows = count(filter(fragments, f => tree_metadata_line_is_starting_point(line: f)))
+    let expected_sp = if starting_point_expected { 1 } else { 0 }
+    if empty_frags != 1 {
+      TreeMetadataObservationFailed { reason: join(["find under ", root, ": the metadata listing has ", to_string(empty_frags), " empty line fragments but only the single trailing one (after the final LF) is legal; a name embedding a newline creates an extra empty fragment -- refused. rows=[", join(fragments, " ;; "), "]"], "") }
+    } else if lf_bytes != dots {
+      TreeMetadataObservationFailed { reason: join(["find under ", root, ": the metadata listing has ", to_string(lf_bytes), " newline-delimited records but the independent dot enumeration counted ", to_string(dots), " entries; a crafted name that embeds a newline forges extra records -- refused. rows=[", join(fragments, " ;; "), "]"], "") }
+    } else if sp_rows != expected_sp {
+      TreeMetadataObservationFailed { reason: join(["find under ", root, ": ", to_string(sp_rows), " empty-relative-path rows but ", to_string(expected_sp), " expected; only the walk's own starting point (the first row, full walk only) may have an empty %P -- a second one is a newline-named entry, refused, not dropped. rows=[", join(fragments, " ;; "), "]"], "") }
+    } else {
+      let bad = filter(fragments, l => tree_metadata_row_is_bad(l: l, sub: sub, starting_point_expected: starting_point_expected))
+      if count(bad) > 0 {
+        TreeMetadataObservationFailed { reason: join(["find under ", root, " printed ", to_string(count(bad)), " row(s) the entry grammar cannot name: [", join(bad, " ;; "), "]; an unnameable row is refused, not dropped"], "") }
+      } else {
+        TreeMetadataObserved { entries: tree_metadata_entries_of_stdout(stdout: stdout, sub: sub, starting_point_expected: starting_point_expected) }
+      }
     }
   }
 }
 
-// Is this printed row one the entry grammar cannot name? A legitimate starting point (only when
-// starting_point_expected) is not bad; otherwise a row that does not parse into a well-formed entry is
-// bad -- including the empty-rel row a newline-named child injects, which the skip rule no longer hides.
+// Is this printed fragment one the entry grammar cannot name? Empty fragments (the single trailing
+// separator) and, for the full walk, the legitimate starting-point row are not bad; otherwise a row
+// that does not parse into a well-formed entry is bad -- including the empty-rel row a newline-named
+// child injects, which the naming guard refuses by text rather than dropping.
 fn tree_metadata_row_is_bad(l: String, sub: String, starting_point_expected: Bool) -> Bool {
-  if starting_point_expected && tree_metadata_line_is_starting_point(line: l) {
+  if l == "" {
+    false
+  } else if starting_point_expected && tree_metadata_line_is_starting_point(line: l) {
     false
   } else {
     match tree_metadata_entry_of_line(line: l, sub: sub, starting_point_expected: starting_point_expected) {
