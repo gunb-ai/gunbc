@@ -964,13 +964,20 @@ fn known_red_terminal_of_kind(kind: String) -> Optional<ClaimAttemptTerminal> {
   if kind == known_red_kind_pass {
     Present { value: Returned { observation: ObservedVerdict { holds: true } } }
   } else {
-    if kind == known_red_kind_fail || kind == known_red_kind_exit_failure {
-      // A failing ProcessExit decided, and decided against; the seed places it beside `Fail`, not beside
-      // `RuntimeError`. Held/not is the closed fact; the code and detail are not keyed on.
+    if kind == known_red_kind_fail {
+      // A definite observation that the claim did not hold: the route's `evaluated_claim_verdict` prints
+      // `Fail` as DID-NOT-HOLD, and `claim_disposition` reads it back as `holds: false` (ExpectedRed ->
+      // KnownRedHeld, ExpectedToHold -> Failed). Nothing is reclassified.
       Present { value: Returned { observation: ObservedVerdict { holds: false } } }
     } else {
       if kind == known_red_kind_not_bool {
-        Present { value: Returned { observation: ObservationUnrepresentable { reason: "returned-not-a-bool" as NonEmptyStr } } }
+        // The route prints `NotBool` as DID-NOT-HOLD (`evaluated_claim_verdict`: `O::Fail | O::NotBool =>
+        // ClaimDidNotHold`), so the faithful arm is an OBSERVED verdict that did not hold. The ledger's
+        // `ObservationUnrepresentable` is the WRONG arm here: `floor_terminal_ledger::claim_disposition`
+        // projects it to `ObservationUnreadableBeforeVerdict` -- an UNOBSERVED -- which would silently
+        // reclassify a red as no-verdict (fail_closed). A returned non-Bool is a read observation, not an
+        // unreadable one.
+        Present { value: Returned { observation: ObservedVerdict { holds: false } } }
       } else {
         if kind == known_red_kind_runtime_error {
           Present { value: RuntimeErrored { message: known_red_located_carrier } }
@@ -1043,10 +1050,79 @@ fn known_red_terminal_of_line(line: String, function: String) -> Optional<ClaimA
   if known_red_line_is_located(line: line) {
     match known_red_located_outcome_of(line: line) {
       Absent => Absent
-      Present { value: kind } => known_red_terminal_of_kind(kind: kind)
+      Present { value: kind } =>
+        if kind == known_red_kind_exit_failure {
+          known_red_exit_failure_terminal(line: line)
+        } else {
+          known_red_terminal_of_kind(kind: kind)
+        }
     }
   } else {
     Absent
+  }
+}
+
+// THE `ExitFailure` ARM, keyed on `code=`. The route's `evaluated_claim_verdict` splits it: a ProcessExit with
+// the claim-runner's own unreached code (2) is the ABSENCE of an observation and belongs to the unobserved
+// family, while any other code is a definite refusal (did-not-hold). Decoding code 2 as `holds: false` would
+// turn an unobserved claim into a red -- a silent reclassification fail_closed forbids. An absent or
+// unparseable code on an `ExitFailure` is a contract breach and REFUSES (Absent -> exit 2), never defaults.
+fn known_red_exit_failure_terminal(line: String) -> Optional<ClaimAttemptTerminal> {
+  match known_red_located_field(line: line, key: "code") {
+    Absent => Absent
+    Present { value: code } =>
+      if !known_red_is_all_digits(s: code) {
+        Absent
+      } else {
+        if code == known_red_exit_unreached_code {
+          // The subject was never reached: no observation was made, so it is NotAttempted (an unobserved
+          // BeforeVerdict arm), the same family the route assigns to ClaimUnobserved.
+          Present { value: NotAttempted { halted_by: known_red_exit_unreached_cause } }
+        } else {
+          Present { value: Returned { observation: ObservedVerdict { holds: false } } }
+        }
+      }
+  }
+}
+
+data known_red_exit_unreached_code: String = "2"
+data known_red_exit_unreached_cause: String = "claim-runner-unreached"
+
+// A LOCATED STRUCTURED FIELD: the space-delimited token after " <key>=". The structured fields always precede
+// the quoted `detail`, so the FIRST occurrence is authoritative and `detail` can never shadow it.
+fn known_red_located_field(line: String, key: String) -> Optional<String> {
+  let open = concat(a: " ", b: concat(a: key, b: "="))
+  match known_red_index_of(s: line, needle: open, at: 0, limit: string_length(s: line)) {
+    Absent => Absent
+    Present { value: from } =>
+      let after = from + string_length(s: open)
+      match known_red_index_of(s: line, needle: " ", at: after, limit: string_length(s: line)) {
+        Absent => Present { value: substring(s: line, start: after, end: string_length(s: line)) }
+        Present { value: to } =>
+          if to >= after {
+            Present { value: substring(s: line, start: after, end: to) }
+          } else {
+            Absent
+          }
+      }
+  }
+}
+
+// IS EVERY CHARACTER A DIGIT. An `ExitFailure` code that is not all digits is an unparseable code and refuses.
+fn known_red_is_all_digits(s: String) -> Bool {
+  known_red_all_digits_from(s: s, i: 0)
+}
+
+fn known_red_all_digits_from(s: String, i: Int) -> Bool {
+  if i >= string_length(s: s) {
+    if i == 0 { false } else { true }
+  } else {
+    let c = char_at(s: s, pos: i)
+    if c == "0" || c == "1" || c == "2" || c == "3" || c == "4" || c == "5" || c == "6" || c == "7" || c == "8" || c == "9" {
+      known_red_all_digits_from(s: s, i: i + 1)
+    } else {
+      false
+    }
   }
 }
 
