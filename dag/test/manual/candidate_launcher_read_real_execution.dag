@@ -40,7 +40,9 @@ import gunbc.roadmap.roadmap_event_carrier {
   roadmap_event_carrier_ci_layout, roadmap_event_carrier_layout,
   roadmap_events_read_all, carrier_exec_program, RoadmapAllEventsRead, AllEventsRead, AllEventsReadRefused,
   CarrierExec, CarrierExecOk, CarrierExecFailed, CarrierSnapshotClose, SnapshotClosed, SnapshotNotOpened, SnapshotCloseFailed, SnapshotCloseVerificationFailed,
+  roadmap_event_scratch_dir_presence,
 }
+import extdeps.filesystem.filesystem_io { FilesystemEntryPresence, FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused }
 import gunbc.roadmap.roadmap_event_log { RoadmapEventEnvelope }
 
 type LauncherControlled {
@@ -331,6 +333,64 @@ fn launcher_control_failed_add_is_cleaned_up(repo: String) -> String {
   }
 }
 
+// Did a raw program run succeed?
+fn launcher_exec_ok(e: CarrierExec) -> Bool {
+  match e { CarrierExecOk { stdout: _ } => true  CarrierExecFailed { exit_code: _, stderr: _ } => false }
+}
+
+// Is the presence observation a POSITIVE (established present) or an ESTABLISHED absence? An indeterminate or a
+// refused subject is neither -- the close must not read either as closed, and neither satisfies these.
+fn launcher_presence_present(p: FilesystemEntryPresence) -> Bool {
+  match p {
+    FilesystemEntryListed { directory: _, name: _ } => true
+    FilesystemEntryAbsent(_) => false
+    FilesystemEntryPresenceIndeterminate { cause: _ } => false
+    FilesystemEntrySubjectRefused { directory: _, name: _, cause: _ } => false
+  }
+}
+
+fn launcher_presence_absent(p: FilesystemEntryPresence) -> Bool {
+  match p {
+    FilesystemEntryAbsent(_) => true
+    FilesystemEntryListed { directory: _, name: _ } => false
+    FilesystemEntryPresenceIndeterminate { cause: _ } => false
+    FilesystemEntrySubjectRefused { directory: _, name: _, cause: _ } => false
+  }
+}
+
+// CONTROL 6 — the close's directory-presence observation separates PRESENT from ESTABLISHED-ABSENT and does NOT
+// collapse on an UNREADABLE directory. The reviewer reproduced the false closure exactly here: the old
+// roadmap_event_scratch_dir_present (Filesystem.List(...).success) read a directory that still EXISTED but could
+// not be listed as absent, so the close minted SnapshotClosed on a lie. The new helper folds the PARENT listing
+// (filesystem_entry_presence_of_path), so a present directory is Present whatever its own mode. This control plants
+// an EMPTY scratch, makes it mode 000 -- which blocks the (unprivileged) owner from LISTING the directory itself,
+// exactly what the old List.success tested -- and asserts the helper STILL says Present: RED against the List.success
+// implementation. It then restores mode, removes it, and asserts established Absent. Mode is restored before the
+// removal so the control is not flaky under a restrictive umask, and every removal result is combined, not chained.
+fn launcher_control_dir_presence_distinguishes_unreadable() -> String {
+  let base = shell.Mktemp.Dir()
+  if !base.success {
+    control_result(ok: false, note: "mktemp failed for dir-presence control")
+  } else {
+    let made = launcher_exec(program: "mkdir", workdir: base.path, args: ["-p", "roadmap-events"])
+    if !launcher_exec_ok(e: made) {
+      let _ = shell.Remove.RecursiveForce(path: base.path)
+      control_result(ok: false, note: "mkdir scratch failed")
+    } else {
+      let scratch = under(base.path, "roadmap-events") as FilePath
+      let present0 = launcher_presence_present(p: roadmap_event_scratch_dir_presence(path: scratch))
+      let _ = launcher_exec(program: "chmod", workdir: base.path, args: ["000", "roadmap-events"])
+      let present_unreadable = launcher_presence_present(p: roadmap_event_scratch_dir_presence(path: scratch))
+      let _ = launcher_exec(program: "chmod", workdir: base.path, args: ["755", "roadmap-events"])
+      let removed = shell.Remove.RecursiveForce(path: scratch).success
+      let absent = launcher_presence_absent(p: roadmap_event_scratch_dir_presence(path: scratch))
+      let base_removed = shell.Remove.RecursiveForce(path: base.path).success
+      let ok = present0 && present_unreadable && removed && absent && base_removed
+      if ok { "PASS" } else { control_result(ok: false, note: join(["present0:", to_string(value: if present0 { 1 } else { 0 }), " present_unreadable:", to_string(value: if present_unreadable { 1 } else { 0 }), " removed:", to_string(value: if removed { 1 } else { 0 }), " absent:", to_string(value: if absent { 1 } else { 0 }), " base_removed:", to_string(value: if base_removed { 1 } else { 0 })], "") ) }
+    }
+  }
+}
+
 // A raw program run in a workdir (git via launcher_git; cp/mkdir here), returning the typed CarrierExec so the
 // exit status is available.
 fn launcher_exec(program: String, workdir: String, args: List<String>) -> CarrierExec {
@@ -349,6 +409,7 @@ fn candidate_launcher_read_real_execution(repo: String) -> ProcessExit {
   let three = launcher_control_two_readers_agree(repo: repo)
   let four = launcher_control_ref_assertion_discriminates(repo: repo)
   let five = launcher_control_failed_add_is_cleaned_up(repo: repo)
-  if one == "PASS" && two == "PASS" && three == "PASS" && four == "PASS" && five == "PASS" { ExitSuccess }
-  else { exit_failure(reason: join(["launcher real-read controls failed\nobserved: 1:", one, " 2:", two, " 3:", three, " 4:", four, " 5:", five, "\n(all five must PASS)\n"], "")) }
+  let six = launcher_control_dir_presence_distinguishes_unreadable()
+  if one == "PASS" && two == "PASS" && three == "PASS" && four == "PASS" && five == "PASS" && six == "PASS" { ExitSuccess }
+  else { exit_failure(reason: join(["launcher real-read controls failed\nobserved: 1:", one, " 2:", two, " 3:", three, " 4:", four, " 5:", five, " 6:", six, "\n(all six must PASS)\n"], "")) }
 }
