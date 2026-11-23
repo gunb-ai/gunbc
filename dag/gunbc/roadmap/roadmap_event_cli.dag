@@ -50,6 +50,7 @@ import gunbc.roadmap.roadmap_model {
 }
 import gunbc.roadmap.roadmap_event_carrier {
   roadmap_event_carrier_layout_for_instance, roadmap_event_append, roadmap_events_read,
+  roadmap_event_branch_tip,
   EventAppended, EventAlreadyPresent, EventAppendRefused, EventsRead, EventsReadRefused,
   CarrierSnapshotClose, SnapshotNotOpened, SnapshotClosed, SnapshotCloseFailed, SnapshotCloseVerificationFailed,
   carrier_snapshot_close_failures, carrier_report_with_snapshot_close,
@@ -262,7 +263,7 @@ fn roadmap_event_record_cli(repo_root: String, node: String, kind: String, text:
                     let appended = roadmap_event_append(layout: layout, event: RoadmapEvent { node: node_id, author: author_principal, parent: parent, kind: k, recorded_at: at }, operation: operation)
                     roadmap_event_record_exit(
                       exit: match appended.result {
-                        EventAppended { id } => ExitSuccess
+                        EventAppended { id, published_as: _ } => ExitSuccess
                         EventAlreadyPresent { id } => ExitSuccess
                         EventAppendRefused { id: _, step, reason } => ExitFailure { code: 1, reason: join(["roadmap_event_record_cli: append refused at ", step, ": ", reason], "") }
                       },
@@ -531,7 +532,7 @@ fn roadmap_acceptance_command(repo_root: String, author: String, node: String, w
                   let applied = issue_command_apply(layout: layout, command: roadmap_acceptance_built_command(subject: subject, choice: choice), recorded_at: match clock_now_probed_at() { Present { value: t } => t as String  Absent => "" })
                   roadmap_event_record_exit(
                     exit: match applied.result {
-                      EventAppended { id: _ } => ExitSuccess
+                      EventAppended { id: _, published_as: _ } => ExitSuccess
                       EventAlreadyPresent { id: _ } => ExitSuccess
                       EventAppendRefused { id: _, step, reason } => ExitFailure { code: 1, reason: join([who, ": append refused at ", step, ": ", reason], "") }
                     },
@@ -547,6 +548,54 @@ fn roadmap_acceptance_command(repo_root: String, author: String, node: String, w
 // THE STANDING IS A REPORT, SO IT IS A STRING: `gunbc run` prints a String return inside its typed
 // envelope, which is the sanctioned way to read a value out of a run (a ProcessExit carries no
 // stdout, and an ExitFailure with code 0 is refused by the host as a status that contradicts itself).
+// READ BACK WHERE A RECORDING LANDED, in words, and refuse in words when it did not.
+// WHY THIS EXISTS (measured 2026-11-23): the recorder's only durable store is the git
+// branch roadmap_events_branch on the instance's events remote, while what sits on the
+// operator's machine under that name is a CHECKOUT of it -- and it was 85 commits behind.
+// A lane read that mirror, found nothing, and reported that the recorder had never
+// recorded anything; the event it looked for had been on the branch since 02:17:10Z that
+// same night. So a reader of a recording gets three things it can check without knowing
+// the architecture: whether the event is on the checkout it can see, the tip the REMOTE
+// itself states, and -- when the checkout does not have it -- the exact command to look
+// at the branch. Naming a sha is a claim about bytes; this reads the remote, so a tip is
+// never invented here, and where the remote will not answer the words say so.
+fn roadmap_event_publication_report(repo_root: String, node: String, event_id: String) -> String {
+  match dashboard_instance_for_repo_root(repo_root: repo_root) {
+    DashboardInstanceRootUnknown { repo_root: w } =>
+      join(["roadmap_event_publication_report: no dashboard instance is rooted at ", w], "")
+    DashboardInstanceResolved { instance } => {
+      let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
+      let history = roadmap_events_read(layout: layout, node: node as NonEmptyStr as RoadmapNodeId)
+      carrier_report_with_snapshot_close(
+        text: match history.result {
+          EventsReadRefused { node: _, step, reason } =>
+            join(["roadmap_event_publication_report: read refused at ", step, ": ", reason], "")
+          EventsRead { node: _, envelopes } => {
+            let on_checkout = count(filter(xs: envelopes, predicate: e => (e.id as String) == event_id)) > 0
+            let ref_name = join(["refs/heads/", roadmap_events_branch as String], "")
+            match roadmap_event_branch_tip(layout: layout) {
+              Absent => join([node, ": event ", event_id,
+                if on_checkout { " is on the checkout of " } else { " is NOT on the checkout of " },
+                ref_name, " on ", layout.remote as String,
+                "; the remote would not state its tip -- read it yourself: git ls-remote ",
+                layout.remote as String, " ", roadmap_events_branch as String], "")
+              Present { value: tip } => join([
+                node, ": event ", event_id,
+                if on_checkout { " IS on the checkout of " } else { " is not on the checkout of " },
+                ref_name, " on ", layout.remote as String,
+                "; the tip the REMOTE states for ", ref_name, " is ", tip,
+                if on_checkout { "" } else { join([
+                  " -- a checkout behind the branch reads EMPTY, so check the branch and not the mirror: git fetch ",
+                  layout.remote as String, " ", roadmap_events_branch as String, " && git show ", tip,
+                  ":events/", node, "/", event_id, ".json"], "") }], "")
+            }
+          }
+        },
+        close: history.close)
+    }
+  }
+}
+
 fn roadmap_event_standing_report(repo_root: String, node: String) -> String {
   match dashboard_instance_for_repo_root(repo_root: repo_root) {
     DashboardInstanceRootUnknown { repo_root: w } => join(["roadmap_event_standing_report: no dashboard instance is rooted at ", w], "")

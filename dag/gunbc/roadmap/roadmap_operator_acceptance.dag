@@ -772,7 +772,7 @@ fn roadmap_operator_close_append(
             },
             recorded_at: roadmap_operator_render_civil_date(date: roadmap_operator_date_from_epoch_secs(secs: inputs.at)))
           match applied.result {
-            EventAppended { id } => CloseWritten { event_id: id }
+            EventAppended { id, published_as: _ } => CloseWritten { event_id: id }
             EventAlreadyPresent { id } => CloseAlreadyRecorded { event_id: id }
             EventAppendRefused { id: _, step, reason } => CloseRefused {
               reason: CloseChainWriteRefused { step: step as NonEmptyStr, reason: reason as NonEmptyStr } }

@@ -436,7 +436,7 @@ test fn the_result_writer_derives_the_claim_from_the_attempts_record_so_a_later_
     && rr_authority_refused_at(a: roadmap_result_authority_of_record(node: rr_node(), attempt: rr_attempt, record: RequestBindingRead { binding: RequestAutonomous }), step: "result-binding")
     && rr_authority_refused_at(a: roadmap_result_authority_of_record(node: rr_node(), attempt: rr_attempt, record: RequestBindingUnreadable { reason: "denied" }), step: "result-binding")
     && rr_authority_refused_at(a: roadmap_result_authority_of_record(node: rr_node(), attempt: "", record: rr_bound(claim: c1.id)), step: "result-attempt")
-  let outcome_maps = roadmap_result_append_of(append: EventAppended { id: c1.id }) == ResultAppended { id: c1.id }
+  let outcome_maps = roadmap_result_append_of(append: EventAppended { id: c1.id, published_as: Absent }) == ResultAppended { id: c1.id }
     && roadmap_result_append_of(append: EventAlreadyPresent { id: c1.id }) == ResultAppendAlreadyPresent { id: c1.id }
     && roadmap_result_append_of(append: EventAppendRefused { id: c1.id, step: "revision-conflict", reason: "moved" }) == ResultAppendRefused { step: "revision-conflict", reason: "moved" }
   derives_c1 && c2_refused && c1_still_appendable && no_authority && outcome_maps
