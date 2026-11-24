@@ -775,11 +775,15 @@ fn principal_profile_of(ref: PrincipalRef, profiles: List<PrincipalProfile>) -> 
 // name is preferred, the email local part (the profile's own projection, already trusted) is the
 // fallback, and NOTHING ELSE IS: a profile that carries neither cannot name its principal, and the
 // caller renders the undisplayable arm. It used to fall back to the wire label here too.
+// EVERY ARM CARRIES ITS OWN OPTIONAL: the join types from the arms, and the checker injects nothing
+// (gunbc.design_ruling::explicit_present_is_the_authoring_policy). The executed RED at head caught
+// the bare `n` here — per-module typecheck passed and only the closure resolve reported it, so this
+// spelling is the one the same resolve accepts elsewhere in this file (profile_display_detail).
 fn profile_display_name(profile: PrincipalProfile) -> String? {
   match profile.name {
-    Present { value: n } => n
+    Present { value: n } => Present { value: n }
     Absent => match profile.email {
-      Present { value: e } => principal_display_name_of(email: e as String)
+      Present { value: e } => Present { value: principal_display_name_of(email: e as String) }
       Absent => none
     }
   }
