@@ -1796,6 +1796,24 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "v1-deletion-program", contribution: "Matching every deleted old test to coverage that would actually catch its bug keeps deletion from silently dropping the protection the old tests existed for."),
     ),
     roadmap_node(
+      identity: "rn_N6R1XAMWVQBE7GSTQEMCSQNQXC",
+      id: "v1-retained-test-routes-refuse-and-retire",
+      owner: "self-host",
+      carriers: concat(carrier(path: "dag/gunbc/v1/v1_deletion_plan.dag"), carrier(path: "dag/test/claim/retained_symbol_index_route_refusal.dag")),
+      line: ticket(t: fields(
+        headline: "A retained v1 Rust test names an executed refusal for its route and a testable way to retire",
+        boundary: "Follow-up to v1-test-migration, whose accepted criteria stay as they are. For the retained module declaration_named_in_module_reexport_test (src/v1/tests/src/declaration_named_in_module_reexport_test.rs, the v1 SymbolIndex internals), author an executed .dag claim that tries to reach that route from a claim fixture and is refused; and give every retained row in dag/test/retirement/model.dag a retirement trigger a worker can test, beyond the unbound dissolution arm.",
+        displaced_cost: "Today the retained row says no claim can import v1.compiler.* as a sentence, not a run, so a route that later opens goes unseen, and the row cannot say what retires it other than going unbound.",
+        first_slice: "Measure first: author test.claim.retained_symbol_index_route_refusal, run it with the released claim_batch, and record whether the compile refuses.",
+        red_control: "OPEN: red_at and green_at are not measured. The first pair would be the refusal claim passing on the refused route (green) and the same claim with a planted reachable import that still expects refusal, failing (red), both at one tree with the released claim_batch in one heavy-slot wrapper. If the route does not refuse, this row is a red handback, not a green one.",
+        out_of_scope: "Any change to the wall's discovery rule or schema, new hand-written seed Rust, and the retained rows' existing reasons.",
+        handback: "The refusal claim and its planted control with raw PASS and FAIL lines and the real exit status, and a checkable retirement trigger on each retained row."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v1-deletion-program", contribution: "Retained v1 tests carry executed proof of why they stay and a checkable way out, so deleting the seed's tests never rests on an argued absence."),
+      centering: plan(text: "Author the claim at dag/test/claim/retained_symbol_index_route_refusal.dag (module test.claim.retained_symbol_index_route_refusal) with the planted positive control beside it. Run both legs sequentially in ONE heavy-slot wrapper on srv1 at one tree, with the RELEASED claim_batch (sha256 9cb21df4..., release-bins) and --source-root dag --source-root src/v1 --source-root src/v2; never a binary built from the branch. Record the raw lines and exit status."),
+    ),
+    roadmap_node(
       identity: "rn_HZJEM68DT207HQH449FPR3VZPA",
       id: "v1-seed-honesty-decision",
       owner: "operator",
