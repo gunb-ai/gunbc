@@ -159,6 +159,7 @@ import gunbc.runner.runner_host_medium_publish { mtcollins1_runner_image_receipt
 import gunbc.machine_intake.mtcollins1_census_member_readback { census_member_readback_receipt_path }
 import gunbc.machine_intake.mtcollins1_census_qemu_host_observe { census_qemu_host_observe_receipt_path }
 import gunbc.compute.remote_build_serving_converge { gunbc_ci_remote_build_serving_observe_receipt_path }
+import gunbc.host.host_memory_envelope_observe { host_memory_quiescent_receipt_path }
 import gunbc.cloudflare.r2_token_mint_run {
   r2_mint_receipt_glob_in, r2_mint_receipt_scope, R2MintReceiptAttemptScoped, R2OriginObjectWrite, R2AccountBucketAdmin,
 }
@@ -556,7 +557,16 @@ fn fleet_converge_mode_facts(mode: FleetConvergeWorkflowMode) -> FleetConvergeMo
     RemoteBuildServingObserve => FleetConvergeModeFacts { wire: "remote_build_serving_observe", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: TargetHostDomain { field: fleet_converge_subject_host_input_name }, subject_rule: SubjectMayBeTheExecutorsOwnMachine, job_id: fleet_converge_shared_job_id, is_spark_target: false },
     // Same domain as the observe: grouped on the machine it writes (see the row above).
     RemoteBuildServingConverge => FleetConvergeModeFacts { wire: "remote_build_serving_converge", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: TargetHostDomain { field: fleet_converge_subject_host_input_name }, subject_rule: SubjectMayBeTheExecutorsOwnMachine, job_id: fleet_converge_shared_job_id, is_spark_target: false },
-    HostMemoryObserve => FleetConvergeModeFacts { wire: "host_memory_observe", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyNotConsumed, mutation_domain: OwnRunConfined, subject_rule: SubjectRuleNotApplicable, job_id: fleet_converge_shared_job_id, is_spark_target: false },
+    // PEER-EXECUTOR READ (option (a), 2026-11-23): host_memory_observe gained a subject, so it takes the
+    // SAME shape the serving observe uses -- the executor (inputs.host) runs the job, subject_host names the
+    // machine whose /proc/meminfo is read over ssh, and the concurrency group keys on the machine READ
+    // (gunbc-host-mutation-<subject_host>), so a memory observe never stacks with another mutation of that
+    // same machine whoever runs it. SubjectMayBeTheExecutorsOwnMachine keeps a self read (host = subject,
+    // no subject_host named) legal and byte-for-byte today's local behaviour -- the fleet_converge_install_subject_read
+    // rule turns "no subject named" into that machine, named by the executor's expected host. Keying on the
+    // subject (not the executor) is what lets a runnerless host like srv14/butch be read from srv1's lane,
+    // the same fold #16820 made for the tailscale join.
+    HostMemoryObserve => FleetConvergeModeFacts { wire: "host_memory_observe", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: TargetHostDomain { field: fleet_converge_subject_host_input_name }, subject_rule: SubjectMayBeTheExecutorsOwnMachine, job_id: fleet_converge_shared_job_id, is_spark_target: false },
     MicrovmSlotReserve => FleetConvergeModeFacts { wire: "microvm_slot_reserve", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyNotConsumed, mutation_domain: ExecutorDomain, subject_rule: SubjectRuleNotApplicable, job_id: fleet_converge_shared_job_id, is_spark_target: false },
     MicrovmSlotStart => FleetConvergeModeFacts { wire: "microvm_slot_start", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyNotConsumed, mutation_domain: ExecutorDomain, subject_rule: SubjectRuleNotApplicable, job_id: fleet_converge_shared_job_id, is_spark_target: false },
     RunnerHostFileConverge => FleetConvergeModeFacts { wire: "runner_host_file_converge", scope: none, release_product: SixteenBinaryPack, ssh_key_demand: FleetSshKeyConsumed, mutation_domain: ExecutorDomain, subject_rule: SubjectRequiredAndDistinct, job_id: fleet_converge_shared_job_id, is_spark_target: false },
@@ -2577,12 +2587,47 @@ fn fleet_converge_remote_build_serving_observe_receipt_upload_step() -> Step {
 }
 
 fn fleet_converge_host_memory_observe_step() -> Step {
-  fleet_converge_runner_host_file_step(
+  // PEER-EXECUTOR READ: the machine whose memory is read is the dispatch's SUBJECT, handed through the same
+  // env the host-file acts + the serving observe use, so the precondition split gate (upstream) and the entry
+  // (gunbc.host.host_memory_envelope_observe::host_memory_envelope_observe_ci_wet, downstream) cannot drift
+  // into different answers to "which machine am I reading". With no subject named the entry takes today's
+  // self read, byte-for-byte; with one, the executor reads the subject's /proc/meminfo over fleet ssh.
+  fleet_converge_runner_host_file_step_within(
     id: "host_memory_observe",
     name: "Host memory envelope: read-only MemTotal/MemAvailable/Swap, active runner-unit count, top-level slice limits (no writes)",
     invoke: gunbc_ci_host_memory_envelope_observe_invoke(),
     if_condition: fleet_converge_host_memory_observe_step_if,
+    timeout_minutes: gunbc_ci_gunbc_run_resolve_step_timeout_minutes,
+    extra_env: [
+      kv(key: fleet_converge_subject_host_env_name, value: yaml_string(s: "${{ github.event.inputs.subject_host }}")),
+      fleet_converge_subject_rule_env_pair(mode: HostMemoryObserve),
+    ],
   )
+}
+
+// THE QUIESCENT MEMORY RECEIPT UPLOAD. On a PEER read (subject_host named) the entry writes the
+// quiescent MemTotal/MemAvailable receipt that discharges srv14's serving-memory-charge frontier trigger
+// (2); this step uploads it as the artifact the model row cites (run id + this path = provenance). Absence-
+// EXPECTED, not refused: a self read (host = subject, no subject) legitimately produces no quiescent file,
+// and the observe step's own exit code is the real gate (an unreachable subject refuses there, never writing
+// a zero). So a self dispatch is untouched and a refused peer read fails at the read, not here.
+fn fleet_converge_host_memory_observe_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload host-memory quiescent observe receipt" },
+    id: Present { value: "host_memory_observe_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: workflow_artifact_upload_with(
+      name: "host-memory-quiescent-observe-receipt",
+      path: host_memory_quiescent_receipt_path,
+      retention_days: Present { value: 30 },
+      compression_level: none,
+      absence: AbsenceExpected { reason: "a self read (host = subject, no subject named) legitimately produces no quiescent receipt; the observe step's exit code is the real gate" as NonEmptyStr },
+    ) },
+    env: none,
+    if_condition: Present { value: concat("always() && (", concat(fleet_converge_host_memory_observe_step_if, ")")) },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
 }
 
 // THE READ-ONLY FLEET HOST-KEY SCAN STEP. It runs gunbc.fleet.fleet_host_key_enrollment::fleet_host_key_scan_wet
@@ -6652,6 +6697,7 @@ fn fleet_converge_job_work_steps() -> List<Step> {
         fleet_converge_remote_build_serving_converge_step(),
         fleet_converge_remote_build_serving_observe_receipt_upload_step(),
         fleet_converge_host_memory_observe_step(),
+        fleet_converge_host_memory_observe_receipt_upload_step(),
         fleet_converge_fleet_host_key_scan_step(),
         fleet_converge_fleet_host_key_scan_receipt_upload_step(),
         fleet_converge_runner_host_file_converge_step(),

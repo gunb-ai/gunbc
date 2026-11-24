@@ -7,7 +7,7 @@ import std.algebra { list_snoc_item }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.optional { Present }
 import product.host_identity { HostIdentity }
-import gunbc.host.host_memory_observation { HostMemAvailableObservation }
+import gunbc.host.host_memory_observation { HostMemAvailableObservation, HostMemAvailableQuiescentRead }
 import gunbc.host.host_converge { runner_instance_glob }
 import gunbc.systemctl_list_units { systemctl_list_units_active_services, systemctl_list_units_active_of_type }
 import gunbc.systemctl_show_read {
@@ -22,6 +22,7 @@ import gunbc.hostname_read { hostname_short_read, HostnameShortCaptured, Hostnam
 import gunbc.hostname_allocation { observed_host_selector_join, observed_host_join_refusal_text, ObservedHostSelectorAgreed, ObservedHostSelectorJoinRefused }
 import gunbc.actions_run_binding {
   actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name,
+  fleet_converge_subject_host_env_name,
 }
 import extdeps.linux.procfs
 import extdeps.linux.proc_meminfo { MeminfoRead, MeminfoParsed, MeminfoFieldAbsent, parse_proc_meminfo, ProcMeminfo }
@@ -35,6 +36,19 @@ import extdeps.systemd {
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+// PEER-EXECUTOR read: the subject is read over fleet ssh, the same route the serving observe uses
+// (host = the executor runner, subject_host = the machine read). These are the primitives that route
+// already runs on -- nothing new is invented here.
+import gunbc.runner.runner_host_file_converge { administrator_ssh_target }
+import gunbc.fleet.fleet_known_hosts_anchor {
+  SshTarget, FleetSshExecutionContext, SshTargetResolution, SshTargetResolved, SshTargetRefused,
+}
+import gunbc.fleet.fleet_ssh_locus {
+  prepare_fleet_ssh_agent_context, FleetSshContextPreparation, FleetSshContextReady, FleetSshContextRefused,
+}
+import gunbc.typed_argv_exec {
+  typed_argv_exec_over_fleet_ssh, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused,
+}
 
 // READ-ONLY HOST MEMORY ENVELOPE. Modeled on gunbc.host.host_memory_observation
 // HostMemAvailableObservation (host, totals, available) and extended with Swap, the active
@@ -339,7 +353,11 @@ fn local_kernel_hostname() -> String {
   }
 }
 
-fn host_memory_envelope_observe_ci_wet() -> ProcessExit
+// TODAY'S BEHAVIOUR, VERBATIM. host = subject: the machine the dispatch named in FLEET_CONVERGE_EXPECTED_HOST
+// reads its OWN /proc locally (Procfs.ReadMeminfo), resolved through the allocation's selector join. This is
+// the byte-identical path a host_memory_observe dispatch with no subject_host runs; the peer branch below is
+// the ONLY new behaviour, so a self dispatch is untouched.
+fn host_memory_envelope_observe_self_wet() -> ProcessExit
 {
   let dispatched = match actions_variable_read(name: fleet_converge_expected_host_env_name) {
     ActionsVariablePresent { value: v } => v
@@ -376,6 +394,138 @@ fn host_memory_envelope_observe_ci_wet() -> ProcessExit
           }
         }
     }
+  }
+}
+
+// PEER-EXECUTOR MEMORY READ (option (a), 2026-11-23). host_memory_observe now takes the same
+// peer-executor shape the serving modes use: host = the executor runner, subject_host = the machine read
+// over ssh. This is the branch that lets a runnerless host like srv14 (butch) get a quiescent memory read
+// WITHOUT its own CI lane -- the executor (srv1) reads the subject's /proc/meminfo over fleet ssh. The
+// receipt comes out in exactly the gunbc.host.host_memory_observation::HostMemAvailableQuiescentRead shape
+// (host_total + mem_available) that gunbc.serving.serving_reservation's srv14 memory-charge frontier names
+// as trigger (2). The self path above (host = subject, no subject_host named) is byte-for-byte today's
+// behaviour; this branch is the ONLY new behaviour. gunbc.design_argument::fail_closed: an unreachable
+// subject, a refused leg, a non-zero exit, or an absent field all REFUSE -- this path never reports a zero
+// or absent memory figure for a host it could not actually read.
+data host_memory_envelope_observe_attempt_raw: String = "host-memory-envelope-observe-ci"
+
+data host_memory_quiescent_receipt_path: String = "target/host-memory-quiescent-observe.txt"
+
+// The account that performed a peer read: fleet automation, reading the subject over ssh. Distinguished
+// from a self read so the quiescent row cites who read it. The run id is the provenance, attached when the
+// row is authored from this receipt.
+data host_memory_quiescent_peer_account: NonEmptyStr = "fleet-automation-peer-executor" as NonEmptyStr
+
+type HostMemQuiescentReadResult
+  = HostMemQuiescentReadObserved { read: HostMemAvailableQuiescentRead }
+  | HostMemQuiescentReadRefused { host: HostIdentity, reason: String }
+
+// Read /proc/meminfo on the subject over fleet ssh (world-readable, so a plain cat, no sudo) and project
+// the MemTotal/MemAvailable pair. Every failure mode refuses rather than yielding zero.
+fn host_memory_quiescent_read_over_ssh(
+  host: HostIdentity,
+  target: SshTarget,
+  context: FleetSshExecutionContext,
+  account: NonEmptyStr,
+) -> HostMemQuiescentReadResult {
+  match typed_argv_exec_over_fleet_ssh(
+    target: target,
+    context: context,
+    argv: ["/bin/cat", "/proc/meminfo"],
+  ) {
+    TypedArgvExecRefused { reason: why } =>
+      HostMemQuiescentReadRefused {
+        host: host,
+        reason: concat("host_memory_envelope_observe: ", host as String, " is unreachable over ssh; refusing to report memory (never a zero or an absent figure): ", why),
+      }
+    TypedArgvExecConverged { result: r } =>
+      if r.exit_code != 0 {
+        HostMemQuiescentReadRefused {
+          host: host,
+          reason: concat("host_memory_envelope_observe: cat /proc/meminfo on ", host as String, " exited ", to_string(r.exit_code), "; refusing to report memory (never a zero or an absent figure)"),
+        }
+      } else {
+        match parse_proc_meminfo(text: r.stdout) {
+          MeminfoFieldAbsent { field: f } =>
+            HostMemQuiescentReadRefused {
+              host: host,
+              reason: concat("host_memory_envelope_observe: /proc/meminfo field absent on ", host as String, ": ", f as String),
+            }
+          MeminfoParsed { meminfo: m } =>
+            HostMemQuiescentReadObserved {
+              read: HostMemAvailableQuiescentRead {
+                host: host,
+                account: account,
+                read_at: probed_at_word(reading: clock_now_probed_at()),
+                host_total: kibibyte_to_byte_size(k: m.mem_total),
+                mem_available: kibibyte_to_byte_size(k: m.mem_available),
+              },
+            }
+        }
+      }
+  }
+}
+
+fn host_memory_quiescent_receipt_text(read: HostMemAvailableQuiescentRead) -> String {
+  join([
+    "host-memory-quiescent host=", read.host as String,
+    " account=", read.account as String,
+    " read_at=", read.read_at as String,
+    " host_total=", to_string(byte_size_count(b: read.host_total)),
+    " mem_available=", to_string(byte_size_count(b: read.mem_available)),
+    "\n",
+  ], "")
+}
+
+// Resolve the subject's anchored ssh target, prepare the fleet ssh context (credential, then anchor --
+// one preparation, the order the serving route states), and read the subject's memory over it. A subject
+// the anchor does not name, or a context that cannot be prepared, REFUSES -- the dispatch never guesses a
+// host and never reports memory it did not read. Split out from the wet so the fail-closed refusal on an
+// unreachable subject is a witness claim, not only a CI exit code.
+fn host_memory_quiescent_read_for_subject(hi: HostIdentity) -> HostMemQuiescentReadResult {
+  match administrator_ssh_target(host: hi) {
+    SshTargetRefused { endpoint: e, refusal: _ } =>
+      HostMemQuiescentReadRefused {
+        host: hi,
+        reason: concat("host_memory_envelope_observe: no anchored ssh target for subject ", e, "; refusing to read a host the anchor does not name"),
+      }
+    SshTargetResolved { target: target } =>
+      match prepare_fleet_ssh_agent_context(attempt_raw: host_memory_envelope_observe_attempt_raw) {
+        FleetSshContextRefused { cause: c } => HostMemQuiescentReadRefused { host: hi, reason: c }
+        FleetSshContextReady { context: context, receipt: _ } =>
+          host_memory_quiescent_read_over_ssh(host: hi, target: target, context: context, account: host_memory_quiescent_peer_account)
+      }
+  }
+}
+
+fn host_memory_envelope_observe_peer_wet(subject: String) -> ProcessExit {
+  let hi = subject as HostIdentity
+  match host_memory_quiescent_read_for_subject(hi: hi) {
+    HostMemQuiescentReadRefused { host: _, reason: why } => exit_failure(reason: concat(why, "\n"))
+    HostMemQuiescentReadObserved { read: read } => {
+      let text = host_memory_quiescent_receipt_text(read: read)
+      let w = Filesystem.Write(path: host_memory_quiescent_receipt_path, content: text)
+      if w.success == false {
+        exit_failure(reason: join(["host_memory_envelope_observe: quiescent receipt write failed: ", w.error, "\n", text], ""))
+      } else {
+        ExitSuccess
+      }
+    }
+  }
+}
+
+// THE DISPATCH: a subject_host named in FLEET_CONVERGE_SUBJECT_HOST routes the read over ssh to that
+// machine (the peer-executor shape); no subject named means today's self read, byte-for-byte.
+fn host_memory_envelope_observe_ci_wet() -> ProcessExit {
+  match actions_variable_read(name: fleet_converge_subject_host_env_name) {
+    ActionsVariablePresent { value: subject } =>
+      if subject == "" {
+        host_memory_envelope_observe_self_wet()
+      } else {
+        host_memory_envelope_observe_peer_wet(subject: subject)
+      }
+    ActionsVariableAbsent { variable: _, detail: _ } =>
+      host_memory_envelope_observe_self_wet()
   }
 }
 
