@@ -571,18 +571,20 @@ fn floor_preparation_capture_run() -> String {
     // still refuses without them reading green.
     let legs_clean = untrimmed.rc == 0 && graded.rc == 0
       && length(xs: kept_untrimmed) > 0 && length(xs: kept_graded) > 0
-    if legs_clean {
-      Filesystem.Write(
+    let write_receipt = if legs_clean {
+      let w1 = Filesystem.Write(
         path: concat(floor_preparation_runner_root(), "/", floor_preparation_retained_file),
         content: retained)
-      Filesystem.Write(
+      let w2 = Filesystem.Write(
         path: concat(floor_preparation_runner_root(), "/", floor_preparation_population_file),
         content: floor_preparation_population_projection())
-    } else {}
+      if w1.success && w2.success { "retained=written population=written" } else { "retained=WRITE_FAILED" }
+    } else { "retained=skipped legs not clean" }
+    let all_receipts = list_push(xs: receipts, item: floor_preparation_receipt("write-retained", write_receipt))
     if !report_ok || length(xs: missing) > 0 || !population_ok {
-      concat(join(receipts, "\n"), "\nRUNNER_REFUSED: gates not green -- see receipts above")
+      concat(join(all_receipts, "\n"), "\nRUNNER_REFUSED: gates not green -- see receipts above")
     } else {
-      concat(join(receipts, "\n"),
+      concat(join(all_receipts, "\n"),
         concat("\n", concat(join(report_lines, "\n"),
           concat("\n", floor_preparation_receipt("terminal-gate", "ALL_GATES_GREEN")))))
     }
