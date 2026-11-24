@@ -15556,6 +15556,48 @@ fn target_project_transform_primitive_apply_in_arrow_scope(
   }
 }
 
+// HALF 1 of widening (iii): a primitive-apply OPERAND lowers through the SAME atom/literal spine the body's
+// atoms use, so a numeral operand (the `0` in `resolved_child_count > 0`) is recognised by the EXISTING
+// int-literal spine -- target_value_expr_is_int_literal_atom / target_value_expr_project_int_literal_atom --
+// beside the Bool case and keyed the same way on the source literal form, not hard-wired to `0`. It covers
+// every numeral the target can spell; a numeral the target CANNOT spell refuses inside that spine with its
+// OWN named reason (target_value_expr_int_literal_form_unwired), never body_scope_binding_invalid and never
+// the generic transform-shape reason. A non-literal operand keeps exactly the scope-bound binding it was
+// before, so every primitive apply that emitted before still binds the same two operands and emits the
+// same bytes. The operand VALUE (binding or literal) is what the primitive-apply fold stores; the operator
+// tokenization downstream is unchanged by this function.
+fn target_arrow_scope_positional_operand_value(
+  arrow: Node,
+  body: Node,
+  index: Int,
+  target: TargetModel
+) -> Outcome<TargetValueExpression> {
+  match list_at_optional(xs: positional_child_target_nodes(node: body), index: index) {
+    Absent =>
+      outcome_rejected(
+        target_value_expr_diagnostic(
+          reason: ^target_value_expr_reason_transform_shape_invalid,
+          node: body
+        )
+      )
+    Present { value: operand } =>
+      if target_value_expr_is_int_literal_atom(node: operand) {
+        target_value_expr_project_int_literal_atom(node: operand)
+      } else {
+        bind_outcome(
+          o: target_arrow_scope_positional_operand_binding(arrow: arrow, body: body, index: index, target: target),
+          f: fn(scoped_operand_binding) {
+            outcome_accepted(
+              target_value_expression_binding_ref(
+                binding: scoped_operand_binding
+              )
+            )
+          }
+        )
+      }
+  }
+}
+
 fn target_project_binary_primitive_apply_in_arrow_scope(
   arrow: Node,
   body: Node,
@@ -15572,21 +15614,17 @@ fn target_project_binary_primitive_apply_in_arrow_scope(
     )
   } else if positional_count == 3 {
     bind_outcome(
-      o: target_arrow_scope_positional_operand_binding(arrow: arrow, body: body, index: 1, target: target),
-      f: fn(scoped_left_binding) {
+      o: target_arrow_scope_positional_operand_value(arrow: arrow, body: body, index: 1, target: target),
+      f: fn(left_operand) {
         bind_outcome(
-          o: target_arrow_scope_positional_operand_binding(arrow: arrow, body: body, index: 2, target: target),
-          f: fn(scoped_right_binding) {
+          o: target_arrow_scope_positional_operand_value(arrow: arrow, body: body, index: 2, target: target),
+          f: fn(right_operand) {
             outcome_accepted(
               target_value_expression_primitive_apply(
                 operation: canonical_op,
                 operands: [
-                  target_value_expression_binding_ref(
-                    binding: scoped_left_binding
-                  ),
-                  target_value_expression_binding_ref(
-                    binding: scoped_right_binding
-                  )
+                  left_operand,
+                  right_operand
                 ]
               )
             )
@@ -15603,15 +15641,13 @@ fn target_project_binary_primitive_apply_in_arrow_scope(
     // it is not keyed on any one primitive (a prefix use of `not` and a prefix use of any other algebra
     // primitive take this same route).
     bind_outcome(
-      o: target_arrow_scope_positional_operand_binding(arrow: arrow, body: body, index: 1, target: target),
-      f: fn(scoped_operand_binding) {
+      o: target_arrow_scope_positional_operand_value(arrow: arrow, body: body, index: 1, target: target),
+      f: fn(operand) {
         outcome_accepted(
           target_value_expression_primitive_apply(
             operation: canonical_op,
             operands: [
-              target_value_expression_binding_ref(
-                binding: scoped_operand_binding
-              )
+              operand
             ]
           )
         )
