@@ -55,6 +55,7 @@ data generated_partition_crate_rows: List<GeneratedPartitionCrateRow> = [
         "std_render_repeat_string_bootstrap",
         "std_types",
         "std_unicode_types",
+        "std_operation_argv",
         "std_optional",
         "std_algebra",
         "std_nat",

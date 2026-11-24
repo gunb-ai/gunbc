@@ -293,6 +293,7 @@ fn stage0_std_primitive_modules() -> List<String> {
 fn stage0_std_core_modules() -> List<String> {
   stage0_std_primitive_modules()
     |> concat([
+    "std_operation_argv",
       "std_optional",
       "std_algebra",
       "std_nat",
