@@ -28,7 +28,7 @@ module test.claim.runner.runner_fleet_job_timeout_bound_witness
 // It runs under `gunbc test //test/claim/...:all` (the native claim lane), not self-host.
 
 import std.types { Bool, Int, String, List }
-import std.optional { Present }
+import std.optional { Present, Absent }
 import std.measure { second, second_count, minute_count }
 import extdeps.github.actions { Job, Workflow, WorkflowTrigger, Push, WorkflowDispatch, max_job_timeout_minutes }
 import gunbc.runner.runner_host_cap_bracket { runner_host_cap_drain_policy, host_cap_bracket_budget }
@@ -36,8 +36,9 @@ import gunbc.runner.runner_fleet_job_timeout_census { fleet_targeted_wait_bound,
 import gunbc.ci.repository_ci_profile { gunbc_required_context_name, gunbc_roster_gate }
 import gunbc.witness.compiler_gate_workflow { compiler_gate_workflow }
 import gunbc.generated_artifact { artifact_eq, WitnessFloorYamlArtifact, FleetConvergeYamlArtifact, InstrumentDispatchYamlArtifact, MicrovmShakedownYamlArtifact }
-import gunbc.fleet.fleet_converge_workflow { fleet_converge_workflow, fleet_converge_build_job, fleet_converge_plan_revision_job, fleet_converge_job_timeout_minutes, fleet_converge_runner_host_step_timeout_minutes, fleet_converge_runner_host_cap_release_step, fleet_converge_runner_host_cap_release_receipt_upload_step, step_declared_timeout_minutes }
+import gunbc.fleet.fleet_converge_workflow { fleet_converge_workflow, fleet_converge_build_job, fleet_converge_plan_revision_job, fleet_converge_schedule_event, fleet_converge_job_timeout_minutes, fleet_converge_runner_host_step_timeout_minutes, fleet_converge_runner_host_cap_release_step, fleet_converge_runner_host_cap_release_receipt_upload_step, step_declared_timeout_minutes }
 import test.claim.review_sheet_converge_workflow_witness { admits_only_a_dispatch }
+import extdeps.github.expressions { serialize_expression }
 import gunbc.instruments.instrument_dispatch_workflow { instrument_dispatch_workflow, instrument_dispatch_workflow_triggers }
 import gunbc.runner.runner_microvm_shakedown_workflow { microvm_shakedown_workflow, microvm_shakedown_workflow_triggers }
 
@@ -191,11 +192,22 @@ fn omission_autonomous_count_triggers(ts: List<WorkflowTrigger>) -> Int {
 
 // THE DECLARED ROWS ARE THE WORKFLOW'S SCHEDULED FLEET-POOL JOBS, BOTH WAYS. A job a schedule can start is one
 // whose condition is not gated to a dispatch (test.claim.review_sheet_converge_workflow_witness admits_only_a_dispatch,
-// the same reading that witness proves no host-actuating job escapes; the two pack producers' conditions are
-// evaluated there). Every such fleet-pool job has a row at its own declared timeout, and every row names such a
+// the same reading that witness proves no host-actuating job escapes) OR whose condition names the schedule event
+// (fleet_converge_schedule_event, serialized): a disjunction 'dispatch || schedule' contains the dispatch text, so
+// the dispatch reading alone would call it dispatch-only. The two pack producers' conditions are evaluated in
+// that witness. Every such fleet-pool job has a row at its own declared timeout, and every row names such a
 // job: a timeout edit, a newly scheduled job, or a job that stops being scheduled is RED until the row moves.
+fn job_condition_text(j: Job) -> String {
+  match j.if_condition { Present { value: v } => v  Absent => "" }
+}
+
+fn may_start_on_a_schedule(j: Job) -> Bool {
+  !admits_only_a_dispatch(j: j)
+    || string_contains(s: job_condition_text(j: j), pattern: serialize_expression(expression: fleet_converge_schedule_event))
+}
+
 fn scheduled_fleet_pool_jobs() -> List<Job> {
-  filter(fleet_converge_workflow.jobs, j => job_selects_fleet_pool(j: j) && !admits_only_a_dispatch(j: j))
+  filter(fleet_converge_workflow.jobs, j => job_selects_fleet_pool(j: j) && may_start_on_a_schedule(j: j))
 }
 
 fn row_names_job(r: FleetConvergeAutonomousJobRow, j: Job) -> Bool {
