@@ -6087,7 +6087,11 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         out_of_scope: "No signing infrastructure; a --version string is not provenance on its own.",
         handback: "The join consumed by the assessment, with the delivery premise bound to the real steps rather than their names."
       ), on: "2026-11-24", note: "Premise correction, Manager B ruling 2026-11-24: the row read 'It resumes when the retirement route lands; its consumers are that route's blockers, terminal and receipt', asserting a route that had landed. Measured at origin/main 65230868362d in a non-shallow full clone: the assessment closure was NEVER MERGED -- pickaxe over the main lineage (git log origin/main -S<symbol> -- dag src) gives code hits=0 (LocalPopulationUnavailable hits=1 and srv2_host_retirement hits=1, both the roadmap prose commit a6f10a8f5d / gunbc#11864 itself; ConvergenceAssessment hits=0), and the named carrier greps assessment hits=0, blocker hits=0. The closure was authored 2026-09-19 (ef298b6621c3, 721fd46dda00), survives only on origin/session/still-swift-642 and the session/quiet-moth-644 family, and its covering PRs gunbc#11680, gunbc#11688, gunbc#11699 and gunbc#11693 were closed UNMERGED by gunbai-bot[bot] on 2026-09-20 with no stated reason; base-deletion auto-close is ruled out (three bases were main; #11693's base session/quiet-moth-644 still exists at tip e346b877b545, unmerged). The closure is this join's unaccepted prerequisite, carried by fleet-srv2-retirement-completion's re-derivation first slice; if it is cut as its own row, that row is this node's prerequisite edge. Filed as a class at gunbc.recurring_failure_mode.a_roadmap_row_asserts_landed_code_that_exists_only_on_an_unmerged_branch.")),
-      dispatch: dispatchable(),
+      // DECLARED, NOT DISPATCHED: held until the prerequisite -- the host-retirement assessment
+      // closure re-derived on current main by the first slice of fleet-srv2-retirement-completion
+      // -- is accepted. Dispatch is absent, so the typed field reads NotDispatchable
+      // (roadmap_authority: match dispatch { Absent => NotDispatchable }), matching the boundary
+      // prose; the same hold form the "defaults to NotDispatchable" rows already use.
       parent: in_project(project: "fabric-application-authority", contribution: "The fabric decides placement from observed fleet facts; fleet health, convergence and hardware observation are those facts."),
     ),
     roadmap_node(
