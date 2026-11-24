@@ -9,12 +9,18 @@ import gunbc.audit_verdict {
   clause_verdict_rung,
 }
 import gunbc.factory_attempt_execution_on_fabric_audit {
+  ArmDelete,
+  ArmKeep,
+  ArmReHome,
+  Delete,
+  Keep,
+  ReHome,
   factory_attempt_all_clauses_delivered,
   factory_attempt_clause_count,
   factory_attempt_clauses,
   factory_attempt_delete_count,
+  factory_attempt_disposition_arm,
   factory_attempt_keep_count,
-  factory_attempt_mappings_each_answer_exactly_one,
   factory_attempt_progress_count,
   factory_attempt_rehome_count,
   factory_attempt_state_mappings,
@@ -176,20 +182,28 @@ test fn verdict_rung_match_discriminates_three_rungs() -> Bool {
     })
 }
 
-// The mapping's integrity, FALSIFIABLE THREE WAYS (review 98063 retired the disjunction-of-predicates
-// check — no data could ever redden it; gunbc.design_argument::fail_closed — a covering control must be
-// able to fail). (1) per-arm counts: each of Delete / ReHome / Keep has at least one row, and a count
-// drops to zero when an arm's rows are deleted — erasing every ReHome row, for instance, would erase the
-// metering and work-product decisions the realization-home ruling must carry, and reds here; (2) every
-// row answers EXACTLY ONE arm: if an arm's typed match is edited wrong, some row stops answering exactly
-// one and this reads false; (3) the arms are TYPED matches on FactoryStateDisposition, not string
-// comparisons — a mistyped literal cannot silently return false. The recommendations remain
+// THE DISPOSITION ARM, exercised on CONSTRUCTED dispositions (gunbc.design_argument::consumption —
+// exercise behavior, not existence): the one match in gunbc.factory_attempt_execution_on_fabric_audit must
+// answer each constructed recommendation with its own typed arm. Discriminating (gunbc.design_argument::
+// fail_closed): edit the match and a constructed disposition answers with the wrong arm — no string or
+// number is involved, and a mistyped arm name does not compile.
+
+test fn disposition_arm_discriminates_constructed_recommendations() -> Bool {
+  factory_attempt_disposition_arm(d: Delete { because: "probe" as NonEmptyStr }) == ArmDelete
+    && factory_attempt_disposition_arm(d: ReHome { needs: "probe" as NonEmptyStr }) == ArmReHome
+    && factory_attempt_disposition_arm(d: Keep { why: "probe" as NonEmptyStr }) == ArmKeep
+}
+
+// The mapping's covering control, FALSIFIABLE BY DATA (review 98067 deleted the exactly-one-variant fold —
+// a closed sum holds exactly one variant at every site, so that check was a decoration no input could
+// redden, gunbc.design_argument::guarantee_ladder). A per-arm count falls to zero when an arm's rows are
+// deleted: erasing every ReHome row — which would erase the metering and work-product decisions the
+// realization-home ruling must carry — drops the count and reds this. The recommendations are
 // recommendations; the decision's home is the operator's ruling (gunbc.design_ruling) and the work item.
 
-test fn mappings_per_arm_counts_nonzero_and_each_row_answers_exactly_one() -> Bool {
+test fn mappings_per_arm_counts_nonzero() -> Bool {
   let ms = factory_attempt_state_mappings()
   factory_attempt_delete_count(ms: ms) > 0
     && factory_attempt_rehome_count(ms: ms) > 0
     && factory_attempt_keep_count(ms: ms) > 0
-    && factory_attempt_mappings_each_answer_exactly_one(ms: ms)
 }
