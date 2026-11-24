@@ -1,6 +1,7 @@
 module gunbc.provisioning.network_install_receipt
 
 import std.types { Bool, EpochMs, HttpStatus, Int, List, NonEmptyStr, String }
+import std.optional { Absent, Present }
 import extdeps.ietf.http_semantics { http_status_is_success }
 import std.algebra { FreeSemigroup, non_empty_to_list, skip }
 import extdeps.network.mac { Eui48Address, mac_addresses_are_equal }
@@ -97,8 +98,15 @@ type InstallerRecordReading
   | InstallerRecordAbsent
   | InstallerRecordUnread { why: NonEmptyStr }
 
+// The host's interface MACs as the `ip link` leg reported them. A leg that was NEVER dispatched is Unread with
+// its cause: "the host does not carry the client's MAC" is a claim about the host, and a leg we never handed to
+// the host asked the host nothing, so it cannot support that claim (gunbc.design_argument::fail_closed).
+type InstalledHostInterfaceMacs
+  = InterfaceMacsObserved { macs: List<Eui48Address> }
+  | InterfaceMacsUnread { reason: NonEmptyStr }
+
 type InstalledHostReading {
-  interface_macs: List<Eui48Address>
+  interface_macs: InstalledHostInterfaceMacs
   root: InstalledRootReading
   installer_record: InstallerRecordReading
   secure_boot: SecureBootObservation
@@ -140,6 +148,7 @@ type NetworkInstallGap
   | MemberNotDelivered { served_path: NonEmptyStr }
   | SeedNotServed { path: NonEmptyStr }
   | HostDoesNotCarryClientMac { client: Eui48Address }
+  | HostInterfaceMacsUnread { reason: NonEmptyStr }
   | InstalledRootNotRead { why: NonEmptyStr }
   | InstalledRootNotOnBlockDevice { source: NonEmptyStr }
   | InstalledRootOnNonDiskDevice { device: InstalledRootDevice }
@@ -295,7 +304,11 @@ fn network_install_fetch_gaps(subject: NetworkInstallSubject, fetches: List<Inst
 }
 
 fn network_install_mac_gaps(subject: NetworkInstallSubject, host: InstalledHostReading) -> List<NetworkInstallGap> {
-  if any(host.interface_macs, m => mac_addresses_are_equal(left: m, right: network_install_client(subject: subject))) { [] } else { [HostDoesNotCarryClientMac { client: network_install_client(subject: subject) }] }
+  match host.interface_macs {
+    InterfaceMacsObserved { macs: macs } =>
+      if any(macs, m => mac_addresses_are_equal(left: m, right: network_install_client(subject: subject))) { [] } else { [HostDoesNotCarryClientMac { client: network_install_client(subject: subject) }] }
+    InterfaceMacsUnread { reason: reason } => [HostInterfaceMacsUnread { reason: reason }]
+  }
 }
 
 // AN INSTALLED ROOT SITS ON A DISK: every device under it is a disk, a partition, an LVM volume or a dm-crypt
