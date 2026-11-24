@@ -527,15 +527,6 @@ fn required_build_cell_lifetime_sample_wire(sample: RequiredBuildCellLifetimeSam
   ], "\n")
 }
 
-// A lifetime-sample field is read through the same Optional that `first()` answers for every other
-// field of the wire: an absent field decodes to nothing, never to an empty digest.
-fn lifetime_sample_field_content_hash(fields: List<String>, n: Int) -> ContentHash? {
-  match fields.skip(n: n).first() {
-    Absent => Absent
-    Present { value: digest } => content_hash_from_structural_digest(digest: digest)
-  }
-}
-
 fn decode_required_build_cell_lifetime_sample(wire: String) -> RequiredBuildCellLifetimeSampleDecode {
   let fields = split(s: wire, delimiter: "\n")
   if length(xs: fields) != 7 {
@@ -546,34 +537,40 @@ fn decode_required_build_cell_lifetime_sample(wire: String) -> RequiredBuildCell
       Present { value: generation_wire } => match parse_int(s: generation_wire) {
       Absent => RequiredBuildCellLifetimeSampleUndecodable
       Present { value: generation } =>
-        match lifetime_sample_field_content_hash(fields: fields, n: 3) {
+        match fields.skip(n: 3).first() {
           Absent => RequiredBuildCellLifetimeSampleUndecodable
-          Present { value: reservation_content } =>
-            match lifetime_sample_field_content_hash(fields: fields, n: 5) {
-              Absent => RequiredBuildCellLifetimeSampleUndecodable
-              Present { value: members_content } =>
-                match fields.first() {
+          Present { value: reservation_digest } => match content_hash_from_structural_digest(digest: reservation_digest) {
+            Absent => RequiredBuildCellLifetimeSampleUndecodable
+            Present { value: reservation_content } =>
+              match fields.skip(n: 5).first() {
+                Absent => RequiredBuildCellLifetimeSampleUndecodable
+                Present { value: members_digest } => match content_hash_from_structural_digest(digest: members_digest) {
                   Absent => RequiredBuildCellLifetimeSampleUndecodable
-                  Present { value: slot_key } => if slot_key == "" { RequiredBuildCellLifetimeSampleUndecodable } else {
-                    match fields.skip(n: 2).first() {
+                  Present { value: members_content } =>
+                    match fields.first() {
                       Absent => RequiredBuildCellLifetimeSampleUndecodable
-                      Present { value: payload } => if payload == "" { RequiredBuildCellLifetimeSampleUndecodable } else {
-                        match fields.skip(n: 4).first() {
+                      Present { value: slot_key } => if slot_key == "" { RequiredBuildCellLifetimeSampleUndecodable } else {
+                        match fields.skip(n: 2).first() {
                           Absent => RequiredBuildCellLifetimeSampleUndecodable
-                          Present { value: cell } => if cell == "" { RequiredBuildCellLifetimeSampleUndecodable } else {
-                            match fields.skip(n: 6).first() {
+                          Present { value: payload } => if payload == "" { RequiredBuildCellLifetimeSampleUndecodable } else {
+                            match fields.skip(n: 4).first() {
                               Absent => RequiredBuildCellLifetimeSampleUndecodable
-                              Present { value: boundary } => if boundary == "" { RequiredBuildCellLifetimeSampleUndecodable } else {
-                                RequiredBuildCellLifetimeSampleDecoded {
-                                  sample: RequiredBuildCellLifetimeSample {
-                                    slot_key: slot_key as NonEmptyStr,
-                                    generation: generation,
-                                    reservation_payload: payload as NonEmptyStr,
-                                    reservation_content: reservation_content,
-                                    cell: cell as CellId,
-                                    cell_members_content: members_content,
-                                    resource_boundary_digest: boundary as NonEmptyStr,
-                                  },
+                              Present { value: cell } => if cell == "" { RequiredBuildCellLifetimeSampleUndecodable } else {
+                                match fields.skip(n: 6).first() {
+                                  Absent => RequiredBuildCellLifetimeSampleUndecodable
+                                  Present { value: boundary } => if boundary == "" { RequiredBuildCellLifetimeSampleUndecodable } else {
+                                    RequiredBuildCellLifetimeSampleDecoded {
+                                      sample: RequiredBuildCellLifetimeSample {
+                                        slot_key: slot_key as NonEmptyStr,
+                                        generation: generation,
+                                        reservation_payload: payload as NonEmptyStr,
+                                        reservation_content: reservation_content,
+                                        cell: cell as CellId,
+                                        cell_members_content: members_content,
+                                        resource_boundary_digest: boundary as NonEmptyStr,
+                                      },
+                                    }
+                                  }
                                 }
                               }
                             }
@@ -583,8 +580,8 @@ fn decode_required_build_cell_lifetime_sample(wire: String) -> RequiredBuildCell
                     }
                   }
                 }
+              }
             }
-        }
     } }
   }
 }
