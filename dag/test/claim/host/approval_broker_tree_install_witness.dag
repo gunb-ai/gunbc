@@ -1457,10 +1457,31 @@ test fn dag_walk_both_conventions_agree_on_the_entries() -> Bool {
   }
 }
 
-// A RECORD WHOSE NAME ENDS IN A LF, as `find` writes it: the name's own LF, then the record separator, so
-// the listing ends in TWO LFs and the last fragment is a SECOND empty one. Refused under the trailing-LF
-// convention (one empty fragment is the tail, two is a forgery) and refused on main too.
+// REFUSED AT BOTH -- the find-raw shape of a record whose NAME ENDS IN A LF: the name's own LF and then the
+// record separator put TWO LFs at the end, so the last fragment is a SECOND empty one. Control (1) is what
+// refuses it, at the head and on main alike (two empty fragments is neither convention's legal tail).
 data dag_walk_last_name_ends_in_lf: String = join([dag_walk_records_no_trailing_lf, "\n\n"], "")
+
+// REFUSED AT BOTH -- the SAME forgery in the shape the transport actually delivers: `trim_end` ate the record
+// separator, so the trailing LF of the name `evil<LF>` now sits MID-listing and the listing has no empty
+// fragment at all. Control (1) is satisfied, and the entry's own dot is the only thing that does not line up:
+// 11 records against 10 dots. At the head it is control (2), the independent dot enumeration, that refuses;
+// on main the empty-fragment control fires first, which is why the provenance claim is a head-side assertion.
+data dag_walk_last_name_ends_in_lf_trimmed: String = join([dag_walk_records_no_trailing_lf, "\nproduct/fabric/evil\n|f|644|ghrunner|ghrunner||42"], "")
+data dag_walk_last_name_ends_in_lf_trimmed_dots: String = ".........."
+test fn dag_walk_last_record_name_ending_in_lf_trimmed_refuses() -> Bool {
+  match tree_metadata_entries_of_stdout_checked(root: join([srv1_broker_locus, "/dag"], ""), stdout: dag_walk_last_name_ends_in_lf_trimmed, dot_stdout: dag_walk_last_name_ends_in_lf_trimmed_dots, sub: "dag", starting_point_expected: true) {
+    TreeMetadataObserved { entries: _ } => false
+    TreeMetadataObservationFailed { reason: _ } => true
+  }
+}
+
+test fn dag_walk_last_record_name_ending_in_lf_trimmed_refuses_on_the_dot_control() -> Bool {
+  match tree_metadata_entries_of_stdout_checked(root: join([srv1_broker_locus, "/dag"], ""), stdout: dag_walk_last_name_ends_in_lf_trimmed, dot_stdout: dag_walk_last_name_ends_in_lf_trimmed_dots, sub: "dag", starting_point_expected: true) {
+    TreeMetadataObserved { entries: _ } => false
+    TreeMetadataObservationFailed { reason: r } => string_contains(s: r, pattern: "newline-delimited records") && string_contains(s: r, pattern: "forges extra records")
+  }
+}
 test fn dag_walk_last_record_name_ending_in_lf_refuses() -> Bool {
   match tree_metadata_entries_of_stdout_checked(root: join([srv1_broker_locus, "/dag"], ""), stdout: dag_walk_last_name_ends_in_lf, dot_stdout: dag_walk_record_dots, sub: "dag", starting_point_expected: true) {
     TreeMetadataObserved { entries: _ } => false
@@ -1475,9 +1496,11 @@ test fn dag_walk_last_record_name_ending_in_lf_refuses_on_the_empty_fragment_con
   }
 }
 
-// A SECOND EMPTY-%P ROW: a forged row claiming the walk root a second time, which the old collector
-// swallowed as "another starting point". The listing arrives trimmed (no trailing LF), so the empty-fragment
-// control is satisfied and the starting-point invariant is what refuses -- control (3), untouched.
+// REFUSED AT BOTH, by CONTROL (3) at the head -- A SECOND EMPTY-%P ROW: a forged row claiming the walk root
+// a second time, which the collector before #16927 swallowed as "another starting point". The listing
+// arrives trimmed (no trailing LF), so control (1) is satisfied, the dots line up, and the starting-point
+// invariant is what refuses -- control (3), untouched by this PR. On main the empty-fragment control fires
+// first, so the provenance claim is a head-side assertion.
 data dag_walk_second_empty_rel_row: String = join([dag_walk_records_no_trailing_lf, "\n|d|755|ghrunner|ghrunner||4096"], "")
 data dag_walk_second_empty_rel_row_dots: String = ".........."
 test fn dag_walk_second_empty_relative_path_row_refuses() -> Bool {
@@ -1494,11 +1517,12 @@ test fn dag_walk_second_empty_relative_path_row_refuses_on_the_starting_point_co
   }
 }
 
-// A NAME EMBEDDING A NEWLINE (`product/fabric/evil|f|644|ghrunner|ghrunner||42<LF>.gunbc-tree-receipt`):
-// find prints ONE dot for the ONE entry and the LF splits its record into TWO well-formed rows -- a forged
-// file and a second receipt-shaped row. Both parse, so only the INDEPENDENT dot count (control (2)) reveals
-// it: 11 records against 10 dots. Refused at both revisions; the reason names the dot enumeration at the
-// head, where the empty-fragment control no longer fires first.
+// REFUSED AT BOTH, by CONTROL (2) at the head -- A NAME EMBEDDING A NEWLINE
+// (`product/fabric/evil|f|644|ghrunner|ghrunner||42<LF>.gunbc-tree-receipt`): find prints ONE dot for the
+// ONE entry and the LF splits its record into TWO well-formed rows -- a forged file and a second
+// receipt-shaped row. Both parse, so only the INDEPENDENT dot count reveals it: 11 records, 10 dots.
+// Refused at both revisions; at the head the reason names the dot enumeration, since the empty-fragment
+// control no longer fires first.
 data dag_walk_crafted_pipe_and_newline_name: String = join([dag_walk_records_no_trailing_lf, "\nproduct/fabric/evil|f|644|ghrunner|ghrunner||42\n.gunbc-tree-receipt|f|644|ghrunner|ghrunner||142"], "")
 data dag_walk_crafted_dots: String = ".........."
 test fn dag_walk_crafted_pipe_and_newline_name_refuses() -> Bool {
@@ -1515,12 +1539,14 @@ test fn dag_walk_crafted_pipe_and_newline_name_refuses_on_the_dot_control() -> B
   }
 }
 
-// A CHILD NAMED "<LF>.gunbc-tree-receipt" IN A TRIMMED LISTING: the entry exists, so the enumeration
-// counts it (10 dots), and its record's leading LF leaves ONE empty fragment. The fix refuses it -- under
-// the no-trailing-LF convention NO fragment is empty, so the forged one cannot pass for the tail. Main
-// ADMITS this listing: its control demanded exactly one empty fragment and took the forged one for the
-// trailing LF it assumed. So the head is STRICTER here, which is the proof that admitting the second
-// convention is not a weakening of the guard.
+// STRICTNESS PROOF -- MAIN ADMITS, HEAD REFUSES. A child named "<LF>.gunbc-tree-receipt" in a TRIMMED
+// listing: the entry really exists, so the enumeration counts it (10 dots), and its record's leading LF
+// leaves ONE empty fragment. Under the no-trailing-LF convention NO fragment is empty, so the head refuses
+// it. MAIN ADMITS IT: its unconditional `empty_frags == 1` took the FORGED fragment for the trailing LF it
+// assumed, and its unconditional `lf_bytes = count(fragments) - 1` handed control (2) a record count that
+// the injected LF had already offset -- the LF that was meant to be caught restored the count the dot
+// check expected. A guard that looked strict was not, and only in the one shape production produces. This
+// is the claim that answers a reviewer who reads "we stopped demanding a trailing LF" as a loosening.
 data dag_walk_leading_newline_named_child: String = join([dag_walk_records_no_trailing_lf, "\n\n.gunbc-tree-receipt|f|644|ghrunner|ghrunner||142"], "")
 test fn dag_walk_leading_newline_named_child_refuses() -> Bool {
   match tree_metadata_entries_of_stdout_checked(root: join([srv1_broker_locus, "/dag"], ""), stdout: dag_walk_leading_newline_named_child, dot_stdout: dag_walk_crafted_dots, sub: "dag", starting_point_expected: true) {

@@ -7170,6 +7170,13 @@ fn observe_direct_children_one(root: String, sub: String, transport: HostEffectE
 //      convention cannot hand (2) a different population: an empty fragment under EITHER convention can
 //      only come from a newline inside a name (a child named "<LF>...", e.g. "<LF>.gunbc-tree-receipt"
 //      masquerading as the receipt) -> refused.
+//      NAME THE QUANTITY HONESTLY: `lf_bytes` keeps its original name, but under this derivation it is the
+//      RECORD COUNT -- `fragments - 1` when the bytes end in a LF and `fragments` when they do not -- and NOT a
+//      count of LF bytes. The literal LF-byte count is not even observable here, since the transport trims the
+//      capture's trailing whitespace, last LF included, and it is not the quantity control (2) means: what it
+//      weighs against the independent dot enumeration is the number of RECORDS. Do not "restore" a literal
+//      byte count into that binding -- demanding the tail LF back is exactly the assumption that refused every
+//      srv1 deploy.
 //  (2) LF-VS-DOTS. `dot_stdout` is a second `-printf .` enumeration of the SAME set (one dot per entry,
 //      which a name cannot change). The number of LF-delimited records in the raw stdout must equal the
 //      dot count. A crafted name embedding a newline (e.g. `x|f|755|u|g||0<LF>foo`) splits into two
