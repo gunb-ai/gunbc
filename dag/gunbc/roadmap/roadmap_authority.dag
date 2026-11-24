@@ -7200,11 +7200,11 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "dag/gunbc/compute/remote_build.dag"),
       line: ticket(t: fields(
         headline: "A CI job's build executes on srv15, and its reservation is released",
-        boundary: "Owned by the remote-build lane, after bobo-first-boot-handoff-to-remote-build: srv15's join (tag:ci, trusted host key, memory reading, roster admission) and its first live build. The CI bridge runs the GitHub job on a hosted or placeholder runner and sends the build to a physical executor (remote-build-ci-bridge), so srv15 is never the GitHub runner; acceptance links one CI job and its revision to a successful build executed on srv15 and observes the capacity reservation released afterwards.",
+        boundary: "Owned by the remote-build lane, after bobo-first-boot-handoff-to-remote-build: srv15's join (tag:ci, trusted host key, memory reading, roster admission) and its first live build. The CI bridge runs the GitHub job on a hosted or placeholder runner and sends the build to a physical executor (remote-build-ci-bridge), so srv15 is never the GitHub runner; acceptance links one CI job and its revision to a successful build executed on srv15 and observes the capacity reservation released afterwards. The build may go through the admitted bridge or its durable successor (the route work-exec-2 and work-exec-4 move it onto), whichever is live when this runs, so the row does not depend on which lands first; pinning to srv15 restricts eligibility to that one host and is refused, never filled elsewhere, when srv15 has no capacity.",
         displaced_cost: "Without it the milestone could be accepted on a handoff while srv15 has executed nothing, or on a hosted job whose build ran elsewhere.",
-        first_slice: "The join rows the handoff names, then one build pinned to srv15 through the bridge.",
-        red_control: "OPEN: not yet measured. The pair to execute: a CI job whose build executed on another host does not satisfy this row; the job whose build record names srv15, with its reservation released, does.",
-        out_of_scope: "The bridge itself and its cutover; any other host.",
+        first_slice: "The join rows the handoff names, then one build pinned to srv15 through the admitted bridge or its durable successor.",
+        red_control: "OPEN: not yet measured. The pair to execute: a CI job whose build executed on another host does not satisfy this row, and a pin to srv15 while srv15 has no capacity is refused rather than filled elsewhere; the job whose execution record names the job, the revision and srv15 as the actual executor, with its reservation observed released, does.",
+        out_of_scope: "The bridge itself, its cutover to the durable route, and any other host.",
         handback: "One CI build executed on srv15, linked to its job and revision, with its capacity returned."
       )),
       dispatch: dispatchable(),
