@@ -2756,17 +2756,21 @@ test fn witness_unprofiled_principal_renders_the_undisplayable_marker_not_the_la
     profiles: [])) {
     EmitRejected { reason: _ } => false
     EmitOk { html: h } =>
-      match string_at(parts: split(s: h, delimiter: "<aside class=\"issue-rail\""), index: 0) {
-        Absent => false
-        Present { value: main } =>
-          string_contains(s: main, pattern: "unrecognized principal")
-            && string_contains(s: main, pattern: ">unrecognized principal</span>")
-            && string_contains(s: main, pattern: "principal-undisplayable")
-            && !string_contains(s: main, pattern: "reassigned for merge to principal:")
-            && !string_contains(s: main, pattern: "returned to principal:")
-            && !string_contains(s: main, pattern: "claimed by principal:")
-      }
+      string_contains(s: h, pattern: "unrecognized principal")
+        && string_contains(s: fx_main_column_of(html: h), pattern: ">unrecognized principal</span>")
+        && string_contains(s: fx_main_column_of(html: h), pattern: "principal-undisplayable")
+        && !string_contains(s: fx_main_column_of(html: h), pattern: "reassigned for merge to principal:")
+        && !string_contains(s: fx_main_column_of(html: h), pattern: "returned to principal:")
+        && !string_contains(s: fx_main_column_of(html: h), pattern: "claimed by principal:")
   }
+}
+
+// THE MAIN COLUMN ONLY: everything the page renders before the rail element, so an identifier that
+// belongs to the rail's own markup cannot mask a leak in the column a row is acted from (and the
+// rail is where it would hide). string_at returns "" when the delimiter is absent, which makes the
+// positive assertions below fail rather than pass vacuously.
+fn fx_main_column_of(html: String) -> String {
+  string_at(parts: split(s: html, delimiter: "<aside class=\"issue-rail\""), index: 0)
 }
 
 // THE MARKER IS ONE SPELLING FROM ONE PROJECTION: the assignee chip's avatar face and its hover
