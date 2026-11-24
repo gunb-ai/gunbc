@@ -209,7 +209,7 @@ test fn operator_row_with_an_unnamed_extra_edge_still_refuses() -> Bool {
       )
     ])
   ) {
-    Accepted { value: valid, diagnostics: _ } => !valid
+    Accepted { value: valid, diagnostics: _ } => valid == false
     Rejected { diagnostics: _ } => true
   }
 }
@@ -235,7 +235,7 @@ test fn operator_row_with_a_duplicated_precedence_edge_refuses() -> Bool {
       )
     ])
   ) {
-    Accepted { value: valid, diagnostics: _ } => !valid
+    Accepted { value: valid, diagnostics: _ } => valid == false
     Rejected { diagnostics: _ } => true
   }
 }
@@ -348,7 +348,7 @@ test fn operator_row_with_a_duplicated_chains_edge_refuses() -> Bool {
       )
     ])
   ) {
-    Accepted { value: valid, diagnostics: _ } => !valid
+    Accepted { value: valid, diagnostics: _ } => valid == false
     Rejected { diagnostics: _ } => true
   }
 }

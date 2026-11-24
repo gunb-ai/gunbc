@@ -2964,12 +2964,15 @@ fn target_operator_realization_row_wire_schema_valid(row: Node) -> Outcome<Bool>
 
 fn target_operator_chains_from_wire_node(wire: Node) -> Outcome<Optional<Bool>> {
   match wire.kind {
-    TypeNode { connective: Atom { identity: ^target_operator_chains_yes } } =>
-      outcome_accepted(optional_present(value: true))
-    TypeNode { connective: Atom { identity: ^target_operator_chains_no } } =>
-      outcome_accepted(optional_present(value: false))
-    _ =>
-      outcome_rejected(target_operator_realization_wire_malformed_diagnostic(row: wire))
+    TypeNode { connective: Atom { identity: id } } =>
+      if id == ^target_operator_chains_yes {
+        outcome_accepted(optional_present(value: true))
+      } else if id == ^target_operator_chains_no {
+        outcome_accepted(optional_present(value: false))
+      } else {
+        outcome_rejected(target_operator_realization_wire_malformed_diagnostic(row: wire))
+      }
+    _ => outcome_rejected(target_operator_realization_wire_malformed_diagnostic(row: wire))
   }
 }
 
@@ -6983,7 +6986,7 @@ fn target_value_expr_comparison_chain_refuses(
     operands: operands
   ) {
     match target_operator_realization_chains(catalog: catalog, op: enclosing_op) {
-      Present { value: declared } => !declared
+      Present { value: declared } => declared == false
       Absent => true
     }
   } else {
