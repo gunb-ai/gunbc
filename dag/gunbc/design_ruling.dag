@@ -1331,8 +1331,16 @@ data v1_seed_growth_for_declared_transport_ceiling_admitted: DesignRuling = Desi
   provenance: "Answers the PURPOSE objection raised by review 97148 (REQUEST_CHANGES) on gunb-ai/gunbc#16737, which asked whether a seed change passes the v1 semantics freeze. The operator's words, verbatim, given directly to the lane manager neat-badger-614 in chat on 2026-11-21: \"ah sorry - yes you can admit the seed change.\" principal:google-oidc/accounts/116084671989231734979. It covers both halves of that lane's seed growth: the transport-shell grammar field `wall_deadline:` on gunb-ai/gunbc#16842 (row gunbc.transport_shell_wall_deadline_field_seed_growth) and the interpreter's per-leg kill plus overrun decode on gunb-ai/gunbc#16737 (row carried there). The purposive case, in the lane's words: before the field, the seed armed a per-leg wall-clock kill by looking up a PARAMETER NAME at dispatch time, so the bound existed only where a caller happened to use one spelling and no bound at all otherwise; declaring the field on the transport retires that spelling as an authority. A transport that does not declare the field keeps main's behaviour byte for byte."
 }
 
+data heal_mirror_convergence_held_until_merge_base_build_is_measured_2026_11_24: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "heal_mirror_convergence_held_until_merge_base_build_is_measured_2026_11_24"),
+  decided: "2026-11-24",
+  governs: decl_ref(module_path: "gunbc.design_document", decl_name: "ci_contract_blocks"),
+  provenance: "Operator words of 2026-11-24, relayed by lane manager neat-badger-614, answering escalation msg_bb054e96 raised by lane manager royal-newt-240 on the heal build-before-converge ordering: \"yeah your recommendations are fine\". The recommendation put in front of the operator was HOLD, with four options offered (approve now, hold pending measurement, hold to a later ruling, decline), so this records an endorsement of the recommended hold and is NOT an independent design statement about the ordering of heal steps. It decides: no change to the regenerator build step in heal, and no worker staffed on roadmap node heal-mirror-convergence-under-unbuildable-checkout, until that node measures whether building the producer at the merge base collides with the base-start ruling carried by roadmap node heal-bootstrap-seed-reuse. The 2026-11-24 incident repair on pull request 16895, converging src/v1/stage0/src/v1_std_core.rs, was authorised separately and is not covered by this hold. A timed-out default approval would not have carried this ruling; the operator supplied their own words."
+}
+
 fn design_rulings() -> List<DesignRuling> {
   [
+    heal_mirror_convergence_held_until_merge_base_build_is_measured_2026_11_24,
     declared_intent_separates_independent_choices_2026_11_23,
     value_disposition_and_named_binding_use_are_explicit_2026_11_23,
     type_relationships_are_declared_and_transparent_reference_is_explicit_2026_11_23,
