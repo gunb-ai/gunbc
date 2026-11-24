@@ -31,7 +31,7 @@ import gunbc.action_use_admission {
   action_use_admitted, action_use_admission_reason, admit_action_release, admit_action_release_against, admit_realized_action_use,
   admit_workflow_action_uses, realized_workflow_reading, realized_distinct_uses,
   upload_artifact_action, checkout_action, setup_rust_action, cache_save_action,
-  download_artifact_action, google_auth_action,
+  download_artifact_action, google_auth_action, upload_pages_artifact_action, deploy_pages_action,
   realized_use_is_a_repository_selection,
 }
 import gunbc.fleet.fleet_converge_workflow { fleet_converge_workflow }
@@ -295,7 +295,7 @@ fn census_holds(c: RealizedCensus) -> Bool {
 // a claim, or a claim naming a file that is gone, refuses here, by name.
 data realized_workflow_files: List<String> = [
   "fleet-converge.yml", "heal.yml", "instrument-dispatch.yml", "microvm-shakedown.yml", "witnesses.yml",
-  "branch-run-grant-broker.yml", "drift-watch.yml", "heal-publish.yml"
+  "branch-run-grant-broker.yml", "drift-watch.yml", "heal-publish.yml", "gunb-ai-pages.yml"
 ]
 
 fn listed_workflow_files() -> List<String> {
@@ -435,6 +435,15 @@ test fn census_drift_watch_uses_are_modeled_and_executed_exactly() -> Bool {
   census_holds(c: c)
     && any(c.admitted_texts, t => t == action_release_uses_text(action_release: checkout_action))
     && any(c.admitted_texts, t => t == action_release_uses_text(action_release: setup_rust_action))
+}
+
+// GUNB-AI-PAGES IS THE ONLY WORKFLOW THAT DEPLOYS. Its two Pages actions are pinned here so the census
+// reads them as admitted selections, and the composite upload's nested upload-artifact is admitted with it.
+test fn census_gunb_ai_pages_uses_are_modeled_and_executed_exactly() -> Bool {
+  let c = census_file(name: "gunb-ai-pages.yml")
+  census_holds(c: c)
+    && any(c.admitted_texts, t => t == action_release_uses_text(action_release: upload_pages_artifact_action))
+    && any(c.admitted_texts, t => t == action_release_uses_text(action_release: deploy_pages_action))
 }
 
 // HEAL-PUBLISH IS THE ONLY WORKFLOW THAT DOWNLOADS. It carries the heal artifact's publish path

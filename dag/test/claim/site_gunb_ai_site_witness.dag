@@ -1,0 +1,50 @@
+module test.claim.site_gunb_ai_site_witness
+
+// gunbc.design_argument::consumption — the executed witness for gunbc.site.gunb_ai_site, the served set the deploy
+// uploads. Each claim reads site_render(), the same value site_write writes.
+//
+// THE SERVED SET IS THE PAGE'S LINKS. A path is published because index.html links it: the set is exactly
+// four files, index.html is one of them, and every other path is linked from index.html's own bytes. A
+// path the page does not link reddens this.
+//
+// RUN: gunbc run --source-root dag --source-root src/v2 --entry dag/test/claim/site_gunb_ai_site_witness.dag --claim-run
+
+import std.types { Bool, Int, List, String }
+import std.algebra { string_contains }
+import gunbc.site.gunb_ai_site { site_render, SiteRender, SiteRendered, SiteRenderRefused, SiteFile }
+import gunbc.site.gunb_ai_page { output_name }
+
+fn rendered_files() -> List<SiteFile> {
+  match site_render() {
+    SiteRendered { files } => files
+    SiteRenderRefused { path: _, reason: _ } => []
+  }
+}
+
+fn file_count(files: List<SiteFile>) -> Int {
+  fold(files, init: 0, f: fn(acc, _) { acc + 1 })
+}
+
+fn index_bytes() -> String {
+  fold(rendered_files(), init: "", f: fn(acc, f) { if f.path == output_name { f.bytes } else { acc } })
+}
+
+test fn witness_the_site_renders() -> Bool {
+  match site_render() {
+    SiteRendered { files: _ } => true
+    SiteRenderRefused { path: _, reason: _ } => false
+  }
+}
+
+test fn witness_the_served_set_is_four_files_with_the_page_at_the_root() -> Bool {
+  let files = rendered_files()
+  file_count(files: files) == 4
+    && any(files, f => f.path == "index.html")
+    && all(files, f => f.bytes != "")
+}
+
+test fn witness_every_served_asset_is_linked_by_the_page() -> Bool {
+  let page = index_bytes()
+  all(rendered_files(), f => f.path == output_name
+    || string_contains(s: page, pattern: join(["\"", f.path, "\""], "")))
+}

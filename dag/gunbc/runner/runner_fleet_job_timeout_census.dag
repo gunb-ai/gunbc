@@ -72,11 +72,13 @@ import gunbc.generated_artifact {
   HealWorkflowYamlArtifact,
   HealPublisherWorkflowYamlArtifact,
   DriftWatchWorkflowYamlArtifact,
+  GunbAiPagesWorkflowYamlArtifact,
   BranchRunGrantBrokerWorkflowYamlArtifact,
   HostedRunnerShadowGateYamlArtifact,
 }
 import gunbc.generated_artifact_registry { committed_generated_artifacts }
 import gunbc.witness.compiler_gate_workflow { compiler_gate_workflow }
+import gunbc.site.gunb_ai_pages_workflow { gunb_ai_pages_workflow }
 import gunbc.heal_workflow { heal_workflow_of }
 import gunbc.heal_publisher_workflow { heal_publisher_census_workflow }
 import gunbc.drift_watch_workflow { drift_watch_workflow_of }
@@ -187,7 +189,10 @@ fn fleet_workflow_census_rows() -> List<FleetWorkflowCensusRow> {
         )
       )
     ),
-    [FleetWorkflowCensusRow { artifact: BranchRunGrantBrokerWorkflowYamlArtifact, workflow: branch_run_grant_broker_workflow }]
+    [
+      FleetWorkflowCensusRow { artifact: BranchRunGrantBrokerWorkflowYamlArtifact, workflow: branch_run_grant_broker_workflow },
+      FleetWorkflowCensusRow { artifact: GunbAiPagesWorkflowYamlArtifact, workflow: gunb_ai_pages_workflow() },
+    ]
   )
 }
 

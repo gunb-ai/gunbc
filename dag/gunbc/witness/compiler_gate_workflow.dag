@@ -275,7 +275,8 @@ data compiler_gate_permissions: WorkflowPermissions = WorkflowPermissions {
   pull_requests: none,
   issues: none,
   actions: none,
-  id_token: none
+  id_token: none,
+  pages: none
 }
 
 // THE REQUIRED STATUS IS THE JOB'S OWN CHECK. The repository ruleset requires ONE status,

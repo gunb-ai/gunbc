@@ -485,7 +485,8 @@ fn heal_publisher_job_permissions(pull_requests: PermissionLevel) -> WorkflowPer
     pull_requests: Present { value: pull_requests },
     issues: none,
     actions: Present { value: PermRead },
-    id_token: Present { value: PermWrite }
+    id_token: Present { value: PermWrite },
+    pages: none
   }
 }
 

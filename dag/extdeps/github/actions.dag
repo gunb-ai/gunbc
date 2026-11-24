@@ -147,12 +147,16 @@ type Workflow {
   permissions: WorkflowPermissions?
 }
 
+// `pages` is the GITHUB_TOKEN scope a GitHub Pages deployment needs: actions/deploy-pages requires
+// `pages: write` and `id-token: write` (docs.github.com/en/actions/writing-workflows/workflow-syntax-for-github-actions#permissions,
+// and the deploy-pages README, read 2026-11-24).
 type WorkflowPermissions {
   contents: PermissionLevel?
   pull_requests: PermissionLevel?
   issues: PermissionLevel?
   actions: PermissionLevel?
   id_token: PermissionLevel?
+  pages: PermissionLevel?
 }
 
 type PermissionLevel = PermRead | PermWrite | PermNone
