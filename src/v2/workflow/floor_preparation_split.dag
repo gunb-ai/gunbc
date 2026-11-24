@@ -285,21 +285,23 @@ fn floor_preparation_amount(key: String, text: String) -> FloorPreparationAmount
   }
 }
 
-// The carrier path of the same reading: a duration leaves here as `Millisecond`, never as a count,
-// so the independent readers below fold carriers and unwrap only at their claim or print boundary.
-fn floor_preparation_amount_carrier(amount: FloorPreparationAmount) -> Millisecond {
+// The carrier path of the same reading: a duration leaves here as `Optional<Millisecond>`.
+// A failed read -- a missing or malformed cost field -- is `Absent`, never a believable zero
+// (fail_closed: "no plausible output is fabricated"). Folds add carriers with ms_add_opt, where
+// an Absent part contributes NOTHING because adding nothing is the fold's identity element, not
+// a fabricated 0; a line whose cost field the fold REQUIRES refuses upstream at its own row.
+fn floor_preparation_amount_carrier(amount: FloorPreparationAmount) -> Optional<Millisecond> {
   match amount {
-    Amount { ms: n } => n
-    MissingField { key: _ } => floor_preparation_ms_zero()
-    MalformedValue { key: _, text: _ } => floor_preparation_ms_zero()
+    Amount { ms: n } => Present { value: n }
+    MissingField { key: _ } => Absent {}
+    MalformedValue { key: _, text: _ } => Absent {}
   }
 }
 
-fn floor_preparation_amount_ms(amount: FloorPreparationAmount) -> Int {
-  match amount {
-    Amount { ms: n } => floor_preparation_ms_count(n)
-    MissingField { key: _ } => 0
-    MalformedValue { key: _, text: _ } => 0
+fn floor_preparation_ms_add_opt(acc: Millisecond, part: Optional<Millisecond>) -> Millisecond {
+  match part {
+    Present { value: v } => floor_preparation_ms_add(acc, v)
+    Absent {} => acc
   }
 }
 
@@ -648,12 +650,14 @@ fn floor_preparation_line_ms(line: String) -> Millisecond {
     EntryResolveLine { entry: _, ms: n } => n
     ClaimLine { tag: tag, claim: _, fields: fields } =>
       if tag == floor_preparation_witness_tag {
-        floor_preparation_amount_carrier(floor_preparation_ms_unit_field(fields, "cpu"))
+        floor_preparation_ms_add_opt(floor_preparation_ms_zero(),
+          floor_preparation_amount_carrier(floor_preparation_ms_unit_field(fields, "cpu")))
       } else if tag == floor_preparation_reach_probe_tag {
         floor_preparation_ms_zero()
       } else {
-        floor_preparation_ms_add(
-          floor_preparation_amount_carrier(floor_preparation_ms_field(fields, "fill_cpu_ms")),
+        floor_preparation_ms_add_opt(
+          floor_preparation_ms_add_opt(floor_preparation_ms_zero(),
+            floor_preparation_amount_carrier(floor_preparation_ms_field(fields, "fill_cpu_ms"))),
           floor_preparation_amount_carrier(floor_preparation_ms_field(fields, "marginal_cpu_ms")))
       }
     PhaseLine { phase: phase, fields: fields } =>
@@ -664,8 +668,8 @@ fn floor_preparation_line_ms(line: String) -> Millisecond {
             floor_preparation_ms_zero()
           } else {
             match row.class {
-              PreparationCost => floor_preparation_amount_carrier(floor_preparation_ms_field(fields, row.cost_field))
-              ClaimExecutionCost => floor_preparation_amount_carrier(floor_preparation_ms_field(fields, row.cost_field))
+              PreparationCost => floor_preparation_ms_add_opt(floor_preparation_ms_zero(), floor_preparation_amount_carrier(floor_preparation_ms_field(fields, row.cost_field)))
+              ClaimExecutionCost => floor_preparation_ms_add_opt(floor_preparation_ms_zero(), floor_preparation_amount_carrier(floor_preparation_ms_field(fields, row.cost_field)))
               NotCostBearing { reason: _ } => floor_preparation_ms_zero()
             }
           }
@@ -903,7 +907,7 @@ fn floor_preparation_probe_fill_ms(capture: List<String>) -> Millisecond {
     match floor_preparation_classify(line) {
       ClaimLine { tag: tag, claim: _, fields: fields } =>
         if tag == floor_preparation_reach_probe_tag {
-          floor_preparation_ms_add(acc, floor_preparation_amount_carrier(floor_preparation_ms_field(fields, "fill_cpu_ms")))
+          floor_preparation_ms_add_opt(acc, floor_preparation_amount_carrier(floor_preparation_ms_field(fields, "fill_cpu_ms")))
         } else {
           acc
         }
@@ -1065,7 +1069,7 @@ fn floor_preparation_fill_fill_ms(capture: List<String>) -> Millisecond {
     match floor_preparation_classify(line) {
       ClaimLine { tag: tag, claim: _, fields: fields } =>
         if tag == floor_preparation_shared_fill_tag {
-          floor_preparation_ms_add(acc, floor_preparation_amount_carrier(floor_preparation_ms_field(fields, "fill_cpu_ms")))
+          floor_preparation_ms_add_opt(acc, floor_preparation_amount_carrier(floor_preparation_ms_field(fields, "fill_cpu_ms")))
         } else {
           acc
         }
@@ -1101,7 +1105,7 @@ fn floor_preparation_module_fill_ms(capture: List<String>, module: String) -> Mi
         if acc.entry != module || tag == floor_preparation_reach_probe_tag || tag == floor_preparation_witness_tag {
           acc
         } else {
-          FloorPreparationInForce { entry: acc.entry, ms: floor_preparation_ms_add(acc.ms, floor_preparation_amount_carrier(floor_preparation_ms_field(fields, "fill_cpu_ms"))) }
+          FloorPreparationInForce { entry: acc.entry, ms: floor_preparation_ms_add_opt(acc.ms, floor_preparation_amount_carrier(floor_preparation_ms_field(fields, "fill_cpu_ms"))) }
         }
       _ => acc
     })
