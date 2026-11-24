@@ -777,22 +777,15 @@ fn parse_prov_initial() -> ParseProvenanceState {
   parse_prov_seeded(seed: occurrence_id_allocator_initial())
 }
 
-// THE POLICY A PREDICATE ARM RUNS ITS OWN SUBTREE UNDER, in one readable place. It is a fact about
-// this parser, not a knob a caller turns: a caller reaches a predicate's subtree only through an arm,
-// and every arm reads it here.
-fn parse_predicate_mint_policy() -> MintPolicy {
-  Recognize
-}
-
-// THE STATE A PREDICATE ARM HANDS ITS OWN SUBTREE. The three arms that discard what their element
-// built call this, and so does the instrument that measures them -- both read the policy from
-// parse_predicate_mint_policy, which is what keeps a measurement of the guard from drifting away from
-// the guard.
+// THE STATE A PREDICATE ARM HANDS ITS OWN SUBTREE -- the one place that decides a predicate recognizes
+// rather than mints. The three arms that discard what their element built call this, and so does the
+// instrument that measures them, which is what keeps a measurement of the guard from drifting away from
+// the guard: there is no second copy of the decision to disagree with. It is a fact about this parser,
+// not a knob a caller turns -- a caller reaches a predicate's subtree only through an arm. If the
+// decision ever has to be undone, this is the single line to change (return `prov`), and the instrument,
+// reading the same call, would report the non-zero baseline again instead of quietly agreeing.
 fn parse_prov_for_predicate(prov: ParseProvenanceState) -> ParseProvenanceState {
-  match parse_predicate_mint_policy() {
-    Mint => prov
-    Recognize => parse_prov_recognizing(prov: prov)
-  }
+  parse_prov_recognizing(prov: prov)
 }
 
 // THE SAME PATH, RECOGNIZING. `alloc` and `facts` are carried over UNCHANGED, which is the whole
