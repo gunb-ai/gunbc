@@ -5,7 +5,9 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { string_contains }
 import std.optional { Present, Absent }
 import extdeps.ssh.openssh_server_commands { sshd_effective_config_value }
-import gunbc.host_command_binding { HostLeg, LegAnswered, LegNotDispatched, LegUnanswered }
+import std.measure { second }
+import gunbc.typed_argv_exec { TypedArgvExecOutcome, TypedArgvExecOverran }
+import gunbc.host_command_binding { HostLeg, LegAnswered, LegNotDispatched, LegUnanswered, host_leg_of_typed_argv }
 import gunbc.host.export_host_reader_converge {
   ExportHostReaderLegs, ExportHostReaderRun, ExportHostReaderOutcome,
   ReaderRowsConverged, ReaderRowsRefused, ReaderRowsRolledBack, ReaderRowsRollbackFailed, ReaderRowsReloadUncertain,
@@ -270,4 +272,60 @@ test fn a_real_answered_255_stays_an_answered_exit_distinct_from_never_dispatche
   word(o: real.outcome) == "refused" && word(o: nd.outcome) == "refused"
     && string_contains(s: dr, pattern: "exit=255") && string_contains(s: dr, pattern: "ssh-remote-hung-up-xyzzy")
     && string_contains(s: dn, pattern: "dropin-never-dispatched-xyzzy") && !string_contains(s: dn, pattern: "exit=255")
+}
+
+// CONTROL (reviewer, Blocker 1, root defect): a reload the transport DISPATCHED but got NO ANSWER for -- the
+// leg overran its wall-clock deadline (TypedArgvExecOverran), routed through the PRODUCTION mapper
+// host_leg_of_typed_argv -- has an UNKNOWN effect: sshd may already have taken the drop-in. It MUST reach the
+// reload-uncertain arm and run the uncertainty readbacks (removal, the sshd -T of what is on disk, a fresh
+// login), never be read as a never-dispatched reload that withdrew "sshd was not reloaded" without checking.
+// RED against the pre-fix host_leg_of_typed_argv that mapped TypedArgvExecOverran onto LegNotDispatched
+// (which withdrew without running the readbacks and left the daemon possibly running an unreported config).
+test fn an_overran_initial_reload_runs_the_readbacks_and_never_says_not_reloaded() -> Bool {
+  let overran = host_leg_of_typed_argv(outcome: TypedArgvExecOverran { deadline: second(count: 30) })
+  let r = run(overrides: [LegOverride { leg: "reload", answer: overran }])
+  let text = render_export_host_reader_run(r: r)
+  word(o: r.outcome) == "reload-uncertain"
+    && stages(r: r) == concat(through_reload, ["fresh-login", "remove-drop-in", "drop-in-absent-readback", "sshd-T"])
+    && reloads(r: r) == 1
+    && string_contains(s: text, pattern: "RELOAD UNCERTAIN")
+    && string_contains(s: text, pattern: "DISPATCHED but its reply was lost")
+    && string_contains(s: text, pattern: "the process group was killed before the host answered")
+    && string_contains(s: text, pattern: "the drop-in is confirmed absent")
+    && !string_contains(s: text, pattern: "not reloaded")
+    && !string_contains(s: text, pattern: "unchanged")
+}
+
+// CONTROL (reviewer, Blocker 2): both absence readbacks run under `sudo -n`, which exits 1 itself when it
+// REFUSES elevation -- the same exit a genuine "file absent" gives. Two sudo refusals must NOT be read as the
+// drop-in being absent (a refusal to elevate says nothing about the file). The removal stays unconfirmed, the
+// rollback FAILS loudly, and NO second reload runs. Red on the pre-fix readback_absent that read a bare exit-1
+// as absent: it would have confirmed a phantom absence, done a second reload, and could report rolled-back.
+test fn a_rollback_with_sudo_refusal_on_both_reads_fails_without_a_second_reload() -> Bool {
+  let sudo_denied = answered(exit: 1, out: "", err: "sudo: a terminal is required to read the password")
+  let r = run(overrides: [
+    LegOverride { leg: "fresh_login", answer: bad() },
+    LegOverride { leg: "remove_drop_in", answer: ok(stdout: "") },
+    LegOverride { leg: "drop_in_exists", answer: sudo_denied },
+    LegOverride { leg: "drop_in_is_link", answer: sudo_denied }])
+  let text = render_export_host_reader_run(r: r)
+  word(o: r.outcome) == "rollback-failed"
+    && reloads(r: r) == 1
+    && string_contains(s: text, pattern: "NOT confirmed absent")
+    && string_contains(s: text, pattern: "sudo:")
+    && !string_contains(s: text, pattern: "rolled back")
+}
+
+// CONTROL (reviewer, Blocker 2 positive): the sudo disambiguation must not swallow a genuine negative read.
+// A removal whose rm reply was never dispatched is still CONFIRMED ABSENT when both reads answer validly
+// (exit 1, no sudo refusal) -- the rollback reloads and reports rolled back. Guards the absence guarantee the
+// disambiguation could otherwise over-block.
+test fn an_unobserved_removal_is_still_confirmed_absent_by_valid_reads() -> Bool {
+  let r = run(overrides: [
+    LegOverride { leg: "fresh_login", answer: bad() },
+    LegOverride { leg: "remove_drop_in", answer: never(reason: "rm-never-dispatched-xyzzy") },
+    LegOverride { leg: "drop_in_exists", answer: absent() },
+    LegOverride { leg: "drop_in_is_link", answer: absent() }])
+  word(o: r.outcome) == "rolled-back"
+    && reloads(r: r) == 2
 }
