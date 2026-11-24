@@ -14,6 +14,7 @@ module test.claim.fleet.fleet_host_truth_observe_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.measure { ByteSize, byte_size }
 import extdeps.systemd { SystemdCgroupMemoryLimit, MemoryLimitBytes, MemoryLimitUnbounded, MemoryLimitAbsent }
 import gunbc.fleet.fleet_host_truth_read {
@@ -27,6 +28,7 @@ import gunbc.fleet.fleet_host_truth_observe {
   host_truth_observe_reads, host_truth_observe_expectations, host_truth_observe_verdict, host_truth_observe_is_divergence,
   host_truth_observe_cap_expectation,
   host_truth_observe_identity_refusal, host_truth_observe_pci_refusal, host_truth_observe_unit_refusal,
+  host_truth_observe_exit,
 }
 import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
 
@@ -184,6 +186,62 @@ test fn RED_a_host_with_no_readable_data_is_refused_not_admitted() -> Bool {
   )
   match verdict {
     HostTruthRefused { host: _, refusals: rs } => rs.length() == 5 && !fleet_truth_admits_host(verdict: verdict)
+    _ => false
+  }
+}
+
+// THE OBSERVE EXIT FOR A HOST GIVEN ITS OBSERVED LIMITS -- the wet's terminal decision, exercised purely so the
+// 0/1/2 contract is witnessed without a wet run. Reads come from host_truth_observe_reads, the verdict from the
+// real fold over the real expectations, the terminal from host_truth_observe_exit.
+fn observe_exit_case(host_name: String, cap_limit: SystemdCgroupMemoryLimit, swap_limit: SystemdCgroupMemoryLimit) -> ProcessExit {
+  let h = host_name as NonEmptyStr
+  let reads = host_truth_observe_reads(host: h, at_run: witness_run_id, cap_limit: cap_limit, swap_limit: swap_limit)
+  let verdict = fleet_host_truth_verdict_for_host(host: h, reads: reads, expectations: host_truth_observe_expectations(host: h))
+  host_truth_observe_exit(host: h, reads: reads, verdict: verdict)
+}
+
+// HELD IS THE ONLY GREEN. Both readable axes observed and agreeing (the cap at the declared working set, the leaf
+// swap at the declared ceiling -- which is 0) exit 0. The three frontier refusals do not make it red.
+test fn test_a_held_host_exits_zero() -> Bool {
+  match observe_exit_case("srv1", MemoryLimitBytes { bytes: gunbc_runner_slot_desired().memory_max }, MemoryLimitBytes { bytes: gunbc_runner_slot_desired().memory_swap_max }) {
+    ExitSuccess => true
+    _ => false
+  }
+}
+
+// A DIVERGENCE IS NOT HELD (exit 1). A 1 GiB cap under the declared working set, swap at its ceiling: the cap
+// diverges, so the terminal is not-held, code 1 -- regardless of the frontier refusals.
+test fn test_a_divergent_host_exits_one() -> Bool {
+  match observe_exit_case("srv4", MemoryLimitBytes { bytes: byte_size(count: 1073741824) }, MemoryLimitBytes { bytes: gunbc_runner_slot_desired().memory_swap_max }) {
+    ExitFailure { code: c, reason: _ } => c == 1
+    _ => false
+  }
+}
+
+// CANNOT BE READ IS NOT GREEN (exit 2). With no runner parent slice the cgroup cap cannot be read (absent), so
+// the readable axis is a refusal, not a value -- the terminal must be no-observation, code 2. This is the exact
+// case review 97726 caught finishing green.
+test fn RED_a_host_that_cannot_be_read_is_not_green() -> Bool {
+  match observe_exit_case("dan", MemoryLimitAbsent, MemoryLimitBytes { bytes: gunbc_runner_slot_desired().memory_swap_max }) {
+    ExitFailure { code: c, reason: _ } => c == 2
+    _ => false
+  }
+}
+
+// AND SO IS THE SWAP CEILING UNREADABLE. Symmetric: cap read fine, leaf swap ceiling absent -> code 2, not green.
+test fn RED_an_unreadable_swap_ceiling_is_not_green() -> Bool {
+  match observe_exit_case("butch", MemoryLimitBytes { bytes: gunbc_runner_slot_desired().memory_max }, MemoryLimitAbsent) {
+    ExitFailure { code: c, reason: _ } => c == 2
+    _ => false
+  }
+}
+
+// A DIVERGENCE OUTRANKS A MISSING READ. Cap absent (unobservable) and swap below its ceiling would diverge -- but
+// the fold puts divergence first, so the terminal is code 1 (diverged), not code 2. A divergence is the louder
+// signal and must not be downgraded to "not observed."
+test fn test_divergence_outranks_a_missing_read() -> Bool {
+  match observe_exit_case("srv2", MemoryLimitAbsent, MemoryLimitBytes { bytes: byte_size(count: 1073741824) }) {
+    ExitFailure { code: c, reason: _ } => c == 1
     _ => false
   }
 }

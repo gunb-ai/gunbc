@@ -30,7 +30,7 @@ module gunbc.fleet.fleet_host_truth_observe
 //     envelope's slot set is the unit set (manager).
 
 import std.types { String, NonEmptyStr, Bool, List }
-import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.optional { Present, Absent }
 import std.algebra { trim }
 import std.list { first_where }
@@ -62,6 +62,7 @@ import gunbc.fleet.fleet_host_truth_read {
   HostTruthVerdict, HostTruthFollowsDesiredState, HostTruthDiverges, HostTruthRefused, HostTruthNothingRead,
   HostTruthComparison,
   fleet_host_truth_verdict_for_host,
+  host_truth_axes_match, host_truth_axis_rule, host_truth_read_cause_explains, host_truth_host_text,
 }
 import gunbc.fleet.fleet_host_truth_sources {
   host_truth_cap_read, host_truth_leaf_swap_read,
@@ -202,17 +203,73 @@ fn host_truth_observe_verdict_text(verdict: HostTruthVerdict) -> String {
 // the refused axes without re-deciding what they mean (that stays in gunbc.fleet.fleet_host_truth_read).
 fn host_truth_comparison_text(comparison: HostTruthComparison) -> String {
   match comparison {
-    TruthAgrees { host: _, axis: _, at_run: _, receipt: _ } => "  agrees\n"
-    TruthDivergent { host: _, axis: _, observed: _, expected: _, declared_by: _ } => "  divergent axis\n"
-    TruthUnread { host: _, axis: _, cause: _ } => "  unread (refused)\n"
-    TruthReadBlank { host: _, axis: _ } => "  blank (refused)\n"
-    TruthNoReadSupplied { host: _, axis: _ } => "  no read supplied (refused)\n"
-    TruthNoExpectationForRead { host: _, axis: _ } => "  read without an expectation (refused)\n"
-    TruthDuplicateRead { host: _, axis: _, read_count: _ } => "  duplicate read (refused)\n"
-    TruthDuplicateExpectation { host: _, axis: _, declaration_count: _ } => "  duplicate expectation (refused)\n"
-    TruthOutsideTheModel { host: _, axis: _, because: _ } => "  outside the model (undeclared)\n"
-    TruthValueShapeRefused { host: _, axis: _, why: _ } => "  value shape refused\n"
-    TruthPairingRefused { why: _, pairing: _ } => "  pairing refused\n"
+    TruthAgrees { host: _, axis: a, at_run: _, receipt: _ } =>
+      join(["  ", host_truth_axis_rule(axis: a), " -- agrees\n"], "")
+    TruthDivergent { host: _, axis: a, observed: o, expected: e, declared_by: d } =>
+      join([
+        "  ", host_truth_axis_rule(axis: a), " -- DIVERGENT: observed ", host_truth_value_text(value: o),
+        ", expected ", host_truth_value_text(value: e), " (declared by ", d, ")\n",
+      ], "")
+    TruthUnread { host: _, axis: a, cause: c } =>
+      join(["  ", host_truth_axis_rule(axis: a), " -- unread (refused): ", host_truth_read_cause_explains(cause: c), "\n"], "")
+    TruthReadBlank { host: _, axis: a } =>
+      join(["  ", host_truth_axis_rule(axis: a), " -- blank (refused): the carrier printed nothing to relate\n"], "")
+    TruthNoReadSupplied { host: _, axis: a } =>
+      join(["  ", host_truth_axis_rule(axis: a), " -- no read supplied (refused)\n"], "")
+    TruthNoExpectationForRead { host: _, axis: a } =>
+      join(["  ", host_truth_axis_rule(axis: a), " -- refused: no expectation is declared, so it is never reported as following\n"], "")
+    TruthDuplicateRead { host: _, axis: a, read_count: n } =>
+      join(["  ", host_truth_axis_rule(axis: a), " -- duplicate read (refused): ", to_string(n), " reads\n"], "")
+    TruthDuplicateExpectation { host: _, axis: a, declaration_count: n } =>
+      join(["  ", host_truth_axis_rule(axis: a), " -- duplicate expectation (refused): ", to_string(n), " declarations\n"], "")
+    TruthOutsideTheModel { host: _, axis: a, because: b } =>
+      join(["  ", host_truth_axis_rule(axis: a), " -- outside the model (undeclared): ", b, "\n"], "")
+    TruthValueShapeRefused { host: _, axis: a, why: w } =>
+      join(["  ", host_truth_axis_rule(axis: a), " -- value shape refused: ", w, "\n"], "")
+    TruthPairingRefused { why: w, pairing: _ } => join(["  pairing refused: ", w, "\n"], "")
+  }
+}
+
+// RENDER A TRUTH VALUE FOR THE RECEIPT. A size prints its byte count; the others name their shape -- never the
+// empty string. A reader must see what was read against what was declared, so a divergence is actionable.
+fn host_truth_value_text(value: HostTruthValue) -> String {
+  match value {
+    TruthSize { size: s } => join([to_string(byte_size_count(b: s)), " bytes"], "")
+    TruthUnbounded => "unbounded"
+    TruthCount { count: c } => join([to_string(c), " enumerated"], "")
+    TruthMarking { text: t } => join(["'", t, "'"], "")
+  }
+}
+
+// WAS A READABLE AXIS ACTUALLY OBSERVED (a value read), as opposed to blank or refused? This is what separates
+// "the machine was read and matches" from "the machine could not be read" -- and the latter must never be green.
+fn host_truth_observe_readable_axis_read(reads: List<HostTruthRead>, axis: HostTruthAxis) -> Bool {
+  reads.filter(r => match r {
+    HostTruthObserved { host: _, axis: a, at_run: _, observed: _, receipt: _ } => host_truth_axes_match(left: a, right: axis)
+    _ => false
+  }).length() > 0
+}
+
+// THE TERMINAL, per the 0/1/2 instrument-row doctrine (gunbc.std.compiler_entry::NativeClaimTerminal vocabulary:
+// held 0, not held 1, no observation 2). A host is HELD (0) only when BOTH readable axes were actually observed
+// and none diverged; a divergence is NOT HELD (1); a readable axis the carriers could not read is NO OBSERVATION
+// (2), never green -- that is the fail-closed rule (gunbc.design_argument::fail_closed): a host we could not read
+// must not read as a host that follows its desired state. The three frontier axes (identity, PCI, enabled units)
+// are refused BY DESIGN and do NOT enter this decision (or the step would be red on every host); they are named
+// in the receipt and their producers are declared follow-up items.
+fn host_truth_observe_exit(host: NonEmptyStr, reads: List<HostTruthRead>, verdict: HostTruthVerdict) -> ProcessExit {
+  let name = host_truth_host_text(host: host)
+  match verdict {
+    HostTruthDiverges { host: _, divergences: _ } =>
+      ExitFailure { code: 1, reason: join([name, " diverges from its desired state; see ", host_truth_read_observe_receipt_path], "") }
+    _ =>
+      if host_truth_observe_readable_axis_read(reads: reads, axis: TruthCapBindsDeclaredWorkingSet) == false {
+        ExitFailure { code: 2, reason: join([name, " not observed: the cgroup cap could not be read; see ", host_truth_read_observe_receipt_path], "") }
+      } else if host_truth_observe_readable_axis_read(reads: reads, axis: TruthSlotSwapBackingDeclared) == false {
+        ExitFailure { code: 2, reason: join([name, " not observed: the leaf swap ceiling could not be read; see ", host_truth_read_observe_receipt_path], "") }
+      } else {
+        ExitSuccess
+      }
   }
 }
 
@@ -256,12 +313,9 @@ fn host_truth_read_observe_ci_wet() -> ProcessExit {
         HostMemoryEnvelopeObserved { observation: obs } => {
           let limits = host_truth_observe_slice_limits(observation: obs)
           let at_run = obs.probed_at
-          let verdict = host_truth_observe_verdict(
-            host: identity,
-            at_run: at_run,
-            cap_limit: limits.cap_limit,
-            swap_limit: limits.swap_limit,
-          )
+          let reads = host_truth_observe_reads(host: identity, at_run: at_run, cap_limit: limits.cap_limit, swap_limit: limits.swap_limit)
+          let expectations = host_truth_observe_expectations(host: identity)
+          let verdict = fleet_host_truth_verdict_for_host(host: identity, reads: reads, expectations: expectations)
           let text = join([
             "fleet host-truth read (observe-only) -- host=", (identity as String), " at_run=", (at_run as String), "\n",
             host_truth_observe_verdict_text(verdict: verdict),
@@ -269,10 +323,8 @@ fn host_truth_read_observe_ci_wet() -> ProcessExit {
           let w = Filesystem.Write(path: host_truth_read_observe_receipt_path, content: text)
           if w.success == false {
             exit_failure(reason: join(["host_truth_read_observe: receipt write failed: ", w.error, "\n", text], ""))
-          } else if host_truth_observe_is_divergence(verdict: verdict) {
-            exit_failure(reason: join(["host_truth_read_observe: ", (identity as String), " diverges from its desired state; see ", host_truth_read_observe_receipt_path], ""))
           } else {
-            ExitSuccess
+            host_truth_observe_exit(host: identity, reads: reads, verdict: verdict)
           }
         }
       }
