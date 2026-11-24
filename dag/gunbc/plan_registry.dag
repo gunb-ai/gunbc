@@ -24,7 +24,10 @@ import gunbc.plans.names_without_imports { names_without_imports_plan }
 import gunbc.plans.first_customer_service { first_customer_service_plan }
 import gunbc.plans.desired_state_follows_the_machine { desired_state_follows_the_machine_plan }
 import gunbc.plans.one_source_tree { one_source_tree_plan }
+import gunbc.plans.derived_types_keep_their_name { derived_types_keep_their_name_plan }
 import gunbc.plans.claim_execution_consolidation { claim_execution_consolidation_plan }
+import gunbc.plans.fabric_market { fabric_market_plan }
+import gunbc.plans.required_lane_claim_clause_grain { required_lane_claim_clause_grain_plan }
 
 // THE PLANS THAT SURVIVED THE 2026-11-08 RESET (gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08):
 // only plans a live consumer reads. Every other gunbc.plans carrier was deleted; git history keeps them.
@@ -51,6 +54,12 @@ import gunbc.plans.claim_execution_consolidation { claim_execution_consolidation
 // one_source_tree is the one-tree and v2-namespace dissolution intention (gunbc.design_ruling::one_source_tree_and_the_v2_namespace_dissolves,
 // 2026-11-22); its work items are the members of one-source-tree on the roadmap.
 // claim_execution_consolidation makes gunbc test the only seed claim entrypoint with one verdict rule (operator, 2026-11-22).
+// fabric_market makes every match of work with resources one first-principles market in FIX-grounded trading terms (operator, 2026-11-23).
+// required_lane_claim_clause_grain is the planning candidate the 2026-11-24 required-lane claim-agreement measurement
+// filed: v2.workflow.required_lane_claim_agreement pairs its denial phrase and the rostered lane name at document grain,
+// so a failure-mode row that QUOTES the phrase about a lane the roster does not roster is refused as if it denied that
+// lane. Its done-when requires the pair in one clause or one ledger row, with controls for both the narrowing and the
+// quotation case. Its realization is a work item naming this intention; it is not realized by the measurement that filed it.
 // Each deletes with its last consumer.
 data all_plans: List<Plan> = [
   cli_run_hollowing_plan, extdeps_modeling_preflight_plan, demand_engine_program_plan,
@@ -60,5 +69,7 @@ data all_plans: List<Plan> = [
   planning_consolidation_plan, declaration_acquisition_plan, v2_self_host_plan,
   factory_dogfood_plan, debt_payoff_plan, names_without_imports_plan, first_customer_service_plan,
   new_server_bringup_plan, one_source_tree_plan, claim_execution_consolidation_plan,
-  desired_state_follows_the_machine_plan,
+  desired_state_follows_the_machine_plan, fabric_market_plan,
+  derived_types_keep_their_name_plan,
+  required_lane_claim_clause_grain_plan,
 ]

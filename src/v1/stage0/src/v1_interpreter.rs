@@ -12203,7 +12203,6 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
             fresh
         }
     };
-    record_call_frequency(&func_name);
 
     let arg_nodes = &node.children;
 
@@ -26842,62 +26841,6 @@ fn record_list_cons_tail_split(receiver_len: usize) {
     LIST_CONS_TAIL_SPLIT
         .1
         .fetch_add(receiver_len as u64, std::sync::atomic::Ordering::Relaxed);
-}
-
-/// Hypothesis-A instrumentation (adhoc-c328b166-bca residual hunt): call frequency for the
-/// grammar-analysis entry points S1's brief named as candidates for a fixed,
-/// file-size-independent per-parse-module recompute (`grammar_validate_for_parse`,
-/// `compute_nullable_set`, `compute_production_first_rows`). A tiny named watchlist, not a
-/// general profiler, answering "how many times, relative to file size" by execution.
-static CALL_FREQUENCY_WATCHLIST: std::sync::Mutex<
-    Option<std::collections::HashMap<&'static str, u64>>,
-> = std::sync::Mutex::new(None);
-
-fn record_call_frequency(func_name: &str) {
-    if !residual_hunt_forensics_enabled() {
-        return;
-    }
-    const WATCHLIST: &[&str] = &[
-        "grammar_validate_for_parse",
-        "compute_nullable_set",
-        "compute_production_first_rows",
-        "parse_diags_to_diagnostics",
-        "parse_diags_to_non_empty",
-        "parse_diag_cons",
-        "parse_production",
-        "parse_expr",
-        "list_snoc_item",
-        "list_append",
-        "parse_sync_step",
-        "parse_match_arm_stmt_step",
-        "parse_expr_repeat",
-        "parse_expr_repeat_step",
-        "parse_skip_to_sync",
-        "parse_expr_sequence",
-        "parse_expr_choice",
-        "parse_expr_optional",
-        "filter",
-        "upsert_production_first_row",
-        "parse_current_position",
-        "parse_nonterminal",
-        "parse_choice_plan",
-        "parse_choice_ordered_backtrack",
-        "uri_percent_encode_scalar_fragment",
-    ];
-    let Some(key) = WATCHLIST.iter().find(|w| **w == func_name) else {
-        return;
-    };
-    let mut guard = CALL_FREQUENCY_WATCHLIST.lock().unwrap();
-    let m = guard.get_or_insert_with(std::collections::HashMap::new);
-    *m.entry(*key).or_insert(0) += 1;
-}
-
-pub fn call_frequency_snapshot() -> Vec<(&'static str, u64)> {
-    let guard = CALL_FREQUENCY_WATCHLIST.lock().unwrap();
-    match guard.as_ref() {
-        Some(m) => m.iter().map(|(k, v)| (*k, *v)).collect(),
-        None => Vec::new(),
-    }
 }
 
 pub fn list_cons_tail_split_snapshot() -> (u64, u64) {

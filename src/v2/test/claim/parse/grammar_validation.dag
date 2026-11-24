@@ -23,7 +23,7 @@ import v2.compiler.parse {
   grammar_has_left_recursion,
   grammar_has_undefined_nonterminals,
   grammar_lookup_production,
-  grammar_validate_for_parse,
+  grammar_validate_and_analyze,
   parse_production_tree,
   parse_skip_to_sync,
 }
@@ -177,7 +177,7 @@ data validation_disjoint_choice_root: GrammarRoot = GrammarRoot {
 // this one holds the same wall for an overlap in the TAIL of a three-way choice.
 fn validation_refuses_overlap_at_production(root: GrammarRoot, production: Symbol) -> Bool {
   let at = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^grammar_validation_grammar_contract)
-  match grammar_validate_for_parse(root: root, at: at) {
+  match grammar_validate_and_analyze(root: root, at: at) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } =>
       (d.head.reason == ^parse_grammar_choice_ambiguity)
@@ -204,7 +204,7 @@ data validation_nullable_ambiguous_choice_root: GrammarRoot = GrammarRoot {
 
 fn validation_nullable_ambiguity_validate_rejects() -> Bool {
   let at = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^grammar_validation_grammar_contract)
-  match grammar_validate_for_parse(root: validation_nullable_ambiguous_choice_root, at: at) {
+  match grammar_validate_and_analyze(root: validation_nullable_ambiguous_choice_root, at: at) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
   }
@@ -250,7 +250,7 @@ data validation_three_alt_tail_overlap_root: GrammarRoot = GrammarRoot {
 
 test fn validation_three_alt_inner_nullable_pair_rejects() -> Bool {
   let at = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^grammar_validation_grammar_contract)
-  match grammar_validate_for_parse(root: validation_three_alt_inner_nullable_root, at: at) {
+  match grammar_validate_and_analyze(root: validation_three_alt_inner_nullable_root, at: at) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
   }
@@ -262,7 +262,7 @@ test fn validation_three_alt_tail_overlap_refuses_at_production() -> Bool {
 
 fn validation_disjoint_choice_validate_accepts() -> Bool {
   let at = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^grammar_validation_grammar_contract)
-  match grammar_validate_for_parse(root: validation_disjoint_choice_root, at: at) {
+  match grammar_validate_and_analyze(root: validation_disjoint_choice_root, at: at) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
@@ -294,12 +294,12 @@ data validation_two_token_list: List<Token> = Cons {
 
 fn validation_right_recursive_parse_fixture() -> Outcome<ParseTree> {
   let at = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^grammar_validation_grammar_contract)
-  match grammar_validate_for_parse(root: validation_right_recursive_root, at: at) {
+  match grammar_validate_and_analyze(root: validation_right_recursive_root, at: at) {
     Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
-    Accepted { value: validated, diagnostics: _ } =>
+    Accepted { value: modeled, diagnostics: _ } =>
       parse_production_tree(
         tokens: validation_two_token_list,
-        validated: validated,
+        modeled: modeled,
         production_name: ^validation_rec_start
       )
   }
@@ -413,7 +413,7 @@ data claim_disjoint_choice_not_ambiguous: TestClaim = EqualsClaim {
 }
 
 data claim_validate_rejects_nullable_choice_ambiguity: TestClaim = EqualsClaim {
-  label: "grammar_validate_for_parse stays fail-closed on genuine ambiguity: both-nullable Choice arms sharing a FIRST terminal are Rejected",
+  label: "grammar_validate_and_analyze stays fail-closed on genuine ambiguity: both-nullable Choice arms sharing a FIRST terminal are Rejected",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: validation_bool_atom(b: validation_nullable_ambiguity_validate_rejects()),
   rhs: validation_bool_atom(b: true),
@@ -421,7 +421,7 @@ data claim_validate_rejects_nullable_choice_ambiguity: TestClaim = EqualsClaim {
 }
 
 data claim_validate_accepts_disjoint_choice: TestClaim = EqualsClaim {
-  label: "grammar_validate_for_parse accepts grammars whose Choice branches have disjoint FIRST sets",
+  label: "grammar_validate_and_analyze accepts grammars whose Choice branches have disjoint FIRST sets",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: validation_bool_atom(b: validation_disjoint_choice_validate_accepts()),
   rhs: validation_bool_atom(b: true),
