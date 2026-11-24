@@ -319,13 +319,19 @@ test fn the_roster_splits_into_the_two_rule_halves() -> Bool {
   let roster = map(fleet_converge_modes_naming_a_subject(), m => fleet_converge_workflow_mode_wire(mode: m))
   let drain_half = filter(roster, w => drain_rule_admits_its_own_mode(mode: w))
   let install_half = filter(roster, w => install_rule_admits_its_own_mode(mode: w))
-  length(roster) == 5
+  // host_memory_observe joined the install half (2026-11-23, option (a) peer-executor read): it names its
+  // machine through the same subject env and carries SubjectMayBeTheExecutorsOwnMachine, the very rule the
+  // serving observe/converge carry -- the executor dials the subject over ssh and the subject may be the
+  // executor's own machine or another host. So it lands on the install side, not a new third side, and the
+  // split stays two halves.
+  length(roster) == 6
     && all(roster, w => install_rule_admits_its_own_mode(mode: w) || drain_rule_admits_its_own_mode(mode: w))
     && all(roster, w => install_rule_admits_its_own_mode(mode: w) != drain_rule_admits_its_own_mode(mode: w))
     && length(drain_half) == 3
-    && length(install_half) == 2
+    && length(install_half) == 3
     && all(drain_half, w => w == "runner_host_file_converge" || w == "runner_host_withdraw" || w == "runner_host_restore")
-    && all(install_half, w => w == "remote_build_serving_observe" || w == "remote_build_serving_converge")
+    && all(install_half, w =>
+      w == "remote_build_serving_observe" || w == "remote_build_serving_converge" || w == "host_memory_observe")
     && !any(roster, w => w == "runner_host_file_observe")
 }
 
@@ -379,7 +385,7 @@ test fn the_split_gate_step_runs_before_every_step_that_names_a_subject() -> Boo
   let gate = step_id_text(step: fleet_converge_executor_subject_split_gate_step())
   let gated = map(fleet_converge_modes_naming_a_subject(), m => fleet_converge_workflow_mode_wire(mode: m))
   gate != ""
-    && length(gated) == 5
+    && length(gated) == 6
     && length(filter(names, n => n == gate)) == 1
     // appears_before alone would let a gated mode off free: if its step is renamed away, the gate is trivially
     // "first". So every gated wire must have a step in the emitted list before the order means anything.

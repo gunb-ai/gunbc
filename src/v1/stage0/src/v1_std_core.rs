@@ -3934,6 +3934,17 @@ pub fn transport_stdin(
     find_property(t.properties.clone(), transport_stdin_key(), source_indices)
 }
 
+pub fn transport_wall_deadline(
+    t: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<Node>> {
+    find_property(
+        t.properties.clone(),
+        transport_wall_deadline_key(),
+        source_indices,
+    )
+}
+
 pub fn transport_response_format(
     t: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
