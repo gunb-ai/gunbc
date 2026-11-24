@@ -1,0 +1,231 @@
+module test.claim.roadmap.roadmap_work_item_projection_witness
+
+// EXECUTING WITNESS for the work-item projection (gunbc.roadmap.roadmap_work_item_projection): the served
+// document /projection.json, one row per work item, the shape the ctrl Roadmap Timeline and the gunbc
+// planning page read. It runs on the document builder and the log's own answers only -- the standing fold,
+// the binding carrier, the event log -- the same graph the standings document test runs on, so it resolves
+// and runs under --claim-run. What it proves by RUNNING:
+//
+//   THE FIRST SLICE -- one item with leaves in flight, then the SAME item after a planted release, both
+//           rows against the declared shape field for field (node, intention, layer, item_state, leaves
+//           with on_critical_path, in_flight with assignee and return_to, latest_event, acceptance_evidence,
+//           events with recorded_at, read_on and the inputs the read used).
+//   DERIVED, NOT STORED -- the in-flight leaves come from the log's derived set spelled to the wire, never
+//           a list this row keeps; the events are the log's own rows filtered to the item at this read, so
+//           another item's events do not ride into this row.
+//   A REFUSAL, NOT A GAP -- a planted binding of a row to an intention that does not exist refuses at load,
+//           and the whole document refuses rather than serve a row missing a declared field.
+
+import std.types { String, Bool, Int, List, NonEmptyStr }
+import std.algebra { string_contains }
+import std.decl_ref { decl_ref }
+import gunbc.extdeps.languages.json.emit { serialize_json }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId, LeafPath, nid }
+import gunbc.roadmap.roadmap_event_log {
+  RoadmapEvent, RoadmapEventKind, RoadmapEventEnvelope, RoadmapEventId, RoadmapStandings, StandingsObserved,
+  LeafInFlightEntry, Claimed, Released, EventPrincipal, LegacyEmailPrincipal, ClaimGrain, AtPath,
+  roadmap_event_envelope,
+}
+import gunbc.roadmap.roadmap_intention_binding { IntentionBinding }
+import gunbc.roadmap.roadmap_work_item_projection {
+  ProjectionLeaf, ProjectionInFlight, ProjectionEvent, ProjectionInputs, ProjectionRow, ProjectionRefusal,
+  ProjectionRowResult, ProjectionRowBuilt, ProjectionRowRefused, IntentionDoesNotResolve,
+  projection_build_row, projection_in_flight_entries, roadmap_work_item_projection_document_json,
+  roadmap_work_item_projection_refusal_json, projection_row_json,
+}
+import gunbc.roadmap.roadmap_served_observation {
+  ProjectionJson, ServedObservationKindDecoded, served_observation_kind_url_path,
+  served_observation_kind_key, served_observation_kind_of_key,
+}
+
+// ---- fixtures ----
+
+fn principal(email: String) -> EventPrincipal {
+  LegacyEmailPrincipal { email: email as NonEmptyStr, authentication_unestablished: true }
+}
+
+fn envelope(node: String, kind: RoadmapEventKind, at: String) -> RoadmapEventEnvelope {
+  roadmap_event_envelope(e: RoadmapEvent {
+    node: nid(s: node), author: principal("system@roadmap"), parent: Absent, kind: kind, recorded_at: at,
+  })
+}
+
+fn claimed(node: String) -> RoadmapEventKind {
+  Claimed {
+    assignee: principal("alice@roadmap"), return_to: principal("bob@roadmap"),
+    grain: AtPath { path: LeafPath { item: nid(s: node), stage: 0, piece: 0, member: 0 } },
+  }
+}
+
+fn bound_node(node: String) -> IntentionBinding {
+  IntentionBinding {
+    node: nid(s: node),
+    intention: decl_ref(module_path: "gunbc.plans.planning_consolidation", decl_name: "planning_consolidation_plan"),
+    layer: 2,
+  }
+}
+
+fn open_standings() -> RoadmapStandings { StandingsObserved { rows: [] } }
+
+fn read_inputs() -> ProjectionInputs {
+  ProjectionInputs { worker_count: 1, day_priors: [2, 3], assumed_findings_counts: [0] }
+}
+
+fn doc_of(rows: List<ProjectionRow>) -> String {
+  serialize_json(v: roadmap_work_item_projection_document_json(
+    rows: rows, refused: [] as List<ProjectionRefusal>, read_on: "2026-11-24", inputs: read_inputs()))
+}
+
+// The FIRST row: an item with two leaves, one in flight (read off the log's derived set), claimed in the
+// log. Every declared field must be on the served document, and the in-flight assignee and return_to must
+// be the claim's own. And the two cross-item guards hold: item-b's derived entry and item-b's event never
+// ride into item-a's row.
+test fn first_slice_item_with_leaves_in_flight_shows_every_declared_field() -> Bool {
+  let derived = [
+    LeafInFlightEntry {
+      leaf: LeafPath { item: nid(s: "item-a"), stage: 0, piece: 0, member: 0 }, claim: "e-claim-1" as RoadmapEventId,
+      assignee: principal("alice@roadmap"), return_to: principal("bob@roadmap"), since: "2026-11-01",
+    },
+    LeafInFlightEntry {
+      leaf: LeafPath { item: nid(s: "item-b"), stage: 0, piece: 0, member: 0 }, claim: "e-claim-2" as RoadmapEventId,
+      assignee: principal("carol@roadmap"), return_to: principal("dan@roadmap"), since: "2026-11-01",
+    },
+  ]
+  let envs = [ envelope("item-a", claimed("item-a"), "2026-11-01"), envelope("item-b", claimed("item-b"), "2099-01-01") ]
+  let leaves = [
+    ProjectionLeaf { path: "item-a#0#0#0", start_day: 0, finish_day: 2, on_critical_path: true },
+    ProjectionLeaf { path: "item-a#1#0#0", start_day: 3, finish_day: 5, on_critical_path: false },
+  ]
+  match projection_build_row(
+    node: "item-a", bindings: [bound_node("item-a")], standings: open_standings(),
+    leaves: leaves, in_flight: projection_in_flight_entries(entries: derived, item: "item-a"), envs: envs,
+  ) {
+    ProjectionRowBuilt { row: r } =>
+      let d = doc_of([r])
+      string_contains(s: d, pattern: "\"node\"")
+      && string_contains(s: d, pattern: "item-a")
+      && string_contains(s: d, pattern: "\"intention\"")
+      && string_contains(s: d, pattern: "planning_consolidation")
+      && string_contains(s: d, pattern: "\"layer\"")
+      && string_contains(s: d, pattern: "\"item_state\"")
+      && string_contains(s: d, pattern: "open")
+      && string_contains(s: d, pattern: "item-a#0#0#0")
+      && string_contains(s: d, pattern: "item-a#1#0#0")
+      && string_contains(s: d, pattern: "\"on_critical_path\"")
+      && string_contains(s: d, pattern: "\"start_day\"")
+      && string_contains(s: d, pattern: "\"finish_day\"")
+      && string_contains(s: d, pattern: "\"in_flight\"")
+      && string_contains(s: d, pattern: "\"assignee\"")
+      && string_contains(s: d, pattern: "\"return_to\"")
+      && string_contains(s: d, pattern: "alice@roadmap")
+      && string_contains(s: d, pattern: "bob@roadmap")
+      && string_contains(s: d, pattern: "\"latest_event\"")
+      && string_contains(s: d, pattern: "claimed")
+      && string_contains(s: d, pattern: "\"acceptance_evidence\"")
+      && string_contains(s: d, pattern: "\"events\"")
+      && string_contains(s: d, pattern: "2026-11-01")
+      && string_contains(s: d, pattern: "\"read_on\"")
+      && string_contains(s: d, pattern: "2026-11-24")
+      && string_contains(s: d, pattern: "\"worker_count\"")
+      && string_contains(s: d, pattern: "\"day_priors\"")
+      && string_contains(s: d, pattern: "\"assumed_findings_counts\"")
+      && string_contains(s: d, pattern: "\"rows\"")
+      && !string_contains(s: d, pattern: "carol@roadmap")
+      && !string_contains(s: d, pattern: "2099-01-01")
+    ProjectionRowRefused { refusal: _ } => false
+  }
+}
+
+// The SAME item after a planted release: the latest event is now the release, both the claim and the
+// release are the log's rows on the row, and the in-flight field is STILL PRESENT (now an empty list -- the
+// field never disappears, only fills).
+test fn same_item_after_planted_release_still_carries_every_field() -> Bool {
+  let envs = [
+    envelope("item-a", claimed("item-a"), "2026-11-01"),
+    envelope("item-a", Released, "2026-11-03"),
+  ]
+  match projection_build_row(
+    node: "item-a", bindings: [bound_node("item-a")], standings: open_standings(),
+    leaves: [ProjectionLeaf { path: "item-a#0#0#0", start_day: 0, finish_day: 2, on_critical_path: true }],
+    in_flight: [] as List<ProjectionInFlight>, envs: envs,
+  ) {
+    ProjectionRowBuilt { row: r } =>
+      let d = doc_of([r])
+      string_contains(s: d, pattern: "released")
+      && string_contains(s: d, pattern: "claimed")
+      && string_contains(s: d, pattern: "2026-11-03")
+      && string_contains(s: d, pattern: "\"in_flight\"")
+    ProjectionRowRefused { refusal: _ } => false
+  }
+}
+
+// A PLANTED BINDING to an intention that does not exist refuses at load -- the binding carrier's own
+// cited-declaration check -- and the whole document refuses with the located reason, with NO rows key.
+test fn planted_binding_to_nonexistent_intention_refuses_at_load() -> Bool {
+  let bad_bindings = [ IntentionBinding {
+    node: nid(s: "ghost-item"),
+    intention: decl_ref(module_path: "gunbc.plans.nonexistent", decl_name: "does_not_exist_plan"),
+    layer: 0,
+  } ]
+  let built = projection_build_row(
+    node: "ghost-item", bindings: bad_bindings, standings: open_standings(),
+    leaves: [] as List<ProjectionLeaf>, in_flight: [] as List<ProjectionInFlight>, envs: [] as List<RoadmapEventEnvelope>,
+  )
+  let refuses = match built {
+    ProjectionRowBuilt { row: _ } => false
+    ProjectionRowRefused { refusal: _ } => true
+  }
+  let refusal_doc = serialize_json(v: roadmap_work_item_projection_document_json(
+    rows: [] as List<ProjectionRow>,
+    refused: [IntentionDoesNotResolve { node: "ghost-item", intention: "does_not_exist_plan" }],
+    read_on: "2026-11-24", inputs: read_inputs()))
+  refuses
+    && string_contains(s: refusal_doc, pattern: "\"refused\"")
+    && string_contains(s: refusal_doc, pattern: "does_not_exist_plan")
+    && !string_contains(s: refusal_doc, pattern: "\"rows\"")
+}
+
+// A node the binding carrier never bound is a refusal, and the refusal document is located (step + reason)
+// -- the projection answers a reader that needs WHY, never a bare sentence or a silently short document.
+test fn unbound_node_refuses_with_a_located_reason() -> Bool {
+  let built = projection_build_row(
+    node: "never-bound", bindings: [bound_node("item-a")], standings: open_standings(),
+    leaves: [] as List<ProjectionLeaf>, in_flight: [] as List<ProjectionInFlight>, envs: [] as List<RoadmapEventEnvelope>,
+  )
+  match built {
+    ProjectionRowRefused { refusal: _ } =>
+      string_contains(
+        s: serialize_json(v: roadmap_work_item_projection_refusal_json(read_on: "2026-11-24", step: "binding", reason: "no binding")),
+        pattern: "\"refused\"")
+    ProjectionRowBuilt { row: _ } => false
+  }
+}
+
+// The projection is a projection: the in-flight leaves are the log's DERIVED set spelled to the wire
+// (assignee and return_to are the claim's own), never a list this document stores -- and the leaf path is
+// spelled as the decomposition spells it.
+test fn in_flight_leaves_are_the_derived_set_read_off_the_log() -> Bool {
+  let derived = [ LeafInFlightEntry {
+    leaf: LeafPath { item: nid(s: "item-a"), stage: 1, piece: 0, member: 2 }, claim: "e-1" as RoadmapEventId,
+    assignee: principal("erin@roadmap"), return_to: principal("fred@roadmap"), since: "2026-11-05",
+  } ]
+  let entries = projection_in_flight_entries(entries: derived, item: "item-a")
+  let row_json = serialize_json(v: projection_row_json(row: ProjectionRow {
+    node: "item-a", intention: "gunbc.plans.planning_consolidation/planning_consolidation_plan",
+    layer: 2, item_state: "claimed", leaves: [] as List<ProjectionLeaf>, in_flight: entries,
+    latest_event: "claimed", acceptance_evidence: "", events: [] as List<ProjectionEvent>,
+  }))
+  count(entries) == 1
+    && string_contains(s: row_json, pattern: "item-a#1#0#2")
+    && string_contains(s: row_json, pattern: "erin@roadmap")
+    && string_contains(s: row_json, pattern: "fred@roadmap")
+    && string_contains(s: row_json, pattern: "\"on_critical_path\"")
+}
+
+// The served surface: the projection is a declared surface at /projection.json, with the same key
+// round-trip as the other JSON surfaces.
+test fn projection_is_a_served_surface_at_its_path() -> Bool {
+  served_observation_kind_url_path(kind: ProjectionJson) == "/projection.json"
+    && served_observation_kind_of_key(key: served_observation_kind_key(kind: ProjectionJson))
+       == ServedObservationKindDecoded { kind: ProjectionJson }
+}
