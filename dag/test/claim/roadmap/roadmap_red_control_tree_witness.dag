@@ -11,7 +11,7 @@ import std.types { Bool, String, List, NonEmptyStr }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.algebra { string_contains }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId, RoadmapAcceptanceReceipt, HandbackDelivered }
-import gunbc.roadmap.roadmap_status { RedControlEvidence, RedControlExecuted, RedControlTreeUnrecorded, RedControlNotRun, RedObservation, RedObservedOnMain, RedProbe, red_observation_holds, red_observation_from_arm, RedObsBuilt, RedObsRefused, red_control_evidence_is_valid_red, red_control_evidence_satisfied }
+import gunbc.roadmap.roadmap_status { RedControlEvidence, RedControlExecuted, RedControlTreeUnrecorded, RedControlNotRun, RedObservation, RedObservedOnMain, RedProbe, red_observation_holds, red_observation_validate, red_kind_parse, RedKind, OnMain, Probe, RedKindOutcome, KindNamed, KindUnrecognized, RedObsBuilt, RedObsRefused, RedObservationCause, MainNamesBase, ProbeNoRef, red_control_evidence_is_valid_red, red_control_evidence_satisfied }
 import gunbc.principal_projection { PrincipalRef }
 import gunbc.roadmap.roadmap_event_log {
   RoadmapEvent, RoadmapEventKind, EventPrincipal, EventPrincipalAuthenticated, RoadmapEventEnvelope,
@@ -180,26 +180,30 @@ test fn a_probe_without_its_base_or_ref_or_with_a_wrong_ref_is_refused() -> Bool
 test fn a_well_formed_probe_closes_and_on_main_is_the_visible_default() -> Bool {
   roadmap_operator_acceptance_receipt_is_closable(receipt: receipt_with(rc: probe_ev(r: red(), b: base(), g: green(), ref: pref())))
     && red_control_evidence_is_valid_red(e: probe_ev(r: red(), b: base(), g: green(), ref: pref()))
-    && (match red_observation_from_arm(arm: "on_main", red_at: red(), green_at: green(), red_base: "", probe_ref: "") {
+    && (match red_observation_validate(kind: OnMain, red_at: red(), green_at: green(), red_base: "", probe_ref: "") {
          RedObsBuilt { observation: o } => match o {
            RedObservedOnMain { red_at: _, green_at: _ } => true
            RedProbe { red_at: _, red_base: _, green_at: _, probe_ref: _ } => false
          }
-         RedObsRefused { rule: _, detail: _ } => false })
-    && (match red_observation_from_arm(arm: "probe", red_at: red(), green_at: green(), red_base: base(), probe_ref: pref()) {
+         RedObsRefused { cause: _ } => false })
+    && (match red_observation_validate(kind: Probe, red_at: red(), green_at: green(), red_base: base(), probe_ref: pref()) {
          RedObsBuilt { observation: o } => match o {
            RedProbe { red_at: _, red_base: _, green_at: _, probe_ref: _ } => true
            RedObservedOnMain { red_at: _, green_at: _ } => false
          }
-         RedObsRefused { rule: _, detail: _ } => false })
-    // THE ARM IS SAID, NEVER GUESSED: a red_base/probe_ref pair with NO arm named is refused, not read as a
-    // probe. The serve close routes through this same fn, so a close form with red_base filled but red_kind
-    // blank is refused here too — it is never silently defaulted to a probe (or to on main).
-    && (match red_observation_from_arm(arm: "", red_at: red(), green_at: green(), red_base: base(), probe_ref: pref()) {
-         RedObsRefused { rule: _, detail: _ } => true
+         RedObsRefused { cause: _ } => false })
+    // THE ARM IS SAID, NEVER GUESSED: at each edge the arm word is parsed ONCE into a RedKind; "" and a
+    // misspelling are not a standing and are refused. The serve close and the CLI use this same parser, so a
+    // close form with red_base filled but red_kind blank is refused, never silently defaulted to a probe.
+    && (match red_kind_parse(word: "") { KindUnrecognized { given: _ } => true  KindNamed { kind: _ } => false })
+    && (match red_kind_parse(word: "onmain") { KindUnrecognized { given: _ } => true  KindNamed { kind: _ } => false })
+    // THE CAUSES ARE TYPED: an on_main arm that names a base, and a probe that names no ref, each refuse with
+    // the ONE cause variant that says so — a witness reads the cause, not a hand-written string.
+    && (match red_observation_validate(kind: OnMain, red_at: red(), green_at: green(), red_base: base(), probe_ref: "") {
+         RedObsRefused { cause: c } => match c { MainNamesBase => true  _ => false }
          RedObsBuilt { observation: _ } => false })
-    && (match red_observation_from_arm(arm: "onmain", red_at: red(), green_at: green(), red_base: "", probe_ref: "") {
-         RedObsRefused { rule: _, detail: _ } => true
+    && (match red_observation_validate(kind: Probe, red_at: red(), green_at: green(), red_base: base(), probe_ref: "") {
+         RedObsRefused { cause: c } => match c { ProbeNoRef => true  _ => false }
          RedObsBuilt { observation: _ } => false })
 }
 
