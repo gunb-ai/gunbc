@@ -45,16 +45,20 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //   calls. These resolve via parent_closure_callable_candidates, the wall fires, they are
 //   PROTECTED. Counting them as blind spot was wrong (the executed control proves it).
 //
-// CORRECTED: 5890 sites, 10 names, 1327 modules — bare calls to kernel method template names
+// CORRECTED: 5890 sites, 31 names, 1327 modules — bare calls to kernel method template names
 //   with labeled args, where the callee is NEITHER locally declared NOR imported. These hit
-//   CallableUnresolved → method bridge → no shape wall. The 10 names: split(1337), starts_with(1140),
-//   substring(900), to_string(497), to_upper(383), map_get(374), to_int(345), map_keys(303),
-//   map_has(122), skip(85). Predicate filters: not locally declared (fn NAME( absent from file),
+//   CallableUnresolved → method bridge → no shape wall. Top names by site count: split(1438),
+//   starts_with(1032), to_string(747), substring(697), length(544), any(427), filter(206),
+//   ends_with(187), get(171), replace(88) — 31 names total (see the TSV for all).
+//   Predicate filters: not locally declared (fn NAME( absent from file),
 //   not imported (import line does not list the name). Not filtered statically: parent_closure
 //   reachability (but the 5890 excludes ALL imported cases, and unimported names cannot be in
 //   the parent closure chain because the chain walks imports); builtin/kernel table (the builtin
 //   positional arity check ignores labeled args by construction — filter at line 8606 — so even
 //   if the name reaches the builtin path, labels remain unchecked; the blind spot is the same).
+//   Reproducible producer: scripts/sig_unresolved_fallthrough_census.sh (git grep, light).
+//   Committed TSV: docs/measurements/sig_unresolved_fallthrough_census.tsv
+//   (2192 rows, sha256 9aabdcdab6649afacbe5b4830a7b0446551d97dc29ee012fef132898ce0a45a8)
 
 // THE FIXTURE: calls 'length' with a deliberately wrong argument label, WITHOUT importing it.
 // 'length' is a kernel method template name (FreeMonoidCollection profile, ReceiverSelf param).
