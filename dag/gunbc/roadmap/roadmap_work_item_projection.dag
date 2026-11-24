@@ -399,13 +399,13 @@ fn projection_row_json(row: ProjectionRow) -> JsonValue {
     json_kv(key: "layer", value: json_int(n: row.layer)),
     json_kv(key: "item_state", value: json_string(s: row.item_state)),
     json_kv(key: "leaves", value: json_array(elements: map(row.leaves, l => json_object(members: [
-      json_kv(key: "leaf_path", value: json_string(s: l.path)),
+      json_kv(key: "path", value: json_string(s: l.path)),
       json_kv(key: "start_day", value: json_string(s: l.start_day)),
       json_kv(key: "finish_day", value: json_string(s: l.finish_day)),
       json_kv(key: "on_critical_path", value: json_bool(b: l.on_critical_path)),
     ])))),
     json_kv(key: "in_flight", value: json_array(elements: map(row.in_flight, f => json_object(members: [
-      json_kv(key: "leaf_path", value: json_string(s: f.path)),
+      json_kv(key: "path", value: json_string(s: f.path)),
       json_kv(key: "assignee", value: json_string(s: f.assignee)),
       json_kv(key: "return_to", value: json_string(s: f.return_to)),
     ])))),
