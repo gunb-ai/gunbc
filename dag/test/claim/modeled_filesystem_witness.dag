@@ -173,6 +173,35 @@ test fn dispatcher_callee_surface_reachable() -> Bool {
   witness_dispatcher_dependencies()
 }
 
+// CONDITION-ONE EVIDENCE (this row): the reference chain through gunbc.filesystem_model::filesystem_bindings
+// reaches dag/extdeps/shell.dag, so admit_modeled_realization validates the frame's ten shell OperationRefs
+// against the run's service_ops index. FAIL-CLOSED IN BOTH DIRECTIONS: this claim is TRUE only when the
+// interpreter runs the effect subject to completion (WitnessReturned) having dispatched real Filesystem
+// operations -- a POSITIVE witness (a non-empty Filesystem route) reachable only AFTER every shell binding
+// validates, which itself requires shell.dag loaded as a fragment (v1_interpreter.rs builds service_ops by
+// iterating every item of each loaded fragment). If the declared reference
+// gunbc.filesystem_model::shell_model_dependency is removed, shell.dag is not loaded, admit refuses on the
+// FIRST shell binding (the reason names "binding shell.Move.File declared at dag/extdeps/shell.dag resolves
+// to no declared operation with that identity"), the frame yields WitnessRefused, and this claim is FALSE --
+// so deleting the load-bearing reference fails HERE rather than pruning silently. It is not an empty==empty
+// check: the positive witness is that the subject's Filesystem dispatches completed.
+test fn shell_model_operations_reachable_through_entry_reference_chain() -> Bool {
+  let first_owner = boot_run_owner(run_id: "run-a" as NonEmptyStr, process: ProcessIdentity { boot_id: "b" as NonEmptyStr, pid: 10, start_time: "1" as NonEmptyStr }, pid_namespace: "pid:[1]" as NonEmptyStr)
+  let second_owner = boot_run_owner(run_id: "run-b" as NonEmptyStr, process: ProcessIdentity { boot_id: "b" as NonEmptyStr, pid: 11, start_time: "2" as NonEmptyStr }, pid_namespace: "pid:[1]" as NonEmptyStr)
+  match evaluate_in_witness_frame(
+    frame: filesystem_frame(initial: empty_hold_store()),
+    subject: fn(_scope) {
+      let _first = file_hold_acquire(root: hold_root, slot_key: hold_key, requested_owner: first_owner)
+      let _second = file_hold_acquire(root: hold_root, slot_key: hold_key, requested_owner: second_owner)
+      true
+    },
+  ) {
+    WitnessReturned { value, route, state } => value && count(filter(route, r => r.invocation.at.service == "Filesystem")) > 0
+    WitnessRefused { diagnostic, route, state } => false
+    WitnessInterrupted { at, route, state, now } => false
+  }
+}
+
 // The reason-dump observation entry. Under `gunbc run --claim-run --function` a ProcessExit value is
 // printed with its reason (`FAIL <fn> (returned ProcessExit::ExitFailure, code 1: <reason>)`), so
 // running this names the exact string-dispatched callee the per-function run could not resolve. It

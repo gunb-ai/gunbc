@@ -11,6 +11,7 @@ import v2.std.operation_realization {
 }
 import extdeps.transports.file { FileExchangeObservation, FileOperationSucceeded, FileOperationFailed }
 import extdeps.transports.shell { ShellProcessExited }
+import extdeps.shell { extdeps_external_authority_anchor, posix_command_v_check_argv, shell_test_is_executable_argv }
 import extdeps.access.posix { FileMode, PermissionBits, file_mode_octal }
 import extdeps.filesystem.filesystem_io {
   FilesystemNotFound, FilesystemAlreadyExists, FilesystemNotDirectory, FilesystemOtherFailure, FilesystemPermissionDenied,
@@ -185,6 +186,37 @@ fn filesystem_operation(operation: String) -> OperationRef {
   OperationRef { path: filesystem_io_operation_path, service: "Filesystem", operation: operation }
 }
 
+// THE DECLARED REFERENCE THAT REACHES THE MODEL'S shell.dag OPERATION DECLARATIONS.
+// This module declares TEN modeled bindings by OperationRef STRING identity into dag/extdeps/shell.dag:
+// shell_move_file_operation (shell.Move / File), shell_mkdir_parents_operation (shell.Mkdir / Parents),
+// shell_path_canonical_operation (shell.Path / Canonical), and the six in shell_operations_bindings
+// (shell.Find / *, shell.Env / *, shell.PosixCommandV / *). Each names a service operation that lives in
+// shell.dag, but a String literal is NEVER a module reference (v2.compiler.module_acquisition contract:
+// a String literal is never a module reference, a bare name is not requestable). A whole-tree run reaches
+// shell.dag because the extdeps shell transports CALL shell_test_is_executable_argv and
+// posix_command_v_check_argv, so shell.dag is loaded and its declared service operations populate the run's
+// service_ops index (v1_interpreter.rs builds service_ops by iterating every item of each loaded fragment).
+// A per-function claim run instead loads only what the entry's reference chain REACHES by a declared
+// reference, so an isolated two_contenders closure never loads shell.dag, its service operations (shell.Move
+// / File, ...) are absent from service_ops, and the frame's binding validation (admit_modeled_realization)
+// refuses on the first shell binding with no reason a claim can print.
+// Referencing shell.dag's declared surface BY VALUE from the function below -- the same items a production
+// run's transports reach -- registers shell.dag as a loaded fragment for the same reason production does, so
+// its service items enter service_ops. The reference is a declared reference, NOT a widening of
+// v2.compiler.module_acquisition to read strings. The interpreter never derives a verdict from this bool;
+// the reachability claim in dag/test/claim/modeled_filesystem_witness.dag is the judge, in both directions.
+fn shell_model_dependency() -> Bool {
+  shell_dependency_declared(posix_command_v_check_argv)
+    && shell_dependency_declared(shell_test_is_executable_argv)
+    && shell_dependency_declared(extdeps_external_authority_anchor)
+}
+
+// A type-preserving consumer so each shell.dag item above is a USED reference the demand loader follows, not
+// a bare name. It reads nothing; its whole role is to make the reference load-bearing.
+fn shell_dependency_declared<T>(value: T) -> Bool {
+  true
+}
+
 fn file_step<S>(state: S, observation: FileExchangeObservation) -> OperationStep<S> {
   OperationObserved { observation: FileObserved { observation: observation }, state: state, elapsed: second(count: 0) }
 }
@@ -201,6 +233,12 @@ fn fs_resolved(cwd: String, path: String) -> String {
 }
 
 fn filesystem_bindings<S>(get: fn(S) -> ModeledFilesystem, put: fn(S, ModeledFilesystem) -> S, cwd: fn(S) -> String) -> List<OperationBinding<S>> {
+  // Reaching shell_model_dependency() here is what pulls shell.dag into the per-function demand closure
+  // for the same reason a whole-tree run pulls it: the shell bindings constructed below declare operations
+  // by string OperationRef into shell.dag, and this declared reference registers shell.dag as a loaded
+  // fragment so its service operations populate service_ops. Kept alive by the reachability claim in
+  // dag/test/claim/modeled_filesystem_witness.dag, not by an incidental use. See shell_model_dependency.
+  let _shell_deps = shell_model_dependency()
   let reading = fn(state, call) {
     match operation_input_text(invocation: call.invocation, name: "path") {
       Absent => OperationHarnessFault { reason: "a filesystem read was dispatched without a path" as NonEmptyStr }
