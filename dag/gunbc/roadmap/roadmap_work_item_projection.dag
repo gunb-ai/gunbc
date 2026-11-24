@@ -112,7 +112,7 @@ type ProjectionRefusal
   | StandingUnobserved { node: String }
   // A node whose decomposition exists but whose schedule REFUSED: a plan is present but cannot be honestly
   // placed. Serving empty leaves here would draw "nothing planned" for an item mid-plan -- a silent widen.
-  | ScheduleRefused { node: String, cause: String }
+  | RowScheduleRefused { node: String, cause: String }
   // The item's in-flight read refused (history not causally orderable, a grain unreadable, ...): its held
   // claims cannot be honestly stated. Serving empty in_flight would draw "nobody claimed" -- a silent widen.
   | InFlightUnordered { node: String, cause: String }
@@ -304,7 +304,7 @@ fn projection_refusal_reason(refusal: ProjectionRefusal) -> String {
   match refusal {
     UnboundNode { node: n } => join(["no binding for node: ", n], "")
     StandingUnobserved { node: n } => join(["standing unobserved for node: ", n], "")
-    ScheduleRefused { node: n, cause: c } => join(["schedule refused for node: ", n, " (", c, ")"], "")
+    RowScheduleRefused { node: n, cause: c } => join(["schedule refused for node: ", n, " (", c, ")"], "")
     InFlightUnordered { node: n, cause: c } => join(["in-flight read refused for node: ", n, " (", c, ")"], "")
   }
 }
@@ -313,7 +313,7 @@ fn projection_refusal_step(refusal: ProjectionRefusal) -> String {
   match refusal {
     UnboundNode { node: _ } => "binding"
     StandingUnobserved { node: _ } => "standing"
-    ScheduleRefused { node: _, cause: _ } => "schedule"
+    RowScheduleRefused { node: _, cause: _ } => "schedule"
     InFlightUnordered { node: _, cause: _ } => "in_flight"
   }
 }
@@ -339,7 +339,7 @@ fn projection_in_flight_refusal_cause(cause: LeafInFlightRefusal) -> String {
 fn projection_from_now_refusal(node: String, cause: FromNowCause) -> ProjectionRefusal {
   match cause {
     InFlightReadRefused { item: _, cause: c } => InFlightUnordered { node: node, cause: projection_in_flight_refusal_cause(cause: c) }
-    ScheduleRefused { refusal } => ScheduleRefused { node: node, cause: projection_schedule_refusal_cause(refusal: refusal) }
+    ScheduleRefused { refusal } => RowScheduleRefused { node: node, cause: projection_schedule_refusal_cause(refusal: refusal) }
   }
 }
 
@@ -450,7 +450,7 @@ fn roadmap_work_item_projection_refusal_json(read_on: String, step: String, reas
 // envelopes (events, latest_event, acceptance_evidence). IT DRIVES THE UPSTREAM ANSWERS AND COMPUTES NO
 // TIMELINE OF ITS OWN. An EMPTY leaf list means one thing only: the node has no decomposition at all -- a
 // fact about an unplanned item. A schedule that REFUSES, or an in-flight history the log cannot order,
-// REFUSES the WHOLE row (ProjectionRowRefused { ScheduleRefused | InFlightUnordered }) rather than widen to
+// REFUSES the WHOLE row (ProjectionRowRefused { RowScheduleRefused | InFlightUnordered }) rather than widen to
 // an empty list: a barless row must never stand in for a plan the schedule could not place or hide held
 // claims behind an empty in_flight (fail_closed: a failure arm refuses, it never widens). Likewise
 // in_flight is never silently emptied -- it is the log's derived set, or the row refuses.

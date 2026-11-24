@@ -36,7 +36,7 @@ import gunbc.roadmap.roadmap_event_log {
 import gunbc.roadmap.roadmap_intention_binding { IntentionBinding }
 import gunbc.roadmap.roadmap_work_item_projection {
   ProjectionLeaf, ProjectionInFlight, ProjectionEvent, ProjectionInputs, ProjectionRow, ProjectionRefusal,
-  ProjectionRowResult, ProjectionRowBuilt, ProjectionRowRefused, ScheduleRefused, InFlightUnordered,
+  ProjectionRowResult, ProjectionRowBuilt, ProjectionRowRefused, RowScheduleRefused, InFlightUnordered,
   projection_build_row, projection_in_flight_entries, projection_leaf_from_dated, projection_leaves_for_item,
   roadmap_work_item_projection_document_json, projection_row_json,
   roadmap_projection_row_read, roadmap_projection_document_for_read,
@@ -351,7 +351,7 @@ test fn row_read_builds_a_dated_row_for_a_real_bound_item() -> Bool {
       envs: [] as List<RoadmapEventEnvelope>,
     ) {
       // Either a built, dated row -- the composition executed and the schedule placed the item -- OR an honest
-      // ScheduleRefused: with empty envs the in-flight read cannot refuse, the node is bound and has a
+      // RowScheduleRefused: with empty envs the in-flight read cannot refuse, the node is bound and has a
       // decomposition, so the ONLY legal refusal here is the schedule refusing to place it. A built row must
       // carry every leaf as an ISO day and its day_priors must align one-for-one with its leaves (a leaf with
       // no prior, or a prior with no leaf, is the silent-widen this node forbids).
@@ -366,7 +366,7 @@ test fn row_read_builds_a_dated_row_for_a_real_bound_item() -> Bool {
              && string_length(s: l.finish_day) == 10
              && string_contains(s: l.start_day, pattern: "-")
              && string_contains(s: l.finish_day, pattern: "-"))) == count(r.leaves)
-      ProjectionRowRefused { refusal: ScheduleRefused { node: n, cause: _ } } => n == "namespace-reference-derived-closure"
+      ProjectionRowRefused { refusal: RowScheduleRefused { node: n, cause: _ } } => n == "namespace-reference-derived-closure"
       ProjectionRowRefused { refusal: _ } => false
     }
   }
