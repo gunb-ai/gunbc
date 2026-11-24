@@ -42,12 +42,13 @@ import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.runner.runner_host_file_converge { administrator_ssh_target }
 import gunbc.fleet.fleet_known_hosts_anchor {
   SshTarget, FleetSshExecutionContext, SshTargetResolution, SshTargetResolved, SshTargetRefused,
+  FleetLegKind, ProbeLeg,
 }
 import gunbc.fleet.fleet_ssh_locus {
   prepare_fleet_ssh_agent_context, FleetSshContextPreparation, FleetSshContextReady, FleetSshContextRefused,
 }
 import gunbc.typed_argv_exec {
-  typed_argv_exec_over_fleet_ssh, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused,
+  typed_argv_exec_over_fleet_ssh, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused, TypedArgvExecOverran,
 }
 
 // READ-ONLY HOST MEMORY ENVELOPE. Modeled on gunbc.host.host_memory_observation
@@ -432,11 +433,17 @@ fn host_memory_quiescent_read_over_ssh(
     target: target,
     context: context,
     argv: ["/bin/cat", "/proc/meminfo"],
+    kind: ProbeLeg,
   ) {
     TypedArgvExecRefused { reason: why } =>
       HostMemQuiescentReadRefused {
         host: host,
         reason: concat("host_memory_envelope_observe: ", host as String, " is unreachable over ssh; refusing to report memory (never a zero or an absent figure): ", why),
+      }
+    TypedArgvExecOverran { deadline: _ } =>
+      HostMemQuiescentReadRefused {
+        host: host,
+        reason: concat("host_memory_envelope_observe: the read leg on ", host as String, " overran its ProbeLeg wall ceiling; refusing to report memory (never a zero or an absent figure)"),
       }
     TypedArgvExecConverged { result: r } =>
       if r.exit_code != 0 {
