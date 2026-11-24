@@ -305,39 +305,31 @@ fn floor_preparation_ms_add_opt(acc: Millisecond, part: Optional<Millisecond>) -
   }
 }
 
-fn floor_preparation_starts_with(text: String, prefix: String) -> Bool {
-  let pieces = split(s: text, delimiter: prefix)
-  pieces.length() > 1 && pieces.first() == Present { value: "" }
-}
-
+// Prefix and suffix surgery on the kernel's own string builtins (starts_with / ends_with /
+// substring -- the std pattern at dag/std/fabric_storage.dag:303-306). The previous copies
+// split on the delimiter and required exactly two pieces, so a text containing the delimiter
+// twice ("dag/test/claim/dag/x.dag" with prefix "dag/") silently returned the text unchanged
+// and module_of_path charged the cost to a module that does not exist (review 98082).
 fn floor_preparation_after_prefix(text: String, prefix: String) -> String {
-  let pieces = split(s: text, delimiter: prefix)
-  match pieces.skip(n: 1).first() {
-    Present { value: rest } => rest
-    Absent => ""
+  if starts_with(s: text, prefix: prefix) {
+    substring(s: text, start: string_length(s: prefix), end: string_length(s: text))
+  } else {
+    ""
   }
 }
 
 // `text` must END with `suffix`; Absent says it does not, which is a format deviation and not a zero.
 fn floor_preparation_strip_suffix(text: String, suffix: String) -> Optional<String> {
-  let pieces = split(s: text, delimiter: suffix)
-  if pieces.length() == 2 {
-    match pieces.skip(n: 1).first() {
-      Present { value: "" } => pieces.first()
-      _ => none
-    }
+  if ends_with(s: text, suffix: suffix) {
+    Present { value: substring(s: text, start: 0, end: string_length(s: text) - string_length(s: suffix)) }
   } else {
     none
   }
 }
 
 fn floor_preparation_strip_prefix(text: String, prefix: String) -> String {
-  let pieces = split(s: text, delimiter: prefix)
-  if pieces.length() == 2 && pieces.first() == Present { value: "" } {
-    match pieces.skip(n: 1).first() {
-      Present { value: rest } => rest
-      Absent => text
-    }
+  if starts_with(s: text, prefix: prefix) {
+    substring(s: text, start: string_length(s: prefix), end: string_length(s: text))
   } else {
     text
   }
@@ -349,9 +341,9 @@ fn floor_preparation_strip_prefix(text: String, prefix: String) -> String {
 // `test.claim.emitter_variant_tag_reference_witness`), which is what puts the entry-resolve rows and
 // the per-claim rows in ONE key space instead of two.
 fn floor_preparation_module_of_path(path: String) -> String {
-  let without_root = if floor_preparation_starts_with(path, "dag/") {
+  let without_root = if starts_with(s: path, prefix: "dag/") {
     floor_preparation_strip_prefix(path, "dag/")
-  } else if floor_preparation_starts_with(path, "src/") {
+  } else if starts_with(s: path, prefix: "src/") {
     floor_preparation_strip_prefix(path, "src/")
   } else {
     path
@@ -374,21 +366,21 @@ fn floor_preparation_join_dots(path: String) -> String {
 }
 
 fn floor_preparation_classify(line: String) -> FloorPreparationLine {
-  if floor_preparation_starts_with(line, floor_preparation_phase_tag) {
+  if starts_with(s: line, prefix: floor_preparation_phase_tag) {
     floor_preparation_classify_phase(line)
-  } else if floor_preparation_starts_with(line, floor_preparation_resolve_tag) {
+  } else if starts_with(s: line, prefix: floor_preparation_resolve_tag) {
     floor_preparation_classify_resolve(line)
-  } else if floor_preparation_starts_with(line, floor_preparation_shared_fill_tag) {
+  } else if starts_with(s: line, prefix: floor_preparation_shared_fill_tag) {
     floor_preparation_classify_claim(line, floor_preparation_shared_fill_tag)
-  } else if floor_preparation_starts_with(line, floor_preparation_reach_probe_tag) {
+  } else if starts_with(s: line, prefix: floor_preparation_reach_probe_tag) {
     floor_preparation_classify_claim(line, floor_preparation_reach_probe_tag)
-  } else if floor_preparation_starts_with(line, floor_preparation_witness_tag) {
+  } else if starts_with(s: line, prefix: floor_preparation_witness_tag) {
     floor_preparation_classify_claim(line, floor_preparation_witness_tag)
-  } else if floor_preparation_starts_with(line, floor_preparation_pass_prefix) {
+  } else if starts_with(s: line, prefix: floor_preparation_pass_prefix) {
     VerdictLine { passed: true, function: floor_preparation_after_prefix(line, floor_preparation_pass_prefix) }
-  } else if floor_preparation_starts_with(line, floor_preparation_fail_prefix) {
+  } else if starts_with(s: line, prefix: floor_preparation_fail_prefix) {
     VerdictLine { passed: false, function: floor_preparation_after_prefix(line, floor_preparation_fail_prefix) }
-  } else if floor_preparation_starts_with(line, "[") {
+  } else if starts_with(s: line, prefix: "[") {
     RefusedLine { text: line, cause: floor_preparation_unknown_tag_cause }
   } else {
     UntaggedLine { text: line }
@@ -1139,7 +1131,7 @@ data floor_preparation_report_refusal_marker: String = "REFUSED:"
 data floor_preparation_report_empty_marker: String = "population=EMPTY"
 
 fn floor_preparation_report_is_wellformed(line: String) -> Bool {
-  floor_preparation_starts_with(text: line, prefix: floor_preparation_report_prefix)
+  starts_with(s: line, prefix: floor_preparation_report_prefix)
     && floor_preparation_contains(haystack: line, needle: floor_preparation_report_sentinel)
     && floor_preparation_contains(haystack: line, needle: " preparation_ms=")
     && floor_preparation_contains(haystack: line, needle: " total_ms=")
@@ -1149,7 +1141,7 @@ fn floor_preparation_report_is_wellformed(line: String) -> Bool {
 }
 
 fn floor_preparation_classify_report_line(line: String) -> String {
-  if !floor_preparation_starts_with(text: line, prefix: floor_preparation_report_prefix) {
+  if !starts_with(s: line, prefix: floor_preparation_report_prefix) {
     "UNRECOGNISED_OUTPUT"
   } else if floor_preparation_contains(haystack: line, needle: floor_preparation_report_refusal_marker) {
     "REFUSAL_NOT_A_REPORT"
@@ -1390,10 +1382,6 @@ fn floor_preparation_contains(haystack: String, needle: String) -> Bool {
   split(s: haystack, delimiter: needle).length() > 1
 }
 
-fn floor_preparation_text_starts_with(text: String, prefix: String) -> Bool {
-  let pieces = split(s: text, delimiter: prefix)
-  pieces.length() > 1 && pieces.first() == Present { value: "" }
-}
 
 
 // The model rows are the authority; this reads them. The second argument to the old filter -- a
@@ -1492,7 +1480,7 @@ fn floor_preparation_has_exact_row(rows: List<String>, wanted: String) -> Bool {
 }
 
 fn floor_preparation_any_row_starts_with(rows: List<String>, prefix: String) -> Bool {
-  fold(rows, init:  false, f: (acc, row) => acc || floor_preparation_starts_with(row, prefix))
+  fold(rows, init:  false, f: (acc, row) => acc || starts_with(s: row, prefix: prefix))
 }
 
 fn floor_preparation_capture_names_a_pass(capture: List<String>, claim: String) -> Bool {

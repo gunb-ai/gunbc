@@ -44,7 +44,6 @@ import v2.workflow.floor_preparation_split {
   floor_preparation_split_preparation_ms,
   floor_preparation_split_report,
   floor_preparation_split_total_ms,
-  floor_preparation_starts_with,
   floor_preparation_total_ms,
   floor_preparation_untrimmed_capture,
   floor_preparation_untrimmed_capture_provenance,
@@ -650,8 +649,8 @@ test fn floor_preparation_the_untrimmed_leg_is_the_same_floor() -> Bool {
 fn the_two_reports_answer_different_questions() -> Bool {
   let mine = floor_preparation_split_report()
   let theirs = floor_cost_debt_population_report()
-  floor_preparation_starts_with(mine, "floor-preparation-split")
-    && floor_preparation_starts_with(theirs, "floor_cost_debt population")
+  starts_with(s: mine, prefix: "floor-preparation-split")
+    && starts_with(s: theirs, prefix: "floor_cost_debt population")
     && split(s: mine, delimiter: "preparation_ms=").length() > 1
     && split(s: theirs, delimiter: "preparation_ms=").length() == 1
     && split(s: theirs, delimiter: "population:").length() > 1

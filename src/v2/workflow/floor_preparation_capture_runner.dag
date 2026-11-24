@@ -55,7 +55,6 @@ import v2.workflow.floor_preparation_split {
   floor_preparation_has_exact_row,
   floor_preparation_split_report,
   floor_preparation_ask,
-  floor_preparation_text_starts_with,
   floor_preparation_report_sentinel,
   floor_preparation_report_prefix,
   floor_preparation_classify_report_line,
@@ -288,7 +287,7 @@ fn floor_preparation_first_token(line: String) -> String {
 
 fn floor_preparation_kept_line(line: String) -> Bool {
   fold(floor_preparation_keep_prefixes, init: false, f: (acc, prefix) =>
-    acc || floor_preparation_text_starts_with(text: line, prefix: prefix))
+    acc || starts_with(s: line, prefix: prefix))
 }
 
 fn floor_preparation_kept(text: String) -> List<String> {
@@ -490,7 +489,7 @@ fn floor_preparation_leg_argv(entries: List<String>) -> List<String> {
 
 fn floor_preparation_pass_names(stdout_text: String) -> List<String> {
   fold(floor_preparation_lines(text: stdout_text), init: [], f: (acc, line) =>
-    if floor_preparation_text_starts_with(text: line, prefix: "PASS ") {
+    if starts_with(s: line, prefix: "PASS ") {
       list_push(xs: acc, item: floor_preparation_first_token(
         floor_preparation_strip_prefix(text: line, prefix: "PASS ")))
     } else { acc })
@@ -536,9 +535,9 @@ fn floor_preparation_cause_of(entry: String, untrimmed_stdout: String) -> String
 // timeout: never clean. (Adopted from the run5 forensics with the lane manager.)
 fn floor_preparation_verdict_count(text: String) -> Int {
   fold(floor_preparation_lines(text: text), init: 0, f: (acc, line) =>
-    if floor_preparation_text_starts_with(text: line, prefix: "PASS ")
-      || floor_preparation_text_starts_with(text: line, prefix: "FAIL ")
-      || floor_preparation_text_starts_with(text: line, prefix: "UNOBSERVED ") { acc + 1 } else { acc })
+    if starts_with(s: line, prefix: "PASS ")
+      || starts_with(s: line, prefix: "FAIL ")
+      || starts_with(s: line, prefix: "UNOBSERVED ") { acc + 1 } else { acc })
 }
 
 fn floor_preparation_spawn_completed(rc: Int) -> Bool {
@@ -764,7 +763,7 @@ fn floor_preparation_capture_run() -> String {
     // report text arrives on STDERR inside "error: function `floor_preparation_split_report`
     // returned `...`, not `ProcessExit`", so the report lines are read from stderr.
     let report_lines = fold(floor_preparation_lines(text: report.stderr), init: [], f: (acc, line) =>
-      if floor_preparation_text_starts_with(text: line, prefix: floor_preparation_report_prefix) {
+      if starts_with(s: line, prefix: floor_preparation_report_prefix) {
         list_push(xs: acc, item: line)
       } else { acc })
     let classifications = fold(report_lines, init: [], f: (acc, line) =>
