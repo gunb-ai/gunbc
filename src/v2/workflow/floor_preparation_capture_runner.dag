@@ -54,7 +54,47 @@ import v2.workflow.floor_preparation_split {
 // the digest for exactly that reason.
 // ----------------------------------------------------------------------------------------------
 
-data floor_preparation_runner_root: String = "/home/briansrls/scratch/crisp-eagle-244/pr"
+// No operator path, no session id is written into this module. The checkout root, the slot owner
+// and the slot wrapper's location are RESOLVED FROM THE CALLER'S ENVIRONMENT at run time
+// (HOME, HEAVY_OWNER via printenv through the same spawn surface), because carrying them as
+// literals would leak workflow policy into argv (interface_realization_policy: "Policy has leaked
+// when an argv carries a literal it should receive as a parameter"). The layout conventions --
+// <HOME>/scratch/<owner>/pr as the checkout, <HOME>/bin/heavy-slot as the wrapper,
+// <HOME>/scratch/<owner>/bin/unpacked for the pinned release binaries -- are the shared-host
+// contract every session on this fleet already follows; the digests below pin the RELEASE, not a
+// machine, so a reader on any host can re-derive the split against the same release.
+fn floor_preparation_env_value(name: String) -> String {
+  let ran = floor_preparation_spawn_plain(binary: "/usr/bin/printenv", arguments: [name])
+  trim(s: ran.stdout)
+}
+
+fn floor_preparation_session_owner() -> String {
+  floor_preparation_env_value(name: "HEAVY_OWNER")
+}
+
+fn floor_preparation_home() -> String {
+  floor_preparation_env_value(name: "HOME")
+}
+
+fn floor_preparation_runner_root() -> String {
+  concat(concat(concat(floor_preparation_home(), "/scratch/"), floor_preparation_session_owner()), "/pr")
+}
+
+fn floor_preparation_heavy_slot_binary() -> String {
+  concat(concat(floor_preparation_home(), "/bin/heavy-slot"), "")
+}
+
+fn floor_preparation_pinned_claim_batch() -> String {
+  concat(concat(concat(floor_preparation_home(), "/scratch/"), floor_preparation_session_owner()), "/bin/unpacked/claim_batch")
+}
+
+fn floor_preparation_pinned_gunbc() -> String {
+  concat(concat(concat(floor_preparation_home(), "/scratch/"), floor_preparation_session_owner()), "/bin/unpacked/gunbc")
+}
+
+fn floor_preparation_manifest_path() -> String {
+  concat(concat(concat(floor_preparation_home(), "/scratch/"), floor_preparation_session_owner()), "/bin/bins/release-bins.manifest")
+}
 
 data floor_preparation_timeout_binary: String = "/usr/bin/timeout"
 
@@ -62,24 +102,11 @@ data floor_preparation_env_binary: String = "/usr/bin/env"
 
 data floor_preparation_sha256_binary: String = "/usr/bin/sha256sum"
 
-data floor_preparation_heavy_slot_binary: String = "/home/briansrls/bin/heavy-slot"
-
-data floor_preparation_heavy_owner: String = "crisp-eagle-244"
-
-data floor_preparation_pinned_claim_batch: String =
-  "/home/briansrls/scratch/crisp-eagle-244/bin/unpacked/claim_batch"
-
 data floor_preparation_pinned_claim_batch_sha: String =
   "b395a556775931296f8f8aa8b9307f304d34442579f88d749189e273a4b0aee5"
 
-data floor_preparation_pinned_gunbc: String =
-  "/home/briansrls/scratch/crisp-eagle-244/bin/unpacked/gunbc"
-
 data floor_preparation_pinned_gunbc_sha: String =
   "3283cc8aeccd690d175a349d23eacd2c2a5d4c8215557dcdadad4f703bed6e7f"
-
-data floor_preparation_manifest_path: String =
-  "/home/briansrls/scratch/crisp-eagle-244/bin/bins/release-bins.manifest"
 
 data floor_preparation_source_roots: List<String> = ["dag", "src/v1", "src/v2"]
 
@@ -109,15 +136,21 @@ data floor_preparation_keep_prefixes: List<String> = [
   "PASS ", "FAIL ", "UNOBSERVED ", "claim_batch: resolving "
 ]
 
-// Wall bounds, in seconds, as data: timeout(1) enforces them as a real process, and exit 124 is
-// reported as a KILL and never as a refusal -- a wall-clock timeout is not gunbc refusing.
-data floor_preparation_untrimmed_bound: String = "5400"
+// Wall bounds carry the Millisecond unit through the model; the STRING form exists only at the
+// argv boundary where timeout(1) demands digits (Google worked example in DESIGN.md: the string
+// belongs only at the rendering edge). timeout(1) enforces them as a real process, and exit 124
+// is reported as a KILL and never as a refusal -- a wall-clock timeout is not gunbc refusing.
+data floor_preparation_untrimmed_bound: Millisecond = millisecond(count: 5400000)
 
-data floor_preparation_graded_bound: String = "4200"
+data floor_preparation_graded_bound: Millisecond = millisecond(count: 4200000)
 
-data floor_preparation_claims_bound: String = "2400"
+data floor_preparation_claims_bound: Millisecond = millisecond(count: 2400000)
 
-data floor_preparation_report_bound: String = "2400"
+data floor_preparation_report_bound: Millisecond = millisecond(count: 2400000)
+
+fn floor_preparation_bound_digits(bound: Millisecond) -> String {
+  to_string(millisecond_count(bound))
+}
 
 // The roster is MODEL DATA, not a shell constant. The witness module declares one test fn per
 // name; the claim gate refuses unless every one of these printed its own PASS line.
@@ -235,19 +268,23 @@ fn floor_preparation_parse_int(text: String) -> Int {
 // sha256sum needs no heavy slot, and holding one to hash a file is how a lane starves.
 // ----------------------------------------------------------------------------------------------
 
-fn floor_preparation_spawn_slot(bound: String, binary: String, args: List<String>) -> FloorPreparationSpawnObservation {
-  shell.Exec.RunArgv(
+// One place builds the slot-bound argv; the observation fields are copied into this module's own
+// type at the boundary so the runner's dataflow never depends on the operation's record shape.
+fn floor_preparation_spawn_slot(bound: Millisecond, binary: String, args: List<String>) -> FloorPreparationSpawnObservation {
+  let ran = shell.Exec.RunArgv(
     program: floor_preparation_timeout_binary,
     arguments: concat(
-      [bound, floor_preparation_env_binary,
-       concat("HEAVY_OWNER=", floor_preparation_heavy_owner),
-       floor_preparation_heavy_slot_binary, binary],
+      [floor_preparation_bound_digits(bound: bound), floor_preparation_env_binary,
+       concat("HEAVY_OWNER=", floor_preparation_session_owner()),
+       floor_preparation_heavy_slot_binary(), binary],
       args)
   )
+  FloorPreparationSpawnObservation { rc: ran.exit_code, stdout: ran.stdout, stderr: ran.stderr }
 }
 
 fn floor_preparation_spawn_plain(binary: String, args: List<String>) -> FloorPreparationSpawnObservation {
-  shell.Exec.RunArgv(program: binary, arguments: args)
+  let ran = shell.Exec.RunArgv(program: binary, arguments: args)
+  FloorPreparationSpawnObservation { rc: ran.exit_code, stdout: ran.stdout, stderr: ran.stderr }
 }
 
 fn floor_preparation_receipt(step: String, detail: String) -> String {
@@ -277,7 +314,7 @@ fn floor_preparation_bytes_of(path: String) -> Int {
 }
 
 fn floor_preparation_manifest_sha(kind: String) -> String {
-  let content = filesystem_read(path: floor_preparation_manifest_path).content
+  let content = filesystem_read(path: floor_preparation_manifest_path()).content
   let hits = filter(xs: floor_preparation_lines(text: content), predicate: fn(line) { floor_preparation_contains(haystack: line, needle: concat(" ", kind)) })
   match hits.first() {
     Present { value: v } => floor_preparation_first_token(v)
@@ -316,11 +353,25 @@ fn floor_preparation_supplies_hold(receipts: List<String>) -> Bool {
 fn floor_preparation_population_pairs() -> List<FloorPreparationPopulationPair> {
   let rendering = floor_preparation_population_rendering()
   let opened = split(s: rendering, delimiter: "POPULATION-BEGIN\n")
-  let inside = split(s: opened.skip(n: 1).first_or(""), delimiter: "\nPOPULATION-END").first_or("")
+  let after = match opened.skip(n: 1).first() {
+    Present { value: v } => v
+    Absent {} => ""
+  }
+  let closed = split(s: after, delimiter: "\nPOPULATION-END")
+  let inside = match closed.first() {
+    Present { value: v } => v
+    Absent {} => ""
+  }
   fold(floor_preparation_lines(text: inside), init: [], f: (acc, line) => {
     let parts = split(s: line, delimiter: "|")
-    let entry = parts.skip(n: 1).first_or("")
-    let claim = parts.skip(n: 2).first_or("")
+    let entry = match parts.skip(n: 1).first() {
+      Present { value: v } => v
+      Absent {} => ""
+    }
+    let claim = match parts.skip(n: 2).first() {
+      Present { value: v } => v
+      Absent {} => ""
+    }
     if claim == "" { acc } else { list_push(xs: acc, item: FloorPreparationPopulationPair { entry: entry, claim: claim }) }
   })
 }
@@ -402,13 +453,13 @@ fn floor_preparation_provenance(leg: String, binary_sha: String, rc: Int, kept_c
 fn floor_preparation_capture_run() -> String {
   let supplies = [
     floor_preparation_supply_line(name: "claim_batch",
-      path: floor_preparation_pinned_claim_batch,
+      path: floor_preparation_pinned_claim_batch(),
       expected: floor_preparation_pinned_claim_batch_sha,
-      bytes_ok: floor_preparation_bytes_of(path: floor_preparation_pinned_claim_batch) > 0),
+      bytes_ok: floor_preparation_bytes_of(path: floor_preparation_pinned_claim_batch()) > 0),
     floor_preparation_supply_line(name: "gunbc",
-      path: floor_preparation_pinned_gunbc,
+      path: floor_preparation_pinned_gunbc(),
       expected: floor_preparation_pinned_gunbc_sha,
-      bytes_ok: floor_preparation_bytes_of(path: floor_preparation_pinned_gunbc) > 0)
+      bytes_ok: floor_preparation_bytes_of(path: floor_preparation_pinned_gunbc()) > 0)
   ]
   let verify_receipt = floor_preparation_receipt("verify-pinned-supplies",
     concat("lines=", to_string(length(xs: supplies))))
@@ -419,7 +470,7 @@ fn floor_preparation_capture_run() -> String {
     let population_ok = floor_preparation_population_file_agrees_hint()
     let untrimmed = floor_preparation_spawn_slot(
       bound: floor_preparation_untrimmed_bound,
-      binary: floor_preparation_pinned_claim_batch,
+      binary: floor_preparation_pinned_claim_batch(),
       args: floor_preparation_leg_argv(entries: entries))
     let untrimmed_receipt = floor_preparation_leg_receipt(
       label: "leg-untrimmed", entries: entries, outcome: untrimmed)
@@ -429,7 +480,7 @@ fn floor_preparation_capture_run() -> String {
     let survivors = floor_preparation_surviving_entries(untrimmed_stdout: untrimmed.stdout)
     let graded = floor_preparation_spawn_slot(
       bound: floor_preparation_graded_bound,
-      binary: floor_preparation_pinned_claim_batch,
+      binary: floor_preparation_pinned_claim_batch(),
       args: floor_preparation_leg_argv(entries: survivors))
     let graded_receipt = floor_preparation_leg_receipt(
       label: "leg-graded", entries: survivors, outcome: graded)
@@ -442,14 +493,14 @@ fn floor_preparation_capture_run() -> String {
        "--functions", join(floor_preparation_claim_roster, ",")])
     let claims = floor_preparation_spawn_slot(
       bound: floor_preparation_claims_bound,
-      binary: floor_preparation_pinned_claim_batch,
+      binary: floor_preparation_pinned_claim_batch(),
       args: claims_args)
     let passed = floor_preparation_pass_names(stdout_text: claims.stdout)
     let missing = fold(floor_preparation_claim_roster, init: [], f: (acc, name) =>
       if floor_preparation_has(xs: passed, x: name) { acc } else { list_push(xs: acc, item: name) })
     let report = floor_preparation_spawn_slot(
       bound: floor_preparation_report_bound,
-      binary: floor_preparation_pinned_gunbc,
+      binary: floor_preparation_pinned_gunbc(),
       args: concat(
         fold(floor_preparation_source_roots, init: [], f: (acc, root) => concat(acc, ["--source-root", root])),
         ["run", "--entry", floor_preparation_authority_path, "--function", "floor_preparation_split_report"]))
@@ -498,10 +549,10 @@ fn floor_preparation_capture_run() -> String {
       concat(join(receipts, "\n"), "\nRUNNER_REFUSED: gates not green -- see receipts above")
     } else {
       Filesystem.Write(
-        path: concat(floor_preparation_runner_root, "/", floor_preparation_retained_file),
+        path: concat(floor_preparation_runner_root(), "/", floor_preparation_retained_file),
         content: retained)
       Filesystem.Write(
-        path: concat(floor_preparation_runner_root, "/", floor_preparation_population_file),
+        path: concat(floor_preparation_runner_root(), "/", floor_preparation_population_file),
         content: floor_preparation_population_projection())
       concat(join(receipts, "\n"),
         concat("\n", concat(join(report_lines, "\n"),
@@ -513,7 +564,7 @@ fn floor_preparation_capture_run() -> String {
 // The committed population file as the model renders it: header comments preserved by agreement
 // is checked elsewhere; the runner REWRITES the row body from the model rows.
 fn floor_preparation_population_projection() -> String {
-  let text = filesystem_read(path: concat(floor_preparation_runner_root, "/", floor_preparation_population_file)).content
+  let text = filesystem_read(path: concat(floor_preparation_runner_root(), "/", floor_preparation_population_file)).content
   let heads = fold(split(s: text, delimiter: "\n"), init: [], f: (acc, line) =>
     if floor_preparation_text_starts_with_hint(line: line, prefix: "#") { list_push(xs: acc, item: line) } else { acc })
   concat(concat(join(heads, "\n"), "\n"), floor_preparation_population_body())
@@ -545,13 +596,13 @@ fn floor_preparation_probe_names() -> String {
 
 fn floor_preparation_probe_supply() -> String {
   floor_preparation_supply_line(name: "claim_batch",
-    path: floor_preparation_pinned_claim_batch,
+    path: floor_preparation_pinned_claim_batch(),
     expected: floor_preparation_pinned_claim_batch_sha,
-    bytes_ok: floor_preparation_bytes_of(path: floor_preparation_pinned_claim_batch) > 0)
+    bytes_ok: floor_preparation_bytes_of(path: floor_preparation_pinned_claim_batch()) > 0)
 }
 
 fn floor_preparation_probe_echo() -> String {
-  let outcome = floor_preparation_spawn_slot(bound: "45", binary: "/bin/echo", arguments: ["probe-spawn-ok"])
+  let outcome = floor_preparation_spawn_slot(bound: millisecond(count: 45000), binary: "/bin/echo", arguments: ["probe-spawn-ok"])
   concat(concat("rc=", to_string(outcome.rc)),
     concat(" out=", floor_preparation_strip(text: outcome.stdout, prefix: "probe-")))
 }
