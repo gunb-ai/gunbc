@@ -3427,148 +3427,6 @@ pub fn occurrence_allocator_after_index(
     )
 }
 
-pub fn occurrence_allocator_after_identity(
-    alloc: OccurrenceIdAllocator,
-    identity: Rc<NodeOccurrenceIdentity>,
-) -> OccurrenceIdAllocator {
-    match (*identity.clone()).clone() {
-        NodeOccurrenceIdentity::OccurrenceMinted { id: id, .. } => {
-            if (alloc.next_id.clone() <= id.value.clone()) {
-                OccurrenceIdAllocator {
-                    next_id: v1_rt::int_add(id.value.clone(), 1),
-                }
-            } else {
-                alloc
-            }
-        }
-        NodeOccurrenceIdentity::OccurrenceProjected { id, .. } => {
-            if (alloc.next_id.clone() <= id.value.clone()) {
-                OccurrenceIdAllocator {
-                    next_id: v1_rt::int_add(id.value.clone(), 1),
-                }
-            } else {
-                alloc
-            }
-        }
-        NodeOccurrenceIdentity::OccurrencePending { caused_by: _, .. } => alloc,
-        NodeOccurrenceIdentity::OccurrenceSynthetic => alloc,
-    }
-}
-
-pub fn occurrence_allocator_after_node_list(
-    alloc: OccurrenceIdAllocator,
-    nodes: Rc<Vec<Rc<Node>>>,
-) -> OccurrenceIdAllocator {
-    nodes.iter().cloned().fold(
-        alloc.clone(),
-        |current: OccurrenceIdAllocator, node: Rc<Node>| {
-            occurrence_allocator_after_node(current, node.clone())
-        },
-    )
-}
-
-pub fn occurrence_allocator_after_optional_node(
-    alloc: OccurrenceIdAllocator,
-    node: Option<Rc<Node>>,
-) -> OccurrenceIdAllocator {
-    match node.clone() {
-        Some(value) => occurrence_allocator_after_node(alloc, value.clone()),
-        std::option::Option::None => alloc.clone(),
-    }
-}
-
-pub fn occurrence_allocator_after_inferred_node(
-    alloc: OccurrenceIdAllocator,
-    inferred: Option<Rc<InferredNode>>,
-) -> OccurrenceIdAllocator {
-    match inferred.clone().as_deref().cloned() {
-        Some(InferredNode::Resolved { node: node, .. }) => {
-            occurrence_allocator_after_node(alloc, node.clone())
-        }
-        Some(InferredNode::CompilerError { .. }) => alloc.clone(),
-        Some(InferredNode::TypeVariable { id: _, .. }) => alloc.clone(),
-        Some(InferredNode::Divergent) => alloc.clone(),
-        std::option::Option::None => alloc.clone(),
-    }
-}
-
-pub fn occurrence_allocator_after_match_pattern(
-    alloc: OccurrenceIdAllocator,
-    pattern: Option<Rc<MatchPattern>>,
-) -> OccurrenceIdAllocator {
-    match pattern.clone().as_deref().cloned() {
-        Some(MatchPattern::Bind {
-            declaration: declaration,
-            ..
-        }) => occurrence_allocator_after_node(alloc.clone(), declaration.clone()),
-        Some(MatchPattern::VariantPattern {
-            field_bindings: bindings,
-            ..
-        }) => occurrence_allocator_after_node_list(alloc.clone(), bindings.clone()),
-        Some(MatchPattern::LitPattern { value: _, .. }) => alloc.clone(),
-        Some(MatchPattern::Wildcard) => alloc.clone(),
-        std::option::Option::None => alloc.clone(),
-    }
-}
-
-pub fn occurrence_allocator_after_node(
-    alloc: OccurrenceIdAllocator,
-    node: Rc<Node>,
-) -> OccurrenceIdAllocator {
-    {
-        let current = occurrence_allocator_after_identity(alloc, node.occurrence_identity.clone());
-        let current = occurrence_allocator_after_node_list(current.clone(), node.children.clone());
-        let current = occurrence_allocator_after_node_list(current.clone(), node.params.clone());
-        let current = occurrence_allocator_after_node_list(current.clone(), node.uses.clone());
-        let current =
-            occurrence_allocator_after_node_list(current.clone(), node.properties.clone());
-        let current = occurrence_allocator_after_optional_node(current.clone(), node.body.clone());
-        let current =
-            occurrence_allocator_after_optional_node(current.clone(), node.transport.clone());
-        let current =
-            occurrence_allocator_after_optional_node(current.clone(), node.type_annotation.clone());
-        let current =
-            occurrence_allocator_after_inferred_node(current.clone(), node.inferred.clone());
-        occurrence_allocator_after_match_pattern(current.clone(), node.match_pattern.clone())
-    }
-}
-
-pub fn parse_context_after_node(ctx: Rc<ParseContext>, node: Rc<Node>) -> Rc<ParseContext> {
-    parse_context_with_occurrence_state(
-        ctx.clone(),
-        occurrence_allocator_after_node(ctx.occurrence_allocator.clone(), node),
-        ctx.occurrence_index.clone(),
-        ctx.declaration_occurrences.clone(),
-        ctx.reference_occurrences.clone(),
-    )
-}
-
-pub fn parse_context_after_node_list(
-    ctx: Rc<ParseContext>,
-    nodes: Rc<Vec<Rc<Node>>>,
-) -> Rc<ParseContext> {
-    parse_context_with_occurrence_state(
-        ctx.clone(),
-        occurrence_allocator_after_node_list(ctx.occurrence_allocator.clone(), nodes),
-        ctx.occurrence_index.clone(),
-        ctx.declaration_occurrences.clone(),
-        ctx.reference_occurrences.clone(),
-    )
-}
-
-pub fn parse_context_after_inferred_node(
-    ctx: Rc<ParseContext>,
-    inferred: Option<Rc<InferredNode>>,
-) -> Rc<ParseContext> {
-    parse_context_with_occurrence_state(
-        ctx.clone(),
-        occurrence_allocator_after_inferred_node(ctx.occurrence_allocator.clone(), inferred),
-        ctx.occurrence_index.clone(),
-        ctx.declaration_occurrences.clone(),
-        ctx.reference_occurrences.clone(),
-    )
-}
-
 pub fn stamp_parsed_node_list(
     nodes: Rc<Vec<Rc<Node>>>,
     ancestors: Rc<Vec<OccurrenceId>>,
@@ -4524,7 +4382,7 @@ pub fn parse_imports_acc(
                 }
                 {
                     let __tco_0 = r.tokens.clone();
-                    let __tco_1 = parse_context_after_node(r.ctx.clone(), r.import.clone());
+                    let __tco_1 = r.ctx.clone();
                     let __tco_2 = v1_rt::rc_list_push(acc, r.import.clone());
                     __tco_loop_tokens = __tco_0;
                     __tco_loop_ctx = __tco_1;
@@ -4574,7 +4432,7 @@ pub fn parse_import_statement_extents_acc(
                     }
                     Some(extent) => {
                         let __tco_0 = r.tokens.clone();
-                        let __tco_1 = parse_context_after_node(r.ctx.clone(), r.import.clone());
+                        let __tco_1 = r.ctx.clone();
                         let __tco_2 = v1_rt::rc_list_push(
                             acc,
                             Rc::new(ParsedImportStatement {
@@ -4670,7 +4528,7 @@ pub fn parse_items_acc(
                 }
                 {
                     let __tco_0 = r.tokens.clone();
-                    let __tco_1 = parse_context_after_node(r.ctx.clone(), r.item.clone());
+                    let __tco_1 = r.ctx.clone();
                     let __tco_2 = v1_rt::rc_list_push(acc, r.item.clone());
                     __tco_loop_tokens = __tco_0;
                     __tco_loop_ctx = __tco_1;
@@ -6406,7 +6264,7 @@ pub fn parse_predicates_acc(
                 });
             }
             acc = v1_rt::rc_list_push(acc.clone(), r.predicate.clone());
-            ctx = parse_context_after_node(r.ctx.clone(), r.predicate.clone());
+            ctx = r.ctx.clone();
             match (*eat(r.tokens.clone(), Rc::new(ExpectedToken::ExpectComma))).clone() {
                 EatResult::EatConsumed { tokens: __ec, .. } => {
                     let __tco_0 = skip_newlines(__ec.clone());
@@ -7222,7 +7080,7 @@ pub fn parse_more_variants_acc(
                     }
                     {
                         let __tco_0 = r2.tokens.clone();
-                        let __tco_1 = parse_context_after_node(r2.ctx.clone(), r2.variant.clone());
+                        let __tco_1 = r2.ctx.clone();
                         let __tco_2 = v1_rt::rc_list_push(acc, r2.variant.clone());
                         __tco_loop_tokens = __tco_0;
                         __tco_loop_ctx = __tco_1;
@@ -7881,7 +7739,7 @@ pub fn collect_type_args(
                     }
                     {
                         let __tco_0 = r.tokens.clone();
-                        let __tco_1 = parse_context_after_node(r.ctx.clone(), r.type_expr.clone());
+                        let __tco_1 = r.ctx.clone();
                         let __tco_2 = v1_rt::rc_list_push(args, r.type_expr.clone());
                         __tco_loop_tokens = __tco_0;
                         __tco_loop_ctx = __tco_1;
@@ -8009,7 +7867,7 @@ pub fn parse_field_list_acc(
                     });
                     {
                         let __tco_0 = tokens;
-                        let __tco_1 = parse_context_after_node(r.ctx.clone(), r.field.clone());
+                        let __tco_1 = r.ctx.clone();
                         let __tco_2 = v1_rt::rc_list_push(acc, r.field.clone());
                         __tco_loop_tokens = __tco_0;
                         __tco_loop_ctx = __tco_1;
@@ -8322,13 +8180,7 @@ pub fn parse_fn_body_from_prefix(
         let type_params = prefix.type_params.clone();
         let params = prefix.params.clone();
         let inferred = prefix.inferred.clone();
-        let ctx = parse_context_after_inferred_node(
-            parse_context_after_node_list(
-                prefix.ctx.clone(),
-                v1_rt::concat(type_params.clone(), params.clone()),
-            ),
-            inferred.clone(),
-        );
+        let ctx = prefix.ctx.clone();
         let all_params = v1_rt::concat(type_params.clone(), params.clone());
         let named_dummy = Rc::new(Node {
             ident: std::option::Option::None,
@@ -8415,10 +8267,7 @@ pub fn parse_fn_body_from_prefix(
             });
         }
         let body = body_result.expr.clone();
-        let parent_ctx = parse_context_after_node_list(
-            parse_context_after_node(body_result.ctx.clone(), body.clone()),
-            admit_props.clone(),
-        );
+        let parent_ctx = body_result.ctx.clone();
         let minted = mint_parsed_node_identity(
             parent_ctx,
             Rc::new(ParsedExtentAt::FromToken {
@@ -8648,7 +8497,7 @@ pub fn parse_uses_list_acc(
                 });
             }
             acc = v1_rt::rc_list_push(acc.clone(), r.resource_use.clone());
-            ctx = parse_context_after_node(r.ctx.clone(), r.resource_use.clone());
+            ctx = r.ctx.clone();
             match (*eat(r.tokens.clone(), Rc::new(ExpectedToken::ExpectComma))).clone() {
                 EatResult::EatConsumed { tokens: __ec, .. } => {
                     let __tco_0 = __ec.clone();
@@ -9339,8 +9188,7 @@ pub fn parse_service_entries(
                             }
                             {
                                 let __tco_0 = r.tokens.clone();
-                                let __tco_1 =
-                                    parse_context_after_node(r.ctx.clone(), r.operation.clone());
+                                let __tco_1 = r.ctx.clone();
                                 let __tco_2 = config;
                                 let __tco_3 = transport;
                                 let __tco_4 = v1_rt::rc_list_push(operations, r.operation.clone());
@@ -12881,8 +12729,7 @@ pub fn parse_resource_entries(
                             }
                             {
                                 let __tco_0 = r.tokens.clone();
-                                let __tco_1 =
-                                    parse_context_after_node(r.ctx.clone(), r.capability.clone());
+                                let __tco_1 = r.ctx.clone();
                                 let __tco_2 = properties;
                                 let __tco_3 =
                                     v1_rt::rc_list_push(capabilities, r.capability.clone());
@@ -16516,7 +16363,7 @@ pub fn parse_index_or_slice(
         }
         let first_expr = r.expr.clone();
         let tokens = r.tokens.clone();
-        let ctx = parse_context_after_node(r.ctx.clone(), first_expr.clone());
+        let ctx = r.ctx.clone();
         if tok_is_dot_dot(token_stream_first(tokens.clone())) {
             {
                 let r = parse_expr(token_stream_advance(tokens.clone(), 1), ctx.clone());
@@ -16529,7 +16376,7 @@ pub fn parse_index_or_slice(
                     });
                 }
                 let end_expr = r.expr.clone();
-                let ctx = parse_context_after_node(r.ctx.clone(), end_expr.clone());
+                let ctx = r.ctx.clone();
                 let r = expect(r.tokens.clone(), Rc::new(ExpectedToken::ExpectRBracket));
                 if has_err(r.err.clone()) {
                     return Rc::new(ExprResult {
@@ -16873,7 +16720,7 @@ pub fn parse_match(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprRes
             return r;
         }
         let scrutinee = r.expr.clone();
-        let ctx = parse_context_after_node(r.ctx.clone(), scrutinee.clone());
+        let ctx = r.ctx.clone();
         let r = expect(
             skip_newlines(r.tokens.clone()),
             Rc::new(ExpectedToken::ExpectLBrace),
@@ -16896,7 +16743,7 @@ pub fn parse_match(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprRes
             });
         }
         let arms = r.arms.clone();
-        let ctx = parse_context_after_node_list(r.ctx.clone(), arms.clone());
+        let ctx = r.ctx.clone();
         let r = expect(
             skip_newlines(r.tokens.clone()),
             Rc::new(ExpectedToken::ExpectRBrace),
@@ -17349,7 +17196,7 @@ pub fn parse_match_arms_acc(
                 });
                 {
                     let __tco_0 = tokens;
-                    let __tco_1 = parse_context_after_node(r.ctx.clone(), r.arm.clone());
+                    let __tco_1 = r.ctx.clone();
                     let __tco_2 = v1_rt::rc_list_push(acc, r.arm.clone());
                     __tco_loop_tokens = __tco_0;
                     __tco_loop_ctx = __tco_1;
@@ -18081,10 +17928,7 @@ pub fn parse_if(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResult
             });
         }
         let condition = r.expr.clone();
-        let r = parse_block(
-            skip_newlines(r.tokens.clone()),
-            parse_context_after_node(r.ctx.clone(), condition.clone()),
-        );
+        let r = parse_block(skip_newlines(r.tokens.clone()), r.ctx.clone());
         if has_err(r.err.clone()) {
             return Rc::new(ExprResult {
                 expr: dummy_expr.clone(),
@@ -18095,10 +17939,7 @@ pub fn parse_if(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResult
         }
         let then_branch = r.expr.clone();
         let tokens = skip_newlines(r.tokens.clone());
-        let ctx = parse_context_after_node_list(
-            r.ctx.clone(),
-            Rc::new(vec![condition.clone(), then_branch.clone()]),
-        );
+        let ctx = r.ctx.clone();
         match (*eat(
             tokens.clone(),
             Rc::new(ExpectedToken::ExpectKeyword {
@@ -18123,7 +17964,7 @@ pub fn parse_if(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResult
                         parsed_expr_result(
                             entry.clone(),
                             r2.tokens.clone(),
-                            parse_context_after_node(r2.ctx.clone(), r2.expr.clone()),
+                            r2.ctx.clone(),
                             |identity| {
                                 crate::v1_std_core::make_expr_node(
                                     identity,
@@ -18153,7 +17994,7 @@ pub fn parse_if(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResult
                         parsed_expr_result(
                             entry.clone(),
                             r2.tokens.clone(),
-                            parse_context_after_node(r2.ctx.clone(), r2.expr.clone()),
+                            r2.ctx.clone(),
                             |identity| {
                                 crate::v1_std_core::make_expr_node(
                                     identity,
@@ -18618,7 +18459,7 @@ pub fn parse_field_init_list_acc(
                 });
                 {
                     let __tco_0 = tokens;
-                    let __tco_1 = parse_context_after_node(r.ctx.clone(), r.field.clone());
+                    let __tco_1 = r.ctx.clone();
                     let __tco_2 = v1_rt::rc_list_push(acc, r.field.clone());
                     let __tco_3 = v1_rt::rc_map_insert(seen, key.clone(), r.field.span.clone());
                     __tco_loop_tokens = __tco_0;
@@ -18943,7 +18784,7 @@ pub fn parse_expr_list_until_acc(
                 });
                 {
                     let __tco_0 = tokens;
-                    let __tco_1 = parse_context_after_node(r.ctx.clone(), r.expr.clone());
+                    let __tco_1 = r.ctx.clone();
                     let __tco_2 = end_expected;
                     let __tco_3 = v1_rt::rc_list_push(acc, r.expr.clone());
                     __tco_loop_tokens = __tco_0;
