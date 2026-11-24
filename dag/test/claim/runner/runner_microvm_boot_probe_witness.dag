@@ -6,6 +6,8 @@ import extdeps.shell.exec { ProcessObservation, process_observation }
 import extdeps.github.actions_runner { actions_runner_release_2_336_0 }
 import extdeps.posix.sh_invocation { posix_sh_program_command }
 import extdeps.tools.gnu_coreutils { timeout_command_enforcing_bound }
+import extdeps.exec.command { env_prefixed_command }
+import std.env_binding { EnvSet }
 import extdeps.virtualization.firecracker {
   firecracker_vm_config_document, firecracker_run_config_command,
 }
@@ -254,6 +256,53 @@ test fn an_unrecognized_enforcement_diagnostic_is_refused_not_matched() -> Bool 
     })
 }
 
+// A SUBJECT CAN FAKE THE DIAGNOSTIC: timeout and the bounded subject share one stderr, so a subject that
+// prints `timeout: sending signal ...` itself must NOT be read as a deadline that fired. The bounder's own
+// contract (a fired timeout exits 124) is the cross-check -- a diagnostic on a NON-124 status is forged or
+// foreign text, never a firing. Both arms are refused by name (no deadline), at exit 0 and at exit 1.
+// This is the red case review 98071 required ("diagnostic present, exit != 124").
+test fn a_forged_diagnostic_on_a_non_deadline_status_is_refused_not_a_deadline() -> Bool {
+  let forged = "timeout: sending signal TERM to command 'firecracker'"
+  let forged_clean = boot_probe_verdict(
+    runner: actions_runner_release_2_336_0,
+    observed: process_observation(exit_code: 0, stdout: "2.336.0\n", stderr: forged),
+    receipt: runner_microvm_boot_probe_enforcement_observation(deadline: runner_microvm_boot_probe_deadline, exit_code: 0, stderr: forged),
+  )
+  let forged_fail = boot_probe_verdict(
+    runner: actions_runner_release_2_336_0,
+    observed: process_observation(exit_code: 1, stdout: "", stderr: forged),
+    receipt: runner_microvm_boot_probe_enforcement_observation(deadline: runner_microvm_boot_probe_deadline, exit_code: 1, stderr: forged),
+  )
+  !boot_probe_admitted(v: forged_clean)
+    && !boot_probe_admitted(v: forged_fail)
+    && (match forged_clean { BootDeadlineEnforcementUnobservable { console: _, detail: _ } => true  _ => false })
+    && (match forged_fail { BootDeadlineEnforcementUnobservable { console: _, detail: _ } => true  _ => false })
+}
+
+// THE FORGERY RUN THROUGH THE REAL PATH (witness_one_interface): a real bounded invocation whose subject
+// itself writes the diagnostic to the SHARED stderr and then exits 0 with an otherwise-clean console. The
+// real producer reads exit 0 + diagnostic-present as a contradiction and REFUSES -- it is neither reported
+// as a deadline nor admitted as a clean boot. The red is a classifier that keys BoundFired on stderr text
+// alone (the review 98071 defect): it would report this as BootExceededHostDeadline.
+test fn the_real_forged_diagnostic_on_a_clean_exit_is_refused_not_a_deadline() -> Bool {
+  let observed = run_shell_command_observe(
+    command: timeout_command_enforcing_bound(
+      duration: second(count: 30),
+      kill_after: second(count: 1),
+      command: posix_sh_program_command(script: "echo 'timeout: sending signal TERM to command x' 1>&2; echo 2.336.0; echo 'gunbc-guest-observation guest-booted image=x'"),
+    ),
+    transport: LocalExec,
+  )
+  let verdict = runner_microvm_boot_probe_verdict_from_observation(
+    runner: actions_runner_release_2_336_0,
+    observed: observed,
+  )
+  observed.exit_code == 0
+    && string_contains(s: observed.stderr, pattern: "timeout: sending signal")
+    && !boot_probe_admitted(v: verdict)
+    && (match verdict { BootDeadlineEnforcementUnobservable { console: _, detail: _ } => true  _ => false })
+}
+
 // THE BOUND ESCALATES TO KILL and pins LC_ALL=C so the diagnostic stays matchable. A bare `timeout` sends
 // TERM and then waits, so a wedged VMM outlives its bound -- a deadline the subject can decline is the
 // escape hatch gunbc.design_argument::fail_closed refuses -- and an unpinned diagnostic is locale-
@@ -269,26 +318,36 @@ test fn the_bounded_command_escalates_and_pins_the_diagnostic_locale() -> Bool {
     && any(xs: c.arguments, predicate: fn(w) { w == "--no-api" })
 }
 
-// THE REAL PATH UNDER A HOSTILE OUTER LOCALE, PIN HOLDS: the surrounding shell asks for de_DE.UTF-8,
-// but the pinned builder forces LC_ALL=C on the timeout process, so the diagnostic the receipt matches
-// is still produced. This runs the pinned `env LC_ALL=C timeout --verbose ...` under an outer LC_ALL that
-// requests a non-C locale -- the pin is what keeps the receipt readable (gunbc.design_argument::
-// external_upstreams: the diagnostic is locale-dependent per the upstream; pinning is the observing
-// contract). The heavy host ships no coreutils catalogs, so the rendered text is identical here; the
-// load-bearing claim -- the builder emits the pin and the classifier matches the pinned form -- is also
-// carried by the static arm above and the foreign-diagnostic arm above.
+// THE REAL PATH UNDER A HOSTILE OUTER LOCALE, PIN HOLDS. This drives the ACTUAL builder
+// (timeout_command_enforcing_bound) -- NOT a hand-typed argv (gunbc.design_argument::witness_one_interface:
+// supplying inputs may never remove the last execution of the real path) -- wrapped by an OUTER
+// env_prefixed_command that asks for a non-C locale. The builder's own inner pin forces LC_ALL=C on the
+// timeout process, so the matchable diagnostic is still produced and the real producer still yields
+// BoundFired. The red is a builder that drops the LC_ALL=C pin or --verbose: then the hostile outer
+// locale reaches timeout and the English receipt match fails. On this catalog-less host the rendered text
+// is identical, so the load-bearing pin claim is ALSO carried by the static arm above (the rendered argv
+// must contain the pin) and by the foreign-diagnostic arm (an unmatched localized form is refused).
 test fn the_real_bound_under_a_non_c_outer_locale_still_fires_the_diagnostic() -> Bool {
-  // The pinned builder emits `env LC_ALL=C timeout --verbose --kill-after <g> <d> <subject>` (asserted
-  // statically in the arm above). Run that exact shape under an OUTER environment that requests a non-C
-  // locale: the outer assignment asks for de_DE.UTF-8, the inner `env LC_ALL=C` (the pin) overrides it on
-  // the timeout process, so the diagnostic the receipt matches is still produced.
-  let observed = run_shell_command_observe(
-    command: posix_sh_program_command(
-      script: "LC_ALL=de_DE.UTF-8 env LC_ALL=C timeout --verbose --kill-after 1s 1s sleep 30",
+  let hostile_outer = env_prefixed_command(
+    bindings: [EnvSet { name: "LC_ALL", value: "de_DE.UTF-8" }],
+    command: timeout_command_enforcing_bound(
+      duration: second(count: 1),
+      kill_after: second(count: 1),
+      command: posix_sh_program_command(script: "sleep 30"),
     ),
-    transport: LocalExec,
   )
-  observed.exit_code == 124 && string_contains(s: observed.stderr, pattern: "timeout: sending signal")
+  let observed = run_shell_command_observe(command: hostile_outer, transport: LocalExec)
+  let receipt = runner_microvm_boot_probe_enforcement_observation(
+    deadline: runner_microvm_boot_probe_deadline,
+    exit_code: observed.exit_code,
+    stderr: observed.stderr,
+  )
+  observed.exit_code == 124
+    && string_contains(s: observed.stderr, pattern: "timeout: sending signal")
+    && (match receipt {
+      BoundFired { deadline: d } => string_contains(s: d, pattern: "180")
+      _ => false
+    })
 }
 
 // A LIVE BOOT IS JUDGED THROUGH THE HOST'S CONSOLE READER, AND THIS IS THE PAIR. The same version
