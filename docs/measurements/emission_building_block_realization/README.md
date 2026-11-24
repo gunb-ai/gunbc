@@ -164,7 +164,9 @@ lint, whose executing consumer is deliberately absent (§6b).
 
 This is the **only** executing specimen machinery in this area of the tree: the instrument
 `dag/gunbc/instruments/native_allocation_observation.dag`, registered at
-`dag/gunbc/instrument_targets.dag:59`, invoked as
+`dag/gunbc/instrument_targets.dag` (label `native_allocation_observation_label` 494-495, entry
+498-499, binding row 948-949 with `NativeClaimProgramProducer`, and the binding is listed in the bound
+population at 1196), invoked as
 `gunbc test //gunbc/instruments:native-allocation-observation`.
 
 **Case split, read off the source and the printed roster: 7 + 4 = 11.**
