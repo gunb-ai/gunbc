@@ -500,6 +500,12 @@ data emitter_string_return_carries_no_typed_refusal_review: SightingEvidence = C
   declaration: decl_ref(module_path: "v2.workflow.gunbc_invoke_step_emit", decl_name: "gunbc_run_step_script_for_target"),
 }
 
+// The step-emitter word-wall coverage gap (review 97776). Its row file lives under
+// dag/gunbc/integration_concern/; this is the review sighting the row's RequirementEstablished cites.
+data step_emitter_word_wall_coverage_gap_review: SightingEvidence = CitesDeclaration {
+  declaration: decl_ref(module_path: "v2.workflow.gunbc_invoke_step_emit", decl_name: "gunbc_run_step_script"),
+}
+
 // The main revision the edge gate was found refusing a branch dispatch against: the session branch head
 // the read-only edge observation was dispatched from, and refused at.
 data h11ssl_unit3_edge_gate_refusal_revision: CommitSha = "2db279ccba934a574048371882c9f631c923a2d0"
