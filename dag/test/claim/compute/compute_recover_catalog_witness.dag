@@ -73,7 +73,7 @@ import gunbc.compute.work_provider_local {
   ComputeRecovery, RecoveryReleased, RecoverySettledButHeld, RecoveryNothingHeld, RecoveryDeclined, RecoveryRefused,
   compute_recover_attempt,
   compute_recover_catalog_for, compute_recover_catalog_entry_line, compute_recover_catalog_cli, compute_attempt_record,
-  compute_recover_catalog_serving_cli, compute_recover_serving_cli,
+  compute_recover_catalog_serving_cli, compute_recover_serving_cli, compute_recover_readback_serving_cli,
   compute_open_attempt, compute_settle_attempt,
   AttemptGate, AttemptGateReady, AttemptGateRefused, AttemptOwner, DirectInvocation, DispatchOwned,
   AttemptSettlement, AttemptSettled, AttemptNotSettled, AttemptUnsettleable,
@@ -428,8 +428,25 @@ test fn the_serving_census_door_refuses_a_host_off_the_serving_roster() -> Bool 
 // a fabrication) AND it does not take the refusal branch. Red again under the dispatch-gate key.
 test fn the_serving_census_door_answers_unknown_where_the_seat_home_is_absent() -> Bool {
   match compute_recover_catalog_serving_cli(host: "srv1") {
-    CliWirePrintable { bytes: b, exit: ExitFailure { code: 2, reason: _ } } =>
+    CliWirePrintable { bytes: b, exit: ExitFailure { code: 2, reason: r } } =>
       string_contains(s: b, pattern: " unknown: ") && !string_contains(s: b, pattern: "is not a remote-build serving host")
+        && string_contains(s: r, pattern: "the attempts directory could not be listed")
+    _ => false
+  }
+}
+
+// THE UNKNOWN EXIT REASON CARRIES THE LOCATED DETAIL, not just the fixed sentence. The converge leg
+// logs the door's exit reason and captures its stdout into the plan, so a reason that names only
+// 'could not be established' sends the operator who ran it to ssh for what the door already knew --
+// fail_closed asks for a typed, LOCATED diagnostic on the channel that survives the run. The read-back
+// of srv1's seat in this container can only answer that the capacity ledger is not provisioned here,
+// and the reason must say so. Red before the detail moved: the sentence alone was the whole reason.
+test fn the_serving_readback_door_carries_its_unknown_detail() -> Bool {
+  match compute_recover_readback_serving_cli(host: "srv1", reference: "011dfdd11f75268188c6b97278319c8b#1.1") {
+    CliWirePrintable { bytes: b, exit: ExitFailure { code: 2, reason: r } } =>
+      string_contains(s: r, pattern: "recover-readback: the read-back could not be established: ")
+        && string_contains(s: r, pattern: "the capacity ledger is not standing at objects")
+        && string_contains(s: b, pattern: "the capacity ledger is not standing at objects")
     _ => false
   }
 }
@@ -459,6 +476,7 @@ fn run_compute_recover_catalog_witness() -> ProcessExit {
     check_or_name(name: "the_serving_census_door_refuses_a_host_off_the_serving_roster", held: the_serving_census_door_refuses_a_host_off_the_serving_roster()),
     check_or_name(name: "the_serving_census_door_answers_unknown_where_the_seat_home_is_absent", held: the_serving_census_door_answers_unknown_where_the_seat_home_is_absent()),
     check_or_name(name: "the_serving_recover_door_exits_unknown_off_the_roster", held: the_serving_recover_door_exits_unknown_off_the_roster()),
+    check_or_name(name: "the_serving_readback_door_carries_its_unknown_detail", held: the_serving_readback_door_carries_its_unknown_detail()),
   ], "")
   if red == "" {
     ExitSuccess
