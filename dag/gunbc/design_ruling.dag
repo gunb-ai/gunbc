@@ -435,6 +435,21 @@ data absence_class_witnesses_enrolled_by_operator_ruling: DesignRuling = DesignR
   provenance: "Operator, on escalation msg_7d9e36b4 (2026-11-15), verbatim: \"Approve enrolment, then accept\", relayed to witty-lark-414 by neat-badger-614 in msg_16d2f3b6-3751-4970-b7c1-550468eca180. It authorizes exactly two rows of `v2.workflow.required_floor` `required_gate_authored_modules` -- the filesystem absence class's two witnesses, `test.claim.filesystem_read_outcome_witness` and `test.claim.filesystem_absence_establishment_witness`, each admitted at its own name because the class's refusal was enrolled and executed by no lane: the required lane parses and typechecks and judges no claim, so a retired class kept its RED with nothing judging it. Two names and not a family prefix, because a prefix admits every sibling in the namespace, measured or not.",
 }
 
+// The law this row retires was written where it was enforced, in a code comment: gunbc.roadmap.roadmap_page
+// `event_principal_display_with_profile` stated a never-blocks law under which a principal with no
+// stored profile rendered `gunbc.principal_projection.principal_ref_label` — the WIRE spelling — as
+// its display name, and `profile_display_name` and `profile_display_detail` repeated that fallback for
+// a profile carrying neither a name nor an email. The projection itself is kept; the fallback arm is
+// not. Rendered instances the operator reads: the issue page's Return To row (srv1 lab item 12), the
+// daily workspace's Assignee cell, the event row's hover title, the comment/mention label, and the
+// serve confirmation body.
+data rendered_principals_are_never_raw: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "rendered_principals_are_never_raw"),
+  decided: "2026-11-15",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "fail_closed"),
+  provenance: "Operator direction of 2026-11-15, carried in the roadmap row `factory-principal-display-never-raw` (identity `rn_VE9DT9JA8RC2C17TYAA2ZG2HDZ`) boundary field at `dag/gunbc/roadmap/roadmap_authority.dag`, which records it as: a raw principal identifier on a rendered surface is an error IN EVERY CASE. Relayed to worker session quiet-swift-262 by lane manager session sleek-fox-889 in the node's worker brief. That row replaces `factory-issue-page-principal-display` (gunb-ai/gunbc#16504), which fixed only the issue page and left every other surface to leak again. RULED: `gunbc.principal_projection.principal_ref_label` is the WIRE spelling — what `gunbc.principal_projection.principal_ref_parse_label` reads back, what the profile and preference stores key on, and what a mention URI carries — and it is NEVER display text on a rendered surface. What a surface renders for a principal it cannot name is the typed arm `gunbc.principal_projection.PrincipalUndisplayableReason` carried by `gunbc.roadmap.roadmap_page.EventPrincipalDisplay`, spelled once at `gunbc.principal_projection.principal_undisplayable_marker` and styled by the `.principal-undisplayable` rule of `gunbc.roadmap.roadmap_style`: a visible marker in the place the name would have held. SUPERSEDED: the never-blocks fallback as it was stated at `gunbc.roadmap.roadmap_page.event_principal_display_with_profile`, at `gunbc.roadmap.roadmap_page.profile_display_name`, and at `gunbc.roadmap.roadmap_page.profile_display_detail`, and the same fallback restated at `gunbc.roadmap.roadmap_serve.assignment_confirmation_display`. NEVER BLOCKS SURVIVES THE SUPERSESSION, and this is not a licence to refuse: every input still yields an arm to render, and for a principal that cannot be named what it yields is the marker — a loud, typed, located error rather than a plausible name invented from an identifier (`gunbc.design_argument::fail_closed`). OUT OF SCOPE, unchanged by this row: profile storage itself, and the wire and storage uses of `gunbc.principal_projection.principal_ref_label` (identity attributes such as `data-principal`, roster keys, ledger fields, session and preference keys, the CLI and diagnostic strings that name a caller to its own machine).",
+}
+
 data project_documentation_projections_are_not_checkout_artifacts: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "project_documentation_projections_are_not_checkout_artifacts"),
   decided: "2026-10-13",
@@ -1401,6 +1416,7 @@ fn design_rulings() -> List<DesignRuling> {
   [
     operator_hand_applied_srv3_srv4_power_caps_2026_11_24,
     operator_cpu_freq_cap_standing_unsaid_2026_11_24,
+    rendered_principals_are_never_raw,
     heal_mirror_convergence_held_until_merge_base_build_is_measured_2026_11_24,
     declared_intent_separates_independent_choices_2026_11_23,
     value_disposition_and_named_binding_use_are_explicit_2026_11_23,

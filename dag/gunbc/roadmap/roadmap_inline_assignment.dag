@@ -7,7 +7,7 @@ import gunbc.roadmap.roadmap_event_log {
   EventPrincipal, EventPrincipalAuthenticated, LegacyEmailPrincipal, RoadmapEventEnvelope,
   event_principal_label,
 }
-import gunbc.roadmap.roadmap_page { issue_chain_head_id, event_principal_display_with_profile, issue_assign_suggestions, issue_assignee_chip_node, issue_assign_form_nodes }
+import gunbc.roadmap.roadmap_page { issue_chain_head_id, event_principal_display_with_profile, event_principal_display_name, issue_assign_suggestions, issue_assignee_chip_node, issue_assign_form_nodes }
 import std.markup { Fragment }
 import gunbc.roadmap.roadmap_issue_command { IssueFormContext }
 import gunbc.site.markup { el_class }
@@ -48,7 +48,7 @@ fn inline_assignment_option(session: AuthenticatedSession, p: EventPrincipal, pr
       EventPrincipalAuthenticated { ref } =>
         if principal_ref_eq(a: ref, b: fabric_workflow_principal) { "fabric@gunb.ai" }
         else if principal_ref_eq(a: ref, b: session.principal) { "Me" }
-        else { event_principal_display_with_profile(p: p, profiles: profiles).name }
+        else { event_principal_display_name(d: event_principal_display_with_profile(p: p, profiles: profiles)) }
       LegacyEmailPrincipal { email, authentication_unestablished: _ } => join([email as String, " (unverified identity)"], "")
     })),
   ])
