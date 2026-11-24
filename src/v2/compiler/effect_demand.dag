@@ -1240,16 +1240,18 @@ data effect_demand_seam_roster: List<SeamStanding> = [
 // filesystem_read specifically (its own cause), while a filesystem effect reaching the bound handler's
 // identity under some other spelling is a second, differently-named defect.
 // A filesystem reach is located by its SITE, not just its module and operation: the module it reached
-// from, the ENCLOSING DECLARATION of the call, and a LOCUS within that declaration. Two reaches from the
-// same module and the same enclosing declaration at different loci (self_host.dag's read_roster_manifest
-// at :319 and fold_side_bytes at :329) are TWO distinct offenders; a site added tomorrow at a new locus
-// is a NEW offender, not a silent match against a rostered one. Keying the verdict on (module, operation)
-// would collapse those two into one and let a new site slip through -- the under-counting defect this lane
-// must not ship (the counter bold-ibex was just found to have). So the reach carries its site.
+// from, the ENCLOSING DECLARATION of the call, and the OCCURRENCE INDEX of that call within the
+// declaration -- NOT a line number (a line number drifts the moment a line is added above it, which is
+// the very silent-drift failure this lane is guarding against). Two reaches from the same module but
+// different enclosing declarations (self_host.dag's read_roster_manifest occurrence 1 and fold_side_bytes
+// occurrence 1) are TWO distinct offenders; a second call inside the SAME declaration is occurrence 2 --
+// a NEW offender, never a silent match against a rostered one. Keying the verdict on (module, operation)
+// would collapse the two self_host sites into one and let a new site slip through -- the under-counting
+// defect the counter bold-ibex was just found to have. So the reach carries its site.
 type FilesystemEffectSite {
   module_path: String
   enclosing_declaration: String
-  site_locus: String
+  site_occurrence: Int
 }
 
 type FilesystemEffectReach
@@ -1263,15 +1265,43 @@ type FilesystemEffectReach
 // bound realization population; this slug names the legacy primitive the wall refuses.
 data filesystem_free_primitive_slug: String = "filesystem_read"
 
-// THE DECLARED SOURCE OF THE WALL'S POPULATION. The row's own phrase fixes it: "an EMITTED closure ...
-// under the E2 handler binding" -- the modules in the native-emitted closure under the NativeCliDriver
-// root's bound Filesystem handler, NOT every module with a filesystem_read call site. A static call
-// count over authored production model source is an UPPER BOUND on that population (the reviewer's tier
-// A, 22 sites / 15 modules), not the refused population itself. This is a NAMED declaration, not a
-// comment, so the census call site references the population's source BY NAME and no maintainer can
-// silently widen or narrow it -- a comment can drift silently, a named symbol the census consumes cannot.
-data filesystem_effect_emitted_closure_population_rule: String =
-  "the modules in the native-emitted closure under the NativeCliDriver root bound to the E2 Filesystem handler (reusing v1.compiler.emit_rust emit_file_call's realization); NOT every module with a filesystem_read call site"
+// THE DECLARED SOURCE OF THE WALL'S POPULATION, as a NAMED TYPED DECLARATION -- not prose in a String,
+// not a comment, not a derived set. Every field is grep-verifiable against the corpus at the cited head
+// so a reader can re-derive the population rather than take it on faith:
+//   driver_arm          -- dag/std/compiler_entry.dag CompilerEntryDriver arm, realized at
+//                          src/v2/cli/compile_cli.dag compiler_pipeline_entry.
+//   bound_handler        -- the one Filesystem realization handler bound to the emitted shape,
+//                          emit_file_call, defined at src/v1/05_emit_rust.dag (named the bound handler by
+//                          src/v1/05_emit.dag's own comment).
+//   free_primitive_slug  -- the legacy free primitive this wall refuses, the same slug the census takes
+//                          every operation at (std.primitive_projection).
+//   excluded_population  -- the boundary stated ON ITS FACE with its reason (not a silent omission): the
+//                          claim/test, test-support/fixture, and generated stage0 tiers are excluded
+//                          because they are not authored production model source, and a static call count
+//                          over production source is only an UPPER BOUND on the refused population.
+// The population is the native-emitted closure under the NativeCliDriver root bound to the E2 Filesystem
+// handler -- an EMITTED closure reaching filesystem_read directly -- NOT every module with a
+// filesystem_read call site.
+type FilesystemEffectCensusPopulation {
+  rule: Symbol
+  driver_arm: String
+  emitted_closure_root_module: String
+  emitted_closure_root_declaration: String
+  bound_handler: String
+  free_primitive_slug: String
+  excluded_population: String
+}
+
+data filesystem_effect_emitted_closure_population: FilesystemEffectCensusPopulation =
+  FilesystemEffectCensusPopulation {
+    rule: ^emitted_closure_under_native_cli_driver_e2_filesystem_binding,
+    driver_arm: "NativeCliDriver",
+    emitted_closure_root_module: "v2.cli.compile_cli",
+    emitted_closure_root_declaration: "compiler_pipeline_entry",
+    bound_handler: "emit_file_call",
+    free_primitive_slug: "filesystem_read",
+    excluded_population: "excluded, not silent omission: claim/test witnesses and test-support/fixture modules are the test not a production reach, and generated stage0 Rust is not authored model source -- a static call count over the remaining production source is an UPPER BOUND, the refused population is the emitted closure under the binding"
+  }
 
 // One observed filesystem reach, at SITE grain: the site that reached and the operation it reached. The
 // bound handler's slug is SUPPLIED, not inferred from the tree -- the caller states which slug the bound
@@ -1337,7 +1367,7 @@ fn filesystem_effect_direct_reach_refusals(
 fn filesystem_effect_site_eq(left: FilesystemEffectSite, right: FilesystemEffectSite) -> Bool {
   (left.module_path == right.module_path)
     && (left.enclosing_declaration == right.enclosing_declaration)
-    && (left.site_locus == right.site_locus)
+    && (left.site_occurrence == right.site_occurrence)
 }
 
 // THE CENSUS, WITH ITS POPULATION SOURCE NAMED. `population_source` is the named rule above, passed BY
@@ -1346,12 +1376,12 @@ fn filesystem_effect_site_eq(left: FilesystemEffectSite, right: FilesystemEffect
 // source rather than a bare list. `reaches` is the emitted closure's filesystem reaches, supplied by the
 // caller over the population the named rule selects.
 type FilesystemEffectCensusReport {
-  population_source: String
+  population_source: FilesystemEffectCensusPopulation
   offenders: List<FilesystemEffectReach>
 }
 
 fn filesystem_effect_reach_census(
-  population_source: String,
+  population_source: FilesystemEffectCensusPopulation,
   reaches: List<FilesystemEffectReach>
 ) -> FilesystemEffectCensusReport {
   FilesystemEffectCensusReport {

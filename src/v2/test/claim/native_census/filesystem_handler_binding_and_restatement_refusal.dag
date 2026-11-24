@@ -6,12 +6,13 @@ import v2.compiler.effect_demand {
   NewRestatementRowRefused,
   FilesystemEffectSite,
   FilesystemEffectReach,
+  FilesystemEffectCensusPopulation,
   FilesystemEffectCensusReport,
   ReachedThroughHandler,
   ReachedFreePrimitiveDirectly,
   ReachedOutsideBoundHandler,
   filesystem_free_primitive_slug,
-  filesystem_effect_emitted_closure_population_rule,
+  filesystem_effect_emitted_closure_population,
   filesystem_effect_reach,
   filesystem_effect_site_eq,
   filesystem_effect_reach_census,
@@ -19,6 +20,15 @@ import v2.compiler.effect_demand {
   demand_restatement_row_verdict,
   demand_restatement_new_row_refusals,
   demand_restatement_wall_holds
+}
+// THE REAL ROSTER, not a hand-built stand-in: the restatement wall is run over the rows the census
+// actually retained, read from the module that carries them, so the witness exercises the real producer
+// (gunbc.design_argument::consumption -- "a witness asserting existence rather than exercising behavior"
+// is a tell of a dangling declaration).
+import gunbc.demand_engine_restatement_follow_up {
+  DemandRestatementRetainedRow,
+  demand_restatement_retained_fn_rows,
+  demand_restatement_retained_pattern_rows
 }
 import std.algebra { Cons, Empty, length }
 import std.types { Bool, List }
@@ -34,41 +44,41 @@ import v2.std.text { String }
 // from the tree it audits), and has a reachable opposite answer -- a green control that still passes.
 
 // =============================================================================================
-// WALL 2 -- filesystem_read direct reach, located BY SITE
+// WALL 2 -- filesystem_read direct reach, located BY SITE over the NAMED typed population source
 // =============================================================================================
 
 // The handler the native door binds reuses v1.compiler.emit_rust emit_file_call's semantics; the free
 // legacy primitive `filesystem_read` is neither the handler nor its interface. The handler slug a green
 // control reaches through is a filesystem realization OTHER than the free primitive's slug.
-data filesystem_handler_slug: String = "filesystem_handler_read"
+data filesystem_handler_slug: String = "emit_file_call"
 
-// The two self_host.dag direct reaches, located by SITE (module + enclosing declaration + locus):
-// read_roster_manifest at :319 and fold_side_bytes at :329. They are distinct offenders -- keying on
-// (module, operation) alone would collapse them, which is the under-counting defect this lane must not
-// ship. The census is run with the NAMED population-source rule (filesystem_effect_emitted_closure_
-// population_rule) passed BY NAME, never an inline population literal.
+// The two self_host.dag direct reaches, located by SITE (module + enclosing declaration + OCCURRENCE
+// INDEX within that declaration -- NOT a line number): read_roster_manifest occurrence 1 and
+// fold_side_bytes occurrence 1. They are distinct offenders -- keying on (module, operation) alone would
+// collapse them, the under-counting defect this lane must not ship. The census is run with the named
+// typed population source (filesystem_effect_emitted_closure_population) passed BY NAME.
 
 data self_host_read_roster_manifest_site: FilesystemEffectSite = FilesystemEffectSite {
-  module_path: "src/v2/compiler/self_host.dag",
+  module_path: "v2.compiler.self_host",
   enclosing_declaration: "read_roster_manifest",
-  site_locus: ":319"
+  site_occurrence: 1
 }
 
 data self_host_fold_side_bytes_site: FilesystemEffectSite = FilesystemEffectSite {
-  module_path: "src/v2/compiler/self_host.dag",
+  module_path: "v2.compiler.self_host",
   enclosing_declaration: "fold_side_bytes",
-  site_locus: ":329"
+  site_occurrence: 1
 }
 
 data handler_site: FilesystemEffectSite = FilesystemEffectSite {
-  module_path: "src/v2/compiler/compile.dag",
+  module_path: "v2.compiler.compile",
   enclosing_declaration: "compiled_closure",
-  site_locus: ":1"
+  site_occurrence: 1
 }
 
 data filesystem_reach_through_handler: FilesystemEffectReach = filesystem_effect_reach(
   site: handler_site,
-  operation: "filesystem_handler_read",
+  operation: "emit_file_call",
   handler_slug: filesystem_handler_slug
 )
 
@@ -84,37 +94,46 @@ data filesystem_reach_self_host_fold: FilesystemEffectReach = filesystem_effect_
   handler_slug: filesystem_handler_slug
 )
 
-// THE CENSUS OVER THE EMITTED-CLOSURE POPULATION, run with the named population-source rule as its
-// source. self_host.dag is the one in-population module (it is the module the native-emitted closure
-// under the NativeCliDriver binding reaches); its two direct reaches are the two located offenders.
+// THE CENSUS OVER THE EMITTED-CLOSURE POPULATION, run with the NAMED typed population source. self_host
+// is the one in-population module (the module the native-emitted closure under the NativeCliDriver
+// binding reaches); its two direct reaches are the two located offenders.
 data self_host_emitted_closure_reaches: List<FilesystemEffectReach> = Cons {
   head: filesystem_reach_self_host_roster,
   tail: Cons { head: filesystem_reach_self_host_fold, tail: Empty }
 }
 
 data self_host_emitted_closure_report: FilesystemEffectCensusReport = filesystem_effect_reach_census(
-  population_source: filesystem_effect_emitted_closure_population_rule,
+  population_source: filesystem_effect_emitted_closure_population,
   reaches: self_host_emitted_closure_reaches
 )
 
 test fn filesystem_handler_binding_green_control_holds() -> Bool {
   let report = filesystem_effect_reach_census(
-    population_source: filesystem_effect_emitted_closure_population_rule,
+    population_source: filesystem_effect_emitted_closure_population,
     reaches: Cons { head: filesystem_reach_through_handler, tail: Empty }
   )
   filesystem_effect_direct_reach_wall_holds(report: report)
 }
 
 // THE NAMED POPULATION SOURCE IS CARRIED, not a bare list: the census report names the emitted-closure
-// rule it was measured over (consumption of the declaration -- a reader sees WHERE the population came
-// from, and the call site passes the symbol BY NAME, no inline literal).
+// rule it was measured over (consumption of the typed declaration -- a reader sees WHERE the population
+// came from, and the call site passes the symbol BY NAME, no inline literal).
 test fn filesystem_census_report_names_its_population_source() -> Bool {
-  self_host_emitted_closure_report.population_source == filesystem_effect_emitted_closure_population_rule
+  self_host_emitted_closure_report.population_source.rule
+    == ^emitted_closure_under_native_cli_driver_e2_filesystem_binding
 }
 
-// MULTIPLICITY: self_host.dag's two direct reaches are TWO distinct offenders in the census report, and
-// they are located at two distinct SITES (the wall does not collapse them to one). This is the defect
-// bold-ibex's counter had -- a (module, operation) key would have printed ONE.
+// The named source names the real driver arm and the real bound handler, so a reader can re-derive the
+// population against the corpus at the cited head rather than take it on faith.
+test fn filesystem_population_source_names_the_real_driver_and_handler() -> Bool {
+  (self_host_emitted_closure_report.population_source.driver_arm == "NativeCliDriver")
+    && (self_host_emitted_closure_report.population_source.bound_handler == "emit_file_call")
+    && (self_host_emitted_closure_report.population_source.free_primitive_slug == filesystem_free_primitive_slug)
+}
+
+// MULTIPLICITY: self_host's two direct reaches are TWO distinct offenders in the census report, located
+// at two distinct SITES (the wall does not collapse them to one). This is the defect a (module,
+// operation) key would have printed as ONE.
 test fn filesystem_census_reports_two_distinct_sites_for_self_host() -> Bool {
   let offenders = self_host_emitted_closure_report.offenders
   (length(xs: offenders) == 2)
@@ -126,14 +145,14 @@ test fn filesystem_census_reports_two_distinct_sites_for_self_host() -> Bool {
 
 test fn filesystem_read_direct_reach_refuses() -> Bool {
   let report = filesystem_effect_reach_census(
-    population_source: filesystem_effect_emitted_closure_population_rule,
+    population_source: filesystem_effect_emitted_closure_population,
     reaches: Cons { head: filesystem_reach_self_host_roster, tail: Empty }
   )
   (length(xs: report.offenders) == 1)
     && (!filesystem_effect_direct_reach_wall_holds(report: report))
 }
 
-// THE CAUSE IS NAMED and the reach is located at its enclosing declaration + locus, not just its module.
+// THE CAUSE IS NAMED and the reach is located at its enclosing declaration + occurrence index.
 test fn filesystem_read_direct_reach_names_its_cause_and_site() -> Bool {
   match filesystem_effect_reach(
     site: self_host_read_roster_manifest_site,
@@ -145,22 +164,23 @@ test fn filesystem_read_direct_reach_names_its_cause_and_site() -> Bool {
       operation: operation,
       cause: _
     } =>
-      (site.module_path == "src/v2/compiler/self_host.dag")
+      (site.module_path == "v2.compiler.self_host")
         && (operation == filesystem_free_primitive_slug)
         && (site.enclosing_declaration == "read_roster_manifest")
-        && (site.site_locus == ":319")
+        && (site.site_occurrence == 1)
     ReachedThroughHandler { site: _, operation: _ } => false
     ReachedOutsideBoundHandler { site: _, operation: _, cause: _ } => false
   }
 }
 
-// A THIRD site added at a new locus is a NEW offender, not a silent match against a rostered one: a
-// reach at :340 in the same module is distinct from both rostered sites.
-test fn filesystem_a_third_site_is_a_new_offender() -> Bool {
+// A THIRD call inside the SAME enclosing declaration is occurrence 2 -- a NEW offender, not a duplicate
+// of occurrence 1. This, with the length==2 test above, is what stops the census passing by collapsing
+// two sites into one or by growing quietly.
+test fn filesystem_a_third_occurrence_in_the_same_declaration_is_a_new_offender() -> Bool {
   let third_site = FilesystemEffectSite {
-    module_path: "src/v2/compiler/self_host.dag",
+    module_path: "v2.compiler.self_host",
     enclosing_declaration: "read_roster_manifest",
-    site_locus: ":340"
+    site_occurrence: 2
   }
   (filesystem_effect_site_eq(left: third_site, right: self_host_read_roster_manifest_site) == false)
     && (filesystem_effect_site_eq(left: third_site, right: self_host_fold_side_bytes_site) == false)
@@ -174,9 +194,9 @@ test fn filesystem_a_third_site_is_a_new_offender() -> Bool {
 test fn filesystem_reach_neither_handler_nor_primitive_refuses() -> Bool {
   match filesystem_effect_reach(
     site: FilesystemEffectSite {
-      module_path: "src/v2/compiler/unrelated.dag",
+      module_path: "v2.compiler.unrelated",
       enclosing_declaration: "unrelated_call",
-      site_locus: ":1"
+      site_occurrence: 1
     },
     operation: "some_other_free_primitive",
     handler_slug: filesystem_handler_slug
@@ -185,7 +205,7 @@ test fn filesystem_reach_neither_handler_nor_primitive_refuses() -> Bool {
       site: site,
       operation: operation,
       cause: _
-    } => (site.module_path == "src/v2/compiler/unrelated.dag") && (operation == "some_other_free_primitive")
+    } => (site.module_path == "v2.compiler.unrelated") && (operation == "some_other_free_primitive")
     ReachedFreePrimitiveDirectly { site: _, operation: _, cause: _ } => false
     ReachedThroughHandler { site: _, operation: _ } => false
   }
@@ -193,7 +213,7 @@ test fn filesystem_reach_neither_handler_nor_primitive_refuses() -> Bool {
 
 test fn filesystem_mixed_reach_refuses_only_the_direct_one() -> Bool {
   let report = filesystem_effect_reach_census(
-    population_source: filesystem_effect_emitted_closure_population_rule,
+    population_source: filesystem_effect_emitted_closure_population,
     reaches: Cons {
       head: filesystem_reach_through_handler,
       tail: Cons { head: filesystem_reach_self_host_roster, tail: Empty }
@@ -207,49 +227,57 @@ test fn filesystem_mixed_reach_refuses_only_the_direct_one() -> Bool {
 // WALL 1 -- new demand_restatement row
 // =============================================================================================
 
-data restatement_authorized_row: DemandRestatementRow = DemandRestatementRow {
-  module_path: "src/v2/compiler/authorized.dag",
-  declaration: "authorized_fn",
-  alias: "AuthorizedAlias",
-  authored_type: "AuthorizedService"
+// Map a REAL retained row (NonEmptyStr fields + a trigger) down to the wall's row identity.
+fn restatement_row_of(retained: DemandRestatementRetainedRow) -> DemandRestatementRow {
+  DemandRestatementRow {
+    module_path: retained.module_path as String,
+    declaration: retained.declaration as String,
+    alias: retained.alias as String,
+    authored_type: retained.authored_type as String
+  }
 }
 
-data restatement_authorized_roster: List<DemandRestatementRow> = Cons {
-  head: restatement_authorized_row,
-  tail: Empty
+// THE REAL ROSTER, built in single-pipe stages (the proven idiom in dag/product/fabric): map each real
+// retained population down to the wall's identity type, then append. The wall runs over THESE rows, not
+// over hand-built stand-ins, so the green control exercises the real producer over an executing route.
+data real_restatement_fn_rows: List<DemandRestatementRow> =
+  demand_restatement_retained_fn_rows |> map(r => restatement_row_of(retained: r))
+
+data real_restatement_pattern_rows: List<DemandRestatementRow> =
+  demand_restatement_retained_pattern_rows |> map(r => restatement_row_of(retained: r))
+
+data real_restatement_roster: List<DemandRestatementRow> =
+  real_restatement_fn_rows |> concat(real_restatement_pattern_rows)
+
+// GREEN by the real producer: the wall holds when the arriving population IS the real retained roster,
+// and the real population is non-empty (an empty population is VOID, not green).
+test fn demand_restatement_wall_holds_on_the_real_roster() -> Bool {
+  (length(xs: real_restatement_roster) > 0)
+    && (demand_restatement_wall_holds(arriving: real_restatement_roster, roster: real_restatement_roster))
 }
 
-data restatement_arriving_authorized: DemandRestatementRow = DemandRestatementRow {
-  module_path: "src/v2/compiler/authorized.dag",
-  declaration: "authorized_fn",
-  alias: "AuthorizedAlias",
-  authored_type: "AuthorizedService"
+// RED over the REAL roster: a brand-new row that is not among the real retained rows refuses, and the
+// wall flips to false. The discriminator is real population + one new row, not a synthetic fixture.
+test fn demand_restatement_new_row_refuses_against_the_real_roster() -> Bool {
+  let newcomer = DemandRestatementRow {
+    module_path: "v2.compiler.brand_new_restatement",
+    declaration: "a_restated_demand_never_retained",
+    alias: "NeverRetained",
+    authored_type: "std.resources.Filesystem"
+  }
+  let arriving = Cons { head: newcomer, tail: real_restatement_roster }
+  (length(xs: demand_restatement_new_row_refusals(arriving: arriving, roster: real_restatement_roster)) == 1)
+    && (!demand_restatement_wall_holds(arriving: arriving, roster: real_restatement_roster))
 }
 
-data restatement_arriving_new: DemandRestatementRow = DemandRestatementRow {
-  module_path: "src/v2/compiler/newcomer.dag",
-  declaration: "newcomer_fn",
-  alias: "NewcomerAlias",
-  authored_type: "NewcomerService"
-}
-
-test fn demand_restatement_authorized_row_holds() -> Bool {
-  demand_restatement_wall_holds(
-    arriving: Cons { head: restatement_arriving_authorized, tail: Empty },
-    roster: restatement_authorized_roster
-  )
-}
-
-test fn demand_restatement_new_row_refuses() -> Bool {
-  let arriving = Cons { head: restatement_arriving_new, tail: Empty }
-  (length(xs: demand_restatement_new_row_refusals(arriving: arriving, roster: restatement_authorized_roster)) == 1)
-    && (!demand_restatement_wall_holds(arriving: arriving, roster: restatement_authorized_roster))
-}
-
-test fn demand_restatement_new_row_names_its_cause() -> Bool {
-  match demand_restatement_row_verdict(row: restatement_arriving_new, roster: restatement_authorized_roster) {
-    NewRestatementRowRefused { row: row, cause: _ } =>
-      (row.module_path == "src/v2/compiler/newcomer.dag") && (row.declaration == "newcomer_fn")
-    AuthorizedRow { row: _ } => false
+// A real retained row, arriving, is AUTHORIZED (the wall does not refuse the rows it should carry).
+test fn demand_restatement_real_retained_row_is_authorized() -> Bool {
+  match demand_restatement_retained_fn_rows {
+    Cons { head: first_real_row, tail: _ } =>
+      match demand_restatement_row_verdict(row: restatement_row_of(retained: first_real_row), roster: real_restatement_roster) {
+        AuthorizedRow { row: _ } => true
+        NewRestatementRowRefused { row: _, cause: _ } => false
+      }
+    Empty => false
   }
 }
