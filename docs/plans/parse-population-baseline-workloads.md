@@ -1,10 +1,7 @@
 # Parse-Population Baseline Workloads
 
-## Status: PROPOSED — awaiting lane-manager release for Stage 2
-
 This document defines the two fixed benchmark populations for the
-`emission-real-consumer-profiles` row (roadmap_authority.dag, node id
-`emission-real-consumer-profiles`, line 3167 on origin/main).
+`emission-real-consumer-profiles` row.
 
 Pinned SHA: `65230868362de3efc0ddfeeaeef5d83eeb2fa385` (origin/main at time of writing)
 

@@ -1,8 +1,8 @@
-# Parse-Population Baseline — Measurement Report (Stage 2)
+# Parse-Population Baseline — Measurement Report
 
-Status: BASELINE TAKEN; realization-vs-algorithm attribution NOT establishable on srv1 under current host policy (see §7 — a criteria question for the reviewer).
+Scope: measured evidence for the `emission-real-consumer-profiles` row. Realization-vs-algorithm attribution is not establishable on srv1 under current host policy (§7) and is raised as a criteria question for the reviewer.
 
-Row: `emission-real-consumer-profiles` (roadmap_authority.dag, line 3167).
+Row: `emission-real-consumer-profiles`.
 Host: srv1 (`srv1.tailecbe08.ts.net`, aarch64, kernel 7.0.0-43-generic), heavy-slot evidence runs, `HEAVY_OWNER=bright-hawk-891`, one stage per acquisition.
 Pinned sha: `65230868362de3efc0ddfeeaeef5d83eeb2fa385` (origin/main).
 Companion manifest: `docs/plans/parse-population-baseline-workloads.md`.
@@ -101,25 +101,9 @@ The row's `boundary` asks each hot spot be attributed to a building-block/compos
 
 **Therefore:** the baseline is taken (fixed populations, byte-identity proven, refusal-comparable, wall/RSS min+median with load), but the realization-vs-algorithm attribution the `boundary` requires is a criteria decision for the reviewer. It needs one of: (a) an operator-approved `perf_event_paranoid ≤ 2` window on srv1 for true self-time sampling with frame-pointer call graphs, or (b) per-phase counters emitted by the parse-population verb (a carrier change), or (c) acceptance of a CI published-ancestor receipts cache to make the verdict-only control live. None of (a)/(b)/(c) is in this row's cleared scope.
 
-## 8. Reproducibility relay (by-product; cause UNKNOWN; routed to the reproducibility row)
+## 8. Reproducibility observation (relay)
 
-Two emit builds of the SAME closure (`103fa764…`), same sha, same seed (`92b44597…`), produced different files:
-```
-build1 sha256 7bce-like: df939a7979c59dc37e35b899798fb01472b1ae1f4766e8795f63bf62f5574670 (26927992 B)  built ~15:57Z
-build2 sha256 e43c-like: e43cbc291f64f75211c94828f809cc5fb99037ceb2604a397049256ebf883e3d (26928056 B)  built ~16:14Z
-build3 (this report's artifact): 530e9847e475df1b5f304ee2d943c61e4fb9e615383a5dbbb4794162c487a150
-```
-Per-section byte compare (`readelf -x`, hashed):
-```
-.text            SAME   (5f7c707823c9 across build1/build2)
-.rodata          DIFF
-.data            SAME
-.symtab          DIFF
-.strtab          DIFF
-.note.gnu.build-id DIFF (1533a6f3… vs 0acd5111…)
-.debug_str       absent (release debug=0)
-```
-Generated machine code does **not** vary; non-determinism is confined to `.rodata/.symtab/.strtab/build-id`. Hypothesis (no run behind it): an emitted temp probe-root path landing in `.rodata`/string table. **Cause UNKNOWN** — reported as relay data only, not chased or fixed from this row.
+While building the measured artifact I observed that two emit builds of the same closure produced different files with an identical `.text` section. That section-by-section observation is relay data for the reproducibility row and is carried there, not duplicated in this report. The artifact this report measured is identified in §3.
 
 ## 9. Acquisition count actually used
 
