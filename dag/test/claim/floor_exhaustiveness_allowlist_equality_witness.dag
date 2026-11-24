@@ -2,6 +2,8 @@ module test.claim.floor_exhaustiveness_allowlist_equality_witness
 
 import std.types { String, Bool, Int, List }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.algebra { trim }
+import extdeps.filesystem.filesystem_io
 import gunbc.compile_diagnostic_census {
   CompileDiagnosticCensusRow,
   CensusObserved,
