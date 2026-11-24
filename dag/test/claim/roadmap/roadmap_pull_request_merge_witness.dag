@@ -77,6 +77,14 @@ fn acceptance_env(evidence: AcceptancePrEvidence, at: String) -> RoadmapEventEnv
     kind: AcceptanceRecordedEvent { receipt: receipt(), evidence: evidence }, recorded_at: at })
 }
 
+// An acceptance recorded UNDER a prior event, so the node's history stays a single linear chain (a second
+// root would fork the history and the standing fold would report NodeForked, not a re-acceptance).
+fn acceptance_env_under(evidence: AcceptancePrEvidence, at: String, parent: RoadmapEventId?) -> RoadmapEventEnvelope {
+  roadmap_event_envelope(e: RoadmapEvent {
+    node: node(), author: human(), parent: parent,
+    kind: AcceptanceRecordedEvent { receipt: receipt(), evidence: evidence }, recorded_at: at })
+}
+
 fn merge_of(url: String, sha: String, at: String, msha: String, parent: RoadmapEventId?, at_time: String) -> RoadmapEventEnvelope {
   roadmap_event_envelope(e: RoadmapEvent {
     node: node(), author: human(), parent: parent,
@@ -192,8 +200,9 @@ test fn a_new_head_merges_after_an_earlier_acceptance_was_merged() -> Bool {
     pr_url: thread() as NonEmptyStr, head_sha: head() as NonEmptyStr }, at: "t1")
   let merge_a = merge_of(url: thread(), sha: head(), at: merged_at(), msha: merge_sha(),
     parent: Present { value: acc_a.id }, at_time: "t2")
-  let acc_b = acceptance_env(evidence: AcceptedOnPullRequestHead {
-    pr_url: thread_b as NonEmptyStr, head_sha: head_b as NonEmptyStr }, at: "t3")
+  let acc_b = acceptance_env_under(evidence: AcceptedOnPullRequestHead {
+    pr_url: thread_b as NonEmptyStr, head_sha: head_b as NonEmptyStr }, at: "t3",
+    parent: Present { value: merge_a.id })
   let admitted_b = roadmap_pull_request_merge_admission(envs: [acc_a, merge_a, acc_b],
     merge: PullRequestMergeEvidence { pr_url: thread_b as NonEmptyStr, head_sha: head_b as NonEmptyStr,
       merged_at: merged_at() as NonEmptyStr, merge_sha: msha_b as NonEmptyStr })
