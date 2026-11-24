@@ -1,0 +1,300 @@
+module gunbc.parse_population_baseline_roster
+
+import std.types { Bool, Int, List, String }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import std.keyed_row { KeyedRow }
+import std.keyed_roster { KeyedRosterBuild, KeyedRosterBuilt, keyed_roster_build }
+import std.algebra { count_where, fold_list }
+
+// THE PARSE-POPULATION BASELINE ROSTER (roadmap row gunbc.roadmap.roadmap_authority row id
+// `emission-real-consumer-profiles`). This carrier is the SINGLE AUTHORITY for the two fixed parse
+// populations the row's first_slice names ("the 5 largest dag modules and a 165-module sample"):
+// the selection rule, the membership, each member's byte size and population rank, and the pinned
+// tree sha they were measured over. The markdown under docs/plans/ is an evidence RECORD of the
+// measured cells only; it points here and holds no copy of the selection rule or roster
+// (gunbc.design_argument::planning_has_one_home).
+//
+// SELECTION RULE (regenerable, deterministic): every `.dag` file under `dag/` and `src/v2/` at the
+// pinned sha below, taken by BLOB SIZE from the tree objects (`git ls-tree -r -l <sha> -- dag src/v2`),
+// sorted DESCENDING by size then ASCENDING by path for a stable tiebreak. Positions 1..5 are
+// Population FiveLargest; positions 6..170 are Population OneHundredSixtyFive. The two populations
+// are DISJOINT BY CONSTRUCTION (contiguous ranks over one ordering), and the keyed_roster_build
+// over the whole 170 REFUSES a repeated path, so disjointness and uniqueness are CHECKED, not
+// asserted.
+//
+// PRODUCER / REPRODUCTION: regenerate the exact row list at the pinned sha with
+//   git ls-tree -r -l <pinned_sha> -- dag src/v2 \
+//     | awk '$5 ~ /\.dag$/ {print $4"\t"$5}' | sort -t$'\t' -k1,1nr -k2,2 | head -170
+// and diff against parse_population_baseline_rows() below; the rostered claim
+// test.claim.parse_population_baseline_roster_witness re-checks cardinality and byte totals, so a
+// roster that silently lost or gained a row turns red rather than under-reporting
+// (gunbc.design_argument::checks_must_prove_they_measured).
+
+// The tree sha the populations were selected and measured over (origin/main at baseline time).
+data parse_population_baseline_pinned_sha: String =
+  "65230868362de3efc0ddfeeaeef5d83eeb2fa385"
+
+// Population cardinalities the row names as the fixed benchmark.
+data parse_population_five_largest_count: Int = 5
+data parse_population_one_hundred_sixty_five_count: Int = 165
+
+// Which fixed population a member belongs to.
+type ParsePopulationMembership
+  = FiveLargest
+  | OneHundredSixtyFive
+
+// One roster member: its repo-relative path, its blob byte size, and its population rank (1..170).
+type ParsePopulationRow {
+  path: String
+  bytes: ByteSize
+  rank: Int
+  membership: ParsePopulationMembership
+}
+
+// The full 170-member roster, keyed by path (duplicate path refuses at build).
+fn parse_population_baseline_rows() -> List<KeyedRow<String, ParsePopulationRow>> {
+  [
+    KeyedRow { row_key: "dag/gunbc/roadmap/roadmap_authority.dag", value: ParsePopulationRow { path: "dag/gunbc/roadmap/roadmap_authority.dag", bytes: byte_size(count: 1421761), rank: 1, membership: FiveLargest } },
+    KeyedRow { row_key: "dag/gunbc/roadmap/roadmap_belt_actuate.dag", value: ParsePopulationRow { path: "dag/gunbc/roadmap/roadmap_belt_actuate.dag", bytes: byte_size(count: 947773), rank: 2, membership: FiveLargest } },
+    KeyedRow { row_key: "dag/product/p4261/e1_receipt_markings.dag", value: ParsePopulationRow { path: "dag/product/p4261/e1_receipt_markings.dag", bytes: byte_size(count: 750634), rank: 3, membership: FiveLargest } },
+    KeyedRow { row_key: "dag/extdeps/wikipedia/list_of_nvidia_graphics_processing_units.dag", value: ParsePopulationRow { path: "dag/extdeps/wikipedia/list_of_nvidia_graphics_processing_units.dag", bytes: byte_size(count: 748625), rank: 4, membership: FiveLargest } },
+    KeyedRow { row_key: "src/v2/workflow/floor_grandfathered_roster.dag", value: ParsePopulationRow { path: "src/v2/workflow/floor_grandfathered_roster.dag", bytes: byte_size(count: 706670), rank: 5, membership: FiveLargest } },
+    KeyedRow { row_key: "src/v2/compiler/body_lowering_fold.dag", value: ParsePopulationRow { path: "src/v2/compiler/body_lowering_fold.dag", bytes: byte_size(count: 662404), rank: 6, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "src/v2/std/compilers/target_model.dag", value: ParsePopulationRow { path: "src/v2/std/compilers/target_model.dag", bytes: byte_size(count: 648213), rank: 7, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/host/host_effect_realize.dag", value: ParsePopulationRow { path: "dag/gunbc/host/host_effect_realize.dag", bytes: byte_size(count: 642229), rank: 8, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "src/v2/compiler/infer.dag", value: ParsePopulationRow { path: "src/v2/compiler/infer.dag", bytes: byte_size(count: 631378), rank: 9, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/fleet/fleet_converge_workflow.dag", value: ParsePopulationRow { path: "dag/gunbc/fleet/fleet_converge_workflow.dag", bytes: byte_size(count: 597494), rank: 10, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/extdeps/wikipedia/list_of_amd_graphics_processing_units.dag", value: ParsePopulationRow { path: "dag/extdeps/wikipedia/list_of_amd_graphics_processing_units.dag", bytes: byte_size(count: 571378), rank: 11, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/recurring_failure_mode/bare_name_resolved_by_proximity_standing_in_for_resolution.dag", value: ParsePopulationRow { path: "dag/gunbc/recurring_failure_mode/bare_name_resolved_by_proximity_standing_in_for_resolution.dag", bytes: byte_size(count: 560090), rank: 12, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/extdeps/nvidia/linux_driver_supported_chips.dag", value: ParsePopulationRow { path: "dag/extdeps/nvidia/linux_driver_supported_chips.dag", bytes: byte_size(count: 528365), rank: 13, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/product/p4261/e1_b.dag", value: ParsePopulationRow { path: "dag/product/p4261/e1_b.dag", bytes: byte_size(count: 496502), rank: 14, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/product/p4261/e1_board_sightings.dag", value: ParsePopulationRow { path: "dag/product/p4261/e1_board_sightings.dag", bytes: byte_size(count: 437107), rank: 15, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "src/v2/extdeps/languages/dag.dag", value: ParsePopulationRow { path: "src/v2/extdeps/languages/dag.dag", bytes: byte_size(count: 375922), rank: 16, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "src/v2/workflow/roster_import_sweep.dag", value: ParsePopulationRow { path: "src/v2/workflow/roster_import_sweep.dag", bytes: byte_size(count: 368266), rank: 17, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/runner/runner_host_file_converge.dag", value: ParsePopulationRow { path: "dag/gunbc/runner/runner_host_file_converge.dag", bytes: byte_size(count: 357665), rank: 18, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/test/claim/ubuntu_autoinstall_seed_witness.dag", value: ParsePopulationRow { path: "dag/test/claim/ubuntu_autoinstall_seed_witness.dag", bytes: byte_size(count: 345680), rank: 19, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/ci/ci_layer_roots.dag", value: ParsePopulationRow { path: "dag/gunbc/ci/ci_layer_roots.dag", bytes: byte_size(count: 329294), rank: 20, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "src/v2/compiler/resolve.dag", value: ParsePopulationRow { path: "src/v2/compiler/resolve.dag", bytes: byte_size(count: 321770), rank: 21, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "src/v2/compiler/source_root_eval.dag", value: ParsePopulationRow { path: "src/v2/compiler/source_root_eval.dag", bytes: byte_size(count: 321632), rank: 22, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/machine_intake/bmc_recovery_route.dag", value: ParsePopulationRow { path: "dag/gunbc/machine_intake/bmc_recovery_route.dag", bytes: byte_size(count: 321452), rank: 23, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/extdeps/cpu/ampere_altra_package_table4_raw.dag", value: ParsePopulationRow { path: "dag/extdeps/cpu/ampere_altra_package_table4_raw.dag", bytes: byte_size(count: 315112), rank: 24, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/design_ruling.dag", value: ParsePopulationRow { path: "dag/gunbc/design_ruling.dag", bytes: byte_size(count: 308544), rank: 25, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/compute/work_provider_local.dag", value: ParsePopulationRow { path: "dag/gunbc/compute/work_provider_local.dag", bytes: byte_size(count: 303095), rank: 26, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/provisioning/ubuntu_autoinstall_seed.dag", value: ParsePopulationRow { path: "dag/gunbc/provisioning/ubuntu_autoinstall_seed.dag", bytes: byte_size(count: 297544), rank: 27, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "src/v2/workflow/local_repo_wet_terminal.dag", value: ParsePopulationRow { path: "src/v2/workflow/local_repo_wet_terminal.dag", bytes: byte_size(count: 292814), rank: 28, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/machine_intake/bmc_secure.dag", value: ParsePopulationRow { path: "dag/gunbc/machine_intake/bmc_secure.dag", bytes: byte_size(count: 291271), rank: 29, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/scm/repository_envelope.dag", value: ParsePopulationRow { path: "dag/gunbc/scm/repository_envelope.dag", bytes: byte_size(count: 278925), rank: 30, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/live_deploy/srv1_residue_rehearsal.dag", value: ParsePopulationRow { path: "dag/gunbc/live_deploy/srv1_residue_rehearsal.dag", bytes: byte_size(count: 272046), rank: 31, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/roadmap/roadmap_dashboard_instance.dag", value: ParsePopulationRow { path: "dag/gunbc/roadmap/roadmap_dashboard_instance.dag", bytes: byte_size(count: 238709), rank: 32, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/test/claim/product/p4261_carrier_layout_witness.dag", value: ParsePopulationRow { path: "dag/test/claim/product/p4261_carrier_layout_witness.dag", bytes: byte_size(count: 236738), rank: 33, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/spark/arm_memory_fit.dag", value: ParsePopulationRow { path: "dag/gunbc/spark/arm_memory_fit.dag", bytes: byte_size(count: 236386), rank: 34, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/machine_intake/mtcollins1_boot_run.dag", value: ParsePopulationRow { path: "dag/gunbc/machine_intake/mtcollins1_boot_run.dag", bytes: byte_size(count: 230901), rank: 35, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/machine_intake/megarac_boot_diagnostic_bundle.dag", value: ParsePopulationRow { path: "dag/gunbc/machine_intake/megarac_boot_diagnostic_bundle.dag", bytes: byte_size(count: 228849), rank: 36, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/runner/runner_gpu_container_toolchain.dag", value: ParsePopulationRow { path: "dag/gunbc/runner/runner_gpu_container_toolchain.dag", bytes: byte_size(count: 218906), rank: 37, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/fleet/site_pxe_edge_converge.dag", value: ParsePopulationRow { path: "dag/gunbc/fleet/site_pxe_edge_converge.dag", bytes: byte_size(count: 217939), rank: 38, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "src/v2/compiler/parse.dag", value: ParsePopulationRow { path: "src/v2/compiler/parse.dag", bytes: byte_size(count: 215655), rank: 39, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/test/claim/firmware_network_boot_standing_witness.dag", value: ParsePopulationRow { path: "dag/test/claim/firmware_network_boot_standing_witness.dag", bytes: byte_size(count: 214558), rank: 40, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/roadmap/roadmap_page.dag", value: ParsePopulationRow { path: "dag/gunbc/roadmap/roadmap_page.dag", bytes: byte_size(count: 213007), rank: 41, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/roadmap/roadmap_dispatch_actuator.dag", value: ParsePopulationRow { path: "dag/gunbc/roadmap/roadmap_dispatch_actuator.dag", bytes: byte_size(count: 211221), rank: 42, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/test/claim/long/roadmap_page_witness.dag", value: ParsePopulationRow { path: "dag/test/claim/long/roadmap_page_witness.dag", bytes: byte_size(count: 204619), rank: 43, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "src/v2/extdeps/languages/rust.dag", value: ParsePopulationRow { path: "src/v2/extdeps/languages/rust.dag", bytes: byte_size(count: 201833), rank: 44, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "src/v2/workflow/floor_route_gap.dag", value: ParsePopulationRow { path: "src/v2/workflow/floor_route_gap.dag", bytes: byte_size(count: 201652), rank: 45, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/fleet/fleet_converge_plan.dag", value: ParsePopulationRow { path: "dag/gunbc/fleet/fleet_converge_plan.dag", bytes: byte_size(count: 193318), rank: 46, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/roadmap/roadmap_event_log.dag", value: ParsePopulationRow { path: "dag/gunbc/roadmap/roadmap_event_log.dag", bytes: byte_size(count: 192268), rank: 47, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/firmware_network_boot_standing.dag", value: ParsePopulationRow { path: "dag/gunbc/firmware_network_boot_standing.dag", bytes: byte_size(count: 192156), rank: 48, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/compute/remote_build_serving_converge.dag", value: ParsePopulationRow { path: "dag/gunbc/compute/remote_build_serving_converge.dag", bytes: byte_size(count: 190608), rank: 49, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/roadmap/roadmap_component.dag", value: ParsePopulationRow { path: "dag/gunbc/roadmap/roadmap_component.dag", bytes: byte_size(count: 187914), rank: 50, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/test/claim/roadmap/roadmap_belt_actuate_witness.dag", value: ParsePopulationRow { path: "dag/test/claim/roadmap/roadmap_belt_actuate_witness.dag", bytes: byte_size(count: 186139), rank: 51, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/test/claim/machine_intake/mtcollins1_boot_acceptance_matrix.dag", value: ParsePopulationRow { path: "dag/test/claim/machine_intake/mtcollins1_boot_acceptance_matrix.dag", bytes: byte_size(count: 183407), rank: 52, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/machine_intake/bmc_first_contact_reading.dag", value: ParsePopulationRow { path: "dag/gunbc/machine_intake/bmc_first_contact_reading.dag", bytes: byte_size(count: 181414), rank: 53, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "src/v2/workflow/required_floor.dag", value: ParsePopulationRow { path: "src/v2/workflow/required_floor.dag", bytes: byte_size(count: 181053), rank: 54, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/serving/srv1_serving_replica_layout.dag", value: ParsePopulationRow { path: "dag/gunbc/serving/srv1_serving_replica_layout.dag", bytes: byte_size(count: 180757), rank: 55, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/auth/privileged_effect_registry.dag", value: ParsePopulationRow { path: "dag/gunbc/auth/privileged_effect_registry.dag", bytes: byte_size(count: 177226), rank: 56, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/runner/runner_slot_allocation.dag", value: ParsePopulationRow { path: "dag/gunbc/runner/runner_slot_allocation.dag", bytes: byte_size(count: 176113), rank: 57, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/fabric/engram_materialization.dag", value: ParsePopulationRow { path: "dag/gunbc/fabric/engram_materialization.dag", bytes: byte_size(count: 174168), rank: 58, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/spark/pair_serving_authority_log.dag", value: ParsePopulationRow { path: "dag/gunbc/spark/pair_serving_authority_log.dag", bytes: byte_size(count: 171535), rank: 59, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/instruments/known_red_derivation.dag", value: ParsePopulationRow { path: "dag/gunbc/instruments/known_red_derivation.dag", bytes: byte_size(count: 169348), rank: 60, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/witness/witness_floor_workflow.dag", value: ParsePopulationRow { path: "dag/gunbc/witness/witness_floor_workflow.dag", bytes: byte_size(count: 166853), rank: 61, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/instruments/fabric_control_plane_live_probe.dag", value: ParsePopulationRow { path: "dag/gunbc/instruments/fabric_control_plane_live_probe.dag", bytes: byte_size(count: 166629), rank: 62, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "src/v2/extdeps/languages/rust_fixtures.dag", value: ParsePopulationRow { path: "src/v2/extdeps/languages/rust_fixtures.dag", bytes: byte_size(count: 162998), rank: 63, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/machine_intake/megarac_media_attach.dag", value: ParsePopulationRow { path: "dag/gunbc/machine_intake/megarac_media_attach.dag", bytes: byte_size(count: 161158), rank: 64, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/roadmap/roadmap_serve.dag", value: ParsePopulationRow { path: "dag/gunbc/roadmap/roadmap_serve.dag", bytes: byte_size(count: 160464), rank: 65, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "src/v2/workflow/floor_pure_producer_share.dag", value: ParsePopulationRow { path: "src/v2/workflow/floor_pure_producer_share.dag", bytes: byte_size(count: 158795), rank: 66, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/product/p4261/e1_photographs.dag", value: ParsePopulationRow { path: "dag/product/p4261/e1_photographs.dag", bytes: byte_size(count: 158710), rank: 67, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/test/claim/deployment_gate_operator_steps_witness.dag", value: ParsePopulationRow { path: "dag/test/claim/deployment_gate_operator_steps_witness.dag", bytes: byte_size(count: 158493), rank: 68, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/test/claim/fleet/fleet_converge_plan_witness.dag", value: ParsePopulationRow { path: "dag/test/claim/fleet/fleet_converge_plan_witness.dag", bytes: byte_size(count: 158356), rank: 69, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/test/claim/compute/remote_build_serving_converge_witness.dag", value: ParsePopulationRow { path: "dag/test/claim/compute/remote_build_serving_converge_witness.dag", bytes: byte_size(count: 157785), rank: 70, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/roadmap/roadmap_session_placement.dag", value: ParsePopulationRow { path: "dag/gunbc/roadmap/roadmap_session_placement.dag", bytes: byte_size(count: 157446), rank: 71, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/extdeps/realization/materialization_store_local.dag", value: ParsePopulationRow { path: "dag/extdeps/realization/materialization_store_local.dag", bytes: byte_size(count: 155814), rank: 72, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "src/v2/compiler/eval.dag", value: ParsePopulationRow { path: "src/v2/compiler/eval.dag", bytes: byte_size(count: 152188), rank: 73, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/harness/harness_turn.dag", value: ParsePopulationRow { path: "dag/gunbc/harness/harness_turn.dag", bytes: byte_size(count: 151441), rank: 74, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/test/claim/fleet/site_pxe_edge_converge_witness.dag", value: ParsePopulationRow { path: "dag/test/claim/fleet/site_pxe_edge_converge_witness.dag", bytes: byte_size(count: 151208), rank: 75, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/test/claim/runner/runner_host_file_converge_witness.dag", value: ParsePopulationRow { path: "dag/test/claim/runner/runner_host_file_converge_witness.dag", bytes: byte_size(count: 151123), rank: 76, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/live_deploy/emit.dag", value: ParsePopulationRow { path: "dag/gunbc/live_deploy/emit.dag", bytes: byte_size(count: 150577), rank: 77, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "src/v2/std/grammar.dag", value: ParsePopulationRow { path: "src/v2/std/grammar.dag", bytes: byte_size(count: 150025), rank: 78, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/fleet/fleet_release_bins_key.dag", value: ParsePopulationRow { path: "dag/gunbc/fleet/fleet_release_bins_key.dag", bytes: byte_size(count: 149175), rank: 79, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "src/v2/std/node.dag", value: ParsePopulationRow { path: "src/v2/std/node.dag", bytes: byte_size(count: 148257), rank: 80, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/roadmap/roadmap_dashboard_instance_apply.dag", value: ParsePopulationRow { path: "dag/gunbc/roadmap/roadmap_dashboard_instance_apply.dag", bytes: byte_size(count: 147953), rank: 81, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/spark/runtime_architecture_registry_reading.dag", value: ParsePopulationRow { path: "dag/gunbc/spark/runtime_architecture_registry_reading.dag", bytes: byte_size(count: 146355), rank: 82, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/auth/deployment_gate_authorization.dag", value: ParsePopulationRow { path: "dag/gunbc/auth/deployment_gate_authorization.dag", bytes: byte_size(count: 146143), rank: 83, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/test/claim/spark/engram_materialization_witness.dag", value: ParsePopulationRow { path: "dag/test/claim/spark/engram_materialization_witness.dag", bytes: byte_size(count: 143044), rank: 84, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "src/v2/extdeps/languages/bash.dag", value: ParsePopulationRow { path: "src/v2/extdeps/languages/bash.dag", bytes: byte_size(count: 142480), rank: 85, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/harness/harness_seat.dag", value: ParsePopulationRow { path: "dag/gunbc/harness/harness_seat.dag", bytes: byte_size(count: 141986), rank: 86, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/live_deploy/apply_legs.dag", value: ParsePopulationRow { path: "dag/gunbc/live_deploy/apply_legs.dag", bytes: byte_size(count: 140540), rank: 87, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/extdeps/git.dag", value: ParsePopulationRow { path: "dag/extdeps/git.dag", bytes: byte_size(count: 138686), rank: 88, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/test/claim/machine_intake/machine_intake_arrival_converge_witness.dag", value: ParsePopulationRow { path: "dag/test/claim/machine_intake/machine_intake_arrival_converge_witness.dag", bytes: byte_size(count: 137370), rank: 89, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/std/materialization_provider.dag", value: ParsePopulationRow { path: "dag/std/materialization_provider.dag", bytes: byte_size(count: 135855), rank: 90, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/commit_workflow.dag", value: ParsePopulationRow { path: "dag/gunbc/commit_workflow.dag", bytes: byte_size(count: 135557), rank: 91, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/package_delivery.dag", value: ParsePopulationRow { path: "dag/gunbc/package_delivery.dag", bytes: byte_size(count: 135040), rank: 92, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/roadmap/roadmap_decomposition.dag", value: ParsePopulationRow { path: "dag/gunbc/roadmap/roadmap_decomposition.dag", bytes: byte_size(count: 132233), rank: 93, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/test/claim/roadmap/session_placement_wet_witness.dag", value: ParsePopulationRow { path: "dag/test/claim/roadmap/session_placement_wet_witness.dag", bytes: byte_size(count: 130660), rank: 94, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/auth/gcp_iam_bootstrap.dag", value: ParsePopulationRow { path: "dag/gunbc/auth/gcp_iam_bootstrap.dag", bytes: byte_size(count: 130529), rank: 95, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/test/claim/runner/runner_host_cap_bracket_witness.dag", value: ParsePopulationRow { path: "dag/test/claim/runner/runner_host_cap_bracket_witness.dag", bytes: byte_size(count: 129692), rank: 96, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/extdeps/electronic_component/intel_10cx085f672_boundary_scan.dag", value: ParsePopulationRow { path: "dag/extdeps/electronic_component/intel_10cx085f672_boundary_scan.dag", bytes: byte_size(count: 127454), rank: 97, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "src/v2/workflow/floor_cost_debt.dag", value: ParsePopulationRow { path: "src/v2/workflow/floor_cost_debt.dag", bytes: byte_size(count: 127408), rank: 98, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/plans/demand_engine_program.dag", value: ParsePopulationRow { path: "dag/gunbc/plans/demand_engine_program.dag", bytes: byte_size(count: 126710), rank: 99, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "src/v2/std/compilers/semantic_decl_emission.dag", value: ParsePopulationRow { path: "src/v2/std/compilers/semantic_decl_emission.dag", bytes: byte_size(count: 126241), rank: 100, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "src/v2/workflow/reference_migration.dag", value: ParsePopulationRow { path: "src/v2/workflow/reference_migration.dag", bytes: byte_size(count: 125288), rank: 101, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/floor/floor_demand.dag", value: ParsePopulationRow { path: "dag/gunbc/floor/floor_demand.dag", bytes: byte_size(count: 125238), rank: 102, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/self_host_compile_phase_frontier.dag", value: ParsePopulationRow { path: "dag/gunbc/self_host_compile_phase_frontier.dag", bytes: byte_size(count: 124833), rank: 103, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "src/v2/compiler/module_acquisition.dag", value: ParsePopulationRow { path: "src/v2/compiler/module_acquisition.dag", bytes: byte_size(count: 124487), rank: 104, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/test/claim/roadmap/roadmap_presentation_witness.dag", value: ParsePopulationRow { path: "dag/test/claim/roadmap/roadmap_presentation_witness.dag", bytes: byte_size(count: 123443), rank: 105, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/fleet/host_credential_custody_converge.dag", value: ParsePopulationRow { path: "dag/gunbc/fleet/host_credential_custody_converge.dag", bytes: byte_size(count: 123021), rank: 106, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/scm/object_store.dag", value: ParsePopulationRow { path: "dag/gunbc/scm/object_store.dag", bytes: byte_size(count: 122956), rank: 107, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/compute/remote_build_serving_setup.dag", value: ParsePopulationRow { path: "dag/gunbc/compute/remote_build_serving_setup.dag", bytes: byte_size(count: 122819), rank: 108, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/machine_intake/mtcollins1_ui_status_asset_observation.dag", value: ParsePopulationRow { path: "dag/gunbc/machine_intake/mtcollins1_ui_status_asset_observation.dag", bytes: byte_size(count: 122136), rank: 109, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "src/v2/extdeps/languages/typescript.dag", value: ParsePopulationRow { path: "src/v2/extdeps/languages/typescript.dag", bytes: byte_size(count: 121638), rank: 110, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/witness/compiler_gate_contract_stamp.dag", value: ParsePopulationRow { path: "dag/gunbc/witness/compiler_gate_contract_stamp.dag", bytes: byte_size(count: 121508), rank: 111, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/site/web_fonts.dag", value: ParsePopulationRow { path: "dag/gunbc/site/web_fonts.dag", bytes: byte_size(count: 120416), rank: 112, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/roadmap/roadmap_presentation.dag", value: ParsePopulationRow { path: "dag/gunbc/roadmap/roadmap_presentation.dag", bytes: byte_size(count: 118672), rank: 113, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/std/occurrence_binding_candidates.dag", value: ParsePopulationRow { path: "dag/std/occurrence_binding_candidates.dag", bytes: byte_size(count: 116098), rank: 114, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/instruments/router_proxy_falsifier.dag", value: ParsePopulationRow { path: "dag/gunbc/instruments/router_proxy_falsifier.dag", bytes: byte_size(count: 115465), rank: 115, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/design_document.dag", value: ParsePopulationRow { path: "dag/gunbc/design_document.dag", bytes: byte_size(count: 113274), rank: 116, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/emit_subject_clean_frontier.dag", value: ParsePopulationRow { path: "dag/gunbc/emit_subject_clean_frontier.dag", bytes: byte_size(count: 113019), rank: 117, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/test/claim/roadmap/roadmap_authority.dag", value: ParsePopulationRow { path: "dag/test/claim/roadmap/roadmap_authority.dag", bytes: byte_size(count: 112625), rank: 118, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/test/claim/machine_intake/mtcollins1_boot_run_witness.dag", value: ParsePopulationRow { path: "dag/test/claim/machine_intake/mtcollins1_boot_run_witness.dag", bytes: byte_size(count: 112316), rank: 119, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/test/claim/gunbc_instruments_known_red_derivation_witness.dag", value: ParsePopulationRow { path: "dag/test/claim/gunbc_instruments_known_red_derivation_witness.dag", bytes: byte_size(count: 112277), rank: 120, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "src/v2/workflow/floor_expected_red.dag", value: ParsePopulationRow { path: "src/v2/workflow/floor_expected_red.dag", bytes: byte_size(count: 111533), rank: 121, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/test/claim/scm/scm_repository_envelope_witness.dag", value: ParsePopulationRow { path: "dag/test/claim/scm/scm_repository_envelope_witness.dag", bytes: byte_size(count: 111530), rank: 122, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/product/printed_chassis/card_cooling_route.dag", value: ParsePopulationRow { path: "dag/product/printed_chassis/card_cooling_route.dag", bytes: byte_size(count: 111396), rank: 123, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/live_deploy/spec.dag", value: ParsePopulationRow { path: "dag/gunbc/live_deploy/spec.dag", bytes: byte_size(count: 111262), rank: 124, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/test/claim/review_sheet_converge_witness.dag", value: ParsePopulationRow { path: "dag/test/claim/review_sheet_converge_witness.dag", bytes: byte_size(count: 110449), rank: 125, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/spark/serving_arm.dag", value: ParsePopulationRow { path: "dag/gunbc/spark/serving_arm.dag", bytes: byte_size(count: 110125), rank: 126, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/test/claim/machine_intake/mtcollins1_ui_status_asset_observation_witness.dag", value: ParsePopulationRow { path: "dag/test/claim/machine_intake/mtcollins1_ui_status_asset_observation_witness.dag", bytes: byte_size(count: 108099), rank: 127, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/test/claim/dispatch_credential_acquisition_witness.dag", value: ParsePopulationRow { path: "dag/test/claim/dispatch_credential_acquisition_witness.dag", bytes: byte_size(count: 107422), rank: 128, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/machine_intake/arrival_converge.dag", value: ParsePopulationRow { path: "dag/gunbc/machine_intake/arrival_converge.dag", bytes: byte_size(count: 107398), rank: 129, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/test/claim/machine_intake/megarac_media_convergence_witness.dag", value: ParsePopulationRow { path: "dag/test/claim/machine_intake/megarac_media_convergence_witness.dag", bytes: byte_size(count: 107238), rank: 130, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/floor_cost_distribution.dag", value: ParsePopulationRow { path: "dag/gunbc/floor_cost_distribution.dag", bytes: byte_size(count: 106297), rank: 131, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "src/v2/compiler/target_serialize.dag", value: ParsePopulationRow { path: "src/v2/compiler/target_serialize.dag", bytes: byte_size(count: 105968), rank: 132, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/live_deploy/apply.dag", value: ParsePopulationRow { path: "dag/gunbc/live_deploy/apply.dag", bytes: byte_size(count: 105835), rank: 133, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/roadmap/roadmap_effort_estimate.dag", value: ParsePopulationRow { path: "dag/gunbc/roadmap/roadmap_effort_estimate.dag", bytes: byte_size(count: 105301), rank: 134, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/runner/runner_host_cap_bracket.dag", value: ParsePopulationRow { path: "dag/gunbc/runner/runner_host_cap_bracket.dag", bytes: byte_size(count: 104727), rank: 135, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/test/claim/roadmap/worker_git_subtree_apply_spawn_wet_witness.dag", value: ParsePopulationRow { path: "dag/test/claim/roadmap/worker_git_subtree_apply_spawn_wet_witness.dag", bytes: byte_size(count: 102662), rank: 136, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/test/claim/host/host_name_resolution_witness.dag", value: ParsePopulationRow { path: "dag/test/claim/host/host_name_resolution_witness.dag", bytes: byte_size(count: 102639), rank: 137, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/github_app_acquisition.dag", value: ParsePopulationRow { path: "dag/gunbc/github_app_acquisition.dag", bytes: byte_size(count: 102596), rank: 138, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/recurring_failure_mode/accepted_source_emits_uncompilable_target.dag", value: ParsePopulationRow { path: "dag/gunbc/recurring_failure_mode/accepted_source_emits_uncompilable_target.dag", bytes: byte_size(count: 102421), rank: 139, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/fleet/fleet_converge_plan_cli.dag", value: ParsePopulationRow { path: "dag/gunbc/fleet/fleet_converge_plan_cli.dag", bytes: byte_size(count: 102271), rank: 140, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/test/claim/roadmap/worker_dedicated_account_witness.dag", value: ParsePopulationRow { path: "dag/test/claim/roadmap/worker_dedicated_account_witness.dag", bytes: byte_size(count: 102155), rank: 141, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/test/claim/fleet/runtime_identity_match_witness.dag", value: ParsePopulationRow { path: "dag/test/claim/fleet/runtime_identity_match_witness.dag", bytes: byte_size(count: 101858), rank: 142, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/machine_intake/prior_life_boundary.dag", value: ParsePopulationRow { path: "dag/gunbc/machine_intake/prior_life_boundary.dag", bytes: byte_size(count: 101327), rank: 143, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "src/v2/compiler/translate.dag", value: ParsePopulationRow { path: "src/v2/compiler/translate.dag", bytes: byte_size(count: 100867), rank: 144, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/test/claim/github_app_manifest_witness.dag", value: ParsePopulationRow { path: "dag/test/claim/github_app_manifest_witness.dag", bytes: byte_size(count: 98992), rank: 145, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/test/claim/floor_cost_distribution_witness.dag", value: ParsePopulationRow { path: "dag/test/claim/floor_cost_distribution_witness.dag", bytes: byte_size(count: 98389), rank: 146, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/test/claim/machine_intake/megarac_boot_diagnostic_bundle_witness.dag", value: ParsePopulationRow { path: "dag/test/claim/machine_intake/megarac_boot_diagnostic_bundle_witness.dag", bytes: byte_size(count: 98304), rank: 147, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/explicit_witness_admission.dag", value: ParsePopulationRow { path: "dag/gunbc/explicit_witness_admission.dag", bytes: byte_size(count: 98271), rank: 148, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/product/printed_chassis/gpu_duct.dag", value: ParsePopulationRow { path: "dag/product/printed_chassis/gpu_duct.dag", bytes: byte_size(count: 97965), rank: 149, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/serving/router_dev_policy.dag", value: ParsePopulationRow { path: "dag/gunbc/serving/router_dev_policy.dag", bytes: byte_size(count: 97728), rank: 150, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/test/claim/machine_intake/megarac_boot_record_mapping_witness.dag", value: ParsePopulationRow { path: "dag/test/claim/machine_intake/megarac_boot_record_mapping_witness.dag", bytes: byte_size(count: 97506), rank: 151, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/fleet/fleet_known_hosts_anchor.dag", value: ParsePopulationRow { path: "dag/gunbc/fleet/fleet_known_hosts_anchor.dag", bytes: byte_size(count: 97431), rank: 152, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/test/claim/deployment_gate_authorization_witness.dag", value: ParsePopulationRow { path: "dag/test/claim/deployment_gate_authorization_witness.dag", bytes: byte_size(count: 97158), rank: 153, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/test/claim/live_deploy/emit.dag", value: ParsePopulationRow { path: "dag/test/claim/live_deploy/emit.dag", bytes: byte_size(count: 96976), rank: 154, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "src/v2/compiler/source_authority.dag", value: ParsePopulationRow { path: "src/v2/compiler/source_authority.dag", bytes: byte_size(count: 96945), rank: 155, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/test/claim/host/approval_broker_tree_install_witness.dag", value: ParsePopulationRow { path: "dag/test/claim/host/approval_broker_tree_install_witness.dag", bytes: byte_size(count: 96430), rank: 156, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/site/element/build_meter.dag", value: ParsePopulationRow { path: "dag/gunbc/site/element/build_meter.dag", bytes: byte_size(count: 95650), rank: 157, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/roadmap/roadmap_event_carrier.dag", value: ParsePopulationRow { path: "dag/gunbc/roadmap/roadmap_event_carrier.dag", bytes: byte_size(count: 95582), rank: 158, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/test/claim/network_boot_delivery_join_witness.dag", value: ParsePopulationRow { path: "dag/test/claim/network_boot_delivery_join_witness.dag", bytes: byte_size(count: 95568), rank: 159, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/std/algebra.dag", value: ParsePopulationRow { path: "dag/std/algebra.dag", bytes: byte_size(count: 95247), rank: 160, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/roadmap/roadmap_style.dag", value: ParsePopulationRow { path: "dag/gunbc/roadmap/roadmap_style.dag", bytes: byte_size(count: 95210), rank: 161, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "src/v2/test/claim/native_route_progress_guard_witness.dag", value: ParsePopulationRow { path: "src/v2/test/claim/native_route_progress_guard_witness.dag", bytes: byte_size(count: 94832), rank: 162, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "src/v2/workflow/native_route_progress_guard.dag", value: ParsePopulationRow { path: "src/v2/workflow/native_route_progress_guard.dag", bytes: byte_size(count: 94159), rank: 163, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/compute/host_capacity.dag", value: ParsePopulationRow { path: "dag/gunbc/compute/host_capacity.dag", bytes: byte_size(count: 94155), rank: 164, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/std/measure.dag", value: ParsePopulationRow { path: "dag/std/measure.dag", bytes: byte_size(count: 94133), rank: 165, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/test/claim/machine_intake/bmc_first_contact_reading_witness.dag", value: ParsePopulationRow { path: "dag/test/claim/machine_intake/bmc_first_contact_reading_witness.dag", bytes: byte_size(count: 94001), rank: 166, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/test/claim/spark/pair_serving_authority_log_witness.dag", value: ParsePopulationRow { path: "dag/test/claim/spark/pair_serving_authority_log_witness.dag", bytes: byte_size(count: 93103), rank: 167, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/v1/v1_interpreter_primitive_surface.dag", value: ParsePopulationRow { path: "dag/gunbc/v1/v1_interpreter_primitive_surface.dag", bytes: byte_size(count: 92781), rank: 168, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "dag/gunbc/site/gunb_ai_css.dag", value: ParsePopulationRow { path: "dag/gunbc/site/gunb_ai_css.dag", bytes: byte_size(count: 92614), rank: 169, membership: OneHundredSixtyFive } },
+    KeyedRow { row_key: "src/v2/extdeps/languages/swift.dag", value: ParsePopulationRow { path: "src/v2/extdeps/languages/swift.dag", bytes: byte_size(count: 92576), rank: 170, membership: OneHundredSixtyFive } },
+  ]
+}
+
+// Byte total of a roster, summed from each member's ByteSize as a plain count.
+fn parse_population_byte_total(rows: List<KeyedRow<String, ParsePopulationRow>>) -> Int {
+  fold_list(xs: rows, empty: 0, cons: fn(acc, row) { acc + byte_size_count(b: row.value.bytes) })
+}
+
+// Disjointness/uniqueness CHECK: the keyed build over all 170 refuses a repeated path. A roster
+// that silently gained a duplicate turns this to KeyedRosterBuildDuplicateKey, and the witness
+// asserts the Built arm.
+fn parse_population_build() -> KeyedRosterBuild<String, ParsePopulationRow> {
+  keyed_roster_build(incomings: parse_population_baseline_rows(), key_eq: fn(a, b) { a == b })
+}
+
+// The three cardinalities the witness reports: whole roster, and each fixed population.
+fn parse_population_total_count() -> Int {
+  count_where(xs: parse_population_baseline_rows(), predicate: fn(_row) { true })
+}
+
+fn parse_population_five_largest_count_check() -> Int {
+  count_where(xs: parse_population_baseline_rows(), predicate: fn(row) { row.value.membership == FiveLargest })
+}
+
+fn parse_population_one_hundred_sixty_five_count_check() -> Int {
+  count_where(xs: parse_population_baseline_rows(), predicate: fn(row) { row.value.membership == OneHundredSixtyFive })
+}
+
+// Select n when the membership matches, else 0. Branches are call-free so the block parses.
+fn parse_population_select(m: ParsePopulationMembership, want: ParsePopulationMembership, n: Int) -> Int {
+  if m == want { n } else { 0 }
+}
+
+fn parse_population_row_bytes(row: KeyedRow<String, ParsePopulationRow>) -> Int {
+  byte_size_count(b: row.value.bytes)
+}
+
+// Per-population byte totals: each folds the whole roster, counting bytes only for its own members.
+fn parse_population_five_largest_byte_total() -> Int {
+  fold_list(xs: parse_population_baseline_rows(), empty: 0, cons: fn(acc, row) {
+    acc + parse_population_select(row.value.membership, FiveLargest, parse_population_row_bytes(row))
+  })
+}
+
+fn parse_population_one_hundred_sixty_five_byte_total() -> Int {
+  fold_list(xs: parse_population_baseline_rows(), empty: 0, cons: fn(acc, row) {
+    acc + parse_population_select(row.value.membership, OneHundredSixtyFive, parse_population_row_bytes(row))
+  })
+}
+
+fn parse_population_total_byte_total() -> Int {
+  fold_list(xs: parse_population_baseline_rows(), empty: 0, cons: fn(acc, row) {
+    acc + parse_population_row_bytes(row)
+  })
+}
+
+// The whole 170-key roster builds with a genuine key equality: no path repeats, so both fixed
+// populations are disjoint by construction. Returns true only for the Built arm.
+fn parse_population_is_unique() -> Bool {
+  match parse_population_build() {
+    KeyedRosterBuilt { rows: _ } => true
+    KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => false
+  }
+}
+
+// The negative control: the SAME fold over the SAME 170 rows, but with key_eq that always returns
+// true, must land on the DuplicateKey arm (the second row collides with the first). If this ever
+// returned Built, the uniqueness verdict above would be vacuous.
+fn parse_population_duplicate_refuses_with_trivial_eq() -> Bool {
+  match keyed_roster_build(incomings: parse_population_baseline_rows(), key_eq: fn(a, b) { true }) {
+    KeyedRosterBuildDuplicateKey { key: _, first: _, duplicate: _ } => true
+    KeyedRosterBuilt { rows: _ } => false
+  }
+}

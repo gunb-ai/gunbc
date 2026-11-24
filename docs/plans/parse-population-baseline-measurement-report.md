@@ -54,7 +54,7 @@ It is emitted, not an interpreted stand-in: `target/release/gunbc test //gunbc/i
 
 ## 4. The two fixed populations (committed, byte-identity proven)
 
-Selection rule in `parse-population-baseline-workloads.md`: all `.dag` files under the live roots `dag/` and `src/v2/` at the pinned sha (10,562 files), sorted descending by byte size; positions 1–5 = Population 1 (Five Largest), 6–170 = Population 2 (165-Module Sample), disjoint. Both roots are required because Population 1 spans both (four `dag/` data files + one `src/v2/` roster).
+The selection rule, membership, per-member byte size, population rank and pinned tree sha have their **single home on the typed `.dag` carrier** `gunbc.parse_population_baseline_roster` (`dag/gunbc/parse_population_baseline_roster.dag`), executed by its rostered claim `test.claim.parse_population_baseline_roster_witness` — per `gunbc.design_argument::planning_has_one_home` this report holds no copy of the rule (see `parse-population-baseline-workloads.md`, itself a pointer). The populations staged and measured below are exactly those the carrier enumerates. Both roots (`dag/` and `src/v2/`) are required because Population 1 spans both (four `dag/` data files + one `src/v2/` roster).
 
 The verb accepts only **governed tree directories** as `--source-root` (a copied dump at an arbitrary path is refused: `REFUSED: source root is not a governed tree directory`). The governed-tree predicate matches by directory name (`ends_with "/dag"`, `"/src/v2"`), so each population was staged under scratch directories named `…/dag` and `…/src/v2`, preserving relative paths. Each staged file is byte-identical to the same path at the pinned sha:
 

@@ -1,0 +1,50 @@
+module test.claim.parse_population_baseline_roster_witness
+
+import std.types { Bool }
+import gunbc.parse_population_baseline_roster {
+  parse_population_total_count,
+  parse_population_five_largest_count_check,
+  parse_population_one_hundred_sixty_five_count_check,
+  parse_population_five_largest_byte_total,
+  parse_population_one_hundred_sixty_five_byte_total,
+  parse_population_total_byte_total,
+  parse_population_is_unique,
+  parse_population_duplicate_refuses_with_trivial_eq,
+}
+
+// THE ROSTERED CLAIM for gunbc.parse_population_baseline_roster, the two fixed parse populations
+// (Five Largest and 165-Sample) of roadmap row emission-real-consumer-profiles. It does not restate
+// the selection rule (that is the carrier's single home, gunbc.design_argument::planning_has_one_home);
+// it EXECUTES the carrier and refuses if the roster silently lost or gained a member, or if a byte
+// total moved, so a claim that reads an empty or short roster cannot pass
+// (gunbc.design_argument::checks_must_prove_they_measured). NONZERO by construction: every count is
+// asserted EQUAL to a positive figure, so a 0 roster fails, not passes.
+
+// Whole-roster cardinality: the 170 members the row fixes (5 + 165).
+test fn parse_population_baseline_roster_cardinality_holds() -> Bool {
+  parse_population_total_count() == 170
+    && parse_population_five_largest_count_check() == 5
+    && parse_population_one_hundred_sixty_five_count_check() == 165
+}
+
+// Byte totals per fixed population and combined, read from the carrier's own ByteSize rows. These
+// are the "bytes counted" the checks-must-prove-they-measured rule demands be nonzero and located.
+test fn parse_population_baseline_roster_byte_totals_hold() -> Bool {
+  parse_population_five_largest_byte_total() == 4575463
+    && parse_population_one_hundred_sixty_five_byte_total() == 29960631
+    && parse_population_total_byte_total() == 34536094
+}
+
+// Disjointness/uniqueness over the whole roster via keyed_roster_build's Built arm.
+test fn parse_population_baseline_roster_is_unique_holds() -> Bool {
+  parse_population_is_unique()
+}
+
+// NAMED NEGATIVE CONTROL. The same fold over the same 170 rows with a trivial always-equal key_eq
+// MUST land on DuplicateKey. This is the leg that proves the uniqueness verdict above is a real
+// discrimination and not a fold that ignores its key: if this ever PASSed as Built, the roster
+// check would be green by vacancy. Run in the same claim_batch, so the green and the red leg share
+// a run.
+test fn parse_population_baseline_roster_duplicate_key_refuses() -> Bool {
+  parse_population_duplicate_refuses_with_trivial_eq()
+}
