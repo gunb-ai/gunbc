@@ -773,16 +773,6 @@ fn required_gate_authored_modules() -> List<String> {
     "v2.test.claim.coercion.identity_cast_emission_route",
     "v2.test.claim.execution.self_host_candidate_generation_stage_verdicts",
     "v2.test.claim.manual.cross_language_add_python_to_typescript",
-    // Admitted at its exact name on `gunbc.design_ruling::annotation_gap_agreement_control_enrolled_by_lane_manager_ruling`
-    // (ruled by neat-badger-614, lane manager, 2026-11-24, ask msg_94798569). A required-gate row grows one exact
-    // module name at a time on a ruling -- `required_gate_rows_grow_by_operator_ruling` in dag/gunbc/design_ruling.dag;
-    // that governing ruling puts the act with the OPERATOR, and this row's authority is a LANE-MANAGER ruling, recorded
-    // at its true grade in the ruling row above rather than rounded up here. Form (a) (attach to an existing row) was
-    // measured and rejected: 0 of the 93 already-admitted claim modules has any src/v1 file in its closure, so no
-    // existing row runs the v1 half of the parse path this control agrees on. The evidence this module owes -- green BY
-    // EXECUTION on `claim_batch` at this head, RED under the deliberate roster break, and the floor-ingestion delta this
-    // row adds -- is pinned on PR gunb-ai/gunbc#16942.
-    "v2.test.claim.manual.annotation_gap_v1_v2_agreement",
     "test.claim.deleted_lanes_countable_witness",
     "test.claim.discovery_census_witness",
     "v2.test.claim.effect_demand.effect_demand_floor_join",

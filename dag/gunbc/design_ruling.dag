@@ -1425,7 +1425,6 @@ fn design_rulings() -> List<DesignRuling> {
     regeneration_jobs_added_to_roster,
     required_gate_rows_grow_by_operator_ruling,
     absence_class_witnesses_enrolled_by_operator_ruling,
-    annotation_gap_agreement_control_enrolled_by_lane_manager_ruling,
     harness_default_requirement_places_on_operator_endpoint,
     project_documentation_projections_are_not_checkout_artifacts,
     cardinality_one_concept,
@@ -1687,16 +1686,4 @@ data live_router_changes_of_2026_11_23_are_requirements_evidence: DesignRuling =
   decided: "2026-11-23",
   governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "replacement_migration"),
   provenance: "Operator, 2026-11-23, directly in session proud-pike-550. Told that the router changes made by hand that day (efficiency tiers, upward-only session moves, live retain counting, a router-side binding table) contradict gunbc.serving.router_realization router_capability_permission and are recorded nowhere in the repository, and asked whether to keep and record them or roll them back, the operator said, verbatim: \"i would respect todays changes but not anchor on them - all of that solution has to go in the end, but it may bear on future requriements\". DECIDED. The 2026-11-23 router changes stay in place and are recorded as requirements evidence in gunbc.plans.fabric_market section 5: each is a behaviour the market must be able to express, and none is a mechanism to build on. They are debt of the hand-written router, deleted with it at the serving cutover, which owes a read-back of the live configuration and a disposition for each behaviour.",
-}
-
-// Enrolment of the v1/v2 annotation-gap agreement control under the required gate, kept as its own row so the
-// admission rule at `v2.workflow.required_floor` `required_gate_authored_modules` and the decision that admitted
-// THIS one name stay separate, each readable at its own grain. The evidence the enrolment owed -- green BY
-// EXECUTION on `claim_batch` at this head, RED under the deliberate roster break, and the ingestion delta the row
-// adds to the floor -- is pinned on the pull request, not transcribed here.
-data annotation_gap_agreement_control_enrolled_by_lane_manager_ruling: DesignRuling = DesignRuling {
-  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "annotation_gap_agreement_control_enrolled_by_lane_manager_ruling"),
-  decided: "2026-11-24",
-  governs: decl_ref(module_path: "gunbc.design_document", decl_name: "ci_contract_blocks"),
-  provenance: "Ruled by neat-badger-614, LANE MANAGER (Manager A), 2026-11-24, on ask msg_94798569-0ea2-406d-9c88-a6c70616b46f, verbatim: \"DECIDED, msg_94798569, and I'm sorry it sat 21 h. YES: parse-comment-gap-attachment-v2-consumed gets its consumer gated. A production consumer with no gated control is unverified, and the row's own headline asks for 'a gated agreement control'. Form, in order of preference: (a) attach the agreement control to an EXISTING required_floor row that already runs this parse path, adding no new lane. (b) Only if no existing row fits, ONE new required_floor row. Either way the PR body states the measured added cost on the required floor (wall seconds and eval_steps from one srv1 run), and anything over ~2 min of added required-floor wall time comes back to me before merge, because the floor is the merge gate everyone pays for.\" It authorizes exactly ONE row of `v2.workflow.required_floor` `required_gate_authored_modules` -- `v2.test.claim.manual.annotation_gap_v1_v2_agreement`, the v1/v2 neighbour-text agreement control -- admitted at its own exact name and not by a prefix, because a prefix admits every sibling in the namespace, measured or not. Form (a) was measured and rejected: of 3,989 claim modules, 93 are admitted by the 64 selectors and ZERO of the 93 has any src/v1 file in its closure (structural scan, pinned on PR gunb-ai/gunbc#16942), so no existing row already runs the v1 half of the parse path an agreement control needs. NOT AN OPERATOR RULING: `required_gate_rows_grow_by_operator_ruling` in this file puts this act with the operator, and what authorized this row is a lane-manager ruling; it is recorded at its true grade rather than rounded up, and the operator ask was raised by the lane manager on the worker's request.",
 }

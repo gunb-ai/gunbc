@@ -8,7 +8,10 @@ import std.types { CommitSha, String, commit_sha_text_holds }
 // date it was executed.
 //
 // WHY A DELIBERATE BREAK RATHER THAN A BEFORE/AFTER FEATURE TEST. The row this node closes says the
-// gated agreement control turns red when the v2 roster drops infix applications as regions. That red
+// "gated agreement control turns red" when the v2 roster drops infix applications as regions. The control
+// is called that here because the row calls it so; it is NOT enrolled in any gated row -- the admission was
+// held -- so this red witness is carried by its executions alone, in the runs pinned on the pull request.
+// That red
 // cannot exist on any main commit -- on main the roster is whole -- so the only honest witness of it is
 // a tree where the arm was removed by hand. `kind` records that: red_at is NOT a claim that main is
 // broken, it is evidence the control is not vacuous. The arm is the second disjunct of
@@ -84,11 +87,16 @@ data annotation_gap_v1_v2_agreement_probe_roster_arm: String = "v2.compiler.pars
 // main 8c86ee47f68ec1f451e25a8cb8f594a868e5c384, exit status 1. src/v1 is not a root the floor can carry
 // (src/v1/stage0/src/cli_run.rs records widening the roots as ruled out: src/v1 and src/v2 collide on
 // twelve last segments, so a shared pool re-binds bare cross-module references), and the same refusal
-// falls on the gated precedent v2.test.claim.parse.data_initializer_layout_parse, which imports three of
-// those v1 modules and is green in the floor -- so the floor's green comes from claim_executor's prepared
-// subject, a different resolution path from claim_batch's CLI roots. The pair was therefore executed with
-// three named roots under claim_batch, one argv on both trees; "runs under the required gate" is evidenced
-// by the floor-shaped claim_executor run, not by this file.
+// falls on the precedent v2.test.claim.parse.data_initializer_layout_parse, which imports three of those
+// v1 modules and is listed as a gated row. MEASURED 2026-11-24, STRUCTURALLY: nothing in that floor runs.
+// `grep -rn "fn run_required_floor" src/v1/stage0/src --include=*.rs` returns nothing; the only reader of
+// the decoded selector rosters is a peak-bytes instrument (src/v1/stage0/src/target_invocation_host.rs:3483,
+// dispatched :751, registered at src/v1/stage0/src/instrument_registry_generated.rs:50); and 0 of the 9
+// files under .github/workflows passes any --required flag. A listed row is therefore a green no executor
+// produces, which is why this control was not enrolled to gain a second one beside
+// dag/test/claim/v1_dag_parse_witness.dag -- a gated prefix row whose claim calls run_v1_dag_parse() without
+// importing it, so no executor can run it either. The pair was executed with three named roots under
+// claim_batch, one argv on both trees, and those runs are the whole of its evidence; no gate runs it.
 // The refusal text itself is the evidence and it lives VERBATIM in the run log (round B, block A1: the
 // four unresolved-import lines with the command, the tree and the real exit status 1). The two fields
 // below are POINTERS into that log, not proofs of it -- a Bool in a witness cannot certify an observation
