@@ -1,0 +1,39 @@
+module gunbc.plans.required_lane_claim_clause_grain
+
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
+import std.markdown { MarkdownBlock }
+import gunbc.markdown_helpers { h2, p, li, ul, quote }
+
+fn required_lane_claim_clause_grain_body() -> List<MarkdownBlock> {
+  [
+    quote(blocks: [
+      p(text: "**This plan is written as an intention** (`gunbc.design_argument::plans_are_intentions`): what the check should become, why, and done-when, with no claim that any of it is realized."),
+      p(text: "**Grounding:** `gunbc.design_argument::single_authority` (a check that pairs two facts must pair them in one place that decides the meaning), and the record this row is filed from: `dag/gunbc/recurring_failure_mode/stale_claim_survives_its_own_correct_edit.dag`."),
+    ]),
+    h2(text: "1. Intention"),
+    p(text: "**What:** `v2.workflow.required_lane_claim_agreement` denies a ledger only when the denial phrase and a rostered lane name are decided together in one clause or one ledger row, never across a whole document; and the quotation case -- a failure-mode row that quotes the denial phrase about a lane the roster does not roster -- has its own control."),
+    p(text: "**Why (measured 2026-11-24 at 1fa1c1dd4a55):** the refusal pairs two tests at document grain. `refuses_a_stale_denial` takes one projected ledger body and runs `contains_denial` (a literal `string_contains` over `denial_phrases`, a list unchanged since 75873c289780, 2026-09-03) against the whole body, and `names_a_rostered_lane` against the same whole body. The phrase occurs exactly once in the failure-modes ledger: inside a quotation at `dag/gunbc/recurring_failure_mode/stale_claim_survives_its_own_correct_edit.dag:22`, where the row quotes what an honest claim must contain -- including the words `is not a` needs `of the required aggregate` -- and names `required-witnesses-floor` and `rust-unit-tests` in the same document, not in the same clause. `rust-unit-tests` is not a rostered lane (the witness itself asserts that count is 0 at `w_the_live_roster_is_read_and_carries_both_lanes`), and the quotation has been stable since 828f9c26735d (2026-09-05, #10552). So the row denies a lane it never denied: a false refusal that survives any edit to the row which leaves the quotation whole -- the same shape as the failure mode the row records."),
+    p(text: "**Done when** (each assessed against the tree unless marked as the operator's judgement):"),
+    ul(items: [
+      li(text: "`refuses_a_stale_denial` pairs the phrase and the lane name in one clause or one ledger row: a ledger is denied only where a clause or row both contains a `denial_phrases` literal and names a lane the roster requires. No document-grain `string_contains` over a whole projected body remains in the judgment."),
+      li(text: "A control proves the narrowing is real: a fixture whose denial phrase and rostered lane name sit in separate clauses is NOT refused, and a fixture whose denial phrase names a rostered lane in one clause IS refused -- so the check cannot pass by deleting the phrase test or the roster test."),
+      li(text: "A control for the quotation case specifically: a failure-mode row that quotes a denial phrase about a lane the roster does not roster does not appear in `denied_lanes`, and a comment or fixture records that editing the quoted sentence does not change that verdict."),
+      li(text: "`dag/test/claim/required_lane_claim_agreement_witness.dag` `w_no_projected_ledger_denies_a_lane_the_roster_requires` is green as a consequence, not by relaxing `denial_phrases` or the roster; the row that quotes the phrase keeps its quotation verbatim."),
+      li(text: "Operator's judgement: a reader of the failing witness can tell, from one projected ledger row, whether it denies a required lane."),
+    ]),
+    h2(text: "2. Out of scope here"),
+    ul(items: [
+      li(text: "Widening or narrowing `denial_phrases`, and any change to which lanes the roster requires: lane sets are the operator's act, and the required aggregate is the single `v2-bootstrap` job (`gunbc.design_ruling::v1_withdrawn_one_required_job`, DESIGN.md CI section)."),
+      li(text: "Editing `dag/gunbc/recurring_failure_mode/stale_claim_survives_its_own_correct_edit.dag:22`. It is a quotation and the specimen of a recorded failure mode; making a check stop matching a quote makes the check green without fixing anything."),
+    ]),
+  ]
+}
+
+data required_lane_claim_clause_grain_plan: Plan = Plan {
+  projection: PlanIsAuthorityOnly,
+  slug: "required-lane-claim-clause-grain",
+  title: "The required-lane claim check pairs phrase and rostered lane in one clause, with a witness for the quotation case",
+  body: required_lane_claim_clause_grain_body(),
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "refuses_a_stale_denial decides phrase and lane in one clause or row, the two narrowing controls and the quotation control run, and w_no_projected_ledger_denies_a_lane_the_roster_requires is green without any change to denial_phrases or the rostered lane set.") },
+}
