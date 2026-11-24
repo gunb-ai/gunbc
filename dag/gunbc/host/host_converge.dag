@@ -1072,6 +1072,19 @@ fn host_converge_of(h: RunnerHostDeployment, session_knobs: List<ConvergeKnob>, 
   }
 }
 
+// Production route: assembles the host converge and gates every knob through
+// the frontier classification before admitting the host. An undeclared knob
+// refuses the host before any change is attempted.
+fn frontier_gate_host(h: RunnerHostDeployment, session_knobs: List<ConvergeKnob>, backstop_knobs: List<ConvergeKnob>, hosts: List<HostConverge>) -> FleetConvergeAcc {
+  let assembled = host_converge_of(h: h, session_knobs: session_knobs, backstop_knobs: backstop_knobs)
+  match frontier_validate_knobs(knobs: assembled.knobs) {
+    FrontierAdmitted { artifact: _, class: _ } =>
+      FleetConvergeHosts { hosts: concat(hosts, [assembled]) }
+    FrontierRefused { artifact: _, cause: _ } =>
+      FleetConvergeHosts { hosts: hosts }
+  }
+}
+
 // CONVERGENCE IS A HOST-TARGETED TRANSACTION, so it selects the hosts that derived rather than
 // refusing the fleet because one host did not. The shape this replaces widened a fleet-level
 // PlanUnsound into ConvergePolicyUnsound before any host was chosen -- so srv2's unestablished
@@ -1105,20 +1118,14 @@ fn converge_hosts_of_plan(plan: RunnerDeploymentPlan) -> FleetConvergeAcc {
           match user_manager_backstop_for(host: h.identity) {
             UserManagerBackstopRefused { cause } => FleetConvergeUnsound { reason: cause }
             UserManagerBackstopNotOwed =>
-              FleetConvergeHosts {
-                hosts: concat(hosts, [host_converge_of(h: h, session_knobs: session_knobs_for(host: h.identity), backstop_knobs: [])]),
-              }
+              frontier_gate_host(h: h, session_knobs: session_knobs_for(host: h.identity), backstop_knobs: [], hosts: hosts)
             UserManagerBackstopDerived { knobs } =>
               match approval_broker_runtime_caps_for(host: h.identity) {
                 ApprovalBrokerRuntimeCapsRefused { cause } => FleetConvergeUnsound { reason: cause }
                 ApprovalBrokerRuntimeCapsNotOwed =>
-                  FleetConvergeHosts {
-                    hosts: concat(hosts, [host_converge_of(h: h, session_knobs: session_knobs_for(host: h.identity), backstop_knobs: knobs)]),
-                  }
+                  frontier_gate_host(h: h, session_knobs: session_knobs_for(host: h.identity), backstop_knobs: knobs, hosts: hosts)
                 ApprovalBrokerRuntimeCapsDerived { knobs: broker } =>
-                  FleetConvergeHosts {
-                    hosts: concat(hosts, [host_converge_of(h: h, session_knobs: session_knobs_for(host: h.identity), backstop_knobs: concat(knobs, broker))]),
-                  }
+                  frontier_gate_host(h: h, session_knobs: session_knobs_for(host: h.identity), backstop_knobs: concat(knobs, broker), hosts: hosts)
               }
           }
       }
@@ -1150,12 +1157,25 @@ type FrontierGateVerdict
   | FrontierRefused { artifact: String, cause: String }
 
 data frontier_declared_artifacts: List<FrontierDeclaredArtifact> = [
-  FrontierDeclaredArtifact { name: "gunbc.memory.high", class: DerivedByUs },
-  FrontierDeclaredArtifact { name: "gunbc.memory.low", class: DerivedByUs },
-  FrontierDeclaredArtifact { name: "runner.memory.high", class: DerivedByUs },
-  FrontierDeclaredArtifact { name: "sessions.memory.high", class: DerivedByUs },
-  FrontierDeclaredArtifact { name: "gunbc.pinned.tree", class: OwnedByUs },
-  FrontierDeclaredArtifact { name: "codex.runtime.bundle", class: ContractedExternally },
+  FrontierDeclaredArtifact { name: "pinned_tree_sha", class: OwnedByUs },
+  FrontierDeclaredArtifact { name: "codex_runtime_bundle", class: ContractedExternally },
+  FrontierDeclaredArtifact { name: "per_slot_cpu_quota", class: DerivedByUs },
+  FrontierDeclaredArtifact { name: "runner_slice_cap_bytes", class: DerivedByUs },
+  FrontierDeclaredArtifact { name: "per_slot_memory_max_bytes", class: DerivedByUs },
+  FrontierDeclaredArtifact { name: "per_slot_memory_swap_max_bytes", class: DerivedByUs },
+  FrontierDeclaredArtifact { name: "per_slot_tasks_max", class: DerivedByUs },
+  FrontierDeclaredArtifact { name: "per_slot_memory_high_bytes", class: DerivedByUs },
+  FrontierDeclaredArtifact { name: "cpu_weight", class: DerivedByUs },
+  FrontierDeclaredArtifact { name: "runner_count", class: DerivedByUs },
+  FrontierDeclaredArtifact { name: "slice_max_bytes", class: DerivedByUs },
+  FrontierDeclaredArtifact { name: "slice_high_bytes", class: DerivedByUs },
+  FrontierDeclaredArtifact { name: "per_session_max_bytes", class: DerivedByUs },
+  FrontierDeclaredArtifact { name: "oom_pressure_kill", class: DerivedByUs },
+  FrontierDeclaredArtifact { name: "oom_pressure_limit_pct", class: DerivedByUs },
+  FrontierDeclaredArtifact { name: "user_manager_memory_max_bytes", class: DerivedByUs },
+  FrontierDeclaredArtifact { name: "user_manager_memory_swap_max_bytes", class: DerivedByUs },
+  FrontierDeclaredArtifact { name: "approval_broker_memory_max_bytes", class: DerivedByUs },
+  FrontierDeclaredArtifact { name: "approval_broker_memory_high_bytes", class: DerivedByUs },
 ]
 
 fn frontier_gate(artifact_name: String) -> FrontierGateVerdict {
@@ -1167,5 +1187,25 @@ fn frontier_gate(artifact_name: String) -> FrontierGateVerdict {
       artifact: artifact_name,
       cause: "this machine-touching artifact is not in the declared frontier classification; it refuses before any change is attempted",
     }
+  }
+}
+
+// Production route: the converge path calls this on every assembled host's
+// knobs before admitting the host into the converge plan. An undeclared knob
+// refuses the host (FleetConvergeUnsound) before any change is attempted.
+fn frontier_validate_knobs(knobs: List<ConvergeKnob>) -> FrontierGateVerdict {
+  let undeclared = filter(knobs, k => {
+    match frontier_gate(artifact_name: k.name) {
+      FrontierRefused { artifact: _, cause: _ } => true
+      FrontierAdmitted { artifact: _, class: _ } => false
+    }
+  })
+  if undeclared.length() > 0 {
+    match frontier_gate(artifact_name: undeclared[0].name) {
+      FrontierRefused { artifact: a, cause: c } => FrontierRefused { artifact: a, cause: c }
+      FrontierAdmitted { artifact: _, class: _ } => FrontierAdmitted { artifact: undeclared[0].name, class: DerivedByUs }
+    }
+  } else {
+    FrontierAdmitted { artifact: "all", class: DerivedByUs }
   }
 }
