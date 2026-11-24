@@ -318,3 +318,33 @@ test fn document_for_read_serves_built_rows_with_inputs_for_bound_items() -> Boo
       && string_contains(s: d, pattern: "\"assumed_findings_counts\"")
   }
 }
+
+// A PLANTED PROJECTION REFUSAL IS THE PROJECTION'S OWN, NEVER A STANDINGS BODY (manager ruling 2026-11-24:
+// "a refusal of the projection read must produce the refused document for /projection.json ONLY"). The
+// /standings.json surface is a SEPARATE arm built by a different function -- untouched here, guarded by its
+// own witnesses (roadmap_standings_document_test) which run in CI unchanged. So the honest thing this witness
+// can prove without driving the whole tick's I/O is the isolation at the document level: the projection's
+// refusal carries the PROJECTION schema and its refused{step,reason}, and carries NONE of the keys that
+// belong only to the standings document (log_head / release_identity / standings / source_head). A refusal
+// therefore cannot be mistaken for, cannot overwrite, and does not depend on the standings surface -- it is
+// contained to /projection.json. The standings arm is still served by its own path regardless of this refusal.
+test fn projection_refusal_is_the_projections_own_document_not_a_standings_body() -> Bool {
+  match checked_int_to_nat(n: 1) {
+    Absent => false
+    Present { value: findings } =>
+      let d = serialize_json(v: roadmap_projection_document_for_read(
+        nodes: [nid(s: "no-such-bound-node-xyz")],
+        read_on_date: Iso8601CivilDate { year: 2026, month: 11, day: 24 },
+        workers: BeltCapacity { max_concurrent: 4 },
+        findings_count: findings,
+        standings: open_standings(),
+        envs: [] as List<RoadmapEventEnvelope>,
+      ))
+      string_contains(s: d, pattern: "roadmap-work-item-projection/v1")
+      && string_contains(s: d, pattern: "\"refused\"")
+      && !string_contains(s: d, pattern: "log_head")
+      && !string_contains(s: d, pattern: "release_identity")
+      && !string_contains(s: d, pattern: "source_head")
+      && !string_contains(s: d, pattern: "\"standings\"")
+  }
+}
