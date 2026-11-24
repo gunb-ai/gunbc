@@ -537,7 +537,7 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
     text_default: std::option::Option::None,
 }),
     arity: CliOptionArity::CliRepeated,
-    doc: Rc::new(vec!["Entry function to execute, repeatable: every named function runs in ONE process over".to_string(), "ONE load of the entry's closure, in the order given. Absent, an ordinary run executes".to_string(), "`main`; a --claim-run executes every `test fn` the entry module declares.".to_string()]),
+    doc: Rc::new(vec!["Entry function to execute, repeatable: every named function runs in ONE process over".to_string(), "ONE load of the entry's closure, in the order given. Absent, an ordinary run executes".to_string(), "`main`. Claims are not executed by this verb: the `gunbc test` route is the one claim entrypoint.".to_string()]),
     emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
 }), Rc::new(CliOptionRow {
     field: "entry".to_string(),
@@ -547,13 +547,6 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
 }),
     arity: CliOptionArity::CliAtMostOne,
     doc: Rc::new(vec!["Entry `.dag` file: load only this module and its transitive imports".to_string(), "(not every file under --source-root). Required for scoped TestClaim runs.".to_string()]),
-    emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
-}), Rc::new(CliOptionRow {
-    field: "claim_run".to_string(),
-    long: "claim-run".to_string(),
-    value: Rc::new(CliOptionValue::CliToggleValue),
-    arity: CliOptionArity::CliRequired,
-    doc: Rc::new(vec!["TestClaim / witness run: Bool false -> exit 1; requires --entry".to_string()]),
     emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
 }), Rc::new(CliOptionRow {
     field: "args".to_string(),

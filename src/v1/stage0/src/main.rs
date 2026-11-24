@@ -416,23 +416,8 @@ impl v1_compiler::gunbc_cli_dispatch_generated::CliDispatchHost for RetainedCliH
         source_roots: Vec<String>,
         functions: Vec<String>,
         entry: Option<String>,
-        // STALE-GENERATED COMPATIBILITY SHIM: the trait in gunbc_cli_dispatch_generated.rs still
-        // carries the `claim_run` parameter until the manager's regeneration lands at this commit's
-        // sha; the deleted `--claim-run` authority is not consulted here, and the parameter goes away
-        // with the regenerated file (its model row is deleted in this commit).
-        claim_run: bool,
         args: Vec<String>,
     ) -> ! {
-        // FAIL CLOSED while the generated dispatcher is stale: the deleted flag still parses there,
-        // so the verb must refuse it rather than run quietly without the claim authority it once had.
-        if claim_run {
-            eprintln!(
-                "gunbc run: --claim-run was deleted with the claim_batch cutover \
-                 (gunbc.plans.claim_execution_consolidation); claims run through 'gunbc test' -- \
-                 the one v1 claim entrypoint (gunbc.design_ruling::claim_execution_has_one_v1_entrypoint)"
-            );
-            std::process::exit(2);
-        }
         retained_dispatch(
             RetainedCommands::Run {
                 source_roots,

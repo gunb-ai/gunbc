@@ -51,16 +51,13 @@ pub enum Commands {
         source_roots: Vec<String>,
         /// Entry function to execute, repeatable: every named function runs in ONE process over
         /// ONE load of the entry's closure, in the order given. Absent, an ordinary run executes
-        /// `main`; a --claim-run executes every `test fn` the entry module declares.
+        /// `main`. Claims are not executed by this verb: the `gunbc test` route is the one claim entrypoint.
         #[arg(long = "function")]
         functions: Vec<String>,
         /// Entry `.dag` file: load only this module and its transitive imports
         /// (not every file under --source-root). Required for scoped TestClaim runs.
         #[arg(long)]
         entry: Option<String>,
-        /// TestClaim / witness run: Bool false -> exit 1; requires --entry
-        #[arg(long)]
-        claim_run: bool,
         /// Named argument for the entry function, repeatable: `--arg name=value`.
         /// Bound against the parameter's resolved type identity: kernel String, Int, and Bool, and std.types NonEmptyStr (String where string_non_empty). Other types refuse.
         #[arg(long = "arg")]
@@ -154,7 +151,6 @@ pub trait CliDispatchHost {
         source_roots: Vec<String>,
         functions: Vec<String>,
         entry: Option<String>,
-        claim_run: bool,
         args: Vec<String>,
     ) -> !;
     fn invoke_bound_target_producer(
@@ -201,11 +197,10 @@ pub fn dispatch<H: CliDispatchHost>(
                 source_roots,
                 functions,
                 entry,
-                claim_run,
                 args,
             },
             _,
-        ) => __gunbc_dispatch_executor_0.run_verb(source_roots, functions, entry, claim_run, args),
+        ) => __gunbc_dispatch_executor_0.run_verb(source_roots, functions, entry, args),
         (Commands::Build { .. }, true) => {
             eprintln!("REFUSED: --dry-run cannot execute a bootstrap successor operation");
             std::process::exit(2);
