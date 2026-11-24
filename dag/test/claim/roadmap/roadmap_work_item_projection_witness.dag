@@ -30,16 +30,17 @@ import std.checked_arithmetic { checked_int_to_nat }
 import gunbc.roadmap.roadmap_belt { BeltCapacity }
 import gunbc.roadmap.roadmap_event_log {
   RoadmapEvent, RoadmapEventKind, RoadmapEventEnvelope, RoadmapEventId, RoadmapStandings, StandingsObserved,
-  LeafInFlightEntry, Claimed, Released, EventPrincipal, LegacyEmailPrincipal, ClaimGrain, AtPath,
+  LeafInFlightEntry, Claimed, Released, EventPrincipal, LegacyEmailPrincipal, EventPrincipalAuthenticated, ClaimGrain, AtPath,
   roadmap_event_envelope, roadmap_event_id, roadmap_leaf_in_flight_from_envs, LeafInFlightRead, InFlightLeaves, InFlightRefused,
 }
+import gunbc.principal_projection { PrincipalRef }
 import gunbc.roadmap.roadmap_intention_binding { IntentionBinding }
 import gunbc.roadmap.roadmap_work_item_projection {
   ProjectionLeaf, ProjectionInFlight, ProjectionEvent, ProjectionInputs, ProjectionRow, ProjectionRefusal,
   ProjectionRowResult, ProjectionRowBuilt, ProjectionRowRefused, RowScheduleRefused, InFlightUnordered,
   projection_build_row, projection_in_flight_entries, projection_leaf_from_dated, projection_leaves_for_item,
   roadmap_work_item_projection_document_json, projection_row_json,
-  roadmap_projection_row_read, roadmap_projection_document_for_read,
+  roadmap_projection_row_read, roadmap_projection_document_for_read, projection_refusal_step,
 }
 import gunbc.roadmap.roadmap_served_observation {
   ProjectionJson, ServedObservationKindDecoded, served_observation_kind_url_path,
@@ -50,6 +51,20 @@ import gunbc.roadmap.roadmap_served_observation {
 
 fn principal(email: String) -> EventPrincipal {
   LegacyEmailPrincipal { email: email as NonEmptyStr, authentication_unestablished: true }
+}
+
+// An AUTHENTICATED principal -- the v3 wire form the producers actually write, whose label round-trips through
+// roadmap_event_decode (the from-now read spells every claimed line to the wire and reads it back; a bare legacy
+// email is not a v3 principal: label and the WHOLE line is refused as unreadable). The subject is the only thing
+// that varies, so the assignee/return_to the row shows is the claim's own and recognizable.
+fn auth(subject: String) -> EventPrincipal {
+  EventPrincipalAuthenticated {
+    ref: PrincipalRef {
+      authority: "google-oidc" as NonEmptyStr,
+      namespace: "accounts" as NonEmptyStr,
+      subject: subject as NonEmptyStr,
+    }
+  }
 }
 
 fn envelope(node: String, kind: RoadmapEventKind, at: String) -> RoadmapEventEnvelope {
@@ -64,9 +79,9 @@ fn envelope(node: String, kind: RoadmapEventKind, at: String) -> RoadmapEventEnv
 // fold (roadmap_leaf_in_flight_from_envs), never hand-supplies it.
 fn claim_event(node: String, at: String) -> RoadmapEvent {
   RoadmapEvent {
-    node: nid(s: node), author: principal("alice@roadmap"), parent: Absent, recorded_at: at,
+    node: nid(s: node), author: auth("alice"), parent: Absent, recorded_at: at,
     kind: Claimed {
-      assignee: principal("alice@roadmap"), return_to: principal("bob@roadmap"),
+      assignee: auth("alice"), return_to: auth("bob"),
       grain: AtPath { path: LeafPath { item: nid(s: node), stage: 0, piece: 0, member: 0 } },
     },
   }
@@ -74,7 +89,7 @@ fn claim_event(node: String, at: String) -> RoadmapEvent {
 
 fn release_event(linked_to: RoadmapEvent, at: String) -> RoadmapEvent {
   RoadmapEvent {
-    node: linked_to.node, author: principal("alice@roadmap"), parent: Present { value: roadmap_event_id(e: linked_to) },
+    node: linked_to.node, author: auth("alice"), parent: Present { value: roadmap_event_id(e: linked_to) },
     recorded_at: at, kind: Released,
   }
 }
@@ -185,30 +200,35 @@ test fn in_flight_and_latest_are_derived_through_the_production_reader_across_a_
   match checked_int_to_nat(n: 1) {
     Absent => false
     Present { value: findings } => {
-      let c = claim_event("item-a", "2026-11-01")
+      // A REAL bound+decomposed item (in roadmap_intention_bindings AND roadmap_decompositions), claimed on
+      // its own stage-0 leaf -- the same day-two control roadmap_schedule_from_now uses: the 5-day leaf is
+      // claimed Tue 2026-11-17, three working days before the Fri 2026-11-20 read, so the from-now schedule
+      // pins it with two working days of prior REMAINING rather than redrawing five. The claim and release
+      // carry full ISO instants (the shape the producers write); a bare date would not be admitted.
+      let c = claim_event("namespace-reference-derived-closure", "2026-11-17T09:00:00Z")
       let c_env = roadmap_event_envelope(e: c)
-      let r = release_event(linked_to: c, at: "2026-11-03")
+      let r = release_event(linked_to: c, at: "2026-11-18T09:00:00Z")
       let r_env = roadmap_event_envelope(e: r)
       match roadmap_projection_row_read(
-        node: nid(s: "item-a"), read_date: Iso8601CivilDate { year: 2026, month: 11, day: 24 },
+        node: nid(s: "namespace-reference-derived-closure"), read_date: Iso8601CivilDate { year: 2026, month: 11, day: 20 },
         workers: BeltCapacity { max_concurrent: 4 }, findings_count: findings,
         standings: open_standings(), envs: [c_env]) {
         ProjectionRowBuilt { row: b, day_priors: _ } =>
           match roadmap_projection_row_read(
-            node: nid(s: "item-a"), read_date: Iso8601CivilDate { year: 2026, month: 11, day: 24 },
+            node: nid(s: "namespace-reference-derived-closure"), read_date: Iso8601CivilDate { year: 2026, month: 11, day: 20 },
             workers: BeltCapacity { max_concurrent: 4 }, findings_count: findings,
             standings: open_standings(), envs: [c_env, r_env]) {
             // BEFORE: one leaf held, its assignee the claim's own, and "claimed" latest.
             ProjectionRowBuilt { row: a, day_priors: _ } =>
               count(b.in_flight) == 1
-              && match b.in_flight.first() { Present { value: h } => h.assignee == "alice@roadmap" Absent => false }
+              && match b.in_flight.first() { Present { value: h } => h.assignee == "principal:google-oidc/accounts/alice" Absent => false }
               && match b.latest_event { Present { value: w } => w == "claimed" Absent => false }
               // AFTER: nothing held (the fold derived the release), "released" latest, both events on the row.
               && count(a.in_flight) == 0
               && match a.latest_event { Present { value: w } => w == "released" Absent => false }
               && string_contains(s: doc_of([a]), pattern: "released")
               && string_contains(s: doc_of([a]), pattern: "claimed")
-              && string_contains(s: doc_of([a]), pattern: "2026-11-03")
+              && string_contains(s: doc_of([a]), pattern: "2026-11-18")
               && string_contains(s: doc_of([a]), pattern: "\"in_flight\": []")
             ProjectionRowRefused { refusal: _ } => false
           }
@@ -227,17 +247,20 @@ test fn permuting_the_log_order_leaves_the_row_unchanged() -> Bool {
   match checked_int_to_nat(n: 1) {
     Absent => false
     Present { value: findings } => {
-      let c = claim_event("item-a", "2026-11-01")
+      // A REAL bound+decomposed item; the held leaf is pinned by the from-now schedule, so the claim carries a
+      // full ISO instant and is dated inside the working week that precedes the Fri 2026-11-20 read (the same
+      // day-two control roadmap_schedule_from_now uses) rather than an unadmittable bare date.
+      let c = claim_event("namespace-reference-derived-closure", "2026-11-17T09:00:00Z")
       let c_env = roadmap_event_envelope(e: c)
-      let r = release_event(linked_to: c, at: "2026-11-03")
+      let r = release_event(linked_to: c, at: "2026-11-18T09:00:00Z")
       let r_env = roadmap_event_envelope(e: r)
       match roadmap_projection_row_read(
-        node: nid(s: "item-a"), read_date: Iso8601CivilDate { year: 2026, month: 11, day: 24 },
+        node: nid(s: "namespace-reference-derived-closure"), read_date: Iso8601CivilDate { year: 2026, month: 11, day: 20 },
         workers: BeltCapacity { max_concurrent: 4 }, findings_count: findings,
         standings: open_standings(), envs: [c_env, r_env]) {
         ProjectionRowBuilt { row: ordered, day_priors: _ } =>
           match roadmap_projection_row_read(
-            node: nid(s: "item-a"), read_date: Iso8601CivilDate { year: 2026, month: 11, day: 24 },
+            node: nid(s: "namespace-reference-derived-closure"), read_date: Iso8601CivilDate { year: 2026, month: 11, day: 20 },
             workers: BeltCapacity { max_concurrent: 4 }, findings_count: findings,
             standings: open_standings(), envs: [r_env, c_env]) {
             ProjectionRowBuilt { row: shuffled, day_priors: _ } =>
