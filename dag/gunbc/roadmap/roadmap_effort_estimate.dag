@@ -1505,6 +1505,44 @@ data roadmap_estimate_entries: List<EstimateEntry> = [
     value: days_estimate(working_days: 5),
     basis: "The composed run on srv15 and the seams it surfaces between stages that were each proven alone.",
   )),
+  // Revision after review of gunbc#16983 (keen-dove-217, 2026-11-24): the lock row's scope grew to recovery that
+  // fences an orphaned installer, and four prerequisite or follow-on rows were added.
+  estimate_revoked(subject: "rn_6Z95K94JKGXGDR6EFN1VX6TWW6" as RoadmapNodeIdentity, made: d(y: 2026, m: 11, day: 24), withdraws_made: d(y: 2026, m: 11, day: 24), reason: "The row's acceptance now includes recovery that fences an orphaned installer through its controller before arming a successor, and a crash between partition creation and a durable attempt marker; the 5-day price covered serialization only."),
+  // install-holds-one-store-and-edge-reconciles-attempts
+  estimate_recorded(row: estimate_row(
+    subject: "rn_6Z95K94JKGXGDR6EFN1VX6TWW6" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 24),
+    value: days_estimate(working_days: 8),
+    basis: "Serialization at the edge plus recovery: one hold store and key for arrival and install, the journal read under the hold, an edge-wide install lock, and a fence-then-read step before a successor is armed.",
+  )),
+  // bobo-openbmc-boot-power-route-admitted
+  estimate_recorded(row: estimate_row(
+    subject: "rn_EY6Q4TZRAWEW34WQZ53SG5ST4P" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 24),
+    value: days_estimate(working_days: 8),
+    basis: "Generalize the install's capability lookup past MegaRAC evidence by observed family, and record srv15's OpenBMC 3.22.00 row from one observed one-shot override write with readback and one observed power read; needs the per-write approval for the observing writes.",
+  )),
+  // install-eligible-preflight
+  estimate_recorded(row: estimate_row(
+    subject: "rn_KHT3X66AMAFD1Q4FKTSYC125CW" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 24),
+    value: days_estimate(working_days: 4),
+    basis: "A non-actuating preflight mode on the install entry and its dispatch through the generated workflow, with the withheld-approval and wrong-attempt cases.",
+  )),
+  // bobo-first-remote-build-executed
+  estimate_recorded(row: estimate_row(
+    subject: "rn_51AP77FS7XG6AVKS5NCGAZN8KQ" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 24),
+    value: days_estimate(working_days: 5),
+    basis: "The remote-build lane's join rows for srv15 (tag:ci, host key, memory reading, roster) and one build pinned to it through the bridge; priced from this row's description, not by that lane.",
+  )),
+  // edge-concurrent-install-offers
+  estimate_recorded(row: estimate_row(
+    subject: "rn_6NZVWFQ3VYYG10SDC9WSYZACVF" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 24),
+    value: days_estimate(working_days: 8),
+    basis: "Off bobo's path: the edge's desired install set becomes the active-attempt set read under the edge lock, with per-attempt withdrawal.",
+  )),
 ]
 
 // STRICT DATE ORDER, from the total order this file already keeps: a revocation must come after the row it withdraws,
