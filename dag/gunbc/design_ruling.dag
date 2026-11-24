@@ -1357,6 +1357,14 @@ data floor_exhaustiveness_refusal_seed_rust_waiver_arm_authorized_2026_11_23: De
 }
 
 
+
+data floor_exhaustiveness_completeness_locus_v2_bootstrap_lane_ruling_c_2026_11_24: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "floor_exhaustiveness_completeness_locus_v2_bootstrap_lane_ruling_c_2026_11_24"),
+  decided: "2026-11-24",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "fail_closed"),
+  provenance: "Lane ruling C, decided at neat-badger-614's level (the LANE, NOT the operator), relayed verbatim by lane manager bold-pike-529 on gunb-ai/gunbc#16895, 2026-11-24, verbatim: \"C, decided at my level. It adds no new seed Rust... v2-bootstrap is required, compiles and emits the whole corpus, and any 7th ExhaustivenessUnknown site that isn't on the roster blocks emission... The roster equals frozen-ruling-set equality claim stays as the continuous measure.\" THIS ROW LOCATES THE COMPLETENESS GUARD, it is not an operator authorization and does not widen any allow-list. RULING: the merge-blocking completeness enforcement for the floor-exhaustiveness wall lives in the required v2-bootstrap gate, which compiles and emits the WHOLE corpus and turns RED (EmissionRefused) on any seventh blocking ExhaustivenessUnknown that is not on the frozen roster -- this is the gate that originally found the six sites. The equality-budget claim (test.claim.floor_exhaustiveness_allowlist_equality_witness) is a CONTINUOUS MEASURE of roster integrity and is NOT a merge gate, because CI here executes no claims; its per-rostered-module census proves the roster's forwards+stale integrity and its transcribed-frozen-set budget proves no widening, while the whole-corpus completeness that catches a seventh site in an UNROSTERED module is the v2-bootstrap emission wall. The whole-corpus census compiler primitive is NOT built here (adds no seed Rust); it is parked as its own roadmap node pending the operator's seed call. Traceable beside the operator's two rows on this node; distinct provenance because it records where the guard lives, not what is admitted."
+}
+
 fn design_rulings() -> List<DesignRuling> {
   [
     heal_mirror_convergence_held_until_merge_base_build_is_measured_2026_11_24,
@@ -1543,6 +1551,7 @@ fn design_rulings() -> List<DesignRuling> {
     live_router_changes_of_2026_11_23_are_requirements_evidence,
     floor_exhaustiveness_refusal_a_plus_c_exceptions_frozen_2026_11_23,
     floor_exhaustiveness_refusal_seed_rust_waiver_arm_authorized_2026_11_23,
+    floor_exhaustiveness_completeness_locus_v2_bootstrap_lane_ruling_c_2026_11_24,
   ]
 }
 
