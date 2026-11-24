@@ -1796,10 +1796,10 @@ type TargetOperatorRealization {
   // numeric sentinel that could fail open by treating an undeclared operator as binding tightest.
   precedence: Optional<Int>
   // Whether this operator may take an operand that is itself the same comparison family. The fact
-  // belongs to the language: Rust's comparisons do not chain (a < b == c is a rustc error), while
-  // C17, Swift and ECMAScript treat comparisons as ordinary binary operators and do chain. Absent
-  // refuses nesting — a row that does not declare chains=yes cannot fabricate permission to emit
-  // a form the target may reject (gunbc.design_argument::fail_closed).
+  // belongs to the language. Today only Rust declares a chains row (chains=no: the Rust Reference
+  // marks its comparison group non-associative). Every other target carries no chains edge, so
+  // nesting there is Absent and refuses. Absent refuses because silence cannot fabricate
+  // permission to emit a form the target may reject (gunbc.design_argument::fail_closed).
   chains: Optional<Bool>
 }
 
@@ -6972,10 +6972,11 @@ fn target_operator_realization_chains(
 }
 
 // Whether a comparison carrying a comparison operand must be refused. The FACT (which comparison
-// operators chain) is a row in the language catalog — Rust declares its comparisons do not chain;
-// C17, Swift and ECMAScript comparisons do. The model holds only the POLICY: nesting needs a
-// permission, and a row that does not declare chains=yes cannot fabricate permission to emit a
-// form the target may reject (gunbc.design_argument::fail_closed). Absent refuses.
+// operators chain) is a row in the language catalog; today only Rust declares one (chains=no).
+// Every other target's comparison rows carry no chains edge, so nesting there decodes Absent and
+// this refuses. The model holds only the POLICY: nesting needs a permission, and a row that does
+// not declare chains=yes cannot fabricate permission to emit a form the target may reject
+// (gunbc.design_argument::fail_closed).
 fn target_value_expr_comparison_chain_refuses(
   catalog: TargetRealizationCatalog,
   enclosing_op: CanonicalOperation,
@@ -7094,12 +7095,12 @@ fn target_operator_shape_emit_primitive_apply_tokens(
             enclosing_op: enclosing_op,
             operands: operands
           ) {
-            // The target's catalog row says its comparison operators do not chain (Rust declares
-            // chains=no; C17, Swift and ECMAScript declare theirs do). A comparison carrying a
-            // comparison operand would render a form that target rejects, so the emitter refuses
-            // with its own typed reason rather than handing the target's compiler output it will
-            // reject. Pure refusal: no currently-emitting subject forms such a chain, so nothing
-            // that renders correctly today changes a byte.
+            // The target's catalog row declares its comparison operators do not chain (only Rust
+            // declares a chains row today, chains=no; every other target is Absent and also
+            // refuses). A comparison carrying a comparison operand would render a form that target
+            // rejects, so the emitter refuses with its own typed reason rather than handing the
+            // target's compiler output it will reject. Pure refusal: no currently-emitting subject
+            // forms such a chain, so nothing that renders correctly today changes a byte.
             outcome_rejected(
               target_value_expression_emit_comparison_operand_is_comparison_diagnostic(expr: expr)
             )
