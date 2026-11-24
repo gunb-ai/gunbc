@@ -28,11 +28,19 @@ import gunbc.audit_verdict { ClauseVerdict, PartiallyDelivered, clause_verdict_d
 // dag/test/claim/factory_attempt_execution_on_fabric_audit_witness.dag (module
 // test.claim.factory_attempt_execution_on_fabric_audit_witness) exercises every projection below — the
 // rung matches, the clause fold, the per-id rung lookups at identity grain, and the mapping
-// recommendations by belt module — and its test fns are the executing route (the CI witness floor). This
-// is the same wiring the two repo audits have: gunbc.materialization_kernel_closing_frontier_audit is
-// consumed only by test.claim.materialization_kernel_closing_frontier_audit_witness, and
-// gunbc.expected_value_authority_audit only by
-// test.claim.self_host_expected_value_authority_audit_witness.
+// recommendations by belt module. ENROLMENT, NOT EXECUTION — said plainly: no required CI job evaluates a
+// witness ("Nothing on the required path evaluates a witness" — gunbc.design_document::ci_contract_blocks;
+// "the required lane parses and typechecks and judges no claim" — gunbc.design_ruling's required-floor
+// enrolment provenance), so these test fns are enrolled and NOT executed today. Two routes would execute
+// them: a row naming this witness in v2.workflow.required_floor's required_gate_authored_modules — which
+// grows one exact module name at a time only on an operator ruling
+// (gunbc.design_document::required_gate_rows_grow_by_operator_ruling) — or a cited run through a gunbc run
+// instrument, the precedent materialization_kernel_closing_frontier_audit's measured clauses use
+// (instruments/fabric_ci_evidence). Until one is recorded beside a clause, no clause claims executed
+// witness evidence. The wiring otherwise matches the two repo audits:
+// gunbc.materialization_kernel_closing_frontier_audit is consumed only by
+// test.claim.materialization_kernel_closing_frontier_audit_witness, and gunbc.expected_value_authority_audit
+// only by test.claim.self_host_expected_value_authority_audit_witness — both likewise enrolled, not executed.
 //
 // THE HOME OF THE DECISION (gunbc.design_argument::planning_has_one_home — a plan's authority is its .dag
 // carrier under gunbc.plans, the work that realizes it lives under gunbc.roadmap; a second place that
@@ -135,7 +143,7 @@ fn factory_attempt_clauses() -> List<FactoryAuditClause> {
       id: "audit-can-fail",
       statement: "This audit can read false: factory_attempt_all_clauses_delivered over factory_attempt_clauses() evaluates false on the rows above, so the summary is not a vacuously green AND over authored data.",
       verdict: PartiallyDelivered {
-        reason: "The paired witness exists in this change and the CI witness floor executes it, which is what proves the fold reads false rather than being an always-true wrapper; the rung climbs to Delivered once that execution is cited here as the observation. Until the CI run for this head is recorded beside the clause, the rung stays at PartiallyDelivered — fail-closed on an unexecuted claim (gunbc.design_argument::fail_closed)." as NonEmptyStr,
+        reason: "The paired witness exists in this change and its fold-reads-false assertion is written to fail if a row's rung is edited to Delivered — but the witness is ENROLLED, NOT EXECUTED: the required CI lane only parses and typechecks (gunbc.design_document::ci_contract_blocks), so this clause cannot claim executed witness evidence, and no CI run will ever cite it. The rung climbs to Delivered only when one of the two routes that actually judges a claim is recorded beside this clause: an operator-ruled row naming test.claim.factory_attempt_execution_on_fabric_audit_witness in v2.workflow.required_floor's required_gate_authored_modules (gunbc.design_document::required_gate_rows_grow_by_operator_ruling), or a cited executed run through a gunbc run instrument (the precedent instruments/fabric_ci_evidence, as materialization_kernel_closing_frontier_audit's measured clauses cite). Until then the rung stays at PartiallyDelivered — fail-closed on an unexecuted claim (gunbc.design_argument::fail_closed), and rung-honest (gunbc.design_argument::guarantee_ladder)." as NonEmptyStr,
         evidence: "test.claim.factory_attempt_execution_on_fabric_audit_witness::factory_attempt_audit_fold_reads_false_proves_can_fail asserts the fold over these exact rows is false; that module's test fns are the executing route." as NonEmptyStr
       }
     },
