@@ -218,44 +218,37 @@ fn projection_events_of(envs: List<RoadmapEventEnvelope>, item: String) -> List<
 // or ABSENT when the log has carried nothing for it -- never a standing guessed from absence, and never a
 // "none" sentinel that a reader could not tell from a real kind. Absence is Optional; the wire says null.
 fn projection_latest_event_of(envs: List<RoadmapEventEnvelope>, item: String) -> Optional<String> {
-  fold(filter(envs, e => (e.event.node as String) == item), init: Absent as Optional<String>,
+  fold(filter(envs, e => (e.event.node as String) == item), init: Absent,
     f: fn(_acc, e) { Present { value: roadmap_event_kind_word(k: e.event.kind) } })
 }
 
-// The one carried kind whose event holds the acceptance's own evidence URL. Matched by variant, not word.
-fn projection_kind_is_acceptance_recorded(kind: RoadmapEventKind) -> Bool {
-  match kind {
-    AcceptanceRecordedEvent { receipt: _, evidence: _ } => true
-    // Every other kind named, no wildcard: a new kind forces a decision here rather than being silently
-    // judged "not an acceptance." (Only the recorded acceptance carries the evidence URL.)
-    Claimed { assignee: _, return_to: _ } => false
-    Released => false
-    Progress { note: _ } => false
-    Blocked { reason: _ } => false
-    HandedBack { reason: _ } => false
-    Retired { reason: _ } => false
-    ReceiptReferenced { obligation: _, address: _, verdict: _ } => false
-    RedTreeRecorded { observation: _ } => false
-    CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => false
-    CommentEdited { comment: _, body: _ } => false
-    CommentDeleted { comment: _ } => false
-    ResultReturned { attempt: _, claim: _, outcome: _ } => false
-    AcceptanceRevokedEvent { receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => false
-  }
-}
-
 // THE ACCEPTANCE EVIDENCE the log carries for the item: the PR evidence URL on its acceptance_recorded
-// row -- the acceptance's own machine fact, read from the log at this read, not a re-spelling. Selection is
-// by the AcceptanceRecordedEvent VARIANT (not a rendered-word comparison), and an item with no acceptance
-// is ABSENT, not the empty string: a reader must tell "no acceptance" (null) apart from an empty URL.
+// row -- the acceptance's own machine fact, read from the log at this read, not a re-spelling. The fold is
+// the ONE place that decides what an acceptance is: it matches the AcceptanceRecordedEvent VARIANT directly
+// (no word comparison, no separate Bool guard a filter could drift from -- a second place deciding the same
+// fact is a fork). Every other kind is named and keeps the accumulator, so adding a kind forces a decision
+// here rather than being silently skipped, and an item with no acceptance stays ABSENT (null), never the
+// empty string: a reader must tell "no acceptance" apart from an empty evidence URL.
 fn projection_acceptance_evidence_of(envs: List<RoadmapEventEnvelope>, item: String) -> Optional<String> {
   fold(
-    filter(envs, e => (e.event.node as String) == item && projection_kind_is_acceptance_recorded(kind: e.event.kind)),
-    init: Absent as Optional<String>,
-    f: fn(_acc, e) {
+    filter(envs, e => (e.event.node as String) == item),
+    init: Absent,
+    f: fn(acc, e) {
       match e.event.kind {
         AcceptanceRecordedEvent { receipt: _, evidence } => Present { value: roadmap_acceptance_pr_evidence_url(evidence: evidence) }
-        _ => Absent as Optional<String>
+        Claimed { assignee: _, return_to: _ } => acc
+        Released => acc
+        Progress { note: _ } => acc
+        Blocked { reason: _ } => acc
+        HandedBack { reason: _ } => acc
+        Retired { reason: _ } => acc
+        ReceiptReferenced { obligation: _, address: _, verdict: _ } => acc
+        RedTreeRecorded { observation: _ } => acc
+        CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => acc
+        CommentEdited { comment: _, body: _ } => acc
+        CommentDeleted { comment: _ } => acc
+        ResultReturned { attempt: _, claim: _, outcome: _ } => acc
+        AcceptanceRevokedEvent { receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => acc
       }
     })
 }

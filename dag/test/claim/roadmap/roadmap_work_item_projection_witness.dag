@@ -291,7 +291,7 @@ test fn in_flight_leaves_are_the_derived_set_read_off_the_log() -> Bool {
   let row_json = serialize_json(v: projection_row_json(row: ProjectionRow {
     node: "item-a", intention: "gunbc.plans.planning_consolidation/planning_consolidation_plan",
     layer: 2, item_state: "claimed", leaves: [] as List<ProjectionLeaf>, in_flight: entries,
-    latest_event: Present { value: "claimed" }, acceptance_evidence: Absent as Optional<String>, events: [] as List<ProjectionEvent>,
+    latest_event: Present { value: "claimed" }, acceptance_evidence: Absent, events: [] as List<ProjectionEvent>,
   }))
   count(entries) == 1
     && string_contains(s: row_json, pattern: "item-a#1#0#2")
