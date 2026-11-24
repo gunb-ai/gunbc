@@ -234,6 +234,32 @@ type FloorPreparationSpawnObservation {
   stderr: String,
 }
 
+// TYPED VERDICT CARRIERS (review 97909). A supply check and a leg each decide their Bool in
+// model code and carry it as a FIELD; the gates fold over the fields, never over rendered prose.
+// The String forms below are print-boundary renderers only. Optional readings name their
+// absence: an unreadable checksum or count is Absent, rendered SHA_UNREADABLE / BYTES_UNREADABLE.
+type FloorPreparationSupplyReceipt {
+  name: String,
+  digest: Optional<String>,
+  bytes: Optional<Int>,
+  manifest: String,
+  expected: String,
+  admitted: Bool,
+}
+
+type FloorPreparationLegReceipt {
+  label: String,
+  entries_joined: String,
+  rc: Int,
+  binary: String,
+  digest: Optional<String>,
+  bytes: Optional<Int>,
+  tree_sha: String,
+  kept_count: Int,
+  out_bytes: Int,
+  clean: Bool,
+}
+
 // ----------------------------------------------------------------------------------------------
 // TEXT PRIMITIVES. The language carries split; prefix and membership are defined once, here, and
 // every gate below reads through them.
@@ -342,13 +368,6 @@ fn floor_preparation_bytes_of(path: String) -> Int? {
   }
 }
 
-fn floor_preparation_present_or<T>(opt: T?, fallback: T) -> T {
-  match opt {
-    Present { value: v } => v
-    Absent {} => fallback
-  }
-}
-
 // The tree sha under measurement, read through the same spawn surface (no shell: argv direct).
 fn floor_preparation_git_tree_sha() -> String {
   let outcome = floor_preparation_spawn_plain(
@@ -358,7 +377,16 @@ fn floor_preparation_git_tree_sha() -> String {
 }
 
 fn floor_preparation_manifest_sha(kind: String) -> String {
-  let content = filesystem_read(path: floor_preparation_manifest_path()).content
+  // filesystem_read THROWS on a missing file (observed: TypeError "No such file or directory"),
+  // which would crash the very gate that must REPORT an unreadable supply. Probe first, read
+  // only what exists; a missing manifest renders as "" and the typed comparison refuses.
+  let probe = floor_preparation_spawn_plain(binary: "/usr/bin/test",
+    args: ["-f", floor_preparation_manifest_path()])
+  let content = if probe.rc == 0 {
+    filesystem_read(path: floor_preparation_manifest_path()).content
+  } else {
+    ""
+  }
   let hits = filter(xs: floor_preparation_lines(text: content), predicate: fn(line) { floor_preparation_contains(haystack: line, needle: concat(" ", kind)) })
   match hits.first() {
     Present { value: v } => floor_preparation_first_token(v)
@@ -366,38 +394,69 @@ fn floor_preparation_manifest_sha(kind: String) -> String {
   }
 }
 
-fn floor_preparation_supply_line_ok(name: String, note: String) -> String {
-  concat(concat("[runner-supply] name=", name), concat(" ok=", note))
-}
-
-fn floor_preparation_supply_line(name: String, path: String, expected: String) -> String {
+fn floor_preparation_supply_check(name: String, path: String, expected: String) -> FloorPreparationSupplyReceipt {
   let digest_opt = floor_preparation_sha_of(path: path)
   let bytes_opt = floor_preparation_bytes_of(path: path)
-  let digest = floor_preparation_present_or(opt: digest_opt, fallback: "SHA_UNREADABLE")
-  let bytes_text = match bytes_opt {
-    Present { value: n } => to_string(n)
-    Absent {} => "BYTES_UNREADABLE"
-  }
   let manifest = floor_preparation_manifest_sha(kind: name)
-  let ok = match digest_opt {
+  let admitted = match digest_opt {
     Present { value: d } => match bytes_opt {
       Present { value: n } => d != floor_preparation_empty_sha && d == expected && manifest == d && n > 0
       Absent {} => false
     }
     Absent {} => false
   }
-  if ok {
-    concat(concat(concat("[runner-supply] name=", name), concat(" sha256=", digest)),
-      concat(" bytes=", bytes_text))
-  } else {
-    concat(concat(concat(concat(concat("[runner-supply-REFUSED] name=", name), " disk="), digest),
-      concat(" manifest=", manifest)), concat(" bytes=", bytes_text))
+  FloorPreparationSupplyReceipt {
+    name: name,
+    digest: digest_opt,
+    bytes: bytes_opt,
+    manifest: manifest,
+    expected: expected,
+    admitted: admitted,
   }
 }
 
-fn floor_preparation_supplies_hold(receipts: List<String>) -> Bool {
-  fold(receipts, init: true, f: (acc, line) =>
-    acc && !floor_preparation_text_starts_with(text: line, prefix: "[runner-supply-REFUSED]"))
+fn floor_preparation_supply_env_receipt(admitted: Bool, note: String) -> FloorPreparationSupplyReceipt {
+  FloorPreparationSupplyReceipt {
+    name: "required-env",
+    digest: Absent {},
+    bytes: Absent {},
+    manifest: note,
+    expected: note,
+    admitted: admitted,
+  }
+}
+
+// Print-boundary renderers. Nothing downstream reads these strings back to recover a verdict:
+// the gates consume SupplyReceipt / LegReceipt fields, not this text (review 97909).
+fn floor_preparation_supply_line(r: FloorPreparationSupplyReceipt) -> String {
+  let digest_text = match r.digest {
+    Present { value: d } => d
+    Absent {} => "SHA_UNREADABLE"
+  }
+  let bytes_text = match r.bytes {
+    Present { value: n } => to_string(n)
+    Absent {} => "BYTES_UNREADABLE"
+  }
+  if r.admitted {
+    // A required-env receipt carries no digest or count: render only what it read. An admitted
+    // binary receipt must print both, so Absent never rides along on a pass line.
+    match r.digest {
+      Present { value: d } => concat(concat(concat("[runner-supply] name=", r.name), concat(" sha256=", d)),
+        concat(" bytes=", bytes_text))
+      Absent {} => concat("[runner-supply] name=", r.name)
+    }
+  } else {
+    concat(concat(concat(concat(concat("[runner-supply-REFUSED] name=", r.name), " disk="), digest_text),
+      concat(" manifest=", r.manifest)), concat(" bytes=", bytes_text))
+  }
+}
+
+fn floor_preparation_supply_lines(receipts: List<FloorPreparationSupplyReceipt>) -> List<String> {
+  fold(receipts, init: [], f: (acc, r) => list_push(xs: acc, item: floor_preparation_supply_line(r: r)))
+}
+
+fn floor_preparation_supplies_hold(receipts: List<FloorPreparationSupplyReceipt>) -> Bool {
+  fold(receipts, init: true, f: (acc, r) => acc && r.admitted)
 }
 
 // ----------------------------------------------------------------------------------------------
@@ -464,23 +523,42 @@ fn floor_preparation_cause_of(entry: String, untrimmed_stdout: String) -> String
 // read back FROM DISK at run time, the tree sha under measurement, and the kept-row count -- the
 // 0-byte-downloaded-binary-that-exits-0 failure mode seen in this lane fails the supply gate, and
 // a sha drifting from the pin fails it too.
-fn floor_preparation_leg_receipt(label: String, entries: List<String>, binary: String,
-                                 tree_sha: String, outcome: FloorPreparationSpawnObservation) -> String {
-  concat(concat(concat("[runner-leg] leg=", label), " entries="),
-    concat(join(entries, ","),
-      concat(concat(" rc=", to_string(outcome.rc)),
-        concat(concat(" instrument=", binary),
-          concat(concat(" BINARY_SHA256=", floor_preparation_present_or(opt: floor_preparation_sha_of(path: binary), fallback: "SHA_UNREADABLE")),
-            concat(concat(" BINARY_BYTES=", floor_preparation_bytes_display(path: binary)),
-              concat(concat(" TREE_SHA=", tree_sha),
-                concat(" out_bytes=", to_string(length(xs: outcome.stderr))))))))))
+// A leg's verdict is a FIELD on a record, not a prefix on a line (review 97909). The record
+// captures the spawn observation plus the binary's on-disk identity at leg time; the gates read
+// .rc / .clean / .kept_count and the renderer exists only for the printed receipt.
+fn floor_preparation_leg_record(
+    label: String, entries: List<String>, binary: String, tree_sha: String,
+    kept_count: Int, outcome: FloorPreparationSpawnObservation) -> FloorPreparationLegReceipt {
+  FloorPreparationLegReceipt {
+    label: label,
+    entries_joined: join(entries, ","),
+    rc: outcome.rc,
+    binary: binary,
+    digest: floor_preparation_sha_of(path: binary),
+    bytes: floor_preparation_bytes_of(path: binary),
+    tree_sha: tree_sha,
+    kept_count: kept_count,
+    out_bytes: outcome.stderr.length(),
+    clean: outcome.rc == 0 && kept_count > 0,
+  }
 }
 
-fn floor_preparation_bytes_display(path: String) -> String {
-  match floor_preparation_bytes_of(path: path) {
+fn floor_preparation_leg_receipt(r: FloorPreparationLegReceipt) -> String {
+  let digest_text = match r.digest {
+    Present { value: d } => d
+    Absent {} => "SHA_UNREADABLE"
+  }
+  let bytes_text = match r.bytes {
     Present { value: n } => to_string(n)
     Absent {} => "BYTES_UNREADABLE"
   }
+  concat(concat(concat("[runner-leg] leg=", r.label), concat(" entries=", r.entries_joined)),
+    concat(concat(" rc=", to_string(r.rc)),
+      concat(concat(" instrument=", r.binary),
+        concat(concat(" BINARY_SHA256=", digest_text),
+          concat(concat(" BINARY_BYTES=", bytes_text),
+            concat(concat(" TREE_SHA=", r.tree_sha),
+              concat(" out_bytes=", to_string(r.out_bytes))))))))
 }
 
 fn floor_preparation_retained_body(untrimmed_stdout: String, graded_stdout: String) -> String {
@@ -494,23 +572,22 @@ fn floor_preparation_provenance(leg: String, binary_sha: String, rc: Int, kept_c
 }
 
 fn floor_preparation_capture_run() -> String {
-  let env_receipt = if floor_preparation_required_env_missing() == "" {
-    floor_preparation_supply_line_ok(name: "required-env", note: "FLOOR_CHECKOUT,FLOOR_HEAVY_SLOT,FLOOR_CLAIM_BATCH,FLOOR_GUNBC,FLOOR_MANIFEST set")
-  } else {
-    concat("[runner-supply-REFUSED] name=required-env unset=", floor_preparation_required_env_missing())
-  }
-  let supplies = [
+  let env_missing = floor_preparation_required_env_missing()
+  let env_receipt = floor_preparation_supply_env_receipt(
+    admitted: env_missing == "", note: concat("unset=", env_missing))
+  let supply_receipts = [
     env_receipt,
-    floor_preparation_supply_line(name: "claim_batch",
+    floor_preparation_supply_check(name: "claim_batch",
       path: floor_preparation_pinned_claim_batch(),
       expected: floor_preparation_pinned_claim_batch_sha),
-    floor_preparation_supply_line(name: "gunbc",
+    floor_preparation_supply_check(name: "gunbc",
       path: floor_preparation_pinned_gunbc(),
       expected: floor_preparation_pinned_gunbc_sha)
   ]
+  let supplies = floor_preparation_supply_lines(receipts: supply_receipts)
   let verify_receipt = floor_preparation_receipt("verify-pinned-supplies",
     concat("lines=", to_string(length(xs: supplies))))
-  if !floor_preparation_supplies_hold(receipts: supplies) {
+  if !floor_preparation_supplies_hold(receipts: supply_receipts) {
     concat(concat(join(supplies, "\n"), "\n"), verify_receipt)
   } else {
     let entries = floor_preparation_population_entries()
@@ -520,22 +597,24 @@ fn floor_preparation_capture_run() -> String {
       bound: floor_preparation_untrimmed_bound,
       binary: floor_preparation_pinned_claim_batch(),
       args: floor_preparation_leg_argv(entries: entries))
-    let untrimmed_receipt = floor_preparation_leg_receipt(
+    let kept_untrimmed = floor_preparation_kept(text: untrimmed.stderr)
+    let untrimmed_record = floor_preparation_leg_record(
       label: "leg-untrimmed", entries: entries, binary: floor_preparation_pinned_claim_batch(),
-      tree_sha: tree_sha, outcome: untrimmed)
+      tree_sha: tree_sha, kept_count: length(xs: kept_untrimmed), outcome: untrimmed)
+    let untrimmed_receipt = floor_preparation_leg_receipt(r: untrimmed_record)
     let survivors = floor_preparation_surviving_entries(untrimmed_stdout: untrimmed.stderr)
     let graded = floor_preparation_spawn_slot(
       bound: floor_preparation_graded_bound,
       binary: floor_preparation_pinned_claim_batch(),
       args: floor_preparation_leg_argv(entries: survivors))
-    let graded_receipt = floor_preparation_leg_receipt(
-      label: "leg-graded", entries: survivors, binary: floor_preparation_pinned_claim_batch(),
-      tree_sha: tree_sha, outcome: graded)
-    let fold_legs_receipt = floor_preparation_receipt("fold-legs",
-      concat(concat("kept_untrimmed=", to_string(length(xs: floor_preparation_kept(text: untrimmed.stderr)))),
-        concat(" kept_graded=", to_string(length(xs: floor_preparation_kept(text: graded.stderr))))))
-    let kept_untrimmed = floor_preparation_kept(text: untrimmed.stderr)
     let kept_graded = floor_preparation_kept(text: graded.stderr)
+    let graded_record = floor_preparation_leg_record(
+      label: "leg-graded", entries: survivors, binary: floor_preparation_pinned_claim_batch(),
+      tree_sha: tree_sha, kept_count: length(xs: kept_graded), outcome: graded)
+    let graded_receipt = floor_preparation_leg_receipt(r: graded_record)
+    let fold_legs_receipt = floor_preparation_receipt("fold-legs",
+      concat(concat("kept_untrimmed=", to_string(length(xs: kept_untrimmed))),
+        concat(" kept_graded=", to_string(length(xs: kept_graded)))))
     let retained = floor_preparation_retained_body(untrimmed_stdout: untrimmed.stderr, graded_stdout: graded.stderr)
     let claims_args = concat(
       fold(floor_preparation_source_roots, init: [], f: (acc, root) => concat(acc, ["--source-root", root])),
@@ -577,11 +656,14 @@ fn floor_preparation_capture_run() -> String {
     // rc=2, value printed in the refusal; royal-newt's ruling reads the report from that print).
     // So rc==2 IS the expected status for the report leg; rc==0, rc==1 or 124 is a defect, not a
     // pass -- a well-formed report that exited 0 would be a success-channel fabrication.
+    let report_record = floor_preparation_leg_record(
+      label: "report-print", entries: [floor_preparation_authority_path],
+      binary: floor_preparation_pinned_gunbc(), tree_sha: tree_sha, kept_count: 0, outcome: report)
     let report_rc_receipt = floor_preparation_receipt("report-print",
-      concat(concat("rc=", to_string(report.rc)), concat(" expected_rc=2 classifications=", classification_text)))
-    let report_ok = report_read && report.rc == 2
-      && graded.rc == 0
-      && length(xs: kept_graded) > 0
+      concat(concat("rc=", to_string(report_record.rc)), concat(" expected_rc=2 classifications=", classification_text)))
+    // The gate reads RECORD FIELDS (review 97909): graded_record.clean is exactly "graded.rc == 0
+    // and its kept set is non-empty"; report_record.rc is the command's own exit status.
+    let report_ok = report_read && report_record.rc == 2 && graded_record.clean
     let receipts = concat(concat(concat(supplies, [verify_receipt]),
         [floor_preparation_receipt("render-population",
           concat("file_agrees=", to_string(population_ok))),
@@ -595,9 +677,9 @@ fn floor_preparation_capture_run() -> String {
          concat("bytes=", to_string(length(xs: retained)))),
        splice_receipt,
        floor_preparation_provenance(leg: "untrimmed",
-         binary_sha: floor_preparation_pinned_claim_batch_sha, rc: untrimmed.rc, kept_count: length(xs: kept_untrimmed)),
+         binary_sha: floor_preparation_pinned_claim_batch_sha, rc: untrimmed_record.rc, kept_count: untrimmed_record.kept_count),
        floor_preparation_provenance(leg: "graded",
-         binary_sha: floor_preparation_pinned_claim_batch_sha, rc: graded.rc, kept_count: length(xs: kept_graded)),
+         binary_sha: floor_preparation_pinned_claim_batch_sha, rc: graded_record.rc, kept_count: graded_record.kept_count),
        floor_preparation_receipt("claim-gate",
          concat("missing=", join(missing, ","))),
        report_rc_receipt])
@@ -606,8 +688,7 @@ fn floor_preparation_capture_run() -> String {
     // and report gates decide the terminal verdict. Refusing a red gate must not also destroy the
     // raw evidence of the run -- but writing them is not a pass, and the terminal gate below
     // still refuses without them reading green.
-    let legs_clean = untrimmed.rc == 0 && graded.rc == 0
-      && length(xs: kept_untrimmed) > 0 && length(xs: kept_graded) > 0
+    let legs_clean = untrimmed_record.clean && graded_record.clean
     let write_receipt = if legs_clean {
       let w1 = Filesystem.Write(
         path: concat(floor_preparation_runner_root(), "/", floor_preparation_retained_file),
