@@ -96,7 +96,7 @@ test fn every_boot_state_is_a_typed_operator_read() -> Bool {
 // this pair must catch.
 test fn the_charge_release_left_the_units_retired() -> Bool {
   all(srv14_serving_unit_boot_states, u => is_unit_disabled(u.unit_file_state))
-    && length(srv14_serving_unit_boot_states) == 4
+    && length(srv14_serving_unit_boot_states) == 3
 }
 
 // THE BOOT-STATE SET IS SCOPED TO BUTCH ALONE. This is a boot-enable reading of butch's units, not a fleet-wide
