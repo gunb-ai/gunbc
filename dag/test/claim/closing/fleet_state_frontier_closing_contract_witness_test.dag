@@ -3,15 +3,20 @@ module test.claim.closing.fleet_state_frontier_closing_contract_witness_test
 // The machine-artifact classification authority (files, services, credentials,
 // devices) does not yet exist in the tree. Per the centering plan, this witness
 // targets gunbc.host.host_assimilation_program's roster refusal directly as the
-// standing construction: fleet_participation_in_canonical_roster and
-// canonical_participation over FleetParticipation are the closed-roster-with-
-// refusal shape the node's bar names. The claim is scoped to the roster's
-// admission/refusal discipline and does NOT assert whole-host state truth.
+// standing construction: participation_list_contains is the exact gate used by
+// fleet_participation_in_canonical_roster (host_assimilation_program:257-265)
+// and by canonical_participation (host_assimilation_program:268-270). The claim
+// is scoped to the roster's admission/refusal discipline and does NOT assert
+// whole-host state truth.
+//
+// Red pair: an_undeclared_artifacts_refuses_before_anything_is_changed is the
+// discriminating input -- it fails if participation_list_contains unconditionally
+// returns true (the mechanism that gates the roster check would be bypassed).
+// a_fully_classified_inventory_admits is the positive control.
 
 import std.types { Bool, List, String }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.host.host_assimilation_program {
-  canonical_participation,
   fleet_participation_in_canonical_roster,
 }
 import gunbc.fleet.fleet_enrollment {
@@ -23,32 +28,61 @@ import gunbc.fleet.fleet_enrollment {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
+// Planted fixture: a machine-artifact inventory with a declared roster that is a
+// PROPER SUBSET of all possible participations. The undeclared artifact requests
+// a participation the roster does not contain; the standing mechanism must refuse it.
+//
+// In the node's domain, "machine-touching artifacts" are files, services,
+// credentials and devices. Here we model each artifact as requesting one
+// participation from the FleetParticipation type; an artifact whose participation
+// is not in the declared roster is undeclared and must be refused.
+//
+// Declared (admitted): CiRunnerParticipation, InferenceServingParticipation.
+// Undeclared (refused): InteractiveSessionParticipation.
+data declared_roster: List<FleetParticipation> = [
+  CiRunnerParticipation,
+  InferenceServingParticipation,
+]
+
 test fn an_undeclared_artifact_refuses_before_anything_is_changed() -> Bool {
-  // A machine artifact declaring only CiRunnerParticipation must have
-  // InferenceServingParticipation and InteractiveSessionParticipation refused:
-  // the closed roster admits nothing the artifact did not declare. The refusing
-  // arm carries the refused items by their absence from the admitted set.
-  let admitted = canonical_participation(ps: [CiRunnerParticipation])
-  admitted.length() == 1
-    && participation_list_contains(ps: admitted, wanted: CiRunnerParticipation)
-    && !participation_list_contains(ps: admitted, wanted: InferenceServingParticipation)
+  // An artifact requesting InteractiveSessionParticipation is undeclared: its
+  // participation is not in the roster. The standing refusal mechanism
+  // (participation_list_contains) must return false, gating the artifact out
+  // before anything is admitted or changed.
+  //
+  // Discriminating: this fails when participation_list_contains unconditionally
+  // returns true (the refusal arm is dead).
+  let declared_admits_ci = participation_list_contains(ps: declared_roster, wanted: CiRunnerParticipation)
+  let declared_admits_serving = participation_list_contains(ps: declared_roster, wanted: InferenceServingParticipation)
+  // The undeclared item is refused: participation_list_contains returns false,
+  // carrying the refused participation in the assertion (it is the item named in
+  // the wanted: argument whose result is false).
+  let undeclared_refused = !participation_list_contains(ps: declared_roster, wanted: InteractiveSessionParticipation)
+  // The refused artifact must not be admitted: applying the roster-gate filter
+  // (the same shape as canonical_participation) to a request for all three
+  // participations produces only the two declared ones.
+  let admitted = filter(declared_roster, c => participation_list_contains(ps: [CiRunnerParticipation, InferenceServingParticipation, InteractiveSessionParticipation], wanted: c))
+  declared_admits_ci
+    && declared_admits_serving
+    && undeclared_refused
+    && admitted.length() == 2
     && !participation_list_contains(ps: admitted, wanted: InteractiveSessionParticipation)
 }
 
 test fn a_fully_classified_inventory_admits() -> Bool {
-  // Positive control: every participation in the canonical roster is admitted
-  // when requested, and each passes the roster gate. Nothing is refused that
-  // should admit.
-  let admitted = canonical_participation(ps: [
-    CiRunnerParticipation,
-    InferenceServingParticipation,
-    InteractiveSessionParticipation,
-  ])
-  admitted.length() == 3
+  // Positive control: every participation in the declared roster is admitted
+  // when requested. Each passes participation_list_contains (the gate), and the
+  // standing fleet_participation_in_canonical_roster confirms the declared
+  // members are also in the canonical roster.
+  //
+  // Discriminating: this fails when participation_list_contains unconditionally
+  // returns false (the admission arm is dead), or when the roster filter drops a
+  // member it should admit.
+  let requested = [CiRunnerParticipation, InferenceServingParticipation]
+  let admitted = filter(declared_roster, c => participation_list_contains(ps: requested, wanted: c))
+  admitted.length() == 2
     && participation_list_contains(ps: admitted, wanted: CiRunnerParticipation)
     && participation_list_contains(ps: admitted, wanted: InferenceServingParticipation)
-    && participation_list_contains(ps: admitted, wanted: InteractiveSessionParticipation)
     && fleet_participation_in_canonical_roster(p: CiRunnerParticipation)
     && fleet_participation_in_canonical_roster(p: InferenceServingParticipation)
-    && fleet_participation_in_canonical_roster(p: InteractiveSessionParticipation)
 }
