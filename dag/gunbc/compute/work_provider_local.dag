@@ -3968,12 +3968,12 @@ fn compute_recover_catalog_for(stores: List<ComputeSeatStore>) -> ComputeRecover
                   RecoverCatalogUnknown { detail: join(["the census listed ", pair.reference as String, " but its slot is no longer there; the observation is not complete"], "") }
                 AttemptSlotHeld { record: rec, generation: _ } =>
                   match now_epoch_seconds() {
-                    Absent => RecoverCatalogUnknown { detail: join(["no clock for the attempt slot ", pair.reference as String, "; its window cannot be judged"], "") }
+                    Absent => RecoverCatalogUnknown { detail: join(["no clock for the attempt slot ", pair.reference as String, "; its window cannot be judged; the record names unit ", rec.unit], "") }
                     Present { value: now } => {
                       let lifecycle = unit_lifecycle_from_source(source: ObserveUnitLifecycle, unit: rec.unit as NonEmptyStr)
                       match recovery_write_authorization(record: rec, lifecycle: lifecycle, now: now) {
                         RecoveryWriteRefused { reason: r } =>
-                          RecoverCatalogUnknown { detail: join([pair.reference as String, ": ", r], "") }
+                          RecoverCatalogUnknown { detail: join([pair.reference as String, ": ", r, "; the record names unit ", rec.unit], "") }
                         auth =>
                           RecoverCatalogEstablished { entries: es |> list_push(RecoverCatalogEntry { reference: pair.reference, authorization: auth }) }
                       }
@@ -4155,7 +4155,7 @@ recover_catalog_response(instance: instance)
 fn recover_catalog_response(instance: HostDashboardInstance) -> CliWireResponse {
       match compute_recover_catalog(instance: instance) {
         RecoverCatalogUnknown { detail: d } =>
-          CliWirePrintable { bytes: join([recover_catalog_words().line_prefix, " unknown: ", d, "\n"], ""), exit: ExitFailure { code: recover_door_exit_code(RecoverDoorUnknown), reason: "recover-catalog: the seat census could not be established" } }
+          CliWirePrintable { bytes: join([recover_catalog_words().line_prefix, " unknown: ", d, "\n"], ""), exit: ExitFailure { code: recover_door_exit_code(RecoverDoorUnknown), reason: join(["recover-catalog: the seat census could not be established: ", d], "") } }
         RecoverCatalogEstablished { entries } =>
           CliWirePrintable {
             bytes: concat(join([recover_catalog_words().established_header, "\n"], ""), fold(entries, init: "", f: (acc, e) => concat(acc, compute_recover_catalog_entry_line(e: e)))),
@@ -4563,7 +4563,7 @@ fn recover_readback_response(instance: HostDashboardInstance, reference: String)
               RecoverReadbackFacts { record: record, charge: charge } =>
                 CliWirePrintable { bytes: recover_readback_line(record: record, charge: charge), exit: ExitSuccess }
               RecoverReadbackUnknown { detail: d } =>
-                CliWirePrintable { bytes: recover_readback_unknown_line(detail: d), exit: ExitFailure { code: recover_door_exit_code(RecoverDoorUnknown), reason: "recover-readback: the read-back could not be established" } }
+                CliWirePrintable { bytes: recover_readback_unknown_line(detail: d), exit: ExitFailure { code: recover_door_exit_code(RecoverDoorUnknown), reason: join(["recover-readback: the read-back could not be established: ", d], "") } }
             }
         }
       }
