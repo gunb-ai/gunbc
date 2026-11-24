@@ -1,0 +1,310 @@
+module gunbc.roadmap.roadmap_work_item_projection
+
+import std.types { String, Int, Bool, List }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId, LeafPath }
+import gunbc.roadmap.roadmap_event_log {
+  RoadmapNodeStanding, RoadmapStandings, LeafInFlightEntry, RoadmapEventEnvelope, RoadmapEventKind,
+  roadmap_event_kind_word, standing_for_node, roadmap_node_standing_key, event_principal_label,
+  roadmap_acceptance_pr_evidence_url,
+}
+import gunbc.roadmap.roadmap_intention_binding { IntentionBinding, roadmap_intention_bindings }
+import gunbc.extdeps.languages.json.emit {
+  JsonValue, JsonKeyValue, json_kv, json_object, json_array, json_string, json_int, json_bool, json_null,
+}
+
+// THE WORK-ITEM PROJECTION (GET /projection.json): one JSON row per roadmap work item, the shape the
+// ctrl session dashboard's Roadmap Timeline view and the gunbc planning page both read. It is a
+// PROJECTION, not a store: every field is read from an authority already on the page at the tick --
+// the standing from the same fold /standings.json reads (roadmap_event_log), the leaf-grain start and
+// finish days and the critical path from the schedule (roadmap_schedule / roadmap_schedule_from_now,
+// the leaf-grain answer), the in-flight leaves from the log's derived set (roadmap_event_log
+// roadmap_leaf_in_flight_set, gunbc#16703), the intention and layer from the binding carrier
+// (roadmap_intention_binding), and the item's past events from the event log AT THIS READ -- events are
+// the log's own rows, never a copy this document keeps (roadmap_event_log is their only home).
+//
+// IT COMPUTES NOTHING THE UPSTREAM ALREADY ANSWERS (ticket note 2026-11-19). The schedule answers the
+// dates and the critical path; the log answers the in-flight set and the events; the binding carrier
+// answers the intention and the layer and refuses a planted binding at load. The integration here is
+// the SERVED DOCUMENT and its release control -- assembling those answers into the one closed wire
+// shape and refusing a row that could not honestly carry it -- never a second timeline calculation.
+//
+// WHY A REFUSAL AND NOT A GAP. The ticket's red control: a served row that omits a declared field of
+// the shape -- a leaf without its critical-path bit, an in-flight entry without its assignee and
+// return_to, an event without its recorded day, a row without read_on and the inputs the read used --
+// IS NOT THE PROJECTION. So the emitter refuses rather than serve a row missing a field: a reader that
+// sees a row knows every declared field is present, and a reader that sees the refusal knows the
+// projection was not honestly computable and reads the located reason. A silent omission would let a
+// Timeline draw a bar with no critical-path colour and call it complete.
+
+data roadmap_work_item_projection_schema: String = "roadmap-work-item-projection/v1"
+
+// One occurrence of a leaf, with the schedule's own answer for it.
+type ProjectionLeaf {
+  path: String
+  start_day: Int
+  finish_day: Int
+  on_critical_path: Bool
+}
+
+// One leaf the log's derived set says is in flight: the leaf path, the claim's assignee, the claim's
+// return_to -- the three the boundary names. The set is DERIVED from the log (roadmap_leaf_in_flight_set),
+// never a list this document stores; these rows are that set read at the tick, so an entry's assignee
+// and return_to are the claim's own, not a snapshot.
+type ProjectionInFlight {
+  path: String
+  assignee: String
+  return_to: String
+}
+
+// One of the item's past events the boundary lists -- claimed, released, acceptance recorded, retired --
+// with the day the log recorded it at. Read from the log at this read; not stored on the row.
+type ProjectionEvent {
+  kind: String
+  recorded_at: String
+}
+
+// The inputs the read used, SHOWN AS INPUTS (not as facts): how many workers the schedule read with,
+// the day priors it counted with, and the assumed findings counts it filled gaps with. A reader sees
+// these are inputs the projection was computed under, so a bar moving with a re-read is not mistaken
+// for the work moving.
+type ProjectionInputs {
+  worker_count: Int
+  day_priors: List<Int>
+  assumed_findings_counts: List<Int>
+}
+
+// One work item's row. `intention` is the binding carrier's DeclarationRef display key; a row that could
+// not resolve its intention is refused before it reaches this record.
+type ProjectionRow {
+  node: String
+  intention: String
+  layer: Int
+  item_state: String
+  leaves: List<ProjectionLeaf>
+  in_flight: List<ProjectionInFlight>
+  latest_event: String
+  acceptance_evidence: String
+  events: List<ProjectionEvent>
+}
+
+// WHY a row could not be honestly built, located and countable -- never a bare sentence.
+type ProjectionRefusal
+  = IntentionDoesNotResolve { node: String, intention: String }
+  | StandingUnobserved { node: String }
+
+// The intentions the binding carrier's cited-declaration sweep resolves at load: the Plan declarations
+// real bindings cite. A planted binding to an intention not on this list is a binding to nothing.
+data projection_intention_registry: List<DeclarationRef> = [
+  decl_ref(module_path: "gunbc.plans.names_without_imports", decl_name: "names_without_imports_plan"),
+  decl_ref(module_path: "gunbc.plans.factory_dogfood", decl_name: "factory_dogfood_plan"),
+  decl_ref(module_path: "gunbc.plans.v2_self_host", decl_name: "v2_self_host_plan"),
+  decl_ref(module_path: "gunbc.plans.debt_payoff", decl_name: "debt_payoff_plan"),
+  decl_ref(module_path: "gunbc.plans.first_customer_service", decl_name: "first_customer_service_plan"),
+  decl_ref(module_path: "gunbc.plans.planning_consolidation", decl_name: "planning_consolidation_plan"),
+  decl_ref(module_path: "gunbc.plans.desired_state_follows_the_machine", decl_name: "desired_state_follows_the_machine_plan"),
+  decl_ref(module_path: "gunbc.plans.one_source_tree", decl_name: "one_source_tree_plan"),
+  decl_ref(module_path: "gunbc.plans.read_set_convergence", decl_name: "read_set_convergence_plan"),
+  decl_ref(module_path: "gunbc.plans.claim_execution_consolidation", decl_name: "claim_execution_consolidation_plan"),
+  decl_ref(module_path: "gunbc.plans.closure_consolidation", decl_name: "closure_consolidation_plan"),
+]
+
+// THE BINDING CARRIER'S OWN LOAD CHECK, asked of one row's intention: the cited-declaration sweep every
+// landing's parse runs over DeclarationRef rows (roadmap_intention_binding holds producer_resolves for
+// the same reason a strategy clause holds it). A planted binding to an intention that is not a real Plan
+// declaration resolves to none here, so the row refuses at load instead of serving a bar wired to
+// nothing.
+fn projection_intention_resolves(intention: DeclarationRef) -> Bool {
+  count(filter(projection_intention_registry, p =>
+    declaration_ref_display_key(ref: p) == declaration_ref_display_key(ref: intention))) > 0
+}
+
+// A leaf path spelled as the decomposition spells it -- item#stage#piece#member, the one string the
+// schedule, the in-flight set and a reader all agree on (the schedule's own path key, read the same way).
+fn projection_leaf_path_text(p: LeafPath) -> String {
+  join([
+    p.item as String, "#",
+    to_string(nat_to_int(n: p.stage)), "#",
+    to_string(nat_to_int(n: p.piece)), "#",
+    to_string(nat_to_int(n: p.member)),
+  ], "")
+}
+
+// THE DERIVED IN-FLIGHT SET for one item, read at the tick. These entries are the log's own derived rows;
+// this only names them for the wire (path, assignee, return_to) -- it holds nothing of its own.
+fn projection_in_flight_entries(entries: List<LeafInFlightEntry>, item: String) -> List<ProjectionInFlight> {
+  map(
+    filter(entries, e => (e.leaf.item as String) == item),
+    e => ProjectionInFlight {
+      path: projection_leaf_path_text(p: e.leaf),
+      assignee: event_principal_label(p: e.assignee),
+      return_to: event_principal_label(p: e.return_to),
+    })
+}
+
+// The kinds the boundary carries as item events: claimed, released, acceptance recorded, retired.
+fn projection_carried_kind_word(w: String) -> Bool {
+  w == "claimed" || w == "released" || w == "acceptance_recorded" || w == "retired"
+}
+
+// THE ITEM'S PAST EVENTS, read from the log at THIS read -- the log's own rows, never a copy the row
+// keeps. Only the boundary's carried kinds appear; each carries the day the log recorded it at.
+fn projection_events_of(envs: List<RoadmapEventEnvelope>, item: String) -> List<ProjectionEvent> {
+  map(
+    filter(envs, e => (e.event.node as String) == item
+      && projection_carried_kind_word(w: roadmap_event_kind_word(k: e.event.kind))),
+    e => ProjectionEvent {
+      kind: roadmap_event_kind_word(k: e.event.kind),
+      recorded_at: e.event.recorded_at,
+    })
+}
+
+// THE LATEST EVENT of the item, read from the log at this read: the kind word of its most recent event,
+// or "none" when the log has carried nothing for it -- never a standing guessed from absence.
+fn projection_latest_event_of(envs: List<RoadmapEventEnvelope>, item: String) -> String {
+  fold(filter(envs, e => (e.event.node as String) == item), init: "none",
+    f: fn(acc, e) { roadmap_event_kind_word(k: e.event.kind) })
+}
+
+// THE ACCEPTANCE EVIDENCE the log carries for the item: the PR evidence URL on its acceptance_recorded
+// row -- the acceptance's own machine fact, read from the log at this read, not a re-spelling. An item
+// with no acceptance carries the empty string, shown honestly rather than omitted.
+fn projection_acceptance_evidence_of(envs: List<RoadmapEventEnvelope>, item: String) -> String {
+  fold(
+    filter(envs, e => (e.event.node as String) == item
+      && roadmap_event_kind_word(k: e.event.kind) == "acceptance_recorded"),
+    init: "",
+    f: fn(acc, e) {
+      match e.event.kind {
+        AcceptanceRecordedEvent { receipt: _, evidence } => roadmap_acceptance_pr_evidence_url(evidence: evidence)
+        _ => acc
+      }
+    })
+}
+
+// One build outcome: the row, or why it could not honestly be built.
+type ProjectionRowResult
+  = ProjectionRowBuilt { row: ProjectionRow }
+  | ProjectionRowRefused { refusal: ProjectionRefusal }
+
+// BUILD ONE ROW from the answers already on the page, or refuse. item_state is the fold's standing keyed;
+// leaves are the schedule's; in_flight and events are the log's; intention and layer are the binding
+// carrier's -- and the carrier refuses a planted intention here, at load.
+fn projection_build_row(
+  node: String,
+  bindings: List<IntentionBinding>,
+  standings: RoadmapStandings,
+  leaves: List<ProjectionLeaf>,
+  in_flight: List<ProjectionInFlight>,
+  envs: List<RoadmapEventEnvelope>,
+) -> ProjectionRowResult {
+  match filter(bindings, b => (b.node as String) == node).first() {
+    Absent => ProjectionRowRefused { refusal: IntentionDoesNotResolve { node: node, intention: "no binding" } }
+    Present { value: b } =>
+      if !projection_intention_resolves(intention: b.intention) {
+        ProjectionRowRefused { refusal: IntentionDoesNotResolve { node: node, intention: declaration_ref_display_key(ref: b.intention) } }
+      } else {
+        match standing_for_node(standings: standings, node_id: node) {
+          Absent => ProjectionRowRefused { refusal: StandingUnobserved { node: node } }
+          Present { value: s } => ProjectionRowBuilt { row: ProjectionRow {
+            node: node,
+            intention: declaration_ref_display_key(ref: b.intention),
+            layer: b.layer,
+            item_state: roadmap_node_standing_key(s: s),
+            leaves: leaves,
+            in_flight: in_flight,
+            latest_event: projection_latest_event_of(envs: envs, item: node),
+            acceptance_evidence: projection_acceptance_evidence_of(envs: envs, item: node),
+            events: projection_events_of(envs: envs, item: node),
+          } }
+        }
+      }
+  }
+}
+
+fn projection_refusal_reason(refusal: ProjectionRefusal) -> String {
+  match refusal {
+    IntentionDoesNotResolve { node: _, intention: i } => join(["intention does not resolve: ", i], "")
+    StandingUnobserved { node: n } => join(["standing unobserved for node: ", n], "")
+  }
+}
+
+fn projection_refusal_step(refusal: ProjectionRefusal) -> String {
+  match refusal {
+    IntentionDoesNotResolve { node: _, intention: _ } => "binding"
+    StandingUnobserved { node: _ } => "standing"
+  }
+}
+
+// THE SERVED DOCUMENT: the whole roadmap as one JSON document, read_on and the inputs the read used at
+// the TOP LEVEL (every row shares the one read), and the rows beneath `rows`. Any row that could not be
+// honestly built refuses the WHOLE document -- a Timeline missing a row would silently draw an incomplete
+// plan, so an honest projection refuses rather than drops. A reader treats a document without `rows` as
+// not-the-projection and reads `refused` for the located reason.
+fn roadmap_work_item_projection_document_json(
+  rows: List<ProjectionRow>,
+  refused: List<ProjectionRefusal>,
+  read_on: String,
+  inputs: ProjectionInputs,
+) -> JsonValue {
+  if count(refused) > 0 {
+    match refused.first() {
+      Present { value: r } => roadmap_work_item_projection_refusal_json(read_on: read_on, step: projection_refusal_step(refusal: r), reason: projection_refusal_reason(refusal: r))
+      Absent => roadmap_work_item_projection_refusal_json(read_on: read_on, step: "unknown", reason: "refusal list unreadable")
+    }
+  } else {
+    json_object(members: [
+      json_kv(key: "schema", value: json_string(s: roadmap_work_item_projection_schema)),
+      json_kv(key: "read_on", value: json_string(s: read_on)),
+      json_kv(key: "inputs", value: json_object(members: [
+        json_kv(key: "worker_count", value: json_int(n: inputs.worker_count)),
+        json_kv(key: "day_priors", value: json_array(elements: map(inputs.day_priors, d => json_int(n: d)))),
+        json_kv(key: "assumed_findings_counts", value: json_array(elements: map(inputs.assumed_findings_counts, c => json_int(n: c)))),
+      ])),
+      json_kv(key: "rows", value: json_array(elements: map(rows, r => projection_row_json(row: r)))),
+    ])
+  }
+}
+
+// EVERY DECLARED FIELD, every row, always. No field is conditional: the boundary's red control is that a
+// row omitting a declared field is not the projection, so the emitter writes all of them -- node,
+// intention, layer, item_state, leaves (each with its critical-path bit), in_flight (each with assignee
+// and return_to), latest_event, acceptance_evidence, events (each with its recorded day).
+fn projection_row_json(row: ProjectionRow) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "node", value: json_string(s: row.node)),
+    json_kv(key: "intention", value: json_string(s: row.intention)),
+    json_kv(key: "layer", value: json_int(n: row.layer)),
+    json_kv(key: "item_state", value: json_string(s: row.item_state)),
+    json_kv(key: "leaves", value: json_array(elements: map(row.leaves, l => json_object(members: [
+      json_kv(key: "path", value: json_string(s: l.path)),
+      json_kv(key: "start_day", value: json_int(n: l.start_day)),
+      json_kv(key: "finish_day", value: json_int(n: l.finish_day)),
+      json_kv(key: "on_critical_path", value: json_bool(b: l.on_critical_path)),
+    ])))),
+    json_kv(key: "in_flight", value: json_array(elements: map(row.in_flight, f => json_object(members: [
+      json_kv(key: "path", value: json_string(s: f.path)),
+      json_kv(key: "assignee", value: json_string(s: f.assignee)),
+      json_kv(key: "return_to", value: json_string(s: f.return_to)),
+    ])))),
+    json_kv(key: "latest_event", value: json_string(s: row.latest_event)),
+    json_kv(key: "acceptance_evidence", value: json_string(s: row.acceptance_evidence)),
+    json_kv(key: "events", value: json_array(elements: map(row.events, e => json_object(members: [
+      json_kv(key: "kind", value: json_string(s: e.kind)),
+      json_kv(key: "recorded_at", value: json_string(s: e.recorded_at)),
+    ])))),
+  ])
+}
+
+// THE REFUSAL, located and typed -- the projection says WHY it is not the projection rather than
+// answering with a partial document a reader could mistake for complete.
+fn roadmap_work_item_projection_refusal_json(read_on: String, step: String, reason: String) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "schema", value: json_string(s: roadmap_work_item_projection_schema)),
+    json_kv(key: "read_on", value: json_string(s: read_on)),
+    json_kv(key: "refused", value: json_object(members: [
+      json_kv(key: "step", value: json_string(s: step)),
+      json_kv(key: "reason", value: json_string(s: reason)),
+    ])),
+  ])
+}
