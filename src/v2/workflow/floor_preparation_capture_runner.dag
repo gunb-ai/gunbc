@@ -64,7 +64,7 @@ import v2.workflow.floor_preparation_split {
 // contract every session on this fleet already follows; the digests below pin the RELEASE, not a
 // machine, so a reader on any host can re-derive the split against the same release.
 fn floor_preparation_env_value(name: String) -> String {
-  let ran = floor_preparation_spawn_plain(binary: "/usr/bin/printenv", arguments: [name])
+  let ran = floor_preparation_spawn_plain(binary: "/usr/bin/printenv", args: [name])
   trim(s: ran.stdout)
 }
 
@@ -227,8 +227,12 @@ fn floor_preparation_first_token(line: String) -> String {
 
 fn floor_preparation_strip(text: String, prefix: String) -> String {
   let pieces = split(s: text, delimiter: prefix)
-  if pieces.length() > 1 && pieces.first() == Present { value: "" } {
-    pieces.skip(n: 1).first_or(text)
+  let starts_empty = match pieces.first() {
+    Present { value: v } => v == ""
+    Absent {} => false
+  }
+  if pieces.length() > 1 && starts_empty {
+    match pieces.skip(n: 1).first() { Present { value: v } => v; Absent {} => text }
   } else { text }
 }
 
@@ -474,9 +478,6 @@ fn floor_preparation_capture_run() -> String {
       args: floor_preparation_leg_argv(entries: entries))
     let untrimmed_receipt = floor_preparation_leg_receipt(
       label: "leg-untrimmed", entries: entries, outcome: untrimmed)
-    let fold_legs_receipt = floor_preparation_receipt("fold-legs",
-      concat(concat("kept_untrimmed=", to_string(length(xs: floor_preparation_kept(text: untrimmed.stdout)))),
-        concat(" kept_graded=", to_string(length(xs: floor_preparation_kept(text: graded.stdout))))))
     let survivors = floor_preparation_surviving_entries(untrimmed_stdout: untrimmed.stdout)
     let graded = floor_preparation_spawn_slot(
       bound: floor_preparation_graded_bound,
@@ -484,6 +485,9 @@ fn floor_preparation_capture_run() -> String {
       args: floor_preparation_leg_argv(entries: survivors))
     let graded_receipt = floor_preparation_leg_receipt(
       label: "leg-graded", entries: survivors, outcome: graded)
+    let fold_legs_receipt = floor_preparation_receipt("fold-legs",
+      concat(concat("kept_untrimmed=", to_string(length(xs: floor_preparation_kept(text: untrimmed.stdout)))),
+        concat(" kept_graded=", to_string(length(xs: floor_preparation_kept(text: graded.stdout))))))
     let kept_untrimmed = floor_preparation_kept(text: untrimmed.stdout)
     let kept_graded = floor_preparation_kept(text: graded.stdout)
     let retained = floor_preparation_retained_body(untrimmed_stdout: untrimmed.stdout, graded_stdout: graded.stdout)
@@ -602,7 +606,7 @@ fn floor_preparation_probe_supply() -> String {
 }
 
 fn floor_preparation_probe_echo() -> String {
-  let outcome = floor_preparation_spawn_slot(bound: millisecond(count: 45000), binary: "/bin/echo", arguments: ["probe-spawn-ok"])
+  let outcome = floor_preparation_spawn_slot(bound: millisecond(count: 45000), binary: "/bin/echo", args: ["probe-spawn-ok"])
   concat(concat("rc=", to_string(outcome.rc)),
     concat(" out=", floor_preparation_strip(text: outcome.stdout, prefix: "probe-")))
 }
