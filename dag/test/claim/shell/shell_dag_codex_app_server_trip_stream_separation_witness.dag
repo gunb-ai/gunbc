@@ -1,0 +1,91 @@
+module test.claim.shell.shell_dag_codex_app_server_trip_stream_separation_witness
+
+import std.types { Bool, String, Int }
+import std.algebra { length, string_contains }
+import gunbc.command_runner { classify_process_observation, ExitZeroSucceeds }
+import extdeps.shell.exec { ProcessObservation, process_observation }
+import gunbc.codex_app_server_press { parse_account_trip_stdout_for_tests }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SIBLING REGRESSION CONTROL FOR shell-dag-codex-app-server-trip-script, ENROLLED AFTER LANDING.
+// The pinned acceptance oracle dag/test/claim/shell/shell_dag_codex_app_server_trip_script_witness.dag
+// is byte-untouched by this file; this module is a NEW claim module beside it, enrolled under the
+// Manager B ruling (escalation msg_4157df93, routed through the shell + primitive-egress lane
+// manager) that the row's red_control clause "a capture that cannot separate streams refuses
+// rather than muxing" had NO arm in the pinned oracle that constructs a non-separable capture and
+// shows it refusing, and that the remedy is a new sibling claim module -- never an edit of the
+// pinned oracle (an oracle move refuses verification).
+//
+// WHAT THIS MODULE COVERS, and what it does NOT. The clause has two halves:
+// (1) REACHABLE HALF, exercised by the first three arms: when the stdout channel CANNOT be
+//     delivered separated -- the process did not exit admitted -- the capture decoder
+//     classify_process_observation (extdeps.shell.exec, the classifier behind the shell lane's
+//     run_shell_command_observe_outcome) REFUSES as ProcessRefused { exit_code, stderr }: the
+//     stderr travels on its own field and the stdout channel is ABSENT from the refusal entirely.
+//     It never returns a Present channel that merged the two streams, an admitted run's Present
+//     channel never carries stderr content, and a silent stdout is the Absent channel -- not a
+//     refusal, and never the stderr content. Arms:
+//     refused_capture_carries_stderr_apart_and_never_a_merged_stdout,
+//     admitted_capture_reads_stdout_channel_without_stderr_leakage,
+//     silent_stdout_is_absent_channel_not_a_refusal_and_not_stderr_content.
+// (2) UNREACHABLE HALF, RECORDED NOT FAKED: an input that ALREADY muxes the two streams into one
+//     text has NO representing type anywhere on main. shell.Exec.RunArgvStdin declares stdout and
+//     stderr as two separate outputs from two separate wire keys; ProcessObservation holds them as
+//     two separate fields; the census on main finds ZERO functions accepting one combined stream
+//     and producing both channels (the deleted mux split_gunbc_stdio_capture survives only in
+//     prose -- 5 hits, all comments/roadmap text; the literal sentinels have 0 executable hits
+//     under dag/ outside this lane's prose and the pinned oracle's own negative-data list). So the
+//     muxed-input antecedent cannot be constructed and NO arm here demonstrates a refusal OF A
+//     MERGED INPUT: that half of the guarantee holds STRUCTURALLY (the merged input is
+//     inexpressible at the typed seam), not by a demonstrated refusal. The fourth arm,
+//     muxed_sentinels_stay_data_in_the_consumer, proves only the consumer-side residue: the
+//     capture CONSUMER parses no sentinel markers at all, so sentinel-shaped text arriving as data
+//     on one channel is never re-split into channels -- the anti-mux property of the consumer.
+// A verdict from this module covers the separation and the channel-refusal clauses it states; it
+// does NOT claim the merged-input refusal was demonstrated, and it does not close the row's
+// stream-separation clause by demonstration -- the census above is the record for that half.
+
+data clean_frame: String = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"ok\":true}}"
+
+data mux_shaped_stdout: String = "---GUNBC_STDOUT---{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"ok\":true}}\n---GUNBC_STDERR---boot noise"
+
+test fn refused_capture_carries_stderr_apart_and_never_a_merged_stdout() -> Bool {
+  let observation: ProcessObservation = process_observation(exit_code: 1, stdout: "LEAK-MARKER-STDOUT", stderr: "boom")
+  match classify_process_observation(policy: ExitZeroSucceeds, observation: observation) {
+    // THE BUG THE CLAUSE FORBIDS WOULD CLASSIFY THIS AS A PRESENT CHANNEL CARRYING THE MERGED TEXT;
+    // the correct rung is a refusal whose stdout channel is absent and whose stderr is its own field.
+    ProcessRefused { exit_code: e, stderr: err } => (e == 1) && (err == "boom")
+    ProcessOutputPresent { text: _ } => false
+    ProcessOutputAbsent => false
+  }
+}
+
+test fn admitted_capture_reads_stdout_channel_without_stderr_leakage() -> Bool {
+  let observation: ProcessObservation = process_observation(exit_code: 0, stdout: "OUT-CHANNEL", stderr: "ERR-CHANNEL")
+  match classify_process_observation(policy: ExitZeroSucceeds, observation: observation) {
+    ProcessOutputPresent { text: t } => (t == "OUT-CHANNEL") && !string_contains(s: t, pattern: "ERR-CHANNEL")
+    ProcessOutputAbsent => false
+    ProcessRefused { exit_code: _, stderr: _ } => false
+  }
+}
+
+test fn silent_stdout_is_absent_channel_not_a_refusal_and_not_stderr_content() -> Bool {
+  let observation: ProcessObservation = process_observation(exit_code: 0, stdout: "", stderr: "noise-on-stderr")
+  match classify_process_observation(policy: ExitZeroSucceeds, observation: observation) {
+    ProcessOutputAbsent => true
+    ProcessOutputPresent { text: t } => false
+    ProcessRefused { exit_code: _, stderr: _ } => false
+  }
+}
+
+test fn muxed_sentinels_stay_data_in_the_consumer() -> Bool {
+  // A clean frame on the stdout channel is a KNOWN response frame (no unknown digests). The SAME
+  // frame wrapped in the deleted mux's sentinel markers -- stderr text and all -- is NOT re-split
+  // into channels: its lines are data, counted as unknown frames by the consumer, and the stderr
+  // channel it pretends to carry never appears. The consumer performs zero sentinel-mux parsing.
+  let clean_unknown_count: Int = length(xs: parse_account_trip_stdout_for_tests(stdout: clean_frame).unknown_frame_digests)
+  let muxed_unknown_count: Int = length(xs: parse_account_trip_stdout_for_tests(stdout: mux_shaped_stdout).unknown_frame_digests)
+  (clean_unknown_count == 0) && (muxed_unknown_count > 0)
+}
