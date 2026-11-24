@@ -1161,11 +1161,11 @@ fn floor_preparation_split_report() -> String {
         )
       Split { preparation_ms: p, claim_ms: cm, preparation_lines: pl, claim_lines: cl, uncosted_lines: uc, untagged_lines: ut, verdict_pass: vp, verdict_fail: vf, total_ms: tm } =>
         match floor_preparation_attribution(capture) {
-          Unattributed {} => join([floor_preparation_split_line(floor_preparation_ms_count(p), floor_preparation_ms_count(cm), pl, cl, uc, ut, vp, vf, floor_preparation_ms_count(tm)), " modules=none"], "")
+          Unattributed {} => join([floor_preparation_split_line(p, cm, pl, cl, uc, ut, vp, vf, tm), " modules=none"], "")
           Attributed { modules: rows, module_count: mc, top_module: top, top_ms: top_ms } =>
             join(
               [
-                floor_preparation_split_line(floor_preparation_ms_count(p), floor_preparation_ms_count(cm), pl, cl, uc, ut, vp, vf, floor_preparation_ms_count(tm)),
+                floor_preparation_split_line(p, cm, pl, cl, uc, ut, vp, vf, tm),
                 " instrument=",
                 floor_preparation_capture_provenance(),
                 " phase_ms=",
@@ -1222,15 +1222,18 @@ fn floor_preparation_split_report() -> String {
   }
 }
 
-fn floor_preparation_split_line(preparation_ms: Int, claim_ms: Int, preparation_lines: Int, claim_lines: Int, uncosted_lines: Int, untagged_lines: Int, verdict_pass: Int, verdict_fail: Int, total_ms: Int) -> String {
+// Duration carries the Millisecond unit all the way to the printer; the digit rendering
+// (review 97819) happens HERE, at the printing boundary, not in callers. Line and verdict
+// counts stay Int: they are counts, not durations.
+fn floor_preparation_split_line(preparation_ms: Millisecond, claim_ms: Millisecond, preparation_lines: Int, claim_lines: Int, uncosted_lines: Int, untagged_lines: Int, verdict_pass: Int, verdict_fail: Int, total_ms: Millisecond) -> String {
   join(
     [
       concat(floor_preparation_report_prefix, "preparation_ms="),
-      to_string(preparation_ms),
+      to_string(floor_preparation_ms_count(preparation_ms)),
       " claim_ms=",
-      to_string(claim_ms),
+      to_string(floor_preparation_ms_count(claim_ms)),
       " total_ms=",
-      to_string(total_ms),
+      to_string(floor_preparation_ms_count(total_ms)),
       " preparation_lines=",
       to_string(preparation_lines),
       " claim_lines=",

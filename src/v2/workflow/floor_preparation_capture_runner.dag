@@ -510,8 +510,9 @@ fn floor_preparation_capture_run() -> String {
       bound: floor_preparation_report_bound,
       binary: floor_preparation_pinned_gunbc(),
       args: concat(
-        fold(floor_preparation_source_roots, init: [], f: (acc, root) => concat(acc, ["--source-root", root])),
-        ["run", "--entry", floor_preparation_authority_path, "--function", "floor_preparation_split_report"]))
+        ["run"], concat(
+          fold(floor_preparation_source_roots, init: [], f: (acc, root) => concat(acc, ["--source-root", root])),
+          ["--entry", floor_preparation_authority_path, "--function", "floor_preparation_split_report"])))
     let build_argv_receipt = floor_preparation_receipt("build-argv-from-population",
       concat("entries=", to_string(length(xs: entries))))
     let splice_receipt = floor_preparation_receipt("splice-capture-rows",
