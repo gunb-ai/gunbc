@@ -1815,7 +1815,7 @@ mod process_cwd_mutation_reachability_gate {
     /// NAME RESOLUTION, AND WHY IT IS NOT A BARE GLOBAL MERGE. A first cut at the crate-wide
     /// population unioned every call edge by name across all files, and that is unsound in the
     /// direction that looks safe: the crate declares `main` 18 times, `new` 13, `probe`, `fail`
-    /// and `foo` besides, so one production function reaching the mutator (`pre_push::run_inner`)
+    /// and `foo` besides, so one production function reaching a mutator
     /// bridged through those shared spellings into hundreds of unrelated tests. A wall that names
     /// `two_identical_runs_mark_nothing_unstable` as a cwd offender is the absorbing fallback
     /// gunbc.design_argument::fail_closed refuses — it cannot be acted on, so it would be silenced rather than fixed.
@@ -3635,9 +3635,9 @@ impl ModuleIndexRefusal {
     }
 }
 
-/// The exit arm for the INFALLIBLE index consumers (floor, `claim_batch`, `claim_executor`,
-/// census, compile): a refusal set stops the line with exit 1, counted and located, exactly as the
-/// unparseable arm always did; the header-less and unreadable causes join it. The exit class is
+/// The exit arm for the INFALLIBLE index consumers (floor, `claim_executor`, census, compile): a
+/// refusal set stops the line with exit 1, counted and located, exactly as the unparseable arm
+/// always did; the header-less and unreadable causes join it. The exit class is
 /// those consumers' standing contract and is not changed here. A caller that answers "what did
 /// this observe" (`gunbc test`) takes the typed set from `try_with_module_path_index` instead.
 fn refuse_module_index(refusals: &[ModuleIndexRefusal]) {
@@ -5724,7 +5724,7 @@ pub struct ModuleGraphFactsLive {
     /// That makes it the release-live witness for "this scratch's facts ARE the underlay's
     /// facts": a content comparison of two clones could agree while the underlying builds
     /// differed, and a `debug_assert_eq!` is compiled out exactly where the census runs
-    /// (every `claim_batch` build is `--release`). Read by `MultiEntryIndex::pool_identity_proof`.
+    /// (every census build is `--release`). Read by `MultiEntryIndex::pool_identity_proof`.
     pub(crate) build_id: u64,
     pub(crate) nodes: Vec<ModuleDeclarationFactRaw>,
     pub(crate) adjacency: HashMap<String, Vec<String>>,
@@ -16736,10 +16736,7 @@ mod panic_payload_kind_tests {
 pub fn run_claim(ctx: &v1_interpreter::InterpContext, function: &str) -> ClaimOutcome {
     // ProcessExit is the wet-gate return convention (ExitSuccess => Pass, ExitFailure =>
     // ExitFailure carrying its typed reason). NotProcessExit stays NotBool — fail-closed
-    // preserved for genuine type errors. Reuses pre-existing classify_exit. Required: emitted
-    // pre-push drift --wet gate runs through claim_batch -> run_claim; without this mapping
-    // ExitSuccess -> exit 1 false-blocks push (receipt: claim_batch rebuilt on reverted seed
-    // reproduced the false-block).
+    // preserved for genuine type errors. Reuses pre-existing classify_exit.
     // A path left by an error some earlier evaluation absorbed must not be read as this one's.
     let _ = v1_interpreter::take_raise_path();
     let evaluated = match run_claim_evaluation(ctx, function) {
@@ -17340,15 +17337,6 @@ pub fn run_value(
     function: &str,
 ) -> Result<v1_interpreter::Value, String> {
     v1_interpreter::run_in_context(ctx, function, false).map_err(|e| format!("{}", e))
-}
-
-#[path = "pre_push.rs"]
-mod pre_push;
-
-/// Thin CLI transport handler for `claim_batch --pre-push`: stdin parse and gate
-/// orchestration live in `pre_push`; disposition receipt in `gunbc.githooks.githooks_pre_push_cli`.
-pub fn handle_pre_push() -> std::process::ExitCode {
-    pre_push::run()
 }
 
 /// adhoc-c328b166-bca residual-hunt instrumentation dump: printed periodically

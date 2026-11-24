@@ -45,5 +45,3 @@ fn pre_push_stdin_read_vars() -> String {
 }
 
 data zero_sha: String = "0000000000000000000000000000000000000000"
-
-data pre_push_zero_sha: String = zero_sha

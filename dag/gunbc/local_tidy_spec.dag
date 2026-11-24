@@ -111,8 +111,8 @@ data local_tidy_fmt_pre_push_drift_recipe: String = "rustfmt drift — run: carg
 data local_tidy_fmt_pre_commit_drift_recipe: String = "fmt drift in staged Rust — run: cargo fmt --all && git add -u, then re-commit."
 
 // local_tidy_fmt_pre_push_drift_recipe was authored byte-identically in BOTH
-// gunbc.githooks.githooks_pre_push_emit and gunbc.githooks.githooks_pre_push_plan — one string, two authorities, free
-// to drift (gunbc.design_argument::single_authority). Both now import this row. The pre-commit and pre-push drift recipes
+// gunbc.githooks.githooks_pre_push_emit and the since-deleted pre-push plan module — one string, two
+// authorities, free to drift (gunbc.design_argument::single_authority). The emitter imports this row. The pre-commit and pre-push drift recipes
 // stay two rows because they are two genuinely different remedies (git add -u then re-commit,
 // versus commit and re-push), not one concept spelled twice.
 
