@@ -73,6 +73,13 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data shell_control_words: List<String> = ["set -e", "||", "&&", ";", "2>/dev/null"]
 
+// SCOPED TO PROSE, ON PURPOSE: a refusal REASON is data, never spliced into any command on the acting
+// route (measured: no join of this argv into shell text anywhere — see the PR receipt). So the audit over
+// it covers only control sequences English prose never legitimately contains. A bare ';' in prose is not
+// a hazard and is NOT audited here; the ';' that would be a hazard is one inside an argv word, and that
+// is audited by shell_control_words below, over the words the installer actually receives.
+data prose_control_sequences: List<String> = ["set -e", "||", "&&", "2>/dev/null"]
+
 // THE PLAINTED DEPLOY FIXTURE: the leaf this deploy owns, under the deployment spec's OWN declared
 // service principal. The owner is declared, never observed — an observation can report a principal, it
 // cannot grant one.
@@ -107,23 +114,33 @@ fn leaf_read(user: String, group: String) -> EnsureObservation<OwnedDirectoryRea
 // ADVERSARIAL, RE-POINTED ONTO THE ACTING ROUTE -- and the hazard class changed with the target, said
 // plainly: the planted input is no longer a path carrying a shell separator (that hazard is unreachable
 // for an argv that never becomes shell text, measured above); it is an OWNERSHIP the typed effect cannot
-// express. This arm is GREEN the moment it lands, because that refusal is already established in the
-// provider (#gunbc.owned_directory::owned_directory_plan with ForeignOwnershipRefuses) -- it is a move of
-// a guarded property, not a new refusal this PR introduces. The claim keeps its name so the ledger line
-// is comparable one-for-one across the move; renaming it would open a new claim identity mid-row and
-// lose the pair. What this arm would turn RED: an install plan produced over a foreign-owned leaf, or a
-// refusal surface carrying an operator.
-// typed effect must produce NO install plan — re-owning someone else's leaf would hand the demanding
-// principal whatever was found there — and the refusal surface it does produce must carry no shell
-// control word: `set -e`, `||`, `&&`, `;`, `2>/dev/null`. A refusal that reaches the fold as prose with
-// an operator in it is the same defect one layer down.
+// express. The claim keeps its name so the ledger line stays comparable one-for-one across the move;
+// renaming it would open a new claim identity mid-row and lose the pair.
+//
+// IT WENT RED FIRST, FOR THE WRONG REASON, AND ONLY EXECUTION SAID SO (head d4fc878f2e68, run link in
+// the PR body): this arm audited the refusal REASON against the control-word list, and the provider's
+// correct foreign-ownership refusal reads "... is owned by svc-foreign-owner/svc-foreign-owner, not
+// <declared>; ownership is never adopted" — a ';' in ENGLISH. Auditing prose punctuation as a shell
+// operator makes a correct refusal look like a defect and can never go green for legitimate prose, so it
+// is not the row's hazard. The control-word audit belongs on the SURFACE that would reach an exec — the
+// argv, asserted in the arm below, where a ';' or `||` really is syntax.
+//
+// What stays asserted here, and what turns this arm RED: (1) an install plan produced over a
+// foreign-owned leaf — re-owning someone else's leaf would hand the demanding principal whatever was
+// found there — is the defect, so EnsurePlanAvailable is a hard false; (2) the refusal must be
+// INFORMATIVE, naming the principal it found and the path it refused, because a refusal that loses what
+// it found cannot be checked or acted on; (3) the refusal must not smuggle a command into its own text:
+// the multi-character control sequences prose never legitimately uses (`set -e`, `||`, `&&`, `2>/dev/null`)
+// are refused here, while a bare ';' is not audited in prose for the reason above.
 test fn adversarial_install_path_renders_no_shell_control_word() -> Bool {
   match owned_directory_plan(
     t: deploy_leaf(path: "/opt/gunbc/attempt-state"),
     o: leaf_read(user: "svc-foreign-owner", group: "svc-foreign-owner"),
   ) {
     EnsurePlanUnavailable { reason } =>
-      !any(shell_control_words, w => string_contains(s: reason as String, pattern: w))
+      string_contains(s: reason as String, pattern: "svc-foreign-owner")
+        && string_contains(s: reason as String, pattern: "/opt/gunbc/attempt-state")
+        && !any(prose_control_sequences, w => string_contains(s: reason as String, pattern: w))
     EnsurePlanAvailable { plan } => false
   }
 }
