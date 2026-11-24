@@ -30,22 +30,43 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //     refused_capture_carries_stderr_apart_and_never_a_merged_stdout,
 //     admitted_capture_reads_stdout_channel_without_stderr_leakage,
 //     silent_stdout_is_absent_channel_not_a_refusal_and_not_stderr_content.
-// (2) UNREACHABLE HALF, RECORDED NOT FAKED: an input that ALREADY muxes the two streams into one
-//     text has NO representing type anywhere on main. shell.Exec.RunArgvStdin declares stdout and
-//     stderr as two separate outputs from two separate wire keys; ProcessObservation holds them as
-//     two separate fields; the census on main finds ZERO functions accepting one combined stream
-//     and producing both channels (the deleted mux split_gunbc_stdio_capture survives only in
-//     prose -- 5 hits, all comments/roadmap text; the literal sentinels have 0 executable hits
-//     under dag/ outside this lane's prose and the pinned oracle's own negative-data list). So the
-//     muxed-input antecedent cannot be constructed and NO arm here demonstrates a refusal OF A
-//     MERGED INPUT: that half of the guarantee holds STRUCTURALLY (the merged input is
-//     inexpressible at the typed seam), not by a demonstrated refusal. The fourth arm,
-//     muxed_sentinels_stay_data_in_the_consumer, proves only the consumer-side residue: the
-//     capture CONSUMER parses no sentinel markers at all, so sentinel-shaped text arriving as data
-//     on one channel is never re-split into channels -- the anti-mux property of the consumer.
-// A verdict from this module covers the separation and the channel-refusal clauses it states; it
-// does NOT claim the merged-input refusal was demonstrated, and it does not close the row's
-// stream-separation clause by demonstration -- the census above is the record for that half.
+// (2) UNREACHED HALF, DISPOSITION: NOT HELD, gap named; the clause has MOVED out of this row.
+//     An earlier revision of this header asserted the merged-input antecedent was STRUCTURALLY
+//     INEXPRESSIBLE at the typed seam. That framing is RETRACTED -- it was wrong, and this header
+//     is its correction. The row's stream-separation ENFORCEMENT clause ("a capture that cannot
+//     separate streams refuses rather than muxing") is NOT HELD at the compiler-enforcement rung.
+//     The gap, named: ProcessObservation and process_observation in dag/extdeps/shell/exec.dag
+//     are PUBLIC and UNSEALED constructors, so any caller can construct a contradictory
+//     (exit_code, stdout, stderr) triple at the DAG layer -- including one that carries a merged
+//     text on both fields -- and nothing refuses it. The two declarations as they read:
+//       type ProcessObservation {
+//         exit_code: Int
+//         stdout: String
+//         stderr: String
+//       }
+//       fn process_observation(exit_code: Int, stdout: String, stderr: String) -> ProcessObservation {
+//         ProcessObservation { exit_code: exit_code, stdout: stdout, stderr: stderr }
+//       }
+//     Neither carries admit_callers; the only admit_callers blocks in that file seal a different
+//     carrier. What STILL HOLDS, and where it holds: the separation lives in the RUST capture
+//     path -- the sole production capture constructor drains the child's stdout and stderr pipes
+//     as two separate bounded observations and maps them under separate evidence keys (a
+//     source-read, NOT executed evidence) -- and the production census found zero live functions
+//     accepting one combined stream and producing both channels (the deleted mux
+//     split_gunbc_stdio_capture: 5 hits repo-wide, all prose; the sentinel literals: 0 executable
+//     hits outside prose and the pinned oracle's own negative-data list). Neither this module nor
+//     this row claims compiler enforcement of separation, and NO arm here demonstrates a refusal
+//     OF A MERGED INPUT. The enforcement clause -- sealed construction of process-output
+//     observations -- has MOVED to a new row of this lane, working id
+//     shell-dag-process-observation-sealed-carrier, and is no longer claimed by this row.
+//     The fourth arm, muxed_sentinels_stay_data_in_the_consumer, proves only the consumer-side
+//     residue: the capture CONSUMER parses no sentinel markers at all, so sentinel-shaped text
+//     arriving as data on one channel is never re-split into channels -- the anti-mux property
+//     of the consumer.
+// A verdict from this module covers the separation-shape and channel-refusal clauses stated in
+// (1) ONLY. It does NOT claim the merged-input refusal was demonstrated, and it does NOT hold the
+// row's stream-separation enforcement clause -- the named gap above is the record for that half,
+// and the census above stands only as a measurement of the production path.
 
 data clean_frame: String = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"ok\":true}}"
 
