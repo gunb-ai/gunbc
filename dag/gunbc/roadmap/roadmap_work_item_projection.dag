@@ -12,7 +12,7 @@ import gunbc.roadmap.roadmap_intention_binding { IntentionBinding, roadmap_inten
 import gunbc.roadmap.roadmap_schedule_calendar { DatedLeaf, date_leaf, date_text }
 import gunbc.roadmap.roadmap_belt { BeltCapacity }
 import gunbc.roadmap.roadmap_decomposition { WorkDecomposition, decomposition_for, expand_decomposition }
-import gunbc.roadmap.roadmap_schedule { Schedule, Scheduled, NotScheduled, schedule }
+import gunbc.roadmap.roadmap_schedule { Schedule, Scheduled, NotScheduled, ScheduleRefusal, schedule }
 import std.nat { Nat }
 import std.integer { nat_to_int }
 import extdeps.units.iso8601_calendar { Iso8601CivilDate }
@@ -102,6 +102,12 @@ type ProjectionRow {
 type ProjectionRefusal
   = UnboundNode { node: String }
   | StandingUnobserved { node: String }
+  // A node whose decomposition exists but whose schedule REFUSED: a plan is present but cannot be honestly
+  // placed. Serving empty leaves here would draw "nothing planned" for an item mid-plan -- a silent widen.
+  | ScheduleRefused { node: String, cause: String }
+  // The item's in-flight read refused (history not causally orderable, a grain unreadable, ...): its held
+  // claims cannot be honestly stated. Serving empty in_flight would draw "nobody claimed" -- a silent widen.
+  | InFlightUnordered { node: String }
 
 // THE INTENTION-EXISTENCE GUARANTEE IS THE BINDING CARRIER'S, NOT THIS UNIT'S. A work item's row takes its
 // intention and layer from the binding carrier (roadmap_intention_bindings, IntentionBinding { node,
@@ -203,7 +209,7 @@ fn projection_acceptance_evidence_of(envs: List<RoadmapEventEnvelope>, item: Str
 
 // One build outcome: the row, or why it could not honestly be built.
 type ProjectionRowResult
-  = ProjectionRowBuilt { row: ProjectionRow }
+  = ProjectionRowBuilt { row: ProjectionRow, day_priors: List<Int> }
   | ProjectionRowRefused { refusal: ProjectionRefusal }
 
 // BUILD ONE ROW from the answers already on the page, or refuse. item_state is the fold's standing keyed;
@@ -218,6 +224,7 @@ fn projection_build_row(
   leaves: List<ProjectionLeaf>,
   in_flight: List<ProjectionInFlight>,
   envs: List<RoadmapEventEnvelope>,
+  day_priors: List<Int>,
 ) -> ProjectionRowResult {
   match filter(bindings, b => (b.node as String) == node).first() {
     Absent => ProjectionRowRefused { refusal: UnboundNode { node: node } }
@@ -234,7 +241,7 @@ fn projection_build_row(
           latest_event: projection_latest_event_of(envs: envs, item: node),
           acceptance_evidence: projection_acceptance_evidence_of(envs: envs, item: node),
           events: projection_events_of(envs: envs, item: node),
-        } }
+        }, day_priors: day_priors }
       }
   }
 }
@@ -243,6 +250,8 @@ fn projection_refusal_reason(refusal: ProjectionRefusal) -> String {
   match refusal {
     UnboundNode { node: n } => join(["no binding for node: ", n], "")
     StandingUnobserved { node: n } => join(["standing unobserved for node: ", n], "")
+    ScheduleRefused { node: n, cause: c } => join(["schedule refused for node: ", n, " (", c, ")"], "")
+    InFlightUnordered { node: n } => join(["in-flight read refused for node: ", n, " (history not orderable)"], "")
   }
 }
 
@@ -250,6 +259,24 @@ fn projection_refusal_step(refusal: ProjectionRefusal) -> String {
   match refusal {
     UnboundNode { node: _ } => "binding"
     StandingUnobserved { node: _ } => "standing"
+    ScheduleRefused { node: _, cause: _ } => "schedule"
+    InFlightUnordered { node: _ } => "in_flight"
+  }
+}
+
+// THE CAUSE WORD OF A REFUSED SCHEDULE -- the failure named, not swallowed (fail_closed). The projection
+// refuses on a NotScheduled rather than widen to empty leaves, and this names which arm refused so the
+// located reason carries the upstream cause instead of a generic 'schedule refused'.
+fn projection_schedule_refusal_cause(refusal: ScheduleRefusal) -> String {
+  match refusal {
+    OverRefusedExpansion { cause: _ } => "over_refused_expansion"
+    ConcurrencyCapInvalid { cap: _ } => "concurrency_cap_invalid"
+    NoWorkingDayPrior { paths: _ } => "no_working_day_prior"
+    CyclicOccurrenceGraph => "cyclic_occurrence_graph"
+    UnplacedOccurrences { paths: _ } => "unplaced_occurrences"
+    MemberIndexBeyondExpansion { paths: _ } => "member_index_beyond_expansion"
+    PinnedLeafNotAnOccurrence { paths: _ } => "pinned_leaf_not_an_occurrence"
+    PinnedPlacementInvalid { paths: _ } => "pinned_placement_invalid"
   }
 }
 
@@ -348,30 +375,41 @@ fn roadmap_projection_row_read(
   envs: List<RoadmapEventEnvelope>,
 ) -> ProjectionRowResult {
   let node_id = node as String
-  let leaves = match decomposition_for(node: node).first() {
-    Absent => [] as List<ProjectionLeaf>
-    Present { value: d } => match schedule(d: d, e: expand_decomposition(d: d, findings_count: findings_count), workers: workers) {
-      NotScheduled { refusal: _ } => [] as List<ProjectionLeaf>
-      Scheduled { answer: a } => projection_leaves_for_item(
-        dated: map(a.leaves, l => date_leaf(read_date: read_date, leaf: l)),
-        critical_path: a.critical_path,
-        item: node_id,
-      )
-    }
-  }
   let item_envs = filter(envs, e => (e.event.node as String) == node_id)
-  let in_flight_entries = match roadmap_leaf_in_flight_from_envs(envs: item_envs) {
-    InFlightLeaves { leaves: ls, closed: _, pathless_claims: _, absorbed_claims: _ } => ls
-    InFlightRefused { cause: _ } => [] as List<LeafInFlightEntry>
+  // In-flight FIRST, and fail-closed: a refused in-flight read (history not orderable, a grain unreadable,
+  // ...) refuses the WHOLE row -- it is never widened to an empty set, which would draw an item with held
+  // claims as one nobody claimed (fail_closed). Ordering it before the schedule keeps an unordered history
+  // visible even where the schedule would otherwise have answered.
+  match roadmap_leaf_in_flight_from_envs(envs: item_envs) {
+    InFlightRefused { cause: _ } => ProjectionRowRefused { refusal: InFlightUnordered { node: node_id } }
+    InFlightLeaves { leaves: entries, closed: _, pathless_claims: _, absorbed_claims: _ } =>
+      let in_flight = projection_in_flight_entries(entries: entries, item: node_id)
+      match decomposition_for(node: node).first() {
+        // NO decomposition at all: nothing to plan, so the leaf list is honestly empty -- the ONLY case that
+        // serves empty leaves (a fact about an unplanned item, not a hidden refusal).
+        Absent => projection_build_row(
+          node: node_id, bindings: roadmap_intention_bindings, standings: standings,
+          leaves: [] as List<ProjectionLeaf>, in_flight: in_flight, envs: item_envs, day_priors: [] as List<Int>)
+        Present { value: d } => match schedule(d: d, e: expand_decomposition(d: d, findings_count: findings_count), workers: workers) {
+          // The schedule REFUSED -- a plan exists but cannot be placed. Refuse the row (fail_closed: a failure
+          // arm refuses, it never widens); do NOT widen to empty leaves and call the item un-planned.
+          NotScheduled { refusal: r } => ProjectionRowRefused { refusal: ScheduleRefused { node: node_id, cause: projection_schedule_refusal_cause(refusal: r) } }
+          Scheduled { answer: a } => projection_build_row(
+            node: node_id, bindings: roadmap_intention_bindings, standings: standings,
+            leaves: projection_leaves_for_item(
+              dated: map(a.leaves, l => date_leaf(read_date: read_date, leaf: l)),
+              critical_path: a.critical_path,
+              item: node_id,
+            ),
+            in_flight: in_flight,
+            envs: item_envs,
+            // The working-day spans the schedule priced each leaf at -- the read's ACTUAL day priors, surfaced
+            // so the document shows them as the inputs they are (they live in the decomposition, not a side input).
+            day_priors: map(a.leaves, l => l.finish_day - l.start_day),
+          )
+        }
+      }
   }
-  projection_build_row(
-    node: node_id,
-    bindings: roadmap_intention_bindings,
-    standings: standings,
-    leaves: leaves,
-    in_flight: projection_in_flight_entries(entries: in_flight_entries, item: node_id),
-    envs: item_envs,
-  )
 }
 
 // THE SERVED PROJECTION FOR A SET OF WORK ITEMS AT ONE READ -- the single call the /projection.json surface
@@ -398,14 +436,24 @@ fn roadmap_projection_document_for_read(
     node: n, read_date: read_on_date, workers: workers, findings_count: findings_count, standings: standings, envs: envs))
   let rows = fold(results, init: [] as List<ProjectionRow>, f: fn(acc, r) {
     match r {
-      ProjectionRowBuilt { row: row } => concat(acc, [row])
+      ProjectionRowBuilt { row: row, day_priors: _ } => concat(acc, [row])
       ProjectionRowRefused { refusal: _ } => acc
     }
   })
   let refusals = fold(results, init: [] as List<ProjectionRefusal>, f: fn(acc, r) {
     match r {
-      ProjectionRowBuilt { row: _ } => acc
+      ProjectionRowBuilt { row: _, day_priors: _ } => acc
       ProjectionRowRefused { refusal: refusal } => concat(acc, [refusal])
+    }
+  })
+  // THE DAY PRIORS THE READ ACTUALLY PRICED WITH: the working-day spans the schedule placed each built leaf
+  // at, collected across every built item and shown at the top as the input it is (the boundary). An empty
+  // list here now means exactly what it says -- no scheduled leaf was priced -- rather than a field that
+  // claimed priors it never captured.
+  let day_priors = fold(results, init: [] as List<Int>, f: fn(acc, r) {
+    match r {
+      ProjectionRowBuilt { row: _, day_priors: p } => concat(acc, p)
+      ProjectionRowRefused { refusal: _ } => acc
     }
   })
   roadmap_work_item_projection_document_json(
@@ -414,7 +462,7 @@ fn roadmap_projection_document_for_read(
     read_on: read_on,
     inputs: ProjectionInputs {
       worker_count: workers.max_concurrent,
-      day_priors: [] as List<Int>,
+      day_priors: day_priors,
       assumed_findings_counts: [nat_to_int(n: findings_count)],
     },
   )

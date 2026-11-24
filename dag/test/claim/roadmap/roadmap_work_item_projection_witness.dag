@@ -34,7 +34,7 @@ import gunbc.roadmap.roadmap_event_log {
 import gunbc.roadmap.roadmap_intention_binding { IntentionBinding }
 import gunbc.roadmap.roadmap_work_item_projection {
   ProjectionLeaf, ProjectionInFlight, ProjectionEvent, ProjectionInputs, ProjectionRow, ProjectionRefusal,
-  ProjectionRowResult, ProjectionRowBuilt, ProjectionRowRefused,
+  ProjectionRowResult, ProjectionRowBuilt, ProjectionRowRefused, ScheduleRefused, InFlightUnordered,
   projection_build_row, projection_in_flight_entries, projection_leaf_from_dated, projection_leaves_for_item,
   roadmap_work_item_projection_document_json, projection_row_json,
 }
@@ -104,8 +104,9 @@ test fn first_slice_item_with_leaves_in_flight_shows_every_declared_field() -> B
   match projection_build_row(
     node: "item-a", bindings: [bound_node("item-a")], standings: open_standings(),
     leaves: leaves, in_flight: projection_in_flight_entries(entries: derived, item: "item-a"), envs: envs,
+    day_priors: [] as List<Int>,
   ) {
-    ProjectionRowBuilt { row: r } =>
+    ProjectionRowBuilt { row: r, day_priors: _ } =>
       let d = doc_of([r])
       string_contains(s: d, pattern: "\"node\"")
       && string_contains(s: d, pattern: "item-a")
@@ -153,8 +154,9 @@ test fn same_item_after_planted_release_still_carries_every_field() -> Bool {
     node: "item-a", bindings: [bound_node("item-a")], standings: open_standings(),
     leaves: [ProjectionLeaf { path: "item-a#0#0#0", start_day: "2026-11-02", finish_day: "2026-11-04", on_critical_path: true }],
     in_flight: [] as List<ProjectionInFlight>, envs: envs,
+    day_priors: [] as List<Int>,
   ) {
-    ProjectionRowBuilt { row: r } =>
+    ProjectionRowBuilt { row: r, day_priors: _ } =>
       let d = doc_of([r])
       string_contains(s: d, pattern: "released")
       && string_contains(s: d, pattern: "claimed")
@@ -174,9 +176,10 @@ test fn unbound_node_refuses_the_whole_document_not_drops_the_row() -> Bool {
   let built = projection_build_row(
     node: "never-bound", bindings: [bound_node("item-a")], standings: open_standings(),
     leaves: [] as List<ProjectionLeaf>, in_flight: [] as List<ProjectionInFlight>, envs: [] as List<RoadmapEventEnvelope>,
+    day_priors: [] as List<Int>,
   )
   match built {
-    ProjectionRowBuilt { row: _ } => false
+    ProjectionRowBuilt { row: _, day_priors: _ } => false
     ProjectionRowRefused { refusal: r } =>
       let refusal_doc = serialize_json(v: roadmap_work_item_projection_document_json(
         rows: [] as List<ProjectionRow>, refused: [r], read_on: "2026-11-24", inputs: read_inputs()))
@@ -256,17 +259,24 @@ test fn row_read_builds_a_dated_row_for_a_real_bound_item() -> Bool {
       standings: open_standings(),
       envs: [] as List<RoadmapEventEnvelope>,
     ) {
-      ProjectionRowRefused { refusal: _ } => false
-      ProjectionRowBuilt { row: r } =>
+      // Either a built, dated row -- the composition executed and the schedule placed the item -- OR an honest
+      // ScheduleRefused: with empty envs the in-flight read cannot refuse, the node is bound and has a
+      // decomposition, so the ONLY legal refusal here is the schedule refusing to place it. A built row must
+      // carry every leaf as an ISO day and its day_priors must align one-for-one with its leaves (a leaf with
+      // no prior, or a prior with no leaf, is the silent-widen this node forbids).
+      ProjectionRowBuilt { row: r, day_priors: p } =>
         r.node == "namespace-reference-derived-closure"
         && r.item_state == "open"
         && string_length(s: r.intention) > 0
         && count(r.in_flight) == 0
+        && count(p) == count(r.leaves)
         && count(filter(r.leaves, l =>
              string_length(s: l.start_day) == 10
              && string_length(s: l.finish_day) == 10
              && string_contains(s: l.start_day, pattern: "-")
              && string_contains(s: l.finish_day, pattern: "-"))) == count(r.leaves)
+      ProjectionRowRefused { refusal: ScheduleRefused { node: n, cause: _ } } => n == "namespace-reference-derived-closure"
+      ProjectionRowRefused { refusal: _ } => false
     }
   }
 }
@@ -346,5 +356,59 @@ test fn projection_refusal_is_the_projections_own_document_not_a_standings_body(
       && !string_contains(s: d, pattern: "release_identity")
       && !string_contains(s: d, pattern: "source_head")
       && !string_contains(s: d, pattern: "\"standings\"")
+  }
+}
+
+// Two disjoint claim roots for the SAME item = two tips = no single head = the derived in-flight read cannot
+// order the history (roadmap_event_causal_chain refuses on more than one tip). `envelope` already pins parent
+// to Absent, so two claimed envelopes for the node are two roots and the history is unorderable.
+
+// FAIL-CLOSED (review 97769): an item whose log history CANNOT be causally ordered makes the derived in-flight
+// read refuse. The row must REFUSE as InFlightUnordered -- NOT widen to an empty in_flight, which would draw
+// an item with held claims as one nobody claimed. This is the silent-widen the fail_closed argument forbids;
+// here it is a located refusal. The item is a REAL bound+decomposed node so the read reaches its in-flight fold.
+test fn row_read_refuses_on_unorderable_in_flight_history() -> Bool {
+  match checked_int_to_nat(n: 1) {
+    Absent => false
+    Present { value: findings } => match roadmap_projection_row_read(
+      node: nid(s: "namespace-reference-derived-closure"),
+      read_date: Iso8601CivilDate { year: 2026, month: 11, day: 24 },
+      workers: BeltCapacity { max_concurrent: 4 },
+      findings_count: findings,
+      standings: open_standings(),
+      envs: [
+        envelope("namespace-reference-derived-closure", claimed("namespace-reference-derived-closure"), "2026-11-24T09:00:00Z"),
+        envelope("namespace-reference-derived-closure", claimed("namespace-reference-derived-closure"), "2026-11-24T10:00:00Z"),
+      ],
+    ) {
+      ProjectionRowBuilt { row: _, day_priors: _ } => false   // must never widen to a built row
+      ProjectionRowRefused { refusal: InFlightUnordered { node: n } } => n == "namespace-reference-derived-closure"
+      ProjectionRowRefused { refusal: _ } => false             // any other refusal here is wrong
+    }
+  }
+}
+
+// FAIL-CLOSED AT THE DOCUMENT (review 97769): one item whose in-flight history cannot be ordered refuses the
+// WHOLE projection -- refused{step:"in_flight", reason names the node}, no rows. A reader is never handed a
+// document that quietly omits the in-flight state of one item while claiming the timeline is complete.
+test fn document_for_read_refuses_whole_document_on_an_unorderable_item() -> Bool {
+  match checked_int_to_nat(n: 1) {
+    Absent => false
+    Present { value: findings } =>
+      let d = serialize_json(v: roadmap_projection_document_for_read(
+        nodes: [nid(s: "namespace-reference-derived-closure")],
+        read_on_date: Iso8601CivilDate { year: 2026, month: 11, day: 24 },
+        workers: BeltCapacity { max_concurrent: 4 },
+        findings_count: findings,
+        standings: open_standings(),
+        envs: [
+          envelope("namespace-reference-derived-closure", claimed("namespace-reference-derived-closure"), "2026-11-24T09:00:00Z"),
+          envelope("namespace-reference-derived-closure", claimed("namespace-reference-derived-closure"), "2026-11-24T10:00:00Z"),
+        ],
+      ))
+      string_contains(s: d, pattern: "\"refused\"")
+      && string_contains(s: d, pattern: "in_flight")
+      && string_contains(s: d, pattern: "namespace-reference-derived-closure")
+      && !string_contains(s: d, pattern: "\"rows\"")
   }
 }
