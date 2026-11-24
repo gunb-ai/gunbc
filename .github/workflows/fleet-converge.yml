@@ -1170,6 +1170,9 @@ jobs:
         env:
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
           RLM_EXPECTED_REVISION: ${{ github.event.inputs.expected_revision }}
+          GUNBC_FLEET_CONVERGE_RUN_ARTIFACT_ROOT: ${{ runner.temp }}/fleet-converge-run
+          GUNBC_FLEET_CONVERGE_RUN_ARTIFACT_PLAN_RUN_ID: ${{ github.run_id }}
+          GUNBC_FLEET_CONVERGE_RUN_ARTIFACT_ATTEMPT: ${{ github.run_attempt }}
         if: github.event.inputs.mode == 'plan'
         timeout-minutes: 15
       - name: Fleet converge plan — scope:launch-environment (legacy fleet-converge timer retirement)
@@ -1180,6 +1183,9 @@ jobs:
         env:
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
           RLM_EXPECTED_REVISION: ${{ github.event.inputs.expected_revision }}
+          GUNBC_FLEET_CONVERGE_RUN_ARTIFACT_ROOT: ${{ runner.temp }}/fleet-converge-run
+          GUNBC_FLEET_CONVERGE_RUN_ARTIFACT_PLAN_RUN_ID: ${{ github.run_id }}
+          GUNBC_FLEET_CONVERGE_RUN_ARTIFACT_ATTEMPT: ${{ github.run_attempt }}
         if: github.event.inputs.mode == 'launch_environment_plan'
         timeout-minutes: 15
       - name: Fleet allocation-store substrate plan
@@ -1197,6 +1203,9 @@ jobs:
         env:
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
           RLM_EXPECTED_REVISION: ${{ github.event.inputs.expected_revision }}
+          GUNBC_FLEET_CONVERGE_RUN_ARTIFACT_ROOT: ${{ runner.temp }}/fleet-converge-run
+          GUNBC_FLEET_CONVERGE_RUN_ARTIFACT_PLAN_RUN_ID: ${{ github.run_id }}
+          GUNBC_FLEET_CONVERGE_RUN_ARTIFACT_ATTEMPT: ${{ github.run_attempt }}
         if: github.event.inputs.mode == 'workspace_commissioning_plan'
         timeout-minutes: 15
       - name: "Workspace: workspace_allocation_plan"
@@ -1207,6 +1216,9 @@ jobs:
         env:
           FLEET_CONVERGE_EXPECTED_HOST: ${{ inputs.host }}
           RLM_EXPECTED_REVISION: ${{ inputs.expected_revision }}
+          GUNBC_FLEET_CONVERGE_RUN_ARTIFACT_ROOT: ${{ runner.temp }}/fleet-converge-run
+          GUNBC_FLEET_CONVERGE_RUN_ARTIFACT_PLAN_RUN_ID: ${{ github.run_id }}
+          GUNBC_FLEET_CONVERGE_RUN_ARTIFACT_ATTEMPT: ${{ github.run_attempt }}
         if: github.event.inputs.mode == 'workspace_allocation_plan'
         timeout-minutes: 30
       - name: "Workspace: workspace_image_build"
