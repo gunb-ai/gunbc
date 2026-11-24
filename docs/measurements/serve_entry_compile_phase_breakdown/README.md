@@ -231,6 +231,16 @@ inside `compile_transaction`"), stated as arithmetic on printed numbers only:
   `trace_ledger_arm` / `trace_ledger_drain` are never called on this route, so no
   `wall_ms` table is printed. Naming this interval in milliseconds would need a print
   call, which is a change, and this slice writes none.
+  **Ruled closed, do not re-propose it here** (operator via neat-badger-614,
+  escalation `msg_8fc6cf6c` / decision `msg_f60fce38`, 2026-11-24): *"Hold, no seed
+  growth."* No hand-written seed Rust may arm `PhaseProfile::install_from_env`
+  (`phase_profile.rs:65`) on the compile route, and `required_regen_host.rs` is not to
+  be touched for this either; a review thread calling it "a small instrument change" is
+  overruled by that decision. The milliseconds for this interval must come from the v2
+  side, carried by the per-phase counters row already approved as pull **17037**'s
+  prerequisite. This document is a named consumer of that row: when its counters print,
+  they replace the `compile.reconcile` minute-grain row and the
+  `compile_transaction_unattributed` row above, at the same pinned revision.
 - Per-module typing cost: the only per-module timing line is
   `✓ typecheck {module_path} done in …` (`cli_run.rs:12353`); printed hits in both runs'
   stderr: `0`. So "typing cost per module" cannot be attributed with a printed number on
@@ -282,6 +292,23 @@ Diff read from `gh pr diff 17006`: 11 files, **zero `.rs` files** — `dag/ops/c
 `dag/gunbc/live_deploy/swap_serve_entry_compile.dag`, `dag/gunbc/fleet/fleet_plan_receipt.dag`,
 four `dag/test/claim/…` witnesses, and `.github/workflows/fleet-converge-pr-plan.yml`
 (+12: three `GUNBC_FLEET_CONVERGE_RUN_ARTIFACT_*` env vars on four steps).
+
+**Re-read after the branch moved twice** (same command, read 2026-11-24 at
+`headRefOid=49f8c1037f3f430e7f31822d2c2e4c00afe5c92e`; the branch was rebased, so the
+file list above is the `2b55b98988` snapshot and the current one is below). Still 11
+files, still **zero `.rs` files** (`grep -c "\.rs$"` over the file list → `0`):
+`.github/workflows/fleet-converge.yml` (+12/−0),
+`dag/gunbc/fleet/fleet_converge_plan_cli.dag` (+105/−12),
+`dag/gunbc/fleet/fleet_converge_receipt.dag` (+18/−5),
+`dag/gunbc/fleet/fleet_converge_workflow.dag` (+47/−15),
+`dag/gunbc/fleet/fleet_plan_artifact_location.dag` (+66/−1),
+`dag/gunbc/live_deploy/pre_swap_admission.dag` (+49/−15), and five
+`dag/test/claim/…` witnesses (`fleet/fleet_converge_plan_manifest_witness`,
+`fleet/fleet_converge_receipt_witness`, `live_deploy/serve_entry_verdict_witness`
++136/−2, `roadmap/roadmap_launch_deployment_receipt_witness`,
+`workspace_executor_plan_witness`). Every path is under `dag/` or `.github/`; nothing
+is under `src/v1/stage0/`, which is where every phase named in the table above is
+produced. The verdict below is therefore **unchanged** at this head.
 
 **Does it touch anything inside the interval attributed above? No.**
 
