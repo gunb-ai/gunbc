@@ -43,6 +43,7 @@ data desired_state_follows_the_machine_intention: String = "gunbc.plans.desired_
 data one_source_tree_intention: String = "gunbc.plans.one_source_tree"
 data read_set_convergence_intention: String = "gunbc.plans.read_set_convergence"
 data claim_execution_consolidation_intention: String = "gunbc.plans.claim_execution_consolidation"
+data gunb_ai_served_from_gunbc_intention: String = "gunbc.plans.gunb_ai_served_from_gunbc"
 
 data roadmap_intention_bindings: List<IntentionBinding> = [
   // gunbc.plans.one_source_tree: layers follow the dependency edges (1 the manifest, 2 the harness, 3 the other callers, 4 the cut,
@@ -188,6 +189,9 @@ data roadmap_intention_bindings: List<IntentionBinding> = [
   serves(node: "heal-observation-reuse-by-subject", module_path: read_set_convergence_intention, plan: "read_set_convergence_plan", layer: 0),
   serves(node: "heal-bootstrap-seed-reuse", module_path: read_set_convergence_intention, plan: "read_set_convergence_plan", layer: 0),
   serves(node: "heal-terminal-emission-elision", module_path: read_set_convergence_intention, plan: "read_set_convergence_plan", layer: 0),
+  // gunbc.plans.gunb_ai_served_from_gunbc (2026-11-24): the cutover, then the refresh that waits on it.
+  serves(node: "gunb-ai-deploy-cutover", module_path: gunb_ai_served_from_gunbc_intention, plan: "gunb_ai_served_from_gunbc_plan", layer: 0),
+  serves(node: "gunb-ai-content-refresh", module_path: gunb_ai_served_from_gunbc_intention, plan: "gunb_ai_served_from_gunbc_plan", layer: 1),
 ]
 
 // EACH INTENTION'S TERMINALS: the nodes whose acceptance is the intention's done-when, from which every bound
@@ -235,6 +239,8 @@ data intention_terminals: List<IntentionTerminals> = [
   // read_set_convergence's terminals here are the sinks of heal's lines of work: the P7 milestone and the three
   // separately accepted affected-round items. The plan's other consumers (A1 to A3) join as their items are filed.
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.read_set_convergence", decl_name: "read_set_convergence_plan"), terminals: [nid(s: "heal-planning-only-in-a-minute"), nid(s: "heal-observation-reuse-by-subject"), nid(s: "heal-bootstrap-seed-reuse"), nid(s: "heal-terminal-emission-elision")] },
+  // gunb_ai_served_from_gunbc's one line ends at the refresh, which waits on the cutover along the prerequisite edge.
+  IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.gunb_ai_served_from_gunbc", decl_name: "gunb_ai_served_from_gunbc_plan"), terminals: [nid(s: "gunb-ai-content-refresh")] },
 ]
 
 fn terminals_of(intention: DeclarationRef) -> List<RoadmapNodeId> {

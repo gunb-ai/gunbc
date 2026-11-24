@@ -1,0 +1,43 @@
+module gunbc.plans.gunb_ai_served_from_gunbc
+
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
+import std.markdown { MarkdownBlock }
+import gunbc.markdown_helpers { h2, p, quote, li, ul }
+
+fn gunb_ai_served_from_gunbc_body() -> List<MarkdownBlock> {
+  [
+    quote(blocks: [
+      p(text: "**This plan is written as an intention** (`gunbc.design_argument::plans_are_intentions`): it holds what, why and done-when, never the how. Work items, their order and their staffing are selected against this intention and live under the roadmap in `gunbc.roadmap.roadmap_authority`; a work item names this intention, the intention does not list its work items."),
+      p(text: "**Grounding (rulings cited, not minted):** the operator's choice of where the deploy runs is `gunbc.design_ruling::gunb_ai_deploys_from_gunbc_2026_11_24`. `gunbc.design_argument::single_authority`, `gunbc.design_argument::replacement_migration`, `gunbc.design_argument::fail_closed` and `gunbc.design_argument::consumption` govern the authority transition, the cut, the oracle the parity witnesses lose, and the files that are not carried across."),
+    ]),
+    h2(text: "Intention (what)"),
+    p(text: "**What:** gunb.ai is served from gunbc. The bytes the site serves are rendered from the typed modules that already model them (`gunbc.site.gunb_ai_page`, `gunbc.site.gunb_ai_css`, `gunbc.site.gunb_ai_deck`, `gunbc.site.gunb_ai_mark` and `gunbc.design.brand_mark_assets_cli`, over `gunbc.site.gunb_ai_content`, `gunbc.site.gunb_ai_tokens`, `gunbc.design.gunb_ai_hues` and `gunbc.design.gunb_ai_live_scale`) and deployed from this repository. The separate repository gunb-ai/frontend stops being an authority for any served byte and is archived. Once that holds, the site's content is brought up to date by editing those typed modules."),
+    p(text: "**Why:** today the authority runs the wrong way. gunb-ai/frontend hand-maintains index.html, site.css, cards.js and the mark, and gunbc keeps a transcribed model of each plus committed copies of the served files (`dag/test/fixture/gunb_ai/live_*`) that its parity witnesses compare against. Two places answer what gunb.ai says, comments in the design modules instruct a reader to re-derive values from the other repository, and every site change costs an edit in one place and a re-transcription in the other. The frontend repository has not changed since 2026-06-16 and the site is out of date, so the refresh is the first change that would pay that cost twice."),
+    h2(text: "Design the target state must satisfy"),
+    ul(items: [
+      li(text: "**One cut, at the root** (`gunbc.design_argument::replacement_migration`). The frontend repository's authority ends in one motion: the change that first deploys gunbc's render also retires the frontend repository's deploy, and nothing in gunbc falls back to, resolves through or re-derives from it afterwards. There is no period in which both repositories are maintained and kept in sync."),
+      li(text: "**The deploy is generated, not hand-written.** Every workflow in this repository is emitted from a `.dag` model and watched for drift; the deploy workflow is one more emitted workflow under that same regime, never a hand-authored YAML file. It renders, stages the five outputs and the custom-domain file, and publishes to GitHub Pages only from main. It is not a pull-request or merge-group job and never gates a merge."),
+      li(text: "**The parity oracle dissolves with its referent.** The parity witnesses compare gunbc's render against copies of what another repository served. Once gunbc is the source, comparing the render against a committed copy of its own output is a change detector (`gunbc.design_argument::fail_closed`, a literal copied from the tree), so those comparisons and their fixtures are deleted in the cut. Each discriminating claim in those witnesses that does not depend on the copy stays enrolled, such as a refusal by the HTML serializer's guards or the mark's refusal to round a coordinate; which claims those are is read from the witnesses in the cut, not assumed here."),
+      li(text: "**What is not served is not carried.** workpad.html, legacy/, docs/, scripts/, PROPOSAL.md and DESIGN.md in gunb-ai/frontend are never deployed. They have no consumer in this intention and stay in the archived repository's history (`gunbc.design_argument::consumption`)."),
+      li(text: "**DNS does not move.** The apex records in `gunbc.cloudflare.zone` point at GitHub Pages, which serves every repository in the organization from the same addresses; the custom domain moves from one repository's Pages setting to the other's, and no zone record changes."),
+    ]),
+    h2(text: "Done-when"),
+    ul(items: [
+      li(text: "gunb.ai serves the bytes that gunbc's emitted deploy workflow rendered at a named main commit; a fetch of each served path equals that commit's render."),
+      li(text: "gunb-ai/frontend is archived and its Pages deploy is disabled. No file in gunbc names it as the source of a value, and no committed fixture in gunbc copies a served file to compare a render against."),
+      li(text: "A change to the site's content is one gunbc pull request whose merge deploys it, with no edit in any other repository."),
+      li(text: "Operator's judgement: the served content (copy, deck cards and visual design) reflects the project as it stands."),
+    ]),
+    h2(text: "Realization (downstream)"),
+    p(text: "The work items that realize this intention are roadmap nodes under `gunb-ai-served-from-gunbc`, bound through `gunbc.roadmap.roadmap_intention_binding`. Switching the custom domain between repositories briefly takes the site down and is outward-facing, so the operator is asked immediately before it happens. The deploy job's time and memory budgets are new figures, put to the operator in the cutover pull request under `gunbc.design_ruling::ci_job_budgets_closed_to_growth`; the ruling that admits the job grants no figure."),
+  ]
+}
+
+data gunb_ai_served_from_gunbc_plan: Plan = Plan {
+  projection: PlanIsAuthorityOnly,
+  slug: "gunb-ai-served-from-gunbc",
+  title: "gunb.ai is served from gunbc: the typed site modules are the only source, the deploy is generated here, and gunb-ai/frontend is archived",
+  body: gunb_ai_served_from_gunbc_body(),
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "gunb.ai serves gunbc's render deployed by gunbc's generated workflow, gunb-ai/frontend is archived with no gunbc file naming it as a source and no copied-output fixture left, and the operator judges the refreshed content current.") },
+}

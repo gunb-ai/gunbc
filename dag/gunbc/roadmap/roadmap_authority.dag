@@ -6514,6 +6514,59 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       dispatch: dispatchable(),
       parent: in_project(project: "compiler-guarantee", contribution: "Every branded carrier name is reached by a checked constructor, so the brand means something the checker enforces."),
     ),
+    // ---- gunbc.plans.gunb_ai_served_from_gunbc (merry-eagle-717, 2026-11-24) ---------------
+    // The site's source and deploy move into gunbc and gunb-ai/frontend is archived, then the content is
+    // refreshed. The cutover is one node because the authority transition is one motion
+    // (gunbc.design_argument::replacement_migration); the refresh waits on it so it is written once, in gunbc.
+    roadmap_node(
+      identity: "rn_F8YSNN55TQSIEP8DDD5X8O218I",
+      id: "gunb-ai-served-from-gunbc",
+      owner: "site",
+      carriers: carrier(path: "dag/gunbc/plans/gunb_ai_served_from_gunbc.dag"),
+      line: ticket(t: level_fields(
+        headline: "gunb.ai is served from gunbc, and gunb-ai/frontend is archived",
+        boundary: "Serves gunbc.plans.gunb_ai_served_from_gunbc under gunbc.design_ruling::gunb_ai_deploys_from_gunbc_2026_11_24. Owns where gunb.ai's served bytes come from and how they are deployed, and the content refresh that follows. It does not own the DNS zone (gunbc.cloudflare.zone; no record changes), the brand mark's geometry (gunbc.design.brand_mark), or the lab and daily workspace, which are served elsewhere.",
+        approach: "Members in dependency order: the cutover (gunb-ai-deploy-cutover), then the refresh (gunb-ai-content-refresh), which edits only gunbc's typed site modules.",
+        red_control: "Met only through its members: the intention's done-when holds (gunb.ai serves gunbc's render at a named main commit, the frontend repository is archived with no gunbc file naming it as a source, and the operator judges the content current).",
+        displaced_cost: "Two repositories answer what gunb.ai says: the frontend repository hand-maintains the served files and gunbc keeps a transcribed model plus committed copies to compare against, so every site change is written twice.",
+        handback: "gunb.ai deployed from gunbc on merge, the frontend repository archived, and refreshed content."
+      )),
+      parent: in_project(project: "gunbc-project-root", contribution: "The public site states what the project is; one source for it means a change to what the project says is one reviewed change here."),
+    ),
+    roadmap_node(
+      identity: "rn_S4YN3WB8XG94FDD2RPELEDGR5G",
+      id: "gunb-ai-deploy-cutover",
+      owner: "site",
+      carriers: carrier(path: "dag/gunbc/site/gunb_ai_page.dag"),
+      line: ticket(t: fields(
+        headline: "One cut: an emitted gunbc workflow deploys gunb.ai from the site modules' render, and gunb-ai/frontend stops being a source",
+        boundary: "Serves gunbc.plans.gunb_ai_served_from_gunbc under gunbc.design_ruling::gunb_ai_deploys_from_gunbc_2026_11_24. A new workflow emitted from a .dag model (beside the existing emitted workflows, enrolled in the drift watch's artifact roster) that, on main only, renders index.html (gunbc.site.gunb_ai_page), assets/site.css (gunbc.site.gunb_ai_css), assets/cards.js (gunbc.site.gunb_ai_deck), assets/mark.svg (gunbc.site.gunb_ai_mark) and the icon PNGs (gunbc.design.brand_mark_assets_cli), stages them with the CNAME, and publishes through the GitHub Pages actions. In the same change: delete the parity comparisons against dag/test/fixture/gunb_ai/live_* and those fixtures, keeping each discriminating claim that does not depend on the copy; delete every comment that names gunb-ai/frontend as where a value is re-derived from. Outside the diff, in order and with the operator asked immediately before the domain moves: enable Pages on gunbc with workflow builds, remove the custom domain from gunb-ai/frontend, set it on gunbc, run the deploy, then disable the frontend's deploy and archive the repository.",
+        displaced_cost: "Each site change is edited in gunb-ai/frontend and re-transcribed into gunbc's model and fixtures; the two can disagree and only a parity witness, run by hand, notices.",
+        first_slice: "Confirm the render: run the five writers at one main commit and cmp each output against the frontend repository's served file at 3152d4c (its head since 2026-06-16), so the cut starts byte-identical. Then the workflow's model and emission, with its time and memory budgets stated in the pull request for the operator under gunbc.design_ruling::ci_job_budgets_closed_to_growth.",
+        red_control: "Before the domain moves: a planted guard refusal in the page render (an href the URL guard refuses) makes the workflow fail having uploaded nothing, and the unplanted render uploads all five outputs plus the CNAME. After the cut: a fetch of each served path at gunb.ai equals the deployed commit's render, and gunb-ai/frontend reads archived.",
+        out_of_scope: "Any content change (gunb-ai-content-refresh); DNS records; a pull-request or merge-group trigger; carrying workpad.html, legacy/, docs/, scripts/, PROPOSAL.md or DESIGN.md across; modeling the deck's retained JavaScript further.",
+        handback: "The emitted workflow and its run URL, the deployed commit, the served-path fetches matching it, the deleted fixtures and parity comparisons with the claims kept, and the archived frontend repository."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "gunb-ai-served-from-gunbc", contribution: "The authority transition itself: after it, gunbc is the only place gunb.ai's bytes come from."),
+    ),
+    roadmap_node(
+      identity: "rn_LZGDD7HEJWFT7KDW6EWM56YLSS",
+      id: "gunb-ai-content-refresh",
+      owner: "site",
+      carriers: carrier(path: "dag/gunbc/site/gunb_ai_content.dag"),
+      line: ticket(t: fields(
+        headline: "gunb.ai's copy, deck cards and design brought up to date, edited in gunbc's typed site modules",
+        boundary: "Serves gunbc.plans.gunb_ai_served_from_gunbc. The served copy (gunbc.site.gunb_ai_content), the deck's cards (gunbc.site.gunb_ai_deck) and the visual design (gunbc.site.gunb_ai_tokens, gunbc.site.gunb_ai_layout, gunbc.site.gunb_ai_css, gunbc.design.gunb_ai_hues, gunbc.design.gunb_ai_live_scale), changed only through those modules and deployed by the cutover's workflow. Any claim the site makes about the project cites the declaration it describes rather than restating a figure that will drift.",
+        displaced_cost: "The site describes the project as of mid-2026; readers meet a project that no longer matches it.",
+        first_slice: "Ask the operator which parts read as outdated, then change the content model and render; the operator reviews the rendered page before merge.",
+        red_control: "The render served at gunb.ai after merge equals the merged commit's render, and each claim about the project names the declaration it rests on; the operator's review of the rendered page is the acceptance of whether it is current.",
+        out_of_scope: "The deploy route itself; DNS; new served pages beyond what the operator asks for.",
+        handback: "The merged content changes, the deployed commit, and the operator's review of the rendered page."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "gunb-ai-served-from-gunbc", contribution: "The reason for the move: the site is out of date, and after the cut it is updated in one place."),
+    ),
     // ── The boot and management edge program (2026-11-20) ────────────────────────────────────────
     // Bring srv4 up as the site's boot and management edge, then retire mtcollins1's boot duties.
     // Nothing in the authority covered it: no boot row, no PXE-install row, no mtcollins1
@@ -7427,6 +7480,8 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     // true leaf; the parents are sibling node ids, never the "compiler-guarantee" MemberOf slug.
     edge(child: "nonempty-str-becomes-a-checked-nominal", parent: "derived-type-argument-inhabitance-root"),
     edge(child: "brands-reached-by-checked-constructors", parent: "nonempty-str-becomes-a-checked-nominal"),
+    // gunb.ai: the refresh waits on the cutover, so the content is written once, in gunbc (merry-eagle-717, 2026-11-24).
+    edge(child: "gunb-ai-content-refresh", parent: "gunb-ai-deploy-cutover"),
   ], guarantee_ladder_edges())
 }
 
