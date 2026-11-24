@@ -20,6 +20,9 @@ import std.types { String, Bool, Int, List, NonEmptyStr }
 import std.algebra { string_contains }
 import std.decl_ref { decl_ref }
 import gunbc.extdeps.languages.json.emit { serialize_json }
+import gunbc.extdeps.units.iso8601_calendar { Iso8601CivilDate }
+import gunbc.roadmap.roadmap_decomposition { Declared }
+import gunbc.roadmap.roadmap_schedule_calendar { DatedLeaf }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId, LeafPath, nid }
 import gunbc.roadmap.roadmap_event_log {
   RoadmapEvent, RoadmapEventKind, RoadmapEventEnvelope, RoadmapEventId, RoadmapStandings, StandingsObserved,
@@ -30,7 +33,8 @@ import gunbc.roadmap.roadmap_intention_binding { IntentionBinding }
 import gunbc.roadmap.roadmap_work_item_projection {
   ProjectionLeaf, ProjectionInFlight, ProjectionEvent, ProjectionInputs, ProjectionRow, ProjectionRefusal,
   ProjectionRowResult, ProjectionRowBuilt, ProjectionRowRefused, IntentionDoesNotResolve,
-  projection_build_row, projection_in_flight_entries, roadmap_work_item_projection_document_json,
+  projection_build_row, projection_in_flight_entries, projection_leaf_from_dated, projection_leaves_for_item,
+  roadmap_work_item_projection_document_json,
   roadmap_work_item_projection_refusal_json, projection_row_json,
 }
 import gunbc.roadmap.roadmap_served_observation {
@@ -93,8 +97,8 @@ test fn first_slice_item_with_leaves_in_flight_shows_every_declared_field() -> B
   ]
   let envs = [ envelope("item-a", claimed("item-a"), "2026-11-01"), envelope("item-b", claimed("item-b"), "2099-01-01") ]
   let leaves = [
-    ProjectionLeaf { path: "item-a#0#0#0", start_day: 0, finish_day: 2, on_critical_path: true },
-    ProjectionLeaf { path: "item-a#1#0#0", start_day: 3, finish_day: 5, on_critical_path: false },
+    ProjectionLeaf { path: "item-a#0#0#0", start_day: "2026-11-02", finish_day: "2026-11-04", on_critical_path: true },
+    ProjectionLeaf { path: "item-a#1#0#0", start_day: "2026-11-05", finish_day: "2026-11-09", on_critical_path: false },
   ]
   match projection_build_row(
     node: "item-a", bindings: [bound_node("item-a")], standings: open_standings(),
@@ -146,7 +150,7 @@ test fn same_item_after_planted_release_still_carries_every_field() -> Bool {
   ]
   match projection_build_row(
     node: "item-a", bindings: [bound_node("item-a")], standings: open_standings(),
-    leaves: [ProjectionLeaf { path: "item-a#0#0#0", start_day: 0, finish_day: 2, on_critical_path: true }],
+    leaves: [ProjectionLeaf { path: "item-a#0#0#0", start_day: "2026-11-02", finish_day: "2026-11-04", on_critical_path: true }],
     in_flight: [] as List<ProjectionInFlight>, envs: envs,
   ) {
     ProjectionRowBuilt { row: r } =>
@@ -228,4 +232,27 @@ test fn projection_is_a_served_surface_at_its_path() -> Bool {
   served_observation_kind_url_path(kind: ProjectionJson) == "/projection.json"
     && served_observation_kind_of_key(key: served_observation_kind_key(kind: ProjectionJson))
        == ServedObservationKindDecoded { kind: ProjectionJson }
+}
+
+// THE CALENDAR BINDS THE DAYS: a leaf's start_day/finish_day are ISO days (YYYY-MM-DD) spelled by the
+// calendar's own date_text off the dated answer -- the SAME dates the item gantt serves, so no reader runs a
+// second calendar. The critical-path bit is read off the schedule answer's critical path by the leaf path.
+test fn leaves_are_bound_to_iso_days_through_the_calendar() -> Bool {
+  let path_a = LeafPath { item: nid(s: "item-a"), stage: 0, piece: 0, member: 0 }
+  let dated = DatedLeaf {
+    path: path_a, start_day: 0, finish_day: 2,
+    start_date: Iso8601CivilDate { year: 2026, month: 11, day: 2 },
+    finish_date: Iso8601CivilDate { year: 2026, month: 11, day: 4 },
+    count_source: Declared,
+  }
+  let on_path = projection_leaf_from_dated(d: dated, critical_path: [path_a])
+  let off_path = projection_leaf_from_dated(d: dated, critical_path: [] as List<LeafPath>)
+  let item_only = projection_leaves_for_item(dated: [dated], critical_path: [path_a], item: "item-a")
+  let other = projection_leaves_for_item(dated: [dated], critical_path: [path_a], item: "item-z")
+  on_path.start_day == "2026-11-02"
+    && on_path.finish_day == "2026-11-04"
+    && on_path.on_critical_path == true
+    && off_path.on_critical_path == false
+    && count(item_only) == 1
+    && count(other) == 0
 }

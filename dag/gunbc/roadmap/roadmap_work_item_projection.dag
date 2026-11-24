@@ -9,6 +9,7 @@ import gunbc.roadmap.roadmap_event_log {
   roadmap_acceptance_pr_evidence_url,
 }
 import gunbc.roadmap.roadmap_intention_binding { IntentionBinding, roadmap_intention_bindings }
+import gunbc.roadmap.roadmap_schedule_calendar { DatedLeaf, date_text }
 import gunbc.extdeps.languages.json.emit {
   JsonValue, JsonKeyValue, json_kv, json_object, json_array, json_string, json_int, json_bool, json_null,
 }
@@ -39,11 +40,14 @@ import gunbc.extdeps.languages.json.emit {
 
 data roadmap_work_item_projection_schema: String = "roadmap-work-item-projection/v1"
 
-// One occurrence of a leaf, with the schedule's own answer for it.
+// One occurrence of a leaf, with the schedule's own answer bound to dates by the calendar (roadmap_schedule_calendar
+// -- ONE calendar answers both grains, per roadmap_item_gantt; abstract day integers never leave the schedule).
+// start_day and finish_day are ISO days (YYYY-MM-DD) read off the dated leaf's start_date/finish_date via the
+// calendar's own date_text -- the same dates the item gantt serves, so a reader runs no second calendar.
 type ProjectionLeaf {
   path: String
-  start_day: Int
-  finish_day: Int
+  start_day: String
+  finish_day: String
   on_critical_path: Bool
 }
 
@@ -128,6 +132,29 @@ fn projection_leaf_path_text(p: LeafPath) -> String {
     to_string(nat_to_int(n: p.piece)), "#",
     to_string(nat_to_int(n: p.member)),
   ], "")
+}
+
+// ONE LEAF, dated. The dates come from the calendar's own DatedLeaf (roadmap_schedule_calendar --
+// bound_day_to_date / date_leaf / bind_each_leaf read the schedule's abstract days and bind them to the read
+// date; this only spells the dated answer to the wire via the calendar's date_text, so the projection serves
+// the SAME ISO days the item gantt serves and runs no calendar of its own). on_critical_path is read off the
+// schedule answer's critical path, compared by the leaf's spelled path.
+fn projection_leaf_from_dated(d: DatedLeaf, critical_path: List<LeafPath>) -> ProjectionLeaf {
+  let path = projection_leaf_path_text(p: d.path)
+  ProjectionLeaf {
+    path: path,
+    start_day: date_text(date: d.start_date),
+    finish_day: date_text(date: d.finish_date),
+    on_critical_path: count(filter(critical_path, p => projection_leaf_path_text(p: p) == path)) > 0,
+  }
+}
+
+// THE LEAVES OF ONE ITEM, bound to dates from the schedule answer at the read. The belt reads the schedule
+// (roadmap_schedule / roadmap_schedule_from_now -- the projection never computes it), binds it through the
+// calendar (bind_each_leaf), and hands the dated leaves here; this spells them to the wire. Leaves whose
+// path belongs to the item are kept; the rest are not this item's row.
+fn projection_leaves_for_item(dated: List<DatedLeaf>, critical_path: List<LeafPath>, item: String) -> List<ProjectionLeaf> {
+  map(filter(dated, d => (d.path.item as String) == item), d => projection_leaf_from_dated(d: d, critical_path: critical_path))
 }
 
 // THE DERIVED IN-FLIGHT SET for one item, read at the tick. These entries are the log's own derived rows;
