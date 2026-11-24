@@ -677,14 +677,25 @@ fn timeout_command_enforcing_bound(
 // that consumes it is a type in the observing layer, not here.
 data coreutils_timeout_enforcement_diagnostic: String = "timeout: sending signal"
 
-// EXIT 124 IS AN UPSTREAM GNU CONVENTION, not a gunbc fact (gunbc.design_argument::external_upstreams).
-// timeout(1) documents it as the status for a command that exceeded its time limit; timeout ALSO
-// forwards a child's own 124 unchanged. The two are indistinguishable by status, which is exactly why
-// this constant is NOT the deadline observation: the deadline observation is the --verbose diagnostic in
-// coreutils_timeout_enforcement_diagnostic above. This value is retained only because an unrelated
-// sibling reader (dispatch_credential_snapshot) still consumes it; no classifier in this tree may key a
-// deadline claim on it (the boot-probe classifier's red control forbids a 124 arm entirely).
+// THE STATUSES A FIRED BOUNDER EMITS (timeout(1), no --preserve-status), MEASURED on coreutils 9.4.
+// These are UPSTREAM facts (gunbc.design_argument::external_upstreams), NOT gunbc facts, and they are
+// NOT the deadline observation on their own:
+//   * 124 -- the bound fired and the first TERM ended the command (timeout(1): "the command timed out").
+//   * 137 -- the bound fired and the command IGNORED TERM, so --kill-after escalated to KILL and the
+//     command died by SIGKILL (128 + 9). This is the case this bound exists for: a wedged Firecracker VMM
+//     ignores TERM. Observed: `timeout --verbose --kill-after 1s 1s sh -c "trap '' TERM; sleep 30"` ->
+//     rc 137 with BOTH "sending signal TERM" and "sending signal KILL" on stderr.
+// A fired bounder ALWAYS pairs one of these statuses with the --verbose diagnostic
+// (coreutils_timeout_enforcement_diagnostic). The status alone is NOT the deadline observation, because
+// the SAME statuses arise WITHOUT the bound firing: a child that exits 124 itself, or that is killed by
+// SIGKILL from elsewhere (host OOM, a self `kill -9`), also yields 124/137 -- but with NO diagnostic
+// (measured: `timeout --verbose --kill-after 1s 30s sh -c "kill -9 $"` -> rc 137, empty stderr). So the
+// boot-probe receipt treats a fired bound as diagnostic AND status-in-{124,137}; a status in that set
+// WITHOUT the diagnostic is refused, never a deadline. 124 is additionally retained because an unrelated
+// sibling reader (dispatch_credential_snapshot) still consumes it; no classifier may key a deadline on a
+// bare status (the row's out_of_scope).
 data coreutils_timeout_expired_exit_code: Int = 124
+data coreutils_bound_killed_exit_code: Int = 137
 
 // THE BYTES AVAILABLE ON THE FILESYSTEM HOLDING A PATH (df(1): -B1 byte units, --output=avail the one
 // column). df prints a header line and then the figure, so the caller reads the last line.

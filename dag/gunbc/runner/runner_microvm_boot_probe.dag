@@ -16,6 +16,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.gnu_coreutils {
   cp_command, rm_force_command, timeout_command_enforcing_bound,
   coreutils_timeout_enforcement_diagnostic, coreutils_timeout_expired_exit_code,
+  coreutils_bound_killed_exit_code,
 }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.virtualization.firecracker {
@@ -203,36 +204,47 @@ type ExecutionBoundReceipt
 // extdeps.shell.exec observe_command, which keeps the two streams distinct; command_runner.dag line 316).
 //
 // A fired bounder is identified by TWO facts that must AGREE, never by either alone:
-//   * the status a fired bounder emits (coreutils_timeout_expired_exit_code, 124) -- timeout(1) without
-//     --preserve-status; an upstream fact cited in extdeps.tools.gnu_coreutils, and
-//   * the bounder's own --verbose enforcement diagnostic on stderr (coreutils_timeout_enforcement_diagnostic).
-// Reading EITHER alone re-introduces the very conflation this row removes: the bare status cannot separate
-// a fired bound from a child that exits 124 itself, AND stderr is SHARED with the bounded subject, so a
-// subject that prints the diagnostic text would otherwise be reported as a deadline that never happened.
-// So the two facts are crossed:
-//   1. status 124 AND diagnostic present -> BoundFired (the SOLE path to a deadline claim);
-//   2. status 124 AND diagnostic absent  -> BoundEnforcementUnobserved (unreadable stderr vs a child's own
-//      124 are indistinguishable; refuse by name -- "absence is not evidence the bound did not fire");
-//   3. diagnostic present on a NON-124 status -> BoundEnforcementUnobserved. A fired timeout exits 124, so
-//      this diagnostic text was NOT authored by a firing bounder: it is forged by the shared-stderr subject
-//      or is foreign tool output. Refuse by name; never a deadline (gunbc.design_argument::fail_closed:
-//      no plausible output is fabricated from text the bounder did not authoritatively produce);
-//   4. neither the fired status nor the diagnostic -> BoundDidNotFire: the bounder's own contract rules a
-//      fire out, so the subject exited for its own reasons; classify on content.
-// The deadline verdict is reachable ONLY through branch 1; every 124- or diagnostic-keyed arm produces a
+//   * the bounder's own --verbose enforcement diagnostic on stderr (coreutils_timeout_enforcement_diagnostic)
+//     -- this is the bounder ASSERTING at the enforcement decision that it signalled the command, and it is
+//     the authoritative fact: only the bounder prints it, and it is printed for BOTH the TERM kill and the
+//     --kill-after KILL escalation; and
+//   * a status a fired bounder can emit (coreutils_timeout_expired_exit_code 124 when TERM sufficed, or
+//     coreutils_bound_killed_exit_code 137 when the command ignored TERM and the bound escalated to KILL) --
+//     both measured on coreutils 9.4 and cited in extdeps.tools.gnu_coreutils (timeout(1)).
+// The diagnostic is load-bearing; the status is only a CROSS-CHECK that the diagnostic is consistent with a
+// real firing. Reading either alone re-introduces the conflation this row removes: the bare status cannot
+// separate a fired bound from a child that exits 124 itself or is SIGKILLed by the host OOM killer (both
+// 124/137 with NO diagnostic), and stderr is SHARED with the subject, so a subject printing the diagnostic
+// text on a status a fired bounder never emits would otherwise be reported as a deadline. So the two are
+// crossed:
+//   1. diagnostic present AND status in {124,137} -> BoundFired (the SOLE path to a deadline claim). This
+//      covers the wedged-VMM case the bound exists for: TERM ignored, KILL escalation, rc 137, diagnostic
+//      present -> a real deadline, not a forgery (review 98101).
+//   2. diagnostic present but status NOT in {124,137} -> BoundEnforcementUnobserved. A fired bounder emits
+//      124 or 137, so this diagnostic text was not authored by a firing bounder: forged by the shared-stderr
+//      subject or foreign tool output. Refuse by name; never a deadline (gunbc.design_argument::fail_closed).
+//   3. status in {124,137} but diagnostic absent -> BoundEnforcementUnobserved. The same statuses arise when
+//      the bound never fired (a child's own 124, or a host-OOM/self SIGKILL -> 137, measured with empty
+//      stderr), and an unreadable stderr is indistinguishable from "no firing"; refuse by name -- absence is
+//      not evidence the bound did not fire (gunbc.design_argument::epistemic_humility).
+//   4. neither -> BoundDidNotFire: the bounder's own contract rules a fire out (e.g. exit 0 clean, exit 1
+//      failed VMM, exit 143 an outside SIGTERM), so the subject exited for its own reasons; classify on
+//      console content.
+// The deadline verdict is reachable ONLY through branch 1; every status- or diagnostic-keyed arm produces a
 // REFUSAL, never a deadline, so no arm keys a deadline on the bare exit status or on bare stderr text.
 fn runner_microvm_boot_probe_enforcement_observation(
   deadline: Second,
   exit_code: Int,
   stderr: String,
 ) -> ExecutionBoundReceipt {
-  if exit_code == coreutils_timeout_expired_exit_code {
-    if string_contains(s: stderr, pattern: coreutils_timeout_enforcement_diagnostic) {
-      BoundFired { deadline: deadline }
-    } else {
-      BoundEnforcementUnobserved
-    }
-  } else if string_contains(s: stderr, pattern: coreutils_timeout_enforcement_diagnostic) {
+  let diagnostic_present = string_contains(s: stderr, pattern: coreutils_timeout_enforcement_diagnostic)
+  let bounder_fire_status =
+    exit_code == coreutils_timeout_expired_exit_code || exit_code == coreutils_bound_killed_exit_code
+  if diagnostic_present && bounder_fire_status {
+    BoundFired { deadline: deadline }
+  } else if diagnostic_present {
+    BoundEnforcementUnobserved
+  } else if bounder_fire_status {
     BoundEnforcementUnobserved
   } else {
     BoundDidNotFire
