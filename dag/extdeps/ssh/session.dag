@@ -59,8 +59,8 @@ type SshSessionExecResult {
   // sink sets overran=true ONLY when its own kill fired -- never inferred from the exit code, because
   // a real remote command can exit any code. The echoed deadline rides ONLY the overran case as an
   // Option (Absent otherwise) -- no 0-means-none sentinel. Non-fleet dispatches (no deadline passed)
-  // and the Exec/ExecScript shapes never set these; they default false/Absent and keep today's
-  // behavior. The exit code stays the child's real code, irrelevant when overran is true.
+  // and the Exec/ExecScript shapes state overran: false and wall_deadline_seconds: Absent explicitly
+  // and keep today's behavior. The exit code stays the child's real code, irrelevant when overran is true.
   overran: Bool = false
   wall_deadline_seconds: Optional<Second>
 }
