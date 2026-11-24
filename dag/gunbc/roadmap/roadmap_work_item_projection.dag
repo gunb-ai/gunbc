@@ -80,6 +80,11 @@ type ProjectionEvent {
 // for the work moving.
 type ProjectionInputs {
   worker_count: Int
+  // feature:working-day-prior-carrier  dissolve-on: std.measure grows a working-day (effort) family -- the
+  // same inherited grain the scheduler marks on ScheduledLeaf.start_day/finish_day (roadmap_schedule.dag) and
+  // the decomposition marks on WorkPiece.days (roadmap_decomposition.dag); these values ARE those scheduled
+  // working-day spans (finish - start), so this field dissolves with that carrier, never re-tracking the unit.
+  // Working days, never hours; no calendar instant here (roadmap_schedule_calendar binds the grain to dates).
   day_priors: List<Int>
   assumed_findings_counts: List<Int>
 }
@@ -207,7 +212,8 @@ fn projection_acceptance_evidence_of(envs: List<RoadmapEventEnvelope>, item: Str
     })
 }
 
-// One build outcome: the row, or why it could not honestly be built.
+// One build outcome: the row, or why it could not honestly be built. day_priors is the row's scheduled
+// working-day spans (ScheduledLeaf finish - start); same tracked unit as ProjectionInputs.day_priors.
 type ProjectionRowResult
   = ProjectionRowBuilt { row: ProjectionRow, day_priors: List<Int> }
   | ProjectionRowRefused { refusal: ProjectionRefusal }
@@ -361,11 +367,12 @@ fn roadmap_work_item_projection_refusal_json(read_on: String, step: String, reas
 // log's fold (roadmap_event_log.roadmap_leaf_in_flight_from_envs, never a second derivation), and the row
 // assembled by projection_build_row from the binding (intention, layer), the standing (item_state) and the
 // envelopes (events, latest_event, acceptance_evidence). IT DRIVES THE UPSTREAM ANSWERS AND COMPUTES NO
-// TIMELINE OF ITS OWN. A node with no decomposition, or a schedule that refuses, yields NO dated leaves
-// rather than a fabricated date: an item with nothing scheduled ahead is still a row whose leaf list is
-// empty -- the reader sees no bar, never an invented one. in_flight is empty only when the derived set is
-// empty or its history is unordered (the fold refuses silently here, matching the standings' empty-fold
-// rule), never when a held leaf was dropped.
+// TIMELINE OF ITS OWN. An EMPTY leaf list means one thing only: the node has no decomposition at all -- a
+// fact about an unplanned item. A schedule that REFUSES, or an in-flight history the log cannot order,
+// REFUSES the WHOLE row (ProjectionRowRefused { ScheduleRefused | InFlightUnordered }) rather than widen to
+// an empty list: a barless row must never stand in for a plan the schedule could not place or hide held
+// claims behind an empty in_flight (fail_closed: a failure arm refuses, it never widens). Likewise
+// in_flight is never silently emptied -- it is the log's derived set, or the row refuses.
 fn roadmap_projection_row_read(
   node: RoadmapNodeId,
   read_date: Iso8601CivilDate,
@@ -405,6 +412,9 @@ fn roadmap_projection_row_read(
             envs: item_envs,
             // The working-day spans the schedule priced each leaf at -- the read's ACTUAL day priors, surfaced
             // so the document shows them as the inputs they are (they live in the decomposition, not a side input).
+            // feature:working-day-prior-carrier -- the scheduled working-day span (ScheduledLeaf
+            // finish_day - start_day), the same bare-Int grain the schedule and decomposition carry; dissolves
+            // with that carrier (see ProjectionInputs.day_priors). Working days, never hours.
             day_priors: map(a.leaves, l => l.finish_day - l.start_day),
           )
         }
@@ -419,8 +429,9 @@ fn roadmap_projection_row_read(
 // document if any single item could not be honestly built -- so a Timeline never draws a partial plan as a
 // complete one. A refusal here is THE PROJECTION'S OWN and reaches only /projection.json; it does not fail
 // the tick or the standings surface, which are built by their own arms. read_on and the inputs the read used
-// (worker_count, the day priors it was handed -- none here, the schedule read the decomposition's own
-// working-day priors -- and the findings count it assumed) sit at the top level, shown as the inputs they
+// (worker_count, the day priors -- each built row's scheduled working-day spans, concatenated, so the reader
+// sees the durations the schedule actually placed with -- and the findings count it assumed) sit at the top
+// level, shown as the inputs they
 // are and not as facts (the boundary). The witness drives it with constructed inputs, the way
 // roadmap_standings_document_test drives the standings fold.
 fn roadmap_projection_document_for_read(
