@@ -1,0 +1,24 @@
+# Floor-exhaustiveness A+C waiver roster -- MATERIALIZED INPUT DATA.
+#
+# One structural site key per line: "<module_path>::<declaration>::<scrutinee>".
+# The seed-Rust A+C waiver arm in cli_run/compile_clean.rs reads the file that the
+# environment variable GUNBC_EXHAUSTIVENESS_UNKNOWN_ALLOWLIST names, trims each
+# line, and ignores blank lines and lines beginning with '#'. A line present here
+# makes the arm treat that site's ExhaustivenessUnknown as advisory instead of
+# hard-blocking emission.
+#
+# This file is DERIVED data. Its single authority is
+# v2.workflow.floor_exhaustiveness_allowlist.floor_exhaustiveness_allowlist(); the
+# producer v2.workflow.floor_exhaustiveness_allowlist_data_file is the sole writer of
+# these lines. Consistency between this file and that roster is ENFORCED, not
+# promised, by
+# test.claim.floor_exhaustiveness_allowlist_equality_witness.floor_exhaustiveness_data_file_equals_the_roster
+# (both directions): a line here that is not a rostered site waives a site the
+# operator never authorized -> RED; a rostered site missing here lets it block ->
+# RED. Authorized by the operator's A+C ruling; no more exceptions.
+v2.compiler.fold_lowering::collection_roster_primitive_call_signature_in::form
+v2.compiler.type_declaration_use_census::type_declaration_rows::label
+v2.compiler.type_declaration_use_census::as_site_rows::label
+v2.std.compilers.target_model::target_primitive_arguments_to_tokens::pending_arguments
+v2.std.compilers.target_model::target_primitive_arguments_to_tokens::pending_arguments
+v2.compiler.source_root_eval::native_demand_prepared::p

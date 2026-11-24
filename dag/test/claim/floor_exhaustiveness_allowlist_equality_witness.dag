@@ -2,7 +2,6 @@ module test.claim.floor_exhaustiveness_allowlist_equality_witness
 
 import std.types { String, Bool, Int, List }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
-import extdeps.filesystem.filesystem_io
 import gunbc.compile_diagnostic_census {
   CompileDiagnosticCensusRow,
   CensusObserved,
@@ -217,4 +216,60 @@ test fn floor_exhaustiveness_roster_equals_the_frozen_ruling_set() -> Bool {
 // refused even if its key were otherwise recognized.
 test fn floor_exhaustiveness_roster_cites_only_the_frozen_ruling() -> Bool {
   filter(floor_exhaustiveness_allowlist(), row => row.ruling != floor_exhaustiveness_frozen_ruling_name).length() == 0
+}
+
+// ============================================================================
+// THE MATERIALIZED DATA FILE == THE ROSTER, both directions.
+//
+// The A+C waiver arm (cli_run/compile_clean.rs) TRUSTS the file named by
+// GUNBC_EXHAUSTIVENESS_UNKNOWN_ALLOWLIST: any key present there downgrades that site's
+// ExhaustivenessUnknown from hard-blocking to advisory. The roster in
+// v2.workflow.floor_exhaustiveness_allowlist is the AUTHORITY. The per-scrutinee census
+// claim above measures that set with the WAIVER DISABLED, so it is blind to what the
+// materialized file currently says -- a drifted file key for a not-yet-blocking site is
+// invisible to it, yet the ENABLED arm would silently waive that site (and permanently,
+// the moment it later blocks). This claim is the only thing that keeps the file the arm
+// actually reads honest to the roster.
+//
+// It reads the committed materialized file as data (NOT by re-deriving it from the
+// producer), so the two committed artifacts -- the .dag roster and this .data file --
+// are checked against EACH OTHER and can each independently be tampered with or drift.
+//
+// Both directions are enforced:
+//   (extra)  a line in the file that is not a rostered site -> waives a site the operator
+//            never authorized -> RED.
+//   (stale)  a rostered site with no line in the file -> the arm will not waive it, so it
+//            hard-blocks (this is also control (d)) -> RED.
+// ============================================================================
+
+// The committed materialized waiver input the A+C arm reads (CI points
+// GUNBC_EXHAUSTIVENESS_UNKNOWN_ALLOWLIST at this path before the corpus compile).
+data floor_exhaustiveness_data_file_path: String =
+  "src/v2/workflow/floor_exhaustiveness_allowlist.data"
+
+// Parse the file EXACTLY as the arm's Rust reader does: split on newline, trim each
+// line, drop blank lines and lines beginning with '#'. (cli_run/compile_clean.rs:
+// body.lines().map(trim).filter(|l| !l.is_empty() && !l.starts_with('#'))).
+fn floor_exhaustiveness_data_file_keys() -> List<String> {
+  let body: String = filesystem_read(path: floor_exhaustiveness_data_file_path).content
+  let raw_lines: List<String> = split(s: body, delimiter: "\n")
+  filter(map(raw_lines, line => trim(s: line)), line => line != "" && !starts_with(s: line, prefix: "#"))
+}
+
+fn floor_exhaustiveness_roster_key_list() -> List<String> {
+  map(floor_exhaustiveness_allowlist(), floor_exhaustiveness_site_key)
+}
+
+fn floor_exhaustiveness_in_roster(key: String) -> Bool {
+  filter(floor_exhaustiveness_roster_key_list(), k => k == key).length() > 0
+}
+
+fn floor_exhaustiveness_in_data_file(key: String) -> Bool {
+  filter(floor_exhaustiveness_data_file_keys(), k => k == key).length() > 0
+}
+
+test fn floor_exhaustiveness_data_file_equals_the_roster() -> Bool {
+  let extra_in_file: List<String> = filter(floor_exhaustiveness_data_file_keys(), k => !floor_exhaustiveness_in_roster(k))
+  let missing_from_file: List<String> = filter(floor_exhaustiveness_roster_key_list(), k => !floor_exhaustiveness_in_data_file(k))
+  extra_in_file.length() == 0 && missing_from_file.length() == 0
 }
