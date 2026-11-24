@@ -23,6 +23,7 @@ import v2.std.compilers.target_model {
   target_operator_realization_node_with_precedence,
   target_operator_realization_node_with_precedence_and_chains,
   target_operator_realization_row_wire_schema_valid,
+  target_operator_realizations_catalog_node,
   target_value_expression_binding_ref,
   target_value_expression_operand_needs_grouping,
   target_value_expression_primitive_apply,
