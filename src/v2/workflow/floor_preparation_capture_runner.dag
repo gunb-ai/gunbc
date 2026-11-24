@@ -350,7 +350,7 @@ fn floor_preparation_bytes_of(path: String) -> Int {
 fn floor_preparation_git_tree_sha() -> String {
   let outcome = floor_preparation_spawn_plain(
     binary: "/usr/bin/git",
-    args: ["-C", floor_preparation_runner_root(), "rev-parse", "HEAD^{tree}"])
+    args: ["-C", floor_preparation_runner_root(), "rev-parse", "HEAD^\{tree\}"])
   if outcome.rc == 0 { floor_preparation_first_token(outcome.stdout) } else { "GIT_TREE_UNREADABLE" }
 }
 
