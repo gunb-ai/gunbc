@@ -16,8 +16,9 @@ import v2.std.operation_realization {
 }
 import v2.std.witness_evaluation {
   WitnessEvaluationFrame, WitnessReturned, WitnessRefused, WitnessInterrupted,
-  evaluate_in_witness_frame, witness_diagnostic_rendered_reason,
+  evaluate_in_witness_frame, witness_diagnostic_rendered_reason, witness_dispatcher_dependencies,
 }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.measure { second }
 import extdeps.transports.shell { ShellProcessExited }
@@ -127,6 +128,58 @@ test fn two_contenders_for_one_unit_get_one_hold() -> Bool {
 
 fn store_holds_one_slot(fs: ModeledFilesystem) -> Bool {
   count(filter(fs.files, f => starts_with(s: f.path, prefix: hold_root as String))) == 1
+}
+
+// OBSERVATION POINT (row per-function-claim-loader-modeled-dag-route). A modeled .dag surface that
+// renders WHY the seed dispatcher refuses this frame on the per-function path, WITHOUT instrumenting
+// the interpreter. It installs the SAME frame and effect-issuing subject as two_contenders (a no-op
+// subject never reaches the effect path, so a no-op probe cannot see the effect-path callees), then
+// renders the WitnessRefused diagnostic. A missing string-dispatched callee surfaces as WitnessRefused
+// (v1_interpreter.rs witness frame builtin converts a dispatcher-callee NoSuchFunction into a located
+// Diagnostic, unlike the admitted==false route-gap which stays a hard error), so the rendered reason
+// NAMES the absent callee. On unedited main the reason is non-empty and names the callee; once the
+// declared reference (v2.std.witness_evaluation::witness_dispatcher_dependencies) loads every callee,
+// the frame returns and the reason is the empty string -- which the claim below asserts.
+fn dispatcher_refusal_reason_with_effects() -> String {
+  let first_owner = boot_run_owner(run_id: "run-a" as NonEmptyStr, process: ProcessIdentity { boot_id: "b" as NonEmptyStr, pid: 10, start_time: "1" as NonEmptyStr }, pid_namespace: "pid:[1]" as NonEmptyStr)
+  let second_owner = boot_run_owner(run_id: "run-b" as NonEmptyStr, process: ProcessIdentity { boot_id: "b" as NonEmptyStr, pid: 11, start_time: "2" as NonEmptyStr }, pid_namespace: "pid:[1]" as NonEmptyStr)
+  match evaluate_in_witness_frame(
+    frame: filesystem_frame(initial: empty_hold_store()),
+    subject: fn(_scope) {
+      let _first = file_hold_acquire(root: hold_root, slot_key: hold_key, requested_owner: first_owner)
+      let _second = file_hold_acquire(root: hold_root, slot_key: hold_key, requested_owner: second_owner)
+      true
+    },
+  ) {
+    WitnessReturned { .. } => "",
+    WitnessRefused { diagnostic } => witness_diagnostic_rendered_reason(diagnostic: diagnostic),
+    WitnessInterrupted { .. } => "interrupted",
+  }
+}
+
+// The reason is empty exactly when the run's index carried every string-dispatched callee the frame
+// and its effect path resolve: the frame then returns WitnessReturned rather than refusing. This is
+// the green-side assertion; on unedited main it is false because the reason names a missing callee.
+test fn dispatcher_frame_returns_with_empty_reason_when_callees_loaded() -> Bool {
+  dispatcher_refusal_reason_with_effects() == ""
+}
+
+// CONDITION-ONE EVIDENCE: the five dispatcher callees are reachable through the entry's reference
+// chain. witness_dispatcher_dependencies references each of them by value and is reached from
+// evaluate_in_witness_frame, which this claim's own module already imports and uses; if any callee
+// were not a resolvable reference the demand loader would fail this claim (NoSuchFunction), so its
+// passing is the evidence that the declared reference in v2.std.witness_evaluation.dag holds.
+test fn dispatcher_callee_surface_reachable() -> Bool {
+  witness_dispatcher_dependencies()
+}
+
+// The reason-dump observation entry. Under `gunbc run --claim-run --function` a ProcessExit value is
+// printed with its reason (`FAIL <fn> (returned ProcessExit::ExitFailure, code 1: <reason>)`), so
+// running this names the exact string-dispatched callee the per-function run could not resolve. It
+// returns ExitSuccess once the frame returns (reason empty). It carries no verdict of its own.
+fn dispatcher_post_admission_reason_dump() -> ProcessExit {
+  let reason = dispatcher_refusal_reason_with_effects()
+  if reason == "" { ExitSuccess {} } else { ExitFailure { code: 1, reason: reason } }
 }
 
 // THE FAILURE KIND TRAVELS THE REAL CHANNEL. A create-exclusive write to an existing path answers

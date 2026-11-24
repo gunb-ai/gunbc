@@ -4,7 +4,11 @@ import std.types { Bool, List }
 import std.effect_grant { Envelope }
 import extdeps.transports.rest { RestExchangeFixture }
 import v2.std.diagnostic { Diagnostic, Textual, WholeFile, Unavailable, AmbiguousIntent }
-import v2.std.operation_realization { OperationRealization, DispatchRecord }
+import v2.std.operation_realization {
+  OperationRealization, DispatchRecord,
+  modeled_realization_admitted_in, operation_realization_duplicate, operation_realization_index,
+  operation_handler_selection, virtual_clock_after,
+}
 import std.measure { Second }
 
 // A witness evaluation is an ordinary scoped evaluation whose effects are supplied by an existing
@@ -92,7 +96,34 @@ fn evaluate_in_witness_frame<A, S>(
   frame: WitnessEvaluationFrame<S>,
   subject: fn(Bool) -> A,
 ) -> WitnessEvaluation<A, S> {
+  let _dispatcher_deps = witness_dispatcher_dependencies()
   WitnessRefused { diagnostic: witness_frame_unrealized_diagnostic(), route: [], state: none }
+}
+
+// THE DECLARED REFERENCE THAT REACHES THE STRING-DISPATCHED CALLEES.
+// The interpreter realizes evaluate_in_witness_frame by MODULE AND NAME and never evaluates the
+// body above; it then resolves this boundary's modeled operation-realization callees by STRING
+// (v1_interpreter.rs admit_modeled_realization onward) against the run's demand index. A per-function
+// claim run's index (seed Rust resolve_entry_graph_demand_acquired) holds a declaration only when the
+// entry's reference chain REACHES it, and a string lookup is not a reference the loader follows -- so
+// in an isolated --function run these callees are absent and the dispatcher refuses with no reason.
+// The declarations below are referenced by VALUE from this function, which two_contenders reaches via
+// evaluate_in_witness_frame, so the loader follows them into the index. This is a declared reference,
+// NOT a widening of v2.compiler.module_acquisition to read strings (its contract: a String literal is
+// never a module reference, a bare name is not requestable). The interpreter never runs this body, so
+// realized dispatch and the whole-tree verdict are unchanged; the reference exists for the loader.
+fn witness_dispatcher_dependencies() -> Bool {
+  named_ref(modeled_realization_admitted_in)
+    && named_ref(operation_realization_duplicate)
+    && named_ref(operation_realization_index)
+    && named_ref(operation_handler_selection)
+    && named_ref(virtual_clock_after)
+}
+
+// A type-preserving consumer so each callee above is a USED reference the demand loader follows, not
+// a bare name. It reads nothing; its whole role is to make the reference load-bearing.
+fn named_ref<T>(value: T) -> Bool {
+  true
 }
 
 // An executing-scope observation proves that a temporary frame was removed. The pure/default answer is false; the interpreter realization returns true only while evaluate_in_witness_frame is applying its subject.
