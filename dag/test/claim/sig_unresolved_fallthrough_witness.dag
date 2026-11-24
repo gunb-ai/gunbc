@@ -1,11 +1,12 @@
 module test.claim.sig_unresolved_fallthrough_witness
 
-import std.types { String, Bool, Int, List }
-import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-
-import gunbc.recurring_failure_mode.unresolved_callee_conflated_with_dispatched_elsewhere {
-  unresolved_callee_conflated_with_dispatched_elsewhere,
-}
+import std.types { String, Bool, Int, List, NonEmptyStr }
+import std.algebra { string_contains, starts_with, trim, substring, string_length, contains, count_where, all_algebra_template_names }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import extdeps.exec.command { ArgvCommand, LocalExec, argv_command }
+import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+import extdeps.shell.exec { ProcessRan, ProcessNotSpawned }
+import gunbc.command_runner { run_shell_command_observe_outcome, run_shell_command }
 
 import gunbc.instruments.multi_module_compile_fixture {
   MultiModuleCompileFixture,
@@ -19,90 +20,75 @@ import gunbc.instruments.multi_module_compile_fixture {
   fixture_has_class,
 }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+import gunbc.recurring_failure_mode.roster { recurring_failure_mode_roster }
+import gunbc.recurring_failure_mode.unresolved_signature_skips_call_shape_judgment {
+  unresolved_signature_skips_call_shape_judgment,
+}
 
-// THE SIG-UNRESOLVED FALLEN THROUGH BLIND SPOT: an executed control pair.
+// THE SIG-UNRESOLVED CALL-SHAPE BLIND SPOT: controls, run-time census, and the typed carrier link.
 //
-// THIS WITNESS IS A TRIPWIRE ON A HOLE, NOT A WALL. It asserts that the hole exists today.
-// When the hole is closed — by the namespace lane's resolution coverage improving so that
-// bare calls to kernel method template names resolve their signatures via func_env or
-// parent_closure_callable_candidates rather than falling through to CallableUnresolved —
-// this witness's RED leg (unimported_kernel_name_mislabeled_call_compiles_clean) will go
-// red because the compiler will start REFUSING the mislabeled call. That red is THE POINT:
-// it means the hole is being closed and the test must then invert its assertion (expect
-// refusal, matching the licensed twin). DO NOT DELETE THE RED TEST TO MAKE IT PASS. Invert
-// the assertion instead: the licensed twin becomes the only behavior.
+// WHAT THIS MODULE IS. Two discriminating controls over the direct-call shape wall, one census
+// leg that computes the blind spot's population AT RUN TIME in .dag, and one leg binding this
+// module to its typed carrier: the recurring failure mode row
+// `gunbc.recurring_failure_mode.unresolved_signature_skips_call_shape_judgment`. This module
+// IMPORTS that row module, so a rename of the class is a compile error here; the roster leg
+// additionally refuses if the row leaves the roster or its identity drifts. The roadmap node is
+// `call-signature-resolution-coverage` (dag/gunbc/roadmap/roadmap_authority.dag).
 //
-// THE NODE THAT CLOSES THE HOLE: namespace-lane resolution coverage — the work item that
-// makes func_env_declared_func_sig (or parent_closure_callable_candidates) resolve sigs for
-// bare names matching kernel method templates without requiring an explicit import. Once that
-// lands, the unimported path no longer produces CallableUnresolved for these names, the
-// method bridge is never reached, and the shape wall fires uniformly.
+// WHAT THIS MODULE IS NOT. It does NOT assert the bug as the expected result. The blind spot is
+// a mislabeled call to an UNIMPORTED, UNDECLARED kernel method template name compiling clean:
+// the callee resolves no signature, the direct-call shape wall is gated on sig Present, and the
+// call falls through to the method bridge, which binds positionally and never checks labels.
+// A leg that greened while that happened would be the bug enrolled as an asset -- green only
+// while the compiler stays wrong, red the day the compiler improves. Such a leg existed in an
+// earlier revision of this file and was DELETED (reviews 98080/98112; gunbc.design_argument::
+// fail_closed: silent wrongness is below the ladder and forbidden outright). The blind spot is
+// carried by the ROW, not by a passing assertion.
 //
-// WHAT THIS WITNESS PROVES AND HOW IT IS DIFFERENT FROM call_target_partition_witness.
+// THE TWO CONTROLS are the discriminating pair: the locally-declared mislabeled call is REFUSED
+// (CallArgumentNameUnknown -- the compiler IS capable at the shape layer when the sig resolves)
+// and the correctly-labeled call is ACCEPTED (the wall does not over-refuse). Both pass at main
+// and must keep passing when the hole closes; they are controls on the wall, not on the hole.
+// The twin is LOCALY DECLARED, not imported: compile_fixture compiles in isolation with no
+// module index, so imports cannot resolve there -- the name and comments say what the data is.
 //
-// A call whose callee resolves NO signature bypasses every call-shape judgment. The landed
-// direct_call_shape_wall_note checks labels only when the sig resolves (the sig != none branch);
-// an absent signature falls through to the method bridge, which binds args positionally and never
-// validates labels against the callee's declared parameters. The wall note itself states this:
-// "the method-call path binds its arguments through its own inference arms and is the method
-// wall's territory."
+// THE CENSUS LEG computes the fallthrough population at run time: the name roster is drawn from
+// the algebra authority itself (std.algebra all_algebra_template_names -- the same
+// AlgebraFieldTemplate rows algebra_method_template_name consults; no hand-typed roster exists,
+// so the census can only name names the authority actually declares), the predicates and filters
+// are .dag folds, and the raw observations come through the wall-gated typed command seam
+// (gunbc.command_runner run_shell_command_observe_outcome; `grep` and `rev-parse` are read-only
+// verbs of the git route wall). NO COMMITTED PROJECTION IS FILED and NO SHELL PRODUCER SCRIPT
+// EXISTS -- the superseded artifacts were deleted after review (gunbc.design_argument::
+// how_to_work: raw shell implementing semantics expressible in .dag is presumed scaffold;
+// gunbc.design_argument::consumption: a census without a concrete retained consumer is retired).
+// The consumer of the number is this node's red_control, "fallthrough count monotonically
+// falls", read off the printed census line, and monotonicity is judged against future runs of
+// THIS leg. The leg prints only when every observation succeeded and the guards
+// (sites > 0, modules > 0, names > 0, roster_read > 0) hold; a refused spawn, a failed grep, or
+// an empty census prints NOTHING and reddens -- an unexecuted census is never a pass.
 //
-// THIS WITNESS IS THE EXECUTED PROOF that the method wall does not currently close that gap:
-// a mislabeled bare call to a kernel method template name (unimported, so CallableUnresolved)
-// compiles CLEAN. The licensed twin — the same call where the name IS declared locally in the
-// fixture module (so sig resolves) — is REFUSED by the direct-call shape wall. The asymmetry IS
-// the blind spot.
-//
-// WHAT THIS WITNESS DOES NOT PROVE: that the fix is correct. The red side asserts the compiler
-// ACCEPTS the mislabeled call (0 blocking diagnostics at the call). Once coverage lands and the
-// sig resolves for the unimported case, this test would FAIL (the mislabeled call would be refused)
-// and the assertion must flip to expect refusal. That inversion is the node's red control: the
-// fallthrough count monotonically falls as coverage lands.
-//
-// CENSUS BASELINE (the input this witness's row actually parsed — name it, per §6 consumption):
-//   Committed artifact: docs/measurements/sig_unresolved_fallthrough_census.tsv
-//   Producer (byte-deterministic): scripts/sig_unresolved_fallthrough_census.sh
-//     — kernel name roster DERIVED from the algebra authority dag/std/algebra.dag (the same
-//     AlgebraFieldTemplate rows algebra_method_template_name consults), not hand-typed.
-//   Baseline measured at main 1d8a1d3976758e7b22b2f7361b3ef45b1f09a752:
-//     5890 sites / 1327 modules / 31 distinct names (aggregate sha256 of the committed TSV is
-//     printed by the producer at run time; the per-name table is the TSV itself — read it there,
-//     do not transcribe it here, a hand-typed copy drifts from its source silently).
-//   Consumer: this row's red_control "fallthrough count monotonically falls" (node
-//     call-signature-resolution-coverage in dag/gunbc/roadmap/roadmap_authority.dag) falls FROM
-//     this baseline. Future coverage legs re-run the producer and diff against the committed file.
-//
-// OLD (invalidated by the executed control): 4597 sites — imported-and-not-locally-declared
-//   calls. These resolve via parent_closure_callable_candidates, the wall fires, they are
-//   PROTECTED. Counting them as blind spot was wrong (the executed control proves it; see the
-//   run link in the PR).
-//
-// PREDICATE FILTERS and error direction: not locally declared (fn NAME( absent from file);
-//   not imported (import line does not list the name). Not filtered statically: parent_closure
-//   reachability beyond explicit imports (the import filter subsumes it for the corpus);
-//   builtin/kernel table (the builtin positional arity check ignores labeled args by
-//   construction, so labels remain unchecked whichever path handles the call; error direction:
-//   conservative — sites the resolver can still answer are excluded via the import filter, and
-//   the kernel-table route keeps labels unchecked anyway, so the count does not overstate the
-//   hole).
+// PREDICATE, stated where it is computed (the census line restates it): a site is a line where
+//   NAME( occurs bare -- preceded by a non-identifier, non-dot character or line start,
+// followed by a lowercase label and a colon;
+// NAME is in the algebra authority roster; and the line is not a declaration (`fn NAME(`), not a
+// method call (`|> NAME(`), not a comment line, not an import line; and the file neither declares
+// `fn NAME(` anywhere nor carries the old-script import pattern for NAME (those files resolve the
+// sig -- func_env.local / imported closure -- the wall fires, they are protected, not fallthrough).
+// Scanned roots: dag, src/v1, src/v2, restricted to *.dag by --include on every grep (uniform
+// .dag restriction: removes non-.dag text false positives, and cannot wrongly exclude a .dag
+// fallthrough site -- only a .dag file can carry a .dag call or declare a .dag fn). This differs
+// from the superseded mixed-filter script, which scanned only dag/ + src/v2/ for calls but took
+// its exclusion lists from unfiltered dag/ + src/v1/ + src/v2/; the number of THIS leg is the
+// live fact and the sole baseline going forward.
 
-// THE FIXTURE: calls 'length' with a deliberately wrong argument label, WITHOUT importing it.
-// 'length' is a kernel method template name (FreeMonoidCollection profile, ReceiverSelf param).
-// Without the import, call_target_for_direct_call reaches CallableUnresolved → sig=Absent →
-// method bridge → positional binding → labels unchecked → compiles clean.
-
-data unimported_mislabel_entry: String = "module suft.red\nfn probe(xs: List<Int>) -> Int { length(wrong_label: xs) }\n"
-
-// THE LICENSED TWIN: the same call where 'length' is declared LOCALLY (not imported — the
-// compile_fixture compiles in isolation with no module index, so imports cannot resolve).
-// A local declaration puts the name in func_env.local, func_env_declared_func_sig finds it,
-// sig=Present, and direct_call_shape_wall_note fires:
-// "call shape mismatch calling 'length': no parameter named 'wrong_label' (declared: [xs])".
-// The compiler IS capable of catching this at the shape layer; it simply does not when the name
-// is unresolved (CallableUnresolved → method bridge).
+// ---------------------------------------------------------------------------
+// THE CONTROLS: the discriminating pair (refusal-capable, not over-refusing).
+// ---------------------------------------------------------------------------
 
 data locally_declared_mislabel_entry: String = "module suft.green\nfn length(xs: List<Int>) -> Int { 0 }\nfn probe(xs: List<Int>) -> Int { length(wrong_label: xs) }\n"
+
+data locally_declared_correct_entry: String = "module suft.control\nfn length(xs: List<Int>) -> Int { 0 }\nfn probe(xs: List<Int>) -> Int { length(xs: xs) }\n"
 
 fn compile_probe(entry: String) -> MultiModuleCompileFixtureOutcome {
   compile_fixture(MultiModuleCompileFixture {
@@ -111,20 +97,6 @@ fn compile_probe(entry: String) -> MultiModuleCompileFixtureOutcome {
   })
 }
 
-// THE RED CONTROL: the unimported mislabeled call compiles clean (0 blocking diagnostics).
-// This IS the blind spot — the shape wall does not fire because sig=Absent.
-test fn unimported_kernel_name_mislabeled_call_compiles_clean() -> Bool {
-  match compile_probe(unimported_mislabel_entry) {
-    FixtureCompileCompleted { module_count: _, emitted_files: _, resolved_rust_functions: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
-      count(fixture_blocking_rows(rows: rows)) == 0
-    FixtureCompileRefused { module_count: _, diagnostics: _, source_digest: _, compiler_digest: _ } => false
-    FixtureInstrumentRefused { cause: _ } => false
-  }
-}
-
-// THE LICENSED TWIN: the locally-declared mislabeled call IS refused by the shape wall.
-// This proves the compiler is CAPABLE of catching this at the shape layer — it simply does not
-// when the name is unresolved. The pairing makes the red a guarantee, not a complaint.
 test fn locally_declared_kernel_name_mislabeled_call_is_refused() -> Bool {
   match compile_probe(locally_declared_mislabel_entry) {
     FixtureCompileCompleted { module_count: _, emitted_files: _, resolved_rust_functions: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
@@ -135,10 +107,6 @@ test fn locally_declared_kernel_name_mislabeled_call_is_refused() -> Bool {
   }
 }
 
-// NEGATIVE CONTROL: the correctly-labeled locally-declared call compiles clean (the wall does
-// not over-refuse). This catches an over-refusing repair that breaks correct programs.
-data locally_declared_correct_entry: String = "module suft.control\nfn length(xs: List<Int>) -> Int { 0 }\nfn probe(xs: List<Int>) -> Int { length(xs: xs) }\n"
-
 test fn locally_declared_correctly_labeled_call_compiles_clean() -> Bool {
   match compile_probe(locally_declared_correct_entry) {
     FixtureCompileCompleted { module_count: _, emitted_files: _, resolved_rust_functions: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
@@ -148,10 +116,303 @@ test fn locally_declared_correctly_labeled_call_compiles_clean() -> Bool {
   }
 }
 
-// THE TYPED CLASS ROW LINK. The recurring failure mode this witness trips is the unresolved-callee
-// absorber row; asserting its identity here ties the tripwire to the row in a typed, CI-checked
-// position (a comment-only link can rot silently when the row is renamed; this leg goes red).
-test fn class_row_link_is_current() -> Bool {
-  (unresolved_callee_conflated_with_dispatched_elsewhere.identity as String)
-    == "unresolved_callee_conflated_with_dispatched_elsewhere"
+// ---------------------------------------------------------------------------
+// THE CENSUS: authority-derived roster, .dag predicates, typed observations, one print.
+// ---------------------------------------------------------------------------
+
+// An observation is either a successful (possibly empty) row list or a typed failure --
+// a failed grep reddens the leg rather than silently shrinking the population.
+type CensusObservation
+  = Rows { rows: List<String> }
+  | GrepFailed { cause: String }
+
+fn observe(argv: ArgvCommand) -> CensusObservation {
+  match run_shell_command_observe_outcome(command: argv, transport: LocalExec) {
+    ProcessRan { observation: obs } =>
+      if obs.exit_code == 0 then
+        Rows { rows: nonblank(split(s: obs.stdout, delimiter: "\n")) }
+      else if obs.exit_code == 1 then
+        // grep family: exit 1 is "no rows", a legitimate empty observation, not a failure.
+        Rows { rows: [] }
+      else
+        GrepFailed { cause: concat("git grep exit ", to_string(obs.exit_code)) }
+    ProcessNotSpawned { program: _, cause: c } =>
+      GrepFailed { cause: concat("not spawned: ", c as String) }
+  }
+}
+
+fn nonblank(xs: List<String>) -> List<String> {
+  filter(xs, l => trim(l) != "")
+}
+
+fn observation_rows(o: CensusObservation) -> List<String> {
+  match o { Rows { rows: rows } => rows, GrepFailed { cause: _ } => [] }
+}
+
+fn observation_failed(o: CensusObservation) -> Bool {
+  match o { Rows { rows: _ } => false, GrepFailed { cause: _ } => true }
+}
+
+fn git_identity() -> ProgramIdentity = uncataloged_program(invocation: "git" as NonEmptyStr)
+
+// THE NAME ROSTER IS THE AUTHORITY: names of the AlgebraFieldTemplate rows the compiler itself
+// consults (algebra_method_template_name). Adding a kernel method to the authority extends the
+// census automatically; removing one shrinks it. There is no second source of truth here.
+fn kernel_roster() -> List<String> {
+  all_algebra_template_names()
+}
+
+// Bare-call occurrence test: `NAME(` whose preceding character is not [A-Za-z0-9_.] (or is line
+// start), and whose following characters are a nonempty lowercase label then ':' (labeled args).
+fn ident_chars() -> List<String> {
+  ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m",
+   "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z",
+   "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M",
+   "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z",
+   "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "_", "."]
+}
+
+fn lower_or_underscore_chars() -> List<String> {
+  ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m",
+   "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z", "_"]
+}
+
+fn first_index(s: String, needle: String, from: Int) -> Int {
+  let n = string_length(s: needle)
+  in if n == 0 then string_length(s: s)
+     else if from + n > string_length(s: s) then string_length(s: s)
+     else if substring(s: s, start: from, end: from + n) == needle then from
+     else first_index(s: s, needle: needle, from: from + 1)
+}
+
+// True when a nonempty run of lowercase/underscore characters sits at `from` and ':' closes it.
+fn labeled_args_follow(s: String, from: Int) -> Bool {
+  let n = string_length(s: s)
+  in if from >= n then false
+     else {
+       let c = substring(s: s, start: from, end: from + 1)
+       in if c == ":" then from > 0 && labeled_run_nonempty(s: s, start: from - 1, needle_c: ":")
+          else if contains(xs: lower_or_underscore_chars(), item: c, eq: (a, b) => a == b)
+             then labeled_args_follow(s: s, from: from + 1)
+          else false
+     }
+}
+
+// The ':' at position (from) was reached by advancing over label characters starting at `start`;
+// re-check that at least one label character actually sits between `start` and the colon. The
+// advance above guarantees it; this helper exists so the check is explicit, not inferred.
+fn labeled_run_nonempty(s: String, start: Int, needle_c: String) -> Bool {
+  substring(s: s, start: start, end: start + 1) != needle_c
+}
+
+fn has_bare_call_from(l: String, name: String, needle: String, from: Int) -> Bool {
+  let idx = first_index(s: l, needle: needle, from: from)
+  in if idx >= string_length(s: l) then false
+     else {
+       let ok_prefix = idx == 0
+         || !contains(xs: ident_chars(), item: substring(s: l, start: idx - 1, end: idx), eq: (a, b) => a == b)
+       in if ok_prefix && labeled_args_follow(s: l, from: idx + string_length(s: needle)) then
+            true
+          else
+            has_bare_call_from(l: l, name: name, needle: needle, from: idx + 1)
+     }
+}
+
+fn is_comment_line(l: String) -> Bool {
+  let t = trim(l)
+  in starts_with(s: t, prefix: "//")
+}
+
+fn is_import_line(l: String) -> Bool {
+  let t = trim(l)
+  in starts_with(s: t, prefix: "import ")
+}
+
+// A `path:lineno:content` row from `git grep -n`: the content is everything after the second
+// colon; the file is everything before the first.
+fn row_file(l: String) -> String {
+  let p1 = first_index(s: l, needle: ":", from: 0)
+  in substring(s: l, start: 0, end: p1)
+}
+
+fn row_content(l: String) -> String {
+  let p1 = first_index(s: l, needle: ":", from: 0)
+  in if p1 >= string_length(s: l) then l
+     else {
+       let p2 = first_index(s: l, needle: ":", from: p1 + 1)
+       in if p2 >= string_length(s: l) then l
+          else substring(s: l, start: p2 + 1, end: string_length(s: l))
+     }
+}
+
+fn list_contains(xs: List<String>, want: String) -> Bool {
+  count_where(xs: xs, predicate: x => x == want) > 0
+}
+
+fn grep_calls_argv(name: String) -> ArgvCommand =
+  argv_command(program: git_identity(),
+    arguments: ["grep", "-n", "-F", "-e", concat(name, "("), "--include=*.dag",
+                "--", "dag", "src/v1", "src/v2"])
+
+fn grep_decls_argv(name: String) -> ArgvCommand =
+  argv_command(program: git_identity(),
+    arguments: ["grep", "-l", "-E", "-e", concat("^fn ", concat(name, "[(]")), "--include=*.dag",
+                "--", "dag", "src/v1", "src/v2"])
+
+// The import pattern the superseded script carried, verbatim in intent (the old-shell predicate
+// ported, not widened): a line starting `import`, with a brace, naming NAME as a member token.
+fn grep_importers_argv(name: String) -> ArgvCommand =
+  argv_command(program: git_identity(),
+    arguments: ["grep", "-l", "-E", "-e",
+                concat(concat("^import.*{.*[^a-zA-Z0-9_]", name), "[,} ]"), "--include=*.dag",
+                "--", "dag", "src/v1", "src/v2"])
+
+type CensusAcc {
+  sites: Int
+  files: List<String>
+  names_hit: List<String>
+  failures: Int
+}
+
+data census_start: CensusAcc = CensusAcc { sites: 0, files: [], names_hit: [], failures: 0 }
+
+fn census_line_candidate(l: String, name: String, roster: List<String>) -> Bool {
+  contains(xs: roster, item: name, eq: (a, b) => a == b)
+    && has_bare_call_from(l: l, name: name, needle: concat(name, "("), from: 0)
+    && !string_contains(s: l, pattern: concat("fn ", concat(name, "(")))
+    && !string_contains(s: l, pattern: concat("|> ", concat(name, "(")))
+    && !is_comment_line(l)
+    && !is_import_line(l)
+}
+
+fn census_walk(s: List<String>, roster: List<String>, acc: CensusAcc) -> CensusAcc {
+  match s |> first {
+    Absent => acc
+    Present { value: name } => {
+      let decls = observe(grep_decls_argv(name))
+      in if observation_failed(decls) then
+           census_walk(s: s |> skip(n: 1), roster: roster,
+             acc: CensusAcc { sites: acc.sites, files: acc.files, names_hit: acc.names_hit, failures: acc.failures + 1 })
+         else {
+           let importers = observe(grep_importers_argv(name))
+           in if observation_failed(importers) then
+                census_walk(s: s |> skip(n: 1), roster: roster,
+                  acc: CensusAcc { sites: acc.sites, files: acc.files, names_hit: acc.names_hit, failures: acc.failures + 1 })
+              else {
+                let calls = observe(grep_calls_argv(name))
+                in if observation_failed(calls) then
+                     census_walk(s: s |> skip(n: 1), roster: roster,
+                       acc: CensusAcc { sites: acc.sites, files: acc.files, names_hit: acc.names_hit, failures: acc.failures + 1 })
+                   else {
+                     let decl_files = observation_rows(decls)
+                     let importer_files = observation_rows(importers)
+                     let kept = filter(observation_rows(calls), l =>
+                       census_line_candidate(l: row_content(l), name: name, roster: roster)
+                         && !list_contains(decl_files, row_file(l))
+                         && !list_contains(importer_files, row_file(l)))
+                     let new_files = fold(kept, init: acc.files, f: (fs, l) =>
+                       if list_contains(fs, row_file(l)) then fs else concat(fs, [row_file(l)]))
+                     in census_walk(s: s |> skip(n: 1), roster: roster,
+                       acc: CensusAcc {
+                         sites: acc.sites + count(kept),
+                         files: new_files,
+                         names_hit: if count(kept) > 0 then concat(acc.names_hit, [name]) else acc.names_hit,
+                         failures: acc.failures
+                       })
+                   }
+              }
+         }
+    }
+  }
+}
+
+fn head_sha_line() -> String {
+  match observe(argv_command(program: git_identity(),
+      arguments: ["rev-parse", "HEAD"])) {
+    Rows { rows: rows } => match rows |> first {
+      Present { value: v } => concat(" HEAD_SHA=", v)
+      Absent => " HEAD_SHA=OBSERVATION_EMPTY"
+    }
+    GrepFailed { cause: c } => concat(" HEAD_SHA=FAILED:", c)
+  }
+}
+
+fn census_predicate_text() -> String {
+  " predicate=BARE_NAME_LPAREN_LABELLED_AND_NOT(fn_NAME(_NOT(|>_NAME(_NOT_COMMENT_NOT_IMPORT_AND_NOT_FILE_DECL_AND_NOT_FILE_IMPORT)_names_from=std.algebra.all_algebra_template_names roots=dag,src/v1,src/v2 include=*.dag"
+}
+
+fn census_line(acc: CensusAcc, roster_read: Int) -> String {
+  concat("CENSUS sig-unresolved-fallthrough sites=",
+    concat(to_string(acc.sites),
+      concat(" modules=", concat(to_string(count(acc.files)),
+        concat(" names=", concat(to_string(count(acc.names_hit)),
+          concat(" roster_read=", concat(to_string(roster_read),
+            concat(" failures=", concat(to_string(acc.failures),
+              concat(census_predicate_text(), head_sha_line()))))))))))
+}
+
+fn print_line(line: String) -> ProcessExit {
+  run_shell_command(command: argv_command(
+    program: uncataloged_program(invocation: "printf" as NonEmptyStr),
+    arguments: ["%s\n", line]), transport: LocalExec)
+}
+
+test fn census_fallthrough_population_computed_at_run_time() -> Bool {
+  let roster = kernel_roster()
+  in if count(roster) == 0 then
+       false
+     else {
+       let acc = census_walk(s: roster, roster: roster, acc: census_start)
+       in if acc.failures == 0 && acc.sites > 0 && count(acc.files) > 0 && count(acc.names_hit) > 0 then
+            match print_line(census_line(acc, count(roster))) {
+              ExitSuccess => true
+              ExitFailure { code: _, reason: _ } => false
+            }
+          else
+            false
+     }
+}
+
+// ---------------------------------------------------------------------------
+// THE FILTER, ASSERTED: the candidate filter is load-bearing (the fixed-string `-F` observation
+// over-selects -- method spellings, declarations, comments and non-roster names all reach it),
+// so a red filter is caught even before the census leg runs.
+// ---------------------------------------------------------------------------
+
+data filter_keep_line: String = "  let n = length(wrong_label: xs)\n"
+data filter_drop_decl: String = "fn length(xs: List<Int>) -> Int { 0 }\n"
+data filter_drop_method: String = "  let n = xs |> length()\n"
+data filter_drop_comment: String = "// length(wrong_label: xs) in prose\n"
+data filter_drop_import: String = "import std.algebra { length }\n"
+data filter_drop_nonroster: String = "  let n = notakernelname(wrong_label: xs)\n"
+data filter_drop_dotted: String = "  let n = mod.length(wrong_label: xs)\n"
+
+fn filter_sample(roster: List<String>) -> Bool {
+  count(filter([filter_keep_line, filter_drop_decl, filter_drop_method,
+                 filter_drop_comment, filter_drop_import, filter_drop_nonroster,
+                 filter_drop_dotted],
+    l => census_line_candidate(l: l, name: "length", roster: roster))) == 1
+    && census_line_candidate(l: filter_keep_line, name: "length", roster: roster)
+    && !census_line_candidate(l: filter_drop_decl, name: "length", roster: roster)
+    && !census_line_candidate(l: filter_drop_method, name: "length", roster: roster)
+    && !census_line_candidate(l: filter_drop_comment, name: "length", roster: roster)
+    && !census_line_candidate(l: filter_drop_import, name: "length", roster: roster)
+    && !census_line_candidate(l: filter_drop_nonroster, name: "length", roster: roster)
+    && !census_line_candidate(l: filter_drop_dotted, name: "length", roster: roster)
+}
+
+test fn census_filters_discriminate() -> Bool {
+  filter_sample(kernel_roster())
+}
+
+// ---------------------------------------------------------------------------
+// THE TYPED CARRIER LINK: the class row is rostered and carries the identity this module
+// imports it under. The import makes a rename a COMPILE failure; this leg refuses if the row
+// leaves the roster or the identity string drifts from the row's own field.
+// ---------------------------------------------------------------------------
+
+test fn class_row_is_rostered_with_matching_identity() -> Bool {
+  let id = unresolved_signature_skips_call_shape_judgment.identity as String
+  in count_where(xs: recurring_failure_mode_roster,
+       predicate: r => (r.identity as String) == id) > 0
 }
