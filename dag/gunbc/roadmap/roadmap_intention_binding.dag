@@ -37,6 +37,7 @@ data factory_dogfood_intention: String = "gunbc.plans.factory_dogfood"
 data v2_self_host_intention: String = "gunbc.plans.v2_self_host"
 data debt_payoff_intention: String = "gunbc.plans.debt_payoff"
 data first_customer_service_intention: String = "gunbc.plans.first_customer_service"
+data derived_types_keep_their_name_intention: String = "gunbc.plans.derived_types_keep_their_name"
 data planning_consolidation_intention: String = "gunbc.plans.planning_consolidation"
 data fabric_market_intention: String = "gunbc.plans.fabric_market"
 data desired_state_follows_the_machine_intention: String = "gunbc.plans.desired_state_follows_the_machine"
@@ -192,6 +193,10 @@ data roadmap_intention_bindings: List<IntentionBinding> = [
   serves(node: "fleet-truth-enrolled-key-roster-closed", module_path: desired_state_follows_the_machine_intention, plan: "desired_state_follows_the_machine_plan", layer: 1),
   serves(node: "fleet-truth-prefix-cache-sized-to-population", module_path: desired_state_follows_the_machine_intention, plan: "desired_state_follows_the_machine_plan", layer: 1),
   serves(node: "fleet-truth-declared-incompleteness-refuses-use", module_path: desired_state_follows_the_machine_intention, plan: "desired_state_follows_the_machine_plan", layer: 1),
+  // The declared-relationship intention keeps these identities and prerequisite edges.
+  serves(node: "derived-type-argument-inhabitance-root", module_path: derived_types_keep_their_name_intention, plan: "derived_types_keep_their_name_plan", layer: 0),
+  serves(node: "nonempty-str-becomes-a-checked-nominal", module_path: derived_types_keep_their_name_intention, plan: "derived_types_keep_their_name_plan", layer: 0),
+  serves(node: "brands-reached-by-checked-constructors", module_path: derived_types_keep_their_name_intention, plan: "derived_types_keep_their_name_plan", layer: 0),
   // gunbc.plans.read_set_convergence: heal's regeneration round (2026-11-22). Layer is edge depth.
   serves(node: "heal-scope-relation-without-typecheck", module_path: read_set_convergence_intention, plan: "read_set_convergence_plan", layer: 0),
   serves(node: "heal-scope-population-evidence", module_path: read_set_convergence_intention, plan: "read_set_convergence_plan", layer: 0),
@@ -237,6 +242,15 @@ data intention_terminals: List<IntentionTerminals> = [
   // that hang below it, and each remaining item is its own line's end. The plan's done-when is the whole
   // set -- one consumer refusing on a planted divergence, not four hosts repaired.
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.desired_state_follows_the_machine", decl_name: "desired_state_follows_the_machine_plan"), terminals: [nid(s: "fleet-truth-rosters-consume-the-read"), nid(s: "fleet-truth-unit-orphans-closed"), nid(s: "fleet-truth-serving-leaf-caps-joined-to-working-set"), nid(s: "fleet-truth-enrolled-key-roster-closed"), nid(s: "fleet-truth-prefix-cache-sized-to-population"), nid(s: "fleet-truth-probes-refuse-not-absence"), nid(s: "fleet-truth-declared-incompleteness-refuses-use")] },
+  // The root item preserves settled constraint and nominal contracts while the transparent-reference
+  // surface is decided separately. Only reference-specific changes or migration await that choice;
+  // full acceptance still requires every relationship control. NonEmptyStr and the brands keep their
+  // contracts through checked construction; transparent references denote the full constrained type.
+  // These three still chain root <- nonempty <- brands along the prerequisite edges in
+  // roadmap_authority::declared_roadmap_edges, so the existing terminal and bindings remain correct.
+  // A blanket alias retirement is not this intention's goal, and the equals form's existing behavior
+  // does not settle reference syntax. The governing choice is cited by the plan, not invented here.
+  IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.derived_types_keep_their_name", decl_name: "derived_types_keep_their_name_plan"), terminals: [nid(s: "brands-reached-by-checked-constructors")] },
   // read_set_convergence's terminals here are the sinks of heal's lines of work: the P7 milestone and the three
   // separately accepted affected-round items. The plan's other consumers (A1 to A3) join as their items are filed.
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.read_set_convergence", decl_name: "read_set_convergence_plan"), terminals: [nid(s: "heal-planning-only-in-a-minute"), nid(s: "heal-observation-reuse-by-subject"), nid(s: "heal-bootstrap-seed-reuse"), nid(s: "heal-terminal-emission-elision")] },

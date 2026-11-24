@@ -4,7 +4,8 @@ import extdeps.huggingface.hub { HubCacheEnvironment, hub_cache_root_for, hub_ca
 import std.types { String, Bool, List, NonEmptyStr, Secret, Int }
 import std.nat { Nat }
 import std.retry_law { RetryLaw }
-import std.measure { second, second_count }
+import std.measure { Second, second, second_count }
+import std.integer { int_to_decimal_string }
 import std.content_hash { content_hash_atom, content_hash_of_value, serialize_content_hash }
 import product.host_identity { HostIdentity }
 import std.algebra { trim }
@@ -14,12 +15,13 @@ import gunbc.fleet.fleet_bootstrap_principal_session {
   BootstrapCredentialFileHeld,
   FleetPrincipalLegRan,
   FleetPrincipalLegRefused,
+  FleetPrincipalLegOverran,
 }
 import extdeps.exec.command { shell_quote }
 import extdeps.ssh.session { ssh_client_error_exit_status }
 import gunbc.spark.remote_leg_began { remote_leg_began_payload_line, remote_leg_reported_began, remote_leg_stdout_without_began, remote_stdout_as_one_word }
 import gunbc.fleet.fleet_known_hosts_anchor {
-  FleetOpenSshTrustPolicy, SshTarget, portable_remote_words,
+  FleetOpenSshTrustPolicy, SshTarget, portable_remote_words, ProvisioningLeg,
   SshTargetResolved, SshTargetRefused, fleet_ssh_target_at_standard_port, ssh_target_refusal_text,
 }
 import gunbc.fleet.fleet_posix_accounts { fleet_bootstrap_principal_login }
@@ -102,10 +104,23 @@ type SparkRemoteRun
 type SparkLegUnreachability
   = LegNotAttempted { cause: String }
   | LegBeginUnobserved { endpoint: String, stderr: String }
+  // THE LEG WAS KILLED AT ITS WALL-CLOCK CEILING. It is NOT LegBeginUnobserved: that arm's text
+  // asserts the session died before the began-line arrived, which is a different fact and a
+  // different remedy. Here the session was alive, the remote began (or was mid-effect), and this
+  // side ended it on purpose. The effect's state is still unknown -- the kill can land mid-command --
+  // so the consumer rule is the same as the unobserved arm's: read the host back before retrying.
+  | LegOverran { endpoint: String, deadline: Second }
 
 fn spark_leg_unreachability_text(u: SparkLegUnreachability) -> String {
   match u {
     LegNotAttempted { cause: c } => c
+    LegOverran { endpoint: e, deadline: d } =>
+      join([
+        "the ssh leg to ", e, " was killed at its own wall-clock ceiling of ", int_to_decimal_string(value: second_count(s: d)),
+        "s: the session was alive and the remote MAY HAVE BEGUN OR PARTLY COMPLETED; the ceiling is the",
+        " fix for a leg that hangs forever, NOT evidence about the host. Settle the effect by reading",
+        " the host back -- never by retrying a non-idempotent leg blind.",
+      ], "")
     LegBeginUnobserved { endpoint: e, stderr: err } =>
       join([
         "the ssh leg to ", e, " lost its session before the remote began-line arrived (ssh exit 255): the command MAY HAVE RUN; ",
@@ -155,6 +170,7 @@ fn spark_remote_run(ctx: SparkMaterializeContext, argv: List<String>) -> SparkRe
           SshTargetRefused { endpoint: e, refusal: why } => spark_remote_unreachable(u: LegNotAttempted { cause: ssh_target_refusal_text(endpoint: e, refusal: why) })
           SshTargetResolved { target: target } =>
           match exec_as_fleet_principal_trusting_with_stdin(
+            kind: ProvisioningLeg,
             trust: ctx.trust,
             target: target,
             words: words,
@@ -162,6 +178,8 @@ fn spark_remote_run(ctx: SparkMaterializeContext, argv: List<String>) -> SparkRe
             credential: BootstrapCredentialFileHeld { path: ctx.admin_credential_file },
           ) {
             FleetPrincipalLegRefused { cause: why } => spark_remote_unreachable(u: LegNotAttempted { cause: why as String })
+            FleetPrincipalLegOverran { session: _, deadline: d } =>
+              spark_remote_unreachable(u: LegOverran { endpoint: endpoint as String, deadline: d })
             FleetPrincipalLegRan { session: _, result: r } =>
               spark_remote_run_of_session(endpoint: endpoint as String, exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr)
           }
@@ -1002,6 +1020,7 @@ fn spark_argv_run_of_unreachable(cause: String, reach: SparkLegUnreachability) -
   match reach {
     LegNotAttempted { cause: _ } => ArgvLegDidNotRun { cause: cause }
     LegBeginUnobserved { endpoint: _, stderr: _ } => ArgvLegMayHaveRun { cause: cause }
+    LegOverran { endpoint: _, deadline: _ } => ArgvLegMayHaveRun { cause: cause }
   }
 }
 

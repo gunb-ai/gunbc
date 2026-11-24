@@ -2,6 +2,7 @@ module gunbc.live_deploy.deployed_tree_observation
 
 import std.integer { int_to_decimal_string }
 import std.types { String, NonEmptyStr, List, Bool, Int }
+import std.measure { Second, second_count }
 import std.optional { Optional, Present, Absent }
 import std.algebra { list_append, string_concat_join, trim }
 import gunbc.process_hold_identity { self_process_identity, SelfIdentified, SelfUnidentified }
@@ -13,17 +14,22 @@ import extdeps.git {
   git_in_trusted_repository_status_command,
   git_in_trusted_repository_ls_files_ignored_command,
 }
-import extdeps.exec.command { ArgvCommand }
+import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.tools.gnu_coreutils { rm_force_command }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_eq, git_object_id_wire_hex }
 import extdeps.ssh.session { SshSessionExecResult }
-import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget, SshTargetResolution, SshTargetResolved, SshTargetRefused, ssh_target_refusal_text }
+import gunbc.fleet.fleet_known_hosts_anchor { ProbeLeg,FleetSshExecutionContext, SshTarget, SshTargetResolution, SshTargetResolved, SshTargetRefused, ssh_target_refusal_text, ssh_target_wire }
 import gunbc.live_deploy.candidate { scan_checkout_status, scan_ignored_deployed_paths }
 import gunbc.host.host_effect_realize {
   run_argv_over_host_effect_transport,
   RunArgvTransportOutcome,
   RunArgvTransportObserved,
   RunArgvTransportRefused,
+  run_argv_over_host_effect_transport_preserving_overrun,
+  HostEffectArgvOutcome,
+  HostEffectArgvObserved,
+  HostEffectArgvRefused,
+  HostEffectArgvOverran,
   HostEffectTransport,
   FleetSsh,
 }
@@ -97,7 +103,14 @@ fn deployed_tree_locus(
 
 fn deployed_tree_locus_transport(locus: DeployedTreeLocus) -> HostEffectTransport {
   match locus {
-    FleetSshTreeLocus { target: t, context: c } => FleetSsh { target: t, context: c }
+    // THE FLEET ARM DECLARES ITS OWN KIND. Every leg this module sends is a fixed command the module
+    // writes itself -- rev-parse HEAD, rev-parse HEAD^{tree}, read-tree, status --porcelain, ls-files
+    // --ignored, and an rm -f -- so this is the fixed-argv case of the wrapper rule and the wrapper
+    // declares, rather than taking a kind from a caller who cannot see the command.
+    FleetSshTreeLocus { target: t, context: c } => FleetSsh { target: t, context: c, kind: ProbeLeg}
+    // THE LOCAL ARM CARRIES NO KIND BECAUSE IT IS NOT A FLEET LEG: it is shell.Exec.RunArgv on this host,
+    // with no ssh session to bound. Reading the tree you are standing in needs no ceiling on a remote
+    // machine, and pretending otherwise is how the observation came to depend on an agent it never used.
     LocalTreeLocus { host: _ } => LocalShell
   }
 }
@@ -293,7 +306,18 @@ fn deployed_tree_temp_index_path(locus: DeployedTreeLocus, run_nonce: String) ->
 // The pure mapping below keeps that distinction testable without dispatching anything.
 type DeployedTreeLegOutcome
   = DeployedTreeLegRan { result: SshSessionExecResult }
+  | DeployedTreeLegOverran { deadline: Second }
   | DeployedTreeLegNotAttempted { reason: String }
+
+// THE HOST STRING A DEADLINE RECEIPT NAMES. Derived from the locus's own resolved target, so the host a
+// leg overran on is spelled the one way it can be; the local arm has no ssh target to name, and naming
+// its own host is what a local deadline receipt would want -- there is no ssh session to have overran.
+fn deployed_tree_locus_host_text(locus: DeployedTreeLocus) -> String {
+  match locus {
+    FleetSshTreeLocus { target: t, context: _ } => ssh_target_wire(target: t) as String
+    LocalTreeLocus { host: h } => h as String
+  }
+}
 
 fn deployed_tree_leg_outcome_of(observed: RunArgvTransportOutcome) -> DeployedTreeLegOutcome {
   match observed {
@@ -305,9 +329,35 @@ fn deployed_tree_leg_outcome_of(observed: RunArgvTransportOutcome) -> DeployedTr
   }
 }
 
+// THE PRESERVING VIEW, for this module's own legs. Three arms, each named, no wildcard, so a future arm
+// of the carrier cannot be read as "the leg ran". The deadline stays a Second here; the text is built
+// where the verdict is built, from leg + host + argv + deadline together, because a receipt that cannot
+// name which leg died on which host at what ceiling is indistinguishable from no receipt.
+fn deployed_tree_leg_outcome_of_preserving(observed: HostEffectArgvOutcome) -> DeployedTreeLegOutcome {
+  match observed {
+    HostEffectArgvObserved { observed: o } =>
+      DeployedTreeLegRan {
+        result: SshSessionExecResult { exit_code: o.exit_code, success: o.success, stdout: o.stdout, stderr: o.stderr },
+      }
+    HostEffectArgvRefused { reason: why } => DeployedTreeLegNotAttempted { reason: why }
+    HostEffectArgvOverran { deadline: d } => DeployedTreeLegOverran { deadline: d }
+  }
+}
+
+// The incident leg's command, exposed as a name a claim can read. The observation call site below
+// passes THIS to the incident leg, so a claim comparing it against the shared builder reads the
+// value the module actually sends rather than recomputing the same expression: plant a different
+// command here and that claim goes red. It forwards to the one argv authority and adds none.
+fn deployed_tree_incident_leg_command(repo: NonEmptyStr) -> ArgvCommand {
+  git_in_trusted_repository_head_revision_command(repo: repo)
+}
+
 fn deployed_tree_leg(locus: DeployedTreeLocus, command: ArgvCommand) -> DeployedTreeLegOutcome {
-  deployed_tree_leg_outcome_of(
-    observed: run_argv_over_host_effect_transport(command: command, transport: deployed_tree_locus_transport(locus: locus)),
+  deployed_tree_leg_outcome_of_preserving(
+    observed: run_argv_over_host_effect_transport_preserving_overrun(
+      command: command,
+      transport: deployed_tree_locus_transport(locus: locus),
+    ),
   )
 }
 
@@ -333,6 +383,10 @@ fn deployed_tree_leg(locus: DeployedTreeLocus, command: ArgvCommand) -> Deployed
 type DeployedTreeUnobservableCause
   = TreeLegNotAttempted { leg: String, reason: String }
   | TreeCommandFailed { leg: String, exit_code: Int, stderr: String }
+  // The leg RAN and was killed by its own total-wall deadline. It is neither a refusal (something
+  // was asked of the host) nor a command failure (the host never answered), so it is its own arm,
+  // and it carries the deadline as a VALUE alongside the host and the exact argv it tripped on.
+  | TreeLegDeadlineExceeded { leg: String, host: String, argv: List<String>, deadline: Second }
   | TreeRevisionUndecodable { text: String }
   | TreeStatusUnreadable { detail: String }
 
@@ -348,11 +402,28 @@ fn deployed_tree_unobservable_text(cause: DeployedTreeUnobservableCause) -> Stri
       join(["the ", leg, " leg was never attempted, so the host was not asked: ", why], "")
     TreeCommandFailed { leg: leg, exit_code: code, stderr: err } =>
       join(["the ", leg, " leg ran and failed (exit ", int_to_decimal_string(value: code), "): ", err], "")
+    TreeLegDeadlineExceeded { leg: leg, host: host, argv: argv, deadline: d } =>
+      join([
+        "the ", leg, " leg on host ", host, " overran its ", int_to_decimal_string(value: second_count(s: d)),
+        "s wall-clock deadline (argv=", join(argv, " "),
+        "); it ran too long and its process group was killed before the host answered -- an overrun is neither a refusal nor a command failure",
+      ], "")
     TreeRevisionUndecodable { text: t } =>
       join(["the revision was read but is not a decodable git object id: ", t], "")
     TreeStatusUnreadable { detail: d } =>
       join(["the deployed tree answered, but its state is not readable and is not assumed clean: ", d], "")
   }
+}
+
+// The ONE construction of the deadline cause. Every deadline-bearing leg routes through here so the
+// shape (leg, host, argv, deadline) has a single spelling and a single witness.
+fn deployed_tree_leg_overran_cause(
+  leg: String,
+  host: String,
+  argv: List<String>,
+  deadline: Second,
+) -> DeployedTreeUnobservableCause {
+  TreeLegDeadlineExceeded { leg: leg, host: host, argv: argv, deadline: deadline }
 }
 
 // MODIFIED CARRIES THE PATHS IT SAW, as a NonEmptyStr so that "modified, with nothing to show for it"
@@ -462,9 +533,14 @@ fn deployed_tree_discard_index(
   index_path: String,
   verdict: DeployedTreeObservation,
 ) -> DeployedTreeObservation {
+  // THE CLEANUP LEG'S OUTCOME IS DELIBERATELY NOT READ -- the verdict is already settled and the discard
+  // is an idempotent rm -f -- but each arm is named rather than caught, so a new arm of the leg sum can
+  // never arrive here and be quietly swallowed as "the verdict came back".
   let cleanup = deployed_tree_leg(locus: locus, command: rm_force_command(path: index_path))
   match cleanup {
-    _ => verdict
+    DeployedTreeLegRan { result: _ } => verdict
+    DeployedTreeLegOverran { deadline: _ } => verdict
+    DeployedTreeLegNotAttempted { reason: _ } => verdict
   }
 }
 
@@ -472,12 +548,24 @@ fn observe_deployed_tree_owned(
   locus: DeployedTreeLocus,
   index_path: String,
 ) -> DeployedTreeObservation {
+  // Bound once, from the module's own incident-leg accessor, so the overrun cause carries the
+  // argv the leg was actually given rather than a value recomputed somewhere else.
+  let revision_argv = argv_words(command: deployed_tree_incident_leg_command(repo: deployed_tree_locus_repo(locus: locus)))
   match deployed_tree_leg(
     locus: locus,
-    command: git_in_trusted_repository_head_revision_command(repo: deployed_tree_locus_repo(locus: locus)),
+    command: deployed_tree_incident_leg_command(repo: deployed_tree_locus_repo(locus: locus)),
   ) {
     DeployedTreeLegNotAttempted { reason: why } =>
       DeployedTreeUnobservable { cause: TreeLegNotAttempted { leg: "revision", reason: why } }
+    DeployedTreeLegOverran { deadline: d } =>
+      DeployedTreeUnobservable {
+        cause: deployed_tree_leg_overran_cause(
+            leg: "revision",
+            host: deployed_tree_locus_host_text(locus: locus),
+            argv: revision_argv,
+            deadline: d,
+          ),
+      }
     DeployedTreeLegRan { result: rev } =>
       if rev.exit_code != 0 {
         DeployedTreeUnobservable {
@@ -494,6 +582,15 @@ fn observe_deployed_tree_owned(
             ) {
               DeployedTreeLegNotAttempted { reason: why } =>
                 DeployedTreeUnobservable { cause: TreeLegNotAttempted { leg: "root tree", reason: why } }
+              DeployedTreeLegOverran { deadline: d } =>
+                DeployedTreeUnobservable {
+                  cause: deployed_tree_leg_overran_cause(
+                      leg: "root tree",
+                      host: deployed_tree_locus_host_text(locus: locus),
+                      argv: argv_words(command: git_in_trusted_repository_head_root_tree_command(repo: deployed_tree_locus_repo(locus: locus))),
+                      deadline: d,
+                    ),
+                }
               DeployedTreeLegRan { result: tr } =>
                 if tr.exit_code != 0 {
                   DeployedTreeUnobservable {
@@ -541,6 +638,15 @@ fn observe_deployed_tree_against_revision(
   ) {
     DeployedTreeLegNotAttempted { reason: why } =>
       DeployedTreeUnobservable { cause: TreeLegNotAttempted { leg: "index materialization", reason: why } }
+    DeployedTreeLegOverran { deadline: d } =>
+      DeployedTreeUnobservable {
+        cause: deployed_tree_leg_overran_cause(
+            leg: "index materialization",
+            host: deployed_tree_locus_host_text(locus: locus),
+            argv: argv_words(command: git_in_trusted_repository_read_tree_command(repo: deployed_tree_locus_repo(locus: locus), revision_hex: revision_hex, index_path: index_path)),
+            deadline: d,
+          ),
+      }
     DeployedTreeLegRan { result: rt } =>
       if rt.exit_code != 0 {
         DeployedTreeUnobservable {
@@ -558,6 +664,15 @@ fn observe_deployed_tree_against_revision(
             DeployedTreeUnobservable {
               cause: TreeLegNotAttempted { leg: "worktree comparison", reason: why2 },
             }
+          DeployedTreeLegOverran { deadline: d } =>
+            DeployedTreeUnobservable {
+              cause: deployed_tree_leg_overran_cause(
+                  leg: "worktree comparison",
+                  host: deployed_tree_locus_host_text(locus: locus),
+                  argv: argv_words(command: git_in_trusted_repository_status_command(repo: deployed_tree_locus_repo(locus: locus), index_path: index_path)),
+                  deadline: d,
+                ),
+            }
           DeployedTreeLegRan { result: st } =>
             if st.exit_code != 0 {
               DeployedTreeUnobservable {
@@ -574,6 +689,15 @@ fn observe_deployed_tree_against_revision(
                 DeployedTreeLegNotAttempted { reason: why3 } =>
                   DeployedTreeUnobservable {
                     cause: TreeLegNotAttempted { leg: "ignored deployed paths", reason: why3 },
+                  }
+                DeployedTreeLegOverran { deadline: d } =>
+                  DeployedTreeUnobservable {
+                    cause: deployed_tree_leg_overran_cause(
+                        leg: "ignored deployed paths",
+                        host: deployed_tree_locus_host_text(locus: locus),
+                        argv: argv_words(command: git_in_trusted_repository_ls_files_ignored_command(repo: deployed_tree_locus_repo(locus: locus), index_path: index_path)),
+                        deadline: d,
+                      ),
                   }
                 DeployedTreeLegRan { result: ig } =>
                   if ig.exit_code != 0 {

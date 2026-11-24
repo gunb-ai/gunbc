@@ -7,9 +7,12 @@ import extdeps.clock { ClockUnixMillisObserved, ClockUnixMillisRefused }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }
 import gunbc.fleet.fleet_known_hosts_anchor { SshTargetResolved, SshTargetRefused, ssh_target_wire, anchored_host_key_row }
 import extdeps.ssh.known_hosts { known_hosts_host_field }
+import std.measure { second }
+import std.algebra { string_contains }
 import gunbc.compute.remote_build {
   RemoteBuildSourceRef, remote_build_source_ref_name, RemoteCompileEntry,
   HostServed, HostWorkFailed, HostCapacityFull, RemoteBuildAnswered, RemoteBuildNoHostAvailable, RemoteBuildAttempt,
+  HostLegOverran, remote_build_answer_moves_on,
   RemoteBuildHostPin, PinRostered, PinOffRoster, remote_build_host_pin, remote_build_pinned_candidates, remote_build_pin_refusal,
 }
 import gunbc.compute.remote_build_hosts {
@@ -19,6 +22,8 @@ import gunbc.compute.test_run {
   snapshot_commit_tree_args, compute_snapshot_author_name, compute_snapshot_author_email,
 }
 import gunbc.compute.remote_build_client {
+  remote_build_answer_word, remote_build_answer_text, remote_gate_step_outcome,
+  GateNoHostAdmitted, GateVerdictOnCode,
   remote_build_client_source_ref, remote_build_client_push_argv, remote_build_client_delete_argv,
   remote_build_client_target, remote_build_step_served, remote_build_run_served, remote_build_run_clean,
   RemoteBuildRun, RemoteBuildRan, RemoteBuildNotSent, RemoteBuildRequestResult, RemoteBuildRefDeleted,
@@ -165,6 +170,21 @@ test fn red_a_job_root_of_unreadable_principal_refuses() -> Bool {
 // emit the one comparable representation the decision relies on.
 test fn the_real_readback_admits_a_directory_the_principal_owns() -> Bool {
   w_job_root_ready(r: materialize_remote_build_client_job_root(root: "."))
+}
+
+// AN OVERRAN LEG IS A CAPACITY FACT, NEVER A VERDICT ON THE CODE. The ceiling travels as std.measure's
+// Second and is projected to text only where a human reads it (review 96999); the walk moves on to the
+// next candidate because a probe that overran sent nothing (review 96994); and the CI routing class is
+// the one an unreachable host gets -- never the code-verdict class, which would mark a commit failed
+// over wall clock.
+test fn an_overran_leg_carries_its_ceiling_and_never_judges_the_code() -> Bool {
+  let overran = HostLegOverran { deadline: second(count: 15) }
+  let step = RemoteBuildAnswered { host: "srv1" as HostIdentity, answer: overran }
+  remote_build_answer_word(a: overran) == "probe-leg-overran-at-15s"
+    && string_contains(s: remote_build_answer_text(a: overran), pattern: "15s wall-clock deadline")
+    && remote_build_answer_moves_on(a: overran)
+    && match remote_gate_step_outcome(s: step) { GateNoHostAdmitted => true  _ => false }
+    && !match remote_gate_step_outcome(s: step) { GateVerdictOnCode => true  _ => false }
 }
 
 // THE HOST PIN -- the operator's/runner's choice to send ONE request to ONE named host. These pin

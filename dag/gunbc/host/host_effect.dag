@@ -1,6 +1,6 @@
 module gunbc.host.host_effect
 
-import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import gunbc.fleet.fleet_known_hosts_anchor { FleetLegKind, FleetSshExecutionContext, SshTarget }
 import std.types { String, Int, NonEmptyStr, List }
 import std.content_hash { ContentHash, Fnv1a64Structural }
 import std.access { AccessDecision }
@@ -149,7 +149,7 @@ type ThinInvocation {
 type HostEffectTransport =
     LocalShell
   | SshShell { ssh_host: NonEmptyStr }
-  | FleetSsh { target: SshTarget, context: FleetSshExecutionContext }
+  | FleetSsh { target: SshTarget, context: FleetSshExecutionContext, kind: FleetLegKind}
   | EmitArtifactThenThinRun { bootstrap: BootstrapFragment, invocation: ThinInvocation }
 
 // THE FLEETSSH LEAF FRONTIER. A leaf that BUILDS an invocation cannot be migrated by routing FleetSsh

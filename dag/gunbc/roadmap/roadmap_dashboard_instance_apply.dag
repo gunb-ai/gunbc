@@ -67,12 +67,11 @@ import extdeps.languages.json.emit {
   json_object,
   json_kv,
 }
-import gunbc.typed_argv_exec {
+import gunbc.typed_argv_exec { 
   TypedArgvExecOutcome,
   TypedArgvExecConverged,
   TypedArgvExecRefused,
-  typed_argv_exec_over_ssh,
-}
+  typed_argv_exec_over_ssh, TypedArgvExecOverran, typed_argv_exec_overran_reason }
 import gunbc.roadmap.roadmap_dashboard_instance_observe {
   DashboardExecResult,
   dashboard_exec_ok,
@@ -1657,6 +1656,9 @@ fn dashboard_observer_read(instance: HostDashboardInstance, program: FilePath, a
     DashboardSshProvision { host } =>
       match typed_argv_exec_over_ssh(host: host, argv: concat([program as String], args)) {
         TypedArgvExecRefused { reason } => ObserverReadFailed { origin: ObserverTransportRefused { cause: reason } }
+        // An overrun observer leg read nothing; the observer is reported as not having been answered,
+        // never as exited with some guessed status.
+        TypedArgvExecOverran { deadline: d } => ObserverReadFailed { origin: ObserverTransportRefused { cause: typed_argv_exec_overran_reason(leg_hint: "dashboard observer", deadline: d) } }
         TypedArgvExecConverged { result } =>
           if result.exit_code == 0 { ObserverReadOut { stdout: result.stdout } }
           else { ObserverReadFailed { origin: ObserverExited { exit_code: result.exit_code, stderr: result.stderr } } }

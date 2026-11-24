@@ -46,6 +46,7 @@ import gunbc.session_lease {
   classify_process_port_upsert,
 }
 import gunbc.host.host_effect { HostEffectTransport }
+import gunbc.fleet.fleet_known_hosts_anchor { ActuationLeg,FleetLegKind }
 import gunbc.srv3.srv3_actuate_shell_paths { srv3_bmcweb_token_path }
 import gunbc.systemd_run_transient { systemd_run_transient_read, SystemdRunTransientStarted, SystemdRunTransientRefused }
 import gunbc.systemctl_stop_run { systemctl_stop_run, SystemctlStopped, SystemctlStopRefused }
@@ -109,12 +110,13 @@ fn host_effect_nbd_proxy_serve_systemd_run_transient(
   unit: NonEmptyStr,
   command_argv: List<String>,
   transport: HostEffectTransport,
+  kind: FleetLegKind,
 ) -> String? {
   match systemd_run_transient_unit_command(unit: unit, properties: [], command_argv: command_argv) {
     SystemdRunCommandRefused { cause: why } =>
       Present { value: concat(concat("unit ", unit as String), concat(": ", systemd_run_option_words_refused_cause_detail(cause: why))) }
     SystemdRunCommandReady { command: command } =>
-      match systemd_run_transient_read(transport: transport, command: command) {
+      match systemd_run_transient_read(transport: transport, command: command, kind: kind) {
         SystemdRunTransientStarted { stdout: _ } => Absent
         SystemdRunTransientRefused { reason: why } =>
           Present { value: concat(concat("unit ", unit as String), concat(": ", why)) }
@@ -325,6 +327,7 @@ fn host_effect_nbd_proxy_serve_start_units(
     BmcwebSessionTokenUsable { token: token } =>
       match host_effect_nbd_proxy_serve_systemd_run_transient(
         unit: nbdkit_unit,
+        kind: ActuationLeg,
         command_argv: argv_words(command: nbdkit_readonly_file_serve_command(
           port: binding.intent.local_nbd_port,
           backing_path: binding.intent.iso_path,
@@ -335,6 +338,7 @@ fn host_effect_nbd_proxy_serve_start_units(
         Absent =>
           host_effect_nbd_proxy_serve_systemd_run_transient(
             unit: websocat_unit,
+            kind: ActuationLeg,
             command_argv: argv_words(command: host_effect_nbd_proxy_serve_websocat_command_materialized(
               intent: binding.intent,
               token: token,

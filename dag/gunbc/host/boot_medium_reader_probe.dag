@@ -18,7 +18,7 @@ import gunbc.auth.github_gcp_federation { fleet_secrets_project_id }
 import gunbc.fleet.fleet_bootstrap_principal { executor_bootstrap_principal }
 import gunbc.fleet.fleet_host_identity { operator_host_srv2 }
 import gunbc.fleet.fleet_known_hosts_anchor {
-  fleet_ssh_target_at_standard_port, SshTargetResolved, SshTargetRefused,
+  ProbeLeg, fleet_ssh_target_at_standard_port, SshTargetResolved, SshTargetRefused,
   FleetSshExecutionContext, SshTarget, known_hosts_file_rows, }
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, prepare_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
@@ -329,8 +329,17 @@ fn reader_probe_locked_account_fact(shadow: HostLeg, use_pam: HostLeg, login_adm
 // OPEN FACT 2, as a record rather than a Tuple: this language has no product type, and the two witnesses
 // are kept as two named fields because a receipt that collapsed them into one bool would hide the case
 // where they disagree -- which is the interesting one.
+// THE ADMIN LEG'S STATE, TYPED. A never-dispatched admin leg is NOT "the admin says not-readable" -- it is the
+// absence of any reading, so it gets its own arm instead of collapsing into readable=false. Putting the three
+// states in the sum is what makes the precondition (the leg answered) live in the interface: a consumer can only
+// read "readable"/"not-readable" from a leg that actually answered, and must decide the never-dispatched case.
+type ReaderProbeAdminReading =
+    AdminReadable
+  | AdminNotReadable
+  | AdminNotDispatched { reason: NonEmptyStr }
+
 type ReaderProbeExportReading = ReaderProbeExportReading {
-  readable: Bool,
+  admin: ReaderProbeAdminReading,
   admin_evidence: NonEmptyStr,
   forced_evidence: NonEmptyStr,
 }
@@ -347,12 +356,13 @@ fn reader_probe_export_reading(admin: HostLeg, forced: ReaderProbeForcedAnswer) 
     ForcedAnswerNotDispatched { evidence: e } => join(["the reader leg was never dispatched, so nothing was read: ", e as String], "")
     ForcedAnswerUnexplained { evidence: e } => join(["the forced command failed without explaining itself: ", e as String], "")
   }
-  let admin_readable = match admin {
-    LegNotDispatched { reason: _ } => false
-    LegAnswered { exit_code: ac, stdout: _, stderr: _ } => ac == 0
-  }
   ReaderProbeExportReading {
-    readable: admin_readable,
+    // The never-dispatched case is a typed refusal, not readable=false: absence of a reading is not a reading of
+    // absence. exit/stdout/stderr are consulted only inside LegAnswered.
+    admin: match admin {
+      LegNotDispatched { reason: r } => AdminNotDispatched { reason: r as NonEmptyStr }
+      LegAnswered { exit_code: ac, stdout: _, stderr: _ } => if ac == 0 { AdminReadable } else { AdminNotReadable }
+    },
     admin_evidence: join(["admin leg asked as the reader account: ", reader_probe_answer_text(a: admin)], "") as NonEmptyStr,
     forced_evidence: forced_says as NonEmptyStr,
   }
@@ -586,7 +596,12 @@ fn render_reader_probe_receipt(r: ReaderProbeReceipt) -> String {
         "second_command_masked=", if masked { "true" } else { "false" }, "\n",
         render_forced_line(fl: fl),
         reader_probe_locked_account_text(fact: la),
-        "image_readable_by_reader=", if ex.readable { "true" } else { "false" }, "\n",
+        "image_readable_by_reader=", match ex.admin {
+          AdminReadable => "true"
+          AdminNotReadable => "false"
+          AdminNotDispatched { reason: rr } => join(["not-dispatched: ", rr as String], "")
+        },
+        "\n",
         "image_read_admin_evidence=", ex.admin_evidence as String, "\n",
         "image_read_forced_evidence=", ex.forced_evidence as String, "\n",
         render_accessor_report(acc: acc),
@@ -727,7 +742,7 @@ fn unreadable_answer() -> HostLeg {
 // advisory -- the server runs the forced command whatever is sent -- which is precisely the property under
 // test, and precisely why the second command must travel this route and never the administrator one.
 fn reader_leg(target: SshTarget, context: FleetSshExecutionContext, argv: List<String>) -> HostLeg {
-  host_leg_of_typed_argv(outcome: typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv))
+  host_leg_of_typed_argv(outcome: typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,target: target, context: context, argv: argv))
 }
 
 // ONE LEG AS ROOT, the same elevation B2b's own legs use (gunbc.runner.runner_host_file_converge
@@ -735,7 +750,7 @@ fn reader_leg(target: SshTarget, context: FleetSshExecutionContext, argv: List<S
 // privilege is obtained and differ only in which read they ask for.
 fn elevated_leg(context: FleetSshExecutionContext, target: SshTarget, command: List<String>) -> HostLeg {
   let inv = sudo_elevate(command: command)
-  host_leg_of_typed_argv(outcome: typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: append([inv.bin_path], items: inv.args)))
+  host_leg_of_typed_argv(outcome: typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,target: target, context: context, argv: append([inv.bin_path], items: inv.args)))
 }
 
 // OPEN FACT 2'S LEG: the readability question asked AS the reader, from the privileged route, because under
@@ -743,7 +758,7 @@ fn elevated_leg(context: FleetSshExecutionContext, target: SshTarget, command: L
 // question, and `sudo -u` is how it is asked without the key.
 fn as_reader_leg(context: FleetSshExecutionContext, target: SshTarget) -> HostLeg {
   let inv = sudo_elevate_as(user: boot_medium_reader_login, command: argv_words(command: test_readable_command(path: boot_medium_served_link_path() as String)))
-  host_leg_of_typed_argv(outcome: typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: append([inv.bin_path], items: inv.args)))
+  host_leg_of_typed_argv(outcome: typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,target: target, context: context, argv: append([inv.bin_path], items: inv.args)))
 }
 
 // THE FORCED COMMAND'S OWN ARGV, taken from the one place the fleet spells that command

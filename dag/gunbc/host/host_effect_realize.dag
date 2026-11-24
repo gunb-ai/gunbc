@@ -202,6 +202,7 @@ import gunbc.typed_argv_exec {
   typed_argv_exec_over_fleet_ssh_with_stdin,
   TypedArgvExecOutcome,
   TypedArgvExecConverged,
+  TypedArgvExecOverran,
   TypedArgvExecRefused,
 }
 import extdeps.bmc.types { RedfishSystemAction }
@@ -502,7 +503,8 @@ import extdeps.systemd.unit_file { SystemdUnitFile, serialize_systemd_unit_file 
 import gunbc.build_cache.build_cache_instance { ci_cache_instance }
 import gunbc.host.managed_host_boot_once { boot_once_read_back_sleep }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import std.measure { second_count, ByteSize, byte_size_count }
+import std.measure { second_count, Second, ByteSize, byte_size_count }
+import std.integer { int_to_decimal_string }
 import gunbc.srv3.srv3_ubuntu_install_media_artifact { srv3_ubuntu_install_media_artifact }
 import gunbc.srv3.srv3_seeded_install_media_artifact { srv3_seeded_install_media_publish }
 import extdeps.provisioning.ubuntu_install_media_fetch {
@@ -1144,7 +1146,7 @@ fn realize_boot_once_read_back_sleep_on_host(
       realize_boot_once_read_back_sleep_body(transport: transport, intent: intent)
     SshShell { ssh_host: _ } =>
       realize_boot_once_read_back_sleep_body(transport: transport, intent: intent)
-    FleetSsh { target: _, context: _ } =>
+    FleetSsh { target: _, context: _, kind: _} =>
       realize_boot_once_read_back_sleep_body(transport: transport, intent: intent)
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       NotConverged {
@@ -1277,7 +1279,7 @@ fn realize_seeded_install_media_toolchain_ensure_on_host(
       realize_seeded_install_media_toolchain_ensure_body(transport: transport, intent: intent)
     SshShell { ssh_host: _ } =>
       realize_seeded_install_media_toolchain_ensure_body(transport: transport, intent: intent)
-    FleetSsh { target: _, context: _ } =>
+    FleetSsh { target: _, context: _, kind: _} =>
       realize_seeded_install_media_toolchain_ensure_body(transport: transport, intent: intent)
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       NotConverged {
@@ -1346,7 +1348,7 @@ fn realize_bmcweb_session_login_on_host(
       realize_bmcweb_session_login_body(transport: transport, intent: intent, request_body_file: request_body_file)
     SshShell { ssh_host: _ } =>
       realize_bmcweb_session_login_body(transport: transport, intent: intent, request_body_file: request_body_file)
-    FleetSsh { target: _, context: _ } =>
+    FleetSsh { target: _, context: _, kind: _} =>
       realize_bmcweb_session_login_body(transport: transport, intent: intent, request_body_file: request_body_file)
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       NotConverged {
@@ -1477,7 +1479,7 @@ fn realize_bmcweb_token_extract_on_host(
         reason: "host_effect_apply: Srv3BmcwebTokenExtract runs typed jq argv + Filesystem.Write on the executor host; SshShell transport is a fail-closed Unimplemented stub until remote extract+write is realized with structured bin invocation.",
         applied: intent,
       }
-    FleetSsh { target: _, context: _ } =>
+    FleetSsh { target: _, context: _, kind: _} =>
       NotConverged {
         reason: "host_effect_apply: Srv3BmcwebTokenExtract runs typed jq argv + Filesystem.Write on the executor host; SshShell transport is a fail-closed Unimplemented stub until remote extract+write is realized with structured bin invocation.",
         applied: intent,
@@ -1562,6 +1564,22 @@ type CodexRuntimeStepResult
   = CodexRuntimeStepRan { observed: ShellExecObserved }
   | CodexRuntimeStepRefused { reason: String }
 
+// The fail-closed reason for a typed-argv leg that overran its per-leg wall deadline. The host was
+// asked and never answered before the ceiling, so it is neither a refusal (nothing was asked) nor a
+// completion. The deadline VALUE is named so the overrun is not silently indistinguishable from a
+// plain failure.
+fn host_effect_typed_argv_overran_reason(leg_hint: String, deadline: Second) -> String {
+  join(
+    [
+      leg_hint,
+      " leg overran its ",
+      int_to_decimal_string(value: second_count(s: deadline)),
+      "s wall-clock deadline; the process group was killed before the host answered -- an overrun is neither a refusal nor a completion",
+    ],
+    "",
+  )
+}
+
 fn codex_runtime_typed_argv_step(
   argv: List<String>,
   transport: HostEffectTransport,
@@ -1571,6 +1589,10 @@ fn codex_runtime_typed_argv_step(
       CodexRuntimeStepRan {
         observed: ShellExecObserved { exit_code: r.exit_code, success: r.success, stdout: r.stdout, stderr: r.stderr },
       }
+      TypedArgvExecOverran { deadline: d } =>
+        CodexRuntimeStepRefused {
+          reason: host_effect_typed_argv_overran_reason(leg_hint: "codex runtime", deadline: d),
+        }
     TypedArgvExecRefused { reason: why } => CodexRuntimeStepRefused { reason: why }
   }
 }
@@ -1591,7 +1613,7 @@ fn codex_runtime_observe_step(
         argv: codex_runtime_observe_argv(executable: executable as String),
         transport: transport,
       )
-    FleetSsh { target: _, context: _ } =>
+    FleetSsh { target: _, context: _, kind: _} =>
       codex_runtime_typed_argv_step(
         argv: codex_runtime_observe_argv(executable: executable as String),
         transport: transport,
@@ -1639,7 +1661,7 @@ fn codex_runtime_materialize_step(
         ),
         transport: transport,
       )
-    FleetSsh { target: _, context: _ } =>
+    FleetSsh { target: _, context: _, kind: _} =>
       codex_runtime_typed_argv_step(
         argv: concat(
           [gunbc_binary as String],
@@ -1826,7 +1848,7 @@ fn realize_provision_codex_runtime(
             transport: effect_intent.transport,
             effect_intent: effect_intent,
           )
-        FleetSsh { target: _, context: _ } =>
+        FleetSsh { target: _, context: _, kind: _} =>
           realize_provision_codex_runtime_body(
             transport: effect_intent.transport,
             effect_intent: effect_intent,
@@ -1925,6 +1947,10 @@ fn srv3_predicate_from_typed_argv(outcome: TypedArgvExecOutcome) -> Srv3HostPred
   match outcome {
     TypedArgvExecConverged { result: r } =>
       if r.success { Srv3PredicateHolds } else { Srv3PredicateFails }
+      TypedArgvExecOverran { deadline: d } =>
+        Srv3PredicateUnobserved {
+          reason: host_effect_typed_argv_overran_reason(leg_hint: "srv3 predicate", deadline: d),
+        }
     TypedArgvExecRefused { reason: why } => Srv3PredicateUnobserved { reason: why }
   }
 }
@@ -1951,6 +1977,8 @@ fn srv3_observed_token_from_typed_argv(outcome: TypedArgvExecOutcome) -> Srv3Obs
       } else {
         Srv3TokenAbsent
       }
+      TypedArgvExecOverran { deadline: d } =>
+        Srv3TokenUnobserved { reason: host_effect_typed_argv_overran_reason(leg_hint: "srv3 token", deadline: d) }
     TypedArgvExecRefused { reason: why } => Srv3TokenUnobserved { reason: why }
   }
 }
@@ -2002,12 +2030,13 @@ fn srv3_transport_witness_bin_success(
       } else {
         Srv3PredicateUnobserved { reason: srv3_nonroot_workdir_unobservable_reason }
       }
-    FleetSsh { target: t, context: c } =>
+    FleetSsh { target: t, context: c, kind: kind} =>
       if workdir == "/" {
         srv3_predicate_from_typed_argv(
           outcome: typed_argv_exec_over_fleet_ssh(
             target: t,
             context: c,
+            kind: kind,
             argv: srv3_argv_with_bin(bin_path: bin_path, args: args),
           ),
         )
@@ -2033,11 +2062,12 @@ fn srv3_transport_test_executable(path: String, transport: HostEffectTransport) 
       srv3_predicate_from_typed_argv(
         outcome: typed_argv_exec_over_ssh(host: h, argv: shell_test_is_executable_argv(path: path)),
       )
-    FleetSsh { target: t, context: c } =>
+    FleetSsh { target: t, context: c, kind: kind} =>
       srv3_predicate_from_typed_argv(
         outcome: typed_argv_exec_over_fleet_ssh(
           target: t,
           context: c,
+          kind: kind,
           argv: shell_test_is_executable_argv(path: path),
         ),
       )
@@ -2087,7 +2117,7 @@ fn srv3_apt_tool_present(tool: CliTool, transport: HostEffectTransport) -> Srv3H
       srv3_predicate_from_typed_argv(
         outcome: typed_argv_exec_over_ssh(host: h, argv: posix_command_v_check_argv(command: tool.program.invocation)),
       )
-    FleetSsh { target: _, context: _ } =>
+    FleetSsh { target: _, context: _, kind: _} =>
       match apt_binary_path_of(tool: tool) {
         Present { value: declared } =>
           srv3_transport_test_executable(path: declared as String, transport: transport)
@@ -2123,7 +2153,7 @@ fn srv3_tool_bin_path(tool: CliTool, transport: HostEffectTransport) -> Srv3Obse
       srv3_observed_token_from_typed_argv(
         outcome: typed_argv_exec_over_ssh(host: h, argv: posix_command_v_check_argv(command: tool.program.invocation)),
       )
-    FleetSsh { target: _, context: _ } =>
+    FleetSsh { target: _, context: _, kind: _} =>
       match apt_binary_path_of(tool: tool) {
         Absent => Srv3TokenUnobserved { reason: srv3_undeclared_apt_path_reason(tool: tool) }
         Present { value: declared } =>
@@ -2231,9 +2261,9 @@ fn srv3_transport_token(argv: List<String>, transport: HostEffectTransport) -> S
     LocalShell => srv3_local_token_from_argv(argv: argv)
     SshShell { ssh_host: h } =>
       srv3_observed_token_from_typed_argv(outcome: typed_argv_exec_over_ssh(host: h, argv: argv))
-    FleetSsh { target: t, context: c } =>
+    FleetSsh { target: t, context: c, kind: kind} =>
       srv3_observed_token_from_typed_argv(
-        outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv),
+        outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, kind: kind, argv: argv),
       )
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       Srv3TokenUnobserved {
@@ -2681,13 +2711,15 @@ fn srv3_apt_subject_version_ok(subject: AptPresenceSubject, transport: HostEffec
 fn srv3_dpkg_package_installed(package: NonEmptyStr, transport: HostEffectTransport) -> Srv3HostPredicate {
   let argv = dpkg_query_status_argv(package: package)
   let outcome = match transport {
-    FleetSsh { target: t, context: c } => Present { value: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv) }
+    FleetSsh { target: t, context: c, kind: kind} => Present { value: typed_argv_exec_over_fleet_ssh(kind: kind,target: t, context: c, argv: argv) }
     SshShell { ssh_host: h } => Present { value: typed_argv_exec_over_ssh(host: h, argv: argv) }
     LocalShell => none
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => none
   }
   match outcome {
     Absent => Srv3PredicateUnobserved { reason: "this transport has no typed exec that keeps a query's exit code and stderr, so the package state is not read" }
+    Present { value: TypedArgvExecOverran { deadline: d } } =>
+      Srv3PredicateUnobserved { reason: host_effect_typed_argv_overran_reason(leg_hint: "dpkg query", deadline: d) }
     Present { value: TypedArgvExecRefused { reason: why } } => Srv3PredicateUnobserved { reason: why }
     Present { value: TypedArgvExecConverged { result: r } } =>
       match dpkg_query_status_verdict_of(exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr) {
@@ -3302,7 +3334,7 @@ fn realize_os_install_actuator_toolchain_ensure(
         transport: effect_intent.transport,
         effect_intent: effect_intent,
       )
-    FleetSsh { target: _, context: _ } =>
+    FleetSsh { target: _, context: _, kind: _} =>
       srv3_realize_os_install_actuator_toolchain_ensure_body(
         transport: effect_intent.transport,
         effect_intent: effect_intent,
@@ -3647,7 +3679,7 @@ fn realize_provision_build_cache(
                 transport: effect_intent.transport,
                 effect_intent: effect_intent,
               )
-            FleetSsh { target: _, context: _ } =>
+            FleetSsh { target: _, context: _, kind: _} =>
               realize_provision_build_cache_body(
                 instance: instance,
                 transport: effect_intent.transport,
@@ -3780,7 +3812,7 @@ fn run_shell_transport(script: RetainedShellScript, transport: HostEffectTranspo
         }
       }
     }
-    FleetSsh { target: t, context: _ } =>
+    FleetSsh { target: t, context: _, kind: _ } =>
       ShellExecObserved {
         exit_code: 1,
         success: false,
@@ -3816,6 +3848,18 @@ type RunArgvTransportOutcome
   = RunArgvTransportObserved { observed: ShellExecObserved }
   | RunArgvTransportRefused { reason: String }
 
+// THE SAME RESULT, WITH THE OVERRUN KEPT (gunbc.design_argument::fail_closed, and review 96994's rule
+// that a killed leg is never reported as an answer or as a non-answer).  RunArgvTransportOutcome above
+// has two arms and its own comment promises that RunArgvTransportRefused means NO LEG RAN.  A leg that
+// DID run and was killed past its declared fleet ceiling is neither of those, so a caller that must say
+// which of the three happened cannot use the two-arm carrier.  This sum is that carrier: same observed
+// payload, same refusal payload, plus the deadline the leg was given.  Only legs whose module needs the
+// distinction consume it; the 24 files on the two-arm contract are untouched.
+type HostEffectArgvOutcome
+  = HostEffectArgvObserved { observed: ShellExecObserved }
+  | HostEffectArgvRefused { reason: String }
+  | HostEffectArgvOverran { deadline: Second }
+
 // ONE MAPPING FOR BOTH TRANSPORT RUNNERS. run_argv_over_host_effect_transport and
 // run_argv_stdin_over_host_effect_transport differ only in which typed call carries the leg; what an
 // outcome becomes is the same for both: the wall's refusal becomes the REFUSED arm, carrying the
@@ -3823,8 +3867,55 @@ type RunArgvTransportOutcome
 // wall rather than a connection error), and a converged result becomes the OBSERVED arm -- the
 // process's real exit status and streams. The mapping is where the admission's verdict and the
 // transport's carrier meet, and it is written once so the two arms cannot drift.
+// THE TOTAL MAPPING ONTO THE THREE-ARM CARRIER, written as a pure function so a witness can pin all
+// three arms without dispatching anything (the convention the rest of this module's refusals follow).
+fn host_effect_argv_outcome_of(typed: TypedArgvExecOutcome) -> HostEffectArgvOutcome {
+  match typed {
+    TypedArgvExecConverged { result: result } =>
+      HostEffectArgvObserved {
+        observed: ShellExecObserved {
+          exit_code: result.exit_code,
+          success: result.exit_code == 0,
+          stdout: result.stdout,
+          stderr: result.stderr,
+        },
+      }
+    TypedArgvExecRefused { reason: why } =>
+      HostEffectArgvRefused {
+        reason: join(
+          [
+            "the portable-word wall refused the typed argv before any ssh leg: ",
+            why,
+          ],
+          "",
+        ),
+      }
+    TypedArgvExecOverran { deadline: d } =>
+      HostEffectArgvOverran { deadline: d }
+  }
+}
+
+// THE LOSSY VIEW ONTO MAIN'S TWO-ARM CARRIER, ONE MAPPING SO THE TWO CANNOT DRIFT.  The overrun arm
+// keeps the very same reason text the fold used before this file grew a third carrier, so every caller
+// on RunArgvTransportOutcome reads exactly what it read before.  Callers that must distinguish a killed
+// leg from an unattempted one use run_argv_over_host_effect_transport_preserving_overrun instead.
+fn run_argv_transport_outcome_of(preserving: HostEffectArgvOutcome) -> RunArgvTransportOutcome {
+  match preserving {
+    HostEffectArgvObserved { observed: o } => RunArgvTransportObserved { observed: o }
+    HostEffectArgvRefused { reason: why } => RunArgvTransportRefused { reason: why }
+    HostEffectArgvOverran { deadline: d } =>
+      RunArgvTransportRefused {
+        reason: host_effect_typed_argv_overran_reason(leg_hint: "transport argv", deadline: d),
+      }
+  }
+}
+
 fn typed_argv_outcome_to_transport(typed: TypedArgvExecOutcome) -> RunArgvTransportOutcome {
   match typed {
+  TypedArgvExecOverran { deadline: d } =>
+    RunArgvTransportRefused {
+      reason: host_effect_typed_argv_overran_reason(leg_hint: "transport argv", deadline: d),
+    }
     TypedArgvExecRefused { reason: why } =>
       RunArgvTransportRefused {
         reason: join(
@@ -3898,12 +3989,20 @@ fn run_argv_parameters_of(command: ArgvCommand) -> RunArgvParameters {
 // leaf while this dispatcher still refused is the parallel-authority tell. EmitArtifactThenThinRun
 // still refuses: it is not a typed argv transport. The stdin sibling maps FleetSsh the same way
 // through typed_argv_exec_over_fleet_ssh_with_stdin.
-fn run_argv_over_host_effect_transport(command: ArgvCommand, transport: HostEffectTransport) -> RunArgvTransportOutcome {
+// THE TRANSPORT MATCH, ONCE (gunbc.design_argument::single_authority).  This is the only place that
+// decides which typed call carries a typed argv for which transport; run_argv_over_host_effect_transport
+// below is this function seen through the two-arm carrier, so a leg can never take a different route
+// depending on which of the two its caller reached for.  It is the preserving form because the lossy one
+// can only ever be produced from it, never the reverse.
+fn run_argv_over_host_effect_transport_preserving_overrun(
+  command: ArgvCommand,
+  transport: HostEffectTransport,
+) -> HostEffectArgvOutcome {
   match transport {
     LocalShell => {
       let params = run_argv_parameters_of(command: command)
       let result = shell.Exec.RunArgv(program: params.program, arguments: params.arguments)
-      RunArgvTransportObserved {
+      HostEffectArgvObserved {
         observed: ShellExecObserved {
           exit_code: result.exit_code,
           success: result.exit_code == 0,
@@ -3913,14 +4012,22 @@ fn run_argv_over_host_effect_transport(command: ArgvCommand, transport: HostEffe
       }
     }
     SshShell { ssh_host: h } =>
-      typed_argv_outcome_to_transport(typed: typed_argv_exec_over_ssh(host: h, argv: argv_words(command: command)))
-    FleetSsh { target: t, context: c } =>
-      typed_argv_outcome_to_transport(typed: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv_words(command: command)))
+      host_effect_argv_outcome_of(typed: typed_argv_exec_over_ssh(host: h, argv: argv_words(command: command)))
+    FleetSsh { target: t, context: c, kind: kind} =>
+      host_effect_argv_outcome_of(
+        typed: typed_argv_exec_over_fleet_ssh(target: t, context: c, kind: kind, argv: argv_words(command: command)),
+      )
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
-      RunArgvTransportRefused {
+      HostEffectArgvRefused {
         reason: "host_effect_apply: typed argv cannot use EmitArtifactThenThinRun transport; reserved for ConvergePlan (host-effect Phase D).",
       }
   }
+}
+
+fn run_argv_over_host_effect_transport(command: ArgvCommand, transport: HostEffectTransport) -> RunArgvTransportOutcome {
+  run_argv_transport_outcome_of(
+    preserving: run_argv_over_host_effect_transport_preserving_overrun(command: command, transport: transport),
+  )
 }
 
 // THE QUOTED SIBLING, for an argv whose words the portable alphabet refuses (a systemd property value carrying a whole
@@ -3938,8 +4045,8 @@ fn run_argv_over_host_effect_transport(command: ArgvCommand, transport: HostEffe
 fn run_argv_posix_quoted_over_host_effect_transport(command: ArgvCommand, transport: HostEffectTransport) -> RunArgvTransportOutcome {
   match transport {
     LocalShell => run_argv_over_host_effect_transport(command: command, transport: LocalShell)
-    FleetSsh { target: t, context: c } =>
-      typed_argv_outcome_to_transport(typed: typed_argv_exec_over_fleet_ssh_posix(target: t, context: c, argv: argv_words(command: command)))
+    FleetSsh { target: t, context: c, kind: kind} =>
+      typed_argv_outcome_to_transport(typed: typed_argv_exec_over_fleet_ssh_posix(target: t, context: c, kind: kind, argv: argv_words(command: command)))
     SshShell { ssh_host: _ } =>
       RunArgvTransportRefused {
         reason: "host_effect_apply: SshShell has no measured POSIX route (no login-shell proof, no OpenSSH release reading), so no word is quoted over it.",
@@ -4336,10 +4443,11 @@ fn run_argv_stdin_over_host_effect_transport(command: ArgvCommand, stdin_payload
         argv: argv_words(command: command),
         stdin_payload: stdin_payload,
       ))
-    FleetSsh { target: t, context: c } =>
+    FleetSsh { target: t, context: c, kind: kind} =>
       typed_argv_outcome_to_transport(typed: typed_argv_exec_over_fleet_ssh_with_stdin(
         target: t,
         context: c,
+        kind: kind,
         argv: argv_words(command: command),
         stdin_payload: stdin_payload,
       ))
@@ -4416,7 +4524,7 @@ fn realize_converge_on_host(host_converge: HostConverge, transport: HostEffectTr
         reason: "host_effect_apply: ConvergePlan over SshShell is a fail-closed Unimplemented stub; use EmitArtifactThenThinRun or LocalShell for the converge lane.",
         applied: intent,
       }
-    FleetSsh { target: _, context: _ } =>
+    FleetSsh { target: _, context: _, kind: _} =>
       NotConverged {
         reason: "host_effect_apply: ConvergePlan over SshShell is a fail-closed Unimplemented stub; use EmitArtifactThenThinRun or LocalShell for the converge lane.",
         applied: intent,
@@ -4521,7 +4629,7 @@ fn realize_srv3_typed_reconcile(kind: TypedReconcileKind, transport: HostEffectT
         reason: "host_effect_apply: TypedReconcileOnHost runs in-process on the executor's own host; SshShell transport is a fail-closed Unimplemented stub until the typed reconcile is realized over a remote-observe/apply transport.",
         applied: intent,
       }
-    FleetSsh { target: _, context: _ } =>
+    FleetSsh { target: _, context: _, kind: _} =>
       NotConverged {
         reason: "host_effect_apply: TypedReconcileOnHost runs in-process on the executor's own host; SshShell transport is a fail-closed Unimplemented stub until the typed reconcile is realized over a remote-observe/apply transport.",
         applied: intent,
@@ -4565,6 +4673,11 @@ fn reconcile_ssh_argv_exec_outcome(
         },
         intent: intent,
       )
+      TypedArgvExecOverran { deadline: d } =>
+        NotConverged {
+          reason: host_effect_typed_argv_overran_reason(leg_hint: "ssh argv exec", deadline: d),
+          applied: intent,
+        }
     TypedArgvExecRefused { reason: why } =>
       NotConverged { reason: why, applied: intent }
   }
@@ -4587,8 +4700,8 @@ fn run_typed_argv_transport(
       }
     SshShell { ssh_host: h } =>
       typed_argv_exec_over_ssh(host: h, argv: argv)
-    FleetSsh { target: t, context: c } =>
-      typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv)
+    FleetSsh { target: t, context: c, kind: kind} =>
+      typed_argv_exec_over_fleet_ssh(target: t, context: c, kind: kind, argv: argv)
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       TypedArgvExecRefused {
         reason: "run_typed_argv_transport: EmitArtifactThenThinRun is not a typed argv transport",
@@ -4620,9 +4733,9 @@ fn realize_effective_principal_read_on_host(
         outcome: typed_argv_exec_over_ssh(host: h, argv: argv),
         intent: intent,
       )
-    FleetSsh { target: t, context: c } =>
+    FleetSsh { target: t, context: c, kind: kind} =>
       reconcile_ssh_argv_exec_outcome(
-        outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv),
+        outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, kind: kind, argv: argv),
         intent: intent,
       )
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
@@ -4657,9 +4770,9 @@ fn realize_sudo_nopasswd_execute_probe_on_host(
         outcome: typed_argv_exec_over_ssh(host: h, argv: argv),
         intent: intent,
       )
-    FleetSsh { target: t, context: c } =>
+    FleetSsh { target: t, context: c, kind: kind} =>
       reconcile_ssh_argv_exec_outcome(
-        outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv),
+        outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, kind: kind, argv: argv),
         intent: intent,
       )
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
@@ -4711,6 +4824,11 @@ fn reconcile_sudo_nopasswd_grant_list_outcome(
         ),
         intent: intent,
       )
+      TypedArgvExecOverran { deadline: d } =>
+        NotConverged {
+          reason: host_effect_typed_argv_overran_reason(leg_hint: "sudo nopasswd grant list", deadline: d),
+          applied: intent,
+        }
     TypedArgvExecRefused { reason: why } =>
       NotConverged { reason: why, applied: intent }
   }
@@ -4742,10 +4860,10 @@ fn realize_sudo_nopasswd_grant_list_probe_on_host(
         outcome: typed_argv_exec_over_ssh(host: h, argv: argv),
         intent: intent,
       )
-    FleetSsh { target: t, context: c } =>
+    FleetSsh { target: t, context: c, kind: kind} =>
       reconcile_sudo_nopasswd_grant_list_outcome(
         probe: probe,
-        outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv),
+        outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, kind: kind, argv: argv),
         intent: intent,
       )
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
@@ -4946,7 +5064,7 @@ fn live_deploy_apply_candidate_locus_refusal(transport: HostEffectTransport) -> 
         ": the candidate release was observed in the LOCAL deploying checkout, and no modeled source transfer proves the remote tree is that candidate. ",
         "Emitting the local revision into the remote unit would publish a release identity the process may not be running.",
       ], "") }
-    FleetSsh { target: t, context: _ } =>
+    FleetSsh { target: t, context: _, kind: _ } =>
       Present { value: join([
         "live_deploy apply refused over fleet ssh endpoint=", known_hosts_host_field(address: t.address) as String,
         ": the candidate release was observed in the LOCAL deploying checkout, and no modeled source transfer proves the remote tree is that candidate. ",
@@ -5028,7 +5146,7 @@ fn observe_slot_population_over_host_effect_transport(
         ),
         edge_noun: "the transport",
       )
-    FleetSsh { target: _, context: _ } =>
+    FleetSsh { target: _, context: _, kind: _} =>
       slot_census_from_typed_argv_outcome(
         host: host,
         outcome: run_typed_argv_transport(
@@ -5721,7 +5839,7 @@ fn live_deploy_retract_candidate_locus_refusal(transport: HostEffectTransport) -
         ": the retract unit teardown is a LOCAL operation over the host-effect transport (principal sudo -n removals, unprivileged observes), and the bash emitter it replaces is not modeled over ssh. ",
         "Refusing the remote locus rather than emit a script to run remotely.",
       ], "") }
-    FleetSsh { target: _, context: _ } =>
+    FleetSsh { target: _, context: _, kind: _} =>
       Present { value: join([
         "live_deploy retract refused over fleet ssh: the retract unit teardown is a LOCAL operation over the host-effect transport (principal sudo -n removals, unprivileged observes), and the bash emitter it replaces is not modeled over fleet ssh. ",
         "Refusing the remote locus rather than emit a script to run remotely.",
@@ -7154,10 +7272,29 @@ fn observe_direct_children_one(root: String, sub: String, transport: HostEffectE
 // keeps its own starting-point row); the direct-children listing passes false because its find uses
 // -mindepth 1 and so prints NO starting-point row. It counts FRAMING, never surviving rows -- filtering
 // out empty fragments before counting would let a newline inside a name cost no row. Fail-closed:
-//  (1) EMPTY FRAGMENTS. Every genuine record ends in exactly ONE LF, so a well-formed listing has EXACTLY
-//      one empty fragment -- the trailing one after the final LF. Any other empty fragment can only come
-//      from a newline inside a name (a child named "<LF>...", e.g. "<LF>.gunbc-tree-receipt" masquerading
-//      as the receipt) -> refused.
+//  (1) EMPTY FRAGMENTS, under EITHER trailing convention, the convention READ FROM THE BYTES rather than
+//      assumed. `find` prints its ONE LF AFTER EVERY RECORD, the last included, so the listing as `find`
+//      writes it ends in a final LF and its split leaves EXACTLY one empty fragment: the tail after that
+//      final LF, which is no record. The transport BELOW this `.dag` hands these functions the captured
+//      bytes AFTER the seed's shell capture trimmed their trailing whitespace -- measured on srv1,
+//      fleet-converge dashboard_deploy run 45286132235 (execution revision 0f036da7), where the 9217-record
+//      well-formed `dag` listing arrived with NO trailing LF and this collector refused it for 0 empty
+//      fragments. That trimming is a separate seed-side issue (bounded_shell_host_drain.rs,
+//      retained_utf8_lossy_trimmed) and NOT this collector's to decide, so BOTH conventions are admitted:
+//        bytes end in a LF  -> exactly ONE empty fragment is legal (the tail after the final LF) and the
+//                              records are the fragments MINUS that tail;
+//        bytes do not       -> NO empty fragment is legal and the records ARE the fragments.
+//      The record count handed to control (2) is derived from the SAME flag, so admitting the second
+//      convention cannot hand (2) a different population: an empty fragment under EITHER convention can
+//      only come from a newline inside a name (a child named "<LF>...", e.g. "<LF>.gunbc-tree-receipt"
+//      masquerading as the receipt) -> refused.
+//      NAME THE QUANTITY HONESTLY: `lf_bytes` keeps its original name, but under this derivation it is the
+//      RECORD COUNT -- `fragments - 1` when the bytes end in a LF and `fragments` when they do not -- and NOT a
+//      count of LF bytes. The literal LF-byte count is not even observable here, since the transport trims the
+//      capture's trailing whitespace, last LF included, and it is not the quantity control (2) means: what it
+//      weighs against the independent dot enumeration is the number of RECORDS. Do not "restore" a literal
+//      byte count into that binding -- demanding the tail LF back is exactly the assumption that refused every
+//      srv1 deploy.
 //  (2) LF-VS-DOTS. `dot_stdout` is a second `-printf .` enumeration of the SAME set (one dot per entry,
 //      which a name cannot change). The number of LF-delimited records in the raw stdout must equal the
 //      dot count. A crafted name embedding a newline (e.g. `x|f|755|u|g||0<LF>foo`) splits into two
@@ -7175,12 +7312,15 @@ fn tree_metadata_entries_of_stdout_checked(root: String, stdout: String, dot_std
       TreeMetadataObservationFailed { reason: join(["find under ", root, " printed no rows but the dot enumeration counted ", to_string(dots), " entries; the population is not stable between the two reads -- refused, not accepted"], "") }
     }
   } else {
+    let trailing_lf = ends_with(s: stdout, suffix: "\n")
     let empty_frags = count(filter(fragments, f => string_length(s: f) == 0))
-    let lf_bytes = count(fragments) - 1
+    let legal_empty_frags = if trailing_lf { 1 } else { 0 }
+    let empty_fragment_clause = if trailing_lf { "ends in a LF, so only the single trailing one (after the final LF) is legal" } else { "carries no final LF, so every fragment is a record and none of them may be empty" }
+    let lf_bytes = if trailing_lf { count(fragments) - 1 } else { count(fragments) }
     let sp_rows = count(filter(fragments, f => tree_metadata_line_is_starting_point(line: f)))
     let expected_sp = if starting_point_expected { 1 } else { 0 }
-    if empty_frags != 1 {
-      TreeMetadataObservationFailed { reason: join(["find under ", root, ": the metadata listing has ", to_string(empty_frags), " empty line fragments but only the single trailing one (after the final LF) is legal; a name embedding a newline creates an extra empty fragment -- refused. rows=[", join(fragments, " ;; "), "]"], "") }
+    if empty_frags != legal_empty_frags {
+      TreeMetadataObservationFailed { reason: join(["find under ", root, ": the metadata listing has ", to_string(empty_frags), " empty line fragments but the listing ", empty_fragment_clause, "; a name embedding a newline creates an extra empty fragment -- refused. rows=[", join(fragments, " ;; "), "]"], "") }
     } else if lf_bytes != dots {
       TreeMetadataObservationFailed { reason: join(["find under ", root, ": the metadata listing has ", to_string(lf_bytes), " newline-delimited records but the independent dot enumeration counted ", to_string(dots), " entries; a crafted name that embeds a newline forges extra records -- refused. rows=[", join(fragments, " ;; "), "]"], "") }
     } else if sp_rows != expected_sp {
@@ -8155,7 +8295,7 @@ fn dark_stage_sidecar(i: DarkInstallInputs, tree_digest: String, deployed: Strin
       match i.transport {
         LocalShell => dark_stage_sidecar_readback(i: i, tree_digest: tree_digest, deployed: deployed)
         SshShell { ssh_host: _ } => dark_sidecar_readback_not_local()
-        FleetSsh { target: _, context: _ } => dark_sidecar_readback_not_local()
+        FleetSsh { target: _, context: _, kind: _} => dark_sidecar_readback_not_local()
         EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => dark_sidecar_readback_not_local()
       }
   }
@@ -8895,12 +9035,17 @@ fn realize_live_deploy_digest_readback_on_host(
             body: r.stdout,
             expected: expected,
           )
+          TypedArgvExecOverran { deadline: d } => NotConverged {
+            reason: host_effect_typed_argv_overran_reason(leg_hint: "live-deploy digest readback (ssh)", deadline: d),
+            applied: intent,
+        }
         TypedArgvExecRefused { reason: why } => NotConverged { reason: why, applied: intent }
       }
-    FleetSsh { target: t, context: c } =>
+    FleetSsh { target: t, context: c, kind: kind} =>
       match typed_argv_exec_over_fleet_ssh(
         target: t,
         context: c,
+        kind: kind,
         argv: live_deploy_digest_readback_argv(port: port),
       ) {
         TypedArgvExecConverged { result: r } =>
@@ -8911,6 +9056,10 @@ fn realize_live_deploy_digest_readback_on_host(
             body: r.stdout,
             expected: expected,
           )
+          TypedArgvExecOverran { deadline: d } => NotConverged {
+            reason: host_effect_typed_argv_overran_reason(leg_hint: "live-deploy digest readback (fleet)", deadline: d),
+            applied: intent,
+        }
         TypedArgvExecRefused { reason: why } => NotConverged { reason: why, applied: intent }
       }
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => NotConverged {
@@ -9010,7 +9159,7 @@ fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: Ide
             reason: "host_effect_apply: ProbeToolchainHomeInterference requires LocalShell on RunnerLocalHost; SshShell would record a remote transport while executing the probe locally.",
             applied: intent,
           }
-        FleetSsh { target: _, context: _ } =>
+        FleetSsh { target: _, context: _, kind: _} =>
           NotConverged {
             reason: "host_effect_apply: ProbeToolchainHomeInterference requires LocalShell on RunnerLocalHost; FleetSsh would record a remote transport while executing the probe locally.",
             applied: intent,
@@ -9404,7 +9553,7 @@ fn build_cache_host_read_observed(
           }
       }
     SshShell { ssh_host: _ } => build_cache_typed_argv_read(argv: argv_words(command: command), transport: transport)
-    FleetSsh { target: _, context: _ } => build_cache_typed_argv_read(argv: argv_words(command: command), transport: transport)
+    FleetSsh { target: _, context: _, kind: _} => build_cache_typed_argv_read(argv: argv_words(command: command), transport: transport)
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       BuildCacheReadRefused {
         reason: "host_effect_apply: EnsureBuildCacheInstance cannot observe an endpoint over EmitArtifactThenThinRun; typed mismatch.",
@@ -9421,6 +9570,8 @@ fn build_cache_typed_argv_read(
       BuildCacheReadRan {
         observed: ShellExecObserved { exit_code: r.exit_code, success: r.success, stdout: r.stdout, stderr: r.stderr },
       }
+      TypedArgvExecOverran { deadline: d } =>
+        BuildCacheReadRefused { reason: host_effect_typed_argv_overran_reason(leg_hint: "build cache read", deadline: d) }
     TypedArgvExecRefused { reason: why } => BuildCacheReadRefused { reason: why }
   }
 }
@@ -10197,7 +10348,7 @@ fn build_cache_socket_holder_read(inode: NonEmptyStr, transport: HostEffectTrans
       }
     }
     SshShell { ssh_host: _ } => build_cache_host_read(command: socket_inode_holder_command(inode: inode), transport: transport)
-    FleetSsh { target: _, context: _ } => build_cache_host_read(command: socket_inode_holder_command(inode: inode), transport: transport)
+    FleetSsh { target: _, context: _, kind: _} => build_cache_host_read(command: socket_inode_holder_command(inode: inode), transport: transport)
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       HostReadFailed {
         detail: "EnsureBuildCacheInstance cannot walk /proc over EmitArtifactThenThinRun; typed mismatch." as NonEmptyStr,
@@ -10917,7 +11068,7 @@ fn realize_ensure_compile_pool_slice(
           }
         LocalShell => realize_ensure_compile_pool_slice_body(node: node, transport: transport, effect_intent: effect_intent)
         SshShell { ssh_host: _ } => realize_ensure_compile_pool_slice_body(node: node, transport: transport, effect_intent: effect_intent)
-        FleetSsh { target: _, context: _ } => realize_ensure_compile_pool_slice_body(node: node, transport: transport, effect_intent: effect_intent)
+        FleetSsh { target: _, context: _, kind: _} => realize_ensure_compile_pool_slice_body(node: node, transport: transport, effect_intent: effect_intent)
       }
   }
 }
