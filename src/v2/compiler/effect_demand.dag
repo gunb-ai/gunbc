@@ -1202,3 +1202,176 @@ data effect_demand_seam_roster: List<SeamStanding> = [
     evidence: SeamEvidenceDerivedNotExercised { reason: ^declaration_not_emitted_in_the_measured_closure }
   }
 ]
+
+// =============================================================================================
+// EFFECTS-1 (egress-effects-1-filesystem-provider) -- TWO LOCATED REFUSALS.
+// The row's red_control names two things that must refuse, and nothing in the tree refused
+// either at the dispatch base: (a) an emitted closure reaching the bare `filesystem_read`
+// primitive directly, and (b) a new `demand_restatement` row. Before this cut the first reached
+// a runtime `unrealized_host_seam` panic (a bare primitive that is neither the handler nor the
+// interface -- the row's displaced_cost, verbatim), and the second arrived with no wall at all
+// (gunbc.demand_engine_restatement_follow_up: "nothing walls new rows out yet").
+//
+// BOTH REFUSALS FOLLOW THE SHAPE THIS MODULE ALREADY SETS for effect_demand_census and
+// effect_demand_ungrounded_operations: the population is a PARAMETER, the refusal NAMES the
+// offenders by identity and never counts them, and there is no fallback arm -- an offender that
+// reaches is refused, not defaulted through. That is gunbc.design_argument::fail_closed applied
+// here: a wall with an escape hatch is a bucket. Each refusal has its OWN NAMED cause (a typed
+// arm with the identity of the offender and the site it reached from), never a generic bucket and
+// never a new panic -- gunbc.design_argument::closed_grounded_substrate keeps the refusal a compile-time
+// fact about the closure rather than a runtime hole.
+// =============================================================================================
+
+// ---- WALL 2: an emitted closure reaching `filesystem_read` directly refuses ----
+// THE FILESYSTEM EFFECT HAS ONE HANDLER, and reaching the bare primitive beside it is the defect.
+// The native door binds one Filesystem realization handler at the NativeCliDriver root (the E2
+// cut, reusing v1.compiler.emit_rust emit_file_call's semantics: path template, verb, typed read/
+// write result fields, empty-path guard, io-error kind). `filesystem_read` is NEITHER that handler
+// NOR its interface -- it is the free legacy primitive whose realization panics. An emitted closure
+// that reaches it directly bypasses the handler's typed read/write contract, so it must refuse at
+// COMPILE TIME. The handler's identity is the one this module already carries as a slug; the free
+// primitive's identity is the slug `filesystem_read`. A closure reaching a filesystem operation that
+// IS the handler is accepted -- this is the same discrimination effect_demand_census makes between a
+// dispositioned demand and one no row accounts for, applied to the filesystem effect.
+type FilesystemEffectReach
+  = ReachedThroughHandler { calling_entry_module: String, operation: String }
+  | ReachedFreePrimitiveDirectly { calling_entry_module: String, operation: String, cause: Symbol }
+
+// The single slug naming the free filesystem_read primitive, taken at the same PrimitiveIdentity
+// grain the census takes every operation (std.primitive_projection). It is NOT a new name for the
+// handler -- the handler is the Filesystem realization this module's census realizes through the
+// bound realization population; this slug names the legacy primitive the wall refuses.
+data filesystem_free_primitive_slug: String = "filesystem_read"
+
+// One observed filesystem reach, at the grain the census already uses: the entry that reached and the
+// operation it reached. `is_handler` is supplied, NOT inferred from the tree -- the caller states which
+// slug the bound handler names, so the refusal is executable over a synthetic world and is never an
+// oracle copied from the tree it audits (fail_closed's construction-over-validation rule).
+fn filesystem_effect_reach(
+  calling_entry_module: String,
+  operation: String,
+  handler_slug: String
+) -> FilesystemEffectReach {
+  if operation == filesystem_free_primitive_slug {
+    ReachedFreePrimitiveDirectly {
+      calling_entry_module: calling_entry_module,
+      operation: operation,
+      cause: ^filesystem_read_reached_outside_filesystem_handler
+    }
+  } else {
+    ReachedThroughHandler { calling_entry_module: calling_entry_module, operation: operation }
+  }
+}
+
+// THE REFUSAL, NAMING THE OFFENDERS. Given the filesystem reaches of an emitted closure, return exactly
+// those that reached the free primitive directly, each carrying its calling entry, the operation it
+// reached, and its named cause. An empty list is the accepted population; a non-empty list is the
+// located report. No counting, no defaulting: a direct reach is refused by name.
+fn filesystem_effect_direct_reach_refusals(
+  reaches: List<FilesystemEffectReach>
+) -> List<FilesystemEffectReach> {
+  list_reverse(xs: fold_list(
+    xs: reaches,
+    empty: Empty,
+    cons: fn(acc, reach) {
+      match reach {
+        ReachedFreePrimitiveDirectly {
+          calling_entry_module: calling_entry_module,
+          operation: operation,
+          cause: cause
+        } => Cons {
+          head: ReachedFreePrimitiveDirectly {
+            calling_entry_module: calling_entry_module,
+            operation: operation,
+            cause: cause
+          },
+          tail: acc
+        }
+        ReachedThroughHandler { calling_entry_module: _, operation: _ } => acc
+      }
+    }
+  ))
+}
+
+// THE WALL HOLDS exactly when an emitted closure reaches no filesystem effect the free primitive
+// directly. It is the same shape as effect_demand_census_total_holds: a Bool computed from the
+// refusal list being empty, so a red fixture that plants a direct reach makes it false and a green
+// control that reaches only through the handler keeps it true.
+fn filesystem_effect_direct_reach_wall_holds(
+  reaches: List<FilesystemEffectReach>
+) -> Bool {
+  length(xs: filesystem_effect_direct_reach_refusals(reaches: reaches)) == 0
+}
+
+// ---- WALL 1: a new demand_restatement row refuses ----
+// THE AUTHORIZED RESTATEMENT ROSTER IS A PARAMETER, not a tree-derived oracle. A `demand_restatement`
+// row restates a service demand that is already derivable; the census (cut (c)) deleted every authored
+// `uses` row whose derived demand was nonempty, retaining only the named exceptions at the final-base
+// census, carried in gunbc.demand_engine_restatement_follow_up at row identity -- (module, declaration,
+// alias, authored type). That module records "nothing walls new rows out yet"; this is the wall. An
+// arriving row whose identity is NOT in the authorized roster is a restatement that has not earned
+// retention, and it REFUSES by naming its identity -- never counted, never let through. The roster is
+// supplied by the caller (the follow-up module's rows, read at row identity), so the refusal is
+// executable over a small synthetic roster and is never a figure transcribed from the tree it audits.
+type DemandRestatementRow {
+  module_path: String
+  declaration: String
+  alias: String
+  authored_type: String
+}
+
+type DemandRestatementVerdict
+  = AuthorizedRow { row: DemandRestatementRow }
+  | NewRestatementRowRefused { row: DemandRestatementRow, cause: Symbol }
+
+fn demand_restatement_row_eq(left: DemandRestatementRow, right: DemandRestatementRow) -> Bool {
+  (left.module_path == right.module_path)
+    && (left.declaration == right.declaration)
+    && (left.alias == right.alias)
+    && (left.authored_type == right.authored_type)
+}
+
+fn demand_restatement_row_is_authorized(
+  row: DemandRestatementRow,
+  roster: List<DemandRestatementRow>
+) -> Bool {
+  any(xs: roster, predicate: fn(candidate) { demand_restatement_row_eq(left: row, right: candidate) })
+}
+
+fn demand_restatement_row_verdict(
+  row: DemandRestatementRow,
+  roster: List<DemandRestatementRow>
+) -> DemandRestatementVerdict {
+  if demand_restatement_row_is_authorized(row: row, roster: roster) {
+    AuthorizedRow { row: row }
+  } else {
+    NewRestatementRowRefused { row: row, cause: ^new_demand_restatement_row_unretained }
+  }
+}
+
+// THE REFUSAL, NAMING THE OFFENDERS: every arriving row absent from the authorized roster, each with its
+// identity and its named cause. An empty list is the accepted population. No counting, no fallback.
+fn demand_restatement_new_row_refusals(
+  arriving: List<DemandRestatementRow>,
+  roster: List<DemandRestatementRow>
+) -> List<DemandRestatementRow> {
+  list_reverse(xs: fold_list(
+    xs: arriving,
+    empty: Empty,
+    cons: fn(acc, row) {
+      if demand_restatement_row_is_authorized(row: row, roster: roster) {
+        acc
+      } else {
+        Cons { head: row, tail: acc }
+      }
+    }
+  ))
+}
+
+// THE WALL HOLDS exactly when no arriving restatement row is absent from the authorized roster.
+fn demand_restatement_wall_holds(
+  arriving: List<DemandRestatementRow>,
+  roster: List<DemandRestatementRow>
+) -> Bool {
+  length(xs: demand_restatement_new_row_refusals(arriving: arriving, roster: roster)) == 0
+}

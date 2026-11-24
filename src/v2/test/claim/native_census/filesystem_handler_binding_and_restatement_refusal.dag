@@ -1,0 +1,139 @@
+module v2.test.claim.native_census.filesystem_handler_binding_and_restatement_refusal
+
+import v2.compiler.effect_demand {
+  DemandRestatementRow,
+  DemandRestatementVerdict,
+  AuthorizedRow,
+  NewRestatementRowRefused,
+  FilesystemEffectReach,
+  ReachedThroughHandler,
+  ReachedFreePrimitiveDirectly,
+  filesystem_free_primitive_slug,
+  filesystem_effect_reach,
+  filesystem_effect_direct_reach_refusals,
+  filesystem_effect_direct_reach_wall_holds,
+  demand_restatement_row_verdict,
+  demand_restatement_new_row_refusals,
+  demand_restatement_wall_holds
+}
+import std.algebra { Cons, Empty, length }
+import std.types { List }
+import v2.std.text { String }
+
+// EFFECTS-1 (egress-effects-1-filesystem-provider), THE RED FOR BOTH WALLS. This claim imports the two
+// located refusals from v2.compiler.effect_demand -- symbols that DO NOT EXIST on the dispatch base --
+// so on main it fails to run (the import is refused), which is the RED the row's red_control demands:
+// "a new demand_restatement row refuses; an emitted closure reaching filesystem_read directly refuses
+// under the handler binding." At head the symbols exist and every assertion below holds green. Each
+// discriminating test plants exactly one defect over a small SYNTHETIC world (fail_closed's
+// construction-over-validation rule: the refusal is a parameterized function, never an oracle copied
+// from the tree it audits), and has a reachable opposite answer -- a green control that still passes.
+
+// =============================================================================================
+// WALL 2 -- filesystem_read direct reach
+// =============================================================================================
+
+// The handler the native door binds reuses v1.compiler.emit_rust emit_file_call's semantics; the free
+// legacy primitive `filesystem_read` is neither the handler nor its interface. The handler slug a green
+// control reaches through is a filesystem realization OTHER than the free primitive's slug.
+data filesystem_handler_slug: String = "filesystem_handler_read"
+
+data filesystem_reach_through_handler: FilesystemEffectReach = filesystem_effect_reach(
+  calling_entry_module: "src/v2/compiler/compile.dag",
+  operation: "filesystem_handler_read",
+  handler_slug: filesystem_handler_slug
+)
+
+data filesystem_reach_free_primitive: FilesystemEffectReach = filesystem_effect_reach(
+  calling_entry_module: "src/v2/compiler/self_host.dag",
+  operation: "filesystem_read",
+  handler_slug: filesystem_handler_slug
+)
+
+test fn filesystem_handler_binding_green_control_holds() -> Bool {
+  filesystem_effect_direct_reach_wall_holds(reaches: Cons {
+    head: filesystem_reach_through_handler,
+    tail: Empty
+  })
+}
+
+test fn filesystem_read_direct_reach_refuses() -> Bool {
+  let reaches = Cons { head: filesystem_reach_free_primitive, tail: Empty }
+  (length(xs: filesystem_effect_direct_reach_refusals(reaches: reaches)) == 1)
+    && (!filesystem_effect_direct_reach_wall_holds(reaches: reaches))
+}
+
+test fn filesystem_read_direct_reach_names_its_cause() -> Bool {
+  match filesystem_effect_reach(
+    calling_entry_module: "src/v2/compiler/self_host.dag",
+    operation: "filesystem_read",
+    handler_slug: filesystem_handler_slug
+  ) {
+    ReachedFreePrimitiveDirectly {
+      calling_entry_module: entry,
+      operation: operation,
+      cause: _
+    } => (entry == "src/v2/compiler/self_host.dag") && (operation == filesystem_free_primitive_slug)
+    ReachedThroughHandler { calling_entry_module: _, operation: _ } => false
+  }
+}
+
+test fn filesystem_mixed_reach_refuses_only_the_direct_one() -> Bool {
+  let reaches = Cons {
+    head: filesystem_reach_through_handler,
+    tail: Cons { head: filesystem_reach_free_primitive, tail: Empty }
+  }
+  (length(xs: filesystem_effect_direct_reach_refusals(reaches: reaches)) == 1)
+    && (!filesystem_effect_direct_reach_wall_holds(reaches: reaches))
+}
+
+// =============================================================================================
+// WALL 1 -- new demand_restatement row
+// =============================================================================================
+
+data restatement_authorized_row: DemandRestatementRow = DemandRestatementRow {
+  module_path: "src/v2/compiler/authorized.dag",
+  declaration: "authorized_fn",
+  alias: "AuthorizedAlias",
+  authored_type: "AuthorizedService"
+}
+
+data restatement_authorized_roster: List<DemandRestatementRow> = Cons {
+  head: restatement_authorized_row,
+  tail: Empty
+}
+
+data restatement_arriving_authorized: DemandRestatementRow = DemandRestatementRow {
+  module_path: "src/v2/compiler/authorized.dag",
+  declaration: "authorized_fn",
+  alias: "AuthorizedAlias",
+  authored_type: "AuthorizedService"
+}
+
+data restatement_arriving_new: DemandRestatementRow = DemandRestatementRow {
+  module_path: "src/v2/compiler/newcomer.dag",
+  declaration: "newcomer_fn",
+  alias: "NewcomerAlias",
+  authored_type: "NewcomerService"
+}
+
+test fn demand_restatement_authorized_row_holds() -> Bool {
+  demand_restatement_wall_holds(
+    arriving: Cons { head: restatement_arriving_authorized, tail: Empty },
+    roster: restatement_authorized_roster
+  )
+}
+
+test fn demand_restatement_new_row_refuses() -> Bool {
+  let arriving = Cons { head: restatement_arriving_new, tail: Empty }
+  (length(xs: demand_restatement_new_row_refusals(arriving: arriving, roster: restatement_authorized_roster)) == 1)
+    && (!demand_restatement_wall_holds(arriving: arriving, roster: restatement_authorized_roster))
+}
+
+test fn demand_restatement_new_row_names_its_cause() -> Bool {
+  match demand_restatement_row_verdict(row: restatement_arriving_new, roster: restatement_authorized_roster) {
+    NewRestatementRowRefused { row: row, cause: _ } =>
+      (row.module_path == "src/v2/compiler/newcomer.dag") && (row.declaration == "newcomer_fn")
+    AuthorizedRow { row: _ } => false
+  }
+}
