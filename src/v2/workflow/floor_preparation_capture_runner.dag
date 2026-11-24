@@ -321,7 +321,7 @@ fn floor_preparation_sha_of(path: String) -> String {
 
 fn floor_preparation_bytes_of(path: String) -> Int {
   let outcome = floor_preparation_spawn_plain(
-    binary: floor_preparation_sha256_binary,
+    binary: "/usr/bin/wc",
     args: ["-c", path])
   match split(s: outcome.stdout, delimiter: " ").first() {
     Present { value: v } => floor_preparation_parse_int(text: v)
