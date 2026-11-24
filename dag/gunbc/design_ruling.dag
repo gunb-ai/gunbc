@@ -1338,8 +1338,34 @@ data heal_mirror_convergence_held_until_merge_base_build_is_measured_2026_11_24:
   provenance: "Operator words of 2026-11-24, relayed by lane manager neat-badger-614, answering escalation msg_bb054e96 raised by lane manager royal-newt-240 on the heal build-before-converge ordering: \"yeah your recommendations are fine\". The recommendation put in front of the operator was HOLD, with four options offered (approve now, hold pending measurement, hold to a later ruling, decline), so this records an endorsement of the recommended hold and is NOT an independent design statement about the ordering of heal steps. It decides: no change to the regenerator build step in heal, and no worker staffed on roadmap node heal-mirror-convergence-under-unbuildable-checkout, until that node measures whether building the producer at the merge base collides with the base-start ruling carried by roadmap node heal-bootstrap-seed-reuse. The 2026-11-24 incident repair on pull request 16895, converging src/v1/stage0/src/v1_std_core.rs, was authorised separately and is not covered by this hold. A timed-out default approval would not have carried this ruling; the operator supplied their own words."
 }
 
+// THE OPERATOR'S HAND-APPLIED srv3/srv4 POWER CAPS, 2026-11-24.
+//
+// A ruling rather than a note, because two operators' decisions meet in it and only a row can keep them apart
+// afterwards: the operator applied a GPU power cap and a CPU frequency ceiling by hand, reboot-persistently, and
+// has since chosen to lift the frequency ceiling. The model records all three facts -- what was applied, what it
+// measured like, and which of the two the fleet is meant to WANT -- in the modules each fact belongs to
+// (gunbc.fleet.gpu_power_cap_boot_state hand_applied_cap_mechanisms, gunbc.fleet.cpu_freq_cap_boot_state
+// cpu_freq_cap_mechanisms, gunbc.fleet.fleet_host_power confounded_host_power_readings,
+// gunbc.serving.serving_replica_profile card_of). Governs epistemic humility because that is the claim this
+// record is an instance of: the truncated digests are kept as markings and named as unread, and the wattages
+// taken while the load moved are kept out of the priced roster rather than pressed into it.
+//
+// THE WORDS ARE RELAYED, NOT TRANSCRIBED. They reached this row through the fleet work item that commissioned the
+// record, opened by manager session clever-raven-401 on 2026-11-24, which quoted the operator's own report of
+// what they had applied. They are recorded as relayed; this session did not hold an operator message to
+// transcribe, and no quote below should be cited as the operator's verbatim text. The four sha256s are quoted
+// exactly as the report gave them, each with its middle elided, and no digit has been supplied for an elided
+// middle anywhere in this change.
+data operator_hand_applied_srv3_srv4_power_caps_2026_11_24: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "operator_hand_applied_srv3_srv4_power_caps_2026_11_24"),
+  decided: "2026-11-24",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "epistemic_humility"),
+  provenance: "The operator, by hand on srv3 and srv4 on 2026-11-24, reported through the fleet work item commissioned by manager session clever-raven-401 the same day; relayed, not transcribed. RELAYED WORDS OF THE APPLYING: \"GPU power cap 30 W, the cards' minimum, on all four RTX 2000 Ada\"; on srv4, \"gpu-power-cap.service edited to -pl 30 (sha256 2a0c8783...594690, a backup sits beside it)\"; on srv3, \"drop-in strata-pool.service.d/power-cap.conf runs -pl 30 before the engine (sha256 921f0a92...e892)\"; \"Observed: 30 W limit, 17-30 W draw\". And: \"CPU max frequency 2.0 GHz (normally up to 3.0) via a new enabled boot unit, cpu-freq-cap.service (sha256 35b24e44...08630), running /usr/local/sbin/cpu-freq-cap.sh (sha256 4a940fd5...3f027). It sets and reads back all 128 cores and fails if any core misses\"; \"Observed: 128/128 at 2000000 kHz\"; \"CPU power: srv4 101 W to 39-42 W, srv3 65 W to 29-31 W, but load also changed between readings\". RULED: both changes stand as facts about those hosts, and both survive a boot -- the GPU cap as the cap those hosts put on every card they carry, the frequency ceiling as a ceiling held there -- and what was observed alongside them is recorded WITH the standing of the reading that produced it: the 30 W device limit and the 17-30 W draw as the operator's own read of the capped cards, the wattage steps as confounded readings the load moved under, so no priced figure rests on them. RULED SEPARATELY, AND AGAINST THE FIRST DECISION: the frequency ceiling is to go. The escalation opened for it closed default-approved on the option \"lift the CPU cap on the CI/build hosts\", because heal's build lane runs out at its 60-minute limit with the cores held at 2.0 GHz; the host change is the operator's alone to make and was not made as these rows were written, so each frequency row carries CapPendingRemoval and gunbc.fleet.cpu_freq_cap_boot_state::cpu_freq_caps_to_converge returns nothing for either host. WHAT THIS RULES NOTHING ABOUT: whether the GPU cap stays -- no reversal of it has been raised -- and whether the two hosts' copies of the frequency unit and script are the same file, which the single digest quoted per file cannot answer.",
+}
+
 fn design_rulings() -> List<DesignRuling> {
   [
+    operator_hand_applied_srv3_srv4_power_caps_2026_11_24,
     heal_mirror_convergence_held_until_merge_base_build_is_measured_2026_11_24,
     declared_intent_separates_independent_choices_2026_11_23,
     value_disposition_and_named_binding_use_are_explicit_2026_11_23,

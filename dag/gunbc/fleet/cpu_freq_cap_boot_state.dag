@@ -1,0 +1,222 @@
+module gunbc.fleet.cpu_freq_cap_boot_state
+
+// A CPU FREQUENCY CEILING HELD ON A HOST BY A MECHANISM SOMEONE INSTALLED: the ceiling, the unit and script
+// that hold it, what that pair read back when it finished, and -- the part that carries weight -- whether the
+// model is meant to treat the ceiling as a state to converge TOWARD.
+//
+// WHY THIS MODULE EXISTS BEFORE ANY ACTUATOR. The fleet already has a CPU frequency ceiling on two hosts and no
+// type that could say so: gunbc.plans.host_thermal_operating_point lists `ReadCpuOperatingLimits` ("governor
+// and per-core limits, any power cap") as a read it PLANS to model, and nothing until now held the fact a read
+// would fill. So this module declares the shape first and the rows second, and the rows that exist say what was
+// read on 2026-11-24 and nothing more. No actuator, unit template or converge lives here: a ceiling the operator
+// applied by hand is recorded, not reproduced. Adding the mechanism would mean a unit file, sudoers grants and a
+// fleet-converge mode, and each gets modelled when there is a decision to act on, not before.
+//
+// WHAT THIS MODULE DOES NOT OWN.
+//   - the part's own numbers -- core count, nominal sustained per-thread clock, TDP -- are the catalog row in
+//     extdeps.cpu.ampere, joined here rather than restated; a ceiling is only meaningful against them, which is
+//     why the witness compares the two;
+//   - the watts a host draws is gunbc.fleet.fleet_host_power's, and the readings taken while this cap went in
+//     are named there as confounded (load moved between them), so none of them priced anything;
+//   - the decision to apply a ceiling, or to lift one, is the operator's and is recorded in
+//     gunbc.design_ruling; this module reports the stance a ruling leaves behind, it cannot create one;
+//   - the boot mechanism's file contents and full content hashes are unread, and `unread_cpu_cap_file_digests`
+//     says which read would discharge them.
+//
+// THE STANCE IS THE LOAD-BEARING FIELD. A ceiling that stands on a host today and a ceiling the model wants on
+// that host are different facts, and the two hosts recorded here are exactly the case where they come apart: the
+// operator applied 2.0 GHz on 2026-11-24, and has since chosen to lift it on the CI/build hosts. A row whose
+// stance is `CapPendingRemoval` is a record of what is standing, NOT a target: a consumer that pushes desired
+// state at a host must skip these rows, or it would reinstall a unit the operator is about to remove.
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.algebra { count_where }
+import std.optional { Absent, Present }
+import std.measure { Hertz, hertz, hertz_count }
+import product.host_identity { HostIdentity, host_identity_eq }
+import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
+// The cap-unit digest standing is the same question gunbc.fleet.gpu_power_cap_boot_state first modelled for the
+// GPU cap units, so it is spelled once there and imported here rather than minted a second time.
+import gunbc.fleet.gpu_power_cap_boot_state {
+  CapUnitContentDigest, CapUnitDigestMarkedOnly, CapUnitDigestUnread,
+}
+
+// What the mechanism's own script reported when it finished. The script writes the ceiling to every core and
+// reads each one back, and it FAILS if any core misses -- so the count it reports is the mechanism grading its
+// own work, and it is a different reading from an outside observer ticking cores over ssh.
+type CpuCoreFrequencyReadBack
+  = EveryCoreSeenAtCeiling { cores_read_back: Int }
+  | SomeCoresMissedAtCeiling { cores_read_back: Int, cores_expected: Int }
+  | ReadBackNotReported { why: NonEmptyStr }
+
+// Whether what stands is what the model wants to stand. See the header: `CapPendingRemoval` is a record, not a
+// target, and `decided_by` and `decided_on` are what keep a reversal from being read later as a cap that was
+// never wanted in the first place.
+type CpuCapStance
+  = CapKept
+  | CapPendingRemoval {
+      decided_by: NonEmptyStr
+      decided_on: NonEmptyStr
+      why: NonEmptyStr
+    }
+
+// A frequency ceiling held on a host by an installed mechanism. The unit runs the script; both paths are the
+// operator's, and both digests are as-reported markings until a host hash read lands.
+type CpuFreqCapMechanism {
+  host: HostIdentity
+  unit_path: NonEmptyStr
+  unit_digest: CapUnitContentDigest
+  script_path: NonEmptyStr
+  script_digest: CapUnitContentDigest
+  // The ceiling the mechanism writes to each core. cpufreq's scaling_max_freq counts kilohertz; this carries
+  // hertz, the unit the catalog's nominal clock uses, so the two compare without a scale silently changing.
+  ceiling: Hertz
+  read_back: CpuCoreFrequencyReadBack
+  // Reboot-persistence as the operator stated it -- an enabled boot unit. NOT a `systemctl is-enabled` read;
+  // nothing here reports what systemd says about the unit.
+  persists_across_boot: Bool
+  stance: CpuCapStance
+  read_on: NonEmptyStr
+}
+
+// THE TWO HOSTS THAT RUN AT 2.0 GHZ TODAY, and neither by the model's wanting. The operator installed one unit
+// and one script on each host on 2026-11-24; the ceiling is half the M128-30's nominal sustained per-thread
+// clock, and the script's own read-back reported every core of 128 at it. Both rows carry the same digest
+// markings because the operator quoted one head-and-tail per file for both hosts -- whether the two hosts'
+// copies are byte-identical is unread, and is named in `unread_cpu_cap_file_digests` along with the middles.
+data srv3_cpu_freq_cap: CpuFreqCapMechanism = CpuFreqCapMechanism {
+  host: operator_host_srv3,
+  unit_path: "/etc/systemd/system/cpu-freq-cap.service" as NonEmptyStr,
+  unit_digest: CapUnitDigestMarkedOnly { head: "35b24e44" as NonEmptyStr, tail: "08630" as NonEmptyStr },
+  script_path: "/usr/local/sbin/cpu-freq-cap.sh" as NonEmptyStr,
+  script_digest: CapUnitDigestMarkedOnly { head: "4a940fd5" as NonEmptyStr, tail: "3f027" as NonEmptyStr },
+  ceiling: hertz(count: 2000000000),
+  read_back: EveryCoreSeenAtCeiling { cores_read_back: 128 },
+  persists_across_boot: true,
+  stance: CapPendingRemoval {
+    decided_by: "the operator, through the escalation that closed default-approved on 2026-11-24 choosing to lift the CPU cap on the CI/build hosts; the host change itself is the operator's to make and was not made as this row was written" as NonEmptyStr,
+    decided_on: "2026-11-24" as NonEmptyStr,
+    why: "heal's build lane runs out at its 60-minute limit with the cores held at 2.0 GHz, so the ceiling that was applied to trim power is now the thing standing between the fleet and a green build" as NonEmptyStr,
+  },
+  read_on: "2026-11-24, applied and read by the operator by hand over the admin route; the operator's words are gunbc.design_ruling::operator_hand_applied_srv3_srv4_power_caps_2026_11_24" as NonEmptyStr,
+}
+
+data srv4_cpu_freq_cap: CpuFreqCapMechanism = CpuFreqCapMechanism {
+  host: operator_host_srv4,
+  unit_path: "/etc/systemd/system/cpu-freq-cap.service" as NonEmptyStr,
+  unit_digest: CapUnitDigestMarkedOnly { head: "35b24e44" as NonEmptyStr, tail: "08630" as NonEmptyStr },
+  script_path: "/usr/local/sbin/cpu-freq-cap.sh" as NonEmptyStr,
+  script_digest: CapUnitDigestMarkedOnly { head: "4a940fd5" as NonEmptyStr, tail: "3f027" as NonEmptyStr },
+  ceiling: hertz(count: 2000000000),
+  read_back: EveryCoreSeenAtCeiling { cores_read_back: 128 },
+  persists_across_boot: true,
+  stance: CapPendingRemoval {
+    decided_by: "the operator, through the escalation that closed default-approved on 2026-11-24 choosing to lift the CPU cap on the CI/build hosts; the host change itself is the operator's to make and was not made as this row was written" as NonEmptyStr,
+    decided_on: "2026-11-24" as NonEmptyStr,
+    why: "heal's build lane runs out at its 60-minute limit with the cores held at 2.0 GHz, so the ceiling that was applied to trim power is now the thing standing between the fleet and a green build" as NonEmptyStr,
+  },
+  read_on: "2026-11-24, applied and read by the operator by hand over the admin route; the operator's words are gunbc.design_ruling::operator_hand_applied_srv3_srv4_power_caps_2026_11_24" as NonEmptyStr,
+}
+
+data cpu_freq_cap_mechanisms: List<CpuFreqCapMechanism> = [ srv3_cpu_freq_cap, srv4_cpu_freq_cap ]
+
+// WHICH HOSTS THE MODEL IS TO LEAVE ALONE. A consumer converging desired CPU state asks this and nothing else:
+// a pending-removal ceiling is not desired state, and a row whose stance is CapKept is the only kind that should
+// ever be pushed at a host.
+fn cpu_freq_caps_to_converge() -> List<CpuFreqCapMechanism> {
+  filter(cpu_freq_cap_mechanisms, m =>
+    match m.stance {
+      CapKept => true
+      CapPendingRemoval { decided_by: _, decided_on: _, why: _ } => false
+    })
+}
+
+fn cpu_freq_cap_mechanisms_on(host: HostIdentity) -> List<CpuFreqCapMechanism> {
+  filter(cpu_freq_cap_mechanisms, m => host_identity_eq(a: m.host, b: host))
+}
+
+// The ceiling a host runs under today, where a mechanism has been read holding one. Absent is "no mechanism read
+// there", NOT "the host runs at its part's nominal clock": srv1, srv2 and srv5 run uncapped as far as this model
+// knows, and knows nothing about any of them having a ceiling read.
+fn host_cpu_freq_ceiling(host: HostIdentity) -> Hertz? {
+  match cpu_freq_cap_mechanisms_on(host: host).first() {
+    Absent => Absent
+    Present { value: m } => Present { value: m.ceiling }
+  }
+}
+
+// What the mechanism's read-back counted, where it reported at all.
+fn cpu_freq_cap_cores_read_back(m: CpuFreqCapMechanism) -> Int? {
+  match m.read_back {
+    EveryCoreSeenAtCeiling { cores_read_back } => Present { value: cores_read_back }
+    SomeCoresMissedAtCeiling { cores_read_back, cores_expected: _ } => Present { value: cores_read_back }
+    ReadBackNotReported { why: _ } => Absent
+  }
+}
+
+// THE FILE DIGESTS THIS MODEL CANNOT CLOSE. Each row names a file whose hash exists on the host, was
+// quoted with its middle elided, and has no read in this repository that can produce the whole value:
+// `runner_host_file_observe` walks only the files the model DECLARES (gunbc.runner.runner_host_file_converge
+// runner_host_file_desired_population_from_uid_reading) and reports standing against declared content, never a
+// hash of an arbitrary path, and none of these files is in any declared population. Two rows per host -- the
+// unit and the script it runs -- and one more question these rows cannot answer: the operator quoted ONE marking
+// per file for BOTH hosts, so whether srv3's and srv4's copies are byte-identical is itself unread, and a read
+// that hashed each host separately is what would settle it too.
+data unread_cpu_cap_file_digests: List<CapUnitDigestUnread> = [
+  CapUnitDigestUnread {
+    host: operator_host_srv3,
+    mechanism_path: "/etc/systemd/system/cpu-freq-cap.service" as NonEmptyStr,
+    what_would_discharge_it: "a fleet-converge observe leg that runs sha256sum at a declared path on the subject host and returns the value, run on srv3 and srv4 separately: the same read settles both the elided middle and whether the two hosts hold identical files" as NonEmptyStr,
+  },
+  CapUnitDigestUnread {
+    host: operator_host_srv3,
+    mechanism_path: "/usr/local/sbin/cpu-freq-cap.sh" as NonEmptyStr,
+    what_would_discharge_it: "the same declared-path host hash read, which no fleet-converge mode performs today" as NonEmptyStr,
+  },
+  CapUnitDigestUnread {
+    host: operator_host_srv4,
+    mechanism_path: "/etc/systemd/system/cpu-freq-cap.service" as NonEmptyStr,
+    what_would_discharge_it: "the same declared-path host hash read, run on each host separately" as NonEmptyStr,
+  },
+  CapUnitDigestUnread {
+    host: operator_host_srv4,
+    mechanism_path: "/usr/local/sbin/cpu-freq-cap.sh" as NonEmptyStr,
+    what_would_discharge_it: "the same declared-path host hash read, run on each host separately" as NonEmptyStr,
+  },
+]
+
+// Whether this file's digest is still only a quoted head-and-tail.
+fn cpu_cap_file_digest_is_marked(d: CapUnitContentDigest) -> Bool {
+  match d {
+    CapUnitDigestMarkedOnly { head: _, tail: _ } => true
+    CapUnitDigestRead { sha256: _ } => false
+  }
+}
+
+// How many frontier rows name this file on this host.
+fn unread_cpu_cap_rows_naming(host: HostIdentity, mechanism_path: NonEmptyStr) -> Int {
+  count_where(
+    xs: unread_cpu_cap_file_digests,
+    predicate: f =>
+      host_identity_eq(a: f.host, b: host)
+        && ((f.mechanism_path as String) == (mechanism_path as String)))
+}
+
+// THE UNIT, THE SCRIPT AND THE FRONTIER ARE ONE STANDING. Each of a mechanism's two files carries either a
+// marking named by exactly one frontier row or a read digest named by none. Half-closing is the failure this
+// refuses: a digest promoted by typing, with the frontier row left behind saying it is still unread.
+fn cpu_cap_file_digest_standings_are_paired(m: CpuFreqCapMechanism) -> Bool {
+  let unit_named = unread_cpu_cap_rows_naming(host: m.host, mechanism_path: m.unit_path)
+  let script_named = unread_cpu_cap_rows_naming(host: m.host, mechanism_path: m.script_path)
+  (cpu_cap_file_digest_is_marked(d: m.unit_digest) && unit_named == 1
+    || !cpu_cap_file_digest_is_marked(d: m.unit_digest) && unit_named == 0)
+    && (cpu_cap_file_digest_is_marked(d: m.script_digest) && script_named == 1
+      || !cpu_cap_file_digest_is_marked(d: m.script_digest) && script_named == 0)
+}
+
+// Is this host's ceiling below the clock its own part is rated to sustain? Asked of the catalog row rather than
+// of a number typed into a row, so a ceiling that quietly rose to the part's nominal clock would stop being
+// called a cap. Unread (Absent) when either side is missing rather than answered false.
+fn ceiling_sits_below_the_parts_nominal_clock(m: CpuFreqCapMechanism, nominal: Hertz) -> Bool {
+  hertz_count(h: m.ceiling) < hertz_count(h: nominal)
+}
