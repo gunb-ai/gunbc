@@ -777,6 +777,10 @@ data ci_native_cache_derive_step_name: String = "Derive native-cache root (rustc
 // forbids the wildcard arms that predicate would need (receipt: nfr floor on 14bc815db4). Dissolves
 // when prelude ordering is witnessed without coproduct-residue match arms.
 data ci_release_bins_artifact_name: String = "release-bins"
+// THE JOB THAT PUBLISHES IT: fleet-converge's `build` job id, declared beside the artifact so a reader of the
+// artifact (gunbc.live_deploy.release_pair_deliver_cli, which asks whether that job succeeded) does not load the
+// whole workflow module to learn one id. gunbc.fleet.fleet_converge_workflow imports it for its job edges.
+data fleet_converge_release_bins_job_id: NonEmptyStr = "build" as NonEmptyStr
 
 data gunbc_ci_aux_step_timeout_minutes: Duration = 5
 

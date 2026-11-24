@@ -28,6 +28,8 @@ import std.optional { Present, Absent }
 import std.list { first_where }
 import std.algebra { trim, skip, non_empty_to_list }
 import extdeps.linux.etc_group { etc_group_entries, etc_group_entry_named, etc_group_name_of, EtcGroupEntry }
+import extdeps.tools.uname { uname_linux_machine_architecture }
+import gunbc.fabric.fabric_executor_class { executor_host_architecture, HostArchitecture, HostArchitectureKnown, HostArchitectureUnclassified }
 import extdeps.linux.etc_passwd { etc_passwd_entries, etc_passwd_entry_named }
 
 import product.host_identity { HostIdentity }
@@ -59,6 +61,9 @@ import extdeps.access.posix { file_mode_of_octal_text, file_mode_octal, FileMode
 import gunbc.compute.remote_build_serve { remote_build_render_entry, RemoteBuildEntryRendered }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_e2d4b7 }
 import extdeps.ssh.keys { authorized_key_entry_line }
+import gunbc.compute.work_provider_local {
+  RecoverCatalogLegReading, RecoverCatalogLegEstablished, RecoverCatalogLegUnknown, CatalogLegStale, CatalogLegHeld, recover_catalog_leg_reading,
+}
 import std.goal_assessment {
   GoalAssessment, GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused,
   ObservationAttempt, ObservationEstablished, ObservationRefused, assess_by_deviations_and_unknowns,
@@ -92,6 +97,12 @@ type ServeIdentityDriftReason
   = IdentitySidecarMissing
   | IdentitySidecarMalformed
   | IdentityShaMismatch { sidecar_sha: String, binary_sha: String }
+  // NATIVE-build hosts only: the sidecar's sha matches the running binary (integrity intact), but the
+  // REVISION it records is not the dispatched revision. On an upload host this is NOT a drift (a .dag-only
+  // main yields a byte-identical pool binary and the pin sha already binds it), but a native host has no
+  // pinned sha, so a recorded-but-stale revision means the binary predates the revision it should serve.
+  // Routing (converge): re-build it (BuildServeBinary), never re-record a sidecar over the stale binary.
+  | IdentityRevisionStale { sidecar_revision: String, dispatched_revision: String }
 
 // A PROVED mismatch: the leg was read successfully and the host differs from the declaration
 // (absent, or present-but-wrong). Only these may be written by the apply. It is a COPRODUCT over
@@ -159,6 +170,22 @@ type ServingDeviation
   // the slice's cgroup -- an empty user slice under a non-lingering account is torn down before anything
   // can read it -- so the converge enables lingering on the account before it installs the slice.
   | UserManagerNotLingering { account_name: NonEmptyStr }
+  // A seat whose holder is dead and whose launch deadline has passed: stale, recoverable. The plan
+  // emits RecoverStaleSeat only when the identity leg is Met (no ServeIdentityDrift deviation present);
+  // if the identity leg is not yet settled, the plan refuses (the recovery CLI is the binary the identity
+  // documents, so it cannot be invoked before that leg lands). A live or too-early holder is legitimately
+  // held and emits NO deviation; an unreadable slot or one reference in two seat dirs is observation
+  // unknown, which makes the whole assessment ServingIndeterminate (fail_closed: the census cannot
+  // classify against a partial reading).
+  | StaleSeatDetected { reference: NonEmptyStr }
+  // The census door was not asked because the serving checkout is not yet at the dispatched revision —
+  // the door is carried by that checkout, so it does not exist to ask (gunbc.compute.work_provider_local::
+  // RecoverCatalogLegDeferred). A reported deviation that plans NO recovery write: the checkout write the
+  // same plan carries is what makes the door exist, and the next assessment asks it. Recording it as a
+  // deviation (not silence) keeps the receipt honest about why no seat row appears, and it is never an
+  // unknown: nothing was read and refused (fail_closed: unknowns dominate, and an unknown census here
+  // would strand the very checkout write that carries the door).
+  | StaleSeatCensusDeferred { reason: String }
 
 // The serve binary's IDENTITY SIDECAR, as a READING -- never a string sentinel. Decoded ONCE by the
 // converge's observe caller of parse_serve_binary_identity (the single serve-side format authority), so
@@ -169,7 +196,15 @@ type ServingDeviation
 type SidecarRead
   = SidecarAbsent
   | SidecarMalformed
-  | SidecarRecorded { sha256: String }
+  // The sidecar carries BOTH members the writer emits (converge_record_serve_identity): the sha of the
+  // binary it was recorded against AND the REVISION that binary was built at. The sha alone cannot bind
+  // the binary to a revision: on an upload host the PIN sha supplies that binding (the pool binary is by
+  // construction the dispatched-revision build), but on a NATIVE-build host there is no pinned sha, so the
+  // recorded revision is the ONLY thing that says which revision the running binary came from. Dropping it
+  // let a native host read settled on a stale binary (review 97463 finding 1) -- a silent-wrongness below the
+  // guarantee ladder (gunbc.design_argument::guarantee_ladder). So the reader keeps the revision (PR-1a parse
+  // already returns it; it was being discarded at the SidecarRecorded boundary).
+  | SidecarRecorded { revision: String, sha256: String }
 
 // The canonical item LABEL for an arm. It is what the receipt names a drift by and what the apply
 // matches toward, but it is DERIVED from the arm — never stored on it — so the coproduct stays the
@@ -197,6 +232,8 @@ fn serving_deviation_item(dev: ServingDeviation) -> String {
     UserWorkSliceUncapped { unit_name, reason: _ } => concat("user_work.slice.", unit_name)
     ServeIdentityDrift { path: _, reason: _ } => "serve.binary.identity"
     UserManagerNotLingering { account_name: _ } => "user_manager.linger"
+    StaleSeatDetected { reference: _ } => "seat.stale"
+    StaleSeatCensusDeferred { reason: _ } => "seat.census"
   }
 }
 
@@ -216,6 +253,7 @@ fn serve_identity_drift_reason_text(reason: ServeIdentityDriftReason) -> String 
     IdentitySidecarMissing => "(confirmed absent)"
     IdentitySidecarMalformed => "(present but not the documented two-member object)"
     IdentityShaMismatch { sidecar_sha, binary_sha } => concat("(records ", sidecar_sha, ", the binary runs ", binary_sha, ")")
+    IdentityRevisionStale { sidecar_revision, dispatched_revision } => concat("(built at ", sidecar_revision, ", the pin dispatches ", dispatched_revision, ")")
   }
 }
 
@@ -242,6 +280,8 @@ fn serving_deviation_text(dev: ServingDeviation) -> String {
     UserWorkSliceUncapped { unit_name, reason } => concat("user_work.slice (", unit_name, " not capped at the ceiling with swap forbidden: ", slice_cap_reason_text(reason: reason), ")")
     ServeIdentityDrift { path, reason } => concat((path as String), ".identity ", serve_identity_drift_reason_text(reason))
     UserManagerNotLingering { account_name } => concat("user_manager.linger (", (account_name as String), " not lingering; the user manager must be live before the slice is installed)")
+    StaleSeatDetected { reference } => concat("seat.stale (", (reference as String), " terminal with its release due; the recovery door must run)")
+    StaleSeatCensusDeferred { reason } => concat("seat.census (deferred, no recovery planned this run: ", reason, ")")
   }
 }
 
@@ -381,6 +421,28 @@ fn serving_subject_value_unknown(item: String, leg: ServingSubjectValue) -> List
   }
 }
 
+// The single native-build relation (RB-M3). A serving host must BUILD its own serve binary (rather than
+// receive the pool binary) exactly when its authored architecture row -- the ONE authority,
+// executor_host_architecture on gunbc.fabric.fabric_executor_class -- is KNOWN and differs from the
+// executor's Architecture. An unauthored host (Unclassified) is NOT a native-build host: its plan step
+// refuses it upstream (typed), never defaults it to native. This one predicate is read by the settle
+// predicate, the identity revision binding below, and the converge's identity routing, so all three agree
+// on which hosts build natively (one authority over the relation, per clever-raven-401).
+fn serving_host_needs_native_build(host: HostIdentity, executor_arch: Architecture) -> Bool {
+  match executor_host_architecture(host: host) {
+    HostArchitectureUnclassified { host: _ } => false
+    HostArchitectureKnown { host: _, arch: row_arch } => row_arch != executor_arch
+  }
+}
+
+// The revision the native host's identity sidecar must record to stay settled: the dispatched revision for a
+// native-build host (its only binary->revision binding), and unbound (Absent) for an upload host, whose pin
+// sha already carries the binding so an identical sha at an older revision stays settled. Explicit return
+// type so both optional branches unify.
+fn serving_identity_bound_revision(host: HostIdentity, executor_arch: Architecture, dispatched_revision: String) -> String? {
+  if serving_host_needs_native_build(host: host, executor_arch: executor_arch) { Present { value: dispatched_revision } } else { Absent }
+}
+
 // The identity-sidecar compare over its reading (PR-1c, clever-raven-401). Unlike
 // serving_subject_value_deviation (which compares to a fixed PIN), the sidecar must equal the sha of the
 // binary the host ACTUALLY RUNS -- a read value, not a constant -- so it needs this one-off. The reading
@@ -391,16 +453,26 @@ fn serving_subject_value_unknown(item: String, leg: ServingSubjectValue) -> List
 // observed binary sha is settled EVEN AT AN OLDER REVISION (the revision is not a drift signal -- a
 // .dag-only main yields a byte-identical binary); a differing sha is drift. A refused read is neither
 // drift nor (here) unknown -- the unknown fn owns that, so a refusal never silently rewrites.
-fn serving_serve_identity_deviation(binary_sha: String?, leg: ObservationAttempt<SidecarRead, ServingLegFailure>?, path: String) -> List<ServingDeviation> {
+fn serving_serve_identity_deviation(binary_sha: String?, leg: ObservationAttempt<SidecarRead, ServingLegFailure>?, path: String, bound_revision: String?) -> List<ServingDeviation> {
   match binary_sha {
     Absent => []
     Present { value: want } => match leg {
       Absent => []
       Present { value: ObservationEstablished { observed: SidecarAbsent } } => [ServeIdentityDrift { path: path, reason: IdentitySidecarMissing }]
       Present { value: ObservationEstablished { observed: SidecarMalformed } } => [ServeIdentityDrift { path: path, reason: IdentitySidecarMalformed }]
-      Present { value: ObservationEstablished { observed: SidecarRecorded { sha256: v } } } => match v == want {
-        true => []
+      Present { value: ObservationEstablished { observed: SidecarRecorded { revision: r, sha256: v } } } => match v == want {
         false => [ServeIdentityDrift { path: path, reason: IdentityShaMismatch { sidecar_sha: v, binary_sha: want } }]
+        // sha matches the running binary. Whether a STALE recorded revision is drift depends on the host:
+        // bound_revision is the dispatched revision for a NATIVE-build host (its only binding of binary to
+        // revision), and Absent for an upload host (whose pin sha supplies the binding, so an older revision
+        // with an identical sha stays settled -- a .dag-only main yields a byte-identical pool binary).
+        true => match bound_revision {
+          Absent => []
+          Present { value: disp } => match r == disp {
+            true => []
+            false => [ServeIdentityDrift { path: path, reason: IdentityRevisionStale { sidecar_revision: r, dispatched_revision: disp } }]
+          }
+        }
       }
       Present { value: ObservationRefused { cause: _ } } => []
     }
@@ -910,6 +982,16 @@ type ServingObserved {
   // absence -- absence is proven only by a leg established to the empty string (stat 'No such
   // file'). Typed per field so no joined wire format is minted for the comparator to re-parse.
   ledger_rows: List<ServingLedgerRowObserved>
+  // The seat census AS OBSERVED: the recovery door's rendering, parsed through the model. Established
+  // entries classify every seat the census read; a census that could not establish itself carries its
+  // detail and makes the assessment indeterminate (the plan REFUSES rather than recovering against a
+  // half-read seat pool). The EMPTY established census means 'the census RAN and found no seat in need
+  // of the recovery write' — so it is a value only a caller that actually read the census may hand in.
+  // There is NO default (review 97273, finding 1): an unwired read must not arrive as a confirmed
+  // empty census, which would assess as satisfied (gunbc.design_argument::fail_closed — "a fabricated
+  // default … is a hard reject"). Call sites state their census: production passes the read
+  // (serving_leg_seat_census); witnesses state explicitly what their cell asserts.
+  seat_census: RecoverCatalogLegReading
 }
 
 // ---------------------------------------------------------------------------
@@ -1315,10 +1397,43 @@ fn serving_assess(d: RemoteBuildServingDesired, o: ServingObserved, pin: Serving
       )
       let pin_deviations = concat(
         concat(
-          serving_subject_value_deviation(item: "serve_binary.sha256", expected: pin.local_binary_sha256, leg: o.serve_binary_sha256),
+          // RB-M3 native settle: a host whose authored architecture DIFFERS from the executor's can never
+          // carry the pool binary, so its serve-binary sha must never be demanded to equal the pool pin
+          // (pin.local_binary_sha256) -- that comparison would fire forever and rebuild the host endlessly.
+          // Such a host settles instead on: the checkout pinned at the dispatched revision (below), the
+          // binary being present (the seed deviation), and -- THE BINDING -- the identity sidecar recording
+          // the DISPATCHED revision and matching the sha of the binary the host actually runs (bound-revision
+          // compare in serving_serve_identity_deviation). Dropping the pin-sha compare is NOT a gap: the
+          // revision binding replaces it, so a native host that keeps an older binary now DRIFTS and rebuilds
+          // (review 97463 finding 1; the guarantee ladder forbids reading settled on a stale binary). An
+          // upload host (row arch == executor arch) and an unauthored host (Unclassified, refused upstream)
+          // both keep the pin-sha comparison exactly as before.
+          if serving_host_needs_native_build(host: d.host, executor_arch: pin.executor_arch) {
+            []
+          } else {
+            serving_subject_value_deviation(item: "serve_binary.sha256", expected: pin.local_binary_sha256, leg: o.serve_binary_sha256)
+          },
           serving_subject_value_deviation(item: "checkout.revision", expected: pin.dispatched_revision, leg: o.checkout_revision),
         ),
-        serving_expected_deviation(item: "host.arch", expected: pin.executor_arch, leg: o.target_arch),
+        // RB-M3: the on-host `uname -m` is a CONSISTENCY CHECK only, projected to Architecture with the
+        // SAME upstream projection the executor's spelling uses (uname_linux_machine_architecture) and
+        // compared enum==enum against the ONE host-architecture authority (executor_host_architecture row).
+        // It is never the upload/native decision (that is the plan step); it refuses a host whose read
+        // disagrees with its authored row. An unauthored host (Unclassified) mints nothing here — the plan
+        // step's typed refusal owns it. An unparseable read cannot be trusted, so it is a mismatch.
+        match o.target_arch {
+          ObservationEstablished { observed: v } => match uname_linux_machine_architecture(spelling: v) {
+            Absent => [ExpectedMismatch { item: "host.arch", desired: "the host's authored architecture", observed: v }]
+            Present { value: read_arch } => match executor_host_architecture(host: d.host) {
+              HostArchitectureUnclassified { host: _ } => []
+              HostArchitectureKnown { host: _, arch: row_arch } => match read_arch == row_arch {
+                true => []
+                false => [ExpectedMismatch { item: "host.arch", desired: "the host's authored architecture", observed: v }]
+              }
+            }
+          }
+          ObservationRefused { cause: _ } => []
+        },
       )
       // the ledger, joined to the observe's per-row reads by path (see serving_ledger_judge).
       let ledger = serving_ledger_judge(d: d, rows: o.ledger_rows)
@@ -1377,8 +1492,19 @@ fn serving_assess(d: RemoteBuildServingDesired, o: ServingObserved, pin: Serving
         ObservationEstablished { observed: true } => match o.serve_binary_sha256 { SubjectValueRead { read: ObservationEstablished { observed: v } } => Present { value: v }  _ => Absent }
         _ => Absent
       }
-      let identity_deviations = serving_serve_identity_deviation(binary_sha: serve_identity_binary_sha, leg: o.serve_identity, path: (d.serve_binary as String))
+      // RB-M3: on a NATIVE-build host the sidecar's recorded revision is the only thing binding the running
+      // binary to a revision, so it is bound to the dispatched revision here (a stale one drifts and rebuilds).
+      // On an upload host it is left unbound (Absent) -- the pin sha already carries the binding (see above).
+      let identity_bound_revision = serving_identity_bound_revision(host: d.host, executor_arch: pin.executor_arch, dispatched_revision: pin.dispatched_revision)
+      let identity_deviations = serving_serve_identity_deviation(binary_sha: serve_identity_binary_sha, leg: o.serve_identity, path: (d.serve_binary as String), bound_revision: identity_bound_revision)
       let identity_unknowns = serving_serve_identity_unknown(binary_sha: serve_identity_binary_sha, leg: o.serve_identity)
+      // The seat census: a STALE seat (the recovery write authorized THROUGH THE MODEL, by
+      // gunbc.compute.attempt_lifecycle::recovery_write_authorization inside the census) plans a
+      // recovery; a LEGITIMATELY HELD one (a live or too-early holder — the model declined) plans
+      // nothing; a census that could not establish itself is an unknown, and unknowns dominate —
+      // the plan REFUSES rather than recovering against a half-read seat pool.
+      let seat_deviations = serving_seat_census_deviations(leg: o.seat_census)
+      let seat_unknowns = serving_seat_census_unknown(leg: o.seat_census)
       assess_by_deviations_and_unknowns(
         evidence: ServingEvidence {
           account_uid: match o.passwd { ObservationEstablished { observed: t } => serving_passwd_uid(text: Present { value: t }, name: d.account_name)  ObservationRefused { cause: _ } => Absent },
@@ -1396,14 +1522,14 @@ fn serving_assess(d: RemoteBuildServingDesired, o: ServingObserved, pin: Serving
           checkout_revision: match o.checkout_revision { SubjectValueRead { read: ObservationEstablished { observed: v } } => Present { value: v }  _ => Absent },
           target_arch: match o.target_arch { ObservationEstablished { observed: v } => Present { value: v }  ObservationRefused { cause: _ } => Absent },
         },
-        deviations: concat(concat(concat(deviations, concat(pin_deviations, ledger.deviations)), mode_shell_deviations), identity_deviations),
+        deviations: concat(concat(concat(concat(deviations, concat(pin_deviations, ledger.deviations)), mode_shell_deviations), identity_deviations), seat_deviations),
         // the elevation precondition, folded in FIRST: 'sudo -n' refused (or an elevation leg nobody
         // read) is itself an unknown, and unknowns dominate deviations in assess_by_deviations_and_unknowns,
         // so a refused elevation forces GoalIndeterminate even if a non-sudo leg also shows drift — the
         // apply can never read "drift" for a host whose sudo-dependent state it could not have written anyway.
         unknowns: concat(
           match o.elevation { ObservationEstablished { observed: _ } => []  ObservationRefused { cause: c } => [ServingUnknown { item: "elevation", cause: c.cause }] },
-          concat(concat(concat(concat(unknowns, present_unknowns), concat(pin_unknowns, ledger.unknowns)), concat(mode_shell_unknowns, concat(serving_user_work_slice_unknowns(d: d, o: o), serving_user_manager_linger_unknowns(d: d, o: o)))), identity_unknowns),
+          concat(concat(concat(concat(concat(unknowns, present_unknowns), concat(pin_unknowns, ledger.unknowns)), concat(mode_shell_unknowns, concat(serving_user_work_slice_unknowns(d: d, o: o), serving_user_manager_linger_unknowns(d: d, o: o)))), concat(identity_unknowns, seat_unknowns))),
         ),
       )
     }
@@ -1609,6 +1735,7 @@ fn serving_observed_from_reads(
   user_manager_linger: ObservationAttempt<Bool, ServingLegFailure>,
   target_arch: ObservationAttempt<String, ServingLegFailure>,
   ledger_rows: List<ServingLedgerRowObserved>,
+  seat_census: RecoverCatalogLegReading,
 ) -> ServingObserved {
   // The elevation precondition applied ONCE here (not re-checked in each leg): when 'sudo -n true' was
   // refused, every sudo-dependent leg is ObservationRefused regardless of what the leg would have read,
@@ -1654,6 +1781,38 @@ fn serving_observed_from_reads(
     user_manager_linger: user_manager_linger,
     target_arch: target_arch,
     ledger_rows: ledger_rows,
+    seat_census: seat_census,
+  }
+}
+
+// The seat census's two chains, written together so a stale seat cannot be a deviation in one chain
+// and an unknown in the other (the ledger compare's ServingLedgerOutcome shape, one join). 'hold'
+// entries — a live or too-early holder, which the model DECLINED — emit NOTHING: declining is not a
+// deviation. A census that could not establish itself is an unknown, and unknowns dominate: the
+// assessment goes indeterminate and the plan REFUSES rather than recovering against a half-read pool
+// (gunbc.design_argument::fail_closed). The judgement itself is the model's — the census entries come
+// from gunbc.compute.attempt_lifecycle::recovery_write_authorization through
+// gunbc.compute.work_provider_local::compute_recover_catalog_for; this pair only renders them.
+fn serving_seat_census_deviations(leg: RecoverCatalogLegReading) -> List<ServingDeviation> {
+  match leg {
+    RecoverCatalogLegEstablished { entries: es } =>
+      fold(es, init: [], f: (acc, e) => match e {
+        CatalogLegStale { reference: r } => concat(acc, [StaleSeatDetected { reference: r }])
+        CatalogLegHeld { reference: _ } => acc
+      })
+    RecoverCatalogLegUnknown { detail: _ } => []
+    RecoverCatalogLegDeferred { reason: r } => [StaleSeatCensusDeferred { reason: r }]
+  }
+}
+
+fn serving_seat_census_unknown(leg: RecoverCatalogLegReading) -> List<ServingUnknown> {
+  match leg {
+    RecoverCatalogLegEstablished { entries: _ } => []
+    RecoverCatalogLegUnknown { detail: d } => [ServingUnknown { item: "seat.census", cause: d }]
+    // NOT an unknown: the door was never asked, and nothing was read and refused. Unknowns dominate
+    // (they make the assessment indeterminate), and an indeterminate assessment would strand the
+    // checkout write that carries the door — the census would never be asked at all.
+    RecoverCatalogLegDeferred { reason: _ } => []
   }
 }
 
@@ -1670,7 +1829,7 @@ fn serving_observed_from_reads(
 // pinned rustup channel from rust-toolchain.toml.
 type ServingPlanInput {
   dispatched_revision: String
-  executor_arch: String
+  executor_arch: Architecture
   local_binary_sha256: String
   toolchain_channel: String
 }

@@ -167,7 +167,10 @@ test fn the_fleet_key_and_own_step_readers_keep_the_mint() -> Bool {
 }
 
 data no_reader_modes: List<FleetConvergeWorkflowMode> = [
-  HostMemoryObserve, MicrovmSlotReserve, MicrovmSlotStart, MtCollins1CensusQemuHostObserve,
+  // host_memory_observe LEFT this list (2026-11-23, option (a)): its peer read dials a subject over the
+  // fleet ssh identity (ssh_key_demand FleetSshKeyConsumed), so -- exactly like remote_build_serving_observe
+  // in the install half -- it consumes the fleet identity and reaches the mint. It is no longer a no-reader.
+  MicrovmSlotReserve, MicrovmSlotStart, MtCollins1CensusQemuHostObserve,
   MtCollins1CensusQemuToolchainConverge, WorkspaceTranscriptRateObserve, FabricWriterIdentityObserve,
   BootMediumReaderProbe, WorkspaceAllocationPlan, WorkspaceImageBuild, RevisionJobImageBuild,
 ]
@@ -202,6 +205,7 @@ test fn modes_with_no_reader_do_not_reach_the_mint() -> Bool {
   match outcome_accepted_value(fleet_converge_fleet_identity_auth_condition()) {
     Absent => false
     Present { value: authcond } => all(no_reader_modes, m => does_not_mint(r: auth_mints_for(mode: m, auth: authcond)))
+    && mints(r: auth_mints_for(mode: HostMemoryObserve, auth: authcond))
     && mints(r: auth_mints_for(mode: FullHostPlan, auth: authcond))
     && mints(r: auth_mints_for(mode: OrgActionsObserve, auth: authcond))
     && mints(r: auth_mints_for(mode: MtCollins1FanObserve, auth: authcond))

@@ -67,12 +67,11 @@ import extdeps.languages.json.emit {
   json_object,
   json_kv,
 }
-import gunbc.typed_argv_exec {
+import gunbc.typed_argv_exec { 
   TypedArgvExecOutcome,
   TypedArgvExecConverged,
   TypedArgvExecRefused,
-  typed_argv_exec_over_ssh,
-}
+  typed_argv_exec_over_ssh, TypedArgvExecOverran, typed_argv_exec_overran_reason }
 import gunbc.roadmap.roadmap_dashboard_instance_observe {
   DashboardExecResult,
   dashboard_exec_ok,
@@ -917,10 +916,18 @@ fn dashboard_ensure_source_repo(
 // command could not speak" (transport died, repo missing, permissions) -- collapsing both into one
 // Bool would tell the operator to run convergence when the real fault is elsewhere (gunbc.design_argument::fail_closed: a typed,
 // located diagnostic; no fabricated cause).
+//
+// "Could not speak" splits into two, and they must not share an arm. A command that RAN and returned
+// a status outside {0, 1} is `AnchorUnverifiable`, and its exit code is the witness -- report it. A
+// command that NEVER RAN on the target (`TargetNotRun`: transport refused, never dispatched) is
+// `AnchorVerifyNotSpawned`, and there is NO exit status to report: inventing one (an `-1`) would put
+// a plausible git status in front of the operator for a git process that was never spawned, exactly
+// the fabrication fail-closed refuses. It carries only the reason the command did not run.
 type DashboardAnchorVerification
   = AnchorPresent
   | AnchorAbsent
   | AnchorUnverifiable { exit_code: Int, detail: String }
+  | AnchorVerifyNotSpawned { detail: String }
 
 fn dashboard_anchor_verify_of_ran(ran: DashboardTargetRan) -> DashboardAnchorVerification {
   match ran {
@@ -932,14 +939,15 @@ fn dashboard_anchor_verify_of_ran(ran: DashboardTargetRan) -> DashboardAnchorVer
       } else {
         AnchorUnverifiable { exit_code: exit_code, detail: stderr }
       }
-    TargetNotRun { reason } => AnchorUnverifiable { exit_code: -1, detail: reason }
+    TargetNotRun { reason } => AnchorVerifyNotSpawned { detail: reason }
   }
 }
 
 // The reset admission as a PURE decision (witnessable without host IO): an anchor ref the owned repo
 // does not carry refuses the reset by NAME, stating the cutover order; an anchor the verify command
 // could not report refuses with the command's OWN failure passed through, never the absent-ref text;
-// a present anchor lets it run.
+// a verify command that never ran refuses naming that it never ran (no exit status claimed); a
+// present anchor lets it run.
 fn dashboard_source_repo_reset_admission(
   repo: String,
   anchor_ref: String,
@@ -960,6 +968,14 @@ fn dashboard_source_repo_reset_admission(
         "could not verify anchor ref `", anchor_ref, "` in the owned repo ", repo,
         ": rev-parse failed with exit ", to_string(value: exit_code),
         " (not the absent-ref exit 1), so the fault is not the cutover order: ", detail,
+        "; refusing to reset without a witnessed anchor",
+      ], ""),
+    }
+    AnchorVerifyNotSpawned { detail: detail } => Present {
+      value: join([
+        "could not verify anchor ref `", anchor_ref, "` in the owned repo ", repo,
+        ": the rev-parse verify command never ran on the target, so there is no exit status to read,",
+        " the fault is not the cutover order: ", detail,
         "; refusing to reset without a witnessed anchor",
       ], ""),
     }
@@ -1640,6 +1656,9 @@ fn dashboard_observer_read(instance: HostDashboardInstance, program: FilePath, a
     DashboardSshProvision { host } =>
       match typed_argv_exec_over_ssh(host: host, argv: concat([program as String], args)) {
         TypedArgvExecRefused { reason } => ObserverReadFailed { origin: ObserverTransportRefused { cause: reason } }
+        // An overrun observer leg read nothing; the observer is reported as not having been answered,
+        // never as exited with some guessed status.
+        TypedArgvExecOverran { deadline: d } => ObserverReadFailed { origin: ObserverTransportRefused { cause: typed_argv_exec_overran_reason(leg_hint: "dashboard observer", deadline: d) } }
         TypedArgvExecConverged { result } =>
           if result.exit_code == 0 { ObserverReadOut { stdout: result.stdout } }
           else { ObserverReadFailed { origin: ObserverExited { exit_code: result.exit_code, stderr: result.stderr } } }

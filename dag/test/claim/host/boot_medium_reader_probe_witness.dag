@@ -5,7 +5,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import v2.std.diagnostic { outcome_accepted_value, outcome_accepted_values }
 import std.algebra { string_contains }
-import gunbc.host.boot_medium_served_readback { RemoteAnswer }
+import gunbc.host_command_binding { HostLeg, LegAnswered, LegNotDispatched }
 import gunbc.host.boot_medium_reader_key { boot_medium_served_link_path }
 import gunbc.host.export_host_reader_converge { boot_medium_reader_login }
 import extdeps.github.actions { Job, RunStep, UsesStep }
@@ -23,10 +23,10 @@ import gunbc.host.boot_medium_reader_probe {
   ReaderProbeReceipt, ReaderProbeObserved, ReaderProbeRefused, ReaderProbeStage, ReaderProbeLockedAccountFact,
   LockedAccountRead, LockedAccountUnreadable, ReaderProbeForcedAnswer,
   ForcedAnswerHeld, ForcedAnswerImageUnreadable, ForcedAnswerMalformed, ForcedAnswerLoginRefused,
-  ForcedAnswerTransportBlocked, ForcedAnswerUnexplained, ReaderProbeRefusal, ProbeNotRefused,
-  ProbeAuthenticationRefused, ProbeTransportRefused, ReaderProbeAccessorReport, AccessorReport, AccessorReportUnreadable,
-  StageKey, StageAgent, StageTarget, StageTransport, StageReaderLogin, StageRed, StageUnexplained, StageFacts,
-  boot_medium_reader_probe_fold, reader_probe_forced_answer, reader_probe_refusal_class,
+  ForcedAnswerTransportBlocked, ForcedAnswerUnexplained, ForcedAnswerNotDispatched, ReaderProbeRefusal, ProbeNotRefused,
+  ProbeAuthenticationRefused, ProbeTransportRefused, ProbeNotDispatched, ReaderProbeAccessorReport, AccessorReport, AccessorReportUnreadable,
+  StageKey, StageAgent, StageTarget, StageTransport, StageReaderLogin, StageRed, StageUnexplained, StageFacts, StageNotDispatched,
+  boot_medium_reader_probe_fold, reader_probe_forced_answer, reader_probe_refusal_class, reader_probe_answer_text,
   reader_probe_forced_command_masks, reader_probe_holds, reader_probe_locked_account_fact,
   reader_probe_export_reading, reader_shadow_field_is_locked, reader_probe_stage_text,
   render_reader_probe_receipt,
@@ -45,7 +45,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // which fact an answer is READ AS, and an answer that could only be built from a real host could not be
 // given the shapes that matter -- exit 255 with the two different stderrs that must not be confused, a
 // forced command that failed to read its file, a second command differing from the first in stderr alone.
-// That is why the fold takes RemoteAnswers rather than dispatching (authored data vs. host data, gunbc.design_argument::interface_realization_policy): the wet function holds the dispatch, this file holds the judgement.
+// That is why the fold takes HostLegs rather than dispatching (authored data vs. host data, gunbc.design_argument::interface_realization_policy): the wet function holds the dispatch, this file holds the judgement.
 
 data probe_fingerprint: NonEmptyStr = "SHA256:aaaaaaaabbbbbbbbccccccccddddddddeeeeeeeeffffffff000000"
 
@@ -54,9 +54,10 @@ data probe_digest: NonEmptyStr = "0123456789abcdef0123456789abcdef0123456789abcd
 
 data probe_resource: NonEmptyStr = "projects/gunbc-fleet/secrets/boot-medium-reader-ssh-key"
 
-fn ans(exit_code: Int, stdout: String, stderr: String) -> RemoteAnswer {
-  RemoteAnswer { exit_code: exit_code, stdout: stdout, stderr: stderr }
+fn ans(exit_code: Int, stdout: String, stderr: String) -> HostLeg {
+  LegAnswered { exit_code: exit_code, stdout: stdout, stderr: stderr }
 }
+fn not_dispatched(reason: String) -> HostLeg { LegNotDispatched { reason: reason } }
 
 // THE LINE THE FORCED COMMAND IS SUPPOSED TO PRINT: two spaces, as sha256sum prints and as
 // boot_medium_served_reader_join admits it. One space is a different fact, so it is a fixture of its own.
@@ -64,23 +65,23 @@ fn held_line() -> String {
   join([probe_digest as String, "  ", boot_medium_served_link_path() as String], "")
 }
 
-fn held_forced() -> RemoteAnswer {
+fn held_forced() -> HostLeg {
   ans(exit_code: 0, stdout: concat(held_line(), "\n"), stderr: "")
 }
 
 // THE SHADOW ROW FOR A `useradd --system` ACCOUNT: field two `!`, which is what the locked reading looks
 // for. The login field must match the account asked about, so a fixture naming someone else is a separate
 // case rather than a mutated one.
-fn good_shadow() -> RemoteAnswer {
+fn good_shadow() -> HostLeg {
   ans(exit_code: 0, stdout: concat(boot_medium_reader_login as String, ":!:19000:0:99999:7:::\n"), stderr: "")
 }
 
-fn good_use_pam() -> RemoteAnswer {
+fn good_use_pam() -> HostLeg {
   ans(exit_code: 0, stdout: "PermitRootLogin no\nusepam yes\n", stderr: "")
 }
 
 // `test -r` prints nothing; its whole answer is the exit code.
-fn good_readable() -> RemoteAnswer {
+fn good_readable() -> HostLeg {
   ans(exit_code: 0, stdout: "", stderr: "")
 }
 
@@ -90,17 +91,32 @@ fn good_accessor() -> ReaderProbeAccessorReport {
 
 // THE FOLD, WITH EVERYTHING THAT CAN SUCCEED ALREADY SUCCEEDED, so each claim below varies exactly one
 // answer and says which stage that answer must -- and must not -- be read as.
-fn fold_with(forced: RemoteAnswer, second: RemoteAnswer) -> ReaderProbeReceipt {
+fn fold_with(forced: HostLeg, second: HostLeg) -> ReaderProbeReceipt {
   fold_with_accessor(forced: forced, second: second, acc: good_accessor())
 }
 
-fn fold_with_accessor(forced: RemoteAnswer, second: RemoteAnswer, acc: ReaderProbeAccessorReport) -> ReaderProbeReceipt {
+fn fold_with_accessor(forced: HostLeg, second: HostLeg, acc: ReaderProbeAccessorReport) -> ReaderProbeReceipt {
   boot_medium_reader_probe_fold(
     pinned: true, agent_holds_pinned_key: true, fingerprint: probe_fingerprint,
     target_reached: true, target_cause: "",
     forced: forced, second: second,
     shadow: good_shadow(), use_pam: good_use_pam(), admin_readable: good_readable(),
     login: boot_medium_reader_login, accessor: acc,
+  )
+}
+
+// THE FULL SUCCESSFUL FIXTURE WITH ONLY THE ADMIN LEG VARIED. fold_with hardcodes a readable admin leg, so a
+// never-dispatched admin leg cannot reach the production fold through it -- and that is exactly the defect this
+// helper exists to expose: a probe must not EXIT SUCCESS when the readability command never ran. Everything
+// that can succeed already succeeded (pinned key, agent holds it, target reached, forced held, second masked,
+// shadow/use_pam read); this varies the admin leg alone.
+fn fold_with_admin(forced: HostLeg, second: HostLeg, admin: HostLeg) -> ReaderProbeReceipt {
+  boot_medium_reader_probe_fold(
+    pinned: true, agent_holds_pinned_key: true, fingerprint: probe_fingerprint,
+    target_reached: true, target_cause: "",
+    forced: forced, second: second,
+    shadow: good_shadow(), use_pam: good_use_pam(), admin_readable: admin,
+    login: boot_medium_reader_login, accessor: good_accessor(),
   )
 }
 
@@ -184,6 +200,105 @@ test fn a_transport_refusal_is_not_read_as_the_locked_account_fact() -> Bool {
     && refused_at(r: fold_with(forced: unreachable, second: unreachable), wanted: StageTransport)
 }
 
+// A LEG THAT WAS NEVER DISPATCHED IS NOT AN OBSERVED TRANSPORT OR AUTH FAILURE. The fold classifies by the
+// leg's STRUCTURE, not by sniffing the carried reason text: a never-dispatched leg becomes ProbeNotDispatched
+// carrying its cause, and the forced reading becomes ForcedAnswerNotDispatched. This is the fail-closed bar
+// (gunbc.design_argument::fail_closed): no fabricated exit code, and no fabricated "connection refused".
+// The reason deliberately contains the ssh auth phrase "Permission denied (publickey)" and the transport
+// phrase "Connection refused" -- the very tokens the LegAnswered classifiers grep for -- so the control is
+// RED if a fold is changed to route a never-dispatched leg through those token classifiers.
+test fn a_never_dispatched_leg_is_never_an_observed_transport_or_auth_failure() -> Bool {
+  let nd_reason = "ssh prep refused: Connection refused; Permission denied (publickey)."
+  let nd = not_dispatched(reason: nd_reason)
+  match reader_probe_refusal_class(a: nd) {
+    ProbeNotDispatched { reason: carried } => carried == nd_reason
+    ProbeNotRefused => false
+    ProbeAuthenticationRefused => false
+    ProbeTransportRefused => false
+  }
+    && !string_contains(s: reader_probe_answer_text(a: nd), pattern: "exit=")
+    && match forced_of(a: nd) {
+         ForcedAnswerNotDispatched { evidence: e } => string_contains(s: e as String, pattern: nd_reason)
+         ForcedAnswerHeld { digest: _ } => false
+         ForcedAnswerImageUnreadable { evidence: _ } => false
+         ForcedAnswerMalformed { evidence: _ } => false
+         ForcedAnswerLoginRefused { evidence: _ } => false
+         ForcedAnswerTransportBlocked { evidence: _ } => false
+         ForcedAnswerUnexplained { evidence: _ } => false
+       }
+    && match fold_with(forced: nd, second: nd) {
+         ReaderProbeRefused { stage: s, cause: c } => s == StageNotDispatched && string_contains(s: c as String, pattern: nd_reason)
+         ReaderProbeObserved { fingerprint: _, forced: _, second_command_masked: _, locked_account: _, export: _, accessor: _ } => false
+       }
+}
+
+// NON-DISPATCH SURVIVES AT THE ADMINISTRATOR-READABILITY CONSUMER. reader_probe_export_reading is reached with a
+// readable admin leg through the fold_with test helper (which hardcodes good_readable), so this path is otherwise
+// unexercised at the consumer. An admin leg the host was never handed must surface its CAUSE (admin_evidence "never
+// dispatched") and never a fabricated answer carrying an exit -- it must not be silently read as a real "admin says
+// not-readable". Red if the consumer fabricates an exit/answer for the never-dispatched admin leg.
+test fn a_never_dispatched_admin_leg_survives_as_its_cause_not_an_exit() -> Bool {
+  let rep = reader_probe_export_reading(admin: not_dispatched(reason: "admin leg never dispatched"), forced: ForcedAnswerHeld { digest: probe_digest })
+  string_contains(s: rep.admin_evidence as String, pattern: "never dispatched")
+    && !string_contains(s: rep.admin_evidence as String, pattern: "exit=")
+}
+
+// NON-DISPATCH SURVIVES AT THE SECOND-COMMAND COMPARISON CONSUMER. The fold returns its forced-leg refusal before
+// comparing, so reader_probe_forced_command_masks is never reached with a never-dispatched leg in the other tests.
+// A command the host never handed must NEVER be read as "the second command masked the forced one" -- that would
+// manufacture the masking evidence from runs that never happened. Red on the fabricated value: two never-run legs
+// came back identical (fabricated exit + empty) and were falsely reported as masking.
+test fn a_never_dispatched_command_is_never_read_as_masking_the_forced_answer() -> Bool {
+  let answered_empty = ans(exit_code: 0, stdout: "", stderr: "")
+  !reader_probe_forced_command_masks(forced: answered_empty, other: not_dispatched(reason: "second command never dispatched"))
+    && !reader_probe_forced_command_masks(forced: not_dispatched(reason: "forced never dispatched"), other: not_dispatched(reason: "second never dispatched"))
+}
+
+// THE ADMIN LEG MUST SURVIVE THROUGH THE WHOLE FOLD, not just at its consumer. The full successful fixture (pinned
+// key, agent holds it, target reached, forced held, second masked identically, shadow/use_pam read) with ONLY the
+// admin leg never dispatched must NOT let the probe observe success: the readability command never ran, so there is
+// no reading of the reader's view of the served image. Red on current production, where reader_probe_after_masking
+// folds a never-dispatched admin leg into export.readable=false and still returns ReaderProbeObserved with
+// second_command_masked=true, so reader_probe_holds comes back true and the probe can EXIT SUCCESS without the
+// readability command ever having run.
+test fn a_never_dispatched_admin_leg_refuses_the_probe_and_never_holds() -> Bool {
+  let nd_reason = "the admin readability command was never dispatched"
+  let r = fold_with_admin(forced: held_forced(), second: held_forced(), admin: not_dispatched(reason: nd_reason))
+  let refused_nd = match r {
+    ReaderProbeRefused { stage: StageNotDispatched, cause: c } => string_contains(s: c as String, pattern: nd_reason)
+    ReaderProbeRefused { stage: _, cause: _ } => false
+    ReaderProbeObserved { fingerprint: _, forced: _, second_command_masked: _, locked_account: _, export: _, accessor: _ } => false
+  }
+  refused_nd && reader_probe_holds(r: r) == false
+}
+
+// THE SECOND LEG MUST BE DETECTED AS NEVER-DISPATCHED BEFORE THE COMPARISON, not read as "answered differently".
+// A held forced leg with ONLY the second leg never dispatched cannot be compared against anything: the two-command
+// masking test is equality on an answer the host never handed. Red on current production, where
+// reader_probe_forced_command_masks returns false for an answered forced leg against a never-dispatched second and
+// the fold files that as StageRed "answered differently" -- a finding about a disagreement that never happened.
+test fn a_never_dispatched_second_command_refuses_at_not_dispatched_not_the_red() -> Bool {
+  let nd_reason = "the second command was never dispatched"
+  let r = fold_with(forced: held_forced(), second: not_dispatched(reason: nd_reason))
+  let refused_nd = match r {
+    ReaderProbeRefused { stage: StageNotDispatched, cause: c } => string_contains(s: c as String, pattern: nd_reason)
+    ReaderProbeRefused { stage: s, cause: _ } => false
+    ReaderProbeObserved { fingerprint: _, forced: _, second_command_masked: _, locked_account: _, export: _, accessor: _ } => false
+  }
+  refused_nd && reader_probe_holds(r: r) == false
+}
+
+// TWO NEVER-RUN COMMANDS ARE NEVER MASKING, WHATEVER THEIR REASONS -- including two that never ran for the SAME
+// reason. reader_probe_forced_command_masks currently returns `ro == rf` for two never-dispatched legs, so two
+// commands that both failed to dispatch for the same reason are reported as the second masking the forced one: the
+// masking evidence manufactured from two runs that never happened. The earlier control only tried DIFFERENT
+// reasons, so it passed with this defect in place. Red on current production's `ro == rf`.
+test fn two_never_dispatched_commands_never_count_as_masking_whatever_their_reasons() -> Bool {
+  let same = "the daemon was never reached"
+  !reader_probe_forced_command_masks(forced: not_dispatched(reason: same), other: not_dispatched(reason: same))
+    && !reader_probe_forced_command_masks(forced: not_dispatched(reason: "forced absent"), other: not_dispatched(reason: "second absent"))
+}
+
 // THE CAUSE TEXT IS PART OF THE SAFETY, NOT DECORATION. The reader stage tells the operator what NOT to do,
 // because the tempting fix for a locked-account finding is to unlock the account -- which would put a usable
 // password on a key-only service account, a worse posture than the boot this probe exists to approve. The
@@ -214,6 +329,7 @@ test fn the_tools_own_permission_denied_is_not_read_as_an_authentication_refusal
          ForcedAnswerTransportBlocked { evidence: _ } => false
          ForcedAnswerMalformed { evidence: _ } => false
          ForcedAnswerUnexplained { evidence: _ } => false
+         ForcedAnswerNotDispatched { evidence: _ } => false
          ForcedAnswerHeld { digest: _ } => false
        }
 }
@@ -231,6 +347,7 @@ test fn a_silent_non_zero_answer_invents_no_fact_and_refuses() -> Bool {
          ForcedAnswerMalformed { evidence: _ } => false
          ForcedAnswerLoginRefused { evidence: _ } => false
          ForcedAnswerTransportBlocked { evidence: _ } => false
+         ForcedAnswerNotDispatched { evidence: _ } => false
        }
 }
 
@@ -266,7 +383,7 @@ test fn masking_is_equality_on_all_three_answer_fields() -> Bool {
 
 // THE CLASSIFIER, AS ONE CALL PER ANSWER: the fold runs it on the forced leg; the tests below run it
 // directly so a wrong reading is attributed to the classifier rather than to the fold's ordering.
-fn forced_of(a: RemoteAnswer) -> ReaderProbeForcedAnswer {
+fn forced_of(a: HostLeg) -> ReaderProbeForcedAnswer {
   reader_probe_forced_answer(a: a, link: boot_medium_served_link_path())
 }
 
@@ -464,7 +581,7 @@ test fn the_hold_needs_the_mask_and_a_refusal_never_holds() -> Bool {
 // two stages ever collapse to one string, the transport/authentication split this file exists to enforce
 // collapses with them, silently.
 test fn every_stage_has_its_own_name() -> Bool {
-  let names = map([StageKey, StageAgent, StageTarget, StageTransport, StageReaderLogin, StageRed, StageUnexplained, StageFacts], s => reader_probe_stage_text(stage: s))
+  let names = map([StageKey, StageAgent, StageTarget, StageTransport, StageReaderLogin, StageRed, StageUnexplained, StageFacts, StageNotDispatched], s => reader_probe_stage_text(stage: s))
   all(names, n => n != "") && all(names, n => filter(names, m => m == n).length() == 1)
 }
 

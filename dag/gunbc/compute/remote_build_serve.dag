@@ -40,7 +40,7 @@ import gunbc.compute.work_provider_local {
   provide_result_host_record, host_record_was_written, host_record_wire, provide_result_succeeded,
 }
 import gunbc.compute.remote_build {
-  RemoteBuildRequest, RemoteBuildRequestDecoded, RemoteBuildRequestRefused, remote_build_decode_request,
+  RemoteBuildWork, RemoteBuildWorkDecoded, RemoteBuildRequestRefused, remote_build_decode_request,
   remote_build_request_refusal_text, remote_build_source_ref_name, remote_build_work_operation,
   remote_build_dependency_rule, RemoteBuildBuildsTheSeedFirst, RemoteBuildCarriesItsOwnSeedBuild,
   RemoteBuildSourceMatches, RemoteBuildSourceMoved, remote_build_admit_fetched_source,
@@ -134,7 +134,7 @@ fn remote_build_serve_on(instance: HostDashboardInstance) -> CliWireResponse {
         match remote_build_decode_request(text: text) {
           RemoteBuildRequestRefused { cause } =>
             remote_build_serve_answer(ending: ServeRequestRefused, text: concat("remote-build: ", remote_build_request_refusal_text(cause: cause)))
-          RemoteBuildRequestDecoded { request } => remote_build_serve_request(instance: instance, request: request)
+          RemoteBuildWorkDecoded { work } => remote_build_serve_request(instance: instance, work: work)
         }
       }
   }
@@ -225,30 +225,30 @@ fn remote_build_git(instance: HostDashboardInstance, args: List<String>) -> Comp
 // The origin is fetched BY URL, from the repository row, so the serving repo needs no remote named
 // for it and its own remotes are untouched. The fetch is anonymous, which is admitted only because
 // the row says the repository is public; a private row refuses here rather than failing at fetch.
-fn remote_build_fetch_argv(request: RemoteBuildRequest) -> List<String> {
-  let name = remote_build_source_ref_name(r: request.source) as String
+fn remote_build_fetch_argv(work: RemoteBuildWork) -> List<String> {
+  let name = remote_build_source_ref_name(r: work.source) as String
   ["fetch", "--no-tags", "--no-write-fetch-head", github_https_clone_url(repo: gunbc_repository) as String, join(["+", name, ":", name], "")]
 }
 
-fn remote_build_serve_request(instance: HostDashboardInstance, request: RemoteBuildRequest) -> CliWireResponse {
+fn remote_build_serve_request(instance: HostDashboardInstance, work: RemoteBuildWork) -> CliWireResponse {
   if gunbc_repository.private {
     remote_build_serve_answer(ending: ServeHostCannotServe, text: "remote-build: the repository row is private, so the anonymous source fetch is not admitted")
   } else {
-    match remote_build_git(instance: instance, args: remote_build_fetch_argv(request: request)) {
+    match remote_build_git(instance: instance, args: remote_build_fetch_argv(work: work)) {
       ComputeExecFailed { exit_code, stdout: _, stderr } =>
-        remote_build_serve_answer(ending: ServeHostCannotServe, text: join(["remote-build: fetching ", remote_build_source_ref_name(r: request.source) as String, " failed (exit ", to_string(value: exit_code), "): ", stderr], ""))
+        remote_build_serve_answer(ending: ServeHostCannotServe, text: join(["remote-build: fetching ", remote_build_source_ref_name(r: work.source) as String, " failed (exit ", to_string(value: exit_code), "): ", stderr], ""))
       ComputeExecOk { stdout: _, stderr: _ } =>
-        match remote_build_git(instance: instance, args: ["rev-parse", "--verify", "--quiet", concat(remote_build_source_ref_name(r: request.source) as String, "^\{commit\}")]) {
+        match remote_build_git(instance: instance, args: ["rev-parse", "--verify", "--quiet", concat(remote_build_source_ref_name(r: work.source) as String, "^\{commit\}")]) {
           ComputeExecFailed { exit_code: _, stdout: _, stderr } =>
             remote_build_serve_answer(ending: ServeRequestRefused, text: concat("remote-build: the fetched source ref names no commit: ", stderr))
           ComputeExecOk { stdout, stderr: _ } =>
             match git_object_id_from_untagged_hex(hex: trim(stdout)) {
               Absent => remote_build_serve_answer(ending: ServeHostCannotServe, text: concat("remote-build: rev-parse printed no object id: ", stdout))
               Present { value: fetched } =>
-                match remote_build_admit_fetched_source(request: request, fetched: fetched) {
+                match remote_build_admit_fetched_source(work: work, fetched: fetched) {
                   RemoteBuildSourceMoved { requested, fetched: seen } =>
                     remote_build_serve_answer(ending: ServeRequestRefused, text: join(["remote-build: the source ref moved: requested ", requested as String, ", fetched ", seen as String], ""))
-                  RemoteBuildSourceMatches => remote_build_serve_provide(instance: instance, request: request)
+                  RemoteBuildSourceMatches => remote_build_serve_provide(instance: instance, work: work)
                 }
             }
         }
@@ -256,11 +256,11 @@ fn remote_build_serve_request(instance: HostDashboardInstance, request: RemoteBu
   }
 }
 
-fn remote_build_provide_on(instance: HostDashboardInstance, request: RemoteBuildRequest, op: WorkOperation) -> ProvideResult {
+fn remote_build_provide_on(instance: HostDashboardInstance, work: RemoteBuildWork, op: WorkOperation) -> ProvideResult {
   compute_provide(
     instance: instance,
     owner: DirectInvocation { why: "remote-build: a request arriving over the remote-build key invoked the provider directly" },
-    commit: git_object_id_wire_hex(oid: request.commit) as String,
+    commit: git_object_id_wire_hex(oid: work.commit) as String,
     op: op,
     target: TargetIsExecutingHost,
   )
@@ -277,20 +277,20 @@ fn remote_build_provide_on(instance: HostDashboardInstance, request: RemoteBuild
 // is asked of the serve, not of the operation, so the tail that turns a provided attempt into a wire
 // answer is shared by both -- one authority on what a completed serve attests (remote_build_serve_settled),
 // not two copies that can drift.
-fn remote_build_serve_provide(instance: HostDashboardInstance, request: RemoteBuildRequest) -> CliWireResponse {
-  match remote_build_dependency_rule(op: request.operation) {
+fn remote_build_serve_provide(instance: HostDashboardInstance, work: RemoteBuildWork) -> CliWireResponse {
+  match remote_build_dependency_rule(op: work.operation) {
     RemoteBuildCarriesItsOwnSeedBuild =>
       remote_build_serve_settled(
         instance: instance,
-        result: remote_build_provide_on(instance: instance, request: request, op: remote_build_work_operation(op: request.operation)),
+        result: remote_build_provide_on(instance: instance, work: work, op: remote_build_work_operation(op: work.operation)),
       )
     RemoteBuildBuildsTheSeedFirst => {
-      let build = remote_build_provide_on(instance: instance, request: request, op: remote_build_dependency_operation())
+      let build = remote_build_provide_on(instance: instance, work: work, op: remote_build_dependency_operation())
       match remote_build_ending_of_provide(r: build) {
         ServeServed =>
           remote_build_serve_settled(
             instance: instance,
-            result: remote_build_provide_on(instance: instance, request: request, op: remote_build_work_operation(op: request.operation)),
+            result: remote_build_provide_on(instance: instance, work: work, op: remote_build_work_operation(op: work.operation)),
           )
         // The dependency build did not serve: its ending IS the work's answer, identity aside.
         _ => remote_build_serve_answer(ending: remote_build_ending_of_provide(r: build), text: provide_result_document(r: build))

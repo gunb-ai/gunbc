@@ -16,7 +16,7 @@ module test.claim.runner.runner_fleet_job_timeout_bound_witness
 //      A frozen literal bound certifies it and goes red; the derived bound refuses it and stays green.
 //      The companion arm shows a dispatch-only fixture with the same runner is NOT in the population.
 //   4. THE POPULATION IS THE RULING'S: non-empty, every member selects the fleet pool, and the member
-//      the ruling names — v2-bootstrap at gunbc_roster_gate().timeout (minute(90) today) — is in
+//      the ruling names — v2-bootstrap at gunbc_roster_gate().timeout (minute(60) today) — is in
 //      it, at its declared timeout.
 //   5. THE ENCLOSED BRACKET BUDGETS FOLD OVER THE BOUND AND STILL BOUND IT: the step budget grows
 //      with wait_bound; the bracket step's timeout covers the step budget; the fleet-converge job
@@ -54,7 +54,7 @@ fn poll_seconds() -> Int {
 // side grounded INDEPENDENTLY of the census fold (side-chat review of 2026-10-24): the ruling's job
 // is read straight from its authority — the v2-bootstrap job of gunbc.witness.compiler_gate_workflow,
 // by its required-context id — plus the policy's own poll interval. Restoring the 2700s literal fails
-// this immediately (the authority declares 90 minutes today, not 2700 minus the poll), and the budget
+// this immediately (the authority declares 60 minutes today, not 2700 minus the poll), and the budget
 // controls cascade. The census fold itself is certified by claims 2 and 4, which consume it.
 test fn the_wait_bound_is_the_declared_timeout_fold_plus_the_poll_interval() -> Bool {
   let boot = filter(compiler_gate_workflow.jobs, j => j.id == gunbc_required_context_name())
@@ -248,7 +248,7 @@ test fn no_committed_workflow_is_refused_from_the_census() -> Bool {
 }
 
 // THE MUTATION SENTINEL, stated explicitly so the 2700 restoration's redness is never an accident of
-// ordering: the cover-check itself REFUSES the stale figure (it cannot certify the 90-minute
+// ordering: the cover-check itself REFUSES the stale figure (it cannot certify the 60-minute
 // v2-bootstrap declaration), while the derived bound certifies the same population.
 test fn the_stale_2700s_literal_would_be_refused_by_the_cover_check() -> Bool {
   !fleet_bound_covers_population(bound: second(count: 2700), jobs: fleet_targeted_autonomous_jobs())

@@ -89,6 +89,7 @@ import extdeps.posix.test_utility {
   AncestorExistenceProbe,
   AncestorSearchable,
   AncestorSearchUnreadable,
+  AncestorLinkReadingUnreadable,
   AncestorNotSearchable,
   AncestorNotADirectory,
   AncestorIsNotADirectory,
@@ -128,12 +129,13 @@ import gunbc.live_deploy.emit {
   path_ancestors_inclusive,
 }
 import extdeps.crypto.hash { sha256sum_file_command, sha256sum_line_digest }
-import extdeps.tools.findutils { find_regular_files_sha256_command, find_tree_entry_metadata_command }
+import extdeps.tools.findutils { find_regular_files_sha256_command, find_tree_entry_metadata_command, find_direct_children_metadata_command, find_direct_children_count_command, find_tree_entry_count_command, find_self_metadata_command, find_self_metadata_printf }
 import gunbc.live_deploy.release_locus { release_locus_record, ReleaseLocus, release_locus_tree_subdirs, release_revision_execstart_text, RevisionNotInstalled }
 import gunbc.live_deploy.emit { install_d_shared_mode, install_file_shared_mode, install_executable_shared_mode }
 import gunbc.ci.ci_release_bins { gunbc_release_bin_name }
 import gunbc.live_deploy.release_locus { approval_broker_release_locus_executables }
-import gunbc.live_deploy.emit { live_deploy_device_crypto_sidecar_unit_file, device_crypto_sidecar_binary_path, device_crypto_deployed_digest_env_file_path }
+import gunbc.live_deploy.emit { live_deploy_device_crypto_sidecar_unit_file, device_crypto_sidecar_binary_path, device_crypto_deployed_digest_env_file_path, device_crypto_deployed_digest_env_file_name, microvm_controller_vmm_receipt_name }
+import gunbc.runner.release_images_location { release_images_dir_name }
 import gunbc.live_deploy.spec { gunbc_device_crypto_sidecar_unit_name, gunbc_device_crypto_sidecar_unit_path }
 import gunbc.auth.approval_device_crypto_realization { approval_device_crypto_deployed_digest_env_name, device_crypto_gate, approval_device_crypto_realization }
 import gunbc.auth.approval_device_crypto_client { device_crypto_sidecar_readback, device_crypto_readback_expectation, SidecarReplied, SidecarReplyFailed }
@@ -200,6 +202,7 @@ import gunbc.typed_argv_exec {
   typed_argv_exec_over_fleet_ssh_with_stdin,
   TypedArgvExecOutcome,
   TypedArgvExecConverged,
+  TypedArgvExecOverran,
   TypedArgvExecRefused,
 }
 import extdeps.bmc.types { RedfishSystemAction }
@@ -500,7 +503,8 @@ import extdeps.systemd.unit_file { SystemdUnitFile, serialize_systemd_unit_file 
 import gunbc.build_cache.build_cache_instance { ci_cache_instance }
 import gunbc.host.managed_host_boot_once { boot_once_read_back_sleep }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import std.measure { second_count, ByteSize, byte_size_count }
+import std.measure { second_count, Second, ByteSize, byte_size_count }
+import std.integer { int_to_decimal_string }
 import gunbc.srv3.srv3_ubuntu_install_media_artifact { srv3_ubuntu_install_media_artifact }
 import gunbc.srv3.srv3_seeded_install_media_artifact { srv3_seeded_install_media_publish }
 import extdeps.provisioning.ubuntu_install_media_fetch {
@@ -579,6 +583,7 @@ import gunbc.ci.ci_deploy_sudoers { deploy_sudoers_dropin_body, deploy_sudoers_i
 import gunbc.runner.runner_microvm_slot_unit {
   microvm_controller_owner, microvm_controller_root, microvm_receipt_store_path,
   microvm_controller_vmm_binary, microvm_controller_jailer_binary,
+  microvm_controller_vmm_name, microvm_controller_jailer_name,
   microvm_controller_slice_unit_file, microvm_controller_slice_unit_path,
   microvm_slot_unit_path, microvm_slot_reserve_unit_path,
   microvm_controller_slice_unit_name, microvm_slot_unit_template_name,
@@ -1141,7 +1146,7 @@ fn realize_boot_once_read_back_sleep_on_host(
       realize_boot_once_read_back_sleep_body(transport: transport, intent: intent)
     SshShell { ssh_host: _ } =>
       realize_boot_once_read_back_sleep_body(transport: transport, intent: intent)
-    FleetSsh { target: _, context: _ } =>
+    FleetSsh { target: _, context: _, kind: _} =>
       realize_boot_once_read_back_sleep_body(transport: transport, intent: intent)
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       NotConverged {
@@ -1274,7 +1279,7 @@ fn realize_seeded_install_media_toolchain_ensure_on_host(
       realize_seeded_install_media_toolchain_ensure_body(transport: transport, intent: intent)
     SshShell { ssh_host: _ } =>
       realize_seeded_install_media_toolchain_ensure_body(transport: transport, intent: intent)
-    FleetSsh { target: _, context: _ } =>
+    FleetSsh { target: _, context: _, kind: _} =>
       realize_seeded_install_media_toolchain_ensure_body(transport: transport, intent: intent)
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       NotConverged {
@@ -1343,7 +1348,7 @@ fn realize_bmcweb_session_login_on_host(
       realize_bmcweb_session_login_body(transport: transport, intent: intent, request_body_file: request_body_file)
     SshShell { ssh_host: _ } =>
       realize_bmcweb_session_login_body(transport: transport, intent: intent, request_body_file: request_body_file)
-    FleetSsh { target: _, context: _ } =>
+    FleetSsh { target: _, context: _, kind: _} =>
       realize_bmcweb_session_login_body(transport: transport, intent: intent, request_body_file: request_body_file)
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       NotConverged {
@@ -1474,7 +1479,7 @@ fn realize_bmcweb_token_extract_on_host(
         reason: "host_effect_apply: Srv3BmcwebTokenExtract runs typed jq argv + Filesystem.Write on the executor host; SshShell transport is a fail-closed Unimplemented stub until remote extract+write is realized with structured bin invocation.",
         applied: intent,
       }
-    FleetSsh { target: _, context: _ } =>
+    FleetSsh { target: _, context: _, kind: _} =>
       NotConverged {
         reason: "host_effect_apply: Srv3BmcwebTokenExtract runs typed jq argv + Filesystem.Write on the executor host; SshShell transport is a fail-closed Unimplemented stub until remote extract+write is realized with structured bin invocation.",
         applied: intent,
@@ -1559,6 +1564,22 @@ type CodexRuntimeStepResult
   = CodexRuntimeStepRan { observed: ShellExecObserved }
   | CodexRuntimeStepRefused { reason: String }
 
+// The fail-closed reason for a typed-argv leg that overran its per-leg wall deadline. The host was
+// asked and never answered before the ceiling, so it is neither a refusal (nothing was asked) nor a
+// completion. The deadline VALUE is named so the overrun is not silently indistinguishable from a
+// plain failure.
+fn host_effect_typed_argv_overran_reason(leg_hint: String, deadline: Second) -> String {
+  join(
+    [
+      leg_hint,
+      " leg overran its ",
+      int_to_decimal_string(value: second_count(s: deadline)),
+      "s wall-clock deadline; the process group was killed before the host answered -- an overrun is neither a refusal nor a completion",
+    ],
+    "",
+  )
+}
+
 fn codex_runtime_typed_argv_step(
   argv: List<String>,
   transport: HostEffectTransport,
@@ -1568,6 +1589,10 @@ fn codex_runtime_typed_argv_step(
       CodexRuntimeStepRan {
         observed: ShellExecObserved { exit_code: r.exit_code, success: r.success, stdout: r.stdout, stderr: r.stderr },
       }
+      TypedArgvExecOverran { deadline: d } =>
+        CodexRuntimeStepRefused {
+          reason: host_effect_typed_argv_overran_reason(leg_hint: "codex runtime", deadline: d),
+        }
     TypedArgvExecRefused { reason: why } => CodexRuntimeStepRefused { reason: why }
   }
 }
@@ -1588,7 +1613,7 @@ fn codex_runtime_observe_step(
         argv: codex_runtime_observe_argv(executable: executable as String),
         transport: transport,
       )
-    FleetSsh { target: _, context: _ } =>
+    FleetSsh { target: _, context: _, kind: _} =>
       codex_runtime_typed_argv_step(
         argv: codex_runtime_observe_argv(executable: executable as String),
         transport: transport,
@@ -1636,7 +1661,7 @@ fn codex_runtime_materialize_step(
         ),
         transport: transport,
       )
-    FleetSsh { target: _, context: _ } =>
+    FleetSsh { target: _, context: _, kind: _} =>
       codex_runtime_typed_argv_step(
         argv: concat(
           [gunbc_binary as String],
@@ -1823,7 +1848,7 @@ fn realize_provision_codex_runtime(
             transport: effect_intent.transport,
             effect_intent: effect_intent,
           )
-        FleetSsh { target: _, context: _ } =>
+        FleetSsh { target: _, context: _, kind: _} =>
           realize_provision_codex_runtime_body(
             transport: effect_intent.transport,
             effect_intent: effect_intent,
@@ -1922,6 +1947,10 @@ fn srv3_predicate_from_typed_argv(outcome: TypedArgvExecOutcome) -> Srv3HostPred
   match outcome {
     TypedArgvExecConverged { result: r } =>
       if r.success { Srv3PredicateHolds } else { Srv3PredicateFails }
+      TypedArgvExecOverran { deadline: d } =>
+        Srv3PredicateUnobserved {
+          reason: host_effect_typed_argv_overran_reason(leg_hint: "srv3 predicate", deadline: d),
+        }
     TypedArgvExecRefused { reason: why } => Srv3PredicateUnobserved { reason: why }
   }
 }
@@ -1948,6 +1977,8 @@ fn srv3_observed_token_from_typed_argv(outcome: TypedArgvExecOutcome) -> Srv3Obs
       } else {
         Srv3TokenAbsent
       }
+      TypedArgvExecOverran { deadline: d } =>
+        Srv3TokenUnobserved { reason: host_effect_typed_argv_overran_reason(leg_hint: "srv3 token", deadline: d) }
     TypedArgvExecRefused { reason: why } => Srv3TokenUnobserved { reason: why }
   }
 }
@@ -1999,12 +2030,13 @@ fn srv3_transport_witness_bin_success(
       } else {
         Srv3PredicateUnobserved { reason: srv3_nonroot_workdir_unobservable_reason }
       }
-    FleetSsh { target: t, context: c } =>
+    FleetSsh { target: t, context: c, kind: kind} =>
       if workdir == "/" {
         srv3_predicate_from_typed_argv(
           outcome: typed_argv_exec_over_fleet_ssh(
             target: t,
             context: c,
+            kind: kind,
             argv: srv3_argv_with_bin(bin_path: bin_path, args: args),
           ),
         )
@@ -2030,11 +2062,12 @@ fn srv3_transport_test_executable(path: String, transport: HostEffectTransport) 
       srv3_predicate_from_typed_argv(
         outcome: typed_argv_exec_over_ssh(host: h, argv: shell_test_is_executable_argv(path: path)),
       )
-    FleetSsh { target: t, context: c } =>
+    FleetSsh { target: t, context: c, kind: kind} =>
       srv3_predicate_from_typed_argv(
         outcome: typed_argv_exec_over_fleet_ssh(
           target: t,
           context: c,
+          kind: kind,
           argv: shell_test_is_executable_argv(path: path),
         ),
       )
@@ -2084,7 +2117,7 @@ fn srv3_apt_tool_present(tool: CliTool, transport: HostEffectTransport) -> Srv3H
       srv3_predicate_from_typed_argv(
         outcome: typed_argv_exec_over_ssh(host: h, argv: posix_command_v_check_argv(command: tool.program.invocation)),
       )
-    FleetSsh { target: _, context: _ } =>
+    FleetSsh { target: _, context: _, kind: _} =>
       match apt_binary_path_of(tool: tool) {
         Present { value: declared } =>
           srv3_transport_test_executable(path: declared as String, transport: transport)
@@ -2120,7 +2153,7 @@ fn srv3_tool_bin_path(tool: CliTool, transport: HostEffectTransport) -> Srv3Obse
       srv3_observed_token_from_typed_argv(
         outcome: typed_argv_exec_over_ssh(host: h, argv: posix_command_v_check_argv(command: tool.program.invocation)),
       )
-    FleetSsh { target: _, context: _ } =>
+    FleetSsh { target: _, context: _, kind: _} =>
       match apt_binary_path_of(tool: tool) {
         Absent => Srv3TokenUnobserved { reason: srv3_undeclared_apt_path_reason(tool: tool) }
         Present { value: declared } =>
@@ -2228,9 +2261,9 @@ fn srv3_transport_token(argv: List<String>, transport: HostEffectTransport) -> S
     LocalShell => srv3_local_token_from_argv(argv: argv)
     SshShell { ssh_host: h } =>
       srv3_observed_token_from_typed_argv(outcome: typed_argv_exec_over_ssh(host: h, argv: argv))
-    FleetSsh { target: t, context: c } =>
+    FleetSsh { target: t, context: c, kind: kind} =>
       srv3_observed_token_from_typed_argv(
-        outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv),
+        outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, kind: kind, argv: argv),
       )
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       Srv3TokenUnobserved {
@@ -2678,13 +2711,15 @@ fn srv3_apt_subject_version_ok(subject: AptPresenceSubject, transport: HostEffec
 fn srv3_dpkg_package_installed(package: NonEmptyStr, transport: HostEffectTransport) -> Srv3HostPredicate {
   let argv = dpkg_query_status_argv(package: package)
   let outcome = match transport {
-    FleetSsh { target: t, context: c } => Present { value: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv) }
+    FleetSsh { target: t, context: c, kind: kind} => Present { value: typed_argv_exec_over_fleet_ssh(kind: kind,target: t, context: c, argv: argv) }
     SshShell { ssh_host: h } => Present { value: typed_argv_exec_over_ssh(host: h, argv: argv) }
     LocalShell => none
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => none
   }
   match outcome {
     Absent => Srv3PredicateUnobserved { reason: "this transport has no typed exec that keeps a query's exit code and stderr, so the package state is not read" }
+    Present { value: TypedArgvExecOverran { deadline: d } } =>
+      Srv3PredicateUnobserved { reason: host_effect_typed_argv_overran_reason(leg_hint: "dpkg query", deadline: d) }
     Present { value: TypedArgvExecRefused { reason: why } } => Srv3PredicateUnobserved { reason: why }
     Present { value: TypedArgvExecConverged { result: r } } =>
       match dpkg_query_status_verdict_of(exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr) {
@@ -3299,7 +3334,7 @@ fn realize_os_install_actuator_toolchain_ensure(
         transport: effect_intent.transport,
         effect_intent: effect_intent,
       )
-    FleetSsh { target: _, context: _ } =>
+    FleetSsh { target: _, context: _, kind: _} =>
       srv3_realize_os_install_actuator_toolchain_ensure_body(
         transport: effect_intent.transport,
         effect_intent: effect_intent,
@@ -3644,7 +3679,7 @@ fn realize_provision_build_cache(
                 transport: effect_intent.transport,
                 effect_intent: effect_intent,
               )
-            FleetSsh { target: _, context: _ } =>
+            FleetSsh { target: _, context: _, kind: _} =>
               realize_provision_build_cache_body(
                 instance: instance,
                 transport: effect_intent.transport,
@@ -3777,7 +3812,7 @@ fn run_shell_transport(script: RetainedShellScript, transport: HostEffectTranspo
         }
       }
     }
-    FleetSsh { target: t, context: _ } =>
+    FleetSsh { target: t, context: _, kind: _ } =>
       ShellExecObserved {
         exit_code: 1,
         success: false,
@@ -3813,6 +3848,18 @@ type RunArgvTransportOutcome
   = RunArgvTransportObserved { observed: ShellExecObserved }
   | RunArgvTransportRefused { reason: String }
 
+// THE SAME RESULT, WITH THE OVERRUN KEPT (gunbc.design_argument::fail_closed, and review 96994's rule
+// that a killed leg is never reported as an answer or as a non-answer).  RunArgvTransportOutcome above
+// has two arms and its own comment promises that RunArgvTransportRefused means NO LEG RAN.  A leg that
+// DID run and was killed past its declared fleet ceiling is neither of those, so a caller that must say
+// which of the three happened cannot use the two-arm carrier.  This sum is that carrier: same observed
+// payload, same refusal payload, plus the deadline the leg was given.  Only legs whose module needs the
+// distinction consume it; the 24 files on the two-arm contract are untouched.
+type HostEffectArgvOutcome
+  = HostEffectArgvObserved { observed: ShellExecObserved }
+  | HostEffectArgvRefused { reason: String }
+  | HostEffectArgvOverran { deadline: Second }
+
 // ONE MAPPING FOR BOTH TRANSPORT RUNNERS. run_argv_over_host_effect_transport and
 // run_argv_stdin_over_host_effect_transport differ only in which typed call carries the leg; what an
 // outcome becomes is the same for both: the wall's refusal becomes the REFUSED arm, carrying the
@@ -3820,8 +3867,55 @@ type RunArgvTransportOutcome
 // wall rather than a connection error), and a converged result becomes the OBSERVED arm -- the
 // process's real exit status and streams. The mapping is where the admission's verdict and the
 // transport's carrier meet, and it is written once so the two arms cannot drift.
+// THE TOTAL MAPPING ONTO THE THREE-ARM CARRIER, written as a pure function so a witness can pin all
+// three arms without dispatching anything (the convention the rest of this module's refusals follow).
+fn host_effect_argv_outcome_of(typed: TypedArgvExecOutcome) -> HostEffectArgvOutcome {
+  match typed {
+    TypedArgvExecConverged { result: result } =>
+      HostEffectArgvObserved {
+        observed: ShellExecObserved {
+          exit_code: result.exit_code,
+          success: result.exit_code == 0,
+          stdout: result.stdout,
+          stderr: result.stderr,
+        },
+      }
+    TypedArgvExecRefused { reason: why } =>
+      HostEffectArgvRefused {
+        reason: join(
+          [
+            "the portable-word wall refused the typed argv before any ssh leg: ",
+            why,
+          ],
+          "",
+        ),
+      }
+    TypedArgvExecOverran { deadline: d } =>
+      HostEffectArgvOverran { deadline: d }
+  }
+}
+
+// THE LOSSY VIEW ONTO MAIN'S TWO-ARM CARRIER, ONE MAPPING SO THE TWO CANNOT DRIFT.  The overrun arm
+// keeps the very same reason text the fold used before this file grew a third carrier, so every caller
+// on RunArgvTransportOutcome reads exactly what it read before.  Callers that must distinguish a killed
+// leg from an unattempted one use run_argv_over_host_effect_transport_preserving_overrun instead.
+fn run_argv_transport_outcome_of(preserving: HostEffectArgvOutcome) -> RunArgvTransportOutcome {
+  match preserving {
+    HostEffectArgvObserved { observed: o } => RunArgvTransportObserved { observed: o }
+    HostEffectArgvRefused { reason: why } => RunArgvTransportRefused { reason: why }
+    HostEffectArgvOverran { deadline: d } =>
+      RunArgvTransportRefused {
+        reason: host_effect_typed_argv_overran_reason(leg_hint: "transport argv", deadline: d),
+      }
+  }
+}
+
 fn typed_argv_outcome_to_transport(typed: TypedArgvExecOutcome) -> RunArgvTransportOutcome {
   match typed {
+  TypedArgvExecOverran { deadline: d } =>
+    RunArgvTransportRefused {
+      reason: host_effect_typed_argv_overran_reason(leg_hint: "transport argv", deadline: d),
+    }
     TypedArgvExecRefused { reason: why } =>
       RunArgvTransportRefused {
         reason: join(
@@ -3895,12 +3989,20 @@ fn run_argv_parameters_of(command: ArgvCommand) -> RunArgvParameters {
 // leaf while this dispatcher still refused is the parallel-authority tell. EmitArtifactThenThinRun
 // still refuses: it is not a typed argv transport. The stdin sibling maps FleetSsh the same way
 // through typed_argv_exec_over_fleet_ssh_with_stdin.
-fn run_argv_over_host_effect_transport(command: ArgvCommand, transport: HostEffectTransport) -> RunArgvTransportOutcome {
+// THE TRANSPORT MATCH, ONCE (gunbc.design_argument::single_authority).  This is the only place that
+// decides which typed call carries a typed argv for which transport; run_argv_over_host_effect_transport
+// below is this function seen through the two-arm carrier, so a leg can never take a different route
+// depending on which of the two its caller reached for.  It is the preserving form because the lossy one
+// can only ever be produced from it, never the reverse.
+fn run_argv_over_host_effect_transport_preserving_overrun(
+  command: ArgvCommand,
+  transport: HostEffectTransport,
+) -> HostEffectArgvOutcome {
   match transport {
     LocalShell => {
       let params = run_argv_parameters_of(command: command)
       let result = shell.Exec.RunArgv(program: params.program, arguments: params.arguments)
-      RunArgvTransportObserved {
+      HostEffectArgvObserved {
         observed: ShellExecObserved {
           exit_code: result.exit_code,
           success: result.exit_code == 0,
@@ -3910,14 +4012,22 @@ fn run_argv_over_host_effect_transport(command: ArgvCommand, transport: HostEffe
       }
     }
     SshShell { ssh_host: h } =>
-      typed_argv_outcome_to_transport(typed: typed_argv_exec_over_ssh(host: h, argv: argv_words(command: command)))
-    FleetSsh { target: t, context: c } =>
-      typed_argv_outcome_to_transport(typed: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv_words(command: command)))
+      host_effect_argv_outcome_of(typed: typed_argv_exec_over_ssh(host: h, argv: argv_words(command: command)))
+    FleetSsh { target: t, context: c, kind: kind} =>
+      host_effect_argv_outcome_of(
+        typed: typed_argv_exec_over_fleet_ssh(target: t, context: c, kind: kind, argv: argv_words(command: command)),
+      )
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
-      RunArgvTransportRefused {
+      HostEffectArgvRefused {
         reason: "host_effect_apply: typed argv cannot use EmitArtifactThenThinRun transport; reserved for ConvergePlan (host-effect Phase D).",
       }
   }
+}
+
+fn run_argv_over_host_effect_transport(command: ArgvCommand, transport: HostEffectTransport) -> RunArgvTransportOutcome {
+  run_argv_transport_outcome_of(
+    preserving: run_argv_over_host_effect_transport_preserving_overrun(command: command, transport: transport),
+  )
 }
 
 // THE QUOTED SIBLING, for an argv whose words the portable alphabet refuses (a systemd property value carrying a whole
@@ -3935,8 +4045,8 @@ fn run_argv_over_host_effect_transport(command: ArgvCommand, transport: HostEffe
 fn run_argv_posix_quoted_over_host_effect_transport(command: ArgvCommand, transport: HostEffectTransport) -> RunArgvTransportOutcome {
   match transport {
     LocalShell => run_argv_over_host_effect_transport(command: command, transport: LocalShell)
-    FleetSsh { target: t, context: c } =>
-      typed_argv_outcome_to_transport(typed: typed_argv_exec_over_fleet_ssh_posix(target: t, context: c, argv: argv_words(command: command)))
+    FleetSsh { target: t, context: c, kind: kind} =>
+      typed_argv_outcome_to_transport(typed: typed_argv_exec_over_fleet_ssh_posix(target: t, context: c, kind: kind, argv: argv_words(command: command)))
     SshShell { ssh_host: _ } =>
       RunArgvTransportRefused {
         reason: "host_effect_apply: SshShell has no measured POSIX route (no login-shell proof, no OpenSSH release reading), so no word is quoted over it.",
@@ -4333,10 +4443,11 @@ fn run_argv_stdin_over_host_effect_transport(command: ArgvCommand, stdin_payload
         argv: argv_words(command: command),
         stdin_payload: stdin_payload,
       ))
-    FleetSsh { target: t, context: c } =>
+    FleetSsh { target: t, context: c, kind: kind} =>
       typed_argv_outcome_to_transport(typed: typed_argv_exec_over_fleet_ssh_with_stdin(
         target: t,
         context: c,
+        kind: kind,
         argv: argv_words(command: command),
         stdin_payload: stdin_payload,
       ))
@@ -4413,7 +4524,7 @@ fn realize_converge_on_host(host_converge: HostConverge, transport: HostEffectTr
         reason: "host_effect_apply: ConvergePlan over SshShell is a fail-closed Unimplemented stub; use EmitArtifactThenThinRun or LocalShell for the converge lane.",
         applied: intent,
       }
-    FleetSsh { target: _, context: _ } =>
+    FleetSsh { target: _, context: _, kind: _} =>
       NotConverged {
         reason: "host_effect_apply: ConvergePlan over SshShell is a fail-closed Unimplemented stub; use EmitArtifactThenThinRun or LocalShell for the converge lane.",
         applied: intent,
@@ -4518,7 +4629,7 @@ fn realize_srv3_typed_reconcile(kind: TypedReconcileKind, transport: HostEffectT
         reason: "host_effect_apply: TypedReconcileOnHost runs in-process on the executor's own host; SshShell transport is a fail-closed Unimplemented stub until the typed reconcile is realized over a remote-observe/apply transport.",
         applied: intent,
       }
-    FleetSsh { target: _, context: _ } =>
+    FleetSsh { target: _, context: _, kind: _} =>
       NotConverged {
         reason: "host_effect_apply: TypedReconcileOnHost runs in-process on the executor's own host; SshShell transport is a fail-closed Unimplemented stub until the typed reconcile is realized over a remote-observe/apply transport.",
         applied: intent,
@@ -4562,6 +4673,11 @@ fn reconcile_ssh_argv_exec_outcome(
         },
         intent: intent,
       )
+      TypedArgvExecOverran { deadline: d } =>
+        NotConverged {
+          reason: host_effect_typed_argv_overran_reason(leg_hint: "ssh argv exec", deadline: d),
+          applied: intent,
+        }
     TypedArgvExecRefused { reason: why } =>
       NotConverged { reason: why, applied: intent }
   }
@@ -4584,8 +4700,8 @@ fn run_typed_argv_transport(
       }
     SshShell { ssh_host: h } =>
       typed_argv_exec_over_ssh(host: h, argv: argv)
-    FleetSsh { target: t, context: c } =>
-      typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv)
+    FleetSsh { target: t, context: c, kind: kind} =>
+      typed_argv_exec_over_fleet_ssh(target: t, context: c, kind: kind, argv: argv)
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       TypedArgvExecRefused {
         reason: "run_typed_argv_transport: EmitArtifactThenThinRun is not a typed argv transport",
@@ -4617,9 +4733,9 @@ fn realize_effective_principal_read_on_host(
         outcome: typed_argv_exec_over_ssh(host: h, argv: argv),
         intent: intent,
       )
-    FleetSsh { target: t, context: c } =>
+    FleetSsh { target: t, context: c, kind: kind} =>
       reconcile_ssh_argv_exec_outcome(
-        outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv),
+        outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, kind: kind, argv: argv),
         intent: intent,
       )
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
@@ -4654,9 +4770,9 @@ fn realize_sudo_nopasswd_execute_probe_on_host(
         outcome: typed_argv_exec_over_ssh(host: h, argv: argv),
         intent: intent,
       )
-    FleetSsh { target: t, context: c } =>
+    FleetSsh { target: t, context: c, kind: kind} =>
       reconcile_ssh_argv_exec_outcome(
-        outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv),
+        outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, kind: kind, argv: argv),
         intent: intent,
       )
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
@@ -4708,6 +4824,11 @@ fn reconcile_sudo_nopasswd_grant_list_outcome(
         ),
         intent: intent,
       )
+      TypedArgvExecOverran { deadline: d } =>
+        NotConverged {
+          reason: host_effect_typed_argv_overran_reason(leg_hint: "sudo nopasswd grant list", deadline: d),
+          applied: intent,
+        }
     TypedArgvExecRefused { reason: why } =>
       NotConverged { reason: why, applied: intent }
   }
@@ -4739,10 +4860,10 @@ fn realize_sudo_nopasswd_grant_list_probe_on_host(
         outcome: typed_argv_exec_over_ssh(host: h, argv: argv),
         intent: intent,
       )
-    FleetSsh { target: t, context: c } =>
+    FleetSsh { target: t, context: c, kind: kind} =>
       reconcile_sudo_nopasswd_grant_list_outcome(
         probe: probe,
-        outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, argv: argv),
+        outcome: typed_argv_exec_over_fleet_ssh(target: t, context: c, kind: kind, argv: argv),
         intent: intent,
       )
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
@@ -4943,7 +5064,7 @@ fn live_deploy_apply_candidate_locus_refusal(transport: HostEffectTransport) -> 
         ": the candidate release was observed in the LOCAL deploying checkout, and no modeled source transfer proves the remote tree is that candidate. ",
         "Emitting the local revision into the remote unit would publish a release identity the process may not be running.",
       ], "") }
-    FleetSsh { target: t, context: _ } =>
+    FleetSsh { target: t, context: _, kind: _ } =>
       Present { value: join([
         "live_deploy apply refused over fleet ssh endpoint=", known_hosts_host_field(address: t.address) as String,
         ": the candidate release was observed in the LOCAL deploying checkout, and no modeled source transfer proves the remote tree is that candidate. ",
@@ -5025,7 +5146,7 @@ fn observe_slot_population_over_host_effect_transport(
         ),
         edge_noun: "the transport",
       )
-    FleetSsh { target: _, context: _ } =>
+    FleetSsh { target: _, context: _, kind: _} =>
       slot_census_from_typed_argv_outcome(
         host: host,
         outcome: run_typed_argv_transport(
@@ -5718,7 +5839,7 @@ fn live_deploy_retract_candidate_locus_refusal(transport: HostEffectTransport) -
         ": the retract unit teardown is a LOCAL operation over the host-effect transport (principal sudo -n removals, unprivileged observes), and the bash emitter it replaces is not modeled over ssh. ",
         "Refusing the remote locus rather than emit a script to run remotely.",
       ], "") }
-    FleetSsh { target: _, context: _ } =>
+    FleetSsh { target: _, context: _, kind: _} =>
       Present { value: join([
         "live_deploy retract refused over fleet ssh: the retract unit teardown is a LOCAL operation over the host-effect transport (principal sudo -n removals, unprivileged observes), and the bash emitter it replaces is not modeled over fleet ssh. ",
         "Refusing the remote locus rather than emit a script to run remotely.",
@@ -6241,6 +6362,7 @@ fn live_deploy_apply_broker_tree_on_host(spec: DeploymentSpec, revision: Release
     locus: release_locus_record(base_root: base_root, revision: revision),
     source_root: source_root,
     executables: approval_broker_release_locus_executables,
+    permitted_extras: approval_broker_sibling_writer_footprint(),
     transport: one_transport_route(transport: transport),
   ) {
     TreeInstallConverged { installed_digest: _, files_installed: _ } => Absent
@@ -6684,10 +6806,33 @@ fn tree_metadata_fields_of(fields: List<String>) -> Optional<TreeMetadataFieldWa
 
 // One `<rel>|<y>|<m>|<u>|<g>|<link>|<size>` line, rebased under `sub`, or Absent for a line the
 // grammar refuses -- the count guard turns Absent parses into a refusal, exactly as the hash
-// parser's does. The starting point's own row (find %P prints the empty string for it) is not an
-// entry of the tree: refused here AND excluded from the counted lines, the same rule stated once.
-fn tree_metadata_entry_of_line(line: String, sub: String) -> Optional<TreeMetadataEntry> {
-  if line == "" || starts_with(s: line, prefix: "|") {
+// parser's does.
+// A line `find <root>` (the FULL subtree walk, which keeps its starting point) prints for the WALK
+// ROOT ITSELF: an empty %P, i.e. an empty first field over EXACTLY the seven fields of the shared
+// grammar. This is the ONLY deliberately-skipped row, and it exists only for the full-subtree walk
+// (observe_tree_entry_metadata); the direct-children listing excludes the starting point at the
+// producer with `-mindepth 1`, so it never reaches a skip rule (see find_direct_children_metadata_command).
+// `starting_point_expected` carries that distinction: true for the full walk, false for the children
+// listing. When false, an empty-rel row is NOT skipped -- it is malformed and the count guard refuses
+// it, which is what stops a child NAMED with a newline from printing an empty-%P row that would
+// otherwise be swallowed as a starting point. Crucially even when true the predicate is NARROW: a real
+// child whose NAME starts with "|" (a rogue "|rogue" at the locus root, or "src/|extra") splits to a
+// DIFFERENT field count, is not a starting-point record, and must reach the collector and be refused.
+fn tree_metadata_line_is_starting_point(line: String) -> Bool {
+  if !starts_with(s: line, prefix: "|") {
+    false
+  } else {
+    match tree_metadata_fields_of(fields: split(s: line, delimiter: "|")) {
+      Absent => false
+      Present { value: f } => f.rel == ""
+    }
+  }
+}
+
+fn tree_metadata_entry_of_line(line: String, sub: String, starting_point_expected: Bool) -> Optional<TreeMetadataEntry> {
+  if line == "" {
+    Absent
+  } else if starting_point_expected && tree_metadata_line_is_starting_point(line: line) {
     Absent
   } else {
     match tree_metadata_fields_of(fields: split(s: line, delimiter: "|")) {
@@ -6712,15 +6857,16 @@ fn tree_metadata_entry_of_fields(f: TreeMetadataFieldWalk, sub: String) -> Optio
     Absent
   } else {
     let names = PosixOwnerNames { user: f.owner as NonEmptyStr, group: f.group as NonEmptyStr }
+    let entry_path = if sub == "" { f.rel } else { join([sub, "/", f.rel], "") }
     match file_mode_of_octal_text(text: f.mode) {
       Absent => Absent
       Present { value: m } =>
         if f.kind == "f" && f.link_target == "" {
-          Present { value: TreeMetadataEntry { path: join([sub, "/", f.rel], ""), kind: TreeRegular, mode: m, owner: names } }
+          Present { value: TreeMetadataEntry { path: entry_path, kind: TreeRegular, mode: m, owner: names } }
         } else if f.kind == "d" && f.link_target == "" {
-          Present { value: TreeMetadataEntry { path: join([sub, "/", f.rel], ""), kind: TreeDirectory, mode: m, owner: names } }
+          Present { value: TreeMetadataEntry { path: entry_path, kind: TreeDirectory, mode: m, owner: names } }
         } else if f.kind == "l" && f.link_target != "" {
-          Present { value: TreeMetadataEntry { path: join([sub, "/", f.rel], ""), kind: TreeLink { link_target: f.link_target as NonEmptyStr }, mode: m, owner: names } }
+          Present { value: TreeMetadataEntry { path: entry_path, kind: TreeLink { link_target: f.link_target as NonEmptyStr }, mode: m, owner: names } }
         } else {
           Absent
         }
@@ -6728,8 +6874,30 @@ fn tree_metadata_entry_of_fields(f: TreeMetadataFieldWalk, sub: String) -> Optio
   }
 }
 
-fn tree_metadata_entries_of_stdout(stdout: String, sub: String) -> List<TreeMetadataEntry> {
-  flat_map(split(s: stdout, delimiter: "\n"), line => match tree_metadata_entry_of_line(line: line, sub: sub) { Absent => [], Present { value: e } => [e] })
+fn tree_metadata_entries_of_stdout(stdout: String, sub: String, starting_point_expected: Bool) -> List<TreeMetadataEntry> {
+  flat_map(split(s: stdout, delimiter: "\n"), line => match tree_metadata_entry_of_line(line: line, sub: sub, starting_point_expected: starting_point_expected) { Absent => [], Present { value: e } => [e] })
+}
+
+// THE SELF-METADATA OF ONE PATH. find_self_metadata_command prints the seven-field line
+// `<path>|<y>|<m>|<u>|<g>|<link>|<size>` -- %p carries the queried path in the rel field, so this is
+// the SAME grammar the tree walks parse. There is ONE field walk (tree_metadata_fields_of), ONE
+// grammar decision chain (tree_metadata_entry_of_fields), and ONE kind dispatch, shared with the
+// walks -- not a second hand-written fold. Exactly one non-empty line is expected; the parsed path
+// must equal the path that was asked about, so a find that answered about a different file is
+// refused rather than mispaired.
+fn tree_self_metadata_entry_of_stdout(stdout: String, path: String) -> Optional<TreeMetadataEntry> {
+  let lines = filter(split(s: stdout, delimiter: "\n"), l => l != "")
+  match lines {
+    Cons { head: line, tail: rest } =>
+      if count(rest) != 0 { Absent }
+      else {
+        match tree_metadata_entry_of_line(line: line, sub: "", starting_point_expected: false) {
+          Absent => Absent
+          Present { value: e } => if e.path == path { Present { value: e } } else { Absent }
+        }
+      }
+    Empty => Absent
+  }
 }
 
 // THE CANONICAL TEXT of one entry: exactly what the installed readback compares over and what the
@@ -6800,6 +6968,157 @@ fn tree_installed_expectation_owned(entries: List<TreeMetadataEntry>, owner: Pos
           }
         ) }
       }
+    }
+  }
+}
+
+// THE WALK PARENTS: for multi-component entries in release_locus_tree_subdirs (e.g. "src/v2"),
+// the walk root's metadata is never observed by the per-sub walk (the starting point prints with
+// an empty %P and is discarded). The parent (e.g. "src") gets a maxdepth-1 walk so the walk root
+// appears as a child with proper rebasing. For single-component subs (e.g. "dag"), the locus-root
+// walk already observes them; no parent walk needed.
+fn tree_walk_parents(subs: List<String>) -> List<String> {
+  tree_sorted_unique_paths(xs: flat_map(subs, sub =>
+    tree_path_prefixes(path: sub)
+  ))
+}
+
+// THE EXPECTED METADATA AT THE LOCUS ROOT LEVEL: the directory names that appear as direct
+// children of the locus (first components of each sub in release_locus_tree_subdirs, deduped),
+// each expected as a directory with install_d_shared_mode, and the executables each expected as
+// a regular file with install_executable_shared_mode. The comparison is a containment check:
+// these entries must be present with correct metadata, but entries the tree install does not
+// write (from other deploy legs that run after the tree install) are tolerated.
+fn tree_locus_children_expectation_owned(
+  subdirs: List<String>,
+  executables: List<String>,
+  owner: PosixOwnerNames,
+) -> Optional<List<TreeMetadataEntry>> {
+  match file_mode_of_octal_text(text: coreutils_directory_mode_operand(mode: install_d_shared_mode)) {
+    Absent => Absent
+    Present { value: dir_m } => match file_mode_of_octal_text(text: install_executable_shared_mode as String) {
+      Absent => Absent
+      Present { value: exe_m } =>
+        let dir_names = tree_sorted_unique_paths(xs: flat_map(subdirs, sub =>
+          match list_head(xs: split(s: sub, delimiter: "/")) {
+            Absent => []
+            Present { value: comp } => if comp == "" { [] } else { [comp] }
+          }
+        ))
+        let dir_entries = flat_map(dir_names, name =>
+          [TreeMetadataEntry { path: name, kind: TreeDirectory, mode: dir_m, owner: owner }]
+        )
+        let exe_entries = flat_map(executables, name =>
+          [TreeMetadataEntry { path: name, kind: TreeRegular, mode: exe_m, owner: owner }]
+        )
+        Present { value: concat(dir_entries, exe_entries) }
+    }
+  }
+}
+
+// THE EXPECTED METADATA FOR EACH WALK PARENT: each walk parent is expected as a directory (at
+// depth 1 under the locus). Its children include the walk root, which must be a directory with
+// install_d_shared_mode. This builds the expected entry for the walk root (observed via the
+// parent's maxdepth-1 walk), keyed by the full sub path.
+fn tree_walk_root_expectation_owned(subdirs: List<String>, owner: PosixOwnerNames) -> Optional<List<TreeMetadataEntry>> {
+  match file_mode_of_octal_text(text: coreutils_directory_mode_operand(mode: install_d_shared_mode)) {
+    Absent => Absent
+    Present { value: dir_m } =>
+      let entries = flat_map(subdirs, sub => {
+        let parts = split(s: sub, delimiter: "/")
+        if count(parts) > 1 {
+          [TreeMetadataEntry { path: sub, kind: TreeDirectory, mode: dir_m, owner: owner }]
+        } else { [] }
+      })
+      Present { value: entries }
+  }
+}
+
+// THE LOCUS-ROOT PARTITION, the one place the rule is stated. An observed entry at the locus root or
+// under a walk parent falls into exactly one of three classes:
+//   - expected: its path is an expected locus-root path (a subtree-root directory or a release
+//     executable) or a walk-root path -> required, and it goes into the full metadata comparison;
+//   - permitted: its path is a modeled sibling-writer footprint OF THIS LOCUS, or the installer's own
+//     receipt -> tolerated, because that writer owns its postconditions; it is dropped from comparison;
+//   - unexpected: anything else -> the readback REFUSES by naming it.
+// The permitted set is passed in per locus from the modeled writer footprints -- never a global
+// basename list, owner switch, or wildcard -- so broker and microvm exceptions cannot authorize a
+// name in the helper locus, which is given only the receipt. A stray file under a walk parent (a
+// sibling of the src/v2 walk root) is unexpected and refused, not silently dropped.
+type TreeLocusChildrenPartition {
+  kept: List<TreeMetadataEntry>
+  refusal: Optional<String>
+}
+
+fn tree_locus_children_partition(
+  locus_children_expected: List<TreeMetadataEntry>,
+  walk_root_expected: List<TreeMetadataEntry>,
+  permitted_extras: List<String>,
+  observed: List<TreeMetadataEntry>,
+) -> TreeLocusChildrenPartition {
+  let expected_paths = flat_map(concat(locus_children_expected, walk_root_expected), e => [e.path])
+  let permitted_paths = concat(permitted_extras, [release_locus_tree_receipt_name])
+  let is_expected = e => any(expected_paths, p => p == e.path)
+  let is_permitted = e => any(permitted_paths, p => p == e.path)
+  // The compared set is ONLY the expected rows: a permitted sibling-writer entry (or the receipt) is
+  // neither refused NOR compared -- that writer owns its postconditions -- so it must not reach the
+  // observed side of tree_metadata_disagreement, which refuses any row with no expected counterpart.
+  let kept = filter(observed, e => is_expected(e))
+  let unexpected = filter(observed, e => !is_expected(e) && !is_permitted(e))
+  match unexpected {
+    Cons { head: e, tail: _ } =>
+      TreeLocusChildrenPartition {
+        kept: kept,
+        refusal: Present { value: join(["unexpected entry ", e.path, " at the locus root: it is neither part of the tree install nor declared by a writer of this locus"], "") },
+      }
+    Empty => TreeLocusChildrenPartition { kept: kept, refusal: Absent }
+  }
+}
+
+// THE FULL TREE AGREEMENT: the single comparison authority that the production readback calls.
+// It partitions the locus-children observation (tree_locus_children_partition) against the per-locus
+// permitted set, refusing by name on any unexpected entry, and -- only when nothing unexpected is
+// present -- merges the source-walk, locus-children, walk-root, and spine expectations and calls
+// tree_metadata_disagreement ONCE on the merged pair. Within dag/ and src/v2/ (which the tree install
+// owns entirely) agreement is the full set comparison, not containment.
+fn tree_locus_agreement(
+  source_expected: List<TreeMetadataEntry>,
+  source_observed: List<TreeMetadataEntry>,
+  locus_children_expected: List<TreeMetadataEntry>,
+  locus_children_observed: List<TreeMetadataEntry>,
+  walk_root_expected: List<TreeMetadataEntry>,
+  spine_expected: List<TreeMetadataEntry>,
+  spine_observed: List<TreeMetadataEntry>,
+  permitted_extras: List<String>,
+) -> Optional<String> {
+  let partition = tree_locus_children_partition(
+    locus_children_expected: locus_children_expected,
+    walk_root_expected: walk_root_expected,
+    permitted_extras: permitted_extras,
+    observed: locus_children_observed,
+  )
+  match partition.refusal {
+    Present { value: why } => Present { value: why }
+    Absent =>
+      tree_metadata_disagreement(
+        expected: concat(concat(concat(source_expected, locus_children_expected), walk_root_expected), spine_expected),
+        observed: concat(concat(source_observed, partition.kept), spine_observed),
+      )
+  }
+}
+
+// THE EXPECTED METADATA FOR SPINE AND LOCUS: every spine directory and the locus itself must be a
+// directory with install_d_shared_mode and the realm's owner. Their paths are absolute (the spine
+// paths are passed as-is to the install); they participate in the same merge walk by sorting
+// naturally before the relative paths.
+fn tree_spine_expectation_owned(spine: List<String>, locus: String, owner: PosixOwnerNames) -> Optional<List<TreeMetadataEntry>> {
+  match file_mode_of_octal_text(text: coreutils_directory_mode_operand(mode: install_d_shared_mode)) {
+    Absent => Absent
+    Present { value: dir_m } => {
+      let all_paths = list_snoc_item(xs: spine, item: locus)
+      Present { value: flat_map(all_paths, p =>
+        [TreeMetadataEntry { path: p, kind: TreeDirectory, mode: dir_m, owner: owner }]
+      ) }
     }
   }
 }
@@ -6877,11 +7196,161 @@ fn observe_tree_entry_metadata(root: String, subs: List<String>, transport: Host
           RunArgvTransportObserved { observed: o } =>
             if !o.success { TreeMetadataObservationFailed { reason: join(["find entry-metadata exit ", to_string(o.exit_code), ": ", o.stderr], "") } }
             else {
-              let parsed = tree_metadata_entries_of_stdout(stdout: o.stdout, sub: sub)
-              let lines = count(flat_map(split(s: o.stdout, delimiter: "\n"), l => if string_length(s: l) > 0 && !starts_with(s: l, prefix: "|") { [l] } else { [] }))
-              if lines != count(parsed) {
-                TreeMetadataObservationFailed { reason: join(["find entry-metadata under ", root, "/", sub, " printed ", to_string(lines), " entry lines but ", to_string(count(parsed)), " parsed as ", find_tree_entry_metadata_printf(), "; an entry the grammar cannot name (a device, a fifo, a socket, a path carrying a `|`) is refused, not dropped"], "") }
-              } else { TreeMetadataObserved { entries: concat(es, parsed) } }
+              match run_argv_over_elevation_route(
+                command: find_tree_entry_count_command(root: join([root, "/", sub], "")),
+                transport: transport,
+              ) {
+                RunArgvTransportRefused { reason: r } => TreeMetadataObservationFailed { reason: r }
+                RunArgvTransportObserved { observed: c } =>
+                  if !c.success { TreeMetadataObservationFailed { reason: join(["find entry-count exit ", to_string(c.exit_code), ": ", c.stderr], "") } }
+                  else {
+                    match tree_metadata_entries_of_stdout_checked(root: join([root, "/", sub], ""), stdout: o.stdout, dot_stdout: c.stdout, sub: sub, starting_point_expected: true) {
+                      TreeMetadataObservationFailed { reason: r } => TreeMetadataObservationFailed { reason: r }
+                      TreeMetadataObserved { entries: parsed } => TreeMetadataObserved { entries: concat(es, parsed) }
+                    }
+                  }
+              }
+            }
+        }
+    }
+  )
+}
+
+// OBSERVE THE DIRECT CHILDREN OF THE LOCUS: one maxdepth-1 find on the locus itself. This
+// establishes the metadata (kind, mode, owner) of every entry the install writes at the locus
+// root: the subtree-root directories (dag, src), intermediate directories (src, visible as a
+// child of the locus), the executables, and the receipt. The observation is deliberately UNFILTERED
+// -- it returns every direct child -- and the per-locus partition (tree_locus_children_partition)
+// is the single authority that decides what is required (installer-expected, fully checked),
+// permitted (entries another writer declared AT THIS LOCUS, plus the installer's own receipt, both
+// dropped from comparison), or REFUSED BY NAME (anything else). Refusing the unexpected is what keeps
+// a wrong-owner helper file, a stray sibling, or a setuid binary at the locus root from passing; the
+// per-locus permitted set (never a global basename list) is what keeps a legitimate later-leg sibling
+//
+// OBSERVE EACH WALK-ROOT PARENT: for multi-component subs (e.g. "src/v2"), the walk root itself
+// (src/v2) is a child of src, not of the locus. A maxdepth-1 walk on the parent (locus/src)
+// observes it with the correct rebasing.
+fn observe_locus_children(locus: String, walk_parents: List<String>, transport: HostEffectElevationRoute) -> TreeMetadataObservation {
+  let locus_children = observe_direct_children_one(root: locus, sub: "", transport: transport)
+  fold(walk_parents, init: locus_children, f: (acc, parent) =>
+    match acc {
+      TreeMetadataObservationFailed { reason: _ } => acc
+      TreeMetadataObserved { entries: es } =>
+        match observe_direct_children_one(root: join([locus, "/", parent], ""), sub: parent, transport: transport) {
+          TreeMetadataObservationFailed { reason: why } => TreeMetadataObservationFailed { reason: why }
+          TreeMetadataObserved { entries: ps } => TreeMetadataObserved { entries: concat(es, ps) }
+        }
+    }
+  )
+}
+
+fn observe_direct_children_one(root: String, sub: String, transport: HostEffectElevationRoute) -> TreeMetadataObservation {
+  match run_argv_over_elevation_route(
+    command: find_direct_children_metadata_command(root: root),
+    transport: transport,
+  ) {
+    RunArgvTransportRefused { reason: r } => TreeMetadataObservationFailed { reason: r }
+    RunArgvTransportObserved { observed: o } =>
+      if !o.success { TreeMetadataObservationFailed { reason: join(["find direct-children exit ", to_string(o.exit_code), ": ", o.stderr], "") } }
+      else {
+        match run_argv_over_elevation_route(
+          command: find_direct_children_count_command(root: root),
+          transport: transport,
+        ) {
+          RunArgvTransportRefused { reason: r } => TreeMetadataObservationFailed { reason: r }
+          RunArgvTransportObserved { observed: c } =>
+            if !c.success { TreeMetadataObservationFailed { reason: join(["find direct-children count exit ", to_string(c.exit_code), ": ", c.stderr], "") } }
+            else { tree_metadata_entries_of_stdout_checked(root: root, stdout: o.stdout, dot_stdout: c.stdout, sub: sub, starting_point_expected: false) }
+        }
+      }
+  }
+}
+
+// THE COLLECTOR WITH ITS FRAMING GUARDS, exposed as a pure function over the captured find stdout AND
+// the independent dot-count stdout, so both the executors above and the fixtures drive the SAME
+// validation without elevation. `starting_point_expected` is true only for the full-subtree walk (which
+// keeps its own starting-point row); the direct-children listing passes false because its find uses
+// -mindepth 1 and so prints NO starting-point row. It counts FRAMING, never surviving rows -- filtering
+// out empty fragments before counting would let a newline inside a name cost no row. Fail-closed:
+//  (1) EMPTY FRAGMENTS. Every genuine record ends in exactly ONE LF, so a well-formed listing has EXACTLY
+//      one empty fragment -- the trailing one after the final LF. Any other empty fragment can only come
+//      from a newline inside a name (a child named "<LF>...", e.g. "<LF>.gunbc-tree-receipt" masquerading
+//      as the receipt) -> refused.
+//  (2) LF-VS-DOTS. `dot_stdout` is a second `-printf .` enumeration of the SAME set (one dot per entry,
+//      which a name cannot change). The number of LF-delimited records in the raw stdout must equal the
+//      dot count. A crafted name embedding a newline (e.g. `x|f|755|u|g||0<LF>foo`) splits into two
+//      WELL-FORMED records but the entry prints one dot -> LF count exceeds dots -> refused.
+//  (3) STARTING-POINT, FIRST ROW ONLY. Exactly one empty-%P row may exist and only for the full walk (the
+//      walk root). A second empty-relative-path row anywhere is a newline-named entry -> refused.
+//  Then the NAMING guard: every non-empty, non-starting fragment must parse into a well-formed entry.
+fn tree_metadata_entries_of_stdout_checked(root: String, stdout: String, dot_stdout: String, sub: String, starting_point_expected: Bool) -> TreeMetadataObservation {
+  let fragments = split(s: stdout, delimiter: "\n")
+  let dots = string_length(s: dot_stdout)
+  if stdout == "" {
+    if dots == 0 {
+      TreeMetadataObserved { entries: [] }
+    } else {
+      TreeMetadataObservationFailed { reason: join(["find under ", root, " printed no rows but the dot enumeration counted ", to_string(dots), " entries; the population is not stable between the two reads -- refused, not accepted"], "") }
+    }
+  } else {
+    let empty_frags = count(filter(fragments, f => string_length(s: f) == 0))
+    let lf_bytes = count(fragments) - 1
+    let sp_rows = count(filter(fragments, f => tree_metadata_line_is_starting_point(line: f)))
+    let expected_sp = if starting_point_expected { 1 } else { 0 }
+    if empty_frags != 1 {
+      TreeMetadataObservationFailed { reason: join(["find under ", root, ": the metadata listing has ", to_string(empty_frags), " empty line fragments but only the single trailing one (after the final LF) is legal; a name embedding a newline creates an extra empty fragment -- refused. rows=[", join(fragments, " ;; "), "]"], "") }
+    } else if lf_bytes != dots {
+      TreeMetadataObservationFailed { reason: join(["find under ", root, ": the metadata listing has ", to_string(lf_bytes), " newline-delimited records but the independent dot enumeration counted ", to_string(dots), " entries; a crafted name that embeds a newline forges extra records -- refused. rows=[", join(fragments, " ;; "), "]"], "") }
+    } else if sp_rows != expected_sp {
+      TreeMetadataObservationFailed { reason: join(["find under ", root, ": ", to_string(sp_rows), " empty-relative-path rows but ", to_string(expected_sp), " expected; only the walk's own starting point (the first row, full walk only) may have an empty %P -- a second one is a newline-named entry, refused, not dropped. rows=[", join(fragments, " ;; "), "]"], "") }
+    } else {
+      let bad = filter(fragments, l => tree_metadata_row_is_bad(l: l, sub: sub, starting_point_expected: starting_point_expected))
+      if count(bad) > 0 {
+        TreeMetadataObservationFailed { reason: join(["find under ", root, " printed ", to_string(count(bad)), " row(s) the entry grammar cannot name: [", join(bad, " ;; "), "]; an unnameable row is refused, not dropped"], "") }
+      } else {
+        TreeMetadataObserved { entries: tree_metadata_entries_of_stdout(stdout: stdout, sub: sub, starting_point_expected: starting_point_expected) }
+      }
+    }
+  }
+}
+
+// Is this printed fragment one the entry grammar cannot name? Empty fragments (the single trailing
+// separator) and, for the full walk, the legitimate starting-point row are not bad; otherwise a row
+// that does not parse into a well-formed entry is bad -- including the empty-rel row a newline-named
+// child injects, which the naming guard refuses by text rather than dropping.
+fn tree_metadata_row_is_bad(l: String, sub: String, starting_point_expected: Bool) -> Bool {
+  if l == "" {
+    false
+  } else if starting_point_expected && tree_metadata_line_is_starting_point(line: l) {
+    false
+  } else {
+    match tree_metadata_entry_of_line(line: l, sub: sub, starting_point_expected: starting_point_expected) {
+      Absent => true
+      Present { value: _e } => false
+    }
+  }
+}
+
+// OBSERVE THE SELF-METADATA OF EACH PATH (spine directories and the locus). Each path is
+// observed with find -maxdepth 0 -printf in the seven-field self format. The parsed entry
+// gets its path from the caller. All paths must parse successfully or the observation fails.
+fn observe_directory_self_entries(paths: List<String>, transport: HostEffectElevationRoute) -> TreeMetadataObservation {
+  fold(paths, init: TreeMetadataObserved { entries: [] }, f: (acc, p) =>
+    match acc {
+      TreeMetadataObservationFailed { reason: _ } => acc
+      TreeMetadataObserved { entries: es } =>
+        match run_argv_over_elevation_route(
+          command: find_self_metadata_command(path: p),
+          transport: transport,
+        ) {
+          RunArgvTransportRefused { reason: r } => TreeMetadataObservationFailed { reason: r }
+          RunArgvTransportObserved { observed: o } =>
+            if !o.success { TreeMetadataObservationFailed { reason: join(["find self-metadata on ", p, " exit ", to_string(o.exit_code), ": ", o.stderr], "") } }
+            else {
+              match tree_self_metadata_entry_of_stdout(stdout: o.stdout, path: p) {
+                Absent => TreeMetadataObservationFailed { reason: join(["find self-metadata on ", p, " produced an unparseable line under ", find_self_metadata_printf], "") }
+                Present { value: e } => TreeMetadataObserved { entries: list_snoc_item(xs: es, item: e) }
+              }
             }
         }
     }
@@ -7072,12 +7541,35 @@ fn approval_broker_tree_install(
   locus: ReleaseLocus,
   source_root: String,
   executables: List<String>,
+  permitted_extras: List<String>,
   transport: HostEffectElevationRoute,
 ) -> ApprovalBrokerTreeInstallVerdict {
   tree_install_in_realm(
     realm: TreeInstallElevated { owner: owner }, spine: locus.spine, locus: locus.locus, source_root: source_root,
-    revision: locus.revision, executables: executables, transport: transport,
+    revision: locus.revision, executables: executables, permitted_extras: permitted_extras, transport: transport,
   )
+}
+
+// THE PER-LOCUS SIBLING-WRITER FOOTPRINTS, the modeled set of members a leg OTHER than the tree
+// install drops at each release locus, so the readback tolerates exactly those (and the installer's
+// own receipt) and refuses everything else by name. Each is the list of that leg's modeled member
+// declarations -- never a basename list shared across loci, never a wildcard, never an owner switch.
+// A name permitted in one locus authorizes nothing in another: the helper snapshot and the staged
+// baked release hold only what the tree install writes, so they are given the empty footprint and any
+// extra (a stray file, or even a broker/microvm name) is refused there.
+fn approval_broker_sibling_writer_footprint() -> List<String> {
+  [device_crypto_deployed_digest_env_file_name]
+}
+
+fn microvm_controller_sibling_writer_footprint() -> List<String> {
+  [
+    microvm_controller_vmm_receipt_name,
+    release_images_dir_name,
+    microvm_controller_vmm_name,
+    microvm_controller_jailer_name,
+    workspace_executor_helper_name,
+    workspace_executor_script_name,
+  ]
 }
 
 // THE SPINE IS EVERY DIRECTORY ABOVE THE LOCUS that must exist, parents first. The release locus and the helper snapshot differ only in that spine (the snapshot has no
@@ -7091,6 +7583,7 @@ fn tree_install_in_realm(
   source_root: String,
   revision: ReleaseRevisionBinding,
   executables: List<String>,
+  permitted_extras: List<String>,
   transport: HostEffectElevationRoute,
 ) -> ApprovalBrokerTreeInstallVerdict {
   match revision {
@@ -7112,7 +7605,7 @@ fn tree_install_in_realm(
                 approval_broker_tree_install_observed(
                   realm: realm, spine: spine, source_root: source_root, locus: locus,
                   revision: revision, source: sort_tree_file_hashes(entries: source), source_metadata: source_entries,
-                  executables: executables, transport: transport,
+                  executables: executables, permitted_extras: permitted_extras, transport: transport,
                 )
             }
           }
@@ -7233,6 +7726,7 @@ fn approval_broker_tree_install_observed(
   source: List<TreeFileHash>,
   source_metadata: List<TreeMetadataEntry>,
   executables: List<String>,
+  permitted_extras: List<String>,
   transport: HostEffectElevationRoute,
 ) -> ApprovalBrokerTreeInstallVerdict {
   let after_spine = fold(list_snoc_item(xs: spine, item: locus), init: TreeStepsOk, f: (st, d) => tree_install_directory_step(state: st, realm: realm, path: d, transport: transport))
@@ -7285,19 +7779,48 @@ fn approval_broker_tree_install_observed(
                         match tree_installed_expectation_owned(entries: source_metadata, owner: readback_owner) {
                           Absent => TreeInstallRefused { step: TreeStepMetadataReadback, reason: "the shared install modes are not readable as octal permissions; the expectation cannot be stated, so no receipt was written" }
                           Present { value: expected } =>
-                            match tree_metadata_disagreement(expected: expected, observed: installed_entries) {
-                              Present { value: why } =>
-                                TreeInstallRefused { step: TreeStepMetadataReadback, reason: join(["the installed tree under ", locus, " does not carry the source entries as the same kinds, link targets, shared modes, and owner (", why, "); no receipt was written"], "") }
-                              Absent =>
-                                // The receipt certifies the tree where it is consumed: under the realm's
-                                // receipt owner (the deploy owner, or the owner the archive declares).
-                                match tree_installed_expectation(entries: source_metadata, owner: tree_install_realm_receipt_owner(realm: realm)) {
-                                  Absent => TreeInstallRefused { step: TreeStepMetadataReadback, reason: "the shared install modes are not readable as octal permissions; the expectation cannot be stated, so no receipt was written" }
-                                  Present { value: certified } =>
-                                    approval_broker_tree_receipt_write(
-                                      realm: realm, locus: locus, revision: revision, lines: tree_hash_lines(entries: installed),
-                                      metadata_lines: tree_metadata_lines(entries: certified),
-                                      files: count(installed), transport: transport)
+                            match observe_locus_children(locus: locus, walk_parents: tree_walk_parents(subs: release_locus_tree_subdirs), transport: transport) {
+                              TreeMetadataObservationFailed { reason: why } => TreeInstallRefused { step: TreeStepMetadataReadback, reason: why }
+                              TreeMetadataObserved { entries: locus_children_raw } =>
+                                match observe_directory_self_entries(paths: list_snoc_item(xs: spine, item: locus), transport: transport) {
+                                  TreeMetadataObservationFailed { reason: why } => TreeInstallRefused { step: TreeStepMetadataReadback, reason: why }
+                                  TreeMetadataObserved { entries: spine_observed } =>
+                                    match tree_locus_children_expectation_owned(subdirs: release_locus_tree_subdirs, executables: executables, owner: readback_owner) {
+                                      Absent => TreeInstallRefused { step: TreeStepMetadataReadback, reason: "the shared install modes are not readable as octal permissions; the locus-children expectation cannot be stated, so no receipt was written" }
+                                      Present { value: locus_children_expected } =>
+                                        match tree_walk_root_expectation_owned(subdirs: release_locus_tree_subdirs, owner: readback_owner) {
+                                          Absent => TreeInstallRefused { step: TreeStepMetadataReadback, reason: "the shared install modes are not readable as octal permissions; the walk-root expectation cannot be stated, so no receipt was written" }
+                                          Present { value: walk_root_expected } =>
+                                            match tree_spine_expectation_owned(spine: spine, locus: locus, owner: readback_owner) {
+                                              Absent => TreeInstallRefused { step: TreeStepMetadataReadback, reason: "the shared install modes are not readable as octal permissions; the spine expectation cannot be stated, so no receipt was written" }
+                                              Present { value: spine_expected } =>
+                                                match tree_locus_agreement(
+                                                  source_expected: expected,
+                                                  source_observed: installed_entries,
+                                                  locus_children_expected: locus_children_expected,
+                                                  locus_children_observed: locus_children_raw,
+                                                  walk_root_expected: walk_root_expected,
+                                                  spine_expected: spine_expected,
+                                                  spine_observed: spine_observed,
+                                                  permitted_extras: permitted_extras,
+                                                ) {
+                                                  Present { value: why } =>
+                                                    TreeInstallRefused { step: TreeStepMetadataReadback, reason: join(["the installed tree under ", locus, " does not carry the source entries as the same kinds, link targets, shared modes, and owner (", why, "); no receipt was written"], "") }
+                                                  Absent =>
+                                                    // The receipt certifies the tree where it is consumed: under the realm's
+                                                    // receipt owner (the deploy owner, or the owner the archive declares).
+                                                    match tree_installed_expectation(entries: source_metadata, owner: tree_install_realm_receipt_owner(realm: realm)) {
+                                                      Absent => TreeInstallRefused { step: TreeStepMetadataReadback, reason: "the shared install modes are not readable as octal permissions; the expectation cannot be stated, so no receipt was written" }
+                                                      Present { value: certified } =>
+                                                        approval_broker_tree_receipt_write(
+                                                          realm: realm, locus: locus, revision: revision, lines: tree_hash_lines(entries: installed),
+                                                          metadata_lines: tree_metadata_lines(entries: certified),
+                                                          files: count(installed), transport: transport)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -7313,9 +7836,11 @@ fn approval_broker_tree_install_observed(
 // digest the certified entry-metadata lines the same way, then write the three-line receipt through
 // install(1) from stdin as the locus owner. metadata_digest is ADDITIVE: a reader that pins only
 // candidate_revision and installed_digest keeps reading what it always read; the metadata digest
-// extends the receipt to cover what the content digest cannot: entry kinds, link targets, modes, and
-// ownership. The metadata TEXT stays in the tree it describes; the digest is the part the broker
-// carries.
+// extends the receipt to cover what the content digest cannot: the per-file source entries' kinds,
+// link targets, modes, and owner. This covers only those per-file entries (certified = the installed
+// source entries); the locus-root, walk-root, spine and self rows are enforced by the
+// tree_locus_agreement readback gate and are NOT part of this digest. The metadata TEXT stays in the
+// tree it describes; the digest is the part the broker carries.
 fn approval_broker_tree_receipt_write(
   realm: TreeInstallRealm,
   locus: String,
@@ -7665,6 +8190,7 @@ fn dark_helper_snapshot_at(locus: HelperLocus, tree: ReleaseLocus, source_root: 
         locus: tree,
         source_root: source_root,
         executables: [gunbc_release_bin_name],
+        permitted_extras: [],
         transport: one_transport_route(transport: transport),
       ) {
         TreeInstallRefused { step: ts, reason: r } =>
@@ -7722,6 +8248,7 @@ fn dark_stage_broker_tree(i: DarkInstallInputs) -> DarkInstallVerdict {
     locus: release_locus_record(base_root: base_root, revision: i.revision),
     source_root: i.source_root,
     executables: approval_broker_release_locus_executables,
+    permitted_extras: approval_broker_sibling_writer_footprint(),
     transport: one_transport_route(transport: i.transport),
   ) {
     TreeInstallRefused { step: ts, reason: r } =>
@@ -7746,7 +8273,7 @@ fn dark_stage_sidecar(i: DarkInstallInputs, tree_digest: String, deployed: Strin
       match i.transport {
         LocalShell => dark_stage_sidecar_readback(i: i, tree_digest: tree_digest, deployed: deployed)
         SshShell { ssh_host: _ } => dark_sidecar_readback_not_local()
-        FleetSsh { target: _, context: _ } => dark_sidecar_readback_not_local()
+        FleetSsh { target: _, context: _, kind: _} => dark_sidecar_readback_not_local()
         EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => dark_sidecar_readback_not_local()
       }
   }
@@ -8486,12 +9013,17 @@ fn realize_live_deploy_digest_readback_on_host(
             body: r.stdout,
             expected: expected,
           )
+          TypedArgvExecOverran { deadline: d } => NotConverged {
+            reason: host_effect_typed_argv_overran_reason(leg_hint: "live-deploy digest readback (ssh)", deadline: d),
+            applied: intent,
+        }
         TypedArgvExecRefused { reason: why } => NotConverged { reason: why, applied: intent }
       }
-    FleetSsh { target: t, context: c } =>
+    FleetSsh { target: t, context: c, kind: kind} =>
       match typed_argv_exec_over_fleet_ssh(
         target: t,
         context: c,
+        kind: kind,
         argv: live_deploy_digest_readback_argv(port: port),
       ) {
         TypedArgvExecConverged { result: r } =>
@@ -8502,6 +9034,10 @@ fn realize_live_deploy_digest_readback_on_host(
             body: r.stdout,
             expected: expected,
           )
+          TypedArgvExecOverran { deadline: d } => NotConverged {
+            reason: host_effect_typed_argv_overran_reason(leg_hint: "live-deploy digest readback (fleet)", deadline: d),
+            applied: intent,
+        }
         TypedArgvExecRefused { reason: why } => NotConverged { reason: why, applied: intent }
       }
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => NotConverged {
@@ -8601,7 +9137,7 @@ fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: Ide
             reason: "host_effect_apply: ProbeToolchainHomeInterference requires LocalShell on RunnerLocalHost; SshShell would record a remote transport while executing the probe locally.",
             applied: intent,
           }
-        FleetSsh { target: _, context: _ } =>
+        FleetSsh { target: _, context: _, kind: _} =>
           NotConverged {
             reason: "host_effect_apply: ProbeToolchainHomeInterference requires LocalShell on RunnerLocalHost; FleetSsh would record a remote transport while executing the probe locally.",
             applied: intent,
@@ -8995,7 +9531,7 @@ fn build_cache_host_read_observed(
           }
       }
     SshShell { ssh_host: _ } => build_cache_typed_argv_read(argv: argv_words(command: command), transport: transport)
-    FleetSsh { target: _, context: _ } => build_cache_typed_argv_read(argv: argv_words(command: command), transport: transport)
+    FleetSsh { target: _, context: _, kind: _} => build_cache_typed_argv_read(argv: argv_words(command: command), transport: transport)
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       BuildCacheReadRefused {
         reason: "host_effect_apply: EnsureBuildCacheInstance cannot observe an endpoint over EmitArtifactThenThinRun; typed mismatch.",
@@ -9012,6 +9548,8 @@ fn build_cache_typed_argv_read(
       BuildCacheReadRan {
         observed: ShellExecObserved { exit_code: r.exit_code, success: r.success, stdout: r.stdout, stderr: r.stderr },
       }
+      TypedArgvExecOverran { deadline: d } =>
+        BuildCacheReadRefused { reason: host_effect_typed_argv_overran_reason(leg_hint: "build cache read", deadline: d) }
     TypedArgvExecRefused { reason: why } => BuildCacheReadRefused { reason: why }
   }
 }
@@ -9505,7 +10043,10 @@ fn host_remove_ancestors(path: String) -> List<String> {
 //    rather than borrowing the referent's search bit.
 // So a level is admitted as `AncestorSearchable` only when `test -x` AND `test -d` both answer present
 // and `test -L` answers absent: present, a directory, and not a link. Anything else is either "not there"
-// (the entry decides whether the walk climbs) or "unreadable" (the law refuses).
+// (the entry decides whether the walk climbs) or "a probe could not be read" -- and WHICH probe is carried,
+// not folded: this function's `-L` and the walk's `-x` are different readings of different levels, and the
+// law in extdeps.posix.test_utility words each refusal from the alternative named, so an unreadable `-L`
+// must never be reported as an unreadable `-x`.
 fn host_remove_directory_admission(
   ancestor: String,
   run: fn(ArgvCommand) -> RunArgvTransportOutcome,
@@ -9518,8 +10059,12 @@ fn host_remove_directory_admission(
         // A real directory, not a link: this level could have been searched for the level under it.
         PathAbsentOrUnstattable => AncestorSearchable
         PathPresent => AncestorNotADirectory { cause: AncestorIsASymlink }
-        // The link could not be told from a plain entry: what the level IS was not answered.
-        PathExistenceUnreadable { reason: r } => AncestorSearchUnreadable { reason: r }
+        // The link could not be told from a plain entry: what the level IS was not answered. This is NOT an
+        // unreadable search reading -- `test -x` was answered by the caller and `test -d` was answered here,
+        // so the only probe that failed is `-L`, and the alternative named here is what makes the law below
+        // name `-L` too. Naming `AncestorSearchUnreadable` instead would have told the operator that a probe
+        // which answered cleanly could not be read.
+        PathExistenceUnreadable { reason: r } => AncestorLinkReadingUnreadable { reason: r }
       }
     }
     // `test -x` true and `test -d` false: a file with an execute bit, or a link to one. It has no
@@ -9781,7 +10326,7 @@ fn build_cache_socket_holder_read(inode: NonEmptyStr, transport: HostEffectTrans
       }
     }
     SshShell { ssh_host: _ } => build_cache_host_read(command: socket_inode_holder_command(inode: inode), transport: transport)
-    FleetSsh { target: _, context: _ } => build_cache_host_read(command: socket_inode_holder_command(inode: inode), transport: transport)
+    FleetSsh { target: _, context: _, kind: _} => build_cache_host_read(command: socket_inode_holder_command(inode: inode), transport: transport)
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       HostReadFailed {
         detail: "EnsureBuildCacheInstance cannot walk /proc over EmitArtifactThenThinRun; typed mismatch." as NonEmptyStr,
@@ -10501,7 +11046,7 @@ fn realize_ensure_compile_pool_slice(
           }
         LocalShell => realize_ensure_compile_pool_slice_body(node: node, transport: transport, effect_intent: effect_intent)
         SshShell { ssh_host: _ } => realize_ensure_compile_pool_slice_body(node: node, transport: transport, effect_intent: effect_intent)
-        FleetSsh { target: _, context: _ } => realize_ensure_compile_pool_slice_body(node: node, transport: transport, effect_intent: effect_intent)
+        FleetSsh { target: _, context: _, kind: _} => realize_ensure_compile_pool_slice_body(node: node, transport: transport, effect_intent: effect_intent)
       }
   }
 }
@@ -11470,6 +12015,7 @@ fn realize_microvm_controller_install_on_host(
                     locus: release_locus_record(base_root: microvm_controller_root, revision: revision),
                     source_root: source_root,
                     executables: [gunbc_release_bin_name],
+                    permitted_extras: microvm_controller_sibling_writer_footprint(),
                     transport: transport,
                   ) {
                     TreeInstallConverged { installed_digest: digest, files_installed: files } =>

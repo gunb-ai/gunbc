@@ -4187,8 +4187,47 @@ const REGEN_ROUND_COST_REEXEC_ENV: &str = "GUNBC_REGEN_ROUND_COST_REEXEC";
 /// which is the candidate step's branch NAME (`gunbc.heal_candidate` `heal_candidate_base_ref_env`)
 /// and answers a different question.
 const REGEN_ROUND_COST_BASE_MIRROR_ENV: &str = "HEAL_BASE_MIRROR_COMMIT";
+/// The pull request's ORIGINAL `base.sha` (main's tip at event time), kept SEPARATELY from
+/// `HEAL_BASE_MIRROR_COMMIT` so that rebinding that env to the resolved fork point across the
+/// seed re-exec (so a child built from a pre-change seed names the seed it truly compiled, not main's
+/// tip) does not erase the commit the seed was COMPUTED against. Carried for the log; the receipt's
+/// `base_mirror_commit` is always the fork point the round actually seeded.
+const REGEN_ROUND_COST_BASE_MIRROR_RESOLVED_FROM_ENV: &str = "HEAL_BASE_MIRROR_RESOLVED_FROM";
 const REGEN_ROUND_COST_PRODUCER: &str = "claim_executor --regen-round-cost";
 const REGEN_ROUND_COST_ENTRY_UNDER_ROOT: &str = "gunbc/regen_round_cost.dag";
+
+/// THE ENVIRONMENT THE SEED RE-EXEC CHILD MUST HOLD so that its receipt names the seed it ACTUALLY
+/// compiled. F1 (side-chat review, run 44636296482 job 135955563926): the child image is built from
+/// the FORK POINT's source and so may PREDATE `fork_point_of_base`. If it inherits
+/// `HEAL_BASE_MIRROR_COMMIT = base.sha` (main's tip), its `round_one_receipt_base_authority` names
+/// main's tip as the commit round 1 seeded — the counts happened to agree, but the NAMED source was
+/// false (fail_closed). Rebind the env the child reads to the fork point this image actually seeded
+/// from, and keep the original `base.sha` separately under RESOLVED_FROM. A NEWER child that
+/// re-derives from the rebound value reaches the same fork point (`merge-base --all` of a commit
+/// with HEAD is that commit when it is already an ancestor of HEAD), so parent and child cannot name
+/// different seeds regardless of which version the child runs. Returned in apply order: RESOLVED_FROM
+/// first, then the rebind, so a caller reading the base-mirror env mid-application never sees the
+/// original under the rebinded name.
+fn seed_reexec_child_base_env(
+    original_base_env: Option<&str>,
+    resolved_seed_commit: &str,
+) -> Vec<(String, String)> {
+    let mut bindings = Vec::new();
+    if let Some(original) = original_base_env
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        bindings.push((
+            REGEN_ROUND_COST_BASE_MIRROR_RESOLVED_FROM_ENV.to_string(),
+            original.to_string(),
+        ));
+    }
+    bindings.push((
+        REGEN_ROUND_COST_BASE_MIRROR_ENV.to_string(),
+        resolved_seed_commit.to_string(),
+    ));
+    bindings
+}
 
 /// Workspace-relative directory holding the stage0 mirror population. The same literal the
 /// journal, the diff, and the emitter's population walk use; the base bootstrap spells it once.
@@ -5886,15 +5925,94 @@ fn bootstrap_round_one_from_base_mirror(
     })
 }
 
-/// Read the base commit's generated mirror population, from THE ONE AUTHORITY the heal round step
-/// binds: `HEAL_BASE_MIRROR_COMMIT`, the pull request's immutable `base.sha`.
+/// THE FORK POINT of the pull request's `base.sha` and the checked-out HEAD — `git merge-base --all
+/// base HEAD`, admitted only when it names EXACTLY ONE commit, else refused. This is the commit the
+/// forced recheck seeds from.
 ///
-/// It is a COMMIT ID, not a name, and this function never looks one up. A branch is a moving name
-/// that a checkout's local branch and its remote-tracking ref can disagree about (a local `main`
-/// can sit behind `origin/main`); seeding the round from whichever one happens to exist, and then
-/// recording the pick as "the base commit", would fabricate a fact the round never established —
-/// gunbc.design_argument::single_authority (each fact lives in exactly one place) and gunbc.design_argument::fail_closed (no plausible output is fabricated).
-/// GitHub has already resolved this pull request's base to a commit; that commit is the input.
+/// WHY `--all`: a criss-cross history (two branches that each merged the other) has more than one
+/// best common ancestor; without `--all` git resolves the plain form to one of them by an
+/// unspecified tie-break, so the "fork point" would not be a fact of the history. `--all` surfaces
+/// every best ancestor, and the round refuses unless there is exactly one to name.
+///
+/// WHY THE FORK POINT AND NOT `base.sha` ITSELF: `base.sha` is the tip of the base branch at event
+/// time, not where the branch forked from it. On a branch that forked days earlier, the range
+/// `head..base.sha` carries every file main gained since the fork, so `--base-mirror` force-rechecked
+/// the whole distance rather than the change — measured at 95 files (87 corpus, 65 typed-cache
+/// entries discarded) for a 13-file pull request, a 22.6 GB climb that stalled 2,258 s at
+/// `memory.high` and was refused (run 43781205899, job 133018576398); the same compiler change with
+/// main merged in was 13 files and green. The merge-base is the fork point, so the seed is exactly
+/// the PR's own diff. It is the SAME value the scoped round already separates the change against in
+/// `exact_base_change` — one fact, named in one place.
+///
+/// `base_commit` must already be a validated 40-hex id the checkout contains; the malformed arm here
+/// is defence in depth for callers (`scoped_round_base_admission`) that reach it before their own
+/// shape check.
+fn fork_point_of_base(workspace: &Path, base_commit: &str) -> Result<String, String> {
+    if base_commit.len() != 40
+        || !base_commit
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte.to_ascii_lowercase()))
+    {
+        return Err(format!(
+            "BootstrapBaseMirrorCommitMalformed: {REGEN_ROUND_COST_BASE_MIRROR_ENV}={base_commit} \
+             is not a 40-hex commit id, so its fork point with HEAD cannot be named"
+        ));
+    }
+    // `--all`, so a history with more than one best common ancestor is VISIBLE rather than
+    // silently resolved. A criss-cross merge (two branches that each merged the other, no common
+    // ancestor above the tips) leaves several merge bases at the same distance; the plain form
+    // without `--all` picks one by an unspecified tie-break, so the "fork point" would not be a
+    // fact of the history. Admit the value only when there is exactly one; zero (unrelated
+    // histories) and many (criss-cross) are the same failure — the round cannot name THE fork
+    // point — and get the same located refusal.
+    let shown = scoped_round_git(workspace, &["merge-base", "--all", base_commit, "HEAD"]);
+    let stdout = match shown {
+        Ok(stdout) => stdout,
+        // `git merge-base --all` can fail for more than one reason — genuinely unrelated histories,
+        // a ref that is not a commit, or git erroring for some other cause — and the exit status does
+        // not tell them apart from here. So the message does NOT name a specific cause: it keeps the
+        // git cause verbatim under the SAME located diagnostic and says the merge base "could not be
+        // established", rather than asserting "unrelated histories" for every failure. The located
+        // refusal still replaces the bare `git merge-base ... failed` one frame up.
+        Err(cause) => {
+            return Err(format!(
+                "BootstrapBaseMirrorForkPointUnresolved: the merge-base of {base_commit} and HEAD \
+                 could not be established ({cause}); the round cannot seed the forced recheck from \
+                 a fork point it cannot name"
+            ));
+        }
+    };
+    let named: Vec<&str> = stdout
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect();
+    if named.len() != 1
+        || named[0].len() != 40
+        || !named[0]
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte.to_ascii_lowercase()))
+    {
+        return Err(format!(
+            "BootstrapBaseMirrorForkPointUnresolved: git merge-base --all {base_commit} HEAD named \
+             {} best common ancestors ({named:?}), not exactly one; with a criss-cross history \
+             there is no single fork point to seed the forced recheck from",
+            named.len()
+        ));
+    }
+    Ok(named[0].to_string())
+}
+
+/// Read the mirror population the round seeds from, from THE ONE AUTHORITY the heal round step
+/// binds: `HEAL_BASE_MIRROR_COMMIT`, the pull request's immutable `base.sha`. The value is a COMMIT
+/// ID, never a branch name or an abbreviated id — GitHub has already resolved this pull request's
+/// base to a commit, and a moving name resolved later would fabricate a fact the round never
+/// established (gunbc.design_argument::single_authority, gunbc.design_argument::fail_closed).
+///
+/// The authority is then resolved to its FORK POINT with HEAD (`fork_point_of_base`) before the
+/// population is read, so the seed is the PR's own diff rather than the branch's distance from main.
+/// The commit this returns is that fork point, and the receipt names it — the base it was computed
+/// against (`base.sha`) is printed separately at the bootstrap so staleness stays visible.
 ///
 /// Every refusal is typed and located, and none of them builds from the head mirror instead:
 /// - `BootstrapBaseMirrorCommitUnresolved` — the step did not supply an authority at all (unset, or
@@ -5902,8 +6020,12 @@ fn bootstrap_round_one_from_base_mirror(
 ///   string are distinguishable in the log),
 /// - `BootstrapBaseMirrorCommitMalformed` — a name or a short prefix rather than a full commit id,
 /// - `BootstrapBaseMirrorCommitUnreachable` — a well-formed id this checkout does not contain, or
-///   one that is not a commit (heal's checkout is `fetch-depth: 0`, so the base is present),
-/// - `BootstrapBaseMirrorUnreadable` — the commit is present but carries no mirror population.
+///   one that is not a commit (heal's checkout is `fetch-depth: 0`, so the base and its fork point
+///   are present),
+/// - `BootstrapBaseMirrorForkPointUnresolved` — a well-formed id whose merge-base with HEAD is not
+///   a single commit (unrelated histories, or a criss-cross history with more than one best common
+///   ancestor named by `git merge-base --all`),
+/// - `BootstrapBaseMirrorUnreadable` — the fork point is present but carries no mirror population.
 ///
 /// No case falls through to a build: the caller refuses the round.
 fn resolve_base_mirror_authority(
@@ -5965,16 +6087,21 @@ fn resolve_base_mirror_authority(
             String::from_utf8_lossy(&output.stderr).trim()
         ));
     }
-    let population = crate_population_at_commit(workspace, base_commit)
+    // THE SEED IS THE FORK POINT, not `base_commit` itself. The pull request's `base.sha` names the
+    // base branch's TIP at event time; on a branch behind main, the range head..base.sha is the
+    // branch's whole distance from main, not its change. Resolving the merge-base makes the forced
+    // recheck seed the PR's own diff. See `fork_point_of_base`.
+    let seed_commit = fork_point_of_base(workspace, base_commit)?;
+    let population = crate_population_at_commit(workspace, &seed_commit)
         .map_err(|e| format!("BootstrapBaseMirrorUnreadable: {e}"))?;
     if population.is_empty() {
         return Err(format!(
-            "BootstrapBaseMirrorUnreadable: {env}={base_commit} carries no generated mirror \
-             population under {STAGE0_SRC_REL}; a round cannot bootstrap from a mirror that does \
-             not exist"
+            "BootstrapBaseMirrorUnreadable: {env}={base_commit} has no generated mirror population \
+             at its fork point with HEAD ({seed_commit}) under {STAGE0_SRC_REL}; a round cannot \
+             bootstrap from a mirror that does not exist"
         ));
     }
-    Ok((resolved, population))
+    Ok((seed_commit, population))
 }
 
 /// The seed build's cost as observed by one process image.
@@ -9894,13 +10021,22 @@ pub fn run_regen_round_cost(
         v1_rt::trace_mark("round.base_mirror_bootstrap.done".to_string());
         // THE RECEIPT NAMES ITS SOURCE (sleek-owl-397, RFM #14963): the commit, the population size,
         // and the whole-crate scope, so a reader can tell WHICH bytes the round compiled and can
-        // distinguish a base byte from a head byte without re-running anything.
+        // distinguish a base byte from a head byte without re-running anything. The line also names
+        // the base SHA the seed was COMPUTED AGAINST (`base.sha`, main's tip at event time) next to
+        // the seed it resolved to (the fork point), so a stale branch is visible in the log: a large
+        // gap between the two, with a small seed size, is exactly the case this resolution exists for.
+        let seeded_from_base_sha = base_commit_env
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("<unset>");
         println!(
             "regen-round-cost: round 1 builds the whole {STAGE0_CRATE_REL} crate from the base \
-             mirror commit={} paths={} paths_rewritten={} head_added_paths_kept={} \
-             head_deleted_paths={}",
+             mirror seed_commit={} seed_size={} seeded_from_base_sha={} paths_rewritten={} \
+             head_added_paths_kept={} head_deleted_paths={}",
             restored.base_commit,
             restored.paths_restored,
+            seeded_from_base_sha,
             restored.paths_rewritten,
             restored.paths_absent_at_base,
             restored.head_deleted_paths
@@ -9960,11 +10096,23 @@ pub fn run_regen_round_cost(
             let (target, target_digest) = open_exec_target(&on_disk)?;
             let carry =
                 admit_exec_target(carry, &target_digest).map_err(|cause| cause.to_string())?;
-            let err = Command::new(format!("/proc/self/fd/{}", target.as_raw_fd()))
+            // F1: carry the RESOLVED SEED AUTHORITY into the child in the form the child reads, so a
+            // seed image that predates `fork_point_of_base` names the seed it truly compiled rather
+            // than main's tip. See `seed_reexec_child_base_env`.
+            let mut command = Command::new(format!("/proc/self/fd/{}", target.as_raw_fd()));
+            command
                 .arg0(&on_disk)
                 .args(std::env::args_os().skip(1))
-                .env(REGEN_ROUND_COST_REEXEC_ENV, carry.encode())
-                .exec();
+                .env(REGEN_ROUND_COST_REEXEC_ENV, carry.encode());
+            if let Some(restored) = base_bootstrap.as_ref() {
+                let carried_base = std::env::var(REGEN_ROUND_COST_BASE_MIRROR_ENV).ok();
+                for (name, value) in
+                    seed_reexec_child_base_env(carried_base.as_deref(), &restored.base_commit)
+                {
+                    command.env(name, value);
+                }
+            }
+            let err = command.exec();
             return Err(SeedHandoffRefusal::ReExecFailed {
                 path: on_disk.display().to_string(),
                 cause: err.to_string(),
@@ -13510,15 +13658,24 @@ const SCOPED_ROUND_PROTOCOL_FLOOR: &str = "b5a924921eaa8b564a7d3e511b3514c09c9b8
 /// THE BASE A SCOPED BASE-MIRROR ROUND OWNS MUST BE NAMED (side-chat review of #16236 at 02e160d): an
 /// unset, empty or blank `HEAL_BASE_MIRROR_COMMIT` refuses here, before recovery and before the
 /// zero-work return, instead of letting the scope fall back to the floor's diff and answer
-/// `NoAffectedMirrors` for a round whose base was never established. A named base must then carry
-/// the protocol.
+/// `NoAffectedMirrors` for a round whose base was never established.
+///
+/// A NAMED BASE MUST THEN BE JUDGED AT THE FORK POINT IT SEEDS, not at its own tip. Round 1 builds
+/// the seed from `fork_point_of_base` — the merge-base of `base` and HEAD — and re-execs into it; if
+/// that commit predates the protocol it cannot read the carried scope, so it must not be built
+/// scope-blind. A pull-request base is main and its fork point is recent, but a manual dispatch (or
+/// a branch forked before the floor) can name a base whose fork point is older than the floor while
+/// `base` itself contains it; judging `base` alone would admit a seed that cannot speak the protocol.
 fn scoped_round_base_admission(
     workspace: &Path,
     base: Option<&str>,
     floor: &str,
 ) -> Result<(), String> {
     match base.map(str::trim).filter(|b| !b.is_empty()) {
-        Some(base) => scoped_round_base_carries_protocol(workspace, base, floor),
+        Some(base) => {
+            let seed = fork_point_of_base(workspace, base)?;
+            scoped_round_base_carries_protocol(workspace, &seed, floor)
+        }
         None => Err(format!(
             "refusal: a scoped base-mirror round (--base-mirror --regen-affected-scope) needs \
              {REGEN_ROUND_COST_BASE_MIRROR_ENV} to name its base commit, and it is unset or blank"
@@ -13992,6 +14149,418 @@ mod regen_affected_set_tests {
         let stranger = git(&["rev-parse", "HEAD"]);
         git(&["checkout", "-q", "head"]);
         assert!(exact_base_change(&dir, &stranger).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// THE FORCED RECHECK SEEDS FROM THE FORK POINT, NOT MAIN'S TIP. A head that is behind main must
+    /// resolve its base-mirror seed to the merge-base of `base.sha` and HEAD, so the whole-crate
+    /// recheck is the branch's OWN diff and not the distance main travelled since the branch forked.
+    /// This is the control for the staleness cost (run 43781205899: a 95-file recheck for a 13-file
+    /// change), asserted one function per process against `resolve_base_mirror_authority`.
+    #[test]
+    fn the_forced_recheck_seeds_from_the_fork_point_when_the_head_is_behind_main() {
+        let dir = std::env::temp_dir().join(format!(
+            "gunbc-fork-seed-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(dir.join("src/v1/stage0/src")).expect("fixture dir");
+        let git = |args: &[&str]| {
+            let out = Command::new("git")
+                .args(["-c", "user.email=t@t", "-c", "user.name=t"])
+                .args(args)
+                .current_dir(&dir)
+                .output()
+                .expect("git runs");
+            assert!(
+                out.status.success(),
+                "git {args:?}: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+        git(&["init", "-q", "-b", "main"]);
+        // The fork point: one committed crate source. Both `main` and the branch descend from here.
+        std::fs::write(dir.join("src/v1/stage0/src/a.rs"), "// a\n").expect("write");
+        git(&["add", "-A"]);
+        git(&["commit", "-qm", "fork: crate a.rs"]);
+        let fork = git(&["rev-parse", "HEAD"]);
+        // main gains a crate file after the fork — this is the whole-pool inflation.
+        std::fs::write(
+            dir.join("src/v1/stage0/src/main_only.rs"),
+            "// main gained\n",
+        )
+        .expect("write");
+        git(&["add", "-A"]);
+        git(&["commit", "-qm", "main gains main_only.rs"]);
+        let main_tip = git(&["rev-parse", "HEAD"]);
+        // The branch forks at `fork` and carries ONE edit of its own (the PR's change).
+        git(&["checkout", "-q", "-b", "head", &fork]);
+        std::fs::write(
+            dir.join("src/v1/stage0/src/a.rs"),
+            "// a edited by the PR\n",
+        )
+        .expect("write");
+        git(&["add", "-A"]);
+        git(&["commit", "-qm", "the PR edits a.rs"]);
+
+        let (seed, population) =
+            resolve_base_mirror_authority(&dir, Some(main_tip.as_str())).expect("base resolves");
+        assert_eq!(
+            seed, fork,
+            "the seed is the fork point, not main's tip ({main_tip})"
+        );
+        let paths: Vec<&String> = population.keys().collect();
+        assert_eq!(
+            paths,
+            vec![&"src/v1/stage0/src/a.rs".to_string()],
+            "the seeded crate is the fork point's, which does NOT carry what main gained"
+        );
+        assert!(
+            !population.contains_key("src/v1/stage0/src/main_only.rs"),
+            "the seed must not recheck a file only main gained since the fork"
+        );
+        // THE SEED DIFF IS THE BRANCH'S OWN CHANGE: head vs the seed is exactly the PR's edit.
+        let seed_diff = git(&["diff", "--name-only", &seed, "HEAD", "--", "src/v1/stage0"]);
+        assert_eq!(
+            seed_diff.lines().collect::<Vec<_>>(),
+            vec!["src/v1/stage0/src/a.rs"],
+            "the forced recheck is the PR's own diff, not the branch's distance from main"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// THE PROTOCOL FLOOR IS JUDGED AT THE FORK POINT THE ROUND ACTUALLY BUILDS, not at `base.sha`.
+    /// A `base.sha` that contains the floor can still fork before it; seeding from that fork point
+    /// would build a seed that cannot read the carried scope, so admission must refuse it rather than
+    /// go scope-blind. Bringing main in moves the fork point past the floor, and the same base is then
+    /// admitted. w_RED: reverting admission to judge `base` alone makes the first assert fail (the
+    /// scope-blind base would be admitted).
+    #[test]
+    fn the_protocol_floor_is_judged_at_the_fork_point_a_stale_fork_point_refuses() {
+        let dir = std::env::temp_dir().join(format!(
+            "gunbc-floor-fork-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(dir.join("src/v1/stage0/src")).expect("fixture dir");
+        let git = |args: &[&str]| {
+            let out = Command::new("git")
+                .args(["-c", "user.email=t@t", "-c", "user.name=t"])
+                .args(args)
+                .current_dir(&dir)
+                .output()
+                .expect("git runs");
+            assert!(
+                out.status.success(),
+                "git {args:?}: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+        git(&["init", "-q", "-b", "main"]);
+        std::fs::write(dir.join("src/v1/stage0/src/a.rs"), "// a\n").expect("write");
+        git(&["add", "-A"]);
+        git(&["commit", "-qm", "fork: crate a.rs"]);
+        let fork = git(&["rev-parse", "HEAD"]);
+        // main later introduces the protocol floor commit; the fork point predates it.
+        std::fs::write(dir.join("src/v1/stage0/src/protocol.rs"), "// floor\n").expect("write");
+        git(&["add", "-A"]);
+        git(&["commit", "-qm", "main introduces the protocol floor"]);
+        let floor = git(&["rev-parse", "HEAD"]);
+        // `floor` doubles as both base.sha (main's tip) AND the protocol floor. The branch forked
+        // at `fork` (before the floor) and carries its own edit.
+        git(&["checkout", "-q", "-b", "head", &fork]);
+        std::fs::write(dir.join("src/v1/stage0/src/a.rs"), "// a edited\n").expect("write");
+        git(&["add", "-A"]);
+        git(&["commit", "-qm", "the PR edits a.rs"]);
+
+        // base.sha (= the floor commit) CONTAINS the floor, so judging `base` alone would admit;
+        // but the fork point the round builds predates the floor, so admission refuses.
+        assert!(
+            scoped_round_base_carries_protocol(&dir, &floor, &floor).is_ok(),
+            "sanity: base.sha itself contains the floor, so a base-judged gate would wrongly admit"
+        );
+        let refused = scoped_round_base_admission(&dir, Some(floor.as_str()), &floor);
+        assert!(
+            refused.is_err(),
+            "a fork point older than the floor must refuse, never build scope-blind; got {refused:?}"
+        );
+        assert!(
+            refused
+                .unwrap_err()
+                .contains("predates the scoped-round protocol"),
+            "the refusal names the protocol floor"
+        );
+        // Bringing main in moves the fork point past the floor: the same base is now admitted.
+        git(&["merge", "-q", "--no-edit", &floor]);
+        assert!(
+            scoped_round_base_admission(&dir, Some(floor.as_str()), &floor).is_ok(),
+            "once the fork point carries the floor, admission passes"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// THE FORK POINT REFUSES WHEN THE HISTORY IS CRISS-CROSS. `git merge-base --all` names every
+    /// best common ancestor; a criss-cross history (two branches that each merged the other) has
+    /// more than one, and the round cannot name THE fork point, so `fork_point_of_base` refuses with
+    /// the located diagnostic BEFORE the bootstrap rather than seeding from one git picked by an
+    /// unspecified tie-break. w_RED: reverting to the plain `git merge-base` (no `--all`) returns a
+    /// single chosen ancestor and this test's refusal assert fails.
+    #[test]
+    fn the_fork_point_refuses_when_the_history_is_criss_cross() {
+        let dir = std::env::temp_dir().join(format!(
+            "gunbc-fork-criss-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(dir.join("src/v1/stage0/src")).expect("fixture dir");
+        let git = |args: &[&str]| {
+            let out = Command::new("git")
+                .args(["-c", "user.email=t@t", "-c", "user.name=t"])
+                .args(args)
+                .current_dir(&dir)
+                .output()
+                .expect("git runs");
+            assert!(
+                out.status.success(),
+                "git {args:?}: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+        git(&["init", "-q", "-b", "main"]);
+        std::fs::write(dir.join("src/v1/stage0/src/root.rs"), "// root\n").expect("write");
+        git(&["add", "-A"]);
+        git(&["commit", "-qm", "root"]);
+        // Two branch tips that never see each other first.
+        git(&["checkout", "-q", "-b", "A"]);
+        std::fs::write(dir.join("src/v1/stage0/src/a.rs"), "// a\n").expect("write");
+        git(&["add", "-A"]);
+        git(&["commit", "-qm", "A edits a.rs"]);
+        let a_first = git(&["rev-parse", "HEAD"]);
+        git(&["checkout", "-q", "-b", "B", "main"]);
+        std::fs::write(dir.join("src/v1/stage0/src/b.rs"), "// b\n").expect("write");
+        git(&["add", "-A"]);
+        git(&["commit", "-qm", "B edits b.rs"]);
+        let b_first = git(&["rev-parse", "HEAD"]);
+        // Criss-cross: merge B into A, then merge the OLD A into B. Both tips then have {a_first,
+        // b_first} as parents and neither tip is an ancestor of the other.
+        git(&["checkout", "-q", "A"]);
+        git(&["merge", "-q", "--no-edit", &b_first]);
+        let a_tip = git(&["rev-parse", "HEAD"]);
+        git(&["checkout", "-q", "B"]);
+        git(&["merge", "-q", "--no-edit", &a_first]);
+        // Sanity: git itself reports two best common ancestors.
+        let bases = git(&["merge-base", "--all", &a_tip, "HEAD"]);
+        assert_eq!(
+            bases.lines().count(),
+            2,
+            "the fixture must actually be criss-cross; got {bases:?}"
+        );
+        // HEAD is B's tip; the pull-request base is A's tip.
+        let refused = fork_point_of_base(&dir, &a_tip);
+        assert!(
+            refused.is_err(),
+            "a criss-cross history has no single fork point, so it must refuse; got {refused:?}"
+        );
+        let err = refused.unwrap_err();
+        assert!(
+            err.contains("BootstrapBaseMirrorForkPointUnresolved")
+                && err.contains("not exactly one"),
+            "the refusal names the unresolved fork point and the multiplicity: {err}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// THE MERGE-BASE REFUSAL KEEPS THE GIT CAUSE AND DOES NOT BLAME "UNRELATED HISTORIES" FOR EVERY
+    /// FAILURE. `git merge-base --all` exits non-zero for several reasons — genuinely unrelated
+    /// histories, a ref that is not a commit, or git itself erroring — and the status cannot tell them
+    /// apart here, so the located refusal carries the git cause verbatim and says the merge base
+    /// "could not be established", asserting no single cause. w_RED: hard-coding the cause as
+    /// "(unrelated histories)" and dropping the git cause makes the cause-neutral assertions below
+    /// fail.
+    #[test]
+    fn the_merge_base_refusal_is_cause_neutral_and_keeps_the_git_cause() {
+        let dir = std::env::temp_dir().join(format!(
+            "gunbc-fork-unrelated-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(dir.join("src/v1/stage0/src")).expect("fixture dir");
+        let git = |args: &[&str]| {
+            let out = Command::new("git")
+                .args(["-c", "user.email=t@t", "-c", "user.name=t"])
+                .args(args)
+                .current_dir(&dir)
+                .output()
+                .expect("git runs");
+            assert!(
+                out.status.success(),
+                "git {args:?}: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+        git(&["init", "-q", "-b", "main"]);
+        std::fs::write(dir.join("src/v1/stage0/src/a.rs"), "// a\n").expect("write");
+        git(&["add", "-A"]);
+        git(&["commit", "-qm", "main root"]);
+        let first = git(&["rev-parse", "HEAD"]);
+        // An ORPHAN root commit: no shared history with `first`, so no merge base exists.
+        git(&["checkout", "-q", "--orphan", "orphan"]);
+        git(&["rm", "-r", "-q", "--cached", "."]);
+        std::fs::write(dir.join("src/v1/stage0/src/orphan.rs"), "// orphan root\n").expect("write");
+        git(&["add", "-A"]);
+        git(&["commit", "-qm", "orphan root with no parent"]);
+        let _ = git(&["rev-parse", "HEAD"]);
+        // base = `first` (the other, disconnected history); HEAD = the orphan root.
+        let refused = fork_point_of_base(&dir, &first);
+        assert!(
+            refused.is_err(),
+            "disconnected histories have no merge base, so it must refuse; got {refused:?}"
+        );
+        let err = refused.unwrap_err();
+        assert!(
+            err.contains("BootstrapBaseMirrorForkPointUnresolved")
+                && err.contains("could not be established"),
+            "the refusal is located and cause-neutral: {err}"
+        );
+        assert!(
+            err.contains("merge-base --all") && err.contains("failed"),
+            "the refusal carries the git cause verbatim, as the name and doc promise: {err}"
+        );
+        assert!(
+            !err.contains("unrelated histories"),
+            "the label must not assert one specific cause for every merge-base failure: {err}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// THE RE-EXEC CARRIES THE RESOLVED SEED INTO A CHILD THAT PREDATES THE CHANGE. The seed image is
+    /// built from the FORK POINT's source and so may predate `fork_point_of_base`; it reads
+    /// `HEAL_BASE_MIRROR_COMMIT` directly as the round's seed. Without the handoff rebinding it would
+    /// inherit main's tip and record it as the seed it compiled (the counts agreed, the named source
+    /// was false — run 44636296482 job 135955563926). `seed_reexec_child_base_env` rebinds the env the
+    /// child reads to the fork point the parent actually seeded and keeps the original base.sha under
+    /// RESOLVED_FROM, so an old child's final-receipt commit+population equal the parent's bootstrap.
+    /// w_RED: dropping the rebind (leaving the child on the inherited tip) makes the old-child commit
+    /// equal main's tip, not the seed.
+    #[test]
+    fn the_reexec_carries_the_resolved_seed_into_a_child_that_predates_the_change() {
+        let dir = std::env::temp_dir().join(format!(
+            "gunbc-fork-handoff-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(dir.join("src/v1/stage0/src")).expect("fixture dir");
+        let git = |args: &[&str]| {
+            let out = Command::new("git")
+                .args(["-c", "user.email=t@t", "-c", "user.name=t"])
+                .args(args)
+                .current_dir(&dir)
+                .output()
+                .expect("git runs");
+            assert!(
+                out.status.success(),
+                "git {args:?}: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+        git(&["init", "-q", "-b", "main"]);
+        std::fs::write(dir.join("src/v1/stage0/src/a.rs"), "// a\n").expect("write");
+        git(&["add", "-A"]);
+        git(&["commit", "-qm", "fork: crate a.rs"]);
+        let fork = git(&["rev-parse", "HEAD"]);
+        std::fs::write(
+            dir.join("src/v1/stage0/src/main_only.rs"),
+            "// main gained\n",
+        )
+        .expect("write");
+        git(&["add", "-A"]);
+        git(&["commit", "-qm", "main gains main_only.rs"]);
+        let main_tip = git(&["rev-parse", "HEAD"]);
+        git(&["checkout", "-q", "-b", "head", &fork]);
+        std::fs::write(
+            dir.join("src/v1/stage0/src/a.rs"),
+            "// a edited by the PR\n",
+        )
+        .expect("write");
+        git(&["add", "-A"]);
+        git(&["commit", "-qm", "the PR edits a.rs"]);
+
+        // THE PARENT (this image): resolves the seed from main's tip and seeds from the fork point.
+        let (parent_seed, parent_pop) =
+            resolve_base_mirror_authority(&dir, Some(main_tip.as_str())).expect("base resolves");
+        assert_eq!(parent_seed, fork, "the parent seeds from the fork point");
+
+        // THE RE-EXEC BINDINGS the parent applies to the child's environment.
+        let bindings = seed_reexec_child_base_env(Some(main_tip.as_str()), &parent_seed);
+        // A child env that started by INHERITING the raw base.sha (main's tip), as the re-exec does.
+        let mut child_env: Vec<(String, String)> = vec![(
+            REGEN_ROUND_COST_BASE_MIRROR_ENV.to_string(),
+            main_tip.clone(),
+        )];
+        for (name, value) in bindings {
+            if let Some(slot) = child_env.iter_mut().find(|(k, _)| *k == name) {
+                slot.1 = value;
+            } else {
+                child_env.push((name, value));
+            }
+        }
+        let read = |name: &str| {
+            child_env
+                .iter()
+                .find(|(k, _)| k == name)
+                .map(|(_, v)| v.clone())
+                .unwrap_or_default()
+        };
+        assert_eq!(
+            read(REGEN_ROUND_COST_BASE_MIRROR_ENV),
+            parent_seed,
+            "the env the child reads is rebound to the fork point, not main's tip"
+        );
+        assert_eq!(
+            read(REGEN_ROUND_COST_BASE_MIRROR_RESOLVED_FROM_ENV),
+            main_tip,
+            "the original base.sha survives separately as RESOLVED_FROM"
+        );
+
+        // A CHILD THAT PREDATES THE CHANGE reads the env commit AS the seed (no fork-point logic).
+        let old_child_base = read(REGEN_ROUND_COST_BASE_MIRROR_ENV);
+        let old_child_pop =
+            crate_population_at_commit(&dir, &old_child_base).expect("old child reads population");
+        // The final-receipt commit and population must equal the parent's bootstrap, not main's tip.
+        assert_eq!(
+            old_child_base, parent_seed,
+            "the old child names the fork point the parent actually seeded"
+        );
+        assert_eq!(
+            old_child_pop, parent_pop,
+            "the old child's seeded population equals the parent's bootstrap"
+        );
+        // THE LOAD-BEARING ASSERT: had the parent NOT rebound, the child would name main's tip — the
+        // false source this control guards.
+        assert_ne!(
+            main_tip, parent_seed,
+            "the whole point: main's tip and the fork point are different commits"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

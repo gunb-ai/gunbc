@@ -14,7 +14,7 @@ import extdeps.posix.test_utility { test_exists_command, test_symbolic_link_comm
 import gunbc.typed_remote_file_write { RemoteFileModeOwnerReadWriteWorldRead, NoValidation }
 import gunbc.typed_argv_exec { TypedArgvExecOutcome, typed_argv_exec_over_fleet_ssh_fresh_connection }
 import gunbc.executor_privileged_operation { EnsureSystemAccount, executor_privileged_operation_elevated_argv }
-import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTargetResolved, SshTargetRefused, fleet_ssh_target_at_standard_port, ssh_target_refusal_text }
+import gunbc.fleet.fleet_known_hosts_anchor { ProbeLeg,FleetSshExecutionContext, SshTargetResolved, SshTargetRefused, fleet_ssh_target_at_standard_port, ssh_target_refusal_text }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.fleet.fleet_bootstrap_principal { executor_bootstrap_principal }
@@ -359,7 +359,7 @@ fn reload_answer(subject: FleetHostFileSubject, context: FleetSshExecutionContex
 
 // The subject's own target, on a connection of its own: one source of target for every leg.
 fn fresh_login_answer(subject: FleetHostFileSubject, context: FleetSshExecutionContext) -> RemoteAnswer {
-  remote_answer_of(outcome: typed_argv_exec_over_fleet_ssh_fresh_connection(target: subject.target, context: context, argv: ["true"]))
+  remote_answer_of(outcome: typed_argv_exec_over_fleet_ssh_fresh_connection(kind: ProbeLeg,target: subject.target, context: context, argv: ["true"]))
 }
 
 fn export_host_reader_legs(subject: FleetHostFileSubject, context: FleetSshExecutionContext, key_line: String) -> ExportHostReaderLegs {

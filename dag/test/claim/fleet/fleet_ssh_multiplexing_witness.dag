@@ -3,13 +3,14 @@ module test.claim.fleet.fleet_ssh_multiplexing_witness
 import std.types { Bool, String, NonEmptyStr, List, Int }
 import std.measure { byte_size_count }
 import gunbc.fleet.fleet_known_hosts_anchor {
+  ProbeLeg,
   FleetSshExecutionContext,
   SshTarget,
   SshTargetResolved,
   SshTargetRefused,
   fleet_ssh_target_at_standard_port,
   portable_remote_words,
-  shape_fleet_ssh_exec,
+  FleetBareWordLeg, shape_fleet_ssh_exec,
   fleet_ssh_password_client_options,
   fleet_ssh_multiplex_control_path,
   fleet_ssh_multiplex_directory_admitted,
@@ -68,7 +69,7 @@ fn shaped_line(t0: SshTarget?) -> String {
      Present { value: t } =>
       match portable_remote_words(raws: ["id", "-un"]) {
         Absent => ""
-        Present { value: w } => join(shape_fleet_ssh_exec(context: c, target: t, words: w), " ")
+        Present { value: w } => join(shape_fleet_ssh_exec(context: c, leg: FleetBareWordLeg { target: t, words: w, kind: ProbeLeg }), " ")
       }
     }
   }

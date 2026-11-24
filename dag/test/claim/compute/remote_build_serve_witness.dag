@@ -12,8 +12,8 @@ import gunbc.compute.work_request {
   ProducerInFlight, HostComputeCapacityFull, HostBelowMemoryFloor, ToolchainMismatchRefused, DependencyNotSucceeded,
 }
 import gunbc.compute.remote_build {
-  RemoteBuildRequest, RemoteCompileEntry, remote_build_source_ref,
-  RemoteBuildRequestDecoded, RemoteBuildRequestRefused, RequestWordNotPortable, remote_build_decode_request,
+  RemoteBuildWork, RemoteCompileEntry, remote_build_source_ref,
+  RemoteBuildWorkDecoded, RemoteBuildRequestRefused, RequestWordNotPortable, remote_build_decode_request,
   RemoteBuildServeEnding, ServeServed, ServeWorkEndedUnsuccessfully, ServeRequestRefused, ServeHostFull,
   ServeWorkInFlight, ServeHostCannotServe, remote_build_serve_exit_code, remote_build_answer_from_exit, remote_build_serve_header,
   remote_build_ending_of_outcome, remote_build_answer_moves_on,
@@ -172,7 +172,7 @@ test fn the_fetch_names_the_public_origin_and_the_one_ref() -> Bool {
     Absent => false
     Present { value: source } => {
       let commit = match git_object_id_from_untagged_hex(hex: w_commit_hex) { Present { value: c } => c  Absent => git_null_sha1_object_id }
-      remote_build_fetch_argv(request: RemoteBuildRequest { commit: commit, source: source, operation: RemoteCompileEntry { entry: "dag/x.dag" } })
+      remote_build_fetch_argv(work: RemoteBuildWork { commit: commit, source: source, operation: RemoteCompileEntry { entry: "dag/x.dag" } })
         == ["fetch", "--no-tags", "--no-write-fetch-head", "https://github.com/gunb-ai/gunbc.git", "+refs/remote-build/probe.1:refs/remote-build/probe.1"]
     }
   }

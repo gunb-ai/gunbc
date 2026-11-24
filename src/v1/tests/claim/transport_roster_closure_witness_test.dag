@@ -38,7 +38,7 @@ test fn rest_transport_classifies_as_rest() -> Bool {
 }
 
 test fn shell_transport_classifies_as_shell() -> Bool {
-  kind_name(t: shell_transport_node(occurrence_identity: OccurrenceSynthetic, argv: [str_expr(s: "ls")], env: [], stdin: none, span: no_span()))
+  kind_name(t: shell_transport_node(occurrence_identity: OccurrenceSynthetic, argv: [str_expr(s: "ls")], env: [], stdin: none, wall_deadline: none, span: no_span()))
     == "shell"
 }
 

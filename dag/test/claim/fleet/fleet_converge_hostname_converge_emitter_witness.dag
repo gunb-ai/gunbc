@@ -23,6 +23,7 @@ import extdeps.github.actions {
   InputChoice, Job, RunsOnExpression, SelfHosted, HostedRunner, Step, RunStep,
   workflow_dispatch_max_inputs,
 }
+import gunbc.fleet.fleet_workflow_steps { fleet_converge_release_bins_job_id }
 import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_workflow_of,
   fleet_converge_yml_after_dispatch_input_capacity,
@@ -44,7 +45,6 @@ import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_job_needs,
   fleet_converge_jobs,
   fleet_converge_mode_job_id,
-  fleet_converge_release_bins_job_id,
   fleet_converge_dispatch_input_interpolation,
   fleet_converge_workflow_mode_wire,
   fleet_converge_workflow_modes,
