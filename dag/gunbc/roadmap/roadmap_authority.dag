@@ -9974,7 +9974,7 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
       id: "floor-parse-formation-wall",
       owner: "compiler-guarantee",
       carriers: carrier(path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md"),
-      line: ticket(t: updated(t: updated(t: fields(
+      line: ticket(t: updated(t: updated(t: updated(t: fields(
         headline: "Parse formation refuses: a dropped separator cannot silently change the program",
         boundary: "Two slices, one wall. Safety: a missing list separator refuses at parse instead of parsing as element juxtaposition (the measured below-floor census row — a dropped comma silently changes list arity). Completeness: a block after a bare identifier in if-condition position parses as the block it is, closing the measured false refusal (expected-RParen on legitimate input). Probe-paired via the corpus's parser pair; grammar-owned, no host parser (census queue items 6-7).",
         displaced_cost: "The separator specimen survived regen, whole-corpus compile, fixed-point verify, and a 15-case matrix; only a human diff read caught it (review 45347).",
@@ -9982,7 +9982,7 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         red_control: "The separator probe flips exactly when the refusal lands; the if-block fixture parses correctly; every legitimate list in corpus still parses.",
         out_of_scope: "Grammar redesign; lookahead classes the census does not name.",
         handback: "The two closed defects, probe flips, corpus parse receipt."
-      ), on: "2026-09-30", note: "Name which parser this wall is measured on (v1 or v2; #12773 open)."), on: "2026-09-30", note: "Not yet centered: parser subject undecided.")),
+      ), on: "2026-09-30", note: "Name which parser this wall is measured on (v1 or v2; #12773 open)."), on: "2026-09-30", note: "Not yet centered: parser subject undecided."), on: "on: "2026-11-24", note: "Centered on the v2 parser by measurement, not assertion. The wall is observed through #v2.compiler.parse_acceptance_census::parse_acceptance_of_text, called by witness #v2.test.claim.parse.sibling_comma_gap_probe in PR #16878, using a parser binary built at main 4cb919e4a1094b400179f749cce83b4e6a2a6a62 (a main tree, never the wall's own lineage). Both alternatives are measured blind and are rejected on that basis: a claim --entry sweep parses entry CLOSURES rather than function bodies, so an undemanded new body contributes zero error lines and a parse wall cannot surface; the stage0 seed Rust parser is grammar-inert, so no grammar edit can move it. The 2026-09-30 note that cites #12773 as open is answered -- #12773 is MERGED (v2 parse: layout derived from the stream source; RefuseOnMatch and AfterLineBreak grammar arms), which is where the v2 grammar arms live. Locus: #v2.compiler.parse::dag_grammar_comma_list_expr plus #v2.compiler.parse::dag_grammar_index_suffix_list_helper, which is the bracketed list literal; bare non-bracketed juxtaposition is the adjacent concern owned by residue-field-consequence-adoption, not this wall. Answered, so the two 2026-09-30 notes above stand as written history."")),
       dispatch: dispatchable(),
       parent: in_project(project: "compiler-guarantee", contribution: "A dropped separator cannot change the program."),
     ),
