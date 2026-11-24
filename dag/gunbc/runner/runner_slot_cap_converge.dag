@@ -25,7 +25,6 @@ import gunbc.runner.runner_slot_actuation {
   SlotReadRefused,
   read_slot_over,
   read_slot_worker_over,
-  drain_and_mask_runner_slot_over,
   activate_runner_slot_over,
   slot_actuation_settled,
   slot_actuation_outcome_wire,
@@ -51,7 +50,9 @@ import gunbc.typed_argv_exec {  typed_argv_exec_over_fleet_ssh, TypedArgvExecCon
 // A BUSY SLOT IS NEVER RESTARTED. Idleness is read from the slot's own process listing before anything
 // is changed (read_slot_worker_over); a slot with a live Runner.Worker keeps the old shape, the refusal
 // is typed and names the slot, and the other slots still converge. Only an idle slot is drained
-// (drain_and_mask_runner_slot_over) and then activated (activate_runner_slot_over) -- the same two
+// (gunbc.runner.runner_host_file_converge runner_host_drain_leg_actuate, which grants the only admission
+// gunbc.runner.runner_slot_actuation constructs -- NeverMaskARunningUnit, so the stop precedes the mask)
+// and then activated (activate_runner_slot_over) -- the same two
 // effects gunbc.runner.runner_host_file_converge sequences for the width, with no second actuator.
 
 type SlotCapLive {
