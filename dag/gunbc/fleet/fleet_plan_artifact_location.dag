@@ -1,7 +1,24 @@
 module gunbc.fleet.fleet_plan_artifact_location
-import std.types { String }
+import std.types { String, NonEmptyStr }
 
 data fleet_converge_plan_artifact_dir: String = "/tmp/fleet-converge-plan"
 
 data fleet_reviewed_plan_path: String = "/tmp/fleet-converge-plan/plan.txt"
 data fleet_reviewed_apply_path: String = "/tmp/fleet-converge-plan/apply.sh"
+
+// THE PRODUCER-SIDE COMPOSITION of the run-scoped plan-artifact directory (roadmap row
+// serve-entry-verdict-path-is-per-run). The destination of a run's plan artifacts -- plan text,
+// apply script, and the serve-entry verdict -- is NOT a fixed path under /tmp that concurrent runs
+// collide on; it is a directory the PRODUCER composes from three per-run inputs and publishes in
+// the plan pack, from which every consumer reads it and none recomputes it. The inputs: a root the
+// run's own principal can write (CI: the runner temp or the microvm controller root; a person's
+// run: their scratch), the run's plan id, and its attempt. Each is NonEmptyStr, so an absent input
+// is refused at the producer entry's typed argument binding and never defaulted -- there is no
+// fallback to /tmp/fleet-converge-plan or any other constant.
+fn fleet_plan_run_artifact_dir(
+  root: NonEmptyStr,
+  plan_run_id: NonEmptyStr,
+  attempt: NonEmptyStr,
+) -> String {
+  join([root as String, "/", plan_run_id as String, "/", attempt as String], "")
+}
