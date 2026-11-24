@@ -18,25 +18,24 @@ module test.claim.serving.butch_serving_retirement_witness
 // provenance that ties a row to the operator's read, or widening the boot-state set onto another host, each reds a
 // specific claim below -- not by counting prose, but by deciding a value over the rows the operator read.
 //
-// WHAT IT DELIBERATELY DOES NOT CLAIM. It does NOT release butch's 192 GiB serving memory charge, retire the
-// srv14_strata_reservation row, or touch srv14_strata_engine_residency_at_read: those stay held by
-// srv14_serving_memory_charge_retirement_frontier until the quiescent /proc/meminfo re-read (fleet-converge
-// host_memory_observe host=srv14) lands, and test.claim.runner.srv14_runner_capacity_witness pins them at 5/0 in
-// the meantime. Claim (3) here pins exactly that: the charge frontier must STILL be unbound after step 1.
+// WHAT IT DELIBERATELY DOES NOT CLAIM. It does NOT carry the 192 GiB release itself: the reservation row, the
+// two engine rows and the two-trigger retirement frontier were DISCHARGED on 2026-11-24 (both triggers landed;
+// the operator ruled the release, gunbc.design_ruling::
+// srv14_serving_memory_charge_retirement_operator_approved_2026_11_24). The discharged numbers are pinned by
+// test.claim.serving.serving_reservation_witness and test.claim.runner.srv14_runner_capacity_witness; this
+// unit's claims ride on the BOOT STATES alone.
 //
 // Run (this witness runs alone):
 //   claim_batch --hermetic --source-root dag --source-root src/v2 \
 //     --entry dag/test/claim/serving/butch_serving_retirement_witness.dag \
 //     --functions <the test fn names, comma-joined>
 import std.types { Bool }
-import std.dissolution { dissolution_is_bound }
 import std.algebra { string_contains }
 import std.optional { Present, Absent }
 import gunbc.fleet.fleet_host_identity { operator_host_srv14 }
 import extdeps.systemd.systemctl { UnitFileState, UnitEnabled, UnitDisabled }
 import gunbc.serving.serving_reservation {
   srv14_serving_unit_boot_states, serving_unit_boot_states_on,
-  srv14_serving_memory_charge_retirement_frontier,
 }
 
 // The systemd carrier's own value domain decides it: UnitFileState is the single authority for a unit's file state
@@ -87,15 +86,17 @@ test fn every_boot_state_is_a_typed_operator_read() -> Bool {
       })
 }
 
-// THE CHARGE IS NOT RELEASED EARLY. Step 1 retires the UNITS; it does not release the memory charge. The single
-// typed guard that srv14's 192 GiB serving memory charge is still HELD is the retirement frontier being UNBOUND:
-// trigger one (the unit retirement) is discharged in typed rows, asserted disabled by
-// butch_desired_state_declares_no_serving_engine, and trigger two -- the quiescent re-read -- has no
-// host_memory_observe receipt yet, so the frontier cannot bind. Were the charge retired with the units, this
-// frontier would bind and this claim would go red; srv14_runner_capacity_witness pins the same money independently.
-test fn the_serving_memory_charge_frontier_is_still_held() -> Bool {
-  !dissolution_is_bound(srv14_serving_memory_charge_retirement_frontier)
-    && all(srv14_serving_unit_boot_states, u => is_unit_disabled(u.unit_file_state))
+// THE CHARGE RELEASE LEFT THE UNITS RETIRED. Step 1 retired the UNITS; the quiescent peer re-read (run
+// 45321352046) and the operator's 2026-11-24 ruling then released the 192 GiB charge with them -- the
+// reservation row, the two engine rows and the retirement frontier are gone and host_memory_reserved(srv14)
+// reads Present(0). The DISCHARGED NUMBERS are pinned by test.claim.serving.serving_reservation_witness and
+// test.claim.runner.srv14_runner_capacity_witness; this unit keeps its hands on the BOOT STATES. Discriminating
+// red: a unit returning to UnitEnabled while the model charges srv14 nothing would mean serving is back on a
+// host the build pool now owns -- this claim goes red while the charge witness stays green, exactly the drift
+// this pair must catch.
+test fn the_charge_release_left_the_units_retired() -> Bool {
+  all(srv14_serving_unit_boot_states, u => is_unit_disabled(u.unit_file_state))
+    && length(srv14_serving_unit_boot_states) == 4
 }
 
 // THE BOOT-STATE SET IS SCOPED TO BUTCH ALONE. This is a boot-enable reading of butch's units, not a fleet-wide
