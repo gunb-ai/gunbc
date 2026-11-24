@@ -63,8 +63,20 @@ import std.types { CommitSha, String, commit_sha_text_holds }
 // `dag_language_model`, missing span_index_extent); second pair red_at c65a78ee18095a84215585382773205859d62a44 /
 // green_at fd8fc90a048581364791b970cda34b224d7089cc (resolved, but that tree's witness was pre-fixture-change).
 
-data annotation_gap_v1_v2_agreement_probe_kind: String = "deliberate-break"
-data annotation_gap_v1_v2_agreement_probe_ref: String = "refs/heads/red-control/parse-comment-gap-attachment-v2-consumed"
+// THE LABELS THAT WERE DATA, AND WHY THEY ARE NOT. An earlier revision published kind, the durable ref, the
+// executed-on date, the witness module and fn, the roster arm, the two-root refusal and the argv roots as
+// `data` rows beside the SHAs. Nothing read them -- eight rows with one reference each, their own declaration
+// -- and a claim that no predicate consumes is commentary wearing a type, which
+// gunbc.design_argument::guarantee_ladder (rung honesty) ranks below simply writing it in prose. They are
+// prose now, in full. Only the three SHAs stay data, because those three and only those are consumed, by
+// `probe_pair_receipt_shas_are_real_commit_shas` below.
+//   kind: deliberate-break.  durable ref: refs/heads/red-control/parse-comment-gap-attachment-v2-consumed
+//   witness: v2.test.claim.manual.annotation_gap_v1_v2_agreement, fn v1_and_v2_agree_on_neighbour_text_holds
+//   arm removed in red_at: the second disjunct of v2.compiler.parse parse_node_is_source_region,
+//     `|| parse_node_has_authored_edge(name: ^grammar_infix_left_node_projection)`
+//   executed on: 2026-11-23 for the pair, re-executed 2026-11-24 once this receipt itself was edited; the raw
+//     PASS/FAIL lines and each command's real exit status live in the run log pinned on PR gunb-ai/gunbc#16942
+//   argv roots: dag, src/v1, src/v2 -- two roots refuse this control's v1 imports at the checker
 data annotation_gap_v1_v2_agreement_probe_red_base: CommitSha = "8c86ee47f68ec1f451e25a8cb8f594a868e5c384"
 // red_at's FIRST PARENT is green_at: the break is one commit on top of the tree whose witness it runs
 // unchanged, which is the strictest form of the pair -- the two runs differ by the roster arm alone.
@@ -73,11 +85,6 @@ data annotation_gap_v1_v2_agreement_probe_red_at: CommitSha = "ca2a086a1e69699aa
 // is green_at plus one commit that touches only this receipt module, so the witness bytes are the same in
 // green_at, in the head, and in red_at (proven by git hash-object in the run log).
 data annotation_gap_v1_v2_agreement_probe_green_at: CommitSha = "08b009527e8fca04e87f819dee18708946cfcc41"
-data annotation_gap_v1_v2_agreement_probe_executed_on: String = "2026-11-23"
-// The witness this pair is about, named as data so a reader never has to infer it from a file path.
-data annotation_gap_v1_v2_agreement_probe_witness_module: String = "v2.test.claim.manual.annotation_gap_v1_v2_agreement"
-data annotation_gap_v1_v2_agreement_probe_witness_fn: String = "v1_and_v2_agree_on_neighbour_text_holds"
-data annotation_gap_v1_v2_agreement_probe_roster_arm: String = "v2.compiler.parse parse_node_is_source_region || parse_node_has_authored_edge(name: ^grammar_infix_left_node_projection)"
 // HOW THIS CONTROL IS EXECUTED, recorded because the instrument is not the obvious one, and a reader who
 // reaches for the floor's own two-root command will otherwise find the control unrunnable and conclude the
 // wrong thing. claim_batch with the floor's CLI roots (--source-root dag --source-root src/v2) cannot
@@ -98,17 +105,16 @@ data annotation_gap_v1_v2_agreement_probe_roster_arm: String = "v2.compiler.pars
 // importing it, so no executor can run it either. The pair was executed with three named roots under
 // claim_batch, one argv on both trees, and those runs are the whole of its evidence; no gate runs it.
 // The refusal text itself is the evidence and it lives VERBATIM in the run log (round B, block A1: the
-// four unresolved-import lines with the command, the tree and the real exit status 1). The two fields
-// below are POINTERS into that log, not proofs of it -- a Bool in a witness cannot certify an observation
-// made outside itself, and CommitSha here is an unvalidated String alias (dag/std/types.dag:201, whose own
+// four unresolved-import lines with the command, the tree and the real exit status 1). Those two recorded
+// facts are POINTERS into that log, not proofs of it -- a Bool in a witness cannot certify an observation
+// made outside itself, which is why the two-root refusal and the argv roots are prose now rather than rows,
+// and CommitSha here is an unvalidated String alias (dag/std/types.dag:201, whose own
 // comment says the predicate beside it is a check a caller must remember to run, not a construction wall).
 // What the log anchors: the tree sha named in the comment above is proved to exist as a commit by
 // 'git cat-file -e <sha>^{commit}' with its own exit status, and the binary that produced the refusal is
 // hashed by a verbatim 'sha256sum' line. No binary hash is recorded in this module, because no predicate
 // in the language would fail against a fabricated one -- the hash belongs in the log beside the run that
 // produced it, which is where it is.
-data annotation_gap_v1_v2_agreement_probe_claim_batch_two_roots_resolve_v1_imports: Bool = false
-data annotation_gap_v1_v2_agreement_probe_pair_argv_roots: String = "dag,src/v1,src/v2"
 
 // WHY A CLAIM AND NOT A REVIEWER. CommitSha is an unvalidated String alias (dag/std/types.dag:201), and
 // its comment says so: the predicate beside it is a validating CHECK a caller must remember to run, not a

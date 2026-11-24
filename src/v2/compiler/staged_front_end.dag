@@ -235,10 +235,17 @@ fn front_end_parse_step(
 // as many captures as its text has line feeds plus one; a total over rows equals the capture count
 // exactly when none was lost or duplicated. The model is pinned claim-side, not assumed:
 // v2.test.claim.staged_front_end front_end_landed_capture_count_models_a_block_as_its_line_count.
-// WHAT IT DOES NOT SEE: WHICH gap a capture landed in. Placement is the job of the gated v1/v2
-// agreement control (v2.test.claim.manual.annotation_gap_v1_v2_agreement), which puts one source text
-// through both parsers and refuses when a row's neighbours disagree -- a roster or gap-rule divergence
-// is caught THERE, and this guard catches only the loss.
+// WHAT IT DOES NOT SEE: WHICH gap a capture landed in. Placement is checked ONLY by the v1/v2 agreement
+// control (v2.test.claim.manual.annotation_gap_v1_v2_agreement), which puts one source text through both
+// parsers and refuses when a row's neighbours disagree -- a roster or gap-rule divergence is caught THERE,
+// and this guard catches only the loss. THE RUNG, STATED PLAINLY: that control is MANUAL AND UNGATED. No
+// required floor row admits it (enrolment was held on 2026-11-24) and the required floor has no executor at
+// all, so a divergence in placement is caught only when someone runs it by hand; its receipt, which says the
+// same thing, is v2.test.claim.manual.annotation_gap_v1_v2_agreement_probe_pair. So this guard has no gate
+// behind it for placement, and its next-rung trigger is named rather than deferred: the first placement
+// divergence found with no executed run of that control behind it -- gunbc.design_argument::guarantee_ladder
+// (no untracked stall) makes that the moment to ask for a floor that can execute, not a moment to call this
+// covered.
 fn front_end_unlanded_annotation_diagnostic(
   captures: List<UnboundSourceAnnotation>,
   graph: SourceAnnotationGraph

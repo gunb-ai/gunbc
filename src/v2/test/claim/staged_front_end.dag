@@ -149,8 +149,10 @@ test fn staged_front_end_unbound_value_name_refuses_with_its_own_reason() -> Boo
 // (a lost capture refuses there, so its passing is the guard being silent on real input), the row/line
 // model the comparison counts by, and the guard's NON-VACUITY: it fires when the graph accounts for
 // fewer captures than the lex made. The v1/v2 agreement half -- WHICH gap a capture landed in -- is
-// the gated control v2.test.claim.manual.annotation_gap_v1_v2_agreement, whose probe-pair receipt is
-// v2.test.claim.manual.annotation_gap_v1_v2_agreement_probe_pair.
+// the MANUAL, UNGATED control v2.test.claim.manual.annotation_gap_v1_v2_agreement, whose probe-pair receipt
+// is v2.test.claim.manual.annotation_gap_v1_v2_agreement_probe_pair. It sits under manual/, no gated row
+// admits it and the required floor executes nothing, so none of these tests stands in for it and none of them
+// is run by CI either: its rung is green by hand execution under claim_batch, recorded in that receipt.
 
 data annotated_candidate_source: String = "module m\n\n// why the reader needs this\nfn add(x: Int, y: Int) -> Int { x + y }\n"
 
