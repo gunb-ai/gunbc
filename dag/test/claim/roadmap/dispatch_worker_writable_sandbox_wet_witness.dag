@@ -2941,13 +2941,22 @@ test fn the_locus_install_refuses_a_link_at_a_fold_destination() -> Bool {
     verdict: witness_locus_install(instance: inst, locus_key: src_key, revision_text: revision),
   )
   let removal_admitted = removed && !string_contains(s: removed_cause, pattern: plan_cause)
+  // THE ESCAPE TARGETS WERE THERE. Both escape directories exist, empty, for the duration of the run -- the
+  // readback that removes each one and proves it gone is only a verdict if the name was standing to be
+  // removed in the first place. They live under /var/tmp, OUTSIDE the scratch tree the root sweep reaches,
+  // which is exactly why each is passed to the readback helper by name.
+  let away_present = wet_path_exists(path: away)
+    && wet_out(command: ls_almost_all_one_per_line_command(path: away)) == ""
+  let away_deep_present = wet_path_exists(path: away_deep)
+    && wet_out(command: ls_almost_all_one_per_line_command(path: away_deep)) == ""
   // EVERY ROOT THIS CLAIM ALLOCATES GOES TO CLEANUP AND READBACK, not just the scratch root. `away` and
   // `away_deep` are mktemp'd under /var/tmp -- outside the scratch tree the root readback sweeps -- so a
   // verdict that cleaned only `root` left two escape targets on the host and never read back that the
   // refused install left them empty. The readback helper removes each root and then proves it is gone.
   wet_claim_verdicts_with_root_readbacks(
     verdict: wet_claim_is_confined(instance: inst, root: root)
-      && root != "" && clean_admitted && src_refused && deep_refused && removal_admitted,
+      && root != "" && clean_admitted && src_refused && deep_refused && removal_admitted
+      && away_present && away_deep_present,
     roots: [root as NonEmptyStr, away as NonEmptyStr, away_deep as NonEmptyStr],
   )
 }
