@@ -10,12 +10,13 @@ import gunbc.tools.cron_tag { build_cron_entry_line, cron_tag_marker, cron_entry
 // no-shell-control-word check (it asserts the rendered line carries none of `set -e`, `||`, `&&`,
 // `;`, `2>/dev/null`), which is satisfied identically by a builder that REFUSES a malformed field
 // AND by one that merely CONSTRUCTS a benign line from it — so the oracle cannot tell those two
-// builders apart. This sibling closes that gap: each arm feeds a malformed field (the same
-// adversarial values the oracle plants) and asserts the returned line EQUALS the typed refusal
+// builders apart. This sibling closes that gap: FOUR arms feed a malformed field (the same
+// adversarial values the oracle plants) and assert the returned line EQUALS the typed refusal
 // sentinel cron_entry_refused_poison, the refusal build_cron_entry_line produces before any line is
-// built. A safe-constructor that returns a real crontab line instead of refusing FAILS these arms;
-// a builder that always returns the sentinel FAILS the positive control below. Together the five
-// arms pin refuse-not-safely-construct, which no current oracle arm can do.
+// built; a FIFTH positive control feeds a well-formed entry and asserts it is NOT refused. A
+// safe-constructor that returns a real crontab line instead of refusing FAILS the four poison-equality
+// arms; a builder that always returns the sentinel FAILS the positive control. Together the five arms
+// pin refuse-not-safely-construct, which no current oracle arm can do.
 //
 // THIS IS NOT A RED-BY-DESIGN CLAIM AND IS NOT ENROLLED IN v2.workflow.floor_expected_red: the
 // typed rebind made build_cron_entry_line return the sentinel on a malformed field, so all five arms
@@ -26,10 +27,6 @@ import gunbc.tools.cron_tag { build_cron_entry_line, cron_tag_marker, cron_entry
 // re-armed. It reads the same callable surface the oracle reads (build_cron_entry_line over the
 // declared schedule/command/log_path/tag fields, and cron_tag_marker), plus the refusal sentinel the
 // boundary exposes.
-
-// The refusal build_cron_entry_line projects for any malformed field, before any crontab line is
-// produced. Non-empty and free of every shell control word, so it is neither a plausible entry nor a
-// line that could smuggle an instruction.
 
 // REFUSAL DEMONSTRATED — the discriminator. A schedule is a cron grammar position; one carrying
 // `; shutdown -h now` does not parse as five schedule fields and must be refused before any line is
