@@ -3,6 +3,10 @@ module test.claim.sig_unresolved_fallthrough_witness
 import std.types { String, Bool, Int, List }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
+import gunbc.recurring_failure_mode.unresolved_callee_conflated_with_dispatched_elsewhere {
+  unresolved_callee_conflated_with_dispatched_elsewhere,
+}
+
 import gunbc.instruments.multi_module_compile_fixture {
   MultiModuleCompileFixture,
   MultiModuleCompileFixtureOutcome,
@@ -46,8 +50,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //
 // THIS WITNESS IS THE EXECUTED PROOF that the method wall does not currently close that gap:
 // a mislabeled bare call to a kernel method template name (unimported, so CallableUnresolved)
-// compiles CLEAN. The licensed twin — the same call WITH the import, so sig resolves — is
-// REFUSED by the direct-call shape wall. The asymmetry IS the blind spot.
+// compiles CLEAN. The licensed twin — the same call where the name IS declared locally in the
+// fixture module (so sig resolves) — is REFUSED by the direct-call shape wall. The asymmetry IS
+// the blind spot.
 //
 // WHAT THIS WITNESS DOES NOT PROVE: that the fix is correct. The red side asserts the compiler
 // ACCEPTS the mislabeled call (0 blocking diagnostics at the call). Once coverage lands and the
@@ -55,24 +60,32 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // and the assertion must flip to expect refusal. That inversion is the node's red control: the
 // fallthrough count monotonically falls as coverage lands.
 //
-// CENSUS BASELINE (measured during the measurement leg; the witness IS the artifact, the
-// numbers are measurement context not a committed table — per §6, census machinery without a
-// concrete retained consumer is retired):
+// CENSUS BASELINE (the input this witness's row actually parsed — name it, per §6 consumption):
+//   Committed artifact: docs/measurements/sig_unresolved_fallthrough_census.tsv
+//   Producer (byte-deterministic): scripts/sig_unresolved_fallthrough_census.sh
+//     — kernel name roster DERIVED from the algebra authority dag/std/algebra.dag (the same
+//     AlgebraFieldTemplate rows algebra_method_template_name consults), not hand-typed.
+//   Baseline measured at main 1d8a1d3976758e7b22b2f7361b3ef45b1f09a752:
+//     5890 sites / 1327 modules / 31 distinct names (aggregate sha256 of the committed TSV is
+//     printed by the producer at run time; the per-name table is the TSV itself — read it there,
+//     do not transcribe it here, a hand-typed copy drifts from its source silently).
+//   Consumer: this row's red_control "fallthrough count monotonically falls" (node
+//     call-signature-resolution-coverage in dag/gunbc/roadmap/roadmap_authority.dag) falls FROM
+//     this baseline. Future coverage legs re-run the producer and diff against the committed file.
 //
 // OLD (invalidated by the executed control): 4597 sites — imported-and-not-locally-declared
 //   calls. These resolve via parent_closure_callable_candidates, the wall fires, they are
-//   PROTECTED. Counting them as blind spot was wrong (the executed control proves it).
+//   PROTECTED. Counting them as blind spot was wrong (the executed control proves it; see the
+//   run link in the PR).
 //
-// CORRECTED: 5890 sites, 31 names, 1327 modules — bare calls to kernel method template names
-//   with labeled args, where the callee is NEITHER locally declared NOR imported. These hit
-//   CallableUnresolved → method bridge → no shape wall. Reproducible via the predicate stated
-//   below (git grep, light — no committed producer; per-name figures are omitted intentionally:
-//   a hand-typed table drifts from its source and the predicate is the single authority).
-//   Predicate filters: not locally declared (fn NAME( absent from file),
+// PREDICATE FILTERS and error direction: not locally declared (fn NAME( absent from file);
 //   not imported (import line does not list the name). Not filtered statically: parent_closure
-//   reachability (the import filter subsumes it); builtin/kernel table (the builtin positional
-//   arity check ignores labeled args by construction — line 8606 — so labels remain unchecked
-//   whichever path handles the call; error direction: conservative).
+//   reachability beyond explicit imports (the import filter subsumes it for the corpus);
+//   builtin/kernel table (the builtin positional arity check ignores labeled args by
+//   construction, so labels remain unchecked whichever path handles the call; error direction:
+//   conservative — sites the resolver can still answer are excluded via the import filter, and
+//   the kernel-table route keeps labels unchecked anyway, so the count does not overstate the
+//   hole).
 
 // THE FIXTURE: calls 'length' with a deliberately wrong argument label, WITHOUT importing it.
 // 'length' is a kernel method template name (FreeMonoidCollection profile, ReceiverSelf param).
@@ -81,13 +94,15 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data unimported_mislabel_entry: String = "module suft.red\nfn probe(xs: List<Int>) -> Int { length(wrong_label: xs) }\n"
 
-// THE LICENSED TWIN: the same call where 'length' is declared locally, so func_env_declared_func_sig
-// resolves via func_env.local, sig=Present, and direct_call_shape_wall_note fires:
+// THE LICENSED TWIN: the same call where 'length' is declared LOCALLY (not imported — the
+// compile_fixture compiles in isolation with no module index, so imports cannot resolve).
+// A local declaration puts the name in func_env.local, func_env_declared_func_sig finds it,
+// sig=Present, and direct_call_shape_wall_note fires:
 // "call shape mismatch calling 'length': no parameter named 'wrong_label' (declared: [xs])".
 // The compiler IS capable of catching this at the shape layer; it simply does not when the name
 // is unresolved (CallableUnresolved → method bridge).
 
-data imported_mislabel_entry: String = "module suft.green\nfn length(xs: List<Int>) -> Int { 0 }\nfn probe(xs: List<Int>) -> Int { length(wrong_label: xs) }\n"
+data locally_declared_mislabel_entry: String = "module suft.green\nfn length(xs: List<Int>) -> Int { 0 }\nfn probe(xs: List<Int>) -> Int { length(wrong_label: xs) }\n"
 
 fn compile_probe(entry: String) -> MultiModuleCompileFixtureOutcome {
   compile_fixture(MultiModuleCompileFixture {
@@ -107,11 +122,11 @@ test fn unimported_kernel_name_mislabeled_call_compiles_clean() -> Bool {
   }
 }
 
-// THE LICENSED TWIN: the imported mislabeled call IS refused by the shape wall.
+// THE LICENSED TWIN: the locally-declared mislabeled call IS refused by the shape wall.
 // This proves the compiler is CAPABLE of catching this at the shape layer — it simply does not
 // when the name is unresolved. The pairing makes the red a guarantee, not a complaint.
-test fn imported_kernel_name_mislabeled_call_is_refused() -> Bool {
-  match compile_probe(imported_mislabel_entry) {
+test fn locally_declared_kernel_name_mislabeled_call_is_refused() -> Bool {
+  match compile_probe(locally_declared_mislabel_entry) {
     FixtureCompileCompleted { module_count: _, emitted_files: _, resolved_rust_functions: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
       fixture_has_class(rows: rows, wanted: "CallArgumentNameUnknown")
     FixtureCompileRefused { module_count: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
@@ -120,15 +135,23 @@ test fn imported_kernel_name_mislabeled_call_is_refused() -> Bool {
   }
 }
 
-// NEGATIVE CONTROL: the correctly-labeled imported call compiles clean (the wall does not
-// over-refuse). This catches an over-refusing repair that breaks correct programs.
-data imported_correct_entry: String = "module suft.control\nfn length(xs: List<Int>) -> Int { 0 }\nfn probe(xs: List<Int>) -> Int { length(xs: xs) }\n"
+// NEGATIVE CONTROL: the correctly-labeled locally-declared call compiles clean (the wall does
+// not over-refuse). This catches an over-refusing repair that breaks correct programs.
+data locally_declared_correct_entry: String = "module suft.control\nfn length(xs: List<Int>) -> Int { 0 }\nfn probe(xs: List<Int>) -> Int { length(xs: xs) }\n"
 
-test fn imported_correctly_labeled_call_compiles_clean() -> Bool {
-  match compile_probe(imported_correct_entry) {
+test fn locally_declared_correctly_labeled_call_compiles_clean() -> Bool {
+  match compile_probe(locally_declared_correct_entry) {
     FixtureCompileCompleted { module_count: _, emitted_files: _, resolved_rust_functions: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
       count(fixture_blocking_rows(rows: rows)) == 0
     FixtureCompileRefused { module_count: _, diagnostics: _, source_digest: _, compiler_digest: _ } => false
     FixtureInstrumentRefused { cause: _ } => false
   }
+}
+
+// THE TYPED CLASS ROW LINK. The recurring failure mode this witness trips is the unresolved-callee
+// absorber row; asserting its identity here ties the tripwire to the row in a typed, CI-checked
+// position (a comment-only link can rot silently when the row is renamed; this leg goes red).
+test fn class_row_link_is_current() -> Bool {
+  (unresolved_callee_conflated_with_dispatched_elsewhere.identity as String)
+    == "unresolved_callee_conflated_with_dispatched_elsewhere"
 }
