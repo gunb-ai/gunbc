@@ -465,6 +465,21 @@ test fn pcfs_write_dag_prepared_output() -> Bool {
 // sha256 of the file claim 4 writes is the byte-level check.
 data pcfs_dag_prepared_output_bytes: Int = 8608884
 
+// DIAGNOSTIC (runs on both legs): publish the two probes' compiled plans next to the ledger, so a
+// FAIL of a shape claim can be read rather than guessed at. The claim itself only asserts the work
+// is the shape it claims to be (three alternatives each) and that the write succeeded.
+test fn pcfs_probe_plans_are_instrumented() -> Bool {
+  let serial_a = pcfs_plan(plan: pcfs_shared_plan(alts: pcfs_alts_repeat()))
+  let serial_b = pcfs_plan(plan: pcfs_shared_plan(alts: pcfs_alts_distinct()))
+  let text = pcfs_cat3(
+    a: "A=",
+    b: serial_a,
+    c: pcfs_cat3(a: "|B=", b: serial_b, c: "|")
+  )
+  let written = Filesystem.Write(path: "target/pcfs_probe_plans.txt", content: text)
+  written.success && length(xs: pcfs_alts_repeat()) == 3 && length(xs: pcfs_alts_distinct()) == 3
+}
+
 test fn pcfs_dag_prepared_output_byte_count_matches_recorded() -> Bool {
   string_length(text: pcfs_dag_prepared_serial()) == pcfs_dag_prepared_output_bytes
 }
