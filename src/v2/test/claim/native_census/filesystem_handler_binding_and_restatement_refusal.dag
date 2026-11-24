@@ -16,6 +16,7 @@ import v2.compiler.effect_demand {
   filesystem_effect_reach,
   filesystem_effect_site_eq,
   filesystem_effect_offender_sites_are_distinct,
+  filesystem_effect_reach_site,
   FilesystemWallCompileGateTrigger,
   filesystem_wall_compile_gate_trigger,
   filesystem_effect_reach_census,
@@ -189,6 +190,66 @@ test fn filesystem_compile_gate_trigger_names_the_two_self_host_sites() -> Bool 
     && (filesystem_wall_compile_gate_trigger.migrate_to_bound_handler == "emit_file_call")
     && (filesystem_wall_compile_gate_trigger.gate_connects_when
       == ^self_host_direct_reaches_migrate_to_bound_handler)
+}
+
+// THE NEWLY-ADDED-SITE CONTROL (Manager B's binding arm). This is NOT the planted-out-of-bounds arm: a
+// planted reach proves the wall catches what the producer emits; THIS proves the census notices a site
+// NOBODY has flagged before -- an extra direct reach appearing in a fresh module/declaration must surface as
+// exactly ONE NEW NAMED offender, and the two known self_host offenders must still be there. It is a
+// DISCRIMINATOR for the site-identity key: a (module, operation) key would collapse the two self_host sites
+// (same module, same operation) to ONE, so baseline 2 would read 1 and the whole chain fails. With the
+// occurrence key the three sites are distinct, the baseline is 2, the extension is 3, and the new one is the
+// planted site by name. If the census could not tell an old offender from a new one, the still-present and
+// the new-site assertions could not both hold -- which is the failure B asked to be surfaced now.
+test fn filesystem_newly_added_site_surfaces_as_a_new_named_offender() -> Bool {
+  let planted_site = FilesystemEffectSite {
+    module_path: "v2.compiler.native_census_witness_planted",
+    enclosing_declaration: "planted_direct_read",
+    site_occurrence: 1
+  }
+  let planted_reach = filesystem_effect_reach(
+    site: planted_site,
+    operation: "filesystem_read",
+    handler_slug: filesystem_handler_slug
+  )
+  let extended = Cons {
+    head: filesystem_reach_self_host_roster,
+    tail: Cons { head: filesystem_reach_self_host_fold, tail: Cons { head: planted_reach, tail: Empty } }
+  }
+  let report = filesystem_effect_reach_census(
+    population_source: filesystem_effect_emitted_closure_population,
+    reaches: extended
+  )
+  (length(xs: self_host_emitted_closure_report.offenders) == 2)
+    && (length(xs: report.offenders) == 3)
+    && filesystem_effect_offender_sites_are_distinct(offenders: report.offenders)
+    && any(
+      xs: report.offenders,
+      predicate: fn(o) {
+        filesystem_effect_site_eq(
+          left: filesystem_effect_reach_site(reach: o),
+          right: planted_site
+        )
+      }
+    )
+    && any(
+      xs: report.offenders,
+      predicate: fn(o) {
+        filesystem_effect_site_eq(
+          left: filesystem_effect_reach_site(reach: o),
+          right: self_host_read_roster_manifest_site
+        )
+      }
+    )
+    && any(
+      xs: report.offenders,
+      predicate: fn(o) {
+        filesystem_effect_site_eq(
+          left: filesystem_effect_reach_site(reach: o),
+          right: self_host_fold_side_bytes_site
+        )
+      }
+    )
 }
 
 test fn filesystem_read_direct_reach_refuses() -> Bool {
