@@ -87,16 +87,13 @@ enum RetainedCommands {
         /// Source root directories (searched recursively for .dag files)
         #[arg(long = "source-root")]
         source_roots: Vec<String>,
-        /// Entry function to execute, repeatable; absent, `main`, or every `test fn` under --claim-run
+        /// Entry function to execute, repeatable; absent, `main`
         #[arg(long = "function")]
         functions: Vec<String>,
         /// Entry `.dag` file: load only this module and its transitive imports
         /// (not every file under --source-root). Required for scoped TestClaim runs.
         #[arg(long)]
         entry: Option<String>,
-        /// TestClaim / witness run: Bool false → exit 1; requires --entry
-        #[arg(long)]
-        claim_run: bool,
         /// Named argument for the entry function, repeatable: `--arg name=value`.
         /// Bound against the parameter's resolved type identity: kernel String, Int, and Bool, and std.types NonEmptyStr (String where string_non_empty). Other types refuse.
         #[arg(long = "arg")]
@@ -419,15 +416,28 @@ impl v1_compiler::gunbc_cli_dispatch_generated::CliDispatchHost for RetainedCliH
         source_roots: Vec<String>,
         functions: Vec<String>,
         entry: Option<String>,
+        // STALE-GENERATED COMPATIBILITY SHIM: the trait in gunbc_cli_dispatch_generated.rs still
+        // carries the `claim_run` parameter until the manager's regeneration lands at this commit's
+        // sha; the deleted `--claim-run` authority is not consulted here, and the parameter goes away
+        // with the regenerated file (its model row is deleted in this commit).
         claim_run: bool,
         args: Vec<String>,
     ) -> ! {
+        // FAIL CLOSED while the generated dispatcher is stale: the deleted flag still parses there,
+        // so the verb must refuse it rather than run quietly without the claim authority it once had.
+        if claim_run {
+            eprintln!(
+                "gunbc run: --claim-run was deleted with the claim_batch cutover \
+                 (gunbc.plans.claim_execution_consolidation); claims run through 'gunbc test' -- \
+                 the one v1 claim entrypoint (gunbc.design_ruling::claim_execution_has_one_v1_entrypoint)"
+            );
+            std::process::exit(2);
+        }
         retained_dispatch(
             RetainedCommands::Run {
                 source_roots,
                 functions,
                 entry,
-                claim_run,
                 args,
             },
             self.dry_run,
@@ -773,17 +783,8 @@ fn retained_dispatch(command: RetainedCommands, dry_run: bool) -> ! {
             source_roots,
             functions,
             entry,
-            claim_run,
             args,
-        } => run_verb(
-            &source_roots,
-            &functions,
-            entry.as_deref(),
-            dry_run,
-            claim_run,
-            &args,
-        )
-        .apply(),
+        } => run_verb(&source_roots, &functions, entry.as_deref(), dry_run, &args).apply(),
 
         // THE TARGET DISPATCH SEAM, AND THE WHOLE ARM IS A CALL.
         //
@@ -1071,7 +1072,7 @@ impl Verdict {
 }
 
 /// THE ONE BOUNDARY AT WHICH THE CLI ENDS THE PROCESS WITHOUT EXIT-TIME TEARDOWN, shared by
-/// `Verdict::apply` and the compile route. CLI ROUTES ONLY: in-process callers (claim_batch, tests)
+/// `Verdict::apply` and the compile route. CLI ROUTES ONLY: in-process callers (tests)
 /// never reach it and release normally. The caller prints the invocation receipt FIRST, because
 /// `_exit` skips every exit hook.
 fn end_process_without_teardown(status: i32) -> ! {
@@ -1097,53 +1098,13 @@ fn end_process_without_teardown(status: i32) -> ! {
 ///
 /// `--function` is repeatable (gunbc.cli_dispatch_surface): every name runs in ONE process over
 /// ONE resolve of the entry's closure, which is where ~90% of a run's wall clock goes. Absent, an
-/// ordinary run executes `main`; a `--claim-run` executes every `test fn` the entry module
-/// declares -- discovered from the RESOLVED graph's declaration markers, never by re-parsing the
-/// file or re-loading the corpus, so "run this witness" costs one load plus the claims' own work.
-fn functions_to_run(
-    functions: &[String],
-    claim_run: bool,
-    entry_file: &str,
-    graph: &v1_compiler::v1_compiler_compile::ResolvedGraph,
-) -> Result<Vec<String>, String> {
-    if !functions.is_empty() {
-        return Ok(functions.to_vec());
+/// ordinary run executes `main`. Claims are not executed here any more: the claim-execution cutover
+/// (gunbc.plans.claim_execution_consolidation) left the `gunbc test` route as the one entrypoint.
+fn functions_to_run(functions: &[String]) -> Vec<String> {
+    if functions.is_empty() {
+        return vec!["main".to_string()];
     }
-    if !claim_run {
-        return Ok(vec!["main".to_string()]);
-    }
-    let entry_abs = std::fs::canonicalize(entry_file)
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_else(|_| entry_file.to_string());
-    let entry_module = graph.modules.iter().find(|m| {
-        let f = &m.module.span.file;
-        f == entry_file
-            || std::fs::canonicalize(f)
-                .map(|p| p.to_string_lossy().to_string() == entry_abs)
-                .unwrap_or(false)
-    });
-    let Some(module) = entry_module else {
-        return Err(format!(
-            "--claim-run with no --function: the resolved graph carries no module for {entry_file}, so its test fns cannot be enumerated"
-        ));
-    };
-    let names: Vec<String> = module
-        .items
-        .iter()
-        .filter(|item| {
-            item.module_item_kind
-                == v1_compiler::v1_std_core::ParsedModuleItemKind::ModuleItemFunction
-                && item.declaration_marker
-                    == v1_compiler::v1_std_core::DeclarationMarker::TestMarked
-        })
-        .map(|item| item.name.clone())
-        .collect();
-    if names.is_empty() {
-        return Err(format!(
-            "--claim-run with no --function: {entry_file} declares no `test fn`, so there is no claim to run (name one with --function)"
-        ));
-    }
-    Ok(names)
+    functions.to_vec()
 }
 
 fn run_verb(
@@ -1151,7 +1112,6 @@ fn run_verb(
     functions: &[String],
     entry: Option<&str>,
     dry_run: bool,
-    claim_run: bool,
     args: &[String],
 ) -> Verdict {
     if source_roots.is_empty() {
@@ -1216,23 +1176,12 @@ fn run_verb(
         };
     };
 
-    if claim_run && entry.is_none() {
-        return Verdict {
-            status: 2,
-            message: Some(format!("error: --claim-run requires --entry <file.dag>")),
-        };
-    }
-
     let resolve_started = std::time::Instant::now();
     // Demand-acquired layout closure is the only `gunbc run` resolve. Whole-tree
     // `resolve_entry_graph` stays the compile / floor consumer, not a run fallback.
-    // The typecheck owes bodies only for what the requested functions reach. A claim run with no
-    // --function runs every `test fn` of the entry module, which is discovered from the resolved
-    // graph itself, so it cannot be named before resolve and keeps the whole-closure typecheck.
+    // The typecheck owes bodies only for what the requested functions reach.
     let requested: Vec<String> = if !functions.is_empty() {
         functions.to_vec()
-    } else if claim_run {
-        Vec::new()
     } else {
         vec!["main".to_string()]
     };
@@ -1269,62 +1218,42 @@ fn run_verb(
         };
     }
 
-    // CLAIM RUNS ARE VERIFICATION, NOT EXECUTION. A `test fn` is evaluated against its declared
-    // mocks and MUST NOT perform a real host effect. `--dry-run` already means Hermetic, which
-    // REFUSES host operations rather than mocking them silently; a `--claim-run` must mean the SAME
-    // fail-closed mode, because a claim is not the operator's authority to run a host effect. Before
-    // this, `--claim-run` fell to Wet whenever `--dry-run` was absent, so a claim whose mocked effect
-    // had no mock bound on this route silently dispatched the REAL effect against the host (a
-    // gunbc.design_argument::fail_closed fail-open with a live side effect: the mocked journalctl ran live against srv1's journal).
-    // Hermetic mode owns the fail-closed rule: a mocked effect with no bound mock refuses typed
-    // (`no mock_response ... refusing`), and a bound mock still serves. The mode is decided by the
-    // ONE shared authority `cli_run::execution_mode_for`, which `claim_batch` uses too (gunbc.design_argument::earliest_unjustified_boundary:
-    // one flag-to-mode function for both entrypoints, so they cannot diverge again).
-    let execution_mode = cli_run::execution_mode_for(None, claim_run, dry_run);
+    // DATED RECORD (claim-execution cutover, gunbc.plans.claim_execution_consolidation): this verb
+    // once ran claims under `--claim-run`, and a defect in its mode selection let a mocked effect
+    // with no bound mock dispatch the REAL effect against the host (a gunbc.design_argument::fail_closed
+    // fail-open with a live side effect: the mocked journalctl ran live against srv1's journal). The
+    // fix made the claim mode the SAME Hermetic fail-closed mode `--dry-run` already meant, decided by
+    // the ONE shared authority `cli_run::execution_mode_for`
+    // (gunbc.design_argument::earliest_unjustified_boundary: one flag-to-mode function for both
+    // entrypoints, so they cannot diverge again). Claims are no longer executed here at all: the
+    // `gunbc test` route is the one claim entrypoint and carries that fail-closed rule.
+    let execution_mode = cli_run::execution_mode_for(None, false, dry_run);
     let ctx = cli_run::make_eval_context(graph.as_ref(), source_indices, execution_mode);
 
-    let to_run = match functions_to_run(functions, claim_run, entry_file, graph.as_ref()) {
-        Ok(names) => names,
-        Err(message) => {
-            return Verdict {
-                status: 2,
-                message: Some(format!("error: {message}")),
-            };
-        }
-    };
+    let to_run = functions_to_run(functions);
 
     // ONE LOAD, MANY FUNCTIONS. Each function's verdict is decided exactly as it was when a run
-    // executed one; the run's verdict is the first non-zero status (a claim run: 1 > 2 > 0), and every function still
-    // runs so a claim file reports all of its reds rather than the first. A non-claim run of
-    // several functions stops at the first failure, because a later function may depend on
-    // the effects of an earlier one.
+    // executed one; the run's verdict is the FIRST non-zero status, and the run stops at the first
+    // failure, because a later function may depend on the effects of an earlier one. Claims are not
+    // run here any more (gunbc.plans.claim_execution_consolidation): the `gunbc test` route is the
+    // one claim entrypoint and owns the 1 > 2 > 0 precedence over there.
     let mut verdict = Verdict {
         status: 0,
         message: None,
     };
     let mut failures: Vec<String> = Vec::new();
     for function in &to_run {
-        let one = run_one_function(&ctx, function, entry_file, &run_args, claim_run);
+        let one = run_one_function(&ctx, function, entry_file, &run_args);
         if one.status != 0 {
             if let Some(m) = &one.message {
                 failures.push(m.clone());
             }
-            // Precedence 1 > 2 > 0, as claim_batch: a failed claim outranks a no-observation,
-            // which outranks success; a non-claim run keeps its first non-zero status.
-            if verdict.status == 0 || (claim_run && one.status == 1) {
+            if verdict.status == 0 {
                 verdict.status = one.status;
             }
-            if !claim_run {
-                break;
-            }
+            break;
         } else if let Some(m) = &one.message {
-            // A claim's PASS line is the run's product and goes to stdout, as it did when one
-            // claim was one run; any other success message keeps its stderr channel.
-            if claim_run {
-                println!("{m}");
-            } else {
-                eprintln!("{m}");
-            }
+            eprintln!("{m}");
         }
     }
     if verdict.status != 0 {
@@ -1423,7 +1352,6 @@ fn run_one_function(
     function: &str,
     entry_file: &str,
     run_args: &[(String, String)],
-    claim_run: bool,
 ) -> Verdict {
     let bound = match cli_run::bind_run_args_for_entry(ctx, function, run_args) {
         Ok(bound) => bound,
@@ -1434,18 +1362,9 @@ fn run_one_function(
             };
         }
     };
-    match v1_compiler::v1_interpreter::run_in_context_with_args(ctx, function, &bound, !claim_run) {
-        // A claim run's Bool is the verdict: false is a FAILED claim, exit 1. Outside a
-        // claim run a Bool is an ordinary value and says nothing about success.
-        Ok(v1_compiler::v1_interpreter::Value::Bool(false)) if claim_run => Verdict {
-            status: 1,
-            message: Some(format!("FAIL {function}")),
-        },
-        Ok(v1_compiler::v1_interpreter::Value::Bool(true)) if claim_run => Verdict {
-            status: 0,
-            message: Some(format!("PASS {function}")),
-        },
-        // The verdict a `.dag` entry returns IS the run's outcome. `cli_run::classify_exit`
+    match v1_compiler::v1_interpreter::run_in_context_with_args(ctx, function, &bound, true) {
+        // The verdict a `.dag` entry returns IS the run's outcome. A Bool is an ordinary value
+        // and says nothing about success: claims are executed by the `gunbc test` route, not here. `cli_run::classify_exit`
         // is the single authority for reading the ProcessExit variant; `exit_status_for`
         // is the total map from that class to a status.
         Ok(value) => {
@@ -1453,18 +1372,9 @@ fn run_one_function(
             // gunbc.plans.converged_ingress). Serving is not a verb: an entry that answers a bound
             // HttpIngressAdmission is served by this process -- bind, accept, one independent
             // handler evaluation per request -- and a refused one exits before any listener
-            // exists. Read from the answer's type, never from the entry's name. A claim run is
-            // verification, so it never serves.
+            // exists. Read from the answer's type, never from the entry's name.
             match cli_run::http_ingress_host::ingress_answer(&value, ctx) {
                 cli_run::http_ingress_host::IngressAnswer::NotABinding => {}
-                _ if claim_run => {
-                    return Verdict {
-                        status: 2,
-                        message: Some(format!(
-                            "error: `{function}` answered an ingress binding under --claim-run; a claim run never serves"
-                        )),
-                    }
-                }
                 cli_run::http_ingress_host::IngressAnswer::Refused(reason) => {
                     return Verdict {
                         status: 2,
@@ -1523,30 +1433,14 @@ fn run_one_function(
                 None => {
                     let (status, message) =
                         exit_status_for(cli_run::classify_exit(&value, ctx), function);
-                    // A ProcessExit claim that succeeds (ExitClass::Success → status 0,
-                    // message None) must produce a visible PASS line under --claim-run,
-                    // symmetric with the Bool(true) path which carries Some("PASS …").
-                    let message = if claim_run && status == 0 && message.is_none() {
-                        Some(format!("PASS {function}"))
-                    } else {
-                        message
-                    };
                     Verdict { status, message }
                 }
             }
         }
-        // A refused route is NO OBSERVATION (exit 2), never a failed claim: the claim did not
-        // get to say anything. Outside a claim run an evaluation error stays exit 1.
+        // An evaluation error is a failed run: exit 1. The claim route's NO-OBSERVATION (exit 2)
+        // discipline for a refused host effect lives with the `gunbc test` route now.
         Err(err) => Verdict {
-            status: if claim_run
-                && matches!(
-                    err,
-                    v1_compiler::v1_interpreter::InterpError::HostEffectRefused { .. }
-                ) {
-                2
-            } else {
-                1
-            },
+            status: 1,
             message: Some(format!(
                 "error: evaluating {function} in {entry_file}\n  cause: {err:?}"
             )),
@@ -1720,7 +1614,7 @@ mod exit_status_tests {
 }
 
 #[cfg(test)]
-mod claim_run_mode_tests {
+mod run_route_mode_tests {
     use super::run_one_function;
     use std::rc::Rc;
     use v1_compiler::cli_run;
@@ -1728,10 +1622,11 @@ mod claim_run_mode_tests {
     use v1_compiler::v1_interpreter::{ExecutionMode, InterpContext};
 
     // The boundary flag-to-mode decision itself is exercised, total, in
-    // `cli_run::claim_execution::execution_mode_for_tests` (the single shared authority that both
-    // `claim_batch` and the `run` verb call). What is left HERE is the inhabitance: that the claim
-    // route the `run` verb actually builds REFUSES an unbound mocked effect typed, and does NOT do
-    // so by accident (i.e. it really dispatches when Wet).
+    // `cli_run::claim_execution::execution_mode_for_tests` (the single shared authority). What is
+    // left HERE is the inhabitance: that the WET route the `run` verb actually builds DISPATCHES a
+    // mocked shell effect rather than surfacing the typed unbound-mock refusal (the Hermetic claim
+    // route's refusal discipline lives with the `gunbc test` route now --
+    // gunbc.plans.claim_execution_consolidation).
 
     // A claim whose effect is MOCKED (a mockable shell operation) but carries NO `mock_response` —
     // an unbound mock. The shell argv is a NONEXISTENT ABSOLUTE path so that a Wet attempt to
@@ -1747,50 +1642,11 @@ mod claim_run_mode_tests {
         })]
     }
 
-    // INHABITANCE (the route the `run` verb builds, not a hand-picked Hermetic): the mode comes from
-    // the shared authority for a claim run, is fed to the real per-function evaluator `run_one_function`
-    // that `run_verb` calls, and the unbound mocked effect surfaces the typed `HostEffectRefused` as
-    // exit 2 (NO OBSERVATION) carrying the `NoMockResponse` ground. status 2 is the discriminator:
-    // `run_one_function` returns it ONLY for `HostEffectRefused` under a claim run.
-    #[test]
-    fn claim_run_route_refuses_an_unbound_mocked_effect_as_no_observation() {
-        // 1. The route decision comes from the ONE production authority, not a literal.
-        let mode =
-            cli_run::execution_mode_for(None, /*is_claim*/ true, /*dry_run*/ false);
-        assert!(
-            matches!(mode, ExecutionMode::Hermetic),
-            "`gunbc run --claim-run` without --dry-run must select Hermetic, not Wet"
-        );
-
-        // 2. Drive the real evaluator with the route's own mode.
-        let resolved = compile_to_resolved(Rc::new(fixture_sources().into()));
-        let ctx = InterpContext::new(
-            resolved.graph.as_ref().expect("fixture graph"),
-            resolved.source_indices.clone(),
-            mode,
-        );
-        let verdict = run_one_function(&ctx, "witness", "f.dag", &[], true);
-        let message = verdict.message.clone().unwrap_or_default();
-        assert_eq!(
-            verdict.status, 2,
-            "an unbound mocked effect on the claim route must be NO OBSERVATION (exit 2), got \
-             status {} with message: {message}",
-            verdict.status
-        );
-        // `Verdict` carries only the rendered message, so the typed refusal is read from its
-        // Debug rendering: the variant AND its ground, never a looser substring.
-        assert!(
-            message.contains("HostEffectRefused") && message.contains("ground: NoMockResponse"),
-            "the refusal must be the typed NoMockResponse ground, got: {message}"
-        );
-    }
-
-    // DISCRIMINATING CONTROL: the SAME claim and the SAME unbound mocked effect, evaluated under
-    // WET, is DISPATCHED rather than refused — it does NOT take the typed-refusal (exit 2 /
-    // `NoMockResponse`) path. This proves the refusal above is produced by the Hermetic claim mode
-    // the route selects, not by the fixture being non-dispatchable for some unrelated reason. Host-
-    // safe: the argv is a nonexistent absolute path, so the Wet attempt fails at spawn and evaluates
-    // to `success:false` (a FAIL verdict, exit 1), never performing a real effect.
+    // DISCRIMINATING CONTROL: the SAME function and the SAME unbound mocked effect, evaluated under
+    // WET, is DISPATCHED rather than refused — it does NOT take the typed-refusal (`NoMockResponse`)
+    // path the Hermetic claim route takes on this fixture. Host-safe: the argv is a nonexistent
+    // absolute path, so the Wet attempt fails at spawn and evaluates to `success:false`, never
+    // performing a real effect.
     #[test]
     fn wet_route_dispatches_the_same_unbound_effect_instead_of_refusing() {
         let mode =
@@ -1806,13 +1662,13 @@ mod claim_run_mode_tests {
             resolved.source_indices.clone(),
             mode,
         );
-        let verdict = run_one_function(&ctx, "witness", "f.dag", &[], true);
+        let verdict = run_one_function(&ctx, "witness", "f.dag", &[]);
         let message = verdict.message.clone().unwrap_or_default();
         // The discriminator is the typed refusal, not the exit code: under Wet the REAL transport is
         // attempted (the shell spawn at the nonexistent absolute path fails and evaluates to a normal
         // dispatch outcome), so the run does NOT surface the `NoMockResponse` typed refusal that the
         // Hermetic claim route produces on the identical fixture. (The exit code is not asserted: a
-        // dispatch failure may surface as a caught panic (exit 2) or a FAIL verdict (exit 1); either
+        // dispatch failure may surface as a caught panic or a failed verdict; either
         // way it is not the typed unbound-mock refusal — that is what this control pins.)
         assert!(
             !message.contains("NoMockResponse"),

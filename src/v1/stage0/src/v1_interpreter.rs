@@ -3072,7 +3072,7 @@ pub fn clear_cross_claim_pure_memos() {
 /// Install the declared producer roster as RESOLVED fn nodes (the caller resolves each
 /// qualified spelling in a frame over the prepared subject). Replaces any previous roster and
 /// keeps the nodes alive for the tier's lifetime; the built-in `prepare_grammar` arm stays
-/// admitted, so roster-less surfaces (claim_batch, `gunbc run`) are unchanged.
+/// admitted, so roster-less surfaces (`gunbc run`) are unchanged.
 pub fn install_cross_claim_pure_share_roster<I: IntoIterator<Item = Rc<Node>>>(nodes: I) {
     let nodes: Vec<Rc<Node>> = nodes.into_iter().collect();
     CROSS_CLAIM_PURE_ROSTER.with(|r| {
@@ -4556,8 +4556,8 @@ mod cross_claim_memo_tests {
 
     // INTERPRETER-LAYER fail-closed control for the claim-run route defect (gunbc.design_argument::fail_closed). A claim run is
     // executed in Hermetic mode — the mode is chosen by the ONE shared authority
-    // `cli_run::execution_mode_for` (a claim ⇒ Hermetic), which the `run` verb and `claim_batch` both
-    // call; this unit test pins the interpreter half of that guarantee (Hermetic ⇒ refuses an unbound
+    // `cli_run::execution_mode_for` (a claim ⇒ Hermetic), which the `run` verb
+    // calls; this unit test pins the interpreter half of that guarantee (Hermetic ⇒ refuses an unbound
     // mock), while `main.rs::claim_run_mode_tests` pins the route half (the claim route selects Hermetic
     // AND discriminates Wet). This is the INTERPRETER layer, so it drives `InterpContext::new(.., Hermetic)`
     // directly; the route-driven test in main.rs is what exercises the mode the route actually selects.
@@ -6437,7 +6437,7 @@ pub fn set_eval_call_memo_enabled(ctx: &InterpContext, enabled: bool) {
 }
 
 /// Frame exit for the eval-call memo: eviction scope is the WITNESS frame, not the ctx. Batch
-/// surfaces (claim_batch, claim_executor) share one ctx across an entry's witnesses for the
+/// surfaces (claim_executor, the claim route) share one ctx across an entry's witnesses for the
 /// resolve-side ReferenceTier share, but the memo stores full argument+result VALUES, so
 /// ctx-lifetime retention across N witnesses is byte-unbounded (measured 2026-07-10: one
 /// witness plateaus ~3.4GiB, six in one ctx pass ~20GiB to SIGKILL). Called after each claim
@@ -13607,7 +13607,7 @@ fn cross_claim_demand_absorb_one(
 /// THE CALLER MUST OWN A FRESH FRAME PER CLAIM, and that is a real precondition rather than a
 /// style note. The ledger accumulates for the lifetime of its `InterpContext` and is NOT
 /// cleared by `eval_call_memo_frame_exit`, so a surface that shares one context across several
-/// claims — `claim_batch` shares one per ENTRY — would fold each claim's ledger again on the
+/// claims — the claim route shares one per ENTRY — would fold each claim's ledger again on the
 /// next call, inflating both `evals` and `total_ns` and, worse, reporting cross-claim demand
 /// where there is only one frame's. The required floor builds a frame per claim
 /// (`required_floor_runner`, "FRESH PER CLAIM"), which is exactly the boundary this census
@@ -15747,8 +15747,8 @@ fn hermetic_checkout_input_disposition_under(
     Ok(())
 }
 
-/// The runner contract binds the process cwd to the checkout root (claim_batch and
-/// claim_executor both run from the repo root), so cwd IS the injected input root.
+/// The runner contract binds the process cwd to the checkout root (claim_executor runs
+/// from the repo root), so cwd IS the injected input root.
 fn hermetic_checkout_input_disposition(requested: &str) -> Result<(), String> {
     let cwd =
         std::env::current_dir().map_err(|e| format!("checkout root (cwd) unresolvable: {e}"))?;

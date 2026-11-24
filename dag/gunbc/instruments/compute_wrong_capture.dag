@@ -58,7 +58,7 @@ data wrong_capture_dependency_marker_b: String = "C5-DEP-WRONG-CAPTURE-MARKER-B"
 
 // No typed file-write effect exists for compute_exec (missing capability); sed -i takes the path as one argv element, no shell interprets it.
 // A marked source gets a #[used] static, so each tree's binary carries its own marker bytes.
-data wrong_capture_marked_sources: List<String> = ["src/v1/stage0/src/main.rs", "src/v1/stage0/src/bin/claim_batch.rs"]
+data wrong_capture_marked_sources: List<String> = ["src/v1/stage0/src/main.rs", "src/v1/stage0/src/bin/claim_executor.rs"]
 
 // THE C5 DEPENDENCY-ONLY ARM: the top crate is byte-identical across the two identities here; only this
 // in-repo dependency of both built binaries differs (package v1-stage0-v1-infer, the path dependency

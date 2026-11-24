@@ -35,7 +35,7 @@ import extdeps.systemd.systemd_run { SystemdRunProperty, systemd_run_property_as
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import std.content_hash { serialize_content_hash, content_hash_atom, content_hash_equal, sha256_hex_digest, as_content_hash_cryptographic }
 import std.cache_identity { compute_work_artifact_kind }
-import std.judgment_contract { ArtifactOutputId, output_compute_work_outcome, output_compute_work_log, output_compute_work_outputs, output_compute_work_gunbc_binary, output_compute_work_claim_batch_binary }
+import std.judgment_contract { ArtifactOutputId, output_compute_work_outcome, output_compute_work_log, output_compute_work_outputs, output_compute_work_gunbc_binary }
 import std.materialization_ladder { DemandNature, IdempotentEffect, FreshEffect, PureComputation, WorldRead }
 import std.materialization_provider {
   ArtifactRequest, ComputeWorkRequest, request_key, request_kind, request_required_outputs, request_judgment_contract,
@@ -59,7 +59,7 @@ import std.materialization_object {
 import extdeps.realization.materialization_store_local { LocalStorePartsLookup }
 import std.content_hash { content_hash_tagged_structural }
 import gunbc.compute.work_request {
-  ClaimDiffWindow, GunbcDriver, ClaimBatchRunner, WorkSubject, GitTreeProvenance, WorkToolchainRequirement, AdmittedToolchain, work_toolchain_admitted, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoRelease, CargoDebug,
+  ClaimDiffWindow, GunbcDriver, WorkSubject, GitTreeProvenance, WorkToolchainRequirement, AdmittedToolchain, work_toolchain_admitted, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoRelease, CargoDebug,
   WorkToolchainIdentity, work_toolchain_observed, work_default_build, work_declared_outputs,
   DeclaredOutput, WorkOutputRoot, CheckoutRoot, TargetRoot,
   WorkOutput, WorkOutcome, WorkSucceeded, WorkFailed, WorkRefusedByInfrastructure, HostComputeCapacityFull,
@@ -143,13 +143,15 @@ test fn identical_requests_share_an_identity_and_every_difference_separates_them
 // gunbc#13072, items 1 and 4). Each pair below is two different computations that a delimiter-joined
 // preimage, or a key missing an axis, collapsed into one -- and one request then received the other's
 // result. Each must key apart on its own. The ruling's ["a,b"] / ["a", "b"] pair is now unwritable: a
-// bin is a GunbcBinary variant, never a name; what remains to show is that distinct closed bin lists
-// key apart under the length-prefixed encoding, including a list and its prefix.
+// bin is a GunbcBinary variant, never a name; and since the claim-execution cutover deleted the
+// `claim_batch` binary the closed set is the driver alone, so the list/prefix pair is unwritable too --
+// what remains to show is that a distinct profile and a distinct closed list key apart under the
+// length-prefixed encoding.
 test fn colliding_display_text_and_every_execution_axis_key_apart() -> Bool {
   let subject = tree(hex: tree_a)
   let t = tc_default(rustc: "rustc 1.90.0")
-  let one_bin = BuildGunbcBinaries { profile: CargoRelease, bins: [ClaimBatchRunner] }
-  let two_bins = BuildGunbcBinaries { profile: CargoRelease, bins: [GunbcDriver, ClaimBatchRunner] }
+  let one_bin = BuildGunbcBinaries { profile: CargoRelease, bins: [GunbcDriver] }
+  let two_bins = BuildGunbcBinaries { profile: CargoDebug, bins: [GunbcDriver] }
   let colon_entry = RunClaims { entry: "a:b" as FilePath, functions: "c" as NonEmptyStr, hermetic: true, window: none }
   let colon_functions = RunClaims { entry: "a" as FilePath, functions: "b:c" as NonEmptyStr, hermetic: true, window: none }
   let base = key_with(subject: subject, op: work_default_build(), toolchain: t)
@@ -253,7 +255,7 @@ test fn the_compute_family_derives_kind_outputs_and_demand_nature() -> Bool {
   let build = req(subject: subject, op: work_default_build(), rustc: "rustc 1.90.0")
   request_kind(req: build) == compute_work_artifact_kind
     && request_required_outputs(req: build) == [output_compute_work_outcome, output_compute_work_log, output_compute_work_outputs,
-         output_compute_work_gunbc_binary, output_compute_work_claim_batch_binary]
+         output_compute_work_gunbc_binary]
     && request_required_outputs(req: hermetic) == [output_compute_work_outcome, output_compute_work_log, output_compute_work_outputs]
     && demand_is_fresh(d: request_judgment_contract(req: wet).demand_nature)
     && !demand_is_fresh(d: request_judgment_contract(req: hermetic).demand_nature)
@@ -269,11 +271,11 @@ fn part(text: String) -> ArtifactPart {
 // family's roster drop a part).
 test fn the_compute_artifact_round_trips_its_manifest_and_a_missing_log_is_incomplete() -> Bool {
   let k = request_key(req: req(subject: tree(hex: tree_a), op: work_default_build(), rustc: "rustc 1.90.0"))
-  let artifact = ComputeWorkArtifact { request_key: k, outcome: part(text: "o"), log: part(text: "l"), outputs: part(text: "x"), gunbc_binary: none, claim_batch_binary: none }
+  let artifact = ComputeWorkArtifact { request_key: k, outcome: part(text: "o"), log: part(text: "l"), outputs: part(text: "x"), gunbc_binary: none }
   let m = artifact_manifest(artifact: artifact)
   let dropped = ArtifactManifest { kind: m.kind, request_key: m.request_key, parts: m.parts |> filter(p => p.id != output_compute_work_log) }
   (match artifact_from_manifest(m: m) {
-    ManifestDecoded { artifact: a } => match a { ComputeWorkArtifact { request_key: rk, outcome: _, log: _, outputs: _, gunbc_binary: _, claim_batch_binary: _ } => rk == k  _ => false }
+    ManifestDecoded { artifact: a } => match a { ComputeWorkArtifact { request_key: rk, outcome: _, log: _, outputs: _, gunbc_binary: _ } => rk == k  _ => false }
     _ => false
   })
     && (match artifact_from_manifest(m: dropped) {
@@ -289,7 +291,7 @@ test fn the_compute_artifact_round_trips_its_manifest_and_a_missing_log_is_incom
 test fn declared_outputs_follow_the_operation() -> Bool {
   let build = work_declared_outputs(op: work_default_build())
   let debug = work_declared_outputs(op: BuildGunbcBinaries { profile: CargoDebug, bins: [GunbcDriver] })
-  map(build, d => d.path) == ["release/gunbc", "release/claim_batch"]
+  map(build, d => d.path) == ["release/gunbc"]
     && all(build, d => match d.root { TargetRoot => true  CheckoutRoot => false })
     && map(debug, d => d.path) == ["debug/gunbc"]
     && count(work_declared_outputs(op: CompileEntry { entry: "dag/x.dag" as FilePath })) == 0
@@ -902,12 +904,12 @@ test fn a_compute_claim_request_refuses_a_subject_that_is_not_a_claim() -> Bool 
 // decode that lets an arbitrary extra part ride into a compute record.
 test fn a_compute_record_admits_binary_parts_and_refuses_any_other() -> Bool {
   let k = request_key(req: req(subject: tree(hex: tree_a), op: work_default_build(), rustc: "rustc 1.90.0"))
-  let artifact = ComputeWorkArtifact { request_key: k, outcome: part(text: "o"), log: part(text: "l"), outputs: part(text: "x"), gunbc_binary: none, claim_batch_binary: none }
+  let artifact = ComputeWorkArtifact { request_key: k, outcome: part(text: "o"), log: part(text: "l"), outputs: part(text: "x"), gunbc_binary: none }
   let m = artifact_manifest(artifact: artifact)
   let bin = ArtifactManifest { kind: m.kind, request_key: m.request_key, parts: concat(m.parts, [CarriedOutput { id: output_compute_work_gunbc_binary, digest: content_hash_atom(value: "b" as NonEmptyStr), bytes: byte_size(count: 1) }]) }
   let stray = ArtifactManifest { kind: m.kind, request_key: m.request_key, parts: concat(m.parts, [CarriedOutput { id: "stray" as ArtifactOutputId, digest: content_hash_atom(value: "s" as NonEmptyStr), bytes: byte_size(count: 1) }]) }
   (match artifact_from_manifest(m: bin) {
-    ManifestDecoded { artifact: a } => match a { ComputeWorkArtifact { request_key: _, outcome: _, log: _, outputs: _, gunbc_binary: g, claim_batch_binary: c } => (match g { Present { value: _ } => true  Absent => false }) && (match c { Present { value: _ } => false  Absent => true })  _ => false }
+    ManifestDecoded { artifact: a } => match a { ComputeWorkArtifact { request_key: _, outcome: _, log: _, outputs: _, gunbc_binary: g } => match g { Present { value: _ } => true  Absent => false }  _ => false }
     _ => false
   })
     && (match artifact_from_manifest(m: stray) { ManifestPartUndeclared { kind: _, part: p } => (p as String) == "stray"  _ => false })

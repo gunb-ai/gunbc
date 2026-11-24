@@ -1178,15 +1178,15 @@ name = "gunbc"
 path = "src/main.rs"
 
 [[bin]]
-name = "claim_batch"
-path = "src/bin/claim_batch.rs"
+name = "claim_executor"
+path = "src/bin/claim_executor.rs"
 "#;
         assert_eq!(
             parse_stage0_cargo_manifest_bin_paths(manifest),
             Stage0CargoManifestBinParse::Parsed {
                 authored_relative_paths: vec![
                     "src/main.rs".to_string(),
-                    "src/bin/claim_batch.rs".to_string(),
+                    "src/bin/claim_executor.rs".to_string(),
                 ],
             }
         );
@@ -2625,7 +2625,7 @@ fn anchor_source_root_typed(root: &str) -> Result<String, String> {
     Ok(anchored.to_string_lossy().into_owned())
 }
 
-/// CLI-boundary path resolution for the claim bins (`claim_batch` / `claim_executor`).
+/// CLI-boundary path resolution for the claim bin (`claim_executor`).
 ///
 /// `workspace_root()` above was HISTORICALLY baked from `env!("CARGO_MANIFEST_DIR")` at COMPILE
 /// time (now cwd-derived at runtime, see its doc), and the shared pipeline (`pool_roots_abs`)
@@ -2707,7 +2707,7 @@ mod cli_path_arg_resolution_tests {
     #[test]
     fn relative_arg_at_workspace_root_passes_through_unchanged() {
         let ws = workspace_root();
-        let resolved = resolve_cli_path_arg_against("claim_batch", "--source-root", "dag", &ws)
+        let resolved = resolve_cli_path_arg_against("claim_executor", "--source-root", "dag", &ws)
             .expect("`dag` exists under the workspace root");
         assert_eq!(resolved, "dag");
     }
@@ -2721,7 +2721,7 @@ mod cli_path_arg_resolution_tests {
         std::fs::create_dir_all(base.join("dag")).expect("create fixture tree");
         std::fs::write(base.join("dag/mini.dag"), "module mini\n").expect("write fixture module");
 
-        let root = resolve_cli_path_arg_against("claim_batch", "--source-root", "dag", &base)
+        let root = resolve_cli_path_arg_against("claim_executor", "--source-root", "dag", &base)
             .expect("fixture tree exists under the fixture cwd");
         assert_eq!(root, base.join("dag").to_string_lossy());
         assert_ne!(
@@ -2729,8 +2729,9 @@ mod cli_path_arg_resolution_tests {
             "must absolutize away from the baked-root anchor"
         );
 
-        let entry = resolve_cli_path_arg_against("claim_batch", "--entry", "dag/mini.dag", &base)
-            .expect("fixture entry exists under the fixture cwd");
+        let entry =
+            resolve_cli_path_arg_against("claim_executor", "--entry", "dag/mini.dag", &base)
+                .expect("fixture entry exists under the fixture cwd");
         assert_eq!(entry, base.join("dag/mini.dag").to_string_lossy());
 
         let _ = std::fs::remove_dir_all(&base);
@@ -2745,9 +2746,9 @@ mod cli_path_arg_resolution_tests {
         std::fs::create_dir_all(&base).expect("create empty fixture cwd");
         // `dag` exists under the baked workspace root but NOT under `base`; a baked-root
         // fallback would return Ok here — the refusal is the proof there is none.
-        let err = resolve_cli_path_arg_against("claim_batch", "--source-root", "dag", &base)
+        let err = resolve_cli_path_arg_against("claim_executor", "--source-root", "dag", &base)
             .expect_err("missing path must refuse, never fall back to the baked root");
-        assert!(err.contains("claim_batch"), "names the binary: {err}");
+        assert!(err.contains("claim_executor"), "names the binary: {err}");
         assert!(err.contains("--source-root"), "names the argument: {err}");
         assert!(err.contains("dag"), "names the given value: {err}");
         assert!(

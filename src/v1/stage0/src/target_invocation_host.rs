@@ -2480,7 +2480,7 @@ fn quote_detail(text: &str) -> String {
 /// labels reads those modules rather than the corpus; the corpus roots arrive from the caller's
 /// `admitted_source_roots` (the witness-layer roots when no option was given) and are the floor's own
 /// authority for them.
-fn run_claim_batch(
+fn run_claim_selection(
     patterns: &[TargetPattern],
     roots: &[String],
     execution_mode: crate::v1_interpreter::ExecutionMode,
@@ -3061,7 +3061,7 @@ pub fn test_verb_checked(options: &TestInvocationOptions) -> InvocationOutcome {
     cli_run::user_work_scope::reexec_into_user_work_slice_if_owed();
     // THE SECOND ACT, BEFORE ANY PRODUCER: bind this process to a kernel memory limit when the
     // invocation asked for one (`GUNBC_BIND_MEMORY_CGROUP_BYTES`, gunbc.host.memory_cgroup_binding --
-    // the same bind claim_executor and claim_batch take) at gunbc.emitted_subject_build_gate
+    // the same bind claim_executor takes; claim_batch took it too until the cutover deleted it) at gunbc.emitted_subject_build_gate
     // native_step_memory_trip, the slot's MemoryHigh less a declared headroom. The required
     // `witnesses` job passes that input only where a job owns a bounded cgroup
     // (gunbc.runner.runner_slot_desired gunbc_runner_slot_job_cgroup_ownership decides; today a fleet job
@@ -3636,7 +3636,7 @@ impl TestOperandClasses {
     fn selected_is_empty(&self) -> bool {
         self.selected == 0
     }
-    fn is_claim_batch(&self) -> bool {
+    fn is_claim_selection(&self) -> bool {
         !self.claim.is_empty() && self.native.is_empty() && self.exact.is_empty()
     }
 }
@@ -3725,7 +3725,7 @@ fn claim_route_option_refusal(
     classes: &TestOperandClasses,
     options: &TestInvocationOptions,
 ) -> Option<InvocationOutcome> {
-    if classes.is_claim_batch() {
+    if classes.is_claim_selection() {
         return None;
     }
     let option = options.claim_route_option_spelled()?;
@@ -3822,7 +3822,7 @@ pub fn test_verb(options: &TestInvocationOptions) -> InvocationOutcome {
                 }
             }
         };
-        return run_claim_batch(
+        return run_claim_selection(
             &claim,
             &roots,
             execution_mode,
@@ -5875,8 +5875,9 @@ mod test_batch_admission_controls {
     /// INSIDE that subtree, named together in one batch, produce one result per claim with the FULL LABEL as
     /// its key, and no claim twice. Selection is driven by the discovered corpus -- claims are enumerated
     /// from the walk and matched against every pattern -- so an overlap cannot enroll a claim twice. The
-    /// label key is what the cutover takes from `claim_batch`: its verdict line carries the bare function
-    /// name, so two entries declaring one function name print indistinguishable lines there.
+    /// label key is dated provenance from before the cutover: the deleted `claim_batch` printed the bare
+    /// function name on its verdict line, so two entries declaring one function name printed
+    /// indistinguishable lines there; the route keys with the full label.
     ///
     /// The subtree operand is scoped to `test/claim/zz_batch_scratch/...`, a package only this scratch
     /// corpus has, so the batch stays three claims rather than every claim in the corpus: a control that
@@ -5913,7 +5914,7 @@ mod test_batch_admission_controls {
         };
         assert_eq!(classes.claim.len(), 2, "both operands are claim patterns");
         let patterns = classes.claim.clone();
-        // THE BATCH'S OWN SELECTION, not a copy: run_claim_batch builds these two closures from the
+        // THE BATCH'S OWN SELECTION, not a copy: run_claim_selection builds these two closures from the
         // patterns, so the control drives the route the way the verb does.
         let module_selected = |module_path: &str| {
             let segments: Vec<String> = module_path.split('.').map(str::to_string).collect();

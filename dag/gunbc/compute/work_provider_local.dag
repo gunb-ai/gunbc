@@ -182,7 +182,7 @@ import gunbc.compute.work_request {
   work_refusal_detail, work_ending_decode, WorkEndedSucceeded,
   WorkSubject, GitTreeProvenance, WorktreeProvenance, AdmittedToolchain, WorkToolchainRequirement, WorkTarget, TargetDeclared, TargetIsExecutingHost, work_target_triple, work_toolchain_admit, ToolchainAdmitted, ToolchainMismatch, ToolchainMismatchRefused, toolchain_mismatch_field_wire, work_declared_source, work_toolchain_requirement, ToolchainRequired, ToolchainRequirementRefused, work_outcome_wire_unresolved, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoProfile, CargoRelease, CargoDebug,
   WorkToolchainIdentity, work_toolchain_observed, rustc_verbose_host_triple, work_default_build, work_default_bins,
-  GunbcBinary, GunbcDriver, ClaimBatchRunner, gunbc_binary_name, work_binary_declared_path, work_declared_outputs,
+  GunbcBinary, GunbcDriver, gunbc_binary_name, work_binary_declared_path, work_declared_outputs,
   DeclaredOutput, WorkOutputRoot, CheckoutRoot, TargetRoot,
   WorkOutput, WorkOutcome, WorkSucceeded, WorkFailed, WorkRefusedByInfrastructure, WorkCancelled, WorkOutputMismatch,
   WorkInfrastructureRefusal, ProducerInFlight, HostComputeCapacityFull, HostBelowMemoryFloor, ComputeCapacityLedgerUnavailable,
@@ -888,7 +888,7 @@ fn compute_command_argv_words(instance: HostDashboardInstance, layout: ComputeLa
 // compute_dependency_read constructs the populated arm, from a store lookup whose parts verified.
 type ComputeDependency
   = NoComputeDependency
-  | VerifiedBuildBinaries { gunbc: FabricBlobReading, claim_batch: FabricBlobReading }
+  | VerifiedBuildBinaries { gunbc: FabricBlobReading }
 
 // THE PROGRAM FOR ONE BINARY IS A TOTAL MATCH OVER THE CLOSED SET: the resolved dependency carries one
 // verified reading per GunbcBinary, so selecting one is never a lookup that can miss. A dependent
@@ -898,10 +898,9 @@ type ComputeDependency
 fn compute_dependency_program(dependency: ComputeDependency, bin: GunbcBinary) -> String {
   match dependency {
     NoComputeDependency => join(["compute: no verified build binary for ", gunbc_binary_name(b: bin) as String], "")
-    VerifiedBuildBinaries { gunbc, claim_batch } =>
+    VerifiedBuildBinaries { gunbc } =>
       match bin {
         GunbcDriver => fabric_blob_reading_path(reading: gunbc) as String
-        ClaimBatchRunner => fabric_blob_reading_path(reading: claim_batch) as String
       }
   }
 }
@@ -3031,11 +3030,7 @@ fn compute_dependency_decide(read: LocalStorePartsLookup) -> ComputeDependencyRe
     StoreLookupHit { artifact: _, payloads: _, blobs, receipt: _, evaluation_identity: _ } =>
       match compute_verified_binary(blobs: blobs, parts: read.parts, b: GunbcDriver) {
         Absent => ComputeDependencyRefused { detail: join(["the build record carries no verified part for ", gunbc_binary_name(b: GunbcDriver) as String], "") }
-        Present { value: g } =>
-          match compute_verified_binary(blobs: blobs, parts: read.parts, b: ClaimBatchRunner) {
-            Absent => ComputeDependencyRefused { detail: join(["the build record carries no verified part for ", gunbc_binary_name(b: ClaimBatchRunner) as String], "") }
-            Present { value: c } => ComputeDependencyResolved { dependency: VerifiedBuildBinaries { gunbc: g, claim_batch: c } }
-          }
+        Present { value: g } => ComputeDependencyResolved { dependency: VerifiedBuildBinaries { gunbc: g } }
       }
   }
 }

@@ -528,7 +528,7 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
           doc: [
             "Entry function to execute, repeatable: every named function runs in ONE process over",
             "ONE load of the entry's closure, in the order given. Absent, an ordinary run executes",
-            "`main`; a --claim-run executes every `test fn` the entry module declares."
+            "`main`. Claims are not executed by this verb: the `gunbc test` route is the one claim entrypoint."
           ],
           emission: CarriedByGeneratedDispatch
         },
@@ -541,14 +541,6 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
             "Entry `.dag` file: load only this module and its transitive imports",
             "(not every file under --source-root). Required for scoped TestClaim runs."
           ],
-          emission: CarriedByGeneratedDispatch
-        },
-        CliOptionRow {
-          field: "claim_run",
-          long: "claim-run",
-          value: CliToggleValue,
-          arity: CliRequired,
-          doc: ["TestClaim / witness run: Bool false -> exit 1; requires --entry"],
           emission: CarriedByGeneratedDispatch
         },
         CliOptionRow {

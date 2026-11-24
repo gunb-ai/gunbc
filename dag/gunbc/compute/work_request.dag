@@ -152,12 +152,18 @@ fn cargo_profile_wire(p: CargoProfile) -> String {
 // record with its own output id (std.materialization_provider compute_work_binary_output), so which
 // part is which binary is a variant, never a name recovered from a string; and a bin name that is not
 // one of these has no constructor, so it cannot reach a command line or a key.
-type GunbcBinary = GunbcDriver | ClaimBatchRunner
+//
+// The claim-execution cutover (gunbc.plans.claim_execution_consolidation) deleted the `claim_batch`
+// binary: claims execute through the `gunbc test` route, which the compiler driver itself carries,
+// so the closed set is the driver alone.
+type GunbcBinary = GunbcDriver
+
+// The single constructor as a member the families above can import.
+data GunbcDriver: GunbcBinary = GunbcDriver
 
 fn gunbc_binary_name(b: GunbcBinary) -> NonEmptyStr {
   match b {
     GunbcDriver => "gunbc" as NonEmptyStr
-    ClaimBatchRunner => "claim_batch" as NonEmptyStr
   }
 }
 
@@ -214,9 +220,10 @@ fn work_operation_canonical(op: WorkOperation) -> String {
   }
 }
 
-// The binaries the default build produces: the compiler driver and the claim runner, which the
-// compile and claims operations of the SAME subject consume.
-data work_default_bins: List<GunbcBinary> = [GunbcDriver, ClaimBatchRunner]
+// The binaries the default build produces: the compiler driver, which the compile and the claims
+// operations of the SAME subject consume (claims via its `gunbc test` route --
+// gunbc.plans.claim_execution_consolidation).
+data work_default_bins: List<GunbcBinary> = [GunbcDriver]
 
 fn work_default_build() -> WorkOperation {
   BuildGunbcBinaries { profile: CargoRelease, bins: work_default_bins }
