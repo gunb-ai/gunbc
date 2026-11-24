@@ -187,9 +187,13 @@ test fn w_srv15_s_installed_host_is_read_as_installed_to_disk() -> Bool {
 test fn w_the_bound_mac_is_a_member_of_a_three_port_host_and_the_edge_gaps_stay_gaps() -> Bool {
   with_srv15_target(apply: target => {
     let readings = reading_with(target: target, host_legs: srv15_legs())
-    installed_host_carries_mac(mac_set: readings.host.interface_macs, client: bobo_netboot_mac)
-      && installed_host_carries_mac(mac_set: readings.host.interface_macs, client: other_port_mac)
-      && length(xs: readings.host.interface_macs) == 3
+    match readings.host.interface_macs {
+      InterfaceMacsObserved { macs: ms } =>
+        installed_host_carries_mac(mac_set: ms, client: bobo_netboot_mac)
+          && installed_host_carries_mac(mac_set: ms, client: other_port_mac)
+          && length(xs: ms) == 3
+      InterfaceMacsUnread { reason: _ } => false
+    }
       && match readings.host.installer_record {
         InstallerRecordRead { written_at: written_at } => written_at == 1793232030000
         InstallerRecordAbsent => false
