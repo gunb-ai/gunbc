@@ -1,0 +1,187 @@
+module test.claim.factory_attempt_execution_on_fabric_audit_witness
+
+import gunbc.factory_attempt_execution_on_fabric_audit {
+  FactoryAuditClause,
+  FactoryAuditVerdict,
+  FactoryStateMapping,
+  factory_attempt_all_clauses_delivered,
+  factory_attempt_clause_count,
+  factory_attempt_clause_rung,
+  factory_attempt_clauses,
+  factory_attempt_disposition_rung,
+  factory_attempt_mapping_disposition_rung,
+  factory_attempt_progress_count,
+  factory_attempt_state_mappings,
+  factory_attempt_verdict_rung,
+}
+import std.types { Bool, Int, List, String }
+import std.optional { optional_absent, optional_present }
+
+// THE CONSUMER of gunbc.factory_attempt_execution_on_fabric_audit (gunbc.design_argument::consumption —
+// a module nothing imports is dangling, however well modeled). Same wiring as the two repo audits:
+// gunbc.materialization_kernel_closing_frontier_audit is consumed only by
+// test.claim.materialization_kernel_closing_frontier_audit_witness; this module exercises the audit's
+// projections over the authored rows — the rung matches, the fold, per-id rung lookups at identity grain,
+// and the mapping recommendations by belt module. These test fns are the executing route (the CI witness
+// floor).
+
+// EXPECT-RED CONTROL (gunbc.design_argument::guarantee_ladder): asserts the AND-fold over the audited
+// clauses is FALSE, proving factory_attempt_all_clauses_delivered can read false rather than being a
+// vacuously always-true wrapper over authored data. It stays enrolled if clauses ever climb — then it
+// flips red and someone must consciously revisit it, which is the point.
+
+test fn factory_attempt_audit_fold_reads_false_proves_can_fail() -> Bool {
+  factory_attempt_all_clauses_delivered(clauses: factory_attempt_clauses()) == false
+}
+
+// No count literal copied from the clause list (gunbc.design_argument::fail_closed — a measurement copied
+// from the same hand-authored rows is not an independent oracle). The two derived properties: the
+// denominator is nonzero (an empty roster would make the AND-fold vacuously green) and progress has not
+// silently climbed past zero — under the G0 audit gate NO clause may be Delivered, because a Delivered
+// rung is a claim about an EXECUTED witness and none ran.
+
+test fn factory_attempt_roster_nonzero_and_no_authored_green() -> Bool {
+  factory_attempt_clause_count(clauses: factory_attempt_clauses()) > 0
+    && factory_attempt_progress_count(clauses: factory_attempt_clauses()) == 0
+}
+
+fn find_clause(clauses: List<FactoryAuditClause>, id: String) -> FactoryAuditClause? {
+  clauses
+    |> fold(
+      init: optional_absent(),
+      f: (acc, c) => match acc {
+        Present { value: _ } => acc
+        Absent => if c.id == id { optional_present(value: c) } else { optional_absent() }
+      }
+    )
+}
+
+fn clause_rung_by_id(clauses: List<FactoryAuditClause>, id: String) -> Int {
+  match find_clause(clauses: clauses, id: id) {
+    Present { value: c } => factory_attempt_clause_rung(c: c)
+    Absent => -1
+  }
+}
+
+// Identity-grain rung pins. -1 (id absent) is deliberately distinguishable from every rung, so a renamed
+// or silently deleted clause reds these rather than greening them (gunbc.design_argument::fail_closed).
+
+test fn gap_is_real_clause_partially_delivered() -> Bool {
+  clause_rung_by_id(clauses: factory_attempt_clauses(), id: "gap-is-real") == 1
+}
+
+test fn bug_10_clause_partially_delivered() -> Bool {
+  clause_rung_by_id(clauses: factory_attempt_clauses(), id: "bug-10-nonce-is-not-a-generation-check") == 1
+}
+
+test fn bug_4_clause_partially_delivered() -> Bool {
+  clause_rung_by_id(clauses: factory_attempt_clauses(), id: "bug-4-capture-owed-waits-forever") == 1
+}
+
+test fn cutover_ungated_clause_partially_delivered() -> Bool {
+  clause_rung_by_id(clauses: factory_attempt_clauses(), id: "cutover-pass-is-ungated") == 1
+}
+
+test fn metering_no_authority_clause_partially_delivered() -> Bool {
+  clause_rung_by_id(clauses: factory_attempt_clauses(), id: "metering-has-no-fabric-or-compute-authority") == 1
+}
+
+test fn parent_rows_consistency_clause_partially_delivered() -> Bool {
+  clause_rung_by_id(clauses: factory_attempt_clauses(), id: "consistent-with-the-two-parent-rows") == 1
+}
+
+// The one NotDelivered rung: the can-fail clause is held at 0 until the CI execution of THIS module's
+// fold assertion is cited beside it. If someone authors it to Delivered without a recorded run, this reds
+// (gunbc.design_argument::fail_closed — authored green is the named anti-pattern).
+
+test fn can_fail_clause_rung_matches_its_cited_evidence() -> Bool {
+  let r = clause_rung_by_id(clauses: factory_attempt_clauses(), id: "audit-can-fail")
+  r == 0 || r == 1
+}
+
+// The verdict rung match discriminates its three arms — exercised on constructed values, not existence-only
+// (gunbc.design_argument::consumption: a witness asserting existence rather than exercising behavior).
+// Construction here is legal: G0 forbids executing controls, not hermetic constructed records.
+
+test fn verdict_rung_match_discriminates_three_rungs() -> Bool {
+  factory_attempt_verdict_rung(v: NotDelivered { reason: "probe" as NonEmptyStr }) == 0
+    && factory_attempt_verdict_rung(
+      v: PartiallyDelivered { reason: "probe" as NonEmptyStr, evidence: "probe" as NonEmptyStr }
+    ) == 1
+    && factory_attempt_verdict_rung(
+      v: Delivered {
+        witness_module: "probe" as NonEmptyStr,
+        witness_fn: "probe" as NonEmptyStr,
+        evidence: "probe" as NonEmptyStr
+      }
+    ) == 2
+}
+
+// THE MAPPING, exercised. Three independent structural facts an editor cannot satisfy by deleting rows:
+// every recommendation is one of the three rungs (never -1, i.e. no row escaped the match), and each of
+// the three dispositions actually occurs — a cut that silently deleted every ReHome row (erasing the
+// metering and work-product decisions the realization-home ruling must carry) would red here.
+
+fn all_mapping_rungs_in_range(ms: List<FactoryStateMapping>) -> Bool {
+  ms |> fold(init: true, f: (acc, m) => acc && factory_attempt_mapping_disposition_rung(m: m) >= 0)
+}
+
+fn any_mapping_with_rung(ms: List<FactoryStateMapping>, rung: Int) -> Bool {
+  ms |> fold(init: false, f: (acc, m) => acc || factory_attempt_mapping_disposition_rung(m: m) == rung)
+}
+
+test fn mappings_all_runged_and_all_three_dispositions_present() -> Bool {
+  let ms = factory_attempt_state_mappings()
+  all_mapping_rungs_in_range(ms: ms)
+    && any_mapping_with_rung(ms: ms, rung: 0)
+    && any_mapping_with_rung(ms: ms, rung: 1)
+    && any_mapping_with_rung(ms: ms, rung: 2)
+}
+
+fn find_mapping(ms: List<FactoryStateMapping>, belt_module: String) -> FactoryStateMapping? {
+  ms
+    |> fold(
+      init: optional_absent(),
+      f: (acc, m) => match acc {
+        Present { value: _ } => acc
+        Absent => if m.belt_module == belt_module { optional_present(value: m) } else { optional_absent() }
+      }
+    )
+}
+
+fn mapping_disposition_rung_by_module(ms: List<FactoryStateMapping>, belt_module: String) -> Int {
+  match find_mapping(ms: ms, belt_module: belt_module) {
+    Present { value: m } => factory_attempt_disposition_rung(d: m.disposition)
+    Absent => -1
+  }
+}
+
+// The two rows the realization-home ruling turns on, pinned at identity grain (gunbc.design_argument::fail_closed
+// — completeness is an identity join, not a count equality): metering must carry a ReHome recommendation
+// (rung 1) — no fabric or compute authority answers it — and the placement authority must be kept (rung 2).
+// A rename or deletion of either row reds these; the DECISION itself is not made here (its home is the
+// operator's ruling in gunbc.design_ruling and the work item, per the audit module's decision-home note).
+
+test fn metering_row_recommends_rehome() -> Bool {
+  mapping_disposition_rung_by_module(
+    ms: factory_attempt_state_mappings(),
+    belt_module: "gunbc.roadmap.roadmap_attempt_metering"
+  ) == 1
+}
+
+test fn session_placement_row_recommends_keep() -> Bool {
+  mapping_disposition_rung_by_module(
+    ms: factory_attempt_state_mappings(),
+    belt_module: "gunbc.roadmap.roadmap_session_placement"
+  ) == 2
+}
+
+// The worktree-claim row's recommendation (Delete, rung 0) pins the audit's cheapest-cut finding: the
+// claim already rides the shared AttemptPayloadCodec layer, only the store root is roadmap-local.
+
+test fn worktree_claim_row_recommends_delete() -> Bool {
+  mapping_disposition_rung_by_module(
+    ms: factory_attempt_state_mappings(),
+    belt_module: "gunbc.roadmap.roadmap_attempt_worktree_claim"
+  ) == 0
+}

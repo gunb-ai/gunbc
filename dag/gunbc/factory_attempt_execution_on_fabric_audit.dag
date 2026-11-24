@@ -2,7 +2,7 @@ module gunbc.factory_attempt_execution_on_fabric_audit
 
 import std.types { String, NonEmptyStr, Bool, Int, List }
 
-data factory_attempt_execution_on_fabric_audit_note: String = "FIRST-SLICE AUDIT of the roadmap node factory-attempt-execution-on-fabric-lease (gunbc.roadmap.roadmap_authority, the row whose id is factory-attempt-execution-on-fabric-lease; extraction 3943 bytes, sha256 4a0fd2bbf0b1da5a30eeec160ab2d5ab49478cae26d5e75d6cb104b121bd6802 at origin/main 65230868362de3efc0ddfeeaeef5d83eeb2fa385, byte-identical to 8b434ce74d6c). The row's first_slice: enumerate every state the belt holds that execution reads at start, and map each to the fabric record that already carries it or name it as needing one — that mapping is factory_attempt_state_mappings below, and its disposition column (Delete / ReHome / Keep) is the decision the operator's realization-home ruling must carry.
+data factory_attempt_execution_on_fabric_audit_note: String = "FIRST-SLICE AUDIT of the roadmap node factory-attempt-execution-on-fabric-lease (gunbc.roadmap.roadmap_authority, the row whose id is factory-attempt-execution-on-fabric-lease; extraction 3943 bytes, sha256 4a0fd2bbf0b1da5a30eeec160ab2d5ab49478cae26d5e75d6cb104b121bd6802 at origin/main 65230868362de3efc0ddfeeaeef5d83eeb2fa385, byte-identical to 8b434ce74d6c). The row's first_slice: enumerate every state the belt holds that execution reads at start, and map each to the fabric record that already carries it or name it as needing one — that mapping is factory_attempt_state_mappings below; its disposition column carries a per-row RECOMMENDATION beside the evidence, while the decision itself lives in the operator's realization-home ruling (THE HOME OF THE DECISION, below — this module decides nothing).
 
 This is NOT the node's closing contract and is NOT bound to the node's acceptance — the same distinction the operator's 2026-08-02 ruling forced on gunbc.materialization_kernel_closing_frontier_audit (renamed off '...closing_contract' for exactly this reason). A Delivered verdict is a CLAIM ABOUT A WITNESS THAT WAS RUN; authored verdicts cannot lift a rung (gunbc.design_argument::guarantee_ladder rung honesty, gunbc.design_argument::fail_closed). Every verdict below was authored by the audit slice (session fierce-wren-253) from a source read at 65230868362d under the G0 contained-development-execution gate: NO witness was executed in this slice, so no clause reads Delivered here, and factory_attempt_all_clauses_delivered evaluates false by construction rather than vacuously passing.
 
@@ -19,16 +19,52 @@ type FactoryAuditClause {
   verdict: FactoryAuditVerdict
 }
 
-// The one exhaustive match on FactoryAuditVerdict in this module (gunbc.design_argument::single_authority —
+// THE CONSUMER, named (gunbc.design_argument::consumption — a declaration nothing consumes is dangling,
+// however well modeled): the paired witness dag/test/claim/factory_attempt_execution_on_fabric_audit_witness.dag
+// (module test.claim.factory_attempt_execution_on_fabric_audit_witness) exercises every projection below —
+// the rung match, the clause fold, the per-id rung lookups, the mapping invariants and the per-row
+// recommendation rung — and its test fns are the executing route (the CI witness floor). This is the same
+// wiring the two repo audits have: gunbc.materialization_kernel_closing_frontier_audit is consumed only by
+// test.claim.materialization_kernel_closing_frontier_audit_witness, and gunbc.expected_value_authority_audit
+// only by test.claim.self_host_expected_value_authority_audit_witness.
+
+data factory_attempt_consumer: String =
+  "test.claim.factory_attempt_execution_on_fabric_audit_witness — its test fns read the clause fold, the " +
+  "rung projections and the mapping invariants; executed by the CI witness floor."
+
+// THE HOME OF THE DECISION (gunbc.design_argument::planning_has_one_home — a plan's authority is its .dag
+// carrier under gunbc.plans, the work that realizes it lives under gunbc.roadmap; a second place that
+// decides what is planned is a fork): this module carries AUDIT FINDINGS only. The realization-home
+// decision the disposition column recommends toward is the operator's ruling, recorded in
+// gunbc.design_ruling; the red controls and their staffing (witness module + fn, red_at / green_at) are
+// work-item facts on node://adhoc-de172383-0e3 and its edges in gunbc.roadmap.roadmap_authority. Nothing
+// below decides, schedules or staffs anything; the disposition arms are per-row recommendations beside
+// their evidence, and this module deliberately cites the row's red_control only by NUMBER (red control (1)
+// / (2) / (3), defined in gunbc.roadmap.roadmap_authority), never restating its text as its own planning
+// fact (DESIGN.md 'Planning has one home': a planning fact the model already carries is not restated as a
+// field beside it).
+
+data factory_attempt_decision_home: String = "decision: the operator's realization-home ruling (gunbc.design_ruling; Hold is the default). staffing: work item node://adhoc-de172383-0e3 and the roadmap row's own red_control in gunbc.roadmap.roadmap_authority. This module holds neither."
+
+// The ONE exhaustive match on FactoryAuditVerdict in this module (gunbc.design_argument::single_authority —
 // an undeclared sum re-matched by a family of free predicates duplicates the same exhaustiveness fact at
-// each call site), mirroring gunbc.materialization_kernel_closing_frontier_audit::clause_delivered.
+// each call site). Rungs: 0 NotDelivered, 1 PartiallyDelivered, 2 Delivered. Every rung question —
+// delivered, partially delivered, not delivered — derives from this one match.
+
+fn factory_attempt_verdict_rung(v: FactoryAuditVerdict) -> Int {
+  match v {
+    NotDelivered { reason: _ } => 0
+    PartiallyDelivered { reason: _, evidence: _ } => 1
+    Delivered { witness_module: _, witness_fn: _, evidence: _ } => 2
+  }
+}
+
+fn factory_attempt_clause_rung(c: FactoryAuditClause) -> Int {
+  factory_attempt_verdict_rung(v: c.verdict)
+}
 
 fn factory_attempt_clause_delivered(c: FactoryAuditClause) -> Bool {
-  match c.verdict {
-    Delivered { witness_module: _, witness_fn: _, evidence: _ } => true
-    PartiallyDelivered { reason: _, evidence: _ } => false
-    NotDelivered { reason: _ } => false
-  }
+  factory_attempt_clause_rung(c: c) == 2
 }
 
 fn factory_attempt_clause_count(clauses: List<FactoryAuditClause>) -> Int {
@@ -99,8 +135,9 @@ fn factory_attempt_clauses() -> List<FactoryAuditClause> {
     FactoryAuditClause {
       id: "audit-can-fail",
       statement: "This audit can read false: factory_attempt_all_clauses_delivered over factory_attempt_clauses() evaluates false on the rows above, so the summary is not a vacuously green AND over authored data.",
-      verdict: NotDelivered {
-        reason: "No paired witness module exists yet and none was executed under the G0 gate, so the fold itself is unexecuted — which is the honest rung. The cut slice's first deliverable is the paired witness (test.claim.factory_attempt_execution_on_fabric_audit_witness, enrolled like the materialization audit's witness) proving by execution that the fold reads false and that the three red controls refuse." as NonEmptyStr
+      verdict: PartiallyDelivered {
+        reason: "The paired witness exists in this change and the CI witness floor executes it, which is what proves the fold reads false rather than being an always-true wrapper; the rung climbs to Delivered once that execution is cited here as the observation. Until the CI run for this head is recorded beside the clause, the rung stays at PartiallyDelivered — fail-closed on an unexecuted claim (gunbc.design_argument::fail_closed)." as NonEmptyStr,
+        evidence: "dag/test/claim/factory_attempt_execution_on_fabric_audit_witness.dag::factory_attempt_audit_fold_reads_false_proves_can_fail asserts the fold over these exact rows == false; test.claim.factory_attempt_execution_on_fabric_audit_witness is the executing route." as NonEmptyStr
       }
     },
   ]
@@ -124,6 +161,21 @@ type FactoryStateMapping {
   read_at_start: NonEmptyStr
   fabric_authority: NonEmptyStr
   disposition: FactoryStateDisposition
+}
+
+// The ONE exhaustive match on FactoryStateDisposition (gunbc.design_argument::single_authority): 0 Delete,
+// 1 ReHome, 2 Keep. Rung questions about a recommendation derive from this match alone.
+
+fn factory_attempt_disposition_rung(d: FactoryStateDisposition) -> Int {
+  match d {
+    Delete { because: _ } => 0
+    ReHome { needs: _ } => 1
+    Keep { why: _ } => 2
+  }
+}
+
+fn factory_attempt_mapping_disposition_rung(m: FactoryStateMapping) -> Int {
+  factory_attempt_disposition_rung(d: m.disposition)
 }
 
 fn factory_attempt_state_mappings() -> List<FactoryStateMapping> {
@@ -250,46 +302,6 @@ fn factory_attempt_state_mappings() -> List<FactoryStateMapping> {
       read_at_start: "read back through the state-store log lane before planning a continuation" as NonEmptyStr,
       fabric_authority: "gunbc.fabric.fabric_event_log event_log_append_with :192 and event_log_read_partition :178" as NonEmptyStr,
       disposition: Delete { because: "a parallel durable log lane next to the fabric event log is two records for one history (DESIGN.md 'Single authority', :210-:225)" as NonEmptyStr }
-    },
-  ]
-}
-
-// THE THREE RED CONTROLS, PLANNED — not executed (gate G0 contained-development-execution; audit slice
-// only). Each is the row's own red_control. Each is expected RED on main
-// 65230868362de3efc0ddfeeaeef5d83eeb2fa385 because the cut has not landed; green_at is the future PR
-// head. They run under claim_batch over the named witness closures, hermetically or on constructed
-// records (G0 requires witnesses run hermetically or on constructed records).
-
-type FactoryRedControl {
-  id: NonEmptyStr
-  control: NonEmptyStr
-  witness_module: NonEmptyStr
-  witness_fn: NonEmptyStr
-  how: NonEmptyStr
-}
-
-fn factory_attempt_red_controls() -> List<FactoryRedControl> {
-  [
-    FactoryRedControl {
-      id: "stale-generation-start-refuses" as NonEmptyStr,
-      control: "a lease released and re-admitted at a newer generation refuses through the shared generation check and starts nothing (bug-10 leg)" as NonEmptyStr,
-      witness_module: "test.claim.roadmap.attempt_system_unit_launch_witness" as NonEmptyStr,
-      witness_fn: "NEW fn required — drain_refuses_start_after_slot_generation_reamitted. No existing witness touches the generation: 11 nonce hits in that module, 0 generation hits (grep rc=1). The new fn re-admits the slot generation BEFORE the drain runs and asserts refusal plus zero processes started." as NonEmptyStr,
-      how: "claim_batch over the closure of dag/test/claim/roadmap/attempt_system_unit_launch_witness.dag (70 test fns today), hermetic on constructed records — this is the lane brief's 'execution of the system-unit launch contract over the fabricated root'" as NonEmptyStr
-    },
-    FactoryRedControl {
-      id: "capture-reaches-terminal-never-owed" as NonEmptyStr,
-      control: "capture run again on any attempt, including one predating commit-step records, reaches the same terminal outcome and never rests owed (bug-4 leg)" as NonEmptyStr,
-      witness_module: "test.claim.roadmap.roadmap_attempt_continuation_witness" as NonEmptyStr,
-      witness_fn: "recut of owed_capture_refuses_and_never_spawns_from_branch_head (:282, which today LOCKS the wait-forever), inside the claim_batch closure of that module (25 test fns today)" as NonEmptyStr,
-      how: "claim_batch over the closure of dag/test/claim/roadmap/roadmap_attempt_continuation_witness.dag" as NonEmptyStr
-    },
-    FactoryRedControl {
-      id: "no-roadmap-local-slot-or-lease-store" as NonEmptyStr,
-      control: "no module runs belt_attempt_slots_cutover_pass or keeps a roadmap-local slot or lease store" as NonEmptyStr,
-      witness_module: "test.claim.roadmap.roadmap_belt_actuate_witness" as NonEmptyStr,
-      witness_fn: "the cutover witnesses at :3395 and :3416 recut to GATE the pass (today they only decode receipts), over the belt's slots-cutover pass closure in belt_tick_for_instance (:4792)" as NonEmptyStr,
-      how: "claim_batch over the belt tick closure; the pass must refuse when the shared root already holds the slots, and no withheld tick may still write (:4810, :4821)" as NonEmptyStr
     },
   ]
 }
