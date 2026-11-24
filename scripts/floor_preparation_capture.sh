@@ -75,6 +75,7 @@ AUTHORITY=""
 PROVENANCE=""
 REPORT_LOGS=""
 REPORT_LABELS=""
+MANIFEST=""
 WRITE=0
 
 while [ $# -gt 0 ]; do
@@ -89,6 +90,7 @@ while [ $# -gt 0 ]; do
     --untrimmed-log) UNTRIMMED_LOG=$2; shift 2 ;;
     --authority) AUTHORITY=$2; shift 2 ;;
     --provenance) PROVENANCE="$PROVENANCE $2"; shift 2 ;;
+    --manifest) MANIFEST="$2"; shift 2 ;;
     --report-log) REPORT_LOGS="$REPORT_LOGS $2"; shift 2 ;;
     --report-label) REPORT_LABELS="$REPORT_LABELS $2"; shift 2 ;;
     --write) WRITE=1; shift ;;
@@ -215,10 +217,19 @@ verify_binary() {
   SHA256=$(sha256sum "$BINARY" | cut -d' ' -f1)
   [ "$SHA256" != "$EMPTY_SHA" ] || fail "binary hashes as the empty string"
   [ "$SHA256" = "$EXPECT_SHA" ] || fail "binary sha $SHA256 deviates from the pinned $EXPECT_SHA"
-  local manifest
-  manifest=$(dirname "$BINARY")/release-bins.manifest
-  [ -f "$manifest" ] || manifest=$(dirname "$(dirname "$BINARY")")/release-bins.manifest
-  [ -f "$manifest" ] || fail "no release-bins.manifest beside the binary; provenance is unverifiable"
+  local manifest d d2
+  manifest="${MANIFEST:-}"
+  if [ -n "$manifest" ]; then
+    [ -f "$manifest" ] || fail "no manifest at the given path: $manifest"
+  else
+    d=$(dirname "$BINARY")
+    d2=$(dirname "$d")
+    manifest="$d/release-bins.manifest"
+    [ -f "$manifest" ] || manifest="$d2/release-bins.manifest"
+    [ -f "$manifest" ] || manifest="$d2/bins/release-bins.manifest"
+    [ -f "$manifest" ] || fail "no release-bins.manifest beside the binary, beside its parent, or in its bins directory; provenance is unverifiable"
+  fi
+  echo "MANIFEST=$manifest"
   local mh
   mh=$(awk '$2=="claim_batch"{print $1}' "$manifest" | head -1)
   echo "MANIFEST_SHA_claim_batch=$mh"
