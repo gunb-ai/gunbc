@@ -45,7 +45,8 @@ module v2.workflow.floor_preparation_capture_runner
 
 import std.types { Bool, Int, List, Present, Absent, String }
 import std.algebra { length, list_push }
-import std.measure { Millisecond, millisecond, millisecond_count }
+import std.measure { Millisecond, millisecond, millisecond_count, ByteSize, byte_size, byte_size_count }
+import std.checked_arithmetic { checked_int_to_nat }
 import extdeps.shell
 import extdeps.shell.exec
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -241,7 +242,7 @@ type FloorPreparationSpawnObservation {
 type FloorPreparationSupplyReceipt {
   name: String,
   digest: Optional<String>,
-  bytes: Optional<Int>,
+  bytes: Optional<ByteSize>,
   manifest: String,
   expected: String,
   admitted: Bool,
@@ -253,10 +254,10 @@ type FloorPreparationLegReceipt {
   rc: Int,
   binary: String,
   digest: Optional<String>,
-  bytes: Optional<Int>,
+  bytes: Optional<ByteSize>,
   tree_sha: String,
   kept_count: Int,
-  out_bytes: Int,
+  out_bytes: Optional<ByteSize>,
   clean: Bool,
 }
 
@@ -351,20 +352,15 @@ fn floor_preparation_sha_of(path: String) -> String? {
   if outcome.rc == 0 && token != "" { Present { value: token } } else { Absent {} }
 }
 
-fn floor_preparation_bytes_of(path: String) -> Int? {
-  let outcome = floor_preparation_spawn_plain(
-    binary: "/usr/bin/wc",
-    args: ["-c", path])
-  if outcome.rc != 0 {
-    Absent {}
-  } else {
-    match split(s: outcome.stdout, delimiter: " ").first() {
-      Present { value: v } => match parse_int(s: v) {
-        Present { value: n } => Present { value: n }
-        Absent {} => Absent {}
-      }
+fn floor_preparation_bytes_of(path: String) -> Optional<ByteSize> {
+  let ran = floor_preparation_spawn_plain(binary: "/usr/bin/wc", args: ["-c", path])
+  let token = floor_preparation_first_token(ran.stdout)
+  match parse_int(s: token) {
+    Present { value: n } => match checked_int_to_nat(n: n) {
+      Present { value: k } => Present { value: byte_size(count: k) }
       Absent {} => Absent {}
     }
+    Absent {} => Absent {}
   }
 }
 
@@ -400,7 +396,8 @@ fn floor_preparation_supply_check(name: String, path: String, expected: String) 
   let manifest = floor_preparation_manifest_sha(kind: name)
   let admitted = match digest_opt {
     Present { value: d } => match bytes_opt {
-      Present { value: n } => d != floor_preparation_empty_sha && d == expected && manifest == d && n > 0
+      Present { value: b } => d != floor_preparation_empty_sha && d == expected && manifest == d
+      && byte_size_count(b) > 0
       Absent {} => false
     }
     Absent {} => false
@@ -434,7 +431,7 @@ fn floor_preparation_supply_line(r: FloorPreparationSupplyReceipt) -> String {
     Absent {} => "SHA_UNREADABLE"
   }
   let bytes_text = match r.bytes {
-    Present { value: n } => to_string(n)
+    Present { value: b } => to_string(byte_size_count(b))
     Absent {} => "BYTES_UNREADABLE"
   }
   if r.admitted {
@@ -529,6 +526,11 @@ fn floor_preparation_cause_of(entry: String, untrimmed_stdout: String) -> String
 fn floor_preparation_leg_record(
     label: String, entries: List<String>, binary: String, tree_sha: String,
     kept_count: Int, outcome: FloorPreparationSpawnObservation) -> FloorPreparationLegReceipt {
+  // bind before the literal: match is statement position here, not a record-field expression
+  let out_bytes_opt = match checked_int_to_nat(n: outcome.stderr.length()) {
+    Present { value: k } => Present { value: byte_size(count: k) }
+    Absent {} => Absent {}
+  }
   FloorPreparationLegReceipt {
     label: label,
     entries_joined: join(entries, ","),
@@ -538,7 +540,7 @@ fn floor_preparation_leg_record(
     bytes: floor_preparation_bytes_of(path: binary),
     tree_sha: tree_sha,
     kept_count: kept_count,
-    out_bytes: outcome.stderr.length(),
+    out_bytes: out_bytes_opt,
     clean: outcome.rc == 0 && kept_count > 0,
   }
 }
@@ -549,7 +551,11 @@ fn floor_preparation_leg_receipt(r: FloorPreparationLegReceipt) -> String {
     Absent {} => "SHA_UNREADABLE"
   }
   let bytes_text = match r.bytes {
-    Present { value: n } => to_string(n)
+    Present { value: b } => to_string(byte_size_count(b))
+    Absent {} => "BYTES_UNREADABLE"
+  }
+  let out_text = match r.out_bytes {
+    Present { value: b } => to_string(byte_size_count(b))
     Absent {} => "BYTES_UNREADABLE"
   }
   concat(concat(concat("[runner-leg] leg=", r.label), concat(" entries=", r.entries_joined)),
@@ -558,7 +564,7 @@ fn floor_preparation_leg_receipt(r: FloorPreparationLegReceipt) -> String {
         concat(concat(" BINARY_SHA256=", digest_text),
           concat(concat(" BINARY_BYTES=", bytes_text),
             concat(concat(" TREE_SHA=", r.tree_sha),
-              concat(" out_bytes=", to_string(r.out_bytes))))))))
+              concat(" out_bytes=", out_text)))))))
 }
 
 fn floor_preparation_retained_body(untrimmed_stdout: String, graded_stdout: String) -> String {
