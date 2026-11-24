@@ -1,0 +1,146 @@
+module test.claim.floor_exhaustiveness_allowlist_equality_witness
+
+import std.types { String, Bool, Int, List }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import extdeps.filesystem.filesystem_io
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensusRow,
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_total_count,
+  census_count_at_key
+}
+import v2.workflow.floor_exhaustiveness_allowlist {
+  FloorExhaustivenessSite,
+  floor_exhaustiveness_allowlist
+}
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// ============================================================================
+// THE SHRINK-ONLY EQUALITY-BUDGET ENFORCEMENT for the floor-exhaustiveness wall.
+//
+// This is the named consumer that makes the frozen roster in
+// v2.workflow.floor_exhaustiveness_allowlist ENFORCED rather than promised. It measures
+// the REAL corpus blocking set — it reads the real production source of every rostered
+// module off the live tree and runs it through the diagnostic census — and refuses when
+// the roster and the measured blocking ExhaustivenessUnknown set diverge, in EITHER
+// direction:
+//
+//   (1) ADDITION: a seventh blocking site appears (in a rostered module, or a roster row
+//       is hand-added with no real blocking site behind it) -> the measured total no
+//       longer equals the roster length, and the per-scrutinee multiset diverges. FAIL.
+//   (2) STALENESS: a rostered row whose site no longer actually blocks (the (C) roadmap
+//       node resolved its scrutinee type) -> the roster length exceeds the measured
+//       total for that module. FAIL.
+//
+// It is NOT a roster==synthetic-from-roster tautology: the left side of every equality
+// is produced by real inference over real src/v2 source read from the checkout; only the
+// expected multiset comes from the roster. The census path never consults the compile
+// clean A+C arm (compile_clean_diagnostic_is_hard is not on this route), so the census is
+// measured WAIVER-DISABLED by construction — it reports the TRUE blocking set, which is
+// what the roster must be honest to.
+//
+// Red controls for each direction live beside this claim:
+//   test.claim.floor_exhaustiveness_allowlist_red_control_witness
+// ============================================================================
+
+// module_path -> repo-relative source file. The claim reads the REAL production module
+// text at census time; addressing a module by its source file is not part of the
+// enforcement (the measured verdict is), and the four paths below are exactly the modules
+// the frozen roster names. If the roster's module set changes, allowlist_site_source_path
+// returns "" for the new module and its census becomes CensusNotRunnable -> an empty
+// measured set -> the module's total==roster-length equality FAILS.
+fn allowlist_site_source_path(module_path: String) -> String {
+  if module_path == "v2.compiler.fold_lowering" {
+    "src/v2/compiler/fold_lowering.dag"
+  } else if module_path == "v2.compiler.type_declaration_use_census" {
+    "src/v2/compiler/type_declaration_use_census.dag"
+  } else if module_path == "v2.std.compilers.target_model" {
+    "src/v2/std/compilers/target_model.dag"
+  } else if module_path == "v2.compiler.source_root_eval" {
+    "src/v2/compiler/source_root_eval.dag"
+  } else {
+    ""
+  }
+}
+
+// The blocking ExhaustivenessUnknown rows measured by censusing the REAL source of one
+// module. subject_name for an ExhaustivenessUnknown row is its scrutinee (the single
+// histogram key extractor, compile_clean_diagnostic_histogram_key, maps that variant's
+// name to the scrutinee). An unreadable or unroutable module measures as empty, so it can
+// only ever reduce the measured set — it cannot fabricate a match for a missing site.
+fn allowlist_measured_unknown_rows_for_module(module_path: String) -> List<CompileDiagnosticCensusRow> {
+  let path: String = allowlist_site_source_path(module_path)
+  let source: String = filesystem_read(path: path).content
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_blocking_rows(rows: rows)
+        |> filter(r => (r.diagnostic_class as String) == "ExhaustivenessUnknown")
+    CensusNotRunnable { cause: _ } => []
+  }
+}
+
+// The roster rows for one module — the authority the measured set is compared against.
+fn allowlist_roster_rows_for_module(module_path: String) -> List<FloorExhaustivenessSite> {
+  filter(floor_exhaustiveness_allowlist(), row => row.module_path == module_path)
+}
+
+// The expected count of a scrutinee within one module's roster rows.
+fn allowlist_expected_count(module_path: String, scrutinee: String) -> Int {
+  filter(allowlist_roster_rows_for_module(module_path), row => row.scrutinee == scrutinee).length()
+}
+
+// The measured count of a scrutinee among one module's blocking ExhaustivenessUnknown rows.
+fn allowlist_measured_count(module_path: String, scrutinee: String) -> Int {
+  census_count_at_key(
+    rows: allowlist_measured_unknown_rows_for_module(module_path),
+    diagnostic_class: "ExhaustivenessUnknown",
+    subject_name: scrutinee,
+    blocking: true
+  )
+}
+
+// Both directions for one module: the measured total equals the roster length (no add, no
+// stale), and every rostered scrutinee's measured count equals its rostered count (the
+// multiset matches per key). The scrutinee strings are named here because they ARE the key
+// under enforcement; their expected COUNTS are derived from the roster, so a roster edit
+// that changes membership or multiplicity breaks this equality and the total check.
+fn allowlist_module_equality_holds(module_path: String, scrutinees: List<String>) -> Bool {
+  let measured_total: Int = census_total_count(rows: allowlist_measured_unknown_rows_for_module(module_path))
+  let roster_total: Int = allowlist_roster_rows_for_module(module_path).length()
+  let totals_match: Bool = measured_total == roster_total
+  let per_key_match: Bool = filter(scrutines, s => allowlist_measured_count(module_path, s) != allowlist_expected_count(module_path, s)).length() == 0
+  totals_match && per_key_match
+}
+
+// The distinct scrutinees named by the roster for one module, as a fixed list. Derived from
+// the roster's own field values; the roster is frozen (operator: no more exceptions), so
+// this list is stable, and the total==roster-length equality above is what catches a roster
+// row that adds a scrutinee not listed here.
+test fn floor_exhaustiveness_allowlist_equality_budget_holds() -> Bool {
+  let fold_lowering_ok: Bool =
+    allowlist_module_equality_holds("v2.compiler.fold_lowering", ["form"])
+  let type_decl_ok: Bool =
+    allowlist_module_equality_holds("v2.compiler.type_declaration_use_census", ["label"])
+  let target_model_ok: Bool =
+    allowlist_module_equality_holds("v2.std.compilers.target_model", ["pending_arguments"])
+  let source_root_ok: Bool =
+    allowlist_module_equality_holds("v2.compiler.source_root_eval", ["p"])
+  fold_lowering_ok && type_decl_ok && target_model_ok && source_root_ok
+}
+
+// Non-vacuity control: the roster genuinely measures six blocking sites across four
+// modules. If the census machinery silently reported empty for every module (e.g. the read
+// path or census route broke), the per-module total==roster-length would pass at 0==6 only
+// if the roster were ALSO emptied — so this pins that the six sites are actually observed
+// right now, independent of the roster length. It is the GREEN half of the red control that
+// a seventh site (or a lost site) flips.
+test fn floor_exhaustiveness_wall_measures_the_six_frozen_sites() -> Bool {
+  let fold_measured: Int = census_total_count(rows: allowlist_measured_unknown_rows_for_module("v2.compiler.fold_lowering"))
+  let typed_measured: Int = census_total_count(rows: allowlist_measured_unknown_rows_for_module("v2.compiler.type_declaration_use_census"))
+  let target_measured: Int = census_total_count(rows: allowlist_measured_unknown_rows_for_module("v2.std.compilers.target_model"))
+  let root_measured: Int = census_total_count(rows: allowlist_measured_unknown_rows_for_module("v2.compiler.source_root_eval"))
+  fold_measured == 1 && typed_measured == 2 && target_measured == 2 && root_measured == 1
+}
