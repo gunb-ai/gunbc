@@ -162,19 +162,35 @@ type FactoryStateMapping {
   disposition: FactoryStateDisposition
 }
 
-// The ONE exhaustive match on FactoryStateDisposition (gunbc.design_argument::single_authority):
-// 0 Delete, 1 ReHome, 2 Keep. Rung questions about a recommendation derive from this match alone.
+// The ONE exhaustive match on FactoryStateDisposition (gunbc.design_argument::single_authority — one match,
+// free predicates derive from it, per the rule gunbc.materialization_kernel_closing_frontier_audit records
+// from review 47530). The three recommendations are a CLASSIFICATION, not a ladder: Delete / ReHome / Keep
+// carry no natural order, so no number is minted for them (review 98053 minor point — an Int encoding
+// would invent an ordering that does not exist); the match yields the classification NAME, and every
+// question about a recommendation is a question about that name.
 
-fn factory_attempt_disposition_rung(d: FactoryStateDisposition) -> Int {
+fn factory_attempt_disposition_kind(d: FactoryStateDisposition) -> NonEmptyStr {
   match d {
-    Delete { because: _ } => 0
-    ReHome { needs: _ } => 1
-    Keep { why: _ } => 2
+    Delete { because: _ } => "delete"
+    ReHome { needs: _ } => "rehome"
+    Keep { why: _ } => "keep"
   }
 }
 
-fn factory_attempt_mapping_disposition_rung(m: FactoryStateMapping) -> Int {
-  factory_attempt_disposition_rung(d: m.disposition)
+fn factory_attempt_mapping_kind(m: FactoryStateMapping) -> NonEmptyStr {
+  factory_attempt_disposition_kind(d: m.disposition)
+}
+
+fn factory_attempt_mapping_is_delete(m: FactoryStateMapping) -> Bool {
+  factory_attempt_mapping_kind(m: m) == "delete"
+}
+
+fn factory_attempt_mapping_is_rehome(m: FactoryStateMapping) -> Bool {
+  factory_attempt_mapping_kind(m: m) == "rehome"
+}
+
+fn factory_attempt_mapping_is_keep(m: FactoryStateMapping) -> Bool {
+  factory_attempt_mapping_kind(m: m) == "keep"
 }
 
 fn factory_attempt_state_mappings() -> List<FactoryStateMapping> {

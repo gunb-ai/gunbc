@@ -13,7 +13,9 @@ import gunbc.factory_attempt_execution_on_fabric_audit {
   factory_attempt_all_clauses_delivered,
   factory_attempt_clause_count,
   factory_attempt_clauses,
-  factory_attempt_mapping_disposition_rung,
+  factory_attempt_mapping_is_delete,
+  factory_attempt_mapping_is_keep,
+  factory_attempt_mapping_is_rehome,
   factory_attempt_progress_count,
   factory_attempt_state_mappings,
 }
@@ -32,7 +34,7 @@ import gunbc.roadmap.roadmap_refused_retry { RefusedRetryOperatorOnly }
 import gunbc.roadmap.roadmap_session_placement { SessionWorkerOrdinals }
 import gunbc.roadmap.roadmap_submission { CaptureNotAttempted, CaptureUnreadable, SubmissionCaptureObservation }
 import gunbc.systemd_unit_invocation_liveness { DurableHoldHolderLiveness, HolderLivenessUnobservable }
-import std.types { Bool, Int, List, NonEmptyStr }
+import std.types { Bool, List, NonEmptyStr }
 
 // THE CONSUMER of gunbc.factory_attempt_execution_on_fabric_audit and gunbc.audit_verdict
 // (gunbc.design_argument::consumption — a module nothing imports is dangling, however well modeled).
@@ -174,24 +176,41 @@ test fn verdict_rung_match_discriminates_three_rungs() -> Bool {
     })
 }
 
-// The mapping's integrity as an INSTRUMENT (not a per-row restatement): every row carries one of the three
-// recommendations, and all three recommendations occur. A cut that silently deleted every ReHome row —
-// erasing the metering and work-product decisions the realization-home ruling must carry — reds here.
-// The recommendations themselves are recommendations; the decision's home is the operator's ruling
-// (gunbc.design_ruling) and the work item, per the audit module header.
+// The mapping's integrity as an INSTRUMENT (not a per-row restatement): every row carries a recommendation
+// the classification recognizes, and all three recommendations occur. Delete / ReHome / Keep are a
+// classification, not a ladder (review 98053), so the check asks the three classification questions — a cut
+// that silently deleted every ReHome row, erasing the metering and work-product decisions the
+// realization-home ruling must carry, reds here. The recommendations are recommendations; the decision's
+// home is the operator's ruling (gunbc.design_ruling) and the work item, per the audit module header.
 
-fn all_mapping_rungs_classified(ms: List<FactoryStateMapping>) -> Bool {
-  ms |> fold(init: true, f: (acc, m) => acc && factory_attempt_mapping_disposition_rung(m: m) >= 0)
+fn all_mapping_rows_classified(ms: List<FactoryStateMapping>) -> Bool {
+  ms |> fold(
+    init: true,
+    f: (acc, m) => acc
+      && (
+        factory_attempt_mapping_is_delete(m: m)
+          || factory_attempt_mapping_is_rehome(m: m)
+          || factory_attempt_mapping_is_keep(m: m)
+      )
+  )
 }
 
-fn any_mapping_with_rung(ms: List<FactoryStateMapping>, rung: Int) -> Bool {
-  ms |> fold(init: false, f: (acc, m) => acc || factory_attempt_mapping_disposition_rung(m: m) == rung)
+fn any_mapping_is_rehome(ms: List<FactoryStateMapping>) -> Bool {
+  ms |> fold(init: false, f: (acc, m) => acc || factory_attempt_mapping_is_rehome(m: m))
+}
+
+fn any_mapping_is_delete(ms: List<FactoryStateMapping>) -> Bool {
+  ms |> fold(init: false, f: (acc, m) => acc || factory_attempt_mapping_is_delete(m: m))
+}
+
+fn any_mapping_is_keep(ms: List<FactoryStateMapping>) -> Bool {
+  ms |> fold(init: false, f: (acc, m) => acc || factory_attempt_mapping_is_keep(m: m))
 }
 
 test fn mappings_all_classified_and_all_three_recommendations_present() -> Bool {
   let ms = factory_attempt_state_mappings()
-  all_mapping_rungs_classified(ms: ms)
-    && any_mapping_with_rung(ms: ms, rung: 0)
-    && any_mapping_with_rung(ms: ms, rung: 1)
-    && any_mapping_with_rung(ms: ms, rung: 2)
+  all_mapping_rows_classified(ms: ms)
+    && any_mapping_is_delete(ms: ms)
+    && any_mapping_is_rehome(ms: ms)
+    && any_mapping_is_keep(ms: ms)
 }
