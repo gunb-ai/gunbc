@@ -1,7 +1,7 @@
 module gunbc.fleet.fleet_host_truth_observe
 
-// THE OBSERVE-ONLY HOST-TRUTH READ riding the converge timer (roadmap fleet-truth-per-host-read, plan
-// gunbc.plans.desired_state_follows_the_machine, ruling
+// THE OBSERVE-ONLY HOST-TRUTH READ -- dispatched per host on the fleet-converge lane (roadmap
+// fleet-truth-per-host-read, plan gunbc.plans.desired_state_follows_the_machine, ruling
 // gunbc.design_ruling::fleet_truth_read_rides_the_converge_timer_2026_11_21; manager option A). One wet
 // entry, dispatched per host like gunbc.host.host_memory_envelope_observe, reads the TWO axes that have an
 // ON-ROUTE producer and never a mutation:
@@ -14,7 +14,11 @@ module gunbc.fleet.fleet_host_truth_observe
 // a host is never reported as following its desired state while an axis is unread. Its terminal is the 0/1/2
 // contract: 0 ONLY when both readable axes were observed and none diverged, 1 when a readable axis diverges, and
 // 2 when a readable axis could not be read (no observation) -- a host that cannot be read is never green. Mutates
-// nothing; adds no scheduled job -- it rides the converge timer.
+// nothing; adds no scheduled job. HOW IT RUNS TODAY: it is DISPATCHED on the fleet-converge workflow (the
+// daily-scheduled converge lane), exactly like gunbc.host.host_memory_envelope_observe -- one host per run, named
+// by the dispatch. A per-host TIMER dispatch of this read (the ruling's full intent) is a follow-up item, not
+// wired here: the model gives a schedule no inputs, so a mode step can only run on a workflow_dispatch (the
+// fleet_converge_mode_facts row's choice gate), and adding a scheduled dispatcher is out of this item's scope.
 //
 // WHY IDENTITY REFUSES HERE THOUGH IT HAS A PRODUCER SOMEWHERE ELSE: the identity anchor compares the fingerprint
 // the host-key scan observed against the enrolled anchor (gunbc.fleet.fleet_host_key_enrollment::
