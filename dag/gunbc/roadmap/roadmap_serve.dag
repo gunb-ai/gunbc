@@ -154,7 +154,7 @@ import gunbc.roadmap.roadmap_operator_acceptance {
   roadmap_operator_date_from_epoch_secs,
   AcceptanceFound, AcceptanceAbsent, ClosedStatusUnreadable,
 }
-import gunbc.roadmap.roadmap_status { TicketFields, line_ticket, red_observation_from_arm }
+import gunbc.roadmap.roadmap_status { TicketFields, line_ticket, red_observation_from_arm, RedObsBuilt, RedObsRefused }
 import gunbc.roadmap.roadmap_spawner { doc_all_nodes }
 import gunbc.roadmap.roadmap_model { RoadmapNode }
 import extdeps.github.pulls
@@ -1169,9 +1169,10 @@ fn serve_issue_close_response_over(
                     red_base: get("red_base"), probe_ref: get("probe_ref")) {
                   // THE ARM IS SAID, NEVER GUESSED: a close whose red standing is not named is refused, not
                   // silently read as a probe — a close with red_base filled but no red_kind is refused here,
-                  // the same closed set (on_main|probe) the CLI holds to (roadmap_event_cli).
-                  Absent => serve_text_response(status: 400, content_type: text_plain_utf8, body: "close refused: the close form names its red standing — red_kind is exactly on_main or probe; a probe names red_base and probe_ref, an on_main close names neither, and an unnamed arm is refused, never read as a probe\n")
-                  Present { value: observation } => serve_close_answer(
+                  // the same closed set (on_main|probe) the CLI holds to (roadmap_event_cli), judged by the
+                  // one shape authority red_observation_from_arm.
+                  RedObsRefused { rule: _, detail: _ } => serve_text_response(status: 400, content_type: text_plain_utf8, body: "close refused: the close form names its red standing — red_kind is exactly on_main or probe; a probe names red_base and probe_ref, an on_main close names neither, and an unnamed arm is refused, never read as a probe\n")
+                  RedObsBuilt { observation: observation } => serve_close_answer(
                   instance: instance,
                   node_id: node_id,
                   inputs: OperatorCloseInputs {
