@@ -56,18 +56,24 @@ import v2.workflow.floor_preparation_split {
 // the digest for exactly that reason.
 // ----------------------------------------------------------------------------------------------
 
-// No operator path, no session id is written into this module. The checkout root, the slot owner
-// and the slot wrapper's location are RESOLVED FROM THE CALLER'S ENVIRONMENT at run time
-// (HOME, HEAVY_OWNER via printenv through the same spawn surface), because carrying them as
-// literals would leak workflow policy into argv (interface_realization_policy: "Policy has leaked
-// when an argv carries a literal it should receive as a parameter"). The layout conventions --
-// <HOME>/scratch/<owner>/pr as the checkout, <HOME>/bin/heavy-slot as the wrapper,
-// <HOME>/scratch/<owner>/bin/unpacked for the pinned release binaries -- are the shared-host
-// contract every session on this fleet already follows; the digests below pin the RELEASE, not a
+// No operator path, no session id is written into this module. Every location is RESOLVED AT
+// RUN TIME from the caller's environment: an explicit FLOOR_* variable wins when the caller
+// sets one (the caller passes layout policy, exactly as interface_realization_policy demands --
+// the run entry takes no argv, so the environment is the caller's parameter channel), and the
+// shared-host convention <HOME>/scratch/<owner>/... is only the FALLBACK a fleet-wide layout
+// contract, stated here once, in this one section. The digests below pin the RELEASE, not a
 // machine, so a reader on any host can re-derive the split against the same release.
 fn floor_preparation_env_value(name: String) -> String {
   let ran = floor_preparation_spawn_plain(binary: "/usr/bin/printenv", args: [name])
-  trim(s: ran.stdout)
+  match floor_preparation_lines(text: ran.stdout).first() {
+    Present { value: v } => v
+    Absent {} => ""
+  }
+}
+
+fn floor_preparation_env_or(name: String, fallback: String) -> String {
+  let v = floor_preparation_env_value(name: name)
+  if v == "" { fallback } else { v }
 }
 
 fn floor_preparation_session_owner() -> String {
@@ -78,24 +84,34 @@ fn floor_preparation_home() -> String {
   floor_preparation_env_value(name: "HOME")
 }
 
+fn floor_preparation_scratch_dir() -> String {
+  floor_preparation_env_or(name: "FLOOR_SCRATCH",
+    fallback: concat(concat(floor_preparation_home(), "/scratch/"), floor_preparation_session_owner()))
+}
+
 fn floor_preparation_runner_root() -> String {
-  concat(concat(concat(floor_preparation_home(), "/scratch/"), floor_preparation_session_owner()), "/pr")
+  floor_preparation_env_or(name: "FLOOR_CHECKOUT",
+    fallback: concat(floor_preparation_scratch_dir(), "/pr"))
 }
 
 fn floor_preparation_heavy_slot_binary() -> String {
-  concat(concat(floor_preparation_home(), "/bin/heavy-slot"), "")
+  floor_preparation_env_or(name: "FLOOR_HEAVY_SLOT",
+    fallback: concat(concat(floor_preparation_home(), "/bin/heavy-slot"), ""))
 }
 
 fn floor_preparation_pinned_claim_batch() -> String {
-  concat(concat(concat(floor_preparation_home(), "/scratch/"), floor_preparation_session_owner()), "/bin/unpacked/claim_batch")
+  floor_preparation_env_or(name: "FLOOR_CLAIM_BATCH",
+    fallback: concat(concat(floor_preparation_scratch_dir(), "/bin/unpacked/claim_batch"), ""))
 }
 
 fn floor_preparation_pinned_gunbc() -> String {
-  concat(concat(concat(floor_preparation_home(), "/scratch/"), floor_preparation_session_owner()), "/bin/unpacked/gunbc")
+  floor_preparation_env_or(name: "FLOOR_GUNBC",
+    fallback: concat(concat(floor_preparation_scratch_dir(), "/bin/unpacked/gunbc"), ""))
 }
 
 fn floor_preparation_manifest_path() -> String {
-  concat(concat(concat(floor_preparation_home(), "/scratch/"), floor_preparation_session_owner()), "/bin/bins/release-bins.manifest")
+  floor_preparation_env_or(name: "FLOOR_MANIFEST",
+    fallback: concat(concat(floor_preparation_scratch_dir(), "/bin/bins/release-bins.manifest"), ""))
 }
 
 data floor_preparation_timeout_binary: String = "/usr/bin/timeout"
@@ -390,7 +406,7 @@ fn floor_preparation_leg_argv(entries: List<String>) -> List<String> {
   let roots = fold(floor_preparation_source_roots, init: [], f: (acc, root) =>
     concat(acc, ["--source-root", root]))
   fold(entries, init: roots, f: (acc, entry) =>
-    concat(acc, ["--claim-run", "--entry", entry,
+    concat(acc, ["--entry", entry,
                  "--functions", floor_preparation_functions_for(entry: entry)]))
 }
 
@@ -489,7 +505,7 @@ fn floor_preparation_capture_run() -> String {
     let retained = floor_preparation_retained_body(untrimmed_stdout: untrimmed.stdout, graded_stdout: graded.stdout)
     let claims_args = concat(
       fold(floor_preparation_source_roots, init: [], f: (acc, root) => concat(acc, ["--source-root", root])),
-      ["--claim-run", "--entry", floor_preparation_witness_module,
+      ["--entry", floor_preparation_witness_module,
        "--functions", join(floor_preparation_claim_roster, ",")])
     let claims = floor_preparation_spawn_slot(
       bound: floor_preparation_claims_bound,
@@ -548,15 +564,24 @@ fn floor_preparation_capture_run() -> String {
        floor_preparation_receipt("claim-gate",
          concat("missing=", join(missing, ","))),
        report_rc_receipt])
-    if !report_ok || length(xs: missing) > 0 || !population_ok {
-      concat(join(receipts, "\n"), "\nRUNNER_REFUSED: gates not green -- see receipts above")
-    } else {
+    // The retained log and the population projection are LEG OUTPUT, not verdict output: they
+    // are written as soon as both legs completed clean (rc==0 with kept rows), BEFORE the claim
+    // and report gates decide the terminal verdict. Refusing a red gate must not also destroy the
+    // raw evidence of the run -- but writing them is not a pass, and the terminal gate below
+    // still refuses without them reading green.
+    let legs_clean = untrimmed.rc == 0 && graded.rc == 0
+      && length(xs: kept_untrimmed) > 0 && length(xs: kept_graded) > 0
+    if legs_clean {
       Filesystem.Write(
         path: concat(floor_preparation_runner_root(), "/", floor_preparation_retained_file),
         content: retained)
       Filesystem.Write(
         path: concat(floor_preparation_runner_root(), "/", floor_preparation_population_file),
         content: floor_preparation_population_projection())
+    } else {}
+    if !report_ok || length(xs: missing) > 0 || !population_ok {
+      concat(join(receipts, "\n"), "\nRUNNER_REFUSED: gates not green -- see receipts above")
+    } else {
       concat(join(receipts, "\n"),
         concat("\n", concat(join(report_lines, "\n"),
           concat("\n", floor_preparation_receipt("terminal-gate", "ALL_GATES_GREEN")))))
@@ -586,26 +611,3 @@ fn floor_preparation_population_body() -> String {
   join(floor_preparation_population_lines(), "\n")
 }
 
-// ---- TRANSIENT PROBE FNS (surface validation; removed once the runner executes green) ----
-
-fn floor_preparation_probe_text() -> String {
-  concat(concat(to_string(length(xs: floor_preparation_claim_roster)), "|"),
-         to_string(length(xs: floor_preparation_runner_modelled_steps)))
-}
-
-fn floor_preparation_probe_names() -> String {
-  join(floor_preparation_population_entries(), ",")
-}
-
-fn floor_preparation_probe_supply() -> String {
-  floor_preparation_supply_line(name: "claim_batch",
-    path: floor_preparation_pinned_claim_batch(),
-    expected: floor_preparation_pinned_claim_batch_sha,
-    bytes_ok: floor_preparation_bytes_of(path: floor_preparation_pinned_claim_batch()) > 0)
-}
-
-fn floor_preparation_probe_echo() -> String {
-  let outcome = floor_preparation_spawn_slot(bound: millisecond(count: 45000), binary: "/bin/echo", args: ["probe-spawn-ok"])
-  concat(concat("rc=", to_string(outcome.rc)),
-    concat(" out=", floor_preparation_strip(text: outcome.stdout, prefix: "probe-")))
-}

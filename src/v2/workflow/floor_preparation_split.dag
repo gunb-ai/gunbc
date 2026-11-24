@@ -109,7 +109,7 @@ fn floor_preparation_ms_count(carrier: Millisecond) -> Int { millisecond_count(c
 // output verbatim and make the model read the lines, which is what `floor_preparation_capture` holds,
 // with the producer, binary sha, tree sha and argv recorded by `floor_preparation_capture_provenance`.
 // The capture is reproducible: the command is printed inside the report, the population it enumerated
-// is committed at `dag/test/claim/floor/floor_preparation_split_capture_population.json`, and any
+// is committed at `dag/test/claim/floor/floor_preparation_split_population.txt`, and any
 // reader can regenerate both the lines and this reading from them.
 
 // ----------------------------------------------------------------------------------------------
