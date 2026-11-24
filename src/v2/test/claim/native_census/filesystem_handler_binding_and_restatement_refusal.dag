@@ -21,6 +21,7 @@ import v2.compiler.effect_demand {
   filesystem_wall_compile_gate_trigger,
   filesystem_effect_reach_census,
   filesystem_effect_direct_reach_wall_holds,
+  filesystem_effect_callee_matches_identity,
   demand_restatement_row_verdict,
   demand_restatement_new_row_refusals,
   demand_restatement_wall_holds
@@ -37,6 +38,9 @@ import gunbc.demand_engine_restatement_follow_up {
 import std.algebra { Cons, Empty, length }
 import std.types { Bool, List }
 import v2.std.text { String }
+import v2.std.qualified_name {
+  QualifiedName, qualified_name_from_dotted_string, qualified_name_to_dotted_string
+}
 
 // EFFECTS-1 (egress-effects-1-filesystem-provider), THE RED FOR BOTH WALLS. This claim imports the two
 // located refusals from v2.compiler.effect_demand -- symbols that DO NOT EXIST on the dispatch base --
@@ -250,6 +254,67 @@ test fn filesystem_newly_added_site_surfaces_as_a_new_named_offender() -> Bool {
         )
       }
     )
+}
+
+// =============================================================================================
+// FULL-IDENTITY DISCRIMINATION (Manager A blocking point c + warm-fox's false-negative hole)
+// =============================================================================================
+// The producer keys a reach on the callee's WHOLE resolved QualifiedName, not its final segment. A
+// last-segment test would (1) refuse a HONYM declared elsewhere in its own module as if it were the free
+// primitive (false positive) and (2) miss the real primitive reached through a spelling whose last segment
+// is not the slug (the hole). These tests PROVE the discrimination rather than assert it (fail_closed:
+// construction over validation): plant the two shapes side by side and show which the wall keys.
+// The primitive identity is a SUPPLIED QualifiedName, not a hand-typed slug constant.
+
+// The free primitive's declared identity as a resolved QualifiedName. The witness will source the real one
+// from the resolve fold in the slot leg; here it is a fixed QualifiedName so the discrimination is
+// deterministic. Its module is deliberately NOT any module a homonym could share.
+data filesystem_primitive_identity: QualifiedName =
+  qualified_name_from_dotted_string(dotted: "extdeps.filesystem.filesystem_io.filesystem_read")
+
+// A HONYM: a declaration named filesystem_read in its OWN module. Last segment matches the primitive; the
+// full path does not. Must NOT match.
+data filesystem_homonym_identity: QualifiedName =
+  qualified_name_from_dotted_string(dotted: "v2.some.module.filesystem_read")
+
+// GREEN: a callee whose full resolved path IS the primitive identity matches.
+test fn filesystem_full_identity_callee_matches() -> Bool {
+  filesystem_effect_callee_matches_identity(
+    callee: qualified_name_from_dotted_string(dotted: "extdeps.filesystem.filesystem_io.filesystem_read"),
+    identity: filesystem_primitive_identity
+  )
+}
+
+// RED (discriminating): a homonym -- SAME last segment, DIFFERENT module -- must NOT match. If the wall
+// keyed on the last segment this would wrongly return true (the false-positive arm).
+test fn filesystem_homonym_does_not_match() -> Bool {
+  ! filesystem_effect_callee_matches_identity(
+    callee: filesystem_homonym_identity,
+    identity: filesystem_primitive_identity
+  )
+}
+
+// GREEN (the hole closed): the wall keys on the RESOLVED identity, so any written spelling that resolves to
+// the primitive's declared path matches, while a same-named declaration in a DIFFERENT module does not -- the
+// pair that a last-segment slug test could not tell apart (warm-fox's false-negative hole plus A's false
+// positive). Callees carry resolved paths, so a renamed import arrives here already carrying the primitive's
+// path and is caught; a homonym arrives carrying its own module path and is not.
+test fn filesystem_renamed_import_still_matches_the_primitive_identity() -> Bool {
+  filesystem_effect_callee_matches_identity(
+    callee: qualified_name_from_dotted_string(dotted: "extdeps.filesystem.filesystem_io.filesystem_read"),
+    identity: filesystem_primitive_identity
+  )
+    && ! filesystem_effect_callee_matches_identity(
+      callee: qualified_name_from_dotted_string(dotted: "v2.other.filesystem_read"),
+      identity: filesystem_primitive_identity
+    )
+}
+
+// A non-filesystem callee matches neither identity (contributes no reach), so the derived path stays honest
+// about what it covers.
+test fn filesystem_non_matching_callee_matches_neither_identity() -> Bool {
+  let unrelated = qualified_name_from_dotted_string(dotted: "std.algebra.fold_list")
+  ! filesystem_effect_callee_matches_identity(callee: unrelated, identity: filesystem_primitive_identity)
 }
 
 test fn filesystem_read_direct_reach_refuses() -> Bool {

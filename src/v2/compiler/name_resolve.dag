@@ -270,6 +270,12 @@ type ClosureIndex {
   // The roster grouped by module and declaration path, built once with the roster; each subject walk
   // reads it with its own module excluded (v2.compiler.resolve unavailable_provider_for_path).
   outcome_index: ModuleOutcomeIndex
+  // THE PHASE-1 DECLARATION ROWS, carried so a cache-hit re-derivation of ClosureDeclarations reads the
+  // SAME list the first demand built (EFFECTS-1: consumed by v2.compiler.effect_demand
+  // filesystem_effect_reaches_from_phase1_rows). Stored once by closure_declarations_demand from the
+  // phase-1 fold and never re-collected or copy-transformed -- declarations and rows cannot diverge, and a
+  // cache-hit subject pays no second phase-1 walk.
+  rows: List<DeclPhase1Row>
 }
 
 // One stored production: the admission it was produced under, and its outcome -- a refusal is
@@ -1387,6 +1393,12 @@ type ClosureDeclarations {
   declarations: SymbolIndex
   module_outcomes: List<ModuleOutcome>
   outcome_index: ModuleOutcomeIndex
+  // THE PHASE-1 DECLARATION ROWS, filled from the SAME list the phase-1 fold already builds (see
+  // closure_declarations_demand). Consumed by v2.compiler.effect_demand filesystem_effect_reaches_from_
+  // phase1_rows, which turns each row.callees occurrence into a located FilesystemEffectReach for the
+  // filesystem wall census. Filled once, never re-collected, never defaulted to an empty list: a cache-hit
+  // reads it off ClosureIndex.rows, a fresh demand reads phase1.rows, so the two cannot diverge.
+  rows: List<DeclPhase1Row>
   context: ResolutionContext
 }
 
@@ -1787,7 +1799,7 @@ fn closure_blocked_member_outcomes(blocked: FreeMonoid<BlockedMember>) -> List<M
 
 fn closure_declarations_demand(shared: ResolutionContext) -> ClosureDeclarations {
   match shared.closure_declarations {
-    Present { value: closure } => ClosureDeclarations { declarations: closure.declarations, module_outcomes: closure.module_outcomes, outcome_index: closure.outcome_index, context: shared }
+    Present { value: closure } => ClosureDeclarations { declarations: closure.declarations, module_outcomes: closure.module_outcomes, outcome_index: closure.outcome_index, rows: closure.rows, context: shared }
     Absent =>
       let phase1 = fold_list(
         xs: shared.roots.roots,
@@ -1823,6 +1835,7 @@ fn closure_declarations_demand(shared: ResolutionContext) -> ClosureDeclarations
         declarations: index,
         module_outcomes: observed,
         outcome_index: outcome_index,
+        rows: phase1.rows,
         context: ResolutionContext {
           lm: phase1.context.lm,
           roots: phase1.context.roots,
@@ -1832,7 +1845,7 @@ fn closure_declarations_demand(shared: ResolutionContext) -> ClosureDeclarations
           policy: phase1.context.policy,
           namespaces: phase1.context.namespaces,
           namespaces_built: phase1.context.namespaces_built,
-          closure_declarations: optional_present(value: ClosureIndex { declarations: index, module_outcomes: observed, outcome_index: outcome_index }),
+          closure_declarations: optional_present(value: ClosureIndex { declarations: index, module_outcomes: observed, outcome_index: outcome_index, rows: phase1.rows }),
           type_declaration_modifiers: phase1.context.type_declaration_modifiers
         }
       }

@@ -11,8 +11,13 @@ import std.execution_mode { ExecutionMode, Wet, execution_mode_eq }
 import std.primitive_projection { PrimitiveIdentity, primitive_identity_slug }
 import std.algebra { Cons, Empty, fold_list, length, list_reverse }
 import v2.std.integer { Int }
-import v2.std.node { Symbol }
+import v2.std.node { Symbol, symbol_lexeme }
 import v2.std.text { String }
+import std.optional { Absent, Optional, Present }
+import v2.std.qualified_name {
+  QualifiedName, qualified_name_last_segment, qualified_name_to_dotted_string
+}
+import v2.compiler.name_resolve { DeclPhase1Row }
 
 // XL-1's first deliverable: the DERIVED EFFECT DEMAND population. One row per
 // (calling entry, effect operation identity, execution mode, producer origin), each
@@ -1488,6 +1493,139 @@ fn filesystem_effect_reach_census(
 fn filesystem_effect_direct_reach_wall_holds(report: FilesystemEffectCensusReport) -> Bool {
   length(xs: report.offenders) == 0
     && filesystem_effect_offender_sites_are_distinct(offenders: report.offenders)
+}
+
+// THE REAL PRODUCER (A condition 2: the consumer that makes the new name_resolve rows field non-dangling,
+// landing in the SAME change as the field). It maps the phase-1 declaration rows the resolver already
+// built -- name_resolve ClosureDeclarations.rows, the SAME list the phase-1 fold produced, never
+// re-collected -- to located filesystem reaches. Each row is ONE declaration (module, name, callees). A
+// callee is a located filesystem reach when its RESOLVED QualifiedName equals the free primitive's (or
+// the bound handler's) declared identity -- matched on the WHOLE dotted name, not the final segment.
+//
+// WHY FULL IDENTITY, NOT THE LAST SEGMENT (Manager A's blocking point c + warm-fox's hole). These are
+// ordinary declared calls through an import, not primitive identities, so the last segment is not the
+// identity. Two defects the last-segment test would ship: (1) FALSE POSITIVE -- any module declaring its
+// own `fn filesystem_read` would be refused as if it were the free primitive; (2) FALSE NEGATIVE (the
+// hole warm-fox called the one that matters) -- the real primitive reached under a spelling whose last
+// segment is not the slug would become no reach at all and pass silently. Keying on the whole resolved
+// QualifiedName closes both: a homonym has the wrong full path; a renamed import still resolves to the
+// primitive's declared path. The last segment is kept ONLY as a cheap prefilter (warm-fox: "keep the
+// last-segment test only as a cheap prefilter if you want it"), then the full dotted name is compared.
+//
+// THE IDENTITY IS SUPPLIED, NOT HAND-TYPED (Manager A: "taken from its declaration or import, not a
+// hand-typed dotted string"). `free_primitive_identity` and `bound_handler_identity` are QualifiedNames the
+// caller supplies from the real resolve fold (resolve_fixture claim_closure, or the production-backed seam
+// path at src/v2/test/claim/compiler/operation_declaration_seam.dag read_seam_path), so this module never
+// types the module spelling as a string constant and cannot drift from what the resolver actually emits.
+// WHAT THE PATHS ARE, ON THEIR FACE (warm-fox item 1: do not let the log imply three coverage). The derived
+// path produces the TWO arms a real closure can actually carry:
+//   callee full QN == free_primitive_identity   -> ReachedFreePrimitiveDirectly (the refused arm)
+//   callee full QN == bound_handler_identity     -> ReachedThroughHandler        (the authorised arm)
+// A callee matching NEITHER is a non-filesystem reference and contributes no reach. The third classifier
+// arm, ReachedOutsideBoundHandler, is a SUPPLIED-POPULATION-ONLY arm: the derived path can never build it
+// (a derived reach's operation is one of the two identities above), so it is exercised SOLELY by the
+// synthetic leg, whose accepted-and-refused pair is the discriminating control for the classifier. It is
+// kept because the classifier must refuse an unrecognised filesystem spelling, but it is NOT claimed as
+// production coverage.
+//
+// POPULATION GRAIN (warm-fox note): callees are collected from every node carrying a declaration reference
+// path, so a reach is ANY reference to a declaration with that identity, which is BROADER than a call. That
+// is the fail-closed direction -- read this as a reference census, not a call graph.
+fn filesystem_effect_callee_matches_identity(callee: QualifiedName, identity: QualifiedName) -> Bool {
+  // The authoritative check is the WHOLE resolved dotted name (Manager A blocking point c + warm-fox's
+  // hole); the final-segment test is a cheap prefilter the whole comparison already subsumes. A real
+  // declaration identity is module + name, so its last segment is never Empty; an Empty identity is a
+  // no-match (the wall never matches nothing to something), and a bare callee with no segment matches only
+  // an Empty identity, which is never a real declaration -- so never a reach.
+  match qualified_name_last_segment(qn: callee) {
+    Absent => length(xs: identity) == 0
+    Present { value: callee_last } =>
+      match qualified_name_last_segment(qn: identity) {
+        Absent => false
+        Present { value: identity_last } =>
+          symbol_lexeme(sym: callee_last) == symbol_lexeme(sym: identity_last)
+            && qualified_name_to_dotted_string(qn: callee) == qualified_name_to_dotted_string(qn: identity)
+      }
+  }
+}
+
+fn filesystem_effect_reaches_from_phase1_rows(
+  rows: List<DeclPhase1Row>,
+  free_primitive_identity: QualifiedName,
+  bound_handler_identity: QualifiedName,
+  bound_handler_slug: String
+) -> List<FilesystemEffectReach> {
+  fold_list(
+    xs: rows,
+    empty: Empty,
+    cons: fn(row_acc, row) {
+      let module_path = qualified_name_to_dotted_string(qn: row.module)
+      let decl_name = symbol_lexeme(sym: row.name)
+      let row_reaches = fold_list(
+        xs: row.callees,
+        empty: Empty,
+        cons: fn(acc, callee) {
+          if filesystem_effect_callee_matches_identity(callee: callee, identity: free_primitive_identity) {
+            Cons {
+              head: filesystem_effect_reach(
+                site: FilesystemEffectSite {
+                  module_path: module_path,
+                  enclosing_declaration: decl_name,
+                  site_occurrence: length(xs: acc) + 1
+                },
+                operation: filesystem_free_primitive_slug,
+                handler_slug: bound_handler_slug
+              ),
+              tail: acc
+            }
+          } else if filesystem_effect_callee_matches_identity(callee: callee, identity: bound_handler_identity) {
+            Cons {
+              head: filesystem_effect_reach(
+                site: FilesystemEffectSite {
+                  module_path: module_path,
+                  enclosing_declaration: decl_name,
+                  site_occurrence: length(xs: acc) + 1
+                },
+                operation: bound_handler_slug,
+                handler_slug: bound_handler_slug
+              ),
+              tail: acc
+            }
+          } else {
+            acc
+          }
+        }
+      )
+      fold_list(xs: row_reaches, empty: row_acc, cons: fn(a, r) { Cons { head: r, tail: a } })
+    }
+  )
+}
+
+// THE EMITTED-CLOSURE CENSUS ENTRY: the emitted-closure path's call into the wall. Given the phase-1 rows
+// of an emitted closure (from the real resolve fold), derive the real filesystem reaches and run the census
+// over them with the NAMED population source, so the wall checks run on the real closure rather than a
+// hand-supplied list. THE HONEST RUNG (warm-fox item 1 + Manager A rung honesty): this runs the census over
+// REAL closure rows; it is NOT yet a compile-phase gate -- no compiler phase calls it, only the witness. A
+// direct filesystem_read reach still reaches the runtime unrealized_host_seam rather than a compile refusal.
+// It becomes a gate on the trigger filesystem_wall_compile_gate_trigger: when the two self_host.dag direct
+// sites migrate to the bound handler, this census is wired into the compile pipeline and a direct reach
+// refuses at COMPILE TIME.
+fn filesystem_effect_emitted_closure_census(
+  population_source: FilesystemEffectCensusPopulation,
+  rows: List<DeclPhase1Row>,
+  free_primitive_identity: QualifiedName,
+  bound_handler_identity: QualifiedName,
+  bound_handler_slug: String
+) -> FilesystemEffectCensusReport {
+  filesystem_effect_reach_census(
+    population_source: population_source,
+    reaches: filesystem_effect_reaches_from_phase1_rows(
+      rows: rows,
+      free_primitive_identity: free_primitive_identity,
+      bound_handler_identity: bound_handler_identity,
+      bound_handler_slug: bound_handler_slug
+    )
+  )
 }
 // ---- WALL 1 (predicate): a new demand_restatement row is LOCATED and refused by the census ----
 // THE AUTHORIZED RESTATEMENT ROSTER IS A PARAMETER, not a tree-derived oracle. A `demand_restatement`
