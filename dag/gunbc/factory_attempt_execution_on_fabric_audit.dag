@@ -1,0 +1,295 @@
+module gunbc.factory_attempt_execution_on_fabric_audit
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+
+data factory_attempt_execution_on_fabric_audit_note: String = "FIRST-SLICE AUDIT of the roadmap node factory-attempt-execution-on-fabric-lease (gunbc.roadmap.roadmap_authority, the row whose id is factory-attempt-execution-on-fabric-lease; extraction 3943 bytes, sha256 4a0fd2bbf0b1da5a30eeec160ab2d5ab49478cae26d5e75d6cb104b121bd6802 at origin/main 65230868362de3efc0ddfeeaeef5d83eeb2fa385, byte-identical to 8b434ce74d6c). The row's first_slice: enumerate every state the belt holds that execution reads at start, and map each to the fabric record that already carries it or name it as needing one — that mapping is factory_attempt_state_mappings below, and its disposition column (Delete / ReHome / Keep) is the decision the operator's realization-home ruling must carry.
+
+This is NOT the node's closing contract and is NOT bound to the node's acceptance — the same distinction the operator's 2026-08-02 ruling forced on gunbc.materialization_kernel_closing_frontier_audit (renamed off '...closing_contract' for exactly this reason). A Delivered verdict is a CLAIM ABOUT A WITNESS THAT WAS RUN; authored verdicts cannot lift a rung (gunbc.design_argument::guarantee_ladder rung honesty, gunbc.design_argument::fail_closed). Every verdict below was authored by the audit slice (session fierce-wren-253) from a source read at 65230868362d under the G0 contained-development-execution gate: NO witness was executed in this slice, so no clause reads Delivered here, and factory_attempt_all_clauses_delivered evaluates false by construction rather than vacuously passing.
+
+Citation discipline (DESIGN.md reading rules): the symbol is load-bearing, the line number is convenience. Every line number was read at 65230868362d; after a rebase the symbol still names the fact."
+
+type FactoryAuditVerdict
+  = NotDelivered { reason: NonEmptyStr }
+  | PartiallyDelivered { reason: NonEmptyStr, evidence: NonEmptyStr }
+  | Delivered { witness_module: NonEmptyStr, witness_fn: NonEmptyStr, evidence: NonEmptyStr }
+
+type FactoryAuditClause {
+  id: NonEmptyStr
+  statement: NonEmptyStr
+  verdict: FactoryAuditVerdict
+}
+
+// The one exhaustive match on FactoryAuditVerdict in this module (gunbc.design_argument::single_authority —
+// an undeclared sum re-matched by a family of free predicates duplicates the same exhaustiveness fact at
+// each call site), mirroring gunbc.materialization_kernel_closing_frontier_audit::clause_delivered.
+
+fn factory_attempt_clause_delivered(c: FactoryAuditClause) -> Bool {
+  match c.verdict {
+    Delivered { witness_module: _, witness_fn: _, evidence: _ } => true
+    PartiallyDelivered { reason: _, evidence: _ } => false
+    NotDelivered { reason: _ } => false
+  }
+}
+
+fn factory_attempt_clause_count(clauses: List<FactoryAuditClause>) -> Int {
+  count(clauses)
+}
+
+fn factory_attempt_progress_count(clauses: List<FactoryAuditClause>) -> Int {
+  clauses |> filter(c => factory_attempt_clause_delivered(c: c)) |> count()
+}
+
+// The derived AUDIT SUMMARY: true only if every audited clause independently reached Delivered.
+// Not a roadmap execution contract; see the note above.
+
+fn factory_attempt_all_clauses_delivered(clauses: List<FactoryAuditClause>) -> Bool {
+  clauses |> fold(init: true, f: (acc, c) => acc && factory_attempt_clause_delivered(c: c))
+}
+
+fn factory_attempt_clauses() -> List<FactoryAuditClause> {
+  [
+    FactoryAuditClause {
+      id: "gap-is-real",
+      statement: "The belt still owns attempt state on main: no commit since 2026-11-19 lands the node, and the belt-local slot store and the capture-owed refusal still read.",
+      verdict: PartiallyDelivered {
+        reason: "Source read at 65230868362d only; no witness executed under the G0 gate." as NonEmptyStr,
+        evidence: "git log --since=2026-11-19 naming the node returned nothing (rc=0, empty output). belt_attempt_slots: 7 hits in dag/gunbc/roadmap/roadmap_belt_actuate.dag (belt_attempt_slots_census :1616, census-with-carry-over :1663-:1669, belt_attempt_slots_cutover_pass :1671, sole caller :4792, tick pass fields :5198/:5217/:5235). CaptureOwed still minted at dag/gunbc/roadmap/roadmap_attempt_continuation.dag:272 and consumed at :422." as NonEmptyStr
+      }
+    },
+    FactoryAuditClause {
+      id: "bug-10-nonce-is-not-a-generation-check",
+      statement: "The drain starts an enqueued request without checking the placement lease's slot generation: the nonce the belt mints FROM the generation is opaque to the launch authority, so a lease released — or re-admitted at a newer generation — between enqueue and start still starts (srv1 lab defect 10).",
+      verdict: PartiallyDelivered {
+        reason: "Confirmed in source at 65230868362d; no witness exists that refuses on the generation, so nothing executed proves the refusal." as NonEmptyStr,
+        evidence: "Mint: roadmap_belt_actuate.dag:1559 (nonce: to_string(value: cas_generation_count(g: launched.slot_generation))). Opaque use: dag/gunbc/roadmap/attempt_system_unit_launch.dag:226 comment, :233 field; consumers are ONLY path-segment safety at :560, echo at :574, non-empty at :632-633. A grep of that whole module for slot_generation, ExpectSlotGeneration and begin_launch returned rc=1 (zero hits). The drain path checks nothing about the lease: attempt_system_unit_process_claimed :1148 calls attempt_system_unit_cli_start :1055 calls attempt_system_unit_start_admitted :325, which checks user, argv program and byte bound only. The authority that already answers it: dag/gunbc/roadmap/roadmap_session_placement.dag:541 session_placement_begin_launch carrying expected: grant.slot_generation at :542, consumed as ExpectSlotGeneration in dag/gunbc/compute/attempt_lifecycle.dag at :581, :710, :1144 (attempt_begin_launch :745, attempt_fenced_commit :1142)." as NonEmptyStr
+      }
+    },
+    FactoryAuditClause {
+      id: "bug-4-capture-owed-waits-forever",
+      statement: "An attempt that ended with capture owed and has no commit-step record for its head is refused forever: CaptureNotAttempted maps to Refuse with cause CaptureOwed, and the only thing that ever bounded the wait is a belt-side commit record that may never exist (srv1 lab defect 4).",
+      verdict: PartiallyDelivered {
+        reason: "Confirmed in source at 65230868362d; the existing witness LOCKS the wait-forever behaviour, so it is evidence for the defect, not for the cut." as NonEmptyStr,
+        evidence: "dag/gunbc/roadmap/roadmap_attempt_continuation.dag:272 declares the RefuseCause variant CaptureOwed { reason: String }; :422 maps CaptureNotAttempted to Refuse whose text says CONTINUE waits for that capture. The bound is belt_capture_absence_for_attempt (roadmap_belt_actuate.dag:8614), which reads AttemptCommitOutcomeLast and maps an absent file to CaptureNotAttempted (:8616) or owed to CaptureNotAttempted (:8619); belt_claim_capture_of :1823 turns that into ClaimCaptureOwed at :1830. dag/test/claim/roadmap/roadmap_attempt_continuation_witness.dag:282 owed_capture_refuses_and_never_spawns_from_branch_head pins the refusal, and its comment at :274-:279 states boundedness rests ONLY on the commit lane reading the commit record." as NonEmptyStr
+      }
+    },
+    FactoryAuditClause {
+      id: "cutover-pass-is-ungated",
+      statement: "belt_attempt_slots_cutover_pass runs on every belt tick with no gate: it is bound before the wholesale-withholding match and carried in BOTH returned arms, so a withheld tick still executes the roadmap-local migration write.",
+      verdict: PartiallyDelivered {
+        reason: "Confirmed in source at 65230868362d; the witnesses near the pass observe it, none gate it." as NonEmptyStr,
+        evidence: "roadmap_belt_actuate.dag:1671 belt_attempt_slots_cutover_pass (record_write at :1686; outcomes AttemptSlotsCutoverCarried :1700 and AttemptSlotsCutoverAlreadyCarried :1704); sole caller :4792 inside belt_tick_for_instance, bound BEFORE the match on belt_tick_wholesale_of and returned in both arms — TickPassesWithheld at :4801 carries slots_cutover: slots_cutover at :4810, the full TickPasses at :4821. The witnesses in dag/test/claim/roadmap/roadmap_belt_actuate_witness.dag at :3395 and :3416 decode cutover receipts; neither gates the pass." as NonEmptyStr
+      }
+    },
+    FactoryAuditClause {
+      id: "metering-has-no-fabric-or-compute-authority",
+      statement: "Usage metering has no fabric or compute counterpart, so the cut has no record to migrate it onto: metering is the clearest RE-HOME and the ruling this audit feeds must name its home.",
+      verdict: PartiallyDelivered {
+        reason: "Absence confirmed by grep at 65230868362d only; where the home should be is the operator's realization-home ruling, not this audit's call." as NonEmptyStr,
+        evidence: "grep of 'etering' across dag/product, src/v2/product/fabric, src/v2/product/capacity, dag/gunbc/fabric and dag/gunbc/compute returned only dag/product/data_class.dag:27 and dag/product/data_category.dag:69, :266, :387 (rc=0) — prose mentions, no metering record; the searches for a metering type under those authorities found nothing else. The whole surface lives in dag/gunbc/roadmap/roadmap_attempt_metering.dag (module gunbc.roadmap.roadmap_attempt_metering; MeteredRole :70, AttemptMeteringRecord :103, metering_standing_of :425, attempt_metering_decode :860), consumed by roadmap_belt_actuate.dag:23, roadmap_service_evidence.dag:9 and roadmap_dogfood_route.dag:17." as NonEmptyStr
+      }
+    },
+    FactoryAuditClause {
+      id: "consistent-with-the-two-parent-rows",
+      statement: "The mapping is consistent with the node's two parents at main: execution-attempt-one-record (product.fabric.execution Attempt and ExecutionAttemptLineage canonical; the belt's attempt state migrates THROUGH this node) and venue-contract (every executor on one accept-report-consume contract over product.fabric.execution).",
+      verdict: PartiallyDelivered {
+        reason: "Consistency argued from the rows and the records at 65230868362d. The one place it CANNOT be consistent is metering: neither parent row declares a usage record, so that clause says so plainly rather than claiming a home." as NonEmptyStr,
+        evidence: "dag/gunbc/roadmap/roadmap_authority.dag:912 execution-attempt-one-record states 'The belt's own attempt state is migrated by factory-attempt-execution-on-fabric-lease, which consumes this record'; :976 venue-contract requires accepting a committed fill and refusing a stale or foreign one; the edges exist at :8100-:8101. The records are there to be migrated onto: dag/product/fabric/execution.dag ExecutionAttemptLineage :39, Attempt<P> :51 carrying lineage at :54, LeaseIdentity :66, Receipt<P> :172, grant_lease_generation :194, ReceiptAdmission :226, admit_receipt_for_grant :233. venue-contract's own red control — a fill for a superseded generation is refused — is exactly the check that routes bug 10 through the ExpectSlotGeneration CAS cited above." as NonEmptyStr
+      }
+    },
+    FactoryAuditClause {
+      id: "audit-can-fail",
+      statement: "This audit can read false: factory_attempt_all_clauses_delivered over factory_attempt_clauses() evaluates false on the rows above, so the summary is not a vacuously green AND over authored data.",
+      verdict: NotDelivered {
+        reason: "No paired witness module exists yet and none was executed under the G0 gate, so the fold itself is unexecuted — which is the honest rung. The cut slice's first deliverable is the paired witness (test.claim.factory_attempt_execution_on_fabric_audit_witness, enrolled like the materialization audit's witness) proving by execution that the fold reads false and that the three red controls refuse." as NonEmptyStr
+      }
+    },
+  ]
+}
+
+// THE MAPPING — the first_slice itself. One row per piece of belt-, attempt-, dispatch- or session-
+// module state that execution reads at start: (a) what execution needs from it, (b) which fabric or
+// compute authority already answers it (module and symbol, with the line read at 65230868362d), and
+// (c) the disposition when the cut lands. Delete = a fabric/compute authority answers it and the
+// roadmap copy goes. ReHome = no authority answers it; a record must be NAMED, and that column is the
+// decision the realization-home ruling carries. Keep = host transport, not lease state.
+
+type FactoryStateDisposition
+  = Delete { because: NonEmptyStr }
+  | ReHome { needs: NonEmptyStr }
+  | Keep { why: NonEmptyStr }
+
+type FactoryStateMapping {
+  belt_module: NonEmptyStr
+  state: NonEmptyStr
+  read_at_start: NonEmptyStr
+  fabric_authority: NonEmptyStr
+  disposition: FactoryStateDisposition
+}
+
+fn factory_attempt_state_mappings() -> List<FactoryStateMapping> {
+  [
+    FactoryStateMapping {
+      belt_module: "gunbc.roadmap.roadmap_attempt_state_store" as NonEmptyStr,
+      state: "AttemptStateMember (roadmap_attempt_state_store.dag:61, 25 file members) read and written per attempt through attempt_state_observe_at :301, attempt_state_read_at :323, attempt_state_write_at :354, under the belt-attempt root" as NonEmptyStr,
+      read_at_start: "the launch decision reads key, fingerprint, launch identity, spawn origin, environment admission and publication receipt before it starts anything (roadmap_belt_actuate.dag:3598, :5351 and :5356, :5632 and :5638, :5912 and :5926; write :5955)" as NonEmptyStr,
+      fabric_authority: "gunbc.compute.attempt_lifecycle carries the IDENTITY half: AttemptState :127 and AttemptRecord :203 (identity, reference, unit, granted, opened_at, launch_deadline, state, owner) behind AttemptPayloadCodec :444" as NonEmptyStr,
+      disposition: ReHome {
+        needs: "Split: the identity/spawn members (AttemptKeyRecord, AttemptProcessFingerprint, AttemptLaunchIdentity, AttemptSpawnOrigin, AttemptEnvironmentAdmission, AttemptSpawnFailure) answer attempt_lifecycle questions and DELETE with the slot record; the work-product members (verification, review, oracle, publication, diff, validation — the majority of the 25) answer NO attempt-lifecycle question and have no fabric record at all. They need a named record, or a ruling that they are worker output living outside the attempt record." as NonEmptyStr
+      }
+    },
+    FactoryStateMapping {
+      belt_module: "gunbc.roadmap.roadmap_attempt_state_store" as NonEmptyStr,
+      state: "AttemptLogMember (roadmap_attempt_state_store.dag:107, 6 append lanes: worker events, verification retry entries, oracle revisions, spawn failures)" as NonEmptyStr,
+      read_at_start: "the continuation reads the prior worker's event log before planning (PriorExecutionObservation feeding continuation_plan :334)" as NonEmptyStr,
+      fabric_authority: "gunbc.fabric.fabric_event_log is the typed append authority: event_log_append_with :192, event_log_read_partition :178" as NonEmptyStr,
+      disposition: ReHome { needs: "the six lanes onto fabric event-log partitions; the file-directory log lanes DELETE after the migration — two histories for one attempt violates single authority (DESIGN.md, 'Single authority', :210-:225)" as NonEmptyStr }
+    },
+    FactoryStateMapping {
+      belt_module: "gunbc.roadmap.roadmap_belt_actuate" as NonEmptyStr,
+      state: "the belt's attempt slot census and carry-over: belt_attempt_slots_census :1616, belt_attempt_slots_census_with_carry_over :1669, and the record written by belt_attempt_slots_cutover_pass :1671 (record_write :1686)" as NonEmptyStr,
+      read_at_start: "belt_tick_for_instance :4792 binds the pass before any gate; the withheld tick still carries it (:4810, :4821)" as NonEmptyStr,
+      fabric_authority: "the slot store is ALREADY the shared layer: gunbc.compute.attempt_lifecycle attempt_slot_keys :401, read_attempt_slot :406, write_attempt_slot :414 over gunbc.compute.compute_attempt_slots_root (slot_root_path :46), with ExpectSlotGeneration consumed at :581, :710, :1144" as NonEmptyStr,
+      disposition: Delete { because: "red control (3): no module may run belt_attempt_slots_cutover_pass or keep a roadmap-local slot store; the census reads the shared root instead" as NonEmptyStr }
+    },
+    FactoryStateMapping {
+      belt_module: "gunbc.roadmap.roadmap_belt_actuate" as NonEmptyStr,
+      state: "the start sequence belt_session_container_create :1511-:1590: placement record write :1548, session_placement_begin_launch CAS :1552, start-request nonce mint :1559, queue enqueue :1563, drain read via harness_start_from_observation :1576" as NonEmptyStr,
+      read_at_start: "this IS the start path, and the nonce at :1559 is the only generation-bound value that reaches the host — where nothing reads it as a generation (bug 10)" as NonEmptyStr,
+      fabric_authority: "roadmap_session_placement.dag:481 session_placement_acquire and :541 session_placement_begin_launch (expected: grant.slot_generation at :542) over product.capacity.lease LeaseGrant (imported at :7) and attempt_lifecycle attempt_begin_launch :745" as NonEmptyStr,
+      disposition: Delete { because: "the nonce mint at :1559 and the belt's extra placement copy go once the drain admits through ExpectSlotGeneration — the bug-10 fix; begin_launch already delegates to the shared CAS" as NonEmptyStr }
+    },
+    FactoryStateMapping {
+      belt_module: "gunbc.roadmap.attempt_system_unit_launch" as NonEmptyStr,
+      state: "the host start queue: attempt_system_unit_request_path :261 and entries carrying node, attempt key, grant, argv, ordinal and the opaque nonce :233, claimed by the systemd drain" as NonEmptyStr,
+      read_at_start: "the drain's claim IS the start: attempt_system_unit_process_claimed :1148 to attempt_system_unit_cli_start :1055 to attempt_system_unit_start_admitted :325 checks user, argv program and byte bound, and nothing about the lease" as NonEmptyStr,
+      fabric_authority: "the accept-side authority exists but is unused here: product.capacity.lease LeaseFence :27, fence_verdict :42, lease_grant_expired_at :81, and the ExpectSlotGeneration CAS in gunbc.compute.attempt_lifecycle :581, :710, :1144" as NonEmptyStr,
+      disposition: Keep { why: "the queue is host transport, not lease state. The cut ADDS the generation check at claim, through the shared CAS — it does not delete the queue. venue-contract's refuse-a-stale-fill control is where that check belongs." as NonEmptyStr }
+    },
+    FactoryStateMapping {
+      belt_module: "gunbc.roadmap.roadmap_attempt_continuation" as NonEmptyStr,
+      state: "the capture-owed standing: RefuseCause CaptureOwed :272, produced by continuation_plan :334 at :422 whenever capture is CaptureNotAttempted" as NonEmptyStr,
+      read_at_start: "the belt will not start a new attempt for a node while a prior attempt's capture is owed — forever when no commit-step record exists (bug 4)" as NonEmptyStr,
+      fabric_authority: "a terminal Receipt is the record that already answers how an attempt ended: product.fabric.execution Receipt<P> :172, the claim receipt_terminal_binds_lease :219, admit_receipt_for_grant :233" as NonEmptyStr,
+      disposition: Delete { because: "red control (2): capture re-run on any attempt, including one predating commit-step records, must reach the SAME terminal outcome and never rest owed. The refusal arm goes with the belt-local commit record, replaced by receipt admission; the witness at roadmap_attempt_continuation_witness.dag:282 that pins the wait-forever must be recut in the same PR." as NonEmptyStr }
+    },
+    FactoryStateMapping {
+      belt_module: "gunbc.roadmap.roadmap_belt_actuate" as NonEmptyStr,
+      state: "the commit step's outcome record: AttemptCommitOutcomeLast observed by belt_capture_absence_for_attempt :8614 and persisted by belt_commit_outcome_persist :8629 (write :8638), with the capture disposition at :8508 and :8602" as NonEmptyStr,
+      read_at_start: "it is the ONLY thing bounding CaptureOwed — an attempt whose record is absent is refused forever" as NonEmptyStr,
+      fabric_authority: "product.fabric.execution Receipt<P> :172 admitted by admit_receipt_for_grant :233 — the terminal record is receipt admission, not a belt file" as NonEmptyStr,
+      disposition: Delete { because: "the Receipt takes over the question; belt_capture_absence_for_attempt and belt_claim_capture_of :1823 (ClaimCaptureOwed :1830) go with the file" as NonEmptyStr }
+    },
+    FactoryStateMapping {
+      belt_module: "gunbc.roadmap.roadmap_attempt_worktree_claim" as NonEmptyStr,
+      state: "the worktree claim: attempt_worktree_claim_new :133, its codec :160, open/close returning AttemptTransition :194, keyed on AttemptKeyRecord :23 and :78" as NonEmptyStr,
+      read_at_start: "the launch admits the claim before spawn so two attempts never share a worktree" as NonEmptyStr,
+      fabric_authority: "ALREADY on the shared layer: gunbc.compute.attempt_lifecycle AttemptPayloadCodec :444 with the fenced transitions attempt_fenced_prepare :1130 and attempt_fenced_commit :1142" as NonEmptyStr,
+      disposition: Delete { because: "only the roadmap-local store ROOT is roadmap-local (worktree_claim_store root_of :191, store :210); the claim itself needs no migration — the cheapest line of the cut" as NonEmptyStr }
+    },
+    FactoryStateMapping {
+      belt_module: "gunbc.roadmap.roadmap_attempt_metering" as NonEmptyStr,
+      state: "the per-attempt metering record: MeteredRole :70, AttemptMeteringRecord :103, metering_standing_of :425, sealed-roster decode :849, attempt_metering_decode :860" as NonEmptyStr,
+      read_at_start: "the belt reads standing before admitting work (import at roadmap_belt_actuate.dag:23, per-attempt record at :8670); roadmap_service_evidence.dag:9 and roadmap_dogfood_route.dag:17 consume the same record" as NonEmptyStr,
+      fabric_authority: "NONE — grep of 'etering' across dag/product, src/v2/product/fabric, src/v2/product/capacity, dag/gunbc/fabric and dag/gunbc/compute returns only prose in data_class.dag:27 and data_category.dag:69/:266/:387 (rc=0)" as NonEmptyStr,
+      disposition: ReHome {
+        needs: "THE decision this audit feeds. Neither parent row declares a usage record — execution-attempt-one-record canonicalizes identity, venue-contract covers accept/report — so the cut cannot land metering on any existing authority. The realization-home ruling must either name a usage record on product.fabric.execution or rule metering provider-side and re-home it under gunbc.compute beside the seat authority (fabric_seat_acquire :403, fabric_seat_release :654)." as NonEmptyStr
+      }
+    },
+    FactoryStateMapping {
+      belt_module: "gunbc.roadmap.roadmap_attempt_exit_spool" as NonEmptyStr,
+      state: "the per-attempt exit spool: attempt_exit_spool_path :115, clear_attempt_exit_spool_dir :281, consumed by the belt via the import at roadmap_belt_actuate.dag:366 (clear path :3960)" as NonEmptyStr,
+      read_at_start: "the drain clears the spool around start so a reaped attempt's ending is not read as the new attempt's" as NonEmptyStr,
+      fabric_authority: "NONE for the spooled bytes; fabric authority covers the RELEASE: fabric_seat_release :654 in gunbc.fabric.fabric_event_log and compute_seat_discharge :393 in gunbc.compute.compute_seat_ensure" as NonEmptyStr,
+      disposition: ReHome { needs: "the spool is drain-side host plumbing carrying terminal evidence; venue-contract asks for termination evidence on cancel. The ruling must say whether it rides onto the Receipt payload or stays a compute-side host effect beside the drain." as NonEmptyStr }
+    },
+    FactoryStateMapping {
+      belt_module: "gunbc.roadmap.roadmap_belt_attempt_store_root" as NonEmptyStr,
+      state: "the belt-attempt file root: belt_attempt_root_reading :105 with entry kinds including submission capture :192 and capture intent :209 and :226" as NonEmptyStr,
+      read_at_start: "the capture and intent files under this root decide what the belt believes is captured before it starts the next attempt" as NonEmptyStr,
+      fabric_authority: "product.fabric.execution Receipt<P> :172 (a capture IS a receipt) and the shared slot root gunbc.compute.compute_attempt_slots_root :46" as NonEmptyStr,
+      disposition: Delete { because: "the root goes once receipts carry capture and slots live in the shared root; red control (3) forbids keeping the roadmap-local store" as NonEmptyStr }
+    },
+    FactoryStateMapping {
+      belt_module: "gunbc.roadmap.roadmap_attempt_identity_store_root" as NonEmptyStr,
+      state: "the attempt-identity store root: belt_attempt_identity_store_root :11 (root_of :48, store :64)" as NonEmptyStr,
+      read_at_start: "attempt keys are allocated from it before launch" as NonEmptyStr,
+      fabric_authority: "product.fabric.execution Attempt<P> :51 with ExecutionAttemptLineage :39 is canonical attempt identity per the execution-attempt-one-record row (:912)" as NonEmptyStr,
+      disposition: Delete { because: "identity comes from the canonical record; a roadmap-local identity store is precisely the duplicated identity that parent row exists to delete" as NonEmptyStr }
+    },
+    FactoryStateMapping {
+      belt_module: "gunbc.roadmap.roadmap_belt_receipt_store_root" as NonEmptyStr,
+      state: "the belt receipt store root: belt_receipt_store_root :8 (root_of :28, store :48) holding BeltAttemptSubmissionReceipt :63" as NonEmptyStr,
+      read_at_start: "the submission receipt decides whether a submission is accepted again" as NonEmptyStr,
+      fabric_authority: "product.fabric.execution Receipt<P> :172 with ReceiptAdmission :226 and admit_receipt_for_grant :233" as NonEmptyStr,
+      disposition: Delete { because: "venue-contract's one-logical-acceptance guarantee is receipt admission over product.fabric.execution; a second receipt store is a second vocabulary for one question" as NonEmptyStr }
+    },
+    FactoryStateMapping {
+      belt_module: "gunbc.roadmap.roadmap_session_placement" as NonEmptyStr,
+      state: "the placement record and its generation: session_placement_acquire :481, session_placement_begin_launch :541 (expected: grant.slot_generation :542), abandon and release :574-:635" as NonEmptyStr,
+      read_at_start: "begin_launch is the CAS the start hinges on, and it ALREADY delegates to attempt_lifecycle attempt_begin_launch :745 over product.capacity.lease LeaseGrant (imported :7)" as NonEmptyStr,
+      fabric_authority: "this module IS the fabric-side home the row names, standing on product.capacity.lease LeaseFence :27, fence_verdict :42, lease_grant_expired_at :81" as NonEmptyStr,
+      disposition: Keep { why: "it is the placement authority the row boundary names. What deletes is the belt's EXTRA copy of placement plus the nonce mint — not this module." as NonEmptyStr }
+    },
+    FactoryStateMapping {
+      belt_module: "gunbc.roadmap.roadmap_session_attempt_slots_cutover" as NonEmptyStr,
+      state: "the slots cutover record (module gunbc.roadmap.roadmap_session_attempt_slots_cutover, 6 Filesystem effects) that belt_attempt_slots_cutover_pass writes into the instance root" as NonEmptyStr,
+      read_at_start: "belt_tick_for_instance :4792 writes it before deciding anything else about the tick" as NonEmptyStr,
+      fabric_authority: "the shared root gunbc.compute.compute_attempt_slots_root :46 makes the roadmap-local carry-over unnecessary" as NonEmptyStr,
+      disposition: Delete { because: "with red control (3) the pass, its record and this module's roadmap-local cutover state all go" as NonEmptyStr }
+    },
+    FactoryStateMapping {
+      belt_module: "gunbc.roadmap.roadmap_dashboard_instance and gunbc.roadmap.roadmap_dispatch_actuator" as NonEmptyStr,
+      state: "instance root resolution (dashboard instance store root and instance_root_path) and the actuator's host-side effects (2 Filesystem effects in the module), with dispatch destination resolution feeding the worker unit plan" as NonEmptyStr,
+      read_at_start: "the start derives the instance root and the destination from these before enqueue" as NonEmptyStr,
+      fabric_authority: "placement and the grant supply WHERE work runs: session_placement_acquire :481 and product.capacity.lease lease_grant_expired_at :81; the venue-contract fill is the dispatch-side carrier of that decision" as NonEmptyStr,
+      disposition: Keep { why: "instance and destination resolution is not lease state; it becomes a venue's internal term under venue-contract rather than a record this row migrates" as NonEmptyStr }
+    },
+    FactoryStateMapping {
+      belt_module: "gunbc.durable_append_log_store (roadmap log lane)" as NonEmptyStr,
+      state: "the roadmap durable append log lane kept beside the attempt state store" as NonEmptyStr,
+      read_at_start: "read back through the state-store log lane before planning a continuation" as NonEmptyStr,
+      fabric_authority: "gunbc.fabric.fabric_event_log event_log_append_with :192 and event_log_read_partition :178" as NonEmptyStr,
+      disposition: Delete { because: "a parallel durable log lane next to the fabric event log is two records for one history (DESIGN.md 'Single authority', :210-:225)" as NonEmptyStr }
+    },
+  ]
+}
+
+// THE THREE RED CONTROLS, PLANNED — not executed (gate G0 contained-development-execution; audit slice
+// only). Each is the row's own red_control. Each is expected RED on main
+// 65230868362de3efc0ddfeeaeef5d83eeb2fa385 because the cut has not landed; green_at is the future PR
+// head. They run under claim_batch over the named witness closures, hermetically or on constructed
+// records (G0 requires witnesses run hermetically or on constructed records).
+
+type FactoryRedControl {
+  id: NonEmptyStr
+  control: NonEmptyStr
+  witness_module: NonEmptyStr
+  witness_fn: NonEmptyStr
+  how: NonEmptyStr
+}
+
+fn factory_attempt_red_controls() -> List<FactoryRedControl> {
+  [
+    FactoryRedControl {
+      id: "stale-generation-start-refuses" as NonEmptyStr,
+      control: "a lease released and re-admitted at a newer generation refuses through the shared generation check and starts nothing (bug-10 leg)" as NonEmptyStr,
+      witness_module: "test.claim.roadmap.attempt_system_unit_launch_witness" as NonEmptyStr,
+      witness_fn: "NEW fn required — drain_refuses_start_after_slot_generation_reamitted. No existing witness touches the generation: 11 nonce hits in that module, 0 generation hits (grep rc=1). The new fn re-admits the slot generation BEFORE the drain runs and asserts refusal plus zero processes started." as NonEmptyStr,
+      how: "claim_batch over the closure of dag/test/claim/roadmap/attempt_system_unit_launch_witness.dag (70 test fns today), hermetic on constructed records — this is the lane brief's 'execution of the system-unit launch contract over the fabricated root'" as NonEmptyStr
+    },
+    FactoryRedControl {
+      id: "capture-reaches-terminal-never-owed" as NonEmptyStr,
+      control: "capture run again on any attempt, including one predating commit-step records, reaches the same terminal outcome and never rests owed (bug-4 leg)" as NonEmptyStr,
+      witness_module: "test.claim.roadmap.roadmap_attempt_continuation_witness" as NonEmptyStr,
+      witness_fn: "recut of owed_capture_refuses_and_never_spawns_from_branch_head (:282, which today LOCKS the wait-forever), inside the claim_batch closure of that module (25 test fns today)" as NonEmptyStr,
+      how: "claim_batch over the closure of dag/test/claim/roadmap/roadmap_attempt_continuation_witness.dag" as NonEmptyStr
+    },
+    FactoryRedControl {
+      id: "no-roadmap-local-slot-or-lease-store" as NonEmptyStr,
+      control: "no module runs belt_attempt_slots_cutover_pass or keeps a roadmap-local slot or lease store" as NonEmptyStr,
+      witness_module: "test.claim.roadmap.roadmap_belt_actuate_witness" as NonEmptyStr,
+      witness_fn: "the cutover witnesses at :3395 and :3416 recut to GATE the pass (today they only decode receipts), over the belt's slots-cutover pass closure in belt_tick_for_instance (:4792)" as NonEmptyStr,
+      how: "claim_batch over the belt tick closure; the pass must refuse when the shared root already holds the slots, and no withheld tick may still write (:4810, :4821)" as NonEmptyStr
+    },
+  ]
+}
