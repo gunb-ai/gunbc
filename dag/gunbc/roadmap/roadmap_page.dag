@@ -656,21 +656,21 @@ fn suggestion_kind_wire(p: EventPrincipal) -> String {
 // NEVER BLOCKS still holds: every input yields an arm to render — for an unnamed principal that arm
 // says so, per gunbc.design_argument::fail_closed, instead of fabricating a plausible name.
 type EventPrincipalDisplay =
-    EventPrincipalNamed { name: String, detail: String, initials: String, avatar: AvatarStanding, picture: String }
+    EventPrincipalNamed { name: String, detail: String?, initials: String, avatar: AvatarStanding, picture: String }
   | EventPrincipalUndisplayable { reason: PrincipalUndisplayableReason }
 
 fn event_principal_display(p: EventPrincipal) -> EventPrincipalDisplay {
   match p {
     EventPrincipalAuthenticated { ref } =>
       if principal_ref_eq(a: ref, b: fabric_workflow_principal) {
-        EventPrincipalNamed { name: "Fabric", detail: fabric_display_alias as String, initials: "F", avatar: AvatarAbsent, picture: "" }
+        EventPrincipalNamed { name: "Fabric", detail: Present { value: fabric_display_alias as String }, initials: "F", avatar: AvatarAbsent, picture: "" }
       } else {
         // No roster reached this call, so nothing can name the principal. That is the arm, not a
         // second chance at the label.
         EventPrincipalUndisplayable { reason: PrincipalHasNoStoredProfile }
       }
     LegacyEmailPrincipal { email, authentication_unestablished: _ } =>
-      EventPrincipalNamed { name: principal_display_name_of(email: email as String), detail: join([email as String, " (legacy, unverified)"], ""), initials: avatar_initials_of(display_name: principal_display_name_of(email: email as String)), avatar: AvatarAbsent, picture: "" }
+      EventPrincipalNamed { name: principal_display_name_of(email: email as String), detail: Present { value: join([email as String, " (legacy, unverified)"], "") }, initials: avatar_initials_of(display_name: principal_display_name_of(email: email as String)), avatar: AvatarAbsent, picture: "" }
   }
 }
 
@@ -686,11 +686,16 @@ fn event_principal_display_name(d: EventPrincipalDisplay) -> String {
   }
 }
 
-// THE DETAIL A TEXT SITE SHOWS: the email, alias, or legacy note the projection has, or why there
-// is none.
+// THE DETAIL A TEXT SITE SHOWS: the email, alias, or legacy note the projection has — or, when it
+// has none, the ONE note saying so, or for an unnamed principal the note naming why. The fact
+// itself stays typed on the arm (`detail: String?`, gunbc.design_ruling::
+// rendered_principals_are_never_raw); this is where the note is RENDERED, so no surface has to
+// compare a string to learn whether an email exists (gunbc.design_argument::
+// continuous_generalization: absence is preserved in the typing, not smuggled as a sentinel).
 fn event_principal_display_detail(d: EventPrincipalDisplay) -> String {
   match d {
-    EventPrincipalNamed { name: _, detail: e, initials: _, avatar: _, picture: _ } => e
+    EventPrincipalNamed { name: _, detail: Present { value: e }, initials: _, avatar: _, picture: _ } => e
+    EventPrincipalNamed { name: _, detail: Absent, initials: _, avatar: _, picture: _ } => profile_detail_no_email_note
     EventPrincipalUndisplayable { reason: r } => principal_undisplayable_note(reason: r)
   }
 }
@@ -780,14 +785,17 @@ fn profile_display_name(profile: PrincipalProfile) -> String? {
   }
 }
 
-// THE DETAIL LINE: the email when the profile observed one; when it did not, the gap is said, in
-// one spelling — it is not filled with the label.
+// THE DETAIL THE PROJECTION CARRIES: the email when the profile observed one, and Absent when it
+// did not. The absence stays a fact in the type — the note that says so is rendered only where a
+// line of text is built (event_principal_display_detail), and a surface that branches on whether
+// an email exists matches this, never compares note text
+// (gunbc.design_argument::continuous_generalization; review 98089).
 data profile_detail_no_email_note: String = "no stored email"
 
-fn profile_display_detail(profile: PrincipalProfile) -> String {
+fn profile_display_detail(profile: PrincipalProfile) -> String? {
   match profile.email {
-    Present { value: e } => e as String
-    Absent => profile_detail_no_email_note
+    Present { value: e } => Present { value: e as String }
+    Absent => none
   }
 }
 
@@ -846,8 +854,11 @@ fn issue_avatar_face(display: EventPrincipalDisplay, workflow: Bool) -> List<Fra
 // fill) and named in full in the hover title, never as text inside the circle.
 fn issue_avatar_title(display: EventPrincipalDisplay, workflow: Bool) -> String {
   match display {
-    EventPrincipalNamed { name: n, detail: e, initials: _, avatar: _, picture: _ } =>
-      if workflow { join([n, " — workflow · ", e], "") } else { join([n, " — ", e], "") }
+    EventPrincipalNamed { name: n, detail: d, initials: _, avatar: _, picture: _ } =>
+      match d {
+        Present { value: e } => if workflow { join([n, " — workflow · ", e], "") } else { join([n, " — ", e], "") }
+        Absent => if workflow { join([n, " — workflow · ", profile_detail_no_email_note], "") } else { join([n, " — ", profile_detail_no_email_note], "") }
+      }
     EventPrincipalUndisplayable { reason: r } => principal_undisplayable_note(reason: r)
   }
 }

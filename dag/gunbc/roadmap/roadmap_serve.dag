@@ -142,7 +142,6 @@ import gunbc.roadmap.roadmap_page { issue_detail_not_found_page,
   roadmap_fleet_page,
   issue_detail_page_for, issue_detail_node_exists,
   event_principal_display_with_profile, EventPrincipalNamed, EventPrincipalUndisplayable,
-  profile_detail_no_email_note,
 }
 import gunbc.roadmap.roadmap_authority {
   RoadmapAuthorityProjection,
@@ -1510,8 +1509,11 @@ fn serve_assignment_launch_follow_through_over(
 // reads (gunbc.design_ruling::rendered_principals_are_never_raw; gunbc.design_argument::single_authority).
 fn assignment_confirmation_display(assignee: PrincipalRef, profiles: List<PrincipalProfile>) -> String {
   match event_principal_display_with_profile(p: EventPrincipalAuthenticated { ref: assignee }, profiles: profiles) {
-    EventPrincipalNamed { name: n, detail: e, initials: _, avatar: _, picture: _ } =>
-      if e == profile_detail_no_email_note { n } else { join([n, " (", e, ")"], "") }
+    EventPrincipalNamed { name: n, detail: d, initials: _, avatar: _, picture: _ } =>
+      match d {
+        Present { value: e } => join([n, " (", e, ")"], "")
+        Absent => n
+      }
     EventPrincipalUndisplayable { reason: _ } => principal_undisplayable_marker
   }
 }
