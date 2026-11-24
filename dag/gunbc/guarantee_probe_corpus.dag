@@ -181,6 +181,16 @@ data v2_self_grounding_frontier_class: GuaranteeClassId = "v2-self-grounding-fro
 // gap-analysis row for the seam cites their rows.
 data floor_closed_match_exhaustiveness_class: GuaranteeClassId = "floor-closed-match-exhaustiveness" as GuaranteeClassId
 data floor_field_through_generics_class: GuaranteeClassId = "floor-field-through-generics" as GuaranteeClassId
+// The DEFERRED-BASE residue of the field-through-generics class (roadmap node
+// floor-generic-field-constraint-wall). After #11285 blocked the enclosing bare-type-parameter
+// base, the remaining ways a field-MISS can reach the `field_of_type_var` deferral were
+// MEASURED at main with the released binaries: a bare generic type name in value position and a
+// lambda-parameter base both refuse LOCATED (InternalError naming the field and the resolved
+// base label at the fixture span); the live fabrication is a field read on the result of a
+// generic call whose base stays an unsolved type variable - enrolled below as a hole row with
+// its closing trigger. Enrolled by measurement, not by reading: each expectation names what the
+// census OBSERVED at the measured revision.
+data floor_field_through_generics_deferral_class: GuaranteeClassId = "floor-field-through-generics-deferral" as GuaranteeClassId
 data floor_generic_instantiation_class: GuaranteeClassId = "floor-generic-instantiation-inhabitance" as GuaranteeClassId
 data floor_parse_list_separator_class: GuaranteeClassId = "floor-parse-list-separator" as GuaranteeClassId
 data floor_record_field_completeness_class: GuaranteeClassId = "floor-record-field-completeness" as GuaranteeClassId
@@ -193,6 +203,7 @@ fn guarantee_probe_class_ids() -> List<GuaranteeClassId> {
     direct_call_argument_type_class,
     floor_closed_match_exhaustiveness_class,
     floor_field_through_generics_class,
+    floor_field_through_generics_deferral_class,
     floor_generic_instantiation_class,
     floor_parse_list_separator_class,
     floor_record_field_completeness_class,
@@ -251,6 +262,10 @@ data floor_exhaustiveness_type_variable_hole_probe: GuaranteeProbeId = "floor-cl
 data floor_field_through_generics_record_control_probe: GuaranteeProbeId = "floor-field-through-generics-declared-record-control" as GuaranteeProbeId
 data floor_field_through_generics_green_probe: GuaranteeProbeId = "floor-field-through-generics-green-control" as GuaranteeProbeId
 data floor_field_through_generics_hole_probe: GuaranteeProbeId = "floor-field-through-generics-type-variable-hole" as GuaranteeProbeId
+data floor_field_through_generics_deferral_lambda_param_probe: GuaranteeProbeId = "floor-field-through-generics-deferral-lambda-param-base" as GuaranteeProbeId
+data floor_field_through_generics_deferral_lambda_param_green_probe: GuaranteeProbeId = "floor-field-through-generics-deferral-lambda-param-base-green" as GuaranteeProbeId
+data floor_field_through_generics_deferral_generic_result_probe: GuaranteeProbeId = "floor-field-through-generics-deferral-generic-result-base" as GuaranteeProbeId
+data floor_field_through_generics_deferral_generic_result_hole_probe: GuaranteeProbeId = "floor-field-through-generics-deferral-generic-result-base-hole" as GuaranteeProbeId
 data floor_generic_instantiation_green_probe: GuaranteeProbeId = "floor-generic-instantiation-green-control" as GuaranteeProbeId
 data floor_generic_instantiation_monomorphic_control_probe: GuaranteeProbeId = "floor-generic-instantiation-monomorphic-control" as GuaranteeProbeId
 data floor_generic_instantiation_hole_probe: GuaranteeProbeId = "floor-generic-instantiation-type-argument-hole" as GuaranteeProbeId
@@ -645,6 +660,42 @@ fn guarantee_probe_rows() -> List<GuaranteeProbeRow> {
     GuaranteeProbeRow {
       probe: floor_field_through_generics_hole_probe,
       class: floor_field_through_generics_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectBlockingRefusal { diagnostic_class: "InternalError" as NonEmptyStr },
+    },
+    GuaranteeProbeRow {
+      probe: floor_field_through_generics_deferral_lambda_param_probe,
+      class: floor_field_through_generics_deferral_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectBlockingRefusal { diagnostic_class: "InternalError" as NonEmptyStr },
+    },
+    GuaranteeProbeRow {
+      probe: floor_field_through_generics_deferral_lambda_param_green_probe,
+      class: floor_field_through_generics_deferral_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectBlockingRefusal { diagnostic_class: "InternalError" as NonEmptyStr },
+    },
+    GuaranteeProbeRow {
+      probe: floor_field_through_generics_deferral_generic_result_probe,
+      class: floor_field_through_generics_deferral_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectBlockingRefusal { diagnostic_class: "InternalError" as NonEmptyStr },
+    },
+    GuaranteeProbeRow {
+      // Climbed at the closing wall and dissolved per guarantee_ladder.md on 2026-11-24:
+      // measured with the main-equivalent released pack (run 45457628228, head 6e4f2148767,
+      // gunbc sha 6707d9c4...), the fixture inj(v: Boxed<Int> { inner: 5 }).no_such_field
+      // REFUSES: error[..:4:48] no field 'no_such_field' on type 'Bool' - located at the
+      // fixture span. The licensed twin (.inner on the same base) refuses identically
+      // ("no field 'inner' on type 'Bool'"): the field-miss on an unsolved type-variable
+      // result base now routes to a located refusal instead of fabrication, exactly the
+      // trigger named in this row's former invalid_state. This row is the permanent
+      // regression control for that wall (same treatment generic instantiation got at
+      // 51130ba47ad). Earlier light-probe notes that an equivalent string compiled clean
+      // predate this fixture string and were not re-verified; the executed refusal above
+      // is the authoritative observation.
+      probe: floor_field_through_generics_deferral_generic_result_hole_probe,
+      class: floor_field_through_generics_deferral_class,
       path: v1_compile_rust_path_id,
       expectation: ExpectBlockingRefusal { diagnostic_class: "InternalError" as NonEmptyStr },
     },

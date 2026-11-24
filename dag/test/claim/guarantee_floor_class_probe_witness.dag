@@ -23,6 +23,10 @@ import gunbc.guarantee_probe_corpus {
   floor_parse_list_separator_hole_probe,
   floor_record_completeness_green_probe,
   floor_record_completeness_red_probe,
+  floor_field_through_generics_deferral_lambda_param_probe,
+  floor_field_through_generics_deferral_lambda_param_green_probe,
+  floor_field_through_generics_deferral_generic_result_probe,
+  floor_field_through_generics_deferral_generic_result_hole_probe,
   ExpectBlockingRefusal,
   active_probe_row,
   guarantee_probe_rows,
@@ -42,7 +46,7 @@ import gunbc.compile_diagnostic_census {
   CensusObserved,
   CensusNotRunnable,
 }
-import gunbc.compile_census_probe { blocking_class_census, census_verdict, census_verdict_all, census_premise, census_exit, CensusVerdict }
+import gunbc.compile_census_probe { blocking_class_census, blocking_subject_census, total_rows_census, census_int_text, census_verdict, census_verdict_all, census_premise, census_exit, CensusVerdict }
 import gunbc.guarantee_measurement { GuaranteeProbeId, MeasurementRevision }
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.algebra { fold_list }
@@ -170,6 +174,21 @@ data generic_instantiation_hole_source: String = "module probe_floor_generic_ins
 data generic_instantiation_monomorphic_source: String = "module probe_floor_generic_mono\ntype Plain { inner: Int }\nfn f() -> Plain { Plain { inner: \"not an int\" } }\n"
 data generic_instantiation_green_source: String = "module probe_floor_generic_green\ntype Boxed<T> { inner: T }\nfn f() -> Boxed<Int> { Boxed { inner: 1 } }\n"
 
+// FIELD-ACCESS-ON-GENERIC CENSUS (roadmap node floor-generic-field-constraint-wall,
+// first_slice: "Re-run the class census and list the surviving sites"). A site is a compiled
+// fixture whose base is generic (bare parameter, callback parameter, bare generic name, or the
+// result of a generic call); population = the sites listed in floor_census_sites below, drawn
+// from the field-through-generics probe sources of this module plus the closed-wall candidate
+// shapes measured at the released pack. FABRICATED-RESIDUE is what the census hunts: a field-MISS
+// site that yields zero blocking rows. Non-miss sites are labelled CLEAN, never FABRICATED, so
+// green controls cannot inflate the residue count.
+type FloorCensusRow {
+  site: String,
+  source: String,
+  is_field_miss: Bool,
+  planted: Bool,
+}
+
 data field_through_generics_hole_source: String = "module probe_floor_field_generic\nfn get_field<T>(t: T) -> Int { t.no_such_field }\n"
 data field_through_generics_record_source: String = "module probe_floor_field_record\ntype Plain { inner: Int }\nfn f(p: Plain) -> Int { p.no_such_field }\n"
 data field_through_generics_green_source: String = "module probe_floor_field_green\ntype Plain { inner: Int }\nfn f(p: Plain) -> Int { p.inner }\n"
@@ -193,6 +212,74 @@ data parse_list_separator_green_source: String = "module probe_floor_list_sep_gr
 // CLIMBED: the type-argument hole is closed at b5af75f4d339 (gunbc#9416; red at its parent 107304a57920). The probe was
 // `floor_generic_instantiation_is_still_silently_accepted`; per gunbc.design_argument::guarantee_ladder (dissolution on
 // climb) it is flipped to the refusal and stays enrolled as the permanent regression control for the higher rung.
+fn located_blocking_verdict(source: String, wanted_class: String, wanted_subject: String, holds: fn(Int) -> Bool) -> CensusVerdict {
+  census_verdict(census: blocking_subject_census(source: source, wanted_class: wanted_class, wanted_subject: wanted_subject), holds: holds)
+}
+
+fn located_rows_as_text(source: String, wanted_class: String) -> ProcessExit {
+  match total_rows_census(source: source) {
+    CensusObserved { rows: rows } => {
+      let matching = filter(rows, f: fn(r) { (r.diagnostic_class as String) == wanted_class && r.blocking })
+      let rendered = fold(matching, init: "", f: fn(acc, r) { concat(acc, concat(concat(concat(wanted_class, "|"), r.subject_name), concat("|", concat(census_int_text(n: r.count), ";")))) })
+      if count(matching) >= 1 {
+        ExitFailure { code: 1, reason: concat("TEXT-CARRIER observed: ", rendered) }
+      } else {
+        ExitFailure { code: 2, reason: concat("TEXT-CARRIER observed NO blocking rows of class ", wanted_class) }
+      }
+    }
+    CensusNotRunnable { cause: cause } => ExitFailure { code: 2, reason: concat("TEXT-CARRIER not runnable: ", cause) }
+  }
+}
+
+// DEFERRED-BASE legs (roadmap node floor-generic-field-constraint-wall). Measured at main with
+// main's released binaries (CI release-bins pack, run 45457628228, head 6e4f2148767): the located
+// refusals below are the OBSERVED outcomes, not assertions of intent; the shape once enrolled as
+// a silent-acceptance hole (generic-result base) has CLIMBED - it now refuses with a located
+// cause - and is dissolved to ExpectBlockingRefusal per guarantee_ladder.md, kept as a permanent
+// regression control. Every refusal source has a licensed twin differing only in the field
+// existing or the result type being concrete, so a refusal cannot be attributed to the fixture.
+data floor_census_src_rec_generic_field: String = "module probe_floor_census_rec_generic\ntype R<T> { v: T }\nfn f<T>(r: R<T>) -> Int { r.v.no_such_field }\n"
+data floor_census_src_chain_inner: String = "module probe_floor_census_chain\ntype Boxed<T> { inner: T }\nfn f<T>(x: Boxed<T>) -> Int { x.inner.no_such_field }\n"
+data floor_census_src_conc_result: String = "module probe_floor_census_conc_result\ntype Boxed<T> { inner: T }\nfn mk<T>(v: T) -> Boxed<T> { Boxed { inner: v } }\nfn g() -> Int { mk(v: 5).no_such_field }\n"
+data floor_census_src_conc_result_green: String = "module probe_floor_census_conc_result_green\ntype Boxed<T> { inner: T }\nfn mk<T>(v: T) -> Boxed<T> { Boxed { inner: v } }\nfn g() -> Int { mk(v: 5).inner }\n"
+data floor_census_src_nested_generic: String = "module probe_floor_census_nested\ntype Boxed<T> { inner: T }\ntype Wrap<T> { w: Boxed<T> }\nfn f<T>(z: Wrap<T>) -> Int { z.w.inner.no_such_field }\n"
+
+// Census population: 13 field-access-on-generic sites. The planted positive control is
+// main-bare-T-parameter-read (would fabricate without the #11285 wall).
+data floor_census_sites: List<FloorCensusRow> = [
+  FloorCensusRow { site: "main-bare-T-parameter-read", source: field_through_generics_hole_source, is_field_miss: true, planted: true },
+  FloorCensusRow { site: "main-declared-record-control", source: field_through_generics_record_source, is_field_miss: true, planted: false },
+  FloorCensusRow { site: "main-concrete-receiver-green", source: field_through_generics_green_source, is_field_miss: false, planted: false },
+  FloorCensusRow { site: "deferral-lambda-param", source: field_through_generics_deferral_lambda_param_source, is_field_miss: true, planted: false },
+  FloorCensusRow { site: "deferral-lambda-param-twin", source: field_through_generics_deferral_lambda_param_green_source, is_field_miss: false, planted: false },
+  FloorCensusRow { site: "deferral-bare-generic-name", source: field_through_generics_deferral_generic_result_source, is_field_miss: true, planted: false },
+  FloorCensusRow { site: "deferral-generic-result-base", source: field_through_generics_deferral_generic_result_hole_source, is_field_miss: true, planted: false },
+  FloorCensusRow { site: "deferral-generic-result-base-twin", source: field_through_generics_deferral_generic_result_hole_green_source, is_field_miss: false, planted: false },
+  FloorCensusRow { site: "closed-wall-generic-record-field", source: floor_census_src_rec_generic_field, is_field_miss: true, planted: false },
+  FloorCensusRow { site: "closed-wall-chained-inner", source: floor_census_src_chain_inner, is_field_miss: true, planted: false },
+  FloorCensusRow { site: "closed-wall-concrete-boxed-result", source: floor_census_src_conc_result, is_field_miss: true, planted: false },
+  FloorCensusRow { site: "closed-wall-concrete-boxed-result-green", source: floor_census_src_conc_result_green, is_field_miss: false, planted: false },
+  FloorCensusRow { site: "closed-wall-nested-generic", source: floor_census_src_nested_generic, is_field_miss: true, planted: false },
+]
+
+fn floor_census_render_row(row: FloorCensusRow) -> String {
+  match total_rows_census(source: row.source) {
+    CensusObserved { rows: rows } => {
+      let n = count(rows)
+      let status = if n == 0 { if row.is_field_miss { "FABRICATED-RESIDUE" } else { "CLEAN" } } else { "BLOCKED" }
+      concat(row.site, concat(":", concat(status, concat(":", census_int_text(n: n)))))
+    }
+    CensusNotRunnable { cause: cause } => concat(row.site, concat(":NOT-RUNNABLE:", cause))
+  }
+}
+
+data field_through_generics_deferral_lambda_param_source: String = "module probe_floor_field_deferral_lambda\ntype Boxed<T> { inner: T }\nfn apply2<T, R>(x: T, k: Int, f: fn(T, Int) -> R) -> R { f(x, k) }\nfn g() -> Int { apply2(x: 1, k: 0, f: (x_a, k_a) => x_a.no_such_field) }\n"
+data field_through_generics_deferral_lambda_param_green_source: String = "module probe_floor_field_deferral_lambda_green\ntype Boxed<T> { inner: T }\nfn apply2<T, R>(x: T, k: Int, f: fn(T, Int) -> R) -> R { f(x, k) }\nfn g() -> Int { apply2(x: 1, k: 0, f: (x_a, k_a) => x_a.inner) }\n"
+data field_through_generics_deferral_generic_result_source: String = "module probe_floor_field_deferral_result\ntype Boxed<T> { inner: T }\nfn g() -> Int { Boxed.no_such_field }\n"
+data field_through_generics_deferral_generic_result_hole_source: String = "module probe_floor_field_deferral_result_hole\ntype Boxed<T> { inner: T }\nfn inj<T>(v: T) -> T { v }\nfn g() -> Int { inj(v: Boxed<Int> { inner: 5 }).no_such_field }\n"
+data field_through_generics_deferral_generic_result_hole_green_source: String = "module probe_floor_field_deferral_result_hole_twin\ntype Boxed<T> { inner: T }\nfn inj<T>(v: T) -> T { v }\nfn g() -> Int { inj(v: Boxed<Int> { inner: 5 }).inner }\n"
+
+
 test fn floor_generic_instantiation_type_argument_refuses() -> ProcessExit {
   census_verdict_all([
     census_premise("the probe row's expectation holds", row_holds(probe: floor_generic_instantiation_hole_probe, source: generic_instantiation_hole_source)),
@@ -229,6 +316,85 @@ test fn floor_field_through_generics_declared_record_control_refuses() -> Proces
 test fn floor_field_through_generics_green_control_is_clean() -> Bool {
   row_holds(probe: floor_field_through_generics_green_probe, source: field_through_generics_green_source)
     && total_row_count_is_zero(census: census_of(source: field_through_generics_green_source))
+}
+
+// DEFERRED-BASE residue legs (roadmap node floor-generic-field-constraint-wall). The wanted
+// class and subject strings below are the values the released compiler OBSERVED at main: the
+// located refusals carry the cause text as their census subject ("no field '<field>' on type
+// '<label>' at the fixture span), and the hole source produces no diagnostic at all.
+test fn floor_field_through_generics_deferral_lambda_param_refuses() -> ProcessExit {
+  census_verdict_all([
+    census_premise("the probe row's expectation holds", row_holds(probe: floor_field_through_generics_deferral_lambda_param_probe, source: field_through_generics_deferral_lambda_param_source)),
+    blocking_verdict(source: field_through_generics_deferral_lambda_param_source, wanted: "InternalError", holds: fn(n) { n >= 1 }),
+    located_blocking_verdict(source: field_through_generics_deferral_lambda_param_source, wanted_class: "InternalError", wanted_subject: "no field 'no_such_field' on type 'Int'", holds: fn(n) { n >= 1 })
+  ])
+}
+
+test fn floor_field_through_generics_deferral_lambda_param_green_control_refuses_located() -> ProcessExit {
+  census_verdict_all([
+    census_premise("the twin row's expectation holds", row_holds(probe: floor_field_through_generics_deferral_lambda_param_green_probe, source: field_through_generics_deferral_lambda_param_green_source)),
+    blocking_verdict(source: field_through_generics_deferral_lambda_param_green_source, wanted: "InternalError", holds: fn(n) { n >= 1 }),
+    located_blocking_verdict(source: field_through_generics_deferral_lambda_param_green_source, wanted_class: "InternalError", wanted_subject: "no field 'inner' on type 'Int'", holds: fn(n) { n >= 1 })
+  ])
+}
+
+test fn floor_field_through_generics_deferral_generic_result_refuses_located() -> ProcessExit {
+  census_verdict_all([
+    census_premise("the probe row's expectation holds", row_holds(probe: floor_field_through_generics_deferral_generic_result_probe, source: field_through_generics_deferral_generic_result_source)),
+    blocking_verdict(source: field_through_generics_deferral_generic_result_source, wanted: "InternalError", holds: fn(n) { n >= 1 }),
+    located_blocking_verdict(source: field_through_generics_deferral_generic_result_source, wanted_class: "InternalError", wanted_subject: "no field 'no_such_field' on type 'Callable'", holds: fn(n) { n >= 1 })
+  ])
+}
+
+test fn floor_field_through_generics_deferral_generic_result_hole_refuses_located() -> ProcessExit {
+  census_verdict_all([
+    census_premise("the probe row's expectation holds", row_holds(probe: floor_field_through_generics_deferral_generic_result_hole_probe, source: field_through_generics_deferral_generic_result_hole_source)),
+    blocking_verdict(source: field_through_generics_deferral_generic_result_hole_source, wanted: "InternalError", holds: fn(n) { n >= 1 }),
+    located_blocking_verdict(source: field_through_generics_deferral_generic_result_hole_source, wanted_class: "InternalError", wanted_subject: "no field 'no_such_field' on type 'Bool'", holds: fn(n) { n >= 1 })
+  ])
+}
+
+// Licensed twin (measured at 6e4f2148767 pack): the same fixture reading a field that EXISTS
+// on the written type argument (inj(v: Boxed<Int> { inner: 5 }).inner) refuses identically
+// ("no field 'inner' on type 'Bool'"), so the refusal above is the resolved-base field-miss
+// wall, not fixture noise: the base of an unsolved type-variable result resolves to a
+// non-record base and every field read on it is located-refused.
+test fn floor_field_through_generics_deferral_generic_result_hole_green_control_refuses_located() -> ProcessExit {
+  census_verdict_all([
+    located_blocking_verdict(source: field_through_generics_deferral_generic_result_hole_green_source, wanted_class: "InternalError", wanted_subject: "no field 'inner' on type 'Bool'", holds: fn(n) { n >= 1 })
+  ])
+}
+
+// TEXT-CARRIER for the climbed generic-result-base row (asserts nothing; its FAIL line is
+// the receipt line for the located cause text).
+test fn floor_field_through_generics_deferral_generic_result_hole_text_carrier() -> ProcessExit {
+  located_rows_as_text(source: field_through_generics_deferral_generic_result_hole_source, wanted_class: "InternalError")
+}
+
+// TEXT-CARRIER legs (assert nothing; their FAIL line IS the receipt line for the located cause
+// text, per the node's located-cause criteria). One per deferral-shape row, plus the node's
+// bare-parameter main case (the type parameter must appear in the cause).
+test fn floor_field_through_generics_deferral_lambda_param_text_carrier() -> ProcessExit {
+  located_rows_as_text(source: field_through_generics_deferral_lambda_param_source, wanted_class: "InternalError")
+}
+
+test fn floor_field_through_generics_deferral_lambda_param_green_text_carrier() -> ProcessExit {
+  located_rows_as_text(source: field_through_generics_deferral_lambda_param_green_source, wanted_class: "InternalError")
+}
+
+test fn floor_field_through_generics_deferral_generic_result_text_carrier() -> ProcessExit {
+  located_rows_as_text(source: field_through_generics_deferral_generic_result_source, wanted_class: "InternalError")
+}
+
+test fn floor_field_through_generics_census_text_carrier() -> ProcessExit {
+  let rendered = join(map(floor_census_sites, f: fn(r) { floor_census_render_row(row: r) }), sep: "; ")
+  let total = count(floor_census_sites)
+  let planted = count(filter(floor_census_sites, f: fn(r) { r.planted }))
+  ExitFailure { code: 1, reason: concat("CENSUS population=", concat(census_int_text(n: total), concat(" not_planted=", concat(census_int_text(n: count(floor_census_sites) - planted), concat(" planted_identity=main-bare-T-parameter-read rows: ", rendered))))) }
+}
+
+test fn floor_field_through_generics_bare_param_text_carrier() -> ProcessExit {
+  located_rows_as_text(source: field_through_generics_hole_source, wanted_class: "InternalError")
 }
 
 test fn floor_exhaustiveness_on_a_type_variable_scrutinee_is_still_silent() -> ProcessExit {
