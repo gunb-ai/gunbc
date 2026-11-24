@@ -459,7 +459,7 @@ data floor_eval_step_cost_drop_coproduct_fragment_normalize_rows: List<EvalStepC
 data floor_eval_step_cost_drop_bmc_secure_apply_converge_rows: List<EvalStepCostDropMeasurement> = [
   EvalStepCostDropMeasurement {
     identity: "test.claim.machine_intake.machine_intake_arrival_converge_witness.w_bmc_secure_apply_with_the_mtjade1_standing_grant_converges_over_the_dry_world" as NonEmptyStr,
-    measured_by: "claim_batch --hermetic --source-root dag --source-root src/v2 --entry dag/test/claim/machine_intake/machine_intake_arrival_converge_witness.dag --function w_bmc_secure_apply_with_the_mtjade1_standing_grant_converges_over_the_dry_world (BuildBuddy, GUNBC_BIND_MEMORY_CGROUP_BYTES=30064771072): PASS, eval_steps over the new-witness budget. The billed work is converge_arrival_through_bmc_secure over the production prefix captures plus dry Apply+grant, which this claim is the only Apply execution of" as NonEmptyStr,
+    measured_by: "gunbc test //test/claim/machine_intake/machine_intake_arrival_converge_witness:w_bmc_secure_apply_with_the_mtjade1_standing_grant_converges_over_the_dry_world (BuildBuddy, GUNBC_BIND_MEMORY_CGROUP_BYTES=30064771072): PASS, eval_steps over the new-witness budget. The billed work is converge_arrival_through_bmc_secure over the production prefix captures plus dry Apply+grant, which this claim is the only Apply execution of" as NonEmptyStr,
   },
 ]
 
