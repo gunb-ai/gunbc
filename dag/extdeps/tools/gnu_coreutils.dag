@@ -625,9 +625,37 @@ fn timeout_command(duration: Second, kill_after: Second, command: ArgvCommand) -
   )
 }
 
-// EXIT 124 IS `timeout`'s OWN ANSWER, and reading it as an ordinary failure would conflate two very
-// different events: a subject that ran and failed, and a subject that was still running when its
-// deadline arrived. Only the second says the bound did work.
+// THE SAME BOUND WITH --preserve-status: when the deadline fires the STATUS IS THE SIGNAL STATUS of
+// the process timeout killed (128+signum), not timeout's own 124. The two events GNU timeout cannot
+// distinguish with its default exit reporting (a child that exits 124 itself vs. timeout killing it)
+// become distinguishable: the child's own 124 passes through unchanged; a real expiry is reported as
+// 128+SIGTERM (143) or 128+SIGKILL (137) if kill-after escalates. This is the discriminating form
+// gunbc.recurring_failure_mode.bare_exit_124_read_as_an_observed_timeout_event requires, and it is
+// the reason a 124 arm keyed on the bare status is now forbidden: with this builder, 124 means the
+// SUBJECT chose 124, never that the bound fired.
+fn timeout_command_preserving_status(
+  duration: Second,
+  kill_after: Second,
+  command: ArgvCommand,
+) -> ArgvCommand {
+  argv_command(
+    program: timeout_program(),
+    arguments: concat(
+      [
+        "--preserve-status",
+        "--kill-after", coreutils_duration_operand(d: kill_after),
+        coreutils_duration_operand(d: duration),
+        command.program.invocation as String,
+      ],
+      command.arguments,
+    ),
+  )
+}
+
+// EXIT 124 IS `timeout`'s OWN ANSWER under the default (non-preserve-status) invocation, and reading
+// it as proof the deadline fired is the failure this module's row names: a child that exits 124 itself
+// produces the same status with no expiry having occurred. With timeout_command_preserving_status the
+// two statuses differ; this constant records the upstream GNU convention for the default case.
 data coreutils_timeout_expired_exit_code: Int = 124
 
 // THE BYTES AVAILABLE ON THE FILESYSTEM HOLDING A PATH (df(1): -B1 byte units, --output=avail the one

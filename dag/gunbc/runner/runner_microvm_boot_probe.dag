@@ -13,7 +13,8 @@ import extdeps.exec.command { ArgvCommand }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.mkdir { mkdir_parents_command }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.tools.gnu_coreutils { cp_command, rm_force_command, timeout_command, coreutils_timeout_expired_exit_code }
+import extdeps.tools.gnu_coreutils { cp_command, rm_force_command, timeout_command_preserving_status }
+import extdeps.posix.signal { LinuxStandardSignal, SignalTerm, SignalKill, linux_standard_signal_number }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.virtualization.firecracker {
   FirecrackerVmConfig, firecracker_release_aarch64,
@@ -150,11 +151,65 @@ data runner_microvm_boot_probe_deadline: Second = second(count: 180)
 data runner_microvm_boot_probe_kill_grace: Second = second(count: 10)
 
 fn runner_microvm_boot_probe_bounded_command(binary: String, config_path: String) -> ArgvCommand {
-  timeout_command(
+  timeout_command_preserving_status(
     duration: runner_microvm_boot_probe_deadline,
     kill_after: runner_microvm_boot_probe_kill_grace,
     command: firecracker_run_config_command(binary: binary, config_path: config_path),
   )
+}
+
+// THE TYPED EXECUTION-BOUND OBSERVATION, emitted where the bound is imposed and carried to the
+// classifier. The failure-mode row gunbc.recurring_failure_mode.bare_exit_124_read_as_an_observed_timeout_event
+// requires this capability: exit 124 cannot discriminate a real deadline expiry from a subject that
+// exited 124 on its own. With timeout_command_preserving_status (the builder this module uses), the
+// two events produce DIFFERENT statuses: the child's own 124 passes through unchanged, while a bound
+// expiry is reported as 128+SIGTERM (143) or 128+SIGKILL (137) if kill-after escalates.
+//
+// BoundImposed records what bound was placed on this invocation: the deadline and the kill-grace,
+// and implicitly the signals GNU timeout uses to enforce it (SIGTERM, then SIGKILL after grace).
+// A classifier can then check whether the exit code matches the bound's expected enforcement exit,
+// rather than guessing from a bare 124.
+//
+// NoBoundImposed is for call sites that read a captured console file with no bound at all
+// (gunbc.runner.runner_observed_version_check's check_captured_console): there, a 124 can only be
+// the subject's own, and no deadline event can be observed or reported.
+type ExecutionBoundObservation
+  = BoundImposed { deadline: Second, kill_grace: Second }
+  | NoBoundImposed
+
+fn runner_microvm_boot_probe_execution_bound() -> ExecutionBoundObservation {
+  BoundImposed {
+    deadline: runner_microvm_boot_probe_deadline,
+    kill_grace: runner_microvm_boot_probe_kill_grace,
+  }
+}
+
+// THE POSIX SHELL CONVENTION for reporting a process killed by signal N: the shell reports exit code
+// 128+N. This is the mechanism by which GNU timeout with --preserve-status produces a different status
+// for a signal-death vs. the child's own exit code. It is an upstream convention (POSIX sh), not a
+// gunbc fact (gunbc.design_argument::external_upstreams).
+fn posix_signal_death_exit(signal: LinuxStandardSignal) -> Int {
+  128 + linux_standard_signal_number(signal: signal)
+}
+
+// Whether the exit status reports a process killed by one of the two signals GNU timeout uses for
+// enforcement (SIGTERM for the deadline itself; SIGKILL if kill-after escalates). When the bound was
+// imposed with timeout_command_preserving_status, these two values (143 and 137) are the only statuses
+// that say the bound FIRED. Exit 124 is now the subject's own choice and is never a bound event.
+fn execution_bound_deadline_if_fired(
+  bound: ExecutionBoundObservation,
+  exit_code: Int,
+) -> Second? {
+  match bound {
+    BoundImposed { deadline: d, kill_grace: _ } =>
+      if exit_code == posix_signal_death_exit(signal: SignalTerm)
+        || exit_code == posix_signal_death_exit(signal: SignalKill) {
+        Present { value: d }
+      } else {
+        none
+      }
+    NoBoundImposed => none
+  }
 }
 
 // THE ACCEPTANCE IS A READBACK OF THE CITED RELEASE, NOT A GREETING. The console must carry the
@@ -175,23 +230,37 @@ type BootProbeVerdict
   | BootExceededHostDeadline { deadline: String, console: String, detail: String }
   | BootVmmFailed { exit_code: Int, console: String, detail: String }
 
-fn boot_probe_verdict(runner: ActionsRunnerRelease, observed: ProcessObservation) -> BootProbeVerdict {
-  if observed.exit_code == coreutils_timeout_expired_exit_code {
-    BootExceededHostDeadline {
-      deadline: concat(to_string(second_count(s: runner_microvm_boot_probe_deadline)), " seconds"),
+// THE CLASSIFIER CONSUMES THE TYPED OBSERVATION, not the bare exit status. The deadline arm is now
+// keyed on execution_bound_deadline_if_fired -- which checks whether the exit code matches SIGTERM-death
+// or SIGKILL-death (the statuses GNU timeout with --preserve-status produces when the bound fires) and
+// only reports BootExceededHostDeadline when the bound was imposed AND the status confirms enforcement.
+// A child that exited 124 itself hits the non-zero exit arm and gets BootVmmFailed. When the bound was
+// not imposed (NoBoundImposed), no deadline event can be observed at all and the classifier refuses it
+// (gunbc.design_argument::fail_closed).
+fn boot_probe_verdict(
+  runner: ActionsRunnerRelease,
+  observed: ProcessObservation,
+  bound: ExecutionBoundObservation,
+) -> BootProbeVerdict {
+  let deadline_observed = execution_bound_deadline_if_fired(bound: bound, exit_code: observed.exit_code)
+  match deadline_observed {
+    Present { value: d } => BootExceededHostDeadline {
+      deadline: concat(to_string(second_count(s: d)), " seconds"),
       console: observed.stdout,
       detail: observed.stderr,
     }
-  } else if observed.exit_code != 0 {
-    BootVmmFailed { exit_code: observed.exit_code, console: observed.stdout, detail: observed.stderr }
-  } else if observed.stdout == "" {
-    BootProducedNoConsole {
-      cause: "the VMM exited cleanly and produced no console output at all, so the guest did not reach a serial console",
-    }
-  } else if string_contains(s: observed.stdout, pattern: runner.version as String) {
-    BootPrintedRunnerVersion { version: runner.version as String }
-  } else {
-    BootConsoleLacksRunnerVersion { expected: runner.version as String, console: observed.stdout }
+    Absent =>
+      if observed.exit_code != 0 {
+        BootVmmFailed { exit_code: observed.exit_code, console: observed.stdout, detail: observed.stderr }
+      } else if observed.stdout == "" {
+        BootProducedNoConsole {
+          cause: "the VMM exited cleanly and produced no console output at all, so the guest did not reach a serial console",
+        }
+      } else if string_contains(s: observed.stdout, pattern: runner.version as String) {
+        BootPrintedRunnerVersion { version: runner.version as String }
+      } else {
+        BootConsoleLacksRunnerVersion { expected: runner.version as String, console: observed.stdout }
+      }
   }
 }
 
@@ -201,8 +270,12 @@ fn boot_probe_verdict(runner: ActionsRunnerRelease, observed: ProcessObservation
 // over boot_probe_verdict rather than inside it because that verdict also judges consoles captured
 // before the marker existed (gunbc.runner_observed_version_check's committed Mt. Collins capture),
 // where requiring it would fail a true version readback for a reason unrelated to the version.
-fn guest_agent_boot_verdict(runner: ActionsRunnerRelease, observed: ProcessObservation) -> BootProbeVerdict {
-  let base = boot_probe_verdict(runner: runner, observed: observed)
+fn guest_agent_boot_verdict(
+  runner: ActionsRunnerRelease,
+  observed: ProcessObservation,
+  bound: ExecutionBoundObservation,
+) -> BootProbeVerdict {
+  let base = boot_probe_verdict(runner: runner, observed: observed, bound: bound)
   match base {
     BootPrintedRunnerVersion { version: _ } =>
       if guest_console_carries(console: observed.stdout, kind: GuestEmitted { event: GuestBooted }) {
@@ -337,6 +410,7 @@ fn runner_microvm_boot_probe_wet() -> ProcessExit
                         ),
                         transport: LocalExec,
                       ),
+                      bound: runner_microvm_boot_probe_execution_bound(),
                     ),
                   )
                 }

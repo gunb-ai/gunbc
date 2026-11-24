@@ -3,7 +3,8 @@ module test.claim.runner.runner_microvm_boot_probe_witness
 import std.types { String, Bool, List, NonEmptyStr }
 import extdeps.shell.exec { ProcessObservation, process_observation }
 import extdeps.github.actions_runner { actions_runner_release_2_336_0 }
-import extdeps.tools.gnu_coreutils { coreutils_timeout_expired_exit_code }
+import extdeps.tools.gnu_coreutils { timeout_command_preserving_status }
+import extdeps.posix.signal { SignalTerm, SignalKill, linux_standard_signal_number }
 import extdeps.virtualization.firecracker {
   firecracker_vm_config_document, firecracker_run_config_command,
 }
@@ -18,6 +19,8 @@ import gunbc.runner.runner_microvm_boot_probe {
   boot_probe_verdict, boot_probe_admitted, guest_agent_boot_verdict,
   runner_microvm_boot_probe_rootfs, runner_microvm_boot_probe_networking,
   runner_microvm_boot_probe_bounded_command,
+  ExecutionBoundObservation, BoundImposed, NoBoundImposed,
+  runner_microvm_boot_probe_execution_bound,
 }
 import gunbc.runner.runner_guest_image { guest_observation_line, GuestBooted }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -37,10 +40,11 @@ fn console_carrying_version() -> ProcessObservation {
 // missing its runner produces -- the guest boots beautifully and is useless -- so the negative arm
 // is a console that boots and lacks the version, not an empty one.
 test fn a_console_without_the_cited_runner_version_is_not_a_boot() -> Bool {
-  let good = boot_probe_verdict(runner: actions_runner_release_2_336_0, observed: console_carrying_version())
+  let good = boot_probe_verdict(runner: actions_runner_release_2_336_0, observed: console_carrying_version(), bound: NoBoundImposed)
   let booted_but_empty = boot_probe_verdict(
     runner: actions_runner_release_2_336_0,
     observed: process_observation(exit_code: 0, stdout: "[    0.412] systemd[1]: Reached target multi-user.target\n", stderr: ""),
+    bound: NoBoundImposed,
   )
   boot_probe_admitted(v: good)
     && !boot_probe_admitted(v: booted_but_empty)
@@ -62,10 +66,12 @@ test fn a_failed_vmm_and_a_silent_guest_are_distinguishable_and_both_keep_the_co
       stdout: "[    0.9] Kernel panic - not syncing: VFS: Unable to mount root fs",
       stderr: "Error: cannot open /dev/kvm",
     ),
+    bound: NoBoundImposed,
   )
   let silent = boot_probe_verdict(
     runner: actions_runner_release_2_336_0,
     observed: process_observation(exit_code: 0, stdout: "", stderr: ""),
+    bound: NoBoundImposed,
   )
   !boot_probe_admitted(v: failed)
     && !boot_probe_admitted(v: silent)
@@ -128,28 +134,33 @@ test fn the_run_command_boots_rather_than_waiting_for_an_api_call() -> Bool {
 // The agent's ExecStopPost= poweroff covers only the case where the agent STARTED. It does not cover
 // an agent systemd never pulled in, a kernel panic before userspace, or an init that hangs -- in all
 // of which the VMM holds a guest forever. So the VMM runs under a host deadline that escalates to
-// KILL, and exit 124 is `timeout`'s own answer that the deadline FIRED, which is a different event
-// from a VMM that ran and failed. Collapsing them would report a hung guest as a broken one.
+// SIGKILL after kill-grace. With --preserve-status, a process the bound kills reports 128+SIGTERM
+// (143), or 128+SIGKILL (137) if kill-after escalates. This is a different event from a VMM that
+// exited 124 on its own, and the classifier discriminates them by the status (not the bare 124).
 // A GUEST THAT PANICS AND IS THEN KILLED BY ITS DEADLINE PRINTS ITS PANIC TO STDOUT, and this is the
 // arm that proves the console survives. The earlier implementation routed the VMM through a capture
 // that DISCARDS stdout on a non-admitted exit and then labelled the surviving stderr "the console" --
 // a fabricated label over missing evidence. The red here is any regression back to that: the panic
 // text must reach the verdict.
 test fn a_hung_guest_is_killed_by_the_host_and_its_console_survives_the_kill() -> Bool {
+  // SIGTERM-death (128+15=143): the status GNU timeout with --preserve-status produces when the
+  // bound's SIGTERM killed the process. This IS the bound firing, and the classifier reports it.
+  let bound = runner_microvm_boot_probe_execution_bound()
   let expired = boot_probe_verdict(
     runner: actions_runner_release_2_336_0,
     observed: process_observation(
-      exit_code: coreutils_timeout_expired_exit_code,
+      exit_code: 128 + linux_standard_signal_number(signal: SignalTerm),
       stdout: "[    0.9] Kernel panic - not syncing: no init found",
-      stderr: "timeout: sending signal KILL",
+      stderr: "timeout: sending signal TERM",
     ),
+    bound: bound,
   )
   !boot_probe_admitted(v: expired)
     && (match expired {
       BootExceededHostDeadline { deadline: d, console: c, detail: e } =>
         string_contains(s: c, pattern: "Kernel panic")
           && string_contains(s: d, pattern: "180")
-          && string_contains(s: e, pattern: "KILL")
+          && string_contains(s: e, pattern: "TERM")
       _ => false
     })
 }
@@ -160,9 +171,30 @@ test fn a_hung_guest_is_killed_by_the_host_and_its_console_survives_the_kill() -
 test fn the_bounded_command_escalates_rather_than_asking_politely() -> Bool {
   let c = runner_microvm_boot_probe_bounded_command(binary: "/fc/firecracker", config_path: "/r/probe/probe-vm-config.json")
   c.program.invocation as String == "timeout"
+    && any(xs: c.arguments, predicate: fn(w) { w == "--preserve-status" })
     && any(xs: c.arguments, predicate: fn(w) { w == "--kill-after" })
     && any(xs: c.arguments, predicate: fn(w) { w == "/fc/firecracker" })
     && any(xs: c.arguments, predicate: fn(w) { w == "--no-api" })
+}
+
+// A CHILD THAT EXITS 124 ON ITS OWN IS NOT A DEADLINE. With timeout_command_preserving_status the
+// two events produce different statuses: 124 means the subject chose it (a VMM failure), while
+// 128+SIGTERM (143) or 128+SIGKILL (137) means the bound fired. This test is the red control named
+// by gunbc.recurring_failure_mode.bare_exit_124_read_as_an_observed_timeout_event: a child exiting
+// 124 with the bound imposed must NOT be reported as BootExceededHostDeadline.
+test fn a_child_exiting_124_with_a_bound_imposed_is_a_vmm_failure_not_a_deadline() -> Bool {
+  let bound = runner_microvm_boot_probe_execution_bound()
+  let child_124 = boot_probe_verdict(
+    runner: actions_runner_release_2_336_0,
+    observed: process_observation(exit_code: 124, stdout: "", stderr: "vmm exited with its own 124"),
+    bound: bound,
+  )
+  !boot_probe_admitted(v: child_124)
+    && (match child_124 {
+      BootVmmFailed { exit_code: x, console: _, detail: e } =>
+        x == 124 && string_contains(s: e, pattern: "vmm exited with its own 124")
+      _ => false
+    })
 }
 
 // A LIVE BOOT IS JUDGED THROUGH THE HOST'S CONSOLE READER, AND THIS IS THE PAIR. The same version
@@ -174,10 +206,11 @@ test fn a_live_boot_requires_the_agents_guest_booted_marker() -> Bool {
   let marked = guest_agent_boot_verdict(
     runner: actions_runner_release_2_336_0,
     observed: process_observation(exit_code: 0, stdout: join(["[ 3.1] ", marker, "\n2.", "336.0\n"], ""), stderr: ""),
+    bound: NoBoundImposed,
   )
-  let unmarked = guest_agent_boot_verdict(runner: actions_runner_release_2_336_0, observed: console_carrying_version())
+  let unmarked = guest_agent_boot_verdict(runner: actions_runner_release_2_336_0, observed: console_carrying_version(), bound: NoBoundImposed)
   boot_probe_admitted(v: marked)
     && !boot_probe_admitted(v: unmarked)
     && (match unmarked { BootConsoleLacksGuestBooted { console: _ } => true  _ => false })
-    && boot_probe_admitted(v: boot_probe_verdict(runner: actions_runner_release_2_336_0, observed: console_carrying_version()))
+    && boot_probe_admitted(v: boot_probe_verdict(runner: actions_runner_release_2_336_0, observed: console_carrying_version(), bound: NoBoundImposed))
 }
