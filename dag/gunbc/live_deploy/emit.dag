@@ -1991,9 +1991,16 @@ fn render_install_line(render: InstallLineRender) -> String {
 // (gunbc.design_argument::consumption). Nothing in the tree installs an owned directory through them: the ONE
 // acting route is #gunbc.owned_directory::owned_directory_ensure over the plan this same argv authority
 // realizes (#gunbc.owned_directory::owned_directory_install_argv), which is also what the row's witness
-// now reads. WHAT REMAINS IN THIS FILE is the display of the typed outcome below, kept by no production
-// caller and by exactly one claim module's arms — dangling-by-consumption, stated here for the record
-// rather than left for a reader to rediscover.
+// now reads. WHAT REMAINS IN THIS FILE is the display of the typed outcome below: no production caller
+// consumes it, and its only consumer is one other row's claim arms — dag/test/claim/live_deploy/emit.dag
+// imports #gunbc.live_deploy.emit::install_d_owned_render_for, #gunbc.live_deploy.emit::render_install_line
+// and #gunbc.live_deploy.emit::shell_inert_absolute_path and asserts on them (3, 2 and 5 hits). Per
+// gunbc.design_argument::consumption that is the dangling class, and this PR does not quietly park it
+// there: it is named as a DECLARED FRONTIER with its trigger — the follow-up this lane is drafting for
+// Manager B's review, working name shell-dag-live-deploy-display-retire, whose TRIGGER is the re-point of
+// that claim module's arms onto #gunbc.owned_directory::owned_directory_install_argv. Deleting another
+// row's oracle arms is outside this row's authorization, so the residue ends in that one motion at its
+// root, with its consumer moved first — not by removing the guard before the thing it guards is moved.
 
 // A directory the plan holds no decision about is NOT installed (R2, one-deploy-path safety). The
 // old arm returned true on MemberNotInPlan -- an install with no decision, which is exactly the
