@@ -359,14 +359,16 @@ fn prompt_render_receipt(plan: PromptPlan, wire: ProviderPromptArtifact) -> Prom
 // revision inside the snapshot invalidates every receipt admitted before the move, even one whose
 // rendered text did not change. Currentness is decided here once (anchor
 // gunbc.design_argument::single_authority); no surface re-decides it by comparing digests ad hoc.
-// DECLARED FRONTIER (review 97941 finding 2; gunbc.design_argument::consumption): this law's
-// production consumer is the harness_cli seat binding, which today collapses modeled guidance to
-// system_prompt: String (harness_cli.dag:221,255) and so carries no receipt to gate. The closure --
-// provider envelopes emitted as late projections of a PromptPlan and gated through this law -- is
-// the named follow-up row (lane-manager ruling, 2026-11-24; row requested from the roadmap owner,
-// trigger: that row's dispatch). Until then the law has no surface that CAN call it, so no surface
-// re-decides it either; this claim witness pins the law so the follow-up must satisfy it, not
-// re-invent it.
+// DECLARED FRONTIER (review 97941 finding 2 and review 97972 finding 2; gunbc.design_argument::
+// consumption, gunbc.design_ruling prompt_projection_frontier_holds_to_seat_row_2026_11_24): this
+// law's named later consumer is the seat binding of roadmap row
+// harness-seat-binds-modeled-prompt-segments (identity rn_01M86JC25E8M7NKAG6C4Y34J0C, added by
+// gunb-ai/gunbc#17009, carrier dag/gunbc/harness/harness_cli.dag), which today still collapses
+// modeled guidance to system_prompt: String (harness_cli.dag:221,255) and so carries no receipt to
+// gate. TRIGGER: that row's dispatch -- the seat binds modeled segments from the PromptPlan
+// projection and gates every emitted envelope through this law. Until the trigger resolves no
+// surface can call it, so no surface re-decides it either; the witnesses in
+// dag/test/claim/harness_prompt_context.dag pin the law so the follow-up must satisfy it.
 fn prompt_render_is_current(receipt: PromptRenderReceipt, snapshot: PromptContextSnapshot) -> Bool {
   receipt.plan_snapshot_digest == prompt_snapshot_digest(snapshot: snapshot)
 }
@@ -380,6 +382,16 @@ fn prompt_render_is_current(receipt: PromptRenderReceipt, snapshot: PromptContex
 // turn -- a kept turn may not fork from bytes the lineage no longer owns, which is exactly how a
 // stale conclusion resurfaces as if it were a fact. Any refusal refuses the whole compaction:
 // there is no partially compacted plan.
+// DECLARED FRONTIER (review 97972 finding 1; gunbc.design_argument::consumption, gunbc.design_ruling
+// prompt_projection_frontier_holds_to_seat_row_2026_11_24): this law's named later consumer is the
+// seat projection path of roadmap row harness-seat-binds-modeled-prompt-segments (identity
+// rn_01M86JC25E8M7NKAG6C4Y34J0C, added by gunb-ai/gunbc#17009, carrier
+// dag/gunbc/harness/harness_cli.dag): once the seat binds modeled segments from a PromptPlan,
+// retiring admitted inputs between turns goes through prompt_compact -- there is no other route
+// that may retire a segment. TRIGGER: that row's dispatch. Until the trigger resolves no surface
+// can call this law, so no surface bypasses it either; the witnesses in
+// dag/test/claim/harness_prompt_context.dag pin it so the follow-up must satisfy it, not re-invent
+// it.
 
 // THE UNCOMPACTABLE PREDICATE has one authority: required marks the caller-declared undroppable
 // population, and unresolved guidance joins it by law regardless of its declared required flag.

@@ -1340,6 +1340,7 @@ data heal_mirror_convergence_held_until_merge_base_build_is_measured_2026_11_24:
 
 fn design_rulings() -> List<DesignRuling> {
   [
+    prompt_projection_frontier_holds_to_seat_row_2026_11_24,
     heal_mirror_convergence_held_until_merge_base_build_is_measured_2026_11_24,
     declared_intent_separates_independent_choices_2026_11_23,
     value_disposition_and_named_binding_use_are_explicit_2026_11_23,
@@ -1678,4 +1679,11 @@ data live_router_changes_of_2026_11_23_are_requirements_evidence: DesignRuling =
   decided: "2026-11-23",
   governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "replacement_migration"),
   provenance: "Operator, 2026-11-23, directly in session proud-pike-550. Told that the router changes made by hand that day (efficiency tiers, upward-only session moves, live retain counting, a router-side binding table) contradict gunbc.serving.router_realization router_capability_permission and are recorded nowhere in the repository, and asked whether to keep and record them or roll them back, the operator said, verbatim: \"i would respect todays changes but not anchor on them - all of that solution has to go in the end, but it may bear on future requriements\". DECIDED. The 2026-11-23 router changes stay in place and are recorded as requirements evidence in gunbc.plans.fabric_market section 5: each is a behaviour the market must be able to express, and none is a mechanism to build on. They are debt of the hand-written router, deleted with it at the serving cutover, which owes a read-back of the live configuration and a disposition for each behaviour.",
+}
+
+data prompt_projection_frontier_holds_to_seat_row_2026_11_24: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "prompt_projection_frontier_holds_to_seat_row_2026_11_24"),
+  decided: "2026-11-24",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "consumption"),
+  provenance: "NOT an operator answer: a lane decision by lane manager sleek-fox-889 over roadmap node harness-prompt-context-model, relayed to worker session lively-crane-830 on 2026-11-24 (dashboard messages msg_455c4c4b-93ec-48a5-9dd9-be9518af3ce8 and msg_cecb1810-192b-420e-bb67-7becaf07a45b). Asked whether accepting the node requires closing the harness_cli config boundary -- where modeled guidance premises still collapse to system_prompt: String (dag/gunbc/harness/harness_cli.dag:221,255) -- the lane manager ruled, verbatim: \"ACCEPTABILITY RULING: close the node WITHOUT harness_cli closure; carry it as a NAMED FOLLOW-UP, exactly the r5 projection-gate pattern\". DECIDED. The named follow-up is roadmap row harness-seat-binds-modeled-prompt-segments (identity rn_01M86JC25E8M7NKAG6C4Y34J0C, added by gunb-ai/gunbc#17009, carrier dag/gunbc/harness/harness_cli.dag); it is the DECLARED FRONTIER, and the named later consumer, for the seat-side readers of gunbc.harness.harness_guidance harness_guidance_segments and for gunbc.harness.harness_prompt_context prompt_render_is_current and prompt_compact. TRIGGER: that row's dispatch -- the seat binds modeled segments from the PromptPlan projection, emits provider envelopes as late projections of it, and retires admitted inputs only through prompt_compact. Until the trigger resolves no surface can call these declarations, so no surface re-decides them either; their laws are pinned by the witnesses in dag/test/claim/harness_prompt_context.dag, which the follow-up must satisfy rather than re-invent. Recorded in this ledger at the auto-reviewer's demand (review 97972 of gunb-ai/gunbc#17007), written by the worker and attributed to the lane manager, per the ledger rule that a decision is recorded and cited, never kept in the plan or the pull request alone.",
 }
