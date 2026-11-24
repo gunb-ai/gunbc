@@ -212,6 +212,7 @@ fn install_planted_tree(count: Int) -> Int {
     source_root: source_root,
     revision: RevisionBoundAtEmission { revision: "deadbeefcafebabe000000000000000000000000" as CommitSha },
     executables: approval_broker_release_locus_executables,
+    permitted_extras: [],
     transport: one_transport_route(transport: LocalShell),
   )
   let _ = remove_tree(path: staging_root)
@@ -313,6 +314,7 @@ test fn production_release_tree_install_converges() -> Bool {
     source_root: source_root,
     revision: RevisionBoundAtEmission { revision: "deadbeefcafebabe000000000000000000000000" as CommitSha },
     executables: approval_broker_release_locus_executables,
+    permitted_extras: [],
     transport: one_transport_route(transport: LocalShell),
   )
   let installed = verdict_files_installed(verdict: verdict)

@@ -1,0 +1,5 @@
+module test.claim.effect_summary_listed_import.s2_generic_decl
+
+fn drop_probe_first<T>(xs: FreeMonoid<T>) -> FreeMonoid<T> {
+  xs.skip(n: 1)
+}

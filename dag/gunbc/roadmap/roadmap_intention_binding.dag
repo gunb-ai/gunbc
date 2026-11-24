@@ -37,6 +37,7 @@ data factory_dogfood_intention: String = "gunbc.plans.factory_dogfood"
 data v2_self_host_intention: String = "gunbc.plans.v2_self_host"
 data debt_payoff_intention: String = "gunbc.plans.debt_payoff"
 data first_customer_service_intention: String = "gunbc.plans.first_customer_service"
+data derived_types_keep_their_name_intention: String = "gunbc.plans.derived_types_keep_their_name"
 data planning_consolidation_intention: String = "gunbc.plans.planning_consolidation"
 data desired_state_follows_the_machine_intention: String = "gunbc.plans.desired_state_follows_the_machine"
 data one_source_tree_intention: String = "gunbc.plans.one_source_tree"
@@ -59,6 +60,8 @@ data roadmap_intention_bindings: List<IntentionBinding> = [
   serves(node: "claim-result-contract", module_path: claim_execution_consolidation_intention, plan: "claim_execution_consolidation_plan", layer: 0),
   serves(node: "claim-entrypoints-cutover", module_path: claim_execution_consolidation_intention, plan: "claim_execution_consolidation_plan", layer: 1),
   // gunbc.plans.names_without_imports, section 3.
+  // The project namespace-unique-on-chain is not bound: it is the rollup its work items sit under, and a
+  // binding names a work item. #16749 moved production admission off the whole project onto these items.
   serves(node: "namespace-occurrence-transport", module_path: names_without_imports_intention, plan: "names_without_imports_plan", layer: 0),
   serves(node: "namespace-binding-kernel", module_path: names_without_imports_intention, plan: "names_without_imports_plan", layer: 0),
   serves(node: "namespace-structural-observations", module_path: names_without_imports_intention, plan: "names_without_imports_plan", layer: 0),
@@ -74,7 +77,6 @@ data roadmap_intention_bindings: List<IntentionBinding> = [
   serves(node: "namespace-ambiguity-discharge", module_path: names_without_imports_intention, plan: "names_without_imports_plan", layer: 3),
   serves(node: "namespace-v2-import-completion", module_path: names_without_imports_intention, plan: "names_without_imports_plan", layer: 3),
   serves(node: "import-grammar-and-lines-deleted", module_path: names_without_imports_intention, plan: "names_without_imports_plan", layer: 3),
-  serves(node: "namespace-unique-on-chain", module_path: names_without_imports_intention, plan: "names_without_imports_plan", layer: 3),
   // gunbc.plans.v2_self_host: layers run FORWARD like every other intention (1 = the frontier, 4 = the deletions and the
   // self-host goal, 5 = the vision separations, 6 = the external specimen); derived from edge depth on 2026-11-17 so a
   // parent is never at a higher layer than its child, which the witness holds.
@@ -174,6 +176,10 @@ data roadmap_intention_bindings: List<IntentionBinding> = [
   serves(node: "fleet-truth-enrolled-key-roster-closed", module_path: desired_state_follows_the_machine_intention, plan: "desired_state_follows_the_machine_plan", layer: 1),
   serves(node: "fleet-truth-prefix-cache-sized-to-population", module_path: desired_state_follows_the_machine_intention, plan: "desired_state_follows_the_machine_plan", layer: 1),
   serves(node: "fleet-truth-declared-incompleteness-refuses-use", module_path: desired_state_follows_the_machine_intention, plan: "desired_state_follows_the_machine_plan", layer: 1),
+  // The declared-relationship intention keeps these identities and prerequisite edges.
+  serves(node: "derived-type-argument-inhabitance-root", module_path: derived_types_keep_their_name_intention, plan: "derived_types_keep_their_name_plan", layer: 0),
+  serves(node: "nonempty-str-becomes-a-checked-nominal", module_path: derived_types_keep_their_name_intention, plan: "derived_types_keep_their_name_plan", layer: 0),
+  serves(node: "brands-reached-by-checked-constructors", module_path: derived_types_keep_their_name_intention, plan: "derived_types_keep_their_name_plan", layer: 0),
   // gunbc.plans.read_set_convergence: heal's regeneration round (2026-11-22). Layer is edge depth.
   serves(node: "heal-scope-relation-without-typecheck", module_path: read_set_convergence_intention, plan: "read_set_convergence_plan", layer: 0),
   serves(node: "heal-scope-population-evidence", module_path: read_set_convergence_intention, plan: "read_set_convergence_plan", layer: 0),
@@ -204,7 +210,11 @@ type IntentionTerminals {
 data intention_terminals: List<IntentionTerminals> = [
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.claim_execution_consolidation", decl_name: "claim_execution_consolidation_plan"), terminals: [nid(s: "claim-entrypoints-cutover")] },
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.v2_self_host", decl_name: "v2_self_host_plan"), terminals: [nid(s: "external-specimen-compiles"), nid(s: "v1-products-v1-free")] },
-  IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.names_without_imports", decl_name: "names_without_imports_plan"), terminals: [nid(s: "import-grammar-and-lines-deleted"), nid(s: "namespace-legacy-choice-retirement")] },
+  // namespace-unique-on-chain joins as the program milestone's own terminal (2026-11-23): the review of
+  // 2026-11-19 (#16749) rewired native-production-admission's dependency off the project node onto
+  // names-bind-to-the-unique-declaration, leaving the bound program node with no terminal reaching it;
+  // the milestone's acceptance is the intention's done-when, as it is for factory_dogfood's factory row.
+  IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.names_without_imports", decl_name: "names_without_imports_plan"), terminals: [nid(s: "import-grammar-and-lines-deleted"), nid(s: "namespace-legacy-choice-retirement"), nid(s: "namespace-unique-on-chain")] },
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.factory_dogfood", decl_name: "factory_dogfood_plan"), terminals: [nid(s: "factory")] },
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.debt_payoff", decl_name: "debt_payoff_plan"), terminals: [nid(s: "debt-payoff"), nid(s: "v1-zero-hand-maintained-rust")] },
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.one_source_tree", decl_name: "one_source_tree_plan"), terminals: [nid(s: "v2-namespace-dissolved")] },
@@ -221,6 +231,15 @@ data intention_terminals: List<IntentionTerminals> = [
   // that hang below it, and each remaining item is its own line's end. The plan's done-when is the whole
   // set -- one consumer refusing on a planted divergence, not four hosts repaired.
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.desired_state_follows_the_machine", decl_name: "desired_state_follows_the_machine_plan"), terminals: [nid(s: "fleet-truth-rosters-consume-the-read"), nid(s: "fleet-truth-unit-orphans-closed"), nid(s: "fleet-truth-serving-leaf-caps-joined-to-working-set"), nid(s: "fleet-truth-enrolled-key-roster-closed"), nid(s: "fleet-truth-prefix-cache-sized-to-population"), nid(s: "fleet-truth-probes-refuse-not-absence"), nid(s: "fleet-truth-declared-incompleteness-refuses-use")] },
+  // The root item preserves settled constraint and nominal contracts while the transparent-reference
+  // surface is decided separately. Only reference-specific changes or migration await that choice;
+  // full acceptance still requires every relationship control. NonEmptyStr and the brands keep their
+  // contracts through checked construction; transparent references denote the full constrained type.
+  // These three still chain root <- nonempty <- brands along the prerequisite edges in
+  // roadmap_authority::declared_roadmap_edges, so the existing terminal and bindings remain correct.
+  // A blanket alias retirement is not this intention's goal, and the equals form's existing behavior
+  // does not settle reference syntax. The governing choice is cited by the plan, not invented here.
+  IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.derived_types_keep_their_name", decl_name: "derived_types_keep_their_name_plan"), terminals: [nid(s: "brands-reached-by-checked-constructors")] },
   // read_set_convergence's terminals here are the sinks of heal's lines of work: the P7 milestone and the three
   // separately accepted affected-round items. The plan's other consumers (A1 to A3) join as their items are filed.
   // demand_engine_program: the one-file bar is the intention's first done-when and the sink of its work items.

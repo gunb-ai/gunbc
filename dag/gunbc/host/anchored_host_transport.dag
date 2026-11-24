@@ -44,7 +44,7 @@ import gunbc.host.host_bound_transport {
 }
 import gunbc.command_runner { run_shell_command_capture }
 import gunbc.fleet.fleet_ssh_locus { prepare_ssh_agent_context, fleet_locus_ssh_target, FleetSshContextReady, FleetSshContextRefused }
-import gunbc.fleet.fleet_known_hosts_anchor { SshTargetResolved, SshTargetRefused }
+import gunbc.fleet.fleet_known_hosts_anchor { ProbeLeg,SshTargetResolved, SshTargetRefused }
 import gunbc.auth.authorization_pattern_selection {
   PrivilegedEffect, HumanSurfaceOnly, ApiSurface, WorkloadIdentityUnbindable, MintsNoCredential, MintsResourceScopedCredential,
   ReversibleByReapply, IrreversibleEffect, NoBillingConsequence, NoWitnessDischarge,
@@ -714,7 +714,7 @@ fn anchored_host_transport_live_per_boot(host: HostIdentity, attempt_raw: String
                 SshTargetResolved { target: target } =>
                   match run_shell_command_capture(command: anchored_host_key_scan_command(row: row), transport: LocalExec) {
                     ProcessOutputPresent { text: key_text } =>
-                      match anchored_host_transport_per_boot(transport: FleetSsh { target: target, context: context }, expected_boot_id: expected_boot_id, pin: Present { value: pin }, presented_key_line: trim(s: key_text)) {
+                      match anchored_host_transport_per_boot(transport: FleetSsh {kind: ProbeLeg, target: target, context: context }, expected_boot_id: expected_boot_id, pin: Present { value: pin }, presented_key_line: trim(s: key_text)) {
                         AnchoredBindingBound { bound: b, anchor: a } =>
                           anchored_host_binding_on_pinned_boot(binding: AnchoredBindingBound { bound: b, anchor: a }, pinned_boot: pin.boot_id, read: host_operation_exec(transport: b.transport, operation: ProcfsReadBootId))
                         other => other

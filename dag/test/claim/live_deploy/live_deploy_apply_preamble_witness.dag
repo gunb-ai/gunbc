@@ -47,7 +47,7 @@ import gunbc.host.host_effect_realize {
   live_deploy_preamble_fold, live_deploy_preamble_verdict,
   live_deploy_apply_preamble_on_host,
 }
-import gunbc.fleet.fleet_known_hosts_anchor { SshTarget, FleetSshExecutionContext }
+import gunbc.fleet.fleet_known_hosts_anchor { ProbeLeg,SshTarget, FleetSshExecutionContext }
 import gunbc.fleet.fleet_intent { srv1_host }
 import gunbc.host.host_effect { HostEffectTransport, FleetSsh }
 import test.claim.typed_remote_file_write_fleet_ssh_fixture { fleet_ssh_execution_context_hermetic_witness_fixture }
@@ -453,7 +453,7 @@ test fn the_typed_preamble_refuses_a_fleet_ssh_transport_before_running_any_comm
       let access = DeployAccess {
         principal: ci_deploy_srv1_access.principal,
         host: srv1_host,
-        transport: FleetSsh {
+        transport: FleetSsh {kind: ProbeLeg,
           target: SshTarget {
             address: socket_address(
               host: host_by_ipv4(addr: ipv4_address(octet1: 203, octet2: 0, octet3: 113, octet4: 7)),

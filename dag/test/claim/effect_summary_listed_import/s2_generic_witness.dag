@@ -1,0 +1,7 @@
+module test.claim.effect_summary_listed_import.s2_generic_witness
+
+import test.claim.effect_summary_listed_import.s2_generic_decl { drop_probe_first }
+
+test fn generic_free_fn_binds_through_the_listed_import() -> Bool {
+  drop_probe_first(xs: ["a", "b", "c"]) == ["b", "c"]
+}

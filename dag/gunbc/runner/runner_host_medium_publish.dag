@@ -202,6 +202,7 @@ fn baked_release_pack(plan: BakedReleaseBuildPlan) -> BakedReleasePacked {
         source_root: plan.source_root,
         revision: RevisionBoundAtEmission { revision: plan.revision },
         executables: [gunbc_release_bin_name],
+        permitted_extras: [],
         transport: route,
       ) {
         TreeInstallRefused { step: st, reason: r } => BakedReleaseNotPacked { reason: concat("the staged tree install refused at ", tree_install_step_name(step: st), ": ", r) }
