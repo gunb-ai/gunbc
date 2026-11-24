@@ -1,0 +1,77 @@
+// Node v2-grammar-preparation-first-summaries - the fix-dependent oracle claim module.
+//
+// This module READS the field the change adds: PreparedSequence.right_first, the retained FIRST
+// summary of a sequence's right child. That field does not exist at origin/main, so this module
+// cannot RESOLVE there: running it on the un-fixed tree is a resolution ERROR, not a false claim,
+// and per the lane manager's rule it is therefore never offered as the red witness. The red witness
+// is the [recompute-trace] ledger's duplicate-demand row for expr_first_fold_from_prepared at the
+// preparation site (prepared_child_first_summary.dag drives it). What this module adds is the
+// statement of what the rebuild was for: the summary preparation recomputed is the very value the
+// child already carried, so the recomputation was waste and nothing else.
+//
+// The oracle is expr_first_fold_from_prepared itself, kept in production exactly so this comparison
+// can be stated from outside (lane manager ruling: keep it; its single external caller was the
+// preparation site, and deleting it would be a second behaviour change with its own cost).
+//
+// Execute on srv1 with the change present, through the shared limiter:
+//   HEAVY_OWNER=<session> /home/briansrls/bin/heavy-slot bash -lc \
+//     "cd ~/scratch/<session>/gunbc && GUNBC_RECOMPUTE_TRACE=1 GUNBC_INTERP_PROFILE=1 \
+//      ./target/release/claim_batch --wet --source-root dag --source-root src/v2 \
+//      --entry src/v2/test/claim/parse/prepared_child_first_summary_retained.dag \
+//      --functions pcfs_probe_sequence_carries_its_right_child_summary,pcfs_probe_choice_alternatives_carry_their_right_child_summaries"
+
+module gunbc.test.claim.parse.prepared_child_first_summary_retained
+
+import std.types { Bool }
+import std.algebra { Empty, empty_map }
+import v2.compiler.parse {
+  GrammarExprFirstFold,
+  PreparedGrammarExpr,
+  PreparedSequence,
+  expr_first_fold_from_prepared,
+}
+import v2.test.claim.parse.prepared_child_first_summary {
+  pcfs_alt_under_alpha,
+  pcfs_fold_of,
+  pcfs_suffix_deep,
+  pcfs_suffix_x,
+  pcfs_suffix_y,
+}
+
+// The oracle: recompute a child's summary from its tree, the way preparation used to.
+fn pcfs_oracle(expr: PreparedGrammarExpr) -> GrammarExprFirstFold {
+  expr_first_fold_from_prepared(expr: expr, nullable_set: Empty, first_rows: empty_map())
+}
+
+// Every PreparedGrammarExpr carries its own summary as a field; this returns the one a PREPARED
+// NODE carries for its own subtree. PreparedSequence carries no summary of itself -- that is the
+// asymmetry this node removes -- so the walk compares, for each sequence, the summary it now
+// carries for its RIGHT child against the oracle's answer for that same child.
+fn pcfs_sequences_agree_with_oracle(expr: PreparedGrammarExpr) -> Bool {
+  match expr {
+    PreparedSequence { left: left, right: right, right_first: right_first } =>
+      right_first == pcfs_oracle(expr: right) &&
+        pcfs_sequences_agree_with_oracle(expr: left) &&
+        pcfs_sequences_agree_with_oracle(expr: right)
+    _ => true
+  }
+}
+
+// CLAIM R1 (fix-dependent oracle, the probe): the shared-prefix alternative's sequence node carries
+// its right child's summary, equal to the value the old rebuild computed for it. Post-change leg
+// only; unresolvable at main.
+test fn pcfs_probe_sequence_carries_its_right_child_summary() -> Bool {
+  pcfs_sequences_agree_with_oracle(expr: pcfs_probe_alt_tree())
+}
+
+// CLAIM R2 (fix-dependent oracle, deeper population): with a right child that is itself a sequence
+// of sequences, the check must hold at EVERY depth -- one retained field per node cannot be
+// satisfied by only the outermost node agreeing.
+test fn pcfs_probe_choice_alternatives_carry_their_right_child_summaries() -> Bool {
+  pcfs_sequences_agree_with_oracle(expr: pcfs_fold_of(expr: pcfs_alt_under_alpha(right: pcfs_suffix_deep())).tree) &&
+    pcfs_sequences_agree_with_oracle(expr: pcfs_fold_of(expr: pcfs_alt_under_alpha(right: pcfs_suffix_y())).tree)
+}
+
+fn pcfs_probe_alt_tree() -> PreparedGrammarExpr {
+  pcfs_fold_of(expr: pcfs_alt_under_alpha(right: pcfs_suffix_x())).tree
+}
