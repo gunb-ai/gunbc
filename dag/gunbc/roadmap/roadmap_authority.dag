@@ -2368,6 +2368,213 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "fabric-bringup", contribution: "The fleet becomes a fabric that places work by itself, so bringing up a host means joining it, not hand-arranging its slots."),
     ),
     roadmap_node(
+      identity: "rn_TPS3J4RXCSR3Y4RA1NZJNKDKVX",
+      id: "machine-shapes-join-the-cluster",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/plans/new_server_bringup.dag"),
+      line: ticket(t: level_fields(
+          headline: "Every machine shape already held installs over PXE and joins one cluster as a schedulable node, its accelerators exposed and its power caps held",
+          boundary: "Shapes held today: the Supermicro H11SSL-i hosts with T10 and R9700 cards, the ASRock ALTRAD8UD, the Ampere Mt. Collins board moved onto a printed cassette, and 2018-2022 server boards carrying V100 cards. The install route is PXE (gunbc.design_ruling pxe_default_install_and_no_standing_erase_2026_11_10) through the one boot transaction (one_physical_machine_boot_transaction); the cluster is whatever backend work-exec-1-placement-backend-selection records. No workflow branches on a board name: a shape differs only in its declared facts and adapters (boot_delivery_persistence_and_role_are_independent_axes).",
+          approach: "Six members: the cluster on the selected backend first; then one member per shape family (H11SSL, ALTRAD8UD, Mt. Collins on its cassette); the GPU families with caps held across a cold boot; and the printed tray the cassette shape needs, realized from the derived partition.",
+          red_control: "The project bar: a held unit of each shape, powered from bare metal with nobody present, installs over PXE, joins the cluster, and accepts a scheduled job on its CPU and on each of its card families with the declared caps read back; re-running the install on a converged unit changes nothing.",
+          displaced_cost: "Each shape is brought up by hand, differently, and the fleet's capacity cannot be scheduled as one pool; the Mt. Collins lot stays undeployed.",
+          handback: "Per member: its accepted controls. Per shape: the install receipt from bare metal and the no-drift rerun."
+        )),
+      parent: in_project(project: "fabric-bringup", contribution: "The fabric places work only on machines that have joined it; this is how every held shape joins."),
+    ),
+    roadmap_node(
+      identity: "rn_JQPAHM7MHKV641PDD38RBW7ZAK",
+      id: "cluster-bringup-on-the-selected-backend",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/plans/new_server_bringup.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "One cluster runs on held machines on the backend the placement spike selected, and a new node joins it through the install route",
+        boundary: "The production counterpart of work-exec-1-placement-backend-selection, whose spike excludes production cutover: the control plane on a held host, node join performed by the install route rather than by hand, and the admission controls the spike proved (memory request equal to limit, waiting when full, thermal taint) carried into it.",
+        displaced_cost: "Without a cluster there is nothing for a converged machine to join, and each shape's install ends at an idle host.",
+        first_slice: "Install the selected backend's control plane on one held host and join one already-converged worker through the install route.",
+        red_control: "(1) A worker joined by the install route appears Ready without a manual step. (2) With the cluster full, a submitted job waits. (3) Restarting the control-plane host leaves running work running and re-observed.",
+        out_of_scope: "Multi-host control-plane high availability. Tenant isolation beyond the spike's.",
+        handback: "The control-plane receipt, the join receipt and the three controls."
+      ), on: "2026-11-23", note: "Declared 2026-11-23 from the operator's direction that every machine shape already held joins one cluster by the PXE install route (gunbc.design_ruling pxe_default_install_and_no_standing_erase_2026_11_10, one_physical_machine_boot_transaction). Unstarted; v2 leads the operator's priorities, so the schedule reads this project's estimates behind the v2 program.")),
+      parent: in_project(project: "machine-shapes-join-the-cluster", contribution: "The pool every held shape joins."),
+    ),
+    roadmap_node(
+      identity: "rn_EP012BFWCTH3AQMNRR5S1786ZY",
+      id: "h11ssl-shape-joins-the-cluster",
+      owner: "fleet",
+      carriers: carrier(path: "dag/extdeps/boards/supermicro_h11ssl.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "An H11SSL-i host installs over PXE from bare metal and joins the cluster with its T10 and R9700 cards schedulable",
+        boundary: "The H11SSL-i hosts held today carry Tesla T10 and Radeon AI PRO R9700 cards. The install is the PXE route with the host's declared facts; the AMD card needs its own device exposure beside the NVIDIA one.",
+        displaced_cost: "The serving hosts are rebuilt by hand and their cards cannot be scheduled from the pool.",
+        first_slice: "PXE-install one H11SSL-i from bare metal and join it as a cluster node with its CPU schedulable.",
+        red_control: "(1) Install from bare metal with nobody present ends Ready. (2) A job requesting a T10 runs on it and reads the device. (3) A job requesting the R9700 runs and reads the device. (4) A second install run reports no drift.",
+        out_of_scope: "Choosing which model a card serves.",
+        handback: "The install receipt, the device-read receipts and the no-drift rerun."
+      ), on: "2026-11-23", note: "Declared 2026-11-23 from the operator's direction that every machine shape already held joins one cluster by the PXE install route (gunbc.design_ruling pxe_default_install_and_no_standing_erase_2026_11_10, one_physical_machine_boot_transaction). Unstarted; v2 leads the operator's priorities, so the schedule reads this project's estimates behind the v2 program.")),
+      parent: in_project(project: "machine-shapes-join-the-cluster", contribution: "The first shape, already serving, so the route is proven where the cards are."),
+    ),
+    roadmap_node(
+      identity: "rn_XXP5QRR15QRZ0VC8MDA7QSDQV9",
+      id: "altrad8ud-shape-joins-the-cluster",
+      owner: "fleet",
+      carriers: carrier(path: "dag/extdeps/boards/asrock_rack.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "An ALTRAD8UD host installs over PXE from bare metal and joins the cluster as an arm64 node",
+        boundary: "The ASRock ALTRAD8UD carries one Ampere Altra socket; its firmware facts are in extdeps.boards. The install is the same PXE route with the board's declared facts and an arm64 image.",
+        displaced_cost: "The Altra boards held stay outside the pool, and arm64 work has nowhere to be scheduled but the hand-built hosts.",
+        first_slice: "PXE-install one ALTRAD8UD from bare metal and join it as an arm64 node.",
+        red_control: "(1) Install from bare metal with nobody present ends Ready. (2) An arm64 job is placed on it and an amd64-only job is not. (3) A second install run reports no drift.",
+        out_of_scope: "Accelerators on this board.",
+        handback: "The install receipt, the placement controls and the no-drift rerun."
+      ), on: "2026-11-23", note: "Declared 2026-11-23 from the operator's direction that every machine shape already held joins one cluster by the PXE install route (gunbc.design_ruling pxe_default_install_and_no_standing_erase_2026_11_10, one_physical_machine_boot_transaction). Unstarted; v2 leads the operator's priorities, so the schedule reads this project's estimates behind the v2 program.")),
+      parent: in_project(project: "machine-shapes-join-the-cluster", contribution: "Brings the Altra boards and arm64 work into the pool."),
+    ),
+    roadmap_node(
+      identity: "rn_7EXCACE4E19AX6JBF9G6RYJVWM",
+      id: "printed-tray-realized-from-derived-partition",
+      owner: "fleet",
+      carriers: carrier(path: "dag/product/printed_chassis/cassette_layout.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "The cassette tray's printed bodies come from the derived partition for a selected printer, with generated joins and no added fastening hardware",
+        boundary: "Today the tray is four hand-listed panels joined by M3 clamps, and the residential assembly takes them from that fixed roster while bed_partition::allocate_axis already derives a minimum partition; cassette_layout::panel_print_policy reads one printer's envelope directly. The printer and process become inputs, the bodies and both sides of every remaining connection are generated from the partition, and the realization reports its physical pieces, connections and added hardware. Joins follow one shared construction in three sizes, with a positional code per connection so pieces that do not belong together cannot seat.",
+        displaced_cost: "The tray is fragmented by a fixed roster rather than by the printer, screws hold printed parts together, and holes are cut that nothing mates.",
+        first_slice: "Pass the printer and process into the tray policy and generate the tray's bodies and one hardware-free connection from the derived partition.",
+        red_control: "(1) A printer whose bed fits the whole tray yields one body and no seam. (2) A smaller printer yields the derived partition with connector projections counted in bed fit. (3) A separate retaining key raises the reported piece count. (4) Two same-size connections with different codes cannot be seated in each other's places.",
+        out_of_scope: "The stack posts, fan bank, ducts and bought-part retention, which follow once the tray's connection is qualified.",
+        handback: "The realization report for two printers, the four controls, and a printed specimen."
+      ), on: "2026-11-23", note: "Declared 2026-11-23 from the operator's direction that every machine shape already held joins one cluster by the PXE install route (gunbc.design_ruling pxe_default_install_and_no_standing_erase_2026_11_10, one_physical_machine_boot_transaction). Unstarted; v2 leads the operator's priorities, so the schedule reads this project's estimates behind the v2 program.")),
+      parent: in_project(project: "machine-shapes-join-the-cluster", contribution: "The cassette shape cannot be built until its tray can."),
+    ),
+    roadmap_node(
+      identity: "rn_KMN8EA32TJZ1SES7DVCCDAC8WX",
+      id: "mtcollins-cassette-shape-joins-the-cluster",
+      owner: "fleet",
+      carriers: carrier(path: "dag/product/printed_chassis/cassette_profiles.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "A Mt. Collins board on its printed cassette installs over PXE from bare metal and joins the cluster",
+        boundary: "The Mt. Collins lot is held undeployed and without memory; the board moves out of its 1U chassis onto a cassette (cassette_profiles mt_collins_profile) keeping its native power assembly. The install is the PXE route with the board's declared facts, and the CPU frequency ceiling is applied by the install before work runs.",
+        displaced_cost: "The largest block of held compute stays undeployed.",
+        first_slice: "One cassette-mounted Mt. Collins board PXE-installed from bare metal and joined as a node.",
+        red_control: "(1) Install from bare metal with nobody present ends Ready. (2) The declared frequency ceiling is read back after a cold boot. (3) A second install run reports no drift.",
+        out_of_scope: "Memory purchase for the lot, which follows a working unit.",
+        handback: "The install receipt, the ceiling read-back and the no-drift rerun."
+      ), on: "2026-11-23", note: "Declared 2026-11-23 from the operator's direction that every machine shape already held joins one cluster by the PXE install route (gunbc.design_ruling pxe_default_install_and_no_standing_erase_2026_11_10, one_physical_machine_boot_transaction). Unstarted; v2 leads the operator's priorities, so the schedule reads this project's estimates behind the v2 program.")),
+      parent: in_project(project: "machine-shapes-join-the-cluster", contribution: "Brings the Mt. Collins lot into the pool once its cassette exists."),
+    ),
+    roadmap_node(
+      identity: "rn_JMRKDG5PY2MC4DCM7MBYTJ3H3T",
+      id: "gpu-families-schedulable-with-caps-held",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/fleet/gpu_power_cap_converge.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "Each held GPU family is schedulable from the cluster, and its declared power cap holds across an unattended cold boot",
+        boundary: "Families held: Tesla T10, Tesla V100 (16 and 32 GB; compute capability 7.0, which pins its toolkit to CUDA 12), Radeon AI PRO R9700. gunbc.fleet.gpu_power_cap_converge writes a cap and reads it back; this node makes the cap part of the install, applied before any workload can run, and read back after a cold boot with nobody present.",
+        displaced_cost: "A cap that resets on reboot forces every circuit to be sized for uncapped draw, and cards of a family are exposed one host at a time by hand.",
+        first_slice: "Apply and read back the declared cap for one T10 host as part of its install, then cold-boot it unattended and read it again.",
+        red_control: "(1) After an unattended cold boot every card reads its declared cap before the first job starts. (2) A job is refused placement while a card's cap is unread. (3) A V100 job runs on the CUDA 12 toolchain.",
+        out_of_scope: "Choosing the cap values, which are operator decisions.",
+        handback: "The read-back receipts per family and the three controls."
+      ), on: "2026-11-23", note: "Declared 2026-11-23 from the operator's direction that every machine shape already held joins one cluster by the PXE install route (gunbc.design_ruling pxe_default_install_and_no_standing_erase_2026_11_10, one_physical_machine_boot_transaction). Unstarted; v2 leads the operator's priorities, so the schedule reads this project's estimates behind the v2 program.")),
+      parent: in_project(project: "machine-shapes-join-the-cluster", contribution: "Makes capped draw a fact the circuits can be sized on."),
+    ),
+    roadmap_node(
+      identity: "rn_36K5STB3N22N3K61M5AY62JXNZ",
+      id: "compiler-identity-from-sources",
+      owner: "self-host",
+      carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "The compiler's identity is derived from the sources that cause it, so two builds of the same causes share one identity",
+        boundary: "The remainder of the old demand-m1b: the keying cut landed (#13756), but no producer derives a compiler identity from its causal sources, so reuse keyed on the compiler cannot be trusted across runs.",
+        displaced_cost: "Without a causal identity, reuse either misses on an unchanged compiler or serves a result from a different one.",
+        first_slice: "Derive the native compiler's identity from its read set and toolchain inputs and use it as the key of one existing consumer.",
+        red_control: "(1) Two builds from identical causal sources produce the same identity. (2) Changing one causal source changes it. (3) Changing a file outside the read set does not.",
+        out_of_scope: "Cross-run serving (native-artifact-reuse-through-request-key).",
+        handback: "The identity producer, its consumer and the three controls."
+      ), on: "2026-11-23", note: "Declared 2026-11-23 when the demand engine was replanned as an intention (gunbc.plans.demand_engine_program section 5). Not yet centered.")),
+      parent: in_project(project: "demand-engine", contribution: "Reuse needs a key that means the same compiler."),
+    ),
+    roadmap_node(
+      identity: "rn_E1TAEA7FQEZPYG1XWFM9H9Z6YK",
+      id: "native-artifact-reuse-through-request-key",
+      owner: "self-host",
+      carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "A native compiler artifact is reused across runs through its request key and the provider, and the seed-side cache path is retired",
+        boundary: "The remainder of the old demand-m1c: cross-run reuse exists today only as the seed's native product cache (six SHA-256 axes, a shared store). This moves it onto the request key and provider_serve, with the absent, stale and corrupt cases each taking its own typed arm (section 2.8).",
+        displaced_cost: "Reuse lives in a frozen seed-side path that v2 cannot see or extend.",
+        first_slice: "Serve one NativeCompilerArtifactRequest through the request key from the shared store with a verified read.",
+        red_control: "(1) An unchanged request is served, not rebuilt. (2) A stale read set recomputes. (3) A corrupt stored result refuses and recomputes, never serves.",
+        out_of_scope: "Deleting the seed cache before provider_serve is the only producer.",
+        handback: "The served-hit receipt, the three controls and the retired seed path."
+      ), on: "2026-11-23", note: "Declared 2026-11-23 when the demand engine was replanned as an intention (gunbc.plans.demand_engine_program section 5). Not yet centered.")),
+      parent: in_project(project: "demand-engine", contribution: "The first cross-run reuse the engine owns."),
+    ),
+    roadmap_node(
+      identity: "rn_PCDF3HEATT84831KGDB0HV21B6",
+      id: "consumers-on-canonical-dependencies",
+      owner: "self-host",
+      carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "The remaining consumers read the canonical derived dependencies and activation rules, keep their effect and refusal behaviour, and the authority that transition supersedes is removed",
+        boundary: "The remainder of the old M2 and M2V, restated 2026-11-23 after review. program_run_dependencies is gone. activation_dependency is NOT a sidecar: it already derives activation from branch and match structure, keeps activation distinct from prerequisite edges so an untaken arm runs no effects, and requires consumers to respect incomplete derivation; it is a canonical authority to consume, not a target to delete. fold_lowering is semantic lowering of a fold into its loop, domain, accumulator and bound; it is absorbed only by a semantic replacement, never deleted by name. The parallelism classifier already maps containment and binding to StructuralNotACoupling. The work is to find the consumers that still decide dependencies or activation on their own, move each onto the canonical derivation with its effect ordering (D16) and incomplete-derivation refusal preserved, and remove only what that move supersedes, named in the handback.",
+        displaced_cost: "A consumer that decides dependencies or activation on its own can disagree with the derivation, run an untaken arm's effects, or read an incomplete derivation as independence.",
+        first_slice: "List the consumers that decide dependencies or activation outside the canonical derivation, with the rule each applies, and move the first one.",
+        red_control: "(1) The moved consumer's results are unchanged on its population. (2) An untaken arm's effect does not run. (3) An incomplete derivation refuses rather than being read as independence.",
+        out_of_scope: "The schedulers themselves (schedulers-on-the-engine).",
+        handback: "Each moved consumer with its controls, and each superseded authority removed or named with the consumer that still holds it."
+      ), on: "2026-11-23", note: "Declared 2026-11-23 when the demand engine was replanned as an intention (gunbc.plans.demand_engine_program section 5). Not yet centered.")),
+      parent: in_project(project: "demand-engine", contribution: "Dependencies have one authority before scheduling moves onto it."),
+    ),
+    roadmap_node(
+      identity: "rn_DYVC7JX3N33F67QGW8JVNA3EFC",
+      id: "schedulers-on-the-engine",
+      owner: "self-host",
+      carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "The remaining schedulers run on the engine and topological_layers, the workflow scheduler and executor and the realization_runner surfaces are deleted",
+        boundary: "The old M3b. Overlaps the work-execution-redesign members, which also replace scheduling; one owner must be named before this is centered.",
+        displaced_cost: "Several schedulers order the same work by different rules.",
+        first_slice: "Name the owner against work-execution-redesign, then move v2.program onto the engine.",
+        red_control: "Each deleted scheduler's former population runs on the engine with identical results.",
+        out_of_scope: "Remote execution.",
+        handback: "The moved programs and the deletions."
+      ), on: "2026-11-23", note: "Declared 2026-11-23 when the demand engine was replanned as an intention (gunbc.plans.demand_engine_program section 5). Not yet centered.")),
+      parent: in_project(project: "demand-engine", contribution: "One scheduler."),
+    ),
+    roadmap_node(
+      identity: "rn_PHMYNF27MV9FJX537KKVX53BCF",
+      id: "reuse-decided-by-measurement",
+      owner: "self-host",
+      carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "Whether a result is served or recomputed is decided from measured cost, and the cost_floor_exempt roster is deleted",
+        boundary: "The old M4. The materialization ladder (std.materialization_ladder) still reads a roster for its cost floor.",
+        displaced_cost: "An authored roster decides what is cached, so it drifts from what is actually expensive.",
+        first_slice: "Record serve and recompute cost for one provider and decide its floor from the record.",
+        red_control: "(1) A result cheaper to recompute is recomputed. (2) A result dearer to recompute is served. (3) Removing the measurement refuses rather than defaulting.",
+        out_of_scope: "Remote stores.",
+        handback: "The measured floor and the deleted roster."
+      ), on: "2026-11-23", note: "Declared 2026-11-23 when the demand engine was replanned as an intention (gunbc.plans.demand_engine_program section 5). Not yet centered.")),
+      parent: in_project(project: "demand-engine", contribution: "Caching decided by evidence."),
+    ),
+    roadmap_node(
+      identity: "rn_4BKMJHFC6Y5SGZ7JQDXF8Y743G",
+      id: "a-change-pays-only-for-what-it-invalidates",
+      owner: "self-host",
+      carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "A change pays only for what it invalidates: results stay correct, invalidation is sound, and a result is reused wherever its validity is established",
+        boundary: "The old M6 and the intention's first done-when, restated 2026-11-23 after review: not recompute every dependent, which is too strong in the wrong direction, since a dependent whose inputs recompute to the same result need not run again (early cutoff, as the rustc incremental-compilation design describes). Each compiler stage is keyed and stored per judgment.",
+        displaced_cost: "Every edit pays for work its change cannot affect.",
+        first_slice: "Decompose when its prerequisites are accepted.",
+        red_control: "On a named one-file change: (1) the results equal a cold build's; (2) a stale stored result is never served; (3) a dependent whose recomputed input is unchanged is reused rather than re-run, read from the engine's own records.",
+        out_of_scope: "Lawful algebraic decomposition (the old M7), until a consumer needs it.",
+        handback: "The recompute and reuse populations for a named change, read from the engine's records, beside a cold build's results."
+      ), on: "2026-11-23", note: "Declared 2026-11-23 when the demand engine was replanned as an intention (gunbc.plans.demand_engine_program section 5). Not yet centered.")),
+      parent: in_project(project: "demand-engine", contribution: "The intention's terminal."),
+    ),
+    roadmap_node(
       identity: "rn_P8TZEXXCDR0NBS11CFB3TA0BVV",
       id: "work-exec-0-identity-estimate-split",
       owner: "fleet",
@@ -3993,10 +4200,10 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       line: ticket(t: level_fields(
           headline: "Run programs through one demand engine, paying only for what changed",
           boundary: "gunbc.plans.demand_engine_program milestones M1.b to M7 plus D13 (derived dependency demand and composition-root binding). Already landed: M0 (#11428), M1.a (#11447), D9 partition (Pkg7), M3a (#12401, inferred), D11/E2 (#12391), D12 (#11528). The plan is the design authority. These rows are its milestones as work.",
-          approach: "Serial replacement migrations in the plan's order. Each milestone lands with one production consumer switched and its displaced route deleted in the same change.",
+          approach: "Replanned 2026-11-23 as an intention (gunbc.plans.demand_engine_program section 5). Work items are selected against the tree and name that intention; the milestone rows demand-m1b to demand-m7 are superseded and await the operator's retirement.",
           red_control: "A milestone that lands without deleting the route it replaces refuses in review, per the plan's own replacement-migration law. A cache without a derived identity is refused (gunbc.design_argument::demand_before_materialization, gunbc.design_argument::earliest_unjustified_boundary).",
           displaced_cost: "Stage-wide folds recompute unchanged facts on every run, and hand-authored widths and schedulers sit where derived demand belongs.",
-          handback: "The plan's own deletion condition: M7 exit holds and every milestone's deletions are census-verified."
+          handback: "The plan's section 5 done-when, each condition read on the tree."
         )),
       parent: in_project(project: "v2-compiler-live", contribution: "The live compiler's driver is a demand over its universe, so a run pays only for what changed. The engine is how v2 stays affordable as the required route."),
     ),
@@ -7229,6 +7436,22 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "required-witness-floor-restored", parent: "required-check-named-witnesses-runs-no-claim-module"),
     edge(child: "required-witness-floor-restored", parent: "cc-evidence-to-consumers"),
     edge(child: "required-witness-floor-restored", parent: "generated-artifact-gate-red-at-main"),
+    // demand_engine_program replanned as an intention (2026-11-23): identity before reuse; sidecars before
+    // schedulers; the terminal waits on schedulers, measured reuse and heal's planning-only bar.
+    edge(child: "native-artifact-reuse-through-request-key", parent: "compiler-identity-from-sources"),
+    edge(child: "schedulers-on-the-engine", parent: "consumers-on-canonical-dependencies"),
+    edge(child: "reuse-decided-by-measurement", parent: "native-artifact-reuse-through-request-key"),
+    edge(child: "a-change-pays-only-for-what-it-invalidates", parent: "schedulers-on-the-engine"),
+    edge(child: "a-change-pays-only-for-what-it-invalidates", parent: "reuse-decided-by-measurement"),
+    edge(child: "a-change-pays-only-for-what-it-invalidates", parent: "heal-planning-only-in-a-minute"),
+    // machine-shapes-join-the-cluster (2026-11-23): the cluster waits on the backend choice; each shape joins the
+    // cluster; the cassette shape also waits on its printed tray.
+    edge(child: "cluster-bringup-on-the-selected-backend", parent: "work-exec-1-placement-backend-selection"),
+    edge(child: "h11ssl-shape-joins-the-cluster", parent: "cluster-bringup-on-the-selected-backend"),
+    edge(child: "altrad8ud-shape-joins-the-cluster", parent: "cluster-bringup-on-the-selected-backend"),
+    edge(child: "mtcollins-cassette-shape-joins-the-cluster", parent: "cluster-bringup-on-the-selected-backend"),
+    edge(child: "mtcollins-cassette-shape-joins-the-cluster", parent: "printed-tray-realized-from-derived-partition"),
+    edge(child: "gpu-families-schedulable-with-caps-held", parent: "h11ssl-shape-joins-the-cluster"),
     edge(child: "claim-entrypoints-cutover", parent: "claim-result-contract"),
     edge(child: "dp-m3-subject-ref-resolved", parent: "extdeps-subject-ref-facts-host-census"),
     edge(child: "lab-converges-release-pair", parent: "lab-standings-track-main"),
