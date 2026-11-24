@@ -1,17 +1,18 @@
 module v2.workflow.floor_preparation_split
 
 import std.types { Bool, Int, List, Optional, Present, Absent, String }
-import std.algebra { length }
+import std.algebra { length, list_push }
 import std.list { distinct_by_key }
 import std.measure { Millisecond, millisecond, millisecond_count }
 
-// THE TIME CARRIER. Every duration this authority GOVERNS is a `std.measure` Millisecond -- the split's
-// two sides and their total, a module's cost, the in-force phase reading. The bare integers that remain
-// are parse-boundary counters: `Amount { ms: Int }` and `EntryResolveLine { ms: Int }` are the producer's
-// own printed digits exactly as the line spells them, and they become carriers at the fold's one
-// arithmetic site below (`floor_preparation_join_split`) and at each record construction. The reader
-// surface the claims module uses (`floor_preparation_split_preparation_ms` and siblings) returns the
-// carrier's COUNT, named for the unit it counts.
+// THE TIME CARRIER. Every duration in this authority -- the split's two sides and their total, a
+// module's cost, the in-force phase reading, a parse variant's amount, an entry's resolve time, the
+// attributed top -- is a `std.measure` Millisecond. Producer digits are wrapped the moment they are
+// parsed (`floor_preparation_amount`, the `[resolve]` classifier), so no bare duration integer is ever
+// stored, compared, or carried out. The reader surface the claims module uses
+// (`floor_preparation_split_preparation_ms` and siblings) returns the carrier's COUNT, named for the
+// unit it counts; `floor_preparation_line_ms` and the per-module readers do the same, because they are
+// readings, not carriers.
 fn floor_preparation_ms_zero() -> Millisecond { millisecond(count: 0) }
 fn floor_preparation_ms_of(count: Int) -> Millisecond { millisecond(count: count) }
 fn floor_preparation_ms_add(left: Millisecond, right: Millisecond) -> Millisecond {
@@ -184,7 +185,7 @@ data floor_preparation_unknown_tag_cause: String = "a tagged instrument row whos
 // than refusing.
 type FloorPreparationLine
   = PhaseLine { phase: String, fields: List<String> }
-  | EntryResolveLine { entry: String, ms: Int }
+  | EntryResolveLine { entry: String, ms: Millisecond }
   | ClaimLine { tag: String, claim: String, fields: List<String> }
   | VerdictLine { passed: Bool, function: String }
   | UntaggedLine { text: String }
@@ -241,7 +242,7 @@ fn floor_preparation_field(fields: List<String>, key: String) -> Optional<String
 // A MONEY FIELD, READ STRICTLY. `parse_int` would happily accept "-47", and accepting that would lift a
 // broken counter to its magnitude; and a missing field is NOT a zero, it is the line not telling us.
 type FloorPreparationAmount
-  = Amount { ms: Int }
+  = Amount { ms: Millisecond }
   | MissingField { key: String }
   | MalformedValue { key: String, text: String }
 
@@ -269,13 +270,13 @@ fn floor_preparation_ms_unit_field(fields: List<String>, key: String) -> FloorPr
 fn floor_preparation_amount(key: String, text: String) -> FloorPreparationAmount {
   match parse_int(s: text) {
     Absent => MalformedValue { key: key, text: text }
-    Present { value: n } => if n < 0 { MalformedValue { key: key, text: text } } else { Amount { ms: n } }
+    Present { value: n } => if n < 0 { MalformedValue { key: key, text: text } } else { Amount { ms: floor_preparation_ms_of(n) } }
   }
 }
 
 fn floor_preparation_amount_ms(amount: FloorPreparationAmount) -> Int {
   match amount {
-    Amount { ms: n } => n
+    Amount { ms: n } => floor_preparation_ms_count(n)
     MissingField { key: _ } => 0
     MalformedValue { key: _, text: _ } => 0
   }
@@ -482,7 +483,7 @@ fn floor_preparation_step(acc: FloorPreparationFold, line: String) -> FloorPrepa
         VerdictLine { passed: true, function: _ } => FloorPreparationFold { current_entry: acc.current_entry, seen_resolve: acc.seen_resolve, split: Split { preparation_ms: p, claim_ms: cm, preparation_lines: pl, claim_lines: cl, uncosted_lines: uc, untagged_lines: ut, verdict_pass: vp + 1, verdict_fail: vf, total_ms: tm } }
         VerdictLine { passed: false, function: _ } => FloorPreparationFold { current_entry: acc.current_entry, seen_resolve: acc.seen_resolve, split: Split { preparation_ms: p, claim_ms: cm, preparation_lines: pl, claim_lines: cl, uncosted_lines: uc, untagged_lines: ut, verdict_pass: vp, verdict_fail: vf + 1, total_ms: tm } }
         EntryResolveLine { entry: entry, ms: n } =>
-          FloorPreparationFold { current_entry: entry, seen_resolve: true, split: Split { preparation_ms: floor_preparation_ms_add(p, floor_preparation_ms_of(n)), claim_ms: cm, preparation_lines: pl + 1, claim_lines: cl, uncosted_lines: uc, untagged_lines: ut, verdict_pass: vp, verdict_fail: vf, total_ms: floor_preparation_ms_add(tm, floor_preparation_ms_of(n)) } }
+          FloorPreparationFold { current_entry: entry, seen_resolve: true, split: Split { preparation_ms: floor_preparation_ms_add(p, n), claim_ms: cm, preparation_lines: pl + 1, claim_lines: cl, uncosted_lines: uc, untagged_lines: ut, verdict_pass: vp, verdict_fail: vf, total_ms: floor_preparation_ms_add(tm, n) } }
         PhaseLine { phase: phase, fields: fields } => floor_preparation_phase_step(line: line, acc: acc, phase: phase, fields: fields)
         ClaimLine { tag: tag, claim: _, fields: fields } =>
           if acc.seen_resolve == false {
@@ -623,7 +624,7 @@ fn floor_preparation_line_ms(line: String) -> Int {
     RefusedLine { text: _, cause: _ } => 0
     UntaggedLine { text: _ } => 0
     VerdictLine { passed: _, function: _ } => 0
-    EntryResolveLine { entry: _, ms: n } => n
+    EntryResolveLine { entry: _, ms: n } => floor_preparation_ms_count(n)
     ClaimLine { tag: tag, claim: _, fields: fields } =>
       if tag == floor_preparation_witness_tag {
         floor_preparation_amount_ms(floor_preparation_ms_unit_field(fields, "cpu"))
@@ -690,7 +691,7 @@ type FloorPreparationModuleCost {
 }
 
 type FloorPreparationAttribution
-  = Attributed { modules: List<FloorPreparationModuleCost>, module_count: Int, top_module: String, top_ms: Int } // top_ms is the carrier's COUNT (reading surface)
+  = Attributed { modules: List<FloorPreparationModuleCost>, module_count: Int, top_module: String, top_ms: Millisecond }
   | Unattributed {}
 
 // THE ENTRY PATHS THE RUN NAMED, one per resolved entry.
@@ -725,14 +726,14 @@ fn floor_preparation_module_step(acc: FloorPreparationModuleCost, in_force: Stri
       if floor_preparation_module_of_path(entry) != acc.module {
         acc
       } else {
-        FloorPreparationModuleCost { module: acc.module, preparation_ms: floor_preparation_ms_add(acc.preparation_ms, floor_preparation_ms_of(n)), claim_ms: acc.claim_ms, lines: acc.lines + 1 }
+        FloorPreparationModuleCost { module: acc.module, preparation_ms: floor_preparation_ms_add(acc.preparation_ms, n), claim_ms: acc.claim_ms, lines: acc.lines + 1 }
       }
     ClaimLine { tag: tag, claim: _, fields: fields } =>
       if in_force != acc.module {
         acc
       } else if tag == floor_preparation_witness_tag {
         match floor_preparation_ms_unit_field(fields, "cpu") {
-          Amount { ms: n } => FloorPreparationModuleCost { module: acc.module, preparation_ms: acc.preparation_ms, claim_ms: floor_preparation_ms_add(acc.claim_ms, floor_preparation_ms_of(n)), lines: acc.lines + 1 }
+          Amount { ms: n } => FloorPreparationModuleCost { module: acc.module, preparation_ms: acc.preparation_ms, claim_ms: floor_preparation_ms_add(acc.claim_ms, n), lines: acc.lines + 1 }
           _ => acc
         }
       } else if tag == floor_preparation_reach_probe_tag {
@@ -741,7 +742,7 @@ fn floor_preparation_module_step(acc: FloorPreparationModuleCost, in_force: Stri
         match floor_preparation_ms_field(fields, "fill_cpu_ms") {
           Amount { ms: fill } =>
             match floor_preparation_ms_field(fields, "marginal_cpu_ms") {
-              Amount { ms: marginal } => FloorPreparationModuleCost { module: acc.module, preparation_ms: floor_preparation_ms_add(acc.preparation_ms, floor_preparation_ms_of(fill)), claim_ms: floor_preparation_ms_add(acc.claim_ms, floor_preparation_ms_of(marginal)), lines: acc.lines + 1 }
+              Amount { ms: marginal } => FloorPreparationModuleCost { module: acc.module, preparation_ms: floor_preparation_ms_add(acc.preparation_ms, fill), claim_ms: floor_preparation_ms_add(acc.claim_ms, marginal), lines: acc.lines + 1 }
               _ => acc
             }
           _ => acc
@@ -765,15 +766,15 @@ fn floor_preparation_attribution(capture: List<String>) -> FloorPreparationAttri
   }
 }
 
-fn floor_preparation_module_total(row: FloorPreparationModuleCost) -> Int {
-  floor_preparation_ms_count(floor_preparation_ms_add(row.preparation_ms, row.claim_ms))
+fn floor_preparation_module_total(row: FloorPreparationModuleCost) -> Millisecond {
+  floor_preparation_ms_add(row.preparation_ms, row.claim_ms)
 }
 
 fn floor_preparation_max(rows: List<FloorPreparationModuleCost>) -> Optional<FloorPreparationModuleCost> {
   fold(rows, init:  none, f: (acc, row) =>
     match acc {
       Absent => Present { value: row }
-      Present { value: best } => if floor_preparation_module_total(row) > floor_preparation_module_total(best) { Present { value: row } } else { Present { value: best } }
+      Present { value: best } => if floor_preparation_ms_count(floor_preparation_module_total(row)) > floor_preparation_ms_count(floor_preparation_module_total(best)) { Present { value: row } } else { Present { value: best } }
     })
 }
 
@@ -785,7 +786,7 @@ fn floor_preparation_attributed_ms(capture: List<String>) -> Int {
   match floor_preparation_attribution(capture) {
     Unattributed {} => 0
     Attributed { modules: rows, module_count: _, top_module: _, top_ms: _ } =>
-      fold(rows, init:  0, f: (acc, row) => acc + floor_preparation_module_total(row))
+      fold(rows, init:  0, f: (acc, row) => acc + floor_preparation_ms_count(floor_preparation_module_total(row)))
   }
 }
 
@@ -842,7 +843,7 @@ fn floor_preparation_entry_scoped_ms(capture: List<String>) -> Int {
         }
       // THE PER-ENTRY RESOLUTION IS ENTRY-SCOPED BY DEFINITION: one entry, one cost, charged to
       // that module. It is also the only preparation row that is module-grain on its own face.
-      EntryResolveLine { entry: _, ms: n } => acc + n
+      EntryResolveLine { entry: _, ms: n } => acc + floor_preparation_ms_count(n)
       _ => acc
     })
 }
@@ -1068,7 +1069,7 @@ fn floor_preparation_resolve_rows_match_their_module_rows(capture: List<String>)
 fn floor_preparation_module_resolve_ms(capture: List<String>, module: String) -> Int {
   fold(capture, init:  0, f: (acc, line) =>
     match floor_preparation_classify(line) {
-      EntryResolveLine { entry: entry, ms: n } => if floor_preparation_module_of_path(entry) == module { acc + n } else { acc }
+      EntryResolveLine { entry: entry, ms: n } => if floor_preparation_module_of_path(entry) == module { acc + floor_preparation_ms_count(n) } else { acc }
       _ => acc
     })
 }
@@ -1139,7 +1140,7 @@ fn floor_preparation_split_report() -> String {
                 " top_module=",
                 top,
                 " top_module_ms=",
-                to_string(top_ms),
+                to_string(floor_preparation_ms_count(top_ms)),
                 " module_table=",
                 floor_preparation_module_table(rows),
                 " untrimmed_total_ms=",
@@ -1235,6 +1236,112 @@ fn floor_preparation_ask() -> String {
     )
   )
 }
+
+// ----------------------------------------------------------------------------------------------
+// THE RUNNER, MODELLED. The capture tool is hand-written shell (Rule 8) until v2.workflow.bash_emit
+// (gunbc #5828) can emit it; what it DOES is governed here, so the shell is a realization and not an
+// authority. Each step is named below and carries a `# RUNNER_STEP <name>` marker at its site in
+// `scripts/floor_preparation_capture.sh`; the claims module refuses (a) a modelled step with no
+// marker in the tool and (b) a marker in the tool for a step that is not modelled here. The
+// population file is likewise modelled -- its rows are data here, and the committed text file is a
+// rendering of them, produced by `capture.sh emit-population` from `floor_preparation_population_rendering`
+// and refused by a claim whenever it disagrees with the model.
+// ----------------------------------------------------------------------------------------------
+
+data floor_preparation_runner_steps: List<String> = [
+  "verify-pinned-claim-batch", "verify-pinned-gunbc", "build-argv-from-population", "leg-untrimmed",
+  "derive-pass-set", "leg-graded", "splice-capture-rows", "claim-gate", "report-print", "terminal-gate"
+]
+
+fn floor_preparation_text_contains(haystack: String, needle: String) -> Bool {
+  length(xs: split(s: haystack, delimiter: needle)) > 1
+}
+
+fn floor_preparation_tool_text() -> String {
+  filesystem_read(path: "scripts/floor_preparation_capture.sh").content
+}
+
+fn floor_preparation_step_marker(step: String) -> String {
+  concat(concat("# RUNNER_STEP ", step), "\n")
+}
+
+fn floor_preparation_modelled_step_is_marked(step: String) -> Bool {
+  floor_preparation_text_contains(floor_preparation_tool_text(), floor_preparation_step_marker(step))
+}
+
+fn floor_preparation_every_modelled_step_is_marked() -> Bool {
+  fold(floor_preparation_runner_steps, init: true, f: (acc, step) =>
+    acc && floor_preparation_modelled_step_is_marked(step))
+}
+
+fn floor_preparation_modelled_step_count() -> Int {
+  length(xs: floor_preparation_runner_steps)
+}
+
+type FloorPreparationPopulationRow {
+  kind: String,
+  entry: String,
+  claim: String,
+}
+
+fn floor_preparation_population_text() -> String {
+  filesystem_read(path: "dag/test/claim/floor/floor_preparation_split_population.txt").content
+}
+
+fn floor_preparation_population_rows() -> List<FloorPreparationPopulationRow> {
+  filter(
+    fold(
+      split(s: floor_preparation_population_text(), delimiter: "\n"),
+      init: [],
+      f: (acc, line) => {
+        let parts = split(s: line, delimiter: "|")
+        match parts.skip(n: 0).first() {
+          Absent {} => acc
+          Present { value: kind } =>
+            if kind != "candidate" && kind != "extra" {
+              acc
+            } else {
+              match parts.skip(n: 1).first() {
+                Absent {} => acc
+                Present { value: entry } =>
+                  match parts.skip(n: 2).first() {
+                    Absent {} => acc
+                    Present { value: claim } =>
+                      if length(xs: entry) == 0 || length(xs: claim) == 0 {
+                        acc
+                      } else {
+                        list_push(xs: acc, item: FloorPreparationPopulationRow { kind: kind, entry: entry, claim: claim })
+                      }
+                  }
+              }
+            }
+        }
+      }
+    ),
+    r => r.kind == "candidate" || r.kind == "extra"
+  )
+}
+
+fn floor_preparation_population_is_wellformed() -> Bool {
+  length(xs: floor_preparation_population_rows()) > 0
+    && fold(floor_preparation_population_rows(), init: true, f: (acc, row) =>
+      acc && (row.kind == "candidate" || row.kind == "extra")
+        && length(xs: row.entry) > 0 && length(xs: row.claim) > 0)
+}
+
+fn floor_preparation_population_line(row: FloorPreparationPopulationRow) -> String {
+  concat(concat(concat(row.kind, "|"), row.entry), concat("|", row.claim))
+}
+
+fn floor_preparation_population_lines() -> List<String> {
+  fold(floor_preparation_population_rows(), init: List<String]{}, f: (acc, row) =>
+    list_push(xs: acc, item: floor_preparation_population_line(row)))
+}
+
+fn floor_preparation_population_rendering() -> String {
+  concat(concat("POPULATION-BEGIN\n", join(floor_preparation_population_lines(), "\n")), "\nPOPULATION-END")
+}
+
 
 fn floor_preparation_yes_no(value: Bool) -> String {
   if value { "yes" } else { "no" }

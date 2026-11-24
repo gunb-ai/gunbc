@@ -1,7 +1,7 @@
 module test.claim.floor.floor_preparation_split_witness
 
 import std.types { Bool, Int, List, Optional, Present, Absent, String }
-import std.algebra { length }
+import std.algebra { length, list_push }
 import v2.workflow.floor_preparation_split {
   floor_preparation_any_row_starts_with,
   floor_preparation_attribution_all_rows_have_lines,
@@ -9,6 +9,12 @@ import v2.workflow.floor_preparation_split {
   floor_preparation_attributed_ms,
   floor_preparation_capture,
   floor_preparation_capture_provenance,
+  floor_preparation_every_modelled_step_is_marked,
+  floor_preparation_population_is_wellformed,
+  floor_preparation_population_lines,
+  floor_preparation_population_text,
+  floor_preparation_runner_steps,
+  floor_preparation_tool_text,
   floor_preparation_census_is_honest,
   floor_preparation_claim_row_count,
   floor_preparation_deletion_margin_holds,
@@ -85,9 +91,12 @@ import v2.workflow.floor_cost_debt {
 //   floor_preparation_the_split_fold_is_not_the_cost_debt_fold,
 //   floor_preparation_the_committed_capture_is_measured_not_authored,
 //   floor_preparation_the_capture_tool_runs_the_fold_and_holds_none,
+//   floor_preparation_the_committed_capture_is_a_cache_of_the_retained_log,
+//   floor_preparation_the_runner_process_is_modelled,
+//   floor_preparation_the_population_is_the_models_rendering,
 //   floor_preparation_the_roadmap_names_the_floor_fold
 //
-// EIGHTEEN `test fn`s, and this roster is the roster that runs: `scripts/floor_preparation_capture.sh`
+// TWENTY-ONE `test fn`s, and this roster is the roster that runs: `scripts/floor_preparation_capture.sh`
 // passes exactly these names to `--functions` and refuses unless every one prints its own PASS line.
 // The bare `fn` bodies above them are helpers, not claims, and are never passed to `--functions`.
 //
@@ -646,6 +655,195 @@ fn committed_capture_is_measured() -> Bool {
 
 test fn floor_preparation_the_committed_capture_is_measured_not_authored() -> Bool {
   committed_capture_is_measured()
+}
+
+// ----------------------------------------------------------------------------------------------
+// 19. THE COMMITTED BLOCK IS A CACHE, AND THE RETAINED LOG IS ITS SOURCE. Kills: a capture that
+// drifts from the log it was cut from -- a hand-edited committed row, or a rerun that forgot to
+// refresh the block. The tool retains the kept instrument lines of BOTH legs in
+// `dag/test/claim/floor/floor_preparation_split_retained.txt`; this claim re-folds that retained
+// artifact with the model's OWN fold and refuses when the cache disagrees: row, phase, resolve,
+// PASS and fill counts must each match, in both sections. What it cannot see is the keep-filter that
+// produced the retained file (transport, in the tool); that filter is covered by the coverage and
+// census claims -- every requested row appears with a verdict or is excluded with a printed cause --
+// and not by this one, and the division is stated rather than implied.
+// ----------------------------------------------------------------------------------------------
+
+type FloorPreparationRetainedCount {
+  section: String,
+  graded_rows: Int,
+  graded_phase: Int,
+  graded_resolve: Int,
+  graded_pass: Int,
+  graded_fill: Int,
+  untrimmed_rows: Int,
+  untrimmed_phase: Int,
+  untrimmed_resolve: Int,
+  untrimmed_pass: Int,
+  untrimmed_fill: Int,
+}
+
+fn retained_empty(section: String) -> FloorPreparationRetainedCount {
+  FloorPreparationRetainedCount {
+    section: section,
+    graded_rows: 0, graded_phase: 0, graded_resolve: 0, graded_pass: 0, graded_fill: 0,
+    untrimmed_rows: 0, untrimmed_phase: 0, untrimmed_resolve: 0, untrimmed_pass: 0, untrimmed_fill: 0
+  }
+}
+
+fn retained_bump(acc: FloorPreparationRetainedCount, line: String) -> FloorPreparationRetainedCount {
+  let is_phase = if row_starts(line, "[floor-phase]") { 1 } else { 0 }
+  let is_resolve = if row_starts(line, "[resolve]") { 1 } else { 0 }
+  let is_pass = if row_starts(line, "PASS ") { 1 } else { 0 }
+  let is_fill = if row_starts(line, "[floor-shared-fill]") { 1 } else { 0 }
+  if acc.section == "graded" {
+    FloorPreparationRetainedCount {
+      section: acc.section,
+      graded_rows: acc.graded_rows + 1,
+      graded_phase: acc.graded_phase + is_phase,
+      graded_resolve: acc.graded_resolve + is_resolve,
+      graded_pass: acc.graded_pass + is_pass,
+      graded_fill: acc.graded_fill + is_fill,
+      untrimmed_rows: acc.untrimmed_rows,
+      untrimmed_phase: acc.untrimmed_phase,
+      untrimmed_resolve: acc.untrimmed_resolve,
+      untrimmed_pass: acc.untrimmed_pass,
+      untrimmed_fill: acc.untrimmed_fill
+    }
+  } else {
+    FloorPreparationRetainedCount {
+      section: acc.section,
+      graded_rows: acc.graded_rows,
+      graded_phase: acc.graded_phase,
+      graded_resolve: acc.graded_resolve,
+      graded_pass: acc.graded_pass,
+      graded_fill: acc.graded_fill,
+      untrimmed_rows: acc.untrimmed_rows + 1,
+      untrimmed_phase: acc.untrimmed_phase + is_phase,
+      untrimmed_resolve: acc.untrimmed_resolve + is_resolve,
+      untrimmed_pass: acc.untrimmed_pass + is_pass,
+      untrimmed_fill: acc.untrimmed_fill + is_fill
+    }
+  }
+}
+
+fn retained_step(acc: FloorPreparationRetainedCount, line: String) -> FloorPreparationRetainedCount {
+  if line == "SECTION graded" {
+    retained_empty("graded")
+  } else if line == "SECTION untrimmed" {
+    FloorPreparationRetainedCount {
+      section: "untrimmed",
+      graded_rows: acc.graded_rows, graded_phase: acc.graded_phase, graded_resolve: acc.graded_resolve,
+      graded_pass: acc.graded_pass, graded_fill: acc.graded_fill,
+      untrimmed_rows: 0, untrimmed_phase: 0, untrimmed_resolve: 0, untrimmed_pass: 0, untrimmed_fill: 0
+    }
+  } else if acc.section == "none" {
+    acc
+  } else {
+    retained_bump(acc, line)
+  }
+}
+
+fn retained_lines() -> List<String> {
+  filter(
+    split(s: filesystem_read(path: "dag/test/claim/floor/floor_preparation_split_retained.txt").content, delimiter: "\n"),
+    l => l != ""
+  )
+}
+
+fn retained_fold() -> FloorPreparationRetainedCount {
+  fold(retained_lines(), init: retained_empty("none"), f: (acc, line) => retained_step(acc, line))
+}
+
+fn retained_cache_agrees() -> Bool {
+  let graded = floor_preparation_capture()
+  let untrimmed = floor_preparation_untrimmed_capture()
+  let state = retained_fold()
+  state.section == "untrimmed"
+    && state.graded_rows == length(xs: graded)
+    && state.untrimmed_rows == length(xs: untrimmed)
+    && state.graded_phase == count_starting(graded, "[floor-phase]")
+    && state.graded_resolve == count_starting(graded, "[resolve]")
+    && state.graded_pass == count_starting(graded, "PASS ")
+    && state.graded_fill == count_starting(graded, "[floor-shared-fill]")
+    && state.untrimmed_phase == count_starting(untrimmed, "[floor-phase]")
+    && state.untrimmed_resolve == count_starting(untrimmed, "[resolve]")
+    && state.untrimmed_pass == count_starting(untrimmed, "PASS ")
+    && state.untrimmed_fill == count_starting(untrimmed, "[floor-shared-fill]")
+}
+
+test fn floor_preparation_the_committed_capture_is_a_cache_of_the_retained_log() -> Bool {
+  retained_cache_agrees()
+}
+
+// ----------------------------------------------------------------------------------------------
+// 20. THE RUNNER IS A REALIZATION, NOT AN AUTHORITY. Kills: the shell growing a step nobody modelled
+// (or a modelled step silently vanishing from it). Each step is declared in
+// `v2.workflow.floor_preparation_split` and carries a `# RUNNER_STEP <name>` marker at its site in the
+// tool; both directions are checked here, so the tool cannot add or drop process without the .dag
+// changing first. This is the Rule 8 half the scaffold marker alone does not close.
+// ----------------------------------------------------------------------------------------------
+
+fn tool_marker_lines() -> List<String> {
+  fold(
+    split(s: floor_preparation_tool_text(), delimiter: "\n"),
+    init: [],
+    f: (acc, line) => if row_starts(line, "# RUNNER_STEP ") {
+      list_push(xs: acc, item: line)
+    } else {
+      acc
+    }
+  )
+}
+
+fn marker_step_name(line: String) -> String {
+  let pieces = split(s: line, delimiter: " ")
+  match pieces.skip(n: 2).first() {
+    Present { value: v } => v
+    Absent {} => ""
+  }
+}
+
+fn marker_is_modelled(line: String) -> Bool {
+  let name = marker_step_name(line)
+  fold(floor_preparation_runner_steps, init: false, f: (hit, step) => hit || step == name)
+}
+
+fn every_modelled_step_is_marked() -> Bool {
+  floor_preparation_every_modelled_step_is_marked()
+}
+
+fn every_tool_marker_is_modelled() -> Bool {
+  fold(tool_marker_lines(), init: true, f: (acc, line) => acc && marker_is_modelled(line))
+}
+
+fn runner_process_is_modelled() -> Bool {
+  every_modelled_step_is_marked()
+    && every_tool_marker_is_modelled()
+    && length(xs: tool_marker_lines()) == length(xs: floor_preparation_runner_steps)
+    && length(xs: floor_preparation_runner_steps) > 0
+}
+
+test fn floor_preparation_the_runner_process_is_modelled() -> Bool {
+  runner_process_is_modelled()
+}
+
+// ----------------------------------------------------------------------------------------------
+// 21. THE POPULATION FILE IS A RENDERING OF MODELLED ROWS. Kills: hand-maintaining the enrollment
+// text so the measured population drifts from what the authority enrolls. The rows are data in
+// `v2.workflow.floor_preparation_split`; the committed text file must equal their rendering, byte for
+// byte after trimming. `capture.sh emit-population` regenerates it from the model's printed
+// rendering -- the same refusal-print convention the report uses -- so the file has a named generator
+// and this claim is what keeps it honest.
+// ----------------------------------------------------------------------------------------------
+
+fn population_is_the_models_rendering() -> Bool {
+  floor_preparation_population_is_wellformed()
+    && join(floor_preparation_population_lines(), "\n") == trim(s: floor_preparation_population_text())
+}
+
+test fn floor_preparation_the_population_is_the_models_rendering() -> Bool {
+  population_is_the_models_rendering()
 }
 
 // ----------------------------------------------------------------------------------------------

@@ -87,8 +87,8 @@ fail() { echo "CAPTURE_FAIL: $*" >&2; exit 1; }
 # The claim roster. Eighteen names, and they are the roster that runs: the witness module's header
 # lists the same set and audit_roster() below refuses if the two ever disagree.
 WITNESS_MODULE=dag/test/claim/floor/floor_preparation_split_witness.dag
-WITNESS_ROSTER="floor_preparation_capture_grammar_is_closed,floor_preparation_split_conserves_to_the_independent_total,floor_preparation_deleting_a_costed_line_moves_the_total_by_its_own_cost,floor_preparation_the_fold_bills_the_reach_probe_fill_once,floor_preparation_committed_fill_rows_are_paired,floor_preparation_the_fold_refuses_what_it_cannot_read,floor_preparation_module_attribution_accounts_for_every_non_phase_costed_row,floor_preparation_verdict_rows_match_an_independent_prefix_scan,floor_preparation_preparation_side_dominates_the_claim_side,floor_preparation_entry_resolve_is_charged_to_the_module_it_names,floor_preparation_preparation_sides_partition_by_scale,floor_preparation_the_committed_census_is_honest,floor_preparation_the_excluded_population_is_stated_with_its_causes,floor_preparation_the_untrimmed_leg_is_the_same_floor,floor_preparation_the_split_fold_is_not_the_cost_debt_fold,floor_preparation_the_committed_capture_is_measured_not_authored,floor_preparation_the_capture_tool_runs_the_fold_and_holds_none,floor_preparation_the_roadmap_names_the_floor_fold"
-WITNESS_ROSTER_COUNT=18
+WITNESS_ROSTER="floor_preparation_capture_grammar_is_closed,floor_preparation_split_conserves_to_the_independent_total,floor_preparation_deleting_a_costed_line_moves_the_total_by_its_own_cost,floor_preparation_the_fold_bills_the_reach_probe_fill_once,floor_preparation_committed_fill_rows_are_paired,floor_preparation_the_fold_refuses_what_it_cannot_read,floor_preparation_module_attribution_accounts_for_every_non_phase_costed_row,floor_preparation_verdict_rows_match_an_independent_prefix_scan,floor_preparation_preparation_side_dominates_the_claim_side,floor_preparation_entry_resolve_is_charged_to_the_module_it_names,floor_preparation_preparation_sides_partition_by_scale,floor_preparation_the_committed_census_is_honest,floor_preparation_the_excluded_population_is_stated_with_its_causes,floor_preparation_the_untrimmed_leg_is_the_same_floor,floor_preparation_the_split_fold_is_not_the_cost_debt_fold,floor_preparation_the_committed_capture_is_measured_not_authored,floor_preparation_the_capture_tool_runs_the_fold_and_holds_none,floor_preparation_the_committed_capture_is_a_cache_of_the_retained_log,floor_preparation_the_runner_process_is_modelled,floor_preparation_the_population_is_the_models_rendering,floor_preparation_the_roadmap_names_the_floor_fold"
+WITNESS_ROSTER_COUNT=21
 
 # Transport only: which lines of a run log are instrument lines. The MEANING of every one of these
 # lines -- phase vocabulary, cost fields, side of the split, refusals -- is decided by the model, and
@@ -143,8 +143,10 @@ verify_pinned() {
 }
 
 verify_binary() {
+  # RUNNER_STEP verify-pinned-claim-batch
   verify_pinned claim_batch "$BINARY" "$EXPECT_SHA"
   [ -n "$GUNBC" ] || fail "every mode needs --gunbc: the reading is printed by the released gunbc's refusal, not by this shell"
+  # RUNNER_STEP verify-pinned-gunbc
   verify_pinned gunbc "$GUNBC" "$EXPECT_GUNBC_SHA"
 }
 
@@ -189,6 +191,7 @@ write_argv_header() {
 }
 
 build_argv_all() {
+  # RUNNER_STEP build-argv-from-population
   local out=$1 kind entry functions
   write_argv_header "$out"
   while IFS='|' read -r entry functions; do
@@ -289,6 +292,7 @@ audit_roster() {
 }
 
 run_witness_claims() {
+  # RUNNER_STEP claim-gate
   local out=$1
   audit_roster
   cd "$CHECKOUT" || fail "cannot cd to $CHECKOUT"
@@ -315,6 +319,7 @@ run_witness_claims() {
 }
 
 run_report() {
+  # RUNNER_STEP report-print
   local label=$1 out=$2
   cd "$CHECKOUT" || fail "cannot cd to $CHECKOUT"
   timeout "${FLOOR_CAPTURE_TIMEOUT_R:-2400}" "$GUNBC" run \
@@ -390,6 +395,7 @@ splice_block() {
 }
 
 emit_and_splice() {
+  # RUNNER_STEP splice-capture-rows
   [ -n "$AUTHORITY" ] || AUTHORITY="$CHECKOUT/src/v2/workflow/floor_preparation_split.dag"
   mkdir -p "$OUTDIR"
   GRADED_KEPT=$OUTDIR/graded-rows.txt
@@ -402,6 +408,15 @@ emit_and_splice() {
   provenance_lines graded "$OUTDIR/graded-time.txt" > "$OUTDIR/graded-provenance.txt"
   provenance_lines untrimmed "$OUTDIR/untrimmed-time.txt" > "$OUTDIR/untrimmed-provenance.txt"
   build_requested_rows "$OUTDIR/requested-rows.txt"
+  # The retained log is the cache's source: claim 19 re-folds the COMMITTED copy of this file with
+  # the model's own fold and refuses when the spliced block disagrees. Keep both in the same commit.
+  {
+    printf 'SECTION graded\n'
+    cat "$GRADED_KEPT"
+    printf 'SECTION untrimmed\n'
+    cat "$UNTRIMMED_KEPT"
+  } > "$OUTDIR/retained.txt"
+  echo "RETAINED_ARTIFACT=$OUTDIR/retained.txt (commit it to dag/test/claim/floor/floor_preparation_split_retained.txt with the spliced block)"
   {
     emit_list floor_preparation_capture "$GRADED_KEPT"
     emit_list floor_preparation_capture_provenance "$OUTDIR/graded-provenance.txt"
@@ -467,6 +482,27 @@ main() {
       fi
       run_report report "$OUTDIR/report-print.txt"
       ;;
+    emit-population)
+      # GENERATE the enrollment text FROM THE MODEL: the released gunbc prints
+      # floor_preparation_population_rendering in its refusal (the same convention the report uses),
+      # and the lines between the sentinels are written out verbatim. Transport only -- the rows are
+      # data in v2.workflow.floor_preparation_split, and a claim refuses when the committed file
+      # disagrees with the model's rendering.
+      [ -n "$GUNBC" ] || fail "emit-population needs --gunbc"
+      verify_pinned gunbc "$GUNBC" "$EXPECT_GUNBC_SHA"
+      mkdir -p "$OUTDIR"
+      cd "$CHECKOUT" || fail "cannot cd to $CHECKOUT"
+      timeout "${FLOOR_CAPTURE_TIMEOUT_R:-2400}" "$GUNBC" run \
+        --source-root dag --source-root src/v1 --source-root src/v2 \
+        --entry src/v2/workflow/floor_preparation_split.dag \
+        --function floor_preparation_population_rendering > "$OUTDIR/population-print.txt" 2>&1
+      POP_RC=$?
+      echo "POPULATION_PRINT_RC=$POP_RC OUT=$OUTDIR/population-print.txt"
+      grep -q "POPULATION-BEGIN" "$OUTDIR/population-print.txt" || fail "the model printed no POPULATION-BEGIN: $OUTDIR/population-print.txt"
+      awk '/POPULATION-BEGIN/{f=1;next} /POPULATION-END/{f=0} f' "$OUTDIR/population-print.txt" > "$OUTDIR/population-generated.txt"
+      [ -s "$OUTDIR/population-generated.txt" ] || fail "the model rendered no population rows"
+      echo "POPULATION_GENERATED=$OUTDIR/population-generated.txt rows=$(wc -l < "$OUTDIR/population-generated.txt")"
+      ;;
     run)
       [ "$WRITE" = "1" ] || fail "run mode requires --write: the claims leg and the report leg read the spliced rows from the authority on disk"
       [ -n "$POPULATION" ] || fail "run mode needs --population"
@@ -481,14 +517,17 @@ main() {
         [ "$tree" = "$EXPECT_TREE" ] || fail "checkout tree $tree is not the expected $EXPECT_TREE"
       fi
       build_argv_all "$OUTDIR/argv-U.txt"
+      # RUNNER_STEP leg-untrimmed
       run_leg U "$OUTDIR/argv-U.txt" "${FLOOR_CAPTURE_TIMEOUT_U:-5400}" "$OUTDIR/untrimmed-run.log" "$OUTDIR/untrimmed-time.txt" || fail "the untrimmed leg was refused"
       PASSNAMES=$OUTDIR/passnames.txt
+      # RUNNER_STEP derive-pass-set
       kept "$OUTDIR/untrimmed-run.log" "$OUTDIR/untrimmed-rows.tmp"
       grep '^PASS ' "$OUTDIR/untrimmed-rows.tmp" | sed 's/^PASS //' > "$PASSNAMES"
       [ -s "$PASSNAMES" ] || fail "the untrimmed leg produced no PASS rows: nothing could be graded, so nothing was measured"
       EXPECTED_PASS=$(wc -l < "$PASSNAMES")
       echo "EXPECTED_PASS_LINES=$EXPECTED_PASS"
       build_argv_graded "$OUTDIR/argv-G.txt"
+      # RUNNER_STEP leg-graded
       run_leg G "$OUTDIR/argv-G.txt" "${FLOOR_CAPTURE_TIMEOUT_G:-4200}" "$OUTDIR/graded-run.log" "$OUTDIR/graded-time.txt" || fail "the graded leg was refused"
       GRADED_PASS=$(count_of "$OUTDIR/graded-run.log" 'PASS ')
       echo "GRADED_PASS_LINES=$GRADED_PASS EXPECTED=$EXPECTED_PASS"
@@ -500,6 +539,7 @@ main() {
       run_witness_claims "$OUTDIR/claims.log"
       run_report graded "$OUTDIR/report-print.txt"
       rm -f "$AUTHORITY.pre-capture"
+      # RUNNER_STEP terminal-gate
       echo "TERMINAL_GATE expectations=ALL_MET claims=$WITNESS_ROSTER_COUNT graded_pass=$GRADED_PASS expected_pass=$EXPECTED_PASS"
       ;;
     *)
