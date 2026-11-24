@@ -31,7 +31,9 @@
 #     --population dag/test/claim/floor/floor_preparation_split_population.txt \
 #     --outdir <dir> [--write]
 #   bash scripts/floor_preparation_capture.sh report --checkout <git-checkout> --binary <claim_batch> \
-#     --gunbc <released gunbc> --report-log <run-log> [--report-label <name>] [--write]
+#     --gunbc <released gunbc> --population <population.txt> --report-log <run-log> [--write]
+#     [--report-only]   # print the model's split over one log without re-running the claim gate;
+#                       # the claim gate belongs to the COMMITTED capture, not to any log
 #
 # WHY TWO LEGS, AND WHY BOTH ARE KEPT. The untrimmed leg enrolls every candidate AND every extra
 # row; closure-authority refusals live there with their cause printed by the fold, never hidden by a
@@ -57,6 +59,7 @@ WRITE=0
 EXPECT_TREE=""
 REPORT_LOGS=""
 REPORT_LABELS=""
+REPORT_ONLY=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -74,6 +77,7 @@ while [ $# -gt 0 ]; do
     --report-log) REPORT_LOGS="$REPORT_LOGS $2"; REPORT_LABELS="$REPORT_LABELS ${REPORT_LABEL_N:-run}"; shift 2 ;;
     --report-label) REPORT_LABELS="$REPORT_LABELS $2"; shift 2 ;;
     --write) WRITE=1; shift ;;
+    --report-only) REPORT_ONLY=1; shift ;;
     *) echo "CAPTURE_FAIL: unknown option $1" >&2; exit 1 ;;
   esac
 done
@@ -458,7 +462,9 @@ main() {
       [ "$WRITE" = "1" ] || RESTORE=1
       trap restore_authority EXIT
       splice_block "$OUTDIR/report-block.txt"
-      run_witness_claims "$OUTDIR/report-claims.log"
+      if [ "$REPORT_ONLY" != "1" ]; then
+        run_witness_claims "$OUTDIR/report-claims.log"
+      fi
       run_report report "$OUTDIR/report-print.txt"
       ;;
     run)
