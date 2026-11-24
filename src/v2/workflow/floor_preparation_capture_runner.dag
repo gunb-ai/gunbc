@@ -18,7 +18,22 @@ module v2.workflow.floor_preparation_capture_runner
 //   (c) moving bytes from run output into artifact files -- Filesystem.Read / Filesystem.Write
 //       (dag/extdeps/filesystem/filesystem_io.dag).
 //
-// There is no bash script. Re-deriving the split is one command a reader can paste:
+// WORKFLOW, NOT AN INSTRUMENT (gunbc.design_ruling::instrument_is_a_row_not_a_flag asked and
+// answered here): this module adds no measurement program -- it spawns NO new binary and makes no
+// measurement of its own. Every verdict it reads comes from instruments already rostered as rows
+// of gunbc.instrument_targets through gunbc.target_binding TargetProducers (claim_batch and the
+// v2-native gunbc, the same instruments the required floor workflow drives, itself a workflow and
+// not a row). Its own three duties are not measurements: supply verification (digests below),
+// slot acquisition through the machine limiter, and byte movement. The ruling's three naming
+// duties are named where they bind: real consumer = the 22-claim roster in
+// dag/test/claim/floor/floor_preparation_split_witness.dag plus this node's fold; discriminator =
+// the red control (a planted floor-claim break is refused on the landing revision, raw in the
+// EXECUTION-BLOCK); acceptable cost = the wall bounds on the leg receipts, executed on the
+// heavy-slot limiter. Adding a NEW producer arm for this module would require a Rust seed change,
+// outside this node's authority, and is not warranted: there is no new program to address.
+//
+// There is no bash script. Re-deriving the split is one command a reader can paste (layout from
+// the caller's environment, see the required variables below):
 //
 //   gunbc run --source-root dag --source-root src/v1 --source-root src/v2 \
 //     --entry src/v2/workflow/floor_preparation_capture_runner.dag \
@@ -58,20 +73,29 @@ import v2.workflow.floor_preparation_split {
 // the digest for exactly that reason.
 // ----------------------------------------------------------------------------------------------
 
-// No operator path, no session id is written into this module. Every location is RESOLVED AT
-// RUN TIME from the caller's environment: an explicit FLOOR_* variable wins when the caller
-// sets one (the caller passes layout policy, exactly as interface_realization_policy demands --
-// the run entry takes no argv, so the environment is the caller's parameter channel), and the
-// shared-host convention <HOME>/scratch/<owner>/... is only the FALLBACK, and that convention is
-// NOT invented here: it is the declared shared-host contract this fleet operates every session
-// under -- a session's writable scratch is exactly <HOME>/scratch/<session-id> (and
-// ~/tmp-<session-id>), heavy runs are attributed to that session id through HEAVY_OWNER, and the
-// machine-wide limiter lives at <HOME>/bin/heavy-slot (operator standing order, restated in every
-// srv1 worker brief; the limiter refuses an unset owner with exit 64, so the fallback cannot
-// silently run unattributed). The fallback chooses no materially different meaning: the owner is
-// the caller's own HEAVY_OWNER either way, and FLOOR_* overrides are the caller's explicit word.
-// The digests below pin the RELEASE, not a machine, so a reader on any host can re-derive the
-// split against the same release.
+// No operator path, no session id, and NO host layout is written into this module -- not even as
+// a fallback (reviews 97807 / 97828 / 97845 / 97851 converged here): layout is workflow policy,
+// and policy enters only through the caller's environment, which is the parameter channel for an
+// entry point that takes no argv. The caller MUST set: FLOOR_CHECKOUT (the checkout under
+// measurement), FLOOR_HEAVY_SLOT (the shared limiter's location), FLOOR_CLAIM_BATCH, FLOOR_GUNBC
+// (the pinned release binaries) and FLOOR_MANIFEST (the release manifest the shas are checked
+// against); HEAVY_OWNER carries the slot attribution, and the limiter itself refuses an unset
+// owner with exit 64, so no leg can run unattributed. When a required variable is unset the run
+// refuses on the verify-pinned-supplies receipt NAMING the variables -- no invented default can
+// quietly point a measurement at the wrong tree. The pasteable entry point therefore carries its
+// layout from the caller's shell, e.g. on the shared host:
+//
+//   export FLOOR_CHECKOUT=$HOME/scratch/$HEAVY_OWNER/pr \
+//     FLOOR_HEAVY_SLOT=$HOME/bin/heavy-slot \
+//     FLOOR_CLAIM_BATCH=$HOME/scratch/$HEAVY_OWNER/bin/unpacked/claim_batch \
+//     FLOOR_GUNBC=$HOME/scratch/$HEAVY_OWNER/bin/unpacked/gunbc \
+//     FLOOR_MANIFEST=$HOME/scratch/$HEAVY_OWNER/bin/bins/release-bins.manifest
+//   gunbc run --source-root dag --source-root src/v1 --source-root src/v2 \
+//     --entry src/v2/workflow/floor_preparation_capture_runner.dag \
+//     --function floor_preparation_capture_run
+//
+// The digests below pin the RELEASE, not a machine, so a reader on any host re-derives the split
+// against the same release.
 fn floor_preparation_env_value(name: String) -> String {
   let ran = floor_preparation_spawn_plain(binary: "/usr/bin/printenv", args: [name])
   match floor_preparation_lines(text: ran.stdout).first() {
@@ -80,48 +104,37 @@ fn floor_preparation_env_value(name: String) -> String {
   }
 }
 
-fn floor_preparation_env_or(name: String, fallback: String) -> String {
-  let v = floor_preparation_env_value(name: name)
-  if v == "" { fallback } else { v }
-}
-
 fn floor_preparation_session_owner() -> String {
   floor_preparation_env_value(name: "HEAVY_OWNER")
 }
 
-fn floor_preparation_home() -> String {
-  floor_preparation_env_value(name: "HOME")
-}
-
-fn floor_preparation_scratch_dir() -> String {
-  floor_preparation_env_or(name: "FLOOR_SCRATCH",
-    fallback: concat(concat(floor_preparation_home(), "/scratch/"), floor_preparation_session_owner()))
+fn floor_preparation_required_env_missing() -> String {
+  let missing = filter(
+    ["FLOOR_CHECKOUT", "FLOOR_HEAVY_SLOT", "FLOOR_CLAIM_BATCH", "FLOOR_GUNBC", "FLOOR_MANIFEST"],
+    predicate: fn(v: String) { floor_preparation_env_value(name: v) == "" })
+  if length(xs: missing) > 0 { join(missing, ",") } else { "" }
 }
 
 fn floor_preparation_runner_root() -> String {
-  floor_preparation_env_or(name: "FLOOR_CHECKOUT",
-    fallback: concat(floor_preparation_scratch_dir(), "/pr"))
+  floor_preparation_env_value(name: "FLOOR_CHECKOUT")
 }
 
 fn floor_preparation_heavy_slot_binary() -> String {
-  floor_preparation_env_or(name: "FLOOR_HEAVY_SLOT",
-    fallback: concat(concat(floor_preparation_home(), "/bin/heavy-slot"), ""))
+  floor_preparation_env_value(name: "FLOOR_HEAVY_SLOT")
 }
 
 fn floor_preparation_pinned_claim_batch() -> String {
-  floor_preparation_env_or(name: "FLOOR_CLAIM_BATCH",
-    fallback: concat(concat(floor_preparation_scratch_dir(), "/bin/unpacked/claim_batch"), ""))
+  floor_preparation_env_value(name: "FLOOR_CLAIM_BATCH")
 }
 
 fn floor_preparation_pinned_gunbc() -> String {
-  floor_preparation_env_or(name: "FLOOR_GUNBC",
-    fallback: concat(concat(floor_preparation_scratch_dir(), "/bin/unpacked/gunbc"), ""))
+  floor_preparation_env_value(name: "FLOOR_GUNBC")
 }
 
 fn floor_preparation_manifest_path() -> String {
-  floor_preparation_env_or(name: "FLOOR_MANIFEST",
-    fallback: concat(concat(floor_preparation_scratch_dir(), "/bin/bins/release-bins.manifest"), ""))
+  floor_preparation_env_value(name: "FLOOR_MANIFEST")
 }
+
 
 data floor_preparation_timeout_binary: String = "/usr/bin/timeout"
 
@@ -350,6 +363,10 @@ fn floor_preparation_manifest_sha(kind: String) -> String {
   }
 }
 
+fn floor_preparation_supply_line_ok(name: String, note: String) -> String {
+  concat(concat("[runner-supply] name=", name), concat(" ok=", note))
+}
+
 fn floor_preparation_supply_line(name: String, path: String, expected: String, bytes_ok: Bool) -> String {
   let digest = floor_preparation_sha_of(path: path)
   let manifest = floor_preparation_manifest_sha(kind: name)
@@ -464,7 +481,13 @@ fn floor_preparation_provenance(leg: String, binary_sha: String, rc: Int, kept_c
 }
 
 fn floor_preparation_capture_run() -> String {
+  let env_receipt = if floor_preparation_required_env_missing() == "" {
+    floor_preparation_supply_line_ok(name: "required-env", note: "FLOOR_CHECKOUT,FLOOR_HEAVY_SLOT,FLOOR_CLAIM_BATCH,FLOOR_GUNBC,FLOOR_MANIFEST set")
+  } else {
+    concat("[runner-supply-REFUSED] name=required-env unset=", floor_preparation_required_env_missing())
+  }
   let supplies = [
+    env_receipt,
     floor_preparation_supply_line(name: "claim_batch",
       path: floor_preparation_pinned_claim_batch(),
       expected: floor_preparation_pinned_claim_batch_sha,
