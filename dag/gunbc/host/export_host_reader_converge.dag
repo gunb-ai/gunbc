@@ -406,7 +406,10 @@ fn export_host_reader_apply_with(legs: ExportHostReaderLegs) -> ExportHostReader
             LegNotDispatched { reason: r } =>
               refused_at(stages: s1e, stage: "account", cause: concat("the reader account could not be created: the ensure leg was NEVER DISPATCHED: ", r))
             LegUnanswered { cause: uc } =>
-              refused_at(stages: s1e, stage: "account", cause: concat("the reader account could not be created: the ensure leg was DISPATCHED but got NO ANSWER: ", uc))
+              // The ensure command WAS sent; its reply was lost, so it may have created the account. Saying
+              // "could not be created" would assert a definite negative we cannot establish; the creation is
+              // simply UNCONFIRMED.
+              refused_at(stages: s1e, stage: "account", cause: concat("whether the reader account exists is UNCONFIRMED: the ensure leg was DISPATCHED but got NO ANSWER (it may have run on the host): ", uc))
             LegAnswered { exit_code: enc, stdout: _, stderr: _ } => if enc == 0 {
               account_written(legs: legs, s2: s1e)
             } else {
