@@ -22,3 +22,13 @@ fn fleet_plan_run_artifact_dir(
 ) -> String {
   join([root as String, "/", plan_run_id as String, "/", attempt as String], "")
 }
+
+// The three per-run ENVIRONMENT names the PLAN STEP reads (via actions_variable_read, the same
+// typed mechanism as fleet_converge_plan_run_id_env_name) and feeds to fleet_plan_run_artifact_dir.
+// These are read ONLY by the plan step's composition; no consumer (the serve-entry recorder, the
+// swap, apply) reads them or recomputes the dir -- the published receipt is the sole authority for
+// the dir after the plan step. Keeping the names here (pure data) lets the workflow generator cite
+// them as the env it sets without importing the composition itself.
+data fleet_converge_run_artifact_root_env_name: String = "GUNBC_FLEET_CONVERGE_RUN_ARTIFACT_ROOT"
+data fleet_converge_run_artifact_plan_run_id_env_name: String = "GUNBC_FLEET_CONVERGE_RUN_ARTIFACT_PLAN_RUN_ID"
+data fleet_converge_run_artifact_attempt_env_name: String = "GUNBC_FLEET_CONVERGE_RUN_ARTIFACT_ATTEMPT"

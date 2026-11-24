@@ -5,7 +5,7 @@ import gunbc.live_deploy.release_locus { release_locus_dir, RevisionBoundAtEmiss
 import gunbc.runner.runner_microvm_slot_unit { microvm_controller_root }
 
 import gunbc.fleet.fleet_converge_scope { WorkspaceAllocationOnly, WorkspaceSlotCommissioningOnly, FleetConvergeScope, FullHost, FabricExecutionCellsOnly, FabricAllocationStoreOnly, LiveDeploy, LaunchEnvironment }
-import gunbc.fleet.fleet_plan_artifact_location { fleet_converge_plan_artifact_dir }
+import gunbc.fleet.fleet_plan_artifact_location { fleet_converge_plan_artifact_dir, fleet_plan_run_artifact_dir, fleet_converge_run_artifact_root_env_name, fleet_converge_run_artifact_plan_run_id_env_name, fleet_converge_run_artifact_attempt_env_name }
 
 import gunbc.host.host_kernel_dependency { host_kernel_maintenance_capability }
 import gunbc.host.host_kernel_dependency_wire { host_kernel_dependency_in_plan_body }
@@ -900,11 +900,17 @@ fn fleet_converge_scoped_plan_wet(scope: FleetConvergeScope) -> ProcessExit
         ActionsVariableAbsent { variable: v, detail: d } =>
           exit_failure(reason: join(["fleet_converge_plan: ExpectedHostAbsent — ", v, " ", d], ""))
         ActionsVariablePresent { value: expected_host } =>
-          fleet_converge_plan_scoped_bound_wet(
-            run: run,
-            expected_host: expected_host,
-            scope: scope,
-          )
+          match compose_fleet_converge_run_artifact_dir_wet() {
+            FleetConvergeRunArtifactDirRefused { reason: why } =>
+              exit_failure(reason: why)
+            FleetConvergeRunArtifactDirComposed { run_artifact_dir: run_artifact_dir } =>
+              fleet_converge_plan_scoped_bound_wet(
+                run: run,
+                expected_host: expected_host,
+                scope: scope,
+                run_artifact_dir: run_artifact_dir,
+              )
+          }
       }
       }
   }
@@ -920,10 +926,57 @@ fn fleet_converge_scoped_plan_wet(scope: FleetConvergeScope) -> ProcessExit
 // RUNG: test.claim.host_convergence_protocol_witness exercises canonical_protocol_gate
 // directly, refusals and admission both. This wet arm, which only matches the gate's
 // result, is proven by typecheck alone; no witness executes it.
+
+// The PLAN STEP'S SOLE composition of the run-scoped artifact directory (roadmap row
+// serve-entry-verdict-path-is-per-run). Reads the three per-run inputs from the environment via the
+// established typed actions_variable_read mechanism (same as fleet_converge_plan_run_id_env_name)
+// and feeds them to fleet_plan_run_artifact_dir. Fail-closed: an absent or empty input is a TYPED
+// refusal -- there is NO fallback to /tmp/fleet-converge-plan or any constant. This is the only
+// place the dir is composed; the published receipt is the authority every later reader (the
+// serve-entry recorder, the swap) reads from, and none of them recomputes it.
+type FleetConvergeRunArtifactDir
+  = FleetConvergeRunArtifactDirComposed { run_artifact_dir: String }
+  | FleetConvergeRunArtifactDirRefused { reason: String }
+
+fn compose_fleet_converge_run_artifact_dir_wet() -> FleetConvergeRunArtifactDir {
+  match actions_variable_read(name: fleet_converge_run_artifact_root_env_name) {
+    ActionsVariableAbsent { variable: v, detail: d } =>
+      FleetConvergeRunArtifactDirRefused { reason: join(["fleet_converge_plan: run artifact root env ", v, " ", d, " -- the plan step must supply a writable run-artifact root; no /tmp/fleet-converge-plan fallback"], "") }
+    ActionsVariablePresent { value: root } =>
+      if root == "" {
+        FleetConvergeRunArtifactDirRefused { reason: "fleet_converge_plan: run artifact root env is empty -- refusing rather than defaulting" }
+      } else {
+        match actions_variable_read(name: fleet_converge_run_artifact_plan_run_id_env_name) {
+          ActionsVariableAbsent { variable: v, detail: d } =>
+            FleetConvergeRunArtifactDirRefused { reason: join(["fleet_converge_plan: run artifact plan-run-id env ", v, " ", d], "") }
+          ActionsVariablePresent { value: plan_run_id } =>
+            if plan_run_id == "" {
+              FleetConvergeRunArtifactDirRefused { reason: "fleet_converge_plan: run artifact plan-run-id env is empty -- refusing rather than defaulting" }
+            } else {
+              match actions_variable_read(name: fleet_converge_run_artifact_attempt_env_name) {
+                ActionsVariableAbsent { variable: v, detail: d } =>
+                  FleetConvergeRunArtifactDirRefused { reason: join(["fleet_converge_plan: run artifact attempt env ", v, " ", d], "") }
+                ActionsVariablePresent { value: attempt } =>
+                  if attempt == "" {
+                    FleetConvergeRunArtifactDirRefused { reason: "fleet_converge_plan: run artifact attempt env is empty -- refusing rather than defaulting" }
+                  } else {
+                    FleetConvergeRunArtifactDirComposed {
+                      run_artifact_dir: fleet_plan_run_artifact_dir(
+                        root: root as NonEmptyStr, plan_run_id: plan_run_id as NonEmptyStr, attempt: attempt as NonEmptyStr),
+                    }
+                  }
+              }
+            }
+        }
+      }
+  }
+}
+
 fn fleet_converge_plan_scoped_bound_wet(
   run: ActionsRunBinding,
   expected_host: String,
   scope: FleetConvergeScope,
+  run_artifact_dir: String,
 ) -> ProcessExit
 {
   match canonical_protocol_gate(standing: bind_canonical_protocol()) {
@@ -977,7 +1030,7 @@ fn fleet_converge_plan_scoped_bound_wet(
         Present { value: content_hash } => {
           let planned_generation = cas_generation_count(g: artifact.plan_lease.epoch.generation)
           let mkdir = run_shell_commands(
-            commands: [mkdir_parents_command(path: fleet_converge_plan_artifact_dir)],
+            commands: [mkdir_parents_command(path: fleet_converge_plan_artifact_dir), mkdir_parents_command(path: run_artifact_dir)],
             transport: LocalExec,
           )
           match mkdir {
@@ -1031,6 +1084,7 @@ fn fleet_converge_plan_scoped_bound_wet(
                   lease_owner_fingerprint: serialize_content_hash(hash: artifact.plan_lease.epoch.owner_fingerprint) as String,
                   lease_generation: artifact.plan_lease.epoch.generation,
                   apply_terminal: artifact.apply_terminal,
+                  run_artifact_dir: run_artifact_dir,
                 }
                 match write_fleet_converge_plan_receipt(r: receipt) {
                   ReceiptWriteRefused { path: p, error: e } =>
@@ -1380,11 +1434,17 @@ fn fleet_converge_local_plan_wet(scope: String) -> ProcessExit
             Absent =>
               exit_failure(reason: "fleet_converge_local_plan: HostObservationFailed — hostname probe did not succeed or returned empty output")
             Present { value: host } =>
-              fleet_converge_plan_scoped_bound_wet(
-                run: run,
-                expected_host: host as String,
-                scope: decoded,
-              )
+              match compose_fleet_converge_run_artifact_dir_wet() {
+                FleetConvergeRunArtifactDirRefused { reason: why } =>
+                  exit_failure(reason: why)
+                FleetConvergeRunArtifactDirComposed { run_artifact_dir: run_artifact_dir } =>
+                  fleet_converge_plan_scoped_bound_wet(
+                    run: run,
+                    expected_host: host as String,
+                    scope: decoded,
+                    run_artifact_dir: run_artifact_dir,
+                  )
+              }
           }
       }
   }

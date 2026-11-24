@@ -33,6 +33,7 @@ fn executor_plan_fixture_receipt(body: String, shell: String, host: String, scop
     prior_generation: 17, planned_generation: 18, lease_key: "fleet-converge-plan:srv1",
     lease_resource_fingerprint: "fnv1a64:aaaaaaaaaaaaaaaa", lease_owner_fingerprint: "fnv1a64:bbbbbbbbbbbbbbbb",
     lease_generation: 18, apply_terminal: FullyApplied,
+    run_artifact_dir: "/tmp/gunbc-fleet-converge-runs/ws-executor-plan/1",
   }))
 }
 

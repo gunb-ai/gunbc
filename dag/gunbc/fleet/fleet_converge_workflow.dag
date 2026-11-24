@@ -91,7 +91,7 @@ import extdeps.github.expressions {
 }
 import std.unicode.scalar { ascii_lowercase }
 import gunbc.fleet.fleet_converge_scope { FleetConvergeScope, FullHost, LaunchEnvironment, FabricAllocationStoreOnly, WorkspaceSlotCommissioningOnly, WorkspaceAllocationOnly, LiveDeploy }
-import gunbc.fleet.fleet_plan_artifact_location { fleet_converge_plan_artifact_dir }
+import gunbc.fleet.fleet_plan_artifact_location { fleet_converge_plan_artifact_dir, fleet_converge_run_artifact_root_env_name, fleet_converge_run_artifact_plan_run_id_env_name, fleet_converge_run_artifact_attempt_env_name }
 
 import gunbc.namecheap.observation_artifact { namecheap_observation_receipt_path }
 
@@ -2084,6 +2084,22 @@ fn fleet_converge_plan_download_step() -> Step {
   }
 }
 
+// THE PER-RUN ARTIFACT ROOT the PLAN STEP publishes into the pack, so concurrent runs never share
+// one filename (roadmap row serve-entry-verdict-path-is-per-run). These three env rows are set
+// ONLY on the plan steps that mint a FleetConvergePlanReceipt; the plan step reads them, composes
+// run_artifact_dir via gunbc.fleet.fleet_plan_artifact_location fleet_plan_run_artifact_dir, and
+// publishes it in the receipt. The recorder and the swap read the dir back from the pack and never
+// read these names -- so setting them at apply has no effect there (witness leg 3). The root is the
+// runner-owned, writable RUNNER_TEMP; the identity is this run's id plus attempt, so a re-run of
+// the same revision lands in its own directory instead of clobbering the last one.
+fn fleet_converge_run_artifact_dir_env_rows() -> List<YamlKeyValue> {
+  [
+    kv(key: fleet_converge_run_artifact_root_env_name, value: yaml_string(s: "${{ runner.temp }}/fleet-converge-run")),
+    kv(key: fleet_converge_run_artifact_plan_run_id_env_name, value: yaml_string(s: "${{ github.run_id }}")),
+    kv(key: fleet_converge_run_artifact_attempt_env_name, value: yaml_string(s: "${{ github.run_attempt }}")),
+  ]
+}
+
 fn fleet_converge_plan_step() -> Step {
   RunStep {
     name: Present { value: "Fleet converge plan (membership_reconcile → artifact)" },
@@ -2091,10 +2107,13 @@ fn fleet_converge_plan_step() -> Step {
     run: gunbc_ci_fleet_converge_plan_invoke(),
     shell: none,
     env: Present {
-      value: [
-        kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
-        kv(key: rlm_expected_revision_env_name, value: yaml_string(s: "${{ github.event.inputs.expected_revision }}")),
-      ]
+      value: concat(
+        [
+          kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
+          kv(key: rlm_expected_revision_env_name, value: yaml_string(s: "${{ github.event.inputs.expected_revision }}")),
+        ],
+        fleet_converge_run_artifact_dir_env_rows(),
+      )
     },
     working_directory: none,
     if_condition: Present { value: fleet_converge_plan_step_if },
@@ -2137,10 +2156,13 @@ fn fleet_converge_launch_environment_plan_step() -> Step {
     run: gunbc_ci_fleet_converge_launch_environment_plan_invoke(),
     shell: none,
     env: Present {
-      value: [
-        kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
-        kv(key: rlm_expected_revision_env_name, value: yaml_string(s: "${{ github.event.inputs.expected_revision }}")),
-      ]
+      value: concat(
+        [
+          kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
+          kv(key: rlm_expected_revision_env_name, value: yaml_string(s: "${{ github.event.inputs.expected_revision }}")),
+        ],
+        fleet_converge_run_artifact_dir_env_rows(),
+      )
     },
     working_directory: none,
     if_condition: Present { value: fleet_converge_launch_environment_plan_step_if },
@@ -2157,10 +2179,13 @@ fn fleet_converge_workspace_commissioning_plan_step() -> Step {
     run: gunbc_ci_fleet_converge_workspace_commissioning_plan_invoke(),
     shell: none,
     env: Present {
-      value: [
-        kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
-        kv(key: rlm_expected_revision_env_name, value: yaml_string(s: "${{ github.event.inputs.expected_revision }}")),
-      ]
+      value: concat(
+        [
+          kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
+          kv(key: rlm_expected_revision_env_name, value: yaml_string(s: "${{ github.event.inputs.expected_revision }}")),
+        ],
+        fleet_converge_run_artifact_dir_env_rows(),
+      )
     },
     working_directory: none,
     if_condition: Present { value: fleet_converge_workspace_commissioning_plan_step_if },
@@ -9095,13 +9120,20 @@ fn fleet_converge_workspace_operation_step(mode: FleetConvergeWorkflowMode, run:
   RunStep {
     name: Present { value: concat("Workspace: ", fleet_converge_workflow_mode_wire(mode: mode)) },
     id: Present { value: fleet_converge_workflow_mode_wire(mode: mode) }, run: run, shell: none,
-    env: Present { value: [
+    env: Present { value: concat([
       kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ inputs.host }}")),
       kv(key: rlm_expected_revision_env_name, value: yaml_string(s: "${{ inputs.expected_revision }}")),
-    ] },
+    ], fleet_converge_workspace_operation_mode_env_rows(mode: mode)) },
     working_directory: none, if_condition: Present { value: fleet_converge_mode_step_if(mode: mode) },
     continue_on_error: none, timeout_minutes: Present { value: gunbc_ci_runner_guest_image_step_timeout_minutes }
   }
+}
+
+// Only the WorkspaceAllocationPlan operation MINTS a FleetConvergePlanReceipt (via scoped_plan_wet),
+// so only it needs the per-run artifact-dir env the plan step composes into the pack. The image-build
+// and other workspace operations mint nothing, so they get no extra env (no unused variables).
+fn fleet_converge_workspace_operation_mode_env_rows(mode: FleetConvergeWorkflowMode) -> List<YamlKeyValue> {
+  if mode == WorkspaceAllocationPlan { fleet_converge_run_artifact_dir_env_rows() } else { [] }
 }
 
 fn fleet_converge_guest_image_upload_step(label: String, id: String, name: String, paths: String, mode: FleetConvergeWorkflowMode) -> Step {
