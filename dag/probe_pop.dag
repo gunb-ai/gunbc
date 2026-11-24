@@ -1,0 +1,15 @@
+module probe_pop
+
+import std.algebra { FreeSemigroup, non_empty_to_list }
+
+fn p_label() -> Bool {
+  join(non_empty_to_list(xs: FreeSemigroup { head: "a", tail: ["b", "c"] }), ", ") == "a, b, c"
+}
+
+fn p_bare() -> Bool {
+  join(FreeSemigroup { head: "a", tail: ["b", "c"] }, ", ") == "a, b, c"
+}
+
+fn p_tail_empty() -> Bool {
+  join(non_empty_to_list(xs: FreeSemigroup { head: "a", tail: [] }), ", ") == "a"
+}
