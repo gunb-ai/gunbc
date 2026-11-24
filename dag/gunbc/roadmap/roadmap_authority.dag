@@ -6460,6 +6460,60 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       dispatch: dispatchable(),
       parent: in_project(project: "factory", contribution: "The estimates the planning page prices with: an edge graph whose prerequisites cannot contradict the containment the same authority derives, so authoring refuses what only the Gantt read used to catch."),
     ),
+    // ---- gunbc.plans.derived_types_keep_their_name (sharp-stag-549, 2026-11-19) ------------
+    // The how the intention holds out of itself. Three selections against it; the binding in
+    // roadmap_intention_binding links each to the intention. Carriers point at the plan module.
+    roadmap_node(
+      identity: "rn_47NBQ2XDRDLSB56VT99NDAOO4D",
+      id: "derived-type-argument-inhabitance-root",
+      owner: "nominal-typing",
+      carriers: carrier(path: "dag/gunbc/plans/derived_types_keep_their_name.dag"),
+      line: ticket(t: fields(
+        headline: "One root inhabitance rule preserves the declared type relationship",
+        boundary: "Serves gunbc.plans.derived_types_keep_their_name under gunbc.design_argument::declared_intent and gunbc.design_ruling::type_relationships_are_declared_and_transparent_reference_is_explicit_2026_11_23. ONE v2 inhabitance judgment with resolved declarations preserves an explicitly transparent reference, a constraint and a nominal distinction according to their declared relationship and conversion direction; a common representation cannot choose among them. A reference to Compose retains its full constrained type under machine_width_composition_has_an_intersection_carrier. Generic versus nongeneric syntax grants no exemption. The existing equals form's observed behavior does not settle transparent-reference syntax. Any seed mirror remains subject to gunbc.v1.v1_maintenance_standing::v1_seed_standing, not seed feature completion.",
+        displaced_cost: "The recorded v1 probe admitted String variables at NonEmptyStr, PathSegment, MyStr = String and nominal_opaque parameters. Constraint or nominal erasure can defeat the declared contract, while deliberately transparent same-identity acceptance is legitimate. Treating all four observations as defects would replace one silent reinterpretation with another; the real v2 result is still owed.",
+        first_slice: "Obtain the real-path v2 verdict for an already settled constraint or nominal contract over the actual standard-library declarations, and repair the shared judgment where that evidence identifies erasure. Independently, settle and record the transparent-reference surface on a small comparison with existing reference features, ordinary value binding, constrained construction and nominal introduction; only reference-specific semantic changes or migration wait for that choice. The operator's a = b copy intuition is a reader expectation, not a physical-copy rule; type A = B is not selected by habit. Preserve each observed result separately from the selected semantics.",
+        red_control: "Controls for settled contracts can execute now: base-at-base and correctly constructed values remain accepted, a base value lacking required construction or evidence refuses at a constrained or nominal position, and the full width composition is not erased into its base. Once the reference surface is recorded, add the explicit transparent-reference positive controls for both a nongeneric type and a generic expression; all controls are required for full acceptance. The earlier MyStr = String acceptance is not itself a RED. Preserve the unrelated Int-at-record, String-at-record and Int-at-String refusals. Run the real in-scope v2 acceptance path, not only two-declaration stand-ins, and distinguish the two crossing directions under the declared conversion authority.",
+        out_of_scope: "Choosing transparent-reference syntax from current parser behavior; a blanket alias ban or blanket refusal of MyStr = String; generic-form exemptions; checked-constructor implementations owned by the successor nodes; a new link taxonomy; reimplementing the width intersection's owning model; seed changes outside the purpose test.",
+        handback: "The recorded surface decision, bounded affected relationships, and exact-path v2 receipts for the positive and negative controls, identifying the shared inhabitance judgment and any remaining declared gap. Update the recurring failure mode's owed v2 claim only to the scope actually executed; report any justified v1 mirror separately."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "compiler-guarantee", contribution: "The shared argument judgment preserves the authored relationship: transparent identity remains usable and constraints or nominal distinctions do not disappear."),
+    ),
+    roadmap_node(
+      identity: "rn_KUYADI8UNNQF12O7TCOWBFG3L0",
+      id: "nonempty-str-becomes-a-checked-nominal",
+      owner: "nominal-typing",
+      carriers: carrier(path: "dag/std/types.dag"),
+      line: ticket(t: fields(
+        headline: "NonEmptyStr reached only through a checked constructor, never a where-predicate",
+        boundary: "Serves gunbc.plans.derived_types_keep_their_name. NonEmptyStr keeps its nonempty contract through checked construction returning Optional, or carried evidence admitted by gunbc.design_ruling::nonemptiness_is_constructed_or_proved; remove the where declaration under where_refinements_retire_for_checked_constructors. Any expected-type literal introduction establishes that same contract rather than an unchecked transparent conversion. Retire literal_only_refinement_judgment_is_interim only when its replacement capability holds. This settled constraint is independent of the pending transparent-reference spelling; reference-specific migration waits for that choice. Boundary v2 frontier + std; seed mirrors only under the v1_seed_standing purpose test.",
+        displaced_cost: "The recorded v1 probe admitted an unproved String variable at NonEmptyStr, so its predicate was not established on that observed path. The real v2 verdict remains owed until the prerequisite executes it; a new constructor name alone would not repair the consumer boundary.",
+        first_slice: "Take one real NonEmptyStr consumer and its literal and variable introductions; establish their actual v2 behavior, then migrate that bounded slice under the already ruled checked-construction or admitted-evidence contract. This independent work need not await transparent-reference spelling, but reference-specific migration does. Use source inspection to bound the next migration slice and report unknowns; no global count is a prerequisite for this first repair. Full acceptance still requires the shared-root controls and the existing dependency graph.",
+        red_control: "A String-typed VARIABLE without evidence at a NonEmptyStr parameter refuses; the checked constructor returns Present for x and Absent for empty text; the unproved as crossing refuses. An admitted nonempty literal and a correctly constructed value remain accepted, while an empty literal cannot be introduced as NonEmptyStr. Explicit transparent references to the SAME full NonEmptyStr type remain accepted and do not turn it into String. The prerequisite's relationship controls remain green on the real v2 path.",
+        out_of_scope: "Other branded contracts and their constructors; choosing or banning alias syntax; inventing a new literal policy; erasing the nonempty obligation because a reference is transparent; seed changes outside the purpose test.",
+        handback: "The checked constructor's executing Present/Absent controls, real v2 argument and literal results, the bounded migrated consumer slice and remaining migration obligation, plus evidence that the relationship controls still hold. The interim scaffold is retired only with its named capability established."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "compiler-guarantee", contribution: "The hottest derived type reached only by a checked constructor, so its non-emptiness is constructed, not assumed."),
+    ),
+    roadmap_node(
+      identity: "rn_ZD5REPL430O15K4AVE4I82JSD7",
+      id: "brands-reached-by-checked-constructors",
+      owner: "nominal-typing",
+      carriers: carrier(path: "dag/std/types.dag"),
+      line: ticket(t: fields(
+        headline: "Branded contracts survive checked construction and retirement of where",
+        boundary: "Serves gunbc.plans.derived_types_keep_their_name and gunbc.design_ruling::type_relationships_are_declared_and_transparent_reference_is_explicit_2026_11_23. For each migrated brand, state its actual constraint or nominal contract, introduce the checked constructor required by where_refinements_retire_for_checked_constructors and retire its where form without erasing that contract. PathSegment, CommitSha and FilePath consume their existing authorities; their names do not authorize inventing new validation. Integer widths remain the constrained intersections governed by machine_width_composition_has_an_intersection_carrier, never generic aliases exempted from enforcement. Boundary v2 frontier + std; seed mirrors only under v1_seed_standing.",
+        displaced_cost: "The recorded v1 PathSegment probe shows an unproved String admitted at a branded boundary; the real v2 behavior and other brands require their own scoped receipts. Treating all brands as aliases or all aliases as brands loses the distinction the operator wants preserved.",
+        first_slice: "Take PathSegment and one actual consumer, state the contract its current authority owns, and run construction and unproved-base controls through real v2, including an invalid-value case only where that contract excludes values. Introduce the constructor required by that contract and the where-retirement ruling, then migrate the bounded consumer slice. Expand to the known sibling brands only against their own contracts, rather than a guessed rule derived from their spelling.",
+        red_control: "At each migrated brand, an unproved base value refuses where the declared contract requires construction; construction accepts valid inputs and refuses invalid ones where the contract excludes values. A nominal-only distinction requires explicit introduction, not an invented validity predicate. Correctly constructed values and explicit transparent references to the same branded type remain accepted. A width reference retains the full intersection and cannot authorize an out-of-range or unproved base crossing. The shared relationship controls from derived-type-argument-inhabitance-root remain green on the actual in-scope v2 path.",
+        out_of_scope: "NonEmptyStr's own constructor; a blanket alias retirement or generic exemption; a new taxonomy of links; inventing contract constraints from a brand's name; independently redefining the width intersection; seed changes outside the purpose test.",
+        handback: "Each migrated brand's named contract, checked-construction and argument receipts, bounded consumer migration and remaining trigger, with the shared relationship controls preserved. Report v2 and any justified seed evidence separately; source observations are not execution guarantees."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "compiler-guarantee", contribution: "Every branded carrier name is reached by a checked constructor, so the brand means something the checker enforces."),
+    ),
     // ── The boot and management edge program (2026-11-20) ────────────────────────────────────────
     // Bring srv4 up as the site's boot and management edge, then retire mtcollins1's boot duties.
     // Nothing in the authority covered it: no boot row, no PXE-install row, no mtcollins1
@@ -7366,6 +7420,13 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "fleet-truth-rosters-consume-the-read", parent: "fleet-truth-per-host-read"),
     edge(child: "fleet-truth-unit-orphans-closed", parent: "fleet-truth-per-host-read"),
     edge(child: "fleet-truth-serving-leaf-caps-joined-to-working-set", parent: "fleet-truth-per-host-read"),
+    // The derived-types-keep-their-name cut (sharp-stag-549, 2026-11-19), child waits on parent, the direction
+    // the binding witness reads (binding_on_a_path walks the terminal up its parent chain): the argument-inhabitance
+    // root is first, NonEmptyStr's checked nominal waits on it, and the brands (the intention's terminal) wait on
+    // NonEmptyStr. This makes each of the three bound nodes an ancestor of the terminal and keeps the terminal a
+    // true leaf; the parents are sibling node ids, never the "compiler-guarantee" MemberOf slug.
+    edge(child: "nonempty-str-becomes-a-checked-nominal", parent: "derived-type-argument-inhabitance-root"),
+    edge(child: "brands-reached-by-checked-constructors", parent: "nonempty-str-becomes-a-checked-nominal"),
   ], guarantee_ladder_edges())
 }
 
