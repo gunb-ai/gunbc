@@ -16,7 +16,7 @@ module test.claim.closing.fleet_state_frontier_closing_contract_witness_test
 // (gunbc.design_argument::single_authority; review 98094: nothing is stored
 // on the knob and nothing restates the check).
 //
-// What the executed pair shows, exactly:
+// What the executed claims show, exactly:
 //   an_undeclared_artifact_refuses_before_anything_is_changed
 //     -- supplies two undeclared machine artifacts as inputs to the
 //        production route's frontier stage (frontier_gate_host, the fold's
@@ -31,6 +31,14 @@ module test.claim.closing.fleet_state_frontier_closing_contract_witness_test
 //        admitted plan: a refused host never reaches FleetConvergeHosts. At
 //        main there is no gate, no classification and no way to refuse, and
 //        this claim fails.
+//   a_wrong_kind_same_name_target_refuses_rather_than_inherits
+//     -- the (kind, identity) pairing discipline on the same production
+//        gate: a SERVICE target whose unit name is the classified FILE
+//        identity "codex-runtime-bundle" refuses, carrying that identity
+//        and kind, while the real FILE-family target under the same
+//        identity string still admits its host (gate returns the host in
+//        the plan). A name alone classifies nothing; a name-only lookup
+//        would admit the service and this claim goes red.
 //   a_fully_classified_inventory_admits
 //     -- positive control on the same real route: converge_hosts_of_plan over
 //        the production deployment plan. Asserts FleetConvergeHosts whose
@@ -60,11 +68,13 @@ import gunbc.ci.ci_runner_placement {
 import gunbc.fleet.fleet_enrollment { ExistingHostQuiescentReload }
 import gunbc.host.host_converge {
   BlindApply,
+  CodexRuntimeBundle,
   ContractedExternally,
   ConvergeKnob,
   DerivedByUs,
   FleetConvergeHosts,
   FleetConvergeUnsound,
+  GunbcSlice,
   HostConverge,
   HostFrontierAdmitted,
   HostFrontierRefused,
@@ -150,6 +160,77 @@ test fn an_undeclared_artifact_refuses_before_anything_is_changed() -> Bool {
           FleetConvergeHosts { hosts: _ } => false
         }
         service_refused && file_refused
+          }
+          HostRunnerDeploymentRefused { refusal: _ } => false
+        }
+      }
+    }
+  )
+}
+
+// The wrong-kind/same-name control (review 98127 follow-up): the codex
+// runtime bundle family is a classified FILE (contracted-externally). A
+// SERVICE target whose unit name is that same identity string must refuse,
+// not inherit the bundle's class -- the classification is keyed on the pair
+// (kind, identity), so a name alone classifies nothing. The control runs
+// both directions on the real route's gate: the same-name service knob
+// refuses carrying its identity and kind, and the real file-family knob
+// under the same identity string still admits its host. If the lookup were
+// name-only the first half would admit and this claim goes red.
+test fn a_wrong_kind_same_name_target_refuses_rather_than_inherits() -> Bool {
+  let plan = runner_deployment_plan()
+  fold_list(
+    xs: plan.hosts,
+    empty: false,
+    cons: fn(acc, st) {
+      if acc {
+        true
+      } else {
+        match st {
+          HostRunnerDeploymentDerived { deployment: h } => {
+            let bundle_impersonating_service = ConvergeKnob {
+              slice: SessionsSlice,
+              name: "srv9_bundle_impersonation",
+              desired: "512M",
+              target: SliceProperty {
+                unit: "codex-runtime-bundle",
+                property: systemd_memory_max_property,
+                apply_value: "512M",
+                expected_effective: "512M",
+              },
+              apply_mode: ExistingHostQuiescentReload,
+              no_op: BlindApply,
+            }
+            let wrong_kind_refused = match frontier_gate_host(
+              h: h,
+              session_knobs: session_knobs_for(host: h.identity),
+              backstop_knobs: [bundle_impersonating_service],
+              hosts: [],
+            ) {
+              FleetConvergeUnsound { reason: r } =>
+                string_contains(s: r, pattern: "codex-runtime-bundle")
+                  && string_contains(s: r, pattern: "service")
+                  && string_contains(s: r, pattern: "refuses before any change is attempted")
+              FleetConvergeHosts { hosts: _ } => false
+            }
+            let bundle_file = ConvergeKnob {
+              slice: GunbcSlice,
+              name: "codex_runtime_bundle_control",
+              desired: "contracted",
+              target: CodexRuntimeBundle { host_identity: h.identity },
+              apply_mode: ExistingHostQuiescentReload,
+              no_op: BlindApply,
+            }
+            let right_kind_admitted = match frontier_gate_host(
+              h: h,
+              session_knobs: session_knobs_for(host: h.identity),
+              backstop_knobs: [bundle_file],
+              hosts: [],
+            ) {
+              FleetConvergeHosts { hosts: hs } => hs.length() == 1
+              FleetConvergeUnsound { reason: _ } => false
+            }
+            wrong_kind_refused && right_kind_admitted
           }
           HostRunnerDeploymentRefused { refusal: _ } => false
         }

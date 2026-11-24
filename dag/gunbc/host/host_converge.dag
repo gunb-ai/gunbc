@@ -1152,18 +1152,19 @@ fn fleet_converge_policy() -> ConvergePolicy {
 
 // Frontier classification (fleet-state-frontier node deliverable): the
 // written-down frontier of this machine-touching workflow. Each machine
-// artifact the converge route changes is named ONCE here by the identity it
-// carries in the knob target's own typed fields (the systemd unit name, the
-// drop-in file path, the pinned tree root path, the codex runtime bundle
-// family) with its class -- derived-by-us, owned-by-us, or contracted
+// artifact the converge route changes is named ONCE here by the kind and
+// identity it carries in the knob target's own typed fields (the systemd unit
+// name, the drop-in file path, the pinned tree root path, the codex runtime
+// bundle family) with its class -- derived-by-us, owned-by-us, or contracted
 // externally (the row's boundary). This data plus the identity read below is
 // the ONLY place a classification exists (the single authority,
 // gunbc.design_argument::single_authority; review 98094: no class is stored
 // on the knob and no agreement check restates it). An artifact the route is
-// asked to change that no row covers has no agreed classification: the gate
-// refuses it before any change is attempted, carrying the artifact's identity
-// and kind (the row's red_control, gunbc.design_argument::fail_closed -- the
-// refusal is typed, located and countable).
+// asked to change that no row covers under its own kind has no agreed
+// classification: the gate refuses it before any change is attempted,
+// carrying the artifact's identity and kind (the row's red_control,
+// gunbc.design_argument::fail_closed -- the refusal is typed, located and
+// countable).
 //
 // The row's boundary quantifies over files, services, credentials and
 // devices. This workflow's route changes services (systemd units and slices)
@@ -1177,11 +1178,16 @@ fn fleet_converge_policy() -> ConvergePolicy {
 type FrontierArtifactKind = FileArtifact | ServiceArtifact
 
 // One classified machine artifact: the artifact's own identity (as the knob
-// target carries it) and the class agreed for it. Rows reference the SAME
-// carrier symbols the route's producers use, so a rename that changes the
-// artifact breaks the build instead of silently drifting (review 98034).
+// target carries it), the kind the artifact actually is, and the class agreed
+// for it. The classifier below keys on the PAIR (kind, identity): an identity
+// classifies only the kind it is, so a same-name target of a different kind
+// cannot inherit a class (review 98127 follow-up: no name-keyed inheritance).
+// Rows reference the SAME carrier symbols the route's producers use, so a
+// rename that changes the artifact breaks the build instead of silently
+// drifting (review 98034).
 type FrontierMachineArtifact {
   identity: String
+  kind: FrontierArtifactKind
   class: FrontierArtifactClass
 }
 
@@ -1194,23 +1200,24 @@ data frontier_codex_runtime_bundle_artifact: NonEmptyStr = "codex-runtime-bundle
 
 data frontier_machine_artifacts: List<FrontierMachineArtifact> = [
   // Services: the systemd units and slices whose properties the route sets.
-  FrontierMachineArtifact { identity: gunbc_runner_slot_unit_placeholder as String, class: DerivedByUs },
-  FrontierMachineArtifact { identity: gunbc_oomd_sessions_slice as String, class: DerivedByUs },
-  FrontierMachineArtifact { identity: user_manager_instance_unit(), class: DerivedByUs },
-  FrontierMachineArtifact { identity: gunbc_approval_broker_slice_unit_name as String, class: DerivedByUs },
+  FrontierMachineArtifact { identity: gunbc_runner_slot_unit_placeholder as String, kind: ServiceArtifact, class: DerivedByUs },
+  FrontierMachineArtifact { identity: gunbc_oomd_sessions_slice as String, kind: ServiceArtifact, class: DerivedByUs },
+  FrontierMachineArtifact { identity: user_manager_instance_unit(), kind: ServiceArtifact, class: DerivedByUs },
+  FrontierMachineArtifact { identity: gunbc_approval_broker_slice_unit_name as String, kind: ServiceArtifact, class: DerivedByUs },
   // Files: the per-slot drop-ins the route renders and writes.
-  FrontierMachineArtifact { identity: gunbc_runner_per_slot_cpu_dropin_path, class: DerivedByUs },
-  FrontierMachineArtifact { identity: gunbc_runner_per_slot_dropin_path, class: DerivedByUs },
-  FrontierMachineArtifact { identity: gunbc_runner_per_slot_swap_dropin_path, class: DerivedByUs },
-  FrontierMachineArtifact { identity: gunbc_runner_per_slot_tasks_dropin_path, class: DerivedByUs },
-  FrontierMachineArtifact { identity: gunbc_runner_per_slot_high_dropin_path, class: DerivedByUs },
+  FrontierMachineArtifact { identity: gunbc_runner_per_slot_cpu_dropin_path, kind: FileArtifact, class: DerivedByUs },
+  FrontierMachineArtifact { identity: gunbc_runner_per_slot_dropin_path, kind: FileArtifact, class: DerivedByUs },
+  FrontierMachineArtifact { identity: gunbc_runner_per_slot_swap_dropin_path, kind: FileArtifact, class: DerivedByUs },
+  FrontierMachineArtifact { identity: gunbc_runner_per_slot_tasks_dropin_path, kind: FileArtifact, class: DerivedByUs },
+  FrontierMachineArtifact { identity: gunbc_runner_per_slot_high_dropin_path, kind: FileArtifact, class: DerivedByUs },
   // Services: the per-slot template whose instance width the route realizes.
-  FrontierMachineArtifact { identity: runner_unit_template_name as String, class: DerivedByUs },
+  FrontierMachineArtifact { identity: runner_unit_template_name as String, kind: ServiceArtifact, class: DerivedByUs },
   // Files: the pinned gunbc tree checkout the route places and reads.
-  FrontierMachineArtifact { identity: gunbc_host_gunbc_root_path, class: OwnedByUs },
+  FrontierMachineArtifact { identity: gunbc_host_gunbc_root_path, kind: FileArtifact, class: OwnedByUs },
   // Files: the contracted codex runtime bundle (someone else's runtime under
-  // an agreed package contract).
-  FrontierMachineArtifact { identity: frontier_codex_runtime_bundle_artifact as String, class: ContractedExternally },
+  // an agreed package contract). The family label classifies the FILE only;
+  // a same-name target of any other kind has no row and refuses.
+  FrontierMachineArtifact { identity: frontier_codex_runtime_bundle_artifact as String, kind: FileArtifact, class: ContractedExternally },
 ]
 
 // The artifact a knob target actually changes, read from the target's own
@@ -1268,7 +1275,7 @@ fn frontier_classify_target(target: ConvergeTarget) -> FrontierClassification {
       match acc {
         Classified { artifact: _, kind: _, class: _ } => acc
         UnclassifiedArtifact { artifact: _, kind: _ } =>
-          if a.identity == identity {
+          if a.identity == identity && a.kind == kind {
             Classified { artifact: identity, kind: kind, class: a.class }
           } else {
             acc
