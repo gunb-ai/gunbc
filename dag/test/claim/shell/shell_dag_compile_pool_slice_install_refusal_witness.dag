@@ -8,11 +8,14 @@ module test.claim.shell.shell_dag_compile_pool_slice_install_refusal_witness
 // not the third. Its four arms all supply a slice unit name that carries no '/', and each of them
 // maps CompilePoolInstallRefused { reason: _ } to false or to the string "staging refused". In the
 // pinned oracle the refusal arm is therefore HANDLED and never DEMONSTRATED: nothing it runs puts
-// the fold in front of an input the typed argv cannot express, so a fold that refused every input
-// — or one that had quietly lost the refusal arm and widened instead — would leave all four of its
-// arms green. This module supplies that input and reads the refusal. It is an addition beside the
-// pinned oracle; the pinned oracle is not edited here, and its content is what it has been since
-// the row landed.
+// the fold in front of an input the typed argv cannot express, so a fold that had quietly lost the
+// refusal arm and emitted argv for a malformed name would leave all four of its arms green. What the
+// pinned arms do NOT leave open is the opposite shape — a fold that refused every input — because
+// several of them require successful staging in order to realize their operations, and such a fold
+// would turn those arms red. That second shape is closed by this module's pairing arm together with
+// those pinned arms, not by the pinned oracle on its own. This module supplies the missing input and
+// reads the refusal. It is an addition beside the pinned oracle; the pinned oracle is not edited
+// here, and its content is what it has been since the row landed.
 //
 // WHAT THE FOLD ACTUALLY OWES. dag/gunbc/host/host_effect_realize.dag refuses when the slice unit
 // name carries '/': that name would place the unit outside /etc/systemd/system/, and systemd unit
@@ -41,10 +44,21 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE THIRD CLAUSE, EXECUTED. A staging path the typed argv cannot express REFUSES, and it refuses
 // by name: the reason must still say which surface the unit would have landed outside of. Reaching
-// the Ready arm at all — emitting any argv for a name carrying '/' — is the failure this arm
-// exists to catch, since that is the fold widening where it owes a refusal.
+// the Ready arm at all — emitting any argv for a name carrying '/' — is the failure this arm exists
+// to catch, since that is the fold widening where it owes a refusal.
+//
+// INPUT AND ASSERTION SHARE NO SUBSTRING. The malformed name is "bad/leaf.slice": it carries the
+// single '/' that makes a systemd unit name inexpressible, and it has no relation to
+// /etc/systemd/system/, which the assertion still requires the reason to NAME. So that path in the
+// diagnostic is the fold's own contribution rather than a supplied string travelling in and being
+// read back out — a refusal that merely echoed its input, or that named no surface at all, fails
+// here. (An earlier fixture used "unit/../../etc/systemd/system/evil.slice", which carried the
+// asserted path inside the input and so could not tell a located refusal from an echo; an echoing
+// fold passed it.) The '/' check below necessarily shares its substring with the input, since every
+// inexpressible name must contain one; the discriminating weight rests on the asserted path, which
+// the input does not contain.
 test fn inexpressible_staging_path_refuses_and_names_where_it_would_have_landed() -> Bool {
-  match compile_pool_slice_install_staging(slice_unit: "unit/../../etc/systemd/system/evil.slice" as NonEmptyStr) {
+  match compile_pool_slice_install_staging(slice_unit: "bad/leaf.slice" as NonEmptyStr) {
     CompilePoolInstallReady { stage_write: _, install: _, daemon_reload: _, start: _, discard_stage: _ } => false
     CompilePoolInstallRefused { reason: r } =>
       string_contains(s: r, pattern: "/")
