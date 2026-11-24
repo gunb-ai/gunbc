@@ -52,11 +52,21 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // refusal surface it produces carries no shell control word, the produced argv words carry none
 // either, and the declared path and the declared principal are realized in that argv.
 //
-// WHAT THIS FILE NO LONGER READS: install_d_owned_command and install_d_owned_for_user (both
-// were in gunbc.live_deploy.emit) are DELETED by this row, so they carry no marker here -- a marker
-// to a deleted declaration is a refused reference, which is the point of the marker check. The display chain that remains in emit.dag
-// (install_d_owned_render_for over its own shell-inert path admission) is kept by exactly one other
-// claim module's arms and by no production caller — dangling-by-consumption, stated in the PR body.
+// WHAT THIS FILE NO LONGER READS, AND WHAT IS GONE WITH IT: install_d_owned_command and
+// install_d_owned_for_user (both were in gunbc.live_deploy.emit) are DELETED by this row, and so is the
+// display chain they sat on — the typed install-line outcome, its total display, the shell-inert path
+// constructor and the named refusal causes behind it. None of those names carries a marker here: a
+// marker to a deleted declaration is a refused reference, which is the point of the marker check.
+// A frontier over that display was considered and REFUSED: a frontier is admissible only over a REAL
+// later consumer, and nothing acting will ever consume rendered install text, because the acting route
+// is pure argv end to end -- this argv is never joined through
+// #gunbc.shell_command_text::shell_command_text_of_argv, never wrapped in a `sh -c`, never an ssh remote
+// command string, never a systemd ExecStart line (each searched, hit counts in the PR receipt). So the
+// inert-path predicate goes WITH the display it guarded and is not ported to the acting route: the
+// hazard it guarded was a path spliced into SHELL TEXT, and under execve a path carrying ';' is a
+// filename, not a command. The display's own three arms in dag/test/claim/live_deploy/emit.dag were
+// deleted in the same motion, not parked as dangling-by-consumption
+// (gunbc.design_argument::replacement_migration: the old authority ends in one motion at its root).
 //
 // PINNED AT LAUNCH: an unauthorized edit refuses verification as oracle-moved. The re-point above is
 // the authorized exception and no other line was tidied.
@@ -124,7 +134,7 @@ test fn adversarial_install_path_renders_no_shell_control_word() -> Bool {
 test fn benign_install_line_renders_no_shell_control_word() -> Bool {
   match owned_directory_plan(
     t: deploy_leaf(path: "/opt/gunbc/attempt-state"),
-    o: EnsureAbsent,
+    o: EnsureAbsent { reason: "hermetic witness: the supplied leaf read reports the path absent" },
   ) {
     EnsurePlanUnavailable { reason } => false
     EnsurePlanAvailable { plan } =>
@@ -142,7 +152,7 @@ test fn benign_install_line_renders_no_shell_control_word() -> Bool {
 test fn install_line_realizes_the_declared_path_and_principal() -> Bool {
   match owned_directory_plan(
     t: deploy_leaf(path: "/opt/gunbc/attempt-state"),
-    o: EnsureAbsent,
+    o: EnsureAbsent { reason: "hermetic witness: the supplied leaf read reports the path absent" },
   ) {
     EnsurePlanUnavailable { reason } => false
     EnsurePlanAvailable { plan } =>

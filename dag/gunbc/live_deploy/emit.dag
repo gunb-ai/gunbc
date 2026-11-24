@@ -1891,75 +1891,6 @@ data install_d_mode_derivation_dissolution: DissolutionCondition = retires_disso
   }
 )
 
-// THE TYPED OUTCOME behind the render surface: an install line is emitted only when the path passes
-// the checked constructor below; otherwise the refusal carries a NAMED cause, not prose. The String
-// surface (render_install_line over this outcome) is the total DISPLAY of this outcome,
-// and its refusal arm is a FALSE COMMAND -- a spliced refusal stops the script at that point (gunbc.design_argument::fail_closed: no
-// plausible output fabricated in place of a stop), never a line that installs nothing but looks done.
-type InstallLineRender
-  = InstallLine { text: String }
-  | InstallLineRefused { cause: InstallRefusalCause }
-
-type InstallRefusalCause
-  = RefusalEmpty
-  | RefusalNotAbsolute
-  | RefusalUnsafeBytes
-
-// The checked constructor for the one path shape this surface can express: absolute, non-empty, and
-// free of every byte the shell gives a meaning (control, quote, expansion, glob, whitespace,
-// traversal). One named list; a path needing quoting is REFUSED rather than quoted, because the
-// surface's point is that its output embeds inertly (gunbc.design_argument::fail_closed correctness-by-construction: downstream code
-// only ever sees the carrier or a refusal, never a raw unchecked path).
-type ShellInertAbsolutePath = ShellInertAbsolutePath { raw: NonEmptyStr }
-
-fn shell_inert_absolute_path(path: String) -> Optional<ShellInertAbsolutePath> {
-  if path == "" { Absent }
-  else if !starts_with(s: path, prefix: "/") { Absent }
-  else if any(unsafe_install_fragments, u => string_contains(s: path, pattern: u)) { Absent }
-  else { Present { value: ShellInertAbsolutePath { raw: path as NonEmptyStr } } }
-}
-
-data unsafe_install_fragments: List<String> = [
-  " ", "\t", "\n", ";", "|", "&", ">", "<", "$", "`", "\\", "'", "\"",
-  "(", ")", "{", "}", "[", "]", "*", "?", "!", "~", "#", "..",
-]
-
-// The cause is classified from the SAME list the constructor uses -- one authority, two renderings.
-fn install_refusal_cause(path: String) -> InstallRefusalCause {
-  if path == "" { RefusalEmpty }
-  else if !starts_with(s: path, prefix: "/") { RefusalNotAbsolute }
-  else { RefusalUnsafeBytes }
-}
-
-fn install_refusal_cause_label(cause: InstallRefusalCause) -> String {
-  match cause {
-    RefusalEmpty => "path is empty"
-    RefusalNotAbsolute => "path is not absolute"
-    RefusalUnsafeBytes => "path carries shell-active bytes"
-  }
-}
-
-fn install_d_owned_render_for(user: NonEmptyStr, path: String) -> InstallLineRender {
-  match shell_inert_absolute_path(path: path) {
-    Absent => InstallLineRefused { cause: install_refusal_cause(path: path) }
-    Present { value: inert } => InstallLine {
-      text: shell_privileged_command_text_of_argv(
-        argv: coreutils_install_directory_owned_argv(mode: install_d_shared_mode, owner: user, group: user, path: inert.raw),
-      ),
-    }
-  }
-}
-
-// The TOTAL DISPLAY: rendered line, or a false command that fails the script closed at the refusal
-// point. The refusal text is shell-inert (no control word survives it) and carries no byte of the
-// refused path -- a refusal that echoed the path would re-smuggle the operator it refused.
-fn render_install_line(render: InstallLineRender) -> String {
-  match render {
-    InstallLine { text } => text
-    InstallLineRefused { cause } => join(["false # install refused: ", install_refusal_cause_label(cause: cause)], "")
-  }
-}
-
 // WHY THIS INSTALLS WITH -o/-g RATHER THAN WRITING AS ROOT AND FIXING UP, and the history is the
 // irreducible part. The principal itself is not stated here: gunbc.fleet.fleet_posix_accounts owns it —
 // FleetAccountCiRunner is the deploy principal (unit_user=root is NOT the authorization principal)
@@ -1991,16 +1922,19 @@ fn render_install_line(render: InstallLineRender) -> String {
 // (gunbc.design_argument::consumption). Nothing in the tree installs an owned directory through them: the ONE
 // acting route is #gunbc.owned_directory::owned_directory_ensure over the plan this same argv authority
 // realizes (#gunbc.owned_directory::owned_directory_install_argv), which is also what the row's witness
-// now reads. WHAT REMAINS IN THIS FILE is the display of the typed outcome below: no production caller
-// consumes it, and its only consumer is one other row's claim arms — dag/test/claim/live_deploy/emit.dag
-// imports #gunbc.live_deploy.emit::install_d_owned_render_for, #gunbc.live_deploy.emit::render_install_line
-// and #gunbc.live_deploy.emit::shell_inert_absolute_path and asserts on them (3, 2 and 5 hits). Per
-// gunbc.design_argument::consumption that is the dangling class, and this PR does not quietly park it
-// there: it is named as a DECLARED FRONTIER with its trigger — the follow-up this lane is drafting for
-// Manager B's review, working name shell-dag-live-deploy-display-retire, whose TRIGGER is the re-point of
-// that claim module's arms onto #gunbc.owned_directory::owned_directory_install_argv. Deleting another
-// row's oracle arms is outside this row's authorization, so the residue ends in that one motion at its
-// root, with its consumer moved first — not by removing the guard before the thing it guards is moved.
+// now reads. THE DISPLAY ITSELF IS DELETED IN THIS SAME MOTION — the typed outcome and its total
+// display -- InstallLineRender over its InstallLine / InstallLineRefused variants, the
+// InstallRefusalCause causes, the shell-inert path constructor, the unsafe-fragment list, the cause
+// classifier and label, and the two render callables -- are gone rather than parked: a frontier is
+// admissible only over a REAL later consumer, and nothing acting will ever consume rendered install
+// text, because the acting route is pure argv end to end. Their only consumers were three arms of
+// dag/test/claim/live_deploy/emit.dag (the_typed_render_refuses_a_hazardous_path_with_a_named_cause,
+// a_refused_install_displays_as_a_false_command_carrying_no_path_bytes,
+// the_checked_constructor_admits_only_inert_absolute_paths), which asserted nothing but this display
+// and are deleted with it — no live assertion was dropped to tidy the diff, and none was kept to keep
+// the file's line count up (gunbc.design_argument::replacement_migration: the old authority ends in one
+// motion at its root). The inert-path predicate goes with the display it guarded: the hazard it guarded
+// was a path spliced into SHELL TEXT, and no install argv of this route is ever shell text.
 
 // A directory the plan holds no decision about is NOT installed (R2, one-deploy-path safety). The
 // old arm returned true on MemberNotInPlan -- an install with no decision, which is exactly the

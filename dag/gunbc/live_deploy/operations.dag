@@ -127,6 +127,8 @@ fn systemctl_unmask_command(unit: NonEmptyStr, privileged: Bool) -> String {
 // (owned_directory_act_time_handover); today every caller passes no carried plan reading, so the
 // window established by executed evidence is the decide-to-act window inside the provider call.
 // The node stays OPEN with its next rung stated: thread the release_member_plan's own observation
-// into owned_directory_ensure's plan_reading to cover the full plan-to-apply window. What remains in gunbc.live_deploy.emit is a DISPLAY surface --
-// the same argv authority's words rendered as text (kept by the pinned witness, inert by admission,
-// its refusal a false command) -- not an acting route.
+// into owned_directory_ensure's plan_reading to cover the full plan-to-apply window. What remains in gunbc.live_deploy.emit is NOTHING of the
+// kind: the display surface that rendered the same argv authority's words as text — and the shell-inert
+// admission that guarded it — is deleted in this same motion, because a display no caller reaches is not
+// an acting route and no acting route here will ever consume rendered install text
+// (gunbc.design_argument::replacement_migration).
