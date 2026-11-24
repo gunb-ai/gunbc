@@ -1,0 +1,15 @@
+module v2.test.claim.self_host.prefix_negate_operand_subject_fixture
+
+// NEGATIVE CONTROL for the (ii) prefix branch of target_project_binary_primitive_apply_in_arrow_scope.
+// canonical_operation_op_negate is a roster member (target_model_canonical_operations_roster_root) but has
+// NO operator-realization row in the Rust catalog (rust_operator_realizations_catalog_node carries rows for
+// or/and/eq/ne/lt/le/gt/sub/mul/div/add/coerce plus the declared op_not PrefixToken row -- and NONE for
+// negate). A one-operand PREFIX use therefore reaches the (ii) 2-positional-child branch, builds a
+// primitive apply whose operator has no PrefixToken row, and must refuse with the token fold's OWN arity /
+// realization reason -- NEVER the generic target_value_expr_reason_transform_shape_invalid. Paired with the
+// positive prefix control (prefix_not_operand_subject, whose op_not DOES now have a PrefixToken row and so
+// renders). Lives under the self-host claim tree, NOT the production dag corpus (not counted by the
+// population row).
+fn prefix_negate_operand_subject(x: Int) -> Int {
+  -x
+}
