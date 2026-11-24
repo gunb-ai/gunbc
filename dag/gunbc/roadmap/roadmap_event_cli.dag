@@ -366,7 +366,6 @@ fn roadmap_acceptance_record_cli(repo_root: String, receipt_line: String, pr_url
         roadmap_acceptance_record_with_pair(repo_root: repo_root, receipt_line: receipt_line, pr_url: pr_url, head_sha: head_sha, author: author, observation: ob)
     }
   }
-  }
 }
 
 // THE ONE ROUTE THAT RECORDS WITHOUT NAMING AN OBSERVATION — and the only one, so the question "may an
