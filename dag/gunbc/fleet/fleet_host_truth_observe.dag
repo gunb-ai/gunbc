@@ -11,8 +11,10 @@ module gunbc.fleet.fleet_host_truth_observe
 // list -- come back as TYPED REFUSALS and are given NO expectation, so the model scores them
 // TruthNoExpectationForRead, a refusal class. That is what makes option A fail-closed: with refusals always
 // present the fold can only return HostTruthRefused or HostTruthDiverges, never HostTruthFollowsDesiredState, so
-// a host is never reported as following its desired state while an axis is unread. Divergence on a readable axis
-// is the non-zero exit. Mutates nothing; adds no scheduled job -- it rides the converge timer.
+// a host is never reported as following its desired state while an axis is unread. Its terminal is the 0/1/2
+// contract: 0 ONLY when both readable axes were observed and none diverged, 1 when a readable axis diverges, and
+// 2 when a readable axis could not be read (no observation) -- a host that cannot be read is never green. Mutates
+// nothing; adds no scheduled job -- it rides the converge timer.
 //
 // WHY IDENTITY REFUSES HERE THOUGH IT HAS A PRODUCER SOMEWHERE ELSE: the identity anchor compares the fingerprint
 // the host-key scan observed against the enrolled anchor (gunbc.fleet.fleet_host_key_enrollment::
@@ -165,18 +167,6 @@ fn host_truth_observe_verdict(host: NonEmptyStr, at_run: NonEmptyStr, cap_limit:
     reads: host_truth_observe_reads(host: host, at_run: at_run, cap_limit: cap_limit, swap_limit: swap_limit),
     expectations: host_truth_observe_expectations(host: host),
   )
-}
-
-// THE EXIT DECISION: non-zero on divergence only. A refusal (the two unread axes, or a blank read) is recorded
-// in the receipt but does not fail the observe -- it is an observation riding a timer, and the two unread axes
-// would otherwise make every run red. Divergence on a readable axis is the alarm.
-fn host_truth_observe_is_divergence(verdict: HostTruthVerdict) -> Bool {
-  match verdict {
-    HostTruthDiverges { host: _, divergences: _ } => true
-    HostTruthFollowsDesiredState { host: _, compared: _, undeclared: _ } => false
-    HostTruthRefused { host: _, refusals: _ } => false
-    HostTruthNothingRead { host: _, why: _ } => false
-  }
 }
 
 // WHY THE VERDICT SAYS WHAT IT SAYS, in the receipt. Names the two refusals and the divergence axes so a

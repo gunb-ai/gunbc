@@ -2668,7 +2668,9 @@ fn fleet_converge_host_memory_observe_receipt_upload_step() -> Step {
 // on-route producer (the cgroup cap, the leaf swap ceiling) -- consuming the memory envelope, mutating nothing --
 // and reports the THREE axes whose producers do not reach this route (the identity anchor, PCI enumeration count,
 // enabled-unit list) as typed refusals, so a host is never reported as following its desired state while any of
-// them is unread. It exits non-zero only on divergence. The mode's own contract is gunbc.fleet.fleet_host_truth_observe.
+// them is unread. Its terminal is 0/1/2: 0 only when both readable axes were observed and none diverged, 1 on a
+// divergence, 2 when a readable axis could not be read (a host that cannot be read is never green). The mode's own
+// contract is gunbc.fleet.fleet_host_truth_observe.
 fn fleet_converge_host_truth_read_observe_step() -> Step {
   fleet_converge_runner_host_file_step(
     id: "host_truth_read_observe",

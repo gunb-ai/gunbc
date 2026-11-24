@@ -25,7 +25,7 @@ import gunbc.fleet.fleet_host_truth_read {
 }
 import gunbc.fleet.fleet_host_truth_sources { host_truth_cap_read }
 import gunbc.fleet.fleet_host_truth_observe {
-  host_truth_observe_reads, host_truth_observe_expectations, host_truth_observe_verdict, host_truth_observe_is_divergence,
+  host_truth_observe_reads, host_truth_observe_expectations, host_truth_observe_verdict,
   host_truth_observe_cap_expectation,
   host_truth_observe_identity_refusal, host_truth_observe_pci_refusal, host_truth_observe_unit_refusal,
   host_truth_observe_exit,
@@ -129,37 +129,6 @@ test fn RED_the_three_refusals_are_what_keep_a_benign_host_from_being_admitted()
   ]
   let refused_verdict = fleet_host_truth_verdict_for_host(host: "srv1" as NonEmptyStr, reads: with_refusals, expectations: cap_only_expectations)
   admitted && !fleet_truth_admits_host(verdict: refused_verdict)
-}
-
-// A CAP BELOW THE DECLARED WORKING SET IS A DIVERGENCE AND THE NON-ZERO EXIT. A 1 GiB cap under the declared
-// working set: the cap axis diverges, the fold answers HostTruthDiverges (a divergence outranks the refusals),
-// and the observe's exit decision is non-zero. This is the only thing the observe alarms on.
-test fn test_a_cap_below_the_declared_working_set_diverges_and_exits() -> Bool {
-  let verdict = host_truth_observe_verdict(
-    host: "srv4" as NonEmptyStr,
-    at_run: witness_run_id,
-    cap_limit: MemoryLimitBytes { bytes: byte_size(count: 1073741824) },
-    swap_limit: MemoryLimitAbsent,
-  )
-  match verdict {
-    HostTruthDiverges { host: _, divergences: _ } => host_truth_observe_is_divergence(verdict: verdict)
-    _ => false
-  }
-}
-
-// A REFUSAL IS NOT AN ALARM. The observe runs on a timer and the three unread axes refuse on EVERY host, so a
-// refusal must not be the non-zero exit -- only a divergence is. A host that is merely refused exits zero.
-test fn test_a_refused_host_is_not_the_non_zero_exit() -> Bool {
-  let reads: List<HostTruthRead> = [
-    host_truth_observe_identity_refusal(host: "srv2" as NonEmptyStr),
-    host_truth_observe_pci_refusal(host: "srv2" as NonEmptyStr),
-    host_truth_observe_unit_refusal(host: "srv2" as NonEmptyStr),
-  ]
-  let verdict = fleet_host_truth_verdict_for_host(host: "srv2" as NonEmptyStr, reads: reads, expectations: [])
-  match verdict {
-    HostTruthRefused { host: _, refusals: _ } => !host_truth_observe_is_divergence(verdict: verdict)
-    _ => false
-  }
 }
 
 // THE EXPECTATIONS ARE THE TWO READABLE AXES ONLY. The three refused axes carry no expectation on purpose -- an
