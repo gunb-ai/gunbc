@@ -4540,6 +4540,23 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "demand-engine", contribution: "A heal or regen round covers the whole emitted population, so a seed-input edit reaches its read set instead of a refusal."),
     ),
     roadmap_node(
+      identity: "rn_A1AZBS250N7JM8DQ0O6C1ON5YD",
+      id: "placed-module-gets-its-body-emitted-or-a-typed-refusal",
+      owner: "ci-control",
+      carriers: carrier(path: "src/v1/stage0/src/required_regen_host.rs"),
+      line: ticket(t: fields(
+        headline: "A module the round places into a stage0 package row gets its body on disk, or a typed refusal names it before the build",
+        boundary: "Reported 2026-11-24 by bold-lark-538 from an executed regen round, directed into the plan by neat-badger-614, recorded by vivid-swift-693. The emitted-edge coverage check now PASSES -- edges=353 admitted with zero uncovered at head f0c3c72dfb7337bccf1fba53a1691bce46a0ea07 with the twelve-row carrier committed -- and the round then refused downstream at round.rebuild_from_installed: cargo build exit status 101, couldn't read src/v1/stage0_std_core/src/../../stage0/src/extdeps_exec_program.rs: No such file or directory, at src/v1/stage0_std_core/src/lib.rs:190 which declares pub mod extdeps_exec_program;. The round writes the crate-root declaration and does not write the body, so a placed module is a compile error waiting for the whole-compiler rebuild. Anchors in src/v1/stage0/src/required_regen_host.rs: seed_cargo_build(workspace, 'round.rebuild_from_installed') at :7516, :7624 and :9195; install_convergence_stage :9123 and install_convergence_stage_with_backend :9205; the install admissions admit_install_target :1507, admit_install_destination :1536 and admit_install_boundary_population_from_model :9575. This is NOT the half recorded by dag/gunbc/recurring_failure_mode/adding_a_seed_module_refuses_convergence_on_an_unowned_lib_rs.dag: that capability was delivered 2026-11-12 by PR #16377 and its remaining ceiling is that no compiled-in crate-root renderer should be called at all. Nothing in the plan owns the placement-then-body step, which is why a coverage fix lands green on coverage and red on build. The specimen needs the twelve-row carrier to exist first, which is stage0-crate-partition-covers-every-emitted-module's product; that is stated as prose rather than an edge because this row is workable the moment such a carrier exists, and an edge would hold an executable repair behind an unaccepted row.",
+        displaced_cost: "Every seed-input change is refused twice in sequence: first for coverage until the partition covers the emitted modules, then again at the rebuild because placing the module wrote no body. gunbc#16910 is the second casualty, unblocked from coverage and still refused at rebuild.",
+        first_slice: "For ONE module that the round places into a package row, make the round write its body .rs beside the declaration it already writes, or refuse earlier with a typed refusal naming the module and its row, so round.rebuild_from_installed no longer meets a missing file. One module, one refusal name, no hand-written seed Rust.",
+        red_control: "EXECUTED, off-main: the A6b round at head f0c3c72dfb7337bccf1fba53a1691bce46a0ea07 (session branch session/bold-lark-538, never merged; srv1 heavy-slot slot 8/12, 2026-11-24T10:00:39Z to 10:51:03Z; log 89,739 B over 343 lines; BOOT printed from /proc) prints emitted-edge admission admitted edges=353 with zero uncovered and then ROUND_REAL_EXIT_STATUS=1 refusing at round.rebuild_from_installed with cargo exit status 101 on couldn't read .../stage0/src/extdeps_exec_program.rs at src/v1/stage0_std_core/src/lib.rs:190. The cargo-check folded into the same slot printed rc=0 but ran AFTER a checkpoint restore -- porcelain 0, the mirror blob back to main's 41586473, the crate-root pub-mod count back to 55 -- and is recorded as a NON-RESULT, never as a green.",
+        out_of_scope: "Hand-writing the twelve body .rs files, which an operator ruling forbids; the emitted-edge coverage check itself, which already passes; the partition placement decisions, owned by stage0-crate-partition-covers-every-emitted-module; and removing the compiled-in crate-root renderer, owned by the recurring_failure_mode row named above.",
+        handback: "The round emits the body for every module it places, or refuses typed earlier naming the module and the row; a round reaches rc=0 at a fixed revision with the twelve-row carrier committed; and gunbc#16910 is no longer refused at round.rebuild_from_installed."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "demand-engine", contribution: "A round that places a module leaves a tree that compiles, so coverage and buildability become one fact instead of two refusals in sequence."),
+    ),
+    roadmap_node(
       identity: "rn_996VCB1C1184A2HK3XJV2T0CXT",
       id: "commit-sha-has-one-validating-constructor",
       owner: "compiler-guarantee",
@@ -9727,6 +9744,10 @@ fn guarantee_ladder_edges() -> List<RoadmapEdge> {
     edge(child: "per-function-claim-run-loads-string-dispatched-names", parent: "per-function-claim-loader-modeled-dag-route"),
     edge(child: "v2-emitter-production-compatible-corpus-module", parent: "v2-core-emitter-lowers-conjunction-in-value-position"),
     edge(child: "v2-emitter-production-compatible-corpus-module", parent: "v2-core-emitter-emits-prefix-not-in-value-position"),
+    // gunbc#16910 is unblocked from emitted-edge coverage by stage0-crate-partition-covers-every-emitted-module
+    // and is then refused again at round.rebuild_from_installed, because the round writes the crate-root
+    // declaration for a placed module without writing its body. Measured at f0c3c72dfb7337bccf1fba53a1691bce46a0ea07.
+    edge(child: "v1-source-chars-converted-once", parent: "placed-module-gets-its-body-emitted-or-a-typed-refusal"),
   ]
 }
 
