@@ -41,6 +41,7 @@ import gunbc.roadmap.roadmap_attempt_metering {
   attempt_metering_read_derived, attempt_metering_roster_entry_read, attempt_metering_member_name, AttemptMeteringMemberName,
   OptionalFileRead, OptionalFileContent, OptionalFileAbsent, OptionalFileRefused,
   RosterEntryRead, metering_closing_hold_key,
+  AttemptMeteringStore, AttemptMeteringStoreReady, AttemptMeteringStoreUnready, attempt_metering_store,
 }
 import gunbc.roadmap.roadmap_attempt_metering_slots { attempt_metering_slots }
 import gunbc.roadmap.roadmap_attempt_state_store { attempt_state_directory_text, AttemptDirectoryRoot }
@@ -365,36 +366,45 @@ test fn traversal_read_cannot_escape_the_directory() -> Bool {
   // (2) CLASSIC `../` TRAVERSAL: kept as the regression control for the SANDBOX layer that refuses the
   //     path outright. The escape guarantee for `../` is the sandbox's (stated in the body); the cell fails
   //     loudly if that platform refusal is ever removed.
+  // (review 97249 second finding) The read no longer takes a directory: the claim mints the STORE through
+  // the declaration's own mint and plants fixtures at the directory the DECLARATION derives, so the two can
+  // never disagree about where the store lives.
   let i = fx_lab_instance(tag: "trav")
   let root = dashboard_instance_dispatch_attempt_state_root(instance: i)
-  let dir = join([root, "/c-roadmap2-node-a0123456789abcdef/metering"], "")
+  let n = "c-roadmap2-node" as RoadmapNodeId
+  let k = "a0123456789abcdef"
+  let dir = attempt_state_directory_text(instance: i, node_id: n, attempt_key: k, directory: AttemptDirectoryRoot)
   let made = shell.Mkdir.Parents(path: dir as FilePath).success
   let sub = join([dir, "/sub"], "")
   let sub_made = shell.Mkdir.Parents(path: sub as FilePath).success
   // A real, readable file one member-level down: the sandbox admits it; only the member listing can veto.
   let planted_sub = Filesystem.Write(path: join([sub, "/metering.json"], "") as FilePath, content: "not a declared member\n").success
-  let nested = match attempt_metering_member_name(raw: "sub/metering.json") {
-    Present { value: v } => attempt_metering_read_derived(dir: dir, name: v)
-    none => OptionalFileAbsent
+  let planted = Filesystem.Write(path: join([root, "/secret-metering"], "") as FilePath, content: "bytes that live one level up\n").success
+  match attempt_metering_store(instance: i, node_id: n, attempt_key: k) {
+    AttemptMeteringStoreUnready { detail: _ } => false
+    AttemptMeteringStoreReady { store: store } => {
+      let nested = match attempt_metering_member_name(raw: "sub/metering.json") {
+        Present { value: v } => attempt_metering_read_derived(store: store, name: v)
+        none => OptionalFileAbsent
+      }
+      let nested_refused = match nested {
+        OptionalFileContent { content: _ } => false
+        OptionalFileAbsent => true
+        OptionalFileRefused { cause: _ } => true
+      }
+      // (2) the sandbox-layer control cell.
+      let read = match attempt_metering_member_name(raw: "../secret-metering") {
+        Present { value: v } => attempt_metering_read_derived(store: store, name: v)
+        none => OptionalFileAbsent
+      }
+      let traversal_refused = match read {
+        OptionalFileContent { content: _ } => false
+        OptionalFileAbsent => true
+        OptionalFileRefused { cause: _ } => true
+      }
+      made && sub_made && planted_sub && planted && nested_refused && traversal_refused
+    }
   }
-  let nested_refused = match nested {
-    OptionalFileContent { content: _ } => false
-    OptionalFileAbsent => true
-    OptionalFileRefused { cause: _ } => true
-  }
-  // (2) the sandbox-layer control cell.
-  let outside = join([root, "/secret-metering"], "")
-  let planted = Filesystem.Write(path: outside as FilePath, content: "bytes that live one level up\n").success
-  let read = match attempt_metering_member_name(raw: "../secret-metering") {
-    Present { value: v } => attempt_metering_read_derived(dir: dir, name: v)
-    none => OptionalFileAbsent
-  }
-  let traversal_refused = match read {
-    OptionalFileContent { content: _ } => false
-    OptionalFileAbsent => true
-    OptionalFileRefused { cause: _ } => true
-  }
-  made && sub_made && planted_sub && planted && nested_refused && traversal_refused
 }
 
 // The same name WITHOUT the traversal returns the content -- the claim above is about the escape, not about
@@ -402,15 +412,18 @@ test fn traversal_read_cannot_escape_the_directory() -> Bool {
 // this and not the claim above: the pair pins both directions.)
 test fn declared_member_read_returns_its_content() -> Bool {
   let i = fx_lab_instance(tag: "declared")
-  let root = dashboard_instance_dispatch_attempt_state_root(instance: i)
-  let dir = join([root, "/c-roadmap2-node-a0123456789abcdef/metering"], "")
+  let n = "c-roadmap2-node" as RoadmapNodeId
+  let k = "a0123456789abcdef"
+  let dir = attempt_state_directory_text(instance: i, node_id: n, attempt_key: k, directory: AttemptDirectoryRoot)
   let made = shell.Mkdir.Parents(path: dir as FilePath).success
   let planted = Filesystem.Write(path: join([dir, "/metering-roster.json"], "") as FilePath, content: "declared bytes\n").success
-  let read = attempt_metering_read_derived(dir: dir, name: fx_member(raw: "metering-roster.json"))
-  made && planted && match read {
-    OptionalFileContent { content: c } => c == "declared bytes\n"
-    OptionalFileAbsent => false
-    OptionalFileRefused { cause: _ } => false
+  match attempt_metering_store(instance: i, node_id: n, attempt_key: k) {
+    AttemptMeteringStoreUnready { detail: _ } => false
+    AttemptMeteringStoreReady { store: store } => match attempt_metering_read_derived(store: store, name: fx_member(raw: "metering-roster.json")) {
+      OptionalFileContent { content: c } => made && planted && c == "declared bytes\n"
+      OptionalFileAbsent => false
+      OptionalFileRefused { cause: _ } => false
+    }
   }
 }
 
@@ -421,22 +434,28 @@ test fn declared_member_read_returns_its_content() -> Bool {
 // disappears from the witness's cost line and the disagreement half goes red.
 test fn roster_entry_read_never_invents_entries() -> Bool {
   let i = fx_lab_instance(tag: "roster")
-  let root = dashboard_instance_dispatch_attempt_state_root(instance: i)
-  let dir = join([root, "/c-roadmap2-node-a0123456789abcdef/metering"], "")
+  let n = "c-roadmap2-node" as RoadmapNodeId
+  let k = "a0123456789abcdef"
+  let dir = attempt_state_directory_text(instance: i, node_id: n, attempt_key: k, directory: AttemptDirectoryRoot)
   let made = shell.Mkdir.Parents(path: dir as FilePath).success
   let planted = Filesystem.Write(path: join([dir, "/metering-roster.json"], "") as FilePath, content: "roster bytes\n").success
     && Filesystem.Write(path: join([dir, "/late.json"], "") as FilePath, content: "late bytes\n").success
   let listed = Filesystem.List(path: dir as FilePath)
   let listing = filesystem_listing_observation(directory: dir, success: listed.success, entries: listed.entries, error: listed.error)
-  let first = attempt_metering_roster_entry_read(dir: dir, listing: listing, name: "metering-roster.json")
-  let second = attempt_metering_roster_entry_read(dir: dir, listing: listing, name: "metering-roster.json")
-  let third = attempt_metering_roster_entry_read(dir: dir, listing: listing, name: "late.json")
-  let fourth = attempt_metering_roster_entry_read(dir: dir, listing: listing, name: "never-created.json")
-  let ok_first = match first.read { OptionalFileContent { content: c } => c == "roster bytes\n", _ => false }
-  let ok_second = match second.read { OptionalFileContent { content: c } => c == "roster bytes\n", _ => false }
-  let ok_third = match third.read { OptionalFileContent { content: c } => c == "late bytes\n", _ => false }
-  let ok_fourth = match fourth.read { OptionalFileAbsent => true, OptionalFileContent { content: _ } => false, OptionalFileRefused { cause: _ } => false }
-  made && planted && ok_first && ok_second && ok_third && ok_fourth
+  match attempt_metering_store(instance: i, node_id: n, attempt_key: k) {
+    AttemptMeteringStoreUnready { detail: _ } => false
+    AttemptMeteringStoreReady { store: store } => {
+      let first = attempt_metering_roster_entry_read(store: store, listing: listing, name: "metering-roster.json")
+      let second = attempt_metering_roster_entry_read(store: store, listing: listing, name: "metering-roster.json")
+      let third = attempt_metering_roster_entry_read(store: store, listing: listing, name: "late.json")
+      let fourth = attempt_metering_roster_entry_read(store: store, listing: listing, name: "never-created.json")
+      let ok_first = match first.read { OptionalFileContent { content: c } => c == "roster bytes\n", _ => false }
+      let ok_second = match second.read { OptionalFileContent { content: c } => c == "roster bytes\n", _ => false }
+      let ok_third = match third.read { OptionalFileContent { content: c } => c == "late bytes\n", _ => false }
+      let ok_fourth = match fourth.read { OptionalFileAbsent => true, OptionalFileContent { content: _ } => false, OptionalFileRefused { cause: _ } => false }
+      made && planted && ok_first && ok_second && ok_third && ok_fourth
+    }
+  }
 }
 
 

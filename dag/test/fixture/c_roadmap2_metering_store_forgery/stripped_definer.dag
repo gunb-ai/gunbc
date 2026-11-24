@@ -1,0 +1,19 @@
+module test.fixture.c_roadmap2_metering_store_forgery.stripped_definer
+
+// THE STRIPPED TWIN of definer.dag: identical declaration and helper MINUS the sole_constructor keyword.
+// A probe that forges a store literal is refused construction against the sealed twin and compiles with
+// no refusal against this one -- which is what proves the keyword, and not some other property of the
+// record, is the enforcement (review 97160 rule: the twins differ in one variable).
+
+import std.types { Bool, NonEmptyStr, String }
+
+type AttemptMeteringStore {
+  instance: NonEmptyStr
+  node: String
+  attempt_key: String
+  directory: NonEmptyStr
+}
+
+fn forge_target(store: AttemptMeteringStore) -> Bool {
+  store.directory as String == "sealed"
+}

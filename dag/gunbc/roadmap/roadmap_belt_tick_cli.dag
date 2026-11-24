@@ -840,6 +840,7 @@ fn belt_credential_recovery_cli() -> ProcessExit {
         match now_epoch_seconds() {
           Absent => exit_failure(reason: "belt_credential_recovery_cli: host clock unreadable")
           Present { value: now } => {
+            let unit = deployment_belt_service_unit_name(names: row.names)
             let recovered = match credential_acquisition_store(instance: instance) {
               CredentialAcquisitionStoreUnready { detail } => CredentialRootFailed { report: detail }
               CredentialAcquisitionStoreReady { store: credentials } =>
@@ -860,7 +861,7 @@ fn belt_credential_recovery_cli() -> ProcessExit {
               match recovered {
                 CredentialRootOk { report: _ } => ExitSuccess
                 CredentialRootFailed { report: _ } =>
-                  exit_failure(reason: join(["belt_credential_recovery_cli:\n", report], ""))
+                  exit_failure(reason: join(["belt_credential_recovery_cli:\n", receipt], ""))
               }
             }
           }

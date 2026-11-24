@@ -45,9 +45,9 @@ data hostile_create_source: String = "module probe_amt_hostile_create\nimport st
 
 data safe_create_source: String = "module probe_amt_safe_create\nimport std.types { NonEmptyStr }\nimport std.optional { Present, Absent }\nimport gunbc.roadmap.roadmap_attempt_metering { AttemptMeteringStore, attempt_metering_create_once, AttemptMeteringCreateOnce, attempt_metering_member_name }\nfn f(store: AttemptMeteringStore) -> AttemptMeteringCreateOnce? { match attempt_metering_member_name(raw: \"metering.json\") { Absent => none, Present { value: mname } => Present { value: attempt_metering_create_once(store: store, entry: mname, content: \"sealed\") } } }\n"
 
-data hostile_read_source: String = "module probe_amt_hostile_read\nimport std.types { NonEmptyStr }\nimport gunbc.roadmap.roadmap_attempt_metering { OptionalFileRead, attempt_metering_read_derived }\nfn f() -> OptionalFileRead { attempt_metering_read_derived(dir: \"/tmp/sealed-attempt\", name: \"../../etc/passwd\" as NonEmptyStr) }\n"
+data hostile_read_source: String = "module probe_amt_hostile_read\nimport std.optional { Present, Absent }\nimport gunbc.roadmap.roadmap_attempt_metering { OptionalFileRead, AttemptMeteringStore, attempt_metering_read_derived, attempt_metering_member_name }\nfn f(store: AttemptMeteringStore) -> OptionalFileRead? { match attempt_metering_member_name(raw: \"metering.json\") { Absent => none, Present { value: mname } => Present { value: attempt_metering_read_derived(dir: \"/tmp/sealed-attempt\", name: mname) } } }\n"
 
-data safe_read_source: String = "module probe_amt_safe_read\nimport std.types { NonEmptyStr }\nimport std.optional { Present, Absent }\nimport gunbc.roadmap.roadmap_attempt_metering { OptionalFileRead, attempt_metering_read_derived, attempt_metering_member_name }\nfn f() -> OptionalFileRead? { match attempt_metering_member_name(raw: \"metering.json\") { Absent => none, Present { value: mname } => Present { value: attempt_metering_read_derived(dir: \"/tmp/sealed-attempt\", name: mname) } } }\n"
+data safe_read_source: String = "module probe_amt_safe_read\nimport std.optional { Present, Absent }\nimport gunbc.roadmap.roadmap_attempt_metering { OptionalFileRead, AttemptMeteringStore, attempt_metering_read_derived, attempt_metering_member_name }\nfn f(store: AttemptMeteringStore) -> OptionalFileRead? { match attempt_metering_member_name(raw: \"metering.json\") { Absent => none, Present { value: mname } => Present { value: attempt_metering_read_derived(store: store, name: mname) } } }\n"
 
 data hostile_index_source: String = "module probe_amt_hostile_index\nimport std.types { NonEmptyStr }\nimport gunbc.roadmap.roadmap_attempt_metering { AttemptMeteringIndexStore, attempt_metering_index_create_once, AttemptMeteringCreateOnce }\nfn f(store: AttemptMeteringIndexStore) -> AttemptMeteringCreateOnce { attempt_metering_index_create_once(store: store, entry: \"../../outside.index.json\" as NonEmptyStr, content: \"escaped\") }\n"
 
@@ -98,4 +98,22 @@ test fn the_member_carrier_seal_is_what_refuses_forged_casts() -> Bool {
     && census_ran(source: member_forged_cast_stripped_twin_source)
     && sole_ctor_rows(source: member_forged_cast_sealed_twin_source) >= 1
     && sole_ctor_rows(source: member_forged_cast_stripped_twin_source) == 0
+}
+
+// THE STORE SEAL, BY TWIN (review 97249 second finding's strip control): the directory a read derives from
+// is reachable only through the sealed store record. A probe module FOREIGN to the definer fixture forges
+// a store literal with a caller-chosen directory: against the SEALED twin its construction is refused
+// (>=1 SoleConstructorViolation row); against the STRIPPED twin -- the same declaration minus the
+// sole_constructor keyword, nothing else different -- the same source compiles with no such row. The
+// keyword is what refuses; the store-bound reads above are admissible only because that seal holds.
+
+data store_forged_cast_sealed_twin_source: String = "module probe_store_twin_sealed\nimport std.types { NonEmptyStr }\nimport test.fixture.c_roadmap2_metering_store_forgery.definer { AttemptMeteringStore, forge_target }\nfn forged() -> Bool { forge_target(store: AttemptMeteringStore { instance: \"i\" as NonEmptyStr, node: \"n\", attempt_key: \"k\", directory: \"/any\" as NonEmptyStr }) }\n"
+
+data store_forged_cast_stripped_twin_source: String = "module probe_store_twin_stripped\nimport std.types { NonEmptyStr }\nimport test.fixture.c_roadmap2_metering_store_forgery.stripped_definer { AttemptMeteringStore, forge_target }\nfn forged() -> Bool { forge_target(store: AttemptMeteringStore { instance: \"i\" as NonEmptyStr, node: \"n\", attempt_key: \"k\", directory: \"/any\" as NonEmptyStr }) }\n"
+
+test fn the_store_seal_is_what_refuses_a_forged_directory() -> Bool {
+  census_ran(source: store_forged_cast_sealed_twin_source)
+    && sole_ctor_rows(source: store_forged_cast_sealed_twin_source) >= 1
+    && census_ran(source: store_forged_cast_stripped_twin_source)
+    && sole_ctor_rows(source: store_forged_cast_stripped_twin_source) == 0
 }

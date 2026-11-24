@@ -1178,6 +1178,21 @@ type AttemptMeteringCreateOnce
   | AttemptMeteringAlreadyPresent
   | AttemptMeteringCreateRefused { error: String }
 
+// THE DIRECTORY AND THE ROOT THE STORE RECORDS OWN, derived from the record alone. These are the ONLY
+// routes from a sealed store to path text, and they are PRIVATE: every effect in this module derives its
+// directory here, so no business signature -- and no foreign module -- can be handed a directory, a root,
+// or a path (brief step 4: business functions take the sealed record; review 97249 second finding). A
+// caller that could pick the directory could pair a lawfully minted member name with any directory on the
+// host, so the directory-taking shapes are DELETED, not kept alongside.
+
+fn attempt_metering_store_directory(store: AttemptMeteringStore) -> String {
+  store.directory as String
+}
+
+fn attempt_metering_index_store_root(store: AttemptMeteringIndexStore) -> String {
+  store.root as String
+}
+
 // THE DIRECTORY OBSERVATION EVERY MINT FOLDS (the attempt-identity precedent,
 // gunbc.roadmap.roadmap_attempt_identity_store_root attempt_identity_listing). It is not a route a caller
 // reaches with a path: both callers pass the root they derived from the attempt-state declaration.
@@ -1262,7 +1277,7 @@ fn attempt_metering_declared_member_name(member: AttemptStateMember) -> AttemptM
 // directory refuses rather than reading as an empty one, and a refused read is never projected to empty
 // content.
 fn attempt_metering_read(store: AttemptMeteringStore, entry: AttemptMeteringMemberName) -> OptionalFileRead {
-  attempt_metering_read_derived(dir: store.directory as String, name: entry)
+  attempt_metering_read_derived(store: store, name: entry)
 }
 
 // THE METERING RECORD IS COMPARE-AND-SET, NEVER A BLIND OVERWRITE (review 90868).
@@ -1392,11 +1407,12 @@ fn attempt_metering_commit(store: AttemptMeteringStore, expected: CasExpectation
 // `..`, and the listing of the PARENT then legitimately contained the target). A name that is not literally
 // an entry of the listed directory cannot produce content: FilesystemFileAbsent or the disagreement arms
 // refuse it, which is what the traversal claims pin.
-fn attempt_metering_read_derived(dir: String, name: AttemptMeteringMemberName) -> OptionalFileRead {
+fn attempt_metering_read_derived(store: AttemptMeteringStore, name: AttemptMeteringMemberName) -> OptionalFileRead {
   // THE LAW RUNS INSIDE THE EFFECT TOO: even a forged carrier answers with a refusal, never a read.
   if !path_segment_is_safe(raw: attempt_metering_member_name_segment(entry: name) as String) {
     OptionalFileRefused { cause: "the member name is not one safe path segment; the read was refused, never attempted" }
   } else {
+  let dir = attempt_metering_store_directory(store: store)
   let path = join([dir, "/", attempt_metering_member_name_segment(entry: name) as String], "")
   let listing = Filesystem.List(path: dir)
   let read = Filesystem.Read(path: path)
@@ -1581,7 +1597,7 @@ fn attempt_metering_index_create_once(store: AttemptMeteringIndexStore, entry: A
   if !path_segment_is_safe(raw: attempt_metering_member_name_segment(entry: entry) as String) {
     AttemptMeteringCreateRefused { error: "the member name is not one safe path segment; the create was refused, never attempted" }
   } else {
-  let path = join([store.root as String, "/", attempt_metering_member_name_segment(entry: entry) as String], "")
+  let path = join([attempt_metering_index_store_root(store: store), "/", attempt_metering_member_name_segment(entry: entry) as String], "")
   let w = Filesystem.WriteCreateNew(path: path, content: content)
   match filesystem_create_new(path: path, success: w.success, error: w.error, error_kind: w.error_kind) {
     FilesystemCreated { path: _ } => AttemptMeteringCreated
@@ -1593,7 +1609,27 @@ fn attempt_metering_index_create_once(store: AttemptMeteringIndexStore, entry: A
 }
 
 fn attempt_metering_index_read(store: AttemptMeteringIndexStore, entry: AttemptMeteringMemberName) -> OptionalFileRead {
-  attempt_metering_read_derived(dir: store.root as String, name: entry)
+  attempt_metering_index_read_derived(store: store, name: entry)
+}
+
+// THE INDEX TWIN of attempt_metering_read_derived, sealed-record-typed like its sibling (review 97249
+// second finding: same law, same shape -- the root is derived from the index store record, never handed in.
+// Keeping the twins on the SAME signature law is what stops the sibling class the last review caught).
+fn attempt_metering_index_read_derived(store: AttemptMeteringIndexStore, name: AttemptMeteringMemberName) -> OptionalFileRead {
+  if !path_segment_is_safe(raw: attempt_metering_member_name_segment(entry: name) as String) {
+    OptionalFileRefused { cause: "the member name is not one safe path segment; the read was refused, never attempted" }
+  } else {
+  let dir = attempt_metering_index_store_root(store: store)
+  let path = join([dir, "/", attempt_metering_member_name_segment(entry: name) as String], "")
+  let listing = Filesystem.List(path: dir)
+  let read = Filesystem.Read(path: path)
+  attempt_metering_optional_of_observation(filesystem_file_observation(
+    listing: filesystem_listing_observation(directory: dir, success: listing.success, entries: listing.entries, error: listing.error),
+    name: attempt_metering_member_name_segment(entry: name) as String,
+    path: path,
+    read: filesystem_read_outcome(content: read.content, success: read.success, error: read.error),
+  ))
+  }
 }
 
 fn attempt_metering_index_listing(store: AttemptMeteringIndexStore) -> AttemptMeteringListing {
@@ -1638,10 +1674,11 @@ fn metering_attempt_record_name() -> NonEmptyStr {
 // the listing ran ONCE for the whole roster; each entry's read is still compared against it, so an entry
 // that vanished between listing and read takes the disagreement/absence arms exactly as when every read
 // listed on its own.
-fn attempt_metering_roster_entry_read(dir: String, listing: FilesystemListingObservation, name: String) -> RosterEntryRead {
+fn attempt_metering_roster_entry_read(store: AttemptMeteringStore, listing: FilesystemListingObservation, name: String) -> RosterEntryRead {
   if !path_segment_is_safe(raw: name) {
     RosterEntryRead { name: name, read: OptionalFileRefused { cause: join(["the roster entry name ", name, " is not one safe path segment; the read is refused before any effect"], "") } }
   } else {
+  let dir = attempt_metering_store_directory(store: store)
   let path = join([dir, "/", name], "")
   let read = Filesystem.Read(path: path)
   RosterEntryRead { name: name, read: attempt_metering_optional_of_observation(filesystem_file_observation(
@@ -1669,7 +1706,7 @@ fn metering_open_roster_for_attempt(instance: HostDashboardInstance, node_id: Ro
         FilesystemDirectoryListed(l) => {
           let names = filesystem_listing_entry_names(listing: l)
       let entry_names = filter(names, n => starts_with(s: n, prefix: attempt_metering_slots.launch_prefix as String))
-      let reads = map(entry_names, n => attempt_metering_roster_entry_read(dir: dir, listing: listing, name: n))
+      let reads = map(entry_names, n => attempt_metering_roster_entry_read(store: store, listing: listing, name: n))
       match fold(reads, init: none, f: (acc, r) =>
         match acc {
           Present { value: c } => Present { value: c }
