@@ -1,0 +1,14 @@
+module v2.test.claim.self_host.literal_compare_operand_subject_fixture
+
+// ISOLATION SUBJECT for operand-blocker #2 of the corpus subject gunbc.rust_decl_type_overlay. The
+// corpus body's third operand is the comparison `resolved_child_count > 0`, whose RIGHT operand is the
+// INTEGER LITERAL `0`. Here the comparison is a well-formed BINARY transform (`>`, three positional
+// children op/left/right) with a BINDING left operand, so it PASSES the three-positional-child shape
+// check; the ONLY thing wrong is the non-binding literal `0` on the right, which
+// target_arrow_scope_positional_operand_binding -> target_transform_positional_operand_binding_atom_otherwise
+// cannot bind as a target binding ref. This pins the refusing arm to the operand-binding path, distinct
+// from the prefix-not subject's shape/arity arm. Lives under the self-host claim tree, NOT the
+// production dag corpus (not counted by the population row).
+fn literal_compare_operand_subject(n: Int) -> Bool {
+  n > 0
+}

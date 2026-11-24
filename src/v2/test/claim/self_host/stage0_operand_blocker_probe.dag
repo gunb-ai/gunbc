@@ -1,0 +1,139 @@
+module v2.test.claim.self_host.stage0_operand_blocker_probe
+
+// TARGETED INSTRUMENT for the two OPERAND blockers that keep the corpus subject
+// gunbc.rust_decl_type_overlay (`authored_is_leaf && !closed_alias && resolved_child_count > 0`) from
+// emitting, now that the Conj/Disj connective lowering is proven correct in isolation
+// (stage0_logical_connective_probe). Each blocker is isolated in its OWN subject so the door's printed
+// refusal reason lexeme pins WHICH lowering arm refuses, rather than a reading of the source:
+//
+//   prefix_not_operand_subject   `fn(closed_alias: Bool){ !closed_alias }`   -- unary prefix, BINDING
+//       operand. Three-positional-child shape check is the only possible failure (op_not is an
+//       AlgebraPrimitive routed to target_project_binary_primitive_apply_in_arrow_scope). Pins arm =
+//       positional/arity shape check.
+//   literal_compare_operand_subject `fn(n: Int){ n > 0 }`                     -- well-formed BINARY
+//       transform (passes the shape check) whose right operand is the Int LITERAL `0`. Pins arm =
+//       operand-binding path (target_transform_positional_operand_binding_atom_otherwise).
+//
+// For each subject the claims below are a truth table over candidate refusal lexemes; exactly the claim
+// whose lexeme the tool actually raised PASSES, so the instrument -- not my reading of the arms -- names
+// the reason. Subjects live under the self-host claim tree, NOT the production dag corpus.
+
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.self_host.candidate_generation {
+  ArtifactProduced,
+  AssemblyRejected,
+  EmissionRejected,
+  InferenceRejected,
+  ProducerReceiptRejected,
+  ProvenancedRustEmissionObservation,
+  observe_provenanced_rust_emission_from_ingest
+}
+import v2.compiler.self_host.stage0_production_target { stage0_production_target_model }
+import v2.compiler.source_authority { SourceRef }
+import v2.compiler.source_authority_read {
+  source_ref_for_observed_storage_path,
+  source_root_ingest_from_source_refs
+}
+import std.algebra { Cons, Empty }
+import std.types { Bool, Int }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_reason_lexemes }
+import v2.std.qualified_name { qualified_name_from_dotted_string }
+import v2.std.text { String }
+
+data prefix_subject_path: String = "src/v2/test/claim/self_host/prefix_not_operand_subject_fixture.dag"
+data prefix_subject_name: String = "v2.test.claim.self_host.prefix_not_operand_subject_fixture"
+data literal_subject_path: String = "src/v2/test/claim/self_host/literal_compare_operand_subject_fixture.dag"
+data literal_subject_name: String = "v2.test.claim.self_host.literal_compare_operand_subject_fixture"
+
+fn refs_for(path: String) -> List<SourceRef> {
+  Cons { head: source_ref_for_observed_storage_path(path: path, source_root: DagTree), tail: Empty }
+}
+
+fn admission_for(name: String) -> Admission {
+  Admission { subject: ResolutionSubject { name: qualified_name_from_dotted_string(dotted: name) }, imports: Empty }
+}
+
+fn door_for(path: String, name: String) -> Outcome<ProvenancedRustEmissionObservation> {
+  match source_root_ingest_from_source_refs(refs: refs_for(path: path)) {
+    Accepted { value: ingest, diagnostics: d } =>
+      Accepted {
+        value: observe_provenanced_rust_emission_from_ingest(
+          ingest: ingest,
+          admission: admission_for(name: name),
+          target: stage0_production_target_model(),
+          module_path: path
+        ),
+        diagnostics: d
+      }
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+  }
+}
+
+fn reason_for(path: String, name: String) -> String {
+  match door_for(path: path, name: name) {
+    Accepted { value: EmissionRejected { diagnostics: ds }, diagnostics: _ } => diagnostics_reason_lexemes(diagnostics: ds)
+    Accepted { value: AssemblyRejected { diagnostics: ds }, diagnostics: _ } => diagnostics_reason_lexemes(diagnostics: ds)
+    Accepted { value: InferenceRejected { diagnostics: ds }, diagnostics: _ } => diagnostics_reason_lexemes(diagnostics: ds)
+    Accepted { value: ProducerReceiptRejected { diagnostics: ds }, diagnostics: _ } => diagnostics_reason_lexemes(diagnostics: ds)
+    Accepted { value: ArtifactProduced { artifact: _ }, diagnostics: _ } => "artifact-produced"
+    Rejected { diagnostics: ds } => diagnostics_reason_lexemes(diagnostics: ds)
+  }
+}
+
+fn stage_for(path: String, name: String) -> String {
+  match door_for(path: path, name: name) {
+    Accepted { value: EmissionRejected { diagnostics: _ }, diagnostics: _ } => "emission"
+    Accepted { value: AssemblyRejected { diagnostics: _ }, diagnostics: _ } => "assembly"
+    Accepted { value: InferenceRejected { diagnostics: _ }, diagnostics: _ } => "inference"
+    Accepted { value: ProducerReceiptRejected { diagnostics: _ }, diagnostics: _ } => "producer_receipt"
+    Accepted { value: ArtifactProduced { artifact: _ }, diagnostics: _ } => "artifact"
+    Rejected { diagnostics: _ } => "ingest_rejected"
+  }
+}
+
+// ---- BLOCKER #1: prefix-not (unary op_not routed through the binary shape check) ----
+test fn prefix_not_emits_holds() -> Bool {
+  reason_for(path: prefix_subject_path, name: prefix_subject_name) == "artifact-produced"
+}
+test fn prefix_not_refused_at_emission_holds() -> Bool {
+  stage_for(path: prefix_subject_path, name: prefix_subject_name) == "emission"
+}
+test fn prefix_not_reason_is_transform_shape_holds() -> Bool {
+  reason_for(path: prefix_subject_path, name: prefix_subject_name) == "target_value_expr_reason_transform_shape_invalid"
+}
+test fn prefix_not_reason_is_emit_primitive_arity_holds() -> Bool {
+  reason_for(path: prefix_subject_path, name: prefix_subject_name) == "target_value_expression_emit_primitive_apply_arity_invalid"
+}
+test fn prefix_not_reason_is_primitive_realization_arity_mismatch_holds() -> Bool {
+  reason_for(path: prefix_subject_path, name: prefix_subject_name) == "target_primitive_realization_arity_mismatch"
+}
+test fn prefix_not_reason_is_operator_catalog_miss_holds() -> Bool {
+  reason_for(path: prefix_subject_path, name: prefix_subject_name) == "target_operator_realization_catalog_miss"
+}
+test fn prefix_not_reason_is_emit_operator_shape_unsupported_holds() -> Bool {
+  reason_for(path: prefix_subject_path, name: prefix_subject_name) == "target_value_expression_emit_operator_shape_unsupported"
+}
+
+// ---- BLOCKER #2: comparison against a literal (right operand `0` not bindable) ----
+test fn literal_compare_emits_holds() -> Bool {
+  reason_for(path: literal_subject_path, name: literal_subject_name) == "artifact-produced"
+}
+test fn literal_compare_refused_at_emission_holds() -> Bool {
+  stage_for(path: literal_subject_path, name: literal_subject_name) == "emission"
+}
+test fn literal_compare_reason_is_transform_shape_holds() -> Bool {
+  reason_for(path: literal_subject_path, name: literal_subject_name) == "target_value_expr_reason_transform_shape_invalid"
+}
+test fn literal_compare_reason_is_emit_primitive_arity_holds() -> Bool {
+  reason_for(path: literal_subject_path, name: literal_subject_name) == "target_value_expression_emit_primitive_apply_arity_invalid"
+}
+test fn literal_compare_reason_is_primitive_realization_arity_mismatch_holds() -> Bool {
+  reason_for(path: literal_subject_path, name: literal_subject_name) == "target_primitive_realization_arity_mismatch"
+}
+test fn literal_compare_reason_is_operator_catalog_miss_holds() -> Bool {
+  reason_for(path: literal_subject_path, name: literal_subject_name) == "target_operator_realization_catalog_miss"
+}
+test fn literal_compare_reason_is_emit_operator_shape_unsupported_holds() -> Bool {
+  reason_for(path: literal_subject_path, name: literal_subject_name) == "target_value_expression_emit_operator_shape_unsupported"
+}
