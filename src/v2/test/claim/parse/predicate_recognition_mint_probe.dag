@@ -48,11 +48,7 @@ import v2.std.grammar {
 import v2.std.node { Symbol }
 import v2.std.diagnostic { diagnostic_eq }
 import v2.std.parse_refusal_reason { LayoutUnknownWithoutSource, NewlineBeforeDualRoleOperator }
-import v2.compiler.parse {
-  ParseExprAccepted, ParseExprRejected, ParseProvenanceState, ParseTable,
-  parse_expr, parse_prov_initial, parse_refusal_reason_diagnostic, parse_table_empty,
-  parse_module_prepared
-}
+import v2.compiler.parse { ParseExprAccepted, ParseExprRejected, ParseProvenanceState, ParseTable, parse_expr, parse_module_prepared, parse_prov_for_predicate, parse_prov_initial, parse_refusal_reason_diagnostic, parse_table_empty }
 import v2.compiler.tokenize { tokenize_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
 import v2.extdeps.languages.dag { dag_grammar_additive_newline_minus_guard }
@@ -78,12 +74,20 @@ fn probe_root() -> GrammarRoot {
   }
 }
 
-// The provenance policy production hands its guard evaluation. THE single line that differs between
-// the two legs, and it follows production rather than leading it: at main the arms above pass the
-// minting provenance, so this is parse_prov_initial(); at the green head production passes a
-// recognizing provenance and this follows.
+// The provenance policy production hands its guard evaluation. THE SINGLE LINE THAT DIFFERS BETWEEN
+// THE TWO LEGS, and it follows production rather than leading it: it is the very call the predicate
+// arms make, so the instrument and the parser cannot disagree about what policy a predicate runs
+// under. At main there is no such call and the arms hand down the minting provenance, so the red leg
+// of this file (instrument head fb8074a1, parse.dag byte-identical to base) reads
+// parse_prov_initial(); at the green head it reads what the arms read.
+//
+// THE CAVEAT, STATED PLAINLY: the counted quantity (occurrences minted inside one evaluation of the
+// production guard expression, measured as the growth of the path's own fact log) and the counting
+// rule are identical on both legs; what differs is the callee, because the production callee IS the
+// thing this node changes. That is why the negative control below -- the same call under an explicit
+// minting provenance, still reading the non-zero baseline -- has to pass on the leg that claims zero.
 fn probe_prov() -> ParseProvenanceState {
-  parse_prov_initial()
+  parse_prov_for_predicate(prov: parse_prov_initial())
 }
 
 // The negative control's provenance: the minting policy. It NEVER changes between legs; it is what

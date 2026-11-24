@@ -777,6 +777,24 @@ fn parse_prov_initial() -> ParseProvenanceState {
   parse_prov_seeded(seed: occurrence_id_allocator_initial())
 }
 
+// THE POLICY A PREDICATE ARM RUNS ITS OWN SUBTREE UNDER, in one readable place. It is a fact about
+// this parser, not a knob a caller turns: a caller reaches a predicate's subtree only through an arm,
+// and every arm reads it here.
+fn parse_predicate_mint_policy() -> MintPolicy {
+  Recognize
+}
+
+// THE STATE A PREDICATE ARM HANDS ITS OWN SUBTREE. The three arms that discard what their element
+// built call this, and so does the instrument that measures them -- both read the policy from
+// parse_predicate_mint_policy, which is what keeps a measurement of the guard from drifting away from
+// the guard.
+fn parse_prov_for_predicate(prov: ParseProvenanceState) -> ParseProvenanceState {
+  match parse_predicate_mint_policy() {
+    Mint => prov
+    Recognize => parse_prov_recognizing(prov: prov)
+  }
+}
+
 // THE SAME PATH, RECOGNIZING. `alloc` and `facts` are carried over UNCHANGED, which is the whole
 // point: a predicate that recognizes does not restart the path's ledger, it leaves it exactly where
 // it found it -- so a recognizing subtree cannot shift the id of a node that survives, and cannot
@@ -4422,7 +4440,7 @@ fn parse_expr_refuse_on_match(
   // prov: _` and raises a refusal, and the arm above matches the same pair and reports the
   // attempt failed. Nothing it mints can ever be read, so it recognizes. This is the strongest
   // of the three sites: here a match IS a refusal, so the element is always the thing dropped.
-  match parse_expr_with_first(expr: element, tokens: tokens, all_tokens: all_tokens, root: root, table: table, prov: parse_prov_recognizing(prov: prov)) {
+  match parse_expr_with_first(expr: element, tokens: tokens, all_tokens: all_tokens, root: root, table: table, prov: parse_prov_for_predicate(prov: prov)) {
     ParseExprRejected { diagnostics: diags, table: table1 } => ParseExprRejected { diagnostics: diags, table: table1 }
     ParseExprAccepted { remaining: _, captured: _, diagnostics: _, prov: _, table: table1 } =>
       ParseExprRejected {
@@ -4480,7 +4498,7 @@ fn parse_expr_not_predicate_attempt(
   // neither its capture nor its provenance; the arm below keeps neither either, and the
   // not-predicate's own accept path hands the caller back the provenance it was GIVEN. The
   // attempt's subtree is answer-only, so it recognizes.
-  match parse_expr_with_first(expr: element, tokens: tokens, all_tokens: all_tokens, root: root, table: table, prov: parse_prov_recognizing(prov: prov)) {
+  match parse_expr_with_first(expr: element, tokens: tokens, all_tokens: all_tokens, root: root, table: table, prov: parse_prov_for_predicate(prov: prov)) {
     ParseExprAccepted { remaining: _, captured: _, diagnostics: _, prov: _, table: table1 } =>
       ParseExprRejected { diagnostics: [], table: parse_table_with_furthest(table: table1, furthest: table.furthest) }
     ParseExprRejected { diagnostics: _, table: table1 } =>
@@ -4777,7 +4795,7 @@ fn parse_expr_infix_continue(
   // `captured: _, prov: _`, and BOTH arms here continue from the provenance the continuation
   // was handed. A terminal the guard minted was minted, recorded and dropped, and the row
   // below mints that same terminal again. It recognizes.
-  match parse_expr_with_first(expr: table_expr.continuation_guard, tokens: tokens, all_tokens: all_tokens, root: root, table: table, prov: parse_prov_recognizing(prov: prov)) {
+  match parse_expr_with_first(expr: table_expr.continuation_guard, tokens: tokens, all_tokens: all_tokens, root: root, table: table, prov: parse_prov_for_predicate(prov: prov)) {
     ParseExprRejected { diagnostics: _, table: guarded } =>
       ParseExprAccepted { remaining: tokens, captured: lhs, diagnostics: diagnostics, prov: prov, table: guarded }
     ParseExprAccepted { remaining: _, captured: _, diagnostics: _, prov: _, table: guarded } =>
