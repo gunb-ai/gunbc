@@ -808,9 +808,9 @@ fn edge(child: String, parent: String) -> RoadmapEdge {
 // gunbc.roadmap.roadmap_centering; the graph has no exclusion-edge vocabulary to carry it.
 fn declared_roadmap_nodes() -> List<RoadmapNode> {
   concat([
-    // ---- gunbc.plans.fabric_market (operator, 2026-11-23, gunbc.design_ruling::execution_is_one_first_principles_market_and_schedulers_are_venues,
-    // market_vocabulary_is_fix_and_matching_is_std_decision, live_router_changes_of_2026_11_23_are_requirements_evidence):
-    // layers are edge depths within the intention (gunbc.roadmap.roadmap_intention_binding); fabric-market-convergence is the terminal.
+    // ---- #gunbc.plans.fabric_market::fabric_market_plan (operator, 2026-11-23, #gunbc.design_ruling::execution_is_one_first_principles_market_and_schedulers_are_venues,
+    // #gunbc.design_ruling::market_vocabulary_is_fix_and_matching_is_std_decision, #gunbc.design_ruling::live_router_changes_of_2026_11_23_are_requirements_evidence):
+    // layers are edge depths within the intention (#gunbc.roadmap.roadmap_intention_binding::fabric_market_intention); fabric-market-convergence is the terminal.
     roadmap_node(
       identity: "rn_AD2W7VKE1V833VP8MCYTXNX1X5",
       id: "market-fix-upstream-model",
@@ -7432,7 +7432,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
 // centering plans, not a dependency, and the graph has no exclusion-edge vocabulary.
 fn declared_roadmap_edges() -> List<RoadmapEdge> {
   concat([
-    // ---- gunbc.plans.fabric_market (2026-11-23), including the existing consumers of its common contracts:
+    // ---- #gunbc.plans.fabric_market::fabric_market_plan (2026-11-23), including the existing consumers of its common contracts:
     edge(child: "market-fix-product-mapping", parent: "market-fix-upstream-model"),
     edge(child: "execution-attempt-one-record", parent: "lease-fence-one-identity"),
     edge(child: "fabric-admission-and-delegation", parent: "lease-fence-one-identity"),

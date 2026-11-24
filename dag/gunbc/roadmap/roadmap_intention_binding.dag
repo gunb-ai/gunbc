@@ -46,7 +46,7 @@ data read_set_convergence_intention: String = "gunbc.plans.read_set_convergence"
 data claim_execution_consolidation_intention: String = "gunbc.plans.claim_execution_consolidation"
 
 data roadmap_intention_bindings: List<IntentionBinding> = [
-  // gunbc.plans.fabric_market: layer is the edge depth within the intention.
+  // #gunbc.plans.fabric_market::fabric_market_plan: layer is the edge depth within the intention.
   serves(node: "market-fix-upstream-model", module_path: fabric_market_intention, plan: "fabric_market_plan", layer: 0),
   serves(node: "execution-uncertainty-one-carrier", module_path: fabric_market_intention, plan: "fabric_market_plan", layer: 0),
   serves(node: "lease-fence-one-identity", module_path: fabric_market_intention, plan: "fabric_market_plan", layer: 0),
