@@ -11,6 +11,9 @@ import v2.workflow.floor_preparation_split {
   floor_preparation_capture_provenance,
   floor_preparation_population_is_wellformed,
   floor_preparation_population_file_agrees,
+  floor_preparation_report_sentinel,
+  floor_preparation_report_is_wellformed,
+  floor_preparation_classify_report_line,
   floor_preparation_population_lines,
   floor_preparation_population_text,
   floor_preparation_census_is_honest,
@@ -869,4 +872,43 @@ fn roadmap_names_the_floor_fold() -> Bool {
 
 test fn floor_preparation_the_roadmap_names_the_floor_fold() -> Bool {
   roadmap_names_the_floor_fold()
+}
+
+// ----------------------------------------------------------------------------------------------
+// 22. A REFUSAL CANNOT READ AS A REPORT. `gunbc run --function` has no success channel, so the
+// runner's report leg reads its verdict off the printed line -- the platform gap is taken upward,
+// not patched here. What lives HERE is the un-mixing: the report, its refusal, and its
+// empty-population line all carry the model's sentinel, and only the closed-grammar match with the
+// sentinel and neither marker classifies REPORT_READ. A real refusal text must classify
+// REFUSAL_NOT_A_REPORT, an empty-population line must classify POPULATION_EMPTY_NOT_A_REPORT, and
+// junk must classify UNRECOGNISED_OUTPUT. The three verdicts can never collapse into one PASS.
+// ----------------------------------------------------------------------------------------------
+
+fn refusal_is_not_a_report() -> Bool {
+  floor_preparation_classify_report_line(
+    line: concat(concat("floor-preparation-split REFUSED: ", floor_preparation_report_sentinel),
+      " preparation_ms=0 total_ms=0 pass=0")) == "REFUSAL_NOT_A_REPORT"
+}
+
+fn empty_population_is_not_a_report() -> Bool {
+  floor_preparation_classify_report_line(
+    line: concat(concat("floor-preparation-split population=EMPTY protocol=", floor_preparation_report_sentinel),
+      " instrument=none")) == "POPULATION_EMPTY_NOT_A_REPORT"
+}
+
+fn junk_is_not_a_report() -> Bool {
+  floor_preparation_classify_report_line(line: "floor-preparation-split hello world") == "UNRECOGNISED_OUTPUT" &&
+  floor_preparation_classify_report_line(line: "everything is fine") == "UNRECOGNISED_OUTPUT"
+}
+
+fn report_sentinel_is_model_rendered() -> Bool {
+  floor_preparation_report_sentinel == "protocol=floor-preparation-split-v1"
+}
+
+test fn floor_preparation_a_refusal_cannot_read_as_a_report() -> Bool {
+  refusal_is_not_a_report()
+    && empty_population_is_not_a_report()
+    && junk_is_not_a_report()
+    && report_sentinel_is_model_rendered()
+    && text_contains(runner_module_text(), "expected_rc=1")
 }

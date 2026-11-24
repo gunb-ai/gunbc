@@ -29,7 +29,7 @@ module v2.workflow.floor_preparation_capture_runner
 // that used to fold at module grain in its own vocabulary is gone, and the fold is one function.
 
 import std.types { Bool, Int, List, Present, Absent, String }
-import std.algebra { length, list_push, filter }
+import std.algebra { length, list_push }
 import std.text { join, split }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -39,7 +39,10 @@ import v2.workflow.floor_preparation_split {
   floor_preparation_ask,
   floor_preparation_population_file_agrees,
   floor_preparation_text_starts_with,
-  floor_preparation_population_lines
+  floor_preparation_population_lines,
+  floor_preparation_report_sentinel,
+  floor_preparation_report_prefix,
+  floor_preparation_classify_report_line
 }
 
 // ----------------------------------------------------------------------------------------------
@@ -139,7 +142,8 @@ data floor_preparation_claim_roster: List<String> = [
   "floor_preparation_the_committed_capture_is_a_cache_of_the_retained_log",
   "floor_preparation_the_runner_process_is_modelled",
   "floor_preparation_the_population_is_the_models_rendering",
-  "floor_preparation_the_roadmap_names_the_floor_fold"
+  "floor_preparation_the_roadmap_names_the_floor_fold",
+  "floor_preparation_a_refusal_cannot_read_as_a_report"
 ]
 
 // The runner's own steps, as data. The witness binds these names to code paths in this module by
@@ -454,11 +458,21 @@ fn floor_preparation_capture_run() -> String {
     let splice_receipt = floor_preparation_receipt("splice-capture-rows",
       concat("blocks=5 target=", floor_preparation_authority_path))
     let report_lines = fold(floor_preparation_lines(text: report.stdout), init: [], f: (acc, line) =>
-      if floor_preparation_starts_with(text: line, prefix: "floor-preparation-split") {
+      if floor_preparation_starts_with(text: line, prefix: floor_preparation_report_prefix) {
         list_push(xs: acc, item: line)
       } else { acc })
-    let report_ok = length(xs: report_lines) > 0
-      && !floor_preparation_contains(haystack: join(report_lines, "\n"), needle: "population=EMPTY")
+    let classifications = fold(report_lines, init: [], f: (acc, line) =>
+      list_push(xs: acc, item: floor_preparation_classify_report_line(line: line)))
+    let classification_text = join(classifications, ",")
+    let report_read = floor_preparation_has(xs: classifications, x: "REPORT_READ")
+      && floor_preparation_contains(haystack: join(report_lines, "\n"), needle: floor_preparation_report_sentinel)
+    // The leg's real exit status, printed on its own receipt line and asserted against the
+    // expected value for THIS path: the report prints its line and exits nonzero (the host has no
+    // success channel for a returned String), so rc==1 IS the expected status and rc==0 or 124 is
+    // a defect, not a pass.
+    let report_rc_receipt = floor_preparation_receipt("report-print",
+      concat(concat("rc=", to_string(report.rc)), concat(" expected_rc=1 classifications=", classification_text)))
+    let report_ok = report_read && report.rc == 1
       && graded.rc == 0
       && length(xs: kept_graded) > 0
     let receipts = concat(concat(concat(supplies, [verify_receipt]),
@@ -479,8 +493,7 @@ fn floor_preparation_capture_run() -> String {
          binary_sha: floor_preparation_pinned_claim_batch_sha, rc: graded.rc, kept_count: length(xs: kept_graded)),
        floor_preparation_receipt("claim-gate",
          concat("missing=", join(missing, ","))),
-       floor_preparation_receipt("report-print",
-         concat("rc=", to_string(report.rc)))])
+       report_rc_receipt])
     if !report_ok || length(xs: missing) > 0 || !population_ok {
       concat(join(receipts, "\n"), "\nRUNNER_REFUSED: gates not green -- see receipts above")
     } else {

@@ -1097,16 +1097,57 @@ type FloorPreparationInForce {
 // THE ENTRY POINT
 // ----------------------------------------------------------------------------------------------
 
+// THE REPORT PROTOCOL. `gunbc run --function` has no channel for a successful String result (the
+// host maps a verdict to an exit code and only ProcessExit carries one -- an earliest_unjustified_
+// boundary taken upward as a platform finding, not fixed here). The runner's report leg therefore
+// READS its success off the printed line, and that would be unverifiable hope unless a real refusal
+// could not possibly read as a report. It cannot: every line the report emits -- report, refusal,
+// or empty-population -- carries the model-rendered sentinel below, and a line is classified
+// REPORT_READ only if it matches the closed report grammar, carries the sentinel verbatim, and
+// carries neither the refusal marker nor the empty-population marker. "The report says X" and "I
+// could not read a report" are different verdicts with different text, never the same PASS.
+data floor_preparation_report_sentinel: String = "protocol=floor-preparation-split-v1"
+
+data floor_preparation_report_prefix: String = "floor-preparation-split "
+
+data floor_preparation_report_refusal_marker: String = "REFUSED:"
+
+data floor_preparation_report_empty_marker: String = "population=EMPTY"
+
+fn floor_preparation_report_is_wellformed(line: String) -> Bool {
+  floor_preparation_starts_with(text: line, prefix: floor_preparation_report_prefix)
+    && floor_preparation_contains(haystack: line, needle: floor_preparation_report_sentinel)
+    && floor_preparation_contains(haystack: line, needle: " preparation_ms=")
+    && floor_preparation_contains(haystack: line, needle: " total_ms=")
+    && floor_preparation_contains(haystack: line, needle: " pass=")
+    && !floor_preparation_contains(haystack: line, needle: floor_preparation_report_refusal_marker)
+    && !floor_preparation_contains(haystack: line, needle: floor_preparation_report_empty_marker)
+}
+
+fn floor_preparation_classify_report_line(line: String) -> String {
+  if !floor_preparation_starts_with(text: line, prefix: floor_preparation_report_prefix) {
+    "UNRECOGNISED_OUTPUT"
+  } else if floor_preparation_contains(haystack: line, needle: floor_preparation_report_refusal_marker) {
+    "REFUSAL_NOT_A_REPORT"
+  } else if floor_preparation_contains(haystack: line, needle: floor_preparation_report_empty_marker) {
+    "POPULATION_EMPTY_NOT_A_REPORT"
+  } else if floor_preparation_report_is_wellformed(line: line) {
+    "REPORT_READ"
+  } else {
+    "UNRECOGNISED_OUTPUT"
+  }
+}
+
 fn floor_preparation_split_report() -> String {
   let capture = floor_preparation_capture()
   if length(xs: capture) == 0 {
-    join(["floor-preparation-split population=EMPTY instrument=", floor_preparation_capture_provenance(), " -- nothing was measured and no dominance is claimed"], "")
+    join([concat(floor_preparation_report_prefix, "population=EMPTY protocol="), floor_preparation_report_sentinel, " instrument=", floor_preparation_capture_provenance(), " -- nothing was measured and no dominance is claimed"], "")
   } else {
     match floor_preparation_split(capture) {
       Refused { text: t, cause: c } =>
         join(
           [
-            "floor-preparation-split REFUSED: ",
+            concat(floor_preparation_report_prefix, "REFUSED: ", floor_preparation_report_sentinel, " " ),
             c,
             " || first_token=",
             floor_preparation_head(t),
@@ -1183,7 +1224,7 @@ fn floor_preparation_split_report() -> String {
 fn floor_preparation_split_line(preparation_ms: Int, claim_ms: Int, preparation_lines: Int, claim_lines: Int, uncosted_lines: Int, untagged_lines: Int, verdict_pass: Int, verdict_fail: Int, total_ms: Int) -> String {
   join(
     [
-      "floor-preparation-split preparation_ms=",
+      concat(floor_preparation_report_prefix, "preparation_ms="),
       to_string(preparation_ms),
       " claim_ms=",
       to_string(claim_ms),
