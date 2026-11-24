@@ -619,10 +619,15 @@ fn stage_statement() -> Node {
 }
 
 // The source closure: the committed tree, qualified by the repository's object format.
-fn source_closure_statements() -> List<Node> {
+fn source_closure_statements() -> List<Node> { source_closure_statements_at(repo: var(n: "ROOT")) }
+
+// The source closure of the checkout at `repo`. The producer and every in-job consumer read their own checkout
+// ($ROOT); the lab consumer reads the source tree placed beside the pack it is admitting, which is not its
+// working directory.
+fn source_closure_statements_at(repo: Node) -> List<Node> {
   [
-    assign_sub(name: "OBJECT_FORMAT", body: cmd(ws: [lit(t: "git"), lit(t: "-C"), var(n: "ROOT"), lit(t: "rev-parse"), lit(t: "--show-object-format")])),
-    assign_sub(name: "SOURCE_TREE", body: cmd(ws: [lit(t: "git"), lit(t: "-C"), var(n: "ROOT"), lit(t: "rev-parse"), lit(t: "HEAD^\{tree}")])),
+    assign_sub(name: "OBJECT_FORMAT", body: cmd(ws: [lit(t: "git"), lit(t: "-C"), repo, lit(t: "rev-parse"), lit(t: "--show-object-format")])),
+    assign_sub(name: "SOURCE_TREE", body: cmd(ws: [lit(t: "git"), lit(t: "-C"), repo, lit(t: "rev-parse"), lit(t: "HEAD^\{tree}")])),
     read_nonempty(variable: "OBJECT_FORMAT"),
     read_nonempty(variable: "SOURCE_TREE"),
     bash_build_assign(name: "SOURCE_CLOSURE", value: words(ws: [
@@ -2242,24 +2247,14 @@ fn release_bins_canonical_consumer_statements(product: ReleaseBinsProduct) -> Li
       cmd(ws: [lit(t: "rm"), lit(t: "-rf"), temp(file: release_bins_canonical_dir)]),
       cmd(ws: [lit(t: "mkdir"), lit(t: "-p"), temp(file: release_bins_canonical_dir)]),
       cmd(ws: [lit(t: "tar"), lit(t: "-xf"), var(n: "FABRIC_BLOB_OUT"), lit(t: "-C"), temp(file: release_bins_canonical_dir), lit(t: "--no-same-owner")]),
-      or_refuse(
-        check: cmd(ws: [lit(t: "grep"), lit(t: "-qxF"), lit(t: join(["kind=", product.kind], "")), canonical(file: release_bins_preimage_name)]),
-        r: ConsumerProductKindMismatch { kind: product.kind },
-      ),
     ],
-    source_closure_statements(),
-    [
-      or_refuse(
-        check: cmd(ws: [lit(t: "grep"), lit(t: "-qxF"), words(ws: [lit(t: "source_closure="), var(n: "SOURCE_CLOSURE")]), canonical(file: release_bins_preimage_name)]),
-        r: ConsumerSourceTreeMismatch,
-      ),
-    ],
-    release_bins_verify_pack(
-      site: ConsumerSite,
+    release_bins_pack_admission(
+      product: product,
+      preimage: canonical(file: release_bins_preimage_name),
       archive: canonical(file: ci_release_bins_archive_name),
       manifest: canonical(file: release_bins_manifest_name),
-      dir: temp(file: "canonical-check"),
-      product: product,
+      check_dir: temp(file: "canonical-check"),
+      closure_repo: var(n: "ROOT"),
     ),
     [
       cmd(ws: concat(
@@ -2269,6 +2264,77 @@ fn release_bins_canonical_consumer_statements(product: ReleaseBinsProduct) -> Li
       cmd(ws: [lit(t: "echo"), lit(t: join(["release-bins: canonical ", product.kind, " pack verified and promoted"], ""))]),
     ],
   ])
+}
+
+// THE PACK ADMISSION A CROSS-HOST CONSUMER RUNS, once, for the canonical consumer and the lab consumer alike. A
+// consumer that did not run the producing job cannot recompute its request key (the key covers that job's
+// toolchain and environment), so it admits the pack by what the pack says it is: the preimage names this
+// product's kind and the source closure of the tree the consumer holds, and every member matches the manifest
+// (release_bins_verify_pack, which also promotes the members into $ROOT/target/release). The chain is complete
+// without re-running the producer: the member digests bind the bytes to the manifest, and the manifest, preimage
+// and archive arrive as one publication of the producing run.
+fn release_bins_pack_admission(product: ReleaseBinsProduct, preimage: Node, archive: Node, manifest: Node, check_dir: Node, closure_repo: Node) -> List<Node> {
+  seq(parts: [
+    [
+      or_refuse(
+        check: cmd(ws: [lit(t: "grep"), lit(t: "-qxF"), lit(t: join(["kind=", product.kind], "")), preimage]),
+        r: ConsumerProductKindMismatch { kind: product.kind },
+      ),
+    ],
+    source_closure_statements_at(repo: closure_repo),
+    [
+      or_refuse(
+        check: cmd(ws: [lit(t: "grep"), lit(t: "-qxF"), words(ws: [lit(t: "source_closure="), var(n: "SOURCE_CLOSURE")]), preimage]),
+        r: ConsumerSourceTreeMismatch,
+      ),
+    ],
+    release_bins_verify_pack(site: ConsumerSite, archive: archive, manifest: manifest, dir: check_dir, product: product),
+  ])
+}
+
+// THE LAB CONSUMER: a pack downloaded as the producing run's artifact (its three entry files, flat, in pack_dir)
+// is admitted against the SOURCE TREE PLACED BESIDE IT (source_dir, the tree the delivery will serve), and its
+// members are promoted into pack_dir/target/release (release_bins_promoted_member_path). It runs on the serving
+// host, not in a job, so it names its own scratch directory (RUNNER_TEMP is the verify scratch under pack_dir) and
+// its own promotion root (ROOT is pack_dir); it never reads the host's checkout. Unlike the canonical consumer it
+// does not run claim_executor --verify-build-artifacts: that re-checks the producer's build of the very members
+// whose bytes the manifest already binds, and the lab has no checkout of the producer's claim_executor to run.
+fn release_bins_lab_consumer_statements(product: ReleaseBinsProduct, pack_dir: Node, source_dir: Node) -> List<Node> {
+  seq(parts: [
+    [
+      bash_build_assign(name: "ROOT", value: pack_dir),
+      bash_build_assign(name: "RUNNER_TEMP", value: words(ws: [var(n: "ROOT"), lit(t: "/verify")])),
+      cmd(ws: [lit(t: "rm"), lit(t: "-rf"), var(n: "RUNNER_TEMP")]),
+      cmd(ws: [lit(t: "mkdir"), lit(t: "-p"), var(n: "RUNNER_TEMP")]),
+    ],
+    map(entry_files(), f => or_refuse(check: test_words(ws: [lit(t: "-f"), rooted(file: f)]), r: ConsumerFileMissing { file: f })),
+    release_bins_pack_admission(
+      product: product,
+      preimage: rooted(file: release_bins_preimage_name),
+      archive: rooted(file: ci_release_bins_archive_name),
+      manifest: rooted(file: release_bins_manifest_name),
+      check_dir: temp(file: "release-bins-check"),
+      closure_repo: source_dir,
+    ),
+    [
+      cmd(ws: [lit(t: "rm"), lit(t: "-rf"), var(n: "RUNNER_TEMP")]),
+      cmd(ws: [lit(t: "echo"), lit(t: join(["release-bins: lab ", product.kind, " pack verified and promoted"], ""))]),
+    ],
+  ])
+}
+
+// WHERE A VERIFIED MEMBER LANDS: release_bins_promote_all copies every member into <root>/target/release. The lab
+// delivery places the serve member from here, so the file it installs is the file the admission verified.
+fn release_bins_promoted_member_path(root: String, member: String) -> String {
+  join([root, "/", cargo_default_release_dir_rel, "/", member], "")
+}
+
+fn release_bins_lab_consumer_script_for(product: ReleaseBinsProduct, pack_dir: String, source_dir: String) -> String {
+  release_bins_script_text(outcome: release_bins_emitted(statements: release_bins_lab_consumer_statements(product: product, pack_dir: lit(t: pack_dir), source_dir: lit(t: source_dir))))
+}
+
+fn release_bins_lab_consumer_script(pack_dir: String, source_dir: String) -> String {
+  release_bins_lab_consumer_script_for(product: fleet_release_bins_product(), pack_dir: pack_dir, source_dir: source_dir)
 }
 
 fn release_bins_canonical_address_script_for(product: ReleaseBinsProduct) -> String { release_bins_script_text(outcome: release_bins_emitted(statements: release_bins_canonical_address_statements(product: product))) }

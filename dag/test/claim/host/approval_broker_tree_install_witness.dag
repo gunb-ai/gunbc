@@ -27,6 +27,7 @@ import gunbc.host.host_effect_realize {
   TreeObservationFailed,
 }
 import gunbc.live_deploy.release_locus { RevisionNotInstalled, RevisionBoundAtEmission, approval_broker_release_locus_executables, release_locus_record, release_locus_tree_subdirs }
+import gunbc.ci.ci_release_bins { gunbc_release_bin_name, approval_device_crypto_serve_release_bin_name }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.algebra { list_map }
 import gunbc.host.host_effect_realize {
@@ -50,8 +51,27 @@ import gunbc.host.host_effect_realize {
 import extdeps.tools.gnu_coreutils { cp_copy_as_link_argv }
 import extdeps.tools.chown { chown_no_dereference_argv, ChownOwnerNames }
 import extdeps.posix.identity { PosixOwnerNames }
-import extdeps.access.posix { FileMode, PermissionBits, file_mode_of_octal_text }
+import extdeps.access.posix { FileMode, PermissionBits, file_mode_of_octal_text, file_mode_octal }
 import extdeps.tools.findutils { find_tree_entry_metadata_command }
+import extdeps.tools.findutils { find_direct_children_metadata_command, find_direct_children_count_command, find_tree_entry_count_command, find_self_metadata_command, find_self_metadata_printf, find_tree_entry_metadata_printf }
+import gunbc.host.host_effect_realize {
+  tree_locus_children_expectation_owned,
+  tree_walk_root_expectation_owned,
+  tree_spine_expectation_owned,
+  tree_walk_parents,
+  tree_self_metadata_entry_of_stdout,
+  tree_metadata_entries_of_stdout_checked,
+  tree_metadata_line_is_starting_point,
+  observe_direct_children_one,
+  tree_locus_agreement,
+  tree_locus_children_partition,
+  TreeLocusChildrenPartition,
+  tree_installed_expectation_owned,
+  tree_realm_readback_owner,
+  approval_broker_sibling_writer_footprint,
+  microvm_controller_sibling_writer_footprint,
+  TreeEntryKind,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -118,6 +138,7 @@ test fn the_real_route_refuses_at_source_observe_for_a_missing_source_root() -> 
     locus: release_locus_record(base_root: "/nonexistent-w6-base", revision: RevisionBoundAtEmission { revision: "0123456789abcdef0123456789abcdef01234567" }),
     source_root: "/nonexistent-w6-source",
     executables: approval_broker_release_locus_executables,
+    permitted_extras: approval_broker_sibling_writer_footprint(),
     transport: one_transport_route(transport: LocalShell),
   ), at: TreeStepSourceObserve)
 }
@@ -153,6 +174,7 @@ test fn an_unbound_revision_refuses_before_any_observation() -> Bool {
     locus: release_locus_record(base_root: "/nonexistent-w6-base", revision: RevisionNotInstalled),
     source_root: "/nonexistent-w6-source",
     executables: approval_broker_release_locus_executables,
+    permitted_extras: approval_broker_sibling_writer_footprint(),
     transport: one_transport_route(transport: LocalShell),
   ), at: TreeStepRevision)
 }
@@ -256,7 +278,7 @@ data deploy_owner: NonEmptyStr = "gunbc"
 data metadata_stdout: String = "gunbc/x.dag|f|644|gunbc|gunbc||123\nlink|l|777|gunbc|gunbc|/usr/bin/python3|16\ndir|d|755|gunbc|gunbc||4096\n|d|700|root|root||4096\n"
 
 fn metadata_entries() -> List<TreeMetadataEntry> {
-  tree_metadata_entries_of_stdout(stdout: metadata_stdout, sub: "dag")
+  tree_metadata_entries_of_stdout(stdout: metadata_stdout, sub: "dag", starting_point_expected: true)
 }
 
 // Fixture-side mode spelling, through the SAME posix authority production uses; the all-false
@@ -306,7 +328,7 @@ test fn the_metadata_grammar_refuses_what_it_cannot_name() -> Bool {
 }
 
 fn tree_metadata_parse_refused(line: String) -> Bool {
-  match tree_metadata_entry_of_line(line: line, sub: "/x") {
+  match tree_metadata_entry_of_line(line: line, sub: "/x", starting_point_expected: false) {
     Absent => true
     Present { value: _entry } => false
   }
@@ -499,4 +521,1036 @@ test fn two_installs_of_one_tree_reproduce_one_receipt_digest() -> Bool {
     && substring(s: installed_second, start: 0, end: 2) == "bb"
     && substring(s: metadata_first, start: 0, end: 3) == "bin"
     && substring(s: metadata_second, start: 0, end: 3) == "bin"
+}
+
+// ===========================================================================
+// LOCUS-ROOT READBACK EXTENSION: the gaps closed by the extended observation
+// ===========================================================================
+// Claims:
+//   1. A same-byte executable at the wrong mode (0644 instead of 0755) is caught
+//      as a disagreement in the merged expected/observed comparison, even though
+//      the content hash agrees (the gap was: executables were only hash-compared).
+//   2. A wrong-mode subtree root (e.g. "dag" at 0777 instead of 0755) is caught,
+//      which today's readback does not observe (the walk starts inside dag/, not at it).
+//   3. Extras at the locus root are tolerated. Decision: the tree install's readback
+//      establishes only what the tree install writes. Files placed by other deploy
+//      legs (firecracker, images/, .gunbc-vmm-receipt, device-crypto-deployed-digest.env)
+//      run AFTER the tree install and persist across reruns. Refusing them would brick
+//      a working redeploy. The containment check verifies expected entries exist with
+//      correct metadata while tolerating non-tree-install entries.
+
+fn gnbc() -> PosixOwnerNames {
+  PosixOwnerNames { user: "gunbc" as NonEmptyStr, group: "gunbc" as NonEmptyStr }
+}
+
+fn is_dir(kind: TreeEntryKind) -> Bool {
+  match kind { TreeDirectory {} => true _ => false }
+}
+
+fn is_regular(kind: TreeEntryKind) -> Bool {
+  match kind { TreeRegular {} => true _ => false }
+}
+
+// THE EXPECTATION BUILDS executable entries at install_executable_shared_mode (0755)
+// and directory entries at install_d_shared_mode for the subtree roots.
+test fn locus_children_expectation_names_executables_at_exe_mode() -> Bool {
+  let subs = ["dag", "src/v2"]
+  let execs = ["gunbc", "gunbc-helper"]
+  match tree_locus_children_expectation_owned(subdirs: subs, executables: execs, owner: gnbc()) {
+    Absent => false
+    Present { value: entries } =>
+      count(entries) == 4
+      && any(entries, e => e.path == "dag" && is_dir(e.kind))
+      && any(entries, e => e.path == "src" && is_dir(e.kind))
+      && any(entries, e => e.path == "gunbc" && is_regular(e.kind) && file_mode_octal(mode: e.mode) == "0755")
+      && any(entries, e => e.path == "gunbc-helper" && is_regular(e.kind) && file_mode_octal(mode: e.mode) == "0755")
+  }
+}
+
+
+// ===========================================================================
+// LOCUS-ROOT READBACK: the per-locus partition, exercised through the one
+// production agreement authority (tree_locus_agreement), never a copy.
+// ===========================================================================
+// The four METADATA-NEGATIVE controls (executable mode, executable owner, subtree-root mode, spine mode)
+// each (1) build their expectation from the PRODUCTION builders, (2) start from a COMPLETE fixture that
+// AGREES and assert that agreement FIRST, then (3) perturb exactly ONE property and require the
+// disagreement to name the intended PATH (the metadata line is `path|kind|mode|user|group`, so the path
+// pins the row). The partition/roster controls do NOT each carry their own baseline-first step: they assert
+// a named refusal (or a required-entry absence) directly, and their positive baseline is the separate
+// broker_complete_fixture_agrees / microvm_footprint_tolerates_its_members control that establishes the
+// un-perturbed agreement those refusals are a deviation from.
+// The broker roster is the production approval_broker_release_locus_executables
+// (gunbc + approval_device_crypto_serve); approval_device_crypto_serve is installer-owned
+// and REQUIRED, not an extra. The only broker sibling-writer exception is the device-crypto
+// env file; the helper locus gets only the receipt.
+
+fn root_owner() -> PosixOwnerNames {
+  PosixOwnerNames { user: "root" as NonEmptyStr, group: "root" as NonEmptyStr }
+}
+
+fn rentry(path: String, kind: TreeEntryKind, mode: String, owner: PosixOwnerNames) -> TreeMetadataEntry {
+  TreeMetadataEntry { path: path, kind: kind, mode: fm(mode), owner: owner }
+}
+
+// The broker spine + locus these controls reason about.
+data ctl_spine: List<String> = ["/opt/gunbc", "/opt/gunbc/releases"]
+data ctl_locus: String = "/opt/gunbc/releases/abc123"
+data broker_execs: List<String> = approval_broker_release_locus_executables
+
+// THE COMPLETE, AGREEING BROKER LOCUS-CHILDREN OBSERVATION: subtree roots dag + src, the src/v2 walk
+// root, both production executables at 0755, the receipt, and the sibling-writer env file.
+fn broker_complete_children(owner: PosixOwnerNames) -> List<TreeMetadataEntry> {
+  [
+    rentry("dag", TreeDirectory, "755", owner),
+    rentry("src", TreeDirectory, "755", owner),
+    rentry("src/v2", TreeDirectory, "755", owner),
+    rentry("gunbc", TreeRegular, "755", owner),
+    rentry("approval_device_crypto_serve", TreeRegular, "755", owner),
+    rentry(".gunbc-tree-receipt", TreeRegular, "644", owner),
+    rentry("device-crypto-deployed-digest.env", TreeRegular, "644", owner),
+  ]
+}
+
+fn broker_complete_spine(owner: PosixOwnerNames) -> List<TreeMetadataEntry> {
+  [
+    rentry("/opt/gunbc", TreeDirectory, "755", owner),
+    rentry("/opt/gunbc/releases", TreeDirectory, "755", owner),
+    rentry("/opt/gunbc/releases/abc123", TreeDirectory, "755", owner),
+  ]
+}
+
+// Run the one authority over a broker scenario; returns the agreement reason (Absent == agreed).
+fn broker_agree(
+  children_observed: List<TreeMetadataEntry>,
+  spine_observed: List<TreeMetadataEntry>,
+  owner: PosixOwnerNames,
+  permitted: List<String>,
+) -> Optional<String> {
+  match tree_locus_children_expectation_owned(subdirs: release_locus_tree_subdirs, executables: broker_execs, owner: owner) {
+    Absent => Present { value: "expectation-unbuildable" }
+    Present { value: locus_expected } =>
+      match tree_walk_root_expectation_owned(subdirs: release_locus_tree_subdirs, owner: owner) {
+        Absent => Present { value: "walkroot-unbuildable" }
+        Present { value: wr_expected } =>
+          match tree_spine_expectation_owned(spine: ctl_spine, locus: ctl_locus, owner: owner) {
+            Absent => Present { value: "spine-unbuildable" }
+            Present { value: spine_expected } =>
+              tree_locus_agreement(
+                source_expected: [], source_observed: [],
+                locus_children_expected: locus_expected,
+                locus_children_observed: children_observed,
+                walk_root_expected: wr_expected,
+                spine_expected: spine_expected,
+                spine_observed: spine_observed,
+                permitted_extras: permitted,
+              )
+          }
+      }
+  }
+}
+
+// CONTROL: the complete broker locus AGREES (no false refusal of the receipt or the env file), so
+// every red control below is attributable to the single perturbation it makes.
+test fn broker_complete_fixture_agrees() -> Bool {
+  match broker_agree(
+    children_observed: broker_complete_children(owner: gnbc()),
+    spine_observed: broker_complete_spine(owner: gnbc()),
+    owner: gnbc(),
+    permitted: approval_broker_sibling_writer_footprint(),
+  ) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+// RED CONTROL: same-byte executable at the WRONG MODE (gunbc 0755 -> 0644). Names the gunbc path row.
+test fn executable_at_wrong_mode_disagrees() -> Bool {
+  let owner = gnbc()
+  match broker_agree(children_observed: broker_complete_children(owner: owner), spine_observed: broker_complete_spine(owner: owner), owner: owner, permitted: approval_broker_sibling_writer_footprint()) {
+    Present { value: _ } => false
+    Absent =>
+      let perturbed = [
+        rentry("dag", TreeDirectory, "755", owner),
+        rentry("src", TreeDirectory, "755", owner),
+        rentry("src/v2", TreeDirectory, "755", owner),
+        rentry("gunbc", TreeRegular, "644", owner),
+        rentry("approval_device_crypto_serve", TreeRegular, "755", owner),
+        rentry(".gunbc-tree-receipt", TreeRegular, "644", owner),
+        rentry("device-crypto-deployed-digest.env", TreeRegular, "644", owner),
+      ]
+      match broker_agree(children_observed: perturbed, spine_observed: broker_complete_spine(owner: owner), owner: owner, permitted: approval_broker_sibling_writer_footprint()) {
+        Absent => false
+        Present { value: why } => string_contains(s: why, pattern: "gunbc|f|0755")
+      }
+  }
+}
+
+// RED CONTROL: same-byte executable at the correct mode but WRONG OWNER (gunbc -> root). Names the row.
+test fn executable_at_wrong_owner_disagrees() -> Bool {
+  let owner = gnbc()
+  match broker_agree(children_observed: broker_complete_children(owner: owner), spine_observed: broker_complete_spine(owner: owner), owner: owner, permitted: approval_broker_sibling_writer_footprint()) {
+    Present { value: _ } => false
+    Absent =>
+      let perturbed = [
+        rentry("dag", TreeDirectory, "755", owner),
+        rentry("src", TreeDirectory, "755", owner),
+        rentry("src/v2", TreeDirectory, "755", owner),
+        rentry("gunbc", TreeRegular, "755", root_owner()),
+        rentry("approval_device_crypto_serve", TreeRegular, "755", owner),
+        rentry(".gunbc-tree-receipt", TreeRegular, "644", owner),
+        rentry("device-crypto-deployed-digest.env", TreeRegular, "644", owner),
+      ]
+      match broker_agree(children_observed: perturbed, spine_observed: broker_complete_spine(owner: owner), owner: owner, permitted: approval_broker_sibling_writer_footprint()) {
+        Absent => false
+        Present { value: why } => string_contains(s: why, pattern: "gunbc|f|0755")
+      }
+  }
+}
+
+// RED CONTROL: the subtree root `dag` at 0777. Names the dag directory row.
+test fn subtree_root_wrong_mode_disagrees() -> Bool {
+  let owner = gnbc()
+  match broker_agree(children_observed: broker_complete_children(owner: owner), spine_observed: broker_complete_spine(owner: owner), owner: owner, permitted: approval_broker_sibling_writer_footprint()) {
+    Present { value: _ } => false
+    Absent =>
+      let perturbed = [
+        rentry("dag", TreeDirectory, "777", owner),
+        rentry("src", TreeDirectory, "755", owner),
+        rentry("src/v2", TreeDirectory, "755", owner),
+        rentry("gunbc", TreeRegular, "755", owner),
+        rentry("approval_device_crypto_serve", TreeRegular, "755", owner),
+        rentry(".gunbc-tree-receipt", TreeRegular, "644", owner),
+        rentry("device-crypto-deployed-digest.env", TreeRegular, "644", owner),
+      ]
+      match broker_agree(children_observed: perturbed, spine_observed: broker_complete_spine(owner: owner), owner: owner, permitted: approval_broker_sibling_writer_footprint()) {
+        Absent => false
+        Present { value: why } => string_contains(s: why, pattern: "dag|d|0755")
+      }
+  }
+}
+
+// RED CONTROL: a spine directory (/opt/gunbc) at 0777. Names the spine directory row.
+test fn spine_wrong_mode_disagrees() -> Bool {
+  let owner = gnbc()
+  match broker_agree(children_observed: broker_complete_children(owner: owner), spine_observed: broker_complete_spine(owner: owner), owner: owner, permitted: approval_broker_sibling_writer_footprint()) {
+    Present { value: _ } => false
+    Absent =>
+      let perturbed_spine = [
+        rentry("/opt/gunbc", TreeDirectory, "777", owner),
+        rentry("/opt/gunbc/releases", TreeDirectory, "755", owner),
+        rentry("/opt/gunbc/releases/abc123", TreeDirectory, "755", owner),
+      ]
+      match broker_agree(children_observed: broker_complete_children(owner: owner), spine_observed: perturbed_spine, owner: owner, permitted: approval_broker_sibling_writer_footprint()) {
+        Absent => false
+        Present { value: why } => string_contains(s: why, pattern: "/opt/gunbc|d|0755")
+      }
+  }
+}
+
+// PARTITION: an arbitrary file at the locus root that no writer of this locus declared is REFUSED by
+// name -- not silently dropped. The complete fixture agreed, so this refusal is solely the rogue file.
+test fn unexpected_file_at_locus_root_is_refused() -> Bool {
+  let owner = gnbc()
+  let with_rogue = concat(broker_complete_children(owner: owner), [rentry("rogue", TreeRegular, "755", root_owner())])
+  match broker_agree(children_observed: with_rogue, spine_observed: broker_complete_spine(owner: owner), owner: owner, permitted: approval_broker_sibling_writer_footprint()) {
+    Absent => false
+    Present { value: why } => string_contains(s: why, pattern: "unexpected entry rogue")
+  }
+}
+
+// PARTITION: a stray sibling of the src/v2 walk root (src/extra) is REFUSED, not tolerated, even though
+// the walk parent's listing is folded into the same observation.
+test fn stray_file_under_walk_parent_is_refused() -> Bool {
+  let owner = gnbc()
+  let with_stray = concat(broker_complete_children(owner: owner), [rentry("src/extra", TreeRegular, "644", owner)])
+  match broker_agree(children_observed: with_stray, spine_observed: broker_complete_spine(owner: owner), owner: owner, permitted: approval_broker_sibling_writer_footprint()) {
+    Absent => false
+    Present { value: why } => string_contains(s: why, pattern: "unexpected entry src/extra")
+  }
+}
+
+// PARTITION: the installer's own receipt is permitted and never required (absent on a first install).
+test fn receipt_absent_still_agrees_and_present_tolerated() -> Bool {
+  let owner = gnbc()
+  let without_receipt = [
+    rentry("dag", TreeDirectory, "755", owner),
+    rentry("src", TreeDirectory, "755", owner),
+    rentry("src/v2", TreeDirectory, "755", owner),
+    rentry("gunbc", TreeRegular, "755", owner),
+    rentry("approval_device_crypto_serve", TreeRegular, "755", owner),
+    rentry("device-crypto-deployed-digest.env", TreeRegular, "644", owner),
+  ]
+  match broker_agree(children_observed: without_receipt, spine_observed: broker_complete_spine(owner: owner), owner: owner, permitted: approval_broker_sibling_writer_footprint()) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+// PARTITION + PER-LOCUS AUTHORITY: the device-crypto env file is tolerated ONLY because the broker
+// footprint declares it. Feed the SAME observation to a locus given the EMPTY footprint (a helper
+// locus gets only the receipt) and the very same env file is refused by name -- broker exceptions do
+// not authorize a name in the helper locus.
+test fn sibling_footprint_authorizes_its_own_locus_only() -> Bool {
+  let owner = gnbc()
+  match broker_agree(children_observed: broker_complete_children(owner: owner), spine_observed: broker_complete_spine(owner: owner), owner: owner, permitted: approval_broker_sibling_writer_footprint()) {
+    Present { value: _ } => false
+    Absent =>
+      match broker_agree(children_observed: broker_complete_children(owner: owner), spine_observed: broker_complete_spine(owner: owner), owner: owner, permitted: []) {
+        Absent => false
+        Present { value: why } => string_contains(s: why, pattern: "unexpected entry device-crypto-deployed-digest.env")
+      }
+  }
+}
+
+// THE MICROVM LOCUS: its declared sibling footprint (vmm receipt, images/, firecracker, jailer, the
+// two workspace-commissioning members) is tolerated, root-owned, and the agreement still holds. This is
+// the real srv1 microvm root listing, fed through the one authority.
+test fn microvm_footprint_tolerates_its_members() -> Bool {
+  let owner = root_owner()
+  let observed = [
+    rentry("dag", TreeDirectory, "755", owner),
+    rentry("src", TreeDirectory, "755", owner),
+    rentry("src/v2", TreeDirectory, "755", owner),
+    rentry("gunbc", TreeRegular, "755", owner),
+    rentry(".gunbc-tree-receipt", TreeRegular, "644", owner),
+    rentry(".gunbc-vmm-receipt", TreeRegular, "644", owner),
+    rentry("images", TreeDirectory, "755", owner),
+    rentry("firecracker", TreeRegular, "755", owner),
+    rentry("jailer", TreeRegular, "755", owner),
+    rentry("workspace-commissioning-helper", TreeRegular, "755", owner),
+    rentry("workspace-commissioning-executor.sh", TreeRegular, "755", owner),
+  ]
+  match tree_locus_children_expectation_owned(subdirs: release_locus_tree_subdirs, executables: [gunbc_release_bin_name], owner: owner) {
+    Absent => false
+    Present { value: locus_expected } =>
+      match tree_walk_root_expectation_owned(subdirs: release_locus_tree_subdirs, owner: owner) {
+        Absent => false
+        Present { value: wr_expected } =>
+          match tree_spine_expectation_owned(spine: ctl_spine, locus: ctl_locus, owner: owner) {
+            Absent => false
+            Present { value: spine_expected } =>
+              match tree_locus_agreement(
+                source_expected: [], source_observed: [],
+                locus_children_expected: locus_expected,
+                locus_children_observed: observed,
+                walk_root_expected: wr_expected,
+                spine_expected: spine_expected,
+                spine_observed: broker_complete_spine(owner: owner),
+                permitted_extras: microvm_controller_sibling_writer_footprint(),
+              ) {
+                Present { value: _ } => false
+                Absent => true
+              }
+          }
+      }
+  }
+}
+
+// THE SAME microvm members are REFUSED at a locus that is not given the microvm footprint (a broker or
+// helper locus), proving the footprints are per-locus and never a shared basename list.
+test fn microvm_members_refused_where_not_declared() -> Bool {
+  let owner = root_owner()
+  let observed = [
+    rentry("dag", TreeDirectory, "755", owner),
+    rentry("src", TreeDirectory, "755", owner),
+    rentry("src/v2", TreeDirectory, "755", owner),
+    rentry("gunbc", TreeRegular, "755", owner),
+    rentry("firecracker", TreeRegular, "755", owner),
+  ]
+  match tree_locus_children_expectation_owned(subdirs: release_locus_tree_subdirs, executables: [gunbc_release_bin_name], owner: owner) {
+    Absent => false
+    Present { value: locus_expected } =>
+      match tree_walk_root_expectation_owned(subdirs: release_locus_tree_subdirs, owner: owner) {
+        Absent => false
+        Present { value: wr_expected } =>
+          match tree_spine_expectation_owned(spine: ctl_spine, locus: ctl_locus, owner: owner) {
+            Absent => false
+            Present { value: spine_expected } =>
+              match tree_locus_agreement(
+                source_expected: [], source_observed: [],
+                locus_children_expected: locus_expected,
+                locus_children_observed: observed,
+                walk_root_expected: wr_expected,
+                spine_expected: spine_expected,
+                spine_observed: broker_complete_spine(owner: owner),
+                permitted_extras: [],
+              ) {
+                Absent => false
+                Present { value: why } => string_contains(s: why, pattern: "unexpected entry firecracker")
+              }
+          }
+      }
+  }
+}
+
+// THE PRODUCTION ROSTER: approval_device_crypto_serve is installer-owned and REQUIRED -- its absence is
+// a missing entry (refused), not a tolerated extra. This is the point the earlier witness got wrong.
+test fn roster_executable_absent_is_refused() -> Bool {
+  let owner = gnbc()
+  let without_serve = [
+    rentry("dag", TreeDirectory, "755", owner),
+    rentry("src", TreeDirectory, "755", owner),
+    rentry("src/v2", TreeDirectory, "755", owner),
+    rentry("gunbc", TreeRegular, "755", owner),
+    rentry(".gunbc-tree-receipt", TreeRegular, "644", owner),
+    rentry("device-crypto-deployed-digest.env", TreeRegular, "644", owner),
+  ]
+  match broker_agree(children_observed: without_serve, spine_observed: broker_complete_spine(owner: owner), owner: owner, permitted: approval_broker_sibling_writer_footprint()) {
+    Absent => false
+    Present { value: why } => string_contains(s: why, pattern: "approval_device_crypto_serve")
+  }
+}
+
+// THE PRODUCTION ROSTER, positive: with both executables present the broker locus agrees (asserts the
+// roster is exactly [gunbc, approval_device_crypto_serve] and both are checked).
+test fn roster_has_two_executables() -> Bool {
+  count(broker_execs) == 2
+    && any(broker_execs, e => e == gunbc_release_bin_name)
+    && any(broker_execs, e => e == approval_device_crypto_serve_release_bin_name)
+}
+
+// THE WIRE FORMAT: real `find -printf '%P|%y|%m|%u|%g|%l|%s'` output for the locus root, fed through the
+// production collector (tree_metadata_entries_of_stdout) into the one authority, agrees. No exec.
+test fn captured_find_wire_output_flows_through_the_authority() -> Bool {
+  let owner = gnbc()
+  let wire = "dag|d|755|gunbc|gunbc||4096\nsrc|d|755|gunbc|gunbc||4096\nsrc/v2|d|755|gunbc|gunbc||4096\ngunbc|f|755|gunbc|gunbc||2048\napproval_device_crypto_serve|f|755|gunbc|gunbc||2048\n.gunbc-tree-receipt|f|644|gunbc|gunbc||256\ndevice-crypto-deployed-digest.env|f|644|gunbc|gunbc||64\n"
+  let parsed = tree_metadata_entries_of_stdout(stdout: wire, sub: "", starting_point_expected: false)
+  match tree_locus_children_expectation_owned(subdirs: release_locus_tree_subdirs, executables: broker_execs, owner: owner) {
+    Absent => false
+    Present { value: locus_expected } =>
+      match tree_walk_root_expectation_owned(subdirs: release_locus_tree_subdirs, owner: owner) {
+        Absent => false
+        Present { value: wr_expected } =>
+          match tree_spine_expectation_owned(spine: ctl_spine, locus: ctl_locus, owner: owner) {
+            Absent => false
+            Present { value: spine_expected } =>
+              match tree_locus_agreement(
+                source_expected: [], source_observed: [],
+                locus_children_expected: locus_expected,
+                locus_children_observed: parsed,
+                walk_root_expected: wr_expected,
+                spine_expected: spine_expected,
+                spine_observed: broker_complete_spine(owner: owner),
+                permitted_extras: approval_broker_sibling_writer_footprint(),
+              ) {
+                Present { value: _ } => false
+                Absent => true
+              }
+          }
+      }
+  }
+}
+
+// THE PARTITION ITSELF, named and consumed: tree_locus_children_partition keeps expected + permitted and
+// refuses the unexpected, returning the kept set and the refusal in one decision.
+test fn partition_classifies_expected_permitted_and_unexpected() -> Bool {
+  let owner = gnbc()
+  match tree_locus_children_expectation_owned(subdirs: release_locus_tree_subdirs, executables: broker_execs, owner: owner) {
+    Absent => false
+    Present { value: locus_expected } =>
+      match tree_walk_root_expectation_owned(subdirs: release_locus_tree_subdirs, owner: owner) {
+        Absent => false
+        Present { value: wr_expected } =>
+          match tree_locus_children_partition(
+            locus_children_expected: locus_expected,
+            walk_root_expected: wr_expected,
+            permitted_extras: approval_broker_sibling_writer_footprint(),
+            observed: concat(broker_complete_children(owner: owner), [rentry("rogue", TreeRegular, "755", owner)]),
+          ) {
+            TreeLocusChildrenPartition { kept: kept, refusal: refusal } =>
+              (match refusal { Present { value: _ } => true Absent => false }) && count(kept) == 5
+          }
+      }
+  }
+}
+
+// THE WALK PARENTS for the fixed release_locus_tree_subdirs: "src" (parent of "src/v2"), nothing for "dag".
+test fn walk_parents_of_the_installed_subs_is_src() -> Bool {
+  tree_walk_parents(subs: release_locus_tree_subdirs) == ["src"]
+}
+
+// THE SELF-METADATA PARSER reuses the one seven-field grammar; the queried path in %p must match.
+test fn self_metadata_parses_directory_and_rejects_mismatch() -> Bool {
+  match tree_self_metadata_entry_of_stdout(stdout: "/opt/gunbc|d|755|gunbc|gunbc||4096\n", path: "/opt/gunbc") {
+    Absent => false
+    Present { value: e } => e.path == "/opt/gunbc" && is_dir(e.kind) && file_mode_octal(mode: e.mode) == "0755"
+  }
+    && match tree_self_metadata_entry_of_stdout(stdout: "/other|d|755|gunbc|gunbc||4096\n", path: "/opt/gunbc") { Absent => true _ => false }
+    && match tree_self_metadata_entry_of_stdout(stdout: "", path: "/x") { Absent => true _ => false }
+}
+
+// THE NEW FIND BUILDERS: the direct-children and self-metadata walks the readback runs are the real
+// `find` argv, one maxdepth-1 walk and one maxdepth-0 stat, both under the shared seven-field printf
+// the parser (tree_metadata_entries_of_stdout / tree_self_metadata_entry_of_stdout) consumes. These
+// are the read-only observation commands the production readback dispatches (extdeps/tools/findutils,
+// registered in extdeps/exec/command.dag); on a live locus they run over the read-only route -- no
+// sudo -- exactly as find_tree_entry_metadata_command already does in the claim above.
+test fn direct_children_and_self_find_builders_are_readonly_find_argv() -> Bool {
+  let dc = find_direct_children_metadata_command(root: "/locus")
+  let dcn = find_direct_children_count_command(root: "/locus")
+  let tc = find_tree_entry_count_command(root: "/locus")
+  let sf = find_self_metadata_command(path: "/locus")
+  (dc.program.invocation as String) == "find"
+    && dc.arguments == ["/locus", "-mindepth", "1", "-maxdepth", "1", "-xdev", "-printf", "%P|%y|%m|%u|%g|%l|%s\\n"]
+    && dcn.program.invocation as String == "find"
+    && dcn.arguments == ["/locus", "-mindepth", "1", "-maxdepth", "1", "-xdev", "-printf", "."]
+    && tc.program.invocation as String == "find"
+    && tc.arguments == ["/locus", "-xdev", "-printf", "."]
+    && (sf.program.invocation as String) == "find"
+    && sf.arguments == ["/locus", "-maxdepth", "0", "-xdev", "-printf", "%p|%y|%m|%u|%g|%l|%s\\n"]
+    && find_tree_entry_metadata_printf() == "%P|%y|%m|%u|%g|%l|%s\\n"
+    && find_self_metadata_printf == "%p|%y|%m|%u|%g|%l|%s\\n"
+}
+
+// THE SELF PRINTER REBASES ON %p (the queried path), the DIRECT-CHILDREN PRINTER ON %P (path under the
+// root): the two walks differ exactly in that field, and the self parser requires the %p line to carry
+// the queried path -- so a self walk cannot be answered by a %P-style line.
+test fn self_printer_carries_queried_path_and_rebases_on_percent_p() -> Bool {
+  find_self_metadata_printf == "%p|%y|%m|%u|%g|%l|%s\\n"
+    && match tree_self_metadata_entry_of_stdout(stdout: "/locus/sub|f|755|root|root||12\n", path: "/locus/sub") {
+      Present { value: e } => e.path == "/locus/sub" && file_mode_octal(mode: e.mode) == "0755"
+      Absent => false
+    }
+    // a %P-style line (empty path) is refused by the self parser, not silently accepted
+    && match tree_self_metadata_entry_of_stdout(stdout: "|f|755|root|root||12\n", path: "/locus/sub") { Absent => true _ => false }
+}
+
+// ===========================================================================
+// CAPTURED SRV1 LIVE-LOCUS LISTINGS (read-only capture on srv1 2026-11-23 ~13:2xZ, via sudo find, the
+// builders' printf formats verbatim -- the children listings AND the -maxdepth 0 self rows are real
+// captured output; the children listings are the -mindepth 1 form production now collects, paired with a
+// matching `-printf .` dot string). Each listing is fed through the PRODUCTION checked collector
+// (tree_metadata_entries_of_stdout_checked) and the PRODUCTION self-parser (tree_self_metadata_entry_of_stdout) into the ONE agreement authority
+// (tree_locus_agreement), with each locus's PRODUCTION roster, footprint and owner. These are the live loci
+// a redeploy at the same SHA would re-read -- so AGREE is the false-refuse guard (gap 3), and the executable
+// / spine / subtree-root rows are gap 1/2 on real data. The source-tree comparison (source_*) is left empty:
+// these captures cover the LOCUS-ROOT observation the readback was missing (gaps 1-3), not the recursive
+// content readback that already runs. The starting-point row find prints with an EMPTY %P ("|d|...") is
+// present verbatim in every children listing and is skipped by rule (see the claim at the end).
+// ===========================================================================
+
+data srv1_broker_base: String = "/opt/gunbc/approval-broker"
+data srv1_broker_releases: String = "/opt/gunbc/approval-broker/releases"
+data srv1_broker_locus: String = "/opt/gunbc/approval-broker/releases/7711690f3f55ae40d41fbee3fc856e13b65c3c95"
+data srv1_microvm_base: String = "/opt/gunbc/microvm-controller"
+data srv1_microvm_releases: String = "/opt/gunbc/microvm-controller/releases"
+data srv1_microvm_locus: String = "/opt/gunbc/microvm-controller/releases/e1f753b939169c51050f90a2912832b3c5b0b5ae"
+data srv1_helper_base: String = "/opt/gunbc/approval-broker-helpers"
+data srv1_helper_locus: String = "/opt/gunbc/approval-broker-helpers/66474e06a94499cd062e10290826cccb5a18b70a"
+
+// children listings, as PRODUCTION collects them: a FRESH read-only srv1 capture (this review round)
+// taken with the exact `find <root> -mindepth 1 -maxdepth 1 -xdev -printf '%P|%y|%m|%u|%g|%l|%s\n'`
+// argv plus the matching `-printf .` dot count. Under -mindepth 1 find does NOT print the starting point,
+// so the child listing carries no empty-%P row to skip. The `_dots` fixtures are the captured dot strings
+// (one dot per entry); the collector refuses unless the dot count equals the number of printed rows. These
+// are real srv1 output verbatim; a listing whose dots and rows disagree is a framing attack and is refused.
+data srv1_broker_children: String = "approval_device_crypto_serve|f|755|briansrls|briansrls||3537656\ndag|d|755|briansrls|briansrls||4096\ndevice-crypto-deployed-digest.env|f|644|briansrls|briansrls||101\ngunbc|f|755|briansrls|briansrls||40996456\n.gunbc-tree-receipt|f|644|briansrls|briansrls||223\nsrc|d|755|briansrls|briansrls||4096\n"
+data srv1_broker_children_dots: String = "......"
+data srv1_broker_src_children: String = "v2|d|755|briansrls|briansrls||4096\n"
+data srv1_broker_src_children_dots: String = "."
+data srv1_microvm_children: String = "dag|d|755|root|root||4096\nfirecracker|f|755|root|root||3254360\ngunbc|f|755|root|root||40987856\n.gunbc-tree-receipt|f|644|root|root||142\n.gunbc-vmm-receipt|f|644|root|root||311\nimages|d|755|root|root||4096\njailer|f|755|root|root||1916808\nsrc|d|755|root|root||4096\nworkspace-commissioning-executor.sh|f|755|root|root||3821\nworkspace-commissioning-helper|f|755|root|root||526\n"
+data srv1_microvm_children_dots: String = ".........."
+data srv1_microvm_src_children: String = "v2|d|755|root|root||4096\n"
+data srv1_microvm_src_children_dots: String = "."
+data srv1_helper_children: String = "dag|d|755|root|root||4096\ngunbc|f|755|root|root||40133624\n.gunbc-tree-receipt|f|644|root|root||142\nsrc|d|755|root|root||4096\n"
+data srv1_helper_children_dots: String = "...."
+data srv1_helper_src_children: String = "v2|d|755|root|root||4096\n"
+data srv1_helper_src_children_dots: String = "."
+
+// REAL captured find -maxdepth 0 self rows for the production spine [base_root, releases_dir] + locus.
+data srv1_broker_base_self: String = "/opt/gunbc/approval-broker|d|755|briansrls|briansrls||4096"
+data srv1_broker_releases_self: String = "/opt/gunbc/approval-broker/releases|d|755|briansrls|briansrls||4096"
+data srv1_broker_locus_self: String = "/opt/gunbc/approval-broker/releases/7711690f3f55ae40d41fbee3fc856e13b65c3c95|d|755|briansrls|briansrls||4096"
+data srv1_microvm_base_self: String = "/opt/gunbc/microvm-controller|d|755|root|root||4096"
+data srv1_microvm_releases_self: String = "/opt/gunbc/microvm-controller/releases|d|755|root|root||4096"
+data srv1_microvm_locus_self: String = "/opt/gunbc/microvm-controller/releases/e1f753b939169c51050f90a2912832b3c5b0b5ae|d|755|root|root||4096"
+data srv1_helper_base_self: String = "/opt/gunbc/approval-broker-helpers|d|755|root|root||4096"
+data srv1_helper_locus_self: String = "/opt/gunbc/approval-broker-helpers/66474e06a94499cd062e10290826cccb5a18b70a|d|755|root|root||4096"
+
+fn srv1_root_owner() -> PosixOwnerNames {
+  PosixOwnerNames { user: "root" as NonEmptyStr, group: "root" as NonEmptyStr }
+}
+fn srv1_briansrls_owner() -> PosixOwnerNames {
+  PosixOwnerNames { user: "briansrls" as NonEmptyStr, group: "briansrls" as NonEmptyStr }
+}
+
+// Parse one REAL captured self row through the production self parser (which insists %p == the queried path).
+fn srv1_self(path: String, row: String) -> Optional<TreeMetadataEntry> {
+  tree_self_metadata_entry_of_stdout(stdout: join([row, "\n"], ""), path: path)
+}
+
+// Drive one locus through the ONE authority. The direct-children and walk-parent (src) listings go
+// through the PRODUCTION checked collector (tree_metadata_entries_of_stdout_checked) with their
+// independent dot count and starting_point_expected=false (production children use -mindepth 1, so a
+// malformed or forged row there refuses, exactly as the live readback). spine = production ancestor dirs;
+// spine_observed = the parsed captured self rows for those dirs + the locus. Returns the agreement reason
+// (Absent == agreed); a collector refusal is surfaced as the reason.
+fn srv1_agree(
+  children: String,
+  children_dots: String,
+  parent_children: String,
+  parent_children_dots: String,
+  spine: List<String>,
+  locus: String,
+  spine_observed: List<TreeMetadataEntry>,
+  executables: List<String>,
+  owner: PosixOwnerNames,
+  permitted: List<String>,
+) -> Optional<String> {
+  match tree_metadata_entries_of_stdout_checked(root: locus, stdout: children, dot_stdout: children_dots, sub: "", starting_point_expected: false) {
+    TreeMetadataObservationFailed { reason: r } => Present { value: r }
+    TreeMetadataObserved { entries: locus_es } =>
+      match tree_metadata_entries_of_stdout_checked(root: join([locus, "/src"], ""), stdout: parent_children, dot_stdout: parent_children_dots, sub: "src", starting_point_expected: false) {
+        TreeMetadataObservationFailed { reason: r2 } => Present { value: r2 }
+        TreeMetadataObserved { entries: parent_es } =>
+          match tree_locus_children_expectation_owned(subdirs: release_locus_tree_subdirs, executables: executables, owner: owner) {
+            Absent => Present { value: "locus-children-expectation-unbuildable" }
+            Present { value: locus_children_expected } =>
+              match tree_walk_root_expectation_owned(subdirs: release_locus_tree_subdirs, owner: owner) {
+                Absent => Present { value: "walk-root-expectation-unbuildable" }
+                Present { value: walk_root_expected } =>
+                  match tree_spine_expectation_owned(spine: spine, locus: locus, owner: owner) {
+                    Absent => Present { value: "spine-expectation-unbuildable" }
+                    Present { value: spine_expected } =>
+                      tree_locus_agreement(
+                        source_expected: [],
+                        source_observed: [],
+                        locus_children_expected: locus_children_expected,
+                        locus_children_observed: concat(left: locus_es, right: parent_es),
+                        walk_root_expected: walk_root_expected,
+                        spine_expected: spine_expected,
+                        spine_observed: spine_observed,
+                        permitted_extras: permitted,
+                      )
+                  }
+              }
+          }
+      }
+  }
+}
+
+// THE SRV1 BROKER LOCUS AGREES: same-byte executables at 0755/briansrls, spine [approval-broker,
+// approval-broker/releases] + locus + subtree roots all at the shared mode, and its declared sibling
+// (device-crypto env) plus the receipt tolerated. A redeploy at this SHA would re-read exactly this.
+test fn srv1_broker_locus_agrees() -> Bool {
+  let owner = srv1_briansrls_owner()
+  match srv1_self(path: srv1_broker_base, row: srv1_broker_base_self) {
+    Absent => false
+    Present { value: a } =>
+      match srv1_self(path: srv1_broker_releases, row: srv1_broker_releases_self) {
+        Absent => false
+        Present { value: b } =>
+          match srv1_self(path: srv1_broker_locus, row: srv1_broker_locus_self) {
+            Absent => false
+            Present { value: c } =>
+              match srv1_agree(
+                children: srv1_broker_children, children_dots: srv1_broker_children_dots,
+                parent_children: srv1_broker_src_children, parent_children_dots: srv1_broker_src_children_dots,
+                spine: [srv1_broker_base, srv1_broker_releases], locus: srv1_broker_locus, spine_observed: [a, b, c],
+                executables: approval_broker_release_locus_executables, owner: owner, permitted: approval_broker_sibling_writer_footprint(),
+              ) { Present { value: _ } => false Absent => true }
+          }
+      }
+  }
+}
+
+// THE SRV1 MICROVM LOCUS AGREES: all root-owned, with its declared sibling footprint (vmm receipt, images/,
+// firecracker, jailer, the two commissioning members) and the receipt tolerated.
+test fn srv1_microvm_locus_agrees() -> Bool {
+  let owner = srv1_root_owner()
+  match srv1_self(path: srv1_microvm_base, row: srv1_microvm_base_self) {
+    Absent => false
+    Present { value: a } =>
+      match srv1_self(path: srv1_microvm_releases, row: srv1_microvm_releases_self) {
+        Absent => false
+        Present { value: b } =>
+          match srv1_self(path: srv1_microvm_locus, row: srv1_microvm_locus_self) {
+            Absent => false
+            Present { value: c } =>
+              match srv1_agree(
+                children: srv1_microvm_children, children_dots: srv1_microvm_children_dots,
+                parent_children: srv1_microvm_src_children, parent_children_dots: srv1_microvm_src_children_dots,
+                spine: [srv1_microvm_base, srv1_microvm_releases], locus: srv1_microvm_locus, spine_observed: [a, b, c],
+                executables: [gunbc_release_bin_name], owner: owner, permitted: microvm_controller_sibling_writer_footprint(),
+              ) { Present { value: _ } => false Absent => true }
+          }
+      }
+  }
+}
+
+// THE SRV1 HELPER LOCUS AGREES: given ONLY the receipt (permitted_extras = []); its listing holds only
+// dag, src, gunbc and the receipt. Its production spine is [approval-broker-helpers] + the locus.
+test fn srv1_helper_locus_agrees() -> Bool {
+  let owner = srv1_root_owner()
+  match srv1_self(path: srv1_helper_base, row: srv1_helper_base_self) {
+    Absent => false
+    Present { value: a } =>
+      match srv1_self(path: srv1_helper_locus, row: srv1_helper_locus_self) {
+        Absent => false
+        Present { value: c } =>
+          match srv1_agree(
+            children: srv1_helper_children, children_dots: srv1_helper_children_dots,
+            parent_children: srv1_helper_src_children, parent_children_dots: srv1_helper_src_children_dots,
+            spine: [srv1_helper_base], locus: srv1_helper_locus, spine_observed: [a, c],
+            executables: [gunbc_release_bin_name], owner: owner, permitted: [],
+          ) { Present { value: _ } => false Absent => true }
+      }
+  }
+}
+
+// THE FALSE-REFUSE GUARD, inverted: the SAME broker listing with ONE extra bare file under src/ (a stray
+// sibling of src/v2) REFUSES, naming the path -- a broker/microvm exception never authorizes it.
+test fn srv1_broker_extra_under_src_refuses_by_name() -> Bool {
+  let owner = srv1_briansrls_owner()
+  match srv1_self(path: srv1_broker_base, row: srv1_broker_base_self) {
+    Absent => false
+    Present { value: a } =>
+      match srv1_self(path: srv1_broker_releases, row: srv1_broker_releases_self) {
+        Absent => false
+        Present { value: b } =>
+          match srv1_self(path: srv1_broker_locus, row: srv1_broker_locus_self) {
+            Absent => false
+            Present { value: c } =>
+              match srv1_agree(
+                children: srv1_broker_children, children_dots: srv1_broker_children_dots,
+                parent_children: join([srv1_broker_src_children, "stray|f|644|briansrls|briansrls||12\n"], ""), parent_children_dots: "..",
+                spine: [srv1_broker_base, srv1_broker_releases], locus: srv1_broker_locus, spine_observed: [a, b, c],
+                executables: approval_broker_release_locus_executables, owner: owner, permitted: approval_broker_sibling_writer_footprint(),
+              ) {
+                Absent => false
+                Present { value: why } => string_contains(s: why, pattern: "unexpected entry src/stray")
+              }
+          }
+      }
+  }
+}
+
+// B1 REFUSAL (root): a rogue child at the locus root whose NAME starts with "|" -- a line the delimiter
+// grammar cannot name. It is NOT the starting-point record (which is empty %P over exactly 7 fields), so it
+// reaches the validated collector, the printed/parsed counts disagree, and the OBSERVATION is REFUSED -- not
+// dropped. This is the exact false-pass the reviewer reproduced with `sudo find ... |rogue`.
+test fn pipe_named_root_child_refuses_the_observation() -> Bool {
+  match tree_metadata_entries_of_stdout_checked(
+    root: srv1_broker_locus,
+    stdout: join([srv1_broker_children, "|rogue|f|755|root|root||4096\n"], ""),
+    dot_stdout: ".......",
+    sub: "",
+    starting_point_expected: false,
+  ) {
+    TreeMetadataObserved { entries: _ } => false
+    TreeMetadataObservationFailed { reason: r } => string_contains(s: r, pattern: "cannot name") && string_contains(s: r, pattern: "|rogue|f|755|root|root||4096")
+  }
+}
+
+// B1 REFUSAL (walk parent): the same, under the src walk parent -- "src/|extra" must not vanish.
+test fn pipe_named_walk_parent_child_refuses_the_observation() -> Bool {
+  match tree_metadata_entries_of_stdout_checked(
+    root: join([srv1_broker_locus, "/src"], ""),
+    stdout: join([srv1_broker_src_children, "|extra|f|644|briansrls|briansrls||12\n"], ""),
+    dot_stdout: "..",
+    sub: "src",
+    starting_point_expected: false,
+  ) {
+    TreeMetadataObserved { entries: _ } => false
+    TreeMetadataObservationFailed { reason: r } => string_contains(s: r, pattern: "cannot name") && string_contains(s: r, pattern: "|extra|f|644|briansrls|briansrls||12")
+  }
+}
+
+// THE CLEAN LISTINGS VALIDATE (the guard is not a blanket failure): the real broker children and src
+// listings pass the collector+guard and yield exactly the expected real entries (starting point skipped).
+test fn clean_srv1_listings_pass_the_validated_collector() -> Bool {
+  match tree_metadata_entries_of_stdout_checked(root: srv1_broker_locus, stdout: srv1_broker_children, dot_stdout: srv1_broker_children_dots, sub: "", starting_point_expected: false) {
+    TreeMetadataObservationFailed { reason: _ } => false
+    TreeMetadataObserved { entries: broker } =>
+      count(broker) == 6
+        && match tree_metadata_entries_of_stdout_checked(root: join([srv1_broker_locus, "/src"], ""), stdout: srv1_broker_src_children, dot_stdout: srv1_broker_src_children_dots, sub: "src", starting_point_expected: false) {
+          TreeMetadataObservationFailed { reason: _ } => false
+          TreeMetadataObserved { entries: src } => count(src) == 1 && any(src, e => e.path == "src/v2")
+        }
+  }
+}
+
+// THE STARTING-POINT ROW, handled deliberately, and ONLY where it legitimately occurs: the FULL-subtree
+// walk (`find <root>`, starting_point_expected=true) prints the walk root itself as a row with an EMPTY %P
+// ("|d|..."). It is the ONLY "|"-leading row that is skipped -- by the narrow predicate (empty path over
+// exactly seven fields), NOT a broad "starts with |" filter. Here the 6 real broker children are parsed
+// WITH a prepended starting-point row: the starting row is skipped (6 survive, none with an empty path) and
+// a "|rogue" child is NOT a starting point (it must reach the collector and be refused).
+test fn starting_point_empty_percent_p_row_is_skipped_by_rule() -> Bool {
+  let with_start = join(["|d|755|root|root||4096\n", srv1_broker_children], "")
+  let parsed = tree_metadata_entries_of_stdout(stdout: with_start, sub: "", starting_point_expected: true)
+  count(parsed) == 6
+    && !any(parsed, e => e.path == "")
+    && any(parsed, e => e.path == "dag")
+    && any(parsed, e => e.path == "src")
+    && any(parsed, e => e.path == "gunbc")
+    && any(parsed, e => e.path == "approval_device_crypto_serve")
+    && any(parsed, e => e.path == "device-crypto-deployed-digest.env")
+    && any(parsed, e => e.path == ".gunbc-tree-receipt")
+    && tree_metadata_line_is_starting_point(line: "|d|755|root|root||4096")
+    && !tree_metadata_line_is_starting_point(line: "|rogue|f|755|root|root||4096")
+}
+
+// THE WALK PARENTS PER SUB (closes the reviewer's not-checked item): tree_walk_parents yields the parent
+// directory for a multicomponent sub and NOTHING for a single-component sub, never the sub itself.
+test fn walk_parents_are_the_parent_of_multicomponent_subs_only() -> Bool {
+  tree_walk_parents(subs: ["src/v2"]) == ["src"]
+    && tree_walk_parents(subs: ["dag"]) == []
+    && tree_walk_parents(subs: release_locus_tree_subdirs) == ["src"]
+    && !any(tree_walk_parents(subs: release_locus_tree_subdirs), p => p == "dag" || p == "src/v2" || p == "v2")
+    && tree_walk_parents(subs: ["src/v2", "src/v2"]) == ["src"]
+}
+
+// ============================================================================================
+// P2 NEWLINE FRAMING — hermetic controls feeding captured output from REAL local `find` runs
+// through the PRODUCTION checked collector (not live find invocations in the claim host). Fixtures
+// are authentic `find <dir> -mindepth 1 -maxdepth 1 -xdev -printf
+// '%P|%y|%m|%u|%g|%l|%s\n'` stdout captured locally, with the matching `-printf .` dot string
+// from the independent count command. Names were created byte-exact with python3 (a file/dir
+// literally named LF; a file named `x|f|755|u|g||0<LF>foo`). None is elevation, none is srv1/srv2.
+// ============================================================================================
+
+// A FILE NAMED WITH A NEWLINE at the locus root: its record's embedded LF makes find print an
+// empty line plus an EMPTY-REL row "|f|644|node|node||1". With the skip rule removed (child listing,
+// starting_point_expected=false) that row is unnameable -> the naming guard refuses it by text, and
+// the row does NOT vanish (dots 5 == rows 5, so the framing guard agrees and naming still fires).
+data fr_root_nl_file: String = "\n|f|644|node|node||1\n.gunbc-tree-receipt|f|644|node|node||1\ndag|d|755|node|node||4096\ngunbc|f|755|node|node||1\nsrc|d|755|node|node||4096\n"
+test fn newline_named_file_at_root_refuses() -> Bool {
+  match tree_metadata_entries_of_stdout_checked(root: srv1_broker_locus, stdout: fr_root_nl_file, dot_stdout: ".....", sub: "", starting_point_expected: false) {
+    TreeMetadataObserved { entries: _ } => false
+    TreeMetadataObservationFailed { reason: r } => string_contains(s: r, pattern: "empty line fragment") && string_contains(s: r, pattern: "|f|644|node|node||1")
+  }
+}
+
+// A DIRECTORY NAMED WITH A NEWLINE at the locus root: same mechanism, the injected row is "|d|...".
+data fr_root_nl_dir: String = "\n|d|755|node|node||4096\n.gunbc-tree-receipt|f|644|node|node||1\ndag|d|755|node|node||4096\ngunbc|f|755|node|node||1\nsrc|d|755|node|node||4096\n"
+test fn newline_named_directory_at_root_refuses() -> Bool {
+  match tree_metadata_entries_of_stdout_checked(root: srv1_broker_locus, stdout: fr_root_nl_dir, dot_stdout: ".....", sub: "", starting_point_expected: false) {
+    TreeMetadataObserved { entries: _ } => false
+    TreeMetadataObservationFailed { reason: r } => string_contains(s: r, pattern: "empty line fragment") && string_contains(s: r, pattern: "|d|755|node|node||4096")
+  }
+}
+
+// A FILE NAMED WITH A NEWLINE under the src walk parent: the injected empty-rel row must refuse there too.
+data fr_src_nl_file: String = "v2|d|755|node|node||4096\n\n|f|644|node|node||1\n"
+test fn newline_named_file_under_src_refuses() -> Bool {
+  match tree_metadata_entries_of_stdout_checked(root: join([srv1_broker_locus, "/src"], ""), stdout: fr_src_nl_file, dot_stdout: "..", sub: "src", starting_point_expected: false) {
+    TreeMetadataObserved { entries: _ } => false
+    TreeMetadataObservationFailed { reason: r } => string_contains(s: r, pattern: "empty line fragment") && string_contains(s: r, pattern: "|f|644|node|node||1")
+  }
+}
+
+// A DIRECTORY NAMED WITH A NEWLINE under the src walk parent.
+data fr_src_nl_dir: String = "v2|d|755|node|node||4096\n\n|d|755|node|node||4096\n"
+test fn newline_named_directory_under_src_refuses() -> Bool {
+  match tree_metadata_entries_of_stdout_checked(root: join([srv1_broker_locus, "/src"], ""), stdout: fr_src_nl_dir, dot_stdout: "..", sub: "src", starting_point_expected: false) {
+    TreeMetadataObserved { entries: _ } => false
+    TreeMetadataObservationFailed { reason: r } => string_contains(s: r, pattern: "empty line fragment") && string_contains(s: r, pattern: "|d|755|node|node||4096")
+  }
+}
+
+// A CRAFTED NAME CONTAINING "|" AND A NEWLINE (`x|f|755|u|g||0<LF>foo`): find prints ONE dot for the
+// one entry but the LF splits its record into TWO well-formed rows -- a forged mode-755 owner-u/g file
+// "x" plus "foo". Both parse, so only the INDEPENDENT dot count (5 dots vs 6 rows) reveals the forgery.
+data fr_root_crafted: String = "x|f|755|u|g||0\nfoo|f|644|node|node||1\n.gunbc-tree-receipt|f|644|node|node||1\ndag|d|755|node|node||4096\ngunbc|f|755|node|node||1\nsrc|d|755|node|node||4096\n"
+test fn crafted_pipe_and_newline_name_refuses_by_framing() -> Bool {
+  match tree_metadata_entries_of_stdout_checked(root: srv1_broker_locus, stdout: fr_root_crafted, dot_stdout: ".....", sub: "", starting_point_expected: false) {
+    TreeMetadataObserved { entries: _ } => false
+    TreeMetadataObservationFailed { reason: r } => string_contains(s: r, pattern: "newline-delimited records") && string_contains(s: r, pattern: "forges extra records") && string_contains(s: r, pattern: "x|f|755|u|g||0")
+  }
+}
+
+// ============================================================================================
+// P2 NEWLINE FRAMING (round 2) — the reviewer's reproduced cases, on REAL local `find` output
+// through the PRODUCTION checked collector. Fixtures are authentic `-mindepth 1 -maxdepth 1`
+// (children) and `-xdev` (full walk) stdout captured locally with byte-exact names (python3) and
+// the matching `-printf .` dot string.
+// ============================================================================================
+
+// A FILE NAMED "<LF>.gunbc-tree-receipt" at the locus root. Its record's leading LF makes find print
+// an empty fragment then ".gunbc-tree-receipt|f|644|node|node||223" -- the EXACT identity of the
+// permitted installer receipt. Filtering empty fragments before counting (the old collector) would
+// accept this undeclared file AS the receipt (3 rows == 3 dots). The empty-fragment guard refuses it.
+data fr_root_nl_receipt: String = "\n.gunbc-tree-receipt|f|644|node|node||223\ndag|d|755|node|node||4096\nsrc|d|755|node|node||4096\n"
+test fn newline_named_receipt_masquerade_refuses() -> Bool {
+  match tree_metadata_entries_of_stdout_checked(root: srv1_broker_locus, stdout: fr_root_nl_receipt, dot_stdout: "...", sub: "", starting_point_expected: false) {
+    TreeMetadataObserved { entries: e } => false
+    TreeMetadataObservationFailed { reason: r } => string_contains(s: r, pattern: "empty line fragment") && string_contains(s: r, pattern: ".gunbc-tree-receipt|f|644|node|node||223")
+  }
+}
+
+// A DIRECTORY NAMED "<LF>" under dag/ on the FULL-WALK route. find prints the walk root ("|d|...") then,
+// for the LF-named directory, an empty fragment plus a SECOND "|d|755|node|node||4096" empty-%P row. The
+// old collector (skip every empty-%P row when a starting point is expected) swallowed it as another
+// starting point (3 rows == 3 dots). Now the empty-fragment guard refuses it AND the starting-point
+// invariant allows exactly one empty-%P row -- only the walk root, first row.
+data fr_dag_nl_dir: String = "|d|755|node|node||4096\na|f|755|node|node||1\n\n|d|755|node|node||4096\n"
+test fn full_walk_newline_named_directory_refuses() -> Bool {
+  match tree_metadata_entries_of_stdout_checked(root: join([srv1_broker_locus, "/dag"], ""), stdout: fr_dag_nl_dir, dot_stdout: "...", sub: "dag", starting_point_expected: true) {
+    TreeMetadataObserved { entries: _ } => false
+    TreeMetadataObservationFailed { reason: r } => string_contains(s: r, pattern: "empty line fragment") && string_contains(s: r, pattern: "|d|755|node|node||4096")
+  }
+}
+
+// The clean full-walk positive, so the starting_point_expected=true path is exercised on a GOOD listing
+// too (walk root row skipped, one entry survives) -- proving the invariant is not a blanket refusal.
+data fr_dag_clean: String = "|d|755|node|node||4096\na|f|755|node|node||1\n"
+test fn clean_full_walk_with_starting_point_observes() -> Bool {
+  match tree_metadata_entries_of_stdout_checked(root: join([srv1_broker_locus, "/dag"], ""), stdout: fr_dag_clean, dot_stdout: "..", sub: "dag", starting_point_expected: true) {
+    TreeMetadataObservationFailed { reason: _ } => false
+    TreeMetadataObserved { entries: e } => count(e) == 1 && any(e, x => x.path == "dag/a")
+  }
+}
+
+// ============================================================================================
+// THE TRAILING-LF CONVENTION -- #16927's false refusal, fleet-converge dashboard_deploy run 45286132235
+// on srv1 at execution revision 0f036da7. The empty-fragment control of tree_metadata_entries_of_stdout_checked
+// demanded the single empty fragment a listing ending in a LF leaves behind, but the transport hands these
+// functions the captured bytes AFTER the seed's shell capture trimmed their trailing whitespace
+// (src/v1/stage0/src/bounded_shell_host_drain.rs, retained_utf8_lossy_trimmed), so the listing the deploy
+// actually had -- the 9217-record `dag` full walk carried by that run's live-deploy-srv1-live-receipt
+// artifact -- arrived with NO trailing LF and 0 empty fragments, and every real srv1 deploy refused at it.
+// The fixtures below are CUT FROM THAT REFUSED LISTING (its 9 leading records: walk-root row plus 8
+// records, with the owners, modes and byte sizes that run recorded), so the admitted case is the deploy's
+// own listing and not a synthetic look-alike. The dot string is the matching `-printf .` enumeration:
+// 9 entries -> 9 dots. Both conventions are then refused or admitted for the SAME reason they were before
+// -- control (2) counts the records the same flag names, control (3) and the entry grammar are untouched.
+// ============================================================================================
+
+// THE DEPLOY'S OWN LISTING as the transport delivered it: well-formed, no trailing LF, no empty fragment.
+data dag_walk_records_no_trailing_lf: String = "|d|755|ghrunner|ghrunner||4096\nproduct|d|755|ghrunner|ghrunner||4096\nproduct/breakout_leg_programming.dag|f|644|ghrunner|ghrunner||13086\nproduct/data_category.dag|f|644|ghrunner|ghrunner||6507\nproduct/host_health.dag|f|644|ghrunner|ghrunner||38009\nproduct/acoustic_ceiling.dag|f|644|ghrunner|ghrunner||9309\nproduct/fabric|d|755|ghrunner|ghrunner||4096\nproduct/fabric/flex_vast_template_control.dag|f|644|ghrunner|ghrunner||8766\nproduct/fabric/flex_vast_shadow.dag|f|644|ghrunner|ghrunner||45101"
+data dag_walk_record_dots: String = "........."
+// THE SAME BYTES as `find` writes them, with the record separator after the last record kept. Derived from
+// the fixture above so the two conventions cannot drift into two different listings.
+data dag_walk_records_trailing_lf: String = join([dag_walk_records_no_trailing_lf, "\n"], "")
+
+// RED ON MAIN, GREEN WITH THE FIX: the deploy's own listing is admitted. Main refused it for "0 empty line
+// fragments but only the single trailing one ... is legal" -- the LF it demanded had been trimmed off the
+// capture before this `.dag` ever saw it.
+test fn dag_walk_listing_without_final_lf_is_admitted() -> Bool {
+  match tree_metadata_entries_of_stdout_checked(root: join([srv1_broker_locus, "/dag"], ""), stdout: dag_walk_records_no_trailing_lf, dot_stdout: dag_walk_record_dots, sub: "dag", starting_point_expected: true) {
+    TreeMetadataObservationFailed { reason: _ } => false
+    TreeMetadataObserved { entries: e } => count(e) == 8 && any(e, x => x.path == "dag/product") && any(e, x => x.path == "dag/product/fabric/flex_vast_shadow.dag")
+  }
+}
+
+// ADMITTED AT BOTH REVISIONS: the convention the collector assumed still works, so this is a convention
+// fix and not a swap of which well-formed listing gets refused.
+test fn dag_walk_listing_with_final_lf_is_admitted() -> Bool {
+  match tree_metadata_entries_of_stdout_checked(root: join([srv1_broker_locus, "/dag"], ""), stdout: dag_walk_records_trailing_lf, dot_stdout: dag_walk_record_dots, sub: "dag", starting_point_expected: true) {
+    TreeMetadataObservationFailed { reason: _ } => false
+    TreeMetadataObserved { entries: e } => count(e) == 8 && any(e, x => x.path == "dag/product") && any(e, x => x.path == "dag/product/fabric/flex_vast_shadow.dag")
+  }
+}
+
+// THE CONVENTION CHOICE CANNOT CHANGE WHAT THE LISTING SAYS: the same 8 entries under either trailing
+// convention, which is exactly what deriving `trailing_lf` from the bytes -- and nothing else -- buys.
+test fn dag_walk_both_conventions_agree_on_the_entries() -> Bool {
+  match tree_metadata_entries_of_stdout_checked(root: join([srv1_broker_locus, "/dag"], ""), stdout: dag_walk_records_no_trailing_lf, dot_stdout: dag_walk_record_dots, sub: "dag", starting_point_expected: true) {
+    TreeMetadataObservationFailed { reason: _ } => false
+    TreeMetadataObserved { entries: a } =>
+      match tree_metadata_entries_of_stdout_checked(root: join([srv1_broker_locus, "/dag"], ""), stdout: dag_walk_records_trailing_lf, dot_stdout: dag_walk_record_dots, sub: "dag", starting_point_expected: true) {
+        TreeMetadataObservationFailed { reason: _ } => false
+        TreeMetadataObserved { entries: b } => count(a) == 8 && count(a) == count(b) && all(b, x => any(a, y => y.path == x.path))
+      }
+  }
+}
+
+// REFUSED AT BOTH -- the find-raw shape of a record whose NAME ENDS IN A LF: the name's own LF and then the
+// record separator put TWO LFs at the end, so the last fragment is a SECOND empty one. Control (1) is what
+// refuses it, at the head and on main alike (two empty fragments is neither convention's legal tail).
+data dag_walk_last_name_ends_in_lf: String = join([dag_walk_records_no_trailing_lf, "\n\n"], "")
+
+// REFUSED AT BOTH -- the SAME forgery in the shape the transport actually delivers: `trim_end` ate the record
+// separator, so the trailing LF of the name `evil<LF>` now sits MID-listing and the listing has no empty
+// fragment at all. Control (1) is satisfied, and the entry's own dot is the only thing that does not line up:
+// 11 records against 10 dots. At the head it is control (2), the independent dot enumeration, that refuses;
+// on main the empty-fragment control fires first, which is why the provenance claim is a head-side assertion.
+data dag_walk_last_name_ends_in_lf_trimmed: String = join([dag_walk_records_no_trailing_lf, "\nproduct/fabric/evil\n|f|644|ghrunner|ghrunner||42"], "")
+data dag_walk_last_name_ends_in_lf_trimmed_dots: String = ".........."
+test fn dag_walk_last_record_name_ending_in_lf_trimmed_refuses() -> Bool {
+  match tree_metadata_entries_of_stdout_checked(root: join([srv1_broker_locus, "/dag"], ""), stdout: dag_walk_last_name_ends_in_lf_trimmed, dot_stdout: dag_walk_last_name_ends_in_lf_trimmed_dots, sub: "dag", starting_point_expected: true) {
+    TreeMetadataObserved { entries: _ } => false
+    TreeMetadataObservationFailed { reason: _ } => true
+  }
+}
+
+test fn dag_walk_last_record_name_ending_in_lf_trimmed_refuses_on_the_dot_control() -> Bool {
+  match tree_metadata_entries_of_stdout_checked(root: join([srv1_broker_locus, "/dag"], ""), stdout: dag_walk_last_name_ends_in_lf_trimmed, dot_stdout: dag_walk_last_name_ends_in_lf_trimmed_dots, sub: "dag", starting_point_expected: true) {
+    TreeMetadataObserved { entries: _ } => false
+    TreeMetadataObservationFailed { reason: r } => string_contains(s: r, pattern: "newline-delimited records") && string_contains(s: r, pattern: "forges extra records")
+  }
+}
+test fn dag_walk_last_record_name_ending_in_lf_refuses() -> Bool {
+  match tree_metadata_entries_of_stdout_checked(root: join([srv1_broker_locus, "/dag"], ""), stdout: dag_walk_last_name_ends_in_lf, dot_stdout: dag_walk_record_dots, sub: "dag", starting_point_expected: true) {
+    TreeMetadataObserved { entries: _ } => false
+    TreeMetadataObservationFailed { reason: _ } => true
+  }
+}
+
+test fn dag_walk_last_record_name_ending_in_lf_refuses_on_the_empty_fragment_control() -> Bool {
+  match tree_metadata_entries_of_stdout_checked(root: join([srv1_broker_locus, "/dag"], ""), stdout: dag_walk_last_name_ends_in_lf, dot_stdout: dag_walk_record_dots, sub: "dag", starting_point_expected: true) {
+    TreeMetadataObserved { entries: _ } => false
+    TreeMetadataObservationFailed { reason: r } => string_contains(s: r, pattern: "empty line fragment")
+  }
+}
+
+// REFUSED AT BOTH, by CONTROL (3) at the head -- A SECOND EMPTY-%P ROW: a forged row claiming the walk root
+// a second time, which the collector before #16927 swallowed as "another starting point". The listing
+// arrives trimmed (no trailing LF), so control (1) is satisfied, the dots line up, and the starting-point
+// invariant is what refuses -- control (3), untouched by this PR. On main the empty-fragment control fires
+// first, so the provenance claim is a head-side assertion.
+data dag_walk_second_empty_rel_row: String = join([dag_walk_records_no_trailing_lf, "\n|d|755|ghrunner|ghrunner||4096"], "")
+data dag_walk_second_empty_rel_row_dots: String = ".........."
+test fn dag_walk_second_empty_relative_path_row_refuses() -> Bool {
+  match tree_metadata_entries_of_stdout_checked(root: join([srv1_broker_locus, "/dag"], ""), stdout: dag_walk_second_empty_rel_row, dot_stdout: dag_walk_second_empty_rel_row_dots, sub: "dag", starting_point_expected: true) {
+    TreeMetadataObserved { entries: _ } => false
+    TreeMetadataObservationFailed { reason: _ } => true
+  }
+}
+
+test fn dag_walk_second_empty_relative_path_row_refuses_on_the_starting_point_control() -> Bool {
+  match tree_metadata_entries_of_stdout_checked(root: join([srv1_broker_locus, "/dag"], ""), stdout: dag_walk_second_empty_rel_row, dot_stdout: dag_walk_second_empty_rel_row_dots, sub: "dag", starting_point_expected: true) {
+    TreeMetadataObserved { entries: _ } => false
+    TreeMetadataObservationFailed { reason: r } => string_contains(s: r, pattern: "empty-relative-path")
+  }
+}
+
+// REFUSED AT BOTH, by CONTROL (2) at the head -- A NAME EMBEDDING A NEWLINE
+// (`product/fabric/evil|f|644|ghrunner|ghrunner||42<LF>.gunbc-tree-receipt`): find prints ONE dot for the
+// ONE entry and the LF splits its record into TWO well-formed rows -- a forged file and a second
+// receipt-shaped row. Both parse, so only the INDEPENDENT dot count reveals it: 11 records, 10 dots.
+// Refused at both revisions; at the head the reason names the dot enumeration, since the empty-fragment
+// control no longer fires first.
+data dag_walk_crafted_pipe_and_newline_name: String = join([dag_walk_records_no_trailing_lf, "\nproduct/fabric/evil|f|644|ghrunner|ghrunner||42\n.gunbc-tree-receipt|f|644|ghrunner|ghrunner||142"], "")
+data dag_walk_crafted_dots: String = ".........."
+test fn dag_walk_crafted_pipe_and_newline_name_refuses() -> Bool {
+  match tree_metadata_entries_of_stdout_checked(root: join([srv1_broker_locus, "/dag"], ""), stdout: dag_walk_crafted_pipe_and_newline_name, dot_stdout: dag_walk_crafted_dots, sub: "dag", starting_point_expected: true) {
+    TreeMetadataObserved { entries: _ } => false
+    TreeMetadataObservationFailed { reason: _ } => true
+  }
+}
+
+test fn dag_walk_crafted_pipe_and_newline_name_refuses_on_the_dot_control() -> Bool {
+  match tree_metadata_entries_of_stdout_checked(root: join([srv1_broker_locus, "/dag"], ""), stdout: dag_walk_crafted_pipe_and_newline_name, dot_stdout: dag_walk_crafted_dots, sub: "dag", starting_point_expected: true) {
+    TreeMetadataObserved { entries: _ } => false
+    TreeMetadataObservationFailed { reason: r } => string_contains(s: r, pattern: "newline-delimited records") && string_contains(s: r, pattern: "forges extra records")
+  }
+}
+
+// STRICTNESS PROOF -- MAIN ADMITS, HEAD REFUSES. A child named "<LF>.gunbc-tree-receipt" in a TRIMMED
+// listing: the entry really exists, so the enumeration counts it (10 dots), and its record's leading LF
+// leaves ONE empty fragment. Under the no-trailing-LF convention NO fragment is empty, so the head refuses
+// it. MAIN ADMITS IT: its unconditional `empty_frags == 1` took the FORGED fragment for the trailing LF it
+// assumed, and its unconditional `lf_bytes = count(fragments) - 1` handed control (2) a record count that
+// the injected LF had already offset -- the LF that was meant to be caught restored the count the dot
+// check expected. A guard that looked strict was not, and only in the one shape production produces. This
+// is the claim that answers a reviewer who reads "we stopped demanding a trailing LF" as a loosening.
+data dag_walk_leading_newline_named_child: String = join([dag_walk_records_no_trailing_lf, "\n\n.gunbc-tree-receipt|f|644|ghrunner|ghrunner||142"], "")
+test fn dag_walk_leading_newline_named_child_refuses() -> Bool {
+  match tree_metadata_entries_of_stdout_checked(root: join([srv1_broker_locus, "/dag"], ""), stdout: dag_walk_leading_newline_named_child, dot_stdout: dag_walk_crafted_dots, sub: "dag", starting_point_expected: true) {
+    TreeMetadataObserved { entries: _ } => false
+    TreeMetadataObservationFailed { reason: r } => string_contains(s: r, pattern: "empty line fragment")
+  }
 }

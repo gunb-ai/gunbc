@@ -6,12 +6,11 @@ import extdeps.tools.id { id_user_name_argv }
 import extdeps.tools.hostname { hostname_read_argv }
 import std.algebra { trim }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import gunbc.typed_argv_exec {
+import gunbc.typed_argv_exec { 
   typed_argv_probe_over_ssh,
   TypedArgvExecOutcome,
   TypedArgvExecConverged,
-  TypedArgvExecRefused,
-}
+  TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.fleet.fleet_reach_endpoint {
   fleet_reach_probe_targets,
@@ -339,6 +338,7 @@ fn probe_reachable_with_principal(target: String, hostname_stdout: String) -> Re
       } else {
         ProbeTransportUnavailable { cause: join(["id-un-failed stderr=", idr.stderr], "") }
       }
+      TypedArgvExecOverran { deadline: d } => ProbeTransportUnavailable { cause: typed_argv_exec_overran_reason(leg_hint: "host reach identity probe", deadline: d) }
     TypedArgvExecRefused { reason: why } => ProbeTransportUnavailable { cause: why }
   }
 }
@@ -357,6 +357,7 @@ fn probe_ready_target_once(host: String, endpoint: String, remote_principal: Str
           expected_fingerprint: enrolled_fingerprint_for(host: host),
         )
       }
+      TypedArgvExecOverran { deadline: d } => ProbeTransportUnavailable { cause: typed_argv_exec_overran_reason(leg_hint: "host reach identity probe", deadline: d) }
     TypedArgvExecRefused { reason: why } => ProbeTransportUnavailable { cause: why }
   }
 }

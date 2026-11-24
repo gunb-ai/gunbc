@@ -13,6 +13,7 @@ import gunbc.serving.rented_host_access {
   RentedHostAccessDeclaration, RentedHostAccessReady, RentedHostAccessRefused, rented_host_access,
 }
 import gunbc.serving.replica_endpoint_launch { ReplicaEndpointLaunch }
+import gunbc.fleet.fleet_known_hosts_anchor { ProbeLeg }
 import gunbc.serving.replica_incarnation {
   ReplicaIncarnationStanding, replica_incarnation_unread, observe_replica_incarnation,
 }
@@ -153,7 +154,7 @@ fn rented_incarnation_standing(
         match rented_host_permit(authorizations: authorizations, declaration: e.access, attempt_raw: attempt_raw, clock: clock) {
           RentedHostNotPermitted { cause: why } => replica_incarnation_unread(cause: why)
           RentedHostPermitted =>
-            match rented_host_access(declaration: e.access, attempt_raw: attempt_raw) {
+            match rented_host_access(declaration: e.access, attempt_raw: attempt_raw, kind: ProbeLeg) {
               RentedHostAccessRefused { node: _, cause: why } => replica_incarnation_unread(cause: why)
               RentedHostAccessReady { node: _, transport: t, receipt: _ } =>
                 observe_replica_incarnation(transport: t, launch: launch, engine_pattern: e.engine_pattern)

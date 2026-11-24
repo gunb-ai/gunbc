@@ -2,14 +2,17 @@ module test.claim.live_deploy.deployed_tree_observation_witness
 
 import std.types { String, NonEmptyStr, List, Bool }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import extdeps.git
+import extdeps.git {
+  git_in_trusted_repository_head_revision_command,
+  git_in_trusted_repository_read_tree_command,
+  git_in_trusted_repository_status_command,
+  git_in_trusted_repository_ls_files_ignored_command,
+}
+import extdeps.exec.command { argv_words }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_eq }
 import gunbc.fleet.fleet_known_hosts_anchor { portable_remote_words }
 import gunbc.live_deploy.deployed_tree_observation {
-  deployed_tree_revision_argv,
-  deployed_tree_status_argv,
-  deployed_tree_read_tree_argv,
-  deployed_tree_ignored_argv,
+  deployed_tree_temp_index_name,
   DeployedTreeContentState,
   DeployedScopeMatchesCommit,
   DeployedScopeDiverged,
@@ -106,10 +109,10 @@ test fn witness_the_portability_wall_refuses_a_pipeline() -> Bool {
 // index -- which is the artifact the whole construction exists to avoid consulting, and the fallback
 // produces a plausible answer rather than an error.
 test fn witness_the_comparison_is_bound_to_the_materialized_index() -> Bool {
-  any(deployed_tree_status_argv(repo: probe_repo(), index_path: probe_index_path),
+  any(argv_words(command: git_in_trusted_repository_status_command(repo: probe_repo(), index_path: probe_index_path)),
       w => w == join(["GIT_INDEX_FILE=", probe_index_path], ""))
-    && any(deployed_tree_status_argv(repo: probe_repo(), index_path: probe_index_path), w => w == "env")
-    && any(deployed_tree_status_argv(repo: probe_repo(), index_path: probe_index_path), w => w == "status")
+    && any(argv_words(command: git_in_trusted_repository_status_command(repo: probe_repo(), index_path: probe_index_path)), w => w == "env")
+    && any(argv_words(command: git_in_trusted_repository_status_command(repo: probe_repo(), index_path: probe_index_path)), w => w == "status")
 }
 
 // `--no-optional-locks` IS LOAD-BEARING: plain `git status` WRITES the index back, measured by md5.
@@ -117,7 +120,7 @@ test fn witness_the_comparison_is_bound_to_the_materialized_index() -> Bool {
 // answer correctly, so nothing downstream would notice. This witness is the only thing standing
 // between that flag and a later reader who removes it as noise.
 test fn witness_the_observation_cannot_write_the_hosts_index() -> Bool {
-  any(deployed_tree_status_argv(repo: probe_repo(), index_path: probe_index_path),
+  any(argv_words(command: git_in_trusted_repository_status_command(repo: probe_repo(), index_path: probe_index_path)),
       w => w == "--no-optional-locks")
 }
 
@@ -132,10 +135,12 @@ test fn witness_the_observation_cannot_write_the_hosts_index() -> Bool {
 // index, so a MISSING tracked path reads as intentionally absent rather than as drift -- a false clean
 // on exactly the failure this observation exists to catch.
 test fn witness_the_index_is_materialized_from_the_revision_into_a_named_file() -> Bool {
-  let argv = deployed_tree_read_tree_argv(
-    repo: probe_repo(),
-    revision_hex: "8a472fff9e9000600e33cc3559ecfad4ba55e3a3",
-    index_path: probe_index_path,
+  let argv = argv_words(
+    command: git_in_trusted_repository_read_tree_command(
+      repo: probe_repo(),
+      index_path: probe_index_path,
+      revision_hex: "8a472fff9e9000600e33cc3559ecfad4ba55e3a3",
+    ),
   )
   argv == probe_read_tree_words()
     && any(argv, w => w == "read-tree")
@@ -144,18 +149,30 @@ test fn witness_the_index_is_materialized_from_the_revision_into_a_named_file() 
     && any(argv, w => w == "--no-sparse-checkout")
 }
 
-// The temp index must be named for the ATTEMPT, so two concurrent observations cannot collide on one
-// file -- a collision would have one run reading an index the other is writing.
-test fn witness_the_temp_index_is_named_for_the_attempt() -> Bool {
-  string_contains(s: probe_index_path, pattern: "probe-attempt")
+// THE TEMP INDEX IS OWNED BY THE RUN, NOT MERELY BY THE ATTEMPT (review 97601 B1, reproduced with real
+// git by the reviewing side AND by dag/test/manual/deployed_tree_local_arm_live_pairing.dag: the timer's
+// refresh and a ServedObservationObligation -- which emit.dag explicitly runs concurrently -- shared one
+// constant GIT_INDEX_FILE; one fold's read-tree overwrote the other's between its reads, and the status
+// came back EMPTY: a false clean with no error, published as converged). The name therefore carries the
+// attempt AND a per-run nonce, and the fold owns that name from read-tree through both reads. Drop the
+// nonce from the name -- the state this fold shipped in -- and this claim goes red while every
+// word-level claim about the SAME commands stays green: words alone cannot see which run a path belongs
+// to, which is exactly why the name needs the run.
+test fn witness_the_temp_index_is_owned_by_the_run() -> Bool {
+  let a = deployed_tree_temp_index_name(attempt: "probe-attempt" as NonEmptyStr, run_nonce: "nonce-a")
+  let b = deployed_tree_temp_index_name(attempt: "probe-attempt" as NonEmptyStr, run_nonce: "nonce-b")
+  a != b
+    && string_contains(s: a, pattern: "probe-attempt")
+    && string_contains(s: a, pattern: "nonce-a")
+    && string_contains(s: b, pattern: "nonce-b")
 }
 
 test fn witness_revision_argv_asks_for_head_in_the_deployed_repo() -> Bool {
-  deployed_tree_revision_argv(repo: probe_repo()) == probe_revision_words()
+  argv_words(command: git_in_trusted_repository_head_revision_command(repo: probe_repo())) == probe_revision_words()
 }
 
 test fn witness_status_argv_targets_the_deployed_repo() -> Bool {
-  deployed_tree_status_argv(repo: probe_repo(), index_path: probe_index_path) == probe_status_words()
+  argv_words(command: git_in_trusted_repository_status_command(repo: probe_repo(), index_path: probe_index_path)) == probe_status_words()
 }
 
 test fn witness_read_tree_argv_is_admitted_by_the_portability_wall() -> Bool {
@@ -278,7 +295,7 @@ test fn witness_a_truncated_rename_record_refuses_rather_than_reading_clean() ->
 // refuse at the wall rather than at the host, and the two ignored-path witnesses above would be
 // asserting about a command that can never be sent.
 test fn witness_the_ignored_leg_argv_is_portable_and_names_the_temp_index() -> Bool {
-  deployed_tree_ignored_argv(repo: probe_repo(), index_path: probe_index_path) == probe_ignored_words()
+  argv_words(command: git_in_trusted_repository_ls_files_ignored_command(repo: probe_repo(), index_path: probe_index_path)) == probe_ignored_words()
     && match portable_remote_words(raws: probe_ignored_words()) {
       Present { value: _ } => true
       Absent => false
@@ -465,10 +482,10 @@ test fn witness_every_leg_trusts_exactly_the_repository_it_names() -> Bool {
   let other = "/srv/another-checkout" as NonEmptyStr
   let trust = join(["safe.directory=", other as String], "")
   let legs = [
-    deployed_tree_revision_argv(repo: other),
-    deployed_tree_read_tree_argv(repo: other, revision_hex: "abc", index_path: probe_index_path),
-    deployed_tree_status_argv(repo: other, index_path: probe_index_path),
-    deployed_tree_ignored_argv(repo: other, index_path: probe_index_path),
+    argv_words(command: git_in_trusted_repository_head_revision_command(repo: other)),
+    argv_words(command: git_in_trusted_repository_read_tree_command(repo: other, index_path: probe_index_path, revision_hex: "abc")),
+    argv_words(command: git_in_trusted_repository_status_command(repo: other, index_path: probe_index_path)),
+    argv_words(command: git_in_trusted_repository_ls_files_ignored_command(repo: other, index_path: probe_index_path)),
   ]
   all(legs, argv => any(argv, w => w == trust) && !any(argv, w => w == "safe.directory=*") && !any(argv, w => w == join(["safe.directory=", probe_repo() as String], "")))
 }
