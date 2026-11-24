@@ -1927,7 +1927,7 @@ fn issue_attempt_failure_nodes(events: List<FailureEvent>) -> List<Fragment> {
 // the event kind, and its payload — the durable facts a session stated on the issue (assignment
 // among them: a Claimed event IS the assignment record). Events whose recorded_at is empty (an
 // unprobed clock at write) sort oldest, honestly — absence is not a timestamp.
-fn issue_event_row_node(env: RoadmapEventEnvelope, profiles: List<PrincipalProfile> = []) -> Fragment {
+fn issue_event_row_node(env: RoadmapEventEnvelope, profiles: List<PrincipalProfile>) -> Fragment {
   let e = env.event
   let display = event_principal_display_with_profile(p: e.author, profiles: profiles)
   el_attrs("div", [
@@ -1946,11 +1946,14 @@ fn issue_event_row_node(env: RoadmapEventEnvelope, profiles: List<PrincipalProfi
 // rendering in the page-rebuild slice). A Claimed row names its assignee: a self-claim reads as
 // claiming, a reassignment (assignee ≠ author) reads as assigned-to, so the history tells the two
 // apart without hiding who recorded the event — the author column already names them.
-fn issue_event_payload(env: RoadmapEventEnvelope, profiles: List<PrincipalProfile> = []) -> String {
+fn issue_event_payload(env: RoadmapEventEnvelope, profiles: List<PrincipalProfile>) -> String {
   match env.event.kind {
     Claimed { assignee, return_to: _ } =>
       // The COMPARISON is wire work — two labels compared, not shown. The NAME in the sentence is
       // display text and goes through the projection, which is where the label used to be pasted.
+      // NO DEFAULT ROSTER: an omitted roster and an empty one would be indistinguishable here, and
+      // the difference is whether a named principal shows their name or the marker
+      // (gunbc.design_argument::declared_intent) — so the caller states it.
       if event_principal_label(p: assignee) == event_principal_label(p: env.event.author) {
         "claimed the issue"
       } else {
@@ -1984,7 +1987,7 @@ fn issue_event_payload(env: RoadmapEventEnvelope, profiles: List<PrincipalProfil
   }
 }
 
-fn issue_event_text(env: RoadmapEventEnvelope, profiles: List<PrincipalProfile> = []) -> String {
+fn issue_event_text(env: RoadmapEventEnvelope, profiles: List<PrincipalProfile>) -> String {
   issue_event_payload(env: env, profiles: profiles)
 }
 
@@ -2594,7 +2597,7 @@ fn issue_dependencies_tab_nodes(view: WorkRowView, hierarchy: IssueHierarchyView
 // THE HISTORY TAB: the raw event ledger, newest first — every durable event with its author,
 // kind, and payload. Execution evidence (attempts, rounds, the stage ledger) lives on the Work
 // tab exclusively; this tab is the audit trail.
-fn issue_history_tab_nodes(events: List<RoadmapEventEnvelope>, profiles: List<PrincipalProfile> = []) -> List<Fragment> {
+fn issue_history_tab_nodes(events: List<RoadmapEventEnvelope>, profiles: List<PrincipalProfile>) -> List<Fragment> {
   if count(events) == 0 { [el_class("p", "issue-panel-empty", [txt("No issue history yet.")])] } else {
     [ el_class("div", "issue-event-history", map(issue_events_newest_first(envs: events), env => issue_event_row_node(env: env, profiles: profiles))) ]
   }
