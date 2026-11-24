@@ -15,6 +15,7 @@ import v2.compiler.effect_demand {
   filesystem_effect_emitted_closure_population,
   filesystem_effect_reach,
   filesystem_effect_site_eq,
+  filesystem_effect_offender_sites_are_distinct,
   filesystem_effect_reach_census,
   filesystem_effect_direct_reach_wall_holds,
   demand_restatement_row_verdict,
@@ -141,6 +142,29 @@ test fn filesystem_census_reports_two_distinct_sites_for_self_host() -> Bool {
       left: self_host_read_roster_manifest_site,
       right: self_host_fold_side_bytes_site
     ))
+}
+
+// THE DISTINCTNESS ARM IS LIVE. filesystem_effect_direct_reach_wall_holds ANDs the distinctness invariant,
+// which folds over filesystem_effect_site_eq -- so site_eq is a WALL consumer, not a test-only helper (the
+// reviewer's finding: a pub whose comment advertises a consumer that does not exist). Two assertions make
+// the arm discriminating rather than merely present (fail_closed's construction-over-validation rule):
+// GREEN -- the real self_host census offenders sit at two distinct located sites, so the invariant holds;
+// RED -- the SAME located site reported twice (read_roster_manifest occurrence 1 collapsed onto itself)
+// FAILS the invariant even though the list is nonempty, so the distinctness arm is observably checked and
+// is not shadowed by the emptiness arm.
+test fn filesystem_offender_sites_are_distinct_on_the_real_self_host_census() -> Bool {
+  filesystem_effect_offender_sites_are_distinct(
+    offenders: self_host_emitted_closure_report.offenders
+  ) == true
+}
+
+test fn filesystem_offender_same_site_twice_breaks_distinctness() -> Bool {
+  let duplicated = Cons {
+    head: filesystem_reach_self_host_roster,
+    tail: Cons { head: filesystem_reach_self_host_roster, tail: Empty }
+  }
+  (length(xs: duplicated) == 2)
+    && (filesystem_effect_offender_sites_are_distinct(offenders: duplicated) == false)
 }
 
 test fn filesystem_read_direct_reach_refuses() -> Bool {
