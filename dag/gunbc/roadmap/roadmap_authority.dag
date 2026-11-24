@@ -3035,16 +3035,19 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_HALIGN0CHECKPOINT0RESUME0A",
       id: "harness-alignment-checkpoint-resume",
       owner: "harness",
-      carriers: carrier(path: "dag/gunbc/harness/harness_turn.dag"),
+      carriers: concat(
+        carrier(path: "dag/gunbc/harness/harness_turn.dag"),
+        carrier(path: "dag/test/claim/harness_alignment_checkpoint_resume_wet_witness.dag"),
+      ),
       line: ticket(t: updated(t: fields(
         headline: "Replace fixed round exhaustion with an evidence-bound checkpoint whose verdict resumes, steers, re-plans, routes, or stops the same attempt lineage",
         boundary: "At the epoch boundary the harness emits turn.alignment_checkpoint_due bound to the chain fingerprint and returns control; adjudication runs outside the worker loop against durable evidence; the verdict and next cadence state publish atomically; only adjudication resumes the lineage.",
         displaced_cost: "An in-loop checkpoint that asks the worker to grade itself mints continuation on the worker's own word -- the drift the checkpoint exists to catch is exactly the drift such a worker would not report.",
-        first_slice: "Typed TurnAlignmentCheckpointDue outcome plus the durable event, the admitted-root chain projection, and the belt's adjudication-and-resume wiring.",
+        first_slice: "Bounded, assessed, and built: the typed TurnAlignmentCheckpointDue outcome with ONE emission site at the epoch boundary (harness_turn_checkpoint_due), which persists the round's evidence, appends the durable turn.alignment_checkpoint_due event bound to the admitted chain fingerprint, and returns control; the admitted-root chain projection, whose refusals are the chain authority's own (alignment_resolve_chain, alignment_refusal_reason) with no local rootedness test; harness_alignment_adjudicate publishing verdict plus next cadence state as one record keyed by the existing AlignmentCheckpointIdentity digest; harness_alignment_resume_gate as the only reader of that published record and the only path to the next epoch -- all modeled on this row's carrier, with witnesses over the existing chain fingerprint and checkpoint identity rather than new keys.",
         red_control: "An unrooted task refuses its chain; a worker's own aligned assertion cannot mint a continuation receipt; a changed node contract or edge contribution invalidates earlier receipts; a crash after verdict publication produces exactly one next epoch.",
         out_of_scope: "No change to submission, verification, or publication gates; reviewers, auditors and probes keep hard step budgets.",
         handback: "The outcome, the rooted projection, the adjudication boundary, durable cadence state, and witnesses for the red controls."
-      ), on: "2026-09-30", note: "Not yet centered: needs a centering plan: authored 2026-09-30 with no attempts, and its first slice has not been confirmed bounded.")),
+      ), on: "2026-11-24", note: "Centered 2026-11-24 on the lane's boundedness assessment: reuse plus one emission site, every input durable. Carriers are this row's harness_turn.dag plus the new claim witness module dag/test/claim/harness_alignment_checkpoint_resume_wet_witness.dag; dag/gunbc/roadmap/roadmap_belt_actuate.dag is untouched -- the belt lane binds harness_alignment_adjudicate_and_resume on its own side. The one mechanically forced change outside these carriers is the new outcome's arm in harness_cli.dag's harness_turn_exit (no row's declared carrier), routed to the refusal exit and never to ExitSuccess, which would flow into the caller's durable turn record.")),
       dispatch: dispatchable(),
       parent: in_project(project: "harness-recursive-alignment", contribution: "The checkpoint turns an arbitrary terminal counter into the durable mechanism that enforces recursive alignment."),
     ),

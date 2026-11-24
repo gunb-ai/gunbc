@@ -1,0 +1,519 @@
+module test.claim.harness_alignment_checkpoint_resume_wet_witness
+
+// WITNESSES FOR rn_HALIGN0CHECKPOINT0RESUME0A (harness-alignment-checkpoint-resume). The row's four
+// red controls, run against the REAL authorities on gunbc.harness.harness_turn -- the boundary's
+// emission, the admitted-root projection, the adjudication, the publication and the resume gate --
+// over real files in a real temp directory. Nothing here stubs the boundary it grades: the evidence is
+// written to disk by the boundary's own persistence step, and adjudication and the gate read it back
+// with their own readers. Effects: shell.Mktemp, Filesystem reads/writes, shell.Remove.RecursiveForce;
+// local-repo wet lane. G0: no dispatch, no drain, no belt tick, no launcher -- these tests only touch
+// files under /tmp and call pure/IO model functions.
+
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.logic { Bool }
+import std.types { String, List, Int, FilePath }
+import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string }
+import std.algebra { trim, length, string_contains }
+import std.decl_ref { DeclarationRef, decl_ref }
+import gunbc.harness.harness_reasoning_wire { DeepseekV4FlashOnVllm, ReasoningOff }
+import gunbc.harness.harness_wire { harness_context_budget_for }
+import gunbc.harness.harness_tool { harness_tool_environment, ValidationNotOffered }
+import gunbc.harness.harness_cli {
+  harness_turn_exit, harness_default_wire_shape, harness_default_max_tokens, harness_request_deadline,
+}
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import gunbc.roadmap.roadmap_alignment_verdict { AlignmentVerdict, Aligned }
+import gunbc.roadmap.roadmap_alignment {
+  AlignmentChainLink, AlignmentChain, AlignmentChained, AlignmentChainUnrooted,
+  alignment_chain_fingerprint, alignment_checkpoint_identity_digest, AlignmentCheckpointIdentity,
+  alignment_base_cadence_state,
+}
+import gunbc.harness.harness_turn {
+  HarnessTurnConfig, Unsupervised, BackendAdmittedBySeat, CompletesOnProviderStop,
+  TurnAlignmentCheckpointDue, TurnSupervisionUnavailable,
+  HarnessAlignmentCheckpointEvidence, HarnessAlignmentChainProjection, ProjectionAdmitted, ProjectionRefused,
+  HarnessAlignmentAdjudication, HarnessAlignmentAdjudicationRead, AdjudicationPublished, AdjudicationRefused,
+  HarnessAlignmentResume, ResumedOnce, ResumeRefused,
+  harness_alignment_chain_projection, harness_alignment_adjudicate, harness_alignment_resume_gate,
+  harness_alignment_adjudicate_and_resume,
+  harness_alignment_publication_path, harness_alignment_publication_text, harness_alignment_publish,
+  harness_alignment_observation_digest, harness_alignment_fingerprint_of, harness_alignment_checkpoint_digest,
+  harness_event_alignment_checkpoint_due, harness_turn_checkpoint_due,
+  harness_supervision_artifact_path, harness_supervision_observation_text, harness_supervision_verdict_name,
+}
+
+fn fresh_dir(tag: String) -> String {
+  shell.Mktemp.DirWithTemplate(template: join(["/tmp/gunbc_align_", tag, ".XXXXXX"], "")).path
+}
+
+fn admitted_root() -> DeclarationRef {
+  decl_ref(module_path: "gunbc.design_argument", decl_name: "single_authority")
+}
+
+// THE FIXTURE SPINE: task -> project -> admitted root, every link filled. The chains are built from
+// the chain authority's own types and their fingerprints are taken from the chain authority's own
+// digest -- this module derives no fingerprint, no digest and no refusal of its own.
+fn link_of(node_id: String, red_control: String, contribution: String) -> AlignmentChainLink {
+  AlignmentChainLink {
+    node_id: node_id,
+    purpose: join(["the purpose of ", node_id], ""),
+    boundary: join(["the boundary of ", node_id], ""),
+    current_approach: join(["the approach of ", node_id], ""),
+    red_control: red_control,
+    handback: join(["the handback of ", node_id], ""),
+    displaced_cost: join(["the displaced cost of ", node_id], ""),
+    contribution_to_parent: contribution,
+  }
+}
+
+fn spine(red_control: String) -> AlignmentChain {
+  AlignmentChained {
+    task: link_of(node_id: "align-witness-task", red_control: red_control, contribution: "the task contributes its evidence"),
+    projects: [link_of(node_id: "align-witness-project", red_control: "the project's red control", contribution: "the project contributes the spine")],
+    root: admitted_root(),
+  }
+}
+
+fn spine_unrooted() -> AlignmentChain {
+  AlignmentChainUnrooted {
+    walked: [
+      link_of(node_id: "align-witness-task", red_control: "the task's red control", contribution: "the task contributes its evidence"),
+      link_of(node_id: "align-witness-project", red_control: "the project's red control", contribution: "the project contributes the spine"),
+    ],
+    at: "align-witness-orphan",
+  }
+}
+
+// THE ROUND'S OWN MESSAGE STATE. Empty evidence is no evidence -- adjudication refuses it on purpose
+// -- so the witnesses hand the boundary a real conversation to persist, exactly as a real turn does.
+fn round_messages() -> List<JsonValue> {
+  [
+    json_object(members: [
+      json_kv(key: "role", value: json_string(s: "user")),
+      json_kv(key: "text", value: json_string(s: "carry the checkpoint across the epoch boundary")),
+    ]),
+    json_object(members: [
+      json_kv(key: "role", value: json_string(s: "assistant")),
+      json_kv(key: "text", value: json_string(s: "persisted the round's evidence and returned control")),
+    ]),
+  ]
+}
+
+fn observation_text(steps: Int) -> String {
+  harness_supervision_observation_text(messages: round_messages(), round_steps: steps)
+}
+
+fn observation_in(dir: String, steps: Int) -> String {
+  harness_supervision_artifact_path(check_directory: dir, kind: "observation", steps_taken: steps, extension: ".txt")
+}
+
+fn verdict_in(dir: String, steps: Int) -> String {
+  join([dir, "/", harness_supervision_verdict_name(kind: "check", steps_taken: steps)], "")
+}
+
+fn write_file(path: String, content: String) -> Bool {
+  Filesystem.Write(path: path, content: content).success
+}
+
+fn read_file(path: String) -> String {
+  let read = Filesystem.Read(path: path)
+  if read.success { read.content } else { "" }
+}
+
+fn evidence_in(dir: String, observation: String, steps: Int) -> HarnessAlignmentCheckpointEvidence {
+  HarnessAlignmentCheckpointEvidence {
+    observation_path: observation_in(dir: dir, steps: steps),
+    observation_digest: harness_alignment_observation_digest(observation: observation),
+    conversation_tip: "the tip the boundary recorded",
+    round_steps: steps,
+    steps_taken: steps,
+  }
+}
+
+fn project(chain: AlignmentChain, dir: String, observation: String, steps: Int) -> HarnessAlignmentChainProjection {
+  harness_alignment_chain_projection(
+    chain: chain,
+    turns_elapsed: steps,
+    cadence: alignment_base_cadence_state(),
+    evidence: evidence_in(dir: dir, observation: observation, steps: steps),
+  )
+}
+
+fn fingerprint(chain: AlignmentChain, dir: String, observation: String, steps: Int) -> String {
+  match project(chain: chain, dir: dir, observation: observation, steps: steps) {
+    ProjectionAdmitted { chain: resolved, evidence: _ } => harness_alignment_fingerprint_of(chain: resolved)
+    ProjectionRefused { cause: _ } => ""
+  }
+}
+
+fn checkpoint_bound_to(chain: AlignmentChain, dir: String, observation: String, steps: Int, lineage: String, epoch: Int) -> AlignmentCheckpointIdentity {
+  AlignmentCheckpointIdentity {
+    attempt_lineage: lineage,
+    epoch: epoch,
+    checkpoint_ordinal: 1,
+    chain_fingerprint: fingerprint(chain: chain, dir: dir, observation: observation, steps: steps),
+    conversation_tip: "the tip the boundary recorded",
+    candidate_subject: "align-witness-candidate",
+  }
+}
+
+fn turn_config(dir: String) -> HarnessTurnConfig {
+  HarnessTurnConfig {
+    backend_url: "http://127.0.0.1:1/v1",
+    model: "align-witness-model",
+    max_tokens: harness_default_max_tokens,
+    serving_unit: DeepseekV4FlashOnVllm,
+    reasoning_mode: ReasoningOff,
+    wire_shape: harness_default_wire_shape,
+    system_prompt: "align-witness",
+    supervision: Unsupervised,
+    request_scratch_path: join([dir, "/request.json"], "") as FilePath,
+    events_path: join([dir, "/provider-events.jsonl"], "") as FilePath,
+    context_budget: harness_context_budget_for(unit: DeepseekV4FlashOnVllm),
+    request_deadline: harness_request_deadline,
+    environment: harness_tool_environment(
+      working_directory: dir as FilePath,
+      timeout_program: "/usr/bin/timeout" as FilePath,
+      job_output_directory: dir as FilePath,
+      validation: ValidationNotOffered,
+    ),
+    completion: CompletesOnProviderStop,
+    backend_access: BackendAdmittedBySeat,
+  }
+}
+
+// RED CONTROL 1 -- AN UNROOTED TASK REFUSES ITS CHAIN. The projection is asked for the chain of a
+// walk that dies before the admitted root, and it must REFUSE with the chain authority's own cause;
+// the rooted spine must be admitted with the authority's fingerprint intact. No local notion of
+// "rooted enough" is consulted on either path -- the refusal text is the resolver's, the fingerprint
+// is the digester's.
+test fn an_unrooted_task_refuses_its_chain_and_a_rooted_one_is_admitted() -> Bool {
+  let dir = fresh_dir(tag: "unrooted")
+  let observation = observation_text(steps: 4)
+  let refused = project(chain: spine_unrooted(), dir: dir, observation: observation, steps: 4)
+  let admitted = project(chain: spine(red_control: "the task's red control"), dir: dir, observation: observation, steps: 4)
+  let removed = shell.Remove.RecursiveForce(path: dir)
+  removed.success
+    && match refused {
+         ProjectionRefused { cause } => trim(s: cause) != ""
+         ProjectionAdmitted { chain: _, evidence: _ } => false
+       }
+    && match admitted {
+         ProjectionAdmitted { chain, evidence: _ } =>
+           harness_alignment_fingerprint_of(chain: chain) == alignment_chain_fingerprint(chain: chain)
+             && trim(s: harness_alignment_fingerprint_of(chain: chain)) != ""
+         ProjectionRefused { cause: _ } => false
+       }
+}
+
+// RED CONTROL 2 -- A WORKER'S OWN ALIGNED ASSERTION CANNOT MINT A CONTINUATION RECEIPT. Three refusals:
+// (a) the boundary persisted the round's evidence and the worker then overwrote that file with its own
+// claim of alignment -- adjudication refuses, because the digest the boundary recorded no longer
+// matches the artifact; (b) the check's verdict artifact is absent -- an undecided checkpoint resumes
+// nothing, however loudly the conversation asserts alignment; (c) a publication keyed to a DIFFERENT
+// checkpoint cannot resume this lineage, so a receipt minted elsewhere buys nothing here.
+test fn a_workers_own_aligned_assertion_cannot_mint_a_continuation_receipt() -> Bool {
+  let dir = fresh_dir(tag: "assertion")
+  let chain = spine(red_control: "the task's red control")
+  let steps = 9
+  let honest = observation_text(steps: steps)
+  let emitted = harness_turn_checkpoint_due(
+    config: turn_config(dir: dir),
+    chain_fingerprint: fingerprint(chain: chain, dir: dir, observation: honest, steps: steps),
+    check_directory: dir,
+    round_steps: steps,
+    messages: round_messages(),
+    steps_taken: steps,
+    events: [],
+  )
+  let checkpoint = checkpoint_bound_to(chain: chain, dir: dir, observation: honest, steps: steps, lineage: "align-witness-assertion", epoch: 6)
+  let path = observation_in(dir: dir, steps: steps)
+  let verdict = verdict_in(dir: dir, steps: steps)
+  // (a) the graded party rewrites its own evidence to assert alignment.
+  let tampered = write_file(path: path, content: join([honest, "\nWORKER ASSERTION: aligned, ship it\n"], ""))
+  let wrote_verdict = write_file(path: verdict, content: "{\"kind\": \"aligned\"}")
+  let tampered_read = harness_alignment_adjudicate(
+    checkpoint: checkpoint,
+    projection: project(chain: chain, dir: dir, observation: honest, steps: steps),
+    observation_path: path,
+    verdict_path: verdict,
+  )
+  // (b) restore the honest bytes; take the verdict artifact away.
+  let restored = write_file(path: path, content: honest)
+  let no_verdict = harness_alignment_adjudicate(
+    checkpoint: checkpoint,
+    projection: project(chain: chain, dir: dir, observation: honest, steps: steps),
+    observation_path: path,
+    verdict_path: join([dir, "/supervision-check-verdict-after-turn-404.json"], ""),
+  )
+  // (c) a receipt published for another checkpoint (different lineage and epoch, so another digest).
+  let other = checkpoint_bound_to(chain: chain, dir: dir, observation: honest, steps: steps, lineage: "align-witness-elsewhere", epoch: 99)
+  let foreign = harness_alignment_resume_gate(
+    checkpoint: checkpoint,
+    published: harness_alignment_publish(
+      check_directory: dir,
+      adjudication: HarnessAlignmentAdjudication {
+        checkpoint: other,
+        verdict: Aligned,
+        cadence: alignment_base_cadence_state(),
+      },
+    ),
+  )
+  let removed = shell.Remove.RecursiveForce(path: dir)
+  match emitted {
+    TurnAlignmentCheckpointDue { chain_fingerprint: _, conversation_tip: _, observation_path: _, round_steps: _, steps_taken: _ } =>
+      removed.success && tampered && wrote_verdict && restored
+        && match tampered_read {
+             AdjudicationRefused { cause } => trim(s: cause) != ""
+             AdjudicationPublished { adjudication: _ } => false
+           }
+        && match no_verdict {
+             AdjudicationRefused { cause } => trim(s: cause) != ""
+             AdjudicationPublished { adjudication: _ } => false
+           }
+        && match foreign {
+             ResumeRefused { cause } => trim(s: cause) != ""
+             ResumedOnce { next_epoch: _, checkpoint: _ } => false
+           }
+    _ => false
+  }
+}
+
+// RED CONTROL 3 -- A CHANGED NODE CONTRACT OR EDGE CONTRIBUTION INVALIDATES EARLIER RECEIPTS. The
+// checkpoint is bound to the fingerprint the chain authority derived for the spine as it stood; re-word
+// one link's red control and the derived fingerprint moves, so adjudication under the retuned chain
+// refuses rather than honouring the stale binding. Honouring the untouched chain still publishes, and
+// publishes under the identity digest the chain authority derives -- no second key exists here.
+test fn a_changed_node_contract_or_edge_contribution_invalidates_earlier_receipts() -> Bool {
+  let dir = fresh_dir(tag: "retuned")
+  let steps = 3
+  let observation = observation_text(steps: steps)
+  let before = spine(red_control: "the task's red control")
+  let after = spine(red_control: "THE TASK'S RED CONTROL WAS EDITED AFTER THE CHECKPOINT WAS BOUND")
+  let path = observation_in(dir: dir, steps: steps)
+  let verdict = verdict_in(dir: dir, steps: steps)
+  let wrote = write_file(path: path, content: observation) && write_file(path: verdict, content: "{\"kind\": \"aligned\"}")
+  let fingerprint_before = fingerprint(chain: before, dir: dir, observation: observation, steps: steps)
+  let fingerprint_after = fingerprint(chain: after, dir: dir, observation: observation, steps: steps)
+  let checkpoint = checkpoint_bound_to(chain: before, dir: dir, observation: observation, steps: steps, lineage: "align-witness-retuned", epoch: 2)
+  let stale = harness_alignment_adjudicate(
+    checkpoint: checkpoint,
+    projection: project(chain: after, dir: dir, observation: observation, steps: steps),
+    observation_path: path,
+    verdict_path: verdict,
+  )
+  let honoured = harness_alignment_adjudicate(
+    checkpoint: checkpoint,
+    projection: project(chain: before, dir: dir, observation: observation, steps: steps),
+    observation_path: path,
+    verdict_path: verdict,
+  )
+  let removed = shell.Remove.RecursiveForce(path: dir)
+  wrote && removed.success
+    && trim(s: fingerprint_before) != ""
+    && fingerprint_before != fingerprint_after
+    && match stale {
+         AdjudicationRefused { cause } => trim(s: cause) != ""
+         AdjudicationPublished { adjudication: _ } => false
+       }
+    && match honoured {
+         AdjudicationPublished { adjudication } =>
+           harness_alignment_checkpoint_digest(checkpoint: adjudication.checkpoint)
+             == alignment_checkpoint_identity_digest(id: checkpoint)
+         AdjudicationRefused { cause: _ } => false
+       }
+}
+
+// RED CONTROL 4 -- A CRASH AFTER VERDICT PUBLICATION PRODUCES EXACTLY ONE NEXT EPOCH. The publication
+// is keyed by the checkpoint's own digest, so the run that crashes before the epoch is opened and the
+// run that replays after the crash both read the SAME artifact and both derive the SAME single next
+// epoch from the durable identity -- nothing counts an epoch here, the epoch is read. And the durable
+// artifact holds the verdict AND the cadence in one body: there is no half-publication to recover from.
+test fn a_crash_after_verdict_publication_produces_exactly_one_next_epoch() -> Bool {
+  let dir = fresh_dir(tag: "crash")
+  let chain = spine(red_control: "the task's red control")
+  let steps = 5
+  let observation = observation_text(steps: steps)
+  let path = observation_in(dir: dir, steps: steps)
+  let verdict = verdict_in(dir: dir, steps: steps)
+  let wrote = write_file(path: path, content: observation) && write_file(path: verdict, content: "{\"kind\": \"aligned\"}")
+  let checkpoint = checkpoint_bound_to(chain: chain, dir: dir, observation: observation, steps: steps, lineage: "align-witness-crash", epoch: 11)
+  let read = harness_alignment_adjudicate(
+    checkpoint: checkpoint,
+    projection: project(chain: chain, dir: dir, observation: observation, steps: steps),
+    observation_path: path,
+    verdict_path: verdict,
+  )
+  let outcome = match read {
+    AdjudicationRefused { cause: _ } => false
+    AdjudicationPublished { adjudication } => {
+      let published = harness_alignment_publish(check_directory: dir, adjudication: adjudication)
+      // "Before the crash": the record landed and the epoch was opened once.
+      let first = harness_alignment_resume_gate(checkpoint: adjudication.checkpoint, published: published)
+      // "After the crash": a fresh process reads the same durable artifact and asks again.
+      let replay = harness_alignment_resume_gate(
+        checkpoint: adjudication.checkpoint,
+        published: harness_alignment_publish(check_directory: dir, adjudication: adjudication),
+      )
+      let body = read_file(path: harness_alignment_publication_path(check_directory: dir, checkpoint: adjudication.checkpoint))
+      match first {
+        ResumedOnce { next_epoch: opened, checkpoint: _ } =>
+          match replay {
+            ResumedOnce { next_epoch: replayed, checkpoint: _ } =>
+              opened == replayed
+                && opened == 12
+                && trim(s: body) != ""
+                && body == harness_alignment_publication_text(adjudication: adjudication)
+                && string_contains(s: body, pattern: "\"verdict\"")
+                && string_contains(s: body, pattern: "\"cadence\"")
+            ResumeRefused { cause: _ } => false
+          }
+        ResumeRefused { cause: _ } => false
+      }
+    }
+  }
+  let removed = shell.Remove.RecursiveForce(path: dir)
+  wrote && removed.success && outcome
+}
+
+// THE EMISSION AND ITS DURABLE EVENT (handback items: the outcome, the durable event, and the
+// adjudication boundary's absence at the boundary). At the epoch boundary the turn persists its
+// evidence, appends turn.alignment_checkpoint_due bound to the fingerprint the config was admitted
+// with, and RETURNS the typed outcome -- it convenes no check and continues no loop. The CLI's exit maps
+// that outcome to a labelled refusal, never to success: a checkpoint hands control back, it does not
+// declare the work finished.
+test fn the_boundary_emits_the_checkpoint_and_returns_control() -> Bool {
+  let dir = fresh_dir(tag: "emission")
+  let chain = spine(red_control: "the task's red control")
+  let steps = 7
+  let honest = observation_text(steps: steps)
+  let bound = fingerprint(chain: chain, dir: dir, observation: honest, steps: steps)
+  let emitted = harness_turn_checkpoint_due(
+    config: turn_config(dir: dir),
+    chain_fingerprint: bound,
+    check_directory: dir,
+    round_steps: steps,
+    messages: round_messages(),
+    steps_taken: steps,
+    events: [],
+  )
+  let path = observation_in(dir: dir, steps: steps)
+  let persisted = read_file(path: path)
+  let streamed = read_file(path: join([dir, "/provider-events.jsonl"], ""))
+  let exit: ProcessExit = harness_turn_exit(outcome: emitted)
+  let removed = shell.Remove.RecursiveForce(path: dir)
+  match emitted {
+    TurnAlignmentCheckpointDue { chain_fingerprint: bound_out, conversation_tip: tip, observation_path: written, round_steps: rounds, steps_taken: taken } =>
+      removed.success
+        && bound_out == bound
+        && rounds == steps
+        && taken == steps
+        && written == path
+        && trim(s: tip) != ""
+        && trim(s: persisted) != ""
+        && string_contains(s: streamed, pattern: "turn.alignment_checkpoint_due")
+        && string_contains(s: streamed, pattern: bound)
+        && match exit {
+             ExitSuccess => false
+             ExitFailure { code: _, reason } => string_contains(s: reason, pattern: "alignment-checkpoint-due")
+           }
+    _ => false
+  }
+}
+
+// THE DURABLE EVENT'S OWN SHAPE, asserted on one emitted line: the fingerprint and the evidence digest
+// are MEMBERS of the line, so whoever reads it learns which chain the boundary was admitted under and
+// which bytes adjudication is entitled to grade -- without asking the worker.
+test fn the_checkpoint_event_carries_the_fingerprint_and_evidence_binding() -> Bool {
+  let line = harness_event_alignment_checkpoint_due(
+    chain_fingerprint: "fp-witness-1234",
+    conversation_tip: "the tip",
+    observation_path: "/tmp/witness/observation.txt",
+    observation_digest: "digest-witness",
+    round_steps: 12,
+    steps_taken: 12,
+  )
+  trim(s: line) != ""
+    && string_contains(s: line, pattern: "turn.alignment_checkpoint_due")
+    && string_contains(s: line, pattern: "fp-witness-1234")
+    && string_contains(s: line, pattern: "digest-witness")
+    && string_contains(s: line, pattern: "observation_path")
+    && string_contains(s: line, pattern: "conversation_tip")
+}
+
+// THE CADENCE STATE TRAVELS WITH THE VERDICT (handback item: durable cadence state). The published
+// record is built by the cadence authority's own step, so a witness that reads the durable body sees
+// the interval law's output beside the verdict that moved it -- never a cadence this file invented.
+test fn the_published_record_carries_the_verdict_and_the_stepped_cadence() -> Bool {
+  let dir = fresh_dir(tag: "cadence")
+  let chain = spine(red_control: "the task's red control")
+  let steps = 6
+  let observation = observation_text(steps: steps)
+  let path = observation_in(dir: dir, steps: steps)
+  let verdict = verdict_in(dir: dir, steps: steps)
+  let wrote = write_file(path: path, content: observation) && write_file(path: verdict, content: "{\"kind\": \"aligned\"}")
+  let checkpoint = checkpoint_bound_to(chain: chain, dir: dir, observation: observation, steps: steps, lineage: "align-witness-cadence", epoch: 3)
+  let read = harness_alignment_adjudicate(
+    checkpoint: checkpoint,
+    projection: project(chain: chain, dir: dir, observation: observation, steps: steps),
+    observation_path: path,
+    verdict_path: verdict,
+  )
+  let removed = shell.Remove.RecursiveForce(path: dir)
+  wrote && removed.success
+    && match read {
+         AdjudicationPublished { adjudication } => {
+           let body = harness_alignment_publication_text(adjudication: adjudication)
+           length(xs: adjudication.cadence.last_verdicts) == 1
+             && string_contains(s: body, pattern: "alignment.checkpoint_adjudicated")
+             && string_contains(s: body, pattern: alignment_checkpoint_identity_digest(id: adjudication.checkpoint))
+         }
+         AdjudicationRefused { cause: _ } => false
+       }
+}
+
+// THE BELT'S ENTRY, REFUSED BEFORE ANY CHECK IS CONVENED. The entry point adjudication runs is asked
+// for the chain of a task the declared authority does not admit, and it must hand back a typed
+// supervision refusal WITHOUT convening a check -- no check request artifact appears in the directory,
+// because a lineage whose chain is refused never reaches the grading step at all.
+test fn the_adjudication_entry_refuses_an_unadmitted_chain_before_convening_any_check() -> Bool {
+  let dir = fresh_dir(tag: "entry")
+  let steps = 4
+  let observation = observation_text(steps: steps)
+  let wrote = write_file(
+    path: observation_in(dir: dir, steps: steps),
+    content: observation,
+  )
+  let outcome = harness_alignment_adjudicate_and_resume(
+    config: turn_config(dir: dir),
+    checkpoint: checkpoint_bound_to(
+      chain: spine(red_control: "the task's red control"),
+      dir: dir,
+      observation: observation,
+      steps: steps,
+      lineage: "align-witness-entry",
+      epoch: 1,
+    ),
+    node_id: "align-witness-node-absent-from-the-declared-authority",
+    turns_elapsed: steps,
+    cadence: alignment_base_cadence_state(),
+    check_prompt: "the check prompt",
+    check_directory: dir,
+    round_steps: steps,
+    messages: round_messages(),
+    steps_taken: steps,
+    events: [],
+    repairs_used: 0,
+  )
+  let request_written = Filesystem.Read(
+    path: harness_supervision_artifact_path(check_directory: dir, kind: "check-request", steps_taken: steps, extension: ".json"),
+  )
+  let removed = shell.Remove.RecursiveForce(path: dir)
+  wrote && removed.success
+    && match outcome {
+         TurnSupervisionUnavailable { cause, steps_taken: taken } =>
+           trim(s: cause) != "" && taken == steps && !request_written.success
+         _ => false
+       }
+}
