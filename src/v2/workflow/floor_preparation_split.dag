@@ -323,7 +323,7 @@ fn floor_preparation_strip_suffix(text: String, suffix: String) -> Optional<Stri
   if ends_with(s: text, suffix: suffix) {
     Present { value: substring(s: text, start: 0, end: string_length(s: text) - string_length(s: suffix)) }
   } else {
-    none
+    Absent {}
   }
 }
 

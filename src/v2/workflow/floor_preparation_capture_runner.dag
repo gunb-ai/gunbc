@@ -52,6 +52,7 @@ import extdeps.shell.exec
 import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.workflow.floor_preparation_split {
   floor_preparation_strip_prefix,
+  floor_preparation_strip_suffix,
   floor_preparation_has_exact_row,
   floor_preparation_split_report,
   floor_preparation_ask,
@@ -139,6 +140,9 @@ data floor_preparation_timeout_binary: String = "/usr/bin/timeout"
 
 data floor_preparation_env_binary: String = "/usr/bin/env"
 
+// The pty wrapper that writes a leg's complete stream to disk (see spawn_slot_captured).
+data floor_preparation_script_binary: String = "/usr/bin/script"
+
 data floor_preparation_sha256_binary: String = "/usr/bin/sha256sum"
 
 data floor_preparation_pinned_claim_batch_sha: String =
@@ -173,21 +177,17 @@ data floor_preparation_keep_prefixes: List<String> = [
   "PASS ", "FAIL ", "UNOBSERVED ", "claim_batch: resolving "
 ]
 
-// Wall bounds carry the Millisecond unit through the model; the STRING form exists only at the
-// argv boundary where timeout(1) demands digits (Google worked example in DESIGN.md: the string
-// belongs only at the rendering edge). timeout(1) enforces them as a real process, and exit 124
-// is reported as a KILL and never as a refusal -- a wall-clock timeout is not gunbc refusing.
-data floor_preparation_untrimmed_bound: Millisecond = millisecond(count: 5400000)
+// timeout(1) enforces these as a real process, and exit 124 is reported as a KILL and never as
+// a refusal -- a wall-clock timeout is not gunbc refusing.
+// Wall bounds in SECONDS: timeout(1) interprets its operand as seconds, and run8 proved the
+// Millisecond-number handoff silently meant 'timeout 2400000' -- 27 days, no bound at all.
 
-data floor_preparation_graded_bound: Millisecond = millisecond(count: 4200000)
+data floor_preparation_untrimmed_bound_seconds: Int = 14400
 
-data floor_preparation_claims_bound: Millisecond = millisecond(count: 2400000)
+data floor_preparation_graded_bound_seconds: Int = 1200
 
-data floor_preparation_report_bound: Millisecond = millisecond(count: 2400000)
-
-fn floor_preparation_bound_digits(bound: Millisecond) -> String {
-  to_string(millisecond_count(bound))
-}
+data floor_preparation_claims_bound_seconds: Int = 900
+data floor_preparation_report_bound_seconds: Int = 600
 
 // The roster is MODEL DATA, not a shell constant. The witness module declares one test fn per
 // name; the claim gate refuses unless every one of these printed its own PASS line.
@@ -305,16 +305,57 @@ fn floor_preparation_kept(text: String) -> List<String> {
 
 // One place builds the slot-bound argv; the observation fields are copied into this module's own
 // type at the boundary so the runner's dataflow never depends on the operation's record shape.
-fn floor_preparation_spawn_slot(bound: Millisecond, binary: String, args: List<String>) -> FloorPreparationSpawnObservation {
+fn floor_preparation_spawn_slot(bound_seconds: Int, binary: String, args: List<String>) -> FloorPreparationSpawnObservation {
   let ran = shell.Exec.RunArgv(
     program: floor_preparation_timeout_binary,
     arguments: concat(
-      [floor_preparation_bound_digits(bound: bound), floor_preparation_env_binary,
+      [to_string(bound_seconds), floor_preparation_env_binary,
        concat("HEAVY_OWNER=", floor_preparation_session_owner()),
        floor_preparation_heavy_slot_binary(), binary],
       args)
   )
   FloorPreparationSpawnObservation { rc: ran.exit_code, stdout: ran.stdout, stderr: ran.stderr }
+}
+
+// FULL-STREAM CAPTURE (run8). The seed's host drain keeps stdout up to 8 MiB but reduces STDERR
+// to a digest plus a 16 KiB TAIL (src/v1/stage0/src/bounded_shell_host_drain.rs), so a leg's
+// in-memory stderr is a tail, not a transcript: run8's two whole-tree legs came back truncated
+// at exactly 16383 bytes with their early pool-phase lines gone, and the in-memory streams could
+// not be the fold's or the gate's input. Each claim_batch leg therefore runs under
+// /usr/bin/script -qef LOG -- ... (util-linux, argv form -- no shell string is built), which
+// writes the child's COMPLETE interleaved stream to a file in the checkout. -e forwards the
+// child's exit status, so the observation's rc is still the leg's real rc, and the inner
+// timeout(1) -- in SECONDS -- bounds claim_batch itself; the outer timeout guards a wedged pty.
+fn floor_preparation_leg_log_path(label: String) -> String {
+  concat(concat(floor_preparation_runner_root(), "/"), concat(label, ".log"))
+}
+
+fn floor_preparation_spawn_slot_captured(label: String, bound_seconds: Int, binary: String, args: List<String>) -> FloorPreparationSpawnObservation {
+  let ran = shell.Exec.RunArgv(
+    program: floor_preparation_timeout_binary,
+    arguments: concat(
+      [to_string(bound_seconds + 300), floor_preparation_script_binary(), "-qef",
+       floor_preparation_leg_log_path(label), "--",
+       floor_preparation_timeout_binary, to_string(bound_seconds), floor_preparation_env_binary,
+       concat("HEAVY_OWNER=", floor_preparation_session_owner()),
+       floor_preparation_heavy_slot_binary(), binary],
+      args)
+  )
+  FloorPreparationSpawnObservation { rc: ran.exit_code, stdout: ran.stdout, stderr: ran.stderr }
+}
+
+// A captured log is read back through the model's read effect; a pty adds carriage returns, so
+// the transcript is normalized once here and every downstream parser sees plain lines. A failed
+// read is the EMPTY stream -- verdicts and resolve markers then read absent and the leg is not
+// clean, which is honest: a leg whose transcript cannot be read has not been observed.
+fn floor_preparation_read_captured(label: String) -> String {
+  let read = Filesystem.Read(path: floor_preparation_leg_log_path(label))
+  let raw = if read.success { read.content } else { "" }
+  join(fold(floor_preparation_lines(text: raw), init: [], f: (acc, line) =>
+    list_push(xs: acc, item: match floor_preparation_strip_suffix(text: line, suffix: "\r") {
+      Present { value: v } => v
+      Absent {} => line
+    })), "\n")
 }
 
 fn floor_preparation_spawn_plain(binary: String, args: List<String>) -> FloorPreparationSpawnObservation {
@@ -596,9 +637,13 @@ fn floor_preparation_resolve_text(outcome: FloorPreparationResolveOutcome) -> St
 
 fn floor_preparation_leg_record(
     label: String, entries: List<String>, binary: String, tree_sha: String,
-    kept_count: Int, outcome: FloorPreparationSpawnObservation) -> FloorPreparationLegReceipt {
+    kept_count: Int, outcome: FloorPreparationSpawnObservation,
+    captured: String) -> FloorPreparationLegReceipt {
+  // The TRANSCRIPT, not the in-memory tail, is what a leg is judged on (run8: the drain caps
+  // stderr at a 16 KiB tail; PASS verdicts ride stdout, resolve banners stderr -- a leg judged
+  // from either in-memory stream alone mis-sees its own run).
   // bind before the literal: match is statement position here, not a record-field expression
-  let out_bytes_opt = match checked_int_to_nat(n: outcome.stderr.length()) {
+  let out_bytes_opt = match checked_int_to_nat(n: captured.length()) {
     Present { value: k } => Present { value: byte_size(count: k) }
     Absent {} => Absent {}
   }
@@ -611,12 +656,12 @@ fn floor_preparation_leg_record(
     bytes: floor_preparation_bytes_of(path: binary),
     tree_sha: tree_sha,
     kept_count: kept_count,
-    verdict_count: floor_preparation_verdict_count(text: outcome.stderr),
-    resolve: floor_preparation_resolve_outcome(text: outcome.stderr),
+    verdict_count: floor_preparation_verdict_count(text: captured),
+    resolve: floor_preparation_resolve_outcome(text: captured),
     out_bytes: out_bytes_opt,
     clean: floor_preparation_spawn_completed(rc: outcome.rc)
-      && floor_preparation_verdict_count(text: outcome.stderr) > 0
-      && floor_preparation_resolved(outcome: floor_preparation_resolve_outcome(text: outcome.stderr)),
+      && floor_preparation_verdict_count(text: captured) > 0
+      && floor_preparation_resolved(outcome: floor_preparation_resolve_outcome(text: captured)),
   }
 }
 
@@ -689,67 +734,77 @@ fn floor_preparation_capture_run() -> String {
     let entries = floor_preparation_population_entries()
     let tree_sha = floor_preparation_git_tree_sha()
     let head_sha = floor_preparation_git_head_sha()
-    let untrimmed = floor_preparation_spawn_slot(
-      bound: floor_preparation_untrimmed_bound,
+    let untrimmed = floor_preparation_spawn_slot_captured(
+      label: "leg-untrimmed", bound_seconds: floor_preparation_untrimmed_bound_seconds,
       binary: floor_preparation_pinned_claim_batch(),
       args: floor_preparation_leg_argv(entries: entries))
-    let kept_untrimmed = floor_preparation_kept(text: untrimmed.stderr)
+    let untrimmed_transcript = floor_preparation_read_captured(label: "leg-untrimmed")
+    let kept_untrimmed = floor_preparation_kept(text: untrimmed_transcript)
     let untrimmed_record = floor_preparation_leg_record(
       label: "leg-untrimmed", entries: entries, binary: floor_preparation_pinned_claim_batch(),
-      tree_sha: tree_sha, kept_count: length(xs: kept_untrimmed), outcome: untrimmed)
+      tree_sha: tree_sha, kept_count: length(xs: kept_untrimmed), outcome: untrimmed,
+      captured: untrimmed_transcript)
     let untrimmed_receipt = floor_preparation_leg_receipt(r: untrimmed_record)
-    let survivors = floor_preparation_surviving_entries(untrimmed_stdout: untrimmed.stderr)
-    let graded = floor_preparation_spawn_slot(
-      bound: floor_preparation_graded_bound,
-      binary: floor_preparation_pinned_claim_batch(),
-      args: floor_preparation_leg_argv(entries: survivors))
-    let kept_graded = floor_preparation_kept(text: graded.stderr)
+    let survivors = floor_preparation_surviving_entries(untrimmed_stdout: untrimmed_transcript)
+    // The graded leg RE-RUNS SURVIVORS ONLY; when the untrimmed leg passed every claim there is
+    // nothing to re-run, and spawning claim_batch with zero entries would die on usage -- a
+    // missing leg is recorded as skipped, and legs_clean states the skip instead of pretending.
+    let graded = if length(xs: survivors) == 0 {
+      FloorPreparationSpawnObservation { rc: 0, stdout: "", stderr: "" }
+    } else {
+      floor_preparation_spawn_slot_captured(
+        label: "leg-graded", bound_seconds: floor_preparation_graded_bound_seconds,
+        binary: floor_preparation_pinned_claim_batch(),
+        args: floor_preparation_leg_argv(entries: survivors))
+    }
+    let graded_transcript = if length(xs: survivors) == 0 { "" } else {
+      floor_preparation_read_captured(label: "leg-graded")
+    }
+    let kept_graded = floor_preparation_kept(text: graded_transcript)
     let graded_record = floor_preparation_leg_record(
       label: "leg-graded", entries: survivors, binary: floor_preparation_pinned_claim_batch(),
-      tree_sha: tree_sha, kept_count: length(xs: kept_graded), outcome: graded)
+      tree_sha: tree_sha, kept_count: length(xs: kept_graded), outcome: graded,
+      captured: graded_transcript)
     let graded_receipt = floor_preparation_leg_receipt(r: graded_record)
-    // Each leg's stderr is materialized UNCONDITIONALLY -- it is the only artifact that says what
-    // the leg actually executed, and the legs that die (panic, resolve failure) are exactly the
-    // ones whose streams must survive the run. A Filesystem.Write only lands when a receipt reads
-    // its `.success` (observed run6: the claims write materialized because its receipt consumed
-    // the flag; nothing consumed a leg write, so no leg log existed on disk).
-    let leg_untrimmed_stderr_write = Filesystem.Write(
-      path: concat(floor_preparation_runner_root(), "/leg-untrimmed-stderr.log"),
-      content: untrimmed.stderr)
-    let leg_graded_stderr_write = Filesystem.Write(
-      path: concat(floor_preparation_runner_root(), "/leg-graded-stderr.log"),
-      content: graded.stderr)
+    // TRANSCRIPT RECEIPTS. Each leg's full stream already lives on disk (script -qef LOG --);
+    // the receipt names the file and counts what the transcript holds, so a spawn that produced
+    // no transcript is visible on the receipts as bytes=0 verdicts=0 rather than as silence.
     let leg_stderr_untrimmed = floor_preparation_receipt("leg-stderr-untrimmed",
-      if leg_untrimmed_stderr_write.success { "file=leg-untrimmed-stderr.log written=yes" } else { "file=leg-untrimmed-stderr.log written=NO" })
+      concat(concat("file=", floor_preparation_leg_log_path(label: "leg-untrimmed")),
+        concat(concat(" bytes=", to_string(untrimmed_transcript.length())),
+          concat(" verdicts=", to_string(floor_preparation_verdict_count(text: untrimmed_transcript))))))
     let leg_stderr_graded = floor_preparation_receipt("leg-stderr-graded",
-      if leg_graded_stderr_write.success { "file=leg-graded-stderr.log written=yes" } else { "file=leg-graded-stderr.log written=NO" })
+      if length(xs: survivors) == 0 { "file=skipped entries=0" } else {
+        concat(concat("file=", floor_preparation_leg_log_path(label: "leg-graded")),
+          concat(concat(" bytes=", to_string(graded_transcript.length())),
+            concat(" verdicts=", to_string(floor_preparation_verdict_count(text: graded_transcript))))) })
     let fold_legs_receipt = floor_preparation_receipt("fold-legs",
       concat(concat("kept_untrimmed=", to_string(length(xs: kept_untrimmed))),
         concat(" kept_graded=", to_string(length(xs: kept_graded)))))
-    let retained = floor_preparation_retained_body(untrimmed_stdout: untrimmed.stderr, graded_stdout: graded.stderr)
+    let retained = floor_preparation_retained_body(untrimmed_stdout: untrimmed_transcript, graded_stdout: graded_transcript)
     let claims_args = concat(
       fold(floor_preparation_source_roots, init: [], f: (acc, root) => concat(acc, ["--source-root", root])),
       ["--entry", floor_preparation_witness_module,
        "--functions", join(floor_preparation_claim_roster, ",")])
-    let claims = floor_preparation_spawn_slot(
-      bound: floor_preparation_claims_bound,
+    let claims = floor_preparation_spawn_slot_captured(
+      label: "leg-claims", bound_seconds: floor_preparation_claims_bound_seconds,
       binary: floor_preparation_pinned_claim_batch(),
       args: claims_args)
     // A gate that discards the only stream telling it WHAT IT EXECUTED is not a gate. The claim
-    // leg's stderr -- the raw PASS/FAIL/UNOBSERVED lines and any resolve diagnostic -- is kept in
-    // the runner root and its size reported, so a missing-roster verdict can be read, not guessed.
-    let claims_stderr_write = Filesystem.Write(
-      path: concat(floor_preparation_runner_root(), "/claims-leg-stderr.log"),
-      content: claims.stderr)
-    let claims_stderr_text = match checked_int_to_nat(n: claims.stderr.length()) {
+    // leg's FULL transcript -- PASS/FAIL/UNOBSERVED verdicts (claim_batch.rs prints them with
+    // println!, i.e. STDOUT; run8's gate read stderr and could never see a verdict) plus every
+    // resolve banner and phase line -- is read back from the script log and its size reported,
+    // so a missing-roster verdict can be read, not guessed.
+    let claims_transcript = floor_preparation_read_captured(label: "leg-claims")
+    let claims_stderr_text = match checked_int_to_nat(n: claims_transcript.length()) {
       Present { value: k } => to_string(byte_size_count(byte_size(count: k)))
       Absent {} => "BYTES_UNREADABLE"
     }
-    let passed = floor_preparation_pass_names(stdout_text: claims.stderr)
+    let passed = floor_preparation_pass_names(stdout_text: claims_transcript)
     let missing = fold(floor_preparation_claim_roster, init: [], f: (acc, name) =>
       if floor_preparation_has_exact_row(rows: passed, wanted: name) { acc } else { list_push(xs: acc, item: name) })
     let report = floor_preparation_spawn_slot(
-      bound: floor_preparation_report_bound,
+      bound_seconds: floor_preparation_report_bound_seconds,
       binary: floor_preparation_pinned_gunbc(),
       args: concat(
         ["run"], concat(
@@ -779,12 +834,14 @@ fn floor_preparation_capture_run() -> String {
     // pass -- a well-formed report that exited 0 would be a success-channel fabrication.
     let report_record = floor_preparation_leg_record(
       label: "report-print", entries: [floor_preparation_authority_path],
-      binary: floor_preparation_pinned_gunbc(), tree_sha: tree_sha, kept_count: 0, outcome: report)
+      binary: floor_preparation_pinned_gunbc(), tree_sha: tree_sha, kept_count: 0, outcome: report,
+      captured: concat(report.stdout, "\n"))
     let report_rc_receipt = floor_preparation_receipt("report-print",
       concat(concat("rc=", to_string(report_record.rc)), concat(" expected_rc=2 classifications=", classification_text)))
     // The gate reads RECORD FIELDS (review 97909): graded_record.clean is exactly "graded.rc == 0
     // and its kept set is non-empty"; report_record.rc is the command's own exit status.
-    let report_ok = report_read && report_record.rc == 2 && graded_record.clean
+    let report_ok = report_read && report_record.rc == 2
+      && (length(xs: survivors) == 0 || graded_record.clean)
     let receipts = concat(concat(concat(supplies, [verify_receipt]),
         [build_argv_receipt,
          untrimmed_receipt,
@@ -809,15 +866,17 @@ fn floor_preparation_capture_run() -> String {
          rc: graded_record.rc, kept_count: graded_record.kept_count),
        floor_preparation_receipt("claim-gate",
          concat(concat("missing=", join(missing, ",")),
-           concat(concat(" claims_stderr_bytes=", claims_stderr_text),
-             if claims_stderr_write.success { " claims_stderr=written" } else { " claims_stderr=UNWRITTEN" }))),
+           concat(" claims_transcript_bytes=", claims_stderr_text))),
        report_rc_receipt])
     // The retained log and the population projection are LEG OUTPUT, not verdict output: they
     // are written as soon as both legs completed clean (rc==0 with kept rows), BEFORE the claim
     // and report gates decide the terminal verdict. Refusing a red gate must not also destroy the
     // raw evidence of the run -- but writing them is not a pass, and the terminal gate below
     // still refuses without them reading green.
-    let legs_clean = untrimmed_record.clean && graded_record.clean
+    // A skipped graded leg (nothing survived the untrimmed pass) is CLEAN BY CONSTRUCTION: there
+    // was nothing to re-run. Stated, not assumed -- the receipts print 'skipped entries=0'.
+    let legs_clean = untrimmed_record.clean
+      && (length(xs: survivors) == 0 || graded_record.clean)
     let write_receipt = if legs_clean {
       // Each write reports ITSELF (review 97945): the retained artifact has its own receipt;
       // there is no second committed copy to write anymore.
