@@ -2181,16 +2181,16 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       owner: "language-integrity",
       carriers: carrier(path: "dag/gunbc/design_document.dag"),
       line: ticket(t: updated(t: fields(
-        headline: "Refuse a claim that is computed and thrown away",
-        boundary: "Inside a function returning Bool, a bare Boolean expression in non-terminal position is censused and then refused. Its value cannot be observed, so computing one is either a mistake or a claim someone believes is being enforced.",
-        displaced_cost: "Two independent keystones reported green while claims sat above the returned expression, discarded. One of them was a bob that could not settle. The defect is invisible at review because the discarded line reads exactly like an enforced one.",
-        first_slice: "Census the corpus for the shape and report the population before refusing anything, because the size of it decides whether the wall lands in one step or behind a frozen roster.",
-        red_control: "A planted discarded claim reds; a terminal Boolean expression and a Boolean bound by a let and later used both stay accepted, so the wall does not fire on legitimate code.",
-        out_of_scope: "Not a general unused-expression rule, and no motion, capability or browser work belongs in this lane.",
-        handback: "Return the census, the wall or the frozen roster with its dissolution trigger, and both controls."
-      ), on: "2026-09-30", note: "Not yet centered: scope.")),
+        headline: "Produced values have a consumer or an explicit discard; authored named bindings have a resolved use",
+        boundary: "Serves the operator decision of 2026-11-23 on value disposition and named-binding use. The decision is recorded as gunbc.design_ruling::value_disposition_and_named_binding_use_are_explicit_2026_11_23. A value-producing expression must be consumed, returned to an enclosing consumer, or explicitly discarded with the existing let _ = expr spelling; Bool and calls have no exemption. An authored named let, parameter (including lambda parameters), pattern-field or caught-value binding has a resolved use or is spelled _; caller-visible argument and field identity remain distinct from the local binder. Determine use by binding identity, not identifier text; no every-path or linear-use rule is silently added. No-result operations need no result acknowledgement, while a final block value transfers its disposition to the surrounding context. Explicit discard records intent, not success, authorization or discharge of another obligation, and must preserve the computation's declared effects, failure behavior and ordering. Judge the authored distinction before lowering or optimization erases it. Existing v2 refusals in v2.compiler.body_lowering_fold::body_lower_stmt_spine and the earlier gunbc.design_ruling::unread_catch_all_binder_refuses are preserved; v2.compiler.body_lowering_fold::body_lower_else_less_if_statement is a separately inspected discard path, not evidence that v2 drops every statement value. v1 implements the same chosen language contract under its existing maintenance standing.",
+        displaced_cost: "A bare result can read like an enforced claim while nothing consumes it, and a named binding can suggest a dependency that does not exist. The operator's stated reason is that the code should match the actual intention. Acknowledging every existing site mechanically would preserve mistakes as intentional-looking code, so each affected site either uses, propagates, returns, deliberately discards or removes the computation under its contract.",
+        first_slice: "Use bounded source inspection and focused fixtures to record the current v1 and v2 behavior by actual return type and binding kind: dropped call and non-call values, fall-through else-less if results, unread let/parameter/pattern/caught bindings, and existing explicit discards. A parse-only pass reports candidates and unresolved classification, never a complete semantic count; scope the measurement to the migration decision it serves. The fixture matrix separates already-refused cases from newly prohibited accepted cases. Resolve no-result versus ordinary unit behavior, named argument label versus local binding, nested block results and source-authored versus generated bindings in the owning language model before implementation. Reuse existing checks where they express the same rule. The observed affected population informs a direct cut or an explicitly admitted bounded migration, not an automatic exemption roster.",
+        red_control: "On each in-scope production acceptance path, a newly prohibited implicit discard or unread binding is refused with a typed located cause; a case already refused at main remains refused rather than being required to show an impossible accepted baseline. Include dropped call/non-call and else-less-if values, unread let/parameter/pattern/caught bindings, and a nested block whose resulting value is silently dropped outside it. Positive controls retain let _ = expr, a genuine no-result statement, a resolved read, and a tail value consumed by its enclosing context; a same-spelled unrelated binding is not a read of the tested binder. An explicit discard of an effectful operation preserves its declared activation and failure/ordering contract. Where an existing contract requires admission evidence, explicit discard must not weaken that contract; adding a general effect-admission analysis is outside this node. Preserve the narrower unread-catch-all and juxtaposed-bare-value regression controls.",
+        out_of_scope: "Adding bare _ = expr grammar, requiring every binding to be used on every runtime path, proving that every syntactic use changes the output, mechanical insertion of _ to conceal a missing consumer, a permanent repository-wide audit instrument, and motion/capability/browser work.",
+        handback: "The exact contract and owning implementation sites; the bounded inspection population with unknowns; the before/after matrix for v1 and v2, retaining existing refusals and positive controls; executed receipts on the real changed acceptance paths; and any necessary admitted migration population with its capability-based dissolution trigger. Rung and node acceptance follow the executed evidence at the revision containing these criteria."
+      ), on: "2026-11-23", note: "Supersedes the Boolean-only criterion while preserving node identity. The operator decision of 2026-11-23 is recorded as gunbc.design_ruling::value_disposition_and_named_binding_use_are_explicit_2026_11_23. This criteria rewrite establishes no implementation or acceptance; earlier receipts must be assessed against the live criteria digest.")),
       dispatch: dispatchable(),
-      parent: in_project(project: "compiler-guarantee", contribution: "A claim computed and thrown away refuses."),
+      parent: in_project(project: "compiler-guarantee", contribution: "The language preserves expressed value disposition and binding use; an implicit discard or unread authored name is refused."),
     ),
     roadmap_node(
       identity: "rn_GUNBCROOT0PROJECT0FACTORY0A",
@@ -2975,6 +2975,41 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
     ),
     
     roadmap_node(
+      identity: "rn_8V8XSA9VQN7C0X0GVW8MSWEZZ1",
+      id: "import-less-v2-claim-file-is-executed",
+      owner: "self-host",
+      carriers: carrier(path: "src/v2/test/claim/provenance/parse_production_extent.dag"),
+      line: ticket(t: fields(
+        headline: "A v2 claim file with no top-level imports is executed by a claim route, or refused where it is written",
+        boundary: "Measured by vivid-swift-693 and eager-bear-290 with a main-built binary on srv1: claim_batch --entry refuses all 9 members of src/v2/test/claim/provenance/parse_production_extent.dag at the checker (unresolved bare std types, RC=1); the native lane (gunbc test //v2/test/claim/provenance/parse_production_extent:all) selects 7 and refuses all 7 at prepare with resolve_reason_unbound_symbol, REFUSED positive_population_empty, RC=2; parse_stamp_span_index shows the same, 0 of 2. The loader's bare-reference edge index binds those names for discovery, but the checker and the native preparer need lexical bindings, so CI parses and typechecks these files and no executor ever runs them. The file was created like this in #13719 (04363f36ef8f, 2026-10-11) and backed an accepted node. Population: 139 of 1129 files under src/v2/test/claim carry no top-level imports; not all are necessarily refused. Related to, and not a duplicate of, gunbc.recurring_failure_mode bare_name_resolved_by_proximity_standing_in_for_resolution, whose standing this row's exit discharges for this population. The design argument is single authority (gunbc.design_argument::single_authority): name binding must not differ between discovery and execution.",
+        displaced_cost: "A witness that nothing executes reads as coverage: the roadmap accepts nodes on witnesses that no route has ever run, and the next author of an import-less claim file repeats the shape.",
+        first_slice: "The census first: run each of the 139 import-less files on the production claim route, record executed against refused-at-resolve with the reason, and list every ACCEPTED roadmap node whose cited witness is in the refused set. Then the fix, and the row's centering chooses one and states why: make the checker and the native preparer resolve through the same edge index the loader builds, or refuse such a file at parse so it cannot sit in the tree unexecuted.",
+        red_control: "After the fix, parse_production_extent and parse_stamp_span_index either execute to a terminal verdict on both claim_batch and the native lane, or are refused at parse with a named reason; on main they are refused at the checker (RC=1) and at prepare (RC=2) and nothing executes them. The exit is the executed whole-corpus resolve that bare_name_resolved_by_proximity_standing_in_for_resolution already demands.",
+        out_of_scope: "Adding imports to the individual files as the repair (that hides the divergence between discovery and execution), and widening any budget.",
+        handback: "The census table of the 139 files (executed or refused, with reason), the accepted nodes whose witness is in the refused set, the chosen route with its reason, and the before and after runs of the two named files on both routes with their exit statuses."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "compiler-guarantee", contribution: "What a claim file declares is what an executor runs: name binding is one authority across discovery and execution."),
+      centering: plan(text: "Target: the claim checker and the native preparer's name binding against the loader's bare-reference edge index; the chosen route is stated here when the census lands."),
+    ),
+    roadmap_node(
+      identity: "rn_XX3GY9X9YR95W5WB5YYC9VMJ0A",
+      id: "lab-release-bins-delivery",
+      owner: "debt",
+      carriers: carrier(path: "dag/gunbc/live_deploy/release_pair_delivery.dag"),
+      line: ticket(t: fields(
+        headline: "The lab consumes the CI release-bins pack: verify against the target revision's tree, then extract",
+        boundary: "Realizes lab-converges-release-pair's delivery leg; stern-wren-746 has started it ad hoc. The chain is complete without a lab-side --verify-build-artifacts: the manifest digests plus the source_closure check are the proof. Criteria from stern-wren-746: (a) a lab consumer site takes the pack dir plus the TARGET revision's tree and checks kind and source_closure, listing equals roster, manifest equals roster and per-member digests, then extracts; (b) the serve member is derived from gunbc.fleet.fleet_release_bins_key::fleet_release_bins_product().roster ('gunbc'), deleting the free gunbc_serve row; (c) VerifiedOn binds pack_dir plus the target tree.",
+        displaced_cost: "The lab installs a pack whose members it did not check against the revision it is serving, or a person moves the artifact by hand; a free gunbc_serve row is a second answer to which member is the served binary.",
+        first_slice: "The consumer site of criterion (a), the derivation of the serve member in (b) with the free row deleted, and the VerifiedOn binding of (c), under the same parent as lab-converges-release-pair.",
+        red_control: "The discriminator builds a fixture with the real producer's pack statements and adds three reds, each refusing with its own reason: a tampered member, a wrong source_closure and a missing member. Plus an srv1 inhabitance run against the real b691 artifact that refuses at main and admits at head.",
+        out_of_scope: "A lab-side --verify-build-artifacts, the pairing decision (lab-standings-track-main), srv1 provisioning, and any building on srv1.",
+        handback: "The consumer site and the derivation of the serve member, the three reds each with its refusal reason, and the srv1 inhabitance run's two raw outcomes (main refuses, head admits) with their exit statuses."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "convergence-coverage", contribution: "Convergence that needs a person is not convergence: the lab's release pair has a producer in CI and a consumer on the host, and nothing modeled joins them."),
+    ),
+    roadmap_node(
       identity: "rn_TTZHRWWETX4EQ6HDABTT8AKMCV",
       id: "factory",
       owner: "harness",
@@ -3306,6 +3341,23 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         red_control: "two_contenders_for_one_unit_get_one_hold passes under a per-function --claim-run and agrees with its whole-tree claim_batch verdict; RED on main.",
         out_of_scope: "The whole-tree claim_batch memory cost.",
         handback: "The route by which the dispatcher's callees enter the run's index, the control passing per function and failing on main, and the v1 standing classification."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "compiler-guarantee", contribution: "A witness's verdict does not depend on how much of the tree the run loaded."),
+    ),
+    roadmap_node(
+      identity: "rn_S1393FFYNJXN8S95HKX6P1KSM8",
+      id: "per-function-claim-refuses-after-admission",
+      owner: "self-host",
+      carriers: carrier(path: "src/v1/stage0/src/v1_interpreter.rs"),
+      line: ticket(t: fields(
+        headline: "Name the refusal a per-function claim run raises after admission for a witness that passes whole-tree",
+        boundary: "Observation only; the fix is deferred. two_contenders_for_one_unit_get_one_hold passes under a whole-tree claim_batch (REAL_EXIT=0 at 6d2115d1e6e7; receipt ~/scratch/merry-deer-252/whole_6d2115d1e6e700671f0ee8317ae6a2e1dfa66da6.out on srv1) yet refuses under a per-function run. The refusal is raised after the run is admitted, by the seed interpreter after admission (v1_interpreter.rs, no symbol cited because none was named), in one of three places: envelope, identity or binding resolution. This row exists to say which, because per-function-claim-run-loads-string-dispatched-names names the string-dispatched callees as the cause and this witness may refuse for a different reason or an additional one. Measured at main 6d2115d1e6e7 (gunbc sha256 145e3307be263deba49d35d4833b864fb715525588a6d049e192bf65b70c66c2, claim_batch sha256 3dd8653479dae40d4bf07292d163adb55318931d2cd3d4abe42b10123b7ea249; merry-deer-252 via warm-fox-517): gunbc run --claim-run --source-root dag --source-root src --entry dag/test/claim/modeled_filesystem_witness.dag --function two_contenders_for_one_unit_get_one_hold prints exactly three lines, \"user_work_scope: skip wrap into gunbc-user-work.slice (BoundedByObservedCgroup)\", \"[workspace-root] discovered: /home/briansrls/scratch/merry-deer-252/gunbc\" and \"FAIL two_contenders_for_one_unit_get_one_hold\", with REAL_EXIT=1. There is no reason string: the path prints a verdict and nothing else, so the refusal is not observable today, which is the gap this row names. The whole-tree run of the same function at the same head returns \"PASS two_contenders_for_one_unit_get_one_hold\", REAL_EXIT=0; cite its re-run, not the first run, whose output a helper truncated to six lines and kept only the exit code. v1 is semantics-frozen (gunbc.v1.v1_maintenance_standing::v1_seed_standing); nothing here authorises a seed change.",
+        displaced_cost: "A per-function false failure reads as a real one, and the whole-tree batch that agrees costs about 15 GiB and 30 minutes; until the refusal is named, a repair aimed at the dispatcher's callees may leave this witness red.",
+        first_slice: "A witness that runs the per-function command for two_contenders_for_one_unit_get_one_hold and names the refusal: the text, the position it is raised at and which of envelope, identity or binding resolution raised it, with the command, the sha and the binary hash. Because the path prints no reason, naming it needs an observation (a probe build or a debugger), not a log read; making the path print its reason is the fix and is deferred.",
+        red_control: "The same function run whole-tree at the same sha passes and the per-function run refuses; both results are pasted raw with their exit status.",
+        out_of_scope: "Any fix, any change to the interpreter, and a census of other witnesses that refuse per function.",
+        handback: "The refusal's text, raise site and class (or, if no observation can name it, the statement of that), both raw runs with exit status, and whether per-function-claim-run-loads-string-dispatched-names covers it or needs a sibling repair."
       )),
       dispatch: dispatchable(),
       parent: in_project(project: "compiler-guarantee", contribution: "A witness's verdict does not depend on how much of the tree the run loaded."),
@@ -9027,6 +9079,7 @@ fn guarantee_ladder_edges() -> List<RoadmapEdge> {
     edge(child: "parse-comment-gap-attachment", parent: "parse-node-source-extent"),
     edge(child: "parse-comment-gap-attachment-v2", parent: "parse-comment-gap-attachment"),
     edge(child: "v2-parse-final-token-retained", parent: "parse-node-source-extent"),
+    edge(child: "per-function-claim-refuses-after-admission", parent: "per-function-claim-run-loads-string-dispatched-names"),
     edge(child: "p256-verify-cost-cut", parent: "v1-interpreter-p256-verify-cost-shape"),
     edge(child: "per-function-claim-run-loads-string-dispatched-names", parent: "per-function-claim-loader-modeled-dag-route"),
     edge(child: "v2-emitter-production-compatible-corpus-module", parent: "v2-core-emitter-lowers-conjunction-in-value-position"),
