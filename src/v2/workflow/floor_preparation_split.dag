@@ -573,10 +573,10 @@ fn floor_preparation_claim_step(line: String, acc: FloorPreparationFold, tag: St
   }
 }
 
-fn floor_preparation_add(side: FloorPreparationCostClass, ms: Int, acc: FloorPreparationFold) -> FloorPreparationFold {
+fn floor_preparation_add(side: FloorPreparationCostClass, ms: Millisecond, acc: FloorPreparationFold) -> FloorPreparationFold {
   match side {
-    PreparationCost => FloorPreparationFold { current_entry: acc.current_entry, seen_resolve: acc.seen_resolve, split: floor_preparation_join_split(acc.split, preparation_delta: ms, claim_delta: 0, preparation_lines: 1, claim_lines: 0) }
-    ClaimExecutionCost => FloorPreparationFold { current_entry: acc.current_entry, seen_resolve: acc.seen_resolve, split: floor_preparation_join_split(acc.split, preparation_delta: 0, claim_delta: ms, preparation_lines: 0, claim_lines: 1) }
+    PreparationCost => FloorPreparationFold { current_entry: acc.current_entry, seen_resolve: acc.seen_resolve, split: floor_preparation_join_split(acc.split, preparation_delta: ms, claim_delta: floor_preparation_ms_zero(), preparation_lines: 1, claim_lines: 0) }
+    ClaimExecutionCost => FloorPreparationFold { current_entry: acc.current_entry, seen_resolve: acc.seen_resolve, split: floor_preparation_join_split(acc.split, preparation_delta: floor_preparation_ms_zero(), claim_delta: ms, preparation_lines: 0, claim_lines: 1) }
     NotCostBearing { reason: _ } => floor_preparation_uncosted(acc)
   }
 }
@@ -594,13 +594,13 @@ fn floor_preparation_refuse(acc: FloorPreparationFold, line: String, cause: Stri
 
 // THE ONLY PLACE the split's numbers move, so conservation is a property of one function rather than of
 // three call sites that could drift apart.
-fn floor_preparation_join_split(split: FloorPreparationSplit, preparation_delta: Int, claim_delta: Int, preparation_lines: Int, claim_lines: Int) -> FloorPreparationSplit {
+fn floor_preparation_join_split(split: FloorPreparationSplit, preparation_delta: Millisecond, claim_delta: Millisecond, preparation_lines: Int, claim_lines: Int) -> FloorPreparationSplit {
   match split {
     Refused { text: t, cause: c } => Refused { text: t, cause: c }
     Split { preparation_ms: p, claim_ms: cm, preparation_lines: pl, claim_lines: cl, uncosted_lines: uc, untagged_lines: ut, verdict_pass: vp, verdict_fail: vf, total_ms: tm } =>
       Split {
-        preparation_ms: floor_preparation_ms_add(p, floor_preparation_ms_of(preparation_delta)),
-        claim_ms: floor_preparation_ms_add(cm, floor_preparation_ms_of(claim_delta)),
+        preparation_ms: floor_preparation_ms_add(p, preparation_delta),
+        claim_ms: floor_preparation_ms_add(cm, claim_delta),
         preparation_lines: pl + preparation_lines,
         claim_lines: cl + claim_lines,
         uncosted_lines: uc,
@@ -608,8 +608,8 @@ fn floor_preparation_join_split(split: FloorPreparationSplit, preparation_delta:
         verdict_pass: vp,
         verdict_fail: vf,
         total_ms: floor_preparation_ms_add(
-          floor_preparation_ms_add(tm, floor_preparation_ms_of(preparation_delta)),
-          floor_preparation_ms_of(claim_delta)
+          floor_preparation_ms_add(tm, preparation_delta),
+          claim_delta
         ),
       }
   }
