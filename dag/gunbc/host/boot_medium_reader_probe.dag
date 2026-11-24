@@ -329,8 +329,17 @@ fn reader_probe_locked_account_fact(shadow: HostLeg, use_pam: HostLeg, login_adm
 // OPEN FACT 2, as a record rather than a Tuple: this language has no product type, and the two witnesses
 // are kept as two named fields because a receipt that collapsed them into one bool would hide the case
 // where they disagree -- which is the interesting one.
+// THE ADMIN LEG'S STATE, TYPED. A never-dispatched admin leg is NOT "the admin says not-readable" -- it is the
+// absence of any reading, so it gets its own arm instead of collapsing into readable=false. Putting the three
+// states in the sum is what makes the precondition (the leg answered) live in the interface: a consumer can only
+// read "readable"/"not-readable" from a leg that actually answered, and must decide the never-dispatched case.
+type ReaderProbeAdminReading =
+    AdminReadable
+  | AdminNotReadable
+  | AdminNotDispatched { reason: NonEmptyStr }
+
 type ReaderProbeExportReading = ReaderProbeExportReading {
-  readable: Bool,
+  admin: ReaderProbeAdminReading,
   admin_evidence: NonEmptyStr,
   forced_evidence: NonEmptyStr,
 }
@@ -347,12 +356,13 @@ fn reader_probe_export_reading(admin: HostLeg, forced: ReaderProbeForcedAnswer) 
     ForcedAnswerNotDispatched { evidence: e } => join(["the reader leg was never dispatched, so nothing was read: ", e as String], "")
     ForcedAnswerUnexplained { evidence: e } => join(["the forced command failed without explaining itself: ", e as String], "")
   }
-  let admin_readable = match admin {
-    LegNotDispatched { reason: _ } => false
-    LegAnswered { exit_code: ac, stdout: _, stderr: _ } => ac == 0
-  }
   ReaderProbeExportReading {
-    readable: admin_readable,
+    // The never-dispatched case is a typed refusal, not readable=false: absence of a reading is not a reading of
+    // absence. exit/stdout/stderr are consulted only inside LegAnswered.
+    admin: match admin {
+      LegNotDispatched { reason: r } => AdminNotDispatched { reason: r as NonEmptyStr }
+      LegAnswered { exit_code: ac, stdout: _, stderr: _ } => if ac == 0 { AdminReadable } else { AdminNotReadable }
+    },
     admin_evidence: join(["admin leg asked as the reader account: ", reader_probe_answer_text(a: admin)], "") as NonEmptyStr,
     forced_evidence: forced_says as NonEmptyStr,
   }
@@ -586,7 +596,12 @@ fn render_reader_probe_receipt(r: ReaderProbeReceipt) -> String {
         "second_command_masked=", if masked { "true" } else { "false" }, "\n",
         render_forced_line(fl: fl),
         reader_probe_locked_account_text(fact: la),
-        "image_readable_by_reader=", if ex.readable { "true" } else { "false" }, "\n",
+        "image_readable_by_reader=", match ex.admin {
+          AdminReadable => "true"
+          AdminNotReadable => "false"
+          AdminNotDispatched { reason: rr } => join(["not-dispatched: ", rr as String], "")
+        },
+        "\n",
         "image_read_admin_evidence=", ex.admin_evidence as String, "\n",
         "image_read_forced_evidence=", ex.forced_evidence as String, "\n",
         render_accessor_report(acc: acc),
