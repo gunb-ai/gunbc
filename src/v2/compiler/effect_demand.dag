@@ -1218,8 +1218,10 @@ data effect_demand_seam_roster: List<SeamStanding> = [
 // reaches is refused, not defaulted through. That is gunbc.design_argument::fail_closed applied
 // here: a wall with an escape hatch is a bucket. Each refusal has its OWN NAMED cause (a typed
 // arm with the identity of the offender and the site it reached from), never a generic bucket and
-// never a new panic -- gunbc.design_argument::closed_grounded_substrate keeps the refusal a compile-time
-// fact about the closure rather than a runtime hole.
+// never a new panic -- gunbc.design_argument::closed_grounded_substrate keeps the refusal a TYPED verdict
+// (a named cause arm), not a runtime hole. This module is the located census that names each offender; the
+// gate that turns a red census into a compile-time stop is wired at the self-host migration cut (see the
+// WALL 2 rung note), which keeps self_host.dag in scope until its two sites move to the bound handler.
 // =============================================================================================
 
 // ---- WALL 2: an emitted closure reaching `filesystem_read` directly refuses ----
@@ -1228,8 +1230,15 @@ data effect_demand_seam_roster: List<SeamStanding> = [
 // cut, reusing v1.compiler.emit_rust emit_file_call's semantics: path template, verb, typed read/
 // write result fields, empty-path guard, io-error kind). `filesystem_read` is NEITHER that handler
 // NOR its interface -- it is the free legacy primitive whose realization panics. An emitted closure
-// that reaches it directly bypasses the handler's typed read/write contract, so it must refuse at
-// COMPILE TIME. The handler's identity is the one this module already carries as a slug; the free
+// that reaches it directly bypasses the handler's typed read/write contract and is the defect this wall
+// names. THE RUNG, HONESTLY: as authored in this cut the located refusal is a census predicate EXECUTED by
+// src/v2/test/claim/native_census/filesystem_handler_binding_and_restatement_refusal.dag over the named
+// population -- it is NOT yet wired as a compile-phase gate, because wiring one now would refuse the two
+// self_host.dag sites this cut's ruling keeps OUT of scope (their migration to the bound handler is the
+// trigger that connects this wall to the compile path). Until that trigger lands a closure reaching
+// filesystem_read still hits the runtime unrealized_host_seam panic: this wall locates and refuses it in
+// the census, it does not yet stop it at the door. The handler's identity is the one this module already
+// carries as a slug; the free
 // primitive's identity is the slug `filesystem_read`. A closure reaching a filesystem operation that
 // IS the handler is accepted -- this is the same discrimination effect_demand_census makes between a
 // dispositioned demand and one no row accounts for, applied to the filesystem effect.
@@ -1336,7 +1345,7 @@ fn filesystem_effect_reach(
 
 // THE REFUSAL, NAMING THE OFFENDERS BY SITE. Given the filesystem reaches of an emitted closure, return
 // exactly those NOT authorised through the bound handler -- each carrying its SITE (module, enclosing
-// declaration, locus), the operation it reached, and its named cause. An empty list is the accepted
+// declaration, occurrence), the operation it reached, and its named cause. An empty list is the accepted
 // population; a non-empty list is the located report. No counting, no defaulting: a reach that is not
 // through the handler is refused by name, at its site.
 fn filesystem_effect_direct_reach_refusals(
@@ -1361,13 +1370,64 @@ fn filesystem_effect_direct_reach_refusals(
   ))
 }
 
-// Two reach sites are the SAME site only when module, enclosing declaration and locus all match. This is
-// the identity the wall keys offenders on, so the two self_host reaches at :319 and :329 are distinct and
-// any new locus is a new offender rather than a silent match against a rostered one.
+// THE SITE A REACH CARRIES, whichever arm refused it. Consumed by filesystem_effect_offender_sites_are_
+// distinct below -- the wall needs the located identity of each offender regardless of which defect arm
+// named it, so this projection is the wall's own accessor, not a test helper.
+fn filesystem_effect_reach_site(reach: FilesystemEffectReach) -> FilesystemEffectSite {
+  match reach {
+    ReachedFreePrimitiveDirectly { site: site, operation: _, cause: _ } => site
+    ReachedOutsideBoundHandler { site: site, operation: _, cause: _ } => site
+    ReachedThroughHandler { site: site, operation: _ } => site
+  }
+}
+
+// Two reach sites are the SAME site only when module, enclosing declaration and occurrence index all match.
+// This is the located identity the wall keys offenders on (filesystem_effect_offender_sites_are_distinct
+// folds over it), so the two self_host reaches in read_roster_manifest and fold_side_bytes are TWO distinct
+// offenders and any new occurrence index is a new offender rather than a silent match against a rostered one.
 fn filesystem_effect_site_eq(left: FilesystemEffectSite, right: FilesystemEffectSite) -> Bool {
   (left.module_path == right.module_path)
     && (left.enclosing_declaration == right.enclosing_declaration)
     && (left.site_occurrence == right.site_occurrence)
+}
+
+// How many refused offenders sit at the SAME located site as `target`, keyed on filesystem_effect_site_eq.
+// An Int fold over the offender list -- the proven census counting idiom (parse.dag's lookahead count uses
+// the same fold_list with an Int seed), consumed by filesystem_effect_offender_sites_are_distinct below.
+fn filesystem_effect_offender_site_count(
+  offenders: List<FilesystemEffectReach>,
+  target: FilesystemEffectReach
+) -> Int {
+  fold_list(
+    xs: offenders,
+    empty: 0,
+    cons: fn(acc, other) {
+      if filesystem_effect_site_eq(
+        left: filesystem_effect_reach_site(reach: other),
+        right: filesystem_effect_reach_site(reach: target)
+      ) {
+        acc + 1
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+// THE WALL'S DISTINCTNESS INVARIANT, enforced THROUGH filesystem_effect_site_eq. Each refused offender must
+// sit at a located site NO other offender shares: a site reported zero times would drop a located offender
+// silently, and a site reported more than once would mean two distinct defects collapsed onto one entry.
+// This is why site_eq is a wall consumer and not a test-only helper -- the census is dishonest if the wall
+// does not check that every located site appears exactly once.
+fn filesystem_effect_offender_sites_are_distinct(
+  offenders: List<FilesystemEffectReach>
+) -> Bool {
+  ! any(
+    xs: offenders,
+    predicate: fn(reach) {
+      !(filesystem_effect_offender_site_count(offenders: offenders, target: reach) == 1)
+    }
+  )
 }
 
 // THE CENSUS, WITH ITS POPULATION SOURCE NAMED. `population_source` is the named rule above, passed BY
@@ -1391,11 +1451,15 @@ fn filesystem_effect_reach_census(
 }
 
 // THE WALL HOLDS exactly when the emitted closure under the named population rule reaches no filesystem
-// effect the free primitive directly. Same shape as effect_demand_census_total_holds: a Bool computed from
-// the census report's offender list being empty, so a red fixture that plants a direct reach makes it
-// false and a green control that reaches only through the handler keeps it true.
+// effect the free primitive directly AND the offender list is honest about site identity. Same shape as
+// effect_demand_census_total_holds (a Bool from the census report's offender list being empty -- a red
+// fixture that plants a direct reach makes it false, a green control reaching only through the handler keeps
+// it true), PLUS the distinctness invariant: the census consumes filesystem_effect_site_eq here so two
+// located defects can never collapse onto one entry and a new site is always a new offender. A red fixture
+// that reports the SAME site twice fails this arm even with a nonempty list, proving the check is live.
 fn filesystem_effect_direct_reach_wall_holds(report: FilesystemEffectCensusReport) -> Bool {
   length(xs: report.offenders) == 0
+    && filesystem_effect_offender_sites_are_distinct(offenders: report.offenders)
 }
 // ---- WALL 1: a new demand_restatement row refuses ----
 // THE AUTHORIZED RESTATEMENT ROSTER IS A PARAMETER, not a tree-derived oracle. A `demand_restatement`
