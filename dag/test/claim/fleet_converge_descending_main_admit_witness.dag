@@ -1,0 +1,226 @@
+module test.claim.fleet_converge_descending_main_admit_witness
+
+import gunbc.fleet.fleet_converge_descending_main_admit {
+  admit_descending_main,
+  DescendingMainAdmitted,
+  DescendingMainNotDescendant,
+  DescendingMainTouchesClosure,
+  DescendingMainClosureAbsent,
+  DescendingMainClosureMisattributed,
+  plan_cli_entry_path,
+  plan_cli_pool_roots,
+  first_touched_closure_path,
+  AbsentString,
+  PresentString,
+}
+
+// CONSUMER: gunbc.fleet.fleet_converge_plan_revision calls admit_descending_main after the plan
+// identity is admitted, to decide whether the apply at checkout M (the dispatch's event sha) is
+// safe when M != P. This witness exercises that pure decision with supplied boundary values.
+
+// --- fixtures ---------------------------------------------------------------
+
+data plan_p: String = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+data main_m: String = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+data unrelated: String = "cccccccccccccccccccccccccccccccccccccc"
+
+// A realistic closure: the plan CLI entry and its transitive DAG imports.
+data closure_fixture: List<String> = [
+  "dag/gunbc/fleet/fleet_converge_plan_cli.dag",
+  "dag/gunbc/fleet/fleet_converge_plan.dag",
+  "dag/gunbc/fleet/fleet_converge_receipt.dag",
+  "dag/gunbc/fleet/fleet_plan_artifact_location.dag",
+  "dag/gunbc/fleet/fleet_converge_workflow.dag",
+  "dag/gunbc/fleet/fleet_converge_plan_revision.dag",
+]
+
+// Paths changed on main that are OUTSIDE the closure.
+data safe_changed_paths: List<String> = [
+  "dag/gunbc/roadmap/roadmap_authority.dag",
+  "dag/gunbc/fleet/fleet_host_assembly.dag",
+  "README.md",
+]
+
+// A path changed on main that IS inside the closure.
+data unsafe_changed_paths: List<String> = [
+  "dag/gunbc/fleet/fleet_converge_plan.dag",
+  "README.md",
+]
+
+// --- POSITIVE: admitted case ------------------------------------------------
+
+// The plan was made at P; main descended to M (merge_base(P,M)==P); the diff P..M touches
+// NOTHING in the plan's source closure. Admission admits.
+test fn descending_main_admitted_when_diff_misses_closure() -> Bool {
+  match admit_descending_main(
+    checkout: main_m,
+    plan_revision: plan_p,
+    merge_base: plan_p,
+    changed_paths: safe_changed_paths,
+    source_closure: closure_fixture,
+    source_closure_entry_path: plan_cli_entry_path,
+    source_closure_pool_roots: plan_cli_pool_roots,
+  ) {
+    DescendingMainAdmitted { checkout: c, plan_revision: p } => c == main_m && p == plan_p
+    other => false
+  }
+}
+
+// M == P: the fast path admits without any further checks.
+test fn same_revision_admits_immediately() -> Bool {
+  match admit_descending_main(
+    checkout: plan_p,
+    plan_revision: plan_p,
+    merge_base: plan_p,
+    changed_paths: [],
+    source_closure: [],
+    source_closure_entry_path: "",
+    source_closure_pool_roots: [],
+  ) {
+    DescendingMainAdmitted { checkout: c, plan_revision: p } => c == plan_p && p == plan_p
+    other => false
+  }
+}
+
+// --- NEGATIVE (i): M not a descendant of P refuses --------------------------
+
+// merge_base != plan_revision means P is not an ancestor of M.
+test fn not_descendant_refuses() -> Bool {
+  match admit_descending_main(
+    checkout: main_m,
+    plan_revision: plan_p,
+    merge_base: unrelated,
+    changed_paths: safe_changed_paths,
+    source_closure: closure_fixture,
+    source_closure_entry_path: plan_cli_entry_path,
+    source_closure_pool_roots: plan_cli_pool_roots,
+  ) {
+    DescendingMainNotDescendant { checkout: c, plan_revision: p, merge_base: mb } =>
+      c == main_m && p == plan_p && mb == unrelated
+    other => false
+  }
+}
+
+// --- NEGATIVE (ii): M descends but diff touches the closure refuses ---------
+
+test fn touches_closure_refuses() -> Bool {
+  match admit_descending_main(
+    checkout: main_m,
+    plan_revision: plan_p,
+    merge_base: plan_p,
+    changed_paths: unsafe_changed_paths,
+    source_closure: closure_fixture,
+    source_closure_entry_path: plan_cli_entry_path,
+    source_closure_pool_roots: plan_cli_pool_roots,
+  ) {
+    DescendingMainTouchesClosure { checkout: c, plan_revision: p, offending_path: op } =>
+      c == main_m && p == plan_p && op == "dag/gunbc/fleet/fleet_converge_plan.dag"
+    other => false
+  }
+}
+
+// --- NEGATIVE (iii): malformed/empty pointer refuses ------------------------
+
+// Empty source closure (old plan without the field, or a hand-typed empty closure) cannot admit.
+test fn empty_closure_refuses() -> Bool {
+  match admit_descending_main(
+    checkout: main_m,
+    plan_revision: plan_p,
+    merge_base: plan_p,
+    changed_paths: safe_changed_paths,
+    source_closure: [],
+    source_closure_entry_path: plan_cli_entry_path,
+    source_closure_pool_roots: plan_cli_pool_roots,
+  ) {
+    DescendingMainClosureAbsent { plan_revision: p } => p == plan_p
+    other => false
+  }
+}
+
+// Closure attributed to a wrong entry path cannot admit.
+test fn misattributed_closure_refuses() -> Bool {
+  match admit_descending_main(
+    checkout: main_m,
+    plan_revision: plan_p,
+    merge_base: plan_p,
+    changed_paths: safe_changed_paths,
+    source_closure: closure_fixture,
+    source_closure_entry_path: "dag/gunbc/fleet/fleet_converge_plan.dag",
+    source_closure_pool_roots: plan_cli_pool_roots,
+  ) {
+    DescendingMainClosureMisattributed { expected_entry: e, recorded_entry: r } =>
+      e == plan_cli_entry_path && r == "dag/gunbc/fleet/fleet_converge_plan.dag"
+    other => false
+  }
+}
+
+// Closure recorded with wrong pool_roots cannot admit.
+test fn wrong_pool_roots_refuses() -> Bool {
+  match admit_descending_main(
+    checkout: main_m,
+    plan_revision: plan_p,
+    merge_base: plan_p,
+    changed_paths: safe_changed_paths,
+    source_closure: closure_fixture,
+    source_closure_entry_path: plan_cli_entry_path,
+    source_closure_pool_roots: ["wrong", "roots"],
+  ) {
+    DescendingMainClosureMisattributed { expected_entry: e, recorded_entry: r } =>
+      e == plan_cli_entry_path && r == plan_cli_entry_path
+    other => false
+  }
+}
+
+// --- intersection helper unit tests -----------------------------------------
+
+// path_matches_touched is used through the model's own function; test the fold directly.
+test fn first_touched_returns_present_for_matching_path() -> Bool {
+  match first_touched_closure_path(
+    paths: ["dag/gunbc/fleet/fleet_converge_plan.dag", "README.md"],
+    closure: closure_fixture,
+  ) {
+    PresentString(v) => v == "dag/gunbc/fleet/fleet_converge_plan.dag"
+    AbsentString => false
+  }
+}
+
+test fn first_touched_returns_absent_when_no_match() -> Bool {
+  match first_touched_closure_path(
+    paths: ["README.md", "Cargo.toml"],
+    closure: closure_fixture,
+  ) {
+    AbsentString => true
+    PresentString(_) => false
+  }
+}
+
+// --- determinism: same inputs produce same results -------------------------
+
+test fn determinism_repeat_admitted() -> Bool {
+  let a = admit_descending_main(
+    checkout: main_m,
+    plan_revision: plan_p,
+    merge_base: plan_p,
+    changed_paths: safe_changed_paths,
+    source_closure: closure_fixture,
+    source_closure_entry_path: plan_cli_entry_path,
+    source_closure_pool_roots: plan_cli_pool_roots,
+  )
+  let b = admit_descending_main(
+    checkout: main_m,
+    plan_revision: plan_p,
+    merge_base: plan_p,
+    changed_paths: safe_changed_paths,
+    source_closure: closure_fixture,
+    source_closure_entry_path: plan_cli_entry_path,
+    source_closure_pool_roots: plan_cli_pool_roots,
+  )
+  match a {
+    DescendingMainAdmitted { checkout: c1, plan_revision: p1 } =>
+      match b {
+        DescendingMainAdmitted { checkout: c2, plan_revision: p2 } => c1 == c2 && p1 == p2
+        other => false
+      }
+    other => false
+  }
+}
