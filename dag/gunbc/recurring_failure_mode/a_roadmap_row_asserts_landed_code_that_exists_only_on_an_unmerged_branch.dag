@@ -1,0 +1,36 @@
+module gunbc.recurring_failure_mode.a_roadmap_row_asserts_landed_code_that_exists_only_on_an_unmerged_branch
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundOnRung, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { MechanicallyPreventable, Mitigatable }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data a_roadmap_row_asserts_landed_code_that_exists_only_on_an_unmerged_branch: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_roadmap_row_asserts_landed_code_that_exists_only_on_an_unmerged_branch" as NonEmptyStr,
+
+  // STATED BY THIS ROW. FOUND AT, by review: a reader who prints hit counts for the row's cited
+  // symbols against the default branch catches the class, and the check is a discipline other
+  // readers may skip -- mitigatable, not preventable. CEILING: the SAME check AT AUTHORING TIME --
+  // a row whose landing claim cites symbols that do not resolve on the default branch refuses
+  // instead of merging -- mechanical once the reference_check exists, so mechanically preventable.
+  // The trigger is that capability, named as the capability and not as an artifact beside it; it is
+  // unbuilt, hence ClimbableButUnbuilt rather than a grounding the row must cite.
+  rung: RungRead {
+    found_at: FoundOnRung { rung: Mitigatable },
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: MechanicallyPreventable,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "a reference_check that resolves the cited symbols of a landing claim (a #module::decl marker) at authoring time, so a row asserting landed code whose symbols do not resolve on the default branch refuses rather than merging",
+    },
+  },
+
+  receipts: [
+    "INVALID STATE: a roadmap row asserts that a route, closure or module LANDED, and the asserted code exists only on an unmerged branch. Dispatch, staffing and displaced-cost prose then reason from a facility the default branch does not have. DISTINGUISHING FACT, cheap and decisive: the symbols the row asserts have ZERO HITS on the default branch while the row's prose treats them as present.",
+    "SPECIMEN, found 2026-11-24 by directed archaeology. The row fleet-srv2-retirement-completion carried, since its 2026-09-24 update, that the assessment route had landed and that its three blockers were 'typed and visible on every receipt'. Measured at origin/main 65230868362d (own full clone, non-shallow): pickaxe over the main lineage (git log origin/main -S<symbol> -- dag src) gives ConvergenceAssessment hits=0; LocalPopulationUnavailable hits=1 and srv2_host_retirement hits=1, and BOTH hits are the single roadmap prose commit a6f10a8f5d (gunbc#11864, 2026-09-21) -- code hits=0. The retirement carrier itself greps assessment hits=0, blocker hits=0. The closure was real: authored 2026-09-19 by ef298b6621c3 ('Retire srv2 as a declared obligation, from an executor that is not the target') and 721fd46dda00 ('The capture is a binding between four identities, not a name'), typed with LocalPopulationUnavailable and the capture-census refusal, and it survives intact at origin/session/still-swift-642 and the session/quiet-moth-644 family. It was never merged: of the 60 closure-bearing commits in its September window, 0 are ancestors of origin/main (git merge-base --is-ancestor loop); the covering PRs gunbc#11680, gunbc#11688, gunbc#11699 and gunbc#11693 were closed UNMERGED by gunbai-bot[bot] on 2026-09-20 with zero comments and no closure note in any timeline, and the auto-close-on-base-deletion mechanism is ruled out -- three bases were main, and #11693's base session/quiet-moth-644 still exists at tip e346b877b545, unmerged. The roadmap prose asserting the route had landed was written THREE DAYS after the lane died, and no instrument refused it.",
+    "WHY IT IS SILENT AT THE RUNG IT WAS FOUND AT: nothing reads a row's asserted symbols against the tree. Row acceptance is prose review, and prose that names REAL commits reads as corroborated even when those commits live on refs no consumer reads -- the commits in the specimen all exist, which is exactly what made the claim survive review. The hit count is the whole guard: the same searches a reader would distrust become DECISIVE when printed against the default branch with counts.",
+    "RECOGNITION RULE: before accepting a row's landing claim, print hit counts for the asserted symbols on the default branch -- git grep with counts against origin/main, plus a lineage pickaxe (git log <default> -S<symbol>) when 'landed then removed' is on the table. Zero hits on the default branch with nonzero hits on branch tips means UNACCEPTED PREREQUISITE, not landed code. The branch code is then an OFFLINE ORACLE ONLY (gunbc.design_argument::replacement_migration): re-derive on the default branch; never cherry-pick the stale lineage into the current layout; old witnesses may be ported as REDs."
+  ],
+
+  evidence: [],
+}
