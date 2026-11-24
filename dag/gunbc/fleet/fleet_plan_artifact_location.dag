@@ -40,10 +40,23 @@ data fleet_converge_run_artifact_attempt_env_name: String = "GUNBC_FLEET_CONVERG
 // it from the run identity.
 data fleet_converge_plan_receipt_name: String = "plan_receipt.json"
 
-// Compose the plan receipt path from a run-scoped plan-artifact directory. Used by the PRODUCER
-// (the plan step, which owns the dir) to write the pack into <run_artifact_dir>/plan_receipt.json.
-fn fleet_plan_receipt_path_in(run_artifact_dir: NonEmptyStr) -> String {
-  join([run_artifact_dir as String, "/", fleet_converge_plan_receipt_name], "")
+// Compose the plan receipt (pack) path from a run-scoped plan-artifact directory. Used by the
+// PRODUCER (the plan step, which owns the dir) to write the pack into
+// <run_artifact_dir>/plan_receipt.json, and by the receipt writer from the receipt's own
+// run_artifact_dir field. The dir is validated non-empty at its composition (the producer entry)
+// and at receipt decode, so a plain String is the right carrier here.
+fn fleet_plan_receipt_path_in(run_artifact_dir: String) -> String {
+  join([run_artifact_dir, "/", fleet_converge_plan_receipt_name], "")
+}
+
+// THE GENERIC MEMBER of the run-scoped plan-artifact family. Every plan artifact file (plan text,
+// apply shell, baseline, content hash, subject fields, the plan pack, the apply receipt) lives
+// inside a single run-scoped directory; none sits at a fixed shared path, because two concurrent
+// runs must not overwrite one another's artifacts. The producer composes each path from its
+// run_artifact_dir and the file's name; consumers read members by the opaque handle, never by
+// recomposing from the run identity.
+fn fleet_plan_artifact_path_at(run_artifact_dir: String, name: String) -> String {
+  join([run_artifact_dir, "/", name], "")
 }
 
 // THE APPLY-SIDE HANDLE. plan and apply are separate runners: a runner-absolute path from the plan

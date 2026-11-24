@@ -1,5 +1,6 @@
 module gunbc.fleet.fleet_converge_receipt
 
+import gunbc.fleet.fleet_plan_artifact_location { fleet_plan_receipt_path_in }
 import gunbc.fleet.fleet_converge_terminal { FleetConvergeApplyTerminal, FullyApplied, PartiallyApplied, fleet_converge_apply_terminal_wire, fleet_converge_apply_terminal_of_wire }
 
 import std.types { String, Bool, NonEmptyStr, Int, List }
@@ -420,8 +421,9 @@ type FleetConvergeReceiptWrite
   | ReceiptWriteRefused { path: String, error: String }
 
 fn write_fleet_converge_plan_receipt(r: FleetConvergePlanReceipt) -> FleetConvergeReceiptWrite {
-  let w = Filesystem.Write(path: fleet_converge_plan_receipt_path, content: serialize_json(v: fleet_converge_plan_receipt_json(r: r)))
-  if w.success { ReceiptWritten { path: fleet_converge_plan_receipt_path } } else { ReceiptWriteRefused { path: fleet_converge_plan_receipt_path, error: w.error } }
+  let pack_path = fleet_plan_receipt_path_in(run_artifact_dir: r.run_artifact_dir)
+  let w = Filesystem.Write(path: pack_path, content: serialize_json(v: fleet_converge_plan_receipt_json(r: r)))
+  if w.success { ReceiptWritten { path: pack_path } } else { ReceiptWriteRefused { path: pack_path, error: w.error } }
 }
 
 fn write_fleet_converge_apply_receipt(r: FleetConvergeApplyReceipt) -> FleetConvergeReceiptWrite {
