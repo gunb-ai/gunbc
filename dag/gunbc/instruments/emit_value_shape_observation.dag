@@ -4,7 +4,7 @@ import std.types { Bool, Int, List }
 import std.realization_measurement { AllocationCounter, AllocationObservation, allocation_span_observation, allocation_provider_not_selected }
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld }
 import gunbc.emit_copy_qualification { EmitCopyQualificationCaseId, CaseApplicability, CaseApplicable, CaseNotApplicable, StructuralInapplicability, PatternRequiresConsumingContract, PatternRequiresBorrowingContract, ScalarBasisRequiresCopyScalarCarrier, SizedBasisRequiresSizedCarrier, structural_inapplicability_slug, applicable_case_rows, row_is_applicable, case_slug }
-import gunbc.emit_building_block_contracts { BuildingBlockContract, BuildingBlockFamily, ValueShapes, family_slug, building_block_contracts, contract_block_count, contracts_of_family, contract_verdict, case_in_applicable_roster, contract_line, roster_membership_line, MispairedProbe, mispaired_probes, probe_guard_holds, probe_lines }
+import gunbc.emit_building_block_contracts { BuildingBlockContract, BuildingBlockFamily, ValueShapes, ControlFlow, Accumulator, Carriers, family_slug, building_block_contracts, contract_block_count, contracts_of_family, contract_verdict, case_in_applicable_roster, contract_line, roster_membership_line, MispairedProbe, mispaired_probes, probe_guard_holds, probe_lines }
 import gunbc.instruments.native_allocation_observation { AllocationCase, case_line, is_observed, span_is_zero, operations_above, operations_within, span_text, count_text }
 import gunbc.emit_state_threading_specimen { spec_build }
 
@@ -231,21 +231,66 @@ fn value_shape_cases() -> List<AllocationCase> uses counter: AllocationCounter {
 fn refusal_not_hit(name: String, refusal: StructuralInapplicability) -> AllocationCase {
   AllocationCase {
     identity: concat("contract_refusal_not_hit_by_the_population_", name),
-    held: count(filter(building_block_contracts(), (c: BuildingBlockContract) => contract_verdict(c: c.case_id) == structural_inapplicability_slug(r: refusal))) == 0,
+    held: count(filter(building_block_contracts(), c => contract_verdict(c: c.case_id) == structural_inapplicability_slug(r: refusal))) == 0,
     observed: concat("refusal=", structural_inapplicability_slug(r: refusal), " judged_by=case_applicability")
   }
 }
 
 fn all_probes_refused() -> Bool {
-  count(filter(mispaired_probes(), (p: MispairedProbe) => !probe_guard_holds(p: p))) == 0
+  count(filter(mispaired_probes(), p => !probe_guard_holds(p: p))) == 0
+}
+
+// THE ROSTER IS CHECKED AGAINST SOMETHING OUTSIDE ITSELF. `fn contract_block_count` is
+// `building_block_contracts() |> count`, so comparing the two would be `measure() == measure()` and
+// would check nothing (gunbc.design_argument fail_closed; guarantee_ladder: a check whose forbidden
+// state is expressible nowhere it runs is a decoration, green by construction and later cited as
+// coverage). So the roster is joined against `fn declared_block_ids`, a set written by hand here and
+// not derived from the module: it goes red if the roster drops a block, renames one, duplicates an id,
+// or grows past the coverage the boundary pays for. `family_sum` is printed as a READING only, because
+// it is derived from the same roster and structurally cannot fail.
+fn declared_block_ids() -> List<String> {
+  [ "value_scalar", "value_record", "value_nonrecursive_variant", "generic_over_scalar",
+    "generic_over_payload", "transform", "branch", "bind", "match_owned_temporary",
+    "match_borrowed_shared_sum", "loop_record_accumulator", "field_read", "record_rebuild_one_field",
+    "local_closure", "escaping_closure", "sequence_build", "element_read", "sequential_traversal",
+    "persistent_sequence_carrier_snapshot", "index_build", "index_lookup", "index_traversal",
+    "persistent_map_carrier_snapshot" ]
+}
+
+fn roster_has_id(id: String) -> Bool {
+  building_block_contracts() |> any(b => b.block == id)
+}
+
+fn id_occurrences(id: String) -> Int {
+  count(building_block_contracts() |> filter(b => b.block == id))
+}
+
+fn missing_declared_count() -> Int {
+  count(declared_block_ids() |> filter(id => !roster_has_id(id: id)))
+}
+
+fn duplicate_id_count() -> Int {
+  count(declared_block_ids() |> filter(id => id_occurrences(id: id) > 1))
+}
+
+fn family_sum() -> Int {
+  count(contracts_of_family(f: ValueShapes)) + count(contracts_of_family(f: ControlFlow)) + count(contracts_of_family(f: Accumulator)) + count(contracts_of_family(f: Carriers))
+}
+
+fn roster_against_declared_case() -> AllocationCase {
+  AllocationCase {
+    identity: "contract_roster_matches_the_declared_block_id_set",
+    held: missing_declared_count() == 0 && duplicate_id_count() == 0 && count(declared_block_ids()) == count(building_block_contracts()),
+    observed: concat(concat(concat(concat("declared=", count_text(label: "declared", n: count(declared_block_ids()))), concat(" roster=", count_text(label: "roster", n: count(building_block_contracts())))), concat(" missing=", count_text(label: "missing", n: missing_declared_count()))), concat(" duplicates=", count_text(label: "duplicates", n: duplicate_id_count())), concat(" family_sum_reading=", count_text(label: "family_sum", n: family_sum())))
+  }
 }
 
 fn contract_audit_cases() -> List<AllocationCase> {
   let value_shapes = contracts_of_family(f: ValueShapes)
   [
-    AllocationCase { identity: "contract_roster_is_derived_from_the_module", held: count(building_block_contracts()) == contract_block_count(), observed: count_text(label: "blocks", n: contract_block_count()) },
+    roster_against_declared_case(),
     AllocationCase { identity: "value_shape_family_roster_is_nonempty", held: count(value_shapes) > 0, observed: count_text(label: "value_shape_blocks", n: count(value_shapes)) },
-    AllocationCase { identity: "every_value_shape_contract_is_carrier_applicable", held: count(filter(value_shapes, (c: BuildingBlockContract) => !case_in_applicable_roster(c: c.case_id))) == 0, observed: concat("judged_by=case_applicability first=", fold(value_shapes, init: "none", f: (acc, c) => if acc == "none" { contract_line(b: c) } else { acc })) },
+    AllocationCase { identity: "every_value_shape_contract_is_carrier_applicable", held: count(filter(value_shapes, c => !case_in_applicable_roster(c: c.case_id))) == 0, observed: concat("judged_by=case_applicability first=", fold(value_shapes, init: "none", f: (acc, c) => if acc == "none" { contract_line(b: c) } else { acc })) },
     refusal_not_hit(name: "pattern_requires_consuming_contract", refusal: PatternRequiresConsumingContract),
     refusal_not_hit(name: "pattern_requires_borrowing_contract", refusal: PatternRequiresBorrowingContract),
     refusal_not_hit(name: "scalar_basis_requires_copy_scalar_carrier", refusal: ScalarBasisRequiresCopyScalarCarrier),
