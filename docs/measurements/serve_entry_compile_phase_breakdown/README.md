@@ -45,6 +45,13 @@ compile on one revision, with the closure's module count"). This document writes
 | HEAVY_OWNER | `valiant-gull-211` (every stage through `/home/briansrls/bin/heavy-slot`, one stage per acquisition) |
 | node-digest | `ed5564b8560b5ba4` (unchanged from the digest given by the manager; `DIGEST_RC=0`, `VERIFICATION controls_ok=yes control=f1c76111c83a0a60 third=b3747b95baf099cc missing_rc=1`, `LAB_HEAD=c48e06d826157ffd9df2c4830ac2985524f8f211`, `GUNBC_SHA256=82e9a74a134dbd67`) |
 
+These host-specific fields (host name, `BOOT`, absolute scratch paths, slot path) are retained
+**deliberately**: the slice's evidence rule requires the host, the boot id, the on-disk binary
+sha256 with its path, `HEAVY_OWNER` and the slot line, because a receipt that cannot name its
+host or boot id is not falsifiable and cannot be re-run by the next worker. The host name is
+tailnet-internal and reachable only from inside the tailnet; every path is lane-owned scratch
+under this session's own directory. Trimming them would weaken the receipt, not harden it.
+
 Acquisitions used: **4 of 4** — build, compile run 1, node-digest pass, compile run 2.
 
 ```
