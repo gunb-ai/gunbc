@@ -19,6 +19,22 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE SIG-UNRESOLVED FALLEN THROUGH BLIND SPOT: an executed control pair.
 //
+// THIS WITNESS IS A TRIPWIRE ON A HOLE, NOT A WALL. It asserts that the hole exists today.
+// When the hole is closed — by the namespace lane's resolution coverage improving so that
+// bare calls to kernel method template names resolve their signatures via func_env or
+// parent_closure_callable_candidates rather than falling through to CallableUnresolved —
+// this witness's RED leg (unimported_kernel_name_mislabeled_call_compiles_clean) will go
+// red because the compiler will start REFUSING the mislabeled call. That red is THE POINT:
+// it means the hole is being closed and the test must then invert its assertion (expect
+// refusal, matching the licensed twin). DO NOT DELETE THE RED TEST TO MAKE IT PASS. Invert
+// the assertion instead: the licensed twin becomes the only behavior.
+//
+// THE NODE THAT CLOSES THE HOLE: namespace-lane resolution coverage — the work item that
+// makes func_env_declared_func_sig (or parent_closure_callable_candidates) resolve sigs for
+// bare names matching kernel method templates without requiring an explicit import. Once that
+// lands, the unimported path no longer produces CallableUnresolved for these names, the
+// method bridge is never reached, and the shape wall fires uniformly.
+//
 // WHAT THIS WITNESS PROVES AND HOW IT IS DIFFERENT FROM call_target_partition_witness.
 //
 // A call whose callee resolves NO signature bypasses every call-shape judgment. The landed
@@ -50,8 +66,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // CORRECTED: 5890 sites, 31 names, 1327 modules — bare calls to kernel method template names
 //   with labeled args, where the callee is NEITHER locally declared NOR imported. These hit
 //   CallableUnresolved → method bridge → no shape wall. Reproducible via the predicate stated
-//   below (git grep, light — no committed producer needed; the numbers are context, the
-//   behavioral assertions in the test fns are the guarantee).
+//   below (git grep, light — no committed producer; per-name figures are omitted intentionally:
+//   a hand-typed table drifts from its source and the predicate is the single authority).
 //   Predicate filters: not locally declared (fn NAME( absent from file),
 //   not imported (import line does not list the name). Not filtered statically: parent_closure
 //   reachability (the import filter subsumes it); builtin/kernel table (the builtin positional
