@@ -2,28 +2,36 @@ module test.claim.closing.fleet_state_frontier_closing_contract_witness_test
 
 // The closing witness for node fleet-state-frontier. The node's bar: an
 // undeclared file, service, credential, or device refuses before anything is
-// changed. The witness drives frontier_validate_knobs (gunbc.host.host_converge),
-// the production gate called by the converge route (converge_hosts_of_plan →
-// frontier_gate_host → frontier_validate_knobs) before admitting a host.
-// The witness supplies knob inputs only; the refusing arm (FrontierRefused)
-// carries the undeclared artifact by name.
+// changed. The frontier classification lives in the carrier (host_converge.dag);
+// the production converge route calls frontier_validate_knobs via
+// frontier_gate_host before admitting any host.
 //
 // Red pair:
 //   an_undeclared_artifact_refuses_before_anything_is_changed — discriminating;
-//     fails if frontier_validate_knobs admits a knob not in the declared roster.
-//   a_fully_classified_inventory_admits — positive control; fails if a fully
-//     declared knob set is refused.
+//     drives frontier_validate_knobs (the production gate) with an undeclared
+//     knob and asserts FrontierRefused carries the artifact.
+//   a_fully_classified_inventory_admits — positive control; drives the full
+//     converge route (fleet_converge_policy_from → converge_hosts_of_plan →
+//     frontier_gate_host → frontier_validate_knobs) through the real production
+//     plan and asserts the policy is derived (all knobs classified).
 
 import std.types { Bool, String }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.systemd { systemd_memory_max_property }
+import gunbc.ci.ci_runner_placement {
+  runner_deployment_plan,
+  runner_image_baked_deployment_plan,
+}
 import gunbc.host.host_converge {
   ConvergeKnob,
+  ConvergePolicyDerived,
+  ConvergePolicyUnsound,
   FrontierAdmitted,
   FrontierRefused,
   DerivedByUs,
   SessionsSlice,
   VerifyOnlyCap,
+  fleet_converge_policy_from,
   frontier_validate_knobs,
 }
 
@@ -31,11 +39,12 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn an_undeclared_artifact_refuses_before_anything_is_changed() -> Bool {
   // A knob whose name is not in the declared frontier classification must be
-  // refused by the production gate. The converge route will not admit the host
-  // carrying this knob; no change is attempted on its behalf.
+  // refused by the production gate (frontier_validate_knobs), which the
+  // converge route (frontier_gate_host) calls before admitting any host.
+  // The refusing arm carries the undeclared artifact by name.
   //
   // Discriminating: if frontier_validate_knobs admitted undeclared knobs (the
-  // classification gate bypassed), this test fails.
+  // classification gate bypassed or the roster widened silently), this test fails.
   let undeclared_knob = ConvergeKnob {
     slice: SessionsSlice,
     name: "undeclared.credential.srv9_api_key",
@@ -52,22 +61,19 @@ test fn an_undeclared_artifact_refuses_before_anything_is_changed() -> Bool {
 }
 
 test fn a_fully_classified_inventory_admits() -> Bool {
-  // Every knob in the declared frontier classification admits. The positive
-  // control proves the gate is not vacuously refusing everything.
+  // Positive control: the real production converge route (fleet_converge_policy_from
+  // → converge_hosts_of_plan → frontier_gate_host → frontier_validate_knobs)
+  // admits the production plan because every knob in it is classified.
+  // This proves the gate does not vacuously refuse declared artifacts and
+  // executes the real path end-to-end.
   //
-  // Discriminating: if frontier_validate_knobs refused a declared knob, this
-  // test fails.
-  let declared_knob = ConvergeKnob {
-    slice: SessionsSlice,
-    name: "slice_max_bytes",
-    desired: "4294967296",
-    target: VerifyOnlyCap {
-      slice_unit: "srv1.slice",
-      property: systemd_memory_max_property,
-    },
-  }
-  match frontier_validate_knobs(knobs: [declared_knob]) {
-    FrontierAdmitted { artifact: "all", class: DerivedByUs } => true
-    FrontierRefused { artifact: _, cause: _ } => false
+  // Discriminating: if the frontier gate refused any declared knob in the
+  // production plan, the policy would be ConvergePolicyUnsound and this fails.
+  match fleet_converge_policy_from(
+    plan: runner_deployment_plan(),
+    image_baked: runner_image_baked_deployment_plan(),
+  ) {
+    ConvergePolicyDerived { hosts: hs } => hs.length() > 0
+    ConvergePolicyUnsound { reason: _ } => false
   }
 }

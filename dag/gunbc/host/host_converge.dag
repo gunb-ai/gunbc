@@ -1074,14 +1074,14 @@ fn host_converge_of(h: RunnerHostDeployment, session_knobs: List<ConvergeKnob>, 
 
 // Production route: assembles the host converge and gates every knob through
 // the frontier classification before admitting the host. An undeclared knob
-// refuses the host before any change is attempted.
+// refuses the host with FleetConvergeUnsound before any change is attempted.
 fn frontier_gate_host(h: RunnerHostDeployment, session_knobs: List<ConvergeKnob>, backstop_knobs: List<ConvergeKnob>, hosts: List<HostConverge>) -> FleetConvergeAcc {
   let assembled = host_converge_of(h: h, session_knobs: session_knobs, backstop_knobs: backstop_knobs)
   match frontier_validate_knobs(knobs: assembled.knobs) {
     FrontierAdmitted { artifact: _, class: _ } =>
       FleetConvergeHosts { hosts: concat(hosts, [assembled]) }
-    FrontierRefused { artifact: _, cause: _ } =>
-      FleetConvergeHosts { hosts: hosts }
+    FrontierRefused { artifact: a, cause: c } =>
+      FleetConvergeUnsound { reason: concat("frontier classification refused: ", concat(a, ": ", c)) }
   }
 }
 
@@ -1192,7 +1192,7 @@ fn frontier_gate(artifact_name: String) -> FrontierGateVerdict {
 
 // Production route: the converge path calls this on every assembled host's
 // knobs before admitting the host into the converge plan. An undeclared knob
-// refuses the host (FleetConvergeUnsound) before any change is attempted.
+// refuses the host with FleetConvergeUnsound before any change is attempted.
 fn frontier_validate_knobs(knobs: List<ConvergeKnob>) -> FrontierGateVerdict {
   let undeclared = filter(knobs, k => {
     match frontier_gate(artifact_name: k.name) {
@@ -1203,9 +1203,9 @@ fn frontier_validate_knobs(knobs: List<ConvergeKnob>) -> FrontierGateVerdict {
   if undeclared.length() > 0 {
     match frontier_gate(artifact_name: undeclared[0].name) {
       FrontierRefused { artifact: a, cause: c } => FrontierRefused { artifact: a, cause: c }
-      FrontierAdmitted { artifact: _, class: _ } => FrontierAdmitted { artifact: undeclared[0].name, class: DerivedByUs }
+      FrontierAdmitted { artifact: a, class: _ } => FrontierRefused { artifact: a, cause: "classification inconsistency" }
     }
   } else {
-    FrontierAdmitted { artifact: "all", class: DerivedByUs }
+    FrontierAdmitted { artifact: "all-declared", class: DerivedByUs }
   }
 }
