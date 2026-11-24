@@ -1,0 +1,99 @@
+module test.claim.shell.shell_dag_cron_entry_line_refusal_discrimination_witness
+
+import std.types { Bool, String }
+import gunbc.tools.cron_tag { build_cron_entry_line, cron_tag_marker, cron_entry_refused_poison }
+
+// REFUSAL-DISCRIMINATION SIBLING TO THE PINNED ORACLE
+// (test.claim.shell.shell_dag_cron_entry_line_builder_witness). This module demonstrates the one
+// clause of the node's red_control that the pinned oracle HANDLES but never DEMONSTRATES: "a
+// malformed field refuses before any line is produced." The oracle covers that clause only by the
+// no-shell-control-word check (it asserts the rendered line carries none of `set -e`, `||`, `&&`,
+// `;`, `2>/dev/null`), which is satisfied identically by a builder that REFUSES a malformed field
+// AND by one that merely CONSTRUCTS a benign line from it — so the oracle cannot tell those two
+// builders apart. This sibling closes that gap: each arm feeds a malformed field (the same
+// adversarial values the oracle plants) and asserts the returned line EQUALS the typed refusal
+// sentinel cron_entry_refused_poison, the refusal build_cron_entry_line produces before any line is
+// built. A safe-constructor that returns a real crontab line instead of refusing FAILS these arms;
+// a builder that always returns the sentinel FAILS the positive control below. Together the five
+// arms pin refuse-not-safely-construct, which no current oracle arm can do.
+//
+// THIS IS NOT A RED-BY-DESIGN CLAIM AND IS NOT ENROLLED IN v2.workflow.floor_expected_red: the
+// typed rebind made build_cron_entry_line return the sentinel on a malformed field, so all five arms
+// are GREEN by construction and are kept as a PERMANENT REGRESSION CONTROL on that refusal property.
+//
+// THE PINNED ORACLE IS BYTE-UNTOUCHED. This is a NEW module authored beside it (the sanctioned
+// pattern of the compile-pool and codex siblings); the oracle file is never edited, re-pointed, or
+// re-armed. It reads the same callable surface the oracle reads (build_cron_entry_line over the
+// declared schedule/command/log_path/tag fields, and cron_tag_marker), plus the refusal sentinel the
+// boundary exposes.
+
+// The refusal build_cron_entry_line projects for any malformed field, before any crontab line is
+// produced. Non-empty and free of every shell control word, so it is neither a plausible entry nor a
+// line that could smuggle an instruction.
+
+// REFUSAL DEMONSTRATED — the discriminator. A schedule is a cron grammar position; one carrying
+// `; shutdown -h now` does not parse as five schedule fields and must be refused before any line is
+// produced. This asserts the returned projection IS the typed refusal, not a safely-built line.
+test fn malformed_schedule_field_is_refused() -> Bool {
+  let line = build_cron_entry_line(
+    schedule: "0 3 * * *; shutdown -h now",
+    command: "systemd-run --user --scope true",
+    log_path: "/var/log/review-agent.log",
+    tag: "review-agent"
+  )
+  line == cron_entry_refused_poison
+}
+
+// REFUSAL DEMONSTRATED — the discriminator. A command carrying `&&` chains a second command inside
+// the scheduler; the portable-argv wall refuses it and the projection is the typed refusal.
+test fn malformed_command_field_is_refused() -> Bool {
+  let line = build_cron_entry_line(
+    schedule: "*/15 * * * *",
+    command: "echo done && rm -rf /tmp/review-agent-state",
+    log_path: "/var/log/review-agent.log",
+    tag: "review-agent"
+  )
+  line == cron_entry_refused_poison
+}
+
+// REFUSAL DEMONSTRATED — the discriminator. A log path carrying `2>/dev/null` smuggles a redirection
+// that swallows the diagnostics a failing entry owes; the wall refuses it before any line exists.
+test fn malformed_log_path_field_is_refused() -> Bool {
+  let line = build_cron_entry_line(
+    schedule: "*/15 * * * *",
+    command: "systemd-run --user --scope true",
+    log_path: "/var/log/review-agent.log 2>/dev/null",
+    tag: "review-agent"
+  )
+  line == cron_entry_refused_poison
+}
+
+// REFUSAL DEMONSTRATED — the discriminator. A tag carrying `||` would turn the trailing marker
+// comment into a fallback arm if the marker framing shifted; the wall refuses the malformed tag and
+// the projection is the typed refusal.
+test fn malformed_tag_field_is_refused() -> Bool {
+  let line = build_cron_entry_line(
+    schedule: "*/15 * * * *",
+    command: "systemd-run --user --scope true",
+    log_path: "/var/log/review-agent.log",
+    tag: "review-agent || reboot"
+  )
+  line == cron_entry_refused_poison
+}
+
+// POSITIVE CONTROL — keeps the four refusal arms from passing vacuously. A well-formed entry is NOT
+// refused: its projection is not the sentinel and it renders its declared schedule and the marker
+// cron_tag_marker derives. A builder that always returned the sentinel (so every refusal arm above
+// passed) FAILS this arm; a builder that never refuses is caught by the four arms above. This pins
+// that the module measures refusal specifically, not a blanket sentinel return.
+test fn benign_entry_is_not_refused() -> Bool {
+  let line = build_cron_entry_line(
+    schedule: "*/15 * * * *",
+    command: "systemd-run --user --scope true",
+    log_path: "/var/log/review-agent.log",
+    tag: "review-agent"
+  )
+  line != cron_entry_refused_poison
+    && string_contains(s: line, pattern: "*/15 * * * *")
+    && string_contains(s: line, pattern: cron_tag_marker(tag: "review-agent"))
+}
