@@ -75,7 +75,7 @@ test fn silent_stdout_is_absent_channel_not_a_refusal_and_not_stderr_content() -
   let observation: ProcessObservation = process_observation(exit_code: 0, stdout: "", stderr: "noise-on-stderr")
   match classify_process_observation(policy: ExitZeroSucceeds, observation: observation) {
     ProcessOutputAbsent => true
-    ProcessOutputPresent { text: t } => false
+    ProcessOutputPresent { text: _ } => false
     ProcessRefused { exit_code: _, stderr: _ } => false
   }
 }
