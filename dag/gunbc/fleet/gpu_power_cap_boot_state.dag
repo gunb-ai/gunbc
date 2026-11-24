@@ -29,8 +29,7 @@ module gunbc.fleet.gpu_power_cap_boot_state
 // applied by hand, and those readings have a different shape: a path, a flag, a wattage, a persistence claim and
 // a sha256 quoted with its middle elided -- no transcription of the file, no systemctl state. They are held as
 // `hand_applied_cap_mechanisms`, sibling rows to `srv1_power_cap_boot_units`, with the truncated sha256s typed
-// as markings (`CapUnitDigestMarkedOnly`) and the missing whole values named in `unread_cap_unit_digests` rather
-// than filled in. Both reach every card on their host, which is why they answer a consumer asking "what cap does
+// as markings (`CapUnitDigestMarkedOnly`) that carry, on themselves, the read that would turn them into values. Both reach every card on their host, which is why they answer a consumer asking "what cap does
 // this host put on its cards?" through `host_wide_gpu_cap_watts`, while srv1's one-card unit answers no such question.
 //
 // DISPOSITION OF #16047 (landed 2026-11-08 as d79a9db7addb, after this PR was opened). This module consumes it
@@ -43,8 +42,7 @@ module gunbc.fleet.gpu_power_cap_boot_state
 // recording that fact.
 
 import std.types { Bool, List, NonEmptyStr, String }
-import std.optional { Absent, Present }
-import std.algebra { count_where }
+import std.optional { Absent, Present, optional_is_absent }
 import std.measure { Watt, watt, watt_count }
 import product.host_identity { HostIdentity, host_identity_eq }
 import product.placement_supply { PhysicalAssetIdentity }
@@ -287,8 +285,8 @@ data srv1_cap_application_claims: List<CapApplicationClaim> = [
 // model DECLARES (gunbc.runner.runner_host_file_converge runner_host_file_desired_population_from_uid_reading)
 // and reports each one's standing against model-declared content (observe_fleet_host_file_content) -- it never
 // hashes an arbitrary path, and none of these files sits in any declared population. So the value is recorded AS
-// a marking, head and tail with the middle unread and no digits supplied for it, and `unread_cap_unit_digests`
-// names the read that would turn each marking into a digest.
+// a marking, head and tail with the middle unread and no digits supplied for it, and the marking itself carries
+// the read that would turn it into a value -- `declared_path_host_hash_read`, spelled once below.
 
 // How the mechanism sits on the host: a unit of its own, or a line the operator added to a unit gunbc runs.
 type CapMechanismPlacement
@@ -309,9 +307,27 @@ type ReportedPresence
   | ReportedUnsaid { why: NonEmptyStr }
 
 // How much of a file's content hash the reading took: the whole value, or only the head and tail someone quoted.
+//
+// THE OPEN READ LIVES IN THE VALUE, NOT BESIDE IT. A marking carries what would turn it into a value, because
+// "this hash is unread" and "this is the read that would close it" are one fact about one file: keeping them in
+// two places means a check to keep the places agreeing, and a check that restates a constraint the model already
+// carries is a second representation of it (gunbc.design_argument::fail_closed). So there is no unread-digest
+// roster in this module, and the out-of-sync state -- a whole digest typed while a frontier row still names it --
+// cannot be written at all.
 type CapUnitContentDigest
   = CapUnitDigestRead { sha256: NonEmptyStr }
-  | CapUnitDigestMarkedOnly { head: NonEmptyStr, tail: NonEmptyStr }
+  | CapUnitDigestMarkedOnly {
+      head: NonEmptyStr
+      tail: NonEmptyStr
+      // What would turn this marking into a read value. Not a to-do note in a comment: the marking is the
+      // unreadness, so the obligation to read travels on it.
+      what_would_discharge_it: NonEmptyStr
+    }
+
+// THE ONE DISCHARGE READ, spelled here and named by every marking rather than reworded row by row. It is written
+// out once because every cap-unit file in this model is unread for the SAME reason: the observe modes this
+// repository models cannot hash a path outside the declared runner population.
+data declared_path_host_hash_read: NonEmptyStr = "a fleet-converge observe leg that runs sha256sum at a DECLARED path on the subject host and returns the value. Mode runner_host_file_observe visits only the files the model declares (gunbc.runner.runner_host_file_converge runner_host_file_desired_population_from_uid_reading) and reports standing against declared content, never a hash of an arbitrary path, and none of these cap-unit files is in any declared population. Typing more characters into a row is NOT the discharge: an invented digest is worse than an unread one." as NonEmptyStr
 
 // Which cards the mechanism reaches. A cap line without a `-i` selector reaches every card the host enumerates,
 // which is what the 2026-11-24 reading showed on both hosts: every card there reported the same limit. srv1's
@@ -342,7 +358,11 @@ type HandAppliedCapMechanism {
 data srv4_hand_applied_gpu_cap: HandAppliedCapMechanism = HandAppliedCapMechanism {
   host: operator_host_srv4,
   placement: CapUnitOfItsOwn { unit_path: "/etc/systemd/system/gpu-power-cap.service" as NonEmptyStr },
-  content_digest: CapUnitDigestMarkedOnly { head: "2a0c8783" as NonEmptyStr, tail: "594690" as NonEmptyStr },
+  content_digest: CapUnitDigestMarkedOnly {
+    head: "2a0c8783" as NonEmptyStr,
+    tail: "594690" as NonEmptyStr,
+    what_would_discharge_it: declared_path_host_hash_read,
+  },
   cap_marking: "-pl 30" as NonEmptyStr,
   target_watts: watt(count: 30),
   reaches: EveryCardOnTheHost,
@@ -363,7 +383,11 @@ data srv3_hand_applied_gpu_cap: HandAppliedCapMechanism = HandAppliedCapMechanis
     modifies_unit: "strata-pool.service" as NonEmptyStr,
     runs_before_the_units_own_start: true,
   },
-  content_digest: CapUnitDigestMarkedOnly { head: "921f0a92" as NonEmptyStr, tail: "e892" as NonEmptyStr },
+  content_digest: CapUnitDigestMarkedOnly {
+    head: "921f0a92" as NonEmptyStr,
+    tail: "e892" as NonEmptyStr,
+    what_would_discharge_it: declared_path_host_hash_read,
+  },
   cap_marking: "-pl 30" as NonEmptyStr,
   target_watts: watt(count: 30),
   reaches: EveryCardOnTheHost,
@@ -378,75 +402,28 @@ data hand_applied_cap_mechanisms: List<HandAppliedCapMechanism> = [
   srv4_hand_applied_gpu_cap, srv3_hand_applied_gpu_cap,
 ]
 
-// THE MARKINGS ARE NOT DIGESTS, and this says what would make them one. A row here is a mechanism whose content
-// hash exists on the host and has not been read WHOLE into this model: the operator quoted a head and a tail,
-// and the middle is unread. It is not discharged by typing more characters into the row -- that would be an
-// invented digest, which is worse than an unread one -- and it is not discharged by `runner_host_file_observe`,
-// which cannot see these paths at all. What discharges it is a fleet-converge observe leg that runs sha256sum at
-// a DECLARED path on the subject host and returns the value; once that mode exists and has run, the row's
-// content_digest becomes CapUnitDigestRead and this row is deleted.
-type CapUnitDigestUnread {
-  host: HostIdentity
-  mechanism_path: NonEmptyStr
-  what_would_discharge_it: NonEmptyStr
-}
-
-data unread_cap_unit_digests: List<CapUnitDigestUnread> = [
-  CapUnitDigestUnread {
-    host: operator_host_srv4,
-    mechanism_path: "/etc/systemd/system/gpu-power-cap.service" as NonEmptyStr,
-    what_would_discharge_it: "a fleet-converge observe leg that hashes a declared path on the subject host (mode runner_host_file_observe visits only the declared runner population, so it cannot reach this file), then the row's content_digest becomes CapUnitDigestRead" as NonEmptyStr,
-  },
-  CapUnitDigestUnread {
-    host: operator_host_srv3,
-    mechanism_path: "/etc/systemd/system/strata-pool.service.d/power-cap.conf" as NonEmptyStr,
-    what_would_discharge_it: "the same: a declared-path host hash read, which no fleet-converge mode performs today" as NonEmptyStr,
-  },
-]
-
-// Is this digest still a marking rather than a read value? Written as a match so the answer is one shape.
-fn cap_unit_digest_is_marked_only(d: CapUnitContentDigest) -> Bool {
+// THE OPEN READ A DIGEST CARRIES, when it carries one. Absent means the whole value has been read. This is the
+// module's whole frontier: it is read off the digest rather than kept beside it, so a digest cannot be promoted
+// by typing while some other row still calls it unread -- there is no other row.
+fn cap_unit_digest_discharge_read(d: CapUnitContentDigest) -> NonEmptyStr? {
   match d {
-    CapUnitDigestRead { sha256: _ } => false
-    CapUnitDigestMarkedOnly { head: _, tail: _ } => true
+    CapUnitDigestMarkedOnly { head: _, tail: _, what_would_discharge_it } => Present { value: what_would_discharge_it }
+    CapUnitDigestRead { sha256: _ } => Absent
   }
 }
 
-// The path the mechanism sits at, whichever placement it is. The frontier rows join on this rather than keeping
-// their own copy of the path.
-fn cap_mechanism_path(m: HandAppliedCapMechanism) -> NonEmptyStr {
-  match m.placement {
-    CapUnitOfItsOwn { unit_path } => unit_path
-    CapDropInOnUnit { drop_in_path, modifies_unit: _, runs_before_the_units_own_start: _ } => drop_in_path
-  }
-}
-
-// Do a row's digest standing and the frontier AGREE? A row whose digest is still a marking must be named by
-// exactly one frontier row, and a row whose digest has been read must be named by none. The pairing is the check:
-// a session that types a whole digest without discharging its frontier row, or deletes a frontier row while the
-// marking still stands, goes red here rather than leaving a hash that is half-read and called read.
-fn cap_unit_digest_frontier_agrees(m: HandAppliedCapMechanism) -> Bool {
-  let named_count = count_where(
-    xs: unread_cap_unit_digests,
-    predicate: f => host_identity_eq(a: f.host, b: m.host)
-      && ((f.mechanism_path as String) == (cap_mechanism_path(m: m) as String))
-  )
-  if cap_unit_digest_is_marked_only(d: m.content_digest) {
-    named_count == 1
-  } else {
-    named_count == 0
+// Which card the mechanism's cap line addresses, where it addresses one. Absent is not "unread" and not
+// "uncapped": it is the line the operator reported, `nvidia-smi -pl 30` with no `-i` selector, which reaches
+// every card the host enumerates.
+fn cap_card_selector(m: HandAppliedCapMechanism) -> NonEmptyStr? {
+  match m.reaches {
+    EveryCardOnTheHost => Absent
+    OneCardByUuid { gpu_uuid } => Present { value: gpu_uuid }
   }
 }
 
 fn hand_applied_cap_mechanisms_on(host: HostIdentity) -> List<HandAppliedCapMechanism> {
   filter(hand_applied_cap_mechanisms, m => host_identity_eq(a: m.host, b: host))
-}
-
-fn cap_reaches_every_card_on_the_host(m: HandAppliedCapMechanism) -> Bool {
-  match m.reaches {
-    EveryCardOnTheHost => true
-    OneCardByUuid { gpu_uuid: _ } => false
-  }
 }
 
 // THE CAP A HOST SETS ON EVERY CARD IT CARRIES, where a hand-applied mechanism has been read doing exactly
@@ -455,7 +432,8 @@ fn cap_reaches_every_card_on_the_host(m: HandAppliedCapMechanism) -> Bool {
 // all. A consumer that needs the difference asks the two rosters separately.
 fn host_wide_gpu_cap_watts(host: HostIdentity) -> Watt? {
   match filter(hand_applied_cap_mechanisms, m =>
-    host_identity_eq(a: m.host, b: host) && cap_reaches_every_card_on_the_host(m: m)).first() {
+    host_identity_eq(a: m.host, b: host)
+      && optional_is_absent(opt: cap_card_selector(m: m))).first() {
     Absent => Absent
     Present { value: m } => Present { value: m.target_watts }
   }
