@@ -1,7 +1,7 @@
 module test.claim.factory_attempt_execution_on_fabric_audit_witness
 
 import gunbc.audit_verdict {
-  ClauseVerdict,
+
   Delivered,
   NotDelivered,
   PartiallyDelivered,

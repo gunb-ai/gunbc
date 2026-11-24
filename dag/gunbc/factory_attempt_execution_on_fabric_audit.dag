@@ -1,7 +1,7 @@
 module gunbc.factory_attempt_execution_on_fabric_audit
 
 import std.types { Bool, Int, List, NonEmptyStr }
-import gunbc.audit_verdict { ClauseVerdict, clause_verdict_delivered, clause_verdict_rung }
+import gunbc.audit_verdict { ClauseVerdict, PartiallyDelivered, clause_verdict_delivered, clause_verdict_rung }
 
 // FIRST-SLICE AUDIT of the roadmap node factory-attempt-execution-on-fabric-lease. The row's first_slice:
 // enumerate every state the belt holds that execution reads at start, and map each to the fabric record
