@@ -714,8 +714,7 @@ fn floor_preparation_module_keys(capture: List<String>) -> List<String> {
 fn floor_preparation_module_cost(target_path: String, capture: List<String>) -> FloorPreparationModuleCost {
   let target = floor_preparation_module_of_path(target_path)
   fold(
-    capture, init: 
-    FloorPreparationModuleCost { module: target, preparation_ms: floor_preparation_ms_zero(), claim_ms: floor_preparation_ms_zero(), lines: 0 },
+    capture, init: FloorPreparationModuleCost { module: target, preparation_ms: floor_preparation_ms_zero(), claim_ms: floor_preparation_ms_zero(), lines: 0 },
     f: (acc, line) => floor_preparation_module_step(acc: acc, in_force: floor_preparation_module_of_path(target_path), line: line)
   )
 }
@@ -1334,7 +1333,7 @@ fn floor_preparation_population_line(row: FloorPreparationPopulationRow) -> Stri
 }
 
 fn floor_preparation_population_lines() -> List<String> {
-  fold(floor_preparation_population_rows(), init: List<String]{}, f: (acc, row) =>
+  fold(floor_preparation_population_rows(), init: [], f: (acc, row) =>
     list_push(xs: acc, item: floor_preparation_population_line(row)))
 }
 

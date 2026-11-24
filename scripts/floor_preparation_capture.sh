@@ -109,7 +109,7 @@ count_of() { local n; n=$(grep -cE "^$2" "$1" || true); echo "${n:-0}"; }
 # ----------------------------------------------------------------------------------------------
 
 verify_pinned() {
-  local kind=$1 path=$2 want=$3 manifest_line=$4
+  local kind=$1 path=$2 want=$3 manifest_line=${4:-}
   [ -n "$path" ] || fail "$kind mode needs --${kind}"
   [ -f "$path" ] || fail "no $kind binary at $path"
   local bytes
