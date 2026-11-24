@@ -63,11 +63,13 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data unimported_mislabel_entry: String = "module suft.red\nfn probe(xs: List<Int>) -> Int { length(wrong_label: xs) }\n"
 
-// THE LICENSED TWIN: the same call WITH the import. Here func_env_declared_func_sig resolves
-// via parent_closure_callable_candidates, sig=Present, and direct_call_shape_wall_note fires:
-// "call shape mismatch calling 'length': no parameter named 'wrong_label' (declared: [T, xs])".
+// THE LICENSED TWIN: the same call where 'length' is declared locally, so func_env_declared_func_sig
+// resolves via func_env.local, sig=Present, and direct_call_shape_wall_note fires:
+// "call shape mismatch calling 'length': no parameter named 'wrong_label' (declared: [xs])".
+// The compiler IS capable of catching this at the shape layer; it simply does not when the name
+// is unresolved (CallableUnresolved → method bridge).
 
-data imported_mislabel_entry: String = "module suft.green\nimport std.algebra { length }\nfn probe(xs: List<Int>) -> Int { length(wrong_label: xs) }\n"
+data imported_mislabel_entry: String = "module suft.green\nfn length(xs: List<Int>) -> Int { 0 }\nfn probe(xs: List<Int>) -> Int { length(wrong_label: xs) }\n"
 
 fn compile_probe(entry: String) -> MultiModuleCompileFixtureOutcome {
   compile_fixture(MultiModuleCompileFixture {
@@ -102,7 +104,7 @@ test fn imported_kernel_name_mislabeled_call_is_refused() -> Bool {
 
 // NEGATIVE CONTROL: the correctly-labeled imported call compiles clean (the wall does not
 // over-refuse). This catches an over-refusing repair that breaks correct programs.
-data imported_correct_entry: String = "module suft.control\nimport std.algebra { length }\nfn probe(xs: List<Int>) -> Int { length(xs: xs) }\n"
+data imported_correct_entry: String = "module suft.control\nfn length(xs: List<Int>) -> Int { 0 }\nfn probe(xs: List<Int>) -> Int { length(xs: xs) }\n"
 
 test fn imported_correctly_labeled_call_compiles_clean() -> Bool {
   match compile_probe(imported_correct_entry) {
