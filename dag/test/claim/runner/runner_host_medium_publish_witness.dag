@@ -122,7 +122,7 @@ test fn a_lost_set_or_readback_keeps_the_set_fact_separate_from_its_verification
         && !runner_image_attempt_holds(a: RunnerImagePublishRan { publication: held, link: set_ok_read_lost })
         && link_word(l: set_lost) == "set-unknown"
         && !runner_image_attempt_holds(a: RunnerImagePublishRan { publication: held, link: set_lost })
-        && string_contains(s: render_served_link(l: set_ok_read_lost), pattern: "served_link=/srv/bmc/x.iso")
+        && string_contains(s: render_served_link(l: set_ok_read_lost), pattern: "served_link_set_unverified")
         && !string_contains(s: render_served_link(l: set_ok_read_lost), pattern: "served_link=not set")
         && !string_contains(s: render_served_link(l: set_lost), pattern: "served_link=not set")
     }
