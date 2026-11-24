@@ -317,7 +317,7 @@ run_witness_claims() {
 run_report() {
   local label=$1 out=$2
   cd "$CHECKOUT" || fail "cannot cd to $CHECKOUT"
-  "$GUNBC" run \
+  timeout "${FLOOR_CAPTURE_TIMEOUT_R:-2400}" "$GUNBC" run \
     --source-root dag --source-root src/v1 --source-root src/v2 \
     --entry src/v2/workflow/floor_preparation_split.dag \
     --function floor_preparation_split_report > "$out" 2>&1
