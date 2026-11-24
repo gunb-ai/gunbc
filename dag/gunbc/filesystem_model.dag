@@ -200,15 +200,18 @@ fn filesystem_operation(operation: String) -> OperationRef {
 // reference, so an isolated two_contenders closure never loads shell.dag, its service operations (shell.Move
 // / File, ...) are absent from service_ops, and the frame's binding validation (admit_modeled_realization)
 // refuses on the first shell binding with no reason a claim can print.
-// Referencing shell.dag's declared surface BY VALUE from the function below -- the same items a production
-// run's transports reach -- registers shell.dag as a loaded fragment for the same reason production does, so
-// its service items enter service_ops. The reference is a declared reference, NOT a widening of
-// v2.compiler.module_acquisition to read strings. The interpreter never derives a verdict from this bool;
-// the reachability claim in dag/test/claim/modeled_filesystem_witness.dag is the judge, in both directions.
+// Referencing shell.dag's declared surface by a QUALIFIED DOTTED reference (extdeps.shell.<Name>) from the
+// function below -- the same items a production run's transports reach -- registers shell.dag as a loaded
+// fragment for the same reason production does, so its service items enter service_ops. The reference is a
+// Qualified edge the demand loader follows (v2.compiler.module_acquisition requestable set: imports AND
+// qualified references), NOT a bare name (not requestable) and NOT a String literal (never a module
+// reference); it is NOT a widening of v2.compiler.module_acquisition to read strings. The interpreter never
+// derives a verdict from this bool; the reachability claim in
+// dag/test/claim/modeled_filesystem_witness.dag is the judge, in both directions.
 fn shell_model_dependency() -> Bool {
-  shell_dependency_reference(posix_command_v_check_argv)
-    && shell_dependency_reference(shell_test_is_executable_argv)
-    && shell_dependency_reference(extdeps_external_authority_anchor)
+  shell_dependency_reference(extdeps.shell.posix_command_v_check_argv)
+    && shell_dependency_reference(extdeps.shell.shell_test_is_executable_argv)
+    && shell_dependency_reference(extdeps.shell.extdeps_external_authority_anchor)
 }
 
 // DELIBERATELY TRIVIAL SHAPE MARKER, NOT A CHECK: it returns true for any argument at all. Its argument

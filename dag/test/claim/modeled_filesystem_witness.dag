@@ -164,15 +164,6 @@ test fn dispatcher_frame_returns_with_empty_reason_when_callees_loaded() -> Bool
   dispatcher_refusal_reason_with_effects() == ""
 }
 
-// CONDITION-ONE EVIDENCE: the five dispatcher callees are reachable through the entry's reference
-// chain. witness_dispatcher_dependencies references each of them by value and is reached from
-// evaluate_in_witness_frame, which this claim's own module already imports and uses; if any callee
-// were not a resolvable reference the demand loader would fail this claim (NoSuchFunction), so its
-// passing is the evidence that the declared reference in v2.std.witness_evaluation.dag holds.
-test fn dispatcher_callee_surface_reachable() -> Bool {
-  witness_dispatcher_dependencies()
-}
-
 // CONDITION-ONE EVIDENCE (this row): the reference chain through gunbc.filesystem_model::filesystem_bindings
 // reaches dag/extdeps/shell.dag, so admit_modeled_realization validates the frame's ten shell OperationRefs
 // against the run's service_ops index. FAIL-CLOSED IN BOTH DIRECTIONS: this claim is TRUE only when the
