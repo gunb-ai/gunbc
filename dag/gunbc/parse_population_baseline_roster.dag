@@ -1,7 +1,7 @@
 module gunbc.parse_population_baseline_roster
 
 import std.types { Bool, Int, List, String }
-import std.measure { ByteSize, byte_size, byte_size_count }
+import std.measure { ByteSize, byte_size, byte_size_count, measure_add }
 import std.keyed_row { KeyedRow }
 import std.keyed_roster { KeyedRosterBuild, KeyedRosterBuilt, keyed_roster_build }
 import std.algebra { count_where, fold_list, list_push }
@@ -222,15 +222,13 @@ data parse_population_baseline_rows: List<ParsePopulationRow> = [
 
 // ---- derived queries (rank from position, membership from rank) ----
 
-// Byte count of one member.
-fn parse_population_row_bytes(row: ParsePopulationRow) -> Int {
-  byte_size_count(b: row.bytes)
-}
-
-// Whole-roster byte total.
-fn parse_population_total_byte_total() -> Int {
-  fold_list(xs: parse_population_baseline_rows, empty: 0, cons: fn(acc, row) {
-    acc + parse_population_row_bytes(row)
+// Whole-roster byte total, summed IN the ByteSize measure the rows already carry. The count is
+// unwrapped only at the rendering boundary in parse_population_baseline_report, so no bare Int
+// re-represents a byte quantity the model already types (gunbc.design_argument::minimize_redundancy,
+// gunbc.design_argument::single_authority).
+fn parse_population_total_byte_total() -> ByteSize {
+  fold_list(xs: parse_population_baseline_rows, empty: byte_size(count: 0), cons: fn(acc, row) {
+    measure_add(acc, row.bytes)
   })
 }
 
@@ -239,40 +237,42 @@ fn parse_population_total_count() -> Int {
   count_where(xs: parse_population_baseline_rows, predicate: fn(_row) { true })
 }
 
-// n when the 1-based position is a FiveLargest slot, else 0. Call-free branches so the block parses.
-fn parse_population_select_five(position: Int, n: Int) -> Int {
-  if position <= parse_population_five_largest_count { n } else { 0 }
+// b when the 1-based position is a FiveLargest slot, else the zero measure. Call-free branches so
+// the block parses.
+fn parse_population_select_five(position: Int, b: ByteSize) -> ByteSize {
+  if position <= parse_population_five_largest_count { b } else { byte_size(count: 0) }
 }
 
-fn parse_population_select_rest(position: Int, n: Int) -> Int {
-  if position <= parse_population_five_largest_count { 0 } else { n }
+fn parse_population_select_rest(position: Int, b: ByteSize) -> ByteSize {
+  if position <= parse_population_five_largest_count { byte_size(count: 0) } else { b }
 }
 
-// Scan accumulator carrying the 1-based position while summing the two population byte totals.
+// Scan accumulator carrying the 1-based position while summing the two population byte totals, both
+// held in the ByteSize measure.
 type ParsePopulationScan {
   position: Int
-  five_bytes: Int
-  rest_bytes: Int
+  five_bytes: ByteSize
+  rest_bytes: ByteSize
 }
 
 fn parse_population_scan(rows: List<ParsePopulationRow>) -> ParsePopulationScan {
-  fold_list(xs: rows, empty: ParsePopulationScan { position: 0, five_bytes: 0, rest_bytes: 0 },
+  fold_list(xs: rows,
+    empty: ParsePopulationScan { position: 0, five_bytes: byte_size(count: 0), rest_bytes: byte_size(count: 0) },
     cons: fn(acc, row) {
       let next: Int = acc.position + 1
-      let n: Int = parse_population_row_bytes(row)
       ParsePopulationScan {
         position: next,
-        five_bytes: acc.five_bytes + parse_population_select_five(next, n),
-        rest_bytes: acc.rest_bytes + parse_population_select_rest(next, n),
+        five_bytes: measure_add(acc.five_bytes, parse_population_select_five(next, row.bytes)),
+        rest_bytes: measure_add(acc.rest_bytes, parse_population_select_rest(next, row.bytes)),
       }
     })
 }
 
-fn parse_population_five_largest_byte_total() -> Int {
+fn parse_population_five_largest_byte_total() -> ByteSize {
   parse_population_scan(parse_population_baseline_rows).five_bytes
 }
 
-fn parse_population_one_hundred_sixty_five_byte_total() -> Int {
+fn parse_population_one_hundred_sixty_five_byte_total() -> ByteSize {
   parse_population_scan(parse_population_baseline_rows).rest_bytes
 }
 
@@ -330,9 +330,9 @@ fn parse_population_baseline_report() -> String {
     "parse_population_total_count=", to_string(parse_population_total_count()),
     " parse_population_five_largest_count=", to_string(parse_population_five_largest_count_check()),
     " parse_population_one_hundred_sixty_five_count=", to_string(parse_population_one_hundred_sixty_five_count_check()),
-    " parse_population_five_largest_bytes=", to_string(parse_population_five_largest_byte_total()),
-    " parse_population_one_hundred_sixty_five_bytes=", to_string(parse_population_one_hundred_sixty_five_byte_total()),
-    " parse_population_total_bytes=", to_string(parse_population_total_byte_total()),
+    " parse_population_five_largest_bytes=", to_string(byte_size_count(b: parse_population_five_largest_byte_total())),
+    " parse_population_one_hundred_sixty_five_bytes=", to_string(byte_size_count(b: parse_population_one_hundred_sixty_five_byte_total())),
+    " parse_population_total_bytes=", to_string(byte_size_count(b: parse_population_total_byte_total())),
     " parse_population_unique=", to_string(if parse_population_is_unique() { 1 } else { 0 }),
     " parse_population_duplicate_refuses_with_trivial_eq=", to_string(if parse_population_duplicate_refuses_with_trivial_eq() { 1 } else { 0 }),
     "",
