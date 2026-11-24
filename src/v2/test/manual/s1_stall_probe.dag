@@ -14,10 +14,10 @@ fn stall_offset(path: String) -> Int {
       match lm.grammar {
         VoidGrammar => 0 - 6
         ModeledGrammar { root: root } =>
-          match grammar_validate_for_parse(root: root, at: at) {
+          match grammar_validate_and_analyze(root: root, at: at) {
             Rejected { diagnostics: _ } => 0 - 4
-            Accepted { value: validated, diagnostics: _ } =>
-              match grammar_lookup_production(root: validated.root, name: validated.root.start) {
+            Accepted { value: modeled, diagnostics: _ } =>
+              match grammar_lookup_production(root: modeled.validated.root, name: modeled.validated.root.start) {
                 Violates { diagnostic: _ } => 0 - 5
                 Holds { value: production } =>
                   let tokens = token_stream_remaining(stream: stream)
@@ -25,8 +25,8 @@ fn stall_offset(path: String) -> Int {
                     expr: production.expression,
                     tokens: tokens,
                     all_tokens: tokens,
-                    root: validated.root,
-                    table: parse_table_for_production(validated: validated, all_tokens: tokens),
+                    root: modeled.validated.root,
+                    table: parse_table_for_production(modeled: modeled, all_tokens: tokens),
                     prov: parse_prov_initial()
                   ) {
                     ParseExprRejected { diagnostics: _, table: _ } => 0 - 2
