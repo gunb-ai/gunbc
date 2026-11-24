@@ -31,6 +31,7 @@ module v2.workflow.floor_preparation_capture_runner
 import std.types { Bool, Int, List, Present, Absent, String }
 import std.algebra { length, list_push }
 import extdeps.shell
+import extdeps.shell.exec
 import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.workflow.floor_preparation_split {
   floor_preparation_split_report,
