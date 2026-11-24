@@ -5712,7 +5712,14 @@ fn target_value_expr_primitive_apply_wire_schema_valid(wire: Node) -> Outcome<Bo
   }
 }
 
-fn target_value_expr_primitive_apply_operand_bindings(wire: Node) -> Outcome<List<Symbol>> {
+// OPERAND VALUE-EXPRESSIONS (widening, authorized by neat-badger-614): each operand of a primitive apply is
+// reified as a TARGET VALUE-EXPRESSION rather than required to be a flat binding Symbol. A flat binding operand
+// reifies to a TargetValueExprBindingRef and renders byte-identically to the old binding-Symbol path; a literal
+// operand (n > 0), a one-operand prefix (!x) and a nested value-expression operand ((a || b) && c) now flow to
+// the value-expression token render in target_operator_shape_emit_primitive_apply_tokens, which is responsible
+// for Rust operator PRECEDENCE (grouping). Operands the catalog cannot spell still refuse, but at the value-
+// expression token path / operator-realization lookup with their OWN named reason, never a generic one.
+fn target_value_expr_primitive_apply_operand_bindings(wire: Node) -> Outcome<List<TargetValueExpression>> {
   bind_outcome(
     o: target_value_expr_primitive_apply_wire_schema_valid(wire: wire),
     f: fn(_) {
@@ -5722,17 +5729,17 @@ fn target_value_expr_primitive_apply_operand_bindings(wire: Node) -> Outcome<Lis
         f: fn(acc, edge) {
           match acc {
             Rejected { diagnostics: r } => acc
-            Accepted { value: bindings, diagnostics: d } =>
+            Accepted { value: operands, diagnostics: d } =>
               match edge.label {
                 Authored { name: n } =>
                   if n == ^target_value_expr_field_operation {
                     acc
                   } else if n == ^target_value_expr_field_operand {
                     bind_outcome(
-                      o: target_value_expr_operand_wire_binding(operand_wire: edge.target),
-                      f: fn(binding) {
+                      o: target_value_expression_reify_from_wire(wire: edge.target),
+                      f: fn(operand) {
                         outcome_accepted(
-                          list_snoc_item(xs: bindings, item: binding)
+                          list_snoc_item(xs: operands, item: operand)
                         )
                       }
                     )
@@ -5753,8 +5760,8 @@ fn target_value_expr_primitive_apply_operand_bindings(wire: Node) -> Outcome<Lis
           }
         }
       ) {
-        Accepted { value: bindings, diagnostics: d } =>
-          Accepted { value: bindings, diagnostics: d }
+        Accepted { value: operands, diagnostics: d } =>
+          Accepted { value: operands, diagnostics: d }
         Rejected { diagnostics: r } => Rejected { diagnostics: r }
       }
     }
@@ -6735,114 +6742,242 @@ fn target_value_expression_binding_refs_intersperse_separator(
   )
 }
 
+// ---- OPERATOR PRECEDENCE (authorized operand-value-expression widening) ------------------------------
+// The old operand spine demanded flat binding SYMBOLS because a Symbol operand cannot change Rust's meaning
+// when spliced. Now that operands are lowered value-expressions, splicing one into a bigger expression is a
+// PRECEDENCE decision. Rust binds || loosest, then &&, then comparisons, then +-, then */ , then unary ! tightest.
+// When an operand's own operator binds LOOSER than the enclosing operator, the operand must be wrapped in
+// grouping parentheses so (a || b) && c does not render as the meaning-changing a || b && c, and !(a && b) does
+// not render as !a && b. A flat binding/literal operand is never wrapped (byte-identical to the old path), and a
+// left operand of equal precedence is not wrapped (preserves left-assoc a && b && c). Level 99 == atomic / not an
+// operator-shaped operand, never wrapped.
+fn target_value_expr_canonical_operation_precedence(op: CanonicalOperation) -> Int {
+  match op {
+    AlgebraPrimitive { algebra_field: f } =>
+      if f == ^lattice_field_join {
+        1
+      } else if f == ^lattice_field_meet {
+        2
+      } else if f == ^ring_field_add {
+        4
+      } else if f == ^ring_field_mul {
+        5
+      } else if f == ^boolean_algebra_field_complement {
+        6
+      } else if f == ^group_field_inverse {
+        6
+      } else {
+        99
+      }
+    AlgebraInverseCompose { binary_field: bf, inverse_field: _ } =>
+      if bf == ^ring_field_add {
+        4
+      } else if bf == ^ring_field_mul {
+        5
+      } else {
+        99
+      }
+    OrderingComparison { compare_field: _, predicate: _ } => 3
+    EqualityComparison { eq_field: _, predicate: _ } => 3
+    CoercionCrossing { homomorphism_rule: _ } => 7
+  }
+}
+
+fn target_value_expression_operand_needs_grouping(
+  operand: TargetValueExpression,
+  enclosing: CanonicalOperation,
+  is_right: Bool
+) -> Bool {
+  match operand.kind {
+    TargetValueExprPrimitiveApply =>
+      match target_value_expr_primitive_apply_operation_from_wire(wire: operand.node) {
+        Accepted { value: operand_op, diagnostics: _ } =>
+          if target_value_expr_canonical_operation_precedence(op: operand_op) == 99 {
+            false
+          } else if target_value_expr_canonical_operation_precedence(op: operand_op)
+            < target_value_expr_canonical_operation_precedence(op: enclosing) {
+            true
+          } else if is_right
+            && target_value_expr_canonical_operation_precedence(op: operand_op)
+            == target_value_expr_canonical_operation_precedence(op: enclosing) {
+            true
+          } else {
+            false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    TargetValueExprConditional => true
+    _ => false
+  }
+}
+
+fn target_value_expression_group_operand(
+  operand: TargetValueExpression,
+  enclosing: CanonicalOperation,
+  is_right: Bool,
+  projection: TargetValueExpressionProjection,
+  catalog: TargetRealizationCatalog
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: target_value_expression_to_concrete_tokens(expr: operand, projection: projection, catalog: catalog),
+    f: fn(tokens) {
+      if target_value_expression_operand_needs_grouping(
+        operand: operand,
+        enclosing: enclosing,
+        is_right: is_right
+      ) {
+        outcome_accepted(
+          list_append(
+            left: Cons {
+              head: FixedToken { token_class: projection.primitive_apply_form.open },
+              tail: Empty
+            },
+            right: list_append(
+              left: tokens,
+              right: Cons {
+                head: FixedToken { token_class: projection.primitive_apply_form.close },
+                tail: Empty
+              }
+            )
+          )
+        )
+      } else {
+        outcome_accepted(tokens)
+      }
+    }
+  )
+}
+
 fn target_operator_shape_emit_primitive_apply_tokens(
   shape: TargetOperatorShape,
   projection: TargetValueExpressionProjection,
-  bindings: List<Symbol>,
-  expr: TargetValueExpression
+  operands: List<TargetValueExpression>,
+  expr: TargetValueExpression,
+  catalog: TargetRealizationCatalog
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   match shape {
     InfixToken { token: op_token } =>
-      if length(xs: bindings) != 2 {
-        outcome_rejected(
-          target_value_expression_emit_primitive_apply_arity_invalid_diagnostic(expr: expr)
-        )
-      } else {
-        match list_at_optional(xs: bindings, index: 0) {
-          Absent =>
+      bind_outcome(
+        o: target_value_expr_primitive_apply_operation_from_wire(wire: expr.node),
+        f: fn(enclosing_op) {
+          if length(xs: operands) != 2 {
             outcome_rejected(
               target_value_expression_emit_primitive_apply_arity_invalid_diagnostic(expr: expr)
             )
-          Present { value: left_binding } =>
-            match list_at_optional(xs: bindings, index: 1) {
+          } else {
+            match list_at_optional(xs: operands, index: 0) {
               Absent =>
                 outcome_rejected(
                   target_value_expression_emit_primitive_apply_arity_invalid_diagnostic(expr: expr)
                 )
-              Present { value: right_binding } =>
-                outcome_accepted(
-                  Cons {
-                    head: target_value_expression_binding_ref_token(
-                      binding: left_binding,
-                      projection: projection
-                    ),
-                    tail: Cons {
-                      head: FixedToken { token_class: op_token },
-                      tail: Cons {
-                        head: target_value_expression_binding_ref_token(
-                          binding: right_binding,
-                          projection: projection
-                        ),
-                        tail: Empty
+              Present { value: left_operand } =>
+                match list_at_optional(xs: operands, index: 1) {
+                  Absent =>
+                    outcome_rejected(
+                      target_value_expression_emit_primitive_apply_arity_invalid_diagnostic(expr: expr)
+                    )
+                  Present { value: right_operand } =>
+                    bind_outcome(
+                      o: target_value_expression_group_operand(
+                        operand: left_operand,
+                        enclosing: enclosing_op,
+                        is_right: false,
+                        projection: projection,
+                        catalog: catalog
+                      ),
+                      f: fn(left_tokens) {
+                        bind_outcome(
+                          o: target_value_expression_group_operand(
+                            operand: right_operand,
+                            enclosing: enclosing_op,
+                            is_right: true,
+                            projection: projection,
+                            catalog: catalog
+                          ),
+                          f: fn(right_tokens) {
+                            outcome_accepted(
+                              list_append(
+                                left: left_tokens,
+                                right: list_append(
+                                  left: Cons { head: FixedToken { token_class: op_token }, tail: Empty },
+                                  right: right_tokens
+                                )
+                              )
+                            )
+                          }
+                        )
                       }
-                    }
-                  }
-                )
+                    )
+                }
             }
+          }
         }
-      }
+      )
     PrefixToken { token: op_token } =>
-      if length(xs: bindings) != 1 {
+      if length(xs: operands) != 1 {
         outcome_rejected(
           target_value_expression_emit_primitive_apply_arity_invalid_diagnostic(expr: expr)
         )
       } else {
-        match list_at_optional(xs: bindings, index: 0) {
+        match list_at_optional(xs: operands, index: 0) {
           Absent =>
             outcome_rejected(
               target_value_expression_emit_primitive_apply_arity_invalid_diagnostic(expr: expr)
             )
-          Present { value: binding } =>
-            outcome_accepted(
-              Cons {
-                head: FixedToken { token_class: op_token },
-                tail: Cons {
-                  head: target_value_expression_binding_ref_token(
-                    binding: binding,
-                    projection: projection
-                  ),
-                  tail: Empty
-                }
+          Present { value: operand } =>
+            bind_outcome(
+              o: target_value_expression_group_operand(
+                operand: operand,
+                enclosing: canonical_operation_op_not(),
+                is_right: false,
+                projection: projection,
+                catalog: catalog
+              ),
+              f: fn(operand_tokens) {
+                outcome_accepted(
+                  list_append(
+                    left: Cons { head: FixedToken { token_class: op_token }, tail: Empty },
+                    right: operand_tokens
+                  )
+                )
               }
             )
         }
       }
     CallIdent { ident: callee } =>
-      outcome_accepted(
-        list_append(
-          left: list_append(
-            left: Cons {
-              head: FixedToken { token_class: projection.primitive_apply_form.open },
-              tail: Cons {
-                head: FixedToken { token_class: callee },
+      bind_outcome(
+        o: target_value_expr_tokenize_intersperse(
+          exprs: operands,
+          projection: projection,
+          catalog: catalog,
+          separator: projection.primitive_apply_form.separator
+        ),
+        f: fn(arg_tokens) {
+          outcome_accepted(
+            list_append(
+              left: list_append(
+                left: Cons {
+                  head: FixedToken { token_class: projection.primitive_apply_form.open },
+                  tail: Cons { head: FixedToken { token_class: callee }, tail: Empty }
+                },
+                right: arg_tokens
+              ),
+              right: Cons {
+                head: FixedToken { token_class: projection.primitive_apply_form.close },
                 tail: Empty
               }
-            },
-            right: target_value_expression_binding_refs_intersperse_separator(
-              bindings: bindings,
-              projection: projection,
-              separator: projection.primitive_apply_form.separator
             )
-          ),
-          right: Cons {
-            head: FixedToken { token_class: projection.primitive_apply_form.close },
-            tail: Empty
-          }
-        )
+          )
+        }
       )
     MethodIdent { ident: _ } =>
       outcome_rejected(
         target_value_expression_emit_operator_shape_unsupported_diagnostic(expr: expr)
       )
     OperandUnchanged =>
-      match bindings {
-        Cons { head: binding, tail: Empty } =>
-          outcome_accepted(
-            Cons {
-              head: target_value_expression_binding_ref_token(binding: binding, projection: projection),
-              tail: Empty
-            }
-          )
+      match operands {
+        Cons { head: operand, tail: Empty } =>
+          target_value_expression_to_concrete_tokens(expr: operand, projection: projection, catalog: catalog)
         _ =>
           outcome_rejected(
             target_value_expression_emit_primitive_apply_arity_invalid_diagnostic(expr: expr)
@@ -6864,7 +6999,7 @@ fn target_value_expression_primitive_apply_to_concrete_tokens(
         f: fn(canonical_op) {
           bind_outcome(
             o: target_value_expr_primitive_apply_operand_bindings(wire: expr.node),
-            f: fn(bindings) {
+            f: fn(operands) {
               bind_outcome(
                 o: target_operator_realization_catalog_lookup(
                   catalog: catalog.operators,
@@ -6874,8 +7009,9 @@ fn target_value_expression_primitive_apply_to_concrete_tokens(
                   target_operator_shape_emit_primitive_apply_tokens(
                     shape: operator_row.shape,
                     projection: projection,
-                    bindings: bindings,
-                    expr: expr
+                    operands: operands,
+                    expr: expr,
+                    catalog: catalog
                   )
                 }
               )
