@@ -20,6 +20,9 @@ import std.types { String, Bool, Int, List, NonEmptyStr }
 import std.algebra { string_contains }
 import std.decl_ref { decl_ref }
 import gunbc.extdeps.languages.json.emit { serialize_json }
+import gunbc.extdeps.units.iso8601_calendar { Iso8601CivilDate }
+import gunbc.roadmap.roadmap_decomposition { Declared }
+import gunbc.roadmap.roadmap_schedule_calendar { DatedLeaf }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId, LeafPath, nid }
 import gunbc.roadmap.roadmap_event_log {
   RoadmapEvent, RoadmapEventKind, RoadmapEventEnvelope, RoadmapEventId, RoadmapStandings, StandingsObserved,
@@ -29,9 +32,9 @@ import gunbc.roadmap.roadmap_event_log {
 import gunbc.roadmap.roadmap_intention_binding { IntentionBinding }
 import gunbc.roadmap.roadmap_work_item_projection {
   ProjectionLeaf, ProjectionInFlight, ProjectionEvent, ProjectionInputs, ProjectionRow, ProjectionRefusal,
-  ProjectionRowResult, ProjectionRowBuilt, ProjectionRowRefused, IntentionDoesNotResolve,
-  projection_build_row, projection_in_flight_entries, roadmap_work_item_projection_document_json,
-  roadmap_work_item_projection_refusal_json, projection_row_json,
+  ProjectionRowResult, ProjectionRowBuilt, ProjectionRowRefused,
+  projection_build_row, projection_in_flight_entries, projection_leaf_from_dated, projection_leaves_for_item,
+  roadmap_work_item_projection_document_json, projection_row_json,
 }
 import gunbc.roadmap.roadmap_served_observation {
   ProjectionJson, ServedObservationKindDecoded, served_observation_kind_url_path,
@@ -93,8 +96,8 @@ test fn first_slice_item_with_leaves_in_flight_shows_every_declared_field() -> B
   ]
   let envs = [ envelope("item-a", claimed("item-a"), "2026-11-01"), envelope("item-b", claimed("item-b"), "2099-01-01") ]
   let leaves = [
-    ProjectionLeaf { path: "item-a#0#0#0", start_day: 0, finish_day: 2, on_critical_path: true },
-    ProjectionLeaf { path: "item-a#1#0#0", start_day: 3, finish_day: 5, on_critical_path: false },
+    ProjectionLeaf { path: "item-a#0#0#0", start_day: "2026-11-02", finish_day: "2026-11-04", on_critical_path: true },
+    ProjectionLeaf { path: "item-a#1#0#0", start_day: "2026-11-05", finish_day: "2026-11-09", on_critical_path: false },
   ]
   match projection_build_row(
     node: "item-a", bindings: [bound_node("item-a")], standings: open_standings(),
@@ -146,7 +149,7 @@ test fn same_item_after_planted_release_still_carries_every_field() -> Bool {
   ]
   match projection_build_row(
     node: "item-a", bindings: [bound_node("item-a")], standings: open_standings(),
-    leaves: [ProjectionLeaf { path: "item-a#0#0#0", start_day: 0, finish_day: 2, on_critical_path: true }],
+    leaves: [ProjectionLeaf { path: "item-a#0#0#0", start_day: "2026-11-02", finish_day: "2026-11-04", on_critical_path: true }],
     in_flight: [] as List<ProjectionInFlight>, envs: envs,
   ) {
     ProjectionRowBuilt { row: r } =>
@@ -159,45 +162,25 @@ test fn same_item_after_planted_release_still_carries_every_field() -> Bool {
   }
 }
 
-// A PLANTED BINDING to an intention that does not exist refuses at load -- the binding carrier's own
-// cited-declaration check -- and the whole document refuses with the located reason, with NO rows key.
-test fn planted_binding_to_nonexistent_intention_refuses_at_load() -> Bool {
-  let bad_bindings = [ IntentionBinding {
-    node: nid(s: "ghost-item"),
-    intention: decl_ref(module_path: "gunbc.plans.nonexistent", decl_name: "does_not_exist_plan"),
-    layer: 0,
-  } ]
-  let built = projection_build_row(
-    node: "ghost-item", bindings: bad_bindings, standings: open_standings(),
-    leaves: [] as List<ProjectionLeaf>, in_flight: [] as List<ProjectionInFlight>, envs: [] as List<RoadmapEventEnvelope>,
-  )
-  let refuses = match built {
-    ProjectionRowBuilt { row: _ } => false
-    ProjectionRowRefused { refusal: _ } => true
-  }
-  let refusal_doc = serialize_json(v: roadmap_work_item_projection_document_json(
-    rows: [] as List<ProjectionRow>,
-    refused: [IntentionDoesNotResolve { node: "ghost-item", intention: "does_not_exist_plan" }],
-    read_on: "2026-11-24", inputs: read_inputs()))
-  refuses
-    && string_contains(s: refusal_doc, pattern: "\"refused\"")
-    && string_contains(s: refusal_doc, pattern: "does_not_exist_plan")
-    && !string_contains(s: refusal_doc, pattern: "\"rows\"")
-}
-
-// A node the binding carrier never bound is a refusal, and the refusal document is located (step + reason)
-// -- the projection answers a reader that needs WHY, never a bare sentence or a silently short document.
-test fn unbound_node_refuses_with_a_located_reason() -> Bool {
+// A row that could not honestly be built refuses the WHOLE document with a LOCATED reason and NO `rows`
+// key -- here a work item with no binding at all (so no intention/layer). The refusal fed to the document is
+// the real one build_row produced (not a hand-built one), so the refusal plumbing is exercised end to end.
+// NOTE: "a planted binding to an intention that does not exist" is the binding carrier's LOAD-time
+// cited-declaration check (roadmap_intention_binding / producer_resolves), which the projection relies on and
+// -- per review finding #2 -- deliberately does NOT duplicate as a runtime re-check.
+test fn unbound_node_refuses_the_whole_document_not_drops_the_row() -> Bool {
   let built = projection_build_row(
     node: "never-bound", bindings: [bound_node("item-a")], standings: open_standings(),
     leaves: [] as List<ProjectionLeaf>, in_flight: [] as List<ProjectionInFlight>, envs: [] as List<RoadmapEventEnvelope>,
   )
   match built {
-    ProjectionRowRefused { refusal: _ } =>
-      string_contains(
-        s: serialize_json(v: roadmap_work_item_projection_refusal_json(read_on: "2026-11-24", step: "binding", reason: "no binding")),
-        pattern: "\"refused\"")
     ProjectionRowBuilt { row: _ } => false
+    ProjectionRowRefused { refusal: r } =>
+      let refusal_doc = serialize_json(v: roadmap_work_item_projection_document_json(
+        rows: [] as List<ProjectionRow>, refused: [r], read_on: "2026-11-24", inputs: read_inputs()))
+      string_contains(s: refusal_doc, pattern: "\"refused\"")
+        && string_contains(s: refusal_doc, pattern: "never-bound")
+        && !string_contains(s: refusal_doc, pattern: "\"rows\"")
   }
 }
 
@@ -228,4 +211,27 @@ test fn projection_is_a_served_surface_at_its_path() -> Bool {
   served_observation_kind_url_path(kind: ProjectionJson) == "/projection.json"
     && served_observation_kind_of_key(key: served_observation_kind_key(kind: ProjectionJson))
        == ServedObservationKindDecoded { kind: ProjectionJson }
+}
+
+// THE CALENDAR BINDS THE DAYS: a leaf's start_day/finish_day are ISO days (YYYY-MM-DD) spelled by the
+// calendar's own date_text off the dated answer -- the SAME dates the item gantt serves, so no reader runs a
+// second calendar. The critical-path bit is read off the schedule answer's critical path by the leaf path.
+test fn leaves_are_bound_to_iso_days_through_the_calendar() -> Bool {
+  let path_a = LeafPath { item: nid(s: "item-a"), stage: 0, piece: 0, member: 0 }
+  let dated = DatedLeaf {
+    path: path_a, start_day: 0, finish_day: 2,
+    start_date: Iso8601CivilDate { year: 2026, month: 11, day: 2 },
+    finish_date: Iso8601CivilDate { year: 2026, month: 11, day: 4 },
+    count_source: Declared,
+  }
+  let on_path = projection_leaf_from_dated(d: dated, critical_path: [path_a])
+  let off_path = projection_leaf_from_dated(d: dated, critical_path: [] as List<LeafPath>)
+  let item_only = projection_leaves_for_item(dated: [dated], critical_path: [path_a], item: "item-a")
+  let other = projection_leaves_for_item(dated: [dated], critical_path: [path_a], item: "item-z")
+  on_path.start_day == "2026-11-02"
+    && on_path.finish_day == "2026-11-04"
+    && on_path.on_critical_path == true
+    && off_path.on_critical_path == false
+    && count(item_only) == 1
+    && count(other) == 0
 }

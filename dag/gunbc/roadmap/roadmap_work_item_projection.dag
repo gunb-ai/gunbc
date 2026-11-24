@@ -1,7 +1,7 @@
 module gunbc.roadmap.roadmap_work_item_projection
 
 import std.types { String, Int, Bool, List }
-import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
+import std.decl_ref { declaration_ref_display_key }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId, LeafPath }
 import gunbc.roadmap.roadmap_event_log {
   RoadmapNodeStanding, RoadmapStandings, LeafInFlightEntry, RoadmapEventEnvelope, RoadmapEventKind,
@@ -9,6 +9,7 @@ import gunbc.roadmap.roadmap_event_log {
   roadmap_acceptance_pr_evidence_url,
 }
 import gunbc.roadmap.roadmap_intention_binding { IntentionBinding, roadmap_intention_bindings }
+import gunbc.roadmap.roadmap_schedule_calendar { DatedLeaf, date_text }
 import gunbc.extdeps.languages.json.emit {
   JsonValue, JsonKeyValue, json_kv, json_object, json_array, json_string, json_int, json_bool, json_null,
 }
@@ -39,11 +40,14 @@ import gunbc.extdeps.languages.json.emit {
 
 data roadmap_work_item_projection_schema: String = "roadmap-work-item-projection/v1"
 
-// One occurrence of a leaf, with the schedule's own answer for it.
+// One occurrence of a leaf, with the schedule's own answer bound to dates by the calendar (roadmap_schedule_calendar
+// -- ONE calendar answers both grains, per roadmap_item_gantt; abstract day integers never leave the schedule).
+// start_day and finish_day are ISO days (YYYY-MM-DD) read off the dated leaf's start_date/finish_date via the
+// calendar's own date_text -- the same dates the item gantt serves, so a reader runs no second calendar.
 type ProjectionLeaf {
   path: String
-  start_day: Int
-  finish_day: Int
+  start_day: String
+  finish_day: String
   on_critical_path: Bool
 }
 
@@ -90,34 +94,20 @@ type ProjectionRow {
 
 // WHY a row could not be honestly built, located and countable -- never a bare sentence.
 type ProjectionRefusal
-  = IntentionDoesNotResolve { node: String, intention: String }
+  = UnboundNode { node: String }
   | StandingUnobserved { node: String }
 
-// The intentions the binding carrier's cited-declaration sweep resolves at load: the Plan declarations
-// real bindings cite. A planted binding to an intention not on this list is a binding to nothing.
-data projection_intention_registry: List<DeclarationRef> = [
-  decl_ref(module_path: "gunbc.plans.names_without_imports", decl_name: "names_without_imports_plan"),
-  decl_ref(module_path: "gunbc.plans.factory_dogfood", decl_name: "factory_dogfood_plan"),
-  decl_ref(module_path: "gunbc.plans.v2_self_host", decl_name: "v2_self_host_plan"),
-  decl_ref(module_path: "gunbc.plans.debt_payoff", decl_name: "debt_payoff_plan"),
-  decl_ref(module_path: "gunbc.plans.first_customer_service", decl_name: "first_customer_service_plan"),
-  decl_ref(module_path: "gunbc.plans.planning_consolidation", decl_name: "planning_consolidation_plan"),
-  decl_ref(module_path: "gunbc.plans.desired_state_follows_the_machine", decl_name: "desired_state_follows_the_machine_plan"),
-  decl_ref(module_path: "gunbc.plans.one_source_tree", decl_name: "one_source_tree_plan"),
-  decl_ref(module_path: "gunbc.plans.read_set_convergence", decl_name: "read_set_convergence_plan"),
-  decl_ref(module_path: "gunbc.plans.claim_execution_consolidation", decl_name: "claim_execution_consolidation_plan"),
-  decl_ref(module_path: "gunbc.plans.closure_consolidation", decl_name: "closure_consolidation_plan"),
-]
-
-// THE BINDING CARRIER'S OWN LOAD CHECK, asked of one row's intention: the cited-declaration sweep every
-// landing's parse runs over DeclarationRef rows (roadmap_intention_binding holds producer_resolves for
-// the same reason a strategy clause holds it). A planted binding to an intention that is not a real Plan
-// declaration resolves to none here, so the row refuses at load instead of serving a bar wired to
-// nothing.
-fn projection_intention_resolves(intention: DeclarationRef) -> Bool {
-  count(filter(projection_intention_registry, p =>
-    declaration_ref_display_key(ref: p) == declaration_ref_display_key(ref: intention))) > 0
-}
+// THE INTENTION-EXISTENCE GUARANTEE IS THE BINDING CARRIER'S, NOT THIS UNIT'S. A work item's row takes its
+// intention and layer from the binding carrier (roadmap_intention_bindings, IntentionBinding { node,
+// intention: DeclarationRef, layer }); whether that cited DeclarationRef names a real Plan is decided ONCE,
+// at load, by the carrier's own cited-declaration sweep (roadmap_intention_binding holds producer_resolves
+// for the same reason a strategy clause holds it) -- a planted binding to an intention that does not exist
+// refuses the seed at load and never reaches a row. This unit therefore does NOT restate which plans exist;
+// a hand-copied list of plans here would be a second source of truth for a fact that belongs to gunbc.plans
+// and the DeclarationRef resolution (the Consumption rule's "a module nothing imports" and single-authority
+// rules forbid it). What this unit CAN check at the read is the runtime gap the fold cannot: an item with NO
+// binding at all cannot carry an intention or a layer, so it refuses as UnboundNode rather than serve a bar
+// wired to nothing.
 
 // A leaf path spelled as the decomposition spells it -- item#stage#piece#member, the one string the
 // schedule, the in-flight set and a reader all agree on (the schedule's own path key, read the same way).
@@ -128,6 +118,29 @@ fn projection_leaf_path_text(p: LeafPath) -> String {
     to_string(nat_to_int(n: p.piece)), "#",
     to_string(nat_to_int(n: p.member)),
   ], "")
+}
+
+// ONE LEAF, dated. The dates come from the calendar's own DatedLeaf (roadmap_schedule_calendar --
+// bound_day_to_date / date_leaf / bind_each_leaf read the schedule's abstract days and bind them to the read
+// date; this only spells the dated answer to the wire via the calendar's date_text, so the projection serves
+// the SAME ISO days the item gantt serves and runs no calendar of its own). on_critical_path is read off the
+// schedule answer's critical path, compared by the leaf's spelled path.
+fn projection_leaf_from_dated(d: DatedLeaf, critical_path: List<LeafPath>) -> ProjectionLeaf {
+  let path = projection_leaf_path_text(p: d.path)
+  ProjectionLeaf {
+    path: path,
+    start_day: date_text(date: d.start_date),
+    finish_day: date_text(date: d.finish_date),
+    on_critical_path: count(filter(critical_path, p => projection_leaf_path_text(p: p) == path)) > 0,
+  }
+}
+
+// THE LEAVES OF ONE ITEM, bound to dates from the schedule answer at the read. The belt reads the schedule
+// (roadmap_schedule / roadmap_schedule_from_now -- the projection never computes it), binds it through the
+// calendar (bind_each_leaf), and hands the dated leaves here; this spells them to the wire. Leaves whose
+// path belongs to the item are kept; the rest are not this item's row.
+fn projection_leaves_for_item(dated: List<DatedLeaf>, critical_path: List<LeafPath>, item: String) -> List<ProjectionLeaf> {
+  map(filter(dated, d => (d.path.item as String) == item), d => projection_leaf_from_dated(d: d, critical_path: critical_path))
 }
 
 // THE DERIVED IN-FLIGHT SET for one item, read at the tick. These entries are the log's own derived rows;
@@ -189,7 +202,9 @@ type ProjectionRowResult
 
 // BUILD ONE ROW from the answers already on the page, or refuse. item_state is the fold's standing keyed;
 // leaves are the schedule's; in_flight and events are the log's; intention and layer are the binding
-// carrier's -- and the carrier refuses a planted intention here, at load.
+// carrier's. Whether a cited intention names a real Plan is the carrier's LOAD-time check (see the note on
+// ProjectionRefusal); the only binding gap this read can see is an item with NO binding at all, which
+// refuses as UnboundNode rather than serve a bar wired to nothing.
 fn projection_build_row(
   node: String,
   bindings: List<IntentionBinding>,
@@ -199,39 +214,35 @@ fn projection_build_row(
   envs: List<RoadmapEventEnvelope>,
 ) -> ProjectionRowResult {
   match filter(bindings, b => (b.node as String) == node).first() {
-    Absent => ProjectionRowRefused { refusal: IntentionDoesNotResolve { node: node, intention: "no binding" } }
+    Absent => ProjectionRowRefused { refusal: UnboundNode { node: node } }
     Present { value: b } =>
-      if !projection_intention_resolves(intention: b.intention) {
-        ProjectionRowRefused { refusal: IntentionDoesNotResolve { node: node, intention: declaration_ref_display_key(ref: b.intention) } }
-      } else {
-        match standing_for_node(standings: standings, node_id: node) {
-          Absent => ProjectionRowRefused { refusal: StandingUnobserved { node: node } }
-          Present { value: s } => ProjectionRowBuilt { row: ProjectionRow {
-            node: node,
-            intention: declaration_ref_display_key(ref: b.intention),
-            layer: b.layer,
-            item_state: roadmap_node_standing_key(s: s),
-            leaves: leaves,
-            in_flight: in_flight,
-            latest_event: projection_latest_event_of(envs: envs, item: node),
-            acceptance_evidence: projection_acceptance_evidence_of(envs: envs, item: node),
-            events: projection_events_of(envs: envs, item: node),
-          } }
-        }
+      match standing_for_node(standings: standings, node_id: node) {
+        Absent => ProjectionRowRefused { refusal: StandingUnobserved { node: node } }
+        Present { value: s } => ProjectionRowBuilt { row: ProjectionRow {
+          node: node,
+          intention: declaration_ref_display_key(ref: b.intention),
+          layer: b.layer,
+          item_state: roadmap_node_standing_key(s: s),
+          leaves: leaves,
+          in_flight: in_flight,
+          latest_event: projection_latest_event_of(envs: envs, item: node),
+          acceptance_evidence: projection_acceptance_evidence_of(envs: envs, item: node),
+          events: projection_events_of(envs: envs, item: node),
+        } }
       }
   }
 }
 
 fn projection_refusal_reason(refusal: ProjectionRefusal) -> String {
   match refusal {
-    IntentionDoesNotResolve { node: _, intention: i } => join(["intention does not resolve: ", i], "")
+    UnboundNode { node: n } => join(["no binding for node: ", n], "")
     StandingUnobserved { node: n } => join(["standing unobserved for node: ", n], "")
   }
 }
 
 fn projection_refusal_step(refusal: ProjectionRefusal) -> String {
   match refusal {
-    IntentionDoesNotResolve { node: _, intention: _ } => "binding"
+    UnboundNode { node: _ } => "binding"
     StandingUnobserved { node: _ } => "standing"
   }
 }
