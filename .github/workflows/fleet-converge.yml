@@ -114,9 +114,6 @@ on:
         type: string
   schedule:
     - cron: 41 6 * * *
-  push:
-    branches: [main]
-    paths: [dag/gunbc/review_sheet_*.dag]
 jobs:
   plan-revision:
     runs-on: [self-hosted, linux, arm64]
@@ -4740,7 +4737,7 @@ jobs:
     runs-on: [self-hosted, linux, arm64]
     environment: review-sheet-converge
     timeout-minutes: 70
-    if: github.event_name == 'schedule' || github.event_name == 'push' || github.event.inputs.mode == 'review_sheet_converge'
+    if: github.event.inputs.mode == 'review_sheet_converge'
     permissions:
       contents: read
       id-token: write
