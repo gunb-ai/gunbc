@@ -7,7 +7,7 @@ import extdeps.tools.gnu_coreutils { ln_symbolic_force_command, readlink_command
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.host_command_binding {
-  CommandHost, FleetSshCommandHost, HostCommandOutcome, HostCommandDone, HostCommandFailed, HostCommandUnconfirmed, HostCommandNotDispatched,
+  CommandHost, FleetSshCommandHost, HostCommandOutcome, HostCommandDone, HostCommandFailed, HostCommandUnconfirmed, HostCommandNotDispatched, HostCommandUnanswered,
   host_command, host_command_outcome_text, host_label,
 }
 import gunbc.host.boot_medium_reader_key { boot_medium_served_link_path }
@@ -96,10 +96,12 @@ fn served_link_after(publication: SeededImagePublication, set: fn(NonEmptyStr) -
             HostCommandFailed { exit_code: c, stderr: e } => ServedLinkNotSet { reason: concat("the link was set but could not be read back: ", host_command_outcome_text(e: HostCommandFailed { exit_code: c, stderr: e })) }
             HostCommandUnconfirmed { exit_code: c, stdout: o, stderr: e } => ServedLinkNotSet { reason: concat("the link was set but its readback is unconfirmed: ", host_command_outcome_text(e: HostCommandUnconfirmed { exit_code: c, stdout: o, stderr: e })) }
             HostCommandNotDispatched { reason: r } => ServedLinkNotSet { reason: concat("the link was set but its readback was not dispatched: ", r) }
+            HostCommandUnanswered { cause: r } => ServedLinkNotSet { reason: concat("the link was set but its readback got no answer: ", r) }
           }
         HostCommandFailed { exit_code: c, stderr: e } => ServedLinkNotSet { reason: host_command_outcome_text(e: HostCommandFailed { exit_code: c, stderr: e }) }
         HostCommandUnconfirmed { exit_code: c, stdout: o, stderr: e } => ServedLinkNotSet { reason: host_command_outcome_text(e: HostCommandUnconfirmed { exit_code: c, stdout: o, stderr: e }) }
         HostCommandNotDispatched { reason: r } => ServedLinkNotSet { reason: concat("not dispatched: ", r) }
+        HostCommandUnanswered { cause: r } => ServedLinkNotSet { reason: concat("the set was dispatched but got no answer, so the served link may or may not have moved: ", r) }
       }
   }
 }

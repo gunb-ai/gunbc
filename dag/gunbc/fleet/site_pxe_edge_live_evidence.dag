@@ -12,7 +12,7 @@ import gunbc.host_command_binding { CommandHost }
 import gunbc.machine_intake.mtcollins1_census_member_readback {
   MemberReading, IsoReading,
   answer_on, read_member_on, member_scratch_path, iso_reading_of, MemberRead, MemberUnread, IsoMeasured, IsoUnmeasured, StockSide, CasperKernel, CasperInitrd,
-  HostLeg, LegAnswered, LegNotDispatched,
+  HostLeg, LegAnswered, LegNotDispatched, LegUnanswered,
 }
 import gunbc.fleet.site_pxe_edge_live_boot_pair {
   SitePxeEdgeLiveBootFile,
@@ -99,6 +99,8 @@ fn site_pxe_edge_live_served_reading(tftp_path: NonEmptyStr, absolute: NonEmptyS
   match answer {
     LegNotDispatched { reason: why } =>
       ServedBootFileUnread { reason: concat("the readback was never dispatched: ", why) }
+    LegUnanswered { cause: why } =>
+      ServedBootFileUnread { reason: concat("the readback was dispatched but got no answer: ", why) }
     LegAnswered { exit_code: code, stdout: out, stderr: err } =>
       if code != 0 {
         ServedBootFileUnread { reason: concat("sha256sum exit=", to_string(code), " ", trim(s: err)) }
@@ -134,6 +136,7 @@ fn site_pxe_edge_live_root_relative_contained(path: NonEmptyStr) -> Bool {
 fn site_pxe_edge_live_canonical_path(answer: HostLeg) -> NonEmptyStr? {
   match answer {
     LegNotDispatched { reason: _ } => Absent
+    LegUnanswered { cause: _ } => Absent
     LegAnswered { exit_code: code, stdout: out, stderr: _ } =>
       if code != 0 {
         Absent
@@ -270,6 +273,7 @@ type SitePxeEdgeLivePathStanding
 fn site_pxe_edge_live_find_names_absent_path(path: String, answer: HostLeg) -> Bool {
   match answer {
     LegNotDispatched { reason: _ } => false
+    LegUnanswered { cause: _ } => false
     LegAnswered { exit_code: code, stdout: _, stderr: err } =>
       code > 0 && trim(s: err) == concat("find: '", path, "': No such file or directory")
   }
@@ -282,6 +286,8 @@ fn site_pxe_edge_live_path_standing(path: String, as_required: HostLeg, anything
       else { site_pxe_edge_live_path_standing_from_anything(path: path, anything: anything) }
     LegNotDispatched { reason: _ } =>
       site_pxe_edge_live_path_standing_from_anything(path: path, anything: anything)
+    LegUnanswered { cause: _ } =>
+      site_pxe_edge_live_path_standing_from_anything(path: path, anything: anything)
   }
 }
 
@@ -289,6 +295,8 @@ fn site_pxe_edge_live_path_standing_from_anything(path: String, anything: HostLe
   match anything {
     LegNotDispatched { reason: why } =>
       PathObservationFailed { reason: concat("the existence probe was never dispatched: ", why) }
+    LegUnanswered { cause: why } =>
+      PathObservationFailed { reason: concat("the existence probe was dispatched but got no answer: ", why) }
     LegAnswered { exit_code: code, stdout: out, stderr: err } =>
       if code == 0 && trim(s: out) == path {
         PathPresentButNotAsRequired
@@ -353,6 +361,7 @@ fn site_pxe_edge_live_ensure_real_dir_on(host: CommandHost, tftp_root: NonEmptyS
         LegAnswered { exit_code: code, stdout: _, stderr: err } =>
           if code == 0 { LivePlacementDone } else { LivePlacementRefused { step: join(argv_words(command: c), " "), reason: concat("exit=", to_string(code), " ", trim(s: err)) } }
         LegNotDispatched { reason: why } => LivePlacementRefused { step: join(argv_words(command: c), " "), reason: why }
+        LegUnanswered { cause: why } => LivePlacementRefused { step: join(argv_words(command: c), " "), reason: join(["dispatched, no answer: ", why], "") }
       }
     }
   }
@@ -362,6 +371,7 @@ fn site_pxe_edge_live_ensure_real_dir_on(host: CommandHost, tftp_root: NonEmptyS
 fn site_pxe_edge_live_leg_succeeded(a: HostLeg) -> Bool {
   match a {
     LegNotDispatched { reason: _ } => false
+    LegUnanswered { cause: _ } => false
     LegAnswered { exit_code: code, stdout: _, stderr: _ } => code == 0
   }
 }
@@ -370,6 +380,7 @@ fn site_pxe_edge_live_step_refusal(c: ArgvCommand, a: HostLeg) -> SitePxeEdgeLiv
   let step: String = join(argv_words(command: c), " ")
   match a {
     LegNotDispatched { reason: why } => LivePlacementRefused { step: step, reason: why }
+    LegUnanswered { cause: why } => LivePlacementRefused { step: step, reason: join(["dispatched, no answer: ", why], "") }
     LegAnswered { exit_code: code, stdout: _, stderr: err } => LivePlacementRefused { step: step, reason: concat("exit=", to_string(code), " ", trim(s: err)) }
   }
 }

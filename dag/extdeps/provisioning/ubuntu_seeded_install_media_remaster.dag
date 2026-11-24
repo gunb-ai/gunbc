@@ -23,7 +23,7 @@ import std.algebra { trim }
 import std.content_hash { sha256_hex_digest }
 import std.optional { Present }
 import gunbc.host_command_binding {
-  CommandHost, HostCommandOutcome, HostCommandDone, HostCommandFailed, HostCommandUnconfirmed, HostCommandNotDispatched,
+  CommandHost, HostCommandOutcome, HostCommandDone, HostCommandFailed, HostCommandUnconfirmed, HostCommandNotDispatched, HostCommandUnanswered,
   host_command, host_command_outcome_text, host_run, host_transport_kind,
   HostFileWrite, HostFileWritten, HostFileWriteRefused, HostFileWriteNotConverged, host_write_file, host_file_write_text,
   ScratchOutcome, ScratchAcquired, ScratchNotAcquired, scratch_acquisition_of, scratch_removal_of, render_scratch_outcome,
@@ -343,6 +343,7 @@ fn install_media_remaster_digest(host: CommandHost, path: NonEmptyStr) -> String
     HostCommandFailed { exit_code: _, stderr: _ } => none
     HostCommandUnconfirmed { exit_code: _, stdout: _, stderr: _ } => none
     HostCommandNotDispatched { reason: _ } => none
+    HostCommandUnanswered { cause: _ } => none
   }
 }
 

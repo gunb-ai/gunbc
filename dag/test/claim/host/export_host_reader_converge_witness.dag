@@ -5,7 +5,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { string_contains }
 import std.optional { Present, Absent }
 import extdeps.ssh.openssh_server_commands { sshd_effective_config_value }
-import gunbc.host_command_binding { HostLeg, LegAnswered, LegNotDispatched }
+import gunbc.host_command_binding { HostLeg, LegAnswered, LegNotDispatched, LegUnanswered }
 import gunbc.host.export_host_reader_converge {
   ExportHostReaderLegs, ExportHostReaderRun, ExportHostReaderOutcome,
   ReaderRowsConverged, ReaderRowsRefused, ReaderRowsRolledBack, ReaderRowsRollbackFailed, ReaderRowsReloadUncertain,
@@ -42,6 +42,7 @@ fn answer(name: String, overrides: List<LegOverride>, healthy: HostLeg) -> HostL
 fn holds(name: String, overrides: List<LegOverride>) -> Bool {
   match answer(name: name, overrides: overrides, healthy: ok(stdout: "")) {
     LegNotDispatched { reason: _ } => false
+    LegUnanswered { cause: _ } => false
     LegAnswered { exit_code: ec, stdout: _, stderr: _ } => ec == 0
   }
 }

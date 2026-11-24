@@ -23,7 +23,7 @@ import std.algebra { trim }
 import std.content_hash { sha256_hex_digest }
 import std.optional { Present }
 import gunbc.host_command_binding {
-  CommandHost, LocalCommandHost, HostCommandDone, HostCommandFailed, HostCommandUnconfirmed, HostCommandNotDispatched,
+  CommandHost, LocalCommandHost, HostCommandDone, HostCommandFailed, HostCommandUnconfirmed, HostCommandNotDispatched, HostCommandUnanswered,
   host_command, host_command_outcome_text,
 }
 
@@ -286,6 +286,8 @@ fn link_verified_boot_image(
   return match host_command(host: host, command: ln_hard_command(source: staging_path as String, destination: published_path as String)) {
     HostCommandDone { stdout: _ } => unstage_then_confirm(host: host, staging_path: staging_path, published_path: published_path, digest: digest)
     HostCommandUnconfirmed { exit_code: _, stdout: _, stderr: _ } => unstage_then_confirm(host: host, staging_path: staging_path, published_path: published_path, digest: digest)
+    // A link dispatched but with no answer is likewise undecided -- it MAY have landed -- so the read-back decides, never an assumption.
+    HostCommandUnanswered { cause: _ } => unstage_then_confirm(host: host, staging_path: staging_path, published_path: published_path, digest: digest)
     HostCommandFailed { exit_code: _, stderr: _ } => BootImagePublishFailed { staged: staging_path, destination: published_path }
     HostCommandNotDispatched { reason: _ } => BootImagePublishFailed { staged: staging_path, destination: published_path }
   }

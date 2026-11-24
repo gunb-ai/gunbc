@@ -20,11 +20,11 @@ import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.fleet.fleet_bootstrap_principal { executor_bootstrap_principal }
 import gunbc.fleet.fleet_host_identity { operator_host_srv2 }
 import gunbc.host.boot_medium_reader_key { boot_medium_reader_authorized_entry }
-import gunbc.host_command_binding { HostLeg, LegAnswered, LegNotDispatched, host_leg_of_typed_argv }
+import gunbc.host_command_binding { HostLeg, LegAnswered, LegNotDispatched, LegUnanswered, host_leg_of_typed_argv }
 import gunbc.runner.runner_host_file_converge {
   FleetHostFileSubject, FleetHostFileDesired, FleetHostFilesApply, LegElevated, fleet_host_file_scope,
   run_fleet_host_leg, observe_fleet_host_administrator_privilege, fleet_host_file_result, fleet_host_file_outcome_settled,
-  AdministratorPrivilegeAvailable, AdministratorPrivilegeRefused,
+  AdministratorPrivilegeAvailable, AdministratorPrivilegeRefused, elevated_read_refused_elevation,
 }
 
 // ── THE BMC EXPORT HOST'S READER ROWS (srv2) ──────────────────────────────────────────────────────
@@ -152,6 +152,7 @@ fn leg_holds(f: fn() -> Bool) -> Bool {
 fn answer_text(a: HostLeg) -> String {
   match a {
     LegNotDispatched { reason: r } => concat("never dispatched: ", r)
+    LegUnanswered { cause: c } => concat("dispatched, no answer (effect unknown): ", c)
     LegAnswered { exit_code: e, stdout: _, stderr: s } => join(["exit=", to_string(e), " ", trim(s: s)], "")
   }
 }
@@ -178,7 +179,8 @@ type DropInRemovalRun {
 fn readback_absent(a: HostLeg) -> Bool {
   match a {
     LegNotDispatched { reason: _ } => false
-    LegAnswered { exit_code: ec, stdout: _, stderr: _ } => ec == 1
+    LegUnanswered { cause: _ } => false
+    LegAnswered { exit_code: ec, stdout: _, stderr: s } => ec == 1 && !elevated_read_refused_elevation(stderr: s)
   }
 }
 
@@ -206,6 +208,7 @@ fn withdrawn(legs: ExportHostReaderLegs, stages: List<NonEmptyStr>, stage: NonEm
 fn effective_value_text(effective: HostLeg) -> String {
   match effective {
     LegNotDispatched { reason: r } => concat("sshd -T never dispatched: ", r)
+    LegUnanswered { cause: c } => concat("sshd -T was dispatched but got no answer (the effective configuration is unknown): ", c)
     LegAnswered { exit_code: e, stdout: o, stderr: s } => if e != 0 {
       concat("sshd -T refused: ", answer_text(a: effective))
     } else {
@@ -234,20 +237,26 @@ fn reload_uncertain(legs: ExportHostReaderLegs, stages: List<NonEmptyStr>, reloa
   let effective = leg(f: legs.effective_config_after_removal)
   let s2 = concat(r.stages, ["sshd-T" as NonEmptyStr])
   let running = match login {
-    LegNotDispatched { reason: r } => concat("a fresh administrator login was NEVER DISPATCHED after the failed reload: ", r)
+    LegNotDispatched { reason: r } => concat("a fresh administrator login was NEVER DISPATCHED after the reload: ", r)
+    LegUnanswered { cause: c } => concat("a fresh administrator login was DISPATCHED after the reload but got no answer (its success is unknown): ", c)
     LegAnswered { exit_code: ec, stdout: _, stderr: _ } => if ec == 0 {
-      "a fresh administrator login succeeded after the failed reload"
+      "a fresh administrator login succeeded after the reload"
     } else {
-      concat("a fresh administrator login FAILED after the failed reload: ", answer_text(a: login))
+      concat("a fresh administrator login FAILED after the reload: ", answer_text(a: login))
     }
   }
   let removal = match r.removal {
     DropInAbsentConfirmed => "the drop-in is confirmed absent"
     DropInRemovalUnconfirmed { detail: d } => concat("the drop-in is NOT confirmed absent: ", d)
   }
+  let reload_cause = match reloaded {
+    LegUnanswered { cause: c } => concat("systemctl reload ssh was DISPATCHED but its reply was lost (it overran its deadline), so whether sshd took the drop-in is not known: ", c)
+    LegNotDispatched { reason: r } => concat("systemctl reload ssh was never dispatched, so sshd was not reloaded: ", r)
+    LegAnswered { exit_code: _, stdout: _, stderr: _ } => concat("systemctl reload ssh exited nonzero, so whether sshd took the drop-in is not known: ", answer_text(a: reloaded))
+  }
   ExportHostReaderRun {
     outcome: ReaderRowsReloadUncertain {
-      cause: concat("systemctl reload ssh exited nonzero, so whether sshd took the drop-in is not known: ", answer_text(a: reloaded)),
+      cause: reload_cause,
       running: running,
       on_disk: join([removal, "; ", effective_value_text(effective: effective)], ""),
     },
@@ -269,6 +278,8 @@ fn rolled_back(legs: ExportHostReaderLegs, stages: List<NonEmptyStr>, cause: Str
       match again {
         LegNotDispatched { reason: rr } =>
           ExportHostReaderRun { outcome: ReaderRowsRollbackFailed { cause: cause, rollback: concat("the drop-in is confirmed absent, but the rollback reload was NEVER DISPATCHED, so what sshd is running is not known: ", rr) }, stages: s1 }
+        LegUnanswered { cause: uc } =>
+          ExportHostReaderRun { outcome: ReaderRowsRollbackFailed { cause: cause, rollback: concat("the drop-in is confirmed absent, but the rollback reload was DISPATCHED and got NO ANSWER, so what sshd is running is not known: ", uc) }, stages: s1 }
         LegAnswered { exit_code: ec, stdout: _, stderr: _ } => if ec != 0 {
           ExportHostReaderRun { outcome: ReaderRowsRollbackFailed { cause: cause, rollback: concat("the drop-in is confirmed absent, but the rollback reload exited nonzero, so what sshd is running is not known: ", answer_text(a: again)) }, stages: s1 }
         } else {
@@ -277,6 +288,8 @@ fn rolled_back(legs: ExportHostReaderLegs, stages: List<NonEmptyStr>, cause: Str
           match relogin {
             LegNotDispatched { reason: rr } =>
               ExportHostReaderRun { outcome: ReaderRowsRollbackFailed { cause: cause, rollback: concat("the drop-in is confirmed absent and sshd reloaded, but the confirming fresh login was NEVER DISPATCHED: ", rr) }, stages: s2 }
+            LegUnanswered { cause: uc } =>
+              ExportHostReaderRun { outcome: ReaderRowsRollbackFailed { cause: cause, rollback: concat("the drop-in is confirmed absent and sshd reloaded, but the confirming fresh login was DISPATCHED and got NO ANSWER: ", uc) }, stages: s2 }
             LegAnswered { exit_code: rc, stdout: _, stderr: _ } => if rc == 0 {
               ExportHostReaderRun { outcome: ReaderRowsRolledBack { cause: cause }, stages: s2 }
             } else {
@@ -295,6 +308,8 @@ fn export_host_reader_after_writes(legs: ExportHostReaderLegs, stages: List<NonE
   match tested {
     LegNotDispatched { reason: r } =>
       withdrawn(legs: legs, stages: s1, stage: "sshd -t", cause: concat("sshd -t was NEVER DISPATCHED, so the configuration with the drop-in was not verified: ", r))
+    LegUnanswered { cause: uc } =>
+      withdrawn(legs: legs, stages: s1, stage: "sshd -t", cause: concat("sshd -t was DISPATCHED but got NO ANSWER, so the configuration with the drop-in is unverified: ", uc))
     LegAnswered { exit_code: tc, stdout: _, stderr: _ } => if tc != 0 {
       withdrawn(legs: legs, stages: s1, stage: "sshd -t", cause: concat("sshd -t refused the configuration with the drop-in: ", answer_text(a: tested)))
     } else {
@@ -303,6 +318,8 @@ fn export_host_reader_after_writes(legs: ExportHostReaderLegs, stages: List<NonE
       match effective {
         LegNotDispatched { reason: r } =>
           withdrawn(legs: legs, stages: s2, stage: "sshd -T", cause: concat("sshd -T was NEVER DISPATCHED, so the effective AuthorizedKeysFile is not known: ", r))
+        LegUnanswered { cause: uc } =>
+          withdrawn(legs: legs, stages: s2, stage: "sshd -T", cause: concat("sshd -T was DISPATCHED but got NO ANSWER, so the effective AuthorizedKeysFile is not known: ", uc))
         LegAnswered { exit_code: ec, stdout: o, stderr: _ } => if ec != 0 {
           withdrawn(legs: legs, stages: s2, stage: "sshd -T", cause: concat("sshd -T reported no AuthorizedKeysFile: ", answer_text(a: effective)))
         } else {
@@ -317,6 +334,8 @@ fn export_host_reader_after_writes(legs: ExportHostReaderLegs, stages: List<NonE
                 match reloaded {
                   LegNotDispatched { reason: r } =>
                     withdrawn(legs: legs, stages: s3, stage: "reload", cause: concat("systemctl reload ssh was NEVER DISPATCHED, so sshd was not reloaded: ", r))
+                  LegUnanswered { cause: uc } =>
+                    reload_uncertain(legs: legs, stages: s3, reloaded: reloaded)
                   LegAnswered { exit_code: rc, stdout: _, stderr: _ } => if rc != 0 {
                     reload_uncertain(legs: legs, stages: s3, reloaded: reloaded)
                   } else {
@@ -325,6 +344,8 @@ fn export_host_reader_after_writes(legs: ExportHostReaderLegs, stages: List<NonE
                     match login {
                       LegNotDispatched { reason: r } =>
                         rolled_back(legs: legs, stages: s4, cause: concat("a fresh administrator login to the export host was NEVER DISPATCHED after the reload: ", r))
+                      LegUnanswered { cause: uc } =>
+                        rolled_back(legs: legs, stages: s4, cause: concat("a fresh administrator login to the export host was DISPATCHED after the reload but got NO ANSWER: ", uc))
                       LegAnswered { exit_code: lc, stdout: _, stderr: _ } => if lc == 0 {
                         ExportHostReaderRun { outcome: ReaderRowsConverged, stages: s4 }
                       } else {
@@ -359,6 +380,8 @@ fn export_host_reader_apply_with(legs: ExportHostReaderLegs) -> ExportHostReader
   match pre {
     LegNotDispatched { reason: r } =>
       refused_at(stages: s0, stage: "sshd -t -o", cause: concat("the sshd precheck was NEVER DISPATCHED, so the option's acceptance is unknown and nothing was written: ", r))
+    LegUnanswered { cause: uc } =>
+      refused_at(stages: s0, stage: "sshd -t -o", cause: concat("the sshd precheck was DISPATCHED but got NO ANSWER, so the option's acceptance is unknown and nothing was written: ", uc))
     LegAnswered { exit_code: pc, stdout: _, stderr: _ } => if pc != 0 {
       refused_at(stages: s0, stage: "sshd -t -o", cause: concat("sshd refuses the option against the live configuration; nothing was written: ", answer_text(a: pre)))
     } else {
@@ -367,6 +390,8 @@ fn export_host_reader_apply_with(legs: ExportHostReaderLegs) -> ExportHostReader
       match exists {
         LegNotDispatched { reason: r } =>
           refused_at(stages: s1, stage: "account", cause: concat("the reader account check was NEVER DISPATCHED, so whether the account exists is not known: ", r))
+        LegUnanswered { cause: uc } =>
+          refused_at(stages: s1, stage: "account", cause: concat("the reader account check was DISPATCHED but got NO ANSWER, so whether the account exists is not known: ", uc))
         LegAnswered { exit_code: xc, stdout: _, stderr: _ } => if xc == 0 {
           account_written(legs: legs, s2: s1)
         } else {
@@ -375,6 +400,8 @@ fn export_host_reader_apply_with(legs: ExportHostReaderLegs) -> ExportHostReader
           match ensured {
             LegNotDispatched { reason: r } =>
               refused_at(stages: s1e, stage: "account", cause: concat("the reader account could not be created: the ensure leg was NEVER DISPATCHED: ", r))
+            LegUnanswered { cause: uc } =>
+              refused_at(stages: s1e, stage: "account", cause: concat("the reader account could not be created: the ensure leg was DISPATCHED but got NO ANSWER: ", uc))
             LegAnswered { exit_code: enc, stdout: _, stderr: _ } => if enc == 0 {
               account_written(legs: legs, s2: s1e)
             } else {
