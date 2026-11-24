@@ -1042,10 +1042,10 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "dag/gunbc/plans/fabric_market.dag"),
       line: ticket(t: fields(
           headline: "The hand-written Lua router is deleted in one switch, the deployed route is verified switched, and nothing falls back to it",
-          boundary: "Serves gunbc.plans.fabric_market, layer 5. Refresh router-behaviour-disposition against the live file. Account for bindings and streams in flight at the switch: which owner finishes them and how their grants are released. Delete gunbc.serving.router_dev_policy, router_dev_scaffold and their debt rows in the same change (gunbc.design_argument::replacement_migration; gunbc.recurring_failure_mode the_replaced_route_is_the_replacement_s_miss_path). Two separate pieces of evidence: the source retirement (the modules gone from the tree) and a read-back that the deployed route is the native one and the Lua path is gone from the host.",
+          boundary: "Serves gunbc.plans.fabric_market, layer 5. Refresh router-behaviour-disposition against the live file. Account for bindings and streams in flight at the switch: which owner finishes them and how their grants are released. Delete gunbc.serving.router_dev_policy, router_dev_scaffold and their debt rows in the same change (gunbc.design_argument::replacement_migration; gunbc.recurring_failure_mode the_replaced_route_is_the_replacement_s_miss_path). Two separate pieces of evidence: the source retirement (the modules gone from the tree) and a read-back that the deployed route is the native one and the Lua path is gone from the host. Before the first production fill, every target host either clears through the shared admission authority (fabric-admission-and-delegation), or provides an explicitly funded serving partition, a delegated budget whose capacity every remaining allocator (build, session and runner pools) excludes from what it offers; existing occupants and relocation overlap stay charged. The partition option lets serving cut over before work-exec-6-one-ledger-per-host migrates every host consumer.",
           displaced_cost: "Two routers decide placement for one fleet, and the hand-written one carries rulings that exist only as its comments.",
           first_slice: "The refreshed disposition table and the in-flight accounting, before any switch.",
-          red_control: "A request the native route cannot place is refused and never reaches the Lua path; a stream in flight at the switch completes or is released by its owner; the deployed read-back shows the native route serving.",
+          red_control: "A request the native route cannot place is refused and never reaches the Lua path; a stream in flight at the switch completes or is released by its owner; the deployed read-back shows the native route serving; before the switch, a concurrent-load control on each target host -- serving fills alongside build and session allocations at capacity -- shows no capacity promised twice and the excess refused.",
           out_of_scope: "Behaviour the disposition table retires; new market policy beyond what the dispositions require.",
           handback: "The refreshed table, the switch, the deletions, the deployed read-back, and the executed controls."
         )),
@@ -7311,6 +7311,7 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "serving-router-native-transport", parent: "fabric-market-plan-fold"),
     edge(child: "serving-relocation-realization", parent: "serving-router-native-transport"),
     edge(child: "serving-router-lua-cutover", parent: "serving-relocation-realization"),
+    edge(child: "serving-router-lua-cutover", parent: "fabric-admission-and-delegation"),
     edge(child: "fabric-market-convergence", parent: "serving-router-lua-cutover"),
     edge(child: "fabric-market-convergence", parent: "market-buy-order-replacement"),
     edge(child: "fabric-market-convergence", parent: "market-sell-order-replacement"),
