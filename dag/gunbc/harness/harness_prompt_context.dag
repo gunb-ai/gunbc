@@ -359,6 +359,14 @@ fn prompt_render_receipt(plan: PromptPlan, wire: ProviderPromptArtifact) -> Prom
 // revision inside the snapshot invalidates every receipt admitted before the move, even one whose
 // rendered text did not change. Currentness is decided here once (anchor
 // gunbc.design_argument::single_authority); no surface re-decides it by comparing digests ad hoc.
+// DECLARED FRONTIER (review 97941 finding 2; gunbc.design_argument::consumption): this law's
+// production consumer is the harness_cli seat binding, which today collapses modeled guidance to
+// system_prompt: String (harness_cli.dag:221,255) and so carries no receipt to gate. The closure --
+// provider envelopes emitted as late projections of a PromptPlan and gated through this law -- is
+// the named follow-up row (lane-manager ruling, 2026-11-24; row requested from the roadmap owner,
+// trigger: that row's dispatch). Until then the law has no surface that CAN call it, so no surface
+// re-decides it either; this claim witness pins the law so the follow-up must satisfy it, not
+// re-invent it.
 fn prompt_render_is_current(receipt: PromptRenderReceipt, snapshot: PromptContextSnapshot) -> Bool {
   receipt.plan_snapshot_digest == prompt_snapshot_digest(snapshot: snapshot)
 }
@@ -375,6 +383,9 @@ fn prompt_render_is_current(receipt: PromptRenderReceipt, snapshot: PromptContex
 
 // THE UNCOMPACTABLE PREDICATE has one authority: required marks the caller-declared undroppable
 // population, and unresolved guidance joins it by law regardless of its declared required flag.
+// prompt_compaction_dropped_fold is its only production consumer and asks IT the drop/refuse
+// question -- the fold never re-decides membership, it only labels which law a refusal breaks
+// (anchor gunbc.design_argument::single_authority: one decider, no forked copies).
 fn prompt_input_uncompactable(input: PromptInput) -> Bool {
   if prompt_input_required(input: input) {
     true
@@ -415,18 +426,17 @@ fn prompt_dropped_turn_id_fold(acc: List<String>, input: PromptInput) -> List<St
 }
 
 fn prompt_compaction_dropped_fold(acc_in: { refusals: List<PromptCompactionRefusal> }, input: PromptInput) -> { refusals: List<PromptCompactionRefusal> } {
-  let key = prompt_input_canonical_text(input: input)
-  if prompt_input_required(input: input) {
-    { refusals: concat(acc_in.refusals, [RequiredInputDropped { input_key: key }]) }
+  // THE DROP/KEEP DECISION IS MADE ONLY BY prompt_input_uncompactable (one authority, review 97941
+  // finding 1). The branch below only LABELS which law the refusal breaks: required is its own
+  // law, and by the predicate's definition the only other way in is unresolved guidance.
+  if !prompt_input_uncompactable(input: input) {
+    acc_in
   } else {
-    match input {
-      GuidanceInput { receipt_identity: _, resolved, required: _ } =>
-        if !resolved {
-          { refusals: concat(acc_in.refusals, [UnresolvedGuidanceDropped { input_key: key }]) }
-        } else {
-          acc_in
-        }
-      _ => acc_in
+    let key = prompt_input_canonical_text(input: input)
+    if prompt_input_required(input: input) {
+      { refusals: concat(acc_in.refusals, [RequiredInputDropped { input_key: key }]) }
+    } else {
+      { refusals: concat(acc_in.refusals, [UnresolvedGuidanceDropped { input_key: key }]) }
     }
   }
 }
