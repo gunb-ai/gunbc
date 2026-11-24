@@ -32,7 +32,7 @@ import v2.compiler.parse {
 }
 import v2.test.claim.parse.prepared_child_first_summary {
   pcfs_alt_under_alpha,
-  pcfs_fold_of,
+  pcfs_prepare_production,
   pcfs_suffix_deep,
   pcfs_suffix_x,
   pcfs_suffix_y,
@@ -68,10 +68,10 @@ test fn pcfs_probe_sequence_carries_its_right_child_summary() -> Bool {
 // of sequences, the check must hold at EVERY depth -- one retained field per node cannot be
 // satisfied by only the outermost node agreeing.
 test fn pcfs_probe_choice_alternatives_carry_their_right_child_summaries() -> Bool {
-  pcfs_sequences_agree_with_oracle(expr: pcfs_fold_of(expr: pcfs_alt_under_alpha(right: pcfs_suffix_deep())).tree) &&
-    pcfs_sequences_agree_with_oracle(expr: pcfs_fold_of(expr: pcfs_alt_under_alpha(right: pcfs_suffix_y())).tree)
+  pcfs_sequences_agree_with_oracle(expr: pcfs_prepare_production(expr: pcfs_alt_under_alpha(right: pcfs_suffix_deep())).tree) &&
+    pcfs_sequences_agree_with_oracle(expr: pcfs_prepare_production(expr: pcfs_alt_under_alpha(right: pcfs_suffix_y())).tree)
 }
 
 fn pcfs_probe_alt_tree() -> PreparedGrammarExpr {
-  pcfs_fold_of(expr: pcfs_alt_under_alpha(right: pcfs_suffix_x())).tree
+  pcfs_prepare_production(expr: pcfs_alt_under_alpha(right: pcfs_suffix_x())).tree
 }

@@ -42,7 +42,7 @@ import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.node { Symbol, symbol_lexeme }
 import v2.std.grammar { Choice, GrammarExpr, GrammarProduction, ModeledGrammar, Nonterminal, Sequence, StampBinding, StampClass, StampLexeme, Terminal, TerminalStampMode, grammar_atom }
 import v2.std.grammar_choice_ambiguity { GrammarChoiceAmbiguityRow }
-import v2.compiler.parse { ChoiceByToken, choice_alts_union_first, compile_choice_alts, ChoiceByWord, ChoiceOrderedBacktrack, ChoiceParseOne, ChoiceReject, ChoiceSharedPrefix, ChoiceTokenPrefix, FirstAnyOfClass, FirstExactWord, FirstKey, GrammarExprFirstFold, GrammarFirstAnalysis, PreparedAfterLineBreak, PreparedChoice, PreparedChoicePlan, PreparedExpect, PreparedExprFold, PreparedGrammar, PreparedGrammarExpr, PreparedInfixTable, PreparedModeled, PreparedNonterminal, PreparedNotPredicate, PreparedOptional, PreparedRefuseOnMatch, PreparedRepeat, PreparedSequence, PreparedTerminal, PreparedVoidGrammar, TokenPrefixRow, prepare_grammar_expr }
+import v2.compiler.parse { ChoiceByToken, ChoiceByWord, ChoiceOrderedBacktrack, ChoiceParseOne, ChoiceReject, ChoiceSharedPrefix, ChoiceTokenPrefix, FirstAnyOfClass, FirstExactWord, FirstKey, GrammarExprFirstFold, GrammarFirstAnalysis, PreparedAfterLineBreak, PreparedChoice, PreparedChoicePlan, PreparedExpect, PreparedExprFold, PreparedGrammar, PreparedGrammarExpr, PreparedInfixTable, PreparedModeled, PreparedNonterminal, PreparedNotPredicate, PreparedOptional, PreparedRefuseOnMatch, PreparedRepeat, PreparedSequence, PreparedTerminal, PreparedVoidGrammar, TokenPrefixRow, prepare_grammar_expr }
 import v2.compiler.program_assembly { dag_prepared_grammar }
 import v2.extdeps.languages.dag { dag_grammar }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -149,101 +149,174 @@ fn pcfs_suffix_deep() -> GrammarExpr {
   }
 }
 
-fn pcfs_fold_alt(expr: GrammarExpr) -> PreparedExprFold {
-  pcfs_fold_of(expr: expr)
-}
-
-// Probe A: three alternatives, two of them carrying the IDENTICAL right child. The suffix builder
-// then demands the very same call -- same function, same arguments -- twice, which is what lets the
-// [recompute-trace] ledger read MORE than one on the pre-change leg. Without a repeated population
-// the ledger would read distinct calls and could not say "more than once"; that would be a
-// decoration, not an instrument.
-fn pcfs_alts_repeat() -> List<PreparedExprFold> {
-  Cons {
-    head: pcfs_fold_alt(expr: pcfs_alt_under_alpha(right: pcfs_suffix_x())),
-    tail: Cons {
-      head: pcfs_fold_alt(expr: pcfs_alt_under_alpha(right: pcfs_suffix_x())),
-      tail: Cons {
-        head: pcfs_fold_alt(expr: pcfs_alt_under_alpha(right: pcfs_suffix_y())),
-        tail: Empty
-      }
-    }
-  }
-}
-
-// Probe B: the contrast. Same shared prefix, same rule, three distinct right children, so every
-// rebuild is a distinct call. A ledger that reads one here and more than one on probe A is
-// discriminating on duplicate demand, not on the presence of the path.
-fn pcfs_alts_distinct() -> List<PreparedExprFold> {
-  Cons {
-    head: pcfs_fold_alt(expr: pcfs_alt_under_alpha(right: pcfs_suffix_x())),
-    tail: Cons {
-      head: pcfs_fold_alt(expr: pcfs_alt_under_alpha(right: pcfs_suffix_y())),
-      tail: Cons {
-        head: pcfs_fold_alt(expr: pcfs_alt_under_alpha(right: pcfs_terminal(sym: pcfs_class_epsilon))),
-        tail: Empty
-      }
-    }
-  }
-}
-
-// THE SEAM UNDER TEST. compile_choice_alts is the entry point that reaches the shared-prefix rule:
-// prepare_grammar_expr's Choice arm goes through compile_choice_plan, which only reaches
-// compile_choice_alts from its token_dispatch bucket, so driving prepare_grammar_expr on a choice
-// with token_dispatch false yields ordered_backtrack_emit and never walks the defective path. This
-// claim module therefore calls the entry point the rule actually lives in, with the same arguments
-// preparation passes it.
-fn pcfs_shared_plan(alts: List<PreparedExprFold>) -> PreparedChoicePlan {
-  compile_choice_alts(
-    alts: alts,
+// THE ENTRY THE PARSER'S OWN PREPARATION CALLS. prepare_grammar_expr is what
+// compute_grammar_first_analysis_given runs over every production of the grammar being prepared, and
+// in that fold it passes token_dispatch: true (src/v2/compiler/parse.dag, the arm that fills
+// prepared_exprs). So token_dispatch: true is not a flag this module invents to reach an internal
+// function: it is what grammar preparation itself passes, and the probe calls the public entry on a
+// whole production expression and reads the plan the grammar SHAPE chose. Which route the shape took
+// is printed by CLAIM 4: ChoiceByToken over a ChoiceSharedPrefix bucket means the bucket route that
+// runs compile_choice_alts; ChoiceOrderedBacktrack means ordered_backtrack_emit, and a leg whose
+// plan chose the latter is void for this node whatever the ledger prints.
+fn pcfs_prepare_production(expr: GrammarExpr) -> PreparedExprFold {
+  prepare_grammar_expr(
+    expr: expr,
     nullable_set: Empty,
     first_rows: empty_map(),
-    token_dispatch: false
+    productions: pcfs_production_map(expr: expr),
+    production: ^pcfs_probe,
+    token_dispatch: true
   )
 }
 
-fn pcfs_plan_earns_shared_prefix(plan: PreparedChoicePlan) -> Bool {
-  match plan {
-    ChoiceSharedPrefix { prefix: prefix, suffix: suffix } =>
-      pcfs_plan_is_not_reject(plan: suffix) &&
-        match prefix {
-          PreparedTerminal { token_class: token_class, stamp: _ } => token_class == pcfs_class_alpha
-          _ => false
-        }
+fn pcfs_production_map(expr: GrammarExpr) -> Map<Symbol, GrammarProduction> {
+  map_insert(m: empty_map(), key: ^pcfs_probe, value: pcfs_probe_production(expr: expr))
+}
+
+fn pcfs_probe_production(expr: GrammarExpr) -> GrammarProduction {
+  GrammarProduction { name: ^pcfs_probe, expression: expr, emitted: grammar_atom(identity: ^pcfs_probe) }
+}
+
+// PROBE A. A choice of three alternatives, every one a sequence under the SAME leading class, two of
+// them carrying the IDENTICAL right child. prepared_sequence_left_atom then makes the leading atom
+// the shared prefix for the whole bucket, so the suffix builder walks the same right child twice:
+// the same function on the same arguments, twice. That repeated population is what lets the
+// [recompute-trace] ledger read MORE than one on the pre-change leg. Without it the ledger would
+// read distinct calls and could not say "more than once" -- a ledger row that reads one on a
+// defective tree is a decoration, not an instrument.
+fn pcfs_choice_repeat() -> GrammarExpr {
+  Choice {
+    left: pcfs_alt_under_alpha(right: pcfs_suffix_x()),
+    right: Choice {
+      left: pcfs_alt_under_alpha(right: pcfs_suffix_x()),
+      right: pcfs_alt_under_alpha(right: pcfs_suffix_y())
+    }
+  }
+}
+
+// PROBE B, the contrast production: same shared prefix, same rule, three DISTINCT right children, so
+// each rebuild is a distinct call. A ledger that reads more than one on probe A and one on probe B is
+// discriminating on duplicate demand, not merely on the path being walked.
+fn pcfs_choice_distinct() -> GrammarExpr {
+  Choice {
+    left: pcfs_alt_under_alpha(right: pcfs_suffix_x()),
+    right: Choice {
+      left: pcfs_alt_under_alpha(right: pcfs_suffix_y()),
+      right: pcfs_alt_under_alpha(right: pcfs_terminal(sym: pcfs_class_epsilon))
+    }
+  }
+}
+
+fn pcfs_plan_prefix_is_alpha(expr: PreparedGrammarExpr) -> Bool {
+  match expr {
+    PreparedTerminal { token_class: token_class, stamp: _ } => token_class == pcfs_class_alpha
     _ => false
   }
 }
 
-fn pcfs_plan_is_not_reject(plan: PreparedChoicePlan) -> Bool {
+// Walks the compiled plan the way the parser does, looking for the shared-prefix bucket. The
+// ordered-backtrack arm deliberately returns false: it is the OTHER route, and reading true there
+// would let a probe that never walked the defective path pass a shape claim.
+fn pcfs_plan_holds_shared_prefix(plan: PreparedChoicePlan) -> Bool {
   match plan {
+    ChoiceSharedPrefix { prefix: prefix, suffix: suffix } =>
+      pcfs_plan_prefix_is_alpha(expr: prefix) || pcfs_plan_holds_shared_prefix(plan: suffix)
+    ChoiceTokenPrefix { rows: rows } => pcfs_rows_hold_shared_prefix(rows: rows)
+    ChoiceByToken { on_token: on_token, on_other: on_other, on_end: on_end } =>
+      pcfs_token_map_holds_shared_prefix(entries: on_token) ||
+        pcfs_plan_holds_shared_prefix(plan: on_other) ||
+        pcfs_plan_holds_shared_prefix(plan: on_end)
+    ChoiceByWord { on_word: on_word, on_other: on_other } =>
+      pcfs_word_map_holds_shared_prefix(entries: on_word) ||
+        pcfs_plan_holds_shared_prefix(plan: on_other)
+    ChoiceOrderedBacktrack { alternatives: _ } => false
+    ChoiceParseOne { expr: _ } => false
     ChoiceReject => false
-    _ => true
   }
 }
 
-// CLAIM 1 (shape, true on both legs): the probe with the repeated population earns the shared-prefix
-// rule. If it did not, the instrument would be counting a path the probe never walks, and a claim
-// that never walks the defective path reads one on a defective tree.
+fn pcfs_rows_hold_shared_prefix(rows: List<TokenPrefixRow>) -> Bool {
+  match rows {
+    Empty => false
+    Cons { head: row, tail: tail } =>
+      pcfs_plan_holds_shared_prefix(plan: row.next) || pcfs_rows_hold_shared_prefix(rows: tail)
+  }
+}
+
+fn pcfs_token_map_holds_shared_prefix(entries: Map<Symbol, PreparedChoicePlan>) -> Bool {
+  match sorted_map_keys(m: entries) {
+    Empty => false
+    keys => pcfs_token_keys_hold(entries: entries, keys: keys)
+  }
+}
+
+fn pcfs_token_keys_hold(entries: Map<Symbol, PreparedChoicePlan>, keys: List<Symbol>) -> Bool {
+  match keys {
+    Empty => false
+    Cons { head: k, tail: t } =>
+      pcfs_plan_holds_shared_prefix(plan: pcfs_plan_for(entries: entries, key: k)) ||
+        pcfs_token_keys_hold(entries: entries, keys: t)
+  }
+}
+
+fn pcfs_word_map_holds_shared_prefix(entries: Map<String, PreparedChoicePlan>) -> Bool {
+  match sorted_map_keys(m: entries) {
+    Empty => false
+    keys => pcfs_word_keys_hold(entries: entries, keys: keys)
+  }
+}
+
+fn pcfs_word_keys_hold(entries: Map<String, PreparedChoicePlan>, keys: List<String>) -> Bool {
+  match keys {
+    Empty => false
+    Cons { head: k, tail: t } =>
+      pcfs_plan_holds_shared_prefix(plan: pcfs_word_plan_for(entries: entries, key: k)) ||
+        pcfs_word_keys_hold(entries: entries, keys: t)
+  }
+}
+
+fn pcfs_probe_a_plan() -> PreparedChoicePlan {
+  pcfs_choice_tree_plan(tree: pcfs_prepare_production(expr: pcfs_choice_repeat()).tree)
+}
+
+fn pcfs_probe_b_plan() -> PreparedChoicePlan {
+  pcfs_choice_tree_plan(tree: pcfs_prepare_production(expr: pcfs_choice_distinct()).tree)
+}
+
+fn pcfs_choice_tree_plan(tree: PreparedGrammarExpr) -> PreparedChoicePlan {
+  match tree {
+    PreparedChoice { plan: plan, first: _ } => plan
+    _ => ChoiceReject
+  }
+}
+
+// CLAIM 1 (shape, true on both legs): driving the preparation entry on probe A's production earns
+// the shared-prefix rule. If this fails, the leg never walked the defective path and the leg is void
+// -- which is why it is asserted and printed, not assumed.
 test fn pcfs_probe_a_earns_the_shared_prefix_rule() -> Bool {
-  pcfs_plan_earns_shared_prefix(plan: pcfs_shared_plan(alts: pcfs_alts_repeat()))
+  pcfs_plan_holds_shared_prefix(plan: pcfs_probe_a_plan())
 }
 
-// CLAIM 2 (shape, true on both legs): the contrast probe earns it too, so the two probes differ in
-// duplicate demand only, not in whether the rule fires.
+// CLAIM 2 (shape, true on both legs): the contrast production earns it too, so the two probes differ
+// in duplicate demand only, not in whether the rule fires.
 test fn pcfs_probe_b_earns_the_shared_prefix_rule() -> Bool {
-  pcfs_plan_earns_shared_prefix(plan: pcfs_shared_plan(alts: pcfs_alts_distinct()))
+  pcfs_plan_holds_shared_prefix(plan: pcfs_probe_b_plan())
 }
 
-// CLAIM 3 (workload, true on both legs): both probes carry a choice whose FIRST is exactly the
-// shared class, computed by the same bottom-up union preparation uses. This is what the retained
-// child summary must agree with on the post-change leg.
+// CLAIM 3 (workload, true on both legs): both productions' prepared FIRST is exactly the shared
+// class -- the same summary value the change carries down, computed by the bottom-up union
+// preparation already runs. If the probe's FIRST were not the shared class the probes would not be
+// exercising the summary the ticket is about.
 test fn pcfs_probes_carry_the_shared_class_summary() -> Bool {
-  pcfs_alts_union_is_alpha(alts: pcfs_alts_repeat()) &&
-    pcfs_alts_union_is_alpha(alts: pcfs_alts_distinct())
+  pcfs_prepare_production(expr: pcfs_choice_repeat()).first == pcfs_expected_alpha_fold() &&
+    pcfs_prepare_production(expr: pcfs_choice_distinct()).first == pcfs_expected_alpha_fold()
 }
 
-fn pcfs_alts_union_is_alpha(alts: List<PreparedExprFold>) -> Bool {
-  choice_alts_union_first(alts: alts) == pcfs_expected_alpha_fold()
+fn pcfs_expected_alpha_fold() -> GrammarExprFirstFold {
+  GrammarExprFirstFold {
+    terminals: Cons { head: FirstAnyOfClass { token_class: pcfs_class_alpha }, tail: Empty },
+    nullable: false
+  }
 }
 
 // ----------------------------------------------------------------------------------------------
@@ -469,15 +542,15 @@ data pcfs_dag_prepared_output_bytes: Int = 8608884
 // FAIL of a shape claim can be read rather than guessed at. The claim itself only asserts the work
 // is the shape it claims to be (three alternatives each) and that the write succeeded.
 test fn pcfs_probe_plans_are_instrumented() -> Bool {
-  let serial_a = pcfs_plan(plan: pcfs_shared_plan(alts: pcfs_alts_repeat()))
-  let serial_b = pcfs_plan(plan: pcfs_shared_plan(alts: pcfs_alts_distinct()))
+  let serial_a = pcfs_plan(plan: pcfs_probe_a_plan())
+  let serial_b = pcfs_plan(plan: pcfs_probe_b_plan())
   let text = pcfs_cat3(
     a: "A=",
     b: serial_a,
     c: pcfs_cat3(a: "|B=", b: serial_b, c: "|")
   )
   let written = Filesystem.Write(path: "target/pcfs_probe_plans.txt", content: text)
-  written.success && length(xs: pcfs_alts_repeat()) == 3 && length(xs: pcfs_alts_distinct()) == 3
+  written.success && string_length(text: text) > 0
 }
 
 test fn pcfs_dag_prepared_output_byte_count_matches_recorded() -> Bool {
