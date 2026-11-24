@@ -57,16 +57,17 @@ import gunbc.provisioning.ubuntu_network_origin_observation { ubuntu_noble_amd64
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, Ipv4Parsed, Ipv4ParseFailed, Ipv4WrongOctetCount, parse_ipv4_address }
 import extdeps.network.mac { Eui48Address, MacParseResult, MacParsed, MacParseFailed, MacWrongOctetCount, mac_address, render_mac_address, parse_mac_address }
 import gunbc.host.network_install {
-  network_install_no_requests,
   network_install_requests_for,
 }
 import gunbc.host_command_binding { LocalCommandHost }
 import gunbc.fleet.site_pxe_edge_live_evidence { site_pxe_edge_live_absolute_path, site_pxe_edge_live_cas_path_is, site_pxe_edge_live_cas_path, site_pxe_edge_live_image_is_pinned, site_pxe_edge_live_place_on, site_pxe_edge_live_path_standing, site_pxe_edge_live_trusted_chain_on, site_pxe_edge_live_placement_refusal_reading, PathAsRequired, PathAbsent, PathPresentButNotAsRequired, PathObservationFailed, LiveDoNotPlace, LivePlacementNotAttempted, LivePlaceFromStaging, LivePlacementRefused }
 import extdeps.exec.command { argv_words }
-import gunbc.host.boot_medium_served_readback { RemoteAnswer }
+import gunbc.machine_intake.mtcollins1_census_member_readback { HostLeg, LegAnswered, LegNotDispatched }
 import gunbc.fleet.site_pxe_edge_client_requests { SitePxeEdgeClientRequestReading, ClientRequestsUnread }
-import gunbc.fleet.site_pxe_edge_converge { LiveRoleCensus, site_pxe_edge_live_unread_admission, site_pxe_edge_live_serves, site_pxe_edge_live_files_without_unit }
 import gunbc.fleet.site_pxe_edge_converge {
+  site_pxe_edge_no_install_requests, LiveRoleCensus, site_pxe_edge_live_unread_admission, site_pxe_edge_live_serves, site_pxe_edge_live_files_without_unit }
+import gunbc.fleet.site_pxe_edge_converge {
+  site_pxe_edge_ci_install_requests,
   SitePxeEdgeLiveSource,
   site_pxe_edge_live_client_mac_frontier,
   site_pxe_edge_live_sources,
@@ -1137,12 +1138,16 @@ test fn an_unresolved_seed_origin_name_withholds_the_binding() -> Bool {
 // protection: over the list the standing mode passes, nothing binds, nothing is withheld, and no gate cause is
 // raised — and neither of the fleet's two real NICs appears in the served set.
 //
-// RED: any standing install request returning turns this red, and that is precisely the repeat-wipe path. It is
+// RED: any standing install request returning turns this red -- over THE ARGUMENT SITE the entry
+// actually passes (site_pxe_edge_ci_install_requests, the same call wet makes), not a data row wet
+// bypasses: making the entry's argument non-empty goes red on length AND on equality with the
+// committed withdrawal row. That is precisely the repeat-wipe path. It is
 // NOT softened into "the fold is well behaved": the same fold over a NON-empty request list binds, and that half
 // is witnessed in test.claim.host.network_install_witness (the request 2c derives for bobo binds its measured NIC
 // exactly once), so this claim cannot be satisfied by a fold that binds nothing at all.
 test fn the_standing_converge_binds_no_install_file_at_all() -> Bool {
-  let admissions = map(network_install_no_requests,
+  let entry_requests = site_pxe_edge_ci_install_requests()
+  let admissions = map(entry_requests,
     r => site_pxe_edge_request_admission(request: r, decided_at: witness_decision_at))
   let bindings = site_pxe_edge_request_bindings(admissions: admissions)
   length(site_pxe_edge_request_withheld(admissions: admissions)) == 0
@@ -1150,6 +1155,8 @@ test fn the_standing_converge_binds_no_install_file_at_all() -> Bool {
     && length(bindings) == 0
     && production_request_binds_none(client: srv14_install_client, bindings: bindings)
     && production_request_binds_none(client: srv15_install_client, bindings: bindings)
+    && entry_requests == site_pxe_edge_no_install_requests
+    && length(entry_requests) == 0
 }
 
 fn production_request_binds_none(client: MacParseResult, bindings: List<SitePxeEdgeInstallBinding>) -> Bool {
@@ -2271,8 +2278,12 @@ test fn a_non_sha256_member_digest_is_refused_before_any_write() -> Bool {
   }
 }
 
-fn ans(code: Int, out: String, err: String) -> RemoteAnswer {
-  RemoteAnswer { exit_code: code, stdout: out, stderr: err }
+fn ans(code: Int, out: String, err: String) -> HostLeg {
+  LegAnswered { exit_code: code, stdout: out, stderr: err }
+}
+
+fn not_dispatched(why: String) -> HostLeg {
+  LegNotDispatched { reason: why }
 }
 
 // Fox fix 1: absent is ONLY find's own "No such file or directory"; a refused or failed observation is never absence (the old `stat -c %F` was refused by the fleet
@@ -2284,7 +2295,7 @@ test fn only_a_find_no_such_file_is_absence_and_every_other_failure_refuses() ->
   let linked = match site_pxe_edge_live_path_standing(path: p, as_required: ans(code: 0, out: "", err: ""), anything: ans(code: 0, out: "/srv/tftp/live\n", err: "")) { PathPresentButNotAsRequired => true  _ => false }
   let boundary = match site_pxe_edge_live_path_standing(path: p, as_required: ans(code: 255, out: "", err: "refused: argument contains %"), anything: ans(code: 255, out: "", err: "refused: argument contains %")) { PathObservationFailed { reason: _ } => true  _ => false }
   let denied = match site_pxe_edge_live_path_standing(path: p, as_required: ans(code: 1, out: "", err: "Permission denied"), anything: ans(code: 1, out: "", err: "Permission denied")) { PathObservationFailed { reason: _ } => true  _ => false }
-  let undispatched = match site_pxe_edge_live_path_standing(path: p, as_required: ans(code: -1, out: "", err: "not dispatched: ssh executable: No such file or directory"), anything: ans(code: -1, out: "", err: "not dispatched: ssh executable: No such file or directory")) { PathObservationFailed { reason: _ } => true  _ => false }
+  let undispatched = match site_pxe_edge_live_path_standing(path: p, as_required: not_dispatched("ssh executable: No such file or directory"), anything: not_dispatched("ssh executable: No such file or directory")) { PathObservationFailed { reason: _ } => true  _ => false }
   let other_path = match site_pxe_edge_live_path_standing(path: p, as_required: ans(code: 1, out: "", err: "find: '/elsewhere': No such file or directory"), anything: ans(code: 1, out: "", err: "find: '/elsewhere': No such file or directory")) { PathObservationFailed { reason: _ } => true  _ => false }
   let prefix_collision = match site_pxe_edge_live_path_standing(path: p, as_required: ans(code: 1, out: "", err: "find: '/srv/tftp/live-other': No such file or directory"), anything: ans(code: 1, out: "", err: "find: '/srv/tftp/live-other': No such file or directory")) { PathObservationFailed { reason: _ } => true  _ => false }
   required && absent && linked && boundary && denied && undispatched && other_path && prefix_collision

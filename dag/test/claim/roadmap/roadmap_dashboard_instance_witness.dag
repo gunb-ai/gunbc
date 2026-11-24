@@ -1355,12 +1355,11 @@ test fn an_outside_instance_claiming_a_public_id_on_that_footprint_is_refused() 
   )
 }
 
-// THE LAB PUBLISHES INTO ITS INTEGRATION BRANCH, THE LIVE INSTANCE INTO MAIN. The lab's dispatch_base_ref
-// still reads "origin/main" (its source repository's origin/main is rewritten to the admitted lab-dev
-// revision), so the old derivation -- strip "origin/" -- offered lab attempts against GitHub main. RED
-// on lab-dev cf420d9, where dispatch_base_branch(lab) was "main".
-test fn the_lab_publishes_into_its_integration_branch_and_live_into_main() -> Bool {
-  (dispatch_base_branch(instance: srv1_lab_dashboard_instance()) as String) == "bright-moth-475/lab-dev"
+// THE LAB AND THE LIVE INSTANCE BOTH PUBLISH INTO MAIN (gunbc.design_ruling::lab_tracks_main_lab_dev_retired_2026_11_22).
+// Each instance still states its publication branch rather than deriving it; RED on 4a63370f4a67, where
+// the lab's was the retired bright-moth-475/lab-dev.
+test fn the_lab_and_live_publish_into_main() -> Bool {
+  (dispatch_base_branch(instance: srv1_lab_dashboard_instance()) as String) == "main"
     && (dispatch_base_branch(instance: srv1_live_dashboard_instance()) as String) == "main"
 }
 

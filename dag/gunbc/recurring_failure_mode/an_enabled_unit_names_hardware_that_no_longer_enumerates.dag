@@ -1,0 +1,49 @@
+module gunbc.recurring_failure_mode.an_enabled_unit_names_hardware_that_no_longer_enumerates
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode, BelowCeiling, FoundOnRung, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+import std.decl_ref { DeclarationRef }
+
+data an_enabled_unit_names_hardware_that_no_longer_enumerates: RecurringFailureMode = RecurringFailureMode {
+  // THE HARDWARE LEFT AND THE UNIT DID NOT. The tree knew the boards were gone; nothing read the
+  // unit's standing against that knowledge, so the machine kept preparing to start a service that
+  // can only fail.
+
+  identity: "an_enabled_unit_names_hardware_that_no_longer_enumerates" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundOnRung { rung: Mitigatable },
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: StructurallyGuaranteed,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "for every unit a host's desired state enables, the hardware that unit declares it depends on is enumerated on THAT host and the two are compared -- a unit whose device class returns nothing is an orphan, and the orphan is refused at roster admission and reported at boot rather than started into failure; the read's cadence is no longer the open question it was when this row was written: the operator ruled on 2026-11-21 that it rides the existing per-host converge route as an observe-only mode (gunbc.design_ruling::fleet_truth_read_rides_the_converge_timer_2026_11_21), so what stands between this row and its ceiling is the build, not a decision"
+    }
+  },
+
+  receipts: [
+    "**INVALID STATE: a device is removed from a machine and the systemd unit that exists to serve that device stays enabled. The machine's desired state now names hardware it does not have; the unit is started at every boot into a machine that cannot honor it; and no judgment between the removal and the boot compares the two, because the removal lives in one set of rows and the unit's enabledness lives in the host.**",
+
+    "SPECIMEN ONE, 2026-11-21, butch (operator_host_srv14): the four NVIDIA A2 boards are gone from PCI -- the report's read is `lspci | grep -ci nvidia` returning zero, with no nvidia modules loaded -- while strata-pool@a and strata-pool@b remain ENABLED and would start at boot. The tree knew the boards had gone (gunbc.fleet.fleet_physical_inventory records the 2026-11-17 removal, by operator report) and knew who would retire the engines (gunbc.design_ruling::butch_serving_retirement_is_operator_handled_2026_11_21: the operator does it personally, outside the converge route, and states that butch's admission as a remote-build host waits on a read of the host showing those units gone). What no row holds is the read itself: whether the unit is still enabled on the machine is a fact the model defers to a read that does not yet exist. Knowing the hardware left and reading that the unit is still enabled are different judgments, and only the second closes the host.",
+
+    "SPECIMEN TWO, 2026-11-21, dan (operator_host_6ce85c, the host the report calls h11): strata-expert-lock.service is enabled and pins GiB of memory for A16s that have been removed. It has done this at every boot since the boards left, serving nothing, while holding memory no other role can use.",
+
+    "THE CLASS, STATED AS THE REPORT STATES IT: hardware removed, dependent unit stays enabled, nothing notices. This is gunbc.design_argument::consumption at run time -- the fact that the hardware is gone exists in the tree, the unit's enablement exists on the host, and no consumer joins them. Note the asymmetry that makes this row more than a bookkeeping slip: the orphaned unit pins a resource (memory, a slice, a boot slot) that other roles then cannot use, so the stale desired state is not merely wrong, it is costly.",
+
+    "RECOGNITION RULE: for each unit the host's desired state enables, does the hardware it depends on enumerate on that host? The join is device-class against PCI/system enumeration, not unit-name against a list of expected units -- a unit renamed or templated still passes the second test and fails the first.",
+
+    "CEILING AND BLOCKER: StructurallyGuaranteed -- once every enabled unit declares the device class it depends on and the read compares that class against the host's enumeration at admission and at boot, an orphan cannot be silently carried: it is either refused a roster place or reported at boot. The climb awaits one grounding, and it is not a builder: the scheduled half of the read is governed by gunbc.design_ruling::job_roster_closed_to_growth, which closes the scheduled-job roster to growth without an operator decision. The unscheduled half -- reading the host when a roster admits it -- is climbable now and should be built now.",
+
+    "NEXT TRIGGER: the next host admitted to a build or serving roster without a machine read behind it, or the next boot where a unit starts into hardware that is not there. Either closes the loop the report describes.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.plans.desired_state_follows_the_machine", decl_name: "desired_state_follows_the_machine_plan", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.design_ruling", decl_name: "fleet_truth_read_rides_the_converge_timer_2026_11_21", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.fleet.fleet_physical_inventory", decl_name: "butch_a2s_removed_pending_sale", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.fleet.gpu_device_observation", decl_name: "current_gpu_device_observations", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.systemctl_show_read", decl_name: "systemctl_show_property_read", field: WholeDeclaration },
+  ]
+}

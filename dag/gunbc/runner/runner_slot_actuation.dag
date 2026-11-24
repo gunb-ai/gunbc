@@ -41,8 +41,8 @@ import extdeps.sudo.elevation { sudo_elevate }
 import gunbc.executor_privileged_operation {
   ExecutorPrivilegedOperation, SystemdUnmaskUnit, SystemdEnableUnit, SystemdStartUnit, executor_privileged_operation_argv,
 }
-import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
-import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
+import gunbc.fleet.fleet_known_hosts_anchor { ProbeLeg, ActuationLeg,FleetLegKind,FleetSshExecutionContext, SshTarget }
+import gunbc.typed_argv_exec {  typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason }
 import gunbc.runner.runner_slot_provision { runner_slot_instance_dir }
 import gunbc.runner.runner_slot_retirement { control_group_property_means_cgroup_absent }
 import gunbc.runner.runner_unit { read_runner_unit_name, RunnerUnitInstance, NotARunnerUnit, RunnerUnitInstanceMalformed }
@@ -699,7 +699,8 @@ type SlotReadOutcome
 
 fn read_slot_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> SlotReadOutcome
 {
-  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: systemctl_show_properties_argv(units: [unit], properties: slot_actuation_show_properties)) {
+  match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,target: target, context: context, argv: systemctl_show_properties_argv(units: [unit], properties: slot_actuation_show_properties)) {
+  TypedArgvExecOverran { deadline: d } => SlotReadRefused { reason: typed_argv_exec_overran_reason(leg_hint: "runner slot actuation", deadline: d) }
     TypedArgvExecRefused { reason: why } => SlotReadRefused { reason: why }
     TypedArgvExecConverged { result: r } =>
       if !r.success {
@@ -784,7 +785,8 @@ fn slot_activity_with_task_count(listing: SlotActivityObservation, tasks: SlotTa
 
 fn read_slot_task_count_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> SlotTaskCount
 {
-  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: systemctl_show_properties_argv(units: [unit], properties: [ControlGroup, TasksCurrent])) {
+  match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,target: target, context: context, argv: systemctl_show_properties_argv(units: [unit], properties: [ControlGroup, TasksCurrent])) {
+  TypedArgvExecOverran { deadline: d } => SlotTasksUnread { cause: typed_argv_exec_overran_reason(leg_hint: "runner slot actuation", deadline: d) }
     TypedArgvExecRefused { reason: why } => SlotTasksUnread { cause: why }
     TypedArgvExecConverged { result: r } =>
       if !r.success {
@@ -797,7 +799,8 @@ fn read_slot_task_count_over(target: SshTarget, context: FleetSshExecutionContex
 
 fn read_slot_worker_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> SlotActivityObservation
 {
-  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: ps_unit_comm_listing_argv()) {
+  match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,target: target, context: context, argv: ps_unit_comm_listing_argv()) {
+  TypedArgvExecOverran { deadline: d } => SlotActivityUnobserved { cause: typed_argv_exec_overran_reason(leg_hint: "runner slot actuation", deadline: d) as NonEmptyStr }
     TypedArgvExecRefused { reason: why } => SlotActivityUnobserved { cause: why as NonEmptyStr }
     TypedArgvExecConverged { result: r } =>
       if !r.success {
@@ -813,12 +816,13 @@ fn read_slot_worker_over(target: SshTarget, context: FleetSshExecutionContext, u
   }
 }
 
-fn run_slot_steps_over(target: SshTarget, context: FleetSshExecutionContext, steps: List<List<String>>) -> String?
+fn run_slot_steps_over(target: SshTarget, context: FleetSshExecutionContext, kind: FleetLegKind, steps: List<List<String>>) -> String?
 {
   fold(steps, init: none, f: (acc, step) => match acc {
     Present { value: _ } => acc
     Absent =>
-      match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: slot_actuation_elevated(command: step)) {
+      match typed_argv_exec_over_fleet_ssh(kind: kind,target: target, context: context, argv: slot_actuation_elevated(command: step)) {
+      TypedArgvExecOverran { deadline: d } => Present { value: join([join(step, " "), ": ", typed_argv_exec_overran_reason(leg_hint: "runner slot actuation", deadline: d)], "") }
         TypedArgvExecRefused { reason: why } => Present { value: join([join(step, " "), ": ", why], "") }
         TypedArgvExecConverged { result: r } =>
           if r.success { none } else { Present { value: join([join(step, " "), " exit=", to_string(r.exit_code), " ", trim(s: r.stderr)], "") } }
@@ -828,7 +832,7 @@ fn run_slot_steps_over(target: SshTarget, context: FleetSshExecutionContext, ste
 
 // ── The two effects ─────────────────────────────────────────────────────────────────────────────
 
-fn activate_runner_slot_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> SlotActuationOutcome
+fn activate_runner_slot_over(target: SshTarget, context: FleetSshExecutionContext, kind: FleetLegKind, unit: NonEmptyStr) -> SlotActuationOutcome
 {
   match read_slot_over(target: target, context: context, unit: unit) {
     SlotReadRefused { reason: why } => SlotActuationRefused { unit: unit, step: "read", reason: why }
@@ -837,7 +841,7 @@ fn activate_runner_slot_over(target: SshTarget, context: FleetSshExecutionContex
         ActivationRefused { reason: why } => SlotActuationRefused { unit: unit, step: "plan", reason: why }
         ActivationAlreadyActive => SlotActuationNoop { unit: unit, state: "active" }
         ActivationSteps { steps: ss } =>
-          match run_slot_steps_over(target: target, context: context, steps: ss) {
+          match run_slot_steps_over(target: target, context: context, kind: ActuationLeg, steps: ss) {
             Present { value: why } => SlotActuationRefused { unit: unit, step: "activate", reason: why }
             Absent =>
               match read_slot_over(target: target, context: context, unit: unit) {
@@ -848,7 +852,8 @@ fn activate_runner_slot_over(target: SshTarget, context: FleetSshExecutionContex
                     // more read after the restart interval has passed. Slow-but-real starts pass on the
                     // second read; a unit whose ExecStart cannot run (a missing target reads 203) is by
                     // then in its auto-restart wait and the second read refuses with the unit's own words.
-                    match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: slot_activation_settle_argv()) {
+                    match typed_argv_exec_over_fleet_ssh(kind: kind, target: target, context: context, argv: slot_activation_settle_argv()) {
+                    TypedArgvExecOverran { deadline: d } => SlotActuationRefused { unit: unit, step: "settle", reason: typed_argv_exec_overran_reason(leg_hint: "runner slot actuation", deadline: d) }
                       TypedArgvExecRefused { reason: why } => SlotActuationRefused { unit: unit, step: "settle", reason: why }
                       TypedArgvExecConverged { result: _ } =>
                         match read_slot_over(target: target, context: context, unit: unit) {
@@ -893,7 +898,7 @@ fn restart_runner_slot_over(target: SshTarget, context: FleetSshExecutionContext
       match slot_restart_plan(r: r, standing: standing, lost: lost) {
         RestartRefused { reason: why } => SlotActuationRefused { unit: unit, step: "plan", reason: why }
         RestartSteps { steps: ss } =>
-          match run_slot_steps_over(target: target, context: context, steps: ss) {
+          match run_slot_steps_over(target: target, context: context, kind: ActuationLeg, steps: ss) {
             Present { value: why } => SlotActuationRefused { unit: unit, step: "restart", reason: why }
             Absent =>
               match read_slot_over(target: target, context: context, unit: unit) {
@@ -928,17 +933,17 @@ fn drain_runner_slot_under_over(target: SshTarget, context: FleetSshExecutionCon
         DrainUnitNotInstalled => SlotNotInstalled { unit: unit }
         DrainRefused { reason: why } => SlotActuationRefused { unit: unit, step: "plan", reason: why }
         DrainWaitForJob { mask: m } =>
-          match run_slot_steps_over(target: target, context: context, steps: m) {
+          match run_slot_steps_over(target: target, context: context, kind: ActuationLeg, steps: m) {
             Present { value: why } => SlotActuationRefused { unit: unit, step: "mask", reason: why }
             Absent => SlotDrainPending { unit: unit, cause: match admission { MaskWhileRunning => DrainPendingJobRunning NeverMaskARunningUnit => DrainPendingJobRunningLeftUnmasked } }
           }
         DrainWaitForStop { mask: m } =>
-          match run_slot_steps_over(target: target, context: context, steps: m) {
+          match run_slot_steps_over(target: target, context: context, kind: ActuationLeg, steps: m) {
             Present { value: why } => SlotActuationRefused { unit: unit, step: "mask", reason: why }
             Absent => SlotDrainPending { unit: unit, cause: match admission { MaskWhileRunning => DrainPendingStopInProgress NeverMaskARunningUnit => DrainPendingStopInProgressLeftUnmasked } }
           }
         DrainSteps { steps: ss } =>
-          match run_slot_steps_over(target: target, context: context, steps: ss) {
+          match run_slot_steps_over(target: target, context: context, kind: ActuationLeg, steps: ss) {
             Present { value: why } => SlotActuationRefused { unit: unit, step: "drain", reason: why }
             Absent =>
               match read_slot_over(target: target, context: context, unit: unit) {
@@ -1012,7 +1017,8 @@ fn slot_registration_unreadable(instance: NonEmptyStr, cause: String) -> SlotReg
 // on is a refusal nobody can act on.
 fn read_slot_registration_over(target: SshTarget, context: FleetSshExecutionContext, instance: NonEmptyStr) -> SlotRegistrationIdentity
 {
-  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: slot_registration_file_command(instance: instance)) {
+  match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,target: target, context: context, argv: slot_registration_file_command(instance: instance)) {
+  TypedArgvExecOverran { deadline: d } => slot_registration_unreadable(instance: instance, cause: typed_argv_exec_overran_reason(leg_hint: "runner slot actuation", deadline: d))
     TypedArgvExecRefused { reason: why } => slot_registration_unreadable(instance: instance, cause: why)
     TypedArgvExecConverged { result: r } =>
       if !r.success {
@@ -1075,7 +1081,8 @@ type SlotLocalObservation
 
 fn slot_main_pid_raw_over(target: SshTarget, context: FleetSshExecutionContext, unit: NonEmptyStr) -> String
 {
-  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: systemctl_show_properties_argv(units: [unit], properties: [IdProperty, MainPID])) {
+  match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,target: target, context: context, argv: systemctl_show_properties_argv(units: [unit], properties: [IdProperty, MainPID])) {
+  TypedArgvExecOverran { deadline: d } => concat("unread:", typed_argv_exec_overran_reason(leg_hint: "runner slot actuation", deadline: d))
     TypedArgvExecRefused { reason: why } => concat("unread:", why)
     TypedArgvExecConverged { result: r } =>
       if !r.success {
@@ -1093,7 +1100,8 @@ fn slot_main_pid_raw_over(target: SshTarget, context: FleetSshExecutionContext, 
 // ONE READ OF A /proc TEXT over the edge; a refused or failed read is Absent (unread), never an empty text.
 fn slot_proc_text_over(target: SshTarget, context: FleetSshExecutionContext, path: String) -> String?
 {
-  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv_words(command: cat_command(path: path))) {
+  match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,target: target, context: context, argv: argv_words(command: cat_command(path: path))) {
+  TypedArgvExecOverran { deadline: d } => none
     TypedArgvExecRefused { reason: _ } => none
     TypedArgvExecConverged { result: r } => if r.success { Present { value: r.stdout } } else { none }
   }
@@ -1176,7 +1184,8 @@ fn slot_main_process_over(target: SshTarget, context: FleetSshExecutionContext, 
 // ratio between the real rate and the guess.
 fn slot_command_text_over(target: SshTarget, context: FleetSshExecutionContext, command: ArgvCommand) -> String?
 {
-  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv_words(command: command)) {
+  match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,target: target, context: context, argv: argv_words(command: command)) {
+  TypedArgvExecOverran { deadline: d } => none
     TypedArgvExecRefused { reason: _ } => none
     TypedArgvExecConverged { result: r } => if r.success { Present { value: r.stdout } } else { none }
   }

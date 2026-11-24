@@ -34,7 +34,7 @@ import v2.compiler.parse {
   PreparedChoice,
   PreparedChoicePlan,
   compile_choice_alts,
-  grammar_validate_for_parse,
+  grammar_validate_and_analyze,
   parse_expr,
   parse_expr_with_first,
   parse_prov_initial,
@@ -77,7 +77,7 @@ fn pcp_choice_root(expr: GrammarExpr) -> GrammarRoot {
 }
 
 fn pcp_validate_accepts(expr: GrammarExpr) -> Bool {
-  match grammar_validate_for_parse(
+  match grammar_validate_and_analyze(
     root: pcp_choice_root(expr: expr),
     at: invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^pcp_grammar_contract)
   ) {
@@ -87,7 +87,7 @@ fn pcp_validate_accepts(expr: GrammarExpr) -> Bool {
 }
 
 fn pcp_validate_rejects(expr: GrammarExpr) -> Bool {
-  match grammar_validate_for_parse(
+  match grammar_validate_and_analyze(
     root: pcp_choice_root(expr: expr),
     at: invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^pcp_grammar_contract)
   ) {
@@ -125,13 +125,13 @@ fn pcp_from_parse(result: ParseExprResult) -> ChoiceParseObservation {
 // through parse_table_empty (ordered try-left-then-right).
 fn pcp_observe(expr: GrammarExpr, tokens: List<Token>) -> ChoiceParseObservation {
   let root = pcp_choice_root(expr: expr)
-  match grammar_validate_for_parse(
+  match grammar_validate_and_analyze(
     root: root,
     at: invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^pcp_grammar_contract)
   ) {
     Rejected { diagnostics: _ } => ObservedRejected
-    Accepted { value: validated, diagnostics: _ } =>
-      let table = parse_table_for_production(validated: validated, all_tokens: tokens)
+    Accepted { value: modeled, diagnostics: _ } =>
+      let table = parse_table_for_production(modeled: modeled, all_tokens: tokens)
       match map_lookup(m: table.prepared_exprs, key: root.start) {
         Absent => ObservedRejected
         Present { value: prepared } =>
@@ -420,7 +420,7 @@ fn pcp_same_suffix_class_pair() -> GrammarExpr {
 }
 
 fn pcp_validate_refuses_as_overlap_at_start(expr: GrammarExpr) -> Bool {
-  match grammar_validate_for_parse(
+  match grammar_validate_and_analyze(
     root: pcp_choice_root(expr: expr),
     at: invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^pcp_grammar_contract)
   ) {

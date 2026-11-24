@@ -6,6 +6,7 @@ import gunbc.live_deploy.repository_convergence { repository_converge_wet }
 import extdeps.shell
 import extdeps.shell.exec
 import extdeps.git
+import gunbc.git_workdir_free_route { run_git_argv_workdir_free, git_workdir_free_succeeded }
 import extdeps.filesystem.filesystem_io
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.algebra { trim }
@@ -43,7 +44,9 @@ fn bootstrap_scratch(populated: Bool) -> BootstrapScratch? {
   let root = dir.path as String
   let source = concat(root, "/source")
   let repo = concat(root, "/repo")
-  let init = shell.Exec.RunArgv(program: "git", arguments: ["init", "-q", source])
+  let init = run_git_argv_workdir_free(
+    argv: shape_git_init_in_parent_args(parent: root, leaf: "source"),
+  )
   let email = git.Core.ConfigLocalSetInRepo(repo: source as FilePath, key: "user.email", value: "witness@example.invalid")
   let name = git.Core.ConfigLocalSetInRepo(repo: source as FilePath, key: "user.name", value: "witness")
   let wrote = Filesystem.Write(path: concat(source, "/tracked"), content: "candidate-bytes")
@@ -52,7 +55,7 @@ fn bootstrap_scratch(populated: Bool) -> BootstrapScratch? {
   let head = git.Core.RevParseInRepo(repo: source as FilePath, target: "HEAD" as GitRef)
   let made = shell.Exec.RunArgv(program: "mkdir", arguments: ["-p", repo])
   let stray = if populated { Filesystem.Write(path: concat(repo, "/stray-file"), content: "stray").success } else { true }
-  if dir.success && init.exit_code == 0 && email.success && name.success && wrote.success && added.exit_code == 0 && committed.exit_code == 0 && head.exit_code == 0 && made.exit_code == 0 && stray {
+  if dir.success && git_workdir_free_succeeded(run: init) && email.success && name.success && wrote.success && added.exit_code == 0 && committed.exit_code == 0 && head.exit_code == 0 && made.exit_code == 0 && stray {
     Present { value: BootstrapScratch { root: root, repo: repo, source: source, candidate: trim(s: head.revision) } }
   } else { none }
 }
@@ -80,9 +83,11 @@ test fn an_empty_root_is_bootstrapped_to_the_candidate_and_reads_back_as_that_re
     Present { value: s } => {
       let outcome = run_bootstrap(s: s)
       let head = git.Core.RevParseInRepo(repo: s.repo as FilePath, target: "HEAD" as GitRef)
-      let diff = shell.Exec.RunArgv(program: "git", arguments: ["-C", s.repo, "diff", "--quiet", "HEAD", "--"])
+      let diff = run_git_argv_workdir_free(
+        argv: shape_git_diff_quiet_head_in_repo_args(repo: s.repo),
+      )
       let tracked = Filesystem.Read(path: concat(s.repo, "/tracked"))
-      let read_back = head.exit_code == 0 && trim(s: head.revision) == s.candidate && diff.exit_code == 0 && tracked.success && tracked.content == "candidate-bytes"
+      let read_back = head.exit_code == 0 && trim(s: head.revision) == s.candidate && git_workdir_free_succeeded(run: diff) && tracked.success && tracked.content == "candidate-bytes"
       let cleaned = remove_scratch(s: s)
       match outcome { ExitSuccess => read_back && cleaned  ExitFailure { reason: _ } => false }
     }

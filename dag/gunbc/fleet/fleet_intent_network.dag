@@ -128,18 +128,19 @@ data srv4_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
   locality: Lan,
 }
 
-// srv14/butch's LAN endpoints, read on butch 2026-11-10 (ip -br addr / dmidecode, over the
-// fleet-automation key). HOST NIC enP2p4s0, MAC 9c:6b:00:e7:ca:9c, at 192.168.1.205/24 -- currently a
-// DHCP-assigned address, NOT yet reserved on the router: a router DHCP reservation for this MAC is an
-// OPERATOR-GATED step (named in the PR; gunbc.plans.new_server_bringup tracks it). The address is modeled
-// as observed today, and host_lan_address(operator_host_srv14) reads this row, so downstream consumers
-// (probe, the derived RunnerHostSpec ssh_target) dial 192.168.1.205 WITHOUT relying on `srv14` resolving
-// in DNS -- srv14 does not resolve (butch.mynetworksettings.com does), which is why the address comes from
-// this topology row and not from the bare host identity.
+// srv14/butch's LAN endpoints. AS OF 2026-11-17 this row is a DHCP LEASE OBSERVATION, not intent: the
+// operator withdrew butch's router rows (butch-a id 19566, butch-b) and the lease moved -- the host now
+// dials 192.168.1.238/24 on NIC enP3p3s0f1, MAC 9c:6b:00:e7:ca:9b (operator live read 2026-11-17T22:36Z,
+// msg_0ac59f6c; the originally modeled NIC enP2p4s0 / MAC 9c:6b:00:e7:ca:9c is no-carrier). Hosts are
+// REACHED BY THEIR TAILNET NAME (operator ruling 2026-11-17): the runner spec and every actuation anchor
+// read gunbc.fleet.fleet_tailnet, never this address. Its ONE remaining consumer is the first-contact hop
+// (gunbc.fleet.fleet_known_hosts_anchor): hostname_converge and tailscale_join_converge may dial this
+// address, verifying the enrolled host key, ONLY while srv14 has no tailnet anchor row; every other mode
+// refuses pre-anchor. The lease is dynamic -- nothing durable may bind to it.
 data srv14_host_lan_endpoint: NetworkEndpoint = NetworkEndpoint {
   label: "srv14-host-lan",
   subject: EndpointHost { host: operator_host_srv14 },
-  address: "192.168.1.205",
+  address: "192.168.1.238",
   role: HostOperatingSystem,
   locality: Lan,
 }

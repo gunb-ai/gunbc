@@ -5,14 +5,13 @@ import std.types { String, Bool, Int, List, FilePath, NonEmptyStr }
 import extdeps.shell
 import gunbc.output_policy { OutcomeIsData }
 import extdeps.gunbc
-import gunbc.typed_argv_exec {
+import gunbc.typed_argv_exec { 
   TypedArgvExecConverged,
   TypedArgvExecRefused,
   typed_argv_probe_over_ssh,
   typed_argv_exec_over_ssh,
   typed_argv_exec_over_ssh_with_stdin,
-  TypedArgvExecOutcome,
-}
+  TypedArgvExecOutcome, TypedArgvExecOverran, typed_argv_exec_overran_reason }
 import gunbc.roadmap.roadmap_dashboard_instance {
   dashboard_provision_transport,
   HostDashboardInstance,
@@ -82,6 +81,10 @@ fn dashboard_target_ran_of_typed_argv(outcome: TypedArgvExecOutcome) -> Dashboar
     TypedArgvExecConverged { result } =>
       TargetRan { exit_code: result.exit_code, success: result.success, stdout: result.stdout, stderr: result.stderr }
     TypedArgvExecRefused { reason } => TargetNotRun { reason: reason }
+    // A leg that ran past its ceiling never answered, so the target did not run: the non-success arm,
+    // never TargetRan with a fabricated exit code.
+    TypedArgvExecOverran { deadline: d } =>
+      TargetNotRun { reason: typed_argv_exec_overran_reason(leg_hint: "dashboard instance target", deadline: d) }
   }
 }
 

@@ -16,7 +16,7 @@ import v2.std.kind { TypeDenotationKind, TypeFactKind, kind_node }
 import v2.compiler.translate { coerce_grounded_node }
 import v2.compiler.target_serialize { target_serialize_source_from_model }
 import v2.compiler.parse {
-  grammar_validate_for_parse,
+  grammar_validate_and_analyze,
   parse_production,
 }
 import v2.std.grammar {
@@ -99,12 +99,12 @@ fn ingest_fixture_root() -> GrammarRoot {
 
 fn ingest_parse() -> Outcome<Node> {
   let at = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^ingest_bridge_test_grammar_contract)
-  match grammar_validate_for_parse(root: ingest_fixture_root(), at: at) {
+  match grammar_validate_and_analyze(root: ingest_fixture_root(), at: at) {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    Accepted { value: validated, diagnostics: _ } =>
+    Accepted { value: modeled, diagnostics: _ } =>
       match parse_production(
         tokens: Cons { head: ingest_fixture_token(), tail: Empty },
-        validated: validated,
+        modeled: modeled,
         production_name: ^ingest_fixture_start
       ) {
         Rejected { diagnostics: d } => Rejected { diagnostics: d }

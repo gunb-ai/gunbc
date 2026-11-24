@@ -1,0 +1,516 @@
+module test.claim.compute.compute_recover_catalog_witness
+
+// WHAT THE RECOVERY CENSUS OWS ITS READER, ON REAL SLOTS IN REAL SEAT DIRECTORIES.
+//
+// gunbc.compute.work_provider_local compute_recover_catalog is the reading a DECLARED FUTURE caller plans
+// from -- the serving converge's recovery leg, which is this roadmap node's next increment and whose trigger
+// is the serve route resolving again (done by #16828); this change ships no such leg. The reading walks
+// every seat directory the host owns, lists each one's attempt slots, and renders
+// for each reference the answer gunbc.compute.attempt_lifecycle recovery_write_authorization returns for
+// that record against the unit's live
+// lifecycle -- and that rendering IS gunbc.compute.attempt_lifecycle recovery_write_authorization, the one
+// authority the write path consumes for its own outcome. Each claim below therefore asks BOTH the census and
+// the door (compute_recover_attempt) about the same real record and requires the same arm from each: a record
+// inside its window is a hold to the census and a decline from the door; a terminal record whose unit end is
+// not proven is an unknown observation to the census and a refusal from the door; a record past its declared
+// window is a fire to the census and the door does not decline it.
+// The leg that follows plans one write per reference the census marks fire, so everything it trusts rests on
+// these facts, each with its red here:
+//
+//   1. a seat with no slots contributes NO reference. The census of a store nobody has written to is not a
+//      reason to act (attempt_slot_keys' own warning: a store that is not there is never a release trigger).
+//   2. an attempt still inside its declared pre-launch window is a HOLD, and the door declines it. A producer
+//      that has not exceeded the window it asked for is not dead, and its charge stays where it is.
+//   3. an attempt whose record is terminal but whose unit's end is NOT proven is neither a fire nor a hold:
+//      the authorization REFUSES, and the census reports the OBSERVATION unknown naming the reference, while
+//      the door refuses the same record. The terminal record is the reason to look, never the proof --
+//      releasing on it would return a seat whose attempt may still be using memory -- and an unreadable unit
+//      observer is a broken observation, not a verdict. (This host is the case: the user manager cannot be
+//      queried for the unit, so the lifecycle is unknown here. A host whose manager answers is where the same
+//      record reads fire -- see the live serving run.)
+//   4. an attempt whose declared launch window has PASSED is a FIRE, in recovery_trigger's own words, and the
+//      door does not decline it. This is the swept-holder shape the leg exists for: a record reserved, never
+//      launched, past the deadline it declared. The census must say so, or the leg plans nothing and the seat
+//      stays charged forever.
+//   5. the same reference holding slots in two seat directories makes the OBSERVATION unknown, and an
+//      unknown observation plans nothing. The write path refuses that shape outright
+//      (compute_recover_attempt_at); the census must not be more certain than the write.
+//
+// And the census writes nothing: the last claim censuses the same slot twice and gets the same answer both
+// times. A census that settled a slot would flip its own answer, and a "read-only" door that wrote would be
+// a second write path beside compute_recover_attempt.
+//
+// The stores are real durable slot stores under a directory the test owns, minted the way the provider mints
+// them -- the same shape test.claim.compute.attempt_lifecycle_wet_witness drives its controls through. The
+// claims read the host clock and the host's unit observer for real, so they are run WITHOUT --claim-run:
+// --claim-run routes those host effects through the hermetic mock table, and a mocked clock or process probe
+// would make these verdicts agree with authored data instead of the host. run_compute_recover_catalog_witness
+// is the entry for that run: it evaluates every claim and returns the process exit the lane reads.
+
+import std.types { Bool, String, NonEmptyStr, FilePath }
+import std.optional { Present, Absent }
+import std.measure { kibibyte }
+import std.algebra { count_where, string_contains }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import extdeps.shell
+import gunbc.host.host_layout { srv1_host_layout }
+import gunbc.deployment_risk { deployment_id }
+import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating }
+import gunbc.compute.attempt_lifecycle {
+  attempt_slot_read, attempt_open, AttemptSlotHeld, AttemptSlotAbsent, AttemptSlotUnreadable,
+  AttemptWorkEnded,
+  AttemptAdvanced, AttemptLostRace, AttemptTransitionRefused,
+  RecoveryWriteTerminateAndRelease, RecoveryWriteReleaseSettled, RecoveryWriteDeclined, RecoveryWriteRefused,
+}
+import gunbc.compute.compute_attempt_slots_root {
+  ComputeFlatSeat, ComputeDispatchSeat, ComputeSeat, ComputeSeatStore, ComputeSeatStoreReady, ComputeSeatStoreUnready,
+  compute_seat_path, compute_seat_store,
+}
+import gunbc.compute.work_request { WorkEndedSucceeded }
+import gunbc.compute.work_provider_local {
+  RecoverCatalogEstablished, RecoverCatalogUnknown, RecoverCatalogEntry,
+  ComputeRecovery, RecoveryReleased, RecoverySettledButHeld, RecoveryNothingHeld, RecoveryDeclined, RecoveryRefused,
+  compute_recover_attempt,
+  compute_recover_catalog_for, compute_recover_catalog_entry_line, compute_recover_catalog_cli, compute_attempt_record,
+  compute_recover_catalog_serving_cli, compute_recover_serving_cli, compute_recover_readback_serving_cli,
+  compute_open_attempt, compute_settle_attempt,
+  AttemptGate, AttemptGateReady, AttemptGateRefused, AttemptOwner, DirectInvocation, DispatchOwned,
+  AttemptSettlement, AttemptSettled, AttemptNotSettled, AttemptUnsettleable,
+}
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable, CliWireUnprintable }
+
+// A DIRECTORY THIS CLAIM OWNS, created per claim: srv1 hosts several runner instances sharing /tmp, and a
+// fixed path across claims or runners is the hazard gunbc.recurring_failure_mode
+// wet_witness_keyed_to_the_runner_not_its_subject files.
+fn witness_root(kind: String) -> String {
+  shell.Mktemp.DirWithTemplate(template: concat("/tmp/gunbc-recover-catalog-", concat(kind, ".XXXXXX"))).path
+}
+
+// AN INSTANCE ROOTED IN A DIRECTORY THE TEST OWNS, minted the way the provider mints one.
+fn instance_at(root: String) -> HostDashboardInstance {
+  isolated_dashboard_instance(
+    deployment: deployment_id(name: "recover-catalog-witness" as NonEmptyStr),
+    instance_id: "recover-catalog-witness" as NonEmptyStr,
+    layout: srv1_host_layout(),
+    root: root as FilePath,
+    serve_function: "roadmap_serve_handle_srv1_lab" as NonEmptyStr,
+    listen_port: 18097,
+    source_anchor_ref: "refs/heads/main" as NonEmptyStr,
+    actuation: DashboardActuating,
+    actuator_host: srv1_host_layout().host_identity,
+  )
+}
+
+fn owner_of(seat: ComputeSeat) -> AttemptOwner {
+  match seat {
+    ComputeDispatchSeat { attempt_key: k } => DispatchOwned { node_id: "witness" as NonEmptyStr, attempt_key: k }
+    ComputeFlatSeat => DirectInvocation { why: "recover-catalog witness" }
+  }
+}
+
+// THE SEAT STORE FOR A SEAT UNDER THE TEST'S OWN ROOT, directory created the way the provider creates it.
+fn seat_store_of(root: String, seat: ComputeSeat) -> ComputeSeatStore? {
+  let _made = shell.Mkdir.Parents(path: compute_seat_path(instance: instance_at(root: root), seat: seat) as FilePath)
+  match compute_seat_store(instance: instance_at(root: root), seat: seat) {
+    ComputeSeatStoreReady { store: s } => Present { value: s }
+    ComputeSeatStoreUnready { detail: _ } => Absent
+  }
+}
+
+// AN ATTEMPT OPENED FOR REAL, charge and slot included. A refused open is a false, not a pass: every claim
+// below reads the slot the open was supposed to leave.
+fn open_slot(root: String, seat: ComputeSeat, identity: String, reference: NonEmptyStr) -> Bool {
+  // The seat directory has to exist before the provider opens an attempt in it, so the store is minted --
+  // which creates the directory -- before the open, the same order the provider's own apply step uses.
+  match seat_store_of(root: root, seat: seat) {
+    Absent => false
+    Present { value: _ } => match open_attempt_in(root: root, seat: seat, identity: identity, reference: reference) {
+      AttemptGateReady { record: _, generation: _ } => true
+      AttemptGateRefused { detail: _ } => false
+    }
+  }
+}
+
+fn open_attempt_in(root: String, seat: ComputeSeat, identity: String, reference: NonEmptyStr) -> AttemptGate {
+  match compute_open_attempt(
+    instance: instance_at(root: root),
+    identity: identity,
+    owner: owner_of(seat: seat),
+    reference: reference,
+    granted: kibibyte(count: 1048576),
+  ) {
+    AttemptGateReady { record: rec, generation: g } => AttemptGateReady { record: rec, generation: g }
+    AttemptGateRefused { detail: d } => AttemptGateRefused { detail: d }
+  }
+}
+
+// WHAT THE DOOR ANSWERS FOR THE SAME RECORD. The census is a reading; the door is the write. On a real slot
+// the two must not disagree about the arm, so each claim asks both and compares -- the census's fire/hold word
+// and the door's outcome come from the same authority (recovery_write_authorization). The word is the
+// disagreement check, not a second verdict.
+fn door_word(instance: HostDashboardInstance, reference: NonEmptyStr) -> String {
+  match compute_recover_attempt(instance: instance, reference: reference) {
+    RecoveryReleased { reference: _, verdict: _, seat: _ } => "released"
+    RecoverySettledButHeld { reference: _, verdict: _, seat: _ } => "settled-but-held"
+    RecoveryNothingHeld { reference: _, verdict: _, detail: _ } => "nothing-held"
+    RecoveryDeclined { reference: _, why: _ } => "declined"
+    RecoveryRefused { detail: _ } => "refused"
+  }
+}
+
+// HOW THE CENSUS ANSWERS ON THE WIRE, rendered through the production line builder so the claims read the
+// same text the converge leg will parse.
+fn render_entries(entries: List<RecoverCatalogEntry>) -> String {
+  fold(entries, init: "", f: (acc, e) => concat(acc, compute_recover_catalog_entry_line(e: e)))
+}
+
+fn entry_for(entries: List<RecoverCatalogEntry>, reference: NonEmptyStr) -> Bool {
+  any(entries, e => (e.reference as String) == (reference as String))
+}
+
+// A SLOT WRITTEN WITH A RECORD WHOSE DECLARED WINDOW HAS ALREADY PASSED. The record is internally
+// consistent -- opened at one instant, its deadline that instant plus the model's own window -- and it is
+// the host's real clock (now_epoch_seconds) that finds the window behind it. A fabricated instant would be
+// the hazard gunbc.recurring_failure_mode wet_witness_clock_not_fabricated files; this is the test placing
+// its OWN attempt in the past, which is the state a swept holder leaves behind.
+fn open_past_window_slot(root: String, identity: String, reference: NonEmptyStr) -> Bool {
+  match seat_store_of(root: root, seat: ComputeFlatSeat) {
+    Absent => false
+    Present { value: store } => match now_epoch_seconds() {
+      Absent => false
+      Present { value: now } =>
+        match attempt_open(
+          store: store.slots,
+          record: compute_attempt_record(
+            identity: identity,
+            reference: reference,
+            granted: kibibyte(count: 1048576),
+            now: now - 3600,
+            owner: DirectInvocation { why: "recover-catalog witness" }),
+        ) {
+          AttemptAdvanced { state: _, generation: _ } => true
+          AttemptLostRace { expected: _, observed: _ } => false
+          AttemptTransitionRefused { detail: _ } => false
+        }
+    }
+  }
+}
+
+// CONTROL ONE: A SEAT NOBODY WROTE TO CENSUSES EMPTY, so the leg plans no write from it. If the census ever
+// turns an empty store into material -- or into a refusal that would mask a live seat -- this goes red.
+fn census_of_an_empty_seat_names_no_reference() -> Bool {
+  let root = witness_root(kind: "empty")
+  match seat_store_of(root: root, seat: ComputeFlatSeat) {
+    Absent => false
+    Present { value: store } =>
+      match compute_recover_catalog_for(stores: [store]) {
+        RecoverCatalogEstablished { entries: es } => count_where(xs: es, predicate: e => true) == 0
+        RecoverCatalogUnknown { detail: _ } => false
+      }
+  }
+}
+
+test fn an_empty_seat_contributes_no_reference_to_a_plan() -> Bool {
+  census_of_an_empty_seat_names_no_reference()
+}
+
+// CONTROL TWO: AN ATTEMPT INSIDE ITS OWN DECLARED WINDOW IS A HOLD. The provider gives a producer a bounded
+// pre-launch window (compute_pre_launch_ceiling_seconds); inside it the attempt is not dead, and the line
+// the leg reads must say hold and name the window in recovery_trigger's own words. Red here means a leg
+// would plan a write against a holder that is alive and inside its budget.
+fn attempt_inside_its_window_is_a_hold() -> Bool {
+  let root = witness_root(kind: "inside-window")
+  let reference = "0000000000000000000000000000000000000000000000000000000000000002" as NonEmptyStr
+  let opened = open_slot(root: root, seat: ComputeFlatSeat, identity: "0123456789abcdef", reference: reference)
+  match seat_store_of(root: root, seat: ComputeFlatSeat) {
+    Absent => false
+    Present { value: store } =>
+      opened
+        && match compute_recover_catalog_for(stores: [store]) {
+          RecoverCatalogEstablished { entries: es } =>
+            count_where(xs: es, predicate: e => true) == 1
+              && entry_for(entries: es, reference: reference)
+              && string_contains(s: render_entries(entries: es), pattern: "recover-catalog hold ")
+              && string_contains(s: render_entries(entries: es), pattern: "TOO EARLY")
+              && door_word(instance: instance_at(root: root), reference: reference) == "declined"
+          RecoverCatalogUnknown { detail: _ } => false
+        }
+  }
+}
+
+test fn an_attempt_inside_its_declared_window_is_censused_as_a_hold() -> Bool {
+  attempt_inside_its_window_is_a_hold()
+}
+
+// CONTROL THREE: A TERMINAL RECORD WITHOUT THE UNIT PROOF IS A HOLD, NOT A RELEASE. The witness opens a
+// real attempt with a real ledger charge and settles it, then asks what the census says. On this host the
+// unit observer cannot query the user manager, so the lifecycle is UNKNOWN and the model keeps the charge --
+// the terminal record is the reason to look, never the proof that the unit stopped using memory. Red here
+// means a census that releases on a record alone, which is the srv3-class fault this whole door exists to
+// close: a seat handed back while its attempt is still resident.
+fn terminal_record_without_unit_proof_is_a_hold() -> Bool {
+  let root = witness_root(kind: "terminal-unproven")
+  let reference = "0000000000000000000000000000000000000000000000000000000000000003" as NonEmptyStr
+  let opened = open_slot(root: root, seat: ComputeFlatSeat, identity: "123456789abcdef0", reference: reference)
+  match seat_store_of(root: root, seat: ComputeFlatSeat) {
+    Absent => false
+    Present { value: store } =>
+      opened
+        && match attempt_slot_read(store: store.slots, reference: reference) {
+          AttemptSlotAbsent => false
+          AttemptSlotUnreadable { detail: _ } => false
+          AttemptSlotHeld { record: rec, generation: g } => {
+            let settled = compute_settle_attempt(
+              instance: instance_at(root: root),
+              gate: AttemptGateReady { record: rec, generation: g },
+              verdict: AttemptWorkEnded { ending: WorkEndedSucceeded },
+              detail: "the witness closes the slot it opened")
+            match settled {
+              AttemptNotSettled { detail: _ } => false
+              AttemptUnsettleable { detail: _ } => false
+              AttemptSettled =>
+                match compute_recover_catalog_for(stores: [store]) {
+                  RecoverCatalogEstablished { entries: _ } => false
+                  RecoverCatalogUnknown { detail: d } =>
+                    string_contains(s: d, pattern: reference as String)
+                      && string_contains(s: d, pattern: "not proven ended")
+                      && door_word(instance: instance_at(root: root), reference: reference) == "refused"
+                }
+            }
+          }
+        }
+  }
+}
+
+test fn a_terminal_record_alone_does_not_census_as_a_write() -> Bool {
+  terminal_record_without_unit_proof_is_a_hold()
+}
+
+// THE FIRE CONTROL: AN ATTEMPT WHOSE DECLARED LAUNCH WINDOW HAS PASSED IS A WRITE THE LEG MAY PLAN. This is
+// the swept-holder shape -- reserved, never launched, deadline passed. recovery_trigger answers
+// RecoveryMayTerminate, recovery_write_authorization authorizes the write, and the line names the window in
+// the trigger's
+// own words rather than a paraphrase written at the call site. Red here means the census never fires and
+// every dead holder's seat stays charged forever, which is what srv1's build pool is in today.
+fn past_window_attempt_is_a_write_the_census_names() -> Bool {
+  let root = witness_root(kind: "past-window")
+  let reference = "0000000000000000000000000000000000000000000000000000000000000004" as NonEmptyStr
+  let opened = open_past_window_slot(root: root, identity: "23456789abcdef01", reference: reference)
+  match seat_store_of(root: root, seat: ComputeFlatSeat) {
+    Absent => false
+    Present { value: store } =>
+      opened
+        && match compute_recover_catalog_for(stores: [store]) {
+          RecoverCatalogEstablished { entries: es } =>
+            count_where(xs: es, predicate: e => true) == 1
+              && entry_for(entries: es, reference: reference)
+              && string_contains(s: render_entries(entries: es), pattern: "recover-catalog terminate ")
+              && string_contains(s: render_entries(entries: es), pattern: "launch deadline")
+              // The door agrees on the arm: it does not decline a record the census marks fire, and it does
+              // not refuse the observation. Here it answers from the LEDGER step, because this test wrote the
+              // record without a dispatch that would have charged the seat -- the model's own
+              // "the ledger is not holding this reference at the proposal" answer. The arm is what the claim
+              // pins: authorized to the census, acted on by the door, never declined.
+              && match door_word(instance: instance_at(root: root), reference: reference) {
+                "declined" => false
+                "refused" => false
+                _ => true
+              }
+          RecoverCatalogUnknown { detail: _ } => false
+        }
+  }
+}
+
+test fn an_attempt_past_its_declared_window_is_censused_as_a_write() -> Bool {
+  past_window_attempt_is_a_write_the_census_names()
+}
+
+// CONTROL FOUR: ONE REFERENCE HOLDING SLOTS IN TWO SEAT DIRECTORIES IS AN UNKNOWN OBSERVATION, not a coin
+// flip about which attempt it names. The write path refuses that shape outright (compute_recover_attempt_at);
+// the census must refuse to classify it too, so the leg's plan is refused rather than half-informed.
+fn one_reference_in_two_seat_directories_is_unknown() -> Bool {
+  let root = witness_root(kind: "twice")
+  let reference = "0000000000000000000000000000000000000000000000000000000000000005" as NonEmptyStr
+  match seat_store_of(root: root, seat: ComputeFlatSeat) {
+    Absent => false
+    Present { value: flat } => match seat_store_of(root: root, seat: ComputeDispatchSeat { attempt_key: "witness" }) {
+      Absent => false
+      Present { value: dispatch } =>
+        open_slot(root: root, seat: ComputeFlatSeat, identity: "3456789abcdef012", reference: reference)
+          && match attempt_slot_read(store: flat.slots, reference: reference) {
+            AttemptSlotHeld { record: rec, generation: _ } =>
+              match attempt_open(store: dispatch.slots, record: rec) {
+                AttemptAdvanced { state: _, generation: _ } =>
+                  match compute_recover_catalog_for(stores: [flat, dispatch]) {
+                    RecoverCatalogEstablished { entries: _ } => false
+                    RecoverCatalogUnknown { detail: d } => string_contains(s: d, pattern: reference as String)
+                  }
+                AttemptLostRace { expected: _, observed: _ } => false
+                AttemptTransitionRefused { detail: _ } => false
+              }
+            _ => false
+          }
+    }
+  }
+}
+
+test fn one_reference_in_two_seat_directories_makes_the_observation_unknown() -> Bool {
+  one_reference_in_two_seat_directories_is_unknown()
+}
+
+// CONTROL FIVE: THE CENSUS READS AND WRITES NOTHING. The same slot is censused twice and answers the same
+// way both times; a census that settled or terminated the slot would change its own second answer.
+fn censusing_the_same_slot_twice_settles_nothing() -> Bool {
+  let root = witness_root(kind: "readonly")
+  let reference = "0000000000000000000000000000000000000000000000000000000000000006" as NonEmptyStr
+  let opened = open_slot(root: root, seat: ComputeFlatSeat, identity: "456789abcdef0123", reference: reference)
+  match seat_store_of(root: root, seat: ComputeFlatSeat) {
+    Absent => false
+    Present { value: store } =>
+      opened
+        && match compute_recover_catalog_for(stores: [store]) {
+          RecoverCatalogUnknown { detail: _ } => false
+          RecoverCatalogEstablished { entries: first } =>
+            match compute_recover_catalog_for(stores: [store]) {
+              RecoverCatalogUnknown { detail: _ } => false
+              RecoverCatalogEstablished { entries: second } =>
+                count_where(xs: first, predicate: e => true) == count_where(xs: second, predicate: e => true)
+                  && render_entries(entries: first) == render_entries(entries: second)
+                  && !any(second, e => match e.authorization {
+                    RecoveryWriteTerminateAndRelease { reason: _ } => true
+                    RecoveryWriteReleaseSettled { state: _, reason: _ } => true
+                    _ => false
+                  })
+            }
+        }
+  }
+}
+
+test fn the_census_answers_the_same_way_twice_and_settles_nothing() -> Bool {
+  censusing_the_same_slot_twice_settles_nothing()
+}
+
+// THE ENTRY A WET LANE RUNS. The claims evaluate the host clock and the host's unit observer for real, so
+// they run through a plain entry WITHOUT --claim-run: claim-run routes those host effects through the
+// THE CLI DOOR IS DRIVEN HERE: a bogus repo_root cannot resolve to any built-in instance, so the census
+// is observation-unknown and the door exits 2. This is the exit the serving converge's recovery leg reads
+// when it refuses to plan; increment 2's live proof will exercise exit 0 over a fleet-converge run.
+test fn the_cli_door_exits_two_when_no_instance_resolves() -> Bool {
+  match compute_recover_catalog_cli(repo_root: "/nonexistent-recover-catalog-witness-cli") {
+    CliWirePrintable { bytes: _, exit: ExitFailure { code: 2, reason: _ } } => true
+    _ => false
+  }
+}
+
+// THE SERVING DOORS, AT THEIR BOUNDARY. A host the serving route is not provisioned on (the candidate
+// row, remote_build_host_is_serving_candidate) gets the UNKNOWN exit with a reason that names serving
+// — never an empty census, never a census of some other host's seats. This is the red control for the
+// seam the srv1 apply run 45102946243 exposed: the doors used to resolve instances ONLY through the
+// dashboard roster, where the parametric serving instance has no row, so the honest answer for EVERY
+// host was 'no dashboard instance is rooted at'.
+test fn the_serving_census_door_refuses_a_host_off_the_serving_roster() -> Bool {
+  match compute_recover_catalog_serving_cli(host: "not-a-serving-host") {
+    CliWirePrintable { bytes: b, exit: ExitFailure { code: 2, reason: _ } } =>
+      string_contains(s: b, pattern: "is not a remote-build serving host")
+    _ => false
+  }
+}
+
+// A PROVISIONED HOST OFF THE DISPATCH ROSTER PASSES THE DOOR'S ADMISSION AND ACTUALLY READS. srv1
+// serves no builds today (its leave note in gunbc.compute.remote_build_hosts names its RETURN as "the
+// same run that executes the seat-recovery leg"), yet the serving route IS provisioned on it — that is
+// what its candidate row says, and the seat the recovery leg exists to settle lives under that
+// account's home. Keying this door on the dispatch gate remote_build_serving_hosts refused exactly the
+// run that must prove srv1's return: converge apply 45218878048, census refused 'the host is not one
+// the remote-build program serves'. So this claim asserts BOTH halves: the door reaches the read
+// (unknown here — this container holds no /home/gunbc-build account, so an established census would be
+// a fabrication) AND it does not take the refusal branch. Red again under the dispatch-gate key.
+test fn the_serving_census_door_answers_unknown_where_the_seat_home_is_absent() -> Bool {
+  match compute_recover_catalog_serving_cli(host: "srv1") {
+    CliWirePrintable { bytes: b, exit: ExitFailure { code: 2, reason: r } } =>
+      string_contains(s: b, pattern: " unknown: ") && !string_contains(s: b, pattern: "is not a remote-build serving host")
+        && string_contains(s: r, pattern: "the attempts directory could not be listed")
+    _ => false
+  }
+}
+
+// THE UNKNOWN EXIT REASON CARRIES THE LOCATED DETAIL, not just the fixed sentence. The converge leg
+// logs the door's exit reason and captures its stdout into the plan, so a reason that names only
+// 'could not be established' sends the operator who ran it to ssh for what the door already knew --
+// fail_closed asks for a typed, LOCATED diagnostic on the channel that survives the run. The read-back
+// of srv1's seat in this container can only answer that the capacity ledger is not provisioned here,
+// and the reason must say so. Red before the detail moved: the sentence alone was the whole reason.
+test fn the_serving_readback_door_carries_its_unknown_detail() -> Bool {
+  match compute_recover_readback_serving_cli(host: "srv1", reference: "011dfdd11f75268188c6b97278319c8b#1.1") {
+    CliWirePrintable { bytes: b, exit: ExitFailure { code: 2, reason: r } } =>
+      string_contains(s: r, pattern: "recover-readback: the read-back could not be established: ")
+        && string_contains(s: r, pattern: "the capacity ledger is not standing at objects")
+        && string_contains(s: b, pattern: "the capacity ledger is not standing at objects")
+    _ => false
+  }
+}
+
+// THE WRITE DOOR ON A HOST THE SERVING ROUTE IS NOT PROVISIONED ON EXITS THE UNKNOWN CODE, not the
+// declined code: a host with no serving home to settle is a broken observation, not a safe no.
+test fn the_serving_recover_door_exits_unknown_off_the_roster() -> Bool {
+  compute_recover_serving_cli(host: "not-a-serving-host", reference: "anything", receipt_path: "/nonexistent-recover-serving-witness.receipt.json")
+    == ExitFailure { code: 2, reason: "compute-recover: not-a-serving-host is not a remote-build serving host" }
+}
+
+// hermetic mock table, and a mocked clock or process probe would make these verdicts agree with authored
+// data instead of with the host. Exit 0 only when every claim holds; a red claim names itself.
+fn check_or_name(name: String, held: Bool) -> String {
+  if held { "" } else { concat(name, " ") }
+}
+
+fn run_compute_recover_catalog_witness() -> ProcessExit {
+  let red = join([
+    check_or_name(name: "an_empty_seat_contributes_no_reference_to_a_plan", held: census_of_an_empty_seat_names_no_reference()),
+    check_or_name(name: "an_attempt_inside_its_declared_window_is_censused_as_a_hold", held: attempt_inside_its_window_is_a_hold()),
+    check_or_name(name: "a_terminal_record_alone_does_not_census_as_a_write", held: terminal_record_without_unit_proof_is_a_hold()),
+    check_or_name(name: "an_attempt_past_its_declared_window_is_censused_as_a_write", held: past_window_attempt_is_a_write_the_census_names()),
+    check_or_name(name: "one_reference_in_two_seat_directories_makes_the_observation_unknown", held: one_reference_in_two_seat_directories_is_unknown()),
+    check_or_name(name: "the_census_answers_the_same_way_twice_and_settles_nothing", held: censusing_the_same_slot_twice_settles_nothing()),
+    check_or_name(name: "the_cli_door_exits_two_when_no_instance_resolves", held: the_cli_door_exits_two_when_no_instance_resolves()),
+    check_or_name(name: "the_serving_census_door_refuses_a_host_off_the_serving_roster", held: the_serving_census_door_refuses_a_host_off_the_serving_roster()),
+    check_or_name(name: "the_serving_census_door_answers_unknown_where_the_seat_home_is_absent", held: the_serving_census_door_answers_unknown_where_the_seat_home_is_absent()),
+    check_or_name(name: "the_serving_recover_door_exits_unknown_off_the_roster", held: the_serving_recover_door_exits_unknown_off_the_roster()),
+    check_or_name(name: "the_serving_readback_door_carries_its_unknown_detail", held: the_serving_readback_door_carries_its_unknown_detail()),
+  ], "")
+  if red == "" {
+    ExitSuccess
+  } else {
+    ExitFailure { code: 1, reason: join(["recovery census claim red: ", red], "") }
+  }
+}
+
+
+fn diagnose_claim_three() -> ProcessExit {
+  let root = witness_root(kind: "diag-three")
+  let reference = "0000000000000000000000000000000000000000000000000000000000000003" as NonEmptyStr
+  let opened = open_slot(root: root, seat: ComputeFlatSeat, identity: "123456789abcdef0", reference: reference)
+  match seat_store_of(root: root, seat: ComputeFlatSeat) {
+    Absent => ExitFailure { code: 1, reason: "no store" }
+    Present { value: store } => match attempt_slot_read(store: store.slots, reference: reference) {
+      AttemptSlotAbsent => ExitFailure { code: 1, reason: "slot absent" }
+      AttemptSlotUnreadable { detail: d } => ExitFailure { code: 1, reason: join(["unreadable: ", d], "") }
+      AttemptSlotHeld { record: rec, generation: g } =>
+        match compute_settle_attempt(
+          instance: instance_at(root: root), gate: AttemptGateReady { record: rec, generation: g },
+          verdict: AttemptWorkEnded { ending: WorkEndedSucceeded }, detail: "diag") {
+          AttemptNotSettled { detail: d } => ExitFailure { code: 1, reason: join(["not settled: ", d], "") }
+          AttemptUnsettleable { detail: d } => ExitFailure { code: 1, reason: join(["unsettleable: ", d], "") }
+          AttemptSettled => match compute_recover_catalog_for(stores: [store]) {
+            RecoverCatalogEstablished { entries: es } =>
+              ExitFailure { code: 1, reason: join(["census established: ", render_entries(entries: es)], "") }
+            RecoverCatalogUnknown { detail: d } =>
+              ExitFailure {
+                code: 1,
+                reason: join(["census unknown: ", d, " | door=", door_word(instance: instance_at(root: root), reference: reference)], ""),
+              }
+          }
+        }
+    }
+  }
+}

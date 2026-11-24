@@ -128,6 +128,9 @@ fn uncataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
     decl_ref(module_path: "extdeps.languages.bash.invocation", decl_name: "bash_program"),
     decl_ref(module_path: "gunbc.host.cursor_agent_realization", decl_name: "cursor_agent_pinned_program"),
     decl_ref(module_path: "test.claim.cursor_runtime_root_wet_witness", decl_name: "wet_logging_stand_in"),
+    decl_ref(module_path: "test.claim.git_command_runner_route_wall_witness", decl_name: "witness_git_identity_bare"),
+    decl_ref(module_path: "test.claim.git_command_runner_route_wall_witness", decl_name: "witness_git_identity_absolute"),
+    decl_ref(module_path: "test.claim.git_command_runner_route_wall_witness", decl_name: "witness_git_identity_deep"),
     decl_ref(module_path: "extdeps.rust.cargo_build_service", decl_name: "cargo_build_program"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "cat_program"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "nproc_program"),
@@ -241,5 +244,9 @@ fn uncataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
     decl_ref(module_path: "gunbc.gunbc_cli_command", decl_name: "gunbc_installed_run_with_named_arguments_command"),
     decl_ref(module_path: "extdeps.browser.chromium", decl_name: "chromium_version_command"),
     decl_ref(module_path: "gunbc.harness.harness_shell_job", decl_name: "harness_backstopped_shell_command"),
+    // The census member readback fail-closed producer control builds a guaranteed-nonexistent executable
+    // so answer_on/LocalCommandHost genuinely cannot spawn it and the leg comes back as the typed
+    // LegNotDispatched, never a fabricated exit code (gunbc.design_argument::fail_closed).
+    decl_ref(module_path: "test.claim.machine_intake.mtcollins_member_leg_producer_local_wet", decl_name: "never_spawned_readback_executable"),
   ]
   = ProgramIdentity { invocation: invocation, catalog: UncatalogedDebt }

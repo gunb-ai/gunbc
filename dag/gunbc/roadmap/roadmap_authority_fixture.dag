@@ -3,6 +3,7 @@ module gunbc.roadmap.roadmap_authority_fixture
 import std.types { String, List, Bool, NonEmptyStr }
 import std.optional { Present, Absent }
 import std.content_hash { Fnv1a64Structural }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import gunbc.principal_projection { PrincipalRef }
 import gunbc.roadmap.roadmap_model {
   RoadmapNodeId,
@@ -17,7 +18,7 @@ import gunbc.roadmap.roadmap_model {
 import gunbc.roadmap.roadmap_status {
   TicketLine,
   TicketFields,
-  RedControlExecuted,
+  RedObservedOnMain, RedControlExecuted,
   HandbackDelivered,
 }
 import gunbc.roadmap.roadmap_execution_contract { ExecutionContractUnspecified }
@@ -25,6 +26,18 @@ import gunbc.roadmap.roadmap_event_log {
   RoadmapEvent,
   RoadmapEventKind,
   RoadmapEventId,
+  RoadmapNodeStanding,
+  NodeOpen,
+  NodeClaimed,
+  NodeInProgress,
+  NodeBlocked,
+  NodeHandedBack,
+  NodeRetired,
+  NodeAccepted,
+  NodeReadyForReview,
+  NodeForked,
+  NodeHistoryIncomplete,
+  roadmap_node_standing_key,
   EventPrincipalAuthenticated,
   AcceptancePrEvidence,
   AcceptanceRecordedEvent,
@@ -212,7 +225,7 @@ fn roadmap_authority_fixture_receipt(
     red_control: RedControlExecuted {
       witness_module: "test.fixture",
       witness_fn: "fixture_red_control",
-      executed_on: "2026-07-28",
+      executed_on: "2026-07-28", observation: RedObservedOnMain { red_at: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", green_at: "0f1e2d3c4b5a69788796a5b4c3d2e1f001234567" },
     },
     handback: HandbackDelivered { first_artifact: "fixture-handback", further_artifacts: [] },
     accepted_by: "operator",
@@ -349,3 +362,82 @@ fn roadmap_authority_fixture_json_is_a_written_event(content: String, node: Stri
     && content.contains(fragment: concat("\"node\": \"", node))
     && content.contains(fragment: "\"id\": ")
 }
+
+// ONE SAMPLE PER STANDING, and the vocabulary derived from it. `roadmap_node_standing_key` in
+// gunbc.roadmap.roadmap_event_log is the one authority for what a standing is called -- mentioned,
+// not cited, the way the other consumers of that module write it; the machine-checked link is this
+// file's own import of the declaration, which is what makes the derivation below a use and not a
+// claim. A consumer that needs the CLOSED LIST of those words -- today the ctrl roadmap bridge
+// `scripts/session-dashboard/dag/roadmap_spawner_bridge.dag` in gunb-ai/ctrl#2495, which refuses an
+// unknown key instead of reading a node as absent (named per
+// #gunbc.design_argument::consumption; the bridge's own text names the condition that deletes it) --
+// must not answer by writing the ten words out a second time, which is a second place that
+// independently decides them (#gunbc.design_argument::single_authority). So the list is the fold
+// MAPPED OVER samples: it cannot hold a word the fold never emits.
+//
+// WHY THE SAMPLES SIT IN A FIXTURE MODULE AND NOT BESIDE THE FOLD. A sample of `NodeAccepted` carries
+// an acceptance receipt, and a receipt is executed-acceptance evidence: minting one next to the fold
+// would put fabricated evidence in the production module (#gunbc.design_argument::fail_closed: "no
+// plausible output is fabricated"). The fields a standing's NAME reads are the ones a sample has to
+// supply at all -- who signed it and what its receipt said are irrelevant to what the standing is
+// called -- so they come from this module's own declared fixture suppliers, the same
+// `roadmap_authority_fixture_principal` and `roadmap_authority_fixture_receipt` every witness already
+// builds its scenarios with. Nothing here is read as evidence of anything: no reader takes a receipt
+// from this list, and the fold discards the fields. Building the samples in the production module
+// instead was not available: this module imports that one, so the dependency would have been a cycle.
+//
+// WHAT NOBODY ENFORCES, said plainly rather than claimed as a guarantee. `roadmap_node_standing_samples`
+// is a hand-written list. Adding an eleventh variant forces the fold's no-wildcard match to grow, so
+// the WORD gets written -- but nothing forces the new variant into this list, and a variant missing
+// from it simply leaves the export one word short. `dag/test/claim/roadmap/roadmap_event_log_witness.dag`
+// checks this list against the witness's own independent copy, which catches the two copies
+// disagreeing and not a gap in both. The rung established is "the export is the fold over the samples
+// written", not "one entry per constructor"; the reader's failure mode for the residual is the bridge
+// refusing, not mis-staffing. The next rung is the language handing a witness the constructors of a
+// closed sum, so the list is checked rather than asserted (gunb-ai/gunbc#16925). That rung is carried as
+// data, not only as prose: `roadmap_node_standing_keys_next_rung` below. A carrier nobody reads is a
+// comment with a type on it, so the witness asks the tree about it --
+// `roadmap_standing_key_rung_is_carried_and_unreached` in the event-log witness refuses if anyone
+// marks the rung reached.
+fn roadmap_authority_fixture_standing_samples() -> List<RoadmapNodeStanding> {
+  [
+    NodeOpen,
+    NodeClaimed { by: roadmap_authority_fixture_principal(), since: "2026-07-28" },
+    NodeInProgress { by: roadmap_authority_fixture_principal(), last_note: "fixture-sample" as NonEmptyStr },
+    NodeBlocked { by: roadmap_authority_fixture_principal(), reason: "fixture-sample" as NonEmptyStr },
+    NodeHandedBack { by: roadmap_authority_fixture_principal(), reason: "fixture-sample" as NonEmptyStr },
+    NodeRetired { by: roadmap_authority_fixture_principal(), reason: "fixture-sample" as NonEmptyStr },
+    NodeAccepted {
+      by: roadmap_authority_fixture_principal(),
+      receipt: roadmap_authority_fixture_receipt(
+        node: roadmap_authority_fixture_accepted_node(),
+        terms: roadmap_authority_fixture_accepted_scenario(),
+      ),
+    },
+    NodeReadyForReview {
+      by: roadmap_authority_fixture_principal(),
+      pr: "0" as NonEmptyStr,
+      head: "0000000" as NonEmptyStr,
+    },
+    // Non-empty on purpose: an empty list here leaves the element type unjudged at this pair, and the
+    // values are fixtures the fold discards -- a sample states that the variant EXISTS, nothing more.
+    NodeForked { heads: ["fixture-head-1" as RoadmapEventId, "fixture-head-2" as RoadmapEventId] },
+    NodeHistoryIncomplete { missing_parents: ["fixture-missing-parent" as RoadmapEventId] },
+  ]
+}
+
+// THE EXPORT: the fold over the samples above, in their order. Order is part of the contract -- the
+// ctrl bridge serves readiness in the authority's declaration order and compares lists positionally.
+data roadmap_node_standing_keys: List<String> =
+  map(roadmap_authority_fixture_standing_samples(), s => roadmap_node_standing_key(s: s))
+
+// THE RUNG ABOVE THIS PAIR, carried in the repo's own carrier for a condition that ought to delete
+// some scaffolding, so the gap is answerable from the tree instead of only from a comment. It is
+// unbound because the capability it waits for is in the language, not in a declaration this corpus can
+// name: when a witness can be handed the constructors of a closed sum, the two sample lists (this one
+// and `dag/test/claim/roadmap/roadmap_event_log_witness.dag`) are derived from the type instead of
+// written, the gap both describe closes, and THIS declaration goes away with them.
+// Tracker: gunb-ai/gunbc#16925.
+data roadmap_node_standing_keys_next_rung: DissolutionCondition = unbound_dissolution(
+  description: "dissolve-on: the language enumerating the constructors of a closed sum type (gunb-ai/gunbc#16925), so a per-variant sample list is derived from the sum instead of written by hand. SUFFICIENT FOR deleting roadmap_node_standing_samples and the matching list in dag/test/claim/roadmap/roadmap_event_log_witness.dag, and for deleting this declaration: the export is already the fold over the samples, so what remains hand-written is only the enumeration of the samples.",
+)

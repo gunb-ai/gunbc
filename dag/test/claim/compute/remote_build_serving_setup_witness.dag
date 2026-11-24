@@ -19,19 +19,29 @@ import std.goal_assessment {
   GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv9, operator_host_e2d4b7 }
+// RB-M3: ServingPlanInput.executor_arch is an Architecture (projected from uname -m by the converge producer).
+// All assess fixtures here use operator_host_srv1, whose authored row is Aarch64, so executor_arch is Aarch64
+// (row == executor => the upload path and the serve-binary pin compare stay active) and the default target_arch
+// uname spelling must read "aarch64" to agree with the row (else serving_assess's host.arch read-vs-row check
+// fires a spurious drift). Variants are constructed directly from the upstream enum module.
+import extdeps.toolchain.types { Aarch64 }
+import gunbc.compute.work_provider_local {
+  RecoverCatalogLegEstablished,
+}
 import gunbc.compute.remote_build_serving_setup { serving_toolchain_line_names_channel,
-  remote_build_serving_candidate_hosts,
   remote_build_serving_desired, RemoteBuildServingDesired, serving_ledger_service_user,
   serving_forced_command_line, serving_observed_from_reads, serving_assess, ServingAssessment,
   serving_assessment_settled, serving_assessment_terminal, serving_assessment_runnable,
   serving_assessment_receipt_text, ServingLegFailure, ServingObserved, serving_deviation_item,
   ServingPlanInput, ServingLedgerRowObserved, serving_ledger_declared_mode_octal,
   serving_store_dir_mode_octal,
+  serving_scratch_root_mode_octal,
   serving_authorized_keys_mode_octal, serving_serve_binary_mode_octal,
 }
 import gunbc.compute.remote_build { remote_build_serving_instance }
 import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_owner, owned_directory_path, owned_directory_member }
-import gunbc.compute.remote_build_hosts { remote_build_host_is_serving }
+// remote_build_serving_candidate_hosts moved to this module on 2026-11-20, beside the live dispatch gate.
+import gunbc.compute.remote_build_hosts { remote_build_host_is_serving, remote_build_host_is_serving_candidate, remote_build_serving_candidate_hosts }
 import gunbc.compute.host_capacity { host_capacity_home_directories, host_capacity_home_directories_admitted }
 import gunbc.compute.host_capacity { user_work_slice_memory_max_for_host }
 import gunbc.live_deploy.slice_bounds { user_work_slice_memory_swap_max, user_work_slice_memory_high_of, UserWorkSliceHighDerived, UserWorkSliceHighGapExceedsMax }
@@ -181,6 +191,11 @@ fn store_mode_ok(d: RemoteBuildServingDesired) -> ObservationAttempt<String, Ser
   est_s(text: serving_store_dir_mode_octal(d: d))
 }
 
+// The scratch dir fixture: present, at the mode the model declares (never a literal here).
+fn scratch_mode_ok(d: RemoteBuildServingDesired) -> ObservationAttempt<String, ServingLegFailure> {
+  est_s(text: serving_scratch_root_mode_octal(d: d))
+}
+
 fn store_mode_absent() -> ObservationAttempt<String, ServingLegFailure> {
   est_s(text: "")
 }
@@ -209,13 +224,13 @@ fn pin_sha() -> String { "000000000000000000000000000000000000000000000000000000
 
 fn pin_rev() -> String { "000000000000000000000000000000000000abcd" }
 
-fn pin_arch() -> String { "x86_64" }
+fn pin_arch() -> String { "aarch64" }
 
 fn pin_ok() -> ServingPlanInput {
   ServingPlanInput {
     local_binary_sha256: pin_sha(),
     dispatched_revision: pin_rev(),
-    executor_arch: pin_arch(),
+    executor_arch: Aarch64,
     toolchain_channel: "1.92.0",
   }
 }
@@ -260,6 +275,7 @@ fn converged_observed(dline: String, d: RemoteBuildServingDesired) -> ServingObs
     group: est_s(converged_group()),
     authorized_keys: est_s(dline),
     store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+    scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d),
     checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
     serve_binary_sha256: Present { value: pin_sha_leg() }, checkout_revision: Present { value: pin_rev_leg() }, authorized_keys_mode: Present { value: ak_mode_ok(d: d) }, serve_binary_mode: Present { value: binary_mode_ok(d: d) }, target_arch: pin_arch_leg(),
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
@@ -268,7 +284,8 @@ fn converged_observed(dline: String, d: RemoteBuildServingDesired) -> ServingObs
     user_manager_linger: ObservationEstablished { observed: true },
     ledger_rows: converged_ledger(d: d),
   
-    serve_identity: Absent,)
+    serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
 }
 
 fn has_deviation(a: ServingAssessment, item: String) -> Bool {
@@ -336,6 +353,7 @@ test fn wrong_uid_diverges_the_account() -> Bool {
         group: est_s(converged_group()),
         authorized_keys: est_s(line),
         store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+        scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d),
         checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
         serve_binary_sha256: Present { value: pin_sha_leg() }, checkout_revision: Present { value: pin_rev_leg() }, authorized_keys_mode: Present { value: ak_mode_ok(d: d) }, serve_binary_mode: Present { value: binary_mode_ok(d: d) }, target_arch: pin_arch_leg(),
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
@@ -344,7 +362,8 @@ test fn wrong_uid_diverges_the_account() -> Bool {
     user_manager_linger: ObservationEstablished { observed: true },
         ledger_rows: converged_ledger(d: d),
       
-        serve_identity: Absent,)
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       is_diverged(a) && has_deviation(a: a, item: "account.uid") && serving_assessment_runnable(a: a)
     }
@@ -367,6 +386,7 @@ test fn group_without_the_account_diverges() -> Bool {
         group: est_s("gunbc-compute:x:1006:briansrls\n"),
         authorized_keys: est_s(line),
         store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+        scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d),
         checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
         serve_binary_sha256: Present { value: pin_sha_leg() }, checkout_revision: Present { value: pin_rev_leg() }, authorized_keys_mode: Present { value: ak_mode_ok(d: d) }, serve_binary_mode: Present { value: binary_mode_ok(d: d) }, target_arch: pin_arch_leg(),
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
@@ -375,7 +395,8 @@ test fn group_without_the_account_diverges() -> Bool {
     user_manager_linger: ObservationEstablished { observed: true },
         ledger_rows: converged_ledger(d: d),
       
-        serve_identity: Absent,)
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       is_diverged(a) && has_deviation(a: a, item: "group.members")
     }
@@ -398,6 +419,7 @@ test fn authorized_keys_with_a_stray_key_diverges() -> Bool {
         group: est_s(converged_group()),
         authorized_keys: est_s(concat(line, " ssh-rsa STRAY stray@host")),
         store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+        scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d),
         checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
         serve_binary_sha256: Present { value: pin_sha_leg() }, checkout_revision: Present { value: pin_rev_leg() }, authorized_keys_mode: Present { value: ak_mode_ok(d: d) }, serve_binary_mode: Present { value: binary_mode_ok(d: d) }, target_arch: pin_arch_leg(),
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
@@ -406,7 +428,8 @@ test fn authorized_keys_with_a_stray_key_diverges() -> Bool {
     user_manager_linger: ObservationEstablished { observed: true },
         ledger_rows: converged_ledger(d: d),
       
-        serve_identity: Absent,)
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       is_diverged(a) && has_deviation(a: a, item: "authorized_keys.forced_command")
     }
@@ -432,6 +455,7 @@ test fn confirmed_absent_authorized_keys_is_drift_not_indeterminate() -> Bool {
         group: est_s(converged_group()),
         authorized_keys: est_s(""),
         store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+        scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d),
         checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
         serve_binary_sha256: Present { value: pin_sha_leg() }, checkout_revision: Present { value: pin_rev_leg() }, authorized_keys_mode: Present { value: ak_mode_ok(d: d) }, serve_binary_mode: Present { value: binary_mode_ok(d: d) }, target_arch: pin_arch_leg(),
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
@@ -440,7 +464,8 @@ test fn confirmed_absent_authorized_keys_is_drift_not_indeterminate() -> Bool {
     user_manager_linger: ObservationEstablished { observed: true },
         ledger_rows: converged_ledger(d: d),
       
-        serve_identity: Absent,)
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       is_diverged(a) && serving_assessment_terminal(a: a) == "drift" && has_deviation(a: a, item: "authorized_keys.forced_command")
     }
@@ -466,6 +491,7 @@ test fn confirmed_absent_store_dir_is_drift_not_indeterminate() -> Bool {
         group: est_s(converged_group()),
         authorized_keys: est_s(line),
         store_root: est_absent(), store_staging: est_ok(), store_root_mode: store_mode_absent(), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+        scratch_root: est_absent(), scratch_root_mode: store_mode_absent(),
         checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
         serve_binary_sha256: Present { value: pin_sha_leg() }, checkout_revision: Present { value: pin_rev_leg() }, authorized_keys_mode: Present { value: ak_mode_ok(d: d) }, serve_binary_mode: Present { value: binary_mode_ok(d: d) }, target_arch: pin_arch_leg(),
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
@@ -474,7 +500,8 @@ test fn confirmed_absent_store_dir_is_drift_not_indeterminate() -> Bool {
     user_manager_linger: ObservationEstablished { observed: true },
         ledger_rows: converged_ledger(d: d),
       
-        serve_identity: Absent,)
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       is_diverged(a) && !is_indeterminate(a) && serving_assessment_runnable(a: a) && has_deviation(a: a, item: "store.root")
     }
@@ -504,6 +531,7 @@ test fn an_unreadable_passwd_is_indeterminate_not_drift() -> Bool {
         group: est_s(converged_group()),
         authorized_keys: est_s(line),
         store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+        scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d),
         checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
         serve_binary_sha256: Present { value: pin_sha_leg() }, checkout_revision: Present { value: pin_rev_leg() }, authorized_keys_mode: Present { value: ak_mode_ok(d: d) }, serve_binary_mode: Present { value: binary_mode_ok(d: d) }, target_arch: pin_arch_leg(),
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
@@ -512,7 +540,8 @@ test fn an_unreadable_passwd_is_indeterminate_not_drift() -> Bool {
     user_manager_linger: ObservationEstablished { observed: true },
         ledger_rows: converged_ledger(d: d),
       
-        serve_identity: Absent,)
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       is_indeterminate(a) && !is_diverged(a) && !serving_assessment_settled(a: a)
         && serving_assessment_runnable(a: a) == false && serving_assessment_terminal(a: a) == "indeterminate"
@@ -538,6 +567,7 @@ test fn an_unreadable_store_leg_is_indeterminate() -> Bool {
         group: est_s(converged_group()),
         authorized_keys: est_s(line),
         store_root: refused_b("store.root"), store_staging: est_ok(), store_root_mode: store_mode_refused(item: "store.root.mode"), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+        scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d),
         checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
         serve_binary_sha256: Present { value: pin_sha_leg() }, checkout_revision: Present { value: pin_rev_leg() }, authorized_keys_mode: Present { value: ak_mode_ok(d: d) }, serve_binary_mode: Present { value: binary_mode_ok(d: d) }, target_arch: pin_arch_leg(),
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
@@ -546,7 +576,8 @@ test fn an_unreadable_store_leg_is_indeterminate() -> Bool {
     user_manager_linger: ObservationEstablished { observed: true },
         ledger_rows: converged_ledger(d: d),
       
-        serve_identity: Absent,)
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       is_indeterminate(a) && serving_assessment_runnable(a: a) == false
     }
@@ -571,6 +602,7 @@ test fn the_receipt_names_indeterminate_never_drift_for_an_unread_leg() -> Bool 
         group: est_s(converged_group()),
         authorized_keys: est_s(line),
         store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+        scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d),
         checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
         serve_binary_sha256: Present { value: pin_sha_leg() }, checkout_revision: Present { value: pin_rev_leg() }, authorized_keys_mode: Present { value: ak_mode_ok(d: d) }, serve_binary_mode: Present { value: binary_mode_ok(d: d) }, target_arch: pin_arch_leg(),
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
@@ -579,7 +611,8 @@ test fn the_receipt_names_indeterminate_never_drift_for_an_unread_leg() -> Bool 
     user_manager_linger: ObservationEstablished { observed: true },
         ledger_rows: converged_ledger(d: d),
       
-        serve_identity: Absent,)
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let r = serving_assessment_receipt_text(a: serving_assess(d: d, o: o, pin: pin_ok()))
       starts_with(s: r, prefix: "remote-build-serving-plan: indeterminate")
         && starts_with(s: r, prefix: "remote-build-serving-plan: drift") == false
@@ -653,6 +686,7 @@ fn reads_over(
     account_name: d.account_name,
     passwd: est_s(converged_passwd()), group: est_s(converged_group()), authorized_keys: est_s(forced_line(d)),
     store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+    scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d),
     checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
     serve_binary_sha256: Present { value: sha }, checkout_revision: Present { value: rev }, authorized_keys_mode: Present { value: ak_mode_ok(d: d) }, serve_binary_mode: Present { value: binary_mode_ok(d: d) }, target_arch: arch,
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
@@ -661,7 +695,8 @@ fn reads_over(
     user_manager_linger: ObservationEstablished { observed: true },
     ledger_rows: ledger,
   
-    serve_identity: Absent,)
+    serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
 }
 
 // the settled baseline: pin legs established to the pin, ledger every row matched.
@@ -735,11 +770,15 @@ test fn wrong_checkout_revision_is_a_drift() -> Bool {
 }
 
 // host.arch mismatch stays a GoalDiverged DEVIATION (converge_plan has no arm -> 5(b) refuses).
+// RB-M3: host.arch is now a read-vs-authored-row check. operator_host_srv1's authored row is Aarch64, so the
+// drift is a uname read that DISAGREES with the row: feed "x86_64" (the default consistent read is now
+// "aarch64" via pin_arch()). The executor_arch side is irrelevant to host.arch (it is the row that is the
+// single authority), so this stays a genuine drift.
 test fn wrong_target_arch_is_a_drift() -> Bool {
   match remote_build_serving_desired(host: operator_host_srv1) {
     Absent => false
     Present { value: d } => {
-  let a = serving_assess(d: d, o: reads_over(d, pin_sha_leg(), pin_rev_leg(), est_s("aarch64"), converged_ledger(d: d)), pin: pin_ok())
+  let a = serving_assess(d: d, o: reads_over(d, pin_sha_leg(), pin_rev_leg(), est_s("x86_64"), converged_ledger(d: d)), pin: pin_ok())
   is_diverged(a) && has_deviation(a: a, item: "host.arch")
     }
   }
@@ -882,6 +921,7 @@ test fn converged_host_has_both_groups_at_declared_gids() -> Bool {
         group: est_s(converged_group()),
         authorized_keys: est_s(forced_line(d)),
         store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+        scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d),
         checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
         serve_binary_sha256: Present { value: pin_sha_leg() }, checkout_revision: Present { value: pin_rev_leg() }, authorized_keys_mode: Present { value: ak_mode_ok(d: d) }, serve_binary_mode: Present { value: binary_mode_ok(d: d) }, target_arch: pin_arch_leg(),
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
@@ -890,7 +930,8 @@ test fn converged_host_has_both_groups_at_declared_gids() -> Bool {
     user_manager_linger: ObservationEstablished { observed: true },
         ledger_rows: converged_ledger(d: d),
       
-        serve_identity: Absent,)
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       serving_assessment_settled(a: a)
     }
@@ -910,6 +951,7 @@ test fn account_group_at_wrong_gid_diverges() -> Bool {
         group: est_s("gunbc-compute:x:1006:briansrls,gunbc-build\ngunbc-build:x:9999:\n"),
         authorized_keys: est_s(forced_line(d)),
         store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+        scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d),
         checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
         serve_binary_sha256: Present { value: pin_sha_leg() }, checkout_revision: Present { value: pin_rev_leg() }, authorized_keys_mode: Present { value: ak_mode_ok(d: d) }, serve_binary_mode: Present { value: binary_mode_ok(d: d) }, target_arch: pin_arch_leg(),
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
@@ -918,7 +960,8 @@ test fn account_group_at_wrong_gid_diverges() -> Bool {
     user_manager_linger: ObservationEstablished { observed: true },
         ledger_rows: converged_ledger(d: d),
       
-        serve_identity: Absent,)
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       is_diverged(a: a) && has_deviation(a: a, item: "group.gunbc-build.gid")
     }
@@ -938,6 +981,7 @@ test fn ledger_group_gid_taken_by_another_name_diverges() -> Bool {
         group: est_s("squatter:x:1006:\ngunbc-build:x:1005:\n"),
         authorized_keys: est_s(forced_line(d)),
         store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+        scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d),
         checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
         serve_binary_sha256: Present { value: pin_sha_leg() }, checkout_revision: Present { value: pin_rev_leg() }, authorized_keys_mode: Present { value: ak_mode_ok(d: d) }, serve_binary_mode: Present { value: binary_mode_ok(d: d) }, target_arch: pin_arch_leg(),
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
@@ -946,7 +990,8 @@ test fn ledger_group_gid_taken_by_another_name_diverges() -> Bool {
     user_manager_linger: ObservationEstablished { observed: true },
         ledger_rows: converged_ledger(d: d),
       
-        serve_identity: Absent,)
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       is_diverged(a: a) && has_deviation(a: a, item: "group.gid_taken")
     }
@@ -967,6 +1012,7 @@ test fn fresh_host_reports_both_required_groups_absent() -> Bool {
         group: est_s("root:x:0:\n"),
         authorized_keys: est_s(forced_line(d)),
         store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+        scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d),
         checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
         serve_binary_sha256: Present { value: pin_sha_leg() }, checkout_revision: Present { value: pin_rev_leg() }, authorized_keys_mode: Present { value: ak_mode_ok(d: d) }, serve_binary_mode: Present { value: binary_mode_ok(d: d) }, target_arch: pin_arch_leg(),
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
@@ -975,7 +1021,8 @@ test fn fresh_host_reports_both_required_groups_absent() -> Bool {
     user_manager_linger: ObservationEstablished { observed: true },
         ledger_rows: converged_ledger(d: d),
       
-        serve_identity: Absent,)
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       is_diverged(a: a) && has_deviation(a: a, item: "group.gunbc-build")
         && has_deviation(a: a, item: "group.gunbc-compute")
@@ -1002,6 +1049,7 @@ test fn refused_elevation_is_indeterminate_never_drift() -> Bool {
         group: est_s(converged_group()),
         authorized_keys: est_s(forced_line(d)),
         store_root: est_absent(), store_staging: est_ok(), store_root_mode: store_mode_absent(), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+        scratch_root: est_absent(), scratch_root_mode: store_mode_absent(),
         checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
         serve_binary_sha256: Present { value: pin_sha_leg() }, checkout_revision: Present { value: pin_rev_leg() }, authorized_keys_mode: Present { value: ak_mode_ok(d: d) }, serve_binary_mode: Present { value: binary_mode_ok(d: d) }, target_arch: pin_arch_leg(),
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
@@ -1010,7 +1058,8 @@ test fn refused_elevation_is_indeterminate_never_drift() -> Bool {
     user_manager_linger: ObservationEstablished { observed: true },
         ledger_rows: converged_ledger(d: d),
       
-        serve_identity: Absent,)
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       is_indeterminate(a)
         && serving_assessment_terminal(a: a) == "indeterminate"
@@ -1036,6 +1085,7 @@ test fn refused_elevation_beats_a_real_drift() -> Bool {
         group: est_s(converged_group()),
         authorized_keys: est_s(forced_line(d)),
         store_root: est_absent(), store_staging: est_ok(), store_root_mode: store_mode_absent(), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+        scratch_root: est_absent(), scratch_root_mode: store_mode_absent(),
         checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
         serve_binary_sha256: Present { value: pin_sha_leg() }, checkout_revision: Present { value: pin_rev_leg() }, authorized_keys_mode: Present { value: ak_mode_ok(d: d) }, serve_binary_mode: Present { value: binary_mode_ok(d: d) }, target_arch: pin_arch_leg(),
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
@@ -1044,7 +1094,8 @@ test fn refused_elevation_beats_a_real_drift() -> Bool {
     user_manager_linger: ObservationEstablished { observed: true },
         ledger_rows: converged_ledger(d: d),
       
-        serve_identity: Absent,)
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       is_indeterminate(a) && !is_diverged(a) && serving_assessment_runnable(a: a) == false
     }
@@ -1064,6 +1115,7 @@ test fn established_elevation_still_reports_store_drift() -> Bool {
         group: est_s(converged_group()),
         authorized_keys: est_s(forced_line(d)),
         store_root: est_absent(), store_staging: est_ok(), store_root_mode: store_mode_absent(), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+        scratch_root: est_absent(), scratch_root_mode: store_mode_absent(),
         checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
         serve_binary_sha256: Present { value: pin_sha_leg() }, checkout_revision: Present { value: pin_rev_leg() }, authorized_keys_mode: Present { value: ak_mode_ok(d: d) }, serve_binary_mode: Present { value: binary_mode_ok(d: d) }, target_arch: pin_arch_leg(),
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
@@ -1072,7 +1124,8 @@ test fn established_elevation_still_reports_store_drift() -> Bool {
     user_manager_linger: ObservationEstablished { observed: true },
         ledger_rows: converged_ledger(d: d),
       
-        serve_identity: Absent,)
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       is_diverged(a) && has_deviation(a: a, item: "store.root")
     }
@@ -1105,6 +1158,7 @@ fn fresh_host_observed(d: RemoteBuildServingDesired) -> ServingObserved {
     authorized_keys: est_s(text: ""),
     store_root: est_absent(), store_staging: est_absent(),
     store_root_mode: store_mode_absent(), store_staging_mode: store_mode_absent(),
+    scratch_root: est_absent(), scratch_root_mode: store_mode_absent(),
     serve_binary: est_absent(), checkout: est_absent(), toolchain: est_absent(), rustup: est_absent(),
     // the dependent legs were NEVER READ — the subjects are confirmed absent, so Absent is the
     // honest read-state and from_reads turns it into SubjectValueSkipped (no unknown).
@@ -1117,7 +1171,8 @@ fn fresh_host_observed(d: RemoteBuildServingDesired) -> ServingObserved {
     target_arch: pin_arch_leg(),
     ledger_rows: absent_ledger(d: d),
   
-    serve_identity: Absent,)
+    serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
 }
 
 // THE FRESH-HOST WITNESS: every absence is PROVEN, so the assessment is Diverged (the presence
@@ -1153,6 +1208,7 @@ fn wrong_channel_observed(dline: String, d: RemoteBuildServingDesired) -> Servin
     group: est_s(converged_group()),
     authorized_keys: est_s(text: dline),
     store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+    scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d),
     checkout: est_ok(), toolchain: est_absent(), rustup: est_ok(),
     serve_binary_sha256: Present { value: pin_sha_leg() }, checkout_revision: Present { value: pin_rev_leg() }, authorized_keys_mode: Present { value: ak_mode_ok(d: d) }, serve_binary_mode: Present { value: binary_mode_ok(d: d) }, target_arch: pin_arch_leg(),
     user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
@@ -1161,7 +1217,8 @@ fn wrong_channel_observed(dline: String, d: RemoteBuildServingDesired) -> Servin
     user_manager_linger: ObservationEstablished { observed: true },
     ledger_rows: converged_ledger(d: d),
   
-    serve_identity: Absent,)
+    serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
 }
 
 test fn rustup_home_with_wrong_channel_is_a_toolchain_deviation() -> Bool {
@@ -1206,6 +1263,7 @@ test fn rustup_leg_unreadable_is_an_unknown() -> Bool {
         group: est_s(converged_group()),
         authorized_keys: est_s(text: forced_line(d: d)),
         store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+        scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d),
         checkout: est_ok(), toolchain: est_absent(),
         rustup: ObservationRefused { cause: ServingLegFailure { item: "rustup", cause: "ssh refused" } },
         serve_binary_sha256: Present { value: pin_sha_leg() }, checkout_revision: Present { value: pin_rev_leg() }, authorized_keys_mode: Present { value: ak_mode_ok(d: d) }, serve_binary_mode: Present { value: binary_mode_ok(d: d) }, target_arch: pin_arch_leg(),
@@ -1215,7 +1273,8 @@ test fn rustup_leg_unreadable_is_an_unknown() -> Bool {
     user_manager_linger: ObservationEstablished { observed: true },
         ledger_rows: converged_ledger(d: d),
       
-        serve_identity: Absent,)
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       match serving_assess(d: d, o: o, pin: pin_ok()) {
         GoalIndeterminate { known_deviations: _, unknowns: us } => any(non_empty_to_list(us), x => x.item == "toolchain.remediation")
         _ => false
@@ -1246,6 +1305,7 @@ test fn installed_but_hash_unreadable_is_indeterminate() -> Bool {
         authorized_keys: est_s(text: forced_line(d)),
         store_root: est_ok(), store_staging: est_ok(),
         store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d),
+        scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d),
         serve_binary: est_ok(), checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
         serve_binary_sha256: Present { value: refused_s(item: "serve_binary.sha256", cause: "sha256sum failed") },
         checkout_revision: Present { value: pin_rev_leg() },
@@ -1258,7 +1318,8 @@ test fn installed_but_hash_unreadable_is_indeterminate() -> Bool {
         target_arch: pin_arch_leg(),
         ledger_rows: converged_ledger(d: d),
       
-        serve_identity: Absent,)
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       is_indeterminate(a: a) && !serving_assessment_runnable(a: a) && has_unknown(a: a, item: "serve_binary.sha256")
     }
@@ -1279,6 +1340,7 @@ test fn unread_subject_presence_leaves_the_value_leg_unread() -> Bool {
         authorized_keys: est_s(text: forced_line(d)),
         store_root: est_ok(), store_staging: est_ok(),
         store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d),
+        scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d),
         serve_binary: refused_b(item: "seed.serve_binary"), checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
         // the observe ran NO read under the unread subject; even a matching value could not rescue it.
         serve_binary_sha256: Absent,
@@ -1292,7 +1354,8 @@ test fn unread_subject_presence_leaves_the_value_leg_unread() -> Bool {
         target_arch: pin_arch_leg(),
         ledger_rows: converged_ledger(d: d),
       
-        serve_identity: Absent,)
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       is_indeterminate(a: a) && !serving_assessment_runnable(a: a)
         && has_unknown(a: a, item: "serve_binary.sha256") && has_unknown(a: a, item: "serve.binary.mode")
@@ -1315,6 +1378,7 @@ test fn present_subject_with_never_read_value_is_indeterminate() -> Bool {
         authorized_keys: est_s(text: forced_line(d)),
         store_root: est_ok(), store_staging: est_ok(),
         store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d),
+        scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d),
         serve_binary: est_ok(), checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
         serve_binary_sha256: Absent,
         checkout_revision: Present { value: pin_rev_leg() },
@@ -1327,7 +1391,8 @@ test fn present_subject_with_never_read_value_is_indeterminate() -> Bool {
         target_arch: pin_arch_leg(),
         ledger_rows: converged_ledger(d: d),
       
-        serve_identity: Absent,)
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       is_indeterminate(a: a) && has_unknown(a: a, item: "serve_binary.sha256")
     }
@@ -1353,6 +1418,7 @@ test fn world_writable_authorized_keys_with_right_line_is_a_drift() -> Bool {
         authorized_keys: est_s(text: forced_line(d)),
         store_root: est_ok(), store_staging: est_ok(),
         store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d),
+        scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d),
         serve_binary: est_ok(), checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
         serve_binary_sha256: Present { value: pin_sha_leg() }, checkout_revision: Present { value: pin_rev_leg() },
         authorized_keys_mode: Present { value: est_s(text: "0666") },
@@ -1364,7 +1430,8 @@ test fn world_writable_authorized_keys_with_right_line_is_a_drift() -> Bool {
         target_arch: pin_arch_leg(),
         ledger_rows: converged_ledger(d: d),
       
-        serve_identity: Absent,)
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       is_diverged(a: a) && !serving_assessment_settled(a: a) && has_deviation(a: a, item: "authorized_keys.mode")
     }
@@ -1383,6 +1450,7 @@ test fn world_writable_serve_binary_with_right_hash_is_a_drift() -> Bool {
         authorized_keys: est_s(text: forced_line(d)),
         store_root: est_ok(), store_staging: est_ok(),
         store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d),
+        scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d),
         serve_binary: est_ok(), checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
         serve_binary_sha256: Present { value: pin_sha_leg() }, checkout_revision: Present { value: pin_rev_leg() },
         authorized_keys_mode: Present { value: ak_mode_ok(d: d) },
@@ -1394,7 +1462,8 @@ test fn world_writable_serve_binary_with_right_hash_is_a_drift() -> Bool {
         target_arch: pin_arch_leg(),
         ledger_rows: converged_ledger(d: d),
       
-        serve_identity: Absent,)
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       is_diverged(a: a) && !serving_assessment_settled(a: a) && has_deviation(a: a, item: "serve.binary.mode")
     }
@@ -1415,6 +1484,7 @@ test fn declared_spellings_of_the_same_file_mode_are_settled() -> Bool {
         authorized_keys: est_s(text: forced_line(d)),
         store_root: est_ok(), store_staging: est_ok(),
         store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d),
+        scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d),
         serve_binary: est_ok(), checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
         serve_binary_sha256: Present { value: pin_sha_leg() }, checkout_revision: Present { value: pin_rev_leg() },
         authorized_keys_mode: Present { value: est_s(text: "600") },
@@ -1426,7 +1496,8 @@ test fn declared_spellings_of_the_same_file_mode_are_settled() -> Bool {
         target_arch: pin_arch_leg(),
         ledger_rows: converged_ledger(d: d),
       
-        serve_identity: Absent,)
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       serving_assessment_settled(a: a)
     }
@@ -1447,6 +1518,7 @@ test fn unreadable_file_mode_under_present_subject_is_indeterminate() -> Bool {
         authorized_keys: est_s(text: forced_line(d)),
         store_root: est_ok(), store_staging: est_ok(),
         store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d),
+        scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d),
         serve_binary: est_ok(), checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
         serve_binary_sha256: Present { value: pin_sha_leg() }, checkout_revision: Present { value: pin_rev_leg() },
         authorized_keys_mode: Present { value: est_s(text: "") },
@@ -1458,7 +1530,8 @@ test fn unreadable_file_mode_under_present_subject_is_indeterminate() -> Bool {
         target_arch: pin_arch_leg(),
         ledger_rows: converged_ledger(d: d),
       
-        serve_identity: Absent,)
+        serve_identity: Absent,
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
       let a = serving_assess(d: d, o: o, pin: pin_ok())
       is_indeterminate(a: a) && has_unknown(a: a, item: "authorized_keys.mode")
     }
@@ -1504,15 +1577,33 @@ test fn candidate_host_serving_ledger_rows_equal_the_admitted_host_capacity_rows
   }
 }
 
-// RED CONTROL: the roster-gated host_capacity_home_directories(srv2) — what the PR asked for
-// before this fix — is the SERVICE-ONLY posture and must DIFFER from the serving desired state.
-// If admission ever stops changing anything here, this cell goes red, not the settled receipt.
+// RED CONTROL, re-keyed with this PR. Before it, the roster alone set a host's host-home ledger
+// posture, so the non-rostered srv2 answered the SERVICE-ONLY rows and differed from what a converge
+// installs. The posture now follows the CANDIDATE row (the provisioning authority: a converge has to
+// create a traversable, compute-grouped /opt/gunbc/compute/capacity home BEFORE the roster admits the
+// host), so for a candidate the roster-gated route AGREES with the converge — that agreement is the
+// change, and pinning it here is what stops the old claim from being quietly satisfied by the new
+// authority. The discriminating host is the one on NEITHER list: srv9 is neither candidate nor
+// rostered, so its host-home rows must stay service-only (no row carries the ledger group) and must
+// differ from what a converge installs for the candidate. If candidacy ever stops changing anything
+// here, THIS cell goes red, not the settled receipt.
 test fn pre_admission_ledger_posture_is_not_the_serving_posture() -> Bool {
   match remote_build_serving_desired(host: operator_host_srv2) {
     Absent => false
-    Present { value: d } =>
+    Present { value: d } => {
+      let srv2_home_dirs = host_capacity_home_directories(host: operator_host_srv2)
+      let srv9_home_dirs = host_capacity_home_directories(host: operator_host_srv9)
+      // srv2 is a candidate but is never live-dispatched, and its home carries the shared grouping.
       !remote_build_host_is_serving(host: operator_host_srv2)
-        && !ledger_rows_equal(a: d.ledger_dirs, b: host_capacity_home_directories(host: operator_host_srv2))
+        && remote_build_host_is_serving_candidate(host: operator_host_srv2)
+        && ledger_rows_equal(a: d.ledger_dirs, b: srv2_home_dirs)
+        && any(srv2_home_dirs, t => (owned_directory_owner(t: t).group as String) == "gunbc-compute")
+        // srv9 is on neither serving row, so nothing groups its home for the compute pool.
+        && !remote_build_host_is_serving_candidate(host: operator_host_srv9)
+        && !remote_build_host_is_serving(host: operator_host_srv9)
+        && !any(srv9_home_dirs, t => (owned_directory_owner(t: t).group as String) == "gunbc-compute")
+        && !ledger_rows_equal(a: d.ledger_dirs, b: srv9_home_dirs)
+    }
   }
 }
 

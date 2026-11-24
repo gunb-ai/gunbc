@@ -330,6 +330,7 @@ data gunbc_tree: LayoutNamespaceRow = LayoutNamespaceRow {
     "test.claim.contract_identity",
     "test.claim.debian",
     "test.claim.deepseek",
+    "test.claim.effect_summary_listed_import",
     "test.claim.emit",
     "test.claim.examples",
     "test.claim.extdeps",

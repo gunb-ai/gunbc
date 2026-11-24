@@ -1,0 +1,62 @@
+module v2.test.claim.parse.prepared_grammar_two_modules
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.compiler.parse { grammar_validate_and_analyze, parse_production, PreparedModeledGrammar }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model }
+import v2.std.compilers.lexing { token_stream_remaining }
+import v2.std.diagnostic { Accepted, Rejected, invariant_port_locus }
+import v2.std.grammar { ModeledGrammar, VoidGrammar }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+import std.types { Bool }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data pgtm_subject: Symbol = ^prepared_grammar_two_modules_subject
+
+data pgtm_first_source: String = "module m.a\nfn f(ms: List<Symbol>) -> R {\n  a.b.C { mentions: ms }\n}\n"
+
+data pgtm_second_source: String = "module m.b\nfn g(cap: Node) -> R {\n  D { name: cap }\n}\n"
+
+// The control for gunbc.roadmap.roadmap_authority parse-prepared-grammar-analysis-carried: ONE
+// preparation (grammar_validate_and_analyze, the only place the FIRST analysis is computed) is carried
+// into parse_production for two modules. parse_production takes the prepared value and has no
+// grammar-root parameter, so no parse entry can construct analysis (structural, not a runtime count).
+fn pgtm_parses_with(modeled: PreparedModeledGrammar, text: String) -> Bool {
+  let lm = dag_language_model()
+  match tokenize(text: text, file: pgtm_subject, rules: lm.lex) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: stream, diagnostics: _ } =>
+      match parse_production(
+        tokens: token_stream_remaining(stream: stream),
+        modeled: modeled,
+        production_name: modeled.validated.root.start
+      ) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: _, diagnostics: _ } => true
+      }
+  }
+}
+
+fn pgtm_two_modules_one_preparation() -> Bool {
+  let lm = dag_language_model()
+  let at = invariant_port_locus(
+    port: ^parse_stage_locus_port,
+    invariant: ^prepared_grammar_two_modules_test_grammar_contract
+  )
+  match lm.grammar {
+    VoidGrammar => false
+    ModeledGrammar { root: root } =>
+      match grammar_validate_and_analyze(root: root, at: at) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: modeled, diagnostics: _ } =>
+          pgtm_parses_with(modeled: modeled, text: pgtm_first_source)
+            && pgtm_parses_with(modeled: modeled, text: pgtm_second_source)
+      }
+  }
+}
+
+test fn one_prepared_grammar_parses_two_modules_holds() -> Bool {
+  pgtm_two_modules_one_preparation()
+}

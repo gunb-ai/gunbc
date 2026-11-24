@@ -12,7 +12,7 @@ module gunbc.roadmap.dispatch_worker_unit_confinement
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath }
 import std.optional { Present, Absent }
 import std.measure { Kibibyte, millicore }
-import std.filesystem { path_parent_directory }
+import std.filesystem { path_parent_directory, path_basename }
 import extdeps.git { git_non_bare_git_dir_name, SafeDirectoryGrant, GitEnvironmentSetting, git_safe_directory_environment }
 import extdeps.systemd {
   CollectModeProperty, ExecStopPostProperty, NoNewPrivilegesProperty, PrivateTmpProperty, ProtectHomeProperty, ProtectSystemProperty,
@@ -437,7 +437,7 @@ fn dispatch_worker_writable_paths(instance: HostDashboardInstance, attempt_workt
 }
 
 fn dispatch_worktree_entry_name(attempt_worktree: String) -> String {
-  fold(split(s: attempt_worktree, delimiter: "/"), init: "", f: (acc, seg) => if seg == "" { acc } else { seg })
+  path_basename(path: attempt_worktree)
 }
 
 fn dispatch_worktree_path_for_instance(

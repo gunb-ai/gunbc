@@ -770,6 +770,10 @@ data ci_native_cache_derive_step_name: String = "Derive native-cache root (rustc
 // forbids the wildcard arms that predicate would need (receipt: nfr floor on 14bc815db4). Dissolves
 // when prelude ordering is witnessed without coproduct-residue match arms.
 data ci_release_bins_artifact_name: String = "release-bins"
+// THE JOB THAT PUBLISHES IT: fleet-converge's `build` job id, declared beside the artifact so a reader of the
+// artifact (gunbc.live_deploy.release_pair_deliver_cli, which asks whether that job succeeded) does not load the
+// whole workflow module to learn one id. gunbc.fleet.fleet_converge_workflow imports it for its job edges.
+data fleet_converge_release_bins_job_id: NonEmptyStr = "build" as NonEmptyStr
 
 data gunbc_ci_aux_step_timeout_minutes: Duration = 5
 
@@ -909,6 +913,20 @@ data gunbc_ci_release_build_step_timeout_minutes: Duration = 45
 // hung deploy, not a budget: the observe-then-cutover path either converges or refuses well inside
 // it, and exceeding it means the host mutation is stuck rather than slow.
 data gunbc_ci_live_deploy_step_timeout_minutes: Duration = 30
+
+// The dashboard deploy step's OWN step budget -- the one live-deploy-tier fold that needs 60, not the
+// shared 30. WHY IT IS SEPARATE: run 44947639071 (job 136980921499) on srv1 was killed by the shared
+// 30-minute ceiling on this fold, after its compile.reconcile alone ran 18 min (resolve_entry_graph_inclusive
+// 1279122 ms over a 1909-file closure) and the fold then spent ~9 min installing the source trees one
+// RunArgv per file. That is a property of THIS fold's work (the dashboard's full-repo reconcile and
+// per-file source install), not of every live-deploy fold: the instance-scope deploy, the microVM
+// controller install, its tenancy admission and the approval-ntfy retire all still fit 30 and stay on
+// gunbc_ci_live_deploy_step_timeout_minutes. So this is the dashboard-deploy fold's tier and nothing
+// else reads it. The raise is a CI time-budget growth, admitted by an explicit operator answer (not a
+// timeout default) and recorded at gunbc.design_ruling::srv1_dashboard_deploy_step_timeout_raised;
+// the two root causes behind it -- the 18-min compile reconcile and the per-file source installs -- are
+// NOT fixed here, they are named as open follow-ups in that ruling.
+data gunbc_ci_dashboard_deploy_step_timeout_minutes: Duration = 60
 
 // WHY THIS GROUP EXISTS, STATED AGAINST THE DEPLOYMENT THAT ACTUALLY RUNS TODAY. An earlier
 // revision of this reason said blue/green selection is observe-then-mutate, so two jobs could both
@@ -1079,28 +1097,48 @@ fn checked_job_timeout_minutes(computed: Int) -> JobTimeoutBudget {
 // folding the deploy into the converge backstop would inflate a bound that already documents itself
 // as a hand-authored cardinal count over one specific step list.
 //
-// Composition, from fleet_converge_dashboard_deploy_job(): the consumer prelude (allowance), the
-// release-bins download (transfer tier), the unpack-and-verify (aux tier), and the deploy itself
-// (live-deploy tier). Every step in that job runs on every dispatch of it -- there is no mode gating
-// WITHIN the job, because the mode gate is the job's own if_condition -- so unlike the converge
-// job's bound this really is a straight sum rather than a worst-case-branch selection. The srv1
-// root-mutation approval (gunbc.fleet.srv1_root_mutation_approval_run) adds its WIF auth (aux tier),
-// its file-and-wait step (its own bound, which covers the operator's whole decision window) and its
-// receipt upload (transfer tier).
-fn gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes() -> Int {
+// Composition of the srv1 root-mutation jobs that share the dashboard-deploy job's SHAPE: the consumer
+// prelude (allowance), the release-bins download (transfer tier), the unpack-and-verify (aux tier), and
+// the srv1 root-mutation approval (gunbc.fleet.srv1_root_mutation_approval_run) -- its WIF auth (aux
+// tier), its file-and-wait step (its own bound, which covers the operator's whole decision window) and
+// its receipt upload (transfer tier). Every step here runs on every dispatch of such a job -- there is
+// no mode gating WITHIN the job, because the mode gate is the job's own if_condition -- so unlike the
+// converge job's bound this really is a straight sum rather than a worst-case-branch selection.
+// The frame deliberately EXCLUDES the job's single live-deploy-tier fold (its deploy / install /
+// retire step). Each such job adds that fold back from the budget constant the step itself uses, so
+// raising one fold's budget cannot silently move another job's backstop: this used to be a single
+// shared bound carrying the live-deploy tier inline, and giving the dashboard deploy fold its own
+// 60-minute tier there would have raised desired-instance-deploy, approval-ntfy-retire and the microVM
+// controller install too, none of which is approved to grow.
+fn gunbc_ci_root_mutation_job_frame_timeout_minutes() -> Int {
   gunbc_ci_prelude_allowance_minutes
     + gunbc_ci_artifact_transfer_step_timeout_minutes
     + gunbc_ci_aux_step_timeout_minutes
-    + gunbc_ci_live_deploy_step_timeout_minutes
     + gunbc_ci_aux_step_timeout_minutes
     + (minute_count(srv1_root_mutation_approval_step_timeout_minutes()) as Int)
     + gunbc_ci_artifact_transfer_step_timeout_minutes
 }
 
-// The microVM controller install's backstop: the deploy job's terms, which it shares, plus its tenancy
-// admission step (live-deploy tier), which runs before its approval and its key.
+// The dashboard-deploy job's backstop: the shared frame plus its own deploy fold at
+// gunbc_ci_dashboard_deploy_step_timeout_minutes (60) -- NOT the shared 30-minute live-deploy tier.
+// The fold's raise, and this job's bound rising to cover it, are the operator-approved change recorded
+// at gunbc.design_ruling::srv1_dashboard_deploy_step_timeout_raised.
+fn gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes() -> Int {
+  gunbc_ci_root_mutation_job_frame_timeout_minutes() + gunbc_ci_dashboard_deploy_step_timeout_minutes
+}
+
+// The backstop for the jobs that share the dashboard-deploy job's shape but whose single live-deploy-tier
+// fold is still the shared gunbc_ci_live_deploy_step_timeout_minutes (30): desired-instance-deploy and
+// approval-ntfy-retire. Their value is UNCHANGED by the dashboard-deploy fold's raise.
+fn gunbc_ci_live_deploy_shaped_job_backstop_timeout_minutes() -> Int {
+  gunbc_ci_root_mutation_job_frame_timeout_minutes() + gunbc_ci_live_deploy_step_timeout_minutes
+}
+
+// The microVM controller install's backstop: the shared live-deploy-shaped frame, which it shares, plus
+// its tenancy admission step (live-deploy tier), which runs before its approval and its key. Its value
+// is UNCHANGED by the dashboard-deploy fold's raise -- it never ran that fold.
 fn gunbc_ci_microvm_controller_install_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes() + gunbc_ci_live_deploy_step_timeout_minutes
+  gunbc_ci_live_deploy_shaped_job_backstop_timeout_minutes() + gunbc_ci_live_deploy_step_timeout_minutes
 }
 
 // The dark-install step's measured RENDER FOLD, reserved as its own budget term. On run 40630763823

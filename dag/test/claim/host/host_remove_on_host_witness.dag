@@ -15,10 +15,10 @@
 module test.claim.host.host_remove_on_host_witness
 
 import std.types { String, NonEmptyStr, Int, Bool, List }
-import std.algebra { Empty, FreeSemigroup, non_empty_append, non_empty_singleton, non_empty_to_list }
+import std.algebra { Empty, FreeSemigroup, fold_list, non_empty_append, non_empty_singleton, non_empty_to_list }
 import std.realization_reconcile { Reconciliation, Converged, NotConverged }
 import extdeps.exec.command { ArgvCommand, argv_words }
-import extdeps.posix.test_utility { test_symbolic_link_command }
+import extdeps.posix.test_utility { test_symbolic_link_command, contained_existence }
 import gunbc.host.host_effect_realize {
   HostRemoveTarget,
   HostRemoveEvidence,
@@ -29,8 +29,10 @@ import gunbc.host.host_effect_realize {
   HostRemovePathAbsent,
   HostRemovePathUnreadable,
   host_remove_reading,
-  host_remove_state_of,
+  host_remove_state_of_contained,
+  host_remove_state_present,
   host_remove_entry_state,
+  host_remove_ancestors,
   host_remove_arm_name,
   host_remove_step_name,
   RunArgvTransportOutcome,
@@ -339,11 +341,40 @@ fn state_is_absent(st: HostRemovePathState) -> Bool {
 }
 
 // `test` exit 1 is absence ONLY under a searchable parent; exit 1 under an unsearchable parent (the
-// existing-path-behind-0000-dir case) and any exit above 1 are unreadable.
+// existing-path-behind-0000-dir case) and any exit above 1 are unreadable. Driven through the ONE fold
+// the production path uses -- the one-level `host_remove_state_of` this used to call is deleted, the
+// ancestor walk subsumes it, and a proof no production path runs is a second thing to keep true.
 test fn test_status_is_absent_only_under_a_searchable_parent() -> Bool {
-  state_is_absent(st: host_remove_state_of(path: "/p/c", parent: "/p", reading: host_remove_reading(path: "/p/c", outcome: probe_observed(code: 1)), parent_reading: host_remove_reading(path: "/p", outcome: probe_observed(code: 0))))
-    && state_is_unreadable(st: host_remove_state_of(path: "/p/c", parent: "/p", reading: host_remove_reading(path: "/p/c", outcome: probe_observed(code: 1)), parent_reading: host_remove_reading(path: "/p", outcome: probe_observed(code: 1))))
-    && state_is_unreadable(st: host_remove_state_of(path: "/p/c", parent: "/p", reading: host_remove_reading(path: "/p/c", outcome: probe_observed(code: 2)), parent_reading: host_remove_reading(path: "/p", outcome: probe_observed(code: 0))))
+  state_is_absent(
+    st: host_remove_state_of_contained(
+      contained: contained_existence(
+        path: "/p/c",
+        parent: "/p",
+        child_reading: host_remove_reading(path: "/p/c", outcome: probe_observed(code: 1)),
+        parent_reading: host_remove_reading(path: "/p", outcome: probe_observed(code: 0)),
+      ),
+    ),
+  )
+    && state_is_unreadable(
+      st: host_remove_state_of_contained(
+        contained: contained_existence(
+          path: "/p/c",
+          parent: "/p",
+          child_reading: host_remove_reading(path: "/p/c", outcome: probe_observed(code: 1)),
+          parent_reading: host_remove_reading(path: "/p", outcome: probe_observed(code: 1)),
+        ),
+      ),
+    )
+    && state_is_unreadable(
+      st: host_remove_state_of_contained(
+        contained: contained_existence(
+          path: "/p/c",
+          parent: "/p",
+          child_reading: host_remove_reading(path: "/p/c", outcome: probe_observed(code: 2)),
+          parent_reading: host_remove_reading(path: "/p", outcome: probe_observed(code: 0)),
+        ),
+      ),
+    )
 }
 
 // -- THE ENTRY, NOT ITS REFERENT. `test -e` follows symlinks (POSIX stat), so a link whose referent is
@@ -411,4 +442,290 @@ test fn removing_a_dangling_link_is_confirmed_not_a_noop() -> Bool {
       }
     NotConverged { reason: _, applied: _ } => false
   }
+}
+
+// ---------------------------------------------------------------------------
+// THE ABSENCE PROOF, WALKED TO THE NEAREST PRESENT ANCESTOR.
+//
+// THE OUTAGE THESE ARE FOR: srv1 production gunbc-roadmap, down from 2026-11-21 06:32Z. The
+// dashboard_deploy at 3b1ba654f7e (run 44895373286, job 136822617862) got past tree-sync and refused at
+// leg 40, 'attempt-unit-sudo-route-retire': RemoveForce refused /etc/sudoers.d/gunbc-attempt-system-unit-srv1-live,
+// /opt/gunbc/attempt-system-unit-helpers/srv1-live/installed-revision and
+// /opt/gunbc/attempt-unit-spool/drain.lock because each read false, its parent
+// /opt/gunbc/attempt-system-unit-helpers/srv1-live read false, and the fold STOPPED there -- "nothing
+// under that parent could be read and the path's absence is not established". `sudo stat` on the host
+// says all three paths are absent, srv1-live is absent, and the grandparent
+// /opt/gunbc/attempt-system-unit-helpers is present as root:root 0755. The refusal was the EARLIEST
+// UNJUSTIFIED BOUNDARY of the proof, not a conservative one
+// (gunbc.design_argument::earliest_unjustified_boundary): a grandparent that is present and searchable
+// was SEARCHED for srv1-live and did not find it, so srv1-live is absent, and an absent directory has
+// no subtree for a tenant's files to sit in.
+//
+// WHAT STAYS REFUSED, which is what makes the repair safe: a level that is present with its search bit
+// off. `test -x` false is ambiguous exactly the way `test -e` false is, so the walk asks the ENTRY of
+// every ancestor it passes -- and an ancestor that exists without +x ends the walk without an answer,
+// leaving the subtree Unreadable as it always was. A refusal nearer the path is never overwritten by
+// readable ground farther above it.
+//
+// These controls key the probe vector on the WHOLE COMMAND, which the single-level helper above cannot:
+// keyed on the operand alone, every ancestor answers the same, so "the parent is absent AND the
+// grandparent is searchable" -- the shape srv1 actually met -- cannot be expressed at all.
+
+// The probe vector a control declares: `present` answers 0, `refused` answers 2 (the host not answering
+// at all), and every command neither table names answers 1 -- the plain POSIX false that started the
+// question, since `test` exits 1 both for a path that is not there and for one it cannot stat.
+fn probe_by_command(present: List<String>, refused: List<String>, command: ArgvCommand) -> RunArgvTransportOutcome {
+  let words = join(argv_words(command: command), " ")
+  if command_in(xs: present, words: words) {
+    probe_observed(code: 0)
+  } else if command_in(xs: refused, words: words) {
+    probe_observed(code: 2)
+  } else {
+    probe_observed(code: 1)
+  }
+}
+
+// Membership over the command strings, folded. It is written out because the shapes a control names are
+// whole commands ("test -x /opt/gunbc"), not operands: the level AND the question have to match for the
+// control to say anything about a level.
+fn command_in(xs: List<String>, words: String) -> Bool {
+  fold_list(xs: xs, empty: false, cons: fn(acc, candidate) { if acc { true } else { candidate == words } })
+}
+
+fn state_is_unreadable_with(st: HostRemovePathState, pattern: String) -> Bool {
+  match st {
+    HostRemovePathUnreadable { reason: r } => string_contains(s: r, pattern: pattern)
+    HostRemovePathPresent => false
+    HostRemovePathAbsent => false
+  }
+}
+
+// The path the srv1 retract was refused over, and the two directories the proof walks through to answer it.
+fn srv1_retract_path() -> String {
+  "/opt/gunbc/attempt-system-unit-helpers/srv1-live/installed-revision"
+}
+
+// CONTROL 1 -- THE SRV1 SHAPE RESOLVES TO ABSENT: the path is absent, its parent is absent, its
+// grandparent is present and searchable. Nothing above the grandparent is consulted -- `/opt/gunbc` is
+// rigged to REFUSE (exit 2) and the verdict is still Absent, which is what "the walk stops at the first
+// ancestor that answers" has to mean: a farther refusal cannot undo a nearer establishment.
+test fn the_srv1_shape_is_an_established_absence_and_the_walk_stops_at_the_searchable_grandparent() -> Bool {
+  state_is_absent(
+    st: host_remove_entry_state(
+      path: srv1_retract_path(),
+      run: fn(c) {
+        probe_by_command(
+          present: ["test -x /opt/gunbc/attempt-system-unit-helpers", "test -d /opt/gunbc/attempt-system-unit-helpers"],
+          refused: ["test -x /opt/gunbc", "test -e /opt/gunbc", "test -L /opt/gunbc"],
+          command: c,
+        )
+      },
+    ),
+  )
+}
+
+// CONTROL 2 -- AN UNSEARCHABLE PRESENT ANCESTOR STILL REFUSES (the mode-000 shape the sanitation
+// guarantee exists for): the same path, the same absent parent, but the grandparent is there and
+// `test -x` says false. The walk stops at it WITHOUT an answer, and the reason names the ancestor and
+// why it refused -- the subtree may still be holding exactly what a retirement is supposed to have removed.
+test fn a_present_unsearchable_ancestor_still_refuses_the_absence() -> Bool {
+  state_is_unreadable_with(
+    st: host_remove_entry_state(
+      path: srv1_retract_path(),
+      run: fn(c) {
+        probe_by_command(
+          present: ["test -L /opt/gunbc/attempt-system-unit-helpers"],
+          refused: [],
+          command: c,
+        )
+      },
+    ),
+    pattern: "/opt/gunbc/attempt-system-unit-helpers",
+  ) && state_is_unreadable_with(
+    st: host_remove_entry_state(
+      path: srv1_retract_path(),
+      run: fn(c) {
+        probe_by_command(
+          present: ["test -L /opt/gunbc/attempt-system-unit-helpers"],
+          refused: [],
+          command: c,
+        )
+      },
+    ),
+    pattern: "not searchable",
+  )
+}
+
+// CONTROL 2b -- THE SAME REFUSAL ONE LEVEL DOWN: the IMMEDIATE parent is present with its search bit off
+// while the grandparent above it is searchable. Readable ground farther up does not rescue a directory
+// that cannot be searched from underneath, because the nearest ancestor that answers is the one that decides.
+test fn a_searchable_ancestor_above_an_unsearchable_one_does_not_rescue_it() -> Bool {
+  state_is_unreadable_with(
+    st: host_remove_entry_state(
+      path: srv1_retract_path(),
+      run: fn(c) {
+        probe_by_command(
+          present: [
+            "test -L /opt/gunbc/attempt-system-unit-helpers/srv1-live",
+            "test -x /opt/gunbc/attempt-system-unit-helpers",
+            "test -d /opt/gunbc/attempt-system-unit-helpers",
+          ],
+          refused: [],
+          command: c,
+        )
+      },
+    ),
+    pattern: "not searchable",
+  )
+}
+
+// CONTROL 3 -- THE SINGLE-LEVEL CASES ARE UNCHANGED, asserted through the probe vector the walk now
+// uses: a parent that IS present and searchable still settles the path at the first ancestor (the walk
+// never climbs, and the rigged refusal above it is never asked), and a parent whose `test -x` the host
+// will not answer for still refuses. "Unchanged" here is a claim something runs, not a claim about old code.
+test fn a_searchable_parent_still_settles_the_path_in_one_level_and_an_unanswerable_one_still_refuses() -> Bool {
+  state_is_absent(
+    st: host_remove_entry_state(
+      path: srv1_retract_path(),
+      run: fn(c) {
+        probe_by_command(
+          present: ["test -x /opt/gunbc/attempt-system-unit-helpers/srv1-live", "test -d /opt/gunbc/attempt-system-unit-helpers/srv1-live"],
+          refused: ["test -x /opt/gunbc/attempt-system-unit-helpers"],
+          command: c,
+        )
+      },
+    ),
+  ) && state_is_unreadable(
+    st: host_remove_entry_state(
+      path: srv1_retract_path(),
+      run: fn(c) {
+        probe_by_command(
+          present: [],
+          refused: ["test -x /opt/gunbc/attempt-system-unit-helpers/srv1-live"],
+          command: c,
+        )
+      },
+    ),
+  )
+}
+
+// CONTROL 3b -- AND WITH NO SEARCHABLE ANCESTOR ANYWHERE the absence is still not established: every
+// level from the parent to the root reads false, which is the case the fold used to reach by stopping at
+// the parent. It stays Unreadable, with a reason that says nothing ever searched for the path.
+test fn an_absence_no_ancestor_ever_searched_for_stays_unreadable() -> Bool {
+  state_is_unreadable_with(
+    st: host_remove_entry_state(
+      path: srv1_retract_path(),
+      run: fn(c) { probe_by_command(present: [], refused: [], command: c) },
+    ),
+    pattern: "no ancestor of it read present and searchable",
+  )
+}
+
+// THE CHAIN THE WALK CLIMBS is the parent, then its parent, up to the root, NEAREST FIRST -- the order
+// that makes "the first ancestor that answers decides" mean the NEAREST one, and short enough that a deep
+// path is walked in depth steps rather than probed everywhere.
+test fn the_ancestor_chain_is_nearest_first_up_to_the_root() -> Bool {
+  join(host_remove_ancestors(path: srv1_retract_path()), "|")
+    == "/opt/gunbc/attempt-system-unit-helpers/srv1-live|/opt/gunbc/attempt-system-unit-helpers|/opt/gunbc|/opt|/"
+    && join(host_remove_ancestors(path: "/srv1-live"), "|") == "/"
+    // A RELATIVE path has no chain: the level above a bare relative name is the probe's working
+    // directory, not the file-system root, and `host_remove_parent_of` answering "/" there used to hand
+    // the walk a "/" that was never the path's parent.
+    && join(host_remove_ancestors(path: "attempt-unit-spool/drain.lock"), "|") == ""
+}
+
+// CONTROL 4 -- A LEVEL WHOSE `test -x` ANSWERS PRESENT IS NOT YET A SEARCHABLE DIRECTORY. Two shapes
+// where a bare `test -x` used to hand the walk an establishment it had not earned, both now refused:
+//
+//  - A REGULAR FILE, mode 0755: `test -x` follows the file's own execute bit and answers 0, but the level
+//    has no entries to search -- `stat` under it is ENOTDIR, which is not "searched and not found". The
+//    non-executable file already refused (its `test -x` is 1), so admitting the executable one made the
+//    verdict an accident of the file's mode bits.
+//  - A SYMLINK, to a searchable directory: `test -x` and `test -d` both follow it, so the level was
+//    vouching for its REFERENT's search bit while the walk was removing entries at the link's own name --
+//    against this module's standing rule that an entry is read as the entry it is, not as what it points at.
+//
+// Both shapes are rigged below exactly as the host answers them, and in both the nearer levels are absent
+// so the walk REACHES the lying level: the verdict must be a refusal, not the absence it used to conclude.
+test fn an_executable_regular_file_ancestor_is_not_a_searchable_directory() -> Bool {
+  state_is_unreadable_with(
+    st: host_remove_entry_state(
+      path: "/p/exe/missing/leaf",
+      run: fn(c) {
+        probe_by_command(
+          present: ["test -x /p/exe", "test -e /p/exe"],
+          refused: [],
+          command: c,
+        )
+      },
+    ),
+    pattern: "it is not a directory",
+  )
+}
+
+test fn a_symlinked_ancestor_does_not_borrow_its_referents_search_bit() -> Bool {
+  state_is_unreadable_with(
+    st: host_remove_entry_state(
+      path: "/p/link/missing/leaf",
+      run: fn(c) {
+        probe_by_command(
+          present: ["test -x /p/link", "test -d /p/link", "test -L /p/link"],
+          refused: [],
+          command: c,
+        )
+      },
+    ),
+    pattern: "is a symlink",
+  )
+}
+
+// CONTROL 4c -- THE THIRD SHAPE: `test -x` present, `test -d` present, and `test -L` NOT ANSWERED. The level
+// is still not admitted -- a directory that MIGHT be a link answering for its referent cannot vouch for the
+// entries under its own name -- so the verdict is a refusal either way, and that is exactly why the wrong
+// cause here went unseen: no verdict changed. What changed is what the operator is told. The reason used to
+// read "`test -x /p/dir` could not be read", about a level whose `test -x` had answered cleanly two probes
+// earlier, sending whoever follows it to a probe that is working.
+// #extdeps.posix.test_utility::AncestorLinkReadingUnreadable is the cause that carries this shape, and this
+// control is what fails if a driver folds it back into the `-x` one or the law re-words it: the refusal must
+// name the operand that actually failed, and must not name one that answered.
+test fn an_unreadable_link_probe_refuses_naming_the_operand_that_failed() -> Bool {
+  let st = host_remove_entry_state(
+    path: "/p/dir/missing/leaf",
+    run: fn(c) {
+      probe_by_command(
+        present: ["test -x /p/dir", "test -d /p/dir"],
+        refused: ["test -L /p/dir"],
+        command: c,
+      )
+    },
+  )
+  match st {
+    HostRemovePathUnreadable { reason: r } =>
+      string_contains(s: r, pattern: "test -L /p/dir")
+        && !string_contains(s: r, pattern: "test -x /p/dir")
+    HostRemovePathPresent => false
+    HostRemovePathAbsent => false
+  }
+}
+
+// CONTROL 5 -- A RELATIVE PATH'S ABSENCE IS NEVER ESTABLISHED BY A WALK. `HostRemoveTarget` carries
+// NonEmptyStr, not an absolute path, so a relative name is an admitted input. With the probe's working
+// directory at mode 000, `a/b` reads false and `a` reads false because the directory they live in cannot
+// be searched -- and the old chain handed the walk a fabricated "/" whose `test -x` answers present, which
+// concluded ABSENCE for a path that EXISTS. The walk is refused before it starts, and the reason says why.
+test fn a_relative_path_is_never_established_absent_by_the_walk() -> Bool {
+  state_is_unreadable_with(
+    st: host_remove_entry_state(
+      path: "attempt-unit-spool/drain.lock",
+      run: fn(c) {
+        probe_by_command(
+          present: ["test -x /", "test -d /"],
+          refused: [],
+          command: c,
+        )
+      },
+    ),
+    pattern: "relative path",
+  )
 }

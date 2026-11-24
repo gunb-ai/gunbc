@@ -22,6 +22,11 @@ import gunbc.live_deploy.pre_swap_admission {
   serve_entry_argv_digest_of_text,
   admit_plan_serve_entry_verdict,
   serve_entry_verdict_as_compile_verdict,
+  ServeEntryVerdictDirAdmission,
+  ServeEntryVerdictDirWritable,
+  ServeEntryVerdictDirRefused,
+  serve_entry_verdict_dir_admission,
+  serve_entry_verdict_dir_refusal_text,
 }
 import extdeps.languages.json.emit { serialize_json }
 import gunbc.live_deploy.desired { srv1_production_desired_deployment, srv1_lab_desired_deployment, selected_deployment_spec }
@@ -375,4 +380,28 @@ test fn the_operator_local_route_refusal_names_the_dissolution_and_the_surviving
 test fn the_stage_row_demands_the_plan_verdict_and_the_lab_row_does_not() -> Bool {
   deployment_requires_plan_serve_entry_verdict(deployment: srv1_production_desired_deployment())
     && !deployment_requires_plan_serve_entry_verdict(deployment: srv1_lab_desired_deployment())
+}
+
+// ── THE VERDICT DIRECTORY IS ADMITTED BEFORE THE WITNESS RUNS (pull/16891#issuecomment-7103879443) ──
+// A person-owned run met "Permission denied" at the final write, after a 12-minute witness. The
+// probe outcome now decides first: an unwritable directory refuses by name, and a writable one
+// admits unchanged (so CI, which owns the directory, still passes).
+
+test fn an_unwritable_verdict_dir_refuses_naming_the_dir_and_the_reason() -> Bool {
+  match serve_entry_verdict_dir_admission(dir: "/tmp/fleet-converge-plan", probe_success: false, probe_error: "Permission denied (os error 13)") {
+    ServeEntryVerdictDirRefused { dir, reason } => {
+      let text = serve_entry_verdict_dir_refusal_text(dir: dir, reason: reason)
+      string_contains(s: text, pattern: "/tmp/fleet-converge-plan")
+        && string_contains(s: text, pattern: "Permission denied")
+        && string_contains(s: text, pattern: "refused before the served-command witness ran")
+    }
+    ServeEntryVerdictDirWritable => false
+  }
+}
+
+test fn a_writable_verdict_dir_is_admitted() -> Bool {
+  match serve_entry_verdict_dir_admission(dir: "/tmp/fleet-converge-plan", probe_success: true, probe_error: "") {
+    ServeEntryVerdictDirWritable => true
+    ServeEntryVerdictDirRefused { dir, reason } => false
+  }
 }

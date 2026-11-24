@@ -108,7 +108,9 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.curl", decl_name: "curl_download_command"),
     decl_ref(module_path: "extdeps.tools.gh", decl_name: "gh_run_download_command"),
     decl_ref(module_path: "extdeps.tools.gh", decl_name: "gh_main_head_command"),
-    decl_ref(module_path: "extdeps.tools.gh", decl_name: "gh_release_bins_run_list_command"),
+    decl_ref(module_path: "extdeps.tools.gh", decl_name: "gh_commit_ancestry_command"),
+    decl_ref(module_path: "extdeps.tools.gh", decl_name: "gh_branch_artifact_runs_command"),
+    decl_ref(module_path: "extdeps.tools.gh", decl_name: "gh_run_job_conclusion_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "cat_file_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_path_probe_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_owned_regular_files_exec_command"),
@@ -179,6 +181,15 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_untrusted_entries_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_other_children_exec_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_symlink_targets_command"),
+    decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_direct_children_metadata_command"),
+    // THE INDEPENDENT FRAMING COUNT for the tree-install readback (the newline-framing fix): two
+    // read-only `-printf .` enumerations whose bounds match the metadata walks they count. Same
+    // already-admitted `find` program, read-only, no write fold, no sudo -- a name cannot add a dot,
+    // so the dot count is an independent check that the newline-delimited metadata listing saw exactly
+    // as many entries as exist, refusing a crafted name that forges extra well-formed rows.
+    decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_direct_children_count_command"),
+    decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_tree_entry_count_command"),
+    decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_self_metadata_command"),
     decl_ref(module_path: "extdeps.tools.findutils", decl_name: "find_regular_file_size_mtime_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "mv_exact_destination_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "sort_in_place_command"),
@@ -234,6 +245,15 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.glibc.ldconfig", decl_name: "ldconfig_root_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "cp_preserve_if_absent_command"),
     decl_ref(module_path: "extdeps.git", decl_name: "git_hash_object_command"),
+    decl_ref(module_path: "test.claim.git_command_runner_route_wall_witness", decl_name: "argv_bare_commit"),
+    decl_ref(module_path: "test.claim.git_command_runner_route_wall_witness", decl_name: "argv_bare_add"),
+    decl_ref(module_path: "test.claim.git_command_runner_route_wall_witness", decl_name: "argv_bare_status"),
+    decl_ref(module_path: "test.claim.git_command_runner_route_wall_witness", decl_name: "argv_inrepo_commit"),
+    decl_ref(module_path: "test.claim.git_command_runner_route_wall_witness", decl_name: "argv_absolute_commit"),
+    decl_ref(module_path: "test.claim.git_command_runner_route_wall_witness", decl_name: "argv_absolute_add"),
+    decl_ref(module_path: "test.claim.git_command_runner_route_wall_witness", decl_name: "argv_absolute_inrepo_revparse"),
+    decl_ref(module_path: "test.claim.git_command_runner_route_wall_witness", decl_name: "argv_deep_add"),
+    decl_ref(module_path: "test.claim.git_command_runner_route_wall_witness", decl_name: "argv_ls"),
     decl_ref(module_path: "extdeps.rust.cargo_build", decl_name: "cargo_run_release_manifest_offline_command"),
     decl_ref(module_path: "extdeps.tools.dpkg_deb", decl_name: "dpkg_deb_control_fields_command"),
     decl_ref(module_path: "extdeps.rust.cargo_build", decl_name: "cargo_version_command"),
@@ -372,6 +392,17 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "extdeps.git", decl_name: "git_config_local_set_command"),
     decl_ref(module_path: "extdeps.git", decl_name: "git_absolute_git_dir_premise_argv"),
     decl_ref(module_path: "extdeps.git", decl_name: "git_shared_repository_group_config_command"),
+    // THE DEPLOYED-TREE OBSERVATION'S FIVE TYPED CALLS (PR #16918 review 97601, 2026-11-23): the fold
+    // delivers its git legs as typed ArgvCommands through gunbc.host.host_effect_realize's shared
+    // dispatcher, and the words are built here because an argv shape is git's fact, not the fold's
+    // (the rationale, including why GIT_INDEX_FILE is a typed binding and the index is never a shared
+    // name, is at each builder in extdeps/git.dag). One builder per operation, no verbs parameter, so
+    // no caller composes a git invocation it was not given.
+    decl_ref(module_path: "extdeps.git", decl_name: "git_in_trusted_repository_head_revision_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_in_trusted_repository_head_root_tree_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_in_trusted_repository_read_tree_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_in_trusted_repository_status_command"),
+    decl_ref(module_path: "extdeps.git", decl_name: "git_in_trusted_repository_ls_files_ignored_command"),
     decl_ref(module_path: "extdeps.git", decl_name: "git_clone_command"),
     decl_ref(module_path: "extdeps.git", decl_name: "git_fetch_revision_command"),
     decl_ref(module_path: "extdeps.git", decl_name: "git_checkout_detached_command"),
@@ -462,6 +493,10 @@ fn argv_command(program: ProgramIdentity, arguments: List<String>) -> ArgvComman
     decl_ref(module_path: "gunbc.repo.repo_local_git_config", decl_name: "reconcile_install_command"),
     decl_ref(module_path: "extdeps.tools.gnu_coreutils", decl_name: "install_directory_owned_argv_command"),
     decl_ref(module_path: "gunbc.harness.harness_shell_job", decl_name: "harness_backstopped_shell_command"),
+    // The census member readback fail-closed producer control builds a guaranteed-nonexistent executable
+    // so answer_on/LocalCommandHost genuinely cannot spawn it and the leg comes back as the typed
+    // LegNotDispatched, never a fabricated exit code (gunbc.design_argument::fail_closed).
+    decl_ref(module_path: "test.claim.machine_intake.mtcollins_member_leg_producer_local_wet", decl_name: "never_spawned_readback_executable"),
   ]
   = ArgvCommand { program: program, arguments: arguments }
 

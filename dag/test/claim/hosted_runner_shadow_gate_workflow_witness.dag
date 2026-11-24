@@ -2,8 +2,7 @@ module test.claim.hosted_runner_shadow_gate_workflow_witness
 
 // THE CLAIMS OVER THE HOSTED-RUNNER SHADOW GATE EMITTER.
 //
-// The shadow gate is a NON-required job admitted by the 2026-11-19 operator ruling (@ref
-// gunbc.design_ruling::hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign) and
+// The shadow gate is a NON-required job admitted by the 2026-11-19 operator ruling (#gunbc.design_ruling::hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign) and
 // recorded as the roadmap node hosted-runner-shadow-gate. It is a scaffold in two ways, and each has a
 // dissolution condition that belongs on the carrier (gunbc.design_argument::source_annotations: "a
 // dissolution condition belongs in a typed carrier"), not only in a comment:
@@ -17,13 +16,19 @@ module test.claim.hosted_runner_shadow_gate_workflow_witness
 // YAML loses either marker, so a regeneration that silently drops them is caught.
 
 import std.types { Bool, Int, String }
-import test.fixture.text_scan { occurrences }
+import test.fixture.text_scan { occurs_before, occurrences }
 import gunbc.witness.hosted_runner_shadow_gate_workflow {
   expected_hosted_runner_shadow_gate_yml,
+  shadow_gate_source_root_args,
+  shadow_gate_first_serving_host,
+  shadow_gate_plumbing_proof_pattern,
+  shadow_gate_push_credential_header_note,
   ShadowGateWorkflowGenerationOutcome,
   ShadowGateWorkflowGenerated,
   ShadowGateWorkflowGenerationRefused,
 }
+import extdeps.bazel.target_pattern { parse_target_pattern, target_pattern_matches, TargetPatternParsed, TargetPatternRefused }
+import gunbc.compute.test_selection { witness_label_of_path }
 
 // Present-or-not over a String, built on the claim-safe occurrences counter (same helper the
 // runner_host_medium precedent witness uses).
@@ -33,6 +38,16 @@ fn contains(haystack: String, needle: String) -> Bool {
 
 // The emitted YAML, or false when the emitter refuses (a refusal is claimed elsewhere: the emitted
 // artifact must exist for this gate to ship, and the drift watch enforces the bytes).
+// THE HOST PIN THE MODEL RENDERS INTO EVERY REMOTE STEP -- the same typed roster selection the
+// emitter uses, not a retyped token (run 44995124241: CallContractMismatch 'missing required
+// argument host (4 of 5)' -- the deleted probe had carried the target and it went with it).
+fn host_pin_needle() -> String {
+  match shadow_gate_first_serving_host() {
+    Absent => "__model_names_no_host__"
+    Present { value: h } => concat(" --arg host=", h)
+  }
+}
+
 fn emitted_yaml_or_empty() -> String {
   match expected_hosted_runner_shadow_gate_yml() {
     ShadowGateWorkflowGenerated { content } => content
@@ -59,28 +74,30 @@ test fn the_emitted_workflow_names_its_cutover_dissolution() -> Bool {
     && contains(haystack: rendered, needle: "configured")
 }
 
-// THE FORK GUARD AND THE NOT-CONFIGURED NOTICE are the two fail-closed arms the manager's ruling
-// (msg_e96aaa9e) requires: forks never see secrets, and an unconfigured run is visibly skipped with a
-// typed notice, never green-as-passed. Lock them on the artifact.
+// THE FORK GUARD AND THE ARM NOTICES are the fail-closed arms: forks never federate, and every arm
+// that gets no remote legs says WHY with a typed notice, never green-as-passed. Lock them on the
+// artifact.
 test fn the_emitted_workflow_gates_forks_and_types_the_not_configured_notice() -> Bool {
   let rendered = emitted_yaml_or_empty()
   contains(haystack: rendered, needle: "pull_request")
     && contains(haystack: rendered, needle: "merge_group")
     && contains(haystack: rendered, needle: "workflow_dispatch")
-    && contains(haystack: rendered, needle: "::notice::not configured")
+    && contains(haystack: rendered, needle: "::notice::remote legs run only on workflow_dispatch")
 }
 
-// THE MERGE-GROUP FAIL-CLOSED ARM (review 96834): repository secrets MUST exist on merge_group,
-// so their absence there is an incident, not a skip — the emitted bytes must carry the typed
-// '::error::' and exit 1 under the $GITHUB_EVENT_NAME = merge_group test. Without this arm a
-// rotated or deleted secret turns the shadow gate into a permanent silent pass.
-test fn the_emitted_workflow_fails_closed_on_merge_group_when_secrets_are_absent() -> Bool {
+// THE ARMS ARE TYPED (WIF switch; review 96834's demand retargeted): with no repository secrets to
+// miss, the arms are EVENTS. A dispatch at refs/heads/main is the only configured arm (the pinned
+// provider federates exactly that arm); a dispatch at any other ref and a pull_request/merge_group
+// run each get their own typed notice -- a silent green on the wrong arm is what fail_closed forbids.
+test fn the_emitted_workflow_arms_the_events_with_typed_notices() -> Bool {
   let rendered = emitted_yaml_or_empty()
   contains(haystack: rendered, needle: "$GITHUB_EVENT_NAME")
-    && contains(haystack: rendered, needle: "merge_group\" ]")
-    && contains(haystack: rendered, needle: "workflow_dispatch\" ]")
-    && contains(haystack: rendered, needle: "::error::not configured")
-    && contains(haystack: rendered, needle: "exit 1")
+    && contains(haystack: rendered, needle: "\"refs/heads/main\" ]; then")
+    // a dispatch at a non-main ref is a verdict REQUEST that cannot federate: error + exit 1, never
+    // a green with a notice (review 97115; fail_closed: no green-by-default on an explicit ask).
+    && contains(haystack: rendered, needle: "::error::not a dispatch at refs/heads/main")
+    && contains(haystack: rendered, needle: "fails rather than passing green'\n            exit 1")
+    && contains(haystack: rendered, needle: "the pinned WIF provider refuses pull_request/merge_group claims")
 }
 
 // THE EVIDENCE RE-RUN ARM. The operator ruling's evidence (receipt per run, wall time, red control)
@@ -93,7 +110,8 @@ test fn the_emitted_workflow_carries_the_dispatch_evidence_input_defaulting_to_t
     && contains(haystack: rendered, needle: "pattern:")
     && contains(haystack: rendered, needle: "GUNBC_GATE_PATTERN: ${{ inputs.pattern }}")
     && contains(haystack: rendered, needle: "--arg pattern=\"")
-    && contains(haystack: rendered, needle: "GUNBC_GATE_PATTERN:-//dag/test/claim/compute/host_capacity_seal_witness.dag}\"")
+    && contains(haystack: rendered, needle: concat("GUNBC_GATE_PATTERN:-", shadow_gate_plumbing_proof_pattern, "}\""))
+    && contains(haystack: rendered, needle: "--arg identity_file=$RUNNER_TEMP/remote-build-ci-ssh-key")
 }
 
 // THE PER-ROW GATE STEPS (shape agreed with gunbc.compute.remote_build_client's remote_gate_cli):
@@ -106,12 +124,60 @@ test fn the_emitted_workflow_runs_every_gate_row_with_the_agreed_exit_rendering(
   contains(haystack: rendered, needle: "Remote gate: //gunbc/instruments:self-host")
     && contains(haystack: rendered, needle: "Remote gate: //gunbc/instruments:v2-native-cli")
     && contains(haystack: rendered, needle: "remote_gate_cli --arg worktree=$GITHUB_WORKSPACE --arg label='//gunbc/instruments:self-host'")
+    // THE CLIENT LINE CARRIES ITS SOURCE ROOTS (run 44985404044: the emitted client line had
+    // none and gunbc typed 'provide at least one --source-root' -- the first time that line ever
+    // executed, because earlier runs died upstream). The pair is ONE value in the emitter, rendered
+    // from gunbc.source_layout; this claim checks THE VALUE appears, not a retyped copy.
+    && contains(haystack: rendered, needle: shadow_gate_source_root_args)
+    && contains(haystack: rendered, needle: host_pin_needle())
     && contains(haystack: rendered, needle: "remote_gate_cli --arg worktree=$GITHUB_WORKSPACE --arg label='//gunbc/instruments:v2-native-cli'")
     && contains(haystack: rendered, needle: "gate-emit_build_self_host.json")
     && contains(haystack: rendered, needle: "gate-emit_build_v2_native_cli.json")
     && contains(haystack: rendered, needle: "no host admitted the reservation (capacity/infra)'; exit 1")
     && contains(haystack: rendered, needle: "typed local refusal - nothing was sent to any host'; exit 1")
     && contains(haystack: rendered, needle: "an origin ref was left behind (cleanup fact; count these)'; exit 0")
+}
+
+// THE CREDENTIALS ARRIVE OVER WIF, NEVER FROM THE SECRETS CONTEXT. The emitted job must carry the
+// pinned-provider auth step (pool/provider/SA from gunbc.auth.hosted_ci_secrets_federation), the
+// fetch of BOTH Secret Manager secrets at their PINNED versions, the tailscale step wired to the
+// PUBLIC client-id constant and the fetched env, and it must reference the GitHub `secrets.` context
+// NOWHERE. Discriminating: reintroduce `${{ secrets.X }}` or a `latest`-version fetch and a claim here
+// goes red.
+test fn the_emitted_workflow_fetches_credentials_over_wif_never_from_secrets() -> Bool {
+  let rendered = emitted_yaml_or_empty()
+  contains(haystack: rendered, needle: "workloadIdentityPools/github-hosted-shadow-gate/providers/github-hosted-shadow-gate-oidc")
+    && contains(haystack: rendered, needle: "hosted-ci-secrets@gunbai-secrets.iam.gserviceaccount.com")
+    && contains(haystack: rendered, needle: "secrets/remote-build-ci-ssh-key/versions/2:access")
+    && contains(haystack: rendered, needle: "secrets/tailscale-oauth-client-secret/versions/1:access")
+    && contains(haystack: rendered, needle: "oauth-client-id: kNQLY8UpZK11CNTRL")
+    && contains(haystack: rendered, needle: "oauth-secret: ${{ env.TS_OAUTH_SECRET }}")
+    && contains(haystack: rendered, needle: "id-token: write")
+    && contains(haystack: rendered, needle: "EXPECTED_FP=\"SHA256:Xy1UDMurH15SRT6Uhp5STj2YcIjPzW/OzPtEidv7ioM\"")
+    // The path is set in SCRIPT (env values are literal), the secret is ::add-mask::-registered
+    // before $GITHUB_ENV, and the bearer header is deleted exactly ONCE -- after both fetches
+    // (review 97111: an rm between them made the OAuth curl impossible; and $GITHUB_ENV alone
+    // does not mask).
+    && contains(haystack: rendered, needle: "KEY_FILE=\"$RUNNER_TEMP/remote-build-ci-ssh-key\"")
+    // no ssh-agent on the WIF route AND no bare ssh dial at all: the forced command is the protocol
+    // server, so a bare dial is a refused one-word request (run 44960617832); the key reaches the
+    // host only through the client's --arg identity_file (pinned above)
+    && !(contains(haystack: rendered, needle: "ssh -i "))
+    && contains(haystack: rendered, needle: "echo \"::add-mask::$VAL\"")
+    && occurs_before(haystack: rendered, before: "secrets/tailscale-oauth-client-secret/versions/1:access", after: "\n          rm -f \"$HDR_FILE\"")
+    // the join passes NO up args: --accept-dns=false broke MagicDNS resolution of the serving
+    // hosts (run 44954152909), and `up` has no ephemeral flag -- the invented one aborted the join
+    // on run 44948446694 (ephemerality lives in the minted key)
+    && contains(haystack: rendered, needle: "args: ''\n")
+    && !(contains(haystack: rendered, needle: "--accept-dns"))
+    && !(contains(haystack: rendered, needle: "--ephemeral"))
+    // The ban is on REPOSITORY secrets, not on Actions' AUTOMATIC token. Operator ruling
+    // gunbc.design_ruling::hosted_shadow_gate_push_credential_scoped_write_2026_11_22 admits
+    // ${{ secrets.GITHUB_TOKEN }} on the three client steps' env only -- it is the runner's own
+    // built-in credential, not a secret the gate manages. Fail-closed: EVERY `${{ secrets.`
+    // reference must be exactly the automatic GITHUB_TOKEN, so a reintroduced `${{ secrets.X }}`
+    // (repo secret) makes the two counts diverge and this claim goes red.
+    && occurrences(s: rendered, pattern: "${{ secrets.") == occurrences(s: rendered, pattern: "${{ secrets.GITHUB_TOKEN }}")
 }
 
 // ONE PROVENANCE SOURCE (smart-crane-730's drift report on #16766): the "# Generated by"/
@@ -123,4 +189,37 @@ test fn the_emitted_content_does_not_inline_the_projected_provenance_lines() -> 
   let rendered = emitted_yaml_or_empty()
   !(contains(haystack: rendered, needle: "Generated by gunbc"))
     && !(contains(haystack: rendered, needle: "# Authority: gunbc"))
+}
+
+// THE PLUMBING PATTERN IS A WELL-FORMED TARGET LABEL AND ACTUALLY SELECTS THE WITNESS IT NAMES
+// (run 45008834135: the '.dag'-suffixed path form parsed as target 'host_capacity_seal_witness.dag',
+// matched nothing, and the run died at selection -- the client refuses LOCALLY, before a request
+// leaves the runner). This runs the SAME selector the client runs, over the model's own value and
+// the real witness path; a malformed or retargeted label fails here, at PR time.
+test fn the_plumbing_pattern_selects_the_witness_it_names() -> Bool {
+  match parse_target_pattern(text: shadow_gate_plumbing_proof_pattern) {
+    TargetPatternRefused { cause: _ } => false
+    TargetPatternParsed { pattern: p } => match witness_label_of_path(path: "dag/test/claim/compute/host_capacity_seal_witness.dag") {
+      Absent => false
+      Present { value: label } => target_pattern_matches(pattern: p, target: label)
+    }
+  }
+}
+
+// #gunbc.design_ruling::hosted_shadow_gate_push_credential_scoped_write_2026_11_22
+// THE PUSH CREDENTIAL IS SCOPED AS THAT RULING HOLDS: the job grants
+// contents: write for the protocol's ONE push (refs/remote-build/<commit>.<millis>, bounded by
+// gunbc.compute.remote_build_client), but the token rides ONLY the three remote-build client steps
+// -- never a job-level env block, never checkout (persist-credentials stays false), never any other
+// step. Discriminating: hoist the token to job env, persist it at checkout, or drop it from a client
+// step (which would reproduce run 45013976820's 'could not read Username' push failure) and a count
+// here goes red.
+test fn the_push_credential_reaches_only_the_client_steps() -> Bool {
+  let rendered = emitted_yaml_or_empty()
+  contains(haystack: rendered, needle: "contents: write")
+  && contains(haystack: rendered, needle: "persist-credentials: false")
+  && occurrences(s: rendered, pattern: "password=$GITHUB_TOKEN; };f") == 3
+  && occurrences(s: rendered, pattern: "GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}") == 3
+  && occurrences(s: rendered, pattern: "\n    env:") == 0
+  && contains(haystack: rendered, needle: shadow_gate_push_credential_header_note)
 }

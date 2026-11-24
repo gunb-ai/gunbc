@@ -1,0 +1,15 @@
+module gunbc.fleet.fleet_converge_mode_wires
+
+import std.types { NonEmptyStr }
+
+// THE WIRE NAME of each fleet-converge mode that needs a name BELOW the mode module lives exactly once
+// here, in a leaf no module of the reach stack can cycle into: the mode module re-exports it as its own
+// datum, and fleet_converge_workflow's mode facts reference the mode's datum -- no second copy of any
+// name exists (gunbc.design_argument::single_authority; review 96252). The first-contact hop does NOT
+// read these wires: its admission is the token sum gunbc.fleet.fleet_known_hosts_anchor::FirstContactAdmission.
+
+data hostname_converge_wire: NonEmptyStr = "hostname_converge"
+
+data tailscale_join_converge_wire: NonEmptyStr = "tailscale_join_converge"
+
+data host_credential_custody_converge_wire: NonEmptyStr = "host_credential_custody_converge"

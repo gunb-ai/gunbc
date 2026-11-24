@@ -23,7 +23,7 @@ import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.shell
 import extdeps.languages.json.emit { serialize_json, JsonValue, json_object, json_kv, json_string }
-import gunbc.host.host_layout { belt_spawn_workdir_env_var, publication_answer_dir }
+import gunbc.host.host_layout { belt_spawn_workdir_env_var, instance_receipts_dir, publication_answer_dir }
 import std.algebra { trim }
 import gunbc.roadmap.roadmap_publish { publication_receipt_decode, ReceiptDecoded, ReceiptUndecodable }
 import gunbc.roadmap.roadmap_belt { roadmap_belt_production_spawn_mode }
@@ -85,7 +85,15 @@ import gunbc.live_deploy.release_binding {
   ReleaseBindingUnobserved, ReleaseBoundToTree, ReleaseMixed, ReleaseSurfaceMixed,
   release_binding_line,
 }
-import gunbc.live_deploy.deployed_tree_observation { observe_deployed_tree_at, DeployedTreeObservation }
+import gunbc.live_deploy.deployed_tree_observation {
+  observe_deployed_tree_at,
+  observe_deployed_tree,
+  deployed_tree_local_locus_admit,
+  DeployedTreeLocalAdmission,
+  DeployedTreeLocalAdmitted,
+  DeployedTreeLocalAdmissionRefused,
+  DeployedTreeObservation,
+}
 import gunbc.fleet.fleet_ssh_locus {
   prepare_fleet_ssh_agent_context,
   FleetSshContextReady,
@@ -96,7 +104,11 @@ import product.host_identity { HostIdentity }
 import gunbc.roadmap.roadmap_launch_deployment_observe {
   HealthzServed, HealthzRefused, observe_healthz,
 }
-import gunbc.roadmap.roadmap_site_surface_observe { materialize_live_roadmap_site_surface_bundle }
+import gunbc.roadmap.roadmap_site_surface_observe {
+  RoadmapSiteSurfaceBundleReadRefused,
+  RoadmapSiteSurfaceBundleRendered,
+  roadmap_site_surface_bundle_observation,
+}
 
 // THE LAUNCH ENTRYPOINT, and the home of every belt entry, because the served observation module
 // imports the belt's observers, so an entry that also writes the observation must sit above both --
@@ -235,33 +247,105 @@ data belt_pair_serve_gate_attempt_raw: String = "belt-standings-pair-serve"
 // consumer uses, never a re-derivation. The release identity is read at that same
 // instance's own serve port. Both readings therefore key off one `instance`, the single
 // admitted host record, so the tree and the running release cannot be joined across hosts.
+// THE ARM IS CHOSEN BY THE MACHINE, NOT BY THE CALLER. The tree leg is about the instance's own host,
+// and this process runs ON that host (the unit's WorkingDirectory is the instance's repo root, resolved
+// from the local spawn workdir). So the local arm is tried FIRST: it is admitted only when the kernel's
+// own hostname joins with the host the instance record names, and it reads the same four git legs over
+// the same builders through the local delivery. Only when that join refuses -- this is not that machine,
+// or its identity cannot be observed -- does the leg go over FleetSsh, where the credential and trust
+// policy mean something. The fallback keeps the refusal text of BOTH arms on EVERY ssh path, because the
+// journal is the only witness of a fold that never wrote: an operator reading "pair unbound" must be
+// able to tell whether the local join refused and the ssh leg then refused for its own reason. The
+// keeping is not decorative: an ssh refusal that reads "no such repository" explains itself only
+// against the fact that this host's own join refused first (review 97601, non-blocking).
 fn belt_pair_serve_gate(instance: HostDashboardInstance) -> LabServePairVerdict {
+  match deployed_tree_local_locus_admit(
+    host: instance.host_identity as HostIdentity,
+    repo: instance.repo_root as NonEmptyStr,
+  ) {
+    DeployedTreeLocalAdmitted { locus } =>
+      belt_pair_serve_gate_at(instance: instance, observation: observe_deployed_tree(locus: locus))
+    DeployedTreeLocalAdmissionRefused { cause: local_cause } => belt_pair_serve_gate_over_fleet_ssh(
+      instance: instance,
+      local_cause: local_cause,
+    )
+  }
+}
+
+fn belt_pair_serve_gate_over_fleet_ssh(instance: HostDashboardInstance, local_cause: String) -> LabServePairVerdict {
   match prepare_fleet_ssh_agent_context(attempt_raw: belt_pair_serve_gate_attempt_raw) {
     FleetSshContextRefused { cause: c } => {
       let binding: DeployedReleaseBinding = ReleaseBindingUnobserved {
-        cause: join(["fleet ssh context refused, deployed tree undecidable: ", c], ""),
+        cause: join(
+          [
+            "local read refused (",
+            local_cause,
+            "); fleet ssh context refused, deployed tree undecidable: ",
+            c,
+          ],
+          "",
+        ),
       }
       PairServeRefused { binding: binding, reason: release_binding_line(binding: binding) }
     }
-    FleetSshContextReady { context: context, receipt: _ } => belt_pair_serve_gate_at(
-      instance: instance,
-      observation: observe_deployed_tree_at(
-        context: context,
-        target: fleet_locus_ssh_target(host: instance.host_identity as HostIdentity),
-        repo: instance.repo_root as NonEmptyStr,
+    FleetSshContextReady { context: context, receipt: _ } => with_local_cause_kept(
+      verdict: belt_pair_serve_gate_at(
+        instance: instance,
+        observation: observe_deployed_tree_at(
+          context: context,
+          target: fleet_locus_ssh_target(host: instance.host_identity as HostIdentity),
+          repo: instance.repo_root as NonEmptyStr,
+        ),
       ),
+      local_cause: local_cause,
     )
+  }
+}
+
+// THE LOCAL CAUSE SURVIVES THE SSH OBSERVATION TOO (review 97601, non-blocking). The ssh-context
+// refusal path composed both texts from the start; this closes the path where the credential prepared
+// fine and the ssh OBSERVATION is what refused -- before this, that verdict carried only the ssh text
+// and the module's own comment was wrong. Pure over the verdict, so a claim covers it without a host.
+fn with_local_cause_kept(verdict: LabServePairVerdict, local_cause: String) -> LabServePairVerdict {
+  match verdict {
+    PairServeRefused { binding: ReleaseBindingUnobserved { cause: ssh_cause }, reason: _ } => {
+      let binding: DeployedReleaseBinding = ReleaseBindingUnobserved {
+        cause: join(["local read refused (", local_cause, "); ssh read refused: ", ssh_cause], ""),
+      }
+      PairServeRefused { binding: binding, reason: release_binding_line(binding: binding) }
+    }
+    other => other
   }
 }
 
 fn belt_pair_serve_gate_at(instance: HostDashboardInstance, observation: DeployedTreeObservation) -> LabServePairVerdict {
   match observe_healthz(port: instance.listen_port as Int) {
     HealthzServed { body: _, identity: id } =>
-      lab_pair_serve_verdict(
-        observation: observation,
-        identity: id,
-        expected_surface: materialize_live_roadmap_site_surface_bundle().bundle_identity,
-      )
+      match roadmap_site_surface_bundle_observation() {
+        // The belt serve gate mints the EXPECTED surface for the pair verdict. It reads via the INSTANCE
+        // observation, NOT the launcher one, because it does not run in the CI deploy job: the belt tick is
+        // spawned under the belt service's OWN principal/slice/spawn root on the instance tree
+        // (gunbc.roadmap.roadmap_belt_tick.emit runs it there), so the instance carrier layout IS the authority
+        // this principal opens, exactly as for the live service. This is the same law as the candidate and the
+        // readiness gate — read under the principal that can open the authority — with the layout chosen by the
+        // principal that actually runs (roadmap_site_surface_bundle_observation vs _for_launcher). Over a refused
+        // roster read it refuses rather than pairing against a fabricated identity (fail-closed).
+        RoadmapSiteSurfaceBundleReadRefused { detail } => {
+          let binding: DeployedReleaseBinding = ReleaseBindingUnobserved {
+            cause: join(["roadmap roster read refused; expected surface unobservable: ", detail], ""),
+          }
+          PairServeRefused {
+            binding: binding,
+            reason: release_binding_line(binding: binding),
+          }
+        }
+        RoadmapSiteSurfaceBundleRendered { bundle: bundle } =>
+          lab_pair_serve_verdict(
+            observation: observation,
+            identity: id,
+            expected_surface: bundle.bundle_identity,
+          )
+      }
     HealthzRefused { detail: d } => {
       let binding: DeployedReleaseBinding = ReleaseBindingUnobserved {
         cause: join(["healthz probe refused, running release identity undecidable: ", d], ""),
@@ -734,6 +818,17 @@ fn belt_credential_reader_for(instance: HostDashboardInstance, node_id: String, 
   ))
 }
 
+// The credential-recovery receipt path: the recovery receipt lives in the instance's receipts
+// directory (the declared, install-owned briansrls-writable directory created by apply_legs),
+// alongside the tick and obligation receipts. The path is derived from the instance root through
+// instance_receipts_dir, never spelled, for the reason that constant is: two instances on one host
+// must not share it. The entry name is a fixed filename in the declared directory — the recovery
+// is one-per-unit, the receipt is idempotent, and its content is not a secret (it names
+// unit/store/recovered).
+fn belt_credential_recovery_receipt_path(instance_root: NonEmptyStr) -> NonEmptyStr {
+  join([instance_receipts_dir(instance_root: instance_root as String) as String, "/credential-acquisition-recovery.json"], "") as NonEmptyStr
+}
+
 fn belt_credential_recovery_cli() -> ProcessExit {
   belt_instance_from_env(entry: "belt_credential_recovery_cli", continuation: instance =>
     match desired_deployment_for_instance_id(instance_id: instance.instance_id as String) {
@@ -751,17 +846,16 @@ fn belt_credential_recovery_cli() -> ProcessExit {
                 credential_recover_root(credentials: credentials, now: now, reader_for: rec =>
                   belt_credential_reader_for(instance: instance, node_id: rec.node_id, attempt_key: rec.identity))
             }
-            // THE RECOVERY REPORT IS THE PROCESS'S OWN OUTPUT — the timer's journal carries it, and
-            // that is who reads it. This used to also write the same report to
-            // <instance_root>/credential-acquisition-recovery.json, and NOTHING IN THE CORPUS READ
-            // THAT FILE BACK: no .dag reader, no runbook or doc that tells an operator to open it, no
-            // wet witness (the consumers checked are listed in the PR body, and the two census rows
-            // naming it are the finding about the write itself). A durable file no consumer reads is
-            // work with no purpose (DESIGN §2), so the writer is retired rather than sealed; the
-            // entries already on the live hosts are recorded for the operator to remove.
-            let report = credential_root_recovery_report(r: recovered)
-            if string_length(s: report) == 0 {
-              exit_failure(reason: "belt_credential_recovery_cli: the recovery produced no report")
+            let receipt = serialize_json(v: json_object(members: [
+              json_kv(key: "unit", value: json_string(s: unit as String)),
+              json_kv(key: "store", value: json_string(s: credential_acquisition_slots.member as String)),
+              json_kv(key: "recovered", value: json_string(s: credential_root_recovery_report(r: recovered))),
+            ]))
+            let receipt_path = belt_credential_recovery_receipt_path(instance_root: instance.instance_root as NonEmptyStr)
+            if string_length(s: receipt) == 0 {
+              exit_failure(reason: "belt_credential_recovery_cli: receipt was empty")
+            } else if !Filesystem.Write(path: receipt_path, content: receipt).success {
+              exit_failure(reason: join(["belt_credential_recovery_cli: receipt write failed: ", receipt_path, "\n", receipt], ""))
             } else {
               match recovered {
                 CredentialRootOk { report: _ } => ExitSuccess

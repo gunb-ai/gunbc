@@ -2,16 +2,35 @@ module test.claim.fleet.fleet_known_hosts_anchor_witness
 
 import std.types { String, Bool, List, NonEmptyStr }
 import product.host_identity { HostIdentity }
+import gunbc.fleet.fleet_host_identity { operator_host_srv14 }
 import std.types { Port }
 import extdeps.network.endpoint { SocketAddress, socket_address, host_by_name }
 import extdeps.dns.domain_name { DnsLabel, HostName, DomainName, PartiallyQualified }
+import gunbc.fleet.fleet_converge_workflow {
+  FleetConvergeWorkflowMode, HostnameConverge, TailscaleJoinConverge, RunnerHostFileConverge, fleet_converge_mode_facts,
+}
 import gunbc.fleet.fleet_host_key_enrollment {
+  known_host_row_field,
+  first_contact_lan_keys,
+  srv14_first_contact_key,
   KnownHostKeyRow,
   HostKeyEnrollmentProvenance,
   ScannedFirstContact,
   fleet_name_at_ssh_port,
+  LanEndpointHostKey,
 }
 import gunbc.fleet.fleet_known_hosts_anchor {
+  first_contact_admission_for_hostname_mode,
+  first_contact_admission_for_tailscale_join_mode,
+  anchored_host_key_row,
+  first_contact_known_host_rows,
+  first_contact_ssh_target,
+  first_contact_ssh_target_in,
+  FirstContactHopContext,
+  fleet_known_hosts_rows, known_hosts_file_rows,
+  FirstContactAdmission, FirstContactModeNotAdmitted,
+  SshTargetRefused,
+  SshTargetResolved,
   canonical_known_hosts_fragment,
   canonical_known_hosts_identity,
   known_hosts_endpoint_conflict,
@@ -21,6 +40,7 @@ import gunbc.fleet.fleet_known_hosts_anchor {
   known_hosts_anchor_path,
   fleet_known_hosts_registry_identity,
 }
+import test.claim.sole_constructor_completeness_audit_probe { violation_count }
 import std.content_hash { compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
 
 // The constructor is partial, so a fixture must decide what an unsafe id means. Refusing to a
@@ -45,6 +65,71 @@ fn row_at(host: String, address: SocketAddress, key: String) -> KnownHostKeyRow 
     public_key_base64: key,
     sha256_fingerprint: concat("SHA256:", key),
     provenance: ScannedFirstContact { scanned_from: "synthetic fixture" as NonEmptyStr },
+  }
+}
+
+// WITNESS-LOCAL FIXTURE (option C, msg_8889d082/msg_6570676e). No host is pre-anchor in production now
+// (butch/srv14 joined the tailnet, was scanned and anchored, and left first_contact_lan_keys), so the
+// hop population is genuinely empty -- a true state, not a dead model. The hop MECHANISM still must
+// execute with a discriminating red until its next consumer (bobo, after first boot) needs it, so these
+// claims take their hop rows as SUPPLIED inputs inside the witness (witness_one_interface): a synthetic
+// host with a hop row, a resolved lease row, and a runner spec. Nothing synthetic enters gunbc.* data.
+fn fixture_pre_anchor_host() -> HostIdentity { "witness-pre-anchor-fixture" as HostIdentity }
+
+fn fixture_lease_address() -> SocketAddress {
+  fleet_name_at_ssh_port(labels: ["witness-fixture-lease" as DnsLabel])
+}
+
+fn fixture_hop_context() -> FirstContactHopContext {
+  FirstContactHopContext {
+    hop_rows: [ LanEndpointHostKey {
+      host: fixture_pre_anchor_host(),
+      key_type: "ssh-ed25519",
+      public_key_base64: "AAAAfixturehopkey",
+      sha256_fingerprint: "SHA256:fixturehopkey",
+      provenance: ScannedFirstContact { scanned_from: "witness fixture" as NonEmptyStr },
+    } ],
+    lease_row: Present { value: KnownHostKeyRow {
+      host: fixture_pre_anchor_host(),
+      address: fixture_lease_address(),
+      key_type: "ssh-ed25519",
+      public_key_base64: "AAAAfixturehopkey",
+      sha256_fingerprint: "SHA256:fixturehopkey",
+      provenance: ScannedFirstContact { scanned_from: "witness fixture" as NonEmptyStr },
+    } },
+  }
+}
+
+fn fixture_other_host() -> HostIdentity { "witness-other-host" as HostIdentity }
+
+// A lease row that does NOT correspond to the matched hop observation (its host differs). The guard in
+// first_contact_ssh_target_in must refuse to dial it: this is the discriminating consumer of the
+// fork-closing guard -- the consistent fixture_hop_context resolves (see the_hop_admits_only_the_token_
+// holding_modes) while this one, differing only in the lease row's host, must NOT resolve.
+fn fixture_mismatched_hop_context() -> FirstContactHopContext {
+  FirstContactHopContext {
+    hop_rows: [ LanEndpointHostKey {
+      host: fixture_pre_anchor_host(),
+      key_type: "ssh-ed25519",
+      public_key_base64: "AAAAfixturehopkey",
+      sha256_fingerprint: "SHA256:fixturehopkey",
+      provenance: ScannedFirstContact { scanned_from: "witness fixture" as NonEmptyStr },
+    } ],
+    lease_row: Present { value: KnownHostKeyRow {
+      host: fixture_other_host(),
+      address: fixture_lease_address(),
+      key_type: "ssh-ed25519",
+      public_key_base64: "AAAAfixturehopkey",
+      sha256_fingerprint: "SHA256:fixturehopkey",
+      provenance: ScannedFirstContact { scanned_from: "witness fixture" as NonEmptyStr },
+    } },
+  }
+}
+
+test fn a_lease_row_from_another_host_does_not_resolve() -> Bool {
+  match first_contact_ssh_target_in(ctx: fixture_mismatched_hop_context(), host: fixture_pre_anchor_host(), principal: "ubuntu", admission: Present { value: first_contact_admission_for_tailscale_join_mode() }) {
+    SshTargetResolved { target: _ } => false
+    SshTargetRefused { endpoint: _, refusal: _ } => true
   }
 }
 
@@ -188,4 +273,99 @@ test fn w_two_registries_under_one_attempt_do_not_share_an_anchor_path() -> Bool
 test fn w_the_fleet_path_is_the_generalized_path_at_the_fleet_registry() -> Bool {
   fleet_known_hosts_anchor_path(attempt: attempt(raw: "attempt-a"))
     == known_hosts_anchor_path(attempt: attempt(raw: "attempt-a"), registry_identity: fleet_known_hosts_registry_identity())
+}
+
+// ── the first-contact hop (B3b, srv14/butch pre-join) ──────────────────────────────────────────
+// srv14's ONLY modeled reach before it joins is the hop: one pinned key (the #16276 host key) at its
+// DHCP lease address. It joins the verification registry like any anchor (so the hop is key-pinned),
+// never becomes an ANCHORED row (so anchored modes refuse it), and admits exactly the two modes that
+// make a host joinable -- checked here against the workflow's own mode facts, so a renamed wire that
+// stops matching the hop list FAILS.
+
+// The hop rows are IN the file the host verifies against (known_hosts_file_rows = anchored registry
+// + hop rows), and they are NOT anchors -- anchored_host_key_row reads only the enrollment registry,
+// never this list (a_host_with_only_a_hop_has_no_anchored_row proves the separation).
+test fn the_hop_rows_join_the_verification_registry() -> Bool {
+  all(first_contact_known_host_rows(), r =>
+    any(known_hosts_file_rows(), k => known_host_row_field(k: k) == known_host_row_field(k: r)))
+    && !any(first_contact_known_host_rows(), r =>
+      any(fleet_known_hosts_rows(), k => known_host_row_field(k: k) == known_host_row_field(k: r)))
+}
+
+// KEYED, not counted (still-fox-404): a second host's datum must not redden a claim about BUTCH's key,
+// and a missing-but-ordered-first datum must not pass it. The refusal half is the discriminator the
+// count never was.
+// AFTER THE HAND JOIN (operator 2026-11-21, #16845 ruling family): butch/srv14 left the hop population
+// and joined the enrollment registry, so the hop list is empty in production and srv14's pinned key now
+// lives on its ANCHOR row, not a hop row. This is the honest flip of the former "hop carries the key"
+// claim: it is red on main (where srv14 was still hopped and un-enrolled) and green here. Red control:
+// first_contact_lan_keys == [] is false on main; the anchor row's key equality is a real consumer of the
+// scanned anchor (fleet_host_key_enrollment srv14 tailnet row derives from srv14_first_contact_key).
+test fn butch_is_anchored_not_hopped() -> Bool {
+  first_contact_lan_keys == []
+    && match anchored_host_key_row(host: operator_host_srv14) {
+      Present { value: r } =>
+        r.public_key_base64 == srv14_first_contact_key.public_key_base64
+          && r.sha256_fingerprint == srv14_first_contact_key.sha256_fingerprint
+      Absent => false
+    }
+}
+
+test fn a_host_with_only_a_hop_has_no_anchored_row() -> Bool {
+  match anchored_host_key_row(host: fixture_pre_anchor_host()) {
+    Present { value: _ } => false
+    Absent => true
+  }
+    // Discriminator: a genuinely-enrolled host (srv14, now joined) IS anchored, so the fixture's Absent
+    // is not a global "nothing is ever anchored" triviality.
+    && match anchored_host_key_row(host: operator_host_srv14) {
+      Present { value: _ } => true
+      Absent => false
+    }
+}
+
+// ADMISSION IS THE TOKEN TYPE, NOT A STRING (review 96277): the two join-making modes hold the only
+// two constructible tokens; any other caller (custody, runner converge -- today and forever) offers
+// Absent and is refused the hop. The claim that the workflow's mode facts still spell the two wires
+// lives beside this one (fleet_converge_mode_facts vs the leaf datums), so a renamed wire still fails.
+test fn the_hop_admits_only_the_token_holding_modes() -> Bool {
+  match first_contact_ssh_target_in(ctx: fixture_hop_context(), host: fixture_pre_anchor_host(), principal: "ubuntu", admission: Present { value: first_contact_admission_for_hostname_mode() }) {
+    SshTargetResolved { target: _ } => true
+    SshTargetRefused { endpoint: _, refusal: _ } => false
+  }
+    && match first_contact_ssh_target_in(ctx: fixture_hop_context(), host: fixture_pre_anchor_host(), principal: "ubuntu", admission: Present { value: first_contact_admission_for_tailscale_join_mode() }) {
+      SshTargetResolved { target: _ } => true
+      SshTargetRefused { endpoint: _, refusal: _ } => false
+    }
+    && match first_contact_ssh_target_in(ctx: fixture_hop_context(), host: fixture_pre_anchor_host(), principal: "ubuntu", admission: none) {
+      SshTargetResolved { target: _ } => false
+      SshTargetRefused { endpoint: _, refusal: FirstContactModeNotAdmitted { host: _ } } => true
+      SshTargetRefused { endpoint: _, refusal: _ } => false
+    }
+}
+
+test fn the_hop_admits_nothing_for_a_host_with_no_pinned_key() -> Bool {
+  match first_contact_ssh_target(host: "not-a-fleet-host" as HostIdentity, principal: "ubuntu", admission: Present { value: first_contact_admission_for_tailscale_join_mode() }) {
+    SshTargetResolved { target: _ } => false
+    SshTargetRefused { endpoint: _, refusal: _ } => true
+  }
+}
+
+// THE WALL FIRING, EXECUTED (review 96923). A synthetic THIRD module -- not on either mint's
+// admit_callers roster -- calls the mint; the compiler must answer ConstructorCallAdmissionRefused,
+// naming the function. The green half of the same wall is the tree itself: the two real callers
+// (gunbc.host.host_hostname_converge::hostname_converge_transport_target and
+// gunbc.tailscale_join_converge::tailscale_join_host) and the witness calls above COMPILE, which every
+// claim run of this file and every CI of the touching paths proves. A misspelt roster entry would seal
+// SILENTLY -- those two callers would stop compiling and this whole file would stop running.
+data unadmitted_mint_caller_source: String = "module probe_first_contact_unadmitted_caller\nimport gunbc.fleet.fleet_known_hosts_anchor { FirstContactAdmission, first_contact_admission_for_hostname_mode }\nfn smuggle() -> FirstContactAdmission { first_contact_admission_for_hostname_mode() }\n"
+
+data admitted_shape_calibration_source: String = "module probe_first_contact_calibration\nfn untouched() -> Int { 1 }\n"
+
+test fn the_wall_fires_for_an_unadmitted_caller() -> Bool {
+  violation_count(source: unadmitted_mint_caller_source, wanted: "ConstructorCallAdmissionRefused") >= 1
+}
+
+test fn the_calibration_module_compiles_without_the_refusal() -> Bool {
+  violation_count(source: admitted_shape_calibration_source, wanted: "ConstructorCallAdmissionRefused") == 0
 }

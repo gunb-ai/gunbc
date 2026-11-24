@@ -64,6 +64,7 @@ module gunbc.tailscale_join_converge
 // render the router's upstream configuration, which is held for its own read-only diff.
 
 import extdeps.cloud.gcp.secret_manager { SmResolvedVersionIdentity }
+import gunbc.fleet.fleet_converge_mode_wires { tailscale_join_converge_wire }
 import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.package_managers.apt { package_tailscale }
 import gunbc.fleet.apt_third_party_repo_converge {
@@ -138,7 +139,10 @@ import gunbc.file_access { FileTreeScope }
 import gunbc.fleet.fleet_enrollment { HostEnrollmentIntent, fleet_enrollments }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.fleet.fleet_known_hosts_anchor {
+  ProbeLeg,
   FleetSshExecutionContext,
+  FirstContactAdmission,
+  first_contact_admission_for_tailscale_join_mode,
   SshTarget,
   SshTargetResolution,
   SshTargetRefused,
@@ -182,7 +186,7 @@ import gunbc.tailscale_fleet_auth_key {
   tailscale_fleet_auth_key_usable_on,
   tailscale_fleet_node_tag,
 }
-import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecOutcome, TypedArgvExecRefused, typed_argv_exec_over_fleet_ssh }
+import gunbc.typed_argv_exec {  TypedArgvExecConverged, TypedArgvExecOutcome, TypedArgvExecRefused, typed_argv_exec_over_fleet_ssh, TypedArgvExecOverran, typed_argv_exec_overran_reason }
 import gunbc.typed_remote_file_write {
   TypedRemoteFileWriteAdmitted,
   TypedRemoteFileWriteAdmission,
@@ -250,7 +254,8 @@ fn tailscale_join_host_is_enrolled(host: HostIdentity) -> Bool {
 // THE STATUS READ, from the host itself. The argv row is machine_name's, not a fork: same binary, same
 // document, and this module reads a different member of it (extdeps.tailscale.join).
 fn tailscale_join_observe_status(target: SshTarget, context: FleetSshExecutionContext) -> TailscaleStatusReading {
-  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv_words(command: tailscale_status_json_command())) {
+  match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,target: target, context: context, argv: argv_words(command: tailscale_status_json_command())) {
+  TypedArgvExecOverran { deadline: d } => StatusUnreadable { cause: typed_argv_exec_overran_reason(leg_hint: "tailscale join status", deadline: d) }
     TypedArgvExecRefused { reason: reason } => StatusUnreadable { cause: reason }
     TypedArgvExecConverged { result: r } =>
       if r.exit_code == tailscale_command_not_found_exit {
@@ -275,6 +280,7 @@ fn tailscale_join_observe_status(target: SshTarget, context: FleetSshExecutionCo
 fn tailscale_join_observe_package(target: SshTarget, context: FleetSshExecutionContext) -> DpkgInstalledState {
   tailscale_join_package_verdict_of(
     outcome: typed_argv_exec_over_fleet_ssh(
+      kind: ProbeLeg,
       target: target,
       context: context,
       argv: argv_words(command: dpkg_query_status_command(package: package_tailscale)),
@@ -296,6 +302,14 @@ fn tailscale_join_observe_package(target: SshTarget, context: FleetSshExecutionC
 // three are answers" (extdeps.package_managers.dpkg), and exit-1-marker is the third.
 fn tailscale_join_package_verdict_of(outcome: TypedArgvExecOutcome) -> DpkgInstalledState {
   match outcome {
+    // THE OVERRUN STAYS UNDECIDABLE -- deliberately NOT the new Unknown arm. #16772 made exit-1-with-the
+    // 'no information is available' marker Unknown because that IS a dpkg answer about a package dpkg has
+    // no record of. A leg killed at its wall-clock ceiling is not an answer at all: reading it as Unknown
+    // would authorize an install on a host whose package state was never learned, which is what
+    // gunbc.design_argument::fail_closed forbids. So an overrun takes the same arm the transport refusal
+    // takes, carrying the ceiling, and the join waits for a read that actually happened.
+    TypedArgvExecOverran { deadline: d } =>
+      DpkgQueryUndecidable { reason: typed_argv_exec_overran_reason(leg_hint: "tailscale join package", deadline: d) }
     TypedArgvExecRefused { reason: reason } => DpkgQueryUndecidable { reason: reason }
     TypedArgvExecConverged { result: r } =>
       dpkg_query_status_verdict_of(
@@ -668,11 +682,12 @@ fn tailscale_join_observe_name_resolution(
   context: FleetSshExecutionContext,
   name: NonEmptyStr,
 ) -> TailscaleJoinNameResolution {
-  match typed_argv_exec_over_fleet_ssh(
+  match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,
     target: router,
     context: context,
     argv: argv_words(command: getent_hosts_command(name: name)),
   ) {
+  TypedArgvExecOverran { deadline: d } => NameUnreadable { cause: typed_argv_exec_overran_reason(leg_hint: "tailscale join", deadline: d) }
     TypedArgvExecRefused { reason: reason } => NameUnreadable { cause: reason }
     TypedArgvExecConverged { result: r } =>
       tailscale_join_name_resolved_verdict(
@@ -722,11 +737,12 @@ fn tailscale_join_observe_answer(
   ) {
     TailscalePingCommandRefused { cause: cause } => JoinAnswerUnreadable { cause: cause }
     TailscalePingCommandBuilt { command: command } =>
-      match typed_argv_exec_over_fleet_ssh(
+      match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,
         target: router,
         context: context,
         argv: argv_words(command: command),
       ) {
+      TypedArgvExecOverran { deadline: d } => JoinAnswerUnreadable { cause: typed_argv_exec_overran_reason(leg_hint: "tailscale join", deadline: d) }
         TypedArgvExecRefused { reason: reason } => JoinAnswerUnreadable { cause: reason }
         TypedArgvExecConverged { result: r } =>
           match tailscale_ping_verdict(exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr) {
@@ -818,6 +834,12 @@ type TailscaleJoinOutcome
       observed_tags: List<String>,
     }
 
+// The wire name of THIS mode, in one place. fleet_converge_workflow's mode facts reference it. The
+// first-contact hop admits this mode through its TOKEN (FirstContactAdmission.TailscaleJoinMode, held
+// at tailscale_join_host's custody call below) -- join is one of the two modes allowed to dial a host
+// that has no tailnet anchor yet.
+data tailscale_join_converge_mode: NonEmptyStr = tailscale_join_converge_wire
+
 fn tailscale_join_host(
   host: HostIdentity,
   context: FleetSshExecutionContext,
@@ -831,7 +853,7 @@ fn tailscale_join_host(
     SshTargetRefused { endpoint: endpoint, refusal: _ } =>
       JoinRefused { host: host, cause: concat("srv1 is not an ssh target this converge can use: ", endpoint) }
     SshTargetResolved { target: router } =>
-      match custody_host(host: host) {
+      match custody_host(host: host, admission: Present { value: first_contact_admission_for_tailscale_join_mode() }) {
         // The custody subject is the same admission every other credential placement on this host goes
         // through: a host with no runner spec is not a host a converge may write a credential onto.
         CustodyHostSubjectRefused { cause: cause } => JoinRefused { host: host, cause: cause }

@@ -159,11 +159,11 @@ import gunbc.fleet.fleet_host_smbios_observation {
 }
 
 import gunbc.integration_concern {
-  inband_smbios_board_parse_fleet_and_arrival_lanes,
   declaration_identity,
   ConcernDisposition,
   Integrated,
 }
+import gunbc.integration_concern.inband_smbios_board_parse_fleet_and_arrival_lanes { inband_smbios_board_parse_fleet_and_arrival_lanes }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 

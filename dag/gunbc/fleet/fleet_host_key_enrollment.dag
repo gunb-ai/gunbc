@@ -1,7 +1,7 @@
 module gunbc.fleet.fleet_host_key_enrollment
 
 import std.types { String, Bool, List, NonEmptyStr }
-import gunbc.hostname_allocation { fleet_machine_srv1, fleet_machine_srv2, fleet_machine_srv3, fleet_machine_srv4, fleet_machine_ken }
+import gunbc.hostname_allocation { fleet_machine_srv1, fleet_machine_srv2, fleet_machine_srv3, fleet_machine_srv4, fleet_machine_ken, fleet_machine_butch }
 import gunbc.fleet.fleet_tailnet { fleet_tailnet_name }
 import gunbc.host.host_name_resolution { fleet_lan_name }
 import gunbc.auth.fleet_convergence_federation { fleet_convergence_principal_set, fleet_convergence_provider_resource }
@@ -196,6 +196,31 @@ data fleet_host_key_enrollments: List<KnownHostKeyRow> = list_append(
     sha256_fingerprint: "SHA256:rS86bHoHXcFgifCUhrKDi6+vmjgL8GVz+MhHkd/Pb0o",
     provenance: ScannedFirstContact { scanned_from: "fleet_host_key_scan run 44804781923 (mode fleet_host_key_scan, executor srv1, 2026-11-20): ssh-keyscan -t ed25519 of ken.tailecbe08.ts.net returned outcome=observed; no cited reservation, procurement, or external key authority exists" as NonEmptyStr },
   },
+  // BUTCH (SRV14), JOINED BY THE OPERATOR'S HAND 2026-11-21 and reached at its TAILNET NAME. The identity read is
+  // fleet_host_key_scan run 44955108058 (executor srv1, --ref main), which dialed butch.tailecbe08.ts.net and
+  // returned outcome=observed; its scanned key and fingerprint are BYTE-EQUAL to srv14_first_contact_key -- host keys
+  // are transport-independent and the operator re-verified this one at the 192.168.1.238 lease 2026-11-17T22:36Z
+  // (msg_0ac59f6c), exactly the case this row's provenance was written for. The key is therefore not typed from memory
+  // but read from the live tailnet endpoint and cross-checked against the model's own re-verified key (refuse if they
+  // had differed). The tag:ci the scan reached port 22 through is the operator's 2026-11-21 Machines-list read
+  // ('butch is now tagged tag:ci and shows that tag in the Machines list ... it's still online'); execution confirms
+  // it later -- the first pinned served compile (roster step) reaches butch only through the tag:ci-dispatch grant.
+  // This row is what anchored_ssh_target("srv14") now lands on, flipping the serving-subject split witness's srv14
+  // arm from SshTargetRefused to SshTargetResolved; the first-contact hop row above (srv14_first_contact_key) admits
+  // no subject -- an anchored host is reached by this row or not at all.
+  KnownHostKeyRow {
+    host: operator_host_srv14,
+    address: fleet_name_at_ssh_port(labels: fleet_tailnet_name(machine: fleet_machine_butch)),
+    // The key is NOT a second copy typed from memory: it DERIVES from srv14_first_contact_key -- the same
+    // host key the model already holds, re-verified at the lease. Host keys are transport-independent, so the
+    // tailnet endpoint presents the identical key; deriving (not restating) makes byte-equality structural, so
+    // the anchor and the first-contact read can never silently drift (single authority), and it is what keeps
+    // srv14_first_contact_key a live datum after the hop list empties. The scan run is the provenance BELOW.
+    key_type: srv14_first_contact_key.key_type,
+    public_key_base64: srv14_first_contact_key.public_key_base64,
+    sha256_fingerprint: srv14_first_contact_key.sha256_fingerprint,
+    provenance: ScannedFirstContact { scanned_from: "fleet_host_key_scan run 44955108058 (mode fleet_host_key_scan, executor srv1, --ref main, 2026-11-21): ssh-keyscan -t ed25519 of butch.tailecbe08.ts.net returned outcome=observed; the scanned key and fingerprint are byte-equal to srv14_first_contact_key (host keys are transport-independent; re-verified by the operator at the 192.168.1.238 lease 2026-11-17T22:36Z, msg_0ac59f6c); the tag:ci grant the scan reached port 22 through is the operator's 2026-11-21 Machines-list read ('butch is now tagged tag:ci and shows that tag in the Machines list; ... it's still online'); no cited reservation, procurement, or external key authority exists" as NonEmptyStr },
+  },
   ],
   right: lan_endpoint_host_key_rows(),
 )
@@ -213,15 +238,44 @@ type LanEndpointHostKey {
   provenance: HostKeyEnrollmentProvenance
 }
 
-data lan_endpoint_host_keys: List<LanEndpointHostKey> = [
-  LanEndpointHostKey {
-    host: operator_host_srv14,
-    key_type: "ssh-ed25519",
-    public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAICGsQWUBtO/2m0sIIe+nsQQHaeYwuAtW5P7qbY9dwvDT",
-    sha256_fingerprint: "SHA256:HkgfTNVU7UyX2NJHYg4wziWO0F9rHTsE0muUjN9N5Uc",
-    provenance: ScannedFirstContact { scanned_from: "2026-11-10: `cat /etc/ssh/ssh_host_ed25519_key.pub` and `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` on 192.168.1.205 over ssh opened with StrictHostKeyChecking=accept-new (key material + fingerprint reproduced by that command). The ssh session proved who WE are to the host (fleet-automation key), not WHICH machine we reached -- whatever answered at .205 was trusted on first contact, so reading its own file reports what that machine says about itself. DHCP lease, not reserved; no cited external key authority." as NonEmptyStr },
-  },
-]
+data lan_endpoint_host_keys: List<LanEndpointHostKey> = []
+
+// srv14's key LEFT this registry on 2026-11-17: hosts are REACHED BY THEIR TAILNET NAME (operator
+// ruling msg_0ac59f6c), so no lease address may ANCHOR an actuation. The key is kept -- unchanged
+// from #16276's scan, RE-VERIFIED by the operator's session at the .238 lease on 2026-11-17T22:36Z.
+// As of 2026-11-21 srv14/butch is JOINED and ANCHORED (the KnownHostKeyRow above derives this key), so it is
+// no longer a first-contact HOP subject -- the hop admits nothing for an anchored host (FirstContactHop-
+// SupersededByAnchor) and srv14 has left first_contact_lan_keys. This datum now survives for exactly two
+// reasons: it is the ONE authority the butch anchor row derives its key/fingerprint from (single authority --
+// byte-equality is structural, not asserted), and it is the re-verified first-contact observation the anchor's
+// provenance cites. The key itself is transport-independent: the same host key read at the lease is what the
+// tailnet endpoint presents, which the 2026-11-21 scan (run 44955108058) confirmed.
+data srv14_first_contact_key: LanEndpointHostKey = LanEndpointHostKey {
+  host: operator_host_srv14,
+  key_type: "ssh-ed25519",
+  public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAICGsQWUBtO/2m0sIIe+nsQQHaeYwuAtW5P7qbY9dwvDT",
+  sha256_fingerprint: "SHA256:HkgfTNVU7UyX2NJHYg4wziWO0F9rHTsE0muUjN9N5Uc",
+  provenance: ScannedFirstContact { scanned_from: "2026-11-10: `cat /etc/ssh/ssh_host_ed25519_key.pub` and `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` on 192.168.1.205 over ssh opened with StrictHostKeyChecking=accept-new (key material + fingerprint reproduced by that command). The ssh session proved who WE are to the host (fleet-automation key), not WHICH machine we reached -- whatever answered at .205 was trusted on first contact, so reading its own file reports what that machine says about itself. DHCP lease, not reserved; no cited external key authority. 2026-11-17T22:36Z: the operator session re-verified this exact key at the MOVED lease 192.168.1.238 (msg_0ac59f6c) -- host keys are transport-independent; the tailnet row of the flip PR carries this same key." as NonEmptyStr },
+}
+
+// THE ENROLLED KEYS THE FIRST-CONTACT HOP MAY PRESENT, keyed by host. A row here is NOT an anchor:
+// anchored_host_key_row refuses to land on it (gunbc.fleet.fleet_known_hosts_anchor), which is what
+// makes runner converge REFUSE a not-yet-anchored host until its tailnet row exists. The address is never
+// restated -- it derives from the host's lease observation in gunbc.fleet.fleet_intent_network
+// (host_lan_address).
+//
+// EMPTY NOW, and that is the true state, not a dead model: NO host is pre-anchor right now. srv14/butch was
+// the last one and the operator joined it 2026-11-21 (its tailnet anchor row landed above), so it left this
+// list -- the hop admits nothing because there is no pre-anchor host, and srv14's key survives only as the
+// anchor's key authority (srv14_first_contact_key, derived by the anchor row). The hop MECHANISM stays
+// declared (first_contact_admission_for_hostname_mode / _for_tailscale_join_mode, first_contact_ssh_target,
+// the anchor-wins refusal) as a frontier whose NEXT consumer is the next unjoined host -- **bobo, after its
+// first boot** -- at which point a row for it is added here and the hop admits only the two join-making modes.
+// Retiring srv14's hop here is the model's own stated law (fleet_intent_network: the lease row's one consumer
+// was the hop "ONLY while srv14 has no tailnet anchor row"; this file: the hop dials "only until srv14's
+// tailnet anchor row lands"), cut at the root per replacement_migration. srv14's LAN lease row itself is NOT
+// dropped here -- that retirement belongs to gunbc.plans.fleet_machine_authority 2.3 (node out_of_scope).
+data first_contact_lan_keys: List<LanEndpointHostKey> = []
 
 // THE ROW AT THE HOST'S LAN ENDPOINT, or Absent when the host has no HostOperatingSystem LAN endpoint or
 // that endpoint's address does not parse. An absent row is never replaced by a fabricated address; the
