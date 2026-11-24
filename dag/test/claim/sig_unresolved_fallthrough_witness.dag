@@ -1,0 +1,114 @@
+module test.claim.sig_unresolved_fallthrough_witness
+
+import std.types { String, Bool, Int, List }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+import gunbc.instruments.multi_module_compile_fixture {
+  MultiModuleCompileFixture,
+  MultiModuleCompileFixtureOutcome,
+  FixtureInstrumentRefused,
+  FixtureCompileRefused,
+  FixtureCompileCompleted,
+  fixture_source,
+  compile_fixture,
+  fixture_blocking_rows,
+  fixture_has_class,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SIG-UNRESOLVED FALLEN THROUGH BLIND SPOT: an executed control pair.
+//
+// WHAT THIS WITNESS PROVES AND HOW IT IS DIFFERENT FROM call_target_partition_witness.
+//
+// A call whose callee resolves NO signature bypasses every call-shape judgment. The landed
+// direct_call_shape_wall_note checks labels only when the sig resolves (the sig != none branch);
+// an absent signature falls through to the method bridge, which binds args positionally and never
+// validates labels against the callee's declared parameters. The wall note itself states this:
+// "the method-call path binds its arguments through its own inference arms and is the method
+// wall's territory."
+//
+// THIS WITNESS IS THE EXECUTED PROOF that the method wall does not currently close that gap:
+// a mislabeled bare call to a kernel method template name (unimported, so CallableUnresolved)
+// compiles CLEAN. The licensed twin — the same call WITH the import, so sig resolves — is
+// REFUSED by the direct-call shape wall. The asymmetry IS the blind spot.
+//
+// WHAT THIS WITNESS DOES NOT PROVE: that the fix is correct. The red side asserts the compiler
+// ACCEPTS the mislabeled call (0 blocking diagnostics at the call). Once coverage lands and the
+// sig resolves for the unimported case, this test would FAIL (the mislabeled call would be refused)
+// and the assertion must flip to expect refusal. That inversion is the node's red control: the
+// fallthrough count monotonically falls as coverage lands.
+//
+// CENSUS BASELINE (measured, invalidated predecessor included):
+//
+// OLD (invalidated by the executed control): 4597 sites — imported-and-not-locally-declared
+//   calls. These resolve via parent_closure_callable_candidates, the wall fires, they are
+//   PROTECTED. Counting them as blind spot was wrong (the executed control proves it).
+//
+// CORRECTED: 5890 sites, 10 names, 1327 modules — bare calls to kernel method template names
+//   with labeled args, where the callee is NEITHER locally declared NOR imported. These hit
+//   CallableUnresolved → method bridge → no shape wall. The 10 names: split(1337), starts_with(1140),
+//   substring(900), to_string(497), to_upper(383), map_get(374), to_int(345), map_keys(303),
+//   map_has(122), skip(85). Predicate filters: not locally declared (fn NAME( absent from file),
+//   not imported (import line does not list the name). Not filtered statically: parent_closure
+//   reachability (but the 5890 excludes ALL imported cases, and unimported names cannot be in
+//   the parent closure chain because the chain walks imports); builtin/kernel table (the builtin
+//   positional arity check ignores labeled args by construction — filter at line 8606 — so even
+//   if the name reaches the builtin path, labels remain unchecked; the blind spot is the same).
+
+// THE FIXTURE: calls 'length' with a deliberately wrong argument label, WITHOUT importing it.
+// 'length' is a kernel method template name (FreeMonoidCollection profile, ReceiverSelf param).
+// Without the import, call_target_for_direct_call reaches CallableUnresolved → sig=Absent →
+// method bridge → positional binding → labels unchecked → compiles clean.
+
+data unimported_mislabel_entry: String = "module suft.red\nfn probe(xs: List<Int>) -> Int { length(wrong_label: xs) }\n"
+
+// THE LICENSED TWIN: the same call WITH the import. Here func_env_declared_func_sig resolves
+// via parent_closure_callable_candidates, sig=Present, and direct_call_shape_wall_note fires:
+// "call shape mismatch calling 'length': no parameter named 'wrong_label' (declared: [T, xs])".
+
+data imported_mislabel_entry: String = "module suft.green\nimport std.algebra { length }\nfn probe(xs: List<Int>) -> Int { length(wrong_label: xs) }\n"
+
+fn compile_probe(entry: String) -> MultiModuleCompileFixtureOutcome {
+  compile_fixture(MultiModuleCompileFixture {
+    sources: [fixture_source("suft/probe.dag", entry)],
+    entry: "suft/probe.dag"
+  })
+}
+
+// THE RED CONTROL: the unimported mislabeled call compiles clean (0 blocking diagnostics).
+// This IS the blind spot — the shape wall does not fire because sig=Absent.
+test fn unimported_kernel_name_mislabeled_call_compiles_clean() -> Bool {
+  match compile_probe(unimported_mislabel_entry) {
+    FixtureCompileCompleted { diagnostics: rows, ... } =>
+      count(fixture_blocking_rows(rows: rows)) == 0
+    FixtureCompileRefused { ... } => false
+    FixtureInstrumentRefused { ... } => false
+  }
+}
+
+// THE LICENSED TWIN: the imported mislabeled call IS refused by the shape wall.
+// This proves the compiler is CAPABLE of catching this at the shape layer — it simply does not
+// when the name is unresolved. The pairing makes the red a guarantee, not a complaint.
+test fn imported_kernel_name_mislabeled_call_is_refused() -> Bool {
+  match compile_probe(imported_mislabel_entry) {
+    FixtureCompileCompleted { diagnostics: rows, ... } =>
+      fixture_has_class(rows: rows, wanted: "CallArgumentNameUnknown")
+    FixtureCompileRefused { diagnostics: rows, ... } =>
+      fixture_has_class(rows: rows, wanted: "CallArgumentNameUnknown")
+    FixtureInstrumentRefused { ... } => false
+  }
+}
+
+// NEGATIVE CONTROL: the correctly-labeled imported call compiles clean (the wall does not
+// over-refuse). This catches an over-refusing repair that breaks correct programs.
+data imported_correct_entry: String = "module suft.control\nimport std.algebra { length }\nfn probe(xs: List<Int>) -> Int { length(xs: xs) }\n"
+
+test fn imported_correctly_labeled_call_compiles_clean() -> Bool {
+  match compile_probe(imported_correct_entry) {
+    FixtureCompileCompleted { diagnostics: rows, ... } =>
+      count(fixture_blocking_rows(rows: rows)) == 0
+    FixtureCompileRefused { ... } => false
+    FixtureInstrumentRefused { ... } => false
+  }
+}
