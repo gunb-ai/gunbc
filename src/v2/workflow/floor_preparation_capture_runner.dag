@@ -455,12 +455,6 @@ fn floor_preparation_cause_of(entry: String, untrimmed_stdout: String) -> String
 // ----------------------------------------------------------------------------------------------
 // THE RUN. Receipt lines accumulate into the returned String -- a returned String prints on
 // refusal (the documented convention at src/v2/workflow/floor_cost_debt.dag), so both the
-// receipts and any refusal text reach the terminal.
-// ----------------------------------------------------------------------------------------------
-
-// ----------------------------------------------------------------------------------------------
-// THE RUN. Receipt lines accumulate into the returned String -- a returned String prints on
-// refusal (the documented convention at src/v2/workflow/floor_cost_debt.dag), so both the
 // receipts and any refusal text reach the terminal. Every leg's printed rc is part of its receipt
 // line: a leg that exits 0 without its named lines is a FAILURE decided in model code below,
 // never inferred from a missing guard message.
@@ -477,14 +471,16 @@ fn floor_preparation_leg_receipt(label: String, entries: List<String>, binary: S
       concat(concat(" rc=", to_string(outcome.rc)),
         concat(concat(" instrument=", binary),
           concat(concat(" BINARY_SHA256=", floor_preparation_present_or(opt: floor_preparation_sha_of(path: binary), fallback: "SHA_UNREADABLE")),
-            concat(concat(" BINARY_BYTES=", floor_preparation_present_or(
-              opt: match floor_preparation_bytes_of(path: binary) {
-                Present { value: n } => Present { value: to_string(n) }
-                Absent {} => Absent {}
-              },
-              fallback: "BYTES_UNREADABLE"))),
+            concat(concat(" BINARY_BYTES=", floor_preparation_bytes_display(path: binary)),
               concat(concat(" TREE_SHA=", tree_sha),
                 concat(" out_bytes=", to_string(length(xs: outcome.stderr))))))))))
+}
+
+fn floor_preparation_bytes_display(path: String) -> String {
+  match floor_preparation_bytes_of(path: path) {
+    Present { value: n } => to_string(n)
+    Absent {} => "BYTES_UNREADABLE"
+  }
 }
 
 fn floor_preparation_retained_body(untrimmed_stdout: String, graded_stdout: String) -> String {
