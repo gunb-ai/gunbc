@@ -1543,6 +1543,13 @@ data roadmap_estimate_entries: List<EstimateEntry> = [
     value: days_estimate(working_days: 8),
     basis: "Off bobo's path: the edge's desired install set becomes the active-attempt set read under the edge lock, with per-attempt withdrawal.",
   )),
+  // bringup-entry-verifies-managed-unit (keen-dove-217, 2026-11-24, after the second review of gunbc#16983)
+  estimate_recorded(row: estimate_row(
+    subject: "rn_7DBCDCMJ7XBBCY2FG5ZJRXMZF5" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 24),
+    value: days_estimate(working_days: 3),
+    basis: "A read-only verify arm at the install entry over existing identity and installed-root readers, with three witness outcomes and no write path.",
+  )),
 ]
 
 // STRICT DATE ORDER, from the total order this file already keeps: a revocation must come after the row it withdraws,

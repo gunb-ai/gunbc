@@ -59,6 +59,7 @@ data roadmap_intention_bindings: List<IntentionBinding> = [
   serves(node: "bmc-generic-protocol-family", module_path: new_server_bringup_intention, plan: "new_server_bringup_plan", layer: 0),
   serves(node: "bmc-located-from-site-network", module_path: new_server_bringup_intention, plan: "new_server_bringup_plan", layer: 0),
   serves(node: "bmc-secure-live-rotation", module_path: new_server_bringup_intention, plan: "new_server_bringup_plan", layer: 0),
+  serves(node: "bringup-entry-verifies-managed-unit", module_path: new_server_bringup_intention, plan: "new_server_bringup_plan", layer: 0),
   serves(node: "bobo-arrival-door-refusal-carrier", module_path: new_server_bringup_intention, plan: "new_server_bringup_plan", layer: 0),
   serves(node: "bobo-install-credential-and-ci-arrival-leg", module_path: new_server_bringup_intention, plan: "new_server_bringup_plan", layer: 0),
   serves(node: "bobo-openbmc-boot-power-route-admitted", module_path: new_server_bringup_intention, plan: "new_server_bringup_plan", layer: 0),
