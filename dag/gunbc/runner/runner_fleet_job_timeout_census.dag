@@ -23,8 +23,9 @@ module gunbc.runner.runner_fleet_job_timeout_census
 //      to a runner slot with no operator at the keyboard. That is the 'longest expected job on a
 //      runner slot' the bracket's comment means: the bracket drains a fleet host so GitHub can park
 //      fleet-pool work on it, and the drain must outlast the work GitHub will park there unprompted.
-// A dispatch-only workflow (workflow_dispatch alone: instrument-dispatch's job at 240 minutes,
-// fleet-converge's build at 95) is excluded by the SAME predicate, not by a name list: the operator
+// A dispatch-only workflow (workflow_dispatch alone: instrument-dispatch's job at 240 minutes) is
+// excluded by the SAME predicate, not by a name list (fleet-converge is not one: its daily schedule starts
+// plan-revision and build, which enter as fleet_converge_autonomous_job_rows): the operator
 // who dispatches it owns its sequencing against a drain. The residual is declared at
 // runner_host_cap_drain_policy and in the PR body, per the ruling: a dispatch-only fleet job still
 // running when a drain starts can exceed the bound, the bracket then refuses typed (caps withheld),
@@ -74,6 +75,7 @@ import gunbc.generated_artifact {
   DriftWatchWorkflowYamlArtifact,
   BranchRunGrantBrokerWorkflowYamlArtifact,
   HostedRunnerShadowGateYamlArtifact,
+  ReleaseBinsConsumerCheckScriptArtifact,
 }
 import gunbc.generated_artifact_registry { committed_generated_artifacts }
 import gunbc.witness.compiler_gate_workflow { compiler_gate_workflow }
@@ -204,6 +206,10 @@ fn fleet_workflow_census_omissions() -> List<FleetWorkflowCensusOmission> {
     FleetWorkflowCensusOmission {
       artifact: MicrovmShakedownYamlArtifact,
       reason: "the Workflow value is a function of the dispatch input (microvm_shakedown_workflow(script), gunbc.runner.runner_microvm_shakedown_workflow); its trigger set is the module constant microvm_shakedown_workflow_triggers (input independence by construction), which carries only WorkflowDispatch — fleet_workflow_omissions_are_discharged proves the constant is autonomous-free, so the autonomous predicate excludes it regardless; its 10-minute job timeout is under the bound either way.",
+    },
+    FleetWorkflowCensusOmission {
+      artifact: ReleaseBinsConsumerCheckScriptArtifact,
+      reason: "not a workflow: a bash script (#16426) that fleet-converge's release-bins consumer step runs (bash -e on its committed path). Its commit policy names GithubActionsWorkflow as its CONSUMER, which is why it is in this domain, but it declares no jobs and no trigger, so it holds nothing GitHub assigns to a runner slot; the time it runs is inside the fleet-converge step that runs it, and that step's job is in fleet-converge's own accounting.",
     },
     FleetWorkflowCensusOmission {
       artifact: HostedRunnerShadowGateYamlArtifact,
