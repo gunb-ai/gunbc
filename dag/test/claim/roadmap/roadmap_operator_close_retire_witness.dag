@@ -1241,7 +1241,7 @@ test fn the_close_route_names_an_unknown_node_and_refuses_an_unreadable_lane() -
 
 // THE OPERATOR CLOSE NAMES ITS RED ARM TOO. A close whose form fills red_base but leaves red_kind blank is
 // refused with the word naming it, and is NEVER read as a probe (nor as on main) — the exact emptiness-
-// inference the recorder was stripped of. The serve close routes through red_observation_from_arm, the same
+// inference the recorder was stripped of. The serve close routes through red_kind_parse + red_observation_validate, the same
 // single authority the CLI uses (gunbc.design_ruling::executed_red_control_names_its_failing_commit).
 test fn a_close_with_a_probe_base_but_no_named_kind_is_refused_not_read_as_a_probe() -> Bool {
   let refused = serve_issue_close_response_over(

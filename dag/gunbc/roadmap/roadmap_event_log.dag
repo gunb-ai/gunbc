@@ -16,7 +16,7 @@ import extdeps.languages.json.parse {
 // one every other date in the tree reads. The day-count comparator the deleted dated rule used is NOT imported:
 // acceptances are no longer ordered against a date, they are admitted by the closed set below.
 import extdeps.units.iso8601_calendar { Iso8601CivilDate, iso8601_two_digits, iso8601_utc_instant_parts_are_valid }
-import gunbc.roadmap.roadmap_status { red_observation_holds, red_observation_from_arm, RedObsBuilt, RedObsRefused, RedObservation, RedObservedOnMain, RedProbe }
+import gunbc.roadmap.roadmap_status { red_observation_holds, red_observation_validate, red_kind_parse, RedKind, RedKindOutcome, KindNamed, KindUnrecognized, RedObsBuilt, RedObsRefused, RedObservationCause, RedAtAbsent, GreenAtAbsent, RedAtMalformed, GreenAtMalformed, RedAtEqualsGreenAt, MainNamesBase, MainNamesRef, ProbeNoBase, ProbeNoRef, RedBaseMalformed, RedBaseEqualsRedAt, ProbeRefMalformed, RedObservation, RedObservedOnMain, RedProbe }
 import gunbc.roadmap.roadmap_model {
   RoadmapNodeId, RoadmapAcceptanceEvent, RoadmapAcceptanceRevocationFacts, RoadmapAcceptanceReceipt,
   roadmap_acceptance_line_of_receipt, roadmap_acceptance_line_of_revocation, roadmap_node_ids_contain,
@@ -1449,7 +1449,7 @@ fn red_observation_decode(doc: JsonValue) -> RedObservation? {
 // THE OBSERVATION, READ WITH THE REASON IT REFUSES. One reader spells the members (this is the grammar the
 // operator's line and the durable row share); the outcome names WHICH standing the row holds rather than
 // flattening every refusal to `none`. This reader decides only WHICH ARM the row names and then asks the ONE
-// shape authority (red_observation_from_arm) to judge it — it re-checks no commit, no pair, no ref itself
+// shape authority (red_observation_validate) to judge it — it re-checks no commit, no pair, no ref itself
 // (gunbc.design_argument::single_authority). The rules it does own: the pre-2026-11-23 row (neither member)
 // is the unrecorded standing; one member without the other was never a tree fact and is refused; the arm is
 // READ from red_kind and never inferred from which members are empty (the ruling). THE READ RULE TIGHTENED:
@@ -1478,16 +1478,19 @@ fn red_observation_read(doc: JsonValue) -> RedObservationRead {
             // a bare pair keeps its old reading as the on_main standing, judged by the one shape authority.
             Absent =>
               if red_observation_probe_members_named(doc: doc) { ObservationRefused { detail: "red_base and probe_ref belong to the probe arm; say red_kind=probe to name them" } }
-              else { match red_observation_from_arm(arm: "on_main", red_at: r as String, green_at: g as String, red_base: "", probe_ref: "") {
+              else { match red_observation_validate(kind: OnMain, red_at: r as String, green_at: g as String, red_base: "", probe_ref: "") {
                 RedObsBuilt { observation: ob } => ObservationRead { observation: ob }
-                RedObsRefused { detail: d } => ObservationRefused { detail: d } } }
+                RedObsRefused { cause: c } => ObservationRefused { detail: reader_cause_words(cause: c) } } }
             Present { value: kind } =>
-              match red_observation_from_arm(
-                arm: kind as String, red_at: r as String, green_at: g as String,
-                red_base: match event_member_nonempty(doc: doc, key: "red_base") { Present { value: b } => b as String  Absent => "" },
-                probe_ref: match event_member_nonempty(doc: doc, key: "probe_ref") { Present { value: p } => p as String  Absent => "" }) {
-                RedObsBuilt { observation: ob } => ObservationRead { observation: ob }
-                RedObsRefused { detail: d } => ObservationRefused { detail: d } }
+              match red_kind_parse(word: kind as String) {
+                KindUnrecognized { given: gk } => ObservationRefused { detail: join(["red_kind is neither of the two standings the log spells (on_main, probe): ", gk], "") }
+                KindNamed { kind: k } =>
+                  match red_observation_validate(kind: k, red_at: r as String, green_at: g as String,
+                    red_base: match event_member_nonempty(doc: doc, key: "red_base") { Present { value: b } => b as String  Absent => "" },
+                    probe_ref: match event_member_nonempty(doc: doc, key: "probe_ref") { Present { value: p } => p as String  Absent => "" }) {
+                    RedObsBuilt { observation: ob } => ObservationRead { observation: ob }
+                    RedObsRefused { cause: c } => ObservationRefused { detail: reader_cause_words(cause: c) } }
+              }
           }
       }
   }
@@ -1503,6 +1506,27 @@ fn red_observation_probe_members_named(doc: JsonValue) -> Bool {
         Present { value: _ } => true
         Absent => false
       }
+  }
+}
+
+// THE EVENT-LOG READER'S OWN WORDS FOR A REFUSAL CAUSE. The validator (roadmap_status red_observation_validate)
+// decided WHY the named arm does not hold; this fn is the ONE place the reader turns that cause into a
+// sentence naming the ROW MEMBERS (red_at/green_at/red_base/probe_ref) — never the CLI's --flags, so a row
+// refused while folding the durable log reads as a row problem, not a command-line one (single_authority).
+fn reader_cause_words(cause: RedObservationCause) -> String {
+  match cause {
+    RedAtAbsent => "red_at names the commit the witness failed on; an observation names the commit it passed on too (green_at)"
+    GreenAtAbsent => "green_at names the commit the witness passed on; an observation names the commit it FAILED on too (red_at)"
+    RedAtMalformed => "red_at is malformed: a commit is 40 lowercase hex characters"
+    GreenAtMalformed => "green_at is malformed: a commit is 40 lowercase hex characters"
+    RedAtEqualsGreenAt => "red_at equals green_at: a witness observed failing and passing on one tree was not observed failing there"
+    MainNamesBase => "red_base and probe_ref belong to the probe arm; the on_main arm names none"
+    MainNamesRef => "red_base and probe_ref belong to the probe arm; the on_main arm names none"
+    ProbeNoBase => "the probe arm names no red_base: a probe names the main commit it breaks"
+    ProbeNoRef => "the probe arm names no probe_ref: it is the durable ref red-control/<row-id> that makes red_at fetchable"
+    RedBaseMalformed => "red_base is malformed: a commit is 40 lowercase hex characters"
+    RedBaseEqualsRedAt => "red_base equals red_at: a probe breaks its base, so it is a different commit"
+    ProbeRefMalformed => "probe_ref is malformed: it is spelled red-control/<row-id>"
   }
 }
 

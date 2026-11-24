@@ -154,7 +154,7 @@ import gunbc.roadmap.roadmap_operator_acceptance {
   roadmap_operator_date_from_epoch_secs,
   AcceptanceFound, AcceptanceAbsent, ClosedStatusUnreadable,
 }
-import gunbc.roadmap.roadmap_status { TicketFields, line_ticket, red_observation_from_arm, RedObsBuilt, RedObsRefused }
+import gunbc.roadmap.roadmap_status { TicketFields, line_ticket, red_observation_validate, red_kind_parse, RedKind, RedKindOutcome, KindNamed, KindUnrecognized, RedObsBuilt, RedObsRefused, RedObservationCause, RedAtAbsent, GreenAtAbsent, RedAtMalformed, GreenAtMalformed, RedAtEqualsGreenAt, MainNamesBase, MainNamesRef, ProbeNoBase, ProbeNoRef, RedBaseMalformed, RedBaseEqualsRedAt, ProbeRefMalformed }
 import gunbc.roadmap.roadmap_spawner { doc_all_nodes }
 import gunbc.roadmap.roadmap_model { RoadmapNode }
 import extdeps.github.pulls
@@ -1164,15 +1164,15 @@ fn serve_issue_close_response_over(
               Absent => serve_text_response(status: 400, content_type: text_plain_utf8, body: "close refused: repo and an integer pull number are required\n")
               Present { value: pr_number } => match clock_unix_millis_read() {
                 ClockUnixMillisRefused { detail: d } => serve_text_response(status: 503, content_type: text_plain_utf8, body: join(["close refused: clock unread: ", d, "\n"], ""))
-                ClockUnixMillisObserved { millis: ms } => match red_observation_from_arm(
-                    arm: get("red_kind"), red_at: get("red_at"), green_at: get("green_at"),
-                    red_base: get("red_base"), probe_ref: get("probe_ref")) {
-                  // THE ARM IS SAID, NEVER GUESSED: a close whose red standing is not named is refused, not
-                  // silently read as a probe — a close with red_base filled but no red_kind is refused here,
-                  // the same closed set (on_main|probe) the CLI holds to (roadmap_event_cli), judged by the
-                  // one shape authority red_observation_from_arm.
-                  RedObsRefused { rule: _, detail: _ } => serve_text_response(status: 400, content_type: text_plain_utf8, body: "close refused: the close form names its red standing — red_kind is exactly on_main or probe; a probe names red_base and probe_ref, an on_main close names neither, and an unnamed arm is refused, never read as a probe\n")
-                  RedObsBuilt { observation: observation } => serve_close_answer(
+                ClockUnixMillisObserved { millis: ms } => match red_kind_parse(word: get("red_kind")) {
+                  KindUnrecognized { given: g } => serve_text_response(status: 400, content_type: text_plain_utf8, body: join(["close refused: the close form names its red standing — red_kind is exactly on_main or probe; ", g, " is neither, and an unnamed or misspelled arm is refused, never read as a probe\n"], ""))
+                  KindNamed { kind: k } => match red_observation_validate(kind: k, red_at: get("red_at"), green_at: get("green_at"), red_base: get("red_base"), probe_ref: get("probe_ref")) {
+                    // THE ARM IS SAID, NEVER GUESSED: a close whose red standing is missing or misspelled, or
+                    // whose named arm does not hold, is refused in serve's OWN form-field words. The validator
+                    // decided the cause; this route only renders it (a close with red_base filled but no
+                    // red_kind is refused here, never read as a probe).
+                    RedObsRefused { cause: c } => serve_text_response(status: 400, content_type: text_plain_utf8, body: join(["close refused: ", serve_cause_words(cause: c), "\n"], ""))
+                    RedObsBuilt { observation: observation } => serve_close_answer(
                   instance: instance,
                   node_id: node_id,
                   inputs: OperatorCloseInputs {
@@ -1194,6 +1194,7 @@ fn serve_issue_close_response_over(
                   },
                   readback: read(repo, pr_number)
                 )
+                  }
                 }
               }
             }
@@ -1201,6 +1202,26 @@ fn serve_issue_close_response_over(
           }
       } }
     }
+  }
+}
+
+// THE SERVE ROUTE'S OWN WORDS FOR A REFUSAL CAUSE. The validator decided WHY; serve renders it naming its
+// OWN close-form fields (red_kind/red_at/green_at/red_base/probe_ref), never the CLI's --flags — so a client
+// reading a 400 sees vocabulary the close form actually has (gunbc.design_argument::single_authority).
+fn serve_cause_words(cause: RedObservationCause) -> String {
+  match cause {
+    RedAtAbsent => "red_at (the commit where the red control was observed FAILING) is required on the close form"
+    GreenAtAbsent => "green_at (the commit the same witness was observed PASSING) is required on the close form"
+    RedAtMalformed => "red_at is malformed: a commit is 40 lowercase hex characters"
+    GreenAtMalformed => "green_at is malformed: a commit is 40 lowercase hex characters"
+    RedAtEqualsGreenAt => "red_at equals green_at: a witness observed failing and passing on one tree was not observed failing there"
+    MainNamesBase => "the close form's red_base belongs to the probe standing; an on_main close names none"
+    MainNamesRef => "the close form's probe_ref belongs to the probe standing; an on_main close names none"
+    ProbeNoBase => "the probe standing names no red_base: a probe names the main commit it breaks"
+    ProbeNoRef => "the probe standing names no probe_ref: it is the durable ref red-control/<row-id> that makes red_at fetchable"
+    RedBaseMalformed => "red_base is malformed: a commit is 40 lowercase hex characters"
+    RedBaseEqualsRedAt => "red_base equals red_at: a probe breaks its base, so it is a different commit"
+    ProbeRefMalformed => "probe_ref is malformed: it is spelled red-control/<row-id>"
   }
 }
 
