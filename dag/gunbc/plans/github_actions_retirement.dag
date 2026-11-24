@@ -14,7 +14,7 @@ fn github_actions_retirement_body() -> List<MarkdownBlock> {
     ]),
 
     h2(text: "1. The decision this intention stands on"),
-    p(text: "GitHub Actions is wound down entirely, and the deletion is a milestone of its own: gunbc.design_ruling::github_actions_are_wound_down_entirely_2026_11_24. GitHub as the code repository is a separate, longer question (gunbc.design_ruling::github_stays_the_code_repository_until_gunbhub_2026_11_24); deleting Actions does not wait on it."),
+    p(text: "GitHub Actions is wound down entirely, and the deletion is a milestone of its own: gunbc.design_ruling::github_actions_are_wound_down_entirely_2026_11_24. Whether GitHub stays the code repository is a separate question this intention does not decide; deleting Actions does not wait on it."),
 
     h2(text: "2. Why"),
     ul(items: [

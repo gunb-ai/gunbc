@@ -6934,7 +6934,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         displaced_cost: "Actions stays a second execution authority and its identity tokens stay a trust root: today any same-repository pull-request job can reach the srv3 BMC secret and the R2 token through the repository-wide pool, an exposure the operator accepted until this deletion rather than narrowing it.",
         first_slice: "Account for each of the nine workflows: its consumer, its fabric route or its retirement. Delete the retired github-heal-publisher pool and any workflow with no consumer first, since neither waits on the verdict switch.",
         red_control: "OPEN: not yet measured. The pair to execute: after deletion a workflow file pushed on a branch runs nowhere and gets no token, and a token minted by any GitHub Actions run is refused by every Google project's security token service, read from the live estate; the required check on the same commit still publishes, from a fabric receipt.",
-        out_of_scope: "GitHub as the code repository (gunbc.plans.gunbhub_source_of_truth). Narrowing the pools before deletion, which the operator skipped.",
+        out_of_scope: "GitHub as the code repository, a separate question. Narrowing the pools before deletion, which the operator skipped.",
         handback: "The per-workflow account, the deleted workflows, emitters, runner registrations and pools, and the live-estate read showing no provider admits the Actions issuer."
       )),
       parent: in_project(project: "work-execution-redesign", contribution: "The end of the old execution route: once the verdict comes from a fabric receipt, Actions is deleted rather than kept beside it."),
