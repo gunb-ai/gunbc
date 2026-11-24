@@ -1795,6 +1795,12 @@ type TargetOperatorRealization {
   // the grouping predicate then WRAPS (always-grouped is correct by construction); there is no
   // numeric sentinel that could fail open by treating an undeclared operator as binding tightest.
   precedence: Optional<Int>
+  // Whether this operator may take an operand that is itself the same comparison family. The fact
+  // belongs to the language: Rust's comparisons do not chain (a < b == c is a rustc error), while
+  // C17, Swift and ECMAScript treat comparisons as ordinary binary operators and do chain. Absent
+  // refuses nesting — a row that does not declare chains=yes cannot fabricate permission to emit
+  // a form the target may reject (gunbc.design_argument::fail_closed).
+  chains: Optional<Bool>
 }
 
 type TargetBindingRefShape {
@@ -2913,6 +2919,11 @@ fn target_operator_realization_row_wire_schema_valid(row: Node) -> Outcome<Bool>
         children: row.children
       ) > 1 {
         outcome_rejected(target_operator_realization_wire_malformed_diagnostic(row: row))
+      } else if name_occurrences(
+        name: ^target_operator_realization_field_chains,
+        children: row.children
+      ) > 1 {
+        outcome_rejected(target_operator_realization_wire_malformed_diagnostic(row: row))
       } else {
         match fold(
           row.children,
@@ -2924,6 +2935,7 @@ fn target_operator_realization_row_wire_schema_valid(row: Node) -> Outcome<Bool>
                   n == ^target_operator_realization_field_operation
                   || n == ^target_operator_realization_field_shape
                   || n == ^target_operator_realization_field_precedence
+                  || n == ^target_operator_realization_field_chains
                 StructuralLabel { label: _ } => false
                 Positional => false
               }
@@ -2950,6 +2962,17 @@ fn target_operator_realization_row_wire_schema_valid(row: Node) -> Outcome<Bool>
   }
 }
 
+fn target_operator_chains_from_wire_node(wire: Node) -> Outcome<Optional<Bool>> {
+  match wire.kind {
+    TypeNode { connective: Atom { identity: ^target_operator_chains_yes } } =>
+      outcome_accepted(optional_present(value: true))
+    TypeNode { connective: Atom { identity: ^target_operator_chains_no } } =>
+      outcome_accepted(optional_present(value: false))
+    _ =>
+      outcome_rejected(target_operator_realization_wire_malformed_diagnostic(row: wire))
+  }
+}
+
 fn target_operator_realization_from_wire_row(row: Node) -> Outcome<TargetOperatorRealization> {
   bind_outcome(
     o: target_operator_realization_row_wire_schema_valid(row: row),
@@ -2966,31 +2989,37 @@ fn target_operator_realization_from_wire_row(row: Node) -> Outcome<TargetOperato
                   bind_outcome(
                     o: target_operator_shape_from_wire_node(wire: shape_wire),
                     f: fn(shape) {
-                      match find_named_child(root: row, name: ^target_operator_realization_field_precedence) {
-                        Accepted { value: precedence_wire, diagnostics: _ } =>
-                          match integer_decimal_magnitude_node_to_int(node: precedence_wire) {
-                            Accepted { value: precedence_level, diagnostics: _ } =>
+                      bind_outcome(
+                        match find_named_child(root: row, name: ^target_operator_realization_field_precedence) {
+                          Accepted { value: precedence_wire, diagnostics: _ } =>
+                            bind_outcome(
+                              o: integer_decimal_magnitude_node_to_int(node: precedence_wire),
+                              f: fn(precedence_level) {
+                                outcome_accepted(Present { value: precedence_level })
+                              }
+                            )
+                          Rejected { diagnostics: _ } => outcome_accepted(Absent)
+                        },
+                        fn(precedence) {
+                          bind_outcome(
+                            match find_named_child(root: row, name: ^target_operator_realization_field_chains) {
+                              Accepted { value: chains_wire, diagnostics: _ } =>
+                                target_operator_chains_from_wire_node(wire: chains_wire)
+                              Rejected { diagnostics: _ } => outcome_accepted(Absent)
+                            },
+                            fn(chains) {
                               outcome_accepted(
                                 TargetOperatorRealization {
                                   operation: canonical_op,
                                   shape: shape,
-                                  precedence: Present { value: precedence_level }
+                                  precedence: precedence,
+                                  chains: chains
                                 }
                               )
-                            _ =>
-                              outcome_rejected(
-                                target_operator_realization_wire_malformed_diagnostic(row: row)
-                              )
-                          }
-                        Rejected { diagnostics: _ } =>
-                          outcome_accepted(
-                            TargetOperatorRealization {
-                              operation: canonical_op,
-                              shape: shape,
-                              precedence: Absent
                             }
                           )
-                      }
+                        }
+                      )
                     }
                   )
                 }
@@ -3062,6 +3091,46 @@ fn target_operator_precedence_level_node(level: Int) -> Node {
     Absent =>
       target_model_type_atom_node(identity: ^target_operator_precedence_level_not_a_decimal_magnitude)
   }
+}
+
+// Same row with a declared precedence level AND a declared chaining permission. Comparison rows
+// that must say whether their target lets a comparison take a comparison operand (Rust: no) build
+// through this; everything else keeps the builders above.
+fn target_operator_realization_node_with_precedence_and_chains(
+  operation: CanonicalOperation,
+  shape: TargetOperatorShape,
+  precedence_node: Node,
+  chains_node: Node
+) -> Node {
+  target_model_type_conj_node(
+    children: [
+      target_model_named_edge(
+        name: ^target_operator_realization_field_operation,
+        target: target_model_canonical_operation_wire_node(operation: operation)
+      ),
+      target_model_named_edge(
+        name: ^target_operator_realization_field_shape,
+        target: target_model_operator_shape_wire_node(shape: shape)
+      ),
+      target_model_named_edge(
+        name: ^target_operator_realization_field_precedence,
+        target: precedence_node
+      ),
+      target_model_named_edge(
+        name: ^target_operator_realization_field_chains,
+        target: chains_node
+      )
+    ]
+  )
+}
+
+// Wire spellings for the chaining declaration: typed atoms, no Bool sentinel on the wire.
+fn target_operator_chains_yes_node() -> Node {
+  target_model_type_atom_node(identity: ^target_operator_chains_yes)
+}
+
+fn target_operator_chains_no_node() -> Node {
+  target_model_type_atom_node(identity: ^target_operator_chains_no)
 }
 
 fn target_operator_realizations_catalog_node(rows: List<Node>) -> Node {
@@ -6887,6 +6956,41 @@ fn target_operator_realization_precedence(
   }
 }
 
+// Per-target chaining permission, read from the same catalog rows. Absent when the target declares
+// nothing (or the operation has no row).
+fn target_operator_realization_chains(
+  catalog: TargetRealizationCatalog,
+  op: CanonicalOperation
+) -> Optional<Bool> {
+  match target_operator_realization_catalog_lookup(catalog: catalog.operators, canonical_op: op) {
+    Accepted { value: row, diagnostics: _ } => row.chains
+    _ => Absent
+  }
+}
+
+// Whether a comparison carrying a comparison operand must be refused. The FACT (which comparison
+// operators chain) is a row in the language catalog — Rust declares its comparisons do not chain;
+// C17, Swift and ECMAScript comparisons do. The model holds only the POLICY: nesting needs a
+// permission, and a row that does not declare chains=yes cannot fabricate permission to emit a
+// form the target may reject (gunbc.design_argument::fail_closed). Absent refuses.
+fn target_value_expr_comparison_chain_refuses(
+  catalog: TargetRealizationCatalog,
+  enclosing_op: CanonicalOperation,
+  operands: List<TargetValueExpression>
+) -> Bool {
+  if target_value_expr_operands_form_comparison_chain(
+    enclosing_op: enclosing_op,
+    operands: operands
+  ) {
+    match target_operator_realization_chains(catalog: catalog, op: enclosing_op) {
+      Present { value: declared } => !declared
+      Absent => true
+    }
+  } else {
+    false
+  }
+}
+
 // Operand grouping is decided by the TARGET's declared precedence, never a table in the model.
 // When either side's precedence is absent the operand is wrapped: always-grouped output is correct
 // by construction (extra parens), whereas treating an undeclared operator as binding tightest
@@ -6978,15 +7082,17 @@ fn target_operator_shape_emit_primitive_apply_tokens(
             outcome_rejected(
               target_value_expression_emit_primitive_apply_arity_invalid_diagnostic(expr: expr)
             )
-          } else if target_value_expr_operands_form_comparison_chain(
+          } else if target_value_expr_comparison_chain_refuses(
+            catalog: catalog,
             enclosing_op: enclosing_op,
             operands: operands
           ) {
-            // A comparison whose operand is itself a comparison renders as a chained comparison
-            // (a < b == c), which Rust rejects because its comparison operators do not chain. The
-            // emitter refuses it with its own typed reason rather than handing rustc output it will
-            // reject. This is a pure refusal: no currently-emitting subject forms such a chain, so
-            // nothing that renders correctly today changes a byte.
+            // The target's catalog row says its comparison operators do not chain (Rust declares
+            // chains=no; C17, Swift and ECMAScript declare theirs do). A comparison carrying a
+            // comparison operand would render a form that target rejects, so the emitter refuses
+            // with its own typed reason rather than handing the target's compiler output it will
+            // reject. Pure refusal: no currently-emitting subject forms such a chain, so nothing
+            // that renders correctly today changes a byte.
             outcome_rejected(
               target_value_expression_emit_comparison_operand_is_comparison_diagnostic(expr: expr)
             )

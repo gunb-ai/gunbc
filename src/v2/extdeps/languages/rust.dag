@@ -213,6 +213,8 @@ import v2.std.compilers.target_model { EmitSpellingEscape,
   grammar_relation_row_attach_bodied_scaffold,
   target_operator_realization_node,
   target_operator_realization_node_with_precedence,
+  target_operator_realization_node_with_precedence_and_chains,
+  target_operator_chains_no_node,
   target_operator_precedence_level_node,
   target_operator_realizations_catalog_node,
   value_expr_projection_bundle_node,
@@ -1270,6 +1272,22 @@ fn rust_operator_realization_row(
   )
 }
 
+// Rust's comparison operators are NON-ASSOCIATIVE: the Rust Reference operator-precedence table
+// marks the comparison group (`== != < > <= >=`, group 11) non-associative, and chaining them
+// (`a < b == c`) is a rustc error, not a Bool comparison. These rows declare chains=no; the model
+// asks the row instead of holding the fact (the model-side policy: nesting needs a permission).
+fn rust_comparison_operator_realization_row(
+  operation: CanonicalOperation,
+  token: Symbol
+) -> Node {
+  target_operator_realization_node_with_precedence_and_chains(
+    operation: operation,
+    shape: InfixToken { token: token },
+    precedence_node: target_operator_precedence_level_node(level: 3),
+    chains_node: target_operator_chains_no_node()
+  )
+}
+
 fn rust_add_operator_realization_row() -> Node {
   target_operator_realization_node_with_precedence(
     operation: canonical_operation_op_add(),
@@ -1360,12 +1378,12 @@ fn rust_operator_realizations_catalog_node() -> Node {
   target_operator_realizations_catalog_node(rows: [
     rust_operator_realization_row(operation: canonical_operation_op_or(), token: ^rust_token_oror, level: 1),
     rust_operator_realization_row(operation: canonical_operation_op_and(), token: ^rust_token_andand, level: 2),
-    rust_operator_realization_row(operation: canonical_operation_op_eq(), token: ^rust_token_eqeq, level: 3),
-    rust_operator_realization_row(operation: canonical_operation_op_ne(), token: ^rust_token_neq, level: 3),
-    rust_operator_realization_row(operation: canonical_operation_op_lt(), token: ^rust_token_lt, level: 3),
-    rust_operator_realization_row(operation: canonical_operation_op_le(), token: ^rust_token_le, level: 3),
-    rust_operator_realization_row(operation: canonical_operation_op_gt(), token: ^rust_token_gt, level: 3),
-    rust_operator_realization_row(operation: canonical_operation_op_ge(), token: ^rust_token_ge, level: 3),
+    rust_comparison_operator_realization_row(operation: canonical_operation_op_eq(), token: ^rust_token_eqeq),
+    rust_comparison_operator_realization_row(operation: canonical_operation_op_ne(), token: ^rust_token_neq),
+    rust_comparison_operator_realization_row(operation: canonical_operation_op_lt(), token: ^rust_token_lt),
+    rust_comparison_operator_realization_row(operation: canonical_operation_op_le(), token: ^rust_token_le),
+    rust_comparison_operator_realization_row(operation: canonical_operation_op_gt(), token: ^rust_token_gt),
+    rust_comparison_operator_realization_row(operation: canonical_operation_op_ge(), token: ^rust_token_ge),
     rust_add_operator_realization_row(),
     rust_operator_realization_row(operation: canonical_operation_op_sub(), token: ^rust_token_minus, level: 4),
     rust_operator_realization_row(operation: canonical_operation_op_mul(), token: ^rust_token_star, level: 5),

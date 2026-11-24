@@ -3,19 +3,23 @@ module v2.test.claim.target_model_external_authority_decode
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, UriScheme, Http, Https, uri_scheme_inhabitants, uri_scheme_wire }
 import std.algebra { Empty, list_snoc_item, fold_list }
-import std.optional { Absent, Present }
+import std.optional { Absent, Optional, Present }
 import v2.std.compilers.target_model {
   canonical_operation_op_and,
+  canonical_operation_op_lt,
   InfixToken,
   target_model_canonical_operation_wire_node,
   target_model_named_edge,
   target_model_operator_shape_wire_node,
   target_model_type_atom_node,
   target_model_type_conj_node,
+  target_operator_chains_no_node,
+  target_operator_chains_yes_node,
   target_operator_precedence_level_node,
   target_operator_realization_from_wire_row,
   target_operator_realization_node,
   target_operator_realization_node_with_precedence,
+  target_operator_realization_node_with_precedence_and_chains,
   target_operator_realization_row_wire_schema_valid,
   target_external_authority_bundle_node,
   target_external_authority_from_node,
@@ -267,6 +271,84 @@ test fn operator_row_unencodable_precedence_level_refuses_decode() -> Bool {
     )
   ) {
     Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+// ---- OPERATOR-REALIZATION ROW: the chaining declaration is per-target -------------------------
+// Review 98029: "this comparison does not chain" is a fact about the target language (Rust rejects
+// a < b == c; C17, Swift and ECMAScript accept it), so it rides the catalog rows beside the
+// precedence level and the model only asks the row. These legs pin the decode side; the emission
+// side (refuse unless a row declares chains=yes) is carried by the census, whose emitted corpus
+// contains the comparison renders under the Rust catalog.
+
+fn chains_row_decode(chains_node: Node) -> Optional<Bool> {
+  match target_operator_realization_from_wire_row(
+    row: target_operator_realization_node_with_precedence_and_chains(
+      operation: canonical_operation_op_lt(),
+      shape: InfixToken { token: ^claim_token_lt },
+      precedence_node: target_operator_precedence_level_node(level: 3),
+      chains_node: chains_node
+    )
+  ) {
+    Accepted { value: realization, diagnostics: _ } => realization.chains
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
+test fn operator_row_with_chains_yes_decodes_present_true() -> Bool {
+  match chains_row_decode(chains_node: target_operator_chains_yes_node()) {
+    Present { value: declared } => declared == true
+    Absent => false
+  }
+}
+
+test fn operator_row_with_chains_no_decodes_present_false() -> Bool {
+  match chains_row_decode(chains_node: target_operator_chains_no_node()) {
+    Present { value: declared } => declared == false
+    Absent => false
+  }
+}
+
+test fn operator_row_without_chains_edge_decodes_absent() -> Bool {
+  match target_operator_realization_from_wire_row(
+    row: target_operator_realization_node_with_precedence(
+      operation: canonical_operation_op_lt(),
+      shape: InfixToken { token: ^claim_token_lt },
+      precedence_node: target_operator_precedence_level_node(level: 3)
+    )
+  ) {
+    Accepted { value: realization, diagnostics: _ } =>
+      match realization.chains {
+        Present { value: _ } => false
+        Absent => true
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn operator_row_with_a_duplicated_chains_edge_refuses() -> Bool {
+  match target_operator_realization_row_wire_schema_valid(
+    row: target_model_type_conj_node(children: [
+      target_model_named_edge(
+        name: ^target_operator_realization_field_operation,
+        target: target_model_canonical_operation_wire_node(operation: canonical_operation_op_lt())
+      ),
+      target_model_named_edge(
+        name: ^target_operator_realization_field_shape,
+        target: target_model_operator_shape_wire_node(shape: InfixToken { token: ^claim_token_lt })
+      ),
+      target_model_named_edge(
+        name: ^target_operator_realization_field_chains,
+        target: target_operator_chains_yes_node()
+      ),
+      target_model_named_edge(
+        name: ^target_operator_realization_field_chains,
+        target: target_operator_chains_no_node()
+      )
+    ])
+  ) {
+    Accepted { value: valid, diagnostics: _ } => !valid
     Rejected { diagnostics: _ } => true
   }
 }
