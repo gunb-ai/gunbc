@@ -10094,6 +10094,23 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
       dispatch: dispatchable(),
       parent: in_project(project: "read-set-convergence", contribution: "P7: heal's forced recheck is bounded by the pull request's own diff, not the branch's distance from main's tip (the plan gunbc.plans.read_set_convergence)."),
     ),
+    roadmap_node(
+      identity: "rn_CREDRECVRECEIPTHOME0000000001",
+      id: "credential-recovery-receipt-under-declared-instance-dir",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_belt_tick_cli.dag"),
+      line: ticket(t: fields(
+        headline: "belt credential-recovery receipt relocated under the declared instance receipts directory",
+        boundary: "Serves gunbc.roadmap.roadmap_belt_tick_cli belt_credential_recovery_cli. The receipt path was derived from instance_root + '/credential-acquisition-recovery.json', targeting the top level of the instance root directory which is root:root 0755 — briansrls cannot create files there. The fix introduces belt_credential_recovery_receipt_path, deriving the receipt path through instance_receipts_dir (the declared, install-owned briansrls-writable directory already created by apply_legs step instance-receipts-dir and used by the tick and obligation receipts), so the credential-recovery receipt is durable without any hand host operation and without touching /opt/gunbc's top-level ownership.",
+        displaced_cost: "Without it the credential-recovery unit exits 1 on every run; the journal carries 'receipt write failed' and the recovery result — however correct — is never persisted durably for the operator.",
+        first_slice: "One path derivation (belt_credential_recovery_receipt_path) in the CLI's module, one claim witness with four test fn's (positive: path is under instance_receipts_dir; pinned bytes; named negatives: the receipt is NOT in credential-acquisition-slots; traversal produces no '..' sequence).",
+        red_control: "test.claim.belt_credential_recovery_receipt_home_witness: at the exact main sha before this row's change, belt_credential_recovery_receipt_path does not exist in gunbc.roadmap.roadmap_belt_tick_cli — the resolver refuses the import, claim_batch prints FAIL and exits 1.",
+        out_of_scope: "No new apply leg; no directory mode change; no credential_acquisition_slots_directory relocation; no belt tick, drain or attempt launcher enablement; no touch to release_pair_delivery, release_locus, roadmap event/recorder, or fleet_converge_* planning sites.",
+        handback: "The witness with its four claims passing (rc 0) at the fix's head, the RED evidence at the recorded main sha (FAIL, rc 1 from the unresolvable import), and the roadmap row itself."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "fabric-bringup", contribution: "The belt credential-recovery unit writes its receipt into the model-owned instance receipts directory, making the recovery result durable without a hand host operation."),
+    ),
   ]
 }
 
