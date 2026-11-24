@@ -23,7 +23,7 @@ import gunbc.roadmap.roadmap_event_carrier {
   RoadmapEventsRead, EventsRead, EventsReadRefused, RoadmapAllEventsRead, AllEventsRead, AllEventsReadRefused,
   RoadmapResultAuthority, ResultAuthorityEstablished, ResultAuthorityRefused, roadmap_result_authority_of_record,
   RoadmapResultAppend, ResultAppended, ResultAppendAlreadyPresent, ResultAppendRefused, roadmap_result_append_of,
-  EventAppended, EventAlreadyPresent, EventAppendRefused,
+  EventAppended, EventAlreadyPresent, EventAppendRefused, Unpublished,
 }
 import extdeps.filesystem.filesystem_io {
   FilesystemCreateNew, FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused, FilesystemPermissionDenied,

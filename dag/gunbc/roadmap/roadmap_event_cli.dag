@@ -51,7 +51,7 @@ import gunbc.roadmap.roadmap_model {
 import gunbc.roadmap.roadmap_event_carrier {
   roadmap_event_carrier_layout_for_instance, roadmap_event_append, roadmap_events_read,
   roadmap_event_branch_tip,
-  RoadmapEventCarrierLayout, EventPublication,
+  RoadmapEventCarrierLayout, EventPublishState,
   EventAppended, EventAlreadyPresent, EventAppendRefused, EventsRead, EventsReadRefused,
   CarrierSnapshotClose, SnapshotNotOpened, SnapshotClosed, SnapshotCloseFailed, SnapshotCloseVerificationFailed,
   carrier_snapshot_close_failures, carrier_report_with_snapshot_close,
@@ -552,7 +552,7 @@ fn roadmap_acceptance_command(repo_root: String, author: String, node: String, w
 // answers this, and the exit is one mapping over it (roadmap_acceptance_command_exit). One route, one
 // append; the witness drives the same code the command line drives, from the moment the instance is known.
 type AcceptanceCommandOutcome
-  = AcceptanceAppended { id: RoadmapEventId, published_as: Optional<EventPublication>, closes: List<CarrierSnapshotClose> }
+  = AcceptanceAppended { id: RoadmapEventId, published_as: EventPublishState, closes: List<CarrierSnapshotClose> }
   | AcceptanceAlreadyPresent { id: RoadmapEventId, closes: List<CarrierSnapshotClose> }
   | AcceptanceCommandRefused { step: String, reason: String, closes: List<CarrierSnapshotClose> }
 

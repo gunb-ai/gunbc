@@ -31,6 +31,7 @@ import gunbc.principal_projection { principal_ref_parse_label, PrincipalRef }
 import gunbc.roadmap.roadmap_event_carrier {
   RoadmapEventCarrierLayout, roadmap_event_carrier_layout_for_instance, roadmap_events_read,
   EventsRead, EventsReadRefused, carrier_snapshot_close_failures,
+  EventPublishState, Unpublished, Published, PublishedCoordinateUnread,
 }
 import gunbc.roadmap.roadmap_event_log {
   NodeAccepted, roadmap_node_standing, roadmap_node_has_merge_event, roadmap_merged_at_stated_by,
@@ -154,8 +155,13 @@ fn pre_merge_witness(layout: RoadmapEventCarrierLayout) -> Bool {
           //    locally — the remote, the ref, and the commit the push carried. A reader who has to know the
           //    architecture to verify a recording is the reader who reported a month of missing records.
           let names_publication = match published_as {
-            Absent => claim("the append published nothing: the record is provisional at best, and the route said nothing about it", false)
-            Present { value: p } =>
+            Unpublished => claim("the append published nothing: the record is provisional at best, and the route said nothing about it", false)
+            PublishedCoordinateUnread { exit_code: _, stderr: err } =>
+              // The push LANDED but the commit could not be read back. This is NOT an absence — the record is
+              // durable on the branch — but the coordinate is uncountable at the append, so it refuses loudly with
+              // the readback's own exit code and stderr rather than masquerading as "nothing published".
+              claim("the push landed but the appended commit could not be read back (non-zero exit; stderr: " + err + ") — typed, not folded into an absence", false)
+            Published { publication: p } =>
               claim("the append names the remote it pushed to", (p.remote as String) != "" && (p.remote as String) == (layout.remote as String))
                 && claim("the append names the durable ref", string_contains(s: p.ref_name as String, pattern: "roadmap-events"))
                 && claim("the append names the COMMIT it pushed, and not a placeholder for one",

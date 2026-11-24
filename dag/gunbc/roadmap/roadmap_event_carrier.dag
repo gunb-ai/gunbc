@@ -242,10 +242,33 @@ type EventPublication {
   commit: NonEmptyStr
 }
 
+// THE PUBLISH STATE IS THREE THINGS, NOT TWO. An append that never pushed, an append whose push landed and
+// whose commit was read back, and an append whose push LANDED BUT WHOSE COMMIT COULD NOT BE READ BACK are three
+// different facts. Folding the third into the first (an Optional's Absent) let a publication failure masquerade as
+// an absence — the exact silent degradation DESIGN.md's fail_closed rules out ("every degradation is typed, located
+// and countable"). The unread arm carries the exit code and stderr of the failed readback so the degradation is
+// countable at the append itself, not discovered later by a reader who assumed silence meant success.
+type EventPublishState
+  = Unpublished
+  | Published { publication: EventPublication }
+  | PublishedCoordinateUnread { exit_code: Int, stderr: String }
+
 type RoadmapEventAppend
-  = EventAppended { id: RoadmapEventId, published_as: Optional<EventPublication> }
+  = EventAppended { id: RoadmapEventId, published_as: EventPublishState }
   | EventAlreadyPresent { id: RoadmapEventId }
   | EventAppendRefused { id: RoadmapEventId, step: String, reason: String }
+
+// THE PUBLICATION STATE IS COUNTABLE IN WORDS, not just typed. A consumer (or a witness) that needs to tell the
+// three states apart reads them through here, so "published", "unpublished" and "pushed-but-the-commit-was-unread"
+// each have one canonical sentence and the unread arm's exit code and stderr are surfaced rather than swallowed.
+fn roadmap_event_publish_state_report(state: EventPublishState) -> String {
+  match state {
+    Unpublished => "unpublished"
+    Published { publication: p } => join(["published ", p.commit as String, " to ", p.ref_name as String, " on ", p.remote as String], "")
+    PublishedCoordinateUnread { exit_code: code, stderr: err } =>
+      join(["published-but-unread (exit ", to_string(value: code), "): ", err], "")
+  }
+}
 
 type RoadmapEventsRead
   = EventsRead { node: RoadmapNodeId, envelopes: List<RoadmapEventEnvelope> }
@@ -735,12 +758,14 @@ fn roadmap_event_publish_private(layout: RoadmapEventCarrierLayout, env: Roadmap
             CarrierExecOk { stdout: _ } => match carrier_exec(layout: layout, workdir: layout.worktree as String,
               args: ["rev-parse", "HEAD"]) {
               // THE COMMIT THAT JUST LANDED, read from git itself — the same HEAD the push above carried. If
-              // git will not say, the append still succeeded and says so honestly with Absent: the record is
-              // durable, only its coordinate is unreported, and inventing one would be worse than none.
-              CarrierExecOk { stdout: sha } => EventAppended { id: env.id, published_as: Present { value: EventPublication {
+              // git will not say, the push STILL landed and the append says so on its own typed arm —
+              // PublishedCoordinateUnread, carrying the failed readback's exit code and stderr. It is NOT folded
+              // into Unpublished: "pushed but the coordinate is unread" and "never pushed" are different facts, and
+              // collapsing them is the silent degradation fail_closed forbids. Inventing a commit would be worse.
+              CarrierExecOk { stdout: sha } => EventAppended { id: env.id, published_as: Published { publication: EventPublication {
                 remote: layout.remote as NonEmptyStr, ref_name: roadmap_events_branch as NonEmptyStr,
                 commit: trim(s: sha) as NonEmptyStr } } }
-              CarrierExecFailed { exit_code: _, stderr: _ } => EventAppended { id: env.id, published_as: Absent }
+              CarrierExecFailed { exit_code: code, stderr: err } => EventAppended { id: env.id, published_as: PublishedCoordinateUnread { exit_code: code, stderr: err } }
             }
           }
         }
