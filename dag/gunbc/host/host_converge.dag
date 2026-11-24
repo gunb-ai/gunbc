@@ -1279,19 +1279,20 @@ type HostFrontierVerdict
   | HostFrontierRefused { artifact: String, cause: String }
 
 // Production gate: the converge route calls this on every assembled host's
-// knobs before admitting the host into the converge plan. The first knob
-// whose machine artifact the written-down frontier does not classify refuses,
-// carrying that artifact's identity and kind (gunbc.design_argument::
-// fail_closed).
+// knobs before admitting the host into the converge plan. Each knob is
+// classified ONCE; the first unclassified artifact refuses, carrying its
+// identity and kind -- the refusing arm refuses, it never widens
+// (gunbc.design_argument::fail_closed; review 98111).
 fn frontier_validate_knobs(knobs: List<ConvergeKnob>) -> HostFrontierVerdict {
-  let unclassified = filter(knobs, k => {
-    match frontier_classify_target(target: k.target) {
+  let classifications = map(knobs, k => frontier_classify_target(target: k.target))
+  let unclassified = filter(classifications, c => {
+    match c {
       UnclassifiedArtifact { artifact: _, kind: _ } => true
       Classified { artifact: _, kind: _, class: _ } => false
     }
   })
   if unclassified.length() > 0 {
-    match frontier_classify_target(target: unclassified[0].target) {
+    match unclassified[0] {
       UnclassifiedArtifact { artifact: a, kind: kind } => HostFrontierRefused {
         artifact: a,
         cause: concat(
@@ -1302,7 +1303,6 @@ fn frontier_validate_knobs(knobs: List<ConvergeKnob>) -> HostFrontierVerdict {
           ") is not in the written-down frontier classification for this machine-touching workflow; it refuses before any change is attempted",
         ),
       }
-      Classified { artifact: _, kind: _, class: _ } => HostFrontierAdmitted
     }
   } else {
     HostFrontierAdmitted
