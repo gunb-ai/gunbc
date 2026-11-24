@@ -25,9 +25,30 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 // path: an id minted on an abandoned attempt is minted again by the next one and recorded once.
 // Nothing is served across paths -- the packrat memo that did so was deleted (operator ruling R2,
 // 2026-10-08; gunbc.recurring_failure_mode parse_memo_hit_serves_occurrences_minted_on_an_abandoned_path).
+// WHETHER A PARSE PATH MINTS, OR ONLY RECOGNIZES. Mint is every ordinary path: each node built here
+// is allocated an occurrence id and recorded in the path's append-only fact log, and that id is what
+// extent publishing and every later stage read. Recognize is the policy a ZERO-WIDTH PREDICATE runs
+// its own subtree under, and it exists because a predicate's subtree is answer-only. All three of its
+// arms -- the not-predicate attempt, the refuse-on-match element, and the infix continuation guard --
+// match the attempt's capture and provenance as `captured: _, prov: _` and continue from the
+// provenance THEY were handed, so a terminal minted inside one was minted and recorded for a yes/no
+// answer and then dropped, and the accepted infix path mints that same terminal again. That is the
+// case parse.dag's own header names -- "an id minted on an abandoned attempt is minted again by the
+// next one and recorded once" -- and recurring_failure_mode
+// parse_memo_hit_serves_occurrences_minted_on_an_abandoned_path; here the abandoned attempt allocates
+// nothing, so there is no id to abandon and nothing to take the allocator mark with it. Under
+// Recognize neither the allocator nor the fact log moves: the node carries OccurrenceSynthetic, which
+// says on its face that parse allocated no id and recorded no fact for it. NOTHING ELSE CHANGES --
+// the same functions run over the same tokens and the same prepared grammar, so the answer, the
+// furthest-failure tracking, the refusal joins and the layout decisions are the same computations.
+// Speculative rollback of a genuinely FAILED alternative is a different thing and stays: it discards
+// provenance it really minted, which is what a failed alternative must do.
+type MintPolicy = Mint | Recognize
+
 type ParseProvenanceState {
   alloc: OccurrenceIdAllocator
   facts: List<ParseFact>
+  minting: MintPolicy
 }
 
 // THE FACTS A PARSE PATH PUBLISHES, AS AN APPEND-ONLY LOG OWNED BY THE PATH. One entry per minted id,
@@ -264,8 +285,12 @@ fn parse_module_authored(artifact: LexArtifact, grammar: ParseGrammar, annotatio
   }
 }
 
-type ParseMintSourceResult {
-  id: OccurrenceId
+// WHAT ONE MINT HANDS BACK: the identity to label the node with, and the provenance to continue
+// from. `OccurrenceSynthetic` is not a stand-in for a mint that happened -- under the Recognize policy
+// no id was allocated and no fact was recorded, and nothing downstream can mistake the node for a
+// minted one, because the identity carries that difference itself.
+type ParseOccurrenceMint {
+  occurrence_id: NodeOccurrenceIdentity
   prov: ParseProvenanceState
 }
 
@@ -743,7 +768,8 @@ fn parse_non_empty_diagnostics_to_list(ned: NonEmptyDiagnostics) -> List<Diagnos
 fn parse_prov_seeded(seed: OccurrenceIdAllocator) -> ParseProvenanceState {
   ParseProvenanceState {
     alloc: seed,
-    facts: []
+    facts: [],
+    minting: Mint
   }
 }
 
@@ -751,25 +777,49 @@ fn parse_prov_initial() -> ParseProvenanceState {
   parse_prov_seeded(seed: occurrence_id_allocator_initial())
 }
 
+// THE SAME PATH, RECOGNIZING. `alloc` and `facts` are carried over UNCHANGED, which is the whole
+// point: a predicate that recognizes does not restart the path's ledger, it leaves it exactly where
+// it found it -- so a recognizing subtree cannot shift the id of a node that survives, and cannot
+// drop a fact the surviving path owed. Only a predicate arm derives from this, and every arm that does
+// discards the attempt's provenance, so no Recognize state can reach a kept subtree. An un-admitted
+// predicate never reaches an arm, never derives this, and mints nothing it did not already mint.
+fn parse_prov_recognizing(prov: ParseProvenanceState) -> ParseProvenanceState {
+  ParseProvenanceState { alloc: prov.alloc, facts: prov.facts, minting: Recognize }
+}
+
+// THE ONE MINTING POINT OF THE PARSE. Every occurrence this parser mints is allocated here, against
+// `alloc_occurrence_id`, and recorded here, against `parse_fact_log_push` -- once each, in the path's
+// append-only log, under the path's policy -- which is why the policy gate lives in exactly one place.
+// Minting and its paired record never separate: an id that reaches a kept node is a fact in the log,
+// and an id that does not (the recognizing arm) was never allocated at all.
+fn parse_mint_occurrence(prov: ParseProvenanceState, event: OriginEvent) -> ParseOccurrenceMint {
+  match prov.minting {
+    Recognize => ParseOccurrenceMint { occurrence_id: OccurrenceSynthetic, prov: prov }
+    Mint =>
+      let minted = alloc_occurrence_id(alloc: prov.alloc)
+      ParseOccurrenceMint {
+        occurrence_id: node_occurrence_identity_minted(id: minted.id),
+        prov: ParseProvenanceState {
+          alloc: minted.alloc,
+          facts: parse_fact_log_push(log: prov.facts, id: minted.id, event: event),
+          minting: Mint
+        }
+      }
+  }
+}
+
 fn parse_mint_from_source(
   prov: ParseProvenanceState,
   file: Symbol,
   start: Int,
   end: Int
-) -> ParseMintSourceResult {
-  let minted = alloc_occurrence_id(alloc: prov.alloc)
+) -> ParseOccurrenceMint {
   let locus = Textual {
     file: file,
     extent: ByteRange { start: start, end: end }
   }
   let event = origin_event_from_source(locus: locus)
-  ParseMintSourceResult {
-    id: minted.id,
-    prov: ParseProvenanceState {
-      alloc: minted.alloc,
-      facts: parse_fact_log_push(log: prov.facts, id: minted.id, event: event)
-    }
-  }
+  parse_mint_occurrence(prov: prov, event: event)
 }
 
 // A PROJECTED OCCURRENCE IS NOT A PARSE MINT, and this function's denominator is parse's own
@@ -818,7 +868,7 @@ fn parse_stamp_terminal(
     node: node_with_occurrence_id(
       kind: TypeNode { connective: Atom { identity: identity } },
       children: [],
-      occurrence_id: node_occurrence_identity_minted(id: minted.id)
+      occurrence_id: minted.occurrence_id
     ),
     prov: minted.prov
   }
@@ -855,10 +905,9 @@ fn parse_stamp_derived_conj(
   cap2: Node,
   prov: ParseProvenanceState
 ) -> ParseStampResult {
-  let minted = alloc_occurrence_id(alloc: prov.alloc)
   let from = parse_minted_id_list(nodes: [cap1, cap2])
   let event = DerivedBy { producer: ^parse_stage_producer, from: from }
-  let facts = parse_fact_log_push(log: prov.facts, id: minted.id, event: event)
+  let minted = parse_mint_occurrence(prov: prov, event: event)
   ParseStampResult {
     node: node_with_occurrence_id(
       kind: TypeNode { connective: Conj },
@@ -866,12 +915,9 @@ fn parse_stamp_derived_conj(
         grammar_named_edge(name: ^grammar_sequence_left_node_projection, target: cap1),
         grammar_named_edge(name: ^grammar_sequence_right_node_projection, target: cap2)
       ],
-      occurrence_id: node_occurrence_identity_minted(id: minted.id)
+      occurrence_id: minted.occurrence_id
     ),
-    prov: ParseProvenanceState {
-      alloc: minted.alloc,
-      facts: facts
-    }
+    prov: minted.prov
   }
 }
 
@@ -883,10 +929,9 @@ fn parse_stamp_infix_application(
   right: Node,
   prov: ParseProvenanceState
 ) -> ParseStampResult {
-  let minted = alloc_occurrence_id(alloc: prov.alloc)
   let from = parse_minted_id_list(nodes: [left, operator, right])
   let event = DerivedBy { producer: ^parse_stage_producer, from: from }
-  let facts = parse_fact_log_push(log: prov.facts, id: minted.id, event: event)
+  let minted = parse_mint_occurrence(prov: prov, event: event)
   ParseStampResult {
     node: node_with_occurrence_id(
       kind: TypeNode { connective: Conj },
@@ -895,12 +940,9 @@ fn parse_stamp_infix_application(
         grammar_named_edge(name: ^grammar_infix_operator_node_projection, target: operator),
         grammar_named_edge(name: ^grammar_infix_right_node_projection, target: right)
       ],
-      occurrence_id: node_occurrence_identity_minted(id: minted.id)
+      occurrence_id: minted.occurrence_id
     ),
-    prov: ParseProvenanceState {
-      alloc: minted.alloc,
-      facts: facts
-    }
+    prov: minted.prov
   }
 }
 
@@ -908,19 +950,15 @@ fn parse_stamp_derived_repeat(
   acc_nodes: List<Node>,
   prov: ParseProvenanceState
 ) -> ParseStampResult {
-  let minted = alloc_occurrence_id(alloc: prov.alloc)
   let from = parse_minted_id_list(nodes: acc_nodes)
   let event = DerivedBy { producer: ^parse_stage_producer, from: from }
-  let facts = parse_fact_log_push(log: prov.facts, id: minted.id, event: event)
+  let minted = parse_mint_occurrence(prov: prov, event: event)
   ParseStampResult {
     node: parse_repeat_captured_node(
       acc_nodes: acc_nodes,
-      occurrence_id: node_occurrence_identity_minted(id: minted.id)
+      occurrence_id: minted.occurrence_id
     ),
-    prov: ParseProvenanceState {
-      alloc: minted.alloc,
-      facts: facts
-    }
+    prov: minted.prov
   }
 }
 
@@ -951,10 +989,9 @@ fn parse_wrap_production_captured(
   captured: Node,
   prov: ParseProvenanceState
 ) -> ParseStampResult {
-  let minted = alloc_occurrence_id(alloc: prov.alloc)
   let from = parse_minted_id_list(nodes: [captured])
   let event = DerivedBy { producer: ^parse_stage_producer, from: from }
-  let facts = parse_fact_log_push(log: prov.facts, id: minted.id, event: event)
+  let minted = parse_mint_occurrence(prov: prov, event: event)
   ParseStampResult {
     node: node_with_occurrence_id(
       kind: TypeNode { connective: Conj },
@@ -962,12 +999,9 @@ fn parse_wrap_production_captured(
         grammar_named_edge(name: ^grammar_production_identity_node_projection, target: production.emitted),
         grammar_named_edge(name: ^grammar_production_captured_node_projection, target: captured)
       ],
-      occurrence_id: node_occurrence_identity_minted(id: minted.id)
+      occurrence_id: minted.occurrence_id
     ),
-    prov: ParseProvenanceState {
-      alloc: minted.alloc,
-      facts: facts
-    }
+    prov: minted.prov
   }
 }
 
@@ -3826,7 +3860,7 @@ fn parse_expr_string_literal_value(
   )
   match dag_string_literal_node_from_lexeme(
     lexeme: tok.lexeme,
-    occurrence_id: node_occurrence_identity_minted(id: minted.id)
+    occurrence_id: minted.occurrence_id
   ) {
     Accepted { value: captured, diagnostics: _ } =>
       ParseExprAccepted {
@@ -3859,7 +3893,7 @@ fn parse_expr_string_template_part_value(
   match dag_string_template_part_node_from_lexeme(
     token_class: tok.class,
     lexeme: tok.lexeme,
-    occurrence_id: node_occurrence_identity_minted(id: minted.id)
+    occurrence_id: minted.occurrence_id
   ) {
     Accepted { value: captured, diagnostics: _ } =>
       ParseExprAccepted {
@@ -3910,7 +3944,7 @@ fn parse_expr_terminal(
                 )
                 match dag_int_literal_node_from_lexeme(
                   lexeme: tok.lexeme,
-                  occurrence_id: node_occurrence_identity_minted(id: minted.id)
+                  occurrence_id: minted.occurrence_id
                 ) {
                   Accepted { value: captured, diagnostics: _ } =>
                     ParseExprAccepted {
@@ -3941,7 +3975,7 @@ fn parse_expr_terminal(
                   remaining: remaining,
                   captured: dag_float_literal_node_from_lexeme(
                     lexeme: tok.lexeme,
-                    occurrence_id: node_occurrence_identity_minted(id: minted.id)
+                    occurrence_id: minted.occurrence_id
                   ),
                   diagnostics: std.algebra.Empty,
                   prov: minted.prov,
@@ -4384,7 +4418,11 @@ fn parse_expr_refuse_on_match(
   table: ParseTable,
   prov: ParseProvenanceState
 ) -> ParseExprResult {
-  match parse_expr_with_first(expr: element, tokens: tokens, all_tokens: all_tokens, root: root, table: table, prov: prov) {
+  // THE ELEMENT IS DISCARDED BY BOTH ARMS THAT RUN IT: the arm below matches `captured: _,
+  // prov: _` and raises a refusal, and the arm above matches the same pair and reports the
+  // attempt failed. Nothing it mints can ever be read, so it recognizes. This is the strongest
+  // of the three sites: here a match IS a refusal, so the element is always the thing dropped.
+  match parse_expr_with_first(expr: element, tokens: tokens, all_tokens: all_tokens, root: root, table: table, prov: parse_prov_recognizing(prov: prov)) {
     ParseExprRejected { diagnostics: diags, table: table1 } => ParseExprRejected { diagnostics: diags, table: table1 }
     ParseExprAccepted { remaining: _, captured: _, diagnostics: _, prov: _, table: table1 } =>
       ParseExprRejected {
@@ -4438,7 +4476,11 @@ fn parse_expr_not_predicate_attempt(
   table: ParseTable,
   prov: ParseProvenanceState
 ) -> ParseExprResult {
-  match parse_expr_with_first(expr: element, tokens: tokens, all_tokens: all_tokens, root: root, table: table, prov: prov) {
+  // THE NOT-PREDICATE ATTEMPT: an accepted element is a FAILED predicate, and this arm keeps
+  // neither its capture nor its provenance; the arm below keeps neither either, and the
+  // not-predicate's own accept path hands the caller back the provenance it was GIVEN. The
+  // attempt's subtree is answer-only, so it recognizes.
+  match parse_expr_with_first(expr: element, tokens: tokens, all_tokens: all_tokens, root: root, table: table, prov: parse_prov_recognizing(prov: prov)) {
     ParseExprAccepted { remaining: _, captured: _, diagnostics: _, prov: _, table: table1 } =>
       ParseExprRejected { diagnostics: [], table: parse_table_with_furthest(table: table1, furthest: table.furthest) }
     ParseExprRejected { diagnostics: _, table: table1 } =>
@@ -4730,7 +4772,12 @@ fn parse_expr_infix_continue(
   table: ParseTable,
   prov: ParseProvenanceState
 ) -> ParseExprResult {
-  match parse_expr_with_first(expr: table_expr.continuation_guard, tokens: tokens, all_tokens: all_tokens, root: root, table: table, prov: prov) {
+  // THE INFIX CONTINUATION GUARD -- THE FIRST SLICE. It answers one yes/no question, and
+  // nothing of what its subtree built survives the answer: the accepted arm matches
+  // `captured: _, prov: _`, and BOTH arms here continue from the provenance the continuation
+  // was handed. A terminal the guard minted was minted, recorded and dropped, and the row
+  // below mints that same terminal again. It recognizes.
+  match parse_expr_with_first(expr: table_expr.continuation_guard, tokens: tokens, all_tokens: all_tokens, root: root, table: table, prov: parse_prov_recognizing(prov: prov)) {
     ParseExprRejected { diagnostics: _, table: guarded } =>
       ParseExprAccepted { remaining: tokens, captured: lhs, diagnostics: diagnostics, prov: prov, table: guarded }
     ParseExprAccepted { remaining: _, captured: _, diagnostics: _, prov: _, table: guarded } =>
