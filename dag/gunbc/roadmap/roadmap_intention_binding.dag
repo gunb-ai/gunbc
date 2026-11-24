@@ -39,12 +39,31 @@ data debt_payoff_intention: String = "gunbc.plans.debt_payoff"
 data first_customer_service_intention: String = "gunbc.plans.first_customer_service"
 data derived_types_keep_their_name_intention: String = "gunbc.plans.derived_types_keep_their_name"
 data planning_consolidation_intention: String = "gunbc.plans.planning_consolidation"
+data fabric_market_intention: String = "gunbc.plans.fabric_market"
 data desired_state_follows_the_machine_intention: String = "gunbc.plans.desired_state_follows_the_machine"
 data one_source_tree_intention: String = "gunbc.plans.one_source_tree"
 data read_set_convergence_intention: String = "gunbc.plans.read_set_convergence"
 data claim_execution_consolidation_intention: String = "gunbc.plans.claim_execution_consolidation"
+data demand_engine_intention: String = "gunbc.plans.demand_engine_program"
 
 data roadmap_intention_bindings: List<IntentionBinding> = [
+  // #gunbc.plans.fabric_market::fabric_market_plan: layer is the edge depth within the intention.
+  serves(node: "market-fix-upstream-model", module_path: fabric_market_intention, plan: "fabric_market_plan", layer: 0),
+  serves(node: "execution-uncertainty-one-carrier", module_path: fabric_market_intention, plan: "fabric_market_plan", layer: 0),
+  serves(node: "lease-fence-one-identity", module_path: fabric_market_intention, plan: "fabric_market_plan", layer: 0),
+  serves(node: "router-behaviour-disposition", module_path: fabric_market_intention, plan: "fabric_market_plan", layer: 0),
+  serves(node: "fabric-market-plan-fold", module_path: fabric_market_intention, plan: "fabric_market_plan", layer: 0),
+  serves(node: "market-fix-product-mapping", module_path: fabric_market_intention, plan: "fabric_market_plan", layer: 1),
+  serves(node: "execution-attempt-one-record", module_path: fabric_market_intention, plan: "fabric_market_plan", layer: 1),
+  serves(node: "fabric-admission-and-delegation", module_path: fabric_market_intention, plan: "fabric_market_plan", layer: 1),
+  serves(node: "market-buy-order-replacement", module_path: fabric_market_intention, plan: "fabric_market_plan", layer: 2),
+  serves(node: "market-sell-order-replacement", module_path: fabric_market_intention, plan: "fabric_market_plan", layer: 2),
+  serves(node: "venue-contract", module_path: fabric_market_intention, plan: "fabric_market_plan", layer: 2),
+  serves(node: "matching-engine-on-std-decision", module_path: fabric_market_intention, plan: "fabric_market_plan", layer: 2),
+  serves(node: "serving-router-native-transport", module_path: fabric_market_intention, plan: "fabric_market_plan", layer: 3),
+  serves(node: "serving-relocation-realization", module_path: fabric_market_intention, plan: "fabric_market_plan", layer: 4),
+  serves(node: "serving-router-lua-cutover", module_path: fabric_market_intention, plan: "fabric_market_plan", layer: 5),
+  serves(node: "fabric-market-convergence", module_path: fabric_market_intention, plan: "fabric_market_plan", layer: 6),
   // gunbc.plans.one_source_tree: layers follow the dependency edges (1 the manifest, 2 the harness, 3 the other callers, 4 the cut,
   // 5 the renames and the extdeps reconciliation, 6 the terminal). one-standard-library is a prerequisite of the
   // terminal but stays bound to gunbc.plans.v2_self_host, which already owns it.
@@ -188,6 +207,13 @@ data roadmap_intention_bindings: List<IntentionBinding> = [
   serves(node: "heal-observation-reuse-by-subject", module_path: read_set_convergence_intention, plan: "read_set_convergence_plan", layer: 0),
   serves(node: "heal-bootstrap-seed-reuse", module_path: read_set_convergence_intention, plan: "read_set_convergence_plan", layer: 0),
   serves(node: "heal-terminal-emission-elision", module_path: read_set_convergence_intention, plan: "read_set_convergence_plan", layer: 0),
+  // gunbc.plans.demand_engine_program, replanned as an intention 2026-11-23. Layer is edge depth.
+  serves(node: "compiler-identity-from-sources", module_path: demand_engine_intention, plan: "demand_engine_program_plan", layer: 0),
+  serves(node: "consumers-on-canonical-dependencies", module_path: demand_engine_intention, plan: "demand_engine_program_plan", layer: 0),
+  serves(node: "native-artifact-reuse-through-request-key", module_path: demand_engine_intention, plan: "demand_engine_program_plan", layer: 1),
+  serves(node: "schedulers-on-the-engine", module_path: demand_engine_intention, plan: "demand_engine_program_plan", layer: 1),
+  serves(node: "reuse-decided-by-measurement", module_path: demand_engine_intention, plan: "demand_engine_program_plan", layer: 2),
+  serves(node: "a-change-pays-only-for-what-it-invalidates", module_path: demand_engine_intention, plan: "demand_engine_program_plan", layer: 3),
 ]
 
 // EACH INTENTION'S TERMINALS: the nodes whose acceptance is the intention's done-when, from which every bound
@@ -200,6 +226,7 @@ type IntentionTerminals {
 }
 
 data intention_terminals: List<IntentionTerminals> = [
+  IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.fabric_market", decl_name: "fabric_market_plan"), terminals: [nid(s: "fabric-market-convergence")] },
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.claim_execution_consolidation", decl_name: "claim_execution_consolidation_plan"), terminals: [nid(s: "claim-entrypoints-cutover")] },
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.v2_self_host", decl_name: "v2_self_host_plan"), terminals: [nid(s: "external-specimen-compiles"), nid(s: "v1-products-v1-free")] },
   // namespace-unique-on-chain joins as the program milestone's own terminal (2026-11-23): the review of
@@ -234,6 +261,8 @@ data intention_terminals: List<IntentionTerminals> = [
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.derived_types_keep_their_name", decl_name: "derived_types_keep_their_name_plan"), terminals: [nid(s: "brands-reached-by-checked-constructors")] },
   // read_set_convergence's terminals here are the sinks of heal's lines of work: the P7 milestone and the three
   // separately accepted affected-round items. The plan's other consumers (A1 to A3) join as their items are filed.
+  // demand_engine_program: the one-file bar is the intention's first done-when and the sink of its work items.
+  IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.demand_engine_program", decl_name: "demand_engine_program_plan"), terminals: [nid(s: "a-change-pays-only-for-what-it-invalidates")] },
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.read_set_convergence", decl_name: "read_set_convergence_plan"), terminals: [nid(s: "heal-planning-only-in-a-minute"), nid(s: "heal-observation-reuse-by-subject"), nid(s: "heal-bootstrap-seed-reuse"), nid(s: "heal-terminal-emission-elision")] },
 ]
 

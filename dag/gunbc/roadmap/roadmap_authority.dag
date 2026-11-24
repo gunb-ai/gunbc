@@ -808,6 +808,264 @@ fn edge(child: String, parent: String) -> RoadmapEdge {
 // gunbc.roadmap.roadmap_centering; the graph has no exclusion-edge vocabulary to carry it.
 fn declared_roadmap_nodes() -> List<RoadmapNode> {
   concat([
+    // ---- #gunbc.plans.fabric_market::fabric_market_plan (operator, 2026-11-23, #gunbc.design_ruling::execution_is_one_first_principles_market_and_schedulers_are_venues,
+    // #gunbc.design_ruling::market_vocabulary_is_fix_and_matching_is_std_decision, #gunbc.design_ruling::live_router_changes_of_2026_11_23_are_requirements_evidence):
+    // layers are edge depths within the intention (#gunbc.roadmap.roadmap_intention_binding::fabric_market_intention); fabric-market-convergence is the terminal.
+    roadmap_node(
+      identity: "rn_AD2W7VKE1V833VP8MCYTXNX1X5",
+      id: "market-fix-upstream-model",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/plans/fabric_market.dag"),
+      line: ticket(t: fields(
+          headline: "FIX is modeled as a cited, versioned upstream: the order, cancellation, status and execution messages and their enumerations, with their real names",
+          boundary: "Serves gunbc.plans.fabric_market, layer 0 (gunbc.design_ruling::market_vocabulary_is_fix_and_matching_is_std_decision). An extdeps module per gunbc.design_argument::external_upstreams: cite the FIX Trading Community specification and declare its version; model Side, OrdType, TimeInForce, OrdStatus and ExecType, and the messages NewOrderSingle, OrderCancelRequest, OrderCancelReplaceRequest, OrderCancelReject, OrderStatusRequest and ExecutionReport, as the specification defines them, including that ExecType (what this report is) and OrdStatus (where the order now stands) are distinct, and the identifiers that link an order, its replacements and its reports (ClOrdID, OrigClOrdID, OrderID, ExecID). Upstream only: no gunbc policy, no mapping to our units, no product enumeration.",
+          displaced_cost: "Every market term in the repository is a nickname coined locally (BuyTerms, maximum_buy_order, SupplierOffer, contention), so the vocabulary drifts and has already had to withdraw a reading (product.fabric.contention: headroom is not margin).",
+          first_slice: "Choose the FIX version (gunbc.plans.fabric_market section 7), then the enumerations and the six messages with their citations.",
+          red_control: "A value outside a modeled enumeration is unwritable or refused at its constructor; a message missing a field the specification requires is refused; the specification's own lifecycle examples are transcribed as cases -- an immediate-or-cancel order partially filled and its remainder cancelled, a fill arriving while a cancel is pending, a cancel rejected -- each naming the clause it reads.",
+          out_of_scope: "Market data, quote negotiation beyond the Quote vocabulary, allocation and post-trade messages; the product mapping (market-fix-product-mapping); any transport (FIX sessions are not used).",
+          handback: "The extdeps module, its citations and version, and the executed cases."
+        )),
+      parent: in_project(project: "fabric-bringup", contribution: "One market for every match of work with resources, in one vocabulary, so a new application enters by declaring what it trades."),
+    ),
+    roadmap_node(
+      identity: "rn_443TFKBD4E0FHSFJMM00AHJ1G4",
+      id: "execution-uncertainty-one-carrier",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/plans/fabric_market.dag"),
+      line: ticket(t: fields(
+          headline: "One carrier says whether an effect was answered, proven not sent, or of uncertain delivery, and uncertainty is settled only by readback",
+          boundary: "Serves gunbc.plans.fabric_market, layer 0. Factor delivery knowledge out of the local outcome-unknown arms (HostOutcomeUnknown in gunbc.compute.remote_build, FabricBlobPutOutcomeUnknown, PrintStartOutcomeUnknown and their siblings; the survey's grep found about twenty-one, a candidate set and not a census) into one carrier at the earliest boundary that owns it, with one rule: an uncertain outcome resolves by reading back, never by re-sending a non-idempotent effect. Each domain keeps its own result and its cleanup or release obligation beside the carrier: an answered asynchronous operation may still be running, and an answered write may still owe a content readback. Migrate the siblings onto the carrier and delete the duplicated arms (gunbc.design_argument::root_generalization).",
+          displaced_cost: "Each route re-invents uncertain delivery, so a reviewer must re-check per route that a lost response is never retried as a fresh mutation, and the venue contract has no shared term to require.",
+          first_slice: "The carrier and its readback rule at its home, with gunbc.compute.remote_build's HostOutcomeUnknown as the first migrated consumer and its readback implemented.",
+          red_control: "A lost response after a possible mutation stays uncertain and is not re-sent (remove the readback rule and the control re-sends); a proven-not-sent refusal may retry; a readback that observes completion settles without a second send; an answered operation that is still running is not reported finished.",
+          out_of_scope: "Protocol-specific readbacks beyond the first consumer: a migrated consumer without one stays explicitly uncertain; the venue contract itself (venue-contract).",
+          handback: "The carrier and the migrated consumers, listed in two groups -- reconciled (readback implemented) and carried (uncertainty preserved, no readback yet) -- with a cited grep of what was inspected, the deleted arms, and the executed controls."
+        )),
+      parent: in_project(project: "fabric-bringup", contribution: "One market for every match of work with resources, in one vocabulary, so a new application enters by declaring what it trades."),
+    ),
+    roadmap_node(
+      identity: "rn_661NE623QDY0VFKYWMY1XW64J3",
+      id: "lease-fence-one-identity",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/plans/fabric_market.dag"),
+      line: ticket(t: fields(
+          headline: "One fence representation, built on std.durable_compare_and_set, serves every grant, reservation and seat while keeping each one's own scope",
+          boundary: "Serves gunbc.plans.fabric_market, layer 0. The survey found five forms: std.temporal_effect LeaseEpoch, product.fabric.execution LeaseIdentity (an Int generation), product.capacity.lease LeaseFence, gunbc.fabric.fabric_control_plane CellReservation generations, and std.durable_exclusive_hold generations; gunbc.serving.caller_backlog AttemptFence joins two of them at one consumer. Generalize to the least general representation that covers them -- authority, resource or slot, holder, incarnation, generation over CasGeneration, resource fingerprint -- and delete the duplicated forms. A shared generation TYPE does not make a money-lease epoch, a durable-record version and a seat generation one counter: each keeps its own scope. Seat and cell occupancy stay two contracts (the serving-capacity-home ruling); only the fence representation is shared.",
+          displaced_cost: "Every consumer that crosses two grant kinds needs its own adapter, and a stale-holder check written against one form silently misses the other.",
+          first_slice: "The shared representation at its home and product.fabric.execution LeaseIdentity re-expressed on it, with admit_receipt_for_grant reading it.",
+          red_control: "A receipt under a superseded generation is refused for every migrated kind; a receipt naming another resource fingerprint is refused; std.durable_exclusive_hold's cross-slot and reacquisition cases still refuse after migration; two counters of different scope never compare equal by sharing a type.",
+          out_of_scope: "Merging seat and cell occupancy; admission and delegation (fabric-admission-and-delegation); the attempt record (execution-attempt-one-record).",
+          handback: "The representation, each migrated consumer, the deleted forms, and the executed controls."
+        )),
+      parent: in_project(project: "fabric-bringup", contribution: "One market for every match of work with resources, in one vocabulary, so a new application enters by declaring what it trades."),
+    ),
+    roadmap_node(
+      identity: "rn_Z1JMTR1HRVCD2YHJMNBGGK0SFD",
+      id: "router-behaviour-disposition",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/plans/fabric_market.dag"),
+      line: ticket(t: fields(
+          headline: "Every behaviour of the hand-written router, read back from the live configuration, has one disposition before the native router is built",
+          boundary: "Serves gunbc.plans.fabric_market, layer 0 (gunbc.design_ruling::live_router_changes_of_2026_11_23_are_requirements_evidence). Read back the live router configuration and check gunbc.plans.fabric_market section 5 against it. Give each behaviour in the CUTOVER PARITY section of gunbc.instruments.router_proxy_falsifier, each 2026-11-23 change, and each rule carried only in router comments one disposition: preserved through the native route (with the falsifier case that proves it), moved to its lifecycle owner, expressed as market policy (naming the order term or matching term), or retired with a reason. The native router's acceptance is the preserved set; the cutover refreshes this table against the live file before the switch.",
+          displaced_cost: "Parity with the old router is otherwise either inherited unquestioned (rented overflow, trim-bindings, which the relocation contract forbids) or decided ad hoc during the build.",
+          first_slice: "The read-back of the live file, then the disposition table.",
+          red_control: "A behaviour without a disposition keeps serving-router-native-transport from starting; a preserved behaviour without a falsifier case is not preserved; a disposition that keeps a router-local score, binding ledger or fallback contradicts gunbc.serving.router_realization router_capability_permission and is refused.",
+          out_of_scope: "Building any of the dispositions; the switch itself (serving-router-lua-cutover).",
+          handback: "The read-back with its date and host, and the disposition table."
+        )),
+      parent: in_project(project: "fabric-bringup", contribution: "One market for every match of work with resources, in one vocabulary, so a new application enters by declaring what it trades."),
+    ),
+    roadmap_node(
+      identity: "rn_Q1W6GXFW82MK407N9YD8PX8RQ4",
+      id: "fabric-market-plan-fold",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/plans/fabric_market.dag"),
+      line: ticket(t: fields(
+          headline: "The router plan's stages and acceptance move into the serving work items, the remote-build placement promise is one, and the demand engine's grant home is decided",
+          boundary: "Serves gunbc.plans.fabric_market, layer 0. gunbc.plans.fabric_serving_router holds the S3 and R-S3 stages and acceptance as prose: move the exact obligations still owed into serving-router-native-transport and serving-relocation-realization, update every citation, then delete the plan or rewrite it as an intention under this one. Reconcile gunbc.compute.remote_build's two placement comments to gunbc.design_ruling::execution_is_one_first_principles_market_and_schedulers_are_venues. Resolve D7 of gunbc.plans.demand_engine_program (runner slots, fabric cell reservation or a new ledger as the grant home) against fabric-admission-and-delegation, and record demand-m5's M5(a) and M5(d) as consumers of the parent-grant contract. Leave M4's realization choices on std.decision without making them market allocations.",
+          displaced_cost: "Two planning homes describe the serving router, the remote build promises two placement authorities, and the demand engine leaves its grant home open, so a worker on any of them has to choose between authorities.",
+          first_slice: "The S3 and R-S3 obligations carried into the work items, with their citations moved.",
+          red_control: "No plan prose restates a stage or an acceptance a work item now carries, and no citation names a removed section; gunbc.compute.remote_build makes one placement promise; D7 names one grant home; a cited grep of gunbc.plans states what was inspected.",
+          out_of_scope: "Any code change beyond comments.",
+          handback: "The moved obligations, the deleted or rewritten plan, the remote-build comment, the D7 resolution and the grep."
+        )),
+      parent: in_project(project: "fabric-bringup", contribution: "One market for every match of work with resources, in one vocabulary, so a new application enters by declaring what it trades."),
+    ),
+    roadmap_node(
+      identity: "rn_AQTH8TAQ21SE1A99D8N5ZBMXEV",
+      id: "market-fix-product-mapping",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/plans/fabric_market.dag"),
+      line: ticket(t: fields(
+          headline: "The market module states what each FIX term means for execution resources, keeping order, allocation, computation and settlement apart",
+          boundary: "Serves gunbc.plans.fabric_market, layer 1. Define the market layer over the FIX model and state its product mapping (gunbc.plans.fabric_market section 2): an order is a request to acquire a quantity of an identified instrument under declared terms; a selection is an attributable decision that admission can still refuse; a fill is a committed allocation linked to its grant and obligations; order status and execution reports are facts about the order and its allocations; a lease or fence is the authority to use what was allocated; a work attempt and its outcome are the computation; settlement and release dispose of the obligations on evidence. Three clocks stay separate: time in force bounds how long unmatched quantity may seek a fill; grant validity and occupancy bound the authority and when reuse is safe; work timing is the order's objective. Each instrument declares its divisibility; an indivisible bundle trades in quantity one. Quote keeps its FIX meaning. Roles carry stated obligations: a broker's best-execution duty against its client's objective; a market maker quotes both sides; the clearing role assumes that each fill is backed by capacity and is discharged by settlement. The objective belongs to the order, not to the work: two orders for one computation may differ in urgency without becoming different work. State the matching policy as the product's own (std.decision over several terms), which FIX permits rather than forbids. This item adds the vocabulary and the mapping; the replacements of existing names are their own cuts.",
+          displaced_cost: "Without the mapping, workers implementing orders, grants, attempts and settlement can each follow the vocabulary and still build incompatible contracts, because a fill, a grant and a finished computation are easily read as one fact.",
+          first_slice: "The mapping table and the order, time-in-force and fill types, with the lifecycle traces as controls.",
+          red_control: "Executed traces: an immediate-or-cancel order partially filled and its remainder cancelled, with the fill still standing; an order expiring while work from an earlier fill keeps running and its grant is not released; a cancel racing a fill; a duplicate execution report leaving the original allocation unchanged; a fill whose quantity exceeds its order is refused; an order without a time in force is unwritable.",
+          out_of_scope: "Renaming existing types (market-buy-order-replacement, market-sell-order-replacement); the matching rule (matching-engine-on-std-decision); the venue contract (venue-contract); the product_names anchor for fabric, decided when this lands (gunbc.plans.fabric_market section 7).",
+          handback: "The module, the mapping, and the executed traces."
+        )),
+      parent: in_project(project: "fabric-bringup", contribution: "One market for every match of work with resources, in one vocabulary, so a new application enters by declaring what it trades."),
+    ),
+    roadmap_node(
+      identity: "rn_C4X6RVKXFP41WGXYSZ1DAB1ZX9",
+      id: "execution-attempt-one-record",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/plans/fabric_market.dag"),
+      line: ticket(t: fields(
+          headline: "One execution-attempt record replaces the compute and fabric attempt records, keeping the effect attempts it contains distinct",
+          boundary: "Serves gunbc.plans.fabric_market, layer 1. Canonicalize execution-attempt authority on product.fabric.execution Attempt and ExecutionAttemptLineage, re-expressing gunbc.compute.attempt_lifecycle AttemptRecord and gunbc.compute.durable_attempt_controller ControllerAttempt on it and deleting their duplicated identity. One work attempt contains several effect attempts -- submission, publication, cancellation, release -- each still bound to its own authorization and intent (std.temporal_effect EffectAttemptIntent); those relationships are kept, not flattened. The belt's own attempt state is migrated by factory-attempt-execution-on-fabric-lease, which consumes this record.",
+          displaced_cost: "Two attempt records answer one question for compute and fabric, so a retry's cause and a stale attempt's fencing are checked twice and can disagree.",
+          first_slice: "AttemptRecord re-expressed on the fabric Attempt, with the compute provider reading it.",
+          red_control: "A retry that does not cite its cause receipt is refused; an effect attempt authorized for one intent cannot be replayed for another; the compute provider's recovery still refuses a stale generation after migration.",
+          out_of_scope: "The belt's attempt state (factory-attempt-execution-on-fabric-lease); the fence representation (lease-fence-one-identity).",
+          handback: "The record, the migrated consumers, the deleted duplicates, and the executed controls."
+        )),
+      parent: in_project(project: "fabric-bringup", contribution: "One market for every match of work with resources, in one vocabulary, so a new application enters by declaring what it trades."),
+    ),
+    roadmap_node(
+      identity: "rn_FGMJS13Z3H0ZD6BTGJRT1E49Q7",
+      id: "fabric-admission-and-delegation",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/plans/fabric_market.dag"),
+      line: ticket(t: fields(
+          headline: "A fill authorizes execution only after one admission commits every resource and liability it needs, and delegated budgets conserve capacity down the hierarchy",
+          boundary: "Serves gunbc.plans.fabric_market, layer 1 (the connection layer owns conservation; gunbc.plans.fabric_market section 2). Name the effect-facing admission boundary that turns a selection into a committed fill: it commits every required resource and money reservation together or none (the obligation product.fabric.execution and product.fabric.grant_issue already state), and decides between competing admissions for the same residual capacity. Establish delegation: a direct allocation or a delegated budget stays within its authority's bounds; a child consumes its parent's delegated budget and neither manufactures capacity nor charges it twice; a parent's expiry or revocation does not make capacity reusable while a child may still be running (std.resource_release_law); a relocation charges source and destination until the handoff establishes release. A venue allocating inside a pool grant is a child of that grant. work-exec-6-one-ledger-per-host stays the migration of every host consumer onto this authority.",
+          displaced_cost: "Two matchers can select the same last slice and both believe they may dispatch; a venue or a nested scheduler inside a granted pool has no law that keeps it within the pool.",
+          first_slice: "The admission boundary with all-or-none reservation commit, then the parent-child budget rules.",
+          red_control: "Two concurrent admissions for one residual slice: exactly one commits; a selection without admission cannot dispatch; a child exceeding its parent's remaining budget is refused; a parent expiring with a live child leaves the capacity unreusable until the child is observed quiescent; a relocation overlap charges both sides; the assessable property is bounded overlapping commitments including unreleased occupancy, not one order per host.",
+          out_of_scope: "Migrating every host consumer (work-exec-6-one-ledger-per-host); the fence representation (lease-fence-one-identity).",
+          handback: "The admission boundary, the delegation rules, and the executed controls."
+        )),
+      parent: in_project(project: "fabric-bringup", contribution: "One market for every match of work with resources, in one vocabulary, so a new application enters by declaring what it trades."),
+    ),
+    roadmap_node(
+      identity: "rn_16HWZMCDDBQTSNJSASQQ09D1BN",
+      id: "market-buy-order-replacement",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/plans/fabric_market.dag"),
+      line: ticket(t: fields(
+          headline: "BuyTerms and maximum_buy_order are replaced by the buy order, keeping every monetary distinction the current contract makes",
+          boundary: "Serves gunbc.plans.fabric_market, layer 2; one atomic semantic replacement (gunbc.design_argument::replacement_migration): establish the replacement meaning, migrate every consumer, delete the predecessor. The current contract distinguishes MaximumLiability (reserved before granting), SelectionCost (compared, including valued delay), ActualSpend (settled afterwards) and maximum_buy_order (the liability ceiling for one grant). The buy order must keep each: quantity, price basis, duration or billing quantum, encumbered liability, comparison valuation and actual settlement. A unit limit price alone does not preserve a total liability ceiling.",
+          displaced_cost: "Renaming without the monetary decomposition would silently lose the liability ceiling, which is what refuses an over-cap grant today.",
+          first_slice: "The buy order with its monetary terms, and BuyTerms' first consumer migrated.",
+          red_control: "An order whose encumbered liability exceeds its ceiling is refused before any grant; selection cost and actual spend stay distinct readings; a cited grep shows no surviving BuyTerms or maximum_buy_order declaration or consumer.",
+          out_of_scope: "SupplierOffer (market-sell-order-replacement); the matching rule.",
+          handback: "The replacement, the migrated consumers, the deleted predecessor and the executed controls."
+        )),
+      parent: in_project(project: "fabric-bringup", contribution: "One market for every match of work with resources, in one vocabulary, so a new application enters by declaring what it trades."),
+    ),
+    roadmap_node(
+      identity: "rn_KQ8KP6WD5WBBYT0DJD5QCDV9C0",
+      id: "market-sell-order-replacement",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/plans/fabric_market.dag"),
+      line: ticket(t: fields(
+          headline: "SupplierOffer is decomposed into supply, instrument and sell-order terms, and deleted",
+          boundary: "Serves gunbc.plans.fabric_market, layer 2; one atomic semantic replacement. product.fabric.supply SupplierOffer carries capabilities, route, availability, trust and isolation, and pricing evidence. Distribute each fact to its home -- the supply unit, the instrument, or the sell order -- migrate every consumer (including CandidateOffer construction in product.fabric.candidate_field), and delete SupplierOffer. Standing owned capacity is a resting sell order.",
+          displaced_cost: "A type rename alone would keep five concerns fused under a new name.",
+          first_slice: "The decomposition table: each SupplierOffer field and its new home.",
+          red_control: "Each field's fact is readable from exactly one home; an offer without evidence for its price stays unknown, never zero; a cited grep shows no surviving SupplierOffer declaration or consumer.",
+          out_of_scope: "The buy side (market-buy-order-replacement).",
+          handback: "The decomposition, the migrated consumers, the deleted predecessor and the executed controls."
+        )),
+      parent: in_project(project: "fabric-bringup", contribution: "One market for every match of work with resources, in one vocabulary, so a new application enters by declaring what it trades."),
+    ),
+    roadmap_node(
+      identity: "rn_YJYFSJQ7ZF5A1GYPADVF1QYFVJ",
+      id: "venue-contract",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/plans/fabric_market.dag"),
+      line: ticket(t: fields(
+          headline: "Every executor realizes one venue contract: it accepts a committed fill, never re-matches it, and states which execution guarantees it provides",
+          boundary: "Serves gunbc.plans.fabric_market, layer 2 (gunbc.design_ruling::execution_is_one_first_principles_market_and_schedulers_are_venues). Build on product.fabric.execution (ExecutionGrant, Receipt, admit_receipt_for_grant). The contract: accept a committed fill and refuse a stale or foreign one; never re-match; enforce the granted limits; report typed terminal outcomes through execution-uncertainty-one-carrier; cancel with termination evidence; re-observe accepted work after a restart. Four execution guarantees are kept apart, and each venue's delegated terms state which it realizes: one logical acceptance of a repeated submission (durable dispatch identity and deduplication); one physical execution, only where an ownership mechanism actually provides it (a Kubernetes Job may start twice, which work-exec-2 already allows); one authoritative published result (fenced, create-only publication); and correct accounting while duplicates or overlaps run (every possible occupant within the authorized budget). An order resting in the book is market state; granted work awaiting placement inside a pool is venue state under a delegated term; the contract says which waiting interval each report describes. A venue's own placement inside a granted pool is a delegated term naming what we would build to take it back. First realizations: gunbc.compute.work_provider_local and gunbc.compute.remote_build. The Kubernetes and Kueue term list is written against work-exec-1's criteria.",
+          displaced_cost: "Each route has its own accept and report vocabulary (a string receipt, a WorkOutcome, the belt's spawn outcomes), so every consumer and reviewer reconciles them, and a scheduler adopted later would arrive with a fourth.",
+          first_slice: "The contract over product.fabric.execution, with gunbc.compute.work_provider_local as its first realization.",
+          red_control: "A fill for another attempt or a superseded generation is refused; a repeated submission is accepted once; a duplicate physical start publishes one result and stays within budget; a venue that re-matches (the remote build roster walk, unchanged) fails the contract's control; an uncertain ending is reported uncertain, never as failure or success.",
+          out_of_scope: "Choosing the scheduler (work-exec-1); the durable route (work-exec-2), which consumes this contract; the serving router's realization (serving-router-native-transport).",
+          handback: "The contract, the first realizations, each venue's statement of which guarantees it provides, the Kubernetes and Kueue delegated-term list, and the executed controls."
+        )),
+      parent: in_project(project: "fabric-bringup", contribution: "One market for every match of work with resources, in one vocabulary, so a new application enters by declaring what it trades."),
+    ),
+    roadmap_node(
+      identity: "rn_WRBW4MY22PEPH4GK3AATRW44RN",
+      id: "matching-engine-on-std-decision",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/plans/fabric_market.dag"),
+      line: ticket(t: fields(
+          headline: "One matching engine on std.decision, in both directions, with a run-time term per candidate, replaces select_supply's single-duration pricing and every other host pick",
+          boundary: "Serves gunbc.plans.fabric_market, layer 2 (gunbc.design_ruling::market_vocabulary_is_fix_and_matching_is_std_decision). Rebuild product.fabric.selection select_supply and select_resource_budget_supply on std.decision over std.pareto axes; reconcile product.fabric.flex_market's ranking onto it; and give product.fabric.contention select_demand_for_offer (demand-side matching, no production importer today) an explicit disposition: folded into the engine if resting orders need demand-side matching, deleted otherwise, never kept alive by a manufactured consumer. The result is the whole attributed outcome, not only a receipt: order identity and decision scope (std.decision DecisionScope) on every arm -- selected, needs evidence, needs policy, refused, no feasible candidate, field unestablished -- and a successful selection is distinct from the admission that may still refuse it (fabric-admission-and-delegation), with the link from selection to committed fill recorded. Each candidate gets a run-time or throughput reading derived from the existing measurement authorities (product.fabric.serving_throughput, gunbc.compute.work_class_grant WorkloadProfile), conditioned on workload, configuration, retained state and load, with its evidence standing. Commissioned resource funding (ResourceBudgetPolicy) stays representable without inventing a money reading and never becomes an escape from an economic refusal. The host picks outside the core get their disposition from the route inventory (gunbc.plans.fabric_market section 4): remote-build roster order, fabric_control_plane and harness_seat roster-order tie-breaks. Consumes the objective and standing of fabric-demand-objective and fabric-consequence-standing rather than restating them.",
+          displaced_cost: "Two decision engines answer one question, demand-side matching has no caller, and because one duration prices every candidate the operator's preference for faster owned hosts cannot be expressed at all.",
+          first_slice: "select_supply returning the attributed std.decision outcome with its current cost terms unchanged, then the run-time term.",
+          red_control: "Under a declared objective with every other funded term equal, a candidate whose read run time is shorter wins; with its run time unread it does not win on speed and the outcome says the reading is missing; changing the objective changes a genuine tradeoff and leaves a dominated choice unchanged; every non-selected arm carries the order identity and scope; a selected candidate refused at admission does not dispatch; removing the run-time axis turns the first control red.",
+          out_of_scope: "The demand objective itself (fabric-demand-objective); relocation's realization (serving-relocation-realization); measuring owned operating cost (gunbc.rung_drop serving_cost_axes_asserted_unmeasured keeps its own trigger).",
+          handback: "The rebuilt engine, the contention disposition, its consumers, the disposition of each host pick, and the executed controls."
+        )),
+      parent: in_project(project: "fabric-bringup", contribution: "One market for every match of work with resources, in one vocabulary, so a new application enters by declaring what it trades."),
+    ),
+    roadmap_node(
+      identity: "rn_FYNA8RB27PJWTPJJ784FVAJ54G",
+      id: "serving-router-native-transport",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/plans/fabric_market.dag"),
+      line: ticket(t: fields(
+          headline: "A native serving router realizes router_capability_permission as a pure transport, and owned replicas reach the market as sell orders",
+          boundary: "Serves gunbc.plans.fabric_market, layer 3; stage S3 of gunbc.plans.fabric_serving_router, whose obligations fabric-market-plan-fold moves here. The router normalises a request, asks the market for a fill, takes the endpoint from the committed fill, proxies bytes without re-encoding them, and releases the seat; it computes no score, picks no host, keeps no authoritative binding ledger and forwards nothing without a permit. Owned replicas become sell orders through product.fabric.candidate_field assemble_candidate_field. Acceptance runs against an isolated venue with real test grants; in production it first runs in side-effect-free shadow, which returns proposed matches only (a carrier that cannot dispatch), never a committed fill, so it reserves nothing and moves nothing. Never touches the hand-patched router on srv1. One permit header name, reconciling x-seat-permit and x-gunbc-seat-permit.",
+          displaced_cost: "The live router decides placement in Lua outside the market, so no policy the market learns reaches serving.",
+          first_slice: "Owned replicas admitted as sell orders, then the native router answering from fills against the isolated venue.",
+          red_control: "Each behaviour router-behaviour-disposition preserves executes as its falsifier case against the native route on the isolated venue; a request with no committed fill is refused, never placed; a shadow decision cannot dispatch; a re-encoded body (gunbc.recurring_failure_mode a_request_rewrite_that_reencodes_the_body_it_edits_reorders_the_keys_downstream_reads) is caught.",
+          out_of_scope: "Relocation (serving-relocation-realization); the switch and deletion of the Lua (serving-router-lua-cutover).",
+          handback: "The native router, the owned-replica sell orders, the executed falsifier cases, and the shadow comparison."
+        )),
+      parent: in_project(project: "fabric-bringup", contribution: "One market for every match of work with resources, in one vocabulary, so a new application enters by declaring what it trades."),
+    ),
+    roadmap_node(
+      identity: "rn_NY71EYG7YZ0P69TJN3KEEDN3G6",
+      id: "serving-relocation-realization",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/plans/fabric_market.dag"),
+      line: ticket(t: fields(
+          headline: "A session moves between replicas only through the fenced relocation handoff, selected when the gain beats the cost of moving",
+          boundary: "Serves gunbc.plans.fabric_market, layer 4; the R-S3 frontier of gunbc.plans.fabric_serving_router, whose requirements and seven acceptance cases fabric-market-plan-fold moves here unchanged. gunbc.serving.serving_relocation decide_relocation and decide_evacuation get their evidence (the run-time term from matching-engine-on-std-decision and a reconstruction-cost estimate under the declared one-reconstruction allowance) and a production caller in the native router. Source and destination are both charged until the handoff establishes release (fabric-admission-and-delegation). A drain halts new admission on the replica and relocates or terminates the sessions already there: for relocation, stay is removed and the same decision chooses where to go.",
+          displaced_cost: "The operator's arbitrage and drain-and-move goals are modeled and never run, while the hand-written router moves sessions outside any fenced handoff.",
+          first_slice: "decide_relocation fed by real readings and called from the native router, with the successful-move case of the falsifier.",
+          red_control: "The seven cases of the R-S3 acceptance, each red when its rule is removed, executed on the real route against the isolated venue.",
+          out_of_scope: "Cross-engine KV transfer; a fleet-wide optimizer; the replay and measurement study (a named follow-up).",
+          handback: "The realization and the seven executed cases."
+        )),
+      parent: in_project(project: "fabric-bringup", contribution: "One market for every match of work with resources, in one vocabulary, so a new application enters by declaring what it trades."),
+    ),
+    roadmap_node(
+      identity: "rn_WKVMHRTS9DQ513E9NSBY5NXEEG",
+      id: "serving-router-lua-cutover",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/plans/fabric_market.dag"),
+      line: ticket(t: fields(
+          headline: "The hand-written Lua router is deleted in one switch, the deployed route is verified switched, and nothing falls back to it",
+          boundary: "Serves gunbc.plans.fabric_market, layer 5. Refresh router-behaviour-disposition against the live file. Account for bindings and streams in flight at the switch: which owner finishes them and how their grants are released. Delete gunbc.serving.router_dev_policy, router_dev_scaffold and their debt rows in the same change (gunbc.design_argument::replacement_migration; gunbc.recurring_failure_mode the_replaced_route_is_the_replacement_s_miss_path). Two separate pieces of evidence: the source retirement (the modules gone from the tree) and a read-back that the deployed route is the native one and the Lua path is gone from the host. Before the first production fill, every target host either clears through the shared admission authority (fabric-admission-and-delegation), or provides an explicitly funded serving partition, a delegated budget whose capacity every remaining allocator (build, session and runner pools) excludes from what it offers; existing occupants and relocation overlap stay charged. The partition option lets serving cut over before work-exec-6-one-ledger-per-host migrates every host consumer.",
+          displaced_cost: "Two routers decide placement for one fleet, and the hand-written one carries rulings that exist only as its comments.",
+          first_slice: "The refreshed disposition table and the in-flight accounting, before any switch.",
+          red_control: "A request the native route cannot place is refused and never reaches the Lua path; a stream in flight at the switch completes or is released by its owner; the deployed read-back shows the native route serving; before the switch, a concurrent-load control on each target host -- serving fills alongside build and session allocations at capacity -- shows no capacity promised twice and the excess refused.",
+          out_of_scope: "Behaviour the disposition table retires; new market policy beyond what the dispositions require.",
+          handback: "The refreshed table, the switch, the deletions, the deployed read-back, and the executed controls."
+        )),
+      parent: in_project(project: "fabric-bringup", contribution: "One market for every match of work with resources, in one vocabulary, so a new application enters by declaring what it trades."),
+    ),
+    roadmap_node(
+      identity: "rn_9HTGHV23AEQG0SVCF8KGXSCXJ5",
+      id: "fabric-market-convergence",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/plans/fabric_market.dag"),
+      line: ticket(t: level_fields(
+          headline: "Every route that matches work with resources runs on the one market: serving, builds, CI, the belt and the demand engine",
+          boundary: "Milestone of gunbc.plans.fabric_market, layer 6. It is met when its prerequisites are accepted: the serving cutover; the buy and sell replacements; work-exec-6-one-ledger-per-host (and through it the work-execution program's identity split, durable route, local-work and CI migrations); factory-attempt-execution-on-fabric-lease (the belt); and demand-m5 (the demand engine's occupancy on the parent-grant contract). Those keep their own intentions and owners; this node is the market's completion coverage over them. The intention's done-when is then assessed against the tree, executed controls, deployment read-back and the operator's judgement, each as section 1 of the plan labels it.",
+          approach: "Prerequisite edges only: the market nodes of this intention, and the existing work-execution, belt and demand-engine nodes, which keep their own bindings.",
+          red_control: "Executed traces over the converged routes: concurrent admission across serving, sessions and builds never over-commits a host; a stale selection cannot dispatch; missing evidence stays missing; an attached session does not move outside its declared transition; an uncertain ending does not cause a second execution elsewhere; release after disconnect, timeout, cancel or restart neither frees consumed capacity nor strands it; disconnecting the market from a consumer turns that consumer's control red.",
+          displaced_cost: "Without a completion node the market's terminals cover only the serving chain, and the builds, CI, belt and demand-engine migrations its done-when promises sit outside its dependency closure.",
+          handback: "Per prerequisite, its acceptance; for the milestone, the cross-route traces and the done-when assessment."
+        )),
+      parent: in_project(project: "fabric-bringup", contribution: "One market for every match of work with resources, in one vocabulary, so a new application enters by declaring what it trades."),
+    ),
     // ---- gunbc.plans.claim_execution_consolidation (operator, 2026-11-22,
     // gunbc.design_ruling::claim_execution_has_one_v1_entrypoint): two slices. The cutover depends on the
     // result contract (edge below), and its public authority transition stays one atomic change.
@@ -1626,17 +1884,34 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "v2-core-emitter-lowers-conjunction-in-value-position",
       owner: "self-host",
       carriers: carrier(path: "src/v2/std/compilers/target_model.dag"),
-      line: ticket(t: updated(t: updated(t: fields(
+      line: ticket(t: updated(t: updated(t: updated(t: fields(
         headline: "The core emitter writes a type-shaped expression in value position instead of refusing it",
         boundary: "The core emitter's body-expression lowering refuses with the reason target_value_expr_reason_transform_shape_invalid when a TypeNode Conj, Disj, Arrow or Instantiation, or a ComputationNode, reaches value-expression position. It is raised in src/v2/std/compilers/target_model.dag (two sites, in the TypeNode and ComputationNode arms) and mirrored in src/v2/compiler/target_serialize.dag. The subject that produced it is dag/gunbc/rust_decl_type_overlay.dag: an outer Conj in value position, where the authored node is a leaf, is not a closed alias, and has resolved children. This row decides what each of those shapes lowers to, or names a refusal that says why none exists. The unary case is claimed explicitly: the Rust operator-realization catalog in dag/std/rust.dag has rows for or, and, comparison, arithmetic and coerce but none for not, and no render of a one-operand prefix operator has been observed (all realized operators are infix), so prefix-operator support is unproven and is not assumed. Regression surface, by name: src/v2/test/claim/emit/bind_tail_is_an_expression.dag, src/v2/test/claim/body_cast_node.dag, src/v2/test/claim/compiler/branch_slot_readers.dag, and the population row dag/gunbc/recurring_failure_mode/a_possibly_empty_producer_enters_a_nonempty_consumer.dag, which counts 10 instances of the reason and says to re-measure and update when the refusals clear. Condition: this is a change to the single body-expression lowering every v2 emission goes through, so if it needs src/v2 lowering changes under the freeze, its brief goes to the operator before it is staffed.",
         displaced_cost: "The v2-emitter-production-compatible-corpus-module row cannot name a corpus subject that reaches an emitted artifact while this refusal stands, and each corpus module that hits it is a hand-found dead end. Until the shapes lower, the population row's ten instances stay uncountable as cleared.",
-        first_slice: "Take the one measured subject, dag/gunbc/rust_decl_type_overlay.dag, and decide the outer Conj in value position: lower it, or refuse it under a named reason that is not the generic transform-shape one. Record the unary-operator case with its own subject before any lowering claims it.",
-        red_control: "OPEN as a before/after pair, to be recorded as data. The witness entry src/v2/test/claim/self_host/stage0_production_corpus_probe.dag at the head of gunb-ai/gunbc#16930 (69854784fe7, not yet merged) carries three claims: corpus_probes_refused_at_emission_holds, corpus_probes_first_refusal_is_transform_shape_holds and corpus_probes_production_ingest_has_off_disk_refs. The four stage-pin claims this row previously named (corpus_probes_emits_holds, corpus_probes_refuses_at_emission_holds, corpus_probes_refuses_at_inference_holds, corpus_probes_assembles_holds) exist only at 2f77c110 on an unmerged branch and not on main or in #16930, so they are not the control. Verbatim reason the first refusal carries: target_value_expr_reason_transform_shape_invalid. No red_at or green_at sha is claimed for the three claims until they are measured at a commit on main; the row is done when a POSITIVE emission claim named here, corpus_probes_emits_holds (spelled in the probe module's corpus_probes_<stage>_holds convention), passes on the same subject gunbc.rust_decl_type_overlay. That claim does not exist at #16930's head or on main: the PR that realizes this node adds it to the live module src/v2/test/claim/self_host/stage0_production_corpus_probe.dag, and the worker does not choose another name. When it passes, corpus_probes_refused_at_emission_holds and corpus_probes_first_refusal_is_transform_shape_holds stop holding on that subject and are retired or inverted in the same PR; a refusal verdict alone is not the done condition.",
-        out_of_scope: "Not choosing the corpus subject for the compatible-corpus row, not widening any other lowering arm, and not any change to the seed.",
-        handback: "The decision per shape (lowered, or the named refusal), the green_at head and claim_batch sha256 for corpus_probes_emits_holds (passing) and the two refusal claims named in red_control (retired or inverted), the regression-surface claims run at that head, and the unary case with its own subject."
-      ), on: "2026-11-23", note: "red_control re-pointed from four claim names that are absent from main to the three claims at the head of #16930 (69854784fe7); every claim name in this row was checked against #16930's head (69854784fe7): the three refusal-side names and the three regression-surface claims exist there; the done-when claim corpus_probes_emits_holds is named here and added by the realizing PR. No verdict or sha is newly measured here."), on: "2026-11-23", note: "Dependency relayed 2026-11-23 by neat-badger-614 from warm-fox-517's evidence (not recorded in gunbc.design_ruling): the emitter row v2-emitter-production-compatible-corpus-module has a census-forced subject, gunbc.rust_decl_type_overlay, the only cross-boundary i64 carrier among 1,573 single-declaration modules, whose top-level conjunction in value position the generator refuses before emitting anything (target_value_expr_reason_transform_shape_invalid in target_model.dag), executed on the released runner 9cb21df4 at 69854784fe7 and at main 4a63370f. The emitter row's stand-in, input table and two mutated-build controls therefore have no artifact until this row lands. This row owns the lowering; the emitter row's first_slice 'add that one shape' is not to be read as owning it, and the emitter row now depends on this one by edge.")),
+        first_slice: "Decide the outer Conj in value position on the census-forced subject dag/gunbc/rust_decl_type_overlay.dag by its prefix-free Conj core: the outer conjunction of the bound is-leaf operand and the resolved-child-count comparison lowers to the existing infix and realization, and the prefix-not operand together with the prefix-not claim, the two precedence controls and the three corpus controls named in red_control have moved to v2-core-emitter-emits-prefix-not-in-value-position. The row is done when a prefix-free Conj subject emits, which is achievable and not a weakening because conj_binary_emits and disj_binary_emits already pass at head 59fedef65b8 of PR 16957 as executed evidence that the Conj and Disj arms lower. Re-measure the population row a_possibly_empty_producer_enters_a_nonempty_consumer when the remaining refusals clear.",
+        red_control: "OPEN as a before/after pair, to be recorded as data. Historical RED: the witness entry src/v2/test/claim/self_host/stage0_production_corpus_probe.dag at the head of gunb-ai/gunbc#16930 (69854784fe7) carried three claims, corpus_probes_refused_at_emission_holds, corpus_probes_first_refusal_is_transform_shape_holds and corpus_probes_production_ingest_has_off_disk_refs, first refusal reason target_value_expr_reason_transform_shape_invalid, executed on the released runner 9cb21df4c20325fc53ba4187cf4c55bd08037862a45d3900c5cc5519e360a177 at 69854784fe7 and at main 4a63370f. Those three corpus claims and the done-when corpus_probes_emits_holds are gated on prefix emission because the subject gunbc.rust_decl_type_overlay carries a prefix-not operand, so they now belong to v2-core-emitter-emits-prefix-not-in-value-position and are retired or inverted there. This row's done-condition is now a prefix-free Conj subject emitting, achievable and not a weakening because conj_binary_emits and disj_binary_emits already pass at head 59fedef65b8 of PR 16957 as executed evidence that the Conj and Disj arms lower; the prefix-free Conj subject is the conjunction of two well-typed Bool operands, the shape of src/v2/test/claim/self_host/conj_value_subject_fixture.dag. The inner-named-reason condition is re-targeted to the emission-time nested refusal and is met-as-executed: conj_prefix_inner and disj_prefix_inner refuse at emission carrying the standalone prefix reason while their prefix-free forms emit, witnessed by conjpre_stage_is_emission, conjpre_reason_equals_prefix_reason, disjpre_stage_is_emission and disjpre_reason_equals_prefix_reason PASSing on witness entry src/v2/test/claim/self_host/stage0_prefix_inner_reason_probe2.dag at tree 9dfda4f26c2 on HOST srv1 BOOT c095c0cd with claim_batch sha256 9cb21df4c20325fc53ba4187cf4c55bd08037862a45d3900c5cc5519e360a177 and real exit status one. No green_at sha is claimed for the prefix-free Conj subject yet; the row is done when it emits with the same instrument.",
+        out_of_scope: "Not choosing the corpus subject for the compatible-corpus row, not widening any other lowering arm, not any change to the seed, and not prefix-not or prefix precedence: the prefix-not operand, the prefix-not claim, the two precedence controls and the three corpus controls named in red_control all moved to v2-core-emitter-emits-prefix-not-in-value-position.",
+        handback: "The decision per shape (lowered, or the named non-generic refusal) for the prefix-free Conj core, the green_at head and claim_batch sha256 for the prefix-free Conj subject emitting, and the regression-surface claims run at that head. The prefix-not and precedence claims, the three corpus controls and their executed evidence are handed back on v2-core-emitter-emits-prefix-not-in-value-position."
+      ), on: "2026-11-23", note: "red_control re-pointed from four claim names that are absent from main to the three claims at the head of #16930 (69854784fe7); every claim name in this row was checked against #16930's head (69854784fe7): the three refusal-side names and the three regression-surface claims exist there; the done-when claim corpus_probes_emits_holds is named here and added by the realizing PR. No verdict or sha is newly measured here."), on: "2026-11-23", note: "Dependency relayed 2026-11-23 by neat-badger-614 from warm-fox-517's evidence (not recorded in gunbc.design_ruling): the emitter row v2-emitter-production-compatible-corpus-module has a census-forced subject, gunbc.rust_decl_type_overlay, the only cross-boundary i64 carrier among 1,573 single-declaration modules, whose top-level conjunction in value position the generator refuses before emitting anything (target_value_expr_reason_transform_shape_invalid in target_model.dag), executed on the released runner 9cb21df4 at 69854784fe7 and at main 4a63370f. The emitter row's stand-in, input table and two mutated-build controls therefore have no artifact until this row lands. This row owns the lowering; the emitter row's first_slice 'add that one shape' is not to be read as owning it, and the emitter row now depends on this one by edge."), on: "2026-11-24", note: "Per neat-badger-614 final split ruling of 2026-11-24, relayed by warm-fox-517 on PR 16957. Two claim groups move out of this node to the new row v2-core-emitter-emits-prefix-not-in-value-position: the prefix group, being the prefix-not emit claim and the two precedence controls, and the corpus group, being the corpus emit claim and its two refusal controls, because all are gated on prefix emission while the census-forced subject gunbc.rust_decl_type_overlay carries a prefix-not operand. The Int-wrapper nwrap claim is retired from this node; its wrapper behaviour moves to the prefix row as a named second gap awaiting that row ruling, and is not written here as correct behaviour. This node done-condition becomes a prefix-free Conj subject emitting, achievable and not a weakening because conj_binary_emits and disj_binary_emits already pass at head 59fedef65b8 of PR 16957 as executed evidence that the Conj and Disj arms lower. The inner-named-reason condition is re-targeted to the emission-time nested refusal, met-as-executed by conjpre_stage_is_emission, conjpre_reason_equals_prefix_reason, disjpre_stage_is_emission and disjpre_reason_equals_prefix_reason PASSing on witness entry src/v2/test/claim/self_host/stage0_prefix_inner_reason_probe2.dag at tree 9dfda4f26c2 with claim_batch sha256 9cb21df4c20325fc53ba4187cf4c55bd08037862a45d3900c5cc5519e360a177 on HOST srv1 BOOT c095c0cd and real exit status one. The compatible-corpus emitter row depends on this row for the outer Conj lowering and additionally on v2-core-emitter-emits-prefix-not-in-value-position for the prefix-not operand its census-forced subject carries; both dependencies are declared as edges in the edge list, which is the authority for them, and the corpus row stays blocked until both parents close. This criteria rewrite establishes no implementation or acceptance; earlier receipts must be assessed against the live criteria digest.")),
       dispatch: dispatchable(),
       parent: in_project(project: "v2-emitter-production", contribution: "A real corpus module reaches an emitted artifact without the generic transform-shape refusal."),
+    ),
+    roadmap_node(
+      identity: "rn_7M2KQ4VDE9P1TXY8SRB3NLCW0A",
+      id: "v2-core-emitter-emits-prefix-not-in-value-position",
+      owner: "self-host",
+      carriers: carrier(path: "src/v2/std/compilers/target_model.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "The core emitter cannot render a one-operand prefix-not in value position, so the prefix and precedence claims stay red on an unenumerated emission refusal",
+        boundary: "This row owns every claim gated on rendering the unary bang in value position: the prefix-not emit claim, the two precedence controls comparing the grouped and flat conjunction against the grouped and flat negation, and the three corpus controls for the subject dag/gunbc/rust_decl_type_overlay.dag, all migrated out of v2-core-emitter-lowers-conjunction-in-value-position because the corpus subject carries a prefix-not operand. As executed (probe1 and probe2), a bare one-operand prefix operand reaches emission and refuses there, and that refusal is not attributed to any of the thirteen enumerated primitive-apply, operand-wire, catalog, realization and transform-shape reasons; the operator-realization catalog rust_primitive_realization_rows in src/v2/extdeps/languages/rust.dag carries rows for or, and, the comparison family, add, sub, mul, div and coerce but none for not, and no one-operand prefix render has been observed, so prefix-operator support is unproven, while the lexical prefix forms used for parsing do exist in extdeps/languages/rust/emit.dag and as the bang PrefixOperatorSpec in extdeps/languages/rust/syntax.dag. The standalone negate of a numeric operand refuses at emission with its own named reason target_value_expression_emit_primitive_apply_arity_invalid, which satisfies the clause that an operand form the catalog cannot spell refuses with its own named reason rather than the generic transform-shape bucket. Named second gap, explicitly not classified as correct behaviour and awaiting this row ruling: a well-typed wrapped negate, a numeral plus a negated operand, refuses before emission at the inference stage because op_negate has no catalog row, instead of the inner named reason surfacing at emission, witnessed by nwrap_stage_is_inference PASSing while nwrap_reason_equals_negate_reason FAILs. Precedence claims must be fail-closed: when emitted_text_for yields nothing the claim must refuse rather than compare two empty strings as equal or search for a substring in empty text; the two current precedence failures are exactly that vacuous pattern.",
+        displaced_cost: "The prefix-bearing corpus subject stays unemitted while the prefix render is missing, which is the single reason the corpus emit control is red, and the relative precedence of conjunction against negation cannot be pinned by emitted body text until a prefix body is produced.",
+        first_slice: "Name the prefix emission refusal from executed text via a narrow diagnostic dump of the refusal families in src/v2/std/compilers/target_model.dag, namely target_concrete_token_kind_invalid_diagnostic, target_value_projection_bundle_malformed_diagnostic, target_value_projection_field_missing_diagnostic, the operand-wire path in target_value_expr_primitive_apply_wire_schema_valid through target_value_expr_operand_wire_malformed_diagnostic, target_value_template_node and the positional-arity check in target_type_expr_emitted_validate_positional_arity, run on the prefix subject src/v2/test/claim/self_host/prefix_not_operand_subject_fixture.dag, then rule whether prefix-not is emitted with a one-operand prefix render or refuses under a named reason that is not the generic transform-shape one. Record the named second gap, the inference-stage wrapped negate, against this row. Re-specify the two precedence controls fail-closed so that an empty emitted body refuses.",
+        red_control: "OPEN: red_at and green_at for the lexeme-naming first pair are not yet measured, and green_at is not measured and no sha is claimed for it. The row is dispatched to name its own prefix emission refusal, so the first red_at and green_at pair would be a claim that the prefix subject src/v2/test/claim/self_host/prefix_not_operand_subject_fixture.dag emits, red while the prefix operand refuses at emission on an unenumerated lexeme. Executed RED backing that refusal, from claim_batch over witness entry src/v2/test/claim/self_host/stage0_prefix_inner_reason_probe2.dag at tree 9dfda4f26c261b1b37cd95359c5e687cf8260252 on HOST srv1 BOOT c095c0cd, claim_batch sha256 9cb21df4c20325fc53ba4187cf4c55bd08037862a45d3900c5cc5519e360a177, real exit status one, fifty-six witness verdicts. Seven pass verbatim: negate_lex_is_arity_invalid_holds, nwrap_stage_is_inference_holds, corpus_reason_equals_prefix_reason_holds, conjpre_stage_is_emission_holds, conjpre_reason_equals_prefix_reason_holds, disjpre_stage_is_emission_holds, disjpre_reason_equals_prefix_reason_holds. The prefix, corpus, negate and nwrap emit claims fail and all thirteen lexeme probes for the prefix and corpus subjects fail, so the prefix subject reaches emission and refuses on a lexeme outside the enumerated set rather than being absent from the pipeline. Stage pins from the earlier witness entry src/v2/test/claim/self_host/stage0_prefix_inner_reason_probe.dag at tree e948da35ce0 with thirty-one witnesses: the standalone negate refuses at emission with target_value_expression_emit_primitive_apply_arity_invalid. The migrated corpus group closes on the positive claim corpus_probes_emits_holds on the subject gunbc.rust_decl_type_overlay, which the worker does not rename, together with its two refusal controls corpus_probes_refused_at_emission_holds and corpus_probes_first_refusal_is_transform_shape_holds, which retire or invert on this row once prefix-not renders and which are red here because that census-forced subject carries a prefix-not operand. The row is done when the prefix subject emits, or refuses under a named reason that is not the generic transform-shape one, and the precedence controls compare two non-empty emitted bodies with grouping present in the grouped form.",
+        out_of_scope: "Not the Conj and Disj outer-lowering work, which stays on v2-core-emitter-lowers-conjunction-in-value-position; not the seed; not hand-written seed Rust; not choosing the compatible-corpus subject.",
+        handback: "The prefix emission decision, a one-operand prefix render or a named non-generic refusal, with the refusal lexeme from the executed dump; the two precedence controls re-specified fail-closed and comparing non-empty emitted bodies with grouping; and a ruling on the named second gap, the inference-stage wrapped negate. Record HOST, BOOT, the real exit status, the claim_batch sha256 and the hit count for every executed claim."
+      ), on: "2026-11-24", note: "Proposed by operator principal 116084671989231734979 by the neat-badger-614 split ruling relayed by warm-fox-517 on PR 16957. The prefix-not claim, both precedence controls and the three corpus controls migrated here from v2-core-emitter-lowers-conjunction-in-value-position because all five are gated on prefix emission.")),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-emitter-production", contribution: "The one-operand prefix-not operator, never realized by the infix-only Rust catalog, is emitted by v2 in value position."),
     ),
     roadmap_node(
       identity: "rn_KD37MRQ3ZA6F502DBKE6FE0VB8",
@@ -1794,6 +2069,24 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       dispatch: dispatchable(),
       execution: bound(contract: v1_test_migration_execution_contract()),
       parent: in_project(project: "v1-deletion-program", contribution: "Matching every deleted old test to coverage that would actually catch its bug keeps deletion from silently dropping the protection the old tests existed for."),
+    ),
+    roadmap_node(
+      identity: "rn_N6R1XAMWVQBE7GSTQEMCSQNQXC",
+      id: "v1-retained-test-routes-refuse-and-retire",
+      owner: "self-host",
+      carriers: concat(carrier(path: "dag/gunbc/v1/v1_deletion_plan.dag"), carrier(path: "dag/test/claim/retained_symbol_index_route_refusal.dag")),
+      line: ticket(t: fields(
+        headline: "A retained v1 Rust test names an executed refusal for its route and a testable way to retire",
+        boundary: "Follow-up to v1-test-migration, whose accepted criteria stay as they are. For the retained module declaration_named_in_module_reexport_test (src/v1/tests/src/declaration_named_in_module_reexport_test.rs, the v1 SymbolIndex internals), author an executed .dag claim that tries to reach that route from a claim fixture and is refused; and give every retained row in dag/test/retirement/model.dag a retirement trigger a worker can test, beyond the unbound dissolution arm.",
+        displaced_cost: "Today the retained row says no claim can import v1.compiler.* as a sentence, not a run, so a route that later opens goes unseen, and the row cannot say what retires it other than going unbound.",
+        first_slice: "Measure first: author test.claim.retained_symbol_index_route_refusal, run it with the released claim_batch, and record whether the compile refuses.",
+        red_control: "OPEN: red_at and green_at are not measured. The first pair would be the refusal claim passing on the refused route (green) and the same claim with a planted reachable import that still expects refusal, failing (red), both at one tree with the released claim_batch in one heavy-slot wrapper. If the route does not refuse, this row is a red handback, not a green one.",
+        out_of_scope: "Any change to the wall's discovery rule or schema, new hand-written seed Rust, and the retained rows' existing reasons.",
+        handback: "The refusal claim and its planted control with raw PASS and FAIL lines and the real exit status, and a checkable retirement trigger on each retained row."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v1-deletion-program", contribution: "Retained v1 tests carry executed proof of why they stay and a checkable way out, so deleting the seed's tests never rests on an argued absence."),
+      centering: plan(text: "Author the claim at dag/test/claim/retained_symbol_index_route_refusal.dag (module test.claim.retained_symbol_index_route_refusal) with the planted positive control beside it. Run both legs sequentially in ONE heavy-slot wrapper on srv1 at one tree, with the RELEASED claim_batch (sha256 9cb21df4..., release-bins) and --source-root dag --source-root src/v1 --source-root src/v2; never a binary built from the branch. Record the raw lines and exit status."),
     ),
     roadmap_node(
       identity: "rn_HZJEM68DT207HQH449FPR3VZPA",
@@ -2321,16 +2614,223 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_4A1V8V0AN0B51SYR1XJP64A4YC",
       id: "work-execution-redesign",
       owner: "fleet",
-      carriers: carrier(path: "dag/gunbc/plans/durable_work_handoff.dag"),
+      carriers: carrier(path: "dag/gunbc/plans/fabric_market.dag"),
       line: ticket(t: level_fields(
           headline: "Ordinary work runs without anyone choosing a host: it waits when the fleet is full, runs inside an admitted budget, survives controller loss and returns a verifiable result",
-          boundary: "gunbc keeps what work means and what counts as its result: source and work identity, materialization and reuse, the estimate and its evidence, durable acceptance, attempts, fencing, retry law, cancellation, outcomes and receipts. Generic node placement, per-job resource enforcement and batch admission are delegated to one scheduler per host, modeled as a cited extdeps upstream, which is the only memory and CPU ledger on every host it is given. GitHub only reads a verdict published from an admitted receipt. Today three allocators claim the same machines (runner slots through GitHub, gunbc.compute.host_capacity ComputeBuildPool and AgentSessionPool, whose cross-pool double promise is a declared frontier there), a CI job owns no bounded cgroup (gunbc.runner.runner_slot_desired gunbc_runner_slot_job_cgroup_ownership), a full pool returns HostComputeCapacityFull as a refusal, and sizing is part of WorkKey, so adaptive sizing could never be wired in. These rows are the program authority, amended when work-exec-1 records its backend ruling, and are not a second plan. The operator adopted the program on 2026-11-19 (gunbc.design_ruling::hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign); it had been a proposal of 2026-11-08 for operator discussion, and is no longer one. Overlap with the factory-on-fabric drafts: factory-f3-host-budget-and-backstop is carried by work-exec-6 and factory-f5-off-the-control-host by work-exec-2 and work-exec-5; their disposition is the operator's once this program is accepted.",
+          boundary: "gunbc keeps what work means and what counts as its result: source and work identity, materialization and reuse, the estimate and its evidence, durable acceptance, attempts, fencing, retry law, cancellation, outcomes and receipts. Generic node placement, per-job resource enforcement and batch admission are delegated to one scheduler per host, modeled as a cited extdeps upstream, which is the only memory and CPU ledger on every host it is given. GitHub only reads a verdict published from an admitted receipt. Today three allocators claim the same machines (runner slots through GitHub, gunbc.compute.host_capacity ComputeBuildPool and AgentSessionPool, whose cross-pool double promise is a declared frontier there), a CI job owns no bounded cgroup (gunbc.runner.runner_slot_desired gunbc_runner_slot_job_cgroup_ownership), a full pool returns HostComputeCapacityFull as a refusal, and sizing is part of WorkKey, so adaptive sizing could never be wired in. These rows are the program authority, amended when work-exec-1 records its backend ruling, and are not a second plan. Restated 2026-11-23 by gunbc.design_ruling::execution_is_one_first_principles_market_and_schedulers_are_venues: the scheduler is a venue of gunbc.plans.fabric_market, so the market fills an order and the scheduler places within the fill as a written delegated term, and the durable route consumes that plan's venue contract and matching engine (edges on work-exec-2). The operator adopted the program on 2026-11-19 (gunbc.design_ruling::hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign); it had been a proposal of 2026-11-08 for operator discussion, and is no longer one. Overlap with the factory-on-fabric drafts: factory-f3-host-budget-and-backstop is carried by work-exec-6 and factory-f5-off-the-control-host by work-exec-2 and work-exec-5; their disposition is the operator's once this program is accepted.",
           approach: "Seven members in dependency order: work-exec-0 splits sizing from identity and work-exec-1 selects the backend, in parallel; work-exec-2 builds one durable route for one ordinary build; work-exec-3 sizes automatically from evidence; work-exec-4 moves local work over and deletes its old launch paths; work-exec-5 moves CI over and switches the required verdict; work-exec-6 puts every consumer on a host under one ledger. Each member deletes the route it replaces, after naming that root's consumers. Of the original program PR list, PR 2, 3, 5, 6 and 9 to 12 are kept; PR 4 (host reservations and grant issuance) and PR 7 to 8 (remote host executor, SSH convergence, two-candidate selection) mostly dissolve into the scheduler if work-exec-1 selects one.",
           red_control: "The program bar: an ordinary gunbc build submitted with no host chosen and no fleet allocation edited waits while the fleet is full, runs inside its admitted budget, survives a controller kill without losing responsibility, and returns a receipt the CLI or GitHub verifies. A member whose parent walk does not reach this node is not part of the program.",
           displaced_cost: "The operator spends time arranging runner slots and reconciling competing limits by hand; about 25 GiB fixed slots make every small job pay for the largest; capacity refusals bounce work back to whoever submitted it; and roughly 110k lines of runner, fabric and compute machinery re-implement a generic scheduler without ever composing it.",
           handback: "Each member accepted with its executed controls, the plan carrier amended to the selected backend, and the deleted routes named."
         )),
       parent: in_project(project: "fabric-bringup", contribution: "The fleet becomes a fabric that places work by itself, so bringing up a host means joining it, not hand-arranging its slots."),
+    ),
+    roadmap_node(
+      identity: "rn_TPS3J4RXCSR3Y4RA1NZJNKDKVX",
+      id: "machine-shapes-join-the-cluster",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/plans/new_server_bringup.dag"),
+      line: ticket(t: level_fields(
+          headline: "Every machine shape already held installs over PXE and joins one cluster as a schedulable node, its accelerators exposed and its power caps held",
+          boundary: "Shapes held today: the Supermicro H11SSL-i hosts with T10 and R9700 cards, the ASRock ALTRAD8UD, the Ampere Mt. Collins board moved onto a printed cassette, and 2018-2022 server boards carrying V100 cards. The install route is PXE (gunbc.design_ruling pxe_default_install_and_no_standing_erase_2026_11_10) through the one boot transaction (one_physical_machine_boot_transaction); the cluster is whatever backend work-exec-1-placement-backend-selection records. No workflow branches on a board name: a shape differs only in its declared facts and adapters (boot_delivery_persistence_and_role_are_independent_axes).",
+          approach: "Six members: the cluster on the selected backend first; then one member per shape family (H11SSL, ALTRAD8UD, Mt. Collins on its cassette); the GPU families with caps held across a cold boot; and the printed tray the cassette shape needs, realized from the derived partition.",
+          red_control: "The project bar: a held unit of each shape, powered from bare metal with nobody present, installs over PXE, joins the cluster, and accepts a scheduled job on its CPU and on each of its card families with the declared caps read back; re-running the install on a converged unit changes nothing.",
+          displaced_cost: "Each shape is brought up by hand, differently, and the fleet's capacity cannot be scheduled as one pool; the Mt. Collins lot stays undeployed.",
+          handback: "Per member: its accepted controls. Per shape: the install receipt from bare metal and the no-drift rerun."
+        )),
+      parent: in_project(project: "fabric-bringup", contribution: "The fabric places work only on machines that have joined it; this is how every held shape joins."),
+    ),
+    roadmap_node(
+      identity: "rn_JQPAHM7MHKV641PDD38RBW7ZAK",
+      id: "cluster-bringup-on-the-selected-backend",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/plans/new_server_bringup.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "One cluster runs on held machines on the backend the placement spike selected, and a new node joins it through the install route",
+        boundary: "The production counterpart of work-exec-1-placement-backend-selection, whose spike excludes production cutover: the control plane on a held host, node join performed by the install route rather than by hand, and the admission controls the spike proved (memory request equal to limit, waiting when full, thermal taint) carried into it.",
+        displaced_cost: "Without a cluster there is nothing for a converged machine to join, and each shape's install ends at an idle host.",
+        first_slice: "Install the selected backend's control plane on one held host and join one already-converged worker through the install route.",
+        red_control: "(1) A worker joined by the install route appears Ready without a manual step. (2) With the cluster full, a submitted job waits. (3) Restarting the control-plane host leaves running work running and re-observed.",
+        out_of_scope: "Multi-host control-plane high availability. Tenant isolation beyond the spike's.",
+        handback: "The control-plane receipt, the join receipt and the three controls."
+      ), on: "2026-11-23", note: "Declared 2026-11-23 from the operator's direction that every machine shape already held joins one cluster by the PXE install route (gunbc.design_ruling pxe_default_install_and_no_standing_erase_2026_11_10, one_physical_machine_boot_transaction). Unstarted; v2 leads the operator's priorities, so the schedule reads this project's estimates behind the v2 program.")),
+      parent: in_project(project: "machine-shapes-join-the-cluster", contribution: "The pool every held shape joins."),
+    ),
+    roadmap_node(
+      identity: "rn_EP012BFWCTH3AQMNRR5S1786ZY",
+      id: "h11ssl-shape-joins-the-cluster",
+      owner: "fleet",
+      carriers: carrier(path: "dag/extdeps/boards/supermicro_h11ssl.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "An H11SSL-i host installs over PXE from bare metal and joins the cluster with its T10 and R9700 cards schedulable",
+        boundary: "The H11SSL-i hosts held today carry Tesla T10 and Radeon AI PRO R9700 cards. The install is the PXE route with the host's declared facts; the AMD card needs its own device exposure beside the NVIDIA one.",
+        displaced_cost: "The serving hosts are rebuilt by hand and their cards cannot be scheduled from the pool.",
+        first_slice: "PXE-install one H11SSL-i from bare metal and join it as a cluster node with its CPU schedulable.",
+        red_control: "(1) Install from bare metal with nobody present ends Ready. (2) A job requesting a T10 runs on it and reads the device. (3) A job requesting the R9700 runs and reads the device. (4) A second install run reports no drift.",
+        out_of_scope: "Choosing which model a card serves.",
+        handback: "The install receipt, the device-read receipts and the no-drift rerun."
+      ), on: "2026-11-23", note: "Declared 2026-11-23 from the operator's direction that every machine shape already held joins one cluster by the PXE install route (gunbc.design_ruling pxe_default_install_and_no_standing_erase_2026_11_10, one_physical_machine_boot_transaction). Unstarted; v2 leads the operator's priorities, so the schedule reads this project's estimates behind the v2 program.")),
+      parent: in_project(project: "machine-shapes-join-the-cluster", contribution: "The first shape, already serving, so the route is proven where the cards are."),
+    ),
+    roadmap_node(
+      identity: "rn_XXP5QRR15QRZ0VC8MDA7QSDQV9",
+      id: "altrad8ud-shape-joins-the-cluster",
+      owner: "fleet",
+      carriers: carrier(path: "dag/extdeps/boards/asrock_rack.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "An ALTRAD8UD host installs over PXE from bare metal and joins the cluster as an arm64 node",
+        boundary: "The ASRock ALTRAD8UD carries one Ampere Altra socket; its firmware facts are in extdeps.boards. The install is the same PXE route with the board's declared facts and an arm64 image.",
+        displaced_cost: "The Altra boards held stay outside the pool, and arm64 work has nowhere to be scheduled but the hand-built hosts.",
+        first_slice: "PXE-install one ALTRAD8UD from bare metal and join it as an arm64 node.",
+        red_control: "(1) Install from bare metal with nobody present ends Ready. (2) An arm64 job is placed on it and an amd64-only job is not. (3) A second install run reports no drift.",
+        out_of_scope: "Accelerators on this board.",
+        handback: "The install receipt, the placement controls and the no-drift rerun."
+      ), on: "2026-11-23", note: "Declared 2026-11-23 from the operator's direction that every machine shape already held joins one cluster by the PXE install route (gunbc.design_ruling pxe_default_install_and_no_standing_erase_2026_11_10, one_physical_machine_boot_transaction). Unstarted; v2 leads the operator's priorities, so the schedule reads this project's estimates behind the v2 program.")),
+      parent: in_project(project: "machine-shapes-join-the-cluster", contribution: "Brings the Altra boards and arm64 work into the pool."),
+    ),
+    roadmap_node(
+      identity: "rn_7EXCACE4E19AX6JBF9G6RYJVWM",
+      id: "printed-tray-realized-from-derived-partition",
+      owner: "fleet",
+      carriers: carrier(path: "dag/product/printed_chassis/cassette_layout.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "The cassette tray's printed bodies come from the derived partition for a selected printer, with generated joins and no added fastening hardware",
+        boundary: "Today the tray is four hand-listed panels joined by M3 clamps, and the residential assembly takes them from that fixed roster while bed_partition::allocate_axis already derives a minimum partition; cassette_layout::panel_print_policy reads one printer's envelope directly. The printer and process become inputs, the bodies and both sides of every remaining connection are generated from the partition, and the realization reports its physical pieces, connections and added hardware. Joins follow one shared construction in three sizes, with a positional code per connection so pieces that do not belong together cannot seat.",
+        displaced_cost: "The tray is fragmented by a fixed roster rather than by the printer, screws hold printed parts together, and holes are cut that nothing mates.",
+        first_slice: "Pass the printer and process into the tray policy and generate the tray's bodies and one hardware-free connection from the derived partition.",
+        red_control: "(1) A printer whose bed fits the whole tray yields one body and no seam. (2) A smaller printer yields the derived partition with connector projections counted in bed fit. (3) A separate retaining key raises the reported piece count. (4) Two same-size connections with different codes cannot be seated in each other's places.",
+        out_of_scope: "The stack posts, fan bank, ducts and bought-part retention, which follow once the tray's connection is qualified.",
+        handback: "The realization report for two printers, the four controls, and a printed specimen."
+      ), on: "2026-11-23", note: "Declared 2026-11-23 from the operator's direction that every machine shape already held joins one cluster by the PXE install route (gunbc.design_ruling pxe_default_install_and_no_standing_erase_2026_11_10, one_physical_machine_boot_transaction). Unstarted; v2 leads the operator's priorities, so the schedule reads this project's estimates behind the v2 program.")),
+      parent: in_project(project: "machine-shapes-join-the-cluster", contribution: "The cassette shape cannot be built until its tray can."),
+    ),
+    roadmap_node(
+      identity: "rn_KMN8EA32TJZ1SES7DVCCDAC8WX",
+      id: "mtcollins-cassette-shape-joins-the-cluster",
+      owner: "fleet",
+      carriers: carrier(path: "dag/product/printed_chassis/cassette_profiles.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "A Mt. Collins board on its printed cassette installs over PXE from bare metal and joins the cluster",
+        boundary: "The Mt. Collins lot is held undeployed and without memory; the board moves out of its 1U chassis onto a cassette (cassette_profiles mt_collins_profile) keeping its native power assembly. The install is the PXE route with the board's declared facts, and the CPU frequency ceiling is applied by the install before work runs.",
+        displaced_cost: "The largest block of held compute stays undeployed.",
+        first_slice: "One cassette-mounted Mt. Collins board PXE-installed from bare metal and joined as a node.",
+        red_control: "(1) Install from bare metal with nobody present ends Ready. (2) The declared frequency ceiling is read back after a cold boot. (3) A second install run reports no drift.",
+        out_of_scope: "Memory purchase for the lot, which follows a working unit.",
+        handback: "The install receipt, the ceiling read-back and the no-drift rerun."
+      ), on: "2026-11-23", note: "Declared 2026-11-23 from the operator's direction that every machine shape already held joins one cluster by the PXE install route (gunbc.design_ruling pxe_default_install_and_no_standing_erase_2026_11_10, one_physical_machine_boot_transaction). Unstarted; v2 leads the operator's priorities, so the schedule reads this project's estimates behind the v2 program.")),
+      parent: in_project(project: "machine-shapes-join-the-cluster", contribution: "Brings the Mt. Collins lot into the pool once its cassette exists."),
+    ),
+    roadmap_node(
+      identity: "rn_JMRKDG5PY2MC4DCM7MBYTJ3H3T",
+      id: "gpu-families-schedulable-with-caps-held",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/fleet/gpu_power_cap_converge.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "Each held GPU family is schedulable from the cluster, and its declared power cap holds across an unattended cold boot",
+        boundary: "Families held: Tesla T10, Tesla V100 (16 and 32 GB; compute capability 7.0, which pins its toolkit to CUDA 12), Radeon AI PRO R9700. gunbc.fleet.gpu_power_cap_converge writes a cap and reads it back; this node makes the cap part of the install, applied before any workload can run, and read back after a cold boot with nobody present.",
+        displaced_cost: "A cap that resets on reboot forces every circuit to be sized for uncapped draw, and cards of a family are exposed one host at a time by hand.",
+        first_slice: "Apply and read back the declared cap for one T10 host as part of its install, then cold-boot it unattended and read it again.",
+        red_control: "(1) After an unattended cold boot every card reads its declared cap before the first job starts. (2) A job is refused placement while a card's cap is unread. (3) A V100 job runs on the CUDA 12 toolchain.",
+        out_of_scope: "Choosing the cap values, which are operator decisions.",
+        handback: "The read-back receipts per family and the three controls."
+      ), on: "2026-11-23", note: "Declared 2026-11-23 from the operator's direction that every machine shape already held joins one cluster by the PXE install route (gunbc.design_ruling pxe_default_install_and_no_standing_erase_2026_11_10, one_physical_machine_boot_transaction). Unstarted; v2 leads the operator's priorities, so the schedule reads this project's estimates behind the v2 program.")),
+      parent: in_project(project: "machine-shapes-join-the-cluster", contribution: "Makes capped draw a fact the circuits can be sized on."),
+    ),
+    roadmap_node(
+      identity: "rn_36K5STB3N22N3K61M5AY62JXNZ",
+      id: "compiler-identity-from-sources",
+      owner: "self-host",
+      carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "The compiler's identity is derived from the sources that cause it, so two builds of the same causes share one identity",
+        boundary: "The remainder of the old demand-m1b: the keying cut landed (#13756), but no producer derives a compiler identity from its causal sources, so reuse keyed on the compiler cannot be trusted across runs.",
+        displaced_cost: "Without a causal identity, reuse either misses on an unchanged compiler or serves a result from a different one.",
+        first_slice: "Derive the native compiler's identity from its read set and toolchain inputs and use it as the key of one existing consumer.",
+        red_control: "(1) Two builds from identical causal sources produce the same identity. (2) Changing one causal source changes it. (3) Changing a file outside the read set does not.",
+        out_of_scope: "Cross-run serving (native-artifact-reuse-through-request-key).",
+        handback: "The identity producer, its consumer and the three controls."
+      ), on: "2026-11-23", note: "Declared 2026-11-23 when the demand engine was replanned as an intention (gunbc.plans.demand_engine_program section 5). Not yet centered.")),
+      parent: in_project(project: "demand-engine", contribution: "Reuse needs a key that means the same compiler."),
+    ),
+    roadmap_node(
+      identity: "rn_E1TAEA7FQEZPYG1XWFM9H9Z6YK",
+      id: "native-artifact-reuse-through-request-key",
+      owner: "self-host",
+      carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "A native compiler artifact is reused across runs through its request key and the provider, and the seed-side cache path is retired",
+        boundary: "The remainder of the old demand-m1c: cross-run reuse exists today only as the seed's native product cache (six SHA-256 axes, a shared store). This moves it onto the request key and provider_serve, with the absent, stale and corrupt cases each taking its own typed arm (section 2.8).",
+        displaced_cost: "Reuse lives in a frozen seed-side path that v2 cannot see or extend.",
+        first_slice: "Serve one NativeCompilerArtifactRequest through the request key from the shared store with a verified read.",
+        red_control: "(1) An unchanged request is served, not rebuilt. (2) A stale read set recomputes. (3) A corrupt stored result refuses and recomputes, never serves.",
+        out_of_scope: "Deleting the seed cache before provider_serve is the only producer.",
+        handback: "The served-hit receipt, the three controls and the retired seed path."
+      ), on: "2026-11-23", note: "Declared 2026-11-23 when the demand engine was replanned as an intention (gunbc.plans.demand_engine_program section 5). Not yet centered.")),
+      parent: in_project(project: "demand-engine", contribution: "The first cross-run reuse the engine owns."),
+    ),
+    roadmap_node(
+      identity: "rn_PCDF3HEATT84831KGDB0HV21B6",
+      id: "consumers-on-canonical-dependencies",
+      owner: "self-host",
+      carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "The remaining consumers read the canonical derived dependencies and activation rules, keep their effect and refusal behaviour, and the authority that transition supersedes is removed",
+        boundary: "The remainder of the old M2 and M2V, restated 2026-11-23 after review. program_run_dependencies is gone. activation_dependency is NOT a sidecar: it already derives activation from branch and match structure, keeps activation distinct from prerequisite edges so an untaken arm runs no effects, and requires consumers to respect incomplete derivation; it is a canonical authority to consume, not a target to delete. fold_lowering is semantic lowering of a fold into its loop, domain, accumulator and bound; it is absorbed only by a semantic replacement, never deleted by name. The parallelism classifier already maps containment and binding to StructuralNotACoupling. The work is to find the consumers that still decide dependencies or activation on their own, move each onto the canonical derivation with its effect ordering (D16) and incomplete-derivation refusal preserved, and remove only what that move supersedes, named in the handback.",
+        displaced_cost: "A consumer that decides dependencies or activation on its own can disagree with the derivation, run an untaken arm's effects, or read an incomplete derivation as independence.",
+        first_slice: "List the consumers that decide dependencies or activation outside the canonical derivation, with the rule each applies, and move the first one.",
+        red_control: "(1) The moved consumer's results are unchanged on its population. (2) An untaken arm's effect does not run. (3) An incomplete derivation refuses rather than being read as independence.",
+        out_of_scope: "The schedulers themselves (schedulers-on-the-engine).",
+        handback: "Each moved consumer with its controls, and each superseded authority removed or named with the consumer that still holds it."
+      ), on: "2026-11-23", note: "Declared 2026-11-23 when the demand engine was replanned as an intention (gunbc.plans.demand_engine_program section 5). Not yet centered.")),
+      parent: in_project(project: "demand-engine", contribution: "Dependencies have one authority before scheduling moves onto it."),
+    ),
+    roadmap_node(
+      identity: "rn_DYVC7JX3N33F67QGW8JVNA3EFC",
+      id: "schedulers-on-the-engine",
+      owner: "self-host",
+      carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "The remaining schedulers run on the engine and topological_layers, the workflow scheduler and executor and the realization_runner surfaces are deleted",
+        boundary: "The old M3b. Overlaps the work-execution-redesign members, which also replace scheduling; one owner must be named before this is centered.",
+        displaced_cost: "Several schedulers order the same work by different rules.",
+        first_slice: "Name the owner against work-execution-redesign, then move v2.program onto the engine.",
+        red_control: "Each deleted scheduler's former population runs on the engine with identical results.",
+        out_of_scope: "Remote execution.",
+        handback: "The moved programs and the deletions."
+      ), on: "2026-11-23", note: "Declared 2026-11-23 when the demand engine was replanned as an intention (gunbc.plans.demand_engine_program section 5). Not yet centered.")),
+      parent: in_project(project: "demand-engine", contribution: "One scheduler."),
+    ),
+    roadmap_node(
+      identity: "rn_PHMYNF27MV9FJX537KKVX53BCF",
+      id: "reuse-decided-by-measurement",
+      owner: "self-host",
+      carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "Whether a result is served or recomputed is decided from measured cost, and the cost_floor_exempt roster is deleted",
+        boundary: "The old M4. The materialization ladder (std.materialization_ladder) still reads a roster for its cost floor.",
+        displaced_cost: "An authored roster decides what is cached, so it drifts from what is actually expensive.",
+        first_slice: "Record serve and recompute cost for one provider and decide its floor from the record.",
+        red_control: "(1) A result cheaper to recompute is recomputed. (2) A result dearer to recompute is served. (3) Removing the measurement refuses rather than defaulting.",
+        out_of_scope: "Remote stores.",
+        handback: "The measured floor and the deleted roster."
+      ), on: "2026-11-23", note: "Declared 2026-11-23 when the demand engine was replanned as an intention (gunbc.plans.demand_engine_program section 5). Not yet centered.")),
+      parent: in_project(project: "demand-engine", contribution: "Caching decided by evidence."),
+    ),
+    roadmap_node(
+      identity: "rn_4BKMJHFC6Y5SGZ7JQDXF8Y743G",
+      id: "a-change-pays-only-for-what-it-invalidates",
+      owner: "self-host",
+      carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
+      line: ticket(t: updated(t: fields(
+        headline: "A change pays only for what it invalidates: results stay correct, invalidation is sound, and a result is reused wherever its validity is established",
+        boundary: "The old M6 and the intention's first done-when, restated 2026-11-23 after review: not recompute every dependent, which is too strong in the wrong direction, since a dependent whose inputs recompute to the same result need not run again (early cutoff, as the rustc incremental-compilation design describes). Each compiler stage is keyed and stored per judgment.",
+        displaced_cost: "Every edit pays for work its change cannot affect.",
+        first_slice: "Decompose when its prerequisites are accepted.",
+        red_control: "On a named one-file change: (1) the results equal a cold build's; (2) a stale stored result is never served; (3) a dependent whose recomputed input is unchanged is reused rather than re-run, read from the engine's own records.",
+        out_of_scope: "Lawful algebraic decomposition (the old M7), until a consumer needs it.",
+        handback: "The recompute and reuse populations for a named change, read from the engine's records, beside a cold build's results."
+      ), on: "2026-11-23", note: "Declared 2026-11-23 when the demand engine was replanned as an intention (gunbc.plans.demand_engine_program section 5). Not yet centered.")),
+      parent: in_project(project: "demand-engine", contribution: "The intention's terminal."),
     ),
     roadmap_node(
       identity: "rn_P8TZEXXCDR0NBS11CFB3TA0BVV",
@@ -2352,7 +2852,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_RQ6M9VDXVNV3HZQ1WGN5PGNVAN",
       id: "work-exec-1-placement-backend-selection",
       owner: "fleet",
-      carriers: carrier(path: "dag/gunbc/plans/durable_work_handoff.dag"),
+      carriers: carrier(path: "dag/gunbc/plans/fabric_market.dag"),
       line: ticket(t: updated(t: fields(
         headline: "The placement backend is chosen by a bounded spike against fixed criteria, and the choice is recorded as a ruling",
         boundary: "Candidates: k3s with Kueue (recommended), Nomad, or keeping the systemd and cgroup realization and finishing gunbc's own allocator. Judge by the machinery and operator work each removes, not by current code volume. The spike runs one ordinary gunbc build as a Kubernetes Job with memory request equal to limit, an ephemeral volume and sccache reachable, on one host the operator grants for about one week. Nomad is evaluated only if k3s fails a criterion. The ruling records the criteria results and amends the PR 4 and PR 7 to 8 scope accordingly.",
@@ -2368,7 +2868,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_C62Z25H5J12ZRZZ6NSRKY1ERPK",
       id: "work-exec-2-durable-route-first-consumer",
       owner: "fleet",
-      carriers: carrier(path: "dag/gunbc/plans/durable_work_handoff.dag"),
+      carriers: carrier(path: "dag/gunbc/plans/fabric_market.dag"),
       line: ticket(t: updated(t: fields(
         headline: "One ordinary gunbc build goes through durable acceptance, a fenced attempt on the selected backend, and a bound receipt",
         boundary: "Model first: cited, versioned extdeps modules for the selected backend (for Kubernetes, batch/v1 Job and core/v1 Pod resources and conditions; for Kueue, Workload and ClusterQueue admission). Then the controller, realized on it: acceptance through the #15310 request boundary, one Job per ExecutionAttemptKey, a pending admission projected to Waiting on capacity, and a receipt bound to attempt, source and work. A backend Job can start twice, so result publication is create-only and keyed by attempt. A pod on an unreachable node is never read as proof that it stopped; the attempt stays unresolved until fenced. Parking in this member means waiting before start or release at a durable output boundary; freezing a cgroup is not release, and process checkpoint is out of scope. The first consumer is an ordinary build, not heal.",
@@ -3958,10 +4458,10 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       line: ticket(t: level_fields(
           headline: "Run programs through one demand engine, paying only for what changed",
           boundary: "gunbc.plans.demand_engine_program milestones M1.b to M7 plus D13 (derived dependency demand and composition-root binding). Already landed: M0 (#11428), M1.a (#11447), D9 partition (Pkg7), M3a (#12401, inferred), D11/E2 (#12391), D12 (#11528). The plan is the design authority. These rows are its milestones as work.",
-          approach: "Serial replacement migrations in the plan's order. Each milestone lands with one production consumer switched and its displaced route deleted in the same change.",
+          approach: "Replanned 2026-11-23 as an intention (gunbc.plans.demand_engine_program section 5). Work items are selected against the tree and name that intention; the milestone rows demand-m1b to demand-m7 are superseded and await the operator's retirement.",
           red_control: "A milestone that lands without deleting the route it replaces refuses in review, per the plan's own replacement-migration law. A cache without a derived identity is refused (gunbc.design_argument::demand_before_materialization, gunbc.design_argument::earliest_unjustified_boundary).",
           displaced_cost: "Stage-wide folds recompute unchanged facts on every run, and hand-authored widths and schedulers sit where derived demand belongs.",
-          handback: "The plan's own deletion condition: M7 exit holds and every milestone's deletions are census-verified."
+          handback: "The plan's section 5 done-when, each condition read on the tree."
         )),
       parent: in_project(project: "v2-compiler-live", contribution: "The live compiler's driver is a demand over its universe, so a run pays only for what changed. The engine is how v2 stays affordable as the required route."),
     ),
@@ -4106,6 +4606,22 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       )),
       dispatch: dispatchable(),
       parent: in_project(project: "demand-engine", contribution: "Deciding validity before paying for the producer is the demand engine's order: a valid product costs a lookup, not a build."),
+    ),
+    roadmap_node(
+      identity: "rn_01M8629XZJZ9KFZDFNS3AE6BFF",
+      id: "heal-mirror-convergence-under-unbuildable-checkout",
+      owner: "ci-control",
+      carriers: carrier(path: "dag/gunbc/heal_workflow.dag"),
+      line: ticket(t: fields(
+        headline: "Heal converges a stage0 mirror even when the checkout cannot build its own regenerator",
+        boundary: "gunbc.plans.read_set_convergence P7 (2): a no-op needs valid inputs AND valid outputs, and an unchanged read set does not excuse a missing or hand-edited product -- dag/gunbc/heal_workflow.dag is the one place that decides whether a regeneration is excused. DESIGN.md 'Reference: building and checks' (gunbc.design_document::ci_contract_blocks) makes heal the job that converges the stage0 mirrors to the seed. Today heal builds the regenerator from the pull request's own checkout before it converges them, so a pull request whose hand-written seed consumes a change to a .dag type can never be converged: the tree that must be repaired is also the only tree the builder is allowed to come from. Measured at PR 16895 head 9291d66130369c4509f08f3baa8df618310eeaac: src/v1/00_core.dag:399 declares ExhaustivenessUnknown { scrutinee: String, declaration: String, module_path: String, span: SourceSpan } and :713 destructures all four fields, while the generated mirror src/v1/stage0/src/v1_std_core.rs:695-698 carries only scrutinee and span (uses at :1114, :1209, :1414) under its own 'Generated by v1 compiler -- do not edit' header, and src/v1/stage0/src/cli_run/compile_clean.rs:219 destructures the two absent fields; the heal job ends E0026 rc 101 building its own regenerator. This is not a mirror that drifted: ExhaustivenessUnknown appears 0 times in src/v1/00_core.dag on main and 0 times in the mirror on main, so a two-field body was hand-authored into a do-not-edit file inside the very pull request that introduced the source, disagreeing with it by two fields. A generated file that forbids hand edits and contains one is detectable by a four-line body extraction with a printed lines and bytes count -- and nothing in this repository runs it: CI cannot, because heal's regenerator cannot compile, and the generated-artifact gate does not own stage0 mirrors. Human review found this one. A product repaired by a hand-written approximation is not converged: the repair must REPLACE it with generator output. A second hole sits under the first and makes the first survivable: the sanctioned regeneration route has no registry row for any stage0 mirror, because those paths are COMPOSED rather than declared -- data stage0_src_repo_prefix: String = \"src/v1/stage0/src/\" at dag/gunbc/stage0/stage0_rust_source_lifecycle_scaffold.dag:306 -- so a literal grep for a mirror path finds no declaration anywhere under dag/ (measured: 9 hits, all prose in unrelated rows) and the registry is silent on the whole class (measured: 0 rows reaching stage0 mirrors, 0 rows reaching stage0_src_repo_prefix). That silence has three consequences, all exit-honesty failures and all observed on PR 16895: a regeneration pass asked to converge an unregistered path is a no-op that returns normally, so \"I ran the regen tool\" is compatible with \"the tool wrote nothing\"; an author facing a grep that finds nothing reasonably concludes the file is hand-written and authors it by hand, which the repository has been bitten by before (dag/gunbc/rung_drop/regen_producer.dag:14 records a change whose \"only reachable green was a hand-authored mirror\"); and CI cannot catch it either, because heal triggers on src/v1/** (.github/workflows/heal.yml:8) yet a green check says nothing about a mirror its own regenerator cannot produce -- CI judged it and CI never looked are indistinguishable in the UI for this class.",
+        displaced_cost: "Every pull request whose seed hand-edit consumes a .dag type change deadlocks: heal cannot converge it, the branch cannot compile, and the only way a worker can proceed is to hand-write the generated file -- the exact state that broke it. Observed on PR 16895: heal run 45331640599 rc 101 at the regenerator build, four of that node's seven priced acquisitions consumed without converging the mirror, and the repair then needed a manager ruling about which tree a producer may be built from -- a question the plan should have answered itself. The composed-path hole has its own measured cost: a lane spent two heavy slots and about sixty minutes believing a regeneration was in progress when the pass was a normal-returning no-op over an unregistered path.",
+        first_slice: "Split producer from consumer: build the regenerator from a revision whose checkout builds -- the merge base is the one the plan already trusts for mirror work, HEAL_BASE_MIRROR_COMMIT at .github/workflows/heal.yml:115-116 -- and run that binary against the HEAD's .dag sources to replace the stale mirror, keeping the head's sources as the input and the base's binary as the producer. Prove the product is generator output and not an edit: emit twice, diff the two, require zero lines with both sha256 printed, and show the diff against the committed mirror so the arriving fields are visible on the record. Then build the head's checkout and record its real exit code. Where the emit closure for the file differs between the two revisions, refuse the base-built producer rather than trusting it globally. The slice must also close the registry hole for the file it converges: the producer names the mirror path in its own list of files to install, so a pass over it cannot silently write nothing.",
+        red_control: "A checkout that cannot build its own regenerator still converges, with the empty re-diff, both sha256 values and the head build's exit code recorded. A mirror hand-edited under unchanged sources is still refused as a no-op rather than excused. A producer whose emit closure differs between the two revisions is refused instead of used. A regeneration pass asked to converge a path that no registry row reaches refuses and names the path, instead of returning normally having written nothing. And a pull request that can build its own regenerator today is unaffected, so heal cannot silently stop building one.",
+        out_of_scope: "Changing where generation 0 starts for the seed build: the row carrying id: heal-bootstrap-seed-reuse (cited by symbol, not position: 4146 on main and 4163 at this PR head, because inserting a row above it moves its line) puts 'Changing where generation 0 starts (the base-start ruling stands)' out of scope, and this row collides with that protected ruling -- escalated to the operator as msg_bb054e96 with Hold recommended; the operator ruled on 2026-11-24 with the words \"yeah your recommendations are fine\" against that recommended HOLD, recorded in gunbc.design_ruling as heal_mirror_convergence_held_until_merge_base_build_is_measured_2026_11_24, so the hold stands and no worker starts until this row measures whether the merge-base build actually collides with the base-start ruling. Also out of scope: the main_wet_one artifacts .github/workflows/witnesses.yml and src/v1/stage0/src/compiler_tests.rs, which carry their own separate authorisation; heal's other rounds and their budgets; and what counts as a seed build input.",
+        handback: "The four control outcomes; the converged mirror before and after at located lines; the producer binary's sha256 read from disk together with the revision it was built from; the empty re-diff with both sides' sha256; the porcelain line count showing only the intended path changed; the head build's real exit code; the diff; and the operator's own words recorded in gunbc.design_ruling, not only in a PR comment."
+      )),
+      parent: in_project(project: "demand-engine", contribution: "Heal can converge a generated product even when the checkout it repairs cannot build the producer"),
     ),
     roadmap_node(
       identity: "rn_7ETF92EY55VC9N781F531F4NSD",
@@ -7174,10 +7690,59 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
 // centering plans, not a dependency, and the graph has no exclusion-edge vocabulary.
 fn declared_roadmap_edges() -> List<RoadmapEdge> {
   concat([
+    // ---- #gunbc.plans.fabric_market::fabric_market_plan (2026-11-23), including the existing consumers of its common contracts:
+    edge(child: "market-fix-product-mapping", parent: "market-fix-upstream-model"),
+    edge(child: "execution-attempt-one-record", parent: "lease-fence-one-identity"),
+    edge(child: "fabric-admission-and-delegation", parent: "lease-fence-one-identity"),
+    edge(child: "market-buy-order-replacement", parent: "market-fix-product-mapping"),
+    edge(child: "market-sell-order-replacement", parent: "market-fix-product-mapping"),
+    edge(child: "venue-contract", parent: "market-fix-product-mapping"),
+    edge(child: "venue-contract", parent: "execution-uncertainty-one-carrier"),
+    edge(child: "venue-contract", parent: "execution-attempt-one-record"),
+    edge(child: "venue-contract", parent: "fabric-admission-and-delegation"),
+    edge(child: "matching-engine-on-std-decision", parent: "market-fix-product-mapping"),
+    edge(child: "matching-engine-on-std-decision", parent: "fabric-admission-and-delegation"),
+    edge(child: "matching-engine-on-std-decision", parent: "fabric-consequence-standing"),
+    edge(child: "serving-router-native-transport", parent: "venue-contract"),
+    edge(child: "serving-router-native-transport", parent: "matching-engine-on-std-decision"),
+    edge(child: "serving-router-native-transport", parent: "router-behaviour-disposition"),
+    edge(child: "serving-router-native-transport", parent: "fabric-market-plan-fold"),
+    edge(child: "serving-relocation-realization", parent: "serving-router-native-transport"),
+    edge(child: "serving-router-lua-cutover", parent: "serving-relocation-realization"),
+    edge(child: "serving-router-lua-cutover", parent: "fabric-admission-and-delegation"),
+    edge(child: "fabric-market-convergence", parent: "serving-router-lua-cutover"),
+    edge(child: "fabric-market-convergence", parent: "market-buy-order-replacement"),
+    edge(child: "fabric-market-convergence", parent: "market-sell-order-replacement"),
+    edge(child: "fabric-market-convergence", parent: "work-exec-6-one-ledger-per-host"),
+    edge(child: "fabric-market-convergence", parent: "factory-attempt-execution-on-fabric-lease"),
+    edge(child: "fabric-market-convergence", parent: "demand-m5"),
+    edge(child: "work-exec-2-durable-route-first-consumer", parent: "venue-contract"),
+    edge(child: "work-exec-2-durable-route-first-consumer", parent: "matching-engine-on-std-decision"),
+    edge(child: "work-exec-6-one-ledger-per-host", parent: "fabric-admission-and-delegation"),
+    edge(child: "factory-attempt-execution-on-fabric-lease", parent: "venue-contract"),
+    edge(child: "factory-attempt-execution-on-fabric-lease", parent: "execution-attempt-one-record"),
+    edge(child: "demand-m5", parent: "fabric-admission-and-delegation"),
+    edge(child: "demand-m5", parent: "fabric-market-plan-fold"),
     edge(child: "required-witness-floor-restored", parent: "ci-cost-floor-preparation-cut"),
     edge(child: "required-witness-floor-restored", parent: "required-check-named-witnesses-runs-no-claim-module"),
     edge(child: "required-witness-floor-restored", parent: "cc-evidence-to-consumers"),
     edge(child: "required-witness-floor-restored", parent: "generated-artifact-gate-red-at-main"),
+    // demand_engine_program replanned as an intention (2026-11-23): identity before reuse; sidecars before
+    // schedulers; the terminal waits on schedulers, measured reuse and heal's planning-only bar.
+    edge(child: "native-artifact-reuse-through-request-key", parent: "compiler-identity-from-sources"),
+    edge(child: "schedulers-on-the-engine", parent: "consumers-on-canonical-dependencies"),
+    edge(child: "reuse-decided-by-measurement", parent: "native-artifact-reuse-through-request-key"),
+    edge(child: "a-change-pays-only-for-what-it-invalidates", parent: "schedulers-on-the-engine"),
+    edge(child: "a-change-pays-only-for-what-it-invalidates", parent: "reuse-decided-by-measurement"),
+    edge(child: "a-change-pays-only-for-what-it-invalidates", parent: "heal-planning-only-in-a-minute"),
+    // machine-shapes-join-the-cluster (2026-11-23): the cluster waits on the backend choice; each shape joins the
+    // cluster; the cassette shape also waits on its printed tray.
+    edge(child: "cluster-bringup-on-the-selected-backend", parent: "work-exec-1-placement-backend-selection"),
+    edge(child: "h11ssl-shape-joins-the-cluster", parent: "cluster-bringup-on-the-selected-backend"),
+    edge(child: "altrad8ud-shape-joins-the-cluster", parent: "cluster-bringup-on-the-selected-backend"),
+    edge(child: "mtcollins-cassette-shape-joins-the-cluster", parent: "cluster-bringup-on-the-selected-backend"),
+    edge(child: "mtcollins-cassette-shape-joins-the-cluster", parent: "printed-tray-realized-from-derived-partition"),
+    edge(child: "gpu-families-schedulable-with-caps-held", parent: "h11ssl-shape-joins-the-cluster"),
     edge(child: "claim-entrypoints-cutover", parent: "claim-result-contract"),
     edge(child: "dp-m3-subject-ref-resolved", parent: "extdeps-subject-ref-facts-host-census"),
     edge(child: "lab-converges-release-pair", parent: "lab-standings-track-main"),
@@ -9161,6 +9726,7 @@ fn guarantee_ladder_edges() -> List<RoadmapEdge> {
     edge(child: "p256-verify-cost-cut", parent: "v1-interpreter-p256-verify-cost-shape"),
     edge(child: "per-function-claim-run-loads-string-dispatched-names", parent: "per-function-claim-loader-modeled-dag-route"),
     edge(child: "v2-emitter-production-compatible-corpus-module", parent: "v2-core-emitter-lowers-conjunction-in-value-position"),
+    edge(child: "v2-emitter-production-compatible-corpus-module", parent: "v2-core-emitter-emits-prefix-not-in-value-position"),
   ]
 }
 
