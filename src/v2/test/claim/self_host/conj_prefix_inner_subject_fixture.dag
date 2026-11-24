@@ -1,0 +1,13 @@
+module v2.test.claim.self_host.conj_prefix_inner_subject_fixture
+
+// CONJ inner-refusal control for the re-targeted inner-reason condition (neat-badger's leaning). The OUTER
+// apply is the realisable boolean Conjunction `&&` (op_and HAS an InfixToken row and EMITS -- see
+// conj_value_subject_fixture). Its RIGHT operand is the one-operand PREFIX `!closed_alias` (canonical op_not),
+// which the standalone prefix subject shows refuses at EMISSION. Both operands are Bool so this CANNOT fail
+// at inference for a type reason (unlike the Int negate wrapper). If the Conj lowering genuinely DESCENDS into
+// its operand through handle_transform, this subject refuses with the SAME lexeme the standalone prefix subject
+// refuses with, AT EMISSION. That is the claim the re-targeted inner-reason condition would rest on. Lives under
+// the self-host claim tree, NOT the production dag corpus.
+fn conj_prefix_inner_subject(flag: Bool, closed_alias: Bool) -> Bool {
+  flag && !closed_alias
+}
