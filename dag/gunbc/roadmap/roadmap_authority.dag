@@ -808,6 +808,264 @@ fn edge(child: String, parent: String) -> RoadmapEdge {
 // gunbc.roadmap.roadmap_centering; the graph has no exclusion-edge vocabulary to carry it.
 fn declared_roadmap_nodes() -> List<RoadmapNode> {
   concat([
+    // ---- #gunbc.plans.fabric_market::fabric_market_plan (operator, 2026-11-23, #gunbc.design_ruling::execution_is_one_first_principles_market_and_schedulers_are_venues,
+    // #gunbc.design_ruling::market_vocabulary_is_fix_and_matching_is_std_decision, #gunbc.design_ruling::live_router_changes_of_2026_11_23_are_requirements_evidence):
+    // layers are edge depths within the intention (#gunbc.roadmap.roadmap_intention_binding::fabric_market_intention); fabric-market-convergence is the terminal.
+    roadmap_node(
+      identity: "rn_AD2W7VKE1V833VP8MCYTXNX1X5",
+      id: "market-fix-upstream-model",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/plans/fabric_market.dag"),
+      line: ticket(t: fields(
+          headline: "FIX is modeled as a cited, versioned upstream: the order, cancellation, status and execution messages and their enumerations, with their real names",
+          boundary: "Serves gunbc.plans.fabric_market, layer 0 (gunbc.design_ruling::market_vocabulary_is_fix_and_matching_is_std_decision). An extdeps module per gunbc.design_argument::external_upstreams: cite the FIX Trading Community specification and declare its version; model Side, OrdType, TimeInForce, OrdStatus and ExecType, and the messages NewOrderSingle, OrderCancelRequest, OrderCancelReplaceRequest, OrderCancelReject, OrderStatusRequest and ExecutionReport, as the specification defines them, including that ExecType (what this report is) and OrdStatus (where the order now stands) are distinct, and the identifiers that link an order, its replacements and its reports (ClOrdID, OrigClOrdID, OrderID, ExecID). Upstream only: no gunbc policy, no mapping to our units, no product enumeration.",
+          displaced_cost: "Every market term in the repository is a nickname coined locally (BuyTerms, maximum_buy_order, SupplierOffer, contention), so the vocabulary drifts and has already had to withdraw a reading (product.fabric.contention: headroom is not margin).",
+          first_slice: "Choose the FIX version (gunbc.plans.fabric_market section 7), then the enumerations and the six messages with their citations.",
+          red_control: "A value outside a modeled enumeration is unwritable or refused at its constructor; a message missing a field the specification requires is refused; the specification's own lifecycle examples are transcribed as cases -- an immediate-or-cancel order partially filled and its remainder cancelled, a fill arriving while a cancel is pending, a cancel rejected -- each naming the clause it reads.",
+          out_of_scope: "Market data, quote negotiation beyond the Quote vocabulary, allocation and post-trade messages; the product mapping (market-fix-product-mapping); any transport (FIX sessions are not used).",
+          handback: "The extdeps module, its citations and version, and the executed cases."
+        )),
+      parent: in_project(project: "fabric-bringup", contribution: "One market for every match of work with resources, in one vocabulary, so a new application enters by declaring what it trades."),
+    ),
+    roadmap_node(
+      identity: "rn_443TFKBD4E0FHSFJMM00AHJ1G4",
+      id: "execution-uncertainty-one-carrier",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/plans/fabric_market.dag"),
+      line: ticket(t: fields(
+          headline: "One carrier says whether an effect was answered, proven not sent, or of uncertain delivery, and uncertainty is settled only by readback",
+          boundary: "Serves gunbc.plans.fabric_market, layer 0. Factor delivery knowledge out of the local outcome-unknown arms (HostOutcomeUnknown in gunbc.compute.remote_build, FabricBlobPutOutcomeUnknown, PrintStartOutcomeUnknown and their siblings; the survey's grep found about twenty-one, a candidate set and not a census) into one carrier at the earliest boundary that owns it, with one rule: an uncertain outcome resolves by reading back, never by re-sending a non-idempotent effect. Each domain keeps its own result and its cleanup or release obligation beside the carrier: an answered asynchronous operation may still be running, and an answered write may still owe a content readback. Migrate the siblings onto the carrier and delete the duplicated arms (gunbc.design_argument::root_generalization).",
+          displaced_cost: "Each route re-invents uncertain delivery, so a reviewer must re-check per route that a lost response is never retried as a fresh mutation, and the venue contract has no shared term to require.",
+          first_slice: "The carrier and its readback rule at its home, with gunbc.compute.remote_build's HostOutcomeUnknown as the first migrated consumer and its readback implemented.",
+          red_control: "A lost response after a possible mutation stays uncertain and is not re-sent (remove the readback rule and the control re-sends); a proven-not-sent refusal may retry; a readback that observes completion settles without a second send; an answered operation that is still running is not reported finished.",
+          out_of_scope: "Protocol-specific readbacks beyond the first consumer: a migrated consumer without one stays explicitly uncertain; the venue contract itself (venue-contract).",
+          handback: "The carrier and the migrated consumers, listed in two groups -- reconciled (readback implemented) and carried (uncertainty preserved, no readback yet) -- with a cited grep of what was inspected, the deleted arms, and the executed controls."
+        )),
+      parent: in_project(project: "fabric-bringup", contribution: "One market for every match of work with resources, in one vocabulary, so a new application enters by declaring what it trades."),
+    ),
+    roadmap_node(
+      identity: "rn_661NE623QDY0VFKYWMY1XW64J3",
+      id: "lease-fence-one-identity",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/plans/fabric_market.dag"),
+      line: ticket(t: fields(
+          headline: "One fence representation, built on std.durable_compare_and_set, serves every grant, reservation and seat while keeping each one's own scope",
+          boundary: "Serves gunbc.plans.fabric_market, layer 0. The survey found five forms: std.temporal_effect LeaseEpoch, product.fabric.execution LeaseIdentity (an Int generation), product.capacity.lease LeaseFence, gunbc.fabric.fabric_control_plane CellReservation generations, and std.durable_exclusive_hold generations; gunbc.serving.caller_backlog AttemptFence joins two of them at one consumer. Generalize to the least general representation that covers them -- authority, resource or slot, holder, incarnation, generation over CasGeneration, resource fingerprint -- and delete the duplicated forms. A shared generation TYPE does not make a money-lease epoch, a durable-record version and a seat generation one counter: each keeps its own scope. Seat and cell occupancy stay two contracts (the serving-capacity-home ruling); only the fence representation is shared.",
+          displaced_cost: "Every consumer that crosses two grant kinds needs its own adapter, and a stale-holder check written against one form silently misses the other.",
+          first_slice: "The shared representation at its home and product.fabric.execution LeaseIdentity re-expressed on it, with admit_receipt_for_grant reading it.",
+          red_control: "A receipt under a superseded generation is refused for every migrated kind; a receipt naming another resource fingerprint is refused; std.durable_exclusive_hold's cross-slot and reacquisition cases still refuse after migration; two counters of different scope never compare equal by sharing a type.",
+          out_of_scope: "Merging seat and cell occupancy; admission and delegation (fabric-admission-and-delegation); the attempt record (execution-attempt-one-record).",
+          handback: "The representation, each migrated consumer, the deleted forms, and the executed controls."
+        )),
+      parent: in_project(project: "fabric-bringup", contribution: "One market for every match of work with resources, in one vocabulary, so a new application enters by declaring what it trades."),
+    ),
+    roadmap_node(
+      identity: "rn_Z1JMTR1HRVCD2YHJMNBGGK0SFD",
+      id: "router-behaviour-disposition",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/plans/fabric_market.dag"),
+      line: ticket(t: fields(
+          headline: "Every behaviour of the hand-written router, read back from the live configuration, has one disposition before the native router is built",
+          boundary: "Serves gunbc.plans.fabric_market, layer 0 (gunbc.design_ruling::live_router_changes_of_2026_11_23_are_requirements_evidence). Read back the live router configuration and check gunbc.plans.fabric_market section 5 against it. Give each behaviour in the CUTOVER PARITY section of gunbc.instruments.router_proxy_falsifier, each 2026-11-23 change, and each rule carried only in router comments one disposition: preserved through the native route (with the falsifier case that proves it), moved to its lifecycle owner, expressed as market policy (naming the order term or matching term), or retired with a reason. The native router's acceptance is the preserved set; the cutover refreshes this table against the live file before the switch.",
+          displaced_cost: "Parity with the old router is otherwise either inherited unquestioned (rented overflow, trim-bindings, which the relocation contract forbids) or decided ad hoc during the build.",
+          first_slice: "The read-back of the live file, then the disposition table.",
+          red_control: "A behaviour without a disposition keeps serving-router-native-transport from starting; a preserved behaviour without a falsifier case is not preserved; a disposition that keeps a router-local score, binding ledger or fallback contradicts gunbc.serving.router_realization router_capability_permission and is refused.",
+          out_of_scope: "Building any of the dispositions; the switch itself (serving-router-lua-cutover).",
+          handback: "The read-back with its date and host, and the disposition table."
+        )),
+      parent: in_project(project: "fabric-bringup", contribution: "One market for every match of work with resources, in one vocabulary, so a new application enters by declaring what it trades."),
+    ),
+    roadmap_node(
+      identity: "rn_Q1W6GXFW82MK407N9YD8PX8RQ4",
+      id: "fabric-market-plan-fold",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/plans/fabric_market.dag"),
+      line: ticket(t: fields(
+          headline: "The router plan's stages and acceptance move into the serving work items, the remote-build placement promise is one, and the demand engine's grant home is decided",
+          boundary: "Serves gunbc.plans.fabric_market, layer 0. gunbc.plans.fabric_serving_router holds the S3 and R-S3 stages and acceptance as prose: move the exact obligations still owed into serving-router-native-transport and serving-relocation-realization, update every citation, then delete the plan or rewrite it as an intention under this one. Reconcile gunbc.compute.remote_build's two placement comments to gunbc.design_ruling::execution_is_one_first_principles_market_and_schedulers_are_venues. Resolve D7 of gunbc.plans.demand_engine_program (runner slots, fabric cell reservation or a new ledger as the grant home) against fabric-admission-and-delegation, and record demand-m5's M5(a) and M5(d) as consumers of the parent-grant contract. Leave M4's realization choices on std.decision without making them market allocations.",
+          displaced_cost: "Two planning homes describe the serving router, the remote build promises two placement authorities, and the demand engine leaves its grant home open, so a worker on any of them has to choose between authorities.",
+          first_slice: "The S3 and R-S3 obligations carried into the work items, with their citations moved.",
+          red_control: "No plan prose restates a stage or an acceptance a work item now carries, and no citation names a removed section; gunbc.compute.remote_build makes one placement promise; D7 names one grant home; a cited grep of gunbc.plans states what was inspected.",
+          out_of_scope: "Any code change beyond comments.",
+          handback: "The moved obligations, the deleted or rewritten plan, the remote-build comment, the D7 resolution and the grep."
+        )),
+      parent: in_project(project: "fabric-bringup", contribution: "One market for every match of work with resources, in one vocabulary, so a new application enters by declaring what it trades."),
+    ),
+    roadmap_node(
+      identity: "rn_AQTH8TAQ21SE1A99D8N5ZBMXEV",
+      id: "market-fix-product-mapping",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/plans/fabric_market.dag"),
+      line: ticket(t: fields(
+          headline: "The market module states what each FIX term means for execution resources, keeping order, allocation, computation and settlement apart",
+          boundary: "Serves gunbc.plans.fabric_market, layer 1. Define the market layer over the FIX model and state its product mapping (gunbc.plans.fabric_market section 2): an order is a request to acquire a quantity of an identified instrument under declared terms; a selection is an attributable decision that admission can still refuse; a fill is a committed allocation linked to its grant and obligations; order status and execution reports are facts about the order and its allocations; a lease or fence is the authority to use what was allocated; a work attempt and its outcome are the computation; settlement and release dispose of the obligations on evidence. Three clocks stay separate: time in force bounds how long unmatched quantity may seek a fill; grant validity and occupancy bound the authority and when reuse is safe; work timing is the order's objective. Each instrument declares its divisibility; an indivisible bundle trades in quantity one. Quote keeps its FIX meaning. Roles carry stated obligations: a broker's best-execution duty against its client's objective; a market maker quotes both sides; the clearing role assumes that each fill is backed by capacity and is discharged by settlement. The objective belongs to the order, not to the work: two orders for one computation may differ in urgency without becoming different work. State the matching policy as the product's own (std.decision over several terms), which FIX permits rather than forbids. This item adds the vocabulary and the mapping; the replacements of existing names are their own cuts.",
+          displaced_cost: "Without the mapping, workers implementing orders, grants, attempts and settlement can each follow the vocabulary and still build incompatible contracts, because a fill, a grant and a finished computation are easily read as one fact.",
+          first_slice: "The mapping table and the order, time-in-force and fill types, with the lifecycle traces as controls.",
+          red_control: "Executed traces: an immediate-or-cancel order partially filled and its remainder cancelled, with the fill still standing; an order expiring while work from an earlier fill keeps running and its grant is not released; a cancel racing a fill; a duplicate execution report leaving the original allocation unchanged; a fill whose quantity exceeds its order is refused; an order without a time in force is unwritable.",
+          out_of_scope: "Renaming existing types (market-buy-order-replacement, market-sell-order-replacement); the matching rule (matching-engine-on-std-decision); the venue contract (venue-contract); the product_names anchor for fabric, decided when this lands (gunbc.plans.fabric_market section 7).",
+          handback: "The module, the mapping, and the executed traces."
+        )),
+      parent: in_project(project: "fabric-bringup", contribution: "One market for every match of work with resources, in one vocabulary, so a new application enters by declaring what it trades."),
+    ),
+    roadmap_node(
+      identity: "rn_C4X6RVKXFP41WGXYSZ1DAB1ZX9",
+      id: "execution-attempt-one-record",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/plans/fabric_market.dag"),
+      line: ticket(t: fields(
+          headline: "One execution-attempt record replaces the compute and fabric attempt records, keeping the effect attempts it contains distinct",
+          boundary: "Serves gunbc.plans.fabric_market, layer 1. Canonicalize execution-attempt authority on product.fabric.execution Attempt and ExecutionAttemptLineage, re-expressing gunbc.compute.attempt_lifecycle AttemptRecord and gunbc.compute.durable_attempt_controller ControllerAttempt on it and deleting their duplicated identity. One work attempt contains several effect attempts -- submission, publication, cancellation, release -- each still bound to its own authorization and intent (std.temporal_effect EffectAttemptIntent); those relationships are kept, not flattened. The belt's own attempt state is migrated by factory-attempt-execution-on-fabric-lease, which consumes this record.",
+          displaced_cost: "Two attempt records answer one question for compute and fabric, so a retry's cause and a stale attempt's fencing are checked twice and can disagree.",
+          first_slice: "AttemptRecord re-expressed on the fabric Attempt, with the compute provider reading it.",
+          red_control: "A retry that does not cite its cause receipt is refused; an effect attempt authorized for one intent cannot be replayed for another; the compute provider's recovery still refuses a stale generation after migration.",
+          out_of_scope: "The belt's attempt state (factory-attempt-execution-on-fabric-lease); the fence representation (lease-fence-one-identity).",
+          handback: "The record, the migrated consumers, the deleted duplicates, and the executed controls."
+        )),
+      parent: in_project(project: "fabric-bringup", contribution: "One market for every match of work with resources, in one vocabulary, so a new application enters by declaring what it trades."),
+    ),
+    roadmap_node(
+      identity: "rn_FGMJS13Z3H0ZD6BTGJRT1E49Q7",
+      id: "fabric-admission-and-delegation",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/plans/fabric_market.dag"),
+      line: ticket(t: fields(
+          headline: "A fill authorizes execution only after one admission commits every resource and liability it needs, and delegated budgets conserve capacity down the hierarchy",
+          boundary: "Serves gunbc.plans.fabric_market, layer 1 (the connection layer owns conservation; gunbc.plans.fabric_market section 2). Name the effect-facing admission boundary that turns a selection into a committed fill: it commits every required resource and money reservation together or none (the obligation product.fabric.execution and product.fabric.grant_issue already state), and decides between competing admissions for the same residual capacity. Establish delegation: a direct allocation or a delegated budget stays within its authority's bounds; a child consumes its parent's delegated budget and neither manufactures capacity nor charges it twice; a parent's expiry or revocation does not make capacity reusable while a child may still be running (std.resource_release_law); a relocation charges source and destination until the handoff establishes release. A venue allocating inside a pool grant is a child of that grant. work-exec-6-one-ledger-per-host stays the migration of every host consumer onto this authority.",
+          displaced_cost: "Two matchers can select the same last slice and both believe they may dispatch; a venue or a nested scheduler inside a granted pool has no law that keeps it within the pool.",
+          first_slice: "The admission boundary with all-or-none reservation commit, then the parent-child budget rules.",
+          red_control: "Two concurrent admissions for one residual slice: exactly one commits; a selection without admission cannot dispatch; a child exceeding its parent's remaining budget is refused; a parent expiring with a live child leaves the capacity unreusable until the child is observed quiescent; a relocation overlap charges both sides; the assessable property is bounded overlapping commitments including unreleased occupancy, not one order per host.",
+          out_of_scope: "Migrating every host consumer (work-exec-6-one-ledger-per-host); the fence representation (lease-fence-one-identity).",
+          handback: "The admission boundary, the delegation rules, and the executed controls."
+        )),
+      parent: in_project(project: "fabric-bringup", contribution: "One market for every match of work with resources, in one vocabulary, so a new application enters by declaring what it trades."),
+    ),
+    roadmap_node(
+      identity: "rn_16HWZMCDDBQTSNJSASQQ09D1BN",
+      id: "market-buy-order-replacement",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/plans/fabric_market.dag"),
+      line: ticket(t: fields(
+          headline: "BuyTerms and maximum_buy_order are replaced by the buy order, keeping every monetary distinction the current contract makes",
+          boundary: "Serves gunbc.plans.fabric_market, layer 2; one atomic semantic replacement (gunbc.design_argument::replacement_migration): establish the replacement meaning, migrate every consumer, delete the predecessor. The current contract distinguishes MaximumLiability (reserved before granting), SelectionCost (compared, including valued delay), ActualSpend (settled afterwards) and maximum_buy_order (the liability ceiling for one grant). The buy order must keep each: quantity, price basis, duration or billing quantum, encumbered liability, comparison valuation and actual settlement. A unit limit price alone does not preserve a total liability ceiling.",
+          displaced_cost: "Renaming without the monetary decomposition would silently lose the liability ceiling, which is what refuses an over-cap grant today.",
+          first_slice: "The buy order with its monetary terms, and BuyTerms' first consumer migrated.",
+          red_control: "An order whose encumbered liability exceeds its ceiling is refused before any grant; selection cost and actual spend stay distinct readings; a cited grep shows no surviving BuyTerms or maximum_buy_order declaration or consumer.",
+          out_of_scope: "SupplierOffer (market-sell-order-replacement); the matching rule.",
+          handback: "The replacement, the migrated consumers, the deleted predecessor and the executed controls."
+        )),
+      parent: in_project(project: "fabric-bringup", contribution: "One market for every match of work with resources, in one vocabulary, so a new application enters by declaring what it trades."),
+    ),
+    roadmap_node(
+      identity: "rn_KQ8KP6WD5WBBYT0DJD5QCDV9C0",
+      id: "market-sell-order-replacement",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/plans/fabric_market.dag"),
+      line: ticket(t: fields(
+          headline: "SupplierOffer is decomposed into supply, instrument and sell-order terms, and deleted",
+          boundary: "Serves gunbc.plans.fabric_market, layer 2; one atomic semantic replacement. product.fabric.supply SupplierOffer carries capabilities, route, availability, trust and isolation, and pricing evidence. Distribute each fact to its home -- the supply unit, the instrument, or the sell order -- migrate every consumer (including CandidateOffer construction in product.fabric.candidate_field), and delete SupplierOffer. Standing owned capacity is a resting sell order.",
+          displaced_cost: "A type rename alone would keep five concerns fused under a new name.",
+          first_slice: "The decomposition table: each SupplierOffer field and its new home.",
+          red_control: "Each field's fact is readable from exactly one home; an offer without evidence for its price stays unknown, never zero; a cited grep shows no surviving SupplierOffer declaration or consumer.",
+          out_of_scope: "The buy side (market-buy-order-replacement).",
+          handback: "The decomposition, the migrated consumers, the deleted predecessor and the executed controls."
+        )),
+      parent: in_project(project: "fabric-bringup", contribution: "One market for every match of work with resources, in one vocabulary, so a new application enters by declaring what it trades."),
+    ),
+    roadmap_node(
+      identity: "rn_YJYFSJQ7ZF5A1GYPADVF1QYFVJ",
+      id: "venue-contract",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/plans/fabric_market.dag"),
+      line: ticket(t: fields(
+          headline: "Every executor realizes one venue contract: it accepts a committed fill, never re-matches it, and states which execution guarantees it provides",
+          boundary: "Serves gunbc.plans.fabric_market, layer 2 (gunbc.design_ruling::execution_is_one_first_principles_market_and_schedulers_are_venues). Build on product.fabric.execution (ExecutionGrant, Receipt, admit_receipt_for_grant). The contract: accept a committed fill and refuse a stale or foreign one; never re-match; enforce the granted limits; report typed terminal outcomes through execution-uncertainty-one-carrier; cancel with termination evidence; re-observe accepted work after a restart. Four execution guarantees are kept apart, and each venue's delegated terms state which it realizes: one logical acceptance of a repeated submission (durable dispatch identity and deduplication); one physical execution, only where an ownership mechanism actually provides it (a Kubernetes Job may start twice, which work-exec-2 already allows); one authoritative published result (fenced, create-only publication); and correct accounting while duplicates or overlaps run (every possible occupant within the authorized budget). An order resting in the book is market state; granted work awaiting placement inside a pool is venue state under a delegated term; the contract says which waiting interval each report describes. A venue's own placement inside a granted pool is a delegated term naming what we would build to take it back. First realizations: gunbc.compute.work_provider_local and gunbc.compute.remote_build. The Kubernetes and Kueue term list is written against work-exec-1's criteria.",
+          displaced_cost: "Each route has its own accept and report vocabulary (a string receipt, a WorkOutcome, the belt's spawn outcomes), so every consumer and reviewer reconciles them, and a scheduler adopted later would arrive with a fourth.",
+          first_slice: "The contract over product.fabric.execution, with gunbc.compute.work_provider_local as its first realization.",
+          red_control: "A fill for another attempt or a superseded generation is refused; a repeated submission is accepted once; a duplicate physical start publishes one result and stays within budget; a venue that re-matches (the remote build roster walk, unchanged) fails the contract's control; an uncertain ending is reported uncertain, never as failure or success.",
+          out_of_scope: "Choosing the scheduler (work-exec-1); the durable route (work-exec-2), which consumes this contract; the serving router's realization (serving-router-native-transport).",
+          handback: "The contract, the first realizations, each venue's statement of which guarantees it provides, the Kubernetes and Kueue delegated-term list, and the executed controls."
+        )),
+      parent: in_project(project: "fabric-bringup", contribution: "One market for every match of work with resources, in one vocabulary, so a new application enters by declaring what it trades."),
+    ),
+    roadmap_node(
+      identity: "rn_WRBW4MY22PEPH4GK3AATRW44RN",
+      id: "matching-engine-on-std-decision",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/plans/fabric_market.dag"),
+      line: ticket(t: fields(
+          headline: "One matching engine on std.decision, in both directions, with a run-time term per candidate, replaces select_supply's single-duration pricing and every other host pick",
+          boundary: "Serves gunbc.plans.fabric_market, layer 2 (gunbc.design_ruling::market_vocabulary_is_fix_and_matching_is_std_decision). Rebuild product.fabric.selection select_supply and select_resource_budget_supply on std.decision over std.pareto axes; reconcile product.fabric.flex_market's ranking onto it; and give product.fabric.contention select_demand_for_offer (demand-side matching, no production importer today) an explicit disposition: folded into the engine if resting orders need demand-side matching, deleted otherwise, never kept alive by a manufactured consumer. The result is the whole attributed outcome, not only a receipt: order identity and decision scope (std.decision DecisionScope) on every arm -- selected, needs evidence, needs policy, refused, no feasible candidate, field unestablished -- and a successful selection is distinct from the admission that may still refuse it (fabric-admission-and-delegation), with the link from selection to committed fill recorded. Each candidate gets a run-time or throughput reading derived from the existing measurement authorities (product.fabric.serving_throughput, gunbc.compute.work_class_grant WorkloadProfile), conditioned on workload, configuration, retained state and load, with its evidence standing. Commissioned resource funding (ResourceBudgetPolicy) stays representable without inventing a money reading and never becomes an escape from an economic refusal. The host picks outside the core get their disposition from the route inventory (gunbc.plans.fabric_market section 4): remote-build roster order, fabric_control_plane and harness_seat roster-order tie-breaks. Consumes the objective and standing of fabric-demand-objective and fabric-consequence-standing rather than restating them.",
+          displaced_cost: "Two decision engines answer one question, demand-side matching has no caller, and because one duration prices every candidate the operator's preference for faster owned hosts cannot be expressed at all.",
+          first_slice: "select_supply returning the attributed std.decision outcome with its current cost terms unchanged, then the run-time term.",
+          red_control: "Under a declared objective with every other funded term equal, a candidate whose read run time is shorter wins; with its run time unread it does not win on speed and the outcome says the reading is missing; changing the objective changes a genuine tradeoff and leaves a dominated choice unchanged; every non-selected arm carries the order identity and scope; a selected candidate refused at admission does not dispatch; removing the run-time axis turns the first control red.",
+          out_of_scope: "The demand objective itself (fabric-demand-objective); relocation's realization (serving-relocation-realization); measuring owned operating cost (gunbc.rung_drop serving_cost_axes_asserted_unmeasured keeps its own trigger).",
+          handback: "The rebuilt engine, the contention disposition, its consumers, the disposition of each host pick, and the executed controls."
+        )),
+      parent: in_project(project: "fabric-bringup", contribution: "One market for every match of work with resources, in one vocabulary, so a new application enters by declaring what it trades."),
+    ),
+    roadmap_node(
+      identity: "rn_FYNA8RB27PJWTPJJ784FVAJ54G",
+      id: "serving-router-native-transport",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/plans/fabric_market.dag"),
+      line: ticket(t: fields(
+          headline: "A native serving router realizes router_capability_permission as a pure transport, and owned replicas reach the market as sell orders",
+          boundary: "Serves gunbc.plans.fabric_market, layer 3; stage S3 of gunbc.plans.fabric_serving_router, whose obligations fabric-market-plan-fold moves here. The router normalises a request, asks the market for a fill, takes the endpoint from the committed fill, proxies bytes without re-encoding them, and releases the seat; it computes no score, picks no host, keeps no authoritative binding ledger and forwards nothing without a permit. Owned replicas become sell orders through product.fabric.candidate_field assemble_candidate_field. Acceptance runs against an isolated venue with real test grants; in production it first runs in side-effect-free shadow, which returns proposed matches only (a carrier that cannot dispatch), never a committed fill, so it reserves nothing and moves nothing. Never touches the hand-patched router on srv1. One permit header name, reconciling x-seat-permit and x-gunbc-seat-permit.",
+          displaced_cost: "The live router decides placement in Lua outside the market, so no policy the market learns reaches serving.",
+          first_slice: "Owned replicas admitted as sell orders, then the native router answering from fills against the isolated venue.",
+          red_control: "Each behaviour router-behaviour-disposition preserves executes as its falsifier case against the native route on the isolated venue; a request with no committed fill is refused, never placed; a shadow decision cannot dispatch; a re-encoded body (gunbc.recurring_failure_mode a_request_rewrite_that_reencodes_the_body_it_edits_reorders_the_keys_downstream_reads) is caught.",
+          out_of_scope: "Relocation (serving-relocation-realization); the switch and deletion of the Lua (serving-router-lua-cutover).",
+          handback: "The native router, the owned-replica sell orders, the executed falsifier cases, and the shadow comparison."
+        )),
+      parent: in_project(project: "fabric-bringup", contribution: "One market for every match of work with resources, in one vocabulary, so a new application enters by declaring what it trades."),
+    ),
+    roadmap_node(
+      identity: "rn_NY71EYG7YZ0P69TJN3KEEDN3G6",
+      id: "serving-relocation-realization",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/plans/fabric_market.dag"),
+      line: ticket(t: fields(
+          headline: "A session moves between replicas only through the fenced relocation handoff, selected when the gain beats the cost of moving",
+          boundary: "Serves gunbc.plans.fabric_market, layer 4; the R-S3 frontier of gunbc.plans.fabric_serving_router, whose requirements and seven acceptance cases fabric-market-plan-fold moves here unchanged. gunbc.serving.serving_relocation decide_relocation and decide_evacuation get their evidence (the run-time term from matching-engine-on-std-decision and a reconstruction-cost estimate under the declared one-reconstruction allowance) and a production caller in the native router. Source and destination are both charged until the handoff establishes release (fabric-admission-and-delegation). A drain halts new admission on the replica and relocates or terminates the sessions already there: for relocation, stay is removed and the same decision chooses where to go.",
+          displaced_cost: "The operator's arbitrage and drain-and-move goals are modeled and never run, while the hand-written router moves sessions outside any fenced handoff.",
+          first_slice: "decide_relocation fed by real readings and called from the native router, with the successful-move case of the falsifier.",
+          red_control: "The seven cases of the R-S3 acceptance, each red when its rule is removed, executed on the real route against the isolated venue.",
+          out_of_scope: "Cross-engine KV transfer; a fleet-wide optimizer; the replay and measurement study (a named follow-up).",
+          handback: "The realization and the seven executed cases."
+        )),
+      parent: in_project(project: "fabric-bringup", contribution: "One market for every match of work with resources, in one vocabulary, so a new application enters by declaring what it trades."),
+    ),
+    roadmap_node(
+      identity: "rn_WKVMHRTS9DQ513E9NSBY5NXEEG",
+      id: "serving-router-lua-cutover",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/plans/fabric_market.dag"),
+      line: ticket(t: fields(
+          headline: "The hand-written Lua router is deleted in one switch, the deployed route is verified switched, and nothing falls back to it",
+          boundary: "Serves gunbc.plans.fabric_market, layer 5. Refresh router-behaviour-disposition against the live file. Account for bindings and streams in flight at the switch: which owner finishes them and how their grants are released. Delete gunbc.serving.router_dev_policy, router_dev_scaffold and their debt rows in the same change (gunbc.design_argument::replacement_migration; gunbc.recurring_failure_mode the_replaced_route_is_the_replacement_s_miss_path). Two separate pieces of evidence: the source retirement (the modules gone from the tree) and a read-back that the deployed route is the native one and the Lua path is gone from the host. Before the first production fill, every target host either clears through the shared admission authority (fabric-admission-and-delegation), or provides an explicitly funded serving partition, a delegated budget whose capacity every remaining allocator (build, session and runner pools) excludes from what it offers; existing occupants and relocation overlap stay charged. The partition option lets serving cut over before work-exec-6-one-ledger-per-host migrates every host consumer.",
+          displaced_cost: "Two routers decide placement for one fleet, and the hand-written one carries rulings that exist only as its comments.",
+          first_slice: "The refreshed disposition table and the in-flight accounting, before any switch.",
+          red_control: "A request the native route cannot place is refused and never reaches the Lua path; a stream in flight at the switch completes or is released by its owner; the deployed read-back shows the native route serving; before the switch, a concurrent-load control on each target host -- serving fills alongside build and session allocations at capacity -- shows no capacity promised twice and the excess refused.",
+          out_of_scope: "Behaviour the disposition table retires; new market policy beyond what the dispositions require.",
+          handback: "The refreshed table, the switch, the deletions, the deployed read-back, and the executed controls."
+        )),
+      parent: in_project(project: "fabric-bringup", contribution: "One market for every match of work with resources, in one vocabulary, so a new application enters by declaring what it trades."),
+    ),
+    roadmap_node(
+      identity: "rn_9HTGHV23AEQG0SVCF8KGXSCXJ5",
+      id: "fabric-market-convergence",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/plans/fabric_market.dag"),
+      line: ticket(t: level_fields(
+          headline: "Every route that matches work with resources runs on the one market: serving, builds, CI, the belt and the demand engine",
+          boundary: "Milestone of gunbc.plans.fabric_market, layer 6. It is met when its prerequisites are accepted: the serving cutover; the buy and sell replacements; work-exec-6-one-ledger-per-host (and through it the work-execution program's identity split, durable route, local-work and CI migrations); factory-attempt-execution-on-fabric-lease (the belt); and demand-m5 (the demand engine's occupancy on the parent-grant contract). Those keep their own intentions and owners; this node is the market's completion coverage over them. The intention's done-when is then assessed against the tree, executed controls, deployment read-back and the operator's judgement, each as section 1 of the plan labels it.",
+          approach: "Prerequisite edges only: the market nodes of this intention, and the existing work-execution, belt and demand-engine nodes, which keep their own bindings.",
+          red_control: "Executed traces over the converged routes: concurrent admission across serving, sessions and builds never over-commits a host; a stale selection cannot dispatch; missing evidence stays missing; an attached session does not move outside its declared transition; an uncertain ending does not cause a second execution elsewhere; release after disconnect, timeout, cancel or restart neither frees consumed capacity nor strands it; disconnecting the market from a consumer turns that consumer's control red.",
+          displaced_cost: "Without a completion node the market's terminals cover only the serving chain, and the builds, CI, belt and demand-engine migrations its done-when promises sit outside its dependency closure.",
+          handback: "Per prerequisite, its acceptance; for the milestone, the cross-route traces and the done-when assessment."
+        )),
+      parent: in_project(project: "fabric-bringup", contribution: "One market for every match of work with resources, in one vocabulary, so a new application enters by declaring what it trades."),
+    ),
     // ---- gunbc.plans.claim_execution_consolidation (operator, 2026-11-22,
     // gunbc.design_ruling::claim_execution_has_one_v1_entrypoint): two slices. The cutover depends on the
     // result contract (edge below), and its public authority transition stays one atomic change.
@@ -2356,10 +2614,10 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_4A1V8V0AN0B51SYR1XJP64A4YC",
       id: "work-execution-redesign",
       owner: "fleet",
-      carriers: carrier(path: "dag/gunbc/plans/durable_work_handoff.dag"),
+      carriers: carrier(path: "dag/gunbc/plans/fabric_market.dag"),
       line: ticket(t: level_fields(
           headline: "Ordinary work runs without anyone choosing a host: it waits when the fleet is full, runs inside an admitted budget, survives controller loss and returns a verifiable result",
-          boundary: "gunbc keeps what work means and what counts as its result: source and work identity, materialization and reuse, the estimate and its evidence, durable acceptance, attempts, fencing, retry law, cancellation, outcomes and receipts. Generic node placement, per-job resource enforcement and batch admission are delegated to one scheduler per host, modeled as a cited extdeps upstream, which is the only memory and CPU ledger on every host it is given. GitHub only reads a verdict published from an admitted receipt. Today three allocators claim the same machines (runner slots through GitHub, gunbc.compute.host_capacity ComputeBuildPool and AgentSessionPool, whose cross-pool double promise is a declared frontier there), a CI job owns no bounded cgroup (gunbc.runner.runner_slot_desired gunbc_runner_slot_job_cgroup_ownership), a full pool returns HostComputeCapacityFull as a refusal, and sizing is part of WorkKey, so adaptive sizing could never be wired in. These rows are the program authority, amended when work-exec-1 records its backend ruling, and are not a second plan. The operator adopted the program on 2026-11-19 (gunbc.design_ruling::hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign); it had been a proposal of 2026-11-08 for operator discussion, and is no longer one. Overlap with the factory-on-fabric drafts: factory-f3-host-budget-and-backstop is carried by work-exec-6 and factory-f5-off-the-control-host by work-exec-2 and work-exec-5; their disposition is the operator's once this program is accepted.",
+          boundary: "gunbc keeps what work means and what counts as its result: source and work identity, materialization and reuse, the estimate and its evidence, durable acceptance, attempts, fencing, retry law, cancellation, outcomes and receipts. Generic node placement, per-job resource enforcement and batch admission are delegated to one scheduler per host, modeled as a cited extdeps upstream, which is the only memory and CPU ledger on every host it is given. GitHub only reads a verdict published from an admitted receipt. Today three allocators claim the same machines (runner slots through GitHub, gunbc.compute.host_capacity ComputeBuildPool and AgentSessionPool, whose cross-pool double promise is a declared frontier there), a CI job owns no bounded cgroup (gunbc.runner.runner_slot_desired gunbc_runner_slot_job_cgroup_ownership), a full pool returns HostComputeCapacityFull as a refusal, and sizing is part of WorkKey, so adaptive sizing could never be wired in. These rows are the program authority, amended when work-exec-1 records its backend ruling, and are not a second plan. Restated 2026-11-23 by gunbc.design_ruling::execution_is_one_first_principles_market_and_schedulers_are_venues: the scheduler is a venue of gunbc.plans.fabric_market, so the market fills an order and the scheduler places within the fill as a written delegated term, and the durable route consumes that plan's venue contract and matching engine (edges on work-exec-2). The operator adopted the program on 2026-11-19 (gunbc.design_ruling::hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign); it had been a proposal of 2026-11-08 for operator discussion, and is no longer one. Overlap with the factory-on-fabric drafts: factory-f3-host-budget-and-backstop is carried by work-exec-6 and factory-f5-off-the-control-host by work-exec-2 and work-exec-5; their disposition is the operator's once this program is accepted.",
           approach: "Seven members in dependency order: work-exec-0 splits sizing from identity and work-exec-1 selects the backend, in parallel; work-exec-2 builds one durable route for one ordinary build; work-exec-3 sizes automatically from evidence; work-exec-4 moves local work over and deletes its old launch paths; work-exec-5 moves CI over and switches the required verdict; work-exec-6 puts every consumer on a host under one ledger. Each member deletes the route it replaces, after naming that root's consumers. Of the original program PR list, PR 2, 3, 5, 6 and 9 to 12 are kept; PR 4 (host reservations and grant issuance) and PR 7 to 8 (remote host executor, SSH convergence, two-candidate selection) mostly dissolve into the scheduler if work-exec-1 selects one.",
           red_control: "The program bar: an ordinary gunbc build submitted with no host chosen and no fleet allocation edited waits while the fleet is full, runs inside its admitted budget, survives a controller kill without losing responsibility, and returns a receipt the CLI or GitHub verifies. A member whose parent walk does not reach this node is not part of the program.",
           displaced_cost: "The operator spends time arranging runner slots and reconciling competing limits by hand; about 25 GiB fixed slots make every small job pay for the largest; capacity refusals bounce work back to whoever submitted it; and roughly 110k lines of runner, fabric and compute machinery re-implement a generic scheduler without ever composing it.",
@@ -2594,7 +2852,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_RQ6M9VDXVNV3HZQ1WGN5PGNVAN",
       id: "work-exec-1-placement-backend-selection",
       owner: "fleet",
-      carriers: carrier(path: "dag/gunbc/plans/durable_work_handoff.dag"),
+      carriers: carrier(path: "dag/gunbc/plans/fabric_market.dag"),
       line: ticket(t: updated(t: fields(
         headline: "The placement backend is chosen by a bounded spike against fixed criteria, and the choice is recorded as a ruling",
         boundary: "Candidates: k3s with Kueue (recommended), Nomad, or keeping the systemd and cgroup realization and finishing gunbc's own allocator. Judge by the machinery and operator work each removes, not by current code volume. The spike runs one ordinary gunbc build as a Kubernetes Job with memory request equal to limit, an ephemeral volume and sccache reachable, on one host the operator grants for about one week. Nomad is evaluated only if k3s fails a criterion. The ruling records the criteria results and amends the PR 4 and PR 7 to 8 scope accordingly.",
@@ -2610,7 +2868,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_C62Z25H5J12ZRZZ6NSRKY1ERPK",
       id: "work-exec-2-durable-route-first-consumer",
       owner: "fleet",
-      carriers: carrier(path: "dag/gunbc/plans/durable_work_handoff.dag"),
+      carriers: carrier(path: "dag/gunbc/plans/fabric_market.dag"),
       line: ticket(t: updated(t: fields(
         headline: "One ordinary gunbc build goes through durable acceptance, a fenced attempt on the selected backend, and a bound receipt",
         boundary: "Model first: cited, versioned extdeps modules for the selected backend (for Kubernetes, batch/v1 Job and core/v1 Pod resources and conditions; for Kueue, Workload and ClusterQueue admission). Then the controller, realized on it: acceptance through the #15310 request boundary, one Job per ExecutionAttemptKey, a pending admission projected to Waiting on capacity, and a receipt bound to attempt, source and work. A backend Job can start twice, so result publication is create-only and keyed by attempt. A pod on an unreachable node is never read as proof that it stopped; the attempt stays unresolved until fenced. Parking in this member means waiting before start or release at a durable output boundary; freezing a cgroup is not release, and process checkpoint is out of scope. The first consumer is an ordinary build, not heal.",
@@ -7432,6 +7690,39 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
 // centering plans, not a dependency, and the graph has no exclusion-edge vocabulary.
 fn declared_roadmap_edges() -> List<RoadmapEdge> {
   concat([
+    // ---- #gunbc.plans.fabric_market::fabric_market_plan (2026-11-23), including the existing consumers of its common contracts:
+    edge(child: "market-fix-product-mapping", parent: "market-fix-upstream-model"),
+    edge(child: "execution-attempt-one-record", parent: "lease-fence-one-identity"),
+    edge(child: "fabric-admission-and-delegation", parent: "lease-fence-one-identity"),
+    edge(child: "market-buy-order-replacement", parent: "market-fix-product-mapping"),
+    edge(child: "market-sell-order-replacement", parent: "market-fix-product-mapping"),
+    edge(child: "venue-contract", parent: "market-fix-product-mapping"),
+    edge(child: "venue-contract", parent: "execution-uncertainty-one-carrier"),
+    edge(child: "venue-contract", parent: "execution-attempt-one-record"),
+    edge(child: "venue-contract", parent: "fabric-admission-and-delegation"),
+    edge(child: "matching-engine-on-std-decision", parent: "market-fix-product-mapping"),
+    edge(child: "matching-engine-on-std-decision", parent: "fabric-admission-and-delegation"),
+    edge(child: "matching-engine-on-std-decision", parent: "fabric-consequence-standing"),
+    edge(child: "serving-router-native-transport", parent: "venue-contract"),
+    edge(child: "serving-router-native-transport", parent: "matching-engine-on-std-decision"),
+    edge(child: "serving-router-native-transport", parent: "router-behaviour-disposition"),
+    edge(child: "serving-router-native-transport", parent: "fabric-market-plan-fold"),
+    edge(child: "serving-relocation-realization", parent: "serving-router-native-transport"),
+    edge(child: "serving-router-lua-cutover", parent: "serving-relocation-realization"),
+    edge(child: "serving-router-lua-cutover", parent: "fabric-admission-and-delegation"),
+    edge(child: "fabric-market-convergence", parent: "serving-router-lua-cutover"),
+    edge(child: "fabric-market-convergence", parent: "market-buy-order-replacement"),
+    edge(child: "fabric-market-convergence", parent: "market-sell-order-replacement"),
+    edge(child: "fabric-market-convergence", parent: "work-exec-6-one-ledger-per-host"),
+    edge(child: "fabric-market-convergence", parent: "factory-attempt-execution-on-fabric-lease"),
+    edge(child: "fabric-market-convergence", parent: "demand-m5"),
+    edge(child: "work-exec-2-durable-route-first-consumer", parent: "venue-contract"),
+    edge(child: "work-exec-2-durable-route-first-consumer", parent: "matching-engine-on-std-decision"),
+    edge(child: "work-exec-6-one-ledger-per-host", parent: "fabric-admission-and-delegation"),
+    edge(child: "factory-attempt-execution-on-fabric-lease", parent: "venue-contract"),
+    edge(child: "factory-attempt-execution-on-fabric-lease", parent: "execution-attempt-one-record"),
+    edge(child: "demand-m5", parent: "fabric-admission-and-delegation"),
+    edge(child: "demand-m5", parent: "fabric-market-plan-fold"),
     edge(child: "required-witness-floor-restored", parent: "ci-cost-floor-preparation-cut"),
     edge(child: "required-witness-floor-restored", parent: "required-check-named-witnesses-runs-no-claim-module"),
     edge(child: "required-witness-floor-restored", parent: "cc-evidence-to-consumers"),
