@@ -501,6 +501,51 @@ fn serving_slice_cap_refused(cause: String) -> ServingSliceCap {
   }
 }
 
+// THE CAP A CONFIRMED-ABSENT ACCOUNT READS. When /etc/passwd was read (Established) and the serving account
+// row is simply not there, the account is a PROVEN absence -- so its per-user user-work slice is a proven
+// absence too, not something nobody read. That is NOT a ServingUnknown: it is the same proven-absence
+// direction the account leg itself takes (serving_account_deviations: "established but the row absent is a
+// proven absence (the account must be created)"), and the same reason the linger leg reads established-false
+// for such a host rather than asking `loginctl show-user <nobody>` and poisoning the assessment as an unknown.
+// Read every control established-unbounded (the unreachable-manager shape): the admission folds a
+// UserWorkSliceUncapped DEVIATION (an install target), and the converge drafts EnsureAccount (rank 1) then
+// InstallUserWorkSlice (rank 8) in that order -- useradd first, then the slice it lives under. This is the
+// FRESH-HOST bootstrap the observe was refusing, and the reason a brand-new serving host (ken, butch) could
+// never be converged: without it the one unread slice leg forced GoalIndeterminate, which both the observe
+// and converge_plan refuse, so the very write that would create the account and slice was un-dispatchable.
+// One-way and safe, exactly as the unreachable-manager reading: it only ever LICENSES an install, it can never
+// report a slice settled -- 'settled' is decided by the separate zero-exit serving_slice_cap_of_show read-back
+// after the install, never here. ServingUnknown stays RESERVED for the two genuinely-unreadable cases: the
+// passwd read itself refused (nobody read the account), or systemctl refused with the account PRESENT -- both
+// leave account_gate not-Established-false, so the caller falls through to serving_leg_slice_cap.
+fn serving_slice_cap_account_absent() -> ServingSliceCap {
+  ServingSliceCap {
+    max: ObservationEstablished { observed: CgroupMemoryUnlimited },
+    high: ObservationEstablished { observed: CgroupMemoryUnlimited },
+    swap: ObservationEstablished { observed: CgroupMemoryUnlimited },
+  }
+}
+
+// WHICH cap the observe's slice leg reads, decided PURELY over the account gate so a claim exercises the
+// real decision without a host (witness_one_interface: the witness supplies the reads at the boundary;
+// census_door_gate below is the precedent for pulling a host-bearing decision into a pure function). A
+// CONFIRMED-ABSENT account (passwd Established, row absent) has no per-user slice to ask systemctl about,
+// so the leg reads serving_slice_cap_account_absent -- a proven absence, contributing an install-target
+// DEVIATION the converge satisfies with EnsureAccount (rank 1) then InstallUserWorkSlice (rank 8). The other
+// two arms keep the reserved behaviour: an account PRESENT, or a passwd read that was itself REFUSED (nobody
+// read the account), falls through to the live systemctl read (serving_leg_slice_cap), where a refused or
+// unresolvable control is an unknown -- never a fabricated install. Reverting this gate so every arm reads
+// systemd again makes a fresh host indeterminate; the gate claims in the converge witness go red exactly then.
+type ServingSliceLegChoice = SliceLegProvenAbsentCap | SliceLegReadSystemd
+
+fn serving_slice_leg_choice(account_gate: ObservationAttempt<Bool, ServingLegFailure>) -> ServingSliceLegChoice {
+  match account_gate {
+    ObservationEstablished { observed: false } => SliceLegProvenAbsentCap
+    ObservationEstablished { observed: true } => SliceLegReadSystemd
+    ObservationRefused { cause: _ } => SliceLegReadSystemd
+  }
+}
+
 // Whether a NON-ZERO `systemctl show` was the serving user manager being unreachable for this account (its
 // bus is down / the machine's user manager is not running), as opposed to a sudo denial, a malformed argv or
 // any other command error, is systemd's OWN judgment and lives with the verbs that emit it:
@@ -628,17 +673,27 @@ fn observe_host_reads(target: SshTarget, context: FleetSshExecutionContext, d: R
   }
   // THE USER-WORK SLICE cap, read from the slice's unit controls as the serving user manager reports them
   // (serving_leg_slice_cap): the one place the cap is observed for the converge. The serving uid comes from
-  // the passwd read; an unresolvable uid (fresh host / unreadable passwd) reads every control refused, which
-  // serving_assess never treats as capped — so the apply installs. The same values feed
-  // user_work_slice_cgroup_admission (unit_bounds::observed_cgroup_bound), the fold also used by the --user
-  // wrap-admit; that admit feeds it the live materialised cgroup instead, so it independently guards work
+  // the passwd read. GATED on the account exactly as the toolchain/rustup/linger legs are: a CONFIRMED-ABSENT
+  // account (passwd Established, row absent) has no per-user slice to ask systemctl about -- asking it would
+  // answer only a refusal and poison the whole assessment as an unknown, which both serving_assessment_runnable
+  // and converge_plan refuse, so a fresh host could never be converged to create that account (the fresh-host
+  // chicken-and-egg). Such a host instead reads serving_slice_cap_account_absent: a proven-absent slice as an
+  // install-target DEVIATION, and the converge drafts EnsureAccount (rank 1) then InstallUserWorkSlice (rank 8).
+  // ServingUnknown stays reserved for the genuinely unreadable: a refused passwd read (the gate is Refused, not
+  // Established-false) or systemctl refused with the account present -- both fall through to serving_leg_slice_cap,
+  // where an unresolvable uid reads every control refused and serving_assess never treats it as capped. The same
+  // values feed user_work_slice_cgroup_admission (unit_bounds::observed_cgroup_bound), the fold also used by the
+  // --user wrap-admit; that admit feeds it the live materialised cgroup instead, so it independently guards work
   // placement while this settles the unit's provisioned cap.
   let passwd_opt = match passwd {
     ObservationEstablished { observed: t } => Present { value: t }
     ObservationRefused { cause: _ } => Absent
   }
   let serving_uid = serving_passwd_uid(text: passwd_opt, name: d.account_name)
-  let slice_cap = serving_leg_slice_cap(target: target, context: context, uid: serving_uid)
+  let slice_cap = match serving_slice_leg_choice(account_gate: account_gate) {
+    SliceLegProvenAbsentCap => serving_slice_cap_account_absent()
+    SliceLegReadSystemd => serving_leg_slice_cap(target: target, context: context, uid: serving_uid)
+  }
   // THE CENSUS DOOR IS CARRIED BY THE CHECKOUT, so it is asked only where it exists — the decision is
   // census_door_gate, a pure function over the read values so a claim exercises it without a host. The
   // recovery doors (compute_recover_catalog_serving_cli and its two apply siblings) live in the checkout's dag;
