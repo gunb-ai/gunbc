@@ -38,10 +38,20 @@ in 13 files, so the file count and the path count differ and both are reported.
    function (`ensure_decide`, `ensure_reconcile`, `ensure_after_grounding`,
    `ensure_observation_as_attempt`, `reconcile_grounded`, `reconcile_effect`,
    `reconcile_effect_without_read`, `reconcile_application_then_ground`). The
-   derivation command is embedded in the roster module header. The importer grep
-   over `--include=*.dag` for `gunbc.ensure` / `std.realization_reconcile` with
-   the `test/claim`, `recurring_failure_mode` and `integration_concern`
-   exclusions yields 65 files; the fold-site scan yields the 20 enforced paths.
+   derivation procedure is recorded here (the plan of record), not in a code
+   comment; the roster module header carries a convenience copy. The importer
+   grep over `--include=*.dag` for `gunbc.ensure` / `std.realization_reconcile`
+   with the `test/claim`, `recurring_failure_mode` and `integration_concern`
+   exclusions yields 65 files; the fold-site scan yields the 20 enforced paths:
+
+   ```
+   grep -rln "gunbc\.ensure\b\|std\.realization_reconcile\b" --include=*.dag \
+     . | grep -v "/.git/" | grep -v "test/claim" \
+        | grep -v "recurring_failure_mode" | grep -v "integration_concern" \
+     | while read f; do grep -nE \
+       "ensure_decide|ensure_reconcile|ensure_after_grounding|ensure_observation_as_attempt|reconcile_grounded|reconcile_effect_without_read|reconcile_effect\b|reconcile_application_then_ground" \
+       "$f" | grep -v "import "; done
+   ```
 2. **Raw derivation output with its real exit status** is pasted in the PR body
    as the denominator evidence (not the number alone).
 3. **All 65 files stay visible.** The 45 consumers, 5 carriers and 2 substrate

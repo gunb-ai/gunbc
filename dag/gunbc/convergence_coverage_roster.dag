@@ -55,6 +55,12 @@ import std.decl_ref {
 // authorable on the current path). A fold that composes entirely through a
 // cross-module wrapper without importing a substrate fold-site is therefore an
 // acknowledged blind spot of the enforced join, named here rather than hidden.
+// Per the roadmap node cc-path-census: "Acceptance is a claim process over that
+// roster once bound, until then ExecutionContractUnspecified is honest." Corpus
+// completeness over an independently discovered universe is therefore
+// ExecutionContractUnspecified at this rung; the claims here are mechanism
+// witnesses over the named denominator (the join accepts a complete roster and
+// refuses a dropped route with the exact identity), not coverage of the corpus.
 //
 // D14 SECTION 10 (what is being classified against; never pasted into a row).
 // The D14 ensure-authority plan file dag/gunbc/plans/ensure_closure_design.dag
@@ -223,8 +229,15 @@ fn pre_substrate(module_path: String, route: String, subject: String, operation:
 fn roster_row_identity(row: ConvergenceRosterRow) -> DeclarationRef {
   row.identity
 }
-// THE ENFORCED DENOMINATOR. The 20 substrate fold-site paths, derived by
-// the command in the module header; re-derive to check this list.
+// THE NAMED DENOMINATOR (plan data at this rung). The 20 substrate fold-site
+// paths, derived by the re-derivation procedure recorded in
+// docs/plans/convergence-coverage-program.md and pasted with its raw output and
+// real exit status in the PR body. This list is a transcription of that executed
+// procedure, NOT an eval-time corpus discovery: a .dag claim performs no
+// filesystem IO, so the corpus binding lives in the procedure, not in this
+// claim. The claim below is a mechanism witness over this named denominator, not
+// a corpus-completeness guarantee (see the ExecutionContractUnspecified note in
+// the module header). Re-derive the procedure to check this list.
 fn enforced_fold_site_routes() -> List<DeclarationRef> {
   [
     cite("gunbc.fleet.mtcollins_firmware_converge", "pending_step_verdict"),
@@ -374,9 +387,16 @@ fn census_identity_join(required: List<DeclarationRef>, rows: List<ConvergenceRo
   )
 }
 
-// The census-completeness claim (GREEN witness): true when the roster names
-// every enforced fold-site route. Run at the head sha this passes.
-fn convergence_coverage_census_is_complete() -> Bool {
+// Mechanism witness (positive arm), NOT a corpus-completeness guarantee. The
+// identity join returns JoinCovered when every route in the named denominator
+// has a covering roster row. It establishes that the join mechanism accepts a
+// complete roster over the named denominator; it does NOT establish that the
+// named denominator equals the corpus (that binding is the re-derivation
+// procedure in the plan doc, executed with its raw output and real exit status
+// in the PR body). Per the roadmap node cc-path-census: "Acceptance is a claim
+// process over that roster once bound, until then ExecutionContractUnspecified
+// is honest" -- corpus-completeness is ExecutionContractUnspecified at this rung.
+fn census_join_covers_named_routes() -> Bool {
   match census_identity_join(enforced_fold_site_routes(), roster_rows()) {
     JoinCovered { covered: cov } => true
     IdentityMissingFromCensus { identity: miss } => false
