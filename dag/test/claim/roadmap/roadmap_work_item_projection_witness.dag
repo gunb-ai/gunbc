@@ -188,26 +188,29 @@ test fn in_flight_and_latest_are_derived_through_the_production_reader_across_a_
       let c_env = roadmap_event_envelope(e: c)
       let r = release_event(linked_to: c, at: "2026-11-03")
       let r_env = roadmap_event_envelope(e: r)
-      let read_row = fn(envs: List<RoadmapEventEnvelope>) { roadmap_projection_row_read(
+      match roadmap_projection_row_read(
         node: nid(s: "item-a"), read_date: Iso8601CivilDate { year: 2026, month: 11, day: 24 },
         workers: BeltCapacity { max_concurrent: 4 }, findings_count: findings,
-        standings: open_standings(), envs: envs) }
-      match read_row([c_env]) {
-        ProjectionRowBuilt { row: b, day_priors: _ } => match read([c_env, r_env]) {
-          ProjectionRowBuilt { row: a, day_priors: _ } =>
+        standings: open_standings(), envs: [c_env]) {
+        ProjectionRowBuilt { row: b, day_priors: _ } =>
+          match roadmap_projection_row_read(
+            node: nid(s: "item-a"), read_date: Iso8601CivilDate { year: 2026, month: 11, day: 24 },
+            workers: BeltCapacity { max_concurrent: 4 }, findings_count: findings,
+            standings: open_standings(), envs: [c_env, r_env]) {
             // BEFORE: one leaf held, its assignee the claim's own, and "claimed" latest.
-            count(b.in_flight) == 1
-            && match b.in_flight.first() { Present { value: h } => h.assignee == "alice@roadmap" Absent => false }
-            && match b.latest_event { Present { value: w } => w == "claimed" Absent => false }
-            // AFTER: nothing held (the fold derived the release), "released" latest, both events on the row.
-            && count(a.in_flight) == 0
-            && match a.latest_event { Present { value: w } => w == "released" Absent => false }
-            && string_contains(s: doc_of([a]), pattern: "released")
-            && string_contains(s: doc_of([a]), pattern: "claimed")
-            && string_contains(s: doc_of([a]), pattern: "2026-11-03")
-            && string_contains(s: doc_of([a]), pattern: "\"in_flight\": []")
-          ProjectionRowRefused { refusal: _ } => false
-        }
+            ProjectionRowBuilt { row: a, day_priors: _ } =>
+              count(b.in_flight) == 1
+              && match b.in_flight.first() { Present { value: h } => h.assignee == "alice@roadmap" Absent => false }
+              && match b.latest_event { Present { value: w } => w == "claimed" Absent => false }
+              // AFTER: nothing held (the fold derived the release), "released" latest, both events on the row.
+              && count(a.in_flight) == 0
+              && match a.latest_event { Present { value: w } => w == "released" Absent => false }
+              && string_contains(s: doc_of([a]), pattern: "released")
+              && string_contains(s: doc_of([a]), pattern: "claimed")
+              && string_contains(s: doc_of([a]), pattern: "2026-11-03")
+              && string_contains(s: doc_of([a]), pattern: "\"in_flight\": []")
+            ProjectionRowRefused { refusal: _ } => false
+          }
         ProjectionRowRefused { refusal: _ } => false
       }
     }
@@ -227,22 +230,25 @@ test fn permuting_the_log_order_leaves_the_row_unchanged() -> Bool {
       let c_env = roadmap_event_envelope(e: c)
       let r = release_event(linked_to: c, at: "2026-11-03")
       let r_env = roadmap_event_envelope(e: r)
-      let read_row = fn(envs: List<RoadmapEventEnvelope>) { roadmap_projection_row_read(
+      match roadmap_projection_row_read(
         node: nid(s: "item-a"), read_date: Iso8601CivilDate { year: 2026, month: 11, day: 24 },
         workers: BeltCapacity { max_concurrent: 4 }, findings_count: findings,
-        standings: open_standings(), envs: envs) }
-      match read_row([c_env, r_env]) {
-        ProjectionRowBuilt { row: ordered, day_priors: _ } => match read([r_env, c_env]) {
-          ProjectionRowBuilt { row: shuffled, day_priors: _ } =>
-            match ordered.latest_event {
-              Present { value: lo } => match shuffled.latest_event {
-                Present { value: ls } => lo == "released" && ls == lo && count(shuffled.in_flight) == count(ordered.in_flight)
+        standings: open_standings(), envs: [c_env, r_env]) {
+        ProjectionRowBuilt { row: ordered, day_priors: _ } =>
+          match roadmap_projection_row_read(
+            node: nid(s: "item-a"), read_date: Iso8601CivilDate { year: 2026, month: 11, day: 24 },
+            workers: BeltCapacity { max_concurrent: 4 }, findings_count: findings,
+            standings: open_standings(), envs: [r_env, c_env]) {
+            ProjectionRowBuilt { row: shuffled, day_priors: _ } =>
+              match ordered.latest_event {
+                Present { value: lo } => match shuffled.latest_event {
+                  Present { value: ls } => lo == "released" && ls == lo && count(shuffled.in_flight) == count(ordered.in_flight)
+                  Absent => false
+                }
                 Absent => false
               }
-              Absent => false
-            }
-          ProjectionRowRefused { refusal: _ } => false
-        }
+            ProjectionRowRefused { refusal: _ } => false
+          }
         ProjectionRowRefused { refusal: _ } => false
       }
     }

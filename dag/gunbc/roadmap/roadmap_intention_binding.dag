@@ -160,6 +160,7 @@ data roadmap_intention_bindings: List<IntentionBinding> = [
   serves(node: "roadmap-dispatch-carries-leaf", module_path: planning_consolidation_intention, plan: "planning_consolidation_plan", layer: 5),
   serves(node: "roadmap-typed-handback", module_path: planning_consolidation_intention, plan: "planning_consolidation_plan", layer: 1),
   serves(node: "roadmap-work-item-projection", module_path: planning_consolidation_intention, plan: "planning_consolidation_plan", layer: 5),
+  serves(node: "roadmap-work-item-projection-unbound-coverage", module_path: planning_consolidation_intention, plan: "planning_consolidation_plan", layer: 5),
   serves(node: "roadmap-timeline-page", module_path: planning_consolidation_intention, plan: "planning_consolidation_plan", layer: 6),
   serves(node: "roadmap-return-to-principal-records-acceptance", module_path: planning_consolidation_intention, plan: "planning_consolidation_plan", layer: 1),
   // gunbc.plans.desired_state_follows_the_machine (operator's tiered breakage report, 2026-11-21). The
