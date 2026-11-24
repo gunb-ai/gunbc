@@ -184,3 +184,64 @@ test fn corpus_probes_no_longer_refused_at_emission_holds() -> Bool {
 test fn corpus_probes_first_refusal_is_not_transform_shape_holds() -> Bool {
   !(string_contains(reason_for(path: corpus_path, name: corpus_name), "transform_shape_invalid"))
 }
+
+// ---- REASON TRIANGULATION BATTERY (spare acquisition): pin WHERE each failing subject refuses. ----
+// Defect side (inside the authorized (ii) route: the PrefixToken row is reached but not found/spelled) ->
+//   lexemes target_operator_realization_catalog_miss, target_operator_realization_wire_malformed,
+//   target_operator_shape_wire_malformed, target_operator_shape_field_token.
+// Wall side (operand tokenization is binary-infix only, the declined HALF-2 widening) ->
+//   lexeme target_value_expr_operand_wire_malformed (plus field_callable_arg / field_operand region).
+// Literal spelling -> target_value_expr_int_literal_form_unwired / _form_malformed / _wire_malformed.
+// The negate subject (op_negate, NO catalog row) is the reference: its reason MUST contain catalog_miss. If
+// prefix_not (op_not, WITH the declared PrefixToken row) yields the SAME catalog_miss, the (ii) route never
+// found the row -> a DEFECT to fix inside the authorization. If prefix_not instead lands on an operand/shape
+// lexeme while negate stays catalog_miss, the route found the row and the operand tokenization is the wall.
+
+fn probe(p: String, n: String, needle: String) -> Bool {
+  string_contains(s: reason_for(path: p, name: n), pattern: needle)
+}
+
+// prefix_not (`!closed_alias`, op_not WITH a PrefixToken row) -- the positive (ii) control that FAILED emits.
+test fn pn_has_catalog_miss() -> Bool { probe(prefix_path, prefix_name, "catalog_miss") }
+test fn pn_has_op_realization_wire_malformed() -> Bool { probe(prefix_path, prefix_name, "operator_realization_wire_malformed") }
+test fn pn_has_op_shape_wire_malformed() -> Bool { probe(prefix_path, prefix_name, "operator_shape_wire_malformed") }
+test fn pn_has_op_shape_field_token() -> Bool { probe(prefix_path, prefix_name, "operator_shape_field_token") }
+test fn pn_has_operand_wire_malformed() -> Bool { probe(prefix_path, prefix_name, "operand_wire_malformed") }
+test fn pn_has_field_callable_arg() -> Bool { probe(prefix_path, prefix_name, "field_callable_arg") }
+test fn pn_has_arity() -> Bool { probe(prefix_path, prefix_name, "arity") }
+test fn pn_has_transform_shape() -> Bool { probe(prefix_path, prefix_name, "transform_shape") }
+test fn pn_has_body_scope_binding() -> Bool { probe(prefix_path, prefix_name, "body_scope_binding") }
+test fn pn_exact_operand_wire_malformed() -> Bool {
+  reason_for(path: prefix_path, name: prefix_name) == "target_value_expr_operand_wire_malformed"
+}
+
+// negate (`-x`, op_negate with NO row) -- the reference; expected catalog_miss.
+test fn ng_has_catalog_miss() -> Bool { probe(negate_path, negate_name, "catalog_miss") }
+test fn ng_has_operand_wire_malformed() -> Bool { probe(negate_path, negate_name, "operand_wire_malformed") }
+test fn ng_has_op_shape_wire_malformed() -> Bool { probe(negate_path, negate_name, "operator_shape_wire_malformed") }
+test fn ng_has_arity() -> Bool { probe(negate_path, negate_name, "arity") }
+test fn ng_exact_catalog_miss() -> Bool {
+  reason_for(path: negate_path, name: negate_name) == "target_operator_realization_catalog_miss"
+}
+
+// literal_compare (`n > 0`, numeral as an operator operand) -- the HALF-1 operand-numeral that FAILED emits.
+test fn lc_has_operand_wire_malformed() -> Bool { probe(literal_path, literal_name, "operand_wire_malformed") }
+test fn lc_has_field_callable_arg() -> Bool { probe(literal_path, literal_name, "field_callable_arg") }
+test fn lc_has_int_literal() -> Bool { probe(literal_path, literal_name, "int_literal") }
+test fn lc_has_catalog_miss() -> Bool { probe(literal_path, literal_name, "catalog_miss") }
+test fn lc_has_arity() -> Bool { probe(literal_path, literal_name, "arity") }
+test fn lc_has_transform_shape() -> Bool { probe(literal_path, literal_name, "transform_shape") }
+test fn lc_exact_operand_wire_malformed() -> Bool {
+  reason_for(path: literal_path, name: literal_name) == "target_value_expr_operand_wire_malformed"
+}
+
+// corpus (authored_is_leaf && !closed_alias && resolved_child_count > 0) -- first refusal was transform_shape.
+test fn co_has_transform_shape() -> Bool { probe(corpus_path, corpus_name, "transform_shape") }
+test fn co_has_operand_wire_malformed() -> Bool { probe(corpus_path, corpus_name, "operand_wire_malformed") }
+test fn co_has_catalog_miss() -> Bool { probe(corpus_path, corpus_name, "catalog_miss") }
+test fn co_has_int_literal() -> Bool { probe(corpus_path, corpus_name, "int_literal") }
+test fn co_has_arity() -> Bool { probe(corpus_path, corpus_name, "arity") }
+test fn co_has_body_scope_binding() -> Bool { probe(corpus_path, corpus_name, "body_scope_binding") }
+test fn co_first_lexeme_is_transform_shape() -> Bool {
+  reason_for(path: corpus_path, name: corpus_name) == "target_value_expr_reason_transform_shape_invalid"
+}
