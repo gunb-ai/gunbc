@@ -110,7 +110,7 @@ fn floor_preparation_session_owner() -> String {
 
 fn floor_preparation_required_env_missing() -> String {
   let missing = filter(
-    ["FLOOR_CHECKOUT", "FLOOR_HEAVY_SLOT", "FLOOR_CLAIM_BATCH", "FLOOR_GUNBC", "FLOOR_MANIFEST"],
+    ["FLOOR_CHECKOUT", "FLOOR_HEAVY_SLOT", "FLOOR_CLAIM_BATCH", "FLOOR_GUNBC", "FLOOR_MANIFEST", "HEAVY_OWNER"],
     predicate: fn(v) { floor_preparation_env_value(name: v) == "" })
   if length(xs: missing) > 0 { join(missing, ",") } else { "" }
 }
