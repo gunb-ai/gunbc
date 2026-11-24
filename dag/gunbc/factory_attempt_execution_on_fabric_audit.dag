@@ -162,35 +162,71 @@ type FactoryStateMapping {
   disposition: FactoryStateDisposition
 }
 
-// The ONE exhaustive match on FactoryStateDisposition (gunbc.design_argument::single_authority — one match,
-// free predicates derive from it, per the rule gunbc.materialization_kernel_closing_frontier_audit records
-// from review 47530). The three recommendations are a CLASSIFICATION, not a ladder: Delete / ReHome / Keep
-// carry no natural order, so no number is minted for them (review 98053 minor point — an Int encoding
-// would invent an ordering that does not exist); the match yields the classification NAME, and every
-// question about a recommendation is a question about that name.
+// The recommendation questions are TYPED: each predicate matches FactoryStateDisposition's arms directly,
+// so the compiler checks the coverage (add a fourth arm or mistype one and these stop compiling —
+// gunbc.design_argument::fail_closed, "stronger than catching a wrong state is making it unwritable";
+// gunbc.design_argument::closed_grounded_substrate, refusals are typed mismatches). Review 98063 retired
+// the string classification exactly because a string comparison is not checked: a mistyped literal
+// silently returned false. Neither a number (an order Delete/ReHome/Keep do not have — review 98053) nor
+// a string (a typed sum demoted to prose, review 98063): the arms answer as themselves.
 
-fn factory_attempt_disposition_kind(d: FactoryStateDisposition) -> NonEmptyStr {
-  match d {
-    Delete { because: _ } => "delete"
-    ReHome { needs: _ } => "rehome"
-    Keep { why: _ } => "keep"
+fn factory_attempt_mapping_is_delete(m: FactoryStateMapping) -> Bool {
+  match m.disposition {
+    Delete { because: _ } => true
+    ReHome { needs: _ } => false
+    Keep { why: _ } => false
   }
 }
 
-fn factory_attempt_mapping_kind(m: FactoryStateMapping) -> NonEmptyStr {
-  factory_attempt_disposition_kind(d: m.disposition)
-}
-
-fn factory_attempt_mapping_is_delete(m: FactoryStateMapping) -> Bool {
-  factory_attempt_mapping_kind(m: m) == "delete"
-}
-
 fn factory_attempt_mapping_is_rehome(m: FactoryStateMapping) -> Bool {
-  factory_attempt_mapping_kind(m: m) == "rehome"
+  match m.disposition {
+    Delete { because: _ } => false
+    ReHome { needs: _ } => true
+    Keep { why: _ } => false
+  }
 }
 
 fn factory_attempt_mapping_is_keep(m: FactoryStateMapping) -> Bool {
-  factory_attempt_mapping_kind(m: m) == "keep"
+  match m.disposition {
+    Delete { because: _ } => false
+    ReHome { needs: _ } => false
+    Keep { why: _ } => true
+  }
+}
+
+// The per-arm count over the mapping, at the row's identity grain (gunbc.design_argument::fail_closed —
+// a count PER ARM that can go to zero when an arm's rows are deleted, unlike the disjunction of
+// predicates, which no data can redden). Returns how many rows recommend each way.
+
+fn factory_attempt_delete_count(ms: List<FactoryStateMapping>) -> Int {
+  ms |> filter(m => factory_attempt_mapping_is_delete(m: m)) |> count()
+}
+
+fn factory_attempt_rehome_count(ms: List<FactoryStateMapping>) -> Int {
+  ms |> filter(m => factory_attempt_mapping_is_rehome(m: m)) |> count()
+}
+
+fn factory_attempt_keep_count(ms: List<FactoryStateMapping>) -> Int {
+  ms |> filter(m => factory_attempt_mapping_is_keep(m: m)) |> count()
+}
+
+// Every row answers EXACTLY ONE arm — the falsifiable covering control a disjunction of predicates can
+// never be: if any arm's match is edited wrong (a renamed arm, a mistyped pattern, a fourth arm added
+// without updating the predicates), some row stops answering exactly one and this reads false.
+
+fn factory_attempt_mappings_each_answer_exactly_one(ms: List<FactoryStateMapping>) -> Bool {
+  ms |> fold(
+    init: true,
+    f: (acc, m) => acc
+      && (
+        (
+          if factory_attempt_mapping_is_delete(m: m) { 1 } else { 0 }
+        )
+          + (if factory_attempt_mapping_is_rehome(m: m) { 1 } else { 0 })
+          + (if factory_attempt_mapping_is_keep(m: m) { 1 } else { 0 })
+        == 1
+      )
+  )
 }
 
 fn factory_attempt_state_mappings() -> List<FactoryStateMapping> {

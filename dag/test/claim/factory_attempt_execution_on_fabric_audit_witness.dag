@@ -9,14 +9,14 @@ import gunbc.audit_verdict {
   clause_verdict_rung,
 }
 import gunbc.factory_attempt_execution_on_fabric_audit {
-  FactoryStateMapping,
   factory_attempt_all_clauses_delivered,
   factory_attempt_clause_count,
   factory_attempt_clauses,
-  factory_attempt_mapping_is_delete,
-  factory_attempt_mapping_is_keep,
-  factory_attempt_mapping_is_rehome,
+  factory_attempt_delete_count,
+  factory_attempt_keep_count,
+  factory_attempt_mappings_each_answer_exactly_one,
   factory_attempt_progress_count,
+  factory_attempt_rehome_count,
   factory_attempt_state_mappings,
 }
 import gunbc.harness.harness_session_recovery { SessionRecoveryNone }
@@ -34,7 +34,7 @@ import gunbc.roadmap.roadmap_refused_retry { RefusedRetryOperatorOnly }
 import gunbc.roadmap.roadmap_session_placement { SessionWorkerOrdinals }
 import gunbc.roadmap.roadmap_submission { CaptureNotAttempted, CaptureUnreadable, SubmissionCaptureObservation }
 import gunbc.systemd_unit_invocation_liveness { DurableHoldHolderLiveness, HolderLivenessUnobservable }
-import std.types { Bool, List, NonEmptyStr }
+import std.types { Bool, NonEmptyStr }
 
 // THE CONSUMER of gunbc.factory_attempt_execution_on_fabric_audit and gunbc.audit_verdict
 // (gunbc.design_argument::consumption — a module nothing imports is dangling, however well modeled).
@@ -176,41 +176,20 @@ test fn verdict_rung_match_discriminates_three_rungs() -> Bool {
     })
 }
 
-// The mapping's integrity as an INSTRUMENT (not a per-row restatement): every row carries a recommendation
-// the classification recognizes, and all three recommendations occur. Delete / ReHome / Keep are a
-// classification, not a ladder (review 98053), so the check asks the three classification questions — a cut
-// that silently deleted every ReHome row, erasing the metering and work-product decisions the
-// realization-home ruling must carry, reds here. The recommendations are recommendations; the decision's
-// home is the operator's ruling (gunbc.design_ruling) and the work item, per the audit module header.
+// The mapping's integrity, FALSIFIABLE THREE WAYS (review 98063 retired the disjunction-of-predicates
+// check — no data could ever redden it; gunbc.design_argument::fail_closed — a covering control must be
+// able to fail). (1) per-arm counts: each of Delete / ReHome / Keep has at least one row, and a count
+// drops to zero when an arm's rows are deleted — erasing every ReHome row, for instance, would erase the
+// metering and work-product decisions the realization-home ruling must carry, and reds here; (2) every
+// row answers EXACTLY ONE arm: if an arm's typed match is edited wrong, some row stops answering exactly
+// one and this reads false; (3) the arms are TYPED matches on FactoryStateDisposition, not string
+// comparisons — a mistyped literal cannot silently return false. The recommendations remain
+// recommendations; the decision's home is the operator's ruling (gunbc.design_ruling) and the work item.
 
-fn all_mapping_rows_classified(ms: List<FactoryStateMapping>) -> Bool {
-  ms |> fold(
-    init: true,
-    f: (acc, m) => acc
-      && (
-        factory_attempt_mapping_is_delete(m: m)
-          || factory_attempt_mapping_is_rehome(m: m)
-          || factory_attempt_mapping_is_keep(m: m)
-      )
-  )
-}
-
-fn any_mapping_is_rehome(ms: List<FactoryStateMapping>) -> Bool {
-  ms |> fold(init: false, f: (acc, m) => acc || factory_attempt_mapping_is_rehome(m: m))
-}
-
-fn any_mapping_is_delete(ms: List<FactoryStateMapping>) -> Bool {
-  ms |> fold(init: false, f: (acc, m) => acc || factory_attempt_mapping_is_delete(m: m))
-}
-
-fn any_mapping_is_keep(ms: List<FactoryStateMapping>) -> Bool {
-  ms |> fold(init: false, f: (acc, m) => acc || factory_attempt_mapping_is_keep(m: m))
-}
-
-test fn mappings_all_classified_and_all_three_recommendations_present() -> Bool {
+test fn mappings_per_arm_counts_nonzero_and_each_row_answers_exactly_one() -> Bool {
   let ms = factory_attempt_state_mappings()
-  all_mapping_rows_classified(ms: ms)
-    && any_mapping_is_delete(ms: ms)
-    && any_mapping_is_rehome(ms: ms)
-    && any_mapping_is_keep(ms: ms)
+  factory_attempt_delete_count(ms: ms) > 0
+    && factory_attempt_rehome_count(ms: ms) > 0
+    && factory_attempt_keep_count(ms: ms) > 0
+    && factory_attempt_mappings_each_answer_exactly_one(ms: ms)
 }
