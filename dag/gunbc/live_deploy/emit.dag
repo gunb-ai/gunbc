@@ -1832,7 +1832,7 @@ fn tailscale_serve_apply_step(spec: DeploymentSpec) -> PipelineStep {
 // is no second literal to update, and the emitted command for srv1-live is byte-identical because
 // the derivation of /opt/gunbc/bin/gunbc is /opt/gunbc/bin. The mode and ownership are deliberately
 // unchanged: production's bin directory is root-owned, and switching this to the service-user-owned
-// install_d_owned_command would silently re-own a live directory to satisfy a twin.
+// #gunbc.owned_directory::owned_directory_ensure would silently re-own a live directory to satisfy a twin.
 
 fn path_parent_dir(path: String) -> String {
   match list_tail(xs: reverse(split(s: path, delimiter: "/"))) {
@@ -1846,7 +1846,7 @@ fn path_parent_dir(path: String) -> String {
 // creates under it are owner-only, or group-traversable for a dedicated worker account
 // (attempt_state_prepare_argvs_for_instance) — the leaf states its
 // requirement, the root cannot, so the root is loose by default rather than by decision. Ownership
-// is already derived (-o/-g project the service user from the spec, install_d_owned_command); the
+// is already derived (-o/-g project the service user from the spec, #gunbc.owned_directory::owned_directory_install_argv); the
 // mode is the one field on the triple still hand-picked.
 //
 // THE FIX IS NOT A TIGHTER LITERAL — replacing 0755 with 0700 would move the same undeclared
@@ -1891,13 +1891,9 @@ data install_d_mode_derivation_dissolution: DissolutionCondition = retires_disso
   }
 )
 
-fn install_d_owned_for_user(user: NonEmptyStr, path: String) -> String {
-  render_install_line(render: install_d_owned_render_for(user: user, path: path))
-}
-
 // THE TYPED OUTCOME behind the render surface: an install line is emitted only when the path passes
 // the checked constructor below; otherwise the refusal carries a NAMED cause, not prose. The String
-// surface (install_d_owned_command / install_d_owned_for_user) is the total DISPLAY of this outcome,
+// surface (render_install_line over this outcome) is the total DISPLAY of this outcome,
 // and its refusal arm is a FALSE COMMAND -- a spliced refusal stops the script at that point (gunbc.design_argument::fail_closed: no
 // plausible output fabricated in place of a stop), never a line that installs nothing but looks done.
 type InstallLineRender
@@ -1988,9 +1984,16 @@ fn render_install_line(render: InstallLineRender) -> String {
 // install_d_shared_setup_latent_coupling marker fired as designed — /opt/gunbc now has MULTIPLE
 // owned writers, so the shared-prefix `install -d /opt/gunbc` rides the FIRST owned writer in apply
 // order (GunbcSourceTree) once, and each deeper parent (/opt/gunbc/bin) rides its own writer.
-fn install_d_owned_command(spec: DeploymentSpec, path: String) -> String {
-  install_d_owned_for_user(user: spec.service.service_user, path: path)
-}
+//
+// THE CALLABLE THAT USED TO STAND HERE IS DELETED, in row shell-dag-live-deploy-install-owned:
+// install_d_owned_command (over the DeploymentSpec fixture) and install_d_owned_for_user rendered this
+// argv as shell WORDS for display, and a display with no caller is not an acting route
+// (gunbc.design_argument::consumption). Nothing in the tree installs an owned directory through them: the ONE
+// acting route is #gunbc.owned_directory::owned_directory_ensure over the plan this same argv authority
+// realizes (#gunbc.owned_directory::owned_directory_install_argv), which is also what the row's witness
+// now reads. WHAT REMAINS IN THIS FILE is the display of the typed outcome below, kept by no production
+// caller and by exactly one claim module's arms — dangling-by-consumption, stated here for the record
+// rather than left for a reader to rediscover.
 
 // A directory the plan holds no decision about is NOT installed (R2, one-deploy-path safety). The
 // old arm returned true on MemberNotInPlan -- an install with no decision, which is exactly the

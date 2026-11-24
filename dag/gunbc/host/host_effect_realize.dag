@@ -11237,7 +11237,7 @@ fn microvm_controller_stdin_step(name: String, command: ArgvCommand, stdin_paylo
 // owner AT CREATION, so there is no wrongly-owned intermediate state; each
 // path is its own step so a failure names the directory that failed rather
 // than a batch. The retired pipeline ran `install -d -m 0755 -o OWNER -g OWNER`
-// for each of these via install_d_owned_for_user; the flags are the same words.
+// for each of these via #gunbc.owned_directory::owned_directory_install_argv; the flags are the same words.
 fn microvm_controller_owned_dir_argv(path: NonEmptyStr) -> List<String> {
   coreutils_install_directory_owned_argv(
     mode: install_d_shared_mode,
@@ -11692,7 +11692,7 @@ fn microvm_controller_install_steps(
           expected: sha256_digest(hex: workspace_demo_image_identity()),
           subject: rootfs,
         },
-        // install_d_owned_for_user x4 -- one step per directory, each named, so
+        // #gunbc.owned_directory::owned_directory_install_argv x4 -- one step per directory, each named, so
         // a failure says which store could not be made.
         microvm_controller_argv_step(
           name: "slot controller receipt dir",

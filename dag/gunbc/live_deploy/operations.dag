@@ -115,7 +115,7 @@ fn systemctl_unmask_command(unit: NonEmptyStr, privileged: Bool) -> String {
 
 // install_directory_owned_command (mode/owner/group/path -> rendered install text) is DELETED here:
 // its one body was the exact composition shell_privileged_command_text_of_argv(coreutils_install_
-// directory_owned_argv(...)) that gunbc.live_deploy.emit install_d_owned_for_user now spells
+// directory_owned_argv(...)) that #gunbc.owned_directory::owned_directory_install_argv spells
 // directly against the argv authorities -- a second spelling of the same install words (gunbc.design_argument::single_authority). It had
 // no production consumer (grep-verified). The live ACT on an owned-directory leaf goes through the
 // ONE provider, gunbc.owned_directory owned_directory_ensure -- called for every ApplyLegEnsureDirectory
