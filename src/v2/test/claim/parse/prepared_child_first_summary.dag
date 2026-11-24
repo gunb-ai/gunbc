@@ -235,12 +235,16 @@ fn pcfs_plan_holds_shared_prefix(plan: PreparedChoicePlan) -> Bool {
   }
 }
 
+// fold_list, not a Cons pattern: the element type of a kernel container is carried through
+// fold_list's closure, while binding it through a Cons match pattern left it an unresolved type
+// variable and the field lookup on it failed ("no field 'next' on type 'T'"). Same idiom as
+// pcfs_prefix_rows below, which is the proven walker for this row type.
 fn pcfs_rows_hold_shared_prefix(rows: List<TokenPrefixRow>) -> Bool {
-  match rows {
-    Empty => false
-    Cons { head: row, tail: tail } =>
-      pcfs_plan_holds_shared_prefix(plan: row.next) || pcfs_rows_hold_shared_prefix(rows: tail)
-  }
+  fold_list(
+    xs: rows,
+    empty: false,
+    cons: fn(acc, row) { acc || pcfs_plan_holds_shared_prefix(plan: row.next) }
+  )
 }
 
 fn pcfs_token_map_holds_shared_prefix(entries: Map<Symbol, PreparedChoicePlan>) -> Bool {
@@ -251,12 +255,11 @@ fn pcfs_token_map_holds_shared_prefix(entries: Map<Symbol, PreparedChoicePlan>) 
 }
 
 fn pcfs_token_keys_hold(entries: Map<Symbol, PreparedChoicePlan>, keys: List<Symbol>) -> Bool {
-  match keys {
-    Empty => false
-    Cons { head: k, tail: t } =>
-      pcfs_plan_holds_shared_prefix(plan: pcfs_plan_for(entries: entries, key: k)) ||
-        pcfs_token_keys_hold(entries: entries, keys: t)
-  }
+  fold_list(
+    xs: keys,
+    empty: false,
+    cons: fn(acc, k) { acc || pcfs_plan_holds_shared_prefix(plan: pcfs_plan_for(entries: entries, key: k)) }
+  )
 }
 
 fn pcfs_word_map_holds_shared_prefix(entries: Map<String, PreparedChoicePlan>) -> Bool {
@@ -267,12 +270,11 @@ fn pcfs_word_map_holds_shared_prefix(entries: Map<String, PreparedChoicePlan>) -
 }
 
 fn pcfs_word_keys_hold(entries: Map<String, PreparedChoicePlan>, keys: List<String>) -> Bool {
-  match keys {
-    Empty => false
-    Cons { head: k, tail: t } =>
-      pcfs_plan_holds_shared_prefix(plan: pcfs_word_plan_for(entries: entries, key: k)) ||
-        pcfs_word_keys_hold(entries: entries, keys: t)
-  }
+  fold_list(
+    xs: keys,
+    empty: false,
+    cons: fn(acc, k) { acc || pcfs_plan_holds_shared_prefix(plan: pcfs_word_plan_for(entries: entries, key: k)) }
+  )
 }
 
 fn pcfs_probe_a_plan() -> PreparedChoicePlan {
