@@ -2998,17 +2998,17 @@ fn target_operator_realization_from_wire_row(row: Node) -> Outcome<TargetOperato
                             bind_outcome(
                               o: integer_decimal_magnitude_node_to_int(node: precedence_wire),
                               f: fn(precedence_level) {
-                                outcome_accepted(Present { value: precedence_level })
+                                outcome_accepted(optional_present(value: precedence_level))
                               }
                             )
-                          Rejected { diagnostics: _ } => outcome_accepted(Absent)
+                          Rejected { diagnostics: _ } => outcome_accepted(optional_absent())
                         },
                         fn(precedence) {
                           bind_outcome(
                             match find_named_child(root: row, name: ^target_operator_realization_field_chains) {
                               Accepted { value: chains_wire, diagnostics: _ } =>
                                 target_operator_chains_from_wire_node(wire: chains_wire)
-                              Rejected { diagnostics: _ } => outcome_accepted(Absent)
+                              Rejected { diagnostics: _ } => outcome_accepted(optional_absent())
                             },
                             fn(chains) {
                               outcome_accepted(
@@ -7024,7 +7024,11 @@ fn target_value_expression_operand_needs_grouping(
                   }
               }
           }
-        Rejected { diagnostics: _ } => false
+        // An operand shaped as a primitive apply whose operation cannot be decoded is WRAPPED:
+        // every unknown in the grouping rule fails closed (extra parens are correct by
+        // construction); there is no invariant making this arm unreachable, since the predicate is
+        // callable on any value-expression node.
+        Rejected { diagnostics: _ } => true
       }
     TargetValueExprConditional => true
     _ => false

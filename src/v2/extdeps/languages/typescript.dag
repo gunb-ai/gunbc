@@ -710,13 +710,14 @@ fn ts_add_operator_realization_row() -> Node {
 // and TypeScript needs no conversion; its own `as` would claim a numeric conversion the model did not
 // make.
 fn ts_coerce_operator_realization_row() -> Node {
-  // Level cites TypeScript's assertion syntax binding: `as` binds tighter than any binary operator
-  // (x as T + y parses as (x as T) + y). Reached when a cast apply is an operand of a grouped
-  // apply; the model reads it from this row, never its own.
-  target_operator_realization_node_with_precedence(
+  // No precedence edge, and deliberately so (review 98079): the row is OperandUnchanged — the
+  // emitter renders the operand's tokens with no grouping, so TypeScript's real `as` binding
+  // strength (as binds tighter than any binary operator, x as T + y == (x as T) + y) is NOT what
+  // this row realizes here; the cast is not spelled. A declared level would let an enclosing
+  // binary splice this operand's looser tokens ungrouped; Absent makes enclosing operators wrap.
+  target_operator_realization_node(
     operation: canonical_operation_op_coerce(),
-    shape: OperandUnchanged,
-    precedence_node: target_operator_precedence_level_node(level: 6)
+    shape: OperandUnchanged
   )
 }
 

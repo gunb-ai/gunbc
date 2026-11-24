@@ -5,8 +5,10 @@ import extdeps.uri { Uri, UriScheme, Http, Https, uri_scheme_inhabitants, uri_sc
 import std.algebra { Empty, list_snoc_item, fold_list }
 import std.optional { Absent, Optional, Present }
 import v2.std.compilers.target_model {
+  canonical_operation_op_add,
   canonical_operation_op_and,
   canonical_operation_op_lt,
+  canonical_operation_op_mul,
   InfixToken,
   target_model_canonical_operation_wire_node,
   target_model_named_edge,
@@ -21,6 +23,14 @@ import v2.std.compilers.target_model {
   target_operator_realization_node_with_precedence,
   target_operator_realization_node_with_precedence_and_chains,
   target_operator_realization_row_wire_schema_valid,
+  target_value_expression_binding_ref,
+  target_value_expression_operand_needs_grouping,
+  target_value_expression_primitive_apply,
+  target_value_expr_comparison_chain_refuses,
+  TargetRealizationCatalog,
+  TargetValueExpression,
+  TargetValueExprPrimitiveApply,
+  PrimitiveRealizationsUnwired,
   target_external_authority_bundle_node,
   target_external_authority_from_node,
   target_uri_scheme_discriminant
@@ -351,4 +361,142 @@ test fn operator_row_with_a_duplicated_chains_edge_refuses() -> Bool {
     Accepted { value: valid, diagnostics: _ } => valid == false
     Rejected { diagnostics: _ } => true
   }
+}
+
+// ---- GROUPING POLICY ARMS (decision-level; each Absent arm witnessed by name) -------------------
+// The grouping rule and the chaining rule fail closed in opposite SAFE directions: unknown
+// precedence WRAPS (extra parens), unknown chaining REFUSES (no fabricated permission). Each arm
+// below goes red only if its fail-open opposite is introduced.
+
+fn claim_grouping_catalog(rows: List<Node>) -> TargetRealizationCatalog {
+  TargetRealizationCatalog {
+    operators: target_operator_realizations_catalog_node(rows: rows),
+    primitives: PrimitiveRealizationsUnwired
+  }
+}
+
+fn claim_add_apply() -> TargetValueExpression {
+  target_value_expression_primitive_apply(
+    operation: canonical_operation_op_add(),
+    operands: [
+      target_value_expression_binding_ref(binding: ^claim_binding_x),
+      target_value_expression_binding_ref(binding: ^claim_binding_y)
+    ]
+  )
+}
+
+fn claim_lt_apply() -> TargetValueExpression {
+  target_value_expression_primitive_apply(
+    operation: canonical_operation_op_lt(),
+    operands: [
+      target_value_expression_binding_ref(binding: ^claim_binding_x),
+      target_value_expression_binding_ref(binding: ^claim_binding_y)
+    ]
+  )
+}
+
+fn claim_flat_binding() -> TargetValueExpression {
+  target_value_expression_binding_ref(binding: ^claim_binding_z)
+}
+
+test fn grouping_operand_precedence_absent_wraps() -> Bool {
+  target_value_expression_operand_needs_grouping(
+    operand: claim_add_apply(),
+    enclosing: canonical_operation_op_mul(),
+    is_right: false,
+    catalog: claim_grouping_catalog(rows: [
+      target_operator_realization_node(
+        operation: canonical_operation_op_add(),
+        shape: InfixToken { token: ^claim_token_plus }
+      ),
+      target_operator_realization_node_with_precedence(
+        operation: canonical_operation_op_mul(),
+        shape: InfixToken { token: ^claim_token_star },
+        precedence_node: target_operator_precedence_level_node(level: 5)
+      )
+    ])
+  )
+}
+
+test fn grouping_enclosing_precedence_absent_wraps() -> Bool {
+  target_value_expression_operand_needs_grouping(
+    operand: claim_add_apply(),
+    enclosing: canonical_operation_op_mul(),
+    is_right: false,
+    catalog: claim_grouping_catalog(rows: [
+      target_operator_realization_node_with_precedence(
+        operation: canonical_operation_op_add(),
+        shape: InfixToken { token: ^claim_token_plus },
+        precedence_node: target_operator_precedence_level_node(level: 4)
+      ),
+      target_operator_realization_node(
+        operation: canonical_operation_op_mul(),
+        shape: InfixToken { token: ^claim_token_star }
+      )
+    ])
+  )
+}
+
+// A primitive-apply operand whose operation edge is absent is NOT assumed tightest: the arm wraps.
+// Reachable from decoded models (the typed constructor always writes a decodable op edge).
+test fn grouping_undecodable_apply_operand_wraps() -> Bool {
+  target_value_expression_operand_needs_grouping(
+    operand: TargetValueExpression {
+      kind: TargetValueExprPrimitiveApply,
+      node: target_model_type_atom_node(identity: ^target_value_expression_primitive_apply_atom)
+    },
+    enclosing: canonical_operation_op_mul(),
+    is_right: false,
+    catalog: claim_grouping_catalog(rows: [
+      target_operator_realization_node_with_precedence(
+        operation: canonical_operation_op_mul(),
+        shape: InfixToken { token: ^claim_token_star },
+        precedence_node: target_operator_precedence_level_node(level: 5)
+      )
+    ])
+  )
+}
+
+test fn chains_absent_refuses_nested_comparison() -> Bool {
+  target_value_expr_comparison_chain_refuses(
+    catalog: claim_grouping_catalog(rows: [
+      target_operator_realization_node_with_precedence(
+        operation: canonical_operation_op_lt(),
+        shape: InfixToken { token: ^claim_token_lt },
+        precedence_node: target_operator_precedence_level_node(level: 3)
+      )
+    ]),
+    enclosing_op: canonical_operation_op_lt(),
+    operands: [claim_lt_apply(), claim_flat_binding()]
+  )
+}
+
+test fn chains_present_false_refuses_nested_comparison() -> Bool {
+  target_value_expr_comparison_chain_refuses(
+    catalog: claim_grouping_catalog(rows: [
+      target_operator_realization_node_with_precedence_and_chains(
+        operation: canonical_operation_op_lt(),
+        shape: InfixToken { token: ^claim_token_lt },
+        precedence_node: target_operator_precedence_level_node(level: 3),
+        chains_node: target_operator_chains_no_node()
+      )
+    ]),
+    enclosing_op: canonical_operation_op_lt(),
+    operands: [claim_lt_apply(), claim_flat_binding()]
+  )
+}
+
+test fn chains_present_true_permits_nested_comparison() -> Bool {
+  target_value_expr_comparison_chain_refuses(
+    catalog: claim_grouping_catalog(rows: [
+      target_operator_realization_node_with_precedence_and_chains(
+        operation: canonical_operation_op_lt(),
+        shape: InfixToken { token: ^claim_token_lt },
+        precedence_node: target_operator_precedence_level_node(level: 3),
+        chains_node: target_operator_chains_yes_node()
+      )
+    ]),
+    enclosing_op: canonical_operation_op_lt(),
+    operands: [claim_lt_apply(), claim_flat_binding()]
+  ) == false
 }

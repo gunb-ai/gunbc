@@ -1317,10 +1317,14 @@ fn rust_binop_operator_lex_rules() -> List<LexRule> {
 // and Rust needs no conversion; its own `as` would claim a numeric conversion the model did not
 // make.
 fn rust_coerce_operator_realization_row() -> Node {
-  target_operator_realization_node_with_precedence(
+  // No precedence edge: this row is OperandUnchanged, so the emitter renders its operand's tokens
+  // directly with no grouping (target_model.dag OperandUnchanged arm). A declared level here would
+  // let an enclosing binary treat the cast as atomic and splice its looser operand ungrouped —
+  // mul(x, coerce(add(a, b))) would render x * a + b, a silent meaning change. Absent precedence
+  // makes any enclosing operator wrap it: x * (a + b), correct by construction.
+  target_operator_realization_node(
     operation: canonical_operation_op_coerce(),
-    shape: OperandUnchanged,
-    precedence_node: target_operator_precedence_level_node(level: 6)
+    shape: OperandUnchanged
   )
 }
 
