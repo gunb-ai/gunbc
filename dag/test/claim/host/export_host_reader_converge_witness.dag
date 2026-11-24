@@ -209,6 +209,24 @@ test fn the_account_is_created_only_when_absent() -> Bool {
     && !stages(r: run(overrides: [])).contains("account-ensure")
 }
 
+// RED (Blocker 3a): an ensure-account leg that was DISPATCHED but got NO ANSWER reports the account's
+// existence as UNCONFIRMED ("it may have run on the host"), NOT the definite "could not be created" that a
+// never-dispatched ensure correctly gives. Reaching the ensure leg needs the account-check to report ABSENT
+// (id -u exit 1). Red on pre-fix production, whose ensure-account LegUnanswered arm fabricated "the reader
+// account could not be created" for a command that may have created it.
+test fn an_unanswered_ensure_account_is_unconfirmed_not_could_not_be_created() -> Bool {
+  let lost = LegUnanswered { cause: "the process group was killed before the host answered" }
+  let r = run(overrides: [LegOverride { leg: "account_exists", answer: bad() }, LegOverride { leg: "ensure_account", answer: lost }])
+  let c = match r.outcome { ReaderRowsRefused { stage: _, cause: cc } => cc _ => "" }
+  word(o: r.outcome) == "refused"
+    && stages(r: r).contains("account-ensure")
+    && !stages(r: r).contains("write-keys")
+    && string_contains(s: c, pattern: "UNCONFIRMED")
+    && string_contains(s: c, pattern: "may have run on the host")
+    && string_contains(s: c, pattern: "killed before the host answered")
+    && !string_contains(s: c, pattern: "could not be created")
+}
+
 // A drop-in write that did not converge is withdrawn and nothing is tested or reloaded.
 test fn an_unconverged_drop_in_is_withdrawn() -> Bool {
   let r = run(overrides: [LegOverride { leg: "write_drop_in", answer: bad() }])
