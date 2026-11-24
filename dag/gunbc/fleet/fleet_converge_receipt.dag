@@ -48,7 +48,7 @@ import gunbc.actions_run_binding {
 // FLEET_CONVERGE_EXPECTED_HOST carries the input into the step, and a plan whose observed host is
 // not the input's host refuses before writing anything -- artifact naming from an input was never
 // host evidence, and this is the row that makes the input a CHECK rather than a label.
-data fleet_converge_plan_receipt_schema: String = "fleet-converge-plan-receipt/v1"
+data fleet_converge_plan_receipt_schema: String = "fleet-converge-plan-receipt/v2"
 data fleet_converge_apply_receipt_schema: String = "fleet-converge-apply-receipt/v1"
 
 data fleet_converge_plan_receipt_path: String = "/tmp/fleet-converge-plan/plan_receipt.json"
@@ -71,6 +71,7 @@ type FleetConvergePlanReceipt {
   lease_owner_fingerprint: String
   lease_generation: Int
   apply_terminal: FleetConvergeApplyTerminal
+  run_artifact_dir: String
 }
 
 type FleetConvergeApplyReceipt {
@@ -93,7 +94,7 @@ fn fleet_converge_plan_receipt_identity_text(r: FleetConvergePlanReceipt) -> Str
     r.plan_artifact_hash, "|", r.observed_baseline_hex, "|",
     to_string(r.prior_generation), "|", to_string(r.planned_generation), "|", r.lease_key, "|",
     r.lease_resource_fingerprint, "|", r.lease_owner_fingerprint, "|", to_string(r.lease_generation), "|",
-    fleet_converge_apply_terminal_wire(terminal: r.apply_terminal),
+    fleet_converge_apply_terminal_wire(terminal: r.apply_terminal), "|", r.run_artifact_dir,
   ], "")
 }
 
@@ -136,6 +137,7 @@ fn fleet_converge_plan_receipt_json(r: FleetConvergePlanReceipt) -> JsonValue {
     json_kv(key: "lease_owner_fingerprint", value: json_string(s: r.lease_owner_fingerprint)),
     json_kv(key: "lease_generation", value: json_string(s: to_string(r.lease_generation))),
     json_kv(key: "apply_terminal", value: json_string(s: fleet_converge_apply_terminal_wire(terminal: r.apply_terminal))),
+    json_kv(key: "run_artifact_dir", value: json_string(s: r.run_artifact_dir)),
     json_kv(key: "receipt_identity", value: json_string(s: fleet_converge_plan_receipt_identity_hex(r: r))),
   ])
 }
@@ -229,7 +231,13 @@ fn fleet_converge_plan_receipt_decode(raw: String) -> FleetConvergePlanReceiptDe
                                                   JsonStringMemberFound { value: terminal_wire } =>
                                                 match fleet_converge_apply_terminal_of_wire(text: terminal_wire) {
                                                   Absent => FleetConvergePlanReceiptUnreadable { reason: join(["plan receipt apply_terminal wire is unknown: ", terminal_wire], "") }
-                                                  Present { value: planned_terminal } => {
+                                                  Present { value: planned_terminal } =>
+                                                match json_required_string_member(doc: doc, key: "run_artifact_dir") {
+                                                  JsonStringMemberRefused { reason: r } => FleetConvergePlanReceiptUnreadable { reason: r }
+                                                  JsonStringMemberFound { value: run_dir } => {
+                                                if run_dir == "" {
+                                                  FleetConvergePlanReceiptUnreadable { reason: "plan receipt run_artifact_dir is empty" }
+                                                } else {
                                                 let receipt = FleetConvergePlanReceipt {
                                                   run: run,
                                                   observed_host: observed_host,
@@ -244,6 +252,7 @@ fn fleet_converge_plan_receipt_decode(raw: String) -> FleetConvergePlanReceiptDe
                                                   lease_owner_fingerprint: lease_ofp,
                                                   lease_generation: lease_gen,
                                                   apply_terminal: planned_terminal,
+                                                  run_artifact_dir: run_dir,
                                                 }
                                                 match json_required_string_member(doc: doc, key: "receipt_identity") {
                                                   JsonStringMemberRefused { reason: r } => FleetConvergePlanReceiptUnreadable { reason: r }
@@ -255,6 +264,8 @@ fn fleet_converge_plan_receipt_decode(raw: String) -> FleetConvergePlanReceiptDe
                                                     }
                                                 }
                                               }
+                                                }
+                                                }
                                                 }
                                                 }
                                                 }
