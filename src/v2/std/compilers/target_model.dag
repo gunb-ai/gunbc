@@ -6457,6 +6457,53 @@ fn target_value_expression_emit_primitive_apply_arity_invalid_diagnostic(expr: T
   }
 }
 
+// A comparison operand that is itself a comparison would render as a chained comparison, which Rust
+// rejects (its comparison operators do not chain). The emitter refuses it with its own typed reason.
+fn target_value_expression_emit_comparison_operand_is_comparison_diagnostic(expr: TargetValueExpression) -> Diagnostic {
+  Diagnostic {
+    reason: ^target_value_expression_emit_comparison_operand_is_comparison,
+    at: node_locus(node: expr.node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_value_expr_canonical_operation_is_comparison(op: CanonicalOperation) -> Bool {
+  match op {
+    OrderingComparison { compare_field: _, predicate: _ } => true
+    EqualityComparison { eq_field: _, predicate: _ } => true
+    _ => false
+  }
+}
+
+fn target_value_expr_operand_is_comparison(operand: TargetValueExpression) -> Bool {
+  match target_value_expr_primitive_apply_operation_from_wire(wire: operand.node) {
+    Accepted { value: op, diagnostics: _ } => target_value_expr_canonical_operation_is_comparison(op: op)
+    _ => false
+  }
+}
+
+fn target_value_expr_operands_form_comparison_chain(
+  enclosing_op: CanonicalOperation,
+  operands: List<TargetValueExpression>
+) -> Bool {
+  if target_value_expr_canonical_operation_is_comparison(op: enclosing_op) {
+    match list_at_optional(xs: operands, index: 0) {
+      Present { value: left } =>
+        if target_value_expr_operand_is_comparison(operand: left) {
+          true
+        } else {
+          match list_at_optional(xs: operands, index: 1) {
+            Present { value: right } => target_value_expr_operand_is_comparison(operand: right)
+            Absent => false
+          }
+        }
+      Absent => false
+    }
+  } else {
+    false
+  }
+}
+
 fn target_operator_realization_catalog_miss_diagnostic(catalog: Node) -> Diagnostic {
   Diagnostic {
     reason: ^target_operator_realization_catalog_miss,
@@ -6863,6 +6910,18 @@ fn target_operator_shape_emit_primitive_apply_tokens(
           if length(xs: operands) != 2 {
             outcome_rejected(
               target_value_expression_emit_primitive_apply_arity_invalid_diagnostic(expr: expr)
+            )
+          } else if target_value_expr_operands_form_comparison_chain(
+            enclosing_op: enclosing_op,
+            operands: operands
+          ) {
+            // A comparison whose operand is itself a comparison renders as a chained comparison
+            // (a < b == c), which Rust rejects because its comparison operators do not chain. The
+            // emitter refuses it with its own typed reason rather than handing rustc output it will
+            // reject. This is a pure refusal: no currently-emitting subject forms such a chain, so
+            // nothing that renders correctly today changes a byte.
+            outcome_rejected(
+              target_value_expression_emit_comparison_operand_is_comparison_diagnostic(expr: expr)
             )
           } else {
             match list_at_optional(xs: operands, index: 0) {

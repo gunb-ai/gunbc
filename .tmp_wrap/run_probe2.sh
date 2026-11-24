@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+export PATH="$HOME/.cargo/bin:$PATH"
+S=$HOME/scratch/swift-hawk-617
+HEAD_SHA=9dfda4f26c261b1b37cd95359c5e687cf8260252
+ENTRY=src/v2/test/claim/self_host/stage0_prefix_inner_reason_probe2.dag
+FS=prefix_emits_holds,prefix_lex00_is_target_value_expr_operand_wire_malformed_holds,prefix_lex01_is_target_value_expression_emit_unsupported_kind_holds,prefix_lex02_is_target_value_expression_emit_operator_shape_unsupported_holds,prefix_lex03_is_target_value_expression_emit_primitive_apply_arity_invalid_holds,prefix_lex04_is_target_operator_realization_catalog_miss_holds,prefix_lex05_is_target_operator_realization_catalog_ambiguous_holds,prefix_lex06_is_target_operator_shape_wire_malformed_holds,prefix_lex07_is_target_operator_realization_wire_malformed_holds,prefix_lex08_is_target_canonical_operation_wire_malformed_holds,prefix_lex09_is_target_primitive_realization_arity_mismatch_holds,prefix_lex10_is_target_primitive_realization_missing_holds,prefix_lex11_is_target_primitive_realizations_unwired_holds,prefix_lex12_is_target_value_expr_reason_transform_shape_invalid_holds,corpus_emits_holds,corpus_lex00_is_target_value_expr_operand_wire_malformed_holds,corpus_lex01_is_target_value_expression_emit_unsupported_kind_holds,corpus_lex02_is_target_value_expression_emit_operator_shape_unsupported_holds,corpus_lex03_is_target_value_expression_emit_primitive_apply_arity_invalid_holds,corpus_lex04_is_target_operator_realization_catalog_miss_holds,corpus_lex05_is_target_operator_realization_catalog_ambiguous_holds,corpus_lex06_is_target_operator_shape_wire_malformed_holds,corpus_lex07_is_target_operator_realization_wire_malformed_holds,corpus_lex08_is_target_canonical_operation_wire_malformed_holds,corpus_lex09_is_target_primitive_realization_arity_mismatch_holds,corpus_lex10_is_target_primitive_realization_missing_holds,corpus_lex11_is_target_primitive_realizations_unwired_holds,corpus_lex12_is_target_value_expr_reason_transform_shape_invalid_holds,negate_emits_holds,negate_lex_is_arity_invalid_holds,nwrap_emits_holds,nwrap_stage_is_emission_holds,nwrap_stage_is_inference_holds,nwrap_stage_is_assembly_holds,nwrap_stage_is_producer_receipt_holds,nwrap_lex00_is_target_value_expr_operand_wire_malformed_holds,nwrap_lex01_is_target_value_expression_emit_unsupported_kind_holds,nwrap_lex02_is_target_value_expression_emit_operator_shape_unsupported_holds,nwrap_lex03_is_target_value_expression_emit_primitive_apply_arity_invalid_holds,nwrap_lex04_is_target_operator_realization_catalog_miss_holds,nwrap_lex05_is_target_operator_realization_catalog_ambiguous_holds,nwrap_lex06_is_target_operator_shape_wire_malformed_holds,nwrap_lex07_is_target_operator_realization_wire_malformed_holds,nwrap_lex08_is_target_canonical_operation_wire_malformed_holds,nwrap_lex09_is_target_primitive_realization_arity_mismatch_holds,nwrap_lex10_is_target_primitive_realization_missing_holds,nwrap_lex11_is_target_primitive_realizations_unwired_holds,nwrap_lex12_is_target_value_expr_reason_transform_shape_invalid_holds,corpus_reason_equals_prefix_reason_holds,nwrap_reason_equals_negate_reason_holds,conjpre_emits_holds,conjpre_stage_is_emission_holds,conjpre_reason_equals_prefix_reason_holds,disjpre_emits_holds,disjpre_stage_is_emission_holds,disjpre_reason_equals_prefix_reason_holds
+cd "$S/gunbc_green" || { echo "NO_TREE"; echo "CLAIM_BATCH_RC=9"; exit 9; }
+git -C "$S/gunbc_green" fetch origin session/swift-hawk-617 2>&1 | tail -2
+git -C "$S/gunbc_green" checkout -f "$HEAD_SHA" 2>&1 | tail -2
+echo "=== probe2 wrapper pid=$$ start=$(date -Iseconds) ==="
+echo "HOST=$(uname -n)"
+echo "BOOT=$(cut -c1-8 /proc/sys/kernel/random/boot_id)"
+echo "HEAD=$HEAD_SHA"
+echo "TREE_HEAD=$(git rev-parse HEAD)"
+echo "WORKING_TREE_DIRTY=$( [ -n "$(git status --porcelain --untracked-files=no)" ] && echo yes || echo no )"
+echo "CLAIM_BATCH_SHA256=$(sha256sum "$S/bin/claim_batch" | awk '{print $1}')"
+echo "ENTRY=$ENTRY"
+echo "FUNCTIONS=$FS"
+echo "FULL_COMMAND=claim_batch --source-root $S/gunbc_green/dag --source-root $S/gunbc_green/src/v2 --entry $ENTRY --functions $FS"
+HEAVY_OWNER=swift-hawk-617 "$HOME/bin/heavy-slot" bash -lc "cd $S/gunbc_green && timeout 5400 $S/bin/claim_batch --source-root $S/gunbc_green/dag --source-root $S/gunbc_green/src/v2 --entry $ENTRY --functions $FS"
+echo "CLAIM_BATCH_RC=$?"
+echo "=== wrapper end $(date -Iseconds) ==="

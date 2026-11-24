@@ -1288,20 +1288,6 @@ fn rust_coerce_operator_realization_row() -> Node {
   )
 }
 
-// RUST PREFIX-NOT SPELLING, DECLARED but NOT YET REACHED. canonical_operation_op_not is an
-// AlgebraPrimitive{boolean_algebra_field_complement}, so target_project_transform_primitive_apply_in_arrow_scope
-// still routes a one-operand `!` through the BINARY arity check (three positional children) and refuses it at
-// arity BEFORE this row is consulted. The row records Rust's `!` as a PrefixToken -- the shape the emitter already
-// renders for TypeScript unary-plus -- as this node's authorized groundwork. It is inert today: no
-// target_value_expression_primitive_apply(op_not, _) is constructed, so it changes no current emission. The unary
-// primitive-apply arity path that would reach it is a separate widening, reported rather than folded in.
-fn rust_not_operator_realization_row() -> Node {
-  target_operator_realization_node(
-    operation: canonical_operation_op_not(),
-    shape: PrefixToken { token: ^rust_token_bang }
-  )
-}
-
 // Rust's spelling of std.primitives contracts. The string_length row mirrors the frozen v1 `rt_function_registry` (callee = bridge_name,
 // shared-reference prefix = passes_by_ref, handle wrap = wraps_result). Their retirement is the rostered standing deficit
 // gunbc.guarantee_stall rust_primitive_rows_hand_spelled_from_the_seed_stall; the differential witness covers them meanwhile.
@@ -1366,7 +1352,6 @@ fn rust_operator_realizations_catalog_node() -> Node {
     rust_operator_realization_row(operation: canonical_operation_op_sub(), token: ^rust_token_minus),
     rust_operator_realization_row(operation: canonical_operation_op_mul(), token: ^rust_token_star),
     rust_operator_realization_row(operation: canonical_operation_op_div(), token: ^rust_token_slash),
-    rust_not_operator_realization_row(),
     rust_coerce_operator_realization_row()
   ])
 }
