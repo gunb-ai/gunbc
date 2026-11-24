@@ -4896,6 +4896,7 @@ jobs:
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/machine_intake/arrival_run.dag --function arrival_converge_wet
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
           FLEET_CONVERGE_ARRIVAL_SUBJECT: ${{ github.event.inputs.arrival_subject }}
