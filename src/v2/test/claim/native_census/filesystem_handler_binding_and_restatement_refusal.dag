@@ -2,23 +2,26 @@ module v2.test.claim.native_census.filesystem_handler_binding_and_restatement_re
 
 import v2.compiler.effect_demand {
   DemandRestatementRow,
-  DemandRestatementVerdict,
   AuthorizedRow,
   NewRestatementRowRefused,
+  FilesystemEffectSite,
   FilesystemEffectReach,
+  FilesystemEffectCensusReport,
   ReachedThroughHandler,
   ReachedFreePrimitiveDirectly,
   ReachedOutsideBoundHandler,
   filesystem_free_primitive_slug,
+  filesystem_effect_emitted_closure_population_rule,
   filesystem_effect_reach,
-  filesystem_effect_direct_reach_refusals,
+  filesystem_effect_site_eq,
+  filesystem_effect_reach_census,
   filesystem_effect_direct_reach_wall_holds,
   demand_restatement_row_verdict,
   demand_restatement_new_row_refusals,
   demand_restatement_wall_holds
 }
 import std.algebra { Cons, Empty, length }
-import std.types { List }
+import std.types { Bool, List }
 import v2.std.text { String }
 
 // EFFECTS-1 (egress-effects-1-filesystem-provider), THE RED FOR BOTH WALLS. This claim imports the two
@@ -31,7 +34,7 @@ import v2.std.text { String }
 // from the tree it audits), and has a reachable opposite answer -- a green control that still passes.
 
 // =============================================================================================
-// WALL 2 -- filesystem_read direct reach
+// WALL 2 -- filesystem_read direct reach, located BY SITE
 // =============================================================================================
 
 // The handler the native door binds reuses v1.compiler.emit_rust emit_file_call's semantics; the free
@@ -39,74 +42,165 @@ import v2.std.text { String }
 // control reaches through is a filesystem realization OTHER than the free primitive's slug.
 data filesystem_handler_slug: String = "filesystem_handler_read"
 
+// The two self_host.dag direct reaches, located by SITE (module + enclosing declaration + locus):
+// read_roster_manifest at :319 and fold_side_bytes at :329. They are distinct offenders -- keying on
+// (module, operation) alone would collapse them, which is the under-counting defect this lane must not
+// ship. The census is run with the NAMED population-source rule (filesystem_effect_emitted_closure_
+// population_rule) passed BY NAME, never an inline population literal.
+
+data self_host_read_roster_manifest_site: FilesystemEffectSite = FilesystemEffectSite {
+  module_path: "src/v2/compiler/self_host.dag",
+  enclosing_declaration: "read_roster_manifest",
+  site_locus: ":319"
+}
+
+data self_host_fold_side_bytes_site: FilesystemEffectSite = FilesystemEffectSite {
+  module_path: "src/v2/compiler/self_host.dag",
+  enclosing_declaration: "fold_side_bytes",
+  site_locus: ":329"
+}
+
+data handler_site: FilesystemEffectSite = FilesystemEffectSite {
+  module_path: "src/v2/compiler/compile.dag",
+  enclosing_declaration: "compiled_closure",
+  site_locus: ":1"
+}
+
 data filesystem_reach_through_handler: FilesystemEffectReach = filesystem_effect_reach(
-  calling_entry_module: "src/v2/compiler/compile.dag",
+  site: handler_site,
   operation: "filesystem_handler_read",
   handler_slug: filesystem_handler_slug
 )
 
-data filesystem_reach_free_primitive: FilesystemEffectReach = filesystem_effect_reach(
-  calling_entry_module: "src/v2/compiler/self_host.dag",
+data filesystem_reach_self_host_roster: FilesystemEffectReach = filesystem_effect_reach(
+  site: self_host_read_roster_manifest_site,
   operation: "filesystem_read",
   handler_slug: filesystem_handler_slug
 )
 
+data filesystem_reach_self_host_fold: FilesystemEffectReach = filesystem_effect_reach(
+  site: self_host_fold_side_bytes_site,
+  operation: "filesystem_read",
+  handler_slug: filesystem_handler_slug
+)
+
+// THE CENSUS OVER THE EMITTED-CLOSURE POPULATION, run with the named population-source rule as its
+// source. self_host.dag is the one in-population module (it is the module the native-emitted closure
+// under the NativeCliDriver binding reaches); its two direct reaches are the two located offenders.
+data self_host_emitted_closure_reaches: List<FilesystemEffectReach> = Cons {
+  head: filesystem_reach_self_host_roster,
+  tail: Cons { head: filesystem_reach_self_host_fold, tail: Empty }
+}
+
+data self_host_emitted_closure_report: FilesystemEffectCensusReport = filesystem_effect_reach_census(
+  population_source: filesystem_effect_emitted_closure_population_rule,
+  reaches: self_host_emitted_closure_reaches
+)
+
 test fn filesystem_handler_binding_green_control_holds() -> Bool {
-  filesystem_effect_direct_reach_wall_holds(reaches: Cons {
-    head: filesystem_reach_through_handler,
-    tail: Empty
-  })
+  let report = filesystem_effect_reach_census(
+    population_source: filesystem_effect_emitted_closure_population_rule,
+    reaches: Cons { head: filesystem_reach_through_handler, tail: Empty }
+  )
+  filesystem_effect_direct_reach_wall_holds(report: report)
+}
+
+// THE NAMED POPULATION SOURCE IS CARRIED, not a bare list: the census report names the emitted-closure
+// rule it was measured over (consumption of the declaration -- a reader sees WHERE the population came
+// from, and the call site passes the symbol BY NAME, no inline literal).
+test fn filesystem_census_report_names_its_population_source() -> Bool {
+  self_host_emitted_closure_report.population_source == filesystem_effect_emitted_closure_population_rule
+}
+
+// MULTIPLICITY: self_host.dag's two direct reaches are TWO distinct offenders in the census report, and
+// they are located at two distinct SITES (the wall does not collapse them to one). This is the defect
+// bold-ibex's counter had -- a (module, operation) key would have printed ONE.
+test fn filesystem_census_reports_two_distinct_sites_for_self_host() -> Bool {
+  let offenders = self_host_emitted_closure_report.offenders
+  (length(xs: offenders) == 2)
+    && (!filesystem_effect_site_eq(
+      left: self_host_read_roster_manifest_site,
+      right: self_host_fold_side_bytes_site
+    ))
 }
 
 test fn filesystem_read_direct_reach_refuses() -> Bool {
-  let reaches = Cons { head: filesystem_reach_free_primitive, tail: Empty }
-  (length(xs: filesystem_effect_direct_reach_refusals(reaches: reaches)) == 1)
-    && (!filesystem_effect_direct_reach_wall_holds(reaches: reaches))
+  let report = filesystem_effect_reach_census(
+    population_source: filesystem_effect_emitted_closure_population_rule,
+    reaches: Cons { head: filesystem_reach_self_host_roster, tail: Empty }
+  )
+  (length(xs: report.offenders) == 1)
+    && (!filesystem_effect_direct_reach_wall_holds(report: report))
 }
 
-test fn filesystem_read_direct_reach_names_its_cause() -> Bool {
+// THE CAUSE IS NAMED and the reach is located at its enclosing declaration + locus, not just its module.
+test fn filesystem_read_direct_reach_names_its_cause_and_site() -> Bool {
   match filesystem_effect_reach(
-    calling_entry_module: "src/v2/compiler/self_host.dag",
+    site: self_host_read_roster_manifest_site,
     operation: "filesystem_read",
     handler_slug: filesystem_handler_slug
   ) {
     ReachedFreePrimitiveDirectly {
-      calling_entry_module: entry,
+      site: site,
       operation: operation,
       cause: _
-    } => (entry == "src/v2/compiler/self_host.dag") && (operation == filesystem_free_primitive_slug)
-    ReachedThroughHandler { calling_entry_module: _, operation: _ } => false
-    ReachedOutsideBoundHandler { calling_entry_module: _, operation: _, cause: _ } => false
+    } =>
+      (site.module_path == "src/v2/compiler/self_host.dag")
+        && (operation == filesystem_free_primitive_slug)
+        && (site.enclosing_declaration == "read_roster_manifest")
+        && (site.site_locus == ":319")
+    ReachedThroughHandler { site: _, operation: _ } => false
+    ReachedOutsideBoundHandler { site: _, operation: _, cause: _ } => false
   }
 }
 
+// A THIRD site added at a new locus is a NEW offender, not a silent match against a rostered one: a
+// reach at :340 in the same module is distinct from both rostered sites.
+test fn filesystem_a_third_site_is_a_new_offender() -> Bool {
+  let third_site = FilesystemEffectSite {
+    module_path: "src/v2/compiler/self_host.dag",
+    enclosing_declaration: "read_roster_manifest",
+    site_locus: ":340"
+  }
+  (filesystem_effect_site_eq(left: third_site, right: self_host_read_roster_manifest_site) == false)
+    && (filesystem_effect_site_eq(left: third_site, right: self_host_fold_side_bytes_site) == false)
+    && (filesystem_effect_site_eq(left: third_site, right: third_site) == true)
+}
+
 // A filesystem operation that is neither the free primitive nor the bound handler's own slug is refused
-// as ReachedOutsideBoundHandler with its own named cause -- it is NOT silently accepted. This is the
-// fix for the dead handler_slug: the handler's identity is read, and a reach matching neither the
-// handler nor the free primitive is a hole, not a pass-through.
+// as ReachedOutsideBoundHandler with its own named cause -- NOT silently accepted. This is the fix for
+// the dead handler_slug: the handler's identity is read, and a reach matching neither the handler nor the
+// free primitive is a hole, not a pass-through.
 test fn filesystem_reach_neither_handler_nor_primitive_refuses() -> Bool {
   match filesystem_effect_reach(
-    calling_entry_module: "src/v2/compiler/unrelated.dag",
+    site: FilesystemEffectSite {
+      module_path: "src/v2/compiler/unrelated.dag",
+      enclosing_declaration: "unrelated_call",
+      site_locus: ":1"
+    },
     operation: "some_other_free_primitive",
     handler_slug: filesystem_handler_slug
   ) {
     ReachedOutsideBoundHandler {
-      calling_entry_module: entry,
+      site: site,
       operation: operation,
       cause: _
-    } => (entry == "src/v2/compiler/unrelated.dag") && (operation == "some_other_free_primitive")
-    ReachedFreePrimitiveDirectly { calling_entry_module: _, operation: _, cause: _ } => false
-    ReachedThroughHandler { calling_entry_module: _, operation: _ } => false
+    } => (site.module_path == "src/v2/compiler/unrelated.dag") && (operation == "some_other_free_primitive")
+    ReachedFreePrimitiveDirectly { site: _, operation: _, cause: _ } => false
+    ReachedThroughHandler { site: _, operation: _ } => false
   }
 }
 
 test fn filesystem_mixed_reach_refuses_only_the_direct_one() -> Bool {
-  let reaches = Cons {
-    head: filesystem_reach_through_handler,
-    tail: Cons { head: filesystem_reach_free_primitive, tail: Empty }
-  }
-  (length(xs: filesystem_effect_direct_reach_refusals(reaches: reaches)) == 1)
-    && (!filesystem_effect_direct_reach_wall_holds(reaches: reaches))
+  let report = filesystem_effect_reach_census(
+    population_source: filesystem_effect_emitted_closure_population_rule,
+    reaches: Cons {
+      head: filesystem_reach_through_handler,
+      tail: Cons { head: filesystem_reach_self_host_roster, tail: Empty }
+    }
+  )
+  (length(xs: report.offenders) == 1)
+    && (!filesystem_effect_direct_reach_wall_holds(report: report))
 }
 
 // =============================================================================================
