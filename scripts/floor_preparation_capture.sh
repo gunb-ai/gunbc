@@ -241,6 +241,20 @@ verify_binary() {
 # The population is a committed text file so both legs are built from ONE artifact:
 #   candidate|<module>|<claim>   eligible for the graded capture
 #   extra|<module>|<claim>       enrolled only so its refusal stays in the artifact
+# BOTH LEGS AT ONCE. An entry can carry candidate rows AND extra rows; emitting one --entry block per
+# kind made claim_batch resolve the same entry twice, which is preparation cost for nothing -- the exact
+# expense this node exists to remove. So the untrimmed argv aggregates an entry's claims across kinds into
+# a single block, and the per-entry witness audit sees one declared count per entry.
+entries_of_all() {
+  awk -F'|' '
+    $1 == "candidate" || $1 == "extra" {
+      if (!($2 in seen)) { seen[$2] = 1; order[++n] = $2 }
+      rows[$2] = (rows[$2] == "" ? $3 : rows[$2] "," $3)
+    }
+    END { for (i = 1; i <= n; i++) print order[i] "|" rows[order[i]] }
+  ' "$POPULATION"
+}
+
 entries_of() {
   awk -F'|' -v kind="$1" '
     $1 == kind {
@@ -264,13 +278,11 @@ write_argv_header() {
 build_argv_all() {
   local out=$1 kind entry functions
   write_argv_header "$out"
-  for kind in candidate extra; do
-    while IFS='|' read -r entry functions; do
-      [ -n "$entry" ] || continue
-      [ -n "$functions" ] || fail "entry $entry enrolled with an empty --functions list"
-      printf '%s\n%s\n%s\n%s\n' "--entry" "$entry" "--functions" "$functions" >> "$out"
-    done < <(entries_of "$kind")
-  done
+  while IFS='|' read -r entry functions; do
+    [ -n "$entry" ] || continue
+    [ -n "$functions" ] || fail "entry $entry enrolled with an empty --functions list"
+    printf '%s\n%s\n%s\n%s\n' "--entry" "$entry" "--functions" "$functions" >> "$out"
+  done < <(entries_of_all)
   echo "ARGV_WRITTEN=$out ARGS=$(wc -l < "$out")"
 }
 
@@ -505,13 +517,13 @@ main() {
         [ "$tree" = "$EXPECT_TREE" ] || fail "checkout tree $tree is not the expected $EXPECT_TREE"
       fi
       build_argv_all "$OUTDIR/argv-U.txt"
-      run_leg U "$OUTDIR/argv-U.txt" 3300 "$OUTDIR/untrimmed-run.log" "$OUTDIR/untrimmed-time.txt" || fail "the untrimmed leg was refused"
+      run_leg U "$OUTDIR/argv-U.txt" "${FLOOR_CAPTURE_TIMEOUT_U:-5400}" "$OUTDIR/untrimmed-run.log" "$OUTDIR/untrimmed-time.txt" || fail "the untrimmed leg was refused"
       mkdir -p "$OUTDIR"
       PASSNAMES=$OUTDIR/passnames.txt
       kept "$OUTDIR/untrimmed-run.log" "$OUTDIR/untrimmed-rows.tmp"
       grep '^PASS ' "$OUTDIR/untrimmed-rows.tmp" | sed 's/^PASS //' > "$PASSNAMES"
       build_argv_graded "$OUTDIR/argv-G.txt"
-      run_leg G "$OUTDIR/argv-G.txt" 2100 "$OUTDIR/graded-run.log" "$OUTDIR/graded-time.txt" || fail "the graded leg was refused"
+      run_leg G "$OUTDIR/argv-G.txt" "${FLOOR_CAPTURE_TIMEOUT_G:-4200}" "$OUTDIR/graded-run.log" "$OUTDIR/graded-time.txt" || fail "the graded leg was refused"
       [ "$(count_of "$OUTDIR/graded-run.log" 'FAIL ')" = "0" ] || fail "the graded capture is not green"
       [ "$(count_of "$OUTDIR/graded-run.log" 'UNOBSERVED ')" = "0" ] || fail "the graded capture has unobserved claims"
       GRADED_LOG=$OUTDIR/graded-run.log
