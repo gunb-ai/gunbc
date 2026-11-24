@@ -156,7 +156,7 @@ fn gunbc_invoke_step_emit_locus() -> Locus {
 fn gunbc_invoke_word_wall_diagnostic(word: String) -> Diagnostic {
   Diagnostic {
     reason: symbol_intern_lexeme(lexeme: concat(gunbc_invoke_word_wall_reason_prefix, gunbc_invoke_sanitize_word(word: word))),
-    at: gunbc_invoke_step_emit_locus,
+    at: gunbc_invoke_step_emit_locus(),
     correction: Unavailable { reason: UserInputBoundary }
   }
 }
