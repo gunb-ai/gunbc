@@ -88,10 +88,10 @@ fn parse_extent_block_tokens() -> List<Token> {
 
 fn parse_extent_parse(root: GrammarRoot, tokens: List<Token>) -> Outcome<v2.compiler.parse.ParseArtifact> {
   let at = invariant_port_locus(port: ^parse_stage_locus_port, invariant: ^parse_production_extent_test_grammar_contract)
-  match grammar_validate_for_parse(root: root, at: at) {
+  match grammar_validate_and_analyze(root: root, at: at) {
     Rejected { diagnostics: d } => Rejected { diagnostics: d }
-    Accepted { value: validated, diagnostics: _ } =>
-      parse_production(tokens: tokens, validated: validated, production_name: ^parse_extent_block)
+    Accepted { value: modeled, diagnostics: _ } =>
+      parse_production(tokens: tokens, modeled: modeled, production_name: ^parse_extent_block)
   }
 }
 
