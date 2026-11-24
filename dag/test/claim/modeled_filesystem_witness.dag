@@ -151,9 +151,9 @@ fn dispatcher_refusal_reason_with_effects() -> String {
       true
     },
   ) {
-    WitnessReturned { .. } => "",
-    WitnessRefused { diagnostic } => witness_diagnostic_rendered_reason(diagnostic: diagnostic),
-    WitnessInterrupted { .. } => "interrupted",
+    WitnessReturned { value, route, state } => "",
+    WitnessRefused { diagnostic, route, state } => witness_diagnostic_rendered_reason(diagnostic: diagnostic),
+    WitnessInterrupted { at, route, state, now } => "interrupted",
   }
 }
 
