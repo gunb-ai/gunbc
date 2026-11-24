@@ -1,284 +1,159 @@
 #!/usr/bin/env bash
-# Re-derive the witness floor's preparation-versus-claim split from a required-floor run.
+# SCAFFOLD: hand-written shell (Rule 8: every consumer modelled). Dissolves when
+# v2.workflow.bash_emit (gunbc #5828) emits this file from a modelled script.
 #
-# SCAFFOLD - dissolve-on: the orchestration-to-shell bash-emit capability
-#   (v2.workflow.bash_emit / bash_emit_stmts, gunbc #5828). Every step this file performs by hand --
-#   pin-and-verify the released binary against release-bins.manifest, build the claim_batch argv from the
-#   committed population file, invoke it inside the caller's heavy slot, keep the line shapes a run
-#   prints, fold them at module grain, splice the generated block into the authority -- is a node tree
-#   over the SINGLE authority `v2.workflow.floor_preparation_split`, which owns the phase grammar, the
-#   classes, and every refusal. This shell realizes that model; it is not a second source of truth about
-#   what preparation is. When those node kinds land, this file is EMITTED from the model rather than
-#   hand-written, and the model does not change.
+# THE FLOOR PREPARATION CAPTURE TOOL -- v2.workflow.floor_preparation_split, in one place.
 #
-# CONSUMERS (Rule 8: a file automation reads declares them). (1) The witnesses in
-# dag/test/claim/floor/floor_preparation_split_witness.dag read THIS FILE with filesystem_read and refuse
-# if its fold vocabulary drifts from the model's grammar table -- editing the tables below changes what
-# those claims decide. (2) `floor_preparation_capture`, `floor_preparation_capture_provenance`,
-# `floor_preparation_untrimmed_capture`, `floor_preparation_untrimmed_capture_provenance` and
-# `floor_preparation_requested_rows` in the authority are generated from this file's output; a hand edit
-# here silently changes committed measurement rows on the next splice. (3) Any session re-deriving the
-# split, per the ask= line the entry point prints.
+# WHAT IT RUNS, AND WHAT IT DOES NOT RUN.
+# This tool supplies logs and runs binaries. It folds NOTHING. The measurement -- classifying each
+# instrument line, charging it to the preparation side or the claim side, summing it at module grain,
+# and REFUSING rows it cannot read -- is the .dag: `v2.workflow.floor_preparation_split`, executed by
+# the released binaries. Two executions do all the adjudicating:
+#   * the CLAIMS leg runs `claim_batch --claim-run` over
+#       dag/test/claim/floor/floor_preparation_split_witness.dag
+#     whose claims re-derive the split from the committed rows and refuse an empty, unpaired,
+#     verdict-less or unprovenanced capture (`floor_preparation_the_committed_capture_is_measured_not_authored`).
+#     The harness refuses unless every one of the eighteen claims below prints its own PASS line.
+#   * the REPORT leg runs the released `gunbc run --function floor_preparation_split_report`, whose
+#     refusal PRINTS the fold's split String -- the documented convention at
+#     src/v2/workflow/floor_cost_debt.dag ("the refusal is the correct behaviour rather than a
+#     workaround"). The printed `floor-preparation-split ...` line is the model's own reading, never
+#     a shell rendering of it.
+# The shell's only gates are supply-integrity gates on the RUNNER: the pinned binary against
+# release-bins.manifest, a non-empty log, the argv defect ("has no --function or --functions"),
+# the workspace_root refusal, a panic, and that each entry reported the witness count the argv
+# declared. A leg that exits 0 without its named lines is a FAIL here, not a pass.
 #
-# This is the entry point node `ci-cost-floor-preparation-cut` demands: it does not quote a figure out
-# of a log, it READS THE PHASE LINES A RUN PRINTS, at module grain, and writes the rows the authority
-# `src/v2/workflow/floor_preparation_split.dag` folds. That authority's own claims are what make the
-# numbers checkable -- conservation, the fill/pair counterfactual, the deletion margin, the refusal set.
-# This script is a GENERATOR, never a source: the cost fields are values only the native binary
-# produces, so a hand-typed one here or in the model is a fabrication by rule.
+# USAGE (run these from anywhere; --checkout is the git checkout that owns the sources):
+#   bash scripts/floor_preparation_capture.sh run \
+#     --checkout <git-checkout> --binary <claim_batch> --gunbc <released gunbc> \
+#     --manifest <release-bins.manifest> --expect-sha256 <sha> --expect-gunbc-sha256 <sha> \
+#     --population dag/test/claim/floor/floor_preparation_split_population.txt \
+#     --outdir <dir> [--write]
+#   bash scripts/floor_preparation_capture.sh report --checkout <git-checkout> --binary <claim_batch> \
+#     --gunbc <released gunbc> --report-log <run-log> [--report-label <name>] [--write]
 #
-# It is shell and not Python because `.gitignore:172` (`*.py`, owner gunbc.repo_workspace) keeps Python
-# "outside the committed substrate -- local dev tooling only; never committed". A measurement entry
-# point nobody can commit is a measurement nobody can re-run, so the instrument lives in the substrate.
-#
-# MODES
-#   report  Fold any log(s) and print the split. No execution, no writes -- the cheap re-derivation:
-#             scripts/floor_preparation_capture.sh report --report-log <log> --report-label full
-#   fold    Re-derive from logs already on disk and splice the generated blocks into the authority:
-#             scripts/floor_preparation_capture.sh fold --untrimmed-log <log> --graded-log <log> \
-#               --population <txt> --outdir <dir> --provenance binary_sha256=<sha> \
-#               --provenance head_sha=<sha> [--write]
-#   run     Execute both legs against the pinned released claim_batch, inside the CALLER's heavy slot:
-#             HEAVY_OWNER=<session> ~/bin/heavy-slot \
-#               scripts/floor_preparation_capture.sh run --checkout <dir> --binary <claim_batch> \
-#               --expect-sha256 <sha> --expect-tree <tree> --population <txt> --outdir <dir> --write
-#
-# THE TWO LEGS. `untrimmed` enrolls every claim in the population, green and refused together, so the
-# artifact shows what the floor actually pays and keeps each refused claim's own refusal line beside it.
-# `graded` re-runs only what came back PASS; that is the capture the split is folded from, so a
-# committed capture is green by construction rather than by belief.
-#
-# WHAT IT REFUSES, and why each refusal is hard rather than advisory. A leg whose argv lacks
-# `--functions` prints an error and exits 2 while its caller's harness still reports green -- a five-leg
-# batch in this lane died exactly that way with HARNESS_RC=0. A 0-byte binary, or one hashing as the
-# empty string, is a truncated download that exits 0. An entry that never reported its witness count
-# means the leg did not do what the argv asked. A `[floor-shared-fill]`/`[floor-reach-probe]` pairing
-# mismatch means a fold would bill one shared-artifact build twice -- the exact direction the ticket's
-# premise wants inflated. And a FAIL entering the graded capture would let "the capture is green" mean
-# "nobody looked".
-
+# WHY TWO LEGS, AND WHY BOTH ARE KEPT. The untrimmed leg enrolls every candidate AND every extra
+# row; closure-authority refusals live there with their cause printed by the fold, never hidden by a
+# name pattern. The graded leg enrolls only what the untrimmed run proved it could pass. A split
+# computed on the trimmed closure alone understates the cost this node exists to remove, so the
+# artifact states both populations and the claims relate them.
 set -u
 
 MODE=${1:-}
-[ -n "$MODE" ] || { echo "usage: $0 run|fold|report [options]" >&2; exit 2; }
 shift || true
 
-CHECKOUT=$PWD
+CHECKOUT=""
 BINARY=""
+GUNBC=""
+MANIFEST=""
 EXPECT_SHA=""
-EXPECT_TREE=""
+EXPECT_GUNBC_SHA=""
 POPULATION=""
-OUTDIR="capture"
-GRADED_LOG=""
-UNTRIMMED_LOG=""
+OUTDIR="."
 AUTHORITY=""
 PROVENANCE=""
+WRITE=0
+EXPECT_TREE=""
 REPORT_LOGS=""
 REPORT_LABELS=""
-MANIFEST=""
-WRITE=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --checkout) CHECKOUT=$2; shift 2 ;;
     --binary) BINARY=$2; shift 2 ;;
+    --gunbc) GUNBC=$2; shift 2 ;;
+    --manifest) MANIFEST=$2; shift 2 ;;
     --expect-sha256) EXPECT_SHA=$2; shift 2 ;;
-    --expect-tree) EXPECT_TREE=$2; shift 2 ;;
+    --expect-gunbc-sha256) EXPECT_GUNBC_SHA=$2; shift 2 ;;
     --population) POPULATION=$2; shift 2 ;;
     --outdir) OUTDIR=$2; shift 2 ;;
-    --graded-log) GRADED_LOG=$2; shift 2 ;;
-    --untrimmed-log) UNTRIMMED_LOG=$2; shift 2 ;;
     --authority) AUTHORITY=$2; shift 2 ;;
     --provenance) PROVENANCE="$PROVENANCE $2"; shift 2 ;;
-    --manifest) MANIFEST="$2"; shift 2 ;;
-    --report-log) REPORT_LOGS="$REPORT_LOGS $2"; shift 2 ;;
+    --expect-tree) EXPECT_TREE=$2; shift 2 ;;
+    --report-log) REPORT_LOGS="$REPORT_LOGS $2"; REPORT_LABELS="$REPORT_LABELS ${REPORT_LABEL_N:-run}"; shift 2 ;;
     --report-label) REPORT_LABELS="$REPORT_LABELS $2"; shift 2 ;;
     --write) WRITE=1; shift ;;
-    *) echo "CAPTURE_FAIL: unknown argument $1" >&2; exit 2 ;;
+    *) echo "CAPTURE_FAIL: unknown option $1" >&2; exit 1 ;;
   esac
 done
 
 fail() { echo "CAPTURE_FAIL: $*" >&2; exit 1; }
 
+# The claim roster. Eighteen names, and they are the roster that runs: the witness module's header
+# lists the same set and audit_roster() below refuses if the two ever disagree.
+WITNESS_MODULE=dag/test/claim/floor/floor_preparation_split_witness.dag
+WITNESS_ROSTER="floor_preparation_capture_grammar_is_closed,floor_preparation_split_conserves_to_the_independent_total,floor_preparation_deleting_a_costed_line_moves_the_total_by_its_own_cost,floor_preparation_the_fold_bills_the_reach_probe_fill_once,floor_preparation_committed_fill_rows_are_paired,floor_preparation_the_fold_refuses_what_it_cannot_read,floor_preparation_module_attribution_accounts_for_every_non_phase_costed_row,floor_preparation_verdict_rows_match_an_independent_prefix_scan,floor_preparation_preparation_side_dominates_the_claim_side,floor_preparation_entry_resolve_is_charged_to_the_module_it_names,floor_preparation_preparation_sides_partition_by_scale,floor_preparation_the_committed_census_is_honest,floor_preparation_the_excluded_population_is_stated_with_its_causes,floor_preparation_the_untrimmed_leg_is_the_same_floor,floor_preparation_the_split_fold_is_not_the_cost_debt_fold,floor_preparation_the_committed_capture_is_measured_not_authored,floor_preparation_the_capture_tool_runs_the_fold_and_holds_none,floor_preparation_the_roadmap_names_the_floor_fold"
+WITNESS_ROSTER_COUNT=18
+
+# Transport only: which lines of a run log are instrument lines. The MEANING of every one of these
+# lines -- phase vocabulary, cost fields, side of the split, refusals -- is decided by the model, and
+# claim 18 reads this file to make sure the model's vocabulary was never re-implemented here.
+KEEP='^\[floor-phase\]|^\[resolve\]|^\[witness\]|^\[floor-reach-probe\]|^\[floor-shared-fill\]|^(PASS|FAIL|UNOBSERVED) '
 EMPTY_SHA=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 ARGV_DEFECT="has no --function or --functions"
-KEEP='^(\[floor-phase\]|\[resolve\]|\[floor-shared-fill\]|\[floor-reach-probe\]|\[witness\]|PASS |FAIL |UNOBSERVED |claim_batch: resolving |claim_batch: entry group|claim_batch: whole-tree|claim_batch: resolve failed)'
-BEGIN='// === BEGIN GENERATED CAPTURE BLOCK (scripts/floor_preparation_capture.sh) ==='
-ENDMARK='// === END GENERATED CAPTURE BLOCK ==='
+BEGIN='// BEGIN GENERATED CAPTURE BLOCK'
+ENDMARK='// END GENERATED CAPTURE BLOCK'
 
 kept() { grep -E "$KEEP" "$1" > "$2" || true; }
 count_of() { local n; n=$(grep -cE "^$2" "$1" || true); echo "${n:-0}"; }
 
 # ----------------------------------------------------------------------------------------------
-# THE FOLD, mirrored from the authority so an ARBITRARY log can be measured without a commit. This
-# table is a DELIBERATE duplicate of `floor_preparation_phase_rows` in
-# src/v2/workflow/floor_preparation_split.dag, and the witness
-# `floor_preparation_the_capture_tool_folds_the_same_phase_grammar` reads THIS FILE with
-# filesystem_read and refuses if the two vocabularies drift.
+# THE PINNED BINARIES. Every leg runs the pinned claim_batch; every report runs the released gunbc.
+# A 0-byte download that exits 0 has fooled this lane, so the guards are explicit and they are
+# printed per invocation, beside the manifest line that pins the same digest.
 # ----------------------------------------------------------------------------------------------
-fold_report() {
-  local log=$1 label=$2 status
-  [ -s "$log" ] || fail "log $log is missing or empty"
-  grep -E "$KEEP" "$log" | awk -v label="$label" '
-    BEGIN { resolves = 0; refused = 0
-      cost["module-index"] = "wall_ms"
-      cost["declarer-discovery"] = "wall_ms"
-      cost["whole-tree-graph-facts"] = "wall_ms"
-      cost["declarer-closure"] = "wall_ms"
-      cost["closure-strict-resolve"] = "wall_ms"
-      cost["gate-closure"] = "wall_ms"
-      cost["reference-closure-index"] = "wall_ms"
-      cost["bare-reference-edge-index-warm"] = "wall_ms"
-      whole["module-index"] = 1
-      whole["declarer-discovery"] = 1
-      whole["whole-tree-graph-facts"] = 1
-      whole["declarer-closure"] = 1
-    }
-    function value_of(line, key,    n, toks, i, t) {
-      n = split(line, toks, " ")
-      for (i = 1; i <= n; i++) {
-        if (index(toks[i], key "=") == 1) return substr(toks[i], length(key) + 2)
-      }
-      return ""
-    }
-    # TWO READERS, MIRRORING THE AUTHORITY. floor_preparation_ms_field reads the phase fields wall_ms,
-    # cpu_ms and fill_cpu_ms, and the producer prints those as BARE integers (wall_ms=182, and
-    # cpu_ms=131163 wall_ms=131176). floor_preparation_ms_unit_field reads the cpu field of a [witness]
-    # row (cpu=126ms) and the cost of a [resolve] row (5522ms), where the unit IS printed. Requiring a
-    # unit where the producer prints none refuses EVERY real run; accepting a missing field turns a unit
-    # change into a silent zero. Each reader is strict about ITS OWN format.
-    function take(raw, where,    amount) {
-      if (raw == "") { refused = 1; printf("CAPTURE_FAIL: %s is missing its cost field\n", where) > "/dev/stderr"; exit 1 }
-      if (raw !~ /^[0-9]+$/) {
-        refused = 1
-        printf("CAPTURE_FAIL: %s carries a cost that is not a non-negative integer: %s\n", where, raw) > "/dev/stderr"
-        exit 1
-      }
-      return raw + 0
-    }
-    function take_ms(raw, where,    amount) {
-      if (raw == "") { refused = 1; printf("CAPTURE_FAIL: %s is missing its cost field\n", where) > "/dev/stderr"; exit 1 }
-      if (substr(raw, length(raw) - 1) != "ms") {
-        refused = 1
-        printf("CAPTURE_FAIL: %s carries a cost without the ms unit: %s\n", where, raw) > "/dev/stderr"
-        exit 1
-      }
-      amount = substr(raw, 1, length(raw) - 2)
-      if (amount !~ /^[0-9]+$/) {
-        refused = 1
-        printf("CAPTURE_FAIL: %s carries a negative or non-integer cost: %s\n", where, raw) > "/dev/stderr"
-        exit 1
-      }
-      return amount + 0
-    }
-    /^\[floor-phase\]/ {
-      if ($2 !~ /^phase=/) { refused = 1; print "CAPTURE_FAIL: phase row without a phase= field" > "/dev/stderr"; exit 1 }
-      phase = substr($2, 7)
-      if (phase == "expr-var-classification" || phase == "reach-differential") next
-      if (!(phase in cost)) { refused = 1; printf("CAPTURE_FAIL: phase token outside the grammar: %s\n", phase) > "/dev/stderr"; exit 1 }
-      amount = take(value_of($0, cost[phase]), "phase " phase)
-      preparation += amount
-      if (phase in whole) { whole_tree += amount } else { entry_scoped += amount }
-      phases++
-      next
-    }
-    /^\[resolve\]/ {
-      line = substr($0, 10)
-      colon = index(line, ":")
-      if (colon == 0) { refused = 1; print "CAPTURE_FAIL: [resolve] row without a path" > "/dev/stderr"; exit 1 }
-      entry = substr(line, 1, colon - 1)
-      gsub(/^[ \t]+|[ \t]+$/, "", entry)
-      split(substr(line, colon + 1), parts, " ")
-      digits = take_ms(parts[1], "[resolve] row for an entry")
-      # PER-ENTRY RESOLUTION IS PREPARATION, NOT CLAIM EXECUTION. The producer is resolve_timed at
-      # src/v1/stage0/src/bin/claim_batch.rs:725, which times resolve_entry_with_index_typed -- the entry
-      # is resolved before any claim of it runs, and the binary accumulates the figure into
-      # timings.resolve_ms beside the other preparation timings. The authority charges it the same way
-      # (v2.workflow.floor_preparation_split, the EntryResolveLine arm of floor_preparation_step: it adds
-      # to preparation_ms, never to claim_ms). Charging it to the claim side would move the majority of the
-      # wall time of a run onto the half the ticket says was never the expense -- the one misclassification
-      # that could flip the premise of this node, so the shell mirrors the model here rather than guessing.
-      preparation += digits
-      entry_scoped += digits
-      resolves++
-      modules[entry] += digits + 0
-      current = entry
-      seen_resolve = 1
-      next
-    }
-    /^\[witness\]/ {
-      if (!seen_resolve) { refused = 1; print "CAPTURE_FAIL: [witness] row appeared before any [resolve] row" > "/dev/stderr"; exit 1 }
-      head = substr($0, 10)
-      colon = index(head, ":")
-      fn = substr(head, 1, colon - 1)
-      gsub(/^[ \t]+|[ \t]+$/, "", fn)
-      amount = take_ms(value_of(head, "cpu"), "[witness] row for " fn)
-      claim += amount
-      claims++
-      owner = (current == "" ? "(unattributed)" : current)
-      modules[owner] += amount
-      next
-    }
-    /^PASS / { passed++; next }
-    /^FAIL / { failed++; next }
-    /^UNOBSERVED / { unobserved++; next }
-    END {
-      # A REFUSED LOG PRINTS NOTHING. exit 1 inside a rule still runs END in awk, so without this guard a
-      # log the fold refused came out as a zero-filled floor-preparation-split line and the check that
-      # followed was simply REPORT_OK. A harness that reports green when the thing under test never ran is
-      # the defect class of this whole lane; it is not allowed to live here.
-      if (refused) { exit 1 }
-      top = ""
-      topms = -1
-      nmods = 0
-      for (m in modules) { nmods++; if (modules[m] > topms) { top = m; topms = modules[m] } }
-      table = ""
-      for (m in modules) table = table (table == "" ? "" : ",") m "=" modules[m]
-      printf("floor-preparation-split label=%s phase_rows=%d preparation_ms=%d claim_ms=%d total_ms=%d whole_tree_ms=%d entry_scoped_ms=%d claims=%d pass=%d fail=%d unobserved=%d modules=%d top_module=%s module_table=%s\n", \
-        label, phases, preparation, claim, preparation + claim, whole_tree, entry_scoped, claims, passed, failed, unobserved, nmods, top, table)
-    }'
-  status=$?
-  [ "$status" = "0" ] || fail "the fold refused log $log (label $label): it prints no split line rather than a zero-filled one"
+
+verify_pinned() {
+  local kind=$1 path=$2 want=$3 manifest_line=$4
+  [ -n "$path" ] || fail "$kind mode needs --${kind}"
+  [ -f "$path" ] || fail "no $kind binary at $path"
+  local bytes
+  bytes=$(stat -c %s "$path")
+  [ "$bytes" != "0" ] || fail "$kind binary is 0 bytes (a truncated download that still exits 0)"
+  local sha
+  sha=$(sha256sum "$path" | cut -d' ' -f1)
+  [ "$sha" != "$EMPTY_SHA" ] || fail "$kind binary hashes as the empty string"
+  if [ -n "$want" ]; then
+    [ "$sha" = "$want" ] || fail "$kind binary sha $sha deviates from the pinned $want"
+  fi
+  echo "${kind^^}_SHA256=$sha"
+  echo "${kind^^}_BYTES=$bytes"
+  if [ "$kind" = "claim_batch" ]; then
+    local manifest="${MANIFEST:-}" d d2 mh
+    if [ -n "$manifest" ]; then
+      [ -f "$manifest" ] || fail "no manifest at the given path: $manifest"
+    else
+      d=$(dirname "$path"); d2=$(dirname "$d")
+      manifest="$d/release-bins.manifest"
+      [ -f "$manifest" ] || manifest="$d2/release-bins.manifest"
+      [ -f "$manifest" ] || manifest="$d2/bins/release-bins.manifest"
+      [ -f "$manifest" ] || fail "no release-bins.manifest beside the binary, beside its parent, or in its bins directory; provenance is unverifiable"
+    fi
+    echo "MANIFEST=$manifest"
+    mh=$(awk '$2=="claim_batch"{print $1}' "$manifest" | head -1)
+    echo "MANIFEST_SHA_claim_batch=$mh"
+    [ "$mh" = "$sha" ] || fail "release-bins.manifest does not pin this claim_batch"
+    SHA256=$sha
+  fi
 }
 
 verify_binary() {
-  [ -n "$BINARY" ] || fail "run mode needs --binary"
-  [ -n "$EXPECT_SHA" ] || fail "run mode needs --expect-sha256"
-  [ -f "$BINARY" ] || fail "no binary at $BINARY"
-  local bytes
-  bytes=$(stat -c %s "$BINARY")
-  [ "$bytes" != "0" ] || fail "binary is 0 bytes (a truncated download that still exits 0)"
-  SHA256=$(sha256sum "$BINARY" | cut -d' ' -f1)
-  [ "$SHA256" != "$EMPTY_SHA" ] || fail "binary hashes as the empty string"
-  [ "$SHA256" = "$EXPECT_SHA" ] || fail "binary sha $SHA256 deviates from the pinned $EXPECT_SHA"
-  local manifest d d2
-  manifest="${MANIFEST:-}"
-  if [ -n "$manifest" ]; then
-    [ -f "$manifest" ] || fail "no manifest at the given path: $manifest"
-  else
-    d=$(dirname "$BINARY")
-    d2=$(dirname "$d")
-    manifest="$d/release-bins.manifest"
-    [ -f "$manifest" ] || manifest="$d2/release-bins.manifest"
-    [ -f "$manifest" ] || manifest="$d2/bins/release-bins.manifest"
-    [ -f "$manifest" ] || fail "no release-bins.manifest beside the binary, beside its parent, or in its bins directory; provenance is unverifiable"
-  fi
-  echo "MANIFEST=$manifest"
-  local mh
-  mh=$(awk '$2=="claim_batch"{print $1}' "$manifest" | head -1)
-  echo "MANIFEST_SHA_claim_batch=$mh"
-  [ "$mh" = "$SHA256" ] || fail "release-bins.manifest does not pin this claim_batch"
-  echo "BINARY_SHA256=$SHA256"
-  echo "BINARY_BYTES=$bytes"
+  verify_pinned claim_batch "$BINARY" "$EXPECT_SHA"
+  [ -n "$GUNBC" ] || fail "every mode needs --gunbc: the reading is printed by the released gunbc's refusal, not by this shell"
+  verify_pinned gunbc "$GUNBC" "$EXPECT_GUNBC_SHA"
 }
 
-# The population is a committed text file so both legs are built from ONE artifact:
+# ----------------------------------------------------------------------------------------------
+# THE POPULATION. A committed text file so both legs are built from ONE artifact:
 #   candidate|<module>|<claim>   eligible for the graded capture
 #   extra|<module>|<claim>       enrolled only so its refusal stays in the artifact
-# BOTH LEGS AT ONCE. An entry can carry candidate rows AND extra rows; emitting one --entry block per
-# kind made claim_batch resolve the same entry twice, which is preparation cost for nothing -- the exact
-# expense this node exists to remove. So the untrimmed argv aggregates an entry's claims across kinds into
-# a single block, and the per-entry witness audit sees one declared count per entry.
+# An entry can carry candidate rows AND extra rows; emitting one --entry block per kind made
+# claim_batch resolve the same entry twice -- preparation cost for nothing, the exact expense this
+# node exists to remove. So the untrimmed argv aggregates an entry's claims across kinds into a
+# single block, and the per-entry witness audit sees one declared count per entry.
+# ----------------------------------------------------------------------------------------------
+
 entries_of_all() {
   awk -F'|' '
     $1 == "candidate" || $1 == "extra" {
@@ -331,46 +206,40 @@ build_argv_graded() {
     local oldifs=$IFS
     IFS=','
     for name in $functions; do
-      if grep -qx -- "$name" "$PASSNAMES"; then
-        if [ -z "$keep" ]; then keep=$name; else keep="$keep,$name"; fi
+      if grep -qx "$name" "$PASSNAMES"; then
+        keep="$keep${keep:+,}$name"
         total=$((total + 1))
       else
         dropped=$((dropped + 1))
       fi
     done
     IFS=$oldifs
-    if [ -n "$keep" ]; then
-      printf '%s\n%s\n%s\n%s\n' "--entry" "$entry" "--functions" "$keep" >> "$out"
-    fi
+    [ -n "$keep" ] || continue
+    printf '%s\n%s\n%s\n%s\n' "--entry" "$entry" "--functions" "$keep" >> "$out"
   done < <(entries_of candidate)
-  echo "GRADED_DERIVED_CLAIMS=$total DROPPED=$dropped"
-  [ "$total" -gt 0 ] || fail "no graded candidate came back PASS; there is nothing to commit as the split capture"
-  echo "ARGV_WRITTEN=$out ARGS=$(wc -l < "$out")"
+  echo "ARGV_WRITTEN=$out ARGS=$(wc -l < "$out") GRADED_CLAIMS=$total DROPPED=$dropped"
 }
+
+# ----------------------------------------------------------------------------------------------
+# SUPPLY-INTEGRITY GATES ON THE RUNNER. These check that the leg DID what the argv asked; they
+# decide nothing about the measurement. The counts are printed for the artifact and never compared
+# here: phase presence, fill/probe pairing, verdict presence and census honesty are claims
+# (floor_preparation_the_committed_capture_is_measured_not_authored and neighbours) and the claim
+# leg's rc is what refuses.
+# ----------------------------------------------------------------------------------------------
 
 audit_leg() {
   local name=$1 log=$2 argv=${3:-/dev/null}
-  local phase resolve fill probe pass fail_rows unobserved resolving
-  phase=$(count_of "$log" '\[floor-phase\]')
-  resolve=$(count_of "$log" '\[resolve\]')
-  fill=$(count_of "$log" '\[floor-shared-fill\]')
-  probe=$(count_of "$log" '\[floor-reach-probe\]')
-  pass=$(count_of "$log" 'PASS ')
-  fail_rows=$(count_of "$log" 'FAIL ')
-  unobserved=$(count_of "$log" 'UNOBSERVED ')
-  resolving=$(count_of "$log" 'claim_batch: resolving ')
-  echo "LEG_${name}_COUNTS phase=$phase resolve=$resolve fill=$fill probe=$probe pass=$pass fail=$fail_rows unobserved=$unobserved resolving=$resolving"
+  echo "LEG_${name}_COUNTS phase=$(count_of "$log" '\[floor-phase\]') resolve=$(count_of "$log" '\[resolve\]') fill=$(count_of "$log" '\[floor-shared-fill\]') probe=$(count_of "$log" '\[floor-reach-probe\]') pass=$(count_of "$log" 'PASS ') fail=$(count_of "$log" 'FAIL ') unobserved=$(count_of "$log" 'UNOBSERVED ') resolving=$(count_of "$log" 'claim_batch: resolving ')"
   [ -s "$log" ] || fail "leg $name produced an empty log"
+  [ "$(sha256sum "$log" | cut -d' ' -f1)" != "$EMPTY_SHA" ] || fail "leg $name's log is the empty string"
   grep -q "$ARGV_DEFECT" "$log" && fail "leg $name: the binary refused with '$ARGV_DEFECT'; it measured nothing"
   grep -q "workspace_root" "$log" && fail "leg $name printed workspace_root -- not run from a git checkout?"
   grep -q "panicked at" "$log" && fail "leg $name: the binary panicked"
-  [ "$phase" -gt 0 ] || fail "leg $name printed no [floor-phase] row -- preparation was never measured"
-  [ "$resolving" -gt 0 ] || fail "leg $name enrolled no entry (no 'claim_batch: resolving' row)"
-  [ "$resolve" -gt 0 ] || fail "leg $name resolved no entry module; a module-grain split cannot be derived"
-  [ "$fill" = "$probe" ] || fail "leg $name: $fill [floor-shared-fill] rows against $probe [floor-reach-probe] rows -- the printer emits them paired, and billing both would inflate preparation"
-  [ $((pass + fail_rows + unobserved)) -gt 0 ] || fail "leg $name returned no verdict for any enrolled claim"
+  grep -q '^\[floor-phase\]' "$log" || fail "leg $name never measured preparation: no [floor-phase] row in $log (a refused module index prints 'module index refused' and runs no claims)"
+  grep -q 'claim_batch: resolving ' "$log" || fail "leg $name enrolled no entry (no 'claim_batch: resolving' row)"
   if [ ! -s "$argv" ]; then
-    echo "LEG_${name}_WITNESS_COUNT_AUDIT=skipped (no argv supplied; pass the leg's argv to enforce it)"
+    echo "LEG_${name}_WITNESS_COUNT_AUDIT=skipped (no argv supplied)"
     return 0
   fi
   local entry functions declared
@@ -404,37 +273,75 @@ run_leg() {
   return $rc
 }
 
+# ----------------------------------------------------------------------------------------------
+# THE TWO ADJUDICATING EXECUTIONS.
+# ----------------------------------------------------------------------------------------------
+
+audit_roster() {
+  local declared
+  declared=$(grep -c '^test fn ' "$CHECKOUT/$WITNESS_MODULE" || true)
+  [ "$declared" = "$WITNESS_ROSTER_COUNT" ] || fail "roster drift: $WITNESS_MODULE declares $declared test fns, this tool passes $WITNESS_ROSTER_COUNT names"
+  echo "ROSTER_OK declared=$declared"
+}
+
+run_witness_claims() {
+  local out=$1
+  audit_roster
+  cd "$CHECKOUT" || fail "cannot cd to $CHECKOUT"
+  local start end rc
+  start=$(date +%s)
+  /usr/bin/time -v -o "$out.time.txt" timeout "${FLOOR_CAPTURE_TIMEOUT_W:-1800}" "$BINARY" \
+    --source-root dag --source-root src/v1 --source-root src/v2 \
+    --claim-run --entry "$WITNESS_MODULE" --functions "$WITNESS_ROSTER" > "$out" 2>&1
+  rc=$?
+  end=$(date +%s)
+  echo "CLAIMS_RC=$rc WALL=$((end - start))s OUT=$out"
+  audit_leg CLAIMS "$out" /dev/null
+  local passes
+  passes=$(count_of "$out" 'PASS ')
+  echo "CLAIMS_PASS=$passes CLAIMS_FAIL=$(count_of "$out" 'FAIL ') CLAIMS_UNOBSERVED=$(count_of "$out" 'UNOBSERVED ') EXPECTED=$WITNESS_ROSTER_COUNT"
+  [ "$rc" = "0" ] || fail "the claims leg exited $rc: a claim of the fold was refused on the revision that lands"
+  grep -q '^PASS floor_preparation_' "$out" || fail "the claims leg printed no floor_preparation_ PASS line at all"
+  [ "$passes" = "$WITNESS_ROSTER_COUNT" ] || fail "the claims leg printed $passes PASS lines of $WITNESS_ROSTER_COUNT -- a claim that never printed is a FAIL, not a pass"
+  local name
+  for name in $(printf '%s' "$WITNESS_ROSTER" | tr ',' ' '); do
+    grep -q "^PASS $name" "$out" || fail "the claims leg never printed PASS for $name"
+  done
+  echo "CLAIMS_OK all $WITNESS_ROSTER_COUNT claims printed their own PASS"
+}
+
+run_report() {
+  local label=$1 out=$2
+  cd "$CHECKOUT" || fail "cannot cd to $CHECKOUT"
+  "$GUNBC" run \
+    --source-root dag --source-root src/v1 --source-root src/v2 \
+    --entry src/v2/workflow/floor_preparation_split.dag \
+    --function floor_preparation_split_report > "$out" 2>&1
+  local status=$?
+  echo "REPORT_RC=$status LABEL=$label OUT=$out BYTES=$(stat -c %s "$out")"
+  [ "$status" != "0" ] || fail "report leg $label exited 0; the report entry returns a String and must arrive as a refusal that prints it"
+  grep -q "floor-preparation-split" "$out" || fail "report leg $label printed no split line: $out"
+  ! grep -q "population=EMPTY" "$out" || fail "report leg $label: the committed capture is empty -- a figure-less split is not a measurement"
+  ! grep -q "REFUSED" "$out" || fail "report leg $label: the fold refused the committed rows; see $out"
+  grep '^floor-preparation-split' "$out"
+  echo "REPORT_OK label=$label"
+}
+
+# ----------------------------------------------------------------------------------------------
+# THE COMMITTED BLOCK: rows are copied verbatim from the logs (transport), quoted as string
+# literals, and spliced between the authority's markers. Nothing is computed on the way.
+# ----------------------------------------------------------------------------------------------
+
 emit_list() {
   local fn=$1 file=$2
-  printf '// GENERATED -- DO NOT EDIT BY HAND. Produced by scripts/floor_preparation_capture.sh.\n'
-  printf 'fn %s() -> List<String> {\n  [\n' "$fn"
-  awk '{ gsub(/\\/, "\\\\"); gsub(/"/, "\\\""); printf("    \"%s\",\n", $0) }' "$file"
-  printf '  ]\n}\n\n'
+  printf 'fn %s() -> List<String> {\n  [' "$fn"
+  awk '{ printf "\"%s\",", $0 }' "$file" | sed 's/,$//'
+  printf '\n  ]\n}\n'
 }
 
 build_requested_rows() {
-  local out=$1 kind entry functions name
-  : > "$out"
-  for kind in candidate extra; do
-    while IFS='|' read -r entry functions; do
-      [ -n "$entry" ] || continue
-      local oldifs=$IFS
-      IFS=','
-      for name in $functions; do
-        if grep -qx -- "$name" "$PASSNAMES"; then
-          printf '%s|%s|graded|\n' "$entry" "$name" >> "$out"
-        elif grep -qx -- "FAIL $name" "$UNTRIMMED_KEPT"; then
-          printf '%s|%s|excluded|refused\n' "$entry" "$name" >> "$out"
-        elif grep -qE "^UNOBSERVED $name:" "$UNTRIMMED_KEPT"; then
-          printf '%s|%s|excluded|unobserved\n' "$entry" "$name" >> "$out"
-        else
-          printf '%s|%s|excluded|no_verdict_line\n' "$entry" "$name" >> "$out"
-        fi
-      done
-      IFS=$oldifs
-    done < <(entries_of "$kind")
-  done
-  echo "REQUESTED_ROWS=$(wc -l < "$out")"
+  local out=$1
+  awk -F'|' '$1 == "candidate" || $1 == "extra" { print $1 "|" $2 "|" $3 }' "$POPULATION" > "$out"
 }
 
 provenance_lines() {
@@ -469,6 +376,7 @@ splice_block() {
   } > "$updated"
   rm -f "$updated.hole"
   if [ "$WRITE" = "1" ]; then
+    cp "$AUTHORITY" "$AUTHORITY.pre-capture"
     mv "$updated" "$AUTHORITY"
     echo "AUTHORITY_WRITTEN=$AUTHORITY"
   else
@@ -485,10 +393,8 @@ emit_and_splice() {
   PASSNAMES=$OUTDIR/passnames.txt
   kept "$GRADED_LOG" "$GRADED_KEPT"
   kept "$UNTRIMMED_LOG" "$UNTRIMMED_KEPT"
-  [ -s "$GRADED_KEPT" ] || fail "the graded leg kept no instrument rows"
-  [ -s "$UNTRIMMED_KEPT" ] || fail "the untrimmed leg kept no instrument rows"
   grep '^PASS ' "$GRADED_KEPT" | sed 's/^PASS //' > "$PASSNAMES"
-  [ -s "$PASSNAMES" ] || fail "the graded log has no PASS row"
+  [ -s "$PASSNAMES" ] || fail "the graded log has no PASS row -- the leg that was supposed to grade claims graded none"
   provenance_lines graded "$OUTDIR/graded-time.txt" > "$OUTDIR/graded-provenance.txt"
   provenance_lines untrimmed "$OUTDIR/untrimmed-time.txt" > "$OUTDIR/untrimmed-provenance.txt"
   build_requested_rows "$OUTDIR/requested-rows.txt"
@@ -500,45 +406,63 @@ emit_and_splice() {
     emit_list floor_preparation_requested_rows "$OUTDIR/requested-rows.txt"
   } > "$OUTDIR/block.txt"
   splice_block "$OUTDIR/block.txt"
-  fold_report "$UNTRIMMED_LOG" untrimmed
-  fold_report "$GRADED_LOG" graded
-  echo "CAPTURE_OK graded_rows=$(wc -l < "$GRADED_KEPT") untrimmed_rows=$(wc -l < "$UNTRIMMED_KEPT")"
+  echo "CAPTURE_SPLICED graded_rows=$(wc -l < "$GRADED_KEPT") untrimmed_rows=$(wc -l < "$UNTRIMMED_KEPT")"
+}
+
+restore_authority() {
+  if [ -f "${AUTHORITY:-}.pre-capture" ] && [ "$WRITE" != "1" ]; then
+    : # dry run never wrote the authority
+  elif [ -f "${AUTHORITY:-}.pre-capture" ] && [ "${RESTORE:-0}" = "1" ]; then
+    mv "$AUTHORITY.pre-capture" "$AUTHORITY"
+    echo "AUTHORITY_RESTORED=$AUTHORITY"
+  fi
 }
 
 main() {
   case "$MODE" in
     report)
+      # RE-DERIVE THE SPLIT FROM ANY LOG: copy that log's instrument rows into the authority's
+      # capture block (transport), then let the two adjudicating executions decide what the log
+      # measured. Without --write the authority is restored afterwards; the committed capture is
+      # only ever changed by an operator-visible --write.
       [ -n "$REPORT_LOGS" ] || fail "report mode needs at least one --report-log"
-      local logs labels i
-      read -r -a logs <<< "$REPORT_LOGS"
-      read -r -a labels <<< "$REPORT_LABELS"
-      [ "${#logs[@]}" = "${#labels[@]}" ] || fail "report mode needs one --report-label per --report-log"
-      for i in "${!logs[@]}"; do
-        fold_report "${logs[$i]}" "${labels[$i]}"
-      done
-      echo "REPORT_OK"
-      ;;
-    fold)
-      [ -n "$POPULATION" ] || fail "fold mode needs --population"
-      [ -n "$GRADED_LOG" ] && [ -n "$UNTRIMMED_LOG" ] || fail "fold mode needs --graded-log and --untrimmed-log"
-      [ -s "$GRADED_LOG" ] || fail "graded log $GRADED_LOG is missing or empty"
-      [ -s "$UNTRIMMED_LOG" ] || fail "untrimmed log $UNTRIMMED_LOG is missing or empty"
-      case " $PROVENANCE " in
-        *" binary_sha256="*) ;;
-        *) fail "fold mode needs --provenance binary_sha256=<sha>: a capture without a pinned binary is a rumor" ;;
-      esac
-      audit_leg G "$GRADED_LOG" "$OUTDIR/argv-G.txt"
-      [ "$(count_of "$GRADED_LOG" 'FAIL ')" = "0" ] || fail "the graded capture is not green"
-      [ "$(count_of "$GRADED_LOG" 'UNOBSERVED ')" = "0" ] || fail "the graded capture has unobserved claims"
+      [ -n "$BINARY" ] && [ -n "$GUNBC" ] || fail "report mode needs --binary and --gunbc"
+      [ -n "$POPULATION" ] || fail "report mode needs --population: the requested-row block is re-derived from the committed population, never from a log"
+      verify_binary
+      [ -n "$AUTHORITY" ] || AUTHORITY="$CHECKOUT/src/v2/workflow/floor_preparation_split.dag"
       mkdir -p "$OUTDIR"
-      # The witness-count audit reads the population; the graded leg ran a subset, so compare against
-      # what the graded argv actually enrolled -- rebuilt here from the PASS set.
-      GRADED_KEPT=/dev/null
-      UNTRIMMED_KEPT=/dev/null
-      PASSNAMES=/dev/null
-      emit_and_splice
+      local logs log n=0
+      read -r -a logs <<< "$REPORT_LOGS"
+      for log in "${logs[@]}"; do
+        [ -s "$log" ] || fail "report log $log is missing or empty"
+        n=$((n + 1))
+        kept "$log" "$OUTDIR/report-rows-$n.txt"
+        [ -s "$OUTDIR/report-rows-$n.txt" ] || fail "report log $log holds no instrument rows"
+      done
+      local tree head
+      tree=$(git -C "$CHECKOUT" rev-parse 'HEAD^{tree}')
+      head=$(git -C "$CHECKOUT" rev-parse HEAD)
+      echo "TREE_SHA=$tree"
+      echo "HEAD_SHA=$head"
+      PROVENANCE="$PROVENANCE head_sha=$head tree_sha=$tree binary_sha256=$SHA256 binary_bytes=$(stat -c %s "$BINARY")"
+      provenance_lines report /dev/null > "$OUTDIR/report-provenance.txt"
+      build_requested_rows "$OUTDIR/report-requested.txt"
+      {
+        emit_list floor_preparation_capture "$OUTDIR/report-rows-1.txt"
+        emit_list floor_preparation_capture_provenance "$OUTDIR/report-provenance.txt"
+        emit_list floor_preparation_untrimmed_capture "$OUTDIR/report-rows-1.txt"
+        emit_list floor_preparation_untrimmed_capture_provenance "$OUTDIR/report-provenance.txt"
+        emit_list floor_preparation_requested_rows "$OUTDIR/report-requested.txt"
+      } > "$OUTDIR/report-block.txt"
+      RESTORE=0
+      [ "$WRITE" = "1" ] || RESTORE=1
+      trap restore_authority EXIT
+      splice_block "$OUTDIR/report-block.txt"
+      run_witness_claims "$OUTDIR/report-claims.log"
+      run_report report "$OUTDIR/report-print.txt"
       ;;
     run)
+      [ "$WRITE" = "1" ] || fail "run mode requires --write: the claims leg and the report leg read the spliced rows from the authority on disk"
       [ -n "$POPULATION" ] || fail "run mode needs --population"
       verify_binary
       mkdir -p "$OUTDIR"
@@ -552,21 +476,28 @@ main() {
       fi
       build_argv_all "$OUTDIR/argv-U.txt"
       run_leg U "$OUTDIR/argv-U.txt" "${FLOOR_CAPTURE_TIMEOUT_U:-5400}" "$OUTDIR/untrimmed-run.log" "$OUTDIR/untrimmed-time.txt" || fail "the untrimmed leg was refused"
-      mkdir -p "$OUTDIR"
       PASSNAMES=$OUTDIR/passnames.txt
       kept "$OUTDIR/untrimmed-run.log" "$OUTDIR/untrimmed-rows.tmp"
       grep '^PASS ' "$OUTDIR/untrimmed-rows.tmp" | sed 's/^PASS //' > "$PASSNAMES"
+      [ -s "$PASSNAMES" ] || fail "the untrimmed leg produced no PASS rows: nothing could be graded, so nothing was measured"
+      EXPECTED_PASS=$(wc -l < "$PASSNAMES")
+      echo "EXPECTED_PASS_LINES=$EXPECTED_PASS"
       build_argv_graded "$OUTDIR/argv-G.txt"
       run_leg G "$OUTDIR/argv-G.txt" "${FLOOR_CAPTURE_TIMEOUT_G:-4200}" "$OUTDIR/graded-run.log" "$OUTDIR/graded-time.txt" || fail "the graded leg was refused"
-      [ "$(count_of "$OUTDIR/graded-run.log" 'FAIL ')" = "0" ] || fail "the graded capture is not green"
-      [ "$(count_of "$OUTDIR/graded-run.log" 'UNOBSERVED ')" = "0" ] || fail "the graded capture has unobserved claims"
+      GRADED_PASS=$(count_of "$OUTDIR/graded-run.log" 'PASS ')
+      echo "GRADED_PASS_LINES=$GRADED_PASS EXPECTED=$EXPECTED_PASS"
+      [ "$GRADED_PASS" = "$EXPECTED_PASS" ] || fail "the graded leg printed $GRADED_PASS PASS lines where the untrimmed leg's PASS set named $EXPECTED_PASS"
       GRADED_LOG=$OUTDIR/graded-run.log
       UNTRIMMED_LOG=$OUTDIR/untrimmed-run.log
       PROVENANCE="$PROVENANCE head_sha=$head tree_sha=$tree binary_sha256=$SHA256 binary_bytes=$(stat -c %s "$BINARY")"
       emit_and_splice
+      run_witness_claims "$OUTDIR/claims.log"
+      run_report graded "$OUTDIR/report-print.txt"
+      rm -f "$AUTHORITY.pre-capture"
+      echo "TERMINAL_GATE expectations=ALL_MET claims=$WITNESS_ROSTER_COUNT graded_pass=$GRADED_PASS expected_pass=$EXPECTED_PASS"
       ;;
     *)
-      echo "usage: $0 run|fold|report [options]" >&2
+      echo "usage: $0 run|report [options]   (see the header block for the full invocations)" >&2
       exit 2
       ;;
   esac

@@ -12,10 +12,10 @@ import std.measure { Millisecond, millisecond, millisecond_count }
 // arithmetic site below (`floor_preparation_join_split`) and at each record construction. The reader
 // surface the claims module uses (`floor_preparation_split_preparation_ms` and siblings) returns the
 // carrier's COUNT, named for the unit it counts.
-fn floor_preparation_ms_zero() -> Millisecond { millisecond(0) }
-fn floor_preparation_ms_of(count: Int) -> Millisecond { millisecond(count) }
+fn floor_preparation_ms_zero() -> Millisecond { millisecond(count: 0) }
+fn floor_preparation_ms_of(count: Int) -> Millisecond { millisecond(count: count) }
 fn floor_preparation_ms_add(left: Millisecond, right: Millisecond) -> Millisecond {
-  millisecond(millisecond_count(left) + millisecond_count(right))
+  millisecond(count: millisecond_count(left) + millisecond_count(right))
 }
 fn floor_preparation_ms_count(carrier: Millisecond) -> Int { millisecond_count(carrier) }
 
@@ -164,7 +164,7 @@ data floor_preparation_phase_rows: List<FloorPreparationPhaseRow> = [
 ]
 
 fn floor_preparation_phase_row(phase: String) -> Optional<FloorPreparationPhaseRow> {
-  fold(floor_preparation_phase_rows, none, f: (acc, row) => if row.phase == phase { Present { value: row } } else { acc })
+  fold(floor_preparation_phase_rows, init:  none, f: (acc, row) => if row.phase == phase { Present { value: row } } else { acc })
 }
 
 data floor_preparation_phase_tag: String = "[floor-phase]"
@@ -191,7 +191,7 @@ type FloorPreparationLine
   | RefusedLine { text: String, cause: String }
 
 fn floor_preparation_tokens(line: String) -> List<String> {
-  let pushed = fold(split(s: line, delimiter: " "), [], f: (acc, token) =>
+  let pushed = fold(split(s: line, delimiter: " "), init:  [], f: (acc, token) =>
     if token == "" {
       acc
     } else {
@@ -201,7 +201,7 @@ fn floor_preparation_tokens(line: String) -> List<String> {
 }
 
 fn floor_preparation_reverse(xs: List<String>) -> List<String> {
-  fold(xs, [], f: (acc, x) => concat([x], acc))
+  fold(xs, init:  [], f: (acc, x) => concat([x], acc))
 }
 
 // THE `key=value` ATOMS FOLLOWING A FIXED HEAD TOKEN.
@@ -217,7 +217,7 @@ fn floor_preparation_fields_after(line: String, head: String) -> List<String> {
 // another key (`cpu` against `cpu_ms`) cannot be satisfied by the longer one.
 fn floor_preparation_field(fields: List<String>, key: String) -> Optional<String> {
   let wanted = concat(key, "=")
-  fold(fields, none, f: (acc, field) =>
+  fold(fields, init:  none, f: (acc, field) =>
     if acc != none {
       acc
     } else {
@@ -341,7 +341,7 @@ fn floor_preparation_module_of_path(path: String) -> String {
 
 fn floor_preparation_join_dots(path: String) -> String {
   let pieces = split(s: path, delimiter: "/")
-  fold(pieces, "", f: (acc, piece) =>
+  fold(pieces, init:  "", f: (acc, piece) =>
     if acc == "" {
       piece
     } else {
@@ -467,7 +467,7 @@ fn floor_preparation_empty_fold() -> FloorPreparationFold {
 }
 
 fn floor_preparation_split(capture: List<String>) -> FloorPreparationSplit {
-  fold(capture, floor_preparation_empty_fold(), f: (acc, line) => floor_preparation_step(acc, line)).split
+  fold(capture, init:  floor_preparation_empty_fold(), f: (acc, line) => floor_preparation_step(acc, line)).split
 }
 
 fn floor_preparation_step(acc: FloorPreparationFold, line: String) -> FloorPreparationFold {
@@ -652,11 +652,11 @@ fn floor_preparation_line_ms(line: String) -> Int {
 // THE GRAND TOTAL, folded independently of the split's accumulator. The conservation witness compares
 // the two: a line dropped, double-counted or filed under the wrong class makes them disagree.
 fn floor_preparation_total_ms(capture: List<String>) -> Int {
-  fold(capture, 0, f: (acc, line) => acc + floor_preparation_line_ms(line))
+  fold(capture, init:  0, f: (acc, line) => acc + floor_preparation_line_ms(line))
 }
 
 fn floor_preparation_lines_are_closed(capture: List<String>) -> Bool {
-  fold(capture, true, f: (acc, line) =>
+  fold(capture, init:  true, f: (acc, line) =>
     match floor_preparation_classify(line) {
       RefusedLine { text: _, cause: _ } => false
       _ => acc
@@ -664,7 +664,7 @@ fn floor_preparation_lines_are_closed(capture: List<String>) -> Bool {
 }
 
 fn floor_preparation_refusal(capture: List<String>) -> Optional<String> {
-  fold(capture, none, f: (acc, line) =>
+  fold(capture, init:  none, f: (acc, line) =>
     match acc {
       Present { value: v } => Present { value: v }
       Absent =>
@@ -695,7 +695,7 @@ type FloorPreparationAttribution
 
 // THE ENTRY PATHS THE RUN NAMED, one per resolved entry.
 fn floor_preparation_entry_paths(capture: List<String>) -> List<String> {
-  let pushed = fold(capture, [], f: (acc, line) =>
+  let pushed = fold(capture, init:  [], f: (acc, line) =>
     match floor_preparation_classify(line) {
       EntryResolveLine { entry: entry, ms: _ } => concat([entry], acc)
       _ => acc
@@ -713,7 +713,7 @@ fn floor_preparation_module_keys(capture: List<String>) -> List<String> {
 fn floor_preparation_module_cost(target_path: String, capture: List<String>) -> FloorPreparationModuleCost {
   let target = floor_preparation_module_of_path(target_path)
   fold(
-    capture,
+    capture, init: 
     FloorPreparationModuleCost { module: target, preparation_ms: floor_preparation_ms_zero(), claim_ms: floor_preparation_ms_zero(), lines: 0 },
     f: (acc, line) => floor_preparation_module_step(acc: acc, in_force: floor_preparation_module_of_path(target_path), line: line)
   )
@@ -757,7 +757,7 @@ fn floor_preparation_attribution(capture: List<String>) -> FloorPreparationAttri
   if length(xs: keys) == 0 {
     Unattributed {}
   } else {
-    let costs = fold(keys, [], f: (acc, key) => concat([floor_preparation_module_cost(key, capture)], acc))
+    let costs = fold(keys, init:  [], f: (acc, key) => concat([floor_preparation_module_cost(key, capture)], acc))
     match floor_preparation_max(costs) {
       Absent => Unattributed {}
       Present { value: top } => Attributed { modules: floor_preparation_reverse(costs), module_count: length(xs: costs), top_module: top.module, top_ms: floor_preparation_module_total(top) }
@@ -770,7 +770,7 @@ fn floor_preparation_module_total(row: FloorPreparationModuleCost) -> Int {
 }
 
 fn floor_preparation_max(rows: List<FloorPreparationModuleCost>) -> Optional<FloorPreparationModuleCost> {
-  fold(rows, none, f: (acc, row) =>
+  fold(rows, init:  none, f: (acc, row) =>
     match acc {
       Absent => Present { value: row }
       Present { value: best } => if floor_preparation_module_total(row) > floor_preparation_module_total(best) { Present { value: row } } else { Present { value: best } }
@@ -785,13 +785,13 @@ fn floor_preparation_attributed_ms(capture: List<String>) -> Int {
   match floor_preparation_attribution(capture) {
     Unattributed {} => 0
     Attributed { modules: rows, module_count: _, top_module: _, top_ms: _ } =>
-      fold(rows, 0, f: (acc, row) => acc + floor_preparation_module_total(row))
+      fold(rows, init:  0, f: (acc, row) => acc + floor_preparation_module_total(row))
   }
 }
 
 // THE PHASE ROWS ALONE, which is what the split's total exceeds the module table by.
 fn floor_preparation_phase_ms(capture: List<String>) -> Int {
-  fold(capture, 0, f: (acc, line) =>
+  fold(capture, init:  0, f: (acc, line) =>
     match floor_preparation_classify(line) {
       PhaseLine { phase: _, fields: _ } => acc + floor_preparation_line_ms(line)
       _ => acc
@@ -813,7 +813,7 @@ fn floor_preparation_phase_ms(capture: List<String>) -> Int {
 // ------------------------------------------------------------------------------------------
 
 fn floor_preparation_whole_tree_ms(capture: List<String>) -> Int {
-  fold(capture, 0, f: (acc, line) =>
+  fold(capture, init:  0, f: (acc, line) =>
     match floor_preparation_classify(line) {
       PhaseLine { phase: phase, fields: fields } =>
         match floor_preparation_phase_row(phase) {
@@ -829,7 +829,7 @@ fn floor_preparation_whole_tree_ms(capture: List<String>) -> Int {
 }
 
 fn floor_preparation_entry_scoped_ms(capture: List<String>) -> Int {
-  fold(capture, 0, f: (acc, line) =>
+  fold(capture, init:  0, f: (acc, line) =>
     match floor_preparation_classify(line) {
       PhaseLine { phase: phase, fields: fields } =>
         match floor_preparation_phase_row(phase) {
@@ -848,7 +848,7 @@ fn floor_preparation_entry_scoped_ms(capture: List<String>) -> Int {
 }
 
 fn floor_preparation_phase_row_count(capture: List<String>) -> Int {
-  fold(capture, 0, f: (acc, line) =>
+  fold(capture, init:  0, f: (acc, line) =>
     match floor_preparation_classify(line) {
       PhaseLine { phase: _, fields: _ } => acc + 1
       _ => acc
@@ -856,7 +856,7 @@ fn floor_preparation_phase_row_count(capture: List<String>) -> Int {
 }
 
 fn floor_preparation_claim_row_count(capture: List<String>) -> Int {
-  fold(capture, 0, f: (acc, line) =>
+  fold(capture, init:  0, f: (acc, line) =>
     match floor_preparation_classify(line) {
       ClaimLine { tag: _, claim: _, fields: _ } => acc + 1
       _ => acc
@@ -867,7 +867,7 @@ fn floor_preparation_claim_row_count(capture: List<String>) -> Int {
 // makes the probe row's classification causal rather than merely consistent: were the probe row counted
 // as preparation, the split's total would exceed the conservation total by exactly this much.
 fn floor_preparation_probe_fill_ms(capture: List<String>) -> Int {
-  fold(capture, 0, f: (acc, line) =>
+  fold(capture, init:  0, f: (acc, line) =>
     match floor_preparation_classify(line) {
       ClaimLine { tag: tag, claim: _, fields: fields } =>
         if tag == floor_preparation_reach_probe_tag {
@@ -880,7 +880,7 @@ fn floor_preparation_probe_fill_ms(capture: List<String>) -> Int {
 }
 
 fn floor_preparation_fill_row_count(capture: List<String>) -> Int {
-  fold(capture, 0, f: (acc, line) =>
+  fold(capture, init:  0, f: (acc, line) =>
     match floor_preparation_classify(line) {
       ClaimLine { tag: tag, claim: _, fields: _ } => if tag == floor_preparation_shared_fill_tag { acc + 1 } else { acc }
       _ => acc
@@ -888,7 +888,7 @@ fn floor_preparation_fill_row_count(capture: List<String>) -> Int {
 }
 
 fn floor_preparation_probe_row_count(capture: List<String>) -> Int {
-  fold(capture, 0, f: (acc, line) =>
+  fold(capture, init:  0, f: (acc, line) =>
     match floor_preparation_classify(line) {
       ClaimLine { tag: tag, claim: _, fields: _ } => if tag == floor_preparation_reach_probe_tag { acc + 1 } else { acc }
       _ => acc
@@ -902,7 +902,7 @@ type FloorPreparationScan {
 }
 
 fn floor_preparation_line_at(capture: List<String>, index: Int) -> String {
-  let pair = fold(capture, FloorPreparationScan { i: 0, found: "" }, f: (acc, line) =>
+  let pair = fold(capture, init:  FloorPreparationScan { i: 0, found: "" }, f: (acc, line) =>
     if acc.i == index {
       FloorPreparationScan { i: acc.i + 1, found: line }
     } else {
@@ -921,7 +921,7 @@ fn floor_preparation_kept(state: FloorPreparationDrop) -> List<String> {
 }
 
 fn floor_preparation_without_index(capture: List<String>, index: Int) -> List<String> {
-  let state = fold(capture, FloorPreparationDrop { i: 0, kept: [] }, f: (acc, line) =>
+  let state = fold(capture, init:  FloorPreparationDrop { i: 0, kept: [] }, f: (acc, line) =>
     if acc.i == index {
       FloorPreparationDrop { i: acc.i + 1, kept: acc.kept }
     } else {
@@ -937,7 +937,7 @@ fn floor_preparation_without_index(capture: List<String>, index: Int) -> List<St
 fn floor_preparation_deletion_margin_holds(capture: List<String>) -> Bool {
   let whole = floor_preparation_total_ms(capture)
   let n = length(xs: capture)
-  let state = fold(capture, FloorPreparationMargin { i: 0, ok: true, costed: 0 }, f: (acc, line) =>
+  let state = fold(capture, init:  FloorPreparationMargin { i: 0, ok: true, costed: 0 }, f: (acc, line) =>
     if floor_preparation_line_ms(line) == 0 {
       FloorPreparationMargin { i: acc.i + 1, ok: acc.ok, costed: acc.costed }
     } else {
@@ -1034,14 +1034,14 @@ fn floor_preparation_attribution_all_rows_have_lines(capture: List<String>) -> B
   match floor_preparation_attribution(capture) {
     Unattributed {} => false
     Attributed { modules: rows, module_count: _, top_module: _, top_ms: _ } =>
-      fold(rows, true, f: (acc, row) => acc && row.lines > 0)
+      fold(rows, init:  true, f: (acc, row) => acc && row.lines > 0)
   }
 }
 
 // THE FILL SUM OVER THE `[floor-shared-fill]` ROWS -- the same quantity the probe rows report, and the
 // equality the causality claim needs.
 fn floor_preparation_fill_fill_ms(capture: List<String>) -> Int {
-  fold(capture, 0, f: (acc, line) =>
+  fold(capture, init:  0, f: (acc, line) =>
     match floor_preparation_classify(line) {
       ClaimLine { tag: tag, claim: _, fields: fields } =>
         if tag == floor_preparation_shared_fill_tag {
@@ -1060,13 +1060,13 @@ fn floor_preparation_resolve_rows_match_their_module_rows(capture: List<String>)
   match floor_preparation_attribution(capture) {
     Unattributed {} => false
     Attributed { modules: rows, module_count: _, top_module: _, top_ms: _ } =>
-      fold(rows, true, f: (acc, row) =>
+      fold(rows, init:  true, f: (acc, row) =>
         acc && floor_preparation_ms_count(row.preparation_ms) == floor_preparation_module_resolve_ms(capture, row.module) + floor_preparation_module_fill_ms(capture, row.module))
   }
 }
 
 fn floor_preparation_module_resolve_ms(capture: List<String>, module: String) -> Int {
-  fold(capture, 0, f: (acc, line) =>
+  fold(capture, init:  0, f: (acc, line) =>
     match floor_preparation_classify(line) {
       EntryResolveLine { entry: entry, ms: n } => if floor_preparation_module_of_path(entry) == module { acc + n } else { acc }
       _ => acc
@@ -1074,7 +1074,7 @@ fn floor_preparation_module_resolve_ms(capture: List<String>, module: String) ->
 }
 
 fn floor_preparation_module_fill_ms(capture: List<String>, module: String) -> Int {
-  let state = fold(capture, FloorPreparationInForce { entry: "", ms: floor_preparation_ms_zero() }, f: (acc, line) =>
+  let state = fold(capture, init:  FloorPreparationInForce { entry: "", ms: floor_preparation_ms_zero() }, f: (acc, line) =>
     match floor_preparation_classify(line) {
       EntryResolveLine { entry: entry, ms: _ } => FloorPreparationInForce { entry: floor_preparation_module_of_path(entry), ms: acc.ms }
       ClaimLine { tag: tag, claim: _, fields: fields } =>
@@ -1207,7 +1207,7 @@ fn floor_preparation_split_line(preparation_ms: Int, claim_ms: Int, preparation_
 }
 
 fn floor_preparation_module_table(rows: List<FloorPreparationModuleCost>) -> String {
-  fold(rows, "", f: (acc, row) =>
+  fold(rows, init:  "", f: (acc, row) =>
     if acc == "" {
       floor_preparation_module_cell(row)
     } else {
@@ -1228,10 +1228,10 @@ fn floor_preparation_head(text: String) -> String {
 
 fn floor_preparation_ask() -> String {
   concat(
-    "gunbc run --source-root dag --source-root src/v2 --entry src/v2/workflow/floor_preparation_split.dag --function floor_preparation_split_report",
+    "gunbc run --source-root dag --source-root src/v1 --source-root src/v2 --entry src/v2/workflow/floor_preparation_split.dag --function floor_preparation_split_report",
     concat(
       "  ||  claim_batch --source-root dag --source-root src/v1 --source-root src/v2 --claim-run --entry dag/test/claim/floor/floor_preparation_split_witness.dag",
-      "  ||  python3 scripts/floor_preparation_capture.sh fold --untrimmed-log <log> --graded-log <log> --population dag/test/claim/floor/floor_preparation_split_population.txt --provenance binary_sha256=<sha> --write"
+      "  ||  bash scripts/floor_preparation_capture.sh report --checkout <checkout> --binary <claim_batch> --gunbc <released gunbc> --population dag/test/claim/floor/floor_preparation_split_population.txt --report-log <run log> --write"
     )
   )
 }
@@ -1294,11 +1294,11 @@ fn floor_preparation_row_cause(row: String) -> String {
 }
 
 fn floor_preparation_has_exact_row(rows: List<String>, wanted: String) -> Bool {
-  fold(rows, false, f: (acc, row) => acc || row == wanted)
+  fold(rows, init:  false, f: (acc, row) => acc || row == wanted)
 }
 
 fn floor_preparation_any_row_starts_with(rows: List<String>, prefix: String) -> Bool {
-  fold(rows, false, f: (acc, row) => acc || floor_preparation_starts_with(row, prefix))
+  fold(rows, init:  false, f: (acc, row) => acc || floor_preparation_starts_with(row, prefix))
 }
 
 fn floor_preparation_capture_names_a_pass(capture: List<String>, claim: String) -> Bool {
@@ -1311,21 +1311,21 @@ fn floor_preparation_capture_names_a_refusal(capture: List<String>, claim: Strin
 }
 
 fn floor_preparation_requested_row_count() -> Int {
-  fold(floor_preparation_requested_rows(), 0, f: (acc, row) => acc + 1)
+  fold(floor_preparation_requested_rows(), init:  0, f: (acc, row) => acc + 1)
 }
 
 fn floor_preparation_graded_row_count() -> Int {
-  fold(floor_preparation_requested_rows(), 0, f: (acc, row) =>
+  fold(floor_preparation_requested_rows(), init:  0, f: (acc, row) =>
     if floor_preparation_row_disposition(row) == floor_preparation_graded_disposition { acc + 1 } else { acc })
 }
 
 fn floor_preparation_excluded_row_count() -> Int {
-  fold(floor_preparation_requested_rows(), 0, f: (acc, row) =>
+  fold(floor_preparation_requested_rows(), init:  0, f: (acc, row) =>
     if floor_preparation_row_disposition(row) == floor_preparation_excluded_disposition { acc + 1 } else { acc })
 }
 
 fn floor_preparation_excluded_with_cause(cause: String) -> Int {
-  fold(floor_preparation_requested_rows(), 0, f: (acc, row) =>
+  fold(floor_preparation_requested_rows(), init:  0, f: (acc, row) =>
     if floor_preparation_row_disposition(row) == floor_preparation_excluded_disposition {
       if floor_preparation_row_cause(row) == cause { acc + 1 } else { acc }
     } else {
@@ -1334,7 +1334,7 @@ fn floor_preparation_excluded_with_cause(cause: String) -> Int {
 }
 
 fn floor_preparation_requested_modules() -> List<String> {
-  fold(floor_preparation_requested_rows(), [], f: (acc, row) =>
+  fold(floor_preparation_requested_rows(), init:  [], f: (acc, row) =>
     if floor_preparation_any_row_starts_with(acc, floor_preparation_row_module(row)) {
       acc
     } else {
@@ -1349,7 +1349,7 @@ fn floor_preparation_requested_modules() -> List<String> {
 // promoted a red claim into the graded set fails the first arm. This is the witness that turns
 // "the committed capture is green" from an assertion into a check.
 fn floor_preparation_census_is_honest() -> Bool {
-  fold(floor_preparation_requested_rows(), true, f: (acc, row) =>
+  fold(floor_preparation_requested_rows(), init:  true, f: (acc, row) =>
     if acc == false {
       false
     } else {
@@ -1375,7 +1375,7 @@ fn floor_preparation_census_is_honest() -> Bool {
 // THE UNTRIMMED LEG IS NOT A SECOND MEASUREMENT OF A DIFFERENT FLOOR: it must have executed every
 // graded claim, or "what the floor actually pays" would be a figure about something else entirely.
 fn floor_preparation_untrimmed_covers_the_graded_population() -> Bool {
-  fold(floor_preparation_requested_rows(), true, f: (acc, row) =>
+  fold(floor_preparation_requested_rows(), init:  true, f: (acc, row) =>
     if acc == false {
       false
     } else if floor_preparation_row_disposition(row) != floor_preparation_graded_disposition {
