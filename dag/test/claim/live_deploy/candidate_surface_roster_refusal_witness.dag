@@ -1,0 +1,187 @@
+module test.claim.live_deploy.candidate_surface_roster_refusal_witness
+
+import std.types { Bool, String, CommitSha, List, NonEmptyStr }
+import std.content_hash { Fnv1a64Structural }
+import gunbc.readiness { Ready, Pending, Refused }
+import gunbc.live_deploy.readiness { observe_service_readiness_from_healthz, ServiceSurfaceUnobserved }
+import gunbc.roadmap.roadmap_site_surface_types { HealthzBodyRead }
+import gunbc.live_deploy.candidate {
+  CandidateObservation,
+  CandidateObserved,
+  CandidateUnobservable,
+  CandidateRosterReadRefused,
+  candidate_observation_from_bundle_observation,
+  candidate_unobservable_detail,
+}
+import gunbc.live_deploy.candidate_identity { CandidateRelease }
+import gunbc.roadmap.roadmap_site_surface_observe {
+  RoadmapSiteSurfaceBundleObservation,
+  RoadmapSiteSurfaceBundleRendered,
+  RoadmapSiteSurfaceBundleReadRefused,
+  RoadmapSiteSurfaceBundle,
+  render_roadmap_site_surface_bundle_for_projection,
+}
+import gunbc.roadmap.roadmap_authority { roadmap_authority_projection_with, RoadmapAuthorityProjection, RoadmapAuthorityProjectionRefused }
+import gunbc.roadmap.roadmap_acceptance_history_carrier { RoadmapAcceptanceEventHistoryLoaded }
+import gunbc.roadmap.roadmap_event_log { RetiredNodeIdsLoaded }
+
+// THE SUBJECT IS `{ roster read refused, expected surface identity minted }` MUST NOT BE CONSTRUCTIBLE.
+//
+// The srv1 production deploy (fleet-converge mode=dashboard_deploy, run 44966880833) failed its final readiness
+// gate with a deterministic ProcessSurfaceMismatch: every leg applied, the cutover gate then refused because the
+// candidate's expected_surface_identity (932452bbee40480a) never equaled the live service's observed surface
+// (bca26f0704e77c8c). The root cause was a BINDING-then-PRINCIPAL failure in the family of
+// gunbc.recurring_failure_mode::readback_expectation_rederived_under_a_different_binding: observe_candidate_release
+// renders the expectation as `ghrunner` through the instance carrier layout (repo_root /opt/gunbc/gunbc, worktree
+// /opt/gunbc/roadmap-events, both briansrls-owned), where EVERY carrier git call refuses with "detected dubious
+// ownership" — but the renderer minted a bundle_identity OVER THAT REFUSED ROSTER and handed it to the gate as an
+// expectation. The service runs as briansrls, opens the snapshot, and renders the real roster, so the two could
+// never be equal. ~55 minutes and one operator approval were spent learning a fact the launcher could have named
+// in milliseconds.
+//
+// These witnesses pin the fold at its seam. The discriminating axis is the SAME authority read: under a principal
+// that cannot open the log, the candidate MUST refuse (CandidateUnobservable / CandidateRosterReadRefused); under
+// a read that answers, the candidate's expectation MUST equal the service-side render over the very same
+// projection. Red before the change: the candidate always returned CandidateObserved (there was no refusal arm and
+// no typed observation), so the refused-arm claim could not hold. The render is run here, not mocked, so the
+// equality is the real fold over a real projection, not a fixture's word for it.
+
+// One projected authority, read as the empty roster. Both control arms fold THIS projection: the service side
+// renders it into a bundle, the candidate side mints its expectation from that same bundle. An empty roster is a
+// legitimate projected state (no events), distinct from a refused read, so this is the positive arm's authority.
+fn projected_empty_authority() -> RoadmapAuthorityProjection {
+  roadmap_authority_projection_with(
+    history: RoadmapAcceptanceEventHistoryLoaded { events: [] },
+    runtime: [],
+    retired: RetiredNodeIdsLoaded { ids: [] })
+}
+
+fn a_fixture_revision() -> CommitSha {
+  "0000000000000000000000000000000000000000" as CommitSha
+}
+
+// ---------------------------------------------------------------- the fail-closed arm (red before the change)
+
+// A REFUSED ROSTER READ REFUSES THE CANDIDATE. The candidate observation built from a refused surface observation
+// is a CandidateUnobservable naming CandidateRosterReadRefused — not a CandidateObserved carrying an identity
+// rendered over a roster nobody opened. This is the whole point of the change: the launcher refuses BEFORE an
+// expectation is minted and BEFORE any host mutation, instead of after the cutover gate.
+test fn a_refused_roster_read_refuses_the_candidate() -> Bool {
+  match candidate_observation_from_bundle_observation(
+    revision: a_fixture_revision(),
+    observation: RoadmapSiteSurfaceBundleReadRefused { detail: "event log read refused at ls-remote: fatal: detected dubious ownership in repository at '/opt/gunbc/roadmap-events'" }) {
+    CandidateUnobservable { cause: CandidateRosterReadRefused { detail: d } } =>
+      d != "" && string_contains(s: d, pattern: "dubious ownership")
+    _ => false
+  }
+}
+
+// The refusal CAUSE IS NAMED, not silent. candidate_unobservable_detail carries the refused-roster reason, so the
+// operator sees WHY the candidate was refused at the launcher rather than discovering a ProcessSurfaceMismatch ~55
+// minutes later. The detail must name both the refusal and the fact that no identity was minted.
+test fn the_refusal_cause_names_the_refused_roster_and_the_absent_identity() -> Bool {
+  let detail = candidate_unobservable_detail(
+    cause: CandidateRosterReadRefused { detail: "event log read refused at worktree-add: cannot open /opt/gunbc/roadmap-events" })
+  string_contains(s: detail, pattern: "CandidateRosterReadRefused")
+    && string_contains(s: detail, pattern: "refused")
+    && string_contains(s: detail, pattern: "cannot open /opt/gunbc/roadmap-events")
+}
+
+// ---------------------------------------------------------------- the positive arm (CI-side == service-side)
+
+// THE CANDIDATE FOLD COPIES, IT DOES NOT RECOMPUTE. The candidate's expected_surface_identity MUST be exactly the
+// bundle_identity that render_roadmap_site_surface_bundle_for_projection produced from the same bundle, and the
+// expected_dispatch_digest exactly that bundle's dispatch digest — one bundle, folded once, shared by the service
+// render and the candidate expectation. This is a fold-consistency tripwire, NOT a two-read proof: it feeds one
+// already-rendered bundle to both sides, so it pins that the candidate never recomputes an identity the service
+// would not present (the divergence that made the cutover gate mismatch). The genuine TWO-READ positive control —
+// two independent launcher reads of one origin rendering the same roster — is executed in the wet witness
+// test.manual.candidate_launcher_read_real_execution (control three), which the hermetic lane cannot run.
+test fn the_ci_side_expectation_equals_the_service_side_render_over_the_same_event_set() -> Bool {
+  let proj = projected_empty_authority()
+  let service_bundle = render_roadmap_site_surface_bundle_for_projection(proj: proj)
+  match candidate_observation_from_bundle_observation(
+    revision: a_fixture_revision(),
+    observation: RoadmapSiteSurfaceBundleRendered { bundle: service_bundle }) {
+    CandidateObserved { candidate: c } =>
+      c.expected_surface_identity == service_bundle.bundle_identity
+        && c.expected_dispatch_digest == service_bundle.dispatch_json.digest
+    _ => false
+  }
+}
+
+// THE DISTINCTION IS THE READ, NOT A SENTINEL. Feeding the candidate a REFUSED observation refuses it; feeding it
+// the SAME authority's RENDERED bundle admits it. The only difference between the two arms is whether the roster
+// read answered — so the gate cannot be satisfied by an "unavailable"/empty surface: a read that could not be
+// opened is a refusal, never a renderable roster. (This is the same law roadmap_retired_node_ids_load states one
+// fold up: a log that cannot be read is RetiredNodeIdsRefused, never an empty set.)
+test fn an_unanswered_read_is_a_refusal_and_never_a_renderable_surface() -> Bool {
+  let proj = projected_empty_authority()
+  let service_bundle = render_roadmap_site_surface_bundle_for_projection(proj: proj)
+  let admitted = match candidate_observation_from_bundle_observation(
+    revision: a_fixture_revision(),
+    observation: RoadmapSiteSurfaceBundleRendered { bundle: service_bundle }) {
+    CandidateObserved { candidate: _ } => true
+    _ => false
+  }
+  let refused = match candidate_observation_from_bundle_observation(
+    revision: a_fixture_revision(),
+    observation: RoadmapSiteSurfaceBundleReadRefused { detail: "refused" }) {
+    CandidateUnobservable { cause: CandidateRosterReadRefused { detail: _ } } => true
+    _ => false
+  }
+  admitted && refused
+}
+
+// THE RENDER LAYER IS THE FAIL-OPEN — this pins WHY the candidate-side fold guard is load-bearing, and is the
+// RED this change retired. Before it, candidate_observed_from_checkout_revision assigned
+// expected_surface_identity := materialize_live_roadmap_site_surface_bundle().bundle_identity with NO match on the
+// projection: a REFUSED projection was rendered to a bundle and its minted identity handed to the cutover gate.
+// This claim measures exactly that — render_roadmap_site_surface_bundle_for_projection over a refused projection
+// still MINTS a bundle_identity, and it is a DIFFERENT identity from the projected render the live service would
+// present. Pre-change, that fabricated identity was the expected value (red: the candidate carried it); post-change
+// the fold turns the same read into a CandidateUnobservable (green: the_a_refused_roster_read_refuses_the_candidate
+// above). If the renderer ever stopped minting an identity for a refused projection, this claim would go red, which
+// is the tripwire that the fold guard has not silently become dead code.
+test fn rendering_over_a_refused_projection_mints_an_identity_the_service_could_never_present() -> Bool {
+  let refused_bundle = render_roadmap_site_surface_bundle_for_projection(
+    proj: RoadmapAuthorityProjectionRefused { detail: "event log read refused at ls-remote: detected dubious ownership" })
+  let projected_bundle = render_roadmap_site_surface_bundle_for_projection(proj: projected_empty_authority())
+  refused_bundle.bundle_identity != projected_bundle.bundle_identity
+}
+
+// RED BEFORE THE CHANGE, AT THE SHARED GATE. observe_service_readiness_from_healthz used to take a bare
+// RoadmapSiteSurfaceBundle, so a refused roster read — rendered to a bundle with a fabricated identity — was
+// silently compared against the served body; the gate reported Pending (identity-not-yet-matched) over a
+// comparison it had no authority to make, and the refused detail never surfaced. It now takes the typed
+// observation and returns Refused{ServiceSurfaceUnobserved} before the served body is judged at all, so a
+// launcher running as a principal that cannot open the log STOPS with a named refusal instead of churning on
+// a false Pending. This is the root-generalized fail-closed: the repair is in the shared gate, not re-done at
+// each readiness site.
+test fn the_readiness_gate_refuses_a_refused_roster_read_and_never_renders_a_verdict() -> Bool {
+  let gate = observe_service_readiness_from_healthz(
+    read: HealthzBodyRead { body: "irrelevant body; the refusal short-circuits before the read is judged" },
+    observation: RoadmapSiteSurfaceBundleReadRefused {
+      detail: "event log read refused at ls-remote: detected dubious ownership",
+    },
+    expected_revision: a_fixture_revision(),
+    expected_surface_identity: Fnv1a64Structural { digest: "0123456789abcdef" as NonEmptyStr },
+  )
+  match gate {
+    Refused { cause: ServiceSurfaceUnobserved { detail } } =>
+      string_contains(s: detail, pattern: "detected dubious ownership")
+    Refused { cause: _ } => false
+    Pending { cause: _ } => false
+    Ready { evidence: _ } => false
+  }
+}
+
+// THE LAUNCHER LAYOUT / LIFECYCLE / TWO-READ EVIDENCE LIVES IN A WET CONTROL, not here. The layout-shape and
+// lifecycle facts (repo_root is the runner checkout, the carrier snapshot is scoped-detached so nothing leaks
+// inside the checkout or attaches the branch, the real launcher read is repeatable, and two independent readers
+// of one origin render the same roster) require REAL git and are therefore discriminating controls in
+// test.manual.candidate_launcher_read_real_execution — run there, not on this hermetic lane. A hermetic control
+// that only re-derived the pure layout constructor with literal paths would stay green if the production layout
+// or lifecycle were reverted, so it is deliberately NOT asserted here; see that module's header for the exact
+// invocation. What this module keeps are the pure fail-closed laws below, which need no host effects.
+

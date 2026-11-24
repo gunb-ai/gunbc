@@ -1,0 +1,31 @@
+module test.claim.roadmap.roadmap_belt_tick_local_cause_witness
+
+// THE FALLBACK REPORTS BOTH ARMS ON THE PATH THAT USED TO LIE (review 97601, non-blocking). When the
+// ssh CREDENTIAL prepared but the ssh OBSERVATION refused, the verdict carried only the ssh text while
+// the module comment promised both -- an operator could not tell a wrong-repo ssh refusal from the same
+// refusal on a host whose own join had also refused. The fold now composes them, and this claim pins
+// it: both texts survive, neither is truncated away, and no other verdict arm is rewritten. Its own
+// module, because a claim over the gate's verdict must not drag the deployed-tree witnesses' closure
+// in with it, nor pay for theirs.
+
+import std.types { Bool }
+import std.algebra { string_contains }
+import gunbc.roadmap.roadmap_belt_tick_cli {
+  LabServePairVerdict,
+  PairServeRefused,
+  ReleaseBindingUnobserved,
+  with_local_cause_kept,
+}
+
+test fn witness_the_local_cause_survives_the_ssh_observation() -> Bool {
+  let refused = PairServeRefused {
+    binding: ReleaseBindingUnobserved { cause: "fatal: not a git repository" },
+    reason: "unobserved",
+  }
+  match with_local_cause_kept(verdict: refused, local_cause: "hostname srv9 does not name this machine") {
+    PairServeRefused { binding: ReleaseBindingUnobserved { cause: c }, reason: _ } =>
+      string_contains(s: c, pattern: "hostname srv9 does not name this machine")
+        && string_contains(s: c, pattern: "fatal: not a git repository")
+    _ => false
+  }
+}

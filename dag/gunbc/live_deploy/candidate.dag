@@ -6,7 +6,12 @@ import gunbc.output_policy { ExpectSuccess }
 import std.types { Bool, CommitSha, String, List, Int }
 import std.algebra { list_append }
 import gunbc.live_deploy.deployed_tree_scope { path_is_deployed }
-import gunbc.roadmap.roadmap_site_surface_observe { materialize_live_roadmap_site_surface_bundle }
+import gunbc.roadmap.roadmap_site_surface_observe {
+  RoadmapSiteSurfaceBundleObservation,
+  RoadmapSiteSurfaceBundleRendered,
+  RoadmapSiteSurfaceBundleReadRefused,
+  roadmap_site_surface_bundle_observation_for_launcher,
+}
 import gunbc.running_release_identity {
   RunningReleaseIdentity,
   release_revision_text_valid,
@@ -68,6 +73,7 @@ type CandidateUnobservableCause
       ignored_deployed_paths: List<String>,
     }
   | CandidateCheckoutStatusRefused { detail: String }
+  | CandidateRosterReadRefused { detail: String }
 
 type CandidateObservation
   = CandidateObserved { candidate: CandidateRelease }
@@ -244,15 +250,45 @@ fn observe_candidate_release() -> CandidateObservation {
   }
 }
 
-fn candidate_observed_from_checkout_revision(revision: CommitSha) -> CandidateObservation {
-  let bundle = materialize_live_roadmap_site_surface_bundle()
-  CandidateObserved {
-    candidate: CandidateRelease {
-      revision: revision,
-      expected_surface_identity: bundle.bundle_identity,
-      expected_dispatch_digest: bundle.dispatch_json.digest,
-    },
+// THE CANDIDATE-SIDE FOLD, PURE. Given the typed surface observation, decide the candidate: an unobservable
+// candidate never enters the mutation path and a refused roster never supplies an expected identity; a rendered
+// bundle mints the expected identity. This is where the fail-closed lives, kept free of host effects so both arms
+// are reachable by a witness (the production fold below threads it the single observation it reads). Refusing here
+// means the candidate never carries an expected_surface_identity the live service — which renders the real roster —
+// can never meet; that mismatch was the deterministic cutover-gate failure this row retires.
+fn candidate_observation_from_bundle_observation(
+  revision: CommitSha,
+  observation: RoadmapSiteSurfaceBundleObservation,
+) -> CandidateObservation {
+  match observation {
+    RoadmapSiteSurfaceBundleReadRefused { detail: detail } =>
+      CandidateUnobservable { cause: CandidateRosterReadRefused { detail: detail } }
+    RoadmapSiteSurfaceBundleRendered { bundle: bundle } =>
+      CandidateObserved {
+        candidate: CandidateRelease {
+          revision: revision,
+          expected_surface_identity: bundle.bundle_identity,
+          expected_dispatch_digest: bundle.dispatch_json.digest,
+        },
+      }
   }
+}
+
+fn candidate_observed_from_checkout_revision(revision: CommitSha) -> CandidateObservation {
+  // Observe the surface ONCE, over the LAUNCHER (CI-runner) carrier layout — the same shared path the cutover
+  // readiness gate and the launch step use (roadmap_site_surface_bundle_observation_for_launcher), so candidate,
+  // readiness and launch all derive the one roster fact under the same principal and layout. It reads the same
+  // remote roadmap-events branch the service syncs to, into the runner's own checkout. The observation is typed:
+  // a roster read that cannot be opened is a refusal, NOT a bundle — minting an expected_surface_identity from a
+  // refused roster is the fail-open that made the srv1 cutover gate refuse a deterministic ProcessSurfaceMismatch
+  // after ~55 min and an operator approval
+  // (gunbc.recurring_failure_mode::readback_expectation_rederived_under_a_different_binding). The checkout root
+  // is the same one observe_candidate_checkout already reads through (git.Inspect.Toplevel()); the revision and
+  // cleanliness arms above have already proved this is a readable repository, so the only thing left to decide
+  // is whether the ROSTER read answered — and that is exactly what the typed observation names.
+  candidate_observation_from_bundle_observation(
+    revision: revision,
+    observation: roadmap_site_surface_bundle_observation_for_launcher())
 }
 
 // The cleanliness read comes AFTER the revision read and BEFORE the surface is rendered, and the order is
@@ -279,6 +315,8 @@ fn candidate_unobservable_detail(cause: CandidateUnobservableCause) -> String {
       join(["CandidateRevisionMalformed: the deploying checkout reported '", t, "', which is not a 40-digit lowercase object name"], "")
     CandidateCheckoutStatusRefused { detail: d } =>
       join(["CandidateCheckoutStatusRefused: ", d], "")
+    CandidateRosterReadRefused { detail: d } =>
+      join(["CandidateRosterReadRefused: the candidate-side roadmap event-log read refused (", d, "); the expected surface identity is NOT minted from a refused roster"], "")
     CandidateCheckoutNotClean {
       tracked_changes: t,
       staged_changes: s,

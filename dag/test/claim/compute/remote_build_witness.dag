@@ -9,8 +9,9 @@ import gunbc.roadmap.roadmap_dashboard_instance { srv1_lab_dashboard_instance }
 import gunbc.compute.remote_build {
   RemoteBuildOperation, RemoteCompileEntry, RemoteRunClaims,
   RemoteBuildSourceRef, remote_build_source_ref, remote_build_source_ref_name,
-  RemoteBuildRequest, remote_build_request_text, remote_build_decode_request,
-  RemoteBuildRequestDecode, RemoteBuildRequestDecoded, RemoteBuildRequestRefused,
+  RemoteBuildRequest, RemoteBuildWork, remote_build_request_work, remote_build_execution_requirements,
+  remote_build_request_text, remote_build_decode_request,
+  RemoteBuildRequestDecode, RemoteBuildWorkDecoded, RemoteBuildRequestRefused,
   RemoteBuildRequestRefusal, RequestNotThisProtocol, RequestWordNotPortable, RequestTooShort,
   RequestCommitNotAnObjectId, RequestSourceRefInvalid, RequestOperationUnknown, RequestEntryOutsideCorpus,
   RequestCompileTakesOneEntry, RequestClaimsNameNoFunction,
@@ -41,7 +42,7 @@ fn w_commit() -> GitObjectId {
 // The probe id is admitted, so every request below is Present; an Absent one reds the claim using it.
 fn w_request(op: RemoteBuildOperation) -> RemoteBuildRequest? {
   match remote_build_source_ref(id: "clever-raven-401.1") {
-    Present { value: source } => Present { value: RemoteBuildRequest { commit: w_commit(), source: source, operation: op } }
+    Present { value: source } => Present { value: RemoteBuildRequest { commit: w_commit(), source: source, operation: op, requirements: remote_build_execution_requirements(architecture: none) } }
     Absent => none
   }
 }
@@ -51,7 +52,7 @@ data w_compile_op: RemoteBuildOperation = RemoteCompileEntry { entry: "dag/gunbc
 
 fn w_refusal_of(text: String) -> RemoteBuildRequestRefusal? {
   match remote_build_decode_request(text: text) {
-    RemoteBuildRequestDecoded { request: _ } => none
+    RemoteBuildWorkDecoded { work: _ } => none
     RemoteBuildRequestRefused { cause } => Present { value: cause }
   }
 }
@@ -62,11 +63,11 @@ test fn a_claims_request_reads_back_as_itself() -> Bool {
   match w_request(op: w_claims_op) {
     Absent => false
     Present { value: req } => {
-      let text = remote_build_request_text(r: req)
+      let text = remote_build_request_text(r: remote_build_request_work(r: req))
       text == concat("remote-build-v1 ", w_commit_hex, " clever-raven-401.1 claims dag/test/claim/compute/remote_build_witness.dag first_claim second_claim")
         && match remote_build_decode_request(text: text) {
           RemoteBuildRequestRefused { cause: _ } => false
-          RemoteBuildRequestDecoded { request } => remote_build_request_text(r: request) == text
+          RemoteBuildWorkDecoded { work } => remote_build_request_text(r: work) == text
         }
     }
   }
@@ -76,11 +77,11 @@ test fn a_compile_request_reads_back_as_itself() -> Bool {
   match w_request(op: w_compile_op) {
     Absent => false
     Present { value: req } =>
-      match remote_build_decode_request(text: remote_build_request_text(r: req)) {
+      match remote_build_decode_request(text: remote_build_request_text(r: remote_build_request_work(r: req))) {
         RemoteBuildRequestRefused { cause: _ } => false
-        RemoteBuildRequestDecoded { request } =>
-          remote_build_request_text(r: request) == remote_build_request_text(r: req)
-            && match request.operation {
+        RemoteBuildWorkDecoded { work } =>
+          remote_build_request_text(r: work) == remote_build_request_text(r: remote_build_request_work(r: req))
+            && match work.operation {
               RemoteCompileEntry { entry } => entry as String == "dag/gunbc/compute/remote_build.dag"
               RemoteRunClaims { entry: _, functions: _ } => false
               // A gate request is a different operation; a compile request must not read back as one.
@@ -199,7 +200,7 @@ test fn a_ref_that_moved_is_not_run() -> Bool {
       match w_request(op: w_compile_op) {
         Absent => false
         Present { value: req } =>
-          match remote_build_admit_fetched_source(request: req, fetched: moved) {
+          match remote_build_admit_fetched_source(work: remote_build_request_work(r: req), fetched: moved) {
             RemoteBuildSourceMatches => false
             RemoteBuildSourceMoved { requested, fetched } => requested as String == w_commit_hex && fetched as String == w_other_commit_hex
           }
@@ -211,7 +212,7 @@ test fn the_requested_commit_is_admitted() -> Bool {
   match w_request(op: w_compile_op) {
     Absent => false
     Present { value: req } =>
-      match remote_build_admit_fetched_source(request: req, fetched: w_commit()) {
+      match remote_build_admit_fetched_source(work: remote_build_request_work(r: req), fetched: w_commit()) {
         RemoteBuildSourceMatches => true
         RemoteBuildSourceMoved { requested: _, fetched: _ } => false
       }

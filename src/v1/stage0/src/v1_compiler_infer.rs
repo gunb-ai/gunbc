@@ -29869,41 +29869,44 @@ pub fn realization_edges(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<RealizationEdge>>> {
-    v1_rt::concat(
-        Rc::new(vec![
-            "spelled".to_string(),
-            "inhabitance_row".to_string(),
-            "algebra_row".to_string(),
-            "dispatch".to_string(),
-            "provider_demand".to_string(),
-            "effect_analysis".to_string(),
-            "global_bare_lookup".to_string(),
-        ])
-        .iter()
-        .cloned()
-        .fold(
-            Rc::new(vec![]),
-            |acc: Rc<Vec<Rc<RealizationEdge>>>, reader: String| {
-                realization_read_names(n.clone(), source_indices.clone())
-                    .iter()
-                    .cloned()
-                    .fold(acc, |a2: Rc<Vec<Rc<RealizationEdge>>>, nm: String| {
-                        v1_rt::rc_list_push(
-                            a2,
-                            Rc::new(RealizationEdge {
-                                reader: reader.clone(),
-                                name: nm.clone(),
-                                span: n.span.clone(),
-                            }),
-                        )
-                    })
-            },
-        ),
+    {
+        let read_names = realization_read_names(n.clone(), source_indices.clone());
         v1_rt::concat(
-            realization_row_edges(n.clone(), source_indices.clone()),
-            realization_provider_row_edges(n.clone(), source_indices.clone()),
-        ),
-    )
+            Rc::new(vec![
+                "spelled".to_string(),
+                "inhabitance_row".to_string(),
+                "algebra_row".to_string(),
+                "dispatch".to_string(),
+                "provider_demand".to_string(),
+                "effect_analysis".to_string(),
+                "global_bare_lookup".to_string(),
+            ])
+            .iter()
+            .cloned()
+            .fold(
+                Rc::new(vec![]),
+                |acc: Rc<Vec<Rc<RealizationEdge>>>, reader: String| {
+                    read_names.iter().cloned().fold(
+                        acc,
+                        |a2: Rc<Vec<Rc<RealizationEdge>>>, nm: String| {
+                            v1_rt::rc_list_push(
+                                a2,
+                                Rc::new(RealizationEdge {
+                                    reader: reader.clone(),
+                                    name: nm.clone(),
+                                    span: n.span.clone(),
+                                }),
+                            )
+                        },
+                    )
+                },
+            ),
+            v1_rt::concat(
+                realization_row_edges(n.clone(), source_indices.clone()),
+                realization_provider_row_edges(n.clone(), source_indices.clone()),
+            ),
+        )
+    }
 }
 
 pub fn realization_row_edges(

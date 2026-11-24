@@ -73,6 +73,7 @@ import gunbc.compute.work_provider_local {
   ComputeRecovery, RecoveryReleased, RecoverySettledButHeld, RecoveryNothingHeld, RecoveryDeclined, RecoveryRefused,
   compute_recover_attempt,
   compute_recover_catalog_for, compute_recover_catalog_entry_line, compute_recover_catalog_cli, compute_attempt_record,
+  compute_recover_catalog_serving_cli, compute_recover_serving_cli, compute_recover_readback_serving_cli,
   compute_open_attempt, compute_settle_attempt,
   AttemptGate, AttemptGateReady, AttemptGateRefused, AttemptOwner, DirectInvocation, DispatchOwned,
   AttemptSettlement, AttemptSettled, AttemptNotSettled, AttemptUnsettleable,
@@ -402,6 +403,61 @@ test fn the_cli_door_exits_two_when_no_instance_resolves() -> Bool {
   }
 }
 
+// THE SERVING DOORS, AT THEIR BOUNDARY. A host the serving route is not provisioned on (the candidate
+// row, remote_build_host_is_serving_candidate) gets the UNKNOWN exit with a reason that names serving
+// — never an empty census, never a census of some other host's seats. This is the red control for the
+// seam the srv1 apply run 45102946243 exposed: the doors used to resolve instances ONLY through the
+// dashboard roster, where the parametric serving instance has no row, so the honest answer for EVERY
+// host was 'no dashboard instance is rooted at'.
+test fn the_serving_census_door_refuses_a_host_off_the_serving_roster() -> Bool {
+  match compute_recover_catalog_serving_cli(host: "not-a-serving-host") {
+    CliWirePrintable { bytes: b, exit: ExitFailure { code: 2, reason: _ } } =>
+      string_contains(s: b, pattern: "is not a remote-build serving host")
+    _ => false
+  }
+}
+
+// A PROVISIONED HOST OFF THE DISPATCH ROSTER PASSES THE DOOR'S ADMISSION AND ACTUALLY READS. srv1
+// serves no builds today (its leave note in gunbc.compute.remote_build_hosts names its RETURN as "the
+// same run that executes the seat-recovery leg"), yet the serving route IS provisioned on it — that is
+// what its candidate row says, and the seat the recovery leg exists to settle lives under that
+// account's home. Keying this door on the dispatch gate remote_build_serving_hosts refused exactly the
+// run that must prove srv1's return: converge apply 45218878048, census refused 'the host is not one
+// the remote-build program serves'. So this claim asserts BOTH halves: the door reaches the read
+// (unknown here — this container holds no /home/gunbc-build account, so an established census would be
+// a fabrication) AND it does not take the refusal branch. Red again under the dispatch-gate key.
+test fn the_serving_census_door_answers_unknown_where_the_seat_home_is_absent() -> Bool {
+  match compute_recover_catalog_serving_cli(host: "srv1") {
+    CliWirePrintable { bytes: b, exit: ExitFailure { code: 2, reason: r } } =>
+      string_contains(s: b, pattern: " unknown: ") && !string_contains(s: b, pattern: "is not a remote-build serving host")
+        && string_contains(s: r, pattern: "the attempts directory could not be listed")
+    _ => false
+  }
+}
+
+// THE UNKNOWN EXIT REASON CARRIES THE LOCATED DETAIL, not just the fixed sentence. The converge leg
+// logs the door's exit reason and captures its stdout into the plan, so a reason that names only
+// 'could not be established' sends the operator who ran it to ssh for what the door already knew --
+// fail_closed asks for a typed, LOCATED diagnostic on the channel that survives the run. The read-back
+// of srv1's seat in this container can only answer that the capacity ledger is not provisioned here,
+// and the reason must say so. Red before the detail moved: the sentence alone was the whole reason.
+test fn the_serving_readback_door_carries_its_unknown_detail() -> Bool {
+  match compute_recover_readback_serving_cli(host: "srv1", reference: "011dfdd11f75268188c6b97278319c8b#1.1") {
+    CliWirePrintable { bytes: b, exit: ExitFailure { code: 2, reason: r } } =>
+      string_contains(s: r, pattern: "recover-readback: the read-back could not be established: ")
+        && string_contains(s: r, pattern: "the capacity ledger is not standing at objects")
+        && string_contains(s: b, pattern: "the capacity ledger is not standing at objects")
+    _ => false
+  }
+}
+
+// THE WRITE DOOR ON A HOST THE SERVING ROUTE IS NOT PROVISIONED ON EXITS THE UNKNOWN CODE, not the
+// declined code: a host with no serving home to settle is a broken observation, not a safe no.
+test fn the_serving_recover_door_exits_unknown_off_the_roster() -> Bool {
+  compute_recover_serving_cli(host: "not-a-serving-host", reference: "anything", receipt_path: "/nonexistent-recover-serving-witness.receipt.json")
+    == ExitFailure { code: 2, reason: "compute-recover: not-a-serving-host is not a remote-build serving host" }
+}
+
 // hermetic mock table, and a mocked clock or process probe would make these verdicts agree with authored
 // data instead of with the host. Exit 0 only when every claim holds; a red claim names itself.
 fn check_or_name(name: String, held: Bool) -> String {
@@ -417,6 +473,10 @@ fn run_compute_recover_catalog_witness() -> ProcessExit {
     check_or_name(name: "one_reference_in_two_seat_directories_makes_the_observation_unknown", held: one_reference_in_two_seat_directories_is_unknown()),
     check_or_name(name: "the_census_answers_the_same_way_twice_and_settles_nothing", held: censusing_the_same_slot_twice_settles_nothing()),
     check_or_name(name: "the_cli_door_exits_two_when_no_instance_resolves", held: the_cli_door_exits_two_when_no_instance_resolves()),
+    check_or_name(name: "the_serving_census_door_refuses_a_host_off_the_serving_roster", held: the_serving_census_door_refuses_a_host_off_the_serving_roster()),
+    check_or_name(name: "the_serving_census_door_answers_unknown_where_the_seat_home_is_absent", held: the_serving_census_door_answers_unknown_where_the_seat_home_is_absent()),
+    check_or_name(name: "the_serving_recover_door_exits_unknown_off_the_roster", held: the_serving_recover_door_exits_unknown_off_the_roster()),
+    check_or_name(name: "the_serving_readback_door_carries_its_unknown_detail", held: the_serving_readback_door_carries_its_unknown_detail()),
   ], "")
   if red == "" {
     ExitSuccess
@@ -425,29 +485,6 @@ fn run_compute_recover_catalog_witness() -> ProcessExit {
   }
 }
 
-// TEMPORARY DIAGNOSTIC (deleted before commit): each conjunct of the two red claims, printed.
-fn diagnose_claim_two() -> ProcessExit {
-  let root = witness_root(kind: "diag-two")
-  let reference = "0000000000000000000000000000000000000000000000000000000000000002" as NonEmptyStr
-  let opened = open_slot(root: root, seat: ComputeFlatSeat, identity: "0123456789abcdef", reference: reference)
-  match seat_store_of(root: root, seat: ComputeFlatSeat) {
-    Absent => ExitFailure { code: 1, reason: "no store" }
-    Present { value: store } => match compute_recover_catalog_for(stores: [store]) {
-      RecoverCatalogUnknown { detail: d } => ExitFailure { code: 1, reason: join(["census unknown: ", d], "") }
-      RecoverCatalogEstablished { entries: es } =>
-        ExitFailure {
-          code: 1,
-          reason: join([
-            "opened=", to_string(value: opened),
-            " n=", to_string(value: count_where(xs: es, predicate: e => true)),
-            " entry=", to_string(value: entry_for(entries: es, reference: reference)),
-            " line=", render_entries(entries: es),
-            " door=", door_word(instance: instance_at(root: root), reference: reference),
-          ], ""),
-        }
-    }
-  }
-}
 
 fn diagnose_claim_three() -> ProcessExit {
   let root = witness_root(kind: "diag-three")

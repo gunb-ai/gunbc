@@ -7,8 +7,9 @@ use std::rc::Rc;
 use std::time::Instant;
 
 use v1_compiler::cli_run::{
-    closure_subject_for_entry, entry_closure_source_paths, make_eval_context_with_runtime_options,
-    peak_rss_vhwm_bytes, precompute_whole_tree_published_mock_keys, process_shared_index_or_refuse,
+    claim_outcome_kind, closure_subject_for_entry, entry_closure_source_paths,
+    make_eval_context_with_runtime_options, peak_rss_vhwm_bytes,
+    precompute_whole_tree_published_mock_keys, process_shared_index_or_refuse,
     resolve_entry_with_index_typed, run_claim_measured, ClaimOutcome, EntryResolveRefusal,
     MultiEntryIndex,
 };
@@ -441,7 +442,7 @@ fn report_outcome(
         // AN UNWIND IS ITS OWN LINE, NOT A FAIL. `FAIL` asserts the witness answered false;
         // the host unwound here, so the claim answered nothing. Reported as a failed run
         // (`any_failed`) because the line must still stop — what changes is what the line says.
-        ClaimOutcome::Panicked { payload } => {
+        ClaimOutcome::Panicked { payload, .. } => {
             println!(
                 "PANICKED {} (the host unwound during evaluation: {})",
                 function, payload
@@ -513,27 +514,6 @@ fn report_outcome(
     }
 }
 
-/// THE NAME OF THE `ClaimOutcome` VARIANT, AND NOTHING ELSE. The wire authority
-/// (`v2.workflow.floor_terminal_ledger_wire derive_outcome_row`) owns what each kind means: its
-/// tag, its detail and its disposition. This match is exhaustive with no wildcard on purpose, so a
-/// variant added to `ClaimOutcome` stops compiling here until it is named, and the unit test
-/// below cross-checks these names against the wire's `outcome_kind_roster`.
-fn claim_outcome_kind(outcome: &ClaimOutcome) -> &'static str {
-    match outcome {
-        ClaimOutcome::Pass => "Pass",
-        ClaimOutcome::Fail => "Fail",
-        ClaimOutcome::NotBool { .. } => "NotBool",
-        ClaimOutcome::RuntimeError { .. } => "RuntimeError",
-        ClaimOutcome::BudgetInterrupted { .. } => "BudgetInterrupted",
-        ClaimOutcome::CompletedOverBudget { .. } => "CompletedOverBudget",
-        ClaimOutcome::HostToolUnresolved { .. } => "HostToolUnresolved",
-        ClaimOutcome::HostEffectRefused { .. } => "HostEffectRefused",
-        ClaimOutcome::Panicked { .. } => "Panicked",
-        ClaimOutcome::NotAttempted { .. } => "NotAttempted",
-        ClaimOutcome::ExitFailure { .. } => "ExitFailure",
-    }
-}
-
 /// The facts one claim contributes to a wire row beyond its name, as the values the seed holds.
 /// A field a variant does not carry is empty. Nothing here decides a tag or a disposition; that
 /// is the wire's. `reach` is the receipt's reachability observation spelled as the wire's
@@ -583,7 +563,7 @@ fn outcome_row_facts(
             }
             .to_string(),
         ),
-        ClaimOutcome::Panicked { payload } => (payload.clone(), String::new(), String::new()),
+        ClaimOutcome::Panicked { payload, .. } => (payload.clone(), String::new(), String::new()),
         ClaimOutcome::NotAttempted { halted_by } => {
             (halted_by.clone(), String::new(), String::new())
         }
@@ -1526,7 +1506,9 @@ mod cli_path_resolution_wiring_tests {
     }
 
     fn one_of_every_claim_outcome() -> Vec<v1_compiler::cli_run::ClaimOutcome> {
-        use v1_compiler::cli_run::{BudgetKind, ClaimOutcome, WitnessRuntimeCause};
+        use v1_compiler::cli_run::{
+            BudgetKind, ClaimOutcome, PanicPayloadKind, WitnessRuntimeCause,
+        };
         use v1_compiler::v1_interpreter::{EffectRefusalGround, RaisePath};
         vec![
             ClaimOutcome::Pass,
@@ -1557,6 +1539,7 @@ mod cli_path_resolution_wiring_tests {
             },
             ClaimOutcome::Panicked {
                 payload: "p".into(),
+                payload_kind: PanicPayloadKind::StringPayload,
             },
             ClaimOutcome::NotAttempted {
                 halted_by: "h".into(),

@@ -43,8 +43,11 @@ import gunbc.fleet.fleet_secrets_config { fleet_secrets_gcp_project }
 //
 // PROVENANCE (verified by gentle-crab-832, 2026-11-20; cited, not re-derived). The operator created the
 // client in the Tailscale admin console on 2026-11-20: name gunbc-ci-github, scope auth_keys write, tag
-// tag:ci-dispatch, client id kNQLY8UpZK11CNTRL. It REPLACES an older client named `githubcirunners`, which
-// the operator will revoke once CI works on this one. The scope and tag below match that client.
+// tag:ci-dispatch, client id kNQLY8UpZK11CNTRL. It REPLACES an older client named `githubcirunners`,
+// REVOKED by the operator on 2026-11-22 (operator via gentle-crab-832, 2026-11-22 relay: the admin console
+// shows 'Revoked on Nov 21, 2026', ~2026-11-22T04:00Z UTC; revocation also cancelled tokens issued from it
+// -- which is why any run still authenticating with the old client would fail). The scope and tag below
+// match the successor client.
 //
 // THE CLIENT NAME WAS AN EARLIER DRAFT VALUE, "gunbc-ci-shadow-gate"; the correction to the real name
 // landed in one change with the rewrite of gunbc.witness.hosted_runner_shadow_gate_workflow and the
@@ -62,9 +65,8 @@ data ci_oauth_client_name: NonEmptyStr = "gunbc-ci-github"
 // (test.claim.hosted_ci_secrets_custody_witness pins this row to the relayed value).
 data ci_oauth_client_id: NonEmptyStr = "kNQLY8UpZK11CNTRL"
 
-// THE PREDECESSOR, REPLACED WITH REVOCATION PENDING: the identity of this client and the pending
-// revocation of its predecessor (githubcirunners; it stays alive until CI works on this client) are
-// operator decisions carried at
+// THE PREDECESSOR, REPLACED AND REVOKED (2026-11-22): the identity of this client and the revocation of
+// its predecessor (githubcirunners) are operator decisions carried at
 // #gunbc.design_ruling::tailscale_ci_oauth_client_replaced_githubcirunners_2026_11_20, not here.
 // No model row states an OAuth client's lifecycle today; if a client read-back route is modeled,
 // the lifecycle becomes a closed type that route consumes.
@@ -101,8 +103,8 @@ data ci_oauth_client_pre_authorized: Bool = true
 // (and ci_oauth_client_name if renamed) to the new client's; (3) add the new client secret as a NEW VERSION
 // of projects/582015116396/secrets/tailscale-oauth-client-secret (never overwrite history) and update the
 // `tailscale-oauth-client-id` annotation; (4) re-point the pinned accessor grant to the new version; (5)
-// REVOKE the old client in the admin console. (The operator's pending revocation of the superseded
-// `githubcirunners` client is a separate cleanup, tracked once CI works on this client.)
+// REVOKE the old client in the admin console (Settings -> Trust credentials). The superseded
+// `githubcirunners` client itself was revoked by the operator on 2026-11-22 -- that cleanup is done.
 data tailscale_oauth_client_secret_ref: SecretRef = SecretRef {
   project: fleet_secrets_gcp_project,
   secret: "tailscale-oauth-client-secret" as NonEmptyStr,

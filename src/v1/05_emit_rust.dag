@@ -288,6 +288,7 @@ import v1.compiler.emit {
   ShellResultField, ShellResultChannel, ShellChanStdout, ShellChanStderr,
   ShellChanExitSuccess, ShellChanExitCode, ShellChanStdoutLines,
   ShellChanStderrTruncated, ShellChanStderrTotalBytes, ShellChanStderrRetainedBytes,
+  ShellChanOverran, ShellChanWallDeadlineSeconds,
   ShellChannelNotRealizedByTarget, ShellCapturePolicyInputAbsent, shell_emission_refusal_fact, shell_result_channel_key,
   shell_channel_is_capture_accounting, operation_declares_required_stderr_capture_policy,
   bind_operation_transport, transport_binding_refusal_fact, emit_unbound_operation_refusal,
@@ -19743,6 +19744,14 @@ fn emit_shell_channel_expr(channel: ShellResultChannel, is_optional: Bool) -> St
     ShellChanStderrTruncated => "stderr_truncated"
     ShellChanStderrTotalBytes => "stderr_total_bytes"
     ShellChanStderrRetainedBytes => "stderr_retained_bytes"
+    // THE TWO DEADLINE CHANNELS ARE NOT REALIZED ON THIS TARGET. They are NOT given a placeholder
+    // value and not swept into a wildcard: they route through the SAME typed refusal the emit gate
+    // uses, so a compiled body that ever reached here would carry the error expression naming the
+    // channel and the target rather than an answer. What sits below its ceiling here, why, and what
+    // would close it is a row, not a comment:
+    // @ref(gunbc.guarantee_stall.compiled_shell_leg_deadline_enforcement_stall::compiled_shell_leg_deadline_enforcement_stall)
+    ShellChanOverran => emit_unrealizable_shell_channel(channel: ShellChanOverran)
+    ShellChanWallDeadlineSeconds => emit_unrealizable_shell_channel(channel: ShellChanWallDeadlineSeconds)
   }
   // An optional stdout or stderr field is present only when the command succeeded, as the
   // interpreter's map_shell_outputs reads it: a declared answer arm for a non-zero status (above) has
