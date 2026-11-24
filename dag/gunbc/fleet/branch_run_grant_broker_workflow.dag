@@ -126,11 +126,11 @@ data branch_run_grant_broker_build_step_name: String = "Build the broker this jo
 fn branch_run_grant_broker_step() -> Outcome<Step> {
   bind_outcome(
     o: gunbc_ci_branch_run_grant_broker_invoke(),
-    f: fn(zesty_script) {
+    f: fn(script) {
       outcome_accepted(value: RunStep {
     name: Present { value: "Dispatch the branch_run_grant run at main for the requested run attempt" },
     id: none,
-    run: zesty_script,
+    run: script,
     shell: none,
     env: Present { value: [
       kv(key: "GITHUB_TOKEN", value: yaml_string(s: "${{ github.token }}")),
@@ -195,13 +195,13 @@ data branch_run_grant_broker_job_permissions: WorkflowPermissions = WorkflowPerm
 fn branch_run_grant_broker_job() -> Outcome<Job> {
   bind_outcome(
     o: sequence_outcome(xs: list_map(xs: branch_run_grant_broker_bound_steps(), f: fn(b) { b.step }), policy: StageDiagnosticPolicy { accumulation: ShortCircuit }),
-    f: fn(zesty_steps) {
+    f: fn(steps) {
       outcome_accepted(value: Job {
     id: branch_run_grant_broker_job_id,
     name: none,
     runner: HostedRunner { label: Ubuntu2404Arm },
     environment: none,
-    steps: zesty_steps,
+    steps: steps,
     needs: [],
     env: none,
     outputs: none,
@@ -218,7 +218,7 @@ fn branch_run_grant_broker_job() -> Outcome<Job> {
 fn branch_run_grant_broker_workflow_of() -> Outcome<Workflow> {
   bind_outcome(
     o: branch_run_grant_broker_job(),
-    f: fn(zesty_job) {
+    f: fn(job) {
       outcome_accepted(value: Workflow {
   name: branch_run_grant_broker_workflow_name,
   run_name: none,
@@ -232,7 +232,7 @@ fn branch_run_grant_broker_workflow_of() -> Outcome<Workflow> {
   concurrency: none,
   env: Present { value: [kv(key: "CARGO_TERM_COLOR", value: yaml_string(s: "always"))] },
   permissions: none,
-  jobs: [zesty_job]
+  jobs: [job]
       })
     }
   )

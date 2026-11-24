@@ -22,9 +22,9 @@ fn gunbc_ci_guest_image_build_invoke(target: GunbcRunStepTarget) -> Outcome<Stri
   bind_outcome(
     o: gunbc_run_command_for_target(source_roots: witness_layer_roots, target: target,
   claim_run: false),
-    f: fn(zesty_c) {
-      bind_outcome(o: gunbc_invoke_root_stamp_script(), f: fn(zesty_s) {
-        outcome_accepted(value:join([zesty_s, "fakeroot -- ", zesty_c, "\n"], ""))
+    f: fn(cmd) {
+      bind_outcome(o: gunbc_invoke_root_stamp_script(), f: fn(step_val) {
+        outcome_accepted(value:join([step_val, "fakeroot -- ", cmd, "\n"], ""))
       })
     }
   )

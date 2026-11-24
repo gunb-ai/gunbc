@@ -238,11 +238,11 @@ fn heal_stage0_round_step() -> Step {
 fn heal_candidate_step() -> Outcome<Step> {
   bind_outcome(
     o: gunbc_ci_heal_candidate_stage0_invoke(),
-    f: fn(zesty_run) {
+    f: fn(run) {
       outcome_accepted(value: RunStep {
         name: Present { value: "Refuse stage0/writer overlap, regenerate the seed-build artifacts, produce the sealed repair candidate" },
         id: none,
-        run: zesty_run,
+        run: run,
         shell: none,
         env: Present {
           value: [
@@ -363,13 +363,13 @@ data heal_workflow_job_permissions: WorkflowPermissions = WorkflowPermissions {
 fn heal_workflow_job(job: HealWorkflowPolicy) -> Outcome<Job> {
   bind_outcome(
     o: sequence_outcome(xs: list_map(xs: heal_workflow_bound_steps(), f: fn(b) { b.step }), policy: StageDiagnosticPolicy { accumulation: ShortCircuit }),
-    f: fn(zesty_steps) {
+    f: fn(steps) {
       outcome_accepted(value: Job {
         id: job.job_id as String,
         name: none,
         runner: ci_runner_target_spec(target: job.runner),
         environment: none,
-        steps: zesty_steps,
+        steps: steps,
         needs: [],
         env: none,
         outputs: none,
@@ -437,7 +437,7 @@ data heal_workflow_concurrency: ConcurrencySpec = ConcurrencyMappingQueueNotMax 
 fn heal_workflow_of(job: HealWorkflowPolicy) -> Outcome<Workflow> {
   bind_outcome(
     o: heal_workflow_job(job: job),
-    f: fn(zesty_job) {
+    f: fn(job) {
       outcome_accepted(value: Workflow {
       name: job.workflow_name as String,
       run_name: none,
@@ -464,7 +464,7 @@ fn heal_workflow_of(job: HealWorkflowPolicy) -> Outcome<Workflow> {
           id_token: none
         }
       },
-      jobs: [zesty_job, heal_fork_notice_job(job: job)]
+      jobs: [job, heal_fork_notice_job(job: job)]
     })
     }
   )

@@ -123,7 +123,7 @@ fn gunbc_ci_site_pxe_edge_receipt_admit_invoke() -> Outcome<String> {
 fn gunbc_ci_site_pxe_edge_receipt_cite_invoke() -> Outcome<String> {
   bind_outcome(
     o: gunbc_run_command_for_target(source_roots: witness_layer_roots, target: gunbc_ci_site_pxe_edge_receipt_cite_target, claim_run: false),
-    f: fn(zesty_c) {
+    f: fn(cmd) {
       bind_outcome(
         o: gunbc_ci_bash_rendered(stmts: [
       bash_build_command_with_words(words: [bash_build_word_lit(text: "mkdir"), bash_build_word_lit(text: "-p"), bash_build_word_concat_from_nodes(parts: [bash_build_word_var(name: "GITHUB_WORKSPACE"), bash_build_word_lit(text: "/artifacts")])]),
@@ -131,7 +131,7 @@ fn gunbc_ci_site_pxe_edge_receipt_cite_invoke() -> Outcome<String> {
         f: fn(mkdir_text) {
           outcome_accepted(value:join([
     mkdir_text, "\n",
-    zesty_c, "\n",
+    cmd, "\n",
   ], ""))
         }
       )
@@ -385,7 +385,7 @@ fn gunbc_ci_mtcollins1_boot_invoke() -> Outcome<String> {
   bind_outcome(
     o: gunbc_run_command_for_target(source_roots: witness_layer_roots, target: gunbc_ci_mtcollins1_boot_target,
     claim_run: false),
-    f: fn(zesty_c) {
+    f: fn(cmd) {
       bind_outcome(
         o: gunbc_ci_bash_rendered(stmts: gunbc_ci_mtcollins1_boot_trap_body(), set_e: false),
         f: fn(tb) {
@@ -403,7 +403,7 @@ fn gunbc_ci_mtcollins1_boot_invoke() -> Outcome<String> {
                     prelude_text, "\n",
                     watcher_line, "\n",
                     record_text, "\n",
-                    zesty_c, "\n",
+                    cmd, "\n",
                   ], ""))
                     }
                   )
@@ -464,7 +464,7 @@ fn receipted_run_tail_statements(run: ReceiptedRun) -> List<Node> {
 fn receipted_run_invoke(run: ReceiptedRun) -> Outcome<String> {
   bind_outcome(
     o: gunbc_run_command_for_target(source_roots: witness_layer_roots, target: run.target, claim_run: false),
-    f: fn(zesty_c) {
+    f: fn(cmd) {
       bind_outcome(
         o: gunbc_ci_mtcollins1_pxe_mac_discovery_prelude_statements(),
         f: fn(prelude) {
@@ -481,7 +481,7 @@ fn receipted_run_invoke(run: ReceiptedRun) -> Outcome<String> {
                     prelude_text, "\n",
                     pre_text, "\n",
                     "# ", dissolution_description(condition: mtcollins1_receipted_run_line_dissolution_trigger), "\n",
-                    zesty_c, " || ", run.rc_name, "=$?\n",
+                    cmd, " || ", run.rc_name, "=$?\n",
                     tail_text, "\n",
                   ], ""))
                     }
