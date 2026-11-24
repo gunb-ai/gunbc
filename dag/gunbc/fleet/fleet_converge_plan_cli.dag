@@ -972,6 +972,39 @@ fn compose_fleet_converge_run_artifact_dir_wet() -> FleetConvergeRunArtifactDir 
   }
 }
 
+// The OPERATOR-LOCAL composition of the run-scoped artifact directory. Same fail-closed shape as
+// compose_fleet_converge_run_artifact_dir_wet, but the run identity is DERIVED from the typed
+// ActionsRunBinding the local route already observed (observe_operator_local_run_binding): plan_run_id
+// is binding.run_id, so two operator-local runs never silently share a directory. The writable root
+// and attempt are REQUIRED inputs (read via the same typed actions_variable_read mechanism): absent or
+// empty is a TYPED refusal -- there is NO default and NO fallback to /tmp/fleet-converge-plan. The
+// leaf run directory is claimed EXCLUSIVELY by fleet_converge_plan_scoped_bound_wet, so two local runs
+// landing on the same clock-tick run_id collide into a named refusal, never a shared dir.
+fn compose_fleet_converge_run_artifact_dir_local_wet(run: ActionsRunBinding) -> FleetConvergeRunArtifactDir {
+  match actions_variable_read(name: fleet_converge_run_artifact_root_env_name) {
+    ActionsVariableAbsent { variable: v, detail: d } =>
+      FleetConvergeRunArtifactDirRefused { reason: join(["fleet_converge_local_plan: run artifact root env ", v, " ", d, " -- the operator-local plan must supply a writable run-artifact root; no default, no /tmp/fleet-converge-plan fallback"], "") }
+    ActionsVariablePresent { value: root } =>
+      if root == "" {
+        FleetConvergeRunArtifactDirRefused { reason: "fleet_converge_local_plan: run artifact root env is empty -- refusing rather than defaulting" }
+      } else {
+        match actions_variable_read(name: fleet_converge_run_artifact_attempt_env_name) {
+          ActionsVariableAbsent { variable: v, detail: d } =>
+            FleetConvergeRunArtifactDirRefused { reason: join(["fleet_converge_local_plan: run artifact attempt env ", v, " ", d, " -- the operator-local plan must supply its attempt; no default"], "") }
+          ActionsVariablePresent { value: attempt } =>
+            if attempt == "" {
+              FleetConvergeRunArtifactDirRefused { reason: "fleet_converge_local_plan: run artifact attempt env is empty -- refusing rather than defaulting" }
+            } else {
+              FleetConvergeRunArtifactDirComposed {
+                run_artifact_dir: fleet_plan_run_artifact_dir(
+                  root: root as NonEmptyStr, plan_run_id: run.run_id as NonEmptyStr, attempt: attempt as NonEmptyStr),
+              }
+            }
+        }
+      }
+  }
+}
+
 fn fleet_converge_plan_scoped_bound_wet(
   run: ActionsRunBinding,
   expected_host: String,
@@ -1434,7 +1467,7 @@ fn fleet_converge_local_plan_wet(scope: String) -> ProcessExit
             Absent =>
               exit_failure(reason: "fleet_converge_local_plan: HostObservationFailed — hostname probe did not succeed or returned empty output")
             Present { value: host } =>
-              match compose_fleet_converge_run_artifact_dir_wet() {
+              match compose_fleet_converge_run_artifact_dir_local_wet(run: run) {
                 FleetConvergeRunArtifactDirRefused { reason: why } =>
                   exit_failure(reason: why)
                 FleetConvergeRunArtifactDirComposed { run_artifact_dir: run_artifact_dir } =>
