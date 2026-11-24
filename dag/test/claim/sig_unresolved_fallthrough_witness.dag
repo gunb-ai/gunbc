@@ -128,14 +128,15 @@ type CensusObservation
 
 fn observe(argv: ArgvCommand) -> CensusObservation {
   match run_shell_command_observe_outcome(command: argv, transport: LocalExec) {
-    ProcessRan { observation: obs } =>
+    ProcessRan { observation: obs } => {
       if obs.exit_code == 0 then
+        // grep family: exit 1 is "no rows", a legitimate empty observation, not a failure.
         Rows { rows: nonblank(split(s: obs.stdout, delimiter: "\n")) }
       else if obs.exit_code == 1 then
-        // grep family: exit 1 is "no rows", a legitimate empty observation, not a failure.
         Rows { rows: [] }
       else
         GrepFailed { cause: concat("git grep exit ", to_string(obs.exit_code)) }
+    }
     ProcessNotSpawned { program: _, cause: c } =>
       GrepFailed { cause: concat("not spawned: ", c as String) }
   }
