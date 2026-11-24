@@ -1204,13 +1204,20 @@ data effect_demand_seam_roster: List<SeamStanding> = [
 ]
 
 // =============================================================================================
-// EFFECTS-1 (egress-effects-1-filesystem-provider) -- TWO LOCATED REFUSALS.
-// The row's red_control names two things that must refuse, and nothing in the tree refused
-// either at the dispatch base: (a) an emitted closure reaching the bare `filesystem_read`
-// primitive directly, and (b) a new `demand_restatement` row. Before this cut the first reached
-// a runtime `unrealized_host_seam` panic (a bare primitive that is neither the handler nor the
-// interface -- the row's displaced_cost, verbatim), and the second arrived with no wall at all
-// (gunbc.demand_engine_restatement_follow_up: "nothing walls new rows out yet").
+// EFFECTS-1 (egress-effects-1-filesystem-provider) -- TWO LOCATED REFUSAL PREDICATES.
+// RUNG, STATED PLAINLY: the two walls below are LOCATED REFUSAL PREDICATES -- typed census functions
+// that name each offender by identity -- EXECUTED by src/v2/test/claim/native_census/
+// filesystem_handler_binding_and_restatement_refusal.dag. As authored in this cut they are NOT wired as
+// a compile-phase gate that stops the compiler: a direct filesystem_read reach still reaches the runtime
+// unrealized_host_seam panic, and a new restatement row still lands unchecked by any compiler phase. The
+// gate that turns a red census into a compile-time stop is wired at the trigger carried by
+// filesystem_wall_compile_gate_trigger below, not in this cut. The row's red_control names two things that
+// must refuse: (a) an emitted closure reaching the bare `filesystem_read` primitive directly, and (b) a new
+// `demand_restatement` row. At the dispatch base nothing typed either refusal -- the first reached a runtime
+// `unrealized_host_seam` panic (a bare primitive that is neither the handler nor the interface -- the row's
+// displaced_cost, verbatim), and the second arrived with no wall at all (gunbc.demand_engine_restatement_
+// follow_up: "nothing walls new rows out yet"). This cut adds the located predicates that both refuses
+// name; wiring them as the stop itself is the trigger's job.
 //
 // BOTH REFUSALS FOLLOW THE SHAPE THIS MODULE ALREADY SETS for effect_demand_census and
 // effect_demand_ungrounded_operations: the population is a PARAMETER, the refusal NAMES the
@@ -1224,7 +1231,28 @@ data effect_demand_seam_roster: List<SeamStanding> = [
 // WALL 2 rung note), which keeps self_host.dag in scope until its two sites move to the bound handler.
 // =============================================================================================
 
-// ---- WALL 2: an emitted closure reaching `filesystem_read` directly refuses ----
+// THE COMPILE-GATE TRIGGER AS A TYPED CARRIER, not comment prose (gunbc.design_argument::source_annotations:
+// "a dissolution condition belongs in a typed carrier"). The census predicates above refuse a direct
+// filesystem_read reach by name; the gate that turns a red census into a compile-time stop connects when
+// THIS trigger dissolves -- i.e. when the two named self_host.dag sites migrate to the bound handler and so
+// leave the in-population offender set. It names the offending module and its two enclosing declarations by
+// identity, so a named known offender is visible in the artifact rather than hidden in prose, and it is
+// consumed (not dangling) by the witness test filesystem_compile_gate_trigger_names_the_two_self_host_sites.
+type FilesystemWallCompileGateTrigger {
+  awaiting_migration_module: String
+  awaiting_migration_declarations: List<String>
+  migrate_to_bound_handler: String
+  gate_connects_when: Symbol
+}
+
+data filesystem_wall_compile_gate_trigger: FilesystemWallCompileGateTrigger = FilesystemWallCompileGateTrigger {
+  awaiting_migration_module: "v2.compiler.self_host",
+  awaiting_migration_declarations: ["read_roster_manifest", "fold_side_bytes"],
+  migrate_to_bound_handler: "emit_file_call",
+  gate_connects_when: ^self_host_direct_reaches_migrate_to_bound_handler
+}
+
+// ---- WALL 2 (predicate): an emitted closure reaching `filesystem_read` directly is LOCATED and refused by the census ----
 // THE FILESYSTEM EFFECT HAS ONE HANDLER, and reaching the bare primitive beside it is the defect.
 // The native door binds one Filesystem realization handler at the NativeCliDriver root (the E2
 // cut, reusing v1.compiler.emit_rust emit_file_call's semantics: path template, verb, typed read/
@@ -1461,7 +1489,7 @@ fn filesystem_effect_direct_reach_wall_holds(report: FilesystemEffectCensusRepor
   length(xs: report.offenders) == 0
     && filesystem_effect_offender_sites_are_distinct(offenders: report.offenders)
 }
-// ---- WALL 1: a new demand_restatement row refuses ----
+// ---- WALL 1 (predicate): a new demand_restatement row is LOCATED and refused by the census ----
 // THE AUTHORIZED RESTATEMENT ROSTER IS A PARAMETER, not a tree-derived oracle. A `demand_restatement`
 // row restates a service demand that is already derivable; the census (cut (c)) deleted every authored
 // `uses` row whose derived demand was nonempty, retaining only the named exceptions at the final-base
