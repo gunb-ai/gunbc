@@ -371,7 +371,12 @@ fn roadmap_acceptance_record_migration_cli(
       reason: join(["roadmap_acceptance_record_cli: ", reason as String], "") }
     AcceptanceLineParsed { line } => match roadmap_acceptance_line_acceptance_receipt(line: line) {
       Absent => ExitFailure { code: 1, reason: "roadmap_acceptance_record_cli: only an acceptance line records an acceptance; a revocation is recorded by roadmap_acceptance_revoke_cli" }
-      Present { value: receipt } => match roadmap_acceptance_pr_evidence_from_args(url: pr_url, sha: head_sha) {
+      Present { value: receipt } => {
+      let head_seen = trim(s: head_sha)
+      if head_seen != "" && !commit_sha_text_holds(head: head_seen) {
+        ExitFailure { code: 1, reason: "roadmap_acceptance_record_cli: --head-sha is malformed: the accepted head is 40 lowercase hex characters; it is also the join key that lets the merge event be matched to this acceptance, so a short or non-hex head could never have its merge recorded" }
+      }
+      else { match roadmap_acceptance_pr_evidence_from_args(url: pr_url, sha: head_sha) {
         Absent => ExitFailure { code: 1, reason: join([
           "roadmap_acceptance_record_cli: the pull request an acceptance is earned on is one fact — --pr-url and --head-sha arrive together, or neither; this command carried ",
           to_string(value: count(filter([pr_url, head_sha], v => v != ""))), " of the two"], "") }
@@ -379,6 +384,7 @@ fn roadmap_acceptance_record_migration_cli(
           repo_root: repo_root, author: author, node: receipt.node as String,
           who: "roadmap_cutover_acceptance_record_cli",
           choice: BuildAcceptCommand { receipt: receipt, evidence: evidence })
+      } }
       }
     }
   }
@@ -401,14 +407,18 @@ fn roadmap_acceptance_record_with_pair(repo_root: String, receipt_line: String, 
         // typed fact (gunbc.roadmap.roadmap_event_log AcceptancePrEvidence) and no downstream check has to
         // wonder, because the arm with no merge member cannot be half-filled.
         let carried = count(filter([pr_url, head_sha], v => v != ""))
-        match roadmap_acceptance_pr_evidence_from_args(url: pr_url, sha: head_sha) {
+        let head_seen = trim(s: head_sha)
+        if head_seen != "" && !commit_sha_text_holds(head: head_seen) {
+          ExitFailure { code: 1, reason: "roadmap_acceptance_record_cli: --head-sha is malformed: the accepted head is 40 lowercase hex characters; it is also the join key that lets the merge event be matched to this acceptance, so a short or non-hex head could never have its merge recorded" }
+        }
+        else { match roadmap_acceptance_pr_evidence_from_args(url: pr_url, sha: head_sha) {
           Absent => ExitFailure { code: 1, reason: join([
             "roadmap_acceptance_record_cli: the pull request an acceptance is earned on is one fact — --pr-url and --head-sha arrive together, or neither; this command carried ",
             to_string(value: carried), " of the two. There is no --merged-at: the acceptance is recorded on the head, before the merge, and the merge time belongs to the merge event"], "") }
           Present { value: evidence } => roadmap_acceptance_command(
             repo_root: repo_root, author: author, node: receipt.node as String, who: "roadmap_acceptance_record_cli",
             choice: BuildAcceptCommand { receipt: receipt, evidence: evidence })
-        }
+        } }
       }
     }
   }

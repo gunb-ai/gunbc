@@ -510,27 +510,6 @@ fn roadmap_acceptance_pr_evidence_members(evidence: AcceptancePrEvidence) -> Lis
   }
 }
 
-// ONE OPTIONAL MEMBER, SAID AS A SHAPE RATHER THAN AS A VALUE, so the three members below can be
-// compared as words without seventeen nested matches deciding the same fact seventeen times
-// (gunbc.design_argument::single_authority). "refused" means a member that is there and malformed —
-// null, the wrong type, duplicated, or the empty string — which is never read as an absence.
-type EvidenceMemberShape {
-  state: NonEmptyStr
-  value: Optional<String>
-}
-
-fn evidence_member_shape(read: OptionalMemberRead) -> EvidenceMemberShape {
-  match read {
-    // The value travels as an Optional<String>, never as an empty NonEmptyStr standing in for "there is
-    // none": that construction typechecks and refuses at runtime, which is the failure this file exists to
-    // avoid. Absence is spelled by the type here, exactly as it is spelled in the record.
-    OptionalMemberAbsent => EvidenceMemberShape { state: "absent" as NonEmptyStr, value: none }
-    OptionalMemberRefused => EvidenceMemberShape { state: "refused" as NonEmptyStr, value: none }
-    OptionalMemberPresent { value } =>
-      EvidenceMemberShape { state: "present" as NonEmptyStr, value: Present { value: value as String } }
-  }
-}
-
 // THE EVIDENCE, READ AS ONE FACT OR NOT AT ALL. Three shapes decide it, and only these three spellings
 // are values of the type: all three members absent (the acceptance names no pull request), pr_url +
 // head_sha with no merged_at (the live arm — the acceptance is earned on a head, which is what the
@@ -540,37 +519,37 @@ fn evidence_member_shape(read: OptionalMemberRead) -> EvidenceMemberShape {
 // time with nothing to merge, any member malformed. That refusal is the whole point of the type — an
 // absence is a fact the record states, never a fallback for a record that would not parse.
 fn roadmap_acceptance_pr_evidence_decode(doc: JsonValue) -> AcceptancePrEvidence? {
-  let url = evidence_member_shape(read: event_member_optional_nonempty(doc: doc, key: "pr_url"))
-  let at = evidence_member_shape(read: event_member_optional_nonempty(doc: doc, key: "merged_at"))
-  let sha = evidence_member_shape(read: event_member_optional_nonempty(doc: doc, key: "head_sha"))
-  if url.state == "refused" || at.state == "refused" || sha.state == "refused" { none }
-  else if url.state == "absent" && at.state == "absent" && sha.state == "absent" {
-    Present { value: NoPullRequest }
-  }
-  else if url.state == "present" && at.state == "absent" && sha.state == "present" {
-    match url.value {
-      Present { value: u } => match sha.value {
-        Present { value: h } =>
-          Present { value: AcceptedOnPullRequestHead { pr_url: u as NonEmptyStr, head_sha: h as NonEmptyStr } }
-        Absent => none
+  let url = event_member_optional_nonempty(doc: doc, key: "pr_url")
+  let at = event_member_optional_nonempty(doc: doc, key: "merged_at")
+  let sha = event_member_optional_nonempty(doc: doc, key: "head_sha")
+  match url {
+    // The thread is absent: the only admissible shape left is all three absent (the acceptance names no
+    // pull request); any other member present or malformed has no representation and refuses.
+    OptionalMemberAbsent => match at {
+      OptionalMemberAbsent => match sha {
+        OptionalMemberAbsent => Present { value: NoPullRequest }
+        OptionalMemberPresent { value: _ } => none
+        OptionalMemberRefused => none
       }
-      Absent => none
+      OptionalMemberPresent { value: _ } => none
+      OptionalMemberRefused => none
     }
-  }
-  else if url.state == "present" && at.state == "present" && sha.state == "present" {
-    match url.value {
-      Present { value: u } => match at.value {
-        Present { value: t } => match sha.value {
-          Present { value: h } => Present { value: EarnedByPullRequest {
-            pr_url: u as NonEmptyStr, merged_at: t as NonEmptyStr, head_sha: h as NonEmptyStr } }
-          Absent => none
-        }
-        Absent => none
+    // The thread is present and carries its head directly: no phantom Optional to fall through, so the
+    // head-shape arms below cannot spell an Absent that the record never held.
+    OptionalMemberPresent { value: u } => match sha {
+      OptionalMemberPresent { value: h } => match at {
+        OptionalMemberAbsent => Present { value: AcceptedOnPullRequestHead { pr_url: u, head_sha: h } }
+        OptionalMemberPresent { value: t } => Present { value: EarnedByPullRequest {
+          pr_url: u, merged_at: t, head_sha: h } }
+        OptionalMemberRefused => none
       }
-      Absent => none
+      // A thread with no head has no representation: the head is the join key the merge event needs.
+      OptionalMemberAbsent => none
+      OptionalMemberPresent { value: _ } => none
+      OptionalMemberRefused => none
     }
+    OptionalMemberRefused => none
   }
-  else { none }
 }
 
 // THE COMMAND LINE IS THE UNTYPED EDGE, so this is where half a fact is refused. TWO arguments arrive —
@@ -589,8 +568,15 @@ fn roadmap_acceptance_pr_evidence_from_args(url: String, sha: String) -> Accepta
   let sha_seen = trim(s: sha)
   let filled = count(filter([url_seen, sha_seen], v => v != ""))
   if filled == 2 {
-    Present { value: AcceptedOnPullRequestHead {
-      pr_url: url_seen as NonEmptyStr, head_sha: sha_seen as NonEmptyStr } }
+    // THE ACCEPTED HEAD IS A COMMIT, OR THE FACT IS NOT BUILT. The merge event is matched to its
+    // acceptance by this very head (roadmap_pull_request_merge_evidence_from_args holds to the same
+    // shape via std.types::commit_sha_text_holds), so an acceptance recorded with a short or non-hex
+    // head could NEVER have its merge recorded — the join key would name a commit no one can name back.
+    // Refuse it HERE, where the argument is read, exactly as --red-at/--green-at/--red-base are held to
+    // the same shape; the CLI names the refusal so the operator learns which argument is wrong.
+    if !commit_sha_text_holds(head: sha_seen) { Absent }
+    else { Present { value: AcceptedOnPullRequestHead {
+      pr_url: url_seen as NonEmptyStr, head_sha: sha_seen as NonEmptyStr } } }
   }
   else if filled == 0 { Present { value: NoPullRequest } }
   else { Absent }
