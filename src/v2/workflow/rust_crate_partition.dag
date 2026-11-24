@@ -553,6 +553,23 @@ fn stage0_module_dag_edge(from: String, to: String) -> ModuleDagEdge {
   }
 }
 
+// DISPOSITION (review 98154, gunbc.design_argument::root_generalization): these edges are AUTHORED, not
+// derived, and the generalisation was attempted three ways and rejected — "it should be [derived], but not
+// now," naming the trigger and the follow-up. WHAT THEY ARE: the grouping inputs that merge modules into a
+// crate (the module→crate MEMBERSHIP lives in the stage0_*_modules() lists; these edges are the cross-unit
+// relations the partition groups on), NOT the module import graph. MEASUREMENT (why a predicate cannot yet
+// replace the list): over the 44 authored from-modules the list classifies as 63 intra-crate-import,
+// 21 cross-crate-import, 8 intra-crate-non-import, 1 cross-crate-non-import; deriving from parsed imports
+// keeps only 84/93 and ADDS ~156 import edges the list deliberately omits; a cross-crate-import predicate
+// keeps 21/93; a same-crate-import predicate keeps 63/93. None reproduces it, so there is no curation
+// predicate over imports that is the single authority yet. TRIGGER to revisit: when the balanced
+// partition policy lands (rust_crate_partition_dissolve_on, this file), which supplies the crate-membership
+// + grouping authority the derivation needs. FOLLOW-UP: gunbc.integration_concern
+// stage0_cross_unit_import_edges_authored_not_derived (in dag/gunbc/integration_concern/) carries the
+// follow-up and names the 6 uncitable non-import edges with their owners, plus the three edges cited to a
+// runtime-prelude/facade relation in the from-module. The twelve rows this node added cover the previously
+// uncovered emitted modules; for those twelve the authored rows equal the full parsed-import set (62 == 62,
+// symmetric difference empty), so their coverage is measurement-backed, not transcribed.
 fn stage0_cross_unit_import_edges() -> List<ModuleDagEdge> {
   [
     stage0_module_dag_edge(from: "std_algebra", to: "std_error_primitives"),
