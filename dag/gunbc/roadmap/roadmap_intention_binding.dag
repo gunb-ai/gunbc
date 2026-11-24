@@ -127,9 +127,14 @@ data roadmap_intention_bindings: List<IntentionBinding> = [
   serves(node: "dogfood-g1-shared-computation-record", module_path: factory_dogfood_intention, plan: "factory_dogfood_plan", layer: 2),
   serves(node: "dogfood-g5-isolated-execution-record", module_path: factory_dogfood_intention, plan: "factory_dogfood_plan", layer: 2),
   serves(node: "factory-dogfood-route", module_path: factory_dogfood_intention, plan: "factory_dogfood_plan", layer: 3),
+  serves(node: "factory-events-create-durable-requests", module_path: factory_dogfood_intention, plan: "factory_dogfood_plan", layer: 1),
+  serves(node: "factory-f6-scoped-worker-grants", module_path: factory_dogfood_intention, plan: "factory_dogfood_plan", layer: 1),
+  serves(node: "scm-native-reviewed-landing", module_path: factory_dogfood_intention, plan: "factory_dogfood_plan", layer: 4),
+  serves(node: "factory-operates-without-github", module_path: factory_dogfood_intention, plan: "factory_dogfood_plan", layer: 5),
   serves(node: "factory", module_path: factory_dogfood_intention, plan: "factory_dogfood_plan", layer: 4),
   // gunbc.plans.first_customer_service, section 2.
   serves(node: "service-evidence-capture", module_path: first_customer_service_intention, plan: "first_customer_service_plan", layer: 1),
+  serves(node: "workspace-lease-recovers-across-hosts", module_path: first_customer_service_intention, plan: "first_customer_service_plan", layer: 1),
   serves(node: "fabric-worker-event-log", module_path: factory_dogfood_intention, plan: "factory_dogfood_plan", layer: 3),
   serves(node: "serve-held-open-response", module_path: factory_dogfood_intention, plan: "factory_dogfood_plan", layer: 3),
   serves(node: "work-exec-0-identity-estimate-split", module_path: factory_dogfood_intention, plan: "factory_dogfood_plan", layer: 4),
@@ -207,10 +212,10 @@ data intention_terminals: List<IntentionTerminals> = [
   // names-bind-to-the-unique-declaration, leaving the bound program node with no terminal reaching it;
   // the milestone's acceptance is the intention's done-when, as it is for factory_dogfood's factory row.
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.names_without_imports", decl_name: "names_without_imports_plan"), terminals: [nid(s: "import-grammar-and-lines-deleted"), nid(s: "namespace-legacy-choice-retirement"), nid(s: "namespace-unique-on-chain")] },
-  IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.factory_dogfood", decl_name: "factory_dogfood_plan"), terminals: [nid(s: "factory")] },
+  IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.factory_dogfood", decl_name: "factory_dogfood_plan"), terminals: [nid(s: "factory"), nid(s: "factory-operates-without-github")] },
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.debt_payoff", decl_name: "debt_payoff_plan"), terminals: [nid(s: "debt-payoff"), nid(s: "v1-zero-hand-maintained-rust")] },
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.one_source_tree", decl_name: "one_source_tree_plan"), terminals: [nid(s: "v2-namespace-dissolved")] },
-  IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.first_customer_service", decl_name: "first_customer_service_plan"), terminals: [nid(s: "service-evidence-capture")] },
+  IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.first_customer_service", decl_name: "first_customer_service_plan"), terminals: [nid(s: "service-evidence-capture"), nid(s: "workspace-lease-recovers-across-hosts")] },
   // planning_consolidation's terminals are the sinks of the dispatch-from-the-simulated-execution
   // units: the page that renders the projection, and the three units whose acceptance is itself the
   // end of a line of work (a realized duration, a leaf carried by a dispatch, a typed handback), plus

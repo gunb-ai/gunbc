@@ -949,6 +949,60 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       dispatch: dispatchable(),
       parent: in_project(project: "factory", contribution: "The daily workspace is native SCM's only consumer today."),
     ),
+    roadmap_node(
+      identity: "rn_DA4FF66MGXK8NA7BCQJ38FDTN7",
+      id: "factory-events-create-durable-requests",
+      owner: "harness",
+      carriers: carrier(path: "dag/gunbc/plans/factory_dogfood.dag"),
+      line: ticket(t: fields(
+        headline: "Each admitted event creates one durable work request",
+        boundary: "Classify push, change proposal, merge candidate, manual dispatch, schedule, reusable call and predecessor completion for each live workflow. Bind repository, source revision, actor, event identity, visibility and policy to a durable request. Use the existing execution route for its attempt. Worker output remains in the fabric worker event log.",
+        first_slice: "Trace one change and one scheduled or completion-triggered operation. Replay their deliveries across a controller restart. Declare missed-event catch-up, supersession and cancellation for each migrated trigger.",
+        red_control: "A duplicated delivery across restart creates a single logical request. A stale revision cannot displace a newer one. A public or fork caller cannot read private inputs or inherit the callee's protected grant.",
+        displaced_cost: "Moving a build leaves the operation dependent on GitHub if Actions remains its only trigger.",
+        out_of_scope: "Backend placement, execution results and operator authorization decisions.",
+        handback: "Trigger dispositions, durable request identities and receipts for duplicate, missing, superseded and unauthorized delivery.",
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "factory", contribution: "Admits a durable request from a source, clock, caller or preceding completion."),
+      centering: plan(text: "factory_dogfood_plan: selected work survives interruption from its first trigger."),
+    ),
+    roadmap_node(
+      identity: "rn_0ZAJR4HVYMYKYGQG1C4GNWP6GK",
+      id: "scm-native-reviewed-landing",
+      owner: "source-intent",
+      carriers: carrier(path: "dag/gunbc/native_scm_interaction_contract.dag"),
+      line: ticket(t: fields(
+        headline: "A reviewed change lands through a native writer and survives a mirror outage",
+        boundary: "Implement the writing successor to the P0 landing model. Bind independent reviews, outstanding threads, applicable policy, exact candidate and target revision to native change identity. Read the verification receipt and the source transition independently. Preserve acceptance as a separate decision. Represent queue, linear history, required checks, bypass and write restrictions where the repository actually requires them.",
+        first_slice: "Land one candidate against a disposable native target. Move the base or candidate and show what invalidates. Preserve historical review and source links as mappings with their original access boundaries.",
+        red_control: "Stale evidence and an unresolved review cannot authorize a source transition. Concurrent writers yield one valid transition per target revision. Loss of the Git mirror after a verified native commit leaves the native result landed.",
+        displaced_cost: "Git interoperability and a passing modeled journey still leave review policy and the authoritative branch write dependent on the forge.",
+        out_of_scope: "The three upstream SCM research models and selection of a public contribution or mirroring policy.",
+        handback: "Native review, authorization, exact-head verification and landed revision readback, plus recoverable projection state.",
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "factory", contribution: "Connects the modeled SCM landing journey to the real review and write path."),
+      centering: plan(text: "factory_dogfood_plan: a reviewed candidate can land under the native source authority."),
+    ),
+    roadmap_node(
+      identity: "rn_VP1KVKT87KP9AKX06Y613CHYDB",
+      id: "factory-operates-without-github",
+      owner: "harness",
+      carriers: carrier(path: "dag/gunbc/plans/factory_dogfood.dag"),
+      line: ticket(t: fields(
+        headline: "The internal factory runs with GitHub unavailable",
+        boundary: "Inventory the real workflows and consumers across the public repository, private callers and control-plane clients. For each operation record its authoritative writer, readers, native owner, visibility, migration evidence and disposition: replace, retain at a declared external boundary, or retire on last use. Include source/checkout, triggers, runners, artifacts and caches, provenance and run IDs, cloud and bot identity, human approvals, reviews, checks, rulesets, release delivery, dashboards and historical links.",
+        first_slice: "Shadow one change from trigger through a remote build, evidence retrieval, independent review and native landing. Inspect the control-plane client with its app and ambient CLI credentials both unavailable. Classify each remaining scheduled, diagnostic and release workflow by an actual consumer.",
+        red_control: "Rehearse the internal route and retrieval of a release artifact with GitHub API, Actions, credentials and artifact storage unavailable. Recover the authoritative records from independent storage. A stale old writer cannot land or dispatch again. A mirror outage preserves the native outcome and a private record stays private.",
+        displaced_cost: "Independent projects can all pass while the next change, recovery or deploy still needs the same unavailable forge.",
+        out_of_scope: "Advance permission to change production protections, remove credentials, publish private history or decommission repositories. The existing approved bridges retire by consumer.",
+        handback: "For each cutover identify the single active writer, transfer or drain in-flight work, compare shadow results, demonstrate rollback without overlapping writers, and identify the remaining external integrations. Record one independently verified end-to-end result.",
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "factory", contribution: "Owns the composed migration and the remaining-dependency account across its lanes."),
+      centering: plan(text: "factory_dogfood_plan: the internal factory remains operable during a forge outage."),
+    ),
 
     roadmap_node(
       identity: "rn_52ZXVWC7S94RYF4YJHZCN00GCS",
@@ -2227,14 +2281,14 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "fabric-storage",
       owner: "fleet",
       carriers: carrier(path: "dag/std/artifact_store.dag"),
-      line: ticket(t: level_fields(
+      line: ticket(t: updated(t: level_fields(
           headline: "Fabric storage: internal fabric state, checkpointed workspaces and customer-provided storage",
           boundary: "DRAFT (operator ruling 2026-10-02, \"we can make a fabric parent - it's ongoing work for a while\"): a standing program, not one narrow proof. Members are the storage rows of the private year-end plan as they move onto this tree.",
           approach: "DRAFT: members join as the private StorageFabric rows are projected onto the public tree.",
           red_control: "Not ready: this program carries no dispatch facts and has no members yet.",
           displaced_cost: "Storage was the largest fabric risk with no public parent, so none of its promises could be ordered or seen beside the VM service.",
           handback: "DRAFT: per member, its acceptance receipt."
-        )),
+        ), on: "2026-11-24", note: "Retain immutable candidates, release packs, execution logs and evidence needed by active attempts, accepted revisions and rollback. Exercise independent retrieval by digest and identity, tenant-scoped access, missing bytes and collection under retention. Rebuildable caches have their own lifetime. Checkpoint storage supplies recovery facts to service-evidence-capture.")),
       parent: in_project(project: "fabric-bringup", contribution: "The fabric's state, checkpointed workspaces and customer storage are what make a VM service recoverable rather than volatile."),
     ),
     roadmap_node(
@@ -2353,7 +2407,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "work-exec-1-placement-backend-selection",
       owner: "fleet",
       carriers: carrier(path: "dag/gunbc/plans/durable_work_handoff.dag"),
-      line: ticket(t: updated(t: fields(
+      line: ticket(t: updated(t: updated(t: fields(
         headline: "The placement backend is chosen by a bounded spike against fixed criteria, and the choice is recorded as a ruling",
         boundary: "Candidates: k3s with Kueue (recommended), Nomad, or keeping the systemd and cgroup realization and finishing gunbc's own allocator. Judge by the machinery and operator work each removes, not by current code volume. The spike runs one ordinary gunbc build as a Kubernetes Job with memory request equal to limit, an ephemeral volume and sccache reachable, on one host the operator grants for about one week. Nomad is evaluated only if k3s fails a criterion. The ruling records the criteria results and amends the PR 4 and PR 7 to 8 scope accordingly.",
         displaced_cost: "Without a chosen backend the program either keeps building a generic scheduler in gunbc or adopts one by accident, and every later member is designed twice.",
@@ -2361,7 +2415,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         red_control: "(1) An OOM is attributed from pod status and memory.peak. (2) With the node full, a second job waits rather than refusing. (3) Cancel yields termination evidence. (4) Killing the controller mid-run leaves the job running and it is re-observed. (5) A DIMM reading over 85 C taints the node and blocks new placement. (6) An arm64 job and an amd64 job each land on a matching node. (7) Manual operator steps are counted and reported. A criterion with no executed run counts as failed, never as passed.",
         out_of_scope: "Production cutover. Running agent sessions in the cluster. Multi-host high availability of the control plane.",
         handback: "The criteria receipts, the recorded gunbc.design_ruling, and the amended plan carrier."
-      ), on: "2026-11-19", note: "Source review at 398136026b345e087968a9db4ba42ec551c5ca4c (2026-11-19); source presence is not acceptance. The backend choice is conditional: k3s/Kueue first, Nomad only if the recorded criteria fail. srv1 access for this review is not authorization to install a cluster or choose the backend. Keep the host grant and realization decision explicit; do not price all alternatives as committed work.")),
+      ), on: "2026-11-19", note: "Source review at 398136026b345e087968a9db4ba42ec551c5ca4c (2026-11-19); source presence is not acceptance. The backend choice is conditional: k3s/Kueue first, Nomad only if the recorded criteria fail. srv1 access for this review is not authorization to install a cluster or choose the backend. Keep the host grant and realization decision explicit; do not price all alternatives as committed work."), on: "2026-11-24", note: "The bounded selection answers the ordinary build case. Record which resource, cancellation, observation and fencing operations another workload can reuse. A workspace requires a separate lease and recovery proof. Serving and GPU roles retain their own identity, device, residency and health requirements. Use a shared capacity grant across roles. The set of eligible machines follows observed architecture, capacity and isolation capabilities.")),
       parent: in_project(project: "work-execution-redesign", contribution: "Decides which generic machinery gunbc stops owning."),
     ),
     roadmap_node(
@@ -5063,15 +5117,18 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_V4DA84ECDMCWTY3EN3ZWD2V78Y",
       id: "factory-f6-scoped-worker-grants",
       owner: "harness",
-      carriers: carrier(path: "dag/gunbc/compute/work_provider_local.dag"),
-      line: ticket(t: level_fields(
+      carriers: carrier(path: "dag/gunbc/auth/federated_workload_credential.dag"),
+      line: ticket(t: fields(
           headline: "F6: a worker holds scoped grants instead of ambient credentials",
-          boundary: "DRAFT: the alignment fields come from the contracts document under operator review.",
-          approach: "DRAFT: pending the reviewed contracts document.",
-          red_control: "Not ready: this milestone carries no dispatch facts and has no ready members yet.",
-          displaced_cost: "DRAFT: pending the reviewed contracts document.",
-          handback: "DRAFT: pending the reviewed contracts document."
+          boundary: "A fabric attempt receives a verifiable, time-limited workload identity and only the capability its declared effect needs. Worker, reviewer and compatibility publisher have distinct roles.",
+          first_slice: "Run one ordinary worker without GitHub credentials. Exchange its qualified identity for scoped access to one designated provider resource, and observe the permitted operation through the provider.",
+          red_control: "The same request under a wrong tenant or audience, an expired or replayed grant, or withdrawn GitHub trust must refuse. Show that the worker cannot assume the reviewer or publisher role.",
+          displaced_cost: "Ambient worker credentials keep internal jobs dependent on a forge and make revocation broader than the individual attempt.",
+          out_of_scope: "The provider choice, organization-wide trust changes and customer integration credentials remain with their respective owners.",
+          handback: "The provider-side positive and negative receipts plus the independent readback of the retired grant for this consumer."
         )),
+      dispatch: dispatchable(),
+      centering: plan(text: "factory_dogfood_plan: the executing worker receives only its attempt grant."),
       parent: in_project(project: "managed-identity-access-dependencies", contribution: "A candidate child slice of this milestone (operator, 2026-10-01): F6: a worker holds scoped grants instead of ambient credentials"),
     ),
     roadmap_node(
@@ -5096,11 +5153,11 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "dag/product/fabric/selection.dag"),
       line: ticket(t: level_fields(
           headline: "Managed identity, access and dependencies",
-          boundary: "DRAFT: the alignment fields come from the contracts document under operator review.",
-          approach: "DRAFT: pending the reviewed contracts document.",
-          red_control: "Not ready: this milestone carries no dispatch facts and has no ready members yet.",
-          displaced_cost: "DRAFT: pending the reviewed contracts document.",
-          handback: "DRAFT: pending the reviewed contracts document."
+          boundary: "Fabric grants identify the human or workload principal, tenant, attempt, audience, allowed effect and lifetime. External providers validate the appropriate credential and continue to own their resource policies. The approval broker binds human consent to the exact attempt and operation.",
+          approach: "Start with one worker grant and one independently approved effect. Inventory workflow tokens, GitHub Apps, GitHub OIDC federation, GCP impersonation and secret readers by actual consuming operation. Reuse the current privileged effect registry and credential rotation and revocation work.",
+          red_control: "A provider refuses a withdrawn credential. A credential or approval for another scope, operation, audience or superseded attempt cannot authorize the effect. Changing an approval trust root requires its independent recovery authority.",
+          displaced_cost: "A change of executor otherwise loses its access or inherits authority from an unrelated job. A GitHub outage can strand an independently approved action.",
+          handback: "For each moved consumer show the native issuer or exchange, least-privilege grant, independently observed delivery, rotation and withdrawal. Keep each transitional or customer-facing GitHub credential scoped to an identified remaining consumer."
         )),
       parent: in_project(project: "vm-service", contribution: "A milestone of the VM service (DRAFT, operator 2026-10-01): managed identity, access and dependencies."),
     ),
@@ -5111,13 +5168,31 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "dag/product/fabric/selection.dag"),
       line: ticket(t: level_fields(
           headline: "MicroVM runtime and durable state",
-          boundary: "DRAFT: the alignment fields come from the contracts document under operator review.",
-          approach: "DRAFT: pending the reviewed contracts document.",
-          red_control: "Not ready: this milestone carries no dispatch facts and has no ready members yet.",
-          displaced_cost: "DRAFT: pending the reviewed contracts document.",
-          handback: "DRAFT: pending the reviewed contracts document."
+          boundary: "The fleet maintains a requested environment for its accepted lifetime. The logical allocation binds owner, independently requested resources, image, access and expiry. Each physical placement has its own grant and generation.",
+          approach: "Prove one workspace through its existing controller on qualified ARM64 capacity, then exercise the same request on another qualified host. Evaluate a container or microVM venue against the offered isolation and recovery properties. The build backend spike provides reusable placement evidence.",
+          red_control: "An unreachable host can retain a writer. Until fencing is established, report the allocation unavailable and retain the uncertain charge. A cancelled or expired allocation must stay ended when a delayed controller or returning host reconciles.",
+          displaced_cost: "A durable request pinned to a failed host cannot provide the remainder of its lease. Reusing a stale grant can expose the old guest or promise its resources twice.",
+          handback: "The workspace member returns the launch, authenticated reconnect, fencing, recovery, expiry and capacity-release receipts. Resource usage and recovery time go to the service evidence consumer."
         )),
       parent: in_project(project: "vm-service", contribution: "A milestone of the VM service (DRAFT, operator 2026-10-01): microvm runtime and durable state."),
+    ),
+    roadmap_node(
+      identity: "rn_X52S98AX6PMQM74ZSVX5DCXZ5B",
+      id: "workspace-lease-recovers-across-hosts",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/workspace_allocation_store.dag"),
+      line: ticket(t: fields(
+        headline: "A time-limited workspace lease survives replacement of its host",
+        boundary: "Keep one logical allocation for the owner's accepted resource request, image, access and expiry. The current store requires an identical prior reservation and host-bound plan. Represent successive host placements with independent grants and fences. Preserve the existing request replay, capacity and settlement checks.",
+        first_slice: "On a qualified ARM64 host reserve capacity, start a workspace, and have its owner authenticate over SSH. Restart the controller and recover the same allocation. Then interrupt placement A and reconcile onto qualified host B within the accepted lease.",
+        red_control: "While A may still serve or write, B cannot take ownership. After A is fenced the same endpoint reaches only B, which reads the expected workspace revision. Returning A cannot serve, commit or settle B's grant. Cancellation or expiry during transfer and a delayed retry cannot resurrect the environment. Release once, account for overlap and uncertainty, then satisfy a fresh lease.",
+        displaced_cost: "A controller restart can recover a request on the same host while the authenticated owner still loses service after host loss.",
+        out_of_scope: "A new fixed CI slot, a fleet-wide backend selection, live memory migration, and commercial recovery targets.",
+        handback: "The request and accepted duration, distinct placement generations, owner reconnect, recovered data and measured interruption, followed by teardown and return of capacity. Additional architectures and providers qualify through their own image, isolation and recovery observations.",
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "microvm-runtime-durable-state", contribution: "Exercises the generic allocation and controller before a workspace offer relies on it."),
+      centering: plan(text: "first_customer_service_plan: establishes the delivered workspace properties when this form is offered; the internal canary can run independently."),
     ),
     roadmap_node(
       identity: "rn_XEE3RW84EBYKEBCPQD9HA6XYBB",
@@ -5541,15 +5616,15 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_2GPKWK8FXAKETC8ATH3MJEXEXC",
       id: "fleet-convergence-census-closure",
       owner: "fleet",
-      carriers: carrier(path: "docs/plans/convergence-one-program.md"),
+      carriers: carrier(path: "dag/gunbc/host_convergence_census.dag"),
       line: ticket(t: fields(
         headline: "Every effect that changes a machine goes through the one checked route",
         boundary: "The census already lists every effect that changes lasting state. Work through what it lists, one family of effects at a time, and for each one say who chose the desired state, what looked at reality, what compared them, what plan was allowed, what carried it out, and what checked afterwards. Where the honest answer is that it never converged, rename it to what it actually does.",
         displaced_cost: "Effects that change real machines while calling themselves converged, so nobody can tell which ones were actually checked.",
-        first_slice: "Close one effect family, and let the census say which are left.",
-        red_control: "An effect that reports success from its own write, with nothing reading the result back, must not pass.",
+        first_slice: "Withdraw srv4, run ordinary convergence, and independently read the same subject from a peer. Its slots stay closed until a separately authorized restore. Use the CLI and Actions plan/apply path already shared.",
+        red_control: "Hold the fleet verdict when a write exits successfully but the resource still differs, when the queried host and receipt subject differ (including two swapped receipts), or when a prior revision or generation no longer establishes the requested state. After a lost acknowledgement, reobserve the resource before deciding whether an effect may be repeated.",
         out_of_scope: "No new migrations invented here; the census is the list.",
-        handback: "The census, with every family either closed, truthfully renamed, or named as outstanding."
+        handback: "For each family the census records its disposition. For the first family retain the plan, the effect outcome, the independent readback attributed to its subject and relevant desired state, and the fleet decision that consumed it. Show both the withdrawn and restored cases."
       )),
       dispatch: dispatchable(),
       parent: in_project(project: "fabric-application-authority", contribution: "The fabric decides placement from observed fleet facts; fleet health, convergence and hardware observation are those facts."),
@@ -7034,7 +7109,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "fleet-truth-rosters-consume-the-read",
       owner: "model",
       carriers: carrier(path: "dag/gunbc/compute/remote_build_hosts.dag"),
-      line: ticket(t: updated(t: fields(
+      line: ticket(t: updated(t: updated(t: fields(
         headline: "The build and serving rosters refuse a host whose read is missing or divergent",
         displaced_cost: "A host the model believes in and the machine contradicts still gets work: srv4 answered 429 at a concurrency nobody had declared, and butch's admission as a build host is already waiting on exactly this read (gunbc.design_ruling::butch_serving_retirement_is_operator_handled_2026_11_21 says butch enters the build roster only once a read shows the serving units gone and the envelope measured).",
         boundary: "The consumer, not the read: admission to gunbc.compute.remote_build_hosts / gunbc.compute.remote_build's roster and to the serving roster gunbc.serving.serving_host_memory with the router's layout. A missing read is a refusal naming that nothing was read, never an admission. The boot-time consumer (a unit that would start against absent hardware) is named here and built where units are decided, not re-invented.",
@@ -7042,7 +7117,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         red_control: "An admission path that treats 'no read' and 'read agrees' identically is the RED case; so is a refusal that does not say which arm diverged.",
         out_of_scope: "The read's own module; changing any cap or cgroup; admitting any specific host -- admission is the machine's answer, not this row's.",
         handback: "Roster membership as a judgment with a date and an arm, rather than as a remembered list."
-      ), on: "2026-11-21", note: "Verified 2026-11-21: remote_build_hosts carries roster rows as data and the converge route settles hosts, but no admission site consults a machine read. The ruling's butch clause is the consumer stated before this row existed.")),
+      ), on: "2026-11-21", note: "Verified 2026-11-21: remote_build_hosts carries roster rows as data and the converge route settles hosts, but no admission site consults a machine read. The ruling's butch clause is the consumer stated before this row existed."), on: "2026-11-24", note: "Verify delivery from the observe-only trigger to a roster admission. With the producer stopped, or an axis unreadable, the roster withholds work and identifies the missing evidence. The five-axis producer and its cadence remain with fleet-truth-per-host-read. An exposed workflow mode alone cannot demonstrate a periodic read.")),
       dispatch: dispatchable(),
       parent: in_project(project: "fleet-truth-follows-the-machine", contribution: "The reason the read exists: without a consumer it is a report nobody is obliged to read."),
       centering: plan(text: "desired_state_follows_the_machine_plan: the report's done-when is one consumer refusing. Target: the roster admission in dag/gunbc/compute/remote_build_hosts.dag and the serving roster's placement in dag/gunbc/serving/serving_host_memory.dag."),
@@ -7356,6 +7431,12 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "service-evidence-capture", parent: "factory-dogfood-route"),
     edge(child: "factory-dogfood-route", parent: "ci-executed-coverage-receipt"),
     edge(child: "factory", parent: "factory-dogfood-route"),
+    edge(child: "scm-native-reviewed-landing", parent: "2-scm-p0-landing-spine"),
+    edge(child: "scm-native-reviewed-landing", parent: "ci-executed-coverage-receipt"),
+    edge(child: "factory-operates-without-github", parent: "factory-events-create-durable-requests"),
+    edge(child: "factory-operates-without-github", parent: "scm-native-reviewed-landing"),
+    edge(child: "factory-operates-without-github", parent: "factory-f6-scoped-worker-grants"),
+    edge(child: "factory-operates-without-github", parent: "work-exec-5-ci-verdict-from-receipt"),
     edge(child: "factory", parent: "work-exec-6-one-ledger-per-host"),
     edge(child: "factory", parent: "serve-held-open-response"),
     // ---- heal's regeneration round (gunbc.plans.read_set_convergence): only the real prerequisites. A no-op needs
