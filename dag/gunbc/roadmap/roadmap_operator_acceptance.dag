@@ -82,8 +82,7 @@ import gunbc.roadmap.roadmap_event_log {
 import gunbc.roadmap.roadmap_model { RoadmapNodeId, RoadmapAcceptanceReceipt, AcceptanceRecorded, AcceptanceRevoked, roadmap_node_ids_contain, revocation_reopens_active_frontier }
 import gunbc.principal_projection { principal_ref_parse_label }
 import gunbc.roadmap.roadmap_acceptance_history_carrier {
-  RoadmapAcceptanceEventHistoryLoad, RoadmapAcceptanceEventHistoryLoaded, RoadmapAcceptanceEventHistoryLoadRefused,
-  load_roadmap_acceptance_event_history_from_carrier_text
+  RoadmapAcceptanceEventHistoryLoad, RoadmapAcceptanceEventHistoryLoaded, RoadmapAcceptanceEventHistoryLoadRefused
 }
 
 // ── THE WIRE LINE ────────────────────────────────────────────────────────────────────────────────
@@ -328,13 +327,9 @@ fn roadmap_operator_acceptance_parse_tail(lines: List<String>) -> RoadmapAccepta
     f: (acc, entry) => match acc {
       RoadmapAcceptanceTailBad { line_index: i, detail: d } => RoadmapAcceptanceTailBad { line_index: i, detail: d }
       RoadmapAcceptanceTailOk { events: got } =>
-        match load_roadmap_acceptance_event_history_from_carrier_text(text: entry) {
-          RoadmapAcceptanceEventHistoryLoadRefused { detail: d } => RoadmapAcceptanceTailBad { line_index: match checked_int_to_nat(n: count(got)) { Present { value: k } => k Absent => Zero }, detail: d as NonEmptyStr }
-          RoadmapAcceptanceEventHistoryLoaded { events: parsed } =>
-            match parsed.first() {
-              Absent => RoadmapAcceptanceTailBad { line_index: match checked_int_to_nat(n: count(got)) { Present { value: k } => k Absent => Zero }, detail: "line parsed to no event" as NonEmptyStr }
-              Present { value: e } => RoadmapAcceptanceTailOk { events: concat(got, [e]) }
-            }
+        match roadmap_operator_acceptance_line_parse(text: entry) {
+          AcceptanceLineRefused { reason: r } => RoadmapAcceptanceTailBad { line_index: match checked_int_to_nat(n: count(got)) { Present { value: k } => k Absent => Zero }, detail: r }
+          AcceptanceLineParsed { line: e } => RoadmapAcceptanceTailOk { events: concat(got, [e]) }
         }
     }
   )
