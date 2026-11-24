@@ -55,7 +55,7 @@ fn bignat_zero() -> BigNat {
 // THE OVER-LARGE CASE THE REVIEW ALSO NAMED IS UNREACHABLE HERE, AND GUARDING IT WOULD HAVE BEEN
 // WORSE THAN USELESS. Three limbs carry values below base^3 = 2^90, so the review is right that a
 // larger n would overflow the top limb -- but Int is 64-bit, so the largest n expressible is
-// 2^63 - 1, whose top limb is 8, comfortably inside 2^30. No Int reaches the boundary. Writing
+// 2^63 - 1, whose top limb is 7, comfortably inside 2^30. No Int reaches the boundary. Writing
 // `n >= bignat_base * bignat_base * bignat_base` would not merely be dead: evaluating 2^72 RAISES
 // IntegerOverflow, so the guard against an impossible input would itself be the failure. The
 // unreachable arm is therefore described here rather than authored (gunbc.design_argument::guarantee_ladder: ask whether the
@@ -102,6 +102,11 @@ fn bignat_from_octets(octets: List<Int>) -> BigNat {
   if r.place == 1 { BigNat { limbs: r.limbs } } else { BigNat { limbs: r.limbs |> list_push(r.limb) } }
 }
 
+// feature:bignat-bit-widths-typed-as-bitwidth -- dissolve-on: the roadmap row "bignat bit widths typed as
+// BitWidth" (gunbc#16963, lane: v2 self-host and native emission) retypes every std.bignat width, this
+// buffer's `bits` included, to std.measure BitWidth together, with its re-measure. `bits` counts bits of
+// information, so BitWidth is its eventual carrier; until then it is a bare Int like the module's seven
+// other width sites, so this one field does not become the module's only unit-typed width.
 type BignatBitBuffer {
   octets: List<Int>
   buffer: Int
@@ -243,7 +248,7 @@ fn bignat_bits(a: BigNat) -> List<Int> {
 // coarsely integrated operand scanning method (Koç, Acar and Kaliski, "Analyzing and Comparing
 // Montgomery Multiplication Algorithms", 1996): for each limb a_i, t ← (t + a_i·b + q·m) / 2^30 with
 // q = (t_0 + a_i·b_0)·(−m⁻¹) mod 2^30, which makes the division exact. Every step is one product plus
-// a limb plus a carry, inside the 2^49 bound stated at the top.
+// a limb plus a carry, inside the 2^61 + 2^31 bound stated at the top.
 // SOLE-CONSTRUCTED FOR THE SAME REASON, AND WITH A LARGER REMAINING GAP THAT IS STATED RATHER THAN
 // IMPLIED. The Montgomery routines additionally assume a positive width, an odd nonzero modulus, a
 // modulus fitting the declared width, a neg_inverse and r_squared consistent with that modulus, and
@@ -321,7 +326,7 @@ fn bignat_add_scaled(t: List<Int>, x: List<Int>, k: Int, carry: Int, acc: List<I
 // lowest limb of t + ai*b, so it is known before any limb is walked; the earlier form walked t + ai*b
 // into a list and then walked that list again for + q*m. The lowest limb of the sum is zero by the
 // choice of q and is consumed here as the initial carry, so nothing is built and then dropped.
-// Each cell is below 2^30 + 2^60 + 2^60 + 2^32, inside the 2^62 bound stated at the top.
+// Each cell is a limb, two products and a carry, below 2^61 + 2^31, the bound stated at the top.
 fn montgomery_step(ctx: MontgomeryModulus, t: List<Int>, ai: Int, b: List<Int>) -> List<Int> {
   let t0 = bignat_lowest(limbs: t)
   let m = ctx.modulus.limbs
