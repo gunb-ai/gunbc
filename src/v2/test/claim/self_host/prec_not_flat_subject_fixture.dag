@@ -1,0 +1,9 @@
+module v2.test.claim.self_host.prec_not_flat_subject_fixture
+
+// ITEM 4 SEMANTIC CONTROL (prefix over a single operand). Here ! applies to a ALONE: (!a) && b. The &&-node is
+// the top node, its LEFT operand is the prefix !-node. Compared against prec_not_grouped_subject_fixture
+// (!(a && b), where the prefix is on top and the && is its wrapped operand) their emitted bodies must differ, so
+// the reader sees the two distinct meanings and that the prefix render did not silently broaden its scope.
+fn prec_not_flat_subject(a: Bool, b: Bool) -> Bool {
+  !a && b
+}

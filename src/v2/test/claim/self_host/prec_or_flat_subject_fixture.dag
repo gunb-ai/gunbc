@@ -1,0 +1,9 @@
+module v2.test.claim.self_host.prec_or_flat_subject_fixture
+
+// ITEM 4 SEMANTIC CONTROL (ungrouped side). No authoring parentheses, so Rust's precedence stands and this is
+// a || (b && c): the &&-node sits as the RIGHT operand of the ||-node. A tighter operand inside a looser one
+// needs NO parentheses. Compared against prec_or_grouped_subject_fixture their emitted bodies must differ; the
+// first has the "(a || b)" grouping and this one does not. Lives under the self-host claim tree.
+fn prec_or_flat_subject(a: Bool, b: Bool, c: Bool) -> Bool {
+  a || b && c
+}
