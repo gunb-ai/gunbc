@@ -225,7 +225,7 @@ fn phrase_to_source_text(p: LexicalPhrase) -> String {
 // TOKEN STARTS STRICTLY INCREASE ALONG A STREAM. A token's start is its stream position: the parse
 // identifies a stream position and decides repeat progress by it (v2.compiler.parse
 // parse_current_position), and refuses a stream that breaks the order at its entry
-// (parse_token_start_order_violation, TokenStartsNotIncreasing) rather than take one position's
+// (parse_token_start_order_check, TokenStartsNotIncreasing) rather than take one position's
 // progress for another's.
 type Token {
   class: Symbol
