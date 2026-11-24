@@ -3,7 +3,7 @@ module test.claim.roadmap.roadmap_belt_actuate_witness
 import extdeps.shell
 import gunbc.host.host_layout { srv1_host_layout }
 import gunbc.deployment_risk { deployment_id }
-import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, isolated_dashboard_instance, DashboardActuating, DashboardLocalProvision, dashboard_instance_dispatch_worktree_root }
 import gunbc.roadmap.roadmap_attempt_state_store { AttemptDirectoryRoot, AttemptDirectoryPublication, attempt_state_directory_text }
 import gunbc.roadmap.dispatch_worker_unit_confinement { CodexDispatchProvider, dispatch_worktree_path_for_instance }
 import gunbc.roadmap.roadmap_session_placement { SessionPlacementAbsent, SessionWorkerOrdinals }
@@ -181,6 +181,8 @@ import gunbc.roadmap.roadmap_belt_actuate {
   BeltPublishGate, PublishProceed, PublishHalted,
   belt_publish_gate,
   belt_publish_attempt_receipt,
+  belt_publish_worktree_listing_refusal,
+  belt_publish_project_worktree,
   BeltPublishOutcome,
   PublishRecorded, PublishAlreadyRecorded, PublishEvidenceUnreadable, PublishRequested,
   PublishWriteFailed, PublishDeferred,
@@ -423,6 +425,41 @@ test fn witness_exec_refuses_missing_program() -> Bool {
 test fn witness_exec_fails_on_nonzero_exit() -> Bool {
   let o = belt_exec(cmd: host_exec_argv(program: "false", args: []), workdir: "/")
   is_exec_failed(o: o)
+}
+
+fn exec_refused_reason(o: BeltExecOutcome) -> String {
+  match o {
+    ExecRefused { program: _, reason: r } => r
+    ExecOk { stdout: _ } => ""
+    ExecFailed { program: _, exit_code: _, stderr: _ } => ""
+  }
+}
+
+// fail-closed control: a dispatch worktree root that cannot be listed is a NEVER-SPAWNED refusal
+// carrying its cause, never a fabricated git exit status. This is red on the fabricated `-1`: had
+// the listing-failure branch returned `ExecFailed { program: "git", exit_code: -1, stderr: ... }`
+// -- a plausible git status for a git process that never ran -- `is_exec_refused` would be false and
+// this claim would fail. It also asserts the route: the refusal names that no process was spawned
+// and carries the underlying listing cause.
+test fn a_worktree_listing_failure_refuses_never_spawning_rather_than_inventing_a_git_exit() -> Bool {
+  // Drive the REAL producer into its unlistable-root branch on an OWNED, freshly allocated fixture whose
+  // derived dispatch "attempts" root does not yet exist, so Filesystem.List cannot list it. Allocation is
+  // gated on shell.Mktemp.DirWithTemplate success: a failed mktemp yields an empty root, and building the
+  // fixture from that path would make the derived removal target unowned (rm -rf /attempts), so the control
+  // fails closed rather than touching a path it does not own.
+  match belt_pub_allocated_fixture(tag: "listingrefuse") {
+    Absent => false
+    Present { value: f } =>
+      let root = dashboard_instance_dispatch_worktree_root(instance: f.instance) as String
+      let o = belt_publish_project_worktree(instance: f.instance, project_key: "proj-a", base_sha: "feedfacefeedface")
+      let refused_ok = is_exec_refused(o: o)
+        && !is_exec_failed(o: o)
+        && string_contains(s: exec_refused_reason(o: o), pattern: "no git worktree process was spawned")
+        && string_contains(s: exec_refused_reason(o: o), pattern: root)
+      // Clean up the successfully allocated OWNED fixture afterwards.
+      let _cleanup = shell.Remove.RecursiveForce(path: f.temp_dir)
+      refused_ok
+  }
 }
 
 test fn witness_exec_all_runs_every_step_when_ok() -> Bool {
@@ -2054,6 +2091,37 @@ fn belt_pub_fresh_instance(tag: String) -> HostDashboardInstance {
     actuation: DashboardActuating,
     actuator_host: srv1_host_layout().host_identity,
   )
+}
+
+// A belt-publish fixture paired with its OWNED temp dir. belt_pub_fresh_instance discards Mktemp success;
+// this allocator fails closed when the temp dir is not actually allocated (a failed mktemp yields an empty
+// root, whose derived removal path would be unowned), so a control built on it can never clean a path it
+// does not own. The instance's root is the allocated dir, so the caller can clean it up via temp_dir.
+type BeltPubFixture {
+  instance: HostDashboardInstance,
+  temp_dir: FilePath,
+}
+
+fn belt_pub_allocated_fixture(tag: String) -> BeltPubFixture? {
+  let alloc = shell.Mktemp.DirWithTemplate(template: join(["/tmp/gunbc_pub_", tag, ".XXXXXX"], ""))
+  if !alloc.success {
+    Absent
+  } else {
+    Present { value: BeltPubFixture {
+      instance: isolated_dashboard_instance(
+        deployment: deployment_id(name: "belt-pub" as NonEmptyStr),
+        instance_id: "belt-pub" as NonEmptyStr,
+        layout: srv1_host_layout(),
+        root: alloc.path,
+        serve_function: "roadmap_serve_handle_srv1_lab" as NonEmptyStr,
+        listen_port: 18099,
+        source_anchor_ref: "refs/heads/main" as NonEmptyStr,
+        actuation: DashboardActuating,
+        actuator_host: srv1_host_layout().host_identity,
+      ),
+      temp_dir: alloc.path,
+    } }
+  }
 }
 
 fn with_publish_attempt_directory(instance: HostDashboardInstance) -> HostDashboardInstance {

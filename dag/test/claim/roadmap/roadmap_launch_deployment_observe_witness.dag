@@ -13,8 +13,10 @@ import gunbc.fleet.fleet_known_hosts_anchor { portable_remote_words }
 import gunbc.live_deploy.belt_cadence { belt_tick_run_bound }
 import gunbc.live_deploy.deployed_tree_observation {
   DeployedRootTreeMatches, DeployedRootTreeMismatch, DeployedScopeMatchesCommit, DeployedTreeObserved,
-  deployed_root_tree_standing, deployed_tree_root_tree_argv,
+  deployed_root_tree_standing,
 }
+import extdeps.git { git_in_trusted_repository_head_root_tree_command }
+import extdeps.exec.command { argv_words }
 import gunbc.roadmap.roadmap_belt { ManualReady }
 import gunbc.roadmap.roadmap_belt_actuate {
   BeltPassRecorded, BeltTickReceipt, BeltTickReceiptAbsent, BeltTickReceiptPresent, BeltTickReceiptUnreadable,
@@ -191,7 +193,7 @@ test fn witness_v4_tick_receipt_with_tampered_mode_refuses() -> Bool {
 // (6) The deployed root-tree argv is admitted by the fleet portability wall (the `HEAD:` spelling),
 // and the join refuses a deployed tree that is not the candidate's.
 test fn witness_root_tree_argv_is_admitted_by_the_portability_wall() -> Bool {
-  match portable_remote_words(raws: deployed_tree_root_tree_argv(repo: "/opt/gunbc/gunbc" as NonEmptyStr)) {
+  match portable_remote_words(raws: argv_words(command: git_in_trusted_repository_head_root_tree_command(repo: "/opt/gunbc/gunbc" as NonEmptyStr))) {
     Present { value: _ } => true
     Absent => false
   }

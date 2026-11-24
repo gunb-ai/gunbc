@@ -58,6 +58,8 @@ data roadmap_intention_bindings: List<IntentionBinding> = [
   serves(node: "claim-result-contract", module_path: claim_execution_consolidation_intention, plan: "claim_execution_consolidation_plan", layer: 0),
   serves(node: "claim-entrypoints-cutover", module_path: claim_execution_consolidation_intention, plan: "claim_execution_consolidation_plan", layer: 1),
   // gunbc.plans.names_without_imports, section 3.
+  // The project namespace-unique-on-chain is not bound: it is the rollup its work items sit under, and a
+  // binding names a work item. #16749 moved production admission off the whole project onto these items.
   serves(node: "namespace-occurrence-transport", module_path: names_without_imports_intention, plan: "names_without_imports_plan", layer: 0),
   serves(node: "namespace-binding-kernel", module_path: names_without_imports_intention, plan: "names_without_imports_plan", layer: 0),
   serves(node: "namespace-structural-observations", module_path: names_without_imports_intention, plan: "names_without_imports_plan", layer: 0),
@@ -73,7 +75,6 @@ data roadmap_intention_bindings: List<IntentionBinding> = [
   serves(node: "namespace-ambiguity-discharge", module_path: names_without_imports_intention, plan: "names_without_imports_plan", layer: 3),
   serves(node: "namespace-v2-import-completion", module_path: names_without_imports_intention, plan: "names_without_imports_plan", layer: 3),
   serves(node: "import-grammar-and-lines-deleted", module_path: names_without_imports_intention, plan: "names_without_imports_plan", layer: 3),
-  serves(node: "namespace-unique-on-chain", module_path: names_without_imports_intention, plan: "names_without_imports_plan", layer: 3),
   // gunbc.plans.v2_self_host: layers run FORWARD like every other intention (1 = the frontier, 4 = the deletions and the
   // self-host goal, 5 = the vision separations, 6 = the external specimen); derived from edge depth on 2026-11-17 so a
   // parent is never at a higher layer than its child, which the witness holds.
@@ -196,7 +197,11 @@ type IntentionTerminals {
 data intention_terminals: List<IntentionTerminals> = [
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.claim_execution_consolidation", decl_name: "claim_execution_consolidation_plan"), terminals: [nid(s: "claim-entrypoints-cutover")] },
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.v2_self_host", decl_name: "v2_self_host_plan"), terminals: [nid(s: "external-specimen-compiles"), nid(s: "v1-products-v1-free")] },
-  IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.names_without_imports", decl_name: "names_without_imports_plan"), terminals: [nid(s: "import-grammar-and-lines-deleted"), nid(s: "namespace-legacy-choice-retirement")] },
+  // namespace-unique-on-chain joins as the program milestone's own terminal (2026-11-23): the review of
+  // 2026-11-19 (#16749) rewired native-production-admission's dependency off the project node onto
+  // names-bind-to-the-unique-declaration, leaving the bound program node with no terminal reaching it;
+  // the milestone's acceptance is the intention's done-when, as it is for factory_dogfood's factory row.
+  IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.names_without_imports", decl_name: "names_without_imports_plan"), terminals: [nid(s: "import-grammar-and-lines-deleted"), nid(s: "namespace-legacy-choice-retirement"), nid(s: "namespace-unique-on-chain")] },
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.factory_dogfood", decl_name: "factory_dogfood_plan"), terminals: [nid(s: "factory")] },
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.debt_payoff", decl_name: "debt_payoff_plan"), terminals: [nid(s: "debt-payoff"), nid(s: "v1-zero-hand-maintained-rust")] },
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.one_source_tree", decl_name: "one_source_tree_plan"), terminals: [nid(s: "v2-namespace-dissolved")] },

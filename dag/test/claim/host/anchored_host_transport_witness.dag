@@ -6,7 +6,7 @@ import std.algebra { string_contains }
 import std.decl_ref { decl_ref, declaration_ref_eq }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.host_identity { HostIdentity }
-import gunbc.fleet.fleet_known_hosts_anchor { SshTargetResolved, SshTargetRefused }
+import gunbc.fleet.fleet_known_hosts_anchor { ProbeLeg,SshTargetResolved, SshTargetRefused }
 import gunbc.fleet.fleet_ssh_locus { fleet_locus_ssh_target }
 import gunbc.fleet.fleet_host_identity { operator_host_srv2, operator_host_mtcollins1 }
 import gunbc.fleet.fleet_ssh_access { mtcollins1_ssh_host_key_secret }
@@ -104,7 +104,7 @@ fn fleet_transport_to(host: HostIdentity) -> HostEffectTransport? admit_callers:
     Present { value: ctx } =>
       match fleet_locus_ssh_target(host: host) {
         SshTargetRefused { endpoint: _, refusal: _ } => none
-        SshTargetResolved { target: t } => Present { value: FleetSsh { target: t, context: ctx } }
+        SshTargetResolved { target: t } => Present { value: FleetSsh {kind: ProbeLeg, target: t, context: ctx } }
       }
   }
 }

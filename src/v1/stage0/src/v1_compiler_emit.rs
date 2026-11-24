@@ -2748,6 +2748,8 @@ pub enum ShellResultChannel {
     ShellChanStderrTruncated,
     ShellChanStderrTotalBytes,
     ShellChanStderrRetainedBytes,
+    ShellChanOverran,
+    ShellChanWallDeadlineSeconds,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -2803,7 +2805,15 @@ pub fn shell_result_channel_of_key(key: String) -> Option<ShellResultChannel> {
                                 if (key.clone() == "stderr_retained_bytes".to_string()) {
                                     Some(ShellResultChannel::ShellChanStderrRetainedBytes)
                                 } else {
-                                    std::option::Option::None
+                                    if (key.clone() == "overran".to_string()) {
+                                        Some(ShellResultChannel::ShellChanOverran)
+                                    } else {
+                                        if (key.clone() == "wall_deadline_seconds".to_string()) {
+                                            Some(ShellResultChannel::ShellChanWallDeadlineSeconds)
+                                        } else {
+                                            std::option::Option::None
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -2824,6 +2834,8 @@ pub fn shell_result_channel_key(c: ShellResultChannel) -> String {
         ShellResultChannel::ShellChanStderrTruncated => "stderr_truncated".to_string(),
         ShellResultChannel::ShellChanStderrTotalBytes => "stderr_total_bytes".to_string(),
         ShellResultChannel::ShellChanStderrRetainedBytes => "stderr_retained_bytes".to_string(),
+        ShellResultChannel::ShellChanOverran => "overran".to_string(),
+        ShellResultChannel::ShellChanWallDeadlineSeconds => "wall_deadline_seconds".to_string(),
     }
 }
 
@@ -2832,15 +2844,23 @@ pub fn shell_channel_is_capture_accounting(c: ShellResultChannel) -> bool {
         ShellResultChannel::ShellChanStderrTruncated => true,
         ShellResultChannel::ShellChanStderrTotalBytes => true,
         ShellResultChannel::ShellChanStderrRetainedBytes => true,
+        ShellResultChannel::ShellChanOverran => false,
+        ShellResultChannel::ShellChanWallDeadlineSeconds => false,
         _ => false,
     }
 }
 
 pub fn shell_channel_realized_by_target(c: ShellResultChannel, target: RenderTarget) -> bool {
-    if shell_channel_is_capture_accounting(c) {
+    if shell_channel_is_capture_accounting(c.clone()) {
         target_is_rust(target.clone())
     } else {
-        target_renders_shell_transport(target.clone())
+        if ((c.clone() == ShellResultChannel::ShellChanOverran)
+            || (c.clone() == ShellResultChannel::ShellChanWallDeadlineSeconds))
+        {
+            false
+        } else {
+            target_renders_shell_transport(target.clone())
+        }
     }
 }
 
@@ -2860,8 +2880,8 @@ pub fn target_renders_shell_transport(target: RenderTarget) -> bool {
 
 pub fn shell_emission_refusal_fact(refusal: Rc<ShellEmissionRefusal>) -> String {
     match (*refusal.clone()).clone() {
-    ShellEmissionRefusal::ShellOutputKeyNotModeled { key: k, .. } => v1_rt::concat(v1_rt::concat("shell transport output key '".to_string(), k.clone()), "' has no modeled channel -- the modeled channels are stdout, stderr, exit_success, success, exists, exit_code, stdout_lines, stderr_truncated, stderr_total_bytes and stderr_retained_bytes".to_string()),
-    ShellEmissionRefusal::ShellChannelNotRealizedByTarget { key: k, target_name: tn, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("shell output channel '".to_string(), k.clone()), "' is a modeled channel that target ".to_string()), tn.clone()), " cannot realize -- the emitted realization implements no stderr capture policy, so answering it would assert that the declared policy ran".to_string()),
+    ShellEmissionRefusal::ShellOutputKeyNotModeled { key: k, .. } => v1_rt::concat(v1_rt::concat("shell transport output key '".to_string(), k.clone()), "' has no modeled channel -- the modeled channels are stdout, stderr, exit_success, success, exists, exit_code, stdout_lines, stderr_truncated, stderr_total_bytes, stderr_retained_bytes, overran and wall_deadline_seconds".to_string()),
+    ShellEmissionRefusal::ShellChannelNotRealizedByTarget { key: k, target_name: tn, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("shell output channel '".to_string(), k.clone()), "' is a modeled channel that target ".to_string()), tn.clone()), " cannot realize -- the compiled path implements no wall-deadline kill and no bounded-capture policy, so answering this channel would assert that an unenforced bound was honoured".to_string()),
     ShellEmissionRefusal::ShellCapturePolicyInputAbsent { key: k, .. } => v1_rt::concat(v1_rt::concat("shell output channel '".to_string(), k.clone()), "' is a capture-accounting channel and this operation does not declare a required scalar stderr_capture: WitnessStderrCapturePolicy -- answering it would apply a policy nobody declared".to_string()),
 }
 }
@@ -9424,6 +9444,10 @@ pub struct ShellChanStderrTruncated;
 pub struct ShellChanStderrTotalBytes;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ShellChanStderrRetainedBytes;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ShellChanOverran;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ShellChanWallDeadlineSeconds;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ExprCatLeaf;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

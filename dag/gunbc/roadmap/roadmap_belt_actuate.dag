@@ -14702,16 +14702,34 @@ fn belt_publish_attempt_for_instance(
 // (`checkout -B <integration branch> <base>` + `git clean -fdx`) before the corpus is written, so
 // the tree afterwards holds exactly the integration head's corpus -- never a residue of an
 // earlier materialization. No worker ever runs in it.
+//
+// A DISPATCH WORKTREE ROOT THAT CANNOT BE LISTED IS A TYPED REFUSAL, NOT A REPORTED GIT FAILURE.
+// Listing the root is a guard taken BEFORE any git process exists: a failed list means no worktree
+// command was ever spawned, so the outcome is the module's own never-spawned arm `ExecRefused`
+// (the same arm `belt_exec` returns when a program is not on PATH) carrying the cause. It is NOT an
+// `ExecFailed` with an invented exit code -- that would fabricate a git exit status for a git
+// process that never ran, standing a plausible observation where fail-closed wants a typed refusal
+// (gunbc.design_argument::fail_closed). The pure decision is `belt_publish_worktree_listing_refusal`,
+// witnessed directly.
+fn belt_publish_worktree_listing_refusal(root: String, error: String) -> BeltExecOutcome {
+  ExecRefused {
+    program: "git",
+    reason: join([
+      "the dispatch worktree root could not be listed, so no git worktree process was spawned: ",
+      root,
+      " (",
+      error,
+      ")",
+    ], ""),
+  }
+}
+
 fn belt_publish_project_worktree(instance: HostDashboardInstance, project_key: String, base_sha: String) -> BeltExecOutcome {
   let root = dashboard_instance_dispatch_worktree_root(instance: instance) as String
   let path = join([root, "/", project_key, "-integration"], "")
   let listing = Filesystem.List(path: root)
   if !listing.success {
-    ExecFailed {
-      program: "git",
-      exit_code: -1,
-      stderr: join(["the dispatch worktree root could not be listed: ", root, " (", listing.error, ")"], ""),
-    }
+    belt_publish_worktree_listing_refusal(root: root, error: listing.error)
   } else if !filesystem_listing_names_entry(listing: listing.entries, name: join([project_key, "-integration"], "")) {
     belt_exec(
       cmd: host_exec_argv(

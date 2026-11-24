@@ -30,6 +30,27 @@ type DesignRuling {
   provenance: String
 }
 
+data declared_intent_separates_independent_choices_2026_11_23: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "declared_intent_separates_independent_choices_2026_11_23"),
+  decided: "2026-11-23",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "declared_intent"),
+  provenance: "Operator, directly in ChatGPT on 2026-11-23, requesting the planning and generated DESIGN updates from the declared-intent and type-relationship discussion. Verbatim: \"my takeaway is that this is alanguage level seaparation of concerns issue - i also realized that resolving ambiguity is probably the other side of the coin of separating concerns.\" The following sentence is reported from a ChatGPT session, not confirmed verbatim by the operator: \"I want to make decisions like this clearer for readers/workers in the future.\" Earlier, verbatim: \"basically i'm saying the code should match the actual intention\". RULED, IN THOSE WORDS: treat language-level separation of concerns and resolution of ambiguity together, and make the decisions clear in the durable design and planning authorities. INTERPRETATION, NOT OPERATOR WORDS: separation identifies independently governed meanings; explicit composition owns their relationship; a missing choice that changes meaning, obligations or information loss is expressed by the author rather than guessed by a compiler or backend. Unique derivation from declared contracts remains legitimate. This records the reasoning and authorizes these design/planning updates, not a claim that every compiler path already enforces the resulting obligations, a blanket ban on inference, or an automatic equivalence between all forms of ambiguity and poor separation. RATIFIED BY THE OPERATOR 2026-11-23 ~22:12Z, verbatim: \"16909 - yeah idk about the quotes, they don't seem as important tbut that sounds right to me\"; this ratifies the RULED/INTERPRETATION substance above, not the quoted wording.",
+}
+
+data value_disposition_and_named_binding_use_are_explicit_2026_11_23: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "value_disposition_and_named_binding_use_are_explicit_2026_11_23"),
+  decided: "2026-11-23",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "declared_intent"),
+  provenance: "Operator words of 2026-11-23, supplied in the discussion and adopted for the requested design/planning update: \"IMO its okay as long as this is intentional - like i would force the user to unname it like python i.e. _ = check(); - where you have to acknowledge all of the parameters you are not reading - similar to how you could simply catch it and never read it or something - if it's actually named (not an _) we should force the user to read it (or move it to _)\"; principle, verbatim: \"basically i'm saying the code should match the actual intention\". RULED, IN THOSE WORDS: intentional non-use is acknowledged, and an authored named binding is read or replaced by the explicit non-binding form. INTERPRETATION, NOT OPERATOR WORDS: the established let _ = expr spelling expresses the acknowledged discard without adding the unverified bare _ = expr grammar; Bool is not special. A returned block value has a consumer in its surrounding context; a no-result operation has no returned value to discard. Read means a resolved use of the authored binding, not a matching identifier string or a guarantee that the use changes the output; this does not silently introduce an every-path or linear-use discipline. Caller-visible argument/field identity is retained when its local binding is _. The earlier unread_catch_all_binder_refuses ruling is a narrower precedent. Acknowledgement never establishes success, authorization, mandatory evidence or a resource discharge; intended effect activation and ordering must survive lowering. Existing refusals are retained, newly prohibited admitted cases acquire refusals, and no enforcement rung is claimed until the production paths execute their controls. The roadmap item keeps its existing discarded-bool-result-wall identity while its meaning is generalized.",
+}
+
+data type_relationships_are_declared_and_transparent_reference_is_explicit_2026_11_23: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "type_relationships_are_declared_and_transparent_reference_is_explicit_2026_11_23"),
+  decided: "2026-11-23",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "declared_intent"),
+  provenance: "Operator, directly in ChatGPT on 2026-11-23, verbatim: \"I think this is one more case right? basically i'm okay with either case, but the intention shoudl always be clear - for now, i would just try to keep these to a minimum, but i would allow support for different types of logical links (like hard fork/symlink/etc)\". In the request to apply the design/planning update, reported from a ChatGPT session, not confirmed verbatim by the operator: \"Personally i would make transparent reference clear\". Latest steering, verbatim: \"or, transparent reference should have analogues to other language features - a = b seems more like a copy by value to me?\" RULED, IN THOSE WORDS: permit different logical relationships when their intention is clear, minimize unnecessary forms, and make transparent reference recognizable rather than implicit in an ambiguous-looking assignment. INTERPRETATION, NOT OPERATOR WORDS: distinguish a reference to the same meaning, a restriction/composition that adds obligations, a distinct type identity that may reuse representation, and an independent fork whose origin is recorded. This is a distinction of contracts, not admission of four new keywords or a generic link registry. An alias preserves the whole target expression, including any constraint; same representation and shared origin do not establish interchangeability. A fork has a separate scope/identity and records its origin without inheriting unestablished guarantees; a live dependency and a fixed historical origin are different relationships. This narrows single_authority's blanket treatment of every second spelling as a fork and of every fork as destined for consolidation, preserving one authority per independently governed meaning. SPELLING IS OPEN: the earlier assistant interpretation that plain type A = B is the chosen transparent-reference spelling is NOT an operator ruling and is not adopted here. The latest question also does NOT rule that ordinary a = b performs a physical copy. The transparent-reference surface must be selected and recorded before its grammar or semantic cut; declaration identity, value binding, ownership, and storage copying/sharing are distinct concerns. Existing alias acceptance is an observation, never the reason for the new contract. where_refinements_retire_for_checked_constructors, nonemptiness_is_constructed_or_proved, and machine_width_composition_has_an_intersection_carrier remain in force. RATIFIED BY THE OPERATOR 2026-11-23 ~22:12Z, verbatim: \"16909 - yeah idk about the quotes, they don't seem as important tbut that sounds right to me\"; this ratifies the RULED/INTERPRETATION substance above, not the quoted wording.",
+}
+
 data remote_build_ssh_dispatch_is_an_admitted_scaffold: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "remote_build_ssh_dispatch_is_an_admitted_scaffold"),
   decided: "2026-11-14",
@@ -1312,10 +1333,15 @@ data v1_seed_growth_for_declared_transport_ceiling_admitted: DesignRuling = Desi
 
 fn design_rulings() -> List<DesignRuling> {
   [
+    declared_intent_separates_independent_choices_2026_11_23,
+    value_disposition_and_named_binding_use_are_explicit_2026_11_23,
+    type_relationships_are_declared_and_transparent_reference_is_explicit_2026_11_23,
     one_source_tree_and_the_v2_namespace_dissolves,
     known_red_decoder_dissolution_approved_by_default_2026_11_22,
     claim_execution_has_one_v1_entrypoint,
+    lab_release_pack_built_daily_2026_11_23,
     heal_convergence_job_budget_increase_2026_11_20,
+    heal_and_v2_bootstrap_ci_timeouts_lowered_2026_11_22,
     text_of_chars_is_a_whole_list_host_realization,
     reference_markers_are_hashtag_form,
     ken_strata_memory_trim_buys_two_build_seats_2026_11_19,
@@ -1480,6 +1506,12 @@ fn design_rulings() -> List<DesignRuling> {
     pxe_default_install_and_no_standing_erase_2026_11_10,
     runner_capacity_counts_only_when_observed_2026_11_10,
     pxe_witnesses_need_no_required_ci_2026_11_10,
+    fleet_observation_deferral_2026_11_12,
+    refreshes_regularly_every_10_minutes_2026_11_16,
+    claim_execution_has_one_v1_entrypoint,
+    fleet_truth_read_rides_the_converge_timer_2026_11_21,
+    hosted_shadow_gate_push_credential_scoped_write_2026_11_22,
+    executed_red_control_names_its_failing_commit,
   ]
 }
 
@@ -1551,11 +1583,29 @@ data pxe_witnesses_need_no_required_ci_2026_11_10: DesignRuling = DesignRuling {
 }
 
 
+data lab_release_pack_built_daily_2026_11_23: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "lab_release_pack_built_daily_2026_11_23"),
+  decided: "2026-11-23",
+  governs: decl_ref(module_path: "gunbc.fleet.fleet_converge_workflow", decl_name: "fleet_converge_build_job_condition"),
+  provenance: "Operator, 2026-11-23, to session neat-badger-614, relayed to session stern-wren-746, answering whether fleet-converge's release-bins producer may run daily so the srv1 lab's pair delivery (which delivers the newest ancestor of main whose build job succeeded) always has a recent build: \"YES\". The terms are the side chat's, adopted with that answer: use the workflow's existing 06:41 UTC schedule (review_sheet_converge_cron) for the existing build producer (the build job) with its existing bounds (its timeout, runner and release-bins retention unchanged); admit the plan-revision job on schedule too, because build needs it; regenerate the workflow with its generator; and show that the scheduled graph reaches artifact production with host actuation still separate. This is an existing job on an existing trigger, not a new job, so it is within gunbc.design_ruling::job_roster_closed_to_growth; the added daily run of build is the CI-time increase gunbc.design_ruling::ci_job_budgets_closed_to_growth reserves for the operator, and this answer is that sign-off. A push still builds nothing.",
+}
+
 data heal_convergence_job_budget_increase_2026_11_20: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "heal_convergence_job_budget_increase_2026_11_20"),
   decided: "2026-11-20",
   governs: decl_ref(module_path: "gunbc.design_document", decl_name: "ci_contract_blocks"),
   provenance: "Operator, directly in session merry-moth-343 on 2026-11-20, after the diagnosis of heal run 44676645073 on gunbc#16761: \"yeah could you give this more budget/variable budget now? and then could you give me the cleanup/performance stuff after\". This is an explicit instruction to increase this heal job budget, not a timeout-default escalation. IMPLEMENTATION CHOICE, not a numeric quotation from the operator: increase gunbc.ci.repository_ci_profile::gunbc_repository_ci_profile heal.timeout from 90 to 120 minutes; the assistant stated that choice in its next response. The measured run completed its third generation with first_generation_equal=true at 06:17:03Z and was cancelled at 06:17:08Z by the 90-minute job backstop before repair publication. The extra 30 minutes allows publication and runtime variation. Scope: only the heal-generated-artifacts job; no witness timeout, memory envelope, generation bound or check is relaxed. The operator also requested the cleanup/performance follow-up, so this allowance does not discharge the repeated regeneration and scope-selection work tracked by gunbc.plans.read_set_convergence.",
+}
+
+// The 120-minute heal budget set above is SUPERSEDED on 2026-11-22 by
+// heal_and_v2_bootstrap_ci_timeouts_lowered_2026_11_22, which lowers it to 60; that row is the live
+// authority for heal.timeout. This row stays as the event-log record of the 2026-11-20 raise and its
+// reason; only its 120-minute figure is displaced.
+data heal_and_v2_bootstrap_ci_timeouts_lowered_2026_11_22: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "heal_and_v2_bootstrap_ci_timeouts_lowered_2026_11_22"),
+  decided: "2026-11-22",
+  governs: decl_ref(module_path: "gunbc.design_document", decl_name: "ci_contract_blocks"),
+  provenance: "Operator, 2026-11-22, to session clever-raven-401. QUESTION PUT, verbatim: \"(1) set heal's timeout to 60 minutes; (2) also set v2-bootstrap to 60 minutes.\" OPERATOR'S WORDS, verbatim: \"1 and 2 is fine, i will investigate the regen slowness separately\". RULED: both CI job timeouts are LOWERED to 60 minutes -- heal-generated-artifacts (gunbc.ci.repository_ci_profile::gunbc_repository_ci_profile heal.timeout) from 120, and the required build v2-bootstrap (gunbc.witness.compiler_gate_workflow::compiler_gate_emit_build_timeout, reading gunbc_roster_gate().timeout, the RosterGate timeout of gunbc_repository_ci_profile) from 90. THESE ARE REDUCTIONS, so gunbc.design_ruling::ci_job_budgets_closed_to_growth is not engaged -- that claim closes CI budgets to GROWTH only; this row records the operator's explicit instruction, it is not a BudgetRaiseGrant and grants nothing. SUPERSESSION: this row supersedes the 120-minute part of heal_convergence_job_budget_increase_2026_11_20; that row's 90->120 raise is displaced to 60 and the older row remains only as the event-log record of why the raise was once made. MEASURED BASIS (GitHub job records, last 25 runs of each; supplied in the brief, an INTERPRETATION-adjacent measurement restated here for the record, not a quotation from the operator): successful heal runs took 15-45 minutes and successful v2-bootstrap runs 6-52 minutes, the 52 on a cold cache; a 60-minute ceiling clears the slowest measured run of each with margin. DERIVED EFFECT (INTERPRETATION, not ruled on by the operator -- the operator ruled only on the two job timeouts; the consequences follow from the model's derivation): the longest autonomous fleet-runner job timeout drops to 60 minutes, so gunbc.runner.runner_fleet_job_timeout_census::fleet_targeted_wait_bound falls to 60*60 + 15 seconds and every budget derived from it (the fleet-converge host-cap drain bracket and its job timeout) falls with it; the committed fleet-converge.yml, already stale against the 120-minute figure, is regenerated by this change to the lower derived value. WHAT THE OPERATOR DEFERRED, verbatim: \"i will investigate the regen slowness separately\" -- the regeneration slowness itself is NOT addressed here and is not discharged by this row.",
 }
 
 
@@ -1602,4 +1652,11 @@ data hosted_shadow_gate_push_credential_scoped_write_2026_11_22: DesignRuling = 
   decided: "2026-11-22",
   governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "fail_closed"),
   provenance: "Operator via session gentle-crab-832 (msg_193b054b-e5c9-4311-b8d5-d2902f57b3d8) on 2026-11-22, choosing option (A) for the hosted shadow gate's hidden-ref push after run 45013976820 failed at 'git push of refs/remote-build/<id> exited 128: could not read Username for https://github.com'. NOT a model read -- the ruling text is the operator's instruction as relayed. WHAT IT ADMITS: the hosted shadow-gate gate job -- workflow_dispatch@main-only and dissolving at cutover -- holds contents: write plus id-token: write, and GITHUB_TOKEN rides ONLY the three remote-build client steps' env, injected through git's own GIT_CONFIG_* helper mechanism so nothing is written to any config file; the push itself is protocol-bounded to refs/remote-build/<commit>.<millis> (gunbc.compute.remote_build_client::remote_build_client_source_ref), a hidden one-level ref the client deletes after the request. WHAT IT DOES NOT ADMIT: persisting any credential at checkout (persist-credentials stays false), a job-level token env, repo write on any other job or event, or any change to branch protection on main -- which still guards every normal ref.",
+}
+
+data executed_red_control_names_its_failing_commit: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "executed_red_control_names_its_failing_commit"),
+  decided: "2026-11-23",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "fail_closed"),
+  provenance: "Operator, 2026-11-23, to session neat-badger-614, after rows whose gap had already landed were proposed for acceptance on witnesses that were only ever seen green. Verbatim: \"yeah i think you'd have to mention the commit of the known failure basically as data else its not valid\". WHY fail_closed: that row owns 'done means executed' -- a real consumer green by execution plus a discriminating input that goes red -- and a red control nobody saw red is specification-without-execution; the ruling makes the observation checkable data. WHAT IT DECIDES: gunbc.roadmap.roadmap_status RedControlExecuted carries a RedObservation, a sum: RedObservedOnMain (red_at an ancestor of green_at on main) or RedProbe (red_at off main, with red_base, the main commit it breaks, and probe_ref, the durable red-control/<row-id> ref; a probe without either is not constructible); ancestry (red_at an ancestor of green_at; a probe's red_base is red_at's first parent) is NOT judged offline and is recorded only as an annotation at red_observation_holds until an online checker consumes it. Each carries red_at (the commit where the witness was observed FAILING) and green_at (where it PASSED), both std.types CommitSha, and red_at must differ from green_at; a receipt without them is not valid red evidence and is not closable (roadmap_operator_acceptance_receipt_is_closable), and the recorder CLI refuses a missing, malformed or equal pair with a named diagnostic. Receipts recorded before the pair existed are NEVER revoked: they read as RedControlTreeUnrecorded (accepted, not valid red evidence) until a RedTreeRecorded event naming the pair is appended on the accepted node. Done stays the receipt alone, so the appended event is not a second authority for done. RUNG, STATED HONESTLY: std.types CommitSha is a String alias whose validating predicate is commit_sha_text_holds, so a malformed sha is refused where the pair is judged (red_control_pair_holds), mechanically preventable and not structurally impossible; the trigger is CommitSha gaining a validating constructor.",
 }

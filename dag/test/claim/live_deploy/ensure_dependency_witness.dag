@@ -63,7 +63,7 @@ import extdeps.package_managers.dpkg { dpkg_query_status_command }
 import extdeps.network.endpoint { SocketAddress, socket_address, host_by_ipv4 }
 import extdeps.network.ipv4 { ipv4_address }
 import extdeps.ssh.known_hosts { openssh_standard_port }
-import gunbc.fleet.fleet_known_hosts_anchor { SshTarget }
+import gunbc.fleet.fleet_known_hosts_anchor { ProbeLeg,SshTarget }
 import gunbc.fleet.fleet_intent { srv1_host }
 import test.claim.typed_remote_file_write_fleet_ssh_fixture { fleet_ssh_execution_context_hermetic_witness_fixture }
 
@@ -421,7 +421,7 @@ test fn both_subject_arms_reach_the_transport_as_argv_not_as_a_script_body() -> 
   match fleet_ssh_execution_context_hermetic_witness_fixture() {
     Absent => false
     Present { value: context } => {
-      let transport = FleetSsh {
+      let transport = FleetSsh {kind: ProbeLeg,
         target: witness_ssh_target(),
         context: context,
       }

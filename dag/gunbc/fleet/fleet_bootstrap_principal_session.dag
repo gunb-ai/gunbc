@@ -1,17 +1,30 @@
 module gunbc.fleet.fleet_bootstrap_principal_session
 
 import std.types { String, Bool, Int, NonEmptyStr }
+import std.measure { Second }
+import std.optional { Absent }
 import std.algebra { trim }
 import std.content_hash { serialize_content_hash }
 import extdeps.shell
 
+// The transports are NOT imported here any more: a consumer of a fleet principal leg cannot reach a
+// sink directly at all, only through the armed-leg exec helpers in the fleet authority, which return
+// the model sum (review 96994). What is imported is the sum, its arms, the wire-refusal text, and the
+// constructor that re-mints a COMPLETED leg's record from that arm's fields.
 import extdeps.ssh.session {
   SshSessionExecResult,
-  ssh_session_exec_portable_words,
-  ssh_session_exec_portable_words_with_stdin,
+  SshSessionExecOutcome,
+  SessionCompleted,
+  SessionOverran,
+  SessionWireInconsistent,
+  ssh_session_exec_wire_refusal_text,
+  ssh_session_exec_result_from_service,
 }
-import extdeps.ssh.password_session { password_file_ssh_exec_portable_words_with_stdin }
 import gunbc.fleet.fleet_known_hosts_anchor {
+  fleet_ssh_exec_key_leg,
+  fleet_ssh_exec_key_leg_with_stdin,
+  fleet_ssh_exec_key_leg_on_fresh_connection,
+  fleet_ssh_exec_password_leg_with_stdin,
   FleetSshExecutionContext,
   FleetOpenSshTrustPolicy,
   SshTarget,
@@ -19,12 +32,9 @@ import gunbc.fleet.fleet_known_hosts_anchor {
   FleetRemoteLeg,
   FleetBareWordLeg,
   fleet_remote_leg_target,
-  shape_fleet_ssh_leg,
-  shape_fleet_ssh_password_leg_trusting,
-  shape_fleet_ssh_exec_over,
-  FleetSshFreshConnection,
-  FleetSshMultiplexedConnection,
-  shape_fleet_ssh_password_exec_trusting,
+  fleet_ssh_armed_key_leg,
+  fleet_ssh_armed_key_leg_on_fresh_connection,
+  fleet_ssh_armed_password_leg,
 }
 import gunbc.fleet.fleet_posix_accounts { fleet_bootstrap_principal_login }
 import gunbc.fleet.fleet_known_hosts_anchor { fleet_known_hosts_registry_identity }
@@ -174,6 +184,7 @@ fn read_fleet_bootstrap_credential_path() -> FleetBootstrapCredentialPath {
 // this principal", and those have different remedies.
 type FleetPrincipalLegOutcome
   = FleetPrincipalLegRan { session: FleetSshPrincipalSession, result: SshSessionExecResult }
+  | FleetPrincipalLegOverran { session: FleetSshPrincipalSession, deadline: Second }
   | FleetPrincipalLegRefused { cause: NonEmptyStr }
 
 // WHAT A PASSWORD LEG NEEDS BEFORE IT CAN RUN, in one place, because it is two facts and both
@@ -254,15 +265,6 @@ fn fleet_password_leg_from_host_observation(
   }
 }
 
-fn password_exec_result_as_session_result(
-  exit_code: Int,
-  success: Bool,
-  stdout: String,
-  stderr: String,
-) -> SshSessionExecResult {
-  SshSessionExecResult { exit_code: exit_code, success: success, stdout: stdout, stderr: stderr }
-}
-
 // THE ONE EXEC EVERY CONSUMER CALLS, stdin-bearing. The key arm is byte-for-byte what the call sites
 // did before; the password arm is what gunbc.spark.managed_access_apply privileged_leg already did,
 // now reached by derivation instead of by the author remembering.
@@ -272,6 +274,7 @@ fn exec_as_fleet_principal_with_stdin(
   words: PortableRemoteWords,
   stdin_payload: String,
   credential: FleetBootstrapCredentialLocus,
+  kind: FleetLegKind,
 ) -> FleetPrincipalLegOutcome {
   exec_as_fleet_principal_with_stdin_observed(
     context: context,
@@ -280,6 +283,7 @@ fn exec_as_fleet_principal_with_stdin(
     stdin_payload: stdin_payload,
     credential: credential,
     absence: first_absent_password_session_host_cli_dependency(),
+    kind: kind,
   )
 }
 
@@ -290,10 +294,11 @@ fn exec_as_fleet_principal_with_stdin_observed(
   stdin_payload: String,
   credential: FleetBootstrapCredentialLocus,
   absence: HostCliDependencyAbsence?,
+  kind: FleetLegKind,
 ) -> FleetPrincipalLegOutcome {
   exec_fleet_remote_leg_with_stdin_observed(
     context: context,
-    leg: FleetBareWordLeg { target: target, words: words },
+    leg: FleetBareWordLeg { target: target, words: words, kind: kind },
     stdin_payload: stdin_payload,
     credential: credential,
     absence: absence,
@@ -327,28 +332,50 @@ fn exec_fleet_remote_leg_with_stdin_observed(
   let target = fleet_remote_leg_target(leg: leg)
   let session = fleet_ssh_session_for_principal(principal: target.principal, trust: context.trust)
   match session {
-    FleetSshKeySession =>
-      FleetPrincipalLegRan {
-        session: session,
-        result: ssh_session_exec_portable_words_with_stdin(
-          client_args: shape_fleet_ssh_leg(context: context, leg: leg, connection: FleetSshMultiplexedConnection),
-          stdin_payload: stdin_payload,
-        ),
+    FleetSshKeySession => {
+      // THE DEADLINE COMES FROM THE LEG, armed at the one place a fleet leg is armed; this file
+      // neither computes it nor may omit it. The deadline the model REPORTS is the value the sink
+      // echoed on its SessionOverran arm, decoded once at the fleet authority; what we ASK the sink to
+      // enforce travels on the same armed leg.
+      // THE FLEET PATH RETURNS THE SUM AND NOTHING ELSE. The helper arms the leg from its kind, runs
+      // the sink and decodes once at extdeps.ssh.session ssh_session_exec_outcome; the wire record
+      // never reaches this file, so a leg killed at its ceiling cannot be read as if the host had
+      // answered (review 96994). The deadline REPORTED is the value the sink echoed, not a locally
+      // rebuilt wall, and a wire inconsistency refuses.
+      match fleet_ssh_exec_key_leg_with_stdin(context: context, leg: leg, stdin_payload: stdin_payload) {
+        SessionOverran { deadline: d } => FleetPrincipalLegOverran { session: session, deadline: d }
+        SessionWireInconsistent { fault: f } =>
+          FleetPrincipalLegRefused { cause: ssh_session_exec_wire_refusal_text(fault: f) as NonEmptyStr }
+        SessionCompleted { exit_code: e, success: s, stdout: o, stderr: er } =>
+          // The leg COMPLETED, so the record handed on is re-minted from that arm's own fields and
+          // carries no overrun to read; the two illegal wire shapes cannot be built here at all.
+          FleetPrincipalLegRan {
+            session: session,
+            result: ssh_session_exec_result_from_service(exit_code: e, success: s, stdout: o, stderr: er),
+          }
       }
+    }
     FleetSshPasswordSession =>
       match fleet_password_leg_from_host_observation(absence: absence, credential: credential) {
         PasswordLegPrerequisiteRefused { cause: c } => FleetPrincipalLegRefused { cause: c }
         PasswordLegPrerequisiteReady { password_file: p } => {
-          let r = password_file_ssh_exec_portable_words_with_stdin(
-            password_file: p,
-            client_args: shape_fleet_ssh_password_leg_trusting(trust: context.trust, leg: leg),
-            stdin_payload: stdin_payload,
-          )
+          // THE SAME CEILING AS THE KEY ARM: armed from the leg, so the password transport is never
+          // the one that forgot it (review 96706, review 96976).
+          // THE SAME CEILING AS THE KEY ARM AND THE SAME SUM IN RETURN: the password transport is
+          // neither the one that forgot the deadline nor the one that hides an overrun.
+          match fleet_ssh_exec_password_leg_with_stdin(
+            trust: context.trust, password_file: p, leg: leg, stdin_payload: stdin_payload,
+          ) {
+            SessionOverran { deadline: d } => FleetPrincipalLegOverran { session: session, deadline: d }
+            SessionWireInconsistent { fault: f } =>
+              FleetPrincipalLegRefused { cause: ssh_session_exec_wire_refusal_text(fault: f) as NonEmptyStr }
+            SessionCompleted { exit_code: e, success: s, stdout: o, stderr: er } =>
+          // The leg COMPLETED, so the record handed on is re-minted from that arm's own fields and
+          // carries no overrun to read; the two illegal wire shapes cannot be built here at all.
           FleetPrincipalLegRan {
             session: session,
-            result: password_exec_result_as_session_result(
-              exit_code: r.exit_code, success: r.success, stdout: r.stdout, stderr: r.stderr,
-            ),
+            result: ssh_session_exec_result_from_service(exit_code: e, success: s, stdout: o, stderr: er),
+          }
           }
         }
       }
@@ -365,8 +392,9 @@ fn exec_as_fleet_principal(
   target: SshTarget,
   words: PortableRemoteWords,
   credential: FleetBootstrapCredentialLocus,
+  kind: FleetLegKind,
 ) -> FleetPrincipalLegOutcome {
-  exec_fleet_remote_leg(context: context, leg: FleetBareWordLeg { target: target, words: words }, credential: credential)
+  exec_fleet_remote_leg(context: context, leg: FleetBareWordLeg { target: target, words: words, kind: kind }, credential: credential)
 }
 
 fn exec_fleet_remote_leg(
@@ -377,13 +405,23 @@ fn exec_fleet_remote_leg(
   let target = fleet_remote_leg_target(leg: leg)
   let session = fleet_ssh_session_for_principal(principal: target.principal, trust: context.trust)
   match session {
-    FleetSshKeySession =>
-      FleetPrincipalLegRan {
-        session: session,
-        result: ssh_session_exec_portable_words(
-          client_args: shape_fleet_ssh_leg(context: context, leg: leg, connection: FleetSshMultiplexedConnection),
-        ),
+    FleetSshKeySession => {
+      // THE DEADLINE COMES FROM THE LEG (fleet_ssh_armed_key_leg); the reported deadline is the
+      // sink's echo.
+      // THE SUM ONLY -- see the with-stdin leg above.
+      match fleet_ssh_exec_key_leg(context: context, leg: leg) {
+        SessionOverran { deadline: d } => FleetPrincipalLegOverran { session: session, deadline: d }
+        SessionWireInconsistent { fault: f } =>
+          FleetPrincipalLegRefused { cause: ssh_session_exec_wire_refusal_text(fault: f) as NonEmptyStr }
+        SessionCompleted { exit_code: e, success: s, stdout: o, stderr: er } =>
+          // The leg COMPLETED, so the record handed on is re-minted from that arm's own fields and
+          // carries no overrun to read; the two illegal wire shapes cannot be built here at all.
+          FleetPrincipalLegRan {
+            session: session,
+            result: ssh_session_exec_result_from_service(exit_code: e, success: s, stdout: o, stderr: er),
+          }
       }
+    }
     FleetSshPasswordSession =>
       exec_fleet_remote_leg_with_stdin(
         context: context, leg: leg, stdin_payload: "", credential: credential,
@@ -399,16 +437,27 @@ fn exec_as_fleet_principal_on_fresh_connection(
   context: FleetSshExecutionContext,
   target: SshTarget,
   words: PortableRemoteWords,
+  kind: FleetLegKind,
 ) -> FleetPrincipalLegOutcome {
   let session = fleet_ssh_session_for_principal(principal: target.principal, trust: context.trust)
   match session {
-    FleetSshKeySession =>
-      FleetPrincipalLegRan {
-        session: session,
-        result: ssh_session_exec_portable_words(
-          client_args: shape_fleet_ssh_exec_over(context: context, target: target, words: words, connection: FleetSshFreshConnection),
-        ),
+    FleetSshKeySession => {
+      // THE SUM ONLY -- see the with-stdin leg above.
+      match fleet_ssh_exec_key_leg_on_fresh_connection(
+        context: context, leg: FleetBareWordLeg { target: target, words: words, kind: kind },
+      ) {
+        SessionOverran { deadline: d } => FleetPrincipalLegOverran { session: session, deadline: d }
+        SessionWireInconsistent { fault: f } =>
+          FleetPrincipalLegRefused { cause: ssh_session_exec_wire_refusal_text(fault: f) as NonEmptyStr }
+        SessionCompleted { exit_code: e, success: s, stdout: o, stderr: er } =>
+          // The leg COMPLETED, so the record handed on is re-minted from that arm's own fields and
+          // carries no overrun to read; the two illegal wire shapes cannot be built here at all.
+          FleetPrincipalLegRan {
+            session: session,
+            result: ssh_session_exec_result_from_service(exit_code: e, success: s, stdout: o, stderr: er),
+          }
       }
+    }
     FleetSshPasswordSession =>
       FleetPrincipalLegRefused { cause: "a fresh-connection leg is a key-session readback; this target resolves to a password session" as NonEmptyStr }
   }
@@ -430,6 +479,7 @@ fn exec_as_fleet_principal_trusting_with_stdin(
   words: PortableRemoteWords,
   stdin_payload: String,
   credential: FleetBootstrapCredentialLocus,
+  kind: FleetLegKind,
 ) -> FleetPrincipalLegOutcome {
   let session = fleet_ssh_session_for_principal(principal: target.principal, trust: trust)
   match session {
@@ -445,18 +495,23 @@ fn exec_as_fleet_principal_trusting_with_stdin(
       match open_fleet_password_leg(credential: credential) {
         PasswordLegPrerequisiteRefused { cause: c } => FleetPrincipalLegRefused { cause: c }
         PasswordLegPrerequisiteReady { password_file: p } => {
-          let r = password_file_ssh_exec_portable_words_with_stdin(
+          // THE SUM ONLY -- see the with-stdin leg above.
+          match fleet_ssh_exec_password_leg_with_stdin(
+            trust: trust,
             password_file: p,
-            client_args: shape_fleet_ssh_password_exec_trusting(
-              trust: trust, target: target, words: words,
-            ),
+            leg: FleetBareWordLeg { target: target, words: words, kind: kind },
             stdin_payload: stdin_payload,
-          )
+          ) {
+            SessionOverran { deadline: d } => FleetPrincipalLegOverran { session: session, deadline: d }
+            SessionWireInconsistent { fault: f } =>
+              FleetPrincipalLegRefused { cause: ssh_session_exec_wire_refusal_text(fault: f) as NonEmptyStr }
+            SessionCompleted { exit_code: e, success: s, stdout: o, stderr: er } =>
+          // The leg COMPLETED, so the record handed on is re-minted from that arm's own fields and
+          // carries no overrun to read; the two illegal wire shapes cannot be built here at all.
           FleetPrincipalLegRan {
             session: session,
-            result: password_exec_result_as_session_result(
-              exit_code: r.exit_code, success: r.success, stdout: r.stdout, stderr: r.stderr,
-            ),
+            result: ssh_session_exec_result_from_service(exit_code: e, success: s, stdout: o, stderr: er),
+          }
           }
         }
       }

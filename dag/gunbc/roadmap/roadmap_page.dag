@@ -59,7 +59,7 @@ import gunbc.roadmap.roadmap_model {
   roadmap_parent_ids_in, roadmap_primary_children_index, roadmap_primary_children_in,
   SectionElement, Prose, Group, SectionGroup, Closes, MemberOf, AdmittedRoot,
 }
-import gunbc.roadmap.roadmap_status { line_ticket, AuthoredLine }
+import gunbc.roadmap.roadmap_status { line_ticket, AuthoredLine, RedObservedOnMain, RedProbe }
 import gunbc.roadmap.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.fleet.fleet_hardware_standing_panel { fleet_hardware_standing_panel }
 import gunbc.roadmap.roadmap_altitude { section_counts, section_counts_wire, statuses_all_routine, SectionCounts }
@@ -1908,6 +1908,10 @@ fn issue_event_payload(env: RoadmapEventEnvelope) -> String {
     Retired { reason } => join(["retired: ", reason as String], "")
     ReceiptReferenced { obligation, address, verdict } =>
       join(["receipt ", obligation as String, " at ", address as String, ": ", verdict as String], "")
+    RedTreeRecorded { observation } => match observation {
+      RedObservedOnMain { red_at, green_at } => join(["red control observed failing at ", red_at, " and passing at ", green_at, " (on main)"], "")
+      RedProbe { red_at, red_base, green_at, probe_ref } => join(["red control observed failing at probe ", red_at, " (base ", red_base, ", ref ", probe_ref as String, ") and passing at ", green_at], "")
+    }
     CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => "comment created"
     CommentEdited { comment: _, body: _ } => "comment edited"
     CommentDeleted { comment: _ } => "comment deleted"
@@ -2078,7 +2082,7 @@ type IssueStreamEntry
 
 fn issue_stream_entries(envs: List<RoadmapEventEnvelope>) -> List<IssueStreamEntry> {
   let comments = map(roadmap_issue_comments(envs: envs), c => StreamComment { comment: c })
-  let publications = map(filter(envs, e => match e.event.kind { ResultReturned { attempt: _, claim: _, outcome: _ } => true  Claimed { assignee: _, return_to: _ } => false  Released => false  Progress { note: _ } => false  Blocked { reason: _ } => false  HandedBack { reason: _ } => false  Retired { reason: _ } => false  AcceptanceRecordedEvent { receipt: _, evidence: _ } => false  AcceptanceRevokedEvent { receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => false  ReceiptReferenced { obligation: _, address: _, verdict: _ } => false  CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => false  CommentEdited { comment: _, body: _ } => false  CommentDeleted { comment: _ } => false }), e => StreamPublication { env: e })
+  let publications = map(filter(envs, e => match e.event.kind { ResultReturned { attempt: _, claim: _, outcome: _ } => true  Claimed { assignee: _, return_to: _ } => false  Released => false  Progress { note: _ } => false  Blocked { reason: _ } => false  HandedBack { reason: _ } => false  Retired { reason: _ } => false  AcceptanceRecordedEvent { receipt: _, evidence: _ } => false  AcceptanceRevokedEvent { receipt: _, disposition: _, revoked_by: _, revoked_on: _, reason: _ } => false  ReceiptReferenced { obligation: _, address: _, verdict: _ } => false  RedTreeRecorded { observation: _ } => false  CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => false  CommentEdited { comment: _, body: _ } => false  CommentDeleted { comment: _ } => false }), e => StreamPublication { env: e })
   issue_entries_sort_ascending(concat(comments, publications))
 }
 
@@ -2179,6 +2183,8 @@ fn issue_publication_entry_row_node(node_id: String, envs: List<RoadmapEventEnve
     Retired { reason: _ } =>
       el_class("div", "issue-comment-body", [ txt("") ])
     ReceiptReferenced { obligation: _, address: _, verdict: _ } =>
+      el_class("div", "issue-comment-body", [ txt("") ])
+    RedTreeRecorded { observation: _ } =>
       el_class("div", "issue-comment-body", [ txt("") ])
     CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } =>
       el_class("div", "issue-comment-body", [ txt("") ])
@@ -3559,6 +3565,10 @@ fn issue_close_form_nodes(node_id: String, command_context: IssueFormContext) ->
         issue_operator_text(name: "pr", label: "Merged pull request #", value: "", placeholder: "14189"),
         issue_operator_text(name: "witness_module", label: "Red-control witness module", value: "", placeholder: "test/claim/..."),
         issue_operator_text(name: "witness_fn", label: "Red-control witness fn", value: "", placeholder: "witness_executes"),
+        issue_operator_text(name: "red_at", label: "Commit where the witness FAILED (40 hex)", value: "", placeholder: "40 lowercase hex"),
+        issue_operator_text(name: "green_at", label: "Commit where the witness PASSED (40 hex)", value: "", placeholder: "40 lowercase hex"),
+        issue_operator_text(name: "red_base", label: "PROBE ONLY: main commit the probe breaks (leave BOTH this and the ref empty to record the red as observed on main)", value: "", placeholder: "40 lowercase hex, or empty"),
+        issue_operator_text(name: "probe_ref", label: "PROBE ONLY: durable ref red-control/<row-id>", value: "", placeholder: "red-control/<row-id>, or empty"),
         issue_operator_text(name: "first_artifact", label: "First handback artifact", value: "", placeholder: "commit, PR, report, or artifact name"),
         issue_operator_text(name: "further_artifacts", label: "Further artifacts (newline-separated)", value: "", placeholder: "optional"),
       ]),
