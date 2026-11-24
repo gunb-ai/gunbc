@@ -1,96 +1,49 @@
 module test.claim.closing.fleet_state_frontier_closing_contract_witness_test
 
-// The machine-artifact classification authority (files, services, credentials,
-// devices) does not yet exist in the tree. Per the centering plan, this witness
-// targets gunbc.host.host_assimilation_program's roster refusal directly as the
-// standing construction: assimilation_gate_roster_refusal (host_standup) is the
-// closed-roster gate that checks gate obligations against the required roster,
-// and assimilation_complete returns a typed verdict whose refusing arm
-// (AssimilationIncomplete) carries the undeclared or missing item. The claim is
-// scoped to the roster's admission/refusal discipline and does NOT assert
-// whole-host state truth.
+// The closing witness for node fleet-state-frontier. The node's bar: an
+// undeclared file, service, credential, or device refuses before anything is
+// changed. The witness calls frontier_gate (gunbc.host.host_converge), the
+// production classification function added by this node, supplying inputs only.
+// The refusing arm (FrontierRefused) carries the undeclared artifact by name.
 //
 // Red pair:
-//   an_undeclared_artifact_refuses_before_anything_is_changed — discriminating
-//     RED; fails if assimilation_complete admits an incomplete gate (the roster
-//     gate is bypassed, or the missing required obligation goes undetected).
-//   a_fully_classified_inventory_admits — positive control; fails if a fully
-//     satisfied gate is refused.
+//   an_undeclared_artifact_refuses_before_anything_is_changed — discriminating;
+//     fails if frontier_gate admits an artifact not in the declared roster.
+//   a_fully_classified_inventory_admits — positive control; fails if a declared
+//     artifact is refused.
 
-import std.types { Bool, List, String }
+import std.types { Bool, String }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.algebra { string_contains }
-import gunbc.host.host_assimilation_program {
-  assimilation_completion_inputs_for,
-}
-import gunbc.fleet.fleet_enrollment {
-  ci_runner_enrollment_participation,
-}
-import gunbc.host.host_standup {
-  AssimilationComplete,
-  AssimilationCompleteGate,
-  AssimilationIncomplete,
-  AssimilationObligation,
-  GreenPlacePinCoherent,
-  InputSatisfied,
-  NodeRegistered,
-  ResourcesPresent,
-  RunnerSlotHealthy,
-  assimilation_complete,
+import gunbc.host.host_converge {
+  FrontierAdmitted,
+  FrontierRefused,
+  DerivedByUs,
+  frontier_gate,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn an_undeclared_artifact_refuses_before_anything_is_changed() -> Bool {
-  // A machine artifact (RunnerSlotHealthy) is undeclared: it is required for
-  // CI-runner participation but absent from the gate's declared obligations.
-  // The standing construction (assimilation_complete via the roster gate) must
-  // refuse it, carrying the refused item in the verdict before any change.
+  // An artifact not in the declared frontier classification must be refused,
+  // carrying the artifact name in the verdict. The converge path will not
+  // attempt any change on its behalf.
   //
-  // Discriminating: if assimilation_complete bypassed the roster gate and
-  // returned AssimilationComplete despite a missing required obligation, this
-  // test fails. If it refused the wrong item, it also fails.
-  let ci_required = assimilation_completion_inputs_for(
-    participation: ci_runner_enrollment_participation,
-  )
-  let undeclared_gate = AssimilationCompleteGate {
-    obligations: [
-      AssimilationObligation { input: NodeRegistered, witness: InputSatisfied },
-      AssimilationObligation { input: ResourcesPresent, witness: InputSatisfied },
-      AssimilationObligation { input: GreenPlacePinCoherent, witness: InputSatisfied },
-    ],
-  }
-  match assimilation_complete(gate: undeclared_gate, required: ci_required) {
-    AssimilationIncomplete { input: RunnerSlotHealthy, reason: r } =>
-      string_contains(s: r, pattern: "required-obligation-missing")
-    AssimilationComplete => false
-    AssimilationIncomplete { input: NodeRegistered, reason: _ } => false
-    AssimilationIncomplete { input: ResourcesPresent, reason: _ } => false
-    AssimilationIncomplete { input: GreenPlacePinCoherent, reason: _ } => false
+  // Discriminating: if frontier_gate admitted undeclared artifacts (the
+  // classification gate bypassed), this test fails.
+  match frontier_gate(artifact_name: "undeclared.credential.srv9_api_key") {
+    FrontierRefused { artifact: "undeclared.credential.srv9_api_key", cause: _ } => true
+    FrontierAdmitted { artifact: _, class: _ } => false
   }
 }
 
 test fn a_fully_classified_inventory_admits() -> Bool {
-  // Positive control: every machine-touching artifact required for CI-runner
-  // participation is declared and satisfied in the gate. The standing
-  // construction must admit it — AssimilationComplete, no refusal.
+  // A declared artifact admits with its classification. The positive control
+  // proves the gate is not vacuously refusing everything.
   //
-  // Discriminating: if assimilation_complete refused a satisfied gate (returned
-  // AssimilationIncomplete when all required obligations are InputSatisfied),
-  // this test fails.
-  let ci_required = assimilation_completion_inputs_for(
-    participation: ci_runner_enrollment_participation,
-  )
-  let fully_classified_gate = AssimilationCompleteGate {
-    obligations: [
-      AssimilationObligation { input: NodeRegistered, witness: InputSatisfied },
-      AssimilationObligation { input: ResourcesPresent, witness: InputSatisfied },
-      AssimilationObligation { input: GreenPlacePinCoherent, witness: InputSatisfied },
-      AssimilationObligation { input: RunnerSlotHealthy, witness: InputSatisfied },
-    ],
-  }
-  match assimilation_complete(gate: fully_classified_gate, required: ci_required) {
-    AssimilationComplete => true
-    AssimilationIncomplete { input: _, reason: _ } => false
+  // Discriminating: if frontier_gate refused a declared artifact, this test
+  // fails.
+  match frontier_gate(artifact_name: "gunbc.memory.high") {
+    FrontierAdmitted { artifact: "gunbc.memory.high", class: DerivedByUs } => true
+    FrontierRefused { artifact: _, cause: _ } => false
   }
 }

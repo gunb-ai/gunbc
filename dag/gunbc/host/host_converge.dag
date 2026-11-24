@@ -1128,3 +1128,44 @@ fn converge_hosts_of_plan(plan: RunnerDeploymentPlan) -> FleetConvergeAcc {
 fn fleet_converge_policy() -> ConvergePolicy {
   fleet_converge_policy_from(plan: runner_deployment_plan(), image_baked: runner_image_baked_deployment_plan())
 }
+
+// Frontier classification (fleet-state-frontier node deliverable): every
+// machine-touching artifact the converge path writes is classified as
+// DerivedByUs (we author its value), OwnedByUs (we own the resource it
+// configures), or ContractedExternally (someone else's with an agreed
+// contract). An artifact whose name is not in the declared roster refuses
+// before any change is attempted (gunbc.design_argument::fail_closed).
+// The classification is scoped to the converge path's knob names; it does NOT
+// assert whole-host state truth (gunbc.design_argument::epistemic_humility).
+
+type FrontierArtifactClass = DerivedByUs | OwnedByUs | ContractedExternally
+
+type FrontierDeclaredArtifact {
+  name: String
+  class: FrontierArtifactClass
+}
+
+type FrontierGateVerdict
+  = FrontierAdmitted { artifact: String, class: FrontierArtifactClass }
+  | FrontierRefused { artifact: String, cause: String }
+
+data frontier_declared_artifacts: List<FrontierDeclaredArtifact> = [
+  FrontierDeclaredArtifact { name: "gunbc.memory.high", class: DerivedByUs },
+  FrontierDeclaredArtifact { name: "gunbc.memory.low", class: DerivedByUs },
+  FrontierDeclaredArtifact { name: "runner.memory.high", class: DerivedByUs },
+  FrontierDeclaredArtifact { name: "sessions.memory.high", class: DerivedByUs },
+  FrontierDeclaredArtifact { name: "gunbc.pinned.tree", class: OwnedByUs },
+  FrontierDeclaredArtifact { name: "codex.runtime.bundle", class: ContractedExternally },
+]
+
+fn frontier_gate(artifact_name: String) -> FrontierGateVerdict {
+  let matches = filter(frontier_declared_artifacts, a => a.name == artifact_name)
+  if matches.length() > 0 {
+    FrontierAdmitted { artifact: artifact_name, class: matches[0].class }
+  } else {
+    FrontierRefused {
+      artifact: artifact_name,
+      cause: "this machine-touching artifact is not in the declared frontier classification; it refuses before any change is attempted",
+    }
+  }
+}
