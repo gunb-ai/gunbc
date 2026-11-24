@@ -420,8 +420,13 @@ fn roster_rows_without_planted_omission() -> List<ConvergenceRosterRow> {
   )
 }
 
-// Row-count witness: 20 enforced + 3 pre-substrate + 52 named exclusions = 75
-// rows, covering every one of the 65 grep-hit files.
-fn census_row_count_is_complete() -> Bool {
-  length(xs: roster_rows()) == 75
-}
+// Row counts (20 enforced + 3 pre-substrate + 52 named exclusions = 75 rows,
+// covering every one of the 65 grep-hit files) are DOCUMENTATION in this header
+// and in the PR body, not a claim. A count copied from the current tree is a
+// change detector, not a completeness guarantee (gunbc.design_argument::
+// fail_closed: "Completeness is an identity join, not a count equality"), so
+// there is deliberately no length(xs: roster_rows()) == N witness here. The
+// enforced denominator is bound to the corpus by the re-derivation command
+// above, executed and pasted with its raw output and real exit status in the PR
+// body; the claim below enforces roster-to-required-list consistency over that
+// denominator, which is the half of completeness this rung can reach.
