@@ -30,7 +30,7 @@ import gunbc.roadmap.roadmap_belt { BeltCapacity }
 import gunbc.roadmap.roadmap_event_log {
   RoadmapEvent, RoadmapEventKind, RoadmapEventEnvelope, RoadmapEventId, RoadmapStandings, StandingsObserved,
   LeafInFlightEntry, Claimed, Released, EventPrincipal, LegacyEmailPrincipal, ClaimGrain, AtPath,
-  roadmap_event_envelope,
+  roadmap_event_envelope, roadmap_event_id, roadmap_leaf_in_flight_from_envs, LeafInFlightRead, InFlightLeaves, InFlightRefused,
 }
 import gunbc.roadmap.roadmap_intention_binding { IntentionBinding }
 import gunbc.roadmap.roadmap_work_item_projection {
@@ -38,6 +38,7 @@ import gunbc.roadmap.roadmap_work_item_projection {
   ProjectionRowResult, ProjectionRowBuilt, ProjectionRowRefused, ScheduleRefused, InFlightUnordered,
   projection_build_row, projection_in_flight_entries, projection_leaf_from_dated, projection_leaves_for_item,
   roadmap_work_item_projection_document_json, projection_row_json,
+  roadmap_projection_row_read, roadmap_projection_document_for_read,
 }
 import gunbc.roadmap.roadmap_served_observation {
   ProjectionJson, ServedObservationKindDecoded, served_observation_kind_url_path,
@@ -54,6 +55,36 @@ fn envelope(node: String, kind: RoadmapEventKind, at: String) -> RoadmapEventEnv
   roadmap_event_envelope(e: RoadmapEvent {
     node: nid(s: node), author: principal("system@roadmap"), parent: Absent, kind: kind, recorded_at: at,
   })
+}
+
+// A PARENT-LINKED claim then release for one leaf of one item, built the way the real log links them (the
+// release names the claim's own computed id as its parent) so they form a single causal chain -- the shape
+// the in-flight fold and the causal ordering both require. The caller derives the set through the PRODUCTION
+// fold (roadmap_leaf_in_flight_from_envs), never hand-supplies it.
+fn claim_event(node: String, at: String) -> RoadmapEvent {
+  RoadmapEvent {
+    node: nid(s: node), author: principal("alice@roadmap"), parent: Absent, recorded_at: at,
+    kind: Claimed {
+      assignee: principal("alice@roadmap"), return_to: principal("bob@roadmap"),
+      grain: AtPath { path: LeafPath { item: nid(s: node), stage: 0, piece: 0, member: 0 } },
+    },
+  }
+}
+
+fn release_event(linked_to: RoadmapEvent, at: String) -> RoadmapEvent {
+  RoadmapEvent {
+    node: linked_to.node, author: principal("alice@roadmap"), parent: Present { value: roadmap_event_id(e: linked_to) },
+    recorded_at: at, kind: Released,
+  }
+}
+
+// How many leaves the PRODUCTION fold reports as in flight for an item over these envelopes -- 0 is the
+// derived "nothing held," never a hand-written empty list.
+fn derived_in_flight_count(node: String, envs: List<RoadmapEventEnvelope>) -> Int {
+  match roadmap_leaf_in_flight_from_envs(node: nid(s: node), envs: envs) {
+    InFlightLeaves { leaves: entries, closed: _, pathless_claims: _, absorbed_claims: _ } => count(entries)
+    InFlightRefused { cause: _ } => -1
+  }
 }
 
 fn claimed(node: String) -> RoadmapEventKind {
@@ -143,27 +174,78 @@ test fn first_slice_item_with_leaves_in_flight_shows_every_declared_field() -> B
   }
 }
 
-// The SAME item after a planted release: the latest event is now the release, both the claim and the
-// release are the log's rows on the row, and the in-flight field is STILL PRESENT (now an empty list -- the
-// field never disappears, only fills).
-test fn same_item_after_planted_release_still_carries_every_field() -> Bool {
-  let envs = [
-    envelope("item-a", claimed("item-a"), "2026-11-01"),
-    envelope("item-a", Released, "2026-11-03"),
-  ]
-  match projection_build_row(
-    node: "item-a", bindings: [bound_node("item-a")], standings: open_standings(),
-    leaves: [ProjectionLeaf { path: "item-a#0#0#0", start_day: "2026-11-02", finish_day: "2026-11-04", on_critical_path: true }],
-    in_flight: [] as List<ProjectionInFlight>, envs: envs,
-    day_priors: [] as List<Int>,
-  ) {
-    ProjectionRowBuilt { row: r, day_priors: _ } =>
-      let d = doc_of([r])
-      string_contains(s: d, pattern: "released")
-      && string_contains(s: d, pattern: "claimed")
-      && string_contains(s: d, pattern: "2026-11-03")
-      && string_contains(s: d, pattern: "\"in_flight\"")
-    ProjectionRowRefused { refusal: _ } => false
+// THE IN-FLIGHT SET AND THE LATEST EVENT ARE DERIVED THROUGH THE PRODUCTION READER, not hand-supplied
+// (manager ruling 2026-11-24): the SAME item read BEFORE a parent-linked release has its claimed leaf held
+// and "claimed" latest; read AFTER, the in-flight fold reports NOTHING held (derived off the log, never typed
+// in) and "released" is latest, with both events on the row. The empty in_flight is the fold's, so a reader
+// cannot tell it from an item nobody ever claimed except by the events -- which is exactly the point: the
+// claim and release are both on the row.
+test fn in_flight_and_latest_are_derived_through_the_production_reader_across_a_release() -> Bool {
+  match checked_int_to_nat(n: 1) {
+    Absent => false
+    Present { value: findings } => {
+      let c = claim_event("item-a", "2026-11-01")
+      let c_env = roadmap_event_envelope(e: c)
+      let r = release_event(linked_to: c, at: "2026-11-03")
+      let r_env = roadmap_event_envelope(e: r)
+      let read_row = fn(envs: List<RoadmapEventEnvelope>) { roadmap_projection_row_read(
+        node: nid(s: "item-a"), read_date: Iso8601CivilDate { year: 2026, month: 11, day: 24 },
+        workers: BeltCapacity { max_concurrent: 4 }, findings_count: findings,
+        standings: open_standings(), envs: envs) }
+      match read_row([c_env]) {
+        ProjectionRowBuilt { row: b, day_priors: _ } => match read([c_env, r_env]) {
+          ProjectionRowBuilt { row: a, day_priors: _ } =>
+            // BEFORE: one leaf held, its assignee the claim's own, and "claimed" latest.
+            count(b.in_flight) == 1
+            && match b.in_flight.first() { Present { value: h } => h.assignee == "alice@roadmap" Absent => false }
+            && match b.latest_event { Present { value: w } => w == "claimed" Absent => false }
+            // AFTER: nothing held (the fold derived the release), "released" latest, both events on the row.
+            && count(a.in_flight) == 0
+            && match a.latest_event { Present { value: w } => w == "released" Absent => false }
+            && string_contains(s: doc_of([a]), pattern: "released")
+            && string_contains(s: doc_of([a]), pattern: "claimed")
+            && string_contains(s: doc_of([a]), pattern: "2026-11-03")
+            && string_contains(s: doc_of([a]), pattern: "\"in_flight\": []")
+          ProjectionRowRefused { refusal: _ } => false
+        }
+        ProjectionRowRefused { refusal: _ } => false
+      }
+    }
+  }
+}
+
+// FILE ORDER DOES NOT DECIDE THE ROW -- the causal chain does (manager ruling 2026-11-24): [Released,
+// Claimed] listed in the order the files happened to arrive in still reports the RELEASE as latest and the
+// same derived in-flight set as [Claimed, Released], because roadmap_projection_row_read orders by the parent
+// links, not the list it was handed. A row whose latest flipped with file order would be a timeline lying
+// about what happened last.
+test fn permuting_the_log_order_leaves_the_row_unchanged() -> Bool {
+  match checked_int_to_nat(n: 1) {
+    Absent => false
+    Present { value: findings } => {
+      let c = claim_event("item-a", "2026-11-01")
+      let c_env = roadmap_event_envelope(e: c)
+      let r = release_event(linked_to: c, at: "2026-11-03")
+      let r_env = roadmap_event_envelope(e: r)
+      let read_row = fn(envs: List<RoadmapEventEnvelope>) { roadmap_projection_row_read(
+        node: nid(s: "item-a"), read_date: Iso8601CivilDate { year: 2026, month: 11, day: 24 },
+        workers: BeltCapacity { max_concurrent: 4 }, findings_count: findings,
+        standings: open_standings(), envs: envs) }
+      match read_row([c_env, r_env]) {
+        ProjectionRowBuilt { row: ordered, day_priors: _ } => match read([r_env, c_env]) {
+          ProjectionRowBuilt { row: shuffled, day_priors: _ } =>
+            match ordered.latest_event {
+              Present { value: lo } => match shuffled.latest_event {
+                Present { value: ls } => lo == "released" && ls == lo && count(shuffled.in_flight) == count(ordered.in_flight)
+                Absent => false
+              }
+              Absent => false
+            }
+          ProjectionRowRefused { refusal: _ } => false
+        }
+        ProjectionRowRefused { refusal: _ } => false
+      }
+    }
   }
 }
 
@@ -210,7 +292,6 @@ test fn in_flight_leaves_are_the_derived_set_read_off_the_log() -> Bool {
     && string_contains(s: row_json, pattern: "fred@roadmap")
     && string_contains(s: row_json, pattern: "\"latest_event\": \"claimed\"")
     && string_contains(s: row_json, pattern: "\"acceptance_evidence\": null")
-    && string_contains(s: row_json, pattern: "\"on_critical_path\"")
 }
 
 // The served surface: the projection is a declared surface at /projection.json, with the same key
