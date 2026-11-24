@@ -156,10 +156,10 @@ fn pre_merge_witness(layout: RoadmapEventCarrierLayout) -> Bool {
           let names_publication = match published_as {
             Absent => claim("the append published nothing: the record is provisional at best, and the route said nothing about it", false)
             Present { value: p } =>
-              claim("the append names the remote it pushed to", string_contains(s: p.remote as String, pattern: "gunbc"))
+              claim("the append names the remote it pushed to", (p.remote as String) != "" && (p.remote as String) == (layout.remote as String))
                 && claim("the append names the durable ref", string_contains(s: p.ref_name as String, pattern: "roadmap-events"))
                 && claim("the append names the COMMIT it pushed, and not a placeholder for one",
-                     (p.commit as String) != "" && !(p.commit as String) == "0000000000000000000000000000000000000000"
+                     (p.commit as String) != "" && !((p.commit as String) == "0000000000000000000000000000000000000000")
                        && !string_contains(s: p.commit as String, pattern: " "))
           }
           // 2. THE STANDING, FROM THE ACCEPTANCE ALONE — read back off the durable bytes, not from the
