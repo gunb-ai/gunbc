@@ -1402,3 +1402,129 @@ test fn clean_full_walk_with_starting_point_observes() -> Bool {
     TreeMetadataObserved { entries: e } => count(e) == 1 && any(e, x => x.path == "dag/a")
   }
 }
+
+// ============================================================================================
+// THE TRAILING-LF CONVENTION -- #16927's false refusal, fleet-converge dashboard_deploy run 45286132235
+// on srv1 at execution revision 0f036da7. The empty-fragment control of tree_metadata_entries_of_stdout_checked
+// demanded the single empty fragment a listing ending in a LF leaves behind, but the transport hands these
+// functions the captured bytes AFTER the seed's shell capture trimmed their trailing whitespace
+// (src/v1/stage0/src/bounded_shell_host_drain.rs, retained_utf8_lossy_trimmed), so the listing the deploy
+// actually had -- the 9217-record `dag` full walk carried by that run's live-deploy-srv1-live-receipt
+// artifact -- arrived with NO trailing LF and 0 empty fragments, and every real srv1 deploy refused at it.
+// The fixtures below are CUT FROM THAT REFUSED LISTING (its 9 leading records: walk-root row plus 8
+// records, with the owners, modes and byte sizes that run recorded), so the admitted case is the deploy's
+// own listing and not a synthetic look-alike. The dot string is the matching `-printf .` enumeration:
+// 9 entries -> 9 dots. Both conventions are then refused or admitted for the SAME reason they were before
+// -- control (2) counts the records the same flag names, control (3) and the entry grammar are untouched.
+// ============================================================================================
+
+// THE DEPLOY'S OWN LISTING as the transport delivered it: well-formed, no trailing LF, no empty fragment.
+data dag_walk_records_no_trailing_lf: String = "|d|755|ghrunner|ghrunner||4096\nproduct|d|755|ghrunner|ghrunner||4096\nproduct/breakout_leg_programming.dag|f|644|ghrunner|ghrunner||13086\nproduct/data_category.dag|f|644|ghrunner|ghrunner||6507\nproduct/host_health.dag|f|644|ghrunner|ghrunner||38009\nproduct/acoustic_ceiling.dag|f|644|ghrunner|ghrunner||9309\nproduct/fabric|d|755|ghrunner|ghrunner||4096\nproduct/fabric/flex_vast_template_control.dag|f|644|ghrunner|ghrunner||8766\nproduct/fabric/flex_vast_shadow.dag|f|644|ghrunner|ghrunner||45101"
+data dag_walk_record_dots: String = "........."
+// THE SAME BYTES as `find` writes them, with the record separator after the last record kept. Derived from
+// the fixture above so the two conventions cannot drift into two different listings.
+data dag_walk_records_trailing_lf: String = join([dag_walk_records_no_trailing_lf, "\n"], "")
+
+// RED ON MAIN, GREEN WITH THE FIX: the deploy's own listing is admitted. Main refused it for "0 empty line
+// fragments but only the single trailing one ... is legal" -- the LF it demanded had been trimmed off the
+// capture before this `.dag` ever saw it.
+test fn dag_walk_listing_without_final_lf_is_admitted() -> Bool {
+  match tree_metadata_entries_of_stdout_checked(root: join([srv1_broker_locus, "/dag"], ""), stdout: dag_walk_records_no_trailing_lf, dot_stdout: dag_walk_record_dots, sub: "dag", starting_point_expected: true) {
+    TreeMetadataObservationFailed { reason: _ } => false
+    TreeMetadataObserved { entries: e } => count(e) == 8 && any(e, x => x.path == "dag/product") && any(e, x => x.path == "dag/product/fabric/flex_vast_shadow.dag")
+  }
+}
+
+// ADMITTED AT BOTH REVISIONS: the convention the collector assumed still works, so this is a convention
+// fix and not a swap of which well-formed listing gets refused.
+test fn dag_walk_listing_with_final_lf_is_admitted() -> Bool {
+  match tree_metadata_entries_of_stdout_checked(root: join([srv1_broker_locus, "/dag"], ""), stdout: dag_walk_records_trailing_lf, dot_stdout: dag_walk_record_dots, sub: "dag", starting_point_expected: true) {
+    TreeMetadataObservationFailed { reason: _ } => false
+    TreeMetadataObserved { entries: e } => count(e) == 8 && any(e, x => x.path == "dag/product") && any(e, x => x.path == "dag/product/fabric/flex_vast_shadow.dag")
+  }
+}
+
+// THE CONVENTION CHOICE CANNOT CHANGE WHAT THE LISTING SAYS: the same 8 entries under either trailing
+// convention, which is exactly what deriving `trailing_lf` from the bytes -- and nothing else -- buys.
+test fn dag_walk_both_conventions_agree_on_the_entries() -> Bool {
+  match tree_metadata_entries_of_stdout_checked(root: join([srv1_broker_locus, "/dag"], ""), stdout: dag_walk_records_no_trailing_lf, dot_stdout: dag_walk_record_dots, sub: "dag", starting_point_expected: true) {
+    TreeMetadataObservationFailed { reason: _ } => false
+    TreeMetadataObserved { entries: a } =>
+      match tree_metadata_entries_of_stdout_checked(root: join([srv1_broker_locus, "/dag"], ""), stdout: dag_walk_records_trailing_lf, dot_stdout: dag_walk_record_dots, sub: "dag", starting_point_expected: true) {
+        TreeMetadataObservationFailed { reason: _ } => false
+        TreeMetadataObserved { entries: b } => count(a) == 8 && count(a) == count(b) && all(b, x => any(a, y => y.path == x.path))
+      }
+  }
+}
+
+// A RECORD WHOSE NAME ENDS IN A LF, as `find` writes it: the name's own LF, then the record separator, so
+// the listing ends in TWO LFs and the last fragment is a SECOND empty one. Refused under the trailing-LF
+// convention (one empty fragment is the tail, two is a forgery) and refused on main too.
+data dag_walk_last_name_ends_in_lf: String = join([dag_walk_records_no_trailing_lf, "\n\n"], "")
+test fn dag_walk_last_record_name_ending_in_lf_refuses() -> Bool {
+  match tree_metadata_entries_of_stdout_checked(root: join([srv1_broker_locus, "/dag"], ""), stdout: dag_walk_last_name_ends_in_lf, dot_stdout: dag_walk_record_dots, sub: "dag", starting_point_expected: true) {
+    TreeMetadataObserved { entries: _ } => false
+    TreeMetadataObservationFailed { reason: _ } => true
+  }
+}
+
+test fn dag_walk_last_record_name_ending_in_lf_refuses_on_the_empty_fragment_control() -> Bool {
+  match tree_metadata_entries_of_stdout_checked(root: join([srv1_broker_locus, "/dag"], ""), stdout: dag_walk_last_name_ends_in_lf, dot_stdout: dag_walk_record_dots, sub: "dag", starting_point_expected: true) {
+    TreeMetadataObserved { entries: _ } => false
+    TreeMetadataObservationFailed { reason: r } => string_contains(s: r, pattern: "empty line fragment")
+  }
+}
+
+// A SECOND EMPTY-%P ROW: a forged row claiming the walk root a second time, which the old collector
+// swallowed as "another starting point". The listing arrives trimmed (no trailing LF), so the empty-fragment
+// control is satisfied and the starting-point invariant is what refuses -- control (3), untouched.
+data dag_walk_second_empty_rel_row: String = join([dag_walk_records_no_trailing_lf, "\n|d|755|ghrunner|ghrunner||4096"], "")
+data dag_walk_second_empty_rel_row_dots: String = ".........."
+test fn dag_walk_second_empty_relative_path_row_refuses() -> Bool {
+  match tree_metadata_entries_of_stdout_checked(root: join([srv1_broker_locus, "/dag"], ""), stdout: dag_walk_second_empty_rel_row, dot_stdout: dag_walk_second_empty_rel_row_dots, sub: "dag", starting_point_expected: true) {
+    TreeMetadataObserved { entries: _ } => false
+    TreeMetadataObservationFailed { reason: _ } => true
+  }
+}
+
+test fn dag_walk_second_empty_relative_path_row_refuses_on_the_starting_point_control() -> Bool {
+  match tree_metadata_entries_of_stdout_checked(root: join([srv1_broker_locus, "/dag"], ""), stdout: dag_walk_second_empty_rel_row, dot_stdout: dag_walk_second_empty_rel_row_dots, sub: "dag", starting_point_expected: true) {
+    TreeMetadataObserved { entries: _ } => false
+    TreeMetadataObservationFailed { reason: r } => string_contains(s: r, pattern: "empty-relative-path")
+  }
+}
+
+// A NAME EMBEDDING A NEWLINE (`product/fabric/evil|f|644|ghrunner|ghrunner||42<LF>.gunbc-tree-receipt`):
+// find prints ONE dot for the ONE entry and the LF splits its record into TWO well-formed rows -- a forged
+// file and a second receipt-shaped row. Both parse, so only the INDEPENDENT dot count (control (2)) reveals
+// it: 11 records against 10 dots. Refused at both revisions; the reason names the dot enumeration at the
+// head, where the empty-fragment control no longer fires first.
+data dag_walk_crafted_pipe_and_newline_name: String = join([dag_walk_records_no_trailing_lf, "\nproduct/fabric/evil|f|644|ghrunner|ghrunner||42\n.gunbc-tree-receipt|f|644|ghrunner|ghrunner||142"], "")
+data dag_walk_crafted_dots: String = ".........."
+test fn dag_walk_crafted_pipe_and_newline_name_refuses() -> Bool {
+  match tree_metadata_entries_of_stdout_checked(root: join([srv1_broker_locus, "/dag"], ""), stdout: dag_walk_crafted_pipe_and_newline_name, dot_stdout: dag_walk_crafted_dots, sub: "dag", starting_point_expected: true) {
+    TreeMetadataObserved { entries: _ } => false
+    TreeMetadataObservationFailed { reason: _ } => true
+  }
+}
+
+test fn dag_walk_crafted_pipe_and_newline_name_refuses_on_the_dot_control() -> Bool {
+  match tree_metadata_entries_of_stdout_checked(root: join([srv1_broker_locus, "/dag"], ""), stdout: dag_walk_crafted_pipe_and_newline_name, dot_stdout: dag_walk_crafted_dots, sub: "dag", starting_point_expected: true) {
+    TreeMetadataObserved { entries: _ } => false
+    TreeMetadataObservationFailed { reason: r } => string_contains(s: r, pattern: "newline-delimited records") && string_contains(s: r, pattern: "forges extra records")
+  }
+}
+
+// A CHILD NAMED "<LF>.gunbc-tree-receipt" IN A TRIMMED LISTING: the entry exists, so the enumeration
+// counts it (10 dots), and its record's leading LF leaves ONE empty fragment. The fix refuses it -- under
+// the no-trailing-LF convention NO fragment is empty, so the forged one cannot pass for the tail. Main
+// ADMITS this listing: its control demanded exactly one empty fragment and took the forged one for the
+// trailing LF it assumed. So the head is STRICTER here, which is the proof that admitting the second
+// convention is not a weakening of the guard.
+data dag_walk_leading_newline_named_child: String = join([dag_walk_records_no_trailing_lf, "\n\n.gunbc-tree-receipt|f|644|ghrunner|ghrunner||142"], "")
+test fn dag_walk_leading_newline_named_child_refuses() -> Bool {
+  match tree_metadata_entries_of_stdout_checked(root: join([srv1_broker_locus, "/dag"], ""), stdout: dag_walk_leading_newline_named_child, dot_stdout: dag_walk_crafted_dots, sub: "dag", starting_point_expected: true) {
+    TreeMetadataObserved { entries: _ } => false
+    TreeMetadataObservationFailed { reason: r } => string_contains(s: r, pattern: "empty line fragment")
+  }
+}
