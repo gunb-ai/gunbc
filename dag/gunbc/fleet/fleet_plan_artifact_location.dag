@@ -59,10 +59,14 @@ fn fleet_plan_artifact_path_at(run_artifact_dir: String, name: String) -> String
   join([run_artifact_dir, "/", name], "")
 }
 
-// THE APPLY-SIDE HANDLE. plan and apply are separate runners: a runner-absolute path from the plan
-// job means nothing on the apply runner. So the pack travels INSIDE the uploaded plan artifact, and
-// apply is handed the pack's location there as an OPAQUE input -- exported by the plan/download
-// hand-off as this env and read via actions_variable_read. apply/swap/recorder read the pack at this
-// handle and refuse if it is absent; they NEVER compose it from root/plan_run_id/attempt or any
-// constant. The plan job (which owns the dir) is the only composer.
-data fleet_converge_plan_handle_env_name: String = "GUNBC_FLEET_CONVERGE_PLAN_HANDLE"
+// THE ADMITTED ANCHOR. plan and apply are separate runners: a runner-absolute path from the plan
+// job means nothing on the apply runner. The plan bundle (with the pack at its root) travels as the
+// uploaded plan artifact, and the apply runner downloads it to a JOB-SCOPED, runner-writable
+// directory -- the download step's path, ${{ runner.temp }}/fleet-converge-plan -- so no cross-run or
+// cross-user collision. That download directory is the SINGLE admitted anchor: the workflow .dag
+// emits it once, and apply, the swap and the recorder read the pack at <anchor>/plan_receipt.json --
+// a CONSTANT file name inside an ADMITTED anchor, which is not composition from run identity. They
+// REFUSE if the anchor is absent, if the pack is absent, or if the canonicalized pack path is not
+// under the canonicalized anchor (a symlinked pack must not escape). One value, so there is no
+// handle/anchor pair that can disagree.
+data fleet_converge_plan_anchor_env_name: String = "GUNBC_FLEET_CONVERGE_PLAN_ANCHOR"
