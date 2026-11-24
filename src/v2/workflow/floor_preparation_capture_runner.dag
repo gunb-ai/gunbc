@@ -62,9 +62,16 @@ import v2.workflow.floor_preparation_split {
 // RUN TIME from the caller's environment: an explicit FLOOR_* variable wins when the caller
 // sets one (the caller passes layout policy, exactly as interface_realization_policy demands --
 // the run entry takes no argv, so the environment is the caller's parameter channel), and the
-// shared-host convention <HOME>/scratch/<owner>/... is only the FALLBACK a fleet-wide layout
-// contract, stated here once, in this one section. The digests below pin the RELEASE, not a
-// machine, so a reader on any host can re-derive the split against the same release.
+// shared-host convention <HOME>/scratch/<owner>/... is only the FALLBACK, and that convention is
+// NOT invented here: it is the declared shared-host contract this fleet operates every session
+// under -- a session's writable scratch is exactly <HOME>/scratch/<session-id> (and
+// ~/tmp-<session-id>), heavy runs are attributed to that session id through HEAVY_OWNER, and the
+// machine-wide limiter lives at <HOME>/bin/heavy-slot (operator standing order, restated in every
+// srv1 worker brief; the limiter refuses an unset owner with exit 64, so the fallback cannot
+// silently run unattributed). The fallback chooses no materially different meaning: the owner is
+// the caller's own HEAVY_OWNER either way, and FLOOR_* overrides are the caller's explicit word.
+// The digests below pin the RELEASE, not a machine, so a reader on any host can re-derive the
+// split against the same release.
 fn floor_preparation_env_value(name: String) -> String {
   let ran = floor_preparation_spawn_plain(binary: "/usr/bin/printenv", args: [name])
   match floor_preparation_lines(text: ran.stdout).first() {
