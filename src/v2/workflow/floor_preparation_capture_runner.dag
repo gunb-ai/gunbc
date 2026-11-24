@@ -52,11 +52,8 @@ import extdeps.shell.exec
 import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.workflow.floor_preparation_split {
   floor_preparation_split_report,
-  floor_preparation_population_rendering,
   floor_preparation_ask,
-  floor_preparation_population_file_agrees,
   floor_preparation_text_starts_with,
-  floor_preparation_population_lines,
   floor_preparation_report_sentinel,
   floor_preparation_report_prefix,
   floor_preparation_classify_report_line,
@@ -156,8 +153,6 @@ data floor_preparation_witness_module: String =
 
 data floor_preparation_authority_path: String = "src/v2/workflow/floor_preparation_split.dag"
 
-data floor_preparation_population_file: String =
-  "dag/test/claim/floor/floor_preparation_split_population.txt"
 
 data floor_preparation_retained_file: String =
   "dag/test/claim/floor/floor_preparation_split_retained.txt"
@@ -215,7 +210,6 @@ data floor_preparation_claim_roster: List<String> = [
   "floor_preparation_the_capture_tool_runs_the_fold_and_holds_none",
   "floor_preparation_the_committed_capture_is_a_cache_of_the_retained_log",
   "floor_preparation_the_runner_process_is_modelled",
-  "floor_preparation_the_population_is_the_models_rendering",
   "floor_preparation_the_roadmap_names_the_floor_fold",
   "floor_preparation_a_refusal_cannot_read_as_a_report"
 ]
@@ -224,7 +218,7 @@ data floor_preparation_claim_roster: List<String> = [
 // requiring each step's receipt line to appear in a run; no marker comments, no grep of a script.
 
 data floor_preparation_runner_modelled_steps: List<String> = [
-  "verify-pinned-supplies", "render-population", "build-argv-from-population", "leg-untrimmed",
+  "verify-pinned-supplies", "build-argv-from-population", "leg-untrimmed",
   "derive-pass-set", "leg-graded", "fold-legs", "write-retained", "splice-capture-rows",
   "claim-gate", "report-print", "terminal-gate"
 ]
@@ -597,7 +591,6 @@ fn floor_preparation_capture_run() -> String {
     concat(concat(join(supplies, "\n"), "\n"), verify_receipt)
   } else {
     let entries = floor_preparation_population_entries()
-    let population_ok = floor_preparation_population_file_agrees()
     let tree_sha = floor_preparation_git_tree_sha()
     let untrimmed = floor_preparation_spawn_slot(
       bound: floor_preparation_untrimmed_bound,
@@ -671,9 +664,7 @@ fn floor_preparation_capture_run() -> String {
     // and its kept set is non-empty"; report_record.rc is the command's own exit status.
     let report_ok = report_read && report_record.rc == 2 && graded_record.clean
     let receipts = concat(concat(concat(supplies, [verify_receipt]),
-        [floor_preparation_receipt("render-population",
-          concat("file_agrees=", to_string(population_ok))),
-         build_argv_receipt,
+        [build_argv_receipt,
          untrimmed_receipt,
          floor_preparation_receipt("derive-pass-set",
            concat("excluded=", to_string(length(xs: survivors))))]),
@@ -696,16 +687,15 @@ fn floor_preparation_capture_run() -> String {
     // still refuses without them reading green.
     let legs_clean = untrimmed_record.clean && graded_record.clean
     let write_receipt = if legs_clean {
+      // Each write reports ITSELF (review 97945): the retained artifact has its own receipt;
+      // there is no second committed copy to write anymore.
       let w1 = Filesystem.Write(
         path: concat(floor_preparation_runner_root(), "/", floor_preparation_retained_file),
         content: retained)
-      let w2 = Filesystem.Write(
-        path: concat(floor_preparation_runner_root(), "/", floor_preparation_population_file),
-        content: floor_preparation_population_projection())
-      if w1.success && w2.success { "retained=written population=written" } else { "retained=WRITE_FAILED" }
+      if w1.success { "retained=written" } else { "retained=WRITE_FAILED" }
     } else { "retained=skipped legs not clean" }
     let all_receipts = list_push(xs: receipts, item: floor_preparation_receipt("write-retained", write_receipt))
-    if !report_ok || length(xs: missing) > 0 || !population_ok {
+    if !report_ok || length(xs: missing) > 0 {
       concat(join(all_receipts, "\n"), "\nRUNNER_REFUSED: gates not green -- see receipts above")
     } else {
       concat(join(all_receipts, "\n"),
@@ -715,25 +705,4 @@ fn floor_preparation_capture_run() -> String {
   }
 }
 
-// The committed population file as the model renders it: header comments preserved by agreement
-// is checked elsewhere; the runner REWRITES the row body from the model rows.
-fn floor_preparation_population_projection() -> String {
-  let text = filesystem_read(path: concat(floor_preparation_runner_root(), "/", floor_preparation_population_file)).content
-  let heads = fold(split(s: text, delimiter: "\n"), init: [], f: (acc, line) =>
-    if floor_preparation_text_starts_with_hint(line: line, prefix: "#") { list_push(xs: acc, item: line) } else { acc })
-  concat(concat(join(heads, "\n"), "\n"), floor_preparation_population_body())
-}
-
-// Thin consumers of the fold module's public population surface.
-fn floor_preparation_population_file_agrees_hint() -> Bool {
-  floor_preparation_population_file_agrees()
-}
-
-fn floor_preparation_text_starts_with_hint(line: String, prefix: String) -> Bool {
-  floor_preparation_text_starts_with(text: line, prefix: prefix)
-}
-
-fn floor_preparation_population_body() -> String {
-  join(floor_preparation_population_lines(), "\n")
-}
 

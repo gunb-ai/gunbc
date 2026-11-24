@@ -10,12 +10,10 @@ import v2.workflow.floor_preparation_split {
   floor_preparation_capture,
   floor_preparation_capture_provenance,
   floor_preparation_population_is_wellformed,
-  floor_preparation_population_file_agrees,
   floor_preparation_report_sentinel,
   floor_preparation_report_is_wellformed,
   floor_preparation_classify_report_line,
   floor_preparation_population_lines,
-  floor_preparation_population_text,
   floor_preparation_census_is_honest,
   floor_preparation_claim_row_count,
   floor_preparation_deletion_margin_holds,
@@ -99,7 +97,6 @@ import v2.workflow.floor_cost_debt {
 //   floor_preparation_the_capture_tool_runs_the_fold_and_holds_none,
 //   floor_preparation_the_committed_capture_is_a_cache_of_the_retained_log,
 //   floor_preparation_the_runner_process_is_modelled,
-//   floor_preparation_the_population_is_the_models_rendering,
 //   floor_preparation_the_roadmap_names_the_floor_fold
 //
 // TWENTY-TWO `test fn`s, and this roster is the roster that runs: `v2.workflow.floor_preparation_capture_runner`
@@ -846,21 +843,6 @@ test fn floor_preparation_the_runner_process_is_modelled() -> Bool {
   runner_process_is_modelled()
 }
 
-// ----------------------------------------------------------------------------------------------
-// 21. THE POPULATION FILE IS A RENDERING OF MODELLED ROWS. Kills: hand-maintaining the enrollment
-// text so the measured population drifts from what the authority enrolls. The rows are data in
-// `v2.workflow.floor_preparation_split`; the committed text file must equal their rendering, byte for
-// byte after trimming. The model's own rendering regenerates it via floor_preparation_population_rendering -- the same refusal-print convention the report uses -- so the file has a named generator
-// and this claim is what keeps it honest.
-// ----------------------------------------------------------------------------------------------
-
-fn population_is_the_models_rendering() -> Bool {
-  floor_preparation_population_is_wellformed() && floor_preparation_population_file_agrees()
-}
-
-test fn floor_preparation_the_population_is_the_models_rendering() -> Bool {
-  population_is_the_models_rendering()
-}
 
 // ----------------------------------------------------------------------------------------------
 // 17. THE ROADMAP STILL NAMES THIS FOLD. Kills: this authority becoming the repo's best-kept secret --

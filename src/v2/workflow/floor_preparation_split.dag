@@ -57,8 +57,9 @@ fn floor_preparation_ms_count(carrier: Millisecond) -> Int { millisecond_count(c
 // --claim-run` printed and REFUSES -- on a 0-byte binary, one hashing as the empty string, a sha that
 // deviates from the pinned release or from `release-bins.manifest`, an argv missing `--functions`, an
 // entry that never reported its witness count, a `[floor-shared-fill]`/`[floor-reach-probe]` pairing
-// mismatch, or a FAIL trying to enter the graded capture. The population it enrolled is committed at
-// `dag/test/claim/floor/floor_preparation_split_population.txt`. Re-deriving the split needs no fleet
+// mismatch, or a FAIL trying to enter the graded capture. The population it enrolled is MODEL DATA --
+// `floor_preparation_population_model_rows`, rendered on demand by `floor_preparation_population_rendering`.
+// Re-deriving the split needs no fleet
 // slot: `--mode fold` recomputes every row from a log you already hold.
 //
 // The run REFUSES -- the host maps a verdict to an exit code and only `ProcessExit` carries one -- and
@@ -109,8 +110,8 @@ fn floor_preparation_ms_count(carrier: Millisecond) -> Int { millisecond_count(c
 // output verbatim and make the model read the lines, which is what `floor_preparation_capture` holds,
 // with the producer, binary sha, tree sha and argv recorded by `floor_preparation_capture_provenance`.
 // The capture is reproducible: the command is printed inside the report, the population it enumerated
-// is committed at `dag/test/claim/floor/floor_preparation_split_population.txt`, and any
-// reader can regenerate both the lines and this reading from them.
+// is model data (`floor_preparation_population_model_rows`), and any reader can regenerate both the
+// lines and this reading from them.
 
 // ----------------------------------------------------------------------------------------------
 // THE GRAMMAR. The tag set and field names are the ones the captured binary printed, each cited to its
@@ -1378,9 +1379,6 @@ fn floor_preparation_text_starts_with(text: String, prefix: String) -> Bool {
   pieces.length() > 1 && pieces.first() == Present { value: "" }
 }
 
-fn floor_preparation_population_text() -> String {
-  filesystem_read(path: "dag/test/claim/floor/floor_preparation_split_population.txt").content
-}
 
 // The model rows are the authority; this reads them. The second argument to the old filter -- a
 // runtime re-check that kind was one of two strings -- is gone because the type makes any other
@@ -1415,15 +1413,6 @@ fn floor_preparation_population_rendering() -> String {
   concat(concat("POPULATION-BEGIN\n", join(floor_preparation_population_lines(), "\n")), "\nPOPULATION-END")
 }
 
-// The committed file agrees with the model iff its non-comment bytes ARE the rendering body.
-fn floor_preparation_population_file_agrees() -> Bool {
-  let body = join(floor_preparation_population_lines(), "\n")
-  let kept = fold(split(s: floor_preparation_population_text(), delimiter: "\n"), init: [], f: (acc, line) =>
-    if floor_preparation_text_starts_with(text: line, prefix: "#") { acc }
-    else if line == "" { acc }
-    else { list_push(xs: acc, item: line) })
-  length(xs: kept) > 0 && join(kept, "\n") == body
-}
 
 fn floor_preparation_yes_no(value: Bool) -> String {
   if value { "yes" } else { "no" }
