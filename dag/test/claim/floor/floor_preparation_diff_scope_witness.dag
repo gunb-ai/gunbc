@@ -1,0 +1,521 @@
+module test.claim.floor.floor_preparation_diff_scope_witness
+
+import std.types { Bool, Int, List, Present, Absent, String }
+import std.algebra { length }
+import v2.workflow.floor_preparation_split {
+  floor_preparation_split_report
+}
+import v2.workflow.floor_preparation_diff_scope {
+  floor_preparation_scope_diff_files,
+  floor_preparation_scope_diff_fixtures,
+  floor_preparation_scope_edge_kinds,
+  floor_preparation_scope_edge_rows,
+  floor_preparation_scope_edge_rows_variant,
+  floor_preparation_scope_entries_for,
+  floor_preparation_scope_entries_of,
+  floor_preparation_scope_every_entry_declares_itself,
+  floor_preparation_scope_fixture_names,
+  floor_preparation_scope_contains,
+  floor_preparation_scope_forced,
+  floor_preparation_scope_forced_survive,
+  floor_preparation_scope_is_narrowed,
+  floor_preparation_scope_is_whole,
+  floor_preparation_scope_line,
+  floor_preparation_scope_map_is_well_formed,
+  floor_preparation_scope_marker_reason,
+  floor_preparation_scope_marker_rows,
+  floor_preparation_scope_population,
+  floor_preparation_scope_reason,
+  floor_preparation_scope_report,
+  floor_preparation_scope_select,
+  floor_preparation_scope_select_over,
+  floor_preparation_scope_selection_is_closed,
+  floor_preparation_scope_selection_is_minimal,
+  floor_preparation_scope_union,
+}
+
+// THE KILLERS FOR THE DIFF-CLOSURE CONSTRUCTION (`v2.workflow.floor_preparation_diff_scope`).
+//
+// Scoping preparation to a diff's closure is only affordable if it is SAFE, and its dangerous failure is
+// asymmetric: narrowing too much does not print an error, it prints a green floor that checked nothing.
+// So every claim here attacks one of the three ways the decision could over-narrow --
+//
+//   * an edge kind missing from the map (imports followed, `read-literal` opens missed);
+//   * an uncovered file treated as "nothing depends on it" instead of "I do not know";
+//   * a universal file (seed Rust, the grammar) treated like an ordinary edit;
+//
+// and none of them is satisfied by a count this file typed in: each runs the decision over a map and a
+// diff and requires the outcome the rules promise, usually against the SAME diff under a DIFFERENT map so
+// the answer cannot come from a file's name.
+//
+// They are the counterweight to the affordability claim. The tool (`scripts/floor_preparation_diff_scope.sh`)
+// is what narrows on a real tree and prints the wall-clock consequence; these claims are what stop that
+// tool from being able to narrow silently past what its own map can justify.
+//
+// Execute them:
+//
+//   target/release/claim_batch --source-root dag --source-root src/v1 --source-root src/v2 \
+//     --claim-run --entry dag/test/claim/floor/floor_preparation_diff_scope_witness.dag \
+//     --functions <the names listed below, comma-separated>
+//
+//   floor_preparation_the_report_names_every_fixture_diff,
+//   floor_preparation_the_scope_report_is_not_the_split_report,
+//   floor_preparation_a_seed_rust_diff_prepares_the_whole_population,
+//   floor_preparation_a_grammar_diff_prepares_the_whole_population,
+//   floor_preparation_a_single_closure_diff_narrows_to_one_entry,
+//   floor_preparation_a_shared_import_diff_unions_the_entries_it_reaches,
+//   floor_preparation_a_read_literal_edge_is_honoured,
+//   floor_preparation_the_uncovered_file_fails_closed_to_the_whole_population,
+//   floor_preparation_the_empty_diff_still_prepares_the_forced_entries,
+//   floor_preparation_narrowing_never_drops_a_reached_entry,
+//   floor_preparation_narrowing_never_selects_an_unreached_entry,
+//   floor_preparation_forced_entries_survive_every_fixture_diff,
+//   floor_preparation_a_universal_marker_is_never_narrowed,
+//   floor_preparation_the_committed_maps_are_well_formed,
+//   floor_preparation_every_entry_records_its_own_file,
+//   floor_preparation_every_marker_carries_a_reason,
+//   floor_preparation_the_line_prints_the_decision_it_made
+
+// ----------------------------------------------------------------------------------------------
+// 1. THE REPORT COVERS ITS OWN FIXTURES. Kills: a fixture removed (so the report stops exercising a
+// shape while claiming to), or a line that does not start with the authority's own token. Every fixture
+// name must appear in the report, and every line must be a `floor-diff-scope` line.
+// ----------------------------------------------------------------------------------------------
+
+fn report_names_every_fixture() -> Bool {
+  let report = floor_preparation_scope_report()
+  let lines = split(s: report, delimiter: "\n")
+  let names = floor_preparation_scope_fixture_names()
+  length(xs: names) > 0
+    && length(xs: lines) == length(xs: names)
+    && floor_preparation_all_start_with(rows: lines, prefix: "floor-diff-scope diff=")
+    && fold(names, init:  true, f: (acc, name) => if acc { floor_preparation_report_names(lines: lines, name: name) } else { false })
+}
+
+// EVERY LINE, NOT ANY LINE. The authority's own helper answers "is there such a row", which would let one
+// well-formed line carry the whole report; the report's lines are one per fixture, so every one of them
+// has to carry the token.
+fn floor_preparation_all_start_with(rows: List<String>, prefix: String) -> Bool {
+  fold(rows, init:  true, f: (acc, row) =>
+    if acc {
+      starts_with(s: row, prefix: prefix)
+    } else {
+      false
+    })
+}
+
+fn floor_preparation_report_names(lines: List<String>, name: String) -> Bool {
+  fold(lines, init:  false, f: (acc, line) =>
+    if acc {
+      acc
+    } else {
+      starts_with(s: line, prefix: concat("floor-diff-scope diff=", name))
+    })
+}
+
+test fn floor_preparation_the_report_names_every_fixture_diff() -> Bool {
+  report_names_every_fixture()
+}
+
+// ----------------------------------------------------------------------------------------------
+// 2. NON-DUPLICATION WITH THE SPLIT AUTHORITY. Kills: the scope report starting to speak in the split's
+// fields, which is how two authorities quietly become one -- and then disagree. The scope report carries
+// `selected_entries=` and never `preparation_ms=`; the split report is the reverse. Each names the other's
+// token nowhere in its own text.
+// ----------------------------------------------------------------------------------------------
+
+fn reports_do_not_share_a_vocabulary() -> Bool {
+  let scope = floor_preparation_scope_report()
+  let split_report = floor_preparation_split_report()
+  starts_with(s: scope, prefix: "floor-diff-scope")
+    && starts_with(s: split_report, prefix: "floor-preparation-split")
+    && floor_preparation_report_lacks(text: scope, needle: "preparation_ms=")
+    && floor_preparation_report_lacks(text: split_report, needle: "selected_entries=")
+    && floor_preparation_report_lacks(text: scope, needle: "floor-preparation-split")
+    && floor_preparation_report_lacks(text: split_report, needle: "floor-diff-scope")
+}
+
+fn floor_preparation_report_lacks(text: String, needle: String) -> Bool {
+  let pieces = split(s: text, delimiter: needle)
+  length(xs: pieces) < 2
+}
+
+test fn floor_preparation_the_scope_report_is_not_the_split_report() -> Bool {
+  reports_do_not_share_a_vocabulary()
+}
+
+// ----------------------------------------------------------------------------------------------
+// 3a/3b. A UNIVERSAL FILE IS NOT AN ORDINARY EDIT. Kills: treating a change to seed Rust, or to the
+// grammar, as if only the entries that import it were affected. Those change WHAT EVERY ENTRY RESOLVES
+// TO -- the very per-entry work the other construction would have cached -- so the run prepares the whole
+// population and says which marker forced it.
+// ----------------------------------------------------------------------------------------------
+
+fn universal_diff_selects_everything(diff: List<String>, marker: String) -> Bool {
+  let scoping = floor_preparation_scope_select(diff: diff)
+  floor_preparation_scope_is_whole(scoping: scoping)
+    && floor_preparation_scope_is_narrowed(scoping: scoping) == false
+    && length(xs: floor_preparation_scope_entries_of(scoping: scoping)) == length(xs: floor_preparation_scope_population)
+    && starts_with(s: floor_preparation_scope_reason(scoping: scoping), prefix: concat("universal-marker:", marker))
+}
+
+test fn floor_preparation_a_seed_rust_diff_prepares_the_whole_population() -> Bool {
+  universal_diff_selects_everything(diff: [ "src/v1/stage0/src/cli_run.rs" ], marker: ".rs")
+}
+
+test fn floor_preparation_a_grammar_diff_prepares_the_whole_population() -> Bool {
+  universal_diff_selects_everything(diff: [ "src/v1/stage0/grammar/stage0.pest" ], marker: ".pest")
+}
+
+// ----------------------------------------------------------------------------------------------
+// 4. A NARROWING THAT WORKS. Kills: a decision that never narrows (which would leave the cost where it
+// was and make the construction a fiction) and a decision that selects the whole population whenever it
+// does narrow. One file inside ONE entry's closure selects that entry plus the forced ones, and nothing
+// else.
+// ----------------------------------------------------------------------------------------------
+
+fn single_closure_diff_narrows() -> Bool {
+  let entry = "dag/test/claim/match_exhaustiveness_coproduct_witness.dag"
+  let scoping = floor_preparation_scope_select(diff: [ entry ])
+  let selected = floor_preparation_scope_entries_of(scoping: scoping)
+  floor_preparation_scope_is_whole(scoping: scoping) == false
+    && floor_preparation_scope_is_narrowed(scoping: scoping)
+    && length(xs: selected) == 2
+    && floor_preparation_scope_reason(scoping: scoping) == "closure-hit"
+    && length(xs: floor_preparation_scope_entries_for(rows: floor_preparation_scope_edge_rows, file: entry)) > 0
+    && floor_preparation_scope_contains(xs: selected, target: entry)
+    && floor_preparation_scope_contains(xs: selected, target: "dag/test/claim/action_use_admission_witness.dag")
+    && floor_preparation_scope_contains(xs: selected, target: "dag/test/claim/floor/floor_phase_attribution_witness.dag") == false
+}
+
+test fn floor_preparation_a_single_closure_diff_narrows_to_one_entry() -> Bool {
+  single_closure_diff_narrows()
+}
+
+// ----------------------------------------------------------------------------------------------
+// 5. THE UNION, NOT THE FIRST HIT. Kills: a fold that stops at the first entry a diff file reaches. The
+// split authority's module is imported by two entries in this map, so one file must select both.
+// ----------------------------------------------------------------------------------------------
+
+fn shared_import_diff_unions() -> Bool {
+  let file = "src/v2/workflow/floor_preparation_split.dag"
+  let scoping = floor_preparation_scope_select(diff: [ file ])
+  let selected = floor_preparation_scope_entries_of(scoping: scoping)
+  length(xs: selected) == 3
+    && floor_preparation_scope_contains(xs: selected, target: "dag/test/claim/floor/floor_phase_attribution_witness.dag")
+    && floor_preparation_scope_contains(xs: selected, target: "dag/test/claim/arity_zero_import_refusal_witness.dag")
+    && floor_preparation_scope_contains(xs: selected, target: "dag/test/claim/match_exhaustiveness_coproduct_witness.dag") == false
+}
+
+test fn floor_preparation_a_shared_import_diff_unions_the_entries_it_reaches() -> Bool {
+  shared_import_diff_unions()
+}
+
+// ----------------------------------------------------------------------------------------------
+// 6. THE EDGE KIND THAT A PURE IMPORT WALK MISSES. Kills: dropping `read-literal` from the map's
+// vocabulary. `dag/gunbc/witness/witness_floor_workflow.dag` is imported by one entry and opened by a
+// path literal in another; if only imports were followed, the second entry would be narrowed away while
+// the run still opens the file. Asserting THREE entries here (two reachable + forced) is the whole
+// claim: a map that forgot read-literals yields two.
+// ----------------------------------------------------------------------------------------------
+
+fn read_literal_edge_is_honoured() -> Bool {
+  let file = "dag/gunbc/witness/witness_floor_workflow.dag"
+  let scoping = floor_preparation_scope_select(diff: [ file ])
+  let selected = floor_preparation_scope_entries_of(scoping: scoping)
+  length(xs: selected) == 3
+    && floor_preparation_scope_contains(xs: selected, target: "dag/test/claim/declared_type_expected_type_path_witness.dag")
+    && floor_preparation_scope_contains(xs: selected, target: "dag/test/claim/floor/floor_phase_attribution_witness.dag")
+    && length(xs: floor_preparation_scope_entries_for(rows: floor_preparation_scope_edge_rows, file: file)) == 2
+}
+
+test fn floor_preparation_a_read_literal_edge_is_honoured() -> Bool {
+  read_literal_edge_is_honoured()
+}
+
+// ----------------------------------------------------------------------------------------------
+// 7. FAIL-CLOSED, SHOWN BY COUNTERFACTUAL. Kills: treating an unmapped file as "nothing depends on it".
+// The SAME diff -- a change to the plan file, which no entry in the base map opens -- must select the
+// WHOLE population over the base map, and exactly one entry over the variant map that records a
+// read-literal edge to it. Same input, opposite answers, decided by coverage alone: so the rule cannot be
+// a name match on `roadmap_authority.dag`.
+// ----------------------------------------------------------------------------------------------
+
+fn uncovered_file_fails_closed() -> Bool {
+  let file = "dag/gunbc/roadmap/roadmap_authority.dag"
+  let base = floor_preparation_scope_select_over(
+    rows: floor_preparation_scope_edge_rows,
+    forced: floor_preparation_scope_forced,
+    population: floor_preparation_scope_population,
+    diff: [ file ]
+  )
+  let variant = floor_preparation_scope_select_over(
+    rows: floor_preparation_scope_edge_rows_variant,
+    forced: floor_preparation_scope_forced,
+    population: floor_preparation_scope_population,
+    diff: [ file ]
+  )
+  floor_preparation_scope_is_whole(scoping: base)
+    && floor_preparation_scope_is_narrowed(scoping: base) == false
+    && length(xs: floor_preparation_scope_entries_of(scoping: base)) == length(xs: floor_preparation_scope_population)
+    && starts_with(s: floor_preparation_scope_reason(scoping: base), prefix: concat("uncovered-file:", file))
+    && floor_preparation_scope_is_whole(scoping: variant) == false
+    && floor_preparation_scope_is_narrowed(scoping: variant)
+    && length(xs: floor_preparation_scope_entries_of(scoping: variant)) == 2
+    && floor_preparation_scope_contains(xs: floor_preparation_scope_entries_of(scoping: variant), target: "dag/test/claim/floor/floor_non_verdict_classification_witness.dag")
+}
+
+test fn floor_preparation_the_uncovered_file_fails_closed_to_the_whole_population() -> Bool {
+  uncovered_file_fails_closed()
+}
+
+// ----------------------------------------------------------------------------------------------
+// 8. THE EMPTY DIFF IS NOT "PREPARE NOTHING". Kills: a fold that returns an empty selection for a re-run
+// of an unchanged revision -- which would print a green floor that executed no preparation and, in this
+// repo's history, is exactly the shape of a gate that looks healthy while checking nothing.
+// ----------------------------------------------------------------------------------------------
+
+fn empty_diff_still_prepares_forced() -> Bool {
+  let scoping = floor_preparation_scope_select(diff: [])
+  let selected = floor_preparation_scope_entries_of(scoping: scoping)
+  floor_preparation_scope_reason(scoping: scoping) == "empty-diff"
+    && length(xs: selected) == length(xs: floor_preparation_scope_forced)
+    && length(xs: selected) > 0
+    && floor_preparation_scope_is_narrowed(scoping: scoping)
+    && floor_preparation_scope_contains(xs: selected, target: "dag/test/claim/action_use_admission_witness.dag")
+}
+
+test fn floor_preparation_the_empty_diff_still_prepares_the_forced_entries() -> Bool {
+  empty_diff_still_prepares_forced()
+}
+
+// ----------------------------------------------------------------------------------------------
+// 9a/9b/9c. THE TWO HALVES OF A SOUND SELECTION, OVER EVERY FIXTURE. MINIMALITY: nothing a diff file
+// reaches is skipped (an empty selection satisfies closedness alone, so this is the half that says the
+// run still checks what it claims). CLOSEDNESS: nothing is selected that no diff file reaches, forced
+// entries aside. FORCED SURVIVAL: the entries whose imports do not resolve are prepared whatever the diff.
+// ----------------------------------------------------------------------------------------------
+
+fn every_fixture_is_minimal(name: String) -> Bool {
+  floor_preparation_scope_selection_is_minimal(
+    rows: floor_preparation_scope_edge_rows,
+    forced: floor_preparation_scope_forced,
+    diff: floor_preparation_scope_diff_files(name: name)
+  )
+}
+
+fn every_fixture_is_closed(name: String) -> Bool {
+  floor_preparation_scope_selection_is_closed(
+    rows: floor_preparation_scope_edge_rows,
+    forced: floor_preparation_scope_forced,
+    diff: floor_preparation_scope_diff_files(name: name)
+  )
+}
+
+fn every_fixture_keeps_forced(name: String) -> Bool {
+  floor_preparation_scope_forced_survive(
+    rows: floor_preparation_scope_edge_rows,
+    forced: floor_preparation_scope_forced,
+    diff: floor_preparation_scope_diff_files(name: name)
+  )
+}
+
+fn all_fixtures_minimal() -> Bool {
+  let names = floor_preparation_scope_fixture_names()
+  length(xs: names) > 0
+    && fold(names, init:  true, f: (acc, name) => if acc { every_fixture_is_minimal(name: name) } else { false })
+}
+
+test fn floor_preparation_narrowing_never_drops_a_reached_entry() -> Bool {
+  all_fixtures_minimal()
+}
+
+fn all_fixtures_closed() -> Bool {
+  let names = floor_preparation_scope_fixture_names()
+  length(xs: names) > 0
+    && fold(names, init:  true, f: (acc, name) => if acc { every_fixture_is_closed(name: name) } else { false })
+}
+
+test fn floor_preparation_narrowing_never_selects_an_unreached_entry() -> Bool {
+  all_fixtures_closed()
+}
+
+fn all_fixtures_keep_forced() -> Bool {
+  let names = floor_preparation_scope_fixture_names()
+  length(xs: names) > 0
+    && fold(names, init:  true, f: (acc, name) => if acc { every_fixture_keeps_forced(name: name) } else { false })
+}
+
+test fn floor_preparation_forced_entries_survive_every_fixture_diff() -> Bool {
+  all_fixtures_keep_forced()
+}
+
+// ----------------------------------------------------------------------------------------------
+// 10. A UNIVERSAL DIFF NEVER NARROWS, WHATEVER ELSE ITS MAP LOOKS LIKE. Kills: a marker check that runs
+// only after the closure union, so a seed-Rust edit inside one entry's closure would narrow. Checked
+// against BOTH maps, because the variant map reaches more files and is where such an ordering bug bites.
+// ----------------------------------------------------------------------------------------------
+
+fn universal_never_narrows(name: String) -> Bool {
+  let diff = floor_preparation_scope_diff_files(name: name)
+  let touched = fold(diff, init:  false, f: (acc, file) =>
+    if acc {
+      acc
+    } else {
+      length(xs: floor_preparation_scope_markers_matching(file: file)) > 0
+    })
+  if touched {
+    floor_preparation_scope_is_whole(scoping: floor_preparation_scope_select(diff: diff))
+      && floor_preparation_scope_is_whole(scoping: floor_preparation_scope_select_over(
+          rows: floor_preparation_scope_edge_rows_variant,
+          forced: floor_preparation_scope_forced,
+          population: floor_preparation_scope_population,
+          diff: diff
+        ))
+  } else {
+    true
+  }
+}
+
+fn floor_preparation_scope_markers_matching(file: String) -> List<String> {
+  fold(floor_preparation_scope_marker_rows, init:  [], f: (acc, row) =>
+    let marker = floor_preparation_scope_row_marker(row: row)
+    if length(xs: marker) == 0 {
+      acc
+    } else {
+      if floor_preparation_scope_marker_applies(file: file, marker: marker) {
+        concat(acc, [ row ])
+      } else {
+        acc
+      }
+    })
+}
+
+fn floor_preparation_scope_row_marker(row: String) -> String {
+  let pieces = split(s: row, delimiter: "|")
+  match pieces.first() {
+    Present { value: head } =>
+      match floor_preparation_scope_strip_key(head: head) {
+        Present { value: v } => v
+        Absent => ""
+      }
+    Absent => ""
+  }
+}
+
+fn floor_preparation_scope_strip_key(head: String) -> Optional<String> {
+  let pieces = split(s: head, delimiter: "=")
+  match pieces.skip(n: 1).first() {
+    Present { value: v } => Present { value: v }
+    Absent => Absent
+  }
+}
+
+fn floor_preparation_scope_marker_applies(file: String, marker: String) -> Bool {
+  if marker.ends_with(suffix: "/") {
+    starts_with(s: file, prefix: marker)
+  } else {
+    file.ends_with(suffix: marker)
+  }
+}
+
+fn all_fixtures_universal_never_narrows() -> Bool {
+  let names = floor_preparation_scope_fixture_names()
+  length(xs: names) > 0
+    && fold(names, init:  true, f: (acc, name) => if acc { universal_never_narrows(name) } else { false })
+}
+
+test fn floor_preparation_a_universal_marker_is_never_narrowed() -> Bool {
+  all_fixtures_universal_never_narrows()
+}
+
+// ----------------------------------------------------------------------------------------------
+// 11. THE MAP IS ONE THE TOOL CAN REPRODUCE. Kills: a row missing `entry=`, `file=` or `kind=`, and a
+// row naming an edge kind the tool does not implement -- both would narrow on an edge nobody can
+// re-derive. Both committed maps must pass, and every entry must record its own file, or a diff touching
+// only that entry's file could narrow the entry away entirely.
+// ----------------------------------------------------------------------------------------------
+
+test fn floor_preparation_the_committed_maps_are_well_formed() -> Bool {
+  length(xs: floor_preparation_scope_edge_rows) > 0
+    && length(xs: floor_preparation_scope_edge_rows_variant) > length(xs: floor_preparation_scope_edge_rows)
+    && floor_preparation_scope_map_is_well_formed(rows: floor_preparation_scope_edge_rows)
+    && floor_preparation_scope_map_is_well_formed(rows: floor_preparation_scope_edge_rows_variant)
+    && length(xs: floor_preparation_scope_edge_kinds) == 3
+}
+
+test fn floor_preparation_every_entry_records_its_own_file() -> Bool {
+  floor_preparation_scope_every_entry_declares_itself(
+    rows: floor_preparation_scope_edge_rows,
+    population: floor_preparation_scope_population
+  )
+    && floor_preparation_scope_every_entry_declares_itself(
+      rows: floor_preparation_scope_edge_rows_variant,
+      population: floor_preparation_scope_population
+    )
+}
+
+// ----------------------------------------------------------------------------------------------
+// 12. A MARKER WITHOUT A REASON IS A superstition. Kills: a universal marker added because someone
+// believed it was load-bearing. Each marker row must carry a non-empty reason, and the two markers that
+// carry the construction's safety -- seed Rust, and the grammar -- must both be present.
+// ----------------------------------------------------------------------------------------------
+
+fn markers_carry_reasons() -> Bool {
+  let rows = floor_preparation_scope_marker_rows
+  length(xs: rows) > 0
+    && fold(rows, init:  true, f: (acc, row) =>
+      if acc {
+        length(xs: floor_preparation_scope_marker_reason(row: row)) > 0
+      } else {
+        false
+      })
+    && floor_preparation_marker_present(marker: ".rs")
+    && floor_preparation_marker_present(marker: ".pest")
+    && floor_preparation_marker_present(marker: "grammar/")
+}
+
+fn floor_preparation_marker_present(marker: String) -> Bool {
+  fold(floor_preparation_scope_marker_rows, init:  false, f: (acc, row) =>
+    if acc {
+      acc
+    } else {
+      floor_preparation_scope_row_marker(row: row) == marker
+    })
+}
+
+test fn floor_preparation_every_marker_carries_a_reason() -> Bool {
+  markers_carry_reasons()
+}
+
+// ----------------------------------------------------------------------------------------------
+// 13. THE LINE AGREES WITH THE DECISION. Kills: a report that prints a count the decision did not make --
+// the reader's only view of the choice is this line, so a line that disagrees with the fold is worse than
+// no line. Checked over every fixture: the printed `selected_entries=` must equal the decision's own size,
+// and `narrowed=` must equal the predicate.
+// ----------------------------------------------------------------------------------------------
+
+fn line_agrees_with_decision(name: String) -> Bool {
+  let scoping = floor_preparation_scope_select(diff: floor_preparation_scope_diff_files(name: name))
+  let line = floor_preparation_scope_line(name: name, scoping: scoping)
+  let expected_count = to_string(length(xs: floor_preparation_scope_entries_of(scoping: scoping)))
+  let expected_narrowed = if floor_preparation_scope_is_narrowed(scoping: scoping) { "true" } else { "false" }
+  floor_preparation_line_contains(line: line, needle: concat("selected_entries=", expected_count))
+    && floor_preparation_line_contains(line: line, needle: concat("narrowed=", expected_narrowed))
+    && floor_preparation_line_contains(line: line, needle: concat("diff=", name))
+}
+
+fn floor_preparation_line_contains(line: String, needle: String) -> Bool {
+  let pieces = split(s: line, delimiter: needle)
+  length(xs: pieces) >= 2
+}
+
+fn all_fixtures_lines_agree() -> Bool {
+  let names = floor_preparation_scope_fixture_names()
+  length(xs: names) > 0
+    && fold(names, init:  true, f: (acc, name) => if acc { line_agrees_with_decision(name) } else { false })
+}
+
+test fn floor_preparation_the_line_prints_the_decision_it_made() -> Bool {
+  all_fixtures_lines_agree()
+}
