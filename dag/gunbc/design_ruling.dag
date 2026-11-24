@@ -1337,6 +1337,7 @@ fn design_rulings() -> List<DesignRuling> {
     value_disposition_and_named_binding_use_are_explicit_2026_11_23,
     type_relationships_are_declared_and_transparent_reference_is_explicit_2026_11_23,
     one_source_tree_and_the_v2_namespace_dissolves,
+    runner_host_drain_bound_covers_scheduled_fleet_converge_jobs_2026_11_24,
     lab_release_pack_built_daily_2026_11_23,
     heal_convergence_job_budget_increase_2026_11_20,
     heal_and_v2_bootstrap_ci_timeouts_lowered_2026_11_22,
@@ -1580,6 +1581,13 @@ data pxe_witnesses_need_no_required_ci_2026_11_10: DesignRuling = DesignRuling {
   provenance: "Decides that the PXE witnesses do not join required CI. SOURCE OF THE WORDS: relayed by smart-crane-730 in gunbc.plans.new_server_bringup on branch session/smart-crane-730-plan at c623b01ef18, section 7 (\"7. Decided: no required CI for the PXE witnesses\"), relayed from chat on 2026-11-10. That branch never had a pull request and its head is not on main, so it is cited here as the branch file the words were taken from, never as a landed change; the repository holds no other record of the exchange, so what is quoted below is quoted from that file, not from an operator message that survives in the repository. The carrier's sentence, verbatim from that file: \"The operator ruled on 2026-11-10 that the PXE witnesses do not join required CI now. Nothing on the required path evaluates a witness (the declared drop gunbc.rung_drop v1_required_lanes_withdrawn), and the job roster and budgets stay closed to growth (gunbc.design_ruling job_roster_closed_to_growth, ci_job_budgets_closed_to_growth). Each lane runs the witnesses it touches with claim_batch and records the result in its PR.\" Its opening clause is the decision; the rest is smart-crane-730's gloss of the model, so it is cited and not repeated: that drop and those two rulings are rows of gunbc.rung_drop and gunbc.design_ruling. INTERPRETATION (mine, 2026-11-20, not the operator's words): this narrows conformance (gunbc.design_argument::conformance) for this class of witness only, because a check needing a machine on the network and a hand at a console would block every unrelated change whenever the floor is busy -- so its verdict is carried by the work item's own acceptance, not branch protection. It does not weaken the witness: the claim still goes RED against a plant and GREEN against the fix, on the post-wall binary, before the item that owes it is accepted.",
 }
 
+
+data runner_host_drain_bound_covers_scheduled_fleet_converge_jobs_2026_11_24: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "runner_host_drain_bound_covers_scheduled_fleet_converge_jobs_2026_11_24"),
+  decided: "2026-11-24",
+  governs: decl_ref(module_path: "gunbc.runner.runner_fleet_job_timeout_census", decl_name: "fleet_converge_autonomous_job_rows"),
+  provenance: "Operator, 2026-11-24, deciding escalation msg_1dae5a8e-a946-4869-888e-a99c6713b7ca from session stern-wren-746. Question: \"Autonomous fleet-converge jobs (70/70/100 min) exceed the 61-min runner-host drain bound. Grow the derived bound (A), cut their timeouts (B), or unschedule build (C)?\" Decided, verbatim: \"A: bound derives to ~101 min; cap timeouts grow ~40 min\". This is the explicit sign-off gunbc.design_ruling::ci_job_budgets_closed_to_growth requires for the consequence: the drain bound derives from the population's longest declared job, now build (100 minutes) plus the 15-second poll, so the cap bracket step budget grows from 4455 to 6855 seconds and the fleet-converge job and runner-host cap step timeouts grow by the same 40 minutes (the job stays under max_job_timeout_minutes, 360). Lowering later needs no sign-off. Separately, the operator told stern-wren-746 the same day, of the choice to declare the two jobs as census rows checked by the bound witness rather than move them upstream of the bracket first: \"yeah your recommendation is fine\" (gunbc.rung_drop.fleet_converge_autonomous_jobs_declared_beside_their_authority).",
+}
 
 data lab_release_pack_built_daily_2026_11_23: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "lab_release_pack_built_daily_2026_11_23"),

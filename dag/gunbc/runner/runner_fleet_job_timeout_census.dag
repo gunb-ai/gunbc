@@ -195,7 +195,7 @@ fn fleet_workflow_census_omissions() -> List<FleetWorkflowCensusOmission> {
   [
     FleetWorkflowCensusOmission {
       artifact: FleetConvergeYamlArtifact,
-      reason: "gunbc.fleet.fleet_converge_workflow imports gunbc.runner.runner_host_cap_bracket, so importing it from a module the bracket imports would cycle the corpus; its fleet-pool jobs (plan-revision 65, build 95) are workflow_dispatch-only and fall under the declared dispatch residual, and its bracket-enclosing budgets fold over the policy through gunbc.fleet.fleet_converge_workflow fleet_converge_host_cap_job_floor_minutes.",
+      reason: "gunbc.fleet.fleet_converge_workflow imports gunbc.runner.runner_host_cap_bracket, so importing it from a module the bracket imports would cycle the corpus. Its workflow is NOT dispatch-only: the daily schedule starts plan-revision and build on the fleet pool (gunbc.design_ruling::lab_release_pack_built_daily_2026_11_23). Those two jobs enter the fold as fleet_converge_autonomous_job_rows, declared here because they cannot be read here (gunbc.rung_drop.fleet_converge_autonomous_jobs_declared_beside_their_authority); test.claim.runner.runner_fleet_job_timeout_bound_witness, which can import the workflow, holds the rows equal to its autonomous fleet-pool jobs by id and declared timeout. Every other fleet-converge job is dispatch-only and falls under the declared dispatch residual, and its bracket-enclosing budgets fold over the policy through gunbc.fleet.fleet_converge_workflow fleet_converge_host_cap_job_floor_minutes.",
     },
     FleetWorkflowCensusOmission {
       artifact: InstrumentDispatchYamlArtifact,
@@ -253,6 +253,25 @@ fn fleet_census_domain_is_explained() -> Bool {
     && fleet_workflow_omissions_are_discharged()
 }
 
+// THE FLEET-CONVERGE JOBS GITHUB STARTS UNPROMPTED, DECLARED BECAUSE THEY CANNOT BE READ HERE. The daily schedule
+// starts plan-revision and build on the fleet pool (gunbc.design_ruling::lab_release_pack_built_daily_2026_11_23), so
+// they belong to the population; but their authority, gunbc.fleet.fleet_converge_workflow, imports the bracket that
+// imports this census, so they are written here as rows (#gunbc.rung_drop.fleet_converge_autonomous_jobs_declared_beside_their_authority::fleet_converge_autonomous_jobs_declared_beside_their_authority).
+// The control that keeps these rows honest is test.claim.runner.runner_fleet_job_timeout_bound_witness
+// fleet_converge_autonomous_jobs_are_exactly_the_declared_rows: it reads the workflow, finds every fleet-pool job a
+// schedule can start, and requires exactly these ids at exactly these declared timeouts, so a timeout edit, a new
+// scheduled job or a job that stops being scheduled turns it red until the row moves with it. The operator chose
+// to let the bound grow with these jobs (gunbc.design_ruling::runner_host_drain_bound_covers_scheduled_fleet_converge_jobs_2026_11_24).
+type FleetConvergeAutonomousJobRow {
+  job_id: String
+  timeout_minutes: Int
+}
+
+data fleet_converge_autonomous_job_rows: List<FleetConvergeAutonomousJobRow> = [
+  FleetConvergeAutonomousJobRow { job_id: "plan-revision", timeout_minutes: 70 },
+  FleetConvergeAutonomousJobRow { job_id: "build", timeout_minutes: 100 },
+]
+
 // THE FOLD. Every job of every censused workflow that both selects the fleet pool and belongs to a
 // workflow GitHub can start by itself.
 fn fleet_job_belongs_to_population(w: Workflow, j: Job) -> Bool {
@@ -272,14 +291,20 @@ fn fleet_targeted_autonomous_jobs() -> List<Job> {
   )
 }
 
+// THE POPULATION'S LONGEST DECLARED JOB: the censused workflows' autonomous fleet-pool jobs and the declared
+// fleet-converge rows, one maximum over both.
 fn fleet_targeted_declared_timeout_minutes() -> Int {
   fold(
-    xs: fleet_targeted_autonomous_jobs(),
-    init: 0,
-    f: fn(acc, j) {
-      let m = job_declared_timeout_minutes(j: j)
-      if m > acc { m } else { acc }
-    }
+    xs: fleet_converge_autonomous_job_rows,
+    init: fold(
+      xs: fleet_targeted_autonomous_jobs(),
+      init: 0,
+      f: fn(acc, j) {
+        let m = job_declared_timeout_minutes(j: j)
+        if m > acc { m } else { acc }
+      }
+    ),
+    f: fn(acc, r) { if r.timeout_minutes > acc { r.timeout_minutes } else { acc } }
   )
 }
 
@@ -308,4 +333,5 @@ fn fleet_bound_covers_population(bound: Second, jobs: List<Job>) -> Bool {
 
 fn fleet_drain_bound_is_sound(bound: Second) -> Bool {
   fleet_bound_covers_population(bound: bound, jobs: fleet_targeted_autonomous_jobs())
+    && all(fleet_converge_autonomous_job_rows, r => fleet_bound_covers_declared_minutes(bound: bound, minutes: r.timeout_minutes))
 }
