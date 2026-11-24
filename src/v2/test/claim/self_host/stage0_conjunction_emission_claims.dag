@@ -53,6 +53,11 @@ data prefix_path: String = "src/v2/test/claim/self_host/prefix_not_operand_subje
 data prefix_name: String = "v2.test.claim.self_host.prefix_not_operand_subject_fixture"
 data negate_path: String = "src/v2/test/claim/self_host/prefix_negate_operand_subject_fixture.dag"
 data negate_name: String = "v2.test.claim.self_host.prefix_negate_operand_subject_fixture"
+// The same unspellable op_negate sit as the RIGHT operand of a REALISABLE binary arithmetic apply `y + (-x)`.
+// The inner-gate claim compares this subject's refusal against the standalone negate's refusal, so no lexeme is
+// hard-coded -- the comparison is what proves the inner reason propagated intact through the operand recursion.
+data negate_wrapped_path: String = "src/v2/test/claim/self_host/negate_wrapped_operand_subject_fixture.dag"
+data negate_wrapped_name: String = "v2.test.claim.self_host.negate_wrapped_operand_subject_fixture"
 data literal_path: String = "src/v2/test/claim/self_host/literal_compare_operand_subject_fixture.dag"
 data literal_name: String = "v2.test.claim.self_host.literal_compare_operand_subject_fixture"
 data intvalue_path: String = "src/v2/test/claim/self_host/int_literal_value_subject_fixture.dag"
@@ -193,6 +198,21 @@ test fn negate_reason_names_operator_operand_or_arity_holds() -> Bool {
   string_contains(s: reason_for(path: negate_path, name: negate_name), pattern: "operator")
     || string_contains(s: reason_for(path: negate_path, name: negate_name), pattern: "operand")
     || string_contains(s: reason_for(path: negate_path, name: negate_name), pattern: "arity")
+}
+
+// ---- GATE added on authorisation: INNER-REFUSAL ---------------------------------------------------------------
+// A nested operand whose inner apply refuses must surface the INNER named reason -- not the generic
+// target_value_expr_reason_transform_shape_invalid bucket, and not the OUTER binary apply's reason. Self-calibrating:
+// the wrapped subject `y + (-x)` has a realisable outer op (op_add has a row) and an unspellable inner operand
+// (op_negate, no row), so IF the lowering descends into the operand the refusal EQUALS, exactly, the standalone
+// negate subject's refusal (same op_negate). A shallow operand render instead coerces `-x` to a binding and reports
+// the outer operand-binding reason, or falls back to the generic bucket, so this exact equality is the single
+// strongest test of the recursion. It also asserts the subject still refuses and is never the generic bucket.
+test fn inner_refusal_surfaces_inner_reason_holds() -> Bool {
+  reason_for(path: negate_wrapped_path, name: negate_wrapped_name)
+    == reason_for(path: negate_path, name: negate_name)
+    && reason_for(path: negate_wrapped_path, name: negate_wrapped_name) != "artifact-produced"
+    && !(string_contains(s: reason_for(path: negate_wrapped_path, name: negate_wrapped_name), pattern: "transform_shape_invalid"))
 }
 
 // ---- GATE (4) precedence: SEMANTIC control (primary), printer independent ----

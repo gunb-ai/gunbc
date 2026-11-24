@@ -1,0 +1,14 @@
+module v2.test.claim.self_host.negate_wrapped_operand_subject_fixture
+
+// INNER-REFUSAL CONTROL (neat-badger's added gate on the operand-render widening). The OUTER apply is a
+// realisable binary arithmetic use `y + (-x)` (op_add HAS a Rust realization row), and its RIGHT operand is a
+// PREFIX use of an operation the catalog cannot spell -- `-x`, canonical_operation_op_negate, a roster member
+// with NO operator-realization row (the same op the standalone prefix_negate_operand_subject exercises). If the
+// lowering genuinely DESCENDS into the operand, this subject refuses with the SAME inner realization/arity reason
+// the standalone negate refuses with. A SHALLOW implementation would instead coerce the `-x` operand to a binding
+// Symbol and report the OUTER operand-binding reason, or fall back to the generic transform-shape bucket -- so the
+// claim that this subject's refusal EQUALS the standalone negate's refusal (exact, not containment) is the single
+// strongest discriminator of real recursion. Lives under the self-host claim tree, NOT the production corpus.
+fn negate_wrapped_operand_subject(x: Int, y: Int) -> Int {
+  y + (-x)
+}
