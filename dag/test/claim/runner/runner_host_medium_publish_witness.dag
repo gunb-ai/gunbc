@@ -5,14 +5,14 @@ import std.types { Bool, NonEmptyStr, String }
 import std.optional { Present }
 import std.algebra { string_contains }
 import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMediaBuildInput, UbuntuSeededInstallMediaBuilt, ubuntu_seeded_install_media_built }
-import gunbc.host_command_binding { Removed, RemovalUnconfirmed, CreationNotRequested, HostCommandDone, HostCommandFailed }
+import gunbc.host_command_binding { Removed, RemovalUnconfirmed, CreationNotRequested, HostCommandDone, HostCommandFailed, HostCommandUnanswered }
 import gunbc.host.boot_medium_reader_key { boot_medium_served_link_path }
 import gunbc.provisioning.seeded_install_media_publish { SeededImagePublished, SeededImageAlreadyPublished, SeededImagePublicationRefused }
 import gunbc.runner.runner_host_medium { RunnerHostMediumImageDerived, RunnerHostMediumRunnerUnpublished, RunnerHostMediumUserDataRefused, runner_host_medium_image, RunnerHostBakedRelease }
 import extdeps.crypto.hash { sha256_digest }
 import gunbc.runner.runner_host_medium_publish {
   mtcollins1_runner_host, RunnerImageNotDerived, RunnerImagePublishRan, runner_image_attempt_holds, render_runner_image_attempt,
-  ServedLinkReading, ServedLinkPointsAt, ServedLinkNotSet, ServedLinkDisagrees, served_link_after,
+  ServedLinkReading, ServedLinkPointsAt, ServedLinkNotSet, ServedLinkDisagrees, ServedLinkSetUnverified, ServedLinkSetUnknown, served_link_after, render_served_link,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -103,6 +103,31 @@ fn link_word(l: ServedLinkReading) -> String {
     ServedLinkPointsAt { link_path: _, target: _ } => "points"
     ServedLinkNotSet { reason: _ } => "unset"
     ServedLinkDisagrees { link_path: _, expected: _, read: _ } => "disagrees"
+    ServedLinkSetUnverified { link_path: _, target: _, reason: _ } => "set-unverified"
+    ServedLinkSetUnknown { link_path: _, target: _, reason: _ } => "set-unknown"
+  }
+}
+
+// SET AND VERIFY ARE SEPARATE FACTS. When the `ln` COMPLETED but the readlink verification was lost, the link
+// IS set -- it must read "set-unverified", never "unset" (which would fabricate an absent link we created).
+// When the `ln`'s own reply was lost, whether the link moved is UNKNOWN -- "set-unknown", never "unset".
+// Neither holds. RED against pre-fix served_link_after (both were ServedLinkNotSet / "unset").
+test fn a_lost_set_or_readback_keeps_the_set_fact_separate_from_its_verification() -> Bool {
+  match runner_host_medium_image(host: mtcollins1_runner_host, baked: fixture_baked_release()) {
+    RunnerHostMediumImageDerived { input: i, runner: _ } => {
+      let held = SeededImageAlreadyPublished { built: built_of(input: i), path: "/srv/bmc/x.iso" as NonEmptyStr }
+      let set_ok_read_lost = served_link_after(publication: held, set: fn(path) { HostCommandDone { stdout: "" } }, read: fn() { HostCommandUnanswered { cause: "readlink overran its deadline" } })
+      let set_lost = served_link_after(publication: held, set: fn(path) { HostCommandUnanswered { cause: "ln overran its deadline" } }, read: fn() { HostCommandDone { stdout: "/srv/bmc/x.iso" } })
+      link_word(l: set_ok_read_lost) == "set-unverified"
+        && !runner_image_attempt_holds(a: RunnerImagePublishRan { publication: held, link: set_ok_read_lost })
+        && link_word(l: set_lost) == "set-unknown"
+        && !runner_image_attempt_holds(a: RunnerImagePublishRan { publication: held, link: set_lost })
+        && string_contains(s: render_served_link(l: set_ok_read_lost), pattern: "served_link=/srv/bmc/x.iso")
+        && !string_contains(s: render_served_link(l: set_ok_read_lost), pattern: "served_link=not set")
+        && !string_contains(s: render_served_link(l: set_lost), pattern: "served_link=not set")
+    }
+    RunnerHostMediumRunnerUnpublished { binary_release: _ } => false
+    RunnerHostMediumUserDataRefused { reason: _ } => false
   }
 }
 

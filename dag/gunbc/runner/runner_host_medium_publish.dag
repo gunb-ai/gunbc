@@ -65,10 +65,23 @@ type RunnerImagePublishAttempt
 // the runner image points the link at it and reads the link back. The link is set only after the
 // publication holds, so it never names an image that was not read back; the reading is readlink's
 // answer, which must be exactly the published path.
+//
+// SETTING THE LINK and VERIFYING IT are TWO facts and are never conflated. `ServedLinkPointsAt` is a
+// VERIFIED set (the readback came back with the published path). When the set ran fine but the READBACK
+// was lost, the link IS set -- we just did not see the confirmation -- so it is `ServedLinkSetUnverified`,
+// NOT "not set" (which would fabricate an absent link). When the SET command's own reply was lost, whether
+// the link moved is UNKNOWN -- `ServedLinkSetUnknown`, again not "not set". Only a never-dispatched or
+// failed set, or a publication that did not hold, is honestly `ServedLinkNotSet`.
 type ServedLinkReading
   = ServedLinkPointsAt { link_path: NonEmptyStr, target: NonEmptyStr }
   | ServedLinkNotSet { reason: String }
   | ServedLinkDisagrees { link_path: NonEmptyStr, expected: NonEmptyStr, read: String }
+  // The `ln` succeeded (the link WAS set) but the readback verification was lost/unconfirmed/not dispatched.
+  // The set fact stands; only its verification is missing. Never read as not-set.
+  | ServedLinkSetUnverified { link_path: NonEmptyStr, target: NonEmptyStr, reason: String }
+  // The `ln` was dispatched but its reply was lost / its effect unconfirmed: whether the link moved is
+  // unknown. Distinct from not-set (we did send the set) and from points-at (we did not verify it).
+  | ServedLinkSetUnknown { link_path: NonEmptyStr, target: NonEmptyStr, reason: String }
 
 fn published_image_path(p: SeededImagePublication) -> NonEmptyStr? {
   if seeded_image_publication_holds(p: p) {
@@ -89,19 +102,24 @@ fn served_link_after(publication: SeededImagePublication, set: fn(NonEmptyStr) -
     Absent => ServedLinkNotSet { reason: "the publication did not hold, so the served link was left as it was" }
     Present { value: path } =>
       match set(path) {
+        // The set itself completed -> the link IS set. The readback only CONFIRMS which target; losing it does
+        // not un-set the link.
         HostCommandDone { stdout: _ } =>
           match read() {
             HostCommandDone { stdout: o } =>
               if trim(s: o) == (path as String) { ServedLinkPointsAt { link_path: link, target: path } } else { ServedLinkDisagrees { link_path: link, expected: path, read: trim(s: o) } }
-            HostCommandFailed { exit_code: c, stderr: e } => ServedLinkNotSet { reason: concat("the link was set but could not be read back: ", host_command_outcome_text(e: HostCommandFailed { exit_code: c, stderr: e })) }
-            HostCommandUnconfirmed { exit_code: c, stdout: o, stderr: e } => ServedLinkNotSet { reason: concat("the link was set but its readback is unconfirmed: ", host_command_outcome_text(e: HostCommandUnconfirmed { exit_code: c, stdout: o, stderr: e })) }
-            HostCommandNotDispatched { reason: r } => ServedLinkNotSet { reason: concat("the link was set but its readback was not dispatched: ", r) }
-            HostCommandUnanswered { cause: r } => ServedLinkNotSet { reason: concat("the link was set but its readback got no answer: ", r) }
+            HostCommandFailed { exit_code: c, stderr: e } => ServedLinkSetUnverified { link_path: link, target: path, reason: concat("the link was set but its readback failed: ", host_command_outcome_text(e: HostCommandFailed { exit_code: c, stderr: e })) }
+            HostCommandUnconfirmed { exit_code: c, stdout: o, stderr: e } => ServedLinkSetUnverified { link_path: link, target: path, reason: concat("the link was set but its readback is unconfirmed: ", host_command_outcome_text(e: HostCommandUnconfirmed { exit_code: c, stdout: o, stderr: e })) }
+            HostCommandNotDispatched { reason: r } => ServedLinkSetUnverified { link_path: link, target: path, reason: concat("the link was set but its readback was not dispatched: ", r) }
+            HostCommandUnanswered { cause: r } => ServedLinkSetUnverified { link_path: link, target: path, reason: concat("the link was set but its readback got no answer: ", r) }
           }
+        // The set ran and FAILED -> the link was not moved by us; "not set" is honest.
         HostCommandFailed { exit_code: c, stderr: e } => ServedLinkNotSet { reason: host_command_outcome_text(e: HostCommandFailed { exit_code: c, stderr: e }) }
-        HostCommandUnconfirmed { exit_code: c, stdout: o, stderr: e } => ServedLinkNotSet { reason: host_command_outcome_text(e: HostCommandUnconfirmed { exit_code: c, stdout: o, stderr: e }) }
+        // The set was NEVER DISPATCHED -> nothing was sent -> the link was not moved by us; "not set" is honest.
         HostCommandNotDispatched { reason: r } => ServedLinkNotSet { reason: concat("not dispatched: ", r) }
-        HostCommandUnanswered { cause: r } => ServedLinkNotSet { reason: concat("the set was dispatched but got no answer, so the served link may or may not have moved: ", r) }
+        // The set WAS dispatched but its effect is unknown -> whether the link moved is UNKNOWN, not "not set".
+        HostCommandUnconfirmed { exit_code: c, stdout: o, stderr: e } => ServedLinkSetUnknown { link_path: link, target: path, reason: host_command_outcome_text(e: HostCommandUnconfirmed { exit_code: c, stdout: o, stderr: e }) }
+        HostCommandUnanswered { cause: r } => ServedLinkSetUnknown { link_path: link, target: path, reason: concat("the set was dispatched but got no answer, so the served link may or may not have moved: ", r) }
       }
   }
 }
@@ -120,6 +138,10 @@ fn served_link_holds(l: ServedLinkReading) -> Bool {
     ServedLinkPointsAt { link_path: _, target: _ } => true
     ServedLinkNotSet { reason: _ } => false
     ServedLinkDisagrees { link_path: _, expected: _, read: _ } => false
+    // A set we could not verify, or whose set-reply was lost, does not COUNT as a held link -- but it is not
+    // the same as not-set; the publish simply cannot claim the link is confirmed in place.
+    ServedLinkSetUnverified { link_path: _, target: _, reason: _ } => false
+    ServedLinkSetUnknown { link_path: _, target: _, reason: _ } => false
   }
 }
 
@@ -128,6 +150,10 @@ fn render_served_link(l: ServedLinkReading) -> String {
     ServedLinkPointsAt { link_path: p, target: t } => join(["served_link=", p as String, "\nserved_link_target=", t as String, "\n"], "")
     ServedLinkNotSet { reason: r } => join(["served_link=not set\nserved_link_reason=", r, "\n"], "")
     ServedLinkDisagrees { link_path: p, expected: e, read: r } => join(["served_link=", p as String, "\nserved_link_disagrees=expected ", e as String, ", read ", r, "\n"], "")
+    // SET but not verified / set-reply lost: render the link path and say the SET stands while its VERIFICATION
+    // is missing -- never the "not set" line, which would claim an absent link we may well have created.
+    ServedLinkSetUnverified { link_path: p, target: t, reason: r } => join(["served_link=", p as String, "\nserved_link_set_unverified=expected ", t as String, "\nserved_link_reason=", r, "\n"], "")
+    ServedLinkSetUnknown { link_path: p, target: t, reason: r } => join(["served_link=unknown\nserved_link_set_unknown=expected ", t as String, "\nserved_link_reason=", r, "\n"], "")
   }
 }
 
