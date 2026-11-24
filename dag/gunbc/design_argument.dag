@@ -647,7 +647,7 @@ data minimize_redundancy: DesignRow = design_row(
       part: "minimize-redundancy",
       question: "Does the change add work that already exists somewhere in the repository: a second representation of a fact, a copied accumulator, a parallel path beside a modeled one?",
       tells: [
-        "a new type or function whose shape matches an existing one under another name",
+        "a new type or function whose shape matches an existing one under another name, with neither a declared relationship nor an independently governed meaning",
         "a hand-written projection of something the model could generate",
         "a quadratic fold or a copied list where a single fold would do"
       ]
@@ -662,7 +662,7 @@ data single_authority: DesignRow = design_row(
   review: ReviewableOnChange { parts: [
       yes_no_review(
         part: "single-authority",
-        question: "Does the change give one concept a second name or a second home, or cite a position where a symbol exists?",
+        question: "Does the change give one independently governed concept a second authority, leave the relationship of an additional name to its authority unstated, or cite a position where a symbol exists? A transparent reference to the same authority is not an independent definition; a restriction, distinct identity or independent fork must state its different contract.",
         tells: [
           "a literal string where a modeled value exists",
           "a file:line citation in prose or a row where a module and symbol could be named",
@@ -670,6 +670,14 @@ data single_authority: DesignRow = design_row(
         ]
       )
     ] },
+)
+
+data declared_intent: DesignRow = design_row(
+  name: "declared_intent",
+  title: "Declared intent",
+  statement: "Every independently meaningful choice or relationship is declared or uniquely derived from declared contracts; where those contracts leave a choice that changes meaning, obligations or information loss, the language requires the author to state it.",
+  premises: ["method_separate_order_compose", "explicit_composition", "single_authority"],
+  review: NotReviewableOnChange { reason: "an undeclared choice or erased distinction is judged by closed-grounded-substrate, competing authorities by single-authority, and dangling declarations by consumption; this claim gives those existing questions their language-level meaning" },
 )
 
 data interface_realization_policy: DesignRow = design_row(
@@ -707,7 +715,7 @@ data closed_grounded_substrate: DesignRow = design_row(
   premises: ["minimize_redundancy", "single_authority", "grounding_is_intersubjective"],
   review: ReviewableOnChange { parts: [yes_no_review(
       part: "closed-grounded-substrate",
-      question: "Does the change leave something opaque that is not atomic, or route around the substrate: a stringly leaf hiding named parts, a heuristic where a fact was available, an annotation inside a body?",
+      question: "Does the change leave something opaque that is not atomic, or route around the substrate: a stringly leaf hiding named parts, a heuristic where a fact was available, an annotation inside a body? Under gunbc.design_argument::declared_intent, does authoring or lowering silently choose a policy, discard a value or decide a type relationship that the declared contract leaves to the author, or erase a distinction the author did state?",
       tells: [
         "a String field carrying structure a record could name",
         "a threshold or guess standing where the richer source exists",
@@ -929,6 +937,7 @@ data design_purpose_rows: List<DesignRow> = [
 data design_body_rows: List<DesignRow> = [
   minimize_redundancy,
   single_authority,
+  declared_intent,
   interface_realization_policy,
   external_upstreams,
   epistemic_humility,

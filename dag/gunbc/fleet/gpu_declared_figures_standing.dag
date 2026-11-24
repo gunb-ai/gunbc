@@ -1,0 +1,289 @@
+module gunbc.fleet.gpu_declared_figures_standing
+
+// A STANDING THE MODULE ALREADY DECLARED, BOUND TO THE ROW IT DESCRIBES.
+//
+// The GPU catalog derives a figure's standing from its own citations: gpu_catalog_bandwidth
+// (extdeps.gpu.types) reads a row's memory_bandwidth only through the one figure_citations entry that names
+// that field, and returns nothing when no entry does or more than one does -- "an uncited catalog figure is
+// not read as cited". That derivation cannot do the one job some standings exist to do: it cannot tell a
+// citation to the vendor that states the figure from a citation to a partner or retailer page that
+// transcribed it. extdeps.gpu.amd and extdeps.gpu.gigabyte say so in their own rows -- r9700_figures_standing
+// and gigabyte_r9700_ai_top_figures_standing, both TranscribedUncited, each naming what reading would ground
+// the figures -- and until this module nothing anywhere read them: those two names occur outside their own
+// modules only here and in this module's witness.
+//
+// WHAT THE MARKED ROWS ARE USED FOR: installed-hardware identity. gunbc.fleet.fleet_physical_inventory binds
+// host-6ce85c's gpu_board_02 and gpu_board_03 to AMD's device row and Gigabyte's board row (the two R9700s
+// installed 2026-11-12, one of which enumerates at 0000:83:00.0), and test.claim.fleet.gpu_board_residence
+// holds that binding -- so the 32 GiB capacity and the 300 W ceiling travel into decisions about a host that
+// is running, with no mark attached, while the modules that state them say they are transcriptions nobody
+// has grounded.
+//
+// WHAT IS NOT IN THE TREE, checked rather than assumed: the breakage report's Tier 5.2 says these rows were
+// used in a purchase comparison. No gpu_market path admits these boards today -- gpu_market/catalog_boards
+// imports NVIDIA's catalogs board by board and imports neither extdeps.gpu.amd nor extdeps.gpu.gigabyte --
+// and the realization join is NVIDIA-only (it gates on the NVIDIA driver's supported-chip list), so no
+// comparison consumes the R9700 figures. The marked figures reach the model through inventory and through
+// cap decisions on that host; sourcing the reading that would ground the figures is the operator's and the
+// intake lanes' work, not this module's.
+//
+// SO THIS IS THE BINDING, NOT A NEW VERDICT. Each entry pairs a row with the standing its own module
+// declares, and takes the standing VALUE from that module's declaration, so the pair cannot drift from what
+// was declared -- and the fold below prefers a declared standing over the citation-derived one, because the
+// module knows something the citation shape cannot show.
+//
+// WHY THIS SITS UNDER gunbc.fleet AND NOT UNDER extdeps. The External upstreams rule
+// (gunbc.design_argument::external_upstreams) is that "a generic hub may define agnostic shapes but may not
+// enumerate concrete products, dispatch among them, carry product version rows, or store consumer coverage
+// state", and the External facts boundary puts "dispatch among upstreams and coverage state" in the consuming
+// layer, "never to extdeps". Everything below that enumerates AMD's and Gigabyte's rows, matches between them
+// by row equality, and keeps the count of which standings are bound is exactly that enumeration and dispatch,
+// so it lives here, in the fleet layer, beside the inventory that is the consumer named for it -- a frontier today, since
+// until that item lands the only caller of these gates is their own witness (git grep finds no production import of this
+// module); the agnostic shapes it projects onto stay
+// upstream (CitedFigureStanding in extdeps.external_authority, the catalog types in extdeps.gpu.types). A
+// third vendor's standing row is then added by whoever consumes it, not by editing a shared hub.
+//
+// WHAT THIS DOES NOT DECIDE: whether a consumer may proceed with a marked figure. It returns the standing;
+// refusing, downgrading or carrying the obligation is the consumer's, and each path that consumes these
+// figures takes its own work item (gunbc.plans.desired_state_follows_the_machine's
+// fleet-truth-declared-incompleteness-refuses-use). A figure with no declared standing and no single citation
+// naming it is absent here, never cited -- the same rule gpu_catalog_bandwidth already applies.
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.optional { Present, Absent }
+import std.list { first_where }
+import std.measure { Watt, ByteSize }
+import std.decl_ref { NamedField, decl_field_eq }
+import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, TranscribedUncited, ObservedByReceipt, FactCitation }
+import extdeps.memory.types { MemoryKind }
+import extdeps.gpu.types {
+  GpuDeviceCatalogRow, GpuBoardCatalogFacts, GpuBoardAdmission, gpu_board_admission_facts,
+  gpu_board_power_ceiling, gpu_catalog_row_eq,
+}
+import extdeps.gpu.amd {
+  amd_radeon_ai_pro_r9700_catalog, amd_radeon_ai_pro_r9700_board_facts, r9700_figures_standing,
+  amd_declared_figure_standings,
+}
+import extdeps.gpu.gigabyte {
+  gigabyte_r9700_ai_top_32g_board_facts, gigabyte_r9700_ai_top_figures_standing,
+  gigabyte_declared_figure_standings,
+}
+import extdeps.gpu.nvidia {
+  nvidia_rtx_pro_6000_max_q_catalog, rtx_pro_6000_max_q_cuda_core_standing,
+  nvidia_declared_figure_standings,
+}
+import extdeps.gpu.nvidia_a2 { nvidia_a2_declared_figure_standings }
+import extdeps.gpu.nvidia_a16 { nvidia_a16_declared_figure_standings }
+import extdeps.gpu.nvidia_t4 { nvidia_t4_declared_figure_standings }
+
+// A BOARD ROW AND THE STANDING ITS OWN MODULE DECLARES ABOUT ITS FIGURES. The row is carried by value, not by
+// name: a consumer holding a board's facts can ask about them directly, and the binding cannot be pointed at
+// a row that has since been edited, because the entry IS that row.
+type DeclaredBoardFiguresStanding {
+  facts: GpuBoardCatalogFacts
+  standing: CitedFigureStanding
+  declared_by: NonEmptyStr
+}
+
+// The board rows that carry a standing their own module declares. The completeness guard is NOT a count of
+// these entries against a hand list -- a count copied from the tree is a change detector (design_argument::
+// fail_closed). The roster every standing must appear in is declared_gpu_standing_rows below -- a
+// HAND-MAINTAINED roster (its own comment states the two hand-maintained levels and the trigger), not an
+// auto-derived one -- and the guard is the real witness claim
+// test.claim.fleet.gpu_declared_figures_standing_witness::RED_every_declared_gpu_standing_row_is_bound: every
+// TranscribedUncited standing in that roster is bound here or in the device bindings, so a standing
+// added to a GPU module without an entry goes red by an identity join, not by anyone editing a number. The
+// standings are imported by value rather than named as refs, so a binding cannot be pointed at a row since
+// edited.
+data declared_board_figure_standings: List<DeclaredBoardFiguresStanding> = [
+  DeclaredBoardFiguresStanding {
+    facts: amd_radeon_ai_pro_r9700_board_facts,
+    standing: r9700_figures_standing,
+    declared_by: "extdeps.gpu.amd" as NonEmptyStr,
+  },
+  DeclaredBoardFiguresStanding {
+    facts: gigabyte_r9700_ai_top_32g_board_facts,
+    standing: gigabyte_r9700_ai_top_figures_standing,
+    declared_by: "extdeps.gpu.gigabyte" as NonEmptyStr,
+  },
+]
+
+// A DEVICE ROW AND THE STANDING ITS OWN MODULE DECLARES ABOUT ITS FIGURES: figures carried on the device row
+// -- the memory size and kind and bandwidth, and the CUDA-core count -- bind here rather than at the board.
+type DeclaredDeviceFiguresStanding {
+  row: GpuDeviceCatalogRow
+  standing: CitedFigureStanding
+  declared_by: NonEmptyStr
+}
+
+data declared_device_figure_standings: List<DeclaredDeviceFiguresStanding> = [
+  DeclaredDeviceFiguresStanding {
+    row: amd_radeon_ai_pro_r9700_catalog,
+    standing: r9700_figures_standing,
+    declared_by: "extdeps.gpu.amd" as NonEmptyStr,
+  },
+  // The Max-Q CUDA-core standing is TranscribedUncited: NVIDIA states no CUDA-core count for that edition, and
+  // the equal 24,064 is assumed from the shared GB202 die, not read. With no citation to ground it, the only
+  // thing that reads it is this binding -- leaving it out was the recurring failure mode the review caught.
+  DeclaredDeviceFiguresStanding {
+    row: nvidia_rtx_pro_6000_max_q_catalog,
+    standing: rtx_pro_6000_max_q_cuda_core_standing,
+    declared_by: "extdeps.gpu.nvidia" as NonEmptyStr,
+  },
+]
+
+fn declared_board_figure_standing(facts: GpuBoardCatalogFacts) -> CitedFigureStanding? {
+  match first_where(xs: declared_board_figure_standings, keep: entry => entry.facts == facts) {
+    Present { value: entry } => { Present { value: entry.standing } }
+    Absent => none
+  }
+}
+
+fn declared_device_figure_standing(row: GpuDeviceCatalogRow) -> CitedFigureStanding? {
+  match first_where(xs: declared_device_figure_standings, keep: entry => gpu_catalog_row_eq(a: entry.row, b: row)) {
+    Present { value: entry } => { Present { value: entry.standing } }
+    Absent => none
+  }
+}
+
+// THE ONE RULE THE CITATION READERS SHARE: read the figure_citations entry naming a field, and hand back the
+// authority it cites as a CitedToAuthority standing -- Absent when zero or more than one entry names it, so an
+// uncited (or multiply-cited) catalog figure is never handed back as cited. The two readers below differ only
+// in which field they ask and what figure they build around the answer; the rule lives here once.
+// extdeps.gpu.types::gpu_catalog_bandwidth reads the same shape for memory_bandwidth and is deliberately left
+// in the type module rather than folded here: it answers a bandwidth question, not a standing question, and
+// folding a declared-standing overlay into extdeps.gpu.types would reach this module's bindings and form the
+// import cycle this module's header already names. The trigger to collapse all three into one keyed read is the
+// same frontier as the consumer's -- the day a bandwidth reader needs the declared standing.
+fn gpu_cited_figure_standing(citations: List<FactCitation>, field_name: NonEmptyStr) -> CitedFigureStanding? {
+  let hits = citations |> filter(c => decl_field_eq(a: c.fact.field, b: NamedField { field_name: field_name }))
+  if count(hits) == 1 {
+    fold(hits, init: none, f: (_acc, c) => Present { value: CitedToAuthority { authority: c.authority } })
+  } else {
+    none
+  }
+}
+
+// THE READ OF A BOARD'S POWER CEILING WITH ITS STANDING, the board-power sibling of GpuBandwidthFigure: a
+// consumer budgeting cooling, a connector or a supply must be able to say what grounds the wattage it
+// budgeted. A declared standing wins over the citation-derived one, because a citation to a reseller page
+// looks exactly like a citation to the vendor and the module has already said which it is. Absent when the
+// row states no board power, when it states one no single figure_citations entry names, and no standing was
+// declared for the row: an uncited figure is never handed back as a cited one.
+type GpuBoardPowerFigure {
+  ceiling: Watt
+  standing: CitedFigureStanding
+  stated_by: NonEmptyStr
+}
+
+fn gpu_board_power_ceiling_with_standing(facts: GpuBoardCatalogFacts) -> GpuBoardPowerFigure? {
+  match facts.board_power {
+    Absent { } => none
+    Present { value: spec } => {
+      let ceiling = gpu_board_power_ceiling(spec: spec)
+      match declared_board_figure_standing(facts: facts) {
+        Present { value: standing } => {
+          Present { value: GpuBoardPowerFigure { ceiling: ceiling, standing: standing, stated_by: "the board row's own module" as NonEmptyStr } }
+        }
+        Absent => {
+          match gpu_cited_figure_standing(citations: facts.figure_citations, field_name: "board_power" as NonEmptyStr) {
+            Present { value: standing } => {
+              Present { value: GpuBoardPowerFigure { ceiling: ceiling, standing: standing, stated_by: "one citation naming board_power" as NonEmptyStr } }
+            }
+            Absent { } => none
+          }
+        }
+      }
+    }
+  }
+}
+
+// A DEVICE ROW'S MEMORY WITH ITS STANDING, the memory sibling of the same rule: the capacity is what the
+// fleet inventory binds a physical board to, and what any future comparison would price or fit against, and
+// until now it was read with no standing in sight at all.
+type GpuMemoryFigure {
+  capacity: ByteSize
+  memory_kind: MemoryKind
+  standing: CitedFigureStanding
+}
+
+fn gpu_catalog_memory_with_standing(row: GpuDeviceCatalogRow) -> GpuMemoryFigure? {
+  let capacity = row.memory.capacity
+  let kind = row.memory.memory_kind
+  match declared_device_figure_standing(row: row) {
+    Present { value: standing } => { Present { value: GpuMemoryFigure { capacity: capacity, memory_kind: kind, standing: standing } } }
+    Absent => {
+      match gpu_cited_figure_standing(citations: row.figure_citations, field_name: "memory" as NonEmptyStr) {
+        Present { value: standing } => { Present { value: GpuMemoryFigure { capacity: capacity, memory_kind: kind, standing: standing } } }
+        Absent { } => none
+      }
+    }
+  }
+}
+
+// WHAT A CONSUMER OWES TO ACT ON A FIGURE DECLARED INCOMPLETE, verbatim from the row that declares it, so a
+// refusal cannot paraphrase the obligation away. ABSENCE IS TYPED, NOT AN EMPTY STRING (the Cardinality
+// conformance domain, std.optional::Optional): a caller checking whether anything is owed must not be able to
+// confuse "no obligation" with a TranscribedUncited row whose obligation text happens to be empty, which is
+// what an empty-string return would let happen. So the cited and receipt-grounded arms answer nothing.
+fn gpu_figure_read_obligation(standing: CitedFigureStanding) -> String? {
+  match standing {
+    TranscribedUncited { read_obligation: o } => { Present { value: o } }
+    CitedToAuthority { authority: _ } => none
+    ObservedByReceipt { observed: _ } => none
+  }
+}
+
+// EVERY STANDING ROW THE GPU MODULES DECLARE. This is a HAND-MAINTAINED roster at two levels, not an
+// auto-derived one: (1) each <module>_declared_figure_standings below is a hand-written list its module's
+// author keeps current, and (2) this concat is itself a hand-written list of modules. A new
+// CitedFigureStanding must be added to its module's list, and a NEW extdeps.gpu module must add its own
+// export AND be joined into this concat -- miss either and its TranscribedUncited rows are silently outside
+// the roster and RED_every_declared_gpu_standing_row_is_bound stays green. That is a declared limit, not a
+// claim of completeness: the guard joins over whatever the lists name, so it catches a bound-vs-declared
+// mismatch WITHIN the named universe, not a module nobody named. The trigger that removes both hand lists is
+// a population pass that discovers every CitedFigureStanding declared under extdeps.gpu.* the way
+// `gunbc.recurring_failure_mode.roster` derives its rows from the row files themselves -- the same
+// discovered-universe machinery test.claim.recurring_failure_mode_citation_sightings_witness joins over --
+// at which point this becomes an identity join over an independently discovered universe rather than an
+// author-written list (design_argument::fail_closed, "an identity join, not a count equality, over a closed,
+// independently discovered universe").
+fn declared_gpu_standing_rows() -> List<CitedFigureStanding> {
+  amd_declared_figure_standings
+    .concat(gigabyte_declared_figure_standings)
+    .concat(nvidia_declared_figure_standings)
+    .concat(nvidia_a2_declared_figure_standings)
+    .concat(nvidia_a16_declared_figure_standings)
+    .concat(nvidia_t4_declared_figure_standings)
+}
+
+// WHAT AN ADMISSION HANDS THE DECISION THAT ASKS IT, MARK INCLUDED. extdeps.gpu.types'
+// `gpu_board_admission_facts` answers an admission with a bare `GpuBoardCatalogFacts` -- the figures, with
+// nothing said about where they came from -- and that is the accessor a roster fold reaches for. Today only
+// witnesses call it, which is the report's tier 5 in its purest form: a row consumed as complete while the
+// module that wrote it says its figures are a transcription nobody has verified. This is the accessor that
+// path should go through instead. Both arms say something about provenance; neither hands over figures and
+// leaves the consumer to wonder. An unmarked board is not thereby laundered into a clean one: the
+// FiguresUnmarked variant itself is the marker -- arriving in that arm is the statement that no standing was
+// declared about this board's figures, so no String field is needed to say it (source_annotations:
+// commentary-as-data).
+//
+// WHO CONSUMES IT, said plainly: the item on this same plan that admits hosts to the build and serving
+// rosters -- node 'fleet-truth-rosters-consume-the-read' of program 'fleet-truth-follows-the-machine'. Until that lands nothing in
+// production calls this, and this module says so rather than claiming the gap is closed
+// (gunbc.design_argument::consumption, "consumed by a named later change (a declared frontier, with its
+// trigger)"). It is here, and bound, because the roster item should not have to invent the standing lookup
+// -- or forget it -- on its own.
+type AdmittedBoardFigures
+  = FiguresCarried { facts: GpuBoardCatalogFacts, standing: CitedFigureStanding, declared_by: NonEmptyStr }
+  | FiguresUnmarked { facts: GpuBoardCatalogFacts }
+
+fn gpu_admitted_board_figures(admission: GpuBoardAdmission) -> AdmittedBoardFigures {
+  let facts = gpu_board_admission_facts(admission: admission)
+  match first_where(xs: declared_board_figure_standings, keep: entry => entry.facts == facts) {
+    Present { value: entry } => FiguresCarried { facts: facts, standing: entry.standing, declared_by: entry.declared_by }
+    Absent => FiguresUnmarked { facts: facts }
+  }
+}

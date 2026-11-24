@@ -1,6 +1,7 @@
 module gunbc.runner.runner_revision_job_unit
 
 import std.types { String, NonEmptyStr, List }
+import gunbc.runner.release_images_location { release_images_dir }
 import std.nat { nat_to_decimal_string }
 import std.measure { HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
 import gunbc.workspace_allocation { workspace_profile_vcpus, LargeWorkspace }
@@ -43,7 +44,7 @@ data revision_job_image_pinned_sha256: NonEmptyStr = "5c658ba6294668ab47319a3da2
 data revision_job_image_staging_root: String = "target/revision-job-image-artifact"
 
 fn revision_job_installed_image_root(release_dir: String) -> NonEmptyStr {
-  join([release_dir, "/images/revision-job/", revision_job_image_pinned_sha256 as String], "") as NonEmptyStr
+  join([release_images_dir(release_dir: release_dir), "/revision-job/", revision_job_image_pinned_sha256 as String], "") as NonEmptyStr
 }
 
 fn revision_job_installed_kernel(release_dir: String) -> String { concat(revision_job_installed_image_root(release_dir: release_dir), "/vmlinux") }

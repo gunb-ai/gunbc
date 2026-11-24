@@ -176,7 +176,7 @@ fn boot_medium_served_refusal_before_attach(subject: NonEmptyStr, readback: Boot
 }
 
 // RETIRING: no new callers. Still fabricates exit_code 255 for a TypedArgvExecRefused so the modules that
-// have not yet migrated (gunbc.host.boot_medium_reader_probe, gunbc.host.network_install_host_reader,
+// have not yet migrated (gunbc.host.network_install_host_reader,
 // gunbc.host.export_host_reader_converge) keep compiling; delete in the last PR of the 255-family HostLeg
 // follow-up once they route through host_leg_of_typed_argv and grep shows no importers. Do not add callers.
 fn remote_answer_of(outcome: TypedArgvExecOutcome) -> RemoteAnswer {

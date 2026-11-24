@@ -1,0 +1,202 @@
+module test.claim.live_deploy.deployed_tree_local_arm_witness
+
+// THE DISCRIMINATING CONTROLS FOR THE LOCAL ARM of the deployed-tree instrument, added for the srv1
+// production fault: '/' answered 409 with a full daily-workspace body whose every issue row read
+// "Unknown", because the standings-refresh fold's pair gate took the instance's OWN deployed tree over
+// FleetSsh, `prepare_fleet_ssh_agent_context` refused ("SSH_AUTH_SOCK is unset or empty" -- live_deploy
+// emits no agent and no unit carries the variable), the fold never wrote, and the read side replayed the
+// frozen 2026-10-10 observation at ObservationStale. The boundary was the TRANSPORT: a remote leg was
+// used where executor and subject are the same machine. These claims hold the repair to that boundary:
+// the arm chooses the transport, the arm is not caller-chosen, and the repo travels with the arm.
+//
+// The real-route PAIRING -- the admitted locus actually delivering a nonempty reading through the
+// production fold against a real owned repository, SSH_AUTH_SOCK unset, and the shared-index
+// interleaving of review 97601 B1 actually refusing -- is a wet execution and lives in
+// dag/test/manual/deployed_tree_local_arm_live_pairing.dag; what is claimed HERE is everything that
+// must hold before any delivery: which transport the arm selects, that no caller may select it, and
+// that what gets delivered is the run's own command over the run's own index.
+//
+// sole_constructor confines LocalTreeLocus to its declaring module -- EXECUTED, not assumed: a claim
+// writing `LocalTreeLocus { ... }` directly was refused by the compiler with "sole_constructor type
+// 'LocalTreeLocus' cannot be constructed outside its defining module" -- so the witnesses get their
+// locus from local_admission_from_verdict (admit_callers-listed), which is the same code path
+// deployed_tree_local_locus_admit takes after hostname_short_read and the verdict. The type wall and
+// the admitted mint are therefore the same wall, and the seal comment at the coproduct says so.
+
+import std.types { String, NonEmptyStr, List, Bool }
+import std.algebra { string_contains }
+import std.optional { Optional, Present, Absent }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.host.host_effect { HostEffectTransport, LocalShell, FleetSsh }
+import gunbc.host.host_effect_realize {
+  RunArgvTransportOutcome,
+  RunArgvTransportObserved,
+  RunArgvTransportRefused,
+  ShellExecObserved,
+}
+import product.host_identity { HostIdentity }
+import gunbc.hostname_allocation { ObservedHostSelectorAgreed }
+import extdeps.git { git_in_trusted_repository_status_command }
+import extdeps.exec.command { argv_words }
+import gunbc.live_deploy.deployed_tree_observation {
+  DeployedTreeLocus,
+  DeployedTreeLocalAdmitted,
+  DeployedTreeLocalAdmissionRefused,
+  deployed_tree_locus_transport,
+  deployed_tree_locus_repo,
+  deployed_tree_locus_host,
+  DeployedTreeLegOutcome,
+  DeployedTreeLegRan,
+  DeployedTreeLegNotAttempted,
+  deployed_tree_leg_outcome_of,
+  deployed_tree_temp_index_path,
+  deployed_tree_local_admission_verdict,
+  local_admission_from_verdict,
+}
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The claimed host comes from the srv1 instance declaration, not a re-typed literal.
+fn srv1_claimed_host() -> HostIdentity {
+  srv1_live_dashboard_instance().host_identity as HostIdentity
+}
+
+fn probe_repo() -> NonEmptyStr {
+  "/opt/gunbc/gunbc" as NonEmptyStr
+}
+
+// Extract the locus from the admission, via the pure mint path. admit_callers on the witness's own
+// helper keeps it usable by exactly the three structural claims below and by nothing else -- a helper
+// that mints an admitted locus is itself part of the admission surface (review 97601, non-blocking).
+fn local_locus_for_srv1() -> Optional<DeployedTreeLocus> admit_callers: [
+  decl_ref(module_path: "test.claim.live_deploy.deployed_tree_local_arm_witness", decl_name: "witness_the_local_arm_is_delivered_locally"),
+  decl_ref(module_path: "test.claim.live_deploy.deployed_tree_local_arm_witness", decl_name: "witness_the_local_arm_names_no_fleetssh_transport"),
+  decl_ref(module_path: "test.claim.live_deploy.deployed_tree_local_arm_witness", decl_name: "witness_the_local_locus_seals_its_repo_and_host"),
+  decl_ref(module_path: "test.claim.live_deploy.deployed_tree_local_arm_witness", decl_name: "witness_each_run_delivers_its_own_index"),
+] {
+  match local_admission_from_verdict(
+    verdict: deployed_tree_local_admission_verdict(
+      host: srv1_claimed_host(),
+      observed_hostname: "srv1",
+    ),
+    repo: probe_repo(),
+  ) {
+    DeployedTreeLocalAdmitted { locus: l } => Present { value: l }
+    DeployedTreeLocalAdmissionRefused { cause: _ } => Absent
+  }
+}
+
+// THE ARM IS THE TRANSPORT, AND THE LOCAL ARM IS NOT AN SSH LEG: no context, no agent, no endpoint. If
+// the local arm were wired to reuse the remote delivery, this is the claim that fails -- which is the
+// exact shape of the production fault.
+test fn witness_the_local_arm_is_delivered_locally() -> Bool {
+  match local_locus_for_srv1() {
+    Present { value: locus } =>
+      match deployed_tree_locus_transport(locus: locus) {
+        LocalShell => true
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+// THE LOCAL ARM DOES NOT LEAK A CREDENTIAL LEG: it is not the FleetSsh arm under another name, so it
+// cannot fail closed on a host with no agent -- the failure that froze the observation for six weeks.
+test fn witness_the_local_arm_names_no_fleetssh_transport() -> Bool {
+  match local_locus_for_srv1() {
+    Present { value: locus } =>
+      match deployed_tree_locus_transport(locus: locus) {
+        FleetSsh { target: _, context: _ } => false
+        _ => true
+      }
+    Absent => false
+  }
+}
+
+// THE PAIR TRAVELS TOGETHER (the module's standing law, now across two arms): the locus carries the
+// repo, and the observation can only be read at the repo the locus sealed. A cross-host conflation --
+// reading some other path while claiming this host -- has no mint.
+test fn witness_the_local_locus_seals_its_repo_and_host() -> Bool {
+  match local_locus_for_srv1() {
+    Present { value: locus } =>
+      deployed_tree_locus_repo(locus: locus) == probe_repo()
+        && deployed_tree_locus_host(locus: locus) == srv1_claimed_host()
+    Absent => false
+  }
+}
+
+// THE JOIN ADMITS THE REAL HOST: the srv1 instance's claimed host joined with the observed hostname
+// "srv1" (read on srv1 by the operator 2026-11-23) produces Agreed. This is the accept path standing
+// in for the wet admit until the deploy.
+test fn witness_srv1_observed_hostname_is_admitted() -> Bool {
+  match deployed_tree_local_admission_verdict(
+    host: srv1_claimed_host(),
+    observed_hostname: "srv1",
+  ) {
+    ObservedHostSelectorAgreed { host: _ } => true
+    _ => false
+  }
+}
+
+// THE JOIN REFUSES A MISMATCHED HOST: a claimed host whose spelling is not the observed
+// one is not Agreed, so a process cannot mint the local arm for a machine it is not standing on by
+// naming that machine. (Refused or Unjoinable both satisfy this; only Agreed would be the hole.)
+test fn witness_a_mismatched_host_is_never_admitted() -> Bool {
+  match local_admission_from_verdict(
+    verdict: deployed_tree_local_admission_verdict(
+      host: srv1_claimed_host(),
+      observed_hostname: "srv2",
+    ),
+    repo: probe_repo(),
+  ) {
+    DeployedTreeLocalAdmitted { locus: _ } => false
+    DeployedTreeLocalAdmissionRefused { cause: _ } => true
+  }
+}
+
+// AN EMPTY COMMAND IS UNREPRESENTABLE, AND A REFUSAL IS NEVER AN EXIT CODE. The first shape of the
+// local arm took List<String> and needed its own refusal arm for the empty case; under review 97601 B2
+// the legs are typed ArgvCommands, whose program field cannot be empty at all -- there is no empty
+// case to claim, and a claim over it would test the type checker rather than this fold. What THIS
+// claim pins is the sibling guarantee at the one place a leg can still say nothing: a TRANSPORT
+// REFUSAL maps to its own arm and never to a fabricated process result. The first draft folded the
+// refusal into an exit code, and a reader could not tell "git ran and failed" from "nothing was ever
+// delivered" -- a 127 about a host nobody contacted.
+test fn witness_a_transport_refusal_is_never_a_synthetic_exit_code() -> Bool {
+  match deployed_tree_leg_outcome_of(observed: RunArgvTransportRefused { reason: "SSH_AUTH_SOCK is unset or empty" }) {
+    DeployedTreeLegNotAttempted { reason: r } => r == "SSH_AUTH_SOCK is unset or empty"
+    DeployedTreeLegRan { result: _ } => false
+  }
+    && match deployed_tree_leg_outcome_of(
+      observed: RunArgvTransportObserved {
+        observed: ShellExecObserved { exit_code: 128, success: false, stdout: "", stderr: "fatal: not a git repository" },
+      },
+    ) {
+      DeployedTreeLegRan { result: r } => r.exit_code == 128 && !r.success && r.stderr == "fatal: not a git repository"
+      DeployedTreeLegNotAttempted { reason: _ } => false
+    }
+}
+
+// THE DELIVERED COMMAND CARRIES THE RUN'S OWN INDEX. The interleaving this kills is review 97601 B1,
+// reproduced there with real git: two folds sharing one constant GIT_INDEX_FILE, the later read-tree
+// overwriting the earlier one's between its reads, and the earlier status answering from the wrong
+// tree -- a wrong clean/dirty verdict with no error. The typed control: two runs of ONE locus deliver
+// two status commands whose GIT_INDEX_FILE words differ, each naming exactly the path that run's
+// fold materialized into. Re-introduce the constant name and the equalities red at once -- the word
+// level is exactly where a shared rendezvous becomes visible without a host.
+test fn witness_each_run_delivers_its_own_index() -> Bool {
+  match local_locus_for_srv1() {
+    Absent => false
+    Present { value: locus } => {
+      let path_a = deployed_tree_temp_index_path(locus: locus, run_nonce: "run-a")
+      let path_b = deployed_tree_temp_index_path(locus: locus, run_nonce: "run-b")
+      let words_a = argv_words(command: git_in_trusted_repository_status_command(repo: probe_repo(), index_path: path_a))
+      let words_b = argv_words(command: git_in_trusted_repository_status_command(repo: probe_repo(), index_path: path_b))
+      any(words_a, w => w == join(["GIT_INDEX_FILE=", path_a], ""))
+        && any(words_b, w => w == join(["GIT_INDEX_FILE=", path_b], ""))
+        && !any(words_a, w => w == join(["GIT_INDEX_FILE=", path_b], ""))
+        && !any(words_b, w => w == join(["GIT_INDEX_FILE=", path_a], ""))
+    }
+  }
+}
