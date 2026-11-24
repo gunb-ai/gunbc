@@ -39,7 +39,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // and the assertion must flip to expect refusal. That inversion is the node's red control: the
 // fallthrough count monotonically falls as coverage lands.
 //
-// CENSUS BASELINE (measured, invalidated predecessor included):
+// CENSUS BASELINE (measured during the measurement leg; the witness IS the artifact, the
+// numbers are measurement context not a committed table — per §6, census machinery without a
+// concrete retained consumer is retired):
 //
 // OLD (invalidated by the executed control): 4597 sites — imported-and-not-locally-declared
 //   calls. These resolve via parent_closure_callable_candidates, the wall fires, they are
@@ -47,18 +49,14 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //
 // CORRECTED: 5890 sites, 31 names, 1327 modules — bare calls to kernel method template names
 //   with labeled args, where the callee is NEITHER locally declared NOR imported. These hit
-//   CallableUnresolved → method bridge → no shape wall. Top names by site count: split(1438),
-//   starts_with(1032), to_string(747), substring(697), length(544), any(427), filter(206),
-//   ends_with(187), get(171), replace(88) — 31 names total (see the TSV for all).
+//   CallableUnresolved → method bridge → no shape wall. Reproducible via the predicate stated
+//   below (git grep, light — no committed producer needed; the numbers are context, the
+//   behavioral assertions in the test fns are the guarantee).
 //   Predicate filters: not locally declared (fn NAME( absent from file),
 //   not imported (import line does not list the name). Not filtered statically: parent_closure
-//   reachability (but the 5890 excludes ALL imported cases, and unimported names cannot be in
-//   the parent closure chain because the chain walks imports); builtin/kernel table (the builtin
-//   positional arity check ignores labeled args by construction — filter at line 8606 — so even
-//   if the name reaches the builtin path, labels remain unchecked; the blind spot is the same).
-//   Reproducible producer: scripts/sig_unresolved_fallthrough_census.sh (git grep, light).
-//   Committed TSV: docs/measurements/sig_unresolved_fallthrough_census.tsv
-//   (2192 rows, sha256 9aabdcdab6649afacbe5b4830a7b0446551d97dc29ee012fef132898ce0a45a8)
+//   reachability (the import filter subsumes it); builtin/kernel table (the builtin positional
+//   arity check ignores labeled args by construction — line 8606 — so labels remain unchecked
+//   whichever path handles the call; error direction: conservative).
 
 // THE FIXTURE: calls 'length' with a deliberately wrong argument label, WITHOUT importing it.
 // 'length' is a kernel method template name (FreeMonoidCollection profile, ReceiverSelf param).
