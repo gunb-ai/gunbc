@@ -363,8 +363,9 @@ fn prompt_render_receipt(plan: PromptPlan, wire: ProviderPromptArtifact) -> Prom
 // consumption): this law's named later consumer is the seat binding of the roadmap row
 // harness-seat-binds-modeled-prompt-segments (identity rn_01M86JC25E8M7NKAG6C4Y34J0C, added by this
 // PR gunb-ai/gunbc#17007 into dag/gunbc/roadmap/roadmap_authority.dag, carrier
-// dag/gunbc/harness/harness_cli.dag), which today still collapses
-// modeled guidance to system_prompt: String (harness_cli.dag:221,255) and so carries no receipt to
+// dag/gunbc/harness/harness_cli.dag), which today still collapses modeled guidance to a prose
+// String (#gunbc.harness.harness_cli::harness_default_system_prompt, threaded through
+// #gunbc.harness.harness_turn::HarnessTurnConfig::system_prompt) and so carries no receipt to
 // gate. TRIGGER: that row's dispatch -- the seat binds modeled segments from the PromptPlan
 // projection and gates every emitted envelope through this law. Until the trigger resolves no
 // surface can call it, so no surface re-decides it either; the witnesses in
