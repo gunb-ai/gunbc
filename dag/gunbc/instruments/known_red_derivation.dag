@@ -4,7 +4,7 @@ import std.types { Bool, FilePath, Int, List, NonEmptyStr, String }
 import std.process { ExitSuccess, ExitFailure }
 import std.optional { Absent, Optional, Present }
 import std.logic { Bool }
-import std.algebra { Cons, Empty, contains, list_snoc_item, length, trim }
+import std.algebra { Cons, Empty, contains, list_snoc_item, length, string_contains, trim }
 import std.dissolution { DissolutionCondition, bound_dissolution }
 import std.decl_ref { DeclarationRef, decl_ref }
 // `list_member` is the sanctioned custom-equality membership, not `std.algebra.contains`: the seed
@@ -927,20 +927,14 @@ data known_red_located_carrier: String = "located-line-carrier"
 // contains a space), and a located line always carries an `outcome=` field. Both must be present.
 fn known_red_line_is_located(line: String) -> Bool {
   if known_red_line_has_verdict(line: line) {
-    match find_first(s: line, needle: " outcome=", start: 0) {
-      Absent => false
-      Present { value: _ } => true
-    }
+    string_contains(s: line, pattern: " outcome=")
   } else {
     false
   }
 }
 
 fn known_red_has_token(line: String, token: String) -> Bool {
-  match find_first(s: line, needle: token, start: 0) {
-    Absent => false
-    Present { value: _ } => true
-  }
+  string_contains(s: line, pattern: token)
 }
 
 fn known_red_line_has_verdict(line: String) -> Bool {
@@ -1039,10 +1033,10 @@ fn known_red_terminal_of_kind(kind: String) -> Optional<ClaimAttemptTerminal> {
                         Present { value: SubjectUnresolved { entry: known_red_located_carrier, cause: EntryMissing } }
                       } else {
                         if kind == known_red_kind_closure_diagnostics {
-                          Present { value: SubjectUnresolved { entry: known_red_located_carrier, cause: ClosureDiagnostics } }
+                          Present { value: SubjectUnresolved { entry: known_red_located_carrier, cause: ResolveInfrastructure { detail: known_red_located_carrier } } }
                         } else {
                           if kind == known_red_kind_resolve_infrastructure {
-                            Present { value: SubjectUnresolved { entry: known_red_located_carrier, cause: ResolveInfrastructure } }
+                            Present { value: SubjectUnresolved { entry: known_red_located_carrier, cause: ResolveInfrastructure { detail: known_red_located_carrier } } }
                           } else {
                             Absent
                           }
@@ -2811,31 +2805,9 @@ fn known_red_derivation_exit() -> CliWireResponse {
         exit: ExitFailure { code: 2, reason: "known-red-derivation: NO OBSERVATION — head unreadable, so no receipt names a commit" }
       }
     Present { value: head } => {
-      // THE WORDING CHECK FIRST, BEFORE ANY CHILD RUNS. If this file's decoder no longer matches what the
-      // transport prints, nothing a child says can be read correctly, so the run refuses with exit 2 and
-      // spends no child execution on a reading it cannot honour (review 83992). `PrintedWordingUntied` is
-      // the no-observation class, not a finding: the list was not checked, which is a different sentence
-      // from 'the list is wrong' (exit 1).
-      let untied = known_red_print_markers_untied()
-      let untied_refusal = PrintedWordingUntied { markers: untied }
-      if length(xs: untied) > 0 {
-        CliWirePrintable {
-          bytes: concat(
-            "known-red derivation: REFUSED — this file's decoder markers are not in the source that prints them:\n",
-            concat(join(untied, "\n"), "\n")
-          ),
-          // THE EXIT CODE AND THE NAME COME FROM THE SAME FUNCTIONS EVERY OTHER REFUSAL USES. Nothing here
-          // decides by itself that this class is exit 2; `known_red_exit_code_of` is the only authority for
-          // what an arm costs, and the report line is the arm's own detail.
-          exit: ExitFailure {
-            code: known_red_exit_code_of(r: untied_refusal),
-            reason: concat(
-              "known-red-derivation: NO OBSERVATION — ",
-              concat(known_red_refusal_name(r: untied_refusal), known_red_refusal_detail(r: untied_refusal))
-            )
-          }
-        }
-      } else {
+      // THE WORDING CHECK THAT ONCE GUARDED THIS PRODUCER is gone with the prose decoder it guarded:
+      // the located-line contract is keyed on the closed `outcome=` kinds, and the control claims in
+      // `test.claim.gunbc_instruments_known_red_derivation_witness` are the tie now.
       let subjects = known_red_subjects()
       let children = known_red_collect_at(
         root: git.Inspect.Toplevel().path,
@@ -2872,7 +2844,6 @@ fn known_red_derivation_exit() -> CliWireResponse {
             )
           }
         }
-      }
       }
     }
   }
