@@ -44,7 +44,7 @@ module gunbc.runner.runner_fleet_job_timeout_census
 
 import std.types { Bool, Int, String, List }
 import std.algebra { list_flat_map }
-import std.measure { Second, second, second_count }
+import std.measure { Second, second, second_count, Minute, minute, minute_count }
 import std.optional { Absent, Present }
 import extdeps.github.actions {
   Workflow,
@@ -270,12 +270,12 @@ fn fleet_census_domain_is_explained() -> Bool {
 // to let the bound grow with these jobs (gunbc.design_ruling::runner_host_drain_bound_covers_scheduled_fleet_converge_jobs_2026_11_24).
 type FleetConvergeAutonomousJobRow {
   job_id: String
-  timeout_minutes: Int
+  timeout: Minute
 }
 
 data fleet_converge_autonomous_job_rows: List<FleetConvergeAutonomousJobRow> = [
-  FleetConvergeAutonomousJobRow { job_id: "plan-revision", timeout_minutes: 70 },
-  FleetConvergeAutonomousJobRow { job_id: "build", timeout_minutes: 100 },
+  FleetConvergeAutonomousJobRow { job_id: "plan-revision", timeout: minute(count: 70) },
+  FleetConvergeAutonomousJobRow { job_id: "build", timeout: minute(count: 100) },
 ]
 
 // THE FOLD. Every job of every censused workflow that both selects the fleet pool and belongs to a
@@ -310,7 +310,10 @@ fn fleet_targeted_declared_timeout_minutes() -> Int {
         if m > acc { m } else { acc }
       }
     ),
-    f: fn(acc, r) { if r.timeout_minutes > acc { r.timeout_minutes } else { acc } }
+    f: fn(acc, r) {
+      let m = minute_count(m: r.timeout) as Int
+      if m > acc { m } else { acc }
+    }
   )
 }
 
@@ -339,5 +342,5 @@ fn fleet_bound_covers_population(bound: Second, jobs: List<Job>) -> Bool {
 
 fn fleet_drain_bound_is_sound(bound: Second) -> Bool {
   fleet_bound_covers_population(bound: bound, jobs: fleet_targeted_autonomous_jobs())
-    && all(fleet_converge_autonomous_job_rows, r => fleet_bound_covers_declared_minutes(bound: bound, minutes: r.timeout_minutes))
+    && all(fleet_converge_autonomous_job_rows, r => fleet_bound_covers_declared_minutes(bound: bound, minutes: minute_count(m: r.timeout) as Int))
 }

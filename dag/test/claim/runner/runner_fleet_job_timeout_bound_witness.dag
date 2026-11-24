@@ -29,7 +29,7 @@ module test.claim.runner.runner_fleet_job_timeout_bound_witness
 
 import std.types { Bool, Int, String, List }
 import std.optional { Present, Absent }
-import std.measure { second, second_count, minute_count }
+import std.measure { second, second_count, minute, minute_count }
 import extdeps.github.actions { Job, Workflow, WorkflowTrigger, Push, WorkflowDispatch, max_job_timeout_minutes }
 import gunbc.runner.runner_host_cap_bracket { runner_host_cap_drain_policy, host_cap_bracket_budget }
 import gunbc.runner.runner_fleet_job_timeout_census { fleet_targeted_wait_bound, fleet_targeted_declared_timeout_minutes, fleet_targeted_autonomous_jobs, fleet_job_belongs_to_population, fleet_bound_covers_population, fleet_bound_covers_declared_minutes, fleet_drain_bound_is_sound, fleet_workflow_census_rows, fleet_workflow_census_omissions, fleet_census_domain_is_explained, fleet_workflow_omissions_are_discharged, fleet_converge_autonomous_job_rows, FleetConvergeAutonomousJobRow, job_selects_fleet_pool, workflow_has_autonomous_trigger, workflow_trigger_is_autonomous, job_declared_timeout_minutes, fleet_pool_runner_spec }
@@ -148,9 +148,9 @@ test fn the_population_holds_the_v2_bootstrap_job_at_its_declared_timeout() -> B
     && all(jobs, j => job_selects_fleet_pool(j: j))
     && any(jobs, j => j.id == gunbc_required_context_name() && job_declared_timeout_minutes(j: j) == minute_count(m: gunbc_roster_gate().timeout))
     && (any(jobs, j => job_declared_timeout_minutes(j: j) == fleet_targeted_declared_timeout_minutes())
-      || any(fleet_converge_autonomous_job_rows, r => r.timeout_minutes == fleet_targeted_declared_timeout_minutes()))
+      || any(fleet_converge_autonomous_job_rows, r => (minute_count(m: r.timeout) as Int) == fleet_targeted_declared_timeout_minutes()))
     && minute_count(m: gunbc_roster_gate().timeout) <= fleet_targeted_declared_timeout_minutes()
-    && all(fleet_converge_autonomous_job_rows, r => r.timeout_minutes <= fleet_targeted_declared_timeout_minutes())
+    && all(fleet_converge_autonomous_job_rows, r => (minute_count(m: r.timeout) as Int) <= fleet_targeted_declared_timeout_minutes())
 }
 
 // 5. THE ENCLOSING BUDGETS FOLD OVER THE BOUND AND STILL BOUND IT. host_cap_bracket_budget is the
@@ -211,7 +211,7 @@ fn scheduled_fleet_pool_jobs() -> List<Job> {
 }
 
 fn row_names_job(r: FleetConvergeAutonomousJobRow, j: Job) -> Bool {
-  r.job_id == j.id && r.timeout_minutes == job_declared_timeout_minutes(j: j)
+  r.job_id == j.id && (minute_count(m: r.timeout) as Int) == job_declared_timeout_minutes(j: j)
 }
 
 test fn fleet_converge_autonomous_jobs_are_exactly_the_declared_rows() -> Bool {
@@ -228,8 +228,10 @@ test fn fleet_converge_autonomous_jobs_are_exactly_the_declared_rows() -> Bool {
 // cannot be satisfied by a stale row.
 test fn a_stale_declared_row_does_not_name_its_job() -> Bool {
   let build = fleet_converge_build_job()
-  row_names_job(r: FleetConvergeAutonomousJobRow { job_id: build.id, timeout_minutes: job_declared_timeout_minutes(j: build) }, j: build)
-    && !row_names_job(r: FleetConvergeAutonomousJobRow { job_id: build.id, timeout_minutes: job_declared_timeout_minutes(j: build) - 1 }, j: build)
+  let rows = filter(fleet_converge_autonomous_job_rows, r => r.job_id == build.id)
+  length(rows) == 1
+    && all(rows, r => row_names_job(r: r, j: build))
+    && all(rows, r => !row_names_job(r: FleetConvergeAutonomousJobRow { job_id: r.job_id, timeout: minute(count: minute_count(m: r.timeout) + 1) }, j: build))
 }
 
 test fn the_function_built_omissions_discharge_on_their_trigger_constants() -> Bool {
