@@ -32,3 +32,24 @@ fn fleet_plan_run_artifact_dir(
 data fleet_converge_run_artifact_root_env_name: String = "GUNBC_FLEET_CONVERGE_RUN_ARTIFACT_ROOT"
 data fleet_converge_run_artifact_plan_run_id_env_name: String = "GUNBC_FLEET_CONVERGE_RUN_ARTIFACT_PLAN_RUN_ID"
 data fleet_converge_run_artifact_attempt_env_name: String = "GUNBC_FLEET_CONVERGE_RUN_ARTIFACT_ATTEMPT"
+
+// THE PACK (plan receipt) FILENAME inside the per-run plan-artifact directory. The plan step writes
+// the plan receipt here, into the run-scoped dir it composes above -- never at a fixed shared path,
+// because two concurrent plan runs must not overwrite one receipt and have a later reader pick up
+// another run's run_artifact_dir. Consumers locate it by the opaque handle below, not by recomposing
+// it from the run identity.
+data fleet_converge_plan_receipt_name: String = "plan_receipt.json"
+
+// Compose the plan receipt path from a run-scoped plan-artifact directory. Used by the PRODUCER
+// (the plan step, which owns the dir) to write the pack into <run_artifact_dir>/plan_receipt.json.
+fn fleet_plan_receipt_path_in(run_artifact_dir: NonEmptyStr) -> String {
+  join([run_artifact_dir as String, "/", fleet_converge_plan_receipt_name], "")
+}
+
+// THE APPLY-SIDE HANDLE. plan and apply are separate runners: a runner-absolute path from the plan
+// job means nothing on the apply runner. So the pack travels INSIDE the uploaded plan artifact, and
+// apply is handed the pack's location there as an OPAQUE input -- exported by the plan/download
+// hand-off as this env and read via actions_variable_read. apply/swap/recorder read the pack at this
+// handle and refuse if it is absent; they NEVER compose it from root/plan_run_id/attempt or any
+// constant. The plan job (which owns the dir) is the only composer.
+data fleet_converge_plan_handle_env_name: String = "GUNBC_FLEET_CONVERGE_PLAN_HANDLE"
