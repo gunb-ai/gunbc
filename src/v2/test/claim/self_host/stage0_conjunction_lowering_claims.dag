@@ -60,6 +60,12 @@ data literal_path: String = "src/v2/test/claim/self_host/literal_compare_operand
 data literal_name: String = "v2.test.claim.self_host.literal_compare_operand_subject_fixture"
 data intvalue_path: String = "src/v2/test/claim/self_host/int_literal_value_subject_fixture.dag"
 data intvalue_name: String = "v2.test.claim.self_host.int_literal_value_subject_fixture"
+// THE NODE SUBJECT: gunbc.rust_decl_type_overlay (an outer TypeNode Conj in value position whose operands
+// are a binding, a one-operand PREFIX !closed_alias, and a comparison resolved_child_count > 0 whose right
+// operand is the Int LITERAL 0). Its done condition is corpus_probes_emits_holds over the same door and the
+// same stage0_production_target_model as the production corpus probe.
+data corpus_path: String = "dag/gunbc/rust_decl_type_overlay.dag"
+data corpus_name: String = "gunbc.rust_decl_type_overlay"
 
 fn refs_for(path: String) -> List<SourceRef> {
   Cons { head: source_ref_for_observed_storage_path(path: path, source_root: DagTree), tail: Empty }
@@ -148,4 +154,33 @@ test fn int_literal_value_not_transform_shape_holds() -> Bool {
 
 test fn int_literal_value_emits_holds() -> Bool {
   reason_for(path: intvalue_path, name: intvalue_name) == "artifact-produced"
+}
+
+// ---- THE NODE SUBJECT: gunbc.rust_decl_type_overlay ----
+// corpus_probes_emits_holds is the row's verbatim done-condition claim (the door produces an artifact rather
+// than refusing). corpus_probes_first_refusal_is_transform_shape_holds and corpus_probes_refused_at_emission_holds
+// are the two pre-change refusal claims the row retires/inverts in this PR: they now assert the OPPOSITE -- the
+// subject is no longer refused at emission and its first refusal is no longer the generic transform-shape one.
+
+fn stage_for(path: String, name: String) -> String {
+  match door_for(path: path, name: name) {
+    Accepted { value: EmissionRejected { diagnostics: _ }, diagnostics: _ } => "emission"
+    Accepted { value: AssemblyRejected { diagnostics: _ }, diagnostics: _ } => "assembly"
+    Accepted { value: InferenceRejected { diagnostics: _ }, diagnostics: _ } => "inference"
+    Accepted { value: ProducerReceiptRejected { diagnostics: _ }, diagnostics: _ } => "producer_receipt"
+    Accepted { value: ArtifactProduced { artifact: _ }, diagnostics: _ } => "artifact"
+    Rejected { diagnostics: _ } => "ingest_rejected"
+  }
+}
+
+test fn corpus_probes_emits_holds() -> Bool {
+  reason_for(path: corpus_path, name: corpus_name) == "artifact-produced"
+}
+
+test fn corpus_probes_no_longer_refused_at_emission_holds() -> Bool {
+  stage_for(path: corpus_path, name: corpus_name) != "emission"
+}
+
+test fn corpus_probes_first_refusal_is_not_transform_shape_holds() -> Bool {
+  !(string_contains(reason_for(path: corpus_path, name: corpus_name), "transform_shape_invalid"))
 }
