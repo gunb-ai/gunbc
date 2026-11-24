@@ -126,12 +126,19 @@ type RedObservation
 // of green_at on main; RedProbe, red_base is red_at's first parent, red_at's diff from red_base is the named
 // break and nothing else, probe_ref stays pushed to gunb-ai/gunbc, and green_at is red_base or a later main sha.
 
+// Does a constructed observation HOLD? It asks the one authority (red_observation_from_arm) to rebuild the
+// arm it already spells and reports whether that rebuild stood — this fn judges nothing itself, so the shape
+// law has no second copy to drift (gunbc.design_argument::single_authority).
 fn red_observation_holds(o: RedObservation) -> Bool {
   match o {
-    RedObservedOnMain { red_at, green_at } => red_control_pair_holds(red_at: red_at, green_at: green_at)
+    RedObservedOnMain { red_at, green_at } =>
+      match red_observation_from_arm(arm: "on_main", red_at: red_at, green_at: green_at, red_base: "", probe_ref: "") {
+        RedObsBuilt { observation: _ } => true
+        RedObsRefused { rule: _, detail: _ } => false }
     RedProbe { red_at, red_base, green_at, probe_ref } =>
-      commit_sha_text_holds(head: red_at) && commit_sha_text_holds(head: red_base) && commit_sha_text_holds(head: green_at)
-        && red_base != red_at && green_at != red_at && red_probe_ref_holds(ref: probe_ref as String)
+      match red_observation_from_arm(arm: "probe", red_at: red_at, green_at: green_at, red_base: red_base, probe_ref: probe_ref as String) {
+        RedObsBuilt { observation: _ } => true
+        RedObsRefused { rule: _, detail: _ } => false }
   }
 }
 
@@ -163,19 +170,38 @@ fn red_probe_ref_holds(ref: String) -> Bool {
 // EMPTY TEXT, and the empty text is not a value of either arm's member — so the empty string is never read
 // as "the caller meant this member but left it out" across arms, it is refused or required strictly by the
 // arm that was NAMED.
-fn red_observation_from_arm(arm: String, red_at: String, green_at: String, red_base: String, probe_ref: String) -> RedObservation? {
-  if arm == "on_main" {
-    if red_base != "" { none }
-    else if probe_ref != "" { none }
-    else { Present { value: RedObservedOnMain { red_at: red_at, green_at: green_at } } }
+// THE VERDICT OF NAMING AN ARM: the observation, or the named reason there is none. THIS is the single
+// authority for an executed red control's shape — the closed arm set, which members the named arm carries,
+// that every named commit is 40 lowercase hex, that the pair is distinct, that a probe breaks a different
+// base, and that the probe ref is spelled red-control/<row-id>. red_observation_holds, the recorder CLI, and
+// the event-log readers all call THIS fn and judge nothing themselves (gunbc.design_argument::single_authority:
+// a second place that independently decides is a fork; the check that lives twice drifts).
+type RedObservationFromArm
+  = RedObsBuilt { observation: RedObservation }
+  | RedObsRefused { rule: NonEmptyStr, detail: NonEmptyStr }
+
+fn red_observation_from_arm(arm: String, red_at: String, green_at: String, red_base: String, probe_ref: String) -> RedObservationFromArm {
+  if arm != "on_main" && arm != "probe" {
+    RedObsRefused { rule: "unknown_red_kind", detail: join(["--red-kind is required and must be on_main or probe: red_kind is neither of the two standings the log spells (on_main, probe): ", arm], "") }
   }
-  else if arm == "probe" {
-    if red_base == "" { none }
-    else if probe_ref == "" { none }
-    else { Present { value: RedProbe {
-      red_at: red_at, red_base: red_base, green_at: green_at, probe_ref: probe_ref as NonEmptyStr } } }
+  else if red_at == "" { RedObsRefused { rule: "red_at_absent", detail: "--red-at is required: the commit where the red control was observed FAILING (red_at)" } }
+  else if green_at == "" { RedObsRefused { rule: "green_at_absent", detail: "--green-at is required: the commit where the same witness was observed PASSING (green_at)" } }
+  else if !commit_sha_text_holds(head: red_at) { RedObsRefused { rule: "red_at_malformed", detail: "--red-at is malformed: red_at is malformed: a commit is 40 lowercase hex characters" } }
+  else if !commit_sha_text_holds(head: green_at) { RedObsRefused { rule: "green_at_malformed", detail: "--green-at is malformed: green_at is malformed: a commit is 40 lowercase hex characters" } }
+  else if red_at == green_at { RedObsRefused { rule: "red_at_equals_green_at", detail: "--red-at equals --green-at: red_at equals green_at: a witness observed failing and passing on one tree was not observed failing there" } }
+  else if arm == "on_main" {
+    if red_base != "" { RedObsRefused { rule: "main_names_base", detail: "red_base and probe_ref belong to the probe arm; the on_main arm names none — --red-base names the commit a PROBE breaks; pass --red-kind=probe or drop --red-base" } }
+    else if probe_ref != "" { RedObsRefused { rule: "main_names_ref", detail: "red_base and probe_ref belong to the probe arm; the on_main arm names none — --probe-ref names the durable ref a PROBE is pushed to; pass --red-kind=probe or drop --probe-ref" } }
+    else { RedObsBuilt { observation: RedObservedOnMain { red_at: red_at, green_at: green_at } } }
   }
-  else { none }
+  else {
+    if red_base == "" { RedObsRefused { rule: "probe_no_base", detail: "--red-base is required on the probe arm: the probe arm names no red_base: a probe names the main commit it breaks (red_base)" } }
+    else if probe_ref == "" { RedObsRefused { rule: "probe_no_ref", detail: "--probe-ref is required on the probe arm: the probe arm names no probe_ref: it is the durable ref red-control/<row-id> that makes red_at fetchable (probe_ref)" } }
+    else if !commit_sha_text_holds(head: red_base) { RedObsRefused { rule: "red_base_malformed", detail: "--red-base is malformed: red_base is malformed: a commit is 40 lowercase hex characters" } }
+    else if red_base == red_at { RedObsRefused { rule: "red_base_equals_red_at", detail: "--red-base equals --red-at: red_base equals red_at: a probe breaks its base, so it is a different commit" } }
+    else if !red_probe_ref_holds(ref: probe_ref) { RedObsRefused { rule: "probe_ref_malformed", detail: "--probe-ref is malformed: probe_ref is malformed: it is spelled red-control/<row-id>" } }
+    else { RedObsBuilt { observation: RedProbe { red_at: red_at, red_base: red_base, green_at: green_at, probe_ref: probe_ref as NonEmptyStr } } }
+  }
 }
 
 fn handback_evidence_satisfied(e: HandbackEvidence) -> Bool {

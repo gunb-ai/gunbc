@@ -28,7 +28,7 @@ import gunbc.roadmap.roadmap_decomposition {
   LeafPathUnknown, LeafWrongItem, PathlessOnDecomposed, DecompositionAmbiguous,
   roadmap_claimed_grain_refusal_text,
 }
-import gunbc.roadmap.roadmap_status { RedControlEvidence, RedControlExecuted, RedControlTreeUnrecorded, RedControlNotRun, RedObservation, RedObservedOnMain, RedProbe, red_observation_holds, red_observation_from_arm }
+import gunbc.roadmap.roadmap_status { RedControlEvidence, RedControlExecuted, RedControlTreeUnrecorded, RedControlNotRun, RedObservation, RedObservedOnMain, RedProbe, red_observation_holds, red_observation_from_arm, RedObsBuilt, RedObsRefused }
 import gunbc.roadmap.roadmap_issue_command { IssueCommand, IssueCommandSubject, issue_command_apply }
 import gunbc.roadmap.roadmap_operator_acceptance {
   roadmap_operator_acceptance_line_parse, RoadmapAcceptanceLineParse, AcceptanceLineParsed, AcceptanceLineRefused,
@@ -113,8 +113,8 @@ fn roadmap_event_kind_from_words(kind: String, text: String, author: EventPrinci
                 Absent => none
                 Present { value: green_at } =>
                   match red_observation_from_arm(arm: arm as String, red_at: red_at as String, green_at: green_at as String, red_base: "", probe_ref: "") {
-                    Absent => none
-                    Present { value: ob } => if red_observation_holds(o: ob) { Present { value: RedTreeRecorded { observation: ob } } } else { none }
+                    RedObsBuilt { observation: ob } => Present { value: RedTreeRecorded { observation: ob } }
+                    RedObsRefused { rule: _, detail: _ } => none
                   }
               }
           }
@@ -133,8 +133,8 @@ fn roadmap_event_kind_from_words(kind: String, text: String, author: EventPrinci
                         Absent => none
                         Present { value: probe_ref } =>
                           match red_observation_from_arm(arm: arm as String, red_at: red_at as String, green_at: green_at as String, red_base: red_base as String, probe_ref: probe_ref as String) {
-                            Absent => none
-                            Present { value: ob } => if red_observation_holds(o: ob) { Present { value: RedTreeRecorded { observation: ob } } } else { none }
+                            RedObsBuilt { observation: ob } => Present { value: RedTreeRecorded { observation: ob } }
+                            RedObsRefused { rule: _, detail: _ } => none
                           }
                       }
                   }
@@ -327,28 +327,16 @@ fn roadmap_event_record_cli(repo_root: String, node: String, kind: String, text:
 // dag/test/claim/roadmap/roadmap_acceptance_evidence_witness.dag.
 fn roadmap_acceptance_record_cli(repo_root: String, receipt_line: String, pr_url: String, head_sha: String, author: String, red_kind: String, red_at: String, green_at: String, red_base: String, probe_ref: String) -> ProcessExit {
   // THE FAILING COMMIT IS DATA, OR THE RECORD IS REFUSED (ruling
-  // gunbc.design_ruling::executed_red_control_names_its_failing_commit). Each refusal has its own name.
-  // THE ARM IS SAID BY --red-kind, never read out of which arguments are empty: on_main takes red_at and
-  // green_at alone, probe takes those plus the base it breaks and the durable ref that makes it fetchable.
-  if red_kind != "on_main" && red_kind != "probe" { ExitFailure { code: 1, reason: "roadmap_acceptance_record_cli: --red-kind is required and must be on_main or probe: which standing the executed red control holds is said at the command line, not guessed from which arguments were left empty" } }
-  else if red_at == "" { ExitFailure { code: 1, reason: "roadmap_acceptance_record_cli: --red-at is required: the commit where the red control was observed FAILING" } }
-  else if green_at == "" { ExitFailure { code: 1, reason: "roadmap_acceptance_record_cli: --green-at is required: the commit where the same witness was observed PASSING" } }
-  else if !commit_sha_text_holds(head: red_at) { ExitFailure { code: 1, reason: "roadmap_acceptance_record_cli: --red-at is malformed: a commit is 40 lowercase hex characters" } }
-  else if !commit_sha_text_holds(head: green_at) { ExitFailure { code: 1, reason: "roadmap_acceptance_record_cli: --green-at is malformed: a commit is 40 lowercase hex characters" } }
-  else if red_at == green_at { ExitFailure { code: 1, reason: "roadmap_acceptance_record_cli: --red-at equals --green-at: a witness observed failing and passing on one tree was not observed failing there" } }
-  else if red_kind == "on_main" && red_base != "" { ExitFailure { code: 1, reason: "roadmap_acceptance_record_cli: --red-base names the commit a PROBE breaks; the on_main arm names none — pass --red-kind=probe or drop --red-base" } }
-  else if red_kind == "on_main" && probe_ref != "" { ExitFailure { code: 1, reason: "roadmap_acceptance_record_cli: --probe-ref names the durable ref a PROBE is pushed to; the on_main arm names none — pass --red-kind=probe or drop --probe-ref" } }
-  else if red_kind == "probe" && red_base == "" { ExitFailure { code: 1, reason: "roadmap_acceptance_record_cli: --red-base is required on the probe arm: a probe names the main commit it breaks" } }
-  else if red_kind == "probe" && probe_ref == "" { ExitFailure { code: 1, reason: "roadmap_acceptance_record_cli: --probe-ref is required on the probe arm: it is the durable ref red-control/<row-id> that makes red_at fetchable" } }
-  else if red_base != "" && !commit_sha_text_holds(head: red_base) { ExitFailure { code: 1, reason: "roadmap_acceptance_record_cli: --red-base is malformed: a commit is 40 lowercase hex characters" } }
-  else if red_base != "" && red_base == red_at { ExitFailure { code: 1, reason: "roadmap_acceptance_record_cli: --red-base equals --red-at: a probe breaks its base, so it is a different commit" } }
-  else {
-    match red_observation_from_arm(arm: red_kind, red_at: red_at, green_at: green_at, red_base: red_base, probe_ref: probe_ref) {
-      Absent => ExitFailure { code: 1, reason: "roadmap_acceptance_record_cli: the red observation is refused: the arm named by --red-kind does not match the commits and ref given" }
-      Present { value: ob } =>
-        if !red_observation_holds(o: ob) { ExitFailure { code: 1, reason: "roadmap_acceptance_record_cli: --probe-ref is malformed: it is spelled red-control/<row-id>" } }
-        else { roadmap_acceptance_record_with_pair(repo_root: repo_root, receipt_line: receipt_line, pr_url: pr_url, head_sha: head_sha, author: author, observation: ob) }
-    }
+  // gunbc.design_ruling::executed_red_control_names_its_failing_commit). THE ARM IS SAID BY --red-kind, never
+  // read out of which arguments are empty. This CLI checks which arguments are present and nothing else about
+  // their SHAPE: the closed arm set, which members the named arm carries, that every commit is 40 lowercase
+  // hex, that the pair is distinct, that a probe breaks a different base, and that the probe ref is spelled
+  // red-control/<row-id> are all decided ONCE by red_observation_from_arm (gunbc.design_argument::single_authority),
+  // whose refusal detail is surfaced verbatim.
+  match red_observation_from_arm(arm: red_kind, red_at: red_at, green_at: green_at, red_base: red_base, probe_ref: probe_ref) {
+    RedObsRefused { rule: _, detail: d } => ExitFailure { code: 1, reason: join(["roadmap_acceptance_record_cli: ", d as String], "") }
+    RedObsBuilt { observation: ob } =>
+      roadmap_acceptance_record_with_pair(repo_root: repo_root, receipt_line: receipt_line, pr_url: pr_url, head_sha: head_sha, author: author, observation: ob)
   }
 }
 
