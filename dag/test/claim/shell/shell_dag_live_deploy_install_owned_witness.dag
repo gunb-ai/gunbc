@@ -4,7 +4,13 @@ import std.types { Bool, String, List, NonEmptyStr, FilePath }
 import gunbc.live_deploy.desired { deployment_spec_srv1 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.posix.identity { PosixOwnerNames }
-import gunbc.ensure { EnsureAbsent, EnsureObservation, EnsurePlanAvailable, EnsurePlanUnavailable }
+import gunbc.ensure {
+  EnsureAbsent,
+  EnsureObservation,
+  EnsureObserved,
+  EnsurePlanAvailable,
+  EnsurePlanUnavailable,
+}
 import gunbc.managed_directory { DirectoryOwnerAllEveryoneTraverse, declared_directory_mode }
 import gunbc.owned_directory {
   OwnedDirectoryTarget,
@@ -36,7 +42,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // owned-directory install argv NEVER becomes shell text. Its consumers are all typed —
 // #gunbc.live_deploy.apply_legs::ApplyLegInstallDirectory (command: ArgvCommand),
 // #gunbc.executor_privileged_operation::ExecutorPrivilegedOperation (words:),
-// #gunbc.roadmap.roadmap_dashboard_instance_apply::roadmap_dashboard_instance_apply (args:), and
+// #gunbc.roadmap.roadmap_dashboard_instance_apply::dashboard_owned_directory_install (args:), and
 // #gunbc.host.host_effect_realize::live_deploy_apply_ensure_directory_on_host (command:). No join, no
 // sh -c, no ssh command string, no ExecStart line reaches it, and where an argv DOES cross into shell
 // text elsewhere in the deploy family it goes through the one quoted-or-refusing joiner
@@ -46,8 +52,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // refusal surface it produces carries no shell control word, the produced argv words carry none
 // either, and the declared path and the declared principal are realized in that argv.
 //
-// WHAT THIS FILE NO LONGER READS: #gunbc.live_deploy.emit::install_d_owned_command and
-// install_d_owned_for_user are DELETED by this row. The display chain that remains in emit.dag
+// WHAT THIS FILE NO LONGER READS: install_d_owned_command and install_d_owned_for_user (both
+// were in gunbc.live_deploy.emit) are DELETED by this row, so they carry no marker here -- a marker
+// to a deleted declaration is a refused reference, which is the point of the marker check. The display chain that remains in emit.dag
 // (install_d_owned_render_for over its own shell-inert path admission) is kept by exactly one other
 // claim module's arms and by no production caller — dangling-by-consumption, stated in the PR body.
 //
@@ -87,8 +94,15 @@ fn leaf_read(user: String, group: String) -> EnsureObservation<OwnedDirectoryRea
   }
 }
 
-// ADVERSARIAL (RED until the typed effect refuses what it cannot express; re-pointed onto the acting
-// route). The leaf stands under a principal this deploy does not declare, and adoption is refused. The
+// ADVERSARIAL, RE-POINTED ONTO THE ACTING ROUTE -- and the hazard class changed with the target, said
+// plainly: the planted input is no longer a path carrying a shell separator (that hazard is unreachable
+// for an argv that never becomes shell text, measured above); it is an OWNERSHIP the typed effect cannot
+// express. This arm is GREEN the moment it lands, because that refusal is already established in the
+// provider (#gunbc.owned_directory::owned_directory_plan with ForeignOwnershipRefuses) -- it is a move of
+// a guarded property, not a new refusal this PR introduces. The claim keeps its name so the ledger line
+// is comparable one-for-one across the move; renaming it would open a new claim identity mid-row and
+// lose the pair. What this arm would turn RED: an install plan produced over a foreign-owned leaf, or a
+// refusal surface carrying an operator.
 // typed effect must produce NO install plan — re-owning someone else's leaf would hand the demanding
 // principal whatever was found there — and the refusal surface it does produce must carry no shell
 // control word: `set -e`, `||`, `&&`, `;`, `2>/dev/null`. A refusal that reaches the fold as prose with
