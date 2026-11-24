@@ -44,7 +44,9 @@ import v2.workflow.floor_preparation_split {
   floor_preparation_report_sentinel,
   floor_preparation_report_prefix,
   floor_preparation_classify_report_line,
-  floor_preparation_contains
+  floor_preparation_contains,
+  FloorPreparationPopulationRow,
+  floor_preparation_population_rows
 }
 
 // ----------------------------------------------------------------------------------------------
@@ -206,11 +208,6 @@ data floor_preparation_runner_modelled_steps: List<String> = [
   "claim-gate", "report-print", "terminal-gate"
 ]
 
-type FloorPreparationPopulationPair {
-  entry: String,
-  claim: String,
-}
-
 type FloorPreparationSpawnObservation {
   rc: Int,
   stdout: String,
@@ -329,6 +326,14 @@ fn floor_preparation_bytes_of(path: String) -> Int {
   }
 }
 
+// The tree sha under measurement, read through the same spawn surface (no shell: argv direct).
+fn floor_preparation_git_tree_sha() -> String {
+  let outcome = floor_preparation_spawn_plain(
+    binary: "/usr/bin/git",
+    args: ["-C", floor_preparation_runner_root(), "rev-parse", "HEAD^{tree}"])
+  if outcome.rc == 0 { floor_preparation_first_token(outcome.stdout) } else { "GIT_TREE_UNREADABLE" }
+}
+
 fn floor_preparation_manifest_sha(kind: String) -> String {
   let content = filesystem_read(path: floor_preparation_manifest_path()).content
   let hits = filter(xs: floor_preparation_lines(text: content), predicate: fn(line) { floor_preparation_contains(haystack: line, needle: concat(" ", kind)) })
@@ -362,40 +367,16 @@ fn floor_preparation_supplies_hold(receipts: List<String>) -> Bool {
 // ----------------------------------------------------------------------------------------------
 // THE ARGV, model-rendered. The population is the model's own rows (the fold module owns them);
 // entries aggregate their claims into one --entry block each, and every leg is one claim_batch
-// --claim-run invocation over the three source roots. The committed population file is compared
+// claim_batch invocation over the three source roots. The committed population file is compared
 // to the model's rendering before any leg spawns; disagreement refuses the run.
 // ----------------------------------------------------------------------------------------------
 
-fn floor_preparation_population_pairs() -> List<FloorPreparationPopulationPair> {
-  let rendering = floor_preparation_population_rendering()
-  let opened = split(s: rendering, delimiter: "POPULATION-BEGIN\n")
-  let after = match opened.skip(n: 1).first() {
-    Present { value: v } => v
-    Absent {} => ""
-  }
-  let closed = split(s: after, delimiter: "\nPOPULATION-END")
-  let inside = match closed.first() {
-    Present { value: v } => v
-    Absent {} => ""
-  }
-  fold(floor_preparation_lines(text: inside), init: [], f: (acc, line) => {
-    let parts = split(s: line, delimiter: "|")
-    let entry = match parts.skip(n: 1).first() {
-      Present { value: v } => v
-      Absent {} => ""
-    }
-    let claim = match parts.skip(n: 2).first() {
-      Present { value: v } => v
-      Absent {} => ""
-    }
-    if claim == "" { acc } else { list_push(xs: acc, item: FloorPreparationPopulationPair { entry: entry, claim: claim }) }
-  })
-}
-
+// The typed rows fold straight into the argv: no rendering round trip, no second representation,
+// no dropped-row widening (review 97839).
 fn floor_preparation_population_entries() -> List<String> {
-  fold(floor_preparation_population_pairs(), init: [], f: (acc, pair) =>
-    if floor_preparation_has(xs: acc, x: pair.entry) { acc }
-    else { list_push(xs: acc, item: pair.entry) })
+  fold(floor_preparation_population_rows(), init: [], f: (acc, row) =>
+    if floor_preparation_has(xs: acc, x: row.entry) { acc }
+    else { list_push(xs: acc, item: row.entry) })
 }
 
 fn floor_preparation_functions_for(entry: String) -> String {
@@ -419,8 +400,8 @@ fn floor_preparation_pass_names(stdout_text: String) -> List<String> {
 }
 
 fn floor_preparation_entry_claim_names(entry: String) -> List<String> {
-  let pairs = filter(xs: floor_preparation_population_pairs(), predicate: fn(pair) { pair.entry == entry })
-  fold(pairs, init: [], f: (acc, pair) => list_push(xs: acc, item: pair.claim))
+  let rows = filter(xs: floor_preparation_population_rows(), predicate: fn(row) { row.entry == entry })
+  fold(rows, init: [], f: (acc, row) => list_push(xs: acc, item: row.claim))
 }
 
 fn floor_preparation_surviving_entries(untrimmed_stdout: String) -> List<String> {
@@ -449,11 +430,20 @@ fn floor_preparation_cause_of(entry: String, untrimmed_stdout: String) -> String
 // never inferred from a missing guard message.
 // ----------------------------------------------------------------------------------------------
 
-fn floor_preparation_leg_receipt(label: String, entries: List<String>, outcome: FloorPreparationSpawnObservation) -> String {
+// Every leg headlines its real rc, the instrument it ran, the instrument's sha256 AND byte count
+// read back FROM DISK at run time, the tree sha under measurement, and the kept-row count -- the
+// 0-byte-downloaded-binary-that-exits-0 failure mode seen in this lane fails the supply gate, and
+// a sha drifting from the pin fails it too.
+fn floor_preparation_leg_receipt(label: String, entries: List<String>, binary: String,
+                                 tree_sha: String, outcome: FloorPreparationSpawnObservation) -> String {
   concat(concat(concat("[runner-leg] leg=", label), " entries="),
     concat(join(entries, ","),
       concat(concat(" rc=", to_string(outcome.rc)),
-        concat(" stdout_bytes=", to_string(length(xs: outcome.stdout))))))
+        concat(concat(" instrument=", binary),
+          concat(concat(" BINARY_SHA256=", floor_preparation_sha_of(binary)),
+            concat(concat(" BINARY_BYTES=", to_string(floor_preparation_bytes_of(binary))),
+              concat(concat(" TREE_SHA=", tree_sha),
+                concat(" out_bytes=", to_string(length(xs: outcome.stderr))))))))))
 }
 
 fn floor_preparation_retained_body(untrimmed_stdout: String, graded_stdout: String) -> String {
@@ -483,26 +473,29 @@ fn floor_preparation_capture_run() -> String {
     concat(concat(join(supplies, "\n"), "\n"), verify_receipt)
   } else {
     let entries = floor_preparation_population_entries()
-    let population_ok = floor_preparation_population_file_agrees_hint()
+    let population_ok = floor_preparation_population_file_agrees()
+    let tree_sha = floor_preparation_git_tree_sha()
     let untrimmed = floor_preparation_spawn_slot(
       bound: floor_preparation_untrimmed_bound,
       binary: floor_preparation_pinned_claim_batch(),
       args: floor_preparation_leg_argv(entries: entries))
     let untrimmed_receipt = floor_preparation_leg_receipt(
-      label: "leg-untrimmed", entries: entries, outcome: untrimmed)
-    let survivors = floor_preparation_surviving_entries(untrimmed_stdout: untrimmed.stdout)
+      label: "leg-untrimmed", entries: entries, binary: floor_preparation_pinned_claim_batch(),
+      tree_sha: tree_sha, outcome: untrimmed)
+    let survivors = floor_preparation_surviving_entries(untrimmed_stdout: untrimmed.stderr)
     let graded = floor_preparation_spawn_slot(
       bound: floor_preparation_graded_bound,
       binary: floor_preparation_pinned_claim_batch(),
       args: floor_preparation_leg_argv(entries: survivors))
     let graded_receipt = floor_preparation_leg_receipt(
-      label: "leg-graded", entries: survivors, outcome: graded)
+      label: "leg-graded", entries: survivors, binary: floor_preparation_pinned_claim_batch(),
+      tree_sha: tree_sha, outcome: graded)
     let fold_legs_receipt = floor_preparation_receipt("fold-legs",
-      concat(concat("kept_untrimmed=", to_string(length(xs: floor_preparation_kept(text: untrimmed.stdout)))),
-        concat(" kept_graded=", to_string(length(xs: floor_preparation_kept(text: graded.stdout))))))
-    let kept_untrimmed = floor_preparation_kept(text: untrimmed.stdout)
-    let kept_graded = floor_preparation_kept(text: graded.stdout)
-    let retained = floor_preparation_retained_body(untrimmed_stdout: untrimmed.stdout, graded_stdout: graded.stdout)
+      concat(concat("kept_untrimmed=", to_string(length(xs: floor_preparation_kept(text: untrimmed.stderr)))),
+        concat(" kept_graded=", to_string(length(xs: floor_preparation_kept(text: graded.stderr))))))
+    let kept_untrimmed = floor_preparation_kept(text: untrimmed.stderr)
+    let kept_graded = floor_preparation_kept(text: graded.stderr)
+    let retained = floor_preparation_retained_body(untrimmed_stdout: untrimmed.stderr, graded_stdout: graded.stderr)
     let claims_args = concat(
       fold(floor_preparation_source_roots, init: [], f: (acc, root) => concat(acc, ["--source-root", root])),
       ["--entry", floor_preparation_witness_module,
@@ -511,7 +504,7 @@ fn floor_preparation_capture_run() -> String {
       bound: floor_preparation_claims_bound,
       binary: floor_preparation_pinned_claim_batch(),
       args: claims_args)
-    let passed = floor_preparation_pass_names(stdout_text: claims.stdout)
+    let passed = floor_preparation_pass_names(stdout_text: claims.stderr)
     let missing = fold(floor_preparation_claim_roster, init: [], f: (acc, name) =>
       if floor_preparation_has(xs: passed, x: name) { acc } else { list_push(xs: acc, item: name) })
     let report = floor_preparation_spawn_slot(
@@ -525,7 +518,10 @@ fn floor_preparation_capture_run() -> String {
       concat("entries=", to_string(length(xs: entries))))
     let splice_receipt = floor_preparation_receipt("splice-capture-rows",
       concat("blocks=5 target=", floor_preparation_authority_path))
-    let report_lines = fold(floor_preparation_lines(text: report.stdout), init: [], f: (acc, line) =>
+    // The host prints the returned String on the REFUSAL line -- observed on this host: the
+    // report text arrives on STDERR inside "error: function `floor_preparation_split_report`
+    // returned `...`, not `ProcessExit`", so the report lines are read from stderr.
+    let report_lines = fold(floor_preparation_lines(text: report.stderr), init: [], f: (acc, line) =>
       if floor_preparation_text_starts_with(text: line, prefix: floor_preparation_report_prefix) {
         list_push(xs: acc, item: line)
       } else { acc })
@@ -554,7 +550,7 @@ fn floor_preparation_capture_run() -> String {
            concat("excluded=", to_string(length(xs: survivors))))]),
       [graded_receipt,
        fold_legs_receipt,
-       floor_preparation_receipt("write-retained",
+       floor_preparation_receipt("retained-body-rendered",
          concat("bytes=", to_string(length(xs: retained)))),
        splice_receipt,
        floor_preparation_provenance(leg: "untrimmed",

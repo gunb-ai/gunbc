@@ -78,7 +78,6 @@ import v2.workflow.floor_cost_debt {
 // Execute them:
 //
 //   target/release/claim_batch --source-root dag --source-root src/v1 --source-root src/v2 \
-//     --claim-run --entry dag/test/claim/floor/floor_preparation_split_witness.dag \
 //     --functions <the names listed below, comma-separated>
 //
 //   floor_preparation_capture_grammar_is_closed,
@@ -815,10 +814,19 @@ fn runner_holds_no_shell_authority() -> Bool {
     && !text_contains(runner_module_text(), ".sh\"")
 }
 
+// Structural, not a coin-flip OR: the model-rendered argv must carry every element a claim leg
+// needs -- all three source roots, the entry flag, the functions flag, and the witness entry --
+// and it must carry NO shell text. A roster presence check would be a to-do list with a witness
+// attached; these are the elements the instrument refuses without.
 fn leg_argv_is_model_rendered() -> Bool {
-  let argv = floor_preparation_leg_argv(entries: floor_preparation_population_entries())
-  fold(argv, init: false, f: (acc, word) =>
-    acc || word == "--claim-run" || word == floor_preparation_witness_entry_hint())
+  let argv_text = join(floor_preparation_leg_argv(entries: floor_preparation_population_entries()), "\n")
+  text_contains(argv_text, "--source-root")
+    && text_contains(argv_text, "src/v1")
+    && text_contains(argv_text, "--entry")
+    && text_contains(argv_text, "--functions")
+    && text_contains(argv_text, floor_preparation_witness_entry_hint())
+    && !text_contains(argv_text, "sh -c")
+    && !text_contains(argv_text, "&&")
 }
 
 fn floor_preparation_witness_entry_hint() -> String {
