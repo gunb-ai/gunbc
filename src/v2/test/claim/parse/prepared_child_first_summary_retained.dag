@@ -2,12 +2,14 @@
 //
 // This module READS the field the change adds: PreparedSequence.right_first, the retained FIRST
 // summary of a sequence's right child. That field does not exist at origin/main, so this module
-// cannot RESOLVE there: running it on the un-fixed tree is a resolution ERROR, not a false claim,
-// and per the lane manager's rule it is therefore never offered as the red witness. The red witness
-// is the [recompute-trace] ledger's duplicate-demand row for expr_first_fold_from_prepared at the
-// preparation site (prepared_child_first_summary.dag drives it). What this module adds is the
-// statement of what the rebuild was for: the summary preparation recomputed is the very value the
-// child already carried, so the recomputation was waste and nothing else.
+// cannot RESOLVE there -- and that refusal IS the red control (lane operator ruling, 2026-11-24):
+// gunbc compile of THIS module against main's parse.dag must refuse with a hard diagnostic naming
+// field 'right_first', while the sibling module prepared_child_first_summary.dag gates rc 0 on the
+// same binary and tree. Against the landed production change this module compiles and its claims
+// execute: the summary preparation used to rebuild is the very value the child already carried, so
+// the rebuild was waste and nothing else. The [recompute-trace] ledger rows from
+// prepared_child_first_summary.dag are the instrument; probe A's duplicate row is the sensitivity
+// control proving the ledger would print a row had the real grammar contained one.
 //
 // The oracle is expr_first_fold_from_prepared itself, kept in production exactly so this comparison
 // can be stated from outside (lane manager ruling: keep it; its single external caller was the
