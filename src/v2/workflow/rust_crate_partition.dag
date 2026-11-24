@@ -416,6 +416,18 @@ fn stage0_v1_infer_modules() -> List<String> {
     "v1_compiler_parse",
     "v1_compiler_coercion",
     "v1_compiler_compiler_tests_rust",
+    // v1_tests_claim_v1_source_chars_once_identity is the claim-test module authored by roadmap
+    // node v1-source-chars-converted-once (src/v1/tests/claim/v1_source_chars_once_identity.dag). A
+    // node rosters the module it authors, so this row is owned by that node, not by the stage0
+    // coverage row. It joins the v1-infer OWNED unit beside its sibling test module
+    // v1_compiler_compiler_tests_rust: it imports only v1.std.core and v1.compiler.tokenize (both
+    // v1-infer) plus std_types/extdeps already module-bearing, so no cross-unit edge is hand-listed
+    // here -- the emitted cross-unit edges are derived, not transcribed
+    // (gunbc.design_argument::how_to_work). Its emitted self-edges (1 runtime-prelude,
+    // 1 reexport-facade, 5 declared-import, 9 semantic-source-reference, 2 inline-path-reference)
+    // are answered by this module-bearing row; the admission counts endpoints by target, so this
+    // row drives its uncovered-target count from 18 to 0.
+    "v1_tests_claim_v1_source_chars_once_identity",
     "v1_compiler_resolve",
     "v1_compiler_infer",
     "v1_compiler_infer_access",

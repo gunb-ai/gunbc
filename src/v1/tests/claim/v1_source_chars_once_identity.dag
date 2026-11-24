@@ -1,42 +1,16 @@
 module v1.tests.claim.v1_source_chars_once_identity
 
-// ROADMAP NODE v1-source-chars-converted-once -- the EXECUTED differential (semantics
-// preserved) and the red/green pivot for this node.
+// ROADMAP NODE v1-source-chars-converted-once -- the executed differential: it runs the real
+// constructors and asserts the new ingest path (V1LexArtifact.source_chars via
+// newline_index_from_char_codes) and the old path (its own chars(source) via build_newline_index)
+// produce identical newline indices on the corpus, so the change is provably semantics-preserving.
 //
-// WHAT PROVES WHAT:
-//  * The "one source->chars conversion per ingested file" property is carried by the TYPE
-//    CHANGE plus the reviewed call sites, not by any test. `newline_index_from_char_codes`
-//    takes `char_codes: List<Int>` -- already-converted codes -- so a correct ingest site can
-//    only supply the tokenizer's single conversion. The two ingest sites,
-//    v1.compile::front_end_sources and v1.compile::parse_revision_declarations_with_environment,
-//    both pass char_codes: artifact.source_chars. The build_newline_index wrapper is retained
-//    only for non-ingest callers; the ingest file no longer imports or calls it.
-//  * This module EXECUTES the real constructors and compares their outputs -- the executed
-//    evidence that the change is semantics-preserving. It does not, and cannot, count chars()
-//    calls at run time: build_newline_index(file, source) and
-//    newline_index_from_char_codes(file, chars(source)) are intentionally output-identical (that
-//    is the semantics-preservation requirement), so no output property distinguishes which path
-//    ran. That is exactly why the "once" property is a type/diff property, not a behavioural one,
-//    and why a source-text grep would add no consumer here (gunbc.design_argument::fail_closed).
-//
-// RED/GREEN: this claim is the pivot. On main it cannot be satisfied -- the
-// newline_index_from_char_codes constructor it consumes does not exist, so the ingest cannot yet
-// take the tokenizer's characters. At the post-change head it resolves and passes: for each
-// corpus file the index the NEW ingest builds (from V1LexArtifact.source_chars via
-// newline_index_from_char_codes) is IDENTICAL to the index the OLD path built (its own
-// chars(source) via build_newline_index) -- same file, same newline offsets -- and the character
-// list the ingest feeds the index equals the raw chars(source) the old path converted, on small
-// newline-shaped inputs. Token emission is byte-for-byte unchanged by the change (the artifact
-// only gained a source_chars field), so the token stream is identical before/after by
-// construction; this module is the executed newline-index / consumed-characters differential.
-//
-// (1) newline_index_identical_before_and_after_on_corpus -- per corpus file, same file + same
-//     newline offsets (the index payload; sparse, so cheap). Full char_codes equality would be
-//     O(n^2) in the interpreter on real sources, so char_codes equality is checked on small
-//     inputs in (2); its general correctness also follows from v1.compiler.tokenize storing
-//     source_chars: c where c = chars(source).
-// (2) tokenizer_chars_equal_raw_source_chars_on_corpus -- artifact.source_chars equals raw
-//     chars(source) on small, newline-shaped inputs (element-wise list equality is trivial cost).
+// WHY THIS SHAPE AND NOT A COUNTER: the "one conversion per file" handback is carried by the type
+// change, not observable here -- build_newline_index(file, source) and
+// newline_index_from_char_codes(file, chars(source)) are intentionally output-identical, so no run
+// time output distinguishes which path ran and no chars() call count is available to this claim. That
+// is why this module asserts equality (the differential) rather than a conversion count, and why a
+// source-text grep would add no consumer here (gunbc.design_argument::fail_closed).
 
 import extdeps.filesystem.filesystem_io
 import extdeps.languages.dag.syntax { dag_parse_environment }
