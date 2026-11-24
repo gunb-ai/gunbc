@@ -177,6 +177,34 @@ test fn a_second_merge_on_the_same_node_is_refused() -> Bool {
   rule_of(a) == "already-merged" && accepted_standing(envs: [acc, first])
 }
 
+// THE ONCE-ONLY LAW IS SCOPED TO THE LIVE ACCEPTANCE (review 97804). A node may carry a SECOND
+// AcceptanceRecordedEvent — the live one is the latest — so a merge belonging to an EARLIER, superseded
+// acceptance must not be read as this head's duplicate. Without the scoping, accepting on a new head after
+// an earlier head was merged would have its merge refused already-merged forever, with the wrong reason: a
+// fabricated duplicate, which gunbc.design_argument::fail_closed rules out. Here acc_a @ thread()/head() is
+// merged, then acc_b @ thread_b/head_b becomes the live acceptance; merging head_b is ADMITTED, yet a second
+// merge of head_b is still already-merged — once per acceptance holds on the new head too.
+test fn a_new_head_merges_after_an_earlier_acceptance_was_merged() -> Bool {
+  let head_b = "11223344556677889900aabbccddeeff00112233"
+  let thread_b = "https://github.com/gunb-ai/gunbc/pull/15299"
+  let msha_b = "22334455667788990011aabbccddeeff00112233"
+  let acc_a = acceptance_env(evidence: AcceptedOnPullRequestHead {
+    pr_url: thread() as NonEmptyStr, head_sha: head() as NonEmptyStr }, at: "t1")
+  let merge_a = merge_of(url: thread(), sha: head(), at: merged_at(), msha: merge_sha(),
+    parent: Present { value: acc_a.id }, at_time: "t2")
+  let acc_b = acceptance_env(evidence: AcceptedOnPullRequestHead {
+    pr_url: thread_b as NonEmptyStr, head_sha: head_b as NonEmptyStr }, at: "t3")
+  let admitted_b = roadmap_pull_request_merge_admission(envs: [acc_a, merge_a, acc_b],
+    merge: PullRequestMergeEvidence { pr_url: thread_b as NonEmptyStr, head_sha: head_b as NonEmptyStr,
+      merged_at: merged_at() as NonEmptyStr, merge_sha: msha_b as NonEmptyStr })
+  let merge_b = merge_of(url: thread_b, sha: head_b, at: merged_at(), msha: msha_b,
+    parent: Present { value: acc_b.id }, at_time: "t4")
+  let second_b = roadmap_pull_request_merge_admission(envs: [acc_a, merge_a, acc_b, merge_b],
+    merge: PullRequestMergeEvidence { pr_url: thread_b as NonEmptyStr, head_sha: head_b as NonEmptyStr,
+      merged_at: merged_at() as NonEmptyStr, merge_sha: msha_b as NonEmptyStr })
+  admitted(admitted_b) && rule_of(second_b) == "already-merged"
+}
+
 // REFUSAL PLANT — malformed-merge-evidence. The law that compares heads is worthless if a head can arrive
 // as prose, so a sha that is not 40 hex digits refuses, and so does a missing member: the command line
 // builds no evidence at all rather than an evidence with a hole in it (never an empty string, never a

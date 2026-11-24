@@ -758,8 +758,11 @@ fn roadmap_merge_against_accepted_head(
       "the head that merged (", merge.head_sha as String, ") is not the head this node's acceptance accepted (",
       accepted_head, ") — a new head needs a new acceptance, recorded before the merge it gates"], "") as NonEmptyStr }
   }
-  else if roadmap_node_has_merge_event(envs: envs) {
-    MergeRefused { rule: "already-merged" as NonEmptyStr, detail: "this node's history already carries a merge event, and a merge lands once — an append-only log does not re-merge a head" as NonEmptyStr }
+  else if roadmap_node_merge_landed_for(envs: envs, pr_url: accepted_url, head_sha: accepted_head) {
+    MergeRefused { rule: "already-merged" as NonEmptyStr, detail: join([
+      "the live acceptance (", accepted_url, " @ ", accepted_head,
+      ") already carries its merge event, and a merge lands once — an append-only log does not re-merge a head. ",
+      "A merge of a DIFFERENT head does not block this one: only this head's own merge is a duplicate"], "") as NonEmptyStr }
   }
   else { MergeAdmitted }
 }
@@ -819,6 +822,29 @@ fn roadmap_node_has_merge_event(envs: List<RoadmapEventEnvelope>) -> Bool {
   match roadmap_node_merge_event(envs: envs) {
     Absent => false
     Present { value: _ } => true
+  }
+}
+
+// HAS THIS HEAD'S OWN MERGE ALREADY LANDED? The once-only law (gunbc.design_ruling::
+// acceptance_is_earned_on_a_head_and_the_merge_is_its_own_event) is scoped to the LIVE acceptance, not to the
+// node's whole history: "a merge lands once" means a given head on a given thread merges once. A node may
+// legally carry a second AcceptanceRecordedEvent (the live one is the latest), so a prior merge belongs to an
+// EARLIER, superseded acceptance and must NOT block the new head's merge — checking the whole history would
+// refuse it forever with the wrong reason (a silent fabrication of a duplicate that is not one, which
+// gunbc.design_argument::fail_closed rules out). Existential scan: true iff some PullRequestMergedEvent names
+// this very (pr_url, head_sha).
+fn roadmap_node_merge_landed_for(envs: List<RoadmapEventEnvelope>, pr_url: String, head_sha: String) -> Bool {
+  match envs.first() {
+    Absent => false
+    Present { value: env } => match env.event.kind {
+      PullRequestMergedEvent { merge } =>
+        if (merge.pr_url as String) == pr_url && (merge.head_sha as String) == head_sha {
+          true
+        } else {
+          roadmap_node_merge_landed_for(envs: envs.skip(n: 1), pr_url: pr_url, head_sha: head_sha)
+        }
+      _ => roadmap_node_merge_landed_for(envs: envs.skip(n: 1), pr_url: pr_url, head_sha: head_sha)
+    }
   }
 }
 
