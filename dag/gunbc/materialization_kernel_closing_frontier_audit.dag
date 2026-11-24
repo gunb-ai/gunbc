@@ -1,6 +1,7 @@
 module gunbc.materialization_kernel_closing_frontier_audit
 
 import std.types { Bool, Int, List, NonEmptyStr }
+import gunbc.audit_verdict { ClauseVerdict, clause_verdict_delivered }
 
 data materialization_kernel_closing_frontier_audit_note: String = "RENAMED from gunbc.materialization_kernel_closing_contract (still-bat-561 operator ruling, 2026-08-02, msg_9609b3a3): this module is an AUDIT of the v1-materialization-kernel roadmap node's closing frontier, not the closing contract itself. The original framing was a gunbc.design_argument::fail_closed violation at the architectural level — verdicts were AUTHORED (hand-written Delivered/PartiallyDelivered/NotDelivered rows with prose evidence) rather than DERIVED from executed observations, so editing a row from NotDelivered to Delivered would green the file without executing any operation the evidence string names. That is exactly the named anti-pattern: 'a check satisfiable by editing the declaration while the realizer still lies.' A genuine closing contract would need each clause to carry a typed OBSERVATION (ExecutedPass / ExecutedRefusal / Unavailable) with the verdict DERIVED from it, not authored beside it — that machinery does not exist here and this file does not claim to be that.
 
@@ -10,27 +11,20 @@ Per-clause sourcing (audited 2026-08-02, session quick-swift-501, against PR #75
 
 WHAT REMAINS OUTSIDE THIS FILE'S AUTHORITY: acceptance of the roadmap node itself is a gunbc.roadmap.roadmap_model RoadmapAcceptanceReceipt, authored by the operator (roadmap_acceptance_receipt_note names accepted_by as evidence, not a worker action); this audit does not accept the node and does not claim to, and it is not itself the node's closing contract. It gives a human reviewer, or a future execution-derived contract, something concrete to check against instead of prose."
 
-type ClauseVerdict
-  = NotDelivered { reason: NonEmptyStr }
-  | PartiallyDelivered { reason: NonEmptyStr, evidence: NonEmptyStr }
-  | Delivered { witness_module: NonEmptyStr, witness_fn: NonEmptyStr, evidence: NonEmptyStr }
-
 type FrontierClause {
   id: NonEmptyStr
   statement: NonEmptyStr
   verdict: ClauseVerdict
 }
 
-// The one exhaustive match on ClauseVerdict in this module; every other Bool-producing projection
-// on a FrontierClause routes through this (review 47530, gunbc.design_argument::single_authority — an undeclared sum re-matched
-// by a family of free predicates duplicates the same exhaustiveness fact at each call site).
+// The rung question on a FrontierClause routes through the ONE exhaustive match on ClauseVerdict, which
+// lives in gunbc.audit_verdict (review 98038, gunbc.design_argument::single_authority and
+// gunbc.design_argument::minimize_redundancy — the verdict sum and its rung algebra are declared once, in
+// that home, and imported here; review 47530's rule — every Bool-producing projection on a FrontierClause
+// routes through the one match — is honored one layer down, in the verdict's own home).
 
 fn clause_delivered(c: FrontierClause) -> Bool {
-  match c.verdict {
-    Delivered { witness_module: _, witness_fn: _, evidence: _ } => true
-    PartiallyDelivered { reason: _, evidence: _ } => false
-    NotDelivered { reason: _ } => false
-  }
+  clause_verdict_delivered(v: c.verdict)
 }
 
 // DELETED (review 47530 round 2, still-bat-561): this module previously carried

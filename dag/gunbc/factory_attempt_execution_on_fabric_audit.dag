@@ -1,6 +1,7 @@
 module gunbc.factory_attempt_execution_on_fabric_audit
 
 import std.types { Bool, Int, List, NonEmptyStr }
+import gunbc.audit_verdict { ClauseVerdict, clause_verdict_delivered, clause_verdict_rung }
 
 // FIRST-SLICE AUDIT of the roadmap node factory-attempt-execution-on-fabric-lease. The row's first_slice:
 // enumerate every state the belt holds that execution reads at start, and map each to the fabric record
@@ -44,36 +45,25 @@ import std.types { Bool, Int, List, NonEmptyStr }
 // by NUMBER (red control (1) / (2) / (3), defined in gunbc.roadmap.roadmap_authority), never restating
 // its text as its own planning fact.
 
-type FactoryAuditVerdict
-  = NotDelivered { reason: NonEmptyStr }
-  | PartiallyDelivered { reason: NonEmptyStr, evidence: NonEmptyStr }
-  | Delivered { witness_module: NonEmptyStr, witness_fn: NonEmptyStr, evidence: NonEmptyStr }
+// The verdict sum is NOT declared here: it is gunbc.audit_verdict::ClauseVerdict, imported (review 98038,
+// gunbc.design_argument::single_authority and gunbc.design_argument::minimize_redundancy — the rung fact
+// is decided once in that home; re-declaring it here would be a fork and a re-invented concept).
 
 type FactoryAuditClause {
   id: NonEmptyStr
   statement: NonEmptyStr
-  verdict: FactoryAuditVerdict
+  verdict: ClauseVerdict
 }
 
-// The ONE exhaustive match on FactoryAuditVerdict in this module (gunbc.design_argument::single_authority —
-// an undeclared sum re-matched by a family of free predicates duplicates the same exhaustiveness fact at
-// each call site), mirroring gunbc.materialization_kernel_closing_frontier_audit::clause_delivered.
-// Rungs: 0 NotDelivered, 1 PartiallyDelivered, 2 Delivered. Every rung question derives from this match.
-
-fn factory_attempt_verdict_rung(v: FactoryAuditVerdict) -> Int {
-  match v {
-    NotDelivered { reason: _ } => 0
-    PartiallyDelivered { reason: _, evidence: _ } => 1
-    Delivered { witness_module: _, witness_fn: _, evidence: _ } => 2
-  }
-}
+// Rung questions on an audit clause delegate to the ONE exhaustive match in gunbc.audit_verdict
+// (gunbc.design_argument::single_authority). Rungs: 0 NotDelivered, 1 PartiallyDelivered, 2 Delivered.
 
 fn factory_attempt_clause_rung(c: FactoryAuditClause) -> Int {
-  factory_attempt_verdict_rung(v: c.verdict)
+  clause_verdict_rung(v: c.verdict)
 }
 
 fn factory_attempt_clause_delivered(c: FactoryAuditClause) -> Bool {
-  factory_attempt_clause_rung(c: c) == 2
+  clause_verdict_delivered(v: c.verdict)
 }
 
 fn factory_attempt_clause_count(clauses: List<FactoryAuditClause>) -> Int {
