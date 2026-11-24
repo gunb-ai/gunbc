@@ -4,6 +4,7 @@ import std.types { Bool, Int, List, Present, Absent, String }
 import std.algebra { length, list_push }
 import std.list { distinct_by_key }
 import std.measure { Millisecond, millisecond, millisecond_count }
+import extdeps.filesystem.filesystem_io { Filesystem }
 
 // THE TIME CARRIER. Every duration in this authority -- the split's two sides and their total, a
 // module's cost, the in-force phase reading, a parse variant's amount, an entry's resolve time, the
