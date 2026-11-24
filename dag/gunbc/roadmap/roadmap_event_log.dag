@@ -2663,6 +2663,27 @@ fn roadmap_leaf_in_flight_set(node: RoadmapNodeId, lines: List<String>) -> LeafI
   }
 }
 
+// THE SAME SET, OVER ALREADY-DECODED ENVELOPES. roadmap_leaf_in_flight_set parses the item's wire lines;
+// a surface that has already read and decoded the item's log (roadmap_events_read_all carries envelopes, not
+// the raw lines) re-derives the set here instead of opening the log a second time. The fold, the causal
+// ordering and the empty init are the ones authority's -- nothing is recomputed beside it, and an unordered
+// history refuses exactly as the lines entry does, so the two entries can never disagree. The envelopes must
+// be ONE item's own log, the way the lines entry takes one item's lines.
+fn roadmap_leaf_in_flight_from_envs(envs: List<RoadmapEventEnvelope>) -> LeafInFlightRead {
+  match roadmap_event_causal_chain(envs: envs) {
+    Absent => InFlightRefused { cause: InFlightHistoryUnordered {} }
+    Present { value: chain } => roadmap_leaf_in_flight_fold(
+      chain: chain,
+      envs: envs,
+      held: [],
+      closed: [],
+      pathless_claims: 0,
+      absorbed_claims: 0,
+      acc: roadmap_standing_acc_empty(),
+    )
+  }
+}
+
 // EVERY LINE IS READ, OR THE READ REFUSES, AT THE FIRST LINE THAT CANNOT BE USED. Index-walked, so a
 // refusal can name which line of the log is the problem; an empty log is an empty set, which is the
 // honest answer for an item nobody has claimed.
