@@ -86,6 +86,13 @@ data butch_tailnet_join_is_operator_handled_2026_11_21: DesignRuling = DesignRul
   provenance: "Operator, 2026-11-21, to session clever-raven-401, later the same day as gunbc.design_ruling::butch_serving_retirement_is_operator_handled_2026_11_21. Asked whether butch's (srv14) tailnet join is also operator-handled or waits on the parked modelled join route (PR 16820, held behind the fleet-converge budget question), the operator said, verbatim: \"I will do the tailnet join + engine retirement now\", and then, verbatim: \"but you'll need to record/model that in the repo\". DECIDED: the operator joins butch to the tailnet by hand, so PR 16820's join route is not the route for butch, and the repository must model the result. INTERPRETATION (mine, not the operator's words): the obligations are that butch's tailnet identity becomes its fleet anchor and its desired state stops declaring the serving engines the operator retired, so a later converge cannot bring them back; both are grounded in reads of the host, never in this row, and this row records who performs the join, not that it has happened.",
 }
 
+data srv14_serving_memory_charge_retirement_operator_approved_2026_11_24: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "srv14_serving_memory_charge_retirement_operator_approved_2026_11_24"),
+  decided: "2026-11-24",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "selection_precedes_convergence"),
+  provenance: "Operator, 2026-11-24, relayed by session clever-raven-401 after this session escalated the sign-off the frontier gunbc.serving.serving_reservation::srv14_serving_memory_charge_retirement_frontier requires before srv14_strata_reservation may be deleted. The operator said, verbatim: \"yes you can retire the 192gib serving reservation\". That answers the frontier's demand for the operator's explicit sign-off WITH THE MEASURED NUMBER ATTACHED: the number is the post-hand-retirement quiescent read of butch (srv14) in gunbc.host.host_memory_observation::srv14_memavailable_quiescent_read, from fleet-converge host_memory_observe run 45321352046 (artifact host-memory-quiescent-observe-receipt 14888746623): host_total 269248028672 B, MemAvailable high-water 265779920896 B (~247.5 GiB free), which is the base residency (~3.23 GiB) with the two Strata engines gone. INTERPRETATION (mine, not the operator's words): the freed 2 x 96 GiB serving charge goes to butch's remote-build pool, not to CI -- srv14's CI width stays zero in gunbc.runner.runner_slot_allocation::ruled_zero_ci_widths, so this retirement raises no CI memory budget; the operator's approval therefore covers releasing srv14_strata_reservation, the butch_a/b_strata_engine_memory rows and the srv14_strata_engine_residency_at_read subtraction together, which is what discharges the frontier's trigger (2) and lets butch be enrolled as a remote-build serving host.",
+}
+
 data thermal_runner_cap_lifted_2026_11_08: DesignRuling = DesignRuling {
   reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "thermal_runner_cap_lifted_2026_11_08"),
   decided: "2026-11-08",
@@ -1487,6 +1494,7 @@ fn design_rulings() -> List<DesignRuling> {
     hosted_ci_bridges_to_remote_builds_and_adopts_work_execution_redesign,
     butch_serving_retirement_is_operator_handled_2026_11_21,
     butch_tailnet_join_is_operator_handled_2026_11_21,
+    srv14_serving_memory_charge_retirement_operator_approved_2026_11_24,
     srv15_arrival_reviewer_selected_by_operator,
     // The srv15 versions-read backstop row (#16640) was missing from the roster, so
     // documentary_refs never checked its citation or what it governs (manager ruling
