@@ -80,10 +80,10 @@ fn compile_probe(entry: String) -> MultiModuleCompileFixtureOutcome {
 // This IS the blind spot — the shape wall does not fire because sig=Absent.
 test fn unimported_kernel_name_mislabeled_call_compiles_clean() -> Bool {
   match compile_probe(unimported_mislabel_entry) {
-    FixtureCompileCompleted { diagnostics: rows, ... } =>
+    FixtureCompileCompleted { module_count: _, emitted_files: _, resolved_rust_functions: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
       count(fixture_blocking_rows(rows: rows)) == 0
-    FixtureCompileRefused { ... } => false
-    FixtureInstrumentRefused { ... } => false
+    FixtureCompileRefused { module_count: _, diagnostics: _, source_digest: _, compiler_digest: _ } => false
+    FixtureInstrumentRefused { cause: _ } => false
   }
 }
 
@@ -92,11 +92,11 @@ test fn unimported_kernel_name_mislabeled_call_compiles_clean() -> Bool {
 // when the name is unresolved. The pairing makes the red a guarantee, not a complaint.
 test fn imported_kernel_name_mislabeled_call_is_refused() -> Bool {
   match compile_probe(imported_mislabel_entry) {
-    FixtureCompileCompleted { diagnostics: rows, ... } =>
+    FixtureCompileCompleted { module_count: _, emitted_files: _, resolved_rust_functions: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
       fixture_has_class(rows: rows, wanted: "CallArgumentNameUnknown")
-    FixtureCompileRefused { diagnostics: rows, ... } =>
+    FixtureCompileRefused { module_count: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
       fixture_has_class(rows: rows, wanted: "CallArgumentNameUnknown")
-    FixtureInstrumentRefused { ... } => false
+    FixtureInstrumentRefused { cause: _ } => false
   }
 }
 
@@ -106,9 +106,9 @@ data imported_correct_entry: String = "module suft.control\nimport std.algebra {
 
 test fn imported_correctly_labeled_call_compiles_clean() -> Bool {
   match compile_probe(imported_correct_entry) {
-    FixtureCompileCompleted { diagnostics: rows, ... } =>
+    FixtureCompileCompleted { module_count: _, emitted_files: _, resolved_rust_functions: _, diagnostics: rows, source_digest: _, compiler_digest: _ } =>
       count(fixture_blocking_rows(rows: rows)) == 0
-    FixtureCompileRefused { ... } => false
-    FixtureInstrumentRefused { ... } => false
+    FixtureCompileRefused { module_count: _, diagnostics: _, source_digest: _, compiler_digest: _ } => false
+    FixtureInstrumentRefused { cause: _ } => false
   }
 }
