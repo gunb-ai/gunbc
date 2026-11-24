@@ -1,6 +1,7 @@
 module gunbc.roadmap.roadmap_work_item_projection
 
 import std.types { String, Int, Bool, List }
+import std.optional { Optional, Present, Absent }
 import std.decl_ref { declaration_ref_display_key }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId, LeafPath }
 import gunbc.roadmap.roadmap_event_log {
@@ -98,8 +99,8 @@ type ProjectionRow {
   item_state: String
   leaves: List<ProjectionLeaf>
   in_flight: List<ProjectionInFlight>
-  latest_event: String
-  acceptance_evidence: String
+  latest_event: Optional<String>
+  acceptance_evidence: Optional<String>
   events: List<ProjectionEvent>
 }
 
@@ -172,17 +173,27 @@ fn projection_in_flight_entries(entries: List<LeafInFlightEntry>, item: String) 
     })
 }
 
-// The kinds the boundary carries as item events: claimed, released, acceptance recorded, retired.
-fn projection_carried_kind_word(w: String) -> Bool {
-  w == "claimed" || w == "released" || w == "acceptance_recorded" || w == "retired"
+// WHICH EVENTS THE PROJECTION CARRIES: the boundary's four kinds -- claimed, released, acceptance
+// recorded, retired. Matched on the LOG's OWN VARIANTS, never by comparing a rendered word: renaming a
+// kind or adding one must not silently drop an event from the history the row serves (single_authority: no
+// second place decides what a kind is; fail_closed: make the wrong shape unwritable, not merely caught).
+// roadmap_event_kind_word stays the single authority for the WORD shown in events[].kind -- display only.
+fn projection_kind_is_carried(kind: RoadmapEventKind) -> Bool {
+  match kind {
+    Claimed { assignee: _, return_to: _, grain: _ } => true
+    Released => true
+    Retired { reason: _ } => true
+    AcceptanceRecordedEvent { receipt: _, evidence: _ } => true
+    _ => false
+  }
 }
 
 // THE ITEM'S PAST EVENTS, read from the log at THIS read -- the log's own rows, never a copy the row
-// keeps. Only the boundary's carried kinds appear; each carries the day the log recorded it at.
+// keeps. Only the boundary's carried kinds appear (matched by variant, above); each carries the day the
+// log recorded it at.
 fn projection_events_of(envs: List<RoadmapEventEnvelope>, item: String) -> List<ProjectionEvent> {
   map(
-    filter(envs, e => (e.event.node as String) == item
-      && projection_carried_kind_word(w: roadmap_event_kind_word(k: e.event.kind))),
+    filter(envs, e => (e.event.node as String) == item && projection_kind_is_carried(kind: e.event.kind)),
     e => ProjectionEvent {
       kind: roadmap_event_kind_word(k: e.event.kind),
       recorded_at: e.event.recorded_at,
@@ -190,24 +201,30 @@ fn projection_events_of(envs: List<RoadmapEventEnvelope>, item: String) -> List<
 }
 
 // THE LATEST EVENT of the item, read from the log at this read: the kind word of its most recent event,
-// or "none" when the log has carried nothing for it -- never a standing guessed from absence.
-fn projection_latest_event_of(envs: List<RoadmapEventEnvelope>, item: String) -> String {
-  fold(filter(envs, e => (e.event.node as String) == item), init: "none",
-    f: fn(acc, e) { roadmap_event_kind_word(k: e.event.kind) })
+// or ABSENT when the log has carried nothing for it -- never a standing guessed from absence, and never a
+// "none" sentinel that a reader could not tell from a real kind. Absence is Optional; the wire says null.
+fn projection_latest_event_of(envs: List<RoadmapEventEnvelope>, item: String) -> Optional<String> {
+  fold(filter(envs, e => (e.event.node as String) == item), init: Absent as Optional<String>,
+    f: fn(_acc, e) { Present { value: roadmap_event_kind_word(k: e.event.kind) } })
+}
+
+// The one carried kind whose event holds the acceptance's own evidence URL. Matched by variant, not word.
+fn projection_kind_is_acceptance_recorded(kind: RoadmapEventKind) -> Bool {
+  match kind { AcceptanceRecordedEvent { receipt: _, evidence: _ } => true _ => false }
 }
 
 // THE ACCEPTANCE EVIDENCE the log carries for the item: the PR evidence URL on its acceptance_recorded
-// row -- the acceptance's own machine fact, read from the log at this read, not a re-spelling. An item
-// with no acceptance carries the empty string, shown honestly rather than omitted.
-fn projection_acceptance_evidence_of(envs: List<RoadmapEventEnvelope>, item: String) -> String {
+// row -- the acceptance's own machine fact, read from the log at this read, not a re-spelling. Selection is
+// by the AcceptanceRecordedEvent VARIANT (not a rendered-word comparison), and an item with no acceptance
+// is ABSENT, not the empty string: a reader must tell "no acceptance" (null) apart from an empty URL.
+fn projection_acceptance_evidence_of(envs: List<RoadmapEventEnvelope>, item: String) -> Optional<String> {
   fold(
-    filter(envs, e => (e.event.node as String) == item
-      && roadmap_event_kind_word(k: e.event.kind) == "acceptance_recorded"),
-    init: "",
-    f: fn(acc, e) {
+    filter(envs, e => (e.event.node as String) == item && projection_kind_is_acceptance_recorded(kind: e.event.kind)),
+    init: Absent as Optional<String>,
+    f: fn(_acc, e) {
       match e.event.kind {
-        AcceptanceRecordedEvent { receipt: _, evidence } => roadmap_acceptance_pr_evidence_url(evidence: evidence)
-        _ => acc
+        AcceptanceRecordedEvent { receipt: _, evidence } => Present { value: roadmap_acceptance_pr_evidence_url(evidence: evidence) }
+        _ => Absent as Optional<String>
       }
     })
 }
@@ -316,6 +333,12 @@ fn roadmap_work_item_projection_document_json(
   }
 }
 
+// PRESENT TEXT or JSON NULL -- the one way this projection renders an Optional<String> on the wire, so an
+// absent field is null (never a "none"/"" sentinel a reader could mistake for a value).
+fn projection_optional_text_to_json(o: Optional<String>) -> JsonValue {
+  match o { Present { value: s } => json_string(s: s) Absent => json_null() }
+}
+
 // EVERY DECLARED FIELD, every row, always. No field is conditional: the boundary's red control is that a
 // row omitting a declared field is not the projection, so the emitter writes all of them -- node,
 // intention, layer, item_state, leaves (each with its critical-path bit), in_flight (each with assignee
@@ -337,8 +360,10 @@ fn projection_row_json(row: ProjectionRow) -> JsonValue {
       json_kv(key: "assignee", value: json_string(s: f.assignee)),
       json_kv(key: "return_to", value: json_string(s: f.return_to)),
     ])))),
-    json_kv(key: "latest_event", value: json_string(s: row.latest_event)),
-    json_kv(key: "acceptance_evidence", value: json_string(s: row.acceptance_evidence)),
+    // Absent is JSON null, NOT a sentinel: a reader tells "no latest event" / "no acceptance" (null) apart
+    // from any real value. Presence is Optional; the wire never writes "none" or "" for absence.
+    json_kv(key: "latest_event", value: projection_optional_text_to_json(o: row.latest_event)),
+    json_kv(key: "acceptance_evidence", value: projection_optional_text_to_json(o: row.acceptance_evidence)),
     json_kv(key: "events", value: json_array(elements: map(row.events, e => json_object(members: [
       json_kv(key: "kind", value: json_string(s: e.kind)),
       json_kv(key: "recorded_at", value: json_string(s: e.recorded_at)),

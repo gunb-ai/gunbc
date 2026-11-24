@@ -17,6 +17,7 @@ module test.claim.roadmap.roadmap_work_item_projection_witness
 //           and the whole document refuses rather than serve a row missing a declared field.
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
+import std.optional { Optional }
 import std.algebra { string_contains }
 import std.decl_ref { decl_ref }
 import gunbc.extdeps.languages.json.emit { serialize_json }
@@ -201,12 +202,14 @@ test fn in_flight_leaves_are_the_derived_set_read_off_the_log() -> Bool {
   let row_json = serialize_json(v: projection_row_json(row: ProjectionRow {
     node: "item-a", intention: "gunbc.plans.planning_consolidation/planning_consolidation_plan",
     layer: 2, item_state: "claimed", leaves: [] as List<ProjectionLeaf>, in_flight: entries,
-    latest_event: "claimed", acceptance_evidence: "", events: [] as List<ProjectionEvent>,
+    latest_event: Present { value: "claimed" }, acceptance_evidence: Absent as Optional<String>, events: [] as List<ProjectionEvent>,
   }))
   count(entries) == 1
     && string_contains(s: row_json, pattern: "item-a#1#0#2")
     && string_contains(s: row_json, pattern: "erin@roadmap")
     && string_contains(s: row_json, pattern: "fred@roadmap")
+    && string_contains(s: row_json, pattern: "\"latest_event\": \"claimed\"")
+    && string_contains(s: row_json, pattern: "\"acceptance_evidence\": null")
     && string_contains(s: row_json, pattern: "\"on_critical_path\"")
 }
 
