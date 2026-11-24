@@ -27,6 +27,7 @@ import gunbc.plans.one_source_tree { one_source_tree_plan }
 import gunbc.plans.derived_types_keep_their_name { derived_types_keep_their_name_plan }
 import gunbc.plans.claim_execution_consolidation { claim_execution_consolidation_plan }
 import gunbc.plans.fabric_market { fabric_market_plan }
+import gunbc.plans.required_lane_claim_clause_grain { required_lane_claim_clause_grain_plan }
 import gunbc.plans.gunb_ai_served_from_gunbc { gunb_ai_served_from_gunbc_plan }
 
 // THE PLANS THAT SURVIVED THE 2026-11-08 RESET (gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08):
@@ -55,6 +56,11 @@ import gunbc.plans.gunb_ai_served_from_gunbc { gunb_ai_served_from_gunbc_plan }
 // 2026-11-22); its work items are the members of one-source-tree on the roadmap.
 // claim_execution_consolidation makes gunbc test the only seed claim entrypoint with one verdict rule (operator, 2026-11-22).
 // fabric_market makes every match of work with resources one first-principles market in FIX-grounded trading terms (operator, 2026-11-23).
+// required_lane_claim_clause_grain is the planning candidate the 2026-11-24 required-lane claim-agreement measurement
+// filed: v2.workflow.required_lane_claim_agreement pairs its denial phrase and the rostered lane name at document grain,
+// so a failure-mode row that QUOTES the phrase about a lane the roster does not roster is refused as if it denied that
+// lane. Its done-when requires the pair in one clause or one ledger row, with controls for both the narrowing and the
+// quotation case. Its realization is a work item naming this intention; it is not realized by the measurement that filed it.
 // gunb_ai_served_from_gunbc moves gunb.ai's source and deploy into this repository and archives gunb-ai/frontend
 // (operator, 2026-11-24, gunbc.design_ruling::gunb_ai_deploys_from_gunbc_2026_11_24); its work items are the members
 // of gunb-ai-served-from-gunbc on the roadmap.
@@ -69,5 +75,6 @@ data all_plans: List<Plan> = [
   new_server_bringup_plan, one_source_tree_plan, claim_execution_consolidation_plan,
   desired_state_follows_the_machine_plan, fabric_market_plan,
   derived_types_keep_their_name_plan,
+  required_lane_claim_clause_grain_plan,
   gunb_ai_served_from_gunbc_plan,
 ]
