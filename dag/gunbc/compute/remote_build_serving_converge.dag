@@ -526,6 +526,26 @@ fn serving_slice_cap_account_absent() -> ServingSliceCap {
   }
 }
 
+// WHICH cap the observe's slice leg reads, decided PURELY over the account gate so a claim exercises the
+// real decision without a host (witness_one_interface: the witness supplies the reads at the boundary;
+// census_door_gate below is the precedent for pulling a host-bearing decision into a pure function). A
+// CONFIRMED-ABSENT account (passwd Established, row absent) has no per-user slice to ask systemctl about,
+// so the leg reads serving_slice_cap_account_absent -- a proven absence, contributing an install-target
+// DEVIATION the converge satisfies with EnsureAccount (rank 1) then InstallUserWorkSlice (rank 8). The other
+// two arms keep the reserved behaviour: an account PRESENT, or a passwd read that was itself REFUSED (nobody
+// read the account), falls through to the live systemctl read (serving_leg_slice_cap), where a refused or
+// unresolvable control is an unknown -- never a fabricated install. Reverting this gate so every arm reads
+// systemd again makes a fresh host indeterminate; the gate claims in the converge witness go red exactly then.
+type ServingSliceLegChoice = SliceLegProvenAbsentCap | SliceLegReadSystemd
+
+fn serving_slice_leg_choice(account_gate: ObservationAttempt<Bool, ServingLegFailure>) -> ServingSliceLegChoice {
+  match account_gate {
+    ObservationEstablished { observed: false } => SliceLegProvenAbsentCap
+    ObservationEstablished { observed: true } => SliceLegReadSystemd
+    ObservationRefused { cause: _ } => SliceLegReadSystemd
+  }
+}
+
 // Whether a NON-ZERO `systemctl show` was the serving user manager being unreachable for this account (its
 // bus is down / the machine's user manager is not running), as opposed to a sudo denial, a malformed argv or
 // any other command error, is systemd's OWN judgment and lives with the verbs that emit it:
@@ -670,9 +690,9 @@ fn observe_host_reads(target: SshTarget, context: FleetSshExecutionContext, d: R
     ObservationRefused { cause: _ } => Absent
   }
   let serving_uid = serving_passwd_uid(text: passwd_opt, name: d.account_name)
-  let slice_cap = match account_gate {
-    ObservationEstablished { observed: false } => serving_slice_cap_account_absent()
-    _ => serving_leg_slice_cap(target: target, context: context, uid: serving_uid)
+  let slice_cap = match serving_slice_leg_choice(account_gate: account_gate) {
+    SliceLegProvenAbsentCap => serving_slice_cap_account_absent()
+    SliceLegReadSystemd => serving_leg_slice_cap(target: target, context: context, uid: serving_uid)
   }
   // THE CENSUS DOOR IS CARRIED BY THE CHECKOUT, so it is asked only where it exists — the decision is
   // census_door_gate, a pure function over the read values so a claim exercises it without a host. The

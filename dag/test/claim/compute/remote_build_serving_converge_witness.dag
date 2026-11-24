@@ -30,7 +30,7 @@ import extdeps.toolchain.types { Aarch64, Riscv64 }
 import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_owner, owned_directory_path }
 import gunbc.compute.remote_build_serving_setup {
   remote_build_serving_desired, RemoteBuildServingDesired, serving_assess, serving_observed_from_reads, ServingObserved,
-  ServingLegFailure, serving_forced_command_line,
+  ServingLegFailure, serving_forced_command_line, serving_account_presence_gate,
   ServingPlanInput, ServingLedgerRowObserved, serving_ledger_declared_mode_octal,
   serving_store_dir_mode_octal,
   serving_scratch_root_mode_octal,
@@ -41,7 +41,7 @@ import extdeps.rust.rustup { rustup_init_release, rustup_init_url }
 import gunbc.compute.work_provider_local {
   RecoverCatalogLegReading, RecoverCatalogLegEstablished, RecoverCatalogLegUnknown, RecoverCatalogLegDeferred, CatalogLegStale, CatalogLegHeld,
 }
-import gunbc.compute.remote_build_serving_converge { serving_rustup_init_version, serving_receipt_body, converge_plan, ConvergeAction, ConvergeDecision, ConvergePlan, ConvergeSettled, ConvergeUnhandled, ConvergeRefused, converge_kind_rank, converge_action_key, converge_order, converge_dedupe, converge_checkout_step, ConvergeStep, StepDone, StepFailed, converge_execute_with, ConvergeExecuted, ConvergeWriteOutcome, WriteSettled, WriteFailed, ConvergeWriteFailure, converge_execution_receipt_lines, user_work_slice_install_command_argv, serve_identity_document, serving_slice_cap_of_show, serving_slice_cap_unreachable_manager, serving_slice_cap_account_absent, serving_slice_cap_refused, serving_slice_cap_of_exec, serving_slice_property_value, user_work_slice_show_command_argv, converge_gunbc_door_argv, converge_install_binary, converge_draft, census_door_gate, CensusGateAsk, CensusGateDefer }
+import gunbc.compute.remote_build_serving_converge { serving_rustup_init_version, serving_receipt_body, converge_plan, ConvergeAction, ConvergeDecision, ConvergePlan, ConvergeSettled, ConvergeUnhandled, ConvergeRefused, converge_kind_rank, converge_action_key, converge_order, converge_dedupe, converge_checkout_step, ConvergeStep, StepDone, StepFailed, converge_execute_with, ConvergeExecuted, ConvergeWriteOutcome, WriteSettled, WriteFailed, ConvergeWriteFailure, converge_execution_receipt_lines, user_work_slice_install_command_argv, serve_identity_document, serving_slice_cap_of_show, serving_slice_cap_unreachable_manager, serving_slice_cap_account_absent, serving_slice_cap_refused, serving_slice_leg_choice, ServingSliceLegChoice, SliceLegProvenAbsentCap, SliceLegReadSystemd, serving_slice_cap_of_exec, serving_slice_property_value, user_work_slice_show_command_argv, converge_gunbc_door_argv, converge_install_binary, converge_draft, census_door_gate, CensusGateAsk, CensusGateDefer }
 import gunbc.cli_run_workspace_root_scaffold { gunbc_workspace_root_env_name }
 import gunbc.host.user_session_runtime { user_session_runtime_dir }
 import gunbc.cli_invoke { NamedArgumentRequest }
@@ -2447,7 +2447,8 @@ fn rank_slice_install(ws: List<ConvergeAction>) -> Int {
   }
 }
 
-// RED CONTROL (1): a confirmed-absent account with a proven-absent slice is RUNNABLE drift, and the plan
+// DOWNSTREAM GUARANTEE (the pure gate claims at the foot of this section are the discriminator for this
+// PR): a confirmed-absent account with a proven-absent slice is RUNNABLE drift, and the plan
 // drafts the account BEFORE the slice it lives under (EnsureAccount rank 1 < InstallUserWorkSlice rank 8),
 // exactly one slice install, the whole list ordered by kind. This is the host the observe used to refuse.
 test fn fresh_host_proven_absent_slice_plans_useradd_before_slice_install() -> Bool {
@@ -2482,7 +2483,8 @@ test fn the_proven_absent_slice_read_is_established_and_the_refused_read_is_refu
   all_established && all_refused
 }
 
-// RED CONTROL (2a): ServingUnknown is still RESERVED. An account that is PRESENT but whose slice systemctl
+// RESERVED-BEHAVIOUR GUARD (not the discriminator for this PR — it holds with or without the gate): an
+// account that is PRESENT but whose slice systemctl
 // could not be read (all three controls refused) is indeterminate -- the converge refuses and writes nothing,
 // exactly as before. The fix does NOT turn a genuinely-unread slice into an install.
 fn all_slice_refused_account_present_observed(d: RemoteBuildServingDesired, line: String) -> ServingObserved {
@@ -2523,7 +2525,8 @@ test fn all_slice_controls_refused_with_account_present_is_indeterminate() -> Bo
   }
 }
 
-// RED CONTROL (2b): a refused /etc/passwd read (nobody read the account at all) is indeterminate, NOT a
+// RESERVED-BEHAVIOUR GUARD (the chain claim refused_passwd_read_drives_the_gate_to_the_systemd_read is the
+// discriminator; this is the end-to-end consequence): a refused /etc/passwd read (nobody read the account at all) is indeterminate, NOT a
 // fabricated proven-absent install. The slice is capped/settled here so the refused passwd is the only
 // unread leg -- if the gate confused 'passwd refused' with 'account confirmed absent' this host would plan a
 // useradd+slice install off a read nobody completed, which is the fabrication the contract forbids.
@@ -2561,6 +2564,70 @@ test fn refused_passwd_read_is_indeterminate_not_a_fabricated_install() -> Bool 
           plan_is_refused(plan) && length(plan_writes(plan)) == 0
         }
       }
+    }
+  }
+}
+
+// ── THE DISCRIMINATOR for this PR: the pure slice-leg gate over account_gate ─────────────────────────
+//
+// The whole behaviour this PR adds lives in serving_slice_leg_choice: which cap the observe's slice leg
+// reads, decided over the account gate. These claims execute THAT function (and, in the chain claims, the
+// real path from the /etc/passwd read through serving_account_presence_gate into it), so they go red the
+// moment the gate is reverted to always reading systemd -- which is the fresh-host indeterminate this PR
+// fixes. The fixtures above feed the assessment/plan a slice reading and so are downstream guarantees; these
+// are the reds for the change itself (fail_closed: "green by execution plus a discriminating input").
+
+fn is_proven_absent_choice(c: ServingSliceLegChoice) -> Bool {
+  match c { SliceLegProvenAbsentCap => true _ => false }
+}
+
+fn is_read_systemd_choice(c: ServingSliceLegChoice) -> Bool {
+  match c { SliceLegReadSystemd => true _ => false }
+}
+
+test fn slice_gate_established_false_picks_the_proven_absent_cap() -> Bool {
+  is_proven_absent_choice(serving_slice_leg_choice(account_gate: ObservationEstablished { observed: false }))
+}
+
+test fn slice_gate_established_true_picks_the_systemd_read() -> Bool {
+  is_read_systemd_choice(serving_slice_leg_choice(account_gate: ObservationEstablished { observed: true }))
+}
+
+test fn slice_gate_refused_passwd_picks_the_systemd_read() -> Bool {
+  is_read_systemd_choice(serving_slice_leg_choice(account_gate: ObservationRefused { cause: ServingLegFailure { item: "account.uid", cause: "passwd refused" } }))
+}
+
+// Chain claims: the gate is not driven from a hand-built gate value but from the SAME reads the observe
+// feeds it, so they pin the real decision end-to-end without a host (witness_one_interface).
+
+test fn fresh_host_passwd_read_drives_the_gate_to_the_proven_absent_cap() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      // passwd established with the account row simply not present
+      let gate = serving_account_presence_gate(account_name: d.account_name, passwd: est_s("root:x:0:0:root:/root:/bin/bash\n"))
+      is_proven_absent_choice(serving_slice_leg_choice(account_gate: gate))
+    }
+  }
+}
+
+test fn present_account_passwd_read_drives_the_gate_to_the_systemd_read() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let row = join([d.account_name, ":x:1005:1005:", d.account_name, ":/home/", d.account_name, ":/bin/bash\n"], "")
+      let gate = serving_account_presence_gate(account_name: d.account_name, passwd: est_s(row))
+      is_read_systemd_choice(serving_slice_leg_choice(account_gate: gate))
+    }
+  }
+}
+
+test fn refused_passwd_read_drives_the_gate_to_the_systemd_read() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      let gate = serving_account_presence_gate(account_name: d.account_name, passwd: ObservationRefused { cause: ServingLegFailure { item: "account.uid", cause: "/etc/passwd read refused" } })
+      is_read_systemd_choice(serving_slice_leg_choice(account_gate: gate))
     }
   }
 }
