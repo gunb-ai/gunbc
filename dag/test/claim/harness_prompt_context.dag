@@ -1,9 +1,9 @@
 module test.claim.harness_prompt_context
 
-import std.types { Bool, String, List }
+import std.types { Bool, String, Int, List }
 import std.decl_ref { decl_ref }
 import gunbc.harness.harness_prompt_context {
-  PromptInput, AuthorityInput, EvidenceInput, GuidanceInput,
+  PromptInput, AuthorityInput, EvidenceInput, GuidanceInput, ConversationTurnInput,
   ContextStanding, EstablishedObservation, Hypothesis, Withdrawn,
   PromptContextSnapshot, prompt_snapshot_digest, prompt_input_canonical_text,
   PromptSegment, prompt_segment_render, prompt_segment_required,
@@ -11,7 +11,13 @@ import gunbc.harness.harness_prompt_context {
   PromptAssemblyRefusal, RequiredSourceUnrendered, MissingRendering, DuplicateRendering,
   UnexpectedRendering, WithdrawnSourceRendered, prompt_assembly_refusal_text,
   prompt_plan_assemble, semantic_prompt_render, provider_prompt_artifact, prompt_render_receipt,
+  PromptRenderReceipt, prompt_input_digest, prompt_render_is_current,
+  PromptCompaction, CompactionApplied, CompactionRefused,
+  PromptCompactionRefusal, UnknownDropTarget, RequiredInputDropped, UnresolvedGuidanceDropped,
+  KeptTurnForksFromDroppedParent, prompt_compaction_refusal_text,
+  prompt_compact, prompt_input_uncompactable,
 }
+import gunbc.harness.harness_guidance { harness_probe_guidance, harness_guidance_segments }
 
 fn fx_authority(id: String, revision: String) -> PromptInput {
   AuthorityInput {
@@ -177,6 +183,368 @@ test fn the_semantic_and_wire_identities_are_distinct() -> Bool {
         && receipt_a.semantic_digest == semantic.semantic_digest
         && receipt_a.plan_snapshot_digest == plan.snapshot_digest
         && count(receipt_a.input_digests) == 2
+    }
+  }
+}
+
+fn fx_turn(turn: String, parent: String, required: Bool) -> PromptInput {
+  ConversationTurnInput { turn_identity: turn, parent_identity: parent, required: required }
+}
+
+fn fx_guidance(receipt: String, resolved: Bool, required: Bool) -> PromptInput {
+  GuidanceInput { receipt_identity: receipt, resolved: resolved, required: required }
+}
+
+fn fx_snapshot_at(lineage: String, epoch: Int, inputs: List<PromptInput>) -> PromptContextSnapshot {
+  PromptContextSnapshot {
+    attempt_lineage: lineage,
+    epoch: epoch,
+    source_revision: "rev-src",
+    work_contract_revision: "rev-contract",
+    inputs: inputs,
+  }
+}
+
+fn fx_compaction_digest_of(compaction: PromptCompaction) -> String {
+  match compaction {
+    CompactionApplied { plan: _, kept_input_digests: _, dropped_input_keys: _, compaction_digest } => compaction_digest
+    CompactionRefused { refusals: _ } => ""
+  }
+}
+
+// COMPACTION CANNOT DROP REQUIRED INPUTS OR UNRESOLVED GUIDANCE. This is the prompt grain of the
+// one compaction law; its wire grain is harness_turn.dag's harness_compact_messages (the pinned
+// head and the whole-pair window are the same law over rendered bytes). An unresolved guidance
+// input refuses even when its producer marked required: false -- an open receipt is an obligation,
+// not old conversation. The predicate prompt_input_uncompactable is the single authority for both.
+test fn compaction_cannot_drop_required_inputs_or_unresolved_guidance() -> Bool {
+  let auth = fx_authority(id: "a", revision: "r1")
+  let open_receipt = fx_guidance(receipt: "receipt-open", resolved: false, required: false)
+  let settled = fx_guidance(receipt: "receipt-settled", resolved: true, required: false)
+  let stale = fx_evidence(standing: Hypothesis, required: false)
+  match prompt_plan_assemble(
+    snapshot: fx_snapshot(inputs: [auth, open_receipt, settled, stale]),
+    rendered: [
+      fx_seg(input: auth, content: "authority prose"),
+      fx_seg(input: open_receipt, content: "open guidance prose"),
+      fx_seg(input: settled, content: "settled guidance prose"),
+      fx_seg(input: stale, content: "hypothesis prose"),
+    ],
+  ) {
+    PromptPlanRefused { refusals: _ } => false
+    PromptPlanReady { plan } => {
+      (match prompt_compact(plan: plan, drop_input_keys: [prompt_input_canonical_text(input: auth)]) {
+        CompactionRefused { refusals } =>
+          any(refusals, r => match r {
+            RequiredInputDropped { input_key } => input_key == prompt_input_canonical_text(input: auth)
+            _ => false
+          })
+        CompactionApplied { plan: _, kept_input_digests: _, dropped_input_keys: _, compaction_digest: _ } => false
+      })
+        && (match prompt_compact(plan: plan, drop_input_keys: [prompt_input_canonical_text(input: open_receipt)]) {
+          CompactionRefused { refusals } =>
+            any(refusals, r => match r {
+              UnresolvedGuidanceDropped { input_key } => input_key == prompt_input_canonical_text(input: open_receipt)
+              _ => false
+            })
+          CompactionApplied { plan: _, kept_input_digests: _, dropped_input_keys: _, compaction_digest: _ } => false
+        })
+        && prompt_input_uncompactable(input: open_receipt)
+        && prompt_input_uncompactable(input: auth)
+        && !prompt_input_uncompactable(input: settled)
+        && !prompt_input_uncompactable(input: stale)
+        && prompt_compaction_refusal_text(r: RequiredInputDropped { input_key: "k" }) != ""
+    }
+  }
+}
+
+// COMPACTION CANNOT ORPHAN A TOOL RESULT FROM ITS MATCHING CALL (or any kept turn from its parent):
+// the parent of a kept turn is undroppable -- a kept turn may not fork from bytes the lineage no
+// longer owns, which is exactly how a stale conclusion resurfaces as if it were a fact. Dropping the
+// PAIR is legal, and a drop naming no input refuses rather than silently no-opping. Prompt grain of
+// the same law whose wire grain is harness_turn.dag's harness_compact_messages whole-pair window.
+test fn compaction_cannot_orphan_a_tool_result_from_its_matching_call() -> Bool {
+  let root = fx_turn(turn: "turn-root", parent: "", required: false)
+  let call = fx_turn(turn: "turn-call", parent: "turn-root", required: false)
+  let result = fx_turn(turn: "turn-result", parent: "turn-call", required: false)
+  match prompt_plan_assemble(
+    snapshot: fx_snapshot(inputs: [root, call, result]),
+    rendered: [
+      fx_seg(input: root, content: "brief prose"),
+      fx_seg(input: call, content: "call prose"),
+      fx_seg(input: result, content: "result prose"),
+    ],
+  ) {
+    PromptPlanRefused { refusals: _ } => false
+    PromptPlanReady { plan } => {
+      (match prompt_compact(plan: plan, drop_input_keys: [prompt_input_canonical_text(input: call)]) {
+        CompactionRefused { refusals } =>
+          any(refusals, r => match r {
+            KeptTurnForksFromDroppedParent { turn_identity, parent_identity } =>
+              turn_identity == "turn-result" && parent_identity == "turn-call"
+            _ => false
+          })
+        CompactionApplied { plan: _, kept_input_digests: _, dropped_input_keys: _, compaction_digest: _ } => false
+      })
+        && (match prompt_compact(plan: plan, drop_input_keys: [prompt_input_canonical_text(input: root)]) {
+          CompactionRefused { refusals } =>
+            any(refusals, r => match r {
+              KeptTurnForksFromDroppedParent { turn_identity, parent_identity } =>
+                turn_identity == "turn-call" && parent_identity == "turn-root"
+              _ => false
+            })
+          CompactionApplied { plan: _, kept_input_digests: _, dropped_input_keys: _, compaction_digest: _ } => false
+        })
+        && (match prompt_compact(
+          plan: plan,
+          drop_input_keys: [prompt_input_canonical_text(input: call), prompt_input_canonical_text(input: result)],
+        ) {
+          CompactionApplied { plan: compacted, kept_input_digests, dropped_input_keys, compaction_digest } =>
+            count(compacted.ordered_segments) == 1 && count(kept_input_digests) == 1 && count(dropped_input_keys) == 2 && compaction_digest != ""
+          CompactionRefused { refusals: _ } => false
+        })
+        && (match prompt_compact(plan: plan, drop_input_keys: ["no-such-input"]) {
+          CompactionRefused { refusals } =>
+            any(refusals, r => match r {
+              UnknownDropTarget { input_key } => input_key == "no-such-input"
+              _ => false
+            })
+          CompactionApplied { plan: _, kept_input_digests: _, dropped_input_keys: _, compaction_digest: _ } => false
+        })
+    }
+  }
+}
+
+// AN APPLIED COMPACTION READMITS THE REDUCED PLAN EXACTLY: the kept population is what the compacted
+// plan carries -- same order, same segments, digests re-derived by the single input-digest authority
+// -- and the dropped population is gone from the plan. There is no partially compacted plan.
+test fn compaction_applied_readmits_the_reduced_plan_exactly() -> Bool {
+  let auth = fx_authority(id: "a", revision: "r1")
+  let settled = fx_guidance(receipt: "receipt-settled", resolved: true, required: false)
+  let stale = fx_evidence(standing: Hypothesis, required: false)
+  match prompt_plan_assemble(
+    snapshot: fx_snapshot(inputs: [auth, settled, stale]),
+    rendered: [
+      fx_seg(input: auth, content: "authority prose"),
+      fx_seg(input: settled, content: "settled guidance prose"),
+      fx_seg(input: stale, content: "hypothesis prose"),
+    ],
+  ) {
+    PromptPlanRefused { refusals: _ } => false
+    PromptPlanReady { plan } =>
+      match prompt_compact(plan: plan, drop_input_keys: [prompt_input_canonical_text(input: stale)]) {
+        CompactionApplied { plan: compacted, kept_input_digests, dropped_input_keys, compaction_digest } =>
+          count(compacted.ordered_segments) == 2
+            && compacted.snapshot_digest == prompt_snapshot_digest(snapshot: fx_snapshot(inputs: [auth, settled]))
+            && join(kept_input_digests, ",") == join([prompt_input_digest(input: auth), prompt_input_digest(input: settled)], ",")
+            && join(dropped_input_keys, ",") == prompt_input_canonical_text(input: stale)
+            && compaction_digest != ""
+        CompactionRefused { refusals: _ } => false
+      }
+  }
+}
+
+// IDENTICAL COMPACTIONS DIGEST IDENTICALLY AND ANY DIFFERENT POPULATION MOVES IT: the compaction
+// digest binds the snapshot identity it was admitted from, exactly what was retired, and exactly
+// what was kept.
+test fn identical_compactions_digest_identically_and_any_different_population_moves_it() -> Bool {
+  let auth = fx_authority(id: "a", revision: "r1")
+  let settled = fx_guidance(receipt: "receipt-settled", resolved: true, required: false)
+  let stale = fx_evidence(standing: Hypothesis, required: false)
+  let stale_key = prompt_input_canonical_text(input: stale)
+  let settled_key = prompt_input_canonical_text(input: settled)
+  let admitted = prompt_plan_assemble(
+    snapshot: fx_snapshot(inputs: [auth, settled, stale]),
+    rendered: [
+      fx_seg(input: auth, content: "authority prose"),
+      fx_seg(input: settled, content: "settled guidance prose"),
+      fx_seg(input: stale, content: "hypothesis prose"),
+    ],
+  )
+  let admitted_again = prompt_plan_assemble(
+    snapshot: fx_snapshot(inputs: [auth, settled, stale]),
+    rendered: [
+      fx_seg(input: auth, content: "authority prose"),
+      fx_seg(input: settled, content: "settled guidance prose"),
+      fx_seg(input: stale, content: "hypothesis prose"),
+    ],
+  )
+  let admitted_epoch2 = prompt_plan_assemble(
+    snapshot: fx_snapshot_at(lineage: "worker:task-a-deadbeef", epoch: 2, inputs: [auth, settled, stale]),
+    rendered: [
+      fx_seg(input: auth, content: "authority prose"),
+      fx_seg(input: settled, content: "settled guidance prose"),
+      fx_seg(input: stale, content: "hypothesis prose"),
+    ],
+  )
+  let d_stale = match admitted {
+    PromptPlanReady { plan } => fx_compaction_digest_of(compaction: prompt_compact(plan: plan, drop_input_keys: [stale_key]))
+    PromptPlanRefused { refusals: _ } => ""
+  }
+  let d_stale_again = match admitted_again {
+    PromptPlanReady { plan } => fx_compaction_digest_of(compaction: prompt_compact(plan: plan, drop_input_keys: [stale_key]))
+    PromptPlanRefused { refusals: _ } => ""
+  }
+  let d_settled = match admitted {
+    PromptPlanReady { plan } => fx_compaction_digest_of(compaction: prompt_compact(plan: plan, drop_input_keys: [settled_key]))
+    PromptPlanRefused { refusals: _ } => ""
+  }
+  let d_epoch2 = match admitted_epoch2 {
+    PromptPlanReady { plan } => fx_compaction_digest_of(compaction: prompt_compact(plan: plan, drop_input_keys: [stale_key]))
+    PromptPlanRefused { refusals: _ } => ""
+  }
+  d_stale == d_stale_again
+    && d_stale != ""
+    && d_stale != d_settled
+    && d_stale != d_epoch2
+}
+
+// A MOVED AUTHORITY REVISION INVALIDATES THE OLD RENDER: currentness binds a receipt to exactly one
+// snapshot identity, decided once by prompt_render_is_current. The prose is deliberately identical
+// across the move, so a witness that only compared rendered text would stay green while the old
+// render was silently stale -- the invalidation flows through the snapshot binding, never the prose.
+test fn a_moved_authority_revision_invalidates_the_old_render() -> Bool {
+  let note = fx_evidence(standing: EstablishedObservation, required: false)
+  let auth_r1 = fx_authority(id: "a", revision: "r1")
+  let auth_r2 = fx_authority(id: "a", revision: "r2")
+  let snapshot_r1 = fx_snapshot(inputs: [auth_r1, note])
+  let snapshot_r2 = fx_snapshot(inputs: [auth_r2, note])
+  match prompt_plan_assemble(
+    snapshot: snapshot_r1,
+    rendered: [
+      fx_seg(input: auth_r1, content: "unchanged prose"),
+      fx_seg(input: note, content: "unchanged observation"),
+    ],
+  ) {
+    PromptPlanRefused { refusals: _ } => false
+    PromptPlanReady { plan: plan_r1 } =>
+      match prompt_plan_assemble(
+        snapshot: snapshot_r2,
+        rendered: [
+          fx_seg(input: auth_r2, content: "unchanged prose"),
+          fx_seg(input: note, content: "unchanged observation"),
+        ],
+      ) {
+        PromptPlanRefused { refusals: _ } => false
+        PromptPlanReady { plan: plan_r2 } => {
+          let receipt_r1 = prompt_render_receipt(
+            plan: plan_r1,
+            wire: provider_prompt_artifact(semantic: semantic_prompt_render(plan: plan_r1), provider_projection: "claude", wire_text: "identical request bytes"),
+          )
+          let receipt_r2 = prompt_render_receipt(
+            plan: plan_r2,
+            wire: provider_prompt_artifact(semantic: semantic_prompt_render(plan: plan_r2), provider_projection: "claude", wire_text: "identical request bytes"),
+          )
+          receipt_r1.semantic_digest == receipt_r2.semantic_digest
+            && receipt_r1.plan_snapshot_digest != receipt_r2.plan_snapshot_digest
+            && prompt_render_is_current(receipt: receipt_r1, snapshot: snapshot_r1)
+            && prompt_render_is_current(receipt: receipt_r2, snapshot: snapshot_r2)
+            && !prompt_render_is_current(receipt: receipt_r1, snapshot: snapshot_r2)
+            && !prompt_render_is_current(receipt: receipt_r2, snapshot: snapshot_r1)
+            && join(receipt_r1.input_digests, ",") == join([prompt_input_digest(input: auth_r1), prompt_input_digest(input: note)], ",")
+        }
+      }
+  }
+}
+
+// RESTART RECONSTRUCTS THE IDENTICAL PROMPT FROM DURABLE INPUTS: the whole projection -- snapshot
+// admission, semantic render, provider artifact, render receipt -- is a derivation over the durable
+// records alone (lineage, epoch, source revision, contract revision, and the typed inputs). Running
+// it twice from the same records reproduces every digest; moving any durable identity moves the
+// projection instead of drifting silently. There is no process-side memo and no ambient state.
+fn fx_reconstruct(lineage: String, epoch: Int, source_revision: String, contract_revision: String) -> String {
+  let auth = fx_authority(id: "a", revision: "r1")
+  let note = fx_evidence(standing: EstablishedObservation, required: false)
+  let open_receipt = fx_guidance(receipt: "receipt-open", resolved: false, required: true)
+  let call = fx_turn(turn: "turn-call", parent: "", required: true)
+  let snapshot = PromptContextSnapshot {
+    attempt_lineage: lineage,
+    epoch: epoch,
+    source_revision: source_revision,
+    work_contract_revision: contract_revision,
+    inputs: [auth, note, open_receipt, call],
+  }
+  match prompt_plan_assemble(
+    snapshot: snapshot,
+    rendered: [
+      fx_seg(input: auth, content: "authority prose"),
+      fx_seg(input: note, content: "observation prose"),
+      fx_seg(input: open_receipt, content: "open guidance prose"),
+      fx_seg(input: call, content: "call prose"),
+    ],
+  ) {
+    PromptPlanRefused { refusals: _ } => ""
+    PromptPlanReady { plan } => {
+      let receipt = prompt_render_receipt(
+        plan: plan,
+        wire: provider_prompt_artifact(semantic: semantic_prompt_render(plan: plan), provider_projection: "claude", wire_text: "durable projection bytes"),
+      )
+      join([
+        receipt.plan_snapshot_digest,
+        join(receipt.input_digests, ","),
+        receipt.semantic_digest,
+        receipt.wire_digest,
+      ], "|")
+    }
+  }
+}
+
+test fn restart_reconstructs_the_identical_prompt_from_durable_inputs() -> Bool {
+  let durable = fx_reconstruct(lineage: "worker:task-a-deadbeef", epoch: 1, source_revision: "rev-src", contract_revision: "rev-contract")
+  durable != ""
+    && durable == fx_reconstruct(lineage: "worker:task-a-deadbeef", epoch: 1, source_revision: "rev-src", contract_revision: "rev-contract")
+    && durable != fx_reconstruct(lineage: "worker:task-a-deadbeef", epoch: 2, source_revision: "rev-src", contract_revision: "rev-contract")
+    && durable != fx_reconstruct(lineage: "worker:task-b-cafebabe", epoch: 1, source_revision: "rev-src", contract_revision: "rev-contract")
+    && durable != fx_reconstruct(lineage: "worker:task-a-deadbeef", epoch: 1, source_revision: "rev-other", contract_revision: "rev-contract")
+    && durable != fx_reconstruct(lineage: "worker:task-a-deadbeef", epoch: 1, source_revision: "rev-src", contract_revision: "rev-other")
+}
+
+// THE REAL ROSTER INHABITS THE PROMPT GRAIN (witness_one_interface duty): the actual guidance
+// producer -- harness_guidance_segments over harness_probe_guidance -- admits through
+// prompt_plan_assemble, renders through the semantic artifact into a render receipt that is current
+// for its snapshot, and CANNOT be compacted at the prompt grain: every guidance premise and
+// conclusion is a required input, so any drop refuses. The supplied-fixture witnesses above are
+// only credible because this path runs the real producer.
+fn fx_first_per_source(acc: List<PromptSegment>, segment: PromptSegment) -> List<PromptSegment> {
+  let key = prompt_input_canonical_text(input: segment.source)
+  if any(acc, s => prompt_input_canonical_text(input: s.source) == key) {
+    acc
+  } else {
+    concat(acc, [segment])
+  }
+}
+
+test fn the_real_guidance_roster_admits_at_the_prompt_grain_and_refuses_compaction() -> Bool {
+  let segments = harness_guidance_segments(rows: harness_probe_guidance(), source_revision: "rev-probe")
+  let distinct = fold(segments, init: [] as List<PromptSegment>, f: fn(acc, s) { fx_first_per_source(acc: acc, segment: s) })
+  let inputs = map(distinct, s => s.source)
+  if count(distinct) == 0 {
+    false
+  } else {
+    match prompt_plan_assemble(snapshot: fx_snapshot(inputs: inputs), rendered: distinct) {
+      PromptPlanRefused { refusals: _ } => false
+      PromptPlanReady { plan } => {
+        let semantic = semantic_prompt_render(plan: plan)
+        let receipt = prompt_render_receipt(
+          plan: plan,
+          wire: provider_prompt_artifact(semantic: semantic, provider_projection: "anthropic", wire_text: semantic.text),
+        )
+        count(plan.ordered_segments) == count(inputs)
+          && count(receipt.input_digests) == count(inputs)
+          && prompt_render_is_current(receipt: receipt, snapshot: fx_snapshot(inputs: inputs))
+          && (match distinct.first() {
+            Absent => false
+            Present { value: s } =>
+              match prompt_compact(plan: plan, drop_input_keys: [prompt_input_canonical_text(input: s.source)]) {
+                CompactionRefused { refusals } =>
+                  any(refusals, r => match r {
+                    RequiredInputDropped { input_key: _ } => true
+                    _ => false
+                  })
+                CompactionApplied { plan: _, kept_input_digests: _, dropped_input_keys: _, compaction_digest: _ } => false
+              }
+          })
+      }
     }
   }
 }

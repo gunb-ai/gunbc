@@ -123,6 +123,12 @@ fn prompt_input_is_withdrawn(input: PromptInput) -> Bool {
   }
 }
 
+// THE INPUT DIGEST has one authority (anchor gunbc.design_argument::single_authority): the render
+// receipt's input digests and a compaction's kept-input digests are both derived here, never restated.
+fn prompt_input_digest(input: PromptInput) -> String {
+  content_hash_atom(value: prompt_input_canonical_text(input: input) as NonEmptyStr).digest as String
+}
+
 // THE SNAPSHOT: one immutable binding of inputs to an attempt lineage at an epoch and a source
 // revision. The alignment probes of one checkpoint share a snapshot identity and receive different
 // PROJECTIONS of it; they never share an undifferentiated conversation.
@@ -341,9 +347,169 @@ type PromptRenderReceipt {
 fn prompt_render_receipt(plan: PromptPlan, wire: ProviderPromptArtifact) -> PromptRenderReceipt {
   PromptRenderReceipt {
     plan_snapshot_digest: plan.snapshot_digest,
-    input_digests: map(plan.snapshot.inputs, i => content_hash_atom(value: prompt_input_canonical_text(input: i) as NonEmptyStr).digest as String),
+    input_digests: map(plan.snapshot.inputs, i => prompt_input_digest(input: i)),
     semantic_digest: wire.semantic_digest,
     provider_projection: wire.provider_projection,
     wire_digest: wire.wire_digest,
+  }
+}
+
+// THE RENDER CURRENTNESS LAW: a render receipt is current for exactly one snapshot identity -- the
+// one whose digest it carries. Moving any authority revision, standing, contract revision or source
+// revision inside the snapshot invalidates every receipt admitted before the move, even one whose
+// rendered text did not change. Currentness is decided here once (anchor
+// gunbc.design_argument::single_authority); no surface re-decides it by comparing digests ad hoc.
+fn prompt_render_is_current(receipt: PromptRenderReceipt, snapshot: PromptContextSnapshot) -> Bool {
+  receipt.plan_snapshot_digest == prompt_snapshot_digest(snapshot: snapshot)
+}
+
+// THE COMPACTION LAW (roadmap row harness-prompt-context-model). Compaction retires only the
+// ELIGIBLE population of an admitted plan, and it is a fresh ADMITTANCE: the compacted plan is
+// re-derived through the same assembly law over the reduced snapshot, never by deleting bytes from
+// a rendered plan. Three populations may never be retired: an input marked required; an unresolved
+// guidance input -- an unresolved receipt is an open obligation, not old conversation, and it is
+// undroppable however its producer marked required; and the parent turn of a KEPT conversation
+// turn -- a kept turn may not fork from bytes the lineage no longer owns, which is exactly how a
+// stale conclusion resurfaces as if it were a fact. Any refusal refuses the whole compaction:
+// there is no partially compacted plan.
+
+// THE UNCOMPACTABLE PREDICATE has one authority: required marks the caller-declared undroppable
+// population, and unresolved guidance joins it by law regardless of its declared required flag.
+fn prompt_input_uncompactable(input: PromptInput) -> Bool {
+  if prompt_input_required(input: input) {
+    true
+  } else {
+    match input {
+      GuidanceInput { receipt_identity: _, resolved, required: _ } => !resolved
+      _ => false
+    }
+  }
+}
+
+type PromptCompactionRefusal
+  = UnknownDropTarget { input_key: String }
+  | RequiredInputDropped { input_key: String }
+  | UnresolvedGuidanceDropped { input_key: String }
+  | KeptTurnForksFromDroppedParent { turn_identity: String, parent_identity: String }
+  | CompactedJoinRefused { join_text: String }
+
+fn prompt_compaction_refusal_text(r: PromptCompactionRefusal) -> String {
+  match r {
+    UnknownDropTarget { input_key } => join(["compaction asked to drop an input the snapshot does not hold: ", input_key], "")
+    RequiredInputDropped { input_key } => join(["compaction cannot drop a required input: ", input_key], "")
+    UnresolvedGuidanceDropped { input_key } => join(["compaction cannot drop an unresolved guidance input: ", input_key], "")
+    KeptTurnForksFromDroppedParent { turn_identity, parent_identity } => join(["compaction cannot drop the parent turn ", parent_identity, " while the child turn ", turn_identity, " is kept"], "")
+    CompactedJoinRefused { join_text } => join(["the compacted population refused the assembly law: ", join_text], "")
+  }
+}
+
+type PromptCompaction
+  = CompactionApplied { plan: PromptPlan, kept_input_digests: List<String>, dropped_input_keys: List<String>, compaction_digest: String }
+  | CompactionRefused { refusals: List<PromptCompactionRefusal> }
+
+fn prompt_dropped_turn_id_fold(acc: List<String>, input: PromptInput) -> List<String> {
+  match input {
+    ConversationTurnInput { turn_identity, parent_identity: _, required: _ } => concat(acc, [turn_identity])
+    _ => acc
+  }
+}
+
+fn prompt_compaction_dropped_fold(acc_in: { refusals: List<PromptCompactionRefusal> }, input: PromptInput) -> { refusals: List<PromptCompactionRefusal> } {
+  let key = prompt_input_canonical_text(input: input)
+  if prompt_input_required(input: input) {
+    { refusals: concat(acc_in.refusals, [RequiredInputDropped { input_key: key }]) }
+  } else {
+    match input {
+      GuidanceInput { receipt_identity: _, resolved, required: _ } =>
+        if !resolved {
+          { refusals: concat(acc_in.refusals, [UnresolvedGuidanceDropped { input_key: key }]) }
+        } else {
+          acc_in
+        }
+      _ => acc_in
+    }
+  }
+}
+
+fn prompt_compaction_kept_fold(
+  acc_in: { refusals: List<PromptCompactionRefusal> },
+  dropped_turn_ids: List<String>,
+  input: PromptInput,
+) -> { refusals: List<PromptCompactionRefusal> } {
+  match input {
+    ConversationTurnInput { turn_identity, parent_identity, required: _ } =>
+      if parent_identity == "" {
+        acc_in
+      } else if any(dropped_turn_ids, id => id == parent_identity) {
+        { refusals: concat(acc_in.refusals, [KeptTurnForksFromDroppedParent { turn_identity: turn_identity, parent_identity: parent_identity }]) }
+      } else {
+        acc_in
+      }
+    _ => acc_in
+  }
+}
+
+// THE COMPACTION DIGEST digests exactly what was retired and what was kept against the snapshot
+// identity it was admitted from: identical compactions digest identically and any different drop
+// population moves it.
+fn prompt_compaction_digest(snapshot: PromptContextSnapshot, dropped_input_keys: List<String>, kept_input_digests: List<String>) -> String {
+  content_hash_atom(value: join(concat(
+    ["20:prompt-compaction/v1", prompt_field_enc(s: prompt_snapshot_digest(snapshot: snapshot))],
+    concat(
+      map(dropped_input_keys, k => prompt_field_enc(s: k)),
+      map(kept_input_digests, d => prompt_field_enc(s: d)),
+    ),
+  ), "") as NonEmptyStr).digest as String
+}
+
+fn prompt_compact(plan: PromptPlan, drop_input_keys: List<String>) -> PromptCompaction {
+  let snapshot = plan.snapshot
+  let dropped = filter(snapshot.inputs, i => any(drop_input_keys, k => prompt_input_canonical_text(input: i) == k))
+  let kept_inputs = filter(snapshot.inputs, i => !any(drop_input_keys, k => prompt_input_canonical_text(input: i) == k))
+  let dropped_keys = map(dropped, i => prompt_input_canonical_text(input: i))
+  let unknown = filter(drop_input_keys, k => !any(snapshot.inputs, i => prompt_input_canonical_text(input: i) == k))
+  let dropped_turn_ids = fold(
+    dropped,
+    init: [] as List<String>,
+    f: fn(acc, i) { prompt_dropped_turn_id_fold(acc: acc, input: i) },
+  )
+  let target_refusals = map(unknown, k => UnknownDropTarget { input_key: k })
+  let population = fold(
+    dropped,
+    init: { refusals: [] as List<PromptCompactionRefusal> },
+    f: fn(acc, i) { prompt_compaction_dropped_fold(acc_in: acc, input: i) },
+  )
+  let kept_guard = fold(
+    kept_inputs,
+    init: { refusals: [] as List<PromptCompactionRefusal> },
+    f: fn(acc, i) { prompt_compaction_kept_fold(acc_in: acc, dropped_turn_ids: dropped_turn_ids, input: i) },
+  )
+  let refusals = concat(concat(target_refusals, population.refusals), kept_guard.refusals)
+  if count(refusals) > 0 {
+    CompactionRefused { refusals: refusals }
+  } else {
+    let compacted_snapshot = PromptContextSnapshot {
+      attempt_lineage: snapshot.attempt_lineage,
+      epoch: snapshot.epoch,
+      source_revision: snapshot.source_revision,
+      work_contract_revision: snapshot.work_contract_revision,
+      inputs: kept_inputs,
+    }
+    let kept_segments = filter(
+      plan.ordered_segments,
+      seg => any(kept_inputs, i => prompt_input_canonical_text(input: i) == prompt_input_canonical_text(input: seg.source)),
+    )
+    let kept_digests = map(kept_inputs, i => prompt_input_digest(input: i))
+    match prompt_plan_assemble(snapshot: compacted_snapshot, rendered: kept_segments) {
+      PromptPlanReady { plan: compacted } => CompactionApplied {
+        plan: compacted,
+        kept_input_digests: kept_digests,
+        dropped_input_keys: dropped_keys,
+        compaction_digest: prompt_compaction_digest(snapshot: snapshot, dropped_input_keys: dropped_keys, kept_input_digests: kept_digests),
+      }
+      PromptPlanRefused { refusals: join_refusals } => CompactionRefused {
+        refusals: map(join_refusals, r => CompactedJoinRefused { join_text: prompt_assembly_refusal_text(r: r) }),
+      }
+    }
   }
 }
