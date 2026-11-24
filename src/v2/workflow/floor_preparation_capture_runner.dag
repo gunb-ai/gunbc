@@ -355,11 +355,26 @@ fn floor_preparation_bytes_of(path: String) -> Optional<ByteSize> {
 }
 
 // The tree sha under measurement, read through the same spawn surface (no shell: argv direct).
+// OBSERVED ON THIS HOST (run6, 2026-11-24, reproduced at head 59b1c8d with the pinned binaries):
+// claim_batch PANICS (rc=101, src/v1/stage0/src/cli_run.rs:570) when its cwd is not inside a git
+// checkout -- "workspace_root: ... is not inside a git checkout; run from the workspace (the
+// compile-time CARGO_MANIFEST_DIR fallback was removed...)". A checkout materialized by `git
+// archive` (no .git) therefore runs NO legs at all: every spawn dies at once with out_bytes=4641
+// and zero verdicts, and the empty `TREE_SHA=GIT_TREE_UNREADABLE` above is the runner reading
+// back the same absence. The runner route must be a real git checkout (clone + checkout of the
+// head commit); these two probes then report the identity they are measuring.
 fn floor_preparation_git_tree_sha() -> String {
   let outcome = floor_preparation_spawn_plain(
     binary: "/usr/bin/git",
     args: ["-C", floor_preparation_runner_root(), "rev-parse", "HEAD^\{tree\}"])
   if outcome.rc == 0 { floor_preparation_first_token(outcome.stdout) } else { "GIT_TREE_UNREADABLE" }
+}
+
+fn floor_preparation_git_head_sha() -> String {
+  let outcome = floor_preparation_spawn_plain(
+    binary: "/usr/bin/git",
+    args: ["-C", floor_preparation_runner_root(), "rev-parse", "HEAD"])
+  if outcome.rc == 0 { floor_preparation_first_token(outcome.stdout) } else { "GIT_HEAD_UNREADABLE" }
 }
 
 fn floor_preparation_manifest_sha(kind: String) -> String {
@@ -634,9 +649,23 @@ fn floor_preparation_retained_body(untrimmed_stdout: String, graded_stdout: Stri
     concat("\nSECTION graded\n", join(floor_preparation_kept(text: graded_stdout), "\n")))
 }
 
-fn floor_preparation_provenance(leg: String, binary_sha: String, rc: Int, kept_count: Int) -> String {
-  concat(concat(concat(concat(concat("[capture-provenance] leg=", leg), " binary_sha256="), binary_sha),
-    " rc="), concat(to_string(rc), concat(" kept_rows=", to_string(kept_count))))
+fn floor_preparation_byte_text(value: Optional<ByteSize>) -> String {
+  match value {
+    Present { value: b } => to_string(byte_size_count(b))
+    Absent {} => "BYTES_UNREADABLE"
+  }
+}
+
+fn floor_preparation_provenance(
+    leg: String, binary_sha: String, binary_bytes: String,
+    head_sha: String, tree_sha: String, rc: Int, kept_count: Int) -> String {
+  // The keys here are the CONTRACT the committed-capture witness reads (binary_sha256,
+  // binary_bytes, head_sha, tree_sha): a provenance line without an identity key makes that
+  // witness refuse, so the cache cannot be spliced in without its identities.
+  fold(["[capture-provenance] leg=", leg, " binary_sha256=", binary_sha,
+        " binary_bytes=", binary_bytes, " head_sha=", head_sha, " tree_sha=", tree_sha,
+        " rc=", to_string(rc), " kept_rows=", to_string(kept_count)],
+    init: "", f: (acc, s) => concat(acc, s))
 }
 
 fn floor_preparation_capture_run() -> String {
@@ -660,6 +689,7 @@ fn floor_preparation_capture_run() -> String {
   } else {
     let entries = floor_preparation_population_entries()
     let tree_sha = floor_preparation_git_tree_sha()
+    let head_sha = floor_preparation_git_head_sha()
     let untrimmed = floor_preparation_spawn_slot(
       bound: floor_preparation_untrimmed_bound,
       binary: floor_preparation_pinned_claim_batch(),
@@ -679,6 +709,21 @@ fn floor_preparation_capture_run() -> String {
       label: "leg-graded", entries: survivors, binary: floor_preparation_pinned_claim_batch(),
       tree_sha: tree_sha, kept_count: length(xs: kept_graded), outcome: graded)
     let graded_receipt = floor_preparation_leg_receipt(r: graded_record)
+    // Each leg's stderr is materialized UNCONDITIONALLY -- it is the only artifact that says what
+    // the leg actually executed, and the legs that die (panic, resolve failure) are exactly the
+    // ones whose streams must survive the run. A Filesystem.Write only lands when a receipt reads
+    // its `.success` (observed run6: the claims write materialized because its receipt consumed
+    // the flag; nothing consumed a leg write, so no leg log existed on disk).
+    let leg_untrimmed_stderr_write = Filesystem.Write(
+      path: concat(floor_preparation_runner_root(), "/leg-untrimmed-stderr.log"),
+      content: untrimmed.stderr)
+    let leg_graded_stderr_write = Filesystem.Write(
+      path: concat(floor_preparation_runner_root(), "/leg-graded-stderr.log"),
+      content: graded.stderr)
+    let leg_stderr_untrimmed = floor_preparation_receipt("leg-stderr-untrimmed",
+      if leg_untrimmed_stderr_write.success { "file=leg-untrimmed-stderr.log written=yes" } else { "file=leg-untrimmed-stderr.log written=NO" })
+    let leg_stderr_graded = floor_preparation_receipt("leg-stderr-graded",
+      if leg_graded_stderr_write.success { "file=leg-graded-stderr.log written=yes" } else { "file=leg-graded-stderr.log written=NO" })
     let fold_legs_receipt = floor_preparation_receipt("fold-legs",
       concat(concat("kept_untrimmed=", to_string(length(xs: kept_untrimmed))),
         concat(" kept_graded=", to_string(length(xs: kept_graded)))))
@@ -744,17 +789,25 @@ fn floor_preparation_capture_run() -> String {
     let receipts = concat(concat(concat(supplies, [verify_receipt]),
         [build_argv_receipt,
          untrimmed_receipt,
+         leg_stderr_untrimmed,
          floor_preparation_receipt("derive-pass-set",
            concat("excluded=", to_string(length(xs: survivors))))]),
       [graded_receipt,
+       leg_stderr_graded,
        fold_legs_receipt,
        floor_preparation_receipt("retained-body-rendered",
          concat("rows=", to_string(length(xs: retained)))),
        splice_receipt,
        floor_preparation_provenance(leg: "untrimmed",
-         binary_sha: floor_preparation_pinned_claim_batch_sha, rc: untrimmed_record.rc, kept_count: untrimmed_record.kept_count),
+         binary_sha: floor_preparation_pinned_claim_batch_sha,
+         binary_bytes: floor_preparation_byte_text(value: untrimmed_record.bytes),
+         head_sha: head_sha, tree_sha: tree_sha,
+         rc: untrimmed_record.rc, kept_count: untrimmed_record.kept_count),
        floor_preparation_provenance(leg: "graded",
-         binary_sha: floor_preparation_pinned_claim_batch_sha, rc: graded_record.rc, kept_count: graded_record.kept_count),
+         binary_sha: floor_preparation_pinned_claim_batch_sha,
+         binary_bytes: floor_preparation_byte_text(value: graded_record.bytes),
+         head_sha: head_sha, tree_sha: tree_sha,
+         rc: graded_record.rc, kept_count: graded_record.kept_count),
        floor_preparation_receipt("claim-gate",
          concat(concat("missing=", join(missing, ",")),
            concat(concat(" claims_stderr_bytes=", claims_stderr_text),
