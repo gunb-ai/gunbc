@@ -20,11 +20,12 @@ import std.types { String, Bool, Int, List, NonEmptyStr }
 import std.optional { Optional }
 import std.algebra { string_contains }
 import std.decl_ref { decl_ref }
-import gunbc.extdeps.languages.json.emit { serialize_json }
-import gunbc.extdeps.units.iso8601_calendar { Iso8601CivilDate }
+import extdeps.languages.json.emit { serialize_json }
+import extdeps.units.iso8601_calendar { Iso8601CivilDate }
 import gunbc.roadmap.roadmap_decomposition { Declared }
 import gunbc.roadmap.roadmap_schedule_calendar { DatedLeaf }
-import gunbc.roadmap.roadmap_model { RoadmapNodeId, LeafPath, nid }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId, LeafPath }
+import gunbc.roadmap.roadmap_authority { nid }
 import std.checked_arithmetic { checked_int_to_nat }
 import gunbc.roadmap.roadmap_belt { BeltCapacity }
 import gunbc.roadmap.roadmap_event_log {

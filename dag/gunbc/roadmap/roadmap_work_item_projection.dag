@@ -19,7 +19,7 @@ import gunbc.roadmap.roadmap_schedule_from_now { ItemLog, FromNowScheduled, From
 import std.nat { Nat }
 import std.integer { nat_to_int }
 import extdeps.units.iso8601_calendar { Iso8601CivilDate }
-import gunbc.extdeps.languages.json.emit {
+import extdeps.languages.json.emit {
   JsonValue, JsonKeyValue, json_kv, json_object, json_array, json_string, json_int, json_bool, json_null,
 }
 
