@@ -1,0 +1,174 @@
+module test.claim.gate668_value_disposition_prodr
+
+// PRODUCTION-PATH CELLS (foldctl11): the v2 acceptance path is program_assembly
+// (assemble_program_from_ingest: production normalize + resolve, NO conservation wrapper --
+// reference_conservation_admission.dag:42-56 documents conserved_normalize as the fixture-grain
+// route). Verdicts here are the ones the red_control clause means ("each in-scope production
+// acceptance path"). Pair with foldctl9/foldctl10 which grade the fixture route.
+
+import std.types { String, Bool }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.node { symbol_lexeme }
+import v2.std.text { String }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { V2Tree }
+import v2.compiler.resolve { ResolvedTree }
+import v2.compiler.name_resolve { Admission, ResolutionSubject }
+import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.extdeps.languages.dag { dag_language_model }
+import extdeps.communication.medium { Lossless, Medium }
+import gunbc.instruments.multi_module_compile_fixture {
+  MultiModuleCompileFixture,
+  ClaimScopeFixtureOutcome,
+  fixture_source,
+  claim_scope_fixture,
+  claim_scope_was_accepted,
+  claim_scope_compile_refusal_has_class
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data p_name_src: String = "module p\n\nfn f(a: Bool, b: Bool) -> Bool {\n  a && b\n  true\n}\n"
+data p_call_src: String = "module p\n\nfn helper(n: Int) -> Int { n }\n\nfn f(n: Int) -> Int {\n  helper(n)\n  n\n}\n"
+data p_ifb_src: String = "module p\n\nfn f(b: Bool) -> Int {\n  if b { 1 }\n  2\n}\n"
+data p_ifb_real_src: String = "module p\n\nfn check(duplicated: Bool) -> Int {\n  let flag = duplicated\n  if flag {\n    0\n  }\n  1\n}\n"
+data p_blk_src: String = "module p\n\nfn f(n: Int) -> Int {\n  { 7 }\n  n\n}\n"
+data p_ul_src: String = "module p\n\nfn f(n: Int) -> Int {\n  let hidden = n\n  n\n}\n"
+data p_up_src: String = "module p\n\nfn f(n: Int, k: Int) -> Int {\n  n\n}\n"
+data p_lp_src: String = "module p\n\nfn apply2(g: fn(Int, Int) -> Int, a: Int, b: Int) -> Int { g(a) }\n\nfn f(n: Int) -> Int {\n  apply2(fn(x, y) { x }, n, n)\n}\n"
+data p_lu_src: String = "module p\n\nfn helper(n: Int) -> Int { n }\n\nfn f(n: Int) -> Int {\n  let _ = helper(n)\n  n\n}\n"
+
+data prod_artifact: Artifact = Artifact {
+  kind: SourceFile,
+  id: ^vd_prod_artifact,
+  file_path: "src/v2/pilot/vd_prod_pilot.dag"
+}
+
+fn prod_ingest_for(src: String) -> SourceRootIngest {
+  Cons {
+    head: DagSourceReadWitness {
+      source: Medium { carried: src, fidelity: Lossless },
+      artifact: prod_artifact,
+      compilation_unit: ^vd_prod_cu,
+      source_root: V2Tree
+    },
+    tail: Empty
+  }
+}
+
+fn prod_admission() -> Admission {
+  Admission {
+    subject: ResolutionSubject { name: Cons { head: ^p, tail: Empty } },
+    imports: Empty
+  }
+}
+
+fn prod_assemble(src: String) -> Outcome<ResolvedTree> {
+  assemble_program_from_ingest(ingest: prod_ingest_for(src: src), admission: prod_admission(), lm: dag_language_model())
+}
+
+fn prod_accepted(src: String) -> Bool {
+  match prod_assemble(src: src) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn prod_refused(src: String) -> Bool {
+  match prod_assemble(src: src) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+fn prod_refused_precedes(src: String) -> Bool {
+  match prod_assemble(src: src) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: ds } =>
+      symbol_lexeme(sym: ds.head.reason) == "body_lowering_reason_statement_precedes_without_binding"
+  }
+}
+
+test fn vd_p_name_accepted_holds() -> Bool { prod_accepted(p_name_src) }
+test fn vd_p_name_refused_holds() -> Bool { prod_refused(p_name_src) }
+test fn vd_p_name_precedes_holds() -> Bool { prod_refused_precedes(p_name_src) }
+
+test fn vd_p_call_accepted_holds() -> Bool { prod_accepted(p_call_src) }
+test fn vd_p_call_refused_holds() -> Bool { prod_refused(p_call_src) }
+test fn vd_p_call_precedes_holds() -> Bool { prod_refused_precedes(p_call_src) }
+
+test fn vd_p_ifb_accepted_holds() -> Bool { prod_accepted(p_ifb_src) }
+test fn vd_p_ifb_refused_holds() -> Bool { prod_refused(p_ifb_src) }
+test fn vd_p_ifb_precedes_holds() -> Bool { prod_refused_precedes(p_ifb_src) }
+
+test fn vd_p_ifbreal_accepted_holds() -> Bool { prod_accepted(p_ifb_real_src) }
+test fn vd_p_ifbreal_refused_holds() -> Bool { prod_refused(p_ifb_real_src) }
+test fn vd_p_ifbreal_precedes_holds() -> Bool { prod_refused_precedes(p_ifb_real_src) }
+
+test fn vd_p_blk_accepted_holds() -> Bool { prod_accepted(p_blk_src) }
+test fn vd_p_blk_refused_holds() -> Bool { prod_refused(p_blk_src) }
+test fn vd_p_blk_precedes_holds() -> Bool { prod_refused_precedes(p_blk_src) }
+
+test fn vd_p_ul_accepted_holds() -> Bool { prod_accepted(p_ul_src) }
+test fn vd_p_up_accepted_holds() -> Bool { prod_accepted(p_up_src) }
+test fn vd_p_lp_accepted_holds() -> Bool { prod_accepted(p_lp_src) }
+test fn vd_p_lu_accepted_holds() -> Bool { prod_accepted(p_lu_src) }
+
+// ---------------- v1 arm: verdict-shape cells (production pipeline) ----------------
+
+data v1_blk_src: String = "module vp.blk\n\nfn f(n: Int) -> Int {\n  { 7 }\n  n\n}\n"
+data v1_uc_src: String = "module vp.uc\n\nimport std.types { Unit }\n\nfn noop() -> Unit { Unit }\n\nfn f(n: Int) -> Int {\n  noop()\n  n\n}\n"
+
+fn vd_v1_scope(path: String, module_name: String, source: String) -> ClaimScopeFixtureOutcome {
+  claim_scope_fixture(
+    MultiModuleCompileFixture {
+      sources: [fixture_source(path, source)],
+      entry: path
+    },
+    module_name
+  )
+}
+
+test fn vd_1_blk_accepted_holds() -> Bool { claim_scope_was_accepted(o: vd_v1_scope("vp/blk.dag", "vp.blk", v1_blk_src)) }
+test fn vd_1_blk_compile_refused_holds() -> Bool {
+  claim_scope_compile_refusal_has_class(o: vd_v1_scope("vp/blk.dag", "vp.blk", v1_blk_src), wanted: "InternalError")
+}
+test fn vd_1_blk_not_accepted_holds() -> Bool {
+  !claim_scope_was_accepted(o: vd_v1_scope("vp/blk.dag", "vp.blk", v1_blk_src))
+}
+test fn vd_1_uc_accepted_holds() -> Bool { claim_scope_was_accepted(o: vd_v1_scope("vp/uc.dag", "vp.uc", v1_uc_src)) }
+test fn vd_1_uc_not_accepted_holds() -> Bool {
+  !claim_scope_was_accepted(o: vd_v1_scope("vp/uc.dag", "vp.uc", v1_uc_src))
+}
+
+// ---------------- additions per manager msg (field-binder production, effectful discard, tail consumed) ----------------
+
+data p_fld_src: String = "module p\n\ntype Opt = Present { value: Int } | Absent\n\nfn get(o: Opt) -> Int {\n  match o {\n    Present { value: v } => 0\n    Absent => 1\n  }\n}\n"
+
+test fn vd_p_fld_accepted_holds() -> Bool { prod_accepted(p_fld_src) }
+test fn vd_p_fld_refused_holds() -> Bool { prod_refused(p_fld_src) }
+test fn vd_p_fld_precedes_holds() -> Bool { prod_refused_precedes(p_fld_src) }
+
+// EXPLICIT DISCARD OF AN EFFECTFUL/FAILING OPERATION. No effect declarations exist in the .dag
+// grammar today (grep evidence: std.effect_grant is a harness-grant module; ExecutionMode is
+// witness-harness treatment), so "effectful" here = an operation whose evaluation refuses
+// (projection head on Empty). Two cells: static acceptance, and a forcing probe -- if the
+// discarded failing operation's failure surfaces at witness evaluation, this cell FAILS with a
+// diagnostic (failure preserved); if it PASSes, the discard did not force (stated finding).
+data p_lue_src: String = "module p\n\nfn get_head(xs: List<Int>) -> Int { xs.head }\n\nfn f(n: Int) -> Int {\n  let _ = get_head(Empty)\n  n\n}\n"
+
+test fn vd_p_lue_accepted_holds() -> Bool { prod_accepted(p_lue_src) }
+
+test fn vd_p_lue_witness_discard_forced_holds() -> Bool {
+  let xs: List<Int> = Empty
+  let _ = xs.head
+  true
+}
+
+// POSITIVE CONTROL: tail value consumed by its enclosing context (criteria retained control).
+data p_tail_src: String = "module p\n\nfn outer(n: Int) -> Int {\n  inner(n)\n}\n\nfn inner(n: Int) -> Int {\n  n\n}\n"
+
+test fn vd_p_tail_consumed_accepted_holds() -> Bool { prod_accepted(p_tail_src) }
