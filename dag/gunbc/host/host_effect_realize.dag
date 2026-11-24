@@ -7272,10 +7272,29 @@ fn observe_direct_children_one(root: String, sub: String, transport: HostEffectE
 // keeps its own starting-point row); the direct-children listing passes false because its find uses
 // -mindepth 1 and so prints NO starting-point row. It counts FRAMING, never surviving rows -- filtering
 // out empty fragments before counting would let a newline inside a name cost no row. Fail-closed:
-//  (1) EMPTY FRAGMENTS. Every genuine record ends in exactly ONE LF, so a well-formed listing has EXACTLY
-//      one empty fragment -- the trailing one after the final LF. Any other empty fragment can only come
-//      from a newline inside a name (a child named "<LF>...", e.g. "<LF>.gunbc-tree-receipt" masquerading
-//      as the receipt) -> refused.
+//  (1) EMPTY FRAGMENTS, under EITHER trailing convention, the convention READ FROM THE BYTES rather than
+//      assumed. `find` prints its ONE LF AFTER EVERY RECORD, the last included, so the listing as `find`
+//      writes it ends in a final LF and its split leaves EXACTLY one empty fragment: the tail after that
+//      final LF, which is no record. The transport BELOW this `.dag` hands these functions the captured
+//      bytes AFTER the seed's shell capture trimmed their trailing whitespace -- measured on srv1,
+//      fleet-converge dashboard_deploy run 45286132235 (execution revision 0f036da7), where the 9217-record
+//      well-formed `dag` listing arrived with NO trailing LF and this collector refused it for 0 empty
+//      fragments. That trimming is a separate seed-side issue (bounded_shell_host_drain.rs,
+//      retained_utf8_lossy_trimmed) and NOT this collector's to decide, so BOTH conventions are admitted:
+//        bytes end in a LF  -> exactly ONE empty fragment is legal (the tail after the final LF) and the
+//                              records are the fragments MINUS that tail;
+//        bytes do not       -> NO empty fragment is legal and the records ARE the fragments.
+//      The record count handed to control (2) is derived from the SAME flag, so admitting the second
+//      convention cannot hand (2) a different population: an empty fragment under EITHER convention can
+//      only come from a newline inside a name (a child named "<LF>...", e.g. "<LF>.gunbc-tree-receipt"
+//      masquerading as the receipt) -> refused.
+//      NAME THE QUANTITY HONESTLY: `lf_bytes` keeps its original name, but under this derivation it is the
+//      RECORD COUNT -- `fragments - 1` when the bytes end in a LF and `fragments` when they do not -- and NOT a
+//      count of LF bytes. The literal LF-byte count is not even observable here, since the transport trims the
+//      capture's trailing whitespace, last LF included, and it is not the quantity control (2) means: what it
+//      weighs against the independent dot enumeration is the number of RECORDS. Do not "restore" a literal
+//      byte count into that binding -- demanding the tail LF back is exactly the assumption that refused every
+//      srv1 deploy.
 //  (2) LF-VS-DOTS. `dot_stdout` is a second `-printf .` enumeration of the SAME set (one dot per entry,
 //      which a name cannot change). The number of LF-delimited records in the raw stdout must equal the
 //      dot count. A crafted name embedding a newline (e.g. `x|f|755|u|g||0<LF>foo`) splits into two
@@ -7293,12 +7312,15 @@ fn tree_metadata_entries_of_stdout_checked(root: String, stdout: String, dot_std
       TreeMetadataObservationFailed { reason: join(["find under ", root, " printed no rows but the dot enumeration counted ", to_string(dots), " entries; the population is not stable between the two reads -- refused, not accepted"], "") }
     }
   } else {
+    let trailing_lf = ends_with(s: stdout, suffix: "\n")
     let empty_frags = count(filter(fragments, f => string_length(s: f) == 0))
-    let lf_bytes = count(fragments) - 1
+    let legal_empty_frags = if trailing_lf { 1 } else { 0 }
+    let empty_fragment_clause = if trailing_lf { "ends in a LF, so only the single trailing one (after the final LF) is legal" } else { "carries no final LF, so every fragment is a record and none of them may be empty" }
+    let lf_bytes = if trailing_lf { count(fragments) - 1 } else { count(fragments) }
     let sp_rows = count(filter(fragments, f => tree_metadata_line_is_starting_point(line: f)))
     let expected_sp = if starting_point_expected { 1 } else { 0 }
-    if empty_frags != 1 {
-      TreeMetadataObservationFailed { reason: join(["find under ", root, ": the metadata listing has ", to_string(empty_frags), " empty line fragments but only the single trailing one (after the final LF) is legal; a name embedding a newline creates an extra empty fragment -- refused. rows=[", join(fragments, " ;; "), "]"], "") }
+    if empty_frags != legal_empty_frags {
+      TreeMetadataObservationFailed { reason: join(["find under ", root, ": the metadata listing has ", to_string(empty_frags), " empty line fragments but the listing ", empty_fragment_clause, "; a name embedding a newline creates an extra empty fragment -- refused. rows=[", join(fragments, " ;; "), "]"], "") }
     } else if lf_bytes != dots {
       TreeMetadataObservationFailed { reason: join(["find under ", root, ": the metadata listing has ", to_string(lf_bytes), " newline-delimited records but the independent dot enumeration counted ", to_string(dots), " entries; a crafted name that embeds a newline forges extra records -- refused. rows=[", join(fragments, " ;; "), "]"], "") }
     } else if sp_rows != expected_sp {
