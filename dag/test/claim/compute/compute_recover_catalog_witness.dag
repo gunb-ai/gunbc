@@ -73,7 +73,7 @@ import gunbc.compute.work_provider_local {
   ComputeRecovery, RecoveryReleased, RecoverySettledButHeld, RecoveryNothingHeld, RecoveryDeclined, RecoveryRefused,
   compute_recover_attempt,
   compute_recover_catalog_for, compute_recover_catalog_entry_line, compute_recover_catalog_cli, compute_attempt_record,
-  compute_recover_catalog_serving_cli, compute_recover_serving_cli,
+  compute_recover_catalog_serving_cli, compute_recover_serving_cli, compute_recover_readback_serving_cli,
   compute_open_attempt, compute_settle_attempt,
   AttemptGate, AttemptGateReady, AttemptGateRefused, AttemptOwner, DirectInvocation, DispatchOwned,
   AttemptSettlement, AttemptSettled, AttemptNotSettled, AttemptUnsettleable,
