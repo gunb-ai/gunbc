@@ -3542,6 +3542,23 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "factory", contribution: "Work runs on one execution and lease model."),
     ),
     roadmap_node(
+      identity: "rn_763VRA2TGQ2F7XN7QVQH20P4DJ",
+      id: "roadmap-dispatch-loop-resumes-adjudicated-seat",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_attempt_continuation.dag"),
+      line: ticket(t: fields(
+        headline: "The dispatch loop resumes a bound seat after adjudication",
+        boundary: "The consumer is the dispatch loop that resumes a bound seat after adjudication. The carrier is deliberately NOT roadmap_belt_actuate.dag: planning_consolidation marks the belt's attempt/lease/slot state as a duplicate to be deleted into fabric, and the realization home for attempt execution awaits the operator's ruling (design Hold); wiring into the belt now invests in a module scheduled for deletion.",
+        displaced_cost: "Without this row, a seat that has been adjudicated is never resumed by the dispatch loop, so the adjudication's outcome has no executor.",
+        first_slice: "The operator's realization-home ruling, which selects the module where attempt execution lives after the belt's state is deleted.",
+        red_control: "Not yet executable until the operator's realization-home ruling lands. The consumer-exists witness runs against whichever home is ruled; it is named here and must never be faked green.",
+        out_of_scope: "The belt's attempt/lease/slot state itself (factory-attempt-execution-on-fabric-lease migrates and deletes it); the adjudication mechanism (a separate authority).",
+        handback: "The consumer-exists witness executed against the ruled realization home, with the ruling cited."
+      )),
+      dispatch: not_dispatchable(reason: "Blocked on the operator's realization-home ruling; red_control not executable until that ruling lands."),
+      parent: in_project(project: "factory", contribution: "Work runs on one execution and lease model."),
+    ),
+    roadmap_node(
       identity: "rn_VE9DT9JA8RC2C17TYAA2ZG2HDZ",
       id: "factory-principal-display-never-raw",
       owner: "harness",
@@ -8204,6 +8221,7 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "work-exec-6-one-ledger-per-host", parent: "fabric-admission-and-delegation"),
     edge(child: "factory-attempt-execution-on-fabric-lease", parent: "venue-contract"),
     edge(child: "factory-attempt-execution-on-fabric-lease", parent: "execution-attempt-one-record"),
+    edge(child: "roadmap-dispatch-loop-resumes-adjudicated-seat", parent: "factory-attempt-execution-on-fabric-lease"),
     edge(child: "demand-m5", parent: "fabric-admission-and-delegation"),
     edge(child: "demand-m5", parent: "fabric-market-plan-fold"),
     edge(child: "required-witness-floor-restored", parent: "ci-cost-floor-preparation-cut"),
