@@ -9,6 +9,12 @@ import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_workflow_of, fleet_converge_review_sheet_converge_job, fleet_converge_review_sheet_writer_token_step,
   fleet_converge_build_job_if, fleet_converge_dispatch_event_if, fleet_converge_mode_job_id, ReviewSheetConverge,
   review_sheet_converge_source_paths, fleet_converge_mode_step_if,
+  fleet_converge_build_job, fleet_converge_plan_revision_job, fleet_converge_build_job_condition, fleet_converge_plan_revision_job_condition,
+  fleet_converge_workflow_mode_wire, MtCollins1Boot, FleetApply, Srv1RootMutation, DesiredInstanceDeploy,
+}
+import extdeps.github.expressions {
+  Expression, evaluate_expression, ExpressionValue, ExpressionEvaluationRefused, GithubPathResolution, GithubPathValue, GithubPathUnmodeled,
+  gha_value_is_truthy, serialize_expression,
 }
 import v2.std.diagnostic { Accepted, Rejected, outcome_accepted_value }
 
@@ -23,31 +29,43 @@ fn with_value(fields: List<YamlKeyValue>, key: String) -> String {
   }
 }
 
-// THE SCHEDULE AND PUSH TRIGGERS START THIS JOB ALONE. Every other job's condition is either gated to
-// a dispatch outright, or tests inputs.mode for equality with a named mode (empty on a schedule or
-// push, so false), or waits on `build`, which is dispatch-gated. This is a structural reading of the
-// emitted conditions, not an evaluation of them; the executed reading is the first scheduled run's own
-// job list.
+// THE SCHEDULED GRAPH: on a schedule or push, no host-actuating job can start. Every job other than this one,
+// plan-revision and build has a condition that is gated to a dispatch outright, or tests inputs.mode for equality
+// with a named mode (empty on a schedule or push, so false). This is a structural reading of the emitted
+// conditions; the two conditions the daily build changed are EVALUATED below.
 fn admits_only_a_dispatch(j: Job) -> Bool {
   let c = job_if(j: j)
   string_contains(s: c, pattern: fleet_converge_dispatch_event_if)
     || string_contains(s: c, pattern: "github.event.inputs.mode == '")
 }
 
-test fn no_other_job_can_start_on_a_schedule_or_push() -> Bool {
+fn is_a_pack_producer(j: Job) -> Bool {
+  let build_is = match outcome_accepted_value(fleet_converge_build_job()) {
+    Present { value: b } => b.id == j.id
+    Absent => false
+  }
+  let plan_is = match outcome_accepted_value(fleet_converge_plan_revision_job()) {
+    Present { value: p } => p.id == j.id
+    Absent => false
+  }
+  build_is || plan_is
+}
+
+test fn no_actuating_job_can_start_on_a_schedule_or_push() -> Bool {
   let mine = fleet_converge_mode_job_id(mode: ReviewSheetConverge) as String
-  match fleet_converge_workflow_of() {
-    Rejected { diagnostics: _ } => false
-    Accepted { value: wf } =>
-      { let others = filter(wf.jobs, j => j.id != mine)
+  match outcome_accepted_value(fleet_converge_workflow_of()) {
+    Absent => false
+    Present { value: wf } =>
+      { let others = filter(wf.jobs, j => j.id != mine && !is_a_pack_producer(j: j))
       others.length() > 0 && all(others, j => admits_only_a_dispatch(j: j)) }
   }
 }
 
 // CONTROL: a job with no condition (plan-revision before this change) is exactly what the reading
 // refuses; and build's own condition leads with the dispatch gate.
-test fn a_job_with_no_condition_is_caught_and_build_is_dispatch_gated() -> Bool {
+test fn a_job_with_no_condition_is_caught() -> Bool {
   match outcome_accepted_value(fleet_converge_review_sheet_converge_job()) {
+    Absent => false
     Present { value: zj } =>
       !admits_only_a_dispatch(j: Job {
         id: "bare", name: none, runner: zj.runner, environment: none,
@@ -55,7 +73,78 @@ test fn a_job_with_no_condition_is_caught_and_build_is_dispatch_gated() -> Bool 
         continue_on_error: none, concurrency: none, permissions: none,
       })
       && starts_with(s: fleet_converge_build_job_if, prefix: fleet_converge_dispatch_event_if)
+  }
+}
+
+// ── THE DAILY RELEASE PACK, EVALUATED (gunbc.design_ruling::lab_release_pack_built_daily_2026_11_23) ─────────
+// The two conditions are evaluated as GitHub would evaluate them, by extdeps.github.expressions evaluate_expression,
+// over the github context of each event: event_name, and event.inputs.mode (absent on a schedule or push, which
+// GitHub reads as empty). The emitted job conditions are the serializations of these same values.
+fn path_value(p: List<String>, event_name: String, mode: String) -> GithubPathResolution {
+  let key = join(p, ".")
+  if key == "event_name" { GithubPathValue { value: event_name } }
+  else if key == "event.inputs.mode" { GithubPathValue { value: mode } }
+  else { GithubPathUnmodeled }
+}
+
+fn on_schedule(p: List<String>) -> GithubPathResolution { path_value(p: p, event_name: "schedule", mode: "") }
+fn on_push(p: List<String>) -> GithubPathResolution { path_value(p: p, event_name: "push", mode: "") }
+fn on_apply_dispatch(p: List<String>) -> GithubPathResolution { path_value(p: p, event_name: "workflow_dispatch", mode: fleet_converge_workflow_mode_wire(mode: FleetApply)) }
+fn on_desired_instance_deploy_dispatch(p: List<String>) -> GithubPathResolution { path_value(p: p, event_name: "workflow_dispatch", mode: fleet_converge_workflow_mode_wire(mode: Srv1RootMutation(DesiredInstanceDeploy))) }
+fn on_boot_dispatch(p: List<String>) -> GithubPathResolution { path_value(p: p, event_name: "workflow_dispatch", mode: fleet_converge_workflow_mode_wire(mode: MtCollins1Boot)) }
+
+// Admitted only when the evaluator yields a truthy value; a refusal to evaluate is never an admission.
+fn admits(condition: Expression, github: fn(List<String>) -> GithubPathResolution) -> Bool {
+  match evaluate_expression(expression: condition, github_path: github) {
+    ExpressionValue { value: v } => gha_value_is_truthy(s: v)
+    ExpressionEvaluationRefused { cause: _ } => false
+  }
+}
+
+// Evaluated to a value (false or true), not refused: a "not admitted" below is a real false, not an unmodeled read.
+fn evaluates(condition: Expression, github: fn(List<String>) -> GithubPathResolution) -> Bool {
+  match evaluate_expression(expression: condition, github_path: github) {
+    ExpressionValue { value: _ } => true
+    ExpressionEvaluationRefused { cause: _ } => false
+  }
+}
+
+test fn the_schedule_builds_the_pack_and_runs_its_prerequisite() -> Bool {
+  admits(condition: fleet_converge_build_job_condition, github: on_schedule)
+    && admits(condition: fleet_converge_plan_revision_job_condition, github: on_schedule)
+}
+
+// RED: a push (the review-sheet sources) builds nothing and resolves nothing -- evaluated to false, not refused.
+test fn a_push_builds_nothing() -> Bool {
+  evaluates(condition: fleet_converge_build_job_condition, github: on_push)
+    && !admits(condition: fleet_converge_build_job_condition, github: on_push)
+    && evaluates(condition: fleet_converge_plan_revision_job_condition, github: on_push)
+    && !admits(condition: fleet_converge_plan_revision_job_condition, github: on_push)
+}
+
+// A dispatch keeps its old reading: a mode that consumes the pack builds it; a mode whose own job builds what it runs
+// (the boot) does not, while plan-revision still runs as a checkout.
+test fn a_dispatch_builds_only_for_a_mode_that_consumes_the_pack() -> Bool {
+  admits(condition: fleet_converge_build_job_condition, github: on_apply_dispatch)
+    && admits(condition: fleet_converge_build_job_condition, github: on_desired_instance_deploy_dispatch)
+    && evaluates(condition: fleet_converge_build_job_condition, github: on_boot_dispatch)
+    && !admits(condition: fleet_converge_build_job_condition, github: on_boot_dispatch)
+    && admits(condition: fleet_converge_plan_revision_job_condition, github: on_boot_dispatch)
+}
+
+// The emitted conditions ARE these values, and the scheduled path to the artifact is plan-revision -> build only:
+// build needs nothing a schedule skips.
+test fn the_emitted_conditions_are_the_evaluated_values_and_build_needs_only_plan_revision() -> Bool {
+  match outcome_accepted_value(fleet_converge_build_job()) {
     Absent => false
+    Present { value: bj } => match outcome_accepted_value(fleet_converge_plan_revision_job()) {
+      Absent => false
+      Present { value: pj } =>
+        job_if(j: bj) == serialize_expression(expression: fleet_converge_build_job_condition)
+          && job_if(j: bj) == fleet_converge_build_job_if
+          && job_if(j: pj) == serialize_expression(expression: fleet_converge_plan_revision_job_condition)
+          && join(bj.needs, ",") == pj.id
+    }
   }
 }
 

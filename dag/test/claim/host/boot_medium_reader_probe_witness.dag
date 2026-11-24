@@ -28,7 +28,7 @@ import gunbc.host.boot_medium_reader_probe {
   StageKey, StageAgent, StageTarget, StageTransport, StageReaderLogin, StageRed, StageUnexplained, StageFacts, StageNotDispatched,
   boot_medium_reader_probe_fold, reader_probe_forced_answer, reader_probe_refusal_class, reader_probe_answer_text,
   reader_probe_forced_command_masks, reader_probe_holds, reader_probe_locked_account_fact,
-  reader_probe_export_reading, reader_shadow_field_is_locked, reader_probe_stage_text,
+  reader_probe_export_reading, ReaderProbeAdminReading, AdminReadable, AdminNotReadable, AdminNotDispatched, reader_shadow_field_is_locked, reader_probe_stage_text,
   render_reader_probe_receipt,
 }
 
@@ -234,13 +234,18 @@ test fn a_never_dispatched_leg_is_never_an_observed_transport_or_auth_failure() 
 
 // NON-DISPATCH SURVIVES AT THE ADMINISTRATOR-READABILITY CONSUMER. reader_probe_export_reading is reached with a
 // readable admin leg through the fold_with test helper (which hardcodes good_readable), so this path is otherwise
-// unexercised at the consumer. An admin leg the host was never handed must surface its CAUSE (admin_evidence "never
-// dispatched") and never a fabricated answer carrying an exit -- it must not be silently read as a real "admin says
-// not-readable". Red if the consumer fabricates an exit/answer for the never-dispatched admin leg.
+// unexercised at the consumer. An admin leg the host was never handed must be the TYPED unavailable arm carrying
+// its cause -- never a fabricated AdminNotReadable ("admin says not-readable") and never an answer exposing an exit.
+// Red if the consumer collapses the never-dispatched admin leg into a readable/not-readable answer.
 test fn a_never_dispatched_admin_leg_survives_as_its_cause_not_an_exit() -> Bool {
   let rep = reader_probe_export_reading(admin: not_dispatched(reason: "admin leg never dispatched"), forced: ForcedAnswerHeld { digest: probe_digest })
-  string_contains(s: rep.admin_evidence as String, pattern: "never dispatched")
-    && !string_contains(s: rep.admin_evidence as String, pattern: "exit=")
+  match rep.admin {
+    AdminNotDispatched { reason: rr } =>
+      string_contains(s: rr as String, pattern: "admin leg never dispatched")
+        && !string_contains(s: rep.admin_evidence as String, pattern: "exit=")
+    AdminReadable => false
+    AdminNotReadable => false
+  }
 }
 
 // NON-DISPATCH SURVIVES AT THE SECOND-COMMAND COMPARISON CONSUMER. The fold returns its forced-leg refusal before
@@ -257,7 +262,7 @@ test fn a_never_dispatched_command_is_never_read_as_masking_the_forced_answer() 
 // THE ADMIN LEG MUST SURVIVE THROUGH THE WHOLE FOLD, not just at its consumer. The full successful fixture (pinned
 // key, agent holds it, target reached, forced held, second masked identically, shadow/use_pam read) with ONLY the
 // admin leg never dispatched must NOT let the probe observe success: the readability command never ran, so there is
-// no reading of the reader's view of the served image. Red on current production, where reader_probe_after_masking
+// no reading of the reader's view of the served image. Red at the pre-fix head a57d1d6 (fixed in ea034d37), where reader_probe_after_masking
 // folds a never-dispatched admin leg into export.readable=false and still returns ReaderProbeObserved with
 // second_command_masked=true, so reader_probe_holds comes back true and the probe can EXIT SUCCESS without the
 // readability command ever having run.
@@ -274,7 +279,7 @@ test fn a_never_dispatched_admin_leg_refuses_the_probe_and_never_holds() -> Bool
 
 // THE SECOND LEG MUST BE DETECTED AS NEVER-DISPATCHED BEFORE THE COMPARISON, not read as "answered differently".
 // A held forced leg with ONLY the second leg never dispatched cannot be compared against anything: the two-command
-// masking test is equality on an answer the host never handed. Red on current production, where
+// masking test is equality on an answer the host never handed. Red at the pre-fix head a57d1d6 (fixed in ea034d37), where
 // reader_probe_forced_command_masks returns false for an answered forced leg against a never-dispatched second and
 // the fold files that as StageRed "answered differently" -- a finding about a disagreement that never happened.
 test fn a_never_dispatched_second_command_refuses_at_not_dispatched_not_the_red() -> Bool {
@@ -289,10 +294,10 @@ test fn a_never_dispatched_second_command_refuses_at_not_dispatched_not_the_red(
 }
 
 // TWO NEVER-RUN COMMANDS ARE NEVER MASKING, WHATEVER THEIR REASONS -- including two that never ran for the SAME
-// reason. reader_probe_forced_command_masks currently returns `ro == rf` for two never-dispatched legs, so two
+// reason. reader_probe_forced_command_masks returned `ro == rf` at the pre-fix head a57d1d6 for two never-dispatched legs, so two
 // commands that both failed to dispatch for the same reason are reported as the second masking the forced one: the
 // masking evidence manufactured from two runs that never happened. The earlier control only tried DIFFERENT
-// reasons, so it passed with this defect in place. Red on current production's `ro == rf`.
+// reasons, so it passed with this defect in place. Red at the pre-fix head a57d1d6's `ro == rf`.
 test fn two_never_dispatched_commands_never_count_as_masking_whatever_their_reasons() -> Bool {
   let same = "the daemon was never reached"
   !reader_probe_forced_command_masks(forced: not_dispatched(reason: same), other: not_dispatched(reason: same))
@@ -516,9 +521,19 @@ test fn the_locked_reading_recognises_the_lock_shapes_and_nothing_else() -> Bool
 test fn the_export_reading_records_which_polarity_it_saw_from_both_sides() -> Bool {
   let readable = reader_probe_export_reading(admin: good_readable(), forced: ForcedAnswerHeld { digest: probe_digest })
   let blocked = reader_probe_export_reading(admin: ans(exit_code: 1, stdout: "", stderr: ""), forced: ForcedAnswerLoginRefused { evidence: "never authenticated" as NonEmptyStr })
-  readable.readable
+  let read_ok = match readable.admin {
+    AdminReadable => true
+    AdminNotReadable => false
+    AdminNotDispatched { reason: _ } => false
+  }
+  let block_ok = match blocked.admin {
+    AdminNotReadable => true
+    AdminReadable => false
+    AdminNotDispatched { reason: _ } => false
+  }
+  read_ok
     && string_contains(s: readable.admin_evidence as String, pattern: "admin leg asked as the reader account")
-    && !blocked.readable
+    && block_ok
     && string_contains(s: blocked.forced_evidence as String, pattern: "never authenticated")
 }
 
