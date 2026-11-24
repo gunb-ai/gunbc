@@ -49,13 +49,19 @@ data roadmap_intention_bindings: List<IntentionBinding> = [
   serves(node: "market-fix-upstream-model", module_path: fabric_market_intention, plan: "fabric_market_plan", layer: 0),
   serves(node: "execution-uncertainty-one-carrier", module_path: fabric_market_intention, plan: "fabric_market_plan", layer: 0),
   serves(node: "lease-fence-one-identity", module_path: fabric_market_intention, plan: "fabric_market_plan", layer: 0),
-  serves(node: "market-vocabulary-adoption", module_path: fabric_market_intention, plan: "fabric_market_plan", layer: 1),
+  serves(node: "router-behaviour-disposition", module_path: fabric_market_intention, plan: "fabric_market_plan", layer: 0),
+  serves(node: "fabric-market-plan-fold", module_path: fabric_market_intention, plan: "fabric_market_plan", layer: 0),
+  serves(node: "market-fix-product-mapping", module_path: fabric_market_intention, plan: "fabric_market_plan", layer: 1),
+  serves(node: "execution-attempt-one-record", module_path: fabric_market_intention, plan: "fabric_market_plan", layer: 1),
+  serves(node: "fabric-admission-and-delegation", module_path: fabric_market_intention, plan: "fabric_market_plan", layer: 1),
+  serves(node: "market-buy-order-replacement", module_path: fabric_market_intention, plan: "fabric_market_plan", layer: 2),
+  serves(node: "market-sell-order-replacement", module_path: fabric_market_intention, plan: "fabric_market_plan", layer: 2),
   serves(node: "venue-contract", module_path: fabric_market_intention, plan: "fabric_market_plan", layer: 2),
   serves(node: "matching-engine-on-std-decision", module_path: fabric_market_intention, plan: "fabric_market_plan", layer: 2),
   serves(node: "serving-router-native-transport", module_path: fabric_market_intention, plan: "fabric_market_plan", layer: 3),
   serves(node: "serving-relocation-realization", module_path: fabric_market_intention, plan: "fabric_market_plan", layer: 4),
   serves(node: "serving-router-lua-cutover", module_path: fabric_market_intention, plan: "fabric_market_plan", layer: 5),
-  serves(node: "fabric-market-plan-fold", module_path: fabric_market_intention, plan: "fabric_market_plan", layer: 0),
+  serves(node: "fabric-market-convergence", module_path: fabric_market_intention, plan: "fabric_market_plan", layer: 6),
   // gunbc.plans.one_source_tree: layers follow the dependency edges (1 the manifest, 2 the harness, 3 the other callers, 4 the cut,
   // 5 the renames and the extdeps reconciliation, 6 the terminal). one-standard-library is a prerequisite of the
   // terminal but stays bound to gunbc.plans.v2_self_host, which already owns it.
@@ -207,7 +213,7 @@ type IntentionTerminals {
 }
 
 data intention_terminals: List<IntentionTerminals> = [
-  IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.fabric_market", decl_name: "fabric_market_plan"), terminals: [nid(s: "serving-router-lua-cutover"), nid(s: "fabric-market-plan-fold")] },
+  IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.fabric_market", decl_name: "fabric_market_plan"), terminals: [nid(s: "fabric-market-convergence")] },
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.claim_execution_consolidation", decl_name: "claim_execution_consolidation_plan"), terminals: [nid(s: "claim-entrypoints-cutover")] },
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.v2_self_host", decl_name: "v2_self_host_plan"), terminals: [nid(s: "external-specimen-compiles"), nid(s: "v1-products-v1-free")] },
   // namespace-unique-on-chain joins as the program milestone's own terminal (2026-11-23): the review of
