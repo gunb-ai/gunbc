@@ -824,6 +824,32 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       function: "the_cli_door_exits_two_when_no_instance_resolves",
       expectation: ExpectedToHold {}
     },
+    // The serving doors added in #16919 were never enrolled with the rest of this witness; the
+    // read-back detail claim joins them now.
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "the_serving_census_door_refuses_a_host_off_the_serving_roster" },
+      entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
+      function: "the_serving_census_door_refuses_a_host_off_the_serving_roster",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "the_serving_census_door_answers_unknown_where_the_seat_home_is_absent" },
+      entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
+      function: "the_serving_census_door_answers_unknown_where_the_seat_home_is_absent",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "the_serving_recover_door_exits_unknown_off_the_roster" },
+      entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
+      function: "the_serving_recover_door_exits_unknown_off_the_roster",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "the_serving_readback_door_carries_its_unknown_detail" },
+      entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
+      function: "the_serving_readback_door_carries_its_unknown_detail",
+      expectation: ExpectedToHold {}
+    },
     WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.compute.manager_unaskable_wet_witness", function: "a_host_without_a_user_manager_reaches_the_unavailable_arm_instead_of_aborting" },
       entry: "dag/test/claim/compute/manager_unaskable_wet_witness.dag",

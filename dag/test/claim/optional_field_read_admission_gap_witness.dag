@@ -8,33 +8,26 @@ import gunbc.compile_diagnostic_census {
   census_total_count,
 }
 
-// A FIELD READ THROUGH AN OPTIONAL IS ADMITTED WHERE AN OPTIONAL ARGUMENT IS REFUSED. Class row:
-// gunbc.recurring_failure_mode.optional_admitted_where_a_required_value_is_declared, which judges
-// the direct-call argument, the declared list element and the undeclared list-literal member, but
-// not a field projection. So `levels().first().id` compiles with no blocking diagnostic, although
-// `.first()` produces Level? and Absent has no `id` field. Found in review 72657 on gunbc#12572 at
-// test.claim.machine_shape_catalog_integration_witness `memory.first().id`.
+// A FIELD READ THROUGH AN OPTIONAL WAS ADMITTED WHERE AN OPTIONAL ARGUMENT WAS REFUSED; THE HOLE IS CLOSED. Class row:
+// gunbc.recurring_failure_mode.optional_admitted_where_a_required_value_is_declared judged the direct-call argument, the
+// declared list element and the undeclared list-literal member, but not a field projection: `levels().first().id` compiled
+// with no blocking diagnostic although `.first()` produces Level? and Absent has no `id` field. Found in review 72657 on
+// gunbc#12572 at test.claim.machine_shape_catalog_integration_witness `memory.first().id`; measured admitted by gunbc#12633.
 //
-// THIS IS AN EVIDENCE FIXTURE AT THE GAP, NOT A WALL. The two claims are a discriminating pair
-// over one source shape, which differs only in the position that consumes `.first()`:
-// - the field-read claim asserts the measured admission: zero blocking rows;
-// - the call-argument claim asserts the neighbouring wall still refuses it.
-// So the pair shows the asymmetry rather than a blanket compile outcome.
-// dissolve-on: the field-projection position routes through optional_produced_at_required_declared.
-// The admission claim then goes red and flips, per gunbc.design_argument::guarantee_ladder (dissolution on climb), to assert >= 1 blocking
-// DeclaredTypeNotInhabited as a permanent regression control. It is not deleted.
+// THE WALL THAT CLOSED IT: bbfdf92d0ca7 (gunbc#13179), whose parent 6b60acfdaf54 is the last tree that admits it. The
+// comparison `levels().first().id == "l1"` now refuses EqualityOptionalityMismatch ("'==' compares an optional value with a
+// required one"). That wall sits at the equality, not at the projection: a field read through an Optional that is NOT
+// compared with a required value is judged by the class row, not by this witness.
+//
+// THIS IS NOW THE PERMANENT REGRESSION WITNESS, repointed per gunbc.design_argument::guarantee_ladder (dissolution on climb):
+// the admission claim flipped to assert the refusal and was not deleted. The pair still differs only in the position that
+// consumes `.first()`: the field-read claim asserts the equality wall refuses it; the call-argument claim asserts the
+// neighbouring DeclaredTypeNotInhabited wall still refuses its own position.
 
-fn blocking_count(source: String) -> Int {
-  match compile_dag_diagnostic_census(source) {
-    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
-    CensusNotRunnable { cause: _ } => -1
-  }
-}
-
-fn not_inhabited_blocking_count(source: String) -> Int {
+fn class_blocking_count(source: String, wanted: String) -> Int {
   match compile_dag_diagnostic_census(source) {
     CensusObserved { rows: rows } =>
-      census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "DeclaredTypeNotInhabited")))
+      census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: wanted)))
     CensusNotRunnable { cause: _ } => -1
   }
 }
@@ -43,8 +36,8 @@ fn ofr_field_read_source() -> String {
   "module ofr.field_read\n\nimport std.types { Bool, List, String }\n\ntype Level {\n  id: String\n}\n\nfn levels() -> List<Level> {\n  [Level { id: \"l1\" }]\n}\n\nfn probe() -> Bool {\n  levels().first().id == \"l1\"\n}\n"
 }
 
-test fn a_field_read_through_first_is_admitted_today() -> Bool {
-  blocking_count(source: ofr_field_read_source()) == 0
+test fn a_field_read_through_first_compared_with_a_required_value_is_refused() -> Bool {
+  class_blocking_count(source: ofr_field_read_source(), wanted: "EqualityOptionalityMismatch") == 1
 }
 
 fn ofr_call_arg_source() -> String {
@@ -52,5 +45,5 @@ fn ofr_call_arg_source() -> String {
 }
 
 test fn the_same_first_at_a_call_argument_is_refused() -> Bool {
-  not_inhabited_blocking_count(source: ofr_call_arg_source()) >= 1
+  class_blocking_count(source: ofr_call_arg_source(), wanted: "DeclaredTypeNotInhabited") >= 1
 }
