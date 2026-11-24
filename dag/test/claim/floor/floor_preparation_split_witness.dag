@@ -507,7 +507,7 @@ test fn floor_preparation_the_excluded_population_is_stated_with_its_causes() ->
 fn untrimmed_leg_is_the_same_floor() -> Bool {
   let untrimmed = floor_preparation_untrimmed_capture()
   floor_preparation_untrimmed_total_ms() > 0
-    && floor_preparation_untrimmed_verdict_pass() >= floor_preparation_split_pass()
+    && floor_preparation_untrimmed_verdict_pass() >= floor_preparation_split_pass(capture: floor_preparation_capture())
     && floor_preparation_any_row_starts_with(untrimmed, "[floor-phase]")
 }
 
@@ -847,8 +847,7 @@ test fn floor_preparation_the_runner_process_is_modelled() -> Bool {
 // ----------------------------------------------------------------------------------------------
 
 fn population_is_the_models_rendering() -> Bool {
-  floor_preparation_population_is_wellformed()
-    && join(floor_preparation_population_lines(), "\n") == trim(s: floor_preparation_population_text())
+  floor_preparation_population_is_wellformed() && floor_preparation_population_file_agrees()
 }
 
 test fn floor_preparation_the_population_is_the_models_rendering() -> Bool {

@@ -202,8 +202,14 @@ fn floor_preparation_tokens(line: String) -> List<String> {
   floor_preparation_reverse(pushed)
 }
 
-fn floor_preparation_reverse(xs: List<String>) -> List<String> {
+fn floor_preparation_reverse<T>(xs: List<T>) -> List<T> {
   fold(xs, init:  [], f: (acc, x) => concat([x], acc))
+}
+
+// Local fold-based count: the shared universal `length` resolves its type argument
+// monomorphically per module, so a second element type through it is refused.
+fn floor_preparation_count<T>(xs: List<T>) -> Int {
+  fold(xs, init: 0, f: (acc, _) => acc + 1)
 }
 
 // THE `key=value` ATOMS FOLLOWING A FIXED HEAD TOKEN.
@@ -761,7 +767,7 @@ fn floor_preparation_attribution(capture: List<String>) -> FloorPreparationAttri
     let costs = fold(keys, init:  [], f: (acc, key) => concat([floor_preparation_module_cost(key, capture)], acc))
     match floor_preparation_max(costs) {
       Absent => Unattributed {}
-      Present { value: top } => Attributed { modules: floor_preparation_reverse(costs), module_count: length(xs: costs), top_module: top.module, top_ms: floor_preparation_module_total(top) }
+      Present { value: top } => Attributed { modules: floor_preparation_reverse(costs), module_count: floor_preparation_count(costs), top_module: top.module, top_ms: floor_preparation_module_total(top) }
     }
   }
 }
@@ -1361,6 +1367,12 @@ data floor_preparation_population_model_rows: List<FloorPreparationPopulationRow
   FloorPreparationPopulationRow { kind: Extra, entry: "dag/test/claim/self_host_equality_admission_witness.dag", claim: "nested_routed_argument_equality_still_refuses_blocking" },
 ]
 
+// Substring and prefix authority for the whole fold (runner imports these; a second
+// implementation in the runner would be a fork).
+fn floor_preparation_contains(haystack: String, needle: String) -> Bool {
+  split(s: haystack, delimiter: needle).length() > 1
+}
+
 fn floor_preparation_text_starts_with(text: String, prefix: String) -> Bool {
   let pieces = split(s: text, delimiter: prefix)
   pieces.length() > 1 && pieces.first() == Present { value: "" }
@@ -1407,7 +1419,7 @@ fn floor_preparation_population_rendering() -> String {
 fn floor_preparation_population_file_agrees() -> Bool {
   let body = join(floor_preparation_population_lines(), "\n")
   let kept = fold(split(s: floor_preparation_population_text(), delimiter: "\n"), init: [], f: (acc, line) =>
-    if floor_preparation_text_starts_with(line: line, prefix: "#") { acc }
+    if floor_preparation_text_starts_with(text: line, prefix: "#") { acc }
     else if line == "" { acc }
     else { list_push(xs: acc, item: line) })
   length(xs: kept) > 0 && join(kept, "\n") == body
@@ -1569,11 +1581,11 @@ fn floor_preparation_untrimmed_field_of(capture: List<String>, which: String) ->
   match floor_preparation_split(capture) {
     Split { preparation_ms: p, claim_ms: c, preparation_lines: pl, claim_lines: cl, uncosted_lines: ul, untagged_lines: tl, verdict_pass: vp, verdict_fail: vf, total_ms: t } =>
       if which == "total" {
-        t
+        floor_preparation_ms_count(t)
       } else if which == "preparation" {
-        p
+        floor_preparation_ms_count(p)
       } else if which == "claim" {
-        c
+        floor_preparation_ms_count(c)
       } else if which == "fail" {
         vf
       } else if which == "pass" {
