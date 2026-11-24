@@ -78,6 +78,7 @@ import product.electrical.bench_session {
   HeldSteady,
   ThermalInterfaceChanged,
   PartRemoved,
+  PartFitted,
   VoltageValue,
   ReadAbout,
   ReadBelow,
@@ -3246,7 +3247,7 @@ fn e1_lift_refitted() -> MeasuredBoard {
     asset: b.asset, analysis: b.analysis, continuity: b.continuity, diode_readings: b.diode_readings, source_draws: b.source_draws,
     bench: BenchRecord {
       incidents: b.bench.incidents, attachments: b.bench.attachments, voltages: b.bench.voltages, resistances: b.bench.resistances,
-      alterations: map(b.bench.alterations, a => AssetAlteration { key: a.key, asset: a.asset, part: a.part, performed_on: a.performed_on, evidence: a.evidence, change: match a.change { PartRemoved { refitted: _ } => PartRemoved { refitted: true }, ThermalInterfaceChanged { removed, applied } => ThermalInterfaceChanged { removed: removed, applied: applied } } }),
+      alterations: map(b.bench.alterations, a => AssetAlteration { key: a.key, asset: a.asset, part: a.part, performed_on: a.performed_on, evidence: a.evidence, change: match a.change { PartRemoved { refitted: _ } => PartRemoved { refitted: true }, ThermalInterfaceChanged { removed, applied } => ThermalInterfaceChanged { removed: removed, applied: applied }, PartFitted { part_number } => PartFitted { part_number: part_number } } }),
     },
     phases: b.phases, transitions: b.transitions, pole_closures: b.pole_closures,
   }

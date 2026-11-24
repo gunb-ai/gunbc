@@ -42,12 +42,13 @@ import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.runner.runner_host_file_converge { administrator_ssh_target }
 import gunbc.fleet.fleet_known_hosts_anchor {
   SshTarget, FleetSshExecutionContext, SshTargetResolution, SshTargetResolved, SshTargetRefused,
+  FleetLegKind, ProbeLeg,
 }
 import gunbc.fleet.fleet_ssh_locus {
   prepare_fleet_ssh_agent_context, FleetSshContextPreparation, FleetSshContextReady, FleetSshContextRefused,
 }
 import gunbc.typed_argv_exec {
-  typed_argv_exec_over_fleet_ssh, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused,
+  typed_argv_exec_over_fleet_ssh, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused, TypedArgvExecOverran,
 }
 
 // READ-ONLY HOST MEMORY ENVELOPE. Modeled on gunbc.host.host_memory_observation
@@ -432,11 +433,17 @@ fn host_memory_quiescent_read_over_ssh(
     target: target,
     context: context,
     argv: ["/bin/cat", "/proc/meminfo"],
+    kind: ProbeLeg,
   ) {
     TypedArgvExecRefused { reason: why } =>
       HostMemQuiescentReadRefused {
         host: host,
         reason: concat("host_memory_envelope_observe: ", host as String, " is unreachable over ssh; refusing to report memory (never a zero or an absent figure): ", why),
+      }
+    TypedArgvExecOverran { deadline: _ } =>
+      HostMemQuiescentReadRefused {
+        host: host,
+        reason: concat("host_memory_envelope_observe: the read leg on ", host as String, " overran its ProbeLeg wall ceiling; refusing to report memory (never a zero or an absent figure)"),
       }
     TypedArgvExecConverged { result: r } =>
       if r.exit_code != 0 {
@@ -504,9 +511,16 @@ fn host_memory_envelope_observe_peer_wet(subject: String) -> ProcessExit {
     HostMemQuiescentReadRefused { host: _, reason: why } => exit_failure(reason: concat(why, "\n"))
     HostMemQuiescentReadObserved { read: read } => {
       let text = host_memory_quiescent_receipt_text(read: read)
+      // Two carriers, two consumers, one observation: the envelope path is host_memory_observe's canonical
+      // step-gated receipt (what the step script cats after the wet, identical to the self read -- the peer
+      // read is the SAME mode, so its receipt lands at the same place the step checks); the quiescent path is
+      // the frontier-named artifact that carries srv14's post-retirement MemAvailable reading (upload step).
       let w = Filesystem.Write(path: host_memory_quiescent_receipt_path, content: text)
+      let we = Filesystem.Write(path: host_memory_envelope_receipt_path, content: text)
       if w.success == false {
         exit_failure(reason: join(["host_memory_envelope_observe: quiescent receipt write failed: ", w.error, "\n", text], ""))
+      } else if we.success == false {
+        exit_failure(reason: join(["host_memory_envelope_observe: envelope receipt write failed: ", we.error, "\n", text], ""))
       } else {
         ExitSuccess
       }

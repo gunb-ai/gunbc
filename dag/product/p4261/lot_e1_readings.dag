@@ -35,6 +35,7 @@ import product.electrical.continuity {
 import product.electrical.bench_session {
   AssetAlteration,
   PartRemoved,
+  PartFitted,
   BenchIncident,
   NotInspected,
   DamageSeen,
@@ -179,6 +180,20 @@ data lot_e1_c_b_removal: AssetAlteration = AssetAlteration {
   evidence: OperatorStatement { stated_on: "2026-11-14", verbatim: "FYI - please record this stuff - Understood—0.40 mm measured with a micrometer, between the pad centres. [...] Current standing: B is removed; it fractured during removal; no off-board resistance result is available." },
 }
 
+data lot_e1_c_b_fit_key: NonEmptyStr = "e1c-2026-11-23-underside-part-b-replacement-fitted"
+
+// A new part B fitted by the operator to the pads the removal left, reported on 2026-11-23 (the parts arrived
+// 2026-11-22): the 4.7 ohm 0402 bought for it (DigiKey order 102929595). Readings since are of the board with
+// the new part, a third state after the intact one and the bare footprint.
+data lot_e1_c_b_fit: AssetAlteration = AssetAlteration {
+  key: lot_e1_c_b_fit_key,
+  asset: p4261_e1_c,
+  part: gate_part_b,
+  performed_on: "by 2026-11-23 (reported that day; the parts arrived 2026-11-22)",
+  change: PartFitted { part_number: "Yageo RC0402FR-074R7L, 4.7 ohm 1 percent 0402" },
+  evidence: c_after_fit_said,
+}
+
 // ── THE POINTS ────────────────────────────────────────────────────────────────────────────────────
 
 data r_basis: NonEmptyStr = "R, the seven-lead input transistor nearer the fuse, which the operator called Q22 on 2026-11-13; its own label was not read in these sittings (the labels Q1_P5 and Q6_P5 printed below its legs mark parts not yet identified)"
@@ -280,7 +295,7 @@ fn on_c(first: ElectricalTerminalRef, second: ElectricalTerminalRef, record: Pro
   ResistanceObservation {
     asset: p4261_e1_c, first: first, second: second, record: record, conditions: lot_unpowered_module_off,
     polarity: polarity, range: AutoRanging, display: display, stability: stability, certainty: StatedPlainly,
-    order: BetweenIncidents { after: lot_e1_c_after_both, before: [lot_e1_c_b_removal_key] }, evidence: said,
+    order: BetweenIncidents { after: lot_e1_c_after_both, before: [lot_e1_c_b_removal_key, lot_e1_c_b_fit_key] }, evidence: said,
   }
 }
 
@@ -474,7 +489,7 @@ fn after_removal(first: ElectricalTerminalRef, second: ElectricalTerminalRef, di
   ResistanceObservation {
     asset: p4261_e1_c, first: first, second: second, record: both_points_recorded, conditions: lot_unpowered_module_off,
     polarity: PolarityUnrecorded, range: AutoRanging, display: display, stability: StabilityUnrecorded, certainty: StatedPlainly,
-    order: AfterIncidents { keys: concat(lot_e1_c_after_both, [lot_e1_c_b_removal_key]) }, evidence: [c_after_removal_said],
+    order: BetweenIncidents { after: concat(lot_e1_c_after_both, [lot_e1_c_b_removal_key]), before: [lot_e1_c_b_fit_key] }, evidence: [c_after_removal_said],
   }
 }
 
@@ -482,6 +497,22 @@ data lot_e1_c_after_removal_resistances: List<ResistanceObservation> = [
   after_removal(first: gate_a_1, second: gate_a_2, display: about(ohms: 5)),
   after_removal(first: gate_b_1_pad, second: gate_a_1, display: at_probe_level(shown: "baseline")),
   after_removal(first: gate_b_2_pad, second: gate_b_2_via, display: at_probe_level(shown: "baseline")),
+]
+
+// AFTER THE NEW B WAS FITTED: one reading, A's end 2 to B's end 2, which runs through A and the new B in
+// series by their shared end 1s, 11 ohm displayed. The untouched S/N 1583323120218 reads 12 ohm on the same
+// pair, and A alone here read 5.1 ohm against a 1 ohm probes-together value, so 11 ohm is A plus a 4.7 ohm
+// part plus the probes, within a few ohm. The path runs through B1's joint by the long trace; B2's joint is
+// in it only if the probe sat on B2's pad or trace rather than the new part's end cap, which was not said.
+// The two gates read to each other, which runs through both joints, is the reading still owed.
+data c_after_fit_said: EvidenceRef = OperatorStatement { stated_on: "2026-11-23", verbatim: "the repair on B1/B2 worked - at least reading A2 -> B2 reads 11ohm" }
+
+data lot_e1_c_after_fit_resistances: List<ResistanceObservation> = [
+  ResistanceObservation {
+    asset: p4261_e1_c, first: gate_a_2, second: gate_b_2, record: both_points_recorded, conditions: lot_unpowered_module_off,
+    polarity: PolarityUnrecorded, range: AutoRanging, display: shown(ohms: 11), stability: StabilityUnrecorded, certainty: StatedPlainly,
+    order: AfterIncidents { keys: concat(lot_e1_c_after_both, [lot_e1_c_b_removal_key, lot_e1_c_b_fit_key]) }, evidence: [c_after_fit_said],
+  },
 ]
 
 // The rest of the underside readings on S/N 1583323120148 the operator gave as 'the same' as the untouched
@@ -507,9 +538,9 @@ data lot_e1_c_board: MeasuredBoard = MeasuredBoard {
   bench: BenchRecord {
     incidents: [lot_e1_c_q300_lift, lot_e1_c_probing],
     attachments: [],
-    alterations: [lot_e1_c_b_removal],
+    alterations: [lot_e1_c_b_removal, lot_e1_c_b_fit],
     voltages: [],
-    resistances: concat(concat(concat(concat(concat(concat(lot_e1_c_q300_resistances, lot_e1_c_transistor_resistances), lot_e1_c_leg_check_resistances), lot_e1_c_gate_check_resistances), lot_e1_c_fuse_resistances), lot_e1_c_gate_part_resistances), lot_e1_c_after_removal_resistances),
+    resistances: concat(concat(concat(concat(concat(concat(lot_e1_c_q300_resistances, lot_e1_c_transistor_resistances), lot_e1_c_leg_check_resistances), lot_e1_c_gate_check_resistances), lot_e1_c_fuse_resistances), lot_e1_c_gate_part_resistances), concat(lot_e1_c_after_removal_resistances, lot_e1_c_after_fit_resistances)),
   },
   phases: [],
   transitions: [],
@@ -994,6 +1025,14 @@ fn after_removal_lines() -> List<String> {
   }
 }
 
+// S/N 1583323120148 with the new part B fitted, its own state: its measured netlist.
+fn after_fit_lines() -> List<String> {
+  match board_after(b: lot_e1_c_board, keys: concat(lot_e1_c_after_both, [lot_e1_c_b_removal_key, lot_e1_c_b_fit_key]), module: ModuleRemoved) {
+    Absent => ["MEASURED NETLIST, S/N 1583323120148 with the new part B: the state does not resolve against the board's record"]
+    Present { value: s } => netlist_lines(title: "MEASURED NETLIST, S/N 1583323120148 with the new part B fitted:", net: board_netlist(s: s))
+  }
+}
+
 // The two lot E1s side by side, the differences first, then each board's measured netlist, into a file.
 fn write_lot_e1_side_by_side(path: NonEmptyStr) -> ProcessExit {
   match lot_e1_side_by_side() {
@@ -1001,6 +1040,6 @@ fn write_lot_e1_side_by_side(path: NonEmptyStr) -> ProcessExit {
     Present { value: s } => write_report(path: path, lines: concat(concat(concat(
       side_by_side_lines(s: s),
       netlist_lines(title: "MEASURED NETLIST, S/N 1583323120148 after both events, before part B's removal:", net: board_netlist(s: s.altered))),
-      netlist_lines(title: "MEASURED NETLIST, S/N 1583323120218 untouched:", net: board_netlist(s: s.reference))), after_removal_lines()))
+      netlist_lines(title: "MEASURED NETLIST, S/N 1583323120218 untouched:", net: board_netlist(s: s.reference))), concat(after_removal_lines(), after_fit_lines())))
   }
 }

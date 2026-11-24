@@ -17,8 +17,10 @@ import gunbc.live_deploy.release_locus { RevisionBoundAtEmission, RevisionNotIns
 import std.optional { Optional, Present, Absent }
 import std.algebra { string_contains }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, ProcessRan, ProcessNotSpawned, process_observation }
+import extdeps.filesystem.filesystem_io { FilesystemReadOutcome, FilesystemReadSucceeded, FilesystemReadRefused }
 import gunbc.live_deploy.release_pair_delivery {
   PackFetch, PackPresent, PackAbsent, PackVerify, VerifiedOn, Refused,
+  release_pair_incoming_serve_source, release_pair_source_dir,
   release_pair_converged_noop, release_pair_already_at_head_reason, PlanWaits,
 }
 import gunbc.live_deploy.release_pair_deliver_cli {
@@ -35,6 +37,8 @@ import gunbc.live_deploy.release_pair_deliver_cli {
   ReleasePairAncestry, AncestryObserved, AncestryRefused, ReleasePairBuiltRuns, BuiltRunsObserved, BuiltRunsRefused,
   release_pair_ancestry_unobserved_reason, release_pair_ancestry_not_at_head_reason,
   release_pair_decode_build_job, BuildJobSucceeded, BuildJobNotSucceeded, BuildJobUnobservable,
+  release_pair_fetch_refused_reason, release_pair_manifest_unreadable_reason, release_pair_manifest_member_missing_reason,
+  release_pair_digest_unreadable_reason, release_pair_verdict_refused_reason, release_pair_verdict_not_run_reason,
 }
 import gunbc.live_deploy.deployed_tree_observation {
   DeployedTreeObserved, DeployedTreeUnobservable, DeployedScopeMatchesCommit, TreeCommandFailed,
@@ -46,9 +50,37 @@ data other_head_hex: NonEmptyStr = "9923456789abcdef0123456789abcdef01234567"
 data sha_hex: NonEmptyStr = "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
 // The real shape `sha256sum <path>` prints on stdout: "<64hex>  <path>". The digest binding must take the first field,
 // not the whole line, so the fold's member path built from the digest is the bare hex, not a path-bearing string.
-data sha_line_with_path: String = "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90  /opt/gunbc/releases/incoming-release-bins/gunbc_serve"
-data pack_dir_str: String = "/opt/gunbc/releases/incoming-release-bins"
-data member_src_str: String = "/opt/gunbc/releases/incoming-release-bins/gunbc_serve"
+data pack_dir_str: String = "/opt/gunbc/releases/incoming-release-bins/0123456789abcdef0123456789abcdef01234567"
+data member_src_str: String = "/opt/gunbc/releases/incoming-release-bins/0123456789abcdef0123456789abcdef01234567/target/release/gunbc"
+data source_dir_str: String = "/opt/gunbc/releases/releases/0123456789abcdef0123456789abcdef01234567/source"
+// THE MANIFEST AS THE PRODUCER WROTE IT: the first three records of the release-bins manifest of fleet-converge run
+// 45087227390 (main b6915594), verbatim -- `sha256sum` lines, the compiler binary among the other roster members.
+data real_manifest_gunbc_hex: String = "1747a6e72995d9560efa1214481119806e4dacf03da26d896f8c9c6847538189"
+data real_manifest_head: String = "8b5209edd60854beb07539c609895c819da2ba8b3c6d81f3d8a5b4b3ff5275a6  claim_executor\n1747a6e72995d9560efa1214481119806e4dacf03da26d896f8c9c6847538189  gunbc\n632e3c6ab7608f4b6b61963783bcff10ff3888e9410004666a61a907dd4a394b  claim_batch\n"
+
+fn manifest_read(text: String) -> FilesystemReadOutcome { FilesystemReadSucceeded { content: text } }
+
+fn fetch_absent_reason(f: PackFetch) -> String {
+  match f {
+    PackAbsent { reason } => reason as String
+    PackPresent { sha256: _, pack_dir: _, binary_source: _ } => "present"
+  }
+}
+
+fn verify_reason(v: PackVerify) -> String {
+  match v {
+    Refused { reason } => reason as String
+    VerifiedOn { pack_dir: _, source_dir: _ } => "verified"
+  }
+}
+
+fn consumer_refused(name: String) -> PackVerify {
+  release_pair_pack_verify(
+    verify_run: ProcessRan { observation: process_observation(exit_code: 1, stdout: join(["release-bins: checking\n::error title=release-bins ", name, "::the consumer's message\n"], ""), stderr: "") },
+    pack_dir: pack_dir_str,
+    source_dir: source_dir_str,
+  )
+}
 
 // A clean head observation decodes to Present, naming the exact head printed.
 test fn witness_decode_head_present_names_the_head() -> Bool {
@@ -95,60 +127,75 @@ test fn witness_ancestry_unobserved_refuses() -> Bool {
   refused && empty
 }
 
-// A fetched pack with an OBSERVED digest decodes to PackPresent naming the observed digest, dir and serve member.
-test fn witness_pack_fetch_present_binds_observed_digest() -> Bool {
-  let f = release_pair_pack_fetch(ProcessOutputAbsent, ProcessOutputPresent { text: sha_hex as String }, pack_dir_str, member_src_str)
-  match f {
+// The serve member's digest is the one its manifest DECLARES, read from a manifest shaped as the producer writes it:
+// PackPresent binds the compiler binary's record (not a neighbour's), the pack dir, and the promoted member path.
+test fn witness_pack_fetch_binds_the_manifest_digest_of_the_serve_member() -> Bool {
+  match release_pair_pack_fetch(fetch_outcome: ProcessOutputAbsent, manifest_read: manifest_read(text: real_manifest_head), pack_dir: pack_dir_str, member_src: member_src_str) {
     PackPresent { sha256: d, pack_dir: pd, binary_source: bs } =>
-      (d as String) == (sha_hex as String) && (pd as String) == pack_dir_str && (bs as String) == member_src_str
+      (d as String) == real_manifest_gunbc_hex && (pd as String) == pack_dir_str && (bs as String) == member_src_str
     PackAbsent { reason: _ } => false
   }
 }
 
-// A download that refused decodes to PackAbsent — the pair keeps serving, it is never delivered from a pack the host
-// could not actually fetch.
+// A download that refused is PackAbsent with the fetch's own reason, whatever the manifest says.
 test fn witness_pack_fetch_refused_is_absent() -> Bool {
-  let f = release_pair_pack_fetch(ProcessRefused { exit_code: 1, stderr: "gh run download failed" }, ProcessOutputPresent { text: sha_hex as String }, pack_dir_str, member_src_str)
-  match f {
-    PackAbsent { reason: _ } => true
-    PackPresent { sha256: _, pack_dir: _, binary_source: _ } => false
-  }
+  fetch_absent_reason(f: release_pair_pack_fetch(fetch_outcome: ProcessRefused { exit_code: 1, stderr: "gh run download failed" }, manifest_read: manifest_read(text: real_manifest_head), pack_dir: pack_dir_str, member_src: member_src_str))
+    == (release_pair_fetch_refused_reason as String)
 }
 
-// The `sha256sum` line "<hex>  <path>" binds the bare hex, NOT the whole line: the fold builds the member path from
-// this digest, so a path-bearing digest would corrupt the placement. Proves the first-field extraction.
-test fn witness_pack_fetch_binds_digest_from_sha256sum_line() -> Bool {
-  let f = release_pair_pack_fetch(ProcessOutputAbsent, ProcessOutputPresent { text: sha_line_with_path }, pack_dir_str, member_src_str)
-  match f {
-    PackPresent { sha256: d, pack_dir: _, binary_source: _ } => (d as String) == (sha_hex as String)
-    PackAbsent { reason: _ } => false
-  }
+// A manifest that cannot be read is its own refusal, not a digest problem.
+test fn witness_pack_fetch_manifest_unreadable_refuses() -> Bool {
+  fetch_absent_reason(f: release_pair_pack_fetch(fetch_outcome: ProcessOutputAbsent, manifest_read: FilesystemReadRefused { error: "No such file or directory" }, pack_dir: pack_dir_str, member_src: member_src_str))
+    == (release_pair_manifest_unreadable_reason as String)
 }
 
-// A digest line whose first field is not 64 lowercase hex is NOT a pack: the lower_hex_64 gate refuses it (red control
-// for the digest binding — a corrupt or truncated digest can never authorize an install).
+// The serve member must be named EXACTLY ONCE, by its exact name. RED for the pre-fix consumer: a manifest naming only
+// "gunbc_serve" (the member the old consumer looked for, which the producer never packs) and one naming "gunbc" twice
+// both refuse; a near name never matches.
+test fn witness_pack_fetch_manifest_without_the_serve_member_refuses() -> Bool {
+  let only_old_name = fetch_absent_reason(f: release_pair_pack_fetch(fetch_outcome: ProcessOutputAbsent, manifest_read: manifest_read(text: "1747a6e72995d9560efa1214481119806e4dacf03da26d896f8c9c6847538189  gunbc_serve\n"), pack_dir: pack_dir_str, member_src: member_src_str))
+  let twice = fetch_absent_reason(f: release_pair_pack_fetch(fetch_outcome: ProcessOutputAbsent, manifest_read: manifest_read(text: join([real_manifest_head, real_manifest_gunbc_hex, "  gunbc\n"], "")), pack_dir: pack_dir_str, member_src: member_src_str))
+  only_old_name == (release_pair_manifest_member_missing_reason as String) && twice == (release_pair_manifest_member_missing_reason as String)
+}
+
+// A record whose digest is not 64 lowercase hex is NOT a pack: the lower_hex_64 gate refuses it.
 test fn witness_pack_fetch_rejects_non_hex_digest() -> Bool {
-  let f = release_pair_pack_fetch(ProcessOutputAbsent, ProcessOutputPresent { text: "not-a-digest  /x" }, pack_dir_str, member_src_str)
-  match f {
-    PackAbsent { reason: _ } => true
-    PackPresent { sha256: _, pack_dir: _, binary_source: _ } => false
-  }
+  fetch_absent_reason(f: release_pair_pack_fetch(fetch_outcome: ProcessOutputAbsent, manifest_read: manifest_read(text: "not-a-digest  gunbc\n"), pack_dir: pack_dir_str, member_src: member_src_str))
+    == (release_pair_digest_unreadable_reason as String)
 }
 
-// The build-key check running clean is VerifiedOn the observed pack_dir.
+// The placement source is the PROMOTED compiler binary under the per-revision pack dir, never a path inside the
+// archive and never the "gunbc_serve" member the producer does not pack.
+test fn witness_the_serve_member_is_the_promoted_compiler_binary() -> Bool {
+  release_pair_incoming_serve_source(base_root: "/opt/gunbc/releases", revision: head_hex as String) == member_src_str
+    && release_pair_source_dir(base_root: "/opt/gunbc/releases", revision: head_hex as CommitSha) == source_dir_str
+}
+
+// The lab consumer exiting 0 is VerifiedOn the pack AND the source tree it was run on.
 test fn witness_pack_verify_clean_is_verified_on() -> Bool {
-  match release_pair_pack_verify(ProcessOutputAbsent, pack_dir_str) {
-    VerifiedOn { pack_dir: p } => (p as String) == pack_dir_str
+  match release_pair_pack_verify(verify_run: ProcessRan { observation: process_observation(exit_code: 0, stdout: "release-bins: lab pack verified and promoted\n", stderr: "") }, pack_dir: pack_dir_str, source_dir: source_dir_str) {
+    VerifiedOn { pack_dir: p, source_dir: sd } => (p as String) == pack_dir_str && (sd as String) == source_dir_str
     Refused { reason: _ } => false
   }
 }
 
-// The build-key check refusing is a named Refused, never VerifiedOn — fail closed.
-test fn witness_pack_verify_refused_is_not_verified() -> Bool {
-  match release_pair_pack_verify(ProcessRefused { exit_code: 1, stderr: "build key mismatch" }, pack_dir_str) {
-    Refused { reason: _ } => true
-    VerifiedOn { pack_dir: _ } => false
-  }
+// Each refusal the consumer NAMES is carried as its own reason: a tampered member, a pack keyed on another tree and a
+// pack missing a member are three different verdicts, never one shared "refused".
+test fn witness_pack_verify_carries_the_consumers_refusal_name() -> Bool {
+  let tampered = verify_reason(v: consumer_refused(name: "MemberDigestMismatch"))
+  let other_tree = verify_reason(v: consumer_refused(name: "ConsumerSourceTreeMismatch"))
+  let missing = verify_reason(v: consumer_refused(name: "PackListingNotRoster"))
+  string_contains(s: tampered, pattern: "MemberDigestMismatch")
+    && string_contains(s: other_tree, pattern: "ConsumerSourceTreeMismatch")
+    && string_contains(s: missing, pattern: "PackListingNotRoster")
+    && tampered != other_tree && other_tree != missing && tampered != missing
+}
+
+// A failure that names nothing, and a consumer that never started, are refusals too -- never VerifiedOn.
+test fn witness_pack_verify_unnamed_or_unstarted_is_refused() -> Bool {
+  let unnamed = verify_reason(v: release_pair_pack_verify(verify_run: ProcessRan { observation: process_observation(exit_code: 2, stdout: "", stderr: "bash: syntax error") }, pack_dir: pack_dir_str, source_dir: source_dir_str))
+  let unstarted = verify_reason(v: release_pair_pack_verify(verify_run: ProcessNotSpawned { program: "bash" as NonEmptyStr, cause: "not found" as NonEmptyStr }, pack_dir: pack_dir_str, source_dir: source_dir_str))
+  unnamed == (release_pair_verdict_refused_reason as String) && unstarted == (release_pair_verdict_not_run_reason as String)
 }
 
 // Serving-map witnesses. The OBSERVED bound tree revision must flow to the fold as RevisionBoundAtEmission
