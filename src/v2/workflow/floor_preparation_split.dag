@@ -792,11 +792,11 @@ fn floor_preparation_max(rows: List<FloorPreparationModuleCost>) -> Optional<Flo
 // total MINUS the phase rows' contribution -- an equality the attribution witness checks, because a
 // row that reached the split but not the module table (or the reverse) is how a module-grain report
 // silently lies.
-fn floor_preparation_attributed_ms(capture: List<String>) -> Int {
+fn floor_preparation_attributed_ms(capture: List<String>) -> Optional<Int> {
   match floor_preparation_attribution(capture) {
-    Unattributed {} => 0
+    Unattributed {} => Absent {}
     Attributed { modules: rows, module_count: _, top_module: _, top_ms: _ } =>
-      fold(rows, init:  0, f: (acc, row) => acc + floor_preparation_ms_count(floor_preparation_module_total(row)))
+      Present { value: fold(rows, init:  0, f: (acc, row) => acc + floor_preparation_ms_count(floor_preparation_module_total(row))) }
   }
 }
 
@@ -973,71 +973,59 @@ fn floor_preparation_margin_ok(state: FloorPreparationMargin) -> Bool {
 }
 
 // ----------------------------------------------------------------------------------------------
-// READERS THE CLAIMS MODULE USES. Every one answers for ONE property and returns a plain value, so the
-// claims module never matches a variant of this file's enums: the readings are the surface, and a
-// refused capture reads as `..._is_refused` true with zeroes beside it rather than as a silent zero.
+// READERS THE CLAIMS MODULE USES. Every one answers for ONE property and returns an Optional
+// count: a capture the fold refused has NO readable number, and the readers answer Absent --
+// never a zero that could be mistaken for a measurement (fail_closed: "no plausible output is
+// fabricated"). There is therefore no `..._is_refused` companion predicate: absence IS the
+// reading, and it cannot be skipped the way a flag check could.
 // ----------------------------------------------------------------------------------------------
 
-fn floor_preparation_split_is_refused(capture: List<String>) -> Bool {
+fn floor_preparation_split_total_ms(capture: List<String>) -> Optional<Int> {
   match floor_preparation_split(capture) {
-    Refused { text: _, cause: _ } => true
-    Split { preparation_ms: _, claim_ms: _, preparation_lines: _, claim_lines: _, uncosted_lines: _, untagged_lines: _, verdict_pass: _, verdict_fail: _, total_ms: _ } => false
+    Refused { text: _, cause: _ } => Absent {}
+    Split { preparation_ms: _, claim_ms: _, preparation_lines: _, claim_lines: _, uncosted_lines: _, untagged_lines: _, verdict_pass: _, verdict_fail: _, total_ms: tm } => Present { value: floor_preparation_ms_count(tm) }
   }
 }
 
-fn floor_preparation_split_total_ms(capture: List<String>) -> Int {
+fn floor_preparation_split_preparation_ms(capture: List<String>) -> Optional<Int> {
   match floor_preparation_split(capture) {
-    Refused { text: _, cause: _ } => 0
-    Split { preparation_ms: _, claim_ms: _, preparation_lines: _, claim_lines: _, uncosted_lines: _, untagged_lines: _, verdict_pass: _, verdict_fail: _, total_ms: tm } => floor_preparation_ms_count(tm)
+    Refused { text: _, cause: _ } => Absent {}
+    Split { preparation_ms: p, claim_ms: _, preparation_lines: _, claim_lines: _, uncosted_lines: _, untagged_lines: _, verdict_pass: _, verdict_fail: _, total_ms: _ } => Present { value: floor_preparation_ms_count(p) }
   }
 }
 
-fn floor_preparation_split_preparation_ms(capture: List<String>) -> Int {
+fn floor_preparation_split_claim_ms(capture: List<String>) -> Optional<Int> {
   match floor_preparation_split(capture) {
-    Refused { text: _, cause: _ } => 0
-    Split { preparation_ms: p, claim_ms: _, preparation_lines: _, claim_lines: _, uncosted_lines: _, untagged_lines: _, verdict_pass: _, verdict_fail: _, total_ms: _ } => floor_preparation_ms_count(p)
+    Refused { text: _, cause: _ } => Absent {}
+    Split { preparation_ms: _, claim_ms: cm, preparation_lines: _, claim_lines: _, uncosted_lines: _, untagged_lines: _, verdict_pass: _, verdict_fail: _, total_ms: _ } => Present { value: floor_preparation_ms_count(cm) }
   }
 }
 
-fn floor_preparation_split_claim_ms(capture: List<String>) -> Int {
+fn floor_preparation_split_preparation_lines(capture: List<String>) -> Optional<Int> {
   match floor_preparation_split(capture) {
-    Refused { text: _, cause: _ } => 0
-    Split { preparation_ms: _, claim_ms: cm, preparation_lines: _, claim_lines: _, uncosted_lines: _, untagged_lines: _, verdict_pass: _, verdict_fail: _, total_ms: _ } => floor_preparation_ms_count(cm)
+    Refused { text: _, cause: _ } => Absent {}
+    Split { preparation_ms: _, claim_ms: _, preparation_lines: pl, claim_lines: _, uncosted_lines: _, untagged_lines: _, verdict_pass: _, verdict_fail: _, total_ms: _ } => Present { value: pl }
   }
 }
 
-fn floor_preparation_split_preparation_lines(capture: List<String>) -> Int {
+fn floor_preparation_split_claim_lines(capture: List<String>) -> Optional<Int> {
   match floor_preparation_split(capture) {
-    Refused { text: _, cause: _ } => 0
-    Split { preparation_ms: _, claim_ms: _, preparation_lines: pl, claim_lines: _, uncosted_lines: _, untagged_lines: _, verdict_pass: _, verdict_fail: _, total_ms: _ } => pl
+    Refused { text: _, cause: _ } => Absent {}
+    Split { preparation_ms: _, claim_ms: _, preparation_lines: _, claim_lines: cl, uncosted_lines: _, untagged_lines: _, verdict_pass: _, verdict_fail: _, total_ms: _ } => Present { value: cl }
   }
 }
 
-fn floor_preparation_split_claim_lines(capture: List<String>) -> Int {
+fn floor_preparation_split_pass(capture: List<String>) -> Optional<Int> {
   match floor_preparation_split(capture) {
-    Refused { text: _, cause: _ } => 0
-    Split { preparation_ms: _, claim_ms: _, preparation_lines: _, claim_lines: cl, uncosted_lines: _, untagged_lines: _, verdict_pass: _, verdict_fail: _, total_ms: _ } => cl
+    Refused { text: _, cause: _ } => Absent {}
+    Split { preparation_ms: _, claim_ms: _, preparation_lines: _, claim_lines: _, uncosted_lines: _, untagged_lines: _, verdict_pass: vp, verdict_fail: _, total_ms: _ } => Present { value: vp }
   }
 }
 
-fn floor_preparation_split_pass(capture: List<String>) -> Int {
+fn floor_preparation_split_fail(capture: List<String>) -> Optional<Int> {
   match floor_preparation_split(capture) {
-    Refused { text: _, cause: _ } => 0
-    Split { preparation_ms: _, claim_ms: _, preparation_lines: _, claim_lines: _, uncosted_lines: _, untagged_lines: _, verdict_pass: vp, verdict_fail: _, total_ms: _ } => vp
-  }
-}
-
-fn floor_preparation_split_fail(capture: List<String>) -> Int {
-  match floor_preparation_split(capture) {
-    Refused { text: _, cause: _ } => 0
-    Split { preparation_ms: _, claim_ms: _, preparation_lines: _, claim_lines: _, uncosted_lines: _, untagged_lines: _, verdict_pass: _, verdict_fail: vf, total_ms: _ } => vf
-  }
-}
-
-fn floor_preparation_attribution_is_unattributed(capture: List<String>) -> Bool {
-  match floor_preparation_attribution(capture) {
-    Unattributed {} => true
-    Attributed { modules: _, module_count: _, top_module: _, top_ms: _ } => false
+    Refused { text: _, cause: _ } => Absent {}
+    Split { preparation_ms: _, claim_ms: _, preparation_lines: _, claim_lines: _, uncosted_lines: _, untagged_lines: _, verdict_pass: _, verdict_fail: vf, total_ms: _ } => Present { value: vf }
   }
 }
 

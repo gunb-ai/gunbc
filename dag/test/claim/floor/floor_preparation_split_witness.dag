@@ -5,7 +5,6 @@ import std.algebra { length, list_push }
 import v2.workflow.floor_preparation_split {
   floor_preparation_any_row_starts_with,
   floor_preparation_attribution_all_rows_have_lines,
-  floor_preparation_attribution_is_unattributed,
   floor_preparation_attributed_ms,
   floor_preparation_capture,
   floor_preparation_capture_provenance,
@@ -38,7 +37,6 @@ import v2.workflow.floor_preparation_split {
   floor_preparation_split_claim_lines,
   floor_preparation_split_claim_ms,
   floor_preparation_split_fail,
-  floor_preparation_split_is_refused,
   floor_preparation_split_pass,
   floor_preparation_split_preparation_lines,
   floor_preparation_split_preparation_ms,
@@ -122,6 +120,72 @@ import v2.workflow.floor_cost_debt {
 // the fold is not green over an input it never read.
 // ----------------------------------------------------------------------------------------------
 
+// Optional readers (review 97993): a refused capture reads Absent from every split reader, so a
+// claim can only ever compare a PRESENT reading. These helpers refuse (false) on Absent -- there
+// is no path from a refused fold through them to a number.
+fn opt_present(opt: Optional<Int>) -> Bool {
+  match opt { Present { value: v } => true  Absent {} => false }
+}
+
+fn opt_absent(opt: Optional<Int>) -> Bool {
+  match opt { Present { value: v } => false  Absent {} => true }
+}
+
+fn opt_int_eq(opt: Optional<Int>, want: Int) -> Bool {
+  match opt { Present { value: v } => v == want  Absent {} => false }
+}
+
+fn opt_int_ne(opt: Optional<Int>, want: Int) -> Bool {
+  match opt { Present { value: v } => v != want  Absent {} => false }
+}
+
+fn opt_int_ge0(opt: Optional<Int>) -> Bool {
+  match opt { Present { value: v } => v >= 0  Absent {} => false }
+}
+
+fn opt_int_gt0(opt: Optional<Int>) -> Bool {
+  match opt { Present { value: v } => v > 0  Absent {} => false }
+}
+
+fn opt_int_gt(a: Optional<Int>, b: Optional<Int>) -> Bool {
+  match a {
+    Present { value: x } => match b {
+      Present { value: y } => x > y
+      Absent {} => false
+    }
+    Absent {} => false
+  }
+}
+
+fn opt_int_eq_sum(a: Optional<Int>, b: Optional<Int>, want: Optional<Int>) -> Bool {
+  match a {
+    Present { value: x } => match b {
+      Present { value: y } => match want {
+        Present { value: w } => x + y == w
+        Absent {} => false
+      }
+      Absent {} => false
+    }
+    Absent {} => false
+  }
+}
+
+fn int_ge_opt(want: Int, opt: Optional<Int>) -> Bool {
+  match opt { Present { value: v } => want >= v  Absent {} => false }
+}
+
+// A fold that refused must leave EVERY reader Absent: no property of a refused capture may read
+// as a measured value. This is the discriminating shape the fail-closed ruling asks of claims.
+fn split_reads_absent(capture: List<String>) -> Bool {
+  opt_absent(floor_preparation_split_total_ms(capture))
+    && opt_absent(floor_preparation_split_preparation_ms(capture))
+    && opt_absent(floor_preparation_split_claim_ms(capture))
+    && opt_absent(floor_preparation_split_preparation_lines(capture))
+    && opt_absent(floor_preparation_split_claim_lines(capture))
+    && opt_absent(floor_preparation_split_pass(capture))
+    && opt_absent(floor_preparation_split_fail(capture))
+}
+
 fn grammar_closes_over_the_committed_capture() -> Bool {
   let capture = floor_preparation_capture()
   length(xs: capture) > 0
@@ -144,12 +208,12 @@ test fn floor_preparation_capture_grammar_is_closed() -> Bool {
 
 fn split_conserves() -> Bool {
   let capture = floor_preparation_capture()
-  floor_preparation_split_is_refused(capture) == false
-    && floor_preparation_split_total_ms(capture) == floor_preparation_total_ms(capture)
-    && floor_preparation_split_total_ms(capture)
-      == floor_preparation_split_preparation_ms(capture) + floor_preparation_split_claim_ms(capture)
-    && floor_preparation_split_preparation_ms(capture) >= 0
-    && floor_preparation_split_claim_ms(capture) >= 0
+  opt_present(floor_preparation_split_total_ms(capture))
+    && opt_int_eq(floor_preparation_split_total_ms(capture), floor_preparation_total_ms(capture))
+    && opt_int_eq_sum(floor_preparation_split_preparation_ms(capture),
+      floor_preparation_split_claim_ms(capture), floor_preparation_split_total_ms(capture))
+    && opt_int_ge0(floor_preparation_split_preparation_ms(capture))
+    && opt_int_ge0(floor_preparation_split_claim_ms(capture))
 }
 
 test fn floor_preparation_split_conserves_to_the_independent_total() -> Bool {
@@ -196,21 +260,21 @@ fn probe_pair_capture() -> List<String> {
 
 fn the_fold_bills_one_fill_once() -> Bool {
   let capture = probe_pair_capture()
-  floor_preparation_split_is_refused(capture) == false
+  opt_present(floor_preparation_split_total_ms(capture))
     // 41 wall for the warm build + 5 per-entry resolve + 119 for filling the shared artifact.
-    && floor_preparation_split_preparation_ms(capture) == 165
+    && opt_int_eq(floor_preparation_split_preparation_ms(capture), 165)
     // 7 marginal (the claim's own CPU with the artifact warm) + 126 the claim row reports.
-    && floor_preparation_split_claim_ms(capture) == 133
-    && floor_preparation_split_total_ms(capture) == 298
-    && floor_preparation_split_total_ms(capture) == floor_preparation_total_ms(capture)
+    && opt_int_eq(floor_preparation_split_claim_ms(capture), 133)
+    && opt_int_eq(floor_preparation_split_total_ms(capture), 298)
+    && opt_int_eq(floor_preparation_split_total_ms(capture), floor_preparation_total_ms(capture))
     // THE COUNTERFACTUAL, stated: the probe row's 119 is the same quantity, and the preparation side
     // does NOT contain it twice.
     && floor_preparation_probe_fill_ms(capture) == 119
     && floor_preparation_fill_fill_ms(capture) == 119
-    && floor_preparation_split_preparation_ms(capture) != 165 + floor_preparation_probe_fill_ms(capture)
+    && opt_int_ne(floor_preparation_split_preparation_ms(capture), 165 + floor_preparation_probe_fill_ms(capture))
     && floor_preparation_probe_row_count(capture) == 1
     && floor_preparation_fill_row_count(capture) == 1
-    && floor_preparation_split_pass(capture) == 1
+    && opt_int_eq(floor_preparation_split_pass(capture), 1)
 }
 
 test fn floor_preparation_the_fold_bills_the_reach_probe_fill_once() -> Bool {
@@ -230,8 +294,8 @@ fn committed_fill_rows_are_paired() -> Bool {
   let probes = floor_preparation_probe_row_count(capture)
   fills == probes
     && floor_preparation_probe_fill_ms(capture) == floor_preparation_fill_fill_ms(capture)
-    && floor_preparation_split_is_refused(capture) == false
-    && floor_preparation_split_total_ms(capture) == floor_preparation_total_ms(capture)
+    && opt_present(floor_preparation_split_total_ms(capture))
+    && opt_int_eq(floor_preparation_split_total_ms(capture), floor_preparation_total_ms(capture))
 }
 
 test fn floor_preparation_committed_fill_rows_are_paired() -> Bool {
@@ -265,23 +329,23 @@ fn the_fold_refuses_what_it_cannot_read() -> Bool {
 
 fn refuses_unknown_phase_token() -> Bool {
   let capture = ["[floor-phase] phase=strict-preparation state=completed wall_ms=27267 cpu_ms=27200"]
-  floor_preparation_split_is_refused(capture)
+  split_reads_absent(capture)
     && floor_preparation_refusal(capture) != none
 }
 
 fn refuses_a_missing_cost_field() -> Bool {
   let capture = ["[floor-phase] phase=gate-closure state=completed rss_growth_bytes=1024 sources=3"]
-  floor_preparation_split_is_refused(capture)
+  split_reads_absent(capture)
 }
 
 fn refuses_a_negative_cost() -> Bool {
   let capture = ["[floor-phase] phase=module-index state=completed wall_ms=-5 pool_files=8"]
-  floor_preparation_split_is_refused(capture)
+  split_reads_absent(capture)
 }
 
 fn refuses_a_claim_row_with_no_entry() -> Bool {
   let capture = ["[witness] orphan_fn: cpu=5ms wall=5ms eval_steps=9 subject=0123456789abcdef eval_self=5.000ms"]
-  floor_preparation_split_is_refused(capture)
+  split_reads_absent(capture)
 }
 
 fn refuses_a_cost_without_its_unit() -> Bool {
@@ -289,12 +353,12 @@ fn refuses_a_cost_without_its_unit() -> Bool {
     "[resolve] dag/test/claim/unit_pair.dag: 5ms  (1 modules, 2 resolved items in closure)",
     "[witness] unit_fn: cpu=126 wall=126 eval_steps=9 subject=0123456789abcdef eval_self=126.000ms",
   ]
-  floor_preparation_split_is_refused(capture)
+  split_reads_absent(capture)
 }
 
 fn refuses_an_unknown_tag() -> Bool {
   let capture = ["[floor-unknown-instrument] claim=test.claim.x.y value=1"]
-  floor_preparation_split_is_refused(capture)
+  split_reads_absent(capture)
 }
 
 test fn floor_preparation_the_fold_refuses_what_it_cannot_read() -> Bool {
@@ -309,9 +373,8 @@ test fn floor_preparation_the_fold_refuses_what_it_cannot_read() -> Bool {
 
 fn attribution_covers_every_non_phase_costed_row() -> Bool {
   let capture = floor_preparation_capture()
-  floor_preparation_attribution_is_unattributed(capture) == false
-    && floor_preparation_attributed_ms(capture)
-      == floor_preparation_total_ms(capture) - floor_preparation_phase_ms(capture)
+  opt_int_eq(floor_preparation_attributed_ms(capture),
+      floor_preparation_total_ms(capture) - floor_preparation_phase_ms(capture))
     && length(xs: floor_preparation_module_keys(capture)) > 0
     && length(xs: floor_preparation_module_keys(capture)) == length(xs: floor_preparation_entry_paths(capture))
     && floor_preparation_attribution_all_rows_have_lines(capture)
@@ -332,11 +395,13 @@ fn verdict_rows_match_the_prefix_scan() -> Bool {
   let capture = floor_preparation_capture()
   let passes = floor_preparation_split_pass(capture)
   let failures = floor_preparation_split_fail(capture)
-  floor_preparation_split_is_refused(capture) == false
-    && passes == independent_pass_count(capture)
-    && failures == independent_fail_count(capture)
-    && passes > 0
-    && passes + failures == length(xs: capture) - tagged_row_count(capture) - prose_row_count(capture)
+  opt_present(passes)
+    && opt_present(failures)
+    && opt_int_eq(passes, independent_pass_count(capture))
+    && opt_int_eq(failures, independent_fail_count(capture))
+    && opt_int_gt0(passes)
+    && opt_int_eq_sum(passes, failures, Present {
+      value: length(xs: capture) - tagged_row_count(capture) - prose_row_count(capture) })
 }
 
 fn independent_pass_count(capture: List<String>) -> Int {
@@ -400,10 +465,9 @@ test fn floor_preparation_verdict_rows_match_an_independent_prefix_scan() -> Boo
 
 fn preparation_side_strictly_exceeds_the_claim_side() -> Bool {
   let capture = floor_preparation_capture()
-  floor_preparation_split_is_refused(capture) == false
-    && floor_preparation_split_preparation_ms(capture) > floor_preparation_split_claim_ms(capture)
-    && floor_preparation_split_preparation_lines(capture) > 0
-    && floor_preparation_split_claim_lines(capture) > 0
+  opt_int_gt(floor_preparation_split_preparation_ms(capture), floor_preparation_split_claim_ms(capture))
+    && opt_int_gt0(floor_preparation_split_preparation_lines(capture))
+    && opt_int_gt0(floor_preparation_split_claim_lines(capture))
 }
 
 test fn floor_preparation_preparation_side_dominates_the_claim_side() -> Bool {
@@ -420,7 +484,7 @@ test fn floor_preparation_preparation_side_dominates_the_claim_side() -> Bool {
 
 test fn floor_preparation_entry_resolve_is_charged_to_the_module_it_names() -> Bool {
   let capture = floor_preparation_capture()
-  floor_preparation_split_is_refused(capture) == false
+  opt_present(floor_preparation_split_total_ms(capture))
     && floor_preparation_resolve_rows_match_their_module_rows(capture)
 }
 
@@ -437,9 +501,8 @@ test fn floor_preparation_entry_resolve_is_charged_to_the_module_it_names() -> B
 
 fn preparation_sides_partition_by_scale() -> Bool {
   let capture = floor_preparation_capture()
-  floor_preparation_split_is_refused(capture) == false
-    && floor_preparation_whole_tree_ms(capture) + floor_preparation_entry_scoped_ms(capture)
-      == floor_preparation_split_preparation_ms(capture)
+  opt_int_eq(floor_preparation_split_preparation_ms(capture),
+      floor_preparation_whole_tree_ms(capture) + floor_preparation_entry_scoped_ms(capture))
     && floor_preparation_whole_tree_ms(capture) >= 0
     && floor_preparation_entry_scoped_ms(capture) > 0
 }
@@ -503,7 +566,7 @@ test fn floor_preparation_the_excluded_population_is_stated_with_its_causes() ->
 fn untrimmed_leg_is_the_same_floor() -> Bool {
   let untrimmed = floor_preparation_untrimmed_capture()
   floor_preparation_untrimmed_total_ms() > 0
-    && floor_preparation_untrimmed_verdict_pass() >= floor_preparation_split_pass(capture: floor_preparation_capture())
+    && int_ge_opt(floor_preparation_untrimmed_verdict_pass(), floor_preparation_split_pass(capture: floor_preparation_capture()))
     && floor_preparation_any_row_starts_with(untrimmed, "[floor-phase]")
 }
 
@@ -644,8 +707,8 @@ fn committed_capture_is_measured() -> Bool {
     && count_starting(untrimmed, "[floor-phase]") >= count_starting(capture, "[floor-phase]")
     && count_starting(untrimmed, "[resolve]") >= count_starting(capture, "[resolve]")
     && count_starting(untrimmed, "PASS ") > 0
-    && floor_preparation_split_is_refused(capture) == false
-    && floor_preparation_split_is_refused(untrimmed) == false
+    && opt_present(floor_preparation_split_total_ms(capture))
+    && opt_present(floor_preparation_split_total_ms(untrimmed))
     && sha_hex_shape_ok(after_equals(provenance_named(prov, "binary_sha256=")))
     && after_equals(provenance_named(prov, "binary_bytes=")) != ""
     && after_equals(provenance_named(prov, "head_sha=")) != ""
