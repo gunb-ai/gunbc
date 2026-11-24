@@ -1,0 +1,84 @@
+module test.claim.host.boot_medium_reader_probe_unanswered_witness
+
+// FOCUSED WITNESSES FOR THE "DISPATCHED, NO ANSWER" STATE OF THE READER PROBE.
+//
+// A leg whose reply was LOST (overran/deadline) is not the same as a leg that was NEVER SENT: the command may
+// already have reached the daemon, so its effect is unknown. These three controls drive the PRODUCTION FOLD with
+// supplied HostLegs and vary EXACTLY ONE leg at a time -- the forced, the second, then the administrator-
+// readability leg -- and require the probe to refuse at the dedicated StageUnanswered (never StageNotDispatched,
+// which would assert a send that cannot be established did not happen), carrying the lost-reply cause, holding
+// NO open fact (holds == false), and rendering the unanswered stage by name.
+//
+// They live in their own small file (not boot_medium_reader_probe_witness.dag) so the fold judgement can be run
+// without the heavy fleet-converge-workflow closure that the full probe witness pulls in.
+//
+// RED AGAINST 38cfb686: at that revision the mapper folded TypedArgvExecOverran (and post-invocation wire
+// failures) into LegNotDispatched, and the probe carried no StageUnanswered/…Unanswered arms -- a lost reply was
+// reported as "never dispatched" / "nothing was sent to the daemon". Each control below is red there (the fold
+// returned StageNotDispatched, or the cause said "never dispatched", or holds was reported on an unobserved
+// readability leg) and green after this change.
+
+import gunbc.host_command_binding { HostLeg, LegAnswered, LegNotDispatched, LegUnanswered }
+import gunbc.host.boot_medium_reader_key { boot_medium_served_link_path }
+import gunbc.host.export_host_reader_converge { boot_medium_reader_login }
+import gunbc.host.boot_medium_reader_probe {
+  ReaderProbeReceipt, ReaderProbeObserved, ReaderProbeRefused, ReaderProbeStage, StageUnanswered,
+  ReaderProbeAccessorReport, AccessorReport, boot_medium_reader_probe_fold, reader_probe_holds,
+  render_reader_probe_receipt,
+}
+
+data probe_fingerprint: NonEmptyStr = "SHA256:aaaaaaaabbbbbbbbccccccccddddddddeeeeeeeeffffffff000000"
+data probe_digest: NonEmptyStr = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+data probe_resource: NonEmptyStr = "projects/gunbc-fleet/secrets/boot-medium-reader-ssh-key"
+
+fn held_line() -> String { join([probe_digest as String, "  ", boot_medium_served_link_path() as String], "") }
+fn held_forced() -> HostLeg { LegAnswered { exit_code: 0, stdout: concat(held_line(), "\n"), stderr: "" } }
+fn answered_ok() -> HostLeg { LegAnswered { exit_code: 0, stdout: "", stderr: "" } }
+fn good_shadow() -> HostLeg {
+  LegAnswered { exit_code: 0, stdout: concat(boot_medium_reader_login as String, ":!:19000:0:99999:7:::\n"), stderr: "" }
+}
+fn good_use_pam() -> HostLeg { LegAnswered { exit_code: 0, stdout: "PermitRootLogin no\nusepam yes\n", stderr: "" } }
+fn good_accessor() -> ReaderProbeAccessorReport { AccessorReport { permission_listed: true, resource: probe_resource } }
+fn unanswered(cause: String) -> HostLeg { LegUnanswered { cause: cause } }
+
+// The fold with everything that can succeed already succeeded, varying the forced, second, and admin legs.
+fn fold_three(forced: HostLeg, second: HostLeg, admin: HostLeg) -> ReaderProbeReceipt {
+  boot_medium_reader_probe_fold(
+    pinned: true, agent_holds_pinned_key: true, fingerprint: probe_fingerprint,
+    target_reached: true, target_cause: "",
+    forced: forced, second: second,
+    shadow: good_shadow(), use_pam: good_use_pam(), admin_readable: admin,
+    login: boot_medium_reader_login, accessor: good_accessor(),
+  )
+}
+
+fn refused_unanswered(r: ReaderProbeReceipt, wanted_cause: String) -> Bool {
+  let staged = match r {
+    ReaderProbeRefused { stage: s, cause: c } => s == StageUnanswered && string_contains(s: c as String, pattern: wanted_cause)
+    ReaderProbeObserved { fingerprint: _, forced: _, second_command_masked: _, locked_account: _, export: _, accessor: _ } => false
+  }
+  staged
+    && reader_probe_holds(r: r) == false
+    && string_contains(s: render_reader_probe_receipt(r: r), pattern: "dispatched-no-answer")
+}
+
+// ONLY THE FORCED LEG UNANSWERED. The reader leg reached the daemon but its reply was lost: the fold refuses at
+// StageUnanswered carrying the lost-reply cause, reports no open fact, and never claims "nothing was sent".
+test fn only_the_forced_leg_unanswered_refuses_at_the_unanswered_stage() -> Bool {
+  refused_unanswered(r: fold_three(forced: unanswered("forced sha256sum overran its 30s deadline"), second: held_forced(), admin: answered_ok()), wanted_cause: "forced sha256sum overran its 30s deadline")
+}
+
+// ONLY THE SECOND LEG UNANSWERED. The forced leg held (facts could have been observed), but the two-command
+// masking test's second command got no answer: the run must refuse at StageUnanswered with that cause, not
+// silently pass the masking test nor read the comparison as a mismatch.
+test fn only_the_second_leg_unanswered_refuses_at_the_unanswered_stage() -> Bool {
+  refused_unanswered(r: fold_three(forced: held_forced(), second: unanswered("second comparison command overran its 30s deadline"), admin: answered_ok()), wanted_cause: "second comparison command overran its 30s deadline")
+}
+
+// ONLY THE ADMINISTRATOR-READABILITY LEG UNANSWERED. Forced and second both held; the readability witness ran
+// but its reply was lost. The probe must NOT report the readability open fact (holds false) and must refuse at
+// StageUnanswered with the lost-reply cause -- never collapse into AdminNotReadable (a claim about the account)
+// or "never dispatched" (a claim we did not send).
+test fn only_the_admin_leg_unanswered_refuses_at_the_unanswered_stage() -> Bool {
+  refused_unanswered(r: fold_three(forced: held_forced(), second: held_forced(), admin: unanswered("admin readability command overran its 30s deadline")), wanted_cause: "admin readability command overran its 30s deadline")
+}
