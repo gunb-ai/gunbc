@@ -5,7 +5,7 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { string_contains }
 import std.optional { Present, Absent }
 import extdeps.ssh.openssh_server_commands { sshd_effective_config_value }
-import gunbc.host.boot_medium_served_readback { RemoteAnswer }
+import gunbc.host_command_binding { HostLeg, LegAnswered, LegNotDispatched }
 import gunbc.host.export_host_reader_converge {
   ExportHostReaderLegs, ExportHostReaderRun, ExportHostReaderOutcome,
   ReaderRowsConverged, ReaderRowsRefused, ReaderRowsRolledBack, ReaderRowsRollbackFailed, ReaderRowsReloadUncertain,

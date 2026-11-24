@@ -20,7 +20,7 @@ import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.fleet.fleet_bootstrap_principal { executor_bootstrap_principal }
 import gunbc.fleet.fleet_host_identity { operator_host_srv2 }
 import gunbc.host.boot_medium_reader_key { boot_medium_reader_authorized_entry }
-import gunbc.host.boot_medium_served_readback { RemoteAnswer, remote_answer_of }
+import gunbc.host_command_binding { HostLeg, LegAnswered, LegNotDispatched, host_leg_of_typed_argv }
 import gunbc.runner.runner_host_file_converge {
   FleetHostFileSubject, FleetHostFileDesired, FleetHostFilesApply, LegElevated, fleet_host_file_scope,
   run_fleet_host_leg, observe_fleet_host_administrator_privilege, fleet_host_file_result, fleet_host_file_outcome_settled,
@@ -119,27 +119,27 @@ type ExportHostReaderRun {
 }
 
 type ExportHostReaderLegs {
-  precheck: fn() -> RemoteAnswer
-  account_exists: fn() -> RemoteAnswer
-  ensure_account: fn() -> RemoteAnswer
+  precheck: fn() -> HostLeg
+  account_exists: fn() -> HostLeg
+  ensure_account: fn() -> HostLeg
   write_keys: fn() -> Bool
   write_drop_in: fn() -> Bool
-  test_config: fn() -> RemoteAnswer
-  effective_config: fn() -> RemoteAnswer
-  reload: fn() -> RemoteAnswer
-  fresh_login: fn() -> RemoteAnswer
-  remove_drop_in: fn() -> RemoteAnswer
-  drop_in_exists: fn() -> RemoteAnswer
-  drop_in_is_link: fn() -> RemoteAnswer
-  rollback_reload: fn() -> RemoteAnswer
-  rollback_fresh_login: fn() -> RemoteAnswer
-  effective_config_after_removal: fn() -> RemoteAnswer
+  test_config: fn() -> HostLeg
+  effective_config: fn() -> HostLeg
+  reload: fn() -> HostLeg
+  fresh_login: fn() -> HostLeg
+  remove_drop_in: fn() -> HostLeg
+  drop_in_exists: fn() -> HostLeg
+  drop_in_is_link: fn() -> HostLeg
+  rollback_reload: fn() -> HostLeg
+  rollback_fresh_login: fn() -> HostLeg
+  effective_config_after_removal: fn() -> HostLeg
 }
 
 // A LEG IS A FIELD OF ExportHostReaderLegs; it runs where the fold passes it here. A command the fold runs at
 // two positions (the reload and fresh login of the rollback, sshd -T after a removal) is a leg per position,
 // bound by the producer to the same command, so each position's answer is its own.
-fn leg(f: fn() -> RemoteAnswer) -> RemoteAnswer {
+fn leg(f: fn() -> HostLeg) -> HostLeg {
   f()
 }
 
@@ -147,8 +147,13 @@ fn leg_holds(f: fn() -> Bool) -> Bool {
   f()
 }
 
-fn answer_text(a: RemoteAnswer) -> String {
-  join(["exit=", to_string(a.exit_code), " ", trim(s: a.stderr)], "")
+// An ANSWER RENDERED FOR A DIAGNOSTIC. A leg the transport never dispatched is named as never dispatched and
+// carries its cause; it is never given an invented exit code. Only a LegAnswered renders an "exit=".
+fn answer_text(a: HostLeg) -> String {
+  match a {
+    LegNotDispatched { reason: r } => concat("never dispatched: ", r)
+    LegAnswered { exit_code: e, stdout: _, stderr: s } => join(["exit=", to_string(e), " ", trim(s: s)], "")
+  }
 }
 
 fn refused_at(stages: List<NonEmptyStr>, stage: NonEmptyStr, cause: String) -> ExportHostReaderRun {
@@ -168,12 +173,21 @@ type DropInRemovalRun {
   stages: List<NonEmptyStr>
 }
 
+// A readback leg confirms ABSENCE only when it ANSWERED exactly 1. A leg the transport never dispatched has
+// no exit code to read and can confirm nothing: it is never treated as absent.
+fn readback_absent(a: HostLeg) -> Bool {
+  match a {
+    LegNotDispatched { reason: _ } => false
+    LegAnswered { exit_code: ec, stdout: _, stderr: _ } => ec == 1
+  }
+}
+
 fn remove_drop_in_confirmed(legs: ExportHostReaderLegs, stages: List<NonEmptyStr>) -> DropInRemovalRun {
   let removed = leg(f: legs.remove_drop_in)
   let exists = leg(f: legs.drop_in_exists)
   let link = leg(f: legs.drop_in_is_link)
   let s2 = concat(stages, ["remove-drop-in" as NonEmptyStr, "drop-in-absent-readback" as NonEmptyStr])
-  let removal = if exists.exit_code == 1 && link.exit_code == 1 { DropInAbsentConfirmed } else {
+  let removal = if readback_absent(a: exists) && readback_absent(a: link) { DropInAbsentConfirmed } else {
     DropInRemovalUnconfirmed { detail: join(["rm ", answer_text(a: removed), "; test -e ", answer_text(a: exists), "; test -L ", answer_text(a: link)], "") }
   }
   DropInRemovalRun { removal: removal, stages: s2 }
@@ -189,14 +203,19 @@ fn withdrawn(legs: ExportHostReaderLegs, stages: List<NonEmptyStr>, stage: NonEm
   }
 }
 
-fn effective_value_text(effective: RemoteAnswer) -> String {
-  if effective.exit_code != 0 { concat("sshd -T refused: ", answer_text(a: effective)) } else {
-    match sshd_effective_config_value(text: effective.stdout, keyword: authorized_keys_file_keyword) {
-      Absent => "sshd -T reports no AuthorizedKeysFile"
-      Present { value: v } => if trim(s: v) == (authorized_keys_file_value as String) {
-        join(["sshd -T STILL reports ours ('", trim(s: v), "')"], "")
-      } else {
-        join(["sshd -T reports '", trim(s: v), "', not ours"], "")
+fn effective_value_text(effective: HostLeg) -> String {
+  match effective {
+    LegNotDispatched { reason: r } => concat("sshd -T never dispatched: ", r)
+    LegAnswered { exit_code: e, stdout: o, stderr: s } => if e != 0 {
+      concat("sshd -T refused: ", answer_text(a: effective))
+    } else {
+      match sshd_effective_config_value(text: o, keyword: authorized_keys_file_keyword) {
+        Absent => "sshd -T reports no AuthorizedKeysFile"
+        Present { value: v } => if trim(s: v) == (authorized_keys_file_value as String) {
+          join(["sshd -T STILL reports ours ('", trim(s: v), "')"], "")
+        } else {
+          join(["sshd -T reports '", trim(s: v), "', not ours"], "")
+        }
       }
     }
   }
@@ -208,13 +227,20 @@ fn effective_value_text(effective: RemoteAnswer) -> String {
 // removal; and sshd -T reads the configuration on DISK after that removal (what the next load would take
 // -- it does not and cannot read the running daemon). No second reload is attempted on an edge that just
 // refused one; the arm is loud whatever the readbacks say.
-fn reload_uncertain(legs: ExportHostReaderLegs, stages: List<NonEmptyStr>, reloaded: RemoteAnswer) -> ExportHostReaderRun {
+fn reload_uncertain(legs: ExportHostReaderLegs, stages: List<NonEmptyStr>, reloaded: HostLeg) -> ExportHostReaderRun {
   let login = leg(f: legs.fresh_login)
   let s1 = concat(stages, ["fresh-login" as NonEmptyStr])
   let r = remove_drop_in_confirmed(legs: legs, stages: s1)
   let effective = leg(f: legs.effective_config_after_removal)
   let s2 = concat(r.stages, ["sshd-T" as NonEmptyStr])
-  let running = if login.exit_code == 0 { "a fresh administrator login succeeded after the failed reload" } else { concat("a fresh administrator login FAILED after the failed reload: ", answer_text(a: login)) }
+  let running = match login {
+    LegNotDispatched { reason: r } => concat("a fresh administrator login was NEVER DISPATCHED after the failed reload: ", r)
+    LegAnswered { exit_code: ec, stdout: _, stderr: _ } => if ec == 0 {
+      "a fresh administrator login succeeded after the failed reload"
+    } else {
+      concat("a fresh administrator login FAILED after the failed reload: ", answer_text(a: login))
+    }
+  }
   let removal = match r.removal {
     DropInAbsentConfirmed => "the drop-in is confirmed absent"
     DropInRemovalUnconfirmed { detail: d } => concat("the drop-in is NOT confirmed absent: ", d)
@@ -240,15 +266,23 @@ fn rolled_back(legs: ExportHostReaderLegs, stages: List<NonEmptyStr>, cause: Str
     DropInAbsentConfirmed => {
       let again = leg(f: legs.rollback_reload)
       let s1 = concat(r.stages, ["reload" as NonEmptyStr])
-      if again.exit_code != 0 {
-        ExportHostReaderRun { outcome: ReaderRowsRollbackFailed { cause: cause, rollback: concat("the drop-in is confirmed absent, but the rollback reload exited nonzero, so what sshd is running is not known: ", answer_text(a: again)) }, stages: s1 }
-      } else {
-        let relogin = leg(f: legs.rollback_fresh_login)
-        let s2 = concat(s1, ["fresh-login" as NonEmptyStr])
-        if relogin.exit_code == 0 {
-          ExportHostReaderRun { outcome: ReaderRowsRolledBack { cause: cause }, stages: s2 }
+      match again {
+        LegNotDispatched { reason: rr } =>
+          ExportHostReaderRun { outcome: ReaderRowsRollbackFailed { cause: cause, rollback: concat("the drop-in is confirmed absent, but the rollback reload was NEVER DISPATCHED, so what sshd is running is not known: ", rr) }, stages: s1 }
+        LegAnswered { exit_code: ec, stdout: _, stderr: _ } => if ec != 0 {
+          ExportHostReaderRun { outcome: ReaderRowsRollbackFailed { cause: cause, rollback: concat("the drop-in is confirmed absent, but the rollback reload exited nonzero, so what sshd is running is not known: ", answer_text(a: again)) }, stages: s1 }
         } else {
-          ExportHostReaderRun { outcome: ReaderRowsRollbackFailed { cause: cause, rollback: concat("the drop-in is confirmed absent and sshd reloaded, but a fresh administrator login still fails: ", answer_text(a: relogin)) }, stages: s2 }
+          let relogin = leg(f: legs.rollback_fresh_login)
+          let s2 = concat(s1, ["fresh-login" as NonEmptyStr])
+          match relogin {
+            LegNotDispatched { reason: rr } =>
+              ExportHostReaderRun { outcome: ReaderRowsRollbackFailed { cause: cause, rollback: concat("the drop-in is confirmed absent and sshd reloaded, but the confirming fresh login was NEVER DISPATCHED: ", rr) }, stages: s2 }
+            LegAnswered { exit_code: rc, stdout: _, stderr: _ } => if rc == 0 {
+              ExportHostReaderRun { outcome: ReaderRowsRolledBack { cause: cause }, stages: s2 }
+            } else {
+              ExportHostReaderRun { outcome: ReaderRowsRollbackFailed { cause: cause, rollback: concat("the drop-in is confirmed absent and sshd reloaded, but a fresh administrator login still fails: ", answer_text(a: relogin)) }, stages: s2 }
+            }
+          }
         }
       }
     }
@@ -258,58 +292,97 @@ fn rolled_back(legs: ExportHostReaderLegs, stages: List<NonEmptyStr>, cause: Str
 fn export_host_reader_after_writes(legs: ExportHostReaderLegs, stages: List<NonEmptyStr>) -> ExportHostReaderRun {
   let tested = leg(f: legs.test_config)
   let s1 = concat(stages, ["sshd-t" as NonEmptyStr])
-  if tested.exit_code != 0 {
-    withdrawn(legs: legs, stages: s1, stage: "sshd -t", cause: concat("sshd -t refused the configuration with the drop-in: ", answer_text(a: tested)))
-  } else {
-    let effective = leg(f: legs.effective_config)
-    let s2 = concat(s1, ["sshd-T" as NonEmptyStr])
-    let value = if effective.exit_code == 0 { sshd_effective_config_value(text: effective.stdout, keyword: authorized_keys_file_keyword) } else { none }
-    match value {
-      Absent => withdrawn(legs: legs, stages: s2, stage: "sshd -T", cause: concat("sshd -T reported no AuthorizedKeysFile: ", answer_text(a: effective)))
-      Present { value: v } =>
-        if trim(s: v) != (authorized_keys_file_value as String) {
-          withdrawn(legs: legs, stages: s2, stage: "sshd -T", cause: join(["the effective AuthorizedKeysFile is '", trim(s: v), "', not '", authorized_keys_file_value as String, "' (an earlier setting wins)"], ""))
+  match tested {
+    LegNotDispatched { reason: r } =>
+      withdrawn(legs: legs, stages: s1, stage: "sshd -t", cause: concat("sshd -t was NEVER DISPATCHED, so the configuration with the drop-in was not verified: ", r))
+    LegAnswered { exit_code: tc, stdout: _, stderr: _ } => if tc != 0 {
+      withdrawn(legs: legs, stages: s1, stage: "sshd -t", cause: concat("sshd -t refused the configuration with the drop-in: ", answer_text(a: tested)))
+    } else {
+      let effective = leg(f: legs.effective_config)
+      let s2 = concat(s1, ["sshd-T" as NonEmptyStr])
+      match effective {
+        LegNotDispatched { reason: r } =>
+          withdrawn(legs: legs, stages: s2, stage: "sshd -T", cause: concat("sshd -T was NEVER DISPATCHED, so the effective AuthorizedKeysFile is not known: ", r))
+        LegAnswered { exit_code: ec, stdout: o, stderr: _ } => if ec != 0 {
+          withdrawn(legs: legs, stages: s2, stage: "sshd -T", cause: concat("sshd -T reported no AuthorizedKeysFile: ", answer_text(a: effective)))
         } else {
-          let reloaded = leg(f: legs.reload)
-          let s3 = concat(s2, ["reload" as NonEmptyStr])
-          if reloaded.exit_code != 0 {
-            reload_uncertain(legs: legs, stages: s3, reloaded: reloaded)
-          } else {
-            let login = leg(f: legs.fresh_login)
-            let s4 = concat(s3, ["fresh-login" as NonEmptyStr])
-            if login.exit_code == 0 {
-              ExportHostReaderRun { outcome: ReaderRowsConverged, stages: s4 }
-            } else {
-              rolled_back(legs: legs, stages: s4, cause: concat("a fresh administrator login to the export host failed after the reload: ", answer_text(a: login)))
-            }
+          match sshd_effective_config_value(text: o, keyword: authorized_keys_file_keyword) {
+            Absent => withdrawn(legs: legs, stages: s2, stage: "sshd -T", cause: concat("sshd -T reported no AuthorizedKeysFile: ", answer_text(a: effective)))
+            Present { value: v } =>
+              if trim(s: v) != (authorized_keys_file_value as String) {
+                withdrawn(legs: legs, stages: s2, stage: "sshd -T", cause: join(["the effective AuthorizedKeysFile is '", trim(s: v), "', not '", authorized_keys_file_value as String, "' (an earlier setting wins)"], ""))
+              } else {
+                let reloaded = leg(f: legs.reload)
+                let s3 = concat(s2, ["reload" as NonEmptyStr])
+                match reloaded {
+                  LegNotDispatched { reason: r } =>
+                    withdrawn(legs: legs, stages: s3, stage: "reload", cause: concat("systemctl reload ssh was NEVER DISPATCHED, so sshd was not reloaded: ", r))
+                  LegAnswered { exit_code: rc, stdout: _, stderr: _ } => if rc != 0 {
+                    reload_uncertain(legs: legs, stages: s3, reloaded: reloaded)
+                  } else {
+                    let login = leg(f: legs.fresh_login)
+                    let s4 = concat(s3, ["fresh-login" as NonEmptyStr])
+                    match login {
+                      LegNotDispatched { reason: r } =>
+                        rolled_back(legs: legs, stages: s4, cause: concat("a fresh administrator login to the export host was NEVER DISPATCHED after the reload: ", r))
+                      LegAnswered { exit_code: lc, stdout: _, stderr: _ } => if lc == 0 {
+                        ExportHostReaderRun { outcome: ReaderRowsConverged, stages: s4 }
+                      } else {
+                        rolled_back(legs: legs, stages: s4, cause: concat("a fresh administrator login to the export host failed after the reload: ", answer_text(a: login)))
+                      }
+                    }
+                  }
+                }
+              }
           }
         }
+      }
     }
+  }
+}
+
+// The write sequence after the reader account is in place: keys, then the drop-in, then the after-writes
+// fold. Reached once the account is confirmed present (whether it already existed or was just ensured).
+fn account_written(legs: ExportHostReaderLegs, s2: List<NonEmptyStr>) -> ExportHostReaderRun {
+  if !leg_holds(f: legs.write_keys) {
+    refused_at(stages: concat(s2, ["write-keys" as NonEmptyStr]), stage: "key file", cause: "the reader's authorized_keys file did not converge")
+  } else if !leg_holds(f: legs.write_drop_in) {
+    withdrawn(legs: legs, stages: concat(s2, ["write-keys" as NonEmptyStr, "write-drop-in" as NonEmptyStr]), stage: "drop-in", cause: "the sshd drop-in did not converge")
+  } else {
+    export_host_reader_after_writes(legs: legs, stages: concat(s2, ["write-keys" as NonEmptyStr, "write-drop-in" as NonEmptyStr]))
   }
 }
 
 fn export_host_reader_apply_with(legs: ExportHostReaderLegs) -> ExportHostReaderRun {
   let pre = leg(f: legs.precheck)
   let s0 = ["sshd-t-option" as NonEmptyStr]
-  if pre.exit_code != 0 {
-    refused_at(stages: s0, stage: "sshd -t -o", cause: concat("sshd refuses the option against the live configuration; nothing was written: ", answer_text(a: pre)))
-  } else {
-    let exists = leg(f: legs.account_exists)
-    let s1 = concat(s0, ["account-check" as NonEmptyStr])
-    let account_ok = if exists.exit_code == 0 { Present { value: s1 } } else {
-      let ensured = leg(f: legs.ensure_account)
-      if ensured.exit_code == 0 { Present { value: concat(s1, ["account-ensure" as NonEmptyStr]) } } else { none }
-    }
-    match account_ok {
-      Absent => refused_at(stages: concat(s1, ["account-ensure" as NonEmptyStr]), stage: "account", cause: "the reader account could not be created")
-      Present { value: s2 } =>
-        if !leg_holds(f: legs.write_keys) {
-          refused_at(stages: concat(s2, ["write-keys" as NonEmptyStr]), stage: "key file", cause: "the reader's authorized_keys file did not converge")
-        } else if !leg_holds(f: legs.write_drop_in) {
-          withdrawn(legs: legs, stages: concat(s2, ["write-keys" as NonEmptyStr, "write-drop-in" as NonEmptyStr]), stage: "drop-in", cause: "the sshd drop-in did not converge")
+  match pre {
+    LegNotDispatched { reason: r } =>
+      refused_at(stages: s0, stage: "sshd -t -o", cause: concat("the sshd precheck was NEVER DISPATCHED, so the option's acceptance is unknown and nothing was written: ", r))
+    LegAnswered { exit_code: pc, stdout: _, stderr: _ } => if pc != 0 {
+      refused_at(stages: s0, stage: "sshd -t -o", cause: concat("sshd refuses the option against the live configuration; nothing was written: ", answer_text(a: pre)))
+    } else {
+      let exists = leg(f: legs.account_exists)
+      let s1 = concat(s0, ["account-check" as NonEmptyStr])
+      match exists {
+        LegNotDispatched { reason: r } =>
+          refused_at(stages: s1, stage: "account", cause: concat("the reader account check was NEVER DISPATCHED, so whether the account exists is not known: ", r))
+        LegAnswered { exit_code: xc, stdout: _, stderr: _ } => if xc == 0 {
+          account_written(legs: legs, s2: s1)
         } else {
-          export_host_reader_after_writes(legs: legs, stages: concat(s2, ["write-keys" as NonEmptyStr, "write-drop-in" as NonEmptyStr]))
+          let ensured = leg(f: legs.ensure_account)
+          let s1e = concat(s1, ["account-ensure" as NonEmptyStr])
+          match ensured {
+            LegNotDispatched { reason: r } =>
+              refused_at(stages: s1e, stage: "account", cause: concat("the reader account could not be created: the ensure leg was NEVER DISPATCHED: ", r))
+            LegAnswered { exit_code: enc, stdout: _, stderr: _ } => if enc == 0 {
+              account_written(legs: legs, s2: s1e)
+            } else {
+              refused_at(stages: s1e, stage: "account", cause: "the reader account could not be created")
+            }
+          }
         }
+      }
     }
   }
 }
@@ -337,8 +410,8 @@ fn render_export_host_reader_run(r: ExportHostReaderRun) -> String {
 
 // ── the producer: the legs, over the administrator edge ───────────────────────────────────────────
 
-fn elevated(subject: FleetHostFileSubject, context: FleetSshExecutionContext, argv: List<String>) -> RemoteAnswer {
-  remote_answer_of(outcome: run_fleet_host_leg(subject: subject, context: context, leg: LegElevated { command: argv }))
+fn elevated(subject: FleetHostFileSubject, context: FleetSshExecutionContext, argv: List<String>) -> HostLeg {
+  host_leg_of_typed_argv(outcome: run_fleet_host_leg(subject: subject, context: context, leg: LegElevated { command: argv }))
 }
 
 fn file_converged(subject: FleetHostFileSubject, context: FleetSshExecutionContext, file: FleetHostFileDesired) -> Bool {
@@ -349,17 +422,17 @@ fn file_converged(subject: FleetHostFileSubject, context: FleetSshExecutionConte
   }
 }
 
-fn effective_config_answer(subject: FleetHostFileSubject, context: FleetSshExecutionContext) -> RemoteAnswer {
+fn effective_config_answer(subject: FleetHostFileSubject, context: FleetSshExecutionContext) -> HostLeg {
   elevated(subject: subject, context: context, argv: sshd_effective_config_argv())
 }
 
-fn reload_answer(subject: FleetHostFileSubject, context: FleetSshExecutionContext) -> RemoteAnswer {
+fn reload_answer(subject: FleetHostFileSubject, context: FleetSshExecutionContext) -> HostLeg {
   elevated(subject: subject, context: context, argv: systemctl_reload_unit_argv(unit: openssh_server_unit))
 }
 
 // The subject's own target, on a connection of its own: one source of target for every leg.
-fn fresh_login_answer(subject: FleetHostFileSubject, context: FleetSshExecutionContext) -> RemoteAnswer {
-  remote_answer_of(outcome: typed_argv_exec_over_fleet_ssh_fresh_connection(kind: ProbeLeg,target: subject.target, context: context, argv: ["true"]))
+fn fresh_login_answer(subject: FleetHostFileSubject, context: FleetSshExecutionContext) -> HostLeg {
+  host_leg_of_typed_argv(outcome: typed_argv_exec_over_fleet_ssh_fresh_connection(kind: ProbeLeg,target: subject.target, context: context, argv: ["true"]))
 }
 
 fn export_host_reader_legs(subject: FleetHostFileSubject, context: FleetSshExecutionContext, key_line: String) -> ExportHostReaderLegs {
