@@ -1233,9 +1233,16 @@ data effect_demand_seam_roster: List<SeamStanding> = [
 // primitive's identity is the slug `filesystem_read`. A closure reaching a filesystem operation that
 // IS the handler is accepted -- this is the same discrimination effect_demand_census makes between a
 // dispositioned demand and one no row accounts for, applied to the filesystem effect.
+// Three arms, no silent accept. A filesystem reach is authorised ONLY through the one bound handler;
+// the free primitive and any filesystem operation that is neither the handler nor the free primitive are
+// BOTH refused (fail_closed -- an unrecognised filesystem reach is a hole, not a pass-through). The
+// distinction between the two refused arms is kept because the row's red_control names the bare
+// filesystem_read specifically (its own cause), while a filesystem effect reaching the bound handler's
+// identity under some other spelling is a second, differently-named defect.
 type FilesystemEffectReach
   = ReachedThroughHandler { calling_entry_module: String, operation: String }
   | ReachedFreePrimitiveDirectly { calling_entry_module: String, operation: String, cause: Symbol }
+  | ReachedOutsideBoundHandler { calling_entry_module: String, operation: String, cause: Symbol }
 
 // The single slug naming the free filesystem_read primitive, taken at the same PrimitiveIdentity
 // grain the census takes every operation (std.primitive_projection). It is NOT a new name for the
@@ -1244,9 +1251,14 @@ type FilesystemEffectReach
 data filesystem_free_primitive_slug: String = "filesystem_read"
 
 // One observed filesystem reach, at the grain the census already uses: the entry that reached and the
-// operation it reached. `is_handler` is supplied, NOT inferred from the tree -- the caller states which
-// slug the bound handler names, so the refusal is executable over a synthetic world and is never an
-// oracle copied from the tree it audits (fail_closed's construction-over-validation rule).
+// operation it reached. The bound handler's slug is SUPPLIED, not inferred from the tree -- the caller
+// states which slug the bound handler names, so the refusal is executable over a synthetic world and is
+// never an oracle copied from the tree it audits (fail_closed's construction-over-validation rule). A
+// reach is authorised ONLY when the operation equals the handler's own slug; the free primitive and any
+// other filesystem operation are refused with their own named cause. An operation reaching the handler
+// under a spelling that is not the handler slug is refused as ReachedOutsideBoundHandler, NOT silently
+// accepted -- the handler_slug is read here, and a filesystem effect that matches neither the handler nor
+// the free primitive is a hole, not a pass-through.
 fn filesystem_effect_reach(
   calling_entry_module: String,
   operation: String,
@@ -1258,15 +1270,22 @@ fn filesystem_effect_reach(
       operation: operation,
       cause: ^filesystem_read_reached_outside_filesystem_handler
     }
-  } else {
+  } else if operation == handler_slug {
     ReachedThroughHandler { calling_entry_module: calling_entry_module, operation: operation }
+  } else {
+    ReachedOutsideBoundHandler {
+      calling_entry_module: calling_entry_module,
+      operation: operation,
+      cause: ^filesystem_effect_reached_no_bound_handler
+    }
   }
 }
 
 // THE REFUSAL, NAMING THE OFFENDERS. Given the filesystem reaches of an emitted closure, return exactly
-// those that reached the free primitive directly, each carrying its calling entry, the operation it
-// reached, and its named cause. An empty list is the accepted population; a non-empty list is the
-// located report. No counting, no defaulting: a direct reach is refused by name.
+// those that were NOT authorised through the bound handler -- each carrying its calling entry, the
+// operation it reached, and its named cause. An empty list is the accepted population; a non-empty list
+// is the located report. No counting, no defaulting: a reach that is not through the handler is refused
+// by name.
 fn filesystem_effect_direct_reach_refusals(
   reaches: List<FilesystemEffectReach>
 ) -> List<FilesystemEffectReach> {
@@ -1281,6 +1300,18 @@ fn filesystem_effect_direct_reach_refusals(
           cause: cause
         } => Cons {
           head: ReachedFreePrimitiveDirectly {
+            calling_entry_module: calling_entry_module,
+            operation: operation,
+            cause: cause
+          },
+          tail: acc
+        }
+        ReachedOutsideBoundHandler {
+          calling_entry_module: calling_entry_module,
+          operation: operation,
+          cause: cause
+        } => Cons {
+          head: ReachedOutsideBoundHandler {
             calling_entry_module: calling_entry_module,
             operation: operation,
             cause: cause

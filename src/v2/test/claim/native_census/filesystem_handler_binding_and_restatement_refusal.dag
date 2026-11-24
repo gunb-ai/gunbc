@@ -8,6 +8,7 @@ import v2.compiler.effect_demand {
   FilesystemEffectReach,
   ReachedThroughHandler,
   ReachedFreePrimitiveDirectly,
+  ReachedOutsideBoundHandler,
   filesystem_free_primitive_slug,
   filesystem_effect_reach,
   filesystem_effect_direct_reach_refusals,
@@ -74,6 +75,27 @@ test fn filesystem_read_direct_reach_names_its_cause() -> Bool {
       operation: operation,
       cause: _
     } => (entry == "src/v2/compiler/self_host.dag") && (operation == filesystem_free_primitive_slug)
+    ReachedThroughHandler { calling_entry_module: _, operation: _ } => false
+    ReachedOutsideBoundHandler { calling_entry_module: _, operation: _, cause: _ } => false
+  }
+}
+
+// A filesystem operation that is neither the free primitive nor the bound handler's own slug is refused
+// as ReachedOutsideBoundHandler with its own named cause -- it is NOT silently accepted. This is the
+// fix for the dead handler_slug: the handler's identity is read, and a reach matching neither the
+// handler nor the free primitive is a hole, not a pass-through.
+test fn filesystem_reach_neither_handler_nor_primitive_refuses() -> Bool {
+  match filesystem_effect_reach(
+    calling_entry_module: "src/v2/compiler/unrelated.dag",
+    operation: "some_other_free_primitive",
+    handler_slug: filesystem_handler_slug
+  ) {
+    ReachedOutsideBoundHandler {
+      calling_entry_module: entry,
+      operation: operation,
+      cause: _
+    } => (entry == "src/v2/compiler/unrelated.dag") && (operation == "some_other_free_primitive")
+    ReachedFreePrimitiveDirectly { calling_entry_module: _, operation: _, cause: _ } => false
     ReachedThroughHandler { calling_entry_module: _, operation: _ } => false
   }
 }
