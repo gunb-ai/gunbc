@@ -5,7 +5,8 @@ import std.optional { Optional, Present, Absent }
 
 // EMISSION-MINIMUM-COST building block: observation and state threading (roadmap node
 // emission-building-block-realization, first slice). Shape taken from the roadmap first_slice wording
-// (dag/gunbc/roadmap/roadmap_authority.dag:3126, "a small nonescaping result and cursor advanced in a
+// (#gunbc.roadmap.roadmap_authority::declared_roadmap_nodes, the row whose id is
+// "emission-building-block-realization": "a small nonescaping result and cursor advanced in a
 // repeated walk ... an owned record accumulator carrying unchanged context"): a cursor over one
 // retained source advanced by a scalar index, and a wide record accumulator rebuilt each step with two
 // fields changed and the rest carried unchanged.

@@ -1,6 +1,8 @@
 # emission-building-block-realization — the measurement, not the specimens
 
-Roadmap node: `emission-building-block-realization` (dag/gunbc/roadmap/roadmap_authority.dag:3119).
+Roadmap node: `emission-building-block-realization`, declared as a row of
+`gunbc.roadmap.roadmap_authority::declared_roadmap_nodes` (rows carry no symbol of their own, so the row `id:` is the
+name; the file position of that row is carried only beside it, never instead of it).
 Lane: v2 self-host and native emission. Manager: warm-fox-517. Planning owner: still-gull-398.
 Session: tidy-hawk-691. Shape: MILESTONE, deliverable one of two — this is the map. Deliverable two,
 the specimens, is released separately and only after the parse-population profile exists.
@@ -71,14 +73,15 @@ header depends on.
 ## 1. The parse-population profile is absent at this base
 
 The first_slice says specimens are "chosen from the parse-population profile"
-(roadmap_authority.dag:3126). No such durable artifact exists here.
+(`gunbc.roadmap.roadmap_authority::declared_roadmap_nodes`, the row whose `id` is
+`emission-building-block-realization`). No such durable artifact exists here.
 
 | Command, at `origin/main` = `56d460116d` | Hits |
 |---|---|
 | `git grep -inE "population.profile" origin/main -- .` | **2 hits, 2 files**: `dag/gunbc/emit_state_threading_specimen.dag`, `dag/gunbc/roadmap/roadmap_authority.dag` — both references, neither a profile |
-| `git grep -icE "perf self time" origin/main` | 1 — inside `emission-real-consumer-profiles`'s own `first_slice` (roadmap_authority.dag:3174) |
+| `git grep -icE "perf self time" origin/main` | 1 — inside the `first_slice` field of the `emission-real-consumer-profiles` row of `gunbc.roadmap.roadmap_authority::declared_roadmap_nodes` |
 | `git grep -icE "collection, allocation, provenance index, lexer and parser"` | 1 — same line |
-| `git grep -icE "165-module" origin/main` | 4 — roadmap_authority.dag:3174 plus `dag/gunbc/recurring_failure_mode/census_rows_read_the_loaded_population.dag`, where 165 is the fleet shard count, not a profile |
+| `git grep -icE "165-module" origin/main` | 4 — that same `first_slice` field plus `dag/gunbc/recurring_failure_mode/census_rows_read_the_loaded_population.dag`, where 165 is the fleet shard count, not a profile |
 | `git grep -icE "five largest dag" origin/main` | 0 |
 | `git ls-tree -r --name-only origin/main \| grep -iE "population\|profile"` | no parse-population baseline artifact among the hits |
 
@@ -149,8 +152,9 @@ Against the conditionals the ticket requires every contract to carry. Counts are
 `Exponential`, `Unbounded`, `Unknown`), with `add`/`mul`/`poly`/`eval` over the axes
 `size:n, aux:m, depth:d, leaves:l, nodes:u, height:h`. Hit counts at the base sha:
 `ownership` 0, `alias` 0, `escape` 0, `borrow` 0, `clone` 0, `traversal` 0, `alloc` **1** — and that
-one hit is `Alloca { result: _, allocated_type: _, element_count: _ } => 1` at line 1027, an entry in
-a per-instruction size table. **There is no ownership axis and no allocation-count axis.** The lens is
+one hit is `Alloca { result: _, allocated_type: _, element_count: _ } => 1` inside
+`v2.lens.cost::llvm_instruction_cost` (file `src/v2/lens/cost.dag`, fn declared at 1020, the arm at 1027),
+an entry in a per-instruction size table, not an allocation-count axis. **There is no ownership axis and no allocation-count axis.** The lens is
 not stretched to fit; a stated absence is a result. Adding such axes is a design question for
 neat-badger (§7 proposal, unimplemented), not something to bolt onto a lens in a measurement PR.
 
@@ -273,8 +277,8 @@ Read plainly: of 22 named blocks, **5 execute**; **1** of those carries a violat
 discriminating run (the accumulator cloning control). **None carries a contract**, because no
 `EmitCopyQualification` record is constructed on the executing path: the instrument builds
 `AllocationCase` records (124) and judges them with `span_at_least` (155), `operations_above` (164)
-and `operations_within` (174), while the qualification judges (`emit_copy_qualification.dag:851,884`)
-are reached only by the wet transport, whose consumer is deliberately absent.
+and `operations_within` (174), while the qualification judges `gunbc.emit_copy_qualification::judge_case` (851) and
+`gunbc.emit_copy_qualification::judge_growth_arm` (884) are reached only by the wet transport, whose consumer is deliberately absent.
 
 ## 6. Findings
 
@@ -301,8 +305,9 @@ d. **`v2.lens.cost` cannot carry this row** — §3, with the hit counts. Stated
 
 e. **The route named "v2" emits with the seed emitter.** The log line reads
    `v2-native-route: emitting dag/gunbc/instruments/native_allocation_observation.dag (seed,
-   in-process)`, and the emitter selection is at
-   `src/v1/stage0/src/cli_run/native_lane_runner.rs:587`. There is no v2-emitter selection on that
+   in-process)`, and the emitter selection is the `eprintln!` inside
+   `prepare_emitted_compiler_for_entry` (`src/v1/stage0/src/cli_run/native_lane_runner.rs`, fn declared at
+   412, the line at 587). There is no v2-emitter selection on that
    path, so every v2 result today reads **unqualified**, which is what the first_slice anticipated
    ("where v2 cannot yet execute it, the exact blocker is named"). The named blocker is that line and
    that route. I did not attempt a v2-emitter-only execution and make no claim about whether it could.
@@ -357,7 +362,27 @@ It reuses the four existing terms instead of duplicating them, adds the missing 
 `v2.lens.cost` alone as the single-meaning complexity authority. Whether this should be a new module,
 extra members on the existing five axes, or fields on `EmitCopyQualification` is the ruling asked for.
 
-## 8. What this PR deliberately does not do
+## 8. Review round 1, and the citation audit it prompted
+
+A review on this PR (review artifact for the 14:46:34Z REQUEST_CHANGES) caught that the provenance
+sentence I had just repaired cited by position — `roadmap_authority.dag:3126` — which DESIGN forbids:
+`gunbc.design_argument::single_authority` says "Cite the symbol, not the position", a `file:line` pointer
+being "a second, positional naming scheme that any edit above it silently invalidates", with a position
+carried only where no symbol exists and then beside the symbol. I verified that text in DESIGN.md rather
+than taking the review's word. The specimen comment now cites
+`#gunbc.roadmap.roadmap_authority::declared_roadmap_nodes` and names the row by its `id`, and every
+position left in this report sits beside the symbol that owns it. The report cites symbols in
+`module::decl` spelling without the `#` marker, because markdown comments are not what the reference
+checker reads.
+
+That review also prompted a full audit of every `file:line` in this report against the files. It found one
+more of my own errors: I had written that the instrument is registered at `instrument_targets.dag:59`,
+which is a comment; the rows that bind `//gunbc/instruments:native-allocation-observation` are
+`native_allocation_observation_label` (494-495), the entry (498-499), the `TargetBinding` naming
+`NativeClaimProgramProducer` (948-949), and its listing in the bound population (1196). That citation had
+come from the same kind of elided tool read as the numbers in the honesty note above.
+
+## 9. What this PR deliberately does not do
 
 * no new specimens, specimen claim files, or contracts (deliverable two, gated on the profile);
 * no emitter change and nothing under `src/v2` (the blocker in §6e is named, not fixed);
