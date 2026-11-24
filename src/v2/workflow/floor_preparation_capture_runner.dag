@@ -30,6 +30,7 @@ module v2.workflow.floor_preparation_capture_runner
 
 import std.types { Bool, Int, List, Present, Absent, String }
 import std.algebra { length, list_push }
+import std.measure { Millisecond, millisecond, millisecond_count }
 import extdeps.shell
 import extdeps.shell.exec
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -232,7 +233,10 @@ fn floor_preparation_strip(text: String, prefix: String) -> String {
     Absent {} => false
   }
   if pieces.length() > 1 && starts_empty {
-    match pieces.skip(n: 1).first() { Present { value: v } => v; Absent {} => text }
+    match pieces.skip(n: 1).first() {
+      Present { value: v } => v
+      Absent {} => text
+    }
   } else { text }
 }
 
@@ -522,12 +526,14 @@ fn floor_preparation_capture_run() -> String {
     let report_read = floor_preparation_has(xs: classifications, x: "REPORT_READ")
       && floor_preparation_contains(haystack: join(report_lines, "\n"), needle: floor_preparation_report_sentinel)
     // The leg's real exit status, printed on its own receipt line and asserted against the
-    // expected value for THIS path: the report prints its line and exits nonzero (the host has no
-    // success channel for a returned String), so rc==1 IS the expected status and rc==0 or 124 is
-    // a defect, not a pass.
+    // expected value for THIS path: the report function RETURNS a String, and the host has no
+    // success channel for one -- observed on this host ("returned `22|12`, not `ProcessExit`",
+    // rc=2, value printed in the refusal; royal-newt's ruling reads the report from that print).
+    // So rc==2 IS the expected status for the report leg; rc==0, rc==1 or 124 is a defect, not a
+    // pass -- a well-formed report that exited 0 would be a success-channel fabrication.
     let report_rc_receipt = floor_preparation_receipt("report-print",
-      concat(concat("rc=", to_string(report.rc)), concat(" expected_rc=1 classifications=", classification_text)))
-    let report_ok = report_read && report.rc == 1
+      concat(concat("rc=", to_string(report.rc)), concat(" expected_rc=2 classifications=", classification_text)))
+    let report_ok = report_read && report.rc == 2
       && graded.rc == 0
       && length(xs: kept_graded) > 0
     let receipts = concat(concat(concat(supplies, [verify_receipt]),

@@ -909,5 +909,5 @@ test fn floor_preparation_a_refusal_cannot_read_as_a_report() -> Bool {
     && empty_population_is_not_a_report()
     && junk_is_not_a_report()
     && report_sentinel_is_model_rendered()
-    && text_contains(runner_module_text(), "expected_rc=1")
+    && text_contains(runner_module_text(), "expected_rc=2")
 }
