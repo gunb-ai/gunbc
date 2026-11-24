@@ -110,7 +110,7 @@ type V1MigratedTestModule {
 
 // WHERE EACH OF THE FOURTEEN WENT. v1_migrated_test_modules() below holds fourteen rows, one per Rust
 // test module, and nothing else: five are ReplacedByWitness and nine are RetainedRustTest (5 + 9 = 14).
-// The retained rows are the nine #test.retirement.model::retained_* rows named above their entries, each
+// The retained rows are the nine rows of the retained_legacy_rust_test_modules list in test.retirement.model named above their entries, each
 // with its reason; no module is in no-action, none is both replaced and retained, and the wall (which
 // requires exactly one of the two per discovered module) is what refuses a fifteenth or a missing one.
 //   replaced by a witness .dag file: sort_by_decorate_once, grounded_shared_carrier_wrap,
