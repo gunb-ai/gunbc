@@ -17,6 +17,7 @@ import gunbc.plans.closure_consolidation { closure_consolidation_plan }
 import gunbc.plans.planning_consolidation { planning_consolidation_plan }
 import gunbc.plans.declaration_acquisition { declaration_acquisition_plan }
 import gunbc.plans.new_server_bringup { new_server_bringup_plan }
+import gunbc.plans.gunbhub_source_of_truth { gunbhub_source_of_truth_plan }
 import gunbc.plans.v2_self_host { v2_self_host_plan }
 import gunbc.plans.factory_dogfood { factory_dogfood_plan }
 import gunbc.plans.debt_payoff { debt_payoff_plan }
@@ -63,4 +64,5 @@ data all_plans: List<Plan> = [
   new_server_bringup_plan, one_source_tree_plan, claim_execution_consolidation_plan,
   desired_state_follows_the_machine_plan,
   derived_types_keep_their_name_plan,
+  gunbhub_source_of_truth_plan,
 ]

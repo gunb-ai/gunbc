@@ -6924,6 +6924,55 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       centering: plan(text: "new_server_bringup_plan: the boot and management edge is a modeled path, and a path that pins an address in a parameter string is not modeled. Target: dag/gunbc/megarac_media_model.dag's share and the fleet endpoint authority it should read through."),
     ),
     roadmap_node(
+      identity: "rn_BB6M4C13XY1NWJ5XTM2DP5J4R9",
+      id: "gunbhub-source-of-truth",
+      owner: "source-intent",
+      carriers: carrier(path: "dag/gunbc/plans/gunbhub_source_of_truth.dag"),
+      line: ticket(t: level_fields(
+        headline: "gunbhub is gunbc's source of truth and GitHub a mirror",
+        boundary: "The long track the operator separated on 2026-11-24 (gunbc.design_ruling::github_stays_the_code_repository_until_gunbhub_2026_11_24): gunbc's own source control, served as gunbhub with a simple frontend, becomes the authority over what landed, and GitHub receives a one-way mirror. GitHub stays the code repository until this project's cutover; nothing outside it waits on it.",
+        approach: "Members, in dependency order: the native SCM upstream models and landing spine already in the factory project (2-scm-*), linked by edge rather than moved; a simple gunbhub frontend over that spine; then the cutover that makes gunbhub the authority and GitHub the mirror.",
+        red_control: "Met only through its members: the cutover row's own control, a change landed and read back through gunbhub while GitHub is unreachable.",
+        displaced_cost: "While GitHub decides what landed, every trust chain that rests on reviewed main inherits GitHub as a root, however much else moves off it.",
+        handback: "A landed change read back from gunbhub, and GitHub receiving only the mirror."
+      )),
+      parent: in_project(project: "gunbc-project-root", contribution: "The project's source history owned by its own source control, the last GitHub authority to move."),
+    ),
+    roadmap_node(
+      identity: "rn_BVQ2T76G1H1BBST0G5KK6F856P",
+      id: "gunbhub-simple-frontend",
+      owner: "source-intent",
+      carriers: carrier(path: "dag/gunbc/gunbhub_serve.dag"),
+      line: ticket(t: fields(
+        headline: "gunbhub serves browse, proposal, review and landing over gunbc's own source control",
+        boundary: "A deliberately simple frontend, the operator's word, over the native landing spine: browse a revision's tree and history, read a proposal and its review threads, record a review decision, and land through the spine with the landed revision read back. gunbc.gunbhub_serve already renders a browse page and is the seed; this row extends it rather than adding a second server. No accounts, notifications, issue tracking or anything a person can do through the CLI already, unless a consumer is named.",
+        displaced_cost: "Without a way to read and land changes, a native source of truth is usable only from the command line, and review would stay on GitHub after the history moved.",
+        first_slice: "Browse and proposal read over a repository the native object store holds, served by the existing gunbhub_serve.",
+        red_control: "OPEN: not yet measured. The pair to execute: a proposal whose review has an unresolved thread cannot be landed from the frontend; the same proposal with the thread decided lands, and the landed revision the page shows is the one read back from the store.",
+        out_of_scope: "Identity and authorization of reviewers beyond what the landing spine already admits; any public hosting.",
+        handback: "A frontend a person can review and land a change through."
+      )),
+      parent: in_project(project: "gunbhub-source-of-truth", contribution: "The simple frontend the track needs before people can work through gunbhub."),
+      centering: plan(text: "gunbhub_source_of_truth_plan: gunbc's own source control is the authority over what landed. Target: dag/gunbc/gunbhub_serve.dag."),
+    ),
+    roadmap_node(
+      identity: "rn_308N4SS4YMT39PCHRQ4ENPCCSH",
+      id: "gunbhub-authoritative-cutover",
+      owner: "source-intent",
+      carriers: carrier(path: "dag/gunbc/plans/gunbhub_source_of_truth.dag"),
+      line: ticket(t: fields(
+        headline: "gunbhub becomes the authority over gunbc's source, and GitHub a one-way mirror",
+        boundary: "The cutover: changes land through gunbhub, GitHub receives a one-way mirror, and source consumers -- remote builds (gunbc.compute.remote_build_client pushes and fetches through GitHub today), the belt, review tooling, the fleet's revision admission -- read from the gunbhub authority. A gap-intolerant boundary, so it is staged: gunbhub in shadow beside GitHub, then one transition (gunbc.design_argument::replacement_migration).",
+        displaced_cost: "Until it happens, reviewed main remains a GitHub fact that every trust chain resting on main inherits.",
+        first_slice: "Run gunbhub in shadow: mirror GitHub's main into the native store and compare revisions, landing nothing through it yet.",
+        red_control: "OPEN: not yet measured. The pair to execute: a change landed through gunbhub while GitHub is unreachable is read back from gunbhub and reaches the mirror once GitHub returns; a change pushed directly to the GitHub mirror after cutover is refused or overwritten, never adopted as landed.",
+        out_of_scope: "Moving identity or execution off GitHub, which do not wait on this row.",
+        handback: "gunbhub authoritative, GitHub a mirror, with the consumers that read source repointed."
+      )),
+      parent: in_project(project: "gunbhub-source-of-truth", contribution: "The track's terminal transition."),
+      centering: plan(text: "gunbhub_source_of_truth_plan: gunbc's own source control is the authority over what landed. Target: dag/gunbc/plans/gunbhub_source_of_truth.dag."),
+    ),
+    roadmap_node(
       identity: "rn_G75EV6NFA5Y20CRRZKH42F629W",
       id: "empty-service-admissibility",
       owner: "self-host",
@@ -7258,6 +7307,9 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "2-scm-compatibility-shape", parent: "2-scm-pijul-upstream-model"),
     edge(child: "2-scm-p0-landing-spine", parent: "2-scm-compatibility-shape"),
     edge(child: "2-scm-p0-landing-spine", parent: "2-claim-indexed-evidence"),
+    edge(child: "gunbhub-simple-frontend", parent: "2-scm-p0-landing-spine"),
+    edge(child: "gunbhub-authoritative-cutover", parent: "gunbhub-simple-frontend"),
+    edge(child: "gunbhub-authoritative-cutover", parent: "2-scm-p0-landing-spine"),
 
     edge(child: "namespace-binding-kernel", parent: "namespace-occurrence-transport"),
     edge(child: "namespace-reference-derived-closure", parent: "namespace-binding-kernel"),
