@@ -315,23 +315,37 @@ fn floor_preparation_receipt(step: String, detail: String) -> String {
 // code, against BOTH the pinned value above and the release manifest line.
 // ----------------------------------------------------------------------------------------------
 
-fn floor_preparation_sha_of(path: String) -> String {
+// Absence is TYPED, never a fabricated "" or -1 (review 97872): a failed checksum command or an
+// unparseable count returns Absent, and the supply gate refuses naming WHICH reading was absent.
+fn floor_preparation_sha_of(path: String) -> String? {
   let outcome = floor_preparation_spawn_plain(
     binary: floor_preparation_sha256_binary,
     args: [path])
-  if outcome.rc == 0 { floor_preparation_first_token(outcome.stdout) } else { "" }
+  let token = floor_preparation_first_token(outcome.stdout)
+  if outcome.rc == 0 && token != "" { Present { value: token } } else { Absent {} }
 }
 
-fn floor_preparation_bytes_of(path: String) -> Int {
+fn floor_preparation_bytes_of(path: String) -> Int? {
   let outcome = floor_preparation_spawn_plain(
     binary: "/usr/bin/wc",
     args: ["-c", path])
-  match split(s: outcome.stdout, delimiter: " ").first() {
-    Present { value: v } => match parse_int(s: v) {
-      Present { value: n } => n
-      Absent {} => 0 - 1
+  if outcome.rc != 0 {
+    Absent {}
+  } else {
+    match split(s: outcome.stdout, delimiter: " ").first() {
+      Present { value: v } => match parse_int(s: v) {
+        Present { value: n } => Present { value: n }
+        Absent {} => Absent {}
+      }
+      Absent {} => Absent {}
     }
-    Absent {} => 0 - 1
+  }
+}
+
+fn floor_preparation_present_or<T>(opt: T?, fallback: T) -> T {
+  match opt {
+    Present { value: v } => v
+    Absent {} => fallback
   }
 }
 
@@ -356,19 +370,28 @@ fn floor_preparation_supply_line_ok(name: String, note: String) -> String {
   concat(concat("[runner-supply] name=", name), concat(" ok=", note))
 }
 
-fn floor_preparation_supply_line(name: String, path: String, expected: String, bytes_ok: Bool) -> String {
-  let digest = floor_preparation_sha_of(path: path)
+fn floor_preparation_supply_line(name: String, path: String, expected: String) -> String {
+  let digest_opt = floor_preparation_sha_of(path: path)
+  let bytes_opt = floor_preparation_bytes_of(path: path)
+  let digest = floor_preparation_present_or(opt: digest_opt, fallback: "SHA_UNREADABLE")
+  let bytes_text = match bytes_opt {
+    Present { value: n } => to_string(n)
+    Absent {} => "BYTES_UNREADABLE"
+  }
   let manifest = floor_preparation_manifest_sha(kind: name)
-  let ok = (digest != "")
-    && (digest != floor_preparation_empty_sha)
-    && (digest == expected)
-    && (manifest == digest)
-    && bytes_ok
+  let ok = match digest_opt {
+    Present { value: d } => match bytes_opt {
+      Present { value: n } => d != floor_preparation_empty_sha && d == expected && manifest == d && n > 0
+      Absent {} => false
+    }
+    Absent {} => false
+  }
   if ok {
-    concat(concat("[runner-supply] name=", name), concat(" sha256=", digest))
+    concat(concat(concat("[runner-supply] name=", name), concat(" sha256=", digest)),
+      concat(" bytes=", bytes_text))
   } else {
     concat(concat(concat(concat(concat("[runner-supply-REFUSED] name=", name), " disk="), digest),
-      concat(" manifest=", manifest)), concat(" bytes_ok=", to_string(bytes_ok)))
+      concat(" manifest=", manifest)), concat(" bytes=", bytes_text))
   }
 }
 
@@ -453,8 +476,13 @@ fn floor_preparation_leg_receipt(label: String, entries: List<String>, binary: S
     concat(join(entries, ","),
       concat(concat(" rc=", to_string(outcome.rc)),
         concat(concat(" instrument=", binary),
-          concat(concat(" BINARY_SHA256=", floor_preparation_sha_of(binary)),
-            concat(concat(" BINARY_BYTES=", to_string(floor_preparation_bytes_of(binary))),
+          concat(concat(" BINARY_SHA256=", floor_preparation_present_or(opt: floor_preparation_sha_of(path: binary), fallback: "SHA_UNREADABLE")),
+            concat(concat(" BINARY_BYTES=", floor_preparation_present_or(
+              opt: match floor_preparation_bytes_of(path: binary) {
+                Present { value: n } => Present { value: to_string(n) }
+                Absent {} => Absent {}
+              },
+              fallback: "BYTES_UNREADABLE"))),
               concat(concat(" TREE_SHA=", tree_sha),
                 concat(" out_bytes=", to_string(length(xs: outcome.stderr))))))))))
 }
@@ -479,12 +507,10 @@ fn floor_preparation_capture_run() -> String {
     env_receipt,
     floor_preparation_supply_line(name: "claim_batch",
       path: floor_preparation_pinned_claim_batch(),
-      expected: floor_preparation_pinned_claim_batch_sha,
-      bytes_ok: floor_preparation_bytes_of(path: floor_preparation_pinned_claim_batch()) > 0),
+      expected: floor_preparation_pinned_claim_batch_sha),
     floor_preparation_supply_line(name: "gunbc",
       path: floor_preparation_pinned_gunbc(),
-      expected: floor_preparation_pinned_gunbc_sha,
-      bytes_ok: floor_preparation_bytes_of(path: floor_preparation_pinned_gunbc()) > 0)
+      expected: floor_preparation_pinned_gunbc_sha)
   ]
   let verify_receipt = floor_preparation_receipt("verify-pinned-supplies",
     concat("lines=", to_string(length(xs: supplies))))
