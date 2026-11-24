@@ -21,8 +21,8 @@ import v2.std.node_query { child_lookup_step, declared_field_from_edge, member_e
 import v2.std.list_introduction { list_introduction_elements_optional }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_node, qualified_name_init, qualified_name_last_segment, parameter_reference_path_optional, lexical_reference_label_optional, declaration_reference_path_optional }
 import v2.std.host_transport { EmitHostRuntimeRow, TargetEmitHostRuntimeRow, configured_emit_host_runtime_row_from_target_row }
-import v2.std.integer { integer_decimal_magnitude_node_to_int }
-import std.integer { int_to_decimal_string }
+import v2.std.integer { integer_decimal_magnitude_node_to_int, integer_decimal_magnitude_node, decimal_digits_to_magnitude }
+import std.integer { int_to_decimal_string, decimal_digit_of_units }
 import v2.std.fold_assembly { node_list_from_node }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, UriScheme, uri_scheme_inhabitants }
@@ -1790,6 +1790,11 @@ type TargetOperatorShape
 type TargetOperatorRealization {
   operation: CanonicalOperation
   shape: TargetOperatorShape
+  // Per-target operator binding strength, supplied by the language realization (never a
+  // target-agnostic table). Absent means the target declared no precedence for this operator, and
+  // the grouping predicate then WRAPS (always-grouped is correct by construction); there is no
+  // numeric sentinel that could fail open by treating an undeclared operator as binding tightest.
+  precedence: Optional<Int>
 }
 
 type TargetBindingRefShape {
@@ -2903,6 +2908,11 @@ fn target_operator_realization_row_wire_schema_valid(row: Node) -> Outcome<Bool>
         children: row.children
       ) != 1 {
         outcome_rejected(target_operator_realization_wire_malformed_diagnostic(row: row))
+      } else if name_occurrences(
+        name: ^target_operator_realization_field_precedence,
+        children: row.children
+      ) > 1 {
+        outcome_rejected(target_operator_realization_wire_malformed_diagnostic(row: row))
       } else {
         match fold(
           row.children,
@@ -2913,6 +2923,7 @@ fn target_operator_realization_row_wire_schema_valid(row: Node) -> Outcome<Bool>
                 Authored { name: n } =>
                   n == ^target_operator_realization_field_operation
                   || n == ^target_operator_realization_field_shape
+                  || n == ^target_operator_realization_field_precedence
                 StructuralLabel { label: _ } => false
                 Positional => false
               }
@@ -2955,12 +2966,31 @@ fn target_operator_realization_from_wire_row(row: Node) -> Outcome<TargetOperato
                   bind_outcome(
                     o: target_operator_shape_from_wire_node(wire: shape_wire),
                     f: fn(shape) {
-                      outcome_accepted(
-                        TargetOperatorRealization {
-                          operation: canonical_op,
-                          shape: shape
-                        }
-                      )
+                      match find_named_child(root: row, name: ^target_operator_realization_field_precedence) {
+                        Accepted { value: precedence_wire, diagnostics: _ } =>
+                          match integer_decimal_magnitude_node_to_int(node: precedence_wire) {
+                            Accepted { value: precedence_level, diagnostics: _ } =>
+                              outcome_accepted(
+                                TargetOperatorRealization {
+                                  operation: canonical_op,
+                                  shape: shape,
+                                  precedence: Present { value: precedence_level }
+                                }
+                              )
+                            _ =>
+                              outcome_rejected(
+                                target_operator_realization_wire_malformed_diagnostic(row: row)
+                              )
+                          }
+                        Rejected { diagnostics: _ } =>
+                          outcome_accepted(
+                            TargetOperatorRealization {
+                              operation: canonical_op,
+                              shape: shape,
+                              precedence: Absent
+                            }
+                          )
+                      }
                     }
                   )
                 }
@@ -2988,6 +3018,43 @@ fn target_operator_realization_node(
         target: target_model_operator_shape_wire_node(shape: shape)
       )
     ]
+  )
+}
+
+// Same row with a declared precedence level, carried as an integer magnitude node. A language
+// that does not group operands by precedence keeps the two-field builder above, whose rows decode
+// precedence to Absent (the grouping predicate then always wraps — correct by construction).
+fn target_operator_realization_node_with_precedence(
+  operation: CanonicalOperation,
+  shape: TargetOperatorShape,
+  precedence_node: Node
+) -> Node {
+  target_model_type_conj_node(
+    children: [
+      target_model_named_edge(
+        name: ^target_operator_realization_field_operation,
+        target: target_model_canonical_operation_wire_node(operation: operation)
+      ),
+      target_model_named_edge(
+        name: ^target_operator_realization_field_shape,
+        target: target_model_operator_shape_wire_node(shape: shape)
+      ),
+      target_model_named_edge(
+        name: ^target_operator_realization_field_precedence,
+        target: precedence_node
+      )
+    ]
+  )
+}
+
+// Wire encoding for a declared precedence level: the integer magnitude node the decoder reads back
+// with integer_decimal_magnitude_node_to_int. The NUMBER is a fact about the target language and
+// lives in that language's catalog rows; this function only encodes it.
+fn target_operator_precedence_level_node(level: Int) -> Node {
+  integer_decimal_magnitude_node(
+    magnitude: decimal_digits_to_magnitude(
+      digits: Cons { head: decimal_digit_of_units(value: level), tail: Empty }
+    )
   )
 }
 
@@ -6467,37 +6534,46 @@ fn target_value_expression_emit_comparison_operand_is_comparison_diagnostic(expr
   }
 }
 
-fn target_value_expr_canonical_operation_is_comparison(op: CanonicalOperation) -> Bool {
-  match op {
-    OrderingComparison { compare_field: _, predicate: _ } => true
-    EqualityComparison { eq_field: _, predicate: _ } => true
-    _ => false
-  }
-}
-
-fn target_value_expr_operand_is_comparison(operand: TargetValueExpression) -> Bool {
-  match target_value_expr_primitive_apply_operation_from_wire(wire: operand.node) {
-    Accepted { value: op, diagnostics: _ } => target_value_expr_canonical_operation_is_comparison(op: op)
-    _ => false
-  }
-}
-
+// True when the enclosing operator is a comparison and either operand is itself a comparison
+// apply — the shape Rust rejects because its comparison operators do not chain. The variant
+// tests are direct matches at the use site, not Bool predicates flattening the sum type.
 fn target_value_expr_operands_form_comparison_chain(
   enclosing_op: CanonicalOperation,
   operands: List<TargetValueExpression>
 ) -> Bool {
-  if target_value_expr_canonical_operation_is_comparison(op: enclosing_op) {
-    match list_at_optional(xs: operands, index: 0) {
+  let enclosing_is_comparison = match enclosing_op {
+    OrderingComparison { compare_field: _, predicate: _ } => true
+    EqualityComparison { eq_field: _, predicate: _ } => true
+    _ => false
+  };
+  if enclosing_is_comparison {
+    let left_is_comparison = match list_at_optional(xs: operands, index: 0) {
       Present { value: left } =>
-        if target_value_expr_operand_is_comparison(operand: left) {
-          true
-        } else {
-          match list_at_optional(xs: operands, index: 1) {
-            Present { value: right } => target_value_expr_operand_is_comparison(operand: right)
-            Absent => false
+        match target_value_expr_primitive_apply_operation_from_wire(wire: left.node) {
+          Accepted { value: op, diagnostics: _ } => match op {
+            OrderingComparison { compare_field: _, predicate: _ } => true
+            EqualityComparison { eq_field: _, predicate: _ } => true
+            _ => false
           }
+          _ => false
         }
       Absent => false
+    };
+    if left_is_comparison {
+      true
+    } else {
+      match list_at_optional(xs: operands, index: 1) {
+        Present { value: right } =>
+          match target_value_expr_primitive_apply_operation_from_wire(wire: right.node) {
+            Accepted { value: op, diagnostics: _ } => match op {
+              OrderingComparison { compare_field: _, predicate: _ } => true
+              EqualityComparison { eq_field: _, predicate: _ } => true
+              _ => false
+            }
+            _ => false
+          }
+        Absent => false
+      }
     }
   } else {
     false
@@ -6792,64 +6868,54 @@ fn target_value_expression_binding_refs_intersperse_separator(
 // ---- OPERATOR PRECEDENCE (authorized operand-value-expression widening) ------------------------------
 // The old operand spine demanded flat binding SYMBOLS because a Symbol operand cannot change Rust's meaning
 // when spliced. Now that operands are lowered value-expressions, splicing one into a bigger expression is a
-// PRECEDENCE decision. Rust binds || loosest, then &&, then comparisons, then +-, then */ , then unary ! tightest.
-// When an operand's own operator binds LOOSER than the enclosing operator, the operand must be wrapped in
-// grouping parentheses so (a || b) && c does not render as the meaning-changing a || b && c, and !(a && b) does
-// not render as !a && b. A flat binding/literal operand is never wrapped (byte-identical to the old path), and a
-// left operand of equal precedence is not wrapped (preserves left-assoc a && b && c). Level 99 == atomic / not an
-// operator-shaped operand, never wrapped.
-fn target_value_expr_canonical_operation_precedence(op: CanonicalOperation) -> Int {
-  match op {
-    AlgebraPrimitive { algebra_field: f } =>
-      if f == ^lattice_field_join {
-        1
-      } else if f == ^lattice_field_meet {
-        2
-      } else if f == ^ring_field_add {
-        4
-      } else if f == ^ring_field_mul {
-        5
-      } else if f == ^boolean_algebra_field_complement {
-        6
-      } else if f == ^group_field_inverse {
-        6
-      } else {
-        99
-      }
-    AlgebraInverseCompose { binary_field: bf, inverse_field: _ } =>
-      if bf == ^ring_field_add {
-        4
-      } else if bf == ^ring_field_mul {
-        5
-      } else {
-        99
-      }
-    OrderingComparison { compare_field: _, predicate: _ } => 3
-    EqualityComparison { eq_field: _, predicate: _ } => 3
-    CoercionCrossing { homomorphism_rule: _ } => 7
+// PRECEDENCE decision. The levels are NOT held here: they are rows in each language's realization catalog
+// (extdeps.languages.rust for Rust), and the model only asks the catalog for a level. When an operand's own
+// operator binds LOOSER than the enclosing operator, the operand is wrapped in grouping parentheses so
+// (a || b) && c does not render as the meaning-changing a || b && c, and !(a && b) does not render as
+// !a && b. When either side has no declared level the operand is wrapped (correct by construction). A flat
+// binding/literal operand is never wrapped (byte-identical to the old path), and a left operand of equal
+// precedence is not wrapped (preserves left-assoc a && b && c).
+// Per-target operator precedence, read from the language realization catalog. Absent when the
+// target declares no precedence for the operation, or the operation has no operator row.
+fn target_operator_realization_precedence(
+  catalog: TargetRealizationCatalog,
+  op: CanonicalOperation
+) -> Optional<Int> {
+  match target_operator_realization_catalog_lookup(catalog: catalog.operators, canonical_op: op) {
+    Accepted { value: row, diagnostics: _ } => row.precedence
+    _ => Absent
   }
 }
 
+// Operand grouping is decided by the TARGET's declared precedence, never a table in the model.
+// When either side's precedence is absent the operand is wrapped: always-grouped output is correct
+// by construction (extra parens), whereas treating an undeclared operator as binding tightest
+// could render a wrong expression that looks correct. A flat binding/literal operand is never
+// wrapped, and a left operand of equal precedence is not wrapped (preserves left-assoc a && b && c).
 fn target_value_expression_operand_needs_grouping(
   operand: TargetValueExpression,
   enclosing: CanonicalOperation,
-  is_right: Bool
+  is_right: Bool,
+  catalog: TargetRealizationCatalog
 ) -> Bool {
   match operand.kind {
     TargetValueExprPrimitiveApply =>
       match target_value_expr_primitive_apply_operation_from_wire(wire: operand.node) {
         Accepted { value: operand_op, diagnostics: _ } =>
-          if target_value_expr_canonical_operation_precedence(op: operand_op) == 99 {
-            false
-          } else if target_value_expr_canonical_operation_precedence(op: operand_op)
-            < target_value_expr_canonical_operation_precedence(op: enclosing) {
-            true
-          } else if is_right
-            && target_value_expr_canonical_operation_precedence(op: operand_op)
-            == target_value_expr_canonical_operation_precedence(op: enclosing) {
-            true
-          } else {
-            false
+          match target_operator_realization_precedence(catalog: catalog, op: operand_op) {
+            Absent => true
+            Present { value: operand_prec } =>
+              match target_operator_realization_precedence(catalog: catalog, op: enclosing) {
+                Absent => true
+                Present { value: enclosing_prec } =>
+                  if operand_prec < enclosing_prec {
+                    true
+                  } else if is_right && operand_prec == enclosing_prec {
+                    true
+                  } else {
+                    false
+                  }
+              }
           }
         Rejected { diagnostics: _ } => false
       }
@@ -6871,7 +6937,8 @@ fn target_value_expression_group_operand(
       if target_value_expression_operand_needs_grouping(
         operand: operand,
         enclosing: enclosing,
-        is_right: is_right
+        is_right: is_right,
+        catalog: catalog
       ) {
         outcome_accepted(
           list_append(

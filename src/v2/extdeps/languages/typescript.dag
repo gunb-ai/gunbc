@@ -168,6 +168,8 @@ import v2.std.compilers.target_model {
   TargetBoolLiteralShape,
   grammar_relation_row_attach_bodied_scaffold,
   target_operator_realization_node,
+  target_operator_realization_node_with_precedence,
+  target_operator_precedence_level_node,
   target_operator_realizations_catalog_node,
   value_expr_projection_bundle_node,
   RecordLiteralTypeNaming,
@@ -693,9 +695,13 @@ fn ts_value_expression_projection_full(
 }
 
 fn ts_add_operator_realization_row() -> Node {
-  target_operator_realization_node(
+  // Level cites ECMAScript (current edition), Expressions: AdditiveExpression binds tighter than
+  // RelationalExpression, EqualityExpression, LogicalANDExpression and LogicalORExpression. The
+  // model reads it from this row, never its own.
+  target_operator_realization_node_with_precedence(
     operation: canonical_operation_op_add(),
-    shape: InfixToken { token: ^ts_token_plus }
+    shape: InfixToken { token: ^ts_token_plus },
+    precedence_node: target_operator_precedence_level_node(level: 4)
   )
 }
 
@@ -704,9 +710,13 @@ fn ts_add_operator_realization_row() -> Node {
 // and TypeScript needs no conversion; its own `as` would claim a numeric conversion the model did not
 // make.
 fn ts_coerce_operator_realization_row() -> Node {
-  target_operator_realization_node(
+  // Level cites TypeScript's assertion syntax binding: `as` binds tighter than any binary operator
+  // (x as T + y parses as (x as T) + y). Reached when a cast apply is an operand of a grouped
+  // apply; the model reads it from this row, never its own.
+  target_operator_realization_node_with_precedence(
     operation: canonical_operation_op_coerce(),
-    shape: OperandUnchanged
+    shape: OperandUnchanged,
+    precedence_node: target_operator_precedence_level_node(level: 6)
   )
 }
 

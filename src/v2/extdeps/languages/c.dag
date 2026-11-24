@@ -93,6 +93,8 @@ import v2.std.compilers.target_model { PrimitiveRealizationsUnwired,
   TargetRecordConstructShape,
   TargetValueExpressionProjection,
   target_operator_realization_node,
+  target_operator_realization_node_with_precedence,
+  target_operator_precedence_level_node,
   target_operator_realizations_catalog_node,
   value_expr_projection_bundle_node,
   TargetModel,
@@ -1131,9 +1133,13 @@ fn c_value_expression_projection() -> TargetValueExpressionProjection {
 
 fn c_operator_realizations_catalog_node() -> Node {
   target_operator_realizations_catalog_node(rows: [
-    target_operator_realization_node(
+    // Level cites ISO/IEC 9899 (C17) 6.5: additive (6.5.6) binds tighter than relational (6.5.8),
+    // equality (6.5.9), logical AND (6.5.13) and logical OR (6.5.14). C spells only `+` today, so
+    // the number only has to sit on that ladder; the model reads it from this row, never its own.
+    target_operator_realization_node_with_precedence(
       operation: canonical_operation_op_add(),
-      shape: InfixToken { token: ^c_token_plus }
+      shape: InfixToken { token: ^c_token_plus },
+      precedence_node: target_operator_precedence_level_node(level: 4)
     )
   ])
 }

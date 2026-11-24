@@ -3,12 +3,22 @@ module v2.test.claim.target_model_external_authority_decode
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, UriScheme, Http, Https, uri_scheme_inhabitants, uri_scheme_wire }
 import std.algebra { Empty, list_snoc_item, fold_list }
+import std.optional { Absent, Present }
 import v2.std.compilers.target_model {
-  target_external_authority_bundle_node,
-  target_external_authority_from_node,
+  canonical_operation_op_and,
+  InfixToken,
+  target_model_canonical_operation_wire_node,
   target_model_named_edge,
+  target_model_operator_shape_wire_node,
   target_model_type_atom_node,
   target_model_type_conj_node,
+  target_operator_precedence_level_node,
+  target_operator_realization_from_wire_row,
+  target_operator_realization_node,
+  target_operator_realization_node_with_precedence,
+  target_operator_realization_row_wire_schema_valid,
+  target_external_authority_bundle_node,
+  target_external_authority_from_node,
   target_uri_scheme_discriminant
 }
 import v2.std.diagnostic { Accepted, Diagnostic, Rejected }
@@ -129,4 +139,99 @@ test fn distinct_scheme_discriminants_decode_to_distinct_schemes() -> Bool {
   !(target_uri_scheme_discriminant(scheme: Http)
     == target_uri_scheme_discriminant(scheme: Https))
     && ((uri_scheme_wire(s: Http) as String) == "http://")
+}
+
+// ---- OPERATOR-REALIZATION ROW: the precedence edge is typed, never a sentinel -------------------
+// The grouping predicate reads an operator's binding strength from this row's Optional<Int>.
+// Absence is TYPED (Absent), so an operator whose precedence was never declared cannot be treated
+// as binding tightest and rendered ungrouped: the predicate wraps instead, and an extra pair of
+// parentheses is correct by construction where a wrong binding would be a fabricated plausible
+// output (gunbc.design_argument::fail_closed). These four legs are the discriminating evidence for
+// that shape. Each goes red for a different edit: a numeric default for an absent edge reddens the
+// second leg; widening the row schema to accept any edge reddens the third and fourth; dropping the
+// edge from the decoder reddens the first.
+
+test fn operator_row_with_declared_precedence_decodes_to_present() -> Bool {
+  match target_operator_realization_from_wire_row(
+    row: target_operator_realization_node_with_precedence(
+      operation: canonical_operation_op_and(),
+      shape: InfixToken { token: ^claim_token_andand },
+      precedence_node: target_operator_precedence_level_node(level: 3)
+    )
+  ) {
+    Accepted { value: realization, diagnostics: _ } =>
+      match realization.precedence {
+        Present { value: level } => level == 3
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn operator_row_without_precedence_edge_decodes_to_absent() -> Bool {
+  match target_operator_realization_from_wire_row(
+    row: target_operator_realization_node(
+      operation: canonical_operation_op_and(),
+      shape: InfixToken { token: ^claim_token_andand }
+    )
+  ) {
+    Accepted { value: realization, diagnostics: _ } =>
+      match realization.precedence {
+        Present { value: _ } => false
+        Absent => true
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn operator_row_with_an_unnamed_extra_edge_still_refuses() -> Bool {
+  match target_operator_realization_row_wire_schema_valid(
+    row: target_model_type_conj_node(children: [
+      target_model_named_edge(
+        name: ^target_operator_realization_field_operation,
+        target: target_model_canonical_operation_wire_node(operation: canonical_operation_op_and())
+      ),
+      target_model_named_edge(
+        name: ^target_operator_realization_field_shape,
+        target: target_model_operator_shape_wire_node(shape: InfixToken { token: ^claim_token_andand })
+      ),
+      target_model_named_edge(
+        name: ^target_operator_realization_field_precedence,
+        target: target_operator_precedence_level_node(level: 3)
+      ),
+      target_model_named_edge(
+        name: ^target_operator_realization_field_associativity,
+        target: target_operator_precedence_level_node(level: 3)
+      )
+    ])
+  ) {
+    Accepted { value: valid, diagnostics: _ } => !valid
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn operator_row_with_a_duplicated_precedence_edge_refuses() -> Bool {
+  match target_operator_realization_row_wire_schema_valid(
+    row: target_model_type_conj_node(children: [
+      target_model_named_edge(
+        name: ^target_operator_realization_field_operation,
+        target: target_model_canonical_operation_wire_node(operation: canonical_operation_op_and())
+      ),
+      target_model_named_edge(
+        name: ^target_operator_realization_field_shape,
+        target: target_model_operator_shape_wire_node(shape: InfixToken { token: ^claim_token_andand })
+      ),
+      target_model_named_edge(
+        name: ^target_operator_realization_field_precedence,
+        target: target_operator_precedence_level_node(level: 3)
+      ),
+      target_model_named_edge(
+        name: ^target_operator_realization_field_precedence,
+        target: target_operator_precedence_level_node(level: 4)
+      )
+    ])
+  ) {
+    Accepted { value: valid, diagnostics: _ } => !valid
+    Rejected { diagnostics: _ } => true
+  }
 }

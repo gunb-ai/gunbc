@@ -118,6 +118,8 @@ import v2.std.compilers.target_model {
   canonical_operation_op_coerce,
   target_bind_let_separator_present,
   target_operator_realization_node,
+  target_operator_realization_node_with_precedence,
+  target_operator_precedence_level_node,
   target_operator_realizations_catalog_node,
   value_expr_projection_bundle_node
 }
@@ -739,9 +741,13 @@ fn swift_block_evaluation_mode() -> BlockEvaluationMode {
 fn swift_operator_realizations_catalog_node() -> Node {
   target_operator_realizations_catalog_node(
     rows: [
-      target_operator_realization_node(
+      // Level cites The Swift Programming Language, Operators > Operator Precedence: a cast (`as`)
+      // binds tighter than the binary operators. The level is reached when a cast apply is itself
+      // an operand of a grouped apply; the model reads it from this row, never its own.
+      target_operator_realization_node_with_precedence(
         operation: canonical_operation_op_coerce(),
-        shape: OperandUnchanged
+        shape: OperandUnchanged,
+        precedence_node: target_operator_precedence_level_node(level: 6)
       )
     ]
   )
