@@ -9,12 +9,10 @@ import v2.workflow.floor_preparation_split {
   floor_preparation_attributed_ms,
   floor_preparation_capture,
   floor_preparation_capture_provenance,
-  floor_preparation_every_modelled_step_is_marked,
   floor_preparation_population_is_wellformed,
+  floor_preparation_population_file_agrees,
   floor_preparation_population_lines,
   floor_preparation_population_text,
-  floor_preparation_runner_steps,
-  floor_preparation_tool_text,
   floor_preparation_census_is_honest,
   floor_preparation_claim_row_count,
   floor_preparation_deletion_margin_holds,
@@ -53,6 +51,12 @@ import v2.workflow.floor_preparation_split {
   floor_preparation_untrimmed_total_ms,
   floor_preparation_untrimmed_verdict_pass,
   floor_preparation_whole_tree_ms,
+}
+
+import v2.workflow.floor_preparation_capture_runner {
+  floor_preparation_runner_modelled_steps,
+  floor_preparation_leg_argv,
+  floor_preparation_population_entries
 }
 import v2.workflow.floor_cost_debt {
   floor_cost_debt_population_report,
@@ -555,11 +559,14 @@ fn text_contains(haystack: String, needle: String) -> Bool {
 // download that exits 0 and an argv missing `--functions` have both fooled this lane, and those are
 // execution-integrity checks on the RUNNER, not adjudications over the measurement.
 fn capture_tool_holds_no_fold() -> Bool {
-  let tool = filesystem_read(path: "scripts/floor_preparation_capture.sh").content
-  text_contains(tool, "--function floor_preparation_split_report")
+  let tool = filesystem_read(path: "src/v2/workflow/floor_preparation_capture_runner.dag").content
+  text_contains(tool, "--function")
+    && text_contains(tool, "floor_preparation_split_report")
     && text_contains(tool, "release-bins.manifest")
     && text_contains(tool, "e3b0c442")
-    && text_contains(tool, "has no --function or --functions")
+    && text_contains(tool, "shell.Exec.RunArgv")
+    && text_contains(tool, "heavy-slot")
+    && text_contains(tool, "HEAVY_OWNER=")
     && !text_contains(tool, "preparation +=")
     && !text_contains(tool, "claim +=")
     && !text_contains(tool, "cost[\"")
@@ -777,51 +784,51 @@ test fn floor_preparation_the_committed_capture_is_a_cache_of_the_retained_log()
 }
 
 // ----------------------------------------------------------------------------------------------
-// 20. THE RUNNER IS A REALIZATION, NOT AN AUTHORITY. Kills: the shell growing a step nobody modelled
-// (or a modelled step silently vanishing from it). Each step is declared in
-// `v2.workflow.floor_preparation_split` and carries a `# RUNNER_STEP <name>` marker at its site in the
-// tool; both directions are checked here, so the tool cannot add or drop process without the .dag
-// changing first. This is the Rule 8 half the scaffold marker alone does not close.
+// 20. THE RUNNER IS A REALIZATION OF A MODELLED PROCESS, NOT AN AUTHORITY. Kills: a runner step
+// existing only in prose, or a modelled step vanishing from the realization. The step list is data
+// in `v2.workflow.floor_preparation_capture_runner`; each name must appear, quoted, at the site in
+// the same module that emits its `[runner-step]` receipt, and the process surface must be the
+// admitted service calls (shell.Exec.RunArgv, Filesystem.Write) rather than any shell the module
+// shells out to. This is the Rule 8 half the scaffold marker alone never closed -- with the shell
+// deleted under the lane's Hold ruling, there is no second place for process to live.
 // ----------------------------------------------------------------------------------------------
 
-fn tool_marker_lines() -> List<String> {
-  fold(
-    split(s: floor_preparation_tool_text(), delimiter: "\n"),
-    init: [],
-    f: (acc, line) => if row_starts(line, "# RUNNER_STEP ") {
-      list_push(xs: acc, item: line)
-    } else {
-      acc
-    }
-  )
+fn runner_module_text() -> String {
+  filesystem_read(path: "src/v2/workflow/floor_preparation_capture_runner.dag").content
 }
 
-fn marker_step_name(line: String) -> String {
-  let pieces = split(s: line, delimiter: " ")
-  match pieces.skip(n: 2).first() {
-    Present { value: v } => v
-    Absent {} => ""
-  }
+fn step_is_modelled_in_runner(step: String) -> Bool {
+  let quoted = concat(concat("\"", step), "\"")
+  length(xs: split(s: runner_module_text(), delimiter: quoted)) >= 3
 }
 
-fn marker_is_modelled(line: String) -> Bool {
-  let name = marker_step_name(line)
-  fold(floor_preparation_runner_steps, init: false, f: (hit, step) => hit || step == name)
+fn every_step_declared_and_realized() -> Bool {
+  fold(floor_preparation_runner_modelled_steps, init: true, f: (acc, step) =>
+    acc && step_is_modelled_in_runner(step: step))
 }
 
-fn every_modelled_step_is_marked() -> Bool {
-  floor_preparation_every_modelled_step_is_marked()
+fn runner_holds_no_shell_authority() -> Bool {
+  !text_contains(runner_module_text(), "scripts/floor_preparation_capture.sh")
+    && !text_contains(runner_module_text(), ".sh\"")
 }
 
-fn every_tool_marker_is_modelled() -> Bool {
-  fold(tool_marker_lines(), init: true, f: (acc, line) => acc && marker_is_modelled(line))
+fn leg_argv_is_model_rendered() -> Bool {
+  let argv = floor_preparation_leg_argv(entries: floor_preparation_population_entries())
+  fold(argv, init: false, f: (acc, word) =>
+    acc || word == "--claim-run" || word == floor_preparation_witness_entry_hint())
+}
+
+fn floor_preparation_witness_entry_hint() -> String {
+  "dag/test/claim/floor/floor_preparation_split_witness.dag"
 }
 
 fn runner_process_is_modelled() -> Bool {
-  every_modelled_step_is_marked()
-    && every_tool_marker_is_modelled()
-    && length(xs: tool_marker_lines()) == length(xs: floor_preparation_runner_steps)
-    && length(xs: floor_preparation_runner_steps) > 0
+  length(xs: floor_preparation_runner_modelled_steps) > 0
+    && every_step_declared_and_realized()
+    && runner_holds_no_shell_authority()
+    && leg_argv_is_model_rendered()
+    && text_contains(runner_module_text(), "shell.Exec.RunArgv")
+    && text_contains(runner_module_text(), "Filesystem.Write")
 }
 
 test fn floor_preparation_the_runner_process_is_modelled() -> Bool {

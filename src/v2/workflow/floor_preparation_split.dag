@@ -1,6 +1,6 @@
 module v2.workflow.floor_preparation_split
 
-import std.types { Bool, Int, List, Optional, Present, Absent, String }
+import std.types { Bool, Int, List, Present, Absent, String }
 import std.algebra { length, list_push }
 import std.list { distinct_by_key }
 import std.measure { Millisecond, millisecond, millisecond_count }
@@ -144,13 +144,13 @@ type FloorPreparationPhaseRow {
 
 // THE CLOSED PHASE TOKENS, and on which side of the split each one's cost is owed.
 data floor_preparation_phase_rows: List<FloorPreparationPhaseRow> = [
-  FloorPreparationPhaseRow { phase: "module-index", class: PreparationCost, cost_field: "wall_ms", scale: WholeTreeScale, authority: "src/v1/stage0/src/cli_run.rs:16410 precompute_whole_tree_published_mock_keys" },
-  FloorPreparationPhaseRow { phase: "declarer-discovery", class: PreparationCost, cost_field: "wall_ms", scale: WholeTreeScale, authority: "src/v1/stage0/src/cli_run.rs:16463 precompute_whole_tree_published_mock_keys" },
-  FloorPreparationPhaseRow { phase: "whole-tree-graph-facts", class: PreparationCost, cost_field: "wall_ms", scale: WholeTreeScale, authority: "src/v1/stage0/src/cli_run.rs:16473 precompute_whole_tree_published_mock_keys" },
-  FloorPreparationPhaseRow { phase: "declarer-closure", class: PreparationCost, cost_field: "wall_ms", scale: WholeTreeScale, authority: "src/v1/stage0/src/cli_run.rs:16479 precompute_whole_tree_published_mock_keys" },
-  FloorPreparationPhaseRow { phase: "closure-strict-resolve", class: PreparationCost, cost_field: "wall_ms", scale: EntryClosureScale, authority: "src/v1/stage0/src/cli_run.rs:16490 precompute_whole_tree_published_mock_keys (sources= over the entry closure)" },
-  FloorPreparationPhaseRow { phase: "gate-closure", class: PreparationCost, cost_field: "wall_ms", scale: EntryClosureScale, authority: "src/v1/stage0/src/cli_run.rs:30575 assemble_prepared_subject_from_corpus" },
-  FloorPreparationPhaseRow { phase: "reference-closure-index", class: PreparationCost, cost_field: "wall_ms", scale: EntryClosureScale, authority: "src/v1/stage0/src/cli_run.rs:31416 build_reference_closure_index" },
+  FloorPreparationPhaseRow { phase: "module-index", class: PreparationCost, cost_field: "wall_ms", scale: WholeTreeScale, authority: "src/v1/stage0/src/cli_run.rs precompute_whole_tree_published_mock_keys" },
+  FloorPreparationPhaseRow { phase: "declarer-discovery", class: PreparationCost, cost_field: "wall_ms", scale: WholeTreeScale, authority: "src/v1/stage0/src/cli_run.rs precompute_whole_tree_published_mock_keys" },
+  FloorPreparationPhaseRow { phase: "whole-tree-graph-facts", class: PreparationCost, cost_field: "wall_ms", scale: WholeTreeScale, authority: "src/v1/stage0/src/cli_run.rs precompute_whole_tree_published_mock_keys" },
+  FloorPreparationPhaseRow { phase: "declarer-closure", class: PreparationCost, cost_field: "wall_ms", scale: WholeTreeScale, authority: "src/v1/stage0/src/cli_run.rs precompute_whole_tree_published_mock_keys" },
+  FloorPreparationPhaseRow { phase: "closure-strict-resolve", class: PreparationCost, cost_field: "wall_ms", scale: EntryClosureScale, authority: "src/v1/stage0/src/cli_run.rs precompute_whole_tree_published_mock_keys (sources= over the entry closure)" },
+  FloorPreparationPhaseRow { phase: "gate-closure", class: PreparationCost, cost_field: "wall_ms", scale: EntryClosureScale, authority: "src/v1/stage0/src/cli_run.rs assemble_prepared_subject_from_corpus" },
+  FloorPreparationPhaseRow { phase: "reference-closure-index", class: PreparationCost, cost_field: "wall_ms", scale: EntryClosureScale, authority: "src/v1/stage0/src/cli_run.rs build_reference_closure_index" },
   // THE PHASE THIS NODE EXISTS FOR. It reports `cpu_ms` and `wall_ms` for the same build; the fleet
   // carries the WALL clock beside the build lane, so `wall_ms` is the figure charged. The
   // `provenance=built-by-preparation` field on this row is what says preparation found the memo COLD and
@@ -160,7 +160,7 @@ data floor_preparation_phase_rows: List<FloorPreparationPhaseRow> = [
   FloorPreparationPhaseRow { phase: "bare-reference-edge-index-warm", class: PreparationCost, cost_field: "wall_ms", scale: EntryClosureScale, authority: "src/v1/stage0/src/bin/claim_batch.rs:1114 provenance=built-by-preparation scope=entry-closure-union" },
   // JUDGEMENT ROWS THAT CARRY NO TIMING FIELD. Counting them as zero would invent a cost; dropping them
   // would lose a line. They are counted, uncosted, and reported in `uncosted_lines`.
-  FloorPreparationPhaseRow { phase: "expr-var-classification", class: NotCostBearing { reason: "prints occurrence census and per-kind counts with no timing field (src/v1/stage0/src/cli_run.rs:31375, :31390, :31402)" }, cost_field: "", scale: EntryClosureScale, authority: "src/v1/stage0/src/cli_run.rs:31375 build_reference_closure_index" },
+  FloorPreparationPhaseRow { phase: "expr-var-classification", class: NotCostBearing { reason: "prints occurrence census and per-kind counts with no timing field " }, cost_field: "", scale: EntryClosureScale, authority: "src/v1/stage0/src/cli_run.rs build_reference_closure_index" },
   FloorPreparationPhaseRow { phase: "reach-differential", class: NotCostBearing { reason: "a merge-group judgement row printed state=deferred_to_merge_group with no timing field (src/v1/stage0/src/cli_run/reach_base_standings.rs:70)" }, cost_field: "", scale: EntryClosureScale, authority: "src/v1/stage0/src/cli_run/reach_base_standings.rs:70" },
 ]
 
@@ -1247,89 +1247,109 @@ fn floor_preparation_ask() -> String {
 // and refused by a claim whenever it disagrees with the model.
 // ----------------------------------------------------------------------------------------------
 
-data floor_preparation_runner_steps: List<String> = [
-  "verify-pinned-claim-batch", "verify-pinned-gunbc", "build-argv-from-population", "leg-untrimmed",
-  "derive-pass-set", "leg-graded", "splice-capture-rows", "claim-gate", "report-print", "terminal-gate"
-]
 
-fn floor_preparation_text_contains(haystack: String, needle: String) -> Bool {
-  length(xs: split(s: haystack, delimiter: needle)) > 1
-}
-
-fn floor_preparation_tool_text() -> String {
-  filesystem_read(path: "scripts/floor_preparation_capture.sh").content
-}
-
-fn floor_preparation_step_marker(step: String) -> String {
-  concat(concat("# RUNNER_STEP ", step), "\n")
-}
-
-fn floor_preparation_modelled_step_is_marked(step: String) -> Bool {
-  floor_preparation_text_contains(floor_preparation_tool_text(), floor_preparation_step_marker(step))
-}
-
-fn floor_preparation_every_modelled_step_is_marked() -> Bool {
-  fold(floor_preparation_runner_steps, init: true, f: (acc, step) =>
-    acc && floor_preparation_modelled_step_is_marked(step))
-}
-
-fn floor_preparation_modelled_step_count() -> Int {
-  length(xs: floor_preparation_runner_steps)
-}
+// THE POPULATION IS MODEL DATA. One authoritative declaration of which claims the floor fold
+// measures, at entry grain -- enrolled as candidates, and enrolled as extras so a refusal stays
+// in the artifact with its cause. The committed txt file is a PROJECTION of these rows; claim
+// floor_preparation_the_population_is_the_models_rendering refuses if the file (minus comment
+// lines) ever disagrees with the rendering below, and the capture runner re-checks the same
+// equality before any leg spawns.
+type FloorPreparationPopulationKind =
+  Candidate
+  | Extra
 
 type FloorPreparationPopulationRow {
-  kind: String,
+  kind: FloorPreparationPopulationKind,
   entry: String,
   claim: String,
+}
+
+data floor_preparation_population_model_rows: List<FloorPreparationPopulationRow> = [
+  FloorPreparationPopulationRow { kind: Candidate, entry: "dag/test/claim/declared_type_expected_type_path_witness.dag", claim: "w_a_wrong_type_argument_at_a_declared_return_is_refused" },
+  FloorPreparationPopulationRow { kind: Candidate, entry: "dag/test/claim/floor/floor_batch_clamp_authority_witness.dag", claim: "positional_clamp_row_zero_cites_the_ci_floor_batch_list_it_lives_in" },
+  FloorPreparationPopulationRow { kind: Candidate, entry: "dag/test/claim/floor/floor_batch_clamp_authority_witness.dag", claim: "a_nonzero_rate_clamp_does_move_with_the_unit_count" },
+  FloorPreparationPopulationRow { kind: Candidate, entry: "dag/test/claim/floor/floor_materialization_witness.dag", claim: "floor_index_build_share_is_shared_by_reference" },
+  FloorPreparationPopulationRow { kind: Candidate, entry: "dag/test/claim/floor/floor_materialization_witness.dag", claim: "floor_index_build_has_plural_readers" },
+  FloorPreparationPopulationRow { kind: Candidate, entry: "dag/test/claim/floor/floor_materialization_witness.dag", claim: "floor_index_build_reds_without_reference_provider" },
+  FloorPreparationPopulationRow { kind: Candidate, entry: "dag/test/claim/floor/floor_materialization_witness.dag", claim: "floor_typecheck_store_persist_reds_without_any_provider" },
+  FloorPreparationPopulationRow { kind: Candidate, entry: "dag/test/claim/floor/floor_non_verdict_classification_witness.dag", claim: "classification_joins_the_floor_non_verdict_roster_by_identity" },
+  FloorPreparationPopulationRow { kind: Candidate, entry: "dag/test/claim/floor/floor_non_verdict_classification_witness.dag", claim: "classified_non_verdict_identities_are_distinct" },
+  FloorPreparationPopulationRow { kind: Candidate, entry: "dag/test/claim/floor/floor_non_verdict_classification_witness.dag", claim: "every_classified_non_verdict_row_carries_measured_evidence" },
+  FloorPreparationPopulationRow { kind: Candidate, entry: "dag/test/claim/floor/floor_non_verdict_classification_witness.dag", claim: "standing_partition_is_exact_over_the_population" },
+  FloorPreparationPopulationRow { kind: Candidate, entry: "dag/test/claim/floor/floor_non_verdict_enrollment_witness.dag", claim: "non_verdict_cause_census_sums_to_the_measured_total" },
+  FloorPreparationPopulationRow { kind: Candidate, entry: "dag/test/claim/floor/floor_non_verdict_enrollment_witness.dag", claim: "every_declared_cause_was_actually_measured" },
+  FloorPreparationPopulationRow { kind: Candidate, entry: "dag/test/claim/floor/floor_non_verdict_enrollment_witness.dag", claim: "population_basis_is_a_measured_snapshot_not_a_bound" },
+  FloorPreparationPopulationRow { kind: Candidate, entry: "dag/test/claim/floor/floor_phase_attribution_witness.dag", claim: "a_seam_beat_opens_a_phase_and_its_watchdog_beats_set_its_peak" },
+  FloorPreparationPopulationRow { kind: Candidate, entry: "dag/test/claim/floor/floor_phase_attribution_witness.dag", claim: "an_unknown_seam_token_refuses_the_attribution" },
+  FloorPreparationPopulationRow { kind: Candidate, entry: "dag/test/claim/floor/floor_phase_attribution_witness.dag", claim: "an_unread_stall_and_swap_reach_the_phase_as_unread" },
+  FloorPreparationPopulationRow { kind: Candidate, entry: "dag/test/claim/floor/floor_phase_attribution_witness.dag", claim: "a_negative_counter_refuses_rather_than_lifting_to_its_magnitude" },
+  FloorPreparationPopulationRow { kind: Candidate, entry: "dag/test/claim/floor/floor_preparation_shared_build_witness.dag", claim: "w_shared_build_within_limits_does_not_block" },
+  FloorPreparationPopulationRow { kind: Candidate, entry: "dag/test/claim/floor/floor_preparation_shared_build_witness.dag", claim: "w_cpu_axis_alone_refuses" },
+  FloorPreparationPopulationRow { kind: Candidate, entry: "dag/test/claim/floor/floor_preparation_shared_build_witness.dag", claim: "w_wall_axis_alone_refuses" },
+  FloorPreparationPopulationRow { kind: Candidate, entry: "dag/test/claim/floor/floor_preparation_shared_build_witness.dag", claim: "w_rss_axis_alone_refuses" },
+  FloorPreparationPopulationRow { kind: Candidate, entry: "dag/test/claim/floor/floor_preparation_shared_build_witness.dag", claim: "w_refusal_carries_its_phase" },
+  FloorPreparationPopulationRow { kind: Candidate, entry: "dag/test/claim/floor/floor_preparation_shared_build_witness.dag", claim: "w_preparation_limit_is_not_the_claim_limit" },
+  FloorPreparationPopulationRow { kind: Candidate, entry: "dag/test/claim/floor/typed_graph_exclusive_bytes_witness.dag", claim: "exclusive_bytes_and_the_shared_residual_are_derived_from_the_drops" },
+  FloorPreparationPopulationRow { kind: Candidate, entry: "dag/test/claim/floor/typed_graph_exclusive_bytes_witness.dag", claim: "a_drop_that_raised_live_bytes_refuses_naming_the_class" },
+  FloorPreparationPopulationRow { kind: Candidate, entry: "dag/test/claim/floor/typed_graph_exclusive_bytes_witness.dag", claim: "exclusives_past_the_total_report_the_typed_arm_not_a_zero_residual" },
+  FloorPreparationPopulationRow { kind: Candidate, entry: "dag/test/claim/floor/typed_graph_exclusive_bytes_witness.dag", claim: "no_readings_is_empty_not_a_zero_report" },
+  FloorPreparationPopulationRow { kind: Candidate, entry: "dag/test/claim/floor/typed_graph_exclusive_bytes_witness.dag", claim: "a_joint_set_is_reported_beside_the_sum_and_not_added_into_it" },
+  FloorPreparationPopulationRow { kind: Candidate, entry: "dag/test/claim/floor/typed_graph_exclusive_bytes_witness.dag", claim: "a_reading_of_no_members_refuses" },
+  FloorPreparationPopulationRow { kind: Candidate, entry: "dag/test/claim/match_exhaustiveness_coproduct_witness.dag", claim: "w_exhaustive_coproduct_match_observes_zero_non_exhaustive" },
+  FloorPreparationPopulationRow { kind: Candidate, entry: "dag/test/claim/match_exhaustiveness_coproduct_witness.dag", claim: "w_missing_coproduct_arm_reports_one_non_exhaustive" },
+  FloorPreparationPopulationRow { kind: Candidate, entry: "dag/test/claim/self_host_equality_admission_witness.dag", claim: "nested_own_parameter_equality_stays_admitted" },
+  FloorPreparationPopulationRow { kind: Candidate, entry: "dag/test/claim/self_host_equality_admission_witness.dag", claim: "nested_declared_by_target_argument_equality_stays_admitted" },
+  FloorPreparationPopulationRow { kind: Extra, entry: "dag/test/claim/action_use_admission_witness.dag", claim: "red_upload_artifact_v4_declared_node20_is_a_forced_substitution" },
+  FloorPreparationPopulationRow { kind: Extra, entry: "dag/test/claim/action_use_admission_witness.dag", claim: "red_checkout_v4_declared_node20_is_a_forced_substitution" },
+  FloorPreparationPopulationRow { kind: Extra, entry: "dag/test/claim/action_use_admission_witness.dag", claim: "red_download_artifact_v6_announced_node24_but_declares_node20" },
+  FloorPreparationPopulationRow { kind: Extra, entry: "dag/test/claim/arity_zero_import_refusal_witness.dag", claim: "an_arity_zero_import_member_list_refuses_at_parse" },
+  FloorPreparationPopulationRow { kind: Extra, entry: "dag/test/claim/arity_zero_import_refusal_witness.dag", claim: "the_same_import_carrying_one_member_is_accepted" },
+  FloorPreparationPopulationRow { kind: Extra, entry: "dag/test/claim/breakout_leg_programming_witness.dag", claim: "the_nvidia_eth_coding_attests_the_rail_mode" },
+  FloorPreparationPopulationRow { kind: Extra, entry: "dag/test/claim/breakout_leg_programming_witness.dag", claim: "the_shipped_generic_coding_does_not_attest_the_rail_mode" },
+  FloorPreparationPopulationRow { kind: Extra, entry: "dag/test/claim/declared_type_expected_type_path_witness.dag", claim: "w_the_census_refuses_a_blatant_non_generic_mismatch" },
+  FloorPreparationPopulationRow { kind: Extra, entry: "dag/test/claim/declared_type_expected_type_path_witness.dag", claim: "w_the_census_admits_a_valid_source" },
+  FloorPreparationPopulationRow { kind: Extra, entry: "dag/test/claim/declared_type_inhabitance_direct_call_witness.dag", claim: "w_kernel_numeric_at_the_peano_nat_is_admitted_through_its_homomorphism" },
+  FloorPreparationPopulationRow { kind: Extra, entry: "dag/test/claim/declared_type_inhabitance_direct_call_witness.dag", claim: "w_kernel_numeric_at_the_natively_realized_nat_is_admitted" },
+  FloorPreparationPopulationRow { kind: Extra, entry: "dag/test/claim/declared_type_inhabitance_direct_call_witness.dag", claim: "w_non_numeric_kernel_at_the_natively_realized_nat_is_still_refused" },
+  FloorPreparationPopulationRow { kind: Extra, entry: "dag/test/claim/declared_type_inhabitance_list_element_witness.dag", claim: "w_plain_kernel_at_declared_list_element_is_refused" },
+  FloorPreparationPopulationRow { kind: Extra, entry: "dag/test/claim/generic_lambda_parameter_binding_witness.dag", claim: "a_lambda_field_of_a_generic_record_binds_the_type_its_sibling_field_determines" },
+  FloorPreparationPopulationRow { kind: Extra, entry: "dag/test/claim/generic_lambda_parameter_binding_witness.dag", claim: "a_lambda_argument_binds_a_type_variable_a_later_argument_determines" },
+  FloorPreparationPopulationRow { kind: Extra, entry: "dag/test/claim/generic_lambda_parameter_binding_witness.dag", claim: "a_lambda_parameter_bound_to_a_type_variable_can_reach_its_fields" },
+  FloorPreparationPopulationRow { kind: Extra, entry: "dag/test/claim/match_exhaustiveness_coproduct_witness.dag", claim: "w_imported_projected_missing_arm_reports_one_non_exhaustive" },
+  FloorPreparationPopulationRow { kind: Extra, entry: "dag/test/claim/self_host_equality_admission_witness.dag", claim: "nested_routed_argument_equality_still_refuses_blocking" },
+]
+
+fn floor_preparation_text_starts_with(text: String, prefix: String) -> Bool {
+  let pieces = split(s: text, delimiter: prefix)
+  pieces.length() > 1 && pieces.first() == Present { value: "" }
 }
 
 fn floor_preparation_population_text() -> String {
   filesystem_read(path: "dag/test/claim/floor/floor_preparation_split_population.txt").content
 }
 
+// The model rows are the authority; this reads them. The second argument to the old filter -- a
+// runtime re-check that kind was one of two strings -- is gone because the type makes any other
+// value unwritable (fail_closed: "making it unwritable" beats "catching a wrong state").
 fn floor_preparation_population_rows() -> List<FloorPreparationPopulationRow> {
-  filter(
-    fold(
-      split(s: floor_preparation_population_text(), delimiter: "\n"),
-      init: [],
-      f: (acc, line) => {
-        let parts = split(s: line, delimiter: "|")
-        match parts.skip(n: 0).first() {
-          Absent {} => acc
-          Present { value: kind } =>
-            if kind != "candidate" && kind != "extra" {
-              acc
-            } else {
-              match parts.skip(n: 1).first() {
-                Absent {} => acc
-                Present { value: entry } =>
-                  match parts.skip(n: 2).first() {
-                    Absent {} => acc
-                    Present { value: claim } =>
-                      if length(xs: entry) == 0 || length(xs: claim) == 0 {
-                        acc
-                      } else {
-                        list_push(xs: acc, item: FloorPreparationPopulationRow { kind: kind, entry: entry, claim: claim })
-                      }
-                  }
-              }
-            }
-        }
-      }
-    ),
-    r => r.kind == "candidate" || r.kind == "extra"
-  )
+  floor_preparation_population_model_rows
 }
 
 fn floor_preparation_population_is_wellformed() -> Bool {
   length(xs: floor_preparation_population_rows()) > 0
     && fold(floor_preparation_population_rows(), init: true, f: (acc, row) =>
-      acc && (row.kind == "candidate" || row.kind == "extra")
-        && length(xs: row.entry) > 0 && length(xs: row.claim) > 0)
+      acc && length(xs: row.entry) > 0 && length(xs: row.claim) > 0)
+}
+
+fn floor_preparation_population_kind_text(kind: FloorPreparationPopulationKind) -> String {
+  match kind {
+    Candidate => "candidate"
+    Extra => "extra"
+  }
 }
 
 fn floor_preparation_population_line(row: FloorPreparationPopulationRow) -> String {
-  concat(concat(concat(row.kind, "|"), row.entry), concat("|", row.claim))
+  concat(concat(concat(floor_preparation_population_kind_text(row.kind), "|"), row.entry), concat("|", row.claim))
 }
 
 fn floor_preparation_population_lines() -> List<String> {
@@ -1341,6 +1361,15 @@ fn floor_preparation_population_rendering() -> String {
   concat(concat("POPULATION-BEGIN\n", join(floor_preparation_population_lines(), "\n")), "\nPOPULATION-END")
 }
 
+// The committed file agrees with the model iff its non-comment bytes ARE the rendering body.
+fn floor_preparation_population_file_agrees() -> Bool {
+  let body = join(floor_preparation_population_lines(), "\n")
+  let kept = fold(split(s: floor_preparation_population_text(), delimiter: "\n"), init: [], f: (acc, line) =>
+    if floor_preparation_text_starts_with(line: line, prefix: "#") { acc }
+    else if line == "" { acc }
+    else { list_push(xs: acc, item: line) })
+  length(xs: kept) > 0 && join(kept, "\n") == body
+}
 
 fn floor_preparation_yes_no(value: Bool) -> String {
   if value { "yes" } else { "no" }

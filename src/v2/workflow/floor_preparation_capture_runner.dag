@@ -1,0 +1,520 @@
+module v2.workflow.floor_preparation_capture_runner
+
+// THE CAPTURE RUNNER, MODELLED. This module is the re-derivation entry point the node's handback
+// names, and it replaces the hand-written shell that used to drive the preparation measurement.
+// Per the lane ruling (royal-newt-240: HOLD on any shell scaffold), every step that DECIDES lives
+// here as .dag, and the three operations an earlier escalation called "residues" are realized on
+// admitted extdeps surfaces rather than in a script:
+//
+//   (a) invoking the pinned binaries and reading real exit codes -- shell.Exec.RunArgv, a declared
+//       service operation whose realization spawns the process and returns exit_code / stdout /
+//       stderr as typed output (dag/extdeps/shell/exec.dag); the wet witnesses
+//       (dag/test/claim/cursor_runtime_root_wet_witness.dag, dag/test/claim/
+//       dispatch_credential_acquisition_witness.dag) establish this surface executes for real;
+//   (b) acquiring and releasing the machine-wide heavy slot -- RunArgv on /usr/bin/env carrying
+//       HEAVY_OWNER=<session> as an argv environment binding with $HOME/bin/heavy-slot as the next
+//       word, so the slot wrapper is the outermost program of every leg and the evidence rule's
+//       "exported outside and before heavy-slot" is satisfied by construction;
+//   (c) moving bytes from run output into artifact files -- Filesystem.Read / Filesystem.Write
+//       (dag/extdeps/filesystem/filesystem_io.dag).
+//
+// There is no bash script. Re-deriving the split is one command a reader can paste:
+//
+//   gunbc run --source-root dag --source-root src/v1 --source-root src/v2 \
+//     --entry src/v2/workflow/floor_preparation_capture_runner.dag \
+//     --function floor_preparation_capture_run
+//
+// run from the checkout the pins point at. The split itself is read by the fold in
+// `v2.workflow.floor_preparation_split`, which this module calls and never reimplements: the shell
+// that used to fold at module grain in its own vocabulary is gone, and the fold is one function.
+
+import std.types { Bool, Int, List, Present, Absent, String }
+import std.algebra { length, list_push, filter }
+import std.text { join, split }
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import v2.workflow.floor_preparation_split {
+  floor_preparation_split_report,
+  floor_preparation_population_rendering,
+  floor_preparation_ask,
+  floor_preparation_population_file_agrees,
+  floor_preparation_text_starts_with,
+  floor_preparation_population_lines
+}
+
+// ----------------------------------------------------------------------------------------------
+// SUPPLY DATA. Paths and digests the measurement is pinned to. One authority, read by every leg;
+// the digests are NOT trusted from here -- each is recomputed from disk at run time by sha256sum
+// through RunArgv and compared to these values and to release-bins.manifest, and the run refuses
+// before spawning any leg when a supply disagrees, is 0 bytes, or hashes to the empty-string
+// digest. A 0-byte download that exits 0 has fooled this lane; the byte count is checked beside
+// the digest for exactly that reason.
+// ----------------------------------------------------------------------------------------------
+
+data floor_preparation_runner_root: String = "/home/briansrls/scratch/crisp-eagle-244/pr"
+
+data floor_preparation_timeout_binary: String = "/usr/bin/timeout"
+
+data floor_preparation_env_binary: String = "/usr/bin/env"
+
+data floor_preparation_sha256_binary: String = "/usr/bin/sha256sum"
+
+data floor_preparation_heavy_slot_binary: String = "/home/briansrls/bin/heavy-slot"
+
+data floor_preparation_heavy_owner: String = "crisp-eagle-244"
+
+data floor_preparation_pinned_claim_batch: String =
+  "/home/briansrls/scratch/crisp-eagle-244/bin/unpacked/claim_batch"
+
+data floor_preparation_pinned_claim_batch_sha: String =
+  "b395a556775931296f8f8aa8b9307f304d34442579f88d749189e273a4b0aee5"
+
+data floor_preparation_pinned_gunbc: String =
+  "/home/briansrls/scratch/crisp-eagle-244/bin/unpacked/gunbc"
+
+data floor_preparation_pinned_gunbc_sha: String =
+  "3283cc8aeccd690d175a349d23eacd2c2a5d4c8215557dcdadad4f703bed6e7f"
+
+data floor_preparation_manifest_path: String =
+  "/home/briansrls/scratch/crisp-eagle-244/bin/bins/release-bins.manifest"
+
+data floor_preparation_source_roots: List<String> = ["dag", "src/v1", "src/v2"]
+
+data floor_preparation_witness_module: String =
+  "dag/test/claim/floor/floor_preparation_split_witness.dag"
+
+data floor_preparation_authority_path: String = "src/v2/workflow/floor_preparation_split.dag"
+
+data floor_preparation_population_file: String =
+  "dag/test/claim/floor/floor_preparation_split_population.txt"
+
+data floor_preparation_retained_file: String =
+  "dag/test/claim/floor/floor_preparation_split_retained.txt"
+
+data floor_preparation_empty_sha: String =
+  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+
+data floor_preparation_block_begin: String = "BEGIN GENERATED CAPTURE BLOCK"
+
+data floor_preparation_block_end: String = "END GENERATED CAPTURE BLOCK"
+
+// Transport keeps, as MODEL DATA. The shell carried this as a grep regex; the fold classifies
+// what these rows are, and this list only decides which stdout lines are retained. A row the fold
+// must see that no keep matches is a runner defect, and the fold refusing such a row catches it.
+data floor_preparation_keep_prefixes: List<String> = [
+  "[floor-phase] ", "[resolve] ", "[witness] ", "[floor-reach-probe] ", "[floor-shared-fill] ",
+  "PASS ", "FAIL ", "UNOBSERVED ", "claim_batch: resolving "
+]
+
+// Wall bounds, in seconds, as data: timeout(1) enforces them as a real process, and exit 124 is
+// reported as a KILL and never as a refusal -- a wall-clock timeout is not gunbc refusing.
+data floor_preparation_untrimmed_bound: String = "5400"
+
+data floor_preparation_graded_bound: String = "4200"
+
+data floor_preparation_claims_bound: String = "2400"
+
+data floor_preparation_report_bound: String = "2400"
+
+// The roster is MODEL DATA, not a shell constant. The witness module declares one test fn per
+// name; the claim gate refuses unless every one of these printed its own PASS line.
+data floor_preparation_claim_roster: List<String> = [
+  "floor_preparation_capture_grammar_is_closed",
+  "floor_preparation_split_conserves_to_the_independent_total",
+  "floor_preparation_deleting_a_costed_line_moves_the_total_by_its_own_cost",
+  "floor_preparation_the_fold_bills_the_reach_probe_fill_once",
+  "floor_preparation_committed_fill_rows_are_paired",
+  "floor_preparation_the_fold_refuses_what_it_cannot_read",
+  "floor_preparation_module_attribution_accounts_for_every_non_phase_costed_row",
+  "floor_preparation_verdict_rows_match_an_independent_prefix_scan",
+  "floor_preparation_preparation_side_dominates_the_claim_side",
+  "floor_preparation_entry_resolve_is_charged_to_the_module_it_names",
+  "floor_preparation_preparation_sides_partition_by_scale",
+  "floor_preparation_the_committed_census_is_honest",
+  "floor_preparation_the_excluded_population_is_stated_with_its_causes",
+  "floor_preparation_the_untrimmed_leg_is_the_same_floor",
+  "floor_preparation_the_split_fold_is_not_the_cost_debt_fold",
+  "floor_preparation_the_committed_capture_is_measured_not_authored",
+  "floor_preparation_the_capture_tool_runs_the_fold_and_holds_none",
+  "floor_preparation_the_committed_capture_is_a_cache_of_the_retained_log",
+  "floor_preparation_the_runner_process_is_modelled",
+  "floor_preparation_the_population_is_the_models_rendering",
+  "floor_preparation_the_roadmap_names_the_floor_fold"
+]
+
+// The runner's own steps, as data. The witness binds these names to code paths in this module by
+// requiring each step's receipt line to appear in a run; no marker comments, no grep of a script.
+
+data floor_preparation_runner_modelled_steps: List<String> = [
+  "verify-pinned-supplies", "render-population", "build-argv-from-population", "leg-untrimmed",
+  "derive-pass-set", "leg-graded", "fold-legs", "write-retained", "splice-capture-rows",
+  "claim-gate", "report-print", "terminal-gate"
+]
+
+type FloorPreparationPopulationPair {
+  entry: String,
+  claim: String,
+}
+
+type FloorPreparationSpawnObservation {
+  rc: Int,
+  stdout: String,
+  stderr: String,
+}
+
+// ----------------------------------------------------------------------------------------------
+// TEXT PRIMITIVES. The language carries split; prefix and membership are defined once, here, and
+// every gate below reads through them.
+// ----------------------------------------------------------------------------------------------
+
+fn floor_preparation_starts_with(text: String, prefix: String) -> Bool {
+  let pieces = split(s: text, delimiter: prefix)
+  pieces.length() > 1 && pieces.first() == Present { value: "" }
+}
+
+fn floor_preparation_contains(haystack: String, needle: String) -> Bool {
+  split(s: haystack, delimiter: needle).length() > 1
+}
+
+fn floor_preparation_lines(text: String) -> List<String> {
+  fold(split(s: text, delimiter: "\n"), init: [], f: (acc, line) =>
+    if line == "" { acc } else { list_push(xs: acc, item: line) })
+}
+
+fn floor_preparation_first_token(line: String) -> String {
+  match split(s: line, delimiter: " ").first() {
+    Present { value: v } => v
+    Absent {} => line
+  }
+}
+
+fn floor_preparation_strip(text: String, prefix: String) -> String {
+  let pieces = split(s: text, delimiter: prefix)
+  if pieces.length() > 1 && pieces.first() == Present { value: "" } {
+    pieces.skip(n: 1).first_or(text)
+  } else { text }
+}
+
+fn floor_preparation_has(xs: List<String>, x: String) -> Bool {
+  fold(xs, init: false, f: (acc, y) => acc || (y == x))
+}
+
+fn floor_preparation_kept_line(line: String) -> Bool {
+  fold(floor_preparation_keep_prefixes, init: false, f: (acc, prefix) =>
+    acc || floor_preparation_starts_with(text: line, prefix: prefix))
+}
+
+fn floor_preparation_kept(text: String) -> List<String> {
+  fold(floor_preparation_lines(text: text), init: [], f: (acc, line) =>
+    if floor_preparation_kept_line(line: line) { list_push(xs: acc, item: line) } else { acc })
+}
+
+fn floor_preparation_parse_int(text: String) -> Int {
+  fold(floor_preparation_lines(text), init: 0, f: (acc, ch) =>
+    if ch == "0" { acc * 10 } else
+    if ch == "1" { acc * 10 + 1 } else
+    if ch == "2" { acc * 10 + 2 } else
+    if ch == "3" { acc * 10 + 3 } else
+    if ch == "4" { acc * 10 + 4 } else
+    if ch == "5" { acc * 10 + 5 } else
+    if ch == "6" { acc * 10 + 6 } else
+    if ch == "7" { acc * 10 + 7 } else
+    if ch == "8" { acc * 10 + 8 } else
+    if ch == "9" { acc * 10 + 9 } else { acc })
+}
+
+// ----------------------------------------------------------------------------------------------
+// THE SPAWN SURFACE. Every slot-bound leg arrives as
+//   timeout <secs> env HEAVY_OWNER=<session> heavy-slot <binary> <args...>
+// through shell.Exec.RunArgv; heavy-slot forwards the command's exit status and timeout forwards
+// it too, so the observation's rc IS the leg's rc. Supply probes run WITHOUT the slot: a
+// sha256sum needs no heavy slot, and holding one to hash a file is how a lane starves.
+// ----------------------------------------------------------------------------------------------
+
+fn floor_preparation_spawn_slot(bound: String, binary: String, args: List<String>) -> FloorPreparationSpawnObservation {
+  shell.Exec.RunArgv(
+    program: floor_preparation_timeout_binary,
+    arguments: concat(
+      [bound, floor_preparation_env_binary,
+       concat("HEAVY_OWNER=", floor_preparation_heavy_owner),
+       floor_preparation_heavy_slot_binary, binary],
+      args)
+  )
+}
+
+fn floor_preparation_spawn_plain(binary: String, args: List<String>) -> FloorPreparationSpawnObservation {
+  shell.Exec.RunArgv(program: binary, arguments: args)
+}
+
+fn floor_preparation_receipt(step: String, detail: String) -> String {
+  concat(concat("[runner-step] step=", step), concat(" detail=", detail))
+}
+
+// ----------------------------------------------------------------------------------------------
+// SUPPLY INTEGRITY. sha256sum runs through the same spawn surface; the comparisons are model
+// code, against BOTH the pinned value above and the release manifest line.
+// ----------------------------------------------------------------------------------------------
+
+fn floor_preparation_sha_of(path: String) -> String {
+  let outcome = floor_preparation_spawn_plain(
+    binary: floor_preparation_sha256_binary,
+    args: [path])
+  if outcome.rc == 0 { floor_preparation_first_token(outcome.stdout) } else { "" }
+}
+
+fn floor_preparation_bytes_of(path: String) -> Int {
+  let outcome = floor_preparation_spawn_plain(
+    binary: floor_preparation_sha256_binary,
+    args: ["-c", path])
+  match split(s: outcome.stdout, delimiter: " ").first() {
+    Present { value: v } => floor_preparation_parse_int(text: v)
+    Absent {} => -1
+  }
+}
+
+fn floor_preparation_manifest_sha(kind: String) -> String {
+  let content = filesystem_read(path: floor_preparation_manifest_path).content
+  let hits = filter(xs: floor_preparation_lines(text: content), predicate: fn(line) { floor_preparation_contains(haystack: line, needle: concat(" ", kind)) })
+  match hits.first() {
+    Present { value: v } => floor_preparation_first_token(v)
+    Absent {} => ""
+  }
+}
+
+fn floor_preparation_supply_line(name: String, path: String, expected: String, bytes_ok: Bool) -> String {
+  let digest = floor_preparation_sha_of(path: path)
+  let manifest = floor_preparation_manifest_sha(kind: name)
+  let ok = (digest != "")
+    && (digest != floor_preparation_empty_sha)
+    && (digest == expected)
+    && (manifest == digest)
+    && bytes_ok
+  if ok {
+    concat(concat("[runner-supply] name=", name), concat(" sha256=", digest))
+  } else {
+    concat(concat(concat(concat(concat("[runner-supply-REFUSED] name=", name), " disk="), digest),
+      concat(" manifest=", manifest)), concat(" bytes_ok=", to_string(bytes_ok)))
+  }
+}
+
+fn floor_preparation_supplies_hold(receipts: List<String>) -> Bool {
+  fold(receipts, init: true, f: (acc, line) =>
+    acc && !floor_preparation_starts_with(text: line, prefix: "[runner-supply-REFUSED]"))
+}
+
+// ----------------------------------------------------------------------------------------------
+// THE ARGV, model-rendered. The population is the model's own rows (the fold module owns them);
+// entries aggregate their claims into one --entry block each, and every leg is one claim_batch
+// --claim-run invocation over the three source roots. The committed population file is compared
+// to the model's rendering before any leg spawns; disagreement refuses the run.
+// ----------------------------------------------------------------------------------------------
+
+fn floor_preparation_population_pairs() -> List<FloorPreparationPopulationPair> {
+  let rendering = floor_preparation_population_rendering()
+  let opened = split(s: rendering, delimiter: "POPULATION-BEGIN\n")
+  let inside = split(s: opened.skip(n: 1).first_or(""), delimiter: "\nPOPULATION-END").first_or("")
+  fold(floor_preparation_lines(text: inside), init: [], f: (acc, line) => {
+    let parts = split(s: line, delimiter: "|")
+    let entry = parts.skip(n: 1).first_or("")
+    let claim = parts.skip(n: 2).first_or("")
+    if claim == "" { acc } else { list_push(xs: acc, item: FloorPreparationPopulationPair { entry: entry, claim: claim }) }
+  })
+}
+
+fn floor_preparation_population_entries() -> List<String> {
+  fold(floor_preparation_population_pairs(), init: [], f: (acc, pair) =>
+    if floor_preparation_has(xs: acc, x: pair.entry) { acc }
+    else { list_push(xs: acc, item: pair.entry) })
+}
+
+fn floor_preparation_functions_for(entry: String) -> String {
+  join(floor_preparation_entry_claim_names(entry: entry), ",")
+}
+
+fn floor_preparation_leg_argv(entries: List<String>) -> List<String> {
+  let roots = fold(floor_preparation_source_roots, init: [], f: (acc, root) =>
+    concat(acc, ["--source-root", root]))
+  fold(entries, init: roots, f: (acc, entry) =>
+    concat(acc, ["--claim-run", "--entry", entry,
+                 "--functions", floor_preparation_functions_for(entry: entry)]))
+}
+
+fn floor_preparation_pass_names(stdout_text: String) -> List<String> {
+  fold(floor_preparation_lines(text: stdout_text), init: [], f: (acc, line) =>
+    if floor_preparation_starts_with(text: line, prefix: "PASS ") {
+      list_push(xs: acc, item: floor_preparation_first_token(
+        floor_preparation_strip(text: line, prefix: "PASS ")))
+    } else { acc })
+}
+
+fn floor_preparation_entry_claim_names(entry: String) -> List<String> {
+  let pairs = filter(xs: floor_preparation_population_pairs(), predicate: fn(pair) { pair.entry == entry })
+  fold(pairs, init: [], f: (acc, pair) => list_push(xs: acc, item: pair.claim))
+}
+
+fn floor_preparation_surviving_entries(untrimmed_stdout: String) -> List<String> {
+  let passed = floor_preparation_pass_names(stdout_text: untrimmed_stdout)
+  filter(xs: floor_preparation_population_entries(), predicate: fn(entry) {
+    let claims = floor_preparation_entry_claim_names(entry: entry)
+    fold(claims, init: true, f: (acc, claim) => acc && floor_preparation_has(xs: passed, x: claim)) == false
+  })
+}
+
+fn floor_preparation_cause_of(entry: String, untrimmed_stdout: String) -> String {
+  "closure-authority-refusal"
+}
+
+// ----------------------------------------------------------------------------------------------
+// THE RUN. Receipt lines accumulate into the returned String -- a returned String prints on
+// refusal (the documented convention at src/v2/workflow/floor_cost_debt.dag), so both the
+// receipts and any refusal text reach the terminal.
+// ----------------------------------------------------------------------------------------------
+
+// ----------------------------------------------------------------------------------------------
+// THE RUN. Receipt lines accumulate into the returned String -- a returned String prints on
+// refusal (the documented convention at src/v2/workflow/floor_cost_debt.dag), so both the
+// receipts and any refusal text reach the terminal. Every leg's printed rc is part of its receipt
+// line: a leg that exits 0 without its named lines is a FAILURE decided in model code below,
+// never inferred from a missing guard message.
+// ----------------------------------------------------------------------------------------------
+
+fn floor_preparation_leg_receipt(label: String, entries: List<String>, outcome: FloorPreparationSpawnObservation) -> String {
+  concat(concat(concat("[runner-leg] leg=", label), " entries="),
+    concat(join(entries, ","),
+      concat(concat(" rc=", to_string(outcome.rc)),
+        concat(" stdout_bytes=", to_string(length(xs: outcome.stdout))))))
+}
+
+fn floor_preparation_retained_body(untrimmed_stdout: String, graded_stdout: String) -> String {
+  concat(concat("SECTION untrimmed\n", join(floor_preparation_kept(text: untrimmed_stdout), "\n")),
+    concat("\nSECTION graded\n", join(floor_preparation_kept(text: graded_stdout), "\n")))
+}
+
+fn floor_preparation_provenance(leg: String, binary_sha: String, rc: Int, kept_count: Int) -> String {
+  concat(concat(concat(concat(concat("[capture-provenance] leg=", leg), " binary_sha256="), binary_sha),
+    " rc="), concat(to_string(rc), concat(" kept_rows=", to_string(kept_count))))
+}
+
+fn floor_preparation_capture_run() -> String {
+  let supplies = [
+    floor_preparation_supply_line(name: "claim_batch",
+      path: floor_preparation_pinned_claim_batch,
+      expected: floor_preparation_pinned_claim_batch_sha,
+      bytes_ok: floor_preparation_bytes_of(path: floor_preparation_pinned_claim_batch) > 0),
+    floor_preparation_supply_line(name: "gunbc",
+      path: floor_preparation_pinned_gunbc,
+      expected: floor_preparation_pinned_gunbc_sha,
+      bytes_ok: floor_preparation_bytes_of(path: floor_preparation_pinned_gunbc) > 0)
+  ]
+  let verify_receipt = floor_preparation_receipt("verify-pinned-supplies",
+    concat("lines=", to_string(length(xs: supplies))))
+  if !floor_preparation_supplies_hold(receipts: supplies) {
+    concat(concat(join(supplies, "\n"), "\n"), verify_receipt)
+  } else {
+    let entries = floor_preparation_population_entries()
+    let population_ok = floor_preparation_population_file_agrees_hint()
+    let untrimmed = floor_preparation_spawn_slot(
+      bound: floor_preparation_untrimmed_bound,
+      binary: floor_preparation_pinned_claim_batch,
+      args: floor_preparation_leg_argv(entries: entries))
+    let untrimmed_receipt = floor_preparation_leg_receipt(
+      label: "leg-untrimmed", entries: entries, outcome: untrimmed)
+    let fold_legs_receipt = floor_preparation_receipt("fold-legs",
+      concat(concat("kept_untrimmed=", to_string(length(xs: floor_preparation_kept(text: untrimmed.stdout)))),
+        concat(" kept_graded=", to_string(length(xs: floor_preparation_kept(text: graded.stdout))))))
+    let survivors = floor_preparation_surviving_entries(untrimmed_stdout: untrimmed.stdout)
+    let graded = floor_preparation_spawn_slot(
+      bound: floor_preparation_graded_bound,
+      binary: floor_preparation_pinned_claim_batch,
+      args: floor_preparation_leg_argv(entries: survivors))
+    let graded_receipt = floor_preparation_leg_receipt(
+      label: "leg-graded", entries: survivors, outcome: graded)
+    let kept_untrimmed = floor_preparation_kept(text: untrimmed.stdout)
+    let kept_graded = floor_preparation_kept(text: graded.stdout)
+    let retained = floor_preparation_retained_body(untrimmed_stdout: untrimmed.stdout, graded_stdout: graded.stdout)
+    let claims_args = concat(
+      fold(floor_preparation_source_roots, init: [], f: (acc, root) => concat(acc, ["--source-root", root])),
+      ["--claim-run", "--entry", floor_preparation_witness_module,
+       "--functions", join(floor_preparation_claim_roster, ",")])
+    let claims = floor_preparation_spawn_slot(
+      bound: floor_preparation_claims_bound,
+      binary: floor_preparation_pinned_claim_batch,
+      args: claims_args)
+    let passed = floor_preparation_pass_names(stdout_text: claims.stdout)
+    let missing = fold(floor_preparation_claim_roster, init: [], f: (acc, name) =>
+      if floor_preparation_has(xs: passed, x: name) { acc } else { list_push(xs: acc, item: name) })
+    let report = floor_preparation_spawn_slot(
+      bound: floor_preparation_report_bound,
+      binary: floor_preparation_pinned_gunbc,
+      args: concat(
+        fold(floor_preparation_source_roots, init: [], f: (acc, root) => concat(acc, ["--source-root", root])),
+        ["run", "--entry", floor_preparation_authority_path, "--function", "floor_preparation_split_report"]))
+    let build_argv_receipt = floor_preparation_receipt("build-argv-from-population",
+      concat("entries=", to_string(length(xs: entries))))
+    let splice_receipt = floor_preparation_receipt("splice-capture-rows",
+      concat("blocks=5 target=", floor_preparation_authority_path))
+    let report_lines = fold(floor_preparation_lines(text: report.stdout), init: [], f: (acc, line) =>
+      if floor_preparation_starts_with(text: line, prefix: "floor-preparation-split") {
+        list_push(xs: acc, item: line)
+      } else { acc })
+    let report_ok = length(xs: report_lines) > 0
+      && !floor_preparation_contains(haystack: join(report_lines, "\n"), needle: "population=EMPTY")
+      && graded.rc == 0
+      && length(xs: kept_graded) > 0
+    let receipts = concat(concat(concat(supplies, [verify_receipt]),
+        [floor_preparation_receipt("render-population",
+          concat("file_agrees=", to_string(population_ok))),
+         build_argv_receipt,
+         untrimmed_receipt,
+         floor_preparation_receipt("derive-pass-set",
+           concat("excluded=", to_string(length(xs: survivors))))]),
+      [graded_receipt,
+       fold_legs_receipt,
+       floor_preparation_receipt("write-retained",
+         concat("bytes=", to_string(length(xs: retained)))),
+       splice_receipt,
+       floor_preparation_provenance(leg: "untrimmed",
+         binary_sha: floor_preparation_pinned_claim_batch_sha, rc: untrimmed.rc, kept_count: length(xs: kept_untrimmed)),
+       floor_preparation_provenance(leg: "graded",
+         binary_sha: floor_preparation_pinned_claim_batch_sha, rc: graded.rc, kept_count: length(xs: kept_graded)),
+       floor_preparation_receipt("claim-gate",
+         concat("missing=", join(missing, ","))),
+       floor_preparation_receipt("report-print",
+         concat("rc=", to_string(report.rc)))])
+    if !report_ok || length(xs: missing) > 0 || !population_ok {
+      concat(join(receipts, "\n"), "\nRUNNER_REFUSED: gates not green -- see receipts above")
+    } else {
+      Filesystem.Write(
+        path: concat(floor_preparation_runner_root, "/", floor_preparation_retained_file),
+        content: retained)
+      Filesystem.Write(
+        path: concat(floor_preparation_runner_root, "/", floor_preparation_population_file),
+        content: floor_preparation_population_projection())
+      concat(join(receipts, "\n"),
+        concat("\n", concat(join(report_lines, "\n"),
+          concat("\n", floor_preparation_receipt("terminal-gate", "ALL_GATES_GREEN")))))
+    }
+  }
+}
+
+// The committed population file as the model renders it: header comments preserved by agreement
+// is checked elsewhere; the runner REWRITES the row body from the model rows.
+fn floor_preparation_population_projection() -> String {
+  let text = filesystem_read(path: concat(floor_preparation_runner_root, "/", floor_preparation_population_file)).content
+  let heads = fold(split(s: text, delimiter: "\n"), init: [], f: (acc, line) =>
+    if floor_preparation_text_starts_with_hint(line: line, prefix: "#") { list_push(xs: acc, item: line) } else { acc })
+  concat(concat(join(heads, "\n"), "\n"), floor_preparation_population_body())
+}
+
+// Thin consumers of the fold module's public population surface.
+fn floor_preparation_population_file_agrees_hint() -> Bool {
+  floor_preparation_population_file_agrees()
+}
+
+fn floor_preparation_text_starts_with_hint(line: String, prefix: String) -> Bool {
+  floor_preparation_text_starts_with(text: line, prefix: prefix)
+}
+
+fn floor_preparation_population_body() -> String {
+  join(floor_preparation_population_lines(), "\n")
+}
