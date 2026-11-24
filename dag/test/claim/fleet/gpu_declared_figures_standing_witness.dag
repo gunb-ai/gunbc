@@ -1,0 +1,247 @@
+module test.claim.fleet.gpu_declared_figures_standing_witness
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.algebra { string_contains }
+import std.optional { Present, Absent }
+import std.measure { watt, watt_count, mebibyte, mebibyte_to_byte_size, byte_size_count }
+import std.decl_ref { DeclarationRef, NamedField, WholeDeclaration }
+import extdeps.external_authority { CitedFigureStanding, CitedToAuthority, TranscribedUncited, FactCitation, ExternalAuthority }
+import extdeps.gpu.types {
+  GpuDeviceCatalogRow, GpuBoardCatalogFacts, GpuBoardAdmission, GpuBoardAdmitted, GpuBoardRefused,
+  RatedBoardPower, PcieAddInBoard, ActiveThermalSolution, SingleGpu,
+}
+import extdeps.memory.types { MemoryFacts, Dram }
+import extdeps.storage.types { Gen5, PcieLink }
+import extdeps.vendor.amd { amd }
+import extdeps.gpu.amd {
+  amd_radeon_ai_pro_r9700_catalog, amd_radeon_ai_pro_r9700_board_facts, r9700_figures_standing,
+  r9700_product_page_authority, amd_board_catalogs, amd_radeon_ai_pro_r9700_board_catalog,
+}
+import extdeps.gpu.gigabyte {
+  gigabyte_r9700_ai_top_32g_board_facts, gigabyte_r9700_ai_top_figures_standing,
+  gigabyte_r9700_ai_top_spec_authority, gigabyte_board_catalogs, gigabyte_r9700_ai_top_32g_board_catalog,
+}
+import gunbc.fleet.gpu_declared_figures_standing {
+  declared_board_figure_standings, declared_device_figure_standings, declared_gpu_standing_rows,
+  gpu_board_power_ceiling_with_standing, gpu_catalog_memory_with_standing, gpu_figure_read_obligation,
+  AdmittedBoardFigures, FiguresCarried, FiguresUnmarked, gpu_admitted_board_figures,
+}
+import extdeps.gpu.nvidia_a16 { nvidia_a16_board_catalog }
+
+// THE CLASS THIS WITNESS KILLS: a row carrying a marked figure consumed as if complete
+// (gunbc.recurring_failure_mode.declared_uncitedness_ignored_by_admission, Tier 5 of the operator's
+// 2026-11-21 breakage report, specimen: the R9700 and Gigabyte rows). The extdeps GPU modules already declare
+// what grounds those figures -- r9700_figures_standing and gigabyte_r9700_ai_top_figures_standing, both
+// TranscribedUncited with a stated read obligation -- and nothing read them, while the rows they qualify are
+// consumed as installed-hardware identity: gunbc.fleet.fleet_physical_inventory binds host-6ce85c's
+// gpu_board_02 and gpu_board_03 to those rows, so the 32 GiB capacity and the 300 W ceiling travel into
+// decisions about a running host with no mark attached.
+//
+// These claims hold the binding and its boundary: a declared standing reaches the figure it describes and
+// arrives marked; a figure nothing names stays absent rather than becoming cited or bare; and no standing
+// row the GPU modules declare is left unread.
+
+fn is_transcribed_uncited(standing: CitedFigureStanding) -> Bool {
+  match standing {
+    TranscribedUncited { read_obligation: _ } => true
+    _ => false
+  }
+}
+
+fn is_cited_to(standing: CitedFigureStanding, authority: ExternalAuthority) -> Bool {
+  match standing {
+    CitedToAuthority { authority: a } => a.uri.locator == authority.uri.locator
+    _ => false
+  }
+}
+
+// A board row NOT in the binding roster, so only the citation path is available to it. Its wattage is a
+// fixture, so no claim about a real card's figures can be satisfied by it.
+fn fixture_board(model: String, citations: List<FactCitation>) -> GpuBoardCatalogFacts {
+  GpuBoardCatalogFacts {
+    vendor: amd,
+    model: model,
+    gpu: amd_radeon_ai_pro_r9700_catalog,
+    composition: SingleGpu,
+    attachment: PcieAddInBoard { link: Present { value: PcieLink { generation: Gen5, lane_count: 16 } } },
+    board_power: Present { value: RatedBoardPower { rated: watt(count: 275) } },
+    zero_power: none,
+    thermal: none,
+    pci_device_id: none,
+    driver_listed_name: none,
+    figure_citations: citations,
+  }
+}
+
+fn citation_naming_board_power(authority: ExternalAuthority) -> FactCitation {
+  FactCitation {
+    fact: DeclarationRef {
+      module_path: "extdeps.gpu.amd",
+      decl_name: "amd_radeon_ai_pro_r9700_board_facts",
+      field: NamedField { field_name: "board_power" as NonEmptyStr },
+    },
+    authority: authority,
+  }
+}
+
+// THE R9700'S WATTAGE REACHES A CONSUMER CARRYING THE STANDING ITS MODULE DECLARES. The row carries no
+// figure_citations at all, so the citation-derived path extdeps.gpu.types uses for bandwidth would return
+// nothing for it: the declared standing is what makes the figure legible, and it arrives marked, not bare.
+test fn the_r9700_power_ceiling_reaches_a_consumer_carrying_its_declared_standing() -> Bool {
+  match gpu_board_power_ceiling_with_standing(facts: amd_radeon_ai_pro_r9700_board_facts) {
+    Absent => false
+    Present { value: figure } => watt_count(w: figure.ceiling) == 300 && is_transcribed_uncited(figure.standing)
+  }
+}
+
+// THE SAME FOR THE MEMORY SIZE, the figure the realization join compares observed cards against: a marked
+// capacity reaching a fit test is the Tier 5 specimen, and it must arrive carrying its mark.
+test fn the_r9700_memory_size_reaches_a_consumer_carrying_its_declared_standing() -> Bool {
+  match gpu_catalog_memory_with_standing(row: amd_radeon_ai_pro_r9700_catalog) {
+    Absent => false
+    Present { value: figure } => byte_size_count(b: figure.capacity) == byte_size_count(b: mebibyte_to_byte_size(m: mebibyte(count: 32768))) && is_transcribed_uncited(figure.standing)
+  }
+}
+
+// THE BOUNDARY THE DERIVATION KEEPS: a row no module declares and no citation names returns nothing at all.
+// Nothing is the fail-closed answer -- the figure is not handed over bare for a consumer to decide later.
+test fn a_figure_no_citation_names_and_no_module_declares_is_absent_not_cited() -> Bool {
+  gpu_board_power_ceiling_with_standing(facts: fixture_board(model: "Fixture Unbound Board", citations: [])) == none
+}
+
+// THE OTHER SIDE: exactly one citation naming the figure reads as cited to that authority -- the rule
+// gpu_catalog_bandwidth already applies, now applied to the figures consumers actually use.
+test fn a_figure_one_citation_names_is_read_cited_to_that_authority() -> Bool {
+  match gpu_board_power_ceiling_with_standing(facts: fixture_board(
+    model: "Fixture Cited Board",
+    citations: [citation_naming_board_power(authority: r9700_product_page_authority)],
+  )) {
+    Absent => false
+    Present { value: figure } => watt_count(w: figure.ceiling) == 275
+      && is_cited_to(standing: figure.standing, authority: r9700_product_page_authority)
+  }
+}
+
+// AND NEVER A GUESS BETWEEN TWO: with two authorities naming one figure, no consumer is handed either.
+test fn a_figure_two_citations_name_is_not_read_as_cited_by_one_of_them() -> Bool {
+  gpu_board_power_ceiling_with_standing(facts: fixture_board(
+    model: "Fixture Twice Cited Board",
+    citations: [
+      citation_naming_board_power(authority: r9700_product_page_authority),
+      citation_naming_board_power(authority: gigabyte_r9700_ai_top_spec_authority),
+    ],
+  )) == none
+}
+
+// NO BOARD LEFT UNBOUND, AND NO STANDING INVENTED. The two GPU modules that declare a figures standing each
+// list every board they admit as their model-scope subject (amd_board_catalogs, gigabyte_board_catalogs), so
+// those lists -- not this file's own entries -- say how many boards must be bound: a board added to one of
+// those modules with no entry here turns this claim red. And every standing bound here is one those modules
+// declare, so a binding cannot quietly re-mark a figure the module calls cited.
+fn facts_of_admission(admission: GpuBoardAdmission) -> GpuBoardCatalogFacts {
+  match admission {
+    GpuBoardAdmitted { row: row } => row.facts
+    GpuBoardRefused { facts: facts, refusal: _ } => facts
+  }
+}
+
+test fn every_board_the_standing_declaring_modules_admit_carries_a_bound_standing() -> Bool {
+  let boards = amd_board_catalogs.map(admission => facts_of_admission(admission: admission))
+    .concat(gigabyte_board_catalogs.map(admission => facts_of_admission(admission: admission)))
+  // Forward direction of the identity join: every board the standing-declaring modules admit is bound to a
+  // standing, and that standing is one the modules declare. No count of the admitted boards -- a new board
+  // admitted by extdeps.gpu.amd or extdeps.gpu.gigabyte is covered without anyone editing a number here.
+  all(boards, facts => any(declared_board_figure_standings, entry => entry.facts == facts
+    && any(declared_gpu_standing_rows(), declared => declared == entry.standing)))
+}
+
+test fn no_binding_carries_a_standing_the_gpu_modules_do_not_declare() -> Bool {
+  let declared = declared_gpu_standing_rows()
+  all(declared_board_figure_standings, entry => is_transcribed_uncited(entry.standing)
+    && any(declared, other => other == entry.standing))
+    && all(declared_device_figure_standings, entry => is_transcribed_uncited(entry.standing)
+      && any(declared, other => other == entry.standing))
+}
+
+// THE OBLIGATION REACHES A REFUSAL UNCHANGED: a consumer turning a marked figure down can hand back what the
+// module says would ground it, and a properly cited figure owes no such refusal.
+test fn the_read_obligation_reaches_a_refusal_unchanged() -> Bool {
+  match gpu_figure_read_obligation(standing: r9700_figures_standing) {
+    Present { value: obligation } =>
+      string_contains(s: obligation, pattern: "specification table")
+        && string_contains(s: obligation, pattern: "figure_citations")
+        && (match gpu_figure_read_obligation(standing: gigabyte_r9700_ai_top_figures_standing) {
+              Present { value: other } => other != ""
+              Absent => false
+            })
+        && gpu_figure_read_obligation(standing: CitedToAuthority { authority: r9700_product_page_authority }) == none
+    Absent => false
+  }
+}
+
+// THE ADMISSION PATH CANNOT HAND OVER THESE FIGURES UNMARKED. This is the seam the roadmap row names -- the
+// accessor a roster fold reaches for -- so the claim is not that a standing exists somewhere, but that the
+// way IN for an admitted board's facts carries it. The same function on a board no module qualifies says so
+// in words rather than returning a bare figure and implying it was vetted.
+test fn the_r9700_admission_cannot_be_read_without_its_standing() -> Bool {
+  match gpu_admitted_board_figures(admission: amd_radeon_ai_pro_r9700_board_catalog) {
+    FiguresCarried { facts: f, standing: st, declared_by: d } =>
+      f == amd_radeon_ai_pro_r9700_board_facts && is_transcribed_uncited(standing: st)
+        && d == ("extdeps.gpu.amd" as NonEmptyStr)
+        && (match gpu_figure_read_obligation(standing: st) { Present { value: o } => o != "" Absent => false })
+    _ => false
+  }
+}
+
+test fn the_gigabyte_admission_cannot_be_read_without_its_standing() -> Bool {
+  match gpu_admitted_board_figures(admission: gigabyte_r9700_ai_top_32g_board_catalog) {
+    FiguresCarried { facts: f, standing: st, declared_by: d } =>
+      f == gigabyte_r9700_ai_top_32g_board_facts && is_transcribed_uncited(standing: st)
+        && d == ("extdeps.gpu.gigabyte" as NonEmptyStr)
+    _ => false
+  }
+}
+
+// An unmarked board stays unmarked: it comes back in the FiguresUnmarked arm, a typed marker that itself says
+// no standing was declared about the board, rather than falling through to the carried arm or to silence -- the
+// failure the row records is absence of a warning read as absence of a problem, and the variant is the warning.
+test fn a_board_no_module_qualifies_is_returned_unmarked() -> Bool {
+  match gpu_admitted_board_figures(admission: nvidia_a16_board_catalog) {
+    FiguresUnmarked { facts: _ } => true
+    FiguresCarried { facts: _, standing: _, declared_by: _ } => false
+  }
+}
+
+// The two R9700 bindings are two boards, not one board seen twice: distinct models, so the lookup above
+// cannot attach the wrong module's standing to a figure.
+test fn the_declared_bindings_name_two_distinct_boards() -> Bool {
+  let boards = amd_board_catalogs.map(admission => facts_of_admission(admission: admission))
+    .concat(gigabyte_board_catalogs.map(admission => facts_of_admission(admission: admission)))
+  // Reverse direction of the identity join: every board binding names an actual admitted board and carries a
+  // standing the modules declare -- a binding cannot invent a board or a standing, and no count is copied from
+  // the tree (design_argument::fail_closed). Together with the forward join above this is the whole join.
+  all(declared_board_figure_standings, entry =>
+    any(boards, facts => facts == entry.facts)
+      && any(declared_gpu_standing_rows(), declared => declared == entry.standing))
+  // Distinct, not one board seen twice: the standing-declaring modules admit two genuinely different boards,
+  // and no two admitted boards share a model under different facts.
+    && amd_radeon_ai_pro_r9700_board_facts.model != gigabyte_r9700_ai_top_32g_board_facts.model
+    && all(boards, a => all(boards, b => a.model != b.model || a == b))
+}
+
+// THE GUARD THE MODULE'S HEADER NAMES, AS A REAL CLAIM. The roster is now derived from every GPU module's own
+// declaration (declared_gpu_standing_rows), so a standing written into a module but never bound is IN the
+// roster and unbound -- which is exactly the recurring failure mode (a figure marked unverified that nothing
+// reads). A TranscribedUncited standing has no citation that reads it, so it must appear as the standing of a
+// board or device binding; a CitedToAuthority standing is grounded through the citation path instead (the
+// claim a_figure_one_citation_names_is_read_cited_to_that_authority above), so it needs no binding here. This
+// is an identity join, not a count: it moves when a row is added to a module, not when someone edits a number.
+test fn RED_every_declared_gpu_standing_row_is_bound() -> Bool {
+  all(declared_gpu_standing_rows(), entry =>
+    match entry {
+      CitedToAuthority { authority: _ } => true
+      _ => any(declared_board_figure_standings, binding => binding.standing == entry)
+        || any(declared_device_figure_standings, binding => binding.standing == entry)
+    })
+}

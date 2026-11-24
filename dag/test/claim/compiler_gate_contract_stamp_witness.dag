@@ -665,19 +665,30 @@ test fn the_evidence_carrier_declares_its_scaffold_and_trigger_holds() -> Bool {
   let trigger = dissolution_description(
     condition: compiler_gate_contract_stamp_evidence_shell_emit_dissolution_trigger
   )
-  string_contains(s: trigger, pattern: "dissolve-on: compiler_gate_contract_stamp_evidence_statements")
-    && string_contains(s: trigger, pattern: "instrument_targets")
-    // MATCH, NOT `as String`: this is the corpus idiom (merge_admission_enforcement_witness.dag:47),
-    // and it also pins WHICH KIND of disposition the carrier is -- a Scaffold dissolving to a single
-    // authority, bound by DeclarationRef to the fn that emits the shell. Terminal would mean the
-    // residual was declared permanent, which is a different claim and a different policy.
-    match compiler_gate_contract_stamp_evidence_shell_emit_scaffold {
-      Scaffold { dissolves_to: SingleAuthority,
-                 bind: DeclarationRef { module_path: "gunbc.witness.compiler_gate_contract_stamp",
-                                        decl_name: "compiler_gate_contract_stamp_evidence_statements",
-                                        field: WholeDeclaration } } => true
-      _ => false
-    }
+  // BOTH claims now DECIDE the result. Until now the && chain was a non-terminal statement
+  // -- computed and thrown away (census instrument: dropped ExprBinOp{op: And} at this line),
+  // so the test passed on the match alone no matter what the chain said. Named lets force
+  // every claim to evaluate; no `let _ =` anywhere -- acknowledging the drop is the opposite
+  // of the fix. The chain itself is ALSO corrected per ruling: it asserted "instrument_targets",
+  // a promise the carrier never made (its description, born in 7251aa97df88 and unchanged in
+  // all 17194 commits of history, names two OTHER capabilities). The lets now assert the
+  // dissolve-on prefix plus the two capabilities the carrier actually declares, each named so
+  // a failure says which one. See node://discarded-bool-result-wall.
+  let c1 = string_contains(s: trigger, pattern: "dissolve-on: compiler_gate_contract_stamp_evidence_statements")
+  let c2 = string_contains(s: trigger, pattern: "v2.extdeps.languages.bash_build")
+  let c3 = string_contains(s: trigger, pattern: "gunbc.rung_drop v1_required_lanes_withdrawn")
+  // MATCH, NOT `as String`: this is the corpus idiom (merge_admission_enforcement_witness.dag:47),
+  // and it also pins WHICH KIND of disposition the carrier is -- a Scaffold dissolving to a single
+  // authority, bound by DeclarationRef to the fn that emits the shell. Terminal would mean the
+  // residual was declared permanent, which is a different claim and a different policy.
+  let scaffold_ok = match compiler_gate_contract_stamp_evidence_shell_emit_scaffold {
+    Scaffold { dissolves_to: SingleAuthority,
+               bind: DeclarationRef { module_path: "gunbc.witness.compiler_gate_contract_stamp",
+                                      decl_name: "compiler_gate_contract_stamp_evidence_statements",
+                                      field: WholeDeclaration } } => true
+    _ => false
+  }
+  c1 && c2 && c3 && scaffold_ok
 }
 
 type EvidencePosition {

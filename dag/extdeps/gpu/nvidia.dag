@@ -174,6 +174,17 @@ data rtx_pro_6000_server_cuda_core_standing: CitedFigureStanding = CitedToAuthor
   authority: rtx_pro_6000_server_authority
 }
 
+// EVERY STANDING THIS MODULE DECLARES. HAND-MAINTAINED: add a standing here when you declare one, and join
+// this list into gunbc.fleet.gpu_declared_figures_standing::declared_gpu_standing_rows -- see that function's
+// comment for the two hand-maintained levels and the trigger. The Max-Q CUDA-core standing sat
+// declared-but-unread here precisely because the consumer carried a hand list that had never been updated for
+// it; keeping this list and the consumer's binding current is what holds that failure closed.
+data nvidia_declared_figure_standings: List<CitedFigureStanding> = [
+  rtx_pro_6000_workstation_cuda_core_standing,
+  rtx_pro_6000_max_q_cuda_core_standing,
+  rtx_pro_6000_server_cuda_core_standing,
+]
+
 data nvidia_rtx_pro_6000_workstation_catalog: GpuDeviceCatalogRow = GpuDeviceCatalogRow {
   vendor: nvidia,
   model: "RTX PRO 6000 Blackwell Workstation Edition",

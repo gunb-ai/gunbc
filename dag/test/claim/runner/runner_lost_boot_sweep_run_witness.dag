@@ -30,7 +30,7 @@ import gunbc.runner.runner_jit_deregistration {
 }
 import gunbc.host.host_effect { FleetSsh }
 import gunbc.host.host_bound_transport { HostBoundTransport, HostBoundTransportRefused, HostBoundTransportResolved, host_bound_transport_of }
-import gunbc.fleet.fleet_known_hosts_anchor { SshTargetResolved, SshTargetRefused }
+import gunbc.fleet.fleet_known_hosts_anchor { ProbeLeg,SshTargetResolved, SshTargetRefused }
 import gunbc.fleet.fleet_ssh_locus { fleet_locus_ssh_target }
 import test.claim.typed_remote_file_write_fleet_ssh_fixture { fleet_ssh_execution_context_hermetic_witness_fixture }
 import gunbc.host.host_operation_exec { HostOperationObserved, HostOperationRefused }
@@ -640,7 +640,7 @@ fn mtcollins1_bound_transport() -> HostBoundTransport? admit_callers: [
       match fleet_locus_ssh_target(host: operator_host_mtcollins1) {
         SshTargetRefused { endpoint: _, refusal: _ } => none
         SshTargetResolved { target: t } =>
-          match host_bound_transport_of(transport: FleetSsh { target: t, context: ctx }) {
+          match host_bound_transport_of(transport: FleetSsh {kind: ProbeLeg, target: t, context: ctx }) {
             HostBoundTransportRefused { cause: _ } => none
             HostBoundTransportResolved { bound: b } => Present { value: b }
           }

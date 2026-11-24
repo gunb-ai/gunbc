@@ -3,6 +3,7 @@ module gunbc.runner.workspace_guest_image
 import extdeps.numeric.base16 { base16_is_lower_digit_code_point }
 
 import std.types { String, NonEmptyStr, Bool, List }
+import gunbc.runner.release_images_location { release_images_dir }
 import std.resources { Filesystem }
 import std.measure { mebibyte }
 import extdeps.exec.command { ArgvCommand, LocalExec }
@@ -227,5 +228,5 @@ fn workspace_installed_image(release_dir: String, identity: NonEmptyStr) -> Work
 }
 
 fn workspace_installed_image_root(release_dir: String, identity: NonEmptyStr) -> NonEmptyStr {
-  join([release_dir, "/images/workspace/", identity as String], "") as NonEmptyStr
+  join([release_images_dir(release_dir: release_dir), "/workspace/", identity as String], "") as NonEmptyStr
 }

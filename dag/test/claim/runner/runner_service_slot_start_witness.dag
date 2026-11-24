@@ -25,6 +25,7 @@ import extdeps.systemd { ActiveState }
 import extdeps.systemd.systemctl { systemctl_show_properties_command }
 import extdeps.ssh.openssh_remote_command { openssh_remote_command_string }
 import gunbc.fleet.fleet_known_hosts_anchor {
+  ProbeLeg,
   SshTargetResolved, SshTargetRefused, fleet_ssh_target_at_standard_port, login_shell_standing, LoginShellPosix,
   posix_remote_route_standing, PosixRemoteRouteCovered, fleet_posix_quoted_leg, fleet_remote_leg_strings, portable_remote_words,
 }
@@ -227,7 +228,7 @@ fn remote_string_of(argv: List<String>) -> String? {
               client_success: true, client_output: "OpenSSH_10.0p2 Debian-7+deb13u4, OpenSSL 3.5.7 9 Jun 2026\n",
               server_success: true, server_output: "OpenSSH_9.6p1 Ubuntu-3ubuntu13.5, OpenSSL 3.0.13 30 Jan 2024\n") {
             PosixRemoteRouteCovered { route: r } =>
-              match fleet_posix_quoted_leg(route: r, argv: argv) {
+              match fleet_posix_quoted_leg(kind: ProbeLeg, route: r, argv: argv) {
                 Present { value: leg } => Present { value: openssh_remote_command_string(arguments: fleet_remote_leg_strings(leg: leg)) }
                 Absent => Absent
               }

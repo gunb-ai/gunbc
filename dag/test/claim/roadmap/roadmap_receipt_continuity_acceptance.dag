@@ -58,7 +58,7 @@ import gunbc.roadmap.roadmap_model {
   AcceptanceNodeReopensActiveFrontier,
   RoadmapAcceptanceEvent,
   RoadmapAcceptanceReceipt,
-  RedControlExecuted,
+  RedObservedOnMain, RedControlExecuted,
   HandbackDelivered,
 }
 import gunbc.roadmap.roadmap_document { RoadmapDocument }
@@ -521,7 +521,7 @@ fn standalone_receipt() -> RoadmapAcceptanceReceipt {
     red_control: RedControlExecuted {
       witness_module: "test.claim.roadmap.roadmap_receipt_continuity_acceptance",
       witness_fn: "witness_unreplayable_history_refuses_receipts_projection",
-      executed_on: "2026-09-14",
+      executed_on: "2026-09-14", observation: RedObservedOnMain { red_at: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", green_at: "0f1e2d3c4b5a69788796a5b4c3d2e1f001234567" },
     },
     handback: HandbackDelivered {
       first_artifact: "dag/gunbc/roadmap/roadmap_model.dag",

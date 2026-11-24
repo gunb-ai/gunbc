@@ -168,8 +168,7 @@ import gunbc.runner.runner_unit_file {
   runner_job_user_uid_reading,
 }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
-import gunbc.fleet.fleet_known_hosts_anchor {
-  FleetSshExecutionContext,
+import gunbc.fleet.fleet_known_hosts_anchor { ActuationLeg,FleetSshExecutionContext,
   SshTarget,
   SshTargetResolution,
   SshTargetResolved,
@@ -909,7 +908,7 @@ fn gpu_container_toolchain_admin_target(host: NonEmptyStr) -> SshTargetResolutio
 }
 
 fn gpu_container_toolchain_admin_transport(target: SshTarget, context: FleetSshExecutionContext) -> HostEffectTransport {
-  FleetSsh { target: target, context: context }
+  FleetSsh {kind: ActuationLeg, target: target, context: context }
 }
 
 fn runner_gpu_container_toolchain_converge_ci_wet() -> ProcessExit {

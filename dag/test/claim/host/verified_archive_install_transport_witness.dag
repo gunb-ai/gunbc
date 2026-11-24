@@ -6,7 +6,7 @@ import std.optional { Present, Absent }
 import gunbc.host.host_effect {
   HostEffectTransport, FleetSsh, EmitArtifactThenThinRun, BootstrapFragment, ThinInvocation,
 }
-import gunbc.fleet.fleet_known_hosts_anchor { SshTarget, portable_remote_words }
+import gunbc.fleet.fleet_known_hosts_anchor { ProbeLeg,SshTarget, portable_remote_words }
 import extdeps.network.endpoint { socket_address, host_by_name }
 import extdeps.dns.domain_name { DnsLabel, HostName, DomainName, PartiallyQualified }
 import test.claim.typed_remote_file_write_fleet_ssh_fixture { fleet_ssh_execution_context_hermetic_witness_fixture }
@@ -52,7 +52,7 @@ data unexecutable_transport: HostEffectTransport = EmitArtifactThenThinRun {
 fn fleet_ssh_transport() -> HostEffectTransport? {
   match fleet_ssh_execution_context_hermetic_witness_fixture() {
     Absent => none
-    Present { value: ctx } => Present { value: FleetSsh { target: fixture_ssh_target, context: ctx } }
+    Present { value: ctx } => Present { value: FleetSsh {kind: ProbeLeg, target: fixture_ssh_target, context: ctx } }
   }
 }
 

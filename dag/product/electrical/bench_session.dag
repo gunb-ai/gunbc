@@ -220,13 +220,16 @@ type ThermalInterface
   | ThermalPaste
   | InterfaceUnstated
 
-// What an alteration did: a thermal interface changed under a part, or a part lifted off the board. A
-// lifted part's footprint is bare until a refit is reported, and readings at that footprint are of a
-// different physical state from readings at the part's leads, so the alteration carries whether the
-// refit has happened rather than assuming it.
+// What an alteration did: a thermal interface changed under a part, a part lifted off the board, or a
+// part fitted to a footprint. A lifted part's footprint is bare until a refit is reported, and readings at
+// that footprint are of a different physical state from readings at the part's leads, so the alteration
+// carries whether the refit has happened rather than assuming it. A new part fitted where a removed one
+// was is its own event, with the part number fitted, so the board before the removal, the bare footprint
+// and the board with the new part stay three states.
 type AlterationChange
   = ThermalInterfaceChanged { removed: ThermalInterface, applied: ThermalInterface? }
   | PartRemoved { refitted: Bool }
+  | PartFitted { part_number: NonEmptyStr }
 
 type AssetAlteration {
   key: NonEmptyStr
@@ -280,6 +283,7 @@ fn is_before_incidents(o: ReadingOrder) -> Bool {
 //   "the electrically relevant state was unchanged";
 // - a part removed divides; a removal later refitted is ONE recorded event for two changes (off, then
 //   on), so the states after it are not distinguishable and a selection naming it is refused;
+// - a part fitted divides, as its own event: a removal then a fitting keeps every state apart;
 // - a thermal interface changed does not divide: no electrical terminal was touched. It is still a
 //   recorded event, so a reading may name it.
 //
@@ -299,15 +303,17 @@ type SpecimenState sole_constructor {
   module: ModuleState
 }
 
-// Of the recorded alterations, a removal divides states; a thermal-interface change touches no terminal.
+// Of the recorded alterations, a removal or a fitting divides states; a thermal-interface change touches
+// no terminal.
 fn alteration_divides_state(a: AssetAlteration) -> Bool {
-  removal_of(a: a)
+  removal_of(a: a) || fitting_of(a: a)
 }
 
 fn alteration_refitted(a: AssetAlteration) -> Bool {
   match a.change {
     ThermalInterfaceChanged { removed: _, applied: _ } => false
     PartRemoved { refitted } => refitted
+    PartFitted { part_number: _ } => false
   }
 }
 
@@ -460,6 +466,15 @@ fn removal_of(a: AssetAlteration) -> Bool {
   match a.change {
     ThermalInterfaceChanged { removed: _, applied: _ } => false
     PartRemoved { refitted: _ } => true
+    PartFitted { part_number: _ } => false
+  }
+}
+
+fn fitting_of(a: AssetAlteration) -> Bool {
+  match a.change {
+    ThermalInterfaceChanged { removed: _, applied: _ } => false
+    PartRemoved { refitted: _ } => false
+    PartFitted { part_number: _ } => true
   }
 }
 

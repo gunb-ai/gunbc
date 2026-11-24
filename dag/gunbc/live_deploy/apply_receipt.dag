@@ -50,7 +50,7 @@ import gunbc.actions_run_binding {
 // and it is the one spelling of that object the fleet portability wall admits
 // (gunbc.fleet.fleet_known_hosts_anchor portable_remote_word_char_allowed admits ':' and refuses '^', '{'
 // and '}'), so the candidate side and the deployed side
-// (gunbc.live_deploy.deployed_tree_observation deployed_tree_root_tree_argv) read the same object
+// (built in extdeps.git beside the other git verbs, gunbc.live_deploy.deployed_tree_observation delivers it) read the same object
 // the same way.
 data live_deploy_apply_receipt_schema: String = "live-deploy-apply-receipt/v4"
 
