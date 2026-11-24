@@ -18,7 +18,7 @@ import gunbc.auth.github_gcp_federation { fleet_secrets_project_id }
 import gunbc.fleet.fleet_bootstrap_principal { executor_bootstrap_principal }
 import gunbc.fleet.fleet_host_identity { operator_host_srv2 }
 import gunbc.fleet.fleet_known_hosts_anchor {
-  fleet_ssh_target_at_standard_port, SshTargetResolved, SshTargetRefused,
+  ProbeLeg, fleet_ssh_target_at_standard_port, SshTargetResolved, SshTargetRefused,
   FleetSshExecutionContext, SshTarget, known_hosts_file_rows, }
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, prepare_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
@@ -727,7 +727,7 @@ fn unreadable_answer() -> HostLeg {
 // advisory -- the server runs the forced command whatever is sent -- which is precisely the property under
 // test, and precisely why the second command must travel this route and never the administrator one.
 fn reader_leg(target: SshTarget, context: FleetSshExecutionContext, argv: List<String>) -> HostLeg {
-  host_leg_of_typed_argv(outcome: typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv))
+  host_leg_of_typed_argv(outcome: typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,target: target, context: context, argv: argv))
 }
 
 // ONE LEG AS ROOT, the same elevation B2b's own legs use (gunbc.runner.runner_host_file_converge
@@ -735,7 +735,7 @@ fn reader_leg(target: SshTarget, context: FleetSshExecutionContext, argv: List<S
 // privilege is obtained and differ only in which read they ask for.
 fn elevated_leg(context: FleetSshExecutionContext, target: SshTarget, command: List<String>) -> HostLeg {
   let inv = sudo_elevate(command: command)
-  host_leg_of_typed_argv(outcome: typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: append([inv.bin_path], items: inv.args)))
+  host_leg_of_typed_argv(outcome: typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,target: target, context: context, argv: append([inv.bin_path], items: inv.args)))
 }
 
 // OPEN FACT 2'S LEG: the readability question asked AS the reader, from the privileged route, because under
@@ -743,7 +743,7 @@ fn elevated_leg(context: FleetSshExecutionContext, target: SshTarget, command: L
 // question, and `sudo -u` is how it is asked without the key.
 fn as_reader_leg(context: FleetSshExecutionContext, target: SshTarget) -> HostLeg {
   let inv = sudo_elevate_as(user: boot_medium_reader_login, command: argv_words(command: test_readable_command(path: boot_medium_served_link_path() as String)))
-  host_leg_of_typed_argv(outcome: typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: append([inv.bin_path], items: inv.args)))
+  host_leg_of_typed_argv(outcome: typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,target: target, context: context, argv: append([inv.bin_path], items: inv.args)))
 }
 
 // THE FORCED COMMAND'S OWN ARGV, taken from the one place the fleet spells that command

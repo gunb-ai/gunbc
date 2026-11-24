@@ -196,7 +196,7 @@ test fn witness_srv1_ssh_transport_targets_operator_host() -> Bool {
   match srv1_host_identity_ssh_transport() {
     SshShell { ssh_host: h } => h == operator_host_srv1
     LocalShell => false
-    FleetSsh { target: _, context: _ } => false
+    FleetSsh { target: _, context: _, kind: _ } => false
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => false
   }
 }
