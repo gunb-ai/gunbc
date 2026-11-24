@@ -1,0 +1,64 @@
+module test.claim.shell.shell_dag_compile_pool_slice_install_refusal_witness
+
+// THE REFUSAL CONTROL for gunbc.host.host_effect_realize compile_pool_slice_install_staging.
+//
+// WHY THIS MODULE EXISTS BESIDE THE PINNED ONE. Row shell-dag-compile-pool-slice-install states
+// three control clauses; the pinned acceptance witness
+// dag/test/claim/shell/shell_dag_compile_pool_slice_install_witness.dag carries the first two and
+// not the third. Its four arms all supply a slice unit name that carries no '/', and each of them
+// maps CompilePoolInstallRefused { reason: _ } to false or to the string "staging refused". In the
+// pinned oracle the refusal arm is therefore HANDLED and never DEMONSTRATED: nothing it runs puts
+// the fold in front of an input the typed argv cannot express, so a fold that refused every input
+// — or one that had quietly lost the refusal arm and widened instead — would leave all four of its
+// arms green. This module supplies that input and reads the refusal. It is an addition beside the
+// pinned oracle; the pinned oracle is not edited here, and its content is what it has been since
+// the row landed.
+//
+// WHAT THE FOLD ACTUALLY OWES. dag/gunbc/host/host_effect_realize.dag refuses when the slice unit
+// name carries '/': that name would place the unit outside /etc/systemd/system/, and systemd unit
+// names never contain one (systemd.unit(5)) — so the input is a malformed name posing as a path,
+// which is exactly the "staging path the typed argv cannot express" of the row's third clause. The
+// refusal is the typed, located diagnostic that clause asks for, and a path arriving as a plain
+// NonEmptyStr is a supplied value the fold must route, not absorb.
+//
+// gunbc.design_argument::fail_closed — "runtime uncertainty → typed refusal ... a failure arm
+// refuses, never widens, and every degradation is typed, located and countable", and a wrong
+// answer must be "a loud, typed, located error". The arm below reads the location out of the
+// reason rather than accepting any non-empty word, so a refusal that stopped saying WHERE the
+// unit would have landed fails here.
+//
+// gunbc.design_argument::witness_one_interface — a witness "establishes what one interface returns
+// for supplied inputs" and asserts "the ROUTE and not only the answer", while "supplying inputs
+// may never remove the last execution of the real path". Both arms below execute the real fold;
+// the second arm is the pairing obligation that keeps the first from being vacuous.
+
+import std.types { Bool, NonEmptyStr }
+import std.algebra { string_contains }
+import gunbc.host.host_effect_realize { compile_pool_slice_install_staging, CompilePoolInstallReady, CompilePoolInstallRefused }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE THIRD CLAUSE, EXECUTED. A staging path the typed argv cannot express REFUSES, and it refuses
+// by name: the reason must still say which surface the unit would have landed outside of. Reaching
+// the Ready arm at all — emitting any argv for a name carrying '/' — is the failure this arm
+// exists to catch, since that is the fold widening where it owes a refusal.
+test fn inexpressible_staging_path_refuses_and_names_where_it_would_have_landed() -> Bool {
+  match compile_pool_slice_install_staging(slice_unit: "unit/../../etc/systemd/system/evil.slice" as NonEmptyStr) {
+    CompilePoolInstallReady { stage_write: _, install: _, daemon_reload: _, start: _, discard_stage: _ } => false
+    CompilePoolInstallRefused { reason: r } =>
+      string_contains(s: r, pattern: "/")
+      && string_contains(s: r, pattern: "/etc/systemd/system/")
+  }
+}
+
+// THE PAIRING OBLIGATION. The refusal belongs to the inexpressible path, not to the fold: the same
+// fold, on a name the typed argv CAN express, still realizes the five typed operations instead of
+// refusing. Without this arm the control above could be satisfied by a fold that refused everything,
+// which is the absorbing-fallback shape fail_closed names — and this module would check nothing.
+test fn expressible_staging_name_still_realizes_the_typed_operations() -> Bool {
+  match compile_pool_slice_install_staging(slice_unit: "gunbc-compile-pool.slice" as NonEmptyStr) {
+    CompilePoolInstallReady { stage_write: _, install: _, daemon_reload: _, start: _, discard_stage: _ } => true
+    CompilePoolInstallRefused { reason: _ } => false
+  }
+}
