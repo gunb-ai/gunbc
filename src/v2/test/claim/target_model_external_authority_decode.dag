@@ -235,3 +235,38 @@ test fn operator_row_with_a_duplicated_precedence_edge_refuses() -> Bool {
     Rejected { diagnostics: _ } => true
   }
 }
+
+// The encoder carries the WHOLE number (review 98015): a level of 12 must decode to 12, not to a
+// folded last digit 2, or the grouping predicate would compare a corrupted level. Red for a
+// single-digit encoder.
+test fn operator_row_level_above_nine_encodes_whole_number() -> Bool {
+  match target_operator_realization_from_wire_row(
+    row: target_operator_realization_node_with_precedence(
+      operation: canonical_operation_op_and(),
+      shape: InfixToken { token: ^claim_token_andand },
+      precedence_node: target_operator_precedence_level_node(level: 12)
+    )
+  ) {
+    Accepted { value: realization, diagnostics: _ } =>
+      match realization.precedence {
+        Present { value: level } => level == 12
+        Absent => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// A level that is not a decimal digit string cannot become a magnitude node; the row must REFUSE
+// to decode rather than yield a plausible precedence (fail_closed: no fabricated plausible output).
+test fn operator_row_unencodable_precedence_level_refuses_decode() -> Bool {
+  match target_operator_realization_from_wire_row(
+    row: target_operator_realization_node_with_precedence(
+      operation: canonical_operation_op_and(),
+      shape: InfixToken { token: ^claim_token_andand },
+      precedence_node: target_operator_precedence_level_node(level: -1)
+    )
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}

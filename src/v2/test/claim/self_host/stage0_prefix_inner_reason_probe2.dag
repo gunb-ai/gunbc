@@ -1,16 +1,17 @@
 module v2.test.claim.self_host.stage0_prefix_inner_reason_probe2
 
-// READ-ONLY DIAGNOSTIC (one authorised acquisition; NO emitter change, NO target_model.dag edit). Names, from
-// EXECUTED text (which truth-table claim PASSES), (1) the exact refusal lexeme the op_not prefix and the corpus
-// subject refuse on -- the five-candidate probe came up empty, this enumerates the full reachable lexeme set on
-// the primitive-apply / operand / wire / catalog path, all read from the Diagnostic `reason:` fields at
-// target_model.dag:5561/6436/6444/6452/6460/6468/2751/2885/2108/9305/6612/6628 and the transform-shape arm; and
-// (2) the STAGE and reason of the negate-wrapped subject `y + (-x)`, set side-by-side against the standalone
-// negate's reason via the *_reason_equals_* claims. It also carries conj/disj inner-refusal controls for the
-// re-targeted inner-reason condition (does a realisable &&/|| surface an refusing nested operand's reason at
-// emission). If a subject's 13 lexeme claims ALL fail and it is not emits, the reason is OUTSIDE this set -- which
-// is reported with this file as the set searched, not inferred from an empty grep. Subjects live under the
-// self-host claim tree except the corpus subject.
+// STANDING WITNESS ENTRY for this row's inner-named-reason condition, retained by the lane
+// manager's ruling and run as LEG2 of the accepted final-evidence wrapper at the head being
+// accepted. Executed content: (1) a well-typed Bool conjunction and a well-typed Bool disjunction
+// each carrying a refusing prefix operand refuse at EMISSION with the STANDALONE prefix refusal
+// reason, by exact equality against the reason the standalone prefix subject refuses on -- not the
+// generic transform-shape reason, and not the outer binary's reason; (2) the negate-wrapped Int
+// subject `y + (-x)` pinned with its stage and reason side-by-side against the standalone negate,
+// the record the companion prefix row's named second gap is measured against; (3) the reachable
+// primitive-apply / operand / wire / catalog refusal lexeme set, read from the Diagnostic `reason:`
+// fields on that path, so a refusal outside the set is REPORTED as outside the set rather than
+// inferred from an empty grep. Subjects live under the self-host claim tree except the corpus
+// subject.
 
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
 import v2.compiler.self_host.candidate_generation {

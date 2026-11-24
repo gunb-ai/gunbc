@@ -21,8 +21,8 @@ import v2.std.node_query { child_lookup_step, declared_field_from_edge, member_e
 import v2.std.list_introduction { list_introduction_elements_optional }
 import v2.std.qualified_name { QualifiedName, qualified_name_from_node, qualified_name_init, qualified_name_last_segment, parameter_reference_path_optional, lexical_reference_label_optional, declaration_reference_path_optional }
 import v2.std.host_transport { EmitHostRuntimeRow, TargetEmitHostRuntimeRow, configured_emit_host_runtime_row_from_target_row }
-import v2.std.integer { integer_decimal_magnitude_node_to_int, integer_decimal_magnitude_node, decimal_digits_to_magnitude }
-import std.integer { int_to_decimal_string, decimal_digit_of_units }
+import v2.std.integer { integer_decimal_magnitude_node_to_int, integer_decimal_magnitude_node, decimal_digits_to_magnitude, integer_string_to_decimal_digits_optional }
+import std.integer { int_to_decimal_string }
 import v2.std.fold_assembly { node_list_from_node }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, UriScheme, uri_scheme_inhabitants }
@@ -3049,13 +3049,19 @@ fn target_operator_realization_node_with_precedence(
 
 // Wire encoding for a declared precedence level: the integer magnitude node the decoder reads back
 // with integer_decimal_magnitude_node_to_int. The NUMBER is a fact about the target language and
-// lives in that language's catalog rows; this function only encodes it.
+// lives in that language's catalog rows; this function only encodes it. The whole number is
+// encoded through the existing decimal-digits route (a level of 12 is two digits, never a folded
+// last digit). A level that is not a decimal digit string at all (a negative) cannot become a
+// magnitude; it lands as a plain atom the row decoder refuses with the malformed diagnostic, so
+// the row refuses at lookup and emission rather than decoding to a plausible wrong level
+// (gunbc.design_argument::fail_closed: no plausible output is fabricated).
 fn target_operator_precedence_level_node(level: Int) -> Node {
-  integer_decimal_magnitude_node(
-    magnitude: decimal_digits_to_magnitude(
-      digits: Cons { head: decimal_digit_of_units(value: level), tail: Empty }
-    )
-  )
+  match integer_string_to_decimal_digits_optional(s: int_to_decimal_string(value: level)) {
+    Present { value: digits } =>
+      integer_decimal_magnitude_node(magnitude: decimal_digits_to_magnitude(digits: digits))
+    Absent =>
+      target_model_type_atom_node(identity: ^target_operator_precedence_level_not_a_decimal_magnitude)
+  }
 }
 
 fn target_operator_realizations_catalog_node(rows: List<Node>) -> Node {
@@ -6534,49 +6540,43 @@ fn target_value_expression_emit_comparison_operand_is_comparison_diagnostic(expr
   }
 }
 
-// True when the enclosing operator is a comparison and either operand is itself a comparison
-// apply — the shape Rust rejects because its comparison operators do not chain. The variant
-// tests are direct matches at the use site, not Bool predicates flattening the sum type.
+// True when the enclosing operator is a comparison and either positional operand is itself a
+// comparison apply — the shape Rust rejects because its comparison operators do not chain. Both
+// comparison variants are named where the decision is made; nothing is collapsed behind a flag.
 fn target_value_expr_operands_form_comparison_chain(
   enclosing_op: CanonicalOperation,
   operands: List<TargetValueExpression>
 ) -> Bool {
-  let enclosing_is_comparison = match enclosing_op {
-    OrderingComparison { compare_field: _, predicate: _ } => true
-    EqualityComparison { eq_field: _, predicate: _ } => true
+  match enclosing_op {
+    OrderingComparison { compare_field: _, predicate: _ } =>
+      target_value_expr_operands_hold_comparison(operands: operands)
+    EqualityComparison { eq_field: _, predicate: _ } =>
+      target_value_expr_operands_hold_comparison(operands: operands)
     _ => false
-  };
-  if enclosing_is_comparison {
-    let left_is_comparison = match list_at_optional(xs: operands, index: 0) {
-      Present { value: left } =>
-        match target_value_expr_primitive_apply_operation_from_wire(wire: left.node) {
-          Accepted { value: op, diagnostics: _ } => match op {
+  }
+}
+
+fn target_value_expr_operands_hold_comparison(operands: List<TargetValueExpression>) -> Bool {
+  target_value_expr_operand_slot_holds_comparison(operands: operands, index: 0)
+  || target_value_expr_operand_slot_holds_comparison(operands: operands, index: 1)
+}
+
+fn target_value_expr_operand_slot_holds_comparison(
+  operands: List<TargetValueExpression>,
+  index: Int
+) -> Bool {
+  match list_at_optional(xs: operands, index: index) {
+    Present { value: operand } =>
+      match target_value_expr_primitive_apply_operation_from_wire(wire: operand.node) {
+        Accepted { value: op, diagnostics: _ } =>
+          match op {
             OrderingComparison { compare_field: _, predicate: _ } => true
             EqualityComparison { eq_field: _, predicate: _ } => true
             _ => false
           }
-          _ => false
-        }
-      Absent => false
-    };
-    if left_is_comparison {
-      true
-    } else {
-      match list_at_optional(xs: operands, index: 1) {
-        Present { value: right } =>
-          match target_value_expr_primitive_apply_operation_from_wire(wire: right.node) {
-            Accepted { value: op, diagnostics: _ } => match op {
-              OrderingComparison { compare_field: _, predicate: _ } => true
-              EqualityComparison { eq_field: _, predicate: _ } => true
-              _ => false
-            }
-            _ => false
-          }
-        Absent => false
+        Rejected { diagnostics: _ } => false
       }
-    }
-  } else {
-    false
+    Absent => false
   }
 }
 
