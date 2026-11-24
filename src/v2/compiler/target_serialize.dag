@@ -771,7 +771,10 @@ fn translate_project_transform_surface_or_callable_in_arrow_scope(
             arrow: arrow,
             body: body,
             canonical_op: canonical_op,
-            target: target
+            target: target,
+            handle_transform: fn(a, b, t) {
+              translate_project_transform_in_arrow_scope(arrow: a, body: b, target: t)
+            }
           )
 
         Rejected { diagnostics: _ } =>
@@ -794,14 +797,20 @@ fn translate_project_transform_surface_or_callable_in_arrow_scope(
         arrow: arrow,
         body: body,
         canonical_op: canonical_operation_op_and(),
-        target: target
+        target: target,
+        handle_transform: fn(a, b, t) {
+          translate_project_transform_in_arrow_scope(arrow: a, body: b, target: t)
+        }
       )
     TypeNode { connective: Disj } =>
       target_project_transform_primitive_apply_in_arrow_scope(
         arrow: arrow,
         body: body,
         canonical_op: canonical_operation_op_or(),
-        target: target
+        target: target,
+        handle_transform: fn(a, b, t) {
+          translate_project_transform_in_arrow_scope(arrow: a, body: b, target: t)
+        }
       )
     TypeNode { connective: Arrow } => outcome_rejected(d: target_value_expr_diagnostic(reason: ^target_value_expr_reason_type_arrow_not_a_value_expression, node: operator_child))
     TypeNode { connective: Instantiation } => outcome_rejected(d: target_value_expr_diagnostic(reason: ^target_value_expr_reason_type_instantiation_not_a_value_expression, node: operator_child))
@@ -823,7 +832,10 @@ fn translate_project_transform_in_arrow_scope(
             arrow: arrow,
             body: body,
             canonical_op: canonical_op,
-            target: target
+            target: target,
+            handle_transform: fn(a, b, t) {
+              translate_project_transform_in_arrow_scope(arrow: a, body: b, target: t)
+            }
           )
 
         Rejected { diagnostics: _ } =>

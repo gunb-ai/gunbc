@@ -15676,19 +15676,20 @@ fn target_project_transform_primitive_apply_in_arrow_scope(
   arrow: Node,
   body: Node,
   canonical_op: CanonicalOperation,
-  target: TargetModel
+  target: TargetModel,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
 ) -> Outcome<TargetValueExpression> {
   match canonical_op {
     CoercionCrossing { homomorphism_rule: _ } =>
       target_project_cast_primitive_apply_in_arrow_scope(arrow: arrow, body: body, canonical_op: canonical_op, target: target)
     AlgebraPrimitive { algebra_field: _ } =>
-      target_project_binary_primitive_apply_in_arrow_scope(arrow: arrow, body: body, canonical_op: canonical_op, target: target)
+      target_project_binary_primitive_apply_in_arrow_scope(arrow: arrow, body: body, canonical_op: canonical_op, target: target, handle_transform: handle_transform)
     AlgebraInverseCompose { binary_field: _, inverse_field: _ } =>
-      target_project_binary_primitive_apply_in_arrow_scope(arrow: arrow, body: body, canonical_op: canonical_op, target: target)
+      target_project_binary_primitive_apply_in_arrow_scope(arrow: arrow, body: body, canonical_op: canonical_op, target: target, handle_transform: handle_transform)
     OrderingComparison { compare_field: _, predicate: _ } =>
-      target_project_binary_primitive_apply_in_arrow_scope(arrow: arrow, body: body, canonical_op: canonical_op, target: target)
+      target_project_binary_primitive_apply_in_arrow_scope(arrow: arrow, body: body, canonical_op: canonical_op, target: target, handle_transform: handle_transform)
     EqualityComparison { eq_field: _, predicate: _ } =>
-      target_project_binary_primitive_apply_in_arrow_scope(arrow: arrow, body: body, canonical_op: canonical_op, target: target)
+      target_project_binary_primitive_apply_in_arrow_scope(arrow: arrow, body: body, canonical_op: canonical_op, target: target, handle_transform: handle_transform)
   }
 }
 
@@ -15706,7 +15707,8 @@ fn target_arrow_scope_positional_operand_value(
   arrow: Node,
   body: Node,
   index: Int,
-  target: TargetModel
+  target: TargetModel,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
 ) -> Outcome<TargetValueExpression> {
   match list_at_optional(xs: positional_child_target_nodes(node: body), index: index) {
     Absent =>
@@ -15720,16 +15722,24 @@ fn target_arrow_scope_positional_operand_value(
       if target_value_expr_is_int_literal_atom(node: operand) {
         target_value_expr_project_int_literal_atom(node: operand)
       } else {
-        bind_outcome(
-          o: target_arrow_scope_positional_operand_binding(arrow: arrow, body: body, index: index, target: target),
-          f: fn(scoped_operand_binding) {
-            outcome_accepted(
-              target_value_expression_binding_ref(
-                binding: scoped_operand_binding
-              )
+        match target_value_expr_local_reference_leaf(node: operand) {
+          Present { value: _ } =>
+            bind_outcome(
+              o: target_arrow_scope_positional_operand_binding(arrow: arrow, body: body, index: index, target: target),
+              f: fn(scoped_operand_binding) {
+                outcome_accepted(
+                  target_value_expression_binding_ref(
+                    binding: scoped_operand_binding
+                  )
+                )
+              }
             )
-          }
-        )
+          // A primitive-use operand (a nested apply: binary, prefix, or comparison) is neither a
+          // numeral atom nor a bare binding leaf. It lowers through the SAME transform callback the
+          // body uses -- the single route into the transform lowering -- so a nested apply reaches the
+          // operand list as a value-expression instead of being coerced to a binding ref and refused.
+          Absent => handle_transform(arrow, operand, target)
+        }
       }
   }
 }
@@ -15738,7 +15748,8 @@ fn target_project_binary_primitive_apply_in_arrow_scope(
   arrow: Node,
   body: Node,
   canonical_op: CanonicalOperation,
-  target: TargetModel
+  target: TargetModel,
+  handle_transform: fn(Node, Node, TargetModel) -> Outcome<TargetValueExpression>
 ) -> Outcome<TargetValueExpression> {
   let positional_count = length(xs: positional_child_target_nodes(node: body))
   if !all_edges_positional(children: body.children) {
@@ -15750,10 +15761,10 @@ fn target_project_binary_primitive_apply_in_arrow_scope(
     )
   } else if positional_count == 3 {
     bind_outcome(
-      o: target_arrow_scope_positional_operand_value(arrow: arrow, body: body, index: 1, target: target),
+      o: target_arrow_scope_positional_operand_value(arrow: arrow, body: body, index: 1, target: target, handle_transform: handle_transform),
       f: fn(left_operand) {
         bind_outcome(
-          o: target_arrow_scope_positional_operand_value(arrow: arrow, body: body, index: 2, target: target),
+          o: target_arrow_scope_positional_operand_value(arrow: arrow, body: body, index: 2, target: target, handle_transform: handle_transform),
           f: fn(right_operand) {
             outcome_accepted(
               target_value_expression_primitive_apply(
@@ -15777,7 +15788,7 @@ fn target_project_binary_primitive_apply_in_arrow_scope(
     // it is not keyed on any one primitive (a prefix use of `not` and a prefix use of any other algebra
     // primitive take this same route).
     bind_outcome(
-      o: target_arrow_scope_positional_operand_value(arrow: arrow, body: body, index: 1, target: target),
+      o: target_arrow_scope_positional_operand_value(arrow: arrow, body: body, index: 1, target: target, handle_transform: handle_transform),
       f: fn(operand) {
         outcome_accepted(
           target_value_expression_primitive_apply(
