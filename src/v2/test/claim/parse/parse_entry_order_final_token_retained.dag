@@ -1,0 +1,35 @@
+module v2.test.claim.parse.parse_entry_order_final_token_retained
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Absent, Present }
+import std.types { Bool }
+import v2.compiler.parse { parse_token_start_order_check }
+import v2.test.claim.parse.parse_g0_tokens_remain_furthest_locus { end_of_input_stream }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE FINAL TOKEN IS KEPT, AND THIS CLAIM CAN ONLY BE ANSWERED BY A TREE THAT KEEPS IT. The entry
+// order scan (v2.compiler.parse parse_token_start_order_check) walks the whole stream and its
+// accumulator's `previous` is the stream's FINAL TOKEN the moment the walk ends. Until
+// roadmap v2-parse-final-token-retained the scan returned only `acc.violation`, so that token was
+// dropped at the scan's return and no caller could ask for it -- which is what made the
+// end-of-input arm of the tokens-remain diagnostic walk the leftover tokens to find it again. This
+// claim asks for it: the scan's `previous` must be Present, holding `fn`, 11..13 of the probe file,
+// the last token of the stream the specimen feeds it.
+//
+// IT STANDS IN ITS OWN MODULE ON PURPOSE. The witness of what the diagnostic EMITS
+// (v2.test.claim.parse.parse_g0_tokens_remain_furthest_locus, whose end-of-input specimen is the
+// characterisation half) must stay resolvable on a tree that does not carry the token, or importing
+// this name would fail that module's closure and every claim in it would report the import error
+// rather than its own verdict. Here the missing name IS the verdict: on a tree before the carry the
+// closure cannot resolve `parse_token_start_order_check`, and the claim fails for the reason the row
+// states -- the value did not exist to be read.
+//
+// Fail-closed: `Absent` is false. A scan that finished the stream without holding a token, or one
+// that held some other token, does not pass.
+test fn entry_order_scan_retains_the_streams_final_token() -> Bool {
+  match parse_token_start_order_check(tokens: end_of_input_stream().all).previous {
+    Present { value: token } => token.class == ^dag_token_kw_fn && token.start == 11 && token.end == 13
+    Absent => false
+  }
+}

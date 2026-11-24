@@ -7,13 +7,17 @@ import v2.compiler.tokenize { tokenize_prepared }
 import v2.std.diagnostic {
   Accepted,
   ByteRange,
+  Correction,
   DeclarationLocus,
   InvariantPortLocus,
+  Locus,
   NodeLocus,
   Outcome,
   Rejected,
   SourcePortLocus,
   Textual,
+  Unavailable,
+  UserInputBoundary,
   WholeFile,
   diagnostics_fatal
 }
@@ -41,6 +45,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data treatment_source: String = "module m.t\ntype T {\n  x Int\n}\n"
 
 data control_source: String = "module m.t\nfn ok() -> Int { 1 }\n]\n"
+
+data end_of_input_source: String = "module m.t\nfn"
 
 // `type T` begins at 11; the field `x` demands a `:` and meets `Int` at 24. A type field rather than
 // an unadmitted expression token: a failed expression backtracks through every expression
@@ -78,6 +84,50 @@ fn control_stream() -> TokenStream {
     Token { class: ^dag_token_rbrace, lexeme: "}", file: ^furthest_locus_probe, start: 30, end: 31 },
     Token { class: ^dag_token_rbracket, lexeme: "]", file: ^furthest_locus_probe, start: 32, end: 33 }
   ])
+}
+
+// THE SPECIMEN THE END-OF-INPUT ARM NEVER HAD. `fn` at 11 opens an item whose production reads the
+// keyword and then needs a name where the stream has ENDED, so the furthest rejected alternative
+// stops at end of input, and the module's `repeat` backtracks to zero further items and leaves `fn`
+// unread. That is the only shape that reaches the diagnostic's end-of-input arm, and every specimen
+// above leaves a furthest record that NAMES a token, so the arm had no witness at all before
+// roadmap v2-parse-final-token-retained asked for one.
+fn end_of_input_stream() -> TokenStream {
+  token_stream_new(all: [
+    Token { class: ^dag_token_kw_module, lexeme: "module", file: ^furthest_locus_probe, start: 0, end: 6 },
+    Token { class: ^dag_token_ident, lexeme: "m", file: ^furthest_locus_probe, start: 7, end: 8 },
+    Token { class: ^dag_token_dot, lexeme: ".", file: ^furthest_locus_probe, start: 8, end: 9 },
+    Token { class: ^dag_token_ident, lexeme: "t", file: ^furthest_locus_probe, start: 9, end: 10 },
+    Token { class: ^dag_token_kw_fn, lexeme: "fn", file: ^furthest_locus_probe, start: 11, end: 13 }
+  ])
+}
+
+// The extent END of the fatal tokens_remain refusal; -1 is no such refusal on a source extent.
+fn tokens_remain_end(parsed: Outcome<Node>) -> Int {
+  match parsed {
+    Rejected { diagnostics: d } =>
+      let fatal = diagnostics_fatal(d: d)
+      if fatal.reason == ^parse_g0_tokens_remain {
+        match fatal.at {
+          SourcePortLocus { anchor: _, file: _, extent: ByteRange { start: _, end: e } } => e
+          SourcePortLocus { anchor: _, file: _, extent: WholeFile } => -1
+          Textual { file: _, extent: _ } => -1
+          NodeLocus { anchor: _ } => -1
+          InvariantPortLocus { anchor: _, invariant: _ } => -1
+          DeclarationLocus { declaration: _ } => -1
+        }
+      } else {
+        -1
+      }
+    Accepted { value: _, diagnostics: _ } => -1
+  }
+}
+
+fn tokens_remain_has_refusal(parsed: Outcome<Node>) -> Bool {
+  match parsed {
+    Rejected { diagnostics: d } => diagnostics_fatal(d: d).reason == ^parse_g0_tokens_remain
+    Accepted { value: _, diagnostics: _ } => false
+  }
 }
 
 // The fatal diagnostic is the last one (v2.std.diagnostic diagnostics_fatal); grammar advisories ride
@@ -119,6 +169,64 @@ test fn tokens_remain_mid_item_locus_holds() -> Bool {
 
 test fn tokens_remain_item_level_failure_stays_at_the_item_start() -> Bool {
   tokens_remain_start(parsed: supplied_stream_parse(tokens: control_stream())) == 32
+}
+
+test fn end_of_input_stream_is_what_tokenize_emits() -> Bool {
+  supplied_stream_matches_tokenize(text: end_of_input_source, file: ^furthest_locus_probe, supplied: end_of_input_stream())
+}
+
+// THE END-OF-INPUT ARM, WHICH HAD NO WITNESS. The furthest rejected alternative stopped at the END of
+// the stream, so the refusal is located ZERO-WIDTH at the end of the last token the production left
+// unread: `fn` spans 11..13, so the refusal is the empty range 13..13, under the generic
+// tokens-remain reason (no expectation was carried to end of input). The first leftover token starts
+// at 11, so 13 is not a value the generic location could produce by accident, and a parse that
+// accepted, or refused for another reason, gives -1 here rather than a pass.
+//
+// THIS IS THE CLAIM THAT KEEPS THE CARRY HONEST. The arm used to recover that last token by counting
+// the leftover tokens and indexing the one before the end; it now reads the final token the entry
+// order scan already held (v2.compiler.parse ProductionRunParsed.final_token). The refusal is the
+// same range either way, and this claim is run on both trees to show it.
+test fn tokens_remain_end_of_input_locus_is_zero_width_at_the_last_token_end() -> Bool {
+  let parsed = supplied_stream_parse(tokens: end_of_input_stream())
+  tokens_remain_has_refusal(parsed: parsed)
+    && tokens_remain_start(parsed: parsed) == 13
+    && tokens_remain_end(parsed: parsed) == 13
+}
+
+// THE WHOLE REFUSAL, NOT ONLY ITS OFFSETS: reason, locus and correction each pinned separately, with
+// the equality v2.std.diagnostic itself defines standing behind the parts (extent_eq is what the
+// carrier's own loci are compared with). This is the leg pasted side by side for main and for the
+// carry: the diagnostic the end-of-input arm emits is this value on both trees, so a carry that
+// quietly reworded the reason, moved the locus, or dropped the correction fails here even if an
+// offset still matched. Every expected value is written here as a literal, so the carrier cannot be
+// its own authority on what it should emit.
+test fn tokens_remain_end_of_input_refusal_is_the_same_diagnostic_as_before_the_carry() -> Bool {
+  match supplied_stream_parse(tokens: end_of_input_stream()) {
+    Rejected { diagnostics: d } =>
+      let fatal = diagnostics_fatal(d: d)
+      fatal.reason == ^parse_g0_tokens_remain
+        && correction_is_the_user_input_boundary(c: fatal.correction)
+        && locus_is_zero_width_at_the_last_token_end(at: fatal.at)
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+// The refusal says the boundary is the user's input, not a fix the compiler holds. Any other
+// correction arm -- a suggestion, or a different unavailability -- fails this.
+fn correction_is_the_user_input_boundary(c: Correction) -> Bool {
+  match c {
+    Unavailable { reason: UserInputBoundary } => true
+    _ => false
+  }
+}
+
+// A zero-width source-port locus on the probe file at the END of `fn`, which spans 11..13. The
+// generic location (the first leftover token, at 11) and an invariant-port fallback both fail this.
+fn locus_is_zero_width_at_the_last_token_end(at: Locus) -> Bool {
+  match at {
+    SourcePortLocus { anchor: _, file: f, extent: ByteRange { start: 13, end: 13 } } => f == ^furthest_locus_probe
+    _ => false
+  }
 }
 
 fn rbracket_start(src: String) -> Int {
