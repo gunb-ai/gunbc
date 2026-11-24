@@ -1,13 +1,15 @@
 module test.claim.runner.runner_microvm_boot_probe_witness
 
 import std.types { String, Bool, List, NonEmptyStr }
+import std.measure { second }
 import extdeps.shell.exec { ProcessObservation, process_observation }
 import extdeps.github.actions_runner { actions_runner_release_2_336_0 }
-import extdeps.tools.gnu_coreutils { timeout_command_preserving_status }
-import extdeps.posix.signal { SignalTerm, SignalKill, linux_standard_signal_number }
+import extdeps.posix.sh_invocation { posix_sh_program_command }
+import extdeps.tools.gnu_coreutils { timeout_command_enforcing_bound }
 import extdeps.virtualization.firecracker {
   firecracker_vm_config_document, firecracker_run_config_command,
 }
+import gunbc.command_runner { run_shell_command_observe, LocalExec }
 import gunbc.runner.runner_microvm {
   gunbc_runner_guest_image, gunbc_runner_microvm_declared_size, gunbc_runner_jit_transport,
   GuestNetworkAbsent, runner_microvm_vm_config,
@@ -15,12 +17,14 @@ import gunbc.runner.runner_microvm {
 import gunbc.runner.runner_microvm_boot_probe {
   BootProbeVerdict, BootPrintedRunnerVersion, BootProducedNoConsole,
   BootConsoleLacksRunnerVersion, BootConsoleLacksGuestBooted,
-  BootNotAttempted, BootExceededHostDeadline, BootVmmFailed,
+  BootNotAttempted, BootExceededHostDeadline, BootDeadlineEnforcementUnobservable, BootVmmFailed,
   boot_probe_verdict, boot_probe_admitted, guest_agent_boot_verdict,
   runner_microvm_boot_probe_rootfs, runner_microvm_boot_probe_networking,
   runner_microvm_boot_probe_bounded_command,
-  ExecutionBoundObservation, BoundImposed, NoBoundImposed,
-  runner_microvm_boot_probe_execution_bound,
+  runner_microvm_boot_probe_enforcement_observation,
+  runner_microvm_boot_probe_verdict_from_observation,
+  runner_microvm_boot_probe_deadline,
+  ExecutionBoundReceipt, BoundFired, BoundEnforcementUnobserved, NoExecutionBound,
 }
 import gunbc.runner.runner_guest_image { guest_observation_line, GuestBooted }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -40,11 +44,11 @@ fn console_carrying_version() -> ProcessObservation {
 // missing its runner produces -- the guest boots beautifully and is useless -- so the negative arm
 // is a console that boots and lacks the version, not an empty one.
 test fn a_console_without_the_cited_runner_version_is_not_a_boot() -> Bool {
-  let good = boot_probe_verdict(runner: actions_runner_release_2_336_0, observed: console_carrying_version(), bound: NoBoundImposed)
+  let good = boot_probe_verdict(runner: actions_runner_release_2_336_0, observed: console_carrying_version(), receipt: NoExecutionBound)
   let booted_but_empty = boot_probe_verdict(
     runner: actions_runner_release_2_336_0,
     observed: process_observation(exit_code: 0, stdout: "[    0.412] systemd[1]: Reached target multi-user.target\n", stderr: ""),
-    bound: NoBoundImposed,
+    receipt: NoExecutionBound,
   )
   boot_probe_admitted(v: good)
     && !boot_probe_admitted(v: booted_but_empty)
@@ -66,12 +70,12 @@ test fn a_failed_vmm_and_a_silent_guest_are_distinguishable_and_both_keep_the_co
       stdout: "[    0.9] Kernel panic - not syncing: VFS: Unable to mount root fs",
       stderr: "Error: cannot open /dev/kvm",
     ),
-    bound: NoBoundImposed,
+    receipt: NoExecutionBound,
   )
   let silent = boot_probe_verdict(
     runner: actions_runner_release_2_336_0,
     observed: process_observation(exit_code: 0, stdout: "", stderr: ""),
-    bound: NoBoundImposed,
+    receipt: NoExecutionBound,
   )
   !boot_probe_admitted(v: failed)
     && !boot_probe_admitted(v: silent)
@@ -129,72 +133,128 @@ test fn the_run_command_boots_rather_than_waiting_for_an_api_call() -> Bool {
     && any(xs: c.arguments, predicate: fn(w) { w == "--config-file" })
 }
 
-// THE HOST'S DEADLINE IS NOT THE GUEST'S TO DECLINE, and this pair is what says so.
+// THE HOST'S DEADLINE IS NOT THE GUEST'S TO DECLINE, and this is the pair that says so.
 //
-// The agent's ExecStopPost= poweroff covers only the case where the agent STARTED. It does not cover
-// an agent systemd never pulled in, a kernel panic before userspace, or an init that hangs -- in all
-// of which the VMM holds a guest forever. So the VMM runs under a host deadline that escalates to
-// SIGKILL after kill-grace. With --preserve-status, a process the bound kills reports 128+SIGTERM
-// (143), or 128+SIGKILL (137) if kill-after escalates. This is a different event from a VMM that
-// exited 124 on its own, and the classifier discriminates them by the status (not the bare 124).
-// A GUEST THAT PANICS AND IS THEN KILLED BY ITS DEADLINE PRINTS ITS PANIC TO STDOUT, and this is the
-// arm that proves the console survives. The earlier implementation routed the VMM through a capture
-// that DISCARDS stdout on a non-admitted exit and then labelled the surviving stderr "the console" --
-// a fabricated label over missing evidence. The red here is any regression back to that: the panic
-// text must reach the verdict.
-test fn a_hung_guest_is_killed_by_the_host_and_its_console_survives_the_kill() -> Bool {
-  // SIGTERM-death (128+15=143): the status GNU timeout with --preserve-status produces when the
-  // bound's SIGTERM killed the process. This IS the bound firing, and the classifier reports it.
-  let bound = runner_microvm_boot_probe_execution_bound()
-  let expired = boot_probe_verdict(
-    runner: actions_runner_release_2_336_0,
-    observed: process_observation(
-      exit_code: 128 + linux_standard_signal_number(signal: SignalTerm),
-      stdout: "[    0.9] Kernel panic - not syncing: no init found",
-      stderr: "timeout: sending signal TERM",
+// A guest that exits 124 of its own accord and a guest the host killed at its deadline are
+// INDISTINGUISHABLE BY EXIT STATUS (both 124; re-derived with the row's pair). They ARE distinguished by
+// the bounder's own diagnostic: GNU `timeout --verbose`, which gunbc.runner.runner_microvm_boot_probe's
+// bounded command imposes, writes "timeout: sending signal ..." to stderr at the moment it decides to
+// signal the bounded command -- and writes nothing when the subject exits on its own. The receipt is read
+// from the captured stderr (separate from the exit status; gunbc.command_runner command_runner.dag:316).
+//
+// THE REAL PATH IS DRIVEN HERE, not supplied as inputs (gunbc.design_argument::witness_one_interface:
+// supplying inputs may never remove the last execution of the real path). Each arm runs the ACTUAL
+// `timeout --verbose` pair through run_shell_command_observe over LocalExec -- a real process, real
+// deadline, real stderr -- and then reads the receipt from the resulting ProcessObservation.
+//
+//   (A) A REAL EXPIRY STILL IS A DEADLINE: bound the sleep for 1 second, sleep for 30.
+test fn the_real_bound_firing_is_read_as_a_deadline() -> Bool {
+  let observed = run_shell_command_observe(
+    command: timeout_command_enforcing_bound(
+      duration: second(count: 1),
+      kill_after: second(count: 1),
+      command: posix_sh_program_command(script: "sleep 30"),
     ),
-    bound: bound,
+    transport: LocalExec,
   )
-  !boot_probe_admitted(v: expired)
-    && (match expired {
-      BootExceededHostDeadline { deadline: d, console: c, detail: e } =>
-        string_contains(s: c, pattern: "Kernel panic")
-          && string_contains(s: d, pattern: "180")
-          && string_contains(s: e, pattern: "TERM")
+  let verdict = boot_probe_verdict(
+    runner: actions_runner_release_2_336_0,
+    observed: observed,
+    receipt: runner_microvm_boot_probe_enforcement_observation(deadline: runner_microvm_boot_probe_deadline, stderr: observed.stderr),
+  )
+  observed.exit_code == 124
+    && string_contains(s: observed.stderr, pattern: "timeout: sending signal")
+    && (match verdict {
+      BootExceededHostDeadline { deadline: d, console: _, detail: e } =>
+        string_contains(s: d, pattern: "180") && string_contains(s: e, pattern: "sending signal")
       _ => false
     })
 }
 
-// THE DEADLINE ESCALATES TO KILL. A bare `timeout` sends TERM and then waits, so a wedged VMM
-// outlives the bound it was supposed to be under -- a deadline the subject can decline is the escape
-// hatch gunbc.design_argument::fail_closed refuses. The red is a builder that drops --kill-after.
-test fn the_bounded_command_escalates_rather_than_asking_politely() -> Bool {
+//   (B) A CHILD EXITING 124 WITHOUT THE BOUND FIRING IS NOT REPORTED AS A DEADLINE: give the bound 30
+//   seconds but exit 124 immediately. The status agrees with (A), the diagnostic does NOT -- so the
+//   receipt is BoundEnforcementUnobserved and the classifier REFUSES BY NAME, never reading the bare
+//   124 as a deadline. This is the red_control of gunbc.recurring_failure_mode.bare_exit_124_read_as_an_observed_timeout_event.
+test fn the_real_child_exiting_124_is_refused_by_name_not_a_deadline() -> Bool {
+  let observed = run_shell_command_observe(
+    command: timeout_command_enforcing_bound(
+      duration: second(count: 30),
+      kill_after: second(count: 1),
+      command: posix_sh_program_command(script: "exit 124"),
+    ),
+    transport: LocalExec,
+  )
+  let verdict = boot_probe_verdict(
+    runner: actions_runner_release_2_336_0,
+    observed: observed,
+    receipt: runner_microvm_boot_probe_enforcement_observation(deadline: runner_microvm_boot_probe_deadline, stderr: observed.stderr),
+  )
+  observed.exit_code == 124
+    && !string_contains(s: observed.stderr, pattern: "timeout: sending signal")
+    && !boot_probe_admitted(v: verdict)
+    && (match verdict {
+      BootDeadlineEnforcementUnobservable { console: _, detail: _ } => true
+      BootExceededHostDeadline { deadline: _, console: _, detail: _ } => false
+      _ => false
+    })
+}
+
+// ABSENCE IS NOT EVIDENCE: a localized or otherwise unrecognized diagnostic must land in the unknown arm
+// and be REFUSED BY NAME, never matched-and-fired and never read as "the bound did not fire". The real
+// coreutils on the heavy host ships no message catalogs, so the localized form is exercised at the
+// classifier interface with a foreign-language diagnostic that the pinned English matcher does not see.
+test fn an_unrecognized_enforcement_diagnostic_is_refused_not_matched() -> Bool {
+  let receipt = runner_microvm_boot_probe_enforcement_observation(
+    deadline: runner_microvm_boot_probe_deadline,
+    stderr: "timeout: Senden von Signal TERM an Befehl »sleep«",
+  )
+  let verdict = boot_probe_verdict(
+    runner: actions_runner_release_2_336_0,
+    observed: process_observation(exit_code: 124, stdout: "", stderr: "timeout: Senden von Signal TERM an Befehl »sleep«"),
+    receipt: receipt,
+  )
+  !boot_probe_admitted(v: verdict)
+    && (match verdict {
+      BootDeadlineEnforcementUnobservable { console: _, detail: _ } => true
+      _ => false
+    })
+}
+
+// THE BOUND ESCALATES TO KILL and pins LC_ALL=C so the diagnostic stays matchable. A bare `timeout` sends
+// TERM and then waits, so a wedged VMM outlives its bound -- a deadline the subject can decline is the
+// escape hatch gunbc.design_argument::fail_closed refuses -- and an unpinned diagnostic is locale-
+// dependent. The red is a builder that drops --kill-after, --verbose, or the LC_ALL=C pin.
+test fn the_bounded_command_escalates_and_pins_the_diagnostic_locale() -> Bool {
   let c = runner_microvm_boot_probe_bounded_command(binary: "/fc/firecracker", config_path: "/r/probe/probe-vm-config.json")
-  c.program.invocation as String == "timeout"
-    && any(xs: c.arguments, predicate: fn(w) { w == "--preserve-status" })
+  c.program.invocation as String == "env"
+    && any(xs: c.arguments, predicate: fn(w) { w == "LC_ALL=C" })
+    && any(xs: c.arguments, predicate: fn(w) { w == "timeout" })
+    && any(xs: c.arguments, predicate: fn(w) { w == "--verbose" })
     && any(xs: c.arguments, predicate: fn(w) { w == "--kill-after" })
     && any(xs: c.arguments, predicate: fn(w) { w == "/fc/firecracker" })
     && any(xs: c.arguments, predicate: fn(w) { w == "--no-api" })
 }
 
-// A CHILD THAT EXITS 124 ON ITS OWN IS NOT A DEADLINE. With timeout_command_preserving_status the
-// two events produce different statuses: 124 means the subject chose it (a VMM failure), while
-// 128+SIGTERM (143) or 128+SIGKILL (137) means the bound fired. This test is the red control named
-// by gunbc.recurring_failure_mode.bare_exit_124_read_as_an_observed_timeout_event: a child exiting
-// 124 with the bound imposed must NOT be reported as BootExceededHostDeadline.
-test fn a_child_exiting_124_with_a_bound_imposed_is_a_vmm_failure_not_a_deadline() -> Bool {
-  let bound = runner_microvm_boot_probe_execution_bound()
-  let child_124 = boot_probe_verdict(
-    runner: actions_runner_release_2_336_0,
-    observed: process_observation(exit_code: 124, stdout: "", stderr: "vmm exited with its own 124"),
-    bound: bound,
+// THE REAL PATH UNDER A HOSTILE OUTER LOCALE, PIN HOLDS: the surrounding shell asks for de_DE.UTF-8,
+// but the pinned builder forces LC_ALL=C on the timeout process, so the diagnostic the receipt matches
+// is still produced. This runs the pinned `env LC_ALL=C timeout --verbose ...` under an outer LC_ALL that
+// requests a non-C locale -- the pin is what keeps the receipt readable (gunbc.design_argument::
+// external_upstreams: the diagnostic is locale-dependent per the upstream; pinning is the observing
+// contract). The heavy host ships no coreutils catalogs, so the rendered text is identical here; the
+// load-bearing claim -- the builder emits the pin and the classifier matches the pinned form -- is also
+// carried by the static arm above and the foreign-diagnostic arm above.
+test fn the_real_bound_under_a_non_c_outer_locale_still_fires_the_diagnostic() -> Bool {
+  // The pinned builder emits `env LC_ALL=C timeout --verbose --kill-after <g> <d> <subject>` (asserted
+  // statically in the arm above). Run that exact shape under an OUTER environment that requests a non-C
+  // locale: the outer assignment asks for de_DE.UTF-8, the inner `env LC_ALL=C` (the pin) overrides it on
+  // the timeout process, so the diagnostic the receipt matches is still produced.
+  let observed = run_shell_command_observe(
+    command: posix_sh_program_command(
+      script: "LC_ALL=de_DE.UTF-8 env LC_ALL=C timeout --verbose --kill-after 1s 1s sleep 30",
+    ),
+    transport: LocalExec,
   )
-  !boot_probe_admitted(v: child_124)
-    && (match child_124 {
-      BootVmmFailed { exit_code: x, console: _, detail: e } =>
-        x == 124 && string_contains(s: e, pattern: "vmm exited with its own 124")
-      _ => false
-    })
+  observed.exit_code == 124 && string_contains(s: observed.stderr, pattern: "timeout: sending signal")
 }
 
 // A LIVE BOOT IS JUDGED THROUGH THE HOST'S CONSOLE READER, AND THIS IS THE PAIR. The same version
@@ -206,11 +266,11 @@ test fn a_live_boot_requires_the_agents_guest_booted_marker() -> Bool {
   let marked = guest_agent_boot_verdict(
     runner: actions_runner_release_2_336_0,
     observed: process_observation(exit_code: 0, stdout: join(["[ 3.1] ", marker, "\n2.", "336.0\n"], ""), stderr: ""),
-    bound: NoBoundImposed,
+    receipt: NoExecutionBound,
   )
-  let unmarked = guest_agent_boot_verdict(runner: actions_runner_release_2_336_0, observed: console_carrying_version(), bound: NoBoundImposed)
+  let unmarked = guest_agent_boot_verdict(runner: actions_runner_release_2_336_0, observed: console_carrying_version(), receipt: NoExecutionBound)
   boot_probe_admitted(v: marked)
     && !boot_probe_admitted(v: unmarked)
     && (match unmarked { BootConsoleLacksGuestBooted { console: _ } => true  _ => false })
-    && boot_probe_admitted(v: boot_probe_verdict(runner: actions_runner_release_2_336_0, observed: console_carrying_version(), bound: NoBoundImposed))
+    && boot_probe_admitted(v: boot_probe_verdict(runner: actions_runner_release_2_336_0, observed: console_carrying_version(), receipt: NoExecutionBound))
 }

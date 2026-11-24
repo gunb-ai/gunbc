@@ -2,7 +2,7 @@ module gunbc.runner.runner_microvm_boot_probe
 
 import std.types { String, NonEmptyStr, Bool, List, FilePath, Int }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import std.algebra { trim }
+import std.algebra { trim, string_contains }
 import std.measure { Second, second, second_count }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -13,8 +13,7 @@ import extdeps.exec.command { ArgvCommand }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.mkdir { mkdir_parents_command }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.tools.gnu_coreutils { cp_command, rm_force_command, timeout_command_preserving_status }
-import extdeps.posix.signal { LinuxStandardSignal, SignalTerm, SignalKill, linux_standard_signal_number }
+import extdeps.tools.gnu_coreutils { cp_command, rm_force_command, timeout_command_enforcing_bound, coreutils_timeout_enforcement_diagnostic }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.virtualization.firecracker {
   FirecrackerVmConfig, firecracker_release_aarch64,
@@ -151,65 +150,72 @@ data runner_microvm_boot_probe_deadline: Second = second(count: 180)
 data runner_microvm_boot_probe_kill_grace: Second = second(count: 10)
 
 fn runner_microvm_boot_probe_bounded_command(binary: String, config_path: String) -> ArgvCommand {
-  timeout_command_preserving_status(
+  timeout_command_enforcing_bound(
     duration: runner_microvm_boot_probe_deadline,
     kill_after: runner_microvm_boot_probe_kill_grace,
     command: firecracker_run_config_command(binary: binary, config_path: config_path),
   )
 }
 
-// THE TYPED EXECUTION-BOUND OBSERVATION, emitted where the bound is imposed and carried to the
-// classifier. The failure-mode row gunbc.recurring_failure_mode.bare_exit_124_read_as_an_observed_timeout_event
-// requires this capability: exit 124 cannot discriminate a real deadline expiry from a subject that
-// exited 124 on its own. With timeout_command_preserving_status (the builder this module uses), the
-// two events produce DIFFERENT statuses: the child's own 124 passes through unchanged, while a bound
-// expiry is reported as 128+SIGTERM (143) or 128+SIGKILL (137) if kill-after escalates.
+// THE RECEIPT, IN THE OBSERVING LAYER, for what the bound this module imposes actually did in one
+// bounded invocation. The upstream status contract (124, and the --verbose diagnostic string) is an
+// extdeps-grade fact in extdeps.tools.gnu_coreutils; WHAT THE BOUND DID is a receipt and lives here,
+// where the bound is imposed and its stderr is read.
 //
-// BoundImposed records what bound was placed on this invocation: the deadline and the kill-grace,
-// and implicitly the signals GNU timeout uses to enforce it (SIGTERM, then SIGKILL after grace).
-// A classifier can then check whether the exit code matches the bound's expected enforcement exit,
-// rather than guessing from a bare 124.
-//
-// NoBoundImposed is for call sites that read a captured console file with no bound at all
-// (gunbc.runner.runner_observed_version_check's check_captured_console): there, a 124 can only be
-// the subject's own, and no deadline event can be observed or reported.
-type ExecutionBoundObservation
-  = BoundImposed { deadline: Second, kill_grace: Second }
-  | NoBoundImposed
+// The two events the failure-mode row gunbc.recurring_failure_mode.bare_exit_124_read_as_an_observed_timeout_event
+// refuses to conflate -- a guest that exits 124 of its own accord, and a guest that was killed by the
+// host deadline -- produce the SAME exit status and cannot be told apart by it. They are told apart by
+// whether the bounder emitted its own enforcement diagnostic on stderr at the moment it decided to
+// signal the guest. So:
+//   BoundFired                   -- the bounder's --verbose enforcement diagnostic is present in stderr: the
+//                                 bound did the work, this IS a deadline event.
+//   BoundEnforcementUnobserved   -- a bound WAS imposed on this invocation but its stderr carried no
+//                                 readable enforcement diagnostic. ABSENCE IS NOT EVIDENCE that the bound
+//                                 did not fire: the same absence results from an unreadable stderr, a
+//                                 different coreutils build, or a message the pinned locale did not render.
+//                                 So it is recorded as UNKNOWN and the classifier REFUSES BY NAME
+//                                 (BootDeadlineEnforcementUnobservable) -- it never falls back to the bare
+//                                 exit status and never silently classifies the run as a plain VMM failure.
+//   NoExecutionBound             -- no execution bound was placed at all (the captured-console file read in
+//                                 gunbc.runner_observed_version_check): the observation is not a bound
+//                                 observation, and the run is judged on its console content alone.
+type ExecutionBoundReceipt
+  = BoundFired { deadline: Second }
+  | BoundEnforcementUnobserved
+  | NoExecutionBound
 
-fn runner_microvm_boot_probe_execution_bound() -> ExecutionBoundObservation {
-  BoundImposed {
+// READ THE RECEIPT FROM THE CAPTURED STDERR of the invocation this module bounded. stderr is captured
+// separately from the exit status (gunbc.command_runner run_shell_command_observe -> extdeps.shell.exec
+// observe_command, which keeps the two streams distinct; command_runner.dag line 316). The diagnostic is
+// matched against the upstream prefix cited in extdeps.tools.gnu_coreutils
+// (coreutils_timeout_enforcement_diagnostic); its presence is the ONLY thing that yields BoundFired.
+// Anything else -- including a non-empty stderr that does not carry the prefix, e.g. a localized
+// message the LC_ALL=C pin failed to produce, or an unreadable stderr -- yields BoundEnforcementUnobserved,
+// so an unrecognized diagnostic form REFUSES by name rather than silently matching nothing.
+fn runner_microvm_boot_probe_enforcement_observation(
+  deadline: Second,
+  stderr: String,
+) -> ExecutionBoundReceipt {
+  if string_contains(s: stderr, pattern: coreutils_timeout_enforcement_diagnostic) {
+    BoundFired { deadline: deadline }
+  } else {
+    BoundEnforcementUnobserved
+  }
+}
+
+// THE OBSERVING ENTRY POINT for one bounded boot-probe invocation: it reads the receipt from the SAME
+// ProcessObservation the bound produced (so the receipt cannot be supplied independently of the run it
+// describes -- gunbc.design_argument::witness_one_interface) and hands both to the classifier. This is
+// the single function the real-path witness drives; it exercises observe -> receipt -> verdict end to end.
+fn runner_microvm_boot_probe_verdict_from_observation(
+  runner: ActionsRunnerRelease,
+  observed: ProcessObservation,
+) -> BootProbeVerdict {
+  let receipt = runner_microvm_boot_probe_enforcement_observation(
     deadline: runner_microvm_boot_probe_deadline,
-    kill_grace: runner_microvm_boot_probe_kill_grace,
-  }
-}
-
-// THE POSIX SHELL CONVENTION for reporting a process killed by signal N: the shell reports exit code
-// 128+N. This is the mechanism by which GNU timeout with --preserve-status produces a different status
-// for a signal-death vs. the child's own exit code. It is an upstream convention (POSIX sh), not a
-// gunbc fact (gunbc.design_argument::external_upstreams).
-fn posix_signal_death_exit(signal: LinuxStandardSignal) -> Int {
-  128 + linux_standard_signal_number(signal: signal)
-}
-
-// Whether the exit status reports a process killed by one of the two signals GNU timeout uses for
-// enforcement (SIGTERM for the deadline itself; SIGKILL if kill-after escalates). When the bound was
-// imposed with timeout_command_preserving_status, these two values (143 and 137) are the only statuses
-// that say the bound FIRED. Exit 124 is now the subject's own choice and is never a bound event.
-fn execution_bound_deadline_if_fired(
-  bound: ExecutionBoundObservation,
-  exit_code: Int,
-) -> Second? {
-  match bound {
-    BoundImposed { deadline: d, kill_grace: _ } =>
-      if exit_code == posix_signal_death_exit(signal: SignalTerm)
-        || exit_code == posix_signal_death_exit(signal: SignalKill) {
-        Present { value: d }
-      } else {
-        none
-      }
-    NoBoundImposed => none
-  }
+    stderr: observed.stderr,
+  )
+  guest_agent_boot_verdict(runner: runner, observed: observed, receipt: receipt)
 }
 
 // THE ACCEPTANCE IS A READBACK OF THE CITED RELEASE, NOT A GREETING. The console must carry the
@@ -228,28 +234,39 @@ type BootProbeVerdict
   | BootConsoleLacksGuestBooted { console: String }
   | BootNotAttempted { cause: String }
   | BootExceededHostDeadline { deadline: String, console: String, detail: String }
+  | BootDeadlineEnforcementUnobservable { console: String, detail: String }
   | BootVmmFailed { exit_code: Int, console: String, detail: String }
 
-// THE CLASSIFIER CONSUMES THE TYPED OBSERVATION, not the bare exit status. The deadline arm is now
-// keyed on execution_bound_deadline_if_fired -- which checks whether the exit code matches SIGTERM-death
-// or SIGKILL-death (the statuses GNU timeout with --preserve-status produces when the bound fires) and
-// only reports BootExceededHostDeadline when the bound was imposed AND the status confirms enforcement.
-// A child that exited 124 itself hits the non-zero exit arm and gets BootVmmFailed. When the bound was
-// not imposed (NoBoundImposed), no deadline event can be observed at all and the classifier refuses it
-// (gunbc.design_argument::fail_closed).
+// THE CLASSIFIER CONSUMES THE RECEIPT, not the bare exit status, and NEVER keys a deadline claim on
+// 124 (the row's red control forbids a 124 arm outright). The bound's enforcement is read from
+// runner_microvm_boot_probe_enforcement_observation, which matched the bounder's own --verbose diagnostic:
+//   BoundFired                 -> BootExceededHostDeadline (the bounder observed itself signalling the
+//                                 guest at the deadline; the duration rendered is the bound that was
+//                                 actually imposed, not an invented wall-clock figure).
+//   BoundEnforcementUnobserved -> BootDeadlineEnforcementUnobservable: a bound was placed but its
+//                                 enforcement cannot be read, so the classifier REFUSES BY NAME rather
+//                                 than inferring "the bound did not fire" from the missing diagnostic
+//                                 (gunbc.design_argument::fail_closed, gunbc.design_argument::epistemic_humility).
+//                                 It never falls back to the bare exit status and never substitutes a
+//                                 wall-clock reading.
+//   NoExecutionBound           -> no bound was placed (the captured-console file read): judged on console
+//                                 content alone.
 fn boot_probe_verdict(
   runner: ActionsRunnerRelease,
   observed: ProcessObservation,
-  bound: ExecutionBoundObservation,
+  receipt: ExecutionBoundReceipt,
 ) -> BootProbeVerdict {
-  let deadline_observed = execution_bound_deadline_if_fired(bound: bound, exit_code: observed.exit_code)
-  match deadline_observed {
-    Present { value: d } => BootExceededHostDeadline {
+  match receipt {
+    BoundFired { deadline: d } => BootExceededHostDeadline {
       deadline: concat(to_string(second_count(s: d)), " seconds"),
       console: observed.stdout,
       detail: observed.stderr,
     }
-    Absent =>
+    BoundEnforcementUnobserved => BootDeadlineEnforcementUnobservable {
+      console: observed.stdout,
+      detail: observed.stderr,
+    }
+    NoExecutionBound =>
       if observed.exit_code != 0 {
         BootVmmFailed { exit_code: observed.exit_code, console: observed.stdout, detail: observed.stderr }
       } else if observed.stdout == "" {
@@ -273,9 +290,9 @@ fn boot_probe_verdict(
 fn guest_agent_boot_verdict(
   runner: ActionsRunnerRelease,
   observed: ProcessObservation,
-  bound: ExecutionBoundObservation,
+  receipt: ExecutionBoundReceipt,
 ) -> BootProbeVerdict {
-  let base = boot_probe_verdict(runner: runner, observed: observed, bound: bound)
+  let base = boot_probe_verdict(runner: runner, observed: observed, receipt: receipt)
   match base {
     BootPrintedRunnerVersion { version: _ } =>
       if guest_console_carries(console: observed.stdout, kind: GuestEmitted { event: GuestBooted }) {
@@ -288,6 +305,7 @@ fn guest_agent_boot_verdict(
     BootConsoleLacksGuestBooted { console: _ } => base
     BootNotAttempted { cause: _ } => base
     BootExceededHostDeadline { deadline: _, console: _, detail: _ } => base
+    BootDeadlineEnforcementUnobservable { console: _, detail: _ } => base
     BootVmmFailed { exit_code: _, console: _, detail: _ } => base
   }
 }
@@ -305,6 +323,12 @@ fn boot_probe_verdict_text(v: BootProbeVerdict) -> String {
       join(["boot=host-deadline-expired after ", d,
             " -- the guest did not power itself off and the host killed the VMM\nvmm-stderr: ", e,
             "\n--- console ---\n", c, "\n--- end console ---"], "")
+    BootDeadlineEnforcementUnobservable { console: c, detail: e } =>
+      join(["boot=deadline-enforcement-unobservable -- a bound was imposed but the bounder emitted no",
+            " readable enforcement diagnostic, so a deadline can neither be asserted nor ruled out",
+            " (the bare exit status is NOT read as a deadline; a wrong answer here would be a fabrication",
+            " -- gunbc.design_argument::fail_closed)\nvmm-stderr: ", e,
+            "\n--- console ---\n", c, "\n--- end console ---"], "")
     BootVmmFailed { exit_code: x, console: c, detail: e } =>
       join(["boot=vmm-failed exit=", to_string(x), "\nvmm-stderr: ", e,
             "\n--- console ---\n", c, "\n--- end console ---"], "")
@@ -319,6 +343,7 @@ fn boot_probe_admitted(v: BootProbeVerdict) -> Bool {
     BootConsoleLacksGuestBooted { console: _ } => false
     BootNotAttempted { cause: _ } => false
     BootExceededHostDeadline { deadline: _, console: _, detail: _ } => false
+    BootDeadlineEnforcementUnobservable { console: _, detail: _ } => false
     BootVmmFailed { exit_code: _, console: _, detail: _ } => false
   }
 }
@@ -401,7 +426,7 @@ fn runner_microvm_boot_probe_wet() -> ProcessExit
                   )
                 } else {
                   runner_microvm_boot_probe_receipt_wet(
-                    verdict: guest_agent_boot_verdict(
+                    verdict: runner_microvm_boot_probe_verdict_from_observation(
                       runner: image.runner,
                       observed: run_shell_command_observe(
                         command: runner_microvm_boot_probe_bounded_command(
@@ -410,7 +435,6 @@ fn runner_microvm_boot_probe_wet() -> ProcessExit
                         ),
                         transport: LocalExec,
                       ),
-                      bound: runner_microvm_boot_probe_execution_bound(),
                     ),
                   )
                 }

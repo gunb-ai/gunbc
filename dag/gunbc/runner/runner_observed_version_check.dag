@@ -9,7 +9,7 @@ import gunbc.runner.runner_microvm { gunbc_runner_guest_image }
 import gunbc.runner.runner_microvm_boot_probe {
   BootProbeVerdict, BootPrintedRunnerVersion, BootConsoleLacksRunnerVersion,
   BootProducedNoConsole, BootVmmFailed, BootExceededHostDeadline,
-  boot_probe_verdict, boot_probe_verdict_text, NoBoundImposed,
+  boot_probe_verdict, boot_probe_verdict_text, NoExecutionBound,
 }
 
 // THE COMPARATOR ALREADY EXISTED AND NOTHING CALLED IT.
@@ -67,13 +67,13 @@ fn observe_captured_console(path: String) -> ProcessObservation
 // check exists to detect -- committed one layer up.
 fn check_captured_console(path: String) -> BootProbeVerdict
 {
-  // NoBoundImposed: this call site reads a captured console file; there is no bound here, so
-  // exit 124 can only be the subject's own and no deadline event can be observed or reported
-  // (gunbc.design_argument::fail_closed).
+  // NoExecutionBound: this call site reads a committed console FILE through cat -- there is no execution
+  // bound and no bounder at all here, so the run is judged on its console content alone; no exit status
+  // (124 included) is read as a deadline.
   boot_probe_verdict(
     runner: gunbc_runner_guest_image.runner,
     observed: observe_captured_console(path: path),
-    bound: NoBoundImposed,
+    receipt: NoExecutionBound,
   )
 }
 
