@@ -599,15 +599,19 @@ fn after_equals(row: String) -> String {
   }
 }
 
-// Everything a sha256 hex digest may NOT contain. A real digest is `[0-9a-f]{64}`; iterating the
-// complement of that set is how a language without character predicates still pins the shape.
+// Everything a sha256 hex digest may NOT contain. A real digest is 64 characters from [0-9a-f];
+// iterating the complement of that set is how a language without character predicates still pins
+// the shape. The harness, not the substrate, compares this exact string to release-bins.manifest.
 data sha_forbidden_chars: List<String> = [
-  sha_forbidden_chars
-}
+  "g", "h", "i", "j", "k", "l", "m", "n", "o", "p", "q", "r", "s", "t", "u", "v", "w",
+  "x", "y", "z", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P",
+  "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", " ", ".", ":", "-", "_", "/", "=", ",", "#",
+  ";", "\"", "'", "+"
+]
 
 fn sha_hex_shape_ok(value: String) -> Bool {
   length(xs: value) == 64
-    && fold(forbidden_in_sha(), init:  true, f: (acc, ch) => acc && !text_contains(value, ch))
+    && fold(sha_forbidden_chars, init: true, f: (acc, ch) => acc && !text_contains(value, ch))
 }
 
 fn committed_capture_is_measured() -> Bool {
