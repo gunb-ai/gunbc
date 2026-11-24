@@ -251,6 +251,7 @@ type FloorPreparationLegReceipt {
   bytes: Optional<ByteSize>,
   tree_sha: String,
   kept_count: Int,
+  verdict_count: Int,
   out_bytes: Optional<ByteSize>,
   clean: Bool,
 }
@@ -517,6 +518,22 @@ fn floor_preparation_cause_of(entry: String, untrimmed_stdout: String) -> String
 // A leg's verdict is a FIELD on a record, not a prefix on a line (review 97909). The record
 // captures the spawn observation plus the binary's on-disk identity at leg time; the gates read
 // .rc / .clean / .kept_count and the renderer exists only for the printed receipt.
+// A leg that carried VERDICTS is clean; a leg that carried none is not, whatever its exit code.
+// rc 1 is claim_batch's honest verdict-bearing exit (any FAIL or UNOBSERVED anywhere in the
+// batch), and a gate demanding rc 0 could never capture a population that contains FAILs -- the
+// red control needs FAILs to be CAPTURABLE. rc >= 2 is usage, resolve failure or the forwarded
+// timeout: never clean. (Adopted from the run5 forensics with the lane manager.)
+fn floor_preparation_verdict_count(text: String) -> Int {
+  fold(floor_preparation_lines(text: text), init: 0, f: (acc, line) =>
+    if floor_preparation_text_starts_with(text: line, prefix: "PASS ")
+      || floor_preparation_text_starts_with(text: line, prefix: "FAIL ")
+      || floor_preparation_text_starts_with(text: line, prefix: "UNOBSERVED ") { acc + 1 } else { acc })
+}
+
+fn floor_preparation_spawn_completed(rc: Int) -> Bool {
+  rc == 0 || rc == 1
+}
+
 fn floor_preparation_leg_record(
     label: String, entries: List<String>, binary: String, tree_sha: String,
     kept_count: Int, outcome: FloorPreparationSpawnObservation) -> FloorPreparationLegReceipt {
@@ -534,8 +551,10 @@ fn floor_preparation_leg_record(
     bytes: floor_preparation_bytes_of(path: binary),
     tree_sha: tree_sha,
     kept_count: kept_count,
+    verdict_count: floor_preparation_verdict_count(text: outcome.stderr),
     out_bytes: out_bytes_opt,
-    clean: outcome.rc == 0 && kept_count > 0,
+    clean: floor_preparation_spawn_completed(rc: outcome.rc)
+      && floor_preparation_verdict_count(text: outcome.stderr) > 0,
   }
 }
 
@@ -553,7 +572,7 @@ fn floor_preparation_leg_receipt(r: FloorPreparationLegReceipt) -> String {
     Absent {} => "BYTES_UNREADABLE"
   }
   concat(concat(concat("[runner-leg] leg=", r.label), concat(" entries=", r.entries_joined)),
-    concat(concat(" rc=", to_string(r.rc)),
+    concat(concat(concat(" rc=", to_string(r.rc)), concat(" verdicts=", to_string(r.verdict_count))),
       concat(concat(" instrument=", r.binary),
         concat(concat(" BINARY_SHA256=", digest_text),
           concat(concat(" BINARY_BYTES=", bytes_text),
@@ -623,6 +642,12 @@ fn floor_preparation_capture_run() -> String {
       bound: floor_preparation_claims_bound,
       binary: floor_preparation_pinned_claim_batch(),
       args: claims_args)
+    // A gate that discards the only stream telling it WHAT IT EXECUTED is not a gate. The claim
+    // leg's stderr -- the raw PASS/FAIL/UNOBSERVED lines and any resolve diagnostic -- is kept in
+    // the runner root and its size reported, so a missing-roster verdict can be read, not guessed.
+    let claims_stderr_write = Filesystem.Write(
+      path: concat(floor_preparation_runner_root(), "/claims-leg-stderr.log"),
+      content: claims.stderr)
     let passed = floor_preparation_pass_names(stdout_text: claims.stderr)
     let missing = fold(floor_preparation_claim_roster, init: [], f: (acc, name) =>
       if floor_preparation_has(xs: passed, x: name) { acc } else { list_push(xs: acc, item: name) })
@@ -678,7 +703,9 @@ fn floor_preparation_capture_run() -> String {
        floor_preparation_provenance(leg: "graded",
          binary_sha: floor_preparation_pinned_claim_batch_sha, rc: graded_record.rc, kept_count: graded_record.kept_count),
        floor_preparation_receipt("claim-gate",
-         concat("missing=", join(missing, ","))),
+         concat(concat("missing=", join(missing, ",")),
+           concat(concat(" claims_stderr_bytes=", to_string(claims.stderr.length())),
+             if claims_stderr_write.success { " claims_stderr=written" } else { " claims_stderr=UNWRITTEN" }))),
        report_rc_receipt])
     // The retained log and the population projection are LEG OUTPUT, not verdict output: they
     // are written as soon as both legs completed clean (rc==0 with kept rows), BEFORE the claim
