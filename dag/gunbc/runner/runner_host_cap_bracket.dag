@@ -212,8 +212,10 @@ fn listener_restart_residual_wire() -> String {
 // gunbc.witness.compiler_gate_workflow compiler_gate_emit_build_timeout (minute(90)), which is why
 // srv3 cap converge run 39961292233 withheld every cap: a v2-bootstrap job runs ~55 minutes under a
 // 90-minute declaration, and a 2700s drain bound refused it mid-flight. Today the fold yields
-// 60 min (v2-bootstrap, lowered from 90 by gunbc.design_ruling::heal_and_v2_bootstrap_ci_timeouts_lowered_2026_11_22),
-// so the bound is 60*60 + poll, and the cost of a cap change is that long of
+// 90 min (v2-bootstrap, lowered to 60 by
+// gunbc.design_ruling::heal_and_v2_bootstrap_ci_timeouts_lowered_2026_11_22 and raised back to 90 by
+// gunbc.design_ruling::heal_and_v2_bootstrap_ci_timeouts_raised_to_90_2026_11_24), so the bound is
+// 90*60 + poll, and the cost of a cap change is that long of
 // a host's slots out of admission — a rare event bounded by the fleet's own declared worst job.
 //
 // THE DISPATCH-ONLY RESIDUAL IS DECLARED, NOT IMPLIED (ruled by clever-crane-830, 2026-10-23): jobs

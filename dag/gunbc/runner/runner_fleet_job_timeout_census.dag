@@ -146,7 +146,7 @@ type FleetWorkflowCensusOmission {
 
 // WitnessFloorYamlArtifact is the artifact witnesses.yml is generated from, and
 // gunbc.witness.compiler_gate_workflow is the authority that emits its body
-// (gunbc.tier_o_artifact_emit tier_o_unadorned_body) — the v2-bootstrap required job, 60 minutes.
+// (gunbc.tier_o_artifact_emit tier_o_unadorned_body) — the v2-bootstrap required job, 90 minutes.
 // gunbc.witness.witness_floor_workflow's lanes are the withdrawn v1 floor (gunbc.rung_drop) and emit
 // no committed workflow, so it is not in the emitted population.
 // THE EMITTED POPULATION, READ FROM THE PROFILE. The heal, publisher and drift workflows are obtained by
@@ -284,7 +284,7 @@ fn fleet_targeted_declared_timeout_minutes() -> Int {
 }
 
 // THE DERIVED WAIT BOUND (operator ruling, 2026-10-23): the longest declared job of the population,
-// plus ONE poll interval — '60 min today, plus the poll interval'. The poll-interval term is the
+// plus ONE poll interval — '90 min today, plus the poll interval'. The poll-interval term is the
 // policy's own field, read twice rather than re-stated: the wait is quantized to ticks, so the last
 // tick can be sampled up to a full interval before the bound expires (the existing
 // bracket_drain_terminates_within_bound control's name is exactly this slack). Zero-population
