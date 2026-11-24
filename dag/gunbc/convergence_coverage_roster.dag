@@ -1,0 +1,427 @@
+module gunbc.convergence_coverage_roster
+
+import std.types { Bool, List }
+import std.algebra { length }
+import std.decl_ref {
+  DeclarationRef,
+  decl_ref,
+  declaration_ref_eq,
+}
+
+// ROADMAP node cc-path-census roster carrier: the production convergence-path
+// roster the eight cc-* leaves consume as their denominator.
+//
+// WHAT THIS IS. A roster, one row per production convergence path, each row
+// naming a corpus route (a .dag declaration that exists at the base commit),
+// its convergence subject, the operation it performs (observe, decide, apply,
+// readback, mint), whether the fold SUPPLIES a report or ESTABLISHES a
+// prerequisite operand the consumer would be deprived of, and the cc-* leaf
+// that covers it (or a named exclusion for a corpus route that is not an
+// enforced convergence path at this rung). The roster is the denominator; a
+// later cc-* leaf inventing its own list of paths is the displaced cost this
+// carrier exists to remove.
+//
+// ROW UNIT (guard one). A row is a PATH, identified by (module_path, function,
+// operation) -- NOT a file. One file can carry several paths. The identity-join
+// key is the route DeclarationRef { module_path, decl_name }, not the file
+// path. Row count is reported as paths, and the file count is reported beside
+// it, so a reader sees the 20 enforced paths spread over 13 files.
+//
+// DERIVATION (the denominator is re-derivable in one command, not a trusted
+// number). The enforced population is the production paths that INVOKE a
+// substrate fold-site function. Re-derive from the corpus root with:
+//
+//   grep -rln "gunbc\.ensure\b\|std\.realization_reconcile\b" --include=*.dag \
+//     . | grep -v "/.git/" | grep -v "test/claim" \
+//        | grep -v "recurring_failure_mode" | grep -v "integration_concern" \
+//     | while read f; do grep -nE \
+//       "ensure_decide|ensure_reconcile|ensure_after_grounding|ensure_observation_as_attempt|reconcile_grounded|reconcile_effect_without_read|reconcile_effect\b|reconcile_application_then_ground" \
+//       "$f" | grep -v "import "; done
+//
+// The 65-file importer set splits as: 20 enforced fold-site paths over 13
+// files; 45 named-exclusion consumer modules (reference substrate result
+// types or compose a fold through a wrapper, invoke no fold-site directly);
+// 5 named-exclusion plan/census carriers; 2 named-exclusion substrate modules.
+// Enforced vs excluded is a difference in what the completeness check refuses
+// on, not a licence to drop a row: every 65-file hit appears in roster_rows().
+//
+// WHAT THE JOIN CANNOT REACH (guard three; under-claim honestly). This join
+// enforces PRESENCE of the 20 derived fold-site routes. It cannot enforce a
+// completeness discovery join over independently enumerated host-effect
+// declarations so that a missing wrapper-mediated fold refuses: that join is
+// SubstrateInputsOnly, the same limitation host_convergence_census records in
+// its NEXT-RUNG TRIGGERS ("a discovery join over independently enumerated
+// host-effect declarations so a missing mutation identity refuses" is not
+// authorable on the current path). A fold that composes entirely through a
+// cross-module wrapper without importing a substrate fold-site is therefore an
+// acknowledged blind spot of the enforced join, named here rather than hidden.
+//
+// D14 SECTION 10 (what is being classified against; never pasted into a row).
+// The D14 ensure-authority plan file dag/gunbc/plans/ensure_closure_design.dag
+// was deleted in commit 970754b2577; its section 10 "Census: what this replaces
+// on main" is the On main / Becomes target list the red control names as NOT a
+// census row. No row restates it. Where a row traces to D14 it cites the LIVE
+// ruling text: dag/gunbc/plans/demand_engine_program.dag line 264.
+//
+// PRE-SUBSTRATE FINDING. The operator-review first-slice folds
+// srv3_ensure_apt, ensure_host_tool and converge_typed_remote_file live in
+// modules that do not import the substrate today; they are pre-substrate folds
+// D14 names for migration, so they are roster rows classified
+// supplied-versus-established and marked PreSubstrate, but they are NOT in the
+// enforced fold-site population. The RunArgv family (RunArgv / RunArgvStdin /
+// RunArgvOutcome) is Rust substrate reached from the corpus route
+// gunbc.host.host_effect_realize.reconcile_shell_exec_observed.
+
+// The convergence operation a fold performs (D14: the lifecycle inside one
+// demand node is observe, assess/decide, apply, read back, mint).
+type ConvergenceOperation
+  = Observe
+  | Decide
+  | Apply
+  | Readback
+  | Mint
+
+// Whether removing a prerequisite-producing ensure deprives the consumer of a
+// required operand. EstablishedOperand: the fold establishes an operand a
+// downstream consumer reads, so removing it starves that consumer.
+// SuppliedReport: the fold only reports a status the consumer displays or logs
+// and does not consume as a structural operand. NamedExclusion: the corpus
+// route references the substrate but is not an enforced convergence path at
+// this rung, with the reason carried per row (never a blanket exclusion).
+type ConvergenceClassification
+  = EstablishedOperand { rationale: String }
+  | SuppliedReport { rationale: String }
+  | NamedExclusion { reason: String }
+
+// Enforcement status of a row.
+type ConvergenceStatus
+  = Enforced
+  | Excluded
+  | PreSubstrate
+
+// The cc-* leaf that covers the row, or a named pending leaf.
+type ConvergenceCover
+  = CoveredByLeaf { leaf: String }
+  | PendingLeaf { leaf: String }
+
+// One roster row. identity is the route DeclarationRef (the identity-join
+// key); module_path and route carry it in readable form.
+type ConvergenceRosterRow {
+  identity: DeclarationRef
+  module_path: String
+  route: String
+  subject: String
+  operation: ConvergenceOperation
+  status: ConvergenceStatus
+  classification: ConvergenceClassification
+  cover: ConvergenceCover
+  composition: String
+  provenance: String
+}
+
+// The join outcome: a required route absent from the roster is the fail-closed
+// red signal; otherwise the join is covered.
+type ConvergenceCensusJoin
+  = IdentityMissingFromCensus { identity: DeclarationRef }
+  | JoinCovered { covered: List<DeclarationRef> }
+
+fn cite(module_path: String, decl_name: String) -> DeclarationRef {
+  decl_ref(module_path: module_path, decl_name: decl_name)
+}
+
+fn row(
+  identity: DeclarationRef,
+  module_path: String,
+  route: String,
+  subject: String,
+  operation: ConvergenceOperation,
+  status: ConvergenceStatus,
+  classification: ConvergenceClassification,
+  cover: ConvergenceCover,
+  composition: String,
+  provenance: String,
+) -> ConvergenceRosterRow {
+  ConvergenceRosterRow {
+    identity: identity,
+    module_path: module_path,
+    route: route,
+    subject: subject,
+    operation: operation,
+    status: status,
+    classification: classification,
+    cover: cover,
+    composition: composition,
+    provenance: provenance,
+  }
+}
+
+fn established(rationale: String) -> ConvergenceClassification {
+  EstablishedOperand { rationale: rationale }
+}
+
+fn supplied(rationale: String) -> ConvergenceClassification {
+  SuppliedReport { rationale: rationale }
+}
+
+fn excluded(reason: String) -> ConvergenceClassification {
+  NamedExclusion { reason: reason }
+}
+
+fn covered(leaf: String) -> ConvergenceCover {
+  CoveredByLeaf { leaf: leaf }
+}
+
+fn pending(leaf: String) -> ConvergenceCover {
+  PendingLeaf { leaf: leaf }
+}
+
+fn enforce(module_path: String, route: String, subject: String, operation: ConvergenceOperation, classification: ConvergenceClassification, cover: ConvergenceCover, composition: String, provenance: String) -> ConvergenceRosterRow {
+  row(
+    identity: cite(module_path, route),
+    module_path: module_path,
+    route: route,
+    subject: subject,
+    operation: operation,
+    status: Enforced,
+    classification: classification,
+    cover: cover,
+    composition: composition,
+    provenance: provenance,
+  )
+}
+
+fn exclude(module_path: String, route: String, subject: String, operation: ConvergenceOperation, reason: String, composition: String, provenance: String) -> ConvergenceRosterRow {
+  row(
+    identity: cite(module_path, route),
+    module_path: module_path,
+    route: route,
+    subject: subject,
+    operation: operation,
+    status: Excluded,
+    classification: excluded(reason),
+    cover: covered("named exclusion (cc-path-census)"),
+    composition: composition,
+    provenance: provenance,
+  )
+}
+
+fn pre_substrate(module_path: String, route: String, subject: String, operation: ConvergenceOperation, classification: ConvergenceClassification, cover: ConvergenceCover, composition: String, provenance: String) -> ConvergenceRosterRow {
+  row(
+    identity: cite(module_path, route),
+    module_path: module_path,
+    route: route,
+    subject: subject,
+    operation: operation,
+    status: PreSubstrate,
+    classification: classification,
+    cover: cover,
+    composition: composition,
+    provenance: provenance,
+  )
+}
+
+fn roster_row_identity(row: ConvergenceRosterRow) -> DeclarationRef {
+  row.identity
+}
+// THE ENFORCED DENOMINATOR. The 20 substrate fold-site paths, derived by
+// the command in the module header; re-derive to check this list.
+fn enforced_fold_site_routes() -> List<DeclarationRef> {
+  [
+    cite("gunbc.fleet.mtcollins_firmware_converge", "pending_step_verdict"),
+    cite("gunbc.fleet.mtcollins_firmware_converge", "executed_step_verdict"),
+    cite("gunbc.gcp_service_enablement", "decide_service_enablement"),
+    cite("gunbc.host.host_effect_realize", "srv3_shell_reconcile"),
+    cite("gunbc.host.host_effect_realize", "toolchain_ensure_reconcile"),
+    cite("gunbc.host.host_effect_realize", "realize_install_media_fetch_in_process"),
+    cite("gunbc.host.host_effect_realize", "realize_install_media_remaster_in_process"),
+    cite("gunbc.host.host_effect_realize", "reconcile_shell_exec_observed"),
+    cite("gunbc.host.host_effect_realize", "realize_nbd_proxy_session_on_host"),
+    cite("gunbc.host.host_hygiene_liveness", "reconcile_fleet_listening"),
+    cite("gunbc.host.host_hygiene_reaper", "reconcile_residual_reap"),
+    cite("gunbc.host.host_kernel_dependency", "tun_kernel_capability_decision"),
+    cite("gunbc.oomd_install", "reconcile_oomd"),
+    cite("gunbc.owned_directory", "owned_directory_decide"),
+    cite("gunbc.owned_directory", "owned_directory_reconcile"),
+    cite("gunbc.repo.repo_ruleset", "repo_ruleset_ensure_decision_for"),
+    cite("gunbc.review_sheet_sheets", "review_sheet_ensure_decide"),
+    cite("gunbc.roadmap.roadmap_dispatch_environment", "capability_ensure_receipt"),
+    cite("gunbc.runner.runner_slot_enforcement", "reconcile_runner_slot"),
+    cite("gunbc.product.printing.cad_runtime_converge", "converge_cad_runtime"),
+  ]
+}
+// The 20 enforced route rows (classified supplied vs established).
+fn enforced_rows() -> List<ConvergenceRosterRow> {
+  [
+    enforce("gunbc.fleet.mtcollins_firmware_converge", "pending_step_verdict", "firmware convergence step, pending", Decide, supplied("pending verdict is a status report; the flash operand is carried by the step, not by the verdict"), pending("cc-qualified-operands"), "ensure_decide (gunbc.ensure)", "fold-site grep"),
+    enforce("gunbc.fleet.mtcollins_firmware_converge", "executed_step_verdict", "firmware convergence step, executed readback", Apply, established("executed readback establishes the applied-step operand the next step reads"), pending("cc-lifecycle-ownership"), "ensure_reconcile (gunbc.ensure)", "fold-site grep"),
+    enforce("gunbc.gcp_service_enablement", "decide_service_enablement", "GCP service enablement plan", Decide, established("EnsurePlan EnableApiPlan is the operand the enable apply consumes; removing it starves that apply"), pending("cc-operand-supply-decision"), "ensure_decide (gunbc.ensure)", "fold-site grep"),
+    enforce("gunbc.host.host_effect_realize", "srv3_shell_reconcile", "srv3 shell effect", Apply, established("reconcile establishes the converged shell-effect operand its readback and the next effect read"), pending("cc-consumer-operand-starvation"), "reconcile_grounded (std.realization_reconcile)", "fold-site grep"),
+    enforce("gunbc.host.host_effect_realize", "toolchain_ensure_reconcile", "host toolchain prerequisite", Apply, established("HostToolPrerequisite is the operand apply consumes; removing it starves the host effect"), pending("cc-operand-fork"), "reconcile_grounded (std.realization_reconcile)", "fold-site grep"),
+    enforce("gunbc.host.host_effect_realize", "realize_install_media_fetch_in_process", "install media fetch", Apply, established("establishes the fetched install media operand the remaster/boot step consumes"), pending("cc-lifecycle-ownership"), "reconcile_grounded (std.realization_reconcile)", "fold-site grep"),
+    enforce("gunbc.host.host_effect_realize", "realize_install_media_remaster_in_process", "install media remaster", Apply, established("establishes the remastered image operand the boot read consumes"), pending("cc-lifecycle-ownership"), "reconcile_grounded (std.realization_reconcile)", "fold-site grep"),
+    enforce("gunbc.host.host_effect_realize", "reconcile_shell_exec_observed", "RunArgv / RunArgvStdin / RunArgvOutcome shell exec", Readback, established("reconciles RunArgv output into the observed-effect operand a reader consumes; the RunArgv family first-slice fold is reached from this route (D14 ruling demand_engine_program.dag:264)"), pending("cc-consumer-operand-starvation"), "reconcile_grounded (std.realization_reconcile)", "fold-site grep"),
+    enforce("gunbc.host.host_effect_realize", "realize_nbd_proxy_session_on_host", "NBD proxy session", Apply, established("establishes the nbd proxy session operand the install fetch consumes"), pending("cc-lifecycle-ownership"), "reconcile_grounded (std.realization_reconcile)", "fold-site grep"),
+    enforce("gunbc.host.host_hygiene_liveness", "reconcile_fleet_listening", "fleet listening liveness", Readback, supplied("liveness reconcile only surfaces a listening-status report; no downstream operand is deprived"), pending("cc-attested-consume"), "reconcile_grounded (std.realization_reconcile)", "fold-site grep"),
+    enforce("gunbc.host.host_hygiene_reaper", "reconcile_residual_reap", "residual session reap", Readback, supplied("reap reconcile reports reaped residuals; no structural operand is consumed downstream"), pending("cc-attested-consume"), "reconcile_grounded (std.realization_reconcile)", "fold-site grep"),
+    enforce("gunbc.host.host_kernel_dependency", "tun_kernel_capability_decision", "tun kernel capability", Decide, supplied("capability decision yields CapabilityEvidence for reporting; the tun operand is supplied by the capability probe itself"), pending("cc-operand-supply-decision"), "ensure_decide (gunbc.ensure)", "fold-site grep"),
+    enforce("gunbc.oomd_install", "reconcile_oomd", "oomd daemon install", Apply, established("reconcile establishes the installed oomd operand the daemon read consumes"), pending("cc-lifecycle-ownership"), "reconcile_grounded (std.realization_reconcile)", "fold-site grep"),
+    enforce("gunbc.owned_directory", "owned_directory_decide", "owned directory install plan", Decide, established("OwnedDirectoryInstallPlan is the operand owned_directory_reconcile applies"), pending("cc-operand-supply-decision"), "ensure_decide (gunbc.ensure)", "fold-site grep"),
+    enforce("gunbc.owned_directory", "owned_directory_reconcile", "owned directory install", Apply, established("establishes the installed owned-directory operand the readback verifies"), pending("cc-consumer-operand-starvation"), "ensure_reconcile (gunbc.ensure)", "fold-site grep"),
+    enforce("gunbc.repo.repo_ruleset", "repo_ruleset_ensure_decision_for", "repo ruleset plan", Decide, established("RepoRulesetApplyPlan is the operand the ruleset apply consumes"), pending("cc-operand-supply-decision"), "ensure_decide (gunbc.ensure)", "fold-site grep"),
+    enforce("gunbc.review_sheet_sheets", "review_sheet_ensure_decide", "review-sheet tab write plan", Decide, established("TabBoundWritePlan is the operand the review-sheet write applies"), pending("cc-operand-fork"), "ensure_decide (gunbc.ensure)", "fold-site grep"),
+    enforce("gunbc.roadmap.roadmap_dispatch_environment", "capability_ensure_receipt", "roadmap dispatch capability ensure", Apply, established("establishes the CapabilityEnsureReceipt operand the dispatch apply consumes"), pending("cc-lifecycle-ownership"), "ensure_reconcile (gunbc.ensure)", "fold-site grep"),
+    enforce("gunbc.runner.runner_slot_enforcement", "reconcile_runner_slot", "runner slot enforcement", Apply, established("establishes the enforced runner-slot operand the runner apply consumes"), pending("cc-consumer-operand-starvation"), "reconcile_grounded (std.realization_reconcile)", "fold-site grep"),
+    enforce("gunbc.product.printing.cad_runtime_converge", "converge_cad_runtime", "CAD runtime convergence", Apply, established("converge establishes the CAD runtime operand the printing step consumes"), pending("cc-ensure-operand-authority"), "ensure_decide + ensure_reconcile (gunbc.ensure)", "fold-site grep"),
+  ]
+}
+// The first-slice named folds NOT yet in the substrate population:
+// pre-substrate folds D14 names for migration, classified anyway. Their
+// RunArgv-family sibling is the enforced route reconcile_shell_exec_observed
+// above (the RunArgv family is Rust substrate reached from that route).
+fn pre_substrate_rows() -> List<ConvergenceRosterRow> {
+  [
+    pre_substrate("gunbc.host.host_effect_realize", "srv3_ensure_apt", "apt package (srv3 subject/package split)", Decide, established("srv3_ensure_apt establishes the apt package operand install consumes (install uses package, readback checks subject); pre-substrate: its module does not import gunbc.ensure today (D14 ruling demand_engine_program.dag:264)"), pending("cc-qualified-operands"), "module-local srv3 apt ensure (pre-substrate)", "operator-review first-slice; D14 ruling demand_engine_program.dag:264"),
+    pre_substrate("gunbc.runner.runner_microvm_network_apply", "ensure_host_tool", "host tool prerequisite", Decide, established("ensure_host_tool returns a HostToolPrerequisite operand the apply consumes; pre-substrate: its module does not import gunbc.ensure today (D14 ruling demand_engine_program.dag:264)"), pending("cc-qualified-operands"), "module-local host-tool ensure (pre-substrate)", "operator-review first-slice; D14 ruling demand_engine_program.dag:264"),
+    pre_substrate("gunbc.typed_remote_file_write", "converge_typed_remote_file", "typed remote file bytes", Apply, established("converge_typed_remote_file establishes the written remote-file operand its readback verifies; pre-substrate: its module does not import std.realization_reconcile today (D14 ruling demand_engine_program.dag:264)"), pending("cc-consumer-operand-starvation"), "module-local typed remote file converge (pre-substrate)", "operator-review first-slice; D14 ruling demand_engine_program.dag:264"),
+  ]
+}
+// Named exclusions: the 2 substrate modules, the 5 plan/census carriers,
+// and the 45 consumer modules. Each is argued per row (never a blanket
+// exclusion) and names the wrapper or substrate symbols its fold composes
+// through. Enforced vs excluded is a difference in what the completeness
+// check refuses on, not a licence to drop a row.
+fn excluded_rows() -> List<ConvergenceRosterRow> {
+  [
+    exclude("gunbc.ensure", "ensure_observation_as_attempt", "the gunbc.ensure classifier module itself", Decide, "this row is the gunbc.ensure classifier the population grep searched FOR, not a path that uses it; it is substrate, so it is never an enforced consumer path", "substrate: gunbc.ensure", "substrate module"),
+    exclude("std.realization_reconcile", "reconcile_grounded", "the std.realization_reconcile substrate module itself", Apply, "this row is the std.realization_reconcile substrate the grep searched FOR, not a path that uses it; substrate, never an enforced consumer path", "substrate: std.realization_reconcile", "substrate module"),
+    exclude("gunbc.host_convergence_census", "admit_host_convergence_census", "host_convergence_census (plan/census carrier)", Decide, "census/plan carrier: the convergence-ONE C0 registry, a census of host-effect subjects classified by disposition, not a production convergence fold; it cites the stack and rewires nothing", "plan/census carrier; invokes no substrate fold-site as a production path", "grep importer, carrier"),
+    exclude("gunbc.host_convergence_protocol", "reconcile_from_read_attempt", "host_convergence_protocol (plan/census carrier)", Apply, "plan/protocol carrier: a transition-system spec over convergence subjects, a design carrier not a production fold invocation", "plan/census carrier; invokes no substrate fold-site as a production path", "grep importer, carrier"),
+    exclude("gunbc.plans.read_set_convergence", "read_set_convergence_inventory_row", "read_set_convergence (plan/census carrier)", Apply, "plan carrier: a read-set convergence inventory plan, a design document not a production fold", "plan/census carrier; invokes no substrate fold-site as a production path", "grep importer, carrier"),
+    exclude("gunbc.plans.demand_engine_program", "demand_engine_program_body", "demand_engine_program (plan/census carrier)", Decide, "plan carrier: the demand-engine program plan (holds the live D14 ruling text); a design document not a production fold", "plan/census carrier; invokes no substrate fold-site as a production path", "grep importer, carrier"),
+    exclude("gunbc.roadmap.roadmap_authority", "nid", "roadmap_authority (plan/census carrier)", Decide, "plan carrier: the roadmap authority (roadmap node/edge definitions), not a production fold invocation", "plan/census carrier; invokes no substrate fold-site as a production path", "grep importer, carrier"),
+    exclude("gunbc.bmc.bmc_converge", "bmc_fan_policy_ordinary_convergence", "bmc_converge", Decide, "references substrate result types, invokes no substrate fold-site directly; substrate symbols in module: [Converged]; references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "grep importer, consumer"),
+    exclude("gunbc.codex_supervised_turn_run", "codex_supervised_worker_turn_apply", "codex_supervised_turn_run", Decide, "references substrate result types, invokes no substrate fold-site directly; substrate symbols in module: [Converged,NotConverged]; references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "grep importer, consumer"),
+    exclude("gunbc.executor_privileged_operation", "executor_privileged_owned_directory_plan", "executor_privileged_operation", Decide, "references substrate result types, invokes no substrate fold-site directly; substrate symbols in module: [EnsurePlan]; references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "grep importer, consumer"),
+    exclude("gunbc.fleet.app_control_plane_inspection", "json_member_string", "app_control_plane_inspection", Observe, "observe-only producer feeding a fold route, not a fold itself; substrate symbols in module: []; observation/readback input feeding a named fold route; invokes no substrate fold-site", "observation/readback input feeding a named fold route; invokes no substrate fold-site", "grep importer, consumer"),
+    exclude("gunbc.fleet.convergence_fold", "step_instance_key_eq", "convergence_fold", Decide, "references substrate result types, invokes no substrate fold-site directly; substrate symbols in module: []; references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "grep importer, consumer"),
+    exclude("gunbc.fleet.fleet_converge_apply", "converge_apply", "fleet_converge_apply", Decide, "references substrate result types, invokes no substrate fold-site directly; substrate symbols in module: [Converged,NotConverged,Reconciliation,reconciliation_converged]; references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "grep importer, consumer"),
+    exclude("gunbc.fleet.fleet_converge_cli", "converge_cli_receipt_for_host", "fleet_converge_cli", Decide, "references substrate result types, invokes no substrate fold-site directly; substrate symbols in module: [Converged,NotConverged]; references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "grep importer, consumer"),
+    exclude("gunbc.fleet.fleet_show_effective_read", "grounded_receipt_has_observed_v0_knobs", "fleet_show_effective_read", Observe, "observe-only producer feeding a fold route, not a fold itself; substrate symbols in module: [ReadObserved,ShowEffectiveRead]; observation/readback input feeding a named fold route; invokes no substrate fold-site", "observation/readback input feeding a named fold route; invokes no substrate fold-site", "grep importer, consumer"),
+    exclude("gunbc.fleet.org_actions_inspection", "render_org_actions_read_refusal", "org_actions_inspection", Observe, "observe-only producer feeding a fold route, not a fold itself; substrate symbols in module: []; observation/readback input feeding a named fold route; invokes no substrate fold-site", "observation/readback input feeding a named fold route; invokes no substrate fold-site", "grep importer, consumer"),
+    exclude("gunbc.fleet.printer_state_parent_reown", "parent_held_but_not_at_the_prior", "printer_state_parent_reown", Decide, "references substrate result types, invokes no substrate fold-site directly; substrate symbols in module: [EnsureAbsent,EnsureObservation,EnsureObserved]; references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "grep importer, consumer"),
+    exclude("gunbc.github_app_acquisition", "census_app_acquisition_standing", "github_app_acquisition", Decide, "references substrate result types, invokes no substrate fold-site directly; substrate symbols in module: [Converged,EnsurePolicy]; references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "grep importer, consumer"),
+    exclude("gunbc.host.host_effect_plan", "host_effect_plan_apply", "host_effect_plan", Decide, "references substrate result types, invokes no substrate fold-site directly; substrate symbols in module: [Converged,NotConverged,Reconciliation,reconciliation_converged]; references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "grep importer, consumer"),
+    exclude("gunbc.host.host_hostname_converge", "hostname_converge_apply_folded", "host_hostname_converge", Decide, "references substrate result types, invokes no substrate fold-site directly; substrate symbols in module: [reconciliation_converged]; references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "grep importer, consumer"),
+    exclude("gunbc.host.host_hygiene_liveness_observe", "gunbc_host_hygiene_liveness_live_evidence", "host_hygiene_liveness_observe", Decide, "references substrate result types, invokes no substrate fold-site directly; substrate symbols in module: [ReadObserved,Reconciliation,ShowEffectiveRead]; references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "grep importer, consumer"),
+    exclude("gunbc.host.host_hygiene_reaper_observe", "gunbc_host_hygiene_reaper_live_evidence", "host_hygiene_reaper_observe", Decide, "references substrate result types, invokes no substrate fold-site directly; substrate symbols in module: [ReadObserved,Reconciliation,ShowEffectiveRead]; references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "grep importer, consumer"),
+    exclude("gunbc.host.host_identity_converge", "host_identity_apply_converged", "host_identity_converge", Decide, "references substrate result types, invokes no substrate fold-site directly; substrate symbols in module: [Converged,NotConverged,Reconciliation,reconciliation_converged]; references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "grep importer, consumer"),
+    exclude("gunbc.host.host_identity_observation", "host_identity_observation_apply", "host_identity_observation", Observe, "observe-only producer feeding a fold route, not a fold itself; substrate symbols in module: [Converged,NotConverged,Reconciliation]; observation/readback input feeding a named fold route; invokes no substrate fold-site", "observation/readback input feeding a named fold route; invokes no substrate fold-site", "grep importer, consumer"),
+    exclude("gunbc.host.host_runner_memory_provision", "provision_runner_memory_caps", "host_runner_memory_provision", Decide, "references substrate result types, invokes no substrate fold-site directly; substrate symbols in module: [Converged,NotConverged]; references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "grep importer, consumer"),
+    exclude("gunbc.host.host_toolchain_ensure", "host_toolchain_ensure", "host_toolchain_ensure", Decide, "references substrate result types, invokes no substrate fold-site directly; substrate symbols in module: [Converged,NotConverged]; references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "grep importer, consumer"),
+    exclude("gunbc.host.verified_binary_install", "verified_binary_install_fetch_step", "verified_binary_install", Decide, "references substrate result types, invokes no substrate fold-site directly; substrate symbols in module: []; references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "grep importer, consumer"),
+    exclude("gunbc.instruments.github_app_acquire", "census_app_acquire_with_code", "github_app_acquire", Decide, "references substrate result types, invokes no substrate fold-site directly; substrate symbols in module: [Converged]; references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "grep importer, consumer"),
+    exclude("gunbc.instruments.source_snapshot_handoff", "snapshot_request_environment", "source_snapshot_handoff", Decide, "references substrate result types, invokes no substrate fold-site directly; substrate symbols in module: [EnsurePolicy]; references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "grep importer, consumer"),
+    exclude("gunbc.live_deploy.apply", "approval_broker_dark_install_wet_with_access", "apply", Decide, "references substrate result types, invokes no substrate fold-site directly; substrate symbols in module: [Converged,NotConverged,Reconciliation,reconciliation_converged]; references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "grep importer, consumer"),
+    exclude("gunbc.live_deploy.apply_legs", "deploy_apply_directory_target_plan", "apply_legs", Decide, "references substrate result types, invokes no substrate fold-site directly; substrate symbols in module: []; references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "grep importer, consumer"),
+    exclude("gunbc.live_deploy.emit", "deploy_raw", "emit", Decide, "references substrate result types, invokes no substrate fold-site directly; substrate symbols in module: []; references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "grep importer, consumer"),
+    exclude("gunbc.live_deploy.member_observe", "observe_owned_directory", "member_observe", Observe, "observe-only producer feeding a fold route, not a fold itself; substrate symbols in module: [EnsureAbsent,EnsureObservation,EnsureObserved]; observation/readback input feeding a named fold route; invokes no substrate fold-site", "observation/readback input feeding a named fold route; invokes no substrate fold-site", "grep importer, consumer"),
+    exclude("gunbc.live_deploy.readiness", "live_deploy_service_ready_once_for_bundle", "readiness", Observe, "observe-only producer feeding a fold route, not a fold itself; substrate symbols in module: [ReadObserved,ShowEffectiveRead]; observation/readback input feeding a named fold route; invokes no substrate fold-site", "observation/readback input feeding a named fold route; invokes no substrate fold-site", "grep importer, consumer"),
+    exclude("gunbc.machine_intake.bmc_secure", "credential_probe_evidence", "bmc_secure", Decide, "references substrate result types, invokes no substrate fold-site directly; substrate symbols in module: []; references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "grep importer, consumer"),
+    exclude("gunbc.readiness", "main", "readiness", Observe, "observe-only producer feeding a fold route, not a fold itself; substrate symbols in module: []; observation/readback input feeding a named fold route; invokes no substrate fold-site", "observation/readback input feeding a named fold route; invokes no substrate fold-site", "grep importer, consumer"),
+    exclude("gunbc.repo.repo_local_git_config", "converge", "repo_local_git_config", Decide, "references substrate result types, invokes no substrate fold-site directly; substrate symbols in module: [Converged,NotConverged,Reconciliation]; references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "grep importer, consumer"),
+    exclude("gunbc.review_sheet_converge_cli", "converge_drive_half", "review_sheet_converge_cli", Decide, "references substrate result types, invokes no substrate fold-site directly; substrate symbols in module: [EnsurePolicy]; references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "grep importer, consumer"),
+    exclude("gunbc.review_sheet_drive_actuator", "converge_drive_membership", "review_sheet_drive_actuator", Decide, "references substrate result types, invokes no substrate fold-site directly; substrate symbols in module: [EnsurePolicy]; references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "grep importer, consumer"),
+    exclude("gunbc.review_sheet_drive_converge", "ensure_drive_membership", "review_sheet_drive_converge", Decide, "references substrate result types, invokes no substrate fold-site directly; substrate symbols in module: [EnsurePolicy]; references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "grep importer, consumer"),
+    exclude("gunbc.review_sheet_identity_converge", "ensure_review_spreadsheet_on_identity", "review_sheet_identity_converge", Decide, "references substrate result types, invokes no substrate fold-site directly; substrate symbols in module: [EnsurePolicy]; references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "grep importer, consumer"),
+    exclude("gunbc.review_sheet_operator", "admit_review_sheet_operator", "review_sheet_operator", Decide, "references substrate result types, invokes no substrate fold-site directly; substrate symbols in module: [EnsurePolicy]; references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "grep importer, consumer"),
+    exclude("gunbc.review_sheet_spreadsheet_actuator", "converge_review_spreadsheet", "review_sheet_spreadsheet_actuator", Observe, "observe-only producer feeding a fold route, not a fold itself; substrate symbols in module: [EnsurePolicy]; observation/readback input feeding a named fold route; invokes no substrate fold-site", "observation/readback input feeding a named fold route; invokes no substrate fold-site", "grep importer, consumer"),
+    exclude("gunbc.review_sheet_tab_set", "converge_review_tab_set", "review_sheet_tab_set", Decide, "references substrate result types, invokes no substrate fold-site directly; substrate symbols in module: [EnsurePolicy]; references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "grep importer, consumer"),
+    exclude("gunbc.roadmap.roadmap_dashboard_instance", "dashboard_execution_environment_for_toolchain", "roadmap_dashboard_instance", Decide, "references substrate result types, invokes no substrate fold-site directly; substrate symbols in module: []; references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "grep importer, consumer"),
+    exclude("gunbc.roadmap.roadmap_dashboard_instance_apply", "dashboard_directory_decision_fold", "roadmap_dashboard_instance_apply", Decide, "references substrate result types, invokes no substrate fold-site directly; substrate symbols in module: [EnsureAbsent,EnsureObservation,EnsureObserved,EnsurePolicy]; references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "grep importer, consumer"),
+    exclude("gunbc.roadmap.roadmap_execution_contract", "execution_capability_label", "roadmap_execution_contract", Decide, "references substrate result types, invokes no substrate fold-site directly; substrate symbols in module: [EnsurePolicy]; references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "grep importer, consumer"),
+    exclude("gunbc.roadmap.roadmap_site_surface_witness", "reconcile_grounds_healthy_fixture_read_for_bundle", "roadmap_site_surface_witness", Decide, "references substrate result types, invokes no substrate fold-site directly; substrate symbols in module: [ReadObserved]; references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "grep importer, consumer"),
+    exclude("gunbc.runner.runner_lifecycle_realize", "runner_lifecycle_realize_activate_runner_slot", "runner_lifecycle_realize", Decide, "references substrate result types, invokes no substrate fold-site directly; substrate symbols in module: [Converged,NotConverged,Reconciliation]; references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "grep importer, consumer"),
+    exclude("gunbc.sheets_bootstrap_converge", "converge_absent_project", "sheets_bootstrap_converge", Decide, "references substrate result types, invokes no substrate fold-site directly; substrate symbols in module: [EnsurePolicy]; references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "grep importer, consumer"),
+    exclude("gunbc.srv3.srv3_host_effect_apply", "srv3_reconciliation_failure_reason", "srv3_host_effect_apply", Decide, "references substrate result types, invokes no substrate fold-site directly; substrate symbols in module: [Converged,NotConverged,Reconciliation,reconciliation_converged]; references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "grep importer, consumer"),
+    exclude("gunbc.toolchain_home_interference_probe", "toolchain_home_interference_probe_wet", "toolchain_home_interference_probe", Decide, "references substrate result types, invokes no substrate fold-site directly; substrate symbols in module: [Converged,NotConverged]; references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "references substrate result types; fold composes through a module-local helper (cross-module discovery join is SubstrateInputsOnly)", "grep importer, consumer"),
+  ]
+}
+// The complete roster: enforced + pre-substrate + named exclusions.
+fn roster_rows() -> List<ConvergenceRosterRow> {
+  concat(concat(enforced_rows(), pre_substrate_rows()), excluded_rows())
+}
+
+fn identity_present(id: DeclarationRef, rows: List<ConvergenceRosterRow>) -> Bool {
+  let hits = filter(xs: rows, predicate: fn(r) { declaration_ref_eq(a: r.identity, b: id) })
+  length(xs: hits) > 0
+}
+
+// identity-join (guard one: the key is the route DeclarationRef, not the file
+// path). Mirrors host_convergence_census.census_identity_join: fold over the
+// required set; the first required route with no roster row is the fail-closed
+// signal.
+fn census_identity_join(required: List<DeclarationRef>, rows: List<ConvergenceRosterRow>) -> ConvergenceCensusJoin {
+  fold(
+    required,
+    init: JoinCovered { covered: [] },
+    f: fn(acc, id) {
+      match acc {
+        IdentityMissingFromCensus { identity: m } => IdentityMissingFromCensus { identity: m }
+        JoinCovered { covered: cov } =>
+          if identity_present(id, rows) { acc } else { IdentityMissingFromCensus { identity: id } }
+      }
+    },
+  )
+}
+
+// The census-completeness claim (GREEN witness): true when the roster names
+// every enforced fold-site route. Run at the head sha this passes.
+fn convergence_coverage_census_is_complete() -> Bool {
+  match census_identity_join(enforced_fold_site_routes(), roster_rows()) {
+    JoinCovered { covered: cov } => true
+    IdentityMissingFromCensus { identity: miss } => false
+  }
+}
+
+// The RED leg: the SAME join over the roster with the oomd_install.reconcile_oomd
+// enforced route removed. This claim is false (the census refuses) because a
+// real corpus route is absent from the roster. Run at the SAME sha and with the
+// SAME binary as the GREEN leg, with the identical IdentityMissingFromCensus
+// signal. A census that cannot be reddened by a planted omission is not a
+// census.
+fn convergence_coverage_census_red_control() -> Bool {
+  match census_identity_join(
+    enforced_fold_site_routes(),
+    roster_rows_without_planted_omission(),
+  ) {
+    JoinCovered { covered: cov } => true
+    IdentityMissingFromCensus { identity: miss } => false
+  }
+}
+
+// The planted-omission control: the removal above must be caught as EXACTLY the
+// oomd_install.reconcile_oomd identity, not any other. This witness is true
+// when the fail-closed signal names the planted route.
+fn planted_omission_is_caught() -> Bool {
+  match census_identity_join(
+    enforced_fold_site_routes(),
+    roster_rows_without_planted_omission(),
+  ) {
+    IdentityMissingFromCensus { identity: ident } =>
+      declaration_ref_eq(a: ident, b: cite("gunbc.oomd_install", "reconcile_oomd"))
+    JoinCovered { covered: cov } => false
+  }
+}
+
+fn roster_rows_without_planted_omission() -> List<ConvergenceRosterRow> {
+  filter(
+    roster_rows(),
+    fn(r) { !declaration_ref_eq(a: r.identity, b: cite("gunbc.oomd_install", "reconcile_oomd")) },
+  )
+}
+
+// Row-count witness: 20 enforced + 3 pre-substrate + 52 named exclusions = 75
+// rows, covering every one of the 65 grep-hit files.
+fn census_row_count_is_complete() -> Bool {
+  length(xs: roster_rows()) == 75
+}
