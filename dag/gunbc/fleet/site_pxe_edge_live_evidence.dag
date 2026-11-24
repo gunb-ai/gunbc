@@ -172,6 +172,36 @@ fn site_pxe_edge_live_canonical_path_or(answer: HostLeg, fallback: NonEmptyStr) 
   }
 }
 
+// Whether a realpath leg established a usable canonical path, or the leg could not be observed at all. A
+// never-dispatched or unanswered realpath is UNVERIFIABLE -- it is not evidence that the file "does not
+// resolve", because we never saw realpath's answer. Only an answered realpath can say contained/not-contained.
+fn site_pxe_edge_live_leg_unobserved(answer: HostLeg) -> String? {
+  match answer {
+    LegNotDispatched { reason: why } => Present { value: concat("never dispatched: ", why) }
+    LegUnanswered { cause: why } => Present { value: concat("dispatched but got no answer: ", why) }
+    LegAnswered { exit_code: _, stdout: _, stderr: _ } => Absent
+  }
+}
+
+// The containment verdict over the two realpath legs, as a sum. A realpath that was never dispatched or
+// dispatched without an answer is ContainmentUnverifiable -- it is NOT evidence the path escapes the root.
+// Only when both legs answered can the lexical containment verdict (Contained / NotContained) be made.
+type SitePxeEdgeLiveContainment
+  = Contained
+  | NotContained
+  | ContainmentUnverifiable { reason: String }
+
+fn site_pxe_edge_live_containment_verdict(root: HostLeg, file: HostLeg) -> SitePxeEdgeLiveContainment {
+  match site_pxe_edge_live_leg_unobserved(answer: root) {
+    Present { value: why } => ContainmentUnverifiable { reason: concat("the root realpath was ", why) }
+    Absent =>
+      match site_pxe_edge_live_leg_unobserved(answer: file) {
+        Present { value: why } => ContainmentUnverifiable { reason: concat("the file realpath was ", why) }
+        Absent => if site_pxe_edge_live_realpath_contained(root: root, file: file) { Contained } else { NotContained }
+      }
+  }
+}
+
 fn site_pxe_edge_live_served_file_on(host: CommandHost, tftp_root: NonEmptyStr, tftp_path: NonEmptyStr) -> SitePxeEdgeLiveServedReading {
   if !site_pxe_edge_live_root_relative_contained(path: tftp_path) {
     ServedBootFileUnread { reason: "the TFTP path escapes the root or has an empty segment; nothing was dispatched" }
@@ -179,12 +209,16 @@ fn site_pxe_edge_live_served_file_on(host: CommandHost, tftp_root: NonEmptyStr, 
     let absolute = site_pxe_edge_live_absolute_path(tftp_root: tftp_root, tftp_path: tftp_path)
     let root_answer = answer_on(host: host, command: realpath_canonical_command(path: tftp_root as String))
     let file_answer = answer_on(host: host, command: realpath_canonical_command(path: absolute as String))
-    if !site_pxe_edge_live_realpath_contained(root: root_answer, file: file_answer) {
-      ServedBootFileUnread { reason: "the served file does not resolve (symlinks followed) to a path under the TFTP root; it was not measured" }
-    } else {
-      // THE MEASURED PATH IS THE CHECKED PATH: sha256sum reads the canonical path the containment check approved, not the spelling that was resolved.
-      let canonical = site_pxe_edge_live_canonical_path_or(answer: file_answer, fallback: absolute)
-      site_pxe_edge_live_served_reading(tftp_path: tftp_path, absolute: canonical, answer: answer_on(host: host, command: sha256sum_file_command(path: canonical as String)))
+    match site_pxe_edge_live_containment_verdict(root: root_answer, file: file_answer) {
+      ContainmentUnverifiable { reason: why } =>
+        ServedBootFileUnread { reason: concat("the served file's containment under the TFTP root could not be verified (", why, "); it was not measured") }
+      NotContained =>
+        ServedBootFileUnread { reason: "the served file does not resolve (symlinks followed) to a path under the TFTP root; it was not measured" }
+      Contained => {
+        // THE MEASURED PATH IS THE CHECKED PATH: sha256sum reads the canonical path the containment check approved, not the spelling that was resolved.
+        let canonical = site_pxe_edge_live_canonical_path_or(answer: file_answer, fallback: absolute)
+        site_pxe_edge_live_served_reading(tftp_path: tftp_path, absolute: canonical, answer: answer_on(host: host, command: sha256sum_file_command(path: canonical as String)))
+      }
     }
   }
 }
@@ -386,12 +420,29 @@ fn site_pxe_edge_live_step_refusal(c: ArgvCommand, a: HostLeg) -> SitePxeEdgeLiv
 }
 
 // A file already published at a digest-addressed path is immutable (fox fix 3): it is reused when its bytes are the digest, refused when they are not, never overwritten.
-fn site_pxe_edge_live_published_matches_on(host: CommandHost, tftp_root: NonEmptyStr, tftp_path: NonEmptyStr, digest: ContentHash) -> Bool {
-  let absolute = site_pxe_edge_live_absolute_path(tftp_root: tftp_root, tftp_path: tftp_path)
-  match site_pxe_edge_live_served_reading(tftp_path: tftp_path, absolute: absolute, answer: answer_on(host: host, command: sha256sum_file_command(path: absolute as String))) {
-    ServedBootFileMeasured { path: _, digest: d } => content_hash_equal(left: d, right: digest)
-    ServedBootFileUnread { reason: _ } => false
+// But "not that digest" is a claim only about a file we actually MEASURED. When the readback could not be obtained (never dispatched, no answer, sha256sum failed or
+// printed garbage) the digest is UNVERIFIED -- we must not report a mismatch for a file whose bytes we never saw.
+type SitePxeEdgeLivePublishedMatch
+  = PublishedDigestMatch
+  | PublishedDigestMismatch
+  | PublishedDigestUnverified { reason: String }
+
+// Pure: given a served reading and the expected digest, decide the match. A reading that was never measured
+// (never dispatched, dispatched-no-answer, or a failed/unparseable sha256sum) is PublishedDigestUnverified,
+// never a mismatch -- an unread digest is not evidence the bytes differ.
+fn site_pxe_edge_live_classify_published_digest(reading: SitePxeEdgeLiveServedReading, expected: ContentHash) -> SitePxeEdgeLivePublishedMatch {
+  match reading {
+    ServedBootFileMeasured { path: _, digest: d } => if content_hash_equal(left: d, right: expected) { PublishedDigestMatch } else { PublishedDigestMismatch }
+    ServedBootFileUnread { reason: r } => PublishedDigestUnverified { reason: r }
   }
+}
+
+fn site_pxe_edge_live_published_matches_on(host: CommandHost, tftp_root: NonEmptyStr, tftp_path: NonEmptyStr, digest: ContentHash) -> SitePxeEdgeLivePublishedMatch {
+  let absolute = site_pxe_edge_live_absolute_path(tftp_root: tftp_root, tftp_path: tftp_path)
+  site_pxe_edge_live_classify_published_digest(
+    reading: site_pxe_edge_live_served_reading(tftp_path: tftp_path, absolute: absolute, answer: answer_on(host: host, command: sha256sum_file_command(path: absolute as String))),
+    expected: digest,
+  )
 }
 
 // Publish create-only: the pinned bytes are installed under a staging name in the same root-owned directory, verified against the digest, then hard-linked to the
@@ -401,19 +452,23 @@ fn site_pxe_edge_live_publish_on(host: CommandHost, tftp_root: NonEmptyStr, sour
   let stage: String = concat(dest, ".stage")
   let put = sudo_elevate_command(command: argv_words(command: install_file_mode_command(source: source as String, destination: stage, mode: "0644" as NonEmptyStr)))
   let put_a = answer_on(host: host, command: put)
+  let stage_match = site_pxe_edge_live_published_matches_on(host: host, tftp_root: tftp_root, tftp_path: concat(tftp_path as String, ".stage") as NonEmptyStr, digest: digest)
   if !site_pxe_edge_live_leg_succeeded(a: put_a) {
     site_pxe_edge_live_step_refusal(c: put, a: put_a)
-  } else if site_pxe_edge_live_published_matches_on(host: host, tftp_root: tftp_root, tftp_path: concat(tftp_path as String, ".stage") as NonEmptyStr, digest: digest) == false {
-    LivePlacementRefused { step: concat("verify ", stage), reason: "the staged bytes are not the member's digest; nothing was published" }
-  } else {
-    let link = sudo_elevate_command(command: argv_words(command: ln_hard_command(source: stage, destination: dest)))
-    let link_a = answer_on(host: host, command: link)
-    if !site_pxe_edge_live_leg_succeeded(a: link_a) {
-      site_pxe_edge_live_step_refusal(c: link, a: link_a)
-    } else {
-      let drop = sudo_elevate_command(command: argv_words(command: rm_force_command(path: stage)))
-      let drop_a = answer_on(host: host, command: drop)
-      if site_pxe_edge_live_leg_succeeded(a: drop_a) { LivePlacementDone } else { site_pxe_edge_live_step_refusal(c: drop, a: drop_a) }
+  } else { match stage_match {
+    PublishedDigestMismatch => LivePlacementRefused { step: concat("verify ", stage), reason: "the staged bytes are not the member's digest; nothing was published" }
+    PublishedDigestUnverified { reason: r } => LivePlacementRefused { step: concat("verify ", stage), reason: concat("the staged bytes' digest could not be verified (", r, "); nothing was published") }
+    PublishedDigestMatch => {
+      let link = sudo_elevate_command(command: argv_words(command: ln_hard_command(source: stage, destination: dest)))
+      let link_a = answer_on(host: host, command: link)
+      if !site_pxe_edge_live_leg_succeeded(a: link_a) {
+        site_pxe_edge_live_step_refusal(c: link, a: link_a)
+      } else {
+        let drop = sudo_elevate_command(command: argv_words(command: rm_force_command(path: stage)))
+        let drop_a = answer_on(host: host, command: drop)
+        if site_pxe_edge_live_leg_succeeded(a: drop_a) { LivePlacementDone } else { site_pxe_edge_live_step_refusal(c: drop, a: drop_a) }
+      }
+    }
     }
   }
 }
@@ -432,7 +487,11 @@ fn site_pxe_edge_live_install_member_on(host: CommandHost, tftp_root: NonEmptySt
           let dest: String = site_pxe_edge_live_absolute_path(tftp_root: tftp_root, tftp_path: tftp_path) as String
           match site_pxe_edge_live_path_standing_on(host: host, path: dest, kind: "f") {
             PathAsRequired =>
-              if site_pxe_edge_live_published_matches_on(host: host, tftp_root: tftp_root, tftp_path: tftp_path, digest: digest) { LivePlacementDone } else { LivePlacementRefused { step: concat("verify ", dest), reason: "a file already published at the digest-addressed path is not that digest; it was not overwritten" } }
+              match site_pxe_edge_live_published_matches_on(host: host, tftp_root: tftp_root, tftp_path: tftp_path, digest: digest) {
+                PublishedDigestMatch => LivePlacementDone
+                PublishedDigestMismatch => LivePlacementRefused { step: concat("verify ", dest), reason: "a file already published at the digest-addressed path is not that digest; it was not overwritten" }
+                PublishedDigestUnverified { reason: r } => LivePlacementRefused { step: concat("verify ", dest), reason: concat("the already-published file's digest could not be verified (", r, "); it was not overwritten") }
+              }
             PathPresentButNotAsRequired => LivePlacementRefused { step: concat("find ", dest), reason: "something that is not a root-owned regular file closed to group and other writes is already at the digest-addressed path; it was not overwritten" }
             PathObservationFailed { reason: r } => LivePlacementRefused { step: concat("find ", dest), reason: concat(r, "; absence was not established, so nothing was published") }
             PathAbsent => site_pxe_edge_live_publish_on(host: host, tftp_root: tftp_root, source: source, tftp_path: tftp_path, digest: digest)
