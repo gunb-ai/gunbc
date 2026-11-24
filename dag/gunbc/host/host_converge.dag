@@ -263,6 +263,30 @@ type ConvergeTarget
     }
   | CodexRuntimeBundle { host_identity: HostIdentity }
 
+// Frontier classification (fleet-state-frontier node deliverable): every
+// machine-touching artifact the converge path writes carries its
+// classification -- WHICH KIND of machine artifact it is (the four the node's
+// bar names: file, service, credential, device) and WHOSE it is (derived by
+// us, owned by us, or someone else's with an agreed contract) -- as part of
+// its own typed declaration (ConvergeKnob.frontier_kind / frontier_class).
+// The converge gate reads the classification from the artifact's own
+// declaration and refuses any artifact whose declaration contradicts what its
+// target actually touches; there is no parallel roster (the single authority,
+// gunbc.design_argument::single_authority). Scoped to this one
+// machine-touching workflow; it does NOT assert whole-host state truth
+// (gunbc.design_argument::epistemic_humility). A producer that omits the
+// classification fails to compile; a ConvergeTarget variant whose class or
+// kind is never declared fails to compile (the matches below are exhaustive,
+// gunbc.design_argument::fail_closed).
+
+type FrontierArtifactClass = DerivedByUs | OwnedByUs | ContractedExternally
+
+type FrontierArtifactKind
+  = FileArtifact
+  | ServiceArtifact
+  | CredentialArtifact
+  | DeviceArtifact
+
 type ConvergeKnob {
   slice: ConvergeSlice
   name: String
@@ -270,6 +294,8 @@ type ConvergeKnob {
   target: ConvergeTarget
   apply_mode: ConvergeApplyMode
   no_op: ConvergeNoOpPolicy
+  frontier_kind: FrontierArtifactKind
+  frontier_class: FrontierArtifactClass
 }
 
 data gunbc_host_converge_knob_apply_semantics_marker: Disposition = Scaffold {
@@ -469,7 +495,48 @@ fn gunbc_pinned_noop_policy() -> ConvergeNoOpPolicy {
   }
 }
 
+// Derives the classification from the artifact's own typed declaration (its
+// target variant): which KIND of machine artifact this knob touches, and whose
+// it is. This is the single authority (gunbc.design_argument::single_authority):
+// the classification comes FROM the ConvergeTarget variant, not from a
+// parallel roster that could drift from its producers. Adding a new
+// ConvergeTarget variant requires declaring its kind and class here -- the
+// matches are exhaustive, so omitting it fails to compile
+// (gunbc.design_argument::fail_closed).
+type FrontierDeclaration {
+  kind: FrontierArtifactKind
+  class: FrontierArtifactClass
+}
+
+fn frontier_declaration_for_target(target: ConvergeTarget) -> FrontierDeclaration {
+  match target {
+    // Setting a property on a systemd unit or slice touches a SERVICE; we
+    // author the value.
+    SliceProperty { unit: _, property: _, apply_value: _, expected_effective: _ } =>
+      FrontierDeclaration { kind: ServiceArtifact, class: DerivedByUs }
+    // The per-slot cap writes a systemd drop-in: the thing it changes on disk
+    // is a FILE (rendered from values we author).
+    PerSlotMemoryCap { dropin_path: _, instance_glob: _, property: _, bytes_value: _ } =>
+      FrontierDeclaration { kind: FileArtifact, class: DerivedByUs }
+    // Realizing per-slot service instances touches SERVICES; we author the width.
+    RunnerWidth { instance_glob: _ } =>
+      FrontierDeclaration { kind: ServiceArtifact, class: DerivedByUs }
+    // The pinned gunbc tree is a checked-out tree of FILES that we own.
+    GunbcPinnedTree { gunbc_root_env_key: _, gunbc_root_path: _, dag_root: _, ctrl_checkout_path: _, binary: _, pin_read_script: _, green_place_marker: _, live_apply: _ } =>
+      FrontierDeclaration { kind: FileArtifact, class: OwnedByUs }
+    // The codex runtime bundle is materialized FILES from someone else's
+    // runtime under our agreed package contract (host_codex_runtime_provision).
+    CodexRuntimeBundle { host_identity: _ } =>
+      FrontierDeclaration { kind: FileArtifact, class: ContractedExternally }
+    // Verifying a slice's effective property reads a SERVICE; we author the
+    // expectation.
+    VerifyOnlyCap { slice_unit: _, property: _ } =>
+      FrontierDeclaration { kind: ServiceArtifact, class: DerivedByUs }
+  }
+}
+
 fn legacy_converge_knob(slice: ConvergeSlice, name: String, desired: String, target: ConvergeTarget) -> ConvergeKnob {
+  let declared = frontier_declaration_for_target(target: target)
   ConvergeKnob {
     slice: slice,
     name: name,
@@ -477,6 +544,8 @@ fn legacy_converge_knob(slice: ConvergeSlice, name: String, desired: String, tar
     target: target,
     apply_mode: ExistingHostQuiescentReload,
     no_op: BlindApply,
+    frontier_kind: declared.kind,
+    frontier_class: declared.class,
   }
 }
 
@@ -507,6 +576,8 @@ fn gunbc_pinned_tree_knob(host: HostIdentity, apply_mode: ConvergeApplyMode) -> 
     },
     apply_mode: apply_mode,
     no_op: gunbc_pinned_noop_policy(),
+    frontier_kind: FileArtifact,
+    frontier_class: OwnedByUs,
   }
 }
 
@@ -1078,9 +1149,9 @@ fn host_converge_of(h: RunnerHostDeployment, session_knobs: List<ConvergeKnob>, 
 fn frontier_gate_host(h: RunnerHostDeployment, session_knobs: List<ConvergeKnob>, backstop_knobs: List<ConvergeKnob>, hosts: List<HostConverge>) -> FleetConvergeAcc {
   let assembled = host_converge_of(h: h, session_knobs: session_knobs, backstop_knobs: backstop_knobs)
   match frontier_validate_knobs(knobs: assembled.knobs) {
-    FrontierAdmitted { artifact: _, class: _ } =>
+    HostFrontierAdmitted =>
       FleetConvergeHosts { hosts: concat(hosts, [assembled]) }
-    FrontierRefused { artifact: a, cause: c } =>
+    HostFrontierRefused { artifact: a, cause: c } =>
       FleetConvergeUnsound { reason: concat("frontier classification refused: ", concat(a, ": ", c)) }
   }
 }
@@ -1136,76 +1207,106 @@ fn fleet_converge_policy() -> ConvergePolicy {
   fleet_converge_policy_from(plan: runner_deployment_plan(), image_baked: runner_image_baked_deployment_plan())
 }
 
-// Frontier classification (fleet-state-frontier node deliverable): every
-// machine-touching artifact the converge path writes is classified as
-// DerivedByUs (we author its value), OwnedByUs (we own the resource it
-// configures), or ContractedExternally (someone else's with an agreed
-// contract). An artifact whose name is not in the declared roster refuses
-// before any change is attempted (gunbc.design_argument::fail_closed).
-// The classification is scoped to the converge path's knob names; it does NOT
-// assert whole-host state truth (gunbc.design_argument::epistemic_humility).
+// Frontier classification (fleet-state-frontier node deliverable): the
+// converge route's frontier gate. Every machine-touching artifact the converge
+// path changes carries its classification -- which KIND of machine artifact it
+// is (file, service, credential, device) and WHOSE it is (derived by us,
+// owned by us, or someone else's with an agreed contract) -- on its OWN typed
+// declaration, derived from its ConvergeTarget variant by
+// frontier_declaration_for_target above (the single authority,
+// gunbc.design_argument::single_authority: no second list independently
+// decides a classification; a String-keyed roster that could drift from its
+// producers is exactly the fork that rule forbids). The gate READS the
+// declaration and checks it against what the artifact's own target says: a
+// knob whose declaration contradicts what its target actually touches has no
+// agreed classification -- it is an undeclared machine-touching artifact --
+// and refuses before any change is attempted
+// (gunbc.design_argument::fail_closed), carrying the artifact and the why so
+// the refusal is typed, located and countable.
+// Scoped to the converge path's knobs (the one machine-touching workflow this
+// node classifies); it does NOT assert whole-host state truth
+// (gunbc.design_argument::epistemic_humility).
 
-type FrontierArtifactClass = DerivedByUs | OwnedByUs | ContractedExternally
+// A knob's own frontier verdict: what its declaration states versus what its
+// target derives. No artifact name or classification is invented here.
+type KnobFrontierVerdict
+  = KnobFrontierDeclared { declared: FrontierDeclaration }
+  | KnobFrontierUndeclared { declared: FrontierDeclaration, derived: FrontierDeclaration }
 
-type FrontierDeclaredArtifact {
-  name: String
-  class: FrontierArtifactClass
-}
+// The verdict over a knob LIST is its own type, separate from the per-knob
+// verdict above. The refusing arm carries the offending knob's name and cause
+// from the knob itself; the admitting arm fabricates nothing
+// (gunbc.design_argument::fail_closed: no fabricated default).
+type HostFrontierVerdict
+  = HostFrontierAdmitted
+  | HostFrontierRefused { artifact: String, cause: String }
 
-type FrontierGateVerdict
-  = FrontierAdmitted { artifact: String, class: FrontierArtifactClass }
-  | FrontierRefused { artifact: String, cause: String }
-
-data frontier_declared_artifacts: List<FrontierDeclaredArtifact> = [
-  FrontierDeclaredArtifact { name: "pinned_tree_sha", class: OwnedByUs },
-  FrontierDeclaredArtifact { name: "codex_runtime_bundle", class: ContractedExternally },
-  FrontierDeclaredArtifact { name: "per_slot_cpu_quota", class: DerivedByUs },
-  FrontierDeclaredArtifact { name: "runner_slice_cap_bytes", class: DerivedByUs },
-  FrontierDeclaredArtifact { name: "per_slot_memory_max_bytes", class: DerivedByUs },
-  FrontierDeclaredArtifact { name: "per_slot_memory_swap_max_bytes", class: DerivedByUs },
-  FrontierDeclaredArtifact { name: "per_slot_tasks_max", class: DerivedByUs },
-  FrontierDeclaredArtifact { name: "per_slot_memory_high_bytes", class: DerivedByUs },
-  FrontierDeclaredArtifact { name: "cpu_weight", class: DerivedByUs },
-  FrontierDeclaredArtifact { name: "runner_count", class: DerivedByUs },
-  FrontierDeclaredArtifact { name: "slice_max_bytes", class: DerivedByUs },
-  FrontierDeclaredArtifact { name: "slice_high_bytes", class: DerivedByUs },
-  FrontierDeclaredArtifact { name: "per_session_max_bytes", class: DerivedByUs },
-  FrontierDeclaredArtifact { name: "oom_pressure_kill", class: DerivedByUs },
-  FrontierDeclaredArtifact { name: "oom_pressure_limit_pct", class: DerivedByUs },
-  FrontierDeclaredArtifact { name: "user_manager_memory_max_bytes", class: DerivedByUs },
-  FrontierDeclaredArtifact { name: "user_manager_memory_swap_max_bytes", class: DerivedByUs },
-  FrontierDeclaredArtifact { name: "approval_broker_memory_max_bytes", class: DerivedByUs },
-  FrontierDeclaredArtifact { name: "approval_broker_memory_high_bytes", class: DerivedByUs },
-]
-
-fn frontier_gate(artifact_name: String) -> FrontierGateVerdict {
-  let matches = filter(frontier_declared_artifacts, a => a.name == artifact_name)
-  if matches.length() > 0 {
-    FrontierAdmitted { artifact: artifact_name, class: matches[0].class }
-  } else {
-    FrontierRefused {
-      artifact: artifact_name,
-      cause: "this machine-touching artifact is not in the declared frontier classification; it refuses before any change is attempted",
-    }
+fn frontier_kind_text(k: FrontierArtifactKind) -> String {
+  match k {
+    FileArtifact => "file"
+    ServiceArtifact => "service"
+    CredentialArtifact => "credential"
+    DeviceArtifact => "device"
   }
 }
 
-// Production route: the converge path calls this on every assembled host's
-// knobs before admitting the host into the converge plan. An undeclared knob
-// refuses the host with FleetConvergeUnsound before any change is attempted.
-fn frontier_validate_knobs(knobs: List<ConvergeKnob>) -> FrontierGateVerdict {
+fn frontier_class_text(c: FrontierArtifactClass) -> String {
+  match c {
+    DerivedByUs => "derived-by-us"
+    OwnedByUs => "owned-by-us"
+    ContractedExternally => "contracted-externally"
+  }
+}
+
+fn frontier_declaration_text(d: FrontierDeclaration) -> String {
+  concat(frontier_kind_text(k: d.kind), concat(" ", frontier_class_text(c: d.class)))
+}
+
+fn declarations_agree(a: FrontierDeclaration, b: FrontierDeclaration) -> Bool {
+  frontier_kind_text(k: a.kind) == frontier_kind_text(k: b.kind)
+    && frontier_class_text(c: a.class) == frontier_class_text(c: b.class)
+}
+
+// Reads ONE knob's own declaration: what it states versus what its target
+// variant derives from the machine-touching thing it actually is.
+fn frontier_check_knob(k: ConvergeKnob) -> KnobFrontierVerdict {
+  let derived = frontier_declaration_for_target(target: k.target)
+  let declared = FrontierDeclaration { kind: k.frontier_kind, class: k.frontier_class }
+  if declarations_agree(a: declared, b: derived) {
+    KnobFrontierDeclared { declared: declared }
+  } else {
+    KnobFrontierUndeclared { declared: declared, derived: derived }
+  }
+}
+
+// Production gate: the converge route calls this on every assembled host's
+// knobs before admitting the host into the converge plan. The first knob
+// whose declaration contradicts what its own target touches refuses,
+// carrying that knob's name and the why (gunbc.design_argument::fail_closed:
+// typed, located, countable).
+fn frontier_validate_knobs(knobs: List<ConvergeKnob>) -> HostFrontierVerdict {
   let undeclared = filter(knobs, k => {
-    match frontier_gate(artifact_name: k.name) {
-      FrontierRefused { artifact: _, cause: _ } => true
-      FrontierAdmitted { artifact: _, class: _ } => false
+    match frontier_check_knob(k: k) {
+      KnobFrontierUndeclared { declared: _, derived: _ } => true
+      KnobFrontierDeclared { declared: _ } => false
     }
   })
   if undeclared.length() > 0 {
-    match frontier_gate(artifact_name: undeclared[0].name) {
-      FrontierRefused { artifact: a, cause: c } => FrontierRefused { artifact: a, cause: c }
-      FrontierAdmitted { artifact: a, class: _ } => FrontierRefused { artifact: a, cause: "classification inconsistency" }
+    let k = undeclared[0]
+    match frontier_check_knob(k: k) {
+      KnobFrontierUndeclared { declared: d, derived: dd } => HostFrontierRefused {
+        artifact: k.name,
+        cause: concat(
+          concat(
+            concat("the knob declares itself as ", frontier_declaration_text(d: d)),
+            concat(", but its own target touches ", frontier_declaration_text(d: dd)),
+          ),
+          "; no agreed classification covers this machine-touching artifact, so it refuses before any change is attempted",
+        ),
+      }
+      KnobFrontierDeclared { declared: _ } => HostFrontierAdmitted
     }
   } else {
-    FrontierAdmitted { artifact: "all-declared", class: DerivedByUs }
+    HostFrontierAdmitted
   }
 }

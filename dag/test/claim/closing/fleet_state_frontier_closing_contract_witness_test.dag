@@ -1,79 +1,169 @@
 module test.claim.closing.fleet_state_frontier_closing_contract_witness_test
 
-// The closing witness for node fleet-state-frontier. The node's bar: an
-// undeclared file, service, credential, or device refuses before anything is
-// changed. The frontier classification lives in the carrier (host_converge.dag);
-// the production converge route calls frontier_validate_knobs via
-// frontier_gate_host before admitting any host.
+// Closing witness for node fleet-state-frontier (owner: fleet). The node's
+// bar: an undeclared file, service, credential, or device refuses before
+// anything is changed (gunbc.design_argument::fail_closed).
 //
-// Red pair:
-//   an_undeclared_artifact_refuses_before_anything_is_changed — discriminating;
-//     drives frontier_validate_knobs (the production gate) with an undeclared
-//     knob and asserts FrontierRefused carries the artifact.
-//   a_fully_classified_inventory_admits — positive control; drives the full
-//     converge route (fleet_converge_policy_from → converge_hosts_of_plan →
-//     frontier_gate_host → frontier_validate_knobs) through the real production
-//     plan and asserts the policy is derived (all knobs classified).
+// What the executed pair shows, exactly:
+//   an_undeclared_artifact_refuses_before_anything_is_changed
+//     -- drives the production converge route's frontier stage,
+//        frontier_gate_host (called by converge_hosts_of_plan's fold on every
+//        host before the host is admitted), with the host's real production
+//        session knobs PLUS one undeclared machine-touching item: a hand-built
+//        knob declaring itself a credential while its own target verifies a
+//        service property, and one declaring itself a device while its target
+//        sets a unit property. Asserts the route returns FleetConvergeUnsound
+//        -- the typed, located refusal the fold propagates -- whose reason
+//        carries the item by name and says why. The item never lands in the
+//        admitted plan: a host the gate refuses never reaches
+//        FleetConvergeHosts. This is the row's red_control pair; at main the
+//        classification and the gate do not exist, the same route cannot
+//        refuse, and this claim fails.
+//   a_fully_classified_inventory_admits
+//     -- positive control on the same real route: converge_hosts_of_plan over
+//        the production deployment plan. Asserts FleetConvergeHosts whose
+//        length equals the number of derived host standings in the plan, so
+//        every host was admitted by the frontier gate (gate refusal would
+//        yield FleetConvergeUnsound; a silent drop would yield a shorter
+//        list). Population is non-empty.
+//
+// The classification lives in the carrier, gunbc.host.host_converge: each
+// ConvergeKnob carries its frontier declaration (kind: file/service/
+// credential/device; class: derived-by-us/owned-by-us/contracted-externally)
+// derived by frontier_declaration_for_target from its own ConvergeTarget
+// variant -- the single authority (gunbc.design_argument::single_authority),
+// no parallel roster. This workflow's production artifacts are files (systemd
+// drop-ins, the pinned tree, the codex runtime bundle) and services (systemd
+// units and slices); no production knob of this workflow is a credential or a
+// device, so none carries those kinds -- the witness supplies the credential
+// and device items to exercise the row's refusal arms (the claim is exactly
+// as wide as what is executed, gunbc.design_argument::epistemic_humility).
 
 import std.types { Bool, String }
+import std.algebra { string_contains }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.systemd { systemd_memory_max_property }
 import gunbc.ci.ci_runner_placement {
   runner_deployment_plan,
-  runner_image_baked_deployment_plan,
+  HostRunnerDeploymentDerived,
+  HostRunnerDeploymentRefused,
 }
+import gunbc.fleet.fleet_enrollment { ExistingHostQuiescentReload }
 import gunbc.host.host_converge {
+  BlindApply,
   ConvergeKnob,
-  ConvergePolicyDerived,
-  ConvergePolicyUnsound,
-  FrontierAdmitted,
-  FrontierRefused,
-  DerivedByUs,
+  CredentialArtifact,
+  DeviceArtifact,
+  ContractedExternally,
+  FleetConvergeHosts,
+  FleetConvergeUnsound,
+  OwnedByUs,
+  RunnerSlice,
   SessionsSlice,
+  SliceProperty,
   VerifyOnlyCap,
-  fleet_converge_policy_from,
-  frontier_validate_knobs,
+  converge_hosts_of_plan,
+  frontier_gate_host,
+  session_knobs_for,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
+// The row's discriminating pair: an undeclared machine-touching item refuses
+// the route BEFORE any change is attempted, carrying the item and the why.
+// The credential item declares itself a credential, contracted-externally,
+// while its own target verifies a service property derived-by-us; the device
+// item declares itself a device, owned-by-us, while its own target sets a
+// unit property derived-by-us. Neither has an agreed classification for what
+// it actually touches, so the gate refuses both, each carrying its name.
 test fn an_undeclared_artifact_refuses_before_anything_is_changed() -> Bool {
-  // A knob whose name is not in the declared frontier classification must be
-  // refused by the production gate (frontier_validate_knobs), which the
-  // converge route (frontier_gate_host) calls before admitting any host.
-  // The refusing arm carries the undeclared artifact by name.
-  //
-  // Discriminating: if frontier_validate_knobs admitted undeclared knobs (the
-  // classification gate bypassed or the roster widened silently), this test fails.
-  let undeclared_knob = ConvergeKnob {
-    slice: SessionsSlice,
-    name: "undeclared.credential.srv9_api_key",
-    desired: "redacted",
-    target: VerifyOnlyCap {
-      slice_unit: "srv9.slice",
-      property: systemd_memory_max_property,
-    },
-  }
-  match frontier_validate_knobs(knobs: [undeclared_knob]) {
-    FrontierRefused { artifact: "undeclared.credential.srv9_api_key", cause: _ } => true
-    FrontierAdmitted { artifact: _, class: _ } => false
+  let plan = runner_deployment_plan()
+  let derived = filter(plan.hosts, st => {
+    match st {
+      HostRunnerDeploymentDerived { deployment: _ } => true
+      HostRunnerDeploymentRefused { refusal: _ } => false
+    }
+  })
+  if derived.length() == 0 {
+    false
+  } else {
+    match derived[0] {
+      HostRunnerDeploymentDerived { deployment: h } => {
+        let credential_item = ConvergeKnob {
+          slice: SessionsSlice,
+          name: "srv9_fleet_operator_credential",
+          desired: "redacted",
+          target: VerifyOnlyCap {
+            slice_unit: "srv9.slice",
+            property: systemd_memory_max_property,
+          },
+          apply_mode: ExistingHostQuiescentReload,
+          no_op: BlindApply,
+          frontier_kind: CredentialArtifact,
+          frontier_class: ContractedExternally,
+        }
+        let device_item = ConvergeKnob {
+          slice: RunnerSlice,
+          name: "srv9_nvme_io_accounting",
+          desired: "enabled",
+          target: SliceProperty {
+            unit: "srv9.slice",
+            property: systemd_memory_max_property,
+            apply_value: "max",
+            expected_effective: "max",
+          },
+          apply_mode: ExistingHostQuiescentReload,
+          no_op: BlindApply,
+          frontier_kind: DeviceArtifact,
+          frontier_class: OwnedByUs,
+        }
+        let credential_refused = match frontier_gate_host(
+          h: h,
+          session_knobs: session_knobs_for(host: h.identity),
+          backstop_knobs: [credential_item],
+          hosts: [],
+        ) {
+          FleetConvergeUnsound { reason: r } =>
+            string_contains(s: r, pattern: "srv9_fleet_operator_credential")
+              && string_contains(s: r, pattern: "credential")
+              && string_contains(s: r, pattern: "refuses before any change is attempted")
+          FleetConvergeHosts { hosts: _ } => false
+        }
+        let device_refused = match frontier_gate_host(
+          h: h,
+          session_knobs: session_knobs_for(host: h.identity),
+          backstop_knobs: [device_item],
+          hosts: [],
+        ) {
+          FleetConvergeUnsound { reason: r } =>
+            string_contains(s: r, pattern: "srv9_nvme_io_accounting")
+              && string_contains(s: r, pattern: "device")
+              && string_contains(s: r, pattern: "refuses before any change is attempted")
+          FleetConvergeHosts { hosts: _ } => false
+        }
+        credential_refused && device_refused
+      }
+      HostRunnerDeploymentRefused { refusal: _ } => false
+    }
   }
 }
 
+// Positive control on the same real route: every production host's knobs
+// carry an agreed classification, so the frontier gate ADMITS each host.
+// Asserting hosts.length() equals the derived standings of the plan proves
+// admission is by the gate on every host: any gate refusal yields
+// FleetConvergeUnsound (not a shorter list), and a silent drop yields a
+// shorter list, so both go red here. Non-empty population required.
 test fn a_fully_classified_inventory_admits() -> Bool {
-  // Positive control: the real production converge route (fleet_converge_policy_from
-  // → converge_hosts_of_plan → frontier_gate_host → frontier_validate_knobs)
-  // admits the production plan because every knob in it is classified.
-  // This proves the gate does not vacuously refuse declared artifacts and
-  // executes the real path end-to-end.
-  //
-  // Discriminating: if the frontier gate refused any declared knob in the
-  // production plan, the policy would be ConvergePolicyUnsound and this fails.
-  match fleet_converge_policy_from(
-    plan: runner_deployment_plan(),
-    image_baked: runner_image_baked_deployment_plan(),
-  ) {
-    ConvergePolicyDerived { hosts: hs } => hs.length() > 0
-    ConvergePolicyUnsound { reason: _ } => false
+  let plan = runner_deployment_plan()
+  let derived_count = filter(plan.hosts, st => {
+    match st {
+      HostRunnerDeploymentDerived { deployment: _ } => true
+      HostRunnerDeploymentRefused { refusal: _ } => false
+    }
+  }).length()
+  match converge_hosts_of_plan(plan: plan) {
+    FleetConvergeHosts { hosts: hs } => hs.length() == derived_count && derived_count > 0
+    FleetConvergeUnsound { reason: _ } => false
   }
 }
