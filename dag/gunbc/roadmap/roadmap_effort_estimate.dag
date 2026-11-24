@@ -1433,6 +1433,77 @@ data roadmap_estimate_entries: List<EstimateEntry> = [
     made: d(y: 2026, m: 11, day: 19),
     value: days_estimate(working_days: 30),
     basis: "Five distinct non-success endings each need an unambiguous billing disposition and an exercising drill, independent of commercial prices.",
+  )),  // bobo-onboarding-end-to-end and its prerequisites: keen-dove-217, 2026-11-24, from a source read of each row's
+  // change at main 8b434ce74d6c, not from a measured pace. Operator gates are not priced: they wait on a person.
+  // install-refusal-through-generated-workflow
+  estimate_recorded(row: estimate_row(
+    subject: "rn_F0M12T7WH06NPMVDEK20Q529WP" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 24),
+    value: days_estimate(working_days: 3),
+    basis: "One receipt path for writer and workflow, the refusal report moved ahead of every effectful read, and one dispatch for an ineligible subject; small, but it may surface more wiring than the review traced.",
+  )),
+  // install-subject-owns-secured-controller
+  estimate_recorded(row: estimate_row(
+    subject: "rn_WXZ0HAWR8BNBG5N2719335TVWS" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 24),
+    value: days_estimate(working_days: 5),
+    basis: "The secured-controller evidence moves from the managed-host row onto the arrival subject, with the per-write approval carried to the boot call; touches the resolver, the subject gate and their witnesses.",
+  )),
+  // install-holds-one-store-and-edge-reconciles-attempts
+  estimate_recorded(row: estimate_row(
+    subject: "rn_6Z95K94JKGXGDR6EFN1VX6TWW6" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 24),
+    value: days_estimate(working_days: 5),
+    basis: "First cut only: one hold store and key shared by arrival and install, the journal read under the hold, and an edge-wide install lock; multi-attempt reconciliation at the edge is later.",
+  )),
+  // install-target-designated-or-unformatted
+  estimate_recorded(row: estimate_row(
+    subject: "rn_1NT194C8SV6TFJS09ATH58RKPR" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 24),
+    value: days_estimate(working_days: 10),
+    basis: "A new layer-policy module, a selector over a device view placed in the installer image or a widened seed contract (a choice still to make against Canonical's documented behavior), and deletion of the pre-read admission and its rows.",
+  )),
+  // install-attempt-observed-and-resumable
+  estimate_recorded(row: estimate_row(
+    subject: "rn_GSX3KQEBNY5040JDVNNT53A26Q" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 24),
+    value: days_estimate(working_days: 10),
+    basis: "An attempt identity carried through seed, receipt, host key and withdrawal; an in-progress standing and resumption; readings taken when their evidence exists instead of at the boot instant.",
+  )),
+  // bobo-install-credential-and-ci-arrival-leg
+  estimate_recorded(row: estimate_row(
+    subject: "rn_3KZP7YD2VQ9X48HNRCMT6B5FJW" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 24),
+    value: days_estimate(working_days: 5),
+    basis: "The remaining half of the row: the CI arrival leg against the approved srv15-arrival environment, which itself waits on the operator gate; the two earlier arrival runs failed on compile time and before the first controller read.",
+  )),
+  // bobo-live-hpm-check-and-evidence
+  estimate_recorded(row: estimate_row(
+    subject: "rn_8VQD2KJ7TY5Z3N6XWHMR9C4BPF" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 24),
+    value: days_estimate(working_days: 3),
+    basis: "One live read through the existing unit-parameterized hpm check and its evidence PR.",
+  )),
+  // bobo-pxe-install-dispatch
+  estimate_recorded(row: estimate_row(
+    subject: "rn_6MZT4XQK9RV2J7YDHNC8WB3FP5" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 24),
+    value: days_estimate(working_days: 3),
+    basis: "The live dispatch once every prerequisite holds, plus the fixes a first live run is expected to surface.",
+  )),
+  // bobo-first-boot-handoff-to-remote-build
+  estimate_recorded(row: estimate_row(
+    subject: "rn_4YHB7NQM2KZ9X5VT6RJW8DC3FP" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 24),
+    value: days_estimate(working_days: 2),
+    basis: "A boundary row: record the handoff and link the remote-build join; the join itself is that lane's.",
+  )),
+  // bobo-onboarding-end-to-end
+  estimate_recorded(row: estimate_row(
+    subject: "rn_Y3BMMSTGKW82D3TR963TAPD3T7" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 24),
+    value: days_estimate(working_days: 5),
+    basis: "The composed run on srv15 and the seams it surfaces between stages that were each proven alone.",
   )),
 ]
 
