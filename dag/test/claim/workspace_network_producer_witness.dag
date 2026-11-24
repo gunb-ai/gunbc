@@ -1,7 +1,7 @@
 module test.claim.workspace_network_producer_witness
 
 import std.types { Bool, NonEmptyStr }
-import gunbc.runner.runner_microvm_network_observe { network_read_outcome }
+import gunbc.runner.runner_microvm_network_observe { network_read_outcome, PrivilegedRead, PrivilegedReadCaptured }
 import gunbc.host.host_effect { SshShell }
 import gunbc.executor_privileged_operation { ReadNftRuleset }
 import extdeps.shell.exec { ProcessCaptureNotSpawned }
@@ -27,7 +27,9 @@ test fn network_producer_preserves_unsupported_queue_observation() -> Bool {
 
 test fn unanchored_network_observation_refuses_before_opening_a_session() -> Bool {
   match network_read_outcome(transport: SshShell { ssh_host: "unexpected-host" }, op: ReadNftRuleset) {
-    ProcessCaptureNotSpawned { program: _, cause: _ } => true
+    // The observation is a PRIVILEGED READ: the capture grain stays inside, so an unanchored
+    // host is a read whose child was never spawned -- no session was opened to fabricate a verdict.
+    PrivilegedReadCaptured { outcome: ProcessCaptureNotSpawned { program: _, cause: _ } } => true
     other => false
   }
 }

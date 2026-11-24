@@ -53,7 +53,7 @@ fn observe_authorized_keys_line(home: String) -> String {
           join(["authorized-keys home=", home, " outcome=fleet-key-absent (file readable, key material not found)\n"], "")
         }
       ProcessOutputAbsent =>
-        join(["authorized-keys home=", home, " outcome=absent (file empty or missing)\n"], "")
+        join(["authorized-keys home=", home, " outcome=fleet-key-absent (file readable and empty)\n"], "")
       ProcessRefused { exit_code: _, stderr: e } =>
         join(["authorized-keys home=", home, " outcome=unreadable cause=", trim(s: e), "\n"], "")
     }

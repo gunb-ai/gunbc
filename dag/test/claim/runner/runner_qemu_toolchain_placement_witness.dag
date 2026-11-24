@@ -1,0 +1,35 @@
+module gunbc.test.claim.runner.runner_qemu_toolchain_placement_witness;
+
+// CLAIMS FOR THE QEMU TOOLCHAIN TREE CHECK (review 97468 blocker 4). The existence probe is a
+// WET child: the transport refuses under a remote or declined session, and no claim here can
+// force LocalExec to refuse hermetically -- so the claims pin the CLASSIFIER, which is where the
+// false diagnosis lived, and the compile proves place_qemu_toolchain_wet routes Unreadable to a
+// refusal BEFORE any staging write (the arm sits before mkdir, mktemp and publish).
+
+import std.types { String, NonEmptyStr, Bool }
+import gunbc.runner.runner_qemu_toolchain {
+  QemuToolchainTreeStanding, QemuToolchainTreeStands, QemuToolchainTreeAbsent,
+  QemuToolchainTreeUnreadable, qemu_toolchain_tree_standing,
+}
+import extdeps.shell.exec { ProcessCaptureOutcome, ProcessCaptureNotSpawned, ProcessCaptured, ProcessRefused }
+
+// A TREE CHECK THAT NEVER SPAWNED ANSWERED NOTHING. It is NOT "absent": treating silence as
+// absence would let placement stage a replacement over a tree the recipe may already own -- the
+// exact defect the reviewer named ("an unspawned `test -e` selects staging").
+test fn spawn_refused_tree_check_is_unreadable_not_absent() -> Bool {
+  match qemu_toolchain_tree_standing(captured: ProcessCaptureNotSpawned { program: "test -e <tree>" as NonEmptyStr, cause: "ssh session declined" as NonEmptyStr }) {
+    QemuToolchainTreeUnreadable { cause: c } =>
+      string_contains(s: c, pattern: "test -e <tree>")
+        && string_contains(s: c, pattern: "ssh session declined")
+    _ => false
+  }
+}
+
+// A RETURNED CHILD VERDICT STILL CLASSIFIES AT ITS OWN GRAIN: exit nonzero is the answer "no
+// tree", exit zero is "tree stands". (Guard: the Unreadable arm never swallows a real verdict.)
+test fn a_returned_absent_verdict_is_still_absent() -> Bool {
+  match qemu_toolchain_tree_standing(captured: ProcessCaptured { outcome: ProcessRefused { exit_code: 1, stderr: "" } }) {
+    QemuToolchainTreeAbsent => true
+    _ => false
+  }
+}

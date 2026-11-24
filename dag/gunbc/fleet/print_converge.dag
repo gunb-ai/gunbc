@@ -37,7 +37,7 @@ import gunbc.fleet.fleet_printer_access {
   read_existing_printer_session, PrinterSessionReady, PrinterSessionRefused,
   printer_access_code_locus, PrinterAccessCodeDesiredLocusFound, PrinterAccessCodeLocusUnknown, PrinterAccessCodeLocusConflict,
 }
-import gunbc.fleet.printer_report { report_using_session, PrinterReported, PrinterCleanupClean, PrinterCleanupOutstanding }
+import gunbc.fleet.printer_report { report_using_session, PrinterReported, PrinterReportExhausted, PrinterCleanupClean, PrinterCleanupOutstanding }
 import gunbc.fleet.printer_job_monitor { observe_job }
 import gunbc.fleet.printer_project_delivery { remote_name_for_attempt }
 import gunbc.fleet.printer_actuation {
@@ -197,6 +197,8 @@ fn session_report(printer: PhysicalAssetIdentity, version: NonEmptyStr, credenti
         ProcessRefused { exit_code: _, stderr: _ } => none
       }
       PrinterReported { outcome: ProcessCaptureNotSpawned { program: _, cause: _ }, cleanup: _ } => none
+      // An exhausted budget yielded no standing: the partial captures are not a text to file.
+      PrinterReportExhausted { last: _, cleanup: _ } => none
       PrinterReported { outcome: ProcessCaptured { outcome: _ }, cleanup: PrinterCleanupOutstanding { detail: _ } } => none
     }
   }

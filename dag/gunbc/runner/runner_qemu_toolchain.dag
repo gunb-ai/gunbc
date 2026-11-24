@@ -143,6 +143,27 @@ fn qemu_toolchain_run_ok(command: ArgvCommand) -> Bool {
   process_capture_admitted(captured: run_shell_command_capture(command: command, transport: LocalExec))
 }
 
+// THE EXISTENCE CHECK HAS THREE STANDINGS, not two. 'test -e' answers present or absent; a check that
+// was NEVER SPAWNED answered nothing and is not evidence that the tree is absent -- treating it as
+// absent would stage a replacement over a tree the recipe may already own.
+type QemuToolchainTreeStanding
+  = QemuToolchainTreeStands
+  | QemuToolchainTreeAbsent
+  | QemuToolchainTreeUnreadable { cause: String }
+
+fn qemu_toolchain_tree_standing(captured: ProcessCaptureOutcome) -> QemuToolchainTreeStanding {
+  match captured {
+    ProcessCaptureNotSpawned { program: p, cause: why } => QemuToolchainTreeUnreadable { cause: join([p, ": ", why], "") }
+    ProcessCaptured { outcome: ProcessOutputPresent { text: _ } } => QemuToolchainTreeStands
+    ProcessCaptured { outcome: ProcessOutputAbsent } => QemuToolchainTreeStands
+    ProcessCaptured { outcome: ProcessRefused { exit_code: _, stderr: _ } } => QemuToolchainTreeAbsent
+  }
+}
+
+fn qemu_toolchain_tree_test_wet(path: String) -> QemuToolchainTreeStanding {
+  qemu_toolchain_tree_standing(captured: run_shell_command_capture(command: test_exists_command(path: path), transport: LocalExec))
+}
+
 // AN EXISTING TREE IS NEVER REPLACED. Its path is the recipe's, so it was published from these
 // verified archives; whether it still holds is the readback's question, and a tree that fails it is
 // reported, not rebuilt over, because a consumer may hold paths into it. Unlike the browser toolchain
@@ -150,11 +171,15 @@ fn qemu_toolchain_run_ok(command: ArgvCommand) -> Bool {
 // extraction, and the readback hashes the files QEMU actually maps.
 fn place_qemu_toolchain_wet(location: QemuToolchainLocation, archives: List<UbuntuArchiveBinaryPackage>) -> QemuToolchainPlacement {
   let staged_archives = map(archives, a => qemu_toolchain_staged_archive(a: a))
-  if qemu_toolchain_run_ok(command: test_exists_command(path: location.root as String)) {
-    QemuToolchainTreePresent
-  } else if qemu_toolchain_run_ok(command: mkdir_parents_command(path: location.archives as String)) == false {
-    QemuToolchainPlacementRefused { archives: [], cause: concat("the toolchain base could not be created: ", location.base as String) }
-  } else {
+  match qemu_toolchain_tree_test_wet(path: location.root as String) {
+    QemuToolchainTreeStands => QemuToolchainTreePresent
+    // The tree could not be checked: refuse BEFORE staging anything. Staging on an unreadable check
+    // would publish over a tree the recipe may already own, on the strength of a test that never ran.
+    QemuToolchainTreeUnreadable { cause: c } =>
+      QemuToolchainPlacementRefused { archives: [], cause: join(["the toolchain tree could not be checked for an existing tree: ", c], "") }
+    QemuToolchainTreeAbsent => if qemu_toolchain_run_ok(command: mkdir_parents_command(path: location.archives as String)) == false {
+      QemuToolchainPlacementRefused { archives: [], cause: concat("the toolchain base could not be created: ", location.base as String) }
+    } else {
     let made = shell.Mktemp.DirWithTemplate(template: join([location.base as String, "/staging.XXXXXXXX"], "") as FilePath)
     if made.success == false {
       QemuToolchainPlacementRefused { archives: [], cause: concat("no per-invocation staging directory could be created under ", location.base as String) }
@@ -170,6 +195,7 @@ fn place_qemu_toolchain_wet(location: QemuToolchainLocation, archives: List<Ubun
       }
       let dropped = qemu_toolchain_run_ok(command: rm_recursive_force_command(path: staging))
       result
+    }
     }
   }
 }

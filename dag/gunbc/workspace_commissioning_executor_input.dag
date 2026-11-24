@@ -78,11 +78,14 @@ fn workspace_executor_input_from_plan(plan: WorkspaceExecutorPlanBytes) -> Works
       NetworkSubjectResolved { subject } => {
         let installed = release_locus_dir(root: microvm_controller_root,
           revision: RevisionBoundAtEmission { revision: plan.provenance.source_revision as CommitSha })
-        if !workspace_executor_installed_adapter_matches(release_dir: installed, slot: slot) {
-          WorkspaceExecutorInputRefused { reason: "installed executor artifacts or loaded unit differ from the reviewed release" }
-        } else { WorkspaceExecutorInputObserved { input: WorkspaceExecutorInput {
-          plan: plan, release_dir: installed as NonEmptyStr, login: spec.job_user, network: subject,
-        } } }
+        match workspace_executor_installed_adapter_verdict(release_dir: installed, slot: slot) {
+          AdapterUnreadable { cause: c } =>
+            WorkspaceExecutorInputRefused { reason: join(["installed executor grant could not be read: ", c], "") }
+          AdapterDiffers => WorkspaceExecutorInputRefused { reason: "installed executor artifacts or loaded unit differ from the reviewed release" }
+          AdapterMatches => WorkspaceExecutorInputObserved { input: WorkspaceExecutorInput {
+            plan: plan, release_dir: installed as NonEmptyStr, login: spec.job_user, network: subject,
+          } }
+        }
       }
       NetworkSubjectRefused { refusal: _ } => WorkspaceExecutorInputRefused { reason: "commissioning network subject is unavailable" }
     }
@@ -97,48 +100,68 @@ fn workspace_executor_owned_text_equals(path: String, expected: String) -> Bool 
   }
 }
 
-// Captured command text trims trailing whitespace. Digest the file under its exact grant,
-// and the expected bytes through stdin, so a missing or added final newline still refuses.
-fn workspace_executor_grant_digest_matches(expected: Digest, observed: ProcessCaptureOutcome) -> Bool {
+// THE GRANT DIGEST VERDICT HAS THREE STANDINGS. A digest that was never computed -- by an unspawned
+// command, a refused digest utility or an unreadable grant -- matched NOTHING and differed from
+// NOTHING: reporting "differs from the reviewed release" from it would be an unheld fact. The cause
+// (program and refusal) travels to the refusal instead. Pure over the capture, so the witness drives
+// every standing including the never-spawned one.
+type WorkspaceExecutorGrantVerdict
+  = GrantMatches
+  | GrantDiffers
+  | GrantUnreadable { cause: String }
+
+fn workspace_executor_grant_digest_verdict(expected: Digest, observed: ProcessCaptureOutcome) -> WorkspaceExecutorGrantVerdict {
   match observed {
-    // Nothing was digested, so nothing matches: a digest read off an unspawned command would be a
-    // digest of nothing claiming to be the grant's.
-    ProcessCaptureNotSpawned { program: _, cause: _ } => false
+    // Nothing was digested, so neither match nor difference is held: a digest read off an unspawned
+    // command would be a digest of nothing claiming to be the grant's.
+    ProcessCaptureNotSpawned { program: p, cause: why } => GrantUnreadable { cause: join([p, ": ", why], "") }
     ProcessCaptured { outcome } => match outcome {
       ProcessOutputPresent { text } => match sha256sum_line_digest(line: text) {
-        Present { value: actual } => actual == expected
-        Absent => false
+        Present { value: actual } => if actual == expected { GrantMatches } else { GrantDiffers }
+        Absent => GrantUnreadable { cause: join(["the digest command's output is not a digest line: ", trim(s: text)], "") }
       }
-      ProcessOutputAbsent => false
-      ProcessRefused { exit_code: _, stderr: _ } => false
+      ProcessOutputAbsent => GrantUnreadable { cause: "the digest command returned no output" }
+      ProcessRefused { exit_code: e, stderr: s } => GrantUnreadable { cause: join(["the digest command refused: exit ", to_string(e), " ", trim(s: s)], "") }
     }
   }
 }
 
-fn workspace_executor_grant_matches(expected: String) -> Bool {
+fn workspace_executor_grant_verdict(expected: String) -> WorkspaceExecutorGrantVerdict {
   match read_store_ownership(path: workspace_dispatch_grant_path) {
     OwnershipRead { ownership: StoreRootOwned } => match sha256sum_stdin_digest_via_shell(content: expected) {
-      Sha256FileDigest { digest } => workspace_executor_grant_digest_matches(expected: digest,
+      Sha256FileDigest { digest } => workspace_executor_grant_digest_verdict(expected: digest,
         observed: run_shell_command_capture(command: executor_privileged_operation_elevated_command(
           op: workspace_dispatch_grant_read_operation()), transport: LocalExec))
-      Sha256FileDigestUnavailable { path: _, reason: _ } => false
+      Sha256FileDigestUnavailable { path: p, reason: r } => GrantUnreadable { cause: join(["the expected grant digest could not be computed for ", p, ": ", r], "") }
     }
-    OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => false
-    OwnershipUnread { reason: _ } => false
+    // A grant not root-owned is not the reviewed grant: that difference is a held fact.
+    OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => GrantDiffers
+    OwnershipUnread { reason: r } => GrantUnreadable { cause: concat("the grant ownership could not be read: ", r) }
   }
 }
 
-fn workspace_executor_installed_adapter_matches(release_dir: String, slot: NonEmptyStr) -> Bool {
+// THE ADAPTER READBACK HAS THREE STANDINGS TOO: the grant half is unreadable-or-not, and 'differ' is
+// only claimed when every check actually answered and one disagreed.
+type WorkspaceExecutorAdapterVerdict
+  = AdapterMatches
+  | AdapterDiffers
+  | AdapterUnreadable { cause: String }
+
+fn workspace_executor_installed_adapter_verdict(release_dir: String, slot: NonEmptyStr) -> WorkspaceExecutorAdapterVerdict {
   let unit = workspace_executor_unit_instance_name(slot: slot)
   let fragment = systemd.Systemctl.ShowProperty(unit: unit, property: "FragmentPath")
   let dropins = systemd.Systemctl.ShowProperty(unit: unit, property: "DropInPaths")
   let reload = systemd.Systemctl.ShowProperty(unit: unit, property: "NeedDaemonReload")
-  fragment.success && trim(s: fragment.value) == (workspace_executor_unit_path() as String)
+  let conjuncts_held = fragment.success && trim(s: fragment.value) == (workspace_executor_unit_path() as String)
     && dropins.success && trim(s: dropins.value) == ""
     && reload.success && trim(s: reload.value) == "no"
-    && workspace_executor_grant_matches(expected: concat(workspace_dispatch_grant_content(release_dir: release_dir as NonEmptyStr), "\n"))
     && workspace_executor_owned_text_equals(path: workspace_executor_unit_path() as String,
       expected: workspace_executor_unit_text(release_dir: release_dir, fleet_lock: fleet_generation_lock, wait_bound: workspace_executor_wait_bound))
     && workspace_executor_owned_text_equals(path: join([release_dir, "/", workspace_executor_script_name], ""), expected: workspace_commissioning_executor_script())
     && workspace_executor_owned_text_equals(path: join([release_dir, "/", workspace_executor_helper_name], ""), expected: workspace_executor_helper_script(release_dir: release_dir))
+  match workspace_executor_grant_verdict(expected: concat(workspace_dispatch_grant_content(release_dir: release_dir as NonEmptyStr), "\n")) {
+    GrantUnreadable { cause: c } => AdapterUnreadable { cause: c }
+    GrantDiffers => AdapterDiffers
+    GrantMatches => if conjuncts_held { AdapterMatches } else { AdapterDiffers }
+  }
 }

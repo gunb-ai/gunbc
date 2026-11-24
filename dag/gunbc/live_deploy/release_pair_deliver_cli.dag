@@ -70,7 +70,8 @@ import gunbc.live_deploy.release_pair_delivery {
   release_pair_verify_dispatch, release_pair_install_plan, release_pair_converged_noop, release_pair_already_at_head_reason,
   release_pair_source_dir,
   ReleasePairResume, AlreadyPlaced, NotYetPlaced, MismatchRefusal, release_pair_resume_decision,
-  release_pair_occupied_link_benign,
+  ReleasePairOccupiedLinkRead, OccupiedLinkBenignSamePlacement, release_pair_occupied_link_verdict,
+  release_pair_occupied_link_refusal_reason,
   SourceReceiptWrite,
 }
 import gunbc.fleet.fleet_workflow_steps { ci_release_bins_artifact_name, fleet_converge_release_bins_job_id }
@@ -397,6 +398,13 @@ fn release_pair_pack_digest_bound(manifest_read: FilesystemReadOutcome, pack_dir
 // ProcessCaptureOutcome, whose ProcessCaptureNotSpawned arm says NO CHILD EVER RAN. Each wrapper folds that
 // fact onto the refusal shape the inner decode already names -- a not-spawned child never reaches a decode as
 // an observation, and no exit code is fabricated for it.
+// THE NOT-SPAWNED FACT KEEPS ITS WITNESS (review 97468 non-blocking): every fold onto a
+// refusal shape carries the refused program and the spawner's cause, so the refusal receipt
+// says WHICH readback never ran and WHY, not just the generic domain refusal.
+fn release_pair_not_spawned_detail(base: NonEmptyStr, program: NonEmptyStr, cause: NonEmptyStr) -> NonEmptyStr {
+  join([base as String, " (capture readback never spawned: ", program as String, ": ", cause as String, ")"], "") as NonEmptyStr
+}
+
 fn release_pair_decode_head_capture(outcome: ProcessCaptureOutcome) -> NonEmptyStr? {
   match outcome {
     ProcessCaptured { outcome: captured } => release_pair_decode_head(outcome: captured)
@@ -407,14 +415,14 @@ fn release_pair_decode_head_capture(outcome: ProcessCaptureOutcome) -> NonEmptyS
 fn release_pair_decode_ancestry_capture(outcome: ProcessCaptureOutcome) -> ReleasePairAncestry {
   match outcome {
     ProcessCaptured { outcome: captured } => release_pair_decode_ancestry(outcome: captured)
-    ProcessCaptureNotSpawned { program: _, cause: _ } => AncestryRefused { reason: release_pair_ancestry_unobserved_reason }
+    ProcessCaptureNotSpawned { program: pp, cause: why } => AncestryRefused { reason: release_pair_not_spawned_detail(base: release_pair_ancestry_unobserved_reason, program: pp, cause: why) }
   }
 }
 
 fn release_pair_decode_built_runs_capture(outcome: ProcessCaptureOutcome) -> ReleasePairBuiltRuns {
   match outcome {
     ProcessCaptured { outcome: captured } => release_pair_decode_built_runs(outcome: captured)
-    ProcessCaptureNotSpawned { program: _, cause: _ } => BuiltRunsRefused { reason: release_pair_run_discovery_refused_reason }
+    ProcessCaptureNotSpawned { program: pp, cause: why } => BuiltRunsRefused { reason: release_pair_not_spawned_detail(base: release_pair_run_discovery_refused_reason, program: pp, cause: why) }
   }
 }
 
@@ -433,7 +441,7 @@ fn release_pair_pack_fetch_capture(
 ) -> PackFetch {
   match fetch {
     ProcessCaptured { outcome: captured } => release_pair_pack_fetch(fetch_outcome: captured, manifest_read: manifest_read, pack_dir: pack_dir, member_src: member_src)
-    ProcessCaptureNotSpawned { program: _, cause: _ } => PackAbsent { reason: release_pair_fetch_refused_reason }
+    ProcessCaptureNotSpawned { program: pp, cause: why } => PackAbsent { reason: release_pair_not_spawned_detail(base: release_pair_fetch_refused_reason, program: pp, cause: why) }
   }
 }
 
@@ -1081,12 +1089,14 @@ fn release_pair_deliver_actuate(base_root: String, serving: ReleaseRevisionBindi
             // already points at THIS revision's fetched member — read it back with the admitted readlink_command and
             // compare; an occupied link pointing elsewhere is a foreign placement and refuses (manager guard B).
             FilesystemLinkTargetOccupied { path: p } =>
-              match release_pair_occupied_link_benign(
+              match release_pair_occupied_link_verdict(
                 link_read: run_shell_command_capture(command: readlink_command(path: p), transport: LocalExec),
                 expected_source: place.source,
               ) {
-                true => release_pair_deliver_write_receipt(receipt: receipt, body: body, restart: restart)
-                false => exit_failure(reason: "pair-deliver: the per-revision release locus link is occupied by a target other than this revision's fetched member (or is not a symlink) — refusing rather than adopting a foreign placement (fail-closed, review 96241 f1)")
+                OccupiedLinkBenignSamePlacement => release_pair_deliver_write_receipt(receipt: receipt, body: body, restart: restart)
+                // UNREADABLE AND NOT-BENIGN BOTH REFUSE, but with their own final words: an unreadable
+                // readlink is reported as unread (program and cause), never as a differing target.
+                other => exit_failure(reason: release_pair_occupied_link_refusal_reason(verdict: other))
               }
             _ => exit_failure(reason: "pair-deliver: the fetched serve member could not be placed at the locus (fail-closed)")
           }

@@ -20,7 +20,7 @@ import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputA
 import extdeps.shell.exec { ProcessCaptureNotSpawned, ProcessCaptureOutcome }
 import extdeps.filesystem.filesystem_io { FilesystemReadOutcome, FilesystemReadSucceeded, FilesystemReadRefused }
 import gunbc.live_deploy.release_pair_delivery {
-  PackFetch, PackPresent, PackAbsent, PackVerify, VerifiedOn, Refused, release_pair_occupied_link_benign,
+  PackFetch, PackPresent, PackAbsent, PackVerify, VerifiedOn, Refused, release_pair_occupied_link_verdict, release_pair_occupied_link_refusal_reason, OccupiedLinkUnreadable,
   release_pair_incoming_serve_source, release_pair_source_dir,
   release_pair_converged_noop, release_pair_already_at_head_reason, PlanWaits,
 }
@@ -688,9 +688,18 @@ test fn witness_pack_fetch_capture_not_spawned_is_absent() -> Bool {
   }
 }
 
-test fn witness_occupied_link_capture_not_spawned_is_not_benign() -> Bool {
-  release_pair_occupied_link_benign(
+// THE CLI CONSUMER'S FINAL WORDS on a never-spawned occupied-link readback: UNREADABLE with the
+// program and cause, never "differs / not a symlink" (review 97468 follow-through: the claim asserts
+// the refusal string the CLI renders, so a consumer that re-fabricates a readlink verdict goes red).
+test fn witness_occupied_link_capture_not_spawned_reports_unreadable_with_cause() -> Bool {
+  let verdict = release_pair_occupied_link_verdict(
     link_read: ProcessCaptureNotSpawned { program: "readlink" as NonEmptyStr, cause: "transport refused" as NonEmptyStr },
     expected_source: member_src_str,
-  ) == false
+  )
+  match verdict {
+    OccupiedLinkUnreadable { program: p, cause: why } =>
+      p == "readlink" && why == "transport refused"
+        && string_contains(s: release_pair_occupied_link_refusal_reason(verdict: verdict), pattern: "never spawned: transport refused")
+    _ => false
+  }
 }

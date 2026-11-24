@@ -1,6 +1,16 @@
 module test.claim.printer_start_reconciliation_witness
-import std.types {Bool,String}
-import gunbc.fleet.printer_start_reconciliation {observe_start,reconcile_step,ExpectedProjectRunning,ExpectedProjectBlocked,StartUnresolved,ConfirmRunning,StopBlocked,StopUncertain,ReadAgain}
+import std.types {Bool,String,NonEmptyStr,Secret,FilePath}
+import std.process {ExitFailure}
+import extdeps.shell
+import extdeps.filesystem.filesystem_io {Filesystem, FilesystemReadOutcome, FilesystemReadSucceeded, FilesystemReadRefused}
+import extdeps.shell.exec {ProcessCaptured,ProcessOutputPresent}
+import extdeps.cloud.gcp.secret_manager {SmResolvedVersionIdentity}
+import product.placement_supply {PhysicalAssetIdentity}
+import gunbc.fleet.fleet_printer_access {PrinterCredentialSession}
+import gunbc.fleet.printer_credential_source {PrinterCredentialSource,HostCustodyCredentialSource}
+import gunbc.fleet.printer_start_evidence_store {StartEvidenceStore}
+import gunbc.fleet.printer_report {PrinterReported,PrinterCleanupClean,PrinterCleanupOutstanding}
+import gunbc.fleet.printer_start_reconciliation {observe_start,reconcile_step,reconcile_reads,ExpectedProjectRunning,ExpectedProjectBlocked,StartUnresolved,ConfirmRunning,StopBlocked,StopUncertain,ReadAgain}
 
 fn report(state:String,file:String,code:String) -> String {
  join(["{\"print\":{\"gcode_state\":\"",state,"\",\"gcode_file\":\"",file,"\",\"print_error\":",code,"}}"],"")
@@ -24,4 +34,56 @@ test fn unresolved_budget_terminates_and_confirmation_stops_reads() -> Bool {
  (match reconcile_step(observation:StartUnresolved,remaining:1) {StopUncertain=>true _=>false}) &&
  (match reconcile_step(observation:ExpectedProjectRunning,remaining:8) {ConfirmRunning=>true _=>false}) &&
  (match reconcile_step(observation:ExpectedProjectBlocked,remaining:8) {StopBlocked=>true _=>false})
+}
+
+// THE TWO-READ LEAK CONTROL (round-3 review, blocker 1): a first telemetry read whose post-start
+// cleanup left the client binding outstanding, followed by a clean RUNNING read, must NOT confirm
+// quietly. The leak is folded into the carried cause, the receipt standing and the final exit: the
+// consumer refuses (exit failure) and the receipt on disk keeps the leak. Before the fix the second
+// read's clean standing overwrote the first read's leak and the run exited success.
+test fn leaked_first_read_survives_a_clean_running_second_read_and_refuses_the_exit() -> Bool {
+  let dir = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_start_reconcile.XXXXXX").path
+  if !shell.Mkdir.Parents(path: dir as FilePath).success { return false }
+  let session = PrinterCredentialSession {
+    printer: "gunbc-abc.3mf" as PhysicalAssetIdentity,
+    version: "1" as NonEmptyStr,
+    credential: "test-credential" as Secret,
+    resolved: "sm-version-1" as SmResolvedVersionIdentity,
+  }
+  let exit = reconcile_reads(
+    session: session,
+    remote: "gunbc-abc.3mf",
+    version: "1",
+    digest: "d",
+    credential_source: HostCustodyCredentialSource { run_id: "test-run" },
+    evidence_prefix: dir,
+    evidence_store: StartEvidenceStore { root: dir as NonEmptyStr },
+    claim_key: "test-claim" as NonEmptyStr,
+    publish_standing: "publish-acknowledged",
+    cleanup_issue: "",
+    remaining: 8,
+    read: index => match index {
+      // READ 1: telemetry answers (no state to resolve yet) and its cleanup leaks the binding.
+      0 => PrinterReported {
+        outcome: ProcessCaptured { outcome: ProcessOutputPresent { text: report(state: "IDLE", file: "gunbc-abc.3mf", code: "0") } },
+        cleanup: PrinterCleanupOutstanding { detail: "/tmp/leaked-telemetry-binding" as NonEmptyStr },
+      }
+      // READ 2: the expected project RUNNING, cleanup clean -- the standing that used to erase read 1.
+      _ => PrinterReported {
+        outcome: ProcessCaptured { outcome: ProcessOutputPresent { text: report(state: "RUNNING", file: "gunbc-abc.3mf", code: "0") } },
+        cleanup: PrinterCleanupClean,
+      }
+    }
+  )
+  match exit {
+    ExitFailure { code: _, reason: r } =>
+      string_contains(s: r, pattern: "post-start telemetry cleanup left the client binding outstanding at /tmp/leaked-telemetry-binding")
+        && string_contains(s: r, pattern: "running-confirmed")
+        && string_contains(s: r, pattern: "claim retained, DO NOT REPLAY")
+        && match Filesystem.Read(path: (concat(dir, ".receipt.json") as FilePath)) {
+          FilesystemReadSucceeded { content: rc } => string_contains(s: rc, pattern: "cleanup: post-start telemetry cleanup left the client binding outstanding at /tmp/leaked-telemetry-binding")
+          FilesystemReadRefused { error: _ } => false
+        }
+    _ => false
+  }
 }

@@ -1,7 +1,8 @@
 module product.printed_chassis.slice_run
 import std.types { String, FilePath }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import extdeps.printing.orca_slicer { with_verified_orca, orca_version_probe_command, orca_slice_to_project_command }
+import extdeps.printing.orca_slicer { with_verified_orca, OrcaRunCapture, OrcaCleanupStanding, OrcaCleanupClean, OrcaCleanupOutstanding, orca_version_probe_command, orca_slice_to_project_command }
+import gunbc.command_runner { ProcessCaptureOutcome }
 import extdeps.exec.command { LocalExec, ArgvCommand, env_prefixed_command_in }
 import extdeps.shell.exec { ProcessRefused, ProcessOutputAbsent, ProcessOutputPresent, ProcessCaptureNotSpawned, ProcessCaptured}
 import gunbc.command_runner { run_shell_command_capture}
@@ -36,10 +37,33 @@ fn slice_profile_in(directory:String,appimage:String,model:String,output:String,
         printer_profile: machine, filament_profile: filament, process_profile: process,
       )), transport: LocalExec)
   }) {
-    ProcessCaptureNotSpawned { program: p, cause: why } => exit_failure(reason: join(["Orca was never spawned for the slice: ", p as String, " -- ", why as String], ""))
-    ProcessCaptured { outcome: slice } => match slice {
-    ProcessRefused { exit_code: _, stderr: e } => exit_failure(reason: e)
-    ProcessOutputAbsent=>ExitSuccess ProcessOutputPresent {text:_}=>ExitSuccess
+    OrcaRunCapture { outcome: capture, cleanup: standing } => slice_exit_for(capture: capture, standing: standing)
+  }
+}
+
+// THE SLICE'S FINAL EXIT over the realization: the child's own verdict decides, and a leaked private
+// realization fails the run ON TOP of it -- never ExitSuccess over a leak (fail_closed: the leak is a
+// fact the caller must act on, carried separately from the capture, exactly as the printer report CLI
+// fails on an outstanding credential-bound file).
+fn slice_exit_for(capture: ProcessCaptureOutcome, standing: OrcaCleanupStanding) -> ProcessExit {
+  match standing {
+    OrcaCleanupOutstanding { detail: d } => match capture {
+      ProcessCaptureNotSpawned { program: p, cause: why } =>
+        exit_failure(reason: join(["Orca was never spawned for the slice: ", p as String, " -- ", why as String, " (AND the Orca realization leaked: ", d, ")"], ""))
+      ProcessCaptured { outcome: slice } => match slice {
+        ProcessRefused { exit_code: _, stderr: e } =>
+          exit_failure(reason: join([e, " (AND the Orca realization leaked: ", d, ")"], ""))
+        ProcessOutputAbsent => exit_failure(reason: join(["Orca slice cleanup outstanding: ", d], ""))
+        ProcessOutputPresent { text: _ } => exit_failure(reason: join(["Orca slice cleanup outstanding: ", d], ""))
+      }
+    }
+    OrcaCleanupClean => match capture {
+      ProcessCaptureNotSpawned { program: p, cause: why } => exit_failure(reason: join(["Orca was never spawned for the slice: ", p as String, " -- ", why as String], ""))
+      ProcessCaptured { outcome: slice } => match slice {
+        ProcessRefused { exit_code: _, stderr: e } => exit_failure(reason: e)
+        ProcessOutputAbsent => ExitSuccess
+        ProcessOutputPresent { text: _ } => ExitSuccess
+      }
     }
   }
 }

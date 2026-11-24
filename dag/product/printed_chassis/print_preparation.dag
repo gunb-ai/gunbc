@@ -14,7 +14,7 @@ import extdeps.languages.json.emit {JsonValue,JsonKeyValue,json_object,json_kv,j
 import extdeps.filesystem.filesystem_io {Filesystem}
 import extdeps.languages.json.parse {parse_json_document,JsonDocumentParsed}
 import extdeps.languages.json.emit {JsonObject}
-import extdeps.printing.orca_slicer {orca_slicer_linux_aarch64_appimage_sha256,with_verified_orca,orca_extract_bbl_profiles_command,OrcaMachineProfile,OrcaFilamentProfile,OrcaProcessProfile}
+import extdeps.printing.orca_slicer {orca_slicer_linux_aarch64_appimage_sha256,with_verified_orca,OrcaRunCapture,OrcaCleanupClean,OrcaCleanupOutstanding,orca_extract_bbl_profiles_command,OrcaMachineProfile,OrcaFilamentProfile,OrcaProcessProfile}
 import product.printing.print_recipe {PrintRecipe,flatten_orca_profile,OrcaProfileFlattened,OrcaProfileRefused,orca_profile_inheritance_bound,overlay,recipe_process_overrides}
 import extdeps.exec.command {env_prefixed_command_in}
 import gunbc.host_state_root {host_state_tree}
@@ -76,11 +76,21 @@ fn stage_recipe_profiles(output:String,appimage:String,recipe:PrintRecipe) -> Re
 fn keys_refused() -> RecipeStaging {RecipeStagingRefused {cause:"A required readback key is absent or duplicated in the recipe's profiles"}}
 fn stage_recipe_profiles_in(dir:String,output:String,appimage:String,recipe:PrintRecipe) -> RecipeStaging {
  match with_verified_orca(appimage:appimage as FilePath,use:executable=>run_shell_command_capture(command:env_prefixed_command_in(directory:dir,bindings:[],command:orca_extract_bbl_profiles_command(executable:executable)),transport:LocalExec)) {
-  // No verified Orca ever ran, so no profile was extracted and the recipe is not staged.
-  ProcessCaptureNotSpawned { program: p, cause: why }=>return RecipeStagingRefused {cause:join(["Orca profile extraction was never spawned: ",p as String," -- ",why as String],"") as NonEmptyStr}
-  ProcessCaptured {outcome:extract}=>match extract {
-  ProcessRefused {exit_code:_,stderr:e}=>return RecipeStagingRefused {cause:concat("Orca profile extraction refused: ",e) as NonEmptyStr}
-  ProcessOutputAbsent=>{} ProcessOutputPresent {text:_}=>{}
+  // The realization stands or its refusal explains why; the extraction's own verdict decides below,
+  // and the CLEANUP STANDING is checked before any staging continues -- a leaked private realization
+  // never leaves the recipe staged (fail_closed: the caller acts on the leak, carried separately).
+  OrcaRunCapture { outcome: capture, cleanup: standing } => {
+    match capture {
+      ProcessCaptureNotSpawned { program: p, cause: why }=>return RecipeStagingRefused {cause:join(["Orca profile extraction was never spawned: ",p as String," -- ",why as String],"") as NonEmptyStr}
+      ProcessCaptured {outcome:extract}=>match extract {
+      ProcessRefused {exit_code:_,stderr:e}=>return RecipeStagingRefused {cause:concat("Orca profile extraction refused: ",e) as NonEmptyStr}
+      ProcessOutputAbsent=>{} ProcessOutputPresent {text:_}=>{}
+      }
+    }
+    match standing {
+      OrcaCleanupOutstanding { detail: d } => return RecipeStagingRefused {cause:join(["Orca realization cleanup outstanding: ",d],"") as NonEmptyStr}
+      OrcaCleanupClean => {}
+    }
   }
  }
  let machine=match flatten_orca_profile(extracted_into:dir,kind:OrcaMachineProfile,name:recipe.machine as String,depth:orca_profile_inheritance_bound) {OrcaProfileFlattened {members:m}=>m OrcaProfileRefused {name:n,cause:c}=>return RecipeStagingRefused {cause:join([c as String,": ",n],"") as NonEmptyStr}}

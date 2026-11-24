@@ -4,7 +4,10 @@ import gunbc.fleet.fleet_converge_scope { WorkspaceSlotCommissioningOnly }
 
 import extdeps.crypto.hash { sha256_digest }
 import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, ProcessCaptureNotSpawned, ProcessCaptured}
-import gunbc.workspace_commissioning_executor_input { workspace_executor_grant_digest_matches }
+import gunbc.workspace_commissioning_executor_input {
+  WorkspaceExecutorGrantVerdict, GrantMatches, GrantDiffers, GrantUnreadable,
+  workspace_executor_grant_digest_verdict,
+}
 
 import std.types { Bool, String }
 import gunbc.fleet.fleet_converge_plan {
@@ -67,22 +70,43 @@ test fn installation_readback_grants_only_the_exact_policy_file() -> Bool {
 
 // Independent SHA-256 fixtures for "policy\n" and "policy": captured text normalizes their
 // trailing newline, but the file digest must still distinguish them.
-test fn policy_digest_readback_preserves_final_newline_identity() -> Bool {
-  let expected = sha256_digest(hex: "c82fc52c78bf8154d4dd7d8766c422ab151052d72098d72ded237aafcd78e4e0")
-  workspace_executor_grant_digest_matches(expected: expected,observed:      ProcessCaptured { outcome: ProcessOutputPresent { text: "c82fc52c78bf8154d4dd7d8766c422ab151052d72098d72ded237aafcd78e4e0  /etc/sudoers.d/gunbc-workspace-commissioning" } })
-    && !workspace_executor_grant_digest_matches(expected: expected,observed:        ProcessCaptured { outcome: ProcessOutputPresent { text: "823412d1eacb67956220e532959f0104603057c88704863ca38e7cd188fda812  /etc/sudoers.d/gunbc-workspace-commissioning" } })
-    && !workspace_executor_grant_digest_matches(expected: expected,observed:  ProcessCaptured { outcome: ProcessOutputAbsent })
-    && !workspace_executor_grant_digest_matches(expected: expected,observed:  ProcessCaptured { outcome: ProcessRefused { exit_code: 1, stderr: "denied" } })
+fn grant_says(v: WorkspaceExecutorGrantVerdict, wants_match: Bool, wants_differ: Bool) -> Bool {
+  match v {
+    GrantMatches => wants_match
+    GrantDiffers => wants_differ
+    // Neither match nor differ: the reader refused to answer, which is its own third standing.
+    GrantUnreadable { cause: _ } => !wants_match && !wants_differ
+  }
 }
 
-// A GRANT DIGEST FROM A COMMAND THAT NEVER RAN DOES NOT MATCH. The digest of nothing is not the
-// grant's digest, and the old -1 sentinel dressed the unspawned read as a child that exited 1.
-test fn workspace_executor_grant_from_a_never_spawned_read_does_not_match() -> Bool {
+fn grant_unreadable_cause(v: WorkspaceExecutorGrantVerdict) -> String {
+  match v {
+    GrantUnreadable { cause: c } => c
+    _ => ""
+  }
+}
+
+test fn policy_digest_readback_preserves_final_newline_identity() -> Bool {
   let expected = sha256_digest(hex: "c82fc52c78bf8154d4dd7d8766c422ab151052d72098d72ded237aafcd78e4e0")
-  !workspace_executor_grant_digest_matches(
+  grant_says(v: workspace_executor_grant_digest_verdict(expected: expected,observed:      ProcessCaptured { outcome: ProcessOutputPresent { text: "c82fc52c78bf8154d4dd7d8766c422ab151052d72098d72ded237aafcd78e4e0  /etc/sudoers.d/gunbc-workspace-commissioning" } }), wants_match: true, wants_differ: false)
+    && grant_says(v: workspace_executor_grant_digest_verdict(expected: expected,observed:        ProcessCaptured { outcome: ProcessOutputPresent { text: "823412d1eacb67956220e532959f0104603057c88704863ca38e7cd188fda812  /etc/sudoers.d/gunbc-workspace-commissioning" } }), wants_match: false, wants_differ: true)
+    && grant_says(v: workspace_executor_grant_digest_verdict(expected: expected,observed:  ProcessCaptured { outcome: ProcessOutputAbsent }), wants_match: false, wants_differ: false)
+    && grant_says(v: workspace_executor_grant_digest_verdict(expected: expected,observed:  ProcessCaptured { outcome: ProcessRefused { exit_code: 1, stderr: "denied" } }), wants_match: false, wants_differ: false)
+}
+
+// A GRANT DIGEST FROM A COMMAND THAT NEVER RAN NEITHER MATCHES NOR DIFFERS -- IT IS UNREADABLE, AND
+// THE CAUSE IS THE SPAWNER'S OWN WORDS. The digest of nothing is not the grant's digest, and the old
+// -1 sentinel dressed the unspawned read as a child that exited 1; claiming 'differs' from it would
+// mint a comparison nobody performed.
+test fn workspace_executor_grant_from_a_never_spawned_read_is_unreadable_with_cause() -> Bool {
+  let expected = sha256_digest(hex: "c82fc52c78bf8154d4dd7d8766c422ab151052d72098d72ded237aafcd78e4e0")
+  let verdict = workspace_executor_grant_digest_verdict(
     expected: expected,
     observed: ProcessCaptureNotSpawned {
       program: "cat" as NonEmptyStr,
       cause: "the grant read was never started" as NonEmptyStr,
     })
+  grant_says(v: verdict, wants_match: false, wants_differ: false)
+    && string_contains(s: grant_unreadable_cause(v: verdict), pattern: "cat")
+    && string_contains(s: grant_unreadable_cause(v: verdict), pattern: "the grant read was never started")
 }

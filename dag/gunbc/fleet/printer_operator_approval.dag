@@ -11,7 +11,7 @@ import gunbc.fleet.fleet_printer_access {read_existing_printer_session,PrinterSe
 import gunbc.fleet.printer_tool_readiness { printer_mqtt_tool_ready }
 import gunbc.fleet.printer_start_evidence_store { StartEvidenceStore }
 import gunbc.fleet.printer_actuation { PrinterStartClaims, print_request, start_authorized, printer_state_generation, report_allows_start }
-import gunbc.fleet.printer_report { report_using_session, PrinterReported, PrinterCleanupClean, PrinterCleanupOutstanding }
+import gunbc.fleet.printer_report { report_using_session, PrinterReported, PrinterReportExhausted, printer_report_last_words, PrinterCleanupClean, PrinterCleanupOutstanding }
 import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused, ProcessCaptured, ProcessCaptureNotSpawned }
 import gunbc.auth.approval_request_client { stored_request_from_authorization }
 import gunbc.auth.approval_gate {
@@ -132,6 +132,10 @@ fn approve_and_print(claims: PrinterStartClaims, evidence: StartEvidenceStore, p
     // refusal an unreadable report earns, carrying the spawner's own cause, never an invented one.
     PrinterReported { outcome: ProcessCaptureNotSpawned { program: pp, cause: why }, cleanup: _ } =>
       return exit_failure(reason:join(["Printer report never ran (", pp, ": ", why, "); no approval requested"], ""))
+    // An exhausted retry budget is a refusal in the printer domain, with the last capture's own
+    // facts -- no approval is requested over telemetry that never completed.
+    PrinterReportExhausted { last: l, cleanup: _ } =>
+      return exit_failure(reason:join(["Printer report incomplete after all admitted captures (last: ", printer_report_last_words(capture: l), "); no approval requested"], ""))
     // A credential-bound leak after the read is its own refusal: no approval is requested over
     // an outstanding secret-bearing file.
     PrinterReported { outcome: ProcessCaptured { outcome: observed }, cleanup: PrinterCleanupOutstanding { detail: d } } =>

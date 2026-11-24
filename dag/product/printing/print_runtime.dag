@@ -10,7 +10,7 @@ import extdeps.cadquery.cadquery { cadquery_run_program_command, cadquery_import
 import extdeps.tools.uname { uname_machine_command, uname_linux_machine_architecture }
 import extdeps.shell
 import extdeps.shell.exec { ProcessRefused, ProcessOutputAbsent, ProcessOutputPresent, ProcessCaptureNotSpawned, ProcessCaptured}
-import extdeps.printing.orca_slicer { with_verified_orca, orca_version_probe_command, orca_slicer_linux_aarch64_appimage_sha256 }
+import extdeps.printing.orca_slicer { with_verified_orca, OrcaRunCapture, OrcaCleanupClean, OrcaCleanupOutstanding, orca_version_probe_command, orca_slicer_linux_aarch64_appimage_sha256 }
 import extdeps.filesystem.filesystem_io { Filesystem, listed_entry_presence, FilesystemEntryPresence, FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_field, json_field_string, FieldRead, FieldAbsent, FieldMalformed }
 import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string, json_array, serialize_json }
@@ -218,11 +218,18 @@ fn observe_print_runtime(tree: HostStateTree, appimage: String, receipt: String)
   let scratch = concat(receipt, ".orca")
   if !shell.Mkdir.Parents(path: scratch as FilePath).success { return PrintRuntimeRefused { reason: "Cannot isolate runtime probe output" } }
   let orca_probe = match with_verified_orca(appimage: appimage as FilePath, use: e => run_shell_command_capture(command: env_prefixed_command_in(directory: scratch, bindings: [], command: orca_version_probe_command(executable: e)), transport: LocalExec)) {
-    ProcessCaptureNotSpawned { program: p, cause: why } => return PrintRuntimeRefused { reason: join(["Pinned Orca was never spawned for the runtime probe: ", p as String, " -- ", why as String], "") }
-    ProcessCaptured { outcome: orca } => match orca {
-    ProcessRefused { exit_code: _, stderr: e } => return PrintRuntimeRefused { reason: concat("Pinned Orca runtime probe failed before CAD preparation: ", e) }
-    ProcessOutputAbsent => return PrintRuntimeRefused { reason: "Orca runtime probe returned no help output" }
-    ProcessOutputPresent { text: t } => t
+    OrcaRunCapture { outcome: capture, cleanup: standing } => match capture {
+      ProcessCaptureNotSpawned { program: p, cause: why } => return PrintRuntimeRefused { reason: join(["Pinned Orca was never spawned for the runtime probe: ", p as String, " -- ", why as String], "") }
+      ProcessCaptured { outcome: orca } => match orca {
+      ProcessRefused { exit_code: _, stderr: e } => return PrintRuntimeRefused { reason: concat("Pinned Orca runtime probe failed before CAD preparation: ", e) }
+      ProcessOutputAbsent => return PrintRuntimeRefused { reason: "Orca runtime probe returned no help output" }
+      ProcessOutputPresent { text: t } => match standing {
+        // A probe that answered does not cover a leaked private realization: the runtime refuses
+        // before writing its receipt, carrying the leak's own detail.
+        OrcaCleanupOutstanding { detail: d } => return PrintRuntimeRefused { reason: join(["Pinned Orca realization cleanup outstanding: ", d], "") }
+        OrcaCleanupClean => t
+      }
+      }
     }
   }
   let body = serialize_json(v: json_object(members: [

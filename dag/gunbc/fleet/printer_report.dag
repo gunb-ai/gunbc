@@ -50,6 +50,32 @@ type PrinterCleanupStanding
 // (or report the cleanup outstanding) when the standing is Outstanding.
 type PrinterReportCapture
   = PrinterReported { outcome: ProcessCaptureOutcome, cleanup: PrinterCleanupStanding }
+  // ALL ADMITTED FRESH CAPTURES RAN AND NONE HELD A COMPLETE STATE/ERROR REPORT. The last REAL
+  // capture is kept: dressing exhaustion as ProcessOutputAbsent would fabricate "the child ran and
+  // printed nothing" over a stream that DID print -- eight partial telemetry deltas that never
+  // completed. Consumers refuse in the printer domain with these words; nothing here is an exit code.
+  | PrinterReportExhausted { last: ProcessCaptureOutcome, cleanup: PrinterCleanupStanding }
+
+// Words for the last capture an exhausted attempt budget returned. Every arm is a fact the capture
+// itself carries (the spawner's refusal, an exit the child reported, output that stayed unread).
+fn printer_report_last_words(capture: ProcessCaptureOutcome) -> String {
+  match capture {
+    ProcessCaptureNotSpawned { program: p, cause: why } => join(["never spawned: ", p, " -- ", why], "")
+    ProcessCaptured { outcome: ProcessRefused { exit_code: e, stderr: x } } => join(["exited ", to_string(e), ": ", x], "")
+    ProcessCaptured { outcome: ProcessOutputAbsent } => "returned no output"
+    ProcessCaptured { outcome: ProcessOutputPresent { text: t } } => join(["printed ", to_string(string_length(s: t)), " bytes that never completed into a state/error report"], "")
+  }
+}
+
+// THE FINAL DIAGNOSIS FOR AN EXHAUSTED BUDGET, decided once so the witness drives the consumer's
+// exact exit: a refusal naming the incompleteness and the last capture's own facts, never a
+// fabricated verdict, and a credential-bound leak still refuses over silence.
+fn printer_report_exhaustion_refusal(last: ProcessCaptureOutcome, cleanup: PrinterCleanupStanding) -> ProcessExit {
+  match cleanup {
+    PrinterCleanupOutstanding { detail: d } => exit_failure(reason: join(["Printer report incomplete after all admitted captures (last: ", printer_report_last_words(capture: last), ") AND its credential-bound cleanup leaked: ", d], ""))
+    PrinterCleanupClean => exit_failure(reason: join(["Printer report incomplete after all admitted captures (last: ", printer_report_last_words(capture: last), ")"], ""))
+  }
+}
 
 // One attempt under a pinned CA bundle: whether options were placed (a placed binding must be
 // shredded) and what the child returned.
@@ -118,7 +144,7 @@ fn report_with_credential(serial: NonEmptyStr, address: NonEmptyStr, credential:
           } else if lo && lp {
             PrinterReported { outcome: outcome, cleanup: PrinterCleanupOutstanding { detail: "credential-bound options directory (binding.dir) leaked: shred of the placed binding directory failed" } }
           } else if lo {
-            PrinterReported { outcome: outcome, cleanup: PrinterCleanupOutstanding { detail: join(["placed options refusal residue remains: ", workspace, " -- forced removal did not clear it"], "") as NonEmptyStr } }
+            PrinterReported { outcome: outcome, cleanup: PrinterCleanupOutstanding { detail: join(["placed options refusal residue remains in the private options directory (binding.dir), NOT the CA workspace -- forced removal did not clear it"], "") as NonEmptyStr } }
           } else if !ca_removed {
             PrinterReported { outcome: outcome, cleanup: PrinterCleanupOutstanding { detail: join(["CA workspace ", workspace, " leaked after forced removal"], "") as NonEmptyStr } }
           } else {
@@ -135,6 +161,9 @@ fn run(printer: String, version: String, output: String) -> ProcessExit {
     PrinterSelected { printer: p } => match read_supplied_access_token() {
       SuppliedTokenUnavailable { cause: c } => exit_failure(reason: c as String)
       SuppliedTokenReady { token: t } => match report(printer: p, version: version as NonEmptyStr, token_source: OperatorSuppliedToken { token: t }) {
+        // Exhaustion refuses in the printer domain with the last capture's own facts -- the CLI never
+        // writes a partial report and never hears a fabricated "No printer report received".
+        PrinterReportExhausted { last: last_capture, cleanup: cleanup } => printer_report_exhaustion_refusal(last: last_capture, cleanup: cleanup)
         PrinterReported { outcome: observed_capture, cleanup: cleanup } => match cleanup {
           // A credential-bound leak after the attempt is a refusal in its own right: the child's
           // real verdict is kept in the result and never replaced, but it never passes silently
@@ -189,14 +218,13 @@ fn report_has_state_and_error(text: String) -> Bool {
 }
 
 fn complete_report_with_credential(serial: NonEmptyStr, address: NonEmptyStr, credential: Secret, remaining: Int) -> PrinterReportCapture {
-  // Eight fresh captures ran (an absent or never-spawned capture short-circuits above), and
-  // none held a complete state/error report: nothing acceptable was captured. That is
-  // ProcessOutputAbsent -- a verdict over children that DID run -- not a refusal with an
-  // invented exit number.
-  if remaining <= 0 { return PrinterReported { outcome: ProcessCaptured { outcome: ProcessOutputAbsent }, cleanup: PrinterCleanupClean } }
   match report_with_credential(serial: serial, address: address, credential: credential) {
     PrinterReported { outcome: ProcessCaptured { outcome: ProcessOutputPresent { text: text } }, cleanup: cleanup } =>
       if report_has_state_and_error(text: text) { PrinterReported { outcome: ProcessCaptured { outcome: ProcessOutputPresent { text: text } }, cleanup: cleanup } }
+      // THE BUDGET IS OUT AND THIS WAS THE LAST REAL CAPTURE: keep it under the exhaustion marker --
+      // the caller refuses in the printer domain. Fabricating ProcessOutputAbsent here would report
+      // "ran, printed nothing" over a stream that DID print, just never completely.
+      else if remaining <= 1 { PrinterReportExhausted { last: ProcessCaptured { outcome: ProcessOutputPresent { text: text } }, cleanup: cleanup } }
       // Retrying discards THIS attempt's capture, but a leaked credential-bearing file must not
       // be discarded with it: the standing is folded into whatever the later attempts return.
       else { fold_cleanup(previous: cleanup, next: complete_report_with_credential(serial: serial, address: address, credential: credential, remaining: remaining - 1)) }
@@ -207,8 +235,20 @@ fn complete_report_with_credential(serial: NonEmptyStr, address: NonEmptyStr, cr
 }
 
 // Carry an earlier attempt's outstanding cleanup across a retry that replaces the capture.
+fn fold_standings(previous: PrinterCleanupStanding, next: PrinterCleanupStanding) -> PrinterCleanupStanding {
+  match previous {
+    PrinterCleanupClean => next
+    PrinterCleanupOutstanding { detail: p } => match next {
+      PrinterCleanupClean => PrinterCleanupOutstanding { detail: p as NonEmptyStr }
+      PrinterCleanupOutstanding { detail: d } => PrinterCleanupOutstanding { detail: join([p, "; ", d], "") as NonEmptyStr }
+    }
+  }
+}
+
 fn fold_cleanup(previous: PrinterCleanupStanding, next: PrinterReportCapture) -> PrinterReportCapture {
   match next {
+    PrinterReportExhausted { last: last, cleanup: cleanup } =>
+      PrinterReportExhausted { last: last, cleanup: fold_standings(previous: previous, next: cleanup) }
     PrinterReported { outcome: outcome, cleanup: PrinterCleanupClean } =>
       match previous {
         PrinterCleanupClean => PrinterReported { outcome: outcome, cleanup: PrinterCleanupClean }

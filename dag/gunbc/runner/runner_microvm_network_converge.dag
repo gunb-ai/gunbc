@@ -323,19 +323,51 @@ fn parse_auto_assignment_value(text: String) -> HelperAutoAssignment {
   }
 }
 
+// A PRIVILEGED READ IS EITHER AN OBSERVED CHILD RESULT (the capture grain, with its own not-spawned
+// arm) OR THE FACT THAT THE ADMINISTRATOR EDGE OVERRAN ITS DEADLINE WITHOUT RETURNING A RESULT.
+// An overran leg may or may not have started a child, so it claims neither spawn fact: it carries the
+// deadline cause. This is a module-local fold -- PR C (SpawnOutcome<T>, #16847's declared follow-up)
+// folds it into the general spawn/outcome carrier when that declaration lands.
+type PrivilegedRead
+  = PrivilegedReadCaptured { outcome: ProcessCaptureOutcome }
+  | PrivilegedReadOverran { cause: NonEmptyStr }
+
+// Did this read's CHILD RETURN A RESULT this fold may classify? An overran leg answers no, whatever
+// it may have started on the far side of the edge.
+fn privileged_read_ran(r: PrivilegedRead) -> Bool {
+  match r {
+    PrivilegedReadCaptured { outcome: o } => outcome_ran(o: o)
+    PrivilegedReadOverran { cause: _ } => false
+  }
+}
+
+// The stdout a fold may read; an overran leg has returned nothing to read.
+fn privileged_read_stdout(r: PrivilegedRead) -> String {
+  match r {
+    PrivilegedReadCaptured { outcome: o } => outcome_stdout(o: o)
+    PrivilegedReadOverran { cause: _ } => ""
+  }
+}
+
 // A SURFACE THAT DID NOT ANSWER IS UNREAD, and the count is only minted from a run that answered.
-fn surface_reading(o: ProcessCaptureOutcome, surface: String, count: Int) -> HelperSurfaceReading {
+fn surface_reading(o: PrivilegedRead, surface: String, count: Int) -> HelperSurfaceReading {
   match o {
-    ProcessCaptured { outcome: outcome } => match outcome {
-      ProcessRefused { exit_code: code, stderr: _ } =>
-        HelperSurfaceUnread { reason: join([surface, " probe exited ", to_string(code)], "") as NonEmptyStr }
-      ProcessOutputPresent { text: _ } => HelperSurfaceCounted { count: count }
-      ProcessOutputAbsent => HelperSurfaceCounted { count: count }
+    PrivilegedReadCaptured { outcome: capture } => match capture {
+      ProcessCaptured { outcome: outcome } => match outcome {
+        ProcessRefused { exit_code: code, stderr: _ } =>
+          HelperSurfaceUnread { reason: join([surface, " probe exited ", to_string(code)], "") as NonEmptyStr }
+        ProcessOutputPresent { text: _ } => HelperSurfaceCounted { count: count }
+        ProcessOutputAbsent => HelperSurfaceCounted { count: count }
+      }
+      // A probe nobody started answered nothing: it is unread, and the cause is the spawner's own words.
+      // Counting a surface off an unspawned probe would mint a "no helper attached" from silence.
+      ProcessCaptureNotSpawned { program: p, cause: why } =>
+        HelperSurfaceUnread { reason: join([surface, " probe was never spawned: ", p, ": ", why], "") as NonEmptyStr }
     }
-    // A probe nobody started answered nothing: it is unread, and the cause is the spawner's own words.
-    // Counting a surface off an unspawned probe would mint a "no helper attached" from silence.
-    ProcessCaptureNotSpawned { program: p, cause: why } =>
-      HelperSurfaceUnread { reason: join([surface, " probe was never spawned: ", p, ": ", why], "") as NonEmptyStr }
+    // The edge overran without returning a child result: the surface is unread, and the deadline is
+    // the cause -- never an exit code the child never reported.
+    PrivilegedReadOverran { cause: why } =>
+      HelperSurfaceUnread { reason: join([surface, " probe overran its deadline without returning a result: ", why], "") as NonEmptyStr }
   }
 }
 
@@ -654,14 +686,16 @@ fn host_ruleset_digest_wet(listing: String) -> Sha256FileDigest {
 // gunbc.runner.runner_microvm_network_observe, which cannot live here: gunbc.runner.runner_host_grants consumes this
 // module's operation fold, and the administrator edge reaches through it. What stays here is every
 // reading an unprivileged principal CAN take -- procfs, ip, uname -- and the fold over all of them.
-// EACH FIELD IS EITHER AN OBSERVED CHILD RESULT OR THE FACT THAT ITS PROBE WAS NEVER SPAWNED. The
-// administrator edge may decline to start a probe at all; that is not a child that printed nothing.
+// EACH FIELD IS AN OBSERVED CHILD RESULT (which includes the typed fact that its probe was never
+// spawned) OR THE FACT THAT THE ADMINISTRATOR EDGE OVERRAN WITHOUT RETURNING A RESULT. The
+// administrator edge may decline to start a probe at all, or overran its deadline without an answer;
+// neither is a child that printed nothing.
 type MicrovmPrivilegedReadings {
-  table: ProcessCaptureOutcome
-  ruleset: ProcessCaptureOutcome
-  xtables: ProcessCaptureOutcome
-  userspace: ProcessCaptureOutcome
-  expectations: ProcessCaptureOutcome
+  table: PrivilegedRead
+  ruleset: PrivilegedRead
+  xtables: PrivilegedRead
+  userspace: PrivilegedRead
+  expectations: PrivilegedRead
 }
 
 fn read_host_wet(host: HostIdentity, generation: ConvergeGeneration, reads: MicrovmPrivilegedReadings) -> HostReading {
@@ -672,7 +706,7 @@ fn read_host_wet(host: HostIdentity, generation: ConvergeGeneration, reads: Micr
   let userspace = reads.userspace
   let expectations = reads.expectations
   let kernel = capture_stdout(c: uname_release_command())
-  let digest = if outcome_ran(o: table) { listing_digest(d: host_ruleset_digest_wet(listing: outcome_stdout(o: table))) } else { none }
+  let digest = if privileged_read_ran(r: table) { listing_digest(d: host_ruleset_digest_wet(listing: privileged_read_stdout(r: table))) } else { none }
   HostReading {
     host: host,
     generation: generation,
@@ -686,22 +720,22 @@ fn read_host_wet(host: HostIdentity, generation: ConvergeGeneration, reads: Micr
     nft_ct_helper_statements: surface_reading(
       o: ruleset,
       surface: "nft list ruleset",
-      count: ct_helper_statement_count(ruleset_listing: outcome_stdout(o: ruleset)),
+      count: ct_helper_statement_count(ruleset_listing: privileged_read_stdout(r: ruleset)),
     ),
     xtables_ct_helper_targets: surface_reading(
       o: xtables,
       surface: "iptables-legacy-save",
-      count: xtables_ct_target_count(save_output: outcome_stdout(o: xtables)),
+      count: xtables_ct_target_count(save_output: privileged_read_stdout(r: xtables)),
     ),
     userspace_helpers: surface_reading(
       o: userspace,
       surface: "nfct helper list",
-      count: userspace_helper_count(listing: outcome_stdout(o: userspace)),
+      count: userspace_helper_count(listing: privileged_read_stdout(r: userspace)),
     ),
     expectations: surface_reading(
       o: expectations,
       surface: "conntrack -L expect",
-      count: expectation_line_count(stdout: outcome_stdout(o: expectations)),
+      count: expectation_line_count(stdout: privileged_read_stdout(r: expectations)),
     ),
   }
 }

@@ -153,6 +153,19 @@ fn race_receipt_round(line: String, position: Int) -> RaceRoundObservation? {
     let observed = substring(s: head, start: string_length(s: prefix), end: string_length(s: head))
     if starts_with(s: observed, prefix: "seed refused: ") {
       Present { value: RaceRoundUnseeded { cause: substring(s: observed, start: 14, end: string_length(s: observed)) as NonEmptyStr } }
+    } else if starts_with(s: observed, prefix: "writers unstarted seed=") {
+      let rest = substring(s: observed, start: 23, end: string_length(s: observed))
+      let by_cause = split(s: rest, delimiter: " cause=")
+      if length(by_cause) < 2 {
+        none
+      } else {
+        Present {
+          value: RaceRoundWritersUnstarted {
+            seed_tag: race_receipt_word(words: by_cause, index: 0) as NonEmptyStr,
+            cause: join(by_cause.skip(n: 1), " cause=") as NonEmptyStr,
+          }
+        }
+      }
     } else {
       let by_overlap = split(s: observed, delimiter: " overlap=")
       let by_b = split(s: race_receipt_word(words: by_overlap, index: 0), delimiter: " b=")
@@ -265,6 +278,10 @@ fn r2_conditional_put_linearizability_ground() -> CitedFigureStanding {
 // What one round observed. A seed that did not answer 2xx with a tag leaves nothing to race on.
 type RaceRoundObservation
   = RaceRoundUnseeded { cause: NonEmptyStr }
+  // A CONFIRMED SEED WITH WRITERS THAT NEVER STARTED. The round produced no race, but saying the
+  // round "was not seeded" would contradict the seed's own confirmed tag: the tag is kept and the
+  // unstarted writers get this record, rendered and parsed as itself.
+  | RaceRoundWritersUnstarted { seed_tag: NonEmptyStr, cause: NonEmptyStr }
   | RaceRoundRaced { a: CurlParallelTransferReport, b: CurlParallelTransferReport, overlap: RaceOverlap }
 
 // WHETHER THE TWO REQUESTS RACED, AS A FACT READ FROM THE SHARED CLOCK -- never inferred from either
@@ -386,6 +403,10 @@ fn race_answers_verdict(a: RaceAnswer, b: RaceAnswer, overlap: RaceOverlap) -> R
 fn race_round_verdict(observation: RaceRoundObservation) -> RaceRoundVerdict {
   match observation {
     RaceRoundUnseeded { cause: c } => RaceRoundInconclusive { cause: concat("the round was not seeded: ", c as String) as NonEmptyStr }
+    // The seed ANSWERED with a tag; only the writers failed. The verdict says what actually stands:
+    // a confirmed seed and writers that never started -- never "the round was not seeded".
+    RaceRoundWritersUnstarted { seed_tag: t, cause: c } =>
+      RaceRoundInconclusive { cause: join(["the seed is confirmed at tag ", t as String, " but the round's writers never started: ", c as String], "") as NonEmptyStr }
     RaceRoundRaced { a: a, b: b, overlap: overlap } =>
       match a {
         CurlParallelTransferUnreported { cause: c } => RaceRoundInconclusive { cause: concat("writer a: ", c as String) as NonEmptyStr }
@@ -478,6 +499,9 @@ fn race_round_verdict_words(v: RaceRoundVerdict) -> String {
 fn race_round_line(round: Int, observation: RaceRoundObservation) -> String {
   let observed = match observation {
     RaceRoundUnseeded { cause: c } => concat("seed refused: ", c as String)
+    // The receipt line is the claim's own record: the seed tag it holds and the unstarted writers'
+    // cause, rendered so the parser reads back the SAME observation, never a "seed refused" one.
+    RaceRoundWritersUnstarted { seed_tag: t, cause: c } => join(["writers unstarted seed=", t as String, " cause=", c as String], "")
     RaceRoundRaced { a: a, b: b, overlap: o } => join(["a=", race_report_words(r: a), " b=", race_report_words(r: b), " overlap=", race_overlap_words(o: o)], "")
   }
   join(["round ", to_string(round), " ", observed, " -> ", race_round_verdict_words(v: race_round_verdict(observation: observation))], "")
@@ -575,11 +599,12 @@ fn race_round(round: Nat, locator: R2ObjectLocator, netrc: FilePath, dir: FilePa
           transport: LocalExec,
         )
         match observed {
-          // A round whose writers were never spawned did not race, and the round record says so with
-          // the program and the cause rather than reading two transfer reports out of a stdout that was
-          // never printed. RaceRoundUnseeded is the arm that already means 'this round produced no
-          // race to judge', and the probe reads it as a short run -- inconclusive, never a pass.
-          ProcessNotSpawned { program: p, cause: why } => RaceRoundUnseeded {
+          // A round whose writers were never spawned did not race -- but its seed IS confirmed, so
+          // the record is NOT 'the round was not seeded': the seed's tag is kept, and the unstarted
+          // writers get their own observation carrying the program and the cause. The probe reads it
+          // as a short run -- inconclusive, never a pass.
+          ProcessNotSpawned { program: p, cause: why } => RaceRoundWritersUnstarted {
+            seed_tag: tag.value,
             cause: join(["the round's parallel writers were never spawned: ", p as String, " -- ", why as String], "") as NonEmptyStr,
           }
           ProcessRan { observation: observed } => RaceRoundRaced {

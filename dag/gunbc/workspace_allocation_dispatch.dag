@@ -19,7 +19,7 @@ import gunbc.workspace_allocation_store { WorkspaceAllocation, workspace_allocat
 import gunbc.workspace_request_consumer { workspace_consumer_reconcile_enrolled, WorkspaceConsumerIdle, WorkspaceConsumerRefused, WorkspaceConsumerRetire, WorkspaceConsumerPrepare, WorkspaceConsumerRoute, WorkspaceConsumerSettled, WorkspaceConsumerRetry }
 import gunbc.workspace_allocation_policy { workspace_installed_policy }
 import gunbc.workspace_allocation_admission { workspace_owner_enrollment, workspace_enrolled_owners, WorkspacePolicyAdmitted, WorkspacePolicyRefused }
-import gunbc.workspace_operator_request { workspace_operator_on_candidate_host }
+import gunbc.workspace_operator_request { WorkspaceHostStanding, OnCandidateHost, NotOnCandidateHost, HostIdentityUnreadable, workspace_operator_host_standing }
 
 // Discover the outstanding request from protected state rather than requiring an HTTP process
 // to remember or forward its identity. Retirement runs before installed-artifact or offer reads.
@@ -89,7 +89,16 @@ fn workspace_allocation_dispatch_refused(reason: String) -> CliWireResponse {
 fn workspace_allocation_prepare_cli() -> CliWireResponse {
   let input = Filesystem.Read(path: "/dev/stdin")
   let fields = split(input.content, separator: "\n")
-  if !input.success || count(fields) != 2 || !workspace_operator_on_candidate_host() {
+  let host_guard = match workspace_operator_host_standing() {
+    // An unreadable identity probe is its own refusal, with the probe's cause -- never folded into
+    // 'host is invalid'.
+    HostIdentityUnreadable { cause: c } => Present { value: concat("workspace host identity is unreadable: ", c) }
+    NotOnCandidateHost => Present { value: "workspace allocation subject or host is invalid" }
+    OnCandidateHost => Absent
+  }
+  match host_guard {
+    Present { value: why } => workspace_allocation_dispatch_refused(reason: why)
+    Absent => if !input.success || count(fields) != 2 {
     workspace_allocation_dispatch_refused(reason: "workspace allocation subject or host is invalid")
   } else { match fields.first() {
     Absent => workspace_allocation_dispatch_refused(reason: "workspace installed release is absent")
@@ -111,7 +120,14 @@ fn workspace_allocation_prepare_cli() -> CliWireResponse {
 // chooses a newer request. The controller independently repeats this generation fence at launch.
 fn workspace_allocation_readback_cli() -> CliWireResponse {
   let input = Filesystem.Read(path: "/dev/stdin")
-  if !input.success || !workspace_operator_on_candidate_host() {
+  let host_guard = match workspace_operator_host_standing() {
+    HostIdentityUnreadable { cause: c } => Present { value: concat("workspace host identity is unreadable: ", c) }
+    NotOnCandidateHost => Present { value: "workspace readback input or host is invalid" }
+    OnCandidateHost => Absent
+  }
+  match host_guard {
+    Present { value: why } => workspace_allocation_dispatch_refused(reason: why)
+    Absent => if !input.success {
     workspace_allocation_dispatch_refused(reason: "workspace readback input or host is invalid")
   } else { match workspace_launch_directive_from_text(text: input.content) {
     WorkspaceLaunchDirectiveRefused { reason } => workspace_allocation_dispatch_refused(reason: reason)

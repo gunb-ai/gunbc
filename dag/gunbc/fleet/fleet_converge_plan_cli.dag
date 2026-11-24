@@ -26,7 +26,7 @@ import gunbc.fleet.fleet_host_grant_coverage {
   InstalledSudoersText,
   InstalledSudoersUnreadable,
 }
-import extdeps.sudo.nopasswd_decision { SudoDecisionQuery, SudoVersionRead, sudo_decision_command, sudo_decision_from_run, sudo_decision_binary_absent, sudo_version_from_run }
+import extdeps.sudo.nopasswd_decision { SudoDecisionQuery, SudoVersionRead, sudo_decision_command, sudo_decision_from_run, sudo_decision_binary_absent, sudo_decision_binary_unreadable, sudo_version_from_run }
 import extdeps.sudo.elevation { sudo_version_command }
 import gunbc.runner.runner_host_grants { runner_host_sudoers_install_path }
 import std.types { CommitSha }
@@ -631,30 +631,36 @@ fn observe_runner_unit_standing_wet(unit: NonEmptyStr) -> RunnerUnitStandingRead
 // normally root:root 0440, so an unreadable file is its own typed outcome.
 // THE ONE WET EXEC here (sudo's real exit codes and text) is the unpaired gap; the witnesses
 // run the pure mapping over recorded outputs.
+// THREE STANDINGS for a presence probe: the probe answered present, answered absent, or was never
+// spawned and answered NOTHING. Pure over the capture, so the witness drives all three.
+type BinaryPresence
+  = BinaryPresenceKnown { present: Bool }
+  | BinaryPresenceUnreadable { cause: String }
+
+fn binary_presence_of(captured: ProcessCaptureOutcome) -> BinaryPresence {
+  match captured {
+    ProcessCaptureNotSpawned { program: p, cause: why } => BinaryPresenceUnreadable { cause: join([p, ": ", why], "") }
+    ProcessCaptured { outcome: observed } => BinaryPresenceKnown { present: process_outcome_admitted(outcome: observed) }
+  }
+}
+
 fn observe_host_grant_decision_wet(query: SudoDecisionQuery, version: SudoVersionRead) -> HostGrantDecisionRead
 {
   let program = match query.argv.first() {
     Present { value: w } => w as String
     Absent => ""
   }
-  let present = match run_shell_command_capture(command: test_regular_file_command(path: program), transport: LocalExec) {
-    ProcessCaptured { outcome: __pc2 } => match __pc2 {
-    ProcessOutputPresent { text: _ } => true
-    ProcessOutputAbsent => true
-    ProcessRefused { exit_code: _, stderr: _ } => false
-    }
-    ProcessCaptureNotSpawned { program: __pp2, cause: __pw2 } => false
-
-
-
-
-}
+  // THREE STANDINGS, not two: a presence probe that was never spawned answers NOTHING about presence,
+  // and reporting 'not present' from it would mint an unheld fact. Its cause travels into the
+  // decision as unreadable, with the program and the cause.
+  let presence = binary_presence_of(captured: run_shell_command_capture(command: test_regular_file_command(path: program), transport: LocalExec))
   HostGrantDecisionRead {
     query: query,
-    decision: if present {
-      sudo_decision_from_run(query: query, version: version, outcome: run_shell_command_observe_outcome(command: sudo_decision_command(query: query), transport: LocalExec))
-    } else {
-      sudo_decision_binary_absent(query: query)
+    decision: match presence {
+      BinaryPresenceKnown { present: true } =>
+        sudo_decision_from_run(query: query, version: version, outcome: run_shell_command_observe_outcome(command: sudo_decision_command(query: query), transport: LocalExec))
+      BinaryPresenceKnown { present: false } => sudo_decision_binary_absent(query: query)
+      BinaryPresenceUnreadable { cause: c } => sudo_decision_binary_unreadable(query: query, cause: c)
     },
   }
 }

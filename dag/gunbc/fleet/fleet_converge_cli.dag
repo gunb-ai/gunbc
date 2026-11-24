@@ -680,20 +680,28 @@ fn converge_cli_receipt_owner_readback(host: String) -> String? {
   let path = fleet_converge_receipt_path(host: host)
   let expected = converge_cli_expected_receipt_owner_name()
   match stat_owner_name_capture(path: path) {
-    ProcessRefused { exit_code: _, stderr: e } =>
-      Present { value: concat("gunbc converge: receipt owner read-back refused (stat): ", trim(s: e)) }
-    ProcessOutputAbsent =>
-      Present { value: "gunbc converge: receipt owner read-back refused (stat): admitted exit but no owner name on stdout" }
-    ProcessOutputPresent { text: t } => {
-      let owner = trim(s: t)
-      if owner == expected {
-        none
-      } else {
-        Present {
-          value: concat(
-            concat("gunbc converge: receipt owner read-back mismatch — expected ", expected),
-            concat(" observed ", owner),
-          ),
+    // THE STAT NEVER SPAWNED: refuse the readback with the spawner's own words. This arm previously
+    // sat at the wrong grain -- the whole match matched bare ProcessOutcome arms against the capture
+    // grain, so even a RETURNED child result failed to match. NotSpawned is now carried, with the
+    // program and cause, never an invented observation.
+    ProcessCaptureNotSpawned { program: p, cause: why } =>
+      Present { value: join(["gunbc converge: receipt owner read-back refused (stat never spawned): ", p, ": ", why], "") }
+    ProcessCaptured { outcome: captured } => match captured {
+      ProcessRefused { exit_code: _, stderr: e } =>
+        Present { value: concat("gunbc converge: receipt owner read-back refused (stat): ", trim(s: e)) }
+      ProcessOutputAbsent =>
+        Present { value: "gunbc converge: receipt owner read-back refused (stat): admitted exit but no owner name on stdout" }
+      ProcessOutputPresent { text: t } => {
+        let owner = trim(s: t)
+        if owner == expected {
+          none
+        } else {
+          Present {
+            value: concat(
+              concat("gunbc converge: receipt owner read-back mismatch — expected ", expected),
+              concat(" observed ", owner),
+            ),
+          }
         }
       }
     }
