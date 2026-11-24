@@ -12,6 +12,7 @@ module test.claim.harness_alignment_checkpoint_resume_wet_witness
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.logic { Bool }
+import std.optional { Present }
 import std.types { String, List, Int, FilePath }
 import extdeps.languages.json.emit { JsonValue, json_object, json_kv, json_string }
 import std.algebra { trim, length, string_contains }
@@ -23,11 +24,12 @@ import gunbc.harness.harness_cli {
   harness_turn_exit, harness_default_wire_shape, harness_default_max_tokens, harness_request_deadline,
 }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
-import gunbc.roadmap.roadmap_alignment_verdict { AlignmentVerdict, Aligned }
+import gunbc.roadmap.roadmap_alignment_verdict { AlignmentVerdict, Aligned, Misaligned }
 import gunbc.roadmap.roadmap_alignment {
   AlignmentChainLink, AlignmentChain, AlignmentChained, AlignmentChainUnrooted,
   alignment_chain_fingerprint, alignment_checkpoint_identity_digest, AlignmentCheckpointIdentity,
-  alignment_base_cadence_state,
+  alignment_base_cadence_state, AlignmentCadenceState, alignment_state_interval,
+  alignment_next_interval, CadenceStepInterval, CadenceStepStopTheLine,
 }
 import gunbc.harness.harness_turn {
   HarnessTurnConfig, Unsupervised, BackendAdmittedBySeat, CompletesOnProviderStop,
@@ -39,7 +41,7 @@ import gunbc.harness.harness_turn {
   harness_alignment_adjudicate_and_resume,
   harness_alignment_publication_path, harness_alignment_publication_text, harness_alignment_publish,
   harness_alignment_observation_digest, harness_alignment_fingerprint_of, harness_alignment_checkpoint_digest,
-  harness_event_alignment_checkpoint_due, harness_turn_checkpoint_due,
+  harness_event_alignment_checkpoint_due, harness_turn_checkpoint_due, harness_alignment_conversation_tip,
   harness_supervision_artifact_path, harness_supervision_observation_text, harness_supervision_verdict_name,
 }
 
@@ -121,11 +123,40 @@ fn read_file(path: String) -> String {
   if read.success { read.content } else { "" }
 }
 
+fn events_in(dir: String) -> String {
+  join([dir, "/provider-events.jsonl"], "")
+}
+
+// THE TIP THE BOUNDARY ITSELF RECORDS, read from the same authority the emission calls. The witness
+// never supplies its own tip string: doing so would have it witness its own invention instead of the
+// binding adjudication is required to honour.
+fn boundary_tip() -> String {
+  harness_alignment_conversation_tip(messages: round_messages())
+}
+
+// RUN THE REAL BOUNDARY, so the durable checkpoint event exists before anything adjudicates. Tests ask
+// the boundary to produce the record they are then checked against; none of them hand adjudication a
+// hand-written event, because a fixture that fabricates the binding witnesses nothing.
+fn emit_boundary(dir: String, chain: AlignmentChain, steps: Int) -> Bool {
+  match harness_turn_checkpoint_due(
+    config: turn_config(dir: dir),
+    chain_fingerprint: fingerprint(chain: chain, dir: dir, observation: observation_text(steps: steps), steps: steps),
+    check_directory: dir,
+    round_steps: steps,
+    messages: round_messages(),
+    steps_taken: steps,
+    events: [],
+  ) {
+    TurnAlignmentCheckpointDue { chain_fingerprint: _, conversation_tip: _, observation_path: _, round_steps: _, steps_taken: _ } => true
+    _ => false
+  }
+}
+
 fn evidence_in(dir: String, observation: String, steps: Int) -> HarnessAlignmentCheckpointEvidence {
   HarnessAlignmentCheckpointEvidence {
     observation_path: observation_in(dir: dir, steps: steps),
     observation_digest: harness_alignment_observation_digest(observation: observation),
-    conversation_tip: "the tip the boundary recorded",
+    conversation_tip: boundary_tip(),
     round_steps: steps,
     steps_taken: steps,
   }
@@ -153,7 +184,7 @@ fn checkpoint_bound_to(chain: AlignmentChain, dir: String, observation: String, 
     epoch: epoch,
     checkpoint_ordinal: 1,
     chain_fingerprint: fingerprint(chain: chain, dir: dir, observation: observation, steps: steps),
-    conversation_tip: "the tip the boundary recorded",
+    conversation_tip: boundary_tip(),
     candidate_subject: "align-witness-candidate",
   }
 }
@@ -236,18 +267,33 @@ test fn a_workers_own_aligned_assertion_cannot_mint_a_continuation_receipt() -> 
   let tampered_read = harness_alignment_adjudicate(
     checkpoint: checkpoint,
     projection: project(chain: chain, dir: dir, observation: honest, steps: steps),
+    events_path: events_in(dir: dir),
     observation_path: path,
     verdict_path: verdict,
+    cadence: alignment_base_cadence_state(),
   )
   // (b) restore the honest bytes; take the verdict artifact away.
   let restored = write_file(path: path, content: honest)
   let no_verdict = harness_alignment_adjudicate(
     checkpoint: checkpoint,
     projection: project(chain: chain, dir: dir, observation: honest, steps: steps),
+    events_path: events_in(dir: dir),
     observation_path: path,
     verdict_path: join([dir, "/supervision-check-verdict-after-turn-404.json"], ""),
+    cadence: alignment_base_cadence_state(),
   )
-  // (c) a receipt published for another checkpoint (different lineage and epoch, so another digest).
+  // (c) the same honest bytes, but the caller presents a DIFFERENT claim about them: a projection whose
+  // evidence digest is the worker's own assertion about the round rather than the digest the boundary
+  // wrote. A claim about the evidence is not the evidence, and the durable record is the arbiter.
+  let fabricated = harness_alignment_adjudicate(
+    checkpoint: checkpoint,
+    projection: project(chain: chain, dir: dir, observation: "I, the worker, assert this round is aligned", steps: steps),
+    events_path: events_in(dir: dir),
+    observation_path: path,
+    verdict_path: verdict,
+    cadence: alignment_base_cadence_state(),
+  )
+  // (d) a receipt published for another checkpoint (different lineage and epoch, so another digest).
   let other = checkpoint_bound_to(chain: chain, dir: dir, observation: honest, steps: steps, lineage: "align-witness-elsewhere", epoch: 99)
   let foreign = harness_alignment_resume_gate(
     checkpoint: checkpoint,
@@ -265,7 +311,13 @@ test fn a_workers_own_aligned_assertion_cannot_mint_a_continuation_receipt() -> 
     TurnAlignmentCheckpointDue { chain_fingerprint: _, conversation_tip: _, observation_path: _, round_steps: _, steps_taken: _ } =>
       removed.success && tampered && wrote_verdict && restored
         && match tampered_read {
-             AdjudicationRefused { cause } => trim(s: cause) != ""
+             // WHICH check fired is part of the claim: the expectation is the durable event's, so the
+             // refusal must be the digest refusal and not the empty-file or missing-verdict one.
+             AdjudicationRefused { cause } => string_contains(s: cause, pattern: "digest")
+             AdjudicationPublished { adjudication: _ } => false
+           }
+        && match fabricated {
+             AdjudicationRefused { cause } => string_contains(s: cause, pattern: "not the evidence the durable checkpoint event bound")
              AdjudicationPublished { adjudication: _ } => false
            }
         && match no_verdict {
@@ -293,21 +345,28 @@ test fn a_changed_node_contract_or_edge_contribution_invalidates_earlier_receipt
   let after = spine(red_control: "THE TASK'S RED CONTROL WAS EDITED AFTER THE CHECKPOINT WAS BOUND")
   let path = observation_in(dir: dir, steps: steps)
   let verdict = verdict_in(dir: dir, steps: steps)
-  let wrote = write_file(path: path, content: observation) && write_file(path: verdict, content: "{\"kind\": \"aligned\"}")
+  // the boundary itself persists the evidence and appends the durable checkpoint event, under the
+  // chain as it stood; only the check's verdict artifact is placed by hand here.
+  let emitted = emit_boundary(dir: dir, chain: before, steps: steps)
+  let wrote = emitted && write_file(path: verdict, content: "{\"kind\": \"aligned\"}")
   let fingerprint_before = fingerprint(chain: before, dir: dir, observation: observation, steps: steps)
   let fingerprint_after = fingerprint(chain: after, dir: dir, observation: observation, steps: steps)
   let checkpoint = checkpoint_bound_to(chain: before, dir: dir, observation: observation, steps: steps, lineage: "align-witness-retuned", epoch: 2)
   let stale = harness_alignment_adjudicate(
     checkpoint: checkpoint,
     projection: project(chain: after, dir: dir, observation: observation, steps: steps),
+    events_path: events_in(dir: dir),
     observation_path: path,
     verdict_path: verdict,
+    cadence: alignment_base_cadence_state(),
   )
   let honoured = harness_alignment_adjudicate(
     checkpoint: checkpoint,
     projection: project(chain: before, dir: dir, observation: observation, steps: steps),
+    events_path: events_in(dir: dir),
     observation_path: path,
     verdict_path: verdict,
+    cadence: alignment_base_cadence_state(),
   )
   let removed = shell.Remove.RecursiveForce(path: dir)
   wrote && removed.success
@@ -337,13 +396,16 @@ test fn a_crash_after_verdict_publication_produces_exactly_one_next_epoch() -> B
   let observation = observation_text(steps: steps)
   let path = observation_in(dir: dir, steps: steps)
   let verdict = verdict_in(dir: dir, steps: steps)
-  let wrote = write_file(path: path, content: observation) && write_file(path: verdict, content: "{\"kind\": \"aligned\"}")
+  let emitted = emit_boundary(dir: dir, chain: chain, steps: steps)
+  let wrote = emitted && write_file(path: verdict, content: "{\"kind\": \"aligned\"}")
   let checkpoint = checkpoint_bound_to(chain: chain, dir: dir, observation: observation, steps: steps, lineage: "align-witness-crash", epoch: 11)
   let read = harness_alignment_adjudicate(
     checkpoint: checkpoint,
     projection: project(chain: chain, dir: dir, observation: observation, steps: steps),
+    events_path: events_in(dir: dir),
     observation_path: path,
     verdict_path: verdict,
+    cadence: alignment_base_cadence_state(),
   )
   let outcome = match read {
     AdjudicationRefused { cause: _ } => false
@@ -452,24 +514,52 @@ test fn the_published_record_carries_the_verdict_and_the_stepped_cadence() -> Bo
   let observation = observation_text(steps: steps)
   let path = observation_in(dir: dir, steps: steps)
   let verdict = verdict_in(dir: dir, steps: steps)
-  let wrote = write_file(path: path, content: observation) && write_file(path: verdict, content: "{\"kind\": \"aligned\"}")
+  let emitted = emit_boundary(dir: dir, chain: chain, steps: steps)
+  let wrote = emitted && write_file(path: verdict, content: "{\"kind\": \"aligned\"}")
+  let carried = AlignmentCadenceState {
+    level_intervals: [alignment_state_interval(state: alignment_base_cadence_state(), level_index: 0), 200],
+    last_verdicts: [Aligned, Misaligned { direction: "the project drifted off its stated boundary" }],
+  }
   let checkpoint = checkpoint_bound_to(chain: chain, dir: dir, observation: observation, steps: steps, lineage: "align-witness-cadence", epoch: 3)
   let read = harness_alignment_adjudicate(
     checkpoint: checkpoint,
     projection: project(chain: chain, dir: dir, observation: observation, steps: steps),
+    events_path: events_in(dir: dir),
     observation_path: path,
     verdict_path: verdict,
+    cadence: carried,
   )
   let removed = shell.Remove.RecursiveForce(path: dir)
+  // THE STEP IS TAKEN FROM THE STATE THAT WAS CARRIED IN, not from a fresh base, and level 0 is the
+  // HEAD that moves -- a deeper level the lineage already recorded survives. Both halves of that
+  // sentence are load-bearing: a publication that restarted from the base would keep the ladder at its
+  // starting rung forever, and one that APPENDED would grow a level list the cadence codec refuses to
+  // decode. The expected interval is the interval authority's own answer, never one computed here.
   wrote && removed.success
-    && match read {
-         AdjudicationPublished { adjudication } => {
-           let body = harness_alignment_publication_text(adjudication: adjudication)
-           length(xs: adjudication.cadence.last_verdicts) == 1
-             && string_contains(s: body, pattern: "alignment.checkpoint_adjudicated")
-             && string_contains(s: body, pattern: alignment_checkpoint_identity_digest(id: adjudication.checkpoint))
-         }
-         AdjudicationRefused { cause: _ } => false
+    && match alignment_next_interval(level_index: 0, current: alignment_state_interval(state: carried, level_index: 0), verdict: Aligned) {
+         CadenceStepInterval { turns } =>
+           match read {
+             AdjudicationPublished { adjudication } => {
+               let body = harness_alignment_publication_text(adjudication: adjudication)
+               adjudication.cadence.level_intervals == [turns, 200]
+                 && length(xs: adjudication.cadence.level_intervals) == length(xs: adjudication.cadence.last_verdicts)
+                 && length(xs: adjudication.cadence.last_verdicts) == 2
+                 && match adjudication.cadence.last_verdicts.first() {
+                      Present { value: Aligned } => true
+                      _ => false
+                    }
+                 && match adjudication.cadence.last_verdicts.last() {
+                      Present { value: Misaligned { direction } } => direction == "the project drifted off its stated boundary"
+                      _ => false
+                    }
+                 && string_contains(s: body, pattern: "alignment.checkpoint_adjudicated")
+                 && string_contains(s: body, pattern: alignment_checkpoint_identity_digest(id: adjudication.checkpoint))
+             }
+             AdjudicationRefused { cause: _ } => false
+           }
+         // An ALIGNED verdict never stops the line; if the interval authority ever says otherwise this
+         // witness has no answer to give and must fail rather than assume one.
+         CadenceStepStopTheLine => false
        }
 }
 
@@ -481,10 +571,9 @@ test fn the_adjudication_entry_refuses_an_unadmitted_chain_before_convening_any_
   let dir = fresh_dir(tag: "entry")
   let steps = 4
   let observation = observation_text(steps: steps)
-  let wrote = write_file(
-    path: observation_in(dir: dir, steps: steps),
-    content: observation,
-  )
+  // THE BOUNDARY RAN, so the entry has real durable evidence to bind to: the refusal this test asserts
+  // is the chain's, not a missing artifact's.
+  let wrote = emit_boundary(dir: dir, chain: spine(red_control: "the task's red control"), steps: steps)
   let outcome = harness_alignment_adjudicate_and_resume(
     config: turn_config(dir: dir),
     checkpoint: checkpoint_bound_to(
