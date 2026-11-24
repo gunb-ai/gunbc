@@ -164,8 +164,11 @@ fn roadmap_event_kind_from_words(kind: String, text: String, author: EventPrinci
             Absent => none
             Present { value: at } => match parts.skip(n: 3).first() {
               Absent => none
-              Present { value: msha } => roadmap_pull_request_merge_evidence_from_args(
-                url: url as String, head: head as String, at: at as String, merge_sha: msha as String)
+              Present { value: msha } => match roadmap_pull_request_merge_evidence_from_args(
+                url: url as String, head: head as String, at: at as String, merge_sha: msha as String) {
+                Absent => none
+                Present { value: m } => Present { value: PullRequestMergedEvent { merge: m } }
+              }
             }
           }
         }

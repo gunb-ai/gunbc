@@ -170,7 +170,7 @@ test fn a_merge_is_refused_when_the_acceptance_names_no_thread() -> Bool {
 test fn a_second_merge_on_the_same_node_is_refused() -> Bool {
   let acc = acceptance_env(evidence: live_head(), at: "t1")
   let first = merge_of(url: thread(), sha: head(), at: merged_at(), msha: merge_sha(),
-    parent: none, at_time: "t2")
+    parent: Present { value: acc.id }, at_time: "t2")
   let a = roadmap_pull_request_merge_admission(envs: [acc, first], merge: PullRequestMergeEvidence {
     pr_url: thread() as NonEmptyStr, head_sha: head() as NonEmptyStr,
     merged_at: merged_at() as NonEmptyStr, merge_sha: merge_sha() as NonEmptyStr })
@@ -216,7 +216,7 @@ test fn the_merge_time_a_reader_sees_comes_from_the_merge_event() -> Bool {
 test fn the_merge_event_moves_no_standing() -> Bool {
   let acc = acceptance_env(evidence: live_head(), at: "t1")
   let merged = merge_of(url: thread(), sha: head(), at: merged_at(), msha: merge_sha(),
-    parent: none, at_time: "t2")
+    parent: Present { value: acc.id }, at_time: "t2")
   accepted_standing(envs: [acc]) && accepted_standing(envs: [acc, merged])
 }
 
