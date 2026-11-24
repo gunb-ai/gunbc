@@ -361,8 +361,9 @@ fn prompt_render_receipt(plan: PromptPlan, wire: ProviderPromptArtifact) -> Prom
 // gunbc.design_argument::single_authority); no surface re-decides it by comparing digests ad hoc.
 // DECLARED FRONTIER (review 97941 finding 2 and review 97972 finding 2; gunbc.design_argument::
 // consumption): this law's named later consumer is the seat binding of the roadmap row
-// harness-seat-binds-modeled-prompt-segments (identity rn_01M86JC25E8M7NKAG6C4Y34J0C, added by
-// gunb-ai/gunbc#17009, carrier dag/gunbc/harness/harness_cli.dag), which today still collapses
+// harness-seat-binds-modeled-prompt-segments (identity rn_01M86JC25E8M7NKAG6C4Y34J0C, added by this
+// PR gunb-ai/gunbc#17007 into dag/gunbc/roadmap/roadmap_authority.dag, carrier
+// dag/gunbc/harness/harness_cli.dag), which today still collapses
 // modeled guidance to system_prompt: String (harness_cli.dag:221,255) and so carries no receipt to
 // gate. TRIGGER: that row's dispatch -- the seat binds modeled segments from the PromptPlan
 // projection and gates every emitted envelope through this law. Until the trigger resolves no
@@ -383,7 +384,8 @@ fn prompt_render_is_current(receipt: PromptRenderReceipt, snapshot: PromptContex
 // there is no partially compacted plan.
 // DECLARED FRONTIER (review 97972 finding 1; gunbc.design_argument::consumption): this law's named
 // later consumer and frontier is the roadmap row harness-seat-binds-modeled-prompt-segments
-// (identity rn_01M86JC25E8M7NKAG6C4Y34J0C, added by gunb-ai/gunbc#17009, carrier
+// (identity rn_01M86JC25E8M7NKAG6C4Y34J0C, added by this
+// PR gunb-ai/gunbc#17007 into dag/gunbc/roadmap/roadmap_authority.dag, carrier
 // dag/gunbc/harness/harness_cli.dag): per that row's boundary, the seat binding admits a compacted
 // PromptPlan only through this prompt_compact -- the compaction law has no other consumer and its
 // frontier is that row. TRIGGER: that row's dispatch. Until the trigger resolves no surface can
