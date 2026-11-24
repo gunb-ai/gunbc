@@ -15,13 +15,16 @@ import gunbc.host.export_host_reader_converge {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn ok(stdout: String) -> RemoteAnswer { RemoteAnswer { exit_code: 0, stdout: stdout, stderr: "" } }
-fn bad() -> RemoteAnswer { RemoteAnswer { exit_code: 1, stdout: "", stderr: "refused" } }
+fn ok(stdout: String) -> HostLeg { LegAnswered { exit_code: 0, stdout: stdout, stderr: "" } }
+fn bad() -> HostLeg { LegAnswered { exit_code: 1, stdout: "", stderr: "refused" } }
 
 data effective_ours: String = "port 22\nauthorizedkeysfile .ssh/authorized_keys .ssh/authorized_keys2 /etc/ssh/authorized_keys.%u\npasswordauthentication no\n"
 
-fn absent() -> RemoteAnswer { RemoteAnswer { exit_code: 1, stdout: "", stderr: "" } }
-fn present() -> RemoteAnswer { RemoteAnswer { exit_code: 0, stdout: "", stderr: "" } }
+fn absent() -> HostLeg { LegAnswered { exit_code: 1, stdout: "", stderr: "" } }
+fn present() -> HostLeg { LegAnswered { exit_code: 0, stdout: "", stderr: "" } }
+// A genuinely ANSWERED leg with an explicit exit (e.g. a real ssh 255), and a leg the transport NEVER dispatched.
+fn answered(exit: Int, out: String, err: String) -> HostLeg { LegAnswered { exit_code: exit, stdout: out, stderr: err } }
+fn never(reason: String) -> HostLeg { LegNotDispatched { reason: reason } }
 
 data effective_without_ours: String = "port 22\nauthorizedkeysfile .ssh/authorized_keys .ssh/authorized_keys2\n"
 
@@ -29,15 +32,18 @@ data effective_without_ours: String = "port 22\nauthorizedkeysfile .ssh/authoriz
 // converging write) holds when its override exits 0.
 type LegOverride {
   leg: String
-  answer: RemoteAnswer
+  answer: HostLeg
 }
 
-fn answer(name: String, overrides: List<LegOverride>, healthy: RemoteAnswer) -> RemoteAnswer {
+fn answer(name: String, overrides: List<LegOverride>, healthy: HostLeg) -> HostLeg {
   fold(overrides, init: healthy, f: (acc, o) => if o.leg == name { o.answer } else { acc })
 }
 
 fn holds(name: String, overrides: List<LegOverride>) -> Bool {
-  answer(name: name, overrides: overrides, healthy: ok(stdout: "")).exit_code == 0
+  match answer(name: name, overrides: overrides, healthy: ok(stdout: "")) {
+    LegNotDispatched { reason: _ } => false
+    LegAnswered { exit_code: ec, stdout: _, stderr: _ } => ec == 0
+  }
 }
 
 fn legs_with(overrides: List<LegOverride>) -> ExportHostReaderLegs {
@@ -141,7 +147,7 @@ test fn a_failed_fresh_login_rolls_back_through_a_confirmed_removal_and_a_second
 // false, test -L true), or rm itself exited 0 over a file still present.
 test fn an_unconfirmed_removal_means_no_second_reload() -> Bool {
   let still_there = run(overrides: [LegOverride { leg: "fresh_login", answer: bad() }, LegOverride { leg: "drop_in_exists", answer: present() }])
-  let unknown = run(overrides: [LegOverride { leg: "fresh_login", answer: bad() }, LegOverride { leg: "drop_in_exists", answer: RemoteAnswer { exit_code: 255, stdout: "", stderr: "ssh: connection closed" } }])
+  let unknown = run(overrides: [LegOverride { leg: "fresh_login", answer: bad() }, LegOverride { leg: "drop_in_exists", answer: answered(exit: 255, out: "", err: "ssh: connection closed") }])
   let dangling = run(overrides: [LegOverride { leg: "fresh_login", answer: bad() }, LegOverride { leg: "drop_in_is_link", answer: present() }])
   let rm_lied = run(overrides: [LegOverride { leg: "fresh_login", answer: bad() }, LegOverride { leg: "remove_drop_in", answer: ok(stdout: "") }, LegOverride { leg: "drop_in_exists", answer: present() }])
   word(o: still_there.outcome) == "rollback-failed" && reloads(r: still_there) == 1
@@ -201,4 +207,66 @@ test fn the_account_is_created_only_when_absent() -> Bool {
 test fn an_unconverged_drop_in_is_withdrawn() -> Bool {
   let r = run(overrides: [LegOverride { leg: "write_drop_in", answer: bad() }])
   word(o: r.outcome) == "refused" && stages(r: r).contains("remove-drop-in") && reloads(r: r) == 0 && !stages(r: r).contains("sshd-t")
+}
+
+// THE HUMAN-READABLE DIAGNOSTIC of an outcome, whichever arm it is, so a control can assert what a leg was
+// told without the fold inventing an exit code for a leg that never ran.
+fn cause_of(o: ExportHostReaderOutcome) -> String {
+  match o {
+    ReaderRowsConverged => ""
+    ReaderRowsRefused { stage: _, cause: c } => c
+    ReaderRowsRolledBack { cause: c } => c
+    ReaderRowsRollbackFailed { cause: _, rollback: r } => r
+    ReaderRowsReloadUncertain { cause: c, running: _, on_disk: _ } => c
+  }
+}
+
+// NEVER DISPATCHED, NEVER AN INVENTED EXIT (gunbc.design_argument::fail_closed). A precheck the transport
+// never dispatched cannot confirm the option is accepted, so nothing is written and the refusal carries the
+// transport's cause -- it does not report a fabricated "exit=". Red on the pre-fix fabricated exit 255.
+test fn a_never_dispatched_precheck_refuses_without_inventing_an_exit() -> Bool {
+  let r = run(overrides: [LegOverride { leg: "precheck", answer: never(reason: "sshd-precheck-never-dispatched-xyzzy") }])
+  let d = cause_of(o: r.outcome)
+  word(o: r.outcome) == "refused" && stages(r: r) == ["sshd-t-option"]
+    && string_contains(s: d, pattern: "sshd-precheck-never-dispatched-xyzzy") && !string_contains(s: d, pattern: "exit=")
+}
+
+// A reload the transport never dispatched is NOT the same as a reload that ran and exited nonzero. The
+// drop-in is still withdrawn and the fold refuses; it is never reported as the reload-uncertain outcome
+// (which claims systemctl ran and exited nonzero -- a fabrication about a command that never started).
+test fn a_never_dispatched_reload_withdraws_rather_than_claiming_reload_uncertain() -> Bool {
+  let r = run(overrides: [LegOverride { leg: "reload", answer: never(reason: "systemctl-reload-never-dispatched-xyzzy") }])
+  let d = cause_of(o: r.outcome)
+  word(o: r.outcome) == "refused"
+    && string_contains(s: d, pattern: "systemctl-reload-never-dispatched-xyzzy")
+    && !string_contains(s: d, pattern: "exited nonzero")
+}
+
+// A NEVER-DISPATCHED REMOVAL READBACK IS NEVER CONFIRMED ABSENT. A leg that did not run cannot prove the
+// drop-in is gone; it must stay "NOT confirmed absent" and carry its cause. If absence were fabricated as
+// exit 1, this would flip to "confirmed absent and sshd was not reloaded" -- which is exactly the red.
+test fn a_never_dispatched_removal_readback_is_never_confirmed_absent() -> Bool {
+  let r = run(overrides: [LegOverride { leg: "test_config", answer: bad() },
+                          LegOverride { leg: "drop_in_exists", answer: never(reason: "readback-transport-refused-xyzzy") }])
+  let d = cause_of(o: r.outcome)
+  word(o: r.outcome) == "refused"
+    && string_contains(s: d, pattern: "NOT confirmed absent")
+    && string_contains(s: d, pattern: "readback-transport-refused-xyzzy")
+    && !string_contains(s: d, pattern: "confirmed absent and sshd was not reloaded")
+}
+
+// A REAL ANSWERED 255 STAYS AN ANSWERED EXIT, DISTINCT FROM NEVER DISPATCHED (reviewer ask). Same leg, two
+// shapes: a genuinely answered ssh 255 renders its real "exit=255"; a never-dispatched leg carries its cause
+// and is NEVER given "exit=255". Restoring a fabricated-255 thunk (a never-dispatched leg rendered as a
+// LegAnswered{exit_code:255}) turns the never-dispatched run red on the final assertion.
+test fn a_real_answered_255_stays_an_answered_exit_distinct_from_never_dispatched() -> Bool {
+  let real = run(overrides: [LegOverride { leg: "test_config", answer: bad() },
+                             LegOverride { leg: "drop_in_exists", answer: answered(exit: 255, out: "", err: "ssh-remote-hung-up-xyzzy") }])
+  let nd   = run(overrides: [LegOverride { leg: "test_config", answer: bad() },
+                             LegOverride { leg: "drop_in_exists", answer: never(reason: "dropin-never-dispatched-xyzzy") }])
+  let dr = cause_of(o: real.outcome)
+  let dn = cause_of(o: nd.outcome)
+  word(o: real.outcome) == "refused" && word(o: nd.outcome) == "refused"
+    && string_contains(s: dr, pattern: "exit=255") && string_contains(s: dr, pattern: "ssh-remote-hung-up-xyzzy")
+    && string_contains(s: dn, pattern: "dropin-never-dispatched-xyzzy") && !string_contains(s: dn, pattern: "exit=255")
 }
