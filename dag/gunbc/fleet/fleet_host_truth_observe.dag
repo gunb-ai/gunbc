@@ -291,42 +291,46 @@ fn host_truth_observe_slice_limits(observation: HostMemoryEnvelopeObservation) -
 // THE WET ENTRY. One dispatched host per run, named by the converge matrix through the expected-host env var
 // -- the same shape gunbc.host.host_memory_envelope_observe uses -- so no step body names a host. It reads
 // the host's memory envelope, forms the two-axis verdict (cap, leaf swap) with the three refused axes through
-// gunbc.fleet.fleet_host_truth_read, writes a per-host receipt, and exits non-zero only on divergence.
+// gunbc.fleet.fleet_host_truth_read, writes a per-host receipt, and exits non-zero on a divergence or any unread
+// precondition. It FABRICATES NOTHING (review 97793, gunbc.design_argument::fail_closed): a missing dispatch
+// host or an unread kernel hostname fails with its real cause, never a placeholder that could join as a host.
 fn host_truth_read_observe_ci_wet() -> ProcessExit {
   let dispatch = actions_variable_read(name: fleet_converge_expected_host_env_name)
-  let dispatched = match dispatch {
-    ActionsVariablePresent { value: v } => v
-    ActionsVariableAbsent => "unknown-dispatch" as NonEmptyStr
-  }
-  let kernel = match hostname_short_read(transport: LocalShell) {
-    HostnameShortCaptured { value: n } => n as NonEmptyStr
-    HostnameShortCaptureRefused { reason: _ } => "unknown-host" as NonEmptyStr
-  }
-  match observed_host_selector_join(expected: dispatched, observed: kernel) {
-    ObservedHostSelectorJoinRefused { cause: c } => exit_failure(reason: join([
-      "host_truth_read_observe: ",
-      observed_host_join_refusal_text(cause: c),
-    ], ""))
-    ObservedHostSelectorAgreed { host: identity } =>
-      match host_memory_envelope_observe_local(host: identity) {
-        HostMemoryEnvelopeRefused { host: _, reason: why } => exit_failure(reason: why)
-        HostMemoryEnvelopeObserved { observation: obs } => {
-          let limits = host_truth_observe_slice_limits(observation: obs)
-          let at_run = obs.probed_at
-          let reads = host_truth_observe_reads(host: identity, at_run: at_run, cap_limit: limits.cap_limit, swap_limit: limits.swap_limit)
-          let expectations = host_truth_observe_expectations(host: identity)
-          let verdict = fleet_host_truth_verdict_for_host(host: identity, reads: reads, expectations: expectations)
-          let text = join([
-            "fleet host-truth read (observe-only) -- host=", (identity as String), " at_run=", (at_run as String), "\n",
-            host_truth_observe_verdict_text(verdict: verdict),
-          ], "")
-          let w = Filesystem.Write(path: host_truth_read_observe_receipt_path, content: text)
-          if w.success == false {
-            exit_failure(reason: join(["host_truth_read_observe: receipt write failed: ", w.error, "\n", text], ""))
-          } else {
-            host_truth_observe_exit(host: identity, reads: reads, verdict: verdict)
+  match dispatch {
+    ActionsVariableAbsent =>
+      exit_failure(reason: join(["host_truth_read_observe: ", (fleet_converge_expected_host_env_name as String), " is unset; refusing to read a host no dispatch named (never a fabricated host name)"], ""))
+    ActionsVariablePresent { value: dispatched } =>
+      match hostname_short_read(transport: LocalShell) {
+        HostnameShortCaptureRefused { reason: why_host } =>
+          exit_failure(reason: join(["host_truth_read_observe: the kernel hostname could not be read: ", why_host], ""))
+        HostnameShortCaptured { value: n } =>
+          match observed_host_selector_join(expected: dispatched, observed: n as NonEmptyStr) {
+            ObservedHostSelectorJoinRefused { cause: c } => exit_failure(reason: join([
+              "host_truth_read_observe: ",
+              observed_host_join_refusal_text(cause: c),
+            ], ""))
+            ObservedHostSelectorAgreed { host: identity } =>
+              match host_memory_envelope_observe_local(host: identity) {
+                HostMemoryEnvelopeRefused { host: _, reason: why } => exit_failure(reason: why)
+                HostMemoryEnvelopeObserved { observation: obs } => {
+                  let limits = host_truth_observe_slice_limits(observation: obs)
+                  let at_run = obs.probed_at
+                  let reads = host_truth_observe_reads(host: identity, at_run: at_run, cap_limit: limits.cap_limit, swap_limit: limits.swap_limit)
+                  let expectations = host_truth_observe_expectations(host: identity)
+                  let verdict = fleet_host_truth_verdict_for_host(host: identity, reads: reads, expectations: expectations)
+                  let text = join([
+                    "fleet host-truth read (observe-only) -- host=", (identity as String), " at_run=", (at_run as String), "\n",
+                    host_truth_observe_verdict_text(verdict: verdict),
+                  ], "")
+                  let w = Filesystem.Write(path: host_truth_read_observe_receipt_path, content: text)
+                  if w.success == false {
+                    exit_failure(reason: join(["host_truth_read_observe: receipt write failed: ", w.error, "\n", text], ""))
+                  } else {
+                    host_truth_observe_exit(host: identity, reads: reads, verdict: verdict)
+                  }
+                }
+              }
           }
-        }
       }
   }
 }
