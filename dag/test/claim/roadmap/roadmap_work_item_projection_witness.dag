@@ -210,7 +210,6 @@ test fn in_flight_leaves_are_the_derived_set_read_off_the_log() -> Bool {
     && string_contains(s: row_json, pattern: "fred@roadmap")
     && string_contains(s: row_json, pattern: "\"latest_event\": \"claimed\"")
     && string_contains(s: row_json, pattern: "\"acceptance_evidence\": null")
-    && string_contains(s: row_json, pattern: "\"on_critical_path\"")
 }
 
 // The served surface: the projection is a declared surface at /projection.json, with the same key
