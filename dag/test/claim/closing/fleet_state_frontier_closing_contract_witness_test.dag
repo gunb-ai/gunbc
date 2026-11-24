@@ -49,7 +49,7 @@ module test.claim.closing.fleet_state_frontier_closing_contract_witness_test
 // anything unclassified refuses, of any kind.
 
 import std.types { Bool, String }
-import std.algebra { string_contains }
+import std.algebra { fold_list, string_contains }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.systemd { systemd_memory_max_property }
 import gunbc.ci.ci_runner_placement {
@@ -90,17 +90,15 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // declared. The gate refuses both, each carrying its identity.
 test fn an_undeclared_artifact_refuses_before_anything_is_changed() -> Bool {
   let plan = runner_deployment_plan()
-  let derived = filter(plan.hosts, st => {
-    match st {
-      HostRunnerDeploymentDerived { deployment: _ } => true
-      HostRunnerDeploymentRefused { refusal: _ } => false
-    }
-  })
-  if derived.length() == 0 {
-    false
-  } else {
-    match derived[0] {
-      HostRunnerDeploymentDerived { deployment: h } => {
+  fold_list(
+    xs: plan.hosts,
+    empty: false,
+    cons: fn(acc, st) {
+      if acc {
+        true
+      } else {
+        match st {
+          HostRunnerDeploymentDerived { deployment: h } => {
         let unclassified_service = ConvergeKnob {
           slice: SessionsSlice,
           name: "srv9_devmon_memory_cap",
@@ -152,10 +150,12 @@ test fn an_undeclared_artifact_refuses_before_anything_is_changed() -> Bool {
           FleetConvergeHosts { hosts: _ } => false
         }
         service_refused && file_refused
+          }
+          HostRunnerDeploymentRefused { refusal: _ } => false
+        }
       }
-      HostRunnerDeploymentRefused { refusal: _ } => false
     }
-  }
+  )
 }
 
 // Positive control on the same real route: every production host's artifacts

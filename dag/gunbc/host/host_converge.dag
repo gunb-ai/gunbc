@@ -1261,12 +1261,21 @@ type FrontierClassification
 fn frontier_classify_target(target: ConvergeTarget) -> FrontierClassification {
   let identity = frontier_artifact_identity(target: target)
   let kind = frontier_target_kind(target: target)
-  let agreed = filter(frontier_machine_artifacts, a => a.identity == identity)
-  if agreed.length() > 0 {
-    Classified { artifact: identity, kind: kind, class: agreed[0].class }
-  } else {
-    UnclassifiedArtifact { artifact: identity, kind: kind }
-  }
+  fold_list(
+    xs: frontier_machine_artifacts,
+    empty: UnclassifiedArtifact { artifact: identity, kind: kind },
+    cons: fn(acc, a) {
+      match acc {
+        Classified { artifact: _, kind: _, class: _ } => acc
+        UnclassifiedArtifact { artifact: _, kind: _ } =>
+          if a.identity == identity {
+            Classified { artifact: identity, kind: kind, class: a.class }
+          } else {
+            acc
+          }
+      }
+    }
+  )
 }
 
 // One machine artifact of a host as the gate reads it: the identity the
