@@ -4,12 +4,18 @@ import std.types { String, Int, Bool, List }
 import std.decl_ref { declaration_ref_display_key }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId, LeafPath }
 import gunbc.roadmap.roadmap_event_log {
-  RoadmapNodeStanding, RoadmapStandings, LeafInFlightEntry, RoadmapEventEnvelope, RoadmapEventKind,
+  RoadmapNodeStanding, RoadmapStandings, LeafInFlightEntry, LeafInFlightRead, InFlightLeaves, InFlightRefused, RoadmapEventEnvelope, RoadmapEventKind,
   roadmap_event_kind_word, standing_for_node, roadmap_node_standing_key, event_principal_label,
-  roadmap_acceptance_pr_evidence_url,
+  roadmap_acceptance_pr_evidence_url, roadmap_leaf_in_flight_from_envs,
 }
 import gunbc.roadmap.roadmap_intention_binding { IntentionBinding, roadmap_intention_bindings }
-import gunbc.roadmap.roadmap_schedule_calendar { DatedLeaf, date_text }
+import gunbc.roadmap.roadmap_schedule_calendar { DatedLeaf, date_leaf, date_text }
+import gunbc.roadmap.roadmap_belt { BeltCapacity }
+import gunbc.roadmap.roadmap_decomposition { WorkDecomposition, decomposition_for, expand_decomposition }
+import gunbc.roadmap.roadmap_schedule { Schedule, Scheduled, NotScheduled, schedule }
+import std.nat { Nat }
+import std.integer { nat_to_int }
+import extdeps.units.iso8601_calendar { Iso8601CivilDate }
 import gunbc.extdeps.languages.json.emit {
   JsonValue, JsonKeyValue, json_kv, json_object, json_array, json_string, json_int, json_bool, json_null,
 }
@@ -289,8 +295,8 @@ fn projection_row_json(row: ProjectionRow) -> JsonValue {
     json_kv(key: "item_state", value: json_string(s: row.item_state)),
     json_kv(key: "leaves", value: json_array(elements: map(row.leaves, l => json_object(members: [
       json_kv(key: "path", value: json_string(s: l.path)),
-      json_kv(key: "start_day", value: json_int(n: l.start_day)),
-      json_kv(key: "finish_day", value: json_int(n: l.finish_day)),
+      json_kv(key: "start_day", value: json_string(s: l.start_day)),
+      json_kv(key: "finish_day", value: json_string(s: l.finish_day)),
       json_kv(key: "on_critical_path", value: json_bool(b: l.on_critical_path)),
     ])))),
     json_kv(key: "in_flight", value: json_array(elements: map(row.in_flight, f => json_object(members: [
@@ -318,4 +324,98 @@ fn roadmap_work_item_projection_refusal_json(read_on: String, step: String, reas
       json_kv(key: "reason", value: json_string(s: reason)),
     ])),
   ])
+}
+
+// THE ONE PER-ITEM READ (ticket reuse note 2026-11-19; manager ruling 2026-11-24). The whole composition
+// for a single work item lives here: the item's decomposition, expanded and scheduled by the schedule that
+// already exists (roadmap_schedule), the answer's leaves bound to ISO days by the ONE calendar
+// (roadmap_schedule_calendar.date_leaf -- the same binding the item gantt uses, so the projection and the
+// gantt never carry two calendars), the item's derived in-flight set read off its OWN envelopes through the
+// log's fold (roadmap_event_log.roadmap_leaf_in_flight_from_envs, never a second derivation), and the row
+// assembled by projection_build_row from the binding (intention, layer), the standing (item_state) and the
+// envelopes (events, latest_event, acceptance_evidence). IT DRIVES THE UPSTREAM ANSWERS AND COMPUTES NO
+// TIMELINE OF ITS OWN. A node with no decomposition, or a schedule that refuses, yields NO dated leaves
+// rather than a fabricated date: an item with nothing scheduled ahead is still a row whose leaf list is
+// empty -- the reader sees no bar, never an invented one. in_flight is empty only when the derived set is
+// empty or its history is unordered (the fold refuses silently here, matching the standings' empty-fold
+// rule), never when a held leaf was dropped.
+fn roadmap_projection_row_read(
+  node: RoadmapNodeId,
+  read_date: Iso8601CivilDate,
+  workers: BeltCapacity,
+  findings_count: Nat,
+  standings: RoadmapStandings,
+  envs: List<RoadmapEventEnvelope>,
+) -> ProjectionRowResult {
+  let node_id = node as String
+  let leaves = match decomposition_for(node: node).first() {
+    Absent => [] as List<ProjectionLeaf>
+    Present { value: d } => match schedule(d: d, e: expand_decomposition(d: d, findings_count: findings_count), workers: workers) {
+      NotScheduled { refusal: _ } => [] as List<ProjectionLeaf>
+      Scheduled { answer: a } => projection_leaves_for_item(
+        dated: map(a.leaves, l => date_leaf(read_date: read_date, leaf: l)),
+        critical_path: a.critical_path,
+        item: node_id,
+      )
+    }
+  }
+  let item_envs = filter(envs, e => (e.event.node as String) == node_id)
+  let in_flight_entries = match roadmap_leaf_in_flight_from_envs(envs: item_envs) {
+    InFlightLeaves { leaves: ls, closed: _, pathless_claims: _, absorbed_claims: _ } => ls
+    InFlightRefused { cause: _ } => [] as List<LeafInFlightEntry>
+  }
+  projection_build_row(
+    node: node_id,
+    bindings: roadmap_intention_bindings,
+    standings: standings,
+    leaves: leaves,
+    in_flight: projection_in_flight_entries(entries: in_flight_entries, item: node_id),
+    envs: item_envs,
+  )
+}
+
+// THE SERVED PROJECTION FOR A SET OF WORK ITEMS AT ONE READ -- the single call the /projection.json surface
+// makes (manager ruling 2026-11-24: the hot served_observation file holds only this one call plus the
+// ProjectionJson arm, never the composition itself). It maps every node through the one row read above and
+// hands the rows and any refusal to the document builder, which emits refused{step,reason} for the WHOLE
+// document if any single item could not be honestly built -- so a Timeline never draws a partial plan as a
+// complete one. A refusal here is THE PROJECTION'S OWN and reaches only /projection.json; it does not fail
+// the tick or the standings surface, which are built by their own arms. read_on and the inputs the read used
+// (worker_count, the day priors it was handed -- none here, the schedule read the decomposition's own
+// working-day priors -- and the findings count it assumed) sit at the top level, shown as the inputs they
+// are and not as facts (the boundary). The witness drives it with constructed inputs, the way
+// roadmap_standings_document_test drives the standings fold.
+fn roadmap_projection_document_for_read(
+  nodes: List<RoadmapNodeId>,
+  read_on_date: Iso8601CivilDate,
+  workers: BeltCapacity,
+  findings_count: Nat,
+  standings: RoadmapStandings,
+  envs: List<RoadmapEventEnvelope>,
+) -> JsonValue {
+  let read_on = date_text(date: read_on_date)
+  let results = map(nodes, n => roadmap_projection_row_read(
+    node: n, read_date: read_on_date, workers: workers, findings_count: findings_count, standings: standings, envs: envs))
+  let rows = fold(results, init: [] as List<ProjectionRow>, f: fn(acc, r) {
+    match r {
+      ProjectionRowBuilt { row: row } => concat(acc, [row])
+      ProjectionRowRefused { refusal: _ } => acc
+    }
+  })
+  let refusals = fold(results, init: [] as List<ProjectionRefusal>, f: fn(acc, r) {
+    match r {
+      ProjectionRowBuilt { row: _ } => acc
+      ProjectionRowRefused { refusal: refusal } => concat(acc, [refusal])
+    }
+  })
+  roadmap_work_item_projection_document_json(
+    rows: rows,
+    refused: refusals,
+    read_on: read_on,
+    inputs: ProjectionInputs {
+      worker_count: workers.max_concurrent,
+      day_priors: [] as List<Int>,
+      assumed_findings_counts: [nat_to_int(n: findings_count)],
+    },
+  )
 }

@@ -24,6 +24,8 @@ import gunbc.extdeps.units.iso8601_calendar { Iso8601CivilDate }
 import gunbc.roadmap.roadmap_decomposition { Declared }
 import gunbc.roadmap.roadmap_schedule_calendar { DatedLeaf }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId, LeafPath, nid }
+import std.checked_arithmetic { checked_int_to_nat }
+import gunbc.roadmap.roadmap_belt { BeltCapacity }
 import gunbc.roadmap.roadmap_event_log {
   RoadmapEvent, RoadmapEventKind, RoadmapEventEnvelope, RoadmapEventId, RoadmapStandings, StandingsObserved,
   LeafInFlightEntry, Claimed, Released, EventPrincipal, LegacyEmailPrincipal, ClaimGrain, AtPath,
@@ -234,4 +236,85 @@ test fn leaves_are_bound_to_iso_days_through_the_calendar() -> Bool {
     && off_path.on_critical_path == false
     && count(item_only) == 1
     && count(other) == 0
+}
+
+// THE ONE READ, DRIVEN WITH CONSTRUCTED INPUTS on a REAL bound+decomposed work item
+// (namespace-reference-derived-closure, which is in roadmap_intention_bindings AND roadmap_decompositions):
+// row_read expands it, schedules it, binds the answer's leaves through the one calendar, reads its derived
+// in-flight set off its own envelopes, and assembles the row off the real binding (intention, layer) and the
+// standing (open). This is green-by-execution of the WHOLE composition -- schedule, calendar, in-flight fold
+// -- not of a hand-built fixture. The item is chosen because it decomposes for real; the row must build, and
+// any leaf it does carry must be an ISO day, never an abstract integer or a fabricated date.
+test fn row_read_builds_a_dated_row_for_a_real_bound_item() -> Bool {
+  match checked_int_to_nat(n: 1) {
+    Absent => false
+    Present { value: findings } => match roadmap_projection_row_read(
+      node: nid(s: "namespace-reference-derived-closure"),
+      read_date: Iso8601CivilDate { year: 2026, month: 11, day: 24 },
+      workers: BeltCapacity { max_concurrent: 4 },
+      findings_count: findings,
+      standings: open_standings(),
+      envs: [] as List<RoadmapEventEnvelope>,
+    ) {
+      ProjectionRowRefused { refusal: _ } => false
+      ProjectionRowBuilt { row: r } =>
+        r.node == "namespace-reference-derived-closure"
+        && r.item_state == "open"
+        && string_length(s: r.intention) > 0
+        && count(r.in_flight) == 0
+        && count(filter(r.leaves, l =>
+             string_length(s: l.start_day) == 10
+             && string_length(s: l.finish_day) == 10
+             && string_contains(s: l.start_day, pattern: "-")
+             && string_contains(s: l.finish_day, pattern: "-"))) == count(r.leaves)
+    }
+  }
+}
+
+// A PLANTED PROJECTION REFUSAL REFUSES THE WHOLE PROJECTION, NOT JUST ONE ROW: a node with no binding at all
+// (so no intention/layer to honestly state) makes document_for_read emit refused{step,reason} for the whole
+// document with NO rows key -- a Timeline never draws a partial plan as a complete one. The refusal is the
+// read's own (UnboundNode), reached through the real read, not a hand-built refusal.
+test fn document_for_read_refuses_the_whole_document_on_a_planted_unbound_node() -> Bool {
+  match checked_int_to_nat(n: 1) {
+    Absent => false
+    Present { value: findings } =>
+      let d = serialize_json(v: roadmap_projection_document_for_read(
+        nodes: [nid(s: "namespace-reference-derived-closure"), nid(s: "no-such-bound-node-xyz")],
+        read_on_date: Iso8601CivilDate { year: 2026, month: 11, day: 24 },
+        workers: BeltCapacity { max_concurrent: 4 },
+        findings_count: findings,
+        standings: open_standings(),
+        envs: [] as List<RoadmapEventEnvelope>,
+      ))
+      string_contains(s: d, pattern: "\"refused\"")
+      && string_contains(s: d, pattern: "no-such-bound-node-xyz")
+      && !string_contains(s: d, pattern: "\"rows\"")
+  }
+}
+
+// THE SERVED PROJECTION FOR HONESTLY-BUILDABLE ITEMS: every bound item builds, so the document carries its
+// rows and the read_on day and the inputs it used (worker_count, the day priors it was handed, the assumed
+// findings counts) at the top level, each shown as the input it is (the boundary). This is the single call the
+// /projection.json surface makes; the standings surface is a SEPARATE arm and is never reached from here.
+test fn document_for_read_serves_built_rows_with_inputs_for_bound_items() -> Bool {
+  match checked_int_to_nat(n: 1) {
+    Absent => false
+    Present { value: findings } =>
+      let d = serialize_json(v: roadmap_projection_document_for_read(
+        nodes: [nid(s: "namespace-reference-derived-closure")],
+        read_on_date: Iso8601CivilDate { year: 2026, month: 11, day: 24 },
+        workers: BeltCapacity { max_concurrent: 4 },
+        findings_count: findings,
+        standings: open_standings(),
+        envs: [] as List<RoadmapEventEnvelope>,
+      ))
+      string_contains(s: d, pattern: "\"rows\"")
+      && string_contains(s: d, pattern: "namespace-reference-derived-closure")
+      && string_contains(s: d, pattern: "\"read_on\"")
+      && string_contains(s: d, pattern: "2026-11-24")
+      && string_contains(s: d, pattern: "\"worker_count\"")
+      && string_contains(s: d, pattern: "\"day_priors\"")
+      && string_contains(s: d, pattern: "\"assumed_findings_counts\"")
+  }
 }
