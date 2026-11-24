@@ -37,8 +37,9 @@ module v2.test.claim.parse.predicate_recognition_mint_probe
 // that the matcher was evaluated, and where FIRST does not admit the token there is no refusal, no
 // evaluation, and nothing to count.
 
-import std.types { Bool, Int, List, Optional, Present, Absent, String, optional_absent, optional_present }
-import std.algebra { Cons, length }
+import std.types { Bool, Int, List, String }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import std.algebra { Cons, fold_list, length }
 import v2.std.compilers.lexing { Token }
 import v2.std.grammar {
   GrammarExpr, GrammarProduction, GrammarRoot, StampClass, Terminal, grammar_atom,
@@ -273,6 +274,95 @@ fn guard_composition_retains(prov: ParseProvenanceState) -> Int {
       length(xs: after.facts) - length(xs: prov.facts)
     ParseExprRejected { diagnostics: _, table: _ } => -1
   }
+}
+
+// ------------------------------------------------------------------ the emitter
+
+// THE INSTRUMENT'S RAW NUMBERS, PRINTED. Returns (does not assert) one line per measured site: the
+// occurrences that recognition mints under the MINTING policy (the sensitivity leg, which must read
+// the non-zero baseline on every leg, fixed or not) and the occurrences the same call mints under the
+// policy PRODUCTION uses for that site, which is what the node's handback is about. On the un-fixed
+// leg the two columns are equal, because the policy production uses is Minting; on the fixed leg the
+// second column is 0 while the first stays at the baseline, which is the only shape that makes a zero
+// mean something. claim_batch prints a returned non-Bool value on its FAIL line: that line is the
+// artifact, and its exit status is not a result of this node's control.
+fn bool_as_int(value: Bool) -> Int {
+  if value { 1 } else { 0 }
+}
+
+fn report_mint_instrument() -> String {
+  let tokens = probe_minus_tokens()
+  let np_line = match guard_element() {
+    Absent => "not_predicate_attempt|entered=ERROR-absent"
+    Present { value: element } =>
+      concat(
+        concat(
+          concat("not_predicate_attempt|entered=", to_string(value: bool_as_int(
+            value: composition_is_entered(expr: element, tokens: tokens, prov: probe_prov_minting())
+          ))),
+          concat("|minting=", to_string(value: matcher_mints_under(policy: probe_prov_minting(), tokens: tokens)))
+        ),
+        concat("|production=", to_string(value: matcher_mints_under(policy: probe_prov(), tokens: tokens)))
+      )
+  }
+  let rom_line = match refuse_on_match_element() {
+    Absent => "refuse_on_match_element|entered=ERROR-absent"
+    Present { value: element } =>
+      concat(
+        concat(
+          concat("refuse_on_match_element|entered=", to_string(value: bool_as_int(
+            value: composition_is_entered(expr: element, tokens: tokens, prov: probe_prov_minting())
+          ))),
+          concat("|minting=", to_string(value: matcher_mints_under(policy: probe_prov_minting(), tokens: tokens)))
+        ),
+        concat("|production=", to_string(value: matcher_mints_under(policy: probe_prov(), tokens: tokens)))
+      )
+  }
+  let lines = [
+    concat(
+      concat(
+        concat("guard|entered=", to_string(value: bool_as_int(
+          value: composition_is_entered(expr: dag_grammar_additive_newline_minus_guard(), tokens: tokens, prov: probe_prov_minting())
+        ))),
+        concat("|minting=", to_string(value: guard_recognition_mints(tokens: tokens, prov: probe_prov_minting())))
+      ),
+      concat("|production=", to_string(value: guard_recognition_mints(tokens: tokens, prov: probe_prov())))
+    ),
+    np_line,
+    rom_line,
+    concat(
+      "two_continuation_points|minting=",
+      concat(
+        to_string(value: matcher_mints_under(policy: probe_prov_minting(), tokens: probe_minus_tokens_at(start: 0))),
+        concat(
+          "|production=",
+          to_string(value: matcher_mints_under(policy: probe_prov(), tokens: probe_minus_tokens_at(start: 0)))
+        )
+      )
+    ),
+    concat(
+      "not_admitted_position|minting=",
+      concat(
+        to_string(value: guard_recognition_mints(tokens: probe_other_tokens(), prov: probe_prov_minting())),
+        concat(
+          "|production=",
+          to_string(value: guard_recognition_mints(tokens: probe_other_tokens(), prov: probe_prov()))
+        )
+      )
+    ),
+    concat(
+      "guard_composition_retained|minting=",
+      concat(
+        to_string(value: guard_composition_retains(prov: probe_prov_minting())),
+        concat("|production=", to_string(value: guard_composition_retains(prov: probe_prov())))
+      )
+    )
+  ]
+  fold_list(
+    xs: lines,
+    empty: "",
+    cons: fn(acc, line) { if acc == "" { line } else { concat(acc, concat("\n", line)) } }
+  )
 }
 
 // ------------------------------------------------------------------------ the claims

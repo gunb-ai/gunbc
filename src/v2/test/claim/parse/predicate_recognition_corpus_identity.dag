@@ -1,264 +1,424 @@
 module v2.test.claim.parse.predicate_recognition_corpus_identity
 
-// THE IDENTITY HALF OF THE CONTROL: parse trees, refusals, layout decisions and the mint ledger are
-// identical on the corpus before and after the predicate recognition change.
+// ROADMAP NODE v2-predicate-recognition-without-materialization -- THE CORPUS-IDENTITY HALF.
 //
-// WHY THESE FOUR AND NOT FEWER. The change suppresses minting inside predicate subtrees. Every
-// occurrence minted there is rolled back with the whole provenance value, so NOTHING in an artifact
-// is expected to move -- which is exactly why a change that moved something would be a bug that a
-// tree check alone can miss. So the corpus is pinned on four separate quantities:
-//   (1) TREE         content_hash of the parse tree (v2.std.node content_hash; its own note says
-//                    content_hash_step folds the label and the child hash only, never an occurrence
-//                    id), rendered as its lower-hex digest;
-//   (2) REFUSALS     the verdict plus the count of diagnostics the parse produced -- the refusals the
-//                    corpus earns;
-//   (3) LAYOUT       the count of layout-conditioned refusals, the two reasons the layout-conditioned
-//                    productions raise (NewlineBeforeDualRoleOperator, LayoutUnknownWithoutSource):
-//                    where a layout decision taken differently would show up;
-//   (4) MINT LEDGER  the number of recorded ParseFacts AND the sum of the minted occurrence ids: the
-//                    minting itself, not only the tree it built. A policy leak into a kept subtree
-//                    moves this line even when the tree is unchanged.
+// The ticket's red_control names THREE quantities that must be identical on the corpus before and
+// after the predicate paths stop materializing what they discard: the PARSE TREES, the REFUSALS, and
+// the LAYOUT DECISIONS. This module computes all three, per row, over a corpus of real dag source
+// pushed through the PRODUCTION prepared grammar (v2.compiler.program_assembly dag_prepared_lex +
+// dag_prepared_grammar, the same entries the ingest uses), and asserts each quantity against a value
+// RECORDED from the un-fixed leg. A leg that changes any of them fails here by name.
 //
-// THE RECORDED HALF. The literals in recorded() were emitted by report_corpus_identity() on the main
-// leg (same claim_batch binary, source roots at the pinned revision -- see the run block in the PR).
-// The report entry is an EMITTER, not a verdict: it returns a String, so claim_batch prints it as a
-// non-Bool return and that leg exits 1 BY DESIGN. The four claims below are the verdicts.
+// A FOURTH quantity is printed alongside, and it is the one that catches the failure mode a tree
+// comparison cannot see: the MINT LEDGER of the surviving path (length(artifact.facts), the sum of
+// its occurrence ids, and the allocator mark artifact.alloc.next_id). content_hash deliberately
+// excludes occurrence ids, so a policy that leaked out of a predicate and into a KEPT subtree would
+// leave every tree digest identical while shifting the ledger. It is asserted only to be nonzero on
+// every accepted row (an inert-parser zero voids this witness -- see the venue claim in the sibling
+// probe module); it is NOT asserted equal to a recorded number, because the whole point of the node
+// is what the ledger does inside an attempt that is thrown away.
+//
+// WHY THE LEDGER IS EXPECTED IDENTICAL ACROSS THE TWO LEGS, and where the removed work is then
+// visible at all: the predicate arms drop the attempt's ParseProvenanceState, and the facts log is
+// OWNED BY THAT STATE, so a mint performed inside a discarded attempt disappears from both the
+// ledger and the allocator mark -- which is exactly parse.dag's own header note, "an id minted on an
+// abandoned attempt is minted again by the next one and recorded once". The discarded mint is
+// therefore INVISIBLE IN THE ARTIFACT and is measured at the minting function itself, in the sibling
+// module v2.test.claim.parse.predicate_recognition_mint_probe. This module's job is the other half:
+// proving that removing it changes nothing a reader can see.
+//
+// THE RECORDED COLUMN IS MEASURED, NOT AUTHORED. recorded() below holds the values printed by
+// report_corpus_identity() on the un-fixed leg (its raw output is in the run log named in the PR);
+// every row carries a nonzero quantity or an explicit negative failure code, and a row whose
+// observed values were never observed holds -99 / "unrecorded" so the claim fails rather than passes
+// vacuously.
 
 import std.types { Bool, Int, List, String }
-import std.algebra { length }
-import v2.std.node { Symbol, content_hash, symbol_lexeme }
-import v2.std.diagnostic { Accepted, Diagnostic, Diagnostics, Rejected }
-import v2.std.integer { int_to_decimal_string }
-import v2.std.parse_refusal_reason { LayoutUnknownWithoutSource, NewlineBeforeDualRoleOperator }
-import v2.compiler.parse {
-  ParseArtifact, ParseFact, parse_refusal_reason_diagnostic, parse_module_prepared
-}
+import std.algebra { fold_list, length, list_append }
+import v2.compiler.parse { ParseArtifact, ParseFact, parse_module_prepared }
 import v2.compiler.tokenize { tokenize_prepared }
 import v2.compiler.program_assembly { dag_prepared_grammar, dag_prepared_lex }
+import v2.std.compilers.lexing {
+  LineBreakInGap, LineBreakUnknownWithoutSource, NoLineBreakInGap, Token, TokenStream,
+  token_stream_layout, token_stream_line_break_before, token_stream_remaining
+}
+import v2.std.diagnostic { Accepted, Diagnostic, Diagnostics, NonEmptyDiagnostics, Outcome, Rejected }
+import v2.std.node { Symbol, content_hash, symbol_lexeme }
 
-type CorpusRow {
-  identity: Symbol
-  source: String
+// THE CORPUS. Five rows, each a complete module so every parse is a whole file the way the tools
+// parse one. Four of them exercise a continuation point of the production additive infix table --
+// the only place the guard this node is about runs -- and each row is chosen to separate one
+// behaviour from another:
+//   r_plain          no operator at all: no continuation point, nothing for the guard to ask;
+//   r_plus           a continuation point whose next token is NOT the guard's matcher class: the
+//                    FIRST set must refuse to enter the attempt, so zero mints for the right reason;
+//   r_minus          one continuation point at the guard's own class on one line: the attempt runs,
+//                    the matcher mints, the layout answer is "no line break", the attempt is thrown
+//                    away and the infix path mints the same terminal again;
+//   r_chain          two continuation points at the guard's class: the discarded mint is paid once
+//                    per operator, which is the displaced cost the ticket names;
+//   r_newline_minus  the refused row: a line break before the minus, where the matcher mints, the
+//                    layout answer is "line break", and refuse-on-match discards the element it was
+//                    built from to raise NewlineBeforeDualRoleOperator. Refusals are not free to
+//                    change as a side effect, so this row pins them.
+type CorpusRow = String
+
+fn corpus_rows() -> List<String> {
+  ["r_plain", "r_plus", "r_minus", "r_chain", "r_newline_minus"]
 }
 
-type RowObservation {
-  verdict: Int          // 1 accepted, 0 refused; negative is an infrastructure failure, never a zero
-  tree_hash: String     // lower-hex structural digest of the parse tree, "-" when refused
-  facts: Int            // recorded ParseFacts: one per occurrence minted and kept
-  ledger: Int           // sum of the minted occurrence ids
-  diagnostics: Int      // every diagnostic the parse produced: the refusals it earned
-  layout_refusals: Int  // the layout-conditioned ones among them
-}
-
-// The corpus: real module sources through the real prepared dag grammar, chosen so the dual-role
-// minus guard is exercised on both of its answers and on the shapes around it.
-data corpus_rows: List<CorpusRow> = [
-  CorpusRow { identity: ^r_plain, source: "module probe.r.plain\ndata m: Int = 7\n" },
-  CorpusRow { identity: ^r_plus, source: "module probe.r.plus\ndata m: Int = 41 + 1\n" },
-  CorpusRow { identity: ^r_minus, source: "module probe.r.minus\ndata m: Int = 42 - 1\n" },
-  CorpusRow { identity: ^r_chain, source: "module probe.r.chain\ndata m: Int = 42 - 1 - 2\n" },
-  CorpusRow { identity: ^r_newline_minus, source: "module probe.r.nl\ndata m: Int = 42\n  - 1\n" }
-]
-
-fn corpus_file() -> Symbol {
-  ^predicate_recognition_corpus_identity
-}
-
-fn observe_failure(code: Int) -> RowObservation {
-  RowObservation {
-    verdict: code,
-    tree_hash: "-",
-    facts: 0,
-    ledger: 0,
-    diagnostics: 0,
-    layout_refusals: 0
+fn corpus_row_source(row: String) -> String {
+  if row == "r_plain" {
+    "module probe.pred.r_plain\ndata probe_value: Int = 7\n"
+  } else if row == "r_plus" {
+    "module probe.pred.r_plus\ndata probe_value: Int = 41 + 1\n"
+  } else if row == "r_minus" {
+    "module probe.pred.r_minus\ndata probe_value: Int = 42 - 1\n"
+  } else if row == "r_chain" {
+    "module probe.pred.r_chain\ndata probe_value: Int = 42 - 1 - 2\n"
+  } else {
+    "module probe.pred.r_newline_minus\ndata probe_value: Int = 42\n  - 1\n"
   }
 }
 
-fn accepted_diagnostics(ds: Diagnostics) -> List<Diagnostic> {
-  match ds {
-    Some { diagnostics: ned } => Cons { head: ned.head, tail: ned.tail }
+// One file name per row, so a refusal's locus names the row that produced it.
+fn corpus_row_file(row: String) -> Symbol {
+  if row == "r_plain" {
+    ^probe_pred_r_plain
+  } else if row == "r_plus" {
+    ^probe_pred_r_plus
+  } else if row == "r_minus" {
+    ^probe_pred_r_minus
+  } else if row == "r_chain" {
+    ^probe_pred_r_chain
+  } else {
+    ^probe_pred_r_newline_minus
+  }
+}
+
+// ------------------------------------------------------------------------ the observation
+
+type RowObservation {
+  // 0 = observed, negative = where the observation died (-1 grammar, -2 lex, -3 module parse threw,
+  // -9 recorded placeholder). Never a silent zero.
+  failure: Int
+  accepted: Bool
+  // QUANTITY 1: the serialized tree, as its content hash.
+  tree_digest: String
+  // QUANTITY 2: the refusals, as the count of diagnostics and their reasons in order.
+  diagnostic_count: Int
+  diagnostic_reasons: String
+  // QUANTITY 3: the layout decisions, as the answer the stream's own layout gives for the gap before
+  // every token -- the same oracle parse_expr_after_line_break consults (token_stream_line_break_before).
+  layout_signature: String
+  // QUANTITY 4: the surviving path's mint ledger. -1 on a refused row: no artifact is returned, so
+  // no ledger is observable, and saying so is the honest answer.
+  ledger_length: Int
+  ledger_id_sum: Int
+  alloc_next: Int
+}
+
+fn failed_row(failure: Int) -> RowObservation {
+  RowObservation {
+    failure: failure,
+    accepted: false,
+    tree_digest: "OBSERVATION-FAILED",
+    diagnostic_count: -1,
+    diagnostic_reasons: "OBSERVATION-FAILED",
+    layout_signature: "OBSERVATION-FAILED",
+    ledger_length: -1,
+    ledger_id_sum: -1,
+    alloc_next: -1
+  }
+}
+
+fn diagnostics_list(diagnostics: Diagnostics) -> List<Diagnostic> {
+  match diagnostics {
+    Some { diagnostics: ned } => list_append(left: [ned.head], right: ned.tail)
     None => []
   }
 }
 
-// The two reasons are named through their own production constructor, so the comparison cannot drift
-// from what the layout-conditioned productions actually raise.
-fn is_layout_refusal(d: Diagnostic) -> Bool {
-  d.reason
-    == parse_refusal_reason_diagnostic(
-      reason: NewlineBeforeDualRoleOperator,
-      file: corpus_file(),
-      start: 0,
-      end: 1
-    ).reason
-    || d.reason
-    == parse_refusal_reason_diagnostic(
-      reason: LayoutUnknownWithoutSource,
-      file: corpus_file(),
-      start: 0,
-      end: 1
-    ).reason
+fn non_empty_diagnostics_list(ned: NonEmptyDiagnostics) -> List<Diagnostic> {
+  list_append(left: [ned.head], right: ned.tail)
 }
 
-fn ledger_sum(facts: List<ParseFact>) -> Int {
-  match facts {
-    std.algebra.Empty => 0
-    Cons { head: fact, tail: rest } => fact.id.value + ledger_sum(facts: rest)
-  }
+fn diagnostic_reason_list(diags: List<Diagnostic>) -> String {
+  fold_list(
+    xs: diags,
+    empty: "",
+    cons: fn(acc, d) {
+      if acc == "" { symbol_lexeme(sym: d.reason) } else { concat(acc, concat(",", symbol_lexeme(sym: d.reason))) }
+    }
+  )
 }
 
-fn layout_refusal_count(diagnostics: List<Diagnostic>) -> Int {
-  match diagnostics {
-    std.algebra.Empty => 0
-    Cons { head: d, tail: rest } =>
-      if is_layout_refusal(d: d) {
-        1 + layout_refusal_count(diagnostics: rest)
-      } else {
-        layout_refusal_count(diagnostics: rest)
+// The layout decision of every token gap in the stream, in stream order, as
+// "<answer>/<token start>" joined by ";". B/I/U are LineBreakInGap, NoLineBreakInGap and
+// LineBreakUnknownWithoutSource. This is the layout oracle's own answer per gap, not a reading of
+// the tree, so a change in what the parser was told about lines shows here even where no tree node
+// records it.
+fn layout_decision_signature(stream: TokenStream) -> String {
+  let layout = token_stream_layout(stream: stream)
+  fold_list(
+    xs: token_stream_remaining(stream: stream),
+    empty: "",
+    cons: fn(acc, tok) {
+      let answer = match token_stream_line_break_before(layout: layout, token_start: tok.start) {
+        LineBreakInGap => "B"
+        NoLineBreakInGap => "N"
+        LineBreakUnknownWithoutSource => "U"
       }
-  }
+      let piece = concat(answer, concat("/", to_string(value: tok.start)))
+      if acc == "" { piece } else { concat(acc, concat(";", piece)) }
+    }
+  )
 }
 
-// One row, all four quantities. Negative verdict codes name the infrastructure failure that
-// prevented observation, so a row that never reached the parser can never look like a zero.
-fn observe(row: CorpusRow) -> RowObservation {
+fn ledger_id_sum_of(facts: List<ParseFact>) -> Int {
+  fold_list(xs: facts, empty: 0, cons: fn(acc, f) { acc + f.id.value })
+}
+
+fn observe_row(row: String) -> RowObservation {
   match dag_prepared_grammar() {
-    Rejected { diagnostics: _ } => observe_failure(code: -1)
+    Rejected { diagnostics: _ } => failed_row(failure: -1)
     Accepted { value: prepared, diagnostics: _ } =>
-      match tokenize_prepared(text: row.source, file: corpus_file(), prepared: dag_prepared_lex()) {
-        Rejected { diagnostics: _ } => observe_failure(code: -2)
+      match tokenize_prepared(
+        text: corpus_row_source(row: row),
+        file: corpus_row_file(row: row),
+        prepared: dag_prepared_lex()
+      ) {
+        Rejected { diagnostics: _ } => failed_row(failure: -2)
         Accepted { value: stream, diagnostics: _ } =>
           match parse_module_prepared(tokens: stream, prepared: prepared) {
             Rejected { diagnostics: ned } =>
-              let refused = Cons { head: ned.head, tail: ned.tail }
               RowObservation {
-                verdict: 0,
-                tree_hash: "-",
-                facts: 0,
-                ledger: 0,
-                diagnostics: length(xs: refused),
-                layout_refusals: layout_refusal_count(diagnostics: refused)
+                failure: 0,
+                accepted: false,
+                tree_digest: "REFUSED",
+                diagnostic_count: length(xs: non_empty_diagnostics_list(ned: ned)),
+                diagnostic_reasons: diagnostic_reason_list(diags: non_empty_diagnostics_list(ned: ned)),
+                layout_signature: layout_decision_signature(stream: stream),
+                ledger_length: -1,
+                ledger_id_sum: -1,
+                alloc_next: -1
               }
-            Accepted { value: artifact, diagnostics: ds } =>
-              let kept = accepted_diagnostics(ds: ds)
+            Accepted { value: artifact, diagnostics: diagnostics } =>
               RowObservation {
-                verdict: 1,
-                tree_hash: content_hash(n: artifact.tree).digest,
-                facts: length(xs: artifact.facts),
-                ledger: ledger_sum(facts: artifact.facts),
-                diagnostics: length(xs: kept),
-                layout_refusals: layout_refusal_count(diagnostics: kept)
+                failure: 0,
+                accepted: true,
+                tree_digest: content_hash(n: artifact.tree).digest,
+                diagnostic_count: length(xs: diagnostics_list(diagnostics: diagnostics)),
+                diagnostic_reasons: diagnostic_reason_list(diags: diagnostics_list(diagnostics: diagnostics)),
+                layout_signature: layout_decision_signature(stream: stream),
+                ledger_length: length(xs: artifact.facts),
+                ledger_id_sum: ledger_id_sum_of(facts: artifact.facts),
+                alloc_next: artifact.alloc.next_id
               }
           }
       }
   }
 }
 
-// ------------------------------------------------------------------ the recorded baselines
+// ------------------------------------------- the recorded column, from the un-fixed leg
 
-// Recorded on the main leg by report_corpus_identity() at the pinned revision and asserted on both
-// legs. A row that was never recorded answers with placeholders, so its claims fail rather than pass
-// vacuously.
-fn recorded(identity: Symbol) -> RowObservation {
-  match identity {
-    ^r_plain => RowObservation { verdict: 1, tree_hash: "unrecorded", facts: -1, ledger: -1, diagnostics: -1, layout_refusals: -1 }
-    ^r_plus => RowObservation { verdict: 1, tree_hash: "unrecorded", facts: -1, ledger: -1, diagnostics: -1, layout_refusals: -1 }
-    ^r_minus => RowObservation { verdict: 1, tree_hash: "unrecorded", facts: -1, ledger: -1, diagnostics: -1, layout_refusals: -1 }
-    ^r_chain => RowObservation { verdict: 1, tree_hash: "unrecorded", facts: -1, ledger: -1, diagnostics: -1, layout_refusals: -1 }
-    ^r_newline_minus => RowObservation { verdict: 1, tree_hash: "unrecorded", facts: -1, ledger: -1, diagnostics: -1, layout_refusals: -1 }
-    _ => observe_failure(code: -9)
+// Fill each row from report_corpus_identity()'s raw output on the leg being compared against; see
+// the module header. -99 / "unrecorded" is the placeholder and makes the claim FAIL, never pass.
+fn recorded(row: String) -> RowObservation {
+  if row == "r_plain" {
+    RowObservation {
+      failure: 0,
+      accepted: true,
+      tree_digest: "8e34052fadadbad6",
+      diagnostic_count: 0,
+      diagnostic_reasons: "",
+      layout_signature: "N/0;N/7;N/12;N/13;N/17;N/18;B/26;N/31;N/42;N/44;N/48;N/50",
+      ledger_length: 42,
+      ledger_id_sum: 861,
+      alloc_next: 42
+    }
+  } else if row == "r_plus" {
+    RowObservation {
+      failure: 0,
+      accepted: true,
+      tree_digest: "ca6ccc8cfd3a74a5",
+      diagnostic_count: 0,
+      diagnostic_reasons: "",
+      layout_signature: "N/0;N/7;N/12;N/13;N/17;N/18;B/25;N/30;N/41;N/43;N/47;N/49;N/52;N/54",
+      ledger_length: 50,
+      ledger_id_sum: 1225,
+      alloc_next: 50
+    }
+  } else if row == "r_minus" {
+    RowObservation {
+      failure: 0,
+      accepted: true,
+      tree_digest: "ed41de07d0cf05b5",
+      diagnostic_count: 0,
+      diagnostic_reasons: "",
+      layout_signature: "N/0;N/7;N/12;N/13;N/17;N/18;B/26;N/31;N/42;N/44;N/48;N/50;N/53;N/55",
+      ledger_length: 50,
+      ledger_id_sum: 1225,
+      alloc_next: 50
+    }
+  } else if row == "r_chain" {
+    RowObservation {
+      failure: 0,
+      accepted: true,
+      tree_digest: "0b661f36ee7b2da3",
+      diagnostic_count: 0,
+      diagnostic_reasons: "",
+      layout_signature: "N/0;N/7;N/12;N/13;N/17;N/18;B/26;N/31;N/42;N/44;N/48;N/50;N/53;N/55;N/57;N/59",
+      ledger_length: 58,
+      ledger_id_sum: 1653,
+      alloc_next: 58
+    }
+  } else {
+    RowObservation {
+      failure: 0,
+      accepted: false,
+      tree_digest: "REFUSED",
+      diagnostic_count: 1,
+      diagnostic_reasons: "parse_newline_before_dual_role_operator",
+      layout_signature: "N/0;N/7;N/12;N/13;N/17;N/18;B/34;N/39;N/50;N/52;N/56;N/58;B/63;N/65",
+      ledger_length: -1,
+      ledger_id_sum: -1,
+      alloc_next: -1
+    }
   }
 }
 
-// --------------------------------------------------------------------------- the verdicts
-
-test fn the_corpus_parse_trees_are_identical_on_both_legs_holds() -> Bool {
-  trees_match(rows: corpus_rows)
-}
-
-test fn the_corpus_refusals_are_identical_on_both_legs_holds() -> Bool {
-  refusals_match(rows: corpus_rows)
-}
-
-test fn the_corpus_layout_decisions_are_identical_on_both_legs_holds() -> Bool {
-  layout_match(rows: corpus_rows)
-}
-
-test fn the_corpus_mint_ledger_is_identical_on_both_legs_holds() -> Bool {
-  ledger_match(rows: corpus_rows)
-}
-
-fn trees_match(rows: List<CorpusRow>) -> Bool {
-  match rows {
-    std.algebra.Empty => true
-    Cons { head: row, tail: rest } =>
-      observe(row: row).tree_hash == recorded(identity: row.identity).tree_hash
-        && trees_match(rows: rest)
-  }
-}
-
-fn refusals_match(rows: List<CorpusRow>) -> Bool {
-  match rows {
-    std.algebra.Empty => true
-    Cons { head: row, tail: rest } =>
-      observe(row: row).verdict == recorded(identity: row.identity).verdict
-        && observe(row: row).diagnostics == recorded(identity: row.identity).diagnostics
-        && refusals_match(rows: rest)
-  }
-}
-
-fn layout_match(rows: List<CorpusRow>) -> Bool {
-  match rows {
-    std.algebra.Empty => true
-    Cons { head: row, tail: rest } =>
-      observe(row: row).layout_refusals == recorded(identity: row.identity).layout_refusals
-        && layout_match(rows: rest)
-  }
-}
-
-fn ledger_match(rows: List<CorpusRow>) -> Bool {
-  match rows {
-    std.algebra.Empty => true
-    Cons { head: row, tail: rest } =>
-      observe(row: row).facts == recorded(identity: row.identity).facts
-        && observe(row: row).ledger == recorded(identity: row.identity).ledger
-        && ledger_match(rows: rest)
-  }
-}
-
-// ----------------------------------------------------------------------------- the emitter
-
-// AN EMITTER, NOT A VERDICT: returns a String, so claim_batch prints it as a non-Bool return and the
-// leg exits 1 by design. The printed line IS the evidence for the recorded baselines and for the
-// four-quantity identity, pasted raw for both legs in the PR run block.
-fn report_corpus_identity() -> String {
-  report_rows(rows: corpus_rows, acc: "")
-}
-
-fn report_rows(rows: List<CorpusRow>, acc: String) -> String {
-  match rows {
-    std.algebra.Empty => acc
-    Cons { head: row, tail: rest } =>
-      let observed = observe(row: row)
-      report_rows(
-        rows: rest,
-        acc: acc
-          + "row="
-          + symbol_lexeme(sym: row.identity)
-          + " verdict="
-          + int_to_decimal_string(value: observed.verdict)
-          + " tree="
-          + observed.tree_hash
-          + " facts="
-          + int_to_decimal_string(value: observed.facts)
-          + " ledger="
-          + int_to_decimal_string(value: observed.ledger)
-          + " diagnostics="
-          + int_to_decimal_string(value: observed.diagnostics)
-          + " layout_refusals="
-          + int_to_decimal_string(value: observed.layout_refusals)
-          + "\n"
+fn row_line(row: String) -> String {
+  let o = observe_row(row: row)
+  concat(
+    row,
+    concat(
+      "|failure=",
+      concat(
+        to_string(value: o.failure),
+        concat(
+          "|accepted=",
+          concat(
+            to_string(value: o.accepted),
+            concat(
+              "|tree=",
+              concat(
+                o.tree_digest,
+                concat(
+                  "|diagnostics=",
+                  concat(
+                    to_string(value: o.diagnostic_count),
+                    concat(
+                      ":",
+                      concat(
+                        o.diagnostic_reasons,
+                        concat(
+                          "|layout=",
+                          concat(
+                            o.layout_signature,
+                            concat(
+                              "|ledger=",
+                              concat(
+                                to_string(value: o.ledger_length),
+                                concat(
+                                  "|id_sum=",
+                                  concat(
+                                    to_string(value: o.ledger_id_sum),
+                                    concat("|alloc=", to_string(value: o.alloc_next))
+                                  )
+                                )
+                              )
+                            )
+                          )
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
+          )
+        )
       )
-  }
+    )
+  )
+}
+
+// THE EMITTER. Returns (not asserts) the per-row table, so a leg's log holds the raw quantities the
+// recorded column was filled from. claim_batch prints a returned non-Bool value on its FAIL line:
+// that line is the artifact, and its exit status is NOT a result of this node's control.
+fn report_corpus_identity() -> String {
+  fold_list(
+    xs: corpus_rows(),
+    empty: "",
+    cons: fn(acc, row) { if acc == "" { row_line(row: row) } else { concat(acc, concat("\n", row_line(row: row))) } }
+  )
+}
+
+// ----------------------------------------------------------------------------- the claims
+
+// (1) THE PARSE TREES ARE IDENTICAL on the corpus.
+test fn the_corpus_parse_trees_are_identical_to_the_recorded_leg_holds() -> Bool {
+  fold_list(
+    xs: corpus_rows(),
+    empty: true,
+    cons: fn(acc, row) {
+      let o = observe_row(row: row)
+      let r = recorded(row: row)
+      acc && o.failure == 0 && o.tree_digest == r.tree_digest
+    }
+  )
+}
+
+// (2) THE REFUSALS ARE IDENTICAL on the corpus: same count, same reasons in the same order.
+test fn the_corpus_refusals_are_identical_to_the_recorded_leg_holds() -> Bool {
+  fold_list(
+    xs: corpus_rows(),
+    empty: true,
+    cons: fn(acc, row) {
+      let o = observe_row(row: row)
+      let r = recorded(row: row)
+      acc && o.failure == 0 && o.diagnostic_count == r.diagnostic_count && o.diagnostic_reasons == r.diagnostic_reasons
+    }
+  )
+}
+
+// (3) THE LAYOUT DECISIONS ARE IDENTICAL on the corpus, gap by gap.
+test fn the_corpus_layout_decisions_are_identical_to_the_recorded_leg_holds() -> Bool {
+  fold_list(
+    xs: corpus_rows(),
+    empty: true,
+    cons: fn(acc, row) {
+      let o = observe_row(row: row)
+      let r = recorded(row: row)
+      acc && o.failure == 0 && o.layout_signature == r.layout_signature
+    }
+  )
+}
+
+// (4) THE WITNESS IS NOT VACUOUS. Every accepted row carries a nonempty mint ledger, so the identity
+// above is an identity over real parsed artifacts and not over a grammar-inert parse that minted
+// nothing and hashed an empty tree. (The refused row's ledger is -1 by construction; it is pinned by
+// claims 1-3 through its tree sentinel and its refusal list.)
+test fn every_accepted_corpus_row_carries_a_nonzero_mint_ledger_holds() -> Bool {
+  fold_list(
+    xs: corpus_rows(),
+    empty: false,
+    cons: fn(acc, row) {
+      let o = observe_row(row: row)
+      acc || (o.failure == 0 && o.accepted && o.ledger_length > 0 && o.alloc_next > 0)
+    }
+  )
+}
+
+// (5) THE CORPUS STILL DOES WHAT ITS NAMES SAY. A row that silently stopped parsing, or stopped
+// refusing, would keep the recorded column honest-looking while measuring a different program: so
+// the accepted/refused shape is asserted independently of the recorded column.
+test fn the_corpus_rows_parse_and_refuse_where_their_names_say_holds() -> Bool {
+  observe_row(row: "r_plain").accepted
+    && observe_row(row: "r_plus").accepted
+    && observe_row(row: "r_minus").accepted
+    && observe_row(row: "r_chain").accepted
+    && !observe_row(row: "r_newline_minus").accepted
+    && observe_row(row: "r_newline_minus").failure == 0
 }
