@@ -25,6 +25,7 @@ import extdeps.github.actions {
 }
 import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_workflow_of,
+  fleet_converge_yml_after_dispatch_input_capacity,
   FleetConvergeYamlGenerated,
   FleetConvergeYamlGenerationRefused,
   HostnameConverge,
