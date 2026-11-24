@@ -15562,15 +15562,15 @@ fn target_project_binary_primitive_apply_in_arrow_scope(
   canonical_op: CanonicalOperation,
   target: TargetModel
 ) -> Outcome<TargetValueExpression> {
-  if !all_edges_positional(children: body.children)
-    || length(xs: positional_child_target_nodes(node: body)) != 3 {
+  let positional_count = length(xs: positional_child_target_nodes(node: body))
+  if !all_edges_positional(children: body.children) {
     outcome_rejected(
       target_value_expr_diagnostic(
         reason: ^target_value_expr_reason_transform_shape_invalid,
         node: body
       )
     )
-  } else {
+  } else if positional_count == 3 {
     bind_outcome(
       o: target_arrow_scope_positional_operand_binding(arrow: arrow, body: body, index: 1, target: target),
       f: fn(scoped_left_binding) {
@@ -15593,6 +15593,36 @@ fn target_project_binary_primitive_apply_in_arrow_scope(
           }
         )
       }
+    )
+  } else if positional_count == 2 {
+    // A PREFIX primitive use (operator + one operand) carries exactly TWO positional children. It lowers
+    // to a ONE-operand primitive apply whose spelling is decided downstream by the target's operator-
+    // realization row: a `PrefixToken` row renders `op operand`, and a row that is not prefix-shaped
+    // refuses at the token fold with its OWN arity reason (`..._arity_invalid`), never the generic
+    // transform-shape reason. The branch keys on the positional-child count alone, so it is general --
+    // it is not keyed on any one primitive (a prefix use of `not` and a prefix use of any other algebra
+    // primitive take this same route).
+    bind_outcome(
+      o: target_arrow_scope_positional_operand_binding(arrow: arrow, body: body, index: 1, target: target),
+      f: fn(scoped_operand_binding) {
+        outcome_accepted(
+          target_value_expression_primitive_apply(
+            operation: canonical_op,
+            operands: [
+              target_value_expression_binding_ref(
+                binding: scoped_operand_binding
+              )
+            ]
+          )
+        )
+      }
+    )
+  } else {
+    outcome_rejected(
+      target_value_expr_diagnostic(
+        reason: ^target_value_expr_reason_transform_shape_invalid,
+        node: body
+      )
     )
   }
 }
