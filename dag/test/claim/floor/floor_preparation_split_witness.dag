@@ -1,6 +1,6 @@
 module test.claim.floor.floor_preparation_split_witness
 
-import std.types { Bool, Int, List, Optional, Present, Absent, String }
+import std.types { Bool, Int, List, Present, Absent, String }
 import std.algebra { length, list_push }
 import v2.workflow.floor_preparation_split {
   floor_preparation_any_row_starts_with,
@@ -103,7 +103,7 @@ import v2.workflow.floor_cost_debt {
 //   floor_preparation_the_population_is_the_models_rendering,
 //   floor_preparation_the_roadmap_names_the_floor_fold
 //
-// TWENTY-ONE `test fn`s, and this roster is the roster that runs: `scripts/floor_preparation_capture.sh`
+// TWENTY-TWO `test fn`s, and this roster is the roster that runs: `v2.workflow.floor_preparation_capture_runner`
 // passes exactly these names to `--functions` and refuses unless every one prints its own PASS line.
 // The bare `fn` bodies above them are helpers, not claims, and are never passed to `--functions`.
 //
@@ -842,8 +842,7 @@ test fn floor_preparation_the_runner_process_is_modelled() -> Bool {
 // 21. THE POPULATION FILE IS A RENDERING OF MODELLED ROWS. Kills: hand-maintaining the enrollment
 // text so the measured population drifts from what the authority enrolls. The rows are data in
 // `v2.workflow.floor_preparation_split`; the committed text file must equal their rendering, byte for
-// byte after trimming. `capture.sh emit-population` regenerates it from the model's printed
-// rendering -- the same refusal-print convention the report uses -- so the file has a named generator
+// byte after trimming. The model's own rendering regenerates it via floor_preparation_population_rendering -- the same refusal-print convention the report uses -- so the file has a named generator
 // and this claim is what keeps it honest.
 // ----------------------------------------------------------------------------------------------
 

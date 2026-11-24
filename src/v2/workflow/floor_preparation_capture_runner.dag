@@ -30,7 +30,6 @@ module v2.workflow.floor_preparation_capture_runner
 
 import std.types { Bool, Int, List, Present, Absent, String }
 import std.algebra { length, list_push }
-import std.text { join, split }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.workflow.floor_preparation_split {
@@ -530,4 +529,28 @@ fn floor_preparation_text_starts_with_hint(line: String, prefix: String) -> Bool
 
 fn floor_preparation_population_body() -> String {
   join(floor_preparation_population_lines(), "\n")
+}
+
+// ---- TRANSIENT PROBE FNS (surface validation; removed once the runner executes green) ----
+
+fn floor_preparation_probe_text() -> String {
+  concat(concat(to_string(length(xs: floor_preparation_claim_roster)), "|"),
+         to_string(length(xs: floor_preparation_runner_modelled_steps)))
+}
+
+fn floor_preparation_probe_names() -> String {
+  join(floor_preparation_population_entries(), ",")
+}
+
+fn floor_preparation_probe_supply() -> String {
+  floor_preparation_supply_line(name: "claim_batch",
+    path: floor_preparation_pinned_claim_batch,
+    expected: floor_preparation_pinned_claim_batch_sha,
+    bytes_ok: floor_preparation_bytes_of(path: floor_preparation_pinned_claim_batch) > 0)
+}
+
+fn floor_preparation_probe_echo() -> String {
+  let outcome = floor_preparation_spawn_slot(bound: "45", binary: "/bin/echo", arguments: ["probe-spawn-ok"])
+  concat(concat("rc=", to_string(outcome.rc)),
+    concat(" out=", floor_preparation_strip(text: outcome.stdout, prefix: "probe-")))
 }

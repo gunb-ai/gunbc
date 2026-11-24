@@ -52,7 +52,7 @@ fn floor_preparation_ms_count(carrier: Millisecond) -> Int { millisecond_count(c
 // THE CAPTURE IS GENERATED, NEVER TYPED. `floor_preparation_capture`, its provenance twin,
 // `floor_preparation_untrimmed_capture`, `floor_preparation_untrimmed_capture_provenance` and
 // `floor_preparation_requested_rows` are spliced between the generated-block markers by
-// `scripts/floor_preparation_capture.sh`, which reads the phase lines one real `claim_batch
+// `v2.workflow.floor_preparation_capture_runner`, which reads the phase lines one real `claim_batch
 // --claim-run` printed and REFUSES -- on a 0-byte binary, one hashing as the empty string, a sha that
 // deviates from the pinned release or from `release-bins.manifest`, an argv missing `--functions`, an
 // entry that never reported its witness count, a `[floor-shared-fill]`/`[floor-reach-probe]` pairing
@@ -1269,23 +1269,20 @@ fn floor_preparation_head(text: String) -> String {
 
 fn floor_preparation_ask() -> String {
   concat(
-    "gunbc run --source-root dag --source-root src/v1 --source-root src/v2 --entry src/v2/workflow/floor_preparation_split.dag --function floor_preparation_split_report",
-    concat(
-      "  ||  claim_batch --source-root dag --source-root src/v1 --source-root src/v2 --claim-run --entry dag/test/claim/floor/floor_preparation_split_witness.dag",
-      "  ||  bash scripts/floor_preparation_capture.sh report --checkout <checkout> --binary <claim_batch> --gunbc <released gunbc> --population dag/test/claim/floor/floor_preparation_split_population.txt --report-log <run log> --write"
-    )
+    "gunbc run --source-root dag --source-root src/v1 --source-root src/v2 --entry src/v2/workflow/floor_preparation_capture_runner.dag --function floor_preparation_capture_run",
+    "   (the modelled runner: legs spawn through shell.Exec.RunArgv inside heavy-slot; it prints per-leg receipts with real exit statuses, classifies the report line REPORT_READ/REFUSAL_NOT_A_REPORT, and refuses unless every enrolled claim printed its own PASS line)"
   )
 }
 
 // ----------------------------------------------------------------------------------------------
-// THE RUNNER, MODELLED. The capture tool is hand-written shell (Rule 8) until v2.workflow.bash_emit
-// (gunbc #5828) can emit it; what it DOES is governed here, so the shell is a realization and not an
-// authority. Each step is named below and carries a `# RUNNER_STEP <name>` marker at its site in
-// `scripts/floor_preparation_capture.sh`; the claims module refuses (a) a modelled step with no
-// marker in the tool and (b) a marker in the tool for a step that is not modelled here. The
-// population file is likewise modelled -- its rows are data here, and the committed text file is a
-// rendering of them, produced by `capture.sh emit-population` from `floor_preparation_population_rendering`
-// and refused by a claim whenever it disagrees with the model.
+// THE RUNNER, MODELLED. There is no shell. The whole capture process lives in
+// `v2.workflow.floor_preparation_capture_runner`: the step list is data there, each leg spawns the
+// pinned binaries through the declared shell-transport service (shell.Exec.RunArgv), the heavy slot
+// is the outermost argv word (env HEAVY_OWNER=<session> heavy-slot ...), and artifacts are written
+// with the Filesystem.Write effect. The claims module refuses when a declared step has no emission
+// site in the same module, and when the leg argv is not the model-rendered argv. The population
+// file is likewise modelled -- its rows are data here, and the committed text file is a rendering
+// of them refused by a claim whenever it disagrees with the model.
 // ----------------------------------------------------------------------------------------------
 
 
@@ -1614,13 +1611,13 @@ fn floor_preparation_untrimmed_untagged_lines() -> Int {
 // GENERATED CAPTURE BLOCK
 // ----------------------------------------------------------------------------------------------
 // Between these markers lives the output of ONE real `claim_batch --claim-run` over the enrolled
-// population, kept verbatim by `scripts/floor_preparation_capture.sh`. The markers are the tool's splice
+// population, kept verbatim by `v2.workflow.floor_preparation_capture_runner`. The markers are the runner's splice
 // region; nothing outside them is generated. An EMPTY capture below is not a passing state: the fold
 // reports `population=EMPTY`, the conservation witnesses have nothing to conserve, and
 // `floor_preparation_the_committed_capture_is_measured_not_authored` refuses. Regenerate it -- do not
 // type into it.
 
-// === BEGIN GENERATED CAPTURE BLOCK (scripts/floor_preparation_capture.sh) ===
+// === BEGIN GENERATED CAPTURE BLOCK (v2.workflow.floor_preparation_capture_runner) ===
 fn floor_preparation_capture() -> List<String> {
   []
 }
