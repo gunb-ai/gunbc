@@ -540,7 +540,11 @@ fn node_param(node_id: String) -> List<PathParamBinding> {
   [ PathParamBinding { name: "node_id" as NonEmptyStr, value: node_id as NonEmptyStr } ]
 }
 
-data close_body_ready: String = "key=op-serve-close-1&csrf=csrf-opr&repo=briansrls/gunbc&pr=999999999&witness_module=test%2Fclaim%2Fx&witness_fn=w&first_artifact=a"
+data close_body_ready: String = "key=op-serve-close-1&csrf=csrf-opr&repo=briansrls/gunbc&pr=999999999&witness_module=test%2Fclaim%2Fx&witness_fn=w&first_artifact=a&red_kind=on_main&red_at=aaaabbbbccccddddeeeeffff0000111122223333&green_at=1111222233334444555566667777888899990000"
+// A close form that fills a PROBE field but names NO arm: red_kind is blank, red_base is present. The arm is
+// SAID, never guessed — this is refused with the word naming it, never read as a probe (the very inference
+// the recorder was stripped of). gunbc.design_ruling::executed_red_control_names_its_failing_commit
+data close_body_probe_without_kind: String = "key=op-serve-close-1&csrf=csrf-opr&repo=briansrls/gunbc&pr=999999999&witness_module=test%2Fclaim%2Fx&witness_fn=w&first_artifact=a&red_at=aaaabbbbccccddddeeeeffff0000111122223333&green_at=1111222233334444555566667777888899990000&red_base=aaaabbbbccccddddeeeeffff0000111122223333&probe_ref=red-control%2Frow-7"
 
 data close_body_no_csrf: String = "key=op-serve-close-1&repo=briansrls/gunbc&pr=999999999&witness_module=test%2Fclaim%2Fx&witness_fn=w&first_artifact=a"
 
@@ -1233,6 +1237,19 @@ test fn the_close_route_names_an_unknown_node_and_refuses_an_unreadable_lane() -
   let e2 = claim("an unreadable lane refuses fail-closed, not blind: " + lane_unreadable.body,
     lane_unreadable.status == 503 && string_contains(s: lane_unreadable.body, pattern: "lane unavailable"))
   e1 && e2
+}
+
+// THE OPERATOR CLOSE NAMES ITS RED ARM TOO. A close whose form fills red_base but leaves red_kind blank is
+// refused with the word naming it, and is NEVER read as a probe (nor as on main) — the exact emptiness-
+// inference the recorder was stripped of. The serve close routes through red_observation_from_arm, the same
+// single authority the CLI uses (gunbc.design_ruling::executed_red_control_names_its_failing_commit).
+test fn a_close_with_a_probe_base_but_no_named_kind_is_refused_not_read_as_a_probe() -> Bool {
+  let refused = serve_issue_close_response_over(
+    instance: srv2_preview_dashboard_instance(), plan: fn() { plan_with_nodes(["operator-node"]) },
+    request: close_request_as_operator(body: close_body_probe_without_kind, node_id: "operator-node"), params: node_param("operator-node"), read: fn(_repo, n) { merged_readback(n) })
+  claim("a close with red_base filled but no red_kind is refused, not read as a probe: " + refused.body,
+    refused.status == 400 && string_contains(s: refused.body, pattern: "red_kind")
+      && string_contains(s: refused.body, pattern: "refused"))
 }
 
 test fn the_retire_route_refuses_anonymously_by_token_by_name_and_by_form() -> Bool {
