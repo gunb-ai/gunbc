@@ -1239,10 +1239,23 @@ data effect_demand_seam_roster: List<SeamStanding> = [
 // distinction between the two refused arms is kept because the row's red_control names the bare
 // filesystem_read specifically (its own cause), while a filesystem effect reaching the bound handler's
 // identity under some other spelling is a second, differently-named defect.
+// A filesystem reach is located by its SITE, not just its module and operation: the module it reached
+// from, the ENCLOSING DECLARATION of the call, and a LOCUS within that declaration. Two reaches from the
+// same module and the same enclosing declaration at different loci (self_host.dag's read_roster_manifest
+// at :319 and fold_side_bytes at :329) are TWO distinct offenders; a site added tomorrow at a new locus
+// is a NEW offender, not a silent match against a rostered one. Keying the verdict on (module, operation)
+// would collapse those two into one and let a new site slip through -- the under-counting defect this lane
+// must not ship (the counter bold-ibex was just found to have). So the reach carries its site.
+type FilesystemEffectSite {
+  module_path: String
+  enclosing_declaration: String
+  site_locus: String
+}
+
 type FilesystemEffectReach
-  = ReachedThroughHandler { calling_entry_module: String, operation: String }
-  | ReachedFreePrimitiveDirectly { calling_entry_module: String, operation: String, cause: Symbol }
-  | ReachedOutsideBoundHandler { calling_entry_module: String, operation: String, cause: Symbol }
+  = ReachedThroughHandler { site: FilesystemEffectSite, operation: String }
+  | ReachedFreePrimitiveDirectly { site: FilesystemEffectSite, operation: String, cause: Symbol }
+  | ReachedOutsideBoundHandler { site: FilesystemEffectSite, operation: String, cause: Symbol }
 
 // The single slug naming the free filesystem_read primitive, taken at the same PrimitiveIdentity
 // grain the census takes every operation (std.primitive_projection). It is NOT a new name for the
@@ -1250,42 +1263,52 @@ type FilesystemEffectReach
 // bound realization population; this slug names the legacy primitive the wall refuses.
 data filesystem_free_primitive_slug: String = "filesystem_read"
 
-// One observed filesystem reach, at the grain the census already uses: the entry that reached and the
-// operation it reached. The bound handler's slug is SUPPLIED, not inferred from the tree -- the caller
-// states which slug the bound handler names, so the refusal is executable over a synthetic world and is
-// never an oracle copied from the tree it audits (fail_closed's construction-over-validation rule). A
-// reach is authorised ONLY when the operation equals the handler's own slug; the free primitive and any
-// other filesystem operation are refused with their own named cause. An operation reaching the handler
-// under a spelling that is not the handler slug is refused as ReachedOutsideBoundHandler, NOT silently
-// accepted -- the handler_slug is read here, and a filesystem effect that matches neither the handler nor
-// the free primitive is a hole, not a pass-through.
+// THE DECLARED SOURCE OF THE WALL'S POPULATION. The row's own phrase fixes it: "an EMITTED closure ...
+// under the E2 handler binding" -- the modules in the native-emitted closure under the NativeCliDriver
+// root's bound Filesystem handler, NOT every module with a filesystem_read call site. A static call
+// count over authored production model source is an UPPER BOUND on that population (the reviewer's tier
+// A, 22 sites / 15 modules), not the refused population itself. This is a NAMED declaration, not a
+// comment, so the census call site references the population's source BY NAME and no maintainer can
+// silently widen or narrow it -- a comment can drift silently, a named symbol the census consumes cannot.
+data filesystem_effect_emitted_closure_population_rule: String =
+  "the modules in the native-emitted closure under the NativeCliDriver root bound to the E2 Filesystem handler (reusing v1.compiler.emit_rust emit_file_call's realization); NOT every module with a filesystem_read call site"
+
+// One observed filesystem reach, at SITE grain: the site that reached and the operation it reached. The
+// bound handler's slug is SUPPLIED, not inferred from the tree -- the caller states which slug the bound
+// handler names, so the refusal is executable over a synthetic world and is never an oracle copied from
+// the tree it audits (fail_closed's construction-over-validation rule). A reach is authorised ONLY when
+// the operation equals the handler's own slug; the free primitive and any other filesystem operation are
+// refused with their own named cause. An operation reaching the handler under a spelling that is not the
+// handler slug is refused as ReachedOutsideBoundHandler, NOT silently accepted -- the handler_slug is read
+// here, and a filesystem effect that matches neither the handler nor the free primitive is a hole, not a
+// pass-through.
 fn filesystem_effect_reach(
-  calling_entry_module: String,
+  site: FilesystemEffectSite,
   operation: String,
   handler_slug: String
 ) -> FilesystemEffectReach {
   if operation == filesystem_free_primitive_slug {
     ReachedFreePrimitiveDirectly {
-      calling_entry_module: calling_entry_module,
+      site: site,
       operation: operation,
       cause: ^filesystem_read_reached_outside_filesystem_handler
     }
   } else if operation == handler_slug {
-    ReachedThroughHandler { calling_entry_module: calling_entry_module, operation: operation }
+    ReachedThroughHandler { site: site, operation: operation }
   } else {
     ReachedOutsideBoundHandler {
-      calling_entry_module: calling_entry_module,
+      site: site,
       operation: operation,
       cause: ^filesystem_effect_reached_no_bound_handler
     }
   }
 }
 
-// THE REFUSAL, NAMING THE OFFENDERS. Given the filesystem reaches of an emitted closure, return exactly
-// those that were NOT authorised through the bound handler -- each carrying its calling entry, the
-// operation it reached, and its named cause. An empty list is the accepted population; a non-empty list
-// is the located report. No counting, no defaulting: a reach that is not through the handler is refused
-// by name.
+// THE REFUSAL, NAMING THE OFFENDERS BY SITE. Given the filesystem reaches of an emitted closure, return
+// exactly those NOT authorised through the bound handler -- each carrying its SITE (module, enclosing
+// declaration, locus), the operation it reached, and its named cause. An empty list is the accepted
+// population; a non-empty list is the located report. No counting, no defaulting: a reach that is not
+// through the handler is refused by name, at its site.
 fn filesystem_effect_direct_reach_refusals(
   reaches: List<FilesystemEffectReach>
 ) -> List<FilesystemEffectReach> {
@@ -1294,46 +1317,56 @@ fn filesystem_effect_direct_reach_refusals(
     empty: Empty,
     cons: fn(acc, reach) {
       match reach {
-        ReachedFreePrimitiveDirectly {
-          calling_entry_module: calling_entry_module,
-          operation: operation,
-          cause: cause
-        } => Cons {
-          head: ReachedFreePrimitiveDirectly {
-            calling_entry_module: calling_entry_module,
-            operation: operation,
-            cause: cause
-          },
+        ReachedFreePrimitiveDirectly { site: site, operation: operation, cause: cause } => Cons {
+          head: ReachedFreePrimitiveDirectly { site: site, operation: operation, cause: cause },
           tail: acc
         }
-        ReachedOutsideBoundHandler {
-          calling_entry_module: calling_entry_module,
-          operation: operation,
-          cause: cause
-        } => Cons {
-          head: ReachedOutsideBoundHandler {
-            calling_entry_module: calling_entry_module,
-            operation: operation,
-            cause: cause
-          },
+        ReachedOutsideBoundHandler { site: site, operation: operation, cause: cause } => Cons {
+          head: ReachedOutsideBoundHandler { site: site, operation: operation, cause: cause },
           tail: acc
         }
-        ReachedThroughHandler { calling_entry_module: _, operation: _ } => acc
+        ReachedThroughHandler { site: _, operation: _ } => acc
       }
     }
   ))
 }
 
-// THE WALL HOLDS exactly when an emitted closure reaches no filesystem effect the free primitive
-// directly. It is the same shape as effect_demand_census_total_holds: a Bool computed from the
-// refusal list being empty, so a red fixture that plants a direct reach makes it false and a green
-// control that reaches only through the handler keeps it true.
-fn filesystem_effect_direct_reach_wall_holds(
-  reaches: List<FilesystemEffectReach>
-) -> Bool {
-  length(xs: filesystem_effect_direct_reach_refusals(reaches: reaches)) == 0
+// Two reach sites are the SAME site only when module, enclosing declaration and locus all match. This is
+// the identity the wall keys offenders on, so the two self_host reaches at :319 and :329 are distinct and
+// any new locus is a new offender rather than a silent match against a rostered one.
+fn filesystem_effect_site_eq(left: FilesystemEffectSite, right: FilesystemEffectSite) -> Bool {
+  (left.module_path == right.module_path)
+    && (left.enclosing_declaration == right.enclosing_declaration)
+    && (left.site_locus == right.site_locus)
 }
 
+// THE CENSUS, WITH ITS POPULATION SOURCE NAMED. `population_source` is the named rule above, passed BY
+// NAME at the call site (never an inline population literal); the report carries it alongside the located
+// offenders, so a reader of the census output sees WHICH population was refused and the wall consumes that
+// source rather than a bare list. `reaches` is the emitted closure's filesystem reaches, supplied by the
+// caller over the population the named rule selects.
+type FilesystemEffectCensusReport {
+  population_source: String
+  offenders: List<FilesystemEffectReach>
+}
+
+fn filesystem_effect_reach_census(
+  population_source: String,
+  reaches: List<FilesystemEffectReach>
+) -> FilesystemEffectCensusReport {
+  FilesystemEffectCensusReport {
+    population_source: population_source,
+    offenders: filesystem_effect_direct_reach_refusals(reaches: reaches)
+  }
+}
+
+// THE WALL HOLDS exactly when the emitted closure under the named population rule reaches no filesystem
+// effect the free primitive directly. Same shape as effect_demand_census_total_holds: a Bool computed from
+// the census report's offender list being empty, so a red fixture that plants a direct reach makes it
+// false and a green control that reaches only through the handler keeps it true.
+fn filesystem_effect_direct_reach_wall_holds(report: FilesystemEffectCensusReport) -> Bool {
+  length(xs: report.offenders) == 0
+}
 // ---- WALL 1: a new demand_restatement row refuses ----
 // THE AUTHORIZED RESTATEMENT ROSTER IS A PARAMETER, not a tree-derived oracle. A `demand_restatement`
 // row restates a service demand that is already derivable; the census (cut (c)) deleted every authored
