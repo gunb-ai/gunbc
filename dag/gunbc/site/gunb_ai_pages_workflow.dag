@@ -53,8 +53,9 @@ data gunb_ai_pages_job_id: String = "deploy"
 data gunb_ai_pages_build_step_name: String = "Build the seed that renders the site"
 data gunb_ai_pages_required_bins: List<String> = ["gunbc"]
 
-// WHERE AND HOW LONG. Both are budgets the operator signs off under
-// gunbc.design_ruling::ci_job_budgets_closed_to_growth; the ruling that admits the job grants no figure.
+// WHERE AND HOW LONG. Both are budgets reserved to the operator by
+// gunbc.design_ruling::ci_job_budgets_closed_to_growth; these figures were granted by
+// gunbc.design_ruling::gunb_ai_pages_job_runs_on_the_fleet_within_30_minutes_2026_11_24.
 data gunb_ai_pages_runner: CiRunnerTarget = FleetSelfHosted
 data gunb_ai_pages_timeout: Minute = minute(count: 30)
 
