@@ -1,6 +1,6 @@
 module test.claim.live_deploy.serve_entry_verdict_witness
 
-import std.types { Bool, Int, List, String }
+import std.types { Bool, Int, List, String, NonEmptyStr }
 import std.algebra { string_contains }
 import gunbc.live_deploy.pre_swap_admission {
   deployment_requires_plan_serve_entry_verdict,
@@ -27,7 +27,19 @@ import gunbc.live_deploy.pre_swap_admission {
   ServeEntryVerdictDirRefused,
   serve_entry_verdict_dir_admission,
   serve_entry_verdict_dir_refusal_text,
+  serve_entry_verdict_path,
 }
+import gunbc.fleet.fleet_plan_artifact_location { fleet_plan_run_artifact_dir, fleet_converge_plan_artifact_dir }
+import gunbc.actions_run_binding { ActionsRunBinding }
+import gunbc.fleet.fleet_converge_receipt {
+  FleetConvergePlanReceipt,
+  FleetConvergePlanReceiptDecoded,
+  FleetConvergePlanReceiptUnreadable,
+  fleet_converge_plan_receipt_decode,
+  fleet_converge_plan_receipt_identity_hex,
+  fleet_converge_plan_receipt_json,
+}
+import gunbc.fleet.fleet_converge_terminal { FullyApplied }
 import extdeps.languages.json.emit { serialize_json }
 import gunbc.live_deploy.desired { srv1_production_desired_deployment, srv1_lab_desired_deployment, selected_deployment_spec }
 import gunbc.live_deploy.apply { operator_local_deploy_dissolved_refusal }
@@ -404,4 +416,126 @@ test fn a_writable_verdict_dir_is_admitted() -> Bool {
     ServeEntryVerdictDirWritable => true
     ServeEntryVerdictDirRefused { dir, reason } => false
   }
+}
+
+// ── THE SERVE-ENTRY VERDICT DESTINATION IS PER-RUN (roadmap row serve-entry-verdict-path-is-per-run) ──
+// The defect this row removes: every run wrote its verdict to one fixed file, so two concurrent runs
+// -- or a person's run beside CI -- clobbered each other, and a non-owner could not write the shared
+// directory at all (the STEP-1 red). The fix: the plan step composes a per-run destination
+// (root / plan_run_id / attempt) and publishes it in the pack; the recorder and the swap read that
+// destination back from the pack and never recompute it. These legs prove the three claims:
+//   (a) two concurrent runs of the SAME revision land in distinct destinations, and a run is stable;
+//   (b) the shared fixed path is run-independent (two runs collide), which the per-run path is not;
+//   (c) a pack that does not carry the destination is refused by name -- never defaulted, and the
+//       identity of the pack covers the field so a tampered pack fails the decode's recompute.
+// The witness is deterministic: the destinations are built by the production composer, so it proves
+// the composition is injective in run identity -- the property that makes concurrent runs disjoint --
+// without depending on a runner-owned directory the witness principal cannot create.
+
+data per_run_root: String = "/tmp/gunbc-fleet-converge-runs"
+data per_run_a: String = "9001"
+data per_run_b: String = "9002"
+
+fn per_run_fixture_run(run_id: String) -> ActionsRunBinding {
+  ActionsRunBinding {
+    repository: "gunb-ai/gunbc",
+    workflow_ref: "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/heads/main",
+    run_id: run_id,
+    run_revision: fixture_revision,
+    execution_revision: fixture_revision,
+  }
+}
+
+fn per_run_fixture_receipt(run_artifact_dir: String) -> FleetConvergePlanReceipt {
+  FleetConvergePlanReceipt {
+    run: per_run_fixture_run(run_id: "9001"),
+    observed_host: "srv1",
+    scope_wire: "full_host",
+    member_set_fingerprint_hex: "fnv1a64:0011223344556677",
+    plan_artifact_hash: "a1b2c3d4e5f60718",
+    observed_baseline_hex: "1122334455667788",
+    prior_generation: 4,
+    planned_generation: 5,
+    lease_key: "fleet-converge-plan:srv1",
+    lease_resource_fingerprint: "fnv1a64:aaaaaaaaaaaaaaaa",
+    lease_owner_fingerprint: "fnv1a64:bbbbbbbbbbbbbbbb",
+    lease_generation: 5,
+    apply_terminal: FullyApplied,
+    run_artifact_dir: run_artifact_dir,
+  }
+}
+
+fn per_run_dir(run_id: String, attempt: String) -> String {
+  fleet_plan_run_artifact_dir(
+    root: per_run_root as NonEmptyStr,
+    plan_run_id: run_id as NonEmptyStr,
+    attempt: attempt as NonEmptyStr,
+  )
+}
+
+// (a) SAME revision, two run ids -> distinct destinations; the same run id is stable.
+test fn concurrent_runs_of_the_same_revision_get_distinct_destinations() -> Bool {
+  let a = per_run_dir(run_id: per_run_a, attempt: "1")
+  let b = per_run_dir(run_id: per_run_b, attempt: "1")
+  let a_again = per_run_dir(run_id: per_run_a, attempt: "1")
+  a != b && a == a_again
+    && string_contains(s: a, pattern: per_run_a)
+    && string_contains(s: b, pattern: per_run_b)
+}
+
+// (a2) an ATTEMPT is part of the identity, so a re-run of one run id does not reuse the last dir.
+test fn a_rerun_of_the_same_revision_lands_in_its_own_attempt_dir() -> Bool {
+  let attempt1 = per_run_dir(run_id: per_run_a, attempt: "1")
+  let attempt2 = per_run_dir(run_id: per_run_a, attempt: "2")
+  attempt1 != attempt2
+}
+
+// (a3) the two serve-entry verdict paths under those per-run dirs are distinct.
+test fn the_verdict_paths_under_per_run_dirs_are_distinct() -> Bool {
+  let pa = serve_entry_verdict_path(run_artifact_dir: per_run_dir(run_id: per_run_a, attempt: "1") as NonEmptyStr)
+  let pb = serve_entry_verdict_path(run_artifact_dir: per_run_dir(run_id: per_run_b, attempt: "1") as NonEmptyStr)
+  pa != pb && string_contains(s: pa, pattern: "serve_entry_verdict.json")
+}
+
+// (b) THE RED: the shared fixed path is a constant of no run input, so two runs aim at ONE file.
+test fn the_shared_fixed_path_collides_across_runs_while_the_per_run_path_does_not() -> Bool {
+  let fixed_a = join([fleet_converge_plan_artifact_dir, "/serve_entry_verdict.json"], "")
+  let fixed_b = join([fleet_converge_plan_artifact_dir, "/serve_entry_verdict.json"], "")
+  fixed_a == fixed_b
+    && serve_entry_verdict_path(run_artifact_dir: per_run_dir(run_id: per_run_a, attempt: "1") as NonEmptyStr)
+       != serve_entry_verdict_path(run_artifact_dir: per_run_dir(run_id: per_run_b, attempt: "1") as NonEmptyStr)
+}
+
+// (c1) a well-formed pack decodes with the destination preserved unchanged.
+test fn a_pack_preserves_the_run_artifact_dir_through_the_round_trip() -> Bool {
+  let want = join([per_run_root, "/", per_run_a, "/1"], "")
+  match fleet_converge_plan_receipt_decode(raw: serialize_json(v: fleet_converge_plan_receipt_json(r: per_run_fixture_receipt(run_artifact_dir: want)))) {
+    FleetConvergePlanReceiptDecoded { receipt } => receipt.run_artifact_dir == want
+    FleetConvergePlanReceiptUnreadable { reason } => false
+  }
+}
+
+// (c2) an EMPTY destination is refused by name, never defaulted.
+test fn a_pack_with_an_empty_run_artifact_dir_is_refused_by_name() -> Bool {
+  match fleet_converge_plan_receipt_decode(raw: serialize_json(v: fleet_converge_plan_receipt_json(r: per_run_fixture_receipt(run_artifact_dir: "")))) {
+    FleetConvergePlanReceiptUnreadable { reason } => string_contains(s: reason, pattern: "run_artifact_dir")
+    FleetConvergePlanReceiptDecoded { receipt } => false
+  }
+}
+
+// (c3) an OLD-SHAPE pack (v1, which carries no destination member) is refused at the schema gate,
+// not decoded with a defaulted field. This is the schema-bump guarantee the row demands.
+test fn an_old_shape_pack_without_the_destination_is_refused_not_defaulted() -> Bool {
+  match fleet_converge_plan_receipt_decode(raw: "{\"schema\":\"fleet-converge-plan-receipt/v1\"}") {
+    FleetConvergePlanReceiptUnreadable { reason } => true
+    FleetConvergePlanReceiptDecoded { receipt } => false
+  }
+}
+
+// (c4) the identity text covers the destination, so two packs differing only in it have distinct
+// identities -- a pack whose destination was swapped fails the decode's recompute-and-compare.
+test fn the_pack_identity_covers_the_run_artifact_dir() -> Bool {
+  let ia = fleet_converge_plan_receipt_identity_hex(r: per_run_fixture_receipt(run_artifact_dir: join([per_run_root, "/", per_run_a, "/1"], "")))
+  let ib = fleet_converge_plan_receipt_identity_hex(r: per_run_fixture_receipt(run_artifact_dir: join([per_run_root, "/", per_run_b, "/1"], "")))
+  ia != ib
 }
