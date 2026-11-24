@@ -18,6 +18,7 @@ import v2.workflow.floor_preparation_split {
   floor_preparation_deletion_margin_holds,
   floor_preparation_entry_paths,
   floor_preparation_entry_scoped_ms,
+  floor_preparation_ms_count,
   floor_preparation_excluded_row_count,
   floor_preparation_excluded_with_cause,
   floor_preparation_fill_fill_ms,
@@ -209,7 +210,7 @@ test fn floor_preparation_capture_grammar_is_closed() -> Bool {
 fn split_conserves() -> Bool {
   let capture = floor_preparation_capture()
   opt_present(floor_preparation_split_total_ms(capture))
-    && opt_int_eq(floor_preparation_split_total_ms(capture), floor_preparation_total_ms(capture))
+    && opt_int_eq(floor_preparation_split_total_ms(capture), floor_preparation_ms_count(floor_preparation_total_ms(capture)))
     && opt_int_eq_sum(floor_preparation_split_preparation_ms(capture),
       floor_preparation_split_claim_ms(capture), floor_preparation_split_total_ms(capture))
     && opt_int_ge0(floor_preparation_split_preparation_ms(capture))
@@ -266,12 +267,12 @@ fn the_fold_bills_one_fill_once() -> Bool {
     // 7 marginal (the claim's own CPU with the artifact warm) + 126 the claim row reports.
     && opt_int_eq(floor_preparation_split_claim_ms(capture), 133)
     && opt_int_eq(floor_preparation_split_total_ms(capture), 298)
-    && opt_int_eq(floor_preparation_split_total_ms(capture), floor_preparation_total_ms(capture))
+    && opt_int_eq(floor_preparation_split_total_ms(capture), floor_preparation_ms_count(floor_preparation_total_ms(capture)))
     // THE COUNTERFACTUAL, stated: the probe row's 119 is the same quantity, and the preparation side
     // does NOT contain it twice.
-    && floor_preparation_probe_fill_ms(capture) == 119
-    && floor_preparation_fill_fill_ms(capture) == 119
-    && opt_int_ne(floor_preparation_split_preparation_ms(capture), 165 + floor_preparation_probe_fill_ms(capture))
+    && floor_preparation_ms_count(floor_preparation_probe_fill_ms(capture)) == 119
+    && floor_preparation_ms_count(floor_preparation_fill_fill_ms(capture)) == 119
+    && opt_int_ne(floor_preparation_split_preparation_ms(capture), 165 + floor_preparation_ms_count(floor_preparation_probe_fill_ms(capture)))
     && floor_preparation_probe_row_count(capture) == 1
     && floor_preparation_fill_row_count(capture) == 1
     && opt_int_eq(floor_preparation_split_pass(capture), 1)
@@ -293,9 +294,9 @@ fn committed_fill_rows_are_paired() -> Bool {
   let fills = floor_preparation_fill_row_count(capture)
   let probes = floor_preparation_probe_row_count(capture)
   fills == probes
-    && floor_preparation_probe_fill_ms(capture) == floor_preparation_fill_fill_ms(capture)
+    && floor_preparation_ms_count(floor_preparation_probe_fill_ms(capture)) == floor_preparation_ms_count(floor_preparation_fill_fill_ms(capture))
     && opt_present(floor_preparation_split_total_ms(capture))
-    && opt_int_eq(floor_preparation_split_total_ms(capture), floor_preparation_total_ms(capture))
+    && opt_int_eq(floor_preparation_split_total_ms(capture), floor_preparation_ms_count(floor_preparation_total_ms(capture)))
 }
 
 test fn floor_preparation_committed_fill_rows_are_paired() -> Bool {
@@ -374,7 +375,7 @@ test fn floor_preparation_the_fold_refuses_what_it_cannot_read() -> Bool {
 fn attribution_covers_every_non_phase_costed_row() -> Bool {
   let capture = floor_preparation_capture()
   opt_int_eq(floor_preparation_attributed_ms(capture),
-      floor_preparation_total_ms(capture) - floor_preparation_phase_ms(capture))
+      floor_preparation_ms_count(floor_preparation_total_ms(capture)) - floor_preparation_ms_count(floor_preparation_phase_ms(capture)))
     && length(xs: floor_preparation_module_keys(capture)) > 0
     && length(xs: floor_preparation_module_keys(capture)) == length(xs: floor_preparation_entry_paths(capture))
     && floor_preparation_attribution_all_rows_have_lines(capture)
@@ -502,9 +503,9 @@ test fn floor_preparation_entry_resolve_is_charged_to_the_module_it_names() -> B
 fn preparation_sides_partition_by_scale() -> Bool {
   let capture = floor_preparation_capture()
   opt_int_eq(floor_preparation_split_preparation_ms(capture),
-      floor_preparation_whole_tree_ms(capture) + floor_preparation_entry_scoped_ms(capture))
-    && floor_preparation_whole_tree_ms(capture) >= 0
-    && floor_preparation_entry_scoped_ms(capture) > 0
+      floor_preparation_ms_count(floor_preparation_whole_tree_ms(capture)) + floor_preparation_ms_count(floor_preparation_entry_scoped_ms(capture)))
+    && floor_preparation_ms_count(floor_preparation_whole_tree_ms(capture)) >= 0
+    && floor_preparation_ms_count(floor_preparation_entry_scoped_ms(capture)) > 0
 }
 
 test fn floor_preparation_preparation_sides_partition_by_scale() -> Bool {

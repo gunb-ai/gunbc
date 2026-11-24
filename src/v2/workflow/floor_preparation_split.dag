@@ -285,6 +285,16 @@ fn floor_preparation_amount(key: String, text: String) -> FloorPreparationAmount
   }
 }
 
+// The carrier path of the same reading: a duration leaves here as `Millisecond`, never as a count,
+// so the independent readers below fold carriers and unwrap only at their claim or print boundary.
+fn floor_preparation_amount_carrier(amount: FloorPreparationAmount) -> Millisecond {
+  match amount {
+    Amount { ms: n } => n
+    MissingField { key: _ } => floor_preparation_ms_zero()
+    MalformedValue { key: _, text: _ } => floor_preparation_ms_zero()
+  }
+}
+
 fn floor_preparation_amount_ms(amount: FloorPreparationAmount) -> Int {
   match amount {
     Amount { ms: n } => floor_preparation_ms_count(n)
@@ -630,31 +640,33 @@ fn floor_preparation_join_split(split: FloorPreparationSplit, preparation_delta:
 // need it: the conservation fold below, and the deletion-margin witness, which subtracts it from the
 // total of the capture minus that line. If the fold charged a line anything other than what this
 // reports, the two disagree and that witness goes red.
-fn floor_preparation_line_ms(line: String) -> Int {
+fn floor_preparation_line_ms(line: String) -> Millisecond {
   match floor_preparation_classify(line) {
-    RefusedLine { text: _, cause: _ } => 0
-    UntaggedLine { text: _ } => 0
-    VerdictLine { passed: _, function: _ } => 0
-    EntryResolveLine { entry: _, ms: n } => floor_preparation_ms_count(n)
+    RefusedLine { text: _, cause: _ } => floor_preparation_ms_zero()
+    UntaggedLine { text: _ } => floor_preparation_ms_zero()
+    VerdictLine { passed: _, function: _ } => floor_preparation_ms_zero()
+    EntryResolveLine { entry: _, ms: n } => n
     ClaimLine { tag: tag, claim: _, fields: fields } =>
       if tag == floor_preparation_witness_tag {
-        floor_preparation_amount_ms(floor_preparation_ms_unit_field(fields, "cpu"))
+        floor_preparation_amount_carrier(floor_preparation_ms_unit_field(fields, "cpu"))
       } else if tag == floor_preparation_reach_probe_tag {
-        0
+        floor_preparation_ms_zero()
       } else {
-        floor_preparation_amount_ms(floor_preparation_ms_field(fields, "fill_cpu_ms")) + floor_preparation_amount_ms(floor_preparation_ms_field(fields, "marginal_cpu_ms"))
+        floor_preparation_ms_add(
+          floor_preparation_amount_carrier(floor_preparation_ms_field(fields, "fill_cpu_ms")),
+          floor_preparation_amount_carrier(floor_preparation_ms_field(fields, "marginal_cpu_ms")))
       }
     PhaseLine { phase: phase, fields: fields } =>
       match floor_preparation_phase_row(phase) {
-        Absent => 0
+        Absent => floor_preparation_ms_zero()
         Present { value: row } =>
           if floor_preparation_state_not_completed(fields) {
-            0
+            floor_preparation_ms_zero()
           } else {
             match row.class {
-              PreparationCost => floor_preparation_amount_ms(floor_preparation_ms_field(fields, row.cost_field))
-              ClaimExecutionCost => floor_preparation_amount_ms(floor_preparation_ms_field(fields, row.cost_field))
-              NotCostBearing { reason: _ } => 0
+              PreparationCost => floor_preparation_amount_carrier(floor_preparation_ms_field(fields, row.cost_field))
+              ClaimExecutionCost => floor_preparation_amount_carrier(floor_preparation_ms_field(fields, row.cost_field))
+              NotCostBearing { reason: _ } => floor_preparation_ms_zero()
             }
           }
       }
@@ -663,8 +675,8 @@ fn floor_preparation_line_ms(line: String) -> Int {
 
 // THE GRAND TOTAL, folded independently of the split's accumulator. The conservation witness compares
 // the two: a line dropped, double-counted or filed under the wrong class makes them disagree.
-fn floor_preparation_total_ms(capture: List<String>) -> Int {
-  fold(capture, init:  0, f: (acc, line) => acc + floor_preparation_line_ms(line))
+fn floor_preparation_total_ms(capture: List<String>) -> Millisecond {
+  fold(capture, init: floor_preparation_ms_zero(), f: (acc, line) => floor_preparation_ms_add(acc, floor_preparation_line_ms(line)))
 }
 
 fn floor_preparation_lines_are_closed(capture: List<String>) -> Bool {
@@ -801,10 +813,10 @@ fn floor_preparation_attributed_ms(capture: List<String>) -> Optional<Int> {
 }
 
 // THE PHASE ROWS ALONE, which is what the split's total exceeds the module table by.
-fn floor_preparation_phase_ms(capture: List<String>) -> Int {
-  fold(capture, init:  0, f: (acc, line) =>
+fn floor_preparation_phase_ms(capture: List<String>) -> Millisecond {
+  fold(capture, init: floor_preparation_ms_zero(), f: (acc, line) =>
     match floor_preparation_classify(line) {
-      PhaseLine { phase: _, fields: _ } => acc + floor_preparation_line_ms(line)
+      PhaseLine { phase: _, fields: _ } => floor_preparation_ms_add(acc, floor_preparation_line_ms(line))
       _ => acc
     })
 }
@@ -823,14 +835,14 @@ fn floor_preparation_phase_ms(capture: List<String>) -> Int {
 // arithmetic; read only the total and it is a preference.
 // ------------------------------------------------------------------------------------------
 
-fn floor_preparation_whole_tree_ms(capture: List<String>) -> Int {
-  fold(capture, init:  0, f: (acc, line) =>
+fn floor_preparation_whole_tree_ms(capture: List<String>) -> Millisecond {
+  fold(capture, init: floor_preparation_ms_zero(), f: (acc, line) =>
     match floor_preparation_classify(line) {
       PhaseLine { phase: phase, fields: fields } =>
         match floor_preparation_phase_row(phase) {
           Present { value: row } =>
             match row.scale {
-              WholeTreeScale => acc + floor_preparation_line_ms(line)
+              WholeTreeScale => floor_preparation_ms_add(acc, floor_preparation_line_ms(line))
               EntryClosureScale => acc
             }
           Absent => acc
@@ -839,21 +851,21 @@ fn floor_preparation_whole_tree_ms(capture: List<String>) -> Int {
     })
 }
 
-fn floor_preparation_entry_scoped_ms(capture: List<String>) -> Int {
-  fold(capture, init:  0, f: (acc, line) =>
+fn floor_preparation_entry_scoped_ms(capture: List<String>) -> Millisecond {
+  fold(capture, init: floor_preparation_ms_zero(), f: (acc, line) =>
     match floor_preparation_classify(line) {
       PhaseLine { phase: phase, fields: fields } =>
         match floor_preparation_phase_row(phase) {
           Present { value: row } =>
             match row.scale {
-              EntryClosureScale => acc + floor_preparation_line_ms(line)
+              EntryClosureScale => floor_preparation_ms_add(acc, floor_preparation_line_ms(line))
               WholeTreeScale => acc
             }
           Absent => acc
         }
       // THE PER-ENTRY RESOLUTION IS ENTRY-SCOPED BY DEFINITION: one entry, one cost, charged to
       // that module. It is also the only preparation row that is module-grain on its own face.
-      EntryResolveLine { entry: _, ms: n } => acc + floor_preparation_ms_count(n)
+      EntryResolveLine { entry: _, ms: n } => floor_preparation_ms_add(acc, n)
       _ => acc
     })
 }
@@ -877,12 +889,12 @@ fn floor_preparation_claim_row_count(capture: List<String>) -> Int {
 // THE REACH-PROBE FILLS, as the sum of `fill_cpu_ms` over the probe rows ONLY. This is the number that
 // makes the probe row's classification causal rather than merely consistent: were the probe row counted
 // as preparation, the split's total would exceed the conservation total by exactly this much.
-fn floor_preparation_probe_fill_ms(capture: List<String>) -> Int {
-  fold(capture, init:  0, f: (acc, line) =>
+fn floor_preparation_probe_fill_ms(capture: List<String>) -> Millisecond {
+  fold(capture, init: floor_preparation_ms_zero(), f: (acc, line) =>
     match floor_preparation_classify(line) {
       ClaimLine { tag: tag, claim: _, fields: fields } =>
         if tag == floor_preparation_reach_probe_tag {
-          acc + floor_preparation_amount_ms(floor_preparation_ms_field(fields, "fill_cpu_ms"))
+          floor_preparation_ms_add(acc, floor_preparation_amount_carrier(floor_preparation_ms_field(fields, "fill_cpu_ms")))
         } else {
           acc
         }
@@ -946,16 +958,16 @@ fn floor_preparation_without_index(capture: List<String>, index: Int) -> List<St
 // what `floor_preparation_line_ms` reports, or that read a figure from anywhere but the lines, cannot
 // satisfy this for every costed line at once.
 fn floor_preparation_deletion_margin_holds(capture: List<String>) -> Bool {
-  let whole = floor_preparation_total_ms(capture)
+  let whole = floor_preparation_ms_count(floor_preparation_total_ms(capture))
   let n = length(xs: capture)
   let state = fold(capture, init:  FloorPreparationMargin { i: 0, ok: true, costed: 0 }, f: (acc, line) =>
-    if floor_preparation_line_ms(line) == 0 {
+    if floor_preparation_ms_count(floor_preparation_line_ms(line)) == 0 {
       FloorPreparationMargin { i: acc.i + 1, ok: acc.ok, costed: acc.costed }
     } else {
       let without = floor_preparation_without_index(capture, acc.i)
       FloorPreparationMargin {
         i: acc.i + 1,
-        ok: acc.ok && floor_preparation_total_ms(without) == whole - floor_preparation_line_ms(line),
+        ok: acc.ok && floor_preparation_ms_count(floor_preparation_total_ms(without)) == whole - floor_preparation_ms_count(floor_preparation_line_ms(line)),
         costed: acc.costed + 1,
       }
     })
@@ -1039,12 +1051,12 @@ fn floor_preparation_attribution_all_rows_have_lines(capture: List<String>) -> B
 
 // THE FILL SUM OVER THE `[floor-shared-fill]` ROWS -- the same quantity the probe rows report, and the
 // equality the causality claim needs.
-fn floor_preparation_fill_fill_ms(capture: List<String>) -> Int {
-  fold(capture, init:  0, f: (acc, line) =>
+fn floor_preparation_fill_fill_ms(capture: List<String>) -> Millisecond {
+  fold(capture, init: floor_preparation_ms_zero(), f: (acc, line) =>
     match floor_preparation_classify(line) {
       ClaimLine { tag: tag, claim: _, fields: fields } =>
         if tag == floor_preparation_shared_fill_tag {
-          acc + floor_preparation_amount_ms(floor_preparation_ms_field(fields, "fill_cpu_ms"))
+          floor_preparation_ms_add(acc, floor_preparation_amount_carrier(floor_preparation_ms_field(fields, "fill_cpu_ms")))
         } else {
           acc
         }
@@ -1167,11 +1179,11 @@ fn floor_preparation_split_report() -> String {
                 " instrument=",
                 floor_preparation_capture_provenance(),
                 " phase_ms=",
-                to_string(floor_preparation_phase_ms(capture)),
+                to_string(floor_preparation_ms_count(floor_preparation_phase_ms(capture))),
                 " whole_tree_preparation_ms=",
-                to_string(floor_preparation_whole_tree_ms(capture)),
+                to_string(floor_preparation_ms_count(floor_preparation_whole_tree_ms(capture))),
                 " entry_scoped_preparation_ms=",
-                to_string(floor_preparation_entry_scoped_ms(capture)),
+                to_string(floor_preparation_ms_count(floor_preparation_entry_scoped_ms(capture))),
                 " attributed_ms=",
                 to_string(floor_preparation_attributed_ms(capture)),
                 " modules=",
