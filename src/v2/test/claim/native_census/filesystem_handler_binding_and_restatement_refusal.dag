@@ -16,6 +16,8 @@ import v2.compiler.effect_demand {
   filesystem_effect_reach,
   filesystem_effect_site_eq,
   filesystem_effect_offender_sites_are_distinct,
+  FilesystemWallCompileGateTrigger,
+  filesystem_wall_compile_gate_trigger,
   filesystem_effect_reach_census,
   filesystem_effect_direct_reach_wall_holds,
   demand_restatement_row_verdict,
@@ -165,6 +167,28 @@ test fn filesystem_offender_same_site_twice_breaks_distinctness() -> Bool {
   }
   (length(xs: duplicated) == 2)
     && (filesystem_effect_offender_sites_are_distinct(offenders: duplicated) == false)
+}
+
+// THE TRIGGER CARRIER IS CONSUMED, and it names the real offender rather than hiding it in prose
+// (gunbc.design_argument::source_annotations). The gate connects only when these two located self_host
+// declarations migrate to the bound handler; reading them off the carrier (not re-typing them) proves the
+// named offender is visible in the artifact. The declarations match the two census sites' enclosing
+// declarations, so the trigger and the census agree on WHICH sites are the known in-population offenders.
+test fn filesystem_compile_gate_trigger_names_the_two_self_host_sites() -> Bool {
+  (filesystem_wall_compile_gate_trigger.awaiting_migration_module
+      == self_host_read_roster_manifest_site.module_path)
+    && (length(xs: filesystem_wall_compile_gate_trigger.awaiting_migration_declarations) == 2)
+    && (any(
+      xs: filesystem_wall_compile_gate_trigger.awaiting_migration_declarations,
+      predicate: fn(d) { d == self_host_read_roster_manifest_site.enclosing_declaration }
+    ))
+    && (any(
+      xs: filesystem_wall_compile_gate_trigger.awaiting_migration_declarations,
+      predicate: fn(d) { d == self_host_fold_side_bytes_site.enclosing_declaration }
+    ))
+    && (filesystem_wall_compile_gate_trigger.migrate_to_bound_handler == "emit_file_call")
+    && (filesystem_wall_compile_gate_trigger.gate_connects_when
+      == ^self_host_direct_reaches_migrate_to_bound_handler)
 }
 
 test fn filesystem_read_direct_reach_refuses() -> Bool {
