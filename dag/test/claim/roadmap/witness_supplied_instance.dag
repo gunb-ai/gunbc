@@ -6,6 +6,7 @@ import std.optional { Optional, Present, Absent }
 import gunbc.roadmap.dispatch_worker_unit_confinement { dispatch_worker_credentials }
 import gunbc.harness.harness_operator_credential { OperatorCredentialFile }
 import extdeps.transports.shell { ShellExited, ShellSpawnRefused }
+import std.filesystem { path_parent_directory }
 import extdeps.exec.command { ArgvCommand, LocalExec }
 import extdeps.shell.exec { ProcessOutcome, ProcessRefused, ProcessOutputPresent, ProcessOutputAbsent }
 import gunbc.command_runner { run_shell_command_capture }
@@ -35,6 +36,7 @@ import extdeps.tools.gnu_coreutils {
   mktemp_directory_command, whoami_command,
   install_file_mode_command, mkdir_parents_command,
   realpath_canonicalize_missing_command, rm_recursive_force_command,
+  ls_almost_all_one_per_line_command,
 }
 import extdeps.tools.id { id_uid_command, id_gid_command, id_group_name_command }
 // THE TWO READINGS A BASE NEEDS AND THE ANCESTRY GUARD CANNOT GIVE IT -- what the name IS, and who it
@@ -749,26 +751,109 @@ fn witness_tree_source_links_stay_inside(destination: String, lines: List<String
         )))
 }
 
-// NO SYMBOLIC LINK MAY BE STANDING IN THE SUPPLIED TREE BEFORE THE COPY. Empty stdout is the only admitting
-// answer; a refused spawn or a refused exec is an observation that did not happen and refuses too -- except for
-// the one case below, where there is nothing yet to observe.
-fn witness_tree_destination_subtree_is_link_free(root: String) -> Bool {
+// WHAT THE WHOLE-SUBTREE SCAN POSITIVELY OBSERVED about a destination subtree. The distinction IS the fix.
+// The Bool this replaces admitted the subtree whenever the recursive listing failed AND a bare existence probe
+// merely came back non-zero -- but an inaccessible ancestor makes the listing fail AND the existence probe fail
+// for a reason indistinguishable from "the destination exists", and the elevated installer, which may hold
+// access this check did not, then wrote through whatever stood there. Admission now proceeds only on positive
+// evidence: LinkFree (the listing ran clean over a present subtree and reported no link) or Absent (the name
+// does not exist, positively established: the listing failed, the existence probe failed, AND the destination's
+// parent can actually be READ). A link found, and every case where the scan could not see -- a listing that
+// failed over a destination that exists, an unreadable parent, a probe that could not start, find's own
+// refusal -- are refused.
+type WitnessTreeSubtreeScanOutcome =
+  | WitnessTreeSubtreeLinkFree {}
+  | WitnessTreeSubtreeAbsent {}
+  | WitnessTreeSubtreeLinkFound { links: String }
+  | WitnessTreeSubtreeUnobservable { cause: String }
+
+// THE POSITIVE SIDE OF ABSENCE. A failed listing plus a failed existence read is not yet evidence that
+// nothing stands at the destination: with an inaccessible ancestor both reads fail exactly as they would for
+// a destination that is there. Three reads make the absence positive, in order of what they can answer.
+// First the parent's ANCESTRY: `realpath -m` (the row that resolves a path that need not exist yet) fails
+// only when some ancestor cannot be searched, so a clean answer is what separates "the parent is not there"
+// from "the parent cannot be looked at". Then the parent's own existence: with the ancestry searchable, a
+// failed `test -e` means the parent really is missing, and a missing parent means no name -- and so no link
+// -- stands at the destination. Then, when the parent does exist, it must be READ clean (ls -A, exit 0):
+// the same reason `test -e` can answer "no" only from a directory it can search.
+fn witness_tree_destination_absence_is_positive(root: String) -> WitnessTreeSubtreeScanOutcome {
+  let parent = path_parent_directory(path: root)
+  if witness_resolved_path(candidate: parent) == "" {
+    WitnessTreeSubtreeUnobservable { cause: join(["destination-parent-ancestry-unsearchable:", parent]) }
+  } else if !wet_argv_ok(program: "test" as NonEmptyStr, arguments: ["-e", parent]) {
+    WitnessTreeSubtreeAbsent {}
+  } else {
+    witness_tree_parent_listing_is_clean(parent: parent)
+  }
+}
+
+// THE PARENT READ ITSELF, split out so the outcome above reads as the three questions it asks.
+fn witness_tree_parent_listing_is_clean(parent: String) -> WitnessTreeSubtreeScanOutcome {
+  let probe = ls_almost_all_one_per_line_command(path: parent)
+  let read = shell.Exec.RunArgvOutcome(
+    program: probe.program.invocation as String,
+    arguments: probe.arguments,
+  )
+  match read.outcome {
+    ShellSpawnRefused { program: _, cause: _ } =>
+      WitnessTreeSubtreeUnobservable { cause: join(["parent-probe-spawn-refused:", parent]) }
+    ShellExited =>
+      if read.exit_code == 0 {
+        WitnessTreeSubtreeAbsent {}
+      } else {
+        WitnessTreeSubtreeUnobservable { cause: join(["destination-parent-unreadable:", parent]) }
+      }
+  }
+}
+
+// witness_tree_destination_subtree_outcome runs the scan (find -type l over the subtree) and reports
+// which outcome the run was. find(1): exit 0 means every directory it walked was readable -- with no link
+// lines that is a link-free subtree, and find reports a missing starting point as an error with exit 1, so
+// exit 0 never describes a subtree that was not looked at. exit 1 means something could not be read: if the
+// destination itself is there, the scan failed over a PRESENT subtree (unobservable); if it is not, the
+// absence still has to be established positively. exit 2 (find's own serious error) is unobservable.
+fn witness_tree_destination_subtree_outcome(root: String) -> WitnessTreeSubtreeScanOutcome {
   let probe = find_symlink_targets_command(root: root)
   let read = shell.Exec.RunArgvOutcome(
     program: probe.program.invocation as String,
     arguments: probe.arguments,
   )
   match read.outcome {
-    ShellSpawnRefused { program: _, cause: _ } => false
-    // A tree that is not there yet holds no link. The fold CREATES its destination, so a `find` that answers
-    // "No such file or directory" for a destination never planted is not a refused observation: there is no
-    // subtree for a link to stand in, and every path the source walk reported is admitted on its own spelling
-    // and resolution before anything is created. The existence read is consulted ONLY here, on a failed scan,
-    // so a tree that does exist and still cannot be scanned stays a refusal -- trading the scan for a check that
-    // skips it would be the fail-open version of this.
-    ShellExited => (read.exit_code == 0 && trim(s: read.stdout) == "")
-      || (read.exit_code != 0
-        && shell.Exec.RunArgv(program: "test", arguments: ["-e", root]).exit_code != 0)
+    ShellSpawnRefused { program: _, cause: _ } =>
+      WitnessTreeSubtreeUnobservable { cause: join(["scan-spawn-refused:", root]) }
+    ShellExited =>
+      if read.exit_code == 0 {
+        if trim(s: read.stdout) == "" {
+          WitnessTreeSubtreeLinkFree {}
+        } else {
+          WitnessTreeSubtreeLinkFound { links: trim(s: read.stdout) }
+        }
+      } else if read.exit_code == 1 {
+        if wet_argv_ok(program: "test" as NonEmptyStr, arguments: ["-e", root]) {
+          WitnessTreeSubtreeUnobservable { cause: join(["listing-failed-over-present-destination:", root]) }
+        } else {
+          witness_tree_destination_absence_is_positive(root: root)
+        }
+      } else {
+        WitnessTreeSubtreeUnobservable { cause: join(["listing-refused:", root]) }
+      }
+  }
+}
+
+// THE ADMISSION VIEW of that outcome: only LinkFree and Absent admit; LinkFound and Unobservable refuse.
+fn witness_tree_destination_subtree_is_link_free(root: String) -> Bool {
+  let outcome = witness_tree_destination_subtree_outcome(root: root)
+  outcome == WitnessTreeSubtreeLinkFree {} || outcome == WitnessTreeSubtreeAbsent {}
+}
+
+// THE OUTCOME'S OWN WORDS, for a claim that must say WHICH answer it got rather than re-deriving it from
+// the Bool.
+fn witness_tree_destination_subtree_outcome_label(outcome: WitnessTreeSubtreeScanOutcome) -> String {
+  match outcome {
+    WitnessTreeSubtreeLinkFree {} => "LinkFree"
+    WitnessTreeSubtreeAbsent {} => "Absent"
+    WitnessTreeSubtreeLinkFound { links: _ } => "LinkFound"
+    WitnessTreeSubtreeUnobservable { cause: _ } => "Unobservable"
   }
 }
 

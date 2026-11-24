@@ -126,6 +126,8 @@ import test.claim.roadmap.witness_supplied_instance {
   witness_sudo_elevation_available, witness_locus_install_refusal_cause,
   witness_locus_fold_plan_refused_cause,
   witness_locus_install_spine, witness_fold_spine_dir_is_admissible,
+  witness_tree_destination_subtree_outcome, witness_tree_destination_subtree_outcome_label,
+  witness_tree_destination_subtree_is_link_free, witness_tree_install_destinations_are_admitted,
 }
 import extdeps.tools.stat { stat_mode_command, stat_size_bytes_command }
 import extdeps.tools.gnu_coreutils {
@@ -133,7 +135,7 @@ import extdeps.tools.gnu_coreutils {
   ls_almost_all_one_per_line_command, realpath_canonicalize_missing_command,
   install_directory_owned_argv_command,
   install_empty_file_command, install_file_mode_command, pwd_command,
-  ln_symbolic_force_command, rm_force_command,
+  ln_symbolic_force_command, rm_force_command, mkdir_create_only_with_mode_command,
 }
 import extdeps.transports.shell { ShellExited, ShellSpawnRefused }
 // `test -e` as a COMMAND, for the claim that must show a failing observation collapsing to the empty
@@ -2939,9 +2941,95 @@ test fn the_locus_install_refuses_a_link_at_a_fold_destination() -> Bool {
     verdict: witness_locus_install(instance: inst, locus_key: src_key, revision_text: revision),
   )
   let removal_admitted = removed && !string_contains(s: removed_cause, pattern: plan_cause)
+  // EVERY ROOT THIS CLAIM ALLOCATES GOES TO CLEANUP AND READBACK, not just the scratch root. `away` and
+  // `away_deep` are mktemp'd under /var/tmp -- outside the scratch tree the root readback sweeps -- so a
+  // verdict that cleaned only `root` left two escape targets on the host and never read back that the
+  // refused install left them empty. The readback helper removes each root and then proves it is gone.
   wet_claim_verdicts_with_root_readbacks(
     verdict: wet_claim_is_confined(instance: inst, root: root)
       && root != "" && clean_admitted && src_refused && deep_refused && removal_admitted,
+    roots: [root as NonEmptyStr, away as NonEmptyStr, away_deep as NonEmptyStr],
+  )
+}
+
+// THE WHOLE-SUBTREE SCAN ADMITS ONLY WHAT IT POSITIVELY SAW (side-chat P1, third pass). The Bool this
+// witness used to consult admitted a destination subtree whenever the recursive listing failed AND a bare
+// existence read merely came back non-zero. That pair is not evidence of absence: an inaccessible ancestor
+// makes the listing fail AND the existence read fail for a reason indistinguishable from "the destination is
+// there", and the elevated installer -- which may hold access the checker did not -- then wrote through
+// whatever stood at the destination. The scan now answers with a typed outcome, and admission takes only the
+// two answers that are positive: LinkFree (a clean scan of a present subtree that reported no link) and
+// Absent (a clean scan, a failed existence read, AND the parent established readable or genuinely missing).
+// LinkFound and Unobservable refuse. Four states are pinned at the scan interface, because that is the one
+// interface where the conflation lived, and the install boundary is pinned to refuse as well.
+//
+// The unobservable state is authored WITHOUT any elevation and WITHOUT chmod: `mkdir -m 000 -- PATH` (the
+// modeled create-only row) makes a directory this process can neither read nor search, and the destination
+// under it is a name that has never been planted. The listing fails (the parent cannot be searched), the
+// existence read fails (same reason), and the only read that separates this from a genuinely missing
+// destination is the parent read -- which fails here and succeeds in the missing case. Under the old Bool
+// this exact input was ADMITTED; the claim is the RED that mutation `mut_scan_failopen` restores.
+test fn the_subtree_scan_admits_only_what_it_positively_saw() -> Bool {
+  let root = wet_claim_root(tag: "subtree-scan-outcome" as NonEmptyStr)
+  // (a) A destination that is genuinely missing, under a parent that exists and can be read: Absent.
+  let missing = join([root, "/loci/never-planted"], "")
+  // (b) A present, link-free subtree: LinkFree.
+  let present = join([root, "/loci/link-free"], "")
+  let present_staged = wet_ok(command: mkdir_parents_command(path: join([present, "/sub"], "")))
+  // (c) A link standing inside a present subtree: LinkFound.
+  let linked = join([root, "/loci/linked"], "")
+  let linked_staged = wet_ok(command: mkdir_parents_command(path: join([linked, "/sub"], "")))
+  let linked_planted = wet_ok(command: ln_symbolic_force_command(
+    target: present, link_name: join([linked, "/sub/ghost"], ""),
+  ))
+  // (d) A destination under a parent this process can neither read nor search: Unobservable.
+  let sealed = join([root, "/loci/sealed"], "")
+  let sealed_staged = wet_ok(command: mkdir_create_only_with_mode_command(
+    path: sealed, octal_mode: "000" as NonEmptyStr,
+  ))
+  let sealed_blind = wet_out(command: ls_almost_all_one_per_line_command(path: sealed)) == ""
+  let sealed_target = join([sealed, "/v2"], "")
+  let missing_answer = witness_tree_destination_subtree_outcome_label(
+    outcome: witness_tree_destination_subtree_outcome(root: missing),
+  )
+  let present_answer = witness_tree_destination_subtree_outcome_label(
+    outcome: witness_tree_destination_subtree_outcome(root: present),
+  )
+  let linked_answer = witness_tree_destination_subtree_outcome_label(
+    outcome: witness_tree_destination_subtree_outcome(root: linked),
+  )
+  let sealed_answer = witness_tree_destination_subtree_outcome_label(
+    outcome: witness_tree_destination_subtree_outcome(root: sealed_target),
+  )
+  let missing_admitted = witness_tree_destination_subtree_is_link_free(root: missing)
+  let present_admitted = witness_tree_destination_subtree_is_link_free(root: present)
+  let linked_admitted = witness_tree_destination_subtree_is_link_free(root: linked)
+  let sealed_admitted = witness_tree_destination_subtree_is_link_free(root: sealed_target)
+  // AT THE INSTALL BOUNDARY, the same two inputs go through the gate that guards a fold. A missing
+  // destination is admitted there -- the fold creates what it lists, and every path the source walk reports
+  // is admitted on its own spelling before anything is created -- and a destination under the unreadable
+  // parent is refused there. At the boundary the destination's own resolution read refuses the sealed case
+  // as well, so the discriminating control for the conflation itself is the scan interface above; the
+  // boundary legs pin that the gate keeps refusing, and a mutation that refuses Absent turns the missing
+  // leg RED.
+  let source = join([root, "/source/dag"], "")
+  let source_staged = wet_ok(command: mkdir_parents_command(path: join([source, "/sub"], "")))
+  let boundary_missing = witness_tree_install_destinations_are_admitted(
+    source: source, destination: join([root, "/repo/dag"], ""), root: join([root, "/repo/dag"], ""),
+  )
+  let boundary_sealed = witness_tree_install_destinations_are_admitted(
+    source: source, destination: sealed_target, root: sealed_target,
+  )
+  wet_claim_verdicts_with_root_readbacks(
+    verdict: root != ""
+      && present_staged && linked_staged && linked_planted
+      && sealed_staged && sealed_blind && source_staged
+      && missing_answer == "Absent"
+      && present_answer == "LinkFree"
+      && linked_answer == "LinkFound"
+      && sealed_answer == "Unobservable"
+      && missing_admitted && present_admitted && !linked_admitted && !sealed_admitted
+      && boundary_missing && !boundary_sealed,
     roots: [root as NonEmptyStr],
   )
 }
