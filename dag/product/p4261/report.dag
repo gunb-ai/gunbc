@@ -94,6 +94,7 @@ import product.electrical.bench_session {
   pair_range_standing,
   pair_range_text,
   PartRemoved,
+  PartFitted,
   ProbeAttachment,
   resistance_text,
   ResistanceObservation,
@@ -524,6 +525,10 @@ fn alteration_text(a: AssetAlteration) -> String {
     PartRemoved { refitted } => join([
       a.key as String, ": ", component_text(c: a.part), " was lifted off the board",
       if refitted { " and refitted" } else { " and not refitted, so its footprint is bare and readings there are of the board without it" },
+      " (", evidence_ref_text(e: a.evidence), ")",
+    ], "")
+    PartFitted { part_number } => join([
+      a.key as String, ": ", part_number as String, " was fitted at ", component_text(c: a.part),
       " (", evidence_ref_text(e: a.evidence), ")",
     ], "")
   }

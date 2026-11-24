@@ -340,7 +340,7 @@ test fn control_c_refusal_names_the_subject_and_the_host_its_receipt_recorded() 
 test fn a_never_dispatched_leg_is_unreadable_by_its_cause_and_a_real_answered_255_is_preserved() -> Bool {
   let not_dispatched = host_leg_of_typed_argv(outcome: TypedArgvExecRefused { reason: "ssh: connect refused" })
   let real_255 = host_leg_of_typed_argv(outcome: TypedArgvExecConverged {
-    result: SshSessionExecResult { exit_code: 255, success: false, stdout: "", stderr: "ssh: remote hung up" },
+    result: SshSessionExecResult { exit_code: 255, success: false, stdout: "", stderr: "ssh: remote hung up", wall_deadline_seconds: Absent },
   })
   (match census_from(record: record_ok(), measure: not_dispatched) {
     BootMediumServedUnreadable { host: _, served_path: _, reason: why } =>

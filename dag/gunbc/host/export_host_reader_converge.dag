@@ -339,7 +339,7 @@ fn export_host_reader_after_writes(legs: ExportHostReaderLegs, stages: List<NonE
                 match reloaded {
                   LegNotDispatched { reason: r } =>
                     withdrawn(legs: legs, stages: s3, stage: "reload", cause: concat("systemctl reload ssh was NEVER DISPATCHED, so sshd was not reloaded: ", r))
-                  LegUnanswered { cause: uc } =>
+                  LegUnanswered { cause: _ } =>
                     reload_uncertain(legs: legs, stages: s3, reloaded: reloaded)
                   LegAnswered { exit_code: rc, stdout: _, stderr: _ } => if rc != 0 {
                     reload_uncertain(legs: legs, stages: s3, reloaded: reloaded)
