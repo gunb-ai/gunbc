@@ -43,6 +43,7 @@ data desired_state_follows_the_machine_intention: String = "gunbc.plans.desired_
 data one_source_tree_intention: String = "gunbc.plans.one_source_tree"
 data read_set_convergence_intention: String = "gunbc.plans.read_set_convergence"
 data claim_execution_consolidation_intention: String = "gunbc.plans.claim_execution_consolidation"
+data github_actions_retirement_intention: String = "gunbc.plans.github_actions_retirement"
 
 data roadmap_intention_bindings: List<IntentionBinding> = [
   // gunbc.plans.one_source_tree: layers follow the dependency edges (1 the manifest, 2 the harness, 3 the other callers, 4 the cut,
@@ -55,6 +56,9 @@ data roadmap_intention_bindings: List<IntentionBinding> = [
   serves(node: "v2-uncontested-families-renamed", module_path: one_source_tree_intention, plan: "one_source_tree_plan", layer: 5),
   serves(node: "v2-extdeps-reconciled", module_path: one_source_tree_intention, plan: "one_source_tree_plan", layer: 5),
   serves(node: "v2-namespace-dissolved", module_path: one_source_tree_intention, plan: "one_source_tree_plan", layer: 6),
+  // gunbc.plans.github_actions_retirement: layer is the edge depth (keen-dove-217, 2026-11-24).
+  serves(node: "work-exec-5-ci-verdict-from-receipt", module_path: github_actions_retirement_intention, plan: "github_actions_retirement_plan", layer: 0),
+  serves(node: "github-actions-deleted", module_path: github_actions_retirement_intention, plan: "github_actions_retirement_plan", layer: 1),
   // gunbc.plans.claim_execution_consolidation: layer is the edge depth.
   serves(node: "claim-result-contract", module_path: claim_execution_consolidation_intention, plan: "claim_execution_consolidation_plan", layer: 0),
   serves(node: "claim-entrypoints-cutover", module_path: claim_execution_consolidation_intention, plan: "claim_execution_consolidation_plan", layer: 1),
@@ -235,6 +239,8 @@ data intention_terminals: List<IntentionTerminals> = [
   // read_set_convergence's terminals here are the sinks of heal's lines of work: the P7 milestone and the three
   // separately accepted affected-round items. The plan's other consumers (A1 to A3) join as their items are filed.
   IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.read_set_convergence", decl_name: "read_set_convergence_plan"), terminals: [nid(s: "heal-planning-only-in-a-minute"), nid(s: "heal-observation-reuse-by-subject"), nid(s: "heal-bootstrap-seed-reuse"), nid(s: "heal-terminal-emission-elision")] },
+  // github_actions_retirement's terminal is the deletion milestone.
+  IntentionTerminals { intention: decl_ref(module_path: "gunbc.plans.github_actions_retirement", decl_name: "github_actions_retirement_plan"), terminals: [nid(s: "github-actions-deleted")] },
 ]
 
 fn terminals_of(intention: DeclarationRef) -> List<RoadmapNodeId> {
