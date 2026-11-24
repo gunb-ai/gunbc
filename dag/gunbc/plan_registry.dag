@@ -26,6 +26,7 @@ import gunbc.plans.desired_state_follows_the_machine { desired_state_follows_the
 import gunbc.plans.one_source_tree { one_source_tree_plan }
 import gunbc.plans.derived_types_keep_their_name { derived_types_keep_their_name_plan }
 import gunbc.plans.claim_execution_consolidation { claim_execution_consolidation_plan }
+import gunbc.plans.contained_development_execution_g0 { contained_development_execution_g0_plan }
 import gunbc.plans.fabric_market { fabric_market_plan }
 
 // THE PLANS THAT SURVIVED THE 2026-11-08 RESET (gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08):
@@ -65,4 +66,5 @@ data all_plans: List<Plan> = [
   new_server_bringup_plan, one_source_tree_plan, claim_execution_consolidation_plan,
   desired_state_follows_the_machine_plan, fabric_market_plan,
   derived_types_keep_their_name_plan,
+  contained_development_execution_g0_plan,
 ]

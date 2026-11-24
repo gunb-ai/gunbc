@@ -1,0 +1,128 @@
+module gunbc.plans.contained_development_execution_g0
+
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
+import std.markdown { MarkdownBlock }
+import gunbc.markdown_helpers { h2, h3, p, li, ul, quote }
+
+fn contained_development_execution_g0_body() -> List<MarkdownBlock> {
+  [
+    quote(blocks: [
+      p(text: "**PROPOSAL — OPERATOR RULES.** This carrier is the contracts-document raw material for the G0 portfolio gate (`contained-development-execution`, owner fleet, carrier gunbc.roadmap.roadmap_dispatch_actuator). The gate owner may accept, edit, or reject each section independently. Nothing here lifts or enables G0; the gate stays closed until the operator rules that every done-when condition below is met."),
+      p(text: "**This plan is written as an intention** (gunbc.design_argument::plans_are_intentions): what the repository should become, why, and done-when. How the checks are realized is downstream; the work items live under gunbc.roadmap.roadmap_authority."),
+      p(text: "**Grounding:** gunbc.design_argument::fail_closed (\"Done means a real consumer green by execution plus a discriminating input that goes red when the behavior is wrong\"), gunbc.design_argument::single_authority (cite the symbol, not the position), gunbc.design_argument::source_annotations (an invariant, receipt, ruling or dissolution condition belongs in a typed carrier). This plan's own stricter proposal: each condition must also be deterministic across a repeat and must fail its named negative case in the same run."),
+    ]),
+
+    h2(text: "1. Intention"),
+    p(text: "**What:** G0's headline names five states — operator home, credentials, privilege groups, control-plane stores, shared state — and the red_control says the gate is lifted only by the operator on proof that the named state is unreachable. This carrier names each state concretely (what it IS in this repo's model, citing the symbols that model it), states what unreachability means for each (the done-when condition), and states the lifting rule (which combinations of proofs entitle the operator to lift G0)."),
+    p(text: "**Why:** the critique in gunbc.plans.factory_dogfood (the gate-G0 paragraph): G0 is a draft portfolio gate (no boundary, no red control, no edges, no contracts document after six weeks) that forbids new autonomous dispatch while the current process already dispatches autonomous workers. Either G0 gets a first slice (factory-f6-scoped-worker-grants) and a boundary, or it is retired to a ruling; it must not stay an undefined standing veto on the route this plan converges on. This carrier supplies the missing boundary as a proposal for the operator to rule on."),
+    p(text: "**Method constraints.** G0 forbids live dispatch. Every done-when condition is therefore assessable against compiled DAG data, rendered unit text, or constructed records (in-memory filesystem, tempfile-backed store, hand-written unit files). No condition requires a live fleet, a live fabric, or a running belt tick."),
+
+    h2(text: "2. The five named states"),
+
+    h3(text: "2.1 Operator home"),
+    p(text: "The operator's home directory and everything beneath it that a worker could read or write if it could name the path."),
+    ul(items: [
+      li(text: "The path convention is gunbc.fleet.fleet_posix_accounts::fleet_posix_home_directory — the join /home/<login>."),
+      li(text: "Under it: the custody secret files of gunbc.fleet.host_credential_custody_roster::HostCredentialCustodyRow (each row's path field), the operator's authorized_keys via gunbc.fleet.fleet_ssh_access (the join at the authorized_keys function), and the srv2 instance tree under gunbc.roadmap.roadmap_dashboard_instance::srv2_dashboard_preview_root."),
+    ]),
+    p(text: "**Done when (both must hold):**"),
+    ul(items: [
+      li(text: "The rendered worker unit from gunbc.roadmap.dispatch_worker_unit_confinement::dispatch_worker_unit_render contains ProtectHome=read-only for a hardened render (the properties from gunbc.roadmap.dispatch_worker_unit_confinement::dispatch_worker_hardened_unit_settings) and does NOT contain it for a stripped render (gunbc.roadmap.dispatch_worker_unit_confinement::DispatchUnitStripped). The negative case: if the check passes on the stripped render, it does not measure the property."),
+      li(text: "No rendered ReadWritePaths= entry from the handed set (gunbc.roadmap.dispatch_worker_handed_set) begins with the operator home prefix (/home/<login>) UNLESS the entry lies under the instance's own root (the prefix from gunbc.roadmap.roadmap_dashboard_instance::dashboard_instance_child applied to the instance root). The srv2 preview root is under operator home by design (the operator should confirm that scoping-to-instance-root is the correct resolution; see the [srv2-root-inside-operator-home] finding). The negative case: a hand-constructed handed set containing /home/briansrls/some-path-outside-the-instance-root makes the check fail."),
+    ]),
+
+    h3(text: "2.2 Credentials"),
+    p(text: "The secret material a worker could use to authenticate as a privileged principal or reach a protected service."),
+    ul(items: [
+      li(text: "Custody paths on the host: gunbc.fleet.host_credential_custody_roster::HostCredentialCustodyRow (the path field per row; the function gunbc.fleet.host_credential_custody_roster::host_credential_custody_row constructs rows). Includes the fabric HMAC key at gunbc.fabric.fabric_storage_state_location::fabric_state_key_host_path."),
+      li(text: "Per-attempt credential snapshots: gunbc.roadmap.roadmap_dispatch_actuator::dispatch_credential_snapshot_path_for_attempt derives a scoped per-attempt path under the attempt state root; the seal is gunbc.dispatch_credential_snapshot::TakenCredentialSnapshot."),
+      li(text: "SSH private key material: gunbc.fleet.fleet_ssh_access uses GKE-pinned Secret Manager references (the SecretRef type); never a file on the host under a worker-readable path."),
+    ]),
+    p(text: "**Done when (all three must hold):**"),
+    ul(items: [
+      li(text: "The rendered hardened worker unit contains ProtectSystem=strict (from gunbc.roadmap.dispatch_worker_unit_confinement::dispatch_worker_hardened_unit_settings) and the stripped render does not. The negative case: if the check passes on the stripped render, it does not measure the property."),
+      li(text: "No ReadWritePaths= entry from the handed set equals any HostCredentialCustodyRow's path field. The negative case: a hand-crafted handed set containing the fabric HMAC key path (/etc/gunbc-fabric-storage/state-writer-mac-key) makes the check fail."),
+      li(text: "The rendered unit contains no EnvironmentFile= pointing at a custody path, and no custody path appears in any ExecStart= argument. The negative case: a hand-crafted unit with EnvironmentFile= naming the fabric HMAC key path makes the check fail."),
+    ]),
+
+    h3(text: "2.3 Privilege groups"),
+    p(text: "The POSIX supplementary-group and capability set that a worker unit's process runs with — the mechanism by which it could reach a root-equivalent daemon socket, a setuid binary, or a privileged operation."),
+    ul(items: [
+      li(text: "The worker account: gunbc.fleet.fleet_posix_accounts::fleet_posix_worker_user. Its supplementary group list: gunbc.fleet.fleet_posix_accounts::fleet_posix_worker_supplementary_groups (the single group gunbc.fleet.fleet_posix_accounts::fleet_posix_worker_shared_group_name)."),
+      li(text: "Root-equivalent groups: gunbc.fleet.fleet_root_equivalent_groups::fleet_root_equivalent_group_names (docker, lxd, sudo, adm)."),
+      li(text: "Capability bounding set, NoNewPrivileges and RestrictSUIDSGID: all from gunbc.roadmap.dispatch_worker_unit_confinement::dispatch_worker_hardened_unit_settings (the EmptyCapabilityBoundingSet arm under UnitRunOnSystemManager, NoNewPrivilegesProperty, RestrictSUIDSGIDProperty)."),
+    ]),
+    p(text: "**Done when (all three must hold):**"),
+    ul(items: [
+      li(text: "The intersection of the worker's declared supplementary group list and the declared root-equivalent group list is empty. The negative case: a hand-modified supplementary group list containing \"docker\" makes the check fail."),
+      li(text: "The rendered hardened unit contains NoNewPrivileges=yes, RestrictSUIDSGID=yes, and (in SystemManager mode) EmptyCapabilityBoundingSet=yes; the stripped render does not contain them. The negative case: if the check passes on the stripped render, it does not measure the properties."),
+      li(text: "The rendered unit contains no PAM substring in any property assignment (no PAMName=, no PAMTasksMax=). The negative case: a hand-crafted unit with PAMName=su makes the check fail."),
+    ]),
+
+    h3(text: "2.4 Control-plane stores"),
+    p(text: "The durable records that the belt, dispatch system, and dashboard read to make decisions — if a worker can write them directly (bypassing the capability gate), it can forge dispatch facts, mint receipts, or rewrite the roadmap."),
+    ul(items: [
+      li(text: "Fabric event log: gunbc.fabric.fabric_event_log (the append-only event ledger) reached over the network via gunbc.fabric.fabric_storage_client::fabric_storage_binding (URL + HMAC key at gunbc.fabric.fabric_storage_state_location::fabric_state_key_host_path)."),
+      li(text: "Attempt state store: gunbc.roadmap.roadmap_attempt_state_store::attempt_state_directory_segment declares per-attempt directories (worker, wire, publication, verification, review, audit). The wire holds provider-events.jsonl.wire/."),
+      li(text: "Seat/slot stores: gunbc.compute.compute_attempt_slots_root::compute_attempt_slots declares the attempts member under the instance root."),
+      li(text: "Dashboard instance stores: gunbc.roadmap.roadmap_dashboard_instance::dashboard_instance_dispatch_attempt_state_root resolves the per-instance attempt-state root."),
+      li(text: "Capacity: gunbc.compute.host_capacity and gunbc.durable_cas_file_store (the CAS slot infrastructure). NOTE: gunbc.compute.compute_capacity_ledger does not exist as a module at the read head; see the finding named compute-capacity-ledger-absence in the findings section below."),
+    ]),
+    p(text: "**Done when (all three must hold):**"),
+    ul(items: [
+      li(text: "The rendered unit text does not contain the fabric HMAC key path (gunbc.fabric.fabric_storage_state_location::fabric_state_key_host_path), does not contain EnvironmentFile= pointing at it, and no Environment= line names the fabric storage URL from gunbc.fabric.fabric_storage_client::fabric_storage_binding. The negative case: a hand-crafted unit with Environment=FABRIC_URL=... or EnvironmentFile= naming the HMAC key path makes the check fail."),
+      li(text: "Every ReadWritePaths= entry is under the instance's own root (derived from gunbc.roadmap.roadmap_dashboard_instance::dashboard_instance_child applied to the instance's root). No entry names another instance's attempts member. The negative case: a hand-crafted handed set with a path under another instance's root makes the check fail."),
+      li(text: "The provider-events ledger absolute path (from gunbc.roadmap.roadmap_attempt_state_store::attempt_state_directory_segment for AttemptDirectoryWorker, joined with the file name for AttemptWorkerEvents) contains the instance's attempt-state root prefix and the attempt-key infix pattern from the directory naming. The negative case: a path that omits the attempt-key infix or instance-root prefix makes the check fail."),
+    ]),
+
+    h3(text: "2.5 Shared state"),
+    p(text: "Filesystem state that multiple attempts or instances share, where one worker's write could corrupt another's progress or forge a result the belt reads."),
+    ul(items: [
+      li(text: "The shared attempt group: gunbc.fleet.fleet_posix_accounts::fleet_posix_worker_shared_group_name (the group both the service user and gunbc-worker are members of)."),
+      li(text: "The instance worktree: derived from gunbc.roadmap.roadmap_dashboard_instance::dashboard_instance_child. For srv1 production the root is gunbc.host.host_layout::srv1_dispatch_worktree_root; for srv2 it lives under the operator-home preview root."),
+      li(text: "The event-carrier directory: gunbc.roadmap.roadmap_event_carrier_directory."),
+      li(text: "The spool queues: gunbc.host.host_layout::attempt_exit_spool_root, gunbc.host.host_layout::attempt_unit_spool_root, and gunbc.host.host_layout::publication_spool_root. The spool protocol is modeled by gunbc.spool_queue (the in_flight and stalled directories)."),
+    ]),
+    p(text: "**Done when (all three must hold):**"),
+    ul(items: [
+      li(text: "The rendered hardened unit contains UMask=0002 (from gunbc.roadmap.dispatch_worker_unit_confinement::dispatch_dedicated_worker_umask, emitted by gunbc.roadmap.dispatch_worker_unit_confinement::dispatch_worker_umask_properties); the stripped render does not. The negative case: if the check passes on the stripped render, it does not measure the property."),
+      li(text: "No ReadWritePaths= entry contains the event-carrier worktree path from gunbc.roadmap.roadmap_event_carrier_directory for the instance. The negative case: a hand-crafted unit with the carrier directory in ReadWritePaths= makes the check fail."),
+      li(text: "No ReadWritePaths= entry contains the spool in_flight segment under the instance root. The negative case: a path containing in_flight under the instance root makes the check fail."),
+    ]),
+
+    h2(text: "3. Lifting rule"),
+    p(text: "G0 is a conjunction gate: the operator lifts it only when ALL five state groups have every done-when condition met. The lifting table:"),
+    ul(items: [
+      li(text: "Operator home: both conditions in 2.1 must hold."),
+      li(text: "Credentials: all three conditions in 2.2 must hold."),
+      li(text: "Privilege groups: all three conditions in 2.3 must hold."),
+      li(text: "Control-plane stores: all three conditions in 2.4 must hold."),
+      li(text: "Shared state: all three conditions in 2.5 must hold."),
+    ]),
+    p(text: "ALL pass (13 conditions) -> the operator may lift G0. The lane may dispatch new autonomous workers subject to every other gate."),
+    p(text: "ANY single condition fails -> G0 stays closed. No partial lift is authorized."),
+    p(text: "A condition whose named negative case does not fail is VOID, not a pass (this plan's own stricter proposal atop gunbc.design_argument::fail_closed, which requires a discriminating input that goes red)."),
+    p(text: "G0's carrier, boundary, approach, displaced_cost, and handback fields remain DRAFT in gunbc.roadmap.roadmap_authority until the operator accepts this document (or a revision of it) as the reviewed contracts document."),
+
+    h2(text: "4. Findings for the operator (where the model does not pin down a named state)"),
+    p(text: "These are findings, not failures. The operator decides each."),
+    ul(items: [
+      li(text: "The operator-home boundary is a convention (gunbc.fleet.fleet_posix_accounts::fleet_posix_home_directory), not a readback. A host whose passwd entry disagrees is a host this row is wrong about. The operator should decide whether G0 requires an observed passwd readback or accepts the convention."),
+      li(text: "The fabric storage URL (gunbc.fabric.fabric_storage_client::fabric_storage_binding) may be a network address. The done-when condition proves the unit does not HAND the worker the URL; it does not prove the URL is unguessable from another source. The operator should decide whether unreachable means not handed to the worker or not reachable even if guessed."),
+      li(text: "The spool queue is shared-state by design. A worker that writes its result to its own provider-events ledger IS correctly participating. The condition proves it cannot skip ahead to in_flight; it does not prove it cannot write the outbox. The operator should confirm this is the intended boundary."),
+      li(text: "The per-attempt credential snapshot (gunbc.roadmap.roadmap_dispatch_actuator::dispatch_credential_snapshot_path_for_attempt) is BY DESIGN (F6: gunbc.roadmap.roadmap_authority factory-f6-scoped-worker-grants). The condition proves the snapshot is scoped to the attempt, not a custody row. The operator should confirm a correctly-scoped snapshot does not constitute reaching credentials for G0's purposes."),
+      li(text: "**[compute-capacity-ledger-absence]** The capacity ledger is referenced in F6's context as gunbc.compute.compute_capacity_ledger but no module at that path exists at the read head. Capacity is modeled in gunbc.compute.host_capacity and the CAS slot infrastructure. If G0's shared state includes the capacity ledger as a distinct subject, the operator should name the actual module path."),
+      li(text: "**[structural-not-executed-consumer]** The 13 done-when conditions are structural assertions on the rendered unit text from gunbc.roadmap.dispatch_worker_unit_confinement::dispatch_worker_unit_render and its inputs. gunbc.design_argument::fail_closed says a typecheck and a .contains() grep are not consumers. The stripped-render negative cases supply the discriminating input that goes red when the property is wrong. What is missing is the green-by-execution half: a real consumer that would fail if the property were absent. The compiler's parse and typecheck of the .dag carriers (gunbc.plan_registry::all_plans is the population the gate check consumes) is the consumer of the carrier's well-formedness, not of the rendered property. A stronger witness would boot the unit in a sandbox and attempt the access the property forbids, proving enforcement rather than declaration; that conflicts with G0's ban on live dispatch, so it would require a hermetic container (a systemd-in-a-container test, not a live dispatch). The operator should decide whether model-level structural proof is the sufficient evidence bar for G0, or whether a hermetic-enforcement witness is required alongside it."),
+      li(text: "**[srv2-root-inside-operator-home]** gunbc.roadmap.roadmap_dashboard_instance::srv2_dashboard_preview_root lives under /home/briansrls/.local/share/gunbc-dashboard-instances, which is inside the operator-home prefix. A worker's legitimate writable paths (its own attempt-state directory, its worktree) necessarily begin with the operator home prefix. The condition at 2.1 resolves this by scoping the prohibition to paths OUTSIDE the instance root. The operator should confirm: (a) this is the correct scoping (the instance root is the only legitimate path under the operator home a worker may write), or (b) srv2 should be excluded from G0's scope and the preview root moved outside operator home, or (c) a different resolution applies."),
+    ]),
+  ]
+}
+
+data contained_development_execution_g0_plan: Plan = Plan {
+  projection: PlanIsAuthorityOnly,
+  slug: "contained-development-execution-g0",
+  title: "G0 criteria: named states, unreachability conditions, and lifting rule",
+  body: contained_development_execution_g0_body(),
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "The operator has accepted this document (or a revision of it) as the reviewed contracts document, the G0 gate row in gunbc.roadmap.roadmap_authority carries a boundary drawn from it, and the gate is either lifted or retired to a ruling.") },
+}
