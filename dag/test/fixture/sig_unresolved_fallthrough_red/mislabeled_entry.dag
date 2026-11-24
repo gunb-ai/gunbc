@@ -1,0 +1,13 @@
+module test.fixture.sig_unresolved_fallthrough_red.mislabeled_entry
+
+import std.types { Int, List }
+import std.algebra { FreeMonoid, length }
+
+// A fixture that bare-calls the imported free function `length` with a deliberately
+// wrong argument label. If the sig-unresolved fallthrough is a real blind spot,
+// the method bridge accepts this call without checking the label against the
+// free function's declared parameter name (xs:).
+
+fn probe_mislabeled_length(xs: List<Int>) -> Int {
+  length(wrong_label: xs)
+}
