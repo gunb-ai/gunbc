@@ -60,15 +60,22 @@ import gunbc.ci.ci_runner_placement {
 import gunbc.fleet.fleet_enrollment { ExistingHostQuiescentReload }
 import gunbc.host.host_converge {
   BlindApply,
+  ContractedExternally,
   ConvergeKnob,
+  DerivedByUs,
   FleetConvergeHosts,
   FleetConvergeUnsound,
+  HostConverge,
+  HostFrontierAdmitted,
+  HostFrontierRefused,
+  OwnedByUs,
   RunnerSlice,
   SessionsSlice,
   SliceProperty,
   PerSlotMemoryCap,
   converge_hosts_of_plan,
   frontier_gate_host,
+  frontier_validate_knobs,
   session_knobs_for,
 }
 
@@ -152,11 +159,17 @@ test fn an_undeclared_artifact_refuses_before_anything_is_changed() -> Bool {
 }
 
 // Positive control on the same real route: every production host's artifacts
-// carry an agreed classification, so the frontier gate ADMITS each host.
-// Asserting hosts.length() equals the derived standings of the plan proves
-// admission is by the gate on every host: any gate refusal yields
-// FleetConvergeUnsound (not a shorter list), and a silent drop yields a
-// shorter list, so both go red here. Non-empty population required.
+// carry an agreed classification, so the frontier gate ADMITS each host --
+// and the ADMITTED verdict carries the three-way classification the node's
+// handback is (gunbc.design_argument::consumption: the class is read by the
+// gate's fold and asserted here, not decorative). Asserts, over the route's
+// own admitted hosts: hosts.length() equals the derived standings of the plan
+// (a gate refusal yields FleetConvergeUnsound and a silent drop a shorter
+// list, so both go red), each host's knobs pass the production gate with an
+// Admitted verdict whose classified list spans all three classes --
+// derived-by-us (slice/unit caps and drop-ins), owned-by-us (the pinned tree)
+// and contracted-externally (the codex runtime bundle) -- and the population
+// is non-empty.
 test fn a_fully_classified_inventory_admits() -> Bool {
   let plan = runner_deployment_plan()
   let derived_count = filter(plan.hosts, st => {
@@ -166,7 +179,22 @@ test fn a_fully_classified_inventory_admits() -> Bool {
     }
   }).length()
   match converge_hosts_of_plan(plan: plan) {
-    FleetConvergeHosts { hosts: hs } => hs.length() == derived_count && derived_count > 0
+    FleetConvergeHosts { hosts: hs } =>
+      hs.length() == derived_count
+        && derived_count > 0
+        && filter(hs, h => host_frontier_admits_all_classes(h: h)).length() == hs.length()
     FleetConvergeUnsound { reason: _ } => false
+  }
+}
+
+// Each route-produced host, put back through the production gate, must come
+// back Admitted with all three classes present among its classified artifacts.
+fn host_frontier_admits_all_classes(h: HostConverge) -> Bool {
+  match frontier_validate_knobs(knobs: h.knobs) {
+    HostFrontierRefused { artifact: _, cause: _ } => false
+    HostFrontierAdmitted { classified: c } =>
+      filter(c, a => match a.class { DerivedByUs => true OwnedByUs => false ContractedExternally => false }).length() > 0
+        && filter(c, a => match a.class { DerivedByUs => false OwnedByUs => true ContractedExternally => false }).length() > 0
+        && filter(c, a => match a.class { DerivedByUs => false OwnedByUs => false ContractedExternally => true }).length() > 0
   }
 }

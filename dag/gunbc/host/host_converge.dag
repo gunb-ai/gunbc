@@ -1092,7 +1092,7 @@ fn host_converge_of(h: RunnerHostDeployment, session_knobs: List<ConvergeKnob>, 
 fn frontier_gate_host(h: RunnerHostDeployment, session_knobs: List<ConvergeKnob>, backstop_knobs: List<ConvergeKnob>, hosts: List<HostConverge>) -> FleetConvergeAcc {
   let assembled = host_converge_of(h: h, session_knobs: session_knobs, backstop_knobs: backstop_knobs)
   match frontier_validate_knobs(knobs: assembled.knobs) {
-    HostFrontierAdmitted =>
+    HostFrontierAdmitted { classified: _ } =>
       FleetConvergeHosts { hosts: concat(hosts, [assembled]) }
     HostFrontierRefused { artifact: a, cause: c } =>
       FleetConvergeUnsound { reason: concat("frontier classification refused: ", concat(a, ": ", c)) }
@@ -1269,42 +1269,60 @@ fn frontier_classify_target(target: ConvergeTarget) -> FrontierClassification {
   }
 }
 
+// One machine artifact of a host as the gate reads it: the identity the
+// target carries, the kind the variant says it is, and the class the
+// written-down frontier agrees to. The admitting verdict below carries these
+// so the three-way classification is consumed, not decorative
+// (gunbc.design_argument::consumption); the closing witness asserts the
+// production route admits hosts whose artifacts span all three classes.
+type FrontierClassifiedHostArtifact {
+  identity: String
+  kind: FrontierArtifactKind
+  class: FrontierArtifactClass
+}
+
 // The verdict over a host's knob LIST, separate from the per-artifact
 // classification above. The refusing arm carries the offending artifact's
-// identity and why, read from the artifact itself; the admitting arm
-// fabricates nothing (gunbc.design_argument::fail_closed: no fabricated
-// default, every degradation typed and countable).
+// identity and why, read from the artifact itself; the admitting arm carries
+// what was classified and fabricates nothing
+// (gunbc.design_argument::fail_closed: no fabricated default, every
+// degradation typed and countable).
 type HostFrontierVerdict
-  = HostFrontierAdmitted
+  = HostFrontierAdmitted { classified: List<FrontierClassifiedHostArtifact> }
   | HostFrontierRefused { artifact: String, cause: String }
 
 // Production gate: the converge route calls this on every assembled host's
-// knobs before admitting the host into the converge plan. Each knob is
-// classified ONCE; the first unclassified artifact refuses, carrying its
-// identity and kind -- the refusing arm refuses, it never widens
-// (gunbc.design_argument::fail_closed; review 98111).
+// knobs before admitting the host into the converge plan. A fold over the
+// knobs that returns the verdict directly, holding the first refusal (no
+// predicate, no partial match -- the compiler checks every arm,
+// gunbc.design_argument::guarantee_ladder; review 98127). Each knob is
+// classified ONCE; the refusal carries the artifact's identity and kind and
+// refuses, never widens (gunbc.design_argument::fail_closed).
 fn frontier_validate_knobs(knobs: List<ConvergeKnob>) -> HostFrontierVerdict {
-  let classifications = map(knobs, k => frontier_classify_target(target: k.target))
-  let unclassified = filter(classifications, c => {
-    match c {
-      UnclassifiedArtifact { artifact: _, kind: _ } => true
-      Classified { artifact: _, kind: _, class: _ } => false
-    }
-  })
-  if unclassified.length() > 0 {
-    match unclassified[0] {
-      UnclassifiedArtifact { artifact: a, kind: kind } => HostFrontierRefused {
-        artifact: a,
-        cause: concat(
-          concat(
-            concat("this ", frontier_kind_text(k: kind)),
-            concat(" artifact (", a),
-          ),
-          ") is not in the written-down frontier classification for this machine-touching workflow; it refuses before any change is attempted",
-        ),
+  fold_list(
+    xs: knobs,
+    empty: HostFrontierAdmitted { classified: [] },
+    cons: fn(acc, k) {
+      match acc {
+        HostFrontierRefused { artifact: _, cause: _ } => acc
+        HostFrontierAdmitted { classified: c } =>
+          match frontier_classify_target(target: k.target) {
+            UnclassifiedArtifact { artifact: a, kind: kind } => HostFrontierRefused {
+              artifact: a,
+              cause: concat(
+                concat(
+                  concat("this ", frontier_kind_text(k: kind)),
+                  concat(" artifact (", a),
+                ),
+                ") is not in the written-down frontier classification for this machine-touching workflow; it refuses before any change is attempted",
+              ),
+            }
+            Classified { artifact: id, kind: kind, class: cls } =>
+              HostFrontierAdmitted {
+                classified: concat(c, [FrontierClassifiedHostArtifact { identity: id, kind: kind, class: cls }]),
+              }
+          }
       }
-    }
-  } else {
-    HostFrontierAdmitted
-  }
+    },
+  )
 }
