@@ -5198,16 +5198,32 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "ci-cost-floor-preparation-cut",
       owner: "ci-cost",
       carriers: carrier(path: "docs/design-rung-drops.md"),
-      line: ticket(t: fields(
+      line: ticket(t: updated(t: fields(
         headline: "Make the floor affordable enough to be a merge gate again",
         boundary: "Cut the required fold's PREPARATION cost until the floor fits the fleet, then put it back on the merge path. THE CLAIMS WERE NEVER THE EXPENSE -- claim execution is a small fraction of the floor's wall time while strict-preparation and reach probes dominate it. Re-derive that split from the phase lines a required-witnesses-floor run prints (gunbc.witness.witness_floor_workflow); THAT NO ENTRY POINT RE-DERIVES IT IS PART OF WHAT THIS NODE FIXES, which is why no figure is carried here. The two candidate constructions are reusing resolved-module and reach-probe results across runs, or scoping preparation to a diff's closure.",
         displaced_cost: "The required gate is currently a compiler build. The witness floor, namespace-wave-admission, generated-artifact, the regen fixed point and the parse sweep all left the merge path, so main can break for any of them while every required check stays green -- which it already has, within three hours of the cut. Every session pays that risk on every change.",
         first_slice: "Measure where preparation time goes at module grain, then land whichever of the two constructions the measurement supports. Restoring the gate is the second step and not this one.",
-        red_control: "A change that breaks a floor claim is refused on the revision that lands, at a whole-run cost the fleet can carry concurrently with the build lane.",
+        red_control: "Two halves, both executable today. (i) A planted break of a floor claim is refused at that revision, with the raw error, its locus and rc != 0, and the unmodified claim passes with rc = 0. (ii) The whole-run cost is re-derived from this node's own entry point and shown carryable alongside a build lane. The CI-enforcement sense, refused on the revision that LANDS on the required path, is the red_control of required-witness-floor-restored.",
         out_of_scope: "Re-emitting witnesses.yml from the old authority without the preparation repair, which restores the cost that caused the cut; and making the floor faster without returning it to the merge path.",
-        handback: "The preparation measurement WITH AN ENTRY POINT THAT RE-DERIVES IT rather than a figure quoted from a log, the landed construction, a required run that planned and executed the enrolled population on a landing revision, and the retirement of gunbc.rung_drop witness_floor_off_the_required_gate."
-      )),
+        handback: "The preparation measurement WITH AN ENTRY POINT THAT RE-DERIVES IT rather than a figure quoted from a log, the landed construction, and the two halves of the red control. Restoring the gate on the required path, and retiring gunbc.rung_drop witness_floor_off_the_required_gate, belong to required-witness-floor-restored."
+      ), on: "2026-11-23", note: "Split on royal-newt-240's finding, ruled by neat-badger-614: first_slice said restoring the gate is not this step while handback ended by requiring it. The restore-the-gate clauses of the handback, and the CI-enforcement sense of the red control, moved to required-witness-floor-restored.")),
       dispatch: dispatchable(),
+      parent: in_project(project: "ci-end-to-end-execution", contribution: "The required run is the factory verification half; a gap in what it counts, bills or reports is a gap in every landing it gates."),
+    ),
+    roadmap_node(
+      identity: "rn_6C2SB1F7B7N04QHTWQ98WNBV3N",
+      id: "required-witness-floor-restored",
+      owner: "ci-cost",
+      carriers: carrier(path: "dag/gunbc/rung_drop/v1_required_lanes_withdrawn.dag"),
+      line: ticket(t: fields(
+        headline: "The witness floor judges every landing revision on the required path again",
+        boundary: "Split out of ci-cost-floor-preparation-cut, which makes the floor affordable and does not restore it. This row is the restoration: the capability named by the restoration_trigger of gunbc.rung_drop v1_required_lanes_withdrawn, that on every landing revision a binary built from an emission of v2 judges the withdrawn population on the required path with a discriminating red, so that no member can regress with the required context green. It depends on ci-cost-floor-preparation-cut and on the rows that carry members of the trigger. Mapped member by member by crisp-eagle-244 at main 0f036da75041 (a reading of the plan file, not a measurement of the gate): member (1), every claim the floor folded executed or its subject deleted, is carried by required-check-named-witnesses-runs-no-claim-module, the claim-execution half; the trigger's census prerequisite, which the 2026-10-30 process ruling retired, has cc-evidence-to-consumers as its census-half row; member (3), every committed generated artifact compared with one emission of its authority, has a gate row, generated-artifact-gate-red-at-main, but NO ROW that states the member itself. GAPS, named and not given rows in this change: member (2), every module the source-root ingestion admits resolved by the native compiler on the required path within the required slot's memory_max, has NO ROW (native-frontier-required-lane puts the ratchet on every landing and does not judge that); member (4), a change to the seed's own sources not landing with the required context green unless a required step judged it (the stage0 mirrors, the lint, the v1 unit tests), has NO ROW; and member (1a), the local_repo_wet_schedule claims executed natively with their host effects bounded, has NO ROW. The rows required-lane-exit-on-refused-phase and required-floor-passes-with-a-failed-phase are under the operator's decision and are neither edited nor given an edge by this row. Nothing here is measured.",
+        displaced_cost: "The required gate stays a compiler build, so main can break a floor claim, a generated artifact or the seed's own sources while every required check is green, and every session pays that risk on every change.",
+        first_slice: "Take the restoration_trigger member by member, record which row carries each member and which has none, then restore the members that have a row, in dependency order after ci-cost-floor-preparation-cut.",
+        red_control: "OPEN: no red_at or green_at is measured. Red is a planted break of a floor claim that lands with the required context green. Green is that same planted break refused on the revision that lands, on the required path (not a manual or dispatched run), with the unmodified revision passing there, the run having planned and executed the enrolled population. Not a pair for gunbc.rung_drop witness_floor_off_the_required_gate to retire on until all four members hold.",
+        out_of_scope: "Returning any of the four withdrawn lanes or handing the corpus to the v1 interpreter; a native row that judges part of the population (it narrows the drop member by member and retires nothing); a manual or dispatched run off the required path; and inventing rows for members (2) and (4) in this change.",
+        handback: "A required run that planned and executed the enrolled population on a landing revision, the red and green arms of the red control on the required path, a row or a stated gap for every trigger member, and the retirement of gunbc.rung_drop witness_floor_off_the_required_gate."
+      )),
       parent: in_project(project: "ci-end-to-end-execution", contribution: "The required run is the factory verification half; a gap in what it counts, bills or reports is a gap in every landing it gates."),
     ),
     roadmap_node(
@@ -7070,6 +7086,10 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
 // centering plans, not a dependency, and the graph has no exclusion-edge vocabulary.
 fn declared_roadmap_edges() -> List<RoadmapEdge> {
   concat([
+    edge(child: "required-witness-floor-restored", parent: "ci-cost-floor-preparation-cut"),
+    edge(child: "required-witness-floor-restored", parent: "required-check-named-witnesses-runs-no-claim-module"),
+    edge(child: "required-witness-floor-restored", parent: "cc-evidence-to-consumers"),
+    edge(child: "required-witness-floor-restored", parent: "generated-artifact-gate-red-at-main"),
     edge(child: "claim-entrypoints-cutover", parent: "claim-result-contract"),
     edge(child: "dp-m3-subject-ref-resolved", parent: "extdeps-subject-ref-facts-host-census"),
     edge(child: "lab-converges-release-pair", parent: "lab-standings-track-main"),
