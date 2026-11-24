@@ -22,8 +22,11 @@ fn bad() -> HostLeg { LegAnswered { exit_code: 1, stdout: "", stderr: "refused" 
 
 data effective_ours: String = "port 22\nauthorizedkeysfile .ssh/authorized_keys .ssh/authorized_keys2 /etc/ssh/authorized_keys.%u\npasswordauthentication no\n"
 
-fn absent() -> HostLeg { LegAnswered { exit_code: 1, stdout: "", stderr: "" } }
-fn present() -> HostLeg { LegAnswered { exit_code: 0, stdout: "", stderr: "" } }
+// The elevated parent listing (`ls -1 -A`) COMPLETED (exit 0) and does NOT name the drop-in: genuinely absent.
+fn absent() -> HostLeg { LegAnswered { exit_code: 0, stdout: "00-base.conf\n", stderr: "" } }
+// The elevated parent listing COMPLETED (exit 0) and DOES name the drop-in by name: present. A DANGLING symlink
+// is named too (ls does not follow it), so it counts present, never absent.
+fn present() -> HostLeg { LegAnswered { exit_code: 0, stdout: "00-base.conf\n50-gunbc-boot-medium-reader.conf\n", stderr: "" } }
 // A genuinely ANSWERED leg with an explicit exit (e.g. a real ssh 255), and a leg the transport NEVER dispatched.
 fn answered(exit: Int, out: String, err: String) -> HostLeg { LegAnswered { exit_code: exit, stdout: out, stderr: err } }
 fn never(reason: String) -> HostLeg { LegNotDispatched { reason: reason } }
@@ -61,8 +64,7 @@ fn legs_with(overrides: List<LegOverride>) -> ExportHostReaderLegs {
     reload: fn() { answer(name: "reload", overrides: overrides, healthy: ok(stdout: "")) },
     fresh_login: fn() { answer(name: "fresh_login", overrides: overrides, healthy: ok(stdout: "")) },
     remove_drop_in: fn() { answer(name: "remove_drop_in", overrides: overrides, healthy: ok(stdout: "")) },
-    drop_in_exists: fn() { answer(name: "drop_in_exists", overrides: overrides, healthy: absent()) },
-    drop_in_is_link: fn() { answer(name: "drop_in_is_link", overrides: overrides, healthy: absent()) },
+    drop_in_listing: fn() { answer(name: "drop_in_listing", overrides: overrides, healthy: absent()) },
     rollback_reload: fn() { answer(name: "rollback_reload", overrides: overrides, healthy: ok(stdout: "")) },
     rollback_fresh_login: fn() { answer(name: "rollback_fresh_login", overrides: overrides, healthy: ok(stdout: "")) },
     effective_config_after_removal: fn() { answer(name: "effective_config_after_removal", overrides: overrides, healthy: ok(stdout: effective_without_ours)) },
@@ -145,18 +147,19 @@ test fn a_failed_fresh_login_rolls_back_through_a_confirmed_removal_and_a_second
     && stages(r: r) == concat(through_reload, ["fresh-login", "remove-drop-in", "drop-in-absent-readback", "reload", "fresh-login"])
 }
 
-// RED (side chat, HOLD 1): a removal that is not CONFIRMED means no second reload -- whether the drop-in
-// is still there, the readback is unknown (test's error, ssh's 255), a dangling link is left (test -e
-// false, test -L true), or rm itself exited 0 over a file still present.
+// RED (side chat, HOLD 1): a removal that is not CONFIRMED means no second reload -- whether the completed
+// parent listing still NAMES the drop-in (present, including a dangling link), the listing leg is unknown
+// (its error, ssh's 255), the listing leg was NEVER DISPATCHED, or rm itself exited 0 over a file the listing
+// still names. Only a completed listing that omits the entry confirms absence.
 test fn an_unconfirmed_removal_means_no_second_reload() -> Bool {
-  let still_there = run(overrides: [LegOverride { leg: "fresh_login", answer: bad() }, LegOverride { leg: "drop_in_exists", answer: present() }])
-  let unknown = run(overrides: [LegOverride { leg: "fresh_login", answer: bad() }, LegOverride { leg: "drop_in_exists", answer: answered(exit: 255, out: "", err: "ssh: connection closed") }])
-  let dangling = run(overrides: [LegOverride { leg: "fresh_login", answer: bad() }, LegOverride { leg: "drop_in_is_link", answer: present() }])
-  let rm_lied = run(overrides: [LegOverride { leg: "fresh_login", answer: bad() }, LegOverride { leg: "remove_drop_in", answer: ok(stdout: "") }, LegOverride { leg: "drop_in_exists", answer: present() }])
+  let still_there = run(overrides: [LegOverride { leg: "fresh_login", answer: bad() }, LegOverride { leg: "drop_in_listing", answer: present() }])
+  let unknown = run(overrides: [LegOverride { leg: "fresh_login", answer: bad() }, LegOverride { leg: "drop_in_listing", answer: answered(exit: 255, out: "", err: "ssh: connection closed") }])
+  let never_read = run(overrides: [LegOverride { leg: "fresh_login", answer: bad() }, LegOverride { leg: "drop_in_listing", answer: never(reason: "listing-never-dispatched-xyzzy") }])
+  let rm_lied = run(overrides: [LegOverride { leg: "fresh_login", answer: bad() }, LegOverride { leg: "remove_drop_in", answer: ok(stdout: "") }, LegOverride { leg: "drop_in_listing", answer: present() }])
   word(o: still_there.outcome) == "rollback-failed" && reloads(r: still_there) == 1
     && stages(r: still_there) == concat(through_reload, ["fresh-login", "remove-drop-in", "drop-in-absent-readback"])
     && word(o: unknown.outcome) == "rollback-failed" && reloads(r: unknown) == 1
-    && word(o: dangling.outcome) == "rollback-failed" && reloads(r: dangling) == 1
+    && word(o: never_read.outcome) == "rollback-failed" && reloads(r: never_read) == 1
     && word(o: rm_lied.outcome) == "rollback-failed" && reloads(r: rm_lied) == 1
 }
 
@@ -189,7 +192,7 @@ test fn an_uncertain_initial_reload_requires_the_readbacks_and_never_claims_unch
 
 // The uncertain arm reports what its readbacks found, and stays loud when they are bad.
 test fn an_uncertain_reload_reports_a_failed_login_and_an_unconfirmed_removal() -> Bool {
-  let r = run(overrides: [LegOverride { leg: "reload", answer: bad() }, LegOverride { leg: "fresh_login", answer: bad() }, LegOverride { leg: "drop_in_exists", answer: present() }, LegOverride { leg: "effective_config_after_removal", answer: ok(stdout: effective_ours) }])
+  let r = run(overrides: [LegOverride { leg: "reload", answer: bad() }, LegOverride { leg: "fresh_login", answer: bad() }, LegOverride { leg: "drop_in_listing", answer: present() }, LegOverride { leg: "effective_config_after_removal", answer: ok(stdout: effective_ours) }])
   let text = render_export_host_reader_run(r: r)
   word(o: r.outcome) == "reload-uncertain" && reloads(r: r) == 1
     && string_contains(s: text, pattern: "login FAILED")
@@ -250,7 +253,7 @@ test fn a_never_dispatched_reload_withdraws_rather_than_claiming_reload_uncertai
 // exit 1, this would flip to "confirmed absent and sshd was not reloaded" -- which is exactly the red.
 test fn a_never_dispatched_removal_readback_is_never_confirmed_absent() -> Bool {
   let r = run(overrides: [LegOverride { leg: "test_config", answer: bad() },
-                          LegOverride { leg: "drop_in_exists", answer: never(reason: "readback-transport-refused-xyzzy") }])
+                          LegOverride { leg: "drop_in_listing", answer: never(reason: "readback-transport-refused-xyzzy") }])
   let d = cause_of(o: r.outcome)
   word(o: r.outcome) == "refused"
     && string_contains(s: d, pattern: "NOT confirmed absent")
@@ -264,9 +267,9 @@ test fn a_never_dispatched_removal_readback_is_never_confirmed_absent() -> Bool 
 // LegAnswered{exit_code:255}) turns the never-dispatched run red on the final assertion.
 test fn a_real_answered_255_stays_an_answered_exit_distinct_from_never_dispatched() -> Bool {
   let real = run(overrides: [LegOverride { leg: "test_config", answer: bad() },
-                             LegOverride { leg: "drop_in_exists", answer: answered(exit: 255, out: "", err: "ssh-remote-hung-up-xyzzy") }])
+                             LegOverride { leg: "drop_in_listing", answer: answered(exit: 255, out: "", err: "ssh-remote-hung-up-xyzzy") }])
   let nd   = run(overrides: [LegOverride { leg: "test_config", answer: bad() },
-                             LegOverride { leg: "drop_in_exists", answer: never(reason: "dropin-never-dispatched-xyzzy") }])
+                             LegOverride { leg: "drop_in_listing", answer: never(reason: "dropin-never-dispatched-xyzzy") }])
   let dr = cause_of(o: real.outcome)
   let dn = cause_of(o: nd.outcome)
   word(o: real.outcome) == "refused" && word(o: nd.outcome) == "refused"
@@ -296,36 +299,35 @@ test fn an_overran_initial_reload_runs_the_readbacks_and_never_says_not_reloaded
     && !string_contains(s: text, pattern: "unchanged")
 }
 
-// CONTROL (reviewer, Blocker 2): both absence readbacks run under `sudo -n`, which exits 1 itself when it
-// REFUSES elevation -- the same exit a genuine "file absent" gives. Two sudo refusals must NOT be read as the
-// drop-in being absent (a refusal to elevate says nothing about the file). The removal stays unconfirmed, the
-// rollback FAILS loudly, and NO second reload runs. Red on the pre-fix readback_absent that read a bare exit-1
-// as absent: it would have confirmed a phantom absence, done a second reload, and could report rolled-back.
+// CONTROL (reviewer, Blocker 2): both absence reads are elevated, and an elevated read can be DENIED by sudo
+// policy WITHOUT the "sudo:" word -- "Sorry, user ... is not allowed to execute ..." -- and still exit 1, the
+// same exit a genuine "absent" gave the OLD readback. Under the listing model, absence is claimed ONLY on a
+// listing that COMPLETED (exit 0); an exit-1 policy denial establishes nothing, so the removal stays
+// unconfirmed, the rollback FAILS loudly, and NO second reload runs. Red on the pre-fix readback_absent that
+// read a bare exit-1 as absent: it would have confirmed a phantom absence, done a second reload, and could
+// report rolled back. (Named against the pre-fix revision, not "current production".)
 test fn a_rollback_with_sudo_refusal_on_both_reads_fails_without_a_second_reload() -> Bool {
-  let sudo_denied = answered(exit: 1, out: "", err: "sudo: a terminal is required to read the password")
+  let policy_denied = answered(exit: 1, out: "", err: "Sorry, user deploy is not allowed to execute '/usr/bin/ls -1 -A -- /etc/ssh/sshd_config.d' as root")
   let r = run(overrides: [
     LegOverride { leg: "fresh_login", answer: bad() },
     LegOverride { leg: "remove_drop_in", answer: ok(stdout: "") },
-    LegOverride { leg: "drop_in_exists", answer: sudo_denied },
-    LegOverride { leg: "drop_in_is_link", answer: sudo_denied }])
+    LegOverride { leg: "drop_in_listing", answer: policy_denied }])
   let text = render_export_host_reader_run(r: r)
   word(o: r.outcome) == "rollback-failed"
     && reloads(r: r) == 1
     && string_contains(s: text, pattern: "NOT confirmed absent")
-    && string_contains(s: text, pattern: "sudo:")
+    && string_contains(s: text, pattern: "is not allowed to execute")
     && !string_contains(s: text, pattern: "rolled back")
 }
 
-// CONTROL (reviewer, Blocker 2 positive): the sudo disambiguation must not swallow a genuine negative read.
-// A removal whose rm reply was never dispatched is still CONFIRMED ABSENT when both reads answer validly
-// (exit 1, no sudo refusal) -- the rollback reloads and reports rolled back. Guards the absence guarantee the
-// disambiguation could otherwise over-block.
+// CONTROL (reviewer, Blocker 2 positive): a removal whose rm reply was never dispatched is still CONFIRMED
+// ABSENT when the elevated listing COMPLETED (exit 0) and does not name the entry -- the rollback reloads and
+// reports rolled back. Guards the absence guarantee the disambiguation could otherwise over-block.
 test fn an_unobserved_removal_is_still_confirmed_absent_by_valid_reads() -> Bool {
   let r = run(overrides: [
     LegOverride { leg: "fresh_login", answer: bad() },
     LegOverride { leg: "remove_drop_in", answer: never(reason: "rm-never-dispatched-xyzzy") },
-    LegOverride { leg: "drop_in_exists", answer: absent() },
-    LegOverride { leg: "drop_in_is_link", answer: absent() }])
+    LegOverride { leg: "drop_in_listing", answer: absent() }])
   word(o: r.outcome) == "rolled-back"
     && reloads(r: r) == 2
 }

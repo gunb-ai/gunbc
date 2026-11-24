@@ -10,7 +10,7 @@ import extdeps.ssh.keys { authorized_key_entry_line }
 import extdeps.ssh.openssh_server_commands { sshd_test_config_argv, sshd_test_config_with_option_argv, sshd_effective_config_argv, sshd_effective_config_value }
 import extdeps.systemd.systemctl { systemctl_reload_unit_argv }
 import extdeps.tools.gnu_coreutils { rm_force_command }
-import extdeps.posix.test_utility { test_exists_command, test_symbolic_link_command }
+import gunbc.live_deploy.member_observe { path_parent, path_basename, parent_listing_argv, listing_contains_entry }
 import gunbc.typed_remote_file_write { RemoteFileModeOwnerReadWriteWorldRead, NoValidation }
 import gunbc.typed_argv_exec { TypedArgvExecOutcome, typed_argv_exec_over_fleet_ssh_fresh_connection }
 import gunbc.executor_privileged_operation { EnsureSystemAccount, executor_privileged_operation_elevated_argv }
@@ -129,8 +129,7 @@ type ExportHostReaderLegs {
   reload: fn() -> HostLeg
   fresh_login: fn() -> HostLeg
   remove_drop_in: fn() -> HostLeg
-  drop_in_exists: fn() -> HostLeg
-  drop_in_is_link: fn() -> HostLeg
+  drop_in_listing: fn() -> HostLeg
   rollback_reload: fn() -> HostLeg
   rollback_fresh_login: fn() -> HostLeg
   effective_config_after_removal: fn() -> HostLeg
@@ -161,10 +160,15 @@ fn refused_at(stages: List<NonEmptyStr>, stage: NonEmptyStr, cause: String) -> E
   ExportHostReaderRun { outcome: ReaderRowsRefused { stage: stage, cause: cause }, stages: stages }
 }
 
-// A REMOVAL IS CLAIMED ONLY ON A READBACK. rm -f exiting 0 is not the fact; the fact is that nothing is at
-// the drop-in's path: `test -e` (which follows a link) AND `test -L` (the link itself, so a dangling link,
-// which sshd's Include would still try to open, is not read as absent) each answer exactly 1, POSIX test's
-// "false". 0 is present; anything else (>1 is test's error, 255 is ssh's) is unknown, never absent.
+// A REMOVAL IS CLAIMED ONLY ON A SUCCESSFUL, ELEVATED PARENT LISTING. rm -f exiting 0 is not the fact; the
+// fact is that the drop-in's PARENT directory was enumerated by an elevated `ls -1 -A` (exit 0) that does NOT
+// name the entry. That exit 0 is AFFIRMATIVE EVIDENCE THE ELEVATED READ COMPLETED: `sudo -n` exiting 1 for its
+// OWN policy refusal -- with or without its "sudo:" word -- never enumerates the parent, so it establishes
+// nothing and reads UNCONFIRMED, never absent. This is the fail_closed rule (gunbc.design_argument::fail_closed):
+// no plausible absence is fabricated for a read that did not run. A dangling symlink still counts as PRESENT,
+// because `ls -1 -A` names the link itself without following it. A leg never dispatched, or dispatched with no
+// answer, confirms nothing. The listing argv and the membership read are the SHARED AUTHORITY in
+// gunbc.live_deploy.member_observe (parent_listing_argv, listing_contains_entry) -- not a second copy.
 type DropInRemoval
   = DropInAbsentConfirmed
   | DropInRemovalUnconfirmed { detail: String }
@@ -174,23 +178,24 @@ type DropInRemovalRun {
   stages: List<NonEmptyStr>
 }
 
-// A readback leg confirms ABSENCE only when it ANSWERED exactly 1. A leg the transport never dispatched has
-// no exit code to read and can confirm nothing: it is never treated as absent.
+// A listing leg confirms ABSENCE only when the elevated `ls` COMPLETED (exit 0) and did not name the entry.
+// Any other leg -- a never-dispatched transport, a dispatched-but-unanswered leg, or an `ls` that exited
+// nonzero (including `sudo -n`'s own policy refusal) -- confirms nothing and is never read as absent.
 fn readback_absent(a: HostLeg) -> Bool {
   match a {
     LegNotDispatched { reason: _ } => false
     LegUnanswered { cause: _ } => false
-    LegAnswered { exit_code: ec, stdout: _, stderr: s } => ec == 1 && !elevated_read_refused_elevation(stderr: s)
+    LegAnswered { exit_code: ec, stdout: out, stderr: s } =>
+      ec == 0 && !elevated_read_refused_elevation(stderr: s) && !listing_contains_entry(stdout: out, name: path_basename(path: export_host_reader_drop_in_path as String))
   }
 }
 
 fn remove_drop_in_confirmed(legs: ExportHostReaderLegs, stages: List<NonEmptyStr>) -> DropInRemovalRun {
   let removed = leg(f: legs.remove_drop_in)
-  let exists = leg(f: legs.drop_in_exists)
-  let link = leg(f: legs.drop_in_is_link)
+  let listing = leg(f: legs.drop_in_listing)
   let s2 = concat(stages, ["remove-drop-in" as NonEmptyStr, "drop-in-absent-readback" as NonEmptyStr])
-  let removal = if readback_absent(a: exists) && readback_absent(a: link) { DropInAbsentConfirmed } else {
-    DropInRemovalUnconfirmed { detail: join(["rm ", answer_text(a: removed), "; test -e ", answer_text(a: exists), "; test -L ", answer_text(a: link)], "") }
+  let removal = if readback_absent(a: listing) { DropInAbsentConfirmed } else {
+    DropInRemovalUnconfirmed { detail: join(["rm ", answer_text(a: removed), "; parent listing ", answer_text(a: listing)], "") }
   }
   DropInRemovalRun { removal: removal, stages: s2 }
 }
@@ -474,8 +479,7 @@ fn export_host_reader_legs(subject: FleetHostFileSubject, context: FleetSshExecu
     reload: fn() { reload_answer(subject: subject, context: context) },
     fresh_login: fn() { fresh_login_answer(subject: subject, context: context) },
     remove_drop_in: fn() { elevated(subject: subject, context: context, argv: argv_words(command: rm_force_command(path: export_host_reader_drop_in_path as String))) },
-    drop_in_exists: fn() { elevated(subject: subject, context: context, argv: argv_words(command: test_exists_command(path: export_host_reader_drop_in_path as String))) },
-    drop_in_is_link: fn() { elevated(subject: subject, context: context, argv: argv_words(command: test_symbolic_link_command(path: export_host_reader_drop_in_path as String))) },
+    drop_in_listing: fn() { elevated(subject: subject, context: context, argv: parent_listing_argv(parent: path_parent(path: export_host_reader_drop_in_path as String))) },
     rollback_reload: fn() { reload_answer(subject: subject, context: context) },
     rollback_fresh_login: fn() { fresh_login_answer(subject: subject, context: context) },
     effective_config_after_removal: fn() { effective_config_answer(subject: subject, context: context) },
