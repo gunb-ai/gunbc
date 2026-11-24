@@ -8,15 +8,14 @@ module test.claim.gate668_value_disposition_prodr
 
 import std.types { String, Bool }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.diagnostic { Accepted, Outcome, Rejected }
-import v2.std.node { symbol_lexeme }
+import std.algebra { Cons, Empty }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_fatal_reason }
 import v2.std.text { String }
 import v2.std.artifact { Artifact, SourceFile }
 import v2.std.cross_tree.import_model { V2Tree }
 import v2.compiler.resolve { ResolvedTree }
 import v2.compiler.name_resolve { Admission, ResolutionSubject }
-import v2.compiler.program_assembly { assemble_program_from_ingest }
+import v2.compiler.program_assembly { PreparedLanguage, assemble_program_from_prepared_ingest, prepare_language }
 import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
 import v2.extdeps.languages.dag { dag_language_model }
 import extdeps.communication.medium { Lossless, Medium }
@@ -66,8 +65,18 @@ fn prod_admission() -> Admission {
   }
 }
 
+// MIRROR: src/v2/test/claim/type_param_binder_frame.dag:127-141 (tpb_language + tpb_assemble_over):
+// assemble is dominated by dag_language_model(), so the language is prepared ONCE as a data and
+// the per-claim route goes through assemble_program_from_prepared_ingest.
+data prod_language: Outcome<PreparedLanguage> = prepare_language(lm: dag_language_model())
+
 fn prod_assemble(src: String) -> Outcome<ResolvedTree> {
-  assemble_program_from_ingest(ingest: prod_ingest_for(src: src), admission: prod_admission(), lm: dag_language_model())
+  match prod_language {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: prep, diagnostics: _ } =>
+      assemble_program_from_prepared_ingest(
+        ingest: prod_ingest_for(src: src), admission: prod_admission(), prep: prep)
+  }
 }
 
 fn prod_accepted(src: String) -> Bool {
@@ -84,11 +93,16 @@ fn prod_refused(src: String) -> Bool {
   }
 }
 
+// MIRROR: tpb_refuses_with at src/v2/test/claim/type_param_binder_frame.dag:161-166 --
+// diagnostics_fatal_reason(d: d) == reason. The earlier ds.head.reason destructure was the
+// :167:13 defect: Rejected carries NonEmptyDiagnostics (a RECORD { head: Diagnostic, tail: List }),
+// not FreeMonoid -- src/v2/std/diagnostic.dag:89-91, :~296; and reason lives on Diagnostic, not the
+// record. The accessor is the corpus route (src/v2/std/diagnostic.dag:303).
 fn prod_refused_precedes(src: String) -> Bool {
   match prod_assemble(src: src) {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: ds } =>
-      symbol_lexeme(sym: ds.head.reason) == "body_lowering_reason_statement_precedes_without_binding"
+    Rejected { diagnostics: d } =>
+      diagnostics_fatal_reason(d: d) == ^body_lowering_reason_statement_precedes_without_binding
   }
 }
 
@@ -152,20 +166,25 @@ test fn vd_p_fld_accepted_holds() -> Bool { prod_accepted(p_fld_src) }
 test fn vd_p_fld_refused_holds() -> Bool { prod_refused(p_fld_src) }
 test fn vd_p_fld_precedes_holds() -> Bool { prod_refused_precedes(p_fld_src) }
 
-// EXPLICIT DISCARD OF AN EFFECTFUL/FAILING OPERATION. No effect declarations exist in the .dag
-// grammar today (grep evidence: std.effect_grant is a harness-grant module; ExecutionMode is
-// witness-harness treatment), so "effectful" here = an operation whose evaluation refuses
-// (projection head on Empty). Two cells: static acceptance, and a forcing probe -- if the
-// discarded failing operation's failure surfaces at witness evaluation, this cell FAILS with a
-// diagnostic (failure preserved); if it PASSes, the discard did not force (stated finding).
-data p_lue_src: String = "module p\n\nfn get_head(xs: List<Int>) -> Int { xs.head }\n\nfn f(n: Int) -> Int {\n  let _ = get_head(Empty)\n  n\n}\n"
+// EXPLICIT DISCARD OF AN EFFECTFUL/FAILING OPERATION -- OPERATIONALIZATION, not the criteria clause.
+// No effect declarations exist in the .dag grammar today (std.effect_grant is harness-grant;
+// ExecutionMode is witness-harness treatment), and no eval-forcing refusal expressible without
+// poisoning the module's closure diagnostics (unbound module-level code fails the whole resolve,
+// proven by this grid's first launch), so "failing op" = an op that fails the acceptance path
+// (unbound symbol, reason from tpb's measured red: resolve_reason_unbound_symbol). The discard
+// must NOT launder the failure: the module still refuses, with the failure's own reason. Eval-time
+// forcing is UNMEASURED in .dag as written -- carried to the escalation's effect question.
+data p_lue_fail_src: String = "module p\n\nfn f(n: Int) -> Int {\n  let _ = missing_op(n)\n  n\n}\n"
 
-test fn vd_p_lue_accepted_holds() -> Bool { prod_accepted(p_lue_src) }
+test fn vd_p_lue_total_discard_accepted_holds() -> Bool { prod_accepted(p_lu_src) }
 
-test fn vd_p_lue_witness_discard_forced_holds() -> Bool {
-  let xs: List<Int> = Empty
-  let _ = xs.head
-  true
+test fn vd_p_lue_failing_discard_refused_holds() -> Bool { prod_refused(p_lue_fail_src) }
+
+test fn vd_p_lue_failing_discard_reason_holds() -> Bool {
+  match prod_assemble(p_lue_fail_src) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => diagnostics_fatal_reason(d: d) == ^resolve_reason_unbound_symbol
+  }
 }
 
 // POSITIVE CONTROL: tail value consumed by its enclosing context (criteria retained control).
