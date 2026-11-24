@@ -240,9 +240,18 @@ fn absent_under(path: String, parent: String, parent_reading: PathExistenceReadi
 // so refusing it at run time would be a second representation of a constraint the model can simply
 // carry: `AncestorNotSearchable` cannot be written without the entry reading that settles it, and
 // `AncestorSearchable` cannot carry one at all (gunbc.design_argument::fail_closed section 5).
+//
+// THE TWO UNREADABLE ALTERNATIVES ARE SIBLINGS, AND EACH ONE IS ABOUT A DIFFERENT PROBE. `test -x`
+// unanswered and `test -L` unanswered are not the same event: the first is asked of every level before
+// anything else is, the second is asked only of a level that already answered `-x` and `-d` and has to say
+// whether it is a link. A refusal that names `-x` about a level whose `-x` answered cleanly is not
+// conservative, it is false, and an operator following it goes looking at the wrong probe. So each unreadable
+// case carries its own reason and the law below words each one; a driver that found a probe unreadable picks
+// the alternative that names the probe it actually asked.
 type AncestorSearchReading
   = AncestorSearchable
   | AncestorSearchUnreadable { reason: NonEmptyStr }
+  | AncestorLinkReadingUnreadable { reason: NonEmptyStr }
   | AncestorNotADirectory { cause: AncestorNotADirectoryCause }
   | AncestorNotSearchable { entry: PathExistenceReading }
 
@@ -288,6 +297,21 @@ fn ancestor_walk_step(path: String, probe: AncestorExistenceProbe) -> AncestorWa
             reason: join([
               "`test -x ", ancestor, "` could not be read while establishing the absence of ", path,
               " (", r as String, "), so the path's absence is not established",
+            ], "") as NonEmptyStr,
+          }
+        // A level `test -x` AND `test -d` answered for, whose LINK probe could not be read. It is not the
+        // `-x` failure the alternative above describes, and saying so would send the operator to a probe
+        // that answered cleanly: what is missing is whether the level is a plain directory or a link
+        // resolving elsewhere, and a level that resolves elsewhere cannot vouch for what lives under this
+        // name -- so the walk refuses, naming the probe that actually failed.
+        AncestorLinkReadingUnreadable { reason: r } =>
+          AncestorRefuses {
+            reason: join([
+              "`test -L ", ancestor, "` could not be read while establishing the absence of ", path,
+              ": `test -x` and `test -d` both answered for the level, so it is present and a directory, but",
+              " whether it is a plain directory or a LINK answering for what it points at was not answered,",
+              " and a level that resolves elsewhere cannot vouch for what lives under this name (",
+              r as String, "), so the path's absence is not established",
             ], "") as NonEmptyStr,
           }
         AncestorNotADirectory { cause: cause } =>

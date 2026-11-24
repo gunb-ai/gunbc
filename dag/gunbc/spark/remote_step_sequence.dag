@@ -48,7 +48,7 @@ fn run_remote_operation(
       }
     RemoteFileBytes { write: w, mode: m } =>
       match transport {
-        FleetSsh { target: t, context: ctx } =>
+        FleetSsh { target: t, context: ctx, kind: _ } =>
           RemoteFileExecution {
             outcome: converge_typed_remote_file(
               target: t,
