@@ -1,0 +1,547 @@
+module test.claim.floor_grandfathered_roster_completeness_witness
+
+// THE WITNESSES FOR THE POPULATION THE GRANDFATHERED LIST WAS DRAWN FROM
+// (roadmap node floor-ceiling-roster-cut-completeness, rn_3PM7CFJ2XQ8VZ5KDR4HB9TNW6L).
+//
+// Every arm of the node's red_control is witnessed HERE, in BOTH directions: planted so it refuses,
+// and planted so it admits. That discipline is the point of the module rather than a courtesy --
+// gunbc.design_argument::fail_closed calls a refusal that fires no "safety": a verdict that only ever
+// admits proves nothing about the population it claims to check, and a verdict that only ever refuses
+// proves nothing either. Each RED below is paired with the CONTROL that differs from it in exactly one
+// field.
+//
+// FIXTURES WHERE A FIXTURE DISCRIMINATES, LIVE DATA WHERE IT DOES NOT. roster_population_adoption_verdict
+// takes the report, the prefix sum, the row count and the first missing identity as PARAMETERS -- the
+// same choice v2.workflow.floor_grandfathered_roster already made for roster_change_verdict -- so the
+// four arms are exercised at three-row scale instead of at a 4,150-row fold, and the fold the module
+// does pay for is the one the point cannot be made without: looking the named completeness rows up in
+// the chunk list the floor actually consults.
+//
+// THE PARAMETERS ARE NOT HOW THE LIVE ROSTER IS JUDGED. For that there is
+// floor_grandfathered_roster_adoption(), a production fold in the carrier that takes NO arguments and
+// supplies the live population record, the live per-prefix rows, the live row count and the live join
+// over the live chunks. The claims that speak about THIS roster call it, so the verdict has a consumer
+// that is not a test assembling its own inputs (review 98219, gunbc.design_argument::consumption).
+
+import v2.std.integer { Int, int_add, int_eq, int_gt }
+import v2.std.text { String }
+import std.types { NonEmptyStr, List }
+import std.optional { Optional, Present, Absent }
+import std.measure { EvalStepCount, eval_step_count_value }
+import std.algebra { Cons, Empty, length }
+import v2.workflow.floor_grandfathered_roster {
+  GrandfatheredPopulationReport,
+  RosterPopulationAdoption, RosterPopulationAdmitted, RefusedPullRequestRun, RefusedIncompleteRun,
+  RefusedCheckMissingFromRoster, RefusedRosterCoversWholeCorpus,
+  floor_grandfathered_population, floor_grandfathered_population_prefix_total,
+  floor_grandfathered_completeness_probes,
+  roster_population_adoption_verdict, roster_population_adoption_admitted,
+  roster_population_adoption_missing_identity, first_check_missing_from_roster,
+  population_sites_total, population_planned_total, population_declined_total,
+  population_source, population_reach, population_standing,
+  floor_grandfathered_chunks, grandfathered_in_chunks, removal_withdraws, floor_grandfathered_removals,
+  floor_grandfathered_cut_size,
+  PopulationSource, FullRoutedPopulationRun, PullRequestRun,
+  PopulationReach, ReachedWholeRoutedPopulation, ReachedLessThanWholeRoutedPopulation,
+  floor_grandfathered_at_cut_group_00, floor_grandfathered_at_cut_group_01,
+  floor_grandfathered_at_cut_group_02, floor_grandfathered_at_cut_group_03,
+  floor_grandfathered_at_cut_group_04, floor_grandfathered_at_cut_group_05,
+  floor_grandfathered_at_cut_group_06, floor_grandfathered_at_cut_group_07,
+  floor_grandfathered_at_cut_group_08, floor_grandfathered_at_cut_group_09,
+  floor_grandfathered_at_cut_rows, floor_grandfathered_recovered_rows,
+  floor_grandfathered_at_cut_row_total, floor_grandfathered_recovered_row_total,
+  floor_grandfathered_recovered_region, first_recovered_row_divergence,
+  floor_grandfathered_roster_adoption,
+  floor_grandfathered_first_missing_at_cut_check,
+}
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited, cited_figure_read_obligation }
+import v2.workflow.required_floor {
+  ClaimCeilingTier, GrandfatheredTier, NewWitnessTier,
+  claim_ceiling_tier, claim_ceiling_eval_step_budget, claim_eval_step_budget_for_identity,
+}
+
+// THE REPORT, AS A PARAMETER. Every witness that speaks about a REPORT rather than about THIS roster
+// builds one of these rather than mutating the shared record, so no arm can be demonstrated by editing
+// the authority it is supposed to judge. The source and the reach are constructor arguments, which is
+// what lets a pull request run be planted at all: there is no string spelling to get right.
+fn fixture_report(
+  source: PopulationSource,
+  reach: PopulationReach,
+  sites: Int,
+  planned: Int,
+  declined: Int,
+) -> GrandfatheredPopulationReport {
+  GrandfatheredPopulationReport {
+    producer: "fixture" as NonEmptyStr,
+    run_identity: "fixture" as NonEmptyStr,
+    at_sha: "0000000000000000000000000000000000000000" as NonEmptyStr,
+    source: source,
+    reach: reach,
+    standing: TranscribedUncited { read_obligation: "fixture: no figure here is read for a fact about the corpus" as NonEmptyStr },
+    sites_total: sites,
+    planned_total: planned,
+    declined_long_module: declined,
+    declined_fixture_member: 0,
+    declined_cost_debt: 0,
+    declined_outside_required_gate: 0,
+  }
+}
+
+// A report that is admissible in every respect: a full routed population, arithmetic that closes,
+// no missing identity, and a row count below the corpus. Every RED below is ONE FIELD away from
+// this, and the CONTROL next to each RED is this report itself.
+fn admissible_report() -> GrandfatheredPopulationReport {
+  fixture_report(
+    source: FullRoutedPopulationRun { roots: "dag/ + src/v2/" as NonEmptyStr },
+    reach: ReachedWholeRoutedPopulation,
+    sites: 100, planned: 60, declined: 40,
+  )
+}
+
+fn fixture_chunks_three() -> List<List<String>> {
+  Cons {
+    head: Cons { head: "m.a", tail: Cons { head: "m.b", tail: Cons { head: "m.c", tail: Empty {} } } },
+    tail: Empty {},
+  }
+}
+
+fn fixture_rows_three() -> List<String> {
+  Cons { head: "m.a", tail: Cons { head: "m.b", tail: Cons { head: "m.c", tail: Empty {} } } }
+}
+
+// ── THE LIVE REPORT, AS PRODUCED ───────────────────────────────────────────────────────────
+//
+// The arithmetic the producer printed has to close in BOTH directions before the list is adoptable:
+// the per-prefix rows sum to the planned total, and the planned total plus the four declined arms
+// equals the site census. A run that stopped early reported a self-consistent planned total once
+// already in this file's history, which is why closing is checked twice rather than once.
+test fn the_producer_report_closes_in_both_directions() -> Bool {
+  int_eq(a: floor_grandfathered_population_prefix_total(), b: population_planned_total(report: floor_grandfathered_population))
+    && int_eq(
+         a: int_add(a: population_planned_total(report: floor_grandfathered_population),
+                    b: population_declined_total(report: floor_grandfathered_population)),
+         b: population_sites_total(report: floor_grandfathered_population),
+       )
+    && (match population_reach(report: floor_grandfathered_population) {
+         ReachedWholeRoutedPopulation => true
+         ReachedLessThanWholeRoutedPopulation { reached_sites: _ } => false
+       })
+    && int_gt(a: population_sites_total(report: floor_grandfathered_population),
+              b: population_planned_total(report: floor_grandfathered_population))
+}
+
+// THE IDENTITY-GRAIN COVERAGE CLAIM. The named completeness rows are looked up in the chunk list the
+// floor consults, one at a time, and the descent stops at the first miss. RED if any row the
+// population names is absent from the list -- and unlike a count comparison, a miss NAMED ITSELF.
+test fn the_named_completeness_rows_are_held_by_the_list() -> Bool {
+  match first_check_missing_from_roster(rows: floor_grandfathered_completeness_probes, chunks: floor_grandfathered_chunks()) {
+    Absent {} => true
+    Present { value: v } => false
+  }
+}
+
+// ── ARM 1: A LIST DRAWN FROM A RUN THAT REACHED LESS THAN THE WHOLE ROUTED POPULATION REFUSES ──
+//
+// RED (a): the run says so itself, in the constructor it chose. Everything else is admissible, and the
+// list is not adopted.
+test fn a_run_that_reported_reaching_less_than_the_whole_population_refuses() -> Bool {
+  match roster_population_adoption_verdict(
+    report: fixture_report(
+      source: FullRoutedPopulationRun { roots: "dag/ + src/v2/" as NonEmptyStr },
+      reach: ReachedLessThanWholeRoutedPopulation { reached_sites: 40 },
+      sites: 100, planned: 60, declined: 40,
+    ),
+    prefix_total: 60,
+    roster_rows: 60,
+    first_missing: Absent {},
+  ) {
+    RosterPopulationAdmitted => false
+    RefusedIncompleteRun { sites_total: s, planned_total: p, prefix_total: pt, arm_total: at } =>
+      int_eq(a: s, b: 100) && int_eq(a: p, b: 60) && int_eq(a: pt, b: 60) && int_eq(a: at, b: 100)
+    RefusedPullRequestRun { pr_number: _ } => false
+    RefusedCheckMissingFromRoster { identity: _ } => false
+    RefusedRosterCoversWholeCorpus { roster_rows: _, sites_total: _ } => false
+  }
+}
+
+// RED (b): the run does not SAY it stopped early -- it simply cannot show it reached everything,
+// because its per-prefix rows no longer sum to its own planned total. The claim is that a report
+// which cannot account for its own population is not adopted even when it claims completeness; this
+// is the arm the pull request run of 34733276548 would have failed on its own arithmetic.
+test fn a_report_whose_prefix_rows_do_not_sum_to_its_planned_total_refuses() -> Bool {
+  match roster_population_adoption_verdict(
+    report: admissible_report(),
+    prefix_total: 3751,
+    roster_rows: 60,
+    first_missing: Absent {},
+  ) {
+    RosterPopulationAdmitted => false
+    RefusedIncompleteRun { sites_total: _, planned_total: p, prefix_total: pt, arm_total: _ } =>
+      int_eq(a: p, b: 60) && int_eq(a: pt, b: 3751)
+    RefusedPullRequestRun { pr_number: _ } => false
+    RefusedCheckMissingFromRoster { identity: _ } => false
+    RefusedRosterCoversWholeCorpus { roster_rows: _, sites_total: _ } => false
+  }
+}
+
+// RED (c): the four declined arms plus the planned total do not equal the site census the run
+// counted -- a run that routed part of the corpus and then summarised it is exactly this shape.
+test fn a_report_whose_arms_do_not_sum_to_the_site_census_refuses() -> Bool {
+  match roster_population_adoption_verdict(
+    report: fixture_report(
+      source: FullRoutedPopulationRun { roots: "dag/ + src/v2/" as NonEmptyStr },
+      reach: ReachedWholeRoutedPopulation,
+      sites: 100, planned: 60, declined: 39,
+    ),
+    prefix_total: 60,
+    roster_rows: 60,
+    first_missing: Absent {},
+  ) {
+    RosterPopulationAdmitted => false
+    RefusedIncompleteRun { sites_total: s, planned_total: p, prefix_total: _, arm_total: at } =>
+      int_eq(a: s, b: 100) && int_eq(a: p, b: 60) && int_eq(a: at, b: 99)
+    RefusedPullRequestRun { pr_number: _ } => false
+    RefusedCheckMissingFromRoster { identity: _ } => false
+    RefusedRosterCoversWholeCorpus { roster_rows: _, sites_total: _ } => false
+  }
+}
+
+// CONTROL, and the direction that proves the three REDs above are not a constant refusal: the same
+// verdict over an admissible report admits.
+test fn an_admissible_population_report_is_adopted() -> Bool {
+  roster_population_adoption_admitted(
+    verdict: roster_population_adoption_verdict(
+      report: admissible_report(), prefix_total: 60, roster_rows: 60, first_missing: Absent {},
+    )
+  )
+}
+
+// ── ARM 2: A LIST DRAWN FROM A PULL REQUEST RUN REFUSES ON THAT GROUND ALONE ─────────────────
+//
+// Every number is the admissible one: it reached everything it claims, its arithmetic closes, no
+// identity is missing, its rows are fewer than the corpus. It is refused before any of that is read,
+// because a pull request run routes what the pull request touched and the roster's population is the
+// corpus. This is the arm that would have refused run 34733276548. And it cannot be walked past: the
+// only two values `source` can hold are the two constructors, so there is no spelling of "a run that
+// was not a pull request run" that skips it -- which is exactly what the string tag let a producer write.
+test fn a_list_drawn_from_a_pull_request_run_refuses_on_that_ground_alone() -> Bool {
+  match roster_population_adoption_verdict(
+    report: fixture_report(
+      source: PullRequestRun { pr_number: 5058 },
+      reach: ReachedWholeRoutedPopulation,
+      sites: 100, planned: 60, declined: 40,
+    ),
+    prefix_total: 60,
+    roster_rows: 60,
+    first_missing: Absent {},
+  ) {
+    RosterPopulationAdmitted => false
+    RefusedPullRequestRun { pr_number: n } => int_eq(a: n, b: 5058)
+    RefusedIncompleteRun { sites_total: _, planned_total: _, prefix_total: _, arm_total: _ } => false
+    RefusedCheckMissingFromRoster { identity: _ } => false
+    RefusedRosterCoversWholeCorpus { roster_rows: _, sites_total: _ } => false
+  }
+}
+
+// CONTROL: the identical report, with the SOURCE constructor the only thing changed, is adopted -- so
+// the refusal above is the source and not some other property of the fixture.
+test fn the_same_report_from_a_full_population_run_is_adopted() -> Bool {
+  roster_population_adoption_admitted(
+    verdict: roster_population_adoption_verdict(
+      report: admissible_report(), prefix_total: 60, roster_rows: 60, first_missing: Absent {},
+    )
+  )
+}
+
+// ── ARM 3: A CHECK PLANNED AT THE CUT AND ABSENT FROM THE LIST IS A FINDING, NOT A TIER ───────
+//
+// The join runs first and names the identity; the verdict reports it. Nothing here moves a check into
+// the tighter tier quietly: the whole point of naming it is that the alternative -- the check simply
+// not being in the list -- is indistinguishable, from the tier authority's side, from a check that
+// arrived after the cut. claim_ceiling_tier consults membership and nothing else, so an omission IS a
+// reclassification, which is why an omission has to be a refusal.
+test fn a_planned_check_missing_from_the_list_is_named_as_a_finding() -> Bool {
+  match roster_population_adoption_verdict(
+    report: admissible_report(),
+    prefix_total: 60,
+    roster_rows: 60,
+    first_missing: first_check_missing_from_roster(
+      rows: Cons { head: "m.a", tail: Cons { head: "m.MISSING", tail: Cons { head: "m.c", tail: Empty {} } } },
+      chunks: fixture_chunks_three(),
+    ),
+  ) {
+    RosterPopulationAdmitted => false
+    RefusedCheckMissingFromRoster { identity: i } => (i == "m.MISSING")
+    RefusedPullRequestRun { pr_number: _ } => false
+    RefusedIncompleteRun { sites_total: _, planned_total: _, prefix_total: _, arm_total: _ } => false
+    RefusedRosterCoversWholeCorpus { roster_rows: _, sites_total: _ } => false
+  }
+}
+
+// CONTROL, both directions of the join itself: the same rows against a list that holds them yield
+// Absent, and the verdict over that yields Admitted. A finding arm that could not tell these apart
+// would be a refusal with an identity string bolted to it.
+test fn rows_the_list_holds_yield_no_finding_and_are_adopted() -> Bool {
+  match first_check_missing_from_roster(rows: fixture_rows_three(), chunks: fixture_chunks_three()) {
+    Present { value: v } => false
+    Absent {} => roster_population_adoption_admitted(
+      verdict: roster_population_adoption_verdict(
+        report: admissible_report(), prefix_total: 60, roster_rows: 60, first_missing: Absent {},
+      )
+    )
+  }
+}
+
+// ── ARM 4: THE TWO ALLOWANCES STAY DISTINCT ────────────────────────────────────────────────
+//
+// A list with a row for every site in the corpus is not a grandfathered tier; it is the absence of
+// tiering wearing the roster's clothes, and it is refused. RED (a): rows equal to the census.
+test fn a_list_as_large_as_the_corpus_refuses() -> Bool {
+  match roster_population_adoption_verdict(
+    report: admissible_report(), prefix_total: 60, roster_rows: 100, first_missing: Absent {},
+  ) {
+    RefusedRosterCoversWholeCorpus { roster_rows: r, sites_total: s } => int_eq(a: r, b: 100) && int_eq(a: s, b: 100)
+    _ => false
+  }
+}
+
+// RED (b): rows MORE than the census -- a list that has absorbed a second offender at a key it does
+// not own grows past the corpus, and the same arm catches it.
+test fn a_list_larger_than_the_corpus_refuses() -> Bool {
+  match roster_population_adoption_verdict(
+    report: admissible_report(), prefix_total: 60, roster_rows: 101, first_missing: Absent {},
+  ) {
+    RefusedRosterCoversWholeCorpus { roster_rows: r, sites_total: _ } => int_eq(a: r, b: 101)
+    _ => false
+  }
+}
+
+// CONTROL: the same report admits at 99 rows, so the arm measures the list against the corpus rather
+// than refusing any count it is handed.
+test fn a_list_smaller_than_the_corpus_is_adopted() -> Bool {
+  roster_population_adoption_admitted(
+    verdict: roster_population_adoption_verdict(
+      report: admissible_report(), prefix_total: 60, roster_rows: 99, first_missing: Absent {},
+    )
+  )
+}
+
+// AND THE ALLOWANCES THEMSELVES ARE DISTINCT, at the budget surface the floor compares a completed
+// claim against: 500ms-equivalent above 100ms-equivalent, and the two tiers answer differently for a
+// row the list holds versus the same name with a suffix the list has never seen.
+test fn the_two_allowances_are_distinguished_by_the_tier_authority() -> Bool {
+  int_gt(
+    a: eval_step_count_value(s: claim_ceiling_eval_step_budget(tier: GrandfatheredTier {})),
+    b: eval_step_count_value(s: claim_ceiling_eval_step_budget(tier: NewWitnessTier {})),
+  )
+    && match claim_ceiling_tier(identity: "test.claim.bare_name_ambiguity_wall_witness.bare_value_read_of_an_ambiguous_name_refuses") {
+         GrandfatheredTier {} => true
+         NewWitnessTier {} => false
+       }
+}
+
+// THE OTHER SIDE OF THE SAME DISTINCTION, in a claim of its own ON PURPOSE. A name the list has
+// never seen makes the tier authority fold every chunk row before it answers, and this module is
+// itself measured against the tighter allowance it is about to assert: two full-list folds in one
+// claim is how a witness ends up over the ceiling it exists to test. The fold that MISSES therefore
+// gets its own budget, and the pair together say the two allowances are distinct in both directions.
+test fn a_name_the_list_has_never_seen_answers_the_tighter_allowance() -> Bool {
+  match claim_ceiling_tier(identity: "test.claim.bare_name_ambiguity_wall_witness.bare_value_read_of_an_ambiguous_name_refuses_post_cut_rename_of_the_same_witness") {
+    GrandfatheredTier {} => false
+    NewWitnessTier {} => true
+  }
+}
+
+// THE MEASURED POPULATION, ADOPTED BY THE VERDICT -- not a fixture. The real report, the real
+// per-prefix fold, the real row count and the real join of the named completeness rows against the
+// real chunk list: with every row present the verdict ADMITS. Its discriminating half is executed as
+// a tree mutation on srv1 -- one of these rows deleted from the list, same argv, and the verdict
+// refuses with rc 1 -- because a verdict that only ever admits proves nothing about the population it
+// claims to have checked.
+test fn the_measured_population_report_is_adopted_by_the_verdict() -> Bool {
+  roster_population_adoption_admitted(
+    verdict: roster_population_adoption_verdict(
+      report: floor_grandfathered_population,
+      prefix_total: floor_grandfathered_population_prefix_total(),
+      roster_rows: floor_grandfathered_cut_size(),
+      first_missing: first_check_missing_from_roster(
+        rows: floor_grandfathered_completeness_probes,
+        chunks: floor_grandfathered_chunks(),
+      ),
+    )
+  )
+    && int_gt(a: floor_grandfathered_cut_size(), b: 3000)
+    && int_gt(a: population_sites_total(report: floor_grandfathered_population), b: floor_grandfathered_cut_size())
+}
+
+// ── THE HANDBACK: ONE MISCLASSIFIED CHECK, MOVED TO THE TIER IT BELONGS IN ───────────────────
+//
+// Planned at the cut by the disposition policy above, present in the corpus, and absent from the list
+// this change repairs -- so at main its tier answer is the new-witness envelope, which is the tier of
+// a check that arrived after the cut, which is not what it is. The claim is the tier authority's own
+// answer, not a restatement of it: at main this claim is RED, at the head carrying the generated rows
+// it is GREEN, same claim, same argv, both runs printed.
+test fn the_previously_misclassified_check_sits_in_the_older_allowance() -> Bool {
+  match claim_ceiling_tier(identity: "test.claim.bare_name_ambiguity_wall_witness.bare_value_read_of_an_ambiguous_name_refuses") {
+    GrandfatheredTier {} => int_eq(
+      a: eval_step_count_value(s: claim_eval_step_budget_for_identity(identity: "test.claim.bare_name_ambiguity_wall_witness.bare_value_read_of_an_ambiguous_name_refuses")),
+      b: eval_step_count_value(s: claim_ceiling_eval_step_budget(tier: GrandfatheredTier {})),
+    )
+    NewWitnessTier {} => false
+  }
+}
+
+// AND NOTHING DECLARES IT GONE. A row the list holds under a typed removal is a row that has left,
+// and a completeness row that has left cannot also be the row whose exemption is being restored --
+// the two dispositions would cancel and the handback would be describing a name in the file rather
+// than a check in the corpus. Split in two claims of three rows because each lookup folds the
+// declared removals, and this module installs the ceiling it is being measured against.
+test fn no_typed_removal_withdraws_the_first_three_completeness_rows() -> Bool {
+  removal_withdraws(name: "test.claim.bare_name_ambiguity_wall_witness.a_field_label_sharing_an_ambiguous_name_does_not_refuse", removals: floor_grandfathered_removals) == false
+    && removal_withdraws(name: "test.claim.bare_name_ambiguity_wall_witness.bare_value_read_of_an_ambiguous_name_refuses", removals: floor_grandfathered_removals) == false
+    && removal_withdraws(name: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_corpus_roster_nonempty", removals: floor_grandfathered_removals) == false
+}
+
+test fn no_typed_removal_withdraws_the_last_three_completeness_rows() -> Bool {
+  removal_withdraws(name: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_corpus_roster_dedupes_decl_facts", removals: floor_grandfathered_removals) == false
+    && removal_withdraws(name: "v2.test.claim.fold_lowering.algebra_carrying_fold_is_step_form_unresolved", removals: floor_grandfathered_removals) == false
+    && removal_withdraws(name: "v2.test.floor_enrolment_margin.a_bound_with_no_ceiling_blocks_under_a_cause_distinct_from_both_neighbours", removals: floor_grandfathered_removals) == false
+}
+
+// ── THE 145 CARRIED IN THE TREE, JOINED AT IDENTITY GRAIN (review 98219) ────────────────────────
+//
+// THE COMPLAINT. The roster gained 145 rows and the tree joined six of them. The other 139 were
+// carried nowhere in the repository, so deleting any of them from the list left every witness green
+// and the completeness argument was handed to a run on srv1 that nothing in the tree reads. These
+// claims close that: the expected set is declared in the carrier as ten groups of fifteen, and every
+// group is looked up in the chunk list the floor actually consults. Fifteen rows per claim is a
+// measured cost, not a preference -- a member costs 8,066 eval steps in this module and a non-member
+// 43,583, so one claim holding all 145 against all 3,748 rows would spend past the ceiling this node
+// governs, while fifteen-row groups stay inside it even when the mutant row forces a full descent.
+
+test fn the_at_cut_group_00_rows_are_held_by_the_list() -> Bool {
+  match first_check_missing_from_roster(rows: floor_grandfathered_at_cut_group_00, chunks: floor_grandfathered_chunks()) {
+    Absent {} => true
+    Present { value: v } => false
+  }
+}
+
+test fn the_at_cut_group_01_rows_are_held_by_the_list() -> Bool {
+  match first_check_missing_from_roster(rows: floor_grandfathered_at_cut_group_01, chunks: floor_grandfathered_chunks()) {
+    Absent {} => true
+    Present { value: v } => false
+  }
+}
+
+test fn the_at_cut_group_02_rows_are_held_by_the_list() -> Bool {
+  match first_check_missing_from_roster(rows: floor_grandfathered_at_cut_group_02, chunks: floor_grandfathered_chunks()) {
+    Absent {} => true
+    Present { value: v } => false
+  }
+}
+
+test fn the_at_cut_group_03_rows_are_held_by_the_list() -> Bool {
+  match first_check_missing_from_roster(rows: floor_grandfathered_at_cut_group_03, chunks: floor_grandfathered_chunks()) {
+    Absent {} => true
+    Present { value: v } => false
+  }
+}
+
+test fn the_at_cut_group_04_rows_are_held_by_the_list() -> Bool {
+  match first_check_missing_from_roster(rows: floor_grandfathered_at_cut_group_04, chunks: floor_grandfathered_chunks()) {
+    Absent {} => true
+    Present { value: v } => false
+  }
+}
+
+test fn the_at_cut_group_05_rows_are_held_by_the_list() -> Bool {
+  match first_check_missing_from_roster(rows: floor_grandfathered_at_cut_group_05, chunks: floor_grandfathered_chunks()) {
+    Absent {} => true
+    Present { value: v } => false
+  }
+}
+
+test fn the_at_cut_group_06_rows_are_held_by_the_list() -> Bool {
+  match first_check_missing_from_roster(rows: floor_grandfathered_at_cut_group_06, chunks: floor_grandfathered_chunks()) {
+    Absent {} => true
+    Present { value: v } => false
+  }
+}
+
+test fn the_at_cut_group_07_rows_are_held_by_the_list() -> Bool {
+  match first_check_missing_from_roster(rows: floor_grandfathered_at_cut_group_07, chunks: floor_grandfathered_chunks()) {
+    Absent {} => true
+    Present { value: v } => false
+  }
+}
+
+test fn the_at_cut_group_08_rows_are_held_by_the_list() -> Bool {
+  match first_check_missing_from_roster(rows: floor_grandfathered_at_cut_group_08, chunks: floor_grandfathered_chunks()) {
+    Absent {} => true
+    Present { value: v } => false
+  }
+}
+
+test fn the_at_cut_group_09_rows_are_held_by_the_list() -> Bool {
+  match first_check_missing_from_roster(rows: floor_grandfathered_at_cut_group_09, chunks: floor_grandfathered_chunks()) {
+    Absent {} => true
+    Present { value: v } => false
+  }
+}
+
+// THE COUNT, AS A SECONDARY BOUND AND NOT AS THE CLAIM. A count over a weak bound is not a
+// completeness check -- that is the defect this node exists to close, and the identity joins above
+// are the answer. This one is kept because a population that silently lost a row would also break
+// the alignment the positional join below depends on, and naming the size beside the join is what
+// makes the join's scope readable rather than inferred.
+test fn the_at_cut_population_carries_every_recovered_row() -> Bool {
+  int_eq(a: floor_grandfathered_at_cut_row_total(), b: 145)
+    && int_eq(a: floor_grandfathered_recovered_row_total(), b: 145)
+}
+
+// THE WHOLE-POPULATION ARM, ONE PASS OVER ALL 145. Both sides come off the same producer run in the
+// same order, so a row deleted from either side misaligns the pass and the population row that lost
+// its partner is returned by identity.
+test fn the_recovered_region_is_the_at_cut_population_row_for_row() -> Bool {
+  match first_recovered_row_divergence(rows: floor_grandfathered_at_cut_rows(),
+                                       region: floor_grandfathered_recovered_rows()) {
+    Absent {} => true
+    Present { value: v } => false
+  }
+}
+
+// THE PRODUCTION CONSUMER (gunbc.design_argument::consumption: "Every declaration a change adds is
+// consumed by a named consumer over an executing route, or it is dangling"). This calls the carrier's
+// own zero-argument fold -- live population record, live per-prefix rows, live row count, live join
+// over the live chunks -- and asserts it admits. The route that executes it is the dry claim corpus
+// the required lane runs on every pull request, the route the plan names for this module
+// (roadmap_authority.dag:3419).
+test fn the_live_roster_admits_itself_through_the_production_entry_point() -> Bool {
+  roster_population_adoption_admitted(verdict: floor_grandfathered_roster_adoption())
+}
+
+// THE FIGURES STAND AS TRANSCRIBED, AND SAY SO. The population numbers were observed by a run of this
+// repository, but the arm that would assert that -- ObservedByReceipt -- is sealed behind an
+// admit_callers list this module is not in, so the record carries TranscribedUncited with the
+// obligation that would close it. The claim reads the obligation back out of the record: a diff that
+// swapped in a citation this repository has not earned turns this red.
+fn live_population_standing() -> CitedFigureStanding {
+  population_standing(report: floor_grandfathered_population)
+}
+
+// THE LIVE JOIN, OVER ALL 145, AGAINST THE LIVE CHUNK LIST -- the same call the production entry
+// point makes, asserted on its own so a refusal can be attributed to the join rather than to the
+// arithmetic around it. Absent is the answer: every check the floor planned at the cut is held.
+test fn the_live_join_over_every_at_cut_check_finds_nothing_missing() -> Bool {
+  match floor_grandfathered_first_missing_at_cut_check() {
+    Absent {} => true
+    Present { value: v } => false
+  }
+}
+
+test fn the_population_figures_carry_a_read_obligation_and_not_a_receipt() -> Bool {
+  match cited_figure_read_obligation(standing: live_population_standing()) {
+    Present { value: _ } => true
+    Absent {} => false
+  }
+}
