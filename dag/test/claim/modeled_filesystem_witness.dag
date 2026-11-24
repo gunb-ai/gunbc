@@ -32,7 +32,7 @@ import gunbc.host.managed_host_unit_hold { boot_run_owner, unit_hold_store_path 
 import gunbc.host_state_root { host_state_tree, host_state_tree_path }
 import gunbc.filesystem_model {
   ModeledFilesystem, ModeledFile, ModeledPathStat, filesystem_bindings, filesystem_ownership_bindings, filesystem_operation,
-  owner_only_directory_mode,
+  owner_only_directory_mode, shell_model_dependency,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -196,7 +196,7 @@ test fn shell_model_operations_reachable_through_entry_reference_chain() -> Bool
       true
     },
   ) {
-    WitnessReturned { value, route, state } => value && count(filter(route, r => r.invocation.at.service == "Filesystem")) > 0
+    WitnessReturned { value, route, state } => shell_model_dependency() && value && count(filter(route, r => r.invocation.at.service == "Filesystem")) > 0
     WitnessRefused { diagnostic, route, state } => false
     WitnessInterrupted { at, route, state, now } => false
   }

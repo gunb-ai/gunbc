@@ -206,14 +206,18 @@ fn filesystem_operation(operation: String) -> OperationRef {
 // v2.compiler.module_acquisition to read strings. The interpreter never derives a verdict from this bool;
 // the reachability claim in dag/test/claim/modeled_filesystem_witness.dag is the judge, in both directions.
 fn shell_model_dependency() -> Bool {
-  shell_dependency_declared(posix_command_v_check_argv)
-    && shell_dependency_declared(shell_test_is_executable_argv)
-    && shell_dependency_declared(extdeps_external_authority_anchor)
+  shell_dependency_reference(posix_command_v_check_argv)
+    && shell_dependency_reference(shell_test_is_executable_argv)
+    && shell_dependency_reference(extdeps_external_authority_anchor)
 }
 
-// A type-preserving consumer so each shell.dag item above is a USED reference the demand loader follows, not
-// a bare name. It reads nothing; its whole role is to make the reference load-bearing.
-fn shell_dependency_declared<T>(value: T) -> Bool {
+// DELIBERATELY TRIVIAL SHAPE MARKER, NOT A CHECK: it returns true for any argument at all. Its argument
+// POSITION is the load-bearing part -- passing a shell.dag item here is what makes shell_model_dependency a
+// declared reference the demand loader follows to acquire the shell.dag fragment. The reachability claim
+// shell_model_operations_reachable_through_entry_reference_chain ANDs shell_model_dependency() into its own
+// verdict, so deleting this reference is visible on the claim's terms, not only through the interpreter
+// refusing to admit. This function asserts nothing about the item; do not read a check into it.
+fn shell_dependency_reference<T>(value: T) -> Bool {
   true
 }
 
