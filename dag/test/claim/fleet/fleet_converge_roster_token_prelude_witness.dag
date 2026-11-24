@@ -57,7 +57,7 @@ test fn the_supplied_roster_reading_mode_carries_the_token() -> Bool {
 test fn an_unnarrowed_or_widened_mint_is_refused() -> Bool {
   match outcome_accepted_value(gunbc_run_step_target_entry_or_refusal(target: gunbc_ci_runner_host_file_converge_target)) {
     Absent => false
-    Present { value: entry } => let head = concat("gunbc run ", concat(entry, concat(" ", gunbc_ci_runner_host_file_converge_target.declaration.decl_name as String)))
+    Present { value: zesty_entry } => let head = concat("gunbc run ", concat(zesty_entry, concat(" ", gunbc_ci_runner_host_file_converge_target.declaration.decl_name as String)))
     let unnarrowed = concat(token_marker, head)
   let widened = concat(token_marker, concat("-d '{\"permissions\": {\"organization_self_hosted_runners\": \"write\"}}'", head))
   !target_carries_token(t: gunbc_ci_runner_host_file_converge_target, runs: [unnarrowed])
@@ -69,9 +69,9 @@ test fn an_unnarrowed_or_widened_mint_is_refused() -> Bool {
 test fn a_converge_run_without_the_prelude_is_refused() -> Bool {
   match outcome_accepted_value(gunbc_run_step_target_entry_or_refusal(target: gunbc_ci_runner_host_file_converge_target)) {
     Absent => false
-    Present { value: entry } => !target_carries_token(
+    Present { value: zesty_entry } => !target_carries_token(
       t: gunbc_ci_runner_host_file_converge_target,
-      runs: [concat("gunbc run ", concat(entry, concat(" ", gunbc_ci_runner_host_file_converge_target.declaration.decl_name as String)))]
+      runs: [concat("gunbc run ", concat(zesty_entry, concat(" ", gunbc_ci_runner_host_file_converge_target.declaration.decl_name as String)))]
     )
   }
 }

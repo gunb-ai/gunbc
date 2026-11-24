@@ -165,10 +165,10 @@ fn gunbc_ci_mtcollins1_fan_observe_invoke() -> Outcome<String> {
       claim_run: false,
       receipt_rel: mtcollins1_fan_observation_receipt_path
     ),
-    f: fn(cmd) {
+    f: fn(zesty_c) {
       outcome_accepted(value:concat(
     concat("# ", concat(dissolution_description(condition: gunbc_ci_mtcollins1_fan_observe_shell_emit_dissolution_trigger), "\n")),
-    cmd
+    zesty_c
   ))
     }
   )
@@ -310,8 +310,8 @@ fn gunbc_ci_mtcollins1_probe_invoke_typed(stem: String, target: GunbcRunStepTarg
           bind_outcome(
             o: gunbc_run_command_for_target(source_roots: witness_layer_roots, target: target,
             claim_run: false),
-            f: fn(cmd) {
-              outcome_accepted(value:join([key_text, "\n", cmd, "\n"], ""))
+            f: fn(zesty_c) {
+              outcome_accepted(value:join([key_text, "\n", zesty_c, "\n"], ""))
             }
           )
         }
@@ -373,11 +373,11 @@ fn gunbc_ci_mtcollins1_kvm_observer_release_invoke() -> Outcome<String> {
   bind_outcome(
     o: gunbc_run_command_for_target(source_roots: witness_layer_roots, target: gunbc_ci_mtcollins1_kvm_observer_release_target,
     claim_run: false),
-    f: fn(cmd) {
+    f: fn(zesty_c) {
       bind_outcome(
         o: gunbc_ci_bash_rendered(stmts: [bash_build_command_from_lits(lits: ["set", "-euo", "pipefail"]), gunbc_ci_repo_root_statement()], set_e: false),
         f: fn(rel_text) {
-          outcome_accepted(value:join([rel_text, "\n", cmd, "\n"], ""))
+          outcome_accepted(value:join([rel_text, "\n", zesty_c, "\n"], ""))
         }
       )
     }
