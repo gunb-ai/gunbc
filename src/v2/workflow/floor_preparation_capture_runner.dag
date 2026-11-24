@@ -51,6 +51,8 @@ import extdeps.shell
 import extdeps.shell.exec
 import extdeps.filesystem.filesystem_io { Filesystem }
 import v2.workflow.floor_preparation_split {
+  floor_preparation_strip_prefix,
+  floor_preparation_has_exact_row,
   floor_preparation_split_report,
   floor_preparation_ask,
   floor_preparation_text_starts_with,
@@ -242,6 +244,14 @@ type FloorPreparationSupplyReceipt {
   admitted: Bool,
 }
 
+// Typed resolve outcome for a claim_batch leg. Resolved carries the resolve banner verbatim
+// (module count included); ResolveFailed carries the error and cause lines; NotObserved means
+// the leg produced no resolve signal at all -- never clean.
+type FloorPreparationResolveOutcome
+  = Resolved { banner: String }
+  | ResolveFailed { cause: String }
+  | NotObserved {}
+
 type FloorPreparationLegReceipt {
   label: String,
   entries_joined: String,
@@ -252,6 +262,7 @@ type FloorPreparationLegReceipt {
   tree_sha: String,
   kept_count: Int,
   verdict_count: Int,
+  resolve: FloorPreparationResolveOutcome,
   out_bytes: Optional<ByteSize>,
   clean: Bool,
 }
@@ -273,23 +284,7 @@ fn floor_preparation_first_token(line: String) -> String {
   }
 }
 
-fn floor_preparation_strip(text: String, prefix: String) -> String {
-  let pieces = split(s: text, delimiter: prefix)
-  let starts_empty = match pieces.first() {
-    Present { value: v } => v == ""
-    Absent {} => false
-  }
-  if pieces.length() > 1 && starts_empty {
-    match pieces.skip(n: 1).first() {
-      Present { value: v } => v
-      Absent {} => text
-    }
-  } else { text }
-}
 
-fn floor_preparation_has(xs: List<String>, x: String) -> Bool {
-  fold(xs, init: false, f: (acc, y) => acc || (y == x))
-}
 
 fn floor_preparation_kept_line(line: String) -> Bool {
   fold(floor_preparation_keep_prefixes, init: false, f: (acc, prefix) =>
@@ -462,7 +457,7 @@ fn floor_preparation_supplies_hold(receipts: List<FloorPreparationSupplyReceipt>
 // no dropped-row widening (review 97839).
 fn floor_preparation_population_entries() -> List<String> {
   fold(floor_preparation_population_rows(), init: [], f: (acc, row) =>
-    if floor_preparation_has(xs: acc, x: row.entry) { acc }
+    if floor_preparation_has_exact_row(rows: acc, wanted: row.entry) { acc }
     else { list_push(xs: acc, item: row.entry) })
 }
 
@@ -482,7 +477,7 @@ fn floor_preparation_pass_names(stdout_text: String) -> List<String> {
   fold(floor_preparation_lines(text: stdout_text), init: [], f: (acc, line) =>
     if floor_preparation_text_starts_with(text: line, prefix: "PASS ") {
       list_push(xs: acc, item: floor_preparation_first_token(
-        floor_preparation_strip(text: line, prefix: "PASS ")))
+        floor_preparation_strip_prefix(text: line, prefix: "PASS ")))
     } else { acc })
 }
 
@@ -495,7 +490,8 @@ fn floor_preparation_surviving_entries(untrimmed_stdout: String) -> List<String>
   let passed = floor_preparation_pass_names(stdout_text: untrimmed_stdout)
   filter(xs: floor_preparation_population_entries(), predicate: fn(entry) {
     let claims = floor_preparation_entry_claim_names(entry: entry)
-    fold(claims, init: true, f: (acc, claim) => acc && floor_preparation_has(xs: passed, x: claim)) == false
+    fold(claims, init: true, f: (acc, claim) =>
+      acc && floor_preparation_has_exact_row(rows: passed, wanted: claim)) == false
   })
 }
 
@@ -534,6 +530,56 @@ fn floor_preparation_spawn_completed(rc: Int) -> Bool {
   rc == 0 || rc == 1
 }
 
+// A resolve death must not masquerade as a verdict-bearing run: both run5 legs emitted rc=1
+// with kept phase lines BEFORE claim_batch aborted on a resolve error, and a clean rule keyed
+// only on rc and verdict-line counts reads that as clean. The claim_batch resolve banner and any
+// resolve-error line are captured onto the typed receipt: a leg is clean only when its resolve
+// outcome is Resolved. (run5 forensics, adopted with the lane manager.)
+fn floor_preparation_resolve_outcome(text: String) -> FloorPreparationResolveOutcome {
+  let lines = floor_preparation_lines(text: text)
+  let failed = filter(xs: lines, predicate: fn(line) {
+    floor_preparation_contains(haystack: line, needle: "error: resolve failed")
+  })
+  if length(xs: failed) > 0 {
+    let first_error = match failed.first() {
+      Present { value: f } => f
+      Absent {} => "resolve failed"
+    }
+    let causes = filter(xs: lines, predicate: fn(line) {
+      floor_preparation_contains(haystack: line, needle: "cause:")
+    })
+    let cause_tail = match causes.first() {
+      Present { value: c } => c
+      Absent {} => ""
+    }
+    ResolveFailed { cause: concat(first_error, cause_tail) }
+  } else {
+    let banners = filter(xs: lines, predicate: fn(line) {
+      floor_preparation_contains(haystack: line, needle: " resolving ")
+    })
+    match banners.first() {
+      Present { value: b } => Resolved { banner: b }
+      Absent {} => NotObserved {}
+    }
+  }
+}
+
+fn floor_preparation_resolved(outcome: FloorPreparationResolveOutcome) -> Bool {
+  match outcome {
+    Resolved { banner: b } => true
+    ResolveFailed { cause: c } => false
+    NotObserved {} => false
+  }
+}
+
+fn floor_preparation_resolve_text(outcome: FloorPreparationResolveOutcome) -> String {
+  match outcome {
+    Resolved { banner: b } => concat(" resolve=ok[", b, "]")
+    ResolveFailed { cause: c } => concat(" resolve=FAILED[", c, "]")
+    NotObserved {} => " resolve=NOT_OBSERVED"
+  }
+}
+
 fn floor_preparation_leg_record(
     label: String, entries: List<String>, binary: String, tree_sha: String,
     kept_count: Int, outcome: FloorPreparationSpawnObservation) -> FloorPreparationLegReceipt {
@@ -552,9 +598,11 @@ fn floor_preparation_leg_record(
     tree_sha: tree_sha,
     kept_count: kept_count,
     verdict_count: floor_preparation_verdict_count(text: outcome.stderr),
+    resolve: floor_preparation_resolve_outcome(text: outcome.stderr),
     out_bytes: out_bytes_opt,
     clean: floor_preparation_spawn_completed(rc: outcome.rc)
-      && floor_preparation_verdict_count(text: outcome.stderr) > 0,
+      && floor_preparation_verdict_count(text: outcome.stderr) > 0
+      && floor_preparation_resolved(outcome: floor_preparation_resolve_outcome(text: outcome.stderr)),
   }
 }
 
@@ -573,11 +621,12 @@ fn floor_preparation_leg_receipt(r: FloorPreparationLegReceipt) -> String {
   }
   concat(concat(concat("[runner-leg] leg=", r.label), concat(" entries=", r.entries_joined)),
     concat(concat(concat(" rc=", to_string(r.rc)), concat(" verdicts=", to_string(r.verdict_count))),
+      concat(floor_preparation_resolve_text(outcome: r.resolve),
       concat(concat(" instrument=", r.binary),
         concat(concat(" BINARY_SHA256=", digest_text),
           concat(concat(" BINARY_BYTES=", bytes_text),
             concat(concat(" TREE_SHA=", r.tree_sha),
-              concat(" out_bytes=", out_text)))))))
+              concat(" out_bytes=", out_text))))))))
 }
 
 fn floor_preparation_retained_body(untrimmed_stdout: String, graded_stdout: String) -> String {
@@ -648,9 +697,13 @@ fn floor_preparation_capture_run() -> String {
     let claims_stderr_write = Filesystem.Write(
       path: concat(floor_preparation_runner_root(), "/claims-leg-stderr.log"),
       content: claims.stderr)
+    let claims_stderr_text = match checked_int_to_nat(n: claims.stderr.length()) {
+      Present { value: k } => to_string(byte_size_count(byte_size(count: k)))
+      Absent {} => "BYTES_UNREADABLE"
+    }
     let passed = floor_preparation_pass_names(stdout_text: claims.stderr)
     let missing = fold(floor_preparation_claim_roster, init: [], f: (acc, name) =>
-      if floor_preparation_has(xs: passed, x: name) { acc } else { list_push(xs: acc, item: name) })
+      if floor_preparation_has_exact_row(rows: passed, wanted: name) { acc } else { list_push(xs: acc, item: name) })
     let report = floor_preparation_spawn_slot(
       bound: floor_preparation_report_bound,
       binary: floor_preparation_pinned_gunbc(),
@@ -672,7 +725,7 @@ fn floor_preparation_capture_run() -> String {
     let classifications = fold(report_lines, init: [], f: (acc, line) =>
       list_push(xs: acc, item: floor_preparation_classify_report_line(line: line)))
     let classification_text = join(classifications, ",")
-    let report_read = floor_preparation_has(xs: classifications, x: "REPORT_READ")
+    let report_read = floor_preparation_has_exact_row(rows: classifications, wanted: "REPORT_READ")
       && floor_preparation_contains(haystack: join(report_lines, "\n"), needle: floor_preparation_report_sentinel)
     // The leg's real exit status, printed on its own receipt line and asserted against the
     // expected value for THIS path: the report function RETURNS a String, and the host has no
@@ -696,7 +749,7 @@ fn floor_preparation_capture_run() -> String {
       [graded_receipt,
        fold_legs_receipt,
        floor_preparation_receipt("retained-body-rendered",
-         concat("bytes=", to_string(length(xs: retained)))),
+         concat("rows=", to_string(length(xs: retained)))),
        splice_receipt,
        floor_preparation_provenance(leg: "untrimmed",
          binary_sha: floor_preparation_pinned_claim_batch_sha, rc: untrimmed_record.rc, kept_count: untrimmed_record.kept_count),
@@ -704,7 +757,7 @@ fn floor_preparation_capture_run() -> String {
          binary_sha: floor_preparation_pinned_claim_batch_sha, rc: graded_record.rc, kept_count: graded_record.kept_count),
        floor_preparation_receipt("claim-gate",
          concat(concat("missing=", join(missing, ",")),
-           concat(concat(" claims_stderr_bytes=", to_string(claims.stderr.length())),
+           concat(concat(" claims_stderr_bytes=", claims_stderr_text),
              if claims_stderr_write.success { " claims_stderr=written" } else { " claims_stderr=UNWRITTEN" }))),
        report_rc_receipt])
     // The retained log and the population projection are LEG OUTPUT, not verdict output: they

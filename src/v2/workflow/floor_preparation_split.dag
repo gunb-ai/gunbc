@@ -207,8 +207,11 @@ fn floor_preparation_reverse<T>(xs: List<T>) -> List<T> {
   fold(xs, init:  [], f: (acc, x) => concat([x], acc))
 }
 
-// Local fold-based count: the shared universal `length` resolves its type argument
-// monomorphically per module, so a second element type through it is refused.
+// TRACKED DEBT, language lane (reported to the planning lane 2026-11-24, review 97970): the
+// shared universal `length` resolves its type argument monomorphically PER MODULE, so a second
+// element type through it is refused; std.algebra has no reverse and no bare count (only
+// count_where/count_equal). Dissolve-on: when std universal list ops monomorphize per call
+// site and std.algebra gains reverse, delete these two and use the std ops.
 fn floor_preparation_count<T>(xs: List<T>) -> Int {
   fold(xs, init: 0, f: (acc, _) => acc + 1)
 }
