@@ -664,9 +664,7 @@ fn guarantee_probe_rows() -> List<GuaranteeProbeRow> {
       probe: floor_generic_instantiation_hole_probe,
       class: floor_generic_instantiation_class,
       path: v1_compile_rust_path_id,
-      expectation: ExpectSilentAcceptanceHole {
-        invalid_state: "a String literal inhabits the T-typed field of a Boxed<Int> at a declared Boxed<Int> return and compiles with zero diagnostics" as NonEmptyStr,
-      },
+      expectation: ExpectBlockingRefusal { diagnostic_class: "TypeMismatch" as NonEmptyStr },
     },
     GuaranteeProbeRow {
       probe: floor_parse_list_separator_control_probe,

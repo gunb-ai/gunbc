@@ -1550,6 +1550,69 @@ data roadmap_estimate_entries: List<EstimateEntry> = [
     value: days_estimate(working_days: 3),
     basis: "A read-only verify arm at the install entry over existing identity and installed-root readers, with three witness outcomes and no write path.",
   )),
+  // cluster-bringup-on-the-selected-backend
+  estimate_recorded(row: estimate_row(
+    subject: "rn_JQPAHM7MHKV641PDD38RBW7ZAK" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 23),
+    value: days_estimate(working_days: 10),
+    basis: "A control plane on one held host plus install-route join and three admission controls the spike already exercised.",
+  )),
+  // h11ssl-shape-joins-the-cluster
+  estimate_recorded(row: estimate_row(
+    subject: "rn_EP012BFWCTH3AQMNRR5S1786ZY" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 23),
+    value: days_estimate(working_days: 8),
+    basis: "The PXE route already installs this board family; the new work is cluster join and exposing two GPU vendors.",
+  )),
+  // altrad8ud-shape-joins-the-cluster
+  estimate_recorded(row: estimate_row(
+    subject: "rn_XXP5QRR15QRZ0VC8MDA7QSDQV9" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 23),
+    value: days_estimate(working_days: 10),
+    basis: "An arm64 image and the board's firmware facts through the same route, plus architecture-aware placement.",
+  )),
+  // printed-tray-realized-from-derived-partition
+  estimate_recorded(row: estimate_row(
+    subject: "rn_7EXCACE4E19AX6JBF9G6RYJVWM" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 23),
+    value: days_estimate(working_days: 15),
+    basis: "The allocator exists; the printer input, body generation, one generated connection and the piece-count report are new, plus a printed specimen.",
+  )),
+  // mtcollins-cassette-shape-joins-the-cluster
+  estimate_recorded(row: estimate_row(
+    subject: "rn_KMN8EA32TJZ1SES7DVCCDAC8WX" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 23),
+    value: days_estimate(working_days: 10),
+    basis: "The board has booted over PXE before; the cassette mount, the frequency ceiling and cluster join are the new work.",
+  )),
+  // gpu-families-schedulable-with-caps-held
+  estimate_recorded(row: estimate_row(
+    subject: "rn_JMRKDG5PY2MC4DCM7MBYTJ3H3T" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 23),
+    value: days_estimate(working_days: 8),
+    basis: "The cap writer and read-back exist; folding them into install and proving them across an unattended cold boot for three families is the work.",
+  )),
+  // compiler-identity-from-sources
+  estimate_recorded(row: estimate_row(
+    subject: "rn_36K5STB3N22N3K61M5AY62JXNZ" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 23),
+    value: days_estimate(working_days: 10),
+    basis: "An outcome size, not a leaf; the first slice is the node's first_slice. The keying cut exists; deriving one identity from the read set and toolchain inputs and switching one consumer, with three controls.",
+  )),
+  // native-artifact-reuse-through-request-key
+  estimate_recorded(row: estimate_row(
+    subject: "rn_E1TAEA7FQEZPYG1XWFM9H9Z6YK" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 23),
+    value: days_estimate(working_days: 15),
+    basis: "An outcome size, not a leaf; the first slice is the node's first_slice. The seed cache already proves the six-axis key and shared store; the work is serving through the request key and provider with typed stale and corrupt arms.",
+  )),
+  // consumers-on-canonical-dependencies
+  estimate_recorded(row: estimate_row(
+    subject: "rn_PCDF3HEATT84831KGDB0HV21B6" as RoadmapNodeIdentity,
+    made: d(y: 2026, m: 11, day: 23),
+    value: days_estimate(working_days: 15),
+    basis: "An outcome size, not a leaf: finding the consumers that decide dependencies or activation on their own and moving them onto the canonical derivation with effect ordering and refusal preserved. The first slice is the consumer list.",
+  )),
 ]
 
 // STRICT DATE ORDER, from the total order this file already keeps: a revocation must come after the row it withdraws,
