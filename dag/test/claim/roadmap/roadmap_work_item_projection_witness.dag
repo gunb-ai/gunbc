@@ -526,3 +526,66 @@ test fn document_for_read_refuses_whole_document_on_an_unorderable_item() -> Boo
       && !string_contains(s: d, pattern: "\"rows\"")
   }
 }
+
+// ================= HANDBACK: served /projection.json bytes, claimed vs released ==============
+// The lone-leaf, no-dependency item roadmap-claim-names-leaf (roadmap_decomposition.dag:1584: one stage,
+// one piece, one member, days: 1, no waits_on; bound to planning_consolidation_plan at layer 0,
+// roadmap_intention_binding.dag:154). These are the WHOLE documents the /projection.json route serves --
+// built through the real served-document entry roadmap_projection_document_for_read, at one read
+// (read_on 2026-11-20, worker_count 4, one assumed findings count). The same fixtures the across_a_release
+// witness walks (a parent-linked claim, then a release through the production reader) for the 9-leaf item;
+// here pinned byte-exact so ctrl's adaptScheduleProjectionDocument parses what the route emits.
+
+fn hb_claimed() -> String {
+  match checked_int_to_nat(n: 1) {
+    Absent => ""
+    Present { value: findings } => {
+      let c = claim_event("roadmap-claim-names-leaf", "2026-11-20T09:00:00Z")
+      let c_env = roadmap_event_envelope(e: c)
+      serialize_json(v: roadmap_projection_document_for_read(
+        nodes: [nid(s: "roadmap-claim-names-leaf")],
+        read_on_date: Iso8601CivilDate { year: 2026, month: 11, day: 20 },
+        workers: BeltCapacity { max_concurrent: 4 },
+        findings_count: findings,
+        standings: open_standings(),
+        envs: [c_env],
+      ))
+    }
+  }
+}
+
+fn hb_released() -> String {
+  match checked_int_to_nat(n: 1) {
+    Absent => ""
+    Present { value: findings } => {
+      let c = claim_event("roadmap-claim-names-leaf", "2026-11-20T09:00:00Z")
+      let c_env = roadmap_event_envelope(e: c)
+      let r = release_event(linked_to: c, at: "2026-11-20T10:00:00Z")
+      let r_env = roadmap_event_envelope(e: r)
+      serialize_json(v: roadmap_projection_document_for_read(
+        nodes: [nid(s: "roadmap-claim-names-leaf")],
+        read_on_date: Iso8601CivilDate { year: 2026, month: 11, day: 20 },
+        workers: BeltCapacity { max_concurrent: 4 },
+        findings_count: findings,
+        standings: open_standings(),
+        envs: [c_env, r_env],
+      ))
+    }
+  }
+}
+
+// The served document for the CLAIMED read, byte for byte.
+data hb_claimed_json: String = "{\"schema\": \"roadmap-work-item-projection/v1\", \"read_on\": \"2026-11-20\", \"inputs\": {\"worker_count\": 4, \"day_priors\": [1], \"assumed_findings_counts\": [1]}, \"rows\": [{\"node\": \"roadmap-claim-names-leaf\", \"intention\": \"gunbc.plans.planning_consolidation::planning_consolidation_plan\", \"layer\": 0, \"item_state\": \"open\", \"leaves\": [{\"leaf_path\": \"roadmap-claim-names-leaf#0#0#0\", \"start_day\": \"2026-11-20\", \"finish_day\": \"2026-11-23\", \"on_critical_path\": true}], \"in_flight\": [{\"leaf_path\": \"roadmap-claim-names-leaf#0#0#0\", \"assignee\": \"principal:google-oidc/accounts/alice\", \"return_to\": \"principal:google-oidc/accounts/bob\"}], \"latest_event\": \"claimed\", \"acceptance_evidence\": null, \"events\": [{\"kind\": \"claimed\", \"recorded_at\": \"2026-11-20T09:00:00Z\"}]}]}"
+
+// The served document AFTER the release, byte for byte: same schema/read_on/inputs/leaf, in_flight empty,
+// latest_event released, both events carried.
+data hb_released_json: String = "{\"schema\": \"roadmap-work-item-projection/v1\", \"read_on\": \"2026-11-20\", \"inputs\": {\"worker_count\": 4, \"day_priors\": [1], \"assumed_findings_counts\": [1]}, \"rows\": [{\"node\": \"roadmap-claim-names-leaf\", \"intention\": \"gunbc.plans.planning_consolidation::planning_consolidation_plan\", \"layer\": 0, \"item_state\": \"open\", \"leaves\": [{\"leaf_path\": \"roadmap-claim-names-leaf#0#0#0\", \"start_day\": \"2026-11-20\", \"finish_day\": \"2026-11-23\", \"on_critical_path\": true}], \"in_flight\": [], \"latest_event\": \"released\", \"acceptance_evidence\": null, \"events\": [{\"kind\": \"claimed\", \"recorded_at\": \"2026-11-20T09:00:00Z\"}, {\"kind\": \"released\", \"recorded_at\": \"2026-11-20T10:00:00Z\"}]}]}"
+
+// EXECUTED, byte-exact: what the route serves for the claimed read, and for the released read.
+test fn handback_served_projection_claimed_is_the_pinned_document() -> Bool {
+  hb_claimed() == hb_claimed_json
+}
+
+test fn handback_served_projection_released_is_the_pinned_document() -> Bool {
+  hb_released() == hb_released_json
+}
