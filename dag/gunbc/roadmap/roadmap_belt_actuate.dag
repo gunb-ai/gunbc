@@ -16855,7 +16855,7 @@ data belt_exit_stall_clear_function: String = "belt_exit_stall_clear_cli"
 fn belt_exit_stall_clear_invocation(entry: String) -> String {
   match admit_named_argument(name: "entry", value: entry) {
     NamedArgumentAdmitted { argument } =>
-      join(["gunbc ", join(invocation_words_bare(words: gunbc_run_invocation_words_with_functions(source_roots: [], entry: "gunbc.roadmap.roadmap_belt_tick_cli", functions: [belt_exit_stall_clear_function], claim_run: false, arguments: [argument])), " ")], "")
+      join(["gunbc ", join(invocation_words_bare(words: gunbc_run_invocation_words_with_functions(source_roots: [], entry: "gunbc.roadmap.roadmap_belt_tick_cli", functions: [belt_exit_stall_clear_function], arguments: [argument])), " ")], "")
     NamedArgumentNameEmpty => "(the clear verb takes --arg entry=<entry>)"
     NamedArgumentNameHoldsSeparator { name: _ } => "(the clear verb takes --arg entry=<entry>)"
   }

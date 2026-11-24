@@ -196,8 +196,7 @@ fn gunbc_ci_submission_key_statements(stem: String) -> List<Node> {
 fn gunbc_ci_submission_key_invoke(stem: String, target: GunbcRunStepTarget) -> String {
   join([
     gunbc_ci_bash_rendered(stmts: gunbc_ci_submission_key_statements(stem: stem), set_e: false), "\n",
-    gunbc_run_command_for_target(source_roots: witness_layer_roots, target: target,
-    claim_run: false), "\n",
+    gunbc_run_command_for_target(source_roots: witness_layer_roots, target: target), "\n",
   ], "")
 }
 

@@ -291,8 +291,7 @@ fn gunbc_ci_mtcollins1_probe_invoke(stem: String, target: GunbcRunStepTarget) ->
 fn gunbc_ci_mtcollins1_probe_invoke_typed(stem: String, target: GunbcRunStepTarget, typed_fetch_failure: Bool) -> String {
   join([
     gunbc_ci_bash_rendered(stmts: gunbc_ci_mtcollins1_probe_credential_statements(stem: stem, typed_fetch_failure: typed_fetch_failure), set_e: false), "\n",
-    gunbc_run_command_for_target(source_roots: witness_layer_roots, target: target,
-    claim_run: false), "\n",
+    gunbc_run_command_for_target(source_roots: witness_layer_roots, target: target), "\n",
   ], "")
 }
 
@@ -341,7 +340,6 @@ fn gunbc_ci_mtcollins1_kvm_observer_observe_invoke() -> String {
 fn gunbc_ci_mtcollins1_kvm_observer_release_invoke() -> String {
   join([
     gunbc_ci_bash_rendered(stmts: [bash_build_command_from_lits(lits: ["set", "-euo", "pipefail"]), gunbc_ci_repo_root_statement()], set_e: false), "\n",
-    gunbc_run_command_for_target(source_roots: witness_layer_roots, target: gunbc_ci_mtcollins1_kvm_observer_release_target,
-    claim_run: false), "\n",
+    gunbc_run_command_for_target(source_roots: witness_layer_roots, target: gunbc_ci_mtcollins1_kvm_observer_release_target), "\n",
   ], "")
 }

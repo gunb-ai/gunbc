@@ -195,5 +195,5 @@ data gunbc_ci_workspace_allocation_plan_target: GunbcRunStepTarget = gunbc_run_s
 
 fn gunbc_ci_workspace_allocation_plan_invoke() -> String {
   gunbc_run_step_script_for_target(source_roots: witness_layer_roots, target: gunbc_ci_workspace_allocation_plan_target,
-  claim_run: false, receipt_rel: none)
+  receipt_rel: none)
 }

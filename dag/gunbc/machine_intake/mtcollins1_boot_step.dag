@@ -123,7 +123,7 @@ fn gunbc_ci_site_pxe_edge_receipt_cite_invoke() -> String {
     gunbc_ci_bash_rendered(stmts: [
       bash_build_command_with_words(words: [bash_build_word_lit(text: "mkdir"), bash_build_word_lit(text: "-p"), bash_build_word_concat_from_nodes(parts: [bash_build_word_var(name: "GITHUB_WORKSPACE"), bash_build_word_lit(text: "/artifacts")])]),
     ], set_e: true), "\n",
-    gunbc_run_command_for_target(source_roots: witness_layer_roots, target: gunbc_ci_site_pxe_edge_receipt_cite_target, claim_run: false), "\n",
+    gunbc_run_command_for_target(source_roots: witness_layer_roots, target: gunbc_ci_site_pxe_edge_receipt_cite_target), "\n",
   ], "")
 }
 
@@ -350,8 +350,7 @@ fn gunbc_ci_mtcollins1_boot_watcher_record_statements() -> List<Node> {
 // (rendered by v2.workflow.gunbc_invoke_step_emit gunbc_run_command) started with `&` and its pid
 // captured from $!.
 fn gunbc_ci_mtcollins1_boot_watcher_background_line() -> String {
-  concat(gunbc_run_command_for_target(source_roots: witness_layer_roots, target: gunbc_ci_mtcollins1_sol_notice_target,
-  claim_run: false), " & SOL_NOTICE_WATCH=$!")
+  concat(gunbc_run_command_for_target(source_roots: witness_layer_roots, target: gunbc_ci_mtcollins1_sol_notice_target), " & SOL_NOTICE_WATCH=$!")
 }
 
 // The mtcollins1 boot's credential-free host admission: no prelude, no secret, the same fold the
@@ -370,8 +369,7 @@ fn gunbc_ci_mtcollins1_boot_invoke() -> String {
     gunbc_ci_bash_rendered(stmts: gunbc_ci_mtcollins1_boot_prelude_statements(trap_body: gunbc_ci_bash_rendered(stmts: gunbc_ci_mtcollins1_boot_trap_body(), set_e: false)), set_e: true), "\n",
     gunbc_ci_mtcollins1_boot_watcher_background_line(), "\n",
     gunbc_ci_bash_rendered(stmts: gunbc_ci_mtcollins1_boot_watcher_record_statements(), set_e: false), "\n",
-    gunbc_run_command_for_target(source_roots: witness_layer_roots, target: gunbc_ci_mtcollins1_boot_target,
-    claim_run: false), "\n",
+    gunbc_run_command_for_target(source_roots: witness_layer_roots, target: gunbc_ci_mtcollins1_boot_target), "\n",
   ], "")
 }
 
@@ -420,7 +418,7 @@ fn receipted_run_invoke(run: ReceiptedRun) -> String {
     gunbc_ci_bash_rendered(stmts: gunbc_ci_mtcollins1_pxe_mac_discovery_prelude_statements(), set_e: true), "\n",
     gunbc_ci_bash_rendered(stmts: receipted_run_pre_statements(run: run), set_e: false), "\n",
     "# ", dissolution_description(condition: mtcollins1_receipted_run_line_dissolution_trigger), "\n",
-    gunbc_run_command_for_target(source_roots: witness_layer_roots, target: run.target, claim_run: false), " || ", run.rc_name, "=$?\n",
+    gunbc_run_command_for_target(source_roots: witness_layer_roots, target: run.target), " || ", run.rc_name, "=$?\n",
     gunbc_ci_bash_rendered(stmts: receipted_run_tail_statements(run: run), set_e: false), "\n",
   ], "")
 }

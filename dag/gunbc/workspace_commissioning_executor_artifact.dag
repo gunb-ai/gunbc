@@ -12,7 +12,7 @@ import gunbc.runner.runner_microvm_slot_unit { microvm_controller_gunbc_binary, 
 fn workspace_executor_helper_script(release_dir: String) -> String {
   let words = [microvm_controller_gunbc_binary(release_dir: release_dir)]
     + invocation_words_bare(words: gunbc_run_invocation_words(source_roots: microvm_slot_source_roots,
-      entry: "dag/gunbc/workspace_commissioning_executor_cli.dag", function: "workspace_executor_cli_main", claim_run: false))
+      entry: "dag/gunbc/workspace_commissioning_executor_cli.dag", function: "workspace_executor_cli_main"))
   let script = join([
     "set -euo pipefail",
     "[[ $# == 2 || $# == 3 ]] || exit 64",
