@@ -117,10 +117,10 @@ count_of() { local n; n=$(grep -cE "^$2" "$1" || true); echo "${n:-0}"; }
 # filesystem_read and refuses if the two vocabularies drift.
 # ----------------------------------------------------------------------------------------------
 fold_report() {
-  local log=$1 label=$2
+  local log=$1 label=$2 status
   [ -s "$log" ] || fail "log $log is missing or empty"
   grep -E "$KEEP" "$log" | awk -v label="$label" '
-    BEGIN {
+    BEGIN { resolves = 0; refused = 0
       cost["module-index"] = "wall_ms"
       cost["declarer-discovery"] = "wall_ms"
       cost["whole-tree-graph-facts"] = "wall_ms"
@@ -141,21 +141,41 @@ fold_report() {
       }
       return ""
     }
+    # TWO READERS, MIRRORING THE AUTHORITY. floor_preparation_ms_field reads the phase fields wall_ms,
+    # cpu_ms and fill_cpu_ms, and the producer prints those as BARE integers (wall_ms=182, and
+    # cpu_ms=131163 wall_ms=131176). floor_preparation_ms_unit_field reads the cpu field of a [witness]
+    # row (cpu=126ms) and the cost of a [resolve] row (5522ms), where the unit IS printed. Requiring a
+    # unit where the producer prints none refuses EVERY real run; accepting a missing field turns a unit
+    # change into a silent zero. Each reader is strict about ITS OWN format.
     function take(raw, where,    amount) {
-      if (raw == "") { printf("CAPTURE_FAIL: %s is missing its cost field\n", where) > "/dev/stderr"; exit 1 }
+      if (raw == "") { refused = 1; printf("CAPTURE_FAIL: %s is missing its cost field\n", where) > "/dev/stderr"; exit 1 }
+      if (raw !~ /^[0-9]+$/) {
+        refused = 1
+        printf("CAPTURE_FAIL: %s carries a cost that is not a non-negative integer: %s\n", where, raw) > "/dev/stderr"
+        exit 1
+      }
+      return raw + 0
+    }
+    function take_ms(raw, where,    amount) {
+      if (raw == "") { refused = 1; printf("CAPTURE_FAIL: %s is missing its cost field\n", where) > "/dev/stderr"; exit 1 }
       if (substr(raw, length(raw) - 1) != "ms") {
+        refused = 1
         printf("CAPTURE_FAIL: %s carries a cost without the ms unit: %s\n", where, raw) > "/dev/stderr"
         exit 1
       }
-      amount = substr(raw, 1, length(raw) - 2) + 0
-      if (amount < 0) { printf("CAPTURE_FAIL: %s carries a negative cost\n", where) > "/dev/stderr"; exit 1 }
-      return amount
+      amount = substr(raw, 1, length(raw) - 2)
+      if (amount !~ /^[0-9]+$/) {
+        refused = 1
+        printf("CAPTURE_FAIL: %s carries a negative or non-integer cost: %s\n", where, raw) > "/dev/stderr"
+        exit 1
+      }
+      return amount + 0
     }
     /^\[floor-phase\]/ {
-      if ($2 !~ /^phase=/) { print "CAPTURE_FAIL: phase row without a phase= field" > "/dev/stderr"; exit 1 }
+      if ($2 !~ /^phase=/) { refused = 1; print "CAPTURE_FAIL: phase row without a phase= field" > "/dev/stderr"; exit 1 }
       phase = substr($2, 7)
       if (phase == "expr-var-classification" || phase == "reach-differential") next
-      if (!(phase in cost)) { printf("CAPTURE_FAIL: phase token outside the grammar: %s\n", phase) > "/dev/stderr"; exit 1 }
+      if (!(phase in cost)) { refused = 1; printf("CAPTURE_FAIL: phase token outside the grammar: %s\n", phase) > "/dev/stderr"; exit 1 }
       amount = take(value_of($0, cost[phase]), "phase " phase)
       preparation += amount
       if (phase in whole) { whole_tree += amount } else { entry_scoped += amount }
@@ -165,27 +185,34 @@ fold_report() {
     /^\[resolve\]/ {
       line = substr($0, 10)
       colon = index(line, ":")
-      if (colon == 0) { print "CAPTURE_FAIL: [resolve] row without a path" > "/dev/stderr"; exit 1 }
+      if (colon == 0) { refused = 1; print "CAPTURE_FAIL: [resolve] row without a path" > "/dev/stderr"; exit 1 }
       entry = substr(line, 1, colon - 1)
       gsub(/^[ \t]+|[ \t]+$/, "", entry)
       split(substr(line, colon + 1), parts, " ")
-      digits = parts[1]
-      gsub(/[^0-9]/, "", digits)
-      if (digits == "") { print "CAPTURE_FAIL: [resolve] row without a cost" > "/dev/stderr"; exit 1 }
-      claim += digits + 0
-      claims++
+      digits = take_ms(parts[1], "[resolve] row for an entry")
+      # PER-ENTRY RESOLUTION IS PREPARATION, NOT CLAIM EXECUTION. The producer is resolve_timed at
+      # src/v1/stage0/src/bin/claim_batch.rs:725, which times resolve_entry_with_index_typed -- the entry
+      # is resolved before any claim of it runs, and the binary accumulates the figure into
+      # timings.resolve_ms beside the other preparation timings. The authority charges it the same way
+      # (v2.workflow.floor_preparation_split, the EntryResolveLine arm of floor_preparation_step: it adds
+      # to preparation_ms, never to claim_ms). Charging it to the claim side would move the majority of the
+      # wall time of a run onto the half the ticket says was never the expense -- the one misclassification
+      # that could flip the premise of this node, so the shell mirrors the model here rather than guessing.
+      preparation += digits
+      entry_scoped += digits
+      resolves++
       modules[entry] += digits + 0
       current = entry
       seen_resolve = 1
       next
     }
     /^\[witness\]/ {
-      if (!seen_resolve) { print "CAPTURE_FAIL: [witness] row appeared before any [resolve] row" > "/dev/stderr"; exit 1 }
+      if (!seen_resolve) { refused = 1; print "CAPTURE_FAIL: [witness] row appeared before any [resolve] row" > "/dev/stderr"; exit 1 }
       head = substr($0, 10)
       colon = index(head, ":")
       fn = substr(head, 1, colon - 1)
       gsub(/^[ \t]+|[ \t]+$/, "", fn)
-      amount = take(value_of(head, "cpu"), "[witness] row for " fn)
+      amount = take_ms(value_of(head, "cpu"), "[witness] row for " fn)
       claim += amount
       claims++
       owner = (current == "" ? "(unattributed)" : current)
@@ -196,6 +223,11 @@ fold_report() {
     /^FAIL / { failed++; next }
     /^UNOBSERVED / { unobserved++; next }
     END {
+      # A REFUSED LOG PRINTS NOTHING. exit 1 inside a rule still runs END in awk, so without this guard a
+      # log the fold refused came out as a zero-filled floor-preparation-split line and the check that
+      # followed was simply REPORT_OK. A harness that reports green when the thing under test never ran is
+      # the defect class of this whole lane; it is not allowed to live here.
+      if (refused) { exit 1 }
       top = ""
       topms = -1
       nmods = 0
@@ -205,6 +237,8 @@ fold_report() {
       printf("floor-preparation-split label=%s phase_rows=%d preparation_ms=%d claim_ms=%d total_ms=%d whole_tree_ms=%d entry_scoped_ms=%d claims=%d pass=%d fail=%d unobserved=%d modules=%d top_module=%s module_table=%s\n", \
         label, phases, preparation, claim, preparation + claim, whole_tree, entry_scoped, claims, passed, failed, unobserved, nmods, top, table)
     }'
+  status=$?
+  [ "$status" = "0" ] || fail "the fold refused log $log (label $label): it prints no split line rather than a zero-filled one"
 }
 
 verify_binary() {
