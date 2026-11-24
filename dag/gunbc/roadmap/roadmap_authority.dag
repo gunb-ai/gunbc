@@ -9695,7 +9695,7 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
         red_control: "Probe: each site, once typed, moves from ExhaustivenessUnknown to a resolved verdict; control: its roster row is dropped and the equality-budget claim stays green with one fewer row (shrink-only).",
         out_of_scope: "Adding any new exempted site (the roster is frozen shrink-only per the operator ruling); changing the exhaustiveness algorithm for already-resolved types.",
         handback: "The 6 rows retired, the allow-list empty, the equality-budget claim green over an empty roster."
-      ), on: "2026-11-23", note: "Filed by floor-exhaustiveness-refusal under the operator's (C) ruling; retires the A+C allow-list once landed."), on: "2026-11-23", note: "Not yet centered: filed alongside PR #16895.")),
+      ), on: "2026-11-23", note: "Filed by floor-exhaustiveness-refusal under the operator's (C) ruling; retires the A+C allow-list once landed.")),
       dispatch: dispatchable(),
       parent: in_project(project: "compiler-guarantee", contribution: "Blocked-lookup scrutinee types made nameable so exhaustiveness is decided, not waived."),
     ),
