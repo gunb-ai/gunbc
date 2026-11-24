@@ -1,6 +1,7 @@
 module extdeps.tools.gnu_coreutils
 
 import extdeps.exec.program { ProgramIdentity, uncataloged_program }
+import extdeps.tools.env { env_path_resolved_program }
 
 import std.types { NonEmptyStr, FilePath, String, List, Int }
 import std.measure { Second, second_count }
@@ -590,12 +591,6 @@ fn coreutils_rm_force_recursive_argv(path: String) -> List<String> {
 // when the limit is reached and exiting 124 if it fired.
 fn timeout_program() -> ProgramIdentity = uncataloged_program(invocation: "timeout")
 
-// `env` is the GNU coreutils program-prefix tool used to set a single variable for one invocation
-// without disturbing the caller's environment. Here it pins LC_ALL=C on the timeout process so the
-// --verbose enforcement diagnostic is emitted in the stable C message catalog (see
-// timeout_command_enforcing_bound). It is an upstream coreutils program, not a gunbc one.
-fn env_program() -> ProgramIdentity = uncataloged_program(invocation: "env")
-
 // `--kill-after` IS PART OF THE OPERATION, NOT A REFINEMENT OF IT. Plain `timeout` sends TERM and
 // then WAITS: a process that ignores TERM, or one wedged in the kernel, outlives the deadline it was
 // supposed to be bounded by -- so a deadline without a follow-up KILL is not a deadline, it is a
@@ -659,7 +654,7 @@ fn timeout_command_enforcing_bound(
   command: ArgvCommand,
 ) -> ArgvCommand {
   argv_command(
-    program: env_program(),
+    program: env_path_resolved_program(),
     arguments: concat(
       [
         "LC_ALL=C",

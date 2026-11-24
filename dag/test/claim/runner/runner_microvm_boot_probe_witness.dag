@@ -24,7 +24,7 @@ import gunbc.runner.runner_microvm_boot_probe {
   runner_microvm_boot_probe_enforcement_observation,
   runner_microvm_boot_probe_verdict_from_observation,
   runner_microvm_boot_probe_deadline,
-  ExecutionBoundReceipt, BoundFired, BoundEnforcementUnobserved, NoExecutionBound,
+  ExecutionBoundReceipt, BoundFired, BoundEnforcementUnobserved, BoundDidNotFire, NoExecutionBound,
 }
 import gunbc.runner.runner_guest_image { guest_observation_line, GuestBooted }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -160,7 +160,7 @@ test fn the_real_bound_firing_is_read_as_a_deadline() -> Bool {
   let verdict = boot_probe_verdict(
     runner: actions_runner_release_2_336_0,
     observed: observed,
-    receipt: runner_microvm_boot_probe_enforcement_observation(deadline: runner_microvm_boot_probe_deadline, stderr: observed.stderr),
+    receipt: runner_microvm_boot_probe_enforcement_observation(deadline: runner_microvm_boot_probe_deadline, exit_code: observed.exit_code, stderr: observed.stderr),
   )
   observed.exit_code == 124
     && string_contains(s: observed.stderr, pattern: "timeout: sending signal")
@@ -187,7 +187,7 @@ test fn the_real_child_exiting_124_is_refused_by_name_not_a_deadline() -> Bool {
   let verdict = boot_probe_verdict(
     runner: actions_runner_release_2_336_0,
     observed: observed,
-    receipt: runner_microvm_boot_probe_enforcement_observation(deadline: runner_microvm_boot_probe_deadline, stderr: observed.stderr),
+    receipt: runner_microvm_boot_probe_enforcement_observation(deadline: runner_microvm_boot_probe_deadline, exit_code: observed.exit_code, stderr: observed.stderr),
   )
   observed.exit_code == 124
     && !string_contains(s: observed.stderr, pattern: "timeout: sending signal")
@@ -199,6 +199,39 @@ test fn the_real_child_exiting_124_is_refused_by_name_not_a_deadline() -> Bool {
     })
 }
 
+//   (C) A CLEAN BOOT UNDER THE SAME BOUND IS ADMITTED, NOT REFUSED. The bound is imposed but does NOT
+//   fire: the subject exits 0 with the runner version and the agent's GuestBooted marker on its console.
+//   The bounder's own contract (timeout(1): a fired timeout exits 124) makes a NON-124 status POSITIVE
+//   evidence the bound did not fire -- this is NOT the forbidden inference from a missing diagnostic, it
+//   is the status ruling a fire out -- so the receipt is BoundDidNotFire and the run is judged on its
+//   console content, reaching an admitted verdict. This is the arm review 98030 required: the real
+//   producer driven through a NON-FIRING bound all the way to an admitted verdict.
+test fn the_real_non_firing_bound_still_admits_a_clean_boot() -> Bool {
+  let version = actions_runner_release_2_336_0.version as String
+  let marker = guest_observation_line(event: GuestBooted, image: gunbc_runner_guest_image)
+  let observed = run_shell_command_observe(
+    command: timeout_command_enforcing_bound(
+      duration: second(count: 30),
+      kill_after: second(count: 1),
+      command: posix_sh_program_command(script: join(["echo '", version, "'; echo '", marker, "'"], "")),
+    ),
+    transport: LocalExec,
+  )
+  let receipt = runner_microvm_boot_probe_enforcement_observation(
+    deadline: runner_microvm_boot_probe_deadline,
+    exit_code: observed.exit_code,
+    stderr: observed.stderr,
+  )
+  let verdict = runner_microvm_boot_probe_verdict_from_observation(
+    runner: actions_runner_release_2_336_0,
+    observed: observed,
+  )
+  observed.exit_code == 0
+    && (match receipt { BoundDidNotFire => true  _ => false })
+    && boot_probe_admitted(v: verdict)
+    && (match verdict { BootPrintedRunnerVersion { version: v } => v == version  _ => false })
+}
+
 // ABSENCE IS NOT EVIDENCE: a localized or otherwise unrecognized diagnostic must land in the unknown arm
 // and be REFUSED BY NAME, never matched-and-fired and never read as "the bound did not fire". The real
 // coreutils on the heavy host ships no message catalogs, so the localized form is exercised at the
@@ -206,6 +239,7 @@ test fn the_real_child_exiting_124_is_refused_by_name_not_a_deadline() -> Bool {
 test fn an_unrecognized_enforcement_diagnostic_is_refused_not_matched() -> Bool {
   let receipt = runner_microvm_boot_probe_enforcement_observation(
     deadline: runner_microvm_boot_probe_deadline,
+    exit_code: 124,
     stderr: "timeout: Senden von Signal TERM an Befehl »sleep«",
   )
   let verdict = boot_probe_verdict(

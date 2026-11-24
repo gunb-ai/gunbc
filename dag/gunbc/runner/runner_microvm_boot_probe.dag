@@ -13,7 +13,10 @@ import extdeps.exec.command { ArgvCommand }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.mkdir { mkdir_parents_command }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.tools.gnu_coreutils { cp_command, rm_force_command, timeout_command_enforcing_bound, coreutils_timeout_enforcement_diagnostic }
+import extdeps.tools.gnu_coreutils {
+  cp_command, rm_force_command, timeout_command_enforcing_bound,
+  coreutils_timeout_enforcement_diagnostic, coreutils_timeout_expired_exit_code,
+}
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.virtualization.firecracker {
   FirecrackerVmConfig, firecracker_release_aarch64,
@@ -169,37 +172,54 @@ fn runner_microvm_boot_probe_bounded_command(binary: String, config_path: String
 // signal the guest. So:
 //   BoundFired                   -- the bounder's --verbose enforcement diagnostic is present in stderr: the
 //                                 bound did the work, this IS a deadline event.
-//   BoundEnforcementUnobserved   -- a bound WAS imposed on this invocation but its stderr carried no
-//                                 readable enforcement diagnostic. ABSENCE IS NOT EVIDENCE that the bound
-//                                 did not fire: the same absence results from an unreadable stderr, a
-//                                 different coreutils build, or a message the pinned locale did not render.
-//                                 So it is recorded as UNKNOWN and the classifier REFUSES BY NAME
+//   BoundEnforcementUnobserved   -- the exit status is one the BOUNDER ITSELF emits (coreutils_timeout_expired_exit_code,
+//                                 124) but its stderr carried no readable enforcement diagnostic. This is the
+//                                 ONE genuinely ambiguous case: a fired bounder and a child that exits 124 of
+//                                 its own accord share this status, and reading the absence of the diagnostic
+//                                 as "the bound did not fire" is exactly the inference the failure-mode row
+//                                 forbids. So it is recorded as UNKNOWN and the classifier REFUSES BY NAME
 //                                 (BootDeadlineEnforcementUnobservable) -- it never falls back to the bare
 //                                 exit status and never silently classifies the run as a plain VMM failure.
+//   BoundDidNotFire              -- the exit status is one the bounder CANNOT emit when it fires: per the
+//                                 upstream (timeout(1), cited in extdeps.tools.gnu_coreutils) a fired GNU
+//                                 timeout exits coreutils_timeout_expired_exit_code (124), so any OTHER status
+//                                 is positive evidence the bound did not fire and the subject exited on its
+//                                 own (0 clean, 1 a failed VMM, ...). This is NOT the forbidden absence-
+//                                 inference: the status itself rules the bound out, so the run is judged on its
+//                                 console content exactly as NoExecutionBound. A clean boot therefore still
+//                                 reaches BootPrintedRunnerVersion, and a real VMM failure still reaches
+//                                 BootVmmFailed -- neither is swallowed by the refusal.
 //   NoExecutionBound             -- no execution bound was placed at all (the captured-console file read in
 //                                 gunbc.runner_observed_version_check): the observation is not a bound
 //                                 observation, and the run is judged on its console content alone.
 type ExecutionBoundReceipt
   = BoundFired { deadline: Second }
   | BoundEnforcementUnobserved
+  | BoundDidNotFire
   | NoExecutionBound
 
-// READ THE RECEIPT FROM THE CAPTURED STDERR of the invocation this module bounded. stderr is captured
-// separately from the exit status (gunbc.command_runner run_shell_command_observe -> extdeps.shell.exec
-// observe_command, which keeps the two streams distinct; command_runner.dag line 316). The diagnostic is
-// matched against the upstream prefix cited in extdeps.tools.gnu_coreutils
-// (coreutils_timeout_enforcement_diagnostic); its presence is the ONLY thing that yields BoundFired.
-// Anything else -- including a non-empty stderr that does not carry the prefix, e.g. a localized
-// message the LC_ALL=C pin failed to produce, or an unreadable stderr -- yields BoundEnforcementUnobserved,
-// so an unrecognized diagnostic form REFUSES by name rather than silently matching nothing.
+// READ THE RECEIPT FROM THE CAPTURED STDERR and the exit status of the invocation this module bounded.
+// stderr is captured separately from the exit status (gunbc.command_runner run_shell_command_observe ->
+// extdeps.shell.exec observe_command, which keeps the two streams distinct; command_runner.dag line 316).
+// The three-way read, in the only order that keeps the row's red control true:
+//   1. the bounder's --verbose diagnostic is present   -> BoundFired (the SOLE path to a deadline claim);
+//   2. the status is 124 (coreutils_timeout_expired_exit_code), the one status the bounder emits when it
+//      fires, but the diagnostic is unreadable         -> BoundEnforcementUnobserved (refuse by name);
+//   3. any other status                                 -> BoundDidNotFire (the bounder's own contract rules a
+//      fire out, so the subject exited for its own reasons; classify on content).
+// The deadline verdict is reachable ONLY through branch 1; the 124 status arm produces a REFUSAL, never a
+// deadline, so no arm keys a deadline on the bare exit status (the row's out_of_scope).
 fn runner_microvm_boot_probe_enforcement_observation(
   deadline: Second,
+  exit_code: Int,
   stderr: String,
 ) -> ExecutionBoundReceipt {
   if string_contains(s: stderr, pattern: coreutils_timeout_enforcement_diagnostic) {
     BoundFired { deadline: deadline }
-  } else {
+  } else if exit_code == coreutils_timeout_expired_exit_code {
     BoundEnforcementUnobserved
+  } else {
+    BoundDidNotFire
   }
 }
 
@@ -213,6 +233,7 @@ fn runner_microvm_boot_probe_verdict_from_observation(
 ) -> BootProbeVerdict {
   let receipt = runner_microvm_boot_probe_enforcement_observation(
     deadline: runner_microvm_boot_probe_deadline,
+    exit_code: observed.exit_code,
     stderr: observed.stderr,
   )
   guest_agent_boot_verdict(runner: runner, observed: observed, receipt: receipt)
@@ -243,14 +264,35 @@ type BootProbeVerdict
 //   BoundFired                 -> BootExceededHostDeadline (the bounder observed itself signalling the
 //                                 guest at the deadline; the duration rendered is the bound that was
 //                                 actually imposed, not an invented wall-clock figure).
-//   BoundEnforcementUnobserved -> BootDeadlineEnforcementUnobservable: a bound was placed but its
-//                                 enforcement cannot be read, so the classifier REFUSES BY NAME rather
-//                                 than inferring "the bound did not fire" from the missing diagnostic
-//                                 (gunbc.design_argument::fail_closed, gunbc.design_argument::epistemic_humility).
-//                                 It never falls back to the bare exit status and never substitutes a
-//                                 wall-clock reading.
+//   BoundEnforcementUnobserved -> BootDeadlineEnforcementUnobservable: the status is the one the bounder
+//                                 emits when it fires but its enforcement cannot be read, so the classifier
+//                                 REFUSES BY NAME rather than inferring "the bound did not fire" from the
+//                                 missing diagnostic (gunbc.design_argument::fail_closed,
+//                                 gunbc.design_argument::epistemic_humility). It never falls back to the bare
+//                                 exit status and never substitutes a wall-clock reading.
+//   BoundDidNotFire            -> the bounder's own exit contract (124 when it fires, timeout(1)) rules a
+//                                 fire out, so the subject exited for its own reasons: judged on console
+//                                 content exactly as if no bound were placed -- a clean boot reaches
+//                                 BootPrintedRunnerVersion, a failed VMM reaches BootVmmFailed.
 //   NoExecutionBound           -> no bound was placed (the captured-console file read): judged on console
 //                                 content alone.
+fn boot_probe_verdict_by_content(
+  runner: ActionsRunnerRelease,
+  observed: ProcessObservation,
+) -> BootProbeVerdict {
+  if observed.exit_code != 0 {
+    BootVmmFailed { exit_code: observed.exit_code, console: observed.stdout, detail: observed.stderr }
+  } else if observed.stdout == "" {
+    BootProducedNoConsole {
+      cause: "the VMM exited cleanly and produced no console output at all, so the guest did not reach a serial console",
+    }
+  } else if string_contains(s: observed.stdout, pattern: runner.version as String) {
+    BootPrintedRunnerVersion { version: runner.version as String }
+  } else {
+    BootConsoleLacksRunnerVersion { expected: runner.version as String, console: observed.stdout }
+  }
+}
+
 fn boot_probe_verdict(
   runner: ActionsRunnerRelease,
   observed: ProcessObservation,
@@ -266,18 +308,8 @@ fn boot_probe_verdict(
       console: observed.stdout,
       detail: observed.stderr,
     }
-    NoExecutionBound =>
-      if observed.exit_code != 0 {
-        BootVmmFailed { exit_code: observed.exit_code, console: observed.stdout, detail: observed.stderr }
-      } else if observed.stdout == "" {
-        BootProducedNoConsole {
-          cause: "the VMM exited cleanly and produced no console output at all, so the guest did not reach a serial console",
-        }
-      } else if string_contains(s: observed.stdout, pattern: runner.version as String) {
-        BootPrintedRunnerVersion { version: runner.version as String }
-      } else {
-        BootConsoleLacksRunnerVersion { expected: runner.version as String, console: observed.stdout }
-      }
+    BoundDidNotFire => boot_probe_verdict_by_content(runner: runner, observed: observed)
+    NoExecutionBound => boot_probe_verdict_by_content(runner: runner, observed: observed)
   }
 }
 
