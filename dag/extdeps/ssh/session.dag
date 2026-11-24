@@ -62,7 +62,7 @@ type SshSessionExecResult {
   // and the Exec/ExecScript shapes never set these; they default false/Absent and keep today's
   // behavior. The exit code stays the child's real code, irrelevant when overran is true.
   overran: Bool = false
-  wall_deadline_seconds: Optional<Second> = Absent
+  wall_deadline_seconds: Optional<Second>
 }
 
 // THE MODEL VIEW OF A FLEET LEG'S SESSION EXEC.
