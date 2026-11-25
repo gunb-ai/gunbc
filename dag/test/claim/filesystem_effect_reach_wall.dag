@@ -1,4 +1,4 @@
-module v2.test.claim.filesystem_effect_reach_wall
+module test.claim.filesystem_effect_reach_wall
 
 import v2.compiler.effect_demand {
   FilesystemEffectSite,
@@ -542,7 +542,7 @@ data filesystem_effect_fixture_closure_population: FilesystemEffectCensusPopulat
   FilesystemEffectCensusPopulation {
     rule: ^derived_fixture_closure_over_wall_fixture_rows,
     driver_arm: "NativeCliDriver",
-    emitted_closure_root_module: "v2.test.claim.filesystem_effect_reach_wall",
+    emitted_closure_root_module: "test.claim.filesystem_effect_reach_wall",
     emitted_closure_root_declaration: "filesystem_derived_population_fixture",
     bound_handler: "emit_file_call",
     free_primitive_slug: "filesystem_read"

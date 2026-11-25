@@ -147,7 +147,7 @@ fn demand_restatement_retained_row_texts() -> List<String> {
 // population reaches it through the projection below, never by hand.
 //
 // THE TWO SIDES COME FROM DIFFERENT PRODUCERS. The roster is this module's data, projected; the
-// ARRIVING population is what a consumer derives from the tree (v2.test.claim.filesystem_effect_reach_wall
+// ARRIVING population is what a consumer derives from the tree (test.claim.filesystem_effect_reach_wall
 // parses the corpus and reads the uses clauses the parser records). An arriving list built from the
 // roster itself is green by construction and certifies nothing
 // (gunbc.design_argument::guarantee_ladder). v2.workflow.compile_door_cause_ownership names the D13
