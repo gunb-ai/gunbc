@@ -1336,6 +1336,8 @@ type ShellResultChannel
   | ShellChanStderrTruncated
   | ShellChanStderrTotalBytes
   | ShellChanStderrRetainedBytes
+  | ShellChanOverran
+  | ShellChanWallDeadlineSeconds
 
 type ShellResultField {
   channel: ShellResultChannel
@@ -1377,6 +1379,8 @@ fn shell_result_channel_of_key(key: String) -> ShellResultChannel? {
   else if key == "stderr_truncated" { Present { value: ShellChanStderrTruncated } }
   else if key == "stderr_total_bytes" { Present { value: ShellChanStderrTotalBytes } }
   else if key == "stderr_retained_bytes" { Present { value: ShellChanStderrRetainedBytes } }
+  else if key == "overran" { Present { value: ShellChanOverran } }
+  else if key == "wall_deadline_seconds" { Present { value: ShellChanWallDeadlineSeconds } }
   else { none }
 }
 
@@ -1392,6 +1396,8 @@ fn shell_result_channel_key(c: ShellResultChannel) -> String {
     ShellChanStderrTruncated => "stderr_truncated"
     ShellChanStderrTotalBytes => "stderr_total_bytes"
     ShellChanStderrRetainedBytes => "stderr_retained_bytes"
+    ShellChanOverran => "overran"
+    ShellChanWallDeadlineSeconds => "wall_deadline_seconds"
   }
 }
 
@@ -1412,6 +1418,8 @@ fn shell_channel_is_capture_accounting(c: ShellResultChannel) -> Bool {
     ShellChanStderrTruncated => true
     ShellChanStderrTotalBytes => true
     ShellChanStderrRetainedBytes => true
+    ShellChanOverran => false
+    ShellChanWallDeadlineSeconds => false
     _ => false
   }
 }
@@ -1419,6 +1427,9 @@ fn shell_channel_is_capture_accounting(c: ShellResultChannel) -> Bool {
 fn shell_channel_realized_by_target(c: ShellResultChannel, target: RenderTarget) -> Bool {
   if shell_channel_is_capture_accounting(c: c) {
     target_is_rust(target: target)
+  } else if c == ShellChanOverran || c == ShellChanWallDeadlineSeconds {
+    // @ref(gunbc.guarantee_stall.compiled_shell_leg_deadline_enforcement_stall::compiled_shell_leg_deadline_enforcement_stall)
+    false
   } else {
     target_renders_shell_transport(target: target)
   }
@@ -1442,10 +1453,10 @@ fn shell_emission_refusal_fact(refusal: ShellEmissionRefusal) -> String {
   match refusal {
     ShellOutputKeyNotModeled { key: k } =>
       concat("shell transport output key '", k,
-        "' has no modeled channel -- the modeled channels are stdout, stderr, exit_success, success, exists, exit_code, stdout_lines, stderr_truncated, stderr_total_bytes and stderr_retained_bytes")
+        "' has no modeled channel -- the modeled channels are stdout, stderr, exit_success, success, exists, exit_code, stdout_lines, stderr_truncated, stderr_total_bytes, stderr_retained_bytes, overran and wall_deadline_seconds")
     ShellChannelNotRealizedByTarget { key: k, target_name: tn } =>
       concat("shell output channel '", k, "' is a modeled channel that target ", tn,
-        " cannot realize -- the emitted realization implements no stderr capture policy, so answering it would assert that the declared policy ran")
+        " cannot realize -- the compiled path implements no wall-deadline kill and no bounded-capture policy, so answering this channel would assert that an unenforced bound was honoured")
     ShellCapturePolicyInputAbsent { key: k } =>
       concat("shell output channel '", k,
         "' is a capture-accounting channel and this operation does not declare a required scalar stderr_capture: WitnessStderrCapturePolicy -- answering it would apply a policy nobody declared")

@@ -68,6 +68,7 @@ import gunbc.roadmap.roadmap_site_surface_types {
   RoadmapSiteSurfaceBundle, RoadmapSiteSurfaceArtifact,
   HealthzEffectiveRead, HealthzBodyRead, HealthzAnsweredUnhealthy, HealthzProbeRefused,
 }
+import gunbc.roadmap.roadmap_site_surface_observe { RoadmapSiteSurfaceBundleRendered }
 import gunbc.roadmap.roadmap_site_surface_render { healthz_body_with_release_identity }
 import test.claim.live_deploy.readiness { witness_expected_surface_identity }
 import test.claim.live_deploy.apply { fixture_converged_mutation }
@@ -510,13 +511,13 @@ test fn a_reply_with_no_status_line_refuses() -> Bool {
 test fn unanswered_and_answered_pending_arms_are_distinct_and_never_ready() -> Bool {
   let unanswered = observe_service_readiness_from_healthz(
     read: HealthzProbeRefused { probe_error: "curl: (7) Couldn't connect to server" },
-    bundle: witness_bundle(),
+    observation: RoadmapSiteSurfaceBundleRendered { bundle: witness_bundle() },
     expected_revision: rev_b(),
     expected_surface_identity: witness_expected_surface_identity(),
   )
   let answered = observe_service_readiness_from_healthz(
     read: HealthzAnsweredUnhealthy { status: unhealthy_status, detail: status_said_server_error() },
-    bundle: witness_bundle(),
+    observation: RoadmapSiteSurfaceBundleRendered { bundle: witness_bundle() },
     expected_revision: rev_b(),
     expected_surface_identity: witness_expected_surface_identity(),
   )
@@ -576,7 +577,7 @@ test fn a_503_carrying_the_expected_release_reads_as_the_expected_release() -> B
 test fn answered_unhealthy_is_pending_never_ready() -> Bool {
   match observe_service_readiness_from_healthz(
     read: HealthzAnsweredUnhealthy { status: unhealthy_status, detail: status_said_server_error() },
-    bundle: witness_bundle(),
+    observation: RoadmapSiteSurfaceBundleRendered { bundle: witness_bundle() },
     expected_revision: rev_b(),
     expected_surface_identity: witness_expected_surface_identity(),
   ) {

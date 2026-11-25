@@ -46,7 +46,7 @@ import gunbc.compile_diagnostic_census {
   CensusObserved,
   CensusNotRunnable,
 }
-import gunbc.compile_census_probe { blocking_class_census, census_verdict, census_verdict_all, census_premise, census_exit, census_int_text, CensusVerdict }
+import gunbc.compile_census_probe { blocking_class_census, census_verdict, census_verdict_all, census_verdict_worse, census_premise, census_exit, census_int_text, CensusVerdict, CensusHeld, CensusDisagreed, CensusUnobserved }
 import gunbc.guarantee_measurement { GuaranteeProbeId, MeasurementRevision }
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.algebra { fold_list }
@@ -210,8 +210,14 @@ data cardinality_seam_green_source: String = "module probe_floor_cs_green\ntype 
 
 data cardinality_seam_call_arg_control_source: String = "module probe_floor_cs_callarg\ntype Level { id: String, parent: Level? }\nfn use_level(l: Level) -> String { l.id }\nfn probe(l: Level) -> String { use_level(l: l.parent) }\n"
 
-test fn floor_generic_instantiation_is_still_silently_accepted() -> Bool {
-  silent_hole_holds(probe: floor_generic_instantiation_hole_probe, source: generic_instantiation_hole_source)
+// CLIMBED: the type-argument hole is closed at b5af75f4d339 (gunbc#9416; red at its parent 107304a57920). The probe was
+// `floor_generic_instantiation_is_still_silently_accepted`; per gunbc.design_argument::guarantee_ladder (dissolution on
+// climb) it is flipped to the refusal and stays enrolled as the permanent regression control for the higher rung.
+test fn floor_generic_instantiation_type_argument_refuses() -> ProcessExit {
+  census_verdict_all([
+    census_premise("the probe row's expectation holds", row_holds(probe: floor_generic_instantiation_hole_probe, source: generic_instantiation_hole_source)),
+    blocking_verdict(source: generic_instantiation_hole_source, wanted: "TypeMismatch", holds: fn(n) { n == 1 })
+  ])
 }
 
 test fn floor_generic_instantiation_monomorphic_control_refuses() -> ProcessExit {
@@ -224,14 +230,6 @@ test fn floor_generic_instantiation_monomorphic_control_refuses() -> ProcessExit
 test fn floor_generic_instantiation_green_control_is_clean() -> Bool {
   row_holds(probe: floor_generic_instantiation_green_probe, source: generic_instantiation_green_source)
     && total_row_count_is_zero(census: census_of(source: generic_instantiation_green_source))
-}
-
-test fn floor_generic_instantiation_hole_does_not_satisfy_the_refusing_control() -> Bool {
-  match active_probe_row(probe: floor_generic_instantiation_monomorphic_control_probe) {
-    Present { value: control_row } =>
-      !probe_row_expectation_holds(census: census_of(source: generic_instantiation_hole_source), row: control_row)
-    Absent => false
-  }
 }
 
 test fn floor_field_through_generics_type_variable_refuses() -> ProcessExit {
@@ -310,12 +308,12 @@ test fn floor_record_completeness_receipt_joins_its_v1_compile_path() -> Bool {
 }
 
 test fn floor_hole_receipt_records_acceptance_as_the_observation() -> Bool {
-  match active_v1_compile_probe_row(probe: floor_generic_instantiation_hole_probe) {
+  match active_v1_compile_probe_row(probe: floor_parse_list_separator_hole_probe) {
     Present { value: row } =>
       let receipt = build_v1_compile_receipt(
         row: row,
-        census: census_of(source: generic_instantiation_hole_source),
-        subject_revision: synthetic_program_subject_revision(source: generic_instantiation_hole_source),
+        census: census_of(source: parse_list_separator_hole_source),
+        subject_revision: synthetic_program_subject_revision(source: parse_list_separator_hole_source),
         harness_revision: witness_harness_revision(probe: row.probe),
       )
       observation_is_clean(o: receipt.observed)
@@ -323,6 +321,30 @@ test fn floor_hole_receipt_records_acceptance_as_the_observation() -> Bool {
     Absent => false
   }
 }
+
+// LEG LIFECYCLE for the three cardinality-seam legs below -- read this before deleting or "fixing"
+// any of them (ruled by bold-pike-529, 2026-11-25).
+// THE DISCRIMINATING PAIR is floor_cardinality_seam_call_argument_refuses_proving_harness_is_live (the
+// wrong case REFUSED) together with floor_cardinality_seam_green_control_is_clean (the correct case
+// ACCEPTED). Those two are what this witness CARRIES: they show the harness can both refuse and accept,
+// so a silent acceptance anywhere below is an OBSERVATION and not a broken instrument reading.
+// floor_cardinality_seam_field_projection_through_optional_is_still_silent is NOT a guarantee and never
+// was -- it PASSES ONLY WHILE THE COMPILER IS WRONG. It is the recurring-failure-mode row's twin, the
+// measured face of
+// gunbc.recurring_failure_mode.a_field_read_through_an_optional_value_is_accepted_at_the_projection,
+// whose next-rung trigger names the node that dissolves it. When that projection wall lands this leg
+// MUST FLIP TO RED and be re-ranked as a regression control beside its discriminating refusal; it is
+// never deleted while still green, because deleting a green hole leg is how a hole becomes invisible.
+// OWNER OF THE FIX, named so this leg cannot calcify into infrastructure a later reader mistakes for a
+// guarantee: roadmap row floor-optional-projection-wall, identity rn_MDGKH2UR7XGMNPT3AMWLAXVFO2
+// (owner compiler-guarantee), rostered in plan PR gunbc#17055 at head
+// 0e786380ffec33eb893884e6bf8276229f2c3b00 (that ref moves; the identity does not), carriers
+// src/v1/04_infer.dag + dag/test/claim/optional_field_read_admission_gap_witness.dag +
+// dag/gunbc/recurring_failure_mode/optional_admitted_where_a_required_value_is_declared.dag. That row
+// declares no dispatch field, so it is NotDispatchable until this node and its
+// recurring-failure-mode row land. main's two parse-hole legs of the same shape
+// (floor_parse_list_separator_omission_is_still_silent at :253 and
+// floor_hole_receipt_records_acceptance_as_the_observation at :290) carry no such note; this one does.
 
 test fn floor_cardinality_seam_field_projection_through_optional_is_still_silent() -> ProcessExit {
   census_verdict_all([
@@ -345,6 +367,51 @@ test fn floor_cardinality_seam_call_argument_refuses_proving_harness_is_live() -
   ])
 }
 
+// THE ROUTE, NOT ONLY THE ANSWER (gunbc.design_argument::witness_one_interface, DESIGN.md:427: "every supplied
+// boundary owes one inhabitance claim that still executes the real path... asserting the ROUTE and not only the
+// answer, and SUPPLYING INPUTS MAY NEVER REMOVE THE LAST EXECUTION OF THE REAL PATH - deleting the integration
+// must make a control fail"). The three verdict tests above assert WHAT the census says for the fixtures this
+// module supplies. Read alone, two of them pass vacuously if the producer path is gutted: a harness returning an
+// empty census satisfies both the hole expectation and ExpectZeroDiagnostics, and only the call-argument control
+// would fail. This claim mirrors the lane's hole-shaped receipt idiom
+// (floor_hole_receipt_records_acceptance_as_the_observation) onto this class's own red-carrying probe, so the
+// integration being deleted fails a control INSIDE the cardinality-seam class, and the leg that measures the gap
+// is the leg that proves it came from the v1-compile path.
+test fn floor_cardinality_seam_hole_receipt_joins_its_v1_compile_path() -> Bool {
+  match active_v1_compile_probe_row(probe: floor_cardinality_seam_hole_probe) {
+    Present { value: row } =>
+      let census = census_of(source: cardinality_seam_hole_source)
+      let receipt = build_v1_compile_receipt(
+        row: row,
+        census: census,
+        subject_revision: synthetic_program_subject_revision(source: cardinality_seam_hole_source),
+        harness_revision: witness_harness_revision(probe: row.probe),
+      )
+      // VERDICT-TYPED, NOT A BOOLEAN CONJUNCTION (ruled by bold-pike-529, 2026-11-25). `a && b && c && d`
+      // cannot tell a leg that never ran from a leg that disagreed, and can read either as a pass; the
+      // vacuity this claim exists to close is exactly a gutted producer still returning true. So each
+      // conjunct names itself through census_premise, and the acceptance itself is a real verdict over
+      // the census rather than a Bool over the receipt's observation: census_verdict maps a
+      // CensusNotRunnable to CensusUnobserved carrying the builtin's cause verbatim
+      // (gunbc.compile_census_probe:189), and the fold orders them on the TYPE by constructor match,
+      // CensusDisagreed outranking CensusUnobserved (:130-140). Absence therefore cannot outrank a
+      // finding, and a census that failed to execute cannot be read as one that held.
+      let verdicts = [
+        census_premise("the receipt joins the enrolled v1 compile path", receipt_joins_v1_compile_path(receipt: receipt)),
+        census_premise("the receipt names the enrolled probe row", receipt_matches_v1_compile_probe_row(receipt: receipt, row: row)),
+        census_premise("the anchor carries the v1 compile path id", (receipt.anchor.path as String) == (v1_compile_rust_path_id as String)),
+        census_premise("the hole's observation is accepted-clean", observation_is_clean(o: receipt.observed)),
+        census_verdict(census: census, holds: fn(n) { n == 0 }),
+      ]
+      match fold(verdicts, init: CensusHeld {}, f: (acc, v) => census_verdict_worse(a: acc, b: v)) {
+        CensusHeld {} => true
+        CensusDisagreed { reason: _ } => false
+        CensusUnobserved { cause: _ } => false
+      }
+    Absent => false
+  }
+}
+
 // THE COUNT IS OUT OF THE NAME. It read `..._one_of_the_four_declared_holes` and the set has since
 // grown to six and shrunk back to four, so the name would have needed editing on every enrolment and every climb while asserting nothing —
 // the assertion is the SET EQUALITY below, in both directions, and that is what makes adding a hole
@@ -352,7 +419,6 @@ test fn floor_cardinality_seam_call_argument_refuses_proving_harness_is_live() -
 fn declared_below_floor_hole_ids() -> List<String> {
   [
     floor_exhaustiveness_type_variable_hole_probe as String,
-    floor_generic_instantiation_hole_probe as String,
     floor_parse_list_separator_hole_probe as String,
     floor_cardinality_seam_hole_probe as String,
   ]

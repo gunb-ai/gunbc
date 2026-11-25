@@ -24,9 +24,9 @@ import product.host_identity { HostIdentity }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent }
 import gunbc.fleet.fleet_converge_executor_subject_split { fleet_converge_install_subject_read, fleet_converge_install_refusal_line, InstallSubjectOnNamedSubject, InstallSubjectOnExecutorsOwnMachine, InstallSubjectRefused }
-import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTargetResolution, SshTargetResolved, SshTargetRefused, SshTarget, fleet_scp_upload_command }
+import gunbc.fleet.fleet_known_hosts_anchor { ProbeLeg, ActuationLeg, ProvisioningLeg, FleetLegKind, FleetSshExecutionContext, SshTargetResolution, SshTargetResolved, SshTargetRefused, SshTarget, fleet_scp_upload_command }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
-import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, typed_argv_exec_over_fleet_ssh_posix, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused }
+import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecOutcome, TypedArgvExecOverran, TypedArgvExecRefused, typed_argv_exec_over_fleet_ssh, typed_argv_exec_over_fleet_ssh_posix, typed_argv_exec_overran_reason }
 // Increment 2 (the serving converge's recovery leg): the recovery doors' ONE declared exit mapping,
 // the census and read-back grammars (both live beside their doors), and the typed `gunbc run` argv
 // shape every host-side door run shares. The leg itself decides nothing.
@@ -48,7 +48,9 @@ import gunbc.compute.remote_build_serving_setup { serving_toolchain_line_names_c
 }
 import gunbc.compute.unit_bounds {
   user_work_slice_cgroup_admission, SliceCapped, SliceUncapped, SliceUnknown,
+  gunbc_user_work_scope_command,
 }
+import extdeps.systemd.systemd_run { SystemdRunCommandReading, SystemdRunCommandReady, SystemdRunCommandRefused, systemd_run_option_words_refused_cause_detail }
 import extdeps.access.posix { FileMode, file_mode_octal }
 import extdeps.languages.json.emit { json_object, json_kv, json_string, serialize_json }
 import std.goal_assessment { ObservationAttempt, ObservationEstablished, ObservationRefused, GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused }
@@ -70,10 +72,11 @@ import extdeps.posix.test_utility { test_directory_command, test_executable_comm
 // format authority, so the converge writer and the serve reader cannot drift) and carries the result as
 // the SidecarRead sum (Absent / Malformed / Recorded), never a string sentinel.
 import gunbc.compute.remote_build_serve { parse_serve_binary_identity, ServeIdentityObserved }
-import gunbc.compute.remote_build_serving_setup { SidecarRead, SidecarAbsent, SidecarMalformed, SidecarRecorded }
+import gunbc.compute.remote_build_serving_setup { SidecarRead, SidecarAbsent, SidecarMalformed, SidecarRecorded, serving_host_needs_native_build }
 import extdeps.crypto.hash { sha256sum_file_command }
 import extdeps.git {git_rev_parse_head_command, git_clone_command, git_fetch_revision_command, git_checkout_detached_command }
-import extdeps.tools.uname { uname_machine_command }
+import extdeps.tools.uname { uname_machine_command, uname_linux_machine_architecture }
+import gunbc.fabric.fabric_executor_class { executor_host_architecture, HostArchitecture, HostArchitectureKnown, HostArchitectureUnclassified }
 // The user-work slice leg reads these: the reservation ceiling, the emitted unit render, the model's
 // slice name/swap floor/high derivation, srv1's slice install path, and the unit serializer.
 import std.measure { ByteSize, byte_size_count }
@@ -133,8 +136,9 @@ type ServingObservedView { desired: RemoteBuildServingDesired, observed: Serving
 // This single leg is what the 'test'-based legs take as their precondition, so a drifted sudo grant can never
 // be misread as "the file is absent" (see serving_observed_from_reads; review 95915).
 fn serving_elevation_leg(target: SshTarget, context: FleetSshExecutionContext) -> ObservationAttempt<Bool, ServingLegFailure> {
-  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: sudo_elevate_argv(command: argv_words(command: true_command()))) {
+  match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg, target: target, context: context, argv: sudo_elevate_argv(command: argv_words(command: true_command()))) {
     TypedArgvExecRefused { reason: reason } => ObservationRefused { cause: ServingLegFailure { item: "elevation", cause: concat("ssh refused: ", reason) } }
+    TypedArgvExecOverran { deadline: d } => ObservationRefused { cause: ServingLegFailure { item: "elevation", cause: concat("ssh refused: ", typed_argv_exec_overran_reason(leg_hint: "remote build serving", deadline: d)) } }
     TypedArgvExecConverged { result: r } => match r.exit_code == 0 {
       true => ObservationEstablished { observed: true }
       false => ObservationRefused { cause: ServingLegFailure { item: "elevation", cause: concat("sudo -n true exit ", to_string(r.exit_code)) } }
@@ -143,8 +147,9 @@ fn serving_elevation_leg(target: SshTarget, context: FleetSshExecutionContext) -
 }
 
 fn serving_leg_read(item: String, target: SshTarget, context: FleetSshExecutionContext, argv: List<String>) -> ObservationAttempt<String, ServingLegFailure> {
-  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv) {
+  match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg, target: target, context: context, argv: argv) {
     TypedArgvExecRefused { reason: reason } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused: ", reason) } }
+    TypedArgvExecOverran { deadline: d } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused: ", typed_argv_exec_overran_reason(leg_hint: "remote build serving", deadline: d)) } }
     TypedArgvExecConverged { result: r } => match r.exit_code == 0 {
       true => ObservationEstablished { observed: r.stdout }
       false => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("cat exit ", to_string(r.exit_code)) } }
@@ -160,8 +165,9 @@ fn serving_leg_read(item: String, target: SshTarget, context: FleetSshExecutionC
 fn serving_leg_test(elevation: ObservationAttempt<Bool, ServingLegFailure>, item: String, target: SshTarget, context: FleetSshExecutionContext, probe: ArgvCommand) -> ObservationAttempt<Bool, ServingLegFailure> {
   match elevation {
     ObservationRefused { cause: _ } => ObservationRefused { cause: ServingLegFailure { item: item, cause: "sudo -n refused" } }
-    ObservationEstablished { observed: _ } => match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: sudo_elevate_argv(command: argv_words(command: probe))) {
+    ObservationEstablished { observed: _ } => match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg, target: target, context: context, argv: sudo_elevate_argv(command: argv_words(command: probe))) {
       TypedArgvExecRefused { reason: reason } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused: ", reason) } }
+      TypedArgvExecOverran { deadline: d } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused: ", typed_argv_exec_overran_reason(leg_hint: "remote build serving", deadline: d)) } }
       TypedArgvExecConverged { result: r } => match r.exit_code == 0 {
         true => ObservationEstablished { observed: true }
         false => match r.exit_code == 1 {
@@ -182,8 +188,9 @@ fn serving_leg_test(elevation: ObservationAttempt<Bool, ServingLegFailure>, item
 fn serving_leg_authorized_keys(elevation: ObservationAttempt<Bool, ServingLegFailure>, item: String, target: SshTarget, context: FleetSshExecutionContext, path: String) -> ObservationAttempt<String, ServingLegFailure> {
   match elevation {
     ObservationRefused { cause: _ } => ObservationRefused { cause: ServingLegFailure { item: item, cause: "sudo -n refused" } }
-    ObservationEstablished { observed: _ } => match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: sudo_elevate_argv(command: argv_words(command: test_regular_file_command(path: path)))) {
+    ObservationEstablished { observed: _ } => match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg, target: target, context: context, argv: sudo_elevate_argv(command: argv_words(command: test_regular_file_command(path: path)))) {
       TypedArgvExecRefused { reason: reason } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused (test -f): ", reason) } }
+      TypedArgvExecOverran { deadline: d } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused (test -f): ", typed_argv_exec_overran_reason(leg_hint: "remote build serving", deadline: d)) } }
       TypedArgvExecConverged { result: t } => match t.exit_code == 1 {
         true => ObservationEstablished { observed: "" }
         false => match t.exit_code == 0 {
@@ -211,15 +218,19 @@ fn serving_cat_sudo(path: String) -> List<String> { sudo_elevate_argv(command: a
 fn serving_leg_serve_identity(elevation: ObservationAttempt<Bool, ServingLegFailure>, item: String, target: SshTarget, context: FleetSshExecutionContext, path: String) -> ObservationAttempt<SidecarRead, ServingLegFailure> {
   match elevation {
     ObservationRefused { cause: _ } => ObservationRefused { cause: ServingLegFailure { item: item, cause: "sudo -n refused" } }
-    ObservationEstablished { observed: _ } => match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: sudo_elevate_argv(command: argv_words(command: test_regular_file_command(path: path)))) {
+    ObservationEstablished { observed: _ } => match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg, target: target, context: context, argv: sudo_elevate_argv(command: argv_words(command: test_regular_file_command(path: path)))) {
       TypedArgvExecRefused { reason: reason } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused (test -f): ", reason) } }
+      TypedArgvExecOverran { deadline: d } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused (test -f): ", typed_argv_exec_overran_reason(leg_hint: "remote build serving", deadline: d)) } }
       TypedArgvExecConverged { result: t } => match t.exit_code == 1 {
         true => ObservationEstablished { observed: SidecarAbsent }
         false => match t.exit_code == 0 {
           false => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("test -f exit ", to_string(t.exit_code)) } }
           true => match serving_leg_read(item: item, target: target, context: context, argv: serving_cat_sudo(path)) {
             ObservationEstablished { observed: content } => match parse_serve_binary_identity(content: content) {
-              ServeIdentityObserved { revision: _, sha256: s } => ObservationEstablished { observed: SidecarRecorded { sha256: s } }
+              // The reader KEEPS the revision (it was previously discarded at this boundary). The sidecar
+              // writer (converge_record_serve_identity) and its parser both carry it; on a native-build host
+              // it is the only binding of the running binary to a revision (review 97463 finding 1).
+              ServeIdentityObserved { revision: r, sha256: s } => ObservationEstablished { observed: SidecarRecorded { revision: r, sha256: s } }
               _ => ObservationEstablished { observed: SidecarMalformed }
             }
             ObservationRefused { cause: c } => ObservationRefused { cause: c }
@@ -275,8 +286,9 @@ fn serving_leg_arch(item: String, target: SshTarget, context: FleetSshExecutionC
 // areas are group-writable with the other bits cleared, so the administrator principal cannot stat
 // them without elevation.
 fn serving_leg_stat(item: String, target: SshTarget, context: FleetSshExecutionContext, stat_argv: List<String>) -> ObservationAttempt<String, ServingLegFailure> {
-  match typed_argv_exec_over_fleet_ssh_posix(target: target, context: context, argv: sudo_elevate_argv(command: stat_argv)) {
+  match typed_argv_exec_over_fleet_ssh_posix(kind: ProbeLeg, target: target, context: context, argv: sudo_elevate_argv(command: stat_argv)) {
     TypedArgvExecRefused { reason: reason } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused: ", reason) } }
+    TypedArgvExecOverran { deadline: d } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused: ", typed_argv_exec_overran_reason(leg_hint: "remote build serving", deadline: d)) } }
     TypedArgvExecConverged { result: r } => match r.exit_code == 0 {
       true => ObservationEstablished { observed: trim(s: r.stdout) }
       false => match string_contains(s: r.stderr, pattern: "No such file") {
@@ -305,8 +317,9 @@ fn serving_leg_toolchain_list(elevation: ObservationAttempt<Bool, ServingLegFail
         bindings: [EnvSet { name: "RUSTUP_HOME", value: d.rustup_home }, EnvSet { name: "CARGO_HOME", value: concat(d.account_home, "/.cargo") }],
         command: rustup_toolchain_list_command(rustup_bin: concat(d.account_home, "/.cargo/bin/rustup")),
       )
-      match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv_words(command: sudo_elevate_as_command(user: d.account_name as NonEmptyStr, command: argv_words(command: cmd)))) {
+      match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg, target: target, context: context, argv: argv_words(command: sudo_elevate_as_command(user: d.account_name as NonEmptyStr, command: argv_words(command: cmd)))) {
         TypedArgvExecRefused { reason: reason } => ObservationRefused { cause: ServingLegFailure { item: "toolchain", cause: concat("ssh refused: ", reason) } }
+        TypedArgvExecOverran { deadline: d } => ObservationRefused { cause: ServingLegFailure { item: "toolchain", cause: concat("ssh refused: ", typed_argv_exec_overran_reason(leg_hint: "remote build serving", deadline: d)) } }
         TypedArgvExecConverged { result: r } => match r.exit_code == 0 {
           true => ObservationEstablished { observed: r.stdout.split("\n").any(l => serving_toolchain_line_names_channel(line: l, channel: channel)) }
           false => ObservationRefused { cause: ServingLegFailure { item: "toolchain", cause: concat("rustup toolchain list exit ", to_string(r.exit_code)) } }
@@ -360,7 +373,13 @@ fn serving_local_trimmed(cmd: ArgvCommand) -> String? {
 // the wet entry exits_failure rather than assessing a host against an unpin.
 fn serving_plan_pin_read() -> ServingPlanInput? {
   let sha = serving_local_first_token(cmd: sha256sum_file_command(path: "target/release/gunbc"))
-  let arch = serving_local_trimmed(cmd: uname_machine_command())
+  // The executor's own arch, projected to the ONE Architecture type via the upstream uname -m projection.
+  // An unparseable spelling is NOT defaulted: it makes the whole pin read `none`, so the run is refused
+  // (never assessed against an untrusted expected arch) -- the same shape as any other unread field.
+  let arch = match serving_local_trimmed(cmd: uname_machine_command()) {
+    Absent => none
+    Present { value: sp } => uname_linux_machine_architecture(spelling: sp)
+  }
   let rev = match actions_variable_read(name: github_sha_variable_name) {
     ActionsVariablePresent { value: v } => Present { value: v }
     ActionsVariableAbsent => none
@@ -482,6 +501,51 @@ fn serving_slice_cap_refused(cause: String) -> ServingSliceCap {
   }
 }
 
+// THE CAP A CONFIRMED-ABSENT ACCOUNT READS. When /etc/passwd was read (Established) and the serving account
+// row is simply not there, the account is a PROVEN absence -- so its per-user user-work slice is a proven
+// absence too, not something nobody read. That is NOT a ServingUnknown: it is the same proven-absence
+// direction the account leg itself takes (serving_account_deviations: "established but the row absent is a
+// proven absence (the account must be created)"), and the same reason the linger leg reads established-false
+// for such a host rather than asking `loginctl show-user <nobody>` and poisoning the assessment as an unknown.
+// Read every control established-unbounded (the unreachable-manager shape): the admission folds a
+// UserWorkSliceUncapped DEVIATION (an install target), and the converge drafts EnsureAccount (rank 1) then
+// InstallUserWorkSlice (rank 8) in that order -- useradd first, then the slice it lives under. This is the
+// FRESH-HOST bootstrap the observe was refusing, and the reason a brand-new serving host (ken, butch) could
+// never be converged: without it the one unread slice leg forced GoalIndeterminate, which both the observe
+// and converge_plan refuse, so the very write that would create the account and slice was un-dispatchable.
+// One-way and safe, exactly as the unreachable-manager reading: it only ever LICENSES an install, it can never
+// report a slice settled -- 'settled' is decided by the separate zero-exit serving_slice_cap_of_show read-back
+// after the install, never here. ServingUnknown stays RESERVED for the two genuinely-unreadable cases: the
+// passwd read itself refused (nobody read the account), or systemctl refused with the account PRESENT -- both
+// leave account_gate not-Established-false, so the caller falls through to serving_leg_slice_cap.
+fn serving_slice_cap_account_absent() -> ServingSliceCap {
+  ServingSliceCap {
+    max: ObservationEstablished { observed: CgroupMemoryUnlimited },
+    high: ObservationEstablished { observed: CgroupMemoryUnlimited },
+    swap: ObservationEstablished { observed: CgroupMemoryUnlimited },
+  }
+}
+
+// WHICH cap the observe's slice leg reads, decided PURELY over the account gate so a claim exercises the
+// real decision without a host (witness_one_interface: the witness supplies the reads at the boundary;
+// census_door_gate below is the precedent for pulling a host-bearing decision into a pure function). A
+// CONFIRMED-ABSENT account (passwd Established, row absent) has no per-user slice to ask systemctl about,
+// so the leg reads serving_slice_cap_account_absent -- a proven absence, contributing an install-target
+// DEVIATION the converge satisfies with EnsureAccount (rank 1) then InstallUserWorkSlice (rank 8). The other
+// two arms keep the reserved behaviour: an account PRESENT, or a passwd read that was itself REFUSED (nobody
+// read the account), falls through to the live systemctl read (serving_leg_slice_cap), where a refused or
+// unresolvable control is an unknown -- never a fabricated install. Reverting this gate so every arm reads
+// systemd again makes a fresh host indeterminate; the gate claims in the converge witness go red exactly then.
+type ServingSliceLegChoice = SliceLegProvenAbsentCap | SliceLegReadSystemd
+
+fn serving_slice_leg_choice(account_gate: ObservationAttempt<Bool, ServingLegFailure>) -> ServingSliceLegChoice {
+  match account_gate {
+    ObservationEstablished { observed: false } => SliceLegProvenAbsentCap
+    ObservationEstablished { observed: true } => SliceLegReadSystemd
+    ObservationRefused { cause: _ } => SliceLegReadSystemd
+  }
+}
+
 // Whether a NON-ZERO `systemctl show` was the serving user manager being unreachable for this account (its
 // bus is down / the machine's user manager is not running), as opposed to a sudo denial, a malformed argv or
 // any other command error, is systemd's OWN judgment and lives with the verbs that emit it:
@@ -505,10 +569,11 @@ fn serving_leg_slice_cap(target: SshTarget, context: FleetSshExecutionContext, u
     // refused -- an unknown, never a fabricated uncapped, and serving_assess never plans against it.
     Absent => serving_slice_cap_refused("account uid unknown; slice not locatable")
     Present { value: u } =>
-      match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: sudo_elevate_argv(command: user_work_slice_show_command_argv(uid: u))) {
+      match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg, target: target, context: context, argv: sudo_elevate_argv(command: user_work_slice_show_command_argv(uid: u))) {
         // The transport itself refused -- ssh/sudo could not run systemctl at all -- so nobody read the slice:
         // UNKNOWN on every control, never presented as capped or uncapped.
         TypedArgvExecRefused { reason: reason } => serving_slice_cap_refused(concat("ssh refused: ", reason))
+        TypedArgvExecOverran { deadline: d } => serving_slice_cap_refused(concat("ssh refused: ", typed_argv_exec_overran_reason(leg_hint: "remote build serving", deadline: d)))
         // `systemctl show` ran: its exit code and streams decide the cap under the classified reading.
         TypedArgvExecConverged { result: r } => serving_slice_cap_of_exec(exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr)
       }
@@ -520,8 +585,9 @@ fn serving_leg_slice_cap(target: SshTarget, context: FleetSshExecutionContext, u
 // established-true is lingering, established-false is proven not-lingering (it licenses the enable write),
 // and a refused read is an unknown -- the assess never writes toward a linger state nobody read.
 fn serving_leg_linger(item: String, target: SshTarget, context: FleetSshExecutionContext, account: NonEmptyStr) -> ObservationAttempt<Bool, ServingLegFailure> {
-  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv_words(command: loginctl_show_user_linger_command(subject: account))) {
+  match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg, target: target, context: context, argv: argv_words(command: loginctl_show_user_linger_command(subject: account))) {
     TypedArgvExecRefused { reason: reason } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused: ", reason) } }
+    TypedArgvExecOverran { deadline: d } => ObservationRefused { cause: ServingLegFailure { item: item, cause: concat("ssh refused: ", typed_argv_exec_overran_reason(leg_hint: "remote build serving", deadline: d)) } }
     TypedArgvExecConverged { result: r } => match loginctl_linger_reading(exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr) {
       LoginctlLingerEnabled => ObservationEstablished { observed: true }
       LoginctlLingerDisabled => ObservationEstablished { observed: false }
@@ -607,20 +673,30 @@ fn observe_host_reads(target: SshTarget, context: FleetSshExecutionContext, d: R
   }
   // THE USER-WORK SLICE cap, read from the slice's unit controls as the serving user manager reports them
   // (serving_leg_slice_cap): the one place the cap is observed for the converge. The serving uid comes from
-  // the passwd read; an unresolvable uid (fresh host / unreadable passwd) reads every control refused, which
-  // serving_assess never treats as capped — so the apply installs. The same values feed
-  // user_work_slice_cgroup_admission (unit_bounds::observed_cgroup_bound), the fold also used by the --user
-  // wrap-admit; that admit feeds it the live materialised cgroup instead, so it independently guards work
+  // the passwd read. GATED on the account exactly as the toolchain/rustup/linger legs are: a CONFIRMED-ABSENT
+  // account (passwd Established, row absent) has no per-user slice to ask systemctl about -- asking it would
+  // answer only a refusal and poison the whole assessment as an unknown, which both serving_assessment_runnable
+  // and converge_plan refuse, so a fresh host could never be converged to create that account (the fresh-host
+  // chicken-and-egg). Such a host instead reads serving_slice_cap_account_absent: a proven-absent slice as an
+  // install-target DEVIATION, and the converge drafts EnsureAccount (rank 1) then InstallUserWorkSlice (rank 8).
+  // ServingUnknown stays reserved for the genuinely unreadable: a refused passwd read (the gate is Refused, not
+  // Established-false) or systemctl refused with the account present -- both fall through to serving_leg_slice_cap,
+  // where an unresolvable uid reads every control refused and serving_assess never treats it as capped. The same
+  // values feed user_work_slice_cgroup_admission (unit_bounds::observed_cgroup_bound), the fold also used by the
+  // --user wrap-admit; that admit feeds it the live materialised cgroup instead, so it independently guards work
   // placement while this settles the unit's provisioned cap.
   let passwd_opt = match passwd {
     ObservationEstablished { observed: t } => Present { value: t }
     ObservationRefused { cause: _ } => Absent
   }
   let serving_uid = serving_passwd_uid(text: passwd_opt, name: d.account_name)
-  let slice_cap = serving_leg_slice_cap(target: target, context: context, uid: serving_uid)
+  let slice_cap = match serving_slice_leg_choice(account_gate: account_gate) {
+    SliceLegProvenAbsentCap => serving_slice_cap_account_absent()
+    SliceLegReadSystemd => serving_leg_slice_cap(target: target, context: context, uid: serving_uid)
+  }
   // THE CENSUS DOOR IS CARRIED BY THE CHECKOUT, so it is asked only where it exists — the decision is
   // census_door_gate, a pure function over the read values so a claim exercises it without a host. The
-  // recovery doors (compute_recover_catalog_cli and its two apply siblings) live in the checkout's dag;
+  // recovery doors (compute_recover_catalog_serving_cli and its two apply siblings) live in the checkout's dag;
   // a checkout not yet detached at the dispatched revision does not contain them, and asking its stale
   // tree answers "function compute_recover_catalog_cli is not in the loaded entry" — measured on srv1,
   // run 44984397614, 2026-11-22. An unknown census dominates the assessment (fail_closed), and an
@@ -835,8 +911,24 @@ type ConvergeAction =
   // stops at the first failed write, the identity is written only once the binary itself has landed,
   // never provenance for a binary that failed to install (gunbc.design_argument::fail_closed).
   | RecordServeIdentity { install_path: String, revision: String, sha256: String }
+  // THE NATIVE-BUILD LEG (RB-M3, remote-build-ken-native-serve-admission). InstallServeBinary only ever
+  // scp's the EXECUTOR's own binary and refuses unless the host's architecture equals the executor's
+  // (converge_install_serve_binary): an x86 serving host such as ken (operator_host_e2d4b7, H11SSL) can
+  // never receive the CI pool's binary, so the upload route is structurally unavailable to it. Its serve
+  // binary is therefore BUILT ON THE HOST at the pinned revision, in the same place the remote build
+  // builds -- as the serving account, in its own checkout under its own scratch root, inside the capped
+  // gunbc-user-work.slice (it must not take the ken-strata engine's 56 GiB charge). This single action
+  // SUBSUMES install+identity for the native case: it runs the pinned toolchain's cargo build, installs
+  // the produced binary at install_path, reads its sha256 BACK OFF THE HOST, and writes the identity
+  // sidecar with the revision it built and that host-read sha. The sha is deliberately NOT the executor's
+  // pin -- the receipt must come from ken, not the pool -- so the authority that binds the binary is the
+  // revision (the checkout is detached+read back at it by EnsureCheckout), not a pre-known hash. The
+  // source choice (this leg vs InstallServeBinary) is realization dispatch decided in converge_step from
+  // the ONE host-architecture authority (the per-host Architecture row on gunbc.fabric.fabric_executor_class,
+  // keyed on HostIdentity), never a flag on the host and never inferred from the host-read arch alone.
+  | BuildServeBinary { checkout_dir: String, revision: String, package: String, bin: String, target_dir: String, install_path: String }
   // The serving converge's recovery leg: after the identity is recorded, a stale seat (one whose holder is
-  // dead and whose launch deadline has passed) is recovered by running compute_recover_cli over ssh as the
+  // dead and whose launch deadline has passed) is recovered by running compute_recover_serving_cli over ssh as the
   // service user. The observe classifies each seat through the recovery model: a live or too-early holder is
   // legitimately held (plan nothing); an unreadable slot or one reference in two seat dirs is observation
   // unknown (the plan REFUSES). The apply runs the CLI with two read-backs: the attempt record (must be
@@ -1023,18 +1115,37 @@ fn converge_install_user_work_slice_plan(acc: ConvergeDraft, d: RemoteBuildServi
 }
 
 fn converge_install_binary(acc: ConvergeDraft, d: RemoteBuildServingDesired, pin: ServingPlanInput, target_arch: ObservationAttempt<String, ServingLegFailure>) -> ConvergeDraft {
+  // The source (pool upload vs native build) is realization dispatch, decided by the ONE host-architecture
+  // authority -- the per-host Architecture row on gunbc.fabric.fabric_executor_class keyed on d.host --
+  // compared enum==enum against the executor's Architecture (pin.executor_arch). The on-host uname read is
+  // NOT consulted here: it is only the assessment's consistency check (serving_assess host.arch), so this
+  // decision has a single source and cannot drift from the check.
+  //   row arch == executor arch  -> the host can receive the pool binary: the upload pair (unchanged).
+  //   row arch != executor arch  -> the host must build its own at the pinned revision: BuildServeBinary
+  //                                 (the executor installs the built binary + records identity from the
+  //                                 sha it reads back off the host, so no separate RecordServeIdentity).
+  //   no authored row (Unclassified) -> a TYPED refusal, NEVER a silent default to upload (ruling 1A).
+  // An unread on-host arch (should already be a blocking unknown upstream) keeps the prior refuse-don't-guess.
   match target_arch {
-    ObservationEstablished { observed: a } => match a == pin.executor_arch {
-      true => converge_bin_parent_dir(
-        ConvergeDraft { writes: concat([
-          RecordServeIdentity { install_path: d.serve_binary, revision: pin.dispatched_revision, sha256: pin.local_binary_sha256 },
-          InstallServeBinary { upload_path: "target/release/gunbc", install_path: d.serve_binary, expected_sha256: pin.local_binary_sha256 },
-        ], acc.writes), unhandled: acc.unhandled },
-        d,
-      )
-      false => converge_draft_unhandled(acc, "serve_binary.sha256")
-    }
     ObservationRefused { cause: _ } => converge_draft_unhandled(acc, "serve_binary.sha256")
+    ObservationEstablished { observed: _ } => match executor_host_architecture(host: d.host) {
+      HostArchitectureUnclassified { host: _ } => converge_draft_unhandled(acc, "serve_binary.architecture")
+      HostArchitectureKnown { host: _, arch: row_arch } => match row_arch == pin.executor_arch {
+        true => converge_bin_parent_dir(
+          ConvergeDraft { writes: concat([
+            RecordServeIdentity { install_path: d.serve_binary, revision: pin.dispatched_revision, sha256: pin.local_binary_sha256 },
+            InstallServeBinary { upload_path: "target/release/gunbc", install_path: d.serve_binary, expected_sha256: pin.local_binary_sha256 },
+          ], acc.writes), unhandled: acc.unhandled },
+          d,
+        )
+        false => converge_bin_parent_dir(
+          ConvergeDraft { writes: concat([
+            BuildServeBinary { checkout_dir: d.checkout_dir, revision: pin.dispatched_revision, package: "gunbc", bin: "gunbc", target_dir: concat(d.scratch_root_dir, "/build-target"), install_path: d.serve_binary },
+          ], acc.writes), unhandled: acc.unhandled },
+          d,
+        )
+      }
+    }
   }
 }
 
@@ -1135,6 +1246,9 @@ fn converge_kind_rank(a: ConvergeAction) -> Int {
     // un-admitted slice.
     InstallUserWorkSlice { unit_name: _, unit_path: _, memory_max: _, memory_high: _, memory_swap_max: _, expected_content: _ } => 8
     InstallServeBinary { upload_path: _, install_path: _, expected_sha256: _ } => 9
+    // Built on the host where it runs: needs the checkout (rank 5) and the pinned toolchain (ranks 6/7)
+    // already in place, and it installs+records identity itself, so it shares the binary leg's rank.
+    BuildServeBinary { checkout_dir: _, revision: _, package: _, bin: _, target_dir: _, install_path: _ } => 9
     // The identity sidecar is recorded AFTER the binary install it documents (and after the slice the
     // binary depends on); the executor's stop-at-first-failure means it is written only once the
     // binary itself has landed -- never provenance for a binary that failed to install.
@@ -1159,6 +1273,9 @@ fn converge_action_key(a: ConvergeAction) -> String {
     EnsureRustup { installer_url: _, expected_sha256: _, as_user: u, rustup_home: _, cargo_home: _ } => concat("rustup:", u)
     InstallUserWorkSlice { unit_name: n, unit_path: _, memory_max: _, memory_high: _, memory_swap_max: _, expected_content: _ } => concat("slice:", n)
     InstallServeBinary { upload_path: _, install_path: i, expected_sha256: _ } => concat("binary:", i)
+    // Same key as InstallServeBinary: a host settles its serve binary through exactly ONE of the two
+    // (native build XOR upload), and if both were ever drafted on one path the dedup collapses them.
+    BuildServeBinary { checkout_dir: _, revision: _, package: _, bin: _, target_dir: _, install_path: i } => concat("binary:", i)
     RecordServeIdentity { install_path: i, revision: _, sha256: _ } => concat("identity:", i)
     RecoverStaleSeat { reference: r } => concat("recover:", r as String)
   }
@@ -1285,9 +1402,20 @@ fn converge_step(acc: ConvergeDraft, d: RemoteBuildServingDesired, pin: ServingP
     UserWorkSliceUncapped { unit_name: _ } => converge_install_user_work_slice_plan(acc, d)
     ServeBinaryModeMismatch { path: _, declared: _, observed: _ } => converge_install_binary(acc, d, pin, target_arch)
     // PR-1c: a drifted identity sidecar on a host whose binary is already settled (the deviation is
-    // only minted when the binary is present and its sha read) records the identity on its OWN — it
-    // reuses the RecordServeIdentity write + its read-back route from PR-1b, without a reinstall.
-    ServeIdentityDrift { path: _, reason: _ } => converge_record_identity_standalone(acc, d, pin)
+    // only minted when the binary is present and its sha read). HOST-AWARE (review 97463 finding 1):
+    // - Upload host (row arch == executor arch): its binary is the trusted POOL build, so only the sidecar
+    //   file is missing -- re-record the identity on its own (converge_record_identity_standalone), no reinstall.
+    // - Native-build host (row arch != executor arch): the sidecar must describe a binary BUILT on this host
+    //   at the dispatched revision; re-recording it over whatever binary is currently there would FABRICATE a
+    //   revision binding -- silent wrongness below the guarantee ladder. So ANY native identity drift
+    //   (missing / malformed / sha-mismatch / revision-stale) routes to the binary action: BuildServeBinary
+    //   at the dispatched revision, which records the sidecar from its own build receipt.
+    ServeIdentityDrift { path: _, reason: _ } =>
+      if serving_host_needs_native_build(host: d.host, executor_arch: pin.executor_arch) {
+        converge_install_binary(acc, d, pin, target_arch)
+      } else {
+        converge_record_identity_standalone(acc, d, pin)
+      }
     // An existing account at the wrong login shell is NOT auto-fixed: rewriting a live account's shell
     // is a usermod, which the apply must not run (fail_closed). It goes unhandled and the wet apply REFUSES.
     AccountShellMismatch { desired: _, observed: _ } => converge_draft_unhandled(acc, serving_deviation_item(dev: dev))
@@ -1374,22 +1502,26 @@ fn converge_exec_step(outcome: TypedArgvExecOutcome) -> ConvergeStep {
     TypedArgvExecConverged { result: r } => if r.exit_code == 0 { StepDone } else {
       StepFailed { cause: join(["exit ", to_string(r.exit_code), ": ", trim(r.stderr)], "") }
     }
+    // A write leg that overran never lands a step: the group was killed before the host answered,
+    // so the write is unobserved -- StepFailed with the overrun as its cause, never StepDone
+    // (gunbc.design_argument::fail_closed; the re-observe cannot rescue an unobserved write either).
+    TypedArgvExecOverran { deadline: d } => StepFailed { cause: typed_argv_exec_overran_reason(leg_hint: "serving converge write", deadline: d) }
   }
 }
 
 // THE RECOVERY LEG (increment 2, program remote_build_ssh_dispatch_is_an_admitted_scaffold).
 //
 // Everything this leg knows about a stale seat arrived through the model: the observe read the seat
-// census through the recovery door (serving_leg_seat_census -> compute_recover_catalog_cli, whose
+// census through the recovery door (serving_leg_seat_census -> compute_recover_catalog_serving_cli, whose
 // every judgement is gunbc.compute.attempt_lifecycle::recovery_write_authorization), and the plan
 // planned RecoverStaleSeat only for an established census entry the model AUTHORIZED. The leg itself
 // decides nothing. It runs three doors over the ssh edge as the serving account — all through the
 // typed `gunbc run` shape (gunbc.cli_invoke) — and reads their answers in the doors' own declared
 // vocabulary:
-//   * the write door compute_recover_cli, whose exit maps through recover_door_verdict — the ONE
+//   * the write door compute_recover_serving_cli, whose exit maps through recover_door_verdict — the ONE
 //     declared mapping, living beside compute_recover_exit, the only producer of those numbers. No
 //     literal 0/1/2 appears anywhere at this leg.
-//   * the read-back door compute_recover_readback_cli, which answers the two questions a converge
+//   * the read-back door compute_recover_readback_serving_cli, which answers the two questions a converge
 //     must ask after applying a recovery — what the ATTEMPT RECORD says, and whether the SEAT CHARGE
 //     came back (gunbc.compute.host_capacity::compute_seat_charge_returned) — both read through the
 //     model, in one line, parsed by recover_readback_reading.
@@ -1440,11 +1572,25 @@ fn converge_gunbc_door_argv(d: RemoteBuildServingDesired, function: String, argu
   }
 }
 
+// WHAT CEILING A RUNNING OF A RECOVERY DOOR ON THE HOST GETS, decided once for all three doors.
+// A door is a gunbc CLI run: its wall-clock begins with the host engine's cold entry resolution —
+// hundreds of closure files before a single seat is read — nothing like the one-shot commands
+// ActuationLeg's 60s ceiling was written for. The serve route met this same seam and classified its
+// host-side gunbc request leg as ProvisioningLeg (gunbc.compute.remote_build_client); the recovery
+// doors ride the SAME kind, declared here once so no leg restates a ceiling. Measured necessity:
+// converge apply 45354782930 killed the seat census at the 60s actuation ceiling "before the host
+// could answer" while the door was still resolving its entry — an overrun that proved nothing about
+// any seat, folded (correctly, by the fold's own rule) into an unknown census that refused the plan.
+fn serving_door_leg_kind() -> FleetLegKind {
+  ProvisioningLeg
+}
+
 // The as-account run that KEEPS the exit code. converge_as_user collapses a non-zero run into a
 // failed step, erasing the three-way answer; the recovery doors' verdict lives IN the code and must
 // arrive whole at recover_door_verdict.
-fn converge_as_user_outcome(target: SshTarget, context: FleetSshExecutionContext, account: String, argv: List<String>) -> TypedArgvExecOutcome {
+fn converge_as_user_outcome(kind: FleetLegKind, target: SshTarget, context: FleetSshExecutionContext, account: String, argv: List<String>) -> TypedArgvExecOutcome {
   typed_argv_exec_over_fleet_ssh(
+    kind: kind,
     target: target,
     context: context,
     argv: argv_words(command: sudo_elevate_as_command(user: account as NonEmptyStr, command: argv))
@@ -1487,15 +1633,18 @@ fn serving_leg_seat_census(elevation: ObservationAttempt<Bool, ServingLegFailure
       Absent => RecoverCatalogLegUnknown { detail: "the serving account's uid is unobserved, so the census door cannot be placed in its user session" }
       Present { value: serving_uid } => match converge_gunbc_door_argv(
         d: d,
-        function: "compute_recover_catalog_cli",
-        arguments: [NamedArgumentRequest { name: "repo_root", value: d.checkout_dir as String }],
+        function: "compute_recover_catalog_serving_cli",
+        arguments: [NamedArgumentRequest { name: "host", value: d.host as String }],
         runtime_dir: user_session_runtime_dir(uid: serving_uid)
       ) {
         Absent => RecoverCatalogLegUnknown { detail: "the census run's named arguments could not be admitted" }
         Present { value: argv } => {
-          let outcome = converge_as_user_outcome(target: target, context: context, account: d.account_name, argv: argv)
+          // the seat census is a gunbc CLI run under the same door grammar and door ceiling as its siblings.
+          let outcome = converge_as_user_outcome(kind: serving_door_leg_kind(), target: target, context: context, account: d.account_name, argv: argv)
           match outcome {
             TypedArgvExecRefused { reason: r } => RecoverCatalogLegUnknown { detail: join(["the census run was refused before it executed: ", r], "") }
+            // an overran census leg says nothing about the seat: unknown census, never a settled read.
+            TypedArgvExecOverran { deadline: dl } => RecoverCatalogLegUnknown { detail: typed_argv_exec_overran_reason(leg_hint: "serving seat census", deadline: dl) }
             // The exit is read through the SAME declared table as the other two doors (review 97280,
             // finding 2): the census door speaks 0 when established and 2 when unknown, and this leg
             // honors the number before the rendering — an exit the table does not speak is an unknown
@@ -1523,22 +1672,22 @@ fn serving_leg_seat_census(elevation: ObservationAttempt<Bool, ServingLegFailure
 // uid cannot be re-read at apply is a refusal, never a door exec the bounds gate would itself refuse.
 fn converge_recover_stale_seat(target: SshTarget, context: FleetSshExecutionContext, d: RemoteBuildServingDesired, reference: NonEmptyStr) -> ConvergeStep {
   let repo = d.checkout_dir as String
-  match serving_leg_read(item: "account", target: target, context: context, argv: serving_cat_sudo(path: "/etc/passwd")) {
-    ObservationRefused { cause: c } => StepFailed { cause: join(["the account could not be re-read for the recovery of ", reference as String, ": ", c.cause], "") }
-    ObservationEstablished { observed: text } => match serving_passwd_uid(text: Present { value: text }, name: d.account_name) {
-      Absent => StepFailed { cause: join(["the serving account's uid is not in the re-read passwd, so the recovery door for ", reference as String, " cannot be placed in its user session"], "") }
-      Present { value: serving_uid } => {
-        let runtime_dir = user_session_runtime_dir(uid: serving_uid)
-        match converge_gunbc_door_argv(d: d, function: "compute_recover_cli", arguments: [
-          NamedArgumentRequest { name: "repo_root", value: repo },
+  match converge_resolve_serving_session(target: target, context: context, d: d) {
+    ServingSessionAccountUnread { cause: c } => StepFailed { cause: join(["the account could not be re-read for the recovery of ", reference as String, ": ", c], "") }
+    ServingSessionUidUnknown => StepFailed { cause: join(["the serving account's uid is not in the re-read passwd, so the recovery door for ", reference as String, " cannot be placed in its user session"], "") }
+    ServingSessionEstablished { runtime_dir: runtime_dir } => {
+        match converge_gunbc_door_argv(d: d, function: "compute_recover_serving_cli", arguments: [
+          NamedArgumentRequest { name: "host", value: d.host as String },
           NamedArgumentRequest { name: "reference", value: reference as String },
           NamedArgumentRequest { name: "receipt_path", value: join([repo, "/recover-", reference as String, ".receipt.json"], "") },
         ], runtime_dir: runtime_dir) {
           Absent => StepFailed { cause: join(["the recovery run's named arguments for ", reference as String, " could not be admitted"], "") }
           Present { value: argv } => {
-            let door = converge_as_user_outcome(target: target, context: context, account: d.account_name, argv: argv)
+            let door = converge_as_user_outcome(kind: serving_door_leg_kind(), target: target, context: context, account: d.account_name, argv: argv)
             match door {
               TypedArgvExecRefused { reason: r } => StepFailed { cause: join(["the recovery run was refused before it executed: ", r], "") }
+              // an overran recovery write is never a settled write: the step fails, the next assessment re-decides.
+              TypedArgvExecOverran { deadline: dl } => StepFailed { cause: typed_argv_exec_overran_reason(leg_hint: join(["serving recovery write ", reference as String]), deadline: dl) }
               TypedArgvExecConverged { result: r } => match recover_door_verdict(code: r.exit_code) {
                 RecoverDoorSettled => converge_recover_readbacks(target: target, context: context, d: d, reference: reference, runtime_dir: runtime_dir)
                 RecoverDoorDeclined => StepFailed { cause: join(["the model declined the recovery write for ", reference as String, ": the seat is legitimately held between plan and apply, and the next assessment re-decides"], "") }
@@ -1548,7 +1697,6 @@ fn converge_recover_stale_seat(target: SshTarget, context: FleetSshExecutionCont
             }
           }
         }
-      }
     }
   }
 }
@@ -1560,15 +1708,19 @@ fn converge_recover_stale_seat(target: SshTarget, context: FleetSshExecutionCont
 // cleaned or whose charge was never written — nothing held anywhere); an ACTIVE record or a
 // STILL-HELD charge fails the step.
 fn converge_recover_readbacks(target: SshTarget, context: FleetSshExecutionContext, d: RemoteBuildServingDesired, reference: NonEmptyStr, runtime_dir: FilePath) -> ConvergeStep {
-  match converge_gunbc_door_argv(d: d, function: "compute_recover_readback_cli", arguments: [
-    NamedArgumentRequest { name: "repo_root", value: d.checkout_dir as String },
+  match converge_gunbc_door_argv(d: d, function: "compute_recover_readback_serving_cli", arguments: [
+    NamedArgumentRequest { name: "host", value: d.host as String },
     NamedArgumentRequest { name: "reference", value: reference as String },
   ], runtime_dir: runtime_dir) {
     Absent => StepFailed { cause: join(["the read-back run's named arguments for ", reference as String, " could not be admitted"], "") }
     Present { value: argv } => {
-      let outcome = converge_as_user_outcome(target: target, context: context, account: d.account_name, argv: argv)
+      // the read-back is a gunbc CLI run on the host, so it carries the same declared ceiling as
+      // the census and the door, not the 15s probe ceiling the file's plain reads use.
+      let outcome = converge_as_user_outcome(kind: serving_door_leg_kind(), target: target, context: context, account: d.account_name, argv: argv)
       match outcome {
         TypedArgvExecRefused { reason: r } => StepFailed { cause: join(["the read-back run was refused before it executed: ", r], "") }
+        // an overran read-back cannot confirm or deny the seat: fail the step, never claim done.
+        TypedArgvExecOverran { deadline: d } => StepFailed { cause: typed_argv_exec_overran_reason(leg_hint: "serving recovery read-back", deadline: d) }
         TypedArgvExecConverged { result: r } => match recover_readback_reading(text: r.stdout) {
           RecoverReadbackUnknown { detail: why } => StepFailed { cause: join(["the recovery read-back could not be established: ", why], "") }
           RecoverReadbackFacts { record: rec, charge: chg } => match rec {
@@ -1592,15 +1744,15 @@ fn converge_recover_readbacks(target: SshTarget, context: FleetSshExecutionConte
 // caller through extdeps (sudo_elevate_argv(command: <builder argv>), review 96039) — and runs it
 // over the fleet SSH edge. No arm hand-types "sudo"/"-n" any more; this is the one typed exec site
 // for elevated writes.
-fn converge_sudo(target: SshTarget, context: FleetSshExecutionContext, argv: List<String>) -> ConvergeStep {
-  converge_exec_step(outcome: typed_argv_exec_over_fleet_ssh_posix(target: target, context: context, argv: argv))
+fn converge_sudo(kind: FleetLegKind, target: SshTarget, context: FleetSshExecutionContext, argv: List<String>) -> ConvergeStep {
+  converge_exec_step(outcome: typed_argv_exec_over_fleet_ssh_posix(kind: kind, target: target, context: context, argv: argv))
 }
 
 // The as-user WRITE transport (review 96039 shape): argv_words(command: sudo_elevate_as_command(
 // user: .., command: argv_words(command: <extdeps builder>))) — the command runs as the serving
 // account through sudo, its argv built by extdeps builders (git, rustup), never hand-typed.
-fn converge_as_user(target: SshTarget, context: FleetSshExecutionContext, user: String, command: ArgvCommand) -> ConvergeStep {
-  converge_exec_step(outcome: typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv_words(command: sudo_elevate_as_command(user: user as NonEmptyStr, command: argv_words(command: command)))))
+fn converge_as_user(kind: FleetLegKind, target: SshTarget, context: FleetSshExecutionContext, user: String, command: ArgvCommand) -> ConvergeStep {
+  converge_exec_step(outcome: typed_argv_exec_over_fleet_ssh(kind: kind, target: target, context: context, argv: argv_words(command: sudo_elevate_as_command(user: user as NonEmptyStr, command: argv_words(command: command)))))
 }
 
 // The executor's OWN transport for uploading one local file (the serve binary, the authorized_keys
@@ -1626,13 +1778,13 @@ type ConvergeStage =
 data converge_stage_dir_template: NonEmptyStr = "/tmp/gunbc-serving-stage.XXXXXXXXXX"
 
 fn converge_private_stage_dir(target: SshTarget, context: FleetSshExecutionContext) -> ConvergeStage {
-  converge_stage_from(outcome: typed_argv_exec_over_fleet_ssh_posix(target: target, context: context, argv: argv_words(command: mktemp_directory_command(template: converge_stage_dir_template))))
+  converge_stage_from(outcome: typed_argv_exec_over_fleet_ssh_posix(kind: ActuationLeg, target: target, context: context, argv: argv_words(command: mktemp_directory_command(template: converge_stage_dir_template))))
 }
 
 // The same private directory, created AS the serving account, for a file the account itself must
 // write and execute (the rustup-init download).
 fn converge_private_stage_dir_as(target: SshTarget, context: FleetSshExecutionContext, user: String) -> ConvergeStage {
-  converge_stage_from(outcome: typed_argv_exec_over_fleet_ssh_posix(target: target, context: context, argv: argv_words(command: sudo_elevate_as_command(user: user as NonEmptyStr, command: argv_words(command: mktemp_directory_command(template: converge_stage_dir_template))))))
+  converge_stage_from(outcome: typed_argv_exec_over_fleet_ssh_posix(kind: ActuationLeg, target: target, context: context, argv: argv_words(command: sudo_elevate_as_command(user: user as NonEmptyStr, command: argv_words(command: mktemp_directory_command(template: converge_stage_dir_template))))))
 }
 
 fn converge_stage_from(outcome: TypedArgvExecOutcome) -> ConvergeStage {
@@ -1641,6 +1793,10 @@ fn converge_stage_from(outcome: TypedArgvExecOutcome) -> ConvergeStage {
     StepDone => match outcome {
       TypedArgvExecRefused { reason: r } => StageFailed { cause: concat("mktemp -d (private staging dir): refused before exec: ", r) }
       TypedArgvExecConverged { result: r } => StageReady { dir: trim(r.stdout) }
+      // A staging-dir leg that overran never reports its directory: the group was killed before the
+      // host answered, so there is no path to stage into. StageFailed carrying the ceiling, never
+      // StageReady with an unobserved path (gunbc.design_argument::fail_closed).
+      TypedArgvExecOverran { deadline: d } => StageFailed { cause: concat("mktemp -d (private staging dir): ", typed_argv_exec_overran_reason(leg_hint: "private staging dir", deadline: d)) }
     }
   }
 }
@@ -1671,7 +1827,7 @@ fn converge_install_content(target: SshTarget, context: FleetSshExecutionContext
         let remote_staging = concat(stage, "/ak.upload")
         match converge_upload(target: target, context: context, local_path: staging_local as NonEmptyStr, remote_path: remote_staging as NonEmptyStr) {
           StepFailed { cause: c } => StepFailed { cause: c }
-          StepDone => match converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: coreutils_install_file_owned_argv(mode: file_mode_octal(mode: mode) as NonEmptyStr, owner: owner as NonEmptyStr, group: group as NonEmptyStr, source: remote_staging, dest: path))) {
+          StepDone => match converge_sudo(kind: ProvisioningLeg, target: target, context: context, argv: sudo_elevate_argv(command: coreutils_install_file_owned_argv(mode: file_mode_octal(mode: mode) as NonEmptyStr, owner: owner as NonEmptyStr, group: group as NonEmptyStr, source: remote_staging, dest: path))) {
             StepFailed { cause: c } => StepFailed { cause: concat("install: ", c) }
             // Readback of the file we JUST sudo-installed — elevation is established (the install above
             // succeeded through sudo), so this is an established-elevation read, not the pre-apply observe.
@@ -1694,7 +1850,7 @@ fn converge_install_rustup(target: SshTarget, context: FleetSshExecutionContext,
     StageReady { dir: stage } => {
       let installer = concat(stage, "/rustup-init")
       let installed = converge_rustup_from_stage(target: target, context: context, installer: installer, url: url, expected_sha256: expected_sha256, usr: usr, rustup_home: rustup_home, cargo_home: cargo_home)
-      let cleanup = converge_as_user(target: target, context: context, user: usr, command: rm_recursive_force_command(path: stage))
+      let cleanup = converge_as_user(kind: ProvisioningLeg, target: target, context: context, user: usr, command: rm_recursive_force_command(path: stage))
       match installed {
         StepFailed { cause: c } => StepFailed { cause: c }
         StepDone => match cleanup {
@@ -1707,13 +1863,13 @@ fn converge_install_rustup(target: SshTarget, context: FleetSshExecutionContext,
 }
 
 fn converge_rustup_from_stage(target: SshTarget, context: FleetSshExecutionContext, installer: String, url: String, expected_sha256: String, usr: String, rustup_home: String, cargo_home: String) -> ConvergeStep {
-  match converge_as_user(target: target, context: context, user: usr, command: curl_download_command(url: url, destination: installer)) {
+  match converge_as_user(kind: ProvisioningLeg, target: target, context: context, user: usr, command: curl_download_command(url: url, destination: installer)) {
     StepFailed { cause: c } => StepFailed { cause: concat("rustup-init download: ", c) }
     StepDone => match converge_readback_step(what: "rustup-init sha256", read: serving_leg_sha256(item: "rustup-init.sha256", target: target, context: context, path: installer), want: expected_sha256) {
       StepFailed { cause: c } => StepFailed { cause: c }
-      StepDone => match converge_as_user(target: target, context: context, user: usr, command: chmod_set_mode_command(chmod_program: chmod_binary_path, mode: "0700" as NonEmptyStr, path: installer)) {
+      StepDone => match converge_as_user(kind: ProvisioningLeg, target: target, context: context, user: usr, command: chmod_set_mode_command(chmod_program: chmod_binary_path, mode: "0700" as NonEmptyStr, path: installer)) {
         StepFailed { cause: c } => StepFailed { cause: concat("chmod rustup-init: ", c) }
-        StepDone => match converge_as_user(target: target, context: context, user: usr, command: env_prefixed_command(bindings: [EnvSet { name: "RUSTUP_HOME", value: rustup_home }, EnvSet { name: "CARGO_HOME", value: cargo_home }], command: rustup_init_install_command(rustup_init_path: installer))) {
+        StepDone => match converge_as_user(kind: ProvisioningLeg, target: target, context: context, user: usr, command: env_prefixed_command(bindings: [EnvSet { name: "RUSTUP_HOME", value: rustup_home }, EnvSet { name: "CARGO_HOME", value: cargo_home }], command: rustup_init_install_command(rustup_init_path: installer))) {
           StepFailed { cause: c } => StepFailed { cause: concat("rustup-init: ", c) }
           StepDone => match serving_leg_test(elevation: ObservationEstablished { observed: true }, item: "rustup", target: target, context: context, probe: test_executable_command(path: concat(cargo_home, "/bin/rustup"))) {
             ObservationEstablished { observed: true } => StepDone
@@ -1788,7 +1944,7 @@ fn converge_enable_user_manager_linger(target: SshTarget, context: FleetSshExecu
   match serving_leg_linger(item: item, target: target, context: context, account: account) {
     ObservationRefused { cause: c } => StepFailed { cause: concat("linger read refused before enable: ", c.cause) }
     ObservationEstablished { observed: true } => StepDone
-    ObservationEstablished { observed: false } => match converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: loginctl_enable_linger_argv(subject: account))) {
+    ObservationEstablished { observed: false } => match converge_sudo(kind: ActuationLeg, target: target, context: context, argv: sudo_elevate_argv(command: loginctl_enable_linger_argv(subject: account))) {
       StepFailed { cause: c } => StepFailed { cause: concat("enable-linger: ", c) }
       StepDone => match serving_leg_linger(item: item, target: target, context: context, account: account) {
         ObservationEstablished { observed: true } => StepDone
@@ -1811,7 +1967,7 @@ fn converge_install_user_work_slice(target: SshTarget, context: FleetSshExecutio
         let remote_staging = concat(stage, "/slice.upload")
         match converge_upload(target: target, context: context, local_path: staging_local as NonEmptyStr, remote_path: remote_staging as NonEmptyStr) {
           StepFailed { cause: c } => StepFailed { cause: c }
-          StepDone => match converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: coreutils_install_file_owned_argv(mode: "0644" as NonEmptyStr, owner: "root" as NonEmptyStr, group: "root" as NonEmptyStr, source: remote_staging, dest: unit_path))) {
+          StepDone => match converge_sudo(kind: ProvisioningLeg, target: target, context: context, argv: sudo_elevate_argv(command: coreutils_install_file_owned_argv(mode: "0644" as NonEmptyStr, owner: "root" as NonEmptyStr, group: "root" as NonEmptyStr, source: remote_staging, dest: unit_path))) {
             StepFailed { cause: c } => StepFailed { cause: concat("install: ", c) }
             StepDone => {
               // Resolve the serving uid so the reload and the readback reach THAT account's user manager,
@@ -1824,9 +1980,9 @@ fn converge_install_user_work_slice(target: SshTarget, context: FleetSshExecutio
               }
               match serving_passwd_uid(text: passwd_opt, name: d.account_name) {
                 Absent => StepFailed { cause: "cannot resolve the serving uid for the user-manager daemon-reload" }
-                Present { value: uid } => match converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: user_work_slice_reload_command_argv(uid: uid))) {
+                Present { value: uid } => match converge_sudo(kind: ProvisioningLeg, target: target, context: context, argv: sudo_elevate_argv(command: user_work_slice_reload_command_argv(uid: uid))) {
                   StepFailed { cause: c } => StepFailed { cause: concat("daemon-reload: ", c) }
-                  StepDone => match converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: user_work_slice_start_command_argv(uid: uid))) {
+                  StepDone => match converge_sudo(kind: ProvisioningLeg, target: target, context: context, argv: sudo_elevate_argv(command: user_work_slice_start_command_argv(uid: uid))) {
                     StepFailed { cause: c } => StepFailed { cause: concat("slice start: ", c) }
                     StepDone => {
                       let cap = serving_leg_slice_cap(target: target, context: context, uid: Present { value: uid })
@@ -1848,6 +2004,114 @@ fn converge_install_user_work_slice(target: SshTarget, context: FleetSshExecutio
   }
 }
 
+// THE ONE SHARED "place a run in the serving account's own user session" prefix (RB-M3). Both the
+// recovery doors (#16861) and the native-build leg need the same three things before they exec as the
+// account: re-read /etc/passwd (the observe's read, so the apply never trusts a stale uid), resolve the
+// serving account's uid, and turn that uid into the account's XDG_RUNTIME_DIR so `systemd-run --user`
+// can reach the user manager that wraps the run into the capped gunbc-user-work.slice. An account whose
+// uid cannot be re-read is a REFUSAL carrying the caller's `why`, never an exec the bounds gate would
+// itself refuse. Factoring this out so the door and the build share ONE resolution (review ruling): a
+// copy of the passwd/uid/runtime_dir dance would let the two drift apart on the very step that keeps
+// unbounded host effects out of the engine's 56 GiB charge.
+type ServingSessionReading
+  = ServingSessionEstablished { runtime_dir: FilePath }
+  | ServingSessionAccountUnread { cause: String }
+  | ServingSessionUidUnknown
+
+fn converge_resolve_serving_session(target: SshTarget, context: FleetSshExecutionContext, d: RemoteBuildServingDesired) -> ServingSessionReading {
+  match serving_leg_read(item: "account", target: target, context: context, argv: serving_cat_sudo(path: "/etc/passwd")) {
+    ObservationRefused { cause: c } => ServingSessionAccountUnread { cause: c.cause }
+    ObservationEstablished { observed: text } => match serving_passwd_uid(text: Present { value: text }, name: d.account_name) {
+      Absent => ServingSessionUidUnknown
+      Present { value: serving_uid } => ServingSessionEstablished { runtime_dir: user_session_runtime_dir(uid: serving_uid) }
+    }
+  }
+}
+
+// THE NATIVE-BUILD EXECUTOR (RB-M3). ken (and any serving host whose architecture differs from the
+// executor's) cannot receive the CI pool's binary (converge_install_serve_binary's architecture
+// refusal), so it builds its own serve binary here. One action, three host effects, in the order the
+// upload route already earns them, and none claimed until read back:
+//   1. BUILD, as the serving account, INSIDE the capped gunbc-user-work.slice -- NOT a bare sudo
+//      cargo, which would run outside the slice and could take ken-strata's 56 GiB engine charge
+//      (review ruling #3). The build is `cargo build --release` of the pinned checkout, placed in the
+//      slice by gunbc_user_work_scope_command (the same systemd-run --user --slice prefix the seed's
+//      user-work-scope gate installs), with the account's own user-session bindings so the user
+//      manager is reachable (converge_resolve_serving_session; an unobserved uid refuses before any
+//      exec). The pinned toolchain the converge already installed is used via the account's cargo shim
+//      with RUSTUP_HOME/CARGO_HOME bound explicitly (sudo carries no login env). A non-zero build is a
+//      failed step, and the executor stops there -- nothing installs from a build that did not exit 0.
+//   2. INSTALL the freshly built binary at install_path through the same privileged install the upload
+//      route uses (a binary the account builds must still land root-owned at the mode the serve reader
+//      expects).
+//   3. RECORD its identity from the bytes the HOST has: read the installed binary's sha256 back OFF
+//      THE HOST (serving_leg_sha256 -- deliberately NOT the executor's pin, which is the whole point of
+//      the native route) and write <install_path>.identity binding {revision, that host-read sha}. The
+//      revision -- read back at by EnsureCheckout before this rank -- is what binds the binary, since
+//      unlike the upload route there is no pre-known hash to match.
+fn converge_build_serve_binary(target: SshTarget, context: FleetSshExecutionContext, d: RemoteBuildServingDesired, owner: String, group: String, mode: FileMode, checkout_dir: String, revision: String, package: String, bin: String, target_dir: String, install_path: String) -> ConvergeStep {
+  match converge_resolve_serving_session(target: target, context: context, d: d) {
+    ServingSessionAccountUnread { cause: c } => StepFailed { cause: join(["the serving account could not be re-read, so the native build cannot be placed in its capped slice: ", c], "") }
+    ServingSessionUidUnknown => StepFailed { cause: "the serving account's uid is not in the re-read passwd, so the native build cannot be placed in its user session" }
+    ServingSessionEstablished { runtime_dir: runtime_dir } => {
+      // The build runs as the serving account, so its cargo is the SAME pinned toolchain shim the toolchain
+      // leg already manages at d.account_home (EnsureToolchain runs ~/.cargo/bin/rustup). There is no other
+      // account a native build could run as: the action carries no as_user, so there is no un-modelled-home
+      // case to invent a path for (review 97472 -- a fake path is a fabricated default, not a refusal).
+      let cargo_bin = concat(d.account_home, "/.cargo/bin/cargo")
+      let build_argv = [cargo_bin, "build", "--release", "-p", package, "--bin", bin, "--manifest-path", concat(checkout_dir, "/Cargo.toml"), "--target-dir", target_dir]
+      match gunbc_user_work_scope_command(properties: [], command_argv: build_argv) {
+        SystemdRunCommandRefused { cause: c } => StepFailed { cause: join(["the native build could not be wrapped into the capped gunbc-user-work.slice: ", systemd_run_option_words_refused_cause_detail(cause: c), "; the build was refused rather than run outside the capped slice"], "") }
+        SystemdRunCommandReady { command: scoped } => {
+          // The build starts in the serving CHECKOUT (env -C), exactly as the #16862 door does: a plain
+          // checkout is not a release locus, so GUNBC_WORKSPACE_ROOT is deliberately NOT bound, and the
+          // account's session bindings make its capped user-work slice reachable. cargo is pinned by
+          // --manifest-path/--target-dir so the build is revision-anchored regardless of cwd.
+          let run = converge_as_user_outcome(
+            kind: ProvisioningLeg, // a native cargo build of the pinned revision: image delivery / rebuild class
+            target: target,
+            context: context,
+            account: d.account_name,
+            argv: argv_words(command: env_prefixed_command_in(
+              directory: checkout_dir,
+              bindings: concat(
+                user_session_launcher_env(runtime_dir: runtime_dir),
+                [EnvSet { name: "RUSTUP_HOME", value: d.rustup_home }, EnvSet { name: "CARGO_HOME", value: concat(d.account_home, "/.cargo") }]
+              ),
+              command: scoped
+            ))
+          )
+          match run {
+            TypedArgvExecRefused { reason: r } => StepFailed { cause: join(["the native build run was refused before it executed: ", r], "") }
+            // The build leg tripped its declared ceiling: the group was killed on the host. That is
+            // neither a refusal nor a completion, and nothing installs from it.
+            TypedArgvExecOverran { deadline: d } => StepFailed { cause: join(["the native build ", typed_argv_exec_overran_reason(leg_hint: "remote build serving native cargo build", deadline: d)], "") }
+            TypedArgvExecConverged { result: r } => if r.exit_code != 0 {
+              StepFailed { cause: join(["the pinned-revision cargo build exited ", to_string(r.exit_code), "; nothing installs from a build that did not succeed"], "") }
+            } else {
+              match converge_sudo(kind: ProvisioningLeg, target: target, context: context, argv: sudo_elevate_argv(command: coreutils_install_file_owned_argv(mode: file_mode_octal(mode: mode) as NonEmptyStr, owner: owner as NonEmptyStr, group: group as NonEmptyStr, source: concat(target_dir, "/release/", bin), dest: install_path))) {
+                StepFailed { cause: c } => StepFailed { cause: concat("install: ", c) }
+                StepDone => match serving_leg_sha256(item: "serve_binary.sha256", target: target, context: context, path: install_path) {
+                  ObservationRefused { cause: c } => StepFailed { cause: join(["the native build's installed binary sha256 could not be read back off the host: ", c.cause], "") }
+                  ObservationEstablished { observed: host_sha } => converge_record_serve_identity(target: target, context: context, owner: owner, group: group, mode: mode, install_path: install_path, revision: revision, sha256: host_sha)
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+// The pinned toolchain shim path is derived from d.account_home at the build site (the serving account's
+// own ~/.cargo/bin), matching the toolchain leg (EnsureToolchain runs ~/.cargo/bin/rustup); sudo carries
+// no login environment, so the build names that shim explicitly rather than a PATH cargo. (The former
+// as_user_home_bin_prefix returned a fake "__no_modelled_home__" path for a non-serving account -- review
+// 97472 -- but no native build ever runs as another account, so the action no longer carries as_user and
+// the fabricated-path arm is gone rather than guarded.)
+
+
 fn converge_install_serve_binary(target: SshTarget, context: FleetSshExecutionContext, owner: String, group: String, mode: FileMode, upload_path: String, install_path: String, expected_sha256: String) -> ConvergeStep {
   match converge_private_stage_dir(target: target, context: context) {
     StageFailed { cause: c } => StepFailed { cause: c }
@@ -1855,7 +2119,7 @@ fn converge_install_serve_binary(target: SshTarget, context: FleetSshExecutionCo
       let remote_path = concat(stage, "/serve.upload")
       match converge_upload(target: target, context: context, local_path: upload_path as NonEmptyStr, remote_path: remote_path as NonEmptyStr) {
         StepFailed { cause: c } => StepFailed { cause: c }
-        StepDone => match converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: coreutils_install_file_owned_argv(mode: file_mode_octal(mode: mode) as NonEmptyStr, owner: owner as NonEmptyStr, group: group as NonEmptyStr, source: remote_path, dest: install_path))) {
+        StepDone => match converge_sudo(kind: ProvisioningLeg, target: target, context: context, argv: sudo_elevate_argv(command: coreutils_install_file_owned_argv(mode: file_mode_octal(mode: mode) as NonEmptyStr, owner: owner as NonEmptyStr, group: group as NonEmptyStr, source: remote_path, dest: install_path))) {
           StepFailed { cause: c } => StepFailed { cause: concat("install: ", c) }
           StepDone => converge_readback_step(what: "serve binary sha256", read: serving_leg_sha256(item: "serve_binary.sha256", target: target, context: context, path: install_path), want: expected_sha256)
         }
@@ -1917,11 +2181,11 @@ fn converge_run_write(target: SshTarget, context: FleetSshExecutionContext, d: R
     // gid (fail_closed). If the group somehow exists now, groupadd fails loudly — its exit code and stderr
     // (e.g. exit 4, "GID '1006' already exists") are the cause the receipt names — and the wet apply
     // refuses rather than adopting a wrong gid. Ordered FIRST by converge_order.
-    EnsureGroup { name: n, gid: g } => converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: groupadd_with_gid_argv(name: n as NonEmptyStr, gid: g)))
+    EnsureGroup { name: n, gid: g } => converge_sudo(kind: ProvisioningLeg, target: target, context: context, argv: sudo_elevate_argv(command: groupadd_with_gid_argv(name: n as NonEmptyStr, gid: g)))
     EnsureAccount { name: n, uid: u, gid: g, primary_group: _, home: h, shell: sh, supplementary: sup } =>
-      converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: useradd_declared_account_argv(name: n as NonEmptyStr, uid: u, gid: g, shell: sh as NonEmptyStr, home: h as NonEmptyStr, supplementary: sup)))
-    EnsureGroupMembership { group_name: gname, group_gid: _, member: m } => converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: map(usermod_append_group_argv(login: m as NonEmptyStr, group: gname as NonEmptyStr), w => w as String)))
-    EnsureDirectory { path: p, owner_user: ou, owner_group: og, mode: mo } => converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: argv_words(command: install_directory_owned_argv_command(mode: mo, owner: ou as NonEmptyStr, group: og as NonEmptyStr, path: p))))
+      converge_sudo(kind: ProvisioningLeg, target: target, context: context, argv: sudo_elevate_argv(command: useradd_declared_account_argv(name: n as NonEmptyStr, uid: u, gid: g, shell: sh as NonEmptyStr, home: h as NonEmptyStr, supplementary: sup)))
+    EnsureGroupMembership { group_name: gname, group_gid: _, member: m } => converge_sudo(kind: ProvisioningLeg, target: target, context: context, argv: sudo_elevate_argv(command: map(usermod_append_group_argv(login: m as NonEmptyStr, group: gname as NonEmptyStr), w => w as String)))
+    EnsureDirectory { path: p, owner_user: ou, owner_group: og, mode: mo } => converge_sudo(kind: ProvisioningLeg, target: target, context: context, argv: sudo_elevate_argv(command: argv_words(command: install_directory_owned_argv_command(mode: mo, owner: ou as NonEmptyStr, group: og as NonEmptyStr, path: p))))
     EnsureAuthorizedKeys { path: p, owner_user: ou, content: c } => converge_install_content(target: target, context: context, staging_local: "target/gunbc-authorized_keys.upload", path: p, owner: ou, group: d.account_group_name, mode: d.authorized_keys_mode, content: c)
     EnsureCheckout { dir: dir, clone_url: url, revision: rev, as_user: usr } => converge_run_checkout(target: target, context: context, dir: dir, url: url, rev: rev, usr: usr)
     // B1: rustup install of the PINNED channel as the serving account, in its own step (the plan
@@ -1930,14 +2194,17 @@ fn converge_run_write(target: SshTarget, context: FleetSshExecutionContext, d: R
     // idempotent, so re-applying a settled host is a no-op settle; the absolute rustup path and
     // explicit RUSTUP_HOME/CARGO_HOME do not depend on the account's login shell reading its
     // profile under sudo -u.
-    EnsureToolchain { channel: c, as_user: usr } => converge_as_user(target: target, context: context, user: usr, command: env_prefixed_command(bindings: [EnvSet { name: "RUSTUP_HOME", value: d.rustup_home }, EnvSet { name: "CARGO_HOME", value: concat(d.account_home, "/.cargo") }], command: rustup_toolchain_install_command(rustup_bin: concat(d.account_home, "/.cargo/bin/rustup"), channel: c)))
+    EnsureToolchain { channel: c, as_user: usr } => converge_as_user(kind: ProvisioningLeg, target: target, context: context, user: usr, command: env_prefixed_command(bindings: [EnvSet { name: "RUSTUP_HOME", value: d.rustup_home }, EnvSet { name: "CARGO_HOME", value: concat(d.account_home, "/.cargo") }], command: rustup_toolchain_install_command(rustup_bin: concat(d.account_home, "/.cargo/bin/rustup"), channel: c)))
     EnsureRustup { installer_url: url, expected_sha256: want, as_user: usr, rustup_home: rh, cargo_home: ch } => converge_install_rustup(target: target, context: context, url: url, expected_sha256: want, usr: usr, rustup_home: rh, cargo_home: ch)
     EnsureUserManagerLinger { account: a } => converge_enable_user_manager_linger(target: target, context: context, account: a as NonEmptyStr)
     InstallUserWorkSlice { unit_name: _, unit_path: upath, memory_max: mmax, memory_high: mhigh, memory_swap_max: _, expected_content: content } => converge_install_user_work_slice(target: target, context: context, d: d, unit_path: upath, memory_max: mmax, memory_high: mhigh, expected_content: content)
     InstallServeBinary { upload_path: up, install_path: ip, expected_sha256: want } => converge_install_serve_binary(target: target, context: context, owner: d.account_name, group: d.account_group_name, mode: d.serve_binary_mode, upload_path: up, install_path: ip, expected_sha256: want)
     RecordServeIdentity { install_path: ip, revision: rev, sha256: want } => converge_record_serve_identity(target: target, context: context, owner: d.account_name, group: d.account_group_name, mode: d.serve_binary_mode, install_path: ip, revision: rev, sha256: want)
-    EnsureLedgerDirectory { path: p, owner_user: ou, owner_group: og, mode: mo } => converge_sudo(target: target, context: context, argv: sudo_elevate_argv(command: argv_words(command: install_directory_owned_argv_command(mode: mo, owner: ou as NonEmptyStr, group: og as NonEmptyStr, path: p))))
-    // The recovery leg: run compute_recover_cli over ssh as the service user. Exit 0 = released/nothing
+    // The native-build leg: build the pinned revision on the host inside the capped slice, install the
+    // produced binary, and record its identity from the sha read back off the host (not the executor pin).
+    BuildServeBinary { checkout_dir: cd, revision: rev, package: pkg, bin: bn, target_dir: td, install_path: ip } => converge_build_serve_binary(target: target, context: context, d: d, owner: d.account_name, group: d.account_group_name, mode: d.serve_binary_mode, checkout_dir: cd, revision: rev, package: pkg, bin: bn, target_dir: td, install_path: ip)
+    EnsureLedgerDirectory { path: p, owner_user: ou, owner_group: og, mode: mo } => converge_sudo(kind: ProvisioningLeg, target: target, context: context, argv: sudo_elevate_argv(command: argv_words(command: install_directory_owned_argv_command(mode: mo, owner: ou as NonEmptyStr, group: og as NonEmptyStr, path: p))))
+    // The recovery leg: run compute_recover_serving_cli over ssh as the service user. Exit 0 = released/nothing
     // held → settled. Exit 1 = declined (the seat is still legitimately held; the observation was stale)
     // → failed. Exit 2 = refused (observation unknown) → failed. The exit-code mapping is declared by
     // compute_recover_exit (work_provider_local); this leg reads that mapping, not bare literals.
@@ -1969,9 +2236,9 @@ fn converge_checkout_step(fetch: ConvergeStep, detach: ConvergeStep) -> Converge
 // IGNORED ON PURPOSE (a fresh clone succeeds but proves nothing about the revision); the fetch and detach
 // steps feed converge_checkout_step.
 fn converge_run_checkout(target: SshTarget, context: FleetSshExecutionContext, dir: String, url: String, rev: String, usr: String) -> ConvergeStep {
-  let _clone = converge_as_user(target: target, context: context, user: usr, command: git_clone_command(url: url, dir: dir))
-  let fetch = converge_as_user(target: target, context: context, user: usr, command: git_fetch_revision_command(repo: dir, url: url, revision: rev))
-  let detach = converge_as_user(target: target, context: context, user: usr, command: git_checkout_detached_command(repo: dir, revision: rev))
+  let _clone = converge_as_user(kind: ProvisioningLeg, target: target, context: context, user: usr, command: git_clone_command(url: url, dir: dir))
+  let fetch = converge_as_user(kind: ProvisioningLeg, target: target, context: context, user: usr, command: git_fetch_revision_command(repo: dir, url: url, revision: rev))
+  let detach = converge_as_user(kind: ProvisioningLeg, target: target, context: context, user: usr, command: git_checkout_detached_command(repo: dir, revision: rev))
   match converge_checkout_step(fetch: fetch, detach: detach) {
     // The detach's zero exit is not the proof — a detached HEAD can land somewhere other than the pin.
     // Read HEAD back AS the serving account and require it to equal the pin, the same read-back-equality

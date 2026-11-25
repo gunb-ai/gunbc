@@ -74,7 +74,7 @@ test fn witness_the_runner_width_pays_a_serving_host_its_reserved_memory_to_the_
   }
   // (d) AN UNMEASURED SERVING RESERVATION FAILS THE WIDTH CLOSED -- it is NOT booked as zero; the width refuses.
   //     Driven with an EXPLICIT Absent charge so it is witnessed generically without a real host carrying an
-  //     unmeasured roster row (butch's production row is B4b's). srv3 is only the carrier for host facts; the charge
+  //     unmeasured roster row (butch's B4b production row was discharged 2026-11-24 -- see the dissolved_frontier marker in gunbc.serving.serving_reservation). srv3 is only the carrier for host facts; the charge
   //     is SUPPLIED (not a roster lookup) -- turning Absent into a zero charge would flip this arm to Derived & fail.
   let unread_closed = match runner_memory_envelope_of_optional(f: host_width_facts(host: operator_host_srv3), serving: Absent) {
     RunnerMemoryEnvelopeUnestablished { cause: _ } => true

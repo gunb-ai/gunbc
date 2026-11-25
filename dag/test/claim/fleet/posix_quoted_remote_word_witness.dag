@@ -6,6 +6,7 @@ import extdeps.posix.shell_command_language { posix_single_quote }
 import gunbc.remote_shell_command { remote_exec_command_string, remote_exec_command_rendered, RemoteExecCommandBuilt, RemoteExecCommandRefused, PosixShellInterpreted }
 import extdeps.ssh.openssh_remote_command { openssh_remote_command_string, openssh_remote_command_execution, openssh_release_of_version_output }
 import gunbc.fleet.fleet_known_hosts_anchor {
+  ProbeLeg,
   SshTarget,
   SshTargetResolved,
   SshTargetRefused,
@@ -79,14 +80,14 @@ fn route_or_fail(p: PosixLoginShellProof, claim: fn(PosixRemoteRoute) -> Bool) -
 }
 
 fn leg_or_fail(raws: List<String>, p: PosixLoginShellProof, claim: fn(FleetRemoteLeg) -> Bool) -> Bool {
-  route_or_fail(p: p, claim: r => match fleet_posix_quoted_leg(route: r, argv: raws) {
+  route_or_fail(p: p, claim: r => match fleet_posix_quoted_leg(kind: ProbeLeg, route: r, argv: raws) {
     Present { value: leg } => claim(leg)
     Absent => false
   })
 }
 
 fn leg_refused(raws: List<String>, p: PosixLoginShellProof) -> Bool {
-  route_or_fail(p: p, claim: r => match fleet_posix_quoted_leg(route: r, argv: raws) {
+  route_or_fail(p: p, claim: r => match fleet_posix_quoted_leg(kind: ProbeLeg, route: r, argv: raws) {
     Present { value: _ } => false
     Absent => true
   })

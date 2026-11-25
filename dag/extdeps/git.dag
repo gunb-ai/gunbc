@@ -1458,6 +1458,103 @@ fn git_in_trusted_repository_argv(repo: NonEmptyStr, verbs: List<String>) -> Lis
   git_argv_of_args(args: concat(git_in_trusted_repository_args(repo: repo), items: verbs))
 }
 
+// THE DEPLOYED-TREE OBSERVATION'S FIVE TYPED CALLS (gunbc.live_deploy.deployed_tree_observation,
+// 2026-11-23, PR #16918 review 97601). The fold asks ONE host, through one admitted locus, whether its
+// deployed scope realizes the commit HEAD names; the five calls below are that question in git's own
+// words. They live HERE, in git's extdeps module and not in the fold, for the reason this file's head
+// states as its duty: an argv shape is a fact about git, not about any caller, and the one place a
+// word order can go wrong is the one place it is written. The fold supplies the repo, the revision and
+// the index path; it composes no git words of its own.
+//
+// WHY THE HEAD REVISION AND ITS ROOT TREE ARE TWO CALLS. `HEAD:` names the root tree of HEAD; the
+// spelling `HEAD^{tree}` names the same object, but `^`, `{` and `}` are outside the portability wall
+// (gunbc.fleet.fleet_known_hosts_anchor portable_remote_word_char_allowed) while `:` is inside it, so
+// the colon form is the one that crosses an ssh edge unchanged. Two legs over one locus, not a second
+// remote-revision path.
+//
+// WHY AN INDEX WE BUILD AND NOT THE REPOSITORY'S OWN. The deployed tree arrives by a WHITELIST sync
+// whose carrier note excludes .git/index, so a correctly synced host sits in a state git never
+// produces alone: HEAD, objects and worktree at the new revision while .git/index still records the
+// previous state -- measured on srv1 as 4,604 files staged as DELETED while present on disk. The
+// observation therefore builds its own index at a path it names (read-tree below) and compares the
+// worktree against THAT, never against the repository's index.
+//
+// THE STATUS CALL TAKES --no-optional-locks. Measured on srv1, `git status` without it writes
+// .git/index.lock (and sometimes .git/index) even in its read-only forms -- and .git/index is a path
+// the deployment whitelist deliberately does not own, because a sync that crossed it would overwrite
+// the index while HEAD had not moved: the exact split-brain the whitelist rule exists to stop. An
+// observation that dirties the target's lock or index while its own fold compares against a scratch
+// index is instrumentating the target, and the observation is no longer a read.
+//
+// GIT_INDEX_FILE TRAVELS AS A TYPED BINDING, because git has no flag for it. Measured on srv1 git
+// 2.43.0 with an unreadable GIT_INDEX_FILE: `status --porcelain=v1 -z --ignored --exclude-standard`
+// STILL listed ignored files and exited 0, and `ls-files --others --ignored --exclude-standard` printed
+// them and exited 0 -- while `status --porcelain=v1 -z` alone printed nothing and exited 0. The
+// ignored-file paths are resolved by the INDEX's directory, so with an unusable index they resolve
+// nowhere and every exclude rule reads as satisfied: silence looked like a clean tree with every
+// excluded artifact present. It was also the one leg with no exit code to refuse on. A caller cannot
+// pass a scratch path positionally to these two operations, so the binding arrives as argv `env` words
+// through env_prefixed_command -- the same rendering the fold's witnesses compare, word for word.
+// `--index-output` is NOT the same operation: it redirects the written index but still locks the real
+// one, so it does not make the read local.
+//
+// THE INDEX PATH IS THE CALLER'S TO OWN, AND THE RULE IS THAT IT IS NEVER A SHARED NAME. A constant
+// index name is a rendezvous: two folds on one host interleave between one run's read-tree and its
+// status, and the later read-tree answers the earlier status from a different tree -- a wrong clean or
+// dirty verdict with no error anywhere. The fold therefore allocates its index per observation (its
+// acquisition checks mktemp's exit, and its cleanup runs on every terminal path); these builders only
+// carry the path they are handed, exactly as the fold hands the same path to read-tree, status and
+// ls-files so all three speak about ONE index.
+fn git_in_trusted_repository_head_revision_command(repo: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: git_program(), arguments: concat(git_in_trusted_repository_args(repo: repo), items: ["rev-parse", "HEAD"]))
+}
+
+data git_in_trusted_repository_root_tree_ref: String = "HEAD:"
+
+fn git_in_trusted_repository_head_root_tree_command(repo: NonEmptyStr) -> ArgvCommand {
+  argv_command(program: git_program(), arguments: concat(git_in_trusted_repository_args(repo: repo), items: ["rev-parse", git_in_trusted_repository_root_tree_ref]))
+}
+
+fn git_temporary_index_env_binding(index_path: String) -> EnvBinding {
+  EnvSet { name: "GIT_INDEX_FILE", value: index_path }
+}
+
+fn git_in_trusted_repository_read_tree_command(repo: NonEmptyStr, index_path: String, revision_hex: String) -> ArgvCommand {
+  env_prefixed_command(
+    bindings: [git_temporary_index_env_binding(index_path: index_path)],
+    command: argv_command(
+      program: git_program(),
+      arguments: concat(git_in_trusted_repository_args(repo: repo), items: ["read-tree", "--no-sparse-checkout", revision_hex]),
+    ),
+  )
+}
+
+fn git_in_trusted_repository_status_command(repo: NonEmptyStr, index_path: String) -> ArgvCommand {
+  env_prefixed_command(
+    bindings: [git_temporary_index_env_binding(index_path: index_path)],
+    command: argv_command(
+      program: git_program(),
+      arguments: concat(
+        git_in_trusted_repository_args(repo: repo),
+        items: ["--no-optional-locks", "status", "--porcelain=v1", "-z", "--untracked-files=all"]
+      ),
+    ),
+  )
+}
+
+fn git_in_trusted_repository_ls_files_ignored_command(repo: NonEmptyStr, index_path: String) -> ArgvCommand {
+  env_prefixed_command(
+    bindings: [git_temporary_index_env_binding(index_path: index_path)],
+    command: argv_command(
+      program: git_program(),
+      arguments: concat(
+        git_in_trusted_repository_args(repo: repo),
+        items: ["ls-files", "--others", "--ignored", "--exclude-standard", "-z"]
+      ),
+    ),
+  )
+}
+
 // THE REPOSITORY PREMISE AS AN EXIT STATUS (WORKER-ROOT-EQUIVALENT-3, typed legs).
 // `git -c safe.directory=<repo> --git-dir=<repo>/.git rev-parse --absolute-git-dir` exits 0 exactly when
 // <repo>/.git IS a git directory -- and nonzero when it is a skeleton without a valid HEAD, a plain

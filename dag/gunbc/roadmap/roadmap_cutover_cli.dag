@@ -43,7 +43,7 @@ import gunbc.roadmap.roadmap_event_log {
 }
 import gunbc.roadmap.roadmap_authority { roadmap_acceptance_event_history_load, roadmap_retired_node_ids_load }
 import gunbc.roadmap.roadmap_acceptance_history_carrier { RoadmapAcceptanceEventHistoryLoad }
-import gunbc.roadmap.roadmap_event_cli { roadmap_acceptance_line_of, roadmap_acceptance_record_cli, roadmap_event_record_cli }
+import gunbc.roadmap.roadmap_event_cli { roadmap_acceptance_line_of, RoadmapAcceptanceLineParse, AcceptanceLineParsed, AcceptanceLineRefused, roadmap_acceptance_record_cli, roadmap_event_record_cli }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 // THE PRE-WRITE REFUSAL FOR THE ONE-TIME CUTOVER
@@ -429,17 +429,26 @@ fn roadmap_cutover_acceptance_record_cli(
   merged_at: String,
   head_sha: String,
   author: String,
-  report_path: String
+  report_path: String,
+  red_kind: String,
+  red_at: String,
+  green_at: String,
+  red_base: String,
+  probe_ref: String
 ) -> ProcessExit {
   let report = Filesystem.Read(path: report_path)
   match roadmap_acceptance_line_of(text: receipt_line) {
-    Absent => roadmap_acceptance_record_cli(
+    // A LINE THE READERS REFUSED is handed to the record route UNTOUCHED, so the operator reads the located
+    // refusal the record route already knows how to give (roadmap_acceptance_line_of delegates to
+    // gunbc.roadmap.roadmap_operator_acceptance roadmap_operator_acceptance_line_parse; the gate does not get
+    // to invent a worse message for a malformed line, and a malformed line never reaches the carrier either way).
+    AcceptanceLineRefused { reason: _ } => roadmap_acceptance_record_cli(
       repo_root: repo_root, receipt_line: receipt_line, pr_url: pr_url,
-      merged_at: merged_at, head_sha: head_sha, author: author)
-    Present { value: line } => match roadmap_acceptance_line_acceptance_receipt(line: line) {
+      merged_at: merged_at, head_sha: head_sha, author: author, red_kind: red_kind, red_at: red_at, green_at: green_at, red_base: red_base, probe_ref: probe_ref)
+    AcceptanceLineParsed { line: line } => match roadmap_acceptance_line_acceptance_receipt(line: line) {
       Absent => roadmap_acceptance_record_cli(
         repo_root: repo_root, receipt_line: receipt_line, pr_url: pr_url,
-        merged_at: merged_at, head_sha: head_sha, author: author)
+        merged_at: merged_at, head_sha: head_sha, author: author, red_kind: red_kind, red_at: red_at, green_at: green_at, red_base: red_base, probe_ref: probe_ref)
       Present { value: _ } => {
         let gate = roadmap_cutover_migration_gate_decide_acceptance(
           identity: roadmap_acceptance_migration_identity(e: line),
@@ -452,7 +461,7 @@ fn roadmap_cutover_acceptance_record_cli(
               "; the acceptance was NOT handed to the carrier (report ", report_path, ")"], "") }
           GateAdmitted { fact: _ } => roadmap_acceptance_record_cli(
             repo_root: repo_root, receipt_line: receipt_line, pr_url: pr_url,
-            merged_at: merged_at, head_sha: head_sha, author: author)
+            merged_at: merged_at, head_sha: head_sha, author: author, red_kind: red_kind, red_at: red_at, green_at: green_at, red_base: red_base, probe_ref: probe_ref)
         }
       }
     }

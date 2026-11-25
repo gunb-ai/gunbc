@@ -522,7 +522,10 @@ service shell.Remove {
     requires none
     input { path: FilePath }
     output { success: Bool from "exit_success" }
-    transport shell { argv: ["rm", "-rf", "{path}"] }
+    // `--` ends option parsing so a path beginning with '-' is always an operand, never a flag. Every one of the
+    // many callers passes a path (never an option) in this position, so this is a universally-correct, non-breaking
+    // operand separator; without it a scratch under a '-'-prefixed TMPDIR is mis-parsed as an option.
+    transport shell { argv: ["rm", "-rf", "--", "{path}"] }
     exit {
       0 => Unit
       nonzero => String "rm -rf failed"

@@ -1,6 +1,14 @@
 module gunbc.roadmap.roadmap_site_surface_observe
 
-import gunbc.roadmap.roadmap_runtime_plan { roadmap_plan_projection }
+import gunbc.roadmap.roadmap_runtime_plan { roadmap_plan_projection, roadmap_plan_projection_over_layout, roadmap_plan_projection_over_scoped }
+import gunbc.roadmap.roadmap_event_carrier {
+  RoadmapEventCarrierLayout,
+  RoadmapEventCarrierScopedLayout,
+  roadmap_event_carrier_ci_layout,
+  roadmap_event_carrier_layout_for_instance,
+}
+import extdeps.git
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import gunbc.roadmap.roadmap_event_log { StandingsUnobserved }
 import std.types { String, NonEmptyStr, List }
 import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_combine_structural, content_hash_tagged_structural }
@@ -130,6 +138,16 @@ fn render_roadmap_site_surface_bundle_for_projection(proj: RoadmapAuthorityProje
   }
 }
 
+// THE SERVE-SIDE RENDERER. This renders the bytes the process actually serves — its own healthz body and
+// served-surface digests — and is correct for that: the serving process IS the authority, so it reads its
+// own roster and emits what it has. It is NOT for minting an expectation: a caller that will compare an
+// identity across the CI/host boundary must call `roadmap_site_surface_bundle_observation` (or the
+// *_of_layout fold) so a refused roster read becomes a typed refusal instead of a fabricated identity. The
+// two surviving serve-only callers (roadmap_static_site's healthz body / served-surface digest, and
+// roadmap_site_healthz_validate's fresh-body currentness check) render the OBSERVED side, not an expected
+// one; if either ever gains an expectation-minting use, the trigger is exactly that, and it moves onto the
+// observation. (gunbc.recurring_failure_mode
+// readback_expectation_rendered_over_a_refused_read_under_the_wrong_principal.)
 fn materialize_live_roadmap_site_surface_bundle() -> RoadmapSiteSurfaceBundle {
   render_roadmap_site_surface_bundle_for_projection(proj: roadmap_plan_projection())
 }
@@ -139,4 +157,89 @@ fn live_roadmap_site_surface_bundle() -> LiveRoadmapSiteSurfaceBundle {
     subject: roadmap_site_surface_subject,
     bundle: materialize_live_roadmap_site_surface_bundle(),
   }
+}
+
+// A FAILED ROSTER READ IS NOT A SURFACE. `render_roadmap_site_surface_bundle_for_projection` renders a bundle
+// over ANY projection, and `subject_identity_for_projection` gives a refused projection its own tagged identity
+// — so minting a bundle_identity from `RoadmapAuthorityProjectionRefused` fabricates an expectation the live
+// service (which reads the real roster and renders a DIFFERENT identity) can never meet. That is the fail-open
+// the srv1 cutover gate caught as a deterministic ProcessSurfaceMismatch. This observation folds the plan read
+// exactly once (gunbc.live_deploy.candidate_identity) and names the refusal INSTEAD of a bundle, so a caller that
+// needs an expectation can refuse the candidate rather than mint a wrong one. A read that cannot be opened is a
+// refusal, never an empty roster — the same law roadmap_retired_node_ids_load states one fold up.
+type RoadmapSiteSurfaceBundleObservation
+  = RoadmapSiteSurfaceBundleRendered { bundle: RoadmapSiteSurfaceBundle }
+  | RoadmapSiteSurfaceBundleReadRefused { detail: String }
+
+// Observe the site surface over the SRV1 INSTANCE carrier layout — the record the service/instance principal
+// reads its own tree with (roadmap_event_carrier_layout_for_instance). For a caller running AS THE INSTANCE
+// PRINCIPAL. The read reaches the log through the ATTACHED arm of the single read entry point; the fold over the
+// projection is shared with the launcher arm (the _of_projection below), so both render the roster identically
+// (gunbc.design_argument::root_generalization).
+fn roadmap_site_surface_bundle_observation_of_layout(
+  layout: RoadmapEventCarrierLayout,
+) -> RoadmapSiteSurfaceBundleObservation {
+  roadmap_site_surface_bundle_observation_of_projection(proj: roadmap_plan_projection_over_layout(layout: layout))
+}
+
+// Observe the site surface over the LAUNCHER's scoped layout (roadmap_event_carrier_ci_layout), which owns no
+// worktree and reads origin's roadmap-events branch into a short-lived detached snapshot under the CI job's own
+// principal. The projection fold is the SAME as the instance arm; only the read principal and layout differ
+// (gunbc.design_argument::earliest_unjustified_boundary).
+fn roadmap_site_surface_bundle_observation_of_scoped(
+  scoped: RoadmapEventCarrierScopedLayout,
+) -> RoadmapSiteSurfaceBundleObservation {
+  roadmap_site_surface_bundle_observation_of_projection(proj: roadmap_plan_projection_over_scoped(scoped: scoped))
+}
+
+// THE SHARED SURFACE FOLD. A refused projection is a RoadmapSiteSurfaceBundleReadRefused — NEVER a bundle with a
+// placeholder identity — so a caller can never mint an expected surface identity over a log nobody opened. A
+// projected roster renders the one site bundle. This fold is reached identically from the instance record path and
+// the launcher scoped path, so the two render the same roster over the same event set.
+fn roadmap_site_surface_bundle_observation_of_projection(
+  proj: RoadmapAuthorityProjection,
+) -> RoadmapSiteSurfaceBundleObservation {
+  match proj {
+    RoadmapAuthorityProjectionRefused { detail: detail } =>
+      RoadmapSiteSurfaceBundleReadRefused { detail: detail }
+    RoadmapAuthorityProjected { doc: _, accepted: _, withheld: _ } =>
+      RoadmapSiteSurfaceBundleRendered { bundle: render_roadmap_site_surface_bundle_for_projection(proj: proj) }
+  }
+}
+
+// THE SERVICE / INSTANCE observation: reads through the instance layout (/opt/gunbc, the service principal's
+// tree) — the authority the live service renders from. For a caller that runs AS THE INSTANCE PRINCIPAL and reads
+// its own tree: the belt serve gate (roadmap_belt_tick_cli, run under the belt service's principal/slice/spawn
+// root) and the healthz_validate comparison. It returns the same bundle the old
+// `materialize_live_roadmap_site_surface_bundle` returned whenever the read opens, and a TYPED REFUSAL instead of a
+// fabricated identity when it does not. A caller that runs in the CI DEPLOY JOB (the candidate, the cutover
+// readiness gate, the launch receipt CI step) must NOT use this — the runner cannot open the instance tree, and
+// reading it there just moves the failure to a typed refusal. Those call
+// `roadmap_site_surface_bundle_observation_for_launcher` below. Same fold, same law; the layout is chosen by which
+// principal actually runs the read (gunbc.design_argument::earliest_unjustified_boundary).
+fn roadmap_site_surface_bundle_observation() -> RoadmapSiteSurfaceBundleObservation {
+  roadmap_site_surface_bundle_observation_of_layout(
+    layout: roadmap_event_carrier_layout_for_instance(instance: srv1_live_dashboard_instance()),
+  )
+}
+
+// Observe the site surface over the LAUNCHER (CI-runner) carrier layout — for every expectation-minting site
+// that runs in the fleet-converge DEPLOY JOB as the runner principal (ghrunner) inside the job's own checkout:
+// the candidate (gunbc.live_deploy.candidate), the cutover readiness gate (gunbc.live_deploy.readiness) and the
+// launch receipt step (roadmap_launch_deployment_cli). The runner cannot open the instance tree (briansrls-
+// owned), so it reads the SAME authority the service renders from — origin's roadmap-events branch, which the
+// service fetch+reset --hard onto on every read — into its own checkout, under the principal that owns that
+// checkout. The candidate, the readiness gate and the launch step therefore share ONE layout for the one
+// roster question (roadmap_event_carrier_ci_layout: a RoadmapEventCarrierScopedLayout, repo_root = the runner
+// checkout and NO worktree field — the scoped read owns a short-lived detached snapshot in its own scratch),
+// which is the point — the readback expectation is derived under the same principal as the read it
+// must match, not re-derived under a different one (gunbc.design_argument::earliest_unjustified_boundary,
+// gunbc.recurring_failure_mode.readback_expectation_rendered_over_a_refused_read_under_the_wrong_principal).
+fn roadmap_site_surface_bundle_observation_for_launcher() -> RoadmapSiteSurfaceBundleObservation {
+  roadmap_site_surface_bundle_observation_of_scoped(
+    scoped: roadmap_event_carrier_ci_layout(
+      checkout_root: git.Inspect.Toplevel().path,
+      instance_layout: roadmap_event_carrier_layout_for_instance(instance: srv1_live_dashboard_instance()),
+    ),
+  )
 }

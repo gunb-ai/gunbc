@@ -1,0 +1,318 @@
+module test.claim.roadmap.roadmap_red_control_tree_witness
+
+// EXECUTING WITNESS for gunbc.design_ruling::executed_red_control_names_its_failing_commit (operator,
+// 2026-11-23: "yeah i think you'd have to mention the commit of the known failure basically as data else
+// its not valid"). An executed red control carries red_at (where the witness FAILED) and green_at (where
+// the same witness PASSED) as data. A receipt recorded before the pair existed reads as red tree
+// UNRECORDED: still accepted (never revoked), never valid red evidence, upgraded by an appended
+// RedTreeRecorded event. Each claim below runs the production route.
+
+import std.types { Bool, String, List, NonEmptyStr }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.algebra { string_contains }
+import gunbc.roadmap.roadmap_model { RoadmapNodeId, RoadmapAcceptanceReceipt, HandbackDelivered }
+import gunbc.roadmap.roadmap_status { RedControlEvidence, RedControlExecuted, RedControlTreeUnrecorded, RedControlNotRun, RedObservation, RedObservedOnMain, RedProbe, red_observation_holds, red_observation_validate, red_kind_parse, RedKind, OnMain, Probe, RedKindOutcome, KindNamed, KindUnrecognized, RedObsBuilt, RedObsRefused, RedObservationCause, MainNamesBase, ProbeNoRef, red_control_evidence_is_valid_red, red_control_evidence_satisfied }
+import gunbc.principal_projection { PrincipalRef }
+import gunbc.roadmap.roadmap_event_log {
+  RoadmapEvent, RoadmapEventKind, EventPrincipal, EventPrincipalAuthenticated, RoadmapEventEnvelope,
+  roadmap_event_envelope, roadmap_event_wire_text, RoadmapEventDecode, RoadmapEventDecoded, RoadmapEventUndecodable, roadmap_event_decode,
+  AcceptanceRecordedEvent, EarnedByPullRequest, RedTreeRecorded, Progress,
+  RoadmapNodeStanding, NodeAccepted, roadmap_node_standing, roadmap_event_admitted_after,
+  roadmap_receipt_effective_red_control, roadmap_node_accepted_without_red_tree,
+}
+import gunbc.roadmap.roadmap_operator_acceptance {
+  roadmap_operator_acceptance_receipt_is_closable, roadmap_operator_acceptance_receipt_line,
+  roadmap_operator_acceptance_line_parse, RoadmapAcceptanceLineParse, AcceptanceLineParsed, AcceptanceLineRefused,
+  roadmap_acceptance_line_acceptance_receipt,
+}
+import gunbc.roadmap.roadmap_event_cli { roadmap_acceptance_record_cli }
+import std.content_hash { content_hash_atom }
+
+// THE PULL REQUEST THE OBSERVATION IS ATTACHED TO, well-formed, so a helper that asks about the RED ARM
+// reaches the arm's own refusal instead of stopping at the guard on the pull-request pair. The pair's
+// refusal arms are witnessed beside the pair, in roadmap_acceptance_evidence_witness
+// (half_a_pull_request_is_refused_..., the_absence_of_a_pull_request_is_admitted_only_for_a_migration_receipt).
+fn pair_url() -> String { "https://github.com/gunb-ai/gunbc/pull/19000" }
+fn pair_head() -> String { "9e0d1c2b3a4f5e6d7c8b9a01234567890fedcba9" }
+
+fn red() -> String { "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678" }
+fn green() -> String { "0f1e2d3c4b5a69788796a5b4c3d2e1f001234567" }
+
+fn base() -> String { "1111111111111111111111111111111111111111" }
+fn pref() -> String { "red-control/row-1" }
+
+fn node() -> RoadmapNodeId { "tree-node" as RoadmapNodeId }
+
+fn human() -> EventPrincipal {
+  EventPrincipalAuthenticated { ref: PrincipalRef { authority: "google-oidc" as NonEmptyStr, namespace: "accounts" as NonEmptyStr, subject: "sub-1" as NonEmptyStr } }
+}
+
+fn receipt_with(rc: RedControlEvidence) -> RoadmapAcceptanceReceipt {
+  RoadmapAcceptanceReceipt {
+    node: node(),
+    criteria_digest: content_hash_atom(value: "3502539e920d9e40" as NonEmptyStr),
+    red_control: rc,
+    handback: HandbackDelivered { first_artifact: "fixture-artifact" as NonEmptyStr, further_artifacts: [] },
+    accepted_by: "briansrls" as NonEmptyStr,
+    accepted_on: "2026-11-23" as NonEmptyStr,
+  }
+}
+
+fn executed(r: String, g: String) -> RedControlEvidence {
+  RedControlExecuted { witness_module: "test.claim.roadmap.roadmap_red_control_tree_witness" as NonEmptyStr, witness_fn: "fixture" as NonEmptyStr, executed_on: "2026-11-23" as NonEmptyStr, observation: RedObservedOnMain { red_at: r, green_at: g } }
+}
+
+fn probe_ev(r: String, b: String, g: String, ref: String) -> RedControlEvidence {
+  RedControlExecuted { witness_module: "test.claim.roadmap.roadmap_red_control_tree_witness" as NonEmptyStr, witness_fn: "fixture" as NonEmptyStr, executed_on: "2026-11-23" as NonEmptyStr, observation: RedProbe { red_at: r, red_base: b, green_at: g, probe_ref: ref as NonEmptyStr } }
+}
+
+fn unrecorded() -> RedControlEvidence {
+  RedControlTreeUnrecorded { witness_module: "test.claim.roadmap.roadmap_red_control_tree_witness" as NonEmptyStr, witness_fn: "fixture" as NonEmptyStr, executed_on: "2026-11-09" as NonEmptyStr }
+}
+
+fn acceptance(rc: RedControlEvidence) -> RoadmapEventEnvelope {
+  roadmap_event_envelope(e: RoadmapEvent {
+    node: node(), author: human(), parent: none, recorded_at: "2026-11-23T00:00:00Z",
+    kind: AcceptanceRecordedEvent {
+      receipt: receipt_with(rc: rc),
+      evidence: EarnedByPullRequest { pr_url: "https://github.com/gunb-ai/gunbc/pull/1" as NonEmptyStr, merged_at: "2026-11-23T00:00:00Z" as NonEmptyStr, head_sha: "73e79ab5" as NonEmptyStr },
+    } })
+}
+
+fn pair_event(parent: RoadmapEventEnvelope, r: String, g: String) -> RoadmapEventEnvelope {
+  roadmap_event_envelope(e: RoadmapEvent {
+    node: node(), author: human(), parent: Present { value: parent.id }, recorded_at: "2026-11-24T00:00:00Z",
+    kind: RedTreeRecorded { observation: RedObservedOnMain { red_at: r, green_at: g } } })
+}
+
+fn cli_reason(red_at: String, green_at: String) -> String { cli_arm_reason(arm: "on_main", red_at: red_at, green_at: green_at, red_base: "", probe_ref: "") }
+
+fn cli_probe_reason(red_at: String, green_at: String, red_base: String, probe_ref: String) -> String { cli_arm_reason(arm: "probe", red_at: red_at, green_at: green_at, red_base: red_base, probe_ref: probe_ref) }
+
+fn cli_arm_reason(arm: String, red_at: String, green_at: String, red_base: String, probe_ref: String) -> String {
+  match roadmap_acceptance_record_cli(repo_root: "/nonexistent", receipt_line: "", pr_url: pair_url(), merged_at: "", head_sha: pair_head(), author: "", red_kind: arm, red_at: red_at, green_at: green_at, red_base: red_base, probe_ref: probe_ref) {
+    ExitFailure { code: _, reason: r } => r
+    ExitSuccess => "success"
+  }
+}
+
+// A receipt carrying both shas, distinct and well-formed, closes; one that names no failing tree does not.
+test fn a_receipt_with_both_shas_closes() -> Bool {
+  roadmap_operator_acceptance_receipt_is_closable(receipt: receipt_with(rc: executed(r: red(), g: green())))
+    && red_control_evidence_is_valid_red(e: executed(r: red(), g: green()))
+    && !roadmap_operator_acceptance_receipt_is_closable(receipt: receipt_with(rc: executed(r: red(), g: red())))
+    && !roadmap_operator_acceptance_receipt_is_closable(receipt: receipt_with(rc: executed(r: "", g: green())))
+    && !roadmap_operator_acceptance_receipt_is_closable(receipt: receipt_with(rc: executed(r: "ABC", g: green())))
+}
+
+// The recorder refuses a missing --red-at with its own named diagnostic, before it reads or writes anything.
+test fn a_missing_red_at_is_refused_at_the_cli_with_its_diagnostic() -> Bool {
+  string_contains(s: cli_reason(red_at: "", green_at: green()), pattern: "--red-at is required")
+    && string_contains(s: cli_reason(red_at: red(), green_at: ""), pattern: "--green-at is required")
+    && string_contains(s: cli_reason(red_at: "nope", green_at: green()), pattern: "--red-at is malformed")
+    && string_contains(s: cli_reason(red_at: red(), green_at: "ABCDEF"), pattern: "--green-at is malformed")
+}
+
+test fn red_at_equal_to_green_at_is_refused() -> Bool {
+  string_contains(s: cli_reason(red_at: red(), green_at: red()), pattern: "--red-at equals --green-at")
+    && !red_observation_holds(o: RedObservedOnMain { red_at: red(), green_at: red() })
+    && red_observation_holds(o: RedObservedOnMain { red_at: red(), green_at: green() })
+}
+
+// An old-format receipt round-trips through the wire as UNRECORDED: byte-identical to the old form, so it
+// still decodes and still reads as accepted, and it is not valid red evidence and not closable.
+test fn an_old_format_receipt_reads_unrecorded_and_is_not_valid_red_evidence() -> Bool {
+  let old = acceptance(rc: unrecorded())
+  let decoded_unrecorded = match roadmap_event_decode(text: roadmap_event_wire_text(env: old)) {
+    RoadmapEventDecoded { envelope: e } => (e.id as String) == (old.id as String) && roadmap_node_accepted_without_red_tree(envs: [e])
+    RoadmapEventUndecodable { reason: _ } => false
+  }
+  let still_accepted = match roadmap_node_standing(envs: [old]) {
+    NodeAccepted { by: _, receipt: _ } => true
+    _ => false
+  }
+  decoded_unrecorded && still_accepted
+    && red_control_evidence_satisfied(e: unrecorded())
+    && !red_control_evidence_is_valid_red(e: unrecorded())
+    && !roadmap_operator_acceptance_receipt_is_closable(receipt: receipt_with(rc: unrecorded()))
+}
+
+// An appended pair upgrades the standing; a malformed or equal pair is not admitted; a pair on a receipt that
+// already carries one changes nothing. Done stays the receipt alone: the node is accepted throughout.
+test fn an_appended_pair_upgrades_the_unrecorded_receipt() -> Bool {
+  let old = acceptance(rc: unrecorded())
+  let pair = pair_event(parent: old, r: red(), g: green())
+  let before = roadmap_receipt_effective_red_control(receipt: receipt_with(rc: unrecorded()), envs: [old])
+  let after = roadmap_receipt_effective_red_control(receipt: receipt_with(rc: unrecorded()), envs: [old, pair])
+  let admitted = roadmap_event_admitted_after(envs: [old], event: pair.event)
+  let equal_refused = !roadmap_event_admitted_after(envs: [old], event: pair_event(parent: old, r: red(), g: red()).event)
+  let bad_refused = !roadmap_event_admitted_after(envs: [old], event: pair_event(parent: old, r: "zz", g: green()).event)
+  let on_executed = !roadmap_event_admitted_after(envs: [acceptance(rc: executed(r: red(), g: green()))], event: pair.event)
+  let still_accepted = match roadmap_node_standing(envs: [old, pair]) {
+    NodeAccepted { by: _, receipt: _ } => true
+    _ => false
+  }
+  // THE PRODUCTION READER: the node's standing itself carries the upgraded red control.
+  let standing_upgraded = match roadmap_node_standing(envs: [old, pair]) {
+    NodeAccepted { by: _, receipt: r } => red_control_evidence_is_valid_red(e: r.red_control) && roadmap_operator_acceptance_receipt_is_closable(receipt: r)
+    _ => false
+  }
+  let standing_before = match roadmap_node_standing(envs: [old]) {
+    NodeAccepted { by: _, receipt: r } => !red_control_evidence_is_valid_red(e: r.red_control)
+    _ => false
+  }
+  standing_upgraded && standing_before && !red_control_evidence_is_valid_red(e: before) && red_control_evidence_is_valid_red(e: after)
+    && admitted && equal_refused && bad_refused && on_executed && still_accepted
+}
+
+// THE PROBE KIND. A probe (a red_at off main) names red_base and the durable ref red-control/<row-id>; the
+// bad shapes are each refused at the recorder with their own diagnostic and are unclosable as data.
+test fn a_probe_without_its_base_or_ref_or_with_a_wrong_ref_is_refused() -> Bool {
+  string_contains(s: cli_probe_reason(red_at: red(), green_at: green(), red_base: "", probe_ref: pref()), pattern: "--red-base is required on the probe arm")
+    && string_contains(s: cli_probe_reason(red_at: red(), green_at: green(), red_base: base(), probe_ref: ""), pattern: "--probe-ref is required on the probe arm")
+    && string_contains(s: cli_probe_reason(red_at: red(), green_at: green(), red_base: red(), probe_ref: pref()), pattern: "--red-base equals --red-at")
+    && string_contains(s: cli_probe_reason(red_at: red(), green_at: green(), red_base: base(), probe_ref: "branch/row-1"), pattern: "--probe-ref is malformed")
+    && string_contains(s: cli_probe_reason(red_at: red(), green_at: green(), red_base: base(), probe_ref: "red-control/"), pattern: "--probe-ref is malformed")
+    && !roadmap_operator_acceptance_receipt_is_closable(receipt: receipt_with(rc: probe_ev(r: red(), b: red(), g: green(), ref: pref())))
+    && !roadmap_operator_acceptance_receipt_is_closable(receipt: receipt_with(rc: probe_ev(r: red(), b: base(), g: green(), ref: "main")))
+}
+
+test fn a_well_formed_probe_closes_and_on_main_is_the_visible_default() -> Bool {
+  roadmap_operator_acceptance_receipt_is_closable(receipt: receipt_with(rc: probe_ev(r: red(), b: base(), g: green(), ref: pref())))
+    && red_control_evidence_is_valid_red(e: probe_ev(r: red(), b: base(), g: green(), ref: pref()))
+    && (match red_observation_validate(kind: OnMain, red_at: red(), green_at: green(), red_base: "", probe_ref: "") {
+         RedObsBuilt { observation: o } => match o {
+           RedObservedOnMain { red_at: _, green_at: _ } => true
+           RedProbe { red_at: _, red_base: _, green_at: _, probe_ref: _ } => false
+         }
+         RedObsRefused { cause: _ } => false })
+    && (match red_observation_validate(kind: Probe, red_at: red(), green_at: green(), red_base: base(), probe_ref: pref()) {
+         RedObsBuilt { observation: o } => match o {
+           RedProbe { red_at: _, red_base: _, green_at: _, probe_ref: _ } => true
+           RedObservedOnMain { red_at: _, green_at: _ } => false
+         }
+         RedObsRefused { cause: _ } => false })
+    // THE ARM IS SAID, NEVER GUESSED: at each edge the arm word is parsed ONCE into a RedKind; "" and a
+    // misspelling are not a standing and are refused. The serve close and the CLI use this same parser, so a
+    // close form with red_base filled but red_kind blank is refused, never silently defaulted to a probe.
+    && (match red_kind_parse(word: "") { KindUnrecognized { given: _ } => true  KindNamed { kind: _ } => false })
+    && (match red_kind_parse(word: "onmain") { KindUnrecognized { given: _ } => true  KindNamed { kind: _ } => false })
+    // THE CAUSES ARE TYPED: an on_main arm that names a base, and a probe that names no ref, each refuse with
+    // the ONE cause variant that says so — a witness reads the cause, not a hand-written string.
+    && (match red_observation_validate(kind: OnMain, red_at: red(), green_at: green(), red_base: base(), probe_ref: "") {
+         RedObsRefused { cause: c } => match c { MainNamesBase => true  _ => false }
+         RedObsBuilt { observation: _ } => false })
+    && (match red_observation_validate(kind: Probe, red_at: red(), green_at: green(), red_base: base(), probe_ref: "") {
+         RedObsRefused { cause: c } => match c { ProbeNoRef => true  _ => false }
+         RedObsBuilt { observation: _ } => false })
+}
+
+// A pair is evidence about the acceptance it was appended after. A later acceptance of the same node that is
+// itself tree-unrecorded must NOT inherit a pair recorded for an earlier acceptance (review 97504).
+test fn a_pair_recorded_for_an_earlier_acceptance_is_not_inherited_by_a_later_one() -> Bool {
+  let first = acceptance(rc: unrecorded())
+  let pair = pair_event(parent: first, r: red(), g: green())
+  let second = acceptance(rc: unrecorded())
+  let inherited = roadmap_receipt_effective_red_control(receipt: receipt_with(rc: unrecorded()), envs: [first, pair, second])
+  let own = roadmap_receipt_effective_red_control(receipt: receipt_with(rc: unrecorded()), envs: [first, pair])
+  !red_control_evidence_is_valid_red(e: inherited) && red_control_evidence_is_valid_red(e: own)
+}
+
+// ── THE LINE, BOTH WAYS ───────────────────────────────────────────────────────────────────────────
+// ONE GRAMMAR, ONE OWNER. The recorder's receipt line used to be WRITTEN by the model and READ by a
+// hand-maintained native seed that kept its own copy of the member names — so when the ruling above made an
+// executed red control carry its red_at/green_at pair, the operator's law wrote a line its own reader
+// refused, and an old-spelling line came back as a value the modeled types had no field for: the run died
+// with an unhandled null where it should have answered in words. Every claim here runs BOTH directions
+// through the readers the fold uses, which is the only shape in which this class of breakage cannot return:
+// what the law can spell, the law must be able to read, and what it cannot read must say WHICH member it
+// could not read.
+
+fn line_of(rc: RedControlEvidence) -> String { roadmap_operator_acceptance_receipt_line(receipt: receipt_with(rc: rc)) }
+
+// The line, put back through the reader and re-spelled: byte-identical, or the claim is false.
+fn line_back(line: String) -> String {
+  match roadmap_operator_acceptance_line_parse(text: line) {
+    AcceptanceLineRefused { reason: _ } => ""
+    AcceptanceLineParsed { line: l } => match roadmap_acceptance_line_acceptance_receipt(line: l) {
+      Absent => ""
+      Present { value: r } => roadmap_operator_acceptance_receipt_line(receipt: r)
+    }
+  }
+}
+
+fn line_refusal(line: String) -> String {
+  match roadmap_operator_acceptance_line_parse(text: line) {
+    AcceptanceLineParsed { line: _ } => "parsed"
+    AcceptanceLineRefused { reason: why } => why as String
+  }
+}
+
+// A line spelled by hand, so the claim does not only test the writer's own output. `observation` is the
+// members the ruling requires, inserted into the red control the way the wire spells them.
+fn line_spelling(observation: String) -> String {
+  join(["{\"variant\":\"acceptance_recorded\",\"receipt\":{\"node\":\"tree-node\",\"criteria_digest\":\"3502539e920d9e40\",\"red_control\":{\"variant\":\"red_control_executed\",\"witness_module\":\"test.claim.roadmap.roadmap_red_control_tree_witness\",\"witness_fn\":\"fixture\",\"executed_on\":\"2026-11-23\"", observation, "},\"handback\":{\"variant\":\"handback_delivered\",\"first_artifact\":\"fixture-artifact\",\"further_artifacts\":[]},\"accepted_by\":\"briansrls\",\"accepted_on\":\"2026-11-23\"}}"], "")
+}
+
+fn pair_members() -> String { ",\"red_at\":\"a1b2c3d4e5f60718293a4b5c6d7e8f9012345678\",\"green_at\":\"0f1e2d3c4b5a69788796a5b4c3d2e1f001234567\"" }
+fn probe_members() -> String { ",\"red_kind\":\"probe\",\"red_at\":\"a1b2c3d4e5f60718293a4b5c6d7e8f9012345678\",\"green_at\":\"0f1e2d3c4b5a69788796a5b4c3d2e1f001234567\",\"red_base\":\"1111111111111111111111111111111111111111\",\"probe_ref\":\"red-control/row-1\"" }
+
+// What the recorder answers for a given line, arm and pair — the production route, refusal words included.
+fn cli_line_reason(line: String, arm: String, r: String, g: String, b: String, ref: String) -> String {
+  match roadmap_acceptance_record_cli(repo_root: "/nonexistent", receipt_line: line, pr_url: pair_url(), merged_at: "2026-11-23T00:00:00Z", head_sha: pair_head(), author: "", red_kind: arm, red_at: r, green_at: g, red_base: b, probe_ref: ref) {
+    ExitFailure { code: _, reason: rr } => rr
+    ExitSuccess => "success"
+  }
+}
+
+// A receipt the operator's law can spell comes back through the reader as the same bytes, on both arms.
+test fn the_line_the_law_writes_is_the_line_the_law_reads() -> Bool {
+  let main_line = line_of(rc: executed(r: red(), g: green()))
+  let probe_line = line_of(rc: probe_ev(r: red(), b: base(), g: green(), ref: pref()))
+  main_line != "" && probe_line != ""
+    && line_back(main_line) == main_line && line_back(probe_line) == probe_line
+}
+
+// THE OLD-SPELLING LINE IS READ, NOT CRASHED ON, and is not red evidence: a row written before the pair
+// existed holds the unrecorded standing (never revoked, never valid), which is what an upgrade event is for.
+// THE PRE-RULING LINE STILL READS. A line written before the ruling carries a red control with witness,
+// function and date and NO observation members — the readers read that as the standing it holds,
+// RedControlTreeUnrecorded, and do not refuse it as an unknown shape (it is a year of durable records; the
+// decode is the same authority for every reader). The recorder then refuses to record it AS AN ACCEPTANCE
+// WITH RED EVIDENCE, in the words that name what is missing — which is the ruling's "named diagnostic", and
+// the upgrade path stays open: the appended observation claim, not a rewrite.
+test fn the_pre_ruling_line_reads_as_the_standing_it_holds() -> Bool {
+  let old_line = line_spelling(observation: "")
+  line_refusal(old_line) == "parsed"
+    && string_contains(s: cli_line_reason(line: old_line, arm: "on_main", r: red(), g: green(), b: "", ref: ""), pattern: "does not carry the red observation")
+}
+
+// A line that carries the pair is READ on both arms and reaches the route beneath, which refuses for its own
+// reason (here: no instance is rooted at the probe path). Before the fix the pair-carrying line never got
+// this far — the reader refused it as an unknown field.
+test fn a_line_carrying_the_pair_is_read_and_reaches_the_route() -> Bool {
+  string_contains(s: cli_line_reason(line: line_spelling(observation: pair_members()), arm: "on_main", r: red(), g: green(), b: "", ref: ""), pattern: "no dashboard instance is rooted at")
+    && string_contains(s: cli_line_reason(line: line_spelling(observation: probe_members()), arm: "probe", r: red(), g: green(), b: base(), ref: pref()), pattern: "no dashboard instance is rooted at")
+}
+
+// HALF AN OBSERVATION IS REFUSED WITH THE WORD THAT NAMES IT — the ruling's "named diagnostic" for a missing,
+// malformed or equal pair, on every arm of it.
+test fn a_half_spelled_observation_is_refused_with_its_own_words() -> Bool {
+  string_contains(s: line_refusal(line_spelling(observation: ",\"red_at\":\"a1b2c3d4e5f60718293a4b5c6d7e8f9012345678\"")), pattern: "names the commit it passed on too")
+    && string_contains(s: line_refusal(line_spelling(observation: ",\"green_at\":\"0f1e2d3c4b5a69788796a5b4c3d2e1f001234567\"")), pattern: "names the commit it FAILED on too")
+    && string_contains(s: line_refusal(line_spelling(observation: ",\"red_at\":\"nope\",\"green_at\":\"0f1e2d3c4b5a69788796a5b4c3d2e1f001234567\"")), pattern: "red_at is malformed")
+    && string_contains(s: line_refusal(line_spelling(observation: ",\"red_at\":\"a1b2c3d4e5f60718293a4b5c6d7e8f9012345678\",\"green_at\":\"a1b2c3d4e5f60718293a4b5c6d7e8f9012345678\"")), pattern: "red_at equals green_at")
+    && string_contains(s: line_refusal(line_spelling(observation: ",\"red_kind\":\"probe\",\"red_at\":\"a1b2c3d4e5f60718293a4b5c6d7e8f9012345678\",\"green_at\":\"0f1e2d3c4b5a69788796a5b4c3d2e1f001234567\",\"red_base\":\"1111111111111111111111111111111111111111\"")), pattern: "names no probe_ref")
+    && string_contains(s: line_refusal(line_spelling(observation: ",\"red_kind\":\"sideways\",\"red_at\":\"a1b2c3d4e5f60718293a4b5c6d7e8f9012345678\",\"green_at\":\"0f1e2d3c4b5a69788796a5b4c3d2e1f001234567\"")), pattern: "red_kind is neither of the two standings")
+    && string_contains(s: line_refusal(line_spelling(observation: ",\"red_at\":\"a1b2c3d4e5f60718293a4b5c6d7e8f9012345678\",\"green_at\":\"0f1e2d3c4b5a69788796a5b4c3d2e1f001234567\",\"probe_ref\":\"red-control/row-1\"")), pattern: "belong to the probe arm")
+}
+
+// THE ARM IS SAID, NEVER GUESSED. The recorder takes --red-kind; the word is from a closed set, and a member
+// of the other arm is refused rather than quietly ignored.
+test fn the_recorder_refuses_an_arm_it_was_not_told_or_a_member_it_did_not_ask_for() -> Bool {
+  string_contains(s: cli_line_reason(line: "", arm: "sideways", r: red(), g: green(), b: "", ref: ""), pattern: "--red-kind is required and must be on_main or probe")
+    && string_contains(s: cli_line_reason(line: "", arm: "on_main", r: red(), g: green(), b: base(), ref: ""), pattern: "the on_main arm names none")
+    && string_contains(s: cli_line_reason(line: "", arm: "on_main", r: red(), g: green(), b: "", ref: pref()), pattern: "the on_main arm names none")
+    && string_contains(s: cli_line_reason(line: "", arm: "probe", r: red(), g: green(), b: base(), ref: ""), pattern: "--probe-ref is required on the probe arm")
+    && string_contains(s: cli_line_reason(line: "", arm: "probe", r: red(), g: green(), b: "", ref: pref()), pattern: "--red-base is required on the probe arm")
+}

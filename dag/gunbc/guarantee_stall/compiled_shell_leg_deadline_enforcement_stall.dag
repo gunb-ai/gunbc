@@ -1,0 +1,67 @@
+module gunbc.guarantee_stall.compiled_shell_leg_deadline_enforcement_stall
+
+import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
+import gunbc.guarantee_stall { GuaranteeStall, BoundedPopulation, climbs_when }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+// A STALL, NOT A DROP, AND THAT DISTINCTION IS THE WHOLE ROW (it replaces a RungDrop row for the
+// same subject, which review 97074 refused). gunbc.guarantee_stall states the carrier's law: "A DROP
+// is an event: something that held a rung stopped holding it, and the fields record what was lost. A
+// STALL is a standing state... Nothing was lost when a stall begins, so a drop's previous/temporary/reason
+// fields have no answer, and forcing one would fabricate an event that did not happen."
+//
+// WHICH RUNG HELD BEFORE, ANSWERED FROM THE CODE. Before this PR a compiled program could not state a
+// per-leg wall ceiling at all: the transport block declared only its argv (and `stdin`), the
+// ssh.Session operations' outputs carried no `overran` channel and no `wall_deadline_seconds`
+// channel, and the compiled lowering armed no timer anywhere. So the rung "a compiled shell leg is
+// bounded by the ceiling its model declares" was NOT HELD before this PR -- there was no ceiling in
+// the model to be bounded by, and nothing mechanical stopped a leg from running forever -- and
+// nothing fell when this PR landed. A row claiming `previous: MechanicallyPreventable` would have
+// recorded a fall that never happened, which is what gunbc.design_argument::guarantee_ladder (no
+// silent regression, no untracked stall) refuses in both directions. The honest carrier is this stall:
+// the class sits below its ceiling, and this PR is what made that statable.
+//
+// WHAT THIS PR ACTUALLY MOVED, AND WHAT IT LEFT. The ceiling is now IN the model -- a declared
+// `wall_deadline` field of the transport block, read at the one site the interpreter lowers a shell
+// dispatch, which arms the per-leg kill from it and answers the two channels -- and it is enforced
+// for every fleet leg on the interpreted path. On the compiled Rust target the same declaration
+// parses and means nothing to the lowering: a compiled shell leg still runs unbounded, exactly as it
+// always did. What this PR did for that target is refuse, rather than fabricate, the two channels
+// that would let a compiled program report a bound it does not enforce (src/v1/05_emit.dag
+// shell_channel_realized_by_target; src/v1/05_emit_rust.dag compile_shell_result_channels). That is
+// mitigation, not prevention: the program can no longer claim a ceiling was honoured, and the leg is
+// still unbounded. current: Mitigatable names that position and claims nothing above it.
+//
+// WHY THE CEILING IS MechanicallyPreventable AND NOT HIGHER. The bound is enforceable by a mechanical
+// property of the lowering -- child in its own process group, one timer armed from the declared
+// field, the group killed at it -- which is exactly what the interpreter already does, so this is
+// "can climb now but unbuilt" and not a wall. It is not StructurallyGuaranteed: a compiled program
+// can still express a leg with no declared ceiling at all, and a killed process group can leave a
+// detached grandchild, which is the residual risk on BOTH paths.
+//
+// WHY IT HAS NOT CLIMBED IN THIS PR. ClimbableButUnbuilt: nothing is missing to ground it -- the
+// ceiling is already carried by the declaration this PR added and read at one place. The lowering is
+// unbuilt because no live compiled caller of an ssh.Session transport exists in this corpus: every
+// ssh leg this codebase runs goes through the interpreter. Writing the kill into the emitter today
+// would be a second lowering of one rule with no consumer to discriminate it (a witness of code that
+// nothing calls). This row is the named trigger for when a compiled caller appears.
+//
+// THE POPULATION, CHECKABLE. Exactly the service operations that carry the two deadline channels,
+// and nothing else, by one grep:
+//   grep -rn --include=*.dag -B14 '^  overran: Bool from "overran"' dag/ | grep 'operation \|overran: Bool from'
+// which returns ssh.Session.ExecPortableWords (the no-stdin op), ssh.Session.ExecPortableWordsWithStdin
+// and ssh.PasswordFileSsh.ExecPortableWordsWithStdin. ssh.Session.Exec, ssh.Session.ExecScript and
+// ssh.PasswordSsh.Exec do NOT carry these channels and are correctly absent.
+
+data compiled_shell_leg_deadline_enforcement_stall: GuaranteeStall = GuaranteeStall {
+  subject: "a compiled (emitted-Rust) shell leg runs past the per-leg wall-clock ceiling its own transport declares, and cannot report that it did: the compiled lowering arms no timer from the declared wall_deadline field, and v1.compiler.emit::shell_channel_realized_by_target refuses the overran and wall_deadline_seconds channels for the rust target instead of answering them; observed over extdeps.ssh.session and extdeps.ssh.password_session",
+  current: Mitigatable,
+  ceiling: MechanicallyPreventable,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: [
+      "ssh.Session.ExecPortableWords: overran, wall_deadline_seconds",
+      "ssh.Session.ExecPortableWordsWithStdin: overran, wall_deadline_seconds",
+      "ssh.PasswordFileSsh.ExecPortableWordsWithStdin: overran, wall_deadline_seconds"
+    ] },
+  next_rung_trigger: climbs_when(capability: "the compiled lowering of a transport shell block arms the ceiling it is given -- child spawned in its own process group, one timer from the block's declared wall_deadline field, the group killed at it -- and the overran and wall_deadline_seconds channels become realized for the rust target. Measured by: a compiled operation whose transport declares wall_deadline as Present(Second 2s), run over a command that sleeps longer, answers the overrun channel at that ceiling with the command gone, while the same operation declaring no ceiling keeps the behaviour it had before the field existed")
+}

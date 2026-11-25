@@ -2,7 +2,8 @@ module gunbc.roadmap.roadmap_status
 
 import extdeps.github.pulls { PullRequest }
 
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, CommitSha, commit_sha_text_holds }
+import std.algebra { string_contains }
 
 // The ticket decomposition (remodel W2, operator direction 2026-07-24; the model half of
 // ts-wf-node-schema): an AuthoredLine's single content String fuses headline, brief, workflow
@@ -58,9 +59,26 @@ type RoadmapItem
 // inside RedControlExecuted is not mechanically joined to the prose red_control it discharges
 // (gunbc.roadmap.roadmap_model roadmap_acceptance_receipt_note).
 
+// RED_AT / GREEN_AT (operator ruling 2026-11-23, gunbc.design_ruling::executed_red_control_names_its_failing_commit):
+// an executed red control is evidence only if the witness was OBSERVED FAILING on some tree and that tree is
+// recorded as data. RedControlExecuted therefore carries an `observation` (RedObservation, below) holding red_at (the commit where the witness failed) and
+// green_at (the commit where the same witness passed), both the existing std.types CommitSha. A receipt with
+// no red_at has no RedControlExecuted to write: the field is required, so the omission is unwritable rather
+// than a validation branch. TWO RESIDUES, counted not implied: CommitSha is still an unvalidated String alias
+// and red_at != green_at is a relation between two fields, so neither is a constructor wall; both are judged by
+// gunbc.roadmap.roadmap_status red_control_pair_holds at the one place a receipt is made closable (rung:
+// mechanically preventable; trigger: CommitSha gains a validating constructor, std.types commit_sha_text_holds).
+//
+// RedControlTreeUnrecorded is DECODE-ONLY HISTORY: the receipts recorded before the ruling carry
+// witness_module/witness_fn/executed_on and no tree. They are never revoked and never read as valid red
+// evidence: this arm is their distinct standing. It is not writable by any recorder (the closable predicate
+// refuses it); a later appended RedTreeRecorded event upgrades a receipt's standing
+// (gunbc.roadmap.roadmap_event_log roadmap_receipt_effective_red_control). Its wire form is the old one, byte for
+// byte, so a stored event's id still verifies against its own bytes.
 type RedControlEvidence
   = RedControlNotRun
-  | RedControlExecuted { witness_module: NonEmptyStr, witness_fn: NonEmptyStr, executed_on: NonEmptyStr }
+  | RedControlExecuted { witness_module: NonEmptyStr, witness_fn: NonEmptyStr, executed_on: NonEmptyStr, observation: RedObservation }
+  | RedControlTreeUnrecorded { witness_module: NonEmptyStr, witness_fn: NonEmptyStr, executed_on: NonEmptyStr }
 
 type HandbackEvidence
   = HandbackNotDelivered
@@ -69,8 +87,151 @@ type HandbackEvidence
 fn red_control_evidence_satisfied(e: RedControlEvidence) -> Bool {
   match e {
     RedControlNotRun => false
-    RedControlExecuted { witness_module: _, witness_fn: _, executed_on: _ } => true
+    RedControlExecuted { witness_module: _, witness_fn: _, executed_on: _, observation: o } => red_observation_holds(o: o)
+    // NOT false: an accepted receipt recorded before the ruling stays accepted ("never revoke"); reading it
+    // as unsatisfied would silently return its node to the active set, which is a revocation by another
+    // name. What it is NOT is valid red evidence: red_control_evidence_is_valid_red says so.
+    RedControlTreeUnrecorded { witness_module: _, witness_fn: _, executed_on: _ } => true
   }
+}
+
+// VALID RED EVIDENCE, the ruling's own question: executed, and observed failing on a recorded tree that
+// differs from the passing one. The unrecorded standing answers false here and true above.
+fn red_control_evidence_is_valid_red(e: RedControlEvidence) -> Bool {
+  match e {
+    RedControlNotRun => false
+    RedControlExecuted { witness_module: _, witness_fn: _, executed_on: _, observation: o } => red_observation_holds(o: o)
+    RedControlTreeUnrecorded { witness_module: _, witness_fn: _, executed_on: _ } => false
+  }
+}
+
+// The pair is two well-formed Git heads that differ: a witness seen failing and passing on ONE tree was
+// not seen to change. Judged here because CommitSha is an alias, not a constructor.
+fn red_control_pair_holds(red_at: CommitSha, green_at: CommitSha) -> Bool {
+  commit_sha_text_holds(head: red_at) && commit_sha_text_holds(head: green_at) && red_at != green_at
+}
+
+// WHICH KIND OF RED CONTROL, AS DATA (neat-badger-614's ruling on commits that are not on main): a
+// historical pair has red_at ON MAIN; a PROBE (a deletion probe or a deliberate break) has red_at OFF main and
+// names red_base, the main sha it breaks, and probe_ref, the durable branch red-control/<row-id> that makes
+// red_at fetchable. A probe without red_base or probe_ref is not constructible: both are required fields of the
+// arm, and the kind is the arm, never an optional field beside the pair.
+type RedObservation
+  = RedObservedOnMain { red_at: CommitSha, green_at: CommitSha }
+  | RedProbe { red_at: CommitSha, red_base: CommitSha, green_at: CommitSha, probe_ref: NonEmptyStr }
+
+// ANCESTRY IS NOT JUDGED OFFLINE (judging it needs the Git graph; red_observation_holds covers shape only: well-formed
+// shas, the distinctness it names, and the probe ref's spelling). Unchecked obligations, an annotation and not a
+// carrier because nothing consumes them until an online checker exists: RedObservedOnMain, red_at is an ancestor
+// of green_at on main; RedProbe, red_base is red_at's first parent, red_at's diff from red_base is the named
+// break and nothing else, probe_ref stays pushed to gunb-ai/gunbc, and green_at is red_base or a later main sha.
+
+// Does a constructed observation HOLD? It rebuilds the arm it already spells AS A RedKind (OnMain or Probe,
+// never a word) and asks the one validator (red_observation_validate) whether that arm stands — reporting the
+// typed cause only as a boolean here. This fn judges nothing itself and round-trips nothing through a string,
+// so the shape law has no second copy to drift (gunbc.design_argument::single_authority).
+fn red_observation_holds(o: RedObservation) -> Bool {
+  match o {
+    RedObservedOnMain { red_at, green_at } =>
+      match red_observation_validate(kind: OnMain, red_at: red_at, green_at: green_at, red_base: "", probe_ref: "") {
+        RedObsBuilt { observation: _ } => true
+        RedObsRefused { cause: _ } => false }
+    RedProbe { red_at, red_base, green_at, probe_ref } =>
+      match red_observation_validate(kind: Probe, red_at: red_at, green_at: green_at, red_base: red_base, probe_ref: probe_ref as String) {
+        RedObsBuilt { observation: _ } => true
+        RedObsRefused { cause: _ } => false }
+  }
+}
+
+// red-control/<row-id>: exactly one slash, the fixed prefix, a nonempty row id with no space.
+fn red_probe_ref_holds(ref: String) -> Bool {
+  let parts = split(s: ref, delimiter: "/")
+  if count(parts) != 2 { false } else {
+    match parts.first() {
+      Absent => false
+      Present { value: prefix } =>
+        match parts.skip(n: 1).first() {
+          Absent => false
+          Present { value: row } => prefix == "red-control" && row != "" && !string_contains(s: row, pattern: " ")
+        }
+    }
+  }
+}
+
+// THE ARM IS SAID, NEVER GUESSED. An executed red control holds one of two standings — the failing commit
+// was seen ON MAIN, or it was seen on a probe pushed to a durable ref — and the route that builds one NAMES
+// which, in the same word the wire carries (gunbc.roadmap.roadmap_event_log red_observation_members). Every
+// recorder — the CLI and the operator's serve close alike — routes through THIS fn and no other. An arm word
+// outside the closed set, a probe naming no base or no ref, or a main arm naming either is no observation at
+// all — refused, not defaulted (gunbc.design_ruling::executed_red_control_names_its_failing_commit). A
+// recorder may NOT infer the arm from which fields are empty; that inference is the very defect this fn
+// retires, so it no longer exists anywhere in the tree (see the design_ruling on this branch).
+//
+// All five arrive as TEXTS, the way the command line holds them: a member the arm does not carry is the
+// EMPTY TEXT, and the empty text is not a value of either arm's member — so the empty string is never read
+// as "the caller meant this member but left it out" across arms, it is refused or required strictly by the
+// arm that was NAMED.
+// THE ARM, AS A TYPE. The two standings an executed red control can hold are declared once, here. The arm
+// word is a STRING only at the EDGES (the CLI's --red-kind, the serve close form's red_kind field, the
+// event-log row's red_kind member); each edge parses it EXACTLY ONCE with red_kind_parse below, and the
+// validator downstream only ever sees a RedKind — never a word it must re-interpret. (gunbc.design_argument::
+// single_authority: the closed set lives in one place.)
+type RedKind = OnMain | Probe
+
+// THE REASON AN ARM DOES NOT HOLD, AS A TYPE. One variant per admissible failure; a cause that is not one of
+// these cannot be constructed, so a refusal can never be a hand-rolled string the routes then argue over
+// (gunbc.design_argument::fail_closed: stronger than catching a wrong state is making it unwritable). The
+// validator below produces a cause; EACH ROUTE (CLI, serve, event-log reader) renders its OWN words from the
+// cause — the CLI names its flags, serve names its form fields, the reader names its row members — so flag
+// spellings never leak across routes.
+type RedObservationCause
+  = RedAtAbsent | GreenAtAbsent | RedAtMalformed | GreenAtMalformed | RedAtEqualsGreenAt
+  | MainNamesBase | MainNamesRef | ProbeNoBase | ProbeNoRef | RedBaseMalformed | RedBaseEqualsRedAt | ProbeRefMalformed
+
+type RedObservationOutcome
+  = RedObsBuilt { observation: RedObservation }
+  | RedObsRefused { cause: RedObservationCause }
+
+// THE ONE ARM-WORD PARSER, called at each edge. It says only whether the word names a standing; the CALLER
+// renders the "unrecognized" message in its own vocabulary (a flag, a form field, a row member), so this fn
+// carries no route-specific words.
+type RedKindOutcome = KindNamed { kind: RedKind } | KindUnrecognized { given: String }
+
+fn red_kind_parse(word: String) -> RedKindOutcome {
+  if word == "on_main" { KindNamed { kind: OnMain } }
+  else if word == "probe" { KindNamed { kind: Probe } }
+  else { KindUnrecognized { given: word } }
+}
+
+// THE SINGLE VALIDATOR. It takes a RedKind (already parsed at the edge) plus the five texts and is the ONLY
+// place an executed red control's shape is judged: which members the named arm carries, that every named
+// commit is 40 lowercase hex, that the pair is distinct, that a probe breaks a different base, and that the
+// probe ref is spelled red-control/<row-id>. It returns an observation or a typed cause. red_observation_holds,
+// the recorder CLI, the serve close, and the event-log readers all call THIS fn and judge nothing themselves
+// (gunbc.design_argument::single_authority: a second place that independently decides is a fork; the check
+// that lives twice drifts). A recorder may NOT infer the arm from which fields are empty; that inference is
+// the very defect this retires (gunbc.design_ruling::executed_red_control_names_its_failing_commit). A member
+// the arm does not carry arrives as the EMPTY TEXT, which is not a value of either arm's members — it is
+// refused or required strictly by the arm that was NAMED.
+fn red_observation_validate(kind: RedKind, red_at: String, green_at: String, red_base: String, probe_ref: String) -> RedObservationOutcome {
+  if red_at == "" { RedObsRefused { cause: RedAtAbsent } }
+  else if green_at == "" { RedObsRefused { cause: GreenAtAbsent } }
+  else if !commit_sha_text_holds(head: red_at) { RedObsRefused { cause: RedAtMalformed } }
+  else if !commit_sha_text_holds(head: green_at) { RedObsRefused { cause: GreenAtMalformed } }
+  else if red_at == green_at { RedObsRefused { cause: RedAtEqualsGreenAt } }
+  else { match kind {
+    OnMain =>
+      if red_base != "" { RedObsRefused { cause: MainNamesBase } }
+      else if probe_ref != "" { RedObsRefused { cause: MainNamesRef } }
+      else { RedObsBuilt { observation: RedObservedOnMain { red_at: red_at, green_at: green_at } } }
+    Probe =>
+      if red_base == "" { RedObsRefused { cause: ProbeNoBase } }
+      else if probe_ref == "" { RedObsRefused { cause: ProbeNoRef } }
+      else if !commit_sha_text_holds(head: red_base) { RedObsRefused { cause: RedBaseMalformed } }
+      else if red_base == red_at { RedObsRefused { cause: RedBaseEqualsRedAt } }
+      else if !red_probe_ref_holds(ref: probe_ref) { RedObsRefused { cause: ProbeRefMalformed } }
+      else { RedObsBuilt { observation: RedProbe { red_at: red_at, red_base: red_base, green_at: green_at, probe_ref: probe_ref as NonEmptyStr } } }
+  } }
 }
 
 fn handback_evidence_satisfied(e: HandbackEvidence) -> Bool {

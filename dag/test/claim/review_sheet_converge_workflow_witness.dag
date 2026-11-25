@@ -8,7 +8,13 @@ import extdeps.google.sheets { sheets_token_env }
 import gunbc.fleet.fleet_converge_workflow {
   fleet_converge_workflow, fleet_converge_review_sheet_converge_job, fleet_converge_review_sheet_writer_token_step,
   fleet_converge_build_job_if, fleet_converge_dispatch_event_if, fleet_converge_mode_job_id, ReviewSheetConverge,
-  review_sheet_converge_source_paths, fleet_converge_mode_step_if,
+  fleet_converge_review_sheet_event_admitted,
+  fleet_converge_build_job, fleet_converge_plan_revision_job, fleet_converge_build_job_condition, fleet_converge_plan_revision_job_condition,
+  fleet_converge_workflow_mode_wire, MtCollins1Boot, FleetApply, Srv1RootMutation, DesiredInstanceDeploy,
+}
+import extdeps.github.expressions {
+  Expression, evaluate_expression, ExpressionValue, ExpressionEvaluationRefused, GithubPathResolution, GithubPathValue, GithubPathUnmodeled,
+  gha_value_is_truthy, serialize_expression,
 }
 
 fn job_if(j: Job) -> String {
@@ -22,72 +28,146 @@ fn with_value(fields: List<YamlKeyValue>, key: String) -> String {
   }
 }
 
-// THE SCHEDULE AND PUSH TRIGGERS START THIS JOB ALONE. Every other job's condition is either gated to
-// a dispatch outright, or tests inputs.mode for equality with a named mode (empty on a schedule or
-// push, so false), or waits on `build`, which is dispatch-gated. This is a structural reading of the
-// emitted conditions, not an evaluation of them; the executed reading is the first scheduled run's own
-// job list.
+// THE SCHEDULED GRAPH: on a schedule or push, no host-actuating job can start. Every job other than plan-revision
+// and build -- the review-sheet converge included, since it was disabled
+// (gunbc.design_ruling::review_sheet_converge_disabled_2026_11_24) -- has a condition that is gated to a dispatch outright, or tests inputs.mode for equality
+// with a named mode (empty on a schedule or push, so false). This is a structural reading of the emitted
+// conditions; the two conditions the daily build changed are EVALUATED below.
 fn admits_only_a_dispatch(j: Job) -> Bool {
   let c = job_if(j: j)
   string_contains(s: c, pattern: fleet_converge_dispatch_event_if)
     || string_contains(s: c, pattern: "github.event.inputs.mode == '")
 }
 
-test fn no_other_job_can_start_on_a_schedule_or_push() -> Bool {
-  let mine = fleet_converge_mode_job_id(mode: ReviewSheetConverge) as String
-  let others = filter(fleet_converge_workflow.jobs, j => j.id != mine)
+fn is_a_pack_producer(j: Job) -> Bool {
+  j.id == fleet_converge_build_job().id || j.id == fleet_converge_plan_revision_job().id
+}
+
+test fn no_actuating_job_can_start_on_a_schedule_or_push() -> Bool {
+  let others = filter(fleet_converge_workflow.jobs, j => !is_a_pack_producer(j: j))
   others.length() > 0 && all(others, j => admits_only_a_dispatch(j: j))
 }
 
-// CONTROL: a job with no condition (plan-revision before this change) is exactly what the reading
-// refuses; and build's own condition leads with the dispatch gate.
-test fn a_job_with_no_condition_is_caught_and_build_is_dispatch_gated() -> Bool {
+// CONTROL: a job with no condition is exactly what the reading refuses.
+test fn a_job_with_no_condition_is_caught() -> Bool {
   let bare = Job {
     id: "bare", name: none, runner: fleet_converge_review_sheet_converge_job().runner, environment: none,
     steps: [], needs: [], env: none, outputs: none, if_condition: none, timeout_minutes: none,
     continue_on_error: none, concurrency: none, permissions: none,
   }
   !admits_only_a_dispatch(j: bare)
-    && starts_with(s: fleet_converge_build_job_if, prefix: fleet_converge_dispatch_event_if)
 }
 
-test fn this_job_runs_on_schedule_push_or_its_own_dispatch() -> Bool {
-  let c = job_if(j: fleet_converge_review_sheet_converge_job())
-  string_contains(s: c, pattern: "github.event_name == 'schedule'")
-    && string_contains(s: c, pattern: "github.event_name == 'push'")
-    && string_contains(s: c, pattern: fleet_converge_mode_step_if(mode: ReviewSheetConverge))
+// ── THE DAILY RELEASE PACK, EVALUATED (gunbc.design_ruling::lab_release_pack_built_daily_2026_11_23) ─────────
+// The two conditions are evaluated as GitHub would evaluate them, by extdeps.github.expressions evaluate_expression,
+// over the github context of each event: event_name, and event.inputs.mode (absent on a schedule or push, which
+// GitHub reads as empty). The emitted job conditions are the serializations of these same values.
+fn path_value(p: List<String>, event_name: String, mode: String) -> GithubPathResolution {
+  let key = join(p, ".")
+  if key == "event_name" { GithubPathValue { value: event_name } }
+  else if key == "event.inputs.mode" { GithubPathValue { value: mode } }
+  else { GithubPathUnmodeled }
+}
+
+fn on_schedule(p: List<String>) -> GithubPathResolution { path_value(p: p, event_name: "schedule", mode: "") }
+fn on_push(p: List<String>) -> GithubPathResolution { path_value(p: p, event_name: "push", mode: "") }
+fn on_apply_dispatch(p: List<String>) -> GithubPathResolution { path_value(p: p, event_name: "workflow_dispatch", mode: fleet_converge_workflow_mode_wire(mode: FleetApply)) }
+fn on_desired_instance_deploy_dispatch(p: List<String>) -> GithubPathResolution { path_value(p: p, event_name: "workflow_dispatch", mode: fleet_converge_workflow_mode_wire(mode: Srv1RootMutation(DesiredInstanceDeploy))) }
+fn on_review_sheet_dispatch(p: List<String>) -> GithubPathResolution { path_value(p: p, event_name: "workflow_dispatch", mode: fleet_converge_workflow_mode_wire(mode: ReviewSheetConverge)) }
+fn on_boot_dispatch(p: List<String>) -> GithubPathResolution { path_value(p: p, event_name: "workflow_dispatch", mode: fleet_converge_workflow_mode_wire(mode: MtCollins1Boot)) }
+
+// Admitted only when the evaluator yields a truthy value; a refusal to evaluate is never an admission.
+fn admits(condition: Expression, github: fn(List<String>) -> GithubPathResolution) -> Bool {
+  match evaluate_expression(expression: condition, github_path: github) {
+    ExpressionValue { value: v } => gha_value_is_truthy(s: v)
+    ExpressionEvaluationRefused { cause: _ } => false
+  }
+}
+
+// Evaluated to a value (false or true), not refused: a "not admitted" below is a real false, not an unmodeled read.
+fn evaluates(condition: Expression, github: fn(List<String>) -> GithubPathResolution) -> Bool {
+  match evaluate_expression(expression: condition, github_path: github) {
+    ExpressionValue { value: _ } => true
+    ExpressionEvaluationRefused { cause: _ } => false
+  }
+}
+
+test fn the_schedule_builds_the_pack_and_runs_its_prerequisite() -> Bool {
+  admits(condition: fleet_converge_build_job_condition, github: on_schedule)
+    && admits(condition: fleet_converge_plan_revision_job_condition, github: on_schedule)
+}
+
+// RED: a push (the review-sheet sources) builds nothing and resolves nothing -- evaluated to false, not refused.
+test fn a_push_builds_nothing() -> Bool {
+  evaluates(condition: fleet_converge_build_job_condition, github: on_push)
+    && !admits(condition: fleet_converge_build_job_condition, github: on_push)
+    && evaluates(condition: fleet_converge_plan_revision_job_condition, github: on_push)
+    && !admits(condition: fleet_converge_plan_revision_job_condition, github: on_push)
+}
+
+// A dispatch keeps its old reading: a mode that consumes the pack builds it; a mode whose own job builds what it runs
+// (the boot) does not, while plan-revision still runs as a checkout.
+test fn a_dispatch_builds_only_for_a_mode_that_consumes_the_pack() -> Bool {
+  admits(condition: fleet_converge_build_job_condition, github: on_apply_dispatch)
+    && admits(condition: fleet_converge_build_job_condition, github: on_desired_instance_deploy_dispatch)
+    && evaluates(condition: fleet_converge_build_job_condition, github: on_boot_dispatch)
+    && !admits(condition: fleet_converge_build_job_condition, github: on_boot_dispatch)
+    && admits(condition: fleet_converge_plan_revision_job_condition, github: on_boot_dispatch)
+}
+
+// The emitted conditions ARE these values, and the scheduled path to the artifact is plan-revision -> build only:
+// build needs nothing a schedule skips.
+test fn the_emitted_conditions_are_the_evaluated_values_and_build_needs_only_plan_revision() -> Bool {
+  job_if(j: fleet_converge_build_job()) == serialize_expression(expression: fleet_converge_build_job_condition)
+    && job_if(j: fleet_converge_build_job()) == fleet_converge_build_job_if
+    && job_if(j: fleet_converge_plan_revision_job()) == serialize_expression(expression: fleet_converge_plan_revision_job_condition)
+    && join(fleet_converge_build_job().needs, ",") == fleet_converge_plan_revision_job().id
+}
+
+// THE REVIEW-SHEET CONVERGE IS DISABLED (gunbc.design_ruling::review_sheet_converge_disabled_2026_11_24): its condition,
+// evaluated, admits neither the schedule nor a push -- a real false, not a refusal to evaluate -- and still admits its
+// own dispatch, so the mode stays usable by hand. The emitted job condition is that value's serialization.
+test fn the_review_sheet_converge_starts_only_on_its_own_dispatch() -> Bool {
+  let c = fleet_converge_review_sheet_event_admitted()
+  evaluates(condition: c, github: on_schedule)
+    && !admits(condition: c, github: on_schedule)
+    && evaluates(condition: c, github: on_push)
+    && !admits(condition: c, github: on_push)
+    && admits(condition: c, github: on_review_sheet_dispatch)
+    && !admits(condition: c, github: on_apply_dispatch)
+    && job_if(j: fleet_converge_review_sheet_converge_job()) == serialize_expression(expression: c)
     && fleet_converge_review_sheet_converge_job().needs == []
 }
 
-fn is_push_on_main_sources(t: WorkflowTrigger) -> Bool {
+fn is_autonomous_other_than_the_schedule(t: WorkflowTrigger) -> Bool {
   match t {
-    Push { branches: b, paths: p } => b == ["main"] && p == review_sheet_converge_source_paths
-    PullRequest { branches: _, types: _, paths: _ } => false
-    Schedule { cron: _ } => false
-    WorkflowDispatch { inputs: _ } => false
-    WorkflowCall { inputs: _ } => false
-    WorkflowRunTriggered { workflows: _, branches: _, activity: _ } => false
-    MergeGroup => false
-  }
-}
-
-fn is_pull_request_or_merge_group(t: WorkflowTrigger) -> Bool {
-  match t {
+    Push { branches: _, paths: _ } => true
     PullRequest { branches: _, types: _, paths: _ } => true
     MergeGroup => true
-    Push { branches: _, paths: _ } => false
+    WorkflowCall { inputs: _ } => true
+    WorkflowRunTriggered { workflows: _, branches: _, activity: _ } => true
     Schedule { cron: _ } => false
     WorkflowDispatch { inputs: _ } => false
-    WorkflowCall { inputs: _ } => false
-    WorkflowRunTriggered { workflows: _, branches: _, activity: _ } => false
   }
 }
 
-// The push trigger is main-only and source-scoped, and fleet-converge gains no pull-request or
-// merge-group trigger: it can never post a context on the required path.
-test fn the_push_trigger_is_main_only_and_no_required_path_trigger_exists() -> Bool {
-  any(fleet_converge_workflow.on, t => is_push_on_main_sources(t: t))
-    && !any(fleet_converge_workflow.on, t => is_pull_request_or_merge_group(t: t))
+fn is_schedule(t: WorkflowTrigger) -> Bool {
+  match t {
+    Schedule { cron: _ } => true
+    Push { branches: _, paths: _ } => false
+    PullRequest { branches: _, types: _, paths: _ } => false
+    MergeGroup => false
+    WorkflowCall { inputs: _ } => false
+    WorkflowRunTriggered { workflows: _, branches: _, activity: _ } => false
+    WorkflowDispatch { inputs: _ } => false
+  }
+}
+
+// THE ONLY AUTONOMOUS TRIGGER IS THE DAILY SCHEDULE: the push trigger left with the review-sheet converge, and
+// fleet-converge has no pull-request or merge-group trigger, so it can never post a context on the required path.
+test fn the_daily_schedule_is_the_only_autonomous_trigger() -> Bool {
+  filter(fleet_converge_workflow.on, t => is_schedule(t: t)).length() == 1
+    && !any(fleet_converge_workflow.on, t => is_autonomous_other_than_the_schedule(t: t))
 }
 
 // THE TOKEN ROUTE: the delegation step continues on error (so the refusal is the converge's own,

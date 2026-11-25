@@ -3,10 +3,12 @@ module test.claim.durable_exclusive_hold_file_store_wet_witness
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.types { Bool, Int, NonEmptyStr, String }
+import std.algebra { string_contains, string_concat_join }
 import std.optional { Present, Absent }
 import std.durable_compare_and_set { CasSlotObservation, cas_generation_count }
 import std.durable_exclusive_hold {
-  DurableHoldOwnerRef, DurableHoldReleaseRef, DurableHoldReleaseRefusal,
+  DurableHoldOwnerRef, DurableHoldReleaseRef, DurableHoldReleaseRefusal, DurableHoldHolderLiveness,
+  HolderObservedDead, HolderObservedLive,
   HoldReleaseSlotAbsent, HoldReleaseAlreadyFree, HoldReleaseHeldByAnotherOwner,
   HoldReleaseAgainstAnotherGeneration, HoldReleaseSlotUndecodable, HoldReleaseObservationUnavailable,
 }
@@ -14,7 +16,7 @@ import gunbc.durable_cas_file_store { cas_file_slot_path }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import gunbc.machine_intake.arrival_subject { admit_arrival_subject, ArrivalSubjectInPopulation }
 import gunbc.machine_intake.arrival_interlock {
-  arrival_after_acquire, arrival_archive_slot_acquire, arrival_archive_slot_release,
+  arrival_after_acquire, arrival_archive_slot_acquire, arrival_archive_slot_release, arrival_holder_run_liveness,
   ArrivalArchiveSlotAcquired, ArrivalArchiveSlotAcquireRefused, ArrivalArchiveSlotReleaseRefused,
 }
 import gunbc.durable_exclusive_hold_file_store {
@@ -38,6 +40,18 @@ import gunbc.durable_exclusive_hold_file_store {
 fn wh_owner(text: String) -> DurableHoldOwnerRef {
   text as DurableHoldOwnerRef
 }
+
+// A holder the arrival shape-gate WILL decode: arrival/<host>/<run>, the exact form arrival_run mints.
+fn wh_arrival_owner(host: String, run: String) -> DurableHoldOwnerRef {
+  string_concat_join(fields: ["arrival/", host, "/", run], separator: "") as DurableHoldOwnerRef
+}
+
+// The acquire REQUIRES an explicit liveness reader (no default). On the fresh / self-holder / shape-gate rows
+// it is never invoked -- those arms are decided before the store's recovery. On the Recovered / Live rows it
+// is exactly what decides whether the held run is dead. It is passed explicitly by every caller.
+fn wh_reader_unseen(_run: String) -> DurableHoldHolderLiveness { HolderObservedLive { evidence: "unseen" as NonEmptyStr } }
+fn wh_reader_dead(_run: String) -> DurableHoldHolderLiveness { HolderObservedDead { evidence: "injected-dead" as NonEmptyStr } }
+fn wh_reader_live(_run: String) -> DurableHoldHolderLiveness { HolderObservedLive { evidence: "injected-live" as NonEmptyStr } }
 
 fn wh_release(text: String) -> DurableHoldReleaseRef {
   text as DurableHoldReleaseRef
@@ -370,6 +384,8 @@ test fn w_after_acquire_invokes_the_real_slot_release() -> Bool {
           root: root,
           subject: s,
           owner: "arrival-release-inhabitance" as DurableHoldOwnerRef,
+          self_run_id: "wet-witness-run",
+          live_reader: wh_reader_unseen,
         ),
         body: fn() { ExitSuccess },
         release_fn: fn(h) { arrival_archive_slot_release(root: root, held: h) },
@@ -381,6 +397,8 @@ test fn w_after_acquire_invokes_the_real_slot_release() -> Bool {
             root: root,
             subject: s,
             owner: "arrival-release-inhabitance-2" as DurableHoldOwnerRef,
+            self_run_id: "wet-witness-run",
+            live_reader: wh_reader_unseen,
           ) {
             ArrivalArchiveSlotAcquireRefused { cause: _ } =>
               shell.Remove.RecursiveForce(path: root_path).success && false
@@ -424,5 +442,144 @@ test fn w_refused_acquire_body_writes_a_marker_when_called_directly() -> Bool {
       shell.Remove.RecursiveForce(path: root_path).success && false
     ExitSuccess =>
       Filesystem.Read(path: marker).success && shell.Remove.RecursiveForce(path: root_path).success
+  }
+}
+
+// A SELF-HOLDER is REFUSED, not recovered. The slot is held by a run id that IS this run's own id; GitHub
+// keeps a run id across re-run attempts, so a re-run of a run that died holding the slot must be told "that
+// is you -- dispatch a fresh run to take the slot", never treated as another arrival, and never recovered by
+// its own re-run. Decided before any read, so it runs with no network. Discriminating: if the self-holder
+// were dropped into the generic occupied path it would try to recover (and read) instead of naming the run.
+test fn w_self_holder_is_refused_not_recovered() -> Bool {
+  let root_path = wh_fresh_root()
+  let root = root_path as NonEmptyStr
+  match admit_arrival_subject(wire: "mtjade1") {
+    ArrivalSubjectInPopulation { subject: s } =>
+      match arrival_archive_slot_acquire(
+        root: root, subject: s, owner: wh_arrival_owner(s.host as String, "self-holder-run"), self_run_id: "self-holder-run", live_reader: wh_reader_unseen,
+      ) {
+        ArrivalArchiveSlotAcquired { held: _ } =>
+          match arrival_archive_slot_acquire(
+            root: root, subject: s, owner: wh_arrival_owner(s.host as String, "retry-owner"), self_run_id: "self-holder-run", live_reader: wh_reader_unseen,
+          ) {
+            ArrivalArchiveSlotAcquireRefused { cause: c } =>
+              string_contains(s: c as String, pattern: "this very run")
+                && string_contains(s: c as String, pattern: "controller untouched")
+                && shell.Remove.RecursiveForce(path: root_path).success
+            ArrivalArchiveSlotAcquired { held: _ } =>
+              shell.Remove.RecursiveForce(path: root_path).success && false
+          }
+        _ => shell.Remove.RecursiveForce(path: root_path).success && false
+      }
+    _ => shell.Remove.RecursiveForce(path: root_path).success && false
+  }
+}
+
+// A HOLDER THAT IS NOT THE arrival/<host>/<run_id> SHAPE REFUSES BEFORE THE STORE IS TOUCHED AND BEFORE ANY
+// READ: absence of evidence is not evidence of death. Discriminating: if the shape-gate were removed, the
+// unshaped holder would fall through to the recovery (and its declared read) instead of this refusal.
+test fn w_unshaped_holder_refuses_before_the_read() -> Bool {
+  let root_path = wh_fresh_root()
+  let root = root_path as NonEmptyStr
+  match admit_arrival_subject(wire: "mtjade1") {
+    ArrivalSubjectInPopulation { subject: s } =>
+      match arrival_archive_slot_acquire(
+        root: root, subject: s, owner: wh_owner("not-an-arrival-holder"), self_run_id: "some-run", live_reader: wh_reader_unseen,
+      ) {
+        ArrivalArchiveSlotAcquired { held: _ } =>
+          match arrival_archive_slot_acquire(
+            root: root, subject: s, owner: wh_arrival_owner(s.host as String, "another-run"), self_run_id: "some-run", live_reader: wh_reader_unseen,
+          ) {
+            ArrivalArchiveSlotAcquireRefused { cause: c } =>
+              string_contains(s: c as String, pattern: "is not arrival/")
+                && string_contains(s: c as String, pattern: "controller untouched")
+                && shell.Remove.RecursiveForce(path: root_path).success
+            ArrivalArchiveSlotAcquired { held: _ } =>
+              shell.Remove.RecursiveForce(path: root_path).success && false
+          }
+        _ => shell.Remove.RecursiveForce(path: root_path).success && false
+      }
+    _ => shell.Remove.RecursiveForce(path: root_path).success && false
+  }
+}
+
+// THE DEAD-HOLDER RECOVERY, driven by the injected liveness reader (the seam), with no network. A slot is
+// held by a shaped arrival owner; a newcomer acquires. When the injected reader reports the held run DEAD,
+// the recovery frees the slot and the re-acquire LANDS. Discriminating: if recovery were removed the
+// re-acquire would refuse; if absence were treated as dead the Live row below would wrongly land here.
+test fn w_dead_holder_is_recovered_and_reacquired() -> Bool {
+  let root_path = wh_fresh_root()
+  let root = root_path as NonEmptyStr
+  match admit_arrival_subject(wire: "mtjade1") {
+    ArrivalSubjectInPopulation { subject: s } =>
+      match arrival_archive_slot_acquire(
+        root: root, subject: s, owner: wh_arrival_owner(s.host as String, "dead-run"), self_run_id: "acquirer-a", live_reader: wh_reader_unseen,
+      ) {
+        ArrivalArchiveSlotAcquired { held: _ } =>
+          match arrival_archive_slot_acquire(
+            root: root, subject: s, owner: wh_arrival_owner(s.host as String, "newcomer"), self_run_id: "acquirer-b", live_reader: wh_reader_dead,
+          ) {
+            ArrivalArchiveSlotAcquired { held: _ } => shell.Remove.RecursiveForce(path: root_path).success
+            ArrivalArchiveSlotAcquireRefused { cause: _ } => shell.Remove.RecursiveForce(path: root_path).success && false
+          }
+        _ => shell.Remove.RecursiveForce(path: root_path).success && false
+      }
+    _ => shell.Remove.RecursiveForce(path: root_path).success && false
+  }
+}
+
+// A LIVE holder is NOT recovered: the injected reader says the held run is live, so recovery refuses and the
+// acquire refuses -- the slot stays held, controller untouched. Discriminating the dead/live split.
+test fn w_live_holder_is_not_recovered() -> Bool {
+  let root_path = wh_fresh_root()
+  let root = root_path as NonEmptyStr
+  match admit_arrival_subject(wire: "mtjade1") {
+    ArrivalSubjectInPopulation { subject: s } =>
+      match arrival_archive_slot_acquire(
+        root: root, subject: s, owner: wh_arrival_owner(s.host as String, "live-run"), self_run_id: "acquirer-a", live_reader: wh_reader_unseen,
+      ) {
+        ArrivalArchiveSlotAcquired { held: _ } =>
+          match arrival_archive_slot_acquire(
+            root: root, subject: s, owner: wh_arrival_owner(s.host as String, "newcomer"), self_run_id: "acquirer-b", live_reader: wh_reader_live,
+          ) {
+            ArrivalArchiveSlotAcquireRefused { cause: c } =>
+              string_contains(s: c as String, pattern: "the holder is live")
+                && string_contains(s: c as String, pattern: "controller untouched")
+                && shell.Remove.RecursiveForce(path: root_path).success
+            ArrivalArchiveSlotAcquired { held: _ } => shell.Remove.RecursiveForce(path: root_path).success && false
+          }
+        _ => shell.Remove.RecursiveForce(path: root_path).success && false
+      }
+    _ => shell.Remove.RecursiveForce(path: root_path).success && false
+  }
+}
+
+// THE PRODUCTION READER IS THE DECLARED GET. Passing arrival_holder_run_liveness -- exactly what
+// gunbc.machine_intake.arrival_run wires at its call site -- through the seam makes an occupied acquire
+// UNOBSERVABLE (a made-up run id cannot be read as a completed run), so the acquire refuses rather than
+// recovering. This PINS that production's injected reader is the declared github fetch: a live/dead stub would
+// have recovered or said "the holder is live", not this. Discriminating: swap the reader for wh_reader_dead and
+// this row goes red (it would Acquire).
+test fn w_production_reader_is_the_declared_get_and_unobservable() -> Bool {
+  let root_path = wh_fresh_root()
+  let root = root_path as NonEmptyStr
+  match admit_arrival_subject(wire: "mtjade1") {
+    ArrivalSubjectInPopulation { subject: s } =>
+      match arrival_archive_slot_acquire(
+        root: root, subject: s, owner: wh_arrival_owner(s.host as String, "prod-run"), self_run_id: "acquirer-a", live_reader: wh_reader_unseen,
+      ) {
+        ArrivalArchiveSlotAcquired { held: _ } =>
+          match arrival_archive_slot_acquire(
+            root: root, subject: s, owner: wh_arrival_owner(s.host as String, "newcomer"), self_run_id: "acquirer-b", live_reader: arrival_holder_run_liveness,
+          ) {
+            ArrivalArchiveSlotAcquireRefused { cause: c } =>
+              string_contains(s: c as String, pattern: "cannot be observed as dead")
+                && string_contains(s: c as String, pattern: "controller untouched")
+                && shell.Remove.RecursiveForce(path: root_path).success
+            ArrivalArchiveSlotAcquired { held: _ } => shell.Remove.RecursiveForce(path: root_path).success && false
+          }
+        _ => shell.Remove.RecursiveForce(path: root_path).success && false
+      }
+    _ => shell.Remove.RecursiveForce(path: root_path).success && false
   }
 }

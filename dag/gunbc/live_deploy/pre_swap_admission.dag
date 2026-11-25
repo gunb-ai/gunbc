@@ -89,7 +89,9 @@ import extdeps.git.inspect {
 // (2) TARGET-BOUND BRANCH. Operator 2026-10-09 let an empty --candidate-branch admit any nonempty
 // checkout (fleet_converge_deploy_branch_admits). Operator 2026-10-13 (gunbc.design_ruling
 // production_is_main_only_lab_admits_integration) narrows that: each DesiredDeployment row
-// carries the one NonEmptyStr branch it admits. There is no class default.
+// carries the one NonEmptyStr branch it admits. There is no class default. Since 2026-11-22 every row
+// admits main: the lab's integration branch is retired (gunbc.design_ruling
+// lab_tracks_main_lab_dev_retired_2026_11_22), and the lab's row reads main from its instance.
 // The CLI flag check remains a second, optional equality; it does not widen the row.
 
 type TargetBranchAdmission
@@ -865,7 +867,48 @@ fn observe_plan_serve_entry_verdict(spec: DeploymentSpec) -> ServeEntryCompileVe
   }
 }
 
+type ServeEntryVerdictDirAdmission
+  = ServeEntryVerdictDirWritable
+  | ServeEntryVerdictDirRefused { dir: String, reason: String }
+
+// THE VERDICT'S DESTINATION IS ADMITTED BEFORE THE WITNESS RUNS. The served-command witness costs
+// minutes; a destination that cannot take the verdict used to be discovered only at the final write,
+// after the witness had completed (pull/16891#issuecomment-7103879443). The probe outcome is read
+// from the same directory the verdict is written to (fleet_converge_plan_artifact_dir), so no second
+// location is decided here.
+fn serve_entry_verdict_dir_admission(dir: String, probe_success: Bool, probe_error: String) -> ServeEntryVerdictDirAdmission {
+  if probe_success {
+    ServeEntryVerdictDirWritable
+  } else {
+    ServeEntryVerdictDirRefused { dir: dir, reason: probe_error }
+  }
+}
+
+fn serve_entry_verdict_dir_refusal_text(dir: String, reason: String) -> String {
+  join(["live_deploy: record_plan_serve_entry_compile_verdict — the verdict directory ", dir, " is not writable (", reason, "); refused before the served-command witness ran, so no verdict can be lost at the final write"], "")
+}
+
+fn probe_serve_entry_verdict_dir() -> ServeEntryVerdictDirAdmission {
+  let probe_path = join([fleet_converge_plan_artifact_dir, "/.serve_entry_verdict.probe"], "")
+  let probe = Filesystem.Write(path: probe_path, content: "")
+  let admission = serve_entry_verdict_dir_admission(dir: fleet_converge_plan_artifact_dir, probe_success: probe.success, probe_error: probe.error)
+  if probe.success {
+    let _ = Filesystem.Delete(path: probe_path)
+    admission
+  } else {
+    admission
+  }
+}
+
 fn record_plan_serve_entry_verdict_for(row: DesiredDeployment) -> ProcessExit {
+  match probe_serve_entry_verdict_dir() {
+    ServeEntryVerdictDirRefused { dir, reason } =>
+      exit_failure(reason: serve_entry_verdict_dir_refusal_text(dir: dir, reason: reason))
+    ServeEntryVerdictDirWritable => record_plan_serve_entry_verdict_after_dir_admitted(row: row)
+  }
+}
+
+fn record_plan_serve_entry_verdict_after_dir_admitted(row: DesiredDeployment) -> ProcessExit {
   let spec = selected_deployment_spec(row: row)
   let root = git.Inspect.Toplevel()
   let root_path = root.path as String

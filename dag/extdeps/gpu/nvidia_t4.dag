@@ -107,6 +107,13 @@ data t4_product_brief_authority: ExternalAuthority = ExternalAuthority {
 
 data t4_brief_standing: CitedFigureStanding = CitedToAuthority { authority: t4_product_brief_authority }
 
+// EVERY STANDING THIS MODULE DECLARES. HAND-MAINTAINED: add a standing here when you declare one, and
+// join this list into gunbc.fleet.gpu_declared_figures_standing::declared_gpu_standing_rows -- see that
+// function's comment for the two hand-maintained levels and the trigger (extdeps.gpu.amd is the worked example).
+data nvidia_t4_declared_figure_standings: List<CitedFigureStanding> = [
+  t4_brief_standing,
+]
+
 // The height is the drawing's MAX, not its nominal: a part fitted around the card has to clear the
 // largest card the drawing admits.
 data t4_card_row: CardRow = CardRow {

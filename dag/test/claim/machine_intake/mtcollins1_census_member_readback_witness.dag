@@ -9,7 +9,7 @@ import extdeps.network.endpoint { SocketAddress, socket_address, host_by_name }
 import extdeps.dns.domain_name { DnsLabel, HostName, DomainName, PartiallyQualified }
 import gunbc.machine_intake.mtcollins1_census_member_readback {
   census_member_readback_from_readings, census_member_readback_holds, render_census_member_readback,
-  MemberReading, MemberRead, MemberUnread, IsoReading, IsoMeasured, IsoUnmeasured,
+  MemberReading, MemberRead, MemberUnread, IsoMeasured,
   CensusMemberReadback, BootChainIdenticalToStock, BootChainFirstDifference, BootChainControlDidNotDiscriminate,
   BootChainIsoNotPinned, BootChainUnread, BootChainMediumNotCensus, BootChainMediumExporterUnsupported,
   census_member_readback,
@@ -22,11 +22,11 @@ import gunbc.machine_intake.mtcollins1_census_member_readback {
 import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecRefused }
 import gunbc.host_command_binding {
   HostLeg, host_leg_of_typed_argv, FleetSshTransport,
+  LegAnswered,
   CreationNotRequested, CreationNotDispatched, CreationFailed, CreationUnconfirmed,
   Removed, RemovalFailed, RemovalUnconfirmed, RemovalNotDispatched,
 }
 import extdeps.ssh.session { SshSessionExecResult }
-import gunbc.host.boot_medium_served_readback { RemoteAnswer }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -146,7 +146,7 @@ test fn the_stock_medium_row_has_no_census_boot_chain_to_read() -> Bool {
   }
 }
 
-fn answer(code: Int, stdout: String, stderr: String) -> RemoteAnswer { RemoteAnswer { exit_code: code, stdout: stdout, stderr: stderr } }
+fn answer(code: Int, stdout: String, stderr: String) -> HostLeg { LegAnswered { exit_code: code, stdout: stdout, stderr: stderr } }
 
 data stock_member_digest: NonEmptyStr = "deb2c288c12e6f35c2b9242134116ea03f7d4eb91f0c354ecd993680ffabbbf7"
 
@@ -179,7 +179,7 @@ test fn a_failed_extraction_is_unread_without_a_measure() -> Bool {
 // ---- the attempt consumer: every workspace outcome, composed as the producer composes it ----
 
 fn ran(code: Int, stdout: String, stderr: String) -> HostLeg {
-  host_leg_of_typed_argv(outcome: TypedArgvExecConverged { result: SshSessionExecResult { exit_code: code, success: code == 0, stdout: stdout, stderr: stderr } })
+  host_leg_of_typed_argv(outcome: TypedArgvExecConverged { result: SshSessionExecResult { exit_code: code, success: code == 0, stdout: stdout, stderr: stderr, wall_deadline_seconds: Absent } })
 }
 
 fn not_dispatched(reason: String) -> HostLeg { host_leg_of_typed_argv(outcome: TypedArgvExecRefused { reason: reason }) }
