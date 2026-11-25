@@ -20632,6 +20632,20 @@ pub fn claim_source_refusal_rendered(path: &str, cause: &ClaimSourceRefusalCause
     format!("claim source refused: {path}{tail}")
 }
 
+/// The module paths the claim route's corpus holds, read from the same process-shared index
+/// `run_claim_route` reads, so asking costs the walk the route would take anyway. It answers
+/// `gunbc.target_invocation` `admit_resolvable_exact_targets`'s `module_resolves`.
+pub fn claim_route_module_paths(
+    source_roots: &[String],
+) -> Result<std::collections::HashSet<String>, String> {
+    let index = entry_resolve::try_process_shared_index(source_roots)?;
+    Ok(index
+        .source_files
+        .iter()
+        .map(|(module_path, _)| module_path.clone())
+        .collect())
+}
+
 /// THE CLAIM ROUTE'S EXECUTOR: the floor's discovery authority over the modules the operand can
 /// reach, then the floor's claim evaluation over the claims it selects.
 ///
