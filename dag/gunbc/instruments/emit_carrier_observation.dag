@@ -215,7 +215,7 @@ type CarSubject =
 fn run_car_subject(subject: CarSubject, src: List<Int>) -> List<Int> {
   match subject {
     CarMeterEmpty => []
-    CarMeterKnownAllocation => list_push([], 4096)
+    CarMeterKnownAllocation => fold(src, init: [], f: (acc, x) => list_push(acc, x))
     CarSequenceBuild => car_sequence_build(xs: src)
     CarSequenceBuildRetainsPrefixes => car_sequence_build_retains_prefixes(xs: src)
     CarElementRead => list_push([], car_element_read(xs: src))

@@ -117,7 +117,7 @@ fn run_cf_subject(subject: CfSubject, src: List<Int>) -> List<Int> {
   let payload = cf_payload_of(src: src)
   match subject {
     CfMeterEmpty => []
-    CfMeterKnownAllocation => list_push([], 4096)
+    CfMeterKnownAllocation => fold(src, init: [], f: (acc, x) => list_push(acc, x))
     CfTransformApplied => list_push([], cf_transform(x: n))
     CfTransformRebuiltPerStep => list_push([], cf_transform(x: fold(src, init: 0, f: (acc, x) => acc + cf_payload_of(src: src).k)))
     CfBranchTaken => list_push([], cf_branch(take_left: n > 0, left: n, right: 0 - n))

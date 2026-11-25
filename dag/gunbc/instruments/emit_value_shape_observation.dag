@@ -125,7 +125,7 @@ fn run_bb_subject(subject: BbSubject, src: List<Int>) -> List<Int> {
   let payload = bb_payload_of(src: src)
   match subject {
     MeterEmpty => []
-    MeterKnownAllocation => list_push([], 4096)
+    MeterKnownAllocation => fold(src, init: [], f: (acc, x) => list_push(acc, x))
     ScalarRead => list_push([], n)
     ScalarRetainAddedToObservation => bb_scalar_with_retain(payload: payload)
     RecordFieldRead => list_push([], payload.k)

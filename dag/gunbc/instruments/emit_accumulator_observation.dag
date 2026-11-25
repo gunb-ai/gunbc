@@ -181,7 +181,7 @@ fn run_acc_subject(subject: AccSubject, src: List<Int>) -> List<Int> {
   let row = acc_row_of(n: 8)
   match subject {
     AccMeterEmpty => []
-    AccMeterKnownAllocation => list_push([], 4096)
+    AccMeterKnownAllocation => fold(src, init: [], f: (acc, x) => list_push(acc, x))
     AccFoldStep => list_push([], acc_fold_step(seed: seed, xs: rows))
     AccFoldAllocatesPerStep => list_push([], acc_fold_allocates_per_step(seed: seed, xs: rows))
     AccFieldRead => list_push([], acc_field_read(row: row))
