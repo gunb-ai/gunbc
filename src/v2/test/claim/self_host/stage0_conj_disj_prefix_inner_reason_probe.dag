@@ -1,4 +1,4 @@
-module v2.test.claim.self_host.stage0_prefix_inner_reason_probe2
+module v2.test.claim.self_host.stage0_conj_disj_prefix_inner_reason_probe
 
 // STANDING WITNESS ENTRY for this row's inner-named-reason condition, retained by the lane
 // manager's ruling and run as LEG2 of the accepted final-evidence wrapper at the head being
@@ -20,35 +20,21 @@ import v2.compiler.self_host.candidate_generation {
   observe_provenanced_rust_emission_from_ingest
 }
 import v2.compiler.self_host.stage0_production_target { stage0_production_target_model }
-import v2.compiler.source_authority { SourceRef, module_file_relative_path }
+import v2.compiler.source_authority { SourceRef }
+import v2.test.claim.self_host.stage0_subject_paths { subject_path_for_module }
 import v2.compiler.source_authority_read {
   source_ref_for_observed_storage_path, source_root_ingest_from_source_refs
 }
-import std.algebra { Cons, Empty, FreeSemigroup }
-import std.types { Bool, Char }
+import std.algebra { Cons, Empty }
+import std.types { Bool }
 import v2.std.cross_tree.import_model { DagTree }
 import v2.std.diagnostic { Accepted, Outcome, Rejected, diagnostics_reason_lexemes }
 import v2.std.qualified_name { qualified_name_from_dotted_string }
-import v2.std.text { String, string_split }
+import v2.std.text { String }
 
-// Name is the authority; the path is DERIVED from it (gunbc.design_argument::single_authority:
-// "paths follow names, never the reverse"). The join rule is the production one
-// (v2.compiler.source_authority module_file_relative_path); only the leading-segment root choice is
-// local here, mirroring the two --source-roots the harness passes (v2.* under src/, gunbc.* under dag/).
-data module_name_dot_char: Char = 46 // U+002E FULL STOP
-
-fn subject_path_for_module(module_name: String) -> String {
-  let segments =
-    string_split(
-      source: module_name,
-      delimiter: FreeSemigroup { head: module_name_dot_char, tail: Empty }
-    )
-  if starts_with(s: module_name, prefix: "v2.") {
-    concat("src/", module_file_relative_path(segments: segments))
-  } else {
-    concat("dag/", module_file_relative_path(segments: segments))
-  }
-}
+// Name is the authority; the path is DERIVED from it by the ONE shared production-rule
+// derivation (v2.test.claim.self_host.stage0_subject_paths: module_file over
+// repository_storage_layout, review 98522) -- no local root rule lives in this probe.
 
 data prefix_name: String = "v2.test.claim.self_host.prefix_not_operand_subject_fixture"
 data prefix_path: String = subject_path_for_module(module_name: prefix_name)

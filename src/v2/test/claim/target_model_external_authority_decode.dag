@@ -31,7 +31,9 @@ import v2.std.compilers.target_model {
   target_value_expr_comparison_chain_refuses,
   target_value_expression_emit_comparison_operand_is_comparison_diagnostic,
   target_value_expression_emit_comparison_nesting_policy_undeclared_diagnostic,
-  OperatorChainsPolicy,
+  ChainsYes,
+  ChainsNo,
+  ChainsUndeclared,
   TargetRealizationCatalog,
   TargetValueExpression,
   TargetValueExprPrimitiveApply,
@@ -309,7 +311,7 @@ fn chains_row_decode(chains_node: Node) -> OperatorChainsPolicy {
     Accepted { value: realization, diagnostics: _ } => realization.chains
     // Unreachable in these legs (the rows built here are well-formed); a malformed row would have
     // to refuse, and refusing is exactly what ChainsUndeclared drives at the emit seam.
-    Rejected { diagnostics: _ } => OperatorChainsPolicy::ChainsUndeclared
+    Rejected { diagnostics: _ } => ChainsUndeclared
   }
 }
 
@@ -318,14 +320,14 @@ fn chains_row_decode(chains_node: Node) -> OperatorChainsPolicy {
 // comments). Each state decodes to its own variant.
 test fn operator_row_with_chains_yes_decodes_chains_yes() -> Bool {
   match chains_row_decode(chains_node: target_operator_chains_yes_node()) {
-    OperatorChainsPolicy::ChainsYes => true
+    ChainsYes => true
     _ => false
   }
 }
 
 test fn operator_row_with_chains_no_decodes_chains_no() -> Bool {
   match chains_row_decode(chains_node: target_operator_chains_no_node()) {
-    OperatorChainsPolicy::ChainsNo => true
+    ChainsNo => true
     _ => false
   }
 }
@@ -340,7 +342,7 @@ test fn operator_row_without_chains_edge_decodes_chains_undeclared() -> Bool {
   ) {
     Accepted { value: realization, diagnostics: _ } =>
       match realization.chains {
-        OperatorChainsPolicy::ChainsUndeclared => true
+        ChainsUndeclared => true
         _ => false
       }
     Rejected { diagnostics: _ } => false
@@ -490,7 +492,7 @@ test fn grouping_undecodable_apply_operand_wraps() -> Bool {
   )
 }
 
-test fn chains_absent_refuses_nested_comparison() -> Bool {
+test fn chains_undeclared_refuses_nested_comparison() -> Bool {
   target_value_expr_comparison_chain_refuses(
     catalog: claim_grouping_catalog(rows: [
       target_operator_realization_node_with_precedence(
@@ -504,7 +506,7 @@ test fn chains_absent_refuses_nested_comparison() -> Bool {
   )
 }
 
-test fn chains_present_false_refuses_nested_comparison() -> Bool {
+test fn chains_declared_no_refuses_nested_comparison() -> Bool {
   target_value_expr_comparison_chain_refuses(
     catalog: claim_grouping_catalog(rows: [
       target_operator_realization_node_with_precedence_and_chains(
@@ -519,7 +521,7 @@ test fn chains_present_false_refuses_nested_comparison() -> Bool {
   )
 }
 
-test fn chains_present_true_permits_nested_comparison() -> Bool {
+test fn chains_declared_yes_permits_nested_comparison() -> Bool {
   target_value_expr_comparison_chain_refuses(
     catalog: claim_grouping_catalog(rows: [
       target_operator_realization_node_with_precedence_and_chains(

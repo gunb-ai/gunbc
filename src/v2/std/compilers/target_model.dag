@@ -2999,9 +2999,9 @@ fn target_operator_chains_from_wire_node(wire: Node) -> Outcome<OperatorChainsPo
   match wire.kind {
     TypeNode { connective: Atom { identity: id } } =>
       if id == ^target_operator_chains_yes {
-        outcome_accepted(OperatorChainsPolicy::ChainsYes)
+        outcome_accepted(ChainsYes)
       } else if id == ^target_operator_chains_no {
-        outcome_accepted(OperatorChainsPolicy::ChainsNo)
+        outcome_accepted(ChainsNo)
       } else {
         outcome_rejected(target_operator_realization_wire_malformed_diagnostic(row: wire))
       }
@@ -3043,7 +3043,7 @@ fn target_operator_realization_from_wire_row(row: Node) -> Outcome<TargetOperato
                                 target_operator_chains_from_wire_node(wire: chains_wire)
                               // No chains edge on the row: the target never declared a policy.
                               Rejected { diagnostics: _ } =>
-                                outcome_accepted(OperatorChainsPolicy::ChainsUndeclared)
+                                outcome_accepted(ChainsUndeclared)
                             },
                             fn(chains) {
                               outcome_accepted(
@@ -7039,7 +7039,7 @@ fn target_operator_realization_chains(
     // with no chains edge -- absence of a declaration is absence of permission either way
     // (fail-closed). The emit seam refuses a missing row with catalog_miss before this runs, so
     // ChainsUndeclared here is reachable only via a row that exists but does not declare chains.
-    _ => OperatorChainsPolicy::ChainsUndeclared
+    _ => ChainsUndeclared
   }
 }
 
@@ -7066,11 +7066,11 @@ fn target_value_expr_comparison_chain_refusal_policy(
     operands: operands
   ) {
     match target_operator_realization_chains(catalog: catalog, op: enclosing_op) {
-      OperatorChainsPolicy::ChainsYes => optional_absent()
-      OperatorChainsPolicy::ChainsNo =>
-        optional_present(value: OperatorChainsPolicy::ChainsNo)
-      OperatorChainsPolicy::ChainsUndeclared =>
-        optional_present(value: OperatorChainsPolicy::ChainsUndeclared)
+      ChainsYes => optional_absent()
+      ChainsNo =>
+        optional_present(value: ChainsNo)
+      ChainsUndeclared =>
+        optional_present(value: ChainsUndeclared)
     }
   } else {
     optional_absent()
@@ -7209,7 +7209,7 @@ fn target_operator_shape_emit_primitive_apply_tokens(
                 enclosing_op: enclosing_op,
                 operands: operands
               ) {
-                Present { value: OperatorChainsPolicy::ChainsNo } =>
+                Present { value: ChainsNo } =>
                   target_value_expression_emit_comparison_operand_is_comparison_diagnostic(expr: expr)
                 Present { value: _ } =>
                   target_value_expression_emit_comparison_nesting_policy_undeclared_diagnostic(expr: expr)

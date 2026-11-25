@@ -1,0 +1,42 @@
+module v2.test.claim.self_host.stage0_subject_paths
+
+import std.types { String }
+import v2.compiler.source_authority { ModuleFileDerived, ModuleNameUnderivable, module_file }
+import v2.cli.repository_layout { repository_path_of_module_file, repository_storage_layout }
+
+// THE ONE derivation of a subject module's repository-relative path from its NAME, shared by the
+// stage0 self-host probes (review 98522 at af93d7344d2: each probe carried its own copy that
+// decided namespace routing locally -- a second authority for the storage rule, the second local
+// implementation root_generalization names as its trigger). The routing is production's own and
+// nothing here knows a root: module_file over the repository's declared layout
+// (gunbc.source_layout, through repository_storage_layout) decides tree and namespace elision, and
+// repository_path_of_module_file binds the logical tree to its repository directory (it composes
+// repository_tree_directory over the same layout policy). A layout that gains a third root or
+// rehomes a namespace flows through here the day it is declared, with no edit in any probe.
+//
+// An underivable name derives to the empty string: a harness that then goes and reads it fails to
+// read and its claim FAILS (fail-closed -- an empty path cannot accidentally name a real file),
+// and the derivation-leg witnesses below distinguish "underivable" from "derived" by name so a
+// routing regression reports as a failed derivation leg, not a failed emission leg.
+fn subject_path_for_module(module_name: String) -> String {
+  match module_file(layout: repository_storage_layout(), name: module_name) {
+    ModuleFileDerived { file: file } => repository_path_of_module_file(file: file)
+    ModuleNameUnderivable { name: _, cause: _ } => ""
+  }
+}
+
+// Derivation legs: a v2 name resolves under the v2 tree with the namespace elided, a gunbc name
+// under the dag tree keeping its namespace, and an underivable name yields the empty path (never
+// a silent wrong file). These three are the shared module's own consumption; the probes import
+// subject_path_for_module for their subject rows.
+test fn v2_module_name_derives_under_the_v2_tree() -> Bool {
+  subject_path_for_module(module_name: "v2.std.compilers.target_model") == "src/v2/std/compilers/target_model.dag"
+}
+
+test fn gunbc_module_name_derives_under_the_dag_tree() -> Bool {
+  subject_path_for_module(module_name: "gunbc.rust_decl_type_overlay") == "dag/gunbc/rust_decl_type_overlay.dag"
+}
+
+test fn underivable_module_name_derives_to_the_empty_path() -> Bool {
+  subject_path_for_module(module_name: "not a module name!") == ""
+}
