@@ -582,53 +582,47 @@ fn replica_engine_launch(p: ServingReplicaProfile) -> ReplicaEngineLaunch {
 // rides the same std.measure carrier (PositiveSlotCount) the launch record and the shape use -- the
 // readings and the derivation they evidence are one kind of number, not a bare Nat beside a typed count
 // (gunbc.design_argument::minimize_redundancy).
-type ConcurrencyObservation
-  = PerStreamAtConcurrency {
-      deployment: NonEmptyStr,
-      concurrency: PositiveSlotCount,
-      tokens_per_second: TokensPerSecond,
-      window: NonEmptyStr,
-      standing: CitedFigureStanding,
-    }
-  | AggregatePerMachine {
-      deployment: NonEmptyStr,
-      concurrency: PositiveSlotCount,
-      tokens_per_second: TokensPerSecond,
-      window: NonEmptyStr,
-      standing: CitedFigureStanding,
-    }
+// `scope` is the closed scope choice -- one conversation's figure, or the whole machine's -- written as a
+// field, not as two bodies that happen to be identical (gunbc.design_argument::minimize_redundancy).
+type ConcurrencyScope
+  = PerStream
+  | PerMachine
 
-fn stream_reading(deployment: String, n: PositiveSlotCount, tok: Nat, window: String, instrument: String) -> ConcurrencyObservation {
-  PerStreamAtConcurrency {
-    deployment: deployment as NonEmptyStr,
-    concurrency: n,
-    tokens_per_second: tokens_per_second(count: tok),
-    window: window as NonEmptyStr,
-    standing: TranscribedUncited { read_obligation: ("instrument: the engine journal's own per-turn line 'done: N tokens in T s (R tok/s)', averaged by the operator's session over the named window (ad-hoc read, 2026-11-24); " + instrument) as NonEmptyStr },
-  }
+type ConcurrencyObservation {
+  deployment: NonEmptyStr,
+  scope: ConcurrencyScope,
+  concurrency: PositiveSlotCount,
+  tokens_per_second: TokensPerSecond,
+  window: NonEmptyStr,
+  standing: CitedFigureStanding,
 }
 
-fn machine_reading(deployment: String, n: PositiveSlotCount, tok: Nat, window: String, instrument: String) -> ConcurrencyObservation {
-  AggregatePerMachine {
+// The instrument differs by scope, which is the only thing the two scopes ever differed in.
+fn concurrency_reading(deployment: String, scope: ConcurrencyScope, n: PositiveSlotCount, tok: Nat, window: String, instrument: String) -> ConcurrencyObservation {
+  ConcurrencyObservation {
     deployment: deployment as NonEmptyStr,
+    scope: scope,
     concurrency: n,
     tokens_per_second: tokens_per_second(count: tok),
     window: window as NonEmptyStr,
-    standing: TranscribedUncited { read_obligation: ("instrument: engine /metrics totals differenced by the operator's ad-hoc /tmp/snap.py and /tmp/delta.py on srv1 (not an instrument; DESIGN 'name the instrument'); " + instrument) as NonEmptyStr },
+    standing: TranscribedUncited { read_obligation: ((match scope {
+      PerStream => "instrument: the engine journal's own per-turn line 'done: N tokens in T s (R tok/s)', averaged by the operator's session over the named window (ad-hoc read, 2026-11-24); "
+      PerMachine => "instrument: engine /metrics totals differenced by the operator's ad-hoc /tmp/snap.py and /tmp/delta.py on srv1 (not an instrument; DESIGN 'name the instrument'); "
+    }) + instrument) as NonEmptyStr },
   }
 }
 
 data strata_concurrency_price_observations: List<ConcurrencyObservation> = [
   // srv3 before the fix: engine parallel 8 (reserving 8 slots), router cap 4; the fleet was sending 4-way.
-  stream_reading("srv3-strata", positive_slot_count(count: positive_measure_count(predecessor: 3)), 6, "before 2026-11-24 19:56 UTC (operator set parallel 8 -> 2 and router cap 4 -> 2 at 19:56); ~6.6 tok/s relayed, recorded as the engine prints integers", "srv3 strata-pool engine journal"),
+  concurrency_reading("srv3-strata", PerStream, positive_slot_count(count: positive_measure_count(predecessor: 3)), 6, "before 2026-11-24 19:56 UTC (operator set parallel 8 -> 2 and router cap 4 -> 2 at 19:56); ~6.6 tok/s relayed, recorded as the engine prints integers", "srv3 strata-pool engine journal"),
   // srv3 after: parallel 2, cap 2. The 21:40-21:55 window read 15.1; the ad-hoc range across the evening was 13.6-15.8.
-  stream_reading("srv3-strata", positive_slot_count(count: positive_measure_count(predecessor: 1)), 15, "21:40-21:55 UTC 2026-11-24 (15.1 tok/s; the wider ad-hoc range 13.6-15.8 sits in the read obligation's source, not restated as a figure)", "srv3 strata-pool engine journal"),
+  concurrency_reading("srv3-strata", PerStream, positive_slot_count(count: positive_measure_count(predecessor: 1)), 15, "21:40-21:55 UTC 2026-11-24 (15.1 tok/s; the wider ad-hoc range 13.6-15.8 sits in the read obligation's source, not restated as a figure)", "srv3 strata-pool engine journal"),
   // ken (host-e2d4b7, the three-T10 Strata engine): the router row's hand cap 4 alone bound it -- the engine was never modeled -- and each stream fell to 1.0 tok/s there.
-  stream_reading("ken", positive_slot_count(count: positive_measure_count(predecessor: 3)), 1, "before 2026-11-24 20:09 UTC (operator cut the ken router row's cap 4 -> 2 at 20:09)", "ken engine journal via the router host"),
-  stream_reading("ken", positive_slot_count(count: positive_measure_count(predecessor: 1)), 25, "after 2026-11-24 20:09 UTC (25.7 tok/s relayed; 24.5 in the 21:15-21:30 window -- the integer this row carries is the relayed figure's floor of the two)", "ken engine journal via the router host"),
+  concurrency_reading("ken", PerStream, positive_slot_count(count: positive_measure_count(predecessor: 3)), 1, "before 2026-11-24 20:09 UTC (operator cut the ken router row's cap 4 -> 2 at 20:09)", "ken engine journal via the router host"),
+  concurrency_reading("ken", PerStream, positive_slot_count(count: positive_measure_count(predecessor: 1)), 25, "after 2026-11-24 20:09 UTC (25.7 tok/s relayed; 24.5 in the 21:15-21:30 window -- the integer this row carries is the relayed figure's floor of the two)", "ken engine journal via the router host"),
   // The pair the addendum prices with: a machine at 4-way against a machine at 1-way.
-  machine_reading("srv3-strata", positive_slot_count(count: positive_measure_count(predecessor: 3)), 14, "2026-11-24, before the 19:56 fix (14.5 tok/s per machine at 4-way, relayed)", "srv3 engine /metrics via srv1 ad-hoc scripts"),
-  machine_reading("srv4-strata", positive_slot_count(count: positive_measure_count(predecessor: 0)), 11, "2026-11-24 (11.2 tok/s per machine at 1-way, relayed)", "srv4 engine log (its TLS proxy does not expose /metrics -- see the 2026-11-24 observability note)"),
+  concurrency_reading("srv3-strata", PerMachine, positive_slot_count(count: positive_measure_count(predecessor: 3)), 14, "2026-11-24, before the 19:56 fix (14.5 tok/s per machine at 4-way, relayed)", "srv3 engine /metrics via srv1 ad-hoc scripts"),
+  concurrency_reading("srv4-strata", PerMachine, positive_slot_count(count: positive_measure_count(predecessor: 0)), 11, "2026-11-24 (11.2 tok/s per machine at 1-way, relayed)", "srv4 engine log (its TLS proxy does not expose /metrics -- see the 2026-11-24 observability note)"),
 ]
 
 // srv1's cold prefill: the fork's 128k reading, resolved from the module that owns the readings.

@@ -21,7 +21,7 @@ import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import extdeps.strata.serve_flags { StrataServeFlags, strata_serve_flag_words }
 import product.fabric.serving_throughput { ServingThroughput, ThroughputOperatorReading }
 import gunbc.serving.serving_replica_profile {
-  ConcurrencyObservation, AggregatePerMachine, PerStreamAtConcurrency,
+  ConcurrencyObservation, ConcurrencyScope, PerStream, PerMachine,
   EngineLaunchDerived, EngineLaunchEstimated, EngineLaunchRefused, EngineLaunchRefusalReason,
   LaunchParametersUnread, LaunchShapeRefused, LaunchTurnsZero,
   ReplicaEngineLaunch, ReplicaAcrossDevices, ReplicaModel, ReplicaParallelism, ReplicaFigures, FiguresOnRow,
@@ -232,23 +232,23 @@ test fn the_benchmark_cell_still_writes_its_own_concurrency() -> Bool {
 // (gunbc.design_argument::selection_precedes_convergence).
 
 fn is_n_way_stream(o: ConcurrencyObservation, n: Nat) -> Bool {
-  match o {
-    PerStreamAtConcurrency { deployment: _, concurrency: c, tokens_per_second: _, window: _, standing: _ } => positive_slot_count_value(slots: c) == n
-    AggregatePerMachine { deployment: _, concurrency: _, tokens_per_second: _, window: _, standing: _ } => false
+  match o.scope {
+    PerStream => positive_slot_count_value(slots: o.concurrency) == n
+    PerMachine => false
   }
 }
 
 fn every_stream_below(o: List<ConcurrencyObservation>, rate: Nat) -> Bool {
-  fold(o, init: true, f: (acc, x) => acc && match x {
-    PerStreamAtConcurrency { deployment: _, concurrency: _, tokens_per_second: r, window: _, standing: _ } => tokens_per_second_count(r: r) < rate
-    AggregatePerMachine { deployment: _, concurrency: _, tokens_per_second: _, window: _, standing: _ } => true
+  fold(o, init: true, f: (acc, x) => acc && match x.scope {
+    PerStream => tokens_per_second_count(r: x.tokens_per_second) < rate
+    PerMachine => true
   })
 }
 
 fn every_stream_at_or_above(o: List<ConcurrencyObservation>, rate: Nat) -> Bool {
-  fold(o, init: true, f: (acc, x) => acc && match x {
-    PerStreamAtConcurrency { deployment: _, concurrency: _, tokens_per_second: r, window: _, standing: _ } => tokens_per_second_count(r: r) >= rate
-    AggregatePerMachine { deployment: _, concurrency: _, tokens_per_second: _, window: _, standing: _ } => true
+  fold(o, init: true, f: (acc, x) => acc && match x.scope {
+    PerStream => tokens_per_second_count(r: x.tokens_per_second) >= rate
+    PerMachine => true
   })
 }
 
@@ -274,10 +274,9 @@ fn machine_aggregate(deployment: String, concurrency: Nat) -> Optional<Nat> {
   fold(strata_concurrency_price_observations, init: Absent, f: (acc, x) =>
     match acc {
       Present { value: n } => Present { value: n }
-      Absent => match x {
-        AggregatePerMachine { deployment: d, concurrency: c, tokens_per_second: r, window: _, standing: _ } =>
-          if d == deployment && positive_slot_count_value(slots: c) == concurrency { Present { value: tokens_per_second_count(r: r) } } else { Absent }
-        PerStreamAtConcurrency { deployment: _, concurrency: _, tokens_per_second: _, window: _, standing: _ } => Absent
+      Absent => match x.scope {
+        PerMachine => if x.deployment == deployment && positive_slot_count_value(slots: x.concurrency) == concurrency { Present { value: tokens_per_second_count(r: x.tokens_per_second) } } else { Absent }
+        PerStream => Absent
       }
     })
 }

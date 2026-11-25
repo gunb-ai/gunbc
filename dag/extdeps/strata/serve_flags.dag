@@ -75,32 +75,26 @@ type StrataExpertResidency
   = StrataExpertsPrivate
   | StrataExpertsMapped
 
+// THE LAUNCHABLE RECORD: the flag list held ONCE (StrataLaunchParameters, below) plus the batch-slot
+// count. The nine fields were spelled twice before 2026-11-25 -- here and again in StrataLaunchParameters,
+// copied field by field by the bridge -- which is one set of launch flags modeled in two places
+// (gunbc.design_argument::minimize_redundancy: "a concept is modeled once and every use derived from it";
+// gunbc.design_argument::single_authority: "an additional name hides a copied definition"). The slot count
+// enters this record only through the bridge below.
 type StrataServeFlags {
-  kv_format: StrataKvFormat
-  kv_residency: StrataKvResidency
-  // `--max-context N`
-  max_context: TokenCount
-  // `--parallel N` (README.md): slots answered at once; one by default.
-  //
-  // THE ONE FLAG THAT IS NOT A LAUNCH PARAMETER. `parallel` is the replica's admitted concurrency:
-  // the engine reserves VRAM per slot, and the pool router caps the upstream at the SAME number, so
-  // writing it here beside the router row is writing one fact twice. When that happened on srv3 (slots
-  // 8 written here while the router admitted 4), the surplus reservation came straight out of the
-  // expert cache and every stream paid for it (gunbc.recurring_failure_mode::engine_slots_written_beside_the_admission_that_bounds_them).
-  // A production row therefore carries StrataLaunchParameters, NOT this record: the slot count enters
-  // a production launch only through the bridge below, from its authority -- the deployment's capacity
-  // shape (gunbc.serving.serving_capacity_anchor::ServingCapacityShape's turns, via
+  launch: StrataLaunchParameters
+  // THE ONE FIELD THAT IS NOT A LAUNCH PARAMETER: `--parallel N` (README.md) -- slots answered at once,
+  // one by default -- is the replica's admitted concurrency: the engine reserves VRAM per slot, and the
+  // pool router caps the upstream at the SAME number, so writing it beside the router row is writing one
+  // fact twice. When that happened on srv3 (slots 8 written here while the router admitted 4), the
+  // surplus reservation came straight out of the expert cache and every stream paid for it
+  // (gunbc.recurring_failure_mode::engine_slots_written_beside_the_admission_that_bounds_them). A
+  // production row therefore carries StrataLaunchParameters, NOT this record: the slot count enters a
+  // production launch only through the bridge below, from its authority -- the deployment's capacity shape
+  // (gunbc.serving.serving_capacity_anchor::ServingCapacityShape's turns, via
   // gunbc.serving.serving_replica_profile::replica_engine_launch). A benchmark cell may still write it
   // itself, because there the concurrency is the experiment's independent variable, not an admission.
   parallel: PositiveSlotCount
-  batch_groups: StrataBatchGroups?
-  // `--pool-workers N` (docs/DETAILS.md): CPU expert-pool worker threads, used as given; absent lets
-  // the engine pick.
-  pool_workers: Nat?
-  stages: StrataStagePlacement
-  experts: StrataExpertResidency
-  // `--vram-reserve-mib N` (docs/DETAILS.md)
-  vram_reserve: Mebibyte?
 }
 
 // THE LAUNCH PARAMETERS, MINUS THE ADMISSION NUMBER. This is the record a production replica row
@@ -108,8 +102,9 @@ type StrataServeFlags {
 // of its own (see the note on StrataServeFlags.parallel). What this type settles is that a PRODUCTION
 // ROW cannot spell the disagreement: no field of it holds a slot count. What it does NOT settle is
 // whether the misconfiguration is unnameable corpus-wide -- the bridge below is public and
-// StrataServeFlags remains directly constructible, so a caller that bypasses the profile derivation
-// can still write a second number. The rung the class actually sits at is recorded on
+// StrataServeFlags (the record below: this list plus the slot count) remains directly constructible, so a
+// caller that bypasses the profile derivation can still write a second number. The rung the class actually
+// sits at is recorded on
 // gunbc.recurring_failure_mode::engine_slots_written_beside_the_admission_that_bounds_them: below the
 // ladder on the production path -- the derivation exists and witnesses run it, but no production route
 // consumes it yet, and this type alone guards no path that runs (gunbc.design_argument::guarantee_ladder:
@@ -117,11 +112,15 @@ type StrataServeFlags {
 type StrataLaunchParameters {
   kv_format: StrataKvFormat
   kv_residency: StrataKvResidency
+  // `--max-context N`
   max_context: TokenCount
   batch_groups: StrataBatchGroups?
+  // `--pool-workers N` (docs/DETAILS.md): CPU expert-pool worker threads, used as given; absent lets
+  // the engine pick.
   pool_workers: Nat?
   stages: StrataStagePlacement
   experts: StrataExpertResidency
+  // `--vram-reserve-mib N` (docs/DETAILS.md)
   vram_reserve: Mebibyte?
 }
 
@@ -134,17 +133,7 @@ type StrataLaunchParameters {
 // declared rung (below the ladder on the production path, with both climb steps named) lives on
 // gunbc.recurring_failure_mode::engine_slots_written_beside_the_admission_that_bounds_them.
 fn strata_launch_with_parallel(parameters: StrataLaunchParameters, parallel: PositiveSlotCount) -> StrataServeFlags {
-  StrataServeFlags {
-    kv_format: parameters.kv_format,
-    kv_residency: parameters.kv_residency,
-    max_context: parameters.max_context,
-    parallel: parallel,
-    batch_groups: parameters.batch_groups,
-    pool_workers: parameters.pool_workers,
-    stages: parameters.stages,
-    experts: parameters.experts,
-    vram_reserve: parameters.vram_reserve,
-  }
+  StrataServeFlags { launch: parameters, parallel: parallel, }
 }
 
 // ── THE FLAGS AS ARGV WORDS, spelled as the docs above spell them ───────────────────────────────
@@ -162,17 +151,17 @@ fn strata_optional_words(present: Bool, words: List<String>) -> List<String> {
 }
 
 fn strata_serve_flag_words(flags: StrataServeFlags) -> List<String> {
-  let kv_resident = match flags.kv_residency {
+  let kv_resident = match flags.launch.kv_residency {
     StrataKvResidentWindow { tokens: t } => ["--kv-resident", to_string(token_count_value(t: t))]
     StrataKvFullyResident => [] as List<String>
   }
-  let batch_groups = match flags.batch_groups {
+  let batch_groups = match flags.launch.batch_groups {
     Absent => [] as List<String>
     Present { value: StrataBatchGroupsAuto } => ["--batch-groups", "auto"]
     Present { value: StrataBatchGroupsCount { groups: g } } => ["--batch-groups", to_string(positive_slot_count_value(slots: g))]
   }
-  let pool = match flags.pool_workers { Absent => [] as List<String>, Present { value: n } => ["--pool-workers", to_string(n)] }
-  let stages = match flags.stages {
+  let pool = match flags.launch.pool_workers { Absent => [] as List<String>, Present { value: n } => ["--pool-workers", to_string(n)] }
+  let stages = match flags.launch.stages {
     StrataSingleStage => [] as List<String>
     StrataSplitStages { split: s, trim_stage_weights: trim } => concat(
       match s {
@@ -182,12 +171,12 @@ fn strata_serve_flag_words(flags: StrataServeFlags) -> List<String> {
       strata_optional_words(present: trim, words: ["--trim-stage-weights"]),
     )
   }
-  let experts = match flags.experts { StrataExpertsMapped => ["--mmap-experts"], StrataExpertsPrivate => [] as List<String> }
-  let reserve = match flags.vram_reserve { Absent => [] as List<String>, Present { value: m } => ["--vram-reserve-mib", to_string(mebibyte_count(m: m))] }
+  let experts = match flags.launch.experts { StrataExpertsMapped => ["--mmap-experts"], StrataExpertsPrivate => [] as List<String> }
+  let reserve = match flags.launch.vram_reserve { Absent => [] as List<String>, Present { value: m } => ["--vram-reserve-mib", to_string(mebibyte_count(m: m))] }
   concat(concat(concat(concat(concat(concat(concat(
-    ["--kv", strata_kv_format_word(f: flags.kv_format)],
+    ["--kv", strata_kv_format_word(f: flags.launch.kv_format)],
     kv_resident),
-    ["--max-context", to_string(token_count_value(t: flags.max_context)), "--parallel", to_string(positive_slot_count_value(slots: flags.parallel))]),
+    ["--max-context", to_string(token_count_value(t: flags.launch.max_context)), "--parallel", to_string(positive_slot_count_value(slots: flags.parallel))]),
     batch_groups),
     pool),
     stages),
