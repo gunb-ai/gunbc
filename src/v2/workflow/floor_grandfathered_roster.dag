@@ -3243,13 +3243,19 @@ fn first_check_missing_from_roster(rows: List<String>, chunks: List<List<String>
 // look them up without folding 4,150 rows six times over. A probe that is in this list and not in
 // the chunks is a red claim; a probe in the chunks and not in this list costs nothing, because the
 // list is a sample and not an authority. THE 135 ARE NOT LEFT TO A HARNESS: they are carried as
-// floor_grandfathered_at_cut_group_00 .. _08 below and joined against the roster row for row, in ten
-// claims of fifteen rows each. The grain of the split is a measured cost, not a preference: the
-// whole-roster descent is 8,066 eval steps for a member and 43,583 for a non-member in this module, so
-// one claim that joined all 135 against all 3,916 rows inside itself would spend between 1.1M and 6.3M
-// steps -- past the very ceiling this node governs -- where fifteen-row groups stay inside it. The
-// positional join in first_recovered_row_divergence is the cheap whole-population arm, and it is what
-// makes deleting any one of the 135 a red claim rather than a green one.
+// floor_grandfathered_at_cut_group_00 .. _08 below and joined against the roster row for row, in nine
+// claims of fifteen rows each. The grain of the split is a MEASURED cost, not a preference, and the
+// numbers are the runner's own per-claim eval_steps lines (printed in the run link on the PR for this
+// module, released claim_batch, head da12866f): the nine fifteen-row membership claims cost 9,732 to
+// 26,580 steps and stay inside the tighter allowance, while a single claim that joined all 135 against
+// all 3,916 rows inside itself measured 96,910 steps, and the adoption fold wrapping that join measured
+// 110,099 -- both past the 72,300-step allowance the tier authority gives new work (millisecond(100) at
+// required_floor.dag times eval_steps_per_millisecond(723) at floor_eval_step_calibration.dag). A claim
+// that spends past its allowance is refused on the routed route -- the same refusal that blocked fourteen
+// passing checks hours after the tiering landed, which is the harm this node exists to stop -- so the
+// whole-list membership join lives NINE claims deep and never inside one fold. The positional join in
+// first_recovered_row_divergence is the cheap whole-population arm (2,724 steps observed for its claim)
+// and it is what makes deleting any one of the 135 a red claim inside the fold as well as outside it.
 data floor_grandfathered_completeness_probes: List<String> = [
 
   "test.claim.bare_name_ambiguity_wall_witness.a_field_label_sharing_an_ambiguous_name_does_not_refuse",
@@ -3526,8 +3532,12 @@ fn floor_grandfathered_at_cut_groups() -> List<List<String>> {
 // THE ROSTER SIDE OF THE SAME 135: the chunks the generator appended at the cut, and nothing else.
 // Reading the region rather than all 159 chunks is not a weakening -- these identities live only in
 // these seven chunks -- and it is what keeps the whole-population join inside the ceiling this node
-// governs. The full-roster path is still walked, at identity grain, by
-// floor_grandfathered_first_missing_at_cut_check and by the six named probes.
+// governs. The full-roster path is still walked, at identity grain, by the nine fifteen-row membership
+// claims in dag/test/claim/floor_grandfathered_roster_completeness_witness.dag -- each one inside the
+// allowance, 9,732 to 26,580 eval steps as the runner printed them -- and by the six named probes. A
+// single claim walking the full roster with all 135 at once measured 96,910 steps, past the 72,300 the
+// tier authority gives new work, so it was removed rather than shipped (review 98392; the numbers are
+// in the comment above floor_grandfathered_completeness_probes).
 fn floor_grandfathered_recovered_region() -> List<List<String>> {
   Cons { head: floor_grandfathered_chunk_158(), tail: Cons { head: floor_grandfathered_chunk_152(), tail: Cons { head: floor_grandfathered_chunk_153(), tail: Cons { head: floor_grandfathered_chunk_154(), tail: Cons { head: floor_grandfathered_chunk_155(), tail: Cons { head: floor_grandfathered_chunk_156(), tail: Cons { head: floor_grandfathered_chunk_157(), tail: Empty {} } } } } } } }
 }
@@ -3568,27 +3578,19 @@ fn first_recovered_row_divergence(rows: List<String>, region: List<String>) -> O
   }
 }
 
-// THE IDENTITY JOIN OVER EVERY GROUP, AGAINST THE WHOLE FROZEN CUT. This is the arm that does not trust
-// the region: it asks the roster itself, chunk by chunk, in the order the aggregator now holds it.
-fn first_missing_across_groups(groups: List<List<String>>, chunks: List<List<String>>) -> Optional<String> {
-  match groups {
-    Empty {} => Absent {}
-    Cons { head: rows, tail: rest } => match first_check_missing_from_roster(rows: rows, chunks: chunks) {
-      Present { value: v } => Present { value: v }
-      Absent {} => first_missing_across_groups(groups: rest, chunks: chunks)
-    }
-  }
-}
-
-fn floor_grandfathered_first_missing_at_cut_check() -> Optional<String> {
-  first_missing_across_groups(groups: floor_grandfathered_at_cut_groups(), chunks: floor_grandfathered_chunks())
-}
-
 // THE LIVE-DATA FOLD THE CLAIMS EXECUTE -- AND WHAT IT DOES NOT GATE (review 98256).
 //
 // It takes NO parameters: it reads the live population record, the live per-prefix rows, the live roster
-// size and the live join over the live chunks, so the witnesses execute one fold over the data instead of
-// re-assembling its arguments. It is NOT a gate, and saying so plainly is why this handback can be read:
+// size and the live positional join over the recovered region of the live chunks, so the witnesses execute
+// one fold over the data instead of re-assembling its arguments. WHY THE POSITIONAL ARM AND NOT THE
+// MEMBERSHIP JOIN: the whole-list membership join -- every one of the 135, against all 3,916 frozen chunk
+// rows -- measured 96,910 eval steps inside a claim and 110,099 inside this fold, past the 72,300-step
+// allowance the tier authority gives new work; a fold cannot hold a computation its own claim would be
+// refused for running, so that arm lives NINE claims deep instead (the nine fifteen-row membership claims
+// in the witness, 9,732 to 26,580 steps each) and this fold carries the O(135) positional arm, which
+// misaligns and NAMES the lost identity if any one of the 135 is deleted. Both arms must be green for the
+// list to be whole; neither is redundant with the other -- the positional arm trusts the region, the
+// nine membership claims do not. It is NOT a gate, and saying so plainly is why this handback can be read:
 // its only callers today live in dag/test/claim/floor_grandfathered_roster_completeness_witness.dag, and
 // DESIGN.md (Reference: building and checks, "What a green `v2-bootstrap` does not say") states "Nothing
 // on the required path evaluates a witness". The witness corpus runs on pull requests under changed-witness
@@ -3611,6 +3613,9 @@ fn floor_grandfathered_roster_adoption() -> RosterPopulationAdoption {
     report: floor_grandfathered_population,
     prefix_total: floor_grandfathered_population_prefix_total(),
     roster_rows: floor_grandfathered_cut_size(),
-    first_missing: floor_grandfathered_first_missing_at_cut_check(),
+    first_missing: first_recovered_row_divergence(
+      rows: floor_grandfathered_at_cut_rows(),
+      region: floor_grandfathered_recovered_rows(),
+    ),
   )
 }

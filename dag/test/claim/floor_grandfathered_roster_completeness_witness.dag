@@ -54,7 +54,6 @@ import v2.workflow.floor_grandfathered_roster {
   floor_grandfathered_at_cut_row_total, floor_grandfathered_recovered_row_total,
   floor_grandfathered_recovered_region, first_recovered_row_divergence,
   floor_grandfathered_roster_adoption,
-  floor_grandfathered_first_missing_at_cut_check,
 }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited, cited_figure_read_obligation }
 import v2.workflow.required_floor {
@@ -532,8 +531,9 @@ test fn the_recovered_region_is_the_at_cut_population_row_for_row() -> Bool {
 
 // THE ONE FOLD OVER THE LIVE DATA, AND THE HONEST SCOPE OF THAT WORD (review 98256). This calls the
 // carrier's zero-argument fold -- live population record, live per-prefix rows, live row count, live
-// join over the live chunks -- and asserts it admits, so no argument of the verdict is assembled by the
-// test. It does NOT claim the verdict gates anything: DESIGN.md (Reference: building and checks) says
+// O(135) positional join over the live recovered region -- and asserts it admits, so no argument of the
+// verdict is assembled by the test. It does NOT claim the verdict gates anything: DESIGN.md (Reference:
+// building and checks) says
 // "Nothing on the required path evaluates a witness", and the only callers of that fold are here. The
 // consumer to come is the route that adopts a roster, and its trigger is a ruling that enrols this
 // module on the floor through v2.workflow.required_floor required_gate_authored_modules, which is grown
@@ -559,16 +559,18 @@ fn live_population_standing() -> CitedFigureStanding {
   population_standing(report: floor_grandfathered_population)
 }
 
-// THE LIVE JOIN, OVER ALL 135, AGAINST THE LIVE CHUNK LIST -- the same call the production entry
-// point makes, asserted on its own so a refusal can be attributed to the join rather than to the
-// arithmetic around it. Absent is the answer: every check the floor planned at the cut is held.
-test fn the_live_join_over_every_at_cut_check_finds_nothing_missing() -> Bool {
-  match floor_grandfathered_first_missing_at_cut_check() {
-    Absent {} => true
-    Present { value: v } => false
-  }
-}
-
+// THE LIVE JOIN OVER ALL 135 WAS HERE, AND IS GONE ON MEASUREMENT (review 98392). This module used to
+// carry `the_live_join_over_every_at_cut_check_finds_nothing_missing`, one claim that joined all 135
+// at-cut identities against all 3,916 frozen chunk rows. The released runner printed its cost at head
+// da12866f: eval_steps=96910. The allowance for work this new is 72,300 steps (millisecond(100) at
+// required_floor.dag times eval_steps_per_millisecond(723)), and the node this PR closes documents what
+// happens to claims that spend past their allowance: they are refused on the routed route -- fourteen
+// passing checks blocked a merge that way. A PASS in claim_batch does not license it; claim_batch
+// evaluates what it is handed, and the route that blocks merges refuses over-allowance claims before
+// they run. Its rows are already covered at identity grain by the nine fifteen-row membership claims
+// above (9,732 to 26,580 steps each, all inside the allowance), and the whole-population arm the fold
+// needs is the O(135) positional join, so the over-allowance claim was redundant work AND a ceiling
+// breach. gunbc.design_argument::minimize_redundancy -- "Redundant work... costs more to run".
 test fn the_population_figures_carry_a_read_obligation_and_not_a_receipt() -> Bool {
   match cited_figure_read_obligation(standing: live_population_standing()) {
     Present { value: _ } => true
