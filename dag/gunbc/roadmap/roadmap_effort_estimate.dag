@@ -1077,7 +1077,7 @@ data roadmap_estimate_entries: List<EstimateEntry> = [
     value: days_estimate(working_days: 25),
     basis: "A new attestation kind crosses write authorization, receipt representation and two standing displays, with an operator-only refusal.",
   )),
-  // roadmap-criteria-digest-validated-at-write
+  // roadmap-criteria-plan-digest-printable
   estimate_recorded(row: estimate_row(
     subject: "rn_T9WMSXR8TINTG2USDRXH82NQKJ" as RoadmapNodeIdentity,
     made: d(y: 2026, m: 11, day: 19),
