@@ -2,7 +2,7 @@ module gunbc.recurring_failure_mode.a_hand_managed_proxy_edge_drops_a_route_its_
 
 import std.types { NonEmptyStr }
 import gunbc.recurring_failure_mode { RecurringFailureMode, BelowCeiling, FoundBelowTheLadder, FoundOnRung, RungRead }
-import gunbc.guarantee_rung { MechanicallyPreventable, StructurallyGuaranteed }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
 import gunbc.rung_climb { ClimbableButUnbuilt }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -23,10 +23,10 @@ data a_hand_managed_proxy_edge_drops_a_route_its_consumers_read: RecurringFailur
   rung: RungRead {
     found_at: FoundBelowTheLadder,
     standing: BelowCeiling {
-      current: FoundOnRung { rung: MechanicallyPreventable },
+      current: FoundOnRung { rung: Mitigatable },
       ceiling: StructurallyGuaranteed,
       blocker: ClimbableButUnbuilt,
-      trigger_capability: "the live-deploy leg that emits a serving engine's TLS front renders its server block from gunbc.serving.serving_observability::engine_front_proxy_config, so the front's forwarded-route set is DERIVED from the consumer roster rather than authored, and the hand-managed /opt/gunbc-serving/*/nginx.conf is retired -- at which point a front that omits a consumed route has no render at all, not merely a refused one" as NonEmptyStr,
+      trigger_capability: "the live-deploy leg that emits a serving engine's TLS front renders its server block from gunbc.serving.serving_observability::engine_front_proxy_config -- which takes no forwarded-route list and builds the server from gunbc.serving.serving_observability::engine_front_required_routes, so a front that omits a consumed route has no constructor -- and the hand-managed /opt/gunbc-serving/*/nginx.conf is retired. Until that emitter lands the module is a declared frontier consumed only by its claim witness, so the live host state is detected (engine_front_unserved_consumers names the blocked consumer) but not prevented -- hence Mitigatable, not higher" as NonEmptyStr,
     },
   },
 
@@ -41,11 +41,12 @@ data a_hand_managed_proxy_edge_drops_a_route_its_consumers_read: RecurringFailur
 
     "THE OTHER TWO OBSERVABILITY GAPS OF THE SAME DAY, AND WHERE THEIR STANDING BELONGS. (1) The per-cause cold-token breakdown (same-card intact / same-card rewritten / rebound / no-probe) that carried the day was produced by ad-hoc scripts (/tmp/rlog.py over the router's prefixprobe/usageprobe/upgrade-move lines; /tmp/snap.py and /tmp/delta.py differencing engine /metrics; the Strata per-request reuse line). It is recorded as NOT a named instrument in gunbc.serving.serving_observability::cold_token_cause_breakdown_standing: a new wide instrument must first name its real consumer, discriminator and acceptable cost (gunbc.design_document::ci_contract_blocks), the job roster and CI budgets are closed to growth, and its only consumer was the one-day tuning session -- a standing wide instrument with no standing consumer and no executing fold is the bad process gunbc.design_ruling::bad_process_is_worse_than_no_process retires. (2) The router's prefixprobe/usageprobe lines are marked TEMPORARY (2026-10-27/28, calm-crab-645) in the HAND-MANAGED srv1 ~/router/nginx.conf, so their standing is a receipt of the hand-managed router, not a fact of the modelled router -- recorded in gunbc.serving.serving_observability::router_probe_line_standing, pointed at the modelled replacement (gunbc.serving.router_realization / turn_admission / serving_relocation, class B5), and deliberately not deleted while the router is hand-managed.",
 
-    "CEILING AND ITS TELL: StructurallyGuaranteed, because once the front is EMITTED from the derived route set a front that omits a consumed route is not merely refused -- it has no render. The tell that the ceiling has NOT been reached: a serving engine whose /metrics is unreachable by name from a fleet reader while the engine answers it on its own port, which is the srv4 state this row was found at; gunbc.serving.serving_observability::engine_front_proxy_config refuses exactly that state today (the current rung, MechanicallyPreventable), and the ceiling is reached when the live-deploy front emitter consumes that row instead of a hand-written nginx.conf.",
+    "CEILING AND ITS TELL: StructurallyGuaranteed, because the front is RENDERED FROM the roster (engine_front_proxy_config takes no forwarded-route list), so once the live-deploy emitter consumes it a front that omits a consumed route has no constructor at all -- not refused, unauthorable. The current rung is Mitigatable: the model DETECTS the misconfiguration -- engine_front_unserved_consumers, reconciling the host's OBSERVED forwarded set against the roster, names the consumer srv4 shut out -- but nothing on the required path prevents the live hand-managed front until the emitter lands, so the rung is detection, not prevention. The tell that the ceiling has NOT been reached: a serving engine whose /metrics is unreachable by name from a fleet reader while the engine answers it on its own port, which is the srv4 state this row was found at.",
   ],
 
   evidence: [
     DeclarationRef { module_path: "gunbc.serving.serving_observability", decl_name: "engine_front_proxy_config", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.serving.serving_observability", decl_name: "engine_front_unserved_consumers", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.serving.serving_observability", decl_name: "engine_front_required_routes", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.serving.serving_observability", decl_name: "cold_token_cause_breakdown_standing", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.serving.serving_observability", decl_name: "router_probe_line_standing", field: WholeDeclaration },

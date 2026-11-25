@@ -2,7 +2,7 @@ module gunbc.serving.serving_observability
 
 import std.types { String, NonEmptyStr, List, Bool, Port }
 import std.optional { Optional, Present, Absent }
-import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
+import std.decl_ref { DeclarationRef, decl_ref }
 import extdeps.proxy.openresty {
   NginxDirective, NginxToken, ServerBlock, ListenTlsOn, SslCertificate, SslCertificateKey,
   LocationBlock, PrefixMatch, ProxyPassToHost, ProxyHttpVersion11, nginx_token, render_nginx_directives,
@@ -25,19 +25,31 @@ import extdeps.proxy.openresty {
 // daily-engine module renders the front. So the per-engine TLS front door had NO producing row, and a
 // hand-authored proxy that drops a route nobody re-derived from a consumer could not be refused: the
 // metrics route was never a CONSUMED requirement, so nothing joined it to the readers who need it
-// (gunbc.design_argument::consumption). This module is the named home for that boundary; it derives the
-// forwarded-route set from the named consumers so the missing route becomes unrenderable, not checked
-// after the fact (gunbc.design_argument::guarantee_ladder, gunbc.design_argument::fail_closed).
+// (gunbc.design_argument::consumption). This module is the named home for that boundary.
+//
+// CONSTRUCTION, NOT VALIDATION (gunbc.design_argument::guarantee_ladder, ::fail_closed). The front door
+// is RENDERED FROM THE ROSTER: engine_front_proxy_config takes no forwarded-route list, so a front that
+// omits a consumed route has NO CONSTRUCTOR -- it is unrenderable, not checked after the fact. A
+// hand-managed proxy that actually drops a route is a DIFFERENT authority (the observed host config); it
+// is reconciled against the roster by engine_front_unserved_consumers, which names the consumers whose
+// reads are blocked. Checking an OBSERVED set against the authority is reconciliation, not a restatement
+// of the authority; the authority itself has exactly one representation, the roster.
 //
 // WHO CONSUMES /metrics (the consumption answer the boundary needs). Not the router (the router is one
-// of the readers that CANNOT reach srv4's /metrics today). The named consumers are typed DeclarationRefs
-// on each required route, so a rename or deletion of a consumer declaration is a decidable break
-// (gunbc.design_argument::single_authority, ::source_annotations -- a citation belongs in a typed
-// carrier, not prose): the metrics route is consumed by gunbc.serving.engine_progress::engine_progress_read,
-// the models route by gunbc.serving.serving_availability::serving_availability_bracketing_read, and the
-// chat route by gunbc.serving.serving_front_door::front_door_admit. Each consumer is CARRIED BY EXECUTION
-// into the refusal (EngineFrontProxyRefusal::OmitsRequiredRoute.consumer), so the field has a consuming
-// route rather than being read only by a witness.
+// of the readers that CANNOT reach srv4's /metrics today). Each required route carries its consumer as a
+// typed DeclarationRef (a rename/deletion of a consumer is a decidable break -- gunbc.design_argument::
+// single_authority, ::source_annotations), and the consumer reference is CONSUMED BY EXECUTION by
+// engine_front_unserved_consumers, so the field is not read only by a witness. The readers: the metrics
+// route is consumed by gunbc.serving.engine_progress::engine_progress_read, the models route by
+// gunbc.serving.serving_availability::serving_availability_bracketing_read, the chat route by
+// gunbc.serving.serving_front_door::front_door_admit.
+//
+// CONSUMER (declared frontier, gunbc.design_argument::consumption). The rendering is consumed today by
+// this module's claim witness; it dissolves into production when the live-deploy leg that emits a
+// serving engine's TLS front renders its server block from engine_front_proxy_config and retires the
+// hand-managed /opt/gunbc-serving/*/nginx.conf. That emitter is the next-rung trigger on the ledger row;
+// until it lands the module is a frontier, exactly as gunbc.serving.router_proxy_config is a declared
+// frontier to gunbc.live_deploy.apply_legs.
 
 // A route the fleet must be able to reach THROUGH the front door, and the declaration of the reader that
 // consumes it -- a typed reference, not a name spelled in prose, so a renamed consumer is decidable.
@@ -47,9 +59,9 @@ type EngineFrontRoute = EngineFrontRoute {
 }
 
 // THE REQUIRED-ROUTE ROSTER: the single authority for what a fleet reader must reach through a serving
-// engine's front door, derived from the consumers rather than hand-listed at the proxy. srv4's proxy
-// omitted /metrics precisely because it was hand-written against one reader and never re-derived from
-// this set. Each consumer is the declaration of a reader that reads that route through the front.
+// engine's front door. The render is built from exactly this list, so omitting a route is not a choice a
+// caller can make. srv4's proxy omitted /metrics precisely because it was hand-written against one reader
+// and never re-derived from this set.
 data engine_front_required_routes: List<EngineFrontRoute> = [
   EngineFrontRoute {
     path: "/v1/chat/completions" as NonEmptyStr,
@@ -65,22 +77,17 @@ data engine_front_required_routes: List<EngineFrontRoute> = [
   },
 ]
 
-// WHAT THE FRONT REFUSES: the case the misconfiguration becomes, so it is refused rather than rendered.
-// The refusal carries the DENIED CONSUMER as a typed reference, so the omitted route names who was shut
-// out -- and that consumer field is produced by execution, not read only by a grep (fail_closed).
-type EngineFrontProxyRefusal
-  = OmitsRequiredRoute { route: NonEmptyStr, consumer: DeclarationRef }
-  | InvalidToken { token: NonEmptyStr }
+// The only way a correct front fails to render: an admitted-token refusal. There is no OmitsRequiredRoute
+// arm, because a front that omits a required route cannot be authored at all (guarantee_ladder).
+type EngineFrontProxyRefusal = InvalidToken { token: NonEmptyStr }
 
 type EngineFrontProxyVerdict
   = EngineFrontProxyRendered { text: String }
   | EngineFrontProxyRefused { refusal: EngineFrontProxyRefusal }
 
-// THE FORWARDED-ROUTE SET IS DERIVED, NOT AUTHORED. `forwarded` is what a hand-managed proxy actually
-// proxies (the paths it sends to the engine; the catch-all `return 404` is what it does NOT forward).
-// The front is accepted only when every route a named consumer requires is in `forwarded`; a front that
-// omits one is refused, naming the route AND the consumer whose read it blocked. This is the
-// guarantee-ladder move: the bad state (forward /v1/ only, 404 the metrics route) has no render.
+// RENDER THE FRONT FROM THE ROSTER. No forwarded parameter: the server block always proxies every route a
+// named consumer requires. A front missing /metrics is unrenderable, so the srv4 misconfiguration has no
+// constructor rather than being a case a check must catch.
 fn engine_front_proxy_config(
   bind_address: NonEmptyStr,
   listen_port: Port,
@@ -88,26 +95,15 @@ fn engine_front_proxy_config(
   tls_key: NonEmptyStr,
   engine_host: NonEmptyStr,
   engine_port: Port,
-  forwarded: List<NonEmptyStr>,
 ) -> EngineFrontProxyVerdict {
-  match first_unforwarded_required(forwarded: forwarded) {
-    Present { value: omitted } =>
-      EngineFrontProxyRefused { refusal: OmitsRequiredRoute { route: omitted.path, consumer: omitted.consumer } }
-    Absent =>
-      match engine_front_server_directives(bind_address: bind_address, listen_port: listen_port, tls_cert: tls_cert, tls_key: tls_key, engine_host: engine_host, engine_port: engine_port, forwarded: forwarded) {
-        Absent => EngineFrontProxyRefused { refusal: InvalidToken { token: "a front-door token was refused by nginx_token" as NonEmptyStr } }
-        Present { value: rows } => EngineFrontProxyRendered { text: render_nginx_directives(rows: rows) }
-      }
+  match engine_front_server_directives(bind_address: bind_address, listen_port: listen_port, tls_cert: tls_cert, tls_key: tls_key, engine_host: engine_host, engine_port: engine_port) {
+    Absent => EngineFrontProxyRefused { refusal: InvalidToken { token: "a front-door token was refused by nginx_token" as NonEmptyStr } }
+    Present { value: rows } => EngineFrontProxyRendered { text: render_nginx_directives(rows: rows) }
   }
 }
 
-// The first required route absent from `forwarded`, in roster order, or Absent when the set is complete.
-fn first_unforwarded_required(forwarded: List<NonEmptyStr>) -> Optional<EngineFrontRoute> {
-  first(filter(engine_front_required_routes, r => !any(forwarded, x => (x as String) == (r.path as String))))
-}
-
-// One location per required route proxy_passing to the engine, wrapped in the TLS server. Any path that
-// nginx_token refuses is an Absent, which the caller turns into InvalidToken -- the render stays closed.
+// One location per REQUIRED route proxy_passing to the engine, wrapped in the TLS server. Built from the
+// roster alone. Any path nginx_token refuses is an Absent, which the caller turns into InvalidToken.
 fn engine_front_server_directives(
   bind_address: NonEmptyStr,
   listen_port: Port,
@@ -115,7 +111,6 @@ fn engine_front_server_directives(
   tls_key: NonEmptyStr,
   engine_host: NonEmptyStr,
   engine_port: Port,
-  forwarded: List<NonEmptyStr>,
 ) -> Optional<List<NginxDirective>> {
   match nginx_token(text: bind_address as String) {
     Absent => Absent
@@ -129,7 +124,7 @@ fn engine_front_server_directives(
               match nginx_token(text: engine_host as String) {
                 Absent => Absent
                 Present { value: host } =>
-                  match engine_front_locations(engine_host_token: host, engine_port: engine_port, forwarded: forwarded) {
+                  match engine_front_locations(engine_host_token: host, engine_port: engine_port) {
                     Absent => Absent
                     Present { value: locations } =>
                       Present {
@@ -152,10 +147,9 @@ fn engine_front_server_directives(
 fn engine_front_locations(
   engine_host_token: NginxToken,
   engine_port: Port,
-  forwarded: List<NonEmptyStr>,
 ) -> Optional<List<NginxDirective>> {
   fold(
-    filter(engine_front_required_routes, r => any(forwarded, x => (x as String) == (r.path as String))),
+    engine_front_required_routes,
     init: Present { value: [] as List<NginxDirective> } as Optional<List<NginxDirective>>,
     f: (acc, r) => match acc {
       Absent => Absent
@@ -173,6 +167,17 @@ fn engine_front_locations(
             }
         }
     },
+  )
+}
+
+// Reconcile an OBSERVED hand-managed forwarded set against the roster: the consumers whose reads are
+// blocked because the host front does not forward their route. This is the class made decidable -- it
+// names who srv4 shut out. It reads each route's typed consumer, giving that field its executing consumer.
+// `observed` is the host proxy's actually-forwarded paths (a read, not an authority over the render).
+fn engine_front_unserved_consumers(observed: List<NonEmptyStr>) -> List<DeclarationRef> {
+  map(
+    filter(engine_front_required_routes, r => !any(observed, x => (x as String) == (r.path as String))),
+    r => r.consumer,
   )
 }
 
