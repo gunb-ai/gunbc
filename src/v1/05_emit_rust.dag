@@ -20380,7 +20380,12 @@ fn emit_cargo_features_section(features: List<CargoFeature>) -> String {
 
 fn cli_dispatch_field_type(sub: CliSubcommandRow, field: String) -> String {
   match cli_subcommand_generated_dispatch_operands(sub: sub) |> filter(o => o.field == field) |> first {
-    Present { value: _ } => "String"
+    Present { value: operand } => match operand.arity {
+      // The field's type is the arity's fact, the same mapping emit_modeled_operand_field
+      // writes into the clap struct -- host and surface cannot disagree by construction.
+      CliExactlyOneOperand => "String"
+      CliOneOrMoreOperands => "Vec<String>"
+    }
     Absent => match cli_subcommand_generated_dispatch_options(sub: sub) |> filter(o => o.field == field) |> first {
       Present { value: opt } => cli_option_rust_type(opt: opt)
       Absent => "compile_error!(\"REFUSED: generated CLI dispatch field has no modeled type\")"
@@ -24123,7 +24128,10 @@ fn emit_modeled_subcommand_variant(sub: CliSubcommandRow, depth: Int) -> String 
 fn emit_modeled_operand_field(operand: CliOperandRow, depth: Int) -> String {
   let indent = make_indent(level: depth)
   let doc_str = operand.doc |> map(d => concat(indent, "/// ", d, "\n")) |> join(separator: "")
-  concat(doc_str, indent, "#[arg(value_name = \"", operand.placeholder, "\")]\n", indent, operand.field, ": String,\n")
+  match operand.arity {
+    CliExactlyOneOperand => concat(doc_str, indent, "#[arg(value_name = \"", operand.placeholder, "\")]\n", indent, operand.field, ": String,\n")
+    CliOneOrMoreOperands => concat(doc_str, indent, "#[arg(value_name = \"", operand.placeholder, "\", num_args = 1..)]\n", indent, operand.field, ": Vec<String>,\n")
+  }
 }
 
 // One declared option becomes three rendered things: its doc lines, its clap attribute, and its

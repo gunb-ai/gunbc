@@ -1,0 +1,29 @@
+module test.claim.roadmap.roadmap_event_publish_state_witness
+
+// EXECUTING WITNESS for review 97818 on PR #16965. When a push LANDS but the follow-up 'git rev-parse HEAD'
+// fails, the append used to report the SAME value as an append that never published (Optional's Absent), so a
+// publication failure masqueraded as an absence — DESIGN.md fail_closed: "every degradation is typed, located
+// and countable." The publish state is now a three-way sum (EventPublishState): Unpublished, Published, and
+// PublishedCoordinateUnread carrying the failed readback's exit code and stderr. This witness drives all three
+// arms through the canonical reader so the unread arm is shown to be its OWN fact, distinct from silence, and
+// countable — not the silent widen the review objected to.
+
+import std.types { Bool, String, NonEmptyStr }
+import std.algebra { string_contains }
+import gunbc.roadmap.roadmap_event_carrier {
+  EventPublishState, Unpublished, Published, PublishedCoordinateUnread,
+  EventPublication, roadmap_event_publish_state_report,
+}
+
+fn claim(label: String, satisfied: Bool) -> Bool { satisfied }
+
+test fn publish_state_reports_each_arm_as_its_own_fact() -> Bool {
+  let unpub = roadmap_event_publish_state_report(state: Unpublished)
+  let pub = roadmap_event_publish_state_report(state: Published { publication: EventPublication { remote: "origin" as NonEmptyStr, ref_name: "refs/heads/roadmap-events" as NonEmptyStr, commit: "abc123def456" as NonEmptyStr } })
+  let unread = roadmap_event_publish_state_report(state: PublishedCoordinateUnread { exit_code: 128, stderr: "fatal: ambiguous argument 'HEAD'" })
+  claim("the unpublished state reports its own word", unpub == "unpublished")
+    && claim("the published state names the commit, the ref and the remote", pub == "published abc123def456 to refs/heads/roadmap-events on origin")
+    && claim("the rev-parse-fail state is its OWN arm, not the unpublished silence", unread != unpub && string_contains(s: unread, pattern: "published-but-unread"))
+    && claim("the rev-parse-fail state carries the failed readback's exit code", string_contains(s: unread, pattern: "exit 128"))
+    && claim("the rev-parse-fail state carries the failed readback's stderr", string_contains(s: unread, pattern: "ambiguous argument"))
+}

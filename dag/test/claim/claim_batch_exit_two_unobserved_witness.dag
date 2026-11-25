@@ -27,7 +27,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // refusal, which must stay FAIL/1 so the mapping is not "every ExitFailure is unobserved"), and
 // ExitSuccess (the positive control, exit 0).
 
-data exit_two_unobserved_entry_source: String = "module probe.exit_two_entry
+data exit_two_unobserved_entry_source: String = "module test.claim.probe_exit_two
 
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 
@@ -36,7 +36,7 @@ test fn exit_two_entry_holds() -> ProcessExit {
 }
 "
 
-data exit_one_failed_entry_source: String = "module probe.exit_two_entry
+data exit_one_failed_entry_source: String = "module test.claim.probe_exit_two
 
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 
@@ -45,7 +45,7 @@ test fn exit_two_entry_holds() -> ProcessExit {
 }
 "
 
-data exit_success_held_entry_source: String = "module probe.exit_two_entry
+data exit_success_held_entry_source: String = "module test.claim.probe_exit_two
 
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 
@@ -75,12 +75,18 @@ fn plant_exit_two(root: String, entry_source: String) -> PlantedExitTwo {
   }
 }
 
+// THE ROUTE, NOT A BINARY OF ITS OWN. The claim-execution cutover
+// (gunbc.plans.claim_execution_consolidation) deleted the `claim_batch` binary; the located-line
+// verdicts and exit codes these rows pin are now produced by the one claim entrypoint, the
+// `gunbc test` route. The planted module lives in the claim universe (`test.claim.*`) because the
+// route admits claim-class subjects only under `//test/claim/...` labels.
 fn exit_two_args(dir: String) -> List<String> {
   [
+    "test",
     "--source-root", "dag",
+    "--source-root", "src/v2",
     "--source-root", dir,
-    "--entry", concat(dir, "/exit_two_entry.dag"),
-    "--function", "exit_two_entry_holds"
+    "//test/claim/probe_exit_two:exit_two_entry_holds"
   ]
 }
 
@@ -93,15 +99,17 @@ test fn an_exit_failure_with_code_2_exits_2_and_prints_unobserved() -> Bool {
     PlantedExitTwoReady { dir } => {
       let result = gunbc.WitnessBin.Run(
         workdir: root,
-        bin_path: concat(root, "/target/release/claim_batch"),
+        bin_path: concat(root, "/target/release/gunbc"),
         args: exit_two_args(dir: dir)
       )
       let cleaned = shell.Remove.RecursiveForce(path: dir as FilePath)
       cleaned.success
         && result.exit_code == 2
-        && string_contains(s: result.stdout, pattern: "UNOBSERVED exit_two_entry_holds")
+        && string_contains(s: result.stdout, pattern: "exit_two_entry_holds UNOBSERVED")
+        && string_contains(s: result.stdout, pattern: "outcome=ExitFailure")
+        && string_contains(s: result.stdout, pattern: "code=2")
         && string_contains(s: result.stdout, pattern: "subject never reached")
-        && !string_contains(s: result.stdout, pattern: "FAIL")
+        && !string_contains(s: result.stdout, pattern: "DID-NOT-HOLD")
     }
   }
 }
@@ -115,13 +123,15 @@ test fn an_exit_failure_with_code_1_still_exits_1_and_prints_fail() -> Bool {
     PlantedExitTwoReady { dir } => {
       let result = gunbc.WitnessBin.Run(
         workdir: root,
-        bin_path: concat(root, "/target/release/claim_batch"),
+        bin_path: concat(root, "/target/release/gunbc"),
         args: exit_two_args(dir: dir)
       )
       let cleaned = shell.Remove.RecursiveForce(path: dir as FilePath)
       cleaned.success
         && result.exit_code == 1
-        && string_contains(s: result.stdout, pattern: "FAIL exit_two_entry_holds")
+        && string_contains(s: result.stdout, pattern: "exit_two_entry_holds DID-NOT-HOLD")
+        && string_contains(s: result.stdout, pattern: "outcome=ExitFailure")
+        && string_contains(s: result.stdout, pattern: "code=1")
         && !string_contains(s: result.stdout, pattern: "UNOBSERVED")
     }
   }
@@ -136,13 +146,13 @@ test fn a_held_claim_exits_0_and_prints_pass() -> Bool {
     PlantedExitTwoReady { dir } => {
       let result = gunbc.WitnessBin.Run(
         workdir: root,
-        bin_path: concat(root, "/target/release/claim_batch"),
+        bin_path: concat(root, "/target/release/gunbc"),
         args: exit_two_args(dir: dir)
       )
       let cleaned = shell.Remove.RecursiveForce(path: dir as FilePath)
       cleaned.success
         && result.exit_code == 0
-        && string_contains(s: result.stdout, pattern: "PASS exit_two_entry_holds")
+        && string_contains(s: result.stdout, pattern: "exit_two_entry_holds HELD outcome=Pass")
     }
   }
 }

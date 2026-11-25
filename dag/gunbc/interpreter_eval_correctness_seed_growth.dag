@@ -109,8 +109,6 @@ data value_drop_binding_adaptation_seed_growth_justification: SeedGrowthJustific
     DeclarationRef { module_path: "v1_compiler.cli_run.witness_gates", decl_name: "witness_cost_clock_nanos", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.coproduct_reflection", decl_name: "expect_pool_roots", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.coproduct_reflection.parse_only_uppercase_variant_regression_tests", decl_name: "first_child_target", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.pre_push", decl_name: "eval_fmt_recipe", field: WholeDeclaration },
-    DeclarationRef { module_path: "v1_compiler.pre_push", decl_name: "load_zero_sha", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "partition_rebuild_actuation", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "population_admission_verdict", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "render_affected_set_bound", field: WholeDeclaration },
