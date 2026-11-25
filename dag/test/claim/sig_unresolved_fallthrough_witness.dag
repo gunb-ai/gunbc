@@ -129,13 +129,14 @@ type CensusObservation
 fn observe(argv: ArgvCommand) -> CensusObservation {
   match run_shell_command_observe_outcome(command: argv, transport: LocalExec) {
     ProcessRan { observation: obs } => {
-      if obs.exit_code == 0 then
-        // grep family: exit 1 is "no rows", a legitimate empty observation, not a failure.
+      // grep family: exit 1 is "no rows", a legitimate empty observation, not a failure.
+      if obs.exit_code == 0 {
         Rows { rows: nonblank(split(s: obs.stdout, delimiter: "\n")) }
-      else if obs.exit_code == 1 then
+      } else if obs.exit_code == 1 {
         Rows { rows: [] }
-      else
+      } else {
         GrepFailed { cause: concat("git grep exit ", to_string(obs.exit_code)) }
+      }
     }
     ProcessNotSpawned { program: _, cause: c } =>
       GrepFailed { cause: concat("not spawned: ", c as String) }
@@ -180,22 +181,22 @@ fn lower_or_underscore_chars() -> List<String> {
 
 fn first_index(s: String, needle: String, from: Int) -> Int {
   let n = string_length(s: needle)
-  in if n == 0 then string_length(s: s)
-     else if from + n > string_length(s: s) then string_length(s: s)
-     else if substring(s: s, start: from, end: from + n) == needle then from
-     else first_index(s: s, needle: needle, from: from + 1)
+  in if n == 0 { string_length(s: s) }
+     else if from + n > string_length(s: s) { string_length(s: s) }
+     else if substring(s: s, start: from, end: from + n) == needle { from }
+     else { first_index(s: s, needle: needle, from: from + 1) }
 }
 
 // True when a nonempty run of lowercase/underscore characters sits at `from` and ':' closes it.
 fn labeled_args_follow(s: String, from: Int) -> Bool {
   let n = string_length(s: s)
-  in if from >= n then false
+  in if from >= n { false }
      else {
        let c = substring(s: s, start: from, end: from + 1)
-       in if c == ":" then from > 0 && labeled_run_nonempty(s: s, start: from - 1, needle_c: ":")
-          else if contains(xs: lower_or_underscore_chars(), item: c, eq: (a, b) => a == b)
-             then labeled_args_follow(s: s, from: from + 1)
-          else false
+       in if c == ":" { from > 0 && labeled_run_nonempty(s: s, start: from - 1, needle_c: ":") }
+          else if contains(xs: lower_or_underscore_chars(), item: c, eq: (a, b) => a == b) {
+             labeled_args_follow(s: s, from: from + 1)
+          } else { false }
      }
 }
 
@@ -208,14 +209,15 @@ fn labeled_run_nonempty(s: String, start: Int, needle_c: String) -> Bool {
 
 fn has_bare_call_from(l: String, name: String, needle: String, from: Int) -> Bool {
   let idx = first_index(s: l, needle: needle, from: from)
-  in if idx >= string_length(s: l) then false
+  in if idx >= string_length(s: l) { false }
      else {
        let ok_prefix = idx == 0
          || !contains(xs: ident_chars(), item: substring(s: l, start: idx - 1, end: idx), eq: (a, b) => a == b)
-       in if ok_prefix && labeled_args_follow(s: l, from: idx + string_length(s: needle)) then
+       in if ok_prefix && labeled_args_follow(s: l, from: idx + string_length(s: needle)) {
             true
-          else
+          } else {
             has_bare_call_from(l: l, name: name, needle: needle, from: idx + 1)
+          }
      }
 }
 
@@ -238,11 +240,11 @@ fn row_file(l: String) -> String {
 
 fn row_content(l: String) -> String {
   let p1 = first_index(s: l, needle: ":", from: 0)
-  in if p1 >= string_length(s: l) then l
+  in if p1 >= string_length(s: l) { l }
      else {
        let p2 = first_index(s: l, needle: ":", from: p1 + 1)
-       in if p2 >= string_length(s: l) then l
-          else substring(s: l, start: p2 + 1, end: string_length(s: l))
+       in if p2 >= string_length(s: l) { l }
+          else { substring(s: l, start: p2 + 1, end: string_length(s: l)) }
      }
 }
 
@@ -291,20 +293,20 @@ fn census_walk(s: List<String>, roster: List<String>, acc: CensusAcc) -> CensusA
     Absent => acc
     Present { value: name } => {
       let decls = observe(grep_decls_argv(name))
-      in if observation_failed(decls) then
+      in if observation_failed(decls) {
            census_walk(s: s |> skip(n: 1), roster: roster,
              acc: CensusAcc { sites: acc.sites, files: acc.files, names_hit: acc.names_hit, failures: acc.failures + 1 })
-         else {
+         } else {
            let importers = observe(grep_importers_argv(name))
-           in if observation_failed(importers) then
+           in if observation_failed(importers) {
                 census_walk(s: s |> skip(n: 1), roster: roster,
                   acc: CensusAcc { sites: acc.sites, files: acc.files, names_hit: acc.names_hit, failures: acc.failures + 1 })
-              else {
+              } else {
                 let calls = observe(grep_calls_argv(name))
-                in if observation_failed(calls) then
+                in if observation_failed(calls) {
                      census_walk(s: s |> skip(n: 1), roster: roster,
                        acc: CensusAcc { sites: acc.sites, files: acc.files, names_hit: acc.names_hit, failures: acc.failures + 1 })
-                   else {
+                   } else {
                      let decl_files = observation_rows(decls)
                      let importer_files = observation_rows(importers)
                      let kept = filter(observation_rows(calls), l =>
@@ -312,12 +314,12 @@ fn census_walk(s: List<String>, roster: List<String>, acc: CensusAcc) -> CensusA
                          && !list_contains(decl_files, row_file(l))
                          && !list_contains(importer_files, row_file(l)))
                      let new_files = fold(kept, init: acc.files, f: (fs, l) =>
-                       if list_contains(fs, row_file(l)) then fs else concat(fs, [row_file(l)]))
+                       if list_contains(fs, row_file(l)) { fs } else { concat(fs, [row_file(l)]) })
                      in census_walk(s: s |> skip(n: 1), roster: roster,
                        acc: CensusAcc {
                          sites: acc.sites + count(kept),
                          files: new_files,
-                         names_hit: if count(kept) > 0 then concat(acc.names_hit, [name]) else acc.names_hit,
+                         names_hit: if count(kept) > 0 { concat(acc.names_hit, [name]) } else { acc.names_hit },
                          failures: acc.failures
                        })
                    }
@@ -360,17 +362,18 @@ fn print_line(line: String) -> ProcessExit {
 
 test fn census_fallthrough_population_computed_at_run_time() -> Bool {
   let roster = kernel_roster()
-  in if count(roster) == 0 then
+  in if count(roster) == 0 {
        false
-     else {
+     } else {
        let acc = census_walk(s: roster, roster: roster, acc: census_start)
-       in if acc.failures == 0 && acc.sites > 0 && count(acc.files) > 0 && count(acc.names_hit) > 0 then
+       in if acc.failures == 0 && acc.sites > 0 && count(acc.files) > 0 && count(acc.names_hit) > 0 {
             match print_line(census_line(acc, count(roster))) {
               ExitSuccess => true
               ExitFailure { code: _, reason: _ } => false
             }
-          else
+          } else {
             false
+          }
      }
 }
 
