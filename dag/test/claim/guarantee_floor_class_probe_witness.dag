@@ -47,6 +47,7 @@ import gunbc.compile_diagnostic_census {
   CensusObserved,
   CensusNotRunnable,
 }
+import gunbc.compile_diagnostic_census { census_blocking_rows }
 import gunbc.compile_census_probe { blocking_class_census, blocking_subject_census, total_rows_census, census_int_text, census_verdict, census_verdict_all, census_premise, census_exit, CensusVerdict }
 import gunbc.guarantee_measurement { GuaranteeProbeId, MeasurementRevision }
 import std.types { String, NonEmptyStr, Bool, Int, List }
@@ -266,12 +267,20 @@ data floor_census_sites: List<FloorCensusRow> = [
   FloorCensusRow { site: "closed-wall-nested-generic", source: floor_census_src_nested_generic, is_field_miss: true, planted: false },
 ]
 
+// THE STATUS IS KEYED ON BLOCKING ROWS (review 17051 round 3): total_rows_census is
+// "THE WHOLE CENSUS, blocking filter NOT applied", so counting it would let a
+// warning-only acceptance of a field-miss render as BLOCKED - the exact fabrication the
+// census hunts. A field-miss site is FABRICATED-RESIDUE unless at least one BLOCKING row
+// refuses it; twins are CLEAN when nothing blocks them. The rendered count is
+// blocking/total, so advisory noise stays visible without ever becoming a verdict.
+// Each site compiles EXACTLY ONCE per test: premises read the single rendered string.
 fn floor_census_render_row(row: FloorCensusRow) -> String {
   match total_rows_census(source: row.source) {
     CensusObserved { rows: rows } => {
-      let n = count(rows)
+      let n = count(census_blocking_rows(rows: rows))
+      let t = count(rows)
       let status = if n == 0 { if row.is_field_miss { "FABRICATED-RESIDUE" } else { "CLEAN" } } else { "BLOCKED" }
-      concat(row.site, concat(":", concat(status, concat(":", census_int_text(n: n)))))
+      concat(row.site, concat(":", concat(status, concat(":", concat(census_int_text(n: n), concat("/", census_int_text(n: t)))))))
     }
     CensusNotRunnable { cause: cause } => concat(row.site, concat(":NOT-RUNNABLE:", cause))
   }
@@ -418,13 +427,16 @@ test fn floor_field_through_generics_census_residue_is_zero() -> ProcessExit {
   let rendered = join(map(floor_census_sites, f: fn(r) { floor_census_render_row(row: r) }), sep: "; ")
   let total = count(floor_census_sites)
   let planted = count(filter(floor_census_sites, f: fn(r) { r.planted }))
+  let miss_sites = filter(floor_census_sites, f: fn(r) { r.is_field_miss })
+  let miss_blocked = count(filter(miss_sites, f: fn(r) { string_contains(s: rendered, pattern: concat(r.site, ":BLOCKED")) }))
+  let twin_blocked = count(filter(floor_census_sites, f: fn(r) { !r.is_field_miss && string_contains(s: rendered, pattern: concat(r.site, ":BLOCKED")) }))
   census_verdict_all([
     census_premise(concat("census population=planted+not_planted (", concat(concat(census_int_text(n: total), "="), concat(concat(census_int_text(n: planted), "+"), concat(census_int_text(n: total - planted), ") rows: ", rendered)))), total == 13 && planted == 1 && total - planted == 12),
-    census_premise(concat("planted identity counted: ", rendered), string_contains(s: rendered, pattern: "main-bare-T-parameter-read:BLOCKED")),
-    census_premise(concat("no FABRICATED-RESIDUE (zero-row field-miss site): ", rendered), !string_contains(s: rendered, pattern: "FABRICATED-RESIDUE")),
-    census_premise(concat("no twin blocked (refusal of a valid program): ", rendered), !string_contains(s: rendered, pattern: "-twin:BLOCKED") && !string_contains(s: rendered, pattern: "-green:BLOCKED")),
-    census_premise(concat("every site BLOCKED or CLEAN, none NOT-RUNNABLE: ", rendered), !string_contains(s: rendered, pattern: "NOT-RUNNABLE")),
-    census_premise(concat("every field-miss site refused (BLOCKED): ", rendered), string_contains(s: rendered, pattern: "main-bare-T-parameter-read") && count(filter(floor_census_sites, f: fn(r) { r.is_field_miss && !(string_contains(s: floor_census_render_row(row: r), pattern: "BLOCKED")) })) == 0)
+    census_premise(concat("planted identity counted as a BLOCKING refusal: ", rendered), string_contains(s: rendered, pattern: "main-bare-T-parameter-read:BLOCKED")),
+    census_premise(concat("no FABRICATED-RESIDUE (field-miss site with zero BLOCKING rows): ", rendered), !string_contains(s: rendered, pattern: "FABRICATED-RESIDUE")),
+    census_premise(concat("no twin blocked (no refusal of a valid program); blocked twins=", concat(census_int_text(n: twin_blocked), "; rows: "), rendered), twin_blocked == 0),
+    census_premise(concat("nothing NOT-RUNNABLE (an unrunnable census is not a verdict): ", rendered), !string_contains(s: rendered, pattern: "NOT-RUNNABLE")),
+    census_premise(concat("every field-miss site refused by a BLOCKING row (", concat(concat(census_int_text(n: miss_blocked), "/"), concat(census_int_text(n: count(miss_sites)), "); rows: "), rendered)), miss_blocked == count(miss_sites))
   ])
 }
 
