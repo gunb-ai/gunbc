@@ -143,7 +143,6 @@ fn dag_native_here_probe_ids() -> List<String> {
     direct_call_arg_type_v2_green_control_probe as String,
     direct_call_arg_type_v2_module_red_probe as String,
     sole_ctor_admitted_caller_green_probe as String,
-    sole_ctor_cast_red_probe as String,
     sole_ctor_unadmitted_caller_red_probe as String,
   ]
 }
