@@ -193,7 +193,7 @@ import gunbc.compute.work_request {
   ToolchainUnobserved, DependencyNotSucceeded, SubjectUnresolved, UnitMemoryGrantExceeded, UnitEndingUnclassifiable,
   work_outcome_wire, work_outcome_ending, work_outcome_ending_of, work_operation_canonical, work_outcome_identity, StoredOutcomeRead, StoredOutcomeFound, StoredOutcomeUnreadable, stored_outcome_decode, stored_outcome_is_success,
 }
-import gunbc.systemd_unit_names { compute_unit_name }
+import gunbc.systemd_unit_names { compute_unit_name, compute_unit_identity_from_name }
 
 
 // THE LOCAL PROVIDER: one of N behind the exact work contract, serving the host it runs on. It is a
@@ -1646,7 +1646,13 @@ fn unit_lifecycle_decide(o: UnitLifecycleObservations) -> UnitLifecycle {
 // load state, active state and result alone.
 fn unit_lifecycle_unpopulated(o: UnitLifecycleObservations) -> UnitLifecycle {
       if !o.load_state.queried {
-        UnitLifecycleUnknown { detail: "the user manager could not be queried for this unit's load state" }
+        // THE SPOOL READING TRAVELS WITH THIS REFUSAL. What the route consulted at the exit spool is a
+        // fact the reader holds even where the manager never answered, and a located diagnostic names
+        // every reading it made (gunbc.design_argument::fail_closed). It also keeps the two readings
+        // distinguishable on a lane with no user manager: a route that consulted nothing says so, and
+        // one that consulted the seat's partition reports what it found there. Neither frees a charge --
+        // the refusal stands whatever the spool says.
+        UnitLifecycleUnknown { detail: join(["the user manager could not be queried for this unit's load state; the exit-spool reading: ", seat_stop_record_wire(r: o.stop_record)], "") }
       } else if trim(s: o.load_state.value) == unit_load_state_absent_wire {
         // THE SAME RULE AS THE TERMINATION FOLD, DECIDED ON THE SAME READING. A transient --collect unit
         // that ran really is removed, so not-found CAN be an ending -- but it is also the state of a unit
@@ -3893,17 +3899,31 @@ fn compute_recovery_wire(r: ComputeRecovery) -> String {
 // below is one call.
 type UnitLifecycleSource
   = ObserveUnitLifecycle
+  | ObserveUnitLifecycleWithSeatRecord { instance: HostDashboardInstance }
   | SuppliedUnitLifecycle { lifecycle: UnitLifecycle }
   | SuppliedStoppableUnit { before: UnitLifecycle, after_stop: UnitLifecycle }
 
 fn unit_lifecycle_from_source(source: UnitLifecycleSource, unit: NonEmptyStr) -> UnitLifecycle {
   match source {
-    // THIS READING NEVER OPENS A SPOOL, so it answers with its own arm. Stated gap, named rather than
-    // hidden: the recovery door (compute_recover_cli) and the belt's resolver come through here, so a
-    // seat's record-bearing absence is not reachable on THOSE routes yet -- only on routes that hold the
-    // seat and read compute_seat_stop_record for it. Widening the door is its own change with its own wet
-    // witness; see recurring_failure_mode hold_recovered_by_age_not_observed_holder_death's named next rung.
+    // THE READING THAT HOLDS NO SEAT. Stated gap, now narrowed to its remainder: the two recovery
+    // doors (compute_recover_cli's attempt door and the census door) reach the spool through the arm
+    // below -- the rungs recurring_failure_mode hold_recovered_by_age_not_observed_holder_death named
+    // for them. What still comes through HERE is the belt's resolver and every route that never held
+    // a seat: a reading that opens no spool answers with its own arm, so its absence claim stays
+    // unproven rather than dressed as an observation of an end.
     ObserveUnitLifecycle => observe_unit_lifecycle(unit: unit, stop_record: SeatStopRecordNotConsulted { reason: "this reading observes the manager only; the route that holds the seat reads its record through compute_seat_stop_record" })
+    // THE DOORS' READING: the manager AND the seat's own exit spool, in one pass. The identity the
+    // spool files under is extracted by the minting authority itself (gunbc.systemd_unit_names
+    // compute_unit_identity_from_name), and a unit name that does not round-trip through it never
+    // names a partition: the reading stays the manager's, with that fact in its detail, rather than
+    // guessing a subject no hook could have filed. This is the rung the recovery of srv1's terminal
+    // seats was waiting on -- unit_lifecycle_unpopulated issues the ended arm ONLY beside
+    // SeatStopRecordFound, and until this arm the doors carried NotConsulted and could never reach it.
+    ObserveUnitLifecycleWithSeatRecord { instance } =>
+      match compute_unit_identity_from_name(unit: unit as String) {
+        Absent => observe_unit_lifecycle(unit: unit, stop_record: SeatStopRecordNotConsulted { reason: join(["the unit name ", unit as String, " was not minted by the compute seat's own stem authority, so no exit-spool subject can be named for it"], "") })
+        Present { value: identity_hex } => observe_unit_lifecycle(unit: unit, stop_record: compute_seat_stop_record(instance: instance, identity_hex: identity_hex))
+      }
     SuppliedUnitLifecycle { lifecycle: l } => l
     SuppliedStoppableUnit { before: b, after_stop: _ } => b
   }
@@ -3928,6 +3948,7 @@ fn compute_stop_unit(unit: NonEmptyStr) -> UnitStop {
 fn unit_stop_by_source(source: UnitLifecycleSource, unit: NonEmptyStr) -> UnitStop {
   match source {
     ObserveUnitLifecycle => compute_stop_unit(unit: unit)
+    ObserveUnitLifecycleWithSeatRecord { instance: _ } => compute_stop_unit(unit: unit)
     SuppliedUnitLifecycle { lifecycle: _ } => UnitStopped
     SuppliedStoppableUnit { before: _, after_stop: _ } => UnitStopped
   }
@@ -3962,11 +3983,11 @@ fn compute_recover_attempt_at(instance: HostDashboardInstance, holders: List<Com
     RecoveryRefused { detail: join(["the reference ", reference as String, " has an attempt slot in ", to_string(value: count(holders)), " seat directories, and a reference names exactly one hold; nothing was released"], "") }
   } else {
     match holders.first() {
-      Present { value: seat } => compute_recover_attempt_in(seat: seat, subject: subject, reference: reference, source: ObserveUnitLifecycle)
+      Present { value: seat } => compute_recover_attempt_in(seat: seat, subject: subject, reference: reference, source: ObserveUnitLifecycleWithSeatRecord { instance: instance })
       Absent =>
         match compute_seat_store(instance: instance, seat: ComputeFlatSeat) {
           ComputeSeatStoreUnready { detail: d } => RecoveryRefused { detail: join(["the attempts directory's own store is not ready: ", d], "") }
-          ComputeSeatStoreReady { store: seat } => compute_recover_attempt_in(seat: seat, subject: subject, reference: reference, source: ObserveUnitLifecycle)
+          ComputeSeatStoreReady { store: seat } => compute_recover_attempt_in(seat: seat, subject: subject, reference: reference, source: ObserveUnitLifecycleWithSeatRecord { instance: instance })
         }
     }
   }
@@ -4117,7 +4138,9 @@ fn compute_recover_release(subject: ComputeCapacitySubject, reference: NonEmptyS
 // lists each one's attempt slots, and for each reference renders exactly what
 // gunbc.compute.attempt_lifecycle recovery_write_authorization answers for that record against the unit's
 // live lifecycle -- the same authority the write path consumes, so a plan read from the census cannot disagree
-// with the door it will call. Authorized is rendered "fire" with the model's own reason; declined is "hold";
+// with the door it will call. That lifecycle is read through the SAME source the doors now use
+// (ObserveUnitLifecycleWithSeatRecord): manager and the seat's own exit spool, one reading, so the census and
+// the door cannot disagree about what the hook said either. Authorized is rendered "fire" with the model's own reason; declined is "hold";
 // a REFUSED authorization (the unit's lifecycle could not be read) is not a word at all: it makes the whole
 // census's OBSERVATION unknown, which is the same refusal the write path would answer with.
 //
@@ -4158,7 +4181,7 @@ type ComputeRecoverCatalog
   = RecoverCatalogEstablished { entries: List<RecoverCatalogEntry> }
   | RecoverCatalogUnknown { detail: String }
 
-fn compute_recover_catalog_for(stores: List<ComputeSeatStore>) -> ComputeRecoverCatalog {
+fn compute_recover_catalog_for(instance: HostDashboardInstance, stores: List<ComputeSeatStore>) -> ComputeRecoverCatalog {
   match compute_recover_census_pairs(stores: stores) {
     RecoverCensusPairsUnknown { detail: d } => RecoverCatalogUnknown { detail: d }
     RecoverCensusPairsListed { pairs: ps } =>
@@ -4178,7 +4201,7 @@ fn compute_recover_catalog_for(stores: List<ComputeSeatStore>) -> ComputeRecover
                   match now_epoch_seconds() {
                     Absent => RecoverCatalogUnknown { detail: join(["no clock for the attempt slot ", pair.reference as String, "; its window cannot be judged; the record names unit ", rec.unit], "") }
                     Present { value: now } => {
-                      let lifecycle = unit_lifecycle_from_source(source: ObserveUnitLifecycle, unit: rec.unit as NonEmptyStr)
+                      let lifecycle = unit_lifecycle_from_source(source: ObserveUnitLifecycleWithSeatRecord { instance: instance }, unit: rec.unit as NonEmptyStr)
                       match recovery_write_authorization(record: rec, lifecycle: lifecycle, now: now) {
                         RecoveryWriteRefused { reason: r } =>
                           RecoverCatalogUnknown { detail: join([pair.reference as String, ": ", r, "; the record names unit ", rec.unit], "") }
@@ -4199,7 +4222,7 @@ fn compute_recover_catalog(instance: HostDashboardInstance) -> ComputeRecoverCat
     ComputeSeatsListed { seats } =>
       match compute_seat_stores_of(instance: instance, seats: concat([ComputeFlatSeat], seats)) {
         ComputeSeatStoresUnready { detail: d } => RecoverCatalogUnknown { detail: join(["a seat's attempt store is not ready: ", d], "") }
-        ComputeSeatStoresReady { stores } => compute_recover_catalog_for(stores: stores)
+        ComputeSeatStoresReady { stores } => compute_recover_catalog_for(instance: instance, stores: stores)
       }
   }
 }
