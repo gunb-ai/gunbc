@@ -19857,6 +19857,7 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
                             scope.type_env.clone(),
                             span.clone(),
                             scope.module_name.clone(),
+                            scope.caller_decl_name.clone(),
                         )
                     }
                 };

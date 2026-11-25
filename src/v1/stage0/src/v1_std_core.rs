@@ -694,6 +694,8 @@ pub enum CompilerDiagnostic {
     },
     ExhaustivenessUnknown {
         scrutinee: String,
+        declaration: String,
+        module_path: String,
         span: Rc<SourceSpan>,
     },
     CircularDependency {
