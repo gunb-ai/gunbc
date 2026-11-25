@@ -17,9 +17,9 @@ module v2.test.claim.parse.prepared_child_first_summary
 // GUNBC_RECOMPUTE_TRACE=1, reports per-function duplicate demands of the form
 //   [recompute-trace] dup fn=<name> count=<N> total_ms=.. wasted_ms=..
 // The underlying function whose work is counted is v2.compiler.parse expr_first_fold_from_prepared
-// (the whole-subtree FIRST rebuild, parse.dag:1994) together with the FIRST-union and guard-summary
-// work it drives: expr_first_fold_choice (:1368) and first_list_union (:1303) for the union, and
-// first_keys_classes (:1253) for the guard key rows. The counter is the interpreter's own
+// (the whole-subtree FIRST rebuild) together with the FIRST-union and guard-summary
+// work it drives: expr_first_fold_choice and first_list_union for the union, and
+// first_keys_classes for the guard key rows. The counter is the interpreter's own
 // per-function duplicate-demand ledger keyed on (function, arguments); no per-.dag-function call
 // counter is reachable from a claim, and adding one would mean editing the frozen v1 seed Rust,
 // which is outside this lane's authority. Raw rows are pasted in the PR body for both legs.
