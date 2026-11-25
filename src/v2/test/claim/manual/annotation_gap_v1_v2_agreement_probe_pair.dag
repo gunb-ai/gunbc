@@ -86,10 +86,10 @@ data annotation_gap_v1_v2_agreement_probe_kind: AgreementProbeKind = DeliberateB
 
 data annotation_gap_v1_v2_agreement_probe_durable_ref: String = "refs/heads/red-control/parse-comment-gap-attachment-v2-consumed"
 
-// The date the pair was last EXECUTED, not the date this file was written: 2026-11-23 for the pair as cut,
-// re-executed 2026-11-24 after this receipt's own edit. Raw PASS/FAIL lines and each command's real exit status
+// The date the pair was last EXECUTED, not the date this file was written: 2026-11-23 for the pair as first cut,
+// re-executed 2026-11-24 and again 2026-11-25 after this receipt's own edit. Raw PASS/FAIL lines and each command's real exit status
 // are in the run log pinned on PR gunb-ai/gunbc#16942.
-data annotation_gap_v1_v2_agreement_probe_executed_on: String = "2026-11-24"
+data annotation_gap_v1_v2_agreement_probe_executed_on: String = "2026-11-25"
 
 data annotation_gap_v1_v2_agreement_probe_witness_module: String = "v2.test.claim.manual.annotation_gap_v1_v2_agreement"
 
@@ -102,12 +102,24 @@ data annotation_gap_v1_v2_agreement_probe_argv_roots: List<String> = ["dag", "sr
 
 data annotation_gap_v1_v2_agreement_probe_red_base: CommitSha = "8c86ee47f68ec1f451e25a8cb8f594a868e5c384"
 // red_at's FIRST PARENT is green_at: the break is one commit on top of the tree whose witness it runs
-// unchanged, which is the strictest form of the pair -- the two runs differ by the roster arm alone.
-data annotation_gap_v1_v2_agreement_probe_red_at: CommitSha = "ca2a086a1e69699aa95c0103a89b370a4127c447"
-// green_at is the commit the control was EXECUTED at and PASSED, on this PR lineage. The head carrying this receipt
-// is green_at plus one commit that touches only this receipt module, so the witness bytes are the same in
-// green_at, in the head, and in red_at (proven by git hash-object in the run log).
-data annotation_gap_v1_v2_agreement_probe_green_at: CommitSha = "08b009527e8fca04e87f819dee18708946cfcc41"
+// unchanged, which is the strictest form of the pair -- the two runs differ by the roster arm alone, shown by
+// `git diff <red_at>^ <red_at>` = src/v2/compiler/parse.dag, one deletion (blob 0f92e810f010 -> d38ad1ab8db9).
+// A break commit whose diff against its FIRST PARENT is EMPTY is not a break at all: the first attempt,
+// 5628441b9ec3b1ed6a1a2f79336700953fcffeaa, was built from a stale index so its tree equalled its first parent.
+// The FAIL observed there was a genuine run (claim_batch reads the working tree, and that tree did hold the break),
+// but the commit proved nothing -- so it is kept as a PARENT of red_at rather than being red_at, and no break
+// commit is ever deleted.
+data annotation_gap_v1_v2_agreement_probe_red_at: CommitSha = "08febdd150a4dc3df9d0b45b77897156a7ba47c1"
+// green_at is the commit the control was EXECUTED at and PASSED on this PR lineage, and it IS the head this
+// receipt is published from: the witness module hashes identically in green_at and red_at (git hash-object
+// 7e2127dc980971c13c0b1646947fd38725b227f5 on both sides, read out in the run log), so the pair's two runs differ
+// by the roster arm alone. This pair was RE-CUT at that head because the witness gained carriers after the
+// previous pair, and that pair's PASS does not carry forward (its witness bytes are not this head's). It was
+// genuinely executed and stays as history, not as this receipt's pair: red_at
+// ca2a086a1e69699aa95c0103a89b370a4127c447 / green_at 08b009527e8fca04e87f819dee18708946cfcc41, where
+// `git diff ca2a086a1e69699aa95c0103a89b370a4127c447^ ca2a086a1e69699aa95c0103a89b370a4127c447` is the roster arm
+// and nothing else.
+data annotation_gap_v1_v2_agreement_probe_green_at: CommitSha = "66e290f5ea8c24a3c118d50d998da0a35cea5702"
 // HOW THIS CONTROL IS EXECUTED, recorded because the instrument is not the obvious one, and a reader who
 // reaches for the floor's own two-root command will otherwise find the control unrunnable and conclude the
 // wrong thing. claim_batch with the floor's CLI roots (--source-root dag --source-root src/v2) cannot
@@ -118,7 +130,12 @@ data annotation_gap_v1_v2_agreement_probe_green_at: CommitSha = "08b009527e8fca0
 // (src/v1/stage0/src/cli_run.rs records widening the roots as ruled out: src/v1 and src/v2 collide on
 // twelve last segments, so a shared pool re-binds bare cross-module references), and the same refusal
 // falls on the precedent v2.test.claim.parse.data_initializer_layout_parse, which imports three of those
-// v1 modules and is listed as a gated row.
+// v1 modules (EXECUTED at tree d7de0f06938f5f072bc3a3b5c8c9ea0fffa343fd: three unresolved-import lines, FAIL, exit
+// status 1; the three-root form resolves it). That precedent is named in no roster either -- grep for its name in
+// src/v2/workflow/*.dag gives 0 hits at this head -- and no host matcher remains that could define the
+// stripped-name spelling under the test.claim.parse prefix row (grep for inside_required_gate in
+// src/v1/stage0/src/*.rs gives 0 hits), so under required_gate_admits its declared name is admitted by neither an
+// authored-module row nor a family prefix: the same finding, not a counterexample to it.
 // THE FLOOR THAT WOULD JUDGE A LISTED ROW HAS NO EXECUTOR. That is the reason this receipt claims no gate:
 // the condition under which a listed row becomes an executed one is declared ONCE, as the dissolution carrier
 // v2.compiler.staged_front_end front_end_placement_control_next_rung, and read back by
