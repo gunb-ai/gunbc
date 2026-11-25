@@ -146,17 +146,20 @@ type ServingEngineCgroupResidency {
   shmem: ByteSize
 }
 
-data srv14_strata_engine_residency_at_read: List<ServingEngineCgroupResidency> = [
-  ServingEngineCgroupResidency { unit: "strata-pool@a.service", anon: byte_size(3643953152), shmem: byte_size(16561729536) },
-  ServingEngineCgroupResidency { unit: "strata-pool@b.service", anon: byte_size(3633004544), shmem: byte_size(16561729536) },
-]
+// The two Strata engines (strata-pool@a/b) that this read once subtracted are RETIRED by the operator's
+// hand (gunbc.design_ruling::butch_serving_retirement_is_operator_handled_2026_11_21, executed 2026-11-24,
+// boot states gunbc.serving.serving_reservation::srv14_serving_unit_boot_states), so at the post-retirement
+// quiescent read below no engine is resident and the sum is empty -- the fixed-overhead term now measures
+// the whole non-reclaimable residency, which is the base overhead. The row stays (not deleted) so the
+// fixed-overhead function still names what it excluded: here, nothing.
+data srv14_strata_engine_residency_at_read: List<ServingEngineCgroupResidency> = []
 
 data srv14_memavailable_quiescent_read: HostMemAvailableQuiescentRead = HostMemAvailableQuiescentRead {
   host: operator_host_srv14,
-  account: "tidy-swift-586",
-  read_at: "2026-11-11T10:42:33Z (five same-instant samples 2 s apart; the MemTotal/MemAvailable pair and both cgroups' anon+shmem were stable across all five -- MemAvailable's high-water is the one recorded, per gunbc_ci_host_memavailable_observation_note)",
+  account: "fleet-automation-peer-executor",
+  read_at: "2026-11-24T03:58:42Z (fleet-converge host_memory_observe run 45321352046, peer-executor read host=srv1 subject_host=srv14, artifact host-memory-quiescent-observe-receipt 14888746623; taken after the operator hand-retired the two Strata engines, so it is the post-retirement quiescent high-water)",
   host_total: kibibyte_to_byte_size(k: kibibyte(count: 262937528)),
-  mem_available: kibibyte_to_byte_size(k: kibibyte(count: 218754516)),
+  mem_available: kibibyte_to_byte_size(k: kibibyte(count: 259550704)),
 }
 
 fn serving_engine_residency_total(rows: List<ServingEngineCgroupResidency>) -> ByteSize {
@@ -171,7 +174,7 @@ fn serving_engine_residency_total(rows: List<ServingEngineCgroupResidency>) -> B
 // minus the engines' cgroup charge it is an upper bound on the BASE residency, which is what the
 // fixed-overhead term owes while the serving reservation charges the engines their ceiling.
 // Saturating: an engine sum exceeding the resident bound is a read that contradicted itself, not a
-// business case -- it yields 0, and the witness pins that the non-contradicted reading is 4842987520.
+// business case -- it yields 0, and the witness pins that the non-contradicted reading is 3468107776.
 fn host_overhead_upper_bound_excluding_serving(
   read: HostMemAvailableQuiescentRead,
   engines: List<ServingEngineCgroupResidency>,
@@ -182,7 +185,7 @@ fn host_overhead_upper_bound_excluding_serving(
 
 data gunbc_ci_srv14_host_fixed_overhead: HostFixedOverhead = HostFixedOverheadMeasured {
   bytes: host_overhead_upper_bound_excluding_serving(read: srv14_memavailable_quiescent_read, engines: srv14_strata_engine_residency_at_read),
-  provenance: "butch (srv14): /proc/meminfo (MemTotal 262937528 kB, MemAvailable high-water 218754516 kB of five same-instant samples) minus the two Strata engine cgroups' memory.stat anon+shmem at the same instant (strata-pool@a 3643953152+16561729536, strata-pool@b 3633004544+16561729536) = 4842987520 bytes (~4.51 GiB: kernel, base services, host-side caches), read over SSH by the B3b bring-up 2026-11-11T10:42Z. The engines are EXCLUDED because the operator ruled them charged against runner capacity: B4a's gunbc.serving.serving_reservation host_memory_reserved takes each engine's cgroup MemoryMax (B4b reads it; until then butch's width fails closed), and counting their anon here too would double-charge -- gunbc.integration_concern serving_width_uses_pre_engine_fixed_overhead is the same trap for srv3/srv4, avoided here by construction. DISSOLVES when butch arms its first CI work: an arm-time high-water (HostMemAvailableObservation shape) then supersedes this quiescent bound, per gunbc_ci_host_memavailable_observation_note. Verified at read time: 273038643200 bytes MemFree, SwapFree == SwapTotal (0 B used host-wide, 0 B in both engine cgroups), 80 logical CPUs, no runner accounts existed yet.",
+  provenance: "butch (srv14): /proc/meminfo MemTotal 262937528 kB (269248028672 B) minus MemAvailable high-water 259550704 kB (265779920896 B) at the post-retirement quiescent read = 3468107776 bytes (~3.23 GiB: kernel, base services, host-side caches), read over SSH by fleet-converge host_memory_observe run 45321352046 (peer-executor host=srv1 subject_host=srv14, artifact host-memory-quiescent-observe-receipt 14888746623) on 2026-11-24T03:58:42Z, after the operator hand-retired butch's two Strata engines (gunbc.design_ruling::butch_serving_retirement_is_operator_handled_2026_11_21; boot states gunbc.serving.serving_reservation::srv14_serving_unit_boot_states). The engines are now ABSENT (srv14_strata_engine_residency_at_read is empty), so the whole non-reclaimable residency at this instant IS the base overhead and nothing is subtracted for serving; the reservation that once charged them is retired in the same change. This supersedes the 2026-11-11 B3b pre-retirement bound (4842987520 B), which had subtracted the two engine cgroups' anon+shmem at a moment when they still ran. DISSOLVES when butch arms its first CI work: an arm-time high-water (HostMemAvailableObservation shape) then supersedes this quiescent bound, per gunbc_ci_host_memavailable_observation_note.",
 }
 
 data gunbc_ci_legacy_host_fixed_overhead: HostFixedOverhead = HostFixedOverheadAllowance {

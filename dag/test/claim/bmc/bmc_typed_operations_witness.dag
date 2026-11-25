@@ -77,6 +77,7 @@ test fn failed_threshold_transport_cannot_become_threshold_unstated() -> Bool {
       success: false,
       stdout: "",
       stderr: "SSH host identity verification failed",
+      wall_deadline_seconds: Absent,
     },
   ) {
     OpenBmcSensorValueRefused { reason } =>
@@ -189,6 +190,7 @@ test fn path_transport_whitespace_becomes_one_typed_path() -> Bool {
       success: true,
       stdout: "  /usr/share/swampd/config-asrr.json\n",
       stderr: "",
+      wall_deadline_seconds: Absent,
     },
   ) {
     OpenBmcPathObserved { path } =>
@@ -204,6 +206,7 @@ test fn multiple_nonempty_paths_are_refused() -> Bool {
       success: true,
       stdout: "/usr/share/swampd/config.json\n/usr/share/swampd/config-asrr.json\n",
       stderr: "",
+      wall_deadline_seconds: Absent,
     },
   ) {
     OpenBmcPathRefused { reason: _ } => true
@@ -218,6 +221,7 @@ test fn empty_path_transport_is_refused() -> Bool {
       success: true,
       stdout: "\n",
       stderr: "",
+      wall_deadline_seconds: Absent,
     },
   ) {
     OpenBmcPathRefused { reason: _ } => true
@@ -232,6 +236,7 @@ test fn zone_failsafe_transport_becomes_typed_bool() -> Bool {
       success: true,
       stdout: "b true\n",
       stderr: "",
+      wall_deadline_seconds: Absent,
     },
   ) {
     OpenBmcBoolObserved { value } => value
@@ -246,6 +251,7 @@ test fn wrong_busctl_type_cannot_become_zone_failsafe_bool() -> Bool {
       success: true,
       stdout: "s true\n",
       stderr: "",
+      wall_deadline_seconds: Absent,
     },
   ) {
     OpenBmcBoolRefused { reason: _ } => true
@@ -260,6 +266,7 @@ test fn disk_usage_transport_becomes_typed_byte_size() -> Bool {
       success: true,
       stdout: "Filesystem 1024-blocks Used Available Capacity Mounted on\n/dev/root 10000 7500 2500 75% /\n",
       stderr: "",
+      wall_deadline_seconds: Absent,
     },
   ) {
     OpenBmcByteSizeObserved { value } => byte_size_count(value) == 2560000
@@ -274,6 +281,7 @@ test fn utc_epoch_seconds_become_epoch_milliseconds() -> Bool {
       success: true,
       stdout: "1722345678\n",
       stderr: "",
+      wall_deadline_seconds: Absent,
     },
   ) {
     OpenBmcInstantObserved { observed_at } => observed_at == 1722345678000
@@ -288,6 +296,7 @@ test fn false_path_probe_is_observed_not_transport_refused() -> Bool {
       success: false,
       stdout: "",
       stderr: "",
+      wall_deadline_seconds: Absent,
     },
   ) {
     OpenBmcBoolObserved { value } => !value
@@ -302,6 +311,7 @@ test fn exit_one_path_probe_with_stderr_is_refused() -> Bool {
       success: false,
       stdout: "",
       stderr: "test: /usr/share/swampd/config.json: permission denied",
+      wall_deadline_seconds: Absent,
     },
   ) {
     OpenBmcBoolRefused { reason } =>
@@ -317,6 +327,7 @@ test fn ssh_failure_cannot_masquerade_as_false_path_probe() -> Bool {
       success: false,
       stdout: "",
       stderr: "SSH host identity verification failed",
+      wall_deadline_seconds: Absent,
     },
   ) {
     OpenBmcBoolRefused { reason } =>
@@ -332,6 +343,7 @@ test fn inconsistent_success_projection_is_refused() -> Bool {
       success: false,
       stdout: "",
       stderr: "inconsistent transport projection",
+      wall_deadline_seconds: Absent,
     },
   ) {
     OpenBmcBoolRefused { reason } => reason == "inconsistent transport projection"
@@ -346,6 +358,7 @@ test fn inactive_service_is_observed_not_transport_refused() -> Bool {
       success: false,
       stdout: "inactive\n",
       stderr: "",
+      wall_deadline_seconds: Absent,
     },
   ) {
     OpenBmcBoolObserved { value } => !value
@@ -360,6 +373,7 @@ test fn exit_three_service_probe_with_stderr_is_refused() -> Bool {
       success: false,
       stdout: "inactive\n",
       stderr: "systemctl: failed to query unit state",
+      wall_deadline_seconds: Absent,
     },
   ) {
     OpenBmcBoolRefused { reason } =>
@@ -375,6 +389,7 @@ test fn failed_service_state_is_preserved_in_refusal() -> Bool {
       success: false,
       stdout: "failed\n",
       stderr: "",
+      wall_deadline_seconds: Absent,
     },
   ) {
     OpenBmcBoolRefused { reason } =>
@@ -390,6 +405,7 @@ test fn nonzero_exit_cannot_become_observed_path_when_success_flag_is_true() -> 
       success: true,
       stdout: "/usr/share/swampd/config.json\n",
       stderr: "",
+      wall_deadline_seconds: Absent,
     },
   ) {
     OpenBmcPathRefused { reason } =>
@@ -405,6 +421,7 @@ test fn nonzero_exit_cannot_become_observed_zone_when_success_flag_is_true() -> 
       success: true,
       stdout: "b false\n",
       stderr: "",
+      wall_deadline_seconds: Absent,
     },
   ) {
     OpenBmcBoolRefused { reason } =>
@@ -420,6 +437,7 @@ test fn nonzero_exit_cannot_become_observed_disk_when_success_flag_is_true() -> 
       success: true,
       stdout: "Filesystem 1K-blocks Used Available Use%\n/dev/root 1000 100 900 10%\n",
       stderr: "",
+      wall_deadline_seconds: Absent,
     },
   ) {
     OpenBmcByteSizeRefused { reason } =>
@@ -435,6 +453,7 @@ test fn nonzero_exit_cannot_become_observed_time_when_success_flag_is_true() -> 
       success: true,
       stdout: "1722345678\n",
       stderr: "",
+      wall_deadline_seconds: Absent,
     },
   ) {
     OpenBmcInstantRefused { reason } =>
@@ -450,6 +469,7 @@ test fn exit_zero_service_probe_requires_exact_active_token() -> Bool {
       success: true,
       stdout: "activating\n",
       stderr: "",
+      wall_deadline_seconds: Absent,
     },
   ) {
     OpenBmcBoolRefused { reason } =>

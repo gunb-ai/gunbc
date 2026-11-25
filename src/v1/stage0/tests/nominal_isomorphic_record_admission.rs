@@ -413,21 +413,25 @@ fn arm_at_second_slot_sharing_a_coproduct_constrained_type_variable_is_accepted(
 }
 
 fn run_fixture(root: &Path, entry: &Path, function: &str) -> std::process::Output {
+    // Derive the label from the entry path relative to the fixture root.
+    let rel = entry
+        .strip_prefix(root)
+        .expect("entry under fixture root")
+        .to_string_lossy()
+        .trim_end_matches(".dag")
+        .to_string();
+    let label = format!("//{rel}:{function}");
     Command::new(env!("CARGO_BIN_EXE_gunbc"))
         .current_dir(repo_root())
         .args([
-            "run",
+            "test",
             "--source-root",
             root.to_string_lossy().as_ref(),
             "--source-root",
             "dag",
             "--source-root",
             "src/v2",
-            "--entry",
-            entry.to_string_lossy().as_ref(),
-            "--function",
-            function,
-            "--claim-run",
+            &label,
         ])
         .output()
         .expect("invoke production gunbc on the nominal-admission fixture")

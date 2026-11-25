@@ -22,7 +22,7 @@ import extdeps.rust.cargo { CargoTarget, Bin }
 data devboot_program_package: String = "v1-compiler"
 
 fn offered_programs() -> List<String> {
-  ["gunbc", "claim_batch", "claim_executor"]
+  ["gunbc", "claim_executor"]
 }
 
 type ProgramSelection

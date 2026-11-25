@@ -78,9 +78,13 @@ fn exact_head_receipt(head: CommitSha) -> VerificationReceipt {
         command: ModeledValidationCommand {
           label: "gunbc-claim" as NonEmptyStr,
           program: "/opt/gunbc/bin/gunbc" as FilePath,
+          // THE ROUTE SHAPE, NAMING THE CLAIM THE ROW ALREADY DECLARES. This is fixture input for the receipt
+          // model, never spawned: `dag/test/claim/exact_head_test.dag` exists nowhere in the corpus (recorded
+          // rather than invented here), and the words now say what a migrated caller would say -- the claim is
+          // named by its label, and the entrypoint is `test`.
           args: [
-            "run", "--claim-run", "--entry",
-            "dag/test/claim/exact_head_test.dag", "--function", "exact_head_holds",
+            "test", "--source-root", "dag", "--source-root", "src/v2",
+            "//test/claim/exact_head_test:exact_head_holds",
           ],
         },
         exit_code: 0,
@@ -90,7 +94,7 @@ fn exact_head_receipt(head: CommitSha) -> VerificationReceipt {
       },
     ],
     verdict: ValidationPassed {
-      command: "/opt/gunbc/bin/gunbc run --claim-run",
+      command: "/opt/gunbc/bin/gunbc test",
       oracle_identity: content_hash_of_value(value: "pinned-oracle"),
     },
   }

@@ -7,7 +7,15 @@ import gunbc.ci.ci_layer_roots { witness_layer_roots }
 import gunbc.output_policy { ExpectSuccess }
 import std.logic { Bool }
 import std.types { String }
-import gunbc.instruments.host_prelude { ClaimRun, claim_batch_claims_argv, witness_bin_release_path }
+import gunbc.instruments.host_prelude {
+  ClaimRun,
+  TestClaimsArgvBuilt,
+  TestClaimsArgvRefused,
+  gunbc_test_claims_argv,
+  witness_bin_release_path,
+}
+import gunbc.gunbc_cli_command { TestBatchMode, WetBatch }
+import gunbc.ci.ci_release_bins { gunbc_release_bin_name }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -18,23 +26,44 @@ data subject_source_roots_note: String = "witness_layer_roots (dag + src/v2), NO
 
 data frontier_marker: String = "[expectation-frontier]"
 
-fn claim_batch_path() -> String {
+fn verb_path() -> String {
   let root = git.Inspect.Toplevel()
-  witness_bin_release_path(root: root.path, bin_name: "claim_batch")
+  witness_bin_release_path(root: root.path, bin_name: gunbc_release_bin_name)
 }
 
+// THE SUBJECT RUNS AS A REAL `gunbc test` CHILD, WET, AND ITS STDERR IS THE OBSERVATION. Wet is the
+// mode the subject needs (its effects reach Filesystem.Read); hermetic would refuse the effects and
+// the entry would dispatch nothing, which reds this witness for a reason unrelated to the mechanism
+// under test -- the same false-red trap the roots note above records. The receipt the claim route
+// prints is rendered by the ONE function in `v1_interpreter` that the legacy batch called, so
+// migrating the child does not quietly change the line: a rename or a dropped count fails the
+// consumer, not the counter.
+// THE ARGV BUILDER RETURNS A SUM, NOT THE ARGV. `gunbc_test_claims_argv` answers
+// `TestClaimsArgv = Built { argv } | Refused { .. }`; handing that value straight to
+// WitnessBin.Run's `args:` (which is a List<String>) made the seed pass the child its Debug rendering
+// -- `unrecognized subcommand 'TestClaimsArgvBuilt { argv: [test, ...] }'` on stderr -- so the child
+// never ran, printed no frontier receipt, and the claim reds for the wrong reason. The sum is matched
+// the way host_prelude's own `run_gunbc_claims_ready` matches it: a Refused request means the subject
+// was never asked, so the observation is the empty stderr (the positive frontier claim then reds,
+// because a receipt that was never emitted is not a receipt), and only a Built request runs the argv.
 fn run_entry_capturing_stderr(entry: String, function: String) -> String {
   let root = git.Inspect.Toplevel()
-  let result = gunbc.WitnessBin.Run(
-    workdir: root.path,
-    bin_path: claim_batch_path(),
-    args: claim_batch_claims_argv(
-      source_roots: witness_layer_roots,
-      claims: [ClaimRun { entry: entry, function: function }]
-    ),
-    expect: ExpectSuccess
-  )
-  result.stderr
+  match gunbc_test_claims_argv(
+    source_roots: witness_layer_roots,
+    claims: [ClaimRun { entry: entry, function: function }],
+    mode: WetBatch
+  ) {
+    TestClaimsArgvRefused { entry: _, function: _, reason: _ } => ""
+    TestClaimsArgvBuilt { argv: argv } => {
+      let result = gunbc.WitnessBin.Run(
+        workdir: root.path,
+        bin_path: verb_path(),
+        args: argv,
+        expect: ExpectSuccess
+      )
+      result.stderr
+    }
+  }
 }
 
 data undeclared_subject_note: String = "generated_artifact_drift_fixed_point_witness_test reaches Filesystem.Read from .dag call sites that carry no `expect:` — measured 67 undeclared dispatches at the time of writing (count tracks committed artifact registry size). The COUNT is deliberately not pinned: it tracks how many artifacts the registry holds and would turn an unrelated registry edit into a red here, which is the brittle-pin failure this corpus already knows. The claim is the receipt's PRESENCE, which is the property the mechanism actually owns."
