@@ -1,4 +1,4 @@
-module v2.test.claim.enforcement_inventory_witness
+module test.claim.enforcement_inventory_witness
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
@@ -10,7 +10,7 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // Excluded from per-PR discovery via witness_exclusion_frontier row
 // enforcement_inventory_witness.dag (OfflineLocalRecipe, same dissolve_on as
 // enforcement_live_witness.dag). Local recipe: claim_batch --source-root dag --source-root
-// src/v2 --entry src/v2/test/claim/enforcement_inventory_witness.dag --function
+// src/v2 --entry src/test.claim.enforcement_inventory_witness.dag --function
 // enforcement_inventory_global_receipt_holds --claim-run --wet. Two frontier-reconciliation tests
 // (enforcement_live specimen + row-count) are cheap but share this file grain.
 
