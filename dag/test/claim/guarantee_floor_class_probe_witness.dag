@@ -48,7 +48,7 @@ import gunbc.compile_diagnostic_census {
   CensusNotRunnable,
 }
 import gunbc.compile_diagnostic_census { census_blocking_rows, CompileDiagnosticCensusRow }
-import gunbc.compile_census_probe { blocking_class_census, blocking_subject_census, total_rows_census, census_int_text, census_verdict, census_verdict_all, census_premise, census_exit, CensusVerdict, CensusHeld, CensusDisagreed, CensusUnobserved }
+import gunbc.compile_census_probe { blocking_class_census, blocking_subject_census, total_rows_census, total_blocking_census, any_class_census, census_int_text, census_verdict, census_verdict_all, census_premise, census_exit, CensusVerdict, CensusHeld, CensusDisagreed, CensusUnobserved }
 import gunbc.guarantee_measurement { GuaranteeProbeId, MeasurementRevision }
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.algebra { fold_list, string_contains }
@@ -301,8 +301,10 @@ fn floor_census_render_row(row: FloorCensusRow) -> String {
 // review 17051.
 data field_through_generics_deferral_lambda_param_source: String = "module probe_floor_field_deferral_lambda_v2\ntype Boxed<T> { inner: T }\nfn apply2<T, R>(x: T, k: Int, f: fn(T, Int) -> R) -> R { f(x, k) }\nfn g() -> Int { apply2(x: Boxed { inner: 5 }, k: 0, f: (x_a, k_a) => x_a.no_such_field) }\n"
 // ACCEPTED POSITIVE CONTROL: same shape reading the field that EXISTS on the
-// instantiated base (Boxed<Int>); measured RC=0 with the released pack, so the census
-// can tell zero-because-clean from zero-because-blind on this shape.
+// instantiated base (Boxed<Int>); measured RC=0 with the released pack (gunbc sha
+// 6707d9c4...), with exactly one ADVISORY row (EffectSummaryIncompleteAtFunctionValue at
+// apply2 - an effect-summary lower bound, not a refusal), so the census can tell
+// zero-because-clean from zero-because-blind on this shape: zero BLOCKING rows.
 data field_through_generics_deferral_lambda_param_green_source: String = "module probe_floor_field_deferral_lambda_green_v2\ntype Boxed<T> { inner: T }\nfn apply2<T, R>(x: T, k: Int, f: fn(T, Int) -> R) -> R { f(x, k) }\nfn g() -> Int { apply2(x: Boxed { inner: 5 }, k: 0, f: (x_a, k_a) => x_a.inner) }\n"
 data field_through_generics_deferral_generic_result_source: String = "module probe_floor_field_deferral_result\ntype Boxed<T> { inner: T }\nfn g() -> Int { Boxed.no_such_field }\n"
 // RE-LABELLED 2026-11-25 after #17051 review. The earlier string wrote the record
@@ -375,13 +377,23 @@ test fn floor_field_through_generics_deferral_lambda_param_refuses() -> ProcessE
   ])
 }
 
-// ACCEPTED POSITIVE CONTROL: reading the field that EXISTS on the instantiated callback
-// receiver is accepted with zero rows (measured RC=0, main pack). Paired with the refusal
-// above it makes the wall discriminating rather than blanket.
+// ACCEPTED POSITIVE CONTROL, MEASURED 2026-11-25 (released pack, gunbc sha 6707d9c4...):
+// the twin compiles RC=0 with EXACTLY ONE diagnostic - an ADVISORY class
+// EffectSummaryIncompleteAtFunctionValue at apply2, which calls through a function value, so
+// its effect summary is a lower bound. That advisory is unconstructibly absent only if the
+// compiler changes its effect join: the twin's total census is NOT zero, and the first
+// version of this leg (ExpectZeroDiagnostics) refused its own control for exactly that
+// reason (legW FAIL, 2026-11-25). The premises below state the measured shape exactly: zero
+// BLOCKING rows (the wall makes no refusal here - the census classifies this site CLEAN),
+// one advisory row, one row total, and the row belongs to the EffectSummaryIncompleteAtFunctionValue
+// class. The advisory's subject (the caller identity, module-qualified "....apply2") is
+// pinned in the corpus row's ExpectAcceptedCounted class; it is not double-counted here.
 test fn floor_field_through_generics_deferral_lambda_param_green_control_is_accepted() -> ProcessExit {
   census_verdict_all([
-    census_premise("the twin row expects zero diagnostics", row_holds(probe: floor_field_through_generics_deferral_lambda_param_green_probe, source: field_through_generics_deferral_lambda_param_green_source)),
-    census_verdict(census: total_rows_census(source: field_through_generics_deferral_lambda_param_green_source), holds: fn(n) { n == 0 })
+    census_premise("the twin row's accepted-counted expectation holds", row_holds(probe: floor_field_through_generics_deferral_lambda_param_green_probe, source: field_through_generics_deferral_lambda_param_green_source)),
+    census_verdict(census: total_blocking_census(source: field_through_generics_deferral_lambda_param_green_source), holds: fn(n) { n == 0 }),
+    census_verdict(census: any_class_census(source: field_through_generics_deferral_lambda_param_green_source, wanted_class: "EffectSummaryIncompleteAtFunctionValue"), holds: fn(n) { n == 1 }),
+    census_verdict(census: total_rows_census(source: field_through_generics_deferral_lambda_param_green_source), holds: fn(n) { n == 1 })
   ])
 }
 

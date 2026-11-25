@@ -188,8 +188,13 @@ data floor_field_through_generics_class: GuaranteeClassId = "floor-field-through
 // lambda-parameter base reading through an instantiated generic record, and a field read on the
 // result of a generic call whose base instantiates to a record all refuse LOCATED
 // (InternalError naming the field and the resolved base label at the fixture span); reading the
-// field that EXISTS on those same instantiated bases is ACCEPTED (the ExpectZeroDiagnostics
-// twins are the accepted positive controls that make the refusals discriminating; the bare-generic-name probe is the one exception, and by design - a bare generic type name in value position has no reading of an existing field that would type, so no accepted twin exists for it). NO hole row
+// field that EXISTS on those same instantiated bases is ACCEPTED (the twins are the accepted
+// positive controls that make the refusals discriminating: the generic-result twin carries an
+// ExpectZeroDiagnostics row; the lambda-parameter twin's measured census is one ACCEPTED
+// advisory row, class EffectSummaryIncompleteAtFunctionValue - an effect-summary lower bound
+// at the function-value call, zero blocking rows - so its row expects that counted advisory
+// rather than zero; and the bare-generic-name probe has no twin by design - a bare generic
+// type name in value position has no reading of an existing field that would type). NO hole row
 // is enrolled for this class: the earlier note here claimed a live fabrication on an unsolved
 // type-variable result and a hole row with a closing trigger - that observation was a
 // comparison-chain MIS-PARSE of an explicit-type-argument record literal (review 17051), not a
@@ -682,14 +687,20 @@ fn guarantee_probe_rows() -> List<GuaranteeProbeRow> {
       expectation: ExpectBlockingRefusal { diagnostic_class: "InternalError" as NonEmptyStr },
     },
     GuaranteeProbeRow {
-      // Flipped 2026-11-25 after review 17051: the twin reads the field that EXISTS on
-      // the instantiated callback receiver (Boxed { inner: 5 } with T inferred), which is
-      // a valid program - measured RC=0 with the main pack. Enrolling it as a refusal
-      // control pinned a refusal the wall does not (and must not) make.
+      // MEASURED 2026-11-25 (released pack, gunbc sha 6707d9c4...): the twin reads the
+      // field that EXISTS on the instantiated callback receiver (Boxed { inner: 5 } with T
+      // inferred) - a valid program, RC=0, ZERO blocking rows. Enrolling it as a refusal
+      // control pinned a refusal the wall does not (and must not) make. Its census is not
+      // zero-total: it carries exactly one advisory row, class
+      // EffectSummaryIncompleteAtFunctionValue, subject the module-qualified caller
+      // identity probe_floor_field_deferral_lambda_green_v2.apply2 (the effect summary of a
+      // call through a function value is a lower bound). The earlier ExpectZeroDiagnostics
+      // standing refused its own control for that one advisory (legW FAIL 2026-11-25); this
+      // row now expects the observed accepted advisory instead.
       probe: floor_field_through_generics_deferral_lambda_param_green_probe,
       class: floor_field_through_generics_deferral_class,
       path: v1_compile_rust_path_id,
-      expectation: ExpectZeroDiagnostics,
+      expectation: ExpectAcceptedCounted { diagnostic_class: "EffectSummaryIncompleteAtFunctionValue" as NonEmptyStr },
     },
     GuaranteeProbeRow {
       // The bare-generic-name shape. NO accepted twin by design: the base is the type
