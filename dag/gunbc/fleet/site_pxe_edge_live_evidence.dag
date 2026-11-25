@@ -323,11 +323,25 @@ fn site_pxe_edge_live_path_standing(path: String, as_required: HostLeg, anything
   match as_required {
     LegAnswered { exit_code: ar_code, stdout: ar_out, stderr: ar_err } =>
       if ar_code == 0 && trim(s: ar_out) == path {
+        // (a) The property find printed EXACTLY the path: the requirement was measured and MET.
         PathAsRequired
-      } else if ar_code == 0 {
-        // The property probe SUCCEEDED and did not print the path: the requirement was measured and found unmet.
-        // This is the ONLY route to PathPresentButNotAsRequired (via the existence probe, which says it is there).
+      } else if ar_code == 0 && trim(s: ar_out) == "" {
+        // (b) The property probe SUCCEEDED and printed NOTHING: the requirement was measured and found unmet.
+        // This is the ONLY route to PathPresentButNotAsRequired, and only when the existence probe confirms the
+        // path is there (a completed, empty property read says nothing about absence).
         site_pxe_edge_live_path_standing_from_anything(path: path, anything: anything)
+      } else if ar_code == 0 {
+        // (c) THE REPLY IS MALFORMED (fox round 5 at 153ae43d). A property find that exited 0 but printed something
+        // that is neither the path nor nothing -- "notice\n/srv/tftp/live\n", another path, a warning line -- printed
+        // no verdict about THIS path's properties. Exit 0 alone is not a measurement: like a lost reply, it may
+        // accompany a confirmed presence but can never refute the requirement, and its own text is kept so the
+        // operator sees the malformed reply instead of a fabricated mismatch. Absence and a failed existence probe
+        // are still decided by the existence leg, which did complete.
+        site_pxe_edge_live_property_read_lost(
+          path: path,
+          property_cause: concat("the property probe exited 0 with an unexpected reply: <", trim(s: ar_out), ">"),
+          anything: anything,
+        )
       } else {
         // The property probe itself ERRORED: the requirement was never measured, so an answered existence probe may
         // establish presence but can never establish a mismatch (fox round 4 at 5b5829eb, Blocker 2). The property
@@ -345,9 +359,10 @@ fn site_pxe_edge_live_path_standing(path: String, as_required: HostLeg, anything
   }
 }
 
-// A PROPERTY READ THAT NEVER COMPLETED KEEPS ITS CAUSE (fox round 3 at 649e7857, widened at round 4). The property
-// probe is the ONLY thing that can refute "as required", so while its reply is lost, it was never handed to the
-// host, or IT ERRORED, the existence probe may establish PRESENCE but may never establish a MISMATCH:
+// A PROPERTY READ THAT NEVER GAVE A VERDICT KEEPS ITS CAUSE (fox round 3 at 649e7857; widened at round 4 to an
+// ERRORED probe and at round 5 to a MALFORMED one). The property probe is the ONLY thing that can refute "as
+// required", so while its reply is lost, was never handed to the host, ERRORED, or exited 0 printing something that
+// is neither the path nor nothing, the existence probe may establish PRESENCE but may never establish a MISMATCH:
 // PathPresentButNotAsRequired is reserved for a property find that SUCCEEDED and printed nothing while the path
 // itself printed. Presence without a completed property check reads PathPresenceUnverified carrying the property
 // probe's cause; an absence or a failed existence probe is still decided by the existence leg alone, which did
@@ -406,7 +421,7 @@ fn site_pxe_edge_live_trusted_chain_to(host: CommandHost, segments: List<String>
           PathAsRequired => LivePlacementDone
           PathAbsent => LivePlacementRefused { step: concat("find ", p), reason: "an ancestor of the TFTP root is absent; nothing was placed" }
           PathPresentButNotAsRequired => LivePlacementRefused { step: concat("find ", p), reason: "an ancestor of the TFTP root is not a real root-owned directory closed to group and other writes; nothing was placed" }
-          PathPresenceUnverified { reason: r } => LivePlacementRefused { step: concat("find ", p), reason: concat("an ancestor of the TFTP root is present but its required properties were never read: ", r, "; nothing was placed") }
+          PathPresenceUnverified { reason: r } => LivePlacementRefused { step: concat("find ", p), reason: concat("an ancestor of the TFTP root is present but its required properties could not be verified: ", r, "; nothing was placed") }
           PathObservationFailed { reason: r } => LivePlacementRefused { step: concat("find ", p), reason: concat(r, "; the ancestor was not observed, so nothing was placed") }
         }
       }
@@ -427,7 +442,7 @@ fn site_pxe_edge_live_ensure_real_dir_on(host: CommandHost, tftp_root: NonEmptyS
   match site_pxe_edge_live_path_standing_on(host: host, path: path, kind: "d") {
     PathAsRequired => LivePlacementDone
     PathPresentButNotAsRequired => LivePlacementRefused { step: concat("find ", path), reason: "not a real root-owned directory closed to group and other writes; nothing was written through it" }
-    PathPresenceUnverified { reason: r } => LivePlacementRefused { step: concat("find ", path), reason: concat("something is at the path but its required properties were never read: ", r, "; nothing was written through it") }
+    PathPresenceUnverified { reason: r } => LivePlacementRefused { step: concat("find ", path), reason: concat("something is at the path but its required properties could not be verified: ", r, "; nothing was written through it") }
     PathObservationFailed { reason: r } => LivePlacementRefused { step: concat("find ", path), reason: concat(r, "; absence was not established, so nothing was created") }
     PathAbsent => {
       let c = sudo_elevate_command(command: argv_words(command: mkdir_create_only_with_mode_command(path: path, octal_mode: "0755" as NonEmptyStr)))

@@ -2384,6 +2384,63 @@ test fn an_answered_property_probe_error_over_an_established_presence_is_not_a_r
   errored_keeps_the_error && errored_is_not_the_mismatch && still_absent && still_absent_publishes && completed_refutes
 }
 
+// FOX ROUND 5 (at 153ae43d, the one remaining blocker): EXIT 0 IS NOT A MEASUREMENT. A property find that exited 0
+// but printed something that is NEITHER the path NOR nothing -- "notice\n/srv/tftp/live\n", another path, a warning
+// line -- printed no verdict about THIS path's properties, yet at 153ae43d the `ar_code == 0` branch handed the pair
+// to the existence fold and a confirmed presence came back as PathPresentButNotAsRequired: a refuted requirement
+// nobody measured. A successful property read now splits THREE ways -- exactly the path (satisfied), empty (the only
+// thing that may refute, and only over a confirmed presence), and malformed (PathPresenceUnverified, naming the
+// reply). CONTROL: that exact pair, driven through the production dispatch, asserting the refusal reason an operator
+// reads; plus the two neighbours that must NOT move.
+test fn a_property_probe_that_exited_zero_with_an_unexpected_reply_never_refutes_the_requirement() -> Bool {
+  let p = "/srv/tftp/live"
+  let malformed = site_pxe_edge_live_path_standing(
+    path: p,
+    as_required: ans(code: 0, out: "notice\n/srv/tftp/live\n", err: ""),
+    anything: ans(code: 0, out: "/srv/tftp/live\n", err: ""),
+  )
+  let malformed_is_unverified = match malformed { PathPresenceUnverified { reason: _ } => true  _ => false }
+  let malformed_is_not_the_mismatch = match malformed { PathPresentButNotAsRequired => false  _ => true }
+  // THE PRODUCTION DISPATCH, not a copy: a malformed property reply must REFUSE, and its reason must name the
+  // malformed reply, keep the "could not be verified" wording, and never claim the mismatch.
+  let refused = match site_pxe_edge_live_member_dispatch(standing: malformed) {
+    DispatchRefused { reason: r } =>
+      string_contains(s: r, pattern: "unexpected reply")
+        && string_contains(s: r, pattern: "notice")
+        && string_contains(s: r, pattern: "could not be verified")
+        && string_contains(s: r, pattern: "nothing was overwritten")
+        && !string_contains(s: r, pattern: "is not a root-owned regular file")
+    _ => false
+  }
+  // A different-path reply is the same case, and must name what came back.
+  let other_reply = match site_pxe_edge_live_member_dispatch(standing: site_pxe_edge_live_path_standing(
+    path: p,
+    as_required: ans(code: 0, out: "/srv/tftp/other\n", err: ""),
+    anything: ans(code: 0, out: "/srv/tftp/live\n", err: ""),
+  )) {
+    DispatchRefused { reason: r } => string_contains(s: r, pattern: "unexpected reply") && string_contains(s: r, pattern: "/srv/tftp/other")
+    _ => false
+  }
+  // NEIGHBOURS THAT MUST NOT MOVE. (a) An empty successful read over a CONFIRMED presence still refutes. (b) The same
+  // empty read does NOT refute when the existence leg reports the path absent -- it says nothing about absence.
+  let empty_still_refutes = match site_pxe_edge_live_path_standing(path: p, as_required: ans(code: 0, out: "", err: ""), anything: ans(code: 0, out: "/srv/tftp/live\n", err: "")) {
+    PathPresentButNotAsRequired => true
+    _ => false
+  }
+  let empty_never_refutes_absence = match site_pxe_edge_live_path_standing(
+    path: p,
+    as_required: ans(code: 0, out: "", err: ""),
+    anything: ans(code: 1, out: "", err: "find: '/srv/tftp/live': No such file or directory"),
+  ) { PathAbsent => true  _ => false }
+  // (c) The exact-path reply is still the only satisfied reading.
+  let exact_still_satisfies = match site_pxe_edge_live_path_standing(path: p, as_required: ans(code: 0, out: "/srv/tftp/live\n", err: ""), anything: ans(code: 0, out: "/srv/tftp/live\n", err: "")) {
+    PathAsRequired => true
+    _ => false
+  }
+  malformed_is_unverified && malformed_is_not_the_mismatch && refused && other_reply
+    && empty_still_refutes && empty_never_refutes_absence && exact_still_satisfies
+}
+
 // Fox fix 4, hermetic: kernel placed, initrd refused (the refusal is the placement's result) => evidence UNREAD => the client's admission is the extraction refusal =>
 // no SitePxeEdgeLiveServe => no per-MAC cfg and no HTTP unit. The sealed LiveBound evidence is never fabricated: nothing here constructs it. The privileged
 // wet partial-failure arm is owed to the live srv4 readback.
