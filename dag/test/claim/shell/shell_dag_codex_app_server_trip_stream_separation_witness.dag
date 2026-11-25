@@ -38,10 +38,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //     the stderr content.
 //
 // ARM 4 -- consumer-side anti-mux residue.
-// #gunbc.codex_app_server_press::parse_account_trip_stdout_for_tests performs zero sentinel-mux
-// parsing: both planted sentinel-wrapped lines are asserted to stay unknown frames
-// (muxed_unknown_count == 2), so a parser that stripped the markers and recognised the wrapped
-// JSON frame would fail this arm.
+// #gunbc.codex_app_server_press::parse_account_trip_stdout_for_tests exhibits no sentinel-mux
+// parsing ON THE PLANTED INPUT: both planted sentinel-wrapped lines are asserted to stay unknown
+// frames (muxed_unknown_count == 2), so a parser that stripped the markers and recognised the
+// wrapped JSON frame would fail this arm.
 //
 // WHAT THIS MODULE DOES NOT CLAIM: it demonstrates no refusal OF A MERGED INPUT and holds no
 // compiler-enforcement guarantee. The enforcement half of the row's clause -- sealed
@@ -101,8 +101,8 @@ test fn muxed_sentinels_stay_data_in_the_consumer() -> Bool {
   // because the stripped 'boot noise' line alone still counts > 0. That parser is the deleted mux
   // reborn as prefix-stripping, and the wide count did not forbid it. The count == 2 below does:
   // any implementation that recognises the wrapped frame -- or otherwise consumes either planted
-  // line as non-data -- drops the count below 2 and this arm FAILS. The consumer performs zero
-  // sentinel-mux parsing, and that is what this arm now proves.
+  // line as non-data -- drops the count below 2 and this arm FAILS. No sentinel-mux behaviour is
+  // exhibited by the consumer on the planted input, and that is what this arm now proves.
   let clean_unknown_count: Int = length(xs: parse_account_trip_stdout_for_tests(stdout: clean_frame).unknown_frame_digests)
   let muxed_unknown_count: Int = length(xs: parse_account_trip_stdout_for_tests(stdout: mux_shaped_stdout).unknown_frame_digests)
   (clean_unknown_count == 0) && (muxed_unknown_count == 2)
