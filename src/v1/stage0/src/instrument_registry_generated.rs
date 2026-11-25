@@ -343,6 +343,42 @@ pub fn instrument_registry_rows() -> Vec<(Label, TargetProducer)> {
         (
             Label {
                 package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
+                target: "emit-value-shape-observation".to_string(),
+            },
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/emit_value_shape_observation.dag",
+            },
+        ),
+        (
+            Label {
+                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
+                target: "emit-control-flow-observation".to_string(),
+            },
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/emit_control_flow_observation.dag",
+            },
+        ),
+        (
+            Label {
+                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
+                target: "emit-accumulator-observation".to_string(),
+            },
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/emit_accumulator_observation.dag",
+            },
+        ),
+        (
+            Label {
+                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
+                target: "emit-carrier-observation".to_string(),
+            },
+            TargetProducer::NativeClaimProgram {
+                entry: "dag/gunbc/instruments/emit_carrier_observation.dag",
+            },
+        ),
+        (
+            Label {
+                package_segments: vec!["gunbc".to_string(), "instruments".to_string()],
                 target: "value-position-block-nests".to_string(),
             },
             TargetProducer::NativeClaimProgram {
