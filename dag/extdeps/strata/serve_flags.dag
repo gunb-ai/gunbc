@@ -6,7 +6,7 @@ import std.measure { TokenCount, token_count_value, Mebibyte, mebibyte_count, Po
 import std.optional { Present, Absent }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority, TranscribedUncited }
 
 // THE STRATA ENGINE'S SERVING FLAGS, as the upstream documents them at commit
 // 8183c6b67162340c09b67360860177c577a65f2e of https://github.com/Niko1221/Strata (README.md "Good to
@@ -75,6 +75,35 @@ type StrataExpertResidency
   = StrataExpertsPrivate
   | StrataExpertsMapped
 
+// `--conversation-cache-mib N` and `--conversation-cache-slots K` (docs/DETAILS.md, "Multiple
+// conversations (opt-in)"): a bounded host-RAM cache in which the engine PARKS the conversations it is
+// not running, so the next turn of each one reuses its prompt instead of re-reading it cold. THIS IS THE
+// ENGINE'S ONLY WAY TO KEEP ANY CONVERSATION OTHER THAN THE LIVE ONE WARM: with nothing parked, every
+// other conversation pays a full cold re-read on its next turn.
+//
+// WHY THE ARM IS REQUIRED AND NOT AN ABSENT OPTIONAL: what the ENGINE does when the pair is absent is a
+// fact of the release, not of the flag. The docs at the anchor commit size the budget from the RAM that
+// is free once the model is loaded from 0.2.3 (#3493) -- 40% of what is left above
+// --conversation-cache-min-free-mib, at most 8192, in steps of 256, and OFF when that is under 1024 --
+// while the build the fleet ran on h11 (Strata 0.1.38 HIP) is REPORTED by the operator to have parked
+// nothing with the pair unset (2026-11-24; strata_conversation_cache_unset_standing below). So "the flag
+// is absent" is not a policy the author chose and not even a stable fact: it is the build deciding.
+// Carrying it as an absent optional field would let a launch row silently inherit that decision, which
+// is the fail-open default gunbc.design_argument::declared_intent refuses; making it a required arm
+// means every modeled launch names which of the three it is, and `Unset` -- legal as the transcription
+// of an argv as read -- is the arm a serving launch must refuse (gunbc.serving.serving_replica_profile
+// strata_launch_parking_agreement).
+type StrataConversationCache
+  = StrataConversationCacheBudget { budget: Mebibyte, slots: PositiveSlotCount } // a bounded cache: K conversations inside N Mebibyte of host RAM
+  // The engine parks nothing. Spelled ON THE COMMAND LINE as the docs' own off word, so a launch that
+  // chose it says so in its argv instead of relying on a build default; the reason names why a launch
+  // would choose it (a benchmark cell measuring the cold path, for instance).
+  | StrataConversationCacheOff { reason: NonEmptyStr }
+  // The argv as READ carries neither flag, so this build's default decides and this row does not claim
+  // to know what that default is. This is a transcription of someone else's argv, never a policy a plan
+  // picks; `detail` names the argv and the read.
+  | StrataConversationCacheUnset { detail: NonEmptyStr }
+
 type StrataServeFlags {
   kv_format: StrataKvFormat
   kv_residency: StrataKvResidency
@@ -90,6 +119,27 @@ type StrataServeFlags {
   experts: StrataExpertResidency
   // `--vram-reserve-mib N` (docs/DETAILS.md)
   vram_reserve: Mebibyte?
+  // `--conversation-cache-mib N --conversation-cache-slots K` (docs/DETAILS.md). REQUIRED, not an
+  // optional beside the others: its absence is not "no opinion", it is the build's default deciding a
+  // policy -- see StrataConversationCache above.
+  conversation_cache: StrataConversationCache
+}
+
+// WHAT THE DOCUMENTATION SAYS THE ENGINE DOES WHEN THE PAIR IS UNSET, with the release it says it for.
+// It is a standing and not a byte figure because the answer is a policy the release chose, and it CHANGED
+// between releases (0.2.3, #3493), which is the whole reason the flag cannot be left absent.
+data strata_conversation_cache_unset_standing: CitedFigureStanding = CitedToAuthority {
+  authority: extdeps_external_authority_anchor,
+}
+
+// The same question for a build this repository has NOT read the release notes of: the fleet's h11 engines
+// run Strata 0.1.38 (HIP build), which PREDATES the auto-sizing the anchor commit's docs describe for
+// 0.2.3. The operator reported on 2026-11-24 that with the pair unset those engines kept only the live
+// conversation warm (both were 0% prompt-cache warm, and both went warm after the pair was added by hand
+// -- the measurement is the operator's ad-hoc read, not an instrument of this repository, so it is carried
+// as a transcription with its read obligation and never as a deduced default).
+data strata_conversation_cache_unset_standing_pre_0_2_3: CitedFigureStanding = TranscribedUncited {
+  read_obligation: "read what Strata 0.1.38 (the HIP build on h11) does with --conversation-cache-mib unset: its own docs/CHANGELOG at that tag, or the engine log line the docs promise names the budget it chose; the operator's 2026-11-24 report (0% warm with the pair unset, warm within minutes of setting it) is consistent with off and is the only evidence held today" as NonEmptyStr,
 }
 
 // ── THE FLAGS AS ARGV WORDS, spelled as the docs above spell them ───────────────────────────────
@@ -104,6 +154,29 @@ fn strata_kv_format_word(f: StrataKvFormat) -> String {
 
 fn strata_optional_words(present: Bool, words: List<String>) -> List<String> {
   if present { words } else { [] as List<String> }
+}
+
+// THE CONVERSATION-CACHE WORDS, one per arm. A budget emits the docs' pair; an explicit off emits the
+// docs' own off word (`--conversation-cache-mib 0`, docs/DETAILS.md) so a launch that chose to park
+// nothing SAYS so in its argv rather than leaving it to a build default; an `Unset` transcription emits
+// nothing, because emitting something would be inventing an argv nobody launched. That empty answer is
+// why a SERVING launch refuses the `Unset` arm instead of rendering it (gunbc.serving.serving_replica_profile
+// strata_launch_parking_agreement): argv is the last place the choice is still visible, and silence there is
+// the build deciding again.
+fn strata_conversation_cache_words(cache: StrataConversationCache) -> List<String> {
+  match cache {
+    StrataConversationCacheBudget { budget: n, slots: k } =>
+      ["--conversation-cache-mib", to_string(mebibyte_count(m: n)), "--conversation-cache-slots", to_string(positive_slot_count_value(slots: k))]
+    StrataConversationCacheOff { reason: _ } => ["--conversation-cache-mib", "0"]
+    StrataConversationCacheUnset { detail: _ } => [] as List<String>
+  }
+}
+
+// Does this flag row give the engine any word about parked conversations at all? A serving consumer asks
+// this before it launches, because a launch whose argv carries no cache word leaves the policy to the
+// build -- the state the fleet found on h11 on 2026-11-24.
+fn strata_names_a_conversation_cache(flags: StrataServeFlags) -> Bool {
+  strata_conversation_cache_words(cache: flags.conversation_cache).length() > 0
 }
 
 fn strata_serve_flag_words(flags: StrataServeFlags) -> List<String> {
@@ -129,7 +202,11 @@ fn strata_serve_flag_words(flags: StrataServeFlags) -> List<String> {
   }
   let experts = match flags.experts { StrataExpertsMapped => ["--mmap-experts"], StrataExpertsPrivate => [] as List<String> }
   let reserve = match flags.vram_reserve { Absent => [] as List<String>, Present { value: m } => ["--vram-reserve-mib", to_string(mebibyte_count(m: m))] }
-  concat(concat(concat(concat(concat(concat(concat(
+  // THE CACHE WORDS (strata_conversation_cache_words), appended last. An `Unset` transcription renders
+  // nothing here -- which is exactly why a SERVING launch refuses that arm instead of rendering it
+  // (gunbc.serving.serving_replica_profile strata_launch_parking_agreement): argv is the last place the
+  // choice is still visible, and an empty answer is the build deciding again.
+  concat(concat(concat(concat(concat(concat(concat(concat(
     ["--kv", strata_kv_format_word(f: flags.kv_format)],
     kv_resident),
     ["--max-context", to_string(token_count_value(t: flags.max_context)), "--parallel", to_string(positive_slot_count_value(slots: flags.parallel))]),
@@ -137,5 +214,6 @@ fn strata_serve_flag_words(flags: StrataServeFlags) -> List<String> {
     pool),
     stages),
     experts),
-    reserve)
+    reserve),
+    strata_conversation_cache_words(cache: flags.conversation_cache))
 }

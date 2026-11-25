@@ -1,0 +1,59 @@
+module gunbc.recurring_failure_mode.a_required_launch_capability_the_model_cannot_name_is_decided_by_the_engine_build
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode, BelowCeiling, FoundBelowTheLadder, FoundOnRung, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data a_required_launch_capability_the_model_cannot_name_is_decided_by_the_engine_build: RecurringFailureMode = RecurringFailureMode {
+  // THE MODEL HAD NO FIELD FOR THE CHOICE, SO THE ENGINE'S BUILD MADE IT, AND THE HOST ANSWERED CORRECTLY
+  // THE WHOLE TIME. A flag a launch does not carry is not an unstated opinion -- it is the upstream binary's
+  // default stating a policy nobody authored. When the flag row has no field for that flag at all, the
+  // omission is not even a value a reviewer could question: it is unrepresentable, so it cannot be refused,
+  // cannot be diffed, and cannot be distinguished from a launch that considered it and declined.
+
+  identity: "a_required_launch_capability_the_model_cannot_name_is_decided_by_the_engine_build" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: StructurallyGuaranteed,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "the row that states a serving launch reads back the argv it rendered -- the running unit's ExecStart, or the budget the engine itself reports at /metrics (conversation_cache_mib) as a typed observation -- and the agreement is judged against THAT reading rather than against the flag row, so the model cannot vouch for a parked-conversation cache the engine does not have. The rung below this one is already built: extdeps.strata.serve_flags::StrataConversationCache is a required three-arm field (budget / explicit off with a reason / an explicit transcription of silence with its read obligation), so a flag row cannot be written with no policy, and gunbc.serving.serving_replica_profile::strata_launch_parking_agreement refuses a launch that names no policy where gunbc.serving.serving_capacity_anchor::ServingRetentionGrant admits more conversations than the engine answers at once"
+    }
+  },
+
+  receipts: [
+    "INVALID STATE: a capability a consumer REQUIRES is configured by a flag whose row the model does not carry; the launch omits it; the upstream build's default chooses the policy; the service starts, answers correctly, and is never once wrong in a way a judgement can see. The state is not invalid in any schema -- it is a policy with no author.",
+
+    "FOUND: 2026-11-24, on h11 (H11SSL, 2x R9700, Strata 0.1.38 HIP build), engines h11-strata@83 and h11-strata@c3 from ~/strata-pool/cfg-83.json and cfg-c3.json. Neither config carried --conversation-cache-mib or --conversation-cache-slots, and on that build the default is off: each engine kept the KV of only its LIVE conversation, so every other conversation re-read its whole prompt cold. The operator added `--conversation-cache-mib 8192 --conversation-cache-slots 4` to both by hand (restarted 21:35 / 21:39 UTC). STANDING OF THE FIGURES: read ad hoc by the operator's session 21:40-21:55 UTC, not by an instrument of this repository, and carried here as an observation -- prompt-cache warm went 0% -> 98.4% on h11-83 and 0% -> 94.0% on h11-03/c3, with 96-99% of each prompt reused while each engine alternated between two conversations. The claim this row needs from them is only that the two states differ enormously and that the difference was invisible from inside the model.",
+
+    "WHY THE MODEL COULD NOT HAVE CAUGHT IT -- the boundary. Re-derived from the authority that should have produced the config: (1) extdeps.strata.serve_flags::StrataServeFlags carried nine flags and NO field for the conversation-cache pair. An omission of a field that does not exist is not a value, so no type error, no refusal and no diff could point at it. (2) The parked capacity the host was relying on lived elsewhere: gunbc.serving.serving_host_memory::host_6ce85c_engine_as_launched states conversation_cache 8192 MiB in 6 slots for EVERY bus -- with the provenance naming ONE config file, ~/strata-pool/cfg-87.json, and the 2026-10-27 script that set it -- generalized to buses that were never read, including the two that actually ran. So the model held a cache figure for engines that had no cache, and held no flag row for the thing the config omitted. (3) Nothing joined the two: the grant (gunbc.serving.serving_capacity_anchor::ServingRetentionGrant) says how many conversations a replica holds warm, the memory row says how many could be parked, the flag row says nothing, and no consumer asked whether the three agree. EARLIEST UNJUSTIFIED BOUNDARY: (1). Repairing (2) or (3) alone would leave a launch row able to omit the pair while a reader looked elsewhere for its answer.",
+
+    "WHY IT IS SILENT, and why below the ladder. A cold prompt re-read is a LEGAL answer: correct output, well-formed, merely late and expensive. There is no refusal to stand on and no invalid value to reject; the only trace is a hit ratio no instrument of this repository reads. What made it findable at all was an operator walking onto the host and reading counters. This is the rung-below-the-ladder shape gunbc.design_argument::epistemic_humility names for measurements -- the run was successful at every point where success is judged.",
+
+    "THE FAIL-OPEN DEFAULT, in the upstream's own words. extdeps' model of Strata (extdeps.strata.serve_flags, from the upstream docs at the pinned commit) records that `--conversation-cache-mib N --conversation-cache-slots K` is opt-in and that the docs' own way to park nothing is `--conversation-cache-mib 0` -- an explicit word for off exists, which is why this model renders an explicit off rather than omitting the pair (gunbc.design_argument::declared_intent: a default that silently chooses a policy is a policy nobody expressed). The same docs record that from 0.2.3 (#3493) an absent budget is AUTO-SIZED from free RAM rather than off; h11's 0.1.38 predates that, and this repository has not read 0.1.38's release notes, so the model carries the pre-0.2.3 reading as a standing with an open read obligation (extdeps.strata.serve_flags::strata_conversation_cache_unset_standing_pre_0_2_3) rather than as a deduced default. A single upstream release changed what an omission MEANS: an omission is not a stable place to put a policy.",
+
+    "WHERE THE TREE ALREADY HALF-HAD THIS: gunbc.serving.serving_host_memory::engine_warm_sessions already bounds the conversations one engine can keep warm by its cache bytes and its slots, and gunbc.serving.serving_capacity_anchor::ServingRetentionGrant already states what a replica is admitted to hold warm. Neither could see the omission, because both read the memory row and neither read the launch. The gap was the join, and the field that would have made the join readable did not exist.",
+
+    "THE SHAPE, NOT THE CASE: any flag that turns a capability on or off, whose upstream default is the OFF state, and whose row the model does not carry. Every engine row in this fleet is a candidate -- the flag rows this class touched are Strata's; the same shape sits on any launcher whose flags are described in prose or in a memory row instead of typed. It does NOT apply where the default is the ON state, nor to a flag whose absence is genuinely no opinion; the test is whether the build decides something a consumer depends on.",
+
+    "THE NEARBY ROWS THAT ARE NOT THIS ROW: gunbc.recurring_failure_mode::a_capacity_default_sized_for_one_workload_shape_inherited_by_another is a capacity that IS stated, sized for a workload that changed under it -- there the number is right and exceeded; here the number was never the launch's at all, and the row carrying it was read off a different bus. gunbc.recurring_failure_mode::a_host_absent_from_a_converge_roster_silently_keeps_the_upstream_default is the same silence on the other side of the producer: a host missing from a desired-rows roster keeps the OS default, where the roster is the missing row; here the roster is complete and the FIELD is missing. gunbc.recurring_failure_mode::absent_reads_identically_to_never_looked is the reading of an absence; this row is the case where the absence is a policy.",
+
+    "RECOGNITION RULE: for every flag an upstream binary documents as gating a capability a consumer depends on, ask which of the two the model holds -- a typed field on the launch row, or a figure read somewhere else about the host. If only the second, the first is a fail-open default with no owner, and the fix is the field, not a check on the figure.",
+
+    "CEILING AND ITS TELL: StructurallyGuaranteed, because a launch row whose agreement is judged against the argv the running unit actually carries (or the budget the engine itself reports) cannot vouch for a capability the engine lacks -- the disagreement becomes the finding. The tell that the ceiling has NOT been reached: a launch row's agreement still rests on a memory row read on another bus, another date, or another host -- as h11's did here -- and the fleet discovers the disagreement by walking onto the machine.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "extdeps.strata.serve_flags", decl_name: "StrataConversationCache", field: WholeDeclaration },
+    DeclarationRef { module_path: "extdeps.strata.serve_flags", decl_name: "strata_conversation_cache_words", field: WholeDeclaration },
+    DeclarationRef { module_path: "extdeps.strata.serve_flags", decl_name: "strata_conversation_cache_unset_standing_pre_0_2_3", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.serving.serving_replica_profile", decl_name: "strata_launch_parking_agreement", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.serving.serving_host_memory", decl_name: "host_6ce85c_engine_as_launched", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.serving.strata_conversation_cache_parking_witness", decl_name: "witness_a_launch_that_names_nothing_is_refused", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.serving.strata_conversation_cache_parking_witness", decl_name: "witness_the_operator_named_budget_is_accepted", field: WholeDeclaration },
+  ]
+}

@@ -35,13 +35,16 @@ import std.optional { Optional, Present, Absent }
 import std.measure {
   ByteSize, Millisecond, MoneyAmountMicro, TokenCount, TokensPerSecond, Watt,
   byte_size, byte_size_count, millisecond, money_amount_micro, token_count,
-  tokens_per_second, tokens_per_second_count, watt_count,
+  positive_slot_count_value, tokens_per_second, tokens_per_second_count, watt_count,
 }
 import std.algebra { string_contains }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_identity }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import extdeps.huggingface.hub { HubRepoId }
-import extdeps.strata.serve_flags { StrataServeFlags }
+import extdeps.strata.serve_flags {
+  StrataServeFlags, StrataConversationCache, StrataConversationCacheBudget, StrataConversationCacheOff,
+  StrataConversationCacheUnset, strata_conversation_cache_words,
+}
 import product.fabric.serving_throughput { ServingThroughput, ThroughputOperatorReading, ThroughputUnread }
 import gunbc.fleet.fleet_host_identity {
   HostIdentity, operator_host_6ce85c, operator_host_srv1, operator_host_srv3, operator_host_srv4,
@@ -826,6 +829,211 @@ fn replicas_on_host(host: HostIdentity) -> List<ServingReplicaProfile> {
 data serving_replica_roster: List<ServingReplicaProfile> =
   concat([srv1_vllm_replica_0_profile, srv1_vllm_replica_1_profile, srv3_strata_profile, srv4_strata_profile],
          map(host_6ce85c_a16_buses, b => h11_strata_profile(bus: b)))
+
+// ── DOES THE LAUNCH PARK WHAT THE ROW CLAIMS WARM? ─────────────────────────
+//
+// WHY THIS EXISTS. A Strata engine holds in place ONLY the conversation it is running; any other
+// conversation it keeps warm lives in the engine's parked-conversation cache, and the one thing that turns
+// that cache on is the launch's `--conversation-cache-mib/--conversation-cache-slots` pair
+// (extdeps.strata.serve_flags, StrataConversationCache). What the omission costs is h11 on 2026-11-24: two
+// engines, each alternating between two conversations, neither hand-written config carrying the pair, both
+// reading every prompt from token 0. The OBSERVATIONS, with their instrument because they are the operator's
+// ad-hoc reads and not instruments of this repository (gunbc.design_argument::epistemic_humility): cache hit
+// 0% on h11-83 and h11-03/c3 in the 21:15 UTC window, 98.4% and 94.0% in the 21:40-21:55 window after the
+// pair was added by hand, each engine then reusing 96-99% of each prompt. The row CLAIMED warm conversations
+// its launch had never been told to keep, and nothing could see the disagreement because the launch's argv
+// was not modeled at all -- the earliest boundary of that chain is the extdeps flag model, and its
+// recurring_failure_mode row is `a_required_engine_capability_left_to_the_upstream_default`.
+//
+// THE RULE, and the least-general form that covers it: a replica needs to PARK a conversation only BEYOND
+// the slots it answers at once -- a live conversation needs no cache, which is why the pair is legitimately
+// absent for an engine that serves one conversation and is never asked to hold a second. So the answer is
+// DERIVED from the retention grant the host's layout hands the replica
+// (gunbc.serving.serving_capacity_anchor serving_replica_grant_for) against the engine's own slot count, and
+// it refuses only where the model states NO parked capacity anywhere. The two authorities for parked
+// capacity, and there is no third: the launch's typed flags (extdeps, the argv as read) and the engine's
+// memory row (gunbc.serving.serving_host_memory, the same row gunbc.serving.serving_capacity_anchor
+// engine_warm_swap already reads the warm ladder's bytes and slots from).
+//
+// WHAT THIS DOES NOT CLAIM. A row whose flags have never been read from the unit that runs it answers
+// ParkingNeedsReading and NOT a refusal: srv3's typed flags are the benchmark cell's (its own standing says
+// so) and srv4's and h11's have never been read from their units; inventing an argv to force an answer here
+// is the same invented-fact failure this class is about (gunbc.design_argument::fail_closed). And a READ
+// memory row can still vouch for a cache the host has since dropped -- that is a stale read, the next rung,
+// whose trigger the recurring_failure_mode row names (the launch row reads back the argv it rendered).
+
+type StrataParkingAgreement
+  // Nothing to explain: no conversation is held beyond the engine's live slots, or the model states a
+  // parked capacity for them. `parked` is the most the model says may be parked at once (0 where none is
+  // needed and none is stated).
+  = ParkedConversationsAgreed { parked: Nat }
+  // Conversations are held beyond the live slots and the launch EXPLICITLY parks none: a policy someone
+  // chose, but chosen against what this row claims to hold warm.
+  | ParkedConversationsRefusedByTheLaunch { detail: NonEmptyStr }
+  // The same shape with the launch saying nothing: neither flag is in its argv, so whatever this build
+  // defaults to decides whether anything parks. This is the fail-open default -- an omission reading as a
+  // policy -- and it is the state the h11 configs were in.
+  | ParkedConversationsLeftToTheBuild { detail: NonEmptyStr }
+  // A figure the answer stands on has not been read: no grant, no flags, no live slot count. Never a zero.
+  | ParkingNeedsReading { obligation: NonEmptyStr }
+
+// What the model says may be parked at once, from the two authorities and no third: the launch's typed
+// flags when they name a budget, else the engine's memory row. Absent when neither states it -- an absent
+// figure, never zero, because "no row states it" and "it holds nothing" are different facts.
+fn replica_parked_conversations(
+  model: ReplicaModel,
+  engine_memory: Optional<ServingEngineMemory>,
+) -> Optional<Nat> {
+  let from_memory = match engine_memory {
+    Absent => Absent
+    Present { value: m } => m.conversation_slots
+  }
+  match model {
+    StrataModel { artifact: _, artifact_standing: _, flags: f, flags_standing: _ } =>
+      match f {
+        Present { value: fl } =>
+          match fl.conversation_cache {
+            // An explicit budget speaks for itself; the memory row does not get to overrule a launch.
+            StrataConversationCacheBudget { budget: _, slots: k } => Present { value: positive_slot_count_value(slots: k) }
+            // An explicit off is a named policy: it states NO parked capacity even beside a memory row
+            // that says otherwise, and the disagreement is what the refusal below names.
+            StrataConversationCacheOff { reason: _ } => Absent
+            // An argv that says nothing lets the read memory row answer, which is what srv3's row does:
+            // its typed flags are the benchmark cell's, its live engine's cache was read from the unit.
+            StrataConversationCacheUnset { detail: _ } => from_memory
+          }
+        Absent => from_memory
+      }
+    LilModel { } => from_memory
+  }
+}
+
+// Conventions the answer needs, spelled rather than assumed: the engine's slots answered at once come from
+// its flags (`--parallel`, README.md), and a replica whose flags have not been read has no slot count to
+// subtract -- the obligation below is the only honest answer for it.
+fn replica_live_slots(model: ReplicaModel) -> Optional<Nat> {
+  match model {
+    StrataModel { artifact: _, artifact_standing: _, flags: f, flags_standing: _ } =>
+      match f {
+        Absent => Absent
+        Present { value: fl } => Present { value: positive_slot_count_value(slots: fl.parallel) }
+      }
+    LilModel { } => Absent
+  }
+}
+
+// THE AGREEMENT. Grant first, because it is what the host's layout admits this replica to hold warm; then
+// the engine's live slots; then the two authorities for parked capacity. The refusal fires exactly where
+// conversations are held beyond the live slots AND nothing in the model says any of them may be parked.
+
+// The sentence both refusals share, so the two state the same fact about what the grant holds and differ
+// only in what the launch said.
+fn parking_beyond_live_slots_sentence(held: Nat, live: Nat, beyond: Nat, policy: String) -> NonEmptyStr {
+  (("the layout grants this replica " + to_string(held)) +
+    " conversations warm on an engine running " + to_string(live) +
+    " slots at once, so " + to_string(beyond) +
+    " could only be warm by being parked -- and this launch says: " + policy) as NonEmptyStr
+}
+
+fn strata_launch_parking_agreement(
+  model: ReplicaModel,
+  grant: ServingRetentionGrant,
+  engine_memory: Optional<ServingEngineMemory>,
+) -> StrataParkingAgreement {
+  match model {
+    LilModel { } => ParkingNeedsReading {
+      obligation: "not a Strata launch: this replica's warm state is LMCache's tiers, owned by gunbc.serving.srv1_serving_launch, and the parked-conversation flag pair this agreement judges is Strata's" as NonEmptyStr,
+    }
+    StrataModel { artifact: _, artifact_standing: _, flags: f, flags_standing: fs } =>
+      match grant {
+        GrantUnmodeled { obligation: o } => ParkingNeedsReading { obligation: o }
+        GrantRefused { reason: r } => ParkingNeedsReading { obligation: r }
+        GrantAdmits { conversations: held } =>
+          match f {
+            Absent =>
+              // The argv has never been read, so the engine's live slot count is unknown and `beyond` cannot
+              // be computed exactly. That does not always leave the question unanswered: if another row states
+              // a parked capacity, the worst case is what matters -- Strata answers ONE conversation at once
+              // unless `--parallel` says otherwise (README.md), so at most `held - 1` conversations can need
+              // parking, and a stated capacity that covers that covers them whatever the argv turns out to
+              // say. Where it does not, the answer is an obligation, not a refusal: the unread argv might
+              // itself name a larger budget.
+              match replica_parked_conversations(model: model, engine_memory: engine_memory) {
+                Present { value: p } =>
+                  if p + 1 >= held {
+                    ParkedConversationsAgreed { parked: p }
+                  } else {
+                    ParkingNeedsReading {
+                      obligation: ("the layout grants this replica " + to_string(held) + " conversations warm and the only parked capacity the model states is " + to_string(p) + ", which covers that only if the engine answers one conversation at once; its launched argv has never been read, so it may name a larger budget -- read the unit's ExecStart") as NonEmptyStr,
+                    }
+                  }
+                Absent => ParkingNeedsReading {
+                  obligation: match fs {
+                    Absent => "this replica's launched flags have never been read from the unit that runs it; read them before asking what its launch parks" as NonEmptyStr
+                    Present { value: TranscribedUncited { read_obligation: o } } => o
+                    Present { value: _ } => "this replica's launched flags carry a standing this reader does not answer for; read them before asking what its launch parks" as NonEmptyStr
+                  },
+                }
+              }
+            Present { value: fl } =>
+              match replica_live_slots(model: model) {
+                Absent => ParkingNeedsReading { obligation: "the launch states no slot count (--parallel)" as NonEmptyStr }
+                Present { value: live } =>
+                  // Beyond the live slots: the conversations that can only be warm by being parked.
+                  let beyond = if held > live { held - live } else { 0 }
+                  let parked = replica_parked_conversations(model: model, engine_memory: engine_memory)
+                  match fl.conversation_cache {
+                    StrataConversationCacheBudget { budget: _, slots: k } =>
+                      ParkedConversationsAgreed { parked: positive_slot_count_value(slots: k) }
+                    StrataConversationCacheOff { reason: r } =>
+                      if beyond > 0 {
+                        ParkedConversationsRefusedByTheLaunch {
+                          detail: parking_beyond_live_slots_sentence(
+                            held: held, live: live, beyond: beyond,
+                            policy: ("the engine parks nothing (--conversation-cache-mib 0), chosen because: " + r) as String,
+                          ),
+                        }
+                      } else {
+                        ParkedConversationsAgreed { parked: 0 }
+                      }
+                    StrataConversationCacheUnset { detail: d } =>
+                      match parked {
+                        // Another row of the model states the parked capacity (the engine's read memory
+                        // row), so the claim is not left to a build default.
+                        Present { value: n } => ParkedConversationsAgreed { parked: n }
+                        Absent =>
+                          if beyond > 0 {
+                            ParkedConversationsLeftToTheBuild {
+                              detail: parking_beyond_live_slots_sentence(
+                                held: held, live: live, beyond: beyond,
+                                policy: ("neither --conversation-cache-mib nor --conversation-cache-slots is in its argv: " + d) as String,
+                              ),
+                            }
+                          } else {
+                            ParkedConversationsAgreed { parked: 0 }
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// The agreement a roster row answers, with nothing re-spelled: the row's model, its layout grant and its
+// engine memory row are the whole of the input, each from the authority that owns it.
+fn replica_parking_agreement(p: ServingReplicaProfile) -> StrataParkingAgreement {
+  strata_launch_parking_agreement(model: p.model, grant: p.grant, engine_memory: p.engine_memory)
+}
+
+// Does this agreement say the launch leaves a required capability to the engine's build? A consumer that is
+// about to launch, or a witness pinning the misconfiguration, asks this one question.
+fn parking_is_left_to_the_build(a: StrataParkingAgreement) -> Bool {
+  match a {
+    ParkedConversationsLeftToTheBuild { detail: _ } => true
+    _ => false
+  }
+}
 
 // ── THE SHAPE WRAPPERS THE ROUTER CALLS (moved with the rows) ──────────────────────────────────────
 //
