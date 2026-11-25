@@ -1,0 +1,82 @@
+module gunbc.integration_concern.surge_strip_carried_three_hosts_and_tripped_twice
+
+// One row of the integration-concern register. The roster derives the row from this file (module gunbc.integration_concern.roster);
+// there is no list to append to.
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import gunbc.integration_concern {
+  ConcernSighting, IntegrationConcern, Open, RequirementEstablished, SuspectedCapabilityGap, CitesDeclaration,
+  fleet_host_state_pass_2026_11_24_revision,
+}
+
+// TWO HOSTS AND A THIRD RAN OFF ONE SURGE PROTECTING STRIP, AND IT TRIPPED TWICE ON 2026-11-24 -- at ~09:19
+// and again at ~21:57 UTC, each time taking h11 (host-6ce85c), srv3 and srv4 down together and each time
+// costing a reboot of three serving hosts. srv1 and ken sat on the branch breaker, which stayed up; the pass
+// estimated that leg at ~1.3-1.4 kW, and "estimated" is the figure's standing, not a hedge: it was not read
+// off an instrument. The operator's decision that morning -- the 2.0 GHz CPU ceiling on srv1-srv4 and the
+// cards' 30 W caps -- was taken because of this, and is recorded in
+// gunbc.fleet.cpu_frequency_cap_boot_state and gunbc.fleet.gpu_power_cap_boot_state.
+//
+// THE MODEL HAS NO PLACE TO PUT ANY OF THAT. Two modules own the electrical side of this fleet, and neither
+// has a shape for it:
+//
+//   - product.rack_power models a feed as a PhysicalAssetIdentity plus a PduCatalogRow, with AssetLoad rows
+//     for mounted assets and a budget that refuses an overload before it is built. It is a construction and
+//     budget model: nothing there records a protective device that is not a catalogued PDU, nothing ties a
+//     host to the protective device it is actually plugged into, and there is no event -- a trip, a reset, a
+//     flicker -- that a row could name;
+//   - product.electrical (source_draw, continuity, measured_netlist, investigation_hypothesis, and the rest)
+//     is a bench-instrumentation domain: a current-limited source feeding a board, milliampere readings at
+//     bench volts, probe records. A mains branch circuit and a surge-protecting strip are not that
+//     instrument, and writing them as if they were would give the model a reading its instrument never took.
+//
+// So the observations live here, with their instruments named, until an electrical home for mains-side
+// protective devices exists. The nearest concept in the repo is product.electrical.investigation_hypothesis --
+// prose over recorded data, naming what would decide it -- which is exactly the shape the causal question
+// below needs, and exactly what that module cannot host today: no declaration there describes a wall
+// receptacle, a strip, or a breaker.
+//
+// WHAT IS NOT CLAIMED HERE. The trips are the operator's report of a strip whose resettable switch had
+// tripped, observed at the pass; no instrument logged the trip, so no timestamp is tighter than "~" and no
+// inrush or spike figure is offered as measured. The R9700's 400-450 W two-second spikes are named as the
+// suspected trigger by gunbc.integration_concern.amdgpu_ppfeaturemask_lacks_the_overdrive_bit_a_clock_ceiling_needs,
+// which carries what would settle it; this row does not assert the cause.
+data surge_strip_carried_three_hosts_and_tripped_twice: IntegrationConcern = IntegrationConcern {
+  identity: "surge_strip_carried_three_hosts_and_tripped_twice",
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "product.rack_power", decl_name: "PowerFeed"),
+    tail: [
+      decl_ref(module_path: "product.rack_power", decl_name: "AssetLoad"),
+      decl_ref(module_path: "product.electrical.source_draw", decl_name: "SourceDrawObservation"),
+      decl_ref(module_path: "gunbc.fleet.cpu_frequency_cap_boot_state", decl_name: "cpu_frequency_cap_installs"),
+    ],
+  },
+  question: "Where do mains-side protective devices, their downstream hosts, and their trip events belong? Until the model can say that h11, srv3 and srv4 sit on one surge-protecting strip and srv1 and ken on the breaker, every power decision taken because of a trip -- the 2.0 GHz ceiling and the card caps of 2026-11-24 among them -- is justified by prose in a module that cannot state the reason.",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "product.rack_power", decl_name: "PowerFeed"),
+    requirement: "A protective device between the wall and a set of hosts, the hosts downstream of it, and its trip events. On 2026-11-24 a surge-protecting strip carried host-6ce85c (h11-a16), srv3 and srv4 and tripped at ~09:19 and ~21:57 UTC, rebooting all three; the branch breaker carried srv1 and ken (estimated ~1.3-1.4 kW, not instrumented) and held. product.rack_power can budget a catalogued PDU feed and refuse an overload, but cannot record a strip, cannot say which hosts hang off it, and has no event type for a trip; product.electrical.source_draw reads a bench source at bench current, which is not this instrument. Neither can carry the fact that the two most consequential power decisions of the day -- a fleet-wide 2.0 GHz CPU ceiling and 30 W card caps -- were responses to an event no row can name.",
+    standing: RequirementEstablished {
+      by: CitesDeclaration {
+        declaration: decl_ref(module_path: "gunbc.fleet.cpu_frequency_cap_boot_state", decl_name: "cpu_frequency_cap_installs"),
+      },
+    },
+  },
+  sightings: [
+    ConcernSighting {
+      revision: fleet_host_state_pass_2026_11_24_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration {
+          declaration: decl_ref(module_path: "gunbc.fleet.cpu_frequency_cap_boot_state", decl_name: "cpu_frequency_cap_installs"),
+        },
+        tail: [
+          CitesDeclaration {
+            declaration: decl_ref(module_path: "gunbc.fleet.fleet_host_power", decl_name: "cpu_power_cap_readings"),
+          },
+        ],
+      },
+      account: "The 2026-11-24 pass found the strip's resettable switch tripped twice, each time taking h11, srv3 and srv4 together: ~09:19 UTC, and ~21:57 UTC, after which srv3 and srv4 came back with their CPU caps disabled until ~22:02 and srv3's card limit had drifted. The CPU draw figures that day -- srv3 ~65 W at 3.0 GHz against a 29-31 W band at 2.0 GHz, srv4 ~101 W against 39-42 W, all single readings of the apm_xgene CPU power input over ssh -- are the measured side of the same decision; the ~1.3-1.4 kW on the breaker leg is the operator's estimate and is recorded as an estimate. What no instrument produced is a log of the trips themselves, which is why this row asks for a home with events in it rather than only capacities.",
+    },
+  ],
+  disposition: Open,
+}

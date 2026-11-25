@@ -6,15 +6,15 @@ import std.optional { Absent, Present }
 import std.measure { watt, watt_count }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.pci.identity { PciAddress }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_6ce85c, operator_host_e2d4b7 }
-import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_02, gpu_board_03, gpu_board_04 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv4, operator_host_6ce85c, operator_host_e2d4b7 }
+import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_02, gpu_board_03, gpu_board_04, gpu_board_05, gpu_board_06 }
 import gunbc.fleet.gpu_device_observation { GpuDeviceObservation, GpuDeviceEnumerated, GpuDeviceNotEnumerated, GpuPowerLimitControl, NvidiaSmiPowerLimit, AmdgpuHwmonPowerCap }
 import extdeps.linux.amdgpu_hwmon { Power1Cap }
 import gunbc.serving.gpu_power_state_policy {
   InstalledGpuCapIntent, OperatorDeclaredCap, SustainedPowerDraw, CappedQuantityUnstated, gpu_power_cap_bounds,
   GpuCapAdmission, GpuCapAdmitted, GpuCapOutsideDeviceRange, GpuCapDevicePending,
   admit_gpu_cap_against, gpu_cap_admitted, gpu_cap_admissions_on, srv1_pro_6000_cap_decision, h11_r9700_cap_decision,
-  ken_t10_cap_decision,
+  ken_t10_cap_decision, srv4_rtx_2000_ada_cap_decision,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -193,4 +193,31 @@ test fn ken_admits_the_operators_100w_on_each_read_function_and_keeps_the_timesc
         (b as String) == (gpu_board_13 as String) && watt_count(w: c) == 100 && contains(o as String, "UUID")
       _ => false
     }
+}
+
+// srv4'S ADAS: THE OPERATOR'S NUMBER, ON RECORD, AND STILL WAITING ON ITS DEVICES. The decision arrived on
+// the host as a hand-edited unit long before it arrived here, so this claim is the one that says both halves
+// are true at once: the operator's 30 W is the model's decision, and it does not admit, because the 2026-11-07
+// survey never read the cards' GPU UUIDs and a cap is addressed by UUID. A change that "fixed" the pending
+// state by minting a UUID nobody read would fail this. The bounds arm is the other half of the standing: the
+// operator gave a number and a purpose and no timescale, so nothing here may call it sustained.
+test fn srv4s_adas_carry_the_operators_30w_and_stay_pending_on_their_uuids() -> Bool {
+  let admissions = gpu_cap_admissions_on(host: operator_host_srv4)
+  let decision_is_operators = match srv4_rtx_2000_ada_cap_decision {
+    OperatorDeclaredCap { cap: c, bounds: CappedQuantityUnstated, decided_on: d, said: words } =>
+      watt_count(w: c) == 30
+        && (d as String) == "2026-11-24"
+        && contains(s: words as String, pattern: "surge-strip")
+        && !contains(s: words as String, pattern: "sustained cap")
+    OperatorDeclaredCap { cap: _, bounds: SustainedPowerDraw, decided_on: _, said: _ } => false
+  }
+  admissions.length() == 2
+    && admissions.all(a => match a {
+        GpuCapDevicePending { board: b, cap: c, read_obligation: _ } =>
+          watt_count(w: c) == 30
+            && ((b as String) == (gpu_board_05 as String) || (b as String) == (gpu_board_06 as String))
+        GpuCapAdmitted { host: _, board: _, gpu_uuid: _, cap: _ } => false
+        GpuCapOutsideDeviceRange { board: _, cap: _, minimum: _, maximum: _ } => false
+      })
+    && decision_is_operators
 }

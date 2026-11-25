@@ -5,8 +5,12 @@ import std.optional { Absent, Present }
 import std.measure { Watt, watt, watt_count }
 import product.host_identity { HostIdentity, host_identity_eq }
 import product.placement_supply { PhysicalAssetIdentity }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_6ce85c, operator_host_e2d4b7 }
-import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_02, gpu_board_03, gpu_board_04, gpu_board_11, gpu_board_12, gpu_board_13 }
+import gunbc.fleet.fleet_host_identity {
+  operator_host_srv1, operator_host_srv4, operator_host_6ce85c, operator_host_e2d4b7,
+}
+import gunbc.fleet.fleet_asset_identity {
+  gpu_board_01, gpu_board_02, gpu_board_03, gpu_board_04, gpu_board_05, gpu_board_06, gpu_board_11, gpu_board_12, gpu_board_13,
+}
 import gunbc.fleet.gpu_device_observation {
   GpuDeviceObservation, GpuDeviceEnumerated, GpuDeviceNotEnumerated,
   NvidiaSmiPowerLimit, AmdgpuHwmonPowerCap,
@@ -193,6 +197,25 @@ data ken_t10_cap_decision: GpuPowerCapSelection = OperatorDeclaredCap {
   said: "two statements agreeing on the number, one relayed and one found on the machine: the operator report relayed by smart-crane-730 on 2026-11-17 ('ken has two GPUs, idle at 43-44 C, with a 100 W power cap applied at boot'), and the header of /usr/local/sbin/t10-power-cap.sh on the unit, which credits the instruction to the operator on 2026-11-15 ('lower their power as low as possible') and implements it as each card's OWN minimum limit -- 100.00 W on all three read functions. The script's authorship is unread: the file does not say who wrote it." as NonEmptyStr,
 }
 
+// srv4 (host-srv4): the Adas' cap, which until 2026-11-24 lived only in a hand-edited unit on the host.
+// The number descends: the operator held both RTX 2000 Ada cards at 40 W from 2026-10-26 for noise and heat,
+// took them to 30 W on 2026-11-24 for power after the surge-protecting strip tripped twice that day, and the
+// same day asked for the clock lock beside it -- "lower the cap but also lower the clock rate so it doesn't
+// just boost -> throttle". The lock is not a cap and gets no Watt here; the mechanism, its bytes and the
+// sweep that chose 210-1500 MHz are gunbc.fleet.gpu_power_cap_boot_state's srv4 row. What this module owns is
+// the DECISION and its standing, and its standing is thin in one specific way: the operator gave a number and
+// a purpose and never a timescale, so the bounds arm stays CappedQuantityUnstated rather than borrowing
+// srv1's sustained-draw ruling (see the note above CappedPowerQuantity). srv3's two cards carry the same
+// family of decision on the host and have NO row here: the cards have never been given a physical asset
+// identity, so there is nothing for a cap intent to name -- register row
+// gunbc.integration_concern::srv3_serving_cards_have_no_identity_to_cap.
+data srv4_rtx_2000_ada_cap_decision: GpuPowerCapSelection = OperatorDeclaredCap {
+  cap: watt(count: 30),
+  bounds: CappedQuantityUnstated,
+  decided_on: "2026-11-24" as NonEmptyStr,
+  said: "operator, 2026-11-24, on the sweep: \"lower the cap but also lower the clock rate so it doesn't just boost -> throttle\"; and in the unit the operator wrote that day, the history of the number itself: \"operator 2026-10-26 noise/heat at 40 W; lowered to 30 W 2026-11-24 for power after surge-strip trips; matches srv3\". The 30 W was read back off both cards as nvidia-smi power.limit 30.00 W at the 2026-11-24 22:03-22:05 UTC ssh pass, and the sweep that chose the clock lock ran 150 s per level under live serving traffic (clocksweep.sh): 210-1500 MHz averaged 906 MHz at 27.0 W against 869 MHz unlocked at 29.1 W." as NonEmptyStr,
+}
+
 data installed_gpu_cap_intents: List<InstalledGpuCapIntent> = [
   InstalledGpuCapIntent { host: operator_host_srv1, board: gpu_board_04, selection: srv1_pro_6000_cap_decision },
   InstalledGpuCapIntent { host: operator_host_srv1, board: gpu_board_01, selection: srv1_pro_6000_cap_decision },
@@ -222,6 +245,13 @@ data installed_gpu_cap_intents: List<InstalledGpuCapIntent> = [
   InstalledGpuCapIntent { host: operator_host_e2d4b7, board: gpu_board_11, selection: ken_t10_cap_decision },
   InstalledGpuCapIntent { host: operator_host_e2d4b7, board: gpu_board_12, selection: ken_t10_cap_decision },
   InstalledGpuCapIntent { host: operator_host_e2d4b7, board: gpu_board_13, selection: ken_t10_cap_decision },
+  // srv4's pair, admitted through nvidia-smi's power-limit control like every NVIDIA card here. Neither row
+  // admits yet: the 2026-11-07 fleet survey never read the cards' GPU UUIDs, and a cap is addressed by UUID
+  // (admit_gpu_cap_against returns GpuCapDevicePending with that obligation). That is the honest state, not a
+  // failure of this change -- before it the cards had no decision row at all, and the number lived only in a
+  // file on the host.
+  InstalledGpuCapIntent { host: operator_host_srv4, board: gpu_board_05, selection: srv4_rtx_2000_ada_cap_decision },
+  InstalledGpuCapIntent { host: operator_host_srv4, board: gpu_board_06, selection: srv4_rtx_2000_ada_cap_decision },
 ]
 
 fn gpu_cap_admissions_on(host: HostIdentity) -> List<GpuCapAdmission> {
