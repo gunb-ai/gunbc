@@ -229,6 +229,7 @@ test fn w_ssh_exec_failure_routes_to_outcome_refused() -> Bool {
           success: false,
           stdout: "",
           stderr: "mock tee failed",
+          wall_deadline_seconds: Absent,
         },
       ) {
         TypedRemoteFileWriteOutcomeRefused { reason: r } =>
