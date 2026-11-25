@@ -11,6 +11,7 @@ import gunbc.parse_population_baseline_roster {
   parse_population_total_byte_total,
   parse_population_is_unique,
   parse_population_duplicate_refuses_with_trivial_eq,
+  parse_population_rows_ordered_descending,
 }
 
 // THE ROSTERED CLAIM for gunbc.parse_population_baseline_roster, the two fixed parse populations
@@ -36,6 +37,12 @@ test fn parse_population_baseline_roster_byte_totals_hold() -> Bool {
   parse_population_five_largest_byte_total() == byte_size(count: 4575463)
     && parse_population_one_hundred_sixty_five_byte_total() == byte_size(count: 29960631)
     && parse_population_total_byte_total() == byte_size(count: 34536094)
+}
+
+// The selection rule's ordering invariant, executed: the roster is non-increasing in byte size
+// along list order, so the two fixed populations really are the largest blobs at the pinned sha.
+test fn parse_population_baseline_rows_ordered_descending_holds() -> Bool {
+  parse_population_rows_ordered_descending()
 }
 
 // Disjointness/uniqueness over the whole roster via keyed_roster_build's Built arm.

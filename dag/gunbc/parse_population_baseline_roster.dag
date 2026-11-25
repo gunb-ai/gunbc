@@ -1,7 +1,7 @@
 module gunbc.parse_population_baseline_roster
 
 import std.types { Bool, Int, List, String }
-import std.measure { ByteSize, byte_size, byte_size_count, measure_add }
+import std.measure { ByteSize, byte_size, byte_size_count, measure_add, measure_le }
 import std.keyed_row { KeyedRow }
 import std.keyed_roster { KeyedRosterBuild, KeyedRosterBuilt, keyed_roster_build }
 import std.algebra { count_where, fold_list, list_push }
@@ -284,6 +284,32 @@ fn parse_population_five_largest_byte_total() -> ByteSize {
 
 fn parse_population_one_hundred_sixty_five_byte_total() -> ByteSize {
   parse_population_scan(parse_population_baseline_rows).rest_bytes
+}
+
+// The selection rule, EXECUTED not only commented (gunbc.design_argument::source_annotations: a
+// fact that must survive belongs in a typed carrier; nothing may depend on a comment for
+// correctness). The load-bearing invariant of "the 5 largest ... and a 165-module sample, taken by
+// blob size descending" is that the roster is NON-INCREASING in byte size along list order: every
+// member's size is <= its predecessor's. A byte count edited out of order, or a member swapped so a
+// smaller file precedes a larger one, fails this. The comparison uses std.measure::measure_le over
+// the ByteSize the rows carry (no Int unwrap). The byte-exact extraction of the 170 largest `.dag`
+// blobs at the pinned sha is the external producer (the reproduce command), which can be diffed
+// against these rows at that sha; the ordering invariant below is what the interpreter can judge.
+type ParseOrderScan {
+  started: Bool
+  prev: ByteSize
+  ok: Bool
+}
+
+fn parse_population_rows_ordered_descending() -> Bool {
+  let step = fold_list(xs: parse_population_baseline_rows,
+    empty: ParseOrderScan { started: false, prev: byte_size(count: 0), ok: true },
+    cons: fn(acc, row) {
+      let le: Bool = measure_le(a: row.bytes, b: acc.prev)
+      let step_ok: Bool = if acc.started == false { true } else { le }
+      ParseOrderScan { started: true, prev: row.bytes, ok: acc.ok && step_ok }
+    })
+  step.ok
 }
 
 // Cardinalities derived from the scan's position (== whole roster) and the fixed split.

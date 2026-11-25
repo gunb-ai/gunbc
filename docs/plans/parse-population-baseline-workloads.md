@@ -18,12 +18,18 @@ selection rule or the roster, so it cannot drift from it.
 
 - `parse_population_baseline_pinned_sha` — the tree sha the populations were
   selected and measured over.
-- `parse_population_baseline_rows()` — the full 170-member roster as typed
-  `KeyedRow<String, ParsePopulationRow>` (path, `ByteSize`, rank, population),
-  built through `std.keyed_roster` so a repeated path **refuses** rather than
-  silently unioning — disjointness and uniqueness are checked, not asserted.
-- The selection rule and the reproduce command are stated in the carrier's own
-  header comment.
+- `parse_population_baseline_rows()` — the full 170-member roster as a
+  `List<ParsePopulationRow>`, where each `ParsePopulationRow` stores ONLY its
+  `path: String` and its `bytes: std.measure.ByteSize`, in list order. Population
+  rank is the 1-based list position and membership is DERIVED from it (the first
+  `parse_population_five_largest_count` rows are `FiveLargest`, the rest
+  `OneHundredSixtyFive`); neither rank nor membership is stored, so a row cannot
+  contradict itself. Path-uniqueness is checked by `std.keyed_roster` inside the
+  uniqueness claim (a `KeyedRow` keyed on `path` is built there for the check), so a
+  repeated path refuses rather than silently unioning — disjointness and uniqueness
+  are checked, not asserted.
+- The selection rule is stated in the carrier's header and EXECUTED by the rostered
+  claim (see below), not only commented.
 
 The rostered claim executes the carrier and asserts cardinality (5, 165, 170),
 per-population byte totals, and a **named negative control** (the same fold with
