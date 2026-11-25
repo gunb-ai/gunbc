@@ -176,17 +176,14 @@ test fn the_bracket_step_budget_grows_with_the_bound_and_the_job_covers_it() -> 
   let budget = (second_count(s: host_cap_bracket_budget(policy: runner_host_cap_drain_policy)) as Int)
   let step_minutes = fleet_converge_runner_host_step_timeout_minutes(phases: [host_cap_bracket_budget(policy: runner_host_cap_drain_policy)])
   let job_minutes = fleet_converge_job_timeout_minutes()
-  // Both release steps are now emitted through the retyped run-step invoke family (PR #16721), so their Step
-  // values are Outcomes. Fail-closed: a refused emission makes this budget fold go RED -- a refusal must never
-  // silently vouch that the job covers its release steps.
+  // The release step is emitted through the retyped run-step invoke family (PR #16721), so its Step value is an
+  // Outcome; Fail-closed: a refused emission makes this budget fold go RED. The receipt-upload step is NOT retyped
+  // (plain Step), so it is read directly.
   let release_minutes = match outcome_accepted_value(fleet_converge_runner_host_cap_release_step()) {
     Present { value: s } => step_declared_timeout_minutes(st: s)
     Absent => -1
   }
-  let upload_minutes = match outcome_accepted_value(fleet_converge_runner_host_cap_release_receipt_upload_step()) {
-    Present { value: s } => step_declared_timeout_minutes(st: s)
-    Absent => -1
-  }
+  let upload_minutes = step_declared_timeout_minutes(st: fleet_converge_runner_host_cap_release_receipt_upload_step())
   release_minutes >= 0
     && upload_minutes >= 0
     && budget == bound_seconds()
