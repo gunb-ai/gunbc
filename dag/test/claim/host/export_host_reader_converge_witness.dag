@@ -5,7 +5,9 @@ import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.algebra { string_contains }
 import std.optional { Present, Absent }
 import extdeps.ssh.openssh_server_commands { sshd_effective_config_value }
-import gunbc.host.boot_medium_served_readback { RemoteAnswer }
+import std.measure { second }
+import gunbc.typed_argv_exec { TypedArgvExecOutcome, TypedArgvExecOverran }
+import gunbc.host_command_binding { HostLeg, LegAnswered, LegNotDispatched, LegUnanswered, host_leg_of_typed_argv }
 import gunbc.host.export_host_reader_converge {
   ExportHostReaderLegs, ExportHostReaderRun, ExportHostReaderOutcome,
   ReaderRowsConverged, ReaderRowsRefused, ReaderRowsRolledBack, ReaderRowsRollbackFailed, ReaderRowsReloadUncertain,
@@ -15,13 +17,19 @@ import gunbc.host.export_host_reader_converge {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn ok(stdout: String) -> RemoteAnswer { RemoteAnswer { exit_code: 0, stdout: stdout, stderr: "" } }
-fn bad() -> RemoteAnswer { RemoteAnswer { exit_code: 1, stdout: "", stderr: "refused" } }
+fn ok(stdout: String) -> HostLeg { LegAnswered { exit_code: 0, stdout: stdout, stderr: "" } }
+fn bad() -> HostLeg { LegAnswered { exit_code: 1, stdout: "", stderr: "refused" } }
 
 data effective_ours: String = "port 22\nauthorizedkeysfile .ssh/authorized_keys .ssh/authorized_keys2 /etc/ssh/authorized_keys.%u\npasswordauthentication no\n"
 
-fn absent() -> RemoteAnswer { RemoteAnswer { exit_code: 1, stdout: "", stderr: "" } }
-fn present() -> RemoteAnswer { RemoteAnswer { exit_code: 0, stdout: "", stderr: "" } }
+// The elevated parent listing (`ls -1 -A`) COMPLETED (exit 0) and does NOT name the drop-in: genuinely absent.
+fn absent() -> HostLeg { LegAnswered { exit_code: 0, stdout: "00-base.conf\n", stderr: "" } }
+// The elevated parent listing COMPLETED (exit 0) and DOES name the drop-in by name: present. A DANGLING symlink
+// is named too (ls does not follow it), so it counts present, never absent.
+fn present() -> HostLeg { LegAnswered { exit_code: 0, stdout: "00-base.conf\n50-gunbc-boot-medium-reader.conf\n", stderr: "" } }
+// A genuinely ANSWERED leg with an explicit exit (e.g. a real ssh 255), and a leg the transport NEVER dispatched.
+fn answered(exit: Int, out: String, err: String) -> HostLeg { LegAnswered { exit_code: exit, stdout: out, stderr: err } }
+fn never(reason: String) -> HostLeg { LegNotDispatched { reason: reason } }
 
 data effective_without_ours: String = "port 22\nauthorizedkeysfile .ssh/authorized_keys .ssh/authorized_keys2\n"
 
@@ -29,15 +37,19 @@ data effective_without_ours: String = "port 22\nauthorizedkeysfile .ssh/authoriz
 // converging write) holds when its override exits 0.
 type LegOverride {
   leg: String
-  answer: RemoteAnswer
+  answer: HostLeg
 }
 
-fn answer(name: String, overrides: List<LegOverride>, healthy: RemoteAnswer) -> RemoteAnswer {
+fn answer(name: String, overrides: List<LegOverride>, healthy: HostLeg) -> HostLeg {
   fold(overrides, init: healthy, f: (acc, o) => if o.leg == name { o.answer } else { acc })
 }
 
 fn holds(name: String, overrides: List<LegOverride>) -> Bool {
-  answer(name: name, overrides: overrides, healthy: ok(stdout: "")).exit_code == 0
+  match answer(name: name, overrides: overrides, healthy: ok(stdout: "")) {
+    LegNotDispatched { reason: _ } => false
+    LegUnanswered { cause: _ } => false
+    LegAnswered { exit_code: ec, stdout: _, stderr: _ } => ec == 0
+  }
 }
 
 fn legs_with(overrides: List<LegOverride>) -> ExportHostReaderLegs {
@@ -52,8 +64,7 @@ fn legs_with(overrides: List<LegOverride>) -> ExportHostReaderLegs {
     reload: fn() { answer(name: "reload", overrides: overrides, healthy: ok(stdout: "")) },
     fresh_login: fn() { answer(name: "fresh_login", overrides: overrides, healthy: ok(stdout: "")) },
     remove_drop_in: fn() { answer(name: "remove_drop_in", overrides: overrides, healthy: ok(stdout: "")) },
-    drop_in_exists: fn() { answer(name: "drop_in_exists", overrides: overrides, healthy: absent()) },
-    drop_in_is_link: fn() { answer(name: "drop_in_is_link", overrides: overrides, healthy: absent()) },
+    drop_in_listing: fn() { answer(name: "drop_in_listing", overrides: overrides, healthy: absent()) },
     rollback_reload: fn() { answer(name: "rollback_reload", overrides: overrides, healthy: ok(stdout: "")) },
     rollback_fresh_login: fn() { answer(name: "rollback_fresh_login", overrides: overrides, healthy: ok(stdout: "")) },
     effective_config_after_removal: fn() { answer(name: "effective_config_after_removal", overrides: overrides, healthy: ok(stdout: effective_without_ours)) },
@@ -136,18 +147,19 @@ test fn a_failed_fresh_login_rolls_back_through_a_confirmed_removal_and_a_second
     && stages(r: r) == concat(through_reload, ["fresh-login", "remove-drop-in", "drop-in-absent-readback", "reload", "fresh-login"])
 }
 
-// RED (side chat, HOLD 1): a removal that is not CONFIRMED means no second reload -- whether the drop-in
-// is still there, the readback is unknown (test's error, ssh's 255), a dangling link is left (test -e
-// false, test -L true), or rm itself exited 0 over a file still present.
+// RED (side chat, HOLD 1): a removal that is not CONFIRMED means no second reload -- whether the completed
+// parent listing still NAMES the drop-in (present, including a dangling link), the listing leg is unknown
+// (its error, ssh's 255), the listing leg was NEVER DISPATCHED, or rm itself exited 0 over a file the listing
+// still names. Only a completed listing that omits the entry confirms absence.
 test fn an_unconfirmed_removal_means_no_second_reload() -> Bool {
-  let still_there = run(overrides: [LegOverride { leg: "fresh_login", answer: bad() }, LegOverride { leg: "drop_in_exists", answer: present() }])
-  let unknown = run(overrides: [LegOverride { leg: "fresh_login", answer: bad() }, LegOverride { leg: "drop_in_exists", answer: RemoteAnswer { exit_code: 255, stdout: "", stderr: "ssh: connection closed" } }])
-  let dangling = run(overrides: [LegOverride { leg: "fresh_login", answer: bad() }, LegOverride { leg: "drop_in_is_link", answer: present() }])
-  let rm_lied = run(overrides: [LegOverride { leg: "fresh_login", answer: bad() }, LegOverride { leg: "remove_drop_in", answer: ok(stdout: "") }, LegOverride { leg: "drop_in_exists", answer: present() }])
+  let still_there = run(overrides: [LegOverride { leg: "fresh_login", answer: bad() }, LegOverride { leg: "drop_in_listing", answer: present() }])
+  let unknown = run(overrides: [LegOverride { leg: "fresh_login", answer: bad() }, LegOverride { leg: "drop_in_listing", answer: answered(exit: 255, out: "", err: "ssh: connection closed") }])
+  let never_read = run(overrides: [LegOverride { leg: "fresh_login", answer: bad() }, LegOverride { leg: "drop_in_listing", answer: never(reason: "listing-never-dispatched-xyzzy") }])
+  let rm_lied = run(overrides: [LegOverride { leg: "fresh_login", answer: bad() }, LegOverride { leg: "remove_drop_in", answer: ok(stdout: "") }, LegOverride { leg: "drop_in_listing", answer: present() }])
   word(o: still_there.outcome) == "rollback-failed" && reloads(r: still_there) == 1
     && stages(r: still_there) == concat(through_reload, ["fresh-login", "remove-drop-in", "drop-in-absent-readback"])
     && word(o: unknown.outcome) == "rollback-failed" && reloads(r: unknown) == 1
-    && word(o: dangling.outcome) == "rollback-failed" && reloads(r: dangling) == 1
+    && word(o: never_read.outcome) == "rollback-failed" && reloads(r: never_read) == 1
     && word(o: rm_lied.outcome) == "rollback-failed" && reloads(r: rm_lied) == 1
 }
 
@@ -180,7 +192,7 @@ test fn an_uncertain_initial_reload_requires_the_readbacks_and_never_claims_unch
 
 // The uncertain arm reports what its readbacks found, and stays loud when they are bad.
 test fn an_uncertain_reload_reports_a_failed_login_and_an_unconfirmed_removal() -> Bool {
-  let r = run(overrides: [LegOverride { leg: "reload", answer: bad() }, LegOverride { leg: "fresh_login", answer: bad() }, LegOverride { leg: "drop_in_exists", answer: present() }, LegOverride { leg: "effective_config_after_removal", answer: ok(stdout: effective_ours) }])
+  let r = run(overrides: [LegOverride { leg: "reload", answer: bad() }, LegOverride { leg: "fresh_login", answer: bad() }, LegOverride { leg: "drop_in_listing", answer: present() }, LegOverride { leg: "effective_config_after_removal", answer: ok(stdout: effective_ours) }])
   let text = render_export_host_reader_run(r: r)
   word(o: r.outcome) == "reload-uncertain" && reloads(r: r) == 1
     && string_contains(s: text, pattern: "login FAILED")
@@ -197,8 +209,144 @@ test fn the_account_is_created_only_when_absent() -> Bool {
     && !stages(r: run(overrides: [])).contains("account-ensure")
 }
 
+// RED (Blocker 3a): an ensure-account leg that was DISPATCHED but got NO ANSWER reports the account's
+// existence as UNCONFIRMED ("it may have run on the host"), NOT the definite "could not be created" that a
+// never-dispatched ensure correctly gives. Reaching the ensure leg needs the account-check to report ABSENT
+// (id -u exit 1). Red on pre-fix production, whose ensure-account LegUnanswered arm fabricated "the reader
+// account could not be created" for a command that may have created it.
+test fn an_unanswered_ensure_account_is_unconfirmed_not_could_not_be_created() -> Bool {
+  let lost = LegUnanswered { cause: "the process group was killed before the host answered" }
+  let r = run(overrides: [LegOverride { leg: "account_exists", answer: bad() }, LegOverride { leg: "ensure_account", answer: lost }])
+  let c = match r.outcome { ReaderRowsRefused { stage: _, cause: cc } => cc _ => "" }
+  word(o: r.outcome) == "refused"
+    && stages(r: r).contains("account-ensure")
+    && !stages(r: r).contains("write-keys")
+    && string_contains(s: c, pattern: "UNCONFIRMED")
+    && string_contains(s: c, pattern: "may have run on the host")
+    && string_contains(s: c, pattern: "killed before the host answered")
+    && !string_contains(s: c, pattern: "could not be created")
+}
+
 // A drop-in write that did not converge is withdrawn and nothing is tested or reloaded.
 test fn an_unconverged_drop_in_is_withdrawn() -> Bool {
   let r = run(overrides: [LegOverride { leg: "write_drop_in", answer: bad() }])
   word(o: r.outcome) == "refused" && stages(r: r).contains("remove-drop-in") && reloads(r: r) == 0 && !stages(r: r).contains("sshd-t")
+}
+
+// THE HUMAN-READABLE DIAGNOSTIC of an outcome, whichever arm it is, so a control can assert what a leg was
+// told without the fold inventing an exit code for a leg that never ran.
+fn cause_of(o: ExportHostReaderOutcome) -> String {
+  match o {
+    ReaderRowsConverged => ""
+    ReaderRowsRefused { stage: _, cause: c } => c
+    ReaderRowsRolledBack { cause: c } => c
+    ReaderRowsRollbackFailed { cause: _, rollback: r } => r
+    ReaderRowsReloadUncertain { cause: c, running: _, on_disk: _ } => c
+  }
+}
+
+// NEVER DISPATCHED, NEVER AN INVENTED EXIT (gunbc.design_argument::fail_closed). A precheck the transport
+// never dispatched cannot confirm the option is accepted, so nothing is written and the refusal carries the
+// transport's cause -- it does not report a fabricated "exit=". Red on the pre-fix fabricated exit 255.
+test fn a_never_dispatched_precheck_refuses_without_inventing_an_exit() -> Bool {
+  let r = run(overrides: [LegOverride { leg: "precheck", answer: never(reason: "sshd-precheck-never-dispatched-xyzzy") }])
+  let d = cause_of(o: r.outcome)
+  word(o: r.outcome) == "refused" && stages(r: r) == ["sshd-t-option"]
+    && string_contains(s: d, pattern: "sshd-precheck-never-dispatched-xyzzy") && !string_contains(s: d, pattern: "exit=")
+}
+
+// A reload the transport never dispatched is NOT the same as a reload that ran and exited nonzero. The
+// drop-in is still withdrawn and the fold refuses; it is never reported as the reload-uncertain outcome
+// (which claims systemctl ran and exited nonzero -- a fabrication about a command that never started).
+test fn a_never_dispatched_reload_withdraws_rather_than_claiming_reload_uncertain() -> Bool {
+  let r = run(overrides: [LegOverride { leg: "reload", answer: never(reason: "systemctl-reload-never-dispatched-xyzzy") }])
+  let d = cause_of(o: r.outcome)
+  word(o: r.outcome) == "refused"
+    && string_contains(s: d, pattern: "systemctl-reload-never-dispatched-xyzzy")
+    && !string_contains(s: d, pattern: "exited nonzero")
+}
+
+// A NEVER-DISPATCHED REMOVAL READBACK IS NEVER CONFIRMED ABSENT. A leg that did not run cannot prove the
+// drop-in is gone; it must stay "NOT confirmed absent" and carry its cause. If absence were fabricated as
+// exit 1, this would flip to "confirmed absent and sshd was not reloaded" -- which is exactly the red.
+test fn a_never_dispatched_removal_readback_is_never_confirmed_absent() -> Bool {
+  let r = run(overrides: [LegOverride { leg: "test_config", answer: bad() },
+                          LegOverride { leg: "drop_in_listing", answer: never(reason: "readback-transport-refused-xyzzy") }])
+  let d = cause_of(o: r.outcome)
+  word(o: r.outcome) == "refused"
+    && string_contains(s: d, pattern: "NOT confirmed absent")
+    && string_contains(s: d, pattern: "readback-transport-refused-xyzzy")
+    && !string_contains(s: d, pattern: "confirmed absent and sshd was not reloaded")
+}
+
+// A REAL ANSWERED 255 STAYS AN ANSWERED EXIT, DISTINCT FROM NEVER DISPATCHED (reviewer ask). Same leg, two
+// shapes: a genuinely answered ssh 255 renders its real "exit=255"; a never-dispatched leg carries its cause
+// and is NEVER given "exit=255". Restoring a fabricated-255 thunk (a never-dispatched leg rendered as a
+// LegAnswered{exit_code:255}) turns the never-dispatched run red on the final assertion.
+test fn a_real_answered_255_stays_an_answered_exit_distinct_from_never_dispatched() -> Bool {
+  let real = run(overrides: [LegOverride { leg: "test_config", answer: bad() },
+                             LegOverride { leg: "drop_in_listing", answer: answered(exit: 255, out: "", err: "ssh-remote-hung-up-xyzzy") }])
+  let nd   = run(overrides: [LegOverride { leg: "test_config", answer: bad() },
+                             LegOverride { leg: "drop_in_listing", answer: never(reason: "dropin-never-dispatched-xyzzy") }])
+  let dr = cause_of(o: real.outcome)
+  let dn = cause_of(o: nd.outcome)
+  word(o: real.outcome) == "refused" && word(o: nd.outcome) == "refused"
+    && string_contains(s: dr, pattern: "exit=255") && string_contains(s: dr, pattern: "ssh-remote-hung-up-xyzzy")
+    && string_contains(s: dn, pattern: "dropin-never-dispatched-xyzzy") && !string_contains(s: dn, pattern: "exit=255")
+}
+
+// CONTROL (reviewer, Blocker 1, root defect): a reload the transport DISPATCHED but got NO ANSWER for -- the
+// leg overran its wall-clock deadline (TypedArgvExecOverran), routed through the PRODUCTION mapper
+// host_leg_of_typed_argv -- has an UNKNOWN effect: sshd may already have taken the drop-in. It MUST reach the
+// reload-uncertain arm and run the uncertainty readbacks (removal, the sshd -T of what is on disk, a fresh
+// login), never be read as a never-dispatched reload that withdrew "sshd was not reloaded" without checking.
+// RED against the pre-fix host_leg_of_typed_argv that mapped TypedArgvExecOverran onto LegNotDispatched
+// (which withdrew without running the readbacks and left the daemon possibly running an unreported config).
+test fn an_overran_initial_reload_runs_the_readbacks_and_never_says_not_reloaded() -> Bool {
+  let overran = host_leg_of_typed_argv(outcome: TypedArgvExecOverran { deadline: second(count: 30) })
+  let r = run(overrides: [LegOverride { leg: "reload", answer: overran }])
+  let text = render_export_host_reader_run(r: r)
+  word(o: r.outcome) == "reload-uncertain"
+    && stages(r: r) == concat(through_reload, ["fresh-login", "remove-drop-in", "drop-in-absent-readback", "sshd-T"])
+    && reloads(r: r) == 1
+    && string_contains(s: text, pattern: "RELOAD UNCERTAIN")
+    && string_contains(s: text, pattern: "DISPATCHED but its reply was lost")
+    && string_contains(s: text, pattern: "the process group was killed before the host answered")
+    && string_contains(s: text, pattern: "the drop-in is confirmed absent")
+    && !string_contains(s: text, pattern: "not reloaded")
+    && !string_contains(s: text, pattern: "unchanged")
+}
+
+// CONTROL (reviewer, Blocker 2): the absence read is elevated -- ONE parent listing -- and an elevated read can be
+// DENIED by sudo policy WITHOUT the "sudo:" word -- "Sorry, user ... is not allowed to execute ..." -- and still
+// exit 1, the same exit a genuine "absent" gave the OLD readback. Under the listing model, absence is claimed ONLY
+// on a listing that COMPLETED (exit 0); an exit-1 policy denial establishes nothing, so the removal stays
+// unconfirmed, the rollback FAILS loudly, and NO second reload runs. Red on the pre-fix readback_absent that
+// read a bare exit-1 as absent: it would have confirmed a phantom absence, done a second reload, and could
+// report rolled back. (Named against the pre-fix revision, not "current production". The name once said "both
+// reads", from the two-test readback this listing replaced.)
+test fn a_rollback_with_sudo_refusal_on_the_parent_listing_fails_without_a_second_reload() -> Bool {
+  let policy_denied = answered(exit: 1, out: "", err: "Sorry, user deploy is not allowed to execute '/usr/bin/ls -1 -A -- /etc/ssh/sshd_config.d' as root")
+  let r = run(overrides: [
+    LegOverride { leg: "fresh_login", answer: bad() },
+    LegOverride { leg: "remove_drop_in", answer: ok(stdout: "") },
+    LegOverride { leg: "drop_in_listing", answer: policy_denied }])
+  let text = render_export_host_reader_run(r: r)
+  word(o: r.outcome) == "rollback-failed"
+    && reloads(r: r) == 1
+    && string_contains(s: text, pattern: "NOT confirmed absent")
+    && string_contains(s: text, pattern: "is not allowed to execute")
+    && !string_contains(s: text, pattern: "rolled back")
+}
+
+// CONTROL (reviewer, Blocker 2 positive): a removal whose rm reply was never dispatched is still CONFIRMED
+// ABSENT when the elevated listing COMPLETED (exit 0) and does not name the entry -- the rollback reloads and
+// reports rolled back. Guards the absence guarantee the disambiguation could otherwise over-block.
+test fn an_unobserved_removal_is_still_confirmed_absent_by_valid_reads() -> Bool {
+  let r = run(overrides: [
+    LegOverride { leg: "fresh_login", answer: bad() },
+    LegOverride { leg: "remove_drop_in", answer: never(reason: "rm-never-dispatched-xyzzy") },
+    LegOverride { leg: "drop_in_listing", answer: absent() }])
+  word(o: r.outcome) == "rolled-back"
+    && reloads(r: r) == 2
 }

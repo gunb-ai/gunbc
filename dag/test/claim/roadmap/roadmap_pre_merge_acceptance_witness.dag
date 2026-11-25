@@ -124,10 +124,10 @@ fn acceptance_choice() -> Optional<AcceptanceCommandChoice> {
 // ruling, run: append an acceptance that names a pull request and a head, and read the standing back off
 // the bytes the push carried.
 // WET ENTRY: this witness performs its assertions through the host, so the host must be the wet
-// one. `--claim-run` executes hermetically and the hermetic transport has no arm for the scratch
-// directory the ledger needs, so these rows are run the way every wet witness is run — as a
-// ProcessExit entry, `gunbc run --entry <this module> --function pre_merge_acceptance_wet`, with
-// no --dry-run and no --claim-run. rc 0 is the execution; rc 1 refuses in a sentence.
+// one. A hermetic claim run has no transport arm for the scratch directory the ledger needs, so
+// these rows are run the way every wet witness is run — as a ProcessExit entry,
+// `gunbc run --entry <this module> --function pre_merge_acceptance_wet`, with no --dry-run.
+// rc 0 is the execution; rc 1 refuses in a sentence.
 fn pre_merge_acceptance_wet() -> ProcessExit {
   let run = ledger_owned(fn_with: fn(layout, scratch) { pre_merge_witness(layout: layout) })
   if run.result && run.swept {
