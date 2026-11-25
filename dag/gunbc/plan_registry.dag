@@ -28,6 +28,7 @@ import gunbc.plans.derived_types_keep_their_name { derived_types_keep_their_name
 import gunbc.plans.claim_execution_consolidation { claim_execution_consolidation_plan }
 import gunbc.plans.fabric_market { fabric_market_plan }
 import gunbc.plans.required_lane_claim_clause_grain { required_lane_claim_clause_grain_plan }
+import gunbc.plans.agent_work_is_a_dependency_plan { agent_work_is_a_dependency_plan_plan }
 
 // THE PLANS THAT SURVIVED THE 2026-11-08 RESET (gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08):
 // only plans a live consumer reads. Every other gunbc.plans carrier was deleted; git history keeps them.
@@ -60,6 +61,8 @@ import gunbc.plans.required_lane_claim_clause_grain { required_lane_claim_clause
 // so a failure-mode row that QUOTES the phrase about a lane the roster does not roster is refused as if it denied that
 // lane. Its done-when requires the pair in one clause or one ledger row, with controls for both the narrowing and the
 // quotation case. Its realization is a work item naming this intention; it is not realized by the measurement that filed it.
+// agent_work_is_a_dependency_plan is the running intention that a harness agent's working state is a typed dependency
+// plan rather than a growing conversation (operator, 2026-11-25); it collects the ctrl prototype's replay evidence.
 // Each deletes with its last consumer.
 data all_plans: List<Plan> = [
   cli_run_hollowing_plan, extdeps_modeling_preflight_plan, demand_engine_program_plan,
@@ -72,4 +75,5 @@ data all_plans: List<Plan> = [
   desired_state_follows_the_machine_plan, fabric_market_plan,
   derived_types_keep_their_name_plan,
   required_lane_claim_clause_grain_plan,
+  agent_work_is_a_dependency_plan_plan,
 ]

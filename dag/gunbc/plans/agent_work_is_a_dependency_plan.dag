@@ -1,0 +1,72 @@
+module gunbc.plans.agent_work_is_a_dependency_plan
+
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
+import std.markdown { MarkdownBlock }
+import gunbc.markdown_helpers { h2, p, li, ul, quote }
+
+fn agent_work_is_a_dependency_plan_body() -> List<MarkdownBlock> {
+  [
+    quote(blocks: [
+      p(text: "**This plan is written as an intention** (`gunbc.design_argument::plans_are_intentions`): what the harness should become, why, and done-when. It is a running plan: sections 3 and 4 collect evidence and requirements from the prototype as they arrive. How it is realized is downstream and not authored here."),
+      p(text: "**Grounding:** `gunbc.design_argument::plans_are_intentions`, `gunbc.design_argument::continuous_generalization` (the planner model and the roadmap's own decomposition model are reconciled two-sided, section 5), `gunbc.design_argument::consumption` (a plan node exists only for a consumer), `gunbc.design_argument::fail_closed` (a step that cannot finish says so, typed), `gunbc.design_argument::epistemic_humility` (a report separates observed, deduced and bet), `gunbc.design_argument::how_to_work` (proportionate evidence)."),
+    ]),
+    h2(text: "1. Intention"),
+    p(text: "**What:** a harness agent's working state is a dependency plan it authors and revises, not an ever-growing conversation. Each turn either answers directly or advances the plan: adds nodes conditioned on other nodes' outcomes, reports a node's result, or cuts a branch and replans it. The harness settles the plan mechanically (what is ready, what is skipped, what a join concluded) and gives each step only the context its node needs: the shared brief, its assignment, the reports it depends on and its own steps. The model is declared in `.dag`; this intention covers the planning model only, not a rewrite of the transport, tools or seat machinery."),
+    p(text: "**Why (operator, 2026-11-24 and 2026-11-25):** the conversation-in-a-loop harness gives the agent no routine for dependency planning, so investigation and decision interleave in one growing transcript the agent must keep re-reading. The operator asked whether each turn can be a roadmap-planning exercise -- adding several nodes in one turn, conditional on other outcomes, ergonomic for the model and not forced when a direct answer will do -- with each step given just enough stable context, frugal without carrying settled branches forward, and without frequent random pruning (a removal cuts to the root of what is deleted and replans the rest). If the model holds, every mini agent moves to it."),
+    p(text: "**Done when** (each assessed against the tree unless marked as the operator's judgement):"),
+    ul(items: [
+      li(text: "The plan is a typed carrier in `.dag`: nodes (work, decision, join) with declared outcomes, outcome-conditioned needs, reports that separate observed claims with their source from deduced claims and bets with their settle-by, and one atomic advance (add, report, cut, next)."),
+      li(text: "An invalid advance (a reference to an unknown node, a dependency cycle, a need on an undeclared outcome, a report from a non-node or a cut from a node) refuses whole and applies nothing; each case has an executed refused control beside an accepted one."),
+      li(text: "Settlement is one function of the plan and its reports, with executed controls for: a need on an outcome that did not occur skips its dependents; could-not-finish never satisfies a plain need; a join concludes complete or partial; one ruling settles exactly one decision; a cut removes the node and everything downstream of it."),
+      li(text: "Each step's prompt is derived from the plan, never accumulated: the identical brief first, then the node's assignment and the reports it needs; a node does not see the whole plan, and the coordinator sees a snapshot of open work plus one-line summaries of settled branches. A control shows a step's prompt is append-only within its node."),
+      li(text: "One model of planned work: the agent-scale plan and `gunbc.roadmap.roadmap_decomposition` `WorkPiece` (Leaf, Family with a `FindingsOf` population, Join, Decision) are one model at two grains, or the divergence is stated with its reason (section 5)."),
+      li(text: "No second planner authority: the ctrl mini-agent prototype (section 2) is realized from this model or deleted."),
+      li(text: "Operator's judgement: on held-out tasks whose probes were not preselected, the planner harness reaches a handback at least as accurate as the conversation loop at no greater model-token cost, and its plan visibly changes after the first observation that should change it."),
+    ]),
+    h2(text: "2. The model, as prototyped (design evidence)"),
+    p(text: "A prototype in a ctrl worktree on srv2 (`scripts/mini-agent/replay/planner_agent.mjs`, uncommitted; 14 scripted tests pass) realizes this vocabulary. It is evidence for the shape, not its authority."),
+    ul(items: [
+      li(text: "**Node:** a name, an ask, a kind (work, decision, join) and declared outcomes. Built-in outcomes: could-not-finish for every node; ruled for a decision; complete or partial for a join."),
+      li(text: "**Need:** an edge to a node, optionally conditioned on a set of its outcomes. A plain need is met by any outcome except could-not-finish; a plain need on a join means complete."),
+      li(text: "**Report:** outcome, summary, observed claims each with its source, deduced claims, bets each with what would settle it, and an optional replan request."),
+      li(text: "**Advance:** one atomic batch of add, report, cut and a preferred next node. The coordinator holds only this operation and runs no commands; a node holds the ordinary tools plus advance, may add sub-nodes it waits on and resume when they settle, and reports; only the coordinator cuts."),
+      li(text: "**Settle:** mechanical readiness, skipping and join conclusion. The coordinator is consulted at once on could-not-finish, a replan request or an inbound message, and otherwise when nothing is runnable. A decision is asked of the manager only when no coordinator turn is due."),
+    ]),
+    h2(text: "3. Observations, replay of 2026-11-24 to 2026-11-25"),
+    p(text: "Producer: the replay driver beside the prototype, srv2 `/tmp/ffi-replay`, task `debt-fs-absence-roster-restate` at gunbc e270c48e, the recorded manager reply injected once the agent asks. The model endpoint was saturated (hundreds of capacity retries; single steps of 10 to 65 minutes), so wall time is not comparable between arms; steps and tokens are. The planner run had not finished when this was written."),
+    ul(items: [
+      li(text: "**A first planner version had defects the second fixed:** joins always concluded as supported and readiness ignored outcome; one ruling closed every open decision; a step could make one transition only; a nudge told the root node to close, which it could not; and old tool results were rewritten every step, breaking the prompt cache."),
+      li(text: "**The conversation loop** reached a one-line roster edit after about 40 model calls, while the question of which deliverable the manager wanted was still open."),
+      li(text: "**The planner's first plan** was two nodes, spec then measure gated on spec reporting SpecClear. The two asks overlapped (spec was also told to find the roster file, which was measure's first item), and spec ran 14 steps, much of it measure's work, before reporting. The gate was unnecessary: inspecting the named functions did not depend on scope being settled. The ticket's provisions conflict (a closing witness first versus a roster correction first), yet spec reported SpecClear rather than raising a decision. An independent review of the same logs reached the same reading."),
+    ]),
+    h2(text: "4. Requirements the evidence adds"),
+    p(text: "Requirements on the model, not steps; each is a bet until a held-out replay settles it."),
+    ul(items: [
+      li(text: "A node answers one question, and no two open asks overlap."),
+      li(text: "A node exists only when a named later decision consumes its result; batching several observations inside one step needs no node."),
+      li(text: "A need names an outcome only when the other outcomes would make the dependent's work useless; the plain need is the default."),
+      li(text: "A conflict in the brief is raised as a decision node, not carried as a footnote inside a clear report."),
+      li(text: "A node sees what each of its outcomes releases, including the dependents' asks, so it can see where its own job ends."),
+      li(text: "A report is not restated inside itself: the rendered report carries the outcome and findings, not the ask that produced it."),
+      li(text: "A step may return a sub-plan whose result completes that same step, with no coordinator turn between; the initial plan and a mid-step plan are one representation."),
+    ]),
+    h2(text: "5. Open questions"),
+    ul(items: [
+      li(text: "**Home.** Whether the model extends `gunbc.harness` (whose turn loop is `gunbc.harness.harness_turn`) or is a new module the harness consumes; decided when the first realization is staffed."),
+      li(text: "**One model at two grains.** `gunbc.roadmap.roadmap_decomposition` already declares Leaf, Family with a `FindingsOf` probe-discovered population, Join and Decision pieces. Whether an agent's plan node and a roadmap work piece are one type at two grains, or two concepts, is answered two-sided before either grows."),
+      li(text: "**Persistence.** Whether a plan survives a session restart as an event log, and whether that log shares a writer with the item event log; none is assumed."),
+      li(text: "**Who coordinates.** Whether the coordinator stays a distinct role or becomes the root node."),
+    ]),
+    h2(text: "6. Realization"),
+    p(text: "Not authored here. Work items that serve this intention name it, and may be redrawn without this plan changing."),
+  ]
+}
+
+data agent_work_is_a_dependency_plan_plan: Plan = Plan {
+  projection: PlanIsAuthorityOnly,
+  slug: "agent-work-is-a-dependency-plan",
+  title: "Agent work is a dependency plan: each harness turn answers or advances a typed plan",
+  body: agent_work_is_a_dependency_plan_body(),
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Section 1 is achieved: every done-when condition holds on the tree, or for the judgement condition the operator has accepted it; or the operator withdraws the intention because the replays showed the model does not hold.") },
+}
