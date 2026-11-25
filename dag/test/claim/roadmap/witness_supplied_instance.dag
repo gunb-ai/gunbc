@@ -1495,6 +1495,13 @@ fn witness_locus_install(
       },
       source_root: instance.repo_root as String,
       executables: witness_locus_executables,
+      // THE EMPTY SIBLING-WRITER FOOTPRINT. `permitted_extras` (added at main by #16927's readback) is
+      // the modeled set of members a leg OTHER than the tree install drops at the locus, which the
+      // containment readback tolerates by name and refuses everything else. The witness locus has no
+      // sibling writers: the tree install writes it and the installer's own receipt is its -- the seal
+      // file lands later, by a different route, after this readback has answered -- so the footprint is
+      // the empty list, exactly as the helper snapshot and the staged baked release declare.
+      permitted_extras: [],
       transport: one_transport_route(transport: LocalShell),
     )
   }
