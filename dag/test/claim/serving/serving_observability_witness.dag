@@ -7,7 +7,7 @@ import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import gunbc.serving.serving_observability {
   EngineFrontProxyVerdict, EngineFrontProxyRendered, EngineFrontProxyRefused,
   EngineFrontRoute, engine_front_required_routes,
-  engine_front_proxy_config, engine_front_render_forwards_route,
+  engine_front_proxy_config, engine_front_proxy_directives, engine_front_proxies_route,
   engine_front_route_consumer, engine_front_unserved_consumers,
   InstrumentDecision, NotAnInstrument, NamedInstrument, cold_token_cause_breakdown_standing,
   RouterProbeStanding, TransientReceiptOfHandManagedRouter, ModelledRouterInstrument, router_probe_line_standing,
@@ -47,9 +47,10 @@ test fn a_complete_observed_front_blocks_no_consumer() -> Bool {
 
 // The RENDER is derived from the roster with no forwarded input: it always proxies every consumed route,
 // so a front missing /metrics has no constructor (guarantee_ladder). This asserts the metrics and inference
-// routes really reach the engine in the rendered bytes.
+// routes really reach the engine as ProxyPassToHost directives. Discriminating: a route absent from the
+// roster (/debug) is NOT proxied, so this proves the check is not vacuously true (fail_closed).
 test fn the_rendered_front_always_proxies_the_consumed_routes() -> Bool {
-  match engine_front_proxy_config(
+  match engine_front_proxy_directives(
     bind_address: "0.0.0.0" as NonEmptyStr,
     listen_port: 8443,
     tls_cert: "/etc/tls/engine.crt" as NonEmptyStr,
@@ -57,10 +58,12 @@ test fn the_rendered_front_always_proxies_the_consumed_routes() -> Bool {
     engine_host: "127.0.0.1" as NonEmptyStr,
     engine_port: 8080,
   ) {
-    EngineFrontProxyRendered { text: t } =>
-      engine_front_render_forwards_route(text: t, route: "/metrics" as NonEmptyStr)
-        && engine_front_render_forwards_route(text: t, route: "/v1/chat/completions" as NonEmptyStr)
-    EngineFrontProxyRefused { refusal: _ } => false
+    Present { value: rows } =>
+      engine_front_proxies_route(ds: rows, route: "/metrics" as NonEmptyStr)
+        && engine_front_proxies_route(ds: rows, route: "/v1/chat/completions" as NonEmptyStr)
+        && engine_front_proxies_route(ds: rows, route: "/v1/models" as NonEmptyStr)
+        && !engine_front_proxies_route(ds: rows, route: "/debug" as NonEmptyStr)
+    Absent => false
   }
 }
 

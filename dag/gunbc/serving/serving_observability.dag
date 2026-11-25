@@ -150,7 +150,7 @@ fn engine_front_locations(
 ) -> Optional<List<NginxDirective>> {
   fold(
     engine_front_required_routes,
-    init: Present { value: [] as List<NginxDirective> } as Optional<List<NginxDirective>>,
+    init: Present { value: [] as List<NginxDirective> },
     f: (acc, r) => match acc {
       Absent => Absent
       Present { value: accs } =>
@@ -181,10 +181,34 @@ fn engine_front_unserved_consumers(observed: List<NonEmptyStr>) -> List<Declarat
   )
 }
 
-// Does the rendered front door hold a proxy_pass for `route`? Used to assert the accepted control actually
-// reaches the engine, not merely that the verdict was accepted.
-fn engine_front_render_forwards_route(text: String, route: NonEmptyStr) -> Bool {
-  string_contains(s: text, pattern: join(["proxy_pass http://", route as String], ""))
+// The directives a correct front renders, for structural assertion (not the rendered bytes). The witness
+// checks these for a ProxyPassToHost on each consumed route -- a real discriminating check: drop /metrics
+// from the roster and engine_front_proxies_route("/metrics") goes red.
+fn engine_front_proxy_directives(
+  bind_address: NonEmptyStr,
+  listen_port: Port,
+  tls_cert: NonEmptyStr,
+  tls_key: NonEmptyStr,
+  engine_host: NonEmptyStr,
+  engine_port: Port,
+) -> Optional<List<NginxDirective>> {
+  engine_front_server_directives(bind_address: bind_address, listen_port: listen_port, tls_cert: tls_cert, tls_key: tls_key, engine_host: engine_host, engine_port: engine_port)
+}
+
+// Walk the server/location tree and collect every ProxyPassToHost target path.
+fn engine_front_proxied_paths(ds: List<NginxDirective>) -> List<String> {
+  fold(ds, init: [] as List<String>, f: (acc, d) => concat(acc, match d {
+    ServerBlock { body: b } => engine_front_proxied_paths(ds: b)
+    LocationBlock { matching: _, body: b } => engine_front_proxied_paths(ds: b)
+    ProxyPassToHost { host: _, port: _, path: p } => [ (p as String) ]
+    _ => [] as List<String>
+  }))
+}
+
+// Does the rendered front proxy `route` to the engine? Structural, over the directive list, so the witness
+// proves the proxy_pass really carries the route rather than grepping rendered bytes.
+fn engine_front_proxies_route(ds: List<NginxDirective>, route: NonEmptyStr) -> Bool {
+  any(engine_front_proxied_paths(ds: ds), p => p == (route as String))
 }
 
 // The named consumer carried on a required route, exposed for the ledger and the witness to assert against
