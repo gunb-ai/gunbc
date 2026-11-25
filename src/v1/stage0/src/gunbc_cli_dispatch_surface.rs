@@ -588,7 +588,7 @@ pub fn gunbc_cli_subcommands() -> Rc<Vec<Rc<CliSubcommandRow>>> {
 }), Rc::new(CliSubcommandRow {
     verb: "converge".to_string(),
     variant: "Converge".to_string(),
-    doc: Rc::new(vec!["Plan or apply fleet convergence for the host this process runs on, through the same".to_string(), "plan -> hashed bundle -> lease -> apply -> receipt spine the fleet-converge workflow runs,".to_string(), "under an operator-local run binding. `--mode plan` writes /tmp/fleet-converge-plan and".to_string(), "prints the plan receipt; `--mode apply` takes that plan's run id and bundle hash;".to_string(), "`--mode deploy` converges the srv1 dashboard deployment from this checkout's HEAD.".to_string()]),
+    doc: Rc::new(vec!["Plan or apply fleet convergence for the host this process runs on, through the same".to_string(), "plan -> hashed bundle -> lease -> apply -> receipt spine the fleet-converge workflow runs,".to_string(), "under an operator-local run binding. `--mode plan` requires".to_string(), "GUNBC_FLEET_CONVERGE_RUN_ARTIFACT_ROOT (a writable directory) and".to_string(), "GUNBC_FLEET_CONVERGE_RUN_ARTIFACT_ATTEMPT, writes the run's artifact family under".to_string(), "<root>/<run id>/<attempt> (the leaf claimed exclusively; absent or empty inputs are typed".to_string(), "refusals, never defaults) and prints the plan receipt; `--mode apply` takes that plan's run".to_string(), "id and bundle hash and requires GUNBC_FLEET_CONVERGE_PLAN_ANCHOR naming that directory;".to_string(), "`--mode deploy` converges the srv1 dashboard deployment from this checkout's HEAD.".to_string()]),
     operands: Rc::new(vec![]),
     options: Rc::new(vec![Rc::new(CliOptionRow {
     field: "host".to_string(),
