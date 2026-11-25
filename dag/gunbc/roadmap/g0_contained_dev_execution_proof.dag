@@ -170,3 +170,29 @@ data g0_bwrap_isolation_bash_emit_dissolution_trigger: Disposition = Scaffold {
     field: WholeDeclaration,
   }
 }
+
+// THE OBSERVING-LAYER RECORD for the two-sided unreachability witness (review 98398 FINDING 1). The plan
+// carries intentions only (gunbc.design_argument::plans_are_intentions) and must NOT hold a probe result,
+// status, or count -- so what the witness establishes, and precisely what it leaves UNPROVEN, is recorded
+// HERE as a typed carrier (gunbc.design_argument::source_annotations: a receipt belongs in a typed carrier;
+// gunbc.design_argument::single_authority: one place owns the result, not a copy the plan restates). The
+// per-run PASS/RED is produced by the executed verdict (g0_two_sided_isolation_verdict) and the raw log in
+// the handback; this record states the witness SCOPE and the named-unproven set, which is stable knowledge
+// about the witness host, not a per-run receipt.
+type G0UnprovenBarrier = DacUidCapabilityEnforcement | LiveSystemdUnitEnforcement
+
+type G0IsolationWitnessObservations = G0IsolationWitnessObservations {
+  host: String,
+  boot: String,
+  enforcement_primitive: String,
+  unproven: List<G0UnprovenBarrier>,
+  unproven_reason: String,
+}
+
+data g0_isolation_witness_observations: G0IsolationWitnessObservations = G0IsolationWitnessObservations {
+  host: "srv1",
+  boot: "c095c0cd",
+  enforcement_primitive: "mount-namespace tmpfs masking (bwrap --dev-bind / with --tmpfs over the protected and sibling subtrees); same mechanism family as ProtectHome=tmpfs / ProtectSystem / the ReadWritePaths carve-out",
+  unproven: [ DacUidCapabilityEnforcement, LiveSystemdUnitEnforcement ],
+  unproven_reason: "unprivileged user namespaces are blocked on the witness host (kernel.apparmor_restrict_unprivileged_userns=1; unshare -U fails EPERM writing /proc/self/uid_map), so a uid/capability (DAC) boundary and the live systemd unit's own enforcement cannot be exercised there without root",
+}

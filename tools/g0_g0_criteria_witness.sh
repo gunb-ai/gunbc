@@ -13,6 +13,32 @@
 #   WHY it cannot be a .dag consumer: producing the observations requires EXECUTING a real kernel
 #   mount-namespace primitive (bwrap --tmpfs masking) that no typecheck or grep can (fail_closed).
 #
+# ─────────────────────────────────────────────────────────────────────────────────────────────────────
+# EXPLICIT INVOCATION CONTRACT (review 98398 FINDING 2 — this script has an owner; it is not orphaned).
+#   WHAT it runs:     the two-sided hermetic unreachability witness for G0 (PR #16989). It is a witness,
+#                     not a gate that blocks a merge; its verdict (the model's ProcessExit) is reported in
+#                     the session handback and a PR comment, and the operator alone rules on G0.
+#   WHERE it runs:    host srv1 ONLY (srv1.tailecbe08.ts.net), boot id c095c0cd. Never in a build
+#                     container; never on srv2; never against a real service.
+#   EXACT COMMAND:    ssh -n -o BatchMode=yes -o StrictHostKeyChecking=no -o HostName=srv1.tailecbe08.ts.net \
+#                       briansrls@srv1 \
+#                       'cd <repo-root-on-srv1-with-Cargo.toml-beside-dag-and-src> && \
+#                        HEAVY_OWNER=<session-id> $HOME/bin/heavy-slot bash tools/g0_g0_criteria_witness.sh'
+#                     The heavy-slot wrapper is MANDATORY (shared limiter); its acquisition line must be the
+#                     FIRST line of the captured log. The nested `gunbc run` calls inherit that one slot
+#                     (a single stage); they are not separately queued.
+#   WHO MAY RUN IT:   the G0 criteria lane session working PR #16989 (currently vivid-otter-312), or the
+#                     lane manager zesty-crane-236, only after verifying the srv1 tree content hash matches
+#                     the head under test. No other party; the operator does not run it (they rule on the
+#                     recorded result).
+#   WHERE OUTPUT LANDS: the captured run log (print set + MODEL_OUT verdict reasons + the two named
+#                     negatives' model failure text + MODEL_VERDICT_RC) into the session handback to
+#                     zesty-crane-236 and a comment on PR #16989. The per-run PASS/RED authority is the
+#                     model verdict (g0_two_sided_isolation_verdict); the witness scope and what is
+#                     UNPROVEN live in gunbc.roadmap.g0_contained_dev_execution_proof::
+#                     g0_isolation_witness_observations. The plan references these by symbol only.
+# ─────────────────────────────────────────────────────────────────────────────────────────────────────
+#
 # Run on srv1 from the repo root (Cargo.toml beside dag/ and src/), under the shared limiter:
 #   HEAVY_OWNER=<session> ~/bin/heavy-slot bash tools/g0_g0_criteria_witness.sh
 # The nested `gunbc run` calls run inside THIS heavy-slot scope (one stage); they are not separately queued.
