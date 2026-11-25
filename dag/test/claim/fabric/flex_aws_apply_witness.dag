@@ -7,7 +7,7 @@ import std.apply_mode { Apply }
 import std.measure { second, MoneyPerHour, money_amount_micro, money_per_hour_micros }
 import extdeps.currency.currency { Usd }
 import extdeps.cloud.aws_ec2 {
-  AwsEc2Instance, AwsEc2InstanceState, AwsEc2Placement, AwsEc2Running, AwsEc2Terminated, AwsEc2ActionTerminate,
+  AwsEc2Instance, AwsEc2InstanceState, AwsEc2Placement, AwsEc2Running, AwsEc2Terminated, AwsEc2ShuttingDown, AwsEc2ActionTerminate,
   AwsEc2LaunchInline, AwsEc2SpotMarket, AwsEc2TagInstance, AwsEc2TagVolume,
 }
 import extdeps.cloud.aws_cli { aws_cli_run_instances, aws_cli_money_wire }
@@ -75,8 +75,8 @@ test fn the_two_events_parse_and_anything_else_does_not() -> Bool {
 
 // With no card and room for one, the cheapest admissible candidate launches at its own rate as MaxPrice.
 test fn an_empty_pool_launches_the_cheapest_admissible_card() -> Bool {
-  match flex_aws_decide(policy: policy, candidates: [cand(zone: "us-east-1c", micros: 2719400), cand(zone: "us-east-1b", micros: 2350500)], owned: [], notices: [], now_unix: now_unix) {
-    FlexAwsLaunch { candidate: c, max_price: m } => ((c.zone as String) == "us-east-1b") && (money_per_hour_micros(q: m) == 2350500)
+  match flex_aws_decide(policy: policy, candidates: [cand(zone: "us-east-1c", micros: 2719400), cand(zone: "us-east-1b", micros: 2350500)], owned: [], notices: [], spot_quota_vcpus: 16, now_unix: now_unix) {
+    FlexAwsLaunch { candidate: c, max_price: m, fallbacks: f } => ((c.zone as String) == "us-east-1b") && (money_per_hour_micros(q: m) == 2350500) && (map(f, x => x.zone as String) == ["us-east-1c"])
     _ => false
   }
 }
@@ -87,12 +87,12 @@ test fn walled_on_demand_wrong_size_and_over_ceiling_candidates_hold() -> Bool {
   let walled = FlexAwsCandidate { region: "us-east-1" as NonEmptyStr, zone: "us-east-1a" as NonEmptyStr, instance_type: "g7e.2xlarge" as NonEmptyStr, market: FlexAwsSpot, gpus: 1, vcpus: 8, rate: Present { value: rate(micros: 1000000) }, per_gpu_hour_micros: none, walls: [FlexAwsQuotaBelowVcpus { quota_vcpus: 0, needs: 8 }] }
   let on_demand = FlexAwsCandidate { region: "us-east-1" as NonEmptyStr, zone: "us-east-1a" as NonEmptyStr, instance_type: "g7e.2xlarge" as NonEmptyStr, market: FlexAwsOnDemand, gpus: 1, vcpus: 8, rate: Present { value: rate(micros: 1000000) }, per_gpu_hour_micros: none, walls: [] }
   let other_size = FlexAwsCandidate { region: "us-east-1" as NonEmptyStr, zone: "us-east-1a" as NonEmptyStr, instance_type: "g7e.4xlarge" as NonEmptyStr, market: FlexAwsSpot, gpus: 1, vcpus: 16, rate: Present { value: rate(micros: 1000000) }, per_gpu_hour_micros: none, walls: [] }
-  match flex_aws_decide(policy: policy, candidates: [walled, on_demand, other_size, cand(zone: "us-east-1d", micros: 13000000)], owned: [], notices: [], now_unix: now_unix) {
+  match flex_aws_decide(policy: policy, candidates: [walled, on_demand, other_size, cand(zone: "us-east-1d", micros: 13000000)], owned: [], notices: [], spot_quota_vcpus: 16, now_unix: now_unix) {
     FlexAwsHold { why: w } => w.contains("no admissible candidate")
     _ => false
   }
-  && (match flex_aws_decide(policy: policy, candidates: [cand(zone: "us-east-1d", micros: 12500000)], owned: [], notices: [], now_unix: now_unix) {
-    FlexAwsLaunch { candidate: _, max_price: _ } => true
+  && (match flex_aws_decide(policy: policy, candidates: [cand(zone: "us-east-1d", micros: 12500000)], owned: [], notices: [], spot_quota_vcpus: 16, now_unix: now_unix) {
+    FlexAwsLaunch { candidate: _, max_price: _, fallbacks: _ } => true
     _ => false
   })
 }
@@ -101,12 +101,12 @@ test fn walled_on_demand_wrong_size_and_over_ceiling_candidates_hold() -> Bool {
 // the pool is short; a warning for a card already gone is not a release.
 test fn an_interruption_warning_releases_its_card_first() -> Bool {
   let warned = FlexAwsInterruptionWarning { instance_id: "i-0abc" as NonEmptyStr, action: AwsEc2ActionTerminate }
-  (match flex_aws_decide(policy: policy, candidates: [cand(zone: "us-east-1b", micros: 2350500)], owned: [card(id: "i-0abc", launched: "2026-11-25T02:30:00+00:00")], notices: [warned], now_unix: now_unix) {
+  (match flex_aws_decide(policy: policy, candidates: [cand(zone: "us-east-1b", micros: 2350500)], owned: [card(id: "i-0abc", launched: "2026-11-25T02:30:00+00:00")], notices: [warned], spot_quota_vcpus: 16, now_unix: now_unix) {
     FlexAwsRelease { instance_id: i, why: FlexAwsReleaseAnnounced { notice: _ } } => (i as String) == "i-0abc"
     _ => false
   })
-  && (match flex_aws_decide(policy: policy, candidates: [cand(zone: "us-east-1b", micros: 2350500)], owned: [], notices: [warned], now_unix: now_unix) {
-    FlexAwsLaunch { candidate: _, max_price: _ } => true
+  && (match flex_aws_decide(policy: policy, candidates: [cand(zone: "us-east-1b", micros: 2350500)], owned: [], notices: [warned], spot_quota_vcpus: 16, now_unix: now_unix) {
+    FlexAwsLaunch { candidate: _, max_price: _, fallbacks: _ } => true
     _ => false
   })
 }
@@ -115,11 +115,11 @@ test fn an_interruption_warning_releases_its_card_first() -> Bool {
 // for; without the recommendation the same pool holds.
 test fn a_rebalance_recommendation_asks_for_a_replacement_and_keeps_serving() -> Bool {
   let owned = [card(id: "i-0abc", launched: "2026-11-25T02:30:00+00:00")]
-  (match flex_aws_decide(policy: policy, candidates: [cand(zone: "us-east-1c", micros: 2719400)], owned: owned, notices: [FlexAwsRebalanceRecommendation { instance_id: "i-0abc" as NonEmptyStr }], now_unix: now_unix) {
-    FlexAwsLaunch { candidate: c, max_price: _ } => (c.zone as String) == "us-east-1c"
+  (match flex_aws_decide(policy: policy, candidates: [cand(zone: "us-east-1c", micros: 2719400)], owned: owned, notices: [FlexAwsRebalanceRecommendation { instance_id: "i-0abc" as NonEmptyStr }], spot_quota_vcpus: 16, now_unix: now_unix) {
+    FlexAwsLaunch { candidate: c, max_price: _, fallbacks: _ } => (c.zone as String) == "us-east-1c"
     _ => false
   })
-  && (match flex_aws_decide(policy: policy, candidates: [cand(zone: "us-east-1c", micros: 2719400)], owned: owned, notices: [], now_unix: now_unix) {
+  && (match flex_aws_decide(policy: policy, candidates: [cand(zone: "us-east-1c", micros: 2719400)], owned: owned, notices: [], spot_quota_vcpus: 16, now_unix: now_unix) {
     FlexAwsHold { why: _ } => true
     _ => false
   })
@@ -128,11 +128,11 @@ test fn a_rebalance_recommendation_asks_for_a_replacement_and_keeps_serving() ->
 // THE LIFETIME BOUND: a card older than four hours is released; a card whose launch time cannot be read
 // is released rather than kept unbounded; a terminated card neither counts nor is released.
 test fn a_spent_or_unreadable_lifetime_releases_and_a_dead_card_is_ignored() -> Bool {
-  (match flex_aws_decide(policy: policy, candidates: [], owned: [card(id: "i-0old", launched: "2026-11-24T22:59:00+00:00")], notices: [], now_unix: now_unix) {
+  (match flex_aws_decide(policy: policy, candidates: [], owned: [card(id: "i-0old", launched: "2026-11-24T22:59:00+00:00")], notices: [], spot_quota_vcpus: 16, now_unix: now_unix) {
     FlexAwsRelease { instance_id: i, why: FlexAwsReleaseLifetimeSpent { age_seconds: a } } => ((i as String) == "i-0old") && (a == 14460)
     _ => false
   })
-  && (match flex_aws_decide(policy: policy, candidates: [], owned: [card(id: "i-0bad", launched: "yesterday")], notices: [], now_unix: now_unix) {
+  && (match flex_aws_decide(policy: policy, candidates: [], owned: [card(id: "i-0bad", launched: "yesterday")], notices: [], spot_quota_vcpus: 16, now_unix: now_unix) {
     FlexAwsRelease { instance_id: _, why: FlexAwsReleaseLaunchTimeUnreadable { launch_time: _ } } => true
     _ => false
   })
@@ -142,8 +142,8 @@ test fn a_spent_or_unreadable_lifetime_releases_and_a_dead_card_is_ignored() -> 
       state: AwsEc2InstanceState { code: 48, name: AwsEc2Terminated },
       state_reason: none, instance_lifecycle: none, spot_instance_request_id: none,
       launch_time: "2026-11-24T00:00:00+00:00", public_ip_address: none, tags: [],
-    }], notices: [], now_unix: now_unix) {
-    FlexAwsLaunch { candidate: _, max_price: _ } => true
+    }], notices: [], spot_quota_vcpus: 16, now_unix: now_unix) {
+    FlexAwsLaunch { candidate: _, max_price: _, fallbacks: _ } => true
     _ => false
   })
 }
@@ -168,4 +168,24 @@ test fn the_launch_argv_is_tagged_spot_at_the_admitted_rate() -> Bool {
     && argv.contains("--iam-instance-profile")
     && argv.contains("--count 1:1")
     && !argv.contains("aws_secret_access_key")
+}
+
+// QUOTA HELD BY OUR OWN CARDS: with an 8-vCPU quota, a card still shutting down holds all of it, so the
+// replacement is not asked for until it is gone; the same pool with the card terminated launches.
+test fn a_card_still_shutting_down_holds_the_quota() -> Bool {
+  let dying = AwsEc2Instance {
+    instance_id: "i-0dying" as NonEmptyStr, instance_type: "g7e.2xlarge" as NonEmptyStr,
+    placement: AwsEc2Placement { availability_zone: "us-east-1b" as NonEmptyStr },
+    state: AwsEc2InstanceState { code: 32, name: AwsEc2ShuttingDown },
+    state_reason: none, instance_lifecycle: none, spot_instance_request_id: none,
+    launch_time: "2026-11-25T02:50:32+00:00", public_ip_address: none, tags: [],
+  }
+  (match flex_aws_decide(policy: policy, candidates: [cand(zone: "us-east-1b", micros: 2350500)], owned: [dying], notices: [], spot_quota_vcpus: 8, now_unix: now_unix) {
+    FlexAwsHold { why: w } => w.contains("0 spot vCPUs")
+    _ => false
+  })
+  && (match flex_aws_decide(policy: policy, candidates: [cand(zone: "us-east-1b", micros: 2350500)], owned: [], notices: [], spot_quota_vcpus: 8, now_unix: now_unix) {
+    FlexAwsLaunch { candidate: _, max_price: _, fallbacks: _ } => true
+    _ => false
+  })
 }

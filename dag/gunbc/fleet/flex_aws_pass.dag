@@ -23,7 +23,7 @@ import extdeps.cloud.aws_cli {
 }
 import product.fabric.flex_aws_row {
   FlexAwsRegionObserved, FlexAwsRegionNotOptedIn, FlexAwsRegionNoOffering, FlexAwsRegionRefused, FlexAwsCandidate,
-  flex_aws_observe_region, flex_aws_candidates, flex_aws_candidate_line, flex_aws_region_line, flex_aws_gpu_names, flex_aws_outcome_text,
+  flex_aws_observe_region, flex_aws_candidates, flex_aws_candidate_line, flex_aws_region_line, flex_aws_gpu_names, flex_aws_outcome_text, flex_aws_one_line,
 }
 import product.fabric.flex_aws_apply {
   FlexAwsApplyPolicy, FlexAwsNotice, FlexAwsNoticeRead, FlexAwsNoticeParsed, FlexAwsNoticeForeign, FlexAwsNoticeUnreadable,
@@ -95,7 +95,7 @@ fn flex_aws_done(outcome: ProcessOutcome) -> AwsCliRead<String> {
   match outcome {
     ProcessOutputPresent { text: t } => AwsCliReadOk { value: t }
     ProcessOutputAbsent => AwsCliReadOk { value: "" }
-    ProcessRefused { exit_code: c, stderr: e } => AwsCliReadRefused { cause: join(["the CLI exited ", to_string(c), ": ", e], "") }
+    ProcessRefused { exit_code: c, stderr: e } => AwsCliReadRefused { cause: join(["the CLI exited ", to_string(c), ": ", flex_aws_one_line(text: e)], "") }
   }
 }
 
@@ -231,33 +231,66 @@ fn flex_aws_deliver_key(region: NonEmptyStr, instance_id: NonEmptyStr) -> String
   }
 }
 
-fn flex_aws_launch(region: NonEmptyStr, candidate: FlexAwsCandidate, max_price_micros: Int, decision: FlexAwsDecision, now_unix: Int) -> String {
+// THE LAUNCH, over the ranked candidates: the AMI, the security group and the user data are read once;
+// each candidate is asked for at ITS OWN rate as MaxPrice, in its zone's default subnet. Only a capacity
+// refusal moves to the next candidate (a refused RunInstances wrote nothing); any other refusal ends the
+// pass with its cause, because it would refuse the next candidate for the same reason.
+data flex_aws_capacity_refusal: String = "InsufficientInstanceCapacity"
+
+fn flex_aws_launch(region: NonEmptyStr, attempts: List<FlexAwsCandidate>, now_unix: Int) -> String {
   match flex_aws_read_param(region: region, name: flex_aws_ami_parameter) {
     AwsCliReadRefused { cause: c } => concat("write=launch REFUSED ami: ", c)
-    AwsCliReadOk { value: ami } => match flex_aws_subnet(region: region, zone: candidate.zone) {
-      AwsCliReadRefused { cause: c } => concat("write=launch REFUSED subnet: ", c)
-      AwsCliReadOk { value: subnet } => match flex_aws_security_group(region: region) {
-        AwsCliReadRefused { cause: c } => concat("write=launch REFUSED security group: ", c)
-        AwsCliReadOk { value: sg } => match flex_ec2_user_data(image: flex_lil_serving_image, files: flex_aws_snapshot(), policy: flex_aws_boot_policy()) {
-          FlexEc2UserDataRefused { cause: c } => concat("write=launch REFUSED user data: ", c as String)
-          FlexEc2UserDataRendered { text: ud } => match decision {
-            FlexAwsLaunch { candidate: c, max_price: mp } => {
-              // The token is the intent: the zone and the minute it was decided in. A retried call within the
-              // same minute returns the same reservation rather than a second card.
-              let token = join(["gunbc-flex-", c.zone as String, "-", to_string(now_unix / 60)], "") as NonEmptyStr
-              let request = flex_aws_run_request(candidate: c, max_price: mp, ami: ami, user_data: ud, boot: flex_aws_boot_policy(), subnet_id: subnet, security_group_id: sg, client_token: token)
-              match flex_aws_outcome_text(outcome: run_shell_command_capture(command: aws_cli_run_instances(credentials_file: flex_aws_credentials(), region: region, request: request), transport: LocalExec)) {
-                AwsCliReadRefused { cause: e } => concat("write=launch REFUSED run-instances: ", e)
-                AwsCliReadOk { value: t } => match aws_cli_read_run_instances(stdout: t) {
-                  AwsCliReadRefused { cause: e } => concat("write=launch ANSWER-UNREADABLE (a card may exist; the roster will show it): ", e)
-                  AwsCliReadOk { value: instances } => match instances.first() {
-                    Absent => "write=launch ANSWER-EMPTY"
-                    Present { value: i } => join(["write=launch ", i.instance_id as String, " ", c.zone as String, " max_price_micros=", to_string(max_price_micros), " ami=", ami as String, " ", flex_aws_deliver_key(region: region, instance_id: i.instance_id)], "")
-                  }
-                }
+    AwsCliReadOk { value: ami } => match flex_aws_security_group(region: region) {
+      AwsCliReadRefused { cause: c } => concat("write=launch REFUSED security group: ", c)
+      AwsCliReadOk { value: sg } => match flex_ec2_user_data(image: flex_lil_serving_image, files: flex_aws_snapshot(), policy: flex_aws_boot_policy()) {
+        FlexEc2UserDataRefused { cause: c } => concat("write=launch REFUSED user data: ", c as String)
+        FlexEc2UserDataRendered { text: ud } => {
+          let tried = fold(attempts, init: FlexAwsAttempts { lines: [], settled: false }, f: (acc, c) =>
+            if acc.settled { acc } else {
+              match flex_aws_launch_one(region: region, candidate: c, ami: ami, sg: sg, user_data: ud, now_unix: now_unix) {
+                FlexAwsCapacityRefused { line: l } => FlexAwsAttempts { lines: concat(acc.lines, [l]), settled: false }
+                FlexAwsLaunchSettled { line: l } => FlexAwsAttempts { lines: concat(acc.lines, [l]), settled: true }
               }
+            })
+          if count(tried.lines) == 0 { "write=launch REFUSED no candidate" } else { join(tried.lines, " ; ") }
+        }
+      }
+    }
+  }
+}
+
+type FlexAwsAttempts {
+  lines: List<String>
+  settled: Bool
+}
+
+// A capacity refusal is the one outcome that moves to the next candidate; a launch, an unreadable answer,
+// or any other refusal settles the pass.
+type FlexAwsLaunchOne
+  = FlexAwsCapacityRefused { line: String }
+  | FlexAwsLaunchSettled { line: String }
+
+fn flex_aws_launch_one(region: NonEmptyStr, candidate: FlexAwsCandidate, ami: NonEmptyStr, sg: NonEmptyStr, user_data: String, now_unix: Int) -> FlexAwsLaunchOne {
+  match candidate.rate {
+    Absent => FlexAwsLaunchSettled { line: join(["write=launch REFUSED ", candidate.zone as String, " has no rate"], "") }
+    Present { value: rate } => match flex_aws_subnet(region: region, zone: candidate.zone) {
+      AwsCliReadRefused { cause: c } => FlexAwsLaunchSettled { line: join(["write=launch REFUSED subnet ", candidate.zone as String, ": ", c], "") }
+      AwsCliReadOk { value: subnet } => {
+        // The token is the intent: the zone and the minute it was decided in. A retried call within the
+        // same minute returns the same reservation rather than a second card.
+        let token = join(["gunbc-flex-", candidate.zone as String, "-", to_string(now_unix / 60)], "") as NonEmptyStr
+        let request = flex_aws_run_request(candidate: candidate, max_price: rate, ami: ami, user_data: user_data, boot: flex_aws_boot_policy(), subnet_id: subnet, security_group_id: sg, client_token: token)
+        match flex_aws_outcome_text(outcome: run_shell_command_capture(command: aws_cli_run_instances(credentials_file: flex_aws_credentials(), region: region, request: request), transport: LocalExec)) {
+          AwsCliReadRefused { cause: e } => {
+            let line = join(["write=launch REFUSED ", candidate.zone as String, ": ", e], "")
+            if e.contains(flex_aws_capacity_refusal) { FlexAwsCapacityRefused { line: line } } else { FlexAwsLaunchSettled { line: line } }
+          }
+          AwsCliReadOk { value: t } => match aws_cli_read_run_instances(stdout: t) {
+            AwsCliReadRefused { cause: e } => FlexAwsLaunchSettled { line: concat("write=launch ANSWER-UNREADABLE (a card may exist; the roster will show it): ", e) }
+            AwsCliReadOk { value: instances } => match instances.first() {
+              Absent => FlexAwsLaunchSettled { line: "write=launch ANSWER-EMPTY" }
+              Present { value: i } => FlexAwsLaunchSettled { line: join(["write=launch ", i.instance_id as String, " ", candidate.zone as String, " max_price_micros=", to_string(money_per_hour_micros(q: rate)), " ami=", ami as String, " ", flex_aws_deliver_key(region: region, instance_id: i.instance_id)], "") }
             }
-            _ => "write=launch REFUSED not a launch decision"
           }
         }
       }
@@ -371,26 +404,26 @@ fn flex_aws_pass_text(policy: FlexAwsApplyPolicy, router: Bool, now_unix: Int) -
   let observation = flex_aws_observe_region(credentials: flex_aws_credentials(), region: policy.region, now_epoch_seconds: now_unix)
   let queue = flex_aws_read_queue(region: policy.region)
   match observation {
-    FlexAwsRegionObserved { region: r, offerings: _, types: _, prices: _, spot_quota_vcpus: _, on_demand_quota_vcpus: _, owned: owned } => {
+    FlexAwsRegionObserved { region: r, offerings: _, types: _, prices: _, spot_quota_vcpus: q, on_demand_quota_vcpus: _, owned: owned } => {
       let candidates = flex_aws_candidates(observation: observation, recipe: flex_serving_recipe, names: flex_aws_gpu_names)
       match queue {
         FlexAwsQueueRefused { cause: c } => join([flex_aws_region_line(o: observation), concat("notices=REFUSED ", c), "write=none (a pass that cannot read the notices does not act)"], "\n")
         FlexAwsQueueRead { url: _, messages: ms } => {
           let notices = flex_aws_notices(messages: ms)
           let router_lines = if router && (match policy.actuation { Apply => true  Plan => false }) { flex_aws_router_converge(region: r, owned: owned, notices: notices, now_unix: now_unix) } else { ["router=skipped"] }
-          let decision = flex_aws_decide(policy: policy, candidates: candidates, owned: owned, notices: notices, now_unix: now_unix)
+          let decision = flex_aws_decide(policy: policy, candidates: candidates, owned: owned, notices: notices, spot_quota_vcpus: q, now_unix: now_unix)
           let mode = match policy.actuation { Plan => "plan"  Apply => "apply" }
           let owned_lines = map(owned, i => join(["owned ", i.instance_id as String, " ", i.instance_type as String, " ", i.placement.availability_zone as String, " launched=", i.launch_time, " ip=", match i.public_ip_address { Present { value: a } => a  Absent => "-" }], ""))
           let decided = match decision {
             FlexAwsRelease { instance_id: i, why: w } => join(["decision=release ", i as String, " ", flex_aws_why_wire(w: w)], "")
-            FlexAwsLaunch { candidate: c, max_price: m } => join(["decision=launch ", c.instance_type as String, " ", c.zone as String, " rate_micros=", to_string(money_per_hour_micros(q: m))], "")
+            FlexAwsLaunch { candidate: c, max_price: m, fallbacks: f } => join(["decision=launch ", c.instance_type as String, " ", c.zone as String, " rate_micros=", to_string(money_per_hour_micros(q: m)), " fallbacks=", join(map(f, x => x.zone as String), ",")], "")
             FlexAwsHold { why: w } => concat("decision=hold ", w)
           }
           let written = match policy.actuation {
             Plan => "write=none (plan)"
             Apply => match decision {
               FlexAwsRelease { instance_id: i, why: _ } => flex_aws_release(region: r, instance_id: i, queue: queue)
-              FlexAwsLaunch { candidate: c, max_price: m } => flex_aws_launch(region: r, candidate: c, max_price_micros: money_per_hour_micros(q: m) as Int, decision: decision, now_unix: now_unix)
+              FlexAwsLaunch { candidate: c, max_price: _, fallbacks: f } => flex_aws_launch(region: r, attempts: concat([c], f), now_unix: now_unix)
               FlexAwsHold { why: _ } => "write=none (hold)"
             }
           }

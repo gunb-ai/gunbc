@@ -150,6 +150,39 @@ data flex_aws_card_policy: PolicyDocument = PolicyDocument {
   ],
 }
 
+// ---- the interruption test --------------------------------------------------------------------------
+
+// THE FAULT INJECTION SERVICE ROLE that sends a REAL spot interruption to a card the loop owns, so the
+// notice-driven drain is exercised end to end (gunbc.plans.aws_spot_serving section 5: an interruption
+// delivered by FIS removes the card's row before termination). AWS FIS action
+// aws:ec2:send-spot-instance-interruptions sends the rebalance recommendation and the two-minute warning,
+// then interrupts the instance (FIS actions reference). It may act only on instances carrying the owner tag.
+data flex_aws_fis_role_name: NonEmptyStr = "gunbc-flex-fis" as NonEmptyStr
+
+data flex_aws_fis_trust_policy: PolicyDocument = PolicyDocument {
+  version: aws_iam_policy_version,
+  id: none,
+  statements: [
+    Statement {
+      sid: none,
+      effect: Allow,
+      principal: Present { value: ServicePrincipal { services: [flex_aws_ne(s: "fis.amazonaws.com")] } },
+      actions: [flex_aws_ne(s: "sts:AssumeRole")],
+      resources: [],
+      conditions: [],
+    },
+  ],
+}
+
+data flex_aws_fis_policy: PolicyDocument = PolicyDocument {
+  version: aws_iam_policy_version,
+  id: none,
+  statements: [
+    flex_aws_allow(sid: "FisInterruptOwnCards", actions: ["ec2:SendSpotInstanceInterruptions"], resources: ["arn:aws:ec2:*:*:instance/*"], conditions: [flex_aws_resource_owner()]),
+    flex_aws_allow(sid: "FisResolveTargets", actions: ["ec2:DescribeInstances"], resources: ["*"], conditions: []),
+  ],
+}
+
 // AWS-managed policies the card role also carries. AmazonSSMManagedInstanceCore lets Session Manager and
 // Run Command reach the card without SSH or an inbound port, which is how a booting card is inspected.
 data flex_aws_card_managed_policy_arns: List<NonEmptyStr> = ["arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore" as NonEmptyStr]
@@ -158,6 +191,8 @@ data flex_aws_card_managed_policy_arns: List<NonEmptyStr> = ["arn:aws:iam::aws:p
 fn flex_aws_loop_policy_json() -> String { aws_iam_policy_document_json(d: flex_aws_loop_policy) }
 fn flex_aws_card_trust_policy_json() -> String { aws_iam_policy_document_json(d: flex_aws_card_trust_policy) }
 fn flex_aws_card_policy_json() -> String { aws_iam_policy_document_json(d: flex_aws_card_policy) }
+fn flex_aws_fis_trust_policy_json() -> String { aws_iam_policy_document_json(d: flex_aws_fis_trust_policy) }
+fn flex_aws_fis_policy_json() -> String { aws_iam_policy_document_json(d: flex_aws_fis_policy) }
 
 // THE PROVISIONING READ. The operator creates the user, the role and its instance profile once, from these
 // files and nothing else (gunbc run --entry dag/gunbc/flex_aws_iam.dag --function render_policies
@@ -167,12 +202,16 @@ fn render_policies(out_dir: String) -> ProcessExit {
   let loop = Filesystem.Write(path: join([out_dir, "/flex-loop-policy.json"], ""), content: flex_aws_loop_policy_json())
   let trust = Filesystem.Write(path: join([out_dir, "/flex-card-trust-policy.json"], ""), content: flex_aws_card_trust_policy_json())
   let card = Filesystem.Write(path: join([out_dir, "/flex-card-policy.json"], ""), content: flex_aws_card_policy_json())
+  let fis_trust = Filesystem.Write(path: join([out_dir, "/flex-fis-trust-policy.json"], ""), content: flex_aws_fis_trust_policy_json())
+  let fis = Filesystem.Write(path: join([out_dir, "/flex-fis-policy.json"], ""), content: flex_aws_fis_policy_json())
   if !loop.success {
     exit_failure(reason: concat("THE LOOP POLICY COULD NOT BE WRITTEN: ", loop.error))
   } else if !trust.success {
     exit_failure(reason: concat("THE CARD TRUST POLICY COULD NOT BE WRITTEN: ", trust.error))
   } else if !card.success {
     exit_failure(reason: concat("THE CARD POLICY COULD NOT BE WRITTEN: ", card.error))
+  } else if !fis_trust.success || !fis.success {
+    exit_failure(reason: concat("THE FIS POLICIES COULD NOT BE WRITTEN: ", concat(fis_trust.error, fis.error)))
   } else {
     ExitSuccess
   }

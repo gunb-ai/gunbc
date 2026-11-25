@@ -3,13 +3,14 @@ module product.fabric.flex_aws_apply
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.optional { Present, Absent }
 import std.list { first_where }
+import std.algebra { list_sort_by_key, int_total_order }
 import std.apply_mode { ApplyMode, Plan, Apply }
 import std.measure { Second, second_count, MoneyPerHour, MoneyAmountMicro, money_per_hour_micros, money_amount_micro_count }
 import extdeps.languages.json.emit { JsonValue, JsonString }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_field, FieldRead, FieldAbsent, FieldMalformed }
 import extdeps.time.rfc3339 { rfc3339_parse_instant, Rfc3339InstantParsed, Rfc3339InstantRefused, rfc3339_instant_unix_seconds }
 import extdeps.cloud.aws_ec2 {
-  AwsEc2Instance, AwsEc2Pending, AwsEc2Running, AwsEc2Tag, AwsEc2TagSpecification, AwsEc2TagInstance, AwsEc2TagVolume,
+  AwsEc2Instance, AwsEc2Pending, AwsEc2Running, AwsEc2Terminated, AwsEc2Tag, AwsEc2TagSpecification, AwsEc2TagInstance, AwsEc2TagVolume,
   AwsEc2RunInstancesRequest, AwsEc2LaunchInline, AwsEc2LaunchTemplateData, AwsEc2NetworkInterfaceSpecification,
   AwsEc2SpotMarket, AwsEc2SpotMarketOptions, AwsEc2OneTimeTerminate, AwsEc2InstanceAction, AwsEc2ActionTerminate,
   AwsEc2ActionStop, AwsEc2ActionHibernate, aws_ec2_spot_interruption_event_detail_type,
@@ -126,7 +127,7 @@ type FlexAwsReleaseWhy
 
 type FlexAwsDecision
   = FlexAwsRelease { instance_id: NonEmptyStr, why: FlexAwsReleaseWhy }
-  | FlexAwsLaunch { candidate: FlexAwsCandidate, max_price: MoneyPerHour }
+  | FlexAwsLaunch { candidate: FlexAwsCandidate, max_price: MoneyPerHour, fallbacks: List<FlexAwsCandidate> }
   | FlexAwsHold { why: String }
 
 fn flex_aws_live(i: AwsEc2Instance) -> Bool {
@@ -165,8 +166,10 @@ fn flex_aws_admissible(c: FlexAwsCandidate, policy: FlexAwsApplyPolicy) -> Bool 
     }
 }
 
-// The cheapest by rate; candidates reaching here are admissible, so each has one (an unpriced one ranks
-// last). The minimum is an Int fold, then the first candidate at it, so ties go to the screen's order.
+// The admissible candidates, cheapest first (ties keep the screen's order). The first is the launch; the
+// rest are the fallbacks a CAPACITY refusal moves to within the same pass, because a refused RunInstances
+// wrote nothing (observed 2026-11-25: us-east-1b answered InsufficientInstanceCapacity for g7e.2xlarge
+// while other zones priced it). An unpriced candidate is never admissible, so every one here has a rate.
 fn flex_aws_rate_micros(c: FlexAwsCandidate) -> Int {
   match c.rate {
     Present { value: r } => money_per_hour_micros(q: r) as Int
@@ -174,10 +177,8 @@ fn flex_aws_rate_micros(c: FlexAwsCandidate) -> Int {
   }
 }
 
-fn flex_aws_cheapest(cs: List<FlexAwsCandidate>) -> FlexAwsCandidate? {
-  let priced = cs |> filter(c => flex_aws_rate_micros(c: c) >= 0)
-  let lowest = fold(priced, init: -1, f: (m, c) => if (m < 0) || (flex_aws_rate_micros(c: c) < m) { flex_aws_rate_micros(c: c) } else { m })
-  first_where(priced, c => flex_aws_rate_micros(c: c) == lowest)
+fn flex_aws_ranked(cs: List<FlexAwsCandidate>) -> List<FlexAwsCandidate> {
+  list_sort_by_key(xs: cs |> filter(c => flex_aws_rate_micros(c: c) >= 0), key: c => flex_aws_rate_micros(c: c), order: int_total_order())
 }
 
 // THE ORDER IS THE POLICY: an announced reclaim first (two minutes is all there is), then a card whose
@@ -185,7 +186,26 @@ fn flex_aws_cheapest(cs: List<FlexAwsCandidate>) -> FlexAwsCandidate? {
 // launch if live cards not under a rebalance recommendation are fewer than wanted. A rebalanced card is
 // kept serving -- it has not been reclaimed -- but no longer counts toward the wanted number, so its
 // replacement is asked for while it still serves.
-fn flex_aws_decide(policy: FlexAwsApplyPolicy, candidates: List<FlexAwsCandidate>, owned: List<AwsEc2Instance>, notices: List<FlexAwsNotice>, now_unix: Int) -> FlexAwsDecision {
+// QUOTA HELD BY OUR OWN CARDS. The spot vCPU quota counts every instance that is not terminated -- a
+// shutting-down card still holds its vCPUs (observed 2026-11-25: a launch right after a terminate refused
+// MaxSpotInstanceCountExceeded while the old card spent minutes shutting down). A card's vCPUs are read
+// from the screened candidate of its type; a held type the screen did not describe cannot be counted,
+// and a launch is not asked for over an uncounted quota.
+type FlexAwsQuotaHeld
+  = FlexAwsQuotaCounted { vcpus: Int }
+  | FlexAwsQuotaUncounted { instance_type: NonEmptyStr }
+
+fn flex_aws_quota_held(owned: List<AwsEc2Instance>, candidates: List<FlexAwsCandidate>) -> FlexAwsQuotaHeld {
+  fold(owned |> filter(i => match i.state.name { AwsEc2Terminated => false  _ => true }), init: FlexAwsQuotaCounted { vcpus: 0 }, f: (acc, i) => match acc {
+    FlexAwsQuotaUncounted { instance_type: t } => acc
+    FlexAwsQuotaCounted { vcpus: n } => match first_where(candidates, c => (c.instance_type as String) == (i.instance_type as String)) {
+      Present { value: c } => FlexAwsQuotaCounted { vcpus: n + c.vcpus }
+      Absent => FlexAwsQuotaUncounted { instance_type: i.instance_type }
+    }
+  })
+}
+
+fn flex_aws_decide(policy: FlexAwsApplyPolicy, candidates: List<FlexAwsCandidate>, owned: List<AwsEc2Instance>, notices: List<FlexAwsNotice>, spot_quota_vcpus: Int, now_unix: Int) -> FlexAwsDecision {
   let live = owned |> filter(i => flex_aws_live(i: i))
   let announced = flat_map(live, i => match flex_aws_notice_for(notices: notices, instance_id: i.instance_id, interruption: true) {
     Present { value: n } => [FlexAwsRelease { instance_id: i.instance_id, why: FlexAwsReleaseAnnounced { notice: n } }]
@@ -210,12 +230,17 @@ fn flex_aws_decide(policy: FlexAwsApplyPolicy, candidates: List<FlexAwsCandidate
                 if count(steady) >= policy.cards {
                   FlexAwsHold { why: join(["live=", to_string(count(live)), " steady=", to_string(count(steady)), " wanted=", to_string(policy.cards)], "") }
                 } else {
-                  match flex_aws_cheapest(cs: candidates |> filter(c => flex_aws_admissible(c: c, policy: policy))) {
+                  match flex_aws_quota_held(owned: owned, candidates: candidates) {
+                    FlexAwsQuotaUncounted { instance_type: t } => FlexAwsHold { why: concat("cannot count the quota held by an owned card of undescribed type ", t as String) }
+                    FlexAwsQuotaCounted { vcpus: held } =>
+                  let ranked = flex_aws_ranked(cs: candidates |> filter(c => flex_aws_admissible(c: c, policy: policy) && (held + c.vcpus <= spot_quota_vcpus)))
+                  match ranked.first() {
                     Present { value: c } => match c.rate {
-                      Present { value: r } => FlexAwsLaunch { candidate: c, max_price: r }
+                      Present { value: r } => FlexAwsLaunch { candidate: c, max_price: r, fallbacks: ranked.skip(n: 1) }
                       Absent => FlexAwsHold { why: "the cheapest admissible candidate has no rate" }
                     }
-                    Absent => FlexAwsHold { why: join(["no admissible candidate: ", policy.instance_type as String, " spot in ", policy.region as String, " clear of walls within the liability ceiling"], "") }
+                    Absent => FlexAwsHold { why: join(["no admissible candidate: ", policy.instance_type as String, " spot in ", policy.region as String, " clear of walls within the liability ceiling and the ", to_string(spot_quota_vcpus - held), " spot vCPUs our own cards leave free"], "") }
+                  }
                   }
                 }
               }

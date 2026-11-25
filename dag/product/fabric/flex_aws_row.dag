@@ -3,6 +3,7 @@ module product.fabric.flex_aws_row
 import std.types { String, NonEmptyStr, Bool, Int, List, FilePath }
 import std.optional { Present, Absent }
 import std.list { first_where }
+import std.algebra { trim }
 import std.decimal { ExactDecimal, canonical_exact_decimal, exact_decimal_wire }
 import std.integer { int_to_decimal_string }
 import std.measure { hardware_thread_count_value, Mebibyte, mebibyte, mebibyte_count, gigabyte_count, money_per_hour_micros, exact_decimal_to_money_per_hour_ceil, DecimalMoneyPerHourConverted, DecimalMoneyPerHourRefused }
@@ -117,8 +118,15 @@ fn flex_aws_outcome_text(outcome: ProcessOutcome) -> AwsCliRead<String> {
   match outcome {
     ProcessOutputPresent { text: t } => AwsCliReadOk { value: t }
     ProcessOutputAbsent => AwsCliReadRefused { cause: "the CLI printed nothing" }
-    ProcessRefused { exit_code: c, stderr: e } => AwsCliReadRefused { cause: join(["the CLI exited ", to_string(c), ": ", e], "") }
+    ProcessRefused { exit_code: c, stderr: e } => AwsCliReadRefused { cause: join(["the CLI exited ", to_string(c), ": ", flex_aws_one_line(text: e)], "") }
   }
+}
+
+// A refusal's text on ONE receipt line: the CLI writes its error after a blank line, and a cause that
+// lands on the next line falls out of any per-line reading of the receipt (2026-11-25: a launch refused
+// MaxSpotInstanceCountExceeded read as an empty cause).
+fn flex_aws_one_line(text: String) -> String {
+  join(map(split(s: text, delimiter: "\n") |> filter(l => trim(l) != ""), l => trim(l)), " | ")
 }
 
 // The integer floor of a quota value (vCPUs), so a fractional quota never admits more than it grants.
