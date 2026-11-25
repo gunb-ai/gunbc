@@ -702,6 +702,15 @@ data approval_submit_deadline_restated_per_caller_authorities: DistinctAuthoriti
 }
 
 // byte_sequence_search_reimplemented_per_module: the two authorities the SuspectedFork row cites.
+// Cross-unit grouping for the stage0 partition is answered both by the authored edge list
+// stage0_cross_unit_import_edges and by the units real manifest/lib.rs as read back through the derived
+// reexport comparison in stage0_reexport_derivation_disagreements (row: stage0_cross_unit_import_edges_authored_not_derived).
+data stage0_cross_unit_import_edges_authored_not_derived_authorities: DistinctAuthorities = DistinctAuthorities {
+  first: decl_ref(module_path: "v2.workflow.rust_crate_partition", decl_name: "stage0_cross_unit_import_edges"),
+  second: decl_ref(module_path: "v2.workflow.rust_crate_partition", decl_name: "stage0_reexport_derivation_disagreements"),
+  rest: [],
+}
+
 data authenticated_lanplus_retry_bound_pinned_only_in_declared_ops_authorities: DistinctAuthorities = DistinctAuthorities {
   first: decl_ref(module_path: "gunbc.fleet.mtcollins_firmware_converge", decl_name: "ipmitool_prefix"),
   second: decl_ref(module_path: "extdeps.bmc.serial_console", decl_name: "sol_console_send_script"),

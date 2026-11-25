@@ -562,14 +562,22 @@ fn stage0_module_dag_edge(from: String, to: String) -> ModuleDagEdge {
 // 21 cross-crate-import, 8 intra-crate-non-import, 1 cross-crate-non-import; deriving from parsed imports
 // keeps only 84/93 and ADDS ~156 import edges the list deliberately omits; a cross-crate-import predicate
 // keeps 21/93; a same-crate-import predicate keeps 63/93. None reproduces it, so there is no curation
-// predicate over imports that is the single authority yet. TRIGGER to revisit: when the balanced
-// partition policy lands (rust_crate_partition_dissolve_on, this file), which supplies the crate-membership
-// + grouping authority the derivation needs. FOLLOW-UP: gunbc.integration_concern
-// stage0_cross_unit_import_edges_authored_not_derived (in dag/gunbc/integration_concern/) carries the
-// follow-up and names the 6 uncitable non-import edges with their owners, plus the three edges cited to a
-// runtime-prelude/facade relation in the from-module. The twelve rows this node added cover the previously
-// uncovered emitted modules; for those twelve the authored rows equal the full parsed-import set (62 == 62,
-// symmetric difference empty), so their coverage is measurement-backed, not transcribed.
+// predicate over imports that is the single authority yet. TRIGGER to revisit: the balanced partition
+// policy is NOT the open condition — it already landed (see
+// #v2.workflow.rust_crate_partition::rust_crate_partition_dissolve_on, this file, which says the policy
+// landed and names the derivation as the real blocker). Revisit when a derivation reproduces THIS authored
+// 93-edge list from population facts alone (the stage0_*_modules() roster plus parsed imports plus the
+// policy crate assignment), the way
+// #v2.workflow.rust_crate_partition::stage0_reexport_derivation_disagreements already DERIVES the reexport
+// divergence and its bounding witness pins it; at that point the derivation is the authority and these
+// authored rows dissolve rather than being reconciled by hand. FOLLOW-UP (recorded, not remembered, per
+// gunbc.design_argument::continuous_generalization):
+// #gunbc.integration_concern.stage0_cross_unit_import_edges_authored_not_derived::stage0_cross_unit_import_edges_authored_not_derived
+// carries the fork, the trigger, the follow-up verb per edge, the six uncitable non-import edges with their
+// owners and my zero-hit measurements, and the three edges cited to a runtime-prelude or facade relation in
+// the from-module. The twelve rows this node added cover the previously uncovered emitted modules; for those
+// twelve the authored rows equal the full parsed-import set (62 == 62, symmetric difference empty), so their
+// coverage is measurement-backed, not transcribed.
 fn stage0_cross_unit_import_edges() -> List<ModuleDagEdge> {
   [
     stage0_module_dag_edge(from: "std_algebra", to: "std_error_primitives"),
