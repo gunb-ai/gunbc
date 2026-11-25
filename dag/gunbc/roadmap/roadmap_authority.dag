@@ -1677,6 +1677,24 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
     ),
 
     roadmap_node(
+      identity: "rn_ZR45MIQ7KTC56XVLT23LXQ3W4A",
+      id: "source-annotation-fold-carries-absorbed-capture-count",
+      owner: "parse",
+      carriers: carrier(path: "dag/std/source_annotation.dag"),
+      line: ticket(t: fields(
+        headline: "The annotation fold states how many lex captures each annotation row absorbed, so a consumer need not re-count them",
+        boundary: "Reported by vivid-swift-693 from tidy-fox-641's measurement during review 98412 on gunbc#16942; re-measure before closing. The parse's annotation rows ARE attach_annotations' own product over the same lex captures dag/std/source_annotation.dag:55-60 declares the row type with exactly four fields -- gap, text, origin, placement -- and src/v2/compiler/parse.dag:254 is where the parse builds its annotation rows by calling attach_annotations, imported at that file's :11, So a consumer that wants to know how many captures a row absorbed cannot read it from the row, and the alternative it is offered -- compare the graph against a fold run -- compares a function with its own output and can never refuse anything. THE OBLIGATION EXISTS BECAUSE ITS ROW WAS RETIRED: parse-comment-gap-attachment-v2 (rn_EG37S52DZ2Q82J39S6JWZ88C36) closed as superseded by parse-comment-gap-attachment-v2-consumed, so no live row could hold it, and the consumer side carries a typed DissolutionCondition naming the field whose existence deletes its counter. That counter is the counter this row exists to delete: when the fold carries the count, the consumer's counter goes away by its own declared condition, and this row retires it. Scope is the placement decision in the annotation fold's product; it takes no lane's feature work, changes no gap rule, and does not touch the consumer row's handback.",
+        displaced_cost: "Every consumer of annotated parses that needs capture cardinality keeps its own counter, and each such counter is a second authority over a quantity the fold already decided, which is what a reviewer correctly objects to and what no same-source comparison can answer.",
+        first_slice: "Decide where the count is carried -- on the annotation row or on SourceAnnotationDebt -- at the point where the fold absorbs the captures, and delete the consumer's counter through its declared dissolution condition.",
+        red_control: "NOT YET OBSERVED, AND THE ROW IS NOT DISPATCHABLE UNTIL IT IS. The discriminating pair to be executed by the first worker or by planning, on main's released claim_batch, one binary and two trees: the WRONG case is an annotated fixture in which a fold absorbs more than one lex capture into an annotation row while the row reports no count, and the witness must REFUSE it; the RIGHT case is the same fixture once the count is carried, and the witness must ACCEPT it. Both legs print their own rc, the [witness] lines by name, the binary sha256 read from disk and the heavy-slot acquisition line. A row that only shows the accepted case is not a control; the refusal is what makes the count's absence detectable. Until that pair has been seen to fail on some tree this row stays NotDispatchable, because a control never observed red on any tree is not admission.",
+        out_of_scope: "The gap rule itself (which text between tokens becomes a gap), the annotation placement decision, any change to what attach_annotations absorbs, and the consumer-side counter's deletion, which happens by the consumer's own dissolution condition rather than here.",
+        handback: "The field that carries the count and where it is set, the executed discriminating pair with both real exit statuses and the refusal text of the wrong case, and the consumer's counter shown deleted -- its DissolutionCondition carrier and its reading claim removed in the same change, with the consumer's own suite still green, so the quantity has one authority and not two."
+      )),
+      dispatch: Present { value: NotDispatchable },
+      parent: in_project(project: "v2-compiler-live", contribution: "A parse's annotation rows say what they absorbed, so consumers read a decided quantity instead of re-deciding it."),
+    ),
+
+    roadmap_node(
       identity: "rn_DCHDCNK5Z6GZP693VSZA6MC84T",
       id: "parse-prepared-grammar-analysis-carried",
       owner: "parse",
@@ -8389,6 +8407,9 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
 // centering plans, not a dependency, and the graph has no exclusion-edge vocabulary.
 fn declared_roadmap_edges() -> List<RoadmapEdge> {
   concat([
+    // The capture-count debt admitted by the plan rather than by its author (vivid-swift-693, 2026-11-25):
+    // the consumer row DissolutionCondition names this row, so the trigger is the plan own, not the worker own.
+    edge(child: "source-annotation-fold-carries-absorbed-capture-count", parent: "parse-comment-gap-attachment-v2-consumed"),
     // The bare-124 class: the shared receipt lands with the boot probe's row.
     edge(child: "bare-124-timeout-readers-consume-the-bound-observation", parent: "boot-probe-must-not-read-a-bare-124-as-a-deadline"),
     // ---- #gunbc.plans.fabric_market::fabric_market_plan (2026-11-23), including the existing consumers of its common contracts:
