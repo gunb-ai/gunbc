@@ -52,7 +52,7 @@ import gunbc.serving.gpu_power_state_policy {
 // WHY THE REPAIR SITS AT THAT BOUNDARY AND NOT AT THE BOOT ROWS. The rows and the converge did their jobs:
 // they applied, wrote and read back what they were handed, and they refuse a value the device rejects.
 // Adding a check further down -- "warn when a cap is low" -- would be a lint over a decision nobody priced,
-// and a lint is the rung below what is available here (gunbc.design_argument::guarantee_ladder). What is
+// and a lint is the rung below what is available here (#gunbc.design_argument::guarantee_ladder). What is
 // missing is the link between the ask and the consequence, so this module IS that link: a cap candidate
 // cannot be put forward as the answer to a power ask without naming the circuit the ask serves, and its
 // consequence is a reading with an instrument and a standing, never a number.
@@ -126,7 +126,7 @@ fn funded_axes() -> List<SelectionAxis> {
 
 // WHY NOT product.fabric.serving_throughput. Its reading is a TokensPerSecond, whose count is a Nat of WHOLE
 // tokens per second. Every 2026-11-24 window is quoted to a tenth (39.0, 26.5, 24.1, 28.5-34), and rounding a
-// measured figure to fit a carrier is the distortion gunbc.design_argument::epistemic_humility exists to
+// measured figure to fit a carrier is the distortion #gunbc.design_argument::epistemic_humility exists to
 // stop: 24.1 and 26.5 would arrive as "24" and "27", and the comparison that separates the two causes would
 // be arithmetic on a rounding artifact. MilliTokensPerSecond is the same Frequency axis at Milli
 // (std.measure), so the figure arrives exactly; the axis reading is then micro, which is that count times
@@ -321,7 +321,7 @@ fn cap_ask_subject(circuit: SharedPowerCircuit, term_ground: CitedFigureStanding
   }
 }
 
-// THE ONLY ASSESSMENT THIS MODULE ASSERTS (gunbc.design_argument::epistemic_humility). No instrument has
+// THE ONLY ASSESSMENT THIS MODULE ASSERTS (#gunbc.design_argument::epistemic_humility). No instrument has
 // ever been put on either home circuit, and no per-window power.draw average exists on srv3 or srv4, so the
 // physical and causal models of "what a cap does to draw, and what draw does to a circuit" are unestablished
 // here and are stated as unread. A caller that HAS readings builds its own DecisionAssessment over
@@ -394,7 +394,7 @@ fn draw_reading_of(c: CapCandidate) -> List<AxisReading> {
 
 // THE ONE MINT FOR A READING'S REGION. std.interval's `closed_interval` is the sole mint and it REFUSES a
 // reversed pair rather than swapping it, because swapping would absorb the evidence that the caller's
-// endpoints were wrong (gunbc.design_argument::fail_closed). A refused pair becomes no reading at all, which
+// endpoints were wrong (#gunbc.design_argument::fail_closed). A refused pair becomes no reading at all, which
 // std.pareto then scores as a gap on the axis: the candidate is not compared, and the ask comes back as what
 // to go and read again.
 fn int_le(a: Int, b: Int) -> Bool { a <= b }

@@ -46,7 +46,7 @@ import gunbc.fleet.fleet_host_identity {
 // consumer that wants a numeric bound must therefore be refused with the read obligation named -- it
 // cannot be handed a number derived from a trip, because a trip says "the load exceeded something", not
 // what that something was. Minting a bound from the 1.3-1.6 kW estimate would be exactly the invented
-// scale gunbc.design_argument::one_source_of_truth forbids, and it would have been wrong in both
+// scale #gunbc.design_argument::grounding_is_intersubjective forbids, and it would have been wrong in both
 // directions on 2026-11-24: the strip held 40 W caps for hours before it opened, and it opened again
 // after the caps came back down.
 //
