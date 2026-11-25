@@ -300,6 +300,12 @@ type SitePxeEdgeLivePathStanding
   = | PathAsRequired
   | PathAbsent
   | PathPresentButNotAsRequired
+  // PRESENCE WITHOUT A COMPLETED PROPERTY READ (fox round 3 at 649e7857). The existence probe printed the path, so
+  // something IS there, but the probe that decides the requirements (root-owned regular file, closed to group and
+  // other writes) was dispatched and got NO ANSWER. The requirement is neither confirmed nor refuted, so the reason
+  // carries the lost-reply cause; it is never PathPresentButNotAsRequired, which would fabricate the completed
+  // property check that is the only thing entitled to say "not as required".
+  | PathPresenceUnverified { reason: String }
   | PathObservationFailed { reason: String }
 
 // ABSENCE IS ONLY AN EXECUTED find'S OWN DIAGNOSTIC FOR THE EXACT PATH ASKED. A leg that was never dispatched is not a find at all: HostLeg carries it apart
@@ -318,10 +324,28 @@ fn site_pxe_edge_live_path_standing(path: String, as_required: HostLeg, anything
     LegAnswered { exit_code: ar_code, stdout: ar_out, stderr: _ } =>
       if ar_code == 0 && trim(s: ar_out) == path { PathAsRequired }
       else { site_pxe_edge_live_path_standing_from_anything(path: path, anything: anything) }
-    LegNotDispatched { reason: _ } =>
-      site_pxe_edge_live_path_standing_from_anything(path: path, anything: anything)
-    LegUnanswered { cause: _ } =>
-      site_pxe_edge_live_path_standing_from_anything(path: path, anything: anything)
+    LegNotDispatched { reason: why } =>
+      site_pxe_edge_live_property_read_lost(path: path, property_cause: concat("the property probe was never dispatched: ", why), anything: anything)
+    LegUnanswered { cause: why } =>
+      site_pxe_edge_live_property_read_lost(path: path, property_cause: concat("the property probe was dispatched but got no answer: ", why), anything: anything)
+  }
+}
+
+// A PROPERTY READ THAT NEVER COMPLETED KEEPS ITS CAUSE (fox round 3 at 649e7857). The property probe is the ONLY
+// thing that can refute "as required", so while its reply is lost or it was never handed to the host, the existence
+// probe may establish PRESENCE but may never establish a MISMATCH: PathPresentButNotAsRequired is reserved for a
+// COMPLETED property check that printed nothing while the path itself printed. Presence with an unread requirement
+// reads PathPresenceUnverified carrying the cause; an absence or a failed existence probe is still decided by the
+// existence leg alone, because that leg did complete.
+fn site_pxe_edge_live_property_read_lost(path: String, property_cause: String, anything: HostLeg) -> SitePxeEdgeLivePathStanding {
+  match anything {
+    LegAnswered { exit_code: code, stdout: out, stderr: _ } =>
+      if code == 0 && trim(s: out) == path {
+        PathPresenceUnverified { reason: concat("the path is present but its required properties were never read: ", property_cause) }
+      } else {
+        site_pxe_edge_live_path_standing_from_anything(path: path, anything: anything)
+      }
+    _ => site_pxe_edge_live_path_standing_from_anything(path: path, anything: anything)
   }
 }
 
@@ -367,6 +391,7 @@ fn site_pxe_edge_live_trusted_chain_to(host: CommandHost, segments: List<String>
           PathAsRequired => LivePlacementDone
           PathAbsent => LivePlacementRefused { step: concat("find ", p), reason: "an ancestor of the TFTP root is absent; nothing was placed" }
           PathPresentButNotAsRequired => LivePlacementRefused { step: concat("find ", p), reason: "an ancestor of the TFTP root is not a real root-owned directory closed to group and other writes; nothing was placed" }
+          PathPresenceUnverified { reason: r } => LivePlacementRefused { step: concat("find ", p), reason: concat("an ancestor of the TFTP root is present but its required properties were never read: ", r, "; nothing was placed") }
           PathObservationFailed { reason: r } => LivePlacementRefused { step: concat("find ", p), reason: concat(r, "; the ancestor was not observed, so nothing was placed") }
         }
       }
@@ -387,6 +412,7 @@ fn site_pxe_edge_live_ensure_real_dir_on(host: CommandHost, tftp_root: NonEmptyS
   match site_pxe_edge_live_path_standing_on(host: host, path: path, kind: "d") {
     PathAsRequired => LivePlacementDone
     PathPresentButNotAsRequired => LivePlacementRefused { step: concat("find ", path), reason: "not a real root-owned directory closed to group and other writes; nothing was written through it" }
+    PathPresenceUnverified { reason: r } => LivePlacementRefused { step: concat("find ", path), reason: concat("something is at the path but its required properties were never read: ", r, "; nothing was written through it") }
     PathObservationFailed { reason: r } => LivePlacementRefused { step: concat("find ", path), reason: concat(r, "; absence was not established, so nothing was created") }
     PathAbsent => {
       let c = sudo_elevate_command(command: argv_words(command: mkdir_create_only_with_mode_command(path: path, octal_mode: "0755" as NonEmptyStr)))
@@ -473,6 +499,21 @@ fn site_pxe_edge_live_publish_on(host: CommandHost, tftp_root: NonEmptyStr, sour
   }
 }
 
+// WHAT A STANDING REPORTS AT THE PLACE (fox round 3 at 649e7857). The operator's reason is decided from the
+// standing ALONE, in one place, so the placement below cannot drift from what a witness asserts, and so a lost
+// property reply is reported as ITS OWN cause rather than as the mismatch wording: only a completed property check
+// may say "not as required". The last two arms are what the standing itself never refuses -- the digest check
+// decides an already-required path and the publish decides an absent one -- and are named so the match is total.
+fn site_pxe_edge_live_standing_refusal_reason(standing: SitePxeEdgeLivePathStanding) -> String {
+  match standing {
+    PathPresentButNotAsRequired => "something that is not a root-owned regular file closed to group and other writes is already at the digest-addressed path; it was not overwritten"
+    PathPresenceUnverified { reason: r } => concat(r, "; the requirement was never checked, so nothing was overwritten")
+    PathObservationFailed { reason: r } => concat(r, "; absence was not established, so nothing was published")
+    PathAsRequired => "the path already satisfied its requirements: the digest of what is already published decides it"
+    PathAbsent => "the path was absent: the publish decides it"
+  }
+}
+
 fn site_pxe_edge_live_install_member_on(host: CommandHost, tftp_root: NonEmptyStr, source: NonEmptyStr, name: String, digest: ContentHash) -> SitePxeEdgeLivePlacement {
   match site_pxe_edge_live_cas_dir(digest: digest) {
     Absent => LivePlacementRefused { step: "content-addressed path", reason: "the member's digest is not a sha256, so it names no content-addressed directory; nothing was written" }
@@ -492,8 +533,7 @@ fn site_pxe_edge_live_install_member_on(host: CommandHost, tftp_root: NonEmptySt
                 PublishedDigestMismatch => LivePlacementRefused { step: concat("verify ", dest), reason: "a file already published at the digest-addressed path is not that digest; it was not overwritten" }
                 PublishedDigestUnverified { reason: r } => LivePlacementRefused { step: concat("verify ", dest), reason: concat("the already-published file's digest could not be verified (", r, "); it was not overwritten") }
               }
-            PathPresentButNotAsRequired => LivePlacementRefused { step: concat("find ", dest), reason: "something that is not a root-owned regular file closed to group and other writes is already at the digest-addressed path; it was not overwritten" }
-            PathObservationFailed { reason: r } => LivePlacementRefused { step: concat("find ", dest), reason: concat(r, "; absence was not established, so nothing was published") }
+            other => LivePlacementRefused { step: concat("find ", dest), reason: site_pxe_edge_live_standing_refusal_reason(standing: other) }
             PathAbsent => site_pxe_edge_live_publish_on(host: host, tftp_root: tftp_root, source: source, tftp_path: tftp_path, digest: digest)
           }
         }

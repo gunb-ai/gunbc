@@ -59,8 +59,8 @@ import extdeps.network.mac { Eui48Address, MacParseResult, MacParsed, MacParseFa
 import gunbc.host.network_install {
   network_install_requests_for,
 }
-import gunbc.host_command_binding { LocalCommandHost }
-import gunbc.fleet.site_pxe_edge_live_evidence { site_pxe_edge_live_absolute_path, site_pxe_edge_live_cas_path_is, site_pxe_edge_live_cas_path, site_pxe_edge_live_image_is_pinned, site_pxe_edge_live_place_on, site_pxe_edge_live_path_standing, site_pxe_edge_live_trusted_chain_on, site_pxe_edge_live_placement_refusal_reading, PathAsRequired, PathAbsent, PathPresentButNotAsRequired, PathObservationFailed, LiveDoNotPlace, LivePlacementNotAttempted, LivePlaceFromStaging, LivePlacementRefused }
+import gunbc.host_command_binding { LocalCommandHost, LegUnanswered }
+import gunbc.fleet.site_pxe_edge_live_evidence { site_pxe_edge_live_absolute_path, site_pxe_edge_live_cas_path_is, site_pxe_edge_live_cas_path, site_pxe_edge_live_image_is_pinned, site_pxe_edge_live_place_on, site_pxe_edge_live_path_standing, site_pxe_edge_live_standing_refusal_reason, site_pxe_edge_live_trusted_chain_on, site_pxe_edge_live_placement_refusal_reading, PathAsRequired, PathAbsent, PathPresentButNotAsRequired, PathPresenceUnverified, PathObservationFailed, LiveDoNotPlace, LivePlacementNotAttempted, LivePlaceFromStaging, LivePlacementRefused }
 import extdeps.exec.command { argv_words }
 import gunbc.machine_intake.mtcollins1_census_member_readback { HostLeg, LegAnswered, LegNotDispatched }
 import gunbc.fleet.site_pxe_edge_client_requests { SitePxeEdgeClientRequestReading, ClientRequestsUnread }
@@ -2299,6 +2299,35 @@ test fn only_a_find_no_such_file_is_absence_and_every_other_failure_refuses() ->
   let other_path = match site_pxe_edge_live_path_standing(path: p, as_required: ans(code: 1, out: "", err: "find: '/elsewhere': No such file or directory"), anything: ans(code: 1, out: "", err: "find: '/elsewhere': No such file or directory")) { PathObservationFailed { reason: _ } => true  _ => false }
   let prefix_collision = match site_pxe_edge_live_path_standing(path: p, as_required: ans(code: 1, out: "", err: "find: '/srv/tftp/live-other': No such file or directory"), anything: ans(code: 1, out: "", err: "find: '/srv/tftp/live-other': No such file or directory")) { PathObservationFailed { reason: _ } => true  _ => false }
   required && absent && linked && boundary && denied && undispatched && other_path && prefix_collision
+}
+
+// FOX ROUND 3 (at 649e7857): PRESENCE IS NOT A REFUTED REQUIREMENT. The property probe (`-user root -not -perm
+// /022`) is the ONLY thing that can say "not as required". When its reply was LOST -- or it was never handed to the
+// host -- while the existence probe COMPLETED and printed the path, the path is present and its requirements are
+// UNREAD: the lost-reply cause must survive into the standing AND into the placement's final reason, which must
+// name the unread requirement rather than a mismatch that was never checked. RED at 649e7857: the unanswered
+// property leg was dropped on the floor and the pair read PathPresentButNotAsRequired -- reporting a completed
+// property check that never ran, with the cause and the deadline discarded. CONTROL: the same pair with a COMPLETED
+// property read that printed nothing IS a refuted requirement, and keeps the mismatch wording.
+test fn a_lost_property_read_over_an_established_presence_never_refutes_the_requirement() -> Bool {
+  let p = "/srv/tftp/live"
+  let overran = site_pxe_edge_live_path_standing(path: p, as_required: LegUnanswered { cause: "find -user root overran its 30s deadline" }, anything: ans(code: 0, out: "/srv/tftp/live\n", err: ""))
+  let never_sent = site_pxe_edge_live_path_standing(path: p, as_required: not_dispatched("the fleet SSH boundary refused the property probe"), anything: ans(code: 0, out: "/srv/tftp/live\n", err: ""))
+  let refuted = site_pxe_edge_live_path_standing(path: p, as_required: ans(code: 0, out: "", err: ""), anything: ans(code: 0, out: "/srv/tftp/live\n", err: ""))
+  let overran_reason = site_pxe_edge_live_standing_refusal_reason(standing: overran)
+  let refuted_reason = site_pxe_edge_live_standing_refusal_reason(standing: refuted)
+  let lost_is_unverified = match overran { PathPresenceUnverified { reason: _ } => true  _ => false }
+  let lost_keeps_its_cause = string_contains(s: overran_reason, pattern: "find -user root overran its 30s deadline")
+    && string_contains(s: overran_reason, pattern: "required properties were never read")
+    && string_contains(s: overran_reason, pattern: "nothing was overwritten")
+  let lost_is_not_the_mismatch = !string_contains(s: overran_reason, pattern: "is not a root-owned regular file")
+  let never_sent_is_unverified = match never_sent { PathPresenceUnverified { reason: _ } => true  _ => false }
+  let never_sent_keeps_its_cause = string_contains(s: site_pxe_edge_live_standing_refusal_reason(standing: never_sent), pattern: "the fleet SSH boundary refused the property probe")
+  let completed_still_refutes = match refuted { PathPresentButNotAsRequired => true  _ => false }
+    && string_contains(s: refuted_reason, pattern: "is not a root-owned regular file")
+  lost_is_unverified && lost_keeps_its_cause && lost_is_not_the_mismatch
+    && never_sent_is_unverified && never_sent_keeps_its_cause
+    && completed_still_refutes
 }
 
 // Fox fix 4, hermetic: kernel placed, initrd refused (the refusal is the placement's result) => evidence UNREAD => the client's admission is the extraction refusal =>
