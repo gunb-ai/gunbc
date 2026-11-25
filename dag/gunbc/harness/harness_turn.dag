@@ -3292,44 +3292,27 @@ fn harness_alignment_next_cadence(verdict: AlignmentVerdict, cadence: AlignmentC
   let standing = alignment_state_interval(state: cadence, level_index: 0)
   match alignment_next_interval(level_index: 0, current: standing, verdict: verdict) {
     CadenceStepInterval { turns } => AlignmentCadenceState {
-      level_intervals: harness_alignment_replace_level0_number(intervals: cadence.level_intervals, head: turns),
-      last_verdicts: harness_alignment_replace_level0_verdict(verdicts: cadence.last_verdicts, head: verdict),
+      level_intervals: harness_alignment_replace_level0(xs: cadence.level_intervals, head: turns),
+      last_verdicts: harness_alignment_replace_level0(xs: cadence.last_verdicts, head: verdict),
     }
     CadenceStepStopTheLine => AlignmentCadenceState {
-      level_intervals: harness_alignment_replace_level0_number(intervals: cadence.level_intervals, head: standing),
-      last_verdicts: harness_alignment_replace_level0_verdict(verdicts: cadence.last_verdicts, head: verdict),
+      level_intervals: harness_alignment_replace_level0(xs: cadence.level_intervals, head: standing),
+      last_verdicts: harness_alignment_replace_level0(xs: cadence.last_verdicts, head: verdict),
     }
   }
 }
 
-// REPLACE THE HEAD, OR GAIN ONE ENTRY -- the promise the comment above makes, in code. A fold over an
+// REPLACE THE HEAD, OR GAIN ONE ENTRY -- the promise the comment above makes, in code, in ONE place for
+// both parallel lists (`root_generalization`: the second local implementation of one rule is the trigger,
+// and here the two lists differ only in element type, which a type parameter covers). A fold over an
 // EMPTY list replaces nothing and returns the empty list, so stepping the state every lineage actually
 // starts from (`alignment_base_cadence_state`: both lists empty, every level reading its declared
 // magnitudinal base) used to publish the base back: the interval the interval law just computed and the
 // verdict that decided it were silently dropped, the ladder never left its starting rung, and the record
-// still read like an adaptive cadence. So the fold carries whether it reached level 0 at all, and a
-// state that never got there gains exactly one entry -- which is also what keeps the two lists the same
-// length, the invariant the cadence codec refuses to decode without.
-fn harness_alignment_replace_level0_number(intervals: List<Int>, head: Int) -> List<Int> {
-  let stepped = fold(
-    intervals,
-    init: { index: 0, out: [] as List<Int>, reached: false },
-    f: fn(acc, item) {
-      { index: acc.index + 1, reached: true, out: concat(acc.out, [if acc.index == 0 { head } else { item }]) }
-    },
-  )
-  if stepped.reached { stepped.out } else { [head] }
-}
-
-fn harness_alignment_replace_level0_verdict(verdicts: List<AlignmentVerdict>, head: AlignmentVerdict) -> List<AlignmentVerdict> {
-  let stepped = fold(
-    verdicts,
-    init: { index: 0, out: [] as List<AlignmentVerdict>, reached: false },
-    f: fn(acc, item) {
-      { index: acc.index + 1, reached: true, out: concat(acc.out, [if acc.index == 0 { head } else { item }]) }
-    },
-  )
-  if stepped.reached { stepped.out } else { [head] }
+// still read like an adaptive cadence. So an empty state gains exactly one entry -- which is also what
+// keeps the two lists the same length, the invariant the cadence codec refuses to decode without.
+fn harness_alignment_replace_level0<T>(xs: List<T>, head: T) -> List<T> {
+  if length(xs: xs) == 0 { [head] } else { concat([head], skip(xs: xs, n: 1)) }
 }
 
 // THE RESUMPTION IS DURABLE BEFORE IT IS ACTED ON, and the durable record is the idempotency key.
@@ -3372,12 +3355,13 @@ fn harness_alignment_epoch_opened_line(checkpoint: AlignmentCheckpointIdentity, 
   ]))
 }
 
-// THE FAST LOOKUP, NOT THE ARBITER. The entry asks this before it convenes anything, so a lineage that
-// has already advanced never pays for a check it cannot act on; an unreadable record counts as OPEN, so a
-// half-read record cannot license a second epoch even on this path. But whether a given resumer OPENS the
-// epoch is decided by the create-new inside `harness_alignment_open_epoch` -- this read cannot be the
-// arbiter, because a read followed by a write is two events and the gap between them is where two
-// resumers of one publication would both be told "yours".
+// THE ANSWER TO "HAS THIS EPOCH ALREADY BEEN OPENED?", as three arms rather than a yes/no: the record is
+// there, the record is not there, or the record cannot be read -- and the third is not a variety of the
+// first. Every caller matches all three and quotes the one it got. It is consulted before anything else
+// runs so an already-advanced lineage never pays for a check it cannot act on; whether a resumer OPENS the
+// epoch is decided by the create-new inside `harness_alignment_open_epoch`, because a read followed by a
+// write is two events and the gap between them is where two resumers of one publication would both be told
+// "yours".
 fn harness_alignment_epoch_record_present(check_directory: String, checkpoint: AlignmentCheckpointIdentity, next_epoch: Int) -> HarnessAlignmentEpochPresence {
   let path = harness_alignment_epoch_opened_path(check_directory: check_directory, checkpoint: checkpoint, next_epoch: next_epoch)
   let read = Filesystem.Read(path: path)
@@ -3391,13 +3375,12 @@ fn harness_alignment_epoch_record_present(check_directory: String, checkpoint: A
   }
 }
 
-fn harness_alignment_epoch_already_opened(check_directory: String, checkpoint: AlignmentCheckpointIdentity, next_epoch: Int) -> Bool {
-  match harness_alignment_epoch_record_present(check_directory: check_directory, checkpoint: checkpoint, next_epoch: next_epoch) {
-    EpochRecordPresent => true
-    EpochRecordUnreadable { detail: _ } => true
-    EpochRecordAbsent => false
-  }
-}
+// NO BOOL WRAPPER OVER THIS COPRODUCT, ON PURPOSE. A `Bool` predicate would fold "the record says this
+// epoch is already open" and "the record that would answer that cannot be read" into the same `true`, and
+// every caller would then have to invent a reason -- reporting an adjudication-and-resume that never
+// happened for a checkpoint whose record is a directory or an unreadable file. Each caller matches the
+// three arms and quotes the arm it got (fail-closed: a typed, located diagnostic, and no plausible
+// history fabricated).
 
 fn harness_alignment_open_epoch(
   check_directory: String,
@@ -3667,8 +3650,13 @@ fn harness_alignment_adjudicate_and_resume(
   // read, before a chain is resolved, before a check is convened. A run that replays after a crash
   // mid-resumption therefore cannot re-adopt an observation the worker has since extended, cannot
   // resolve a chain that may have moved, and cannot convene a second check for an epoch already opened.
-  if harness_alignment_epoch_already_opened(check_directory: check_directory, checkpoint: checkpoint, next_epoch: checkpoint.epoch + 1) {
-    harness_turn_supervision_unavailable(
+  // BOTH REFUSALS QUOTE THE ARM THEY GOT. "The record is not there" is the only case that proceeds;
+  // "it is there" says so, and "it cannot be read" says THAT -- not the resume that never happened. The
+  // earlier Bool shortcut collapsed the two and told the operator a checkpoint had been adjudicated and
+  // resumed when all anyone knew was that the file answering the question was unreadable: the right
+  // refusal with a fabricated history, which fail-closed refuses outright.
+  match harness_alignment_epoch_record_present(check_directory: check_directory, checkpoint: checkpoint, next_epoch: checkpoint.epoch + 1) {
+    EpochRecordPresent => harness_turn_supervision_unavailable(
       config: config,
       cause: join([
         "epoch ", to_string(value: checkpoint.epoch + 1), " of attempt ", checkpoint.attempt_lineage,
@@ -3677,7 +3665,17 @@ fn harness_alignment_adjudicate_and_resume(
       steps_taken: steps_taken,
       events: events,
     )
-  } else {
+    EpochRecordUnreadable { detail } => harness_turn_supervision_unavailable(
+      config: config,
+      cause: join([
+        "epoch ", to_string(value: checkpoint.epoch + 1), " of attempt ", checkpoint.attempt_lineage,
+        " cannot be checked against its epoch record: ", detail,
+        " -- the entry opens nothing and convenes no check on a record nobody can read, and it reports no adjudication or resume that nothing recorded",
+      ], ""),
+      steps_taken: steps_taken,
+      events: events,
+    )
+    EpochRecordAbsent => {
   match harness_alignment_recorded_evidence(events_path: config.events_path as String, observation_path: observation_path) {
     RecordedEvidenceAbsent { cause } =>
       harness_turn_supervision_unavailable(config: config, cause: cause, steps_taken: steps_taken, events: events)
@@ -3706,6 +3704,7 @@ fn harness_alignment_adjudicate_and_resume(
           )
       }
   }
+    }
   }
 }
 

@@ -41,9 +41,10 @@ import gunbc.harness.harness_turn {
   HarnessAlignmentResume, ResumedOnce, ResumeRefused, StoppedByVerdict,
   harness_alignment_chain_projection, harness_alignment_adjudicate, harness_alignment_resume_gate,
   harness_alignment_adjudicate_and_resume, harness_alignment_resume_apply,
-  harness_alignment_epoch_opened_path, harness_alignment_epoch_already_opened,
+  harness_alignment_epoch_opened_path, harness_alignment_epoch_record_present,
+  EpochRecordPresent, EpochRecordAbsent, EpochRecordUnreadable,
   harness_alignment_epoch_opened_line,
-  harness_alignment_open_epoch, HarnessAlignmentEpochOpening, EpochOpened, EpochAlreadyOpen, EpochOpeningUnwritable,
+  harness_alignment_open_epoch, EpochOpened, EpochAlreadyOpen, EpochOpeningUnwritable,
   harness_alignment_publication_path, harness_alignment_publication_text, harness_alignment_publish,
   harness_alignment_observation_digest, harness_alignment_fingerprint_of, harness_alignment_checkpoint_digest,
   harness_event_alignment_checkpoint_due, harness_turn_checkpoint_due, harness_alignment_conversation_tip,
@@ -707,13 +708,20 @@ test fn a_crash_after_verdict_publication_produces_exactly_one_next_epoch() -> B
         && !string_contains(s: cause, pattern: "turn.alignment_checkpoint_due")
     _ => false
   }
+  // The epoch-13 name must be genuinely ABSENT -- not merely "not opened", which the deleted Bool
+  // predicate also answered true for an unreadable record.
+  let epoch_13_absent = match harness_alignment_epoch_record_present(check_directory: dir, checkpoint: checkpoint, next_epoch: 13) {
+    EpochRecordAbsent => true
+    EpochRecordPresent => false
+    EpochRecordUnreadable { detail: _ } => false
+  }
   let durable = trim(s: body_after_first) != ""
     // The durable opening is the authority's OWN line, byte for byte -- not a fixture's approximation of
     // it, and not a body this witness assembled to look right.
     && trim(s: body_after_first) == trim(s: harness_alignment_epoch_opened_line(checkpoint: checkpoint, next_epoch: 12, verdict: Aligned))
     && string_contains(s: body_after_first, pattern: harness_alignment_checkpoint_digest(checkpoint: checkpoint))
     && body_after_replays == body_after_first
-    && !harness_alignment_epoch_already_opened(check_directory: dir, checkpoint: checkpoint, next_epoch: 13)
+    && epoch_13_absent
     && read_file(path: beyond_path) == ""
     && string_contains(s: log_after_first, pattern: "alignment.epoch_opened")
     && string_contains(s: publication, pattern: "\"verdict\"")
@@ -736,8 +744,46 @@ test fn a_crash_after_verdict_publication_produces_exactly_one_next_epoch() -> B
     EpochOpened { path: _ } => false
     EpochOpeningUnwritable { cause: _ } => false
   }
+  // LEG 8  AN UNREADABLE RECORD IS REPORTED AS UNREADABLE, NOT AS A RESUME THAT NEVER HAPPENED. A
+  //        directory sits at the next epoch's name for a DIFFERENT lineage's checkpoint, the belt's entry
+  //        is called, and the refusal must quote the arm it actually got -- the path, and the fact that
+  //        nothing about it can be read -- while saying nothing about a checkpoint that was adjudicated
+  //        and resumed, which is exactly the history nobody recorded. Under the Bool shortcut the
+  //        unreadable arm collapsed into "already opened" and this leg is red; the refusal itself was
+  //        right in both cases, the invented reason was the defect. The premise is asserted independently
+  //        (the classifier really did answer EpochRecordUnreadable), so an unrelated refusal cannot pass
+  //        this leg by accident.
+  let blocked_checkpoint = checkpoint_bound_to(chain: chain, dir: dir, observation: observation, steps: steps, lineage: "align-witness-unreadable-record", epoch: 11)
+  let blocked_path = harness_alignment_epoch_opened_path(check_directory: dir, checkpoint: blocked_checkpoint, next_epoch: 12)
+  let planted_dir = shell.Mkdir.Parents(path: blocked_path as FilePath)
+  let blocked_entry = harness_alignment_adjudicate_and_resume(
+    config: turn_config(dir: dir),
+    checkpoint: blocked_checkpoint,
+    node_id: "align-witness-node",
+    turns_elapsed: steps,
+    cadence: alignment_base_cadence_state(),
+    check_prompt: "grade this round against the node's red control",
+    check_directory: dir,
+    round_steps: steps,
+    messages: round_messages(),
+    steps_taken: steps,
+    events: [],
+    repairs_used: 0,
+  )
+  let premise_is_unreadable = match harness_alignment_epoch_record_present(check_directory: dir, checkpoint: blocked_checkpoint, next_epoch: 12) {
+    EpochRecordUnreadable { detail: _ } => true
+    EpochRecordPresent => false
+    EpochRecordAbsent => false
+  }
+  let unreadable_cause_is_honest = match blocked_entry {
+    TurnSupervisionUnavailable { cause, steps_taken: _ } =>
+      string_contains(s: cause, pattern: blocked_path)
+        && string_contains(s: cause, pattern: "convenes no check")
+        && !string_contains(s: cause, pattern: "has been adjudicated and resumed once")
+    _ => false
+  }
   let removed = shell.Remove.RecursiveForce(path: dir)
-  wrote && removed.success && first_leg_ran_the_effect && resume_refused_the_replay && entry_refused_the_replay && wiped && refused_on_the_record && restamped && second_publication_refused && planted && loser_refused_without_overwriting && durable
+  wrote && removed.success && first_leg_ran_the_effect && resume_refused_the_replay && entry_refused_the_replay && wiped && refused_on_the_record && restamped && second_publication_refused && planted && loser_refused_without_overwriting && planted_dir.success && premise_is_unreadable && unreadable_cause_is_honest && durable
 }
 
 // THE PUBLICATION IS INDIVISIBLE: A RECORD WITHOUT ITS CADENCE IS NOT A PUBLICATION. The verdict and the
@@ -859,7 +905,15 @@ test fn a_stopped_lineage_is_stopped_by_the_cadence_authority_and_opens_no_epoch
       // lineage by, so it must carry the check's stop with the check's reason, and must NOT carry the
       // supervision-unavailable event: a check that ran and decided is not supervision being absent.
       let log = read_file(path: events_in(dir: dir))
-      let no_epoch = !harness_alignment_epoch_already_opened(check_directory: dir, checkpoint: adjudication.checkpoint, next_epoch: 8)
+      // The stopped lineage's next-epoch name must be genuinely ABSENT. The deleted Bool predicate also
+      // answered "opened" for an unreadable record, which would have let this leg pass on a fixture that
+      // was merely unreadable rather than on a stop that opened nothing.
+      let epoch_8_absent = match harness_alignment_epoch_record_present(check_directory: dir, checkpoint: adjudication.checkpoint, next_epoch: 8) {
+        EpochRecordAbsent => true
+        EpochRecordPresent => false
+        EpochRecordUnreadable { detail: _ } => false
+      }
+      let no_epoch = epoch_8_absent
         && read_file(path: harness_alignment_epoch_opened_path(check_directory: dir, checkpoint: adjudication.checkpoint, next_epoch: 8)) == ""
       gate_says_stop && stopped && no_epoch
         && string_contains(s: body, pattern: "catastrophically")
