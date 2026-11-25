@@ -9,8 +9,9 @@ module test.claim.egress_optional_tail_discharge_witness
 // whose Absent arm produces HostCancellationUnobserved{host, cause}.
 // Per gunbc.design_argument::interface_realization_policy the refusal policy
 // belongs to the consumer; a refusing lookup would duplicate the key it was
-// handed. This witness EXECUTES the consumer path so that weakening the
-// consumer's typed arm turns this row red, not silently discharging the site.
+// handed. This witness is executed by this row's leg D claim_batch --entry run
+// (evidence posted to PR #17041); weakening the consumer's typed arm would make
+// that run fail, which is how the row detects a silent discharge.
 //
 // DISCRIMINATION: operator_host_srv9 (gunbc.fleet.fleet_host_identity::operator_host_srv9)
 // is deliberately absent from fleet_host_ssh_transport_rows (only srv1-4 listed),
