@@ -13,7 +13,7 @@ import std.disposition { ConstructionMechanism, SingleAuthority }
 import extdeps.shell
 import extdeps.exec.command { ArgvCommand }
 import extdeps.tools.mkdir { mkdir_parents_command }
-import extdeps.tools.gnu_coreutils { cp_command, rm_force_command, timeout_command }
+import extdeps.tools.gnu_coreutils { cp_command, rm_force_command }
 // THE LIFECYCLE PRIMITIVES THE BOUND IS IMPOSED WITH. This module starts the subject, waits on the
 // kernel's own classification of how it ended, and signals ONLY the process group it started --
 // the repo-owned construction gunbc.harness.harness_shell_job already uses for its backstopped jobs
@@ -176,23 +176,20 @@ data runner_microvm_boot_probe_deadline: Second = second(count: 180)
 // confirming a signal this layer itself sent; the number it reports says which of the two landed.
 data runner_microvm_boot_probe_kill_grace: Second = second(count: 10)
 
-// RETAINED, AND CITED, NOT CONSUMED. This composed the GNU-timeout wrapper the production boot route
-// used before the Shape-A bounder landed here. It stays because the authority row
-// #gunbc.recurring_failure_mode.bare_exit_124_read_as_an_observed_timeout_event::bare_exit_124_read_as_an_observed_timeout_event names it by
-// DeclarationRef as the place where a bound was REQUESTED -- its own text is the reason the route was
-// dropped: "CONSTRUCTING A GNU TIMEOUT INVOCATION DOES NOT ESTABLISH THAT ITS DEADLINE FIRED". Its argv
-// shape (the escalation flag pair, the bound value, the subject) is still witnessed, in
-// #test.claim.runner.runner_microvm_boot_probe_witness, because the facts it asserts are upstream
-// facts about timeout(1) that OTHER readers still rely on. Nothing on a production path calls it: the
-// production route is #gunbc.runner.runner_microvm_boot_probe::runner_microvm_boot_probe_run_bounded,
-// which imposes its own bound rather than asking an external tool to hold one.
-fn runner_microvm_boot_probe_bounded_command(binary: String, config_path: String) -> ArgvCommand {
-  timeout_command(
-    duration: runner_microvm_boot_probe_deadline,
-    kill_after: runner_microvm_boot_probe_kill_grace,
-    command: firecracker_run_config_command(binary: binary, config_path: config_path),
-  )
-}
+// THE GNU-TIMEOUT WRAPPER THIS ROUTE USED TO COMPOSE IS GONE, AND WHY IT COULD NOT STAY. An earlier
+// revision of this file kept a builder around because the authority row
+// #gunbc.recurring_failure_mode.bare_exit_124_read_as_an_observed_timeout_event::bare_exit_124_read_as_an_observed_timeout_event
+// names a bound-requesting site by DeclarationRef -- but a citation is not a consumer, and a witness of
+// argv shape is not a consumer either (gunbc.design_argument::consumption: "a witness asserting existence
+// rather than exercising behavior"), while gunbc.design_argument::replacement_migration says the old
+// authority ends in one motion at its root. So the wrapper is deleted with the route that replaced it,
+// and the row's reference moved to the declaration that now imposes the bound:
+// #gunbc.runner.runner_microvm_boot_probe::runner_microvm_boot_probe_run_bounded. What upstream says about
+// timeout(1) -- that 124 is ITS convention and what its --verbose diagnostics mean -- stays modelled where
+// it belongs, in #extdeps.tools.gnu_coreutils::coreutils_timeout_expired_exit_code, which nine other
+// production call sites, in seven files, still consume through timeout_command (measured
+// at this head: 8 call sites, 7 files). This file no longer composes one, because
+// constructing a GNU timeout invocation does not establish that its deadline fired.
 
 // THE RECEIPT: WHAT THE BOUND THIS LAYER IMPOSES ACTUALLY DID, in one bounded invocation, as observed
 // by the layer that imposed it. It is minted only by runner_microvm_boot_probe_run_bounded below, and it

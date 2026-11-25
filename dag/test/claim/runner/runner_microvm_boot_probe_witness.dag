@@ -23,8 +23,7 @@ import gunbc.runner.runner_microvm_boot_probe {
   KillNotConfirmedByReap, GroupUnnameable,
   boot_probe_verdict, boot_probe_verdict_text, boot_probe_admitted, guest_agent_boot_verdict,
   runner_microvm_boot_probe_rootfs, runner_microvm_boot_probe_networking,
-  runner_microvm_boot_probe_bounded_command,
-  ExecutionBoundReceipt, BoundFired, BoundChildExited, BoundSignalledByOther, BoundReapRefused,
+    ExecutionBoundReceipt, BoundFired, BoundChildExited, BoundSignalledByOther, BoundReapRefused,
   BoundReapRefusedAfterOurSignal, BoundKillRefused, BoundSubjectSurvivedOurSignals,
   BoundKillUnconfirmed, BoundKillUnnameable,
   BoundSpawnRefused, NoExecutionBound,
@@ -438,21 +437,6 @@ test fn the_run_command_boots_rather_than_waiting_for_an_api_call() -> Bool {
   c.program.invocation as String == "/fc/firecracker"
     && any(xs: c.arguments, predicate: fn(w) { w == "--no-api" })
     && any(xs: c.arguments, predicate: fn(w) { w == "--config-file" })
-}
-
-// THE UPSTREAM CONVENTION STAYS MODELLED, AND ITS ESCALATION IS WITNESSED. The production boot route
-// no longer wraps the subject in GNU timeout -- a bound this layer does not own cannot evidence its own
-// firing to this layer (the receipt's comment carries that reasoning) -- but the wrapper stays modelled
-// in #extdeps.tools.gnu_coreutils, cited to upstream timeout(1), because OTHER readers still consume its
-// contract: the follow-up row bare-124-timeout-readers-consume-the-bound-observation names them. What is
-// witnessed here is the argv the retained composition builds: TERM escalating to KILL, the bound value,
-// and the subject underneath it.
-test fn the_bounded_command_escalates_rather_than_asking_politely() -> Bool {
-  let c = runner_microvm_boot_probe_bounded_command(binary: "/fc/firecracker", config_path: "/r/probe/probe-vm-config.json")
-  c.program.invocation as String == "timeout"
-    && any(xs: c.arguments, predicate: fn(w) { w == "--kill-after" })
-    && any(xs: c.arguments, predicate: fn(w) { w == "/fc/firecracker" })
-    && any(xs: c.arguments, predicate: fn(w) { w == "--no-api" })
 }
 
 // A LIVE BOOT IS JUDGED THROUGH THE HOST'S CONSOLE READER, AND THIS IS THE PAIR. The same version
