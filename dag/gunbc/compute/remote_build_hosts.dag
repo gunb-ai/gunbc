@@ -51,13 +51,13 @@ import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2,
 //     pinned to. A scanned row joins
 //     #gunbc.fleet.fleet_host_key_enrollment::fleet_host_key_enrollments once an installed bobo has an
 //     address and a live runner, and not before.
-//   - butch (srv14): its pool figure asks for no authoring, because
-//     #gunbc.runner.runner_slot_desired::host_build_pool_reservation derives it for a host on this list;
-//     what keeps the host off is the serving charge held by
-//     #gunbc.serving.serving_reservation::srv14_serving_memory_charge_retirement_frontier. It joins after
-//     that frontier dissolves: candidate row
-//     (#gunbc.compute.remote_build_hosts::remote_build_serving_candidate_hosts), observe, converge,
-//     this row -- the order srv3 and srv4 took.
+//  - butch (srv14): the 192 GiB serving reservation that held it off this list was DISCHARGED on 2026-11-24 --
+//    both retirement triggers landed and the operator ruled the release (gunbc.design_ruling::
+//    srv14_serving_memory_charge_retirement_operator_approved_2026_11_24; dissolved_frontier marker in
+//    gunbc.serving.serving_reservation). Its pool figure asks for no authoring, because
+//    #gunbc.runner.runner_slot_allocation::gunbc_runner_committed_width derives it from butch's own read host
+//    facts; the candidate row (#gunbc.compute.remote_build_hosts::remote_build_serving_candidate_hosts), observe,
+//    converge, and this row -- the order srv3 and srv4 took -- are the remaining steps in the butch lane.
 //   - the Supermicro joins when it has both an identity with an anchored row and a declared pool.
 // Each joins by adding a row here the day it has an on-disk ledger home, an anchored row and a real pool
 // figure -- never before.

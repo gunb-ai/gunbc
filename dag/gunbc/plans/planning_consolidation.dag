@@ -61,7 +61,7 @@ fn planning_consolidation_body() -> List<MarkdownBlock> {
     ul(items: [
       li(text: "**Which plan is rewritten as an intention first.** Proposed: `gunbc.plans.read_set_convergence`."),
       li(text: "**Where the realization lives** (the work-item record, its edges and item events): `gunbc.roadmap` renamed, or a new home, once an audit of the belt, attempt, dispatch, session and workspace modules shows what execution needs."),
-      li(text: "**The 16 plan-naming typed carriers** on roadmap nodes (13 resolve, 3 dangle to the deleted `durable_work_handoff.dag`): each node live or stale, the operator's call."),
+      li(text: "**The 16 plan-naming typed carriers** on roadmap nodes (13 resolve; the 3 that dangled to the deleted `durable_work_handoff.dag`, the work-execution program and its first two members, were repointed to `gunbc.plans.fabric_market` on 2026-11-23; the operator adopted the program on 2026-11-19): each node live or stale, the operator's call."),
     ]),
     h2(text: "7. The backward structure, read at e346a2c89daa"),
     p(text: "Read from section 1 downward. Each layer states what must already be true for the layer above it; the work items are not listed here (section 5)."),

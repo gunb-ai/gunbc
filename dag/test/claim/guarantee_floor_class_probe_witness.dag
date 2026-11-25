@@ -190,8 +190,14 @@ data parse_list_separator_hole_source: String = "module probe_floor_list_sep\nty
 data parse_list_separator_double_source: String = "module probe_floor_list_sep_double\ntype Cell { n: Int }\nfn f() -> List<Cell> { [ Cell { n: 1 }, , Cell { n: 3 } ] }\n"
 data parse_list_separator_green_source: String = "module probe_floor_list_sep_green\ntype Cell { n: Int }\nfn f() -> List<Cell> { [ Cell { n: 1 }, Cell { n: 2 }, Cell { n: 3 } ] }\n"
 
-test fn floor_generic_instantiation_is_still_silently_accepted() -> Bool {
-  silent_hole_holds(probe: floor_generic_instantiation_hole_probe, source: generic_instantiation_hole_source)
+// CLIMBED: the type-argument hole is closed at b5af75f4d339 (gunbc#9416; red at its parent 107304a57920). The probe was
+// `floor_generic_instantiation_is_still_silently_accepted`; per gunbc.design_argument::guarantee_ladder (dissolution on
+// climb) it is flipped to the refusal and stays enrolled as the permanent regression control for the higher rung.
+test fn floor_generic_instantiation_type_argument_refuses() -> ProcessExit {
+  census_verdict_all([
+    census_premise("the probe row's expectation holds", row_holds(probe: floor_generic_instantiation_hole_probe, source: generic_instantiation_hole_source)),
+    blocking_verdict(source: generic_instantiation_hole_source, wanted: "TypeMismatch", holds: fn(n) { n == 1 })
+  ])
 }
 
 test fn floor_generic_instantiation_monomorphic_control_refuses() -> ProcessExit {
@@ -204,14 +210,6 @@ test fn floor_generic_instantiation_monomorphic_control_refuses() -> ProcessExit
 test fn floor_generic_instantiation_green_control_is_clean() -> Bool {
   row_holds(probe: floor_generic_instantiation_green_probe, source: generic_instantiation_green_source)
     && total_row_count_is_zero(census: census_of(source: generic_instantiation_green_source))
-}
-
-test fn floor_generic_instantiation_hole_does_not_satisfy_the_refusing_control() -> Bool {
-  match active_probe_row(probe: floor_generic_instantiation_monomorphic_control_probe) {
-    Present { value: control_row } =>
-      !probe_row_expectation_holds(census: census_of(source: generic_instantiation_hole_source), row: control_row)
-    Absent => false
-  }
 }
 
 test fn floor_field_through_generics_type_variable_refuses() -> ProcessExit {
@@ -290,12 +288,12 @@ test fn floor_record_completeness_receipt_joins_its_v1_compile_path() -> Bool {
 }
 
 test fn floor_hole_receipt_records_acceptance_as_the_observation() -> Bool {
-  match active_v1_compile_probe_row(probe: floor_generic_instantiation_hole_probe) {
+  match active_v1_compile_probe_row(probe: floor_parse_list_separator_hole_probe) {
     Present { value: row } =>
       let receipt = build_v1_compile_receipt(
         row: row,
-        census: census_of(source: generic_instantiation_hole_source),
-        subject_revision: synthetic_program_subject_revision(source: generic_instantiation_hole_source),
+        census: census_of(source: parse_list_separator_hole_source),
+        subject_revision: synthetic_program_subject_revision(source: parse_list_separator_hole_source),
         harness_revision: witness_harness_revision(probe: row.probe),
       )
       observation_is_clean(o: receipt.observed)
@@ -311,7 +309,6 @@ test fn floor_hole_receipt_records_acceptance_as_the_observation() -> Bool {
 test fn every_below_floor_hole_row_is_one_of_the_declared_holes() -> Bool {
   let declared = [
     floor_exhaustiveness_type_variable_hole_probe as String,
-    floor_generic_instantiation_hole_probe as String,
     floor_parse_list_separator_hole_probe as String,
   ]
   let hole_ids = guarantee_probe_below_floor_hole_rows() |> map(row => row.probe as String)
