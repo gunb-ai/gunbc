@@ -29,7 +29,7 @@ import std.types { Int, Bool, NonEmptyStr, List, String, brand }
 import std.nat { Nat }
 import std.integer { nat_to_int }
 import extdeps.languages.json.emit { JsonValue, json_kv, json_int, json_string, json_object, serialize_json }
-import std.optional { Present, Absent }
+import std.optional { Optional, Present, Absent }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq, declaration_ref_display_key }
 import std.interval { degenerate_interval }
 import std.pareto { AxisGap, AxisReading, HigherIsBetter, LowerIsBetter, ParetoEntry, SelectionAxis }
