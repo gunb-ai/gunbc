@@ -6,7 +6,7 @@ import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import extdeps.proxy.openresty {
   NginxDirective, NginxToken, ServerBlock, ListenTlsOn, SslCertificate, SslCertificateKey,
   LocationBlock, PrefixMatch, ProxyPassToHost, ProxyHttpVersion11, nginx_token, render_nginx_directives,
-  ObservedFrontLocation, observed_front_serves,
+  ObservedFrontLocation, observed_front_serves, ObservedFrontRoster, ObservedRoster, ObservedRosterUnreadable,
 }
 
 // ── WHAT A FLEET READER CAN SEE ABOUT A SERVING ENGINE, THROUGH WHICH BOUNDARY, WITH WHAT STANDING ──
@@ -197,23 +197,49 @@ fn engine_front_locations(
   )
 }
 
-// Reconcile an OBSERVED hand-managed front door -- its location blocks, stated the way the host states them --
-// against the roster: the consumers whose reads are blocked because the host front does not forward their route.
-// This is the class made decidable -- it names who srv4 shut out. A route can have several readers, so every
-// reader of every missing route is named, WITHOUT repetition: a reader of several missing routes
-// (serving_availability_bracketing_read reads both /v1/models AND /metrics) is named once. Serving is decided by
-// nginx's own rule -- longest prefix wins, and a `return 404` location serves nothing (extdeps.proxy.openresty::
-// observed_front_serves) -- NOT by string equality on hand-expanded paths. The srv4 host writes a `location /v1/`
-// PREFIX that carries /v1/models and /v1/chat/completions, so those ARE served while /metrics is not; an exact
-// string match would have mis-called the prefix-carried routes blocked. `observed` is a read of the host proxy's
-// location blocks, not an authority over the render.
-fn engine_front_unserved_consumers(observed: List<ObservedFrontLocation>) -> List<DeclarationRef> {
+// The reconciliation's verdict over an OBSERVED front. A front that cannot be read -- a location whose path failed
+// to tokenise -- REFUSES the verdict and names the offending path: we will not call a route served merely because
+// the location that would have refused it was unreadable (fail_closed: a failed read refuses, it never widens to a
+// plausible verdict). A readable front names which required routes it does NOT serve, and which readers that shuts
+// out. Keeping blocked_routes (not just readers) is what lets a caller see that a prefix-carried route like
+// /v1/models is SERVED, distinct from a route whose only reader is shared with a blocked one.
+type EngineFrontUnservedVerdict =
+    UnservedFront { blocked_routes: List<NonEmptyStr>, blocked_readers: List<DeclarationRef> }
+  | ObservedFrontUnreadable { path: String }
+
+// Reconcile an OBSERVED hand-managed front door -- its location roster, stated the way the host states it -- against
+// the route roster: which required routes the host front does NOT forward, and whose reads that shuts out. This is
+// the class made decidable -- it names who srv4 shut out. A route can have several readers, so every reader of
+// every missing route is named, WITHOUT repetition (serving_availability_bracketing_read reads both /v1/models AND
+// /metrics and is named once). Serving is decided by nginx's own rule -- longest prefix wins, and a `return 404`
+// location serves nothing (extdeps.proxy.openresty::observed_front_serves) -- NOT by string equality on hand-expanded
+// paths. The srv4 host writes a `location /v1/` PREFIX carrying /v1/models and /v1/chat/completions, so those ARE
+// served while /metrics is not; an exact string match would have mis-called the prefix-carried routes blocked. An
+// UNREADABLE observation (a malformed location path) refuses the verdict rather than reporting a smaller roster.
+fn engine_front_unserved_consumers(observed: ObservedFrontRoster) -> EngineFrontUnservedVerdict {
+  match observed {
+    ObservedRosterUnreadable { path: p } => ObservedFrontUnreadable { path: p }
+    ObservedRoster { locations: locs } => UnservedFront {
+      blocked_routes: unserved_route_paths(locations: locs),
+      blocked_readers: unserved_reader_refs(locations: locs),
+    }
+  }
+}
+
+// Which required routes the observed front does not serve.
+fn unserved_route_paths(locations: List<ObservedFrontLocation>) -> List<NonEmptyStr> {
+  map(
+    filter(engine_front_required_routes, r => !observed_front_serves(locations: locations, route: r.path as String)),
+    r => r.path,
+  )
+}
+
+// Which readers the unserved routes shut out, without repetition.
+fn unserved_reader_refs(locations: List<ObservedFrontLocation>) -> List<DeclarationRef> {
   fold(
-    engine_front_required_routes,
+    filter(engine_front_required_routes, r => !observed_front_serves(locations: locations, route: r.path as String)),
     init: [] as List<DeclarationRef>,
-    f: (acc, r) =>
-      if observed_front_serves(locations: observed, route: r.path as String) { acc }
-      else { append_new_consumers(acc: acc, consumers: r.consumers) }
+    f: (acc, r) => append_new_consumers(acc: acc, consumers: r.consumers),
   )
 }
 

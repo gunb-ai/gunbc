@@ -279,28 +279,52 @@ type ObservedFrontLocation = ObservedFrontLocation {
   action: FrontLocationAction,
 }
 
-// A observed prefix location, from the path text as the host wrote it. The path is validated as a token, so a
-// malformed observation is Absent: a read that did not yield a well-formed location.
-fn observed_prefix(path: String, action: FrontLocationAction) -> Optional<ObservedFrontLocation> {
+// A observation of one location block read off a hand-managed proxy. A path that fails to tokenise is a MALFORMED
+// observation -- a failed read that is KEPT and located, not an absent location. Dropping it would let an unparseable
+// `return 404` block vanish from the roster and its route be wrongly reported as served (DESIGN fail_closed: a
+// failure arm refuses, never widens).
+type ObservedLocation =
+    WellFormedLocation { location: ObservedFrontLocation }
+  | MalformedLocation { path: String }
+
+// A observed prefix location, from the path text as the host wrote it. A path that fails to tokenise is reported as
+// malformed, naming the text that failed -- never silently dropped.
+fn observed_prefix(path: String, action: FrontLocationAction) -> ObservedLocation {
   match nginx_token(text: path) {
-    Absent => Absent
-    Present { value: p } => Present { value: ObservedFrontLocation { match: PrefixMatch { path: p }, action: action } }
+    Absent => MalformedLocation { path: path }
+    Present { value: p } => WellFormedLocation { location: ObservedFrontLocation { match: PrefixMatch { path: p }, action: action } }
   }
 }
 
 // A observed exact-match location, from the path text as the host wrote it.
-fn observed_exact(path: String, action: FrontLocationAction) -> Optional<ObservedFrontLocation> {
+fn observed_exact(path: String, action: FrontLocationAction) -> ObservedLocation {
   match nginx_token(text: path) {
-    Absent => Absent
-    Present { value: p } => Present { value: ObservedFrontLocation { match: ExactMatch { path: p }, action: action } }
+    Absent => MalformedLocation { path: path }
+    Present { value: p } => WellFormedLocation { location: ObservedFrontLocation { match: ExactMatch { path: p }, action: action } }
   }
 }
 
-// Collect the well-formed observations, dropping any that failed to tokenise.
-fn observed_front_locations(observations: List<Optional<ObservedFrontLocation>>) -> List<ObservedFrontLocation> {
-  fold(observations, init: [] as List<ObservedFrontLocation>, f: (acc, o) => match o {
-    Present { value: v } => concat(acc, [v])
-    Absent => acc
+// The collected roster of a hand-managed front -- or a refusal. A single malformed observation refuses the WHOLE
+// roster and names the path that failed to read: a served/blocked verdict cannot be built from a partial read of
+// the host, because the location that failed to read may have been the one refusing the very route in question.
+type ObservedFrontRoster =
+    ObservedRoster { locations: List<ObservedFrontLocation> }
+  | ObservedRosterUnreadable { path: String }
+
+// An empty roster, given its type at the boundary so the fold below can start from "no location read yet."
+fn empty_observed_roster() -> ObservedFrontRoster {
+  ObservedRoster { locations: [] as List<ObservedFrontLocation> }
+}
+
+// Collect the roster from observations. If any observation is malformed the roster is REFUSED at the first such
+// path, and once refused it stays refused -- the fold widens nothing and drops nothing (fail_closed).
+fn observed_front_locations(observations: List<ObservedLocation>) -> ObservedFrontRoster {
+  fold(observations, init: empty_observed_roster(), f: (acc, o) => match acc {
+    ObservedRosterUnreadable { path: p } => ObservedRosterUnreadable { path: p }
+    ObservedRoster { locations: locs } => match o {
+      MalformedLocation { path: p } => ObservedRosterUnreadable { path: p }
+      WellFormedLocation { location: l } => ObservedRoster { locations: concat(locs, [l]) }
+    }
   })
 }
 

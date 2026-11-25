@@ -5,13 +5,14 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.algebra { length }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import extdeps.proxy.openresty {
-  ObservedFrontLocation, observed_front_locations, observed_front_serves,
-  observed_prefix, Serves, Rejects,
+  ObservedFrontRoster, observed_front_locations,
+  observed_prefix, observed_exact, Serves, Rejects,
 }
 import gunbc.serving.serving_observability {
   engine_front_required_routes,
   engine_front_server_directives, engine_front_proxies_route,
   engine_front_route_consumers, engine_front_unserved_consumers,
+  EngineFrontUnservedVerdict, UnservedFront, ObservedFrontUnreadable,
   engine_front_proxy_config, EngineFrontProxyRendered, EngineFrontProxyRefused, InvalidToken,
   Built, RefusedToken,
 }
@@ -42,7 +43,7 @@ fn consumer_count_in(list: List<DeclarationRef>, ref: DeclarationRef) -> Int {
 // hand-expanded list of the routes that prefix happens to carry. Whether a route is served is then decided by
 // nginx's own matching rule, so /v1/models and /v1/chat/completions come out served (the prefix covers them)
 // while /metrics comes out blocked (only the 404 location covers it).
-fn srv4_observed_locations() -> List<ObservedFrontLocation> {
+fn srv4_observed_locations() -> ObservedFrontRoster {
   observed_front_locations(observations: [
     observed_prefix(path: "/v1/", action: Serves),
     observed_prefix(path: "/", action: Rejects),
@@ -50,49 +51,106 @@ fn srv4_observed_locations() -> List<ObservedFrontLocation> {
 }
 
 // A front that forwards everything (the reconciled, correct host state): a single `/` prefix that proxies.
-fn complete_observed_locations() -> List<ObservedFrontLocation> {
+fn complete_observed_locations() -> ObservedFrontRoster {
   observed_front_locations(observations: [ observed_prefix(path: "/", action: Serves) ])
 }
 
 // A front that refuses everything: a single `/` prefix that returns 404. This blocks every route, so the two
 // routes that share the availability reader (/v1/models and /metrics) would name it twice without deduping.
-fn all_rejected_locations() -> List<ObservedFrontLocation> {
+fn all_rejected_locations() -> ObservedFrontRoster {
   observed_front_locations(observations: [ observed_prefix(path: "/", action: Rejects) ])
 }
 
-// RED: reconciling srv4's OBSERVED location blocks against the roster, decided by nginx's longest-prefix rule,
-// (a) does NOT falsely block the routes its `/v1/` prefix carries -- /v1/models and /v1/chat/completions are
-// SERVED -- and (b) blocks EXACTLY the two readers of /metrics, the route the `location / { return 404; }`
-// swallows. An exact-string reconciliation would have wrongly called /v1/models blocked (the host never writes
-// that path; the /v1/ prefix carries it). This is the parent's discriminating case.
-test fn srv4_observed_front_blocks_exactly_the_metrics_readers() -> Bool {
-  let blocked = engine_front_unserved_consumers(observed: srv4_observed_locations())
-  // the /v1/ prefix serves the routes it carries, and the 404 location serves nothing:
-  observed_front_serves(locations: srv4_observed_locations(), route: "/v1/models")
-    && observed_front_serves(locations: srv4_observed_locations(), route: "/v1/chat/completions")
-    && !observed_front_serves(locations: srv4_observed_locations(), route: "/metrics")
-  // and the only readers named are the two readers of /metrics -- not the chat reader, whose route is served:
-    && length(blocked) == 2
-    && consumer_count_in(list: blocked, ref: metrics_reader_ref()) == 1
-    && consumer_count_in(list: blocked, ref: availability_reader_ref()) == 1
-    && consumer_count_in(list: blocked, ref: chat_reader_ref()) == 0
+// A host whose `return 404` on /metrics has a path that fails to tokenise, behind a catch-all proxy. This is the
+// reviewer's fail_closed scenario: a naive reader that DROPS the malformed location would let `/` win and falsely
+// report /metrics served -- the very misconfiguration the class exists to catch. Here the roster must be REFUSED.
+fn malformed_metrics_location() -> ObservedFrontRoster {
+  observed_front_locations(observations: [
+    observed_prefix(path: "/", action: Serves),
+    observed_prefix(path: "/metrics;bad", action: Rejects),
+  ])
 }
 
-// Positive control on the reconciliation: a front whose single `/` prefix proxies serves every route, so no
-// consumer is blocked (nginx's rule, not a special case for the correct host).
+// A front that EXACTLY-matches /metrics to the engine while its `/` prefix refuses everything else. This is the
+// discriminating use of observed_exact: nginx ranks an exact match above any prefix, so /metrics is served even
+// though the catch-all prefix would refuse it -- the exact arm of the matching rule, otherwise unexercised.
+fn exact_metrics_over_rejecting_root() -> ObservedFrontRoster {
+  observed_front_locations(observations: [
+    observed_exact(path: "/metrics", action: Serves),
+    observed_prefix(path: "/", action: Rejects),
+  ])
+}
+
+// RED: reconciling srv4's OBSERVED location blocks against the roster, decided by nginx's longest-prefix rule,
+// (a) does NOT falsely block the routes its `/v1/` prefix carries -- /v1/models and /v1/chat/completions are SERVED
+// (absent from blocked_routes) -- and (b) blocks EXACTLY /metrics, the route the `location / { return 404; }`
+// swallows, naming both its readers and NOT the chat reader. An exact-string reconciliation would have wrongly
+// called /v1/models blocked (the host never writes that path; the /v1/ prefix carries it).
+test fn srv4_observed_front_blocks_exactly_the_metrics_readers() -> Bool {
+  match engine_front_unserved_consumers(observed: srv4_observed_locations()) {
+    UnservedFront { blocked_routes: routes, blocked_readers: readers } =>
+      length(routes) == 1
+        && any(routes, p => (p as String) == "/metrics")
+        && !any(routes, p => (p as String) == "/v1/models")
+        && !any(routes, p => (p as String) == "/v1/chat/completions")
+        && length(readers) == 2
+        && consumer_count_in(list: readers, ref: metrics_reader_ref()) == 1
+        && consumer_count_in(list: readers, ref: availability_reader_ref()) == 1
+        && consumer_count_in(list: readers, ref: chat_reader_ref()) == 0
+    ObservedFrontUnreadable { path: _ } => false
+  }
+}
+
+// Positive control on the reconciliation: a front whose single `/` prefix proxies serves every route, so nothing
+// is blocked (nginx's rule, not a special case for the correct host).
 test fn a_front_that_proxies_root_serves_everything() -> Bool {
-  length(engine_front_unserved_consumers(observed: complete_observed_locations())) == 0
+  match engine_front_unserved_consumers(observed: complete_observed_locations()) {
+    UnservedFront { blocked_routes: routes, blocked_readers: readers } =>
+      length(routes) == 0 && length(readers) == 0
+    ObservedFrontUnreadable { path: _ } => false
+  }
 }
 
 // DEDUPE (parent finding): when a front refuses EVERYTHING, both /v1/models and /metrics are blocked, and their
 // shared reader serving_availability_bracketing_read would be named twice by a naive flatten. The reconciliation
-// names each blocked reader once: the three distinct readers, availability counted exactly once.
+// names each blocked reader once: three distinct readers, availability counted exactly once; three blocked routes.
 test fn a_reader_of_several_missing_routes_is_named_once() -> Bool {
-  let blocked = engine_front_unserved_consumers(observed: all_rejected_locations())
-  length(blocked) == 3
-    && consumer_count_in(list: blocked, ref: chat_reader_ref()) == 1
-    && consumer_count_in(list: blocked, ref: metrics_reader_ref()) == 1
-    && consumer_count_in(list: blocked, ref: availability_reader_ref()) == 1
+  match engine_front_unserved_consumers(observed: all_rejected_locations()) {
+    UnservedFront { blocked_routes: routes, blocked_readers: readers } =>
+      length(routes) == 3
+        && length(readers) == 3
+        && consumer_count_in(list: readers, ref: chat_reader_ref()) == 1
+        && consumer_count_in(list: readers, ref: metrics_reader_ref()) == 1
+        && consumer_count_in(list: readers, ref: availability_reader_ref()) == 1
+    ObservedFrontUnreadable { path: _ } => false
+  }
+}
+
+// FAIL-CLOSED (review 98708): an observation whose path fails to tokenise is NOT silently dropped -- dropping it
+// would let the catch-all `/` proxy win and falsely report /metrics served, the exact misconfiguration this class
+// catches. The whole roster is REFUSED and the malformed path is named, so no verdict is built on a partial read.
+test fn a_malformed_observation_refuses_the_verdict_and_names_the_path() -> Bool {
+  match engine_front_unserved_consumers(observed: malformed_metrics_location()) {
+    ObservedFrontUnreadable { path: p } => (p as String) == "/metrics;bad"
+    UnservedFront { blocked_routes: _, blocked_readers: _ } => false
+  }
+}
+
+// EXACT MATCHING (review 98708: observed_exact needs a consumer; DESIGN Consumption). nginx ranks an exact location
+// above any prefix, so `location = /metrics { proxy_pass }` serves /metrics even though the `/` prefix refuses it.
+// Discriminating: /v1/models and /v1/chat/completions (no exact, only the refusing prefix) stay blocked, so this is
+// not the trivial "everything served" case -- it exercises the exact-beats-prefix arm of the matching rule.
+test fn an_exact_location_serves_its_route_over_a_refusing_prefix() -> Bool {
+  match engine_front_unserved_consumers(observed: exact_metrics_over_rejecting_root()) {
+    UnservedFront { blocked_routes: routes, blocked_readers: readers } =>
+      !any(routes, p => (p as String) == "/metrics")
+        && any(routes, p => (p as String) == "/v1/models")
+        && any(routes, p => (p as String) == "/v1/chat/completions")
+        && consumer_count_in(list: readers, ref: metrics_reader_ref()) == 0
+        && consumer_count_in(list: readers, ref: availability_reader_ref()) == 1
+        && consumer_count_in(list: readers, ref: chat_reader_ref()) == 1
+    ObservedFrontUnreadable { path: _ } => false
+  }
 }
 
 
