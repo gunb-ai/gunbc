@@ -3,7 +3,7 @@ module gunbc.serving.gpu_power_cap_pricing
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.nat { Nat, nat_to_decimal_string }
 import std.optional { Optional, Present, Absent, optional_is_absent }
-import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key, declaration_ref_eq }
 import std.integer { nat_to_int }
 import std.measure {
   Watt, watt, watt_count, Milliwatt, milliwatt, milliwatt_count,
@@ -24,7 +24,7 @@ import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import product.host_identity { HostIdentity, host_identity_eq }
 import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
 import gunbc.fleet.fleet_power_circuit {
-  SharedPowerCircuit, BoundStated, BoundUnstated, MemberDrawBound, RatingUnread, circuit_carry_limit,
+  SharedPowerCircuit, BoundStated, BoundUnstated, MemberDrawBound, RatingUnread, circuit_carries, circuit_carry_limit,
   circuit_label, circuit_member_draw_bound, circuit_rating_read_obligation, surge_strip,
 }
 import gunbc.serving.gpu_power_state_policy {
@@ -116,12 +116,85 @@ data ax_host_draw_watts: DeclarationRef = decl_ref(
   module_path: "gunbc.serving.gpu_power_cap_pricing",
   decl_name: "ax_host_draw_watts",
 )
+data ax_gpu_draw_watts: DeclarationRef = decl_ref(
+  module_path: "gunbc.serving.gpu_power_cap_pricing",
+  decl_name: "ax_gpu_draw_watts",
+)
 
+// THE TWO DRAW AXES ARE NOT INTERCHANGEABLE, and this is the distinction the 2026-11-24 decision was priced
+// without. `ax_gpu_draw_watts` is what an `nvidia-smi power.draw` sample set measures: ONE SUBSYSTEM of the
+// machine -- the card. `ax_host_draw_watts` is the draw of the WHOLE host at its feed, which is the quantity a
+// shared circuit's per-member limit is stated against, and the only axis a circuit's HardConstraint may sit
+// on. Putting the card's number on the circuit's axis would price 2 W saved on the GPU as 2 W saved on the
+// strip, on a feed that also carries the CPU, the board and the disks -- and the same day's own readings show
+// the two moving apart (srv4's hwmon apm_xgene CPU reading went 101 W to ~40 W when the CPU was capped, while
+// the GPU cap moved only the card). So the host axis enters the comparison ONLY when some candidate carries a reading
+// taken at the host level, and against a stated circuit bound the fold REFUSES outright when no candidate
+// does -- rather than borrowing the card's number for the machine (#gunbc.design_argument::fail_closed, no substitute;
+// #gunbc.design_argument::grounding_is_intersubjective, no scale without an instrument).
+
+// The full census of axes a candidate must ANSWER for -- as a reading or as a named gap. The fold passes
+// `funded_axes_for`, which puts an axis in front of std.decision only where SOME candidate in the field carries
+// a reading on it: an axis nobody has read cannot be used to rank, and (for the host axis, against a stated
+// bound) must not be used at all -- the fold refuses there with the read obligation, rather than std.decision
+// returning an opaque "axis not funded" defect for want of a scale.
 fn funded_axes() -> List<SelectionAxis> {
   [
     SelectionAxis { identity: ax_decode_tokens_per_second, goal: HigherIsBetter },
+    SelectionAxis { identity: ax_gpu_draw_watts, goal: LowerIsBetter },
     SelectionAxis { identity: ax_host_draw_watts, goal: LowerIsBetter },
   ]
+}
+
+fn gpu_axis_is_read(field: List<CapCandidate>) -> Bool {
+  any(field, c => any(draw_readings_of(c: c), r => same_axis(a: r.axis, b: ax_gpu_draw_watts)))
+}
+
+fn host_axis_is_read(field: List<CapCandidate>) -> Bool {
+  any(field, c => any(draw_readings_of(c: c), r => same_axis(a: r.axis, b: ax_host_draw_watts)))
+}
+
+fn same_axis(a: DeclarationRef, b: DeclarationRef) -> Bool {
+  declaration_ref_eq(a: a, b: b)
+}
+
+fn funded_axes_for(field: List<CapCandidate>) -> List<SelectionAxis> {
+  let with_decode = [SelectionAxis { identity: ax_decode_tokens_per_second, goal: HigherIsBetter }]
+  let with_gpu = if gpu_axis_is_read(field: field) {
+    concat(with_decode, [SelectionAxis { identity: ax_gpu_draw_watts, goal: LowerIsBetter }])
+  } else {
+    with_decode
+  }
+  if host_axis_is_read(field: field) {
+    concat(with_gpu, [SelectionAxis { identity: ax_host_draw_watts, goal: LowerIsBetter }])
+  } else {
+    with_gpu
+  }
+}
+
+// Is the circuit's per-member draw bound stated? The fold consults this before applying any bound: a stated
+// bound with no host-level reading in the field is the 2026-11-24 case, and the answer is the reading that
+// is missing, never a verdict computed from the card's numbers.
+fn circuit_bound_is_stated(circuit: SharedPowerCircuit) -> Bool {
+  match circuit_member_draw_bound(c: circuit) {
+    BoundStated { draw_limit: _, standing: _ } => true
+    BoundUnstated { read_obligation: _ } => false
+  }
+}
+
+// The refusal the fold returns in exactly that case: the bound stands, the only watts on offer are a
+// subsystem's, and no arithmetic gets to pretend otherwise. The cause quotes the read obligation verbatim.
+fn host_bound_evidence_gap(circuit: SharedPowerCircuit) -> AxisGap {
+  AxisGap {
+    axis: ax_host_draw_watts,
+    cause: concat(
+      concat(
+        concat("the bound on ", circuit_label(c: circuit)),
+        " cannot be applied to any candidate: no reading in the field was taken at a machine's feed. " as NonEmptyStr
+      ) as NonEmptyStr,
+      host_draw_read_obligation
+    ) as NonEmptyStr,
+  }
 }
 
 // WHY NOT product.fabric.serving_throughput. Its reading is a TokensPerSecond, whose count is a Nat of WHOLE
@@ -158,12 +231,21 @@ type DecodeReading
 // tells a ceiling doing work from a card that is leakage-bound. `DrawUnread` is still srv3's state for every
 // candidate, and srv4's for the single-stream windows: only the two 2026-11-24 sweeps averaged draw, at their
 // own levels.
+// WHAT THE INSTRUMENT WAS ACTUALLY ON. `GpuSubsystem` is an nvidia-smi power.draw reading off one card: a
+// fact about the card, not about the machine's load on a circuit. `HostLevel` is a reading taken at the
+// machine's feed -- a wattmeter on the member's lead, or a per-host PDU/UPS outlet -- and it is the only thing
+// that can fund the circuit's axis. The arm sits on the READING, not inferred from the instrument's name,
+// because the name of the tool is not evidence of what it was clamped around.
+type DrawSubject
+  = GpuSubsystem { gpu: NonEmptyStr, instrument: NonEmptyStr }
+  | HostLevel { instrument: NonEmptyStr, covers: NonEmptyStr }
+
 type DrawReading
   = DrawRead {
       draw_low: Milliwatt,
       draw_high: Milliwatt,
       samples: Nat,
-      sensor: NonEmptyStr,
+      subject: DrawSubject,
       throttle_share_note: Optional<NonEmptyStr>,
       observed_on: NonEmptyStr,
       standing: CitedFigureStanding
@@ -366,6 +448,10 @@ fn draw_gap(cause: NonEmptyStr) -> AxisGap {
   AxisGap { axis: ax_host_draw_watts, cause: cause }
 }
 
+fn gpu_gap(cause: NonEmptyStr) -> AxisGap {
+  AxisGap { axis: ax_gpu_draw_watts, cause: cause }
+}
+
 // A gap's cause is the read obligation the missing reading carries, verbatim. A gap that only said
 // "unmeasured" would be indistinguishable from a gap nobody can close, and std.decision's
 // SelectionNeedsEvidence is supposed to name what to go and read.
@@ -373,7 +459,7 @@ fn candidate_entry(c: CapCandidate) -> ParetoEntry {
   ParetoEntry {
     identity: c.identity,
     display_label: c.label,
-    readings: concat(decode_reading_of(c: c), draw_reading_of(c: c)),
+    readings: concat(decode_reading_of(c: c), draw_readings_of(c: c)),
     missing_inputs: concat(decode_gaps_of(c: c), draw_gaps_of(c: c)),
   }
 }
@@ -385,9 +471,20 @@ fn decode_reading_of(c: CapCandidate) -> List<AxisReading> {
   }
 }
 
-fn draw_reading_of(c: CapCandidate) -> List<AxisReading> {
-  match draw_interval(c: c) {
+fn draw_readings_of(c: CapCandidate) -> List<AxisReading> {
+  concat(host_draw_reading_of(c: c), gpu_draw_reading_of(c: c))
+}
+
+fn host_draw_reading_of(c: CapCandidate) -> List<AxisReading> {
+  match host_draw_interval(c: c) {
     Present { value: iv } => [AxisReading { axis: ax_host_draw_watts, interval_micro: iv }]
+    Absent => []
+  }
+}
+
+fn gpu_draw_reading_of(c: CapCandidate) -> List<AxisReading> {
+  match gpu_draw_interval(c: c) {
+    Present { value: iv } => [AxisReading { axis: ax_gpu_draw_watts, interval_micro: iv }]
     Absent => []
   }
 }
@@ -406,13 +503,49 @@ fn interval_or_absent(low: Int, high: Int) -> Optional<OrderedClosedInterval<Int
   }
 }
 
-fn draw_interval(c: CapCandidate) -> Optional<OrderedClosedInterval<Int>> {
+fn draw_interval_read(low: Milliwatt, high: Milliwatt) -> Optional<OrderedClosedInterval<Int>> {
+  interval_or_absent(low: micro_watts(draw: low), high: micro_watts(draw: high))
+}
+
+// The host's draw at its feed: only a reading TAKEN THERE qualifies. A card's power.draw is not a partial host
+// draw that can be scaled up -- the rest of the machine is unread, and an unread summand is not zero.
+fn host_draw_interval(c: CapCandidate) -> Optional<OrderedClosedInterval<Int>> {
   match c.draw {
-    DrawRead { draw_low: lo, draw_high: hi, samples: _, sensor: _, throttle_share_note: _, observed_on: _, standing: _ } =>
-      interval_or_absent(low: micro_watts(draw: lo), high: micro_watts(draw: hi))
+    DrawRead { draw_low: lo, draw_high: hi, samples: _, subject: s, throttle_share_note: _, observed_on: _, standing: _ } =>
+      match s {
+        HostLevel { instrument: _, covers: _ } => draw_interval_read(low: lo, high: hi)
+        GpuSubsystem { gpu: _, instrument: _ } => Absent
+      }
     DrawUnread { read_obligation: _ } => Absent
   }
 }
+
+fn gpu_draw_interval(c: CapCandidate) -> Optional<OrderedClosedInterval<Int>> {
+  match c.draw {
+    DrawRead { draw_low: lo, draw_high: hi, samples: _, subject: s, throttle_share_note: _, observed_on: _, standing: _ } =>
+      match s {
+        GpuSubsystem { gpu: _, instrument: _ } => draw_interval_read(low: lo, high: hi)
+        HostLevel { instrument: _, covers: _ } => Absent
+      }
+    DrawUnread { read_obligation: _ } => Absent
+  }
+}
+
+fn is_host_level_draw(c: CapCandidate) -> Bool {
+  match c.draw {
+    DrawRead { draw_low: _, draw_high: _, samples: _, subject: s, throttle_share_note: _, observed_on: _, standing: _ } =>
+      match s {
+        HostLevel { instrument: _, covers: _ } => true
+        GpuSubsystem { gpu: _, instrument: _ } => false
+      }
+    DrawUnread { read_obligation: _ } => false
+  }
+}
+
+// What a candidate owes before its circuit-side cost can be priced at all, quoted verbatim into the gap so the
+// refusal is a to-do rather than a shrug.
+data host_draw_read_obligation: NonEmptyStr =
+  "the whole-host draw at this machine's feed has never been read: nvidia-smi power.draw is one subsystem (the card) and hwmon apm_xgene is another (the CPU), so neither is the host's draw on a shared circuit; what closes it is a wattmeter on the member's feed, or a per-host PDU/UPS outlet reading that covers the whole machine" as NonEmptyStr
 
 fn decode_gaps_of(c: CapCandidate) -> List<AxisGap> {
   match c.decode {
@@ -428,13 +561,32 @@ fn decode_gaps_of(c: CapCandidate) -> List<AxisGap> {
 
 fn draw_gaps_of(c: CapCandidate) -> List<AxisGap> {
   match c.draw {
-    DrawRead { draw_low: _, draw_high: _, samples: _, sensor: _, throttle_share_note: _, observed_on: _, standing: _ } =>
-      if !optional_is_absent(opt: draw_interval(c: c)) {
-        [] as List<AxisGap>
-      } else {
-        [draw_gap(cause: "the draw window's endpoints are reversed (low exceeds high), so the reading cannot be used as given" as NonEmptyStr)]
+    DrawRead { draw_low: lo, draw_high: hi, samples: _, subject: s, throttle_share_note: _, observed_on: _, standing: _ } =>
+      match s {
+        // The card's number sits on the card's axis -- and the host axis stays a gap HERE, its cause naming
+        // what was offered and what would close it. This is the arm the 2026-11-24 pricing lacked: a GPU
+        // reading was available, so the circuit's axis looked answered.
+        GpuSubsystem { gpu: g, instrument: ins } =>
+          if !optional_is_absent(opt: gpu_draw_interval(c: c)) {
+            [draw_gap(cause: concat(
+              concat(concat(concat("no whole-host draw for this candidate: the reading on offer is ", g as String), " (", ins as String), ") -- one subsystem, not the host at its feed; ") as NonEmptyStr,
+              host_draw_read_obligation
+            ) as NonEmptyStr)]
+          } else {
+            [gpu_gap(cause: "the draw window's endpoints are reversed (low exceeds high), so the reading cannot be used as given" as NonEmptyStr),
+             draw_gap(cause: host_draw_read_obligation)]
+          }
+        // The mirror: a host-level reading is not the card's own power.draw either, so the card side then
+        // owes its own sample set.
+        HostLevel { instrument: ins, covers: cov } =>
+          if !optional_is_absent(opt: host_draw_interval(c: c)) {
+            [gpu_gap(cause: concat(concat(concat("no GPU-subsystem draw for this candidate: the reading on offer is host-level (", ins as String), " covering ", cov) as NonEmptyStr, "); read nvidia-smi power.draw across the level to price the card side") as NonEmptyStr)]
+          } else {
+            [gpu_gap(cause: host_draw_read_obligation),
+             draw_gap(cause: "the draw window's endpoints are reversed (low exceeds high), so the reading cannot be used as given" as NonEmptyStr)]
+          }
       }
-    DrawUnread { read_obligation: o } => [draw_gap(cause: o)]
+    DrawUnread { read_obligation: o } => [draw_gap(cause: o), gpu_gap(cause: o)]
   }
 }
 
@@ -527,14 +679,28 @@ fn price_power_cap_ask(
     }
     CircuitRelief { circuit: circuit, asked_on: _ } =>
       let obligations = circuit_obligations(circuit: circuit)
+      let on_circuit = filter(field, x => circuit_carries(c: circuit, host: x.host))
       if (obligations |> count) > 0 {
         SelectionNeedsEvidence { needs: map(obligations, g => UnfundedAxis { gap: g }) }
+      } else if (on_circuit |> count) == 0 {
+        // A machine the circuit does not carry cannot relieve it, however good its numbers. The 2026-11-24
+        // decision space contained ken's cards and srv1's; only the strip's members could price the strip's
+        // ask, and an off-circuit candidate must not even tie, let alone win, one.
+        SelectionNeedsEvidence { needs: [UnfundedAxis { gap: AxisGap {
+          axis: ax_host_draw_watts,
+          cause: concat(
+            concat("no candidate in the field is carried by ", circuit_label(c: circuit)),
+            "; the ask can only be answered by a machine on this circuit" as NonEmptyStr
+          ) as NonEmptyStr,
+        } }] }
+      } else if circuit_bound_is_stated(circuit: circuit) && !host_axis_is_read(field: on_circuit) {
+        SelectionNeedsEvidence { needs: [UnfundedAxis { gap: host_bound_evidence_gap(circuit: circuit) }] }
       } else {
         select_realization(
           assessment: assessment,
-          candidate_field_identity: cap_ask_field_identity(circuit: circuit, field: field),
-          field: candidate_entries(field: field),
-          axes: funded_axes(),
+          candidate_field_identity: cap_ask_field_identity(circuit: circuit, field: on_circuit),
+          field: candidate_entries(field: on_circuit),
+          axes: funded_axes_for(field: on_circuit),
           constraints: circuit_constraints(circuit: circuit),
           constraint_authority: circuit.identity,
           policy: cap_ask_policy(),
@@ -654,8 +820,8 @@ fn same_state(a: CardThermalState, b: CardThermalState) -> Bool {
 // The same gate on the cost side, so a consumer cannot quote a watt saving across cards either.
 fn priced_draw_step(from: CapCandidate, to: CapCandidate) -> AxisComparison {
   if cards_compare(a: from, b: to) {
-    match draw_interval(c: from) {
-      Present { value: ai } => match draw_interval(c: to) {
+    match gpu_draw_interval(c: from) {
+      Present { value: ai } => match gpu_draw_interval(c: to) {
         Present { value: bi } => axis_comparison_interval(goal: LowerIsBetter, a: bi, b: ai)
         Absent => UndecidedOnEvidence
       }
@@ -866,7 +1032,10 @@ fn srv4_sweep_draw(tenths_of_a_watt: Nat, note: String) -> DrawReading {
     draw_low: milliwatt(count: tenths_of_a_watt * 100),
     draw_high: milliwatt(count: tenths_of_a_watt * 100),
     samples: 150,
-    sensor: "clocksweep.sh: nvidia-smi power.draw read once a second across the 150 s level, averaged" as NonEmptyStr,
+    subject: GpuSubsystem {
+      gpu: "srv4's serving pair, averaged" as NonEmptyStr,
+      instrument: "clocksweep.sh: nvidia-smi power.draw read once a second across the 150 s level, averaged" as NonEmptyStr,
+    },
     throttle_share_note: Present { value: note as NonEmptyStr },
     observed_on: "2026-11-24" as NonEmptyStr,
     standing: TranscribedUncited {
@@ -1048,7 +1217,10 @@ data ken_t10_cool_unlocked_candidate: CapCandidate = CapCandidate {
     draw_low: milliwatt(count: 92000),
     draw_high: milliwatt(count: 96000),
     samples: 150,
-    sensor: "kensweep.sh: nvidia-smi power.draw read once a second across the 150 s level, averaged per card" as NonEmptyStr,
+    subject: GpuSubsystem {
+      gpu: "ken GPU0/GPU2 (the two cool T10s)" as NonEmptyStr,
+      instrument: "kensweep.sh: nvidia-smi power.draw read once a second across the 150 s level, averaged per card" as NonEmptyStr,
+    },
     throttle_share_note: Present { value: "pinned at the cap; the cards swung 510-1575 MHz" as NonEmptyStr },
     observed_on: "2026-11-24" as NonEmptyStr,
     standing: TranscribedUncited {
@@ -1072,7 +1244,10 @@ data ken_t10_cool_1000mhz_candidate: CapCandidate = CapCandidate {
     draw_low: milliwatt(count: 68000),
     draw_high: milliwatt(count: 80000),
     samples: 150,
-    sensor: "kensweep.sh: nvidia-smi power.draw read once a second across the 150 s level, averaged per card" as NonEmptyStr,
+    subject: GpuSubsystem {
+      gpu: "ken GPU0/GPU2 (the two cool T10s)" as NonEmptyStr,
+      instrument: "kensweep.sh: nvidia-smi power.draw read once a second across the 150 s level, averaged per card" as NonEmptyStr,
+    },
     throttle_share_note: Present { value: "power-capped 1% of the window; held ~990 MHz" as NonEmptyStr },
     observed_on: "2026-11-24" as NonEmptyStr,
     standing: TranscribedUncited {
@@ -1098,7 +1273,10 @@ data ken_t10_leaky_1000mhz_candidate: CapCandidate = CapCandidate {
     draw_low: milliwatt(count: 83000),
     draw_high: milliwatt(count: 83000),
     samples: 150,
-    sensor: "kensweep.sh: nvidia-smi power.draw read once a second across the 150 s level, averaged per card" as NonEmptyStr,
+    subject: GpuSubsystem {
+      gpu: "ken GPU1 (81:00.0)" as NonEmptyStr,
+      instrument: "kensweep.sh: nvidia-smi power.draw read once a second across the 150 s level, averaged per card" as NonEmptyStr,
+    },
     throttle_share_note: Present { value: "power-bound at every ceiling: 83-88 W even at 600-800 MHz, holding only ~790 MHz" as NonEmptyStr },
     observed_on: "2026-11-24" as NonEmptyStr,
     standing: TranscribedUncited {

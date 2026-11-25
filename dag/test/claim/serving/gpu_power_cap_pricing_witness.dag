@@ -9,7 +9,7 @@
 module test.claim.serving.gpu_power_cap_pricing_witness
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import std.optional { Present, Absent }
+import std.optional { Present, Absent, optional_is_absent }
 import std.algebra { string_contains }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_identity }
 import std.interval { interval_high, interval_low }
@@ -29,9 +29,11 @@ import gunbc.fleet.fleet_power_circuit {
 }
 import gunbc.serving.gpu_power_state_policy { GpuPowerCapSelection, OperatorDeclaredCap, SustainedPowerDraw }
 import gunbc.serving.gpu_power_cap_pricing {
-  CapCandidate, CardCondition, CappedAt, CircuitRelief, Cool, DecodeRead, DrawRead, Uncapped, Unlocked,
+  CapCandidate, CardCondition, CappedAt, CircuitRelief, Cool, DecodeRead, DrawRead, DrawSubject, GpuSubsystem,
+  HostLevel, Uncapped, Unlocked,
   ax_decode_tokens_per_second, ax_host_draw_watts, candidate_cap, cap_ask_subject, cap_ask_subject_identity,
-  cap_ask_region, constraint_identity, decode_cost_of_step, funded_axes, id_parameter, id_term, id_var,
+  cap_ask_region, constraint_identity, decode_cost_of_step, funded_axes, gpu_draw_interval, host_draw_interval,
+  host_draw_read_obligation, id_parameter, id_term, id_var, is_host_level_draw,
   ken_cap_ask_candidates, ken_t10_cool_1000mhz_candidate, ken_t10_cool_unlocked_candidate,
   ken_t10_leaky_1000mhz_candidate, priced_draw_step, priced_step, price_an_unstated_ask, price_power_cap_ask, candidate_entry,
   price_the_2026_11_24_ask, srv3_30w_2ghz_candidate, srv3_40w_candidate, srv4_30w_20ghz_candidate,
@@ -79,8 +81,9 @@ test fn the_fleet_ask_never_answers_with_a_cap() -> Bool {
 }
 
 // A CANDIDATE WITHOUT ITS CONSEQUENCE CANNOT BE SCANNED, even against a fully-read circuit. The morning
-// windows carry decode but no sampled draw, so the cost axis comes back as the reading it owes -- the
-// per-window power.draw average -- rather than being filled with the cap value, an inference, or a zero.
+// windows carry decode but no sampled draw, so the circuit's stated bound cannot be applied and the answer is
+// the reading it owes -- the whole-host draw at the feed, closing with a wattmeter -- rather than a verdict
+// filled in from the cap value, an inference, or a zero.
 test fn a_candidate_without_its_consequence_cannot_be_scanned() -> Bool {
   match price_power_cap_ask(
     ask: CircuitRelief { circuit: w_circuit_loose, asked_on: "fixture" as NonEmptyStr },
@@ -88,8 +91,9 @@ test fn a_candidate_without_its_consequence_cannot_be_scanned() -> Bool {
     field: srv4_morning_candidates(),
   ) {
     SelectionNeedsEvidence { needs: ns } =>
-      (ns |> count) == 4
+      (ns |> count) == 1
         && needs_mention(needs: ns, pattern: "power.draw" as String)
+        && needs_mention(needs: ns, pattern: "wattmeter" as String)
     _ => false
   }
 }
@@ -142,6 +146,67 @@ test fn an_unstated_bound_stops_before_the_selection() -> Bool {
         && needs_mention(needs: ns, pattern: "per-member draw limit" as String)
     _ => false
   }
+}
+
+// A SUBSYSTEM READING IS NOT THE MACHINE'S READING. The strip's ask, the fleet's own situation: the only
+// watts anyone read were nvidia-smi power.draw -- the card. Against a circuit with a stated per-member bound,
+// that field cannot be scanned AT ALL: the bound is the host's draw at its feed, and the card's number does
+// not stand in for it. The answer is the missing host reading, named with the instrument that closes it. This
+// is the arm the 2026-11-24 pricing lacked; before it, 2 W saved on the GPU was booked as 2 W saved on the
+// strip.
+test fn a_gpu_reading_never_prices_the_host_axis() -> Bool {
+  (match price_power_cap_ask(
+    ask: CircuitRelief { circuit: w_circuit_tight, asked_on: "fixture" as NonEmptyStr },
+    assessment: w_read_assessment(circuit: w_circuit_tight),
+    field: w_gpu_only_field(),
+  ) {
+    SelectionNeedsEvidence { needs: ns } =>
+      (ns |> count) == 1
+        && needs_mention(needs: ns, pattern: "wattmeter" as String)
+        && needs_mention(needs: ns, pattern: "power.draw" as String)
+    _ => false
+  })
+    && all(w_gpu_only_field(), c => !is_host_level_draw(c: c))
+    && all(w_gpu_only_field(), c => optional_is_absent(opt: host_draw_interval(c: c)))
+    && any(w_gpu_only_field(), c => !optional_is_absent(opt: gpu_draw_interval(c: c)))
+}
+
+// AND THE POSITIVE SIDE: with readings actually taken at the feed, the SAME bound is applied by the same
+// machinery and names the survivor -- the host axis is not forbidden, only unforged.
+test fn a_host_reading_funds_the_bound_that_prices_the_circuit() -> Bool {
+  all(w_fixture_field(), c => is_host_level_draw(c: c))
+    && all(w_fixture_field(), c => !optional_is_absent(opt: host_draw_interval(c: c)))
+    && match price_power_cap_ask(
+      ask: CircuitRelief { circuit: w_circuit_tight, asked_on: "fixture" as NonEmptyStr },
+      assessment: w_read_assessment(circuit: w_circuit_tight),
+      field: w_fixture_field(),
+    ) {
+      SelectedWithin { candidate: c, receipt: _ } => same_ref(a: c.identity, b: w_cheaper_identity)
+      _ => false
+    }
+}
+
+// A MACHINE THE CIRCUIT DOES NOT CARRY CANNOT ANSWER FOR IT. Alone, the off-circuit twin empties the field
+// and the refusal says "not carried"; beside a member it cannot even tie -- the readings are identical, so
+// the only thing that can decide it is membership.
+test fn a_candidate_the_circuit_does_not_carry_cannot_answer_the_ask() -> Bool {
+  (match price_power_cap_ask(
+    ask: CircuitRelief { circuit: w_circuit_tight, asked_on: "fixture" as NonEmptyStr },
+    assessment: w_read_assessment(circuit: w_circuit_tight),
+    field: [w_ken_host_candidate],
+  ) {
+    SelectionNeedsEvidence { needs: ns } =>
+      (ns |> count) == 1 && needs_mention(needs: ns, pattern: "carried by" as String)
+    _ => false
+  })
+    && match price_power_cap_ask(
+      ask: CircuitRelief { circuit: w_circuit_tight, asked_on: "fixture" as NonEmptyStr },
+      assessment: w_read_assessment(circuit: w_circuit_tight),
+      field: concat([w_ken_host_candidate], w_fixture_field()),
+    ) {
+      SelectedWithin { candidate: c, receipt: _ } => same_ref(a: c.identity, b: w_cheaper_identity)
+      _ => false
+    }
 }
 
 // ── THE PRICED CONSEQUENCE, DERIVED FROM THE WINDOWS AND THE SWEEP ─────────────────────────────────
@@ -228,7 +293,7 @@ test fn every_gap_names_the_reading_that_would_close_it() -> Bool {
 // one-second readings per level, and the carrier holds the count so the two cannot be quoted alike.
 test fn the_sweep_carries_its_sample_count_and_its_throttle_share() -> Bool {
   match srv4_sweep_1500_candidate.draw {
-    DrawRead { draw_low: _, draw_high: _, samples: n, sensor: _, throttle_share_note: note, observed_on: _, standing: _ } =>
+    DrawRead { draw_low: _, draw_high: _, samples: n, subject: _, throttle_share_note: note, observed_on: _, standing: _ } =>
       n == 150
         && match note {
           Present { value: v } => string_contains(s: v as String, pattern: "power-capped" as String)
@@ -327,7 +392,10 @@ data w_expensive_candidate: CapCandidate = CapCandidate {
     draw_low: milliwatt(count: 85000),
     draw_high: milliwatt(count: 95000),
     samples: 150,
-    sensor: "fixture: nvidia-smi power.draw plus hwmon apm_xgene, sampled across the decode window" as NonEmptyStr,
+    subject: HostLevel {
+      instrument: "fixture: wattmeter on the machine's feed, sampled across the decode window" as NonEmptyStr,
+      covers: "the whole machine at its feed" as NonEmptyStr,
+    },
     throttle_share_note: Present { value: "fixture: 96% of the window power-capped" as NonEmptyStr },
     observed_on: "fixture" as NonEmptyStr,
     standing: CitedToAuthority { authority: w_fixture_authority },
@@ -354,7 +422,10 @@ data w_cheaper_candidate: CapCandidate = CapCandidate {
     draw_low: milliwatt(count: 70000),
     draw_high: milliwatt(count: 78000),
     samples: 150,
-    sensor: "fixture: nvidia-smi power.draw plus hwmon apm_xgene, sampled across the decode window" as NonEmptyStr,
+    subject: HostLevel {
+      instrument: "fixture: wattmeter on the machine's feed, sampled across the decode window" as NonEmptyStr,
+      covers: "the whole machine at its feed" as NonEmptyStr,
+    },
     throttle_share_note: Present { value: "fixture: 87% of the window power-capped" as NonEmptyStr },
     observed_on: "fixture" as NonEmptyStr,
     standing: CitedToAuthority { authority: w_fixture_authority },
@@ -384,6 +455,104 @@ data w_cap_30: GpuPowerCapSelection = OperatorDeclaredCap {
 }
 
 fn w_fixture_field() -> List<CapCandidate> { [w_expensive_candidate, w_cheaper_candidate] }
+
+// THE SAME TWO POINTS WITH THE HONEST SUBJECT: those watts came off nvidia-smi power.draw, which is the card
+// -- one subsystem of the machine. They are the 2026-11-24 field: the only readings the strip ask had.
+data w_gpu_only_expensive: CapCandidate = CapCandidate {
+  identity: w_expensive_identity,
+  label: "fixture, 40 W cap, unlocked clock, 39.0 tok/s, 85-95 W drawn on the CARD (nvidia-smi)" as NonEmptyStr,
+  host: operator_host_srv4,
+  gpu_cap: w_cap_40,
+  cpu_cap: Uncapped,
+  sm_clock: Unlocked,
+  condition: w_condition_cool,
+  decode: DecodeRead {
+    rate_low: milli_tokens_per_second(count: 39000),
+    rate_high: milli_tokens_per_second(count: 39000),
+    at_concurrency: 1,
+    window: "fixture window" as NonEmptyStr,
+    instrument: "fixture: sampled journal read" as NonEmptyStr,
+    standing: CitedToAuthority { authority: w_fixture_authority },
+  },
+  draw: DrawRead {
+    draw_low: milliwatt(count: 85000),
+    draw_high: milliwatt(count: 95000),
+    samples: 150,
+    subject: GpuSubsystem {
+      gpu: "fixture card (nvidia-smi power.draw)" as NonEmptyStr,
+      instrument: "fixture: nvidia-smi power.draw across the window" as NonEmptyStr,
+    },
+    throttle_share_note: Present { value: "fixture: 96% of the window power-capped" as NonEmptyStr },
+    observed_on: "fixture" as NonEmptyStr,
+    standing: CitedToAuthority { authority: w_fixture_authority },
+  },
+}
+
+data w_gpu_only_cheaper: CapCandidate = CapCandidate {
+  identity: w_cheaper_identity,
+  label: "fixture, 30 W cap, 1500 MHz ceiling, 24.1 tok/s, 70-78 W drawn on the CARD (nvidia-smi)" as NonEmptyStr,
+  host: operator_host_srv4,
+  gpu_cap: w_cap_30,
+  cpu_cap: CappedAt { maximum: hertz(count: 2000000000) },
+  sm_clock: CappedWithin { maximum: hertz(count: 1500000000) },
+  condition: w_condition_cool,
+  decode: DecodeRead {
+    rate_low: milli_tokens_per_second(count: 24100),
+    rate_high: milli_tokens_per_second(count: 24100),
+    at_concurrency: 1,
+    window: "fixture window" as NonEmptyStr,
+    instrument: "fixture: sampled journal read" as NonEmptyStr,
+    standing: CitedToAuthority { authority: w_fixture_authority },
+  },
+  draw: DrawRead {
+    draw_low: milliwatt(count: 70000),
+    draw_high: milliwatt(count: 78000),
+    samples: 150,
+    subject: GpuSubsystem {
+      gpu: "fixture card (nvidia-smi power.draw)" as NonEmptyStr,
+      instrument: "fixture: nvidia-smi power.draw across the window" as NonEmptyStr,
+    },
+    throttle_share_note: Present { value: "fixture: 87% of the window power-capped" as NonEmptyStr },
+    observed_on: "fixture" as NonEmptyStr,
+    standing: CitedToAuthority { authority: w_fixture_authority },
+  },
+}
+
+fn w_gpu_only_field() -> List<CapCandidate> { [w_gpu_only_expensive, w_gpu_only_cheaper] }
+
+// AN OFF-CIRCUIT TWIN: identical readings to the cheaper point, on a machine the fixture circuit does not
+// carry. If selection could reach it, circuit membership would be decoration.
+data w_ken_identity: DeclarationRef = w_identity(name: "w-ken-host-twin")
+
+data w_ken_host_candidate: CapCandidate = CapCandidate {
+  identity: w_ken_identity,
+  label: "fixture twin, 30 W cap, 1500 MHz ceiling, 24.1 tok/s, 70-78 W drawn, on a machine OFF the circuit" as NonEmptyStr,
+  host: operator_host_e2d4b7,
+  gpu_cap: w_cap_30,
+  cpu_cap: CappedAt { maximum: hertz(count: 2000000000) },
+  sm_clock: CappedWithin { maximum: hertz(count: 1500000000) },
+  condition: w_condition_cool,
+  decode: DecodeRead {
+    rate_low: milli_tokens_per_second(count: 24100),
+    rate_high: milli_tokens_per_second(count: 24100),
+    at_concurrency: 1,
+    window: "fixture window" as NonEmptyStr,
+    instrument: "fixture: sampled journal read" as NonEmptyStr,
+    standing: CitedToAuthority { authority: w_fixture_authority },
+  },
+  draw: DrawRead {
+    draw_low: milliwatt(count: 70000),
+    draw_high: milliwatt(count: 78000),
+    samples: 150,
+    subject: HostLevel {
+      instrument: "fixture: wattmeter on the machine's feed, sampled across the decode window" as NonEmptyStr,
+      covers: "the whole machine at its feed" as NonEmptyStr,
+    },
+    throttle_share_note: Present { value: "fixture: 87% of the window power-capped" as NonEmptyStr },
+    observed_on: "fixture" as NonEmptyStr,
+    standing: CitedToAuthority { authority: w_fixture_authority },
+  },
+}
 
 // The whole fleet field the fold can be asked about, for the census-style claims.
 fn all_fleet_candidates() -> List<CapCandidate> {
