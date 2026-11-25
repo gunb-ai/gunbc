@@ -32,10 +32,14 @@ data process_observation_construction_is_unsealed: IntegrationConcern = Integrat
   disposition: Triaged {
     home: HomeUnresolved { question: "does the seal belong on the constructors in extdeps.shell.exec (admit_callers on ProcessObservation / process_observation) or on a dedicated observation-admission carrier the capture path goes through?" },
     preserve: [PreservedObligation {
+      holder: decl_ref(module_path: "gunbc.codex_app_server_press", decl_name: "parse_account_trip_session"),
+      control: decl_ref(module_path: "test.claim.shell.shell_dag_codex_app_server_trip_stream_separation_witness", decl_name: "muxed_sentinels_stay_data_in_the_consumer"),
+      statement: "Sentinel-shaped text arriving on a legitimately separate stdout stays data in the consumer: both planted sentinel-wrapped lines remain unknown-frame data, neither parsed nor stripped, checked by the muxed arm of test.claim.shell.shell_dag_codex_app_server_trip_stream_separation_witness (no sentinel-mux behaviour exhibited on the planted input). This obligation is KEPT after any capture seal: a separate stdout can still legitimately carry sentinel-shaped text, so a constructor seal never supersedes this consumer-side test.",
+    }, PreservedObligation {
       holder: decl_ref(module_path: "extdeps.shell.exec", decl_name: "process_observation"),
       control: Absent,
-      statement: "A capture that cannot separate streams refuses rather than muxing: both planted sentinel-wrapped lines stay unknown-frame data, checked by the arms of test.claim.shell.shell_dag_codex_app_server_trip_stream_separation_witness -- no sentinel-mux behaviour is exhibited on the planted input; the classifier rung (classify_process_observation) refuses on exit policy with stderr on its own field, never a merged Present channel.",
+      statement: "A source that supplies only combined output is refused at the capture boundary rather than producing a ProcessObservation. This is an outstanding capture-boundary requirement with no existing control. Its future control must distinguish a combined-only source from a valid separate capture whose stderr is empty -- a distinction a constructor seal alone cannot make, so sealing construction alone does not discharge this obligation.",
     }],
-    next: climbs_when(capability: "The lane's roadmap row shell-dag-process-observation-sealed-carrier is created with sealed construction of process-output observations (admit_callers or an equivalent admission wall on the capture constructors), witnessed by an executed arm at the typed seam that REFUSES a merged input -- at which point the consumer-side residue arms here are superseded as the anti-mux guarantee and this row moves to Integrated."),
+    next: climbs_when(capability: "The lane's roadmap row shell-dag-process-observation-sealed-carrier is created with sealed construction of process-output observations (admit_callers or an equivalent admission wall on the capture constructors), witnessed by an executed arm at the typed seam that REFUSES a merged input, AND a capture-boundary control exists that refuses a combined-only source while admitting a valid separate capture with empty stderr -- the consumer-side residue arms are kept alongside, not superseded by the seal -- at which point this row moves to Integrated."),
   },
 }
