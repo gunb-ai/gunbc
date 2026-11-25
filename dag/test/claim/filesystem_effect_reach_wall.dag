@@ -702,8 +702,10 @@ test fn filesystem_census_log_names_refused_count_bound_and_three_sites() -> Boo
 // (b) the GREEN leg census_reaches_exactly_four_declared_sites feeds the join the REAL phase-1 rows
 // derived at run time through the resolver fold over the corpus (corpus_rows_for_witness), not fixture
 // rows -- a rename moving a contracted declaration off the census fails that leg. The real-reach
-// REFUSALS are executed on the two scratch probe trees run outside this witness (the census run itself
-// refuses); the emit-side handler binding remains deferred to the establishing roadmap row below.
+// REFUSALS cannot be planted into the tree a claim runs on; they are owed by the two scratch probe
+// trees run outside this witness (planted extra reach / removed member, census refuses), same route
+// and same run as the green leg. The emit-side handler binding remains deferred to the establishing
+// roadmap row below.
 // =============================================================================================
 
 // Rows spelling EXACTLY the four contracted sites: two #v2.compiler.self_host declarations and two
