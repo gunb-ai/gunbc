@@ -154,8 +154,8 @@ test fn floor_preparation_the_scope_report_is_not_the_split_report() -> Bool {
 fn universal_diff_selects_everything(diff: List<String>, marker: String) -> Bool {
   let scoping = floor_preparation_scope_select(diff: diff)
   floor_preparation_scope_is_whole(scoping: scoping)
-    && floor_preparation_scope_is_narrowed(scoping: scoping) == false
-    && length(xs: floor_preparation_scope_entries_of(scoping: scoping)) == length(xs: floor_preparation_scope_population)
+    && floor_preparation_scope_is_narrowed(scoping: scoping, population: floor_preparation_scope_population) == false
+    && length(xs: floor_preparation_scope_entries_of(scoping: scoping, population: floor_preparation_scope_population)) == length(xs: floor_preparation_scope_population)
     && starts_with(s: floor_preparation_scope_reason(scoping: scoping), prefix: concat("universal-marker:", marker))
 }
 
@@ -177,9 +177,9 @@ test fn floor_preparation_a_grammar_diff_prepares_the_whole_population() -> Bool
 fn single_closure_diff_narrows() -> Bool {
   let entry = "dag/test/claim/match_exhaustiveness_coproduct_witness.dag"
   let scoping = floor_preparation_scope_select(diff: [ entry ])
-  let selected = floor_preparation_scope_entries_of(scoping: scoping)
+  let selected = floor_preparation_scope_entries_of(scoping: scoping, population: floor_preparation_scope_population)
   floor_preparation_scope_is_whole(scoping: scoping) == false
-    && floor_preparation_scope_is_narrowed(scoping: scoping)
+    && floor_preparation_scope_is_narrowed(scoping: scoping, population: floor_preparation_scope_population)
     && length(xs: selected) == 2
     && floor_preparation_scope_reason(scoping: scoping) == "closure-hit"
     && length(xs: floor_preparation_scope_entries_for(rows: floor_preparation_scope_edge_rows, file: entry)) > 0
@@ -200,7 +200,7 @@ test fn floor_preparation_a_single_closure_diff_narrows_to_one_entry() -> Bool {
 fn shared_import_diff_unions() -> Bool {
   let file = "src/v2/workflow/floor_preparation_split.dag"
   let scoping = floor_preparation_scope_select(diff: [ file ])
-  let selected = floor_preparation_scope_entries_of(scoping: scoping)
+  let selected = floor_preparation_scope_entries_of(scoping: scoping, population: floor_preparation_scope_population)
   length(xs: selected) == 3
     && floor_preparation_scope_contains(xs: selected, target: "dag/test/claim/floor/floor_phase_attribution_witness.dag")
     && floor_preparation_scope_contains(xs: selected, target: "dag/test/claim/arity_zero_import_refusal_witness.dag")
@@ -222,7 +222,7 @@ test fn floor_preparation_a_shared_import_diff_unions_the_entries_it_reaches() -
 fn read_literal_edge_is_honoured() -> Bool {
   let file = "dag/gunbc/witness/witness_floor_workflow.dag"
   let scoping = floor_preparation_scope_select(diff: [ file ])
-  let selected = floor_preparation_scope_entries_of(scoping: scoping)
+  let selected = floor_preparation_scope_entries_of(scoping: scoping, population: floor_preparation_scope_population)
   length(xs: selected) == 3
     && floor_preparation_scope_contains(xs: selected, target: "dag/test/claim/declared_type_expected_type_path_witness.dag")
     && floor_preparation_scope_contains(xs: selected, target: "dag/test/claim/floor/floor_phase_attribution_witness.dag")
@@ -256,13 +256,13 @@ fn uncovered_file_fails_closed() -> Bool {
     diff: [ file ]
   )
   floor_preparation_scope_is_whole(scoping: base)
-    && floor_preparation_scope_is_narrowed(scoping: base) == false
-    && length(xs: floor_preparation_scope_entries_of(scoping: base)) == length(xs: floor_preparation_scope_population)
+    && floor_preparation_scope_is_narrowed(scoping: base, population: floor_preparation_scope_population) == false
+    && length(xs: floor_preparation_scope_entries_of(scoping: base, population: floor_preparation_scope_population)) == length(xs: floor_preparation_scope_population)
     && starts_with(s: floor_preparation_scope_reason(scoping: base), prefix: concat("uncovered-file:", file))
     && floor_preparation_scope_is_whole(scoping: variant) == false
-    && floor_preparation_scope_is_narrowed(scoping: variant)
-    && length(xs: floor_preparation_scope_entries_of(scoping: variant)) == 2
-    && floor_preparation_scope_contains(xs: floor_preparation_scope_entries_of(scoping: variant), target: "dag/test/claim/floor/floor_non_verdict_classification_witness.dag")
+    && floor_preparation_scope_is_narrowed(scoping: variant, population: floor_preparation_scope_population)
+    && length(xs: floor_preparation_scope_entries_of(scoping: variant, population: floor_preparation_scope_population)) == 2
+    && floor_preparation_scope_contains(xs: floor_preparation_scope_entries_of(scoping: variant, population: floor_preparation_scope_population), target: "dag/test/claim/floor/floor_non_verdict_classification_witness.dag")
 }
 
 test fn floor_preparation_the_uncovered_file_fails_closed_to_the_whole_population() -> Bool {
@@ -277,11 +277,11 @@ test fn floor_preparation_the_uncovered_file_fails_closed_to_the_whole_populatio
 
 fn empty_diff_still_prepares_forced() -> Bool {
   let scoping = floor_preparation_scope_select(diff: [])
-  let selected = floor_preparation_scope_entries_of(scoping: scoping)
+  let selected = floor_preparation_scope_entries_of(scoping: scoping, population: floor_preparation_scope_population)
   floor_preparation_scope_reason(scoping: scoping) == "empty-diff"
     && length(xs: selected) == length(xs: floor_preparation_scope_forced)
     && length(xs: selected) > 0
-    && floor_preparation_scope_is_narrowed(scoping: scoping)
+    && floor_preparation_scope_is_narrowed(scoping: scoping, population: floor_preparation_scope_population)
     && floor_preparation_scope_contains(xs: selected, target: "dag/test/claim/action_use_admission_witness.dag")
 }
 
@@ -497,9 +497,9 @@ test fn floor_preparation_every_marker_carries_a_reason() -> Bool {
 
 fn line_agrees_with_decision(name: String) -> Bool {
   let scoping = floor_preparation_scope_select(diff: floor_preparation_scope_diff_files(name: name))
-  let line = floor_preparation_scope_line(name: name, scoping: scoping)
-  let expected_count = to_string(length(xs: floor_preparation_scope_entries_of(scoping: scoping)))
-  let expected_narrowed = if floor_preparation_scope_is_narrowed(scoping: scoping) { "true" } else { "false" }
+  let line = floor_preparation_scope_line(name: name, scoping: scoping, population: floor_preparation_scope_population)
+  let expected_count = to_string(length(xs: floor_preparation_scope_entries_of(scoping: scoping, population: floor_preparation_scope_population)))
+  let expected_narrowed = if floor_preparation_scope_is_narrowed(scoping: scoping, population: floor_preparation_scope_population) { "true" } else { "false" }
   floor_preparation_line_contains(line: line, needle: concat("selected_entries=", expected_count))
     && floor_preparation_line_contains(line: line, needle: concat("narrowed=", expected_narrowed))
     && floor_preparation_line_contains(line: line, needle: concat("diff=", name))

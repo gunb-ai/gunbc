@@ -190,6 +190,12 @@ type FloorPreparationScoping
   = Whole { reason: String }
   | Selected { entries: List<String>, reason: String }
 
+// The one honest Whole a caller outside this module may build: when the caller's own transport is
+// known-incomplete (the scope tool's depth cap), the authority still owns the shape of a refusal.
+fn floor_preparation_scope_whole(reason: String) -> FloorPreparationScoping {
+  Whole { reason: reason }
+}
+
 fn floor_preparation_scope_row_field(row: String, key: String) -> String {
   match floor_preparation_field(fields: split(s: row, delimiter: "|"), key: key) {
     Present { value: v } => v
@@ -336,9 +342,12 @@ fn floor_preparation_scope_select(diff: List<String>) -> FloorPreparationScoping
   floor_preparation_scope_select_over(rows: floor_preparation_scope_edge_rows, forced: floor_preparation_scope_forced_entries(), population: floor_preparation_scope_population, diff: diff)
 }
 
-fn floor_preparation_scope_entries_of(scoping: FloorPreparationScoping) -> List<String> {
+// A Whole prepares the CALLER's whole population: the fixture population below is the witness's
+// committed map, not a universal. Reading it from inside a helper would make the fixture a second
+// authority over every caller's decision (the scope tool's population is the model's rows).
+fn floor_preparation_scope_entries_of(scoping: FloorPreparationScoping, population: List<String>) -> List<String> {
   match scoping {
-    Whole { reason: _ } => floor_preparation_scope_population
+    Whole { reason: _ } => population
     Selected { entries: e, reason: _ } => e
   }
 }
@@ -360,8 +369,8 @@ fn floor_preparation_scope_is_whole(scoping: FloorPreparationScoping) -> Bool {
 // NARROWED MEANS THE RUN PREPARES FEWER ENTRIES THAN THE POPULATION. Reported apart from the reason
 // because the affordability argument is about the COUNT, and a Whole decision never narrows whatever its
 // reason says.
-fn floor_preparation_scope_is_narrowed(scoping: FloorPreparationScoping) -> Bool {
-  length(xs: floor_preparation_scope_entries_of(scoping: scoping)) < length(xs: floor_preparation_scope_population)
+fn floor_preparation_scope_is_narrowed(scoping: FloorPreparationScoping, population: List<String>) -> Bool {
+  length(xs: floor_preparation_scope_entries_of(scoping: scoping, population: population)) < length(xs: population)
 }
 
 fn floor_preparation_scope_fixture_row(name: String) -> String {
@@ -426,7 +435,7 @@ fn floor_preparation_scope_join_commas(xs: List<String>) -> String {
     })
 }
 
-fn floor_preparation_scope_line(name: String, scoping: FloorPreparationScoping) -> String {
+fn floor_preparation_scope_line(name: String, scoping: FloorPreparationScoping, population: List<String>) -> String {
   join(
     [
       "floor-diff-scope diff=",
@@ -434,13 +443,13 @@ fn floor_preparation_scope_line(name: String, scoping: FloorPreparationScoping) 
       " reason=",
       floor_preparation_scope_reason(scoping: scoping),
       " selected_entries=",
-      to_string(length(xs: floor_preparation_scope_entries_of(scoping: scoping))),
+      to_string(length(xs: floor_preparation_scope_entries_of(scoping: scoping, population: population))),
       " of=",
-      to_string(length(xs: floor_preparation_scope_population)),
+      to_string(length(xs: population)),
       " narrowed=",
-      floor_preparation_scope_yes_no(flag: floor_preparation_scope_is_narrowed(scoping: scoping)),
+      floor_preparation_scope_yes_no(flag: floor_preparation_scope_is_narrowed(scoping: scoping, population: population)),
       " entries=",
-      floor_preparation_scope_join_commas(xs: floor_preparation_scope_entries_of(scoping: scoping)),
+      floor_preparation_scope_join_commas(xs: floor_preparation_scope_entries_of(scoping: scoping, population: population)),
     ],
     ""
   )
@@ -456,7 +465,10 @@ fn floor_preparation_scope_report() -> String {
     "floor-diff-scope population=EMPTY -- no fixture diff was committed and no narrowing is claimed"
   } else {
     fold(names, init:  "", f: (acc, name) =>
-      let line = floor_preparation_scope_line(name: name, scoping: floor_preparation_scope_select(diff: floor_preparation_scope_diff_files(name: name)))
+      let line = floor_preparation_scope_line(
+        name: name,
+        scoping: floor_preparation_scope_select(diff: floor_preparation_scope_diff_files(name: name)),
+        population: floor_preparation_scope_population)
       if length(xs: acc) == 0 {
         line
       } else {
