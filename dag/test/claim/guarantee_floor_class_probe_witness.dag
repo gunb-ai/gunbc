@@ -47,8 +47,8 @@ import gunbc.compile_diagnostic_census {
   CensusObserved,
   CensusNotRunnable,
 }
-import gunbc.compile_diagnostic_census { census_blocking_rows }
-import gunbc.compile_census_probe { blocking_class_census, blocking_subject_census, total_rows_census, census_int_text, census_verdict, census_verdict_all, census_premise, census_exit, CensusVerdict }
+import gunbc.compile_diagnostic_census { census_blocking_rows, CompileDiagnosticCensusRow }
+import gunbc.compile_census_probe { blocking_class_census, blocking_subject_census, total_rows_census, census_int_text, census_verdict, census_verdict_all, census_premise, census_exit, CensusVerdict, CensusHeld, CensusDisagreed, CensusUnobserved }
 import gunbc.guarantee_measurement { GuaranteeProbeId, MeasurementRevision }
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.algebra { fold_list, string_contains }
@@ -214,25 +214,28 @@ data parse_list_separator_green_source: String = "module probe_floor_list_sep_gr
 // CLIMBED: the type-argument hole is closed at b5af75f4d339 (gunbc#9416; red at its parent 107304a57920). The probe was
 // `floor_generic_instantiation_is_still_silently_accepted`; per gunbc.design_argument::guarantee_ladder (dissolution on
 // climb) it is flipped to the refusal and stays enrolled as the permanent regression control for the higher rung.
-fn located_blocking_verdict(source: String, wanted_class: String, wanted_subject: String, holds: fn(Int) -> Bool) -> CensusVerdict {
-  census_verdict(census: blocking_subject_census(source: source, wanted_class: wanted_class, wanted_subject: wanted_subject), holds: holds)
-}
-
 // ASSERT-THEN-BYTES: the located refusal must be present with the pinned class AND the
 // pinned subject; the row PASSES when it is (main's idiom, per review 17051 - a witness
 // must not be green-when-broken). When it is missing, the failure reason renders every
 // observed row, so the receipt bytes arrive exactly when a reader needs them. This
 // replaces the six TEXT-CARRIER rows, which failed by design and inverted the polarity
 // of the wall they certified.
-fn located_rows_assert(source: String, wanted_class: String, wanted_subject: String) -> CensusVerdict {
-  located_blocking_verdict(source: source, wanted_class: wanted_class, wanted_subject: wanted_subject, holds: fn(n) { n >= 1 })
-}
-
-fn located_rows_render(source: String) -> String {
+// ONE COMPILE PER ASSERTED SOURCE (review 17051 round-3 non-blocking point): the located
+// refusal is asserted AND its bytes rendered from a single total_rows_census. The hit
+// filter and the census classifier share census_blocking_rows, so "refused" means
+// BLOCKING in both instruments by construction. On a miss the reason carries every
+// observed row - the receipt bytes arrive exactly when a reader needs them.
+fn located_refusal_assert(source: String, wanted_class: String, wanted_subject: String) -> CensusVerdict {
   match total_rows_census(source: source) {
-    CensusObserved { rows: rows } =>
-      fold(rows, init: "", f: fn(acc, r) { concat(acc, concat(concat(concat((r.diagnostic_class as String), "|"), r.subject_name), concat("|", concat(census_int_text(n: r.count), ";")))) })
-    CensusNotRunnable { cause: cause } => concat("not-runnable:", cause)
+    CensusObserved { rows: rows } => {
+      let hits = count(filter(census_blocking_rows(rows: rows), f: fn(r) { (r.diagnostic_class as String) == wanted_class && r.subject_name == wanted_subject }))
+      if hits >= 1 {
+        CensusHeld {}
+      } else {
+        CensusDisagreed { reason: concat("located refusal missing: ", concat(wanted_class, concat("|", concat(wanted_subject, "| observed: ", fold(rows, init: "", f: fn(acc, r) { concat(acc, concat(concat(concat((r.diagnostic_class as String), "|"), r.subject_name), concat("|", concat(census_int_text(n: r.count), ";")))) }))))) }
+      }
+    }
+    CensusNotRunnable { cause: cause } => CensusUnobserved { cause: cause }
   }
 }
 
@@ -274,13 +277,17 @@ data floor_census_sites: List<FloorCensusRow> = [
 // refuses it; twins are CLEAN when nothing blocks them. The rendered count is
 // blocking/total, so advisory noise stays visible without ever becoming a verdict.
 // Each site compiles EXACTLY ONCE per test: premises read the single rendered string.
+fn floor_census_status_for(rows: List<CompileDiagnosticCensusRow>, is_field_miss: Bool) -> String {
+  let n = count(census_blocking_rows(rows: rows))
+  if n == 0 { if is_field_miss { "FABRICATED-RESIDUE" } else { "CLEAN" } } else { "BLOCKED" }
+}
+
 fn floor_census_render_row(row: FloorCensusRow) -> String {
   match total_rows_census(source: row.source) {
     CensusObserved { rows: rows } => {
       let n = count(census_blocking_rows(rows: rows))
       let t = count(rows)
-      let status = if n == 0 { if row.is_field_miss { "FABRICATED-RESIDUE" } else { "CLEAN" } } else { "BLOCKED" }
-      concat(row.site, concat(":", concat(status, concat(":", concat(census_int_text(n: n), concat("/", census_int_text(n: t)))))))
+      concat(row.site, concat(":", concat(floor_census_status_for(rows: rows, is_field_miss: row.is_field_miss), concat(":", concat(census_int_text(n: n), concat("/", census_int_text(n: t)))))))
     }
     CensusNotRunnable { cause: cause } => concat(row.site, concat(":NOT-RUNNABLE:", cause))
   }
@@ -364,8 +371,7 @@ test fn floor_field_through_generics_green_control_is_clean() -> Bool {
 test fn floor_field_through_generics_deferral_lambda_param_refuses() -> ProcessExit {
   census_verdict_all([
     census_premise("the probe row's expectation holds", row_holds(probe: floor_field_through_generics_deferral_lambda_param_probe, source: field_through_generics_deferral_lambda_param_source)),
-    located_rows_assert(source: field_through_generics_deferral_lambda_param_source, wanted_class: "InternalError", wanted_subject: "no field 'no_such_field' on type 'Boxed'"),
-    census_premise("observed rows: ", string_contains(located_rows_render(source: field_through_generics_deferral_lambda_param_source), "no field 'no_such_field' on type 'Boxed'"))
+    located_refusal_assert(source: field_through_generics_deferral_lambda_param_source, wanted_class: "InternalError", wanted_subject: "no field 'no_such_field' on type 'Boxed'")
   ])
 }
 
@@ -382,16 +388,14 @@ test fn floor_field_through_generics_deferral_lambda_param_green_control_is_acce
 test fn floor_field_through_generics_deferral_generic_result_refuses_located() -> ProcessExit {
   census_verdict_all([
     census_premise("the probe row's expectation holds", row_holds(probe: floor_field_through_generics_deferral_generic_result_probe, source: field_through_generics_deferral_generic_result_source)),
-    located_rows_assert(source: field_through_generics_deferral_generic_result_source, wanted_class: "InternalError", wanted_subject: "no field 'no_such_field' on type 'Callable'"),
-    census_premise("observed rows: ", string_contains(located_rows_render(source: field_through_generics_deferral_generic_result_source), "no field 'no_such_field' on type 'Callable'"))
+    located_refusal_assert(source: field_through_generics_deferral_generic_result_source, wanted_class: "InternalError", wanted_subject: "no field 'no_such_field' on type 'Callable'")
   ])
 }
 
 test fn floor_field_through_generics_deferral_generic_result_hole_refuses_located() -> ProcessExit {
   census_verdict_all([
     census_premise("the probe row's expectation holds", row_holds(probe: floor_field_through_generics_deferral_generic_result_hole_probe, source: field_through_generics_deferral_generic_result_hole_source)),
-    located_rows_assert(source: field_through_generics_deferral_generic_result_hole_source, wanted_class: "InternalError", wanted_subject: "no field 'no_such_field' on type 'Boxed'"),
-    census_premise("observed rows: ", string_contains(located_rows_render(source: field_through_generics_deferral_generic_result_hole_source), "no field 'no_such_field' on type 'Boxed'"))
+    located_refusal_assert(source: field_through_generics_deferral_generic_result_hole_source, wanted_class: "InternalError", wanted_subject: "no field 'no_such_field' on type 'Boxed'")
   ])
 }
 
@@ -411,8 +415,7 @@ test fn floor_field_through_generics_deferral_generic_result_hole_green_control_
 test fn floor_field_through_generics_bare_param_located_names_type_parameter() -> ProcessExit {
   census_verdict_all([
     census_premise("the probe row's expectation holds", row_holds(probe: floor_field_through_generics_hole_probe, source: field_through_generics_hole_source)),
-    located_rows_assert(source: field_through_generics_hole_source, wanted_class: "InternalError", wanted_subject: "no field 'no_such_field' on type 'T'"),
-    census_premise("observed rows: ", string_contains(located_rows_render(source: field_through_generics_hole_source), "no field 'no_such_field' on type 'T'"))
+    located_refusal_assert(source: field_through_generics_hole_source, wanted_class: "InternalError", wanted_subject: "no field 'no_such_field' on type 'T'")
   ])
 }
 
@@ -437,6 +440,34 @@ test fn floor_field_through_generics_census_residue_is_zero() -> ProcessExit {
     census_premise(concat("no twin blocked (no refusal of a valid program); blocked twins=", concat(census_int_text(n: twin_blocked), "; rows: "), rendered), twin_blocked == 0),
     census_premise(concat("nothing NOT-RUNNABLE (an unrunnable census is not a verdict): ", rendered), !string_contains(s: rendered, pattern: "NOT-RUNNABLE")),
     census_premise(concat("every field-miss site refused by a BLOCKING row (", concat(concat(census_int_text(n: miss_blocked), "/"), concat(census_int_text(n: count(miss_sites)), "); rows: "), rendered)), miss_blocked == count(miss_sites))
+  ])
+}
+
+// PLANTED NEGATIVE CASE (review 98226 follow-up, from the acceptor): the residue leg
+// must be shown to go RED on a warning-only acceptance of a field-miss site, not just
+// assert that it would. A REAL warning-only field-miss compile cannot be constructed
+// while the wall holds (that IS the bug this census hunts - constructing it would mean
+// the wall regressed), so the planted case is synthesized at the row level and fed
+// through the SAME classifier the live census uses (floor_census_status_for over
+// census_blocking_rows - the filter whose absence was the fault). The planted identity
+// is named in every premise, so any red prints it; the live census leg runs in the same
+// batch over the untouched population, which is the "removed again - population back to
+// its prior counts" half: here population=13, planted=1, not_planted=12 asserted as
+// absolute data premises, and the census leg re-asserts them against the compiled walk.
+test fn floor_census_instrument_discriminates_planted_warning_only() -> ProcessExit {
+  let planted_warning_only = [CompileDiagnosticCensusRow { diagnostic_class: "TypeMismatch" as NonEmptyStr, subject_name: "planted-warning-only-field-miss-on-T", blocking: false, count: 1, rendered_pair: Absent }]
+  let planted_blocking = [CompileDiagnosticCensusRow { diagnostic_class: "InternalError" as NonEmptyStr, subject_name: "no field 'no_such_field' on type 'T'", blocking: true, count: 1, rendered_pair: Absent }]
+  let s_warn = floor_census_status_for(rows: planted_warning_only, is_field_miss: true)
+  let s_block = floor_census_status_for(rows: planted_blocking, is_field_miss: true)
+  let s_twin = floor_census_status_for(rows: [], is_field_miss: false)
+  let total = count(floor_census_sites)
+  let planted = count(filter(floor_census_sites, f: fn(r) { r.planted }))
+  let not_planted = total - planted
+  census_verdict_all([
+    census_premise(concat("planted-warning-only-field-miss-on-T must classify FABRICATED-RESIDUE (a warning is not a refusal); got: ", s_warn), s_warn == "FABRICATED-RESIDUE"),
+    census_premise(concat("the same wall row marked blocking must classify BLOCKED; got: ", s_block), s_block == "BLOCKED"),
+    census_premise(concat("a field-present twin with no rows must classify CLEAN; got: ", s_twin), s_twin == "CLEAN"),
+    census_premise(concat("live census baseline absolutes: population=13 planted=1 not_planted=12, got population=", concat(census_int_text(n: total), concat(" planted=", concat(census_int_text(n: planted), concat(" not_planted=", concat(census_int_text(n: not_planted), " (population=", concat(concat(census_int_text(n: total), "="), concat(concat(census_int_text(n: planted), "+"), concat(census_int_text(n: not_planted), ")"))))))))), total == 13 && planted == 1 && not_planted == 12)
   ])
 }
 

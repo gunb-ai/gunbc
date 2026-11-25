@@ -189,7 +189,7 @@ data floor_field_through_generics_class: GuaranteeClassId = "floor-field-through
 // result of a generic call whose base instantiates to a record all refuse LOCATED
 // (InternalError naming the field and the resolved base label at the fixture span); reading the
 // field that EXISTS on those same instantiated bases is ACCEPTED (the ExpectZeroDiagnostics
-// twins are the accepted positive controls that make the refusals discriminating). NO hole row
+// twins are the accepted positive controls that make the refusals discriminating; the bare-generic-name probe is the one exception, and by design - a bare generic type name in value position has no reading of an existing field that would type, so no accepted twin exists for it). NO hole row
 // is enrolled for this class: the earlier note here claimed a live fabrication on an unsolved
 // type-variable result and a hole row with a closing trigger - that observation was a
 // comparison-chain MIS-PARSE of an explicit-type-argument record literal (review 17051), not a
@@ -272,6 +272,10 @@ data floor_field_through_generics_hole_probe: GuaranteeProbeId = "floor-field-th
 data floor_field_through_generics_deferral_lambda_param_probe: GuaranteeProbeId = "floor-field-through-generics-deferral-lambda-param-base" as GuaranteeProbeId
 data floor_field_through_generics_deferral_lambda_param_green_probe: GuaranteeProbeId = "floor-field-through-generics-deferral-lambda-param-base-green" as GuaranteeProbeId
 data floor_field_through_generics_deferral_generic_result_probe: GuaranteeProbeId = "floor-field-through-generics-deferral-generic-result-base" as GuaranteeProbeId
+// The id string keeps the historical `_hole` suffix: the shape was enrolled as a hole and
+// its expectation later FLIPPED to refusal (climbed). Id strings are pin-stable names -
+// renaming them here would churn every place the id is quoted, for no evidentiary gain;
+// the expectation and the row comment are the live claim.
 data floor_field_through_generics_deferral_generic_result_hole_probe: GuaranteeProbeId = "floor-field-through-generics-deferral-generic-result-base-hole" as GuaranteeProbeId
 data floor_field_through_generics_deferral_generic_result_hole_green_probe: GuaranteeProbeId = "floor-field-through-generics-deferral-generic-result-base-hole-green" as GuaranteeProbeId
 data floor_generic_instantiation_green_probe: GuaranteeProbeId = "floor-generic-instantiation-green-control" as GuaranteeProbeId
@@ -688,6 +692,9 @@ fn guarantee_probe_rows() -> List<GuaranteeProbeRow> {
       expectation: ExpectZeroDiagnostics,
     },
     GuaranteeProbeRow {
+      // The bare-generic-name shape. NO accepted twin by design: the base is the type
+      // constructor (label 'Callable'), which admits no field read at all, so there is
+      // no "field that exists" control for this one row (review 17051 round-3 note).
       probe: floor_field_through_generics_deferral_generic_result_probe,
       class: floor_field_through_generics_deferral_class,
       path: v1_compile_rust_path_id,
