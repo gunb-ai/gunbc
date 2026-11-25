@@ -3753,7 +3753,7 @@ jobs:
     runs-on: ${{ fromJSON(format('["self-hosted","linux","arm64","{0}"]', github.event.inputs.host)) }}
     needs: [build]
     environment: srv1-production
-    timeout-minutes: 314
+    timeout-minutes: 344
     if: github.event.inputs.mode == 'desired_instance_deploy' && github.event.inputs.host == 'srv1'
     permissions:
       contents: read
@@ -3911,7 +3911,7 @@ jobs:
           RLM_APPLY_RUN_ID: ${{ github.event.inputs.apply_workflow_run_id }}
           RLM_PLAN_ARTIFACT_HASH: ${{ github.event.inputs.plan_artifact_hash }}
           GUNBC_DEPLOY_INSTANCE_SUBJECT: ${{ github.event.inputs.subject_host }}
-        timeout-minutes: 30
+        timeout-minutes: 60
       - name: Assert exactly one live-deploy receipt (apply XOR named refusal, gunbc.live_deploy.apply_receipt)
         id: desired_instance_deploy_receipt_assert
         run: |-
