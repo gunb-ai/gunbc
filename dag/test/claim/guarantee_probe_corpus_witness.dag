@@ -148,6 +148,16 @@ fn dag_native_here_probe_ids() -> List<String> {
   ]
 }
 
+// THE SINGLE AUTHORITY for the arm's membership. Both the Bool partition leg and its naming face read THIS,
+// so the two cannot disagree about what they cover: a mutation that removes one roster from the arm reds both,
+// and the naming face is the one that prints which ids it then cannot place.
+fn v1_compile_arm_membership() -> List<String> {
+  concat(
+    concat(dag_native_here_probe_ids(), floor_class_executed_v1_compile_probe_ids()),
+    record_completeness_executed_v1_compile_probe_ids()
+  )
+}
+
 fn measured_harness_source_material(paths: List<String>) -> NonEmptyStr {
   fold_list(
     xs: paths,
@@ -938,7 +948,6 @@ test fn dark_suite_dispositions_cover_migrated_v1_probes() -> Bool {
   let disposed_ids_have_no_internal_duplicates =
     distinct_string_count(values: disposition_probe_ids) == count(disposition_probe_ids)
   let known_v1_migration_gap_ids: List<String> = [sole_ctor_mint_fn_hole_probe as String]
-  let dag_native_here: List<String> = dag_native_here_probe_ids()
   // MEMBERSHIP IS DERIVED, not asserted: this list holds only the ids whose leg runs in THIS module, and
   // each remaining entry comes from the roster fn of the module that executes it —
   // #test.claim.guarantee_floor_class_probe_witness::floor_class_executed_v1_compile_probe_ids and
@@ -946,10 +955,7 @@ test fn dark_suite_dispositions_cover_migrated_v1_probes() -> Bool {
   // The conjuncts carry the arm, not this note: a probe executed in a witness and not rostered there reds
   // every_v1_compile_probe_is_disposed_or_a_named_gap, and an id listed in any roster without a registered
   // v1-compile row reds arm_c_ids_are_registered_v1_compile_rows.
-  let dag_native_v1_compile_probe_ids: List<String> = concat(
-    concat(dag_native_here, floor_class_executed_v1_compile_probe_ids()),
-    record_completeness_executed_v1_compile_probe_ids()
-  )
+  let dag_native_v1_compile_probe_ids: List<String> = v1_compile_arm_membership()
   let known_gaps_are_not_disposed = known_v1_migration_gap_ids
     |> all(gap => !string_list_contains(xs: disposition_probe_ids, wanted: gap))
   let every_v1_compile_probe_is_disposed_or_a_named_gap = guarantee_probe_rows()
@@ -991,10 +997,7 @@ test fn dark_suite_partition_names_the_uncovered_rows() -> ProcessExit {
     })
     |> map(p => p as String)
   let known_v1_migration_gap_ids: List<String> = [sole_ctor_mint_fn_hole_probe as String]
-  let arm_c: List<String> = concat(
-    concat(dag_native_here_probe_ids(), floor_class_executed_v1_compile_probe_ids()),
-    record_completeness_executed_v1_compile_probe_ids()
-  )
+  let arm_c: List<String> = v1_compile_arm_membership()
   let v1_rows = guarantee_probe_rows()
     |> filter(row => (row.path as String) == (v1_compile_rust_path_id as String))
   let uncovered = v1_rows |> filter(row => {
