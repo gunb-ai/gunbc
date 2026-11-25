@@ -1,6 +1,8 @@
 module gunbc.demand_engine_restatement_follow_up
 
-import std.types { NonEmptyStr, List, String }
+import std.types { Bool, NonEmptyStr, List, String }
+import std.algebra { Cons, Empty, fold_list, length, list_reverse }
+import v2.std.node { Symbol }
 
 // THE CENSUS INTERVAL. Cut (c) deletes an authored `uses` row when the function's DERIVED service
 // demand is nonempty, measured by resolving the module and reading `ItemInfo.service_names`. The range
@@ -24,8 +26,12 @@ data demand_restatement_follow_up_commit_range: NonEmptyStr = "5ff323b6d29..4446
 // not carried in this module: the census resolver has no entry point in the tree, so a figure written
 // here could not be re-derived and would rot (gunbc.design_argument::how_to_work). The re-derivable fact is the tree itself --
 // every authored `uses` row it still carries is one of the retained identities below, or a new
-// arrival: the roster of unmeasured modules is deleted rather than left empty, and nothing walls new
-// rows out yet (the restatement refusal is EFFECTS-1's open slice).
+// arrival. THE WALL IS IN THIS MODULE, next to the roster and the row identity it decides over
+// (demand_restatement_wall_holds below): an arriving identity whose (module, declaration, alias,
+// authored type) is not one of the retained identities below refuses. A second definition of that
+// identity anywhere else is a fork (gunbc.design_argument::single_authority), so the wall decides
+// over the identity part of THIS module's DemandRestatementRetainedRow and nothing else carries the
+// predicate.
 
 // THE ROWS CUT (c) RETAINED, at the row identity USES-0 defined: the module, the declaration,
 // the alias the row binds, and the authored type. The grain matters because the earlier partition
@@ -120,3 +126,125 @@ fn demand_restatement_retained_row_texts() -> List<String> {
   concat(demand_restatement_retained_fn_rows, demand_restatement_retained_pattern_rows) |> map(r => retained_row_text(r: r))
 }
 
+
+// =============================================================================================
+// THE RESTATEMENT WALL (egress-effects-1-filesystem-provider, red_control half 1: "A new
+// demand_restatement row refuses"). THE WALL LIVES BESIDE THE ROSTER AND THE ROW ITSELF. The row
+// identity (module, declaration, alias, authored type) is owned by DemandRestatementRetainedRow above;
+// the wall decides over THE IDENTITY PART OF IT, projected here by a function in the SAME module --
+// DemandRestatementRowIdentity repeats no field name that is not this module's own, and the projection
+// demand_restatement_retained_identity is the only bridge. A second row type elsewhere repeating the
+// four fields, with an adapter to convert between them, would be a fork of this module's authority
+// (gunbc.design_argument::single_authority: "a second place that independently decides it is a fork"),
+// so there is none: effect_demand.dag carries NO restatement predicate, and the witness imports these
+// functions rather than restating them.
+//
+// WHY THE PROJECTION AND NOT THE RETAINED ROW ITSELF: `trigger` states WHY a RETAINED row is retained,
+// and it plays no part in the authorization decision. A NEW arrival carries no true trigger -- forcing
+// the arriving grain to be the full retained row would make a red-direction fixture type a trigger lie
+// to express the very refusal the row demands (gunbc.design_argument::fail_closed's refusal must not
+// require fabricating provenance). So the wall's grain is the four identity fields, and the retained
+// population reaches it through the projection below, never by hand.
+//
+// THE TWO SIDES COME FROM DIFFERENT PRODUCERS. The roster is this module's data, projected; the
+// ARRIVING population is what a consumer derives from the tree (v2.test.claim.filesystem_effect_reach_wall
+// parses the corpus and reads the uses clauses the parser records). An arriving list built from the
+// roster itself is green by construction and certifies nothing
+// (gunbc.design_argument::guarantee_ladder). v2.workflow.compile_door_cause_ownership names the D13
+// flip that retires these rows; until then every uses clause the corpus carries is either a retained
+// identity below or a new arrival this wall refuses.
+// =============================================================================================
+
+type DemandRestatementRowIdentity {
+  module_path: NonEmptyStr
+  declaration: NonEmptyStr
+  alias: NonEmptyStr
+  authored_type: NonEmptyStr
+}
+
+type DemandRestatementVerdict
+  = AuthorizedRow { row: DemandRestatementRowIdentity }
+  | NewRestatementRowRefused { row: DemandRestatementRowIdentity, cause: Symbol }
+
+// THE ONLY BRIDGE from the retained row to the wall's grain: a field-for-field projection, in this
+// module, next to the type that owns the fields. It reads the four identity fields and stops.
+fn demand_restatement_retained_identity(row: DemandRestatementRetainedRow) -> DemandRestatementRowIdentity {
+  DemandRestatementRowIdentity {
+    module_path: row.module_path,
+    declaration: row.declaration,
+    alias: row.alias,
+    authored_type: row.authored_type
+  }
+}
+
+// THE AUTHORIZED ROSTER AS ONE IDENTITY LIST: the two retained populations of this module, concatenated
+// and projected through the single bridge above. Callers that derive the arriving list from the tree
+// must take THE ROSTER FROM HERE -- never from the arriving list.
+data demand_restatement_authorized_roster: List<DemandRestatementRowIdentity> =
+  concat(demand_restatement_retained_fn_rows, demand_restatement_retained_pattern_rows)
+    |> map(r => demand_restatement_retained_identity(row: r))
+
+fn demand_restatement_identity_eq(
+  left: DemandRestatementRowIdentity,
+  right: DemandRestatementRowIdentity
+) -> Bool {
+  (left.module_path == right.module_path)
+    && (left.declaration == right.declaration)
+    && (left.alias == right.alias)
+    && (left.authored_type == right.authored_type)
+}
+
+fn demand_restatement_identity_is_authorized(
+  row: DemandRestatementRowIdentity,
+  roster: List<DemandRestatementRowIdentity>
+) -> Bool {
+  any(xs: roster, predicate: fn(candidate) { demand_restatement_identity_eq(left: row, right: candidate) })
+}
+
+// THE VERDICT, LOCATED: an unauthorised identity refuses by naming itself with a named cause -- never
+// counted, never let through (gunbc.design_argument::fail_closed: the wall refuses rather than falling
+// back).
+fn demand_restatement_row_verdict(
+  row: DemandRestatementRowIdentity,
+  roster: List<DemandRestatementRowIdentity>
+) -> DemandRestatementVerdict {
+  if demand_restatement_identity_is_authorized(row: row, roster: roster) {
+    AuthorizedRow { row: row }
+  } else {
+    NewRestatementRowRefused { row: row, cause: ^new_demand_restatement_row_unretained }
+  }
+}
+
+// THE REFUSALS, NAMING THE OFFENDERS: every arriving identity absent from the authorized roster, in
+// arriving order. An empty list is the accepted population.
+fn demand_restatement_new_row_refusals(
+  arriving: List<DemandRestatementRowIdentity>,
+  roster: List<DemandRestatementRowIdentity>
+) -> List<DemandRestatementRowIdentity> {
+  list_reverse(xs: fold_list(
+    xs: arriving,
+    empty: Empty,
+    cons: fn(acc, row) {
+      if demand_restatement_identity_is_authorized(row: row, roster: roster) {
+        acc
+      } else {
+        Cons { head: row, tail: acc }
+      }
+    }
+  ))
+}
+
+// THE WALL HOLDS exactly when no arriving restatement identity is absent from the authorized roster. It
+// says NOTHING about roster rows that no arrival carries -- retiring those is D13's, at row identity,
+// not the wall's.
+fn demand_restatement_wall_holds(
+  arriving: List<DemandRestatementRowIdentity>,
+  roster: List<DemandRestatementRowIdentity>
+) -> Bool {
+  length(xs: demand_restatement_new_row_refusals(arriving: arriving, roster: roster)) == 0
+}
+
+// ONE IDENTITY AS PROSE, for witness log faces that must NAME a refused arrival rather than count it.
+fn demand_restatement_identity_text(row: DemandRestatementRowIdentity) -> String {
+  join([row.module_path as String, "#", row.declaration as String, "#", row.alias as String, "#", row.authored_type as String], "")
+}
