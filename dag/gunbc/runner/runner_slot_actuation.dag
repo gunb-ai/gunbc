@@ -539,7 +539,10 @@ fn slot_restart_read_back_holds(r: SlotActuationReading, before: RunnerUnitMainP
 // gets no leg at all and is pending for a later pass. The MaskWhileRunning arm that built the invalid
 // state above is DELETED here (roadmap node fleet-no-route-masks-a-running-unit, class
 // gunbc.recurring_failure_mode::a_running_unit_masked_loses_its_drop_ins_at_the_next_reload), which #16519
-// had already closed for the cap bracket's own masking pass; no production route constructs mask-of-running.
+// had already closed for the cap bracket's own masking pass; no UNAUTHORIZED production route constructs
+// mask-of-running -- the authorized retirement mask, issued only inside a
+// gunbc.runner.runner_slot_retirement::InterruptionAuthorization scope, is the intended exception and is not this
+// admission's subject.
 // Stopping is admitted only when the unit is not executing a job -- a Runner.Worker present means a job is
 // in flight, so the slot is left RUNNING AND UNMASKED and the effect reports DrainPending for a later pass.
 // An unreadable process listing refuses rather than guessing idle. A deactivating unit is a stop already in
