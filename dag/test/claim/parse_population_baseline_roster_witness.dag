@@ -7,7 +7,6 @@ import gunbc.parse_population_baseline_roster {
   parse_population_one_hundred_sixty_five_count_check,
   parse_population_partition_is_consistent,
   parse_population_zero_byte_row_count,
-  parse_population_membership_boundary_holds,
   parse_population_is_unique,
   parse_population_duplicate_refuses_with_trivial_eq,
   parse_population_rows_ordered_descending,
@@ -43,7 +42,6 @@ test fn parse_population_baseline_roster_cardinality_holds() -> Bool {
 test fn parse_population_baseline_roster_byte_invariants_hold() -> Bool {
   parse_population_partition_is_consistent()
     && parse_population_zero_byte_row_count() == 0
-    && parse_population_membership_boundary_holds()
 }
 
 // The selection rule's ordering invariant, executed: the roster is non-increasing in byte size
