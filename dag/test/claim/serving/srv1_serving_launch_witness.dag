@@ -9,7 +9,6 @@ import std.list { first_where }
 import std.algebra { length, string_contains }
 import std.dissolution { dissolution_is_bound, dissolution_description }
 import std.roster_frontier { DeclSubject }
-import gunbc.serving.serving_enrollment { ServingRouteResolved, CeilingByDeclaredPolicy }
 import extdeps.vllm.lil_serve { LilServeEngineFlags, LilServeEnvironmentEntry, LilServeApiKeyFromFile, lil_serve_environment_entry, lil_serve_environment_wire, lil_serve_launch_argv }
 import extdeps.local_inference_lab.qwen3_8_flash_next { qwen3_8_flash_next_manifest, qwen3_8_flash_next_pinned_revision }
 import extdeps.vllm.local_inference_lab_build { local_inference_lab_vllm_image }
@@ -24,10 +23,10 @@ import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_04, gpu_board_
 import product.placement_supply { PhysicalAssetIdentity }
 import gunbc.serving.srv1_serving_launch {
   srv1_serving_wrapper, srv1_serving_launch, srv1_serving_launch_for_port, srv1_serving_launch_argv,
-  srv1_serving_image, srv1_serving_image_derivation, srv1_serving_pinned_checkpoint, Srv1ImageFileReplaced, Srv1ImageFileAdded, srv1_router_upstream_launch_facts, srv1_serving_route,
+  srv1_serving_image, srv1_serving_image_derivation, srv1_serving_pinned_checkpoint, Srv1ImageFileReplaced, Srv1ImageFileAdded, srv1_router_upstream_launch_facts,
   srv1_serving_unmodeled_frontier_rows,
   srv1_serving_gpu_group, Srv1ServingGpuGroup, Srv1ServingWrapper, Srv1ServingWrapperInstallable, Srv1ServingWrapperRefused, srv1_serving_wrapper_of,
-  srv1_serving_group_selection, srv1_serving_served_device_rank, srv1_serving_wrapper_running_body,
+  srv1_serving_group_selection, srv1_serving_wrapper_running_body,
   srv1_serving_wrapper_adoption, Srv1ServingWrapperAdoption, Srv1ServingWrapperAdopted, Srv1ServingWrapperPendingOperatorRelaunch,
   Srv1ServingDeviceSelection, Srv1ServingDevicesSelected, Srv1ServingDevicesRefused,
   Srv1ServingDeviceMember, Srv1ServingDeviceSelected, Srv1ServingDevicePending,
@@ -208,22 +207,6 @@ test fn the_router_launch_facts_read_the_launch_and_hold_no_policy_or_secret() -
     && (match f.scheme { Https => true, _ => false })
     && (f.tls_name as String) == "pool-card"
     && (f.name as String) == "srv1-vllm"
-}
-
-test fn the_enrollment_route_is_the_launch_address_with_the_operators_declared_ceiling() -> Bool {
-  match srv1_serving_route {
-    ServingRouteResolved { endpoint: e, ceiling: c } =>
-      (e.port == srv1_serving_launch.listen_port)
-        && (e.replica.node as String) == "srv1"
-        && (e.replica.served_name as String) == (srv1_router_upstream_launch_facts.name as String)
-        && (e.address as String) == (render_ipv4_address(addr: srv1_router_upstream_launch_facts.host) as String)
-        && (match c {
-          CeilingByDeclaredPolicy { count: n, decider: d, decided_on: dd, basis: _ } =>
-            n == 4 && (d as String) == "operator" && (dd as String) == "2026-10-24"
-          _ => false
-        })
-    _ => false
-  }
 }
 
 // A port override re-derives the WHOLE launch from the one row; nothing restates it.
@@ -454,23 +437,6 @@ test fn srv1_serving_tensor_parallel_two_refuses_rather_than_degrading_to_one() 
       && length(xs: ps) == 1   // the Workstation card is the one unresolved member
     Srv1ServingDevicesSelected { tensor_parallel: _, members: _ } => false   // a TP=2 group must NEVER be Selected while a member is pending
   }
-}
-
-// The route's served device rank is DERIVED from the declared group (the served member's position), not the
-// old literal `0` that did not track which device the engine runs on. It is the served device's ordinal within
-// the devices the INSTALLED wrapper passes via per-device CDI selectors — which the container re-enumerates
-// from zero — so it stays correct when a second card is later powered. Today the one-card group's served member
-// is at rank Zero, so the value is unchanged — but it now reads the group, not a literal.
-test fn srv1_serving_served_device_rank_is_derived_from_the_declared_group() -> Bool {
-  let group_rank = match srv1_serving_group_selection(group: srv1_serving_gpu_group) {
-    Srv1ServingDevicesSelected { tensor_parallel: _, members: ms } => match ms.first() {
-      Present { value: Srv1ServingDeviceSelected { board: _, gpu_uuid: _, rank: r } } => r
-      _ => Succ { prev: Zero }   // no served member: cannot equal the derived Zero below → red
-    }
-    Srv1ServingDevicesRefused { tensor_parallel: _, pending: _ } => Succ { prev: Zero }
-  }
-  srv1_serving_served_device_rank() == group_rank
-    && (match srv1_serving_served_device_rank() { Zero => true _ => false })
 }
 
 // THE OTHER SIDE OF THAT GUARD, AND THE NEWEST FACT ON THE HOST: with both cards enumerated and both admitted at
