@@ -2,7 +2,7 @@ module test.claim.floor.floor_preparation_split_witness
 
 import std.types { Bool, Int, List, Present, Absent, String }
 import std.algebra { length, list_push }
-import std.measure { Millisecond }
+import std.measure { Millisecond, Second, second }
 import v2.workflow.floor_preparation_split {
   floor_preparation_any_row_starts_with,
   floor_preparation_attribution_all_rows_have_lines,
@@ -56,7 +56,12 @@ import v2.workflow.floor_preparation_split {
 import v2.workflow.floor_preparation_capture_runner {
   floor_preparation_runner_modelled_steps,
   floor_preparation_leg_argv,
-  floor_preparation_population_entries
+  floor_preparation_population_entries,
+  floor_preparation_bound_operand,
+  floor_preparation_untrimmed_bound,
+  floor_preparation_graded_bound,
+  floor_preparation_claims_bound,
+  floor_preparation_report_bound
 }
 import v2.workflow.floor_cost_debt {
   floor_cost_debt_population_report,
@@ -96,7 +101,8 @@ import v2.workflow.floor_cost_debt {
 //   floor_preparation_the_capture_tool_runs_the_fold_and_holds_none,
 //   floor_preparation_the_committed_capture_is_a_cache_of_the_retained_log,
 //   floor_preparation_the_runner_process_is_modelled,
-//   floor_preparation_the_roadmap_names_the_floor_fold
+//   floor_preparation_the_roadmap_names_the_floor_fold,
+//   floor_preparation_the_wall_bound_is_a_typed_second
 //
 // TWENTY-TWO `test fn`s, and this roster is the roster that runs: `v2.workflow.floor_preparation_capture_runner`
 // passes exactly these names to `--functions` and refuses unless every one prints its own PASS line.
@@ -1024,4 +1030,39 @@ test fn floor_preparation_a_refusal_cannot_read_as_a_report() -> Bool {
     && junk_is_not_a_report()
     && report_sentinel_is_model_rendered()
     && text_contains(runner_module_text(), "expected_rc=2")
+}
+
+// ----------------------------------------------------------------------------------------------
+// 22. THE WALL BOUND IS A TYPED DURATION. Kills: a bare-Int bound. run8 is the artifact this claim
+// exists for -- a Millisecond number reached a seconds operand and `timeout 2400000` meant 27 days,
+// no bound at all, while the file recorded the incident with the numbers still typed `Int`. The
+// bounds are std.measure Second (DESIGN gunbc.design_argument::single_authority: durations belong to
+// the shared quantity model); the seconds spelling exists ONLY at the timeout(1) transport, through
+// `floor_preparation_bound_operand`, which is CHECKED: a real bound renders its own digits, and a
+// run8-shaped milliseconds figure (or zero) is refused rather than obeyed.
+// ----------------------------------------------------------------------------------------------
+
+fn bound_operand_renders(bound: Second, digits: String) -> Bool {
+  match floor_preparation_bound_operand(bound: bound) {
+    Present { value: v } => v == digits
+    Absent => false
+  }
+}
+
+fn bound_operand_refuses(bound: Second) -> Bool {
+  match floor_preparation_bound_operand(bound: bound) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+test fn floor_preparation_the_wall_bound_is_a_typed_second() -> Bool {
+  bound_operand_renders(bound: floor_preparation_untrimmed_bound(), digits: "14400")
+    && bound_operand_renders(bound: floor_preparation_graded_bound(), digits: "1200")
+    && bound_operand_renders(bound: floor_preparation_claims_bound(), digits: "900")
+    && bound_operand_renders(bound: floor_preparation_report_bound(), digits: "600")
+    && bound_operand_refuses(bound: second(count: 2400000))
+    && bound_operand_refuses(bound: second(count: 0))
+    && !text_contains(runner_module_text(), "bound_seconds: Int")
+    && text_contains(runner_module_text(), "-> Second")
 }

@@ -45,7 +45,7 @@ module v2.workflow.floor_preparation_capture_runner
 
 import std.types { Bool, Int, List, Present, Absent, String }
 import std.algebra { length, list_push }
-import std.measure { Millisecond, millisecond, millisecond_count, ByteSize, byte_size, byte_size_count }
+import std.measure { Millisecond, millisecond, millisecond_count, ByteSize, byte_size, byte_size_count, Second, second, second_count }
 import std.checked_arithmetic { checked_int_to_nat }
 import extdeps.shell
 import extdeps.shell.exec
@@ -186,15 +186,56 @@ data floor_preparation_keep_prefixes: List<String> = [
 
 // timeout(1) enforces these as a real process, and exit 124 is reported as a KILL and never as
 // a refusal -- a wall-clock timeout is not gunbc refusing.
-// Wall bounds in SECONDS: timeout(1) interprets its operand as seconds, and run8 proved the
-// Millisecond-number handoff silently meant 'timeout 2400000' -- 27 days, no bound at all.
+// WALL BOUNDS ARE TYPED DURATIONS, not bare Ints. run8 is the cautionary artifact: a Millisecond
+// number was handed where seconds were wanted and `timeout 2400000` meant 27 days -- no bound at
+// all, wearing the costume of one. DESIGN gunbc.design_argument::single_authority assigns durations
+// to the shared quantity model (std.measure::Second), so a bound CANNOT be a unitless number here;
+// the seconds spelling exists only at the timeout(1) transport, one checked conversion away, and an
+// operand large enough to be a milliseconds number smuggled in is REFUSED there rather than obeyed.
 
-data floor_preparation_untrimmed_bound_seconds: Int = 14400
+fn floor_preparation_untrimmed_bound() -> Second {
+  second(count: 14400)
+}
 
-data floor_preparation_graded_bound_seconds: Int = 1200
+fn floor_preparation_graded_bound() -> Second {
+  second(count: 1200)
+}
 
-data floor_preparation_claims_bound_seconds: Int = 900
-data floor_preparation_report_bound_seconds: Int = 600
+fn floor_preparation_claims_bound() -> Second {
+  second(count: 900)
+}
+
+fn floor_preparation_report_bound() -> Second {
+  second(count: 600)
+}
+
+// THE ONE CHECKED CONVERSION to the timeout(1) transport. A bound is meaningful only inside
+// [1, one day) of seconds: 0 means no bound, and anything a day or longer is the run8 shape -- a
+// milliseconds figure that lost its units on the way here. Absent is a typed refusal; the caller
+// refuses the leg rather than spawning an unbounded process.
+fn floor_preparation_bound_operand(bound: Second) -> Optional<String> {
+  let n = second_count(s: bound)
+  if n < 1 {
+    Absent
+  } else {
+    if n > 86399 {
+      Absent
+    } else {
+      Present { value: to_string(n) }
+    }
+  }
+}
+
+// A refused bound is reported as what it is: a leg that cannot run, with the bound's own digits in
+// the cause. Never a verdict about the claims.
+fn floor_preparation_bound_refused(bound: Second) -> FloorPreparationSpawnObservation {
+  FloorPreparationSpawnObservation {
+    rc: 97,
+    stdout: "",
+    stderr: concat("bound refused: ", concat(to_string(second_count(s: bound)),
+      " seconds is outside [1,86400) -- a wall bound this large or small is a unit error, not a bound")),
+  }
+}
 
 // The roster is MODEL DATA, not a shell constant. The witness module declares one test fn per
 // name; the claim gate refuses unless every one of these printed its own PASS line.
@@ -219,7 +260,8 @@ data floor_preparation_claim_roster: List<String> = [
   "floor_preparation_the_committed_capture_is_a_cache_of_the_retained_log",
   "floor_preparation_the_runner_process_is_modelled",
   "floor_preparation_the_roadmap_names_the_floor_fold",
-  "floor_preparation_a_refusal_cannot_read_as_a_report"
+  "floor_preparation_a_refusal_cannot_read_as_a_report",
+  "floor_preparation_the_wall_bound_is_a_typed_second"
 ]
 
 // The runner's own steps, as data. The witness binds these names to code paths in this module by
@@ -312,16 +354,20 @@ fn floor_preparation_kept(text: String) -> List<String> {
 
 // One place builds the slot-bound argv; the observation fields are copied into this module's own
 // type at the boundary so the runner's dataflow never depends on the operation's record shape.
-fn floor_preparation_spawn_slot(bound_seconds: Int, binary: String, args: List<String>) -> FloorPreparationSpawnObservation {
-  let ran = shell.Exec.RunArgv(
-    program: floor_preparation_timeout_binary,
-    arguments: concat(
-      [to_string(bound_seconds), floor_preparation_env_binary,
-       concat("HEAVY_OWNER=", floor_preparation_session_owner()),
-       floor_preparation_heavy_slot_binary(), binary],
-      args)
-  )
-  FloorPreparationSpawnObservation { rc: ran.exit_code, stdout: ran.stdout, stderr: ran.stderr }
+fn floor_preparation_spawn_slot(bound: Second, binary: String, args: List<String>) -> FloorPreparationSpawnObservation {
+  match floor_preparation_bound_operand(bound: bound) {
+    Absent => floor_preparation_bound_refused(bound: bound)
+    Present { value: operand } =>
+      let ran = shell.Exec.RunArgv(
+        program: floor_preparation_timeout_binary,
+        arguments: concat(
+          [operand, floor_preparation_env_binary,
+           concat("HEAVY_OWNER=", floor_preparation_session_owner()),
+           floor_preparation_heavy_slot_binary(), binary],
+          args)
+      )
+      FloorPreparationSpawnObservation { rc: ran.exit_code, stdout: ran.stdout, stderr: ran.stderr }
+  }
 }
 
 // FULL-STREAM CAPTURE (run8). The seed's host drain keeps stdout up to 8 MiB but reduces STDERR
@@ -337,18 +383,22 @@ fn floor_preparation_leg_log_path(label: String) -> String {
   concat(concat(floor_preparation_runner_root(), "/"), concat(label, ".log"))
 }
 
-fn floor_preparation_spawn_slot_captured(label: String, bound_seconds: Int, binary: String, args: List<String>) -> FloorPreparationSpawnObservation {
-  let ran = shell.Exec.RunArgv(
-    program: floor_preparation_timeout_binary,
-    arguments: concat(
-      [to_string(bound_seconds + 300), floor_preparation_script_binary(), "-qef",
-       floor_preparation_leg_log_path(label), "--",
-       floor_preparation_timeout_binary, to_string(bound_seconds), floor_preparation_env_binary,
-       concat("HEAVY_OWNER=", floor_preparation_session_owner()),
-       floor_preparation_heavy_slot_binary(), binary],
-      args)
-  )
-  FloorPreparationSpawnObservation { rc: ran.exit_code, stdout: ran.stdout, stderr: ran.stderr }
+fn floor_preparation_spawn_slot_captured(label: String, bound: Second, binary: String, args: List<String>) -> FloorPreparationSpawnObservation {
+  match floor_preparation_bound_operand(bound: bound) {
+    Absent => floor_preparation_bound_refused(bound: bound)
+    Present { value: operand } =>
+      let ran = shell.Exec.RunArgv(
+        program: floor_preparation_timeout_binary,
+        arguments: concat(
+          [to_string(second_count(s: bound) + 300), floor_preparation_script_binary(), "-qef",
+           floor_preparation_leg_log_path(label), "--",
+           floor_preparation_timeout_binary, operand, floor_preparation_env_binary,
+           concat("HEAVY_OWNER=", floor_preparation_session_owner()),
+           floor_preparation_heavy_slot_binary(), binary],
+          args)
+      )
+      FloorPreparationSpawnObservation { rc: ran.exit_code, stdout: ran.stdout, stderr: ran.stderr }
+  }
 }
 
 // A captured log is read back through the model's read effect; a pty adds carriage returns, so
@@ -560,7 +610,7 @@ fn floor_preparation_runner_plan_over(line: String, population: List<String>) ->
     match floor_preparation_scope_planned_entries(
       read: floor_preparation_scope_line_parse(line: line),
       population: population) {
-      Planned { entries: e, reason: r } =>
+      Planned { entries: e, reason: r, narrowed: _ } =>
         if length(xs: e) < length(xs: population) {
           Scoped { entries: e, reason: r }
         } else {
@@ -810,7 +860,7 @@ fn floor_preparation_capture_run() -> String {
     let tree_sha = floor_preparation_git_tree_sha()
     let head_sha = floor_preparation_git_head_sha()
     let untrimmed = floor_preparation_spawn_slot_captured(
-      label: "leg-untrimmed", bound_seconds: floor_preparation_untrimmed_bound_seconds,
+      label: "leg-untrimmed", bound: floor_preparation_untrimmed_bound(),
       binary: floor_preparation_pinned_claim_batch(),
       args: floor_preparation_leg_argv(entries: entries))
     let untrimmed_transcript = floor_preparation_read_captured(label: "leg-untrimmed")
@@ -828,7 +878,7 @@ fn floor_preparation_capture_run() -> String {
       FloorPreparationSpawnObservation { rc: 0, stdout: "", stderr: "" }
     } else {
       floor_preparation_spawn_slot_captured(
-        label: "leg-graded", bound_seconds: floor_preparation_graded_bound_seconds,
+        label: "leg-graded", bound: floor_preparation_graded_bound(),
         binary: floor_preparation_pinned_claim_batch(),
         args: floor_preparation_leg_argv(entries: survivors))
     }
@@ -862,7 +912,7 @@ fn floor_preparation_capture_run() -> String {
       ["--entry", floor_preparation_witness_module,
        "--functions", join(floor_preparation_claim_roster, ",")])
     let claims = floor_preparation_spawn_slot_captured(
-      label: "leg-claims", bound_seconds: floor_preparation_claims_bound_seconds,
+      label: "leg-claims", bound: floor_preparation_claims_bound(),
       binary: floor_preparation_pinned_claim_batch(),
       args: claims_args)
     // A gate that discards the only stream telling it WHAT IT EXECUTED is not a gate. The claim
@@ -879,7 +929,7 @@ fn floor_preparation_capture_run() -> String {
     let missing = fold(floor_preparation_claim_roster, init: [], f: (acc, name) =>
       if floor_preparation_has_exact_row(rows: passed, wanted: name) { acc } else { list_push(xs: acc, item: name) })
     let report = floor_preparation_spawn_slot(
-      bound_seconds: floor_preparation_report_bound_seconds,
+      bound: floor_preparation_report_bound(),
       binary: floor_preparation_pinned_gunbc(),
       args: concat(
         ["run"], concat(

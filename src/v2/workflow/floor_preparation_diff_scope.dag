@@ -3,10 +3,6 @@ module v2.workflow.floor_preparation_diff_scope
 import std.types { Bool, Int, List, Present, Absent, String }
 import std.algebra { length }
 
-import v2.workflow.floor_preparation_split {
-  floor_preparation_field,
-}
-
 // SCOPING THE REQUIRED FLOOR'S PREPARATION TO A DIFF'S CLOSURE, AS A DECISION SOMEONE ELSE CAN CHECK.
 //
 // `gunbc.roadmap ci-cost-floor-preparation-cut` offers two constructions against the preparation cost its
@@ -146,29 +142,29 @@ data floor_preparation_scope_forced: List<String> = [
   "dag/test/claim/action_use_admission_witness.dag",
 ]
 
-// `<marker>|<reason>` per path that makes the whole population's preparation suspect, whatever entry reads
+// One typed row per path that makes the whole population's preparation suspect, whatever entry reads
 // it. Each reason is a claim about PREPARATION cost, not a general "the CI config changed" apology: these
 // are the files that change WHAT an entry resolves to, so their per-entry resolved-module work cannot be
 // skipped by looking at the diff -- it is exactly the work the other construction would have had to cache.
-data floor_preparation_scope_universal_rows: List<String> = [
-  "marker=.rs|reason=seed Rust: the resolver, the typechecker and the reference-closure builders live here, so a change to any .rs changes what every entry resolves to",
-  "marker=.pest|reason=the parser grammar: every published module is parsed by it, so every entry's resolved form is suspect",
-  "marker=grammar/|reason=the grammar directory, carried apart from the extension because grammar inputs are not all .pest",
-  "marker=src/v1/stage0/|reason=the stage0 seed tree, which builds the binary that performs preparation for every entry",
-  "marker=src/v2/kernel/|reason=the typed kernel the native path resolves through, shared by every entry",
+data floor_preparation_scope_universal_rows: List<FloorPreparationScopeUniversalRow> = [
+  FloorPreparationScopeUniversalRow { marker: ".rs", reason: "seed Rust: the resolver, the typechecker and the reference-closure builders live here, so a change to any .rs changes what every entry resolves to" },
+  FloorPreparationScopeUniversalRow { marker: ".pest", reason: "the parser grammar: every published module is parsed by it, so every entry's resolved form is suspect" },
+  FloorPreparationScopeUniversalRow { marker: "grammar/", reason: "the grammar directory, carried apart from the extension because grammar inputs are not all .pest" },
+  FloorPreparationScopeUniversalRow { marker: "src/v1/stage0/", reason: "the stage0 seed tree, which builds the binary that performs preparation for every entry" },
+  FloorPreparationScopeUniversalRow { marker: "src/v2/kernel/", reason: "the typed kernel the native path resolves through, shared by every entry" },
 ]
 
-// THE FIXTURE DIFFS the witnesses run, as `name=..|files=..,..`. Each differs from its neighbour in
+// THE FIXTURE REVISIONS the witnesses run, as typed rows. Each differs from its neighbour in
 // exactly one property, so a fold that ignored that property would fail a claim.
-data floor_preparation_scope_diff_fixtures: List<String> = [
-  "name=seed-rust|files=src/v1/stage0/src/cli_run.rs",
-  "name=grammar|files=src/v1/stage0/grammar/stage0.pest",
-  "name=one-closure|files=dag/test/claim/match_exhaustiveness_coproduct_witness.dag",
-  "name=shared-import|files=src/v2/workflow/floor_preparation_split.dag",
-  "name=read-literal-only|files=dag/gunbc/witness/witness_floor_workflow.dag",
-  "name=plan-file-only|files=dag/gunbc/roadmap/roadmap_authority.dag",
-  "name=two-closures|files=dag/test/claim/match_exhaustiveness_coproduct_witness.dag,dag/test/claim/declared_type_expected_type_path_witness.dag",
-  "name=empty|files=",
+data floor_preparation_scope_diff_fixtures: List<FloorPreparationScopeFixtureRow> = [
+  FloorPreparationScopeFixtureRow { name: "seed-rust", files: ["src/v1/stage0/src/cli_run.rs"] },
+  FloorPreparationScopeFixtureRow { name: "grammar", files: ["src/v1/stage0/grammar/stage0.pest"] },
+  FloorPreparationScopeFixtureRow { name: "one-closure", files: ["dag/test/claim/match_exhaustiveness_coproduct_witness.dag"] },
+  FloorPreparationScopeFixtureRow { name: "shared-import", files: ["src/v2/workflow/floor_preparation_split.dag"] },
+  FloorPreparationScopeFixtureRow { name: "read-literal-only", files: ["dag/gunbc/witness/witness_floor_workflow.dag"] },
+  FloorPreparationScopeFixtureRow { name: "plan-file-only", files: ["dag/gunbc/roadmap/roadmap_authority.dag"] },
+  FloorPreparationScopeFixtureRow { name: "two-closures", files: ["dag/test/claim/match_exhaustiveness_coproduct_witness.dag", "dag/test/claim/declared_type_expected_type_path_witness.dag"] },
+  FloorPreparationScopeFixtureRow { name: "empty", files: [] },
 ]
 
 // THE THREE KINDS THE TOOL KNOWS HOW TO OVER-APPROXIMATE, AS A SUM, NOT A STRING. An unknown kind was
@@ -179,6 +175,24 @@ type FloorPreparationScopeRow
   = ScopeImport { entry: String, file: String }
   | ScopeModuleDecl { entry: String }
   | ScopeReadLiteral { entry: String, file: String }
+
+// THE UNIVERSAL-MARKER TABLE, TYPED. Each row joins a path marker to the claim about PREPARATION cost
+// that makes it cover the whole population. These rows were once `marker=..|reason=..` strings split
+// back out at read time: an invariant and a citation inside one String is the misplaced-data shape
+// DESIGN gunbc.design_argument::source_annotations names ("a String declaration whose only purpose is
+// commentary is misplaced or dead data"). A field that cannot be absent is now a field, not a tag.
+type FloorPreparationScopeUniversalRow {
+  marker: String,
+  reason: String,
+}
+
+// A FIXTURE REVISION: a name and the exact files that revision touches. Typed rather than
+// `name=..|files=..,..`, for the same reason; the empty list is the honest empty diff, not a missing
+// `files=` tag.
+type FloorPreparationScopeFixtureRow {
+  name: String,
+  files: List<String>,
+}
 
 // ---------------------------------------------------------------------------
 // THE DECISION
@@ -194,13 +208,6 @@ type FloorPreparationScoping
 // known-incomplete (the scope tool's depth cap), the authority still owns the shape of a refusal.
 fn floor_preparation_scope_whole(reason: String) -> FloorPreparationScoping {
   Whole { reason: reason }
-}
-
-fn floor_preparation_scope_row_field(row: String, key: String) -> String {
-  match floor_preparation_field(fields: split(s: row, delimiter: "|"), key: key) {
-    Present { value: v } => v
-    Absent => ""
-  }
 }
 
 fn floor_preparation_scope_contains(xs: List<String>, target: String) -> Bool {
@@ -220,24 +227,20 @@ fn floor_preparation_scope_forced_entries() -> List<String> {
   floor_preparation_scope_forced
 }
 
-fn floor_preparation_scope_marker_rows() -> List<String> {
+fn floor_preparation_scope_marker_rows() -> List<FloorPreparationScopeUniversalRow> {
   floor_preparation_scope_universal_rows
-}
-
-fn floor_preparation_scope_marker_of_row(row: String) -> String {
-  floor_preparation_scope_row_field(row: row, key: "marker")
 }
 
 // THE MARKER THAT COVERS A PATH, if any, returned with its reason so the report can print WHY the
 // population could not be narrowed. Directory markers match as prefixes, extension markers as suffixes;
 // which one applies is decided by whether the marker ends in `/`, so a marker cannot accidentally match
 // in the other direction.
-fn floor_preparation_scope_marker_for(path: String) -> Optional<String> {
+fn floor_preparation_scope_marker_for(path: String) -> Optional<FloorPreparationScopeUniversalRow> {
   fold(floor_preparation_scope_marker_rows(), init:  none, f: (acc, row) =>
     match acc {
       Present { value: _ } => acc
       Absent =>
-        let marker = floor_preparation_scope_row_field(row: row, key: "marker")
+        let marker = row.marker
         if length(xs: marker) == 0 {
           acc
         } else {
@@ -262,8 +265,8 @@ fn floor_preparation_scope_is_directory_marker(marker: String) -> Bool {
   marker.ends_with(suffix: "/")
 }
 
-fn floor_preparation_scope_marker_reason(row: String) -> String {
-  floor_preparation_scope_row_field(row: row, key: "reason")
+fn floor_preparation_scope_marker_reason(row: FloorPreparationScopeUniversalRow) -> String {
+  row.reason
 }
 
 // ENTRIES WHOSE CLOSURE CONTAINS THE FILE, over a given map. The empty list means the file is in no
@@ -291,7 +294,7 @@ fn floor_preparation_scope_entries_for(rows: List<FloorPreparationScopeRow>, fil
     })
 }
 
-fn floor_preparation_scope_first_universal(diff: List<String>) -> Optional<String> {
+fn floor_preparation_scope_first_universal(diff: List<String>) -> Optional<FloorPreparationScopeUniversalRow> {
   fold(diff, init:  none, f: (acc, file) =>
     match acc {
       Present { value: _ } => acc
@@ -335,7 +338,7 @@ fn floor_preparation_scope_select_over(rows: List<FloorPreparationScopeRow>, for
     match floor_preparation_scope_first_universal(diff: diff) {
       Present { value: row } =>
         Whole {
-          reason: concat("universal-marker:", concat(floor_preparation_scope_marker_of_row(row: row), concat("=", floor_preparation_scope_marker_reason(row: row)))),
+          reason: concat("universal-marker:", concat(row.marker, concat("=", row.reason))),
         }
       Absent =>
         match floor_preparation_scope_first_uncovered(rows: rows, population: population, diff: diff) {
@@ -382,48 +385,36 @@ fn floor_preparation_scope_is_narrowed(scoping: FloorPreparationScoping, populat
   length(xs: floor_preparation_scope_entries_of(scoping: scoping, population: population)) < length(xs: population)
 }
 
-fn floor_preparation_scope_fixture_row(name: String) -> String {
-  fold(floor_preparation_scope_diff_fixtures, init:  "", f: (acc, row) =>
-    if length(xs: acc) > 0 {
-      acc
-    } else {
-      if floor_preparation_scope_row_field(row: row, key: "name") == name {
-        row
-      } else {
-        acc
-      }
+fn floor_preparation_scope_fixture_row(name: String) -> Optional<FloorPreparationScopeFixtureRow> {
+  fold(floor_preparation_scope_diff_fixtures, init:  none, f: (acc, row) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if row.name == name {
+          Present { value: row }
+        } else {
+          acc
+        }
     })
 }
 
 fn floor_preparation_scope_fixture_names() -> List<String> {
   fold(floor_preparation_scope_diff_fixtures, init:  [], f: (acc, row) =>
-    let name = floor_preparation_scope_row_field(row: row, key: "name")
-    if length(xs: name) == 0 {
+    if floor_preparation_scope_contains(xs: acc, target: row.name) {
       acc
     } else {
-      if floor_preparation_scope_contains(xs: acc, target: name) {
-        acc
-      } else {
-        concat(acc, [ name ])
-      }
+      concat(acc, [ row.name ])
     })
 }
 
-// THE FILES A REVISION TOUCHES, from a fixture row. An empty `files=` is the empty diff, which is a real
+// THE FILES A REVISION TOUCHES, from a fixture row. The empty list is the empty diff, which is a real
 // case: a re-run of the same revision must still prepare the forced entries and must not silently prepare
-// nothing.
+// nothing. A name with no row is also the empty diff -- and `fixture_names` only ever yields committed
+// names, so no caller can widen on a typo.
 fn floor_preparation_scope_diff_files(name: String) -> List<String> {
-  let row = floor_preparation_scope_fixture_row(name: name)
-  let list_text = floor_preparation_scope_row_field(row: row, key: "files")
-  if length(xs: list_text) == 0 {
-    []
-  } else {
-    fold(split(s: list_text, delimiter: ","), init:  [], f: (acc, piece) =>
-      if length(xs: piece) == 0 {
-        acc
-      } else {
-        concat(acc, [ piece ])
-      })
+  match floor_preparation_scope_fixture_row(name: name) {
+    Present { value: row } => row.files
+    Absent => []
   }
 }
 
@@ -474,7 +465,7 @@ fn floor_preparation_scope_line(name: String, scoping: FloorPreparationScoping, 
 // ---------------------------------------------------------------------------
 
 type FloorPreparationScopePlanned
-  = Planned { entries: List<String>, reason: String }
+  = Planned { entries: List<String>, reason: String, narrowed: Bool }
   | Refused { cause: String }
 
 type FloorPreparationScopeNthWalk {
@@ -555,18 +546,19 @@ fn floor_preparation_scope_line_parse(line: String) -> FloorPreparationScopePlan
                       Absent => Refused { cause: concat("line for ", concat(name, " has no entries field")) }
                       Present { value: entries_text } =>
                         let entries = floor_preparation_scope_split_entries(text: entries_text)
-                        if narrowed != "yes" && narrowed != "no" {
-                          Refused { cause: concat("narrowed field is neither yes nor no: ", narrowed) }
+                        if narrowed != "true" && narrowed != "false" {
+                          Refused { cause: concat("narrowed field is neither true nor false: ", narrowed) }
                         } else if !floor_preparation_scope_count_is_honest(rendered: count, actual: entries) {
                           // A line whose count does not match its own list is corrupt, not merely odd:
                           // trusting either half is the false-green this reader exists to stop.
                           Refused { cause: concat("count/entries mismatch for ", name) }
-                        } else if narrowed == "yes" && length(xs: entries) == 0 {
-                          Refused { cause: concat("line for ", concat(name, " claims narrowed=yes with an empty entry list")) }
+                        } else if narrowed == "true" && length(xs: entries) == 0 {
+                          Refused { cause: concat("line for ", concat(name, " claims narrowed=true with an empty entry list")) }
                         } else {
                           Planned {
                             entries: entries,
                             reason: concat(name, concat("/", concat(narrowed, concat(":", reason)))),
+                            narrowed: narrowed == "true",
                           }
                         }
                     }
@@ -581,15 +573,20 @@ fn floor_preparation_scope_line_parse(line: String) -> FloorPreparationScopePlan
 
 // WHAT A CONSUMER PLAN LOOKS LIKE: the planned entries for a revision, or the refusal to plan.
 // A Whole decision plans the WHOLE population -- the caller's population, not some list carried
-// inside the line -- so a consumer never trusts the line's copy over the model's rows.
+// inside the line -- so a consumer never trusts the line's copy over the model's rows. The narrowed
+// flag is a TYPED Bool carried out of the reader, not a substring to squint at: the renderer says
+// `narrowed=true|false`, the reader accepts exactly those two spellings, and anything else is a
+// refusal. (An earlier draft of this reader accepted `yes|no` -- a wire format its own renderer
+// never emitted. `--target rust` is what caught the class: see claim 13, which round-trips the
+// real rendered line and fails on any reader that cannot read what the writer writes.)
 fn floor_preparation_scope_planned_entries(read: FloorPreparationScopePlanned, population: List<String>) -> FloorPreparationScopePlanned {
   match read {
     Refused { cause: c } => Refused { cause: c }
-    Planned { entries: e, reason: r } =>
-      if floor_preparation_scope_contains(xs: r, target: "/yes:") {
-        Planned { entries: e, reason: r }
+    Planned { entries: e, reason: r, narrowed: n } =>
+      if n {
+        Planned { entries: e, reason: r, narrowed: n }
       } else {
-        Planned { entries: population, reason: r }
+        Planned { entries: population, reason: r, narrowed: false }
       }
   }
 }

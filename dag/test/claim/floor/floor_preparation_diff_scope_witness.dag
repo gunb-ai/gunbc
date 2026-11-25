@@ -19,8 +19,8 @@ import v2.workflow.floor_preparation_capture_runner {
   PlanRefused,
 }
 import v2.workflow.floor_preparation_diff_scope {
+  FloorPreparationScopeUniversalRow,
   floor_preparation_scope_diff_files,
-  floor_preparation_scope_diff_fixtures,
   floor_preparation_scope_edge_rows,
   floor_preparation_scope_edge_rows_variant,
   floor_preparation_scope_entries_for,
@@ -389,9 +389,9 @@ fn universal_never_narrows(name: String) -> Bool {
   }
 }
 
-fn floor_preparation_scope_markers_matching(file: String) -> List<String> {
+fn floor_preparation_scope_markers_matching(file: String) -> List<FloorPreparationScopeUniversalRow> {
   fold(floor_preparation_scope_marker_rows, init:  [], f: (acc, row) =>
-    let marker = floor_preparation_scope_row_marker(row: row)
+    let marker = row.marker
     if length(xs: marker) == 0 {
       acc
     } else {
@@ -401,26 +401,6 @@ fn floor_preparation_scope_markers_matching(file: String) -> List<String> {
         acc
       }
     })
-}
-
-fn floor_preparation_scope_row_marker(row: String) -> String {
-  let pieces = split(s: row, delimiter: "|")
-  match pieces.first() {
-    Present { value: head } =>
-      match floor_preparation_scope_strip_key(head: head) {
-        Present { value: v } => v
-        Absent => ""
-      }
-    Absent => ""
-  }
-}
-
-fn floor_preparation_scope_strip_key(head: String) -> Optional<String> {
-  let pieces = split(s: head, delimiter: "=")
-  match pieces.skip(n: 1).first() {
-    Present { value: v } => Present { value: v }
-    Absent => Absent
-  }
 }
 
 fn floor_preparation_scope_marker_applies(file: String, marker: String) -> Bool {
@@ -491,7 +471,7 @@ fn floor_preparation_marker_present(marker: String) -> Bool {
     if acc {
       acc
     } else {
-      floor_preparation_scope_row_marker(row: row) == marker
+      row.marker == marker
     })
 }
 
@@ -607,7 +587,7 @@ test fn floor_preparation_a_reached_entry_pays_and_an_unreached_one_does_not() -
 test fn floor_preparation_a_corrupt_plan_line_refuses_and_absence_sweeps_the_full_roster() -> Bool {
   let sweep = floor_preparation_runner_plan_from_line(line: "")
   let tampered = floor_preparation_runner_plan_from_line(
-    line: "floor-diff-scope diff=x reason=r selected_entries=2 of=16 narrowed=yes entries=a,b,c")
+    line: "floor-diff-scope diff=x reason=r selected_entries=2 of=16 narrowed=false entries=a,b,c")
   let junk = floor_preparation_runner_plan_from_line(line: "floor-cost-debt-population rows=0")
   match sweep {
     Sweep { entries: e, reason: _ } =>
@@ -622,6 +602,10 @@ test fn floor_preparation_a_corrupt_plan_line_refuses_and_absence_sweeps_the_ful
         }
     _ => false
   }
+}
+
+fn text_contains(haystack: String, needle: String) -> Bool {
+  split(s: haystack, delimiter: needle).length() > 1
 }
 
 // The pairing royal-newt-240 required: the text claim (the runner references the decision) beside
