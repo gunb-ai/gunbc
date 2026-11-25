@@ -19,6 +19,7 @@ import gunbc.fleet.gpu_interconnect_observation {
 }
 import gunbc.fleet.gpu_power_cap_boot_state {
   srv1_power_cap_boot_units, srv1_cap_application_claims, srv1_gunbc_cap_unit_presence, unit_lines_can_fail,
+  all_power_cap_boot_units, power_cap_rows_with_no_lines_read,
   gunbc_cap_unit_is_installed, boot_cap_actually_reduces_the_device_default, board_rests_on_its_own_default,
   cap_application_claim_starts_from_the_device_default,
   // The 2026-11-24 hand-applied caps, imported because the two srv3/srv4 rows below COMPUTE their evidence column
@@ -363,6 +364,20 @@ fn cap_below_default_phrase() -> String {
   if srv1_power_cap_boot_units.all(u => boot_cap_actually_reduces_the_device_default(unit: u)) { "cap sits below the card's own read default" } else { "CAP NOT BELOW THE READ DEFAULT" }
 }
 
+// THE FLEET BEYOND srv1, since 2026-11-24: three more hosts carry a cap mechanism, and one of them (srv3's
+// drop-in) is a digest whose lines nobody has read. Both counts are said, because the second is the one that keeps
+// the first honest -- a fleet readout that reported only how many mechanisms exist would count a file it has never
+// opened alongside one whose every line has been checked.
+fn fleet_cap_rows_phrase() -> String {
+  let rows = all_power_cap_boot_units()
+  let unread = power_cap_rows_with_no_lines_read()
+  if rows.length() > 0 && unread.length() < rows.length() {
+    join([to_string(n: rows.length()), " cap mechanisms recorded across the fleet, ", to_string(n: unread.length()), " whose lines were never read"])
+  } else {
+    "NO FLEET CAP MECHANISM HAS ANY READ LINES"
+  }
+}
+
 fn max_q_phrase() -> String {
   if board_rests_on_its_own_default(board: gpu_board_04) { "Max-Q rests on its own default" } else { "MAX-Q NOT ON ITS DEFAULT" }
 }
@@ -376,7 +391,7 @@ fn gunbc_unit_phrase() -> String {
 }
 
 fn srv1_power_cap_evidence() -> String {
-  join([unit_lines_phrase(), "; ", cap_below_default_phrase(), "; ", max_q_phrase(), "; ", journal_phrase(), "; ", gunbc_unit_phrase()])
+  join([unit_lines_phrase(), "; ", cap_below_default_phrase(), "; ", fleet_cap_rows_phrase(), "; ", max_q_phrase(), "; ", journal_phrase(), "; ", gunbc_unit_phrase()])
 }
 
 fn migration_row_markdown(r: ConsumerMigrationRow) -> MarkdownTableRow {

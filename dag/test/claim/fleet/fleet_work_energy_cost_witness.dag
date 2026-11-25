@@ -1,6 +1,7 @@
 module test.claim.fleet.fleet_work_energy_cost_witness
 
-import std.types { Bool, Int, NonEmptyStr }
+import std.types { Bool, Int, NonEmptyStr, String }
+import std.algebra { string_contains }
 import std.measure { second, watt, watt_count, money_per_kilowatt_hour_micros }
 import extdeps.energy.con_edison {
   el1_marginal_volumetric_rate, el1_delivery_rate, el1_system_benefit_rate, el1_supply_rate,
@@ -8,7 +9,8 @@ import extdeps.energy.con_edison {
 }
 import gunbc.fleet.fleet_host_power {
   fleet_host_power_roster, host_power_profile, power_is_measured,
-  measured_host_count, inferred_host_count, srv1_power,
+  measured_host_count, inferred_host_count, srv1_power, host_power_profile, cpu_power_cap_readings,
+  reported_saving_upper_bound, power_is_measured,
   MeasuredOnHost, InferredFromSimilarBuild, PowerProvenance,
   confounded_host_power_readings, host_figure_is_still_inferred,
 }
@@ -93,99 +95,78 @@ test fn witness_inferred_applicable_host_derives_but_is_flagged_unmeasured() -> 
   }
 }
 
-// The roster's own honesty: exactly one host is measured today and three are inferred. This reds
-// when access to srv2/srv3/srv4 lands and their rows become measurements -- which is the correct
-// time to revisit it, and is what per_host_measurement_trigger names.
-test fn witness_roster_reports_one_measured_and_three_inferred() -> Bool {
-  measured_host_count() == 1
-    && inferred_host_count() == 3
+// The roster's own honesty: three hosts are measured today and one is inferred. This reded on
+// 2026-11-24, when the srv3 and srv4 rows stopped being carried on srv1's build similarity and became their
+// own ssh readings; the one that remains is srv2, which still refuses the key, and
+// per_host_measurement_trigger now names it and nothing else.
+test fn witness_roster_reports_three_measured_and_srv2_inferred() -> Bool {
+  measured_host_count() == 3
+    && inferred_host_count() == 1
     && count(fleet_host_power_roster) == 4
     && power_is_measured(p: srv1_power)
+    && match host_power_profile(host: "srv2") {
+        Absent => false
+        Present { value: p } => !power_is_measured(p: p)
+      }
 }
 
-// THE INTEGRATION, AND THE CONTROL THAT PROVES IT IS WIRED. srv1's assembly changed materially (two RTX PRO
-// 6000 boards added, and psu_srv1 replaced by psu_srv1_b), so the 2026-09-05 94 W figure no longer applies to
-// the machine it prices. work_energy_cost must REFUSE it with the typed cause that names the measurement we
-// need -- not price it silently, and not substitute any configured power ceiling for the missing measurement.
-// Removing the applicability join in work_energy_cost makes this RED: srv1 would derive again, which is exactly
-// the bypass this migration removes.
-// The refusal carries what a fresh measurement must cover: srv1 as installed now, both PRO 6000 boards and
-// the PG-1600G, never the replaced supply.
-test fn witness_changed_assembly_refuses_the_stale_measured_reading() -> Bool {
-  match work_energy_cost(host: "srv1", duration: second(count: 600)) {
-    EnergyCostRefused { cause: cause } => match cause {
-      ReadingAppliesToSupersededAssembly { host: refused_host, provenance: prov, measure_against: current } =>
-        (refused_host as String) == "srv1"
-          && match prov {
-               MeasuredOnHost { sample_count: _, sensor: _, observed_on: observed } => (observed as String) == "2026-09-05"
-               InferredFromSimilarBuild { basis_host: _, basis_reason: _ } => false
-             }
-          && list_member(xs: current, x: gpu_board_04, eq: physical_asset_identity_eq)
-          && list_member(xs: current, x: gpu_board_01, eq: physical_asset_identity_eq)
-          && list_member(xs: current, x: psu_srv1_b, eq: physical_asset_identity_eq)
-          && !list_member(xs: current, x: psu_srv1, eq: physical_asset_identity_eq)
-      NoPowerProfileDeclared { host: _ } => false
-    }
-    EnergyCostDerived { cost: _ } => false
+// -------------------------------------------------------------------------------------------
+// THE 2.0 GHz CAP READINGS. srv3 and srv4 now price work on figures taken under a ceiling their
+// srv1 basis never had, so the ceiling has to be a field and not a rumour, and the pair behind each
+// figure has to survive as a pair: a single "saving" number would hide the fact that the load changed
+// between the two reads.
+// -------------------------------------------------------------------------------------------
+
+// EVERY FIGURE SITS UNDER A NAMED CEILING, and the capped hosts' profile figures are the upper end of
+// their own band -- the row and the band beside it are the same reading, so neither can drift alone. srv1
+// and srv2 keep the 3.0 GHz ceiling they were read under, which is the point: without the field, two of
+// these four figures would look comparable to the other two and not be.
+test fn witness_capped_hosts_carry_their_ceiling_and_their_band() -> Bool {
+  let s3 = match host_power_profile(host: "srv3") {
+    Absent => false
+    Present { value: p } => p.cpu_ceiling_mhz == 2000 && watt_count(w: p.draw) == 31
+  }
+  let s4 = match host_power_profile(host: "srv4") {
+    Absent => false
+    Present { value: p } => p.cpu_ceiling_mhz == 2000 && watt_count(w: p.draw) == 42
+  }
+  let s2 = match host_power_profile(host: "srv2") {
+    Absent => false
+    Present { value: p } => p.cpu_ceiling_mhz == 3000
+  }
+  s3 && s4 && s2 && srv1_power.cpu_ceiling_mhz == 3000
+}
+
+// THE PAIR IS COMPLETE AND ORDERED for both capped hosts -- one uncapped reading, one capped band, the
+// band's own ends in order -- and no reading pretends to be more than what the instrument was: single
+// readings of a named sensor.
+test fn witness_cap_readings_are_paired_ordered_and_name_their_instrument() -> Bool {
+  ["srv3", "srv4"].all(h =>
+    count(filter(cpu_power_cap_readings, r => r.host == h && r.ceiling_mhz == 3000)) == 1
+      && count(filter(cpu_power_cap_readings, r => r.host == h && r.ceiling_mhz == 2000)) == 1
+      && filter(cpu_power_cap_readings, r => r.host == h).all(r =>
+        watt_count(w: r.low_watts) <= watt_count(w: r.high_watts)
+          && string_contains(s: r.instrument as String, pattern: "apm_xgene")
+          && !string_contains(s: r.instrument as String, pattern: "average of"))
+  )
+}
+
+// THE SAVING IS A BOUND, AND ONLY WHERE THE TWO READS EXIST: present on the two hosts that were read
+// before and after, absent on the two that were not. The absence is the load-bearing half -- a fold that
+// invented a saving for srv1 or srv2 out of a nine-month-old read taken at another ceiling would sail
+// through a test that only checked the positive cases.
+fn bound_matches(host: NonEmptyStr, expected_watts: Nat) -> Bool {
+  match reported_saving_upper_bound(host: host) {
+    Absent => expected_watts == 0
+    Present { value: w } => expected_watts > 0 && watt_count(w: w) == expected_watts
   }
 }
 
-// THE STALE FIGURE STAYS AS HISTORY. srv1's 94 W measurement is not deleted by refusing to price it: the
-// reading is still declared, still measured (a MeasuredOnHost of 2026-09-05), still queryable, and its
-// applicability is the PRE-CHANGE configuration -- no accelerator and the original psu_srv1, not the new
-// psu_srv1_b. Refusing to price is not the same as forgetting.
-test fn witness_stale_measured_reading_is_kept_as_history() -> Bool {
-  power_is_measured(p: srv1_power)
-    && watt_count(w: srv1_power.draw) == 94
-    && !list_member(xs: srv1_power.applies_to, x: gpu_board_04, eq: physical_asset_identity_eq)
-    && !list_member(xs: srv1_power.applies_to, x: gpu_board_01, eq: physical_asset_identity_eq)
-    && !list_member(xs: srv1_power.applies_to, x: psu_srv1_b, eq: physical_asset_identity_eq)
-}
-
-// THE CURRENT-ASSEMBLY JOIN READS THE AUTHORITIES, INCLUDING THE INSTALLED ACCELERATOR BOARDS. srv1 now
-// carries gpu_board_01 and gpu_board_04 (from gunbc.fleet.fleet_physical_inventory
-// installed_gpu_board_containments) and psu_srv1_b (from gunbc.fleet.fleet_host_assembly's own edges), and no
-// longer psu_srv1. srv2 has no accelerator. This reds if host_installed_components stops joining the physical
-// inventory's installed-GPU containment edges -- the very integration that makes a stale non-accelerated
-// figure refuse srv1.
-test fn witness_current_assembly_reflects_installed_gpu_and_psu() -> Bool {
-  let srv1_now = host_installed_components(host: operator_host_srv1)
-  let srv2_now = host_installed_components(host: operator_host_srv2)
-  list_member(xs: srv1_now, x: gpu_board_04, eq: physical_asset_identity_eq)
-    && list_member(xs: srv1_now, x: gpu_board_01, eq: physical_asset_identity_eq)
-    && list_member(xs: srv1_now, x: psu_srv1_b, eq: physical_asset_identity_eq)
-    && !list_member(xs: srv1_now, x: psu_srv1, eq: physical_asset_identity_eq)
-    && !list_member(xs: srv2_now, x: gpu_board_05, eq: physical_asset_identity_eq)
-}
-
-// THE POSITIVE HALF, AND THE INFERRED-HOST GUARD. srv3 came from srv1's build too but only adds a liquid
-// cooler -- no power-relevant change -- so its figure still applies and it keeps pricing; this reds if the
-// cooler edge is dropped from host_installed_components, since the current set would no longer cover what the
-// reading declares. srv4 is the counter-case: it is inferred from the SAME accelerator-free srv1 figure but its
-// build now carries two RTX 2000 Ada boards (gpu_board_05, gpu_board_06), so no measurement describes srv4 as it stands and it must REFUSE
-// with a cause naming srv1 as the basis and a non-empty measurement to take -- rather than price on a figure
-// that never covered its accelerators. Its applies_to naming the GPUs would silently pass the join here; this
-// witness is what keeps that fabrication red.
-test fn witness_cooled_inferred_host_prices_but_accelerated_inferred_host_refuses() -> Bool {
-  let srv3_ok = match work_energy_cost(host: "srv3", duration: second(count: 600)) {
-    EnergyCostDerived { cost: _ } => true
-    EnergyCostRefused { cause: _ } => false
-  }
-  let srv4_refuses = match work_energy_cost(host: "srv4", duration: second(count: 600)) {
-    EnergyCostRefused { cause: cause } => match cause {
-      ReadingAppliesToSupersededAssembly { host: refused_host, provenance: prov, measure_against: current } =>
-        (refused_host as String) == "srv4"
-          && match prov {
-               InferredFromSimilarBuild { basis_host: basis, basis_reason: _ } => (basis as String) == "srv1"
-               MeasuredOnHost { sample_count: _, sensor: _, observed_on: _ } => false
-             }
-          && list_member(xs: current, x: gpu_board_05, eq: physical_asset_identity_eq)
-          && list_member(xs: current, x: gpu_board_06, eq: physical_asset_identity_eq)
-      NoPowerProfileDeclared { host: _ } => false
-    }
-    EnergyCostDerived { cost: _ } => false
-  }
-  srv3_ok && srv4_refuses
+test fn witness_saving_bound_exists_only_where_both_reads_do() -> Bool {
+  bound_matches(host: "srv3", expected_watts: 34)
+    && bound_matches(host: "srv4", expected_watts: 59)
+    && bound_matches(host: "srv1", expected_watts: 0)
+    && bound_matches(host: "srv2", expected_watts: 0)
 }
 
 // THE 2026-11-24 STEP DOWN DID NOT BUY A MEASURED FIGURE. The operator read each Strata host's CPU package power

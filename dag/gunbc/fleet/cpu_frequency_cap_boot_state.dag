@@ -1,0 +1,267 @@
+module gunbc.fleet.cpu_frequency_cap_boot_state
+
+// THE CPU FREQUENCY CAP AS IT STANDS ON A HOST: the unit and the script that put a ceiling on every cpufreq
+// policy, the bytes each file holds, and what the host reported about itself after they ran. The DECISION to cap is
+// not this module's -- it is the operator's, 2026-11-24, taken for power after a surge-protecting strip tripped. The
+// plan that works the host thermal operating point (gunbc.plans.host_thermal_operating_point) holds the 2026-11-05
+// 2.2 GHz mitigation as an intention with an end condition; this module holds what is installed now.
+//
+// WHY THIS MODULE EXISTS AT ALL. The domain had no home, and a domain whose home does not exist is a modeling
+// obligation rather than a row to skip (gunbc.design_argument::conformance). What the search found, and why none of
+// it is the home: gunbc.plans.host_thermal_operating_point names scaling_max_freq only as an in-OS fact with no read
+// path, and it is a plan, which carries intentions and not receipts (gunbc.design_argument::plans_are_intentions);
+// gunbc.fleet.gpu_power_cap_boot_state owns the same SHAPE -- a cap mechanism as installed, its bytes digested, its
+// own claim never confused with a realization -- but only for a GPU power limit applied by nvidia-smi: its
+// BootCapCommand addresses a GPU UUID and a Watt target, while this cap addresses every cpufreq policy of a host and
+// a kHz ceiling. Reusing that module's shape, and not its type, is the reuse this case allows
+// (gunbc.design_argument::minimize_redundancy); forcing these files into it would state a fact about cards in the
+// module that decides about cards.
+//
+// WHAT IS NOT CLAIMED HERE. Enablement and the read-back of the ceiling are READ from the host, so they are
+// receipts naming the command that produced them. Nothing here says the cap HOLDS at a moment later than that pass:
+// the same lesson gunbc.fleet.gpu_power_cap_boot_state states for a GPU cap unit -- an enabled unit and a oneshot
+// reporting success say someone asked at boot. The repeated read of scaling_max_freq per policy, which the thermal
+// plan records as having no read path, is named as the next rung in
+// gunbc.integration_concern.cpu_frequency_cap_readback_has_no_instrument; this module does not invent one.
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.content_hash { sha256_hex_of_text }
+import std.measure { Hertz, hertz, hertz_count }
+import std.optional { Optional, Present, Absent }
+import product.host_identity { HostIdentity, host_identity_eq }
+import gunbc.fleet.fleet_host_identity {
+  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
+}
+import extdeps.systemd.unit_file {
+  SystemdUnitFile, ServiceUnitFile, Description, After, ServiceType, OneshotMode, RemainAfterExit, ExecStart,
+  Installable, WantedBy, serialize_systemd_unit_file,
+}
+
+// THE DECIDED CEILING, in the scale the kernel's sysfs file uses. `scaling_max_freq` is a kHz count, so the number
+// the script writes and the operator's words ("2 GHz") are one quantity in two scales; both are kept -- the kHz one
+// because it is what the script writes and reads back, the Hertz one because it is what a consumer compares with a
+// clock (gunbc.design_argument::single_authority: one number, two renderings of it, no second authority).
+data cpu_frequency_cap_kilohertz: Nat = 2000000
+
+fn cpu_frequency_cap_hertz() -> Hertz {
+  hertz(count: cpu_frequency_cap_kilohertz * 1000)
+}
+
+fn cpu_frequency_cap_hertz_count() -> Nat {
+  hertz_count(h: cpu_frequency_cap_hertz())
+}
+
+// THE UNIT, AS THIS MODEL RENDERS IT: built through the systemd unit-file authority (extdeps.systemd.unit_file --
+// its directives, its section machinery, its serializer) rather than spelled out as text here, so the bytes on a
+// host and the bytes this row emits have ONE producer. The directive order is the installed file's order, and the
+// digest fold below is what makes that order a checked fact rather than a guess: this render digests to the same 64
+// hex digits `sha256sum` printed on all four hosts.
+data cpu_frequency_cap_unit: SystemdUnitFile = ServiceUnitFile {
+  unit: [
+    Description { text: "Cap CPU frequency at 2.0 GHz (operator 2026-11-24, power after a surge-strip trip). Hand edit, to be recorded in the repo." as NonEmptyStr },
+    After { target: "systemd-modules-load.service" as NonEmptyStr },
+  ],
+  service: [
+    ServiceType { mode: OneshotMode },
+    RemainAfterExit { active: true },
+    ExecStart { command: "/usr/local/sbin/cpu-freq-cap.sh" as NonEmptyStr },
+  ],
+  install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] },
+}
+
+fn cpu_frequency_cap_unit_bytes() -> String {
+  serialize_systemd_unit_file(file: cpu_frequency_cap_unit)
+}
+
+fn cpu_frequency_cap_unit_sha256() -> String {
+  sha256_hex_of_text(text: cpu_frequency_cap_unit_bytes())
+}
+
+// THE APPLYING SCRIPT, verbatim, in the file's own order. Unlike the unit this is NOT rendered through a grammar:
+// extdeps.languages.bash carries a bash grammar, and this file is /bin/sh with a `for` over a glob, a bracket test,
+// an arithmetic assignment and a braced group -- none of which that grammar has been shown to express. The lines are
+// therefore the transcribed bytes, and all the module may say about them is what the digest join ties down: a
+// transcription that dropped a line, a space of indentation, or one quote digests differently and the fold below
+// goes false. The gap is carried in gunbc.integration_concern rather than papered over by rendering something close.
+data cpu_frequency_cap_script_lines: List<NonEmptyStr> = [
+  "#!/bin/sh" as NonEmptyStr,
+  "# Cap every cpufreq policy's scaling_max_freq (operator 2026-11-24: Altra at 2.0 GHz for power, after a surge-strip" as NonEmptyStr,
+  "# trip). Fails closed: a missing policy set or a readback mismatch exits 1. Hand edit, to be recorded in the repo." as NonEmptyStr,
+  "set -eu" as NonEmptyStr,
+  "CAP_KHZ=2000000" as NonEmptyStr,
+  "n=0" as NonEmptyStr,
+  "for p in /sys/devices/system/cpu/cpufreq/policy*; do" as NonEmptyStr,
+  "  [ -d \"$p\" ] || continue" as NonEmptyStr,
+  "  echo \"$CAP_KHZ\" > \"$p/scaling_max_freq\"" as NonEmptyStr,
+  "  got=$(cat \"$p/scaling_max_freq\")" as NonEmptyStr,
+  "  [ \"$got\" = \"$CAP_KHZ\" ] || { echo \"readback mismatch on $p: $got\"; exit 1; }" as NonEmptyStr,
+  "  n=$((n + 1))" as NonEmptyStr,
+  "done" as NonEmptyStr,
+  "[ \"$n\" -gt 0 ] || { echo \"no cpufreq policies found\"; exit 1; }" as NonEmptyStr,
+  "echo \"capped $n cpufreq policies at $CAP_KHZ kHz\"" as NonEmptyStr,
+]
+
+fn cpu_frequency_cap_script_bytes() -> String {
+  join(map(cpu_frequency_cap_script_lines, l => l as String), "\n") + "\n"
+}
+
+fn cpu_frequency_cap_script_sha256() -> String {
+  sha256_hex_of_text(text: cpu_frequency_cap_script_bytes())
+}
+
+// WHAT IS INSTALLED ON ONE HOST, and how each fact was got. The two digests are what `sha256sum` printed on that
+// host; enabled_at_boot and active_at_read are `systemctl is-enabled` and `is-active`; policy_count_read and
+// policy_ceiling_read_khz are a read of every policy's scaling_max_freq -- all in one ssh pass over the four Altra
+// hosts. Nothing here says the cap is in force at a moment later than that pass.
+type CpuFrequencyCapInstall {
+  host: HostIdentity
+  unit_path: NonEmptyStr
+  script_path: NonEmptyStr
+  unit_sha256_computed_on_host: NonEmptyStr
+  script_sha256_computed_on_host: NonEmptyStr
+  enabled_at_boot: Bool
+  active_at_read: Bool
+  policy_count_read: Nat
+  policy_ceiling_read_khz: Nat
+  installed_on: NonEmptyStr
+  read_on: NonEmptyStr
+}
+
+// THE FOUR ALTRA HOSTS, read at the final-state pass of 2026-11-24 22:03-22:05 UTC. All four carry the same two
+// files, and the fold over this roster is what says so: four rows whose digests each equal the render of the single
+// unit and script above. srv3 and srv4 were re-enabled at ~22:02 after being disabled at ~19:00, and their hosts
+// rebooted at ~21:57 when the strip tripped a second time; that history is in installed_on rather than a state
+// field, because what the host reported at the pass is a state and not a sequence.
+data cpu_frequency_cap_installs: List<CpuFrequencyCapInstall> = [
+  CpuFrequencyCapInstall {
+    host: operator_host_srv1,
+    unit_path: "/etc/systemd/system/cpu-freq-cap.service" as NonEmptyStr,
+    script_path: "/usr/local/sbin/cpu-freq-cap.sh" as NonEmptyStr,
+    unit_sha256_computed_on_host: "35b24e44a4384ecd43d70d15a7d2fe8c77a1106565e79bcedee9f5cda3a08630" as NonEmptyStr,
+    script_sha256_computed_on_host: "4a940fd578f0f99a71af1d88fca92623bdb669e68f92e7b495bb858ee3e3f027" as NonEmptyStr,
+    enabled_at_boot: true,
+    active_at_read: true,
+    policy_count_read: 128,
+    policy_ceiling_read_khz: 2000000,
+    installed_on: "2026-11-24 ~22:00 UTC" as NonEmptyStr,
+    read_on: "2026-11-24 22:03-22:05 UTC, ssh on srv1: sha256sum of both files, systemctl is-enabled and is-active, and every /sys/devices/system/cpu/cpufreq/policy*/scaling_max_freq" as NonEmptyStr,
+  },
+  CpuFrequencyCapInstall {
+    host: operator_host_srv2,
+    unit_path: "/etc/systemd/system/cpu-freq-cap.service" as NonEmptyStr,
+    script_path: "/usr/local/sbin/cpu-freq-cap.sh" as NonEmptyStr,
+    unit_sha256_computed_on_host: "35b24e44a4384ecd43d70d15a7d2fe8c77a1106565e79bcedee9f5cda3a08630" as NonEmptyStr,
+    script_sha256_computed_on_host: "4a940fd578f0f99a71af1d88fca92623bdb669e68f92e7b495bb858ee3e3f027" as NonEmptyStr,
+    enabled_at_boot: true,
+    active_at_read: true,
+    policy_count_read: 128,
+    policy_ceiling_read_khz: 2000000,
+    installed_on: "2026-11-24 ~22:00 UTC" as NonEmptyStr,
+    read_on: "2026-11-24 22:03-22:05 UTC, ssh on srv2: the same four reads as srv1" as NonEmptyStr,
+  },
+  CpuFrequencyCapInstall {
+    host: operator_host_srv3,
+    unit_path: "/etc/systemd/system/cpu-freq-cap.service" as NonEmptyStr,
+    script_path: "/usr/local/sbin/cpu-freq-cap.sh" as NonEmptyStr,
+    unit_sha256_computed_on_host: "35b24e44a4384ecd43d70d15a7d2fe8c77a1106565e79bcedee9f5cda3a08630" as NonEmptyStr,
+    script_sha256_computed_on_host: "4a940fd578f0f99a71af1d88fca92623bdb669e68f92e7b495bb858ee3e3f027" as NonEmptyStr,
+    enabled_at_boot: true,
+    active_at_read: true,
+    policy_count_read: 128,
+    policy_ceiling_read_khz: 2000000,
+    installed_on: "2026-11-24 ~22:02 UTC, re-enabled after a disable at ~19:00 and the second strip trip's reboot at ~21:57" as NonEmptyStr,
+    read_on: "2026-11-24 22:03-22:05 UTC, ssh on srv3: the same four reads as srv1" as NonEmptyStr,
+  },
+  CpuFrequencyCapInstall {
+    host: operator_host_srv4,
+    unit_path: "/etc/systemd/system/cpu-freq-cap.service" as NonEmptyStr,
+    script_path: "/usr/local/sbin/cpu-freq-cap.sh" as NonEmptyStr,
+    unit_sha256_computed_on_host: "35b24e44a4384ecd43d70d15a7d2fe8c77a1106565e79bcedee9f5cda3a08630" as NonEmptyStr,
+    script_sha256_computed_on_host: "4a940fd578f0f99a71af1d88fca92623bdb669e68f92e7b495bb858ee3e3f027" as NonEmptyStr,
+    enabled_at_boot: true,
+    active_at_read: true,
+    policy_count_read: 128,
+    policy_ceiling_read_khz: 2000000,
+    installed_on: "2026-11-24 ~22:02 UTC, re-enabled after a disable at ~19:00 and the second strip trip's reboot at ~21:57" as NonEmptyStr,
+    read_on: "2026-11-24 22:03-22:05 UTC, ssh on srv4: the same four reads as srv1" as NonEmptyStr,
+  },
+]
+
+fn cpu_frequency_cap_install_on(host: HostIdentity) -> CpuFrequencyCapInstall? {
+  filter(cpu_frequency_cap_installs, i => host_identity_eq(a: i.host, b: host)).first()
+}
+
+// IS THE INSTALLED UNIT RENDERED? Per host, the digest `sha256sum` printed against the digest of this module's
+// render: equal on all four, which is what makes this row a RENDERED one rather than a transcription. It is the
+// reason the unit is built through extdeps.systemd.unit_file rather than spelled out here -- on those bytes the
+// grammar's output and the file the operator wrote are one file, so nothing in this module is a second authority on
+// what the unit says.
+fn cpu_frequency_cap_unit_is_rendered_on(host: HostIdentity) -> Bool {
+  match cpu_frequency_cap_install_on(host: host) {
+    Absent => false
+    Present { value: i } => (i.unit_sha256_computed_on_host as String) == cpu_frequency_cap_unit_sha256()
+  }
+}
+
+// THE SCRIPT'S DIGEST IS THE MODEL'S JOIN AND THE HOST'S ANSWER AT ONCE, so equality is checkable in both
+// directions and a transcription error is a false fold, not a silent drift.
+fn cpu_frequency_cap_script_matches_record(host: HostIdentity) -> Bool {
+  match cpu_frequency_cap_install_on(host: host) {
+    Absent => false
+    Present { value: i } => (i.script_sha256_computed_on_host as String) == cpu_frequency_cap_script_sha256()
+  }
+}
+
+// THE FOUR HOSTS CARRY ONE ANSWER, not four: one unit's bytes and one script's bytes on every Altra host the cap was
+// asked for. A fold, so the claim cannot be quietly true for two hosts and false for two.
+fn cpu_frequency_cap_bytes_are_identical_across_fleet() -> Bool {
+  match cpu_frequency_cap_installs.first() {
+    Absent => false
+    Present { value: first } =>
+      cpu_frequency_cap_installs.all(i =>
+        i.unit_sha256_computed_on_host == first.unit_sha256_computed_on_host
+          && i.script_sha256_computed_on_host == first.script_sha256_computed_on_host
+      )
+  }
+}
+
+// EVERY INSTALLED POLICY READ THE DECIDED CEILING at the pass. A receipt of a read, not a ceiling that holds now:
+// the thermal plan's standing finding is that these in-OS facts have no read path, so this read was an ad-hoc ssh
+// pass, and making it repeatable is the concern's next rung rather than this row's claim.
+fn cpu_frequency_cap_readback_matches_decision() -> Bool {
+  cpu_frequency_cap_installs.all(i => i.policy_ceiling_read_khz == cpu_frequency_cap_kilohertz && i.policy_count_read > 0)
+}
+
+// THE MACHINE CLASS THIS CAP WAS ASKED FOR, as read on the four hosts. It matters because the ceiling is a property
+// of that class' cpufreq driver: all four report cppc_cpufreq, Neoverse-N1, a 1.0-3.0 GHz range and 128 policies, so
+// a host of another class could take these bytes and not mean the same thing by them.
+type AltraCpuFrequencyCapability {
+  host: HostIdentity
+  driver: NonEmptyStr
+  core: NonEmptyStr
+  range_low_khz: Nat
+  range_high_khz: Nat
+  policy_count: Nat
+  read_on: NonEmptyStr
+}
+
+data altra_cpu_frequency_capability: List<AltraCpuFrequencyCapability> = [
+  AltraCpuFrequencyCapability { host: operator_host_srv1, driver: "cppc_cpufreq" as NonEmptyStr, core: "Neoverse-N1" as NonEmptyStr, range_low_khz: 1000000, range_high_khz: 3000000, policy_count: 128, read_on: "2026-11-24 22:03-22:05 UTC ssh pass, cpufreq sysfs per policy" as NonEmptyStr },
+  AltraCpuFrequencyCapability { host: operator_host_srv2, driver: "cppc_cpufreq" as NonEmptyStr, core: "Neoverse-N1" as NonEmptyStr, range_low_khz: 1000000, range_high_khz: 3000000, policy_count: 128, read_on: "2026-11-24 22:03-22:05 UTC ssh pass, cpufreq sysfs per policy" as NonEmptyStr },
+  AltraCpuFrequencyCapability { host: operator_host_srv3, driver: "cppc_cpufreq" as NonEmptyStr, core: "Neoverse-N1" as NonEmptyStr, range_low_khz: 1000000, range_high_khz: 3000000, policy_count: 128, read_on: "2026-11-24 22:03-22:05 UTC ssh pass, cpufreq sysfs per policy" as NonEmptyStr },
+  AltraCpuFrequencyCapability { host: operator_host_srv4, driver: "cppc_cpufreq" as NonEmptyStr, core: "Neoverse-N1" as NonEmptyStr, range_low_khz: 1000000, range_high_khz: 3000000, policy_count: 128, read_on: "2026-11-24 22:03-22:05 UTC ssh pass, cpufreq sysfs per policy" as NonEmptyStr },
+]
+
+// THE CAP SITS INSIDE THE REPORTED RANGE, so it is a choice and not a floor the machine imposed. A cap equal to the
+// driver's own minimum would report a decision it never made, which is the lesson
+// gunbc.fleet.gpu_power_cap_boot_state draws for a card resting on its factory default; this fold is why "capped"
+// can mean something here without anyone re-reading the sysfs range by hand.
+fn cpu_frequency_cap_is_inside_reported_range(host: HostIdentity) -> Bool {
+  match cpu_frequency_cap_install_on(host: host) {
+    Absent => false
+    Present { value: i } => match filter(altra_cpu_frequency_capability, c => host_identity_eq(a: c.host, b: host)).first() {
+      Absent => false
+      Present { value: c } => c.range_low_khz < i.policy_ceiling_read_khz && i.policy_ceiling_read_khz < c.range_high_khz
+    }
+  }
+}

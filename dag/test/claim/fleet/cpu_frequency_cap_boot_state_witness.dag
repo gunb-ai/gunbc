@@ -1,0 +1,73 @@
+module test.claim.fleet.cpu_frequency_cap_boot_state_witness
+
+// WITNESS FOR THE CPU FREQUENCY CAP AS INSTALLED. What the module claims is that four hosts carry one cap, that its
+// unit is the grammar's own bytes, that its script is recorded byte-exactly, and that what the hosts reported at the
+// read is the ceiling that was decided. Each of those is a fold that goes false on a wrong transcription, so the
+// witness runs them rather than restating them: the digest equalities below are the checks that make the recorded
+// files falsifiable, and the roster count is the check that the cap was not recorded for two hosts and quietly
+// dropped for two.
+
+import std.types { Bool, List, NonEmptyStr }
+import std.measure { hertz_count, hertz }
+import product.host_identity { HostIdentity }
+import gunbc.fleet.fleet_host_identity {
+  operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4,
+}
+import gunbc.fleet.cpu_frequency_cap_boot_state {
+  CpuFrequencyCapInstall,
+  cpu_frequency_cap_kilohertz, cpu_frequency_cap_hertz_count,
+  cpu_frequency_cap_unit_sha256, cpu_frequency_cap_script_sha256,
+  cpu_frequency_cap_installs, cpu_frequency_cap_install_on,
+  cpu_frequency_cap_unit_is_rendered_on, cpu_frequency_cap_script_matches_record,
+  cpu_frequency_cap_bytes_are_identical_across_fleet,
+  cpu_frequency_cap_readback_matches_decision, cpu_frequency_cap_is_inside_reported_range,
+}
+
+fn altro_hosts() -> List<HostIdentity> {
+  [operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4]
+}
+
+// THE UNIT IS THE GRAMMAR'S OWN BYTES ON EVERY HOST, which is the row's standing as RENDERED: the digest the hosts
+// printed equals the digest of what extdeps.systemd.unit_file emits for the recorded directives.
+test fn the_installed_unit_digests_to_the_render_on_every_host() -> Bool {
+  altro_hosts().all(h => cpu_frequency_cap_unit_is_rendered_on(host: h))
+}
+
+// THE SCRIPT IS RECORDED BYTE-EXACTLY, on every host: the digest of the transcribed lines equals the digest the host
+// printed. A dropped line, a space of indentation, or one lost quote makes this false, which is the whole point of
+// holding the lines rather than only their hash.
+test fn the_installed_script_digests_to_the_transcription_on_every_host() -> Bool {
+  altro_hosts().all(h => cpu_frequency_cap_script_matches_record(host: h))
+}
+
+// ONE CAP FOR THE FLEET, NOT FOUR OPINIONS: the two digests are the same on all four hosts, and the roster covers
+// exactly the four Altra hosts the cap was asked for -- no host with two rows, none missing.
+test fn one_unit_and_one_script_cover_the_four_altra_hosts() -> Bool {
+  cpu_frequency_cap_bytes_are_identical_across_fleet()
+    && (cpu_frequency_cap_installs |> count) == 4
+    && altro_hosts().all(h => match cpu_frequency_cap_install_on(host: h) {
+        Absent => false
+        Present { value: _ } => true
+      })
+}
+
+// EVERY HOST REPORTED THE DECIDED CEILING, and the ceiling is the one quantity the operator named in the two scales
+// it can be asked in: kHz as the sysfs file holds it, Hz as a consumer compares it with a clock.
+test fn every_host_read_the_decided_ceiling_and_it_is_two_gigahertz() -> Bool {
+  cpu_frequency_cap_readback_matches_decision()
+    && cpu_frequency_cap_hertz_count() == cpu_frequency_cap_kilohertz * 1000
+    && cpu_frequency_cap_hertz_count() == 2000000000
+}
+
+// THE CAP IS A CHOICE AND NOT THE MACHINE'S FLOOR: on every host the ceiling read sits strictly inside that host's
+// reported cpufreq range, so "capped" does not report a limit the driver imposed on itself.
+test fn the_cap_sits_inside_the_reported_range_on_every_host() -> Bool {
+  altro_hosts().all(h => cpu_frequency_cap_is_inside_reported_range(host: h))
+}
+
+// THE CAP WAS ASKED TO SURVIVE A REBOOT: every row says the unit was enabled and active at the read. This is an
+// install-level fact and not a claim that the ceiling holds at a later moment -- the module states that limit, and
+// this witness does not overreach it.
+test fn the_unit_was_enabled_and_active_on_every_host_at_the_read() -> Bool {
+  cpu_frequency_cap_installs.all(i => i.enabled_at_boot && i.active_at_read)
+}
