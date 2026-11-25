@@ -183,13 +183,20 @@ data floor_closed_match_exhaustiveness_class: GuaranteeClassId = "floor-closed-m
 data floor_field_through_generics_class: GuaranteeClassId = "floor-field-through-generics" as GuaranteeClassId
 // The DEFERRED-BASE residue of the field-through-generics class (roadmap node
 // floor-generic-field-constraint-wall). After #11285 blocked the enclosing bare-type-parameter
-// base, the remaining ways a field-MISS can reach the `field_of_type_var` deferral were
-// MEASURED at main with the released binaries: a bare generic type name in value position and a
-// lambda-parameter base both refuse LOCATED (InternalError naming the field and the resolved
-// base label at the fixture span); the live fabrication is a field read on the result of a
-// generic call whose base stays an unsolved type variable - enrolled below as a hole row with
-// its closing trigger. Enrolled by measurement, not by reading: each expectation names what the
-// census OBSERVED at the measured revision.
+// base, the remaining ways a field-MISS could reach the `field_of_type_var` deferral were
+// MEASURED at main with the released binaries: a bare generic type name in value position, a
+// lambda-parameter base reading through an instantiated generic record, and a field read on the
+// result of a generic call whose base instantiates to a record all refuse LOCATED
+// (InternalError naming the field and the resolved base label at the fixture span); reading the
+// field that EXISTS on those same instantiated bases is ACCEPTED (the ExpectZeroDiagnostics
+// twins are the accepted positive controls that make the refusals discriminating). NO hole row
+// is enrolled for this class: the earlier note here claimed a live fabrication on an unsolved
+// type-variable result and a hole row with a closing trigger - that observation was a
+// comparison-chain MIS-PARSE of an explicit-type-argument record literal (review 17051), not a
+// fabrication, and the corrected fixtures refuse. The executed census
+// floor_field_through_generics_census_residue_is_zero asserts zero surviving fabrication sites
+// over its named population. Enrolled by measurement, not by reading: each expectation names
+// what the census OBSERVED at the measured revision.
 data floor_field_through_generics_deferral_class: GuaranteeClassId = "floor-field-through-generics-deferral" as GuaranteeClassId
 data floor_generic_instantiation_class: GuaranteeClassId = "floor-generic-instantiation-inhabitance" as GuaranteeClassId
 data floor_parse_list_separator_class: GuaranteeClassId = "floor-parse-list-separator" as GuaranteeClassId

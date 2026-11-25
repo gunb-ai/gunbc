@@ -224,7 +224,7 @@ fn located_blocking_verdict(source: String, wanted_class: String, wanted_subject
 // replaces the six TEXT-CARRIER rows, which failed by design and inverted the polarity
 // of the wall they certified.
 fn located_rows_assert(source: String, wanted_class: String, wanted_subject: String) -> CensusVerdict {
-  census_verdict(census: blocking_subject_census(source: source, wanted_class: wanted_class, wanted_subject: wanted_subject), holds: fn(n) { n >= 1 })
+  located_blocking_verdict(source: source, wanted_class: wanted_class, wanted_subject: wanted_subject, holds: fn(n) { n >= 1 })
 }
 
 fn located_rows_render(source: String) -> String {
