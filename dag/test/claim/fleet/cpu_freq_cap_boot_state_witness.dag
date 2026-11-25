@@ -32,8 +32,7 @@ import gunbc.fleet.cpu_freq_cap_boot_state {
   FigureStated, FigureUnread, ReadBackNotReported, SomeCoresMissedAtCeiling,
   ceiling_sits_below_the_parts_nominal_clock,
   CpuFreqCapStanding, cpu_freq_cap_mechanisms, cpu_freq_cap_standing_discharge_read, cpu_freq_cap_standing_reports,
-  cpu_freq_caps_to_converge,
-  cpu_freq_ceiling_standing_on, cpu_freq_ceiling_standing_read, host_cpu_freq_ceiling,
+  cpu_freq_cap_applied_on, cpu_freq_ceiling_standing_read,
   srv3_cpu_freq_cap, srv4_cpu_freq_cap,
 }
 
@@ -41,19 +40,20 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // APPLIED, AND WHAT STANDS NOW UNSAID -- NEITHER DIRECTION WRITTEN DOWN. Both hosts got the ceiling on
 // 2026-11-24; what happened to it that day is reported two ways that do not agree, and no host has been read
-// since. So the record must say 2.0 GHz was APPLIED and refuse to say whether it still stands. The applied
-// figure stays on the row and `host_cpu_freq_ceiling` answers NOTHING for those hosts: an answer of 2.0 GHz
-// there would be the failure this shape exists to prevent, a clock reported as current with no read behind it.
-// `cpu_freq_caps_to_converge` is empty for the same reason -- pushing either host's desired state would
-// reinstall a ceiling the operator may have walked away from. The two and zero counts are pinned because the
-// operator named exactly these two hosts, and because a contested ceiling creeping back into the converge roster
-// is the defect.
+// since. So the record must say 2.0 GHz was APPLIED and refuse to say whether it still stands: the applied figure
+// stays on the row, its date comes off the standing that carries it, and the figure standing today is unread.
+// Nothing here asserts a current clock -- and the consumers that could have been fooled by one are pinned where
+// they live: gunbc.fleet.fleet_work_energy_cost refuses to attribute srv3's and srv4's draw figure to their power
+// state (pinned in fleet_work_energy_cost_witness), and there is no CPU-scaling convergence leg to push the
+// applied ceiling back at them, which is classified as an unstarted row in
+// gunbc.plans.fleet_hardware_fact_consumption rather than left implied. The two and zero counts are pinned
+// because the operator named exactly these two hosts.
 test fn an_applied_ceiling_whose_standing_is_unsaid_is_recorded_without_being_current() -> Bool {
   cpu_freq_cap_mechanisms.length() == 2
-    && cpu_freq_caps_to_converge().length() == 0
     && cpu_freq_cap_mechanisms.all(m =>
       hertz_count(h: m.ceiling) == 2000000000
         && m.persists_across_boot
+        && (cpu_freq_cap_applied_on(m: m) as String) == "2026-11-24"
         && match m.standing {
           CeilingStandingUnsaid { applied_on, unsaid_because, competing_reports, figure_standing_today } =>
             (applied_on as String) == "2026-11-24"
@@ -66,20 +66,7 @@ test fn an_applied_ceiling_whose_standing_is_unsaid_is_recorded_without_being_cu
           CeilingSuperseded {
             applied_on: _, superseded_on: _, superseded_by: _, figure_standing_today: _, why: _,
           } => false
-        }
-        && optional_is_absent(opt: cpu_freq_ceiling_standing_on(m: m)))
-    && match host_cpu_freq_ceiling(host: operator_host_srv3) {
-      Absent => true
-      Present { value: _ } => false
-    }
-    && match host_cpu_freq_ceiling(host: operator_host_srv4) {
-      Absent => true
-      Present { value: _ } => false
-    }
-    && match host_cpu_freq_ceiling(host: operator_host_srv1) {
-      Absent => true
-      Present { value: _ } => false
-    }
+        })
 }
 
 // BOTH REPORTS ARE CARRIED, SO NEITHER SIDE IS TAKEN. The row does not merely withhold an answer -- it holds the
@@ -168,20 +155,20 @@ test fn every_cap_file_digest_is_a_marking_carrying_the_one_discharge_read() -> 
 
 // THE STANDING IS ANSWERED OFF THE VALUE, IN EVERY DIRECTION. Three fixtures on the same host and files: a
 // ceiling that still stands, a superseded one whose replacement the operator has stated, and an unsaid one on
-// which a figure has at last been read. The first reports its applied figure as current and carries no open
-// read; the second and third report the STATED figure -- not the applied one -- and close their open read.
-// Neither answer is stored beside the row, so neither can disagree with it, and the unsaid arm is shown capable
-// of discharging: it is a standing that waits for a read, not a permanent shrug. The real rows answer the fourth
-// way, which the tests above pin: no current ceiling, and an open read standing.
+// which a figure has at last been read. Each reports ITS OWN applied date -- the date lives inside the standing,
+// so no fourth field can fall out of step with it -- and the two whose figure has landed carry no open read,
+// while the real rows, whose figure nobody has read, carry one. The unsaid arm is shown capable of discharging:
+// it is a standing that waits for a read, not a permanent shrug. The real rows answer the fourth way, which the
+// tests above pin: no current ceiling, and an open read standing.
 test fn every_standing_answers_off_the_value_it_carries() -> Bool {
   let standing_ceiling_fixture = fixture_mechanism(
     host: operator_host_srv3,
-    standing: CeilingStands { applied_on: "fixture, not a reading" as NonEmptyStr },
+    standing: CeilingStands { applied_on: "fixture stands 2026-11-24" as NonEmptyStr },
   )
   let stated_replacement_fixture = fixture_mechanism(
     host: operator_host_srv4,
     standing: CeilingSuperseded {
-      applied_on: "fixture, not a reading" as NonEmptyStr,
+      applied_on: "fixture superseded 2026-11-24" as NonEmptyStr,
       superseded_on: "fixture, not a reading" as NonEmptyStr,
       superseded_by: "fixture, not a reading" as NonEmptyStr,
       figure_standing_today: FigureStated { ceiling: hertz(count: 3000000000) },
@@ -191,30 +178,20 @@ test fn every_standing_answers_off_the_value_it_carries() -> Bool {
   let unsaid_with_a_read_figure_fixture = fixture_mechanism(
     host: operator_host_srv1,
     standing: CeilingStandingUnsaid {
-      applied_on: "fixture, not a reading" as NonEmptyStr,
+      applied_on: "fixture unsaid 2026-11-24" as NonEmptyStr,
       unsaid_because: "fixture, not a reading" as NonEmptyStr,
       competing_reports: cpu_freq_cap_standing_reports,
       figure_standing_today: FigureStated { ceiling: hertz(count: 2500000000) },
     },
   )
-  match cpu_freq_ceiling_standing_on(m: standing_ceiling_fixture) {
-    Present { value: h } => hertz_count(h: h) == 2000000000
-    Absent => false
-  }
+  (cpu_freq_cap_applied_on(m: standing_ceiling_fixture) as String) == "fixture stands 2026-11-24"
+    && (cpu_freq_cap_applied_on(m: stated_replacement_fixture) as String) == "fixture superseded 2026-11-24"
+    && (cpu_freq_cap_applied_on(m: unsaid_with_a_read_figure_fixture) as String) == "fixture unsaid 2026-11-24"
     && optional_is_absent(opt: cpu_freq_cap_standing_discharge_read(m: standing_ceiling_fixture))
-    && match cpu_freq_ceiling_standing_on(m: stated_replacement_fixture) {
-      Present { value: h } => hertz_count(h: h) == 3000000000
-      Absent => false
-    }
     && optional_is_absent(opt: cpu_freq_cap_standing_discharge_read(m: stated_replacement_fixture))
-    && match cpu_freq_ceiling_standing_on(m: unsaid_with_a_read_figure_fixture) {
-      Present { value: h } => hertz_count(h: h) == 2500000000
-      Absent => false
-    }
     && optional_is_absent(opt: cpu_freq_cap_standing_discharge_read(m: unsaid_with_a_read_figure_fixture))
     && cpu_freq_cap_mechanisms.all(m =>
-      optional_is_absent(opt: cpu_freq_ceiling_standing_on(m: m))
-        && !optional_is_absent(opt: cpu_freq_cap_standing_discharge_read(m: m)))
+      !optional_is_absent(opt: cpu_freq_cap_standing_discharge_read(m: m)))
 }
 
 // A fixture builder for the pair above: the files, the applied figure and the read-back are the recorded ones,

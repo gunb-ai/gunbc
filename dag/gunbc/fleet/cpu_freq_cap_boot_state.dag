@@ -15,7 +15,7 @@ module gunbc.fleet.cpu_freq_cap_boot_state
 // WHAT THIS MODULE DOES NOT OWN.
 //   - the part's own numbers -- core count, nominal sustained per-thread clock, TDP -- are the catalog row in
 //     extdeps.cpu.ampere, joined here rather than restated; a ceiling is only meaningful against them, which is
-//     why the witness compares the two;
+//     why `ceiling_sits_below_the_parts_nominal_clock` asks the catalog rather than a typed-in number;
 //   - the watts a host draws is gunbc.fleet.fleet_host_power's, and the readings taken while this cap went in
 //     are named there as confounded (load moved between them), so none of them priced anything;
 //   - the decision to apply a ceiling, or to raise one, is the operator's and is recorded in
@@ -32,8 +32,15 @@ module gunbc.fleet.cpu_freq_cap_boot_state
 // their own words the same day, "we slowed the cores on all computers". So `ceiling` names the figure that was
 // APPLIED, `standing` refuses to say whether it holds, and the figure the hosts are under now is unread until a
 // host read or an operator statement lands. A consumer that pushes desired state at a host must not push the
-// applied figure or invent the current one: `cpu_freq_caps_to_converge` answers empty, and
-// `host_cpu_freq_ceiling` answers what stands today, which for these hosts is nothing this model has read.
+// applied figure or invent the current one, and no such consumer exists yet: there is no CPU-scaling convergence
+// leg in the fleet, and writing one before the standing is readable would push a clock nobody can name. That leg
+// -- and the read that must precede it -- is named as an unstarted row in
+// gunbc.plans.fleet_hardware_fact_consumption's own roster, which is where this module's frontier is classified
+// rather than left implied. What IS read today is consumed: gunbc.fleet.fleet_work_energy_cost
+// host_draw_power_state_attribution asks `cpu_freq_cap_mechanisms_on` and
+// `cpu_freq_cap_standing_discharge_read` of a host before it lets a power figure price that host's work, so the
+// unsaid standing has a consequence -- the marginal cost of work on srv3 and srv4 carries the gap and the one
+// read that would close it.
 
 import std.types { Bool, Int, List, NonEmptyStr }
 import std.optional { Absent, Present }
@@ -202,61 +209,19 @@ data srv4_cpu_freq_cap: CpuFreqCapMechanism = CpuFreqCapMechanism {
 
 data cpu_freq_cap_mechanisms: List<CpuFreqCapMechanism> = [ srv3_cpu_freq_cap, srv4_cpu_freq_cap ]
 
-// WHICH CEILINGS THE MODEL IS TO LEAVE ALONE. A consumer converging desired CPU state asks this and nothing
-// else: only a ceiling READ HOLDING TODAY is left in place. A superseded one is a record of what was, never a
-// target, and pushing it would reinstall a unit the operator has already raised past -- and an unsaid one is
-// worse still, because its figure may be the one the operator walked away from and no read says so.
-fn cpu_freq_caps_to_converge() -> List<CpuFreqCapMechanism> {
-  filter(cpu_freq_cap_mechanisms, m =>
-    match m.standing {
-      CeilingStands { applied_on: _ } => true
-      CeilingSuperseded {
-        applied_on: _, superseded_on: _, superseded_by: _, figure_standing_today: _, why: _,
-      } => false
-      CeilingStandingUnsaid {
-        applied_on: _, unsaid_because: _, competing_reports: _, figure_standing_today: _,
-      } => false
-    })
+// WHEN THE FIGURE WAS PUT ON THE CORES. Held inside the standing -- every arm carries its own date -- so the
+// answer comes off the value the row already has rather than a fourth field restating it. A consumer that names
+// the gap a ceiling leaves needs the date it was applied to say when the figure stopped being evidence.
+fn cpu_freq_cap_applied_on(m: CpuFreqCapMechanism) -> NonEmptyStr {
+  match m.standing {
+    CeilingStands { applied_on } => applied_on
+    CeilingSuperseded { applied_on, superseded_on: _, superseded_by: _, figure_standing_today: _, why: _ } => applied_on
+    CeilingStandingUnsaid { applied_on, unsaid_because: _, competing_reports: _, figure_standing_today: _ } => applied_on
+  }
 }
 
 fn cpu_freq_cap_mechanisms_on(host: HostIdentity) -> List<CpuFreqCapMechanism> {
   filter(cpu_freq_cap_mechanisms, m => host_identity_eq(a: m.host, b: host))
-}
-
-// THE CEILING A MECHANISM LEAVES STANDING: the applied figure while it stands, a stated figure once a host read
-// or an operator statement lands one, and NOTHING while the figure is unread -- whether that unreadness arrived
-// by supersession or by two reports that do not agree. Answering the applied figure here would be the failure
-// this type exists to prevent: srv3 and srv4 reporting the clock they were held at on 2026-11-24 while the
-// operator's own words of that day speak of cores still slowed, or have already been changed, with no read
-// behind either answer.
-fn cpu_freq_ceiling_standing_on(m: CpuFreqCapMechanism) -> Hertz? {
-  match m.standing {
-    CeilingStands { applied_on: _ } => Present { value: m.ceiling }
-    CeilingSuperseded {
-      applied_on: _, superseded_on: _, superseded_by: _, figure_standing_today: figure, why: _,
-    } =>
-      match figure {
-        FigureStated { ceiling } => Present { value: ceiling }
-        FigureUnread { what_would_discharge_it: _ } => Absent
-      }
-    CeilingStandingUnsaid {
-      applied_on: _, unsaid_because: _, competing_reports: _, figure_standing_today: figure,
-    } =>
-      match figure {
-        FigureStated { ceiling } => Present { value: ceiling }
-        FigureUnread { what_would_discharge_it: _ } => Absent
-      }
-  }
-}
-
-// The ceiling a host runs under, as this model knows. Absent means this model has not read what stands there
-// now -- for srv3 and srv4 today that is literally true twice over: their applied ceiling is reported both as
-// raised away from and as still in force, and nothing here has read a host to settle it.
-fn host_cpu_freq_ceiling(host: HostIdentity) -> Hertz? {
-  match cpu_freq_cap_mechanisms_on(host: host).first() {
-    Absent => Absent
-    Present { value: m } => cpu_freq_ceiling_standing_on(m: m)
-  }
 }
 
 // THE OPEN READ A CEILING'S RECORD CARRIES: what would tell this model what the host is under now. Absent when

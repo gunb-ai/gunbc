@@ -3,16 +3,30 @@ module gunbc.fleet.fleet_work_energy_cost
 import std.types { NonEmptyStr, Bool, Int, List }
 import std.nat { Nat }
 import std.measure {
-  Watt, watt_count, Second, second_count,
+  Watt, watt_count, Second, second_count, Hertz,
   MoneyAmountMicro, MoneyPerKilowattHour,
   money_amount_micro, money_amount_micro_count, money_per_kilowatt_hour_micros,
 }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.currency.currency { Usd }
 import extdeps.energy.con_edison { el1_marginal_volumetric_rate }
+import extdeps.cpu.ampere { altra_max_m12830_catalog }
 import gunbc.fleet.fleet_host_power {
   HostPowerProfile, PowerProvenance, MeasuredOnHost, InferredFromSimilarBuild,
   host_power_profile, power_is_measured,
+  confounded_host_power_readings, host_figure_is_still_inferred,
+}
+// THE CAP STATE A POWER FIGURE HAS TO BE ATTRIBUTABLE TO. Read here rather than restated: the watts a host drew
+// mean nothing until the state it was drawn under is known, and the two caps that state consists of -- the GPU
+// power cap and the CPU frequency ceiling -- are owned elsewhere. The frequency ceiling's standing is the load-
+// bearing one: the operator applied 2.0 GHz on 2026-11-24 and what became of it that day is reported in two
+// directions, so this module has to price work on a host whose clock it cannot name. It does so by CARRYING that
+// gap on the cost instead of answering the question either way.
+import gunbc.fleet.cpu_freq_cap_boot_state {
+  CpuFreqCapMechanism, CeilingStands, CeilingSuperseded, CeilingStandingUnsaid,
+  cpu_freq_cap_mechanisms_on, cpu_freq_cap_applied_on,
+  cpu_freq_cap_standing_discharge_read, cpu_freq_ceiling_standing_read,
+  ceiling_sits_below_the_parts_nominal_clock,
 }
 import gunbc.fleet.fleet_host_assembly { host_installed_components }
 import product.placement_supply { PhysicalAssetIdentity, physical_asset_identity_eq }
@@ -53,7 +67,48 @@ type WorkEnergyCost {
   draw: Watt
   amount: MoneyAmountMicro
   power_provenance: PowerProvenance
+  // Whether the draw figure is attributable to the host's POWER STATE as this model has it -- the caps it runs
+  // under and the clock its cores are held at. Distinct from `power_provenance`, which answers where the WATTAGE
+  // came from: a figure can be first-hand measured on a host whose clock state is unread, and an inferred figure
+  // can sit on a host whose state is fully known. Both answers are needed, so both are carried.
+  power_state_attribution: DrawPowerStateAttribution
 }
+
+// THE GAP BETWEEN A DRAW FIGURE AND THE POWER STATE IT WAS TAKEN UNDER. A power figure is evidence only about the
+// state it was read in: srv1's 94 W was read on a host with no GPU cap and its cores at the clock its part is
+// rated to, and on srv3 and srv4 both of those have been changed by hand (a 30 W per-card GPU cap, and a CPU
+// ceiling applied at 2.0 GHz whose standing the operator's own reports leave unsettled). Refusing to price would
+// throw away the only draw figure the roster has; pricing without saying so bills a machine that is not the one
+// that was measured. So the gap travels with the cost, typed, with the read that closes it.
+type DrawAttributionGap
+  = CpuCeilingNotReadHolding {
+      host: NonEmptyStr
+      // The unit holding the ceiling, so a reader can see WHICH mechanism is unanswered without this module
+      // restating the cap module's rows.
+      unit_path: NonEmptyStr
+      applied_on: NonEmptyStr
+      applied_ceiling: Hertz
+      // The clock the installed part is catalogued to sustain, carried because a ceiling that had quietly risen
+      // back to it would stop being a cap and this row would stop being a gap.
+      parts_rated_clock: Hertz
+      sits_below_the_parts_rated_clock: Bool
+      // The one read that would make the figure attributable: the host's current CPU scaling limit, read and
+      // recorded as standing. Carried from the row's own standing rather than authored here.
+      what_would_make_it_attributable: NonEmptyStr
+    }
+  | HostFigureStillInferredWhilePowerStateMoved {
+      host: NonEmptyStr
+      // Whose figure is being carried, read off the profile's provenance.
+      basis_host: NonEmptyStr
+      // The confounded pair the operator read either side of the caps going in: when, and what else moved under
+      // it. Both halves are needed by a reader deciding whether either number is usable.
+      observed_on: NonEmptyStr
+      confound: NonEmptyStr
+    }
+
+type DrawPowerStateAttribution
+  = DrawAttributableToHostPowerState { host: NonEmptyStr }
+  | DrawNotAttributableToHostPowerState { host: NonEmptyStr, gaps: List<DrawAttributionGap> }
 
 // WHY A TYPED CAUSE. The old outcome carried a free-text reason; a refusal that only says "no profile"
 // cannot tell a reader that the real gap is a MISSING MEASUREMENT on the host's current hardware.
@@ -77,6 +132,96 @@ fn marginal_energy_micros(draw: Watt, duration: Second) -> Nat {
   let watt_seconds = watt_count(w: draw) * second_count(s: duration)
   let rate_micros = money_per_kilowatt_hour_micros(q: el1_marginal_volumetric_rate())
   (watt_seconds * rate_micros) / watt_seconds_per_kilowatt_hour
+}
+
+// THE CLOCK GAP, IF THIS HOST HAS ONE. A mechanism whose standing is `CeilingStands` is a clock read holding on
+// that host, and a figure taken under it is attributable; every other standing -- superseded, or the unsaid
+// standing srv3 and srv4 carry -- leaves the host's clock unanswered, and no draw figure describes a machine whose
+// clock nobody can name. The gap is built from the cap module's own row through its accessors, never from a copy
+// of its fields, so promoting a standing cannot leave a stale sentence here.
+fn cpu_ceiling_gap_for(m: CpuFreqCapMechanism, host: NonEmptyStr) -> DrawAttributionGap {
+  let rated = altra_max_m12830_catalog.nominal_sustained_per_thread_hz
+  CpuCeilingNotReadHolding {
+    host: host,
+    unit_path: m.unit_path,
+    applied_on: cpu_freq_cap_applied_on(m: m),
+    applied_ceiling: m.ceiling,
+    parts_rated_clock: rated,
+    sits_below_the_parts_rated_clock: ceiling_sits_below_the_parts_nominal_clock(m: m, nominal: rated),
+    // The read the row already carries when the figure is unread; when a figure has landed by other means, the
+    // standing itself still needs reading, which is the same obligation named on the cap module.
+    what_would_make_it_attributable: match cpu_freq_cap_standing_discharge_read(m: m) {
+      Present { value: owed } => owed
+      Absent => cpu_freq_ceiling_standing_read,
+    },
+  }
+}
+
+fn cpu_ceiling_gap_on(host: NonEmptyStr) -> DrawAttributionGap? {
+  match cpu_freq_cap_mechanisms_on(host: host as HostIdentity).first() {
+    Absent => Absent
+    Present { value: m } =>
+      match m.standing {
+        CeilingStands { applied_on: _ } => Absent
+        CeilingSuperseded {
+          applied_on: _, superseded_on: _, superseded_by: _, figure_standing_today: _, why: _,
+        } => Present { value: cpu_ceiling_gap_for(m: m, host: host) }
+        CeilingStandingUnsaid {
+          applied_on: _, unsaid_because: _, competing_reports: _, figure_standing_today: _,
+        } => Present { value: cpu_ceiling_gap_for(m: m, host: host) }
+      }
+  }
+}
+
+// THE WATTAGE GAP, IF THIS HOST HAS ONE. The operator's 2026-11-24 pair (srv4 101 W then 39-42 W, srv3 65 W then
+// 29-31 W) moved together with the load, so neither half describes the capped machine at work; and those hosts'
+// roster figure is still srv1's carried inference. Either fact alone leaves the other harmless -- a measured
+// figure on a host whose load moved is still a measurement of something, and an inferred figure on a host whose
+// state is known is what the roster says it is -- so both are required before this gap is claimed, and the basis
+// is read off the profile rather than restated.
+fn moved_power_state_gap_on(host: NonEmptyStr, profile: HostPowerProfile) -> DrawAttributionGap? {
+  if host_figure_is_still_inferred(host: host) {
+    match filter(confounded_host_power_readings, r => (r.host as String) == (host as String)).first() {
+      Absent => Absent
+      Present { value: r } =>
+        match profile.provenance {
+          InferredFromSimilarBuild { basis_host, basis_reason: _ } =>
+            Present { value: HostFigureStillInferredWhilePowerStateMoved {
+              host: host,
+              basis_host: basis_host,
+              observed_on: r.observed_on,
+              confound: r.confound,
+            } }
+          // Unreachable through the guard above, and written out rather than defaulted: a measured profile has no
+          // basis host to name, and inventing one here would be the fabrication this type refuses.
+          MeasuredOnHost { sample_count: _, sensor: _, observed_on: _ } => Absent
+        }
+    }
+  } else {
+    Absent
+  }
+}
+
+// THE ATTRIBUTION A COST CARRIES. Empty gaps is the model saying this host's power state is known well enough for
+// its figure to describe it; one gap or two is the model pricing anyway and showing its work. Both halves are
+// asked of every host rather than short-circuited, because a host can carry both -- srv3 and srv4 today do -- and
+// a consumer deciding whether to quote against the figure needs to see both.
+fn host_draw_power_state_attribution(host: NonEmptyStr, profile: HostPowerProfile) -> DrawPowerStateAttribution {
+  let gaps = concat([
+    match cpu_ceiling_gap_on(host: host) {
+      Absent => []
+      Present { value: g } => [g]
+    },
+    match moved_power_state_gap_on(host: host, profile: profile) {
+      Absent => []
+      Present { value: g } => [g]
+    },
+  ])
+  if gaps.length() == 0 {
+    DrawAttributableToHostPowerState { host: host }
+  } else {
+    DrawNotAttributableToHostPowerState { host: host, gaps: gaps }
+  }
 }
 
 // An unknown host REFUSES rather than defaulting to a fleet-average draw. A default here would be
@@ -109,6 +254,7 @@ fn work_energy_cost(host: NonEmptyStr, duration: Second) -> WorkEnergyCostOutcom
             draw: value.draw,
             amount: money_amount_micro(count: marginal_energy_micros(draw: value.draw, duration: duration)),
             power_provenance: value.provenance,
+            power_state_attribution: host_draw_power_state_attribution(host: host, profile: value),
           }
         }
       } else {
