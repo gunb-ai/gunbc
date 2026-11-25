@@ -43,7 +43,7 @@ import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import extdeps.huggingface.hub { HubRepoId }
 import extdeps.strata.serve_flags {
   StrataServeFlags, StrataConversationCache, StrataConversationCacheBudget, StrataConversationCacheOff,
-  StrataConversationCacheUnset, strata_conversation_cache_words,
+  StrataConversationCacheUnset, strata_conversation_cache_words, strata_parallel_minimum_slots,
 }
 import product.fabric.serving_throughput { ServingThroughput, ThroughputOperatorReading, ThroughputUnread }
 import gunbc.fleet.fleet_host_identity {
@@ -874,6 +874,12 @@ type StrataParkingAgreement
   // defaults to decides whether anything parks. This is the fail-open default -- an omission reading as a
   // policy -- and it is the state the h11 configs were in.
   | ParkedConversationsLeftToTheBuild { detail: NonEmptyStr }
+  // A capacity IS stated -- by the launch's own budget or by the engine's read memory row -- and it is
+  // SMALLER than the conversations the grant holds beyond the live slots. Naming a cache is not the same as
+  // naming enough of one: `parked` is the most the model says may be parked and `beyond` is how many need to
+  // be, so the shortfall is located in a number rather than softened into an agreement. An undersized cache
+  // is the same failure as a missing one, only quieter: the conversations over `parked` re-read cold.
+  | ParkedConversationsShortOfTheGrant { parked: Nat, beyond: Nat, detail: NonEmptyStr }
   // A figure the answer stands on has not been read: no grant, no flags, no live slot count. Never a zero.
   | ParkingNeedsReading { obligation: NonEmptyStr }
 
@@ -935,6 +941,15 @@ fn parking_beyond_live_slots_sentence(held: Nat, live: Nat, beyond: Nat, policy:
     " could only be warm by being parked -- and this launch says: " + policy) as NonEmptyStr
 }
 
+// The sentence the shortfall finding carries: what the grant holds, how many need parking, what the model
+// says may be parked, and WHERE that figure came from.
+fn parking_short_of_grant_sentence(held: Nat, live: Nat, beyond: Nat, parked: Nat, source: String) -> NonEmptyStr {
+  (("the layout grants this replica " + to_string(held)) +
+    " conversations warm on an engine running " + to_string(live) +
+    " slots at once, so " + to_string(beyond) + " can only be warm by being parked, but the most any row of" +
+    " the model says may be parked is " + to_string(parked) + " -- from " + source) as NonEmptyStr
+}
+
 fn strata_launch_parking_agreement(
   model: ReplicaModel,
   grant: ServingRetentionGrant,
@@ -952,19 +967,21 @@ fn strata_launch_parking_agreement(
           match f {
             Absent =>
               // The argv has never been read, so the engine's live slot count is unknown and `beyond` cannot
-              // be computed exactly. That does not always leave the question unanswered: if another row states
-              // a parked capacity, the worst case is what matters -- Strata answers ONE conversation at once
-              // unless `--parallel` says otherwise (README.md), so at most `held - 1` conversations can need
-              // parking, and a stated capacity that covers that covers them whatever the argv turns out to
-              // say. Where it does not, the answer is an obligation, not a refusal: the unread argv might
-              // itself name a larger budget.
+              // be computed exactly -- but it can still be BOUNDED, because every legal launch answers at
+              // least `strata_parallel_minimum_slots` conversations at once (that flag's documented default,
+              // README.md, carried beside the flag it describes rather than repeated here). The most that can
+              // need parking is therefore `held - that floor`, and a stated capacity covering THAT covers the
+              // grant whatever the argv turns out to say -- the conclusion holds for every legal slot count,
+              // so this is a bound the type licenses, not a guess at the unread figure. Where the stated
+              // capacity does not even cover the bound, nothing is concluded: the answer is the obligation,
+              // because the unread argv might itself name a larger budget.
               match replica_parked_conversations(model: model, engine_memory: engine_memory) {
                 Present { value: p } =>
-                  if p + 1 >= held {
+                  if held <= strata_parallel_minimum_slots || p >= held - strata_parallel_minimum_slots {
                     ParkedConversationsAgreed { parked: p }
                   } else {
                     ParkingNeedsReading {
-                      obligation: ("the layout grants this replica " + to_string(held) + " conversations warm and the only parked capacity the model states is " + to_string(p) + ", which covers that only if the engine answers one conversation at once; its launched argv has never been read, so it may name a larger budget -- read the unit's ExecStart") as NonEmptyStr,
+                      obligation: ("the layout grants this replica " + to_string(held) + " conversations warm and the most the model says may be parked is " + to_string(p) + ", which bounds the shortfall only at the engine's minimum live slots (" + to_string(strata_parallel_minimum_slots) + "); its launched argv has never been read, so it may name a larger budget -- read the unit's ExecStart") as NonEmptyStr,
                     }
                   }
                 Absent => ParkingNeedsReading {
@@ -984,7 +1001,18 @@ fn strata_launch_parking_agreement(
                   let parked = replica_parked_conversations(model: model, engine_memory: engine_memory)
                   match fl.conversation_cache {
                     StrataConversationCacheBudget { budget: _, slots: k } =>
-                      ParkedConversationsAgreed { parked: positive_slot_count_value(slots: k) }
+                      let named = positive_slot_count_value(slots: k)
+                      if named >= beyond {
+                        ParkedConversationsAgreed { parked: named }
+                      } else {
+                        ParkedConversationsShortOfTheGrant {
+                          parked: named, beyond: beyond,
+                          detail: parking_short_of_grant_sentence(
+                            held: held, live: live, beyond: beyond, parked: named,
+                            source: "this launch's own --conversation-cache-slots " + to_string(named),
+                          ),
+                        }
+                      }
                     StrataConversationCacheOff { reason: r } =>
                       if beyond > 0 {
                         ParkedConversationsRefusedByTheLaunch {
@@ -999,8 +1027,20 @@ fn strata_launch_parking_agreement(
                     StrataConversationCacheUnset { detail: d } =>
                       match parked {
                         // Another row of the model states the parked capacity (the engine's read memory
-                        // row), so the claim is not left to a build default.
-                        Present { value: n } => ParkedConversationsAgreed { parked: n }
+                        // row), so the claim is not left to a build default -- but a stated capacity that
+                        // does not reach `beyond` is a shortfall, not an agreement.
+                        Present { value: n } =>
+                          if n >= beyond {
+                            ParkedConversationsAgreed { parked: n }
+                          } else {
+                            ParkedConversationsShortOfTheGrant {
+                              parked: n, beyond: beyond,
+                              detail: parking_short_of_grant_sentence(
+                                held: held, live: live, beyond: beyond, parked: n,
+                                source: "the engine's read memory row, while its argv names neither cache flag (" + d + ")",
+                              ),
+                            }
+                          }
                         Absent =>
                           if beyond > 0 {
                             ParkedConversationsLeftToTheBuild {

@@ -144,6 +144,14 @@ data strata_conversation_cache_unset_standing_pre_0_2_3: CitedFigureStanding = T
 
 // ── THE FLAGS AS ARGV WORDS, spelled as the docs above spell them ───────────────────────────────
 
+// `--parallel N` (README.md): slots answered at once, ONE by default. This is the flag's documented
+// floor, and it agrees with the type's own floor (`PositiveSlotCount` has no zero). A consumer that has NOT
+// read a launch's argv can still bound how many of its conversations can need parking: at most
+// `held - strata_parallel_minimum_slots` of them. It is carried here, beside the flag it describes, because
+// the number is the flag's -- a consumer that hardcoded a 1 of its own would be choosing a policy the flag
+// owns (gunbc.design_argument::declared_intent).
+data strata_parallel_minimum_slots: Nat = 1
+
 fn strata_kv_format_word(f: StrataKvFormat) -> String {
   match f {
     StrataKvQ4_0 => "q4_0"

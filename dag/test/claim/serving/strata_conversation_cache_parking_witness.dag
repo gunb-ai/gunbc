@@ -37,7 +37,7 @@ import extdeps.strata.serve_flags {
 import gunbc.serving.serving_replica_profile {
   ReplicaModel, StrataModel, StrataParkingAgreement,
   ParkedConversationsAgreed, ParkedConversationsRefusedByTheLaunch,
-  ParkedConversationsLeftToTheBuild, ParkingNeedsReading,
+  ParkedConversationsLeftToTheBuild, ParkedConversationsShortOfTheGrant, ParkingNeedsReading,
   strata_launch_parking_agreement, replica_parking_agreement, replica_parked_conversations,
   parking_is_left_to_the_build, serving_replica_roster, srv1_vllm_replica_0_profile,
 }
@@ -237,6 +237,51 @@ test fn witness_silence_answered_by_another_row_is_accepted() -> Bool {
     engine_memory: Present { value: fx_memory(slots: 24) },
   )
   is_agreed(a: a) && agreed_parked(a: a) == 24
+}
+
+test fn witness_a_budget_smaller_than_the_grant_needs_is_a_located_shortfall() -> Bool {
+  // Naming a cache is not naming ENOUGH of one. The reviewer's case: 24 conversations admitted warm, one
+  // answered at once, and the launch sets `--conversation-cache-slots 2`. Twenty-three of them still re-read
+  // cold, and the agreement says so with both numbers, rather than calling it an agreement because a budget
+  // was present (gunbc.design_argument::fail_closed: the wrong answer is located, not softened).
+  let a = strata_launch_parking_agreement(
+    model: fx_strata_model(cache: fx_cache_budget(mib: 8192, slots: 2), slots: 1),
+    grant: fx_grant(conversations: 24),
+    engine_memory: Absent,
+  )
+  match a {
+    ParkedConversationsShortOfTheGrant { parked: 2, beyond: 23, detail: d } =>
+      string_contains(s: d, pattern: "--conversation-cache-slots 2")
+        && string_contains(s: d, pattern: "24 conversations")
+    _ => false
+  }
+}
+
+test fn witness_a_read_row_smaller_than_the_grant_needs_is_a_located_shortfall() -> Bool {
+  // The same finding on the OTHER authority for parked capacity: the argv is silent, the engine's read memory
+  // row states 2 parked slots, and the grant holds 4 conversations beyond the live slots. A figure read
+  // somewhere else is not a licence to agree either.
+  let a = strata_launch_parking_agreement(
+    model: fx_strata_model(cache: fx_cache_unset("the unit's argv was never read"), slots: 8),
+    grant: fx_grant(conversations: 12),
+    engine_memory: Present { value: fx_memory(slots: 2) },
+  )
+  match a {
+    ParkedConversationsShortOfTheGrant { parked: 2, beyond: 4, detail: d } =>
+      string_contains(s: d, pattern: "read memory row")
+    _ => false
+  }
+}
+
+test fn witness_a_budget_exactly_covering_the_beyond_is_accepted() -> Bool {
+  // The boundary of the shortfall, so the finding is not "small cache refuses": exactly enough is enough.
+  // 12 warm on 8 live slots needs 4 parked, and a launch naming exactly 4 is agreed at 4.
+  let a = strata_launch_parking_agreement(
+    model: fx_strata_model(cache: fx_cache_budget(mib: 8192, slots: 4), slots: 8),
+    grant: fx_grant(conversations: 12),
+    engine_memory: Absent,
+  )
+  is_agreed(a: a) && agreed_parked(a: a) == 4
 }
 
 test fn witness_nothing_beyond_the_live_slots_needs_no_parking() -> Bool {
