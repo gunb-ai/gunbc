@@ -1,0 +1,632 @@
+module gunbc.serving.gpu_power_cap_pricing
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.optional { Optional, Present, Absent }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq, declaration_ref_display_key }
+import std.integer { nat_to_int }
+import std.measure {
+  Watt, watt, watt_count, MilliTokensPerSecond, milli_tokens_per_second, milli_tokens_per_second_count,
+  Hertz, hertz, hertz_count,
+}
+import std.interval { OrderedClosedInterval, degenerate_interval, interval_low, interval_high }
+import std.pareto {
+  AxisComparison, AxisGap, AxisReading, Better, HigherIsBetter, LowerIsBetter, ParetoEntry, ReadingAbsent,
+  ReadingDuplicated, ReadingFound, Same, SelectionAxis, UndecidedOnEvidence, Worse, axis_point_reading,
+  axis_comparison_interval, reading_for,
+}
+import std.decision {
+  DecisionAssessment, HardConstraint, NonMoneyConstraint, RealizationSelectionResult, SelectionEvidenceNeed,
+  SelectionPolicy, UnfundedAxis, UniqueSurvivorRequired, select_realization,
+}
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+import product.host_identity { HostIdentity, host_identity_eq }
+import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet.fleet_power_circuit {
+  SharedPowerCircuit, BoundStated, BoundUnstated, CircuitRating, MemberDrawBound, RatingCited, RatingUnread,
+  CircuitTrip, circuit_carry_limit, circuit_label, circuit_member_draw_bound, circuit_rating_read_obligation,
+  circuit_trips, surge_strip,
+}
+import gunbc.serving.gpu_power_state_policy {
+  GpuPowerCapSelection, OperatorDeclaredCap, SustainedPowerDraw, gpu_power_cap_selected,
+}
+
+// A POWER-CAP VALUE, PRICED: the decode it costs, against the circuit it was asked to protect.
+//
+// THE DEFECT THIS EXISTS TO CLOSE, stated as a chain. The authority that should produce a GPU power cap is
+// the operator's ruling or a selection over measured candidates; today it is only the ruling
+// (gunbc.serving.gpu_power_state_policy GpuPowerCapSelection, whose ONE arm is OperatorDeclaredCap, whose own
+// header says the std.decision arm "does not exist" because the power sweep that would feed it never landed).
+// The value then travels: admission joins it with the device's own reported [min, max]
+// (admit_gpu_cap_against), the converge writes it and reads it back (gunbc.fleet.gpu_power_cap_converge), a
+// boot unit keeps it across a reboot (gunbc.fleet.gpu_power_cap_boot_state). Re-derived from the authority,
+// the EARLIEST BOUNDARY WHOSE DERIVATION CANNOT BE JUSTIFIED is the first one: a cap enters the model as a
+// bare Watt plus who said it, and the only gate it ever passes asks whether the driver accepts the number.
+// 30 W on an RTX 2000 Ada passes that gate forever, because 30 W is the floor of the device's own range
+// (gunbc.fleet.gpu_device_observation, power_limit_minimum 30 W on both of srv4's cards). Nothing in the
+// chain is charged with the cap's consequence, and nothing carried the circuit the watts were for
+// (gunbc.fleet.fleet_power_circuit is that carrier, and it is new). So the same gate returned the same
+// verdict for both of 2026-11-24's opposite decisions: 40 W -> 30 W, back to 40 W ("not worth 10 W per
+// card"), and back to 30 W after the strip feeding h11 + srv3 + srv4 opened a second time.
+//
+// WHY THE REPAIR SITS AT THAT BOUNDARY AND NOT AT THE BOOT ROWS. The rows and the converge did their jobs:
+// they applied, wrote and read back what they were handed, and they refuse a value the device rejects.
+// Adding a check further down -- "warn when a cap is low" -- would be a lint over a decision nobody priced,
+// and a lint is the rung below what is available here (gunbc.design_argument::guarantee_ladder). What is
+// missing is the link between the ask and the consequence, so this module IS that link: a cap candidate
+// cannot be put forward as the answer to a power ask without naming the circuit the ask serves, and its
+// consequence is a reading with an instrument and a standing, never a number.
+//
+// WHY THERE IS NO SEALED FACT HERE, unlike gunbc.serving.home_serving_power_policy. That module mints a
+// funded admission that a foreign module could otherwise forge, so it seals the record and rosters one mint.
+// This module mints no funded fact: it returns a verdict, and the verdict's arms ARE the wall. The bad state
+// -- a cap reported as the priced answer to a power ask while its consequence and its circuit are absent --
+// has no carrier here to forge: `DecodeUnread` and `DrawUnread` have no field for a rate, `AskUnstated` has
+// no circuit to be forgotten, and the fold's `SelectionNeedsEvidence` arm is reached by construction whenever
+// a funded axis has no reading (std.pareto scan_feasibility). Ceiling and its limit are stated on the
+// recurring_failure_mode row rather than claimed past what is built here.
+//
+// THE CPU-FREQUENCY CAP RIDES THE SAME CANDIDATE, AND THAT IS THE ANSWER TO "IS IT THE SAME KIND OF
+// CHOICE". A candidate here is an OPERATING POINT -- the set of controls this machine is set to -- not a
+// GPU watt. `CpuFrequencySetting` is a second actuator on the same candidate, priced on the same two axes,
+// because the 2026-11-24 windows separate the two causes exactly: srv4 read 39.0 tok/s at 40 W / 3.0 GHz,
+// 26.5 at 30 W / 2.0 GHz, and 24.1 at 30 W / 3.0 GHz. Holding the GPU cap at 30 W and releasing the CPU cap
+// made decode WORSE, not better, so the CPU cap is not what cost the throughput; the GPU cap is. A model
+// whose candidate were "the GPU watt value" could not state that fact at all, and the operator would be
+// left to discover it by flipping two controls a day apart. What this module does NOT carry is the CPU cap's
+// REALIZATION: no modeled converge writes scaling_max_freq (gunbc.fleet.gpu_power_cap_converge drives
+// nvidia-smi only), and gunbc.plans.host_thermal_operating_point row T3 names ReadCpuOperatingLimits
+// (scaling_max_freq and governor per core) as a fixed diagnostic that does not exist. Pricing a control and
+// realizing it are different obligations; the second is named as the modeling obligation, not silently
+// absorbed here.
+//
+// WHAT THIS IS NOT. It is not product.fleet_operating_point, which is the same SHAPE (throughput against AC
+// power, std.pareto + std.decision) over a different SUBJECT -- the Mt. Collins deployment's socket-power and
+// chassis policy against its site power limit, with its own DecisionSubject identity and its own unevidenced
+// rows. Minting a second decision algebra would be the fork this repo refuses; minting a second SUBJECT for
+// a different deployment over the same spine is what std.decision's DecisionScope discriminators are for.
+// It is not product.rack_power either (a cited PDU feed with catalog rows; see gunbc.fleet.fleet_power_circuit
+// for why the home circuits are not that). It is not gunbc.serving.home_serving_power_policy, which asks
+// whether an applied limit exceeds a part's rated ceiling -- a different question, answered there, and this
+// module never re-answers it. And it is not the fleet's cap INTENT: the durable per-board cap rows belong to
+// gunbc.serving.gpu_power_state_policy and gunbc.fleet.gpu_power_cap_boot_state, which this change does not
+// touch. The rows below are the candidates the 2026-11-24 ask put forward, carried here because a priced
+// field needs them; the frontier names the day this field reads the policy's own rows instead.
+
+// ── THE AXES, MINTED HERE ──────────────────────────────────────────────────────────────────────────
+//
+// MINTED, not declared, per std.decision's rule that a decision's identities come from the decision module
+// itself (the shape gunbc.serving.serving_replica_choice uses).
+//
+// THE SCALE IS MICRO OF THE NAMED UNIT, on both axes, because std.pareto's readings and std.decision's
+// constraint bounds are Int in micro units. Decode: micro-tokens per second, so a figure quoted to a tenth
+// of a tok/s (24.1) is carried exactly as 24100000 with no rounding. Draw: microwatts.
+data ax_decode_tokens_per_second: DeclarationRef = decl_ref(
+  module_path: "gunbc.serving.gpu_power_cap_pricing",
+  decl_name: "ax_decode_tokens_per_second",
+)
+data ax_host_draw_watts: DeclarationRef = decl_ref(
+  module_path: "gunbc.serving.gpu_power_cap_pricing",
+  decl_name: "ax_host_draw_watts",
+)
+
+fn funded_axes() -> List<SelectionAxis> {
+  [
+    SelectionAxis { identity: ax_decode_tokens_per_second, goal: HigherIsBetter },
+    SelectionAxis { identity: ax_host_draw_watts, goal: LowerIsBetter },
+  ]
+}
+
+// WHY NOT product.fabric.serving_throughput. Its reading is a TokensPerSecond, whose count is a Nat of WHOLE
+// tokens per second. Every 2026-11-24 window is quoted to a tenth (39.0, 26.5, 24.1, 28.5-34), and rounding
+// a measured figure to fit a carrier is the distortion epistemic_humility exists to stop: 24.1 and 26.5 would
+// both arrive as "24" and "27" and the comparison that separates the two causes would be arithmetic on a
+// rounding artifact. MilliTokensPerSecond is the same Frequency axis at Milli (std.measure), so the figure
+// arrives exactly; the axis reading is then micro, which is that count times 1000, exact and not a new scale.
+type DecodeReading
+  = DecodeRead {
+      rate_low: MilliTokensPerSecond,
+      rate_high: MilliTokensPerSecond,
+      at_concurrency: Nat,
+      window: NonEmptyStr,
+      instrument: NonEmptyStr,
+      standing: CitedFigureStanding
+    }
+  | DecodeUnread { read_obligation: NonEmptyStr }
+
+// WHY A WIDTH AND NOT A POINT. The 40 W afternoon window was reported as 28.5-34 tok/s across the
+// conversations in it. std.pareto's reading IS the region the evidence supports ("a sharp measurement is
+// degenerate_interval(x) and carries the claim that the true value IS x"), so a window that spans a range is
+// carried with its width and dominance over it stays UndecidedOnEvidence rather than being averaged away.
+// A point reading is the degenerate case, spelled by the same carrier.
+
+// THE DRAW SIDE OF THE COST. `DrawUnread` is the fleet's actual state for every candidate below: a power
+// CAP is a bound on sustained draw, never a measured draw (gunbc.serving.gpu_power_state_policy's
+// CappedPowerQuantity note is explicit, and on host-6ce85c 43 of 224 two-second samples read ABOVE the
+// 210 W cap), and no per-window power.draw average has been taken on srv3 or srv4. So the cost axis is a gap
+// naming the reading, not a cap value standing in for a draw.
+type DrawReading
+  = DrawRead {
+      draw_low: Watt,
+      draw_high: Watt,
+      sensor: NonEmptyStr,
+      observed_on: NonEmptyStr,
+      standing: CitedFigureStanding
+    }
+  | DrawUnread { read_obligation: NonEmptyStr }
+
+// THE SECOND ACTUATOR. `Uncapped` is not `Unread`: it says the machine ran at its own maximum with no cap
+// applied, which is what the 3.0 GHz windows were. `SettingUnread` is the honest arm for a host nobody has
+// read scaling_max_freq on.
+type CpuFrequencySetting
+  = CappedAt { maximum: Hertz }
+  | Uncapped
+  | SettingUnread { read_obligation: NonEmptyStr }
+
+// ONE CANDIDATE AS THE ASK SEES IT: the controls this machine is set to, and what each side of the trade was
+// measured to be under those controls. The GPU cap arrives as the policy's OWN carrier
+// (GpuPowerCapSelection), so a priced candidate and an actuated cap are the same decision object and cannot
+// drift into two watt values for one card.
+type CapCandidate {
+  identity: DeclarationRef
+  label: NonEmptyStr
+  host: HostIdentity
+  gpu_cap: GpuPowerCapSelection
+  cpu_cap: CpuFrequencySetting
+  decode: DecodeReading
+  draw: DrawReading
+}
+
+// ── THE ASK ────────────────────────────────────────────────────────────────────────────────────────
+//
+// WHAT THE WATTS WERE BEING SAVED FOR. A cap is never asked for in the abstract, and the 2026-11-24 record
+// shows what happens when the reason is not carried: the same 10 W per card was judged not worth paying and
+// then paid, on the same day, with nothing in the model stating which constraint the second judgment served.
+// `AskUnstated` is the arm for a cap somebody set with no ask recorded -- it is NOT a synonym for "no
+// constraint", it is the honest statement that the constraint exists and nobody wrote it down, and it
+// carries the words that were said.
+type PowerAsk
+  = CircuitRelief { circuit: SharedPowerCircuit, asked_on: NonEmptyStr }
+  | AskUnstated { cap: Watt, said: NonEmptyStr }
+
+// THE VERDICT. Deliberately std.decision's own result type rather than a local coproduct: the arms
+// (SelectedWithin / SelectionNeedsEvidence / SelectionNeedsPolicy / NoFeasibleRealization /
+// RealizationSelectionRefused / CandidateFieldUnestablished) are the corpus's closed answer to "what came of
+// this ask", and a second verdict vocabulary beside them would be two answers to one question. This module's
+// contribution is that the ask must name its circuit and the circuit's bound must be read before the
+// selection is even reached -- which lands in `SelectionNeedsEvidence` and `RealizationSelectionRefused`,
+// not in a new arm.
+
+// ── THE CANDIDATE FIELD, AS THE SPINE SEES IT ──────────────────────────────────────────────────────
+
+fn micro_tokens_per_second(rate: MilliTokensPerSecond) -> Int {
+  nat_to_int(n: milli_tokens_per_second_count(r: rate)) * 1000
+}
+
+fn micro_watts(draw: Watt) -> Int {
+  nat_to_int(n: watt_count(w: draw)) * 1000000
+}
+
+fn decode_gap(cause: NonEmptyStr) -> AxisGap {
+  AxisGap { axis: ax_decode_tokens_per_second, cause: cause }
+}
+
+fn draw_gap(cause: NonEmptyStr) -> AxisGap {
+  AxisGap { axis: ax_host_draw_watts, cause: cause }
+}
+
+// A gap's cause is the read obligation the reading carries, verbatim. A gap that only said "unmeasured"
+// would be indistinguishable from a gap nobody can close, and std.decision's SelectionNeedsEvidence is
+// supposed to name what to go and read.
+fn candidate_entry(c: CapCandidate) -> ParetoEntry {
+  let decode_reading = match c.decode {
+    DecodeRead { rate_low: lo, rate_high: hi, at_concurrency: _, window: _, instrument: _, standing: _ } =>
+      Present { value: AxisReading {
+        axis: ax_decode_tokens_per_second,
+        interval_micro: OrderedClosedInterval { low: micro_tokens_per_second(rate: lo), high: micro_tokens_per_second(rate: hi) },
+      } }
+    DecodeUnread { read_obligation: o } => Absent
+  }
+  let draw_reading = match c.draw {
+    DrawRead { draw_low: lo, draw_high: hi, sensor: _, observed_on: _, standing: _ } =>
+      Present { value: AxisReading {
+        axis: ax_host_draw_watts,
+        interval_micro: OrderedClosedInterval { low: micro_watts(draw: lo), high: micro_watts(draw: hi) },
+      } }
+    DrawUnread { read_obligation: o } => Absent
+  }
+  let gaps = match c.decode {
+    DecodeRead { rate_low: _, rate_high: _, at_concurrency: _, window: _, instrument: _, standing: _ } => [] as List<AxisGap>
+    DecodeUnread { read_obligation: o } => [decode_gap(cause: o)]
+  }
+  let gaps_with_draw = match c.draw {
+    DrawRead { draw_low: _, draw_high: _, sensor: _, observed_on: _, standing: _ } => gaps_with(gaps: gaps_with_draw_base(g: gaps), extra: [] as List<AxisGap>)
+    DrawUnread { read_obligation: o } => gaps_with(gaps: gaps_with(gaps: gaps, extra: [] as List<AxisGap>), extra: [draw_gap(cause: o)])
+  }
+  ParetoEntry {
+    identity: c.identity,
+    display_label: c.label,
+    readings: readings_of(decode: decode_reading, draw: draw_reading),
+    missing_inputs: gaps_with_draw,
+  }
+}
+
+// Two small helpers rather than a fold over an Optional list, because the language has no list-of-Optional
+// idiom in scope here and an empty list is already the honest answer for "no reading".
+fn gaps_with_draw_base(g: List<AxisGap>) -> List<AxisGap> { g }
+fn gaps_with(gaps: List<AxisGap>, extra: List<AxisGap>) -> List<AxisGap> {
+  concat(gaps, extra)
+}
+
+fn readings_of(decode: Optional<AxisReading>, draw: Optional<AxisReading>) -> List<AxisReading> {
+  match decode {
+    Present { value: d } => match draw {
+      Present { value: w } => [d, w]
+      Absent => [d]
+    }
+    Absent => match draw {
+      Present { value: w } => [w]
+      Absent => []
+    }
+  }
+}
+
+fn candidate_entries(field: List<CapCandidate>) -> List<ParetoEntry> {
+  map(field, c => candidate_entry(c: c))
+}
+
+// ── THE CONSTRAINT THE ASK SERVES ──────────────────────────────────────────────────────────────────
+//
+// The circuit enters twice, and both entries are load-bearing. Its RATING is what makes a bound meaningful
+// at all: with no rating read, nobody knows what the circuit may carry, so no bound can be applied and the
+// ask is answered with what is unread. Its MEMBER-DRAW BOUND is the number the selection actually applies to
+// a candidate, and it is a DECLARED figure with a standing, never a quotient of the rating by the member
+// count -- dividing a circuit's rating among its members would invent a scale no instrument has read, which
+// is the one thing this corpus refuses to do (product.rack_power states the same rule for power factor).
+fn circuit_obligations(circuit: SharedPowerCircuit) -> List<AxisGap> {
+  let rating_gap = match circuit_carry_limit(c: circuit) {
+    Present { value: _ } => [] as List<AxisGap>
+    Absent => match circuit_rating_read_obligation(c: circuit) {
+      Present { value: o } => [draw_gap(cause: o)]
+      Absent => [draw_gap(cause: concat(concat("the rating of ", circuit_label(c: circuit)), " has not been read" as NonEmptyStr) as NonEmptyStr)]
+    }
+  }
+  match circuit_member_draw_bound(c: circuit) {
+    BoundStated { draw_limit: _, standing: _ } => rating_gap
+    BoundUnstated { read_obligation: o } => gaps_with(gaps: rating_gap, extra: [draw_gap(cause: o)])
+  }
+}
+
+// The hard constraint, minted only when the circuit's member-draw bound is stated. std.decision requires a
+// constraint's axis to be a funded selection axis (unfunded_constraint_axis_defects refuses otherwise), and
+// ax_host_draw_watts is funded, so the constraint reaches the feasibility scan rather than being ignored.
+fn circuit_constraints(circuit: SharedPowerCircuit) -> List<HardConstraint> {
+  match circuit_member_draw_bound(c: circuit) {
+    BoundStated { draw_limit: limit, standing: _ } => [HardConstraint {
+      identity: constraint_identity(circuit: circuit),
+      axis: ax_host_draw_watts,
+      bound_micro: micro_watts(draw: limit),
+      denomination: NonMoneyConstraint,
+    }]
+    BoundUnstated { read_obligation: _ } => []
+  }
+}
+
+fn constraint_identity(circuit: SharedPowerCircuit) -> DeclarationRef {
+  decl_ref(
+    module_path: "gunbc.serving.gpu_power_cap_pricing",
+    decl_name: concat("circuit-member-draw-bound-", declaration_ref_display_key(ref: circuit.identity)) as String,
+  )
+}
+
+// ── THE FOLD ───────────────────────────────────────────────────────────────────────────────────────
+//
+// A power ask is priced, or it is refused with the missing reading named. Three things must hold before the
+// selection is reached, and each failure is a different arm:
+//   1. the ask must name the circuit it serves -- an unstated ask is refused, not answered;
+//   2. the circuit's rating must be read and its member-draw bound stated -- otherwise the constraint the
+//      ask serves has no number, and the answer is what to read;
+//   3. each candidate must carry a reading on every funded axis -- std.pareto's feasibility scan refuses to
+//      compare a candidate whose funded-axis reading is absent, and this module never substitutes a cap
+//      value, an average, or a zero for one.
+fn price_power_cap_ask(
+  ask: PowerAsk,
+  assessment: DecisionAssessment,
+  field: List<CapCandidate>,
+) -> RealizationSelectionResult<ParetoEntry> {
+  match ask {
+    AskUnstated { cap: cap, said: said } => RealizationSelectionRefused {
+      defects: [
+        concat(
+          concat(
+            concat("a cap of ", nat_to_decimal(cap: cap)),
+            " W cannot be priced: the ask names no electrical constraint it serves, so there is nothing for the watts to be saved against. What was said: " as NonEmptyStr
+          ),
+          said
+        ) as NonEmptyStr,
+      ],
+    }
+    CircuitRelief { circuit: circuit, asked_on: _ } =>
+      let obligations = circuit_obligations(circuit: circuit)
+      if (obligations |> count) > 0 {
+        SelectionNeedsEvidence { needs: map(obligations, g => UnfundedAxis { gap: g }) }
+      } else {
+        select_realization(
+          assessment: assessment,
+          candidate_field_identity: field_identity(hosts: field),
+          field: candidate_entries(field: field),
+          axes: funded_axes(),
+          constraints: circuit_constraints(circuit: circuit),
+          constraint_authority: circuit.identity,
+          policy: UniqueSurvivorRequired { identity: policy_identity(hosts: field) },
+          evidence_snapshot: evidence_snapshot_identity(hosts: field),
+        )
+      }
+  }
+}
+
+fn nat_to_decimal(cap: Watt) -> NonEmptyStr {
+  // The watt count rendered for a refusal message. Rendered through std.measure's own count, never a
+  // re-derived spelling, so the number in the refusal is the number in the carrier.
+  nat_to_int(n: watt_count(w: cap)) as NonEmptyStr
+}
+
+// The field, constraint authority and evidence snapshot are per-ask identities: std.decision's DecisionScope
+// treats a different candidate field, constraint set or evidence snapshot as A DIFFERENT DECISION, so two
+// power asks must not share one field identity and a stale choice from one must be mechanically detectable.
+fn field_identity(hosts: List<CapCandidate>) -> DeclarationRef {
+  decl_ref(
+    module_path: "gunbc.serving.gpu_power_cap_pricing",
+    decl_name: concat("cap-ask-field-", candidate_roster_tag(hosts: hosts)) as String,
+  )
+}
+
+fn policy_identity(hosts: List<CapCandidate>) -> DeclarationRef {
+  decl_ref(
+    module_path: "gunbc.serving.gpu_power_cap_pricing",
+    decl_name: concat("cap-ask-policy-", candidate_roster_tag(hosts: hosts)) as String,
+  )
+}
+
+fn evidence_snapshot_identity(hosts: List<CapCandidate>) -> DeclarationRef {
+  decl_ref(
+    module_path: "gunbc.serving.gpu_power_cap_pricing",
+    decl_name: concat("cap-ask-evidence-", candidate_roster_tag(hosts: hosts)) as String,
+  )
+}
+
+// A stable tag for one candidate roster, built from the candidates' own identities. Not a hash: a readable
+// join of the display labels, so the DecisionScope of an ask can be recognised in review.
+fn candidate_roster_tag(hosts: List<CapCandidate>) -> String {
+  join(map(hosts, c => declaration_ref_display_key(ref: c.identity)), "+")
+}
+
+// ── THE PRICED CONSEQUENCE, DERIVED FROM THE WINDOWS THAT WERE READ ────────────────────────────────
+//
+// WHAT THE OPERATOR ACTUALLY NEEDED ON 2026-11-24, in one question: when the cap moves, what happens to
+// decode? That question is answerable from the windows that were read, and it is answered here with
+// std.pareto's own interval comparison rather than a hand-rolled quotient or a subtraction of two rounded
+// figures. The answer is an AxisComparison -- Better, Worse, Same, or UndecidedOnEvidence when the widths
+// overlap -- because the honest form of "what did it cost" is the region the evidence supports, not a point.
+//
+// THE TWO COMPARISONS THAT MATTER, and the reason the CPU cap rides the same candidate:
+//   40 W / 3.0 GHz -> 30 W / 3.0 GHz  =  Worse   (39.0 -> 24.1 tok/s: the GPU cap cost the throughput)
+//   30 W / 3.0 GHz -> 30 W / 2.0 GHz  =  Better  (24.1 -> 26.5 tok/s: releasing the CPU cap did not cost it)
+// A candidate shaped as "the GPU watt value" cannot express the second line at all.
+fn decode_cost_of_step(from: CapCandidate, to: CapCandidate) -> AxisComparison {
+  let a = decode_interval(c: from)
+  let b = decode_interval(c: to)
+  match a {
+    Present { value: ai } => match b {
+      Present { value: bi } => axis_comparison_interval(goal: HigherIsBetter, a: bi, b: ai)
+      Absent => UndecidedOnEvidence
+    }
+    Absent => UndecidedOnEvidence
+  }
+}
+
+fn decode_interval(c: CapCandidate) -> Optional<OrderedClosedInterval<Int>> {
+  match c.decode {
+    DecodeRead { rate_low: lo, rate_high: hi, at_concurrency: _, window: _, instrument: _, standing: _ } =>
+      Present { value: OrderedClosedInterval { low: micro_tokens_per_second(rate: lo), high: micro_tokens_per_second(rate: hi) } }
+    DecodeUnread { read_obligation: _ } => Absent
+  }
+}
+
+// The reading std.pareto holds for one candidate on one axis, exposed so a consumer quotes the carrier's
+// figure rather than re-deriving it from the row. Absent is located: it names the axis it looked for.
+fn axis_reading_of(c: CapCandidate, axis: DeclarationRef) -> Optional<OrderedClosedInterval<Int>> {
+  match reading_for(e: candidate_entry(c: c), wanted: axis) {
+    ReadingFound { interval_micro: i } => Present { value: i }
+    ReadingAbsent { absent_axis: _ } => Absent
+    ReadingDuplicated { duplicated_axis: _ } => Absent
+  }
+}
+
+// Is this candidate the machine the caller asked about? Identity equality through product.host_identity's
+// own comparison, the same one the cap policy joins on.
+fn candidate_is_on(c: CapCandidate, host: HostIdentity) -> Bool {
+  host_identity_eq(a: c.host, b: host)
+}
+
+// ── THE FLEET'S OWN CANDIDATES, 2026-11-24 ─────────────────────────────────────────────────────────
+//
+// CARRIED WITH THEIR STANDING, NOT AS FACTS. Every figure below was read over ssh by the operator's session
+// on 2026-11-24 with ad-hoc commands, not by a committed instrument: the decode figures come from the
+// engines' own journal lines `done: N tokens in T s (R tok/s)`, averaged per window, and the session's own
+// note is that the load changed between windows. So every standing here is TranscribedUncited, and its read
+// obligation names what would pin it -- the journal window committed under artifacts/host-observations/ and
+// the averaging step turned into a named instrument. A consumer that may price a cap change only on pinned
+// evidence can refuse on that standing; that is what the standing is for.
+//
+// THE INSTRUMENT IS NAMED BECAUSE DESIGN SECTION 6 ASKS FOR IT, and the addendum names it per figure. The
+// GPU figures and the CPU figures come from DIFFERENT instruments with different grain: decode from the
+// engine journal, CPU power from a single hwmon apm_xgene reading taken while the load was changing. Those
+// two cannot be averaged together, and the rows keep them apart.
+
+data srv4_cap_40w_morning: GpuPowerCapSelection = OperatorDeclaredCap {
+  cap: watt(count: 40),
+  bounds: SustainedPowerDraw,
+  decided_on: "2026-11-24" as NonEmptyStr,
+  said: "operator restored 40 W after measuring the 30 W drop as not worth 10 W per card; the strip opened again later the same day and the caps went back to 30 W" as NonEmptyStr,
+}
+
+data srv4_cap_30w_final: GpuPowerCapSelection = OperatorDeclaredCap {
+  cap: watt(count: 30),
+  bounds: SustainedPowerDraw,
+  decided_on: "2026-11-24" as NonEmptyStr,
+  said: "operator set srv3/srv4 GPUs back to 30 W after the second surge-strip trip (~21:57 UTC); 30 W is the RTX 2000 Ada's minimum settable limit (gunbc.fleet.gpu_device_observation power_limit_minimum)" as NonEmptyStr,
+}
+
+data srv4_decode_40w_30ghz_morning: DecodeReading = DecodeRead {
+  rate_low: milli_tokens_per_second(count: 39000),
+  rate_high: milli_tokens_per_second(count: 39000),
+  at_concurrency: 1,
+  window: "2026-11-24 06:00-09:00 UTC" as NonEmptyStr,
+  instrument: "engine journal lines 'done: N tokens in T s (R tok/s)', averaged per window, read over ssh" as NonEmptyStr,
+  standing: TranscribedUncited {
+    read_obligation: "commit the journal window under artifacts/host-observations/ and name the averaging step as an instrument; this figure is a session read, not a pinned receipt" as NonEmptyStr,
+  },
+}
+
+data srv4_decode_30w_20ghz: DecodeReading = DecodeRead {
+  rate_low: milli_tokens_per_second(count: 26500),
+  rate_high: milli_tokens_per_second(count: 26500),
+  at_concurrency: 1,
+  window: "2026-11-24, after the first trip, with the CPU capped at 2.0 GHz" as NonEmptyStr,
+  instrument: "engine journal lines 'done: N tokens in T s (R tok/s)', averaged per window, read over ssh" as NonEmptyStr,
+  standing: TranscribedUncited {
+    read_obligation: "same as the 40 W window: the journal window is not committed and the averaging step is not an instrument" as NonEmptyStr,
+  },
+}
+
+data srv4_decode_30w_30ghz: DecodeReading = DecodeRead {
+  rate_low: milli_tokens_per_second(count: 24100),
+  rate_high: milli_tokens_per_second(count: 24100),
+  at_concurrency: 1,
+  window: "2026-11-24, 30 W with the CPU cap released" as NonEmptyStr,
+  instrument: "engine journal lines 'done: N tokens in T s (R tok/s)', averaged per window, read over ssh" as NonEmptyStr,
+  standing: TranscribedUncited {
+    read_obligation: "same as the 40 W window: the journal window is not committed and the averaging step is not an instrument" as NonEmptyStr,
+  },
+}
+
+// THE WINDOW WITH A WIDTH. Reported as 28.5-34 tok/s across the conversations in it, so it is carried with
+// its width: dominance over a point reading inside that range stays UndecidedOnEvidence, which is the
+// honest statement that this window does not settle the comparison.
+data srv4_decode_40w_afternoon: DecodeReading = DecodeRead {
+  rate_low: milli_tokens_per_second(count: 28500),
+  rate_high: milli_tokens_per_second(count: 34000),
+  at_concurrency: 1,
+  window: "2026-11-24, back at 40 W" as NonEmptyStr,
+  instrument: "engine journal lines 'done: N tokens in T s (R tok/s)', averaged per window, read over ssh" as NonEmptyStr,
+  standing: TranscribedUncited {
+    read_obligation: "same as the other windows; the spread across conversations is also unexplained, which is a second thing a named instrument would settle" as NonEmptyStr,
+  },
+}
+
+// srv3 fell too. Nobody recorded by how much, so its consequence is a gap with the obligation attached, not
+// an estimate borrowed from srv4 -- borrowing it would be the InferredFromSimilarBuild move gunbc.fleet
+// .fleet_host_power keeps deliberately separate from a measurement, and here there is not even a measured
+// basis to infer from.
+data srv3_decode_unread: DecodeReading = DecodeUnread {
+  read_obligation: "srv3's decode at 30 W was reported only as 'also fell': read its engine journal windows ('done: N tokens in T s (R tok/s)') at 30 W and at 40 W, at the same concurrency, before pricing srv3's cap" as NonEmptyStr,
+}
+
+// THE COST SIDE IS UNREAD FOR EVERY CANDIDATE. A cap is a bound on sustained draw, not a draw; srv3/srv4
+// have never had a per-window power.draw average taken, and the only measured wattages on those hosts are
+// single hwmon apm_xgene CPU readings taken while the load was changing (the addendum's own caveat: "the
+// load also changed between readings, so the true saving is somewhat smaller"). Those readings are not
+// carried as a draw here: they are CPU-only, single-sample, and they do not bound what the two cards draw.
+data draw_unread_srv4: DrawReading = DrawUnread {
+  read_obligation: "no per-window power.draw average exists on srv4: read nvidia-smi power.draw sampled across the same window the decode figure comes from, plus the host's hwmon apm_xgene total, and carry the sample count" as NonEmptyStr,
+}
+
+data draw_unread_srv3: DrawReading = DrawUnread {
+  read_obligation: "no per-window power.draw average exists on srv3; same reading as srv4, and srv3's whole-host draw is still InferredFromSimilarBuild in gunbc.fleet.fleet_host_power" as NonEmptyStr,
+}
+
+data srv4_40w_30ghz_morning_candidate: CapCandidate = CapCandidate {
+  identity: decl_ref(module_path: "gunbc.serving.gpu_power_cap_pricing", decl_name: "srv4-40w-3ghz-morning"),
+  label: "srv4, 40 W, 3.0 GHz (2026-11-24 morning)" as NonEmptyStr,
+  host: operator_host_srv4,
+  gpu_cap: srv4_cap_40w_morning,
+  cpu_cap: Uncapped,
+  decode: srv4_decode_40w_30ghz_morning,
+  draw: draw_unread_srv4,
+}
+
+data srv4_30w_20ghz_candidate: CapCandidate = CapCandidate {
+  identity: decl_ref(module_path: "gunbc.serving.gpu_power_cap_pricing", decl_name: "srv4-30w-2ghz"),
+  label: "srv4, 30 W, 2.0 GHz capped" as NonEmptyStr,
+  host: operator_host_srv4,
+  gpu_cap: srv4_cap_30w_final,
+  cpu_cap: CappedAt { maximum: hertz(count: 2000000000) },
+  decode: srv4_decode_30w_20ghz,
+  draw: draw_unread_srv4,
+}
+
+data srv4_30w_30ghz_candidate: CapCandidate = CapCandidate {
+  identity: decl_ref(module_path: "gunbc.serving.gpu_power_cap_pricing", decl_name: "srv4-30w-3ghz"),
+  label: "srv4, 30 W, 3.0 GHz (CPU cap released)" as NonEmptyStr,
+  host: operator_host_srv4,
+  gpu_cap: srv4_cap_30w_final,
+  cpu_cap: Uncapped,
+  decode: srv4_decode_30w_30ghz,
+  draw: draw_unread_srv4,
+}
+
+data srv4_40w_30ghz_afternoon_candidate: CapCandidate = CapCandidate {
+  identity: decl_ref(module_path: "gunbc.serving.gpu_power_cap_pricing", decl_name: "srv4-40w-3ghz-afternoon"),
+  label: "srv4, 40 W, 3.0 GHz (2026-11-24 afternoon, 28.5-34 tok/s)" as NonEmptyStr,
+  host: operator_host_srv4,
+  gpu_cap: srv4_cap_40w_morning,
+  cpu_cap: Uncapped,
+  decode: srv4_decode_40w_afternoon,
+  draw: draw_unread_srv4,
+}
+
+data srv3_30w_20ghz_candidate: CapCandidate = CapCandidate {
+  identity: decl_ref(module_path: "gunbc.serving.gpu_power_cap_pricing", decl_name: "srv3-30w-2ghz"),
+  label: "srv3, 30 W, 2.0 GHz capped (decode unread)" as NonEmptyStr,
+  host: operator_host_srv3,
+  gpu_cap: srv4_cap_30w_final,
+  cpu_cap: CappedAt { maximum: hertz(count: 2000000000) },
+  decode: srv3_decode_unread,
+  draw: draw_unread_srv3,
+}
+
+// The candidates the 2026-11-24 ask put forward, on the strip that opened twice.
+fn srv4_cap_ask_candidates() -> List<CapCandidate> {
+  [
+    srv4_40w_30ghz_morning_candidate,
+    srv4_30w_20ghz_candidate,
+    srv4_30w_30ghz_candidate,
+    srv4_40w_30ghz_afternoon_candidate,
+  ]
+}
+
+// THE ASK THE FLEET ACTUALLY STOOD ON, priced with nothing read: the strip, whose rating and member-draw
+// bound are both unread. The answer is SelectionNeedsEvidence naming both readings, and it must never be a
+// cap value. This is the fleet's state, not a fixture.
+fn price_the_2026_11_24_ask(assessment: DecisionAssessment) -> RealizationSelectionResult<ParetoEntry> {
+  price_power_cap_ask(
+    ask: CircuitRelief { circuit: surge_strip, asked_on: "2026-11-24" as NonEmptyStr },
+    assessment: assessment,
+    field: srv4_cap_ask_candidates(),
+  )
+}
+
+// The 2026-11-24 morning decision as the model sees it: a cap of 30 W put forward with no circuit named.
+// This is the arm the day's first half lives in -- the operator said a number to save power and the model
+// carries no constraint for it to be weighed against.
+fn price_an_unstated_ask(assessment: DecisionAssessment) -> RealizationSelectionResult<ParetoEntry> {
+  price_power_cap_ask(
+    ask: AskUnstated {
+      cap: watt(count: 30),
+      said: "operator: 30 W per card on srv3/srv4 (2026-11-24, first half of the day); no circuit named" as NonEmptyStr,
+    },
+    assessment: assessment,
+    field: srv4_cap_ask_candidates(),
+  )
+}
