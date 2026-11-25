@@ -88,6 +88,16 @@ fn curl_pinned_get_command(url: String, ca_file: String, connect_to: String, con
   ])
 }
 
+// A BOUNDED GET VERIFIED AGAINST ONE CA FILE, WITH ITS HEADERS READ FROM A FILE (-H @file, curl 7.55+): a
+// credential header never enters argv, where every process on the host could read it.
+fn curl_cacert_get_with_header_file_command(url: String, ca_file: String, header_file: String, max_time: Second) -> ArgvCommand {
+  argv_command(program: curl_program(), arguments: [
+    "-fsS", "--cacert", ca_file, "-H", join(["@", header_file], ""),
+    "--max-time", to_string(second_count(s: max_time)),
+    url,
+  ])
+}
+
 fn curl_download_command(url: String, destination: String) -> ArgvCommand {
   argv_command(program: curl_program(), arguments: ["-fsL", "-o", destination, url])
 }

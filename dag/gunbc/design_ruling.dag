@@ -1523,6 +1523,7 @@ fn design_rulings() -> List<DesignRuling> {
     aws_spot_loop_runs_as_a_scoped_principal_2026_11_25,
     aws_spot_quota_requests_held_2026_11_25,
     aws_spot_g7e_launches_admitted_capped_2026_11_25,
+    aws_spot_quota_three_cards_requested_2026_11_25,
     install_target_is_designated_or_unformatted_2026_11_24,
     fleet_observation_deferral_2026_11_12,
     refreshes_regularly_every_10_minutes_2026_11_16,
@@ -1717,4 +1718,11 @@ data aws_spot_g7e_launches_admitted_capped_2026_11_25: DesignRuling = DesignRuli
   decided: "2026-11-25",
   governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "fail_closed"),
   provenance: "Operator, same session, answering whether real spot instances may be launched while the program iterates in its PR (the 2026-10-23 plan required a separate go-ahead for AWS Apply). Chosen option, verbatim: \"Yes, g7e.2xlarge, capped\" (offered as: launch g7e.2xlarge spot with a hard per-test liability cap, for example 50 USD, plus an AWS Budget backstop, terminating after each test). Context, verbatim from the operator earlier the same session: \"we have 10k in aws credits i need to spend ( to unlock 25k total)\". RULED: g7e.2xlarge spot Apply is admitted during iteration under a per-test cap; a wider size, on-demand, or an uncapped run is not covered.",
+}
+
+data aws_spot_quota_three_cards_requested_2026_11_25: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "aws_spot_quota_three_cards_requested_2026_11_25"),
+  decided: "2026-11-25",
+  governs: decl_ref(module_path: "product.fabric.flex_aws_row", decl_name: "flex_aws_type_walls"),
+  provenance: "Operator, same session, later the same day, verbatim: \"also for spot we need to request more vcpu - at least enough for 2 or three gpus, lets ask them for three, one is too few\" and \"for spot\". SUPERSEDES aws_spot_quota_requests_held_2026_11_25. ACTED: a Service Quotas increase for L-3819A6DF (All G and VT Spot Instance Requests) in us-east-1 to 24 vCPUs (three g7e.2xlarge) was requested 2026-11-25T05:02Z, status PENDING at filing. The quota wall still reads the APPLIED value, so nothing launches against the request until AWS grants it.",
 }

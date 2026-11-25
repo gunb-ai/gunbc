@@ -3,8 +3,12 @@ module gunbc.fleet.flex_aws_pass
 import std.types { Bool, Int, List, NonEmptyStr, String, FilePath }
 import std.optional { Present, Absent }
 import std.algebra { trim }
+import extdeps.languages.json.emit { JsonValue, JsonNumber, serialize_json }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_field, FieldRead }
 import std.apply_mode { ApplyMode, Plan, Apply, parse_apply_mode, ModeParsed, ModeParseRefused }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.nat { nat_range_inclusive }
+import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import std.measure { second, money_amount_micro, money_per_hour_micros, milliseconds_per_second }
 import extdeps.entropy { Urandom }
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -27,7 +31,8 @@ import product.fabric.flex_aws_row {
 }
 import product.fabric.flex_aws_apply {
   FlexAwsApplyPolicy, FlexAwsNotice, FlexAwsNoticeRead, FlexAwsNoticeParsed, FlexAwsNoticeForeign, FlexAwsNoticeUnreadable,
-  FlexAwsDecision, FlexAwsRelease, FlexAwsLaunch, FlexAwsHold, FlexAwsReleaseWhy, FlexAwsReleaseAnnounced,
+  FlexAwsDecision, FlexAwsRelease, FlexAwsLaunch, FlexAwsHold, FlexAwsReleaseWhy,
+  FlexAwsDemand, FlexAwsDemandFixed, FlexAwsDemandRouter,
   FlexAwsReleaseLifetimeSpent, FlexAwsReleaseSurplus, FlexAwsReleaseLaunchTimeUnreadable,
   FlexAwsInterruptionWarning, FlexAwsRebalanceRecommendation,
   flex_aws_read_notice, flex_aws_notice_instance, flex_aws_decide, flex_aws_run_request,
@@ -38,7 +43,8 @@ import product.fabric.flex_vast_shadow { flex_serving_recipe }
 import extdeps.local_inference_lab.qwen3_8_flash_next { qwen3_8_flash_next_hub_repo, qwen3_8_flash_next_pinned_revision, qwen3_8_flash_next_pin_roster }
 import gunbc.flex_aws_credential { flex_aws_credentials_host_path }
 import gunbc.flex_aws_iam { flex_aws_card_role_name, flex_aws_parameter_prefix, flex_aws_queue_name_prefix }
-import extdeps.tools.curl { curl_pinned_get_command }
+import extdeps.tools.curl { curl_pinned_get_command, curl_cacert_get_with_header_file_command }
+import gunbc.harness.harness_operator_route { operator_router_origin, harness_router_operator_route, operator_credential_path, operator_certificate_path, operator_header_line_from_key_text }
 import extdeps.docker.cli_service { DockerCli, SignalHangup }
 import gunbc.serving.router_dev_policy { router_dev_srv1_host_state_dir, router_dev_srv1_container_name }
 import gunbc.serving.flex_aws_router_rows {
@@ -49,7 +55,8 @@ import gunbc.serving.flex_aws_router_rows {
 // perform AT MOST ONE write, and write a receipt. The pass is the effectful shell around a pure decision,
 // so every branch of the decision is witnessed without AWS and this module only sequences reads and the
 // write. Run once per tick (gunbc run --entry dag/gunbc/fleet/flex_aws_pass.dag --function pass
-// --arg mode=plan|apply --arg cards=N --arg router=on|off); a pass that cannot read a fact it needs refuses and writes nothing.
+// --arg mode=plan|apply --arg cards=N --arg router=on|off; with router=on, N is the ceiling and the
+// router's stranded demand decides how many; run_loop adds --arg ticks=T --arg interval_seconds=S); a pass that cannot read a fact it needs refuses and writes nothing.
 
 data flex_aws_pass_receipt_path: String = "target/flex-aws-pass-receipt.txt"
 data flex_aws_notice_queue: NonEmptyStr = "gunbc-flex-notices" as NonEmptyStr
@@ -76,13 +83,13 @@ fn flex_aws_snapshot() -> FlexEc2PinnedSnapshot {
 
 // The admitted policy of gunbc.design_ruling aws_spot_g7e_launches_admitted_capped_2026_11_25: g7e.2xlarge
 // spot in us-east-1 (the only region with G and VT spot quota on 2026-11-25), 50 USD per card over a four
-// hour lifetime. The card count and the write mode are the caller's.
-fn flex_aws_admitted_policy(mode: ApplyMode, cards: Int) -> FlexAwsApplyPolicy {
+// hour lifetime. The write mode is the caller's; how many cards is the router's demand (or, with the
+// router off, the caller's fixed count).
+fn flex_aws_admitted_policy(mode: ApplyMode) -> FlexAwsApplyPolicy {
   FlexAwsApplyPolicy {
     actuation: mode,
     region: "us-east-1" as NonEmptyStr,
     instance_type: "g7e.2xlarge" as NonEmptyStr,
-    cards: cards,
     liability_ceiling: money_amount_micro(count: 50000000),
     lifetime: second(count: 14400),
   }
@@ -146,7 +153,6 @@ fn flex_aws_notice_line(m: AwsCliQueuedMessage) -> String {
 
 fn flex_aws_why_wire(w: FlexAwsReleaseWhy) -> String {
   match w {
-    FlexAwsReleaseAnnounced { notice: n } => concat("announced-reclaim ", flex_aws_notice_instance(n: n) as String)
     FlexAwsReleaseLifetimeSpent { age_seconds: a } => concat("lifetime-spent age_s=", to_string(a))
     FlexAwsReleaseSurplus { live: l, wanted: w2 } => join(["surplus live=", to_string(l), " wanted=", to_string(w2)], "")
     FlexAwsReleaseLaunchTimeUnreadable { launch_time: t } => concat("launch-time-unreadable ", t)
@@ -298,6 +304,76 @@ fn flex_aws_launch_one(region: NonEmptyStr, candidate: FlexAwsCandidate, ami: No
   }
 }
 
+// ---- demand (on the router's host only) --------------------------------------------------------------
+
+// The router's own stats, read as the operator route reads the router: its origin, its pinned server
+// certificate and the client key from their custody (gunbc.harness.harness_operator_route). The header
+// carrying the key is written owner-only and deleted after the read.
+fn flex_aws_router_demand(max_cards: Int) -> AwsCliRead<FlexAwsDemand> {
+  match operator_credential_path(route: harness_router_operator_route) {
+    Absent => AwsCliReadRefused { cause: "the router client key has no custody path" }
+    Present { value: key_path } => match operator_certificate_path(route: harness_router_operator_route) {
+      Absent => AwsCliReadRefused { cause: "the router certificate has no custody path" }
+      Present { value: ca_path } => {
+        let key = Filesystem.Read(path: key_path as String)
+        match operator_header_line_from_key_text(text: if key.success { key.content } else { "" }) {
+          Absent => AwsCliReadRefused { cause: concat("the router client key is unreadable or empty: ", key.error) }
+          Present { value: header } => {
+            let header_path = "/etc/gunbc-flex/router-stats.header"
+            let wrote = Filesystem.WriteOwnerOnly(path: header_path, content: concat(header as String, "\n"))
+            if !wrote.success {
+              AwsCliReadRefused { cause: concat("the stats header could not be written: ", wrote.error) }
+            } else {
+              let answer = flex_aws_done(outcome: run_shell_command_capture(command: curl_cacert_get_with_header_file_command(url: join([operator_router_origin() as String, "/router/stats"], ""), ca_file: ca_path as String, header_file: header_path, max_time: second(count: 10)), transport: LocalExec))
+              let removed = Filesystem.Delete(path: header_path)
+              match answer {
+                AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: concat("router stats: ", c) }
+                AwsCliReadOk { value: body } => flex_aws_read_demand(body: body, max_cards: max_cards)
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+fn flex_aws_json_int(v: JsonValue, path: List<String>) -> Int? {
+  match path.first() {
+    Absent => match v { JsonNumber { lexeme: _ } => parse_int(s: serialize_json(v: v))  _ => none }
+    Present { value: k } => match json_field(obj: v, key: k) {
+      FieldRead { value: inner } => flex_aws_json_int(v: inner, path: path.skip(n: 1))
+      _ => none
+    }
+  }
+}
+
+// pending.total, rented.active and rented.cap, each required: a stats answer missing any of them is not
+// read as zero demand.
+fn flex_aws_read_demand(body: String, max_cards: Int) -> AwsCliRead<FlexAwsDemand> {
+  match parse_json_document(s: body) {
+    JsonDocumentUnreadable { gap: _ } => AwsCliReadRefused { cause: "router stats are not one JSON document" }
+    JsonDocumentParsed { value: d } =>
+      match flex_aws_json_int(v: d, path: ["pending", "total"]) {
+        Absent => AwsCliReadRefused { cause: "router stats carry no pending.total" }
+        Present { value: stranded } => match flex_aws_json_int(v: d, path: ["rented", "active"]) {
+          Absent => AwsCliReadRefused { cause: "router stats carry no rented.active" }
+          Present { value: active } => match flex_aws_json_int(v: d, path: ["rented", "cap"]) {
+            Absent => AwsCliReadRefused { cause: "router stats carry no rented.cap" }
+            Present { value: cap } => AwsCliReadOk { value: FlexAwsDemandRouter { stranded: stranded, rented_active: active, rented_cap: cap, max_cards: max_cards } }
+          }
+        }
+      }
+  }
+}
+
+fn flex_aws_demand_line(d: FlexAwsDemand) -> String {
+  match d {
+    FlexAwsDemandFixed { cards: n } => concat("demand=fixed cards=", to_string(n))
+    FlexAwsDemandRouter { stranded: s, rented_active: a, rented_cap: c, max_cards: m } => join(["demand=router stranded=", to_string(s), " rented=", to_string(a), "/", to_string(c), " max_cards=", to_string(m)], "")
+  }
+}
+
 // ---- router enrollment (on the router's host only) ---------------------------------------------------
 
 // The srv1 vLLM row's serving facts, which this card shares (gunbc.serving.flex_aws_router_rows
@@ -408,7 +484,7 @@ fn flex_aws_router_converge(region: NonEmptyStr, owned: List<AwsEc2Instance>, no
 
 // ---- the pass ---------------------------------------------------------------------------------------
 
-fn flex_aws_pass_text(policy: FlexAwsApplyPolicy, router: Bool, now_unix: Int) -> String {
+fn flex_aws_pass_text(policy: FlexAwsApplyPolicy, router: Bool, cards: Int, now_unix: Int) -> String {
   let observation = flex_aws_observe_region(credentials: flex_aws_credentials(), region: policy.region, now_epoch_seconds: now_unix)
   let queue = flex_aws_read_queue(region: policy.region)
   match observation {
@@ -419,7 +495,14 @@ fn flex_aws_pass_text(policy: FlexAwsApplyPolicy, router: Bool, now_unix: Int) -
         FlexAwsQueueRead { url: _, messages: ms } => {
           let notices = flex_aws_notices(messages: ms)
           let router_lines = if router && (match policy.actuation { Apply => true  Plan => false }) { flex_aws_router_converge(region: r, owned: owned, notices: notices, now_unix: now_unix) } else { ["router=skipped"] }
-          let decision = flex_aws_decide(policy: policy, candidates: candidates, owned: owned, notices: notices, spot_quota_vcpus: q, now_unix: now_unix)
+          // With the router on, demand is the router's and `cards` is the ceiling; a pass that cannot read
+          // the router's demand does not act on a guess of it.
+          let demand_read = if router { flex_aws_router_demand(max_cards: cards) } else { AwsCliReadOk { value: FlexAwsDemandFixed { cards: cards } } }
+          let demand_line = match demand_read { AwsCliReadOk { value: d } => flex_aws_demand_line(d: d)  AwsCliReadRefused { cause: c } => concat("demand=REFUSED ", c) }
+          let decision = match demand_read {
+            AwsCliReadOk { value: d } => flex_aws_decide(policy: policy, demand: d, candidates: candidates, owned: owned, notices: notices, spot_quota_vcpus: q, now_unix: now_unix)
+            AwsCliReadRefused { cause: c } => FlexAwsHold { why: concat("demand unreadable: ", c) }
+          }
           let mode = match policy.actuation { Plan => "plan"  Apply => "apply" }
           let owned_lines = map(owned, i => join(["owned ", i.instance_id as String, " ", i.instance_type as String, " ", i.placement.availability_zone as String, " launched=", i.launch_time, " ip=", match i.public_ip_address { Present { value: a } => a  Absent => "-" }], ""))
           let decided = match decision {
@@ -436,7 +519,7 @@ fn flex_aws_pass_text(policy: FlexAwsApplyPolicy, router: Bool, now_unix: Int) -
             }
           }
           join(concat(concat(
-            [join(["aws-pass mode=", mode, " region=", r as String, " now=", to_string(now_unix), " cards=", to_string(policy.cards)], ""), flex_aws_region_line(o: observation)],
+            [join(["aws-pass mode=", mode, " region=", r as String, " now=", to_string(now_unix)], ""), flex_aws_region_line(o: observation), demand_line],
             concat(owned_lines, map(ms, m => flex_aws_notice_line(m: m)))),
             concat(map(candidates, c => flex_aws_candidate_line(c: c)), concat(router_lines, [decided, written]))), "\n")
         }
@@ -446,27 +529,71 @@ fn flex_aws_pass_text(policy: FlexAwsApplyPolicy, router: Bool, now_unix: Int) -
   }
 }
 
-fn pass(mode: String, cards: String, router: String) -> ProcessExit {
+type FlexAwsTickArgs
+  = FlexAwsTickArgsRead { policy: FlexAwsApplyPolicy, router: Bool, cards: Int }
+  | FlexAwsTickArgsRefused { cause: String }
+
+fn flex_aws_tick_args(mode: String, cards: String, router: String) -> FlexAwsTickArgs {
   match parse_apply_mode(value: mode) {
-    ModeParseRefused { reason: r } => exit_failure(reason: r)
-    ModeParsed { mode: m } =>
-      match observer_clock_read() {
-        ObserverClockUnreadable { detail: d } => exit_failure(reason: concat("THE CLOCK COULD NOT BE READ: ", d))
-        ObserverClockObserved { instant: at } => match parse_int(s: cards) {
-          Absent => exit_failure(reason: concat("cards must be a whole number, not ", cards))
-          Present { value: n } =>
-            if n < 0 {
-              exit_failure(reason: "cards must not be negative")
-            } else {
-              let text = flex_aws_pass_text(policy: flex_aws_admitted_policy(mode: m, cards: n), router: router == "on", now_unix: observer_instant_millis(instant: at) / milliseconds_per_second())
-              let written = Filesystem.Write(path: flex_aws_pass_receipt_path, content: text)
-              if !written.success {
-                exit_failure(reason: concat("THE RECEIPT COULD NOT BE WRITTEN: ", written.error))
-              } else {
-                ExitSuccess
-              }
-            }
-        }
+    ModeParseRefused { reason: r } => FlexAwsTickArgsRefused { cause: r }
+    ModeParsed { mode: m } => match parse_int(s: cards) {
+      Absent => FlexAwsTickArgsRefused { cause: concat("cards must be a whole number, not ", cards) }
+      Present { value: n } =>
+        if n < 0 { FlexAwsTickArgsRefused { cause: "cards must not be negative" } }
+        else if (router != "on") && (router != "off") { FlexAwsTickArgsRefused { cause: concat("router must be on or off, not ", router) } }
+        else { FlexAwsTickArgsRead { policy: flex_aws_admitted_policy(mode: m), router: router == "on", cards: n } }
+    }
+  }
+}
+
+// One tick: read the clock, run the pass, write its receipt. "" on success, else the refusal.
+fn flex_aws_tick(policy: FlexAwsApplyPolicy, router: Bool, cards: Int) -> String {
+  match observer_clock_read() {
+    ObserverClockUnreadable { detail: d } => concat("THE CLOCK COULD NOT BE READ: ", d)
+    ObserverClockObserved { instant: at } => {
+      let text = flex_aws_pass_text(policy: policy, router: router, cards: cards, now_unix: observer_instant_millis(instant: at) / milliseconds_per_second())
+      let written = Filesystem.Write(path: flex_aws_pass_receipt_path, content: text)
+      if written.success { "" } else { concat("THE RECEIPT COULD NOT BE WRITTEN: ", written.error) }
+    }
+  }
+}
+
+fn pass(mode: String, cards: String, router: String) -> ProcessExit {
+  match flex_aws_tick_args(mode: mode, cards: cards, router: router) {
+    FlexAwsTickArgsRefused { cause: c } => exit_failure(reason: c)
+    FlexAwsTickArgsRead { policy: p, router: r, cards: n } => {
+      let refused = flex_aws_tick(policy: p, router: r, cards: n)
+      if refused == "" { ExitSuccess } else { exit_failure(reason: refused) }
+    }
+  }
+}
+
+// THE RESIDENT LOOP: resolve once, then run the pass every interval for a bounded number of ticks, and
+// exit so the unit restarts it with a fresh read of the source. A single pass resolves for minutes on
+// these hosts (measured 2026-11-25), which is longer than AWS's two-minute interruption warning; a tick of
+// a resolved loop reads the notices and acts in seconds. A tick that refuses stops the loop with its cause
+// rather than ticking on past it.
+fn run_loop(mode: String, cards: String, router: String, ticks: String, interval_seconds: String) -> ProcessExit {
+  match flex_aws_tick_args(mode: mode, cards: cards, router: router) {
+    FlexAwsTickArgsRefused { cause: c } => exit_failure(reason: c)
+    FlexAwsTickArgsRead { policy: p, router: r, cards: c } => match parse_int(s: ticks) {
+      Absent => exit_failure(reason: concat("ticks must be a whole number, not ", ticks))
+      Present { value: n } => match parse_int(s: interval_seconds) {
+        Absent => exit_failure(reason: concat("interval_seconds must be a whole number, not ", interval_seconds))
+        Present { value: wait } =>
+          if (n < 1) || (wait < 1) {
+            exit_failure(reason: "ticks and interval_seconds must both be at least 1")
+          } else {
+            let refused = fold(nat_range_inclusive(lo: 1, hi: n as Nat), init: "", f: (acc, k) =>
+              if acc != "" { acc } else {
+                let result = flex_aws_tick(policy: p, router: r, cards: c)
+                if (result == "") && ((k as Int) < n) {
+                  if sleep_delay_seconds_second_carrier_projection(duration: second(count: wait as Nat)) { "" } else { "THE SLEEP REFUSED" }
+                } else { result }
+              })
+            if refused == "" { ExitSuccess } else { exit_failure(reason: refused) }
+          }
       }
+    }
   }
 }
