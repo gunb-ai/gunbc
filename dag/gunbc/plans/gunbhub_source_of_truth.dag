@@ -1,0 +1,45 @@
+module gunbc.plans.gunbhub_source_of_truth
+
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
+import std.markdown { MarkdownBlock }
+import gunbc.markdown_helpers { h2, p, li, ul, quote }
+
+fn gunbhub_source_of_truth_body() -> List<MarkdownBlock> {
+  [
+    quote(blocks: [
+      p(text: "**Goal:** gunbc's source of truth is its own source control, served as gunbhub, and GitHub holds a mirror of it rather than the authority over it."),
+      p(text: "**What this carrier holds:** the direction, why, and done-when. It holds no phase list, owner, item status or done mark; the work items that realize it are roadmap nodes that name this intention, starting with the native SCM rows already in gunbc.roadmap.roadmap_authority (2-scm-*), and their order and timing live there."),
+      p(text: "**Read at:** gunbc main `1d8a1d397675` on 2026-11-24 (keen-dove-217), by source inspection; nothing was run."),
+    ]),
+
+    h2(text: "1. The decision this intention stands on"),
+    p(text: "GitHub stays the code repository for now, and moving the source of truth onto gunbc's own source control is a separate, longer track than the rest of the move off GitHub: gunbc.design_ruling::github_stays_the_code_repository_until_gunbhub_2026_11_24. The near-term move of identity and execution onto the fabric does not wait on this track, and this track does not wait on it."),
+
+    h2(text: "2. Why"),
+    ul(items: [
+      li(text: "Every other authority the project runs on is being moved into its own model: identity and execution onto the fabric, planning into gunbc.plans and gunbc.roadmap. The source history those authorities act on stays in a hosted service whose decisions -- what landed, in what order, under which review -- the model reads back but does not own."),
+      li(text: "While GitHub is the source of truth, \"reviewed main\" is a GitHub fact (its ruleset and merge state), so any credential or approval that trusts main inherits GitHub as a root even after the rest of the trust chain has moved."),
+      li(text: "The model for owning it exists in part: gunbc.scm carries an object store, a write spine, proposals, checkout and squash merge, and gunbc.gunbhub_serve renders a browse page; the roadmap rows 2-scm-* model Git, Mercurial and Pijul on their own terms and a submit-to-landed spine. None of it serves the repository today."),
+    ]),
+
+    h2(text: "3. Not there yet"),
+    p(text: "This is a long track by the operator's own reading. Nothing in it is a prerequisite of bringing a machine into service, of the fabric identity work, or of remote builds, which keep fetching source through GitHub until this track's cutover. A row that would make one of those wait on gunbhub belongs elsewhere."),
+
+    h2(text: "4. Done when"),
+    ul(items: [
+      li(text: "A change to gunbc is proposed, reviewed and landed through gunbc's own source control, and the landed revision is read back from it independently of the writer."),
+      li(text: "People can browse the repository, read a proposal and its review, and land it through gunbhub, a deliberately simple frontend, without going to GitHub."),
+      li(text: "GitHub receives the repository only as a one-way mirror; losing the mirror delays nothing that lands, and a mirror that falls behind catches up from gunbhub."),
+      li(text: "Every consumer that reads source -- remote builds, the belt, review tooling, the fleet's revision admission -- reads it from gunbhub or the mirror's copy of it, with gunbhub the authority. Which consumers exist is the operator's judgement at cutover; this condition is not checkable as a census."),
+    ]),
+  ]
+}
+
+data gunbhub_source_of_truth_plan: Plan = Plan {
+  projection: PlanIsAuthorityOnly,
+  slug: "gunbhub-source-of-truth",
+  title: "gunbhub as the source of truth: gunbc's own source control, GitHub as a mirror",
+  body: gunbhub_source_of_truth_body(),
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Every condition in section 4 holds: changes land through gunbc's own source control with independent read-back, gunbhub serves browse, proposal, review and landing, GitHub receives only a one-way mirror, and source consumers read from the gunbhub authority.") },
+}

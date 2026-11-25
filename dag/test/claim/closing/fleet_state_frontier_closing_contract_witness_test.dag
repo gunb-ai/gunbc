@@ -1,0 +1,281 @@
+module test.claim.closing.fleet_state_frontier_closing_contract_witness_test
+
+// Closing witness for node fleet-state-frontier (owner: fleet). The node's
+// bar: an undeclared file, service, credential, or device refuses before
+// anything is changed (gunbc.design_argument::fail_closed).
+//
+// Where the work lives: the classification is written-down data in the
+// carrier -- gunbc.host.host_converge::frontier_machine_artifacts names each
+// machine artifact of the converge workflow by the identity it carries in the
+// knob target's own typed fields (systemd unit names, per-slot drop-in paths,
+// the pinned tree root, the contracted codex runtime bundle family) with its
+// class: derived-by-us, owned-by-us, or contracted-externally. The
+// production call site: converge_hosts_of_plan folds every host through
+// frontier_gate_host, which calls frontier_validate_knobs, which reads the
+// class via frontier_classify_target -- the only classification read
+// (gunbc.design_argument::single_authority; review 98094: nothing is stored
+// on the knob and nothing restates the check).
+//
+// What the executed claims show, exactly:
+//   an_undeclared_artifact_refuses_before_anything_is_changed
+//     -- supplies two undeclared machine artifacts as inputs to the
+//        production route's frontier stage (frontier_gate_host, the fold's
+//        per-host gate): a knob built by the production ConvergeKnob shape
+//        whose target sets a property on a unit no row classifies
+//        ("srv9_devmon.slice"), and one whose target writes a drop-in file no
+//        row classifies ("/run/systemd/system/srv9-devmon@.service/
+//        10-undeclared.conf"). Asserts the route returns FleetConvergeUnsound
+//        -- the typed refusal the fold propagates fleet-wide -- whose reason
+//        carries each artifact's identity and kind and says it refuses before
+//        any change is attempted. An unclassified artifact never lands in the
+//        admitted plan: a refused host never reaches FleetConvergeHosts. At
+//        main there is no gate, no classification and no way to refuse, and
+//        this claim fails.
+//   a_wrong_kind_same_name_target_refuses_rather_than_inherits
+//     -- the (kind, identity) pairing discipline on the same production
+//        gate: a SERVICE target whose unit name is the classified FILE
+//        identity "codex-runtime-bundle" refuses, carrying that identity
+//        and kind, while the real FILE-family target under the same
+//        identity string still admits its host (gate returns the host in
+//        the plan). A name alone classifies nothing; a name-only lookup
+//        would admit the service and this claim goes red.
+//   a_fully_classified_inventory_admits
+//     -- positive control on the same real route: converge_hosts_of_plan over
+//        the production deployment plan. Asserts FleetConvergeHosts whose
+//        length equals the number of derived host standings in the plan, so
+//        every host was admitted by the frontier gate (gate refusal would
+//        yield FleetConvergeUnsound; a silent drop would yield a shorter
+//        list). Population is non-empty.
+//
+// Kinds, stated honestly (gunbc.design_argument::epistemic_humility): the
+// row's boundary quantifies over files, services, credentials and devices.
+// This workflow's route changes services (systemd units and slices) and
+// files (drop-ins, the pinned tree, the contracted codex runtime bundle); a
+// search of the converge path for credential or device artifacts on the
+// route returns none, so no credential or device row, arm or assertion is
+// fabricated. The refusal is by identity and does not branch on kind:
+// anything unclassified refuses, of any kind.
+
+import std.types { Bool, String }
+import std.algebra { fold_list, string_contains }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.systemd { systemd_memory_max_property }
+import gunbc.ci.ci_runner_placement {
+  runner_deployment_plan,
+  HostRunnerDeploymentDerived,
+  HostRunnerDeploymentRefused,
+}
+import gunbc.fleet.fleet_enrollment { ExistingHostQuiescentReload }
+import gunbc.host.host_converge {
+  BlindApply,
+  CodexRuntimeBundle,
+  ContractedExternally,
+  ConvergeKnob,
+  DerivedByUs,
+  FleetConvergeHosts,
+  FleetConvergeUnsound,
+  GunbcSlice,
+  HostConverge,
+  HostFrontierAdmitted,
+  HostFrontierRefused,
+  OwnedByUs,
+  RunnerSlice,
+  SessionsSlice,
+  SliceProperty,
+  PerSlotMemoryCap,
+  converge_hosts_of_plan,
+  frontier_gate_host,
+  frontier_validate_knobs,
+  session_knobs_for,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The row's discriminating pair: an undeclared machine artifact refuses the
+// route BEFORE any change is attempted, carrying its identity and kind. Both
+// items are assembled in the production ConvergeKnob shape; their targets
+// carry artifact identities the written-down frontier does not classify -- a
+// unit nobody classified, and a drop-in file nobody classified -- exactly the
+// state a new machine-touching cap would arrive in if its artifact were never
+// declared. The gate refuses both, each carrying its identity.
+test fn an_undeclared_artifact_refuses_before_anything_is_changed() -> Bool {
+  let plan = runner_deployment_plan()
+  fold_list(
+    xs: plan.hosts,
+    empty: false,
+    cons: fn(acc, st) {
+      if acc {
+        true
+      } else {
+        match st {
+          HostRunnerDeploymentDerived { deployment: h } => {
+        let unclassified_service = ConvergeKnob {
+          slice: SessionsSlice,
+          name: "srv9_devmon_memory_cap",
+          desired: "512M",
+          target: SliceProperty {
+            unit: "srv9_devmon.slice",
+            property: systemd_memory_max_property,
+            apply_value: "512M",
+            expected_effective: "512M",
+          },
+          apply_mode: ExistingHostQuiescentReload,
+          no_op: BlindApply,
+        }
+        let unclassified_file = ConvergeKnob {
+          slice: RunnerSlice,
+          name: "srv9_devmon_slot_cap",
+          desired: "256M",
+          target: PerSlotMemoryCap {
+            dropin_path: "/run/systemd/system/srv9-devmon@.service/10-undeclared.conf",
+            instance_glob: "srv9-devmon@*",
+            property: systemd_memory_max_property,
+            bytes_value: "256M",
+          },
+          apply_mode: ExistingHostQuiescentReload,
+          no_op: BlindApply,
+        }
+        let service_refused = match frontier_gate_host(
+          h: h,
+          session_knobs: session_knobs_for(host: h.identity),
+          backstop_knobs: [unclassified_service],
+          hosts: [],
+        ) {
+          FleetConvergeUnsound { reason: r } =>
+            string_contains(s: r, pattern: "srv9_devmon.slice")
+              && string_contains(s: r, pattern: "service")
+              && string_contains(s: r, pattern: "refuses before any change is attempted")
+          FleetConvergeHosts { hosts: _ } => false
+        }
+        let file_refused = match frontier_gate_host(
+          h: h,
+          session_knobs: session_knobs_for(host: h.identity),
+          backstop_knobs: [unclassified_file],
+          hosts: [],
+        ) {
+          FleetConvergeUnsound { reason: r } =>
+            string_contains(s: r, pattern: "10-undeclared.conf")
+              && string_contains(s: r, pattern: "file")
+              && string_contains(s: r, pattern: "refuses before any change is attempted")
+          FleetConvergeHosts { hosts: _ } => false
+        }
+        service_refused && file_refused
+          }
+          HostRunnerDeploymentRefused { refusal: _ } => false
+        }
+      }
+    }
+  )
+}
+
+// The wrong-kind/same-name control (review 98127 follow-up): the codex
+// runtime bundle family is a classified FILE (contracted-externally). A
+// SERVICE target whose unit name is that same identity string must refuse,
+// not inherit the bundle's class -- the classification is keyed on the pair
+// (kind, identity), so a name alone classifies nothing. The control runs
+// both directions on the real route's gate: the same-name service knob
+// refuses carrying its identity and kind, and the real file-family knob
+// under the same identity string still admits its host. If the lookup were
+// name-only the first half would admit and this claim goes red.
+test fn a_wrong_kind_same_name_target_refuses_rather_than_inherits() -> Bool {
+  let plan = runner_deployment_plan()
+  fold_list(
+    xs: plan.hosts,
+    empty: false,
+    cons: fn(acc, st) {
+      if acc {
+        true
+      } else {
+        match st {
+          HostRunnerDeploymentDerived { deployment: h } => {
+            let bundle_impersonating_service = ConvergeKnob {
+              slice: SessionsSlice,
+              name: "srv9_bundle_impersonation",
+              desired: "512M",
+              target: SliceProperty {
+                unit: "codex-runtime-bundle",
+                property: systemd_memory_max_property,
+                apply_value: "512M",
+                expected_effective: "512M",
+              },
+              apply_mode: ExistingHostQuiescentReload,
+              no_op: BlindApply,
+            }
+            let wrong_kind_refused = match frontier_gate_host(
+              h: h,
+              session_knobs: session_knobs_for(host: h.identity),
+              backstop_knobs: [bundle_impersonating_service],
+              hosts: [],
+            ) {
+              FleetConvergeUnsound { reason: r } =>
+                string_contains(s: r, pattern: "codex-runtime-bundle")
+                  && string_contains(s: r, pattern: "service")
+                  && string_contains(s: r, pattern: "refuses before any change is attempted")
+              FleetConvergeHosts { hosts: _ } => false
+            }
+            let bundle_file = ConvergeKnob {
+              slice: GunbcSlice,
+              name: "codex_runtime_bundle_control",
+              desired: "contracted",
+              target: CodexRuntimeBundle { host_identity: h.identity },
+              apply_mode: ExistingHostQuiescentReload,
+              no_op: BlindApply,
+            }
+            let right_kind_admitted = match frontier_gate_host(
+              h: h,
+              session_knobs: session_knobs_for(host: h.identity),
+              backstop_knobs: [bundle_file],
+              hosts: [],
+            ) {
+              FleetConvergeHosts { hosts: hs } => hs.length() == 1
+              FleetConvergeUnsound { reason: _ } => false
+            }
+            wrong_kind_refused && right_kind_admitted
+          }
+          HostRunnerDeploymentRefused { refusal: _ } => false
+        }
+      }
+    }
+  )
+}
+
+// Positive control on the same real route: every production host's artifacts
+// carry an agreed classification, so the frontier gate ADMITS each host --
+// and the ADMITTED verdict carries the three-way classification the node's
+// handback is (gunbc.design_argument::consumption: the class is read by the
+// gate's fold and asserted here, not decorative). Asserts, over the route's
+// own admitted hosts: hosts.length() equals the derived standings of the plan
+// (a gate refusal yields FleetConvergeUnsound and a silent drop a shorter
+// list, so both go red), each host's knobs pass the production gate with an
+// Admitted verdict whose classified list spans all three classes --
+// derived-by-us (slice/unit caps and drop-ins), owned-by-us (the pinned tree)
+// and contracted-externally (the codex runtime bundle) -- and the population
+// is non-empty.
+test fn a_fully_classified_inventory_admits() -> Bool {
+  let plan = runner_deployment_plan()
+  let derived_count = filter(plan.hosts, st => {
+    match st {
+      HostRunnerDeploymentDerived { deployment: _ } => true
+      HostRunnerDeploymentRefused { refusal: _ } => false
+    }
+  }).length()
+  match converge_hosts_of_plan(plan: plan) {
+    FleetConvergeHosts { hosts: hs } =>
+      hs.length() == derived_count
+        && derived_count > 0
+        && filter(hs, h => host_frontier_admits_all_classes(h: h)).length() == hs.length()
+    FleetConvergeUnsound { reason: _ } => false
+  }
+}
+
+// Each route-produced host, put back through the production gate, must come
+// back Admitted with all three classes present among its classified artifacts.
+fn host_frontier_admits_all_classes(h: HostConverge) -> Bool {
+  match frontier_validate_knobs(knobs: h.knobs) {
+    HostFrontierRefused { artifact: _, cause: _ } => false
+    HostFrontierAdmitted { classified: c } =>
+      filter(c, a => match a.class { DerivedByUs => true OwnedByUs => false ContractedExternally => false }).length() > 0
+        && filter(c, a => match a.class { DerivedByUs => false OwnedByUs => true ContractedExternally => false }).length() > 0
+        && filter(c, a => match a.class { DerivedByUs => false OwnedByUs => false ContractedExternally => true }).length() > 0
+  }
+}
