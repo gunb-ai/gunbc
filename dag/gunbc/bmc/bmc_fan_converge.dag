@@ -3,7 +3,7 @@ module gunbc.bmc.bmc_fan_converge
 import extdeps.board_authority { BoardAuthorityRef }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
-import std.algebra { trim }
+import std.algebra { Cons, Empty, FreeSemigroup, trim }
 import extdeps.firmware.types { firmware_semantic_version_text }
 
 import extdeps.bmc.capability {
@@ -857,11 +857,15 @@ fn bmc_fan_observe_tach_health(
   session: PasswordSshSession,
   sensors: List<NonEmptyStr>,
 ) -> BmcFanTachHealthListResult {
-  bmc_fan_observe_tach_health_rec(
-    session: session,
-    sensors: sensors,
-    built: [],
-  )
+  if sensors.length() == 0 {
+    BmcFanTachHealthListRefused { reason: "no tach sensors in observation plan" }
+  } else {
+    bmc_fan_observe_tach_health_rec(
+      session: session,
+      sensors: sensors,
+      built: [],
+    )
+  }
 }
 
 fn bmc_fan_observe_typed_parts(
@@ -1227,55 +1231,55 @@ fn bmc_fan_tach_health_for_sensor(
 // sensor name. It is unreachable in both callers, which refuse an empty roster one line above, and
 // eliminating here additionally stops an OPTIONAL being handed to the `sensor:` parameters below,
 // which are declared `NonEmptyStr`.
-fn bmc_fan_required_head(required: List<NonEmptyStr>) -> NonEmptyStr {
-  match required.first() {
-    Present { value: sensor } => sensor
-    Absent => "required-sensor-roster-empty" as NonEmptyStr
-  }
+fn bmc_fan_required_head(required: FreeSemigroup<NonEmptyStr>) -> NonEmptyStr {
+  required.head
 }
 
 fn bmc_fan_first_unhealthy_tach(
   health: List<OpenBmcTachHealth>,
   required: List<NonEmptyStr>,
 ) -> String? {
-  if required.length() == 0 {
-    none
-  } else {
-    let tach = bmc_fan_required_head(required: required)
-    match bmc_fan_tach_health_for_sensor(health: health, sensor: tach) {
-      Absent =>
-        Present {
-          value: join(["required tach health is absent: ", tach as String], ""),
-        }
-      Present { value: observed } =>
-        match observed {
-          OpenBmcTachThresholdUnstated { sensor: _, reason } =>
+  match required {
+    Empty => none
+    Cons { head: tach, tail: _ } => {
+      let required_head = bmc_fan_required_head(
+        required: FreeSemigroup { head: tach, tail: required.skip(n: 1) },
+      )
+      match bmc_fan_tach_health_for_sensor(health: health, sensor: required_head) {
+        Absent =>
+          Present {
+            value: join(["required tach health is absent: ", required_head as String], ""),
+          }
+        Present { value: observed } =>
+          match observed {
+            OpenBmcTachThresholdUnstated { sensor: _, reason } =>
+              Present {
+                value: join(
+                  ["required tach threshold is unstated: ", required_head as String, ": ", reason],
+                  "",
+                ),
+              }
+            OpenBmcTachBelowThreshold { sensor: _, reading_rpm, minimum_rpm, source: _ } =>
             Present {
               value: join(
-                ["required tach threshold is unstated: ", tach as String, ": ", reason],
+                [
+                  "required tach is below its OpenBMC threshold: ",
+                  required_head as String,
+                  "=",
+                  to_string(rpm_count(reading_rpm)),
+                  " < ",
+                  to_string(rpm_count(minimum_rpm)),
+                ],
                 "",
               ),
             }
-          OpenBmcTachBelowThreshold { sensor: _, reading_rpm, minimum_rpm, source: _ } =>
-          Present {
-            value: join(
-              [
-                "required tach is below its OpenBMC threshold: ",
-                tach as String,
-                "=",
-                to_string(rpm_count(reading_rpm)),
-                " < ",
-                to_string(rpm_count(minimum_rpm)),
-              ],
-              "",
-            ),
+            OpenBmcTachAtOrAboveThreshold { sensor: _, reading_rpm: _, minimum_rpm: _, source: _ } =>
+              bmc_fan_first_unhealthy_tach(
+                health: health,
+                required: required.skip(n: 1),
+              )
           }
-          OpenBmcTachAtOrAboveThreshold { sensor: _, reading_rpm: _, minimum_rpm: _, source: _ } =>
-            bmc_fan_first_unhealthy_tach(
-              health: health,
-              required: required.skip(n: 1),
-            )
-        }
+      }
     }
   }
 }
@@ -1285,52 +1289,55 @@ fn bmc_fan_first_unhealthy_component(
   required: List<NonEmptyStr>,
   rollback_temperature: Celsius,
 ) -> String? {
-  if required.length() == 0 {
-    none
-  } else {
-    let sensor = bmc_fan_required_head(required: required)
-    match bmc_fan_temperature_for_sensor(
-      temperatures: temperatures,
-      sensor: sensor,
-    ) {
-      Absent =>
-        Present {
-          value: join(["required component temperature is absent: ", sensor as String], ""),
-        }
-      Present { value: BmcFanTemperatureAbsent } =>
-        Present {
-          value: join(["required component temperature is absent: ", sensor as String], ""),
-        }
-      Present { value: BmcFanTemperatureRefused { reason } } =>
-        Present {
-          value: join(
-            ["required component temperature was refused: ", sensor as String, ": ", reason],
-            "",
-          ),
-        }
-      Present { value: BmcFanTemperatureObserved { value: temperature } } =>
-          if celsius_count(temperature) >= celsius_count(rollback_temperature) {
-            Present {
-              value: join(
-                [
-                  "component reached rollback temperature: ",
-                  sensor as String,
-                  "=",
-                  to_string(celsius_count(temperature)),
-                  "C >= ",
-                  to_string(celsius_count(rollback_temperature)),
-                  "C",
-                ],
-                "",
-              ),
-            }
-          } else {
-            bmc_fan_first_unhealthy_component(
-              temperatures: temperatures,
-              required: required.skip(n: 1),
-              rollback_temperature: rollback_temperature,
-            )
+  match required {
+    Empty => none
+    Cons { head: sensor, tail: _ } => {
+      let required_sensor = bmc_fan_required_head(
+        required: FreeSemigroup { head: sensor, tail: required.skip(n: 1) },
+      )
+      match bmc_fan_temperature_for_sensor(
+        temperatures: temperatures,
+        sensor: required_sensor,
+      ) {
+        Absent =>
+          Present {
+            value: join(["required component temperature is absent: ", required_sensor as String], ""),
           }
+        Present { value: BmcFanTemperatureAbsent } =>
+          Present {
+            value: join(["required component temperature is absent: ", required_sensor as String], ""),
+          }
+        Present { value: BmcFanTemperatureRefused { reason } } =>
+          Present {
+            value: join(
+              ["required component temperature was refused: ", required_sensor as String, ": ", reason],
+              "",
+            ),
+          }
+        Present { value: BmcFanTemperatureObserved { value: temperature } } =>
+            if celsius_count(temperature) >= celsius_count(rollback_temperature) {
+              Present {
+                value: join(
+                  [
+                    "component reached rollback temperature: ",
+                    required_sensor as String,
+                    "=",
+                    to_string(celsius_count(temperature)),
+                    "C >= ",
+                    to_string(celsius_count(rollback_temperature)),
+                    "C",
+                  ],
+                  "",
+                ),
+              }
+            } else {
+              bmc_fan_first_unhealthy_component(
+                temperatures: temperatures,
+                required: required.skip(n: 1),
+                rollback_temperature: rollback_temperature,
+              )
+            }
+      }
     }
   }
 }
