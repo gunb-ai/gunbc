@@ -43,6 +43,7 @@ import gunbc.harness.harness_turn {
   harness_alignment_adjudicate_and_resume, harness_alignment_resume_apply,
   harness_alignment_epoch_opened_path, harness_alignment_epoch_already_opened,
   harness_alignment_epoch_opened_line,
+  harness_alignment_open_epoch, HarnessAlignmentEpochOpening, EpochOpened, EpochAlreadyOpen, EpochOpeningUnwritable,
   harness_alignment_publication_path, harness_alignment_publication_text, harness_alignment_publish,
   harness_alignment_observation_digest, harness_alignment_fingerprint_of, harness_alignment_checkpoint_digest,
   harness_event_alignment_checkpoint_due, harness_turn_checkpoint_due, harness_alignment_conversation_tip,
@@ -575,6 +576,15 @@ test fn a_changed_node_contract_or_edge_contribution_invalidates_earlier_receipt
 //        names the checkpoint event it was never asked to read: the record is consulted first, so the
 //        single-next-epoch claim is asserted through the record and not through a value a process handed
 //        back.
+// LEG 6  THE FIRST PUBLICATION IS THE RECORD: a second adjudication of the same checkpoint, coming back
+//        with a different verdict, is refused by the create-new and leaves the published bytes untouched
+//        (asserted by reading the receipt back, not by trusting the refusal).
+// LEG 7  THE CREATE CALL IS THE ARBITER OF THE EPOCH NAME: an epoch record planted by "the resumer that
+//        won" is refused by the opening and its bytes are left alone.
+//        WHAT THESE TWO LEGS DO NOT CLAIM: a sequential harness cannot interleave two resumers, so it
+//        cannot reproduce the race itself -- it witnesses the consequence the primitive guarantees (one
+//        name, one winner, the loser told so by the call that failed) and the race-freedom rests on the
+//        filesystem authority's create-new, which this repo exercises in its own create-new witnesses.
 // Finally: the epoch-13 record does not exist, and the epoch-12 body is byte for byte what LEG 1 wrote.
 // The verdict and cadence sit in the durable publication as one body -- no half-publication to recover
 // from.
@@ -620,6 +630,38 @@ test fn a_crash_after_verdict_publication_produces_exactly_one_next_epoch() -> B
     events: [],
     repairs_used: 0,
   )
+  // LEG 6  THE FIRST PUBLICATION IS THE RECORD. The publication is create-new, not an overwrite: a second
+  //        adjudication of the same checkpoint whose check came back differently is REFUSED, and the bytes
+  //        the lineage already resumed on survive byte for byte. The verdict reaches the published body
+  //        through the check's own artifact, so restamping that artifact is exactly how a second
+  //        adjudication would otherwise carry a different verdict into the same name. Discriminating input:
+  //        under the overwrite publication this leg is red -- the durable body would read the stop verdict
+  //        and the second publish would report success, so no other leg in this module can cover it.
+  let restamped = write_file(
+    path: verdict_in(dir: dir, steps: steps),
+    content: "{\"kind\": \"catastrophically-misaligned\", \"reason\": \"the second check saw a drift the first did not\"}",
+  )
+  let second_adjudication = harness_alignment_adjudicate(
+    checkpoint: checkpoint,
+    projection: projection,
+    events_path: events_in(dir: dir),
+    observation_path: observation_in(dir: dir, steps: steps),
+    verdict_path: verdict_in(dir: dir, steps: steps),
+    cadence: alignment_base_cadence_state(),
+  )
+  let second_publication_refused = match second_adjudication {
+    AdjudicationPublished { adjudication: second } => {
+      let attempt = harness_alignment_publish(check_directory: dir, adjudication: second)
+      let second_saw_a_different_verdict = match second.verdict { Aligned => false, _ => true }
+      // The premise has to have FORMED: the second check really did decide differently, and what stopped
+      // it is the occupied record -- not an earlier leg refusing for an unrelated reason, which would let
+      // this pass while the overwrite defect stayed live.
+      second_saw_a_different_verdict
+        && !attempt.success
+        && string_contains(s: attempt.detail, pattern: "a different verdict is already published")
+    }
+    AdjudicationRefused { cause: _ } => false
+  }
   let wiped = write_file(path: events_in(dir: dir), content: "")
   let replay_without_log = harness_alignment_adjudicate_and_resume(
     config: turn_config(dir: dir),
@@ -644,7 +686,13 @@ test fn a_crash_after_verdict_publication_produces_exactly_one_next_epoch() -> B
     _ => true
   }
   let resume_refused_the_replay = match replay_at_resume {
-    TurnSupervisionUnavailable { cause, steps_taken: _ } => string_contains(s: cause, pattern: "already recorded as opened")
+    TurnSupervisionUnavailable { cause, steps_taken: _ } =>
+      string_contains(s: cause, pattern: "already recorded as opened")
+        // The replay's publish found the name occupied by ITS OWN identical body and stood on it, so the
+        // flow reached the epoch open at all. Had create-new been read as a plain failure here, the refusal
+        // would name an unpublished verdict and a crash between publication and opening would strand the
+        // lineage -- the opposite half of the same red control.
+        && !string_contains(s: cause, pattern: "never published")
     _ => false
   }
   let entry_refused_the_replay = match replay_at_entry {
@@ -670,8 +718,26 @@ test fn a_crash_after_verdict_publication_produces_exactly_one_next_epoch() -> B
     && string_contains(s: log_after_first, pattern: "alignment.epoch_opened")
     && string_contains(s: publication, pattern: "\"verdict\"")
     && string_contains(s: publication, pattern: "\"cadence\"")
+    // LEG 6's consequence, read off the disk rather than off a return value: the receipt the lineage
+    // resumed on still carries the FIRST verdict, and the second adjudication's verdict never entered it.
+    && string_contains(s: publication, pattern: "\"aligned\"")
+    && !string_contains(s: publication, pattern: "catastrophically-misaligned")
+  // LEG 7  THE CREATE CALL DECIDES, NOT A READ. The epoch name for 14 is planted with ANOTHER resumer's
+  //        bytes -- the winner of the race the read-then-write used to lose -- and the opening must be
+  //        refused by the create itself, leaving those bytes alone. A loser that rewrote the winner's
+  //        record would put its own verdict in the durable place the lineage reads, which is the same
+  //        defect one file over from LEG 6.
+  let rival_path = harness_alignment_epoch_opened_path(check_directory: dir, checkpoint: checkpoint, next_epoch: 14)
+  let rival_body = "{\"type\": \"alignment.epoch_opened\", \"written_by\": \"the resumer that created the name first\"}"
+  let planted = write_file(path: rival_path, content: rival_body)
+  let rival_opening = harness_alignment_open_epoch(check_directory: dir, checkpoint: checkpoint, next_epoch: 14, verdict: Aligned)
+  let loser_refused_without_overwriting = match rival_opening {
+    EpochAlreadyOpen { path: p, detail: _ } => p == rival_path && read_file(path: rival_path) == rival_body
+    EpochOpened { path: _ } => false
+    EpochOpeningUnwritable { cause: _ } => false
+  }
   let removed = shell.Remove.RecursiveForce(path: dir)
-  wrote && removed.success && first_leg_ran_the_effect && resume_refused_the_replay && entry_refused_the_replay && wiped && refused_on_the_record && durable
+  wrote && removed.success && first_leg_ran_the_effect && resume_refused_the_replay && entry_refused_the_replay && wiped && refused_on_the_record && restamped && second_publication_refused && planted && loser_refused_without_overwriting && durable
 }
 
 // THE PUBLICATION IS INDIVISIBLE: A RECORD WITHOUT ITS CADENCE IS NOT A PUBLICATION. The verdict and the

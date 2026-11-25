@@ -80,6 +80,8 @@ import extdeps.filesystem.filesystem_io { Filesystem,
   FilesystemEntryAbsent, FilesystemEntryListed, FilesystemEntryPresenceIndeterminate, FilesystemEntrySubjectRefused,
   filesystem_file_observation, filesystem_read_outcome,
   filesystem_exact_read, FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized,
+  filesystem_create_new, filesystem_failure_kind_name,
+  FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused, FilesystemCreateKindUnrecognized,
   FilesystemFileAbsent, FilesystemFileRead, FilesystemFileIndeterminate,
   FilesystemFileObservationsDisagree, FilesystemFileSubjectRefused,
 }
@@ -3333,12 +3335,14 @@ fn harness_alignment_replace_level0_verdict(verdicts: List<AlignmentVerdict>, he
 // THE RESUMPTION IS DURABLE BEFORE IT IS ACTED ON, and the durable record is the idempotency key.
 // "A crash after verdict publication produces exactly one next epoch" is not a property a return value
 // can promise: a caller may discard one, and two callers reading one publication may resume twice. So
-// opening the next epoch is a create-if-absent write keyed by the checkpoint digest AND the epoch it
-// opens -- the same key discipline the publication uses. The run that crashed after the verdict landed
-// and before the epoch was opened finds no record and opens it; any run that replays after it finds the
-// record and is refused, so the continuation effect -- the verdict applied to the worker's own turn --
-// is entered exactly once per (checkpoint, epoch). Presence is decided by ONE authority, the exact-read
-// seam, and an unreadable record counts as OPEN: a half-read record never licenses a second epoch.
+// opening the next epoch is a CREATE-NEW write keyed by the checkpoint digest AND the epoch it opens --
+// the same key discipline the publication uses, and one atomic event rather than a read followed by a
+// write. The run that crashed after the verdict landed and before the epoch was opened finds the name
+// free, creates it, and opens the epoch; any run that replays after it is told by the create itself that
+// the name is occupied, so the continuation effect -- the verdict applied to the worker's own turn -- is
+// entered exactly once per (checkpoint, epoch). An unreadable or non-file object at the name is never an
+// opening either: the entry's pre-read refuses before any check is convened, and a create that cannot
+// create refuses with the located reason.
 type HarnessAlignmentEpochPresence
   = EpochRecordPresent
   | EpochRecordAbsent
@@ -3368,9 +3372,12 @@ fn harness_alignment_epoch_opened_line(checkpoint: AlignmentCheckpointIdentity, 
   ]))
 }
 
-// THE ONE ANSWER TO "HAS THIS EPOCH ALREADY BEEN OPENED?". Both the entry's fast refusal and the
-// create-if-absent gate below ask this and nothing else, so the two can never disagree about whether
-// the lineage has already advanced -- and both read the keyed record, never a counter.
+// THE FAST LOOKUP, NOT THE ARBITER. The entry asks this before it convenes anything, so a lineage that
+// has already advanced never pays for a check it cannot act on; an unreadable record counts as OPEN, so a
+// half-read record cannot license a second epoch even on this path. But whether a given resumer OPENS the
+// epoch is decided by the create-new inside `harness_alignment_open_epoch` -- this read cannot be the
+// arbiter, because a read followed by a write is two events and the gap between them is where two
+// resumers of one publication would both be told "yours".
 fn harness_alignment_epoch_record_present(check_directory: String, checkpoint: AlignmentCheckpointIdentity, next_epoch: Int) -> HarnessAlignmentEpochPresence {
   let path = harness_alignment_epoch_opened_path(check_directory: check_directory, checkpoint: checkpoint, next_epoch: next_epoch)
   let read = Filesystem.Read(path: path)
@@ -3399,32 +3406,46 @@ fn harness_alignment_open_epoch(
   verdict: AlignmentVerdict,
 ) -> HarnessAlignmentEpochOpening {
   let path = harness_alignment_epoch_opened_path(check_directory: check_directory, checkpoint: checkpoint, next_epoch: next_epoch)
-  match harness_alignment_epoch_record_present(check_directory: check_directory, checkpoint: checkpoint, next_epoch: next_epoch) {
-    EpochRecordPresent =>
+  // THE CREATE CALL IS THE ARBITER, NOT A READ THIS FUNCTION DOES FIRST. This used to read the name and
+  // write only when the read said absent, and that is a race with the shape of this row's own failure:
+  // two resumers of ONE publication (a retry, or two callers holding the same receipt) both read absent,
+  // both write, both get an opening, and the continuation effect -- the verdict applied to the worker's
+  // turn -- runs twice on one checkpoint. That is precisely what "a crash after verdict publication
+  // produces exactly one next epoch" forbids, and no sequential test can watch it happen, which is why
+  // the answer must come from a primitive that cannot be split: create-new. Whoever creates the name
+  // opened the epoch; the loser learns the name is occupied from the same call that failed to create it,
+  // so there is no window between asking and taking (gunbc.design_argument::single_authority -- the
+  // filesystem's create-new outcome is the one authority on "did this name already exist", and the
+  // harness does not keep a second, independent answer to the same question).
+  let written = Filesystem.WriteCreateNew(path: path, content: harness_alignment_epoch_opened_line(checkpoint: checkpoint, next_epoch: next_epoch, verdict: verdict))
+  match filesystem_create_new(path: path, success: written.success, error: written.error, error_kind: written.error_kind) {
+    FilesystemCreated { path: created } => EpochOpened { path: created }
+    FilesystemCreateTargetOccupied { path: occupied } =>
       EpochAlreadyOpen {
-        path: path,
+        path: occupied,
         detail: join([
           "epoch ", to_string(value: next_epoch), " of attempt ", checkpoint.attempt_lineage,
-          " is already recorded as opened at ", path,
+          " is already recorded as opened at ", occupied,
           " -- the lineage advances once per checkpoint, so the continuation does not run again",
         ], ""),
       }
-    EpochRecordUnreadable { detail } =>
-      EpochOpeningUnwritable { cause: join(["the epoch record ", detail], "") }
-    EpochRecordAbsent => {
-      let written = Filesystem.Write(path: path, content: harness_alignment_epoch_opened_line(checkpoint: checkpoint, next_epoch: next_epoch, verdict: verdict))
-      if written.success {
-        EpochOpened { path: path }
-      } else {
-        EpochOpeningUnwritable { cause: join(["the epoch opening could not be recorded at ", path, ": ", written.error, " -- an epoch that cannot be recorded was not opened"], "") }
-      }
-    }
+    FilesystemCreateRefused { path: p, kind: k, error: e } =>
+      EpochOpeningUnwritable { cause: join(["the epoch opening could not be created at ", p, " (", filesystem_failure_kind_name(kind: k), "): ", e, " -- an epoch that cannot be recorded was not opened"], "") }
+    FilesystemCreateKindUnrecognized { path: p, observed: o, error: e } =>
+      EpochOpeningUnwritable { cause: join(["the epoch opening at ", p, " failed with a filesystem error_kind the vocabulary cannot name (", o, "): ", e, " -- no epoch opens on an error nobody can read"], "") }
   }
 }
 
-// THE PUBLICATION, in one write. The verdict and the next cadence state travel together in one body
-// at a path keyed by the checkpoint digest; either the whole record lands or nothing does, and a
-// caller that gets `Published { success: false }` has resumed nothing.
+// THE PUBLICATION, in one create-new. The verdict and the next cadence state travel together in one body
+// at a path keyed by the checkpoint digest; either the whole record lands or nothing does, and a caller
+// that gets `success: false` has resumed nothing. It is a CREATE-NEW and not an overwrite, because the
+// body at that name is the receipt the lineage resumes on: a second adjudication that wrote over it would
+// silently replace the verdict a resume is already acting on, and "silently" is the whole defect -- the
+// row's boundary clause says the verdict and cadence publish atomically, and an atomic replacement of a
+// verdict is still a verdict nobody agreed to. So the first bytes win. A replay of the SAME adjudication
+// (the crash between publication and epoch-opening that the red control names) finds byte-identical body
+// and continues on it, which is what keeps recovery producing exactly one next epoch rather than a
+// refusal that strands the lineage; anything else is refused with the path in its mouth.
 type HarnessAlignmentPublication {
   path: String
   success: Bool
@@ -3433,11 +3454,24 @@ type HarnessAlignmentPublication {
 
 fn harness_alignment_publish(check_directory: String, adjudication: HarnessAlignmentAdjudication) -> HarnessAlignmentPublication {
   let path = harness_alignment_publication_path(check_directory: check_directory, checkpoint: adjudication.checkpoint)
-  let written = Filesystem.Write(path: path, content: harness_alignment_publication_text(adjudication: adjudication))
-  if !written.success {
-    HarnessAlignmentPublication { path: path, success: false, detail: written.error }
-  } else {
-    HarnessAlignmentPublication { path: path, success: true, detail: "" }
+  let body = harness_alignment_publication_text(adjudication: adjudication)
+  let written = Filesystem.WriteCreateNew(path: path, content: body)
+  match filesystem_create_new(path: path, success: written.success, error: written.error, error_kind: written.error_kind) {
+    FilesystemCreated { path: created } => HarnessAlignmentPublication { path: created, success: true, detail: "" }
+    FilesystemCreateTargetOccupied { path: occupied } => {
+      let prior = Filesystem.Read(path: occupied)
+      if !prior.success {
+        HarnessAlignmentPublication { path: occupied, success: false, detail: join(["a verdict is already recorded at ", occupied, " and it cannot be read back (", prior.error, ") -- nothing publishes over a record nobody can read"], "") }
+      } else if prior.content != body {
+        HarnessAlignmentPublication { path: occupied, success: false, detail: join(["a different verdict is already published at ", occupied, " -- the first publication is the record, and a later adjudication does not replace the receipt a lineage resumes on"], "") }
+      } else {
+        HarnessAlignmentPublication { path: occupied, success: true, detail: join(["the identical verdict is already published at ", occupied, " -- the first publication stands and this replay continues on it"], "") }
+      }
+    }
+    FilesystemCreateRefused { path: p, kind: k, error: e } =>
+      HarnessAlignmentPublication { path: p, success: false, detail: join(["the verdict could not be published at ", p, " (", filesystem_failure_kind_name(kind: k), "): ", e, " -- an unpublished verdict resumes nothing"], "") }
+    FilesystemCreateKindUnrecognized { path: p, observed: o, error: e } =>
+      HarnessAlignmentPublication { path: p, success: false, detail: join(["the publication at ", p, " failed with a filesystem error_kind the vocabulary cannot name (", o, "): ", e], "") }
   }
 }
 
