@@ -27,7 +27,8 @@ import v2.workflow.floor_preparation_split {
 // The committed rows are an AUTHORED FIXTURE MAP, not a snapshot of the published corpus. The corpus
 // moves every few minutes, and a snapshot would rot into a stale figure quoted as truth -- the exact
 // failure this node's handback forbids ("an entry point that re-derives it rather than a figure quoted
-// from a log"). The thing that runs this decision over a REAL tree is `scripts/floor_preparation_diff_scope.sh`:
+// from a log"). The thing that runs this decision over a REAL tree is
+// `#v2.workflow.floor_preparation_scope_tool::floor_preparation_scope_tool_run`:
 // it rebuilds the map from the tree at run time, takes the revision's own file list, and prints the same
 // `floor-diff-scope` line. The claims here witness the DECISION with counterfactual pairs over the same
 // diff; the tool's line on the landing revision is the measurement, posted as the run link rather than

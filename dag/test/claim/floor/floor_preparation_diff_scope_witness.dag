@@ -46,7 +46,8 @@ import v2.workflow.floor_preparation_diff_scope {
 // diff and requires the outcome the rules promise, usually against the SAME diff under a DIFFERENT map so
 // the answer cannot come from a file's name.
 //
-// They are the counterweight to the affordability claim. The tool (`scripts/floor_preparation_diff_scope.sh`)
+// They are the counterweight to the affordability claim. The tool
+// (`#v2.workflow.floor_preparation_scope_tool::floor_preparation_scope_tool_run`)
 // is what narrows on a real tree and prints the wall-clock consequence; these claims are what stop that
 // tool from being able to narrow silently past what its own map can justify.
 //
