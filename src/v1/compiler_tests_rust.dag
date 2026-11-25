@@ -2074,6 +2074,23 @@ fn ct_declaration_field_reference_identity_test() -> String {
   )
 }
 
+// ROADMAP NODE v1-source-chars-converted-once: the seed harness references the node's own
+// claim-test module so the seed module closure REACHES it -- the emitter then writes its body into
+// src/v1/stage0/src/ and the generated lib.rs gains `pub mod v1_tests_claim_v1_source_chars_once_identity;`.
+// That host-shell pub mod is what makes the module's 18 self-edge endpoints covered: the admission
+// (gunbc.stage0.stage0_emitted_edge_admission, "neither a module-bearing partition row nor the host
+// shell") counts them uncovered only when the module is in NEITHER. A claim-test module is
+// host-shell-covered, never a crate row -- see the 14 precedent bodies. The assert re-runs the node's
+// consumed-characters differential on one newline-shaped fixture.
+fn ct_source_chars_once_identity_claim_reachable_test() -> String {
+  concat(
+    "    #[test]\n",
+    "    fn source_chars_once_identity_claim_is_reachable() {\n",
+    "        assert!(crate::v1_tests_claim_v1_source_chars_once_identity::char_codes_consumed_unchanged(\"t.dag\".to_string(), \"line one\\nline two\\n\\nlast\\n\".to_string()));\n",
+    "    }\n\n"
+  )
+}
+
 // The emitter's type-declaration index is keyed on the declaration, not on its leaf. The fixture is
 // two modules that each declare `Slot` with a different parameter list, and each Slot names a type
 // whose own header is Clone-bounded, so each owes its OWN parameters the bound.
@@ -2602,7 +2619,8 @@ fn ct_coercion_tests() -> String {
     ct_duplicate_type_parameter_refuses_test(),
     ct_resource_item_is_not_a_type_item_test(),
     ct_imported_resource_name_is_recognised_by_kind_and_name_test(),
-    ct_allocator_is_installed_only_by_demand_test())
+    ct_allocator_is_installed_only_by_demand_test(),
+    ct_source_chars_once_identity_claim_reachable_test())
 }
 
 // THE ENROLLED RED FOR `rust_call_arg_fail_closed_unwrap`, and the control that keeps the repair
