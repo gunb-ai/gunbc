@@ -3571,7 +3571,12 @@ fn harness_alignment_resume_apply(
 // after adjudication -- the party that holds the AlignmentCheckpointIdentity for a chain-carrying
 // attempt and calls this entry against the durable turn.alignment_checkpoint_due event at that attempt's
 // events path. That loop is row rn_763VRA2TGQ2F7XN7QVQH20P4DJ
-// (id roadmap-dispatch-loop-resumes-adjudicated-seat), whose own ticket parents it under project factory
+// (id roadmap-dispatch-loop-resumes-adjudicated-seat), whose ticket is authored and open as of
+// 2026-11-25 in gunb-ai/gunbc#17054 (head d6d12ec5889f5d3b5695f2f1175abf158df9e730; the row block is
+// roadmap_authority.dag:3545 on that head, and origin/main carries 0 hits for the identity -- that is
+// the whole reason the citation does not resolve from this tree yet, and nothing else). Landing order is
+// that PR before this row; if it closes unlanded, this comment and the row's note are revised here
+// rather than left to dangle. Its own ticket parents it under project factory
 // (in_project project factory, contribution: work runs on one execution and lease model), with edges to
 // factory-attempt-execution-on-fabric-lease AND to this row -- that second edge is the plan's statement
 // that the loop consumes THIS row's adjudication. Its trigger is the operator's realization-home ruling:
