@@ -5,16 +5,13 @@ import std.realization_measurement { AllocationCounter, AllocationObservation, a
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld }
 import gunbc.emit_copy_qualification { EmitCopyQualificationCaseId, CaseApplicability, CaseApplicable, CaseNotApplicable, StructuralInapplicability, PatternRequiresBranchShape, PatternRequiresLoopShape, structural_inapplicability_slug, applicable_case_rows, row_is_applicable, case_slug }
 import gunbc.emit_building_block_contracts { BuildingBlockContract, BuildingBlockFamily, ControlFlow, family_slug, building_block_contracts, contracts_of_family, contract_verdict, case_in_applicable_roster, violating_form_slug, violating_form_exercised, contract_line, roster_membership_line, roster_membership_lines, MispairedProbe, mispaired_probes, probe_guard_holds, probe_lines , applicability_discriminates, applicability_refused_rows, applicability_accepted_probes }
-// The eight observation renderers used to be imported from gunbc.instruments
-// .native_allocation_observation. That module declares a compiler pipeline entry, so
-// importing it put a SECOND entry in this closure and the emitter refused the whole
-// crate with compile_error! at src/v1/stage0/src/v1_compiler_emit_rust.rs:46363
-// (emit_ambiguous_compiler_pipeline_main_rs). The renderers are a vocabulary over
-// std.realization_measurement types, so they are carried by the contract module below,
-// which declares no entry. The peer module is untouched and its own copy stays its
-// authority for its rows; this fork exists until the emitter chooses the subject's
-// entry, and the row's handback names it as the blocker for this family.
-import gunbc.emit_building_block_contracts { AllocationCase, case_line, is_observed, span_is_zero, operations_above, operations_within, span_text, count_text, spans_agree, bytes_above }
+// The observation renderers come from gunbc.allocation_observation_render, the one entry-free
+// home they have: nine decls moved out of gunbc.instruments.native_allocation_observation, which
+// imports them back, and the three byte-axis readers this row added. They cannot come from that
+// instrument directly because it declares data compiler_pipeline_entry, and a second entry in one
+// closure is refused by the emitter (compiler_pipeline_entry_decls in
+// src/v1/stage0/src/v1_compiler_emit_rust.rs). So the home is a module of its own, not a copy.
+import gunbc.allocation_observation_render { AllocationCase, case_line, is_observed, span_is_zero, operations_above, operations_within, span_text, count_text, spans_agree, bytes_above }
 import gunbc.emit_state_threading_specimen { spec_build }
 
 // THE CONTROL-FLOW GROUP OF THE BUILDING-BLOCK BATTERY, deliverable two of the roadmap row
@@ -25,19 +22,16 @@ import gunbc.emit_state_threading_specimen { spec_build }
 // is the carrier instrument's own operations_above and operations_within against the contract arm; and
 // the red control is its own entry, so its non-zero exit is its own.
 //
-// THE SHAPE IS CHOSEN FROM THIS ROW'S OWN PINNED COUNTER DATA, not from a parse-population profile
+// THE SHAPE IS CHOSEN FROM THIS ROW'S OWN EXECUTED COUNTER DATA, not from a parse-population profile
 // (absent at this base) and not by taste. The discriminating gap is the cloning control against the
-// reference walk, 43711 ops / 21853472 bytes against 6112 ops / 1401008 bytes, in run3.log sha256
-// 7d722dbb2a45942a8cbe85ef7714060d2e6af6c3ed90c3032474c1f34d29dd7f. A whole invocation's wall clock
+// reference walk, and both arms are metered by this battery, so the numbers are read off
+// the executed leg rather than remembered here. A whole invocation's wall clock
 // and RSS corroborate those magnitudes but cannot attribute them to a step. The counter arm sees
 // OPERATIONS AND BYTES ONLY: no traversal count, no per-phase lifetime (copy_work_dimension_unavailable_cause).
 //
-// FOUR ANSWERS, NOT ONE VERDICT (gunbc.instruments.native_allocation_observation): availability,
-// The renderers behind those four answers are carried by gunbc.emit_building_block_contracts,
-// not imported from that instrument: importing a module that declares a compiler pipeline entry
-// puts a second entry in this closure and the emitter refuses the crate (its main becomes a
-// compile_error! at src/v1/stage0/src/v1_compiler_emit_rust.rs:46363).
-// observation, calibration, and a subject READING that is never a bound.
+// FOUR ANSWERS, NOT ONE VERDICT, the vocabulary of #gunbc.allocation_observation_render::case_line:
+// availability, observation, calibration, and a subject READING that is never a bound, because a
+// bound that reds when the repair succeeds punishes the repair:
 
 data compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver
 

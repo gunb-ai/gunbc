@@ -6,6 +6,7 @@ import std.realization_measurement { AllocationObservation, AllocationObserved, 
 import std.measure { byte_size_count }
 import std.nat { Nat, nat_to_decimal_string }
 import gunbc.emit_copy_qualification {
+import gunbc.allocation_observation_render { AllocationCase, span_operations, is_observed, span_is_zero, operations_above, operations_within, count_text, span_text, case_line, span_bytes, spans_agree, bytes_above }
   EmitCopyQualificationCaseId,
   CaseApplicability,
   CaseApplicable,
@@ -427,113 +428,12 @@ fn applicability_discriminates(f: BuildingBlockFamily) -> Bool {
 // without importing a module that declares a compiler pipeline entry. The reading is the
 // same four answers the allocation instrument gives -- availability, the span, whether the
 // span is above the declared reference, and whether it is within it -- over the types
-// std.realization_measurement owns. The block is copied from the instrument that first
-// needed it, not shared with it: sharing it drags a second entry into the closure, and the
-// emitter refuses that (see the note above the import in each battery). Deleting this fork
-// is the emitter's row, not this one's.
+// std.realization_measurement owns. They are NOT copied: they have one home, and it is
+// #gunbc.allocation_observation_render::span_operations, an entry-free module both this
+// vocabulary and that instrument import. This module declares no pipeline entry either,
+// so neither import puts a second entry in any closure.
 
-type AllocationCase {
-  identity: String
-  held: Bool
-  observed: String
-}
-
-fn span_operations(o: AllocationObservation) -> Nat? {
-  match o {
-    AllocationObserved { operations: n, bytes_requested: _ } => Present { value: n }
-    AllocationOperationsRanBackwards => none
-    AllocationBytesRequestedRanBackwards => none
-    AllocationProviderNotSelected => none
-  }
-}
-
-fn is_observed(o: AllocationObservation) -> Bool {
-  match span_operations(o: o) {
-    Present { value: _ } => true
-    Absent => false
-  }
-}
-
-fn span_is_zero(o: AllocationObservation) -> Bool {
-  match o {
-    AllocationObserved { operations: n, bytes_requested: b } => n == 0 && byte_size_count(b: b) == 0
-    AllocationOperationsRanBackwards => false
-    AllocationBytesRequestedRanBackwards => false
-    AllocationProviderNotSelected => false
-  }
-}
-
-fn operations_above(a: AllocationObservation, b: AllocationObservation) -> Bool {
-  match span_operations(o: a) {
-    Present { value: x } => match span_operations(o: b) {
-      Present { value: y } => x > y
-      Absent => false
-    }
-    Absent => false
-  }
-}
-
-fn operations_within(a: AllocationObservation, b: AllocationObservation) -> Bool {
-  match span_operations(o: a) {
-    Present { value: x } => match span_operations(o: b) {
-      Present { value: y } => x <= y
-      Absent => false
-    }
-    Absent => false
-  }
-}
-
-fn count_text(label: String, n: Int) -> String {
-  concat(label, "=", to_string(value: n))
-}
-
-fn span_text(label: String, o: AllocationObservation) -> String {
-  match o {
-    AllocationObserved { operations: n, bytes_requested: b } => concat(concat(label, "_ops=", nat_to_decimal_string(value: n)), " ", concat(label, "_bytes=", nat_to_decimal_string(value: byte_size_count(b: b))))
-    AllocationOperationsRanBackwards => concat(label, "=unobservable(operations: counter ran backwards)")
-    AllocationBytesRequestedRanBackwards => concat(label, "=unobservable(bytes_requested: counter ran backwards)")
-    AllocationProviderNotSelected => concat(label, "=unobservable(allocation: counting allocator not selected)")
-  }
-}
-
-fn case_line(c: AllocationCase) -> String {
-  concat("case ", c.identity, if c.held { " held" } else { " not_held" }, " observed=", c.observed, "\n")
-}
 // The floor is a measurement, not a constant. These two read the byte axis the way span_operations
 // reads the operation axis, so a row can say two windows agree exactly, or one sits strictly above
 // the other, without either hard-coding what an empty window happens to cost.
 
-fn span_bytes(o: AllocationObservation) -> Nat? {
-  match o {
-    AllocationObserved { operations: _, bytes_requested: b } => Present { value: byte_size_count(b: b) }
-    AllocationOperationsRanBackwards => none
-    AllocationBytesRequestedRanBackwards => none
-    AllocationProviderNotSelected => none
-  }
-}
-
-fn spans_agree(a: AllocationObservation, b: AllocationObservation) -> Bool {
-  match span_operations(o: a) {
-    Present { value: ax } => match span_operations(o: b) {
-      Present { value: bx } => match span_bytes(o: a) {
-        Present { value: ay } => match span_bytes(o: b) {
-          Present { value: by } => ax == bx && ay == by
-          Absent => false
-        }
-        Absent => false
-      }
-      Absent => false
-    }
-    Absent => false
-  }
-}
-
-fn bytes_above(a: AllocationObservation, b: AllocationObservation) -> Bool {
-  match span_bytes(o: a) {
-    Present { value: ay } => match span_bytes(o: b) {
-      Present { value: by } => ay > by
-      Absent => false
-    }
-    Absent => false
-  }
-}

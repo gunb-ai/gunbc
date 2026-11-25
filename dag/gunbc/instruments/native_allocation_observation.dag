@@ -8,6 +8,7 @@ import std.nat { Nat, nat_to_decimal_string }
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld }
 import gunbc.emit_state_threading_specimen { spec_build, spec_walk_tokens }
 import gunbc.emit_dying_base_specimen { DbInner, DbOuter, db_init, db_step, db_opt_absent, db_opt_present, db_opt_step, db_opt_child_k, db_opt_child_xs }
+import gunbc.allocation_observation_render { AllocationCase, span_operations, is_observed, span_is_zero, span_at_least, operations_above, operations_within, count_text, span_text, case_line }
 
 // THE ALLOCATION READING OF THE STATE-THREADING SPECIMEN, taken by a binary that carries the counting
 // allocator BECAUSE this entry `uses` AllocationCounter (std.realization_measurement; the claim route's
@@ -121,79 +122,6 @@ fn window_around(subject: WindowSubject, src: List<Int>) -> AllocationWindow use
   }
 }
 
-type AllocationCase {
-  identity: String
-  held: Bool
-  observed: String
-}
-
-fn span_operations(o: AllocationObservation) -> Nat? {
-  match o {
-    AllocationObserved { operations: n, bytes_requested: _ } => Present { value: n }
-    AllocationOperationsRanBackwards => none
-    AllocationBytesRequestedRanBackwards => none
-    AllocationProviderNotSelected => none
-  }
-}
-
-fn is_observed(o: AllocationObservation) -> Bool {
-  match span_operations(o: o) {
-    Present { value: _ } => true
-    Absent => false
-  }
-}
-
-fn span_is_zero(o: AllocationObservation) -> Bool {
-  match o {
-    AllocationObserved { operations: n, bytes_requested: b } => n == 0 && byte_size_count(b: b) == 0
-    AllocationOperationsRanBackwards => false
-    AllocationBytesRequestedRanBackwards => false
-    AllocationProviderNotSelected => false
-  }
-}
-
-fn span_at_least(o: AllocationObservation, operations: Nat, bytes: Nat) -> Bool {
-  match o {
-    AllocationObserved { operations: n, bytes_requested: b } => n >= operations && byte_size_count(b: b) >= bytes
-    AllocationOperationsRanBackwards => false
-    AllocationBytesRequestedRanBackwards => false
-    AllocationProviderNotSelected => false
-  }
-}
-
-fn operations_above(a: AllocationObservation, b: AllocationObservation) -> Bool {
-  match span_operations(o: a) {
-    Present { value: x } => match span_operations(o: b) {
-      Present { value: y } => x > y
-      Absent => false
-    }
-    Absent => false
-  }
-}
-
-fn operations_within(a: AllocationObservation, b: AllocationObservation) -> Bool {
-  match span_operations(o: a) {
-    Present { value: x } => match span_operations(o: b) {
-      Present { value: y } => x <= y
-      Absent => false
-    }
-    Absent => false
-  }
-}
-
-fn count_text(label: String, n: Int) -> String {
-  concat(label, "=", to_string(value: n))
-}
-
-fn span_text(label: String, o: AllocationObservation) -> String {
-  match o {
-    AllocationObserved { operations: n, bytes_requested: b } => concat(concat(label, "_ops=", nat_to_decimal_string(value: n)), " ", concat(label, "_bytes=", nat_to_decimal_string(value: byte_size_count(b: b))))
-    AllocationOperationsRanBackwards => concat(label, "=unobservable(operations: counter ran backwards)")
-    AllocationBytesRequestedRanBackwards => concat(label, "=unobservable(bytes_requested: counter ran backwards)")
-    AllocationProviderNotSelected => concat(label, "=unobservable(allocation: counting allocator not selected)")
-  }
-}
-
 fn subject_verdict(specimen: AllocationObservation, reference: AllocationObservation) -> String {
   if !is_observed(o: specimen) || !is_observed(o: reference) { "UNOBSERVABLE" }
   else if operations_within(a: specimen, b: reference) { "WITHIN_DECLARED_REFERENCE_OPERATION_COUNT" }
@@ -245,10 +173,6 @@ fn dying_base_cases() -> List<AllocationCase> {
     AllocationCase { identity: "dying_base_retained_nested_is_preserved", held: kept.xs == [1] && kept.k == 1 && from_sharing.inner.xs == [1, 3] && from_sharing.inner.k == 4 && from_sharing.n == 4, observed: concat("kept_k=", to_string(value: kept.k), " result_k=", to_string(value: from_sharing.inner.k)) },
     AllocationCase { identity: "dying_base_optional_nested_slot_absent_and_present", held: db_opt_child_k(o: opt_a) == 3 && db_opt_child_xs(o: opt_a) == [3] && db_opt_child_k(o: opt_p) == 3 && db_opt_child_xs(o: opt_p) == [3] && opt_a.n == 4 && opt_p.n == 4, observed: concat("absent_k=", to_string(value: db_opt_child_k(o: opt_a)), " present_k=", to_string(value: db_opt_child_k(o: opt_p))) }
   ]
-}
-
-fn case_line(c: AllocationCase) -> String {
-  concat("case ", c.identity, if c.held { " held" } else { " not_held" }, " observed=", c.observed, "\n")
 }
 
 fn native_claim_report() -> NativeClaimReport uses counter: AllocationCounter {
