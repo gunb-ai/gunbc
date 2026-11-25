@@ -1456,3 +1456,49 @@ fn price_an_unstated_ask() -> RealizationSelectionResult<ParetoEntry> {
     field: srv4_morning_candidates(),
   )
 }
+
+// ── THE ACTUATION PATH'S VIEWS ────────────────────────────────────────────────────────────────────
+//
+// What gunbc.fleet.gpu_cap_priced_actuation reads when a converge or a boot unit asks whether a value may go
+// on a card: the candidates priced so far, and the ask the 2026-11-24 caps served. These are views over rows
+// this module already holds -- no second roster, and no candidate is invented here.
+
+// The ask the srv3/srv4 caps were asked to serve: the strip that opened twice on 2026-11-24, at ~09:19 and
+// again at ~21:57 UTC. Named once, here, so the actuation path and the selection answer to the same ask
+// rather than each carrying its own copy of which circuit was being protected.
+data srv4_strip_ask_2026_11_24: PowerAsk = CircuitRelief {
+  circuit: surge_strip,
+  asked_on: "2026-11-24" as NonEmptyStr,
+}
+
+// Every candidate this module prices. The actuation gate looks a value up here and finds nothing -- and
+// refuses -- rather than being handed a list by whoever is doing the actuating.
+fn priced_candidates_all() -> List<CapCandidate> {
+  concat(
+    concat(srv4_cap_ask_candidates(), srv4_morning_candidates()),
+    concat(srv3_cap_ask_candidates(), ken_cap_ask_candidates())
+  )
+}
+
+fn srv3_cap_ask_candidates() -> List<CapCandidate> {
+  [srv3_40w_candidate, srv3_30w_2ghz_candidate]
+}
+
+// The ask recorded against a machine, if anybody recorded one. srv3 and srv4 are strip members, and the ask
+// their caps served is the strip that opened twice; srv1 and ken sit on a breaker nobody has read and nobody
+// recorded an ask for either, so the honest answer is Absent -- which the gate turns into a refusal under a
+// demonstrated constraint and a warranted admission under none. It is NOT a free pass: Absent means "no ask is
+// written down", never "there was no ask".
+fn recorded_ask_for_host(host: HostIdentity) -> Optional<PowerAsk> {
+  if circuit_carries(c: surge_strip, host: host) {
+    Present { value: srv4_strip_ask_2026_11_24 }
+  } else {
+    Absent
+  }
+}
+
+// The candidates priced for one machine. Empty is the honest answer for a host nobody has swept, and empty is
+// what makes the gate refuse rather than proceed.
+fn priced_candidates_on(host: HostIdentity) -> List<CapCandidate> {
+  filter(priced_candidates_all(), c => candidate_is_on(c: c, host: host))
+}

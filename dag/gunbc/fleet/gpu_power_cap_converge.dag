@@ -23,6 +23,17 @@ import gunbc.serving.gpu_power_state_policy {
   GpuCapAdmission, GpuCapAdmitted, GpuCapOutsideDeviceRange, GpuCapDevicePending,
   gpu_cap_admissions_on,
 }
+import std.optional { Optional }
+import gunbc.serving.gpu_power_cap_pricing {
+  CapCandidate, PowerAsk, candidate_cap, candidate_is_on, priced_candidates_on, recorded_ask_for_host,
+}
+import gunbc.fleet.gpu_cap_priced_actuation {
+  ActuationAdmission, ActuationRequest, actuation_admits, actuation_refusal_text, actuation_still_owed,
+  price_the_actuation, priced_cap_of,
+}
+import gunbc.fleet.gpu_power_cap_boot_state {
+  PowerCapBootUnit, cap_boot_unit_for, boot_unit_restores_unpriced_cap,
+}
 
 // THE GPU POWER-CAP CONVERGE: apply each ADMITTED cap, then read the limit back from the device and compare it
 // with the cap that was admitted (gunbc.serving.gpu_power_state_policy gpu_cap_admissions_on). It runs on the
@@ -215,6 +226,105 @@ fn gpu_cap_admission_line(admission: GpuCapAdmission, ports: GpuCapPorts) -> Gpu
   }
 }
 
+// ── THE PRICED PATH: no value reaches the device without its candidate beside it ───────────────────
+//
+// WHY THIS SITS ABOVE THE MECHANISM AND DOES NOT REPLACE IT. `converge_gpu_cap_over` above is the apply-and-
+// read-back fold, and it is deliberately unaware of pricing: it is the part that refuses a write that never
+// showed up, and it must keep doing that for any value that legitimately reached it. What is gated is the
+// step BEFORE it -- whether a value may be put on the card at all. `gpu_cap_priced_admission_line` asks
+// gunbc.fleet.gpu_cap_priced_actuation, and only on an admission does it call the fold, and with the watt
+// value read back out of the priced candidate (`priced_cap_of`) rather than the one it was handed: an actuation
+// whose written value could drift from the value that was weighed is the same defect wearing a different hat.
+//
+// THE BOOT UNIT IS CHECKED TOO, AND THAT IS NOT BELT-AND-BRACES. An installed boot unit re-writes its own
+// watt value at every boot (gunbc.fleet.gpu_power_cap_boot_state); if it carried a cap nobody priced, refusing
+// only the admission would let the unpriced value back in at the next reboot and the refusal would be theatre.
+// So a host whose installed unit holds an unpriced cap line refuses, naming that line.
+
+fn gpu_cap_priced_admission_line(
+  admission: GpuCapAdmission,
+  candidates: List<CapCandidate>,
+  ask: Optional<PowerAsk>,
+  ports: GpuCapPorts,
+) -> GpuCapLine {
+  match admission {
+    GpuCapAdmitted { host: h, board: b, gpu_uuid: u, cap: c } =>
+      let request = gpu_cap_actuation_request(host: h, board: b, uuid: u, cap: c)
+      let priced = candidate_pricing(candidates: candidates, host: h, cap: c)
+      let admission_answer = price_the_actuation(request: request, candidate: priced, ask: ask)
+      if actuation_admits(a: admission_answer) {
+        match priced_cap_of(a: admission_answer) {
+          Absent => gpu_cap_refused_line(board: b, uuid: u, cap: c, cause: "the gate admitted the actuation and named no watt value to write")
+          Present { value: to_write } =>
+            let written = gpu_cap_outcome_line(board: b, uuid: u, cap: to_write, outcome: converge_gpu_cap_over(uuid: u, cap: to_write, ports: ports).outcome)
+            gpu_cap_line_with_owed(line: written, owed: actuation_still_owed(a: admission_answer))
+        }
+      } else {
+        gpu_cap_refused_line(board: b, uuid: u, cap: c, cause: actuation_refusal_text(a: admission_answer))
+      }
+    GpuCapOutsideDeviceRange { board: b, cap: c, minimum: lo, maximum: hi } =>
+      GpuCapLine { text: join(["gpu power cap ", b as String, " at ", to_string(watt_count(w: c)), " W: REFUSED: outside the device's reported range ", to_string(watt_count(w: lo)), "-", to_string(watt_count(w: hi)), " W; nothing is clamped"], ""), refused: true }
+    GpuCapDevicePending { board: b, cap: c, read_obligation: o } =>
+      GpuCapLine { text: join(["gpu power cap ", b as String, " at ", to_string(watt_count(w: c)), " W: pending, not part of the selected configuration, not a failure: ", o as String], ""), refused: false }
+  }
+}
+
+// The request the gate sees for one admission. `ceiling: Absent` says what the converge actually writes: it
+// writes the power limit only. A ceiling belongs to a boot unit's -lgc line, and there the request is built by
+// gunbc.fleet.gpu_power_cap_boot_state with the ceiling it actually carries.
+fn gpu_cap_actuation_request(host: HostIdentity, board: PhysicalAssetIdentity, uuid: NonEmptyStr, cap: Watt) -> ActuationRequest {
+  ActuationRequest { host: host, board: Present { value: board }, gpu_uuid: uuid, cap: cap, ceiling: Absent }
+}
+
+fn candidate_pricing(candidates: List<CapCandidate>, host: HostIdentity, cap: Watt) -> Optional<CapCandidate> {
+  filter(candidates, c => candidate_is_on(c: c, host: host) && watt_count(w: candidate_cap(c: c)) == watt_count(w: cap)).first()
+}
+
+// A refusal line in the converge's own words, so a priced refusal fails the unit exactly as a failed readback
+// does -- the units that Require this one do not start.
+fn gpu_cap_refused_line(board: PhysicalAssetIdentity, uuid: NonEmptyStr, cap: Watt, cause: String) -> GpuCapLine {
+  GpuCapLine {
+    text: join(["gpu power cap ", board as String, " ", uuid as String, " at ", to_string(watt_count(w: cap)), " W: REFUSED: ", cause], ""),
+    refused: true,
+  }
+}
+
+// An admitted actuation still prints what it owes, so an admission is never read as a closed reading.
+fn gpu_cap_line_with_owed(line: GpuCapLine, owed: List<NonEmptyStr>) -> GpuCapLine {
+  if owed.length() == 0 {
+    line
+  } else {
+    GpuCapLine {
+      text: join([line.text, "; still owed: ", join(map(owed, o => o as String), " | ")], ""),
+      refused: line.refused,
+    }
+  }
+}
+
+fn gpu_cap_priced_lines_over(
+  admissions: List<GpuCapAdmission>,
+  candidates: List<CapCandidate>,
+  ask: Optional<PowerAsk>,
+  ports: GpuCapPorts,
+) -> List<GpuCapLine> {
+  map(admissions, a => gpu_cap_priced_admission_line(admission: a, candidates: candidates, ask: ask, ports: ports))
+}
+
+// The host's installed boot unit, refused if it holds a cap line nobody priced. Absent when there is no unit
+// or every line it writes is priced.
+fn gpu_cap_boot_unit_refusal(host: HostIdentity, ask: Optional<PowerAsk>) -> Optional<GpuCapLine> {
+  match cap_boot_unit_for(host: host) {
+    Absent => Absent
+    Present { value: unit } =>
+      match boot_unit_restores_unpriced_cap(unit: unit, candidates: priced_candidates_on(host: host), ask: ask) {
+        Absent => Absent
+        Present { value: text } => Present {
+          value: GpuCapLine { text: join(["gpu power cap boot unit on ", host as String, ": REFUSED: ", text], ""), refused: true },
+        }
+      }
+  }
+}
+
 fn gpu_cap_lines_over(admissions: List<GpuCapAdmission>, ports: GpuCapPorts) -> List<GpuCapLine> {
   map(admissions, a => gpu_cap_admission_line(admission: a, ports: ports))
 }
@@ -237,10 +347,22 @@ fn gpu_power_cap_converge_cli_over(resolution: HostSelectorResolution) -> CliWir
     HostSelectorResolved { host: identity } =>
       if !running_as_root() { gpu_cap_converge_refused(reason: "gpu power-cap converge sets device limits, so it runs as root") }
       else {
-        let lines = gpu_cap_lines_over(admissions: gpu_cap_admissions_on(host: identity), ports: host_gpu_cap_ports())
+        let ask = recorded_ask_for_host(host: identity)
+        let converged = gpu_cap_priced_lines_over(
+          admissions: gpu_cap_admissions_on(host: identity),
+          candidates: priced_candidates_on(host: identity),
+          ask: ask,
+          ports: host_gpu_cap_ports(),
+        )
+        let boot_refusal = gpu_cap_boot_unit_refusal(host: identity, ask: ask)
+        let boot_lines = match boot_refusal {
+          Absent => []
+          Present { value: l } => [l]
+        }
+        let lines = concat(converged, boot_lines)
         let text = join(map(lines, l => concat(l.text, "\n")), "")
         if any(lines, l => l.refused) {
-          CliWirePrintable { bytes: text, exit: exit_failure(reason: "gpu power-cap converge: an admitted cap did not read back; see the REFUSED line. Units that require this one will not start") }
+          CliWirePrintable { bytes: text, exit: exit_failure(reason: "gpu power-cap converge: a cap was refused -- it did not read back, or it reached the device without its priced candidate; see the REFUSED line. Units that require this one will not start") }
         } else {
           CliWirePrintable { bytes: text, exit: ExitSuccess }
         }

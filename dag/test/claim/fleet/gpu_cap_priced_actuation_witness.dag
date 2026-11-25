@@ -1,0 +1,371 @@
+module test.claim.fleet.gpu_cap_priced_actuation_witness
+
+// THE ACTUATION PATH REFUSES AN UNPRICED CAP.
+//
+// WHAT THIS DISCRIMINATES. Every converge test here drives a ports fixture in which every write succeeds and
+// the readback matches, so a line that comes back refused can only be refused by the pricing gate -- delete
+// the gate call in gpu_cap_priced_admission_line and the RED lines below go green. The positive controls drive
+// the same fixture with the candidate beside the value, and pass. That is one interface, per DESIGN section 3:
+// the gate's answer at the moment a value would reach the card.
+//
+// THE TWO FIGURES THAT DECIDED THE CLASS, as the rows carry them. srv4's 30 W cap (the value the operator set
+// on 2026-11-24 late, on the strip that had opened twice) has a priced candidate only at the levels the sweep
+// measured; the morning's revert to 40 W has no candidate at the value that was written. The readings are
+// TranscribedUncited observations on gunbc.serving.gpu_power_cap_pricing, not deduced facts, and this witness
+// asserts only what the gate does with them.
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.optional { Optional, Present, Absent }
+import std.measure { Watt, watt, watt_count, milliwatt, Hertz, hertz }
+import std.decl_ref { DeclarationRef, decl_ref }
+import product.host_identity { HostIdentity }
+import product.placement_supply { PhysicalAssetIdentity }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet.fleet_asset_identity { gpu_board_05 }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+import extdeps.nvidia.system_management_interface { PersistenceEnabled }
+import gunbc.serving.gpu_power_state_policy { GpuCapAdmission, GpuCapAdmitted, GpuCapDevicePending }
+import gunbc.fleet.gpu_power_cap_converge {
+  GpuCapLine, GpuCapPorts, GpuCapProbe, GpuCapReading, GpuCapRead, GpuCapUnread,
+  gpu_cap_priced_lines_over, gpu_cap_actuation_request,
+}
+import gunbc.fleet.gpu_power_cap_boot_state {
+  BootCapActuation, BootCapCommand, BootCommandLine, PowerCapBootUnit,
+  boot_unit_admits_every_command, boot_unit_restores_unpriced_cap, boot_unit_unpriced_commands,
+}
+import gunbc.fleet.fleet_power_circuit {
+  SharedPowerCircuit, CircuitRating, MemberDrawBound, RatingUnread, BoundStated, BoundUnstated,
+  circuit_label, surge_strip,
+}
+import gunbc.serving.gpu_power_cap_pricing {
+  CapCandidate, PowerAsk, AskUnstated, CircuitRelief,
+  srv4_sweep_unlocked_candidate, srv4_sweep_1500_candidate, srv4_sweep_1200_candidate,
+  srv3_40w_candidate, srv3_30w_2ghz_candidate, srv4_strip_ask_2026_11_24, priced_candidates_on,
+  candidate_cap,
+}
+import gunbc.fleet.gpu_cap_priced_actuation {
+  ActuationAdmission, ActuationRequest,
+  ActuationPriced, NoDemonstratedConstraint, UnpricedActuationRefused, ActuationValueMismatchRefused,
+  ActuationConsequenceUnreadRefused, ActuationAskUnstatedRefused,
+  price_the_actuation, price_the_actuation_against, actuation_admits, actuation_refusal_text,
+  actuation_still_owed, priced_cap_of, under_demonstrated_constraint, demonstrated_constraints_on,
+}
+
+data live_uuid: NonEmptyStr = "GPU-30000000-0000-4000-8000-000000000004" as NonEmptyStr
+
+fn mhz(m: Nat) -> Hertz { hertz(count: m * 1000000) }
+
+// A request as the converge would build it: the watt value it was handed, no -lgc line.
+fn srv4_request(w: Nat, ceiling: Optional<Hertz>) -> ActuationRequest {
+  ActuationRequest {
+    host: operator_host_srv4,
+    board: Present { value: gpu_board_05 },
+    gpu_uuid: live_uuid,
+    cap: watt(count: w),
+    ceiling: ceiling,
+  }
+}
+
+fn srv1_request(w: Nat) -> ActuationRequest {
+  ActuationRequest {
+    host: operator_host_srv1,
+    board: Absent,
+    gpu_uuid: "GPU-96b749dc-e2ea-5b6f-2e45-ee868b1a9750" as NonEmptyStr,
+    cap: watt(count: w),
+    ceiling: Absent,
+  }
+}
+
+fn strip_ask() -> Optional<PowerAsk> { Present { value: srv4_strip_ask_2026_11_24 } }
+
+// A card that accepts every write and reads back whatever it was asked to hold: the only reason a line can
+// refuse here is the gate.
+fn ports_always_succeeds(held_watts: Nat) -> GpuCapPorts {
+  let no_error: Optional<String> = Absent
+  GpuCapPorts {
+    observe: fn(p) { GpuCapRead { limit: milliwatt(count: held_watts * 1000), persistence: PersistenceEnabled } },
+    set_persistence: fn(u) { no_error },
+    set_limit: fn(t) { no_error },
+  }
+}
+
+fn admitted(a: ActuationAdmission) -> Bool { actuation_admits(a: a) }
+
+// ── THE RED: the value that reached srv4's card on 2026-11-24, with nothing priced beside it ───────
+
+test fn the_unpriced_30_w_on_a_tripped_circuit_refuses() -> Bool {
+  match price_the_actuation(request: srv4_request(w: 30, ceiling: Absent), candidate: Absent, ask: strip_ask()) {
+    UnpricedActuationRefused { request: r, circuits: cs, missing: ms } =>
+      watt_count(w: r.cap) == 30
+        && any(cs, c => contains(c as String, "surge strip"))
+        && ms.length() == 4
+        && any(ms, m => contains(m as String, "decode"))
+        && any(ms, m => contains(m as String, "draw"))
+        && any(ms, m => contains(m as String, "ask"))
+        && !admitted(price_the_actuation(request: srv4_request(w: 30, ceiling: Absent), candidate: Absent, ask: strip_ask()))
+    _ => false
+  }
+}
+
+// THE SAME MACHINE, THE SAME VALUE, WITH ITS CANDIDATE: admitted, at the cap the candidate priced, and still
+// printing what it owes. This is the control that keeps the RED from being a blanket refusal.
+test fn the_priced_cap_and_ceiling_is_admitted_at_the_priced_value() -> Bool {
+  let a = price_the_actuation(
+    request: srv4_request(w: 30, ceiling: Present { value: mhz(1500) }),
+    candidate: Present { value: srv4_sweep_1500_candidate },
+    ask: strip_ask(),
+  )
+  match a {
+    ActuationPriced { actuation: p } =>
+      admitted(a)
+        && match priced_cap_of(a: a) {
+            Present { value: c } => watt_count(w: c) == 30
+            Absent => false
+          }
+        && watt_count(w: candidate_cap(c: p.candidate)) == 30
+        && any(actuation_still_owed(a: a), o => contains(o as String, "card state"))
+    _ => false
+  }
+}
+
+// THE CLOCK CEILING IS PART OF THE PRICED VALUE, not decoration beside it. 30 W under a 1500 MHz ceiling is a
+// different operating point from 30 W unlocked, and the sweep measured them apart (869 MHz at 29.1 W against
+// 906 MHz at 27.0 W); the gate therefore refuses a ceiling it has no candidate for, and admits the one it has.
+test fn the_ceiling_is_part_of_the_priced_value() -> Bool {
+  let wrong_ceiling = price_the_actuation(
+    request: srv4_request(w: 30, ceiling: Present { value: mhz(1200) }),
+    candidate: Present { value: srv4_sweep_1500_candidate },
+    ask: strip_ask(),
+  )
+  let right_ceiling = price_the_actuation(
+    request: srv4_request(w: 30, ceiling: Present { value: mhz(1200) }),
+    candidate: Present { value: srv4_sweep_1200_candidate },
+    ask: strip_ask(),
+  )
+  match wrong_ceiling {
+    ActuationValueMismatchRefused { request: _, candidate_label: _, mismatches: ms } =>
+      ms.length() == 1 && any(ms, m => contains(m as String, "clock"))
+    _ => false
+  } && admitted(right_ceiling)
+}
+
+// THE MORNING REVERT, TYPED. The value that went onto the card was 40 W; the value that had been weighed was
+// 30 W. The gate refuses the pair rather than reporting a saving nobody compared.
+test fn a_value_that_is_not_the_priced_one_refuses() -> Bool {
+  let a = price_the_actuation(
+    request: srv4_request(w: 40, ceiling: Absent),
+    candidate: Present { value: srv4_sweep_unlocked_candidate },
+    ask: strip_ask(),
+  )
+  match a {
+    ActuationValueMismatchRefused { request: r, candidate_label: l, mismatches: ms } =>
+      watt_count(w: r.cap) == 40
+        && l != ""
+        && ms.length() == 1
+        && any(ms, m => contains(m as String, "40 W") && contains(m as String, "30 W"))
+    _ => false
+  } && !admitted(a)
+}
+
+// A READING BORROWED FROM ANOTHER MACHINE IS NOT THIS MACHINE'S PRICE. srv3's 30 W/1500 MHz candidate is a
+// real row read off a different card, and it does not price srv4's actuation.
+test fn a_candidate_from_another_machine_does_not_price_this_one() -> Bool {
+  let a = price_the_actuation(
+    request: srv4_request(w: 30, ceiling: Present { value: mhz(1500) }),
+    candidate: Present { value: srv3_30w_2ghz_candidate },
+    ask: strip_ask(),
+  )
+  match a {
+    ActuationValueMismatchRefused { request: _, candidate_label: _, mismatches: ms } =>
+      ms.length() == 1 && any(ms, m => contains(m as String, "another machine"))
+    _ => false
+  } && !admitted(a)
+}
+
+// NOBODY SAID WHICH CIRCUIT THE WATTS WERE FOR. `AskUnstated` and "no ask at all" both refuse under a circuit
+// that has opened -- this is the arm the first half of 2026-11-24 lives in -- and the words that were said are
+// carried into the refusal rather than dropped.
+test fn a_value_with_no_ask_recorded_refuses_under_a_tripped_circuit() -> Bool {
+  let no_ask = price_the_actuation(
+    request: srv4_request(w: 30, ceiling: Present { value: mhz(1500) }),
+    candidate: Present { value: srv4_sweep_1500_candidate },
+    ask: Absent,
+  )
+  let unstated = price_the_actuation(
+    request: srv4_request(w: 30, ceiling: Present { value: mhz(1500) }),
+    candidate: Present { value: srv4_sweep_1500_candidate },
+    ask: Present { value: AskUnstated { cap: watt(count: 30), said: "operator: 30 W to save power on the strip" as NonEmptyStr } },
+  )
+  match no_ask {
+    ActuationAskUnstatedRefused { request: _, candidate_label: _, said: _ } => true
+    _ => false
+  } && match unstated {
+    ActuationAskUnstatedRefused { request: _, candidate_label: _, said: s } => contains(s as String, "save power on the strip")
+    _ => false
+  } && !admitted(no_ask) && !admitted(unstated)
+}
+
+// THE RIGHT OPERATING POINT, WITH ITS CONSEQUENCE UNREAD. srv3's 40 W candidate carries its decode windows and
+// no power.draw sample set at all; under the strip that opened twice, a cap nobody weighed does not go on the
+// card, and the refusal names the reading.
+test fn an_unread_consequence_does_not_admit() -> Bool {
+  let a = price_the_actuation(
+    request: ActuationRequest {
+      host: operator_host_srv3,
+      board: Absent,
+      gpu_uuid: "GPU-30000000-0000-4000-8000-000000000003" as NonEmptyStr,
+      cap: watt(count: 40),
+      ceiling: Absent,
+    },
+    candidate: Present { value: srv3_40w_candidate },
+    ask: Present { value: CircuitRelief { circuit: surge_strip, asked_on: "2026-11-24" as NonEmptyStr } },
+  )
+  match a {
+    ActuationConsequenceUnreadRefused { request: _, owed: os } =>
+      os.length() == 1 && any(os, o => contains(o as String, "draw"))
+    _ => false
+  } && !admitted(a)
+}
+
+// SRV1'S CAP IS NOT A POWER ASK TODAY, and the arm that admits it says so instead of pretending to a pass:
+// the breaker carrying it has never opened and states no per-member bound. `under_demonstrated_constraint` is
+// the derived predicate that decides this, and the warrant is printed with the admission.
+test fn srv1_actuates_under_a_warrant_not_a_pass() -> Bool {
+  let a = price_the_actuation(request: srv1_request(w: 300), candidate: Absent, ask: Absent)
+  match a {
+    NoDemonstratedConstraint { request: r, warrant: w } =>
+      watt_count(w: r.cap) == 300
+        && contains(w as String, "never opened")
+        && contains(w as String, "breaker carrying srv1 + ken")
+    _ => false
+  } && admitted(a) && !under_demonstrated_constraint(host: operator_host_srv1)
+    && demonstrated_constraints_on(host: operator_host_srv4).length() == 1
+}
+
+// THE OBLIGATION RISES WHEN THE READING LANDS, which is what makes the arm above a rung position and not an
+// escape hatch. The same srv1 300 W with no candidate: refused the moment somebody states a per-member bound
+// on its breaker. The fixture circuit differs from the row only in that bound.
+test fn reading_a_bound_extends_the_obligation_to_srv1() -> Bool {
+  let breaker_with_a_bound = SharedPowerCircuit {
+    identity: decl_ref(module_path: "gunbc.fleet.fleet_power_circuit", decl_name: "breaker-srv1-ken-bounded-fixture"),
+    label: "breaker carrying srv1 + ken (fixture: bound stated)" as NonEmptyStr,
+    members: [operator_host_srv1],
+    rating: RatingUnread { read_obligation: "still unread" as NonEmptyStr },
+    member_draw_bound: BoundStated {
+      draw_limit: watt(count: 400),
+      standing: TranscribedUncited { read_obligation: "fixture bound, not a read row" as NonEmptyStr },
+    },
+    trips: [],
+  }
+  let unpriced = price_the_actuation_against(
+    request: srv1_request(w: 300),
+    candidate: Absent,
+    ask: Absent,
+    constraints: [breaker_with_a_bound],
+  )
+  match unpriced {
+    UnpricedActuationRefused { request: _, circuits: cs, missing: ms } =>
+      ms.length() == 4 && any(cs, c => contains(c as String, "bound stated"))
+    _ => false
+  } && !admitted(unpriced)
+}
+
+// ── THE ACTUATION PATH ITSELF ───────────────────────────────────────────────────────────────────────
+
+fn srv4_admission(w: Nat) -> GpuCapAdmission {
+  GpuCapAdmitted { host: operator_host_srv4, board: gpu_board_05, gpu_uuid: live_uuid, cap: watt(count: w) }
+}
+
+// THE CONVERGE, WITH EVERY WRITE SUCCEEDING AND THE READBACK MATCHING: the unpriced value still refuses, and
+// the priced one converges. This is the claim that the gate is on the path and not beside it.
+test fn the_converge_refuses_an_unpriced_cap_and_admits_the_priced_one() -> Bool {
+  let ports = ports_always_succeeds(held_watts: 30)
+  let unpriced = gpu_cap_priced_lines_over(
+    admissions: [srv4_admission(w: 30)],
+    candidates: [],
+    ask: strip_ask(),
+    ports: ports,
+  )
+  let priced = gpu_cap_priced_lines_over(
+    admissions: [srv4_admission(w: 30)],
+    candidates: [srv4_sweep_unlocked_candidate],
+    ask: strip_ask(),
+    ports: ports,
+  )
+  unpriced.length() == 1 && priced.length() == 1
+    && match unpriced.first() { Absent => false Present { value: l } => l.refused && contains(l.text, "REFUSED") && contains(l.text, "no priced candidate") }
+    && match priced.first() { Absent => false Present { value: l } => !l.refused && contains(l.text, "read back") && contains(l.text, "30 W") }
+}
+
+// A PENDING CARD IS NOT AN ACTUATION: it is reported and never refused, gated or not. Without this, the gate
+// would turn "nobody has read this device" into a unit failure, which is the wrong remedy.
+test fn a_pending_card_is_still_reported_and_never_refused() -> Bool {
+  let lines = gpu_cap_priced_lines_over(
+    admissions: [GpuCapDevicePending {
+      board: gpu_board_05,
+      cap: watt(count: 30),
+      read_obligation: "no device observation for this board" as NonEmptyStr,
+    }],
+    candidates: [],
+    ask: strip_ask(),
+    ports: ports_always_succeeds(held_watts: 30),
+  )
+  match lines.first() {
+    Absent => false
+    Present { value: l } => !l.refused && contains(l.text, "pending") && contains(l.text, "not a failure")
+  }
+}
+
+// THE BOOT UNIT IS ON THE SAME PATH. An installed unit re-writes its own watt value at every boot, so a unit
+// holding an unpriced cap is refused by name -- and the same unit with its candidate priced is admitted. This
+// is what stops the gate from being theatre: refusing the admission alone would let the reboot reinstate it.
+test fn an_installed_unit_holding_an_unpriced_cap_refuses_and_its_priced_twin_does_not() -> Bool {
+  let unpriced_unit = srv4_unit_at(w: 30)
+  let unpriced_admits = boot_unit_admits_every_command(unit: unpriced_unit, candidates: [], ask: strip_ask())
+  let priced_admits = boot_unit_admits_every_command(unit: unpriced_unit, candidates: [srv4_sweep_unlocked_candidate], ask: strip_ask())
+  let refusal = boot_unit_restores_unpriced_cap(unit: unpriced_unit, candidates: [], ask: strip_ask())
+  let no_refusal = boot_unit_restores_unpriced_cap(unit: unpriced_unit, candidates: [srv4_sweep_unlocked_candidate], ask: strip_ask())
+  !unpriced_admits && priced_admits
+    && match refusal { Absent => false Present { value: t } => contains(t as String, live_uuid as String) && contains(t as String, "30 W") && contains(t as String, "next boot") }
+    && match no_refusal { Absent => true Present { value: _ } => false }
+    && boot_unit_unpriced_commands(unit: unpriced_unit, candidates: [], ask: strip_ask()).length() == 1
+}
+
+// A fixture, not a host fact: no boot unit is modeled on srv4 (the rows this module holds are srv1's), and the
+// Part A host rows are not this witness's to author. Every field is what a unit of that shape says.
+fn srv4_unit_at(w: Nat) -> PowerCapBootUnit {
+  PowerCapBootUnit {
+    host: operator_host_srv4,
+    unit_path: "/etc/systemd/system/fixture-gpu-power-limit.service" as NonEmptyStr,
+    content_sha256: "0000000000000000000000000000000000000000000000000000000000000000" as NonEmptyStr,
+    description: "fixture: cap srv4's card and enable persistence mode" as NonEmptyStr,
+    unit_type: "oneshot" as NonEmptyStr,
+    wants: ["systemd-modules-load.service" as NonEmptyStr],
+    after: ["systemd-modules-load.service" as NonEmptyStr],
+    wanted_by: ["multi-user.target" as NonEmptyStr],
+    pre_commands: [
+      BootCommandLine {
+        as_written: "/usr/bin/nvidia-smi -pm 1" as NonEmptyStr,
+        tolerates_failure: false,
+        runs_with_full_privileges: false,
+      },
+    ],
+    persistence_requested: true,
+    cap_commands: [
+      BootCapCommand {
+        addressed_gpu_uuid: live_uuid,
+        target_watts: watt(count: w),
+        line: BootCommandLine {
+          as_written: "/usr/bin/nvidia-smi -i GPU-30000000-0000-4000-8000-000000000004 -pl 30" as NonEmptyStr,
+          tolerates_failure: false,
+          runs_with_full_privileges: false,
+        },
+      },
+    ],
+    enabled: true,
+    active_state: "active (exited)" as NonEmptyStr,
+    since: "fixture" as NonEmptyStr,
+    read_on: "fixture: no host read; srv4 has no modeled boot unit" as NonEmptyStr,
+  }
+}

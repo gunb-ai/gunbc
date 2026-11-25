@@ -45,6 +45,10 @@ import gunbc.fleet.gpu_device_observation {
   current_gpu_device_observations, current_gpu_device_observations_of,
   gpu_device_observation_board, gpu_device_observation_default,
 }
+import gunbc.serving.gpu_power_cap_pricing { CapCandidate, PowerAsk, candidate_cap, candidate_is_on }
+import gunbc.fleet.gpu_cap_priced_actuation {
+  ActuationAdmission, ActuationRequest, actuation_admits, actuation_refusal_text, price_the_actuation,
+}
 
 // A LINE AS SYSTEMD WILL RUN IT, with the two prefixes recorded as the separate facts they are. systemd gives
 // them different jobs: `-` means ignore this line's exit status, and `+` means run it with full privileges even
@@ -94,6 +98,104 @@ type CapApplicationClaim {
   to_watts: Watt
   said_by: NonEmptyStr
   read_on: NonEmptyStr
+}
+
+// ── THE UNIT'S OWN CAP LINES, PRICED ──────────────────────────────────────────────────────────────
+//
+// WHY THE BOOT MECHANISM IS GATED AT ALL. This module states no realization -- an installed unit and its own
+// journal line say somebody ASKED for a cap at boot, and nothing more. That is exactly what makes it dangerous
+// next to a pricing gate: a unit is a script that writes its watt value again at every boot, so a unit holding
+// a cap nobody priced would reinstate the unpriced value the next time the machine came up and the converge's
+// refusal would be theatre. So each cap line of a unit is put through the same gate as an admission, with the
+// watts and the UUID the unit itself carries.
+//
+// THE CEILING GAP, STATED RATHER THAN PAPERED OVER. The units this module holds write `-pl` only; no modeled
+// unit writes an SM clock ceiling with `-lgc`. A request built from one of these lines therefore carries
+// `ceiling: Absent`, which the gate reads as "the card is left to boost", matching a candidate whose clock is
+// `Unlocked`. When a unit that locks a clock is installed, `BootCapCommand` must grow the ceiling as a field
+// and this function must pass it -- the same realization obligation named on gunbc.serving.gpu_power_cap_pricing
+// for the ceiling and for `scaling_max_freq`, and it is named there once rather than being invented differently here.
+
+type BootCapActuation {
+  command: BootCapCommand
+  board: PhysicalAssetIdentity?
+  admission: ActuationAdmission
+}
+
+fn boot_command_actuation(
+  unit: PowerCapBootUnit,
+  command: BootCapCommand,
+  candidates: List<CapCandidate>,
+  ask: PowerAsk?,
+) -> BootCapActuation {
+  let board = board_addressed_by(unit: unit, uuid: command.addressed_gpu_uuid)
+  let priced = filter(candidates, c => candidate_is_on(c: c, host: unit.host) && watt_count(w: candidate_cap(c: c)) == watt_count(w: command.target_watts)).first()
+  BootCapActuation {
+    command: command,
+    board: board,
+    admission: price_the_actuation(
+      request: boot_command_request(unit: unit, command: command),
+      candidate: priced,
+      ask: ask,
+    ),
+  }
+}
+
+fn boot_command_request(unit: PowerCapBootUnit, command: BootCapCommand) -> ActuationRequest {
+  ActuationRequest {
+    host: unit.host,
+    board: board_addressed_by(unit: unit, uuid: command.addressed_gpu_uuid),
+    gpu_uuid: command.addressed_gpu_uuid,
+    cap: command.target_watts,
+    ceiling: Absent,
+  }
+}
+
+fn boot_unit_cap_actuations(
+  unit: PowerCapBootUnit,
+  candidates: List<CapCandidate>,
+  ask: PowerAsk?,
+) -> List<BootCapActuation> {
+  map(unit.cap_commands, c => boot_command_actuation(unit: unit, command: c, candidates: candidates, ask: ask))
+}
+
+// The unit's cap lines that the gate would refuse, in order. An empty list is the only answer that lets the
+// converge treat the unit as harmless.
+fn boot_unit_unpriced_commands(
+  unit: PowerCapBootUnit,
+  candidates: List<CapCandidate>,
+  ask: PowerAsk?,
+) -> List<BootCapActuation> {
+  filter(boot_unit_cap_actuations(unit: unit, candidates: candidates, ask: ask), a => !actuation_admits(a: a.admission))
+}
+
+fn boot_unit_admits_every_command(
+  unit: PowerCapBootUnit,
+  candidates: List<CapCandidate>,
+  ask: PowerAsk?,
+) -> Bool {
+  boot_unit_unpriced_commands(unit: unit, candidates: candidates, ask: ask).length() == 0
+}
+
+// The converge's question: would this unit put an unpriced value back on the card at the next boot? Present
+// carries the line's own address and the gate's reason, so the refusal is actionable.
+fn boot_unit_restores_unpriced_cap(
+  unit: PowerCapBootUnit,
+  candidates: List<CapCandidate>,
+  ask: PowerAsk?,
+) -> NonEmptyStr? {
+  let unpriced = boot_unit_unpriced_commands(unit: unit, candidates: candidates, ask: ask)
+  match unpriced.first() {
+    Absent => Absent
+    Present { value: a } => Present {
+      value: join([
+        "its cap line for ", a.command.addressed_gpu_uuid as String, " at ",
+        to_string(watt_count(w: a.command.target_watts)), " W is refused by the pricing gate: ",
+        actuation_refusal_text(a: a.admission),
+        "; the unit would write it at the next boot (", unit.unit_path as String, ")",
+      ], "") as NonEmptyStr,
+    }
+  }
 }
 
 fn cap_boot_unit_for(host: HostIdentity) -> PowerCapBootUnit? {
