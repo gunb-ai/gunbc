@@ -21,7 +21,7 @@ import gunbc.serving.serving_capacity_anchor {
   ServingGpuKvPool, GpuKvPoolRead, GpuKvPoolNotBinding, GpuKvPoolUnread,
 }
 import gunbc.serving.serving_replica_profile {
-  srv1_vllm_replica_0_profile, srv1_vllm_replica_1_profile, srv3_strata_profile, srv4_strata_profile, replica_shape_named, srv3_strata_anchor, srv4_strata_anchor, LilVllm,
+  srv1_vllm_replica_0_profile, srv1_vllm_replica_1_profile, srv3_strata_profile, srv4_strata_profile, replica_shape_named, srv3_strata_anchor, srv4_strata_anchor,
 }
 import gunbc.serving.serving_layout { ServingLayoutRefused, ServingLayoutNoGroups, host_6ce85c_layout }
 import gunbc.serving.router_dev_policy {
@@ -373,9 +373,9 @@ test fn the_router_admits_an_estimate_only_under_an_admission_and_carries_its_ob
   let estimate = serving_capacity_shape(a: ca_anchor_standing(throughput: uncited, prefill: ca_cited(), warm: ca_cited()), p: ca_policy())
   let derived = serving_capacity_shape(a: ca_anchor_standing(throughput: ca_cited(), prefill: ca_cited(), warm: ca_cited()), p: ca_policy())
   let admitted = AdmitEstimatedCapacity { directive: "fixture" as NonEmptyStr }
-  ca_opt_is(x: ca_shaped_rests(r: router_dev_shaped_under(shape: estimate, engine_kind: LilVllm, admission: admitted, row: (c, r, o) => ca_row_of(cap: c, retention: r, rests: o))), n: 1)
-    && ca_opt_absent(x: ca_shaped_rests(r: router_dev_shaped_under(shape: estimate, engine_kind: LilVllm, admission: AdmitDerivedCapacityOnly, row: (c, r, o) => ca_row_of(cap: c, retention: r, rests: o))))
-    && ca_opt_is(x: ca_shaped_rests(r: router_dev_shaped_under(shape: derived, engine_kind: LilVllm, admission: AdmitDerivedCapacityOnly, row: (c, r, o) => ca_row_of(cap: c, retention: r, rests: o))), n: 0)
+  ca_opt_is(x: ca_shaped_rests(r: router_dev_shaped_under(shape: estimate, pool: ca_gpu_kv_pool(), admission: admitted, row: (c, r, o) => ca_row_of(cap: c, retention: r, rests: o))), n: 1)
+    && ca_opt_absent(x: ca_shaped_rests(r: router_dev_shaped_under(shape: estimate, pool: ca_gpu_kv_pool(), admission: AdmitDerivedCapacityOnly, row: (c, r, o) => ca_row_of(cap: c, retention: r, rests: o))))
+    && ca_opt_is(x: ca_shaped_rests(r: router_dev_shaped_under(shape: derived, pool: ca_gpu_kv_pool(), admission: AdmitDerivedCapacityOnly, row: (c, r, o) => ca_row_of(cap: c, retention: r, rests: o))), n: 0)
 }
 
 // EVERY shipped first-party row's capacity is an estimate, so every row carries what it rests on: no row is

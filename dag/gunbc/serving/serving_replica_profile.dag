@@ -70,7 +70,7 @@ import gunbc.serving.serving_capacity_anchor {
   ServingWarmSwap, SwapByEngineEviction, SwapTierDisk, SwapTierHostRam, SurvivesProcessRestart,
   WarmSwapRestores,
   engine_warm_swap, serving_capacity_shape, serving_conversation_policy, serving_replica_grant_for,
-  slot_file_warm_swap,
+  slot_file_warm_swap, ServingGpuKvPool, GpuKvPoolNotBinding, srv1_gpu_kv_pool,
 }
 import gunbc.serving.flash_next_maxq_fork_measurements { fork_prefill_readings }
 import gunbc.serving.flash_next_topology { ServingTopology, topology_dp }
@@ -216,12 +216,29 @@ type ReplicaFigures
 
 // ── THE PROFILE ──────────────────────────────────────────────────────────────────────────────────────
 
+// THE GPU KV POOL BELONGS TO THE CARD, not to the engine label: it is carried on the replica profile as a
+// per-card reading, so a router never derives one card's cap from another's pool. srv1's vLLM profile reads
+// srv1's own topology pool (srv1_gpu_kv_pool); a Strata card parks its sessions in host RAM, so its cap is the
+// retain/RAM session figure and the pool is declared NotBinding with the trigger that would make it bind. A new
+// vLLM card must carry its OWN pool reading here (its topology row) or declare GpuKvPoolUnread -- there is no
+// path that hands it another card's pool (single_authority / fail_closed: no escape hatch, no fabricated default).
+fn strata_gpu_kv_pool() -> ServingGpuKvPool {
+  GpuKvPoolNotBinding {
+    reason: "Strata parks its sessions in host RAM; the card's cap is the retain/RAM session figure, not a GPU KV pool." as NonEmptyStr,
+    trigger: "A Strata deployment moves parked sessions onto a GPU KV pool, making the pool the binding resource." as NonEmptyStr,
+  }
+}
+
 type ServingReplicaProfile {
   // The row's id: the deployment name its anchor carries and the router prints. Router, anchor and roster
   // agree on a deployment because they read the same row, not because a caller passed a matching string.
   id: NonEmptyStr
   host: HostIdentity
   engine_kind: ServingEngineKind
+  // THE CARD'S GPU KV POOL -- a per-card reading, not derived from the engine label. See strata_gpu_kv_pool /
+  // srv1_gpu_kv_pool. The router reads this field directly to bound a rendered cap; there is no engine-kind ->
+  // another card's pool fallback.
+  gpu_kv_pool: ServingGpuKvPool
   model: ReplicaModel
   gpu: List<ReplicaGpuCard>
   parallelism: ReplicaParallelism
@@ -536,6 +553,7 @@ fn srv1_replica_profile_as(
     id: id as NonEmptyStr,
     host: operator_host_srv1,
     engine_kind: LilVllm,
+    gpu_kv_pool: srv1_gpu_kv_pool(),
     model: LilModel {
       served_model: srv1_serving_startup_reading.served_model_name,
       checkpoint: srv1_topology_run.checkpoint,
@@ -662,6 +680,7 @@ data srv3_strata_profile: ServingReplicaProfile = ServingReplicaProfile {
   id: "srv3-strata",
   host: operator_host_srv3,
   engine_kind: StrataEngine,
+  gpu_kv_pool: strata_gpu_kv_pool(),
   model: StrataModel {
     artifact: srv3_iq3_s_artifact,
     artifact_standing: borrowed(o: "srv3's own artifact digests, read on srv3 (strata_ada_pair_cell srv3_iq3_s_artifact)"),
@@ -701,6 +720,7 @@ data srv4_strata_profile: ServingReplicaProfile = ServingReplicaProfile {
   id: "srv4-strata",
   host: operator_host_srv4,
   engine_kind: StrataEngine,
+  gpu_kv_pool: strata_gpu_kv_pool(),
   model: StrataModel {
     artifact: srv3_iq3_s_artifact,
     artifact_standing: borrowed(o: "BORROWED: srv4 runs the same IQ3_S shards as srv3 and its digest was read THERE; read srv4's own artifact digests before quoting srv4's model as verified"),
@@ -740,6 +760,7 @@ data srv_strata_profile_unread: ServingReplicaProfile = ServingReplicaProfile {
   id: "srv-strata-unread",
   host: operator_host_srv4,
   engine_kind: StrataEngine,
+  gpu_kv_pool: strata_gpu_kv_pool(),
   model: StrataModel {
     artifact: srv3_iq3_s_artifact,
     artifact_standing: borrowed(o: "same IQ3_S shards as srv3/srv4; the digest was read on srv3"),
@@ -786,6 +807,7 @@ fn h11_strata_profile_with_grant(bus: String, launch_grant: ServingRetentionGran
     id: ("h11-strata-" + bus) as NonEmptyStr,
     host: operator_host_6ce85c,
     engine_kind: StrataEngine,
+    gpu_kv_pool: strata_gpu_kv_pool(),
     model: StrataModel {
       artifact: srv3_iq3_s_artifact,
       artifact_standing: borrowed(o: "BORROWED: h11 runs the same IQ3_S shards as srv3 and the digest was read THERE; read h11's own artifact digests before quoting its model as verified"),

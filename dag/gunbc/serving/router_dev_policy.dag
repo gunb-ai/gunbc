@@ -7,8 +7,8 @@ import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_6ce85c, operator_host_srv1, operator_host_srv3, operator_host_srv4 }
 import gunbc.fleet.fleet_tailnet { tailnet_host_from }
 import gunbc.serving.serving_layout { host_6ce85c_layout, srv3_layout, srv4_layout, ServingLayoutResult, ServingLayoutConfigured, ServingLayoutRefused }
-import gunbc.serving.serving_capacity_anchor { ServingCapacityShape, ServingShapeDerived, ServingShapeEstimated, ServingShapeRefused, ShapeThroughputUnread, serving_shape_refusal_message, serving_replica_grant_for, serving_card_cap, CardCap, CardCapUnread, serving_conversation_policy, ServingGpuKvPool, GpuKvPoolNotBinding, srv1_gpu_kv_pool }
-import gunbc.serving.serving_replica_profile { srv1_vllm_replica_0_profile, srv1_vllm_replica_1_profile, replica_shape_named, srv3_strata_profile, srv4_strata_profile, h11_strata_profile, replica_shape_named_with_grant, ServingReplicaProfile, ServingEngineKind, LilVllm, StrataEngine }
+import gunbc.serving.serving_capacity_anchor { ServingCapacityShape, ServingShapeDerived, ServingShapeEstimated, ServingShapeRefused, ShapeThroughputUnread, serving_shape_refusal_message, serving_replica_grant_for, serving_card_cap, CardCap, CardCapUnread, serving_conversation_policy, ServingGpuKvPool }
+import gunbc.serving.serving_replica_profile { srv1_vllm_replica_0_profile, srv1_vllm_replica_1_profile, replica_shape_named, srv3_strata_profile, srv4_strata_profile, h11_strata_profile, replica_shape_named_with_grant, ServingReplicaProfile }
 import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, TranscribedUncited, cited_figure_read_obligation }
 import extdeps.uri { uri_https, uri_wire }
 import extdeps.currency.currency { CurrencyCode, Usd, currency_alphabetic_code }
@@ -1037,44 +1037,30 @@ fn standings_obligations(ss: List<CitedFigureStanding>) -> List<String> {
   })
 }
 
-// THE CARD'S GPU KV POOL, CHOSEN BY ENGINE KIND -- never by a match on the deployment NAME. A vLLM card
-// (ServingEngineKind::LilVllm) runs its live turns in the on-GPU KV pool, so its cap is bounded by that pool, read
-// from the topology measurement that owns the figure (srv1_gpu_kv_pool). A Strata card parks its sessions in host
-// RAM, so the GPU KV pool does not bind it and it declares GpuKvPoolNotBinding with the trigger that would make it
-// bind. Engine kind is the typed discriminator (serving_replica_profile::ServingEngineKind); srv1 is the fleet's
-// only LilVllm first-party card, so its topology row is THE pool -- a second vLLM card must carry its own pool
-// reading, and until then it has no pool row and its cap derivation has nothing to key on.
-fn router_dev_gpu_kv_pool(engine_kind: ServingEngineKind) -> ServingGpuKvPool {
-  match engine_kind {
-    LilVllm => srv1_gpu_kv_pool(),
-    StrataEngine => GpuKvPoolNotBinding {
-      reason: "Strata parks its sessions in host RAM; the card's cap is the retain/RAM session figure, not a GPU KV pool." as NonEmptyStr,
-      trigger: "A Strata deployment moves parked sessions onto a GPU KV pool, making the pool the binding resource." as NonEmptyStr,
-    },
-  }
-}
-
-// The engine kind a projected replica's naming carries, read from its AnchorStrataProfile's own profile.
-fn replica_naming_engine_kind(n: RouterDevReplicaNaming) -> ServingEngineKind {
+// THE GPU KV POOL A PROJECTED REPLICA'S NAMING CARRIES -- read straight from its own profile, the card's
+// reading (see serving_replica_profile::gpu_kv_pool). There is NO engine-kind -> another card's pool fallback:
+// the pool travels with the card, so a second vLLM card can never be capped from srv1's pool -- it carries its
+// own reading or declares it Unread (single_authority / fail_closed).
+fn router_dev_replica_pool(n: RouterDevReplicaNaming) -> ServingGpuKvPool {
   match n.anchor {
-    AnchorStrataProfile { profile: p } => p.engine_kind,
+    AnchorStrataProfile { profile: p } => p.gpu_kv_pool,
   }
 }
 
-fn router_dev_shaped_under(shape: ServingCapacityShape, engine_kind: ServingEngineKind, admission: RouterDevCapacityAdmission, row: fn(RouterDevCapacity, RouterDevRetention, List<CitedFigureStanding>) -> RouterDevUpstream) -> RouterDevShaped {
+fn router_dev_shaped_under(shape: ServingCapacityShape, pool: ServingGpuKvPool, admission: RouterDevCapacityAdmission, row: fn(RouterDevCapacity, RouterDevRetention, List<CitedFigureStanding>) -> RouterDevUpstream) -> RouterDevShaped {
   match shape {
     ServingShapeRefused { deployment: d, reason: r } => RouterDevShapeRefused { reason: concat("capacity shape refused for ", concat(d as String, concat(": ", serving_shape_refusal_message(reason: r)))) }
     // The rendered cap is the SMALLER of the shape's throughput-derived turns and the GPU KV pool's floor
     // (pool tokens at the policy anchor context), so a card configured for more seats than its on-GPU pool
     // holds is capped to the pool. An unread pool REFUSES the row -- fail_closed, never a free cap.
     ServingShapeDerived { deployment: d, turns: t, held: h, bound: _, cold_reread: _ } =>
-      match serving_card_cap(pool: router_dev_gpu_kv_pool(engine_kind: engine_kind), shape_turns: t, anchor_context: serving_conversation_policy.anchor_context) {
+      match serving_card_cap(pool: pool, shape_turns: t, anchor_context: serving_conversation_policy.anchor_context) {
         CardCap { turns: c, bound_by: _ } => RouterDevShapedRow { row: row(OwnedCap { turns: c }, RetentionAdmitted { conversations: h }, []) }
         CardCapUnread { obligation: o } => RouterDevShapeRefused { reason: concat("gpu kv pool unread for ", concat(d as String, concat(": ", o as String))) }
       }
     ServingShapeEstimated { deployment: d, turns: t, held: h, bound: _, cold_reread: _, standings: ss } => match admission {
       AdmitEstimatedCapacity { directive: _ } =>
-        match serving_card_cap(pool: router_dev_gpu_kv_pool(engine_kind: engine_kind), shape_turns: t, anchor_context: serving_conversation_policy.anchor_context) {
+        match serving_card_cap(pool: pool, shape_turns: t, anchor_context: serving_conversation_policy.anchor_context) {
           CardCap { turns: c, bound_by: _ } => RouterDevShapedRow { row: row(OwnedCap { turns: c }, RetentionAdmitted { conversations: h }, ss) }
           CardCapUnread { obligation: o } => RouterDevShapeRefused { reason: concat("gpu kv pool unread for ", concat(d as String, concat(": ", o as String))) }
         }
@@ -1083,8 +1069,8 @@ fn router_dev_shaped_under(shape: ServingCapacityShape, engine_kind: ServingEngi
   }
 }
 
-fn router_dev_shaped(shape: ServingCapacityShape, engine_kind: ServingEngineKind, row: fn(RouterDevCapacity, RouterDevRetention, List<CitedFigureStanding>) -> RouterDevUpstream) -> RouterDevShaped {
-  router_dev_shaped_under(shape: shape, engine_kind: engine_kind, admission: router_dev_capacity_admission, row: row)
+fn router_dev_shaped(shape: ServingCapacityShape, pool: ServingGpuKvPool, row: fn(RouterDevCapacity, RouterDevRetention, List<CitedFigureStanding>) -> RouterDevUpstream) -> RouterDevShaped {
+  router_dev_shaped_under(shape: shape, pool: pool, admission: router_dev_capacity_admission, row: row)
 }
 
 // WHICH ANCHOR A PROJECTED ROW'S CAP AND RETAIN ARE DERIVED FROM, chosen by the naming row and nowhere else. The
@@ -1187,7 +1173,7 @@ fn router_dev_replica_contribution(n: RouterDevReplicaNaming, layout: ServingLay
       naming: n,
       cause: "the anchor's aggregate throughput is unread: this host has never produced a throughput reading, so it is named and kept out of service until it serves" as NonEmptyStr,
     }
-    _ => match router_dev_shaped(shape: shape, engine_kind: replica_naming_engine_kind(n: n), row: (cap, retention, rests) => RouterDevUpstream {
+    _ => match router_dev_shaped(shape: shape, pool: router_dev_replica_pool(n: n), row: (cap, retention, rests) => RouterDevUpstream {
       name: n.name, scheme: n.scheme, host: engine_host, port: n.port, tls_name: n.tls_name,
       model: router_dev_iq3_s_model(), capacity: cap, max_model_len: router_dev_iq3_s_max_model_len(), path_prefix: "",
       retiring_names: n.retiring, in_service: true,
@@ -1425,8 +1411,8 @@ fn router_dev_head_shaped() -> List<RouterDevShaped> {
   match tailnet_host_from(machine: operator_host_srv1) {
     Absent => [RouterDevShapeRefused { reason: concat("router head refused: srv1 (the machine ", concat(operator_host_srv1 as String, " that runs the router and its local vLLM head) has no tailnet name, so its engine's address cannot be derived on the fleet tailnet; a router upstream NEVER falls back to a loopback or LAN address — register srv1's hostname (gunbc.hostname_allocation) or take the head off the router route")) }]
     Present { value: engine_host } => [
-      router_dev_shaped(shape: replica_shape_named(p: srv1_vllm_replica_0_profile, deployment: srv1_vllm_replica_0_profile.id as String), engine_kind: srv1_vllm_replica_0_profile.engine_kind, row: (cap, retention, rests) => RouterDevUpstream { name: "srv1-vllm", scheme: UpstreamHttps, host: engine_host as String, port: 18000, tls_name: Present { value: "pool-card" }, model: "Qwen3.8-Flash-Next", capacity: cap, max_model_len: 229376, path_prefix: "", retiring_names: [], in_service: true, retention: retention, effort_effects: qwen3_effort_rules(), capacity_rests_on: rests }),
-      router_dev_shaped(shape: replica_shape_named(p: srv1_vllm_replica_1_profile, deployment: srv1_vllm_replica_1_profile.id as String), engine_kind: srv1_vllm_replica_1_profile.engine_kind, row: (cap, retention, rests) => RouterDevUpstream { name: "srv1-vllm-1", scheme: UpstreamHttps, host: engine_host as String, port: 18001, tls_name: Present { value: "pool-card" }, model: "Qwen3.8-Flash-Next", capacity: cap, max_model_len: 229376, path_prefix: "", retiring_names: [], in_service: true, retention: retention, effort_effects: qwen3_effort_rules(), capacity_rests_on: rests }),
+      router_dev_shaped(shape: replica_shape_named(p: srv1_vllm_replica_0_profile, deployment: srv1_vllm_replica_0_profile.id as String), pool: srv1_vllm_replica_0_profile.gpu_kv_pool, row: (cap, retention, rests) => RouterDevUpstream { name: "srv1-vllm", scheme: UpstreamHttps, host: engine_host as String, port: 18000, tls_name: Present { value: "pool-card" }, model: "Qwen3.8-Flash-Next", capacity: cap, max_model_len: 229376, path_prefix: "", retiring_names: [], in_service: true, retention: retention, effort_effects: qwen3_effort_rules(), capacity_rests_on: rests }),
+      router_dev_shaped(shape: replica_shape_named(p: srv1_vllm_replica_1_profile, deployment: srv1_vllm_replica_1_profile.id as String), pool: srv1_vllm_replica_1_profile.gpu_kv_pool, row: (cap, retention, rests) => RouterDevUpstream { name: "srv1-vllm-1", scheme: UpstreamHttps, host: engine_host as String, port: 18001, tls_name: Present { value: "pool-card" }, model: "Qwen3.8-Flash-Next", capacity: cap, max_model_len: 229376, path_prefix: "", retiring_names: [], in_service: true, retention: retention, effort_effects: qwen3_effort_rules(), capacity_rests_on: rests }),
     ]
   }
 }

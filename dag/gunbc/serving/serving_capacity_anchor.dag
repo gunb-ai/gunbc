@@ -150,7 +150,10 @@ fn serving_card_cap(pool: ServingGpuKvPool, shape_turns: Nat, anchor_context: To
 // The pool floor is the whole seats it can carry at the per-conversation context; Nat division floors, so a
 // partial seat is never counted. The shape's throughput turns win when they are already the smaller figure.
 fn gpu_kv_floor_cap(pool_tokens: Nat, shape_turns: Nat, context: Nat) -> ServingCardCap {
-  if context == 0 { CardCap { turns: shape_turns, bound_by: Shape {} } }
+  // A zero anchor context is a broken policy input, not a real concurrency: the pool floor (pool tokens / context)
+  // is undefined, so the pool cannot be consulted. Refusing -- never reporting that the seat count bound the cap,
+  // which would be a fabricated answer that hides the unread pool (fail_closed: a failure arm refuses, never widens).
+  if context == 0 { CardCapUnread { obligation: "policy anchor_context is zero, so the GPU KV pool floor (pool tokens / context) is undefined and the pool was never consulted; the serving_conversation_policy anchor_context must be read before this card's cap renders" as NonEmptyStr } }
   else {
     let kv_floor = pool_tokens / context
     if kv_floor < shape_turns { CardCap { turns: kv_floor, bound_by: GpuKv { pool_tokens: pool_tokens } } }
