@@ -32,6 +32,10 @@ import std.optional { Optional, Present, Absent }
 import std.measure { EvalStepCount, eval_step_count_value }
 import std.algebra { Cons, Empty, length }
 import std.content_hash { Sha256DigestHex }
+import v2.workflow.required_floor {
+  GrandfatheredTier, NewWitnessTier,
+  claim_ceiling_tier, claim_ceiling_eval_step_budget, claim_eval_step_budget_for_identity,
+}
 import v2.workflow.floor_grandfathered_roster {
   GrandfatheredPopulationReport,
   RosterPopulationAdoption, RosterPopulationAdmitted, RefusedPullRequestRun, RefusedIncompleteRun,
@@ -589,4 +593,60 @@ test fn the_population_figures_carry_a_read_obligation_and_not_a_receipt() -> Bo
 test fn the_population_run_reference_is_the_digest_of_the_binary_that_produced_the_figures() -> Bool {
   population_instrument_sha256(report: floor_grandfathered_population)
     == "fab6957cb4e614d42efb8e4ad00832c0a585ad7f37f10e6c874a3f6920d463fe"
+}
+
+// ── THE TIER MOVED, WITNESSED AT THE TIER AUTHORITY ITSELF ─────────────────────────────────────
+//
+// THE HANDBACK'S THIRD ITEM, MADE EXECUTABLE. The node asks for "one previously-misclassified check
+// shown moving to the tier it belongs in". `test.claim.bare_name_ambiguity_wall_witness
+// .bare_value_read_of_an_ambiguous_name_refuses` was planned by the required-floor gate at the cut
+// sha 6dd2206d1258, is present in the corpus, and was in no chunk of the list -- so at main the tier
+// authority hands it the NEW-WITNESS envelope (100ms x 723 eval steps/ms = 72,300 steps) although it
+// predates the cut. This change adds its row, and these claims read the answer back from the authority
+// rather than from me: the tier is the older allowance, and so is the budget.
+//
+// WHY THESE THREE AND NOT THE OTHER WAY ROUND (lane manager's ruling, and the guarantee ladder's
+// rung honesty). The mirror claims -- "this check is measured against the new-witness envelope",
+// "the authority tiers it as new work" -- are TRUE AT MAIN and permanently FALSE HERE. A witness file
+// that runs rc=1 at the head it lands on enrols the wrong state as an asset, so those two live on the
+// RedProbe ref `red-control/floor-ceiling-roster-cut-completeness` (pushed, never merged), where
+// main's observation is recorded. What ships asserts what is correct on the tree that carries it.
+//
+// THE CONTROL IS HERE TOO, NOT ONLY ON THE PROBE REF. A claim about a name no roster has ever held
+// answers the new-witness envelope at BOTH heads, so the three together say the list moved one check
+// and did not absorb the population -- the node's "the two allowances stay distinct" arm, executed at
+// the authority rather than only in the roster's own arithmetic (gunbc.design_argument::fail_closed:
+// a tier that cannot fail to be granted is not a tier).
+
+// The check the ticket's displaced_cost is about. Spelled here, not imported from the probe: the probe
+// is scratch and ships nothing.
+fn the_recovered_check_identity() -> String {
+  "test.claim.bare_name_ambiguity_wall_witness.bare_value_read_of_an_ambiguous_name_refuses"
+}
+
+// A name no roster has ever held, so its tier answer must not move between heads. The suffix makes it
+// unwritable as a roster row rather than merely unlikely.
+fn an_identity_no_roster_holds() -> String {
+  "test.claim.bare_name_ambiguity_wall_witness.bare_value_read_of_an_ambiguous_name_refuses_never_exempted_anywhere"
+}
+
+test fn the_recovered_check_is_tiered_as_older_work_at_this_roster() -> Bool {
+  match claim_ceiling_tier(identity: the_recovered_check_identity()) {
+    GrandfatheredTier {} => true
+    NewWitnessTier {} => false
+  }
+}
+
+test fn the_recovered_check_is_measured_against_the_older_allowance_at_this_roster() -> Bool {
+  int_eq(
+    a: eval_step_count_value(s: claim_eval_step_budget_for_identity(identity: the_recovered_check_identity())),
+    b: eval_step_count_value(s: claim_ceiling_eval_step_budget(tier: GrandfatheredTier {})),
+  )
+}
+
+test fn an_identity_no_roster_holds_is_still_measured_against_the_new_witness_envelope() -> Bool {
+  int_eq(
+    a: eval_step_count_value(s: claim_eval_step_budget_for_identity(identity: an_identity_no_roster_holds())),
+    b: eval_step_count_value(s: claim_ceiling_eval_step_budget(tier: NewWitnessTier {})),
+  )
 }
