@@ -18,72 +18,94 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // shows it refusing, and that the remedy is a new sibling claim module -- never an edit of the
 // pinned oracle (an oracle move refuses verification).
 //
-// WHAT THIS MODULE COVERS, and what it does NOT. The clause has two halves:
-// (1) REACHABLE HALF, exercised by the first three arms: when the stdout channel CANNOT be
-//     delivered separated -- the process did not exit admitted -- the capture decoder
-//     classify_process_observation (extdeps.shell.exec, the classifier behind the shell lane's
-//     run_shell_command_observe_outcome) REFUSES as ProcessRefused { exit_code, stderr }: the
-//     stderr travels on its own field and the stdout channel is ABSENT from the refusal entirely.
-//     It never returns a Present channel that merged the two streams, an admitted run's Present
-//     channel never carries stderr content, and a silent stdout is the Absent channel -- not a
-//     refusal, and never the stderr content. Arms:
-//     refused_capture_carries_stderr_apart_and_never_a_merged_stdout,
-//     admitted_capture_reads_stdout_channel_without_stderr_leakage,
-//     silent_stdout_is_absent_channel_not_a_refusal_and_not_stderr_content.
-// (2) UNREACHED HALF, DISPOSITION: NOT HELD, gap named; the clause has MOVED out of this row.
-//     An earlier revision of this header asserted the merged-input antecedent was STRUCTURALLY
-//     INEXPRESSIBLE at the typed seam. That framing is RETRACTED -- it was wrong, and this header
-//     is its correction. The row's stream-separation ENFORCEMENT clause ("a capture that cannot
-//     separate streams refuses rather than muxing") is NOT HELD at the compiler-enforcement rung.
-//     The gap, named: ProcessObservation and process_observation in dag/extdeps/shell/exec.dag
-//     are PUBLIC and UNSEALED constructors, so any caller can construct a contradictory
-//     (exit_code, stdout, stderr) triple at the DAG layer -- including one that carries a merged
-//     text on both fields -- and nothing refuses it. The two declarations as they read:
-//       type ProcessObservation {
-//         exit_code: Int
-//         stdout: String
-//         stderr: String
-//       }
-//       fn process_observation(exit_code: Int, stdout: String, stderr: String) -> ProcessObservation {
-//         ProcessObservation { exit_code: exit_code, stdout: stdout, stderr: stderr }
-//       }
-//     Neither carries admit_callers; the only admit_callers blocks in that file seal a different
-//     carrier. What STILL HOLDS, and where it holds: the separation lives in the RUST capture
-//     path -- the sole production capture constructor drains the child's stdout and stderr pipes
-//     as two separate bounded observations and maps them under separate evidence keys (a
-//     source-read, NOT executed evidence) -- and the production census found zero live functions
-//     accepting one combined stream and producing both channels (the deleted mux
-//     split_gunbc_stdio_capture: 5 hits repo-wide, all prose; the sentinel literals: 0 executable
-//     hits outside prose and the pinned oracle's own negative-data list). Neither this module nor
-//     this row claims compiler enforcement of separation, and NO arm here demonstrates a refusal
-//     OF A MERGED INPUT. The enforcement clause -- sealed construction of process-output
-//     observations -- has MOVED to a new row of this lane, working id
-//     shell-dag-process-observation-sealed-carrier, and is no longer claimed by this row.
-//     The fourth arm, muxed_sentinels_stay_data_in_the_consumer, proves only the consumer-side
-//     residue: the capture CONSUMER parses no sentinel markers at all, so sentinel-shaped text
-//     arriving as data on one channel is never re-split into channels -- the anti-mux property
-//     of the consumer.
-// A verdict from this module covers the separation-shape and channel-refusal clauses stated in
-// (1) ONLY. It does NOT claim the merged-input refusal was demonstrated, and it does NOT hold the
-// row's stream-separation enforcement clause -- the named gap above is the record for that half,
-// and the census above stands only as a measurement of the production path.
+// WHAT ARMS 1-3 TEST, NAMED PRECISELY. A revision of this header (head 2dd972cb9b8) framed them
+// as testing "when the stdout channel CANNOT be delivered separated"; that framing is RETRACTED,
+// wrong on two counts, and this header is its correction (Manager B review, REQUEST_CHANGES at
+// 2dd972cb9b8, items 1):
+//   (i) every fixture below builds a process_observation whose stdout and stderr are ALREADY
+//       separate fields, and the refusal in arm 1 is triggered by the EXIT POLICY
+//       (ExitZeroSucceeds meets exit_code 1) -- never by any inability to deliver separate
+//       streams;
+//   (ii) the codex app-server trip's production path does NOT consult this classifier:
+//       dag/gunbc/codex_app_server_press.dag:1691-1722 passes shell.Exec.RunArgvStdin's run.stdout
+//       and run.stderr straight to retain_provider_wire_capture and parse_account_trip_session.
+//       These arms are therefore a regression control for the shell-lane CLASSIFIER's verdict
+//       shape -- classify_process_observation in dag/extdeps/shell/exec.dag, the classifier
+//       behind the shell lane's run_shell_command_observe_outcome -- kept beside this row because
+//       the row's red_control names a capture that refuses. They are NOT evidence about the
+//       trip's own capture path, and no arm here claims otherwise.
+// What arms 1-3 assert, in order -- exit-policy and channel-selection, nothing more:
+//   exit_policy_refusal_reports_exit_and_stderr_on_own_fields_never_a_merged_present:
+//     under ExitZeroSucceeds a non-zero exit REFUSES, and the refusal carries the exit code and
+//     the stderr text each on its OWN field; the classifier never hands back the stdout field's
+//     content as one Present channel.
+//   channel_selection_admitted_run_presents_stdout_field_only_never_stderr_text:
+//     an admitted run (exit 0) presents the stdout field EXACTLY -- not the stderr text, never
+//     containing it.
+//   channel_selection_empty_stdout_is_absent_not_a_refusal_and_not_stderr_content:
+//     an admitted run with EMPTY stdout and non-empty stderr is the Absent channel -- not a
+//     refusal, and never the stderr content.
+// Arm 4 is a separate property, consumer-side:
+//   muxed_sentinels_stay_data_in_the_consumer: the capture CONSUMER
+//     (parse_account_trip_stdout_for_tests) performs zero sentinel-mux parsing; BOTH planted
+//     sentinel-wrapped lines are asserted to stay UNKNOWN frames (count == 2; the arm's
+//     commentary records why the earlier count > 0 did not discriminate).
+//
+// ENFORCEMENT CLAUSE: NOT HELD, gap named; the clause has MOVED out of this row. An earlier
+// revision of this header asserted the merged-input antecedent was STRUCTURALLY INEXPRESSIBLE at
+// the typed seam. That framing too is RETRACTED -- it was wrong, and this header is its
+// correction. The row's stream-separation ENFORCEMENT clause ("a capture that cannot separate
+// streams refuses rather than muxing") is NOT HELD at the compiler-enforcement rung. The gap,
+// named: ProcessObservation and process_observation in dag/extdeps/shell/exec.dag are PUBLIC and
+// UNSEALED constructors, so any caller can construct a contradictory (exit_code, stdout, stderr)
+// triple at the DAG layer -- including one that carries a merged text on both fields -- and
+// nothing refuses it. The two declarations as they read:
+//   type ProcessObservation {
+//     exit_code: Int
+//     stdout: String
+//     stderr: String
+//   }
+//   fn process_observation(exit_code: Int, stdout: String, stderr: String) -> ProcessObservation {
+//     ProcessObservation { exit_code: exit_code, stdout: stdout, stderr: stderr }
+//   }
+// Neither carries admit_callers; the only admit_callers blocks in that file seal a different
+// carrier. What STILL HOLDS, and where it holds: the separation lives in the RUST capture path --
+// the sole production capture constructor drains the child's stdout and stderr pipes as two
+// separate bounded observations and maps them under separate evidence keys (a source-read, NOT
+// executed evidence) -- and the production census found zero live functions accepting one
+// combined stream and producing both channels (the deleted mux split_gunbc_stdio_capture: 5 hits
+// repo-wide, all prose; the sentinel literals: 0 executable hits outside prose and the pinned
+// oracle's own negative-data list). Neither this module nor this row claims compiler enforcement
+// of separation, and NO arm here demonstrates a refusal OF A MERGED INPUT. The enforcement clause
+// -- sealed construction of process-output observations -- has MOVED to a new row of this lane,
+// working id shell-dag-process-observation-sealed-carrier, and is no longer claimed by this row.
+// A verdict from this module covers exactly the classifier exit-policy and channel-selection
+// shape named above, plus the consumer's zero-sentinel-parsing residue. It does NOT claim the
+// merged-input refusal was demonstrated, does NOT claim the trip production consults this
+// classifier (it does not, see (ii)), and does NOT hold the row's stream-separation enforcement
+// clause -- the named gap above is the record for that half, and the census above stands only as
+// a measurement of the production path.
 
 data clean_frame: String = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"ok\":true}}"
 
 data mux_shaped_stdout: String = "---GUNBC_STDOUT---{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"ok\":true}}\n---GUNBC_STDERR---boot noise"
 
-test fn refused_capture_carries_stderr_apart_and_never_a_merged_stdout() -> Bool {
+test fn exit_policy_refusal_reports_exit_and_stderr_on_own_fields_never_a_merged_present() -> Bool {
+  // FIXTURE HONESTY: this observation's stdout and stderr are ALREADY separate fields; the refusal
+  // below is triggered by the EXIT POLICY (ExitZeroSucceeds meets exit_code 1), not by any
+  // inability to deliver separate streams. What the arm pins is the VERDICT SHAPE: the refusal
+  // carries the exit code and the stderr text each on its own field, and the classifier does not
+  // return the stdout field's content ("LEAK-MARKER-STDOUT") to the caller as one Present channel.
   let observation: ProcessObservation = process_observation(exit_code: 1, stdout: "LEAK-MARKER-STDOUT", stderr: "boom")
   match classify_process_observation(policy: ExitZeroSucceeds, observation: observation) {
-    // THE BUG THE CLAUSE FORBIDS WOULD CLASSIFY THIS AS A PRESENT CHANNEL CARRYING THE MERGED TEXT;
-    // the correct rung is a refusal whose stdout channel is absent and whose stderr is its own field.
     ProcessRefused { exit_code: e, stderr: err } => (e == 1) && (err == "boom")
     ProcessOutputPresent { text: _ } => false
     ProcessOutputAbsent => false
   }
 }
 
-test fn admitted_capture_reads_stdout_channel_without_stderr_leakage() -> Bool {
+test fn channel_selection_admitted_run_presents_stdout_field_only_never_stderr_text() -> Bool {
+  // Channel selection, admitted branch: the Present text is drawn from the stdout field EXACTLY.
   let observation: ProcessObservation = process_observation(exit_code: 0, stdout: "OUT-CHANNEL", stderr: "ERR-CHANNEL")
   match classify_process_observation(policy: ExitZeroSucceeds, observation: observation) {
     ProcessOutputPresent { text: t } => (t == "OUT-CHANNEL") && !string_contains(s: t, pattern: "ERR-CHANNEL")
@@ -92,7 +114,9 @@ test fn admitted_capture_reads_stdout_channel_without_stderr_leakage() -> Bool {
   }
 }
 
-test fn silent_stdout_is_absent_channel_not_a_refusal_and_not_stderr_content() -> Bool {
+test fn channel_selection_empty_stdout_is_absent_not_a_refusal_and_not_stderr_content() -> Bool {
+  // Channel selection, silent-stdout branch: empty stdout on an admitted exit is the Absent
+  // channel -- not a refusal, and never the stderr content.
   let observation: ProcessObservation = process_observation(exit_code: 0, stdout: "", stderr: "noise-on-stderr")
   match classify_process_observation(policy: ExitZeroSucceeds, observation: observation) {
     ProcessOutputAbsent => true
@@ -102,11 +126,19 @@ test fn silent_stdout_is_absent_channel_not_a_refusal_and_not_stderr_content() -
 }
 
 test fn muxed_sentinels_stay_data_in_the_consumer() -> Bool {
-  // A clean frame on the stdout channel is a KNOWN response frame (no unknown digests). The SAME
-  // frame wrapped in the deleted mux's sentinel markers -- stderr text and all -- is NOT re-split
-  // into channels: its lines are data, counted as unknown frames by the consumer, and the stderr
-  // channel it pretends to carry never appears. The consumer performs zero sentinel-mux parsing.
+  // A clean frame on the stdout channel is a KNOWN response frame (zero unknown digests). The
+  // SAME frame wrapped in the deleted mux's sentinel markers, plus a sentinel-wrapped stderr-noise
+  // line, arrives as two plain lines: each fails parse_json_document at position 0 (the leading
+  // sentinel text is not JSON), so each receives its OWN unknown digest -- BOTH planted lines stay
+  // unknown. DISCRIMINATION, per Manager B review at head 2dd972cb9b8 (item 2): the earlier
+  // assertion (muxed_unknown_count > 0) passed even under a hypothetical parser that STRIPPED the
+  // ---GUNBC_STDOUT--- / ---GUNBC_STDERR--- prefixes and recognised the unwrapped JSON frame,
+  // because the stripped 'boot noise' line alone still counts > 0. That parser is the deleted mux
+  // reborn as prefix-stripping, and the wide count did not forbid it. The count == 2 below does:
+  // any implementation that recognises the wrapped frame -- or otherwise consumes either planted
+  // line as non-data -- drops the count below 2 and this arm FAILS. The consumer performs zero
+  // sentinel-mux parsing, and that is what this arm now proves.
   let clean_unknown_count: Int = length(xs: parse_account_trip_stdout_for_tests(stdout: clean_frame).unknown_frame_digests)
   let muxed_unknown_count: Int = length(xs: parse_account_trip_stdout_for_tests(stdout: mux_shaped_stdout).unknown_frame_digests)
-  (clean_unknown_count == 0) && (muxed_unknown_count > 0)
+  (clean_unknown_count == 0) && (muxed_unknown_count == 2)
 }
