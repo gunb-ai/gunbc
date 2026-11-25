@@ -320,6 +320,32 @@ data mtcollins1_baked_release_export_template: NonEmptyStr = "/var/tmp/gunbc-mtc
 
 data mtcollins1_runner_image_attempt_raw: String = "mtcollins1-runner-image-publish"
 
+// THE DECISION THE WET PATH MAKES with the final cleanup leg's outcome, EXTRACTED so the witness passes the SAME
+// holding publication and verified link through it twice (fox round 4 at 5b5829eb, Blocker 3): a `RemovalUnanswered`
+// must keep both facts and still fail the run, and a `Removed` must keep both facts and let it succeed. A control
+// that CONSTRUCTS `RunnerImageCleanupUnverified` would stay green if the old decision -- replacing the whole ran
+// attempt with "not attempted" -- came back; going through THIS function is the only way the wet path turns a
+// completed publication into a ran-with-unverified-cleanup attempt, so that is what the control drives.
+fn runner_image_attempt_after_scratch(published: RunnerImagePublishAttempt, removed: ScratchOutcome) -> RunnerImagePublishAttempt {
+  match published {
+    RunnerImagePublishRan { publication: p, link: l } =>
+      if scratch_removed(o: removed) {
+        published
+      } else {
+        RunnerImageCleanupUnverified { publication: p, link: l, scratch: removed }
+      }
+    // Nothing was published, so there is nothing to keep: the refusal is the reason, and the cleanup is reported
+    // inside it rather than pretending to be the whole story.
+    RunnerImageNotDerived { reason: r } =>
+      if scratch_removed(o: removed) {
+        published
+      } else {
+        RunnerImageNotDerived { reason: concat(r, "; ", render_scratch_outcome(label: "baked_release_scratch", prefix: mtcollins1_baked_release_export_prefix, o: removed)) }
+      }
+    RunnerImageCleanupUnverified { publication: _, link: _, scratch: _ } => published
+  }
+}
+
 // THE RECEIPT AND THE EXIT ARE PURE FUNCTIONS OF THE ATTEMPT (fox round 3 at 649e7857). The wet run below writes the
 // receipt and then decides its exit from THESE, so what a witness asserts about an attempt no hermetic host can
 // produce -- above all the publication and link that completed while only the final cleanup's reply was lost -- is
@@ -380,27 +406,9 @@ fn mtcollins1_runner_image_publish_at(revision: CommitSha, export: CommandHost, 
           runner_image_publication_on(host: export, image: runner_host_medium_image(host: mtcollins1_runner_host, baked: baked))
       }
       let removed = scratch_removal_of(kind: kind, dir: dir, leg: host_run(host: export, command: rm_recursive_force_one_file_system_command(path: dir as String)))
-      match published {
-        // A LOST CLEANUP REPLY DOES NOT UNPUBLISH THE IMAGE (fox round 3 at 649e7857). The publication ran and the
-        // link verified, so the attempt keeps naming them; the cleanup is carried as its own fact, and because its
-        // reply was lost the attempt does not hold. The old arm here replaced the whole ran attempt with
-        // RunnerImageNotDerived, rendering "publication=not attempted" over a publication that had completed.
-        RunnerImagePublishRan { publication: p, link: l } =>
-          if scratch_removed(o: removed) {
-            published
-          } else {
-            RunnerImageCleanupUnverified { publication: p, link: l, scratch: removed }
-          }
-        // Nothing was published, so there is nothing to keep: the refusal is the reason, and the cleanup is
-        // reported inside it rather than pretending to be the whole story.
-        RunnerImageNotDerived { reason: r } =>
-          if scratch_removed(o: removed) {
-            published
-          } else {
-            RunnerImageNotDerived { reason: concat(r, "; ", render_scratch_outcome(label: "baked_release_scratch", prefix: mtcollins1_baked_release_export_prefix, o: removed)) }
-          }
-        other => other
-      }
+      // ONE decision, the same function the witness drives (fox round 4 at 5b5829eb, Blocker 3): a lost cleanup
+      // reply keeps a completed publication and its verified link and makes the attempt not hold.
+      runner_image_attempt_after_scratch(published: published, removed: removed)
     }
   }
 }
