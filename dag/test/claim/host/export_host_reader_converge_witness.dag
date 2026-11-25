@@ -317,14 +317,15 @@ test fn an_overran_initial_reload_runs_the_readbacks_and_never_says_not_reloaded
     && !string_contains(s: text, pattern: "unchanged")
 }
 
-// CONTROL (reviewer, Blocker 2): both absence reads are elevated, and an elevated read can be DENIED by sudo
-// policy WITHOUT the "sudo:" word -- "Sorry, user ... is not allowed to execute ..." -- and still exit 1, the
-// same exit a genuine "absent" gave the OLD readback. Under the listing model, absence is claimed ONLY on a
-// listing that COMPLETED (exit 0); an exit-1 policy denial establishes nothing, so the removal stays
+// CONTROL (reviewer, Blocker 2): the absence read is elevated -- ONE parent listing -- and an elevated read can be
+// DENIED by sudo policy WITHOUT the "sudo:" word -- "Sorry, user ... is not allowed to execute ..." -- and still
+// exit 1, the same exit a genuine "absent" gave the OLD readback. Under the listing model, absence is claimed ONLY
+// on a listing that COMPLETED (exit 0); an exit-1 policy denial establishes nothing, so the removal stays
 // unconfirmed, the rollback FAILS loudly, and NO second reload runs. Red on the pre-fix readback_absent that
 // read a bare exit-1 as absent: it would have confirmed a phantom absence, done a second reload, and could
-// report rolled back. (Named against the pre-fix revision, not "current production".)
-test fn a_rollback_with_sudo_refusal_on_both_reads_fails_without_a_second_reload() -> Bool {
+// report rolled back. (Named against the pre-fix revision, not "current production". The name once said "both
+// reads", from the two-test readback this listing replaced.)
+test fn a_rollback_with_sudo_refusal_on_the_parent_listing_fails_without_a_second_reload() -> Bool {
   let policy_denied = answered(exit: 1, out: "", err: "Sorry, user deploy is not allowed to execute '/usr/bin/ls -1 -A -- /etc/ssh/sshd_config.d' as root")
   let r = run(overrides: [
     LegOverride { leg: "fresh_login", answer: bad() },

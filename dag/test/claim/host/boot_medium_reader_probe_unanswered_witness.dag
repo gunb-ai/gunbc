@@ -12,11 +12,13 @@ module test.claim.host.boot_medium_reader_probe_unanswered_witness
 // They live in their own small file (not boot_medium_reader_probe_witness.dag) so the fold judgement can be run
 // without the heavy fleet-converge-workflow closure that the full probe witness pulls in.
 //
-// RED AGAINST 38cfb686: at that revision the mapper folded TypedArgvExecOverran (and post-invocation wire
-// failures) into LegNotDispatched, and the probe carried no StageUnanswered/…Unanswered arms -- a lost reply was
-// reported as "never dispatched" / "nothing was sent to the daemon". Each control below is red there (the fold
-// returned StageNotDispatched, or the cause said "never dispatched", or holds was reported on an unobserved
-// readability leg) and green after this change.
+// RED AGAINST 38cfb686 AT THE CONSUMER, NOT THE MAPPER: at that revision `host_leg_of_typed_argv` already produced
+// `LegUnanswered` for a `TypedArgvExecOverran` (and the GAP at that line still names the one case it could not
+// know -- a post-invocation wire fault); what was missing was the CONSUMER. The probe fold carried no
+// StageUnanswered/…Unanswered arms, so it reported a lost reply on every route as "never dispatched" / "nothing was
+// sent to the daemon". Each control below is red there (the fold returned StageNotDispatched, or the cause said
+// "never dispatched", or holds was reported on an unobserved readability leg) and green after this change. A literal
+// backport of these controls to that revision would not even compile: the stage symbol did not exist.
 
 import gunbc.host_command_binding { HostLeg, LegAnswered, LegNotDispatched, LegUnanswered }
 import gunbc.host.boot_medium_reader_key { boot_medium_served_link_path }
