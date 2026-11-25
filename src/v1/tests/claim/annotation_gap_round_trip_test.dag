@@ -27,8 +27,9 @@ import v1.std.core { build_newline_index, empty_intern_table }
 // dag/test/claim can call them and they run on no required path; direct execution is evidence they
 // hold, not evidence CI runs them.
 //
-//   gunbc run --source-root dag --source-root src/v1 --source-root src/v2 --claim-run \
+//   gunbc --dry-run run --source-root dag --source-root src/v1 --source-root src/v2 \
 //     --entry src/v1/tests/claim/annotation_gap_round_trip_test.dag --function <test fn>
+//   (no gunbc test route reaches this module: the seed reports the claim's Bool in its refusal line, exit 2)
 
 data gap_fixture_file: String = "zqxgap_fixture.dag"
 

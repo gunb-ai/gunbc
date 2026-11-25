@@ -10,7 +10,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // It lives under dag/test/manual, OUTSIDE gunbc.ci.ci_layer_roots witness_discovery_scan_dirs, on
 // purpose: it is RED on base by construction (the sentinel is `pending:` until the one authorized
 // task flips it), so it is the attempt's pinned oracle -- reached by
-// `gunbc run --claim-run --entry <this file> --function roadmap_launch_canary_oracle_completed`
+// `gunbc test //test/manual/roadmap_launch_canary_oracle:roadmap_launch_canary_oracle_completed`
 // through gunbc.roadmap.roadmap_launch_canary roadmap_launch_canary_execution_contract -- and never a
 // required-floor row. The nonce is authored HERE, in the file the pin covers, so an agent cannot
 // green the oracle by editing the expected value: any edit to this file moves the pinned identity

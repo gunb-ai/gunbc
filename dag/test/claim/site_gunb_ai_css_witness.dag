@@ -7,7 +7,7 @@ module test.claim.site_gunb_ai_css_witness
 //
 // The sheet is complete: the parity claim is byte equality with the served file.
 //
-// RUN: gunbc run --source-root dag --entry dag/test/claim/site_gunb_ai_css_witness.dag --claim-run
+// RUN: gunbc test //test/claim/site_gunb_ai_css_witness:<test fn>   (one operand per test fn)
 //
 // Red controls are run against the compiler and reported in the PR body, not here.
 

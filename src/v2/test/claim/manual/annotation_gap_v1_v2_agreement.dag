@@ -30,8 +30,9 @@ import std.host_text { chars }
 // this control compares neighbours, not scopes.
 //
 // Imports v1.compiler.*, so it lives under manual/ and runs with src/v1 as a source root:
-//   gunbc run --source-root dag --source-root src/v1 --source-root src/v2 --claim-run \
+//   gunbc --dry-run run --source-root dag --source-root src/v1 --source-root src/v2 \
 //     --entry src/v2/test/claim/manual/annotation_gap_v1_v2_agreement.dag
+//   (no gunbc test route reaches this module: the seed reports the claim's Bool in its refusal line, exit 2)
 
 data agreement_source: String = "module zqx.agree\n\n// above the data row\ndata zqx_d: Int = 1\n\n// between the items\nfn zqx_f(a: Int, b: Int) -> Int \{\n  let x = zqx_g(\n    a,\n    // between the arguments\n    b\n  )\n  // between the statements\n  x\n\}\n\nfn zqx_g(p: Int, q: Int) -> Int \{\n  p\n\}\n"
 

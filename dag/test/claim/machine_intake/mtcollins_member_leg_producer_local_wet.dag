@@ -10,7 +10,7 @@ module test.claim.machine_intake.mtcollins_member_leg_producer_local_wet
 // reading reasons would carry `exit=`/`-1`, failing the negative assertions.
 //
 // It is a `_local_wet` module because `answer_on` on a LocalCommandHost performs a real local exec;
-// execute it by hand with `gunbc run --claim-run --entry` (no --dry-run).
+// execute it by hand with `gunbc test --wet //test/claim/machine_intake/mtcollins_member_leg_producer_local_wet:<test fn>`.
 
 import std.types { Bool, NonEmptyStr, String }
 import gunbc.machine_intake.mtcollins1_census_member_readback {
