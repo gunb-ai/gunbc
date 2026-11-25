@@ -290,7 +290,6 @@ type ServingReplicaConfig {
   max_context: TokenCount
 }
 
-
 type ServingBackendSupport
   = ServingBackendSupportsTopology
   | ServingBackendRefusesTopology { group: NonEmptyStr, reason: NonEmptyStr }
