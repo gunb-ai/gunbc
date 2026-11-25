@@ -25,12 +25,14 @@ module gunbc.fleet.cpu_freq_cap_boot_state
 //     gunbc.fleet.gpu_power_cap_boot_state), rather than a second roster saying the same thing.
 //
 // THE STANDING IS THE LOAD-BEARING FIELD. A ceiling standing on a host today, a ceiling the model wants on that
-// host, and a ceiling that was applied and has since been replaced are three facts, and the two hosts recorded
-// here are exactly where they come apart: the operator applied 2.0 GHz on 2026-11-24 and the same day moved to
-// raise it, because heal's build lane ran out at its 60-minute limit with the cores held there. So `ceiling`
-// names the figure that was APPLIED, `standing` says it no longer holds, and the figure that replaced it is
-// unread until a read or an operator statement lands. A consumer that pushes desired state at a host must not
-// push either the applied figure or an invented replacement: `cpu_freq_caps_to_converge` answers empty, and
+// host, a ceiling that was applied and has since been CHANGED, and a ceiling that was applied and whose standing
+// nobody can currently answer are four facts, and the two hosts recorded here sit in the fourth: the operator
+// applied 2.0 GHz on 2026-11-24, and what became of it that day is reported twice over in opposite directions --
+// a relay that they were raising it, after heal's build lane ran out at its limit with the cores held there, and
+// their own words the same day, "we slowed the cores on all computers". So `ceiling` names the figure that was
+// APPLIED, `standing` refuses to say whether it holds, and the figure the hosts are under now is unread until a
+// host read or an operator statement lands. A consumer that pushes desired state at a host must not push the
+// applied figure or invent the current one: `cpu_freq_caps_to_converge` answers empty, and
 // `host_cpu_freq_ceiling` answers what stands today, which for these hosts is nothing this model has read.
 
 import std.types { Bool, Int, List, NonEmptyStr }
@@ -55,8 +57,13 @@ type CpuCoreFrequencyReadBack
 
 // WHETHER THE CEILING STILL STANDS. The arms are not a workflow status and not a to-do: they are what the host
 // is under. `CeilingStands` is a ceiling read holding today; `CeilingSuperseded` is a ceiling that was applied
-// and has since been changed, with the change's authorship and date on it, and with the replacement carried as a
-// standing of its own rather than as a blank.
+// and has since been CHANGED -- a claim, so it carries the change's authorship and date on it; and
+// `CeilingStandingUnsaid` is the third thing, which is what the two recorded hosts are: the applied figure is
+// known, and whether anything replaced it is NOT known, because the reports about it conflict and no read has
+// landed. It is not a hedge standing in for one of the other two: a row in this arm refuses both directions,
+// answering no figure and pushing no ceiling, and it carries the competing reports rather than picking one.
+// Collapsing it into `CeilingSuperseded` would write an operator act that no read has shown, and collapsing it
+// into `CeilingStands` would keep pushing a clock the operator may have changed.
 type CpuFreqCapStanding
   = CeilingStands { applied_on: NonEmptyStr }
   | CeilingSuperseded {
@@ -64,19 +71,30 @@ type CpuFreqCapStanding
       superseded_on: NonEmptyStr
       // Whose act replaced it, in their terms rather than this module's inference.
       superseded_by: NonEmptyStr
-      replacement_ceiling: ReplacementCeilingStanding
+      figure_standing_today: CeilingFigureStanding
       // Why it went. Held on the row because a ceiling lifted for a build lane and a ceiling lifted for power
       // are different history, and the second reads as a policy about the hardware otherwise.
       why: NonEmptyStr
     }
+  | CeilingStandingUnsaid {
+      applied_on: NonEmptyStr
+      // Why this model declines to say. Not "we forgot to look": what was reported, and why it does not settle
+      // the question.
+      unsaid_because: NonEmptyStr
+      // The reports, each in its own words, kept beside each other rather than merged. A row in this arm with
+      // one report is a row that has already chosen a side.
+      competing_reports: List<NonEmptyStr>
+      figure_standing_today: CeilingFigureStanding
+    }
 
-// THE FIGURE THAT REPLACED A SUPERSEDED CEILING, as it stands for this model. `ReplacementUnread` is the
-// frontier: a new ceiling exists on those hosts and has not been read here, so the row says what would close it
-// and supplies no digits. `ReplacementStated` is what a read or an operator statement lands as -- and once one
-// exists, it, not the applied figure, is what the host is under.
-type ReplacementCeilingStanding
-  = ReplacementStated { ceiling: Hertz }
-  | ReplacementUnread { what_would_discharge_it: NonEmptyStr }
+// WHAT FIGURE THE HOST IS UNDER NOW, as it stands for this model. Named for the question it answers rather than
+// for an act: `CeilingSuperseded` already states the act, and an arm that presupposed a replacement would say
+// too much for `CeilingStandingUnsaid` to carry. `FigureUnread` is the frontier: the row says what would close
+// it and supplies no digits. `FigureStated` is what a host read or an operator statement lands as -- and once
+// one exists, it, not the applied figure, is what the host is under.
+type CeilingFigureStanding
+  = FigureStated { ceiling: Hertz }
+  | FigureUnread { what_would_discharge_it: NonEmptyStr }
 
 // A frequency ceiling held on a host by an installed mechanism. The unit runs the script; both paths are the
 // operator's, and both digests are as-reported markings until a host hash read lands.
@@ -101,16 +119,31 @@ type CpuFreqCapMechanism {
 // THE READ THAT WOULD TELL THIS MODEL WHAT THE HOSTS ARE UNDER NOW. Spelled once here and carried by both rows,
 // because the two rows are blocked on the same missing read: no observe mode this repository models reads a CPU
 // frequency limit on a host, and the only figure ever reported -- 128 of 128 cores at 2000000 kHz -- came from
-// the mechanism's own script read by the operator by hand.
-data cpu_freq_ceiling_replacement_read: NonEmptyStr = "a read of what the ceiling on each host IS now, either a fleet-converge observe leg that reads the CPU scaling limit on the subject host (no such mode exists today, and the first read of this mechanism was the operator's hand read rather than a modeled one) or the operator stating the figure. Until one of those lands the replacement figure is unread, and writing a number here would be inventing a host's clock." as NonEmptyStr
+// the mechanism's own script read by the operator by hand. It is the same read that would settle either
+// direction, which is why the two questions -- was it raised, or does it stand -- share one discharge.
+data cpu_freq_ceiling_standing_read: NonEmptyStr = "a read of what ceiling each host is under now -- either a fleet-converge observe leg that reads the CPU scaling limit on the subject host (no such mode exists today, and the first read of this mechanism was the operator's hand read rather than a modeled one), or the operator stating the figure. Until one of those lands the figure standing today is unread, and writing a number here would be inventing a host's clock in whichever direction it was written." as NonEmptyStr
 
-// THE TWO HOSTS THE OPERATOR HELD AT 2.0 GHZ ON 2026-11-24, and no longer. The operator installed one unit and
-// one script on each host that day; the applied ceiling is half the M128-30's nominal sustained per-thread
-// clock, and the script's own read-back reported every core of 128 at it. The same day the operator moved to
-// raise that ceiling, so both rows carry `CeilingSuperseded`: the applied figure and its read-back stay on the
-// record, and the figure that replaced it is unread. Both rows carry the same digest markings because the
-// operator quoted one head-and-tail per file for both hosts -- whether the two hosts' copies are byte-identical
-// is itself unread, and a hash read run on each host separately is what would settle that too.
+// THE TWO REPORTS ABOUT WHAT HAPPENED TO THAT CEILING, kept beside each other and not merged. Both are relays
+// of the operator on the same day, 2026-11-24; they do not agree, and no read of a host has landed since either.
+// Held once at module level because both hosts carry exactly the same pair of reports -- a per-host copy would
+// be a second place to keep the same two sentences, and the day one of them is corrected the other would stay.
+data cpu_freq_cap_standing_reports: List<NonEmptyStr> = [
+  "2026-11-24, relayed by manager session clever-raven-401: the operator was raising the srv3/srv4 CPU frequency cap, after heal's build lane timed out at its 60-minute limit six times with the cores held at 2.0 GHz and went green at 42m once the ceiling was raised. Offered as CI evidence for a motive, never as a read of a host.",
+  "2026-11-24, the operator's own words through that same relay: \"we slowed the cores on all computers\" -- a cap spoken of as in force, and reaching further than srv3 and srv4.",
+]
+
+// THE TWO HOSTS THE OPERATOR HELD AT 2.0 GHZ ON 2026-11-24, and what figure stands under them now is UNSAID.
+// The operator installed one unit and one script on each host that day; the applied ceiling is half the
+// M128-30's nominal sustained per-thread clock, and the script's own read-back reported every core of 128 at
+// it. What happened to it the same day is reported two ways that do not agree -- a relay that the operator was
+// raising the srv3/srv4 ceiling, and their own words on the same day, "we slowed the cores on all computers",
+// which is a cap still in force and wider than these two hosts -- and no read of a host has landed here since.
+// So both rows carry `CeilingStandingUnsaid`: the applied figure and its read-back stay on the record at the
+// standing the operator's own act supports, no replacement figure is written, and neither "lifted" nor "kept" is
+// asserted. Both rows carry the same digest markings because the operator quoted one head-and-tail per file for
+// both hosts -- whether the two hosts' copies are byte-identical is itself unread, and a hash read run on each
+// host separately is what would settle that too. The reported reach, "all computers", is also wider than this
+// module: no rows are written for any other host, because nothing has been read there either.
 data srv3_cpu_freq_cap: CpuFreqCapMechanism = CpuFreqCapMechanism {
   host: operator_host_srv3,
   unit_path: "/etc/systemd/system/cpu-freq-cap.service" as NonEmptyStr,
@@ -128,14 +161,13 @@ data srv3_cpu_freq_cap: CpuFreqCapMechanism = CpuFreqCapMechanism {
   ceiling: hertz(count: 2000000000),
   read_back: EveryCoreSeenAtCeiling { cores_read_back: 128 },
   persists_across_boot: true,
-  standing: CeilingSuperseded {
+  standing: CeilingStandingUnsaid {
     applied_on: "2026-11-24" as NonEmptyStr,
-    superseded_on: "2026-11-24" as NonEmptyStr,
-    superseded_by: "the operator, who said on 2026-11-24 they were raising the srv3/srv4 CPU frequency cap -- gunbc.design_ruling::operator_superseded_srv3_srv4_cpu_freq_cap_2026_11_24; the change on the hosts is theirs, and no read of its result has landed here" as NonEmptyStr,
-    replacement_ceiling: ReplacementUnread {
-      what_would_discharge_it: cpu_freq_ceiling_replacement_read,
+    unsaid_because: "what was APPLIED is the operator's own act, reported by them together with the script's own read-back. What happened to it afterwards is reported twice, in two directions, and nothing has been read on either host since: a row here would be one of those reports chosen over the other. Both are carried on this row and neither is ruled on -- gunbc.design_ruling::operator_cpu_freq_cap_standing_unsaid_2026_11_24." as NonEmptyStr,
+    competing_reports: cpu_freq_cap_standing_reports,
+    figure_standing_today: FigureUnread {
+      what_would_discharge_it: cpu_freq_ceiling_standing_read,
     },
-    why: "heal's build lane timed out at its 60-minute limit six times with the cores held at 2.0 GHz and went green at 42m once the ceiling was raised, so the ceiling applied to trim power was standing between the fleet and a green build" as NonEmptyStr,
   },
   read_on: "2026-11-24, applied and read by the operator by hand over the admin route; the operator's words are gunbc.design_ruling::operator_hand_applied_srv3_srv4_power_caps_2026_11_24" as NonEmptyStr,
 }
@@ -157,14 +189,13 @@ data srv4_cpu_freq_cap: CpuFreqCapMechanism = CpuFreqCapMechanism {
   ceiling: hertz(count: 2000000000),
   read_back: EveryCoreSeenAtCeiling { cores_read_back: 128 },
   persists_across_boot: true,
-  standing: CeilingSuperseded {
+  standing: CeilingStandingUnsaid {
     applied_on: "2026-11-24" as NonEmptyStr,
-    superseded_on: "2026-11-24" as NonEmptyStr,
-    superseded_by: "the operator, who said on 2026-11-24 they were raising the srv3/srv4 CPU frequency cap -- gunbc.design_ruling::operator_superseded_srv3_srv4_cpu_freq_cap_2026_11_24; the change on the hosts is theirs, and no read of its result has landed here" as NonEmptyStr,
-    replacement_ceiling: ReplacementUnread {
-      what_would_discharge_it: cpu_freq_ceiling_replacement_read,
+    unsaid_because: "what was APPLIED is the operator's own act, reported by them together with the script's own read-back. What happened to it afterwards is reported twice, in two directions, and nothing has been read on either host since: a row here would be one of those reports chosen over the other. Both are carried on this row and neither is ruled on -- gunbc.design_ruling::operator_cpu_freq_cap_standing_unsaid_2026_11_24." as NonEmptyStr,
+    competing_reports: cpu_freq_cap_standing_reports,
+    figure_standing_today: FigureUnread {
+      what_would_discharge_it: cpu_freq_ceiling_standing_read,
     },
-    why: "heal's build lane timed out at its 60-minute limit six times with the cores held at 2.0 GHz and went green at 42m once the ceiling was raised, so the ceiling applied to trim power was standing between the fleet and a green build" as NonEmptyStr,
   },
   read_on: "2026-11-24, applied and read by the operator by hand over the admin route; the operator's words are gunbc.design_ruling::operator_hand_applied_srv3_srv4_power_caps_2026_11_24" as NonEmptyStr,
 }
@@ -172,14 +203,18 @@ data srv4_cpu_freq_cap: CpuFreqCapMechanism = CpuFreqCapMechanism {
 data cpu_freq_cap_mechanisms: List<CpuFreqCapMechanism> = [ srv3_cpu_freq_cap, srv4_cpu_freq_cap ]
 
 // WHICH CEILINGS THE MODEL IS TO LEAVE ALONE. A consumer converging desired CPU state asks this and nothing
-// else: a superseded ceiling is a record of what was, never a target, and pushing it would reinstall a unit the
-// operator has already raised past.
+// else: only a ceiling READ HOLDING TODAY is left in place. A superseded one is a record of what was, never a
+// target, and pushing it would reinstall a unit the operator has already raised past -- and an unsaid one is
+// worse still, because its figure may be the one the operator walked away from and no read says so.
 fn cpu_freq_caps_to_converge() -> List<CpuFreqCapMechanism> {
   filter(cpu_freq_cap_mechanisms, m =>
     match m.standing {
       CeilingStands { applied_on: _ } => true
       CeilingSuperseded {
-        applied_on: _, superseded_on: _, superseded_by: _, replacement_ceiling: _, why: _,
+        applied_on: _, superseded_on: _, superseded_by: _, figure_standing_today: _, why: _,
+      } => false
+      CeilingStandingUnsaid {
+        applied_on: _, unsaid_because: _, competing_reports: _, figure_standing_today: _,
       } => false
     })
 }
@@ -188,26 +223,35 @@ fn cpu_freq_cap_mechanisms_on(host: HostIdentity) -> List<CpuFreqCapMechanism> {
   filter(cpu_freq_cap_mechanisms, m => host_identity_eq(a: m.host, b: host))
 }
 
-// THE CEILING A MECHANISM LEAVES STANDING: the applied figure while it stands, the operator-stated replacement
-// once one has landed, and NOTHING while a replacement is unread. Answering the applied figure here would be
-// the failure this type exists to prevent -- a host whose clock was raised on 2026-11-24 still reporting the
-// figure that was raised away from, with no read behind it.
+// THE CEILING A MECHANISM LEAVES STANDING: the applied figure while it stands, a stated figure once a host read
+// or an operator statement lands one, and NOTHING while the figure is unread -- whether that unreadness arrived
+// by supersession or by two reports that do not agree. Answering the applied figure here would be the failure
+// this type exists to prevent: srv3 and srv4 reporting the clock they were held at on 2026-11-24 while the
+// operator's own words of that day speak of cores still slowed, or have already been changed, with no read
+// behind either answer.
 fn cpu_freq_ceiling_standing_on(m: CpuFreqCapMechanism) -> Hertz? {
   match m.standing {
     CeilingStands { applied_on: _ } => Present { value: m.ceiling }
     CeilingSuperseded {
-      applied_on: _, superseded_on: _, superseded_by: _, replacement_ceiling: replacement, why: _,
+      applied_on: _, superseded_on: _, superseded_by: _, figure_standing_today: figure, why: _,
     } =>
-      match replacement {
-        ReplacementStated { ceiling } => Present { value: ceiling }
-        ReplacementUnread { what_would_discharge_it: _ } => Absent
+      match figure {
+        FigureStated { ceiling } => Present { value: ceiling }
+        FigureUnread { what_would_discharge_it: _ } => Absent
+      }
+    CeilingStandingUnsaid {
+      applied_on: _, unsaid_because: _, competing_reports: _, figure_standing_today: figure,
+    } =>
+      match figure {
+        FigureStated { ceiling } => Present { value: ceiling }
+        FigureUnread { what_would_discharge_it: _ } => Absent
       }
   }
 }
 
 // The ceiling a host runs under, as this model knows. Absent means this model has not read what stands there
-// now -- for srv3 and srv4 today that is literally true, their applied ceiling having been superseded by a
-// change nothing here has read.
+// now -- for srv3 and srv4 today that is literally true twice over: their applied ceiling is reported both as
+// raised away from and as still in force, and nothing here has read a host to settle it.
 fn host_cpu_freq_ceiling(host: HostIdentity) -> Hertz? {
   match cpu_freq_cap_mechanisms_on(host: host).first() {
     Absent => Absent
@@ -215,19 +259,27 @@ fn host_cpu_freq_ceiling(host: HostIdentity) -> Hertz? {
   }
 }
 
-// THE OPEN READ A CEILING'S RECORD CARRIES: what would tell this model what the replacement figure is. Absent
-// when the ceiling still stands or the replacement has already landed. This is the frontier, and it lives in the
-// standing rather than beside it, so a figure cannot be stated in one place while another row still calls the
-// ceiling unread.
-fn cpu_freq_cap_replacement_discharge_read(m: CpuFreqCapMechanism) -> NonEmptyStr? {
+// THE OPEN READ A CEILING'S RECORD CARRIES: what would tell this model what the host is under now. Absent when
+// the ceiling was read holding today, or when a figure has already landed. This is the frontier, and it lives in
+// the standing rather than beside it, so a figure cannot be stated in one place while another row still calls
+// the ceiling unread -- and the same read answers whichever way it turns out, which is why one discharge serves
+// both the superseded and the unsaid arm.
+fn cpu_freq_cap_standing_discharge_read(m: CpuFreqCapMechanism) -> NonEmptyStr? {
   match m.standing {
     CeilingStands { applied_on: _ } => Absent
     CeilingSuperseded {
-      applied_on: _, superseded_on: _, superseded_by: _, replacement_ceiling: replacement, why: _,
+      applied_on: _, superseded_on: _, superseded_by: _, figure_standing_today: figure, why: _,
     } =>
-      match replacement {
-        ReplacementUnread { what_would_discharge_it } => Present { value: what_would_discharge_it }
-        ReplacementStated { ceiling: _ } => Absent
+      match figure {
+        FigureUnread { what_would_discharge_it } => Present { value: what_would_discharge_it }
+        FigureStated { ceiling: _ } => Absent
+      }
+    CeilingStandingUnsaid {
+      applied_on: _, unsaid_because: _, competing_reports: _, figure_standing_today: figure,
+    } =>
+      match figure {
+        FigureUnread { what_would_discharge_it } => Present { value: what_would_discharge_it }
+        FigureStated { ceiling: _ } => Absent
       }
   }
 }
