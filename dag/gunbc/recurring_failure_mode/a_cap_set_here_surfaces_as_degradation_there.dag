@@ -1,0 +1,50 @@
+module gunbc.recurring_failure_mode.a_cap_set_here_surfaces_as_degradation_there
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode, BelowCeiling, FoundBelowTheLadder, FoundOnRung, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+import std.decl_ref { DeclarationRef }
+
+data a_cap_set_here_surfaces_as_degradation_there: RecurringFailureMode = RecurringFailureMode {
+  // A LIMIT IS SET IN ONE PLACE AND ITS VIOLATION SURFACES IN ANOTHER, AS DEGRADATION RATHER THAN
+  // REFUSAL. The place that set it has no signal; the place that pays has no idea a limit exists.
+
+  identity: "a_cap_set_here_surfaces_as_degradation_there" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: StructurallyGuaranteed,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "the cap that binds a role is read back from the host as the cap that BINDS (the service's own MemoryHigh, not the slice above it), joined against the working set that role DECLARES it needs, and a cap below that declared working set refuses admission to the roster that would run the role -- the same shape gunbc.host.memory_envelope already enforces for a runner slot, extended to serving caps and read from the machine instead of from a drop-in someone remembered to copy"
+    }
+  },
+
+  receipts: [
+    "**INVALID STATE: a limit is declared in one place -- a cgroup drop-in, a queue depth, a service override -- and the cost of exceeding it appears somewhere else entirely: a different process, a different subsystem, a latency the operator attributes to the workload. Neither end is invalid, so nothing refuses; the only artifact is that the system runs badly, in a way whose cause is three layers away from the number responsible.**",
+
+    "SPECIMEN ONE, the report of 2026-11-21 recounting srv4: the serving engine's own MemoryHigh was 40 GiB, below the ~22 GB expert working set plus everything else resident, and decode fell to 5.1 tok/s while each request read 41.5 GB from drive -- against 24.5-29.1 tok/s once the cap was raised to 56 GiB, where MemoryCurrent read 46.5 GB. A fivefold cliff, no alarm at the cap, no signal at the consumer. The repair landed the same day it was diagnosed and the figures survive as prose -- the comment on gunbc.serving.serving_layout::srv4_grant records 5.1 tok/s against 24.5/25.1/29.1 and the reads per request, and gunbc.serving.serving_host_memory::srv4_serving_engine_memory carries the new 56 GiB cap with the old shape in its provenance string. THE TREE RECORDED THE REPAIR AND NEVER THE RULE: nothing refuses a leaf cap set below the working set the role declares, on srv4 or anywhere else, and the same 40 GiB shape can be written again tomorrow by whoever edits the drop-in next.",
+
+    "SPECIMEN TWO, same report: srv4 answered HTTP 429 at concurrency 4. Nothing in the model states that srv4 admits four concurrent requests and no more; the limit was discovered by colliding with it, in a lane that had come to do something else. A refusal at least announced itself -- which is why it was diagnosable at all -- and the row it belongs to is the one that names the shape, not a row about srv4.",
+
+    "WHAT THIS ROW IS NOT. It is not a second copy of gunbc.recurring_failure_mode::benchmark_warm_capacity_violation_read_as_engine_performance, whose defect is a benchmark receipt's STANDING (an admission violation read as throughput); and it is not a second copy of gunbc.recurring_failure_mode::a_capacity_default_sized_for_one_workload_shape_inherited_by_another, whose defect is the DIMENSION a capacity is stated in (a count of slots for a workload of several). This row is about WHERE the violation surfaces and what it surfaces AS: degradation, at a distance from the number, with the model's stated cap not even being the cap that binds. srv4's own row records that the slice limit it used to report no longer describes what runs -- the service's drop-in binds, and only a hand-read found which.",
+
+    "THE MIS-STATED PREMISE THE REPORT CARRIES, RECORDED SO THE CLASS IS NOT BUILT ON IT: the report's third item said butch's 8 GiB /swap.img conflicts with a no-swap rule. It does not. gunbc.host.memory_envelope::memory_envelope_verdict judges swap at the SLOT's cgroup (memory.swap.current, .peak, .max) and the user-work slice sets MemorySwapMax=0 per run; gunbc.host.host_swap_backing consults HOST swap only as backing for a cap declared nonzero, and the runner slot's declared memory_swap_max is zero -- so /swap.img at priority -2 refuses nothing and blocks nothing -- and the tree already READS it without refusing: butch_a_strata_engine_memory records 'the host 8G /swap.img reads active, 0 used' beside a MemorySwapMax=0 it does treat as a cap. The axis (a presupposed limit resting on unobserved backing) is real and host_swap_backing owns it; this specimen does not belong to it.",
+
+    "RECOGNITION RULE: for every limit the fleet declares, name where its violation surfaces. If the answer is 'somewhere else, and slower' -- another subsystem, another process, a latency, an empty or short response -- the limit has no refusal and will be discovered by collision. The read side of the rule: the cap that BINDS is whatever the host's cgroup reports at the leaf that runs the role, which is frequently not the cap the model believes set.",
+
+    "CEILING AND ITS TELL: StructurallyGuaranteed. A cap declared against a stated working set, read back from the leaf cgroup, and joined at admission means an under-set cap cannot be carried silently: the role is refused until the cap and the working set agree. The tell that the ceiling is not reached is exactly how these two specimens were found -- a slow request and a 429, discovered by a lane that needed the host for something else.",
+
+    "NEXT TRIGGER: the next cap raised to fix a slowdown that nobody had refused, on any host in either roster -- or the identity read of gunbc.plans.desired_state_follows_the_machine reporting a leaf cgroup cap below the working set the role declares.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.plans.desired_state_follows_the_machine", decl_name: "desired_state_follows_the_machine_plan", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.serving.serving_host_memory", decl_name: "srv4_serving_engine_memory", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.serving.serving_layout", decl_name: "srv4_grant", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.host.memory_envelope", decl_name: "memory_envelope_verdict", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.host.host_axis_caps", decl_name: "derived_runner_slot_cap_settings", field: WholeDeclaration },
+  ]
+}

@@ -2,15 +2,16 @@ module gunbc.fleet.fleet_multi_principal_probe
 import std.optional { Absent, Optional, Present }
 
 
-import std.types { String, Bool, List, NonEmptyStr }
+import std.types { String, Bool, List, NonEmptyStr, Int }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.algebra { trim, Cons, Empty }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
-import gunbc.typed_argv_exec { typed_argv_probe_over_ssh, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused }
+import gunbc.typed_argv_exec {  typed_argv_probe_over_ssh, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason }
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.fleet.fleet_known_hosts_anchor {
+  ProbeLeg,
   SshTargetResolved,
   SshTargetRefused,
   fleet_ssh_target_at_standard_port,
@@ -27,7 +28,7 @@ import gunbc.fleet.fleet_known_hosts_anchor {
   SshTarget,
   PortableRemoteWords,
   portable_remote_words,
-  shape_fleet_ssh_exec,
+  FleetBareWordLeg, fleet_ssh_exec_key_leg,
   fleet_ssh_credential_identity,
   fleet_ssh_credential_locus_label,
 }
@@ -43,7 +44,10 @@ import gunbc.fleet.fleet_ssh_credential_verify {
   AgentSelectorRefused,
   fleet_ssh_credential_verification_refusal_reason,
 }
-import extdeps.ssh.session { ssh_session_exec_portable_words }
+import extdeps.ssh.session {
+  SessionCompleted, SessionOverran, SessionWireInconsistent, ssh_session_exec_wire_refusal_text,
+}
+import std.measure { Second }
 import product.host_identity { HostIdentity }
 import gunbc.auth.access_token_source { GcloudPrintToken }
 import gunbc.spark.credential_workflow { run_with_materialized_fleet_ssh_binding, spark_administrator_credential_roster_hosts }
@@ -125,8 +129,16 @@ data fleet_multi_principal_probe_receipt_path: String = "target/fleet-multi-prin
 // A LEG THAT DID NOT RUN SAYS WHY. Two causes stop it before ssh: remote words the far-side shell
 // would re-parse, and an endpoint that is not a host. Each keeps its own cause in the receipt, so a
 // target refusal is never reported as a non-portable word.
+// WHAT ONE PROBE LEG CAN DO, and there are four answers, not two. The completed arm carries the
+// completed leg's fields; an overrun is its OWN arm, never an exit code. The wire record used to be
+// handed to every consumer here, which let a leg killed at its ceiling be read as "the host answered
+// N": the transport's own 255 after a kill is not a remote verdict (review 96994). The fleet exec
+// helper now returns only extdeps.ssh.session's model sum, and this type is that sum re-expressed for
+// a probe -- so a consumer literally cannot ask a killed leg what the host said.
 type ProbeLegOutcome
-  = ProbeLegRan { result: SshSessionExecResult }
+  = ProbeLegRan { exit_code: Int, success: Bool, stdout: String, stderr: String }
+  | ProbeLegOverran { deadline: Second }
+  | ProbeLegWireInconsistent { cause: NonEmptyStr }
   | ProbeLegRefused { cause: String }
 
 fn probe_leg(context: FleetSshExecutionContext, host: String, principal: String, raw_words: List<String>) -> ProbeLegOutcome {
@@ -135,12 +147,20 @@ fn probe_leg(context: FleetSshExecutionContext, host: String, principal: String,
     Present { value: words } =>
       match fleet_ssh_target_at_standard_port(endpoint: fleet_probe_endpoint_for(host: host), principal: principal as NonEmptyStr) {
         SshTargetRefused { endpoint: e, refusal: why } => ProbeLegRefused { cause: ssh_target_refusal_text(endpoint: e, refusal: why) }
-        SshTargetResolved { target: target } =>
-          ProbeLegRan {
-            result: ssh_session_exec_portable_words(
-              client_args: shape_fleet_ssh_exec(context: context, target: target, words: words),
-            ),
+        SshTargetResolved { target: target } => {
+          // THE LEG ARMS ITS OWN CEILING and comes back as the model sum. This file's legs are
+          // measurement probes (hostname, sudo -n -l), so the kind is DECLARED here, where the argv is
+          // fixed; the ceiling is read from the leg and the decode happens once, at the authority.
+          match fleet_ssh_exec_key_leg(
+            context: context, leg: FleetBareWordLeg { target: target, words: words, kind: ProbeLeg },
+          ) {
+            SessionCompleted { exit_code: e, success: s, stdout: o, stderr: er } =>
+              ProbeLegRan { exit_code: e, success: s, stdout: o, stderr: er }
+            SessionOverran { deadline: d } => ProbeLegOverran { deadline: d }
+            SessionWireInconsistent { fault: f } =>
+              ProbeLegWireInconsistent { cause: ssh_session_exec_wire_refusal_text(fault: f) as NonEmptyStr }
           }
+        }
       }
   }
 }
@@ -148,11 +168,17 @@ fn probe_leg(context: FleetSshExecutionContext, host: String, principal: String,
 fn multi_principal_reach_line(context: FleetSshExecutionContext, host: String, principal: String) -> String {
   match probe_leg(context: context, host: host, principal: principal, raw_words: ["hostname"]) {
     ProbeLegRefused { cause: why } => join(["reach host=", host, " principal=", principal, " probe-refused cause=", why, "\n"], "")
-    ProbeLegRan { result: r } =>
-      if r.success {
-        join(["reach host=", host, " principal=", principal, " auth=accepted command=executed hostname=", trim(s: r.stdout), "\n"], "")
+    // AN OVERRUN IS NOT A REFUSAL AND NOT AN ANSWER: the probe read nothing, so nothing is established
+    // about this principal, and the receipt says so with the ceiling that bound it.
+    ProbeLegOverran { deadline: d } =>
+      join(["reach host=", host, " principal=", principal, " ", typed_argv_exec_overran_reason(leg_hint: "reach", deadline: d), "\n"], "")
+    ProbeLegWireInconsistent { cause: why } =>
+      join(["reach host=", host, " principal=", principal, " probe-refused cause=", why, "\n"], "")
+    ProbeLegRan { exit_code: _, success: ok, stdout: out, stderr: err } =>
+      if ok {
+        join(["reach host=", host, " principal=", principal, " auth=accepted command=executed hostname=", trim(s: out), "\n"], "")
       } else {
-        join(["reach host=", host, " principal=", principal, " auth-or-command=refused stderr=", trim(s: r.stderr), " stdout=", trim(s: r.stdout), "\n"], "")
+        join(["reach host=", host, " principal=", principal, " auth-or-command=refused stderr=", trim(s: err), " stdout=", trim(s: out), "\n"], "")
       }
   }
 }
@@ -160,11 +186,15 @@ fn multi_principal_reach_line(context: FleetSshExecutionContext, host: String, p
 fn multi_principal_sudo_line(context: FleetSshExecutionContext, host: String, principal: String) -> String {
   match probe_leg(context: context, host: host, principal: principal, raw_words: ["sudo", "-n", "-l"]) {
     ProbeLegRefused { cause: why } => join(["sudo  host=", host, " principal=", principal, " probe-refused cause=", why, "\n"], "")
-    ProbeLegRan { result: r } =>
-      if r.success {
-        join(["sudo  host=", host, " principal=", principal, " sudo-n-l=listed grants=", trim(s: r.stdout), "\n"], "")
+    ProbeLegOverran { deadline: d } =>
+      join(["sudo  host=", host, " principal=", principal, " ", typed_argv_exec_overran_reason(leg_hint: "sudo", deadline: d), "\n"], "")
+    ProbeLegWireInconsistent { cause: why } =>
+      join(["sudo  host=", host, " principal=", principal, " probe-refused cause=", why, "\n"], "")
+    ProbeLegRan { exit_code: _, success: ok, stdout: out, stderr: err } =>
+      if ok {
+        join(["sudo  host=", host, " principal=", principal, " sudo-n-l=listed grants=", trim(s: out), "\n"], "")
       } else {
-        join(["sudo  host=", host, " principal=", principal, " sudo-n-l=refused stderr=", trim(s: r.stderr), "\n"], "")
+        join(["sudo  host=", host, " principal=", principal, " sudo-n-l=refused stderr=", trim(s: err), "\n"], "")
       }
   }
 }
@@ -187,6 +217,8 @@ fn multi_principal_reach_line_agent_backed(host: String, principal: String) -> S
       } else {
         join(["reach host=", host, " principal=", principal, " auth-or-command=refused stderr=", trim(s: r.stderr), " stdout=", trim(s: r.stdout), "\n"], "")
       }
+      TypedArgvExecOverran { deadline: d } =>
+        join(["reach host=", host, " principal=", principal, " probe-refused cause=", typed_argv_exec_overran_reason(leg_hint: "multi principal probe", deadline: d), "\n"], "")
     TypedArgvExecRefused { reason: why } =>
       join(["reach host=", host, " principal=", principal, " probe-refused cause=", why, "\n"], "")
   }
@@ -201,6 +233,8 @@ fn multi_principal_sudo_line_agent_backed(host: String, principal: String) -> St
       } else {
         join(["sudo  host=", host, " principal=", principal, " sudo-n-l=refused stderr=", trim(s: r.stderr), "\n"], "")
       }
+      TypedArgvExecOverran { deadline: d } =>
+        join(["sudo  host=", host, " principal=", principal, " probe-refused cause=", typed_argv_exec_overran_reason(leg_hint: "multi principal probe", deadline: d), "\n"], "")
     TypedArgvExecRefused { reason: why } =>
       join(["sudo  host=", host, " principal=", principal, " probe-refused cause=", why, "\n"], "")
   }
@@ -261,6 +295,7 @@ fn agent_backed_probe_success(host: String, principal: String, argv: List<String
   let target = join([principal, "@", fleet_probe_endpoint_for(host: host)], "")
   match typed_argv_probe_over_ssh(host: target as NonEmptyStr, argv: argv) {
     TypedArgvExecConverged { result: r } => r.success
+    TypedArgvExecOverran { deadline: d } => false
     TypedArgvExecRefused { reason: _ } => false
   }
 }
@@ -477,15 +512,24 @@ fn spark_exact_grant_row(context: FleetSshExecutionContext, host: String, princi
     principal: principal,
     inspect_dropins: match probe_leg(context: context, host: host, principal: principal, raw_words: spark_sudoers_dropin_listing_argv()) {
       ProbeLegRefused { cause: why } => InspectDropinShapeUnobserved { cause: why as NonEmptyStr }
-      ProbeLegRan { result: r } => spark_inspect_dropin_shape_of_listing(exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr)
+      ProbeLegOverran { deadline: d } =>
+        InspectDropinShapeUnobserved { cause: typed_argv_exec_overran_reason(leg_hint: "dropin-listing", deadline: d) as NonEmptyStr }
+      ProbeLegWireInconsistent { cause: why } => InspectDropinShapeUnobserved { cause: why }
+      ProbeLegRan { exit_code: e, stdout: o, stderr: er } => spark_inspect_dropin_shape_of_listing(exit_code: e, stdout: o, stderr: er)
     },
     outcome: match probe_leg(context: context, host: host, principal: principal, raw_words: ["sudo", "-n", "-l"]) {
       ProbeLegRefused { cause: why } => GrantProbeRefused { cause: why }
-      ProbeLegRan { result: r } =>
-        if r.success {
-          GrantEnumerated { listing: r.stdout }
+      // AN OVERRUN NEVER BECOMES GrantAbsent: "the probe ran out of wall clock" is not evidence that
+      // the principal holds no grant, and reading it that way would authorize a grant change on a host
+      // whose state was simply not observed.
+      ProbeLegOverran { deadline: d } =>
+        GrantProbeRefused { cause: typed_argv_exec_overran_reason(leg_hint: "grant-listing", deadline: d) }
+      ProbeLegWireInconsistent { cause: why } => GrantProbeRefused { cause: why as String }
+      ProbeLegRan { exit_code: e, success: ok, stdout: o, stderr: er } =>
+        if ok {
+          GrantEnumerated { listing: o }
         } else {
-          GrantAbsent { detail: join(["exit=", to_string(r.exit_code), " stderr=", trim(s: r.stderr)], "") }
+          GrantAbsent { detail: join(["exit=", to_string(e), " stderr=", trim(s: er)], "") }
         }
     },
   }
@@ -624,8 +668,18 @@ fn principal_observation(
     host: host as HostIdentity,
     principal_login_name: principal as NonEmptyStr,
     credential_identity: credential_identity,
-    authenticated: match reach { ProbeLegRan { result: r } => r.success ProbeLegRefused { cause: _ } => false },
-    holds_any_passwordless_grant: match sudo { ProbeLegRan { result: r } => r.success ProbeLegRefused { cause: _ } => false },
+    authenticated: match reach {
+      ProbeLegRan { exit_code: _, success: ok, stdout: _, stderr: _ } => ok
+      ProbeLegOverran { deadline: _ } => false
+      ProbeLegWireInconsistent { cause: _ } => false
+      ProbeLegRefused { cause: _ } => false
+    },
+    holds_any_passwordless_grant: match sudo {
+      ProbeLegRan { exit_code: _, success: ok, stdout: _, stderr: _ } => ok
+      ProbeLegOverran { deadline: _ } => false
+      ProbeLegWireInconsistent { cause: _ } => false
+      ProbeLegRefused { cause: _ } => false
+    },
   }
 }
 

@@ -43,7 +43,7 @@ import extdeps.package_managers.apt {
   apt_third_party_repo_install_plan,
 }
 import extdeps.tools.gnu_coreutils { coreutils_rm_force_recursive_argv }
-import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
+import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, ProbeLeg, SshTarget }
 import gunbc.fleet.host_credential_custody_converge {
   CustodyHost,
   ElevatedLeg,
@@ -51,7 +51,7 @@ import gunbc.fleet.host_credential_custody_converge {
   ElevatedLegRefused,
   run_elevated_leg,
 }
-import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecRefused, typed_argv_exec_over_fleet_ssh }
+import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecOverran, TypedArgvExecRefused, typed_argv_exec_over_fleet_ssh }
 import std.algebra { trim }
 import std.optional { Absent, Optional, Present }
 import std.types { Bool, Int, List, NonEmptyStr, String, string_non_empty }
@@ -66,11 +66,14 @@ fn read_one_host_word(
   command: ArgvCommand,
 ) -> NonEmptyStr? {
   match typed_argv_exec_over_fleet_ssh(
+    kind: ProbeLeg,
     target: target,
     context: context,
     argv: argv_words(command: command),
   ) {
     TypedArgvExecRefused { reason: _ } => Absent
+    // An overrun answered nothing: Absent, the same as a refusal -- never a word guessed from the host.
+    TypedArgvExecOverran { deadline: _ } => Absent
     TypedArgvExecConverged { result: r } =>
       if !r.success || !string_non_empty(value: trim(s: r.stdout)) {
         Absent

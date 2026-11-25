@@ -7,6 +7,14 @@ import gunbc.live_deploy.spec { deployment_belt_exit_drain_service_unit_name }
 import gunbc.live_deploy.unit_standing {
   BeltOneshotConverged,
   BeltOneshotRefused,
+  BeltTimerConverged,
+  BeltTimerRefused,
+  UnitPropertyRead,
+  UnitPropertyValue,
+  UnitPropertyUnreadable,
+  LaunchUnitStanding,
+  BeltEventPathConverged,
+  belt_timer_standing_of_readings,
   DashboardServiceConverged,
   DashboardServiceRefused,
   ExecStartArgv,
@@ -17,6 +25,7 @@ import gunbc.live_deploy.unit_standing {
   ServiceUnitObserved,
   exec_start_argv_of_show_value,
   judge_belt_oneshot,
+  judge_belt_timer,
   judge_dashboard_service,
   service_unit_expectation_of,
   path_unit_target_of,
@@ -136,6 +145,119 @@ test fn witness_systemd_duration_normalizes_equal_spellings() -> Bool {
     && (match systemd_duration_usec(text: "") { Present { value: _ } => false  Absent => true })
     && (match systemd_duration_usec(text: "1min 30fortnights") { Present { value: _ } => false  Absent => true })
     && (match systemd_duration_usec(text: "min") { Present { value: _ } => false  Absent => true })
+}
+
+// ---------------------------------------------------------------- the standings-refresh backstop timer
+// The deploy enables and restarts the timer; this standing read-back CERTIFIES the restoration
+// (operator ruling 2026-11-23T06:42:26Z hand-stop; the deploy carrying this PR restores it). The
+// judgment lives in judge_belt_timer alone, and production (observe_belt_timer_standing) reaches it
+// ONLY through belt_timer_standing_of_readings -- the pure fold over delivered readings. The fold
+// claims below drive observe's exact code path over supplied readings, so deleting the judgment
+// (or softening it to accept "inactive") turns them red. The receipt refuses the whole deploy when
+// the standing refuses: LaunchUnitStanding.standings_refresh_timer feeds unit_standing_blockers.
+
+// An enabled AND active timer converges.
+test fn witness_belt_timer_judge_converges_when_enabled_and_active() -> Bool {
+  match judge_belt_timer(active_state: "active", unit_file_state: "enabled") {
+    BeltTimerConverged { active_state: a, unit_file_state: f } => a == "active" && f == "enabled"
+    BeltTimerRefused { why: _ } => false
+  }
+}
+
+// A stopped timer (ActiveState != "active") is refused -- the hand-stop fault the operator ruled on
+// 2026-11-23T06:42:26Z. Without this claim, the receipt would go green on a timer that was
+// hand-stopped.
+test fn witness_belt_timer_judge_refuses_inactive_timer() -> Bool {
+  match judge_belt_timer(active_state: "inactive", unit_file_state: "enabled") {
+    BeltTimerRefused { why: _ } => true
+    BeltTimerConverged { active_state: _, unit_file_state: _ } => false
+  }
+}
+
+// A disabled timer is refused even if momentarily active.
+test fn witness_belt_timer_judge_refuses_disabled_timer() -> Bool {
+  match judge_belt_timer(active_state: "active", unit_file_state: "disabled") {
+    BeltTimerRefused { why: _ } => true
+    BeltTimerConverged { active_state: _, unit_file_state: _ } => false
+  }
+}
+
+// THROUGH OBSERVE'S OWN FOLD: the readings production delivers, exactly as systemctl show answers
+// them, go through the LoadState gate and reach judge_belt_timer. This is the claim that ties the
+// witness to the code path the deploy actually executes -- if observe re-implemented the judgment
+// inline (or accepted "inactive"), this fold is still what observe calls.
+data timer_unit: NonEmptyStr = "gunbc-roadmap-belt-standings-refresh.timer" as NonEmptyStr
+
+test fn witness_belt_timer_observe_fold_converges_on_loaded_enabled_active() -> Bool {
+  match belt_timer_standing_of_readings(
+    unit: timer_unit,
+    load: UnitPropertyValue { value: "loaded" },
+    file_state: UnitPropertyValue { value: "enabled" },
+    active: UnitPropertyValue { value: "active" },
+  ) {
+    BeltTimerConverged { active_state: a, unit_file_state: f } => a == "active" && f == "enabled"
+    BeltTimerRefused { why: _ } => false
+  }
+}
+
+// THROUGH OBSERVE'S OWN FOLD: the hand-stopped timer (inactive) refuses even when enabled and
+// loaded.
+test fn witness_belt_timer_observe_fold_refuses_hand_stopped() -> Bool {
+  match belt_timer_standing_of_readings(
+    unit: timer_unit,
+    load: UnitPropertyValue { value: "loaded" },
+    file_state: UnitPropertyValue { value: "enabled" },
+    active: UnitPropertyValue { value: "inactive" },
+  ) {
+    BeltTimerRefused { why: _ } => true
+    BeltTimerConverged { active_state: _, unit_file_state: _ } => false
+  }
+}
+
+// THROUGH OBSERVE'S OWN FOLD: an unreadable property refuses rather than passing silently.
+test fn witness_belt_timer_observe_fold_refuses_unreadable() -> Bool {
+  match belt_timer_standing_of_readings(
+    unit: timer_unit,
+    load: UnitPropertyValue { value: "loaded" },
+    file_state: UnitPropertyValue { value: "enabled" },
+    active: UnitPropertyUnreadable { unit: "gunbc-roadmap-belt-standings-refresh.timer", property: "ActiveState" },
+  ) {
+    BeltTimerRefused { why: _ } => true
+    BeltTimerConverged { active_state: _, unit_file_state: _ } => false
+  }
+}
+
+// THROUGH OBSERVE'S OWN FOLD: a not-loaded timer refuses on LoadState before the judgment.
+test fn witness_belt_timer_observe_fold_refuses_not_loaded() -> Bool {
+  match belt_timer_standing_of_readings(
+    unit: timer_unit,
+    load: UnitPropertyValue { value: "not-found" },
+    file_state: UnitPropertyValue { value: "enabled" },
+    active: UnitPropertyValue { value: "active" },
+  ) {
+    BeltTimerRefused { why: _ } => true
+    BeltTimerConverged { active_state: _, unit_file_state: _ } => false
+  }
+}
+
+// THE ROW EXISTS: the deploy's read-back row is LaunchUnitStanding.standings_refresh_timer, and the
+// receipt refuses on its non-convergence (unit_standing_blockers). This claim constructs the standing
+// with the row named -- delete the row from the type and this claim no longer resolves (red), so the
+// row cannot be dropped while the witness is green.
+test fn witness_launch_unit_standing_carries_the_standings_refresh_timer_row() -> Bool {
+  let standing = LaunchUnitStanding {
+    dashboard: DashboardServiceConverged { unit: "gunbc-roadmap-dashboard.service" },
+    exit_path: BeltEventPathConverged { unit: "gunbc-roadmap-belt-exit.path" },
+    answer_path: BeltEventPathConverged { unit: "gunbc-roadmap-belt-answer.path" },
+    publication_path: BeltEventPathConverged { unit: "gunbc-roadmap-publication.path" },
+    publication_helper: BeltOneshotConverged { unit: "gunbc-roadmap-publication-helper.service", active_state: "inactive" },
+    oneshot: BeltOneshotConverged { unit: "gunbc-roadmap-belt.service", active_state: "inactive" },
+    standings_refresh_timer: judge_belt_timer(active_state: "active", unit_file_state: "enabled"),
+  }
+  match standing.standings_refresh_timer {
+    BeltTimerConverged { active_state: a, unit_file_state: f } => a == "active" && f == "enabled"
+    BeltTimerRefused { why: _ } => false
+  }
 }
 
 

@@ -24,7 +24,7 @@ import gunbc.runner.runner_user_session_receipt {
 }
 import gunbc.runner.runner_microvm_host_ready { microvm_host_binding_wet, MicrovmHostBound, MicrovmHostBindingRefused, microvm_host_binding_refusal_text }
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
-import gunbc.fleet.fleet_known_hosts_anchor { SshTarget, FleetSshExecutionContext, SshTargetResolution, SshTargetResolved, SshTargetRefused, fleet_ssh_target_at_standard_port, ssh_target_refusal_text }
+import gunbc.fleet.fleet_known_hosts_anchor { ActuationLeg,SshTarget, FleetSshExecutionContext, SshTargetResolution, SshTargetResolved, SshTargetRefused, fleet_ssh_target_at_standard_port, ssh_target_refusal_text }
 import gunbc.fleet.fleet_bootstrap_principal { executor_bootstrap_principal }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
@@ -163,7 +163,7 @@ fn runner_user_session_converge_ci_wet() -> ProcessExit {
                 SshTargetRefused { endpoint: e, refusal: why } =>
                   user_session_receipt_then(host: host, job_user: job_user, lines: [trim(s: context_receipt), concat("refused: ", ssh_target_refusal_text(endpoint: e, refusal: why))], holds: false)
                 SshTargetResolved { target: admin } => {
-                  let transport = FleetSsh { target: admin, context: context }
+                  let transport = FleetSsh {kind: ActuationLeg, target: admin, context: context }
                   let uid_read = run_argv_over_host_effect_transport(command: id_uid_of_command(user: job_user), transport: transport)
                   let linger = run_argv_over_host_effect_transport(command: user_session_enable_linger_command(job_user: job_user), transport: transport)
                   let linger_ok = match linger { RunArgvTransportObserved { observed: o } => o.exit_code == 0  RunArgvTransportRefused { reason: _ } => false }

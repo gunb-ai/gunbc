@@ -1,0 +1,619 @@
+module gunbc.fleet.fleet_host_truth_read
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.nat { Nat }
+import std.list { first_where, distinct_by_key }
+import std.optional { Present, Absent }
+import std.measure { ByteSize, byte_size_count }
+
+// ONE READ OF A MACHINE, FIVE COMPARES, AND A REFUSAL THAT CANNOT BE MISTAKEN FOR QUIET.
+//
+// THE GAP THIS CLOSES (gunbc.plans.desired_state_follows_the_machine): the repository names what each
+// host runs, and nothing reads the machine, so desired state and the machine drift on three axes --
+// units against hardware, address against identity, caps against working set. Every specimen in the
+// operator's report of 2026-11-21 was found by collision, not by a read: butch's strata-pool@a/b sat
+// enabled over four A2s already gone from PCI; dan's strata-expert-lock pinned GiB for A16s removed a
+// month earlier; butch's .238 held another machine's host key; srv4's expert set fell out of residency
+// under a 40 GiB MemoryHigh and answered 5.1 tok/s with no alarm.
+//
+// THE FRONTIER, NAMED BECAUSE AN UNCONSUMED ENTRY IS ITS OWN DEFECT (gunbc.design_argument::consumption):
+// this entry is consumed by a later change -- the per-host observe-mode leg of the converge route, which
+// the operator put on the existing timer (gunbc.design_ruling::fleet_truth_read_rides_the_converge_timer_2026_11_21,
+// words: "A is fine"). That mode is not in this repository yet, and what stops it is arithmetic rather
+// than taste: giving the converge route a new step means regenerating .github/workflows/fleet-converge.yml,
+// and at this head a regeneration already emits a derived job-budget raise that no operator words approve
+// (the heal profile's 120-minute backstop raises the derived host cap step from the committed 6255 s to
+// 8055 s before any step of mine is added -- gunbc.design_ruling::ci_job_budgets_closed_to_growth; the
+// escalation that closed APPROVED on 2026-11-22 by the dashboard's 15-minute default carries no operator
+// words and grants nothing). The operator has since ruled the other way: the budgets go DOWN, heal from
+// 120 to 60 minutes and v2-bootstrap from 90 to 60, relayed by clever-raven-401 on 2026-11-22, the
+// lowering itself landing in another lane with its own ruling row. THAT is this mode's trigger -- once the
+// lowering is on main the derived bracket falls below the committed 6255 s, and the mode's own step delta
+// has room inside what the lowering frees, which the regeneration will show rather than assert. Until the
+// mode lands, the only consumer of a verdict is a claim, which is exactly what
+// dag/test/claim/fleet/fleet_host_truth_read_witness.dag is for: every arm is reachable on any machine,
+// because every input is supplied.
+//
+// NOTHING HERE READS A HOST. The mode reads the host and supplies observations; this module decides what
+// they mean, which is what makes the reds reachable and is the same split as gunbc.host.memory_envelope.
+// The reads the mode will supply already exist as separate authorities: gunbc.fleet.fleet_physical_inventory
+// and gunbc.fleet.gpu_device_observation for hardware, gunbc.systemctl_show_read for unit state,
+// gunbc.fleet.fleet_host_key_enrollment for the anchor, gunbc.host.host_axis_caps and
+// gunbc.fleet.fleet_converge_plan for the cap that binds a role.
+//
+// THE FAIL-OPEN RULE, which is why the comparison type has arms instead of a Bool: an instrument that
+// cannot read must produce a refusal, not an absence
+// (gunbc.recurring_failure_mode::failed_value_read_scored_as_value_absent -- the benchmark GPU sampler
+// shelled out to nvidia-smi, threw per-sample on a background thread, and left empty power columns that
+// were then read as "no power data"). An empty population of comparisons is therefore never agreement, a
+// blank projection is never zero, and a read with nothing to compare it to is never a pass.
+//
+// WHAT IS DELIBERATELY NOT AN AXIS: host-level swap. The memory envelope judges swap at the SLOT CGROUP
+// (gunbc.host.memory_envelope::memory_envelope_verdict over memory.swap.current, .peak and .max, with the
+// runner slot declaring a swap maximum of zero), so a host swapfile is not a divergence -- the report's
+// 3.3 was a mis-stated premise, host swap read as cgroup swap (clever-raven-401, 2026-11-21). A reader
+// that wants host swap as an axis must first name the judgment that consults it.
+
+// THE FIVE COMPARES. A row is one host on one axis, so a read that covered three of five is visible as
+// three of five -- which is the difference between this and a boolean flag bolted onto a host record.
+type HostTruthAxis
+  = TruthDeclaredHardwareEnumerates
+  | TruthEnabledUnitHasItsHardware
+  | TruthIdentityAnchoredNotAddressed
+  | TruthCapBindsDeclaredWorkingSet
+  | TruthSlotSwapBackingDeclared
+
+// THE RECOGNITION RULE, per axis, in the report's own words where it had them. These strings are what a
+// refusal says out loud, so a divergence is actionable without opening this file.
+fn host_truth_axis_rule(axis: HostTruthAxis) -> String {
+  match axis {
+    TruthDeclaredHardwareEnumerates => "does the hardware desired state names enumerate on the machine (PCI class count, driver present)"
+    TruthEnabledUnitHasItsHardware => "for each enabled unit, does the hardware that unit depends on enumerate"
+    TruthIdentityAnchoredNotAddressed => "is the host reached by a fleet name gated on its enrolled key fingerprint, and does the key it presents match that anchor"
+    TruthCapBindsDeclaredWorkingSet => "does the binding cgroup cap on the leaf that runs the role sit at or above the working set that role declares"
+    TruthSlotSwapBackingDeclared => "does the slot cgroup's swap backing match what the envelope declares for that slot"
+  }
+}
+
+fn host_truth_axes() -> List<HostTruthAxis> {
+  [
+    TruthDeclaredHardwareEnumerates,
+    TruthEnabledUnitHasItsHardware,
+    TruthIdentityAnchoredNotAddressed,
+    TruthCapBindsDeclaredWorkingSet,
+    TruthSlotSwapBackingDeclared,
+  ]
+}
+
+// WHICH AXIS IS WHICH, by constructor and nothing else. This is deliberately NOT a comparison of the
+// rule text above: a display string that also decides identity would be a second, unchecked authority
+// for which axis is two, and rewording a rule would silently move the pairing refusal below -- fail-closed
+// asks for the state to be unwritable, not merely caught.
+fn host_truth_axes_match(left: HostTruthAxis, right: HostTruthAxis) -> Bool {
+  match left {
+    TruthDeclaredHardwareEnumerates => match right { TruthDeclaredHardwareEnumerates => true other => false }
+    TruthEnabledUnitHasItsHardware => match right { TruthEnabledUnitHasItsHardware => true other => false }
+    TruthIdentityAnchoredNotAddressed => match right { TruthIdentityAnchoredNotAddressed => true other => false }
+    TruthCapBindsDeclaredWorkingSet => match right { TruthCapBindsDeclaredWorkingSet => true other => false }
+    TruthSlotSwapBackingDeclared => match right { TruthSlotSwapBackingDeclared => true other => false }
+  }
+}
+
+fn host_truth_host_text(host: NonEmptyStr) -> String {
+  host as String
+}
+
+// WHY A READ DID NOT HAPPEN, typed, and every arm refuses. The first arm is the vendor-probe case: the
+// fleet is NVIDIA and AMD, so a probe specific to one vendor is ABSENT on the rest, and absence is a
+// refusal rather than a zero.
+type HostTruthReadCause
+  = HostTruthProbeAbsent { probe: String }
+  | HostTruthProbeThrew { where: String }
+  | HostTruthHostUnreachable { route: String }
+  | HostTruthOutputUnparseable { raw: String }
+  // A cgroup property answered with neither a number nor "infinity". What the reader knows is that the leaf
+  // gave it nothing to relate; what it does NOT know is which of two things happened, because
+  // extdeps.systemd's MemoryLimitAbsent covers both a property that printed nothing and one whose text nobody
+  // can decode. Naming either one would be a claim the read cannot support
+  // (gunbc.design_argument::epistemic_humility), so the cause says the weaker true thing. The distinction is
+  // owed an arm on SystemdCgroupMemoryLimit and is tracked by
+  // gunbc.recurring_failure_mode::failed_value_read_scored_as_value_absent -- owed, not worked around.
+  | HostTruthCgroupLimitUnreadable { property: String }
+
+fn host_truth_read_cause_explains(cause: HostTruthReadCause) -> String {
+  match cause {
+    HostTruthProbeAbsent { probe: p } => "the probe this axis needs is not on that host: " + p
+    HostTruthProbeThrew { where: w } => "the probe threw away from the sampling thread: " + w
+    HostTruthHostUnreachable { route: r } => "the host did not answer on the route read through (" + r + "); pings-but-refuses-TCP is an ACL answer, not a network one"
+    HostTruthOutputUnparseable { raw: v } => "the read returned something this model cannot project: " + v
+    HostTruthCgroupLimitUnreadable { property: p } => "the read ran and the machine gave nothing to relate for " + p + "; holding no value for a limit is not the same as having read a limit of zero or of none, so this refuses instead of picking one; whether the property printed nothing or printed text nobody can decode is owed an arm on SystemdCgroupMemoryLimit, tracked by failed_value_read_scored_as_value_absent"
+  }
+}
+
+// WHAT A READ OR A DECLARATION ANSWERS WITH, as a quantity rather than as text. Each axis states a
+// relation over its value, and a relation cannot be computed over how the reader happened to write it: a
+// srv4 leaf capped at 64 GiB against a declared 40 GiB working set satisfies the cap rule, and a string
+// comparison would have dropped that host from admission for being roomy; "40G" and "42949672960" are one
+// size and must not read as a drift. A String leaf here would hide exactly the parts the rule needs
+// (gunbc.design_argument::minimize_redundancy: "a String leaf hiding named parts is anemic modeling"). A
+// value that does not fit its axis is refused below rather than compared -- the read is malformed, not the
+// machine out of compliance.
+type HostTruthValue
+  = TruthSize { size: ByteSize }
+  // A ceiling the machine does not set. srv4's leaf had no memory.high at all in one reading of it, and a
+  // slot can run with swap unbounded; the absence of a limit is an observation, not a number, and reading it
+  // as one would invent a size the machine never declared.
+  | TruthUnbounded
+  | TruthCount { count: Nat }
+  | TruthMarking { text: String }
+
+// THE RELATION ONE AXIS STATES, said out loud next to the values it relates. The values themselves ride on
+// the comparison arm as ByteSize, Nat or String, which is where a consumer acts on them; the line below is
+// the loud half, not a rendering of the quiet half.
+fn host_truth_relation_says(axis: HostTruthAxis, declared_by: String) -> String {
+  match axis {
+    TruthDeclaredHardwareEnumerates => "enumerates a different count of hardware than " + declared_by + " declares"
+    TruthEnabledUnitHasItsHardware => "presents a unit-and-hardware marking different from the one " + declared_by + " declares"
+    TruthIdentityAnchoredNotAddressed => "presents an identity marking different from the anchor " + declared_by + " declares"
+    TruthCapBindsDeclaredWorkingSet => "carries a cap below the working set " + declared_by + " declares for the role it runs"
+    TruthSlotSwapBackingDeclared => "carries a swap backing different from the one " + declared_by + " declares for that slot"
+  }
+}
+
+// WHAT THE MACHINE ANSWERED. Blank is its own arm for the reason gunbc.systemctl_show_read states after
+// review 67312: a blank answer and a refusal-to-reach are different facts, and merging them makes the
+// consumer re-parse a reason string. The reader is required to project a value -- including a zero -- so
+// a blank projection is the reader failing, and it refuses below rather than becoming agreement.
+type HostTruthRead
+  = HostTruthObserved { host: NonEmptyStr, axis: HostTruthAxis, observed: HostTruthValue, at_run: NonEmptyStr, receipt: String }
+  | HostTruthReadBlank { host: NonEmptyStr, axis: HostTruthAxis }
+  | HostTruthReadRefused { host: NonEmptyStr, axis: HostTruthAxis, cause: HostTruthReadCause }
+
+// WHAT DESIRED STATE CLAIMS. The second arm is not a failure of the read; it is the model's own gap, and
+// it is reported rather than defaulted into agreement or into divergence.
+type HostTruthExpectation
+  = HostTruthDeclared { host: NonEmptyStr, axis: HostTruthAxis, expected: HostTruthValue, declared_by: String }
+  | HostTruthNothingDeclared { host: NonEmptyStr, axis: HostTruthAxis, because: String }
+
+type HostTruthPairing { read_axis: HostTruthAxis, expectation_axis: HostTruthAxis, read_host: NonEmptyStr, expectation_host: NonEmptyStr }
+
+// THE COMPARISON. Pairing is checked before comparing: a read of one host matched against another host's
+// declaration, or an answer to one axis matched to another axis's claim, is a bug in the reader, and
+// reading it as agreement is exactly the report's tier 4.
+type HostTruthComparison
+  = TruthAgrees { host: NonEmptyStr, axis: HostTruthAxis, at_run: NonEmptyStr, receipt: String }
+  | TruthDivergent { host: NonEmptyStr, axis: HostTruthAxis, observed: HostTruthValue, expected: HostTruthValue, declared_by: String }
+  | TruthUnread { host: NonEmptyStr, axis: HostTruthAxis, cause: HostTruthReadCause }
+  | TruthReadBlank { host: NonEmptyStr, axis: HostTruthAxis }
+  | TruthNoReadSupplied { host: NonEmptyStr, axis: HostTruthAxis }
+  | TruthNoExpectationForRead { host: NonEmptyStr, axis: HostTruthAxis }
+  | TruthDuplicateRead { host: NonEmptyStr, axis: HostTruthAxis, read_count: Int }
+  | TruthDuplicateExpectation { host: NonEmptyStr, axis: HostTruthAxis, declaration_count: Int }
+  | TruthOutsideTheModel { host: NonEmptyStr, axis: HostTruthAxis, because: String }
+  | TruthValueShapeRefused { host: NonEmptyStr, axis: HostTruthAxis, why: String }
+  | TruthPairingRefused { why: String, pairing: HostTruthPairing }
+
+fn host_of_read(read: HostTruthRead) -> NonEmptyStr {
+  match read {
+    HostTruthObserved { host: h, axis: _, observed: _, at_run: _, receipt: _ } => h
+    HostTruthReadBlank { host: h, axis: _ } => h
+    HostTruthReadRefused { host: h, axis: _, cause: _ } => h
+  }
+}
+
+fn axis_of_read(read: HostTruthRead) -> HostTruthAxis {
+  match read {
+    HostTruthObserved { host: _, axis: a, observed: _, at_run: _, receipt: _ } => a
+    HostTruthReadBlank { host: _, axis: a } => a
+    HostTruthReadRefused { host: _, axis: a, cause: _ } => a
+  }
+}
+
+fn host_of_expectation(expectation: HostTruthExpectation) -> NonEmptyStr {
+  match expectation {
+    HostTruthDeclared { host: h, axis: _, expected: _, declared_by: _ } => h
+    HostTruthNothingDeclared { host: h, axis: _, because: _ } => h
+  }
+}
+
+fn axis_of_expectation(expectation: HostTruthExpectation) -> HostTruthAxis {
+  match expectation {
+    HostTruthDeclared { host: _, axis: a, expected: _, declared_by: _ } => a
+    HostTruthNothingDeclared { host: _, axis: a, because: _ } => a
+  }
+}
+
+fn host_truth_pairing_refusal(read: HostTruthRead, expectation: HostTruthExpectation, why: String) -> HostTruthComparison {
+  TruthPairingRefused {
+    why: why,
+    pairing: HostTruthPairing {
+      read_axis: axis_of_read(read: read),
+      expectation_axis: axis_of_expectation(expectation: expectation),
+      read_host: host_of_read(read: read),
+      expectation_host: host_of_expectation(expectation: expectation),
+    },
+  }
+}
+
+// THE RELATION, PER AXIS. A cap must sit AT OR ABOVE the working set its role declares -- srv4 at 64 GiB
+// against a declared 40 GiB is in agreement, and srv4 at 40 GiB against the 56 GiB its expert set needs is
+// the drift the report found as 5.1 tok/s. Hardware counts and swap backing are equality, because both
+// directions are drift: more hardware than declared is unmodeled hardware, and a swap backing where the
+// envelope declares none is butch's 8 GiB swapfile. Identity and unit markings are equality over the
+// marking itself, which is not a quantity. A value whose shape is not the one its axis relates refuses:
+// the reader projected the wrong thing, and comparing it anyway would guess at a relation.
+fn host_truth_answer_against_declaration(host: NonEmptyStr, axis: HostTruthAxis, observed: HostTruthValue, expected: HostTruthValue, at_run: NonEmptyStr, receipt: String, declared_by: String) -> HostTruthComparison {
+  match axis {
+    TruthCapBindsDeclaredWorkingSet =>
+      match observed {
+        TruthSize { size: got } => match expected {
+          TruthSize { size: wants } =>
+            if byte_size_count(b: got) >= byte_size_count(b: wants) {
+              TruthAgrees { host: host, axis: axis, at_run: at_run, receipt: receipt }
+            } else {
+              TruthDivergent { host: host, axis: axis, observed: observed, expected: expected, declared_by: declared_by }
+            }
+          // A declared demand with no ceiling: no finite cap sits at or above it.
+          TruthUnbounded => TruthDivergent { host: host, axis: axis, observed: observed, expected: expected, declared_by: declared_by }
+          _ => TruthValueShapeRefused { host: host, axis: axis, why: "the cap axis relates sizes, and the declaration did not supply one" }
+        }
+      // No ceiling set on the host is "at or above" any working set the role declares, so this axis passes.
+      // Whether a ceiling must be SET at all is the envelope's question (gunbc.host.memory_envelope), not
+      // this axis's rule, and this module does not answer a question the axis does not ask.
+      TruthUnbounded => TruthAgrees { host: host, axis: axis, at_run: at_run, receipt: receipt }
+      _ => TruthValueShapeRefused { host: host, axis: axis, why: "the cap axis relates sizes, and the read did not supply one" }
+    }
+    TruthSlotSwapBackingDeclared =>
+      match observed {
+        TruthSize { size: got } => match expected {
+          TruthSize { size: wants } =>
+            if byte_size_count(b: got) == byte_size_count(b: wants) {
+              TruthAgrees { host: host, axis: axis, at_run: at_run, receipt: receipt }
+            } else {
+              TruthDivergent { host: host, axis: axis, observed: observed, expected: expected, declared_by: declared_by }
+            }
+          TruthUnbounded => TruthDivergent { host: host, axis: axis, observed: observed, expected: expected, declared_by: declared_by }
+          _ => TruthValueShapeRefused { host: host, axis: axis, why: "the swap axis relates sizes, and the declaration did not supply one" }
+        }
+      // butch's 8 GiB swapfile against an envelope that declares none is the same drift in either direction,
+      // and an unbounded backing against a bounded declaration is drift too.
+      TruthUnbounded => match expected {
+        TruthUnbounded => TruthAgrees { host: host, axis: axis, at_run: at_run, receipt: receipt }
+        _ => TruthDivergent { host: host, axis: axis, observed: observed, expected: expected, declared_by: declared_by }
+      }
+      _ => TruthValueShapeRefused { host: host, axis: axis, why: "the swap axis relates sizes, and the read did not supply one" }
+    }
+    TruthDeclaredHardwareEnumerates =>
+      match observed {
+        TruthCount { count: got } => match expected {
+          TruthCount { count: wants } =>
+            if got == wants {
+              TruthAgrees { host: host, axis: axis, at_run: at_run, receipt: receipt }
+            } else {
+              TruthDivergent { host: host, axis: axis, observed: observed, expected: expected, declared_by: declared_by }
+            }
+          _ => TruthValueShapeRefused { host: host, axis: axis, why: "the hardware axis relates counts, and the declaration did not supply one" }
+        }
+        _ => TruthValueShapeRefused { host: host, axis: axis, why: "the hardware axis relates counts, and the read did not supply one" }
+      }
+    TruthEnabledUnitHasItsHardware =>
+      match observed {
+        TruthMarking { text: got } => match expected {
+          TruthMarking { text: wants } =>
+            if got == wants {
+              TruthAgrees { host: host, axis: axis, at_run: at_run, receipt: receipt }
+            } else {
+              TruthDivergent { host: host, axis: axis, observed: observed, expected: expected, declared_by: declared_by }
+            }
+          _ => TruthValueShapeRefused { host: host, axis: axis, why: "the enabled-unit axis relates markings, and the declaration did not supply one" }
+        }
+        _ => TruthValueShapeRefused { host: host, axis: axis, why: "the enabled-unit axis relates markings, and the read did not supply one" }
+      }
+    TruthIdentityAnchoredNotAddressed =>
+      match observed {
+        TruthMarking { text: got } => match expected {
+          TruthMarking { text: wants } =>
+            if got == wants {
+              TruthAgrees { host: host, axis: axis, at_run: at_run, receipt: receipt }
+            } else {
+              TruthDivergent { host: host, axis: axis, observed: observed, expected: expected, declared_by: declared_by }
+            }
+          _ => TruthValueShapeRefused { host: host, axis: axis, why: "the identity axis relates markings, and the declaration did not supply one" }
+        }
+        _ => TruthValueShapeRefused { host: host, axis: axis, why: "the identity axis relates markings, and the read did not supply one" }
+      }
+  }
+}
+
+// ONE PAIR, DECIDED. Pairing first, then the relation the axis states. This module does not invent the
+// relation: each axis's rule says which one it is, and the value arrives typed so the relation is
+// computable at all -- an at-or-above check over a cap, an equality over a count or a marking.
+fn host_truth_compare(read: HostTruthRead, expectation: HostTruthExpectation) -> HostTruthComparison {
+  if host_truth_host_text(host: host_of_read(read: read)) != host_truth_host_text(host: host_of_expectation(expectation: expectation)) {
+    host_truth_pairing_refusal(read: read, expectation: expectation, why: "the read and the declaration compared to it name different hosts")
+  } else if host_truth_axes_match(left: axis_of_read(read: read), right: axis_of_expectation(expectation: expectation)) == false {
+    host_truth_pairing_refusal(read: read, expectation: expectation, why: "the read and the declaration compared to it answer different axes")
+  } else {
+    match expectation {
+      HostTruthNothingDeclared { host: h, axis: a, because: b } => TruthOutsideTheModel { host: h, axis: a, because: b }
+      HostTruthDeclared { host: h, axis: a, expected: e, declared_by: d } =>
+        match read {
+          HostTruthReadRefused { host: _, axis: _, cause: c } => TruthUnread { host: h, axis: a, cause: c }
+          HostTruthReadBlank { host: _, axis: _ } => TruthReadBlank { host: h, axis: a }
+          HostTruthObserved { host: _, axis: _, observed: o, at_run: r, receipt: k } => host_truth_answer_against_declaration(host: h, axis: a, observed: o, expected: e, at_run: r, receipt: k, declared_by: d)
+        }
+    }
+  }
+}
+
+// THE VERDICT IS PER HOST, because that is the grain its consumer acts at: admission takes one host at a
+// time, and a fleet-wide verdict would let a clean host cover a drifted one. Divergence outranks refusal
+// outranks nothing-read -- a host that both drifted and could not be read is reported as drifted, because
+// drift is what the roster has to act on. Agreement requires a read for every expectation, an expectation
+// for every read, and at least one comparison that actually compared something.
+type HostTruthVerdict
+  = HostTruthFollowsDesiredState { host: NonEmptyStr, compared: Int, undeclared: Int }
+  | HostTruthDiverges { host: NonEmptyStr, divergences: List<HostTruthComparison> }
+  | HostTruthRefused { host: NonEmptyStr, refusals: List<HostTruthComparison> }
+  | HostTruthNothingRead { host: NonEmptyStr, why: String }
+
+// ONE CLASSIFICATION, IN ONE PLACE. Every comparison arm is classed exactly once and the verdict fold
+// filters on the class. Three hand-matched Bool predicates over the same sum is how a new arm would come to
+// mean "not a refusal, not a divergence, not undeclared" -- that is, agreement -- without anyone deciding
+// it; with one classification the compiler asks the question at the single site that answers it.
+type HostTruthClass
+  = TruthClassAgreement
+  | TruthClassDivergence
+  | TruthClassRefusal
+  | TruthClassUndeclared
+
+fn host_truth_class(comparison: HostTruthComparison) -> HostTruthClass {
+  match comparison {
+    TruthAgrees { host: _, axis: _, at_run: _, receipt: _ } => TruthClassAgreement
+    TruthDivergent { host: _, axis: _, observed: _, expected: _, declared_by: _ } => TruthClassDivergence
+    TruthUnread { host: _, axis: _, cause: _ } => TruthClassRefusal
+    TruthReadBlank { host: _, axis: _ } => TruthClassRefusal
+    TruthNoReadSupplied { host: _, axis: _ } => TruthClassRefusal
+    TruthNoExpectationForRead { host: _, axis: _ } => TruthClassRefusal
+    // Two reads answer the same host on the same axis, or two declarations cover it. Picking one of the two
+    // and comparing against it silently chooses an authority the model never named, and the pair of answers
+    // may itself be the drift. So the host is refused, not adjudicated.
+    TruthDuplicateRead { host: _, axis: _, read_count: _ } => TruthClassRefusal
+    TruthDuplicateExpectation { host: _, axis: _, declaration_count: _ } => TruthClassRefusal
+    // The model's own gap. It neither blocks a host nor passes it silently: the verdict carries the count.
+    TruthOutsideTheModel { host: _, axis: _, because: _ } => TruthClassUndeclared
+    TruthValueShapeRefused { host: _, axis: _, why: _ } => TruthClassRefusal
+    TruthPairingRefused { why: _, pairing: _ } => TruthClassRefusal
+  }
+}
+
+// THE COMPARISONS OF ONE HOST, PARTITIONED BY CLASS IN ONE PASS. The verdict below reads these four
+// lists and nothing else, so a new comparison arm lands in exactly one of them by way of the classification
+// above -- there is no second place that has to be told about it. Three hand-matched yes/no predicates
+// sitting next to the classification that replaced them is the same failure wearing a different coat: a new
+// arm silently means "none of the above" to each of them.
+type HostTruthPartition {
+  agreements: List<HostTruthComparison>,
+  divergences: List<HostTruthComparison>,
+  refusals: List<HostTruthComparison>,
+  undeclared: List<HostTruthComparison>
+}
+
+fn host_truth_partition_by_class(comparisons: List<HostTruthComparison>) -> HostTruthPartition {
+  comparisons |> fold(
+    init: HostTruthPartition { agreements: [], divergences: [], refusals: [], undeclared: [] },
+    f: (acc, comparison) => match host_truth_class(comparison: comparison) {
+      TruthClassAgreement => HostTruthPartition {
+        agreements: acc.agreements.concat([comparison]),
+        divergences: acc.divergences,
+        refusals: acc.refusals,
+        undeclared: acc.undeclared
+      }
+      TruthClassDivergence => HostTruthPartition {
+        agreements: acc.agreements,
+        divergences: acc.divergences.concat([comparison]),
+        refusals: acc.refusals,
+        undeclared: acc.undeclared
+      }
+      TruthClassRefusal => HostTruthPartition {
+        agreements: acc.agreements,
+        divergences: acc.divergences,
+        refusals: acc.refusals.concat([comparison]),
+        undeclared: acc.undeclared
+      }
+      TruthClassUndeclared => HostTruthPartition {
+        agreements: acc.agreements,
+        divergences: acc.divergences,
+        refusals: acc.refusals,
+        undeclared: acc.undeclared.concat([comparison])
+      }
+    }
+  )
+}
+
+fn host_truth_find_expectation(expectations: List<HostTruthExpectation>, read: HostTruthRead) -> HostTruthExpectation? {
+  let axis = axis_of_read(read: read)
+  let host = host_truth_host_text(host: host_of_read(read: read))
+  first_where(
+    xs: expectations,
+    keep: fn(expectation) {
+      host_truth_axes_match(left: axis, right: axis_of_expectation(expectation: expectation))
+        && host == host_truth_host_text(host: host_of_expectation(expectation: expectation))
+    },
+  )
+}
+
+fn host_truth_find_read(reads: List<HostTruthRead>, expectation: HostTruthExpectation) -> HostTruthRead? {
+  let axis = axis_of_expectation(expectation: expectation)
+  let host = host_truth_host_text(host: host_of_expectation(expectation: expectation))
+  first_where(
+    xs: reads,
+    keep: fn(read) {
+      host_truth_axes_match(left: axis_of_read(read: read), right: axis)
+        && host_truth_host_text(host: host_of_read(read: read)) == host
+    },
+  )
+}
+
+// BOTH SIDES, COMPARED. Expectations without a read and reads without an expectation are different gaps
+// and are named differently: the first is a host the roster asked about and did not look at; the second is
+// a read nobody will consult, which is how an instrument starts failing open.
+// HOW MANY READS ANSWER THIS HOST ON THIS AXIS, and how many declarations cover it. The count, not the
+// first hit, is what the roster fold decides on: taking the first of two answers is a silent choice of
+// authority, and it is also how a doubled reader (two probes, one stale) becomes invisible.
+fn host_truth_reads_matching(reads: List<HostTruthRead>, host: NonEmptyStr, axis: HostTruthAxis) -> List<HostTruthRead> {
+  let key = host_truth_host_text(host: host)
+  reads.filter(read => host_truth_axes_match(left: axis_of_read(read: read), right: axis)
+    && host_truth_host_text(host: host_of_read(read: read)) == key)
+}
+
+fn host_truth_expectations_matching(expectations: List<HostTruthExpectation>, host: NonEmptyStr, axis: HostTruthAxis) -> List<HostTruthExpectation> {
+  let key = host_truth_host_text(host: host)
+  expectations.filter(expectation => host_truth_axes_match(left: axis_of_expectation(expectation: expectation), right: axis)
+    && host_truth_host_text(host: host_of_expectation(expectation: expectation)) == key)
+}
+
+// ONE EXPECTANCE, DECIDED: duplicated read, missing read, or the comparison itself.
+fn host_truth_compare_for_expectation(reads: List<HostTruthRead>, expectation: HostTruthExpectation) -> HostTruthComparison {
+  let host = host_of_expectation(expectation: expectation)
+  let axis = axis_of_expectation(expectation: expectation)
+  let matches = host_truth_reads_matching(reads: reads, host: host, axis: axis)
+  if matches.length() > 1 {
+    TruthDuplicateRead { host: host, axis: axis, read_count: matches.length() }
+  } else if matches.length() == 0 {
+    TruthNoReadSupplied { host: host, axis: axis }
+  } else {
+    match first_where(xs: matches, keep: read => true) {
+      Present { value: read } => host_truth_compare(read: read, expectation: expectation)
+      Absent => TruthNoReadSupplied { host: host, axis: axis }
+    }
+  }
+}
+
+// BOTH SIDES, COMPARED. Expectations without a read and reads without an expectation are different gaps
+// and are named differently: the first is a host the roster asked about and did not look at; the second is
+// a read nobody will consult, which is how an instrument starts failing open. A host+axis answered more than
+// once, or declared more than once, is a third gap and is named by itself: the model has two authorities for
+// one fact, and no comparison against either is safe until the roster says which one it means.
+fn host_truth_compare_roster(reads: List<HostTruthRead>, expectations: List<HostTruthExpectation>) -> List<HostTruthComparison> {
+  let from_expectations = expectations.map(expectation => host_truth_compare_for_expectation(reads: reads, expectation: expectation))
+  let duplicated_declarations = reads
+    .filter(read => host_truth_expectations_matching(expectations: expectations, host: host_of_read(read: read), axis: axis_of_read(read: read)).length() > 1)
+    .map(read => TruthDuplicateExpectation {
+      host: host_of_read(read: read),
+      axis: axis_of_read(read: read),
+      declaration_count: host_truth_expectations_matching(expectations: expectations, host: host_of_read(read: read), axis: axis_of_read(read: read)).length(),
+    })
+  let orphan_reads = reads.filter(read =>
+    match host_truth_find_expectation(expectations: expectations, read: read) {
+      Absent => true
+      Present { value: _ } => false
+    }
+  ).map(read => TruthNoExpectationForRead { host: host_of_read(read: read), axis: axis_of_read(read: read) })
+  from_expectations.concat(duplicated_declarations).concat(orphan_reads)
+}
+fn host_truth_reads_for(host: NonEmptyStr, reads: List<HostTruthRead>) -> List<HostTruthRead> {
+  reads.filter(read => host_truth_host_text(host: host_of_read(read: read)) == host_truth_host_text(host: host))
+}
+
+fn host_truth_expectations_for(host: NonEmptyStr, expectations: List<HostTruthExpectation>) -> List<HostTruthExpectation> {
+  expectations.filter(expectation => host_truth_host_text(host: host_of_expectation(expectation: expectation)) == host_truth_host_text(host: host))
+}
+
+// ONE HOST'S VERDICT, which is the grain admission asks at.
+fn fleet_host_truth_verdict_for_host(host: NonEmptyStr, reads: List<HostTruthRead>, expectations: List<HostTruthExpectation>) -> HostTruthVerdict {
+  let host_reads = host_truth_reads_for(host: host, reads: reads)
+  let host_expectations = host_truth_expectations_for(host: host, expectations: expectations)
+  if host_reads.length() == 0 && host_expectations.length() == 0 {
+    HostTruthNothingRead { host: host, why: "neither a read nor a declaration was supplied for this host, so nothing about it is known" }
+  } else {
+    let compared = host_truth_compare_roster(reads: host_reads, expectations: host_expectations)
+    let by_class = host_truth_partition_by_class(comparisons: compared)
+    if by_class.divergences.length() > 0 {
+      HostTruthDiverges { host: host, divergences: by_class.divergences }
+    } else if by_class.refusals.length() > 0 {
+      HostTruthRefused { host: host, refusals: by_class.refusals }
+    } else if by_class.undeclared.length() == compared.length() {
+      // Every axis asked about this host answered "nothing declared". Nothing was compared, and a pass
+      // made out of an empty comparison set is what fail-closed refuses: this host is not in agreement, it
+      // is unknown, and unknown does not admit.
+      HostTruthNothingRead { host: host, why: "every axis asked about this host is undeclared in the model, so there is no comparison to pass" }
+    } else {
+      HostTruthFollowsDesiredState { host: host, compared: compared.length(), undeclared: by_class.undeclared.length() }
+    }
+  }
+}
+
+// THE HOSTS A ROSTER ASKED ABOUT: anything named on either side. A host named only by a read -- nothing
+// declared about it anywhere -- appears here and refuses below, which is where an instrument starts to
+// fail open: read by everything, consulted by nothing.
+fn fleet_truth_roster_hosts(reads: List<HostTruthRead>, expectations: List<HostTruthExpectation>) -> List<NonEmptyStr> {
+  let named = reads.map(read => host_of_read(read: read))
+    .concat(expectations.map(expectation => host_of_expectation(expectation: expectation)))
+  distinct_by_key(xs: named, key: fn(host) { host_truth_host_text(host: host) })
+}
+
+fn fleet_truth_roster_verdicts(reads: List<HostTruthRead>, expectations: List<HostTruthExpectation>) -> List<HostTruthVerdict> {
+  fleet_truth_roster_hosts(reads: reads, expectations: expectations)
+    .map(host => fleet_host_truth_verdict_for_host(host: host, reads: reads, expectations: expectations))
+}
+
+// THE ONLY ARM THAT ADMITS, and it admits exactly one host: a roster cannot admit on "not different", and
+// one host's verdict says nothing about another's.
+fn fleet_truth_admits_host(verdict: HostTruthVerdict) -> Bool {
+  match verdict {
+    HostTruthFollowsDesiredState { host: _, compared: _, undeclared: _ } => true
+    HostTruthDiverges { host: _, divergences: _ } => false
+    HostTruthRefused { host: _, refusals: _ } => false
+    HostTruthNothingRead { host: _, why: _ } => false
+  }
+}
+
+// THE ROSTER'S ANSWER, per host: every host that does not admit, carrying the arm that refused it.
+fn fleet_truth_roster_refusals(reads: List<HostTruthRead>, expectations: List<HostTruthExpectation>) -> List<HostTruthVerdict> {
+  fleet_truth_roster_verdicts(reads: reads, expectations: expectations)
+    .filter(verdict => fleet_truth_admits_host(verdict: verdict) == false)
+}
+
+// WHAT A REFUSAL SAYS OUT LOUD: the axis's recognition rule and the host, never a count alone.
+fn host_truth_divergence_locator(comparison: HostTruthComparison) -> String {
+  match comparison {
+    TruthDivergent { host: h, axis: a, observed: _, expected: _, declared_by: d } => host_truth_axis_rule(axis: a) + " -- host " + host_truth_host_text(host: h) + " " + host_truth_relation_says(axis: a, declared_by: d)
+    TruthValueShapeRefused { host: h, axis: a, why: w } => host_truth_axis_rule(axis: a) + " -- host " + host_truth_host_text(host: h) + ": " + w
+    TruthAgrees { host: h, axis: a, at_run: _, receipt: _ } => host_truth_axis_rule(axis: a) + " -- host " + host_truth_host_text(host: h) + " agrees"
+    TruthUnread { host: h, axis: a, cause: c } => host_truth_axis_rule(axis: a) + " -- host " + host_truth_host_text(host: h) + ": " + host_truth_read_cause_explains(cause: c)
+    TruthReadBlank { host: h, axis: a } => host_truth_axis_rule(axis: a) + " -- host " + host_truth_host_text(host: h) + " answered blank, which is not a value"
+    TruthNoReadSupplied { host: h, axis: a } => host_truth_axis_rule(axis: a) + " -- no read supplied for host " + host_truth_host_text(host: h)
+    TruthNoExpectationForRead { host: h, axis: a } => host_truth_axis_rule(axis: a) + " -- a read for host " + host_truth_host_text(host: h) + " has nothing declared to compare it to"
+    TruthOutsideTheModel { host: h, axis: a, because: b } => host_truth_axis_rule(axis: a) + " -- nothing declared for host " + host_truth_host_text(host: h) + ": " + b
+    TruthDuplicateRead { host: h, axis: a, read_count: _ } => host_truth_axis_rule(axis: a) + " -- host " + host_truth_host_text(host: h) + " was read more than once on this axis; the roster has no authority to pick which answer to believe"
+    TruthDuplicateExpectation { host: h, axis: a, declaration_count: _ } => host_truth_axis_rule(axis: a) + " -- host " + host_truth_host_text(host: h) + " is declared more than once on this axis; the model names two authorities for one fact"
+    TruthPairingRefused { why: w, pairing: p } => w + " (read axis " + host_truth_axis_rule(axis: p.read_axis) + " on host " + host_truth_host_text(host: p.read_host) + ", declaration axis " + host_truth_axis_rule(axis: p.expectation_axis) + " on host " + host_truth_host_text(host: p.expectation_host) + ")"
+  }
+}
+
+// THE INSTRUMENT, AS A ROW AND NOT A FLAG (gunbc.design_argument::how_to_work, proportionate evidence): it names its
+// real consumer, its discriminator and the cost it may not exceed, and those facts live here as the
+// module's own terms rather than as data rows nothing folds -- a String-typed commentary row is
+// indistinguishable from program data (gunbc.design_argument::source_annotations), and registering an
+// entry in gunbc.instrument_targets means binding a gunbc.target_binding TargetProducer that produces an
+// addressable build target, which a per-host read of a machine is not until the converge mode that reads
+// hosts exists to produce it. That mode is the consumer named in this file's header.
+//
+// CONSUMER: admission to the build and serving rosters. Every leg of the converge route that admits a host
+// by name asks that host's verdict first (fleet_host_truth_verdict_for_host), and a refusal there keeps the
+// host off the roster rather than warning about it -- the plan's done-when is that a planted divergence on
+// any axis removes the host from admission. The roster helpers above exist so a batch of hosts is admitted
+// one at a time, never on an average.
+//
+// DISCRIMINATOR: one comparison per host per axis, discriminated eleven ways -- agrees, divergent, unread,
+// blank, no read supplied, no expectation for a read, duplicated read, duplicated declaration, nothing
+// declared, a value that is not the shape the axis relates, pairing refused -- so a partial read, a mispaired
+// read, a doubled reader, a malformed projection, a gap in the model and a genuine drift are six different
+// answers, not one. The relation each axis states is applied to typed values (HostTruthValue), because a
+// cap's rule is at-or-above and a size written in bytes is the same size written in gibibytes.
+//
+// COST: the mode reads each host once per axis over a single ssh round trip, so a host's five compares are
+// bounded by that round trip's own converge step budget rather than by a number invented here; the step
+// that hosts it is where a budget belongs, and it is the number the operator has not yet ruled (see the
+// header's frontier).

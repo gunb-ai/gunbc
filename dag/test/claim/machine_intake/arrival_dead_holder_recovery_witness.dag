@@ -1,0 +1,69 @@
+module test.claim.machine_intake.arrival_dead_holder_recovery_witness
+
+// CLAIMS FOR THE ARRIVAL'S DEAD-HOLDER RECOVERY: what the arrival root decides for itself, before it
+// refuses and before any controller contact. The recovery ORCHESTRATION is not reachable from here: the
+// store's file_hold_recover_dead_holder admits exactly two callers --
+// gunbc.host.managed_host_unit_hold::unit_hold_recover_dead_holder and
+// gunbc.machine_intake.arrival_interlock::arrival_archive_slot_recover_dead_holder -- and that arrival
+// recovery fn admits only gunbc.machine_intake.arrival_interlock::arrival_archive_slot_acquire
+// (admit_callers), so the resolver refuses a test that imports it directly. Those three claims below answer
+// the DECISION the recovery stands on -- what the operation's declared status means -- by feeding
+// arrival_liveness_from_status its typed inputs (Completed / a live status / an absent read), the same
+// separate-decision-from-reading pattern as test.claim.durable_exclusive_hold_witness. The production
+// READER is arrival_holder_run_liveness, which issues the declared read-only GET mid-fold; the acquire's
+// occupied arms (shape-gate refuse, self-holder refuse, and the recovered-then-reacquired path, driven with
+// an injected liveness reader) are exercised in the wet claims of
+// test.claim.durable_exclusive_hold_file_store_wet_witness.
+import std.types { Bool, String }
+import std.optional { Present, Absent }
+import std.durable_exclusive_hold { HolderObservedLive, HolderObservedDead, HolderLivenessUnobservable }
+import extdeps.github.workflow_runs { Completed, InProgress, Queued, Waiting, Requested, Pending }
+import gunbc.machine_intake.arrival_interlock { arrival_liveness_from_status }
+
+// ONLY A COMPLETED RUN IS DEAD. Every other status the vocabulary knows keeps the slot, because any one of
+// them means somebody may still be inside the door.
+test fn only_a_completed_run_is_dead_and_every_other_known_status_is_live() -> Bool {
+  match arrival_liveness_from_status(run_id: "45059586538", observed: Present { value: Completed }) {
+    HolderObservedDead { evidence: _ } => true
+    _ => false
+  }
+    && match arrival_liveness_from_status(run_id: "1", observed: Present { value: InProgress }) {
+         HolderObservedLive { evidence: _ } => true
+         _ => false
+       }
+    && match arrival_liveness_from_status(run_id: "2", observed: Present { value: Queued }) {
+         HolderObservedLive { evidence: _ } => true
+         _ => false
+       }
+    && match arrival_liveness_from_status(run_id: "3", observed: Present { value: Waiting }) {
+         HolderObservedLive { evidence: _ } => true
+         _ => false
+       }
+    && match arrival_liveness_from_status(run_id: "4", observed: Present { value: Requested }) {
+         HolderObservedLive { evidence: _ } => true
+         _ => false
+       }
+    && match arrival_liveness_from_status(run_id: "5", observed: Present { value: Pending }) {
+         HolderObservedLive { evidence: _ } => true
+         _ => false
+       }
+}
+
+// AN ABSENT OBSERVATION IS UNOBSERVABLE, WHICH REFUSES AND NEVER RECOVERS: a read that came back with no
+// status (an absent token, a non-200, an undecodable status -- the reader hands Absent) cannot take a slot
+// away from a run that may still be running.
+test fn an_unreadable_status_is_unobservable_and_never_dead() -> Bool {
+  match arrival_liveness_from_status(run_id: "45059586538", observed: Absent) {
+    HolderLivenessUnobservable { cause: _ } => true
+    _ => false
+  }
+}
+
+// THE EVIDENCE NAMES THE RUN IT PROVED, so an audit of a recovered slot points at the run that said the
+// holder was over, and at no other run.
+test fn the_evidence_names_the_run_it_proved() -> Bool {
+  match arrival_liveness_from_status(run_id: "45059586538", observed: Present { value: Completed }) {
+    HolderObservedDead { evidence: e } => (e as String) == "workflow run 45059586538 has completed"
+    _ => false
+  }
+}

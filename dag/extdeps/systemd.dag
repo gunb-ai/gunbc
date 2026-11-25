@@ -530,6 +530,15 @@ fn parse_systemd_memory_limit_show(raw: String) -> SystemdCgroupMemoryLimit {
   } } }
 }
 
+// THE GAP IN THIS SUM, AND WHO OWES IT CLOSED. `MemoryLimitAbsent` answers two different questions -- the
+// property printed nothing, and the property printed something `parse_int` cannot read -- which is why
+// dag/gunbc/compile_pool_observe.dag has to label the arm "empty or unparseable" in prose. The cpu-quota sum
+// above shows the shape that closes it: `CpuQuotaUndecodable` beside `CpuQuotaAbsent`, carrying the raw text.
+// The arm is owed on this sum, and it is tracked rather than drifted: see
+// gunbc.recurring_failure_mode::failed_value_read_scored_as_value_absent. Nobody in this file works around the
+// conflation, and no consumer re-reads the raw text to guess which one it got -- a caller that cannot tell
+// refuses, which is the only honest answer until the arm lands.
+
 fn systemd_memory_limit_wire_label(lim: SystemdCgroupMemoryLimit) -> String {
   match lim {
     MemoryLimitUnbounded => "infinity"

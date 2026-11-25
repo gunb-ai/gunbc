@@ -2,9 +2,10 @@ module test.claim.serving.serving_butch_fixture_witness
 
 // THE BUTCH-SHAPE FIXTURE, EXECUTED ON A SYNTHETIC REPLICA SET. butch (srv14) -- the operator's hand-deployed
 // two-engine host (2026-11-10, operator facts msg_cc2ab16d) -- is the shape that first proves the N-replica model:
-// one host, priced ONCE PER REPLICA, no per-host fork. srv14's PRODUCTION reservation row is B4b's (it is also a
-// committed runner host via #16313, and its per-engine memory is unmeasured -- see the roster note in
-// gunbc.serving.serving_reservation). So this witness does NOT read srv14 from the roster; it builds the OPERATOR'S
+// one host, priced ONCE PER REPLICA, no per-host fork. srv14's PRODUCTION reservation row (B4b's, on a host also
+// committed as a runner via #16313) was DISCHARGED on 2026-11-24 with the hand-retired engines -- see the
+// dissolved_frontier marker in gunbc.serving.serving_reservation. So this witness does NOT read srv14 from the
+// roster; it builds the OPERATOR'S
 // STATED butch shape as a synthetic replica set and drives the PURE folds over it, discriminating the one thing the
 // reservation model can be asked about that shape:
 //

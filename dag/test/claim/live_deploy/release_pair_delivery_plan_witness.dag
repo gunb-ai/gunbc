@@ -14,7 +14,7 @@ module test.claim.live_deploy.release_pair_delivery_plan_witness
 // (refused download / unreadable digest: gh auth expired, disk full) or a present-but-refused pack (unverified digest,
 // source/binary drift, wrong-pack verdict) — is a real PlanKeepsLastGood refusal that must surface RED (review 96234:
 // a silent green here hides a broken delivery). The benign PlanWaits is produced ONLY upstream in the entry, for
-// RunLookupNoneForHead (no successful run yet — genuinely not built) and the already-at-head no-op; those are
+// RunLookupNoBuiltAncestor (no built ancestor yet — genuinely not built) and the already-at-head no-op; those are
 // witnessed in the CLI witness. The exit code is read from the plan variant, so re-wording any reason cannot flip it.
 //
 // ── WHY IT IS RED ON BASE ──────────────────────────────────────────────────────────────────────────────────
@@ -27,13 +27,13 @@ module test.claim.live_deploy.release_pair_delivery_plan_witness
 // observed on the fetched pack cannot install.
 
 import std.types { String, NonEmptyStr, Bool, CommitSha }
-import std.algebra { fold_list }
+import std.algebra { fold_list, string_contains }
 import extdeps.tools.gh { gh_run_download_argv }
 import gunbc.live_deploy.release_pair_delivery {
   PackFetch, PackPresent, PackAbsent, PackVerify, VerifiedOn, Refused,
   DeliveryPlan, PlanToInstall, PlanKeepsLastGood, PlanWaits, FilePlacement, SourceReceiptWrite,
   release_pair_fetch_argv, release_pair_verify_dispatch, release_pair_install_plan,
-  release_pair_incoming_pack_dir, release_pair_incoming_serve_source,
+  release_pair_incoming_pack_dir, release_pair_incoming_serve_source, release_pair_source_dir,
 }
 import gunbc.live_deploy.release_locus {
   ReleaseRevisionBinding, RevisionBoundAtEmission,
@@ -53,6 +53,8 @@ data run_id: String = "43968177413"
 data repo_slug: String = "gunb-ai/gunbc"
 data pack_dir: NonEmptyStr = release_pair_incoming_pack_dir(base_root: base_root, revision: main_sha) as NonEmptyStr
 data other_pack_dir: NonEmptyStr = "/opt/gunbc/releases/some-other-head"
+data source_dir: NonEmptyStr = release_pair_source_dir(base_root: base_root, revision: main_sha as CommitSha) as NonEmptyStr
+data other_source_dir: NonEmptyStr = release_pair_source_dir(base_root: base_root, revision: wrong_sha as CommitSha) as NonEmptyStr
 data serve_unit_text: String = "gunbc-srv1-lab-codex-feedback-v0.service"
 
 fn main_head() -> CommitSha { main_sha as CommitSha }
@@ -65,8 +67,9 @@ fn serve_unit() -> NonEmptyStr { serve_unit_text as NonEmptyStr }
 fn fetched_pack() -> PackFetch {
   PackPresent { sha256: bin_sha256, pack_dir: pack_dir, binary_source: fetched_src }
 }
-// the verify verdict observed on THAT pack (names the same dir the fetch observed).
-fn verified_on_fetched() -> PackVerify { VerifiedOn { pack_dir: pack_dir } }
+// the verify verdict observed on THAT pack against the source tree placed for the head (names the same dir the
+// fetch observed and the head's source dir).
+fn verified_on_fetched() -> PackVerify { VerifiedOn { pack_dir: pack_dir, source_dir: source_dir } }
 
 // join a List<String> into one String with fold_list, so the fetch argv is compared as a value without relying on
 // list-equality (the claim batch is a pure subset; joining is the safe comparison).
@@ -88,10 +91,13 @@ test fn witness_stage1_fetch_argv_reuses_gh_download_authority() -> Bool {
 // — and a present pack yields one. The executor cannot ask "is it verified?" before asking "did the fetch produce
 // a pack?".
 test fn witness_verify_dispatch_exists_only_for_a_fetched_pack() -> Bool {
-  let present_dispatch = release_pair_verify_dispatch(fetch: fetched_pack())
-  let absent_dispatch = release_pair_verify_dispatch(fetch: PackAbsent { reason: "no pack" as NonEmptyStr })
+  let present_dispatch = release_pair_verify_dispatch(fetch: fetched_pack(), source_dir: source_dir as String)
+  let absent_dispatch = release_pair_verify_dispatch(fetch: PackAbsent { reason: "no pack" as NonEmptyStr }, source_dir: source_dir as String)
   match present_dispatch {
-    Present { value: _ } => match absent_dispatch { none => true, Present { value: _ } => false }
+    // The dispatch is the lab consumer over THIS pack and THIS source tree: both paths are in the program it emits.
+    Present { value: script } =>
+      string_contains(s: script, pattern: pack_dir as String) && string_contains(s: script, pattern: source_dir as String)
+        && match absent_dispatch { none => true, Present { value: _ } => false }
     none => false
   }
 }
@@ -127,7 +133,7 @@ test fn witness_plan_good_head_builds_bound_install() -> Bool {
 
 // ── RED CONTROL (review 96234): an absent pack PAST a found run is a REFUSAL, not a benign wait ──────────────
 // install_plan is reached only after RunLookupFound (a successful run exists), so an absent pack here is a refused
-// download or an unreadable digest (expired gh auth, full disk) — NOT "not built yet" (that is RunLookupNoneForHead
+// download or an unreadable digest (expired gh auth, full disk) — NOT "not built yet" (that is RunLookupNoBuiltAncestor
 // upstream, before any fetch). It must be PlanKeepsLastGood so the timer exits NON-ZERO; routing it green would
 // keep a broken delivery silent. If a mutation sent PackAbsent to PlanWaits, this reddens.
 test fn witness_plan_pack_fetch_absent_refuses() -> Bool {
@@ -142,14 +148,15 @@ test fn witness_plan_pack_fetch_absent_refuses() -> Bool {
   )
   match plan {
     PlanToInstall { place_binary: _, write_source_receipt: _, restart_command: _, revision: _ } => false
-    PlanKeepsLastGood { kept: _, reason: _ } => true
+    // The kept plan carries the FETCH's own reason, not the fold's generic one.
+    PlanKeepsLastGood { kept: _, reason: why } => (why as String) == "the release-bins download was refused (gh auth expired / disk full)"
     PlanWaits { kept: _, reason: _ } => false
   }
 }
 
 // ── RED CONTROL (arm 2): a pack that fails build-key verification installs nothing ──────────────────────────
-// The pack was fetched but the consumer's --verify-build-artifacts refused it against the build key, so its
-// binaries are not trusted. The last-good pair keeps serving.
+// The pack was fetched but the lab consumer refused it (here a member whose bytes do not match the manifest), so
+// its binaries are not trusted. The last-good pair keeps serving, and the plan says why.
 test fn witness_plan_pack_unverified_keeps_last_good() -> Bool {
   let plan = release_pair_install_plan(
     base_root: base_root,
@@ -157,12 +164,13 @@ test fn witness_plan_pack_unverified_keeps_last_good() -> Bool {
     main_head: main_head(),
     source_head: main_head(),
     fetch: fetched_pack(),
-    verify: Refused { reason: "--verify-build-artifacts refused the pack" as NonEmptyStr },
+    verify: Refused { reason: "the lab consumer refused the fetched release-bins pack: MemberDigestMismatch" as NonEmptyStr },
     serve_unit: serve_unit(),
   )
   match plan {
     PlanToInstall { place_binary: _, write_source_receipt: _, restart_command: _, revision: _ } => false
-    PlanKeepsLastGood { kept: _, reason: _ } => true
+    // The kept plan carries the consumer's NAMED refusal, so distinct refusals stay distinct on the plan.
+    PlanKeepsLastGood { kept: _, reason: why } => string_contains(s: why as String, pattern: "MemberDigestMismatch")
     // A present pack that the fold refused is a RED refusal, never a benign wait — this reddens a mutation that
     // routed a present-pack refusal into PlanWaits (the exit code is the variant, not the reason text).
     PlanWaits { kept: _, reason: _ } => false
@@ -180,7 +188,27 @@ test fn witness_plan_verify_on_wrong_pack_keeps_last_good() -> Bool {
     main_head: main_head(),
     source_head: main_head(),
     fetch: fetched_pack(),
-    verify: VerifiedOn { pack_dir: other_pack_dir },
+    verify: VerifiedOn { pack_dir: other_pack_dir, source_dir: source_dir },
+    serve_unit: serve_unit(),
+  )
+  match plan {
+    PlanToInstall { place_binary: _, write_source_receipt: _, restart_command: _, revision: _ } => false
+    PlanKeepsLastGood { kept: _, reason: _ } => true
+    PlanWaits { kept: _, reason: _ } => false
+  }
+}
+
+// ── RED CONTROL: a verdict reached against a source tree other than the one placed for the head ───────────
+// The pack is the fetched one, but the lab consumer admitted it against another revision's source tree. Its source
+// closure was checked against the wrong tree, so the verdict cannot authorize installing this pack beside this head.
+test fn witness_plan_verify_against_another_source_tree_keeps_last_good() -> Bool {
+  let plan = release_pair_install_plan(
+    base_root: base_root,
+    serving: last_good_serving(),
+    main_head: main_head(),
+    source_head: main_head(),
+    fetch: fetched_pack(),
+    verify: VerifiedOn { pack_dir: pack_dir, source_dir: other_source_dir },
     serve_unit: serve_unit(),
   )
   match plan {
@@ -214,7 +242,7 @@ test fn witness_plan_source_head_mismatch_keeps_last_good() -> Bool {
 // that same red arm. Only a well-formed bound pair (pack present, verified on the fetched pack, matching heads) is
 // NOT red (PlanToInstall). So the exit class is decided by the fold's decision + the plan variant, never by the
 // reason string: re-wording a refusal cannot flip it green, and the one green-producing arm (PlanWaits) is produced
-// upstream by the entry (converged_noop / RunLookupNoneForHead), witnessed in the CLI witness — NOT by install_plan.
+// upstream by the entry (converged_noop / RunLookupNoBuiltAncestor), witnessed in the CLI witness — NOT by install_plan.
 // If a mutation compared reason strings, or sent PackAbsent to PlanWaits, one of these assertions reddens.
 fn plan_is_red(plan: DeliveryPlan) -> Bool {
   match plan {

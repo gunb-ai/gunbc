@@ -34,6 +34,7 @@ import gunbc.live_deploy.spec {
   deployment_oidc_config_steps,
   deployment_agent_door_steps,
   deployment_fabric_storage_serve_endpoint,
+  deployment_fabric_storage_unit_name, deployment_fabric_storage_unit_path,
   EnsuredPackage,
   TailscalePackage,
   TmuxPackage,
@@ -121,11 +122,11 @@ import test.claim.live_deploy.serve_binary_spec_fixture { spec_with_serve_binary
 import gunbc.live_deploy.spec { deployment_belt_credential_recovery_timer_unit_name }
 import gunbc.membership_reconcile { EffectRemove }
 import gunbc.live_deploy.retract_legs {
-  DeployRetractLeg, deploy_retract_effect_plan, retract_leftover_timer_legs, RetractPlanReady, RetractPlanRefused, deploy_retract_plan_legs,
+  DeployRetractLeg, deploy_retract_effect_plan, deploy_retract_artifact_plan, retract_leftover_timer_legs, RetractPlanReady, RetractPlanRefused, deploy_retract_plan_legs,
   RetractServeOff, RetractDisableIfLoaded, RetractRemoveForce, RetractRemoveEmptyDirectory, RetractRemoveRecursive, RetractDaemonReload, RetractUnitGoneReadback,
 }
 import extdeps.tailscale.serve { tailscale_serve_off_argv }
-import std.algebra { non_empty_to_list }
+import std.algebra { Cons, Empty, non_empty_to_list }
 import gunbc.live_deploy.emit {
   live_deploy_belt_credential_recovery_timer_unit_file,
 }
@@ -640,6 +641,61 @@ test fn teardown_disposition_separates_owned_from_ensured() -> Bool {
       }
   }
   mapping && binary && package
+}
+
+// THE MODEL'S ANSWER AND THE LEGS THAT RUN, IN ONE ROW.
+// #gunbc.live_deploy.spec::owned_artifact_teardown_disposition is what the model SAYS a retract does with a
+// step; #gunbc.live_deploy.retract_legs::deploy_retract_artifact_plan IS the retract. This kind's arm said
+// "refuses" while its legs were already being built -- not conservatism, since no script honoured the refusal,
+// but a second, quieter representation of the same step. It was transcribing
+// #gunbc.design_ruling::t6_fabric_storage_excluded_from_live_deploy_2026_11_10, superseded on 2026-11-21 by
+// #gunbc.design_ruling::fabric_storage_returned_to_live_deploy_supersedes_t6_exclusion_2026_11_21, which puts
+// the endpoint's OWN unit back in the membership. What this row pins is the agreement between the disposition
+// and the legs, and it does not care which decision on the ledger put the unit there; the provenance of the
+// supersession -- operator answer in 11-10, defaulted escalation in 11-21 -- is stated once, in
+// #gunbc.live_deploy.spec::owned_artifact_teardown_disposition, and is not repeated here to drift from it.
+//
+// WHICH HALF IS WRONG IS NOT THE INTERESTING HALF. The disposition is total over OwnedArtifactKind precisely
+// so a kind cannot inherit an answer by omission, so the repair is to state `TeardownActs` out loud, not to
+// drop the arm; and the defect worth the claim is the DISAGREEMENT, because a model answer no script honours
+// gets read as authority by the next change and the leg builder is what gets edited to match.
+//
+// WHY BOTH HALVES SIT HERE. Asserting only the disposition would survive the legs being deleted; asserting
+// only the legs -- the form every other retract claim in this module takes -- passed the entire time the arm
+// was wrong. The dependency-level refusal stays pinned by
+// #test.claim.live_deploy.emit::teardown_disposition_separates_owned_from_ensured, so this row neither restates
+// it nor hides a collapse of the compose axis into "all acts". It builds no script, so it does not add to the
+// per-row emission cost that bounds the rest of this module.
+test fn the_fabric_storage_unit_teardown_acts_where_its_retract_legs_act() -> Bool {
+  let spec = deployment_spec_srv1()
+  let unit_step = DeploymentArtifactStep {
+    kind: ComposeOwned { kind: FabricStorageServeUnit },
+    path: deployment_fabric_storage_unit_path(names: spec.names),
+  }
+  let disposition_acts = match owned_artifact_teardown_disposition(kind: unit_step.kind) {
+    TeardownActs => true
+    TeardownRefuses { cause: _ } => false
+  }
+  let legs_act = match deploy_retract_artifact_plan(art: unit_step, spec: spec) {
+    // THE TYPED SEQUENCE, NOT A RENDERING: the plan is exactly three legs, in the order the script runs them
+    // -- disable this unit, remove this path and nothing else, reload the manager. A needle on the rendered
+    // disable leg would still pass a retract that left the fragment on disk, or never told systemd, or disabled
+    // somebody else's unit; a teardown that "acts" only halfway is the same class of bug this row exists for.
+    RetractPlanReady { legs: ls } => match ls {
+      Cons {
+        head: RetractDisableIfLoaded { unit: disabled },
+        tail: Cons {
+          head: RetractRemoveForce { paths: removed },
+          tail: Cons { head: RetractDaemonReload, tail: Empty },
+        },
+      } =>
+        (disabled as String) == (deployment_fabric_storage_unit_name(names: spec.names) as String)
+          && join(non_empty_to_list(xs: removed) |> map(p => p as String), "|") == (unit_step.path as String)
+      _ => false
+    }
+    RetractPlanRefused { step: _, reason: _ } => false
+  }
+  disposition_acts && legs_act
 }
 
 data endpoint_identity_is_the_collision_axis_note: String = "THE CLAIM THE TWIN PROOF WAS MISSING, and its absence is why a green twin suite shipped a production-destroying apply. Every earlier twin claim in this file compares roots, ports, units, handlers and tree-sync files, and all of them passed while BOTH deployments configured the identical tailscale endpoint - because tailscale_serve_path was an invented label the emitter never read, and the emitted command derived from the port alone, which a bare `serve` ignores in favour of the default listener at the root mount.\\n\\nSo this asserts over the axis tailscale actually keys on, in BOTH directions and on BOTH scripts. The positive half - the twin carries its own --set-path - would pass against an emission that also bound production's endpoint, which is exactly the broken state. Only the negative half closes it: production's endpoint spelling must be ABSENT from the twin's apply and from the twin's retract, so the twin can neither steal the route nor remove it.\\n\\nThe retract conjuncts are not a restatement of the apply ones. The upstream requires every original flag on an off command, so apply and off can drift independently - an off missing --set-path targets the ROOT mount, which is production's, and would remove production's routing while exiting zero. Asserting the exact off spelling on each side is what ties the two directions to one endpoint value.\\n\\nONE CLAIM BECAME FOUR, ONE PER EMITTED SCRIPT, AND NOTHING WAS DROPPED (2026-08-23). The seven conjuncts below are the seven that were here; only their grouping changed. The regrouping is lossless because NO CONJUNCT EVER COMPARED TWO EMITTED SCRIPTS: disjointness is asserted by pattern negation against a command spelling derived from the OTHER spec, which is a cheap argv join, never that spec's emitted script. A reader who assumes a disjointness claim needs both scripts by construction will re-fuse these and re-cross the line - this row said exactly that in a PR body and it was wrong, caught by two independent readers of the conjuncts.\\n\\nWHY THE GROUPING MATTERED AT ALL, stated so this is not mistaken for tidiness: emitting a script costs about 6,714 interpreter node-evals per emitted shell WORD, so a claim's cost is the number of SCRIPTS it builds. Four scripts in one claim put this row at ~5009ms against the 5000ms CPU safety deadline then standing and it was INTERRUPTED BEFORE VERDICT - not passing, not failing, unknown - which is a strictly worse outcome than either verdict. One script per claim puts each row where the module's ordinary rows already sit, and a red now locates which script and which direction rather than which of seven conjuncts.\\n\\nTHIS IS A LOCAL UNBLOCK AND NOT THE REPAIR, AND CONFLATING THEM IS THE REAL RISK HERE. Sixteen rows in this module sit at 70-96% of the same limit; this regrouping moves the one row that crossed and leaves the population where it was. The cost is systemic - every emit consumer in the corpus pays the same per-word rate - and its measurement, its falsified hypotheses and its next-rung trigger are docs/probes/live_deploy_emit_witness_cost_attribution_2026-08-23.md. The next fleet runner-slot width increase lengthens the emitted script again and the next-highest row crosses.\\n\\nONE THING THIS REGROUPING MAKES HARDER, DECLARED RATHER THAN DISCOVERED LATER. The claim as written is LITERAL: it negates a spelling. The strictly stronger form is RELATIONAL - assert the two emitted endpoint values differ FROM EACH OTHER, which catches a drift that keeps both spellings absent from each other's script while still colliding. That form genuinely needs both scripts in one claim, so adopting it re-fuses two of these rows and re-crosses the line at today's per-word cost. It is therefore gated on the emit-cost lane rather than on anyone's appetite, and it is named here so the stronger claim is a known deferral and not an idea nobody had."

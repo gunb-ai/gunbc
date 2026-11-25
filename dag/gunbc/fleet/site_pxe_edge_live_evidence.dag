@@ -9,10 +9,10 @@ import extdeps.tools.findutils { find_path_probe_command }
 import extdeps.sudo.elevation { sudo_elevate_command }
 import extdeps.exec.command { ArgvCommand, argv_words }
 import gunbc.host_command_binding { CommandHost }
-import gunbc.host.boot_medium_served_readback { RemoteAnswer }
 import gunbc.machine_intake.mtcollins1_census_member_readback {
   MemberReading, IsoReading,
   answer_on, read_member_on, member_scratch_path, iso_reading_of, MemberRead, MemberUnread, IsoMeasured, IsoUnmeasured, StockSide, CasperKernel, CasperInitrd,
+  HostLeg, LegAnswered, LegNotDispatched,
 }
 import gunbc.fleet.site_pxe_edge_live_boot_pair {
   SitePxeEdgeLiveBootFile,
@@ -95,24 +95,29 @@ fn site_pxe_edge_live_absolute_path(tftp_root: NonEmptyStr, tftp_path: NonEmptyS
 // ONE SERVED FILE, READ BY THE PATH IT WAS ASKED AT. `sha256sum` prints "<hex>  <path>"; the printed path must be the absolute path that was
 // asked, else the line is another file's and the reading is unread. The measurement is then bound to the tftp-relative path asked, and there
 // is no digest among this function's inputs to rebuild it from.
-fn site_pxe_edge_live_served_reading(tftp_path: NonEmptyStr, absolute: NonEmptyStr, answer: RemoteAnswer) -> SitePxeEdgeLiveServedReading {
-  if answer.exit_code != 0 {
-    ServedBootFileUnread { reason: concat("sha256sum exit=", to_string(answer.exit_code), " ", trim(s: answer.stderr)) }
-  } else {
-    let fields: List<String> = filter(split(s: answer.stdout, delimiter: " "), t => t != "")
-    match first(fields) {
-      Absent => ServedBootFileUnread { reason: "sha256sum printed no digest field" }
-      Present { value: hex } =>
-        let canonical = concat(hex, "  ", absolute as String)
-        if answer.stdout != canonical && answer.stdout != concat(canonical, "\n") {
-          ServedBootFileUnread { reason: "sha256sum printed anything other than one digest, the separator and the path asked" }
-        } else {
-          match sha256_hex_digest(hex: hex) {
-            Absent => ServedBootFileUnread { reason: "sha256sum printed a field that is not a sha256 digest" }
-            Present { value: d } => ServedBootFileMeasured { path: tftp_path, digest: Sha256Hash(d) }
-          }
+fn site_pxe_edge_live_served_reading(tftp_path: NonEmptyStr, absolute: NonEmptyStr, answer: HostLeg) -> SitePxeEdgeLiveServedReading {
+  match answer {
+    LegNotDispatched { reason: why } =>
+      ServedBootFileUnread { reason: concat("the readback was never dispatched: ", why) }
+    LegAnswered { exit_code: code, stdout: out, stderr: err } =>
+      if code != 0 {
+        ServedBootFileUnread { reason: concat("sha256sum exit=", to_string(code), " ", trim(s: err)) }
+      } else {
+        let fields: List<String> = filter(split(s: out, delimiter: " "), t => t != "")
+        match first(fields) {
+          Absent => ServedBootFileUnread { reason: "sha256sum printed no digest field" }
+          Present { value: hex } =>
+            let canonical = concat(hex, "  ", absolute as String)
+            if out != canonical && out != concat(canonical, "\n") {
+              ServedBootFileUnread { reason: "sha256sum printed anything other than one digest, the separator and the path asked" }
+            } else {
+              match sha256_hex_digest(hex: hex) {
+                Absent => ServedBootFileUnread { reason: "sha256sum printed a field that is not a sha256 digest" }
+                Present { value: d } => ServedBootFileMeasured { path: tftp_path, digest: Sha256Hash(d) }
+              }
+            }
         }
-    }
+      }
   }
 }
 
@@ -126,23 +131,27 @@ fn site_pxe_edge_live_root_relative_contained(path: NonEmptyStr) -> Bool {
 // resolved) must lie strictly under the root's own canonical path; anything else, including a failed or unparseable resolution, is not contained.
 // ONE CANONICAL ABSOLUTE PATH: realpath prints exactly one line, which is absolute and has no empty, "." or ".." segment. Anything else (several
 // lines, a relative path, an empty answer, an embedded or doubled newline) is not a path. The one trailing newline realpath prints is the line end.
-fn site_pxe_edge_live_canonical_path(answer: RemoteAnswer) -> NonEmptyStr? {
-  if answer.exit_code != 0 {
-    Absent
-  } else {
-    let text = if ends_with(s: answer.stdout, suffix: "\n") { substring(s: answer.stdout, start: 0, end: string_length(answer.stdout) - 1) } else { answer.stdout }
-    let segments: List<String> = split(s: text, delimiter: "/")
-    if text != "" && starts_with(s: text, prefix: "/") && !string_contains(s: text, pattern: "\n") && length(filter(skip(xs: segments, n: 1), t => t == "" || t == "." || t == "..")) == 0 {
-      Present { value: text as NonEmptyStr }
-    } else {
-      Absent
-    }
+fn site_pxe_edge_live_canonical_path(answer: HostLeg) -> NonEmptyStr? {
+  match answer {
+    LegNotDispatched { reason: _ } => Absent
+    LegAnswered { exit_code: code, stdout: out, stderr: _ } =>
+      if code != 0 {
+        Absent
+      } else {
+        let text = if ends_with(s: out, suffix: "\n") { substring(s: out, start: 0, end: string_length(out) - 1) } else { out }
+        let segments: List<String> = split(s: text, delimiter: "/")
+        if text != "" && starts_with(s: text, prefix: "/") && !string_contains(s: text, pattern: "\n") && length(filter(skip(xs: segments, n: 1), t => t == "" || t == "." || t == "..")) == 0 {
+          Present { value: text as NonEmptyStr }
+        } else {
+          Absent
+        }
+      }
   }
 }
 
 // A SYMLINK UNDER THE ROOT CAN POINT OUT OF IT, and a lexical check cannot see that. The served file's canonical path (realpath -e, every link
 // resolved) must lie strictly under the root's own canonical path.
-fn site_pxe_edge_live_realpath_contained(root: RemoteAnswer, file: RemoteAnswer) -> Bool {
+fn site_pxe_edge_live_realpath_contained(root: HostLeg, file: HostLeg) -> Bool {
   match site_pxe_edge_live_canonical_path(answer: root) {
     Absent => false
     Present { value: r } =>
@@ -153,7 +162,7 @@ fn site_pxe_edge_live_realpath_contained(root: RemoteAnswer, file: RemoteAnswer)
   }
 }
 
-fn site_pxe_edge_live_canonical_path_or(answer: RemoteAnswer, fallback: NonEmptyStr) -> NonEmptyStr {
+fn site_pxe_edge_live_canonical_path_or(answer: HostLeg, fallback: NonEmptyStr) -> NonEmptyStr {
   match site_pxe_edge_live_canonical_path(answer: answer) {
     Absent => fallback
     Present { value: c } => c
@@ -256,23 +265,38 @@ type SitePxeEdgeLivePathStanding
   | PathPresentButNotAsRequired
   | PathObservationFailed { reason: String }
 
-// ABSENCE IS ONLY AN EXECUTED find'S OWN DIAGNOSTIC FOR THE EXACT PATH ASKED. A leg that was never dispatched is answered by answer_on as exit -1 "not dispatched: ..." (and its
-// own text may say "No such file or directory" about the ssh executable): that is no observation of the path, and so is any other path's diagnostic.
-fn site_pxe_edge_live_find_names_absent_path(path: String, answer: RemoteAnswer) -> Bool {
-  answer.exit_code > 0
-    && !starts_with(s: answer.stderr, prefix: "not dispatched")
-    && trim(s: answer.stderr) == concat("find: '", path, "': No such file or directory")
+// ABSENCE IS ONLY AN EXECUTED find'S OWN DIAGNOSTIC FOR THE EXACT PATH ASKED. A leg that was never dispatched is not a find at all: HostLeg carries it apart
+// (LegNotDispatched), so it is never read as a path's diagnostic, and an executed find that reports a DIFFERENT path absent is no observation of this path.
+fn site_pxe_edge_live_find_names_absent_path(path: String, answer: HostLeg) -> Bool {
+  match answer {
+    LegNotDispatched { reason: _ } => false
+    LegAnswered { exit_code: code, stdout: _, stderr: err } =>
+      code > 0 && trim(s: err) == concat("find: '", path, "': No such file or directory")
+  }
 }
 
-fn site_pxe_edge_live_path_standing(path: String, as_required: RemoteAnswer, anything: RemoteAnswer) -> SitePxeEdgeLivePathStanding {
-  if as_required.exit_code == 0 && trim(s: as_required.stdout) == path {
-    PathAsRequired
-  } else if anything.exit_code == 0 && trim(s: anything.stdout) == path {
-    PathPresentButNotAsRequired
-  } else if site_pxe_edge_live_find_names_absent_path(path: path, answer: anything) {
-    PathAbsent
-  } else {
-    PathObservationFailed { reason: concat("the existence probe failed: exit=", to_string(anything.exit_code), " ", trim(s: anything.stderr)) }
+fn site_pxe_edge_live_path_standing(path: String, as_required: HostLeg, anything: HostLeg) -> SitePxeEdgeLivePathStanding {
+  match as_required {
+    LegAnswered { exit_code: ar_code, stdout: ar_out, stderr: _ } =>
+      if ar_code == 0 && trim(s: ar_out) == path { PathAsRequired }
+      else { site_pxe_edge_live_path_standing_from_anything(path: path, anything: anything) }
+    LegNotDispatched { reason: _ } =>
+      site_pxe_edge_live_path_standing_from_anything(path: path, anything: anything)
+  }
+}
+
+fn site_pxe_edge_live_path_standing_from_anything(path: String, anything: HostLeg) -> SitePxeEdgeLivePathStanding {
+  match anything {
+    LegNotDispatched { reason: why } =>
+      PathObservationFailed { reason: concat("the existence probe was never dispatched: ", why) }
+    LegAnswered { exit_code: code, stdout: out, stderr: err } =>
+      if code == 0 && trim(s: out) == path {
+        PathPresentButNotAsRequired
+      } else if site_pxe_edge_live_find_names_absent_path(path: path, answer: anything) {
+        PathAbsent
+      } else {
+        PathObservationFailed { reason: concat("the existence probe failed: exit=", to_string(code), " ", trim(s: err)) }
+      }
   }
 }
 
@@ -325,13 +349,29 @@ fn site_pxe_edge_live_ensure_real_dir_on(host: CommandHost, tftp_root: NonEmptyS
     PathAbsent => {
       let c = sudo_elevate_command(command: argv_words(command: mkdir_create_only_with_mode_command(path: path, octal_mode: "0755" as NonEmptyStr)))
       let made = answer_on(host: host, command: c)
-      if made.exit_code == 0 { LivePlacementDone } else { LivePlacementRefused { step: join(argv_words(command: c), " "), reason: concat("exit=", to_string(made.exit_code), " ", trim(s: made.stderr)) } }
+      match made {
+        LegAnswered { exit_code: code, stdout: _, stderr: err } =>
+          if code == 0 { LivePlacementDone } else { LivePlacementRefused { step: join(argv_words(command: c), " "), reason: concat("exit=", to_string(code), " ", trim(s: err)) } }
+        LegNotDispatched { reason: why } => LivePlacementRefused { step: join(argv_words(command: c), " "), reason: why }
+      }
     }
   }
 }
 
-fn site_pxe_edge_live_step_refusal(c: ArgvCommand, a: RemoteAnswer) -> SitePxeEdgeLivePlacement {
-  LivePlacementRefused { step: join(argv_words(command: c), " "), reason: concat("exit=", to_string(a.exit_code), " ", trim(s: a.stderr)) }
+// Whether a dispatched step succeeded. The exit status is read only from a LegAnswered; a leg that was never dispatched never succeeded.
+fn site_pxe_edge_live_leg_succeeded(a: HostLeg) -> Bool {
+  match a {
+    LegNotDispatched { reason: _ } => false
+    LegAnswered { exit_code: code, stdout: _, stderr: _ } => code == 0
+  }
+}
+
+fn site_pxe_edge_live_step_refusal(c: ArgvCommand, a: HostLeg) -> SitePxeEdgeLivePlacement {
+  let step: String = join(argv_words(command: c), " ")
+  match a {
+    LegNotDispatched { reason: why } => LivePlacementRefused { step: step, reason: why }
+    LegAnswered { exit_code: code, stdout: _, stderr: err } => LivePlacementRefused { step: step, reason: concat("exit=", to_string(code), " ", trim(s: err)) }
+  }
 }
 
 // A file already published at a digest-addressed path is immutable (fox fix 3): it is reused when its bytes are the digest, refused when they are not, never overwritten.
@@ -350,19 +390,19 @@ fn site_pxe_edge_live_publish_on(host: CommandHost, tftp_root: NonEmptyStr, sour
   let stage: String = concat(dest, ".stage")
   let put = sudo_elevate_command(command: argv_words(command: install_file_mode_command(source: source as String, destination: stage, mode: "0644" as NonEmptyStr)))
   let put_a = answer_on(host: host, command: put)
-  if put_a.exit_code != 0 {
+  if !site_pxe_edge_live_leg_succeeded(a: put_a) {
     site_pxe_edge_live_step_refusal(c: put, a: put_a)
   } else if site_pxe_edge_live_published_matches_on(host: host, tftp_root: tftp_root, tftp_path: concat(tftp_path as String, ".stage") as NonEmptyStr, digest: digest) == false {
     LivePlacementRefused { step: concat("verify ", stage), reason: "the staged bytes are not the member's digest; nothing was published" }
   } else {
     let link = sudo_elevate_command(command: argv_words(command: ln_hard_command(source: stage, destination: dest)))
     let link_a = answer_on(host: host, command: link)
-    if link_a.exit_code != 0 {
+    if !site_pxe_edge_live_leg_succeeded(a: link_a) {
       site_pxe_edge_live_step_refusal(c: link, a: link_a)
     } else {
       let drop = sudo_elevate_command(command: argv_words(command: rm_force_command(path: stage)))
       let drop_a = answer_on(host: host, command: drop)
-      if drop_a.exit_code == 0 { LivePlacementDone } else { site_pxe_edge_live_step_refusal(c: drop, a: drop_a) }
+      if site_pxe_edge_live_leg_succeeded(a: drop_a) { LivePlacementDone } else { site_pxe_edge_live_step_refusal(c: drop, a: drop_a) }
     }
   }
 }

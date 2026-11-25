@@ -15,24 +15,27 @@ module gunbc.live_deploy.release_pair_deliver_cli
 
 import std.types { String, NonEmptyStr, List, Bool, Int, CommitSha }
 import std.optional { Optional, Present, Absent }
-import std.algebra { trim }
+import std.algebra { trim, length, skip }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import extdeps.crypto.hash { sha256sum_line_digest, sha256sum_file_command }
+import extdeps.crypto.hash { sha256sum_line_digest }
 import extdeps.tools.gnu_coreutils { readlink_command }
 import gunbc.ci.repository_ci_profile { gunbc_repository_slug }
-import gunbc.generated_artifact { artifact_location, FleetConvergeYamlArtifact }
+import std.list { first_where }
+import std.integer { int_to_decimal_string }
 import extdeps.exec.command { ArgvCommand, LocalExec }
 import extdeps.tools.gh {
-  gh_main_head_command, gh_release_bins_run_list_command, gh_run_download_command,
+  gh_main_head_command, gh_run_download_command,
+  gh_commit_ancestry_command, gh_branch_artifact_runs_command, gh_run_job_conclusion_command,
 }
 import extdeps.posix.sh_invocation { posix_sh_program_command }
-import gunbc.command_runner { run_shell_command_capture, run_shell_command_observe_outcome, classify_process_observation, ExitZeroSucceeds, ProcessRan, ProcessNotSpawned }
+import extdeps.languages.bash.invocation { bash_program_command }
+import gunbc.ci.ci_release_bins { gunbc_release_bin_name }
+import gunbc.command_runner { run_shell_command_capture, run_shell_command_observe_outcome, classify_process_observation, ExitZeroSucceeds, ProcessRan, ProcessNotSpawned, ProcessRunOutcome }
 import gunbc.live_deploy.release_locus {
   ReleaseRevisionBinding,
   RevisionBoundAtEmission,
-  release_locus_dir,
 }
 import gunbc.live_deploy.release_binding {
   DeployedReleaseBinding,
@@ -63,12 +66,14 @@ import gunbc.live_deploy.release_pair_delivery {
   PackFetch, PackPresent, PackAbsent, PackVerify, VerifiedOn, Refused,
   DeliveryPlan, PlanKeepsLastGood, PlanToInstall, PlanWaits,
   release_pair_incoming_pack_dir, release_pair_incoming_serve_source,
-  release_pair_verify_dispatch, release_pair_install_plan, release_pair_converged_noop,
+  release_pair_verify_dispatch, release_pair_install_plan, release_pair_converged_noop, release_pair_already_at_head_reason,
+  release_pair_source_dir,
   ReleasePairResume, AlreadyPlaced, NotYetPlaced, MismatchRefusal, release_pair_resume_decision,
   release_pair_occupied_link_benign,
   SourceReceiptWrite,
 }
-import gunbc.fleet.fleet_workflow_steps { ci_release_bins_artifact_name }
+import gunbc.fleet.fleet_workflow_steps { ci_release_bins_artifact_name, fleet_converge_release_bins_job_id }
+import gunbc.fleet.fleet_release_bins_key { release_bins_manifest_name }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.live_deploy.spec {
   release_pair_deliver_base_root_env,
@@ -80,6 +85,7 @@ import extdeps.filesystem.filesystem_io {
   Filesystem, filesystem_link_create_new, filesystem_create_new,
   FilesystemLinked, FilesystemCreated,
   filesystem_read_outcome, FilesystemLinkTargetOccupied,
+  FilesystemReadOutcome, FilesystemReadSucceeded, FilesystemReadRefused,
 }
 import gunbc.cli_run_workspace_root_scaffold { release_locus_tree_receipt_body }
 import gunbc.roadmap.roadmap_dashboard_instance {
@@ -92,19 +98,54 @@ import gunbc.roadmap.roadmap_belt_tick_cli { belt_pair_serve_gate }
 // release_pair_incoming_pack_dir / release_pair_incoming_serve_source; the entry derives them and passes them to the
 // decode fns below, so the CLI never re-spells the incoming directory.
 
-// The repo whose release-bins run carries the pair and the workflow that publishes it are NOT spelled here — they
-// are read from their single authorities so a rename cannot drift: gunbc.ci.repository_ci_profile::gunbc_repository_slug
-// and gunbc.generated_artifact::artifact_location(FleetConvergeYamlArtifact).name. The entry consumes them directly.
+// The repo whose release-bins run carries the pair, the artifact's name and the job that publishes it are NOT spelled
+// here — they are read from their single authorities so a rename cannot drift:
+// gunbc.ci.repository_ci_profile::gunbc_repository_slug, gunbc.fleet.fleet_workflow_steps::ci_release_bins_artifact_name
+// and gunbc.fleet.fleet_workflow_steps::fleet_converge_release_bins_job_id. The entry consumes them directly.
+
+// THE BRANCH THE LAB TRACKS (gunbc.design_ruling::lab_tracks_main_lab_dev_retired_2026_11_22): main. Its head is
+// observed, and the pair delivered is the NEWEST ANCESTOR of that head whose build job published a verified pack
+// (not the exact head: main moves faster than a pack is built, so an exact-head lookup almost never finds one).
+data release_pair_tracked_branch: NonEmptyStr = "main" as NonEmptyStr
+
+// How far back from the head the delivery looks for a built ancestor: one page of GitHub's commit listing, the
+// largest page its REST API serves (docs.github.com/rest/commits/commits#list-commits, per_page max 100). An
+// ancestor further back than this is not delivered; the tick waits for a newer build instead.
+data release_pair_ancestry_window: Int = 100
 // Why the pair keeps serving when the fetch leg did not produce a pack (consumed by pack_fetch's PackAbsent).
 data release_pair_fetch_refused_reason: NonEmptyStr = "the release-bins pack download for the bound head failed on the executing host"
 // Why the pair keeps serving when the pack was fetched but its digest could not be observed (consumed by pack_fetch).
-data release_pair_digest_unreadable_reason: NonEmptyStr = "the fetched release-bins pack's sha256 could not be observed on the executing host"
+data release_pair_digest_unreadable_reason: NonEmptyStr = "the fetched release-bins manifest's line for the serve member does not carry a valid sha256"
 // Why the pair keeps serving when the build-key verdict did not admit the fetched pack (consumed by pack_verify).
-data release_pair_verdict_refused_reason: NonEmptyStr = "the consumer build-key check did not admit the fetched release-bins pack on the executing host"
+data release_pair_verdict_refused_reason: NonEmptyStr = "the lab consumer did not admit the fetched release-bins pack and named no refusal"
+// Why the pair refuses when the fetched pack's manifest could not be read (absent or unreadable).
+data release_pair_manifest_unreadable_reason: NonEmptyStr = "the fetched release-bins pack's manifest could not be read on the executing host"
+// Why the pair refuses when the manifest does not name the serve member exactly once.
+data release_pair_manifest_member_missing_reason: NonEmptyStr = "the fetched release-bins manifest does not name the serve member exactly once"
+// Why the pair refuses when the lab consumer could not be started at all.
+data release_pair_verdict_not_run_reason: NonEmptyStr = "the lab consumer program could not be started on the executing host"
+// The prefix of a refusal the lab consumer NAMED; the name follows, read from its own ::error line.
+data release_pair_verdict_named_prefix: String = "the lab consumer refused the fetched release-bins pack: "
 // The gh api path that OBSERVES origin/main's head (the head TO DEPLOY), DERIVED from the one repo-slug row so the
 // slug is written once (single_authority). Consumed by the staged fn's call to gh_main_head_command.
 fn release_pair_main_head_api_path(slug: NonEmptyStr) -> String {
-  join(["repos/", slug, "/commits/main"], "")
+  join(["repos/", slug, "/commits/", release_pair_tracked_branch as String], "")
+}
+
+// The head's ancestry, newest first, one window long. Every SHA in it is reachable from the head.
+fn release_pair_ancestry_api_path(slug: NonEmptyStr, head: NonEmptyStr) -> String {
+  join(["repos/", slug, "/commits?sha=", head as String, "&per_page=", int_to_decimal_string(value: release_pair_ancestry_window)], "")
+}
+
+// The runs that published release-bins (only fleet-converge's build job uploads an artifact of that name). The
+// command pages through every result, so per_page here only sets the page size, not a window.
+fn release_pair_built_runs_api_path(slug: NonEmptyStr) -> String {
+  join(["repos/", slug, "/actions/artifacts?name=", ci_release_bins_artifact_name, "&per_page=", int_to_decimal_string(value: release_pair_ancestry_window)], "")
+}
+
+// The jobs of one run, to read its build job's conclusion.
+fn release_pair_run_jobs_api_path(slug: NonEmptyStr, run_id: NonEmptyStr) -> String {
+  join(["repos/", slug, "/actions/runs/", run_id as String, "/jobs?per_page=100"], "")
 }
 
 // THE DEDICATED DELIVERY CLONE, separate from the runtime checkout at /opt/gunbc/gunbc. Every placement of a
@@ -122,13 +163,23 @@ data release_pair_source_head_attempt_raw: String = "pair-deliver-source-head"
 
 // Why the pair keeps serving when origin/main's head could not be observed (consumed by the entry's head leg).
 data release_pair_no_head_reason: NonEmptyStr = "origin/main's head could not be observed on the executing host"
-// Why the pair keeps serving when the bound head has no successful fleet-converge run (consumed by the entry's run
-// leg). A BENIGN CI wait: the pack is not ready yet (still building / run not yet successful), keep last-good, retry.
-data release_pair_no_run_for_head_reason: NonEmptyStr = "the bound head has no successful release-bins run to fetch"
+// Why the pair keeps serving when no ancestor of the head inside the window has a release-bins pack. A BENIGN wait:
+// nothing new is built yet; keep last-good, retry next tick.
+data release_pair_no_built_ancestor_reason: NonEmptyStr = "no ancestor of origin/main's head within the ancestry window has a release-bins pack to fetch"
+// Why the pair keeps serving when it already serves the newest built ancestor (a benign no-op; no fetch runs).
+data release_pair_at_newest_built_ancestor_reason: NonEmptyStr = "the pair already serves the newest built ancestor of origin/main's head — nothing to deliver this tick"
+// Why the pair keeps serving when the newest built ancestor's build job did not conclude success: a pack uploaded by
+// a job that later failed or was cancelled is never delivered. A wait, not a fallback to an older pack.
+data release_pair_build_job_not_succeeded_reason: NonEmptyStr = "the newest built ancestor's build job did not conclude success; its pack is never delivered, waiting for a newer successful build"
+// Why the pair refuses when the build job's conclusion could not be read (no such job, or the read failed).
+data release_pair_build_job_unobservable_reason: NonEmptyStr = "the newest built ancestor's build job conclusion could not be observed; refusing to deliver an unverified pack"
+// Why the pair refuses when the ancestry listing could not be read, or does not start at the observed head.
+data release_pair_ancestry_unobserved_reason: NonEmptyStr = "the ancestry of origin/main's head could not be observed; refusing to choose a revision"
+data release_pair_ancestry_not_at_head_reason: NonEmptyStr = "the ancestry listing does not start at the observed head; refusing to choose a revision from it"
 // Why the pair keeps serving when the run DISCOVERY command itself could not run (auth expired, network, rate limit,
 // wrong workflow name). NOT a CI wait — the delivery could not OBSERVE whether a pack exists, so it is a refusal the
 // timer must surface (fail_closed), never a green tick that silently stops tracking main (review 96216).
-data release_pair_run_discovery_refused_reason: NonEmptyStr = "the release-bins run discovery (gh run list) could not be executed on the host (auth, network, rate limit, or workflow name); this is a delivery refusal, not a CI wait"
+data release_pair_run_discovery_refused_reason: NonEmptyStr = "the release-bins run discovery (gh api artifacts) could not be executed on the host (auth, network, rate limit, or workflow name); this is a delivery refusal, not a CI wait"
 // Why the pair refuses when the discovery RAN but its stdout is NON-EMPTY yet unparseable (no tab separator / empty
 // head field): the observation is untrustworthy (a gh output-shape or jq change), so this is a refusal, NOT the
 // benign "no successful run" wait — otherwise delivery would silently stop tracking main forever (review 96219).
@@ -138,9 +189,10 @@ data release_pair_run_list_malformed_reason: NonEmptyStr = "the release-bins run
 
 // ── command argv: obtained through the admitted production builders, never re-spelled here (Route A) ────────────
 // The head to deploy and the release-bins run for that head are discovered gh-only through extdeps.tools.gh's
-// admitted builders (gh_main_head_command via `gh api .../commits/main --jq .sha`; gh_release_bins_run_list_command
-// for the fleet-converge run at a head), the fetch through gh_run_download_command, and the pack's digest through
-// extdeps.crypto.hash.sha256sum_file_command. This module does NOT build argv itself: the sealed ArgvCommand is
+// admitted builders (gh_main_head_command via `gh api .../commits/main --jq .sha`; gh_commit_ancestry_command,
+// gh_branch_artifact_runs_command and gh_run_job_conclusion_command for the newest built ancestor), the fetch through
+// gh_run_download_command, and the lab admission through extdeps.languages.bash.invocation::bash_program_command (the
+// admission is a bash program, emitted from bash grammar Nodes by gunbc.fleet.fleet_release_bins_key). This module does NOT build argv itself: the sealed ArgvCommand is
 // minted only at those admitted sites (git is not in the program census, so origin/main's head is observed via the
 // cataloged gh program). The effectful entry composes those commands through the command seam and hands each leg's
 // ProcessOutcome to the decode fns below.
@@ -177,92 +229,196 @@ type ReleasePairRunObservation {
 // are three distinct outcomes that must not be conflated — only the middle one is a benign wait.
 type ReleasePairRunLookup
   = RunLookupFound { run: ReleasePairRunObservation }
-  | RunLookupNoneForHead
+  | RunLookupNoBuiltAncestor
   | RunLookupDiscoveryRefused { reason: NonEmptyStr }
 
-fn release_pair_decode_run(outcome: ProcessOutcome) -> ReleasePairRunLookup {
-  match outcome {
-    ProcessOutputPresent { text: t } =>
-      if (trim(s: t) as String) == "" {
-        RunLookupNoneForHead
-      } else {
-        let parts = split(s: trim(s: t), delimiter: "\t")
-        // first/last return String? — a cast does NOT eliminate the absence (the CI parse-only lane misses this;
-        // only the full resolve caught it). Match Present/Absent first, then compare and cast the UNWRAPPED Strings.
-        // Fail-closed (gunbc.design_argument::fail_closed): an absent end, an empty run/head field, or a run==head
-        // single-field line (no tab) is a NAMED malformed refusal — never a guessed run. Only a well-formed
-        // "<run-id>TAB<head-sha>" line with two DISTINCT non-empty fields is Found.
-        match first(l: parts) {
-          Absent => RunLookupDiscoveryRefused { reason: release_pair_run_list_malformed_reason }
-          Present { value: run_field } =>
-            match last(l: parts) {
-              Absent => RunLookupDiscoveryRefused { reason: release_pair_run_list_malformed_reason }
-              Present { value: head_field } =>
-                if (run_field as String) == "" || (head_field as String) == "" || (head_field as String) == (run_field as String) {
-                  RunLookupDiscoveryRefused { reason: release_pair_run_list_malformed_reason }
-                } else {
-                  RunLookupFound {
-                    run: ReleasePairRunObservation {
-                      run_id: run_field as NonEmptyStr,
-                      head_sha: head_field as NonEmptyStr,
-                    },
-                  }
-                }
+// One "<run-id>TAB<head-sha>" line. Fail-closed (gunbc.design_argument::fail_closed): any line that is not exactly
+// two fields (no tab, or a third field from a changed gh/jq output shape), or an empty run or head field, is none —
+// never a guessed run.
+fn release_pair_parse_run_line(line: String) -> ReleasePairRunObservation? {
+  let parts = split(s: trim(s: line), delimiter: "\t")
+  if length(xs: parts) != 2 { none } else {
+    // first/last return String? — match Present/Absent first, then compare and cast the UNWRAPPED Strings.
+    match first(l: parts) {
+      Absent => none
+      Present { value: run_field } =>
+        match last(l: parts) {
+          Absent => none
+          Present { value: head_field } =>
+            if (run_field as String) == "" || (head_field as String) == "" || (head_field as String) == (run_field as String) {
+              none
+            } else {
+              Present { value: ReleasePairRunObservation { run_id: run_field as NonEmptyStr, head_sha: head_field as NonEmptyStr } }
             }
         }
-      }
-    ProcessOutputAbsent => RunLookupDiscoveryRefused { reason: release_pair_run_discovery_refused_reason }
-    ProcessRefused { exit_code: _, stderr: _ } => RunLookupDiscoveryRefused { reason: release_pair_run_discovery_refused_reason }
+    }
   }
 }
 
-// THE DIGEST BINDING: the observed `sha256sum` line's first field, admitted only as a valid lower_hex_64 through
-// extdeps.crypto.hash::sha256sum_line_digest (the same parser the belt's member_observe uses — never re-parsed here);
-// a refusal, an empty output, or a non-hex/wrong-width line is a named digest-unreadable, never a false PackPresent.
-fn release_pair_pack_digest_bound(digest_outcome: ProcessOutcome, pack_dir: String, member_src: String) -> PackFetch {
-  match digest_outcome {
-    ProcessOutputPresent { text: d } =>
-      match sha256sum_line_digest(line: d) {
-        Present { value: dg } => PackPresent {
-          sha256: dg.hex,
-          pack_dir: pack_dir as NonEmptyStr,
-          binary_source: member_src as NonEmptyStr,
-        }
-        none => PackAbsent { reason: release_pair_digest_unreadable_reason }
+// The head's ancestry as observed: the listed SHAs newest first, or a refusal. An empty listing is a refusal, never
+// "no ancestors": the head itself must be listed.
+type ReleasePairAncestry
+  = AncestryObserved { shas: List<String> }
+  | AncestryRefused { reason: NonEmptyStr }
+
+fn release_pair_decode_ancestry(outcome: ProcessOutcome) -> ReleasePairAncestry {
+  match outcome {
+    ProcessOutputPresent { text: t } =>
+      let shas = filter(map(split(s: trim(s: t), delimiter: "\n"), l => trim(s: l) as String), l => l != "")
+      if length(xs: shas) == 0 {
+        AncestryRefused { reason: release_pair_ancestry_unobserved_reason }
+      } else {
+        AncestryObserved { shas: shas }
       }
-    ProcessOutputAbsent => PackAbsent { reason: release_pair_digest_unreadable_reason }
-    ProcessRefused { exit_code: _, stderr: _ } => PackAbsent { reason: release_pair_digest_unreadable_reason }
+    ProcessOutputAbsent => AncestryRefused { reason: release_pair_ancestry_unobserved_reason }
+    ProcessRefused { exit_code: _, stderr: _ } => AncestryRefused { reason: release_pair_ancestry_unobserved_reason }
+  }
+}
+
+// The runs on the tracked branch that published a release-bins pack, as observed. No output is an observed empty
+// set (nothing built); any malformed line refuses the whole observation rather than dropping it.
+type ReleasePairBuiltRuns
+  = BuiltRunsObserved { runs: List<ReleasePairRunObservation> }
+  | BuiltRunsRefused { reason: NonEmptyStr }
+
+fn release_pair_decode_built_runs(outcome: ProcessOutcome) -> ReleasePairBuiltRuns {
+  match outcome {
+    ProcessOutputPresent { text: t } =>
+      let lines = filter(split(s: trim(s: t), delimiter: "\n"), l => (trim(s: l) as String) != "")
+      let parsed = map(lines, l => release_pair_parse_run_line(line: l))
+      if any(parsed, p => match p { Absent => true  Present { value: _ } => false }) {
+        BuiltRunsRefused { reason: release_pair_run_list_malformed_reason }
+      } else {
+        BuiltRunsObserved { runs: flat_map(parsed, p => match p { Present { value: r } => [r]  Absent => [] }) }
+      }
+    ProcessOutputAbsent => BuiltRunsObserved { runs: [] }
+    ProcessRefused { exit_code: _, stderr: _ } => BuiltRunsRefused { reason: release_pair_run_discovery_refused_reason }
+  }
+}
+
+// THE SELECTION: the first SHA of the head's ancestry (newest first) that some observed run published a pack for.
+// It can never name a non-ancestor, because it only ever returns a SHA taken from the ancestry listing, and the
+// listing must start at the observed head. Pure, so the red controls run without a network.
+fn release_pair_select_built_ancestor(head: NonEmptyStr, ancestry: ReleasePairAncestry, built: ReleasePairBuiltRuns) -> ReleasePairRunLookup {
+  match ancestry {
+    AncestryRefused { reason } => RunLookupDiscoveryRefused { reason: reason }
+    AncestryObserved { shas } =>
+      match built {
+        BuiltRunsRefused { reason } => RunLookupDiscoveryRefused { reason: reason }
+        BuiltRunsObserved { runs } =>
+          match first(l: shas) {
+            Absent => RunLookupDiscoveryRefused { reason: release_pair_ancestry_unobserved_reason }
+            Present { value: tip } =>
+              if (tip as String) != (head as String) {
+                RunLookupDiscoveryRefused { reason: release_pair_ancestry_not_at_head_reason }
+              } else {
+                match first_where(xs: shas, keep: sha => any(runs, r => (r.head_sha as String) == sha)) {
+                  Absent => RunLookupNoBuiltAncestor
+                  Present { value: chosen } =>
+                    match first_where(xs: runs, keep: r => (r.head_sha as String) == chosen) {
+                      Absent => RunLookupNoBuiltAncestor
+                      Present { value: run } => RunLookupFound { run: run }
+                    }
+                }
+              }
+          }
+      }
+  }
+}
+
+// THE BUILD JOB'S CONCLUSION for the chosen run. Only the literal conclusion "success" admits; any other printed
+// conclusion (failure, cancelled, skipped, timed_out ...) is NotSucceeded, and no output or a failed read is
+// Unobservable. The pack is still build-key verified after this; this check is what keeps a half-built pack from
+// a failed or cancelled job out, which an artifact merely existing cannot.
+type ReleasePairBuildJob
+  = BuildJobSucceeded
+  | BuildJobNotSucceeded
+  | BuildJobUnobservable
+
+fn release_pair_decode_build_job(outcome: ProcessOutcome) -> ReleasePairBuildJob {
+  match outcome {
+    ProcessOutputPresent { text: t } =>
+      let c = trim(s: t) as String
+      if c == "success" {
+        BuildJobSucceeded
+      } else if c == "" {
+        BuildJobUnobservable
+      } else {
+        BuildJobNotSucceeded
+      }
+    ProcessOutputAbsent => BuildJobUnobservable
+    ProcessRefused { exit_code: _, stderr: _ } => BuildJobUnobservable
+  }
+}
+
+
+// THE SERVE MEMBER'S DIGEST AS THE PACK DECLARES IT. The manifest IS `sha256sum` output ("<hex>  <name>" per member,
+// written by the producer's pack statements), so the one line naming exactly the serve member is read with the
+// same parser the belt's member_observe uses (extdeps.crypto.hash::sha256sum_line_digest), admitted only as a valid
+// lower_hex_64. The lab consumer later proves the PROMOTED bytes match this manifest under --strict, so the digest
+// bound here is the digest of the file installed. A manifest that names the member zero or several times, or with a
+// non-hex digest, is a named refusal, never a false PackPresent.
+fn release_pair_manifest_line_names(line: String, member: String) -> Bool {
+  let parts = split(s: trim(s: line), delimiter: "  ")
+  if length(xs: parts) != 2 { false } else {
+    match last(l: parts) {
+      Present { value: name } => (name as String) == member
+      Absent => false
+    }
+  }
+}
+
+fn release_pair_manifest_member_line(manifest: String, member: String) -> String? {
+  let hits = filter(xs: split(s: manifest, delimiter: "\n"), predicate: l => release_pair_manifest_line_names(line: l, member: member))
+  if length(xs: hits) != 1 { none } else { first(l: hits) }
+}
+
+fn release_pair_pack_digest_bound(manifest_read: FilesystemReadOutcome, pack_dir: String, member_src: String) -> PackFetch {
+  match manifest_read {
+    FilesystemReadRefused { error: _ } => PackAbsent { reason: release_pair_manifest_unreadable_reason }
+    FilesystemReadSucceeded { content: m } =>
+      match release_pair_manifest_member_line(manifest: m, member: gunbc_release_bin_name) {
+        Absent => PackAbsent { reason: release_pair_manifest_member_missing_reason }
+        Present { value: line } =>
+          match sha256sum_line_digest(line: line) {
+            Present { value: dg } => PackPresent {
+              sha256: dg.hex,
+              pack_dir: pack_dir as NonEmptyStr,
+              binary_source: member_src as NonEmptyStr,
+            }
+            none => PackAbsent { reason: release_pair_digest_unreadable_reason }
+          }
+      }
   }
 }
 
 // THE FETCH OBSERVATION: a pack the executing host OBSERVED. Present only when the download ran (exit 0 — `gh run
-// download` is silent on success — or present stdout) AND the digest leg OBSERVED a valid hex; a refused download is
-// a named PackAbsent, never a falsely-bound PackPresent. dir and serve-member source are the entry's OBSERVED values.
+// download` is silent on success — or present stdout) AND its manifest declares a valid digest for the serve member;
+// a refused download is a named PackAbsent, never a falsely-bound PackPresent. member_src is where the lab consumer
+// promotes the verified member (release_pair_incoming_serve_source); nothing is read from the archive in place.
 fn release_pair_pack_fetch(
   fetch_outcome: ProcessOutcome,
-  digest_outcome: ProcessOutcome,
+  manifest_read: FilesystemReadOutcome,
   pack_dir: String,
   member_src: String,
 ) -> PackFetch {
   match fetch_outcome {
     ProcessRefused { exit_code: _, stderr: _ } => PackAbsent { reason: release_pair_fetch_refused_reason }
-    ProcessOutputAbsent => release_pair_pack_digest_bound(digest_outcome: digest_outcome, pack_dir: pack_dir, member_src: member_src)
-    ProcessOutputPresent { text: _ } => release_pair_pack_digest_bound(digest_outcome: digest_outcome, pack_dir: pack_dir, member_src: member_src)
+    ProcessOutputAbsent => release_pair_pack_digest_bound(manifest_read: manifest_read, pack_dir: pack_dir, member_src: member_src)
+    ProcessOutputPresent { text: _ } => release_pair_pack_digest_bound(manifest_read: manifest_read, pack_dir: pack_dir, member_src: member_src)
   }
 }
 
-// THE BUILD-KEY VERDICT OBSERVED on that fetched pack: VerifiedOn(pack_dir) only when the consumer build-key check
-// ran clean (exit 0); Refused with a named reason otherwise. The pack_dir named here is the SAME directory the entry
-// observed the fetch wrote into; release_pair_install_plan then refuses unless verify and fetch name the same pack
-// (the typed same-pack_dir comparison), so a verdict for a different directory cannot authorize an install.
-// THE CONSUMER KEY CHECK IS A MULTI-STATEMENT POSIX PROGRAM, not a single argv (review 96241 finding 2).
-// release_pair_verify_dispatch yields the fleet pack's consumer key-check PROGRAM — `[ -n "$RELEASE_BINS_KEY" ]`,
-// a `-f` guard per downloaded member, a digest compute-and-compare, and a `grep -qxF` source-closure check — built
-// from a typed shell AST in gunbc.fleet.fleet_release_bins_key and rendered by release_bins_script_text. It is a
-// genuine multi-statement program with control flow and shell variables, so it CANNOT collapse to one sealed
-// ArgvCommand (a program plus a fixed argv): the medium must be a shell. The restart was the case where systemctl
-// already modelled the effect as an argv and running it via sh was wrong; THIS is the reviewer's declared-scaffold
-// case — kept as a declared row (below), not a bare comment, so the debt is on the ledger with a dissolution trigger.
+// THE LAB ADMISSION VERDICT OBSERVED on that fetched pack: VerifiedOn(pack_dir, source_dir) only when the lab consumer
+// ran and exited 0; otherwise Refused, naming the refusal the consumer itself printed (its `::error title=release-bins
+// <Name>::` line, gunbc.fleet.fleet_release_bins_key refuse), so a tampered member, a pack keyed on another tree and
+// a pack missing a member refuse with three different reasons. The pack_dir and source_dir named here are the values
+// the entry ran the consumer on; release_pair_install_plan refuses unless they are the pack the fetch observed and
+// the source dir of the observed source head.
+// THE LAB CONSUMER IS A MULTI-STATEMENT BASH PROGRAM, not a single argv (review 96241 finding 2): file guards, a
+// kind and source-closure check, listing/manifest/member checks and the promotion, with control flow and shell
+// variables, so it cannot collapse to one sealed ArgvCommand. It is emitted from bash grammar Nodes through
+// v2.workflow.bash_emit and runs under bash (not sh: the emitter's grammar is Bash), kept as a declared row (below).
 // Admitted as declared scaffolding by operator ruling #gunbc.design_ruling::pair_delivery_shell_as_medium_steps_admitted (RULED 2026-11-18).
 data release_pair_verify_shell_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -273,25 +429,74 @@ data release_pair_verify_shell_scaffold: Disposition = Scaffold {
   }
 }
 
-data release_pair_verify_shell_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: release_pair_verify_dispatch ships the fleet consumer key-check as a rendered sh -c program; the CLI runs it via posix_sh_program_command. It stays a genuine multi-statement shell program today (test guards, a digest compute-and-compare, a grep -qxF closure check, shell variables). DISSOLVES WHEN the consumer key-check is modeled as Bash grammar Nodes emitted through v2.workflow.bash_emit bash_emit_program (or a typed host-effect realization), so no hand-authored medium-as-string program remains in the pair-delivery verify path and the dispatch yields a typed program rather than a script String.")
+data release_pair_verify_shell_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: release_pair_verify_dispatch ships the lab consumer as a rendered bash program String (emitted from bash grammar Nodes by gunbc.fleet.fleet_release_bins_key release_bins_lab_consumer_statements); the CLI runs it via bash_program_command. DISSOLVES WHEN the dispatch yields a typed program (a sealed TransportScript or a typed host-effect realization) rather than a script String, so no medium-as-string program remains in the pair-delivery verify path.")
 
-fn release_pair_pack_verify(verify_outcome: ProcessOutcome, pack_dir: String) -> PackVerify {
-  match verify_outcome {
-    ProcessOutputPresent { text: _ } => VerifiedOn { pack_dir: pack_dir as NonEmptyStr }
-    ProcessOutputAbsent => VerifiedOn { pack_dir: pack_dir as NonEmptyStr }
-    ProcessRefused { exit_code: _, stderr: _ } => Refused { reason: release_pair_verdict_refused_reason }
+// The refusal the lab consumer NAMED on stdout, if any: the text between "title=release-bins " and the next "::".
+fn release_pair_lab_refusal_name(stdout: String) -> String? {
+  let after = split(s: stdout, delimiter: "title=release-bins ")
+  if length(xs: after) < 2 { none } else {
+    match first(l: skip(xs: after, n: 1)) {
+      Absent => none
+      Present { value: rest } =>
+        match first(l: split(s: rest, delimiter: "::")) {
+          Absent => none
+          Present { value: name } => if (name as String) == "" { none } else { Present { value: name } }
+        }
+    }
   }
+}
+
+fn release_pair_pack_verify(verify_run: ProcessRunOutcome, pack_dir: String, source_dir: String) -> PackVerify {
+  match verify_run {
+    ProcessNotSpawned { program: _, cause: _ } => Refused { reason: release_pair_verdict_not_run_reason }
+    ProcessRan { observation: o } =>
+      if o.exit_code == 0 {
+        VerifiedOn { pack_dir: pack_dir as NonEmptyStr, source_dir: source_dir as NonEmptyStr }
+      } else {
+        match release_pair_lab_refusal_name(stdout: o.stdout) {
+          Present { value: name } => Refused { reason: concat(release_pair_verdict_named_prefix, name) as NonEmptyStr }
+          Absent => Refused { reason: release_pair_verdict_refused_reason }
+        }
+      }
+  }
+}
+
+// STAGE 2 ON THE PLACED SOURCE, THEN STAGE 3. The lab consumer admits the fetched pack against the source tree just
+// placed (or reused) for the observed source head, so the pack's source closure is checked against the very tree
+// installed beside it, and only then is the install planned. Both placement arms reach the install through here.
+fn release_pair_admit_and_plan(base_root: String, serving: ReleaseRevisionBinding, target: CommitSha, source_head: CommitSha, fetch: PackFetch, pack_dir: String, serve_unit: NonEmptyStr) -> DeliveryPlan {
+  let source_dir = release_pair_source_dir(base_root: base_root, revision: source_head)
+  let verify = match release_pair_verify_dispatch(fetch: fetch, source_dir: source_dir) {
+    Present { value: script } =>
+      release_pair_pack_verify(
+        verify_run: run_shell_command_observe_outcome(command: bash_program_command(script: script), transport: LocalExec),
+        pack_dir: pack_dir,
+        source_dir: source_dir,
+      )
+    none => Refused { reason: release_pair_verdict_refused_reason }
+  }
+  release_pair_install_plan(
+    base_root: base_root,
+    serving: serving,
+    main_head: target,
+    source_head: source_head,
+    fetch: fetch,
+    verify: verify,
+    serve_unit: serve_unit,
+  )
 }
 
 // ── the effectful entry: THE executing consumer of the dry plan ──────────────────────────────────────────────────
 // The consumer the fold's plan was written for. It OBSERVES every stage through the admitted command seam and hands
 // each OBSERVED ProcessOutcome to the decode fns above — no stage is handed its predecessor's result as an input it
 // did not observe. It (1) observes origin/main's head (what to DEPLOY) via the cataloged gh program, (2) discovers the
-// fleet-converge run for THAT head, (3) downloads its release-bins pack, (4) digests the fetched serve member, then
-// (5) runs the consumer build-key check ON the fetched pack, and only then asks release_pair_install_plan for the
-// ordered install (which folds the pair and either places+restarts or keeps the last good). The two discovery legs
+// fleet-converge run for THAT head, (3) downloads its release-bins pack and reads the serve member's digest from the
+// pack's own manifest, (4) places the target's source tree, (5) runs the lab consumer ON the fetched pack against
+// that placed tree (kind, source closure, listing, every member digest; then it promotes the verified members), and
+// only then asks release_pair_install_plan for the ordered install (which folds the pair and either places+restarts
+// or keeps the last good). The two discovery legs
 // that yield nothing are typed outcomes — a benign PlanWaits ONLY when there is genuinely nothing to deliver yet:
-// no successful run for the head (RunLookupNoneForHead, review 96214) or the pair is already at head (review 96219),
+// no built ancestor of the head (RunLookupNoBuiltAncestor, review 96214) or the pair is already at head (review 96219),
 // never a guess. A fetch/digest failure AFTER a run was found is a REFUSAL (PlanKeepsLastGood, red), not a wait
 // (review 96234: gh auth expired / disk full must not keep the timer green). Whether a tick
 // exits green (a wait) or red (a refusal) follows from the DeliveryPlan VARIANT (PlanWaits vs PlanKeepsLastGood),
@@ -314,25 +519,48 @@ fn release_pair_deliver_run(base_root: String, serving: ReleaseRevisionBinding, 
       // means the head is new (or the tree is not installed), so the entry proceeds to discovery and the fetch. The
       // fold still checks source/binary drift on the ticks that DO fetch, so short-circuiting a healthy pair cannot
       // mask a real mismatch.
-      match release_pair_converged_noop(serving: serving, head: main_head) {
+      match release_pair_converged_noop(serving: serving, head: main_head, reason: release_pair_already_at_head_reason) {
         Present { value: noop } => noop
         none => {
-      let run_outcome = run_shell_command_capture(
-        command: gh_release_bins_run_list_command(
-          repo: gunbc_repository_slug as String,
-          workflow: artifact_location(a: FleetConvergeYamlArtifact).name,
-          commit: main_head as String,
+      let ancestry_outcome = run_shell_command_capture(
+        command: gh_commit_ancestry_command(api_path: release_pair_ancestry_api_path(slug: gunbc_repository_slug, head: main_head)),
+        transport: LocalExec,
+      )
+      let built_outcome = run_shell_command_capture(
+        command: gh_branch_artifact_runs_command(
+          api_path: release_pair_built_runs_api_path(slug: gunbc_repository_slug),
+          branch: release_pair_tracked_branch as String,
         ),
         transport: LocalExec,
       )
-      match release_pair_decode_run(outcome: run_outcome) {
+      match release_pair_select_built_ancestor(
+        head: main_head,
+        ancestry: release_pair_decode_ancestry(outcome: ancestry_outcome),
+        built: release_pair_decode_built_runs(outcome: built_outcome),
+      ) {
         RunLookupDiscoveryRefused { reason } => PlanKeepsLastGood { kept: serving, reason: reason }
-        // Nothing to deliver yet is a BENIGN WAIT (review 96214), not a refusal: no successful release-bins run
-        // exists for the head (CI still building), so keep serving and retry green next tick.
-        RunLookupNoneForHead => PlanWaits { kept: serving, reason: release_pair_no_run_for_head_reason }
+        // Nothing built inside the window yet is a BENIGN WAIT (review 96214), not a refusal: keep serving, retry.
+        RunLookupNoBuiltAncestor => PlanWaits { kept: serving, reason: release_pair_no_built_ancestor_reason }
         RunLookupFound { run } =>
-          let pack_dir = release_pair_incoming_pack_dir(base_root: base_root, revision: main_head as String)
-          let member_src = release_pair_incoming_serve_source(base_root: base_root, revision: main_head as String)
+          match release_pair_converged_noop(serving: serving, head: run.head_sha, reason: release_pair_at_newest_built_ancestor_reason) {
+            Present { value: noop } => noop
+            none => {
+          match release_pair_decode_build_job(
+            outcome: run_shell_command_capture(
+              command: gh_run_job_conclusion_command(
+                api_path: release_pair_run_jobs_api_path(slug: gunbc_repository_slug, run_id: run.run_id),
+                job: fleet_converge_release_bins_job_id as String,
+              ),
+              transport: LocalExec,
+            ),
+          ) {
+            BuildJobUnobservable => PlanKeepsLastGood { kept: serving, reason: release_pair_build_job_unobservable_reason }
+            BuildJobNotSucceeded => PlanWaits { kept: serving, reason: release_pair_build_job_not_succeeded_reason }
+            BuildJobSucceeded => {
+          // THE DELIVERY TARGET is the chosen ancestor, not the head: every leg below places and verifies it.
+          let target = run.head_sha
+          let pack_dir = release_pair_incoming_pack_dir(base_root: base_root, revision: target as String)
+          let member_src = release_pair_incoming_serve_source(base_root: base_root, revision: target as String)
           let fetch_outcome = run_shell_command_capture(
             command: gh_run_download_command(
               run_id: run.run_id as String,
@@ -342,30 +570,15 @@ fn release_pair_deliver_run(base_root: String, serving: ReleaseRevisionBinding, 
             ),
             transport: LocalExec,
           )
-          let digest_outcome = run_shell_command_capture(
-            command: sha256sum_file_command(path: member_src),
-            transport: LocalExec,
-          )
+          let manifest = Filesystem.Read(path: join([pack_dir, "/", release_bins_manifest_name], ""))
           let fetch = release_pair_pack_fetch(
             fetch_outcome: fetch_outcome,
-            digest_outcome: digest_outcome,
+            manifest_read: filesystem_read_outcome(content: manifest.content, success: manifest.success, error: manifest.error),
             pack_dir: pack_dir,
             member_src: member_src,
           )
-          let verify = match release_pair_verify_dispatch(fetch: fetch) {
-            // The consumer key-check is a genuine multi-statement sh program (test guards + digest compare + grep -qxF
-            // closure check), so it runs under posix_sh; that is a DECLARED scaffold with a dissolution trigger, not
-            // an ad-hoc shell — see release_pair_verify_shell_scaffold / release_pair_verify_shell_dissolution_trigger.
-            Present { value: script } =>
-              release_pair_pack_verify(
-                verify_outcome: run_shell_command_capture(
-                  command: posix_sh_program_command(script: script),
-                  transport: LocalExec,
-                ),
-                pack_dir: pack_dir,
-              )
-            none => Refused { reason: release_pair_verdict_refused_reason }
-          }
+          // The lab admission (stage 2) runs once the source tree for the target is placed, so it can check the pack's
+          // source closure against that tree: see release_pair_admit_and_plan, reached from both placement arms below.
           // SOURCE-SIDE F1 (item-2) + idempotent placement (review 96353): the delivered source head is the head
           // OBSERVED from a tree placed from the DEDICATED DELIVERY CLONE (<base_root>/delivery-repo), NEVER the gh head
           // query and NEVER /opt/gunbc/gunbc. First probe that the clone is seeded (seeding is a deploy step under the
@@ -374,7 +587,7 @@ fn release_pair_deliver_run(base_root: String, serving: ReleaseRevisionBinding, 
           // OTHER head => REFUSE (never remove or overwrite it silently); absent => fetch + worktree-add, then OBSERVE the
           // placed tree. 'unobservable' is reserved for the observe step; every placement condition carries its own reason.
           let delivery_repo = release_pair_delivery_repo_dir(base_root: base_root)
-          let source_dir = join([release_locus_dir(root: base_root, revision: RevisionBoundAtEmission { revision: main_head as CommitSha }), "/source"], "")
+          let source_dir = release_pair_source_dir(base_root: base_root, revision: target as CommitSha)
           // Is the dedicated delivery clone seeded? git itself answers; only a ProcessOutputPresent (a printed head) counts,
           // never a wildcard (review 96360). Any other ProcessOutcome is "not seeded / not readable" -> PlacementCloneMissing.
           let clone_present = release_pair_delivery_clone_present(
@@ -396,7 +609,7 @@ fn release_pair_deliver_run(base_root: String, serving: ReleaseRevisionBinding, 
                   target: fleet_locus_ssh_target(host: host_identity as HostIdentity),
                   repo: source_dir as NonEmptyStr,
                 ),
-                requested: main_head as CommitSha,
+                requested: target as CommitSha,
               ) {
                 // The delivery clone is absent. Seeding it is a deploy step under the operator gate -- NEVER bootstrap it
                 // here. Its own typed refusal, distinct from 'unobservable' (review 96353).
@@ -405,13 +618,13 @@ fn release_pair_deliver_run(base_root: String, serving: ReleaseRevisionBinding, 
                 // Already placed at the requested head: REUSE it -- no fetch, no add. A re-run after any later-leg failure
                 // lands here again, so placement is idempotent and never a clobber.
                 PlacementReuse { revision: source_head } =>
-                  release_pair_install_plan(
+                  release_pair_admit_and_plan(
                     base_root: base_root,
                     serving: serving,
-                    main_head: run.head_sha as CommitSha,
+                    target: target as CommitSha,
                     source_head: source_head,
                     fetch: fetch,
-                    verify: verify,
+                    pack_dir: pack_dir,
                     serve_unit: serve_unit,
                   )
                 // A placed tree on a DIFFERENT head: REFUSE. Never remove or overwrite it silently (review 96353).
@@ -428,11 +641,11 @@ fn release_pair_deliver_run(base_root: String, serving: ReleaseRevisionBinding, 
                       command: git_fetch_shallow_revision_command(
                         repository_dir: delivery_repo,
                         remote: "origin",
-                        revision: main_head as String,
+                        revision: target as String,
                       ),
                       transport: LocalExec,
                     ),
-                    rev: main_head as String,
+                    rev: target as String,
                   ) {
                     ActionRefused { reason: why } =>
                       PlanKeepsLastGood { kept: serving, reason: why }
@@ -443,7 +656,7 @@ fn release_pair_deliver_run(base_root: String, serving: ReleaseRevisionBinding, 
                           command: git_worktree_add_detached_command(
                             repository_dir: delivery_repo,
                             path: source_dir,
-                            revision: main_head as String,
+                            revision: target as String,
                           ),
                           transport: LocalExec,
                         ),
@@ -458,18 +671,18 @@ fn release_pair_deliver_run(base_root: String, serving: ReleaseRevisionBinding, 
                               target: fleet_locus_ssh_target(host: host_identity as HostIdentity),
                               repo: source_dir as NonEmptyStr,
                             ),
-                            requested: main_head as CommitSha,
+                            requested: target as CommitSha,
                           ) {
                             SourceHeadRefused { reason: reason } =>
                               PlanKeepsLastGood { kept: serving, reason: reason }
                             SourceHeadObserved { revision: source_head } =>
-                              release_pair_install_plan(
+                              release_pair_admit_and_plan(
                                 base_root: base_root,
                                 serving: serving,
-                                main_head: run.head_sha as CommitSha,
+                                target: target as CommitSha,
                                 source_head: source_head,
                                 fetch: fetch,
-                                verify: verify,
+                                pack_dir: pack_dir,
                                 serve_unit: serve_unit,
                               )
                           }
@@ -477,6 +690,10 @@ fn release_pair_deliver_run(base_root: String, serving: ReleaseRevisionBinding, 
                   }
                 }
               }
+          }
+            }
+          }
+            }
           }
       }
       }
@@ -546,7 +763,7 @@ fn release_pair_source_head_verdict(observed: DeployedTreeObservation, requested
 }
 
 // Idempotent placement decision (review 96353). Before the actuator adds anything it OBSERVES the target source tree
-// at <release_locus_dir(main_head)>/source, so a re-run after a later-leg failure REUSES an already-correct placement
+// at release_pair_source_dir(target), so a re-run after a later-leg failure REUSES an already-correct placement
 // rather than refusing, and a tree sitting on a DIFFERENT head is REFUSED (never silently clobbered or removed). Each
 // distinct condition is a distinct variant with a distinct reason: an unseeded delivery clone (seeding is a deploy step
 // under the operator gate -- never bootstrapped here), a placed tree already at the requested head (reuse, no add), a

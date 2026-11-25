@@ -1,0 +1,48 @@
+module gunbc.recurring_failure_mode.a_capacity_default_sized_for_one_workload_shape_inherited_by_another
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode, BelowCeiling, FoundBelowTheLadder, FoundOnRung, RungRead }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+import std.decl_ref { DeclarationRef }
+
+data a_capacity_default_sized_for_one_workload_shape_inherited_by_another: RecurringFailureMode = RecurringFailureMode {
+  // THE NUMBER WAS RIGHT FOR THE WORKLOAD IT WAS WRITTEN FOR, AND THE WORKLOAD CHANGED UNDER IT
+  // WITHOUT ANYTHING READING THE NUMBER. Nothing refused, because the shape never became invalid.
+
+  identity: "a_capacity_default_sized_for_one_workload_shape_inherited_by_another" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: StructurallyGuaranteed,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "the serving model states each cache capacity against the concurrent-agent population it serves rather than against a slot count -- the cache-times-slots relation gunbc.serving.serving_host_memory::serving_warm_sessions_within already declares, joined to the population a host actually serves -- and the placement that would exceed the declared capacity refuses instead of degrading, while the hit ratio a pass produces is carried as a typed observation that says whether the cache was adequate at all"
+    }
+  },
+
+  receipts: [
+    "**INVALID STATE: a capacity is declared as a COUNT OF SLOTS for a workload assumed to hold one occupant at a time, the host later carries several concurrent occupants, and nothing between the two reads the count again. The capacity is not wrong -- it is exceeded, and exceeding it is not an error state the shape can express. So the host keeps answering, more slowly, and the only artifact of the mismatch is a latency the reader attributes to the model or the network.**",
+
+    "FOUND: 2026-11-21, dan (operator_host_6ce85c, the host the fleet report of that date calls h11), from the printed counters a serving pass reported there. Strata's prefix cache takes a checkpoint count from `--prompt-cache`, whose default is six; four concurrent agents evict one another through six checkpoints and the pass reports three hits against fifty misses. Every miss is a re-prefill: about 32 s where a hit costs about 3 s. PROVENANCE, stated because the tree does not hold it: no launch record in either repository produced that pass. The only Strata engine whose command line gunbc carries is the serving benchmark's container, whose plan is gunbc.serving.strata_ada_pair_cell::srv3_strata_ada_pair_plan -- one cell, host srv3, not this host -- its flags are the typed gunbc.serving.serving_benchmark_cell_plan::ServingBenchmarkCellPlan engine_flags rendered by extdeps.strata.serve_flags::StrataServeFlags, and that record carries no prompt-cache field at all; this host's launched flags sit in the tree as borrowed standing, under the obligation to read the live units' ExecStart before quoting them (gunbc.serving.serving_replica_profile::srv_strata_profile_unread). So the six is the engine's own default and the counters are the relay's, not an instrument's -- and no row of the serving model carries a hit ratio, which is the finding rather than a detail of it.",
+
+    "WHY IT IS SILENT, and why below the ladder. A cache miss is a LEGAL answer: the response is correct, well-formed and late. There is no refusal to stand on, no exception to catch and no invalid value to reject -- the only trace is a ratio no instrument reads. This is the rung-below-the-ladder case gunbc.design_argument::epistemic_humility describes for measurements: the run was 'successful' at every point where success is judged, and the finding is that the work was 10x more expensive than it needed to be.",
+
+    "WHERE THE TREE ALREADY HALF-HAS THIS: gunbc.serving.serving_host_memory carries a serving engine's cache as BYTES and its slots as a COUNT side by side (srv4_serving_engine_memory: conversation_cache 16 GiB, conversation_slots 8), and gunbc.serving.turn_admission already has the refusal vocabulary a miss belongs in -- ResidencyUnread, GpuPrefixUnread, a turn refused because the prefix it needs is not resident rather than run cold. Neither row carries the prefix cache's checkpoint count, and no row anywhere carries a hit ratio, so the model can refuse a turn for missing residency while remaining mute about a cache configured to miss almost always.",
+
+    "THE SHAPE, NOT THE CASE: the count six was chosen for a single-user conversation cache -- roughly one checkpoint per concurrent conversation, sized for the operator using one host. The workload that inherited it is a fleet of coding agents, each holding a long shared prefix and turning over between tool calls, where the useful capacity scales with prefix bytes and agent count, not with conversations. The same inheritance applies to every Strata host that serves agents -- the report names srv3, srv4 and butch when it served -- and does NOT apply to srv1, whose prefix cache is LMCache with its own tuned configuration rather than that default.",
+
+    "THE NEARBY ROWS THAT ARE NOT THIS ROW: gunbc.recurring_failure_mode::a_gate_sized_for_the_largest_subject_refuses_every_smaller_one is a bound that refuses too much, and gunbc.recurring_failure_mode::benchmark_warm_capacity_violation_read_as_engine_performance is a working set over capacity whose violation is misread as throughput -- but that row is about a RECEIPT's standing in a selection, ceiling ambiguous, and it is the observation that is wrong. This row is the live face: the capacity is exceeded on a running host, nothing is misread, and nothing at all is said. It sits under the axis the report names caps-against-working-set, owned by gunbc.plans.desired_state_follows_the_machine, and the ceiling is shared with those rows -- the bound must be stated against what it bounds.",
+
+    "RECOGNITION RULE: for every capacity declared as a count of slots, checkpoints, sessions or per-occupant units, ask what workload shape that count was chosen for and what population the host carries now; if the answer to the second question is not read anywhere, the capacity is a guess with an owner who cannot tell when it stopped being true.",
+
+    "CEILING AND ITS TELL: StructurallyGuaranteed, because a capacity stated in the units the workload actually consumes (prefix bytes against resident cache bytes, per concurrent population) cannot be silently exceeded -- the placement either fits or refuses. The tell that the ceiling has NOT been reached: a host's serving pass reports its hit ratio, and a host whose ratio is under its declared floor is refused new placements rather than continuing to answer slowly.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.serving.serving_host_memory", decl_name: "srv4_serving_engine_memory", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.serving.serving_host_memory", decl_name: "serving_warm_sessions_within", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.serving.serving_replica_profile", decl_name: "srv_strata_profile_unread", field: WholeDeclaration },
+  ]
+}
