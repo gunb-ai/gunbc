@@ -3,11 +3,23 @@ module gunbc.machine_intake.arrival_interlock
 import std.types { NonEmptyStr, String }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.durable_compare_and_set { CasGeneration }
-import std.durable_exclusive_hold { DurableHoldOwnerRef, DurableHoldReleaseRef }
+import std.durable_exclusive_hold {
+  DurableHoldOwnerRef, DurableHoldReleaseRef,
+  DurableHoldHolderLiveness, HolderObservedLive, HolderObservedDead, HolderLivenessUnobservable
+}
+import std.optional { Present, Absent }
+import extdeps.github.workflow_runs { Completed, WorkflowRunStatus, workflow_run_status_wire_label }
+import extdeps.github.auth { github_rest }
+import extdeps.transports.rest { RestResult, RestAnswered, RestRefused, RestRefusal, rest_refusal_text }
+import gunbc.repository { gunbc_repository }
 import gunbc.durable_exclusive_hold_file_store {
   file_hold_acquire, file_hold_release_assess, file_hold_release_commit,
   FileHoldAcquireOutcome,
   FileHoldAcquired, FileHoldOccupied, FileHoldAcquireLost, FileHoldAcquireStoreUnavailable,
+  file_hold_recover_dead_holder,
+  FileHoldDeadHolderRecovered, FileHoldDeadHolderHolderLive, FileHoldDeadHolderHolderUnobservable,
+  FileHoldDeadHolderNotEligible, FileHoldDeadHolderReleaseLost,
+  FileHoldDeadHolderReleaseStoreUnavailable, FileHoldDeadHolderReleaseKeyNotAddressable,
   FileHoldSlotUndecodable, FileHoldKeyNotSlotAddressable,
   FileHoldReleasePlanned, FileHoldReleaseNotEligible,
   FileHoldReleased, FileHoldReleaseLost, FileHoldReleaseStoreUnavailable, FileHoldReleaseKeyNotSlotAddressable,
@@ -104,11 +116,223 @@ type ArrivalArchiveSlotRelease
   = ArrivalArchiveSlotReleased { generation: CasGeneration }
   | ArrivalArchiveSlotReleaseRefused { cause: NonEmptyStr }
 
-fn arrival_archive_slot_acquire(root: NonEmptyStr, subject: ArrivalSubjectAdmitted, owner: DurableHoldOwnerRef) -> ArrivalArchiveSlotAcquire {
+// ---- THE SLOT AN ABORTED ARRIVAL LEFT BEHIND, RECOVERED THROUGH THE MODEL ------------------
+//
+// A run that dies between the acquire and the release strands its slot: the normal release
+// (arrival_combine_prefix_and_release) runs only when the body returned a ProcessExit, so an
+// interpreter refusal, a cancelled job, or a lost runner leaves the slot held by a holder that no
+// longer exists, and the next arrival refuses at FileHoldOccupied forever. Nobody writes a free
+// generation by hand; the store owns that write, and this
+// root reaches it the way gunbc.host.managed_host_unit_hold does -- observe, prove dead, take the slot
+// with a release naming who did the proving, so the recovery sits on the durable ledger.
+//
+// WHAT IS OBSERVED. The holder of an arrival archive slot IS a workflow run: arrival_run's
+// arrival_converge_under_archive_interlock mints the owner as arrival/<host>/<run_id>. So the liveness
+// fact about an arrival holder is that RUN'S status, and no other fact may stand in for it. A process
+// identity deliberately does not: an arrival process on one srv1 runner slot and its successor on
+// another may not share a pid namespace, and /proc liveness could then read a LIVE holder as absent --
+// which is the forged-release path this whole design exists to close. That proof is owed elsewhere
+// before /proc is admitted here.
+//
+// HOW IT IS OBSERVED. The fold issues the read ITSELF, mid-fold, before the acquire and so before any BMC
+// leg: it calls the declared read-only GET /repos/{owner}/{repo}/actions/runs/{run_id} through
+// extdeps.github.auth::github_rest -- the same declared REST route every other GitHub read in this repo uses
+// -- and decodes the status from the operation's declared response type (WorkflowRun.status). This is the
+// same execute-the-op / decode-in-the-model split as gunbc.fleet.organization_runner_roster_read's
+// *_from_included decoders. The token is read in-process as a Secret from the declared auth source, never
+// interpolated into argv; an absent token is a typed refusal that this turns into Unobservable. The liveness
+// READER is injected explicitly through the acquire and the recovery (a required parameter, no default):
+// production (gunbc.machine_intake.arrival_run) passes arrival_holder_run_liveness -- the declared GET -- and a
+// wet claim pins that wiring; a test may pass a reader that returns a typed observation, which is how the
+// Recovered / Live / Unobservable arms are exercised without a network. Either way a holder's liveness is read
+// from the declared response type by extdeps.github.workflow_runs, not from a caller's free-form opinion, and
+// SelfHolder is decided purely from the run id the model read out of the holder the store wrote.
+
+// THE HOLDER IS arrival/<host>/<run_id>, and nothing else. A holder that does not decode to that exact
+// shape has no observable meaning, so it is never treated as dead: absence of evidence is not evidence
+// of death, it is absence.
+fn arrival_holder_run_id(subject: ArrivalSubjectAdmitted, holder: DurableHoldOwnerRef) -> String? {
+  let prefix = join(["arrival/", subject.host as String, "/"], "")
+  let raw = holder as String
+  let rest = substring(s: raw, start: string_length(s: prefix), end: string_length(s: raw))
+  if !starts_with(s: raw, prefix: prefix) || string_length(s: rest) == 0 {
+    Absent
+  } else {
+    Present { value: rest }
+  }
+}
+
+// STATUS IS THE WIRE FACT; THE MODEL DECIDES, and the deciding is split from the reading so each can be
+// answered on its own -- the same split as gunbc.fleet.organization_runner_roster_read's *_from_included
+// decoders. It takes the operation's DECLARED response vocabulary (WorkflowRunStatus), not a re-read of the
+// wire text, so there is exactly one decode on the production route: the declared op's own. Only a completed
+// run is dead: queued, in_progress, waiting, requested and pending all mean somebody may still be inside the
+// door. An ABSENT observation -- the read refused, so no status came back -- is unobservable, and unobservable
+// REFUSES; it never recovers.
+fn arrival_liveness_from_status(run_id: String, observed: WorkflowRunStatus?) -> DurableHoldHolderLiveness {
+  match observed {
+    Absent =>
+      HolderLivenessUnobservable {
+        cause: join(["no status could be observed for holder run ", run_id], "") as NonEmptyStr
+      }
+    Present { value: status } =>
+      match status {
+        Completed =>
+          HolderObservedDead { evidence: join(["workflow run ", run_id, " has completed"], "") as NonEmptyStr }
+        _ =>
+          HolderObservedLive {
+            evidence: join(["workflow run ", run_id, " is ", workflow_run_status_wire_label(status: status)], "") as NonEmptyStr
+          }
+      }
+  }
+}
+
+// THE READ THE FOLD ISSUES ITSELF, mid-fold, before the acquire and so before any BMC leg: the declared
+// read-only GET of the holder's own workflow run, through the same declared REST route every other GitHub
+// read in this repo uses. The token is not retyped or interpolated here -- extdeps.github.auth::github_token
+// reads the declared auth source's environment variable in-process and hands a Secret to the op's auth_input,
+// and it answers an ABSENT variable with a typed refusal that names the variable. An answered read hands the
+// operation's DECLARED status (WorkflowRun.status: WorkflowRunStatus) straight to the decision -- no re-read
+// of the wire text, so the op's decode is the only decode on this route. A refused read -- an absent or empty
+// token, a 401/403, a 404, a transport failure, or a status the op cannot decode -- hands the decision an
+// ABSENT observation. Both paths arrive at the SAME decision above, and none of them touches the controller.
+fn arrival_holder_run_liveness(run_id: String) -> DurableHoldHolderLiveness {
+  match github_rest(
+    call: token =>
+      github.WorkflowRuns.GetRun(
+        auth_token: token,
+        owner: gunbc_repository.owner,
+        repo: gunbc_repository.name,
+        run_id: run_id,
+      )
+  ) {
+    RestAnswered { answer: got } =>
+      arrival_liveness_from_status(run_id: run_id, observed: Present { value: got.run.status })
+    // A REFUSAL IS UNOBSERVABLE: an absent or empty token, a 401/403, a 404 for a run that never was, and a
+    // transport failure all refuse the read -- the decision gets no status at all -- and none of them may take
+    // the slot, and none of them touches the controller.
+    RestRefused { refusal: _ } => arrival_liveness_from_status(run_id: run_id, observed: Absent)
+  }
+}
+
+
+// THE RECOVERY'S OWN OUTCOME. The self-holder case is its own arm, not a live holder wearing a
+// different face: GitHub keeps the run id across a re-run attempt, so a re-run of a run that died
+// holding the slot would read its OWN id as in_progress and refuse forever. Saying "that is you" is a
+// different sentence from "somebody else is inside", and it is the one an operator needs.
+type ArrivalArchiveSlotRecovery
+  = ArrivalArchiveSlotRecovered { holder_run_id: String, evidence: NonEmptyStr }
+  | ArrivalArchiveSlotSelfHolder { holder_run_id: String }
+  | ArrivalArchiveSlotRecoveryRefused { cause: NonEmptyStr }
+
+// THE ARRIVAL ROOT'S HALF OF THE STORE'S ONE DEAD-HOLDER RECOVERY. It keeps only what is arrival's own:
+// which holders it can observe, what each refusal means to an arrival, and that no BMC leg has happened
+// yet -- every sentence here ends "controller untouched", because the acquire, and so any recovery,
+// precedes arrival_run_wet_after_hold and every controller contact in the door.
+fn arrival_archive_slot_recover_dead_holder(
+  root: NonEmptyStr,
+  subject: ArrivalSubjectAdmitted,
+  holder: DurableHoldOwnerRef,
+  generation: CasGeneration,
+  self_run_id: String,
+  live_reader: fn(String) -> DurableHoldHolderLiveness,
+) -> ArrivalArchiveSlotRecovery
+  admit_callers: [
+    decl_ref(module_path: "gunbc.machine_intake.arrival_interlock", decl_name: "arrival_archive_slot_acquire"),
+  ]
+{
+  match arrival_holder_run_id(subject: subject, holder: holder) {
+    Absent =>
+      ArrivalArchiveSlotRecoveryRefused {
+        cause: join([
+          "ARRIVAL ARCHIVE SLOT RECOVERY REFUSED: holder ", holder as String,
+          " is not arrival/", subject.host as String, "/<run_id>, so nothing about it is observable",
+          " -- controller untouched",
+        ], "") as NonEmptyStr
+      }
+    Present { value: run_id } =>
+      if run_id == self_run_id {
+        ArrivalArchiveSlotSelfHolder { holder_run_id: run_id }
+      } else {
+        match file_hold_recover_dead_holder(
+          root: root,
+          slot_key: arrival_slot_key(subject_wire: subject.wire),
+          holder: holder,
+          generation: generation,
+          released_by: join(["arrival-recovered-dead-holder:", holder as String], "") as DurableHoldReleaseRef,
+          live_owner: h => live_reader(run_id),
+        ) {
+          FileHoldDeadHolderRecovered { dead_holder: d, evidence: e } =>
+            ArrivalArchiveSlotRecovered { holder_run_id: run_id, evidence: e }
+          FileHoldDeadHolderHolderLive { holder: _, evidence: e } =>
+            ArrivalArchiveSlotRecoveryRefused {
+              cause: join(["ARRIVAL ARCHIVE SLOT RECOVERY REFUSED: ", e as String, " -- controller untouched"], "") as NonEmptyStr
+            }
+          FileHoldDeadHolderHolderUnobservable { holder: _, cause: c } =>
+            ArrivalArchiveSlotRecoveryRefused {
+              cause: join(["ARRIVAL ARCHIVE SLOT RECOVERY REFUSED: ", c as String, " -- controller untouched"], "") as NonEmptyStr
+            }
+          FileHoldDeadHolderNotEligible { refusal: _ } =>
+            ArrivalArchiveSlotRecoveryRefused {
+              cause: "ARRIVAL ARCHIVE SLOT RECOVERY REFUSED: the store found the slot not eligible to be recovered -- controller untouched" as NonEmptyStr
+            }
+          FileHoldDeadHolderReleaseLost =>
+            ArrivalArchiveSlotRecoveryRefused {
+              cause: "ARRIVAL ARCHIVE SLOT RECOVERY REFUSED: the recovery release was lost, the slot moved under it -- retry on a fresh transaction" as NonEmptyStr
+            }
+          FileHoldDeadHolderReleaseStoreUnavailable { cause: _ } =>
+            ArrivalArchiveSlotRecoveryRefused {
+              cause: "ARRIVAL ARCHIVE SLOT RECOVERY REFUSED: the hold store was unavailable -- controller untouched" as NonEmptyStr
+            }
+          FileHoldDeadHolderReleaseKeyNotAddressable =>
+            ArrivalArchiveSlotRecoveryRefused {
+              cause: "ARRIVAL ARCHIVE SLOT RECOVERY REFUSED: the hold store refused to address the slot key -- controller untouched" as NonEmptyStr
+            }
+        }
+      }
+  }
+}
+
+// AN ARRIVAL THAT FINDS ITS SLOT OCCUPIED FIRST ASKS WHO HOLDS IT. self_run_id is this job's own
+// GITHUB_RUN_ID, which the door already reads to mint the owner it asks for; it is what makes the
+// self-holder case tellable. Recovery is attempted ONCE, on the occupied arm only, and the acquire is
+// retried ONCE -- so a store that keeps refusing cannot be chewed by a loop, and the controller is
+// still untouched when any of this refuses.
+fn arrival_archive_slot_acquire(
+  root: NonEmptyStr,
+  subject: ArrivalSubjectAdmitted,
+  owner: DurableHoldOwnerRef,
+  self_run_id: String,
+  live_reader: fn(String) -> DurableHoldHolderLiveness,
+) -> ArrivalArchiveSlotAcquire {
   let key = arrival_slot_key(subject_wire: subject.wire)
   match file_hold_acquire(root: root, slot_key: key, requested_owner: owner) {
     FileHoldOccupied { slot_key: k, holder: h, generation: g } =>
-      ArrivalArchiveSlotAcquireRefused { cause: arrival_slot_acquire_refusal(outcome: FileHoldOccupied { slot_key: k, holder: h, generation: g }) }
+      match arrival_archive_slot_recover_dead_holder(
+        root: root, subject: subject, holder: h, generation: g, self_run_id: self_run_id, live_reader: live_reader,
+      ) {
+        ArrivalArchiveSlotRecovered { holder_run_id: _, evidence: _ } =>
+          match file_hold_acquire(root: root, slot_key: key, requested_owner: owner) {
+            FileHoldAcquired { slot_key: k2, owner: o2, generation: g2 } =>
+              ArrivalArchiveSlotAcquired {
+                held: ArrivalArchiveSlotHeld { subject: subject, slot_key: k2, owner: o2, generation: g2 },
+              }
+            _ =>
+              ArrivalArchiveSlotAcquireRefused {
+                cause: "ARRIVAL ARCHIVE SLOT ACQUIRE REFUSED: the dead holder was recovered through the model and the retry still refused -- retry on a fresh transaction" as NonEmptyStr
+              }
+          }
+        ArrivalArchiveSlotSelfHolder { holder_run_id: run_id } =>
+          ArrivalArchiveSlotAcquireRefused {
+            cause: join([
+              "ARRIVAL ARCHIVE SLOT ACQUIRE REFUSED: this very run (", run_id,
+              ") already holds the slot, and a re-run keeps its run id -- dispatch a fresh run to take it; ",
+              "this run cannot release and reacquire its own live hold, and controller untouched",
+            ], "") as NonEmptyStr
+          }
+        ArrivalArchiveSlotRecoveryRefused { cause: c } =>
+          ArrivalArchiveSlotAcquireRefused { cause: c }
+      }
     FileHoldAcquireLost { slot_key: k } =>
       ArrivalArchiveSlotAcquireRefused { cause: arrival_slot_acquire_refusal(outcome: FileHoldAcquireLost { slot_key: k }) }
     FileHoldAcquireStoreUnavailable { slot_key: k, cause: c } =>
