@@ -323,7 +323,7 @@ fn deployed_tree_leg_outcome_of(observed: RunArgvTransportOutcome) -> DeployedTr
   match observed {
     RunArgvTransportObserved { observed: o } =>
       DeployedTreeLegRan {
-        result: SshSessionExecResult { exit_code: o.exit_code, success: o.success, stdout: o.stdout, stderr: o.stderr },
+        result: SshSessionExecResult { exit_code: o.exit_code, success: o.success, stdout: o.stdout, stderr: o.stderr, wall_deadline_seconds: Absent },
       }
     RunArgvTransportRefused { reason: why } => DeployedTreeLegNotAttempted { reason: why }
   }
@@ -337,7 +337,7 @@ fn deployed_tree_leg_outcome_of_preserving(observed: HostEffectArgvOutcome) -> D
   match observed {
     HostEffectArgvObserved { observed: o } =>
       DeployedTreeLegRan {
-        result: SshSessionExecResult { exit_code: o.exit_code, success: o.success, stdout: o.stdout, stderr: o.stderr },
+        result: SshSessionExecResult { exit_code: o.exit_code, success: o.success, stdout: o.stdout, stderr: o.stderr, wall_deadline_seconds: Absent },
       }
     HostEffectArgvRefused { reason: why } => DeployedTreeLegNotAttempted { reason: why }
     HostEffectArgvOverran { deadline: d } => DeployedTreeLegOverran { deadline: d }

@@ -1,0 +1,39 @@
+module gunbc.audit_verdict
+
+import std.types { Bool, Int, NonEmptyStr }
+
+// THE ONE HOME of the audit-clause verdict algebra (gunbc.design_argument::single_authority — a second
+// place that independently decides the same thing is a fork; gunbc.design_argument::minimize_redundancy —
+// net concepts must not grow by re-invention). Audits record findings about obligations; the rungs an
+// obligation can stand on are ONE fact about ONE relation (what has been discharged, by what means), so
+// they are declared once here and imported by every audit: gunbc.materialization_kernel_closing_frontier_audit
+// and gunbc.factory_attempt_execution_on_fabric_audit both consume this module. An audit may add its own
+// ROW SHAPE (a FrontierClause, a FactoryAuditClause) and its own domain projections, but the verdict sum
+// and its rung algebra come from here.
+//
+// A Delivered verdict is a CLAIM ABOUT A WITNESS THAT WAS RUN — the witness_module / witness_fn fields
+// name the executing observation; authored data alone cannot lift a rung
+// (gunbc.design_argument::guarantee_ladder rung honesty, gunbc.design_argument::fail_closed: "Done means a
+// real consumer green by execution plus a discriminating input that goes red when the behavior is wrong").
+
+type ClauseVerdict
+  = NotDelivered { reason: NonEmptyStr }
+  | PartiallyDelivered { reason: NonEmptyStr, evidence: NonEmptyStr }
+  | Delivered { witness_module: NonEmptyStr, witness_fn: NonEmptyStr, evidence: NonEmptyStr }
+
+// The ONE exhaustive match on ClauseVerdict (gunbc.design_argument::single_authority — an undeclared sum
+// re-matched by a family of free predicates duplicates the same exhaustiveness fact at each call site).
+// Rungs: 0 NotDelivered, 1 PartiallyDelivered, 2 Delivered. Every rung question any audit asks derives
+// from this match alone.
+
+fn clause_verdict_rung(v: ClauseVerdict) -> Int {
+  match v {
+    NotDelivered { reason: _ } => 0
+    PartiallyDelivered { reason: _, evidence: _ } => 1
+    Delivered { witness_module: _, witness_fn: _, evidence: _ } => 2
+  }
+}
+
+fn clause_verdict_delivered(v: ClauseVerdict) -> Bool {
+  clause_verdict_rung(v: v) == 2
+}

@@ -3,7 +3,7 @@ module v2.test.claim.emit.typescript_produced_decl_emit
 import std.types { List }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.emit_produced { emit_produced_decl }
-import v2.compiler.parse { grammar_validate_for_parse, parse_production_tree }
+import v2.compiler.parse { grammar_validate_and_analyze, parse_production_tree }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag {
   dag_add_operator_node,
@@ -198,12 +198,12 @@ fn ts_produced_decl_parse(text: String) -> Outcome<ParseTree> {
   match tokenize(text: text, file: ^typescript_produced_decl_emit_fixture_file, rules: ts_fn_add_lex()) {
     Rejected { diagnostics: diagnostics } => Rejected { diagnostics: diagnostics }
     Accepted { value: stream, diagnostics: _ } =>
-      match grammar_validate_for_parse(root: grammar, at: at) {
+      match grammar_validate_and_analyze(root: grammar, at: at) {
         Rejected { diagnostics: diagnostics } => Rejected { diagnostics: diagnostics }
-        Accepted { value: validated, diagnostics: _ } =>
+        Accepted { value: modeled, diagnostics: _ } =>
           parse_production_tree(
             tokens: token_stream_remaining(stream: stream),
-            validated: validated,
+            modeled: modeled,
             production_name: grammar.start
           )
       }
