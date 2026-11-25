@@ -1,9 +1,6 @@
 module v2.test.claim.filesystem_effect_reach_wall
 
 import v2.compiler.effect_demand {
-  DemandRestatementRow,
-  AuthorizedRow,
-  NewRestatementRowRefused,
   FilesystemEffectSite,
   FilesystemEffectReach,
   FilesystemEffectCensusPopulation,
@@ -25,24 +22,50 @@ import v2.compiler.effect_demand {
   filesystem_wall_compile_gate_trigger,
   filesystem_effect_reach_census,
   filesystem_effect_direct_reach_wall_holds,
-  filesystem_effect_callee_matches_identity,
+  filesystem_effect_callee_matches_identity
+}
+// THE REAL ROSTER AND THE WALL ITSELF, from the module that owns the row identity, the roster and the
+// predicate (review 98562 finding 2: no second row type, no hand-written adapter, no restated
+// predicate -- gunbc.design_argument::single_authority). The witness exercises the real producer over
+// an executing route (gunbc.design_argument::consumption).
+import gunbc.demand_engine_restatement_follow_up {
+  demand_restatement_retained_fn_rows,
+  demand_restatement_authorized_roster,
+  DemandRestatementRowIdentity,
+  AuthorizedRow,
+  NewRestatementRowRefused,
+  demand_restatement_retained_identity,
+  demand_restatement_identity_eq,
   demand_restatement_row_verdict,
   demand_restatement_new_row_refusals,
   demand_restatement_wall_holds
 }
-// THE REAL ROSTER, not a hand-built stand-in: the restatement wall is run over the rows the census
-// actually retained, read from the module that carries them, so the witness exercises the real producer
-// (gunbc.design_argument::consumption -- "a witness asserting existence rather than exercising behavior"
-// is a tell of a dangling declaration).
-import gunbc.demand_engine_restatement_follow_up {
-  DemandRestatementRetainedRow,
-  demand_restatement_retained_fn_rows,
-  demand_restatement_retained_pattern_rows
+// THE ARRIVING PRODUCER FOR WALL 1: the same ingest, tokenize and parse authorities the compiler
+// itself runs -- NOT a second parser, and no roster field re-spelled here.
+import v2.compiler.source_root_eval { native_lane_census_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness }
+import v2.compiler.parse { parse_module }
+import v2.compiler.tokenize { tokenize_prepared }
+import v2.compiler.program_assembly { dag_prepared_lex }
+import v2.extdeps.languages.dag {
+  dag_language_model,
+  import_binding_rows_from_decl_node,
+  qualified_name_from_module_node
 }
-import std.algebra { Cons, Empty, length, string_contains }
-import std.types { Bool, List }
+import v2.std.namespace_alias { AliasBindingRow }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome, outcome_accepted }
+import std.algebra { Cons, Empty, fold_list, length, string_contains }
+import std.types { Bool, List, NonEmptyStr }
 import v2.std.text { String }
-import v2.std.node { symbol_intern_lexeme, TypeNode, Conj, node_synthetic }
+import v2.std.node {
+  Node,
+  node_subtree_nodes,
+  symbol_intern_lexeme,
+  symbol_lexeme,
+  TypeNode,
+  Conj,
+  node_synthetic
+}
 import v2.compiler.name_resolve { DeclPhase1Row, LocallyResolved }
 import v2.std.qualified_name {
   QualifiedName,
@@ -56,8 +79,10 @@ import v2.test.claim.compiler.operation_declaration_seam { read_seam_path }
 // "a new demand_restatement row refuses; an emitted closure reaching filesystem_read directly refuses
 // under the handler binding." THE RED IS THE ROW'S OWN REFUSAL, NOT MODULE ABSENCE: it is carried as a
 // RedProbe (v2 gunbc.roadmap.roadmap_status) on the durable branch
-// red-control/egress-effects-1-filesystem-provider, whose named break NEUTERS the refusal predicates in
-// v2.compiler.effect_demand (direct reaches pass through; an unauthorised restatement row passes through)
+// red-control/egress-effects-1-filesystem-provider, whose named break NEUTERS the refusal predicates
+// where they now live -- the direct-reach refusal in v2.compiler.effect_demand (direct reaches pass
+// through) and the restatement refusal in gunbc.demand_engine_restatement_follow_up (an unauthorised
+// restatement identity passes through)
 // with nothing else changed -- so the witness's refusal assertions FAIL there and PASS at the probe's
 // green base. Red_at, green_at, red_base and probe_ref are recorded with the executed pair in the PR
 // comment run link; until that run link exists these are DECLARED controls, not executed ones. (As base
@@ -208,7 +233,7 @@ test fn filesystem_compile_gate_trigger_names_the_two_self_host_sites() -> Bool 
   // TARGETS READ AS TYPED IDENTITIES (review 98447 finding 2 / gunbc.design_argument::single_authority):
   // QualifiedName equality against the SAME authority objects the census and the population use -- the
   // handler identity is the witness's own filesystem_handler_identity data, the module the census sites'
-  // module -- never string fields the witness string-matches. TYPED, NOT RESOLVED (Manager A, review
+  // module -- never string fields the witness string-matches. TYPED, NOT RESOLVED (review
   // 98447 re-ask): these comparisons make the check an identity comparison; nothing here resolves the
   // names against the corpus, so a corpus rename does NOT fail this leg while the fixture strings drift
   // together. The rename guard is the deferred resolve-against-real-phase-1-rows leg, owned by Manager
@@ -248,11 +273,12 @@ test fn filesystem_compile_gate_trigger_names_the_two_self_host_sites() -> Bool 
     && (filesystem_wall_compile_gate_trigger.migrate_to_bound_handler != filesystem_primitive_identity)
     && (filesystem_wall_compile_gate_trigger.gate_connects_when
       == ^self_host_direct_reaches_migrate_to_bound_handler)
-    // THE CAPABILITY IS NAMED, not just the consequence (gunbc.design_argument::guarantee_ladder; Manager
-    // B): the carrier holds Manager B's capability SENTENCE verbatim -- "emit_rust binds a native handler at
+    // THE CAPABILITY IS NAMED, not just the consequence (gunbc.design_argument::guarantee_ladder; ruled
+    // on this row, dag/gunbc/roadmap/roadmap_authority.dag first_slice): the carrier holds the ruled
+    // capability SENTENCE verbatim -- "emit_rust binds a native handler at
     // an ordinary-function entry" -- and the witness asserts THAT STRING, not a row id: a row id asserted
-    // here could be renamed under the trigger and leave it claiming to hold (B: "Not a row id, so it
-    // survives a rename"). The symbol handle and the consequence symbol are separate, so capability and
+    // here could be renamed under the trigger and leave it claiming to hold ("Not a row id, so it
+    // survives a rename", the reviewing lane's requirement). The symbol handle and the consequence symbol are separate, so capability and
     // consequence cannot collapse into one word.
     && (filesystem_wall_compile_gate_trigger.missing_capability
       == ^emit_side_native_filesystem_handler_binding_to_ordinary_function_entry)
@@ -277,7 +303,7 @@ test fn filesystem_compile_gate_trigger_names_the_two_self_host_sites() -> Bool 
     && (!string_contains(s: filesystem_wall_compile_gate_trigger.capability_text, pattern: "egress-effects-1"))
 }
 
-// THE NEWLY-ADDED-SITE CONTROL (Manager B's binding arm). This is NOT the planted-out-of-bounds arm: a
+// THE NEWLY-ADDED-SITE CONTROL (the establishing roadmap row's binding arm). This is NOT the planted-out-of-bounds arm: a
 // planted reach proves the wall catches what the producer emits; THIS proves the census notices a site
 // NOBODY has flagged before -- an extra direct reach appearing in a fresh module/declaration must surface as
 // exactly ONE NEW NAMED offender, and the two known self_host offenders must still be there. It is a
@@ -338,7 +364,7 @@ test fn filesystem_newly_added_site_surfaces_as_a_new_named_offender() -> Bool {
 }
 
 // =============================================================================================
-// FULL-IDENTITY DISCRIMINATION (Manager A blocking point c + warm-fox's false-negative hole)
+// FULL-IDENTITY DISCRIMINATION (review 98447 blocking point c, the emission lane's false-negative hole)
 // =============================================================================================
 // The producer keys a reach on the callee's WHOLE resolved QualifiedName, not its final segment. A
 // last-segment test would (1) refuse a HONYM declared elsewhere in its own module as if it were the free
@@ -348,7 +374,7 @@ test fn filesystem_newly_added_site_surfaces_as_a_new_named_offender() -> Bool {
 // The primitive identity is a SUPPLIED QualifiedName, not a hand-typed slug constant.
 
 // The free primitive's declared identity, sourced from the EXISTING AUTHORITY rather than retyped
-// (Manager A: "Source the identity from the existing authority, operation_declaration_seam.dag:66 ...
+// (the compiler lane: "Source the identity from the existing authority, operation_declaration_seam.dag:66 ...
 // import or reference that value, never a retyped string"). read_seam_path() returns the QualifiedName the
 // production resolver records for the read seam -- v2.std.live_read.filesystem_read -- so this fixture cannot
 // drift from what the resolve fold actually emits, and it names the module that DECLARES filesystem_read.
@@ -382,7 +408,7 @@ test fn filesystem_homonym_does_not_match() -> Bool {
 
 // GREEN (the hole closed): the wall keys on the RESOLVED identity, so the real primitive reached under a
 // renamed import (the same resolved authority path arriving again) matches, while a same-named declaration
-// in a DIFFERENT module does not -- the pair a last-segment slug test could not tell apart (warm-fox's
+// in a DIFFERENT module does not -- the pair a last-segment slug test could not tell apart (the emission lane's
 // false-negative hole plus A's false positive). The primitive side is the authority value, so it is the real
 // spelling both sides carry.
 test fn filesystem_renamed_import_still_matches_the_primitive_identity() -> Bool {
@@ -487,7 +513,7 @@ test fn filesystem_mixed_reach_refuses_only_the_direct_one() -> Bool {
 
 // =============================================================================================
 // THE DERIVED POPULATION -- reaches pulled out of the phase-1 rows the resolver's fold PRODUCES, not
-// typed by hand in the test (review 98184 finding 1; Manager A condition 2; DESIGN consumption and
+// typed by hand in the test (review 98184 finding 1; review 98447 condition 2; DESIGN consumption and
 // witness_one_interface: the inhabittance claim is over what the REAL producer emits)
 // =============================================================================================
 // filesystem_effect_reaches_from_phase1_rows maps the SAME list name_resolve's phase-1 fold built
@@ -636,7 +662,7 @@ test fn filesystem_derived_population_breaks_the_wall() -> Bool {
   ! filesystem_effect_direct_reach_wall_holds(report: filesystem_derived_census_report)
 }
 
-// THE CENSUS LOG PRINTS THE CONTRACT BESIDE THE REFUSED COUNT, PRINTS THE CONTRACT TRAVERSAL (warm-fox
+// THE CENSUS LOG PRINTS THE CONTRACT BESIDE THE REFUSED COUNT, PRINTS THE CONTRACT TRAVERSAL (the emission-lane
 // condition 1), AND NAMES EACH OFFENDER SITE. The asserted substrings cannot be echoed from an input: no
 // row input contains "offender ", "debt_site ", the "#" joiner, or "refused=" -- the log fn ASSEMBLES those
 // lines from the census and the typed contract. (The test NAME keeps the old "bound" word only because the
@@ -668,13 +694,13 @@ test fn filesystem_census_log_names_refused_count_bound_and_three_sites() -> Boo
 }
 
 // =============================================================================================
-// THE DEBT CONTRACT (review 98447 finding 1, Manager B formulation): a MONOTONE IDENTITY-GRAIN JOIN,
+// THE DEBT CONTRACT (review 98447 finding 1, formulated by the lane): a MONOTONE IDENTITY-GRAIN JOIN,
 // exercised in BOTH refusal directions on fixture input plus a green control. No number here is copied
-// from a tree; every count is derived by the run that claims it. FIXTURE-EXERCISED ONLY (Manager A,
+// from a tree; every count is derived by the run that claims it. FIXTURE-EXERCISED ONLY (review 98447 re-ask,
 // review 98447 re-ask): the reaches below come from derived_row fixtures, so these legs prove the join
 // PREDICATES fire on planted input -- they cannot catch a corpus rename (contract and fixture drift
 // together). The real-reach observation is the two scratch probe trees run outside this witness (the
-// census run itself refuses), and the real-closure join leg is deferred to Manager B's establishing
+// census run itself refuses), and the real-closure join leg is deferred to the establishing roadmap row's
 // roadmap row for this instrument.
 // =============================================================================================
 
@@ -707,7 +733,7 @@ test fn filesystem_contract_census_joins_and_refuses_all_four() -> Bool {
     && (!filesystem_effect_direct_reach_wall_holds(report: report))
 }
 
-// RED DIRECTION (a) -- UNKNOWN REACH (Manager B's required arm): a fifth direct reach at a site that is
+// RED DIRECTION (a) -- UNKNOWN REACH (the establishing roadmap row's required arm): a fifth direct reach at a site that is
 // NOT a contract member must break the join by name while the four known ones stay located. The wall
 // alone would already refuse this (fail_closed); the join is what proves the CONTRACT bites.
 test fn filesystem_contract_join_refuses_unknown_reach() -> Bool {
@@ -721,7 +747,7 @@ test fn filesystem_contract_join_refuses_unknown_reach() -> Bool {
     && (!filesystem_effect_debt_join_holds(reaches: report.reaches))
 }
 
-// RED DIRECTION (b) -- CENSUS INCOMPLETE (Manager B's required arm): every reach present is a contract
+// RED DIRECTION (b) -- CENSUS INCOMPLETE (the establishing roadmap row's required arm): every reach present is a contract
 // member, but one member is not reached at all. A join that only checked "reaches within contract"
 // would GREEN this -- the completeness direction refuses it: a census that never sees a contracted debt
 // is blind, not clean.
@@ -737,7 +763,7 @@ test fn filesystem_contract_join_refuses_unreached_member() -> Bool {
     && (!filesystem_effect_debt_join_holds(reaches: report.reaches))
 }
 
-// UNIQUE GRAIN (warm-fox condition 3): four members, four DISTINCT identity strings -- a collision
+// UNIQUE GRAIN (the emission-lane condition 3): four members, four DISTINCT identity strings -- a collision
 // cannot hide a three-member contract behind four entries. The route that owns each identity is the
 // DIRECT reach (the instrument face on filesystem_effect_direct_reach_debt_contract says so).
 test fn filesystem_contract_identity_grain_is_duplicate_free() -> Bool {
@@ -746,57 +772,212 @@ test fn filesystem_contract_identity_grain_is_duplicate_free() -> Bool {
 }
 
 // =============================================================================================
-// WALL 1 -- new demand_restatement row
+// WALL 1 -- new demand_restatement row. THE WALL'S PREDICATE LIVES IN gunbc.demand_engine_restatement_
+// follow_up (the module that owns the row identity and the roster); THIS witness imports it. THE TWO
+// SIDES OF EVERY ASSERTION BELOW COME FROM DIFFERENT PRODUCERS, named on their face: the ROSTER side is
+// demand_restatement_authorized_roster (the follow-up module's retained data, projected through the
+// module's own single bridge), and the ARRIVING side is corpus_restatement_arriving -- the real tree,
+// enumerated by native_lane_census_ingest, each witness tokenized and parsed by the real parse route,
+// and its uses clauses read off the parse nodes with the authored type resolved through the module's
+// own import binding rows. The arriving side is NEVER built from the roster, and the roster side is
+// never built from the arriving side (review 98562 finding 1; gunbc.design_argument::guarantee_ladder:
+// a check whose forbidden state is expressible nowhere it runs is a decoration). The forbidden state IS
+// expressible here: author a new `uses` row anywhere under dag/, src/v1 or src/v2 and the hold arm goes
+// red by naming it; delete a retained row's uses clause and the blindness arm goes red by naming it.
 // =============================================================================================
 
-// Map a REAL retained row (NonEmptyStr fields + a trigger) down to the wall's row identity.
-fn restatement_row_of(retained: DemandRestatementRetainedRow) -> DemandRestatementRow {
-  DemandRestatementRow {
-    module_path: retained.module_path as String,
-    declaration: retained.declaration as String,
-    alias: retained.alias as String,
-    authored_type: retained.authored_type as String
+// THE ARRIVING PRODUCER: parse the corpus, read the uses clauses. A `uses` entry parses to a node
+// carrying alias in `name` and the authored type as its single child (the v1 parser's
+// make_resource_use_node puts the resource node in children -- read from that carrier, not restated),
+// hung on the fn/pattern declaration node's `uses` field (the v1 parser reads the `uses` keyword at its
+// parse_uses_clause).
+// The short authored names (fn rows: `uses net: Network`) are resolved through the module's OWN import
+// binding rows (v2.extdeps.languages.dag import_binding_rows_from_decl_node, the resolver's reader --
+// `import std.resources { Network }` binds Network to std.resources.Network); fully-qualified authored
+// names (pattern rows: `uses net: std.resources.Network`) pass through unchanged. NO second parser, NO
+// re-spelling of any roster field lives here.
+fn corpus_import_bindings(module_root: Node) -> List<AliasBindingRow> {
+  fold_list(
+    xs: node_subtree_nodes(root: module_root),
+    empty: [],
+    cons: fn(acc, node) {
+      match import_binding_rows_from_decl_node(decl: node, module_root: module_root) {
+        Accepted { value: rows, diagnostics: _ } => concat(acc, rows)
+        Rejected { diagnostics: _ } => acc
+      }
+    }
+  )
+}
+
+fn corpus_resolved_authored_type(type_text: String, bindings: List<AliasBindingRow>) -> String {
+  fold_list(
+    xs: bindings,
+    empty: type_text,
+    cons: fn(acc, row) {
+      if acc != type_text {
+        acc
+      } else {
+        if symbol_lexeme(sym: row.binding) == type_text {
+          qualified_name_to_dotted_string(qn: row.target)
+        } else {
+          acc
+        }
+      }
+    }
+  )
+}
+
+fn corpus_rows_for_witness(w: DagSourceReadWitness) -> Outcome<List<DemandRestatementRowIdentity>> {
+  let lm = dag_language_model()
+  bind_outcome(
+    o: tokenize_prepared(text: w.source.carried, file: w.compilation_unit, prepared: dag_prepared_lex()),
+    f: fn(token_stream) {
+      bind_outcome(
+        o: parse_module(tokens: token_stream, grammar: lm.grammar),
+        f: fn(artifact) {
+          bind_outcome(
+            o: qualified_name_from_module_node(root: artifact.tree),
+            f: fn(module_qn) {
+              let module_path = qualified_name_to_dotted_string(qn: module_qn)
+              let bindings = corpus_import_bindings(module_root: artifact.tree)
+              outcome_accepted(
+                value: fold_list(
+                  xs: node_subtree_nodes(root: artifact.tree),
+                  empty: [],
+                  cons: fn(acc, node) {
+                    if length(xs: node.uses) == 0 {
+                      acc
+                    } else {
+                    if node.name == "" {
+                      acc
+                    } else {
+                      concat(
+                        acc,
+                        fold_list(
+                          xs: node.uses,
+                          empty: [],
+                          cons: fn(use_acc, use_entry) {
+                            match use_entry.children {
+                              Cons { head: resource, tail: _ } =>
+                                if resource.name == "" {
+                                  use_acc
+                                } else {
+                                  Cons {
+                                    head: DemandRestatementRowIdentity {
+                                      module_path: module_path as NonEmptyStr,
+                                      declaration: node.name as NonEmptyStr,
+                                      alias: use_entry.name as NonEmptyStr,
+                                      authored_type: corpus_resolved_authored_type(type_text: resource.name, bindings: bindings) as NonEmptyStr
+                                    },
+                                    tail: use_acc
+                                  }
+                                }
+                              Empty => use_acc
+                            }
+                          }
+                        )
+                      )
+                    }
+                    }
+                  }
+                )
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+// THE THREE ROOTS ARE THE SAME POPULATION THE CENSUS ARMS NAME -- a consumer that read a narrower
+// population could hide a new row outside its roots.
+data corpus_restatement_arriving: Outcome<List<DemandRestatementRowIdentity>> =
+  bind_outcome(
+    o: native_lane_census_ingest(source_roots: ["dag", "src/v1", "src/v2"]),
+    f: fn(ingest) {
+      fold_list(
+        xs: ingest,
+        empty: outcome_accepted(value: []),
+        cons: fn(acc, w) {
+          bind_outcome(
+            o: acc,
+            f: fn(got) {
+              bind_outcome(
+                o: corpus_rows_for_witness(w: w),
+                f: fn(rows) { outcome_accepted(value: concat(got, rows)) }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+
+// GREEN OVER THE REAL POPULATIONS, both sides real and differently produced: the tree-derived arriving
+// population is non-empty (an empty population is VOID, not green) AND the wall holds it against the
+// follow-up module's authorized roster. An authored demand_restatement row that has not earned retention
+// flips this to red and is NAMED by the refusals the wall names.
+test fn demand_restatement_wall_holds_over_the_corpus_derived_arriving() -> Bool {
+  match corpus_restatement_arriving {
+    Accepted { value: arriving, diagnostics: _ } =>
+      (length(xs: arriving) > 0)
+        && (length(xs: demand_restatement_authorized_roster) > 0)
+        && demand_restatement_wall_holds(arriving: arriving, roster: demand_restatement_authorized_roster)
+    Rejected { diagnostics: _ } => false
   }
 }
 
-// THE REAL ROSTER, built in single-pipe stages (the proven idiom in dag/product/fabric): map each real
-// retained population down to the wall's identity type, then append. The wall runs over THESE rows, not
-// over hand-built stand-ins, so the green control exercises the real producer over an executing route.
-data real_restatement_fn_rows: List<DemandRestatementRow> =
-  demand_restatement_retained_fn_rows |> map(r => restatement_row_of(retained: r))
-
-data real_restatement_pattern_rows: List<DemandRestatementRow> =
-  demand_restatement_retained_pattern_rows |> map(r => restatement_row_of(retained: r))
-
-data real_restatement_roster: List<DemandRestatementRow> =
-  real_restatement_fn_rows |> concat(real_restatement_pattern_rows)
-
-// GREEN by the real producer: the wall holds when the arriving population IS the real retained roster,
-// and the real population is non-empty (an empty population is VOID, not green).
-test fn demand_restatement_wall_holds_on_the_real_roster() -> Bool {
-  (length(xs: real_restatement_roster) > 0)
-    && (demand_restatement_wall_holds(arriving: real_restatement_roster, roster: real_restatement_roster))
+// THE BLINDNESS GUARD (the walker's own discriminating arm, the mirror direction): EVERY authorized
+// roster identity is FOUND by the corpus walk among the tree-derived arrivals. If the walk could not
+// see uses clauses at all -- a parse field renamed, a roots list narrowed -- this arm fails: a walker
+// that derives nothing certifies nothing, and here it cannot hide.
+test fn every_authorized_restatement_identity_is_found_in_the_corpus() -> Bool {
+  match corpus_restatement_arriving {
+    Accepted { value: arriving, diagnostics: _ } =>
+      fold_list(
+        xs: demand_restatement_authorized_roster,
+        empty: true,
+        cons: fn(acc, authorized) {
+          if !acc {
+            false
+          } else {
+            any(xs: arriving, predicate: fn(row) { demand_restatement_identity_eq(left: row, right: authorized) })
+          }
+        }
+      )
+    Rejected { diagnostics: _ } => false
+  }
 }
 
-// RED over the REAL roster: a brand-new row that is not among the real retained rows refuses, and the
-// wall flips to false. The discriminator is real population + one new row, not a synthetic fixture.
+// RED DIRECTION, LOCATED: a brand-new identity that is not among the retained rows refuses -- exactly
+// ONE refusal (the planted row; the roster side rides along as authorized arrivals), and the wall flips
+// to false. Sides: the planted row is written in THIS test (the forbidden state, expressible); the
+// roster is the follow-up module's data. The refusal COUNT is asserted as 1, so a wall that refused
+// everything or nothing fails this arm.
 test fn demand_restatement_new_row_refuses_against_the_real_roster() -> Bool {
-  let newcomer = DemandRestatementRow {
-    module_path: "v2.compiler.brand_new_restatement",
-    declaration: "a_restated_demand_never_retained",
-    alias: "NeverRetained",
-    authored_type: "std.resources.Filesystem"
+  let newcomer = DemandRestatementRowIdentity {
+    module_path: "v2.compiler.brand_new_restatement" as NonEmptyStr,
+    declaration: "a_restated_demand_never_retained" as NonEmptyStr,
+    alias: "NeverRetained" as NonEmptyStr,
+    authored_type: "std.resources.Filesystem" as NonEmptyStr
   }
-  let arriving = Cons { head: newcomer, tail: real_restatement_roster }
-  (length(xs: demand_restatement_new_row_refusals(arriving: arriving, roster: real_restatement_roster)) == 1)
-    && (!demand_restatement_wall_holds(arriving: arriving, roster: real_restatement_roster))
+  let arriving = Cons { head: newcomer, tail: demand_restatement_authorized_roster }
+  (length(xs: demand_restatement_new_row_refusals(arriving: arriving, roster: demand_restatement_authorized_roster)) == 1)
+    && (!demand_restatement_wall_holds(arriving: arriving, roster: demand_restatement_authorized_roster))
 }
 
-// A real retained row, arriving, is AUTHORIZED (the wall does not refuse the rows it should carry).
+// THE PROJECTION CARRIES A REAL RETAINED ROW THROUGH THE WALL AS AUTHORIZED -- the bridge function,
+// exercised on real data rather than asserted to exist. Both sides visible: the row is the follow-up
+// module's retained data; the roster is that same data projected (authorized by identity, so this arm
+// checks the projection PRESERVES the four fields -- an identity-dropping projection fails it).
 test fn demand_restatement_real_retained_row_is_authorized() -> Bool {
   match demand_restatement_retained_fn_rows {
     Cons { head: first_real_row, tail: _ } =>
-      match demand_restatement_row_verdict(row: restatement_row_of(retained: first_real_row), roster: real_restatement_roster) {
+      match demand_restatement_row_verdict(
+        row: demand_restatement_retained_identity(row: first_real_row),
+        roster: demand_restatement_authorized_roster
+      ) {
         AuthorizedRow { row: _ } => true
         NewRestatementRowRefused { row: _, cause: _ } => false
       }

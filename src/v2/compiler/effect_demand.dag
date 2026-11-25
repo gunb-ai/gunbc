@@ -1243,41 +1243,41 @@ data effect_demand_seam_roster: List<SeamStanding> = [
 // THIS trigger dissolves -- i.e. when the two named sites #v2.compiler.self_host::read_roster_manifest and
 // #v2.compiler.self_host::fold_side_bytes migrate to the bound handler and so leave the in-population
 // offender set. WHAT THE TRIGGER CARRIES (gunbc.design_argument::guarantee_ladder:
-// "the trigger names the CAPABILITY restored"; Manager B via eager-koi-371, verbatim: the trigger names
+// "the trigger names the CAPABILITY restored"; RULED ON THIS ROW, verbatim: the trigger names
 // "the emit-side binding of a Filesystem handler to an ordinary-function entry (D11)"): the reach EXTRACTOR
 // shipped in this change -- filesystem_effect_reaches_from_phase1_rows /
 // filesystem_effect_emitted_closure_census, consuming the resolver's own phase-1 rows -- is NOT the missing
 // capability anymore; the missing_capability field names the one that is: the EMIT-SIDE binding of the
 // native Filesystem handler (emit_file_call) to an ordinary-function entry under the NativeCliDriver root
 // (demand_engine_program.dag D10/D11). The two-site migration is the visible consequence; the capability is
-// the thing restored when this trigger dissolves. TYPED, NOT RESOLVED (Manager A, review 98447 re-ask):
+// the thing restored when this trigger dissolves. TYPED, NOT RESOLVED (review 98447 re-ask):
 // the witness test filesystem_compile_gate_trigger_names_the_two_self_host_sites compares these fields
 // against TYPED values built from the census sites' strings -- that makes the comparison an identity
 // comparison, not a substring match, but it resolves NOTHING against the corpus: a corpus rename drifts
 // trigger data, census sites and witness fixture together and no leg fires. The rename guard is the
 // deferred leg that RESOLVES these QualifiedNames against the real closure's phase-1 rows, owned by
-// Manager B's establishing roadmap row for this instrument.
+// the establishing roadmap row for this instrument (dag/gunbc/roadmap/roadmap_authority.dag, first_slice).
 type FilesystemWallCompileGateTrigger {
   // TARGETS ARE CITED BY IDENTITY, NOT TEXT (review 98447 finding 2 / gunbc.design_argument::single_authority:
   // "Cite the symbol, not the position... A stale symbol is decidable from the Node tree"). QualifiedName,
   // never a String the witness string-matches. TYPED, NOT RESOLVED: construction spells the names with
   // qualified_name_from_dotted_string, which resolves nothing against the corpus; a rename is caught only
-  // once the deferred resolve-against-real-rows leg (Manager B's establishing row) runs.
+  // once the deferred resolve-against-real-rows leg (owner: the establishing roadmap row) runs.
   awaiting_migration_module: QualifiedName
   awaiting_migration_declarations: List<QualifiedName>
   migrate_to_bound_handler: QualifiedName
   gate_connects_when: Symbol
   // THE CAPABILITY THIS TRIGGER CARRIES, named on its face (gunbc.design_argument::guarantee_ladder: "the
-  // trigger names the CAPABILITY restored"; Manager B, verbatim: "the emit-side binding of a Filesystem
+  // trigger names the CAPABILITY restored"; RULED ON THIS ROW, verbatim: "the emit-side binding of a Filesystem
   // handler to an ordinary-function entry (D11)"). What is missing is not a handler -- emit_file_call exists
   // and is the one realization handler -- but its BINDING, on the emit side, to an ordinary-function entry
   // under the NativeCliDriver root (dag/gunbc/plans/demand_engine_program.dag D10: "what is missing is not a
   // handler but its binding to an ordinary-function entry under D11"). The two-site migration is the
-  // visible consequence; this symbol is the capability, and that binding is its OWN cut in Manager A's
-  // stage (a separate row citing D10/D11, filed by sleek-fox-889, owner A, NotDispatchable until
-  // warm-fox-517 staffs it) -- this carrier names it, it does not implement it.
+  // visible consequence; this symbol is the capability, and that binding is its OWN cut in the compiler-lane stage
+  // stage (a separate row citing D10/D11, owner A, NotDispatchable until
+  // the emission-lane staffs it) -- this carrier names it, it does not implement it.
   missing_capability: Symbol
-  // THE CAPABILITY TEXT, Manager B's wording VERBATIM: "emit_rust binds a native handler at an
+  // THE CAPABILITY TEXT, RULED ON THIS ROW, VERBATIM: "emit_rust binds a native handler at an
   // ordinary-function entry". B's rule: the capability is the sentence, NOT a row id -- "Not a row id, so it
   // survives a rename"; a row id may be cited BESIDE the capability as a cross-reference, never instead of
   // it (the witness asserts THIS string, so renaming the row cannot leave a trigger that still claims to
@@ -1553,22 +1553,22 @@ fn filesystem_effect_direct_reach_wall_holds(report: FilesystemEffectCensusRepor
 // callee is a located filesystem reach when its RESOLVED QualifiedName equals the free primitive's (or
 // the bound handler's) declared identity -- matched on the WHOLE dotted name, not the final segment.
 //
-// WHY FULL IDENTITY, NOT THE LAST SEGMENT (Manager A's blocking point c + warm-fox's hole). These are
+// WHY FULL IDENTITY, NOT THE LAST SEGMENT (review 98447 blocking point c, the emission lane's false-negative hole). These are
 // ordinary declared calls through an import, not primitive identities, so the last segment is not the
 // identity. Two defects the last-segment test would ship: (1) FALSE POSITIVE -- any module declaring its
 // own `fn filesystem_read` would be refused as if it were the free primitive; (2) FALSE NEGATIVE (the
-// hole warm-fox called the one that matters) -- the real primitive reached under a spelling whose last
+// hole the emission lane called the one that matters) -- the real primitive reached under a spelling whose last
 // segment is not the slug would become no reach at all and pass silently. Keying on the whole resolved
 // QualifiedName closes both: a homonym has the wrong full path; a renamed import still resolves to the
-// primitive's declared path. The last segment is kept ONLY as a cheap prefilter (warm-fox: "keep the
+// primitive's declared path. The last segment is kept ONLY as a cheap prefilter (the emission lane: "keep the
 // last-segment test only as a cheap prefilter if you want it"), then the full dotted name is compared.
 //
-// THE IDENTITY IS SUPPLIED, NOT HAND-TYPED (Manager A: "taken from its declaration or import, not a
+// THE IDENTITY IS SUPPLIED, NOT HAND-TYPED (the compiler lane: "taken from its declaration or import, not a
 // hand-typed dotted string"). `free_primitive_identity` and `bound_handler_identity` are QualifiedNames the
 // caller supplies from the real resolve fold (resolve_fixture claim_closure, or the production-backed seam
 // path at src/v2/test/claim/compiler/operation_declaration_seam.dag read_seam_path), so this module never
 // types the module spelling as a string constant and cannot drift from what the resolver actually emits.
-// WHAT THE PATHS ARE, ON THEIR FACE (warm-fox item 1: do not let the log imply three coverage). The derived
+// WHAT THE PATHS ARE, ON THEIR FACE (the emission lane: do not let the log imply three coverage). The derived
 // path produces the TWO arms a real closure can actually carry:
 //   callee full QN == free_primitive_identity   -> ReachedFreePrimitiveDirectly (the refused arm)
 //   callee full QN == bound_handler_identity     -> ReachedThroughHandler        (the authorised arm)
@@ -1579,11 +1579,11 @@ fn filesystem_effect_direct_reach_wall_holds(report: FilesystemEffectCensusRepor
 // kept because the classifier must refuse an unrecognised filesystem spelling, but it is NOT claimed as
 // production coverage.
 //
-// POPULATION GRAIN (warm-fox note): callees are collected from every node carrying a declaration reference
+// POPULATION GRAIN (the emission lane's note): callees are collected from every node carrying a declaration reference
 // path, so a reach is ANY reference to a declaration with that identity, which is BROADER than a call. That
 // is the fail-closed direction -- read this as a reference census, not a call graph.
 fn filesystem_effect_callee_matches_identity(callee: QualifiedName, identity: QualifiedName) -> Bool {
-  // The authoritative check is the WHOLE resolved dotted name (Manager A blocking point c + warm-fox's
+  // The authoritative check is the WHOLE resolved dotted name (review 98447 blocking point c, the emission lane's
   // hole); the final-segment test is a cheap prefilter the whole comparison already subsumes. A real
   // declaration identity is module + name, so its last segment is never Empty; an Empty identity is a
   // no-match (the wall never matches nothing to something), and a bare callee with no segment matches only
@@ -1600,7 +1600,7 @@ fn filesystem_effect_callee_matches_identity(callee: QualifiedName, identity: Qu
   }
 }
 
-// THE FIFTH PARAMETER IS JUSTIFIED, not redundancy (warm-fox): bound_handler_slug is NOT derived from
+// THE FIFTH PARAMETER IS JUSTIFIED, not redundancy (the emission lane): bound_handler_slug is NOT derived from
 // bound_handler_identity's last segment because they name different things -- the identity is the handler's
 // DECLARATION path (v1.compiler.emit_rust.emit_file_call), the slug is the name the bound handler is
 // REACHABLE UNDER in the emitted closure's dispatch surface at the NativeCliDriver root, which the emitter's
@@ -1663,7 +1663,7 @@ fn filesystem_effect_reaches_from_phase1_rows(
 // THE EMITTED-CLOSURE CENSUS ENTRY: the emitted-closure path's call into the wall. Given the phase-1 rows
 // of an emitted closure (from the real resolve fold), derive the real filesystem reaches and run the census
 // over them with the NAMED population source, so the wall checks run on the real closure rather than a
-// hand-supplied list. THE HONEST RUNG (warm-fox item 1 + Manager A rung honesty): this runs the census over
+// hand-supplied list. THE HONEST RUNG (rung honesty, required by both reviewing lanes): this runs the census over
 // REAL closure rows; it is NOT yet a compile-phase gate -- no compiler phase calls it, only the witness. A
 // direct filesystem_read reach still reaches the runtime unrealized_host_seam rather than a compile refusal.
 // It becomes a gate on the trigger filesystem_wall_compile_gate_trigger: when the two self_host.dag direct
@@ -1697,16 +1697,16 @@ fn filesystem_effect_emitted_closure_census(
 // wall's own refusal stands for it regardless of the join. The join goes BOTH ways: a contract site the
 // census did not locate means the census is incomplete over its named population, and that refuses too.
 // This is a typed carrier, not a comment (source_annotations: "a fact that must survive belongs in a
-// typed carrier"). SCOPE OF THE EXERCISE (Manager A, review 98447 re-ask): the join PREDICATES refuse
+// typed carrier"). SCOPE OF THE EXERCISE (review 98447 re-ask): the join PREDICATES refuse
 // in production wherever the census reaches are fed to them -- that real-reach observation is the two
 // scratch probe trees (the census run itself refuses on a planted extra reach and on a removed member).
 // The WITNESS join legs are FIXTURE-EXERCISED ONLY: their reaches come from derived_row fixtures, so a
 // corpus rename of a contracted declaration drifts contract and fixture together and no witness leg
 // fires. The leg that runs filesystem_effect_debt_join_holds over the REAL closure's reaches (real
-// phase-1 rows through the resolver fold, not fixture rows) is DEFERRED and belongs to Manager B's
+// phase-1 rows through the resolver fold, not fixture rows) is DEFERRED and belongs to the establishing roadmap row's
 // establishing roadmap row for this instrument, alongside the trigger's resolve leg below.
 //
-// INSTRUMENT FACE (warm-fox-517 roster discipline, same fence as the parse-population and emission
+// INSTRUMENT FACE (roster discipline, same fence as the parse-population and emission
 // rosters): GRAIN -- module_path # enclosing_declaration # site_occurrence, one entry per contracted
 // direct reach; the route that OWNS an identity is the DIRECT reach -- a through-handler reach of the
 // same declaration is authorised and never claims a contract slot, so one site cannot be reached into
@@ -1714,7 +1714,7 @@ fn filesystem_effect_emitted_closure_census(
 // and completeness are its internal halves; the census log only PRINTS the contract, it never decides
 // through it). READERS of the contract data -- four: the join, the census log face, the witness legs,
 // and the two scratch probe trees (refusal-direction observation only). WHO MAY DELETE IT -- not this
-// lane: the contract retires entry-by-entry only when a migration row in Manager A's stage moves a
+// lane: the contract retires entry-by-entry only when a migration row in the compiler-lane stage moves a
 // declaration to \#v1.compiler.emit_rust::emit_file_call, and wholesale only via the roadmap row Manager
 // B is establishing; nobody may widen it without the row.
 data filesystem_effect_direct_reach_debt_contract: List<FilesystemEffectSite> = [
@@ -1802,6 +1802,7 @@ fn filesystem_effect_debt_join_holds(reaches: List<FilesystemEffectReach>) -> Bo
             ReachedThroughHandler { site: _, operation: _ } => true
             ReachedOutsideBoundHandler { site: _, operation: _, cause: _ } => true
           }
+      }
     }
   )
     && filesystem_effect_debt_contract_located(reaches: reaches)
@@ -1820,7 +1821,7 @@ fn filesystem_effect_debt_site_identity(site: FilesystemEffectSite) -> String {
   ])
 }
 
-// THE DUPLICATE CHECK (warm-fox condition 3): distinct identity strings over the contract, counted. If
+// THE DUPLICATE CHECK (review 98447 condition 3): distinct identity strings over the contract, counted. If
 // a member were a collision -- four entries spelling three identities -- the distinct count would be
 // below the member count and the census log face prints both numbers side by side, so the contract
 // cannot be four-and-three at once.
@@ -1899,7 +1900,7 @@ fn filesystem_effect_census_log(report: FilesystemEffectCensusReport) -> String 
   string_join(fields: lines, separator: "\n")
 }
 
-// THE CONTRACT TRAVERSAL ON THE LOG FACE (warm-fox condition 1): the instrument prints every contracted
+// THE CONTRACT TRAVERSAL ON THE LOG FACE (review 98447 condition 1): the instrument prints every contracted
 // identity string itself, in the run that claims it, beside the refused count -- a log carrying only a
 // count would be the frozen-number defect wearing a new name. One line per member, in contract order.
 fn debt_contract_log_lines() -> List<String> {
@@ -1935,77 +1936,4 @@ fn offender_log_lines(offenders: List<FilesystemEffectReach>) -> List<String> {
       )
     }
   )
-}
-
-// ---- WALL 1 (predicate): a new demand_restatement row is LOCATED and refused by the census ----
-// THE AUTHORIZED RESTATEMENT ROSTER IS A PARAMETER, not a tree-derived oracle. A `demand_restatement`
-// row restates a service demand that is already derivable; the census (cut (c)) deleted every authored
-// `uses` row whose derived demand was nonempty, retaining only the named exceptions at the final-base
-// census, carried in gunbc.demand_engine_restatement_follow_up at row identity -- (module, declaration,
-// alias, authored type). That module records "nothing walls new rows out yet"; this is the wall. An
-// arriving row whose identity is NOT in the authorized roster is a restatement that has not earned
-// retention, and it REFUSES by naming its identity -- never counted, never let through. The roster is
-// supplied by the caller (the follow-up module's rows, read at row identity), so the refusal is
-// executable over a small synthetic roster and is never a figure transcribed from the tree it audits.
-type DemandRestatementRow {
-  module_path: String
-  declaration: String
-  alias: String
-  authored_type: String
-}
-
-type DemandRestatementVerdict
-  = AuthorizedRow { row: DemandRestatementRow }
-  | NewRestatementRowRefused { row: DemandRestatementRow, cause: Symbol }
-
-fn demand_restatement_row_eq(left: DemandRestatementRow, right: DemandRestatementRow) -> Bool {
-  (left.module_path == right.module_path)
-    && (left.declaration == right.declaration)
-    && (left.alias == right.alias)
-    && (left.authored_type == right.authored_type)
-}
-
-fn demand_restatement_row_is_authorized(
-  row: DemandRestatementRow,
-  roster: List<DemandRestatementRow>
-) -> Bool {
-  any(xs: roster, predicate: fn(candidate) { demand_restatement_row_eq(left: row, right: candidate) })
-}
-
-fn demand_restatement_row_verdict(
-  row: DemandRestatementRow,
-  roster: List<DemandRestatementRow>
-) -> DemandRestatementVerdict {
-  if demand_restatement_row_is_authorized(row: row, roster: roster) {
-    AuthorizedRow { row: row }
-  } else {
-    NewRestatementRowRefused { row: row, cause: ^new_demand_restatement_row_unretained }
-  }
-}
-
-// THE REFUSAL, NAMING THE OFFENDERS: every arriving row absent from the authorized roster, each with its
-// identity and its named cause. An empty list is the accepted population. No counting, no fallback.
-fn demand_restatement_new_row_refusals(
-  arriving: List<DemandRestatementRow>,
-  roster: List<DemandRestatementRow>
-) -> List<DemandRestatementRow> {
-  list_reverse(xs: fold_list(
-    xs: arriving,
-    empty: Empty,
-    cons: fn(acc, row) {
-      if demand_restatement_row_is_authorized(row: row, roster: roster) {
-        acc
-      } else {
-        Cons { head: row, tail: acc }
-      }
-    }
-  ))
-}
-
-// THE WALL HOLDS exactly when no arriving restatement row is absent from the authorized roster.
-fn demand_restatement_wall_holds(
-  arriving: List<DemandRestatementRow>,
-  roster: List<DemandRestatementRow>
-) -> Bool {
-  length(xs: demand_restatement_new_row_refusals(arriving: arriving, roster: roster)) == 0
 }
