@@ -46,6 +46,7 @@ import gunbc.serving.turn_admission {
   ServingSessionRecord, ServingSessionResidency, ServingSessionPlacement, ServingHostTierStanding,
   ServingGpuPrefixStanding, serving_session_standing, serving_session_placement,
   serving_unread_when_owner_unprobed,
+  ServingCoTenancy, GroupIdle, GroupOccupied, CoTenancyUnread,
 }
 import gunbc.serving.caller_backlog {
   CallerBacklogSnapshot, CallerWorkRecord, CallerWorkPhase, RecoveryEvent, SeatRef, PartitionId,
@@ -219,6 +220,10 @@ type RelocationDecision
   | NoAdmissibleTransition
   | Evacuate { destination_label: NonEmptyStr, receipt: SelectionReceipt }
   | ReconciliationRequired { obligation: NonEmptyStr }
+  // IMBALANCE PRECONDITION refusals (see decide_with_imbalance_precondition): an economic move is
+  // reached only when the source is established to carry more load than the destination.
+  | NoImbalanceToRelieve { source_load: Nat, destination_load: Nat }
+  | ImbalanceUnread { obligation: NonEmptyStr }
 
 fn decide_relocation(field: List<ParetoEntry>, assessment: DecisionAssessment) -> RelocationDecision {
   match select_realization(
