@@ -928,6 +928,29 @@ data gunbc_ci_live_deploy_step_timeout_minutes: Duration = 30
 // NOT fixed here, they are named as open follow-ups in that ruling.
 data gunbc_ci_dashboard_deploy_step_timeout_minutes: Duration = 60
 
+// THE NAMED-INSTANCE DEPLOY FOLD'S OWN step budget -- the one other live-deploy-tier fold that needs 60,
+// not the shared 30. SAME SHAPE AS THE DASHBOARD PRECEDENT ABOVE, for a DIFFERENT fold's measured cost:
+// the instance-scope deploy (gunbc.fleet.fleet_converge_workflow::fleet_converge_desired_instance_deploy_step,
+// the "Deploy the named srv1 instance" step, id desired_instance_deploy) boots and resolves the
+// live_deploy_apply_desired_wet_from_ci entry closure, then runs the wet apply leg. WHY 60, DERIVED (the
+// value is the operator's ceiling; the split below is Manager B's derivation reading, NOT operator text --
+// the operator's own words are recorded verbatim at gunbc.design_ruling::srv1_desired_instance_deploy_step_timeout_raised):
+//   26 min measured compile+resolve -- run 45443959740 job 138631736548, step 18:06:53Z to first wet effect
+//     18:28:35Z = 21m42s wall, worst-case 26 min; resolve_entry_graph_inclusive ms=1299780 wall with
+//     user_cpu 1293675 ms, closure_files=1911, compile.reconcile 18 minutes.
+//   + 19 min wet-leg ESTIMATE -- labelled an ESTIMATE because this fold's own wet leg has NEVER completed in
+//     CI history (zero desired_instance_deploy successes; no successful wet-leg precedent in its attempts),
+//     so it is priced off the lab serve cold-restart cost and an analogous successful wet run: host-fleet
+//     apply run 45319614562 closed a closure_files=1927 resolve in 535807 ms.
+//   + 15 min named headroom.
+//   = 60, the operator's ceiling (not exceeded). This is the named-instance fold's tier and nothing else
+// reads it; the instance-scope deploy's job backstop is derived from it (see
+// gunbc_ci_desired_instance_deploy_job_backstop_timeout_minutes) so raising this fold cannot silently move
+// ANOTHER job. The raise is a CI time-budget growth admitted by an explicit operator answer (not a timeout
+// default) under gunbc.design_ruling::ci_job_budgets_closed_to_growth, recorded at
+// gunbc.design_ruling::srv1_desired_instance_deploy_step_timeout_raised.
+data gunbc_ci_desired_instance_deploy_step_timeout_minutes: Duration = 60
+
 // WHY THIS GROUP EXISTS, STATED AGAINST THE DEPLOYMENT THAT ACTUALLY RUNS TODAY. An earlier
 // revision of this reason said blue/green selection is observe-then-mutate, so two jobs could both
 // observe blue active and the second would restart what had become the active green slot. THAT
@@ -1125,6 +1148,20 @@ fn gunbc_ci_root_mutation_job_frame_timeout_minutes() -> Int {
 // at gunbc.design_ruling::srv1_dashboard_deploy_step_timeout_raised.
 fn gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes() -> Int {
   gunbc_ci_root_mutation_job_frame_timeout_minutes() + gunbc_ci_dashboard_deploy_step_timeout_minutes
+}
+
+// The named-instance-deploy job's backstop: the shared frame plus ITS OWN deploy fold at
+// gunbc_ci_desired_instance_deploy_step_timeout_minutes (60) -- NOT the shared 30-minute live-deploy tier.
+// It is a SEPARATE fn (not the shared gunbc_ci_live_deploy_shaped_job_backstop_timeout_minutes) for the
+// same reason the dashboard job got its own: the shaped fn is shared with approval-ntfy-retire, so folding
+// the 60 into it would have moved approval-ntfy-retire's bound too, which is not approved to grow. So this
+// job adds back the budget constant ITS fold actually uses (the documented composition rule above); its
+// value is frame (284) + 60 = 344, and approval-ntfy-retire keeps the shaped 314, UNCHANGED. The fold's
+// raise and this job's bound rising to cover it are the operator-approved change recorded at
+// gunbc.design_ruling::srv1_desired_instance_deploy_step_timeout_raised; the 344 is the SAME +30 the operator
+// approved for the fold, derived (Manager B's reading), not an additional budget.
+fn gunbc_ci_desired_instance_deploy_job_backstop_timeout_minutes() -> Int {
+  gunbc_ci_root_mutation_job_frame_timeout_minutes() + gunbc_ci_desired_instance_deploy_step_timeout_minutes
 }
 
 // The backstop for the jobs that share the dashboard-deploy job's shape but whose single live-deploy-tier
