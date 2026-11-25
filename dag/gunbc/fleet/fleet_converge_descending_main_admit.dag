@@ -5,6 +5,7 @@ import v2.std.text { string_eq }
 import std.algebra { Cons, Empty, FreeMonoid, contains, fold_list, is_empty }
 import std.optional { Optional, Present, Absent }
 import v2.lens.module_graph { path_matches_touched }
+import gunbc.fleet.fleet_converge_receipt { FleetConvergePlanSourceClosure }
 
 // ============================================================================
 // DESCENDING-MAIN APPLY ADMISSION
@@ -34,7 +35,6 @@ type DescendingMainAdmission
   | DescendingMainTouchesClosure { checkout: String, plan_revision: String, offending_path: String }
   | DescendingMainClosureAbsent { plan_revision: String }
   | DescendingMainClosureEmpty { plan_revision: String }
-  | DescendingMainAttributionAbsent { plan_revision: String, missing: String }
   | DescendingMainEntryMismatch { expected: String, recorded: String }
   | DescendingMainPoolRootsMismatch { expected: String, recorded: String }
 
@@ -58,9 +58,7 @@ fn admit_descending_main(
   plan_revision: String,
   merge_base: String,
   changed_paths: List<String>,
-  source_closure: Optional<List<String>>,
-  source_closure_entry_path: Optional<String>,
-  source_closure_pool_roots: Optional<List<String>>,
+  source_closure: Optional<FleetConvergePlanSourceClosure>,
   expected_entry_path: String,
   expected_pool_roots: List<String>,
 ) -> DescendingMainAdmission {
@@ -72,37 +70,29 @@ fn admit_descending_main(
         // A receipt that never recorded a closure (minted before this field existed) cannot support
         // the descending case: the strict M == P requirement stands, refusal text unchanged.
         DescendingMainClosureAbsent { plan_revision: plan_revision }
-      Present { value: closure } =>
-        match source_closure_entry_path {
-          Absent => DescendingMainAttributionAbsent { plan_revision: plan_revision, missing: "source_closure_entry_path" }
-          Present { value: recorded_entry } =>
-            match source_closure_pool_roots {
-              Absent => DescendingMainAttributionAbsent { plan_revision: plan_revision, missing: "source_closure_pool_roots" }
-              Present { value: recorded_roots } =>
-                if is_empty(xs: closure) {
-                  // Recorded-empty is a materially different case from never-recorded: a real
-                  // import closure of a real module is never empty, so this receipt is not one.
-                  DescendingMainClosureEmpty { plan_revision: plan_revision }
-                } else if recorded_entry != expected_entry_path {
-                  DescendingMainEntryMismatch { expected: expected_entry_path, recorded: recorded_entry }
-                } else if !pool_roots_match(recorded: recorded_roots, expected: expected_pool_roots) {
-                  DescendingMainPoolRootsMismatch {
-                    expected: pool_roots_wire(xs: expected_pool_roots),
-                    recorded: pool_roots_wire(xs: recorded_roots),
-                  }
-                } else if merge_base != plan_revision {
-                  DescendingMainNotDescendant { checkout: checkout, plan_revision: plan_revision, merge_base: merge_base }
-                } else {
-                  match first_touched_closure_path(paths: changed_paths, closure: closure) {
-                    Absent => DescendingMainAdmitted { checkout: checkout, plan_revision: plan_revision }
-                    Present { value: p } => DescendingMainTouchesClosure {
-                      checkout: checkout,
-                      plan_revision: plan_revision,
-                      offending_path: p,
-                    }
-                  }
-                }
+      Present { value: c } =>
+        if is_empty(xs: c.paths) {
+          // Recorded-empty is a materially different case from never-recorded: a real import
+          // closure of a real module is never empty, so this receipt is not one.
+          DescendingMainClosureEmpty { plan_revision: plan_revision }
+        } else if c.entry_path != expected_entry_path {
+          DescendingMainEntryMismatch { expected: expected_entry_path, recorded: c.entry_path }
+        } else if !pool_roots_match(recorded: c.pool_roots, expected: expected_pool_roots) {
+          DescendingMainPoolRootsMismatch {
+            expected: pool_roots_wire(xs: expected_pool_roots),
+            recorded: pool_roots_wire(xs: c.pool_roots),
+          }
+        } else if merge_base != plan_revision {
+          DescendingMainNotDescendant { checkout: checkout, plan_revision: plan_revision, merge_base: merge_base }
+        } else {
+          match first_touched_closure_path(paths: changed_paths, closure: c.paths) {
+            Absent => DescendingMainAdmitted { checkout: checkout, plan_revision: plan_revision }
+            Present { value: p } => DescendingMainTouchesClosure {
+              checkout: checkout,
+              plan_revision: plan_revision,
+              offending_path: p,
             }
+          }
         }
     }
   }

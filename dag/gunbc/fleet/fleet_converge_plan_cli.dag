@@ -1,6 +1,15 @@
 module gunbc.fleet.fleet_converge_plan_cli
 
-import gunbc.fleet.fleet_converge_plan_revision { observe_actions_run_binding_at_checkout }
+import gunbc.fleet.fleet_converge_plan_revision {
+  observe_actions_run_binding_at_checkout,
+  decide_descending_main_reuse,
+  descending_main_verdict_text,
+  DescendingMainVerdict,
+  DescendingMainReusable,
+  DescendingMainUnobservable,
+  DescendingMainObservationFailure,
+  ReceiptUnreadable,
+}
 import gunbc.live_deploy.release_locus { release_locus_dir, RevisionBoundAtEmission }
 import gunbc.runner.runner_microvm_slot_unit { microvm_controller_root }
 
@@ -241,6 +250,7 @@ import gunbc.actions_run_binding {
   fleet_converge_expected_host_env_name,
 }
 import gunbc.fleet.fleet_converge_receipt {
+  FleetConvergePlanSourceClosure,
   FleetConvergePlanReceipt, FleetConvergeApplyReceipt,
   fleet_converge_plan_receipt_path, fleet_converge_apply_receipt_dir, fleet_converge_apply_receipt_path,
   fleet_converge_plan_run_id_env_name,
@@ -252,17 +262,6 @@ import gunbc.fleet.fleet_converge_receipt {
   PlanBindingRunIdMismatch, PlanBindingHashMismatch, PlanBindingRevisionMismatch, PlanBindingRepositoryMismatch,
 }
 import v2.lens.module_graph { import_closure_live }
-import gunbc.fleet.fleet_converge_descending_main_admit {
-  admit_descending_main,
-  DescendingMainAdmitted,
-  DescendingMainNotDescendant,
-  DescendingMainTouchesClosure,
-  DescendingMainClosureAbsent,
-  DescendingMainClosureEmpty,
-  DescendingMainAttributionAbsent,
-  DescendingMainEntryMismatch,
-  DescendingMainPoolRootsMismatch,
-}
 import gunbc.fleet.fleet_plan_apply_ci_step {
   fleet_converge_plan_cli_entry,
   fleet_converge_plan_cli_pool_roots,
@@ -1039,7 +1038,7 @@ fn fleet_converge_plan_scoped_bound_wet(
                 match fleet_converge_plan_cli_entry {
                   Absent => exit_failure(reason: "fleet_converge_plan: the plan CLI entry module has no storage path under the registered layout roots; refusing to mint a receipt without a source closure (fail_closed, never fabricate)")
                   Present { value: entry_path } => {
-                let source_closure = import_closure_live(
+                let closure_paths = import_closure_live(
                   entry_path: entry_path,
                   pool_roots: fleet_converge_plan_cli_pool_roots,
                 )
@@ -1057,9 +1056,11 @@ fn fleet_converge_plan_scoped_bound_wet(
                   lease_owner_fingerprint: serialize_content_hash(hash: artifact.plan_lease.epoch.owner_fingerprint) as String,
                   lease_generation: artifact.plan_lease.epoch.generation,
                   apply_terminal: artifact.apply_terminal,
-                  source_closure: Present { value: source_closure },
-                  source_closure_entry_path: Present { value: entry_path },
-                  source_closure_pool_roots: Present { value: fleet_converge_plan_cli_pool_roots },
+                  source_closure: Present { value: FleetConvergePlanSourceClosure {
+                    paths: closure_paths,
+                    entry_path: entry_path,
+                    pool_roots: fleet_converge_plan_cli_pool_roots,
+                  } },
                 }
                 match write_fleet_converge_plan_receipt(r: receipt) {
                   ReceiptWriteRefused { path: p, error: e } =>
@@ -1852,10 +1853,14 @@ fn admit_apply_revision_at_plan_wet(binding: ActionsRunBinding) -> ApplyRevision
   match admit_optional_expected_revision(binding: binding) {
     RunRevisionAdmitted { revision: r } => ApplyRevisionAdmitted { revision: r }
     RunRevisionRefused { expected: e, observed: o } =>
-      match descending_plan_reuse_proven(dispatch_tip: e, plan_revision: o) {
-        DescendingReuseProven => ApplyRevisionAdmitted { revision: o }
-        DescendingReuseNotProven { reason: r } =>
-          ApplyRevisionRefused { expected: e, observed: o, descending_cause: Present { value: r } }
+      match descending_plan_reuse_verdict(dispatch_tip: e, plan_revision: o) {
+        DescendingMainReusable { checkout: _, plan_revision: _ } => ApplyRevisionAdmitted { revision: o }
+        refused =>
+          ApplyRevisionRefused {
+            expected: e,
+            observed: o,
+            descending_cause: Present { value: descending_main_verdict_text(v: refused) },
+          }
       }
   }
 }
@@ -1892,63 +1897,19 @@ fn apply_revision_refusal_text(
   ], "")
 }
 
-type DescendingPlanReuse
-  = DescendingReuseProven
-  | DescendingReuseNotProven { reason: String }
-
-// THE OBSERVATIONS AND THE DECISION, with no widening on any failure arm: unreadable receipt, failed
-// merge-base, failed diff, an entry with no storage path, or any refusal from admit_descending_main
-// all land in DescendingReuseNotProven, which the caller renders as the original refusal.
-fn descending_plan_reuse_proven(dispatch_tip: String, plan_revision: String) -> DescendingPlanReuse {
-  let mb = git.Inspect.MergeBase(
-    repository_path: ".",
-    left: plan_revision as GitRef,
-    right: dispatch_tip as GitRef,
-  )
-  if !mb.success {
-    DescendingReuseNotProven { reason: join(["merge-base read failed (rc=", int_to_decimal_string(value: mb.exit_code), ")"], "") }
-  } else {
-    let diff = git.Core.DiffNameOnlyMerge(
-      base: plan_revision as GitRef,
-      head: dispatch_tip as GitRef,
-    )
-    if !diff.success {
-      DescendingReuseNotProven { reason: "diff --name-only read failed" }
-    } else {
-      match read_fleet_converge_plan_receipt_at(path: fleet_converge_plan_receipt_path) {
-        FleetConvergePlanReceiptUnreadable { reason: r } => DescendingReuseNotProven { reason: r }
-        FleetConvergePlanReceiptDecoded { receipt: plan_receipt } =>
-          match fleet_converge_plan_cli_entry {
-            Absent => DescendingReuseNotProven { reason: "the plan CLI entry module has no storage path under the registered layout roots" }
-            Present { value: expected_entry } => match admit_descending_main(
-              checkout: dispatch_tip,
-              plan_revision: plan_revision,
-              merge_base: mb.sha,
-              changed_paths: diff.paths,
-              source_closure: plan_receipt.source_closure,
-              source_closure_entry_path: plan_receipt.source_closure_entry_path,
-              source_closure_pool_roots: plan_receipt.source_closure_pool_roots,
-              expected_entry_path: expected_entry,
-              expected_pool_roots: fleet_converge_plan_cli_pool_roots,
-            ) {
-              DescendingMainAdmitted { checkout: _, plan_revision: _ } => DescendingReuseProven
-              DescendingMainNotDescendant { checkout: _, plan_revision: _, merge_base: m } =>
-                DescendingReuseNotProven { reason: join(["not a descendant (merge-base=", m, ")"], "") }
-              DescendingMainTouchesClosure { checkout: _, plan_revision: _, offending_path: op } =>
-                DescendingReuseNotProven { reason: join(["diff touches the plan source closure at ", op], "") }
-              DescendingMainClosureAbsent { plan_revision: _ } =>
-                DescendingReuseNotProven { reason: "the plan receipt carries no source closure" }
-              DescendingMainClosureEmpty { plan_revision: _ } =>
-                DescendingReuseNotProven { reason: "the plan receipt records an empty source closure" }
-              DescendingMainAttributionAbsent { plan_revision: _, missing: m } =>
-                DescendingReuseNotProven { reason: join(["the plan receipt records a closure without ", m], "") }
-              DescendingMainEntryMismatch { expected: e, recorded: r } =>
-                DescendingReuseNotProven { reason: join(["closure attributed to '", r, "' but expected '", e, "'"], "") }
-              DescendingMainPoolRootsMismatch { expected: e, recorded: r } =>
-                DescendingReuseNotProven { reason: join(["pool roots '", r, "' but expected '", e, "'"], "") }
-            }
-          }
-      }
-    }
+// THE APPLY LEG'S VIEW OF THE SHARED ROUTE. It reads the plan receipt (the one authority for the
+// recorded closure) and hands everything else to fleet_converge_plan_revision's single
+// observe-and-decide function; an unreadable receipt is its own typed observation failure, never an
+// empty closure, so no failure arm widens (gunbc.design_argument::fail_closed).
+fn descending_plan_reuse_verdict(dispatch_tip: String, plan_revision: String) -> DescendingMainVerdict {
+  match read_fleet_converge_plan_receipt_at(path: fleet_converge_plan_receipt_path) {
+    FleetConvergePlanReceiptUnreadable { reason: r } =>
+      DescendingMainUnobservable { failure: ReceiptUnreadable { reason: r } }
+    FleetConvergePlanReceiptDecoded { receipt: plan_receipt } =>
+      decide_descending_main_reuse(
+        dispatch_tip: dispatch_tip,
+        plan_revision: plan_revision,
+        plan_receipt: plan_receipt,
+      )
   }
 }

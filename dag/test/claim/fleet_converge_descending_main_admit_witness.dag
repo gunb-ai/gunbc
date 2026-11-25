@@ -3,16 +3,20 @@ module test.claim.fleet_converge_descending_main_admit_witness
 // WITNESS FOR THE DESCENDING-MAIN APPLY ADMISSION (row fleet-converge-descending-main-admit).
 //
 // CONSUMER ROUTE (what production actually calls, so no claim here stands on a function nothing
-// uses): gunbc.fleet.fleet_converge_plan_revision.verify_descending_main_at_plan_revision — the
-// function the regenerated fleet-converge.yml checkout-verify step runs at its three sites (model:
-// gunbc.fleet.fleet_plan_apply_ci_step.gunbc_ci_fleet_converge_checkout_verify_target) — calls
-// admit_descending_main with the receipt's recorded triple (gunbc.fleet.fleet_converge_receipt,
-// whose v2 identity covers those bytes) and the entry/pool roots derived through
-// gunbc_run_step_target_entry_path; and gunbc.fleet.fleet_converge_plan_cli
-// .admit_apply_revision_at_plan_wet — the expected-revision cross-check inside
-// fleet_converge_apply_wet — calls the same decision for the dispatch that named a later main tip.
-// The producer side is fleet_converge_plan_cli's receipt construction, which records
-// import_closure_live over that same derived entry.
+// uses). ONE effectful observe-and-decide function owns the reads and the decision:
+// gunbc.fleet.fleet_converge_plan_revision.decide_descending_main_reuse, which calls
+// admit_descending_main with the receipt's recorded source closure
+// (gunbc.fleet.fleet_converge_receipt.FleetConvergePlanSourceClosure — paths, entry and pool roots
+// as one fact, whose bytes the v2 receipt identity covers) and the entry/pool roots derived through
+// gunbc_run_step_target_entry_path over the plan CI target. TWO call sites render its verdict and
+// nothing else: (1) verify_descending_main_at_plan_revision, the function the regenerated
+// fleet-converge.yml checkout-verify step runs at its three sites (model:
+// gunbc.fleet.fleet_plan_apply_ci_step.gunbc_ci_fleet_converge_checkout_verify_target), which also
+// keeps the unchanged exact readback that pins the EXECUTION revision to the plan revision; and
+// (2) gunbc.fleet.fleet_converge_plan_cli.admit_apply_revision_at_plan_wet, the expected-revision
+// cross-check inside fleet_converge_apply_wet, whose refusal text (apply_revision_refusal_text) is
+// the sink for the verdict's cause. The producer side is fleet_converge_plan_cli's receipt
+// construction, which records import_closure_live over that same derived entry.
 //
 // WHAT THE CLAIMS COVER, per gunbc.design_argument::witness_one_interface: the decision at its one
 // interface (observed merge base + changed paths + recorded triple in, typed admission out), the
@@ -37,6 +41,7 @@ import gunbc.actions_run_binding { ActionsRunBinding }
 import gunbc.fleet.fleet_converge_terminal { FullyApplied }
 import gunbc.fleet.fleet_converge_receipt {
   FleetConvergePlanReceipt,
+  FleetConvergePlanSourceClosure,
   FleetConvergePlanReceiptDecoded,
   FleetConvergePlanReceiptUnreadable,
   fleet_converge_plan_receipt_json,
@@ -44,6 +49,8 @@ import gunbc.fleet.fleet_converge_receipt {
   fleet_converge_plan_receipt_identity_hex,
   fleet_converge_plan_receipt_schema,
   fleet_converge_plan_receipt_schema_v2,
+  decode_plan_receipt_closure,
+  PlanReceiptClosureRefused,
   receipt_string_array_member,
   receipt_string_member,
   ReceiptStringArrayMember,
@@ -64,9 +71,17 @@ import gunbc.fleet.fleet_converge_descending_main_admit {
   DescendingMainTouchesClosure,
   DescendingMainClosureAbsent,
   DescendingMainClosureEmpty,
-  DescendingMainAttributionAbsent,
   DescendingMainEntryMismatch,
   DescendingMainPoolRootsMismatch,
+}
+import gunbc.fleet.fleet_converge_plan_revision {
+  descending_main_verdict_text,
+  DescendingMainVerdict,
+  DescendingMainUnobservable,
+  MergeBaseUnreadable,
+  EntryUnderived,
+  DescendingMainAdmissionRefused,
+  DescendingMainReusable,
 }
 import gunbc.fleet.fleet_plan_apply_ci_step {
   fleet_converge_plan_cli_entry,
@@ -113,27 +128,31 @@ fn admit_with(
   plan_revision: String,
   merge_base: String,
   changed_paths: List<String>,
-  closure: Optional<List<String>>,
-  entry: Optional<String>,
-  roots: Optional<List<String>>,
+  recorded_closure: Optional<FleetConvergePlanSourceClosure>,
 ) -> DescendingMainAdmission {
   admit_descending_main(
     checkout: checkout,
     plan_revision: plan_revision,
     merge_base: merge_base,
     changed_paths: changed_paths,
-    source_closure: closure,
-    source_closure_entry_path: entry,
-    source_closure_pool_roots: roots,
+    source_closure: recorded_closure,
     expected_entry_path: derived_entry,
     expected_pool_roots: derived_roots,
   )
 }
 
 // The recorded triple in its recorded shape, reused by the claims that are not about absence.
-data rec_closure: Optional<List<String>> = Present { value: plan_closure_fixture }
-data rec_entry: Optional<String> = Present { value: derived_entry }
-data rec_roots: Optional<List<String>> = Present { value: derived_roots }
+// The recorded fact in its recorded shape: paths, entry and pool roots travel together, so a claim
+// either supplies the whole record or passes Absent (never-recorded).
+fn recorded(paths: List<String>, entry: String, roots: List<String>) -> Optional<FleetConvergePlanSourceClosure> {
+  Present { value: FleetConvergePlanSourceClosure { paths: paths, entry_path: entry, pool_roots: roots } }
+}
+
+data rec_ok: Optional<FleetConvergePlanSourceClosure> = recorded(
+  paths: plan_closure_fixture,
+  entry: derived_entry,
+  roots: derived_roots,
+)
 
 // --- THE ADMITTED CASE (the one that fails red on main) ---------------------
 
@@ -145,9 +164,7 @@ test fn descending_main_admitted_when_diff_misses_closure() -> Bool {
     plan_revision: plan_p,
     merge_base: plan_p,
     changed_paths: safe_changed_paths,
-    closure: rec_closure,
-    entry: rec_entry,
-    roots: rec_roots,
+    recorded_closure: rec_ok,
   ))
 }
 
@@ -157,9 +174,7 @@ test fn same_revision_admits_immediately() -> Bool {
     plan_revision: plan_p,
     merge_base: unrelated_merge_base,
     changed_paths: [derived_entry],
-    closure: rec_closure,
-    entry: rec_entry,
-    roots: rec_roots,
+    recorded_closure: rec_ok,
   ) {
     DescendingMainAdmitted { checkout: x, plan_revision: y } => x == plan_p && y == plan_p
     other => false
@@ -173,9 +188,7 @@ test fn not_descendant_refuses() -> Bool {
     plan_revision: plan_p,
     merge_base: unrelated_merge_base,
     changed_paths: safe_changed_paths,
-    closure: rec_closure,
-    entry: rec_entry,
-    roots: rec_roots,
+    recorded_closure: rec_ok,
   ) {
     DescendingMainNotDescendant { checkout: cc, plan_revision: pp, merge_base: m } =>
       cc == main_m && pp == plan_p && m == unrelated_merge_base
@@ -190,9 +203,7 @@ test fn touches_closure_refuses() -> Bool {
     plan_revision: plan_p,
     merge_base: plan_p,
     changed_paths: ["docs/readme.md", "dag/gunbc/fleet/fleet_converge_receipt.dag", "src/x.rs"],
-    closure: rec_closure,
-    entry: rec_entry,
-    roots: rec_roots,
+    recorded_closure: rec_ok,
   ) {
     DescendingMainTouchesClosure { offending_path: op } => op == "dag/gunbc/fleet/fleet_converge_receipt.dag"
     other => false
@@ -207,9 +218,7 @@ test fn closure_never_recorded_refuses() -> Bool {
     plan_revision: plan_p,
     merge_base: plan_p,
     changed_paths: safe_changed_paths,
-    closure: Absent,
-    entry: Absent,
-    roots: Absent,
+    recorded_closure: Absent,
   ) {
     DescendingMainClosureAbsent { plan_revision: p } => p == plan_p
     other => false
@@ -223,28 +232,24 @@ test fn recorded_empty_closure_refuses_on_its_own_arm() -> Bool {
     plan_revision: plan_p,
     merge_base: plan_p,
     changed_paths: safe_changed_paths,
-    closure: Present { value: [] },
-    entry: Present { value: derived_entry },
-    roots: Present { value: derived_roots },
+    recorded_closure: recorded(paths: [], entry: derived_entry, roots: derived_roots),
   ) {
     DescendingMainClosureEmpty { plan_revision: p } => p == plan_p
     other => false
   }
 }
 
-// A closure recorded without its attribution refuses, naming what is missing.
-test fn closure_without_attribution_refuses_naming_the_missing_member() -> Bool {
-  match admit_with(
-    checkout: main_m,
-    plan_revision: plan_p,
-    merge_base: plan_p,
-    changed_paths: safe_changed_paths,
-    closure: Present { value: plan_closure_fixture },
-    entry: Absent,
-    roots: Present { value: derived_roots },
-  ) {
-    DescendingMainAttributionAbsent { plan_revision: p, missing: m } =>
-      p == plan_p && m == "source_closure_entry_path"
+// THE HALF-RECORDED STATE CANNOT BE WRITTEN DOWN. It is not a decision arm any more — the record
+// carries paths, entry and pool roots together — so the check moves to where a half-recorded closure
+// can still arrive from: the wire. A document with source_closure but no attribution is refused by
+// the decoder, which is what makes the record's shape trustworthy.
+test fn a_half_recorded_closure_wire_is_refused_by_the_decoder() -> Bool {
+  let doc = json_object(members: [
+    json_kv(key: "source_closure", value: json_array(elements: [json_string(s: "dag/a.dag")])),
+    json_kv(key: "source_closure_pool_roots", value: json_array(elements: [json_string(s: "dag")])),
+  ])
+  match decode_plan_receipt_closure(doc: doc, schema: fleet_converge_plan_receipt_schema_v2) {
+    PlanReceiptClosureRefused { reason: r } => string_contains(s: r, pattern: "source_closure_entry_path")
     other => false
   }
 }
@@ -256,9 +261,7 @@ test fn empty_closure_refuses() -> Bool {
     plan_revision: plan_p,
     merge_base: plan_p,
     changed_paths: safe_changed_paths,
-    closure: Absent,
-    entry: Present { value: derived_entry },
-    roots: Present { value: derived_roots },
+    recorded_closure: Absent,
   ) {
     DescendingMainClosureAbsent { plan_revision: p } => p == plan_p
     other => false
@@ -272,9 +275,7 @@ test fn foreign_entry_attribution_refuses() -> Bool {
     plan_revision: plan_p,
     merge_base: plan_p,
     changed_paths: safe_changed_paths,
-    closure: Present { value: plan_closure_fixture },
-    entry: Present { value: "dag/gunbc/some_other_cli.dag" },
-    roots: Present { value: derived_roots },
+    recorded_closure: recorded(paths: plan_closure_fixture, entry: "dag/gunbc/some_other_cli.dag", roots: derived_roots),
   ) {
     DescendingMainEntryMismatch { expected: e, recorded: r } =>
       e == derived_entry && r == "dag/gunbc/some_other_cli.dag"
@@ -289,9 +290,7 @@ test fn pool_roots_mismatch_refuses_with_own_variant() -> Bool {
     plan_revision: plan_p,
     merge_base: plan_p,
     changed_paths: safe_changed_paths,
-    closure: Present { value: plan_closure_fixture },
-    entry: Present { value: derived_entry },
-    roots: Present { value: ["dag", "wrong-pool"] },
+    recorded_closure: recorded(paths: plan_closure_fixture, entry: derived_entry, roots: ["dag", "wrong-pool"]),
   ) {
     DescendingMainPoolRootsMismatch { expected: e, recorded: r } =>
       r == "dag,wrong-pool" && contains(xs: derived_roots, item: "dag", eq: string_eq) && e != r
@@ -385,11 +384,7 @@ test fn a_path_named_like_the_old_sentinel_is_a_real_path() -> Bool {
 
 // --- the producer-to-consumer wire ------------------------------------------
 
-fn wire_fixture_receipt(
-  closure: Optional<List<String>>,
-  entry: Optional<String>,
-  roots: Optional<List<String>>
-) -> FleetConvergePlanReceipt {
+fn wire_fixture_receipt(closure: Optional<FleetConvergePlanSourceClosure>) -> FleetConvergePlanReceipt {
   FleetConvergePlanReceipt {
     run: ActionsRunBinding {
       repository: "gunb-ai/gunbc",
@@ -411,8 +406,6 @@ fn wire_fixture_receipt(
     lease_generation: 3,
     apply_terminal: FullyApplied,
     source_closure: closure,
-    source_closure_entry_path: entry,
-    source_closure_pool_roots: roots,
   }
 }
 
@@ -421,26 +414,18 @@ fn wire_fixture_receipt(
 test fn the_recorded_closure_survives_the_receipt_wire_and_admits() -> Bool {
   let raw = serialize_json(
     v: fleet_converge_plan_receipt_json(
-      r: wire_fixture_receipt(
-        closure: Present { value: plan_closure_fixture },
-        entry: Present { value: derived_entry },
-        roots: Present { value: derived_roots },
-      )
+      r: wire_fixture_receipt(closure: rec_ok)
     )
   )
   match fleet_converge_plan_receipt_decode(raw: raw) {
     FleetConvergePlanReceiptDecoded { receipt: r } =>
-      r.source_closure == Present { value: plan_closure_fixture }
-        && r.source_closure_entry_path == Present { value: derived_entry }
-        && r.source_closure_pool_roots == Present { value: derived_roots }
+      r.source_closure == rec_ok
         && admitted(admit_with(
           checkout: main_m,
           plan_revision: plan_p,
           merge_base: plan_p,
           changed_paths: safe_changed_paths,
-          closure: r.source_closure,
-          entry: r.source_closure_entry_path,
-          roots: r.source_closure_pool_roots,
+          recorded_closure: r.source_closure,
         ))
     FleetConvergePlanReceiptUnreadable { reason: _ } => false
   }
@@ -449,21 +434,17 @@ test fn the_recorded_closure_survives_the_receipt_wire_and_admits() -> Bool {
 // OLD RECEIPTS UNCHANGED: a v1 receipt (no closure members at all) still decodes, under the v1 tag,
 // with honest Absents, and the descending case refuses with the pre-existing refusal.
 test fn an_old_v1_receipt_still_decodes_and_refuses_descending_apply() -> Bool {
-  let raw = serialize_json(v: fleet_converge_plan_receipt_json(r: wire_fixture_receipt(closure: Absent, entry: Absent, roots: Absent)))
+  let raw = serialize_json(v: fleet_converge_plan_receipt_json(r: wire_fixture_receipt(closure: Absent)))
   match fleet_converge_plan_receipt_decode(raw: raw) {
     FleetConvergePlanReceiptDecoded { receipt: r } =>
       string_contains(s: raw, pattern: fleet_converge_plan_receipt_schema)
         && r.source_closure == Absent
-        && r.source_closure_entry_path == Absent
-        && r.source_closure_pool_roots == Absent
         && match admit_with(
           checkout: main_m,
           plan_revision: plan_p,
           merge_base: plan_p,
           changed_paths: safe_changed_paths,
-          closure: r.source_closure,
-          entry: r.source_closure_entry_path,
-          roots: r.source_closure_pool_roots,
+          recorded_closure: r.source_closure,
         ) {
           DescendingMainClosureAbsent { plan_revision: p } => p == plan_p
           other => false
@@ -477,11 +458,7 @@ test fn an_old_v1_receipt_still_decodes_and_refuses_descending_apply() -> Bool {
 // the receipt carries was computed over the TRUE closure, so the decode refuses: this is the case
 // the admission would otherwise have waved through.
 test fn a_tampered_source_closure_breaks_the_identity_and_refuses() -> Bool {
-  let true_receipt = wire_fixture_receipt(
-    closure: Present { value: plan_closure_fixture },
-    entry: Present { value: derived_entry },
-    roots: Present { value: derived_roots },
-  )
+  let true_receipt = wire_fixture_receipt(closure: rec_ok)
   let claimed_identity = fleet_converge_plan_receipt_identity_hex(r: true_receipt)
   let tampered = json_object(members: [
     json_kv(key: "schema", value: json_string(s: fleet_converge_plan_receipt_schema_v2)),
@@ -582,18 +559,14 @@ test fn determinism_repeat_admitted() -> Bool {
     plan_revision: plan_p,
     merge_base: plan_p,
     changed_paths: safe_changed_paths,
-    closure: rec_closure,
-    entry: rec_entry,
-    roots: rec_roots,
+    recorded_closure: rec_ok,
   )
   let b = admit_with(
     checkout: main_m,
     plan_revision: plan_p,
     merge_base: plan_p,
     changed_paths: safe_changed_paths,
-    closure: rec_closure,
-    entry: rec_entry,
-    roots: rec_roots,
+    recorded_closure: rec_ok,
   )
   admitted(a) && admitted(b)
 }
@@ -640,4 +613,40 @@ test fn refusal_text_carries_the_typed_cause_of_this_refusal() -> Bool {
 // The arm without a cause renders exactly the historic words — no invented suffix.
 test fn refusal_text_without_a_cause_is_the_historic_sentence_alone() -> Bool {
   refusal_text_without_cause == "fleet_converge_apply: RunRevisionRefused — expected 2222222222222222222222222222222222222222 but this run checked out 1111111111111111111111111111111111111111; refusing before the locked actuator"
+}
+
+// --- THE ONE VOCABULARY both call sites render ----------------------------------------------
+// The checkout-verify step and the apply leg no longer word refusals of their own: they render
+// fleet_converge_plan_revision.descending_main_verdict_text. These claims pin that vocabulary at its
+// one interface (a typed verdict in, the operator's sentence out), including the arms that a failed
+// read produces — which must refuse, and must say WHICH read failed.
+
+test fn verdict_text_names_the_offending_path_of_a_closure_touch() -> Bool {
+  string_contains(
+    s: descending_main_verdict_text(v: DescendingMainAdmissionRefused {
+      admission: DescendingMainTouchesClosure {
+        checkout: main_m,
+        plan_revision: plan_p,
+        offending_path: "dag/gunbc/fleet/fleet_converge_receipt.dag",
+      },
+    }),
+    pattern: "dag/gunbc/fleet/fleet_converge_receipt.dag",
+  )
+}
+
+test fn verdict_text_names_the_exit_code_of_a_failed_merge_base_read() -> Bool {
+  let t = descending_main_verdict_text(v: DescendingMainUnobservable { failure: MergeBaseUnreadable { exit_code: 128, stderr: "not a git repository" } })
+  string_contains(s: t, pattern: "rc=128") && string_contains(s: t, pattern: "not a git repository")
+}
+
+test fn verdict_text_refuses_a_missing_attribution_source_without_fabricating_one() -> Bool {
+  string_contains(
+    s: descending_main_verdict_text(v: DescendingMainUnobservable { failure: EntryUnderived }),
+    pattern: "never fabricate an attribution",
+  )
+}
+
+test fn verdict_text_reports_the_reusable_case_by_both_revisions() -> Bool {
+  let t = descending_main_verdict_text(v: DescendingMainReusable { checkout: main_m, plan_revision: plan_p })
+  string_contains(s: t, pattern: main_m) && string_contains(s: t, pattern: plan_p)
 }

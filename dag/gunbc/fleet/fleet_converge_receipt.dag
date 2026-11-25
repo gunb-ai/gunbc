@@ -82,12 +82,25 @@ type FleetConvergePlanReceipt {
   lease_owner_fingerprint: String
   lease_generation: Int
   apply_terminal: FleetConvergeApplyTerminal
-  // Absent is honest absence (a v1 receipt); Present([]) is a recorded-but-empty closure, a
-  // materially different case the admission refuses on its own arm. No sentinel stands in for
-  // either (gunbc.design_argument::declared_intent).
-  source_closure: Optional<List<String>>
-  source_closure_entry_path: Optional<String>
-  source_closure_pool_roots: Optional<List<String>>
+  // THE RECORDED SOURCE CLOSURE — ONE OPTIONAL, ONE FACT. The three things a descending-main apply
+  // needs are not three independent facts: a path list that cannot say which entry module it was
+  // computed from is unverifiable, and an attribution without a path list proves nothing. Recorded
+  // together or not at all, so the half-recorded states cannot be written down (the decoder refuses
+  // them, and this record cannot express them). Absent is honest absence (a receipt minted before
+  // the field existed); Present { paths: [] } is a recorded-but-empty closure, a materially
+  // different case the admission refuses on its own arm. No sentinel stands in for either
+  // (gunbc.design_argument::declared_intent).
+  source_closure: Optional<FleetConvergePlanSourceClosure>
+}
+
+// WHAT THE PLAN RECORDED ABOUT ITS OWN SOURCE: the transitive import closure of the plan CLI's
+// entry module, and the attribution that says HOW it was computed — the entry module's storage path
+// and the source pools (witness layer roots) the closure was folded over. Attribution is part of
+// the fact, not metadata beside it: the consumer re-derives both and refuses on any mismatch.
+type FleetConvergePlanSourceClosure {
+  paths: List<String>
+  entry_path: String
+  pool_roots: List<String>
 }
 
 type FleetConvergeApplyReceipt {
@@ -137,19 +150,14 @@ fn fleet_converge_plan_receipt_schema_of(r: FleetConvergePlanReceipt) -> String 
 // root list that is Absent renders as the empty segment, which only ever happens on the v1 path
 // (where the suffix is not appended at all), so no meaning is invented here.
 fn fleet_converge_plan_receipt_closure_identity_suffix(r: FleetConvergePlanReceipt) -> String {
-  let closure_text = match r.source_closure {
-    Present { value: c } => join(c, ",")
+  match r.source_closure {
     Absent => ""
+    Present { value: c } => join([
+      "|closure_entry=", c.entry_path,
+      "|closure_roots=", join(c.pool_roots, ","),
+      "|closure=", join(c.paths, ","),
+    ], "")
   }
-  let entry_text = match r.source_closure_entry_path {
-    Present { value: e } => e
-    Absent => ""
-  }
-  let roots_text = match r.source_closure_pool_roots {
-    Present { value: p } => join(p, ",")
-    Absent => ""
-  }
-  join(["|closure_entry=", entry_text, "|closure_roots=", roots_text, "|closure=", closure_text], "")
 }
 
 // THE IDENTITY COVERS THE CLOSURE WHEN THERE IS ONE. A v2 receipt whose source_closure (or its
@@ -215,15 +223,9 @@ fn closure_members(r: FleetConvergePlanReceipt) -> List<JsonValue> {
   match r.source_closure {
     Absent => []
     Present { value: c } => [
-      json_kv(key: "source_closure", value: json_array(elements: list_map(xs: c, f: fn(s) { json_string(s: s) }))),
-      json_kv(key: "source_closure_entry_path", value: json_string(s: match r.source_closure_entry_path {
-        Present { value: e } => e
-        Absent => ""
-      })),
-      json_kv(key: "source_closure_pool_roots", value: json_array(elements: list_map(xs: match r.source_closure_pool_roots {
-        Present { value: p } => p
-        Absent => []
-      }, f: fn(s) { json_string(s: s) }))),
+      json_kv(key: "source_closure", value: json_array(elements: list_map(xs: c.paths, f: fn(s) { json_string(s: s) }))),
+      json_kv(key: "source_closure_entry_path", value: json_string(s: c.entry_path)),
+      json_kv(key: "source_closure_pool_roots", value: json_array(elements: list_map(xs: c.pool_roots, f: fn(s) { json_string(s: s) }))),
     ]
   }
 }
@@ -610,7 +612,7 @@ fn string_elements(elements: List<JsonValue>) -> List<String> {
 // A partial triple is a refusal naming what is missing, never a half-filled receipt.
 type PlanReceiptClosureMembers
   = MembersAbsent
-  | MembersRecorded { closure: List<String>, entry: String, roots: List<String> }
+  | MembersRecorded { closure: FleetConvergePlanSourceClosure }
 
 type PlanReceiptClosureDecode
   = PlanReceiptClosureOk { members: PlanReceiptClosureMembers }
@@ -651,7 +653,11 @@ fn decode_plan_receipt_closure(doc: JsonValue, schema: String) -> PlanReceiptClo
               if schema != fleet_converge_plan_receipt_schema_v2 {
                 PlanReceiptClosureRefused { reason: join(["plan receipt declares schema ", schema, " but carries source_closure members; only ", fleet_converge_plan_receipt_schema_v2, " may"], "") }
               } else {
-                PlanReceiptClosureOk { members: MembersRecorded { closure: c, entry: e, roots: p } }
+                PlanReceiptClosureOk {
+                  members: MembersRecorded {
+                    closure: FleetConvergePlanSourceClosure { paths: c, entry_path: e, pool_roots: p },
+                  },
+                }
               }
           }
       }
@@ -693,15 +699,7 @@ fn finish_fleet_converge_plan_receipt_decode(
     lease_generation: lease_generation,
     apply_terminal: apply_terminal,
     source_closure: match members {
-      MembersRecorded { closure: c, entry: _, roots: _ } => Present { value: c }
-      MembersAbsent => Absent
-    },
-    source_closure_entry_path: match members {
-      MembersRecorded { closure: _, entry: e, roots: _ } => Present { value: e }
-      MembersAbsent => Absent
-    },
-    source_closure_pool_roots: match members {
-      MembersRecorded { closure: _, entry: _, roots: p } => Present { value: p }
+      MembersRecorded { closure: c } => Present { value: c }
       MembersAbsent => Absent
     },
   }

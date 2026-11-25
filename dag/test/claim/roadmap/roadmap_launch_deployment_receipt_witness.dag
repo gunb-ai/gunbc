@@ -25,6 +25,7 @@ import gunbc.deploy_transition {
 }
 import gunbc.fleet.fleet_converge_plan { fleet_converge_scope_wire }
 import gunbc.fleet.fleet_converge_receipt {
+  FleetConvergePlanSourceClosure,
   FleetConvergeApplyReceipt,
   FleetConvergePlanReceipt,
   fleet_converge_apply_receipt_identity_hex,
@@ -211,12 +212,7 @@ fn rlm_plan_at_scope(run: ActionsRunBinding, host: String, scope_wire: String) -
     lease_owner_fingerprint: "fnv1a64:bbbbbbbbbbbbbbbb",
     lease_generation: 5,
     apply_terminal: FullyApplied,
-    source_closure: Present { value: [
-      "dag/gunbc/fleet/fleet_converge_plan_cli.dag",
-      "dag/gunbc/fleet/fleet_converge_receipt.dag",
-    ] },
-    source_closure_entry_path: Present { value: "dag/gunbc/fleet/fleet_converge_plan_cli.dag" },
-    source_closure_pool_roots: Present { value: ["dag", "src/v2"] },
+    source_closure: Present { value: FleetConvergePlanSourceClosure { paths: [ "dag/gunbc/fleet/fleet_converge_plan_cli.dag", "dag/gunbc/fleet/fleet_converge_receipt.dag", ], entry_path: "dag/gunbc/fleet/fleet_converge_plan_cli.dag", pool_roots: ["dag", "src/v2"] } },
   }
 }
 
