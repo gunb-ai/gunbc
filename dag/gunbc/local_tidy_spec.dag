@@ -121,8 +121,8 @@ data local_tidy_fmt_pre_commit_drift_recipe: String = "fmt drift in staged Rust 
 // it with 'git's --no-verify skips this hook', an escape hatch in exactly the arm with the least
 // information — a toggle whose only effect is to proceed as if the refusal had not fired, offered at
 // the moment the check could determine nothing. That is the fail_closed position itself:
-// gunbc.design_argument::fail_closed, data fail_closed: DesignRow at dag/gunbc/design_argument.dag:745,
-// whose review tells list verbatim "a toggle, env var or flag whose only effect is to skip a refusal".
+// #gunbc.design_argument::fail_closed, whose review tells list verbatim "a toggle, env var or flag
+// whose only effect is to skip a refusal".
 // The only remedy this arm may propose is the one that makes the check able to report — install the
 // toolchain — and its wording ('the fmt check DID NOT RUN ... not a formatting finding') is
 // load-bearing: it keeps 'the tree is unformatted' distinct from 'the check could not run', so the
@@ -131,19 +131,21 @@ data local_tidy_fmt_pre_commit_drift_recipe: String = "fmt drift in staged Rust 
 // STALE CITATION, STATED NOT REPEATED. An earlier version of this note attributed the could-not-run
 // no-bypass position to "operator ruling 2026-07-05", but that ruling resolves to no row in
 // gunbc.design_ruling — the roster whose whole stated purpose is a dated operator ruling, "when, and
-// on whose words" (measured at this base: 189 DesignRuling rows; 0 decided 2026-07; the decided-date
-// distribution is 2026-09 = 9, 2026-10 = 59, 2026-11 = 121; the single line matching fmt/hook/bypass/
-// no-verify is a fleet-key enrolment, not fmt). The design authority it gestures at — fail_closed —
-// is real and cited above; only the dated-ruling label dangled. NO DesignRuling row is authored to
-// fill it: that roster records dated OPERATOR rulings, this change is not one, and writing a
-// manager's ruling as an operator row is precisely the fabricated provenance the roster exists to
-// prevent.
+// on whose words". Checked at the base revision of this change: grepping that roster for a row decided
+// in 2026-07 (grep -c 'decided: "2026-07' dag/gunbc/design_ruling.dag) returns no match. No census
+// counts are quoted here on purpose — a row count or decided-date distribution goes stale on the next
+// ruling, so only the reproducible assertion and its command are recorded. The design authority the
+// stale label gestured at — fail_closed — is real and cited above; only the dated-ruling label dangled.
+// NO DesignRuling row is authored to fill it: that roster records dated OPERATOR rulings, this change is
+// not one, and writing a manager's ruling as an operator row is precisely the fabricated provenance the
+// roster exists to prevent.
 //
 // The DRIFT arm formerly kept a 'git push --no-verify to skip' clause, and the earlier note defended
 // that asymmetry ('on drift the developer is choosing to skip a known finding'). neat-badger-614
 // (2026-11-25) withdrew it. The asymmetry was the author's argument, and its premise — drift is
 // caught elsewhere, so skipping only defers a finding CI catches anyway — is dead:
-// gunbc.githooks.githooks_pre_push_emit:20 records that the 2026-08-15 floor cut deleted the fmt
+// #gunbc.githooks.githooks_pre_push_emit::pre_push_fmt_only_note records that the 2026-08-15 floor cut
+// deleted the fmt
 // build job and that neither required lane of the emitted .github/workflows/witnesses.yml runs fmt,
 // so "this hook is now the only surface that runs fmt at all." A --no-verify clause there is exactly
 // the fail_closed tell above — a flag whose only effect is to skip a refusal — standing on the fleet's
