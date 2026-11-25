@@ -16537,25 +16537,6 @@ pub fn closure_subject_for_entry(index: &MultiEntryIndex, entry: &str) -> Result
     Ok(subject_digest_for_closure(&sources))
 }
 
-/// The exact source-path population the entry loader will hand to resolution.
-///
-/// This stops at the loader boundary: it runs the same import, qualified-reference, and bare-name
-/// fixpoint as `resolve_entry_with_index`, but does not parse, typecheck, reconcile, or evaluate the
-/// resulting modules. A caller deciding whether a changed path intersects an entry can therefore
-/// ask the real loader before paying for the downstream work it is trying to avoid.
-pub fn entry_closure_source_paths(
-    index: &MultiEntryIndex,
-    entry: &str,
-) -> Result<Vec<String>, String> {
-    let mut paths: Vec<String> = load_sources_for_entry_with_pool(index, entry)?
-        .iter()
-        .map(|source| workspace_relative_repo_path(&source.path))
-        .collect();
-    paths.sort();
-    paths.dedup();
-    Ok(paths)
-}
-
 pub fn failure_receipt_companion(function: &str) -> FailureReceiptCompanionLookup {
     test_module_hygiene_bridge::failure_receipt_companion_from_authority(function)
 }
