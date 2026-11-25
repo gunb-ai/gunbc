@@ -1831,8 +1831,12 @@ fn tailscale_serve_apply_step(spec: DeploymentSpec) -> PipelineStep {
 // Deriving the parent FROM the path being installed is what keeps them from drifting again — there
 // is no second literal to update, and the emitted command for srv1-live is byte-identical because
 // the derivation of /opt/gunbc/bin/gunbc is /opt/gunbc/bin. The mode and ownership are deliberately
-// unchanged: production's bin directory is root-owned, and switching this to the service-user-owned
-// #gunbc.owned_directory::owned_directory_ensure would silently re-own a live directory to satisfy a twin.
+// unchanged: production's bin directory is root-owned, and this route claims no ownership decision for it. What
+// switching it to the service-user-owned provider would actually do is REFUSE rather than re-own:
+// #gunbc.owned_directory::owned_directory_plan returns EnsurePlanUnavailable when the observed owner is foreign
+// ("ownership is never adopted", dag/gunbc/owned_directory.dag:413-437), so the live root-owned directory would
+// stop the deploy with a named cause instead of being quietly re-chowned to satisfy a twin — the refusal is the
+// planner's, and it is the reason the deliberate choice here is stated rather than a hazard being dodged.
 
 fn path_parent_dir(path: String) -> String {
   match list_tail(xs: reverse(split(s: path, delimiter: "/"))) {
@@ -1919,22 +1923,35 @@ data install_d_mode_derivation_dissolution: DissolutionCondition = retires_disso
 // THE CALLABLE THAT USED TO STAND HERE IS DELETED, in row shell-dag-live-deploy-install-owned:
 // install_d_owned_command (over the DeploymentSpec fixture) and install_d_owned_for_user rendered this
 // argv as shell WORDS for display, and a display with no caller is not an acting route
-// (gunbc.design_argument::consumption). Nothing in the tree installs an owned directory through them: the ONE
-// acting route is #gunbc.owned_directory::owned_directory_ensure over the plan this same argv authority
-// realizes (#gunbc.owned_directory::owned_directory_install_argv), which is also what the row's witness
-// now reads. THE DISPLAY ITSELF IS DELETED IN THIS SAME MOTION — the typed outcome and its total
+// (gunbc.design_argument::consumption). NO PRODUCTION CALLER installed an owned directory through them, and the
+// leaves that do install an owned directory on the acting route do it through two DIFFERENT legs, which must not
+// be collapsed into one claim: the ownership DECISION -- plan, then provider -- is
+// #gunbc.owned_directory::owned_directory_plan over #gunbc.owned_directory::owned_directory_ensure, reached ONLY
+// by ApplyLegEnsureDirectory (gunbc.host.host_effect_realize:6421-6424); ApplyLegInstallDirectory runs a PREBUILT
+// install argv carrying no ownership decision at all (:6434, built at gunbc.live_deploy.apply_legs:659-661 and
+// :683-685, and it is THAT leg the published tree uses for `tree-repo-root` and `instance-receipts-dir` at :743
+// and :746). What the two legs share is the argv authority, #gunbc.owned_directory::owned_directory_install_argv,
+// and it is that authority -- not either leg's dispatch -- that the row's witness reads.
+// THE DISPLAY ITSELF IS DELETED IN THIS SAME MOTION — the typed outcome and its total
 // display -- InstallLineRender over its InstallLine / InstallLineRefused variants, the
 // InstallRefusalCause causes, the shell-inert path constructor, the unsafe-fragment list, the cause
 // classifier and label, and the two render callables -- are gone rather than parked: a frontier is
-// admissible only over a REAL later consumer, and nothing acting will ever consume rendered install
-// text, because the acting route is pure argv end to end. Their only consumers were three arms of
+// admissible only over a REAL later consumer, and the census found none. What the acting route is, stated at the
+// width actually proved: the local route exec's the argv as WORDS, and the remote routes hand the ADMITTED words
+// to ssh, where the far side's shell re-parses them (gunbc.typed_argv_exec:140-154 for the non-fleet transport,
+// :243-267 for the fleet leg). So this is NOT a claim that no shell is ever downstream -- it is a claim that a
+// word that shell would have to re-parse never reaches it, because the admission predicates refuse it BEFORE
+// dispatch, and that refusal (not any absence of a shell) is what the row's witness pins.
+// Their only consumers were three arms of
 // dag/test/claim/live_deploy/emit.dag (the_typed_render_refuses_a_hazardous_path_with_a_named_cause,
 // a_refused_install_displays_as_a_false_command_carrying_no_path_bytes,
 // the_checked_constructor_admits_only_inert_absolute_paths), which asserted nothing but this display
 // and are deleted with it — no live assertion was dropped to tidy the diff, and none was kept to keep
 // the file's line count up (gunbc.design_argument::replacement_migration: the old authority ends in one
-// motion at its root). The inert-path predicate goes with the display it guarded: the hazard it guarded
-// was a path spliced into SHELL TEXT, and no install argv of this route is ever shell text.
+// motion at its root). The inert-path predicate goes with the display it guarded: the hazard it guarded was a
+// path spliced into the DISPLAYED shell text -- a string any later caller could hand to a shell -- and under
+// execve a path carrying ';' is simply one filename. The remote routes' real exposure to a shell is bounded by
+// the admission predicates named above, before dispatch, and not by this deleted predicate.
 
 // A directory the plan holds no decision about is NOT installed (R2, one-deploy-path safety). The
 // old arm returned true on MemberNotInPlan -- an install with no decision, which is exactly the
