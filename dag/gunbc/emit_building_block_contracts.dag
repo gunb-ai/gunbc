@@ -6,7 +6,6 @@ import std.realization_measurement { AllocationObservation, AllocationObserved, 
 import std.measure { byte_size_count }
 import std.nat { Nat, nat_to_decimal_string }
 import gunbc.emit_copy_qualification {
-import gunbc.allocation_observation_render { AllocationCase, span_operations, is_observed, span_is_zero, operations_above, operations_within, count_text, span_text, case_line, span_bytes, spans_agree, bytes_above }
   EmitCopyQualificationCaseId,
   CaseApplicability,
   CaseApplicable,

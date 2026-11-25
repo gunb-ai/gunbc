@@ -9,10 +9,13 @@ module gunbc.allocation_observation_render
 // PROVENANCE, as single_authority requires of a deliberate authority: the ten decls before the
 // rule below are moved VERBATIM out of gunbc.instruments.native_allocation_observation at its
 // revision 891198514b8ad3161e6acfdc2a3261d4c044510d (each body compared byte-for-byte before the
-// move, and the instrument now imports them back). The three after the rule were added by the
+// move, and the instrument now imports them back). The five after the rule were added by the
 // roadmap row #gunbc.roadmap.roadmap_authority::declared_roadmap_nodes, id
 // emission-building-block-realization, to put the byte axis beside the operation axis so a
-// calibration row can compare two windows without hard-coding what an empty window costs.
+// calibration row can compare two windows without hard-coding what an empty window costs. Operations
+// are a count and stay a Nat; bytes are a quantity and stay a ByteSize, compared through std.measure's
+// own measure_le, because a value that crosses a module boundary as a bare byte count makes the
+// consumer the authority over a unit std.measure already owns.
 //
 // IT DECLARES NO COMPILER PIPELINE ENTRY, and that is why it exists as its own module. An
 // instrument declares data compiler_pipeline_entry, and importing a module that also declares one
@@ -24,7 +27,7 @@ module gunbc.allocation_observation_render
 import std.types { Bool, Int, List, String }
 import std.optional { Optional, Present, Absent }
 import std.realization_measurement { AllocationObservation, AllocationObserved, AllocationOperationsRanBackwards, AllocationBytesRequestedRanBackwards, AllocationProviderNotSelected }
-import std.measure { byte_size_count }
+import std.measure { ByteSize, byte_size_count, measure_le }
 import std.nat { Nat, nat_to_decimal_string }
 
 type AllocationCase {
@@ -105,11 +108,15 @@ fn case_line(c: AllocationCase) -> String {
 }
 
 // ADDED BY THIS ROW, not moved: the byte-axis readers a calibration row needs so the floor
-// is a measurement rather than a remembered number.
+// is a measurement rather than a remembered number. An earlier draft read the byte axis as a bare
+// Nat at this boundary; a review stopped it, and these three now carry the carrier.
 
-fn span_bytes(o: AllocationObservation) -> Nat? {
+// A BYTE QUANTITY LEAVES AS A ByteSize. std.measure owns what bytes mean; handing back the bare
+// count would give every consumer an unmodeled number and move authority over a unit this module
+// does not own onto the comparison site.
+fn span_bytes(o: AllocationObservation) -> ByteSize? {
   match o {
-    AllocationObserved { operations: _, bytes_requested: b } => Present { value: byte_size_count(b: b) }
+    AllocationObserved { operations: _, bytes_requested: b } => Present { value: b }
     AllocationOperationsRanBackwards => none
     AllocationBytesRequestedRanBackwards => none
     AllocationProviderNotSelected => none
@@ -121,7 +128,7 @@ fn spans_agree(a: AllocationObservation, b: AllocationObservation) -> Bool {
     Present { value: ax } => match span_operations(o: b) {
       Present { value: bx } => match span_bytes(o: a) {
         Present { value: ay } => match span_bytes(o: b) {
-          Present { value: by } => ax == bx && ay == by
+          Present { value: by } => ax == bx && byte_size_agree(a: ay, b: by)
           Absent => false
         }
         Absent => false
@@ -135,9 +142,19 @@ fn spans_agree(a: AllocationObservation, b: AllocationObservation) -> Bool {
 fn bytes_above(a: AllocationObservation, b: AllocationObservation) -> Bool {
   match span_bytes(o: a) {
     Present { value: ay } => match span_bytes(o: b) {
-      Present { value: by } => ay > by
+      Present { value: by } => byte_size_above(a: ay, b: by)
       Absent => false
     }
     Absent => false
   }
+}
+
+// THE MEASURE'S OWN COMPARISONS, so the byte axis is read the way std.measure reads it: strictly
+// above is not-within, and agreement is each within the other.
+fn byte_size_above(a: ByteSize, b: ByteSize) -> Bool {
+  !measure_le(a: a, b: b)
+}
+
+fn byte_size_agree(a: ByteSize, b: ByteSize) -> Bool {
+  measure_le(a: a, b: b) && measure_le(a: b, b: a)
 }
