@@ -3,7 +3,7 @@ module product.fabric.flex_aws_apply
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.optional { Present, Absent }
 import std.list { first_where }
-import std.algebra { list_sort_by_key, int_total_order }
+import std.algebra { list_sort_by_key, int_total_order, length }
 import std.apply_mode { ApplyMode, Plan, Apply }
 import std.measure { Second, second_count, MoneyPerHour, MoneyAmountMicro, money_per_hour_micros, money_amount_micro_count }
 import extdeps.languages.json.emit { JsonValue, JsonString }
@@ -115,8 +115,10 @@ fn flex_aws_notice_instance(n: FlexAwsNotice) -> NonEmptyStr {
 // cost (the spot price can rise after launch only up to MaxPrice, which is set to the admitted rate).
 type FlexAwsApplyPolicy {
   actuation: ApplyMode
-  region: NonEmptyStr
   gpus_per_card: Int
+  // OUR DOLLAR BUDGET (operator ruling aws_spot_burn_ceiling_2026_11_25): the summed current spot price of
+  // every live card plus the card being asked for may not exceed this rate.
+  burn_ceiling: MoneyPerHour
   liability_ceiling: MoneyAmountMicro
   lifetime: Second
 }
@@ -177,7 +179,6 @@ fn flex_aws_liability_micros(rate: MoneyPerHour, lifetime: Second) -> Int {
 fn flex_aws_admissible(c: FlexAwsCandidate, policy: FlexAwsApplyPolicy) -> Bool {
   (count(c.walls) == 0)
     && match c.market { FlexAwsSpot => true  _ => false }
-    && ((c.region as String) == (policy.region as String))
     && (c.gpus == policy.gpus_per_card)
     && match c.rate {
       Present { value: r } => flex_aws_liability_micros(rate: r, lifetime: policy.lifetime) <= (money_amount_micro_count(m: policy.liability_ceiling) as Int)
@@ -229,17 +230,28 @@ fn flex_aws_elsewhere_first(cs: List<FlexAwsCandidate>, avoid: List<String>) -> 
   concat(cs |> filter(c => !any(avoid, z => z == (c.zone as String))), cs |> filter(c => any(avoid, z => z == (c.zone as String))))
 }
 
-// QUOTA HELD BY OUR OWN CARDS. The spot vCPU quota counts every instance that is not terminated -- a
-// shutting-down card still holds its vCPUs (observed 2026-11-25: a launch right after a terminate refused
-// MaxSpotInstanceCountExceeded while the old card spent minutes shutting down). A card's vCPUs are read
-// from the screened candidate of its type; a held type the screen did not describe cannot be counted,
-// and a launch is not asked for over an uncounted quota.
+// QUOTA IS PER REGION, and held by our own cards. The spot vCPU quota is applied region by region, and it
+// counts every instance that is not terminated -- a shutting-down card still holds its vCPUs (observed
+// 2026-11-25: a launch right after a terminate refused MaxSpotInstanceCountExceeded while the old card spent
+// minutes shutting down). A card's vCPUs are read from the screened candidate of its type; a held type the
+// screen did not describe cannot be counted, and no launch is asked for over an uncounted quota.
+type FlexAwsRegionQuota {
+  region: NonEmptyStr
+  spot_vcpus: Int
+}
+
+// A zone's region is its name without the zone letter (us-east-1d -> us-east-1), the spelling EC2 gives
+// every standard availability zone; the flex offerings are read at availability-zone grain.
+fn flex_aws_zone_in(zone: NonEmptyStr, region: NonEmptyStr) -> Bool {
+  (zone as String).starts_with(region as String) && (length(zone as String) == length(region as String) + 1)
+}
+
 type FlexAwsQuotaHeld
   = FlexAwsQuotaCounted { vcpus: Int }
   | FlexAwsQuotaUncounted { instance_type: NonEmptyStr }
 
-fn flex_aws_quota_held(owned: List<AwsEc2Instance>, candidates: List<FlexAwsCandidate>) -> FlexAwsQuotaHeld {
-  fold(owned |> filter(i => match i.state.name { AwsEc2Terminated => false  _ => true }), init: FlexAwsQuotaCounted { vcpus: 0 }, f: (acc, i) => match acc {
+fn flex_aws_quota_held(owned: List<AwsEc2Instance>, candidates: List<FlexAwsCandidate>, region: NonEmptyStr) -> FlexAwsQuotaHeld {
+  fold(owned |> filter(i => match i.state.name { AwsEc2Terminated => false  _ => true }) |> filter(i => flex_aws_zone_in(zone: i.placement.availability_zone, region: region)), init: FlexAwsQuotaCounted { vcpus: 0 }, f: (acc, i) => match acc {
     FlexAwsQuotaUncounted { instance_type: t } => acc
     FlexAwsQuotaCounted { vcpus: n } => match first_where(candidates, c => (c.instance_type as String) == (i.instance_type as String)) {
       Present { value: c } => FlexAwsQuotaCounted { vcpus: n + c.vcpus }
@@ -248,13 +260,28 @@ fn flex_aws_quota_held(owned: List<AwsEc2Instance>, candidates: List<FlexAwsCand
   })
 }
 
-fn flex_aws_decide(policy: FlexAwsApplyPolicy, demand: FlexAwsDemand, candidates: List<FlexAwsCandidate>, owned: List<AwsEc2Instance>, notices: List<FlexAwsNotice>, spot_quota_vcpus: Int, now_unix: Int) -> FlexAwsDecision {
+fn flex_aws_quota_of(quotas: List<FlexAwsRegionQuota>, region: NonEmptyStr) -> Int {
+  match first_where(quotas, q => (q.region as String) == (region as String)) {
+    Present { value: q } => q.spot_vcpus
+    Absent => 0
+  }
+}
+
+// The vCPUs a candidate's region leaves free, or none when our held cards there cannot be counted.
+fn flex_aws_free_in(quotas: List<FlexAwsRegionQuota>, owned: List<AwsEc2Instance>, candidates: List<FlexAwsCandidate>, region: NonEmptyStr) -> Int? {
+  match flex_aws_quota_held(owned: owned, candidates: candidates, region: region) {
+    FlexAwsQuotaUncounted { instance_type: _ } => none
+    FlexAwsQuotaCounted { vcpus: held } => Present { value: flex_aws_quota_of(quotas: quotas, region: region) - held }
+  }
+}
+
+fn flex_aws_decide(policy: FlexAwsApplyPolicy, demand: FlexAwsDemand, candidates: List<FlexAwsCandidate>, owned: List<AwsEc2Instance>, notices: List<FlexAwsNotice>, quotas: List<FlexAwsRegionQuota>, now_unix: Int) -> FlexAwsDecision {
   let live = owned |> filter(i => flex_aws_live(i: i))
   match first_where(live, i => match flex_aws_age_seconds(i: i, now_unix: now_unix) { Absent => true  Present { value: _ } => false }) {
     Present { value: u } => FlexAwsRelease { instance_id: u.instance_id, why: FlexAwsReleaseLaunchTimeUnreadable { launch_time: u.launch_time } }
     Absent => match first_where(live, i => match flex_aws_age_seconds(i: i, now_unix: now_unix) { Present { value: a } => a >= (second_count(policy.lifetime) as Int)  Absent => false }) {
       Present { value: old } => FlexAwsRelease { instance_id: old.instance_id, why: FlexAwsReleaseLifetimeSpent { age_seconds: match flex_aws_age_seconds(i: old, now_unix: now_unix) { Present { value: a } => a  Absent => 0 } } }
-      Absent => flex_aws_decide_count(policy: policy, demand: demand, candidates: candidates, owned: owned, live: live, notices: notices, spot_quota_vcpus: spot_quota_vcpus)
+      Absent => flex_aws_decide_count(policy: policy, demand: demand, candidates: candidates, owned: owned, live: live, notices: notices, quotas: quotas)
     }
   }
 }
@@ -268,7 +295,7 @@ fn flex_aws_demand_ceiling(demand: FlexAwsDemand) -> Int {
 
 // Surplus over the ceiling is released; below what demand wants, the cheapest admissible card elsewhere
 // first is asked for; otherwise the pass holds.
-fn flex_aws_decide_count(policy: FlexAwsApplyPolicy, demand: FlexAwsDemand, candidates: List<FlexAwsCandidate>, owned: List<AwsEc2Instance>, live: List<AwsEc2Instance>, notices: List<FlexAwsNotice>, spot_quota_vcpus: Int) -> FlexAwsDecision {
+fn flex_aws_decide_count(policy: FlexAwsApplyPolicy, demand: FlexAwsDemand, candidates: List<FlexAwsCandidate>, owned: List<AwsEc2Instance>, live: List<AwsEc2Instance>, notices: List<FlexAwsNotice>, quotas: List<FlexAwsRegionQuota>) -> FlexAwsDecision {
   let steady = live |> filter(i => !flex_aws_leaving(notices: notices, instance_id: i.instance_id))
   let wanted = flex_aws_wanted(demand: demand, steady: count(steady))
   if count(live) > flex_aws_demand_ceiling(demand: demand) {
@@ -279,21 +306,49 @@ fn flex_aws_decide_count(policy: FlexAwsApplyPolicy, demand: FlexAwsDemand, cand
   } else if count(steady) >= wanted {
     FlexAwsHold { why: join(["live=", to_string(count(live)), " steady=", to_string(count(steady)), " wanted=", to_string(wanted)], "") }
   } else {
-    match flex_aws_quota_held(owned: owned, candidates: candidates) {
-      FlexAwsQuotaUncounted { instance_type: t } => FlexAwsHold { why: concat("cannot count the quota held by an owned card of undescribed type ", t as String) }
-      FlexAwsQuotaCounted { vcpus: held } => flex_aws_launch_decision(policy: policy, candidates: candidates, owned: owned, notices: notices, free_vcpus: spot_quota_vcpus - held)
-    }
+    flex_aws_launch_decision(policy: policy, candidates: candidates, owned: owned, notices: notices, quotas: quotas)
   }
 }
 
-fn flex_aws_launch_decision(policy: FlexAwsApplyPolicy, candidates: List<FlexAwsCandidate>, owned: List<AwsEc2Instance>, notices: List<FlexAwsNotice>, free_vcpus: Int) -> FlexAwsDecision {
-  let ranked = flex_aws_elsewhere_first(cs: flex_aws_ranked(cs: candidates |> filter(c => flex_aws_admissible(c: c, policy: policy) && (c.vcpus <= free_vcpus))), avoid: flex_aws_reclaimed_zones(owned: owned, notices: notices))
+// THE BURN RATE: what our live cards cost per hour now -- each at the current spot price of its type in its
+// zone, which is what spot bills (not MaxPrice). A live card whose price the scan did not read cannot be
+// counted, and no launch is asked for over an uncounted burn.
+fn flex_aws_burn_micros(live: List<AwsEc2Instance>, candidates: List<FlexAwsCandidate>) -> Int? {
+  fold(live, init: Present { value: 0 }, f: (acc, i) => match acc {
+    Absent => acc
+    Present { value: n } => match first_where(candidates, c => ((c.instance_type as String) == (i.instance_type as String)) && ((c.zone as String) == (i.placement.availability_zone as String)) && match c.market { FlexAwsSpot => true  _ => false }) {
+      Present { value: c } => match c.rate {
+        Present { value: r } => Present { value: n + (money_per_hour_micros(q: r) as Int) }
+        Absent => none
+      }
+      Absent => none
+    }
+  })
+}
+
+// The cheapest admissible card ANYWHERE (operator ruling aws_spot_lowest_price_globally_2026_11_25): each
+// candidate must fit in the vCPUs its own region leaves free; zones being reclaimed rank last.
+fn flex_aws_launch_decision(policy: FlexAwsApplyPolicy, candidates: List<FlexAwsCandidate>, owned: List<AwsEc2Instance>, notices: List<FlexAwsNotice>, quotas: List<FlexAwsRegionQuota>) -> FlexAwsDecision {
+  match flex_aws_burn_micros(live: owned |> filter(i => flex_aws_live(i: i)), candidates: candidates) {
+    Absent => FlexAwsHold { why: "cannot count the burn rate: a live card's current spot price was not read" }
+    Present { value: burn } => flex_aws_launch_within(policy: policy, candidates: candidates, owned: owned, notices: notices, quotas: quotas, burn: burn)
+  }
+}
+
+fn flex_aws_launch_within(policy: FlexAwsApplyPolicy, candidates: List<FlexAwsCandidate>, owned: List<AwsEc2Instance>, notices: List<FlexAwsNotice>, quotas: List<FlexAwsRegionQuota>, burn: Int) -> FlexAwsDecision {
+  let fits = candidates |> filter(c => flex_aws_admissible(c: c, policy: policy)
+    && (burn + flex_aws_rate_micros(c: c) <= (money_per_hour_micros(q: policy.burn_ceiling) as Int))
+    && match flex_aws_free_in(quotas: quotas, owned: owned, candidates: candidates, region: c.region) {
+      Present { value: free } => c.vcpus <= free
+      Absent => false
+    })
+  let ranked = flex_aws_elsewhere_first(cs: flex_aws_ranked(cs: fits), avoid: flex_aws_reclaimed_zones(owned: owned, notices: notices))
   match ranked.first() {
     Present { value: c } => match c.rate {
       Present { value: r } => FlexAwsLaunch { candidate: c, max_price: r, fallbacks: ranked.skip(n: 1) }
       Absent => FlexAwsHold { why: "the cheapest admissible candidate has no rate" }
     }
-    Absent => FlexAwsHold { why: join(["no admissible candidate: a ", to_string(policy.gpus_per_card), "-GPU spot card in ", policy.region as String, " clear of walls within the liability ceiling and the ", to_string(free_vcpus), " spot vCPUs our own cards leave free"], "") }
+    Absent => FlexAwsHold { why: join(["no admissible candidate: no ", to_string(policy.gpus_per_card), "-GPU spot card in any scanned region is clear of walls, within the liability ceiling, inside its region's free spot vCPUs, and within the burn ceiling (live burn ", to_string(burn), " micros/h of ", to_string(money_per_hour_micros(q: policy.burn_ceiling)), ")"], "") }
   }
 }
 

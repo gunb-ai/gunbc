@@ -3,13 +3,16 @@ module gunbc.fleet.flex_aws_pass
 import std.types { Bool, Int, List, NonEmptyStr, String, FilePath }
 import std.optional { Present, Absent }
 import std.algebra { trim }
+import std.list { first_where }
 import extdeps.languages.json.emit { JsonValue, JsonNumber, serialize_json }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_field, FieldRead }
 import std.apply_mode { ApplyMode, Plan, Apply, parse_apply_mode, ModeParsed, ModeParseRefused }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.nat { nat_range_inclusive }
+import std.checked_arithmetic { checked_int_to_nat }
 import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
-import std.measure { second, money_amount_micro, money_per_hour_micros, milliseconds_per_second }
+import std.measure { second, money_amount_micro, money_per_hour_micros, milliseconds_per_second, MoneyPerHour }
+import extdeps.currency.currency { Usd }
 import extdeps.entropy { Urandom }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.exec.command { LocalExec }
@@ -25,17 +28,18 @@ import extdeps.cloud.aws_cli {
   aws_cli_get_queue_url, aws_cli_read_queue_url, aws_cli_receive_messages, aws_cli_read_messages, aws_cli_delete_message,
   aws_cli_get_secure_parameter,
 }
+import extdeps.cloud.aws_service_quotas { aws_quota_code_g_vt_spot_vcpus }
 import product.fabric.flex_aws_row {
   FlexAwsRegionObserved, FlexAwsRegionNotOptedIn, FlexAwsRegionNoOffering, FlexAwsRegionRefused, FlexAwsCandidate,
-  flex_aws_observe_region, flex_aws_candidates, flex_aws_candidate_line, flex_aws_region_line, flex_aws_gpu_names, flex_aws_outcome_text, flex_aws_one_line,
+  flex_aws_observe_region, flex_aws_quota, flex_aws_candidates, flex_aws_candidate_line, flex_aws_region_line, flex_aws_gpu_names, flex_aws_outcome_text, flex_aws_one_line,
 }
 import product.fabric.flex_aws_apply {
   FlexAwsApplyPolicy, FlexAwsNotice, FlexAwsNoticeRead, FlexAwsNoticeParsed, FlexAwsNoticeForeign, FlexAwsNoticeUnreadable,
   FlexAwsDecision, FlexAwsRelease, FlexAwsLaunch, FlexAwsHold, FlexAwsReleaseWhy,
-  FlexAwsDemand, FlexAwsDemandFixed, FlexAwsDemandRouter,
+  FlexAwsDemand, FlexAwsDemandFixed, FlexAwsDemandRouter, FlexAwsRegionQuota,
   FlexAwsReleaseLifetimeSpent, FlexAwsReleaseSurplus, FlexAwsReleaseLaunchTimeUnreadable,
   FlexAwsInterruptionWarning, FlexAwsRebalanceRecommendation,
-  flex_aws_read_notice, flex_aws_notice_instance, flex_aws_decide, flex_aws_run_request,
+  flex_aws_read_notice, flex_aws_notice_instance, flex_aws_decide, flex_aws_run_request, flex_aws_ranked,
 }
 import product.fabric.flex_ec2_boot { FlexEc2BootPolicy, FlexEc2PinnedSnapshot, flex_ec2_user_data, FlexEc2UserDataRendered, FlexEc2UserDataRefused }
 import product.fabric.flex_serving_image { flex_lil_serving_image }
@@ -81,15 +85,22 @@ fn flex_aws_snapshot() -> FlexEc2PinnedSnapshot {
   FlexEc2PinnedSnapshot { repo: qwen3_8_flash_next_hub_repo, revision: qwen3_8_flash_next_pinned_revision, files: qwen3_8_flash_next_pin_roster() }
 }
 
-// The admitted policy of gunbc.design_ruling aws_spot_g7e_launches_admitted_capped_2026_11_25 and
-// aws_spot_cheapest_single_gpu_blackwell_2026_11_25: single-GPU g7e spot in us-east-1 (the only region with G and VT spot quota on 2026-11-25), 50 USD per card over a four
-// hour lifetime. The write mode is the caller's; how many cards is the router's demand (or, with the
-// router off, the caller's fixed count).
+// The admitted policy of gunbc.design_ruling aws_spot_g7e_launches_admitted_capped_2026_11_25,
+// aws_spot_cheapest_single_gpu_blackwell_2026_11_25 and aws_spot_lowest_price_globally_2026_11_25: single-GPU
+// g7e spot in whichever scanned region is cheapest, 50 USD per card over a four hour lifetime. The write mode
+// is the caller's.
+// OUR OWN CEILING, independent of AWS's quota (operator ruling aws_spot_three_card_ceiling_2026_11_25): at most
+// this many cards run at once, across every region. A caller's `cards` argument can lower it, never raise it;
+// the effective maximum is the smaller of this and what the applied quotas allow.
+data flex_aws_card_ceiling: Int = 3
+
+fn flex_aws_ceiling(asked: Int) -> Int { if asked < flex_aws_card_ceiling { asked } else { flex_aws_card_ceiling } }
+
 fn flex_aws_admitted_policy(mode: ApplyMode) -> FlexAwsApplyPolicy {
   FlexAwsApplyPolicy {
     actuation: mode,
-    region: "us-east-1" as NonEmptyStr,
     gpus_per_card: 1,
+    burn_ceiling: MoneyPerHour { amount: money_amount_micro(count: 5000000), currency: Usd },
     liability_ceiling: money_amount_micro(count: 50000000),
     lifetime: second(count: 14400),
   }
@@ -160,6 +171,19 @@ fn flex_aws_why_wire(w: FlexAwsReleaseWhy) -> String {
 }
 
 // ---- the writes -------------------------------------------------------------------------------------
+
+// A card and the region it was observed in: every write about a card is made in its own region.
+type FlexAwsOwnedIn {
+  region: NonEmptyStr
+  instance: AwsEc2Instance
+}
+
+fn flex_aws_region_of(owned: List<FlexAwsOwnedIn>, instance_id: NonEmptyStr) -> NonEmptyStr? {
+  match first_where(owned, o => (o.instance.instance_id as String) == (instance_id as String)) {
+    Present { value: o } => Present { value: o.region }
+    Absent => none
+  }
+}
 
 // RELEASE: terminate, then delete the card's key and certificate parameters, then the queued notices for
 // it. The key outliving the card would be a credential with no consumer; the notices outliving it would
@@ -243,24 +267,18 @@ fn flex_aws_deliver_key(region: NonEmptyStr, instance_id: NonEmptyStr) -> String
 // pass with its cause, because it would refuse the next candidate for the same reason.
 data flex_aws_capacity_refusal: String = "InsufficientInstanceCapacity"
 
-fn flex_aws_launch(region: NonEmptyStr, attempts: List<FlexAwsCandidate>, now_unix: Int) -> String {
-  match flex_aws_read_param(region: region, name: flex_aws_ami_parameter) {
-    AwsCliReadRefused { cause: c } => concat("write=launch REFUSED ami: ", c)
-    AwsCliReadOk { value: ami } => match flex_aws_security_group(region: region) {
-      AwsCliReadRefused { cause: c } => concat("write=launch REFUSED security group: ", c)
-      AwsCliReadOk { value: sg } => match flex_ec2_user_data(image: flex_lil_serving_image, files: flex_aws_snapshot(), policy: flex_aws_boot_policy()) {
-        FlexEc2UserDataRefused { cause: c } => concat("write=launch REFUSED user data: ", c as String)
-        FlexEc2UserDataRendered { text: ud } => {
-          let tried = fold(attempts, init: FlexAwsAttempts { lines: [], settled: false }, f: (acc, c) =>
-            if acc.settled { acc } else {
-              match flex_aws_launch_one(region: region, candidate: c, ami: ami, sg: sg, user_data: ud, now_unix: now_unix) {
-                FlexAwsCapacityRefused { line: l } => FlexAwsAttempts { lines: concat(acc.lines, [l]), settled: false }
-                FlexAwsLaunchSettled { line: l } => FlexAwsAttempts { lines: concat(acc.lines, [l]), settled: true }
-              }
-            })
-          if count(tried.lines) == 0 { "write=launch REFUSED no candidate" } else { join(tried.lines, " ; ") }
-        }
-      }
+fn flex_aws_launch(attempts: List<FlexAwsCandidate>, now_unix: Int) -> String {
+  match flex_ec2_user_data(image: flex_lil_serving_image, files: flex_aws_snapshot(), policy: flex_aws_boot_policy()) {
+    FlexEc2UserDataRefused { cause: c } => concat("write=launch REFUSED user data: ", c as String)
+    FlexEc2UserDataRendered { text: ud } => {
+      let tried = fold(attempts, init: FlexAwsAttempts { lines: [], settled: false }, f: (acc, c) =>
+        if acc.settled { acc } else {
+          match flex_aws_launch_one(candidate: c, user_data: ud, now_unix: now_unix) {
+            FlexAwsCapacityRefused { line: l } => FlexAwsAttempts { lines: concat(acc.lines, [l]), settled: false }
+            FlexAwsLaunchSettled { line: l } => FlexAwsAttempts { lines: concat(acc.lines, [l]), settled: true }
+          }
+        })
+      if count(tried.lines) == 0 { "write=launch REFUSED no candidate" } else { join(tried.lines, " ; ") }
     }
   }
 }
@@ -276,7 +294,21 @@ type FlexAwsLaunchOne
   = FlexAwsCapacityRefused { line: String }
   | FlexAwsLaunchSettled { line: String }
 
-fn flex_aws_launch_one(region: NonEmptyStr, candidate: FlexAwsCandidate, ami: NonEmptyStr, sg: NonEmptyStr, user_data: String, now_unix: Int) -> FlexAwsLaunchOne {
+// One attempt, in the candidate's OWN region: its AMI id (a per-region public parameter), its security
+// group and its default subnet are read there. A region without the card's setup refuses settled -- it is
+// not a capacity answer, so the pass does not keep walking other regions past a setup gap.
+fn flex_aws_launch_one(candidate: FlexAwsCandidate, user_data: String, now_unix: Int) -> FlexAwsLaunchOne {
+  let region = candidate.region
+  match flex_aws_read_param(region: region, name: flex_aws_ami_parameter) {
+    AwsCliReadRefused { cause: c } => FlexAwsLaunchSettled { line: join(["write=launch REFUSED ami in ", region as String, ": ", c], "") }
+    AwsCliReadOk { value: ami } => match flex_aws_security_group(region: region) {
+      AwsCliReadRefused { cause: c } => FlexAwsLaunchSettled { line: join(["write=launch REFUSED security group in ", region as String, ": ", c], "") }
+      AwsCliReadOk { value: sg } => flex_aws_launch_in(region: region, candidate: candidate, ami: ami, sg: sg, user_data: user_data, now_unix: now_unix)
+    }
+  }
+}
+
+fn flex_aws_launch_in(region: NonEmptyStr, candidate: FlexAwsCandidate, ami: NonEmptyStr, sg: NonEmptyStr, user_data: String, now_unix: Int) -> FlexAwsLaunchOne {
   match candidate.rate {
     Absent => FlexAwsLaunchSettled { line: join(["write=launch REFUSED ", candidate.zone as String, " has no rate"], "") }
     Present { value: rate } => match flex_aws_subnet(region: region, zone: candidate.zone) {
@@ -435,8 +467,9 @@ fn flex_aws_write_error(path: String, content: String) -> String {
 // THE ROUTER CONVERGE, RUN BEFORE THE DECISION: a card under an interruption warning leaves the router in
 // the same pass that will terminate it, and a healthy card joins it. Both files are backed up before
 // either is written, the CA bundle is written before the rows that need it, and one HUP reloads both.
-fn flex_aws_router_converge(region: NonEmptyStr, owned: List<AwsEc2Instance>, notices: List<FlexAwsNotice>, now_unix: Int) -> List<String> {
-  let probes = map(flex_aws_live_unwarned(owned: owned, notices: notices), i => flex_aws_probe(region: region, i: i))
+fn flex_aws_router_converge(owned: List<FlexAwsOwnedIn>, notices: List<FlexAwsNotice>, now_unix: Int) -> List<String> {
+  let live = flex_aws_live_unwarned(owned: map(owned, o => o.instance), notices: notices)
+  let probes = flat_map(owned |> filter(o => any(live, i => (i.instance_id as String) == (o.instance.instance_id as String))), o => [flex_aws_probe(region: o.region, i: o.instance)])
   let ready = flat_map(probes, p => match p { FlexAwsProbeReady { card: c } => [c]  FlexAwsProbeNotReady { instance_id: _, why: _ } => [] })
   let probe_lines = map(probes, p => match p {
     FlexAwsProbeReady { card: c } => concat("router-probe ready ", c.instance_id as String)
@@ -484,49 +517,119 @@ fn flex_aws_router_converge(region: NonEmptyStr, owned: List<AwsEc2Instance>, no
 
 // ---- the pass ---------------------------------------------------------------------------------------
 
-fn flex_aws_pass_text(policy: FlexAwsApplyPolicy, router: Bool, cards: Int, now_unix: Int) -> String {
-  let observation = flex_aws_observe_region(credentials: flex_aws_credentials(), region: policy.region, now_epoch_seconds: now_unix)
-  let queue = flex_aws_read_queue(region: policy.region)
-  match observation {
-    FlexAwsRegionObserved { region: r, offerings: _, types: _, prices: _, spot_quota_vcpus: q, on_demand_quota_vcpus: _, owned: owned } => {
-      let candidates = flex_aws_candidates(observation: observation, recipe: flex_serving_recipe, names: flex_aws_gpu_names)
-      match queue {
-        FlexAwsQueueRefused { cause: c } => join([flex_aws_region_line(o: observation), concat("notices=REFUSED ", c), "write=none (a pass that cannot read the notices does not act)"], "\n")
-        FlexAwsQueueRead { url: _, messages: ms } => {
-          let notices = flex_aws_notices(messages: ms)
-          let router_lines = if router && (match policy.actuation { Apply => true  Plan => false }) { flex_aws_router_converge(region: r, owned: owned, notices: notices, now_unix: now_unix) } else { ["router=skipped"] }
-          // With the router on, demand is the router's and `cards` is the ceiling; a pass that cannot read
-          // the router's demand does not act on a guess of it.
-          let demand_read = if router { flex_aws_router_demand(max_cards: cards) } else { AwsCliReadOk { value: FlexAwsDemandFixed { cards: cards } } }
-          let demand_line = match demand_read { AwsCliReadOk { value: d } => flex_aws_demand_line(d: d)  AwsCliReadRefused { cause: c } => concat("demand=REFUSED ", c) }
-          let decision = match demand_read {
-            AwsCliReadOk { value: d } => flex_aws_decide(policy: policy, demand: d, candidates: candidates, owned: owned, notices: notices, spot_quota_vcpus: q, now_unix: now_unix)
-            AwsCliReadRefused { cause: c } => FlexAwsHold { why: concat("demand unreadable: ", c) }
-          }
-          let mode = match policy.actuation { Plan => "plan"  Apply => "apply" }
-          let owned_lines = map(owned, i => join(["owned ", i.instance_id as String, " ", i.instance_type as String, " ", i.placement.availability_zone as String, " launched=", i.launch_time, " ip=", match i.public_ip_address { Present { value: a } => a  Absent => "-" }], ""))
-          let decided = match decision {
-            FlexAwsRelease { instance_id: i, why: w } => join(["decision=release ", i as String, " ", flex_aws_why_wire(w: w)], "")
-            FlexAwsLaunch { candidate: c, max_price: m, fallbacks: f } => join(["decision=launch ", c.instance_type as String, " ", c.zone as String, " rate_micros=", to_string(money_per_hour_micros(q: m)), " fallbacks=", join(map(f, x => x.zone as String), ",")], "")
-            FlexAwsHold { why: w } => concat("decision=hold ", w)
-          }
-          let written = match policy.actuation {
-            Plan => "write=none (plan)"
-            Apply => match decision {
-              FlexAwsRelease { instance_id: i, why: _ } => flex_aws_release(region: r, instance_id: i, queue: queue)
-              FlexAwsLaunch { candidate: c, max_price: _, fallbacks: f } => flex_aws_launch(region: r, attempts: concat([c], f), now_unix: now_unix)
-              FlexAwsHold { why: _ } => "write=none (hold)"
-            }
-          }
-          join(concat(concat(
-            [join(["aws-pass mode=", mode, " region=", r as String, " now=", to_string(now_unix)], ""), flex_aws_region_line(o: observation), demand_line],
-            concat(owned_lines, map(ms, m => flex_aws_notice_line(m: m)))),
-            concat(map(candidates, c => flex_aws_candidate_line(c: c)), concat(router_lines, [decided, written]))), "\n")
-        }
-      }
-    }
-    _ => join([flex_aws_region_line(o: observation), "write=none (the region was not observed)"], "\n")
+// THE REGIONS SCANNED: every region that offered g7e on 2026-11-25 (DescribeInstanceTypeOfferings at
+// region grain, all opted-in regions). A region that starts offering the family later is not scanned until
+// it is added here; the scan's own receipt names the regions it read.
+data flex_aws_scan_regions: List<NonEmptyStr> = [
+  "us-east-1" as NonEmptyStr, "us-east-2" as NonEmptyStr, "us-west-2" as NonEmptyStr,
+  "eu-north-1" as NonEmptyStr, "eu-west-2" as NonEmptyStr, "eu-central-1" as NonEmptyStr,
+  "ap-south-1" as NonEmptyStr, "ap-northeast-1" as NonEmptyStr, "ap-northeast-2" as NonEmptyStr,
+]
+
+// One region of the scan. A region with no spot quota is not observed further: nothing can launch or
+// be owned there. A region with quota is observed fully; its notice queue is part of its setup, and a
+// region whose queue cannot be read is observed (its cards still count and still route) but offers no
+// candidates, because a card launched there would have no notice path.
+type FlexAwsRegionScan
+  = FlexAwsRegionSkipped { region: NonEmptyStr, why: String }
+  | FlexAwsRegionScanned { region: NonEmptyStr, quota: Int, observation: FlexAwsRegionObservation, queue: FlexAwsQueue }
+
+fn flex_aws_scan_region(region: NonEmptyStr, now_unix: Int) -> FlexAwsRegionScan {
+  match flex_aws_quota(credentials: flex_aws_credentials(), region: region, code: aws_quota_code_g_vt_spot_vcpus) {
+    AwsCliReadRefused { cause: c } => FlexAwsRegionSkipped { region: region, why: concat("quota unreadable: ", c) }
+    AwsCliReadOk { value: q } =>
+      if q <= 0 { FlexAwsRegionSkipped { region: region, why: "no spot quota" } }
+      else { FlexAwsRegionScanned { region: region, quota: q, observation: flex_aws_observe_region(credentials: flex_aws_credentials(), region: region, now_epoch_seconds: now_unix), queue: flex_aws_read_queue(region: region) } }
   }
+}
+
+fn flex_aws_scan_line(s: FlexAwsRegionScan) -> String {
+  match s {
+    FlexAwsRegionSkipped { region: r, why: w } => join(["scan ", r as String, " skipped: ", w], "")
+    FlexAwsRegionScanned { region: r, quota: q, observation: o, queue: qu } => join([flex_aws_region_line(o: o), " notices=", match qu { FlexAwsQueueRead { url: _, messages: ms } => to_string(count(ms))  FlexAwsQueueRefused { cause: c } => concat("REFUSED ", c) }], "")
+  }
+}
+
+fn flex_aws_scan_owned(s: FlexAwsRegionScan) -> List<FlexAwsOwnedIn> {
+  match s {
+    FlexAwsRegionScanned { region: r, quota: _, observation: FlexAwsRegionObserved { region: _, offerings: _, types: _, prices: _, spot_quota_vcpus: _, on_demand_quota_vcpus: _, owned: owned }, queue: _ } => map(owned, i => FlexAwsOwnedIn { region: r, instance: i })
+    _ => []
+  }
+}
+
+fn flex_aws_scan_candidates(s: FlexAwsRegionScan) -> List<FlexAwsCandidate> {
+  match s {
+    FlexAwsRegionScanned { region: _, quota: _, observation: o, queue: FlexAwsQueueRead { url: _, messages: _ } } => flex_aws_candidates(observation: o, recipe: flex_serving_recipe, names: flex_aws_gpu_names)
+    _ => []
+  }
+}
+
+fn flex_aws_scan_messages(s: FlexAwsRegionScan) -> List<AwsCliQueuedMessage> {
+  match s {
+    FlexAwsRegionScanned { region: _, quota: _, observation: _, queue: FlexAwsQueueRead { url: _, messages: ms } } => ms
+    _ => []
+  }
+}
+
+fn flex_aws_scan_queue(scans: List<FlexAwsRegionScan>, region: NonEmptyStr) -> FlexAwsQueue {
+  match first_where(scans, x => match x { FlexAwsRegionScanned { region: r, quota: _, observation: _, queue: _ } => (r as String) == (region as String)  _ => false }) {
+    Present { value: FlexAwsRegionScanned { region: _, quota: _, observation: _, queue: q } } => q
+    _ => FlexAwsQueueRefused { cause: concat("no scan of ", region as String) }
+  }
+}
+
+fn flex_aws_scan_quota(s: FlexAwsRegionScan) -> List<FlexAwsRegionQuota> {
+  match s {
+    FlexAwsRegionScanned { region: r, quota: q, observation: _, queue: _ } => [FlexAwsRegionQuota { region: r, spot_vcpus: q }]
+    _ => []
+  }
+}
+
+// THE PASS, GLOBAL (operator ruling aws_spot_lowest_price_globally_2026_11_25): scan every region, decide once
+// over all of them, and make the one write in the region it is about.
+fn flex_aws_pass_text(policy: FlexAwsApplyPolicy, router: Bool, cards: Int, now_unix: Int) -> String {
+  let scans = map(flex_aws_scan_regions, r => flex_aws_scan_region(region: r, now_unix: now_unix))
+  let owned_in = flat_map(scans, x => flex_aws_scan_owned(s: x))
+  let owned = map(owned_in, o => o.instance)
+  let candidates = flat_map(scans, x => flex_aws_scan_candidates(s: x))
+  let messages = flat_map(scans, x => flex_aws_scan_messages(s: x))
+  let notices = flex_aws_notices(messages: messages)
+  let quotas = flat_map(scans, x => flex_aws_scan_quota(s: x))
+  let apply = match policy.actuation { Apply => true  Plan => false }
+  let router_lines = if router && apply { flex_aws_router_converge(owned: owned_in, notices: notices, now_unix: now_unix) } else { ["router=skipped"] }
+  // With the router on, demand is the router's and `cards` is the ceiling; a pass that cannot read the
+  // router's demand does not act on a guess of it.
+  let demand_read = if router { flex_aws_router_demand(max_cards: cards) } else { AwsCliReadOk { value: FlexAwsDemandFixed { cards: cards } } }
+  let demand_line = match demand_read { AwsCliReadOk { value: d } => flex_aws_demand_line(d: d)  AwsCliReadRefused { cause: c } => concat("demand=REFUSED ", c) }
+  let decision = match demand_read {
+    AwsCliReadOk { value: d } => flex_aws_decide(policy: policy, demand: d, candidates: candidates, owned: owned, notices: notices, quotas: quotas, now_unix: now_unix)
+    AwsCliReadRefused { cause: c } => FlexAwsHold { why: concat("demand unreadable: ", c) }
+  }
+  let owned_lines = map(owned_in, o => join(["owned ", o.instance.instance_id as String, " ", o.instance.instance_type as String, " ", o.instance.placement.availability_zone as String, " launched=", o.instance.launch_time, " ip=", match o.instance.public_ip_address { Present { value: a } => a  Absent => "-" }], ""))
+  let decided = match decision {
+    FlexAwsRelease { instance_id: i, why: w } => join(["decision=release ", i as String, " ", flex_aws_why_wire(w: w)], "")
+    FlexAwsLaunch { candidate: c, max_price: m, fallbacks: f } => join(["decision=launch ", c.instance_type as String, " ", c.zone as String, " rate_micros=", to_string(money_per_hour_micros(q: m)), " fallbacks=", join(map(f, x => join([x.instance_type as String, "@", x.zone as String], "")), ",")], "")
+    FlexAwsHold { why: w } => concat("decision=hold ", w)
+  }
+  let written = if !apply { "write=none (plan)" } else {
+    match decision {
+      FlexAwsRelease { instance_id: i, why: _ } => match flex_aws_region_of(owned: owned_in, instance_id: i) {
+        Present { value: r } => flex_aws_release(region: r, instance_id: i, queue: flex_aws_scan_queue(scans: scans, region: r))
+        Absent => concat("write=release REFUSED no region for ", i as String)
+      }
+      FlexAwsLaunch { candidate: c, max_price: _, fallbacks: f } => flex_aws_launch(attempts: concat([c], f), now_unix: now_unix)
+      FlexAwsHold { why: _ } => "write=none (hold)"
+    }
+  }
+  join(concat(concat(
+    [join(["aws-pass mode=", if apply { "apply" } else { "plan" }, " now=", to_string(now_unix)], ""), demand_line],
+    concat(map(scans, x => flex_aws_scan_line(s: x)), concat(owned_lines, map(messages, m => flex_aws_notice_line(m: m))))),
+    concat(map(flex_aws_ranked_lines(cs: candidates), l => l), concat(router_lines, [decided, written]))), "\n")
+}
+
+// The candidate lines, cheapest first, so the receipt reads as the global price ladder.
+fn flex_aws_ranked_lines(cs: List<FlexAwsCandidate>) -> List<String> {
+  map(flex_aws_ranked(cs: cs), c => flex_aws_candidate_line(c: c))
 }
 
 type FlexAwsTickArgs
@@ -541,7 +644,7 @@ fn flex_aws_tick_args(mode: String, cards: String, router: String) -> FlexAwsTic
       Present { value: n } =>
         if n < 0 { FlexAwsTickArgsRefused { cause: "cards must not be negative" } }
         else if (router != "on") && (router != "off") { FlexAwsTickArgsRefused { cause: concat("router must be on or off, not ", router) } }
-        else { FlexAwsTickArgsRead { policy: flex_aws_admitted_policy(mode: m), router: router == "on", cards: n } }
+        else { FlexAwsTickArgsRead { policy: flex_aws_admitted_policy(mode: m), router: router == "on", cards: flex_aws_ceiling(asked: n) } }
     }
   }
 }
@@ -581,17 +684,24 @@ fn run_loop(mode: String, cards: String, router: String, ticks: String, interval
       Present { value: n } => match parse_int(s: interval_seconds) {
         Absent => exit_failure(reason: concat("interval_seconds must be a whole number, not ", interval_seconds))
         Present { value: wait } =>
-          if (n < 1) || (wait < 1) {
-            exit_failure(reason: "ticks and interval_seconds must both be at least 1")
-          } else {
-            let refused = fold(nat_range_inclusive(lo: 1, hi: n as Nat), init: "", f: (acc, k) =>
-              if acc != "" { acc } else {
-                let result = flex_aws_tick(policy: p, router: r, cards: c)
-                if (result == "") && ((k as Int) < n) {
-                  if sleep_delay_seconds_second_carrier_projection(duration: second(count: wait as Nat)) { "" } else { "THE SLEEP REFUSED" }
-                } else { result }
-              })
-            if refused == "" { ExitSuccess } else { exit_failure(reason: refused) }
+          match checked_int_to_nat(n: n) {
+            Absent => exit_failure(reason: "ticks must not be negative")
+            Present { value: ticks_n } => match checked_int_to_nat(n: wait) {
+              Absent => exit_failure(reason: "interval_seconds must not be negative")
+              Present { value: wait_n } =>
+                if (n < 1) || (wait < 1) {
+                  exit_failure(reason: "ticks and interval_seconds must both be at least 1")
+                } else {
+                  let refused = fold(nat_range_inclusive(lo: 1, hi: ticks_n), init: "", f: (acc, k) =>
+                    if acc != "" { acc } else {
+                      let result = flex_aws_tick(policy: p, router: r, cards: c)
+                      if (result == "") && ((k as Int) < n) {
+                        if sleep_delay_seconds_second_carrier_projection(duration: second(count: wait_n)) { "" } else { "THE SLEEP REFUSED" }
+                      } else { result }
+                    })
+                  if refused == "" { ExitSuccess } else { exit_failure(reason: refused) }
+                }
+            }
           }
       }
     }

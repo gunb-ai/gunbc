@@ -1525,6 +1525,9 @@ fn design_rulings() -> List<DesignRuling> {
     aws_spot_g7e_launches_admitted_capped_2026_11_25,
     aws_spot_quota_three_cards_requested_2026_11_25,
     aws_spot_cheapest_single_gpu_blackwell_2026_11_25,
+    aws_spot_lowest_price_globally_2026_11_25,
+    aws_spot_three_card_ceiling_2026_11_25,
+    aws_spot_burn_ceiling_2026_11_25,
     install_target_is_designated_or_unformatted_2026_11_24,
     fleet_observation_deferral_2026_11_12,
     refreshes_regularly_every_10_minutes_2026_11_16,
@@ -1733,4 +1736,25 @@ data aws_spot_cheapest_single_gpu_blackwell_2026_11_25: DesignRuling = DesignRul
   decided: "2026-11-25",
   governs: decl_ref(module_path: "product.fabric.flex_aws_apply", decl_name: "flex_aws_admissible"),
   provenance: "Operator, same session, after seeing g7e.4xlarge spot at $1.35/h against g7e.2xlarge at $2.37/h (on-demand $4.00 vs $3.36), verbatim: \"OK - basically yeah i want the cheapest possible blackwell for now that works for our use case - next we can make a more general purpose one\". RULED: any single-GPU size of the admitted g7e family is admissible and the cheapest per GPU is chosen each pass, within the applied quota and the per-card liability ceiling; multi-GPU sizes stay out until the boot path serves more than one replica per card. WIDENS aws_spot_g7e_launches_admitted_capped_2026_11_25 (which named g7e.2xlarge). Quota consequence recorded, not acted: three g7e.4xlarge need 48 vCPUs; the open 24-vCPU request (aws_spot_quota_three_cards_requested_2026_11_25) blocks a second request until AWS closes it.",
+}
+
+data aws_spot_lowest_price_globally_2026_11_25: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "aws_spot_lowest_price_globally_2026_11_25"),
+  decided: "2026-11-25",
+  governs: decl_ref(module_path: "product.fabric.flex_aws_apply", decl_name: "FlexAwsApplyPolicy"),
+  provenance: "Operator, same session, verbatim: \"ok basically all i really care about is price - i don't care about latency/region at all - i'm looking for the lowest price globally\". RULED: the loop ranks candidates across every region offering the flex family, by price per GPU, with no latency or region preference; a region is a candidate only where the applied quota and the region's setup (weights bucket, security group, notice queue) exist. ACTED: a scan at 2026-11-25T05:30Z found g7e.2xlarge spot at $0.475/h in us-west-2a and g7e.8xlarge at $0.83/h in eu-north-1a against $1.35-2.48 in us-east-1; G and VT spot quota increases were requested in us-west-2 (24 vCPU) and eu-north-1 (32 vCPU), both PENDING at filing.",
+}
+
+data aws_spot_three_card_ceiling_2026_11_25: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "aws_spot_three_card_ceiling_2026_11_25"),
+  decided: "2026-11-25",
+  governs: decl_ref(module_path: "gunbc.fleet.flex_aws_pass", decl_name: "flex_aws_card_ceiling"),
+  provenance: "Operator, same session, asked whether the one-card maximum was AWS's quota, verbatim: \"yeah but is that because of the quota? i think we should have a quota on our side i mean - if that means 3 cards at most than thats fine w/ me\". RULED: the loop carries its own ceiling of three cards at once across all regions, independent of AWS's applied quotas; a run argument may lower it and may not raise it.",
+}
+
+data aws_spot_burn_ceiling_2026_11_25: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "aws_spot_burn_ceiling_2026_11_25"),
+  decided: "2026-11-25",
+  governs: decl_ref(module_path: "product.fabric.flex_aws_apply", decl_name: "flex_aws_burn_micros"),
+  provenance: "Operator, same session, verbatim: \"i think we should have a $ budget and a count budget too\"; then, offered hourly burn caps, chose \"$5/h (~$3.6k/mo max)\". RULED: the loop refuses any launch that would take the summed current spot price of all live cards above 5 USD per hour, beside the three-card count ceiling (aws_spot_three_card_ceiling_2026_11_25). Burn is enforced, not cumulative spend: burn is read exactly each pass, while billed spend lags (gunbc.rung_drop aws_flex_settlement_unobserved); the 2,000 USD monthly AWS Budget remains the lagging backstop.",
 }
