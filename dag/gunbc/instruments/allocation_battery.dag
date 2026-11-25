@@ -1,0 +1,219 @@
+module gunbc.instruments.allocation_battery
+
+import std.types { Bool, Int, List }
+import std.realization_measurement { AllocationCounter, AllocationObservation, allocation_span_observation, allocation_provider_not_selected }
+import std.compiler_entry { NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld }
+import gunbc.emit_copy_qualification { StructuralInapplicability, structural_inapplicability_slug }
+import gunbc.emit_building_block_contracts { BuildingBlockFamily, building_block_contracts, contracts_of_family, contract_verdict, case_in_applicable_roster, violating_form_exercised, contract_line, roster_membership_lines, MispairedProbe, mispaired_probes, probe_guard_holds, probe_lines, applicability_discriminates, applicability_refused_rows, applicability_accepted_probes }
+import gunbc.allocation_observation_render { AllocationCase, case_line, is_observed, operations_above, operations_within, span_text, count_text, spans_agree, bytes_above }
+
+// THE ONE HOME FOR THE BATTERY MACHINERY the four building-block families share: the metered window,
+// the row shapes, the calibration pair, the contract-audit rows, the execution qualifier and the report
+// grammar. It declares NO compiler_pipeline_entry, which is what lets a family's green entry and its red
+// entry both compose it: an entry-bearing module cannot be imported, because a second
+// compiler_pipeline_entry in one closure is refused by the emitter, so the shared code has to live behind
+// a door that opens for both. Each family module keeps only what is genuinely its own: the subject bodies,
+// which arm is the contract and which is the violation, and the cardinality.
+//
+// THE METERING BRACKET LIVES HERE ON PURPOSE. It is the most load-bearing code in the row, and four
+// copies of it meant four ways for the bracket to drift while every row still printed.
+
+// ONE MEASURED WINDOW: the subject's own output, kept so the compiler cannot delete the work, and the
+// allocation span the subject ran inside. The bracket is taken around the subject only, never around the
+// printing of the reading.
+type BatteryWindow {
+  kept: List<Int>
+  kept_len: Int
+  observation: AllocationObservation
+}
+
+// THE BRACKET, once. The subject runs between the two counter reads; the kept list is what the subject
+// returned, passed in by the caller's own call so the work is not re-executed after the span closes.
+fn battery_window(kept: List<Int>, ops_before: Int, ops_after: Int, bytes_before: Int, bytes_after: Int) -> BatteryWindow {
+  BatteryWindow {
+    kept: kept,
+    kept_len: count(kept),
+    observation: allocation_span_observation(operations_before: ops_before, operations_after: ops_after, bytes_before: bytes_before, bytes_after: bytes_after)
+  }
+}
+
+// THE BRACKET'S OTHER ARM: when no counting allocator is selected the span is not zero, it is
+// unobservable, and a window that read zero would be a lie the counters told.
+fn battery_window_unavailable(kept: List<Int>) -> BatteryWindow {
+  BatteryWindow {
+    kept: kept,
+    kept_len: count(kept),
+    observation: allocation_provider_not_selected()
+  }
+}
+
+fn reading(label: String, o: AllocationObservation) -> String {
+  span_text(label: label, o: o)
+}
+
+fn readings(a_label: String, a: AllocationObservation, b_label: String, b: AllocationObservation) -> String {
+  concat(reading(label: a_label, o: a), " ", reading(label: b_label, o: b))
+}
+
+// A READING, not a bound: it holds when the reading was taken.
+fn subject_case(prefix: String, block_id: String, own: BatteryWindow) -> AllocationCase {
+  AllocationCase {
+    identity: concat(prefix, "_", block_id, "_reading_taken"),
+    held: is_observed(o: own.observation),
+    observed: concat(reading(label: "own", o: own.observation), " ", count_text(label: "own_kept", n: own.kept_len))
+  }
+}
+
+// THE DISCRIMINATING ROW: the violating arm must sit strictly above its contract arm on the operations
+// counter, with both readings and both kept counts on the same line.
+fn violation_case(prefix: String, block_id: String, viol: BatteryWindow, contract_arm: BatteryWindow) -> AllocationCase {
+  AllocationCase {
+    identity: concat(prefix, "_", block_id, "_violating_variant_above_contract_arm"),
+    held: is_observed(o: viol.observation) && operations_above(a: viol.observation, b: contract_arm.observation),
+    observed: concat(readings(a_label: "violating", a: viol.observation, b_label: "contract_arm", b: contract_arm.observation), " ", count_text(label: "violating_kept", n: viol.kept_len), " ", count_text(label: "contract_arm_kept", n: contract_arm.kept_len))
+  }
+}
+
+// THE RED ROW, and the only row whose falsity is the point: the same two windows, the same path, judged
+// the opposite way. It is false by construction, so the entry that carries it exits non-zero while
+// printing the identical observed= text the discriminating row prints.
+fn violation_contract_holds_case(prefix: String, block_id: String, viol: BatteryWindow, contract_arm: BatteryWindow) -> AllocationCase {
+  AllocationCase {
+    identity: concat(prefix, "_", block_id, "_violating_variant_within_contract_arm"),
+    held: is_observed(o: viol.observation) && operations_within(a: viol.observation, b: contract_arm.observation),
+    observed: concat(readings(a_label: "violating", a: viol.observation, b_label: "contract_arm", b: contract_arm.observation), " ", count_text(label: "violating_kept", n: viol.kept_len), " ", count_text(label: "contract_arm_kept", n: contract_arm.kept_len))
+  }
+}
+
+// THE CALIBRATION PAIR, both conjuncts, in every family. Two identical empty windows must agree AND a
+// known copying arm must sit strictly above that floor on BOTH counters. Without the second conjunct a
+// stuck or cached sampler passes it, which is what acquisition 9 showed (both arms of a retain pair read
+// 75). The floor is printed, never pinned: a pinned floor turns the sampler's own leak into a requirement.
+fn calibration_rows(prefix: String, empty: BatteryWindow, empty_again: BatteryWindow, known: BatteryWindow) -> List<AllocationCase> {
+  [
+    AllocationCase { identity: concat(prefix, "_observation_calibrates_a_measured_floor_with_a_difference"), held: spans_agree(a: empty.observation, b: empty_again.observation) && operations_above(a: known.observation, b: empty.observation) && bytes_above(a: known.observation, b: empty.observation), observed: concat(concat("floor_is_measured_not_assumed", span_text(label: "empty_a", o: empty.observation)), " ", span_text(label: "empty_b", o: empty_again.observation), " ", span_text(label: "known", o: known.observation), " ", count_text(label: "known_kept", n: known.kept_len), " ", count_text(label: "empty_kept", n: empty.kept_len)) },
+    AllocationCase { identity: concat(prefix, "_meter_discriminates_a_copying_arm_above_empty"), held: operations_above(a: known.observation, b: empty.observation), observed: concat(readings(a_label: "known", a: known.observation, b_label: "empty", b: empty.observation), " ", count_text(label: "known_kept", n: known.kept_len), " ", count_text(label: "empty_kept", n: empty.kept_len)) }
+  ]
+}
+
+// The provider the selecting main must have registered before any span means anything.
+fn availability_case(prefix: String) -> AllocationCase {
+  AllocationCase {
+    identity: concat(prefix, "_availability_provider_registered_by_the_selecting_main"),
+    held: observed_allocation_available(""),
+    observed: concat("available=", to_string(value: observed_allocation_available("")))
+  }
+}
+
+// THE MODULE ITSELF JUDGES THE POPULATION, by the carrier's chain, and prints each verdict by name.
+fn refusal_not_hit_row(prefix: String, name: String, refusal: StructuralInapplicability) -> AllocationCase {
+  AllocationCase {
+    identity: concat(prefix, "_contract_refusal_not_hit_by_the_population_", name),
+    held: count(filter(building_block_contracts(), c => contract_verdict(c: c.case_id) == structural_inapplicability_slug(r: refusal))) == 0,
+    observed: concat("refusal=", structural_inapplicability_slug(r: refusal), " judged_by=case_applicability")
+  }
+}
+
+// THE AUDIT ROWS EVERY FAMILY CARRIES, judged by the carrier and nowhere else: the roster is nonempty,
+// every contract of the family is carrier-applicable, the three named violating forms are exercised, and
+// the probe guard fires on every deliberate mis-pairing.
+fn audit_rows(prefix: String, family: BuildingBlockFamily) -> List<AllocationCase> {
+  let group = contracts_of_family(f: family)
+  [
+    AllocationCase { identity: concat(prefix, "_family_roster_is_nonempty"), held: count(group) > 0, observed: count_text(label: concat(prefix, "_blocks"), n: count(group)) },
+    AllocationCase { identity: concat(prefix, "_every_contract_is_carrier_applicable"), held: count(filter(group, c => !case_in_applicable_roster(c: c.case_id))) == 0, observed: concat("judged_by=case_applicability first=", fold(group, init: "none", f: (acc, c) => if acc == "none" { contract_line(b: c) } else { acc })) },
+    AllocationCase { identity: concat(prefix, "_the_three_named_violating_forms_are_exercised"), held: violating_form_exercised(slug: "owning_retain_added_to_observation") > 0 && violating_form_exercised(slug: "per_step_allocation") > 0 && violating_form_exercised(slug: "copy_of_unchanged_context") > 0, observed: concat(concat(concat(count_text(label: "retain", n: violating_form_exercised(slug: "owning_retain_added_to_observation"))), concat(" per_step=", count_text(label: "per_step", n: violating_form_exercised(slug: "per_step_allocation")))), concat(" unchanged_context=", count_text(label: "unchanged_context", n: violating_form_exercised(slug: "copy_of_unchanged_context")))) },
+    AllocationCase { identity: concat(prefix, "_guard_fires_on_every_deliberate_mis_pairing"), held: count(filter(mispaired_probes(), p => !probe_guard_holds(p: p))) == 0, observed: concat(count_text(label: "probes", n: count(mispaired_probes())), " ", fold(probe_lines(), init: "no_probes", f: (acc, line) => if acc == "no_probes" { line } else { acc })) }
+  ]
+}
+
+// The carrier's per-contract membership reading, carried as a ROW: the report grammar admits one roster
+// line and only `case` lines after it, so a line of free text refuses the whole report and every row in
+// it -- including the counters -- reads unobserved. Held says the print covers every contract of the
+// family, so a contract dropped from the membership print reddens this row.
+fn roster_membership_row(prefix: String, family: BuildingBlockFamily) -> AllocationCase {
+  let printed = roster_membership_lines(f: family)
+  let total = count(contracts_of_family(f: family))
+  AllocationCase {
+    identity: concat(prefix, "_roster_membership_printed_for_every_contract"),
+    held: count(printed) == total && total > 0,
+    observed: concat(concat("printed=", count_text(label: "printed", n: count(printed))), " ", printed |> join(separator: "; "))
+  }
+}
+
+// THE DISCRIMINATOR for the applicability judgement: the carrier refuses every planted mis-pairing, and a
+// judgement that stopped asking the carrier would accept them and go red here, by name, in the same run
+// as the rows it accepted. What each half means is decided once, in `fn applicability_discriminates`;
+// nothing here judges, it only names the leg and prints the counts that were compared.
+fn discrimination_row(prefix: String, family: BuildingBlockFamily) -> AllocationCase {
+  AllocationCase {
+    identity: concat(prefix, "_applicability_judgement_discriminates"),
+    held: applicability_discriminates(f: family),
+    observed: concat(concat(concat(concat("family=", prefix), " ", count_text(label: "family_rows", n: count(contracts_of_family(f: family)))), " ", count_text(label: "rows_refused_by_carrier", n: applicability_refused_rows(f: family))), " ", count_text(label: "planted_mis_pairings_accepted", n: applicability_accepted_probes()))
+  }
+}
+
+// THE EXECUTION QUALIFIER. A row is a measurement only if something executed it, so every measured axis
+// carries its evidence: the claim it was executed under, and the run that executed it. Two states are
+// legal and one is not.
+//
+//   executed=false  pending. It must name the registered claim a later gate can run BY NAME, and the
+//                   exact blocker that keeps it unexecuted. That is the row's own language for a contract
+//                   that has not run: it reads unqualified, and it says why.
+//   executed=true   measured. It must carry a run link. `executed` with an empty link is the failure this
+//                   qualifier exists to refuse: a claim of measurement with nothing behind it.
+//
+// A qualifier that can only be turned on by prose measures nothing, so the two illegal shapes below are
+// planted in the same run as the rows they discipline.
+type ExecutionEvidence {
+  claim: String
+  executed: Bool
+  run_link: String
+  blocker: String
+}
+
+// The adjudication, in one place, so the planted negatives and the real rows cannot drift apart.
+fn execution_holds(e: ExecutionEvidence) -> Bool {
+  if e.executed {
+    e.run_link != "" && e.claim != ""
+  } else {
+    e.claim != "" && e.blocker != ""
+  }
+}
+
+fn execution_row(prefix: String, axis: String, block_id: String, e: ExecutionEvidence) -> AllocationCase {
+  AllocationCase {
+    identity: concat(prefix, "_", axis, "_", block_id, "_execution_evidence"),
+    held: execution_holds(e: e),
+    observed: concat(concat(concat(concat(concat(concat("axis=", axis), " ", concat("claim=", e.claim)), " ", concat("status=", if e.executed { "measured" } else { "unqualified_pending_execution" })), " ", concat("run_link=", e.run_link)), " ", concat("blocker=", e.blocker)), " ", concat("ran_at=", if e.executed { "see_run_link" } else { "never" }))
+  }
+}
+
+// THE NAMED NEGATIVE CASES, all three illegal shapes: an executed claim with no run, a pending claim with
+// no name to execute later, and a pending claim with no blocker named. Each must be refused by the
+// adjudication above, in the same run as the rows it disciplines, by name.
+fn planted_unproven_executions() -> List<ExecutionEvidence> {
+  [
+    ExecutionEvidence { claim: "planted_executed_without_a_run", executed: true, run_link: "", blocker: "" },
+    ExecutionEvidence { claim: "", executed: false, run_link: "", blocker: "planted_pending_without_a_claim" },
+    ExecutionEvidence { claim: "planted_pending_without_a_blocker", executed: false, run_link: "", blocker: "" }
+  ]
+}
+
+fn execution_mechanism_refuses_unproven_claims(prefix: String) -> AllocationCase {
+  let planted = planted_unproven_executions()
+  AllocationCase {
+    identity: concat(prefix, "_execution_qualifier_refuses_a_claim_of_measurement_without_a_run"),
+    held: count(filter(planted, e => execution_holds(e: e))) == 0,
+    observed: concat(count_text(label: "planted_unproven", n: count(planted)), " ", concat("accepted=", count_text(label: "accepted", n: count(filter(planted, e => execution_holds(e: e))))))
+  }
+}
+
+// THE REPORT GRAMMAR, once. One roster line naming every row, then one `case` line per row; the terminal
+// is the decided exit, so an entry that carries no red rows can actually exit 0.
+fn battery_report(cases: List<AllocationCase>) -> NativeClaimReport {
+  let failed = cases |> filter(c => !c.held) |> map(c => c.identity)
+  let terminal = if (failed |> count) == 0 { NativeClaimHeld } else { NativeClaimNotHeld { reason: concat("not held: ", failed |> join(separator: ",")) } }
+  let roster = concat("roster ", cases |> map(c => c.identity) |> join(separator: ","), "\n")
+  NativeClaimReport { stdout: concat(roster, cases |> map(c => case_line(c: c)) |> join(separator: "")), terminal: terminal }
+}

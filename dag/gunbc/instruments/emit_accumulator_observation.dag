@@ -1,389 +1,42 @@
 module gunbc.instruments.emit_accumulator_observation
 
-import std.types { Bool, Int, List }
-import std.realization_measurement { AllocationCounter, AllocationObservation, allocation_span_observation, allocation_provider_not_selected }
-import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld }
-import gunbc.emit_building_block_contracts { BuildingBlockContract, BuildingBlockFamily, Accumulator, family_slug, building_block_contracts, contracts_of_family, contract_verdict, contract_is_applicable, case_in_applicable_roster, violating_form_slug, violating_form_exercised, contract_line, roster_membership_line, roster_membership_lines, MispairedProbe, mispaired_probes, probe_guard_holds, probe_lines , applicability_discriminates, applicability_refused_rows, applicability_accepted_probes }
-// The observation renderers come from gunbc.allocation_observation_render, the one entry-free
-// home they have: nine decls moved out of gunbc.instruments.native_allocation_observation, which
-// imports them back, and the three byte-axis readers this row added. They cannot come from that
-// instrument directly because it declares data compiler_pipeline_entry, and a second entry in one
-// closure is refused by the emitter (compiler_pipeline_entry_decls in
-// src/v1/stage0/src/v1_compiler_emit_rust.rs). So the home is a module of its own, not a copy.
-import gunbc.allocation_observation_render { AllocationCase, case_line, is_observed, operations_above, operations_within, span_text, count_text, spans_agree, bytes_above }
-import gunbc.emit_state_threading_specimen { spec_build }
+import std.realization_measurement { AllocationCounter }
+import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport }
+import gunbc.emit_building_block_contracts { BuildingBlockFamily, Accumulator }
+import gunbc.instruments.allocation_battery { battery_report, audit_rows, roster_membership_row, discrimination_row, execution_row, execution_mechanism_refuses_unproven_claims, ExecutionEvidence }
+import gunbc.instruments.emit_accumulator_subjects { acc_measurement_rows }
 
-// THE ACCUMULATOR GROUP OF THE BUILDING-BLOCK BATTERY, deliverable two of the roadmap row
-// #gunbc.roadmap.roadmap_authority::declared_roadmap_nodes, id emission-building-block-realization.
-// Five blocks: a Loop with a record accumulator, a field read, a record rebuild with one field changed,
-// a local closure and an escaping closure. Same spine as the control-flow group: one subject body, so a
-// violating variant and its contract arm differ only in the arm; the judgement is the carrier instrument's
-// own operations_above and operations_within against the CONTRACT ARM, never against a threshold invented
-// here; and the red control is its own entry, so its non-zero exit is its own.
+// THE GREEN ENTRY of the accumulator family: a Loop with a record accumulator, a field read, a record
+// rebuild with one field changed, and a local and an escaping closure. Every row here is expected to
+// hold, so its exit code means something; the red controls are their own target,
+// #gunbc.instrument_targets::emit_accumulator_violation_label, because an entry carrying rows designed to
+// fail can only exit non-zero, and an exit that cannot vary measures nothing.
 //
-// THE SHAPE IS CHOSEN FROM THIS ROW'S OWN PINNED COUNTER DATA, not by taste. The basis for that choice is
-// the plan row itself (#gunbc.roadmap.roadmap_authority::declared_roadmap_nodes, the row whose id is
-// "emission-building-block-realization"); the basis is cited there and is not copied here, since a plan's
-// authority is its .dag carrier and every surface that shows a plan renders it. MEASURED NUMBERS DO NOT
-// LIVE IN THIS FILE: the discriminating gap between the cloning control and the reference walk, with the
-// binary sha, the acquisition line and the raw verdict lines, is in the executed legs posted as run links
-// on the pull request -- a figure re-spelled into a comment is a copy of a measurement, free to drift from
-// the run it came from. The counter arm sees OPERATIONS AND BYTES ONLY: no traversal count, no per-phase
-// lifetime (copy_work_dimension_unavailable_cause), the limitation the basis change accepts with its eyes
-// open. The fold and rebuild idiom is the accepted specimen's,
-// #gunbc.emit_state_threading_specimen::spec_walk_tokens, which returns the sequence it built so the
-// caller can keep and walk it.
-//
-// CLOSURES ARE WRITTEN THE WAY THE CORPUS WRITES THEM. A callable is a let-bound lambda invoked
-// positionally (dag/test/claim/rung_drop_superseded_standing_witness.dag:202) or passed as a labelled
-// argument (dag/test/claim/owned_directory_witness.dag:105,110 and
-// dag/test/claim/runner/runner_service_slot_start_witness.dag:157,160). This module declares NO arrow
-// type: production spellings of a function-typed formal have no corpus precedent, only prose and probe
-// mentions (dag/gunbc/recurring_failure_mode/a_value_of_any_type_is_admitted_at_an_opaque_declared_type.dag:23),
-// so borrowing one here would be inventing syntax -- the failure mode this row exists to prevent.
+// Bodies and windows: #gunbc.instruments.emit_accumulator_subjects::acc_measurement_rows. Row shapes,
+// calibration, audit and report grammar: #gunbc.instruments.allocation_battery::battery_report, which
+// all four families compose and which declares no pipeline entry so both entries of a family can import
+// it. OPERATIONS AND BYTES ONLY: the meter states no traversal count and no per-phase lifetime.
 
 data compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver
 
-data acc_cardinality: Int = 32
-
-// THE RECORD ACCUMULATOR: one field changes per step, the context and the tag are carried unchanged.
-// The context is a list rather than a string so the reading is about the payload, not about text layout.
-type AccRecord {
-  pos: Int
-  total: Int
-  context: List<Int>
-  tag: Int
+// THE V2 OUTCOME OF THIS FAMILY, stated rather than omitted: nobody has asked the emitted-compiler door
+// to emit this subject, so the result reads unqualified and names the refusal the door records today.
+fn v2_subject_claim() -> String {
+  "gunbc test //gunbc/instruments:v2-native-cli over subject dag/gunbc/instruments/emit_accumulator_subjects.dag"
 }
 
-type AccRow {
-  label: Int
-  width: Int
-  context: List<Int>
-}
-
-fn acc_init(context: List<Int>) -> AccRecord {
-  AccRecord { pos: 0, total: 0, context: context, tag: 7 }
-}
-
-// THE LOOP WITH A RECORD ACCUMULATOR, contract arm: one accumulator threaded through the walk; `context`
-// and `tag` are carried by reference to the enclosing value, so a step's cost is bounded by the field that
-// changes. Same fold shape as the accepted specimen's spec_walk_tokens.
-fn acc_fold_step(seed: AccRecord, xs: List<Int>) -> Int {
-  let end = fold(xs, init: seed, f: (acc, x) => if acc.pos > acc_cardinality { acc } else {
-    AccRecord { pos: acc.pos + 1, total: acc.total + x, context: acc.context, tag: acc.tag }
-  })
-  end.total + end.pos
-}
-
-// THE LOOP, violating arm (PerStepAllocation): a fresh accumulator is materialized every step from a
-// fresh pass over the whole context, so the accumulator is allocated per step instead of moved per step.
-// Same fold, same xs, same returned scalar; the only difference is that the carried value is rebuilt from
-// the context each step.
-fn acc_fold_allocates_per_step(seed: AccRecord, xs: List<Int>) -> Int {
-  let end = fold(xs, init: seed, f: (acc, x) => if acc.pos > acc_cardinality { acc } else {
-    let remade = fold(acc.context, init: acc_init(context: acc.context), f: (inner, c) => AccRecord { pos: inner.pos, total: inner.total + c, context: inner.context, tag: inner.tag })
-    AccRecord { pos: acc.pos + 1, total: remade.total + x, context: acc.context, tag: acc.tag }
-  })
-  end.total + end.pos
-}
-
-// THE FIELD READ, contract arm: the enclosing row stays live and only a field is taken.
-fn acc_field_read(row: AccRow) -> Int {
-  row.width
-}
-
-// THE FIELD READ, violating arm (CopyOfUnchangedContext): the whole enclosing record is rebuilt in order
-// to read one field, so the unchanged context is copied through the read.
-fn acc_field_read_rebuilds(row: AccRow) -> Int {
-  let rebuilt = AccRow { label: row.label, width: row.width, context: row.context }
-  rebuilt.width
-}
-
-// THE RECORD REBUILD, contract arm: one field changes, the context is carried.
-fn acc_rebuild_one_field(row: AccRow) -> Int {
-  let changed = AccRow { label: row.label, width: row.width + 1, context: row.context }
-  changed.width
-}
-
-// THE RECORD REBUILD, violating arm (CopyOfUnchangedContext): the field that does not change is pushed
-// through an extra fold over the context before the rebuild, copying the unchanged context.
-fn acc_rebuild_copies_context(row: AccRow) -> Int {
-  // The extra pass over the carried context is the whole difference from the contract arm: same fields,
-  // same returned width, but the unchanged context is walked to make a value that is then multiplied by
-  // zero, so the work is real and the answer is not.
-  let carried = fold(row.context, init: 0, f: (acc, c) => acc + c)
-  let changed = AccRow { label: row.label, width: row.width + 1 + (carried * 0), context: row.context }
-  changed.width
-}
-
-// THE LOCAL CLOSURE, contract arm: built, applied to every element, never retained and never escapes the
-// call. Invocation is positional, the corpus spelling.
-fn acc_local_closure(xs: List<Int>) -> Int {
-  let scale = x => x + 1
-  fold(xs, init: 0, f: (acc, x) => acc + scale(x))
-}
-
-// THE LOCAL CLOSURE, violating arm (OwningRetainAddedToObservation): the same local computation, but the
-// observed value is materialized once per application instead of read once, so the observation retains a
-// payload it never needed.
-fn acc_local_closure_retains(xs: List<Int>) -> Int {
-  let scale = x => x + acc_materialize(rows: xs)
-  fold(xs, init: 0, f: (acc, x) => acc + scale(x))
-}
-
-// A payload materialization used as the retained object. Returns a scalar so nothing has to be stored.
-fn acc_materialize(rows: List<Int>) -> Int {
-  fold(rows, init: 0, f: (acc, x) => acc + x)
-}
-
-// THE ESCAPING CLOSURE, contract arm: the callable leaves this body and is applied by the callee; it
-// captured the two scalars it reads and nothing else.
-fn acc_escaping_closure(xs: List<Int>) -> Int {
-  let bias = acc_field_read(row: acc_row_of(n: 3))
-  let add = x => x + bias
-  fold(xs, init: 0, f: (acc, x) => acc + add(x))
-}
-
-// THE ESCAPING CLOSURE, violating arm (CopyOfUnchangedContext): the escaping callable reads the unchanged
-// context too, so escaping costs the whole payload rather than the scalar it returns.
-fn acc_escaping_closure_copies_context(xs: List<Int>) -> Int {
-  let row = acc_row_of(n: 3)
-  let bias = acc_rebuild_copies_context(row: row)
-  let add = x => x + bias + acc_field_read_rebuilds(row: row)
-  fold(xs, init: 0, f: (acc, x) => acc + add(x))
-}
-
-fn acc_row_of(n: Int) -> AccRow {
-  AccRow { label: n, width: n * 2, context: spec_build(n: n) }
-}
-
-type AccSubject =
-    AccMeterEmpty
-  | AccMeterKnownAllocation
-  | AccFoldStep
-  | AccFoldAllocatesPerStep
-  | AccFieldRead
-  | AccFieldReadRebuilds
-  | AccRebuildOneField
-  | AccRebuildCopiesContext
-  | AccLocalClosure
-  | AccLocalClosureRetains
-  | AccEscapingClosure
-  | AccEscapingClosureCopiesContext
-
-// ONE PATH FOR EVERY ARM: same seed, same rows, same returned scalar; a violating arm differs from its
-// contract arm only in the work it does inside the same body.
-fn run_acc_subject(subject: AccSubject, src: List<Int>) -> List<Int> {
-  let rows = spec_build(n: acc_cardinality)
-  let context = spec_build(n: acc_cardinality)
-  let seed = acc_init(context: context)
-  let row = acc_row_of(n: 8)
-  match subject {
-    AccMeterEmpty => []
-    AccMeterKnownAllocation => fold(src, init: [], f: (acc, x) => list_push(acc, x))
-    AccFoldStep => list_push([], acc_fold_step(seed: seed, xs: rows))
-    AccFoldAllocatesPerStep => list_push([], acc_fold_allocates_per_step(seed: seed, xs: rows))
-    AccFieldRead => list_push([], acc_field_read(row: row))
-    AccFieldReadRebuilds => list_push([], acc_field_read_rebuilds(row: row))
-    AccRebuildOneField => list_push([], acc_rebuild_one_field(row: row))
-    AccRebuildCopiesContext => list_push([], acc_rebuild_copies_context(row: row))
-    AccLocalClosure => list_push([], acc_local_closure(xs: rows))
-    AccLocalClosureRetains => list_push([], acc_local_closure_retains(xs: rows))
-    AccEscapingClosure => list_push([], acc_escaping_closure(xs: rows))
-    AccEscapingClosureCopiesContext => list_push([], acc_escaping_closure_copies_context(xs: rows))
-  }
-}
-
-type AccWindow {
-  kept: List<Int>
-  kept_len: Int
-  observation: AllocationObservation
-}
-
-fn acc_window(subject: AccSubject, src: List<Int>) -> AccWindow uses counter: AllocationCounter {
-  if observed_allocation_available("") {
-    let ops_before = observed_allocation_operations("")
-    let bytes_before = observed_allocation_bytes("")
-    let kept = run_acc_subject(subject: subject, src: src)
-    let kept_len = count(kept)
-    let ops_after = observed_allocation_operations("")
-    let bytes_after = observed_allocation_bytes("")
-    AccWindow { kept: kept, kept_len: kept_len, observation: allocation_span_observation(operations_before: ops_before, operations_after: ops_after, bytes_before: bytes_before, bytes_after: bytes_after) }
-  } else {
-    let kept = run_acc_subject(subject: subject, src: src)
-    AccWindow { kept: kept, kept_len: count(kept), observation: allocation_provider_not_selected() }
-  }
-}
-
-fn reading(label: String, o: AllocationObservation) -> String {
-  span_text(label: label, o: o)
-}
-
-fn readings(a_label: String, a: AllocationObservation, b_label: String, b: AllocationObservation) -> String {
-  concat(reading(label: a_label, o: a), " ", reading(label: b_label, o: b))
-}
-
-// A READING, not a bound: it holds when the reading was taken.
-fn subject_case(block_id: String, own: AccWindow) -> AllocationCase {
-  AllocationCase {
-    identity: concat("accumulator_", block_id, "_reading_taken"),
-    held: is_observed(o: own.observation),
-    observed: concat(reading(label: "own", o: own.observation), " ", count_text(label: "own_kept", n: own.kept_len))
-  }
-}
-
-fn violation_case(block_id: String, viol: AccWindow, contract_arm: AccWindow) -> AllocationCase {
-  AllocationCase {
-    identity: concat("accumulator_", block_id, "_violating_variant_above_contract_arm"),
-    held: is_observed(o: viol.observation) && operations_above(a: viol.observation, b: contract_arm.observation),
-    observed: concat(readings(a_label: "violating", a: viol.observation, b_label: "contract_arm", b: contract_arm.observation), " ", count_text(label: "violating_kept", n: viol.kept_len), " ", count_text(label: "contract_arm_kept", n: contract_arm.kept_len))
-  }
-}
-
-fn violation_contract_holds_case(block_id: String, viol: AccWindow, contract_arm: AccWindow) -> AllocationCase {
-  AllocationCase {
-    identity: concat("accumulator_", block_id, "_violating_variant_within_contract_arm"),
-    held: is_observed(o: viol.observation) && operations_within(a: viol.observation, b: contract_arm.observation),
-    observed: concat(readings(a_label: "violating", a: viol.observation, b_label: "contract_arm", b: contract_arm.observation), " ", count_text(label: "violating_kept", n: viol.kept_len), " ", count_text(label: "contract_arm_kept", n: contract_arm.kept_len))
-  }
-}
-
-// CALIBRATION, and what it is for. These two rows are the only thing standing between this battery
-// and a stuck counter that looks fine: two empty windows must agree exactly on operations AND bytes,
-// and the known copying arm must sit STRICTLY above that floor on BOTH counters. Drop the second
-// conjunct and a sampler that were cached or stuck would pass the pair while measuring nothing.
-// The floor is printed, never pinned -- it is whatever the empty window measures this run, it is not
-// assumed to be zero (the four counter reads and the span record inside the window allocate), and it
-// is not assumed to stay where today's measurement put it. The known arm builds from the specimen
-// input, never a closed term: a literal like list_push([], 4096) has no input to allocate from and
-// measures nothing, which is the specimen being free rather than the meter being blind.
-
-fn accumulator_cases() -> List<AllocationCase> uses counter: AllocationCounter {
-  let src = spec_build(n: acc_cardinality)
-  let empty = acc_window(subject: AccMeterEmpty, src: src)
-  let empty_again = acc_window(subject: AccMeterEmpty, src: src)
-  let known = acc_window(subject: AccMeterKnownAllocation, src: src)
-  let fold_step = acc_window(subject: AccFoldStep, src: src)
-  let fold_alloc = acc_window(subject: AccFoldAllocatesPerStep, src: src)
-  let field_read = acc_window(subject: AccFieldRead, src: src)
-  let field_rebuilt = acc_window(subject: AccFieldReadRebuilds, src: src)
-  let rebuild = acc_window(subject: AccRebuildOneField, src: src)
-  let rebuild_copied = acc_window(subject: AccRebuildCopiesContext, src: src)
-  let closure = acc_window(subject: AccLocalClosure, src: src)
-  let closure_retained = acc_window(subject: AccLocalClosureRetains, src: src)
-  let escaping = acc_window(subject: AccEscapingClosure, src: src)
-  let escaping_copied = acc_window(subject: AccEscapingClosureCopiesContext, src: src)
-  // The 13 rows are built in named groups and joined pairwise, so the parenthesis structure is legible
-  // and a missing arm shows as an unused group rather than as a brace the parser trips over.
-  let readings_meter = [subject_case(block_id: "meter_empty", own: empty), subject_case(block_id: "meter_known_allocation", own: known), AllocationCase { identity: "accumulator_observation_calibrates_a_measured_floor_with_a_difference", held: spans_agree(a: empty.observation, b: empty_again.observation) && operations_above(a: known.observation, b: empty.observation) && bytes_above(a: known.observation, b: empty.observation), observed: concat(concat("floor_is_measured_not_assumed", span_text(label: "empty_a", o: empty.observation)), " ", span_text(label: "empty_b", o: empty_again.observation), " ", span_text(label: "known", o: known.observation), " ", count_text(label: "known_kept", n: known.kept_len), " ", count_text(label: "empty_kept", n: empty.kept_len)) }, AllocationCase { identity: "accumulator_meter_discriminates_a_copying_arm_above_empty", held: operations_above(a: known.observation, b: empty.observation), observed: concat(readings(a_label: "known", a: known.observation, b_label: "empty", b: empty.observation), " ", count_text(label: "known_kept", n: known.kept_len), " ", count_text(label: "empty_kept", n: empty.kept_len)) }]
-  let readings_step = [subject_case(block_id: "loop_record_accumulator", own: fold_step), subject_case(block_id: "field_read", own: field_read)]
-  let readings_record = [subject_case(block_id: "record_rebuild_one_field", own: rebuild), subject_case(block_id: "local_closure", own: closure)]
-  let readings_escape = [subject_case(block_id: "escaping_closure", own: escaping), violation_case(block_id: "loop_record_accumulator", viol: fold_alloc, contract_arm: fold_step)]
-  let violations_record = [violation_case(block_id: "field_read", viol: field_rebuilt, contract_arm: field_read), violation_case(block_id: "record_rebuild_one_field", viol: rebuild_copied, contract_arm: rebuild)]
-  let violations_closure = [violation_case(block_id: "local_closure", viol: closure_retained, contract_arm: closure), violation_case(block_id: "escaping_closure", viol: escaping_copied, contract_arm: escaping)]
-  let roster_row = [AllocationCase {
-    identity: "accumulator_roster_verdicts_and_probes",
-    held: (count(contracts_of_family(f: Accumulator)) == 5) && (count(filter(mispaired_probes(), p => !probe_guard_holds(p: p))) == 0),
-    observed: concat(concat("family_rows=", count_text(label: "rows", n: count(contracts_of_family(f: Accumulator)))), concat(" probes=", count_text(label: "probes", n: count(mispaired_probes())), concat(" forms_retain=", count_text(label: "retain", n: violating_form_exercised(slug: "owning_retain_added_to_observation")), concat(" forms_per_step=", count_text(label: "per_step", n: violating_form_exercised(slug: "per_step_allocation")), concat(" forms_context=", count_text(label: "context", n: violating_form_exercised(slug: "copy_of_unchanged_context")), "")))))
-  }]
-  let meter_zero_control = [violation_contract_holds_case(block_id: "meter_empty_zero", viol: empty, contract_arm: empty)]
-  let half_a = concat(concat(readings_meter, readings_step), concat(readings_record, readings_escape))
-  let half_b = concat(concat(violations_record, violations_closure), concat(meter_zero_control, roster_row))
-  concat(half_a, half_b)
-}
-
-// THE AUDIT rows the module itself judges: the family's contracts carry a verdict from the carrier, and
-// the three violating forms the row names are all exercised by real blocks.
-fn accumulator_audit_cases() -> List<AllocationCase> {
-  concat(
-    contracts_of_family(f: Accumulator) |> map(c => AllocationCase {
-      identity: concat("accumulator_contract_", c.block),
-      held: contract_is_applicable(c: c.case_id) && case_in_applicable_roster(c: c.case_id),
-      observed: concat(contract_line(b: c), " ", roster_membership_line(b: c))
-    }),
-    [AllocationCase { identity: "the_three_named_violating_forms_are_exercised",
-      held: violating_form_exercised(slug: "owning_retain_added_to_observation") > 0 && violating_form_exercised(slug: "per_step_allocation") > 0 && violating_form_exercised(slug: "copy_of_unchanged_context") > 0,
-      observed: concat(concat(concat(count_text(label: "retain", n: violating_form_exercised(slug: "owning_retain_added_to_observation"))), concat(" per_step=", count_text(label: "per_step", n: violating_form_exercised(slug: "per_step_allocation")))), concat(" unchanged_context=", count_text(label: "unchanged_context", n: violating_form_exercised(slug: "copy_of_unchanged_context")))) },
-     AllocationCase { identity: "all_mispaired_probes_are_refused",
-      held: count(filter(mispaired_probes(), p => !probe_guard_holds(p: p))) == 0,
-      observed: concat(count_text(label: "probes", n: count(mispaired_probes())), " ", fold(probe_lines(), init: "no_probes", f: (acc, line) => if acc == "no_probes" { line } else { acc })) }])
-}
-
-
-// THE GREEN BATTERY for the accumulator group, carrying its red rows in the same log.
-// The carrier's per-contract membership reading, carried as a ROW: the report grammar
-// (dag/gunbc/native_claim_program.dag native_claim_report_parse) admits one roster line and
-// only `case` lines after it, so a line of free text refuses the whole report and every row in
-// it -- including the counters -- reads unobserved. Held says the print covers every contract
-// of the family, so a contract dropped from the membership print reddens this row.
-fn roster_membership_case() -> AllocationCase {
-  let printed = roster_membership_lines(f: Accumulator)
-  let total = count(contracts_of_family(f: Accumulator))
-  AllocationCase {
-    identity: "carrier_roster_membership_printed_for_every_contract",
-    held: count(printed) == total && total > 0,
-    observed: concat(concat("printed=", count_text(label: "printed", n: count(printed))), " ", printed |> join(separator: "; "))
-  }
+fn v2_blocker() -> String {
+  "v2 door has never been asked to emit this subject; the refusals it records for a closure are translate_rejected_grounding_not_derived and for a member body translate_arrow_body_not_a_type_expression, named in src/v1/stage0/src/cli_run/native_lane_runner.rs"
 }
 
 fn native_claim_report() -> NativeClaimReport uses counter: AllocationCounter {
-  let cases = concat(concat(concat(accumulator_cases(), accumulator_audit_cases()), red_control_cases()), accumulator_discrimination_cases(), [roster_membership_case()])
-  let failed = cases |> filter(c => !c.held) |> map(c => c.identity)
-  let terminal = if (failed |> count) == 0 { NativeClaimHeld } else { NativeClaimNotHeld { reason: concat("not held: ", failed |> join(separator: ",")) } }
-  let roster = concat("roster ", cases |> map(c => c.identity) |> join(separator: ","), "\n")
-  NativeClaimReport { stdout: concat(roster, cases |> map(c => case_line(c: c)) |> join(separator: "")), terminal: terminal }
-}
-
-// THE RED ENTRY, deliberately red: the same observations, the same path, judged the opposite way. Each
-// pair names both arms, so a reader sees which contract arm the violating arm was compared against.
-fn red_control_cases() -> List<AllocationCase> uses counter: AllocationCounter {
-  let src = spec_build(n: acc_cardinality)
-  let fold_step = acc_window(subject: AccFoldStep, src: src)
-  let fold_alloc = acc_window(subject: AccFoldAllocatesPerStep, src: src)
-  let field_read = acc_window(subject: AccFieldRead, src: src)
-  let field_rebuilt = acc_window(subject: AccFieldReadRebuilds, src: src)
-  let rebuild = acc_window(subject: AccRebuildOneField, src: src)
-  let rebuild_copied = acc_window(subject: AccRebuildCopiesContext, src: src)
-  let closure = acc_window(subject: AccLocalClosure, src: src)
-  let closure_retained = acc_window(subject: AccLocalClosureRetains, src: src)
-  let escaping = acc_window(subject: AccEscapingClosure, src: src)
-  let escaping_copied = acc_window(subject: AccEscapingClosureCopiesContext, src: src)
-  [
-    violation_contract_holds_case(block_id: "loop_record_accumulator", viol: fold_alloc, contract_arm: fold_step),
-    violation_contract_holds_case(block_id: "field_read", viol: field_rebuilt, contract_arm: field_read),
-    violation_contract_holds_case(block_id: "record_rebuild_one_field", viol: rebuild_copied, contract_arm: rebuild),
-    violation_contract_holds_case(block_id: "local_closure", viol: closure_retained, contract_arm: closure),
-    violation_contract_holds_case(block_id: "escaping_closure", viol: escaping_copied, contract_arm: escaping)
+  let measured = acc_measurement_rows()
+  let audit = audit_rows(prefix: "accumulator", family: Accumulator)
+  let qualified = [
+    roster_membership_row(prefix: "accumulator", family: Accumulator),
+    discrimination_row(prefix: "accumulator", family: Accumulator),
+    execution_row(prefix: "accumulator", axis: "v2", block_id: "family", e: ExecutionEvidence { claim: v2_subject_claim(), executed: false, run_link: "", blocker: v2_blocker() }),
+    execution_mechanism_refuses_unproven_claims(prefix: "accumulator")
   ]
-}
-
-fn violation_contract_holds_when_violated() -> NativeClaimReport uses counter: AllocationCounter {
-  let cases = red_control_cases()
-  let failed = cases |> filter(c => !c.held) |> map(c => c.identity)
-  let terminal = if (failed |> count) == 0 { NativeClaimHeld } else { NativeClaimNotHeld { reason: concat("not held: ", failed |> join(separator: ",")) } }
-  let roster = concat("roster ", cases |> map(c => c.identity) |> join(separator: ","), "\n")
-  NativeClaimReport { stdout: concat(roster, cases |> map(c => case_line(c: c)) |> join(separator: "")), terminal: terminal }
-}
-
-// THE DISCRIMINATOR for the applicability repair. `fn contract_is_applicable` replaced a battery comparing
-// that judgement's own rendering to a literal of its own, which could never be true -- so a leg whose only
-// source was that comparison was red by construction, not by measurement. This leg must be seen to refuse:
-// the carrier refuses every planted mis-pairing, and a judgement that stopped asking the carrier would
-// accept them and go red here, by name, in the same run as the rows it accepted. What each half means is
-// decided once, in `fn applicability_discriminates` in gunbc.emit_building_block_contracts; nothing here
-// judges, it only names the leg and prints the counts that were compared.
-fn accumulator_discrimination_cases() -> List<AllocationCase> {
-  [AllocationCase {
-    identity: "accumulator_applicability_judgement_discriminates",
-    held: applicability_discriminates(f: Accumulator),
-    observed: accumulator_discrimination_line()
-  }]
-}
-
-fn accumulator_discrimination_line() -> String {
-  let parts = [concat("family=", "accumulator"),
-               count_text(label: "family_rows", n: count(contracts_of_family(f: Accumulator))),
-               count_text(label: "rows_refused_by_carrier", n: applicability_refused_rows(f: Accumulator)),
-               count_text(label: "planted_mis_pairings_accepted", n: applicability_accepted_probes())]
-  parts |> join(separator: " ")
+  battery_report(concat(measured, concat(audit, qualified)))
 }

@@ -12,7 +12,14 @@ import gunbc.emit_copy_qualification {
   CaseNotApplicable,
   case_applicability,
   case_slug,
+  StructuralInapplicability,
   structural_inapplicability_slug,
+  CarrierUnrealizedInProductionEmission,
+  ScalarBasisRequiresCopyScalarCarrier,
+  PatternRequiresLoopShape,
+  PatternRequiresStraightLineShape,
+  PatternRequiresRecordCarrier,
+  PatternRequiresConsumingContract,
   applicable_case_rows,
   row_is_applicable,
   OwnershipPattern,
@@ -57,8 +64,10 @@ import gunbc.emit_copy_qualification {
 // member (roadmap row emission-building-block-realization, handback; gunbc.design_argument::conformance).
 //
 // THE ROSTER IS THE DENOMINATOR. Earlier readings of the row's boundary quoted a block count that could
-// not be reconstructed from the boundary text. Here the count is `contract_block_count`, derived from the
-// roster itself, so any figure in a receipt is reproducible from this file rather than remembered.
+// not be reconstructed from the boundary text. No figure is quoted here: every count a battery reports is
+// derived from `fn building_block_contracts` at run time (the family row counts its own rows, the audit
+// counts the blocks it claims), so any figure in a receipt is reproducible from this file rather than
+// remembered.
 //
 // WHAT JUDGES A ROW IS THE CARRIER, NOT THIS FILE. `fn contract_verdict` calls the carrier's own
 // `fn case_applicability`, which chains `fn carrier_realized`, `fn basis_admits_carrier`,
@@ -131,7 +140,7 @@ fn violating_form_exercised(slug: String) -> Int {
 type MispairedProbe {
   probe: String
   case_id: EmitCopyQualificationCaseId
-  expected_refusal: String
+  expected_refusal: StructuralInapplicability
 }
 
 // ── The roster ───────────────────────────────────────────────────────────────────────────────
@@ -244,10 +253,6 @@ fn building_block_contracts() -> List<BuildingBlockContract> {
   ]
 }
 
-fn contract_block_count() -> Int {
-  building_block_contracts() |> count
-}
-
 fn contracts_of_family(f: BuildingBlockFamily) -> List<BuildingBlockContract> {
   building_block_contracts() |> filter(b => family_slug(f: b.family) == family_slug(f: f))
 }
@@ -288,10 +293,6 @@ fn roster_membership_line(b: BuildingBlockContract) -> String {
     concat(" in_applicable_roster=", if case_in_applicable_roster(c: b.case_id) { "true" } else { "false" }))
 }
 
-fn contract_lines(f: BuildingBlockFamily) -> List<String> {
-  contracts_of_family(f: f) |> map(b => contract_line(b: b))
-}
-
 fn roster_membership_lines(f: BuildingBlockFamily) -> List<String> {
   contracts_of_family(f: f) |> map(b => roster_membership_line(b: b))
 }
@@ -312,7 +313,7 @@ fn mispaired_probes() -> List<MispairedProbe> {
         consumer_contract: BorrowsByRef,
         input_size_basis: ScalarUnitBasis
       },
-      expected_refusal: "pattern_requires_consuming_contract"
+      expected_refusal: PatternRequiresConsumingContract
     },
     MispairedProbe {
       probe: "probe_field_extract_on_non_record_carrier",
@@ -323,7 +324,7 @@ fn mispaired_probes() -> List<MispairedProbe> {
         consumer_contract: BorrowsByRef,
         input_size_basis: SizedCardinalityBasis
       },
-      expected_refusal: "pattern_requires_record_carrier"
+      expected_refusal: PatternRequiresRecordCarrier
     },
     MispairedProbe {
       probe: "probe_accumulator_without_loop_shape",
@@ -334,7 +335,7 @@ fn mispaired_probes() -> List<MispairedProbe> {
         consumer_contract: ConsumesByValue,
         input_size_basis: SizedCardinalityBasis
       },
-      expected_refusal: "pattern_requires_loop_shape"
+      expected_refusal: PatternRequiresLoopShape
     },
     MispairedProbe {
       probe: "probe_match_under_a_straight_line_pattern",
@@ -345,7 +346,7 @@ fn mispaired_probes() -> List<MispairedProbe> {
         consumer_contract: ConsumesByValue,
         input_size_basis: SizedCardinalityBasis
       },
-      expected_refusal: "pattern_requires_straight_line_shape"
+      expected_refusal: PatternRequiresStraightLineShape
     },
     MispairedProbe {
       probe: "probe_borrowed_read_only_with_loop_shape",
@@ -356,7 +357,7 @@ fn mispaired_probes() -> List<MispairedProbe> {
         consumer_contract: BorrowsByRef,
         input_size_basis: SizedCardinalityBasis
       },
-      expected_refusal: "pattern_requires_straight_line_shape"
+      expected_refusal: PatternRequiresStraightLineShape
     },
     MispairedProbe {
       probe: "probe_scalar_basis_on_a_sized_carrier",
@@ -367,7 +368,7 @@ fn mispaired_probes() -> List<MispairedProbe> {
         consumer_contract: BorrowsByRef,
         input_size_basis: ScalarUnitBasis
       },
-      expected_refusal: "scalar_basis_requires_copy_scalar_carrier"
+      expected_refusal: ScalarBasisRequiresCopyScalarCarrier
     },
     MispairedProbe {
       probe: "probe_the_one_unrealized_carrier",
@@ -378,26 +379,37 @@ fn mispaired_probes() -> List<MispairedProbe> {
         consumer_contract: ConsumesByValue,
         input_size_basis: SizedCardinalityBasis
       },
-      expected_refusal: "carrier_unrealized_in_production_emission"
+      expected_refusal: CarrierUnrealizedInProductionEmission
     }
   ]
 }
 
 // A probe holds when the carrier refuses it with exactly the named reason.
 fn probe_guard_holds(p: MispairedProbe) -> Bool {
-  contract_verdict(c: p.case_id) == p.expected_refusal
+  match contract_refusal(c: p.case_id) {
+    Present { value: r } => structural_inapplicability_slug(r: r) ==
+      structural_inapplicability_slug(r: p.expected_refusal)
+    Absent => false
+  }
+}
+
+// The carrier's refusal, as the carrier's own sum, never as a string this file wrote. Comparing a
+// rendered verdict against a literal written here would make this file a second authority over what a
+// refusal means; a battery was red for exactly that. Both sides of the probe's test now go through the
+// carrier's own `fn structural_inapplicability_slug`, and an accepted probe has no refusal at all, so
+// it fails rather than matching by accident.
+fn contract_refusal(c: EmitCopyQualificationCaseId) -> Optional<StructuralInapplicability> {
+  match case_applicability(id: c) {
+    CaseApplicable => Absent
+    CaseNotApplicable { reason: r } => Present { value: r }
+  }
 }
 
 fn probe_lines() -> List<String> {
   mispaired_probes() |> map(p => concat(concat(concat(concat("probe ", p.probe), " case=",
     case_slug(id: p.case_id)),
-    concat(" expected=", p.expected_refusal)),
+    concat(" expected=", structural_inapplicability_slug(r: p.expected_refusal))),
     concat(" verdict=", contract_verdict(c: p.case_id))))
-}
-
-// The probes are a test, not a printout: the claim does not hold unless every one was refused as named.
-fn all_probes_held() -> Bool {
-  mispaired_probes() |> all(p => probe_guard_holds(p: p))
 }
 
 // A JUDGEMENT MUST BE SEEN TO REFUSE, not only to accept: a boolean read from a carrier that accepted

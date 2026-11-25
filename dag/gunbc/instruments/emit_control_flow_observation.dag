@@ -1,318 +1,60 @@
 module gunbc.instruments.emit_control_flow_observation
 
-import std.types { Bool, Int, List }
-import std.realization_measurement { AllocationCounter, AllocationObservation, allocation_span_observation, allocation_provider_not_selected }
-import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld }
-import gunbc.emit_copy_qualification { EmitCopyQualificationCaseId, CaseApplicability, CaseApplicable, CaseNotApplicable, StructuralInapplicability, PatternRequiresBranchShape, PatternRequiresLoopShape, structural_inapplicability_slug, applicable_case_rows, row_is_applicable, case_slug }
-import gunbc.emit_building_block_contracts { BuildingBlockContract, BuildingBlockFamily, ControlFlow, family_slug, building_block_contracts, contracts_of_family, contract_verdict, case_in_applicable_roster, violating_form_slug, violating_form_exercised, contract_line, roster_membership_line, roster_membership_lines, MispairedProbe, mispaired_probes, probe_guard_holds, probe_lines , applicability_discriminates, applicability_refused_rows, applicability_accepted_probes }
-// The observation renderers come from gunbc.allocation_observation_render, the one entry-free
-// home they have: nine decls moved out of gunbc.instruments.native_allocation_observation, which
-// imports them back, and the three byte-axis readers this row added. They cannot come from that
-// instrument directly because it declares data compiler_pipeline_entry, and a second entry in one
-// closure is refused by the emitter (compiler_pipeline_entry_decls in
-// src/v1/stage0/src/v1_compiler_emit_rust.rs). So the home is a module of its own, not a copy.
-import gunbc.allocation_observation_render { AllocationCase, case_line, is_observed, span_is_zero, operations_above, operations_within, span_text, count_text, spans_agree, bytes_above }
-import gunbc.emit_state_threading_specimen { spec_build }
+import std.types { Int, List }
+import std.realization_measurement { AllocationCounter }
+import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport }
+import gunbc.emit_copy_qualification { StructuralInapplicability, PatternRequiresBranchShape, PatternRequiresLoopShape }
+import gunbc.emit_building_block_contracts { BuildingBlockFamily, ControlFlow }
+import gunbc.instruments.allocation_battery { AllocationCase, BatteryWindow, battery_report, audit_rows, refusal_not_hit_row, roster_membership_row, discrimination_row, execution_row, execution_mechanism_refuses_unproven_claims, ExecutionEvidence }
+import gunbc.instruments.emit_control_flow_subjects { cf_measurement_rows }
 
-// THE CONTROL-FLOW GROUP OF THE BUILDING-BLOCK BATTERY, deliverable two of the roadmap row
-// #gunbc.roadmap.roadmap_authority::declared_roadmap_nodes, id emission-building-block-realization.
-// Five blocks: a Transform, a Branch, a Bind, and a Match in each of the two states the boundary
-// names, on an owned temporary and on a borrowed shared sum. Same spine as the value-shape group:
-// one subject body, so a violating variant and its contract arm differ only in the arm; the judgement
-// is the carrier instrument's own operations_above and operations_within against the contract arm; and
-// the red control is its own entry, so its non-zero exit is its own.
+// THE GREEN ENTRY of the control-flow family: every row here is expected to hold, so its exit code means
+// something. The red controls are NOT in this entry -- they are their own target,
+// #gunbc.instrument_targets::emit_control_flow_violation_label, bound by its own binding row through
+// #gunbc.instrument_targets::emit_control_flow_violation_binding -- because an entry that carries rows
+// designed to fail can only ever exit non-zero, and a non-zero exit that happens whether the meter works
+// or is broken carries no information. The pair is the instrument: green exits 0, red exits 1, and the
+// two differ in exactly the rows they name.
 //
-// THE SHAPE IS CHOSEN FROM THIS ROW'S OWN EXECUTED COUNTER DATA, not from a parse-population profile
-// (absent at this base) and not by taste. The discriminating gap is the cloning control against the
-// reference walk, and both arms are metered by this battery, so the numbers are read off
-// the executed leg rather than remembered here. A whole invocation's wall clock
-// and RSS corroborate those magnitudes but cannot attribute them to a step. The counter arm sees
-// OPERATIONS AND BYTES ONLY: no traversal count, no per-phase lifetime (copy_work_dimension_unavailable_cause).
+// The subject bodies, the metered windows and both judgements come from
+// #gunbc.instruments.emit_control_flow_subjects::cf_measurement_rows, the one home they have; the row
+// shapes, the calibration pair, the audit rows and the report grammar come from
+// #gunbc.instruments.allocation_battery::battery_report, which all four families compose and which
+// declares no pipeline entry so that both of this family's entries can import it.
 //
-// FOUR ANSWERS, NOT ONE VERDICT, the vocabulary of #gunbc.allocation_observation_render::case_line:
-// availability, observation, calibration, and a subject READING that is never a bound, because a
-// bound that reds when the repair succeeds punishes the repair:
+// OPERATIONS AND BYTES ONLY, the limit of the meter: no traversal count, no per-phase lifetime. Where a
+// contract needs a traversal count to be stated, the contract says so in the carrier and this battery
+// does not pretend to read it.
 
 data compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver
 
-data cf_cardinality: Int = 32
-
-// A NONRECURSIVE SUM to match on, in both states the boundary names: owned temporary, and borrowed
-// shared sum. No arm mentions CfSum, so it stays nonrecursive.
-type CfPayload {
-  xs: List<Int>
-  k: Int
+// THE V2 OUTCOME OF THIS FAMILY, stated rather than omitted. The row asks for each specimen "under the
+// seed emitter and attempted under the v2 emitter (where v2 cannot yet execute it, the exact blocker is
+// named and the v2 result reads unqualified)". Nobody has asked the emitted-compiler door to emit this
+// subject, so the row reads unqualified and names the refusal the door records today, both of them named
+// in src/v1/stage0/src/cli_run/native_lane_runner.rs by the constants the instrument that owns that door
+// holds against (#gunbc.instrument_targets::v2_native_cli_label). The claim a later gate can run by name
+// is that same registered label, over this family's subject module.
+fn v2_subject_claim() -> String {
+  "gunbc test //gunbc/instruments:v2-native-cli over subject dag/gunbc/instruments/emit_control_flow_subjects.dag"
 }
 
-type CfSum = SumLeft { n: Int } | SumRight { payload: CfPayload }
-
-fn cf_payload_of(src: List<Int>) -> CfPayload {
-  fold(src, init: CfPayload { xs: [], k: 0 }, f: (acc, x) => CfPayload { xs: list_push(acc.xs, x), k: acc.k + x })
-}
-
-fn cf_scalar_of(src: List<Int>) -> Int {
-  fold(src, init: 0, f: (acc, x) => acc + x)
-}
-
-// THE TRANSFORM. One scalar in, one scalar out, no capture.
-fn cf_transform(x: Int) -> Int {
-  x + 1
-}
-
-// THE BRANCH. Both arms return a scalar; which arm runs is a property of the input, not of the meter.
-fn cf_branch(take_left: Bool, left: Int, right: Int) -> Int {
-  if take_left { left } else { right }
-}
-
-// THE BIND. Bound once, read twice -- the reading must not depend on re-materializing the binding.
-fn cf_bind_then_read_twice(v: CfPayload) -> Int {
-  let bound = v
-  bound.k + bound.k
-}
-
-// THE MATCH, total over the nonrecursive sum.
-fn cf_match_total(s: CfSum) -> Int {
-  match s {
-    SumLeft { n: n } => n
-    SumRight { payload: p } => p.k
-  }
-}
-
-// THE BORROWED MATCH reads through the shared sum without asking for a copy of the payload.
-fn cf_match_borrowed(s: CfSum) -> Int {
-  match s {
-    SumLeft { n: n } => n
-    SumRight { payload: p } => cf_match_borrowed_scalar(p: p)
-  }
-}
-
-fn cf_match_borrowed_scalar(p: CfPayload) -> Int {
-  p.k
-}
-
-type CfSubject =
-    CfMeterEmpty
-  | CfMeterKnownAllocation
-  | CfTransformApplied
-  | CfTransformRebuiltPerStep
-  | CfBranchTaken
-  | CfBranchCopiesUnchangedContext
-  | CfBindOnce
-  | CfBindRematerializedPerRead
-  | CfMatchOwnedTemporary
-  | CfMatchOwnedCopiedBeforeMatch
-  | CfMatchBorrowedSharedSum
-  | CfMatchBorrowedRetainedAfterMatch
-
-// ONE PATH FOR EVERY ARM. The violating variants are the row's three named forms: an owning retain
-// added to an observation, a per-step allocation, and a copy of the unchanged context.
-fn run_cf_subject(subject: CfSubject, src: List<Int>) -> List<Int> {
-  let n = cf_scalar_of(src: src)
-  let payload = cf_payload_of(src: src)
-  match subject {
-    CfMeterEmpty => []
-    CfMeterKnownAllocation => fold(src, init: [], f: (acc, x) => list_push(acc, x))
-    CfTransformApplied => list_push([], cf_transform(x: n))
-    CfTransformRebuiltPerStep => list_push([], cf_transform(x: fold(src, init: 0, f: (acc, x) => acc + cf_payload_of(src: src).k)))
-    CfBranchTaken => list_push([], cf_branch(take_left: n > 0, left: n, right: 0 - n))
-    CfBranchCopiesUnchangedContext => list_push([], cf_branch(take_left: n > 0, left: cf_payload_of(src: src).k, right: payload.k))
-    CfBindOnce => list_push([], cf_bind_then_read_twice(v: payload))
-    CfBindRematerializedPerRead => list_push([], cf_bind_then_read_twice(v: cf_payload_of(src: src)) + cf_bind_then_read_twice(v: cf_payload_of(src: src)))
-    CfMatchOwnedTemporary => list_push([], cf_match_total(s: SumRight { payload: payload }))
-    CfMatchOwnedCopiedBeforeMatch => list_push([], cf_match_total(s: SumRight { payload: cf_payload_of(src: src) }))
-    CfMatchBorrowedSharedSum => list_push([], cf_match_borrowed(s: SumRight { payload: payload }))
-    CfMatchBorrowedRetainedAfterMatch => list_push(list_push([], cf_match_borrowed(s: SumRight { payload: payload })), cf_match_borrowed(s: SumRight { payload: cf_payload_of(src: src) }))
-  }
-}
-
-type CfWindow {
-  kept: List<Int>
-  kept_len: Int
-  observation: AllocationObservation
-}
-
-fn cf_window(subject: CfSubject, src: List<Int>) -> CfWindow uses counter: AllocationCounter {
-  if observed_allocation_available("") {
-    let ops_before = observed_allocation_operations("")
-    let bytes_before = observed_allocation_bytes("")
-    let kept = run_cf_subject(subject: subject, src: src)
-    let kept_len = count(kept)
-    let ops_after = observed_allocation_operations("")
-    let bytes_after = observed_allocation_bytes("")
-    CfWindow { kept: kept, kept_len: kept_len, observation: allocation_span_observation(operations_before: ops_before, operations_after: ops_after, bytes_before: bytes_before, bytes_after: bytes_after) }
-  } else {
-    let kept = run_cf_subject(subject: subject, src: src)
-    CfWindow { kept: kept, kept_len: count(kept), observation: allocation_provider_not_selected() }
-  }
-}
-
-fn reading(label: String, o: AllocationObservation) -> String {
-  span_text(label: label, o: o)
-}
-
-fn readings(a_label: String, a: AllocationObservation, b_label: String, b: AllocationObservation) -> String {
-  concat(reading(label: a_label, o: a), " ", reading(label: b_label, o: b))
-}
-
-// A READING, not a bound: it holds when the reading was taken.
-fn subject_case(block_id: String, own: CfWindow) -> AllocationCase {
-  AllocationCase {
-    identity: concat("control_flow_", block_id, "_reading_taken"),
-    held: is_observed(o: own.observation),
-    observed: concat(reading(label: "own", o: own.observation), " ", count_text(label: "own_kept", n: own.kept_len))
-  }
-}
-
-fn violation_case(block_id: String, viol: CfWindow, contract_arm: CfWindow) -> AllocationCase {
-  AllocationCase {
-    identity: concat("control_flow_", block_id, "_violating_variant_above_contract_arm"),
-    held: is_observed(o: viol.observation) && operations_above(a: viol.observation, b: contract_arm.observation),
-    observed: concat(readings(a_label: "violating", a: viol.observation, b_label: "contract_arm", b: contract_arm.observation), " ", count_text(label: "violating_kept", n: viol.kept_len), " ", count_text(label: "contract_arm_kept", n: contract_arm.kept_len))
-  }
-}
-
-fn violation_contract_holds_case(block_id: String, viol: CfWindow, contract_arm: CfWindow) -> AllocationCase {
-  AllocationCase {
-    identity: concat("control_flow_", block_id, "_violating_variant_within_contract_arm"),
-    held: is_observed(o: viol.observation) && operations_within(a: viol.observation, b: contract_arm.observation),
-    observed: concat(readings(a_label: "violating", a: viol.observation, b_label: "contract_arm", b: contract_arm.observation), " ", count_text(label: "violating_kept", n: viol.kept_len), " ", count_text(label: "contract_arm_kept", n: contract_arm.kept_len))
-  }
-}
-
-fn control_flow_cases() -> List<AllocationCase> uses counter: AllocationCounter {
-  let src = spec_build(n: cf_cardinality)
-  let empty = cf_window(subject: CfMeterEmpty, src: src)
-  let empty_again = cf_window(subject: CfMeterEmpty, src: src)
-  let known = cf_window(subject: CfMeterKnownAllocation, src: src)
-  let transform = cf_window(subject: CfTransformApplied, src: src)
-  let transform_rebuilt = cf_window(subject: CfTransformRebuiltPerStep, src: src)
-  let branch = cf_window(subject: CfBranchTaken, src: src)
-  let branch_copied = cf_window(subject: CfBranchCopiesUnchangedContext, src: src)
-  let bind = cf_window(subject: CfBindOnce, src: src)
-  let bind_remade = cf_window(subject: CfBindRematerializedPerRead, src: src)
-  let match_owned = cf_window(subject: CfMatchOwnedTemporary, src: src)
-  let match_copied = cf_window(subject: CfMatchOwnedCopiedBeforeMatch, src: src)
-  let match_borrowed = cf_window(subject: CfMatchBorrowedSharedSum, src: src)
-  let match_retained = cf_window(subject: CfMatchBorrowedRetainedAfterMatch, src: src)
-  [
-    AllocationCase { identity: "control_flow_availability_provider_registered_by_the_selecting_main", held: observed_allocation_available(""), observed: concat("available=", to_string(value: observed_allocation_available(""))) },
-  // SUPERSEDED CLAIM, kept visible: this row was
-  // `control_flow_observation_empty_window_reads_zero`, asserting an empty window reads zero.
-  // Measurement refused that on srv1 (acquisition 9, head 859f8b97e93): the empty window
-  // read 38 operations and 2,648 bytes, because the four counter reads and the span record
-  // inside the window allocate that themselves -- zero is unreachable for any sampler that
-  // allocates. It is redefined as floor-plus-difference: two empty windows must agree
-  // exactly AND the known copying arm must sit strictly above that floor on BOTH counters.
-  // Without the second conjunct a stuck or cached sampler would pass it, which is what
-  // acquisition 9 showed (both arms of a retain pair read 75). The floor is printed, never
-  // pinned: 38 and 2,648 are properties of the sampler and may move when it stops leaking.
-    AllocationCase { identity: "control_flow_observation_calibrates_a_measured_floor_with_a_difference", held: spans_agree(a: empty.observation, b: empty_again.observation) && operations_above(a: known.observation, b: empty.observation) && bytes_above(a: known.observation, b: empty.observation), observed: concat(concat("floor_is_measured_not_assumed", span_text(label: "empty_a", o: empty.observation)), " ", span_text(label: "empty_b", o: empty_again.observation), " ", span_text(label: "known", o: known.observation), " ", count_text(label: "known_kept", n: known.kept_len), " ", count_text(label: "empty_kept", n: empty.kept_len)) },
-    AllocationCase { identity: "control_flow_meter_discriminates_a_copying_arm_above_empty", held: operations_above(a: known.observation, b: empty.observation), observed: concat(readings(a_label: "known", a: known.observation, b_label: "empty", b: empty.observation), " ", count_text(label: "known_kept", n: known.kept_len), " ", count_text(label: "empty_kept", n: empty.kept_len)) },
-    subject_case(block_id: "transform", own: transform),
-    violation_case(block_id: "transform", viol: transform_rebuilt, contract_arm: transform),
-    subject_case(block_id: "branch", own: branch),
-    violation_case(block_id: "branch", viol: branch_copied, contract_arm: branch),
-    subject_case(block_id: "bind", own: bind),
-    violation_case(block_id: "bind", viol: bind_remade, contract_arm: bind),
-    subject_case(block_id: "match_on_owned_temporary", own: match_owned),
-    violation_case(block_id: "match_on_owned_temporary", viol: match_copied, contract_arm: match_owned),
-    subject_case(block_id: "match_on_borrowed_shared_sum", own: match_borrowed),
-    violation_case(block_id: "match_on_borrowed_shared_sum", viol: match_retained, contract_arm: match_borrowed)
-  ]
-}
-
-// THE MODULE ITSELF JUDGES THE POPULATION, by the carrier's chain, and prints each verdict by name.
-fn refusal_not_hit(name: String, refusal: StructuralInapplicability) -> AllocationCase {
-  AllocationCase {
-    identity: concat("control_flow_contract_refusal_not_hit_by_the_population_", name),
-    held: count(filter(building_block_contracts(), c => contract_verdict(c: c.case_id) == structural_inapplicability_slug(r: refusal))) == 0,
-    observed: concat("refusal=", structural_inapplicability_slug(r: refusal), " judged_by=case_applicability")
-  }
-}
-
-fn control_flow_audit_cases() -> List<AllocationCase> {
-  let group = contracts_of_family(f: ControlFlow)
-  [
-    AllocationCase { identity: "control_flow_family_roster_is_nonempty", held: count(group) > 0, observed: count_text(label: "control_flow_blocks", n: count(group)) },
-    AllocationCase { identity: "every_control_flow_contract_is_carrier_applicable", held: count(filter(group, c => !case_in_applicable_roster(c: c.case_id))) == 0, observed: concat("judged_by=case_applicability first=", fold(group, init: "none", f: (acc, c) => if acc == "none" { contract_line(b: c) } else { acc })) },
-    refusal_not_hit(name: "pattern_requires_branch_shape", refusal: PatternRequiresBranchShape),
-    refusal_not_hit(name: "pattern_requires_loop_shape", refusal: PatternRequiresLoopShape),
-    AllocationCase { identity: "the_three_named_violating_forms_are_exercised", held: violating_form_exercised(slug: "owning_retain_added_to_observation") > 0 && violating_form_exercised(slug: "per_step_allocation") > 0 && violating_form_exercised(slug: "copy_of_unchanged_context") > 0, observed: concat(concat(concat(count_text(label: "retain", n: violating_form_exercised(slug: "owning_retain_added_to_observation"))), concat(" per_step=", count_text(label: "per_step", n: violating_form_exercised(slug: "per_step_allocation")))), concat(" unchanged_context=", count_text(label: "unchanged_context", n: violating_form_exercised(slug: "copy_of_unchanged_context")))) },
-    AllocationCase { identity: "control_flow_guard_fires_on_every_deliberate_mis_pairing", held: count(filter(mispaired_probes(), p => !probe_guard_holds(p: p))) == 0, observed: concat(count_text(label: "probes", n: count(mispaired_probes())), " ", fold(probe_lines(), init: "no_probes", f: (acc, line) => if acc == "no_probes" { line } else { acc })) }
-  ]
-}
-
-
-// THE GREEN BATTERY for the control-flow group, carrying its red rows in the same log.
-// The carrier's per-contract membership reading, carried as a ROW: the report grammar
-// (dag/gunbc/native_claim_program.dag native_claim_report_parse) admits one roster line and
-// only `case` lines after it, so a line of free text refuses the whole report and every row in
-// it -- including the counters -- reads unobserved. Held says the print covers every contract
-// of the family, so a contract dropped from the membership print reddens this row.
-fn roster_membership_case() -> AllocationCase {
-  let printed = roster_membership_lines(f: ControlFlow)
-  let total = count(contracts_of_family(f: ControlFlow))
-  AllocationCase {
-    identity: "carrier_roster_membership_printed_for_every_contract",
-    held: count(printed) == total && total > 0,
-    observed: concat(concat("printed=", count_text(label: "printed", n: count(printed))), " ", printed |> join(separator: "; "))
-  }
+fn v2_blocker() -> String {
+  "v2 door has never been asked to emit this subject; the refusals it records for a closure are translate_rejected_grounding_not_derived and for a member body translate_arrow_body_not_a_type_expression, named in src/v1/stage0/src/cli_run/native_lane_runner.rs"
 }
 
 fn native_claim_report() -> NativeClaimReport uses counter: AllocationCounter {
-  let cases = concat(concat(concat(control_flow_cases(), control_flow_audit_cases()), red_control_cases()), control_flow_discrimination_cases(), [roster_membership_case()])
-  let failed = cases |> filter(c => !c.held) |> map(c => c.identity)
-  let terminal = if (failed |> count) == 0 { NativeClaimHeld } else { NativeClaimNotHeld { reason: concat("not held: ", failed |> join(separator: ",")) } }
-  let roster = concat("roster ", cases |> map(c => c.identity) |> join(separator: ","), "\n")
-  NativeClaimReport { stdout: concat(roster, cases |> map(c => case_line(c: c)) |> join(separator: "")), terminal: terminal }
-}
-
-// THE RED ENTRY, deliberately red: the same observations, the same path, judged the opposite way.
-fn red_control_cases() -> List<AllocationCase> uses counter: AllocationCounter {
-  let src = spec_build(n: cf_cardinality)
-  let transform = cf_window(subject: CfTransformApplied, src: src)
-  let transform_rebuilt = cf_window(subject: CfTransformRebuiltPerStep, src: src)
-  let branch = cf_window(subject: CfBranchTaken, src: src)
-  let branch_copied = cf_window(subject: CfBranchCopiesUnchangedContext, src: src)
-  let bind = cf_window(subject: CfBindOnce, src: src)
-  let bind_remade = cf_window(subject: CfBindRematerializedPerRead, src: src)
-  let match_borrowed = cf_window(subject: CfMatchBorrowedSharedSum, src: src)
-  let match_retained = cf_window(subject: CfMatchBorrowedRetainedAfterMatch, src: src)
-  [
-    violation_contract_holds_case(block_id: "transform", viol: transform_rebuilt, contract_arm: transform),
-    violation_contract_holds_case(block_id: "branch", viol: branch_copied, contract_arm: branch),
-    violation_contract_holds_case(block_id: "bind", viol: bind_remade, contract_arm: bind),
-    violation_contract_holds_case(block_id: "match_on_borrowed_shared_sum", viol: match_retained, contract_arm: match_borrowed)
+  let measured = cf_measurement_rows()
+  let audit = audit_rows(prefix: "control_flow", family: ControlFlow)
+  let refusals = [
+    refusal_not_hit_row(prefix: "control_flow", name: "pattern_requires_branch_shape", refusal: PatternRequiresBranchShape),
+    refusal_not_hit_row(prefix: "control_flow", name: "pattern_requires_loop_shape", refusal: PatternRequiresLoopShape)
   ]
-}
-
-fn violation_contract_holds_when_violated() -> NativeClaimReport uses counter: AllocationCounter {
-  let cases = red_control_cases()
-  let failed = cases |> filter(c => !c.held) |> map(c => c.identity)
-  let terminal = if (failed |> count) == 0 { NativeClaimHeld } else { NativeClaimNotHeld { reason: concat("not held: ", failed |> join(separator: ",")) } }
-  let roster = concat("roster ", cases |> map(c => c.identity) |> join(separator: ","), "\n")
-  NativeClaimReport { stdout: concat(roster, cases |> map(c => case_line(c: c)) |> join(separator: "")), terminal: terminal }
-}
-
-// THE DISCRIMINATOR for the applicability repair. `fn contract_is_applicable` replaced a battery comparing
-// that judgement's own rendering to a literal of its own, which could never be true -- so a leg whose only
-// source was that comparison was red by construction, not by measurement. This leg must be seen to refuse:
-// the carrier refuses every planted mis-pairing, and a judgement that stopped asking the carrier would
-// accept them and go red here, by name, in the same run as the rows it accepted. What each half means is
-// decided once, in `fn applicability_discriminates` in gunbc.emit_building_block_contracts; nothing here
-// judges, it only names the leg and prints the counts that were compared.
-fn control_flow_discrimination_cases() -> List<AllocationCase> {
-  [AllocationCase {
-    identity: "control_flow_applicability_judgement_discriminates",
-    held: applicability_discriminates(f: ControlFlow),
-    observed: control_flow_discrimination_line()
-  }]
-}
-
-fn control_flow_discrimination_line() -> String {
-  let parts = [concat("family=", "control_flow"),
-               count_text(label: "family_rows", n: count(contracts_of_family(f: ControlFlow))),
-               count_text(label: "rows_refused_by_carrier", n: applicability_refused_rows(f: ControlFlow)),
-               count_text(label: "planted_mis_pairings_accepted", n: applicability_accepted_probes())]
-  parts |> join(separator: " ")
+  let qualified = [
+    roster_membership_row(prefix: "control_flow", family: ControlFlow),
+    discrimination_row(prefix: "control_flow", family: ControlFlow),
+    execution_row(prefix: "control_flow", axis: "v2", block_id: "family", e: ExecutionEvidence { claim: v2_subject_claim(), executed: false, run_link: "", blocker: v2_blocker() }),
+    execution_mechanism_refuses_unproven_claims(prefix: "control_flow")
+  ]
+  battery_report(concat(concat(measured, audit), concat(refusals, qualified)))
 }

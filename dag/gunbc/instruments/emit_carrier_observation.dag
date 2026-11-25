@@ -1,448 +1,48 @@
 module gunbc.instruments.emit_carrier_observation
 
-import std.types { Bool, Int, List }
-import std.optional { Optional, Present, Absent }
-import std.realization_measurement { AllocationCounter, AllocationObservation, allocation_span_observation, allocation_provider_not_selected }
-import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld }
-import gunbc.emit_building_block_contracts { BuildingBlockFamily, Carriers, contracts_of_family, contract_verdict, contract_is_applicable, case_in_applicable_roster, violating_form_exercised, contract_line, roster_membership_line, roster_membership_lines, mispaired_probes, probe_guard_holds, probe_lines , applicability_discriminates, applicability_refused_rows, applicability_accepted_probes }
-// The observation renderers come from gunbc.allocation_observation_render, the one entry-free
-// home they have: nine decls moved out of gunbc.instruments.native_allocation_observation, which
-// imports them back, and the three byte-axis readers this row added. They cannot come from that
-// instrument directly because it declares data compiler_pipeline_entry, and a second entry in one
-// closure is refused by the emitter (compiler_pipeline_entry_decls in
-// src/v1/stage0/src/v1_compiler_emit_rust.rs). So the home is a module of its own, not a copy.
-import gunbc.allocation_observation_render { AllocationCase, case_line, is_observed, operations_above, operations_within, span_text, count_text, spans_agree, bytes_above }
-import gunbc.emit_state_threading_specimen { spec_build }
+import std.realization_measurement { AllocationCounter }
+import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport }
+import gunbc.emit_building_block_contracts { BuildingBlockFamily, Carriers }
+import gunbc.instruments.allocation_battery { battery_report, audit_rows, roster_membership_row, discrimination_row, execution_row, execution_mechanism_refuses_unproven_claims, ExecutionEvidence }
+import gunbc.instruments.emit_carrier_subjects { car_measurement_rows }
 
-// THE CARRIER GROUP OF THE BUILDING-BLOCK BATTERY, deliverable two of the roadmap row
-// #gunbc.roadmap.roadmap_authority::declared_roadmap_nodes, id emission-building-block-realization.
-// Eight blocks: sequence build, element read and sequential traversal under PersistentSequenceCarrier, and
-// index build, lookup and traversal under PersistentMapCarrier, plus one retained-snapshot block per carrier.
-// Same spine as the other three groups: one subject body, a violating arm that differs from its contract arm
-// only in the work inside the same body, judgement delegated to the carrier instrument's operations_above /
-// operations_within against the CONTRACT ARM, and the red control as its own entry.
+// THE GREEN ENTRY of the carrier family: sequence build, element read and sequential traversal under
+// PersistentSequenceCarrier, and index build, lookup and traversal under PersistentMapCarrier, each with
+// its retained-snapshot block. Every row here is expected to hold, so its exit code means something; the
+// red controls are their own target, #gunbc.instrument_targets::emit_carrier_violation_label, because an
+// entry carrying rows designed to fail can only exit non-zero and an exit that cannot vary measures
+// nothing.
 //
-// WHAT THIS GROUP IS EXPECTED TO SHOW, said before the run rather than after it. The carrier instrument
-// calls PersistentSequenceCarrier and PersistentMapCarrier production-realized and CaseApplicable
-// (dag/gunbc/emit_copy_qualification.dag:357-364 refuses only DeepCloningSequenceCarrier), while the two
-// ordinary collections available to a .dag specimen share by reference-count bump and copy wholesale on
-// update. So the measured reading for the persistent-carrier rows is expected to DISAGREE with the
-// applicability verdict, and that disagreement is this row's finding rather than a specimen defect: four
-// places in one module call a placeholder a production carrier -- #gunbc.emit_copy_qualification::carrier_realized,
-// #gunbc.emit_copy_qualification::carrier_is_record, #gunbc.emit_copy_qualification::carrier_is_sized, and the
-// arm handing PersistentSequenceCarrier a StructuralShareRealization outright. The reported state for any leg that comes back the other way -- a persistent carrier measured
-// CHEAP where the reading says wholesale copy, or refused where the ruling says realized -- is a stop and
-// report, not a specimen edit.
-//
-// THE SHAPE IS CHOSEN FROM THIS ROW'S OWN PINNED COUNTER DATA, not by taste. The basis is recorded on the
-// plan itself (#gunbc.roadmap.roadmap_authority::declared_roadmap_nodes, the row whose id is
-// "emission-building-block-realization"), which is the one authority for it; what the row says is not
-// restated here, because a restatement is a copy and a copy can drift from the thing it copies.
-// MEASURED NUMBERS DO NOT LIVE IN THIS FILE: they are in the executed legs, posted as run links on the
-// pull request, where the binary sha, the acquisition line and the raw verdict lines travel together.
-// The counter arm sees operations and bytes only: no traversal count, no per-phase lifetime
-// (copy_work_dimension_unavailable_cause), which is the limitation the basis change accepts openly.
-//
-// THE COLLECTIONS ARE THE ORDINARY ONES, named as stand-ins: List<Int> stands for the sequence carrier and
-// Map<String, Int> for the index carrier, because no other persistent collection is reachable from .dag.
-// Builtins are the corpus spellings, used without an import the way the corpus uses them
-// (dag/gunbc/action_use_admission.dag:107 map_insert, :210 map_get, :819 map_contains_key).
+// Bodies, windows and the family's finding row:
+// #gunbc.instruments.emit_carrier_subjects::car_measurement_rows. Row shapes, calibration, audit and
+// report grammar: #gunbc.instruments.allocation_battery::battery_report. The finding is the carrier's own
+// disagreement -- the vocabulary calls the persistent carriers realized while the meter reads a wholesale
+// copy -- and it is a row, not a comment, so a leg that comes back the other way is noticed.
 
 data compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver
 
-data car_cardinality: Int = 24
-
-// The keys an index specimen walks. A literal list, so no string-building primitive is smuggled into the
-// measurement -- the cost being measured is the carrier's, not the key generator's.
-fn car_keys() -> List<String> {
-  ["k0", "k1", "k2", "k3", "k4", "k5", "k6", "k7"]
+// THE V2 OUTCOME OF THIS FAMILY, stated rather than omitted. Two blockers, both named: nobody has asked
+// the emitted-compiler door to emit this subject, and under the SEED emitter this family had, at the
+// commit this entry was written against, one specimen shape the emitter could not lower at all (the
+// inline fold as a by-ref map_get argument, error[E0308] at its initialiser) -- recorded with its emitted
+// lines in the subject module, repaired at the specimen, and left as a finding for the row that owns
+// lowering.
+fn v2_subject_claim() -> String {
+  "gunbc test //gunbc/instruments:v2-native-cli over subject dag/gunbc/instruments/emit_carrier_subjects.dag"
 }
 
-// ── SEQUENCE BUILD ────────────────────────────────────────────────────────────────────────────────
-
-// Contract: build the sequence once, by appending each element to the carried list.
-fn car_sequence_build(xs: List<Int>) -> List<Int> {
-  fold(xs, init: [], f: (acc, x) => list_push(acc, x))
-}
-
-// Violating (PerStepAllocation): each step COPIES the accumulator it was given and pushes onto the copy,
-// keeping the previous one alive until the step returns. Same elements in, same list out, one sequence
-// allocated per step instead of one append per step.
-fn car_sequence_build_retains_prefixes(xs: List<Int>) -> List<Int> {
-  fold(xs, init: [], f: (acc, x) => list_push(fold(acc, init: [], f: (inner, y) => list_push(inner, y)), x))
-}
-
-// ── ELEMENT READ ──────────────────────────────────────────────────────────────────────────────────
-
-// Contract: read one element through a borrow; the sequence is not rebuilt to look at it.
-fn car_element_read(xs: List<Int>) -> Int {
-  match get(xs: xs, index: 3) {
-    Present { value: v } => v
-    Absent => 0 - 1
-  }
-}
-
-// Violating (CopyOfUnchangedContext): the whole sequence is copied before the single element is read.
-fn car_element_read_copies_sequence(xs: List<Int>) -> Int {
-  let copied = fold(xs, init: [], f: (acc, x) => list_push(acc, x))
-  match get(xs: copied, index: 3) {
-    Present { value: v } => v
-    Absent => 0 - 1
-  }
-}
-
-// ── SEQUENTIAL TRAVERSAL ──────────────────────────────────────────────────────────────────────────
-
-// Contract: one pass, scalar accumulator.
-fn car_traversal(xs: List<Int>) -> Int {
-  fold(xs, init: 0, f: (acc, x) => acc + x)
-}
-
-// Violating (PerStepAllocation): the sequence is rebuilt on every step of the traversal.
-fn car_traversal_rebuilds_per_step(xs: List<Int>) -> Int {
-  fold(xs, init: 0, f: (acc, x) => acc + (fold(xs, init: 0, f: (inner, y) => inner + (y * 0)) + x))
-}
-
-// ── PERSISTENT SEQUENCE CARRIER: RETAINED SNAPSHOT ────────────────────────────────────────────────
-
-// Contract: one snapshot is taken and read once after the update; sharing a snapshot before any mutation
-// is a reference-count bump, not a copy, and that is what the reading is expected to show.
-fn car_sequence_snapshot(xs: List<Int>) -> Int {
-  let snapshot = xs
-  let updated = list_push(xs, 97)
-  (count(snapshot) + count(updated)) + car_element_read(xs: updated)
-}
-
-// Violating (OwningRetainAddedToObservation): the snapshot is read repeatedly AFTER the update, so the
-// observation keeps an owning retain on the pre-update sequence alive across the mutation, which is the
-// state where copy-on-write has to copy.
-fn car_sequence_snapshot_retained(xs: List<Int>) -> Int {
-  let snapshot = xs
-  let updated = list_push(xs, 97)
-  let first_read = count(snapshot) + count(updated)
-  let second_read = fold(snapshot, init: 0, f: (acc, x) => acc + x)
-  let third_read = fold(updated, init: 0, f: (acc, x) => acc + x)
-  first_read + second_read + third_read
-}
-
-// ── INDEX BUILD ───────────────────────────────────────────────────────────────────────────────────
-
-// Contract: build the index once by inserting each key.
-fn car_index_build() -> Int {
-  let built = fold(car_keys(), init: empty_map(), f: (acc, k) => map_insert(acc, k, count(car_keys())))
-  count(car_keys()) + (match map_get(built, "k3") { Present { value: v } => v  Absent => 0 - 1 })
-}
-
-// Violating (PerStepAllocation): the index is rebuilt from scratch for every key instead of extended, so
-// construction is quadratic in the number of keys.
-fn car_index_build_remakes_per_key() -> Int {
-  let built = fold(car_keys(), init: empty_map(), f: (acc, k) => fold(car_keys(), init: empty_map(), f: (inner, j) => map_insert(inner, j, count(car_keys()))))
-  count(car_keys()) + (match map_get(built, "k3") { Present { value: v } => v  Absent => 0 - 1 })
-}
-
-// ── INDEX LOOKUP ──────────────────────────────────────────────────────────────────────────────────
-
-// Contract: one lookup, no rebuild.
-fn car_index_lookup() -> Int {
-  let index = fold(car_keys(), init: empty_map(), f: (acc, k) => map_insert(acc, k, count(car_keys())))
-  match map_get(index, "k3") { Present { value: v } => v  Absent => 0 - 1 }
-}
-
-// Violating (CopyOfUnchangedContext): the index is rebuilt in order to look up one key.
-fn car_index_lookup_rebuilds_index() -> Int {
-  let index = fold(car_keys(), init: empty_map(), f: (acc, k) => map_insert(acc, k, count(car_keys())))
-  let remade = fold(car_keys(), init: empty_map(), f: (acc, k) => map_insert(acc, k, match map_get(index, k) { Present { value: v } => v  Absent => 0 - 1 }))
-  match map_get(remade, "k3") { Present { value: v } => v  Absent => 0 - 1 }
-}
-
-// ── INDEX TRAVERSAL ───────────────────────────────────────────────────────────────────────────────
-
-// Contract: walk the keys once, reading each out of the index.
-fn car_index_traversal() -> Int {
-  let index = fold(car_keys(), init: empty_map(), f: (acc, k) => map_insert(acc, k, count(car_keys())))
-  fold(car_keys(), init: 0, f: (acc, k) => acc + (match map_get(index, k) { Present { value: v } => v  Absent => 0 - 1 }))
-}
-
-// Violating (PerStepAllocation): the index is rematerialized for every key the traversal visits.
-fn car_index_traversal_remakes_per_key() -> Int {
-  fold(car_keys(), init: 0, f: (acc, k) =>
-    acc + (match map_get(fold(car_keys(), init: empty_map(), f: (inner, j) => map_insert(inner, j, count(car_keys()))), k) {
-      Present { value: v } => v
-      Absent => 0 - 1
-    }))
-}
-
-// ── PERSISTENT MAP CARRIER: RETAINED SNAPSHOT ─────────────────────────────────────────────────────
-
-// Contract: take one snapshot of the index, insert into it, read both versions once.
-fn car_index_snapshot() -> Int {
-  let index = fold(car_keys(), init: empty_map(), f: (acc, k) => map_insert(acc, k, count(car_keys())))
-  let snapshot = index
-  let updated = map_insert(index, "k9", 9)
-  (match map_get(snapshot, "k3") { Present { value: v } => v  Absent => 0 - 1 }) + (match map_get(updated, "k9") { Present { value: v } => v  Absent => 0 - 1 })
-}
-
-// Violating (CopyOfUnchangedContext): the snapshot is taken by copying the whole index key by key, so
-// retaining a version costs a full rebuild rather than a reference-count bump.
-fn car_index_snapshot_copies_whole_index() -> Int {
-  let index = fold(car_keys(), init: empty_map(), f: (acc, k) => map_insert(acc, k, count(car_keys())))
-  let snapshot = fold(car_keys(), init: empty_map(), f: (acc, k) => map_insert(acc, k, match map_get(index, k) { Present { value: v } => v  Absent => 0 - 1 }))
-  let updated = map_insert(index, "k9", 9)
-  (match map_get(snapshot, "k3") { Present { value: v } => v  Absent => 0 - 1 }) + (match map_get(updated, "k9") { Present { value: v } => v  Absent => 0 - 1 })
-}
-
-type CarSubject =
-    CarMeterEmpty
-  | CarMeterKnownAllocation
-  | CarSequenceBuild
-  | CarSequenceBuildRetainsPrefixes
-  | CarElementRead
-  | CarElementReadCopiesSequence
-  | CarTraversal
-  | CarTraversalRebuildsPerStep
-  | CarSequenceSnapshot
-  | CarSequenceSnapshotRetained
-  | CarIndexBuild
-  | CarIndexBuildRemakesPerKey
-  | CarIndexLookup
-  | CarIndexLookupRebuildsIndex
-  | CarIndexTraversal
-  | CarIndexTraversalRemakesPerKey
-  | CarIndexSnapshot
-  | CarIndexSnapshotCopiesWholeIndex
-
-// ONE PATH FOR EVERY ARM: same source sequence, same returned scalar.
-fn run_car_subject(subject: CarSubject, src: List<Int>) -> List<Int> {
-  match subject {
-    CarMeterEmpty => []
-    CarMeterKnownAllocation => fold(src, init: [], f: (acc, x) => list_push(acc, x))
-    CarSequenceBuild => car_sequence_build(xs: src)
-    CarSequenceBuildRetainsPrefixes => car_sequence_build_retains_prefixes(xs: src)
-    CarElementRead => list_push([], car_element_read(xs: src))
-    CarElementReadCopiesSequence => list_push([], car_element_read_copies_sequence(xs: src))
-    CarTraversal => list_push([], car_traversal(xs: src))
-    CarTraversalRebuildsPerStep => list_push([], car_traversal_rebuilds_per_step(xs: src))
-    CarSequenceSnapshot => list_push([], car_sequence_snapshot(xs: src))
-    CarSequenceSnapshotRetained => list_push([], car_sequence_snapshot_retained(xs: src))
-    CarIndexBuild => list_push([], car_index_build())
-    CarIndexBuildRemakesPerKey => list_push([], car_index_build_remakes_per_key())
-    CarIndexLookup => list_push([], car_index_lookup())
-    CarIndexLookupRebuildsIndex => list_push([], car_index_lookup_rebuilds_index())
-    CarIndexTraversal => list_push([], car_index_traversal())
-    CarIndexTraversalRemakesPerKey => list_push([], car_index_traversal_remakes_per_key())
-    CarIndexSnapshot => list_push([], car_index_snapshot())
-    CarIndexSnapshotCopiesWholeIndex => list_push([], car_index_snapshot_copies_whole_index())
-  }
-}
-
-type CarWindow {
-  kept: List<Int>
-  kept_len: Int
-  observation: AllocationObservation
-}
-
-fn car_window(subject: CarSubject, src: List<Int>) -> CarWindow uses counter: AllocationCounter {
-  if observed_allocation_available("") {
-    let ops_before = observed_allocation_operations("")
-    let bytes_before = observed_allocation_bytes("")
-    let kept = run_car_subject(subject: subject, src: src)
-    let kept_len = count(kept)
-    let ops_after = observed_allocation_operations("")
-    let bytes_after = observed_allocation_bytes("")
-    CarWindow { kept: kept, kept_len: kept_len, observation: allocation_span_observation(operations_before: ops_before, operations_after: ops_after, bytes_before: bytes_before, bytes_after: bytes_after) }
-  } else {
-    let kept = run_car_subject(subject: subject, src: src)
-    CarWindow { kept: kept, kept_len: count(kept), observation: allocation_provider_not_selected() }
-  }
-}
-
-fn reading(label: String, o: AllocationObservation) -> String {
-  span_text(label: label, o: o)
-}
-
-fn readings(a_label: String, a: AllocationObservation, b_label: String, b: AllocationObservation) -> String {
-  concat(reading(label: a_label, o: a), " ", reading(label: b_label, o: b))
-}
-
-fn subject_case(block_id: String, own: CarWindow) -> AllocationCase {
-  AllocationCase {
-    identity: concat("carrier_", block_id, "_reading_taken"),
-    held: is_observed(o: own.observation),
-    observed: concat(reading(label: "own", o: own.observation), " ", count_text(label: "own_kept", n: own.kept_len))
-  }
-}
-
-fn violation_case(block_id: String, viol: CarWindow, contract_arm: CarWindow) -> AllocationCase {
-  AllocationCase {
-    identity: concat("carrier_", block_id, "_violating_variant_above_contract_arm"),
-    held: is_observed(o: viol.observation) && operations_above(a: viol.observation, b: contract_arm.observation),
-    observed: concat(readings(a_label: "violating", a: viol.observation, b_label: "contract_arm", b: contract_arm.observation), " ", count_text(label: "violating_kept", n: viol.kept_len), " ", count_text(label: "contract_arm_kept", n: contract_arm.kept_len))
-  }
-}
-
-fn violation_contract_holds_case(block_id: String, viol: CarWindow, contract_arm: CarWindow) -> AllocationCase {
-  AllocationCase {
-    identity: concat("carrier_", block_id, "_violating_variant_within_contract_arm"),
-    held: is_observed(o: viol.observation) && operations_within(a: viol.observation, b: contract_arm.observation),
-    observed: concat(readings(a_label: "violating", a: viol.observation, b_label: "contract_arm", b: contract_arm.observation), " ", count_text(label: "violating_kept", n: viol.kept_len), " ", count_text(label: "contract_arm_kept", n: contract_arm.kept_len))
-  }
-}
-
-// CALIBRATION, and what it is for. These two rows are the only thing standing between this battery
-// and a stuck counter that looks fine: two empty windows must agree exactly on operations AND bytes,
-// and the known copying arm must sit STRICTLY above that floor on BOTH counters. Drop the second
-// conjunct and a sampler that were cached or stuck would pass the pair while measuring nothing.
-// The floor is printed, never pinned -- it is whatever the empty window measures this run, it is not
-// assumed to be zero (the four counter reads and the span record inside the window allocate), and it
-// is not assumed to stay where today's measurement put it. The known arm builds from the specimen
-// input, never a closed term: a literal like list_push([], 4096) has no input to allocate from and
-// measures nothing, which is the specimen being free rather than the meter being blind.
-
-fn carrier_cases() -> List<AllocationCase> uses counter: AllocationCounter {
-  let src = spec_build(n: car_cardinality)
-  let empty = car_window(subject: CarMeterEmpty, src: src)
-  let empty_again = car_window(subject: CarMeterEmpty, src: src)
-  let known = car_window(subject: CarMeterKnownAllocation, src: src)
-  let seq_build = car_window(subject: CarSequenceBuild, src: src)
-  let seq_build_prefixes = car_window(subject: CarSequenceBuildRetainsPrefixes, src: src)
-  let element_read = car_window(subject: CarElementRead, src: src)
-  let element_copied = car_window(subject: CarElementReadCopiesSequence, src: src)
-  let traversal = car_window(subject: CarTraversal, src: src)
-  let traversal_rebuilt = car_window(subject: CarTraversalRebuildsPerStep, src: src)
-  let seq_snapshot = car_window(subject: CarSequenceSnapshot, src: src)
-  let seq_snapshot_retained = car_window(subject: CarSequenceSnapshotRetained, src: src)
-  let index_build = car_window(subject: CarIndexBuild, src: src)
-  let index_build_remade = car_window(subject: CarIndexBuildRemakesPerKey, src: src)
-  let index_lookup = car_window(subject: CarIndexLookup, src: src)
-  let index_lookup_rebuilt = car_window(subject: CarIndexLookupRebuildsIndex, src: src)
-  let index_traversal = car_window(subject: CarIndexTraversal, src: src)
-  let index_traversal_remade = car_window(subject: CarIndexTraversalRemakesPerKey, src: src)
-  let index_snapshot = car_window(subject: CarIndexSnapshot, src: src)
-  let index_snapshot_copied = car_window(subject: CarIndexSnapshotCopiesWholeIndex, src: src)
-  let readings_meter = [subject_case(block_id: "meter_empty", own: empty), subject_case(block_id: "meter_known_allocation", own: known), AllocationCase { identity: "carrier_observation_calibrates_a_measured_floor_with_a_difference", held: spans_agree(a: empty.observation, b: empty_again.observation) && operations_above(a: known.observation, b: empty.observation) && bytes_above(a: known.observation, b: empty.observation), observed: concat(concat("floor_is_measured_not_assumed", span_text(label: "empty_a", o: empty.observation)), " ", span_text(label: "empty_b", o: empty_again.observation), " ", span_text(label: "known", o: known.observation), " ", count_text(label: "known_kept", n: known.kept_len), " ", count_text(label: "empty_kept", n: empty.kept_len)) }, AllocationCase { identity: "carrier_meter_discriminates_a_copying_arm_above_empty", held: operations_above(a: known.observation, b: empty.observation), observed: concat(readings(a_label: "known", a: known.observation, b_label: "empty", b: empty.observation), " ", count_text(label: "known_kept", n: known.kept_len), " ", count_text(label: "empty_kept", n: empty.kept_len)) }]
-  let readings_sequence = [subject_case(block_id: "sequence_build", own: seq_build), subject_case(block_id: "element_read", own: element_read), subject_case(block_id: "sequential_traversal", own: traversal)]
-  let readings_persistent_sequence = [subject_case(block_id: "persistent_sequence_carrier_snapshot", own: seq_snapshot)]
-  let readings_index = [subject_case(block_id: "index_build", own: index_build), subject_case(block_id: "index_lookup", own: index_lookup), subject_case(block_id: "index_traversal", own: index_traversal)]
-  let readings_persistent_map = [subject_case(block_id: "persistent_map_carrier_snapshot", own: index_snapshot)]
-  let violations_sequence = [violation_case(block_id: "sequence_build", viol: seq_build_prefixes, contract_arm: seq_build), violation_case(block_id: "element_read", viol: element_copied, contract_arm: element_read)]
-  let violations_traversal = [violation_case(block_id: "sequential_traversal", viol: traversal_rebuilt, contract_arm: traversal), violation_case(block_id: "persistent_sequence_carrier_snapshot", viol: seq_snapshot_retained, contract_arm: seq_snapshot)]
-  let violations_index = [violation_case(block_id: "index_build", viol: index_build_remade, contract_arm: index_build), violation_case(block_id: "index_lookup", viol: index_lookup_rebuilt, contract_arm: index_lookup)]
-  let violations_map = [violation_case(block_id: "index_traversal", viol: index_traversal_remade, contract_arm: index_traversal), violation_case(block_id: "persistent_map_carrier_snapshot", viol: index_snapshot_copied, contract_arm: index_snapshot)]
-  let half_a = concat(concat(readings_meter, readings_sequence), concat(readings_persistent_sequence, readings_index))
-  let half_b = concat(concat(readings_persistent_map, violations_sequence), concat(violations_traversal, concat(violations_index, violations_map)))
-  concat(half_a, half_b)
-}
-
-fn carrier_audit_cases() -> List<AllocationCase> {
-  let judged = contracts_of_family(f: Carriers) |> map(c => AllocationCase {
-    identity: concat("carrier_contract_", c.block),
-    held: contract_is_applicable(c: c.case_id) && case_in_applicable_roster(c: c.case_id),
-    observed: concat(contract_line(b: c), " ", roster_membership_line(b: c))
-  })
-  let forms = AllocationCase {
-    identity: "the_three_named_violating_forms_are_exercised",
-    held: violating_form_exercised(slug: "owning_retain_added_to_observation") > 0 && violating_form_exercised(slug: "per_step_allocation") > 0 && violating_form_exercised(slug: "copy_of_unchanged_context") > 0,
-    observed: concat(concat(concat(count_text(label: "retain", n: violating_form_exercised(slug: "owning_retain_added_to_observation"))), concat(" per_step=", count_text(label: "per_step", n: violating_form_exercised(slug: "per_step_allocation")))), concat(" unchanged_context=", count_text(label: "unchanged_context", n: violating_form_exercised(slug: "copy_of_unchanged_context"))))
-  }
-  let probes = AllocationCase {
-    identity: "all_mispaired_probes_are_refused",
-    held: count(filter(mispaired_probes(), p => !probe_guard_holds(p: p))) == 0,
-    observed: concat(count_text(label: "probes", n: count(mispaired_probes())), " ", fold(probe_lines(), init: "no_probes", f: (acc, line) => if acc == "no_probes" { line } else { acc }))
-  }
-  let family = AllocationCase {
-    identity: "carrier_family_rows_are_judged_by_the_carrier",
-    held: count(contracts_of_family(f: Carriers)) == 8,
-    observed: concat("family_rows=", count_text(label: "rows", n: count(contracts_of_family(f: Carriers))))
-  }
-  concat(judged, [forms, probes, family])
-}
-
-
-// The carrier's per-contract membership reading, carried as a ROW: the report grammar
-// (dag/gunbc/native_claim_program.dag native_claim_report_parse) admits one roster line and
-// only `case` lines after it, so a line of free text refuses the whole report and every row in
-// it -- including the counters -- reads unobserved. Held says the print covers every contract
-// of the family, so a contract dropped from the membership print reddens this row.
-fn roster_membership_case() -> AllocationCase {
-  let printed = roster_membership_lines(f: Carriers)
-  let total = count(contracts_of_family(f: Carriers))
-  AllocationCase {
-    identity: "carrier_roster_membership_printed_for_every_contract",
-    held: count(printed) == total && total > 0,
-    observed: concat(concat("printed=", count_text(label: "printed", n: count(printed))), " ", printed |> join(separator: "; "))
-  }
+fn v2_blocker() -> String {
+  "v2 door has never been asked to emit this subject; the refusals it records for a closure are translate_rejected_grounding_not_derived and for a member body translate_arrow_body_not_a_type_expression, named in src/v1/stage0/src/cli_run/native_lane_runner.rs"
 }
 
 fn native_claim_report() -> NativeClaimReport uses counter: AllocationCounter {
-  let cases = concat(concat(concat(carrier_cases(), carrier_audit_cases()), red_control_cases()), carriers_discrimination_cases(), [roster_membership_case()])
-  let failed = cases |> filter(c => !c.held) |> map(c => c.identity)
-  let terminal = if (failed |> count) == 0 { NativeClaimHeld } else { NativeClaimNotHeld { reason: concat("not held: ", failed |> join(separator: ",")) } }
-  let roster = concat("roster ", cases |> map(c => c.identity) |> join(separator: ","), "\n")
-  NativeClaimReport { stdout: concat(roster, cases |> map(c => case_line(c: c)) |> join(separator: "")), terminal: terminal }
-}
-
-// THE RED ENTRY, deliberately red: the eight violating arms, each judged the opposite way against its own
-// contract arm on the same path. Both arms are named in every row.
-fn red_control_cases() -> List<AllocationCase> uses counter: AllocationCounter {
-  let src = spec_build(n: car_cardinality)
-  let seq_build = car_window(subject: CarSequenceBuild, src: src)
-  let seq_build_prefixes = car_window(subject: CarSequenceBuildRetainsPrefixes, src: src)
-  let element_read = car_window(subject: CarElementRead, src: src)
-  let element_copied = car_window(subject: CarElementReadCopiesSequence, src: src)
-  let traversal = car_window(subject: CarTraversal, src: src)
-  let traversal_rebuilt = car_window(subject: CarTraversalRebuildsPerStep, src: src)
-  let seq_snapshot = car_window(subject: CarSequenceSnapshot, src: src)
-  let seq_snapshot_retained = car_window(subject: CarSequenceSnapshotRetained, src: src)
-  let index_build = car_window(subject: CarIndexBuild, src: src)
-  let index_build_remade = car_window(subject: CarIndexBuildRemakesPerKey, src: src)
-  let index_lookup = car_window(subject: CarIndexLookup, src: src)
-  let index_lookup_rebuilt = car_window(subject: CarIndexLookupRebuildsIndex, src: src)
-  let index_traversal = car_window(subject: CarIndexTraversal, src: src)
-  let index_traversal_remade = car_window(subject: CarIndexTraversalRemakesPerKey, src: src)
-  let index_snapshot = car_window(subject: CarIndexSnapshot, src: src)
-  let index_snapshot_copied = car_window(subject: CarIndexSnapshotCopiesWholeIndex, src: src)
-  let head = [
-    violation_contract_holds_case(block_id: "sequence_build", viol: seq_build_prefixes, contract_arm: seq_build),
-    violation_contract_holds_case(block_id: "element_read", viol: element_copied, contract_arm: element_read),
-    violation_contract_holds_case(block_id: "sequential_traversal", viol: traversal_rebuilt, contract_arm: traversal),
-    violation_contract_holds_case(block_id: "persistent_sequence_carrier_snapshot", viol: seq_snapshot_retained, contract_arm: seq_snapshot),
-    violation_contract_holds_case(block_id: "index_build", viol: index_build_remade, contract_arm: index_build)
+  let measured = car_measurement_rows()
+  let audit = audit_rows(prefix: "carrier", family: Carriers)
+  let qualified = [
+    roster_membership_row(prefix: "carrier", family: Carriers),
+    discrimination_row(prefix: "carrier", family: Carriers),
+    execution_row(prefix: "carrier", axis: "v2", block_id: "family", e: ExecutionEvidence { claim: v2_subject_claim(), executed: false, run_link: "", blocker: v2_blocker() }),
+    execution_mechanism_refuses_unproven_claims(prefix: "carrier")
   ]
-  let tail = [
-    violation_contract_holds_case(block_id: "index_lookup", viol: index_lookup_rebuilt, contract_arm: index_lookup),
-    violation_contract_holds_case(block_id: "index_traversal", viol: index_traversal_remade, contract_arm: index_traversal),
-    violation_contract_holds_case(block_id: "persistent_map_carrier_snapshot", viol: index_snapshot_copied, contract_arm: index_snapshot)
-  ]
-  concat(head, tail)
-}
-
-fn violation_contract_holds_when_violated() -> NativeClaimReport uses counter: AllocationCounter {
-  let cases = red_control_cases()
-  let failed = cases |> filter(c => !c.held) |> map(c => c.identity)
-  let terminal = if (failed |> count) == 0 { NativeClaimHeld } else { NativeClaimNotHeld { reason: concat("not held: ", failed |> join(separator: ",")) } }
-  let roster = concat("roster ", cases |> map(c => c.identity) |> join(separator: ","), "\n")
-  NativeClaimReport { stdout: concat(roster, cases |> map(c => case_line(c: c)) |> join(separator: "")), terminal: terminal }
-}
-
-// THE DISCRIMINATOR for the applicability repair. `fn contract_is_applicable` replaced a battery comparing
-// that judgement's own rendering to a literal of its own, which could never be true -- so a leg whose only
-// source was that comparison was red by construction, not by measurement. This leg must be seen to refuse:
-// the carrier refuses every planted mis-pairing, and a judgement that stopped asking the carrier would
-// accept them and go red here, by name, in the same run as the rows it accepted. What each half means is
-// decided once, in `fn applicability_discriminates` in gunbc.emit_building_block_contracts; nothing here
-// judges, it only names the leg and prints the counts that were compared.
-fn carriers_discrimination_cases() -> List<AllocationCase> {
-  [AllocationCase {
-    identity: "carriers_applicability_judgement_discriminates",
-    held: applicability_discriminates(f: Carriers),
-    observed: carriers_discrimination_line()
-  }]
-}
-
-fn carriers_discrimination_line() -> String {
-  let parts = [concat("family=", "carriers"),
-               count_text(label: "family_rows", n: count(contracts_of_family(f: Carriers))),
-               count_text(label: "rows_refused_by_carrier", n: applicability_refused_rows(f: Carriers)),
-               count_text(label: "planted_mis_pairings_accepted", n: applicability_accepted_probes())]
-  parts |> join(separator: " ")
+  battery_report(concat(measured, concat(audit, qualified)))
 }

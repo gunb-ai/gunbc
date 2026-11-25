@@ -1,0 +1,23 @@
+module gunbc.instruments.emit_carrier_violation
+
+import std.realization_measurement { AllocationCounter }
+import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport }
+import gunbc.instruments.allocation_battery { battery_report }
+import gunbc.instruments.emit_carrier_subjects { car_red_rows }
+
+// THE RED ENTRY of the carrier family: the same subject bodies, through the same meter, judged the
+// opposite way -- each violating arm asked whether it sits WITHIN its contract arm, false by construction.
+// All eight blocks appear, so every carrier contract has been shown red: per-step allocation in sequence
+// build, index build and both traversals, a copy of the unchanged context in element read, index lookup
+// and the map snapshot, and an owning retain added to the observation in the sequence snapshot.
+//
+// Its own target, #gunbc.instrument_targets::emit_carrier_violation_label with
+// #gunbc.instrument_targets::emit_carrier_violation_binding, so the pair can exit differently. If this
+// entry ever exits 0 the meter has stopped discriminating and the family's green rows are readings of a
+// broken instrument.
+
+data compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver
+
+fn native_claim_report() -> NativeClaimReport uses counter: AllocationCounter {
+  battery_report(car_red_rows())
+}

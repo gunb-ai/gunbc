@@ -1,0 +1,27 @@
+module gunbc.instruments.emit_control_flow_violation
+
+import std.realization_measurement { AllocationCounter }
+import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport }
+import gunbc.instruments.allocation_battery { battery_report }
+import gunbc.instruments.emit_control_flow_subjects { cf_red_rows }
+
+// THE RED ENTRY of the control-flow family. It runs the SAME subject bodies, through the SAME meter,
+// judged the opposite way: the violating arm asked whether it sits WITHIN its contract arm, which is
+// false by construction. Four rows, named, and nothing else -- so this entry's non-zero exit is the
+// instrument's own red control rather than a side effect of carrying a row that was designed to fail.
+//
+// It is a target of its own, not a flag on the green entry, because the two entries must be able to exit
+// differently: #gunbc.instrument_targets::emit_control_flow_violation_label with
+// #gunbc.instrument_targets::emit_control_flow_violation_binding. A single entry holding both would exit
+// non-zero whatever the meter did, and an exit code that cannot vary measures nothing.
+//
+// The rows come from #gunbc.instruments.emit_control_flow_subjects::cf_red_rows, the same windows the
+// green entry discriminates on -- same path, opposite judgement, which is what the row's red_control
+// asks for. If this entry ever exits 0, the meter has stopped discriminating and the family's green
+// rows are readings of a broken instrument.
+
+data compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver
+
+fn native_claim_report() -> NativeClaimReport uses counter: AllocationCounter {
+  battery_report(cf_red_rows())
+}

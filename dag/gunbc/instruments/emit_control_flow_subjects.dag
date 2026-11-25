@@ -1,0 +1,172 @@
+module gunbc.instruments.emit_control_flow_subjects
+
+import std.types { Bool, Int, List }
+import std.realization_measurement { AllocationCounter }
+import gunbc.allocation_observation_render { AllocationCase }
+import gunbc.instruments.allocation_battery { BatteryWindow, battery_window, battery_window_unavailable, subject_case, violation_case, violation_contract_holds_case, calibration_rows, availability_case }
+import gunbc.emit_state_threading_specimen { spec_build }
+
+// THE CONTROL-FLOW SUBJECTS of the building-block battery (roadmap row
+// #gunbc.roadmap.roadmap_authority::declared_roadmap_nodes, id emission-building-block-realization):
+// a Transform, a Branch, a Bind, and a Match in each of the two states the boundary names, on an owned
+// temporary and on a borrowed shared sum. This module holds the SUBJECT BODIES and the metered pairs and
+// nothing else -- no report, no pipeline entry -- because the family's green entry and its red entry must
+// both measure the same bodies. One body per arm means a violating variant and its contract arm differ
+// only in the arm, which is what makes the pair a measurement rather than two unrelated programs.
+//
+// THE SHAPE IS CHOSEN FROM THIS ROW'S OWN EXECUTED COUNTER DATA, not from a parse-population profile
+// (absent at this base) and not by taste. The discriminating gap is the cloning control against the
+// reference walk, and both arms are metered here, so the numbers are read off the executed log rather
+// than asserted. The meter reads OPERATIONS AND BYTES ONLY: no traversal count, no per-phase lifetime.
+
+data cf_cardinality: Int = 32
+
+// A NONRECURSIVE SUM to match on, in both states the boundary names: owned temporary, and borrowed
+// shared sum. No arm mentions CfSum, so it stays nonrecursive.
+type CfPayload {
+  xs: List<Int>
+  k: Int
+}
+
+type CfSum = SumLeft { n: Int } | SumRight { payload: CfPayload }
+
+fn cf_payload_of(src: List<Int>) -> CfPayload {
+  fold(src, init: CfPayload { xs: [], k: 0 }, f: (acc, x) => CfPayload { xs: list_push(acc.xs, x), k: acc.k + x })
+}
+
+fn cf_scalar_of(src: List<Int>) -> Int {
+  fold(src, init: 0, f: (acc, x) => acc + x)
+}
+
+// THE TRANSFORM. One scalar in, one scalar out, no capture.
+fn cf_transform(x: Int) -> Int {
+  x + 1
+}
+
+// THE BRANCH. Both arms return a scalar; which arm runs is a property of the input, not of the meter.
+fn cf_branch(take_left: Bool, left: Int, right: Int) -> Int {
+  if take_left { left } else { right }
+}
+
+// THE BIND. Bound once, read twice -- the reading must not depend on re-materializing the binding.
+fn cf_bind_then_read_twice(v: CfPayload) -> Int {
+  let bound = v
+  bound.k + bound.k
+}
+
+// THE MATCH, total over the nonrecursive sum.
+fn cf_match_total(s: CfSum) -> Int {
+  match s {
+    SumLeft { n: n } => n
+    SumRight { payload: p } => p.k
+  }
+}
+
+// THE BORROWED MATCH reads through the shared sum without asking for a copy of the payload.
+fn cf_match_borrowed(s: CfSum) -> Int {
+  match s {
+    SumLeft { n: n } => n
+    SumRight { payload: p } => cf_match_borrowed_scalar(p: p)
+  }
+}
+
+fn cf_match_borrowed_scalar(p: CfPayload) -> Int {
+  p.k
+}
+
+type CfSubject =
+    CfMeterEmpty
+  | CfMeterKnownAllocation
+  | CfTransformApplied
+  | CfTransformRebuiltPerStep
+  | CfBranchTaken
+  | CfBranchCopiesUnchangedContext
+  | CfBindOnce
+  | CfBindRematerializedPerRead
+  | CfMatchOwnedTemporary
+  | CfMatchOwnedCopiedBeforeMatch
+  | CfMatchBorrowedSharedSum
+  | CfMatchBorrowedRetainedAfterMatch
+
+// ONE PATH FOR EVERY ARM. The violating variants are the row's three named forms: an owning retain
+// added to an observation, a per-step allocation, and a copy of the unchanged context.
+fn run_cf_subject(subject: CfSubject, src: List<Int>) -> List<Int> {
+  let n = cf_scalar_of(src: src)
+  let payload = cf_payload_of(src: src)
+  match subject {
+    CfMeterEmpty => []
+    CfMeterKnownAllocation => fold(src, init: [], f: (acc, x) => list_push(acc, x))
+    CfTransformApplied => list_push([], cf_transform(x: n))
+    CfTransformRebuiltPerStep => list_push([], cf_transform(x: fold(src, init: 0, f: (acc, x) => acc + cf_payload_of(src: src).k)))
+    CfBranchTaken => list_push([], cf_branch(take_left: n > 0, left: n, right: 0 - n))
+    CfBranchCopiesUnchangedContext => list_push([], cf_branch(take_left: n > 0, left: cf_payload_of(src: src).k, right: payload.k))
+    CfBindOnce => list_push([], cf_bind_then_read_twice(v: payload))
+    CfBindRematerializedPerRead => list_push([], cf_bind_then_read_twice(v: cf_payload_of(src: src)) + cf_bind_then_read_twice(v: cf_payload_of(src: src)))
+    CfMatchOwnedTemporary => list_push([], cf_match_total(s: SumRight { payload: payload }))
+    CfMatchOwnedCopiedBeforeMatch => list_push([], cf_match_total(s: SumRight { payload: cf_payload_of(src: src) }))
+    CfMatchBorrowedSharedSum => list_push([], cf_match_borrowed(s: SumRight { payload: payload }))
+    CfMatchBorrowedRetainedAfterMatch => list_push(list_push([], cf_match_borrowed(s: SumRight { payload: payload })), cf_match_borrowed(s: SumRight { payload: cf_payload_of(src: src) }))
+  }
+}
+
+// THE PAIR TAKEN UNDER THE METER, in the shared bracket. Every window of this family is taken here, so
+// no arm can be measured by a different bracket than its control.
+fn cf_window(subject: CfSubject, src: List<Int>) -> BatteryWindow uses counter: AllocationCounter {
+  if observed_allocation_available("") {
+    let ops_before = observed_allocation_operations("")
+    let bytes_before = observed_allocation_bytes("")
+    let kept = run_cf_subject(subject: subject, src: src)
+    let ops_after = observed_allocation_operations("")
+    let bytes_after = observed_allocation_bytes("")
+    battery_window(kept: kept, ops_before: ops_before, ops_after: ops_after, bytes_before: bytes_before, bytes_after: bytes_after)
+  } else {
+    battery_window_unavailable(kept: run_cf_subject(subject: subject, src: src))
+  }
+}
+
+// THE GREEN MEASUREMENTS: availability, the calibration pair, and one reading plus one discriminating
+// pair per block. No red-control row appears here -- that is what makes the exit code of the green entry
+// informative, and it is the reason the red entry exists as its own target.
+fn cf_measurement_rows() -> List<AllocationCase> uses counter: AllocationCounter {
+  let src = spec_build(n: cf_cardinality)
+  let empty = cf_window(subject: CfMeterEmpty, src: src)
+  let empty_again = cf_window(subject: CfMeterEmpty, src: src)
+  let known = cf_window(subject: CfMeterKnownAllocation, src: src)
+  let transform = cf_window(subject: CfTransformApplied, src: src)
+  let transform_rebuilt = cf_window(subject: CfTransformRebuiltPerStep, src: src)
+  let branch = cf_window(subject: CfBranchTaken, src: src)
+  let branch_copied = cf_window(subject: CfBranchCopiesUnchangedContext, src: src)
+  let bind = cf_window(subject: CfBindOnce, src: src)
+  let bind_remade = cf_window(subject: CfBindRematerializedPerRead, src: src)
+  let match_owned = cf_window(subject: CfMatchOwnedTemporary, src: src)
+  let match_copied = cf_window(subject: CfMatchOwnedCopiedBeforeMatch, src: src)
+  let match_borrowed = cf_window(subject: CfMatchBorrowedSharedSum, src: src)
+  let match_retained = cf_window(subject: CfMatchBorrowedRetainedAfterMatch, src: src)
+  concat(concat([availability_case(prefix: "control_flow")], calibration_rows(prefix: "control_flow", empty: empty, empty_again: empty_again, known: known)), concat(concat(concat(
+      [subject_case(prefix: "control_flow", block_id: "transform", own: transform), violation_case(prefix: "control_flow", block_id: "transform", viol: transform_rebuilt, contract_arm: transform)],
+      [subject_case(prefix: "control_flow", block_id: "branch", own: branch), violation_case(prefix: "control_flow", block_id: "branch", viol: branch_copied, contract_arm: branch)]),
+      concat(
+      [subject_case(prefix: "control_flow", block_id: "bind", own: bind), violation_case(prefix: "control_flow", block_id: "bind", viol: bind_remade, contract_arm: bind)],
+      [subject_case(prefix: "control_flow", block_id: "match_on_owned_temporary", own: match_owned), violation_case(prefix: "control_flow", block_id: "match_on_owned_temporary", viol: match_copied, contract_arm: match_owned)])),
+      [subject_case(prefix: "control_flow", block_id: "match_on_borrowed_shared_sum", own: match_borrowed), violation_case(prefix: "control_flow", block_id: "match_on_borrowed_shared_sum", viol: match_retained, contract_arm: match_borrowed)]))
+}
+
+// THE RED MEASUREMENTS: the same windows, the same path, judged the opposite way. Only these rows appear
+// in the red entry, so its non-zero exit names the violating forms and nothing else.
+fn cf_red_rows() -> List<AllocationCase> uses counter: AllocationCounter {
+  let src = spec_build(n: cf_cardinality)
+  let transform = cf_window(subject: CfTransformApplied, src: src)
+  let transform_rebuilt = cf_window(subject: CfTransformRebuiltPerStep, src: src)
+  let branch = cf_window(subject: CfBranchTaken, src: src)
+  let branch_copied = cf_window(subject: CfBranchCopiesUnchangedContext, src: src)
+  let bind = cf_window(subject: CfBindOnce, src: src)
+  let bind_remade = cf_window(subject: CfBindRematerializedPerRead, src: src)
+  let match_borrowed = cf_window(subject: CfMatchBorrowedSharedSum, src: src)
+  let match_retained = cf_window(subject: CfMatchBorrowedRetainedAfterMatch, src: src)
+  [
+    violation_contract_holds_case(prefix: "control_flow", block_id: "transform", viol: transform_rebuilt, contract_arm: transform),
+    violation_contract_holds_case(prefix: "control_flow", block_id: "branch", viol: branch_copied, contract_arm: branch),
+    violation_contract_holds_case(prefix: "control_flow", block_id: "bind", viol: bind_remade, contract_arm: bind),
+    violation_contract_holds_case(prefix: "control_flow", block_id: "match_on_borrowed_shared_sum", viol: match_retained, contract_arm: match_borrowed)
+  ]
+}

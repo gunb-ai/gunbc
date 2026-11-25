@@ -1,0 +1,166 @@
+module gunbc.instruments.emit_value_shape_subjects
+
+import std.types { Bool, Int, List }
+import std.realization_measurement { AllocationCounter }
+import gunbc.allocation_observation_render { AllocationCase }
+import gunbc.instruments.allocation_battery { BatteryWindow, battery_window, battery_window_unavailable, subject_case, violation_case, violation_contract_holds_case, calibration_rows, availability_case }
+import gunbc.emit_state_threading_specimen { spec_build }
+
+// THE VALUE-SHAPE SUBJECTS of the building-block battery (roadmap row
+// #gunbc.roadmap.roadmap_authority::declared_roadmap_nodes, id emission-building-block-realization): a
+// Value in its three named shapes (scalar, record, nonrecursive variant) and the generic instance over a
+// scalar AND over a nontrivial payload. Subject bodies and metered pairs only -- no report, no pipeline
+// entry -- so both of the family's entries measure the same bodies through the same bracket.
+
+data specimen_cardinality: Int = 32
+
+// THE NONTRIVIAL PAYLOAD. The boundary asks for a generic instance over a scalar AND over a
+// nontrivial payload, so the payload is a record of a sequence, an index and a scalar: the smallest
+// thing that is not a scalar.
+type BbTriple {
+  xs: List<Int>
+  k: Int
+  log: List<Int>
+}
+
+// A NONRECURSIVE VARIANT, one of the boundary's named blocks. No arm mentions BbVariant.
+type BbVariant = VariantNumber { value: Int } | VariantWords { payload: BbTriple }
+
+fn variant_total(v: BbVariant) -> Int {
+  match v {
+    VariantNumber { value: n } => n
+    VariantWords { payload: p } => p.k
+  }
+}
+
+// THE GENERIC INSTANCE. One body, instantiated at a scalar (Int) and at a nontrivial payload
+// (BbTriple). The emitter decides whether the payload crosses by move or by clone; this module only
+// reads what it decided.
+fn bb_select<T>(first_value: T, second_value: T, take_first: Bool) -> T {
+  if take_first { first_value } else { second_value }
+}
+
+type BbSubject =
+    MeterEmpty
+  | MeterKnownAllocation
+  | ScalarRead
+  | ScalarRetainAddedToObservation
+  | RecordFieldRead
+  | RecordRebuiltToReadOneField
+  | VariantConsumedOnce
+  | VariantPayloadCopiedToMatch
+  | GenericScalarSelected
+  | GenericPayloadSelected
+  | GenericPayloadCopiedAtBoundary
+  | GenericPayloadMaterializedPerInstantiation
+
+fn bb_scalar_of(src: List<Int>) -> Int {
+  fold(src, init: 0, f: (acc, x) => acc + x)
+}
+
+fn bb_payload_of(src: List<Int>) -> BbTriple {
+  fold(src, init: BbTriple { xs: [], k: 0, log: [] }, f: (acc, x) =>
+    BbTriple { xs: list_push(acc.xs, x), k: acc.k + x, log: list_push(acc.log, 1) })
+}
+
+// A record rebuild with one field changed, read straight back: the boundary's named block, and the
+// row's third violating form ("a copy of the unchanged context") when it stands in for a field read.
+fn bb_rebuild(p: BbTriple, k: Int) -> BbTriple {
+  BbTriple { xs: p.xs, k: k, log: p.log }
+}
+
+// AN OWNING RETAIN ADDED TO AN OBSERVATION: the row's first violating form. The scalar is still read,
+// and the shared payload is additionally retained through the generic instance.
+fn bb_scalar_with_retain(payload: BbTriple) -> List<Int> {
+  let retained = bb_select(first_value: payload, second_value: payload, take_first: true)
+  list_push(list_push([], retained.k), retained.k)
+}
+
+// ONE PATH FOR EVERY ARM. Every subject runs inside this single body, so a violating variant and its
+// contract arm differ only in the arm, never in the path around it, which is what the row's
+// red_control means by "goes through the same path".
+fn run_bb_subject(subject: BbSubject, src: List<Int>) -> List<Int> {
+  let n = bb_scalar_of(src: src)
+  let payload = bb_payload_of(src: src)
+  match subject {
+    MeterEmpty => []
+    MeterKnownAllocation => fold(src, init: [], f: (acc, x) => list_push(acc, x))
+    ScalarRead => list_push([], n)
+    ScalarRetainAddedToObservation => bb_scalar_with_retain(payload: payload)
+    RecordFieldRead => list_push([], payload.k)
+    RecordRebuiltToReadOneField => list_push([], bb_rebuild(p: payload, k: payload.k + 1).k)
+    VariantConsumedOnce => list_push([], variant_total(v: VariantNumber { value: n }))
+    VariantPayloadCopiedToMatch => list_push([], variant_total(v: VariantWords {
+      payload: bb_select(first_value: payload, second_value: payload, take_first: true) }))
+    GenericScalarSelected => list_push([], bb_select(first_value: n, second_value: 0 - n, take_first: true))
+    GenericPayloadSelected => list_push([], bb_select(first_value: payload, second_value: bb_payload_of(src: src), take_first: false).k)
+    GenericPayloadCopiedAtBoundary => list_push([], bb_select(first_value: payload, second_value: bb_payload_of(src: src), take_first: true).k)
+    GenericPayloadMaterializedPerInstantiation => list_push([], bb_select(first_value: bb_select(first_value: n, second_value: payload.k, take_first: true), second_value: n, take_first: true))
+  }
+}
+
+// THE PAIR TAKEN UNDER THE METER, in the shared bracket.
+fn bb_window(subject: BbSubject, src: List<Int>) -> BatteryWindow uses counter: AllocationCounter {
+  if observed_allocation_available("") {
+    let ops_before = observed_allocation_operations("")
+    let bytes_before = observed_allocation_bytes("")
+    let kept = run_bb_subject(subject: subject, src: src)
+    let ops_after = observed_allocation_operations("")
+    let bytes_after = observed_allocation_bytes("")
+    battery_window(kept: kept, ops_before: ops_before, ops_after: ops_after, bytes_before: bytes_before, bytes_after: bytes_after)
+  } else {
+    battery_window_unavailable(kept: run_bb_subject(subject: subject, src: src))
+  }
+}
+
+// THE GREEN MEASUREMENTS: availability, the calibration pair, and one reading plus one discriminating
+// pair per block. No red-control row appears here.
+fn bb_measurement_rows() -> List<AllocationCase> uses counter: AllocationCounter {
+  let src = spec_build(n: specimen_cardinality)
+  let empty = bb_window(subject: MeterEmpty, src: src)
+  let empty_again = bb_window(subject: MeterEmpty, src: src)
+  let known = bb_window(subject: MeterKnownAllocation, src: src)
+  let scalar_read = bb_window(subject: ScalarRead, src: src)
+  let scalar_retain = bb_window(subject: ScalarRetainAddedToObservation, src: src)
+  let field_read = bb_window(subject: RecordFieldRead, src: src)
+  let rebuilt = bb_window(subject: RecordRebuiltToReadOneField, src: src)
+  let variant_once = bb_window(subject: VariantConsumedOnce, src: src)
+  let variant_copied = bb_window(subject: VariantPayloadCopiedToMatch, src: src)
+  let generic_scalar = bb_window(subject: GenericScalarSelected, src: src)
+  let generic_materialized = bb_window(subject: GenericPayloadMaterializedPerInstantiation, src: src)
+  let generic_selected = bb_window(subject: GenericPayloadSelected, src: src)
+  let generic_copied = bb_window(subject: GenericPayloadCopiedAtBoundary, src: src)
+  concat(concat([availability_case(prefix: "value_shape")], calibration_rows(prefix: "value_shape", empty: empty, empty_again: empty_again, known: known)),
+    concat(concat(concat(
+      [subject_case(prefix: "value_shape", block_id: "value_scalar", own: scalar_read), violation_case(prefix: "value_shape", block_id: "value_scalar", viol: scalar_retain, contract_arm: scalar_read)],
+      [subject_case(prefix: "value_shape", block_id: "value_record", own: field_read), violation_case(prefix: "value_shape", block_id: "value_record", viol: rebuilt, contract_arm: field_read)]),
+      concat(
+      [subject_case(prefix: "value_shape", block_id: "value_nonrecursive_variant", own: variant_once), violation_case(prefix: "value_shape", block_id: "value_nonrecursive_variant", viol: variant_copied, contract_arm: variant_once)],
+      [subject_case(prefix: "value_shape", block_id: "generic_instance_over_scalar", own: generic_scalar), violation_case(prefix: "value_shape", block_id: "generic_instance_over_scalar", viol: generic_materialized, contract_arm: generic_scalar)])),
+      [subject_case(prefix: "value_shape", block_id: "generic_instance_over_nontrivial_payload", own: generic_selected), violation_case(prefix: "value_shape", block_id: "generic_instance_over_nontrivial_payload", viol: generic_copied, contract_arm: generic_selected)]))
+}
+
+// THE RED MEASUREMENTS: the same windows, the same path, judged the opposite way. Every specimen's
+// violating variant appears, including the generic instance over a scalar, which the earlier single-entry
+// battery left out -- one specimen whose violation was never shown red is one specimen whose contract has
+// not been tested.
+fn bb_red_rows() -> List<AllocationCase> uses counter: AllocationCounter {
+  let src = spec_build(n: specimen_cardinality)
+  let scalar_read = bb_window(subject: ScalarRead, src: src)
+  let scalar_retain = bb_window(subject: ScalarRetainAddedToObservation, src: src)
+  let field_read = bb_window(subject: RecordFieldRead, src: src)
+  let rebuilt = bb_window(subject: RecordRebuiltToReadOneField, src: src)
+  let variant_once = bb_window(subject: VariantConsumedOnce, src: src)
+  let variant_copied = bb_window(subject: VariantPayloadCopiedToMatch, src: src)
+  let generic_scalar = bb_window(subject: GenericScalarSelected, src: src)
+  let generic_materialized = bb_window(subject: GenericPayloadMaterializedPerInstantiation, src: src)
+  let generic_selected = bb_window(subject: GenericPayloadSelected, src: src)
+  let generic_copied = bb_window(subject: GenericPayloadCopiedAtBoundary, src: src)
+  [
+    violation_contract_holds_case(prefix: "value_shape", block_id: "value_scalar", viol: scalar_retain, contract_arm: scalar_read),
+    violation_contract_holds_case(prefix: "value_shape", block_id: "value_record", viol: rebuilt, contract_arm: field_read),
+    violation_contract_holds_case(prefix: "value_shape", block_id: "value_nonrecursive_variant", viol: variant_copied, contract_arm: variant_once),
+    violation_contract_holds_case(prefix: "value_shape", block_id: "generic_instance_over_scalar", viol: generic_materialized, contract_arm: generic_scalar),
+    violation_contract_holds_case(prefix: "value_shape", block_id: "generic_instance_over_nontrivial_payload", viol: generic_copied, contract_arm: generic_selected)
+  ]
+}
