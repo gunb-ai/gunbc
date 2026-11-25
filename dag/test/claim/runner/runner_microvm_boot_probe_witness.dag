@@ -18,7 +18,7 @@ import gunbc.runner.runner_microvm_boot_probe {
   BootNotAttempted, BootExceededHostDeadline, BootDeadlineEnforcementUnobservable,
   BootConsoleUnreadable, BootVmmFailed,
   BootProbeConsole, EnforcementMismatch,
-  SignalledWithoutOurKill, ReapRefused, ReapRefusedAfterOurSignal, GroupSignalRefused,
+  SignalledWithoutOurKill, ReapNeverAnswered, ReapRefusedAfterOurSignal, GroupSignalRefused,
   SubjectSurvivedOurSignals,
   KillNotConfirmedByReap, GroupUnnameable,
   boot_probe_verdict, boot_probe_verdict_text, boot_probe_admitted, guest_agent_boot_verdict,
@@ -266,7 +266,7 @@ test fn each_unobservable_cause_carries_its_own_observed_data() -> Bool {
     _ => false
   })
     && (match by_reap {
-      BootDeadlineEnforcementUnobservable { cause: ReapRefused { cause: cc }, console: _, console_cause: _, detail: _ } => cc == "ECHILD"
+      BootDeadlineEnforcementUnobservable { cause: ReapNeverAnswered { cause: cc }, console: _, console_cause: _, detail: _ } => cc == "ECHILD"
       _ => false
     })
     && (match by_decline {
