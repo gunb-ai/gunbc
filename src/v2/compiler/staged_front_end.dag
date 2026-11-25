@@ -240,8 +240,8 @@ fn front_end_parse_step(
 // ADJACENT block joins into ONE row whose origin runs from its first capture's start to its last capture's
 // end (std.source_annotation annotation_attach_step), so a capture lost in the MIDDLE of such a block leaves
 // every capture's span still covered -- coverage is not multiplicity. (2) FILE-BLINDNESS: the predicate this
-// guard borrows compares start and end only -- the body at dag/std/source_annotation.dag:169
-// (extent.start <= origin.start && origin.end <= extent.end) reads no file field of either SourceSpan -- so a
+// guard borrows, std.source_annotation::region_contains, compares start and end only and reads no file field
+// of either SourceSpan -- so a
 // capture naming a DIFFERENT FILE than the row covering it reads as contained, which makes this a
 // SINGLE-MODULE attach check and nothing more. Nothing in production refuses either case today; the moment
 // they become checkable is declared in front_end_capture_interior_loss_next_rung, and the count that would
@@ -318,17 +318,17 @@ fn front_end_unlanded_annotation_diagnostic(
 // reader and a claim can both reach it. It is UNBOUND because nothing in the tree fires it -- the runner that
 // judged this floor was deleted and no workflow passes a --required flag, so binding it to a declaration today
 // would be a trigger that can never fire beside a control that is never run. v2.test.claim.staged_front_end
-// front_end_placement_next_rung_is_declared_and_names_the_control reads it back and refuses if the condition
-// ever stops naming the control whose absence it is about.
+// front_end_placement_next_rung_is_declared_and_names_the_control reads it back and refuses if the condition is
+// ever BOUND while no floor can execute -- which is the one thing here that a predicate can decide without
+// re-typing this carrier's prose and grepping it.
 data front_end_placement_control_next_rung: DissolutionCondition = unbound_dissolution(description: "GATE THE PLACEMENT HALF WHEN v2.test.claim.manual.annotation_gap_v1_v2_agreement is both enrolled by name in v2.workflow.required_floor required_gate_authored_modules on an operator ruling AND executed by some floor that can execute -- gunbc.rung_drop_amendment.manual_required_floor_runner_deleted records the required-floor runner as deleted (amended 2026-10-14) and no workflow passes a --required flag, so neither half holds today. Until both halves hold, front_end_unlanded_annotation_diagnostic checks loss only and placement is checked by hand. At that moment agreement_control_rung in that control must be restated, which v2.test.claim.manual.annotation_gap_v1_v2_agreement_probe_pair probe_pair_rung_agrees_with_the_floors_own_admission refuses if it is left stale.")
 
-// THE LOSS CHECK IS INTERIM, AND SAYS SO IN A TYPE BESIDE IT. It was written as a capture COUNT read back
-// out of the fold's rows, which decided the join rule in a second place; the operator ruling on review 98556
-// of gunb-ai/gunbc#16942 deleted that counter rather than admit the fork, and this guard now asks only a
-// coverage question through the authority's own predicate. A weaker guard with a declared limit is honest; a
-// counter deciding a separator is not. The two carriers below state where the guard stops and what moves the
+// THE LOSS CHECK IS INTERIM, AND SAYS SO IN A TYPE BESIDE IT. A capture COUNT read back out of the fold's rows
+// would decide the join rule in a second place, which gunbc.design_argument::single_authority forbids, so this
+// guard asks only a coverage question through the authority's own predicate. A weaker guard with a declared
+// limit is honest; a counter deciding a separator is not. The two carriers below state where the guard stops and what moves the
 // stop, so no reader has to infer either from this comment.
-data front_end_capture_count_next_rung: DissolutionCondition = unbound_dissolution(description: "REBUILD THE LOSS CHECK ON A COUNT THE FOLD CARRIES WHEN dag/std/source_annotation.dag states how many lex captures each annotation row absorbed -- a field on SourceAnnotationDebt, or a count on SourceAnnotationGraph, set by annotation_attach_step -- so front_end_unlanded_annotation_diagnostic compares a multiplicity the model already carries instead of only coverage. The row carrying that obligation is source-annotation-fold-carries-absorbed-capture-count (rn_ZR45MIQ7KTC56XVLT23LXQ3W4A) in dag/gunbc/roadmap/roadmap_authority.dag, owner parse, carrier dag/std/source_annotation.dag, dispatch NotDispatchable until its discriminating pair has been executed. The counter this rung used to name, front_end_landed_capture_count, was DELETED by the operator ruling on review 98556 of gunb-ai/gunbc#16942: a consumer counting line feeds to decide whether a parse is refused restates std.source_annotation annotation_attach_step's join rule, which gunbc.design_argument::single_authority forbids.")
+data front_end_capture_count_next_rung: DissolutionCondition = unbound_dissolution(description: "REBUILD THE LOSS CHECK ON A COUNT THE FOLD CARRIES WHEN dag/std/source_annotation.dag states how many lex captures each annotation row absorbed -- a field on SourceAnnotationDebt, or a count on SourceAnnotationGraph, set by annotation_attach_step -- so front_end_unlanded_annotation_diagnostic compares a multiplicity the model already carries instead of only coverage. The row carrying that obligation is source-annotation-fold-carries-absorbed-capture-count (rn_ZR45MIQ7KTC56XVLT23LXQ3W4A) in dag/gunbc/roadmap/roadmap_authority.dag, owner parse, carrier dag/std/source_annotation.dag, dispatch NotDispatchable until its discriminating pair has been executed. WHY THE COUNT MUST COME FROM THE FOLD AND NOT FROM THIS CONSUMER: a reader that counts line feeds back out of the rows to decide whether a parse is refused restates std.source_annotation annotation_attach_step's join rule in a second place, which gunbc.design_argument::single_authority forbids. So the obligation is a field the fold SETS, never a count a consumer computes.")
 
 // BOTH BLIND SPOTS OF THE COVERAGE GUARD, IN THEIR OWN TYPE BESIDE THE RUNG ABOVE, because a limit that
 // lives only in the guard's comment is a limit a later reader cites as protection. (1) An INTERIOR loss --
@@ -339,7 +339,7 @@ data front_end_capture_count_next_rung: DissolutionCondition = unbound_dissoluti
 // v2.test.claim.staged_front_end front_end_annotation_guard_declares_both_limits_interior_loss_and_file_blindness
 // PINS both by executing them, and says so in its own name; when the count lands those two conjuncts must be
 // rewritten into refusals, and those rewrites are the executed signal that the limits moved.
-data front_end_capture_interior_loss_next_rung: DissolutionCondition = unbound_dissolution(description: "REFUSE AN INTERIOR LOSS AND A CROSS-FILE CAPTURE WHEN the fold carries the count of lex captures each row absorbed (row source-annotation-fold-carries-absorbed-capture-count, rn_ZR45MIQ7KTC56XVLT23LXQ3W4A, carrier dag/std/source_annotation.dag), because whole-interval containment cannot see either one. LIMIT ONE, INTERIOR: an adjacent block joins into ONE row whose origin spans its whole block, so a capture lost in the MIDDLE of that block leaves every capture's span still covered and front_end_unlanded_annotation_diagnostic silent. LIMIT TWO, FILE-BLINDNESS: the predicate it borrows, std.source_annotation::region_contains, compares start and end only -- its body at dag/std/source_annotation.dag:169 reads no file field -- so a capture naming a DIFFERENT FILE than the row that covers it reads as contained and the guard is valid for SINGLE-MODULE attach only. Until that count exists this is a weaker guard with two declared limits, not a loss-free parse.")
+data front_end_capture_interior_loss_next_rung: DissolutionCondition = unbound_dissolution(description: "REFUSE AN INTERIOR LOSS AND A CROSS-FILE CAPTURE WHEN the fold carries the count of lex captures each row absorbed (row source-annotation-fold-carries-absorbed-capture-count, rn_ZR45MIQ7KTC56XVLT23LXQ3W4A, carrier dag/std/source_annotation.dag), because whole-interval containment cannot see either one. LIMIT ONE, INTERIOR: an adjacent block joins into ONE row whose origin spans its whole block, so a capture lost in the MIDDLE of that block leaves every capture's span still covered and front_end_unlanded_annotation_diagnostic silent. LIMIT TWO, FILE-BLINDNESS: the predicate it borrows, std.source_annotation::region_contains, compares start and end only and reads no file field of either SourceSpan -- so a capture naming a DIFFERENT FILE than the row that covers it reads as contained and the guard is valid for SINGLE-MODULE attach only. Until that count exists this is a weaker guard with two declared limits, not a loss-free parse.")
 
 fn front_end_continue_normalize(
   steps: List<FrontEndStageStep>,

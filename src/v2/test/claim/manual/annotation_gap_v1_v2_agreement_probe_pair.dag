@@ -1,7 +1,7 @@
 module v2.test.claim.manual.annotation_gap_v1_v2_agreement_probe_pair
 
 import v2.test.claim.manual.annotation_gap_v1_v2_agreement {
-  AgreementControlRung, ManualUngated, GatedRow, FloorExecuted,
+  AgreementControlRung, ManualUngated, GatedRow,
   agreement_control_module_name, agreement_control_rung
 }
 import v2.workflow.required_floor { required_gate_admits }
@@ -43,28 +43,23 @@ import v2.workflow.required_floor { required_gate_admits }
 // than repeated here where nothing could read them.
 
 
-// THE RUNG IS CHECKED AGAINST THE GATE'S OWN DECISION, AND THE THREE ARMS ARE NOT THE SAME QUESTION.
+// THE RUNG IS CHECKED AGAINST THE GATE'S OWN DECISION, AND THE TWO ARMS ARE NOT THE SAME QUESTION.
 // `agreement_control_rung` is published by the control; admission is computed ELSEWHERE by
 // `required_gate_admits`, from the floor's own selector rosters, so the claim cannot be satisfied by the rung's
-// own value. The arms answer three different questions, and that is the whole point:
+// own value. The arms answer two different questions, and that is the whole point:
 //   ManualUngated  -- the floor must admit this path under NEITHER selector kind. A family row that later swept
 //                     this path in fails this arm, so silence here is not a confession filed for readers to trust.
 //   GatedRow       -- the floor DOES admit it. Admitting is an operator act; the rung may not outrun the roster.
-//   FloorExecuted  -- REFUSES, unconditionally, and must keep refusing until something can evidence it. Nothing
-//                     in the tree can: `required_gate_admits` answers whether the floor ADMITS a path, and no
-//                     predicate anywhere observes that a floor EXECUTED one -- the required-floor runner is
-//                     deleted (gunbc.rung_drop_amendment.manual_required_floor_runner_deleted) and no workflow
-//                     passes `--required-floor` (witnessed in the negative by
-//                     dag.test.claim.witness_floor_workflow_consolidation_witness). Two arms both answering
-//                     "does the floor admit it" would let the rung be raised to FloorExecuted on an admission
-//                     alone, which is an inflated rung passing; an arm that cannot be satisfied is the honest
-//                     shape while the authority for that fact is missing. When such an authority lands, THIS arm
-//                     is rewritten to consult it, and the moment that happens is declared once as
-//                     `v2.compiler.staged_front_end` `front_end_placement_control_next_rung`.
+// There is deliberately NO "executed by the floor" arm: `required_gate_admits` answers ADMITS, not EXECUTED, and
+// nothing anywhere observes execution -- the required-floor runner is deleted
+// (gunbc.rung_drop_amendment.manual_required_floor_runner_deleted) and no workflow passes `--required-floor`
+// (witnessed in the negative by dag.test.claim.witness_floor_workflow_consolidation_witness). An arm whose
+// predicate was the same admission question would let the rung be raised on an admission alone, which is an
+// inflated rung passing; the variant and its arm are added together with the authority that could decide them,
+// and `v2.compiler.staged_front_end` `front_end_placement_control_next_rung` declares when.
 test fn probe_pair_rung_agrees_with_the_floors_own_admission() -> Bool {
   match agreement_control_rung {
     ManualUngated => !required_gate_admits(module_path: agreement_control_module_name)
     GatedRow => required_gate_admits(module_path: agreement_control_module_name)
-    FloorExecuted => false
   }
 }

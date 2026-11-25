@@ -71,10 +71,15 @@ data agreement_texts: List<String> = ["above the data row", "between the items",
 // the executor's `--functions` argv: rename the fn and the run itself refuses with
 // "does not declare requested function(s)" at rc=2, which is the executed protection and is recorded with its
 // raw lines in the pull-request run log rather than restated here where nothing could read it.
+// Two rungs, and no third until something can EVIDENCE it. A rung is a claim about a fact outside this file,
+// so a variant may exist only while a predicate somewhere can decide it. "The floor executed this control" has
+// no such predicate anywhere in the tree -- `v2.workflow.required_floor` `required_gate_admits` answers whether
+// the floor ADMITS a path and nothing observes execution -- so admitting a variant nobody can decide would
+// invite a rung to be raised on an admission alone. When a floor that executes lands, adding the variant,
+// deciding it, and raising this value are ONE change (gunbc.design_argument::guarantee_ladder, rung honesty).
 type AgreementControlRung =
     ManualUngated
   | GatedRow
-  | FloorExecuted
 
 data agreement_control_module_name: String = "v2.test.claim.manual.annotation_gap_v1_v2_agreement"
 

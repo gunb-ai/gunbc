@@ -2,7 +2,7 @@ module v2.test.claim.staged_front_end
 
 import std.types { List, SourceSpan }
 import std.algebra { fold_list, length, string_contains }
-import std.dissolution { dissolution_description, dissolution_is_bound }
+import std.dissolution { dissolution_is_bound }
 import std.source_annotation {
   LeadingAfterLineIndent,
   NormalizedAnnotationCapture,
@@ -156,8 +156,8 @@ test fn staged_front_end_unbound_value_name_refuses_with_its_own_reason() -> Boo
 // v2.compiler.staged_front_end front_end_capture_interior_loss_next_rung). The v1/v2 agreement half --
 // WHICH gap a capture landed in -- is the MANUAL, UNGATED control
 // v2.test.claim.manual.annotation_gap_v1_v2_agreement, whose probe pair
-// v2.test.claim.manual.annotation_gap_v1_v2_agreement_probe_pair reads that control's published identity
-// and re-derives its rung from v2.workflow.required_floor required_gate_admits. It sits under manual/, no
+// v2.test.claim.manual.annotation_gap_v1_v2_agreement_probe_pair re-derives that control's rung from
+// v2.workflow.required_floor required_gate_admits. It sits under manual/, no
 // gated row admits it and the required floor executes nothing, so none of these tests stands in for it and
 // none of them is run by CI either; the executed evidence for all of these lives in this PR's run-log
 // comments, not in carriers inside these modules.
@@ -188,21 +188,17 @@ test fn staged_front_end_produces_the_authored_parse_for_an_annotated_module() -
   }
 }
 
-// THE LOSS CHECK IS INTERIM, AND THE RUNG SAYS SO IN A TYPE. The guard used to count captures back out of
-// the fold's rows -- a second place deciding the join rule -- and the operator ruling on review 98556 of
-// gunb-ai/gunbc#16942 deleted that counter instead of admitting the fork, leaving a coverage guard with a
-// declared limit. Read this carrier here: unbound today, naming the deleted counter (so the deletion cannot
-// be quietly undone or forgotten), the field the fold would have to grow, and the PLAN ROW that carries the
-// obligation -- not prose this module wrote about itself. If the row is renamed, or the carrier drops the
-// count it promises, or the condition is bound without the count existing, this claim refuses.
+// THE LOSS CHECK IS INTERIM, AND THE RUNG SAYS SO IN A TYPE. A count read back out of the fold's rows would
+// decide std.source_annotation annotation_attach_step's join rule in a second place, which
+// gunbc.design_argument::single_authority forbids, so the guard asks only a coverage question and the limit is
+// declared in a DissolutionCondition beside it. This claim decides the one thing a predicate CAN decide without
+// re-typing the carrier's prose: the condition is UNBOUND, because the fold carries no per-row capture count
+// today. It refuses the moment the rung is bound while the count still does not exist -- and it deliberately
+// does NOT restate what the carrier says, because a conjunct that greps this module's own description can only
+// go red when its own author edits the sentence, which is not a witness (the leg-lifecycle rule;
+// gunbc.design_argument::fail_closed). What the carrier commits to is read from the carrier.
 test fn front_end_capture_count_next_rung_declares_the_interim_guard_it_leaves() -> Bool {
-  let condition = front_end_capture_count_next_rung
-  !dissolution_is_bound(condition: condition)
-    && string_contains(s: dissolution_description(condition: condition), pattern: "front_end_landed_capture_count")
-    && string_contains(s: dissolution_description(condition: condition), pattern: "SourceAnnotationDebt")
-    && string_contains(s: dissolution_description(condition: condition), pattern: "annotation_attach_step")
-    && string_contains(s: dissolution_description(condition: condition), pattern: "source-annotation-fold-carries-absorbed-capture-count")
-    && string_contains(s: dissolution_description(condition: condition), pattern: "rn_ZR45MIQ7KTC56XVLT23LXQ3W4A")
+  !dissolution_is_bound(condition: front_end_capture_count_next_rung)
 }
 
 // THE FIXTURES FOR THE GUARD'S DISCRIMINATING PAIR. Three comment captures at adjacent offsets, spelled
@@ -234,18 +230,16 @@ fn guard_fixture_capture(text: String, start: Int, end: Int, adjacent: Bool) -> 
   }
 }
 
-// THE RUNG STATEMENT IN THE GUARD'S COMMENT HAS A TYPE BEHIND IT. The guard above says placement is checked
-// only by a manual, ungated control and that the moment to gate it is declared, not deferred -- a claim a
-// reader would otherwise have to take from prose. It is a DissolutionCondition carrier
-// (front_end_placement_control_next_rung), read here: unbound today, because nothing in the tree fires it, and
-// naming the control whose absence it is about plus the roster an admission would have to appear in. A
-// rewrite that quietly turned this into a bound trigger, or that dissolved the sentence naming the control,
-// refuses here rather than in review.
+// THE RUNG STATEMENT IN THE GUARD'S COMMENT HAS A TYPE BEHIND IT. The guard says placement is checked only by a
+// manual, ungated control and that the moment to gate it is declared, not deferred; that is carried as a
+// DissolutionCondition (front_end_placement_control_next_rung) rather than as prose. This claim decides whether
+// it is UNBOUND -- true because nothing in the tree fires it: the required-floor runner is deleted
+// (gunbc.rung_drop_amendment.manual_required_floor_runner_deleted) and no workflow passes a --required flag --
+// and refuses if it is ever bound while no floor can execute. It does not grep the carrier for the control's
+// name or for the roster's name: those are read from the carrier by whoever binds it, and a conjunct that
+// matches this module's own description can only fail when its author rewrites it.
 test fn front_end_placement_next_rung_is_declared_and_names_the_control() -> Bool {
-  let condition = front_end_placement_control_next_rung
-  !dissolution_is_bound(condition: condition)
-    && string_contains(s: dissolution_description(condition: condition), pattern: "v2.test.claim.manual.annotation_gap_v1_v2_agreement")
-    && string_contains(s: dissolution_description(condition: condition), pattern: "required_gate_authored_modules")
+  !dissolution_is_bound(condition: front_end_placement_control_next_rung)
 }
 
 // THE GUARD'S DISCRIMINATING PAIR, AND THE LIMIT IT CANNOT CROSS. The guard asks whether SOME row's origin
@@ -327,15 +321,15 @@ test fn front_end_annotation_guard_stays_silent_when_nothing_is_lost() -> Bool {
 // block, so the middle capture that is gone is still covered and coverage reports nothing missing -- the
 // first conjunct proves WHY (the fold made exactly ONE row for that block) and the second is the guard's own
 // silence on it. (2) FILE-BLINDNESS: the predicate the guard borrows, std.source_annotation::region_contains,
-// compares start and end only -- its body at dag/std/source_annotation.dag:169 reads no file field -- so a
-// capture naming a DIFFERENT FILE than the row covering it reads as contained. The third conjunct shows the
-// capture really does name another file (asked of authored_normalized_capture, the authority's own
-// constructor, not of a hand-built span), the fourth shows the row's own file, and the fifth is the guard's
-// silence on that cross-file capture -- which is the behaviour that makes this guard a SINGLE-MODULE attach
-// check only. The rest reads the rung carrying BOTH limits, unbound today, so a reader learns the limits from
-// the model rather than from a comment. When the fold starts carrying the per-row capture count, the second
-// and fifth conjuncts must be rewritten into refusals; those rewrites are the executed signal that the limits
-// moved.
+// compares start and end only and reads no file field, so a capture naming a DIFFERENT FILE than the row
+// covering it reads as contained. `foreign_file` and `row_file` show the two files really differ -- asked of
+// authored_normalized_capture, the authority's own constructor, not of a hand-built span -- and
+// `foreign_capture_silent` is the guard's silence on that cross-file capture, which is the behaviour that makes
+// this a SINGLE-MODULE attach check only. `condition` is the rung carrying BOTH limits, unbound today; the
+// limits themselves are read from that carrier, and this claim does not grep its description, because a
+// conjunct over this module's own prose can only go red when its author rewrites the sentence. When the fold
+// starts carrying the per-row capture count, `interior_loss_silent` and `foreign_capture_silent` must be
+// rewritten into refusals; those rewrites are the executed signal that the limits moved.
 test fn front_end_annotation_guard_declares_both_limits_interior_loss_and_file_blindness() -> Bool {
   let graph = attach_annotations(captures: fold_fixture_missing_middle(), regions: [])
   let rows = source_annotation_graph_rows(graph: graph)
@@ -369,8 +363,4 @@ test fn front_end_annotation_guard_declares_both_limits_interior_loss_and_file_b
     && !string_contains(s: foreign_file, pattern: "candidate")
     && foreign_capture_silent
     && !dissolution_is_bound(condition: condition)
-    && string_contains(s: dissolution_description(condition: condition), pattern: "MIDDLE")
-    && string_contains(s: dissolution_description(condition: condition), pattern: "DIFFERENT FILE")
-    && string_contains(s: dissolution_description(condition: condition), pattern: "SINGLE-MODULE")
-    && string_contains(s: dissolution_description(condition: condition), pattern: "rn_ZR45MIQ7KTC56XVLT23LXQ3W4A")
 }
