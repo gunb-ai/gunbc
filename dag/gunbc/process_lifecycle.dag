@@ -88,14 +88,3 @@ fn process_await_reap(pid: Int, remaining: Second) -> ProcessReapOutcome {
     }
   }
 }
-        let _pause = sleep.Delay.Seconds(seconds: "1" as NonEmptyStr)
-        match measure_sub(a: remaining, b: second(count: 1)) {
-          MeasureDifference { value: next } => process_await_reap(pid: pid, remaining: next)
-          MeasureSubtrahendExceedsMinuend => StillRunning
-        }
-      }
-    Exited { code } => Exited { code: code }
-    Signaled { signal } => Signaled { signal: signal }
-    ReapRefused { cause } => ReapRefused { cause: cause }
-  }
-}
