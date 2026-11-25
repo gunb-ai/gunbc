@@ -2227,6 +2227,18 @@ fn test_operand_set_form_refusal_rendered(operand: &str) -> String {
     )
 }
 
+/// WHY A PACKAGE-WIDE `:all` / `:*` IS REFUSED *INSIDE* THE CLAIM UNIVERSE (distinct from
+/// `test_operand_set_form_refusal_rendered`, which is for a set form outside every universe). Here the
+/// population is real -- it is the claims of one package -- but `:all` is not a claim selection: the route
+/// runs claims named exactly by label, or a whole package/subtree by their own forms. The typed cause names
+/// the contract (the operand's doc, the generated help, and
+/// `gunbc.design_ruling::claim_execution_has_one_v1_entrypoint`) so the refusal says why, not just that.
+fn claim_route_all_refusal_rendered(operand: &str) -> String {
+    format!(
+        "gunbc test: {operand} names a package-wide target set (`:all`/`:*`), which is not a claim selection on the claim route; cause: ClaimRouteAllNotAClaimSelection -- name each claim by its exact label, or take a whole package or subtree by its own form; `:all` is refused here so one entrypoint keeps one selection rule"
+    )
+}
+
 /// `gunbc.discovery_census` `claim_route_universe`, mirrored: `//test/claim/...`, the subtree
 /// `site_label` maps every `test.claim.*` claim into. An operand contained in it (and not in the
 /// native universe, which is asked first) belongs to the claim route.
@@ -2457,32 +2469,52 @@ fn quote_detail(text: &str) -> String {
     out
 }
 
-/// THE CLAIM ROUTE: select the discovered claims the operand's pattern contains, evaluate each,
-/// print one line per claim, fold the verdicts. The subject is narrowed to the modules the pattern
-/// can reach BEFORE discovery, so `//test/claim/m:x` reads one module, not the corpus; the corpus
-/// roots are `cli_run::witness_layer_roots`, the floor's own authority for them.
-fn run_claim_route(pattern: &TargetPattern) -> InvocationOutcome {
-    let rendered = render_target_pattern(pattern);
+/// THE CLAIM ROUTE: select the discovered claims the batch's patterns contain, evaluate each, print one
+/// line per claim, fold the verdicts. THE BATCH IS ONE PROCESS AND ONE SELECTION: the corpus is walked
+/// once (`cli_run::run_claim_route`'s single module-index pass), the claims are enumerated from that
+/// walk, and each is matched against EVERY pattern -- so selection is driven by the discovered corpus
+/// rather than by the operand list, and a claim two operands both denote is enrolled once, not twice.
+/// No operand widens another: a pattern selects only what it contains.
+///
+/// The subject is narrowed to the modules the patterns can reach BEFORE discovery, so a batch of exact
+/// labels reads those modules rather than the corpus; the corpus roots arrive from the caller's
+/// `admitted_source_roots` (the witness-layer roots when no option was given) and are the floor's own
+/// authority for them.
+fn run_claim_selection(
+    patterns: &[TargetPattern],
+    roots: &[String],
+    execution_mode: crate::v1_interpreter::ExecutionMode,
+    fixture_store: Option<std::rc::Rc<crate::recorded_fixture::RecordedFixtureStore>>,
+) -> InvocationOutcome {
+    let rendered = patterns
+        .iter()
+        .map(render_target_pattern)
+        .collect::<Vec<String>>()
+        .join(", ");
     let module_selected = |module_path: &str| {
         let segments: Vec<String> = module_path.split('.').map(str::to_string).collect();
-        match pattern {
+        patterns.iter().any(|pattern| match pattern {
             TargetPattern::SingleTarget(label) => label.package_segments == segments,
             TargetPattern::PackageTargets(_) | TargetPattern::SubtreeTargets(_) => {
-                target_pattern_within(&TargetPattern::PackageTargets(segments), pattern)
+                target_pattern_within(&TargetPattern::PackageTargets(segments.clone()), pattern)
             }
-        }
+        })
     };
     let claim_selected = |module_path: &str, function: &str| {
         let label = Label {
             package_segments: module_path.split('.').map(str::to_string).collect(),
             target: function.to_string(),
         };
-        target_pattern_within(&TargetPattern::SingleTarget(label), pattern)
+        patterns.iter().any(|pattern| {
+            target_pattern_within(&TargetPattern::SingleTarget(label.clone()), pattern)
+        })
     };
     let members = match cli_run::run_claim_route(
-        &cli_run::witness_layer_roots(),
+        roots,
         &module_selected,
         &claim_selected,
+        execution_mode,
+        fixture_store,
     ) {
         Ok(members) => members,
         Err(cause) => {
@@ -2496,6 +2528,17 @@ fn run_claim_route(pattern: &TargetPattern) -> InvocationOutcome {
     let fold = claim_route_fold(&members);
     for line in &fold.lines {
         println!("{line}");
+    }
+    // The expectation frontier, AFTER the located lines and ON STDERR. The two channels are the
+    // boundary: stdout is the machine-readable line schema a decoder keys on, and this receipt is a
+    // diagnostic about the subject, not an outcome — putting it on stdout would make a parser decide
+    // whether an unrelated line is a claim. It is the same call the legacy batch made, through the one
+    // renderer in `v1_interpreter`, so the consumer at
+    // `dag/test/claim/expectation_frontier_witness.dag` reads the identical line from a `gunbc test`
+    // child and the claim route is not a route that loses an observation on the way to becoming the
+    // only one. Empty tally prints nothing: the negative half of that pair is the point.
+    if let Some(line) = crate::v1_interpreter::expectation_frontier_receipt_line() {
+        eprintln!("{line}");
     }
     let held = fold.count(ClaimRouteVerdict::ClaimHeld);
     let did_not_hold = fold.count(ClaimRouteVerdict::ClaimDidNotHold);
@@ -2825,11 +2868,200 @@ fn observe_binary_inputs() -> BinaryInputObservation {
 /// THE INVOCATION'S FIRST ACT: refuse a binary that no longer answers for its own inputs
 /// (`gunbc.target_invocation` `assess_binary_freshness`), then route. Kept beside `test_verb`
 /// rather than inside it so the routing tests stay a function of the operand alone.
-pub fn test_verb_checked(operand: &str) -> InvocationOutcome {
+/// WHAT A `gunbc test` INVOCATION ASKED FOR, as the CLI collected it. One struct rather than six
+/// parameters, because the admission below reads all of it together: the batch route decides whether the
+/// mode and the corpus may be spelled at all, so the operands and the options are one decision, not two.
+///
+/// `gunbc.target_invocation` mirrors: the operand list is admitted by `admit_test_operands`, the options
+/// by `admit_test_execution_mode` and `admit_test_source_roots`, each keyed on `test_selection_batch_route`.
+pub struct TestInvocationOptions {
+    /// Absolute labels and target patterns, as typed. At least one; an empty batch refuses.
+    pub operands: Vec<String>,
+    pub hermetic: bool,
+    pub wet: bool,
+    pub record: bool,
+    pub fixture_store: Option<String>,
+    /// Corpus the batch's labels are looked up in, replacing the default witness-layer roots.
+    pub source_roots: Vec<String>,
+}
+
+impl TestInvocationOptions {
+    /// The options a hand-off or a witness uses: one operand, default corpus, default mode.
+    pub fn single_operand(operand: &str) -> Self {
+        Self {
+            operands: vec![operand.to_string()],
+            hermetic: false,
+            wet: false,
+            record: false,
+            fixture_store: None,
+            source_roots: Vec::new(),
+        }
+    }
+
+    /// The first mode flag spelled, in the order `--hermetic --wet --record`: `None` means the mode is
+    /// unspelled, which is a GRANT of Hermetic rather than a failure.
+    fn spelled_mode_flag(&self) -> Option<&'static str> {
+        [
+            (self.hermetic, "--hermetic"),
+            (self.wet, "--wet"),
+            (self.record, "--record"),
+        ]
+        .into_iter()
+        .find(|(set, _)| *set)
+        .map(|(_, name)| name)
+    }
+
+    /// THE OPTION SURFACE, ADMITTED ONCE FOR THE WHOLE BATCH: `gunbc.target_invocation`
+    /// `admit_test_execution_mode`, mirrored. Three refusals, each naming what the caller typed:
+    /// two mode flags (Record is a mode of its own, so `--record --wet` is a conflict rather than a
+    /// combination -- naming BOTH is what lets a reader correct it); `--record` with nowhere to write;
+    /// and a fixture store with no mode to belong to. With nothing spelled this returns `Ok(None)` and
+    /// the caller's `execution_mode_for` supplies Hermetic, which is what every existing
+    /// `gunbc test <label>` depends on -- there is deliberately no refusal arm for an unspelled mode.
+    fn admitted_execution_mode(
+        &self,
+    ) -> Result<Option<crate::v1_interpreter::ExecutionMode>, String> {
+        let spelled: Vec<&'static str> = [
+            (self.hermetic, "--hermetic"),
+            (self.wet, "--wet"),
+            (self.record, "--record"),
+        ]
+        .into_iter()
+        .filter(|(set, _)| *set)
+        .map(|(_, name)| name)
+        .collect();
+        if spelled.len() > 1 {
+            return Err(format!(
+                "two mode flags are not one batch's mode: {} and {}. Record is a mode of its own (effects run and fixtures are written), so --record --wet is not a combination",
+                spelled[0], spelled[1]
+            ));
+        }
+        let store = self.fixture_store.as_deref().unwrap_or("");
+        if self.record && store.trim().is_empty() {
+            return Err(
+                "--record writes fixtures and was given nowhere to write them: pass --fixture-store <dir>. The fixture store is the mode's own argument, never a source root".to_string(),
+            );
+        }
+        if !store.trim().is_empty() && !self.record && !self.hermetic {
+            return Err(
+                "--fixture-store names the mode it belongs to and no mode was spelled: use --record (effects run, fixtures written) or --hermetic (replay from the store, no effects)"
+                    .to_string(),
+            );
+        }
+        Ok(if self.wet {
+            Some(crate::v1_interpreter::ExecutionMode::Wet)
+        } else if self.record {
+            Some(crate::v1_interpreter::ExecutionMode::Record)
+        } else if self.hermetic {
+            Some(crate::v1_interpreter::ExecutionMode::Hermetic)
+        } else {
+            None
+        })
+    }
+
+    fn fixture_store_path(&self) -> Option<std::path::PathBuf> {
+        self.fixture_store
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(std::path::PathBuf::from)
+    }
+
+    /// `gunbc.target_invocation` `admit_test_source_roots`, mirrored. THE REPLACE-NOT-APPEND RULE IS IN
+    /// THE SHAPE: this returns the corpus the route will read, and the route reads only what it returns,
+    /// so `default_roots` is a parameter here rather than something the route adds later -- an option
+    /// given leaves the defaults nowhere to reappear. The control that makes that readable gives one
+    /// root and asserts no default is among the granted roots.
+    fn admitted_source_roots(&self, default_roots: &[String]) -> Result<Vec<String>, String> {
+        if self.source_roots.is_empty() {
+            return Ok(default_roots.to_vec());
+        }
+        if self.source_roots.iter().any(|r| r.trim().is_empty()) {
+            return Err(
+                "--source-root was given without a value; a root is a directory the module index walks"
+                    .to_string(),
+            );
+        }
+        // `gunbc.target_invocation` `test_source_root_not_walkable`: a root the walk cannot read refuses
+        // here rather than reaching the route, because an unreadable root selects no claims and the batch
+        // would report "selected no discovered claim" -- a true sentence about the wrong subject.
+        for root in &self.source_roots {
+            if let Some(reason) = test_source_root_not_walkable(root) {
+                return Err(format!("--source-root {root} cannot be read: {reason}"));
+            }
+        }
+        Ok(self.source_roots.clone())
+    }
+
+    /// Whether ANY option that belongs to the claim route was spelled. Checked on a native, registry or
+    /// mixed batch, where there is no claim evaluation for the option to reach.
+    fn claim_route_option_spelled(&self) -> Option<&'static str> {
+        match self.spelled_mode_flag() {
+            Some(flag) => Some(flag),
+            None if self.fixture_store.is_some() => Some("--fixture-store"),
+            None if !self.source_roots.is_empty() => Some("--source-root"),
+            None => None,
+        }
+    }
+}
+
+/// WHY ONE INVOCATION RUNS ONE ROUTE. The counts are in the message because the remedy is to pass
+/// separate invocations, and a reader needs to know what was mixed with what.
+fn mixed_batch_refusal(native: usize, claim: usize, exact: usize) -> InvocationOutcome {
+    InvocationOutcome {
+        termination: Termination::Refused,
+        message: format!(
+            "gunbc test: one invocation runs one route's batch; this mixed {native} native, {claim} claim and {exact} registry operand(s). Pass them as separate invocations -- an invocation's result is derived by one rule, and a mixed batch would have two",
+        ),
+    }
+}
+
+/// THE ONE REFUSAL SHAPE FOR AN OPTION THE BATCH'S ROUTE CANNOT RECEIVE. Names the option, the route
+/// it was spelled on, and the reason -- the reason differs per option, so it is passed in rather than
+/// written twice.
+fn option_on_other_route_refusal(option: &str, route: &str, why: &str) -> InvocationOutcome {
+    InvocationOutcome {
+        termination: Termination::Refused,
+        message: format!("gunbc test: {option} is a claim-route option; {route}. {why}"),
+    }
+}
+
+/// `gunbc.target_invocation` `test_source_root_not_walkable`, mirrored: `Some(reason)` when the walk could
+/// not read this root. Absence is reported distinctly from emptiness, because the two have different
+/// remedies -- a missing root is a typo or a deleted directory, an empty one is a corpus with no claims in
+/// it, which is a legitimate (if suspicious) request.
+fn test_source_root_not_walkable(root: &str) -> Option<String> {
+    let path = std::path::Path::new(root);
+    if !path.exists() {
+        return Some("no such path".to_string());
+    }
+    if !path.is_dir() {
+        return Some("it is not a directory".to_string());
+    }
+    match std::fs::read_dir(path) {
+        Ok(_) => None,
+        Err(error) => Some(error.to_string()),
+    }
+}
+
+/// WHY THE NATIVE AND REGISTRY ROUTES STILL ANSWER ONE OPERAND. Both enumerate a population the caller
+/// cannot see (the native compiler's build graph; one registry binding), so a second operand is not a
+/// second claim added to a batch -- it is a second run whose result the route's fold has no rule for.
+/// The plan's batch is the CLAIM batch; widening these two is a change to those routes, not to this one.
+fn single_operand_route_refusal(route: &str, count: usize) -> InvocationOutcome {
+    InvocationOutcome {
+        termination: Termination::Refused,
+        message: format!(
+            "gunbc test: the {route} route runs one operand per invocation and this named {count}; the batch form is the claim route's (claim-entrypoints-cutover, gunb-ai/gunbc#16872)",
+        ),
+    }
+}
+
+pub fn test_verb_checked(options: &TestInvocationOptions) -> InvocationOutcome {
     cli_run::user_work_scope::reexec_into_user_work_slice_if_owed();
     // THE SECOND ACT, BEFORE ANY PRODUCER: bind this process to a kernel memory limit when the
     // invocation asked for one (`GUNBC_BIND_MEMORY_CGROUP_BYTES`, gunbc.host.memory_cgroup_binding --
-    // the same bind claim_executor and claim_batch take) at gunbc.emitted_subject_build_gate
+    // the same bind claim_executor takes; claim_batch took it too until the cutover deleted it) at gunbc.emitted_subject_build_gate
     // native_step_memory_trip, the slot's MemoryHigh less a declared headroom. The required
     // `witnesses` job passes that input only where a job owns a bounded cgroup
     // (gunbc.runner.runner_slot_desired gunbc_runner_slot_job_cgroup_ownership decides; today a fleet job
@@ -2861,7 +3093,7 @@ pub fn test_verb_checked(operand: &str) -> InvocationOutcome {
             };
         }
     };
-    let outcome = test_verb_after(operand, &assess_binary_freshness(&observe_binary_inputs()));
+    let outcome = test_verb_after(options, &assess_binary_freshness(&observe_binary_inputs()));
     // THE PEAK-AND-SWAP RECEIPT, after the producer and whatever it spawned have run: read from
     // the cgroup that bounds the step (every child process was charged to it), against the
     // reading taken before the producer, so a cgroup that outlives the step -- the slot's --
@@ -3358,10 +3590,13 @@ mod memory_envelope_tests {
     }
 }
 
-fn test_verb_after(operand: &str, freshness: &BinaryFreshness) -> InvocationOutcome {
+fn test_verb_after(
+    options: &TestInvocationOptions,
+    freshness: &BinaryFreshness,
+) -> InvocationOutcome {
     match stale_binary_refusal(freshness) {
         Some(refused) => refused,
-        None => test_verb(operand),
+        None => test_verb(options),
     }
 }
 
@@ -3385,19 +3620,145 @@ fn stale_binary_refusal(freshness: &BinaryFreshness) -> Option<InvocationOutcome
     }
 }
 
-pub fn test_verb(operand: &str) -> InvocationOutcome {
-    let pattern = match parse_target_pattern(operand) {
-        Ok(pattern) => pattern,
-        Err(cause) => {
-            return InvocationOutcome {
-                termination: Termination::Refused,
-                message: format!(
+/// WHAT A FOLDED BATCH CONTAINS, by route population. The three populations are the three arms of
+/// `gunbc.target_invocation` `TestOperandSelection` (`exact` = `TestOperandExactTarget`, the registry's
+/// to answer; `native` and `claim` the two universes' patterns), and `selected` counts the operands that
+/// were admitted -- kept because a refusal that says "named nothing" must not fire on a batch whose
+/// operands were all duplicates of one another.
+pub struct TestOperandClasses {
+    pub exact: Vec<Label>,
+    pub native: Vec<TargetPattern>,
+    pub claim: Vec<TargetPattern>,
+    pub selected: usize,
+}
+
+impl TestOperandClasses {
+    fn selected_is_empty(&self) -> bool {
+        self.selected == 0
+    }
+    fn is_claim_selection(&self) -> bool {
+        !self.claim.is_empty() && self.native.is_empty() && self.exact.is_empty()
+    }
+}
+
+/// THE FOLD, WHICH IS THE ADMISSION: each operand is classified by the SAME authority a single operand is
+/// classified by today (`gunbc.target_invocation` `admit_test_operand`, mirrored by the two universe tests
+/// below), duplicates are dropped on the operand text so AN OVERLAP SELECTS ONCE, and the first refusal
+/// ends the batch -- an operand whose pattern cannot be read is never run as if it had been.
+///
+/// It is a function of its operands and the two universes and nothing else, so the controls can ask it what
+/// a batch denotes without selecting a producer, and the answer they check is the same one `test_verb`
+/// routes on.
+fn classify_test_operands(
+    operands: &[String],
+    native_universe: &TargetPattern,
+    claim_universe: &TargetPattern,
+) -> Result<TestOperandClasses, InvocationOutcome> {
+    let mut exact: Vec<Label> = Vec::new();
+    let mut native: Vec<TargetPattern> = Vec::new();
+    let mut claim: Vec<TargetPattern> = Vec::new();
+    let mut seen: Vec<String> = Vec::new();
+    for operand in operands {
+        if seen.iter().any(|previous| previous == operand) {
+            continue;
+        }
+        seen.push(operand.clone());
+        let pattern = match parse_target_pattern(operand) {
+            Ok(pattern) => pattern,
+            Err(cause) => {
+                return Err(InvocationOutcome {
+                    termination: Termination::Refused,
+                    message: format!(
                     "gunbc test: operand is not an admitted target pattern: {operand}\n  cause: {}",
                     target_pattern_refusal_text(&cause)
                 ),
-            };
+                })
+            }
+        };
+        if target_pattern_within(&pattern, native_universe) {
+            native.push(pattern);
+        } else if target_pattern_within(&pattern, claim_universe) {
+            match pattern {
+                // A package-wide set form (`:all`, `:*`) is NOT a claim selection on the claim route.
+                // The operand's own doc (gunbc_cli_dispatch_surface `CliClaimNameOperand`), the generated
+                // help (gunbc_cli_dispatch_generated), and
+                // gunbc.design_ruling::claim_execution_has_one_v1_entrypoint all refuse it here; a route
+                // that silently expanded `:all` into the package's claims was the defect. A claim is named
+                // exactly by label, or a whole package/subtree is taken by its own form -- never `:all`.
+                // `PackageTargets` is exactly the `:all`/`:*` spelling (parse_target_pattern strips those
+                // suffixes into it), so this refuses `:all` while leaving a bare package (SingleTarget) and
+                // a subtree (`/...`, SubtreeTargets) admitted, as the operand doc permits.
+                TargetPattern::PackageTargets(_) => {
+                    return Err(InvocationOutcome {
+                        termination: Termination::Refused,
+                        message: claim_route_all_refusal_rendered(operand),
+                    })
+                }
+                admitted => claim.push(admitted),
+            }
+        } else {
+            match pattern {
+                // An exact label outside both universes is the registry's to answer (an instrument
+                // subject), and an unknown one is refused as TargetIsUnknown when the registry is read.
+                TargetPattern::SingleTarget(label) => exact.push(label),
+                TargetPattern::PackageTargets(_) | TargetPattern::SubtreeTargets(_) => {
+                    return Err(InvocationOutcome {
+                        termination: Termination::Refused,
+                        message: test_operand_set_form_refusal_rendered(operand),
+                    })
+                }
+            }
         }
+    }
+    Ok(TestOperandClasses {
+        exact,
+        native,
+        claim,
+        selected: seen.len(),
+    })
+}
+
+/// THE OPTION REFUSAL, KEPT OUT OF THE DISPATCH SO IT CAN BE ASKED WITHOUT RUNNING ANYTHING: an option
+/// belonging to the claim route, spelled on a batch that is not one, is refused with the reason that names
+/// the route it landed on.
+fn claim_route_option_refusal(
+    classes: &TestOperandClasses,
+    options: &TestInvocationOptions,
+) -> Option<InvocationOutcome> {
+    if classes.is_claim_selection() {
+        return None;
+    }
+    let option = options.claim_route_option_spelled()?;
+    let route = if !classes.native.is_empty() {
+        "the native route compiles and builds under the native compiler's own authority"
+    } else if !classes.exact.is_empty() {
+        "an instrument subject is one registry binding, run by its own producer"
+    } else {
+        "no claim was named, so there is no claim evaluation for the option to reach"
     };
+    Some(option_on_other_route_refusal(
+        option,
+        route,
+        "the execution mode and the corpus are options on claim evaluation, which is the claim route",
+    ))
+}
+
+/// WHY A MIXED BATCH IS REFUSED RATHER THAN SPLIT: one invocation's result is derived by one rule, and a
+/// batch whose claims and native patterns would be answered by two executors has no single such rule.
+fn mixed_batch_refusal_if_mixed(classes: &TestOperandClasses) -> Option<InvocationOutcome> {
+    if classes.claim.is_empty() || (classes.native.is_empty() && classes.exact.is_empty()) {
+        return None;
+    }
+    Some(mixed_batch_refusal(
+        classes.native.len(),
+        classes.claim.len(),
+        classes.exact.len(),
+    ))
+}
+
+pub fn test_verb(options: &TestInvocationOptions) -> InvocationOutcome {
+    // THE NATIVE ROUTE'S BOUNDARY IS READ FIRST, AND ITS OWN FAILURE IS REPORTED AS ITSELF: the
+    // boundary is a generated artifact of the seed build, and a batch cannot be routed without it.
     let native_universe = match native_route_default_pattern() {
         Ok(universe) => universe,
         Err(cause) => {
@@ -3414,22 +3775,71 @@ pub fn test_verb(operand: &str) -> InvocationOutcome {
             };
         }
     };
-    if target_pattern_within(&pattern, &native_universe) {
-        return run_native_test_route(&pattern);
-    }
-    if target_pattern_within(&pattern, &claim_route_universe()) {
-        return run_claim_route(&pattern);
-    }
-    let label = match pattern {
-        TargetPattern::SingleTarget(label) => label,
-        TargetPattern::PackageTargets(_) | TargetPattern::SubtreeTargets(_) => {
-            return InvocationOutcome {
-                termination: Termination::Refused,
-                message: test_operand_set_form_refusal_rendered(operand),
-            };
-        }
+    let claim_universe = claim_route_universe();
+    let classes = match classify_test_operands(&options.operands, &native_universe, &claim_universe)
+    {
+        Ok(classes) => classes,
+        Err(refused) => return refused,
     };
-    let key = render_label(&label);
+
+    if classes.selected_is_empty() {
+        return InvocationOutcome {
+            termination: Termination::Refused,
+            message: "gunbc test: an invocation names at least one target; nothing was supplied"
+                .to_string(),
+        };
+    }
+
+    // THE ROUTE, DECIDED FROM WHAT THE BATCH CONTAINS. An option that belongs to the claim route is
+    // refused on every other route, because there is no claim evaluation there for it to reach -- and it
+    // is refused BEFORE any producer is selected, so an option cannot be silently dropped on a route
+    // that ignores it and read as honoured.
+    if let Some(refused) = claim_route_option_refusal(&classes, options) {
+        return refused;
+    }
+    if let Some(refused) = mixed_batch_refusal_if_mixed(&classes) {
+        return refused;
+    }
+    let (exact, native, claim) = (classes.exact, classes.native, classes.claim);
+    if !claim.is_empty() {
+        let execution_mode = match options.admitted_execution_mode() {
+            Ok(explicit) => cli_run::execution_mode_for(
+                explicit, /*is_claim*/ true, /*dry_run*/ false,
+            ),
+            Err(reason) => {
+                return InvocationOutcome {
+                    termination: Termination::Refused,
+                    message: format!("gunbc test: {reason}"),
+                }
+            }
+        };
+        let roots = match options.admitted_source_roots(&cli_run::witness_layer_roots()) {
+            Ok(roots) => roots,
+            Err(reason) => {
+                return InvocationOutcome {
+                    termination: Termination::Refused,
+                    message: format!("gunbc test: {reason}"),
+                }
+            }
+        };
+        return run_claim_selection(
+            &claim,
+            &roots,
+            execution_mode,
+            cli_run::claim_fixture_store_rc(&options.fixture_store_path()),
+        );
+    }
+    if !native.is_empty() {
+        if native.len() != 1 {
+            return single_operand_route_refusal("native test", native.len());
+        }
+        return run_native_test_route(&native[0]);
+    }
+    if exact.len() != 1 {
+        return single_operand_route_refusal("instrument registry", exact.len());
+    }
+    let label = &exact[0];
+    let key = render_label(label);
     match instrument_registry()
         .into_iter()
         .find(|(candidate, _)| render_label(candidate) == key)
@@ -3707,6 +4117,24 @@ fn typed_graph_exclusive_bytes_over(
         termination: Termination::ObservationHeld,
         message: lines.join("\n"),
     }
+}
+
+/// ONE SCRATCH CLAIM CORPUS, written where the module index will find it and named so two controls that
+/// build different corpora cannot read each other's. `name` is the directory suffix; `files` are
+/// `(file, source)` pairs placed under `<dir>/test/claim`, which is the claim universe's location under a
+/// root -- the same shape the route's own discovery expects.
+#[cfg(test)]
+fn scratch_claim_root(name: &str, files: &[(&str, &str)]) -> String {
+    let dir = cli_run::workspace_root()
+        .join("target")
+        .join(format!("gunbc_claim_route_contract_{name}"));
+    let _ = std::fs::remove_dir_all(&dir);
+    let claim_dir = dir.join("test").join("claim");
+    std::fs::create_dir_all(&claim_dir).expect("scratch claim dir");
+    for (file, body) in files {
+        std::fs::write(claim_dir.join(file), body).expect("scratch claim source");
+    }
+    dir.to_string_lossy().into_owned()
 }
 
 #[cfg(test)]
@@ -4360,8 +4788,16 @@ mod claim_route_result_contract_tests {
         // prepended so the scratch modules themselves are in the index.
         let mut roots = vec![scratch];
         roots.extend(cli_run::witness_layer_roots());
-        cli_run::run_claim_route(&roots, module_selected, &|_, _| true)
-            .expect("the scratch corpus must resolve to a collection, not a route refusal")
+        // The witness exercises SELECTION, not a mode: it asks the question an unspelled `gunbc test`
+        // asks, which `execution_mode_for` answers Hermetic, and passes no fixture store.
+        cli_run::run_claim_route(
+            &roots,
+            module_selected,
+            &|_, _| true,
+            crate::v1_interpreter::ExecutionMode::Hermetic,
+            None,
+        )
+        .expect("the scratch corpus must resolve to a collection, not a route refusal")
     }
 }
 
@@ -5036,5 +5472,508 @@ mod instrument_registry_generated_falsifier {
                 "the instrument contract refuses at exit 2"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod test_batch_admission_controls {
+    use super::*;
+
+    /// One request, as the CLI would hand it: nothing spelled but the operands.
+    fn request(operands: &[&str]) -> TestInvocationOptions {
+        TestInvocationOptions {
+            operands: operands.iter().map(|o| o.to_string()).collect(),
+            hermetic: false,
+            wet: false,
+            record: false,
+            fixture_store: None,
+            source_roots: Vec::new(),
+        }
+    }
+
+    fn universes() -> (TargetPattern, TargetPattern) {
+        (
+            native_route_default_pattern().expect("the seed build must hand over its boundary"),
+            claim_route_universe(),
+        )
+    }
+
+    /// The fold, as `test_verb` uses it. `InvocationOutcome` carries no `Debug`, so a refusal is reported
+    /// through the message the caller would have read rather than through a derived dump.
+    fn admitted(operands: &[&str]) -> TestOperandClasses {
+        let (native_universe, claim_universe) = universes();
+        classify_test_operands(
+            &operands
+                .iter()
+                .map(|o| o.to_string())
+                .collect::<Vec<String>>(),
+            &native_universe,
+            &claim_universe,
+        )
+        .unwrap_or_else(|refused| panic!("the batch was refused: {}", refused.message))
+    }
+
+    fn refused(operands: &[&str]) -> InvocationOutcome {
+        let (native_universe, claim_universe) = universes();
+        match classify_test_operands(
+            &operands
+                .iter()
+                .map(|o| o.to_string())
+                .collect::<Vec<String>>(),
+            &native_universe,
+            &claim_universe,
+        ) {
+            Ok(classes) => panic!(
+                "the batch was admitted; it had to be refused (selected {} operand(s))",
+                classes.selected
+            ),
+            Err(refused) => refused,
+        }
+    }
+
+    /// THE DEFAULT IS A GRANT, NOT A REFUSAL. `gunbc test //test/claim/x:y` is today's contributor and
+    /// remote-build test command; an admission that demanded a spelled mode would break every one of them,
+    /// so an unspelled mode must reach `execution_mode_for` and come back Hermetic -- the same answer the
+    /// claim path gets today.
+    #[test]
+    fn an_unspelled_mode_grants_hermetic() {
+        let request = request(&["//test/claim/github_pull_request_decode_witness:the_recorded_pull_request_body_decodes_at_all"]);
+        assert_eq!(request.spelled_mode_flag(), None);
+        let granted = request
+            .admitted_execution_mode()
+            .expect("no mode spelled is not a refusal");
+        assert_eq!(granted, None);
+        assert_eq!(
+            cli_run::execution_mode_for(granted, true, false),
+            crate::v1_interpreter::ExecutionMode::Hermetic
+        );
+    }
+
+    /// THE THREE ARMS OF `std.execution_mode` `ExecutionMode`, each reached by the option that names it.
+    /// Record is an arm in its own right -- effects run AND fixtures are written -- which is why it is a
+    /// mode flag and not a modifier on another mode.
+    #[test]
+    fn each_mode_flag_grants_the_mode_it_names() {
+        let hermetic = TestInvocationOptions {
+            hermetic: true,
+            ..request(&["//test/claim/x:y"])
+        };
+        assert_eq!(
+            cli_run::execution_mode_for(
+                hermetic
+                    .admitted_execution_mode()
+                    .expect("--hermetic is admissible"),
+                true,
+                false
+            ),
+            crate::v1_interpreter::ExecutionMode::Hermetic
+        );
+
+        let wet = TestInvocationOptions {
+            wet: true,
+            ..request(&["//test/claim/x:y"])
+        };
+        assert_eq!(
+            cli_run::execution_mode_for(
+                wet.admitted_execution_mode().expect("--wet is admissible"),
+                true,
+                false
+            ),
+            crate::v1_interpreter::ExecutionMode::Wet
+        );
+
+        let record = TestInvocationOptions {
+            record: true,
+            fixture_store: Some("/tmp/keen-fox-230-fixture-store".to_string()),
+            ..request(&["//test/claim/x:y"])
+        };
+        assert_eq!(
+            cli_run::execution_mode_for(
+                record
+                    .admitted_execution_mode()
+                    .expect("--record with a store is admissible"),
+                true,
+                false
+            ),
+            crate::v1_interpreter::ExecutionMode::Record
+        );
+    }
+
+    /// `--record --wet` IS A CONFLICT, NOT A COMBINATION, and the refusal names both flags as typed: a
+    /// reader who typed two needs to know which two. Under the alternative -- last flag wins -- the same
+    /// argv would silently run a different mode from the one the caller asked for.
+    #[test]
+    fn two_mode_flags_refuse_naming_both() {
+        let request = TestInvocationOptions {
+            record: true,
+            wet: true,
+            fixture_store: Some("/tmp/keen-fox-230-fixture-store".to_string()),
+            ..request(&["//test/claim/x:y"])
+        };
+        let reason = request
+            .admitted_execution_mode()
+            .expect_err("two mode flags are one batch's mode");
+        assert!(
+            reason.contains("--wet") && reason.contains("--record"),
+            "{reason}"
+        );
+    }
+
+    /// `--record` WITH NOWHERE TO WRITE REFUSES. A recorded batch whose fixtures go nowhere is a batch that
+    /// reports success while discarding the evidence it exists to produce.
+    #[test]
+    fn record_without_a_fixture_store_refuses() {
+        let request = TestInvocationOptions {
+            record: true,
+            ..request(&["//test/claim/x:y"])
+        };
+        let reason = request
+            .admitted_execution_mode()
+            .expect_err("--record must name a store");
+        assert!(reason.contains("--fixture-store"), "{reason}");
+    }
+
+    /// A FIXTURE STORE NAMES THE MODE IT BELONGS TO: a bare `--fixture-store` does not default a mode, it
+    /// is refused. Defaulting one would let a caller point at a store and get effects (or none) they never
+    /// asked for.
+    #[test]
+    fn a_fixture_store_without_a_mode_refuses() {
+        let request = TestInvocationOptions {
+            fixture_store: Some("/tmp/keen-fox-230-fixture-store".to_string()),
+            ..request(&["//test/claim/x:y"])
+        };
+        let reason = request
+            .admitted_execution_mode()
+            .expect_err("a store must name the mode it belongs to");
+        assert!(
+            reason.contains("--record") && reason.contains("--hermetic"),
+            "{reason}"
+        );
+    }
+
+    /// `--hermetic --fixture-store` IS GRANTED: replay from a store with no effects is a coherent request,
+    /// and refusing it would leave recorded fixtures with no reader.
+    #[test]
+    fn hermetic_with_a_fixture_store_grants() {
+        let request = TestInvocationOptions {
+            hermetic: true,
+            fixture_store: Some("/tmp/keen-fox-230-fixture-store".to_string()),
+            ..request(&["//test/claim/x:y"])
+        };
+        let granted = request
+            .admitted_execution_mode()
+            .expect("--hermetic with a store is one mode plus its argument");
+        assert_eq!(
+            cli_run::execution_mode_for(granted, true, false),
+            crate::v1_interpreter::ExecutionMode::Hermetic
+        );
+        assert!(cli_run::claim_fixture_store_rc(&request.fixture_store_path()).is_some());
+    }
+
+    /// THE REPLACE-NOT-APPEND RULE, READABLE IN THE GRANTED VALUE. `--source-root` REPLACES the default
+    /// pair: what is granted here is what the route will read, and a granted value still carrying a default
+    /// would mean the option was additive -- which is the case where a caller's extra root silently coexists
+    /// with a corpus it did not ask for. The control the ruling asked for: give one root, assert the
+    /// defaults are absent from what the route receives.
+    #[test]
+    fn source_roots_replace_the_defaults_rather_than_joining_them() {
+        let defaults = cli_run::witness_layer_roots();
+        // A root the walk could read: walkability is refused, so the control has to hand over a real
+        // directory -- and only ONE, which is the point of the assertion below it.
+        let given_root = std::env::temp_dir().join("keen-fox-230-given-root");
+        std::fs::create_dir_all(&given_root).expect("a readable root for the control");
+        let given = TestInvocationOptions {
+            source_roots: vec![given_root.to_string_lossy().into_owned()],
+            ..request(&["//test/claim/x:y"])
+        };
+        let granted = given
+            .admitted_source_roots(&defaults)
+            .expect("one given root is admissible");
+        assert_eq!(granted, vec![given_root.to_string_lossy().into_owned()]);
+        for default in &defaults {
+            assert!(
+                !granted.contains(default),
+                "a default root survived an option that replaces the corpus: {default}"
+            );
+        }
+        // And with no option the defaults are what the route reads: setting the corpus is not what the option is for.
+        assert_eq!(
+            request(&["//test/claim/x:y"])
+                .admitted_source_roots(&defaults)
+                .expect("no option is admissible"),
+            defaults
+        );
+    }
+
+    /// AN UNREADABLE ROOT REFUSES AT ADMISSION. A root that is absent, or is a file, or cannot be listed
+    /// selects no claims, and the batch would then report the true sentence "the pattern selected no
+    /// discovered claim" about a subject it never read -- which is how a typo becomes a passing run.
+    #[test]
+    fn an_unreadable_source_root_refuses_with_its_reason() {
+        let missing = TestInvocationOptions {
+            source_roots: vec!["/tmp/keen-fox-230-no-such-root".to_string()],
+            ..request(&["//test/claim/x:y"])
+        };
+        let reason = missing
+            .admitted_source_roots(&cli_run::witness_layer_roots())
+            .expect_err("an absent root is not an empty corpus");
+        assert!(
+            reason.contains("--source-root") && reason.contains("no such path"),
+            "{reason}"
+        );
+
+        let file = std::env::temp_dir().join("keen-fox-230-not-a-root");
+        std::fs::write(&file, "not a directory").expect("a file to name as a root");
+        let not_a_dir = TestInvocationOptions {
+            source_roots: vec![file.to_string_lossy().into_owned()],
+            ..request(&["//test/claim/x:y"])
+        };
+        let reason = not_a_dir
+            .admitted_source_roots(&cli_run::witness_layer_roots())
+            .expect_err("a file is not a root");
+        assert!(reason.contains("not a directory"), "{reason}");
+    }
+
+    /// A ROOT WITH NO VALUE IS NOT AN EMPTY CORPUS: it refuses, because a walk of "" is a walk of nothing,
+    /// and a batch that selected no claims from it would read like an empty selection.
+    #[test]
+    fn a_source_root_without_a_value_refuses() {
+        let request = TestInvocationOptions {
+            source_roots: vec!["  ".to_string()],
+            ..request(&["//test/claim/x:y"])
+        };
+        let reason = request
+            .admitted_source_roots(&cli_run::witness_layer_roots())
+            .expect_err("a root needs a value");
+        assert!(reason.contains("--source-root"), "{reason}");
+    }
+
+    /// AN OPTION ON A ROUTE THAT CANNOT RECEIVE IT REFUSES, PER ROUTE. The native route builds under the
+    /// native compiler's authority and the registry runs one bound producer: neither evaluates a claim, so
+    /// there is no evaluation for a mode or a corpus to apply to. Dropping the option silently would let a
+    /// caller read a hermetic run as a wet one.
+    #[test]
+    fn a_claim_route_option_on_another_route_refuses() {
+        let native_operand = render_target_pattern(&universes().0);
+        let cases: Vec<(&str, &str)> = vec![
+            ("native", native_operand.as_str()),
+            ("registry", "//gunbc/instruments/registry-absent-subject:x"),
+        ];
+        for (route, operand) in cases {
+            let classes = admitted(&[operand]);
+            let request = TestInvocationOptions {
+                wet: true,
+                ..request(&[operand])
+            };
+            let refused = claim_route_option_refusal(&classes, &request).unwrap_or_else(|| {
+                panic!("{route} batch must refuse --wet; it cannot be honoured there")
+            });
+            assert_eq!(refused.termination, Termination::Refused);
+            assert!(refused.message.contains("--wet"), "{}", refused.message);
+            assert!(
+                refused.message.contains("claim-route option"),
+                "{}",
+                refused.message
+            );
+        }
+    }
+
+    /// ONE INVOCATION RUNS ONE ROUTE, and the refusal counts what was mixed so the remedy is visible: a
+    /// mixed batch would have two result rules, and an invocation whose exit status came from both would not
+    /// mean anything.
+    #[test]
+    fn a_mixed_batch_refuses_naming_the_counts() {
+        let native_operand = render_target_pattern(&universes().0);
+        let classes = admitted(&[native_operand.as_str(), "//test/claim/x:y"]);
+        assert_eq!(classes.native.len(), 1);
+        assert_eq!(classes.claim.len(), 1);
+        let refused = mixed_batch_refusal_if_mixed(&classes).expect("a mixed batch refuses");
+        assert_eq!(refused.termination, Termination::Refused);
+        assert!(
+            refused.message.contains("1 native") && refused.message.contains("1 claim"),
+            "{}",
+            refused.message
+        );
+    }
+
+    /// AN OVERLAP SELECTS ONCE, at the fold: the same operand text twice is one selection, so a caller that
+    /// builds an argv by concatenation cannot run a claim twice and read two outcomes for one identity. Two
+    /// DISTINCT exact labels plus one of them repeated select two -- the dedup is on operand text, so the
+    /// second selection is another exact label (a package-wide `:all` is no longer an admissible claim
+    /// operand to test with; see `a_package_wide_all_refuses_on_the_claim_route`).
+    #[test]
+    fn a_repeated_operand_selects_once() {
+        let classes = admitted(&[
+            "//test/claim/x:y",
+            "//test/claim/x:y",
+            "//test/claim/two:fn",
+        ]);
+        assert_eq!(
+            classes.selected, 2,
+            "the duplicate operand must not select twice"
+        );
+        assert_eq!(classes.claim.len(), 2);
+    }
+
+    /// A PACKAGE-WIDE `:all` (`:*` likewise) IS NOT A CLAIM SELECTION ON THE CLAIM ROUTE. It names a real
+    /// population (a package's claims), so it is not the "outside every universe" refusal; it is refused
+    /// because one entrypoint keeps one selection rule, per the operand doc, the generated help, and
+    /// gunbc.design_ruling::claim_execution_has_one_v1_entrypoint. The typed cause is named so the refusal
+    /// says why. A bare package and a subtree (`/...`) remain admissible; only `:all`/`:*` refuses.
+    #[test]
+    fn a_package_wide_all_refuses_on_the_claim_route() {
+        let all = refused(&["//test/claim/x:all"]);
+        assert_eq!(all.termination, Termination::Refused);
+        assert!(
+            all.message.contains("ClaimRouteAllNotAClaimSelection"),
+            "{}",
+            all.message
+        );
+        assert!(
+            all.message.contains("not a claim selection"),
+            "{}",
+            all.message
+        );
+        let colon_star = refused(&["//test/claim/x:*"]);
+        assert_eq!(colon_star.termination, Termination::Refused);
+        // A subtree over the same package stays admitted (the operand doc permits it).
+        let subtree = admitted(&["//test/claim/x/..."]);
+        assert_eq!(subtree.claim.len(), 1);
+    }
+
+    /// A SET FORM OUTSIDE EVERY UNIVERSE REFUSES RATHER THAN WIDENING: `//not/a/universe/...` names no
+    /// population the route can enumerate, and running it as a subtree of the whole corpus is exactly the
+    /// widening the plan refuses.
+    #[test]
+    fn a_set_form_outside_every_universe_refuses() {
+        let refused = refused(&["//not/a/universe/..."]);
+        assert_eq!(refused.termination, Termination::Refused);
+    }
+
+    /// `:all-targets` IS NOT THIS GRAMMAR'S ALL, and the refusal carries the pattern authority's own cause
+    /// rather than a batch-shaped paraphrase of it: the remedy for `:all-targets` is `:all`, not the remedy
+    /// for a relative label.
+    #[test]
+    fn all_targets_refuses_with_the_pattern_authoritys_cause() {
+        let refused = refused(&["//test/claim/x:all-targets"]);
+        assert!(
+            refused.message.contains("all") && refused.message.contains("//test/claim/x:all"),
+            "{}",
+            refused.message
+        );
+    }
+
+    /// THE EMPTY BATCH: an invocation must name something. `selected == 0` is what the refusal keys on, so
+    /// a batch whose operands were all duplicates of one another still selects its one claim.
+    #[test]
+    fn an_empty_batch_selects_nothing_and_a_duplicated_batch_does_not() {
+        assert!(admitted(&[]).selected_is_empty());
+        assert!(!admitted(&["//test/claim/x:y", "//test/claim/x:y"]).selected_is_empty());
+    }
+
+    /// THE BATCH AT THE ROUTE, ON A SCRATCH CORPUS: three claims under one subtree plus one exact label
+    /// INSIDE that subtree, named together in one batch, produce one result per claim with the FULL LABEL as
+    /// its key, and no claim twice. Selection is driven by the discovered corpus -- claims are enumerated
+    /// from the walk and matched against every pattern -- so an overlap cannot enroll a claim twice. The
+    /// label key is dated provenance from before the cutover: the deleted `claim_batch` printed the bare
+    /// function name on its verdict line, so two entries declaring one function name printed
+    /// indistinguishable lines there; the route keys with the full label.
+    ///
+    /// The subtree operand is scoped to `test/claim/zz_batch_scratch/...`, a package only this scratch
+    /// corpus has, so the batch stays three claims rather than every claim in the corpus: a control that
+    /// asked for the whole universe would be a floor run wearing a test name.
+    #[test]
+    fn one_process_runs_the_named_claims_once_each_and_keys_them_by_label() {
+        std::env::set_current_dir(cli_run::workspace_root()).expect("enter workspace");
+        let scratch = scratch_claim_root(
+            "batch",
+            &[
+                (
+                    "zz_scratch_a.dag",
+                    "module test.claim.zz_batch_scratch.a\n\ntest fn zz_a1() -> Bool {\n  true\n}\n\ntest fn zz_a2() -> Bool {\n  true\n}\n",
+                ),
+                (
+                    "zz_scratch_b.dag",
+                    "module test.claim.zz_batch_scratch.b\n\ntest fn zz_b1() -> Bool {\n  true\n}\n",
+                ),
+            ],
+        );
+        let mut roots = vec![scratch];
+        roots.extend(cli_run::witness_layer_roots());
+        let (native_universe, claim_universe) = universes();
+        let operands = vec![
+            "//test/claim/zz_batch_scratch/a:zz_a1".to_string(),
+            "//test/claim/zz_batch_scratch/...".to_string(),
+        ];
+        let classes = match classify_test_operands(&operands, &native_universe, &claim_universe) {
+            Ok(classes) => classes,
+            Err(refused) => panic!(
+                "an exact label and a subtree over it are one batch: {}",
+                refused.message
+            ),
+        };
+        assert_eq!(classes.claim.len(), 2, "both operands are claim patterns");
+        let patterns = classes.claim.clone();
+        // THE BATCH'S OWN SELECTION, not a copy: run_claim_selection builds these two closures from the
+        // patterns, so the control drives the route the way the verb does.
+        let module_selected = |module_path: &str| {
+            let segments: Vec<String> = module_path.split('.').map(str::to_string).collect();
+            patterns.iter().any(|pattern| match pattern {
+                TargetPattern::SingleTarget(label) => label.package_segments == segments,
+                TargetPattern::PackageTargets(_) | TargetPattern::SubtreeTargets(_) => {
+                    target_pattern_within(&TargetPattern::PackageTargets(segments.clone()), pattern)
+                }
+            })
+        };
+        let claim_selected = |module_path: &str, function: &str| {
+            let label = Label {
+                package_segments: module_path.split('.').map(str::to_string).collect(),
+                target: function.to_string(),
+            };
+            patterns.iter().any(|pattern| {
+                target_pattern_within(&TargetPattern::SingleTarget(label.clone()), pattern)
+            })
+        };
+        let members = match cli_run::run_claim_route(
+            &roots,
+            &module_selected,
+            &claim_selected,
+            crate::v1_interpreter::ExecutionMode::Hermetic,
+            None,
+        ) {
+            Ok(members) => members,
+            Err(cause) => panic!("the scratch corpus must resolve, not refuse: {cause}"),
+        };
+        let fold = claim_route_fold(&members);
+        assert!(
+            fold.duplicate.is_none(),
+            "one identity carried more than one outcome"
+        );
+        let mut labels: Vec<String> = members
+            .iter()
+            .map(|member| {
+                render_label(&Label {
+                    package_segments: member.module_path.split('.').map(str::to_string).collect(),
+                    target: member.function.clone(),
+                })
+            })
+            .collect();
+        labels.sort();
+        assert_eq!(
+            labels,
+            vec![
+                "//test/claim/zz_batch_scratch/a:zz_a1".to_string(),
+                "//test/claim/zz_batch_scratch/a:zz_a2".to_string(),
+                "//test/claim/zz_batch_scratch/b:zz_b1".to_string(),
+            ],
+            "the batch must run exactly the claims its operands denote, each once, keyed by full label"
+        );
+        assert!(
+            fold.lines
+                .iter()
+                .any(|line| line.starts_with("//test/claim/zz_batch_scratch/a:zz_a1 HELD")),
+            "the line is keyed on the full label: {:?}",
+            fold.lines
+        );
     }
 }
