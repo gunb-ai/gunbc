@@ -1136,12 +1136,18 @@ fn rung_bytes(rung: ServingArtifactRung) -> Optional<ByteSize> {
 fn rung_mechanism(holds: ServingArtifactHold, realizes: NonEmptyStr) -> NonEmptyStr {
   match holds {
     ArtifactHeldPinned { mechanism: mechanism } => mechanism,
-    ArtifactHeldEvictable { bound_by: bound_by, floor: floor } =>
+    ArtifactHeldEvictable { bound_by: bound_by, floor: floor, occupies: occupies } =>
       match floor {
         // An evictable rung with no floor read is a rung the host may take ALL of: the bound is the mechanism
         // and the floor is what nobody has read, so the text says the bound and the charge reads it unread.
         ServingMemoryUnread { reason: reason } => bound_by,
-        _ => concat(bound_by, " (reclaimable down to its stated floor)" as NonEmptyStr) as NonEmptyStr,
+        _ => match occupies {
+          // The mechanism sentence carries BOTH figures of the hold, because they answer different questions and a
+          // reader who sees only the floor will lend the difference to a neighbour that cannot spend it (the srv4
+          // conversation cache). What survives reclaim and what the shared cap must leave the tier are said together.
+          ServingMemoryUnread { reason: _ } => concat(bound_by, " (reclaimable down to its stated floor; its occupancy under that cap is unread)" as NonEmptyStr) as NonEmptyStr,
+          _ => concat(bound_by, " (reclaimable down to its stated floor; the budget leaves it its stated occupancy under that cap)" as NonEmptyStr) as NonEmptyStr,
+        },
       },
   }
 }

@@ -491,8 +491,26 @@ data srv3_strata_engine_memory: ServingEngineMemory = ServingEngineMemory {
 // Every figure here is a CANDIDATE reading, not a fleet recommendation: srv4's DIMM A1 is degraded (UE 262,144).
 data srv4_serving_engine_memory: ServingEngineMemory = ServingEngineMemory {
   name: "gunbc-srv4-daily-engine" as NonEmptyStr,
-  memory_cap: ServingMemoryRead { bytes: gibibyte_to_byte_size(g: gibibyte(count: 56)), provenance: "drop-in /etc/systemd/system/gunbc-srv4-daily-engine.service.d/60-expert-l1-cap.conf MemoryHigh=56G (MemoryMax=64G), raised in place 2026-11-09 after MemoryHigh=40G starved the ~22 GB expert working set (cold decode 5.1 tok/s on 41.5 GB of drive reads); at 56G MemoryCurrent read 46.5 GB. The engine's own guard reports the same limit from the cgroup" as NonEmptyStr },
-  memory_max: ServingMemoryRead { bytes: gibibyte_to_byte_size(g: gibibyte(count: 64)), provenance: "drop-in /etc/systemd/system/gunbc-srv4-daily-engine.service.d/60-expert-l1-cap.conf MemoryMax=64G (the hard ceiling above MemoryHigh=56G), raised in place 2026-11-09; gunbc.serving.serving_reservation srv4 charges this to the runner" as NonEmptyStr },
+  // THE CAP, AND THE TERMS IT HAS TO HOLD. This drop-in was written to bound one term -- the expert RAM tier
+  // (the operator's 2026-11-09 instruction: "experts mmap-ed from NVMe, small RAM L1 under this cap", recorded in
+  // gunbc.design_ruling::srv3_experts_mmap_under_service_cap and carried on
+  // gunbc.serving.serving_layout::srv4_routed_expert_artifact) -- but the cgroup it sets is shared by four: the
+  // mapped expert tier's OCCUPANCY, the conversation cache, the engine's park admission floor (its own
+  // conversation_cache_min_free_mib, 2560 MiB on srv4) and the process base. At 56G/64G the cap held the expert
+  // tier's 22 GiB working set and starved the other three: the conversation cache saw 2-3 GiB of room and logged
+  // "conversation cache: skip parking (physical RAM admission; need N MiB plus 2560 MiB floor, M MiB available,
+  // source cgroup; evicted K, 0 still parked)" on EVERY turn, so each next turn re-read a 75-95k-token prompt cold
+  // (~90 s) and srv4 ran ~50% cache-warm against srv3's 96% (the operator's session, ad-hoc journal reads on srv4,
+  // 2026-11-24). The operator raised the drop-in to 96G/112G -- srv3's long-standing figure -- on 2026-11-24
+  // ~21:33Z (host file sha256 eb2b16e57eea76f2dd534c0bbb7aa016024462ad580cfb3836a1e8fad8bf581b, read 22:03-22:05Z);
+  // afterwards the same journal logged "97815 reused + 1584 read", srv4 read 99.0% warm against 50.2%, and the
+  // skip-parking line did not appear in the 21:40-21:55Z window (same instrument, same session). Those are
+  // OBSERVATIONS with a named instrument, not deduced consequences: what the model now does with the number is
+  // derive it from its terms -- gunbc.serving.serving_layout::serving_cgroup_terms -- and refuse a cap whose terms
+  // do not fit, so the composition that was missing here cannot go missing silently again. The withdrawn 56G/64G
+  // (and the 40G/48G before it, named in serving_layout::srv4_grant) stay named here rather than repainted.
+  memory_cap: ServingMemoryRead { bytes: gibibyte_to_byte_size(g: gibibyte(count: 96)), provenance: "drop-in /etc/systemd/system/gunbc-srv4-daily-engine.service.d/60-expert-l1-cap.conf MemoryHigh=96G (MemoryMax=112G), the operator's hand raise of 2026-11-24 ~21:33Z over the 2026-11-09 56G/64G, which had starved the conversation cache beside the mapped expert tier (see this row's comment); matches srv3's long-standing 96G/112G and sits at the slice's own MemoryHigh (gunbc-srv4-daily.slice, 96G/120G). The engine's own memory guard reports the same limit from the cgroup" as NonEmptyStr },
+  memory_max: ServingMemoryRead { bytes: gibibyte_to_byte_size(g: gibibyte(count: 112)), provenance: "drop-in /etc/systemd/system/gunbc-srv4-daily-engine.service.d/60-expert-l1-cap.conf MemoryMax=112G (the hard ceiling above MemoryHigh=96G), the 2026-11-24 raise of the 2026-11-09 64G; gunbc.serving.serving_reservation srv4 charges this to the runner" as NonEmptyStr },
   swap_cap: ServingMemoryRead { bytes: byte_size(count: 0), provenance: "systemctl show gunbc-srv4-daily.slice MemorySwapMax=0, 2026-10-30; the 2026-11-09 drop-in caps memory only, so no swap remains" as NonEmptyStr },
   base: ServingMemoryRead { bytes: mebibyte_to_byte_size(m: mebibyte(count: 6451)), provenance: "VmRSS 19.5 GB after load under --mmap-experts = anon 2.5 GiB + file 13.2 GiB + shmem 3.8 GiB; the base is the anon and shmem the engine owns (6451 MiB), the file part is the expert artifact's host-RAM rung (2026-11-09 00:18Z)" as NonEmptyStr },
   conversation_cache: ServingMemoryRead { bytes: mebibyte_to_byte_size(m: mebibyte(count: 16384)), provenance: "engine.json --conversation-cache-mib 16384, read 2026-11-09 with the mmap change (it was 32768 MiB on 2026-10-30); 3.8 GiB of shmem was resident in it at the read" as NonEmptyStr },
