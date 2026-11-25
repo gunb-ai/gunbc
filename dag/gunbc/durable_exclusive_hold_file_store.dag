@@ -615,6 +615,14 @@ fn file_hold_recover_dead_holder(
 ) -> FileHoldDeadHolderRecovery
   admit_callers: [
     decl_ref(module_path: "gunbc.host.managed_host_unit_hold", decl_name: "unit_hold_recover_dead_holder"),
+    // THE ARRIVAL ROOT ADMITS ITSELF HERE, AND THAT IS THE WHOLE OF THE ADMISSION: an arrival that finds
+    // its slot occupied reaches the ONE dead-holder recovery through the model, so a run that died holding
+    // it is recovered by the next arrival rather than stranded forever -- with the release naming who did
+    // the proving, on the durable ledger. See
+    // gunbc.machine_intake.arrival_interlock::arrival_archive_slot_recover_dead_holder for what it
+    // observes (a holder that names a workflow run, whose status arrived through the declared GET, in a
+    // file this root did not write) and for what each refusal says.
+    decl_ref(module_path: "gunbc.machine_intake.arrival_interlock", decl_name: "arrival_archive_slot_recover_dead_holder"),
   ]
 {
   match live_owner(holder) {

@@ -801,6 +801,7 @@ fn openbmc_execute(
     success: result.success,
     stdout: result.stdout,
     stderr: result.stderr,
+    wall_deadline_seconds: Absent,
   }
 }
 
