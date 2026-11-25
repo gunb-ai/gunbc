@@ -658,14 +658,7 @@ fn mask_slot_only_over(target: SshTarget, context: FleetSshExecutionContext, uni
 {
   match read_slot_over(target: target, context: context, unit: unit) {
     SlotReadRefused { reason: why } => Present { value: why }
-    SlotRead { reading: r } =>
-      if slot_is_masked(r: r) {
-        none
-      } else if !slot_state_stopped(active: r.active) {
-        none
-      } else {
-        run_slot_steps_over(target: target, context: context, steps: [systemctl_mask_argv(unit: unit)])
-      }
+    SlotRead { reading: r } => if slot_is_masked(r: r) { none } else { run_slot_steps_over(target: target, context: context, steps: [systemctl_mask_argv(unit: unit)]) }
   }
 }
 
