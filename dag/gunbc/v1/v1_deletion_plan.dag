@@ -122,7 +122,10 @@ type V1MigratedTestModule {
 //     record_literal_names_a_union_type_refusal, record_literal_declared_type_inhabitance.
 // Only emitted_symbol_collision_test.rs is deleted by this change; the other four replaced modules'
 // Rust files are still in src/v1/tests/src and leave in their own later change, the witness now being
-// what covers them.
+// what covers them. Those four files (sort_by_decorate_once_test.rs, grounded_shared_carrier_wrap_test.rs,
+// rest_body_undecodable_emitted_cause_test.rs, unknown_pipeline_driver_refusal_test.rs) are present on
+// purpose: retained pending a deletion row, which does not exist yet, so no acquisition and no deletion
+// of them is claimed or done here.
 //
 // THE EMITTED-TEXT READER the four ported witnesses use is the existing builtin compile_dag_rust_emit_check
 // (read-side search at 1d8a1d397675, git grep over tracked files: 150 files under dag/test/claim and
