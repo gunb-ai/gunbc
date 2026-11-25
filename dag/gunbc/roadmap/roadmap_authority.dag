@@ -1058,11 +1058,43 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "dag/gunbc/plans/fabric_market.dag"),
       line: ticket(t: level_fields(
           headline: "Every route that matches work with resources runs on the one market: serving, builds, CI, the belt and the demand engine",
-          boundary: "Milestone of gunbc.plans.fabric_market, layer 6. It is met when its prerequisites are accepted: the serving cutover; the buy and sell replacements; work-exec-6-one-ledger-per-host (and through it the work-execution program's identity split, durable route, local-work and CI migrations); factory-attempt-execution-on-fabric-lease (the belt); and demand-m5 (the demand engine's occupancy on the parent-grant contract). Those keep their own intentions and owners; this node is the market's completion coverage over them. The intention's done-when is then assessed against the tree, executed controls, deployment read-back and the operator's judgement, each as section 1 of the plan labels it.",
+          boundary: "Milestone of gunbc.plans.fabric_market, layer 6. It is met when its prerequisites are accepted: the serving cutover; the buy and sell replacements; work-exec-6-one-ledger-per-host (and through it the work-execution program's identity split, durable route, local-work and CI migrations); factory-attempt-execution-on-fabric-lease (the belt); demand-m5 (the demand engine's occupancy on the parent-grant contract); serving-capacity-qualification (every enrolled engine qualified, with requalification); and serving-engine-level-seller (the market one level down, inside an engine). Those keep their own intentions and owners; this node is the market's completion coverage over them. The intention's done-when is then assessed against the tree, executed controls, deployment read-back and the operator's judgement, each as section 1 of the plan labels it.",
           approach: "Prerequisite edges only: the market nodes of this intention, and the existing work-execution, belt and demand-engine nodes, which keep their own bindings.",
           red_control: "Executed traces over the converged routes: concurrent admission across serving, sessions and builds never over-commits a host; a stale selection cannot dispatch; missing evidence stays missing; an attached session does not move outside its declared transition; an uncertain ending does not cause a second execution elsewhere; release after disconnect, timeout, cancel or restart neither frees consumed capacity nor strands it; disconnecting the market from a consumer turns that consumer's control red.",
           displaced_cost: "Without a completion node the market's terminals cover only the serving chain, and the builds, CI, belt and demand-engine migrations its done-when promises sit outside its dependency closure.",
           handback: "Per prerequisite, its acceptance; for the milestone, the cross-route traces and the done-when assessment."
+        )),
+      parent: in_project(project: "fabric-bringup", contribution: "One market for every match of work with resources, in one vocabulary, so a new application enters by declaring what it trades."),
+    ),
+    roadmap_node(
+      identity: "rn_PW3S88PGJQRNEP1YQR05YH1M1K",
+      id: "serving-capacity-qualification",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/plans/fabric_market.dag"),
+      line: ticket(t: fields(
+          headline: "Every enrolled serving engine is qualified from its own measured readings at several concurrencies and workloads, and requalified when its launch or grant changes",
+          boundary: "Serves gunbc.plans.fabric_market (the market is recursive: a fixed cap is a standing offer sized from a reading). Today gunbc.serving.serving_capacity_anchor serving_capacity_shape takes turns as the concurrency of the row's single aggregate reading when its average per turn clears the least stream rate (no per-stream check), so two streams at 19 and 1 tok/s pass a 10 tok/s floor. At this node's writing (2026-11-25) that gives srv1 4 per card from the pair's 8-session run (gunbc.serving.srv1_topology_comparison, 679 tok/s split evenly over two boards, a pair average rather than a reading of either), srv3 2 from its engine log (26 tok/s at two groups), srv4 1 from a figure borrowed from srv3, and each h11 engine 1 from a router note, also bounded by its grant; the rows, not this text, are the authority. Scope is every enrolled engine or GPU group -- srv1's two replicas, srv3, srv4 and each h11 engine -- and every rented route records which authority enforces its limit (its launch's --max-concurrency, or a named provider). Give each gunbc.serving.serving_replica_profile row its own readings -- per board, at more than one concurrency, and per workload (short fresh turns, long cold prefills, warm continuations, a mixed arrival) -- produced by the serving benchmark (gunbc.serving.serving_benchmark) with per-stream decode rate, tail time to first token, tail inter-token latency, preemptions, OOMs, worker restarts and memory peaks (GPU and host) recorded. A reading is reused only while the run identity matches (model, engine build, cache settings, topology, resource grant); a change to the launch or grant withdraws the operating points it qualified and schedules requalification, and qualification runs as a job, not a manual exercise. The shape then selects turns among the readings through std.decision under the conversation policy (aggregate output with every stream at or above the least stream rate, zero preemptions, no OOM or restart). The hand-set cap 6 on srv1's live router (2026-11-25, out of band) becomes a reading on each srv1 row if its trial qualifies, and the rendered config is read back against the live one.",
+          displaced_cost: "Caps are raised by hand on the live router and then drift from the repository, which renders 4; each deployment change asks the operator for another number.",
+          first_slice: "srv1's two rows, each with its own readings at 4 and 6 active turns, and the shape selecting between them; then srv3, srv4 and h11 in the same row shape.",
+          red_control: "A reading at higher concurrency with more aggregate output but one stream below the least stream rate is not selected even when the average clears it; a reading with a preemption is not selected; a reading where a worker OOMs or restarts with zero recorded preemptions is not selected; a reading taken under a different run identity refuses; a changed launch or grant withdraws the higher operating point; a reading taken on one board does not change the other board's cap; a rented route with no named limit authority refuses.",
+          out_of_scope: "Per-request admission by cost (serving-engine-level-seller); choosing which engine runs where (the matching engine).",
+          handback: "Per enrolled engine, its readings and selected operating point; the requalification trigger; each rented route's limit authority; the rendered caps against the live router; and the executed controls."
+        )),
+      parent: in_project(project: "fabric-bringup", contribution: "One market for every match of work with resources, in one vocabulary, so a new application enters by declaring what it trades."),
+    ),
+    roadmap_node(
+      identity: "rn_V7JYZS9BHXS8YKZJYBD35ZZNPV",
+      id: "serving-engine-level-seller",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/plans/fabric_market.dag"),
+      line: ticket(t: fields(
+          headline: "An engine sells its own capacity: it quotes what a request of a given context and growth would reserve, and the router admits on that quote",
+          boundary: "Serves gunbc.plans.fabric_market (the market is recursive), at the engine level: the instrument is KV blocks plus per-step tokens, the buyer a request, the seller the engine. With stock vLLM the engine is a black box and a count cap stands in for memory; an engine we realize (the new engine being trialled for Flash Next) can quote a reservation for a request's context and permitted growth, accept or refuse it atomically, and report a reclaimed reservation (a preemption) as a broken fill. Sellers quote; the one matching engine selects among eligible quotes under the order's terms (throughput is a term, arrival order is not); shared admission commits the reservation within the parent grant; and the router, as a venue, forwards the committed fill and never re-matches it. A bound conversation keeps its replica (its cached context lives there) unless the relocation operation moves it. A preemption is read against the fill's terms: a pause and resume under the same grant is an observation, a broken fill only where the seller withdrew an obligation it sold (such as uninterrupted residency), and occupancy stays charged until release is established. Host RAM is a constraint at the host level above, so an engine's quote never stands for the host's. A watched turn keeps its isolation rule (gunbc.serving.turn_admission) unless a measurement and a ruling change it.",
+          displaced_cost: "A count cap is right only for one request size: it wastes cards on short turns and overcommits on long ones, and the router estimates memory it cannot see.",
+          first_slice: "The engine's quote and reservation contract on one replica, with the router admitting on it.",
+          red_control: "At the same active count, a short turn is admitted and a long one refused; two eligible quotes arriving in reverse order of their throughput ranking select the faster one when the order values throughput; two concurrent arrivals cannot both take the last reservation; a pause and resume under the same grant is recorded without being reported as a broken fill, and a withdrawn residency guarantee is; occupancy is not released before release is established; a bound conversation is not moved by a free quote elsewhere.",
+          out_of_scope: "Choosing the engine; measuring caps for count-capped replicas (serving-capacity-qualification); relocation itself (serving-relocation-realization).",
+          handback: "The quote and reservation contract, the router's admission on it, and the executed controls."
         )),
       parent: in_project(project: "fabric-bringup", contribution: "One market for every match of work with resources, in one vocabulary, so a new application enters by declaring what it trades."),
     ),
@@ -4737,7 +4769,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       id: "heal-bootstrap-seed-reuse",
       owner: "ci-control",
       carriers: carrier(path: "src/v1/stage0/src/required_regen_host.rs"),
-      line: ticket(t: updated(t: fields(
+      line: ticket(t: updated(t: updated(t: fields(
         headline: "Heal reuses the base-policy bootstrap executable under its complete build identity",
         boundary: "Round 1 builds the seed from the base commit's whole src/v1/stage0 crate on every affected heal run, and pull requests on one base build the same artifact. Reuse a valid artifact, or build that same artifact on a miss: a miss changes how it is obtained, never which bootstrap policy runs. Its identity is every effective build input (restored base crate, kept head-added paths, manifests and lockfile, toolchain, target, profile, flags, relevant environment), through the existing materialization identity (std.materialization_provider request_key, std.computation_identity), not a new cache key.",
         displaced_cost: "4 to 5.5 minutes of identical cargo build per affected heal run on a shared base.",
@@ -4745,7 +4777,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         red_control: "A changed toolchain, lockfile, build flag or head-added path under stage0 invalidates the reuse and rebuilds; a reused artifact whose digest disagrees with its recorded identity refuses; the base-start policy is unchanged on a hit and on a miss.",
         out_of_scope: "Changing where generation 0 starts (the base-start ruling stands). A store that needs a new CI job or a raised budget is not admitted here and goes to the operator first.",
         handback: "The identity derivation, the invalidation control outputs, two heal runs on one base with the second reusing, and the diff."
-      ), on: "2026-11-24", note: "Cost measured on an UNAFFECTED heal run, 2026-11-24, at the manager's GO so this row is not duplicated by a new one. Proud-fox-90 ran heal's Converge the stage0 mirrors on srv1 at the head of pull request 16964 (01a27929) with the round-cost entry and recorded: round.built_seed_regen wall_ms=1022544, about 17 minutes, of a 1260658 ms total, then partition-rebuild RebuildScopeRefused with cause NoChangedMirrorsToRebuild, changed_paths=0 and first_generation_equal=true at planned=176 executed=176. So about 17 of those 21 minutes bought nothing: the run rebuilt the whole src/v1/stage0 crate from the base seed and then refused because no mirror had changed. On a loaded runner that is what pushes heal past the job cap, now being raised to 90. This is an ORDERING question and not a missing verdict, which is why it lands here rather than in a new row: the refusal already exists in the model -- counted by me with timeout 60 grep -rn over src/v1, src/v2 and dag/gunbc at origin/main 61d340d55cce4707c6c5ece828e41c5c0ab5158f, rc 0 each, the population being the 12,093-file tree extracted by git archive, and what remains unknown is any hit outside those three paths, which I did not inspect: RebuildScopeRefused with cause NoChangedMirrorsToRebuild carrying 10 hits in dag/gunbc/stage0_partition_rebuild_scope.dag with a witness at src/v2/test/claim/stage0_partition_rebuild_scope_witness.dag, and regen-round-cost has 75 hits across dag/gunbc/heal_workflow.dag and dag/gunbc/heal_publication_boundary.dag while regen_affected_scope has 4 hits in src/v1/stage0/src/bin/claim_executor.rs. The question this row now owes an answer to: can changed_paths=0, or the empty affected set, be DECIDED BEFORE the seed rebuild, failing closed to the full round whenever it cannot be decided? If the answer is yes, the reuse this row already plans makes the empty case free as a side effect. If the answer is no -- emptiness is only knowable after building -- then a separate row is justified and this one stays as written. Nothing in brief, red_control or handback was edited here, and roadmap_criteria_digest in dag/gunbc/roadmap/roadmap_model.dag hashes those three alone while updated() copies them unchanged, so this node's identity and any digest quoted by evidence do not move. heal is a gate: measure, then decide, and do not hurry an implementation.")),
+      ), on: "2026-11-24", note: "Cost measured on an UNAFFECTED heal run, 2026-11-24, at the manager's GO so this row is not duplicated by a new one. Proud-fox-90 ran heal's Converge the stage0 mirrors on srv1 at the head of pull request 16964 (01a27929) with the round-cost entry and recorded: round.built_seed_regen wall_ms=1022544, about 17 minutes, of a 1260658 ms total, then partition-rebuild RebuildScopeRefused with cause NoChangedMirrorsToRebuild, changed_paths=0 and first_generation_equal=true at planned=176 executed=176. So about 17 of those 21 minutes bought nothing: the run rebuilt the whole src/v1/stage0 crate from the base seed and then refused because no mirror had changed. On a loaded runner that is what pushes heal past the job cap, now being raised to 90. This is an ORDERING question and not a missing verdict, which is why it lands here rather than in a new row: the refusal already exists in the model -- counted by me with timeout 60 grep -rn over src/v1, src/v2 and dag/gunbc at origin/main 61d340d55cce4707c6c5ece828e41c5c0ab5158f, rc 0 each, the population being the 12,093-file tree extracted by git archive, and what remains unknown is any hit outside those three paths, which I did not inspect: RebuildScopeRefused with cause NoChangedMirrorsToRebuild carrying 10 hits in dag/gunbc/stage0_partition_rebuild_scope.dag with a witness at src/v2/test/claim/stage0_partition_rebuild_scope_witness.dag, and regen-round-cost has 75 hits across dag/gunbc/heal_workflow.dag and dag/gunbc/heal_publication_boundary.dag while regen_affected_scope has 4 hits in src/v1/stage0/src/bin/claim_executor.rs. The question this row now owes an answer to: can changed_paths=0, or the empty affected set, be DECIDED BEFORE the seed rebuild, failing closed to the full round whenever it cannot be decided? If the answer is yes, the reuse this row already plans makes the empty case free as a side effect. If the answer is no -- emptiness is only knowable after building -- then a separate row is justified and this one stays as written. Nothing in brief, red_control or handback was edited here, and roadmap_criteria_digest in dag/gunbc/roadmap/roadmap_model.dag hashes those three alone while updated() copies them unchanged, so this node's identity and any digest quoted by evidence do not move. heal is a gate: measure, then decide, and do not hurry an implementation."), on: "2026-11-25", note: "REVERT OBLIGATION, dated 2026-11-25 (bright-seal-652), from the operator's temporary-cap ruling. Operator decision message msg_ae0f349b-384e-4b0e-801e-b1b87a9a74bc on escalation msg_2e4d9bcb-468e-42b4-9a54-3395f77ea143, verbatim: \"Raise heal+witnesses to 90 until seed-reuse lands, then back to 60\". The 90-minute v2-bootstrap (RosterGate / gunbc_roster_gate) and heal CI caps were a TEMPORARY deviation, granted only until THIS row lands (gunbc.design_ruling::heal_and_v2_bootstrap_ci_timeouts_raise_is_temporary_2026_11_25; policy gunbc.design_ruling::ci_job_budgets_closed_to_growth). WHEN THIS ROW LANDS, THE SAME CHANGE returns gunbc.ci.repository_ci_profile::gunbc_repository_ci_profile gunbc_roster_gate timeout and heal.timeout to minute(60) and regenerates .github/workflows/heal.yml and .github/workflows/witnesses.yml back to 60, and the fleet-converge.yml host-cap bracket derived from them (gunbc.runner.runner_fleet_job_timeout_census::fleet_targeted_wait_bound) falls back with them. Do not land seed reuse without that revert. This note is the roadmap-side view of the typed ruling; it is an updates layer only -- brief, red_control and handback are untouched and roadmap_criteria_digest is unmoved.")),
       dispatch: dispatchable(),
       parent: in_project(project: "demand-engine", contribution: "A build product reused under its derived identity is the materialization ladder's provider step, admitted only once the identity is complete."),
     ),
@@ -7943,6 +7975,55 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       centering: plan(text: "new_server_bringup_plan: an install is an upsert, and its verify arm reads the machine. Target: dag/gunbc/host/network_install_ci.dag."),
     ),
     roadmap_node(
+      identity: "rn_BB6M4C13XY1NWJ5XTM2DP5J4R9",
+      id: "gunbhub-source-of-truth",
+      owner: "source-intent",
+      carriers: carrier(path: "dag/gunbc/plans/gunbhub_source_of_truth.dag"),
+      line: ticket(t: level_fields(
+        headline: "gunbhub is gunbc's source of truth and GitHub a mirror",
+        boundary: "The long track the operator separated on 2026-11-24 (gunbc.design_ruling::github_stays_the_code_repository_until_gunbhub_2026_11_24): gunbc's own source control, served as gunbhub with a simple frontend, becomes the authority over what landed, and GitHub receives a one-way mirror. GitHub stays the code repository until this project's cutover; nothing outside it waits on it.",
+        approach: "Members, in dependency order: the native SCM upstream models and landing spine already in the factory project (2-scm-*), linked by edge rather than moved; a simple gunbhub frontend over that spine; then the cutover that makes gunbhub the authority and GitHub the mirror.",
+        red_control: "Met only through its members: the cutover row's own control, a change landed and read back through gunbhub while GitHub is unreachable.",
+        displaced_cost: "While GitHub decides what landed, every trust chain that rests on reviewed main inherits GitHub as a root, however much else moves off it.",
+        handback: "A landed change read back from gunbhub, and GitHub receiving only the mirror."
+      )),
+      parent: in_project(project: "gunbc-project-root", contribution: "The project's source history owned by its own source control, the last GitHub authority to move."),
+    ),
+    roadmap_node(
+      identity: "rn_BVQ2T76G1H1BBST0G5KK6F856P",
+      id: "gunbhub-simple-frontend",
+      owner: "source-intent",
+      carriers: carrier(path: "dag/gunbc/gunbhub_serve.dag"),
+      line: ticket(t: fields(
+        headline: "gunbhub serves browse, proposal, review and landing over gunbc's own source control",
+        boundary: "A deliberately simple frontend, the operator's word, over the native landing spine: browse a revision's tree and history, read a proposal and its review threads, record a review decision, and land through the spine with the landed revision read back. gunbc.gunbhub_serve already renders a browse page and is the seed; this row extends it rather than adding a second server. No accounts, notifications, issue tracking or anything a person can do through the CLI already, unless a consumer is named.",
+        displaced_cost: "Without a way to read and land changes, a native source of truth is usable only from the command line, and review would stay on GitHub after the history moved.",
+        first_slice: "Browse and proposal read over a repository the native object store holds, served by the existing gunbhub_serve.",
+        red_control: "OPEN: not yet measured. The pair to execute: a proposal whose review has an unresolved thread cannot be landed from the frontend; the same proposal with the thread decided lands, and the landed revision the page shows is the one read back from the store.",
+        out_of_scope: "Identity and authorization of reviewers beyond what the landing spine already admits; any public hosting.",
+        handback: "A frontend a person can review and land a change through."
+      )),
+      parent: in_project(project: "gunbhub-source-of-truth", contribution: "The simple frontend the track needs before people can work through gunbhub."),
+      centering: plan(text: "gunbhub_source_of_truth_plan: gunbc's own source control is the authority over what landed. Target: dag/gunbc/gunbhub_serve.dag."),
+    ),
+    roadmap_node(
+      identity: "rn_308N4SS4YMT39PCHRQ4ENPCCSH",
+      id: "gunbhub-authoritative-cutover",
+      owner: "source-intent",
+      carriers: carrier(path: "dag/gunbc/plans/gunbhub_source_of_truth.dag"),
+      line: ticket(t: fields(
+        headline: "gunbhub becomes the authority over gunbc's source, and GitHub a one-way mirror",
+        boundary: "The cutover: changes land through gunbhub, GitHub receives a one-way mirror, and source consumers -- remote builds (gunbc.compute.remote_build_client pushes and fetches through GitHub today), the belt, review tooling, the fleet's revision admission -- read from the gunbhub authority. A gap-intolerant boundary, so it is staged: gunbhub in shadow beside GitHub, then one transition (gunbc.design_argument::replacement_migration).",
+        displaced_cost: "Until it happens, reviewed main remains a GitHub fact that every trust chain resting on main inherits.",
+        first_slice: "Run gunbhub in shadow: mirror GitHub's main into the native store and compare revisions, landing nothing through it yet.",
+        red_control: "OPEN: not yet measured. The pair to execute: a change landed through gunbhub while GitHub is unreachable is read back from gunbhub and reaches the mirror once GitHub returns; a change pushed directly to the GitHub mirror after cutover is refused or overwritten, never adopted as landed; and, with GitHub unreachable, an unlanded candidate submitted through the build route active at cutover executes the exact requested source, its result is retrieved, and the candidate stays unlanded -- because remote builds push and fetch refs/remote-build/* through GitHub today, a control over landed changes alone would pass while candidate builds still needed a writable GitHub ref.",
+        out_of_scope: "Moving identity or execution off GitHub, which do not wait on this row.",
+        handback: "gunbhub authoritative, GitHub a mirror, with the consumers that read source repointed."
+      )),
+      parent: in_project(project: "gunbhub-source-of-truth", contribution: "The track's terminal transition."),
+      centering: plan(text: "gunbhub_source_of_truth_plan: gunbc's own source control is the authority over what landed. Target: dag/gunbc/plans/gunbhub_source_of_truth.dag."),
+    ),
+    roadmap_node(
       identity: "rn_G75EV6NFA5Y20CRRZKH42F629W",
       id: "empty-service-admissibility",
       owner: "self-host",
@@ -8254,6 +8335,11 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "fabric-market-convergence", parent: "work-exec-6-one-ledger-per-host"),
     edge(child: "fabric-market-convergence", parent: "factory-attempt-execution-on-fabric-lease"),
     edge(child: "fabric-market-convergence", parent: "demand-m5"),
+    edge(child: "serving-engine-level-seller", parent: "venue-contract"),
+    edge(child: "serving-engine-level-seller", parent: "fabric-admission-and-delegation"),
+    edge(child: "serving-engine-level-seller", parent: "matching-engine-on-std-decision"),
+    edge(child: "fabric-market-convergence", parent: "serving-engine-level-seller"),
+    edge(child: "fabric-market-convergence", parent: "serving-capacity-qualification"),
     edge(child: "work-exec-2-durable-route-first-consumer", parent: "venue-contract"),
     edge(child: "work-exec-2-durable-route-first-consumer", parent: "matching-engine-on-std-decision"),
     edge(child: "work-exec-6-one-ledger-per-host", parent: "fabric-admission-and-delegation"),
@@ -8369,6 +8455,9 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "2-scm-compatibility-shape", parent: "2-scm-pijul-upstream-model"),
     edge(child: "2-scm-p0-landing-spine", parent: "2-scm-compatibility-shape"),
     edge(child: "2-scm-p0-landing-spine", parent: "2-claim-indexed-evidence"),
+    edge(child: "gunbhub-simple-frontend", parent: "2-scm-p0-landing-spine"),
+    edge(child: "gunbhub-authoritative-cutover", parent: "gunbhub-simple-frontend"),
+    edge(child: "gunbhub-authoritative-cutover", parent: "2-scm-p0-landing-spine"),
 
     edge(child: "namespace-binding-kernel", parent: "namespace-occurrence-transport"),
     edge(child: "namespace-reference-derived-closure", parent: "namespace-binding-kernel"),
