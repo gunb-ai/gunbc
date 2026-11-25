@@ -3550,10 +3550,10 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         headline: "The dispatch loop resumes a bound seat after adjudication",
         boundary: "The consumer is the dispatch loop that resumes a bound seat after adjudication. The carrier is deliberately NOT roadmap_belt_actuate.dag: planning_consolidation marks the belt's attempt/lease/slot state as a duplicate to be deleted into fabric, and the realization home for attempt execution awaits the operator's ruling (design Hold); wiring into the belt now invests in a module scheduled for deletion.",
         displaced_cost: "Without this row, a seat that has been adjudicated is never resumed by the dispatch loop, so the adjudication's outcome has no executor.",
-        first_slice: "The operator's realization-home ruling, which selects the module where attempt execution lives after the belt's state is deleted.",
-        red_control: "Not yet executable until the operator's realization-home ruling lands. The consumer-exists witness runs against whichever home is ruled; it is named here and must never be faked green.",
+        first_slice: "Wire the adjudicated result into the ruled home. The trigger remains the operator's realization-home ruling, which selects the module where attempt execution lives after the belt's state is deleted; nothing is wired before it.",
+        red_control: "Not yet executable until the operator's realization-home ruling lands. Four arms, run against whichever home is ruled, asserting what the LOOP OBSERVES -- not that a consumer symbol exists: (1) a resumable adjudication bound to this seat produces EXACTLY ONE continuation through the normal dispatch path; (2) replaying the same adjudication leaves the count at ONE, not two; (3) an absent adjudication produces ZERO continuations; (4) a FOREIGN adjudication (bound to another seat) produces ZERO continuations for this seat. At the parent, before any wiring, arm (1) FAILS at the value level (count 0 against an expected 1) -- that is the RED. The witness is named here and must never be faked green.",
         out_of_scope: "The belt's attempt/lease/slot state itself (factory-attempt-execution-on-fabric-lease migrates and deletes it); the adjudication mechanism (a separate authority).",
-        handback: "The consumer-exists witness executed against the ruled realization home, with the ruling cited."
+        handback: "The four arms above executed against the ruled realization home, with the ruling cited and raw counts printed: EXACTLY ONE continuation for a resumable adjudication bound to this seat through the normal dispatch path; replay leaves the count at ONE; an absent adjudication yields ZERO; a foreign adjudication yields ZERO for this seat. A witness that only proves a consumer symbol exists is not this handback -- the claim is that the loop RESUMES the bound seat."
       )),
       dispatch: not_dispatchable(reason: "Blocked on the operator's realization-home ruling; red_control not executable until that ruling lands."),
       parent: in_project(project: "factory", contribution: "Work runs on one execution and lease model."),
@@ -8222,6 +8222,7 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "factory-attempt-execution-on-fabric-lease", parent: "venue-contract"),
     edge(child: "factory-attempt-execution-on-fabric-lease", parent: "execution-attempt-one-record"),
     edge(child: "roadmap-dispatch-loop-resumes-adjudicated-seat", parent: "factory-attempt-execution-on-fabric-lease"),
+    edge(child: "roadmap-dispatch-loop-resumes-adjudicated-seat", parent: "harness-alignment-checkpoint-resume"),
     edge(child: "demand-m5", parent: "fabric-admission-and-delegation"),
     edge(child: "demand-m5", parent: "fabric-market-plan-fold"),
     edge(child: "required-witness-floor-restored", parent: "ci-cost-floor-preparation-cut"),
