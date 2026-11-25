@@ -46,6 +46,7 @@ import gunbc.serving.turn_admission {
   ServingSessionRecord, ServingSessionResidency, ServingSessionPlacement, ServingHostTierStanding,
   ServingGpuPrefixStanding, serving_session_standing, serving_session_placement,
   serving_unread_when_owner_unprobed,
+  ServingCoTenancy, GroupIdle, GroupOccupied, CoTenancyUnread,
 }
 import gunbc.serving.caller_backlog {
   CallerBacklogSnapshot, CallerWorkRecord, CallerWorkPhase, RecoveryEvent, SeatRef, PartitionId,
@@ -219,6 +220,10 @@ type RelocationDecision
   | NoAdmissibleTransition
   | Evacuate { destination_label: NonEmptyStr, receipt: SelectionReceipt }
   | ReconciliationRequired { obligation: NonEmptyStr }
+  // IMBALANCE PRECONDITION refusals (see decide_with_imbalance_precondition): an economic move is
+  // reached only when the source is established to carry more load than the destination.
+  | NoImbalanceToRelieve { source_load: Nat, destination_load: Nat }
+  | ImbalanceUnread { obligation: NonEmptyStr }
 
 fn decide_relocation(field: List<ParetoEntry>, assessment: DecisionAssessment) -> RelocationDecision {
   match select_realization(
@@ -264,6 +269,11 @@ fn decide_evacuation(field: List<ParetoEntry>, assessment: DecisionAssessment) -
     NoAdmissibleTransition => NoAdmissibleTransition
     Evacuate { destination_label: d, receipt: r } => Evacuate { destination_label: d, receipt: r }
     ReconciliationRequired { obligation: o } => ReconciliationRequired { obligation: o }
+    // Evacuation is a mandatory drain: it removes "stay" and never runs the imbalance precondition,
+    // so these arms are unreachable on this path; they pass through rather than being given a
+    // drain meaning a drain cannot have (a drain moves regardless of load balance).
+    NoImbalanceToRelieve { source_load: s, destination_load: d } => NoImbalanceToRelieve { source_load: s, destination_load: d }
+    ImbalanceUnread { obligation: o } => ImbalanceUnread { obligation: o }
   }
 }
 
@@ -294,6 +304,89 @@ fn decide_with_retain_promise(source_over_promise: Bool, field: List<ParetoEntry
     ReconciliationRequired { obligation: "the source is over its retained-capacity promise; reconcile the obligation, do not treat relocation as free" as NonEmptyStr }
   } else {
     decide_relocation(field: field, assessment: assessment)
+  }
+}
+
+// ── IMBALANCE IS THE PRECONDITION THAT MAKES A MOVE A REBALANCING MOVE, NOT CHURN ───────────────
+//
+// WHY THIS IS A PRECONDITION AND NOT A TERM IN THE PRICE. The economic decision nets a move against
+// staying (ax_net folds the re-prefill/reconstruction the moved conversation pays, the harm to the
+// destination's other work and the long-context starvation the move relieves). A PRICE is the right
+// mechanism for a preference and the wrong one for a direction that must not run at all — the same
+// reversal gunbc.serving.turn_admission records for co-tenancy ("a soft price lets the damaging group WIN
+// whenever the alternatives look worse"). Folded into ax_net, "the destination has a free slot" becomes a
+// positive term, and when BOTH cards are full every candidate has a bad net with one numerically least
+// bad — the bidirectional churn the 2026-11-23 host rule produced, arriving as a ranking outcome that
+// carries no refusal. So the load differential is a seat belt, not a number: the economic selection is
+// reached only when the source is established to carry more load than the destination.
+//
+// WHAT THE RULE REPLACED, AND ITS STANDING. The host's 2026-11-23 "tier-0 sideways" rule fired a move when
+// a session bound to a full srv1 card had been refused for 30 s and the sibling showed a free slot; it
+// assumed a sibling with free slots is underloaded. With both srv1 cards full it swapped sessions both
+// ways — an operator-observed reading from router log lines (ad-hoc attribution, standing
+// gunbc.serving.serving_relocation::rloc_host_observation_standing, never a deduced fleet fact). A free
+// slot is a release the destination may reclaim the instant the move lands; it is not a comparison with
+// the source. Equal load is churn, not relief; an unread load is not a licence to move. The host narrowed
+// this on 2026-11-24 to a pending-key condition on the sibling — a hand-approximation of exactly this
+// differential, not a re-derivation of it.
+//
+// THE UNIT IS THE OCCUPANCY READING, NOT A FREE-SLOT COUNT. Load is carried by ServingCoTenancy, the same
+// running+waiting occupancy the admission law reads (its Unread arm already refuses to read an unread
+// engine as idle). The comparison is a NEW fact about two placements together, which turn_admission does
+// not own and never states; nothing here re-declares occupancy. A free-slot or headroom count has no
+// constructor that reaches LoadImbalance, so the host's error — reading spare capacity as underload — has
+// no home in the type.
+
+type LoadImbalance
+  = RebalancingMove { source_load: Nat, destination_load: Nat }
+  | BalancedOrDestinationBusier { source_load: Nat, destination_load: Nat }
+  | LoadComparisonUnread { obligation: NonEmptyStr }
+
+data rloc_host_observation_standing: NonEmptyStr = "operator-observed from srv1 router log lines (ad-hoc attribution), not a standing instrument (gunbc.design_argument::epistemic_humility)" as NonEmptyStr
+
+fn load_imbalance(source: ServingCoTenancy, destination: ServingCoTenancy) -> LoadImbalance {
+  match source {
+    CoTenancyUnread { obligation: o } => LoadComparisonUnread { obligation: o }
+    GroupIdle => match destination {
+      CoTenancyUnread { obligation: o } => LoadComparisonUnread { obligation: o }
+      GroupIdle => compare_load(source: 0, destination: 0)
+      GroupOccupied { occupants: d } => compare_load(source: 0, destination: d)
+    }
+    GroupOccupied { occupants: s } => match destination {
+      CoTenancyUnread { obligation: o } => LoadComparisonUnread { obligation: o }
+      GroupIdle => compare_load(source: s, destination: 0)
+      GroupOccupied { occupants: d } => compare_load(source: s, destination: d)
+    }
+  }
+}
+
+// A rebalancing move exists only when the destination carries STRICTLY fewer occupants than the source.
+// Equal load — the both-cards-full state that swapped sessions both ways — is churn, and an idle source has
+// no pressure to relieve.
+fn compare_load(source: Nat, destination: Nat) -> LoadImbalance {
+  if destination < source {
+    RebalancingMove { source_load: source, destination_load: destination }
+  } else {
+    BalancedOrDestinationBusier { source_load: source, destination_load: destination }
+  }
+}
+
+// THE GUARD, run before the economic decision like the demand-readiness and retained-capacity guards. A
+// move reaches select_realization only when the source is established to be busier than the destination.
+// A balanced or destination-busier field is refused as churn (NoImbalanceToRelieve), never handed to the
+// price; an unread load is ImbalanceUnread and never a free move (gunbc.design_argument::fail_closed).
+// The stay-preference policy would otherwise resolve a dominating move, which is the discriminating arm:
+// removing this guard lets the host's ping-pong move through.
+fn decide_with_imbalance_precondition(
+  source: ServingCoTenancy,
+  destination: ServingCoTenancy,
+  field: List<ParetoEntry>,
+  assessment: DecisionAssessment,
+) -> RelocationDecision {
+  match load_imbalance(source: source, destination: destination) {
+    RebalancingMove { source_load: _, destination_load: _ } => decide_relocation(field: field, assessment: assessment)
+    BalancedOrDestinationBusier { source_load: s, destination_load: d } => NoImbalanceToRelieve { source_load: s, destination_load: d }
+    LoadComparisonUnread { obligation: o } => ImbalanceUnread { obligation: o }
   }
 }
 
@@ -337,6 +430,8 @@ fn render_move_intent(
   allowance: TransitionAllowance,
   method: StateEstablishmentMethod,
   evidence: ReconstructionEvidence,
+  source: ServingCoTenancy,
+  destination: ServingCoTenancy,
   field: List<ParetoEntry>,
   assessment: DecisionAssessment,
 ) -> RenderedIntent {
@@ -346,7 +441,8 @@ fn render_move_intent(
     MethodNotAdmitted { reason: why } => NoIntent { reason: why }
     MethodAdmitted { method: admitted } => render_admitted_move_intent(
       conversation: conversation, from_launch: from_launch, current_revision: current_revision,
-      authorization: authorization, allowance: allowance, method: admitted, field: field, assessment: assessment,
+      authorization: authorization, allowance: allowance, method: admitted,
+      source: source, destination: destination, field: field, assessment: assessment,
     )
   }
 }
@@ -358,10 +454,18 @@ fn render_admitted_move_intent(
   authorization: NonEmptyStr,
   allowance: TransitionAllowance,
   method: StateEstablishmentMethod,
+  source: ServingCoTenancy,
+  destination: ServingCoTenancy,
   field: List<ParetoEntry>,
   assessment: DecisionAssessment,
 ) -> RenderedIntent {
-  match decide_relocation(field: field, assessment: assessment) {
+  // THE IMBALANCE PRECONDITION IS ENFORCED HERE, not left to the caller. The move intent this module
+  // renders is the ONLY source the R-S3 realization posts (gunbc.plans.fabric_serving_router R-S3), so
+  // routing it through the guard makes the 2026-11-23 churn UNRENDERABLE rather than a value a caller
+  // could forget to filter (gunbc.design_argument::fail_closed, ::guarantee_ladder). A balanced or
+  // destination-busier field renders NO intent; the priced selection is reached only on an established
+  // source-busier differential.
+  match decide_with_imbalance_precondition(source: source, destination: destination, field: field, assessment: assessment) {
     Move { destination_label: dest, receipt: r } =>
       intent_payload(i: MoveIntent {
         conversation: conversation,
@@ -380,6 +484,12 @@ fn render_admitted_move_intent(
     NoAdmissibleTransition => NoIntent { reason: "no admissible transition" as NonEmptyStr }
     Evacuate { destination_label: _, receipt: _ } => NoIntent { reason: "evacuation is a separate mandatory-drain path, not an economic move intent" as NonEmptyStr }
     ReconciliationRequired { obligation: o } => NoIntent { reason: o }
+    // THE CHURN CASE: no established source-busier differential, so no move intent is rendered even
+    // though the priced field would have moved. This is the 2026-11-23 both-cards-full ping-pong, now
+    // unrenderable. Removing this arm (or the guard above) is the discriminating mutation.
+    NoImbalanceToRelieve { source_load: _, destination_load: _ } =>
+      NoIntent { reason: "no imbalance to relieve: the destination is not established lighter than the source; a sideways move here is churn, not relief" as NonEmptyStr }
+    ImbalanceUnread { obligation: o } => NoIntent { reason: o }
   }
 }
 
