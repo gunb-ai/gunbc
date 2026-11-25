@@ -151,12 +151,9 @@ pub fn effect_refusal_mode_label(mode: EffectRefusalMode) -> String {
 
 pub fn effect_refusal_remedy(mode: EffectRefusalMode) -> String {
     match mode.clone() {
-        EffectRefusalMode::RefusedUnderHermetic => "re-run with --wet".to_string(),
-        EffectRefusalMode::RefusedUnderWet => {
-            "re-run under Hermetic execution (`gunbc --dry-run run`, or claim_batch without --wet)"
-                .to_string()
-        }
-    }
+    EffectRefusalMode::RefusedUnderHermetic => "re-run with --wet".to_string(),
+    EffectRefusalMode::RefusedUnderWet => "re-run under Hermetic execution (`gunbc test --hermetic <label>`, or `gunbc --dry-run run`)".to_string(),
+}
 }
 
 pub fn classify_verdict(verdict: Rc<WitnessEvalVerdict>) -> Rc<VerdictClassification> {

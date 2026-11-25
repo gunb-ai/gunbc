@@ -318,7 +318,6 @@ fn microvm_locus_execstart(release_dir: String, entry: String, function: String)
         source_roots: microvm_slot_source_roots,
         entry: entry,
         function: function,
-        claim_run: false,
       )),
     ),
     " ",

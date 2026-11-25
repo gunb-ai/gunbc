@@ -31,22 +31,22 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // reachability as its next trigger; this witness pins the closure case, which stays exit 1 under
 // that split.
 
-data parse_gate_entry_source: String = "module probe.parse_gate_entry
+data parse_gate_entry_source: String = "module test.claim.probe_parse_gate_entry
 
-import probe.parse_gate_lib { parse_gate_lib_value }
+import test.claim.probe_parse_gate_lib { parse_gate_lib_value }
 
 test fn parse_gate_entry_holds() -> Bool {
   parse_gate_lib_value()
 }
 "
 
-data parse_gate_unparsable_lib_source: String = "module probe.parse_gate_lib
+data parse_gate_unparsable_lib_source: String = "module test.claim.probe_parse_gate_lib
 
 fn parse_gate_lib_value() -> Bool {
   true
 "
 
-data parse_gate_parseable_lib_source: String = "module probe.parse_gate_lib
+data parse_gate_parseable_lib_source: String = "module test.claim.probe_parse_gate_lib
 
 fn parse_gate_lib_value() -> Bool {
   true
@@ -64,13 +64,19 @@ fn plant_parse_gate(root: String, lib_source: String) -> PlantedParseGate {
   if !dir.success {
     PlantedParseGateUnwritable { detail: "mktemp under target/ failed" }
   } else {
-    let d = dir.path as String
-    let e = Filesystem.Write(path: concat(d, "/parse_gate_entry.dag"), content: parse_gate_entry_source)
-    let l = Filesystem.Write(path: concat(d, "/parse_gate_lib.dag"), content: lib_source)
-    if e.success && l.success {
-      PlantedParseGateReady { dir: d }
+    let planted = dir.path as String
+    let d = concat(planted, "/test/claim")
+    let mkdir = shell.Mkdir.Parents(path: d as FilePath)
+    if !mkdir.success {
+      PlantedParseGateUnwritable { detail: "mkdir under target/ failed" }
     } else {
-      PlantedParseGateUnwritable { detail: join(["fixture write failed: ", e.error, l.error], "") }
+      let e = Filesystem.Write(path: concat(d, "/probe_parse_gate_entry.dag"), content: parse_gate_entry_source)
+      let l = Filesystem.Write(path: concat(d, "/probe_parse_gate_lib.dag"), content: lib_source)
+      if e.success && l.success {
+        PlantedParseGateReady { dir: planted }
+      } else {
+        PlantedParseGateUnwritable { detail: join(["fixture write failed: ", e.error, l.error], "") }
+      }
     }
   }
 }
@@ -79,44 +85,49 @@ fn plant_parse_gate(root: String, lib_source: String) -> PlantedParseGate {
 // only the planted root: walking `dag` as well cost ~42s of wall the refusal never reads. The control reaches
 // a verdict, and a verdict needs `gunbc.output_policy`, which resolves only from `dag`; that walk is
 // the control's irreducible cost.
+// THE ROUTE, NOT A BINARY OF ITS OWN (see claim_batch_exit_two_unobserved_witness); the planted
+// modules live in the claim universe because the route admits `//test/claim/...` labels only.
 fn parse_gate_refusal_args(dir: String) -> List<String> {
   [
+    "test",
     "--source-root", dir,
-    "--entry", concat(dir, "/parse_gate_entry.dag"),
-    "--function", "parse_gate_entry_holds"
+    "//test/claim/probe_parse_gate_entry:parse_gate_entry_holds"
   ]
 }
 
 fn parse_gate_verdict_args(dir: String) -> List<String> {
   [
+    "test",
     "--source-root", "dag",
+    "--source-root", "src/v2",
     "--source-root", dir,
-    "--entry", concat(dir, "/parse_gate_entry.dag"),
-    "--function", "parse_gate_entry_holds"
+    "//test/claim/probe_parse_gate_entry:parse_gate_entry_holds"
   ]
 }
 
-// The refusal arm. An entry importing an unparsable module must exit 1, name that module's file in
-// a located refusal, and print no verdict line: a PASS or FAIL here would be a verdict computed
-// over a corpus the walk could not read.
-test fn an_unparsable_imported_module_refuses_with_exit_1_and_no_verdict_line() -> Bool {
+// The refusal arm. An entry importing an unparsable module must exit 2 as NO OBSERVATION, name that
+// module's file in a located refusal (`claim source refused: <path> ...`), and print no verdict
+// line: a verdict computed over a corpus the walk could not read is the fail-open this row pins.
+// On the route an unreadable claim source is no observation (exit 2), where the deleted binary
+// refused the whole run at exit 1 -- the refusal CHANNEL differs, the pinned property does not.
+test fn an_unparsable_imported_module_refuses_with_exit_2_and_no_verdict_line() -> Bool {
   let root = git.Inspect.Toplevel().path
   match plant_parse_gate(root: root, lib_source: parse_gate_unparsable_lib_source) {
     PlantedParseGateUnwritable { detail: _ } => false
     PlantedParseGateReady { dir } => {
       let result = gunbc.WitnessBin.Run(
         workdir: root,
-        bin_path: concat(root, "/target/release/claim_batch"),
+        bin_path: concat(root, "/target/release/gunbc"),
         args: parse_gate_refusal_args(dir: dir)
       )
       let cleaned = shell.Remove.RecursiveForce(path: dir as FilePath)
       cleaned.success
-        && result.exit_code == 1
-        && string_contains(s: result.stderr, pattern: "module index refused")
+        && result.exit_code == 2
+        && string_contains(s: result.stderr, pattern: "claim source refused")
         && string_contains(s: result.stderr, pattern: "target/parse-gate-planted-")
-        && string_contains(s: result.stderr, pattern: "/parse_gate_lib.dag:4:7")
-        && !string_contains(s: result.stdout, pattern: "PASS")
-        && !string_contains(s: result.stdout, pattern: "FAIL")
+        && string_contains(s: result.stderr, pattern: "/test/claim/probe_parse_gate_lib.dag")
+        && !string_contains(s: result.stdout, pattern: "HELD")
+        && !string_contains(s: result.stdout, pattern: "DID-NOT-HOLD")
     }
   }
 }
@@ -131,13 +142,13 @@ test fn a_parseable_imported_module_reaches_a_real_pass_verdict() -> Bool {
     PlantedParseGateReady { dir } => {
       let result = gunbc.WitnessBin.Run(
         workdir: root,
-        bin_path: concat(root, "/target/release/claim_batch"),
+        bin_path: concat(root, "/target/release/gunbc"),
         args: parse_gate_verdict_args(dir: dir)
       )
       let cleaned = shell.Remove.RecursiveForce(path: dir as FilePath)
       cleaned.success
         && result.exit_code == 0
-        && string_contains(s: result.stdout, pattern: "PASS")
+        && string_contains(s: result.stdout, pattern: "parse_gate_entry_holds HELD outcome=Pass")
         && !string_contains(s: result.stderr, pattern: "module index refused")
     }
   }
