@@ -38,8 +38,12 @@ import std.algebra { count_where, fold_list, list_push }
 // the native frontier clears; claim_executor --required-ci is an ingestion-only stub and the manual
 // required-floor runner was deleted 2026-10-14), so a required_floor entry would be a name with no
 // route. Wiring this witness into an executed CI lane is a DECLARED LATER FRONTIER with its trigger:
-// the prerequisite row (per-phase counters in the parse-population verb) that the lane manager is
-// putting into the plan; when that lands and CI begins executing claims, this witness joins the lane.
+// the prerequisite row (per-phase counters in the parse-population verb). That row is ABSENT at main
+// today (own grep, origin/main roadmap_authority.dag: id values containing "counter" = 0 hits / exit 1;
+// containing "phase" = 3, none a per-phase-counters verb row), so the trigger does not yet exist and
+// consumption of these rows beyond this witness is explicitly OPEN, not claimed. A new node enters the
+// plan only via a planning PR (lane-manager queue), not authored by this row (fenced from the plan). When
+// that prerequisite lands and CI begins executing claims, this witness joins the executed CI lane.
 
 // The tree sha the populations were selected and measured over (origin/main at baseline time).
 data parse_population_baseline_pinned_sha: String =

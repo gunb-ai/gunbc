@@ -1,6 +1,7 @@
 module test.claim.parse_population_baseline_roster_witness
 
 import std.types { Bool }
+import std.measure { byte_size }
 import gunbc.parse_population_baseline_roster {
   parse_population_total_count,
   parse_population_five_largest_count_check,
@@ -84,5 +85,5 @@ test fn parse_population_baseline_roster_duplicate_key_refuses() -> Bool {
 // (gunbc.design_ruling::executed_red_control_names_its_failing_commit). Committed here so the single
 // --entry resolves all eight names in one invocation (one log, one rc, one head sha, one binary block).
 fn parse_population_roster_red_control_refuses() -> Bool {
-  parse_population_five_largest_byte_total() == 999
+  parse_population_five_largest_byte_total() == byte_size(count: 999)
 }
