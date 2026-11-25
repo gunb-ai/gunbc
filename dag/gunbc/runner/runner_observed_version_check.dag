@@ -1,6 +1,7 @@
 module gunbc.runner.runner_observed_version_check
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.tools.gnu_coreutils { cat_command }
 import gunbc.command_runner { run_shell_command_observe, LocalExec }
@@ -56,7 +57,7 @@ data runner_version_check_standing: VersionCheckStanding = CheckedAtReceiptTime 
 // A CAPTURE THAT CANNOT BE READ IS NOT A PASS, AND IT IS NOT AN EMPTY CONSOLE EITHER. An earlier
 // revision handed the reader's own failure to the classifier as an exit status, which arrived as
 // BootVmmFailed -- a sentence about the VMM authored by a failed cat. Here the reader's status is kept
-// where it belongs: a failed read becomes BootProbeConsole { read_cause: ... }, which the classifier
+// where it belongs: a failed read becomes BootProbeConsole { read_cause: Present { value: ... } }, which the classifier
 // refuses BY NAME as BootConsoleUnreadable, and the subject's status is never supplied at all (this
 // route has no reaper -- see the NoExecutionBound arm of
 // #gunbc.runner.runner_microvm_boot_probe::boot_probe_verdict).
@@ -68,10 +69,10 @@ fn observe_captured_console(path: String) -> BootProbeConsole
       stdout: "",
       stderr: obs.stderr,
       source: path,
-      read_cause: join(["the committed capture could not be read: ", obs.stderr], ""),
+      read_cause: Present { value: join(["the committed capture could not be read: ", obs.stderr], "") },
     }
   } else {
-    BootProbeConsole { stdout: obs.stdout, stderr: "", source: path, read_cause: "" }
+    BootProbeConsole { stdout: obs.stdout, stderr: "", source: path, read_cause: Absent }
   }
 }
 

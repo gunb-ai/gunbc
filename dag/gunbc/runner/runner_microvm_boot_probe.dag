@@ -1,6 +1,7 @@
 module gunbc.runner.runner_microvm_boot_probe
 
 import std.types { String, NonEmptyStr, Bool, List, FilePath, Int }
+import std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.algebra { trim, string_contains }
 import std.measure {
@@ -148,9 +149,12 @@ fn runner_microvm_boot_probe_config(root: String) -> RunnerMicroVmConfigResoluti
 // VMM it spawned running, which is precisely the uncontrolled VM this probe must not create.
 //
 // THE BOUNDER IS THIS LAYER, NOT A WRAPPED TOOL. This module starts the subject with
-// #extdeps.posix.process::StartDetached (which spawns with POSIX_SPAWN_SETPGROUP, so the subject LEADS
-// the group this lifecycle owns), waits on the kernel's own classification through Reap, and signals
-// that group -- and only that group -- with #extdeps.posix.signal::TerminateProcessGroup after its OWN
+// the posix.Process service's StartDetached operation (which spawns with POSIX_SPAWN_SETPGROUP, so the
+// subject LEADS the group this lifecycle owns; its refusal is a value of
+// #extdeps.posix.process::ProcessSpawnOutcome), waits on the kernel's own classification through that
+// service's Reap operation (whose answer is a #extdeps.posix.process::ProcessReapOutcome), and signals
+// that group -- and only that group -- with the posix.Signal service's TerminateProcessGroup operation
+// after its OWN
 // deadline ran out with the subject still alive. It does not wrap the subject in GNU timeout on the
 // production route, and it does not read a timeout exit status or timeout's --verbose text as evidence
 // that a bound fired: that diagnostic is authored onto a stderr the timed-out subject shares and can
@@ -162,7 +166,7 @@ fn runner_microvm_boot_probe_config(root: String) -> RunnerMicroVmConfigResoluti
 data runner_microvm_boot_probe_deadline: Second = second(count: 180)
 
 // THE POST-SIGNAL REAP BOUND, AND WHAT THIS LAYER CANNOT ESCALATE TO.
-// #extdeps.posix.signal::TerminateProcessGroup carries SIGTERM only (its upstream kill(2) form; see
+// The posix.Signal service's TerminateProcessGroup operation carries SIGTERM only (its upstream kill(2) form; see
 // #extdeps.posix.signal::linux_standard_signal_number for the wire number), and this repo's signal
 // service deliberately owns no SIGKILL verb, so this layer does not escalate. A subject that declines
 // SIGTERM is therefore NOT reported as a deadline that fired: the post-signal reap still answers
@@ -173,7 +177,7 @@ data runner_microvm_boot_probe_kill_grace: Second = second(count: 10)
 
 // RETAINED, AND CITED, NOT CONSUMED. This composed the GNU-timeout wrapper the production boot route
 // used before the Shape-A bounder landed here. It stays because the authority row
-// #gunbc.recurring_failure_mode::bare_exit_124_read_as_an_observed_timeout_event names it by
+// #gunbc.recurring_failure_mode.bare_exit_124_read_as_an_observed_timeout_event::bare_exit_124_read_as_an_observed_timeout_event names it by
 // DeclarationRef as the place where a bound was REQUESTED -- its own text is the reason the route was
 // dropped: "CONSTRUCTING A GNU TIMEOUT INVOCATION DOES NOT ESTABLISH THAT ITS DEADLINE FIRED". Its argv
 // shape (the escalation flag pair, the bound value, the subject) is still witnessed, in
@@ -204,8 +208,11 @@ fn runner_microvm_boot_probe_bounded_command(binary: String, config_path: String
 //
 // THE FORGERY THIS SHAPE CLOSES. An earlier revision of this receipt recognised the bounder's own
 // --verbose enforcement diagnostic in the run's stderr. That was withdrawn under a binding review
-// finding on gunbc#17013: stderr is shared with the bounded subject (#gunbc.command_runner::run_shell_command_observe
-// captures it separately from the exit status, and any program the subject runs may write it), so a
+// finding on gunbc#17013: stderr is shared with the bounded subject (gunbc.command_runner's
+// run_shell_command_observe captures it separately from the exit status, and any program the subject runs
+// may write it -- named in prose, not marked: a marked reference into gunbc.command_runner currently
+// refuses because that module does not normalize, a pre-existing main-tree condition this PR does not
+// touch), so a
 // child can print the enforcement sentence with no clock having expired. Every consumer of such a
 // receipt -- including the three bare-124 readers named by the follow-up row
 // bare-124-timeout-readers-consume-the-bound-observation, which is a CHILD of this roadmap node -- would
@@ -214,7 +221,7 @@ fn runner_microvm_boot_probe_bounded_command(binary: String, config_path: String
 // observation is typed and emitted where the bound is imposed, never a promoted guess).
 //
 // A SEAM FACT RECORDED RATHER THAN REPAIRED (v1 is semantics-frozen: Manager B, 2026-11-25). The route
-// this replaced -- #gunbc.command_runner::run_shell_command_observe, realized by
+// this replaced -- gunbc.command_runner's run_shell_command_observe, realized by
 // src/v1/stage0/src/v1_interpreter.rs::shell_result_from_capture, which flattens a signal death with
 // `code().unwrap_or(-1)` -- cannot separate a child killed by SIGKILL from a child that reports 137 of
 // its own accord: executed on srv1, a real escalation printed exit_code -1 where a child's own
@@ -232,16 +239,18 @@ type ExecutionBoundReceipt
   | BoundSpawnRefused { program: String, cause: String }
   | NoExecutionBound
 
-// THE CAPTURE THIS LAYER OWNS. #extdeps.posix.process::StartDetached writes the subject's stdout and
+// THE CAPTURE THIS LAYER OWNS. The posix.Process service's StartDetached operation writes the subject's stdout and
 // stderr to files THIS caller named, and the console is read back from there -- never out of an argv
-// pipeline. A read that failed is carried as read_cause rather than reported as an empty console:
-// "the guest printed nothing" and "we could not read what the guest printed" are different claims, and
-// collapsing them is the fabricated-plausible-answer shape (gunbc.design_argument::fail_closed).
+// pipeline. A read that failed is carried as a NAMED CAUSE, never as an empty console: "the guest printed
+// nothing" and "we could not read what the guest printed" are different claims, and collapsing them is the
+// fabricated-plausible-answer shape (gunbc.design_argument::fail_closed). Absence of a cause IS the read
+// succeeding -- there is no sentinel string standing in for it, so no reader can mistake "" (a console that
+// really was empty, which is what a silent guest prints) for a successful read.
 type BootProbeConsole {
   stdout: String
   stderr: String
   source: String
-  read_cause: String
+  read_cause: String?
 }
 
 // ONE BOUNDED INVOCATION: the receipt and the capture taken with it. They travel together because the
@@ -496,7 +505,7 @@ fn boot_probe_bounded_read(
         stdout: "",
         stderr: "",
         source: stdout_file as String,
-        read_cause: join(["the stdout capture could not be read: ", out.error], ""),
+        read_cause: Present { value: join(["the stdout capture could not be read: ", out.error], "") },
       },
     }
   } else if !err.success {
@@ -506,7 +515,7 @@ fn boot_probe_bounded_read(
         stdout: out.content,
         stderr: "",
         source: stderr_file as String,
-        read_cause: join(["the stderr capture could not be read: ", err.error], ""),
+        read_cause: Present { value: join(["the stderr capture could not be read: ", err.error], "") },
       },
     }
   } else {
@@ -516,7 +525,7 @@ fn boot_probe_bounded_read(
         stdout: out.content,
         stderr: err.content,
         source: stdout_file as String,
-        read_cause: "",
+        read_cause: Absent,
       },
     }
   }
@@ -527,7 +536,7 @@ fn empty_boot_probe_console(source: String) -> BootProbeConsole {
     stdout: "",
     stderr: "",
     source: source,
-    read_cause: "nothing was started, so nothing was captured",
+    read_cause: Present { value: "nothing was started, so nothing was captured" },
   }
 }
 
@@ -653,10 +662,9 @@ fn boot_probe_verdict(
         ], ""),
       }
     BoundChildExited { exit_code: code } =>
-      if console.read_cause != "" {
-        BootConsoleUnreadable { path: console.source, cause: console.read_cause }
-      } else {
-        boot_probe_verdict_by_content(runner: runner, console: console, exit_code: code)
+      match console.read_cause {
+        Present { value: c } => BootConsoleUnreadable { path: console.source, cause: c }
+        Absent => boot_probe_verdict_by_content(runner: runner, console: console, exit_code: code)
       }
     BoundSignalledByOther { signal: sig } =>
       BootDeadlineEnforcementUnobservable {
@@ -703,10 +711,9 @@ fn boot_probe_verdict(
         cause: GroupUnnameable { pid: pid },
       }
     NoExecutionBound =>
-      if console.read_cause != "" {
-        BootConsoleUnreadable { path: console.source, cause: console.read_cause }
-      } else {
-        boot_probe_verdict_by_content(runner: runner, console: console, exit_code: 0)
+      match console.read_cause {
+        Present { value: c } => BootConsoleUnreadable { path: console.source, cause: c }
+        Absent => boot_probe_verdict_by_content(runner: runner, console: console, exit_code: 0)
       }
   }
 }
