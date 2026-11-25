@@ -6,7 +6,7 @@ module gunbc.integration_concern.h11ssl_unit3_t10_cap_applied_by_a_unit_the_mode
 
 import std.algebra { FreeSemigroup }
 import std.decl_ref { decl_ref }
-import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern, Open, RequirementUnestablished, SuspectedCapabilityGap, h11ssl_unit3_gpu_power_receipt, h11ssl_unit3_gpu_rows_revision, h11ssl_unit3_operator_answers_revision }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, IntegrationConcern, Open, RequirementUnestablished, SuspectedCapabilityGap, fleet_host_state_pass_2026_11_24_revision, h11ssl_unit3_gpu_power_receipt, h11ssl_unit3_gpu_rows_revision, h11ssl_unit3_operator_answers_revision }
 
 // THE CAP THE MODEL HOLDS AND THE CAP THE MACHINE RUNS are two different things, and the model has a shape for
 // one of them. This row says which half is missing -- it does NOT license booting the hand unit into the model.
@@ -59,6 +59,24 @@ data h11ssl_unit3_t10_cap_applied_by_a_unit_the_model_cannot_express: Integratio
           ],
         },
         account: "The operator's own read of 2026-11-19 states the same three cards (01:00.0, 81:00.0, c1:00.0) each capped at 100 W, and states the purpose the model was missing on one point: the three serve as ONE ken-strata server on :18081. It does not state the thing this row asks for. 100 W appears as a number both the 2026-11-18 driver read and this statement agree on; whether it bounds sustained draw or peak draw, and what rule sets it, is still unstated -- so the figure is NOT minted into gunbc.serving.gpu_power_state_policy::ken_t10_cap_decision as a timescale, which stays CappedQuantityUnstated, and the four values this row names as missing from the model (the unit file's digest, that unit's own journal claim lines, a `requires` edge on PowerCapBootUnit, and an arm for a cap rule stated as each card's own minimum) stay missing.",
+      },
+      // The 2026-11-24/25 serving pass moved this row on three points and left its ask intact.
+      ConcernSighting {
+        revision: fleet_host_state_pass_2026_11_24_revision,
+        evidence: FreeSemigroup {
+          head: CitesDeclaration {
+            declaration: decl_ref(module_path: "gunbc.fleet.gpu_power_cap_boot_state", decl_name: "clock_lock_commands"),
+          },
+          tail: [
+            CitesDeclaration {
+              declaration: decl_ref(module_path: "gunbc.serving.router_dev_policy", decl_name: "srv1_router_rows_removed_at_the_2026_11_24_pass"),
+            },
+            CitesDeclaration {
+              declaration: decl_ref(module_path: "gunbc.fleet.gpu_power_cap_boot_state", decl_name: "fleet_power_cap_boot_units_beyond_srv1"),
+            },
+          ],
+        },
+        account: "The pass read the SCRIPT this time -- /usr/local/sbin/t10-power-cap.sh, sha256sum a3ce006b..25a0a over ssh -- which closes the digest item for the script while leaving the item this row actually asks for open: t10-power-cap.service's own bytes are still unread, its journal claim lines still unrecorded, and PowerCapBootUnit still has no `requires` edge and no arm for the script's rule (cap each card at ITS OWN minimum, by enumerated index, failing unless EXPECT=3 are seen). What the pass ADDED to the script is a clock ceiling, which is a new kind of line for this mechanism: CLOCK_MAX=1000 with `nvidia-smi -i $i -lgc 300,$CLOCK_MAX` per GPU, and gunbc.fleet.gpu_power_cap_boot_state now carries such lines in PowerCapBootUnit.clock_lock_commands rather than in prose. The choice came from a locked-clock sweep under live serving traffic (kensweep.sh; 150 s per level, reading nvidia-smi power.draw, clocks.sm, utilization and clocks_throttle_reasons once a second, with decode taken from /metrics totals): unlocked, the cards swung 510-1575 MHz pinned at the cap at 92-96 W, and locked at 1000 MHz the two cooler cards held ~990 MHz power-capped 1% of the time at 68-80 W, while GPU1 (81:00.0, 82 C) stayed power-bound at every level (~790 MHz at 83 W, 83-88 W even at 600-800 MHz, i.e. leakage) and so set the pace for the 3-way split. Those are single readings under live load, not averages, and the window decode rate was too noisy to decide on -- the sweep's own note. Separately, the T10 ENGINE service h11-strata-t10.service was stopped and disabled at ~09:30 UTC on 2026-11-24 and the router's h11-t10 row was removed with it (upstreams.json.bak-before-h11-t10-off-20261124T093043Z beside the live file); after the stop the card idled at 13.9 W in P8 against ~47 W before, both nvidia-smi power.draw readings over ssh, single readings. The cap unit itself was left alone, and the operator may physically pull the card later -- so this row stays Open: a pulled card dissolves several of these asks and none of them can be closed by reading a unit that may not survive the week.",
       },
     ],
   },

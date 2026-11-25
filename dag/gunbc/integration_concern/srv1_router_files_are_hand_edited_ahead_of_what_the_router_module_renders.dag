@@ -1,0 +1,99 @@
+module gunbc.integration_concern.srv1_router_files_are_hand_edited_ahead_of_what_the_router_module_renders
+
+// One row of the integration-concern register. The roster derives the row from this file (module gunbc.integration_concern.roster);
+// there is no list to append to.
+
+import std.algebra { FreeSemigroup }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
+import std.decl_ref { decl_ref }
+import gunbc.integration_concern {
+  ConcernSighting, IntegrationConcern, Open, SuspectedFork, CitesDeclaration, CitesArtifact,
+  srv1_router_files_are_hand_edited_ahead_of_what_the_router_module_renders_authorities,
+  fleet_host_state_pass_2026_11_24_revision,
+}
+
+// ONE QUESTION, TWO ANSWERS: what does the srv1 pool router do with a request, and which upstreams may it
+// put it on? gunbc.serving.router_dev_policy renders the proxy's configuration
+// (router_dev_config, staged by router_dev_srv1_write_candidate and written by
+// router_dev_srv1_write_config) and its row set (router_dev_first_party, whose keyless bytes
+// router_dev_srv1_write_first_party_upstreams writes for the deploy to join keys into). The host runs
+// something else: the operator's hand-managed ~/router/nginx.conf and ~/router/upstreams.json, edited
+// eleven times across 2026-11-24 and 2026-11-25 with a timestamped backup kept beside the file for each
+// edit. Both answer the question. Neither reads the other. That is the fork.
+//
+// The observation rows in gunbc.serving.router_dev_policy record the live state faithfully and change
+// nothing: they key each file to the declaration that renders it, carry the digest the host's own sha256sum
+// printed, the instrument that produced it, and the reason each difference exists. They are a witness, not
+// a second renderer -- which is why this is filed as a fork rather than as a capability gap: the model CAN
+// express everything the host holds. It is the host that is not running the model.
+//
+// WHAT THE LIVE FILES HOLD THAT THE RENDER DOES NOT PRODUCE, in one list, each keyed in the observation
+// rows to the symbol it departs from:
+//
+//   nginx.conf -- an oldest-live-waiter-first fair queue, a long-wait escape, sideways moves restricted to
+//     measured imbalance, a rule that a long wait no longer overrides retain (2026-11-25 04:31 UTC), and a
+//     rule that a waiter bound 600 s or more may take a free rented overflow slot (05:36 UTC); each itemised
+//     in srv1_router_nginx_hand_edits_2026_11_24_25 with the backup it replaced. These are the decisions
+//     gunbc.serving.router_realization forbids in the proxy and gunbc.serving.router_dev_scaffold names as
+//     debt item by item; the operator's 2026-11-25 direction is a real fabric scheduler in their place.
+//   upstreams.json -- retain on every first-party row is the card's cache capacity in conversations, not
+//     the anchor's derivation; four live rows come from no render at all (ken, h11-03, h11-83, and the
+//     rented aws-i-03948dff6672bba2e, which the rental loop owns and added); the h11-t10 row was removed
+//     when its engine was stopped; and four rows the render DOES produce (h11-05, h11-07, h11-08, h11-88)
+//     are not live at all, so the h11 naming rows and the h11 engines have drifted apart on buses.
+//   /etc/systemd/system/gunbc-router.service -- the boot start of the container itself, created on the host
+//     2026-11-23 and in no repo, because extdeps.systemd.unit_file has no Documentation= directive and no
+//     comment carrier for the lines this unit carries inside its sections.
+//
+// WHY THIS IS NOT THE ROUTER SEMANTICS CONCERN. The queue and relocation rules above may be right -- they
+// were written under live traffic, and they fixed measured failures today -- and this row takes no position
+// on them. The concern is that the answer to one question is being held twice, with no receipt either way:
+// a deploy that runs router_dev_srv1_write_config today would overwrite the operator's admission rules with
+// the render, and nothing in the model would notice or refuse. That is the failure this register exists for.
+data srv1_router_files_are_hand_edited_ahead_of_what_the_router_module_renders: IntegrationConcern = IntegrationConcern {
+  identity: "srv1_router_files_are_hand_edited_ahead_of_what_the_router_module_renders",
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "gunbc.serving.router_dev_policy", decl_name: "router_dev_config"),
+    tail: [
+      decl_ref(module_path: "gunbc.serving.router_dev_policy", decl_name: "router_dev_first_party"),
+      decl_ref(module_path: "gunbc.serving.router_dev_policy", decl_name: "router_dev_srv1_write_config"),
+      decl_ref(module_path: "gunbc.serving.router_dev_policy", decl_name: "srv1_router_live_rows_2026_11_25"),
+      decl_ref(module_path: "gunbc.serving.router_dev_policy", decl_name: "srv1_router_boot_unit_observation"),
+      decl_ref(module_path: "gunbc.serving.router_realization", decl_name: "router_capabilities"),
+    ],
+  },
+  question: "Which artifact answers \"what does the srv1 router do\" -- the bytes router_dev_policy renders, or the hand-edited files in ~/router on srv1? Until one of them is the answer, a deploy can overwrite the operator's admission rules with a render nobody re-checked, an upstream can be live that no row produces and nobody owns, and the boot start of the whole pool can rest on a unit no repo holds.",
+  kind: SuspectedFork { authorities: srv1_router_files_are_hand_edited_ahead_of_what_the_router_module_renders_authorities },
+  sightings: [
+    ConcernSighting {
+      revision: fleet_host_state_pass_2026_11_24_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration {
+          declaration: decl_ref(module_path: "gunbc.serving.router_dev_policy", decl_name: "srv1_router_nginx_conf_observation"),
+        },
+        tail: [
+          CitesDeclaration {
+            declaration: decl_ref(module_path: "gunbc.serving.router_dev_policy", decl_name: "srv1_router_upstreams_json_observation"),
+          },
+          CitesDeclaration {
+            declaration: decl_ref(module_path: "gunbc.serving.router_dev_policy", decl_name: "every_diverging_live_row_agrees_with_the_projection"),
+          },
+          CitesArtifact {
+            label: "srv1 ~/router/nginx.conf, sha256 read by sha256sum over ssh at the 2026-11-25T06:10Z pass,
+            sha256: Sha256Digest { hex: "dbe82cd6d21b456b8d1626255f64890029e51bcfa43ec6d4daf2fb8e88d136c0" as Sha256DigestHex },
+          },
+          CitesArtifact {
+            label: "srv1 ~/router/upstreams.json, sha256 read by sha256sum over ssh at the same pass,
+            sha256: Sha256Digest { hex: "92bd52eddd87dcfda969b926ffb23f1bc1109373fef8156fbddc1884139f7537" as Sha256DigestHex },
+          },
+          CitesArtifact {
+            label: "srv1 /etc/systemd/system/gunbc-router.service, sha256 read by sha256sum over ssh at the 2026-11-24T22:03-22:05Z pass,
+            sha256: Sha256Digest { hex: "965a551b3d5422f9f8b32fee5082881b742ebac13a9248e5394dcf05333d89c0" as Sha256DigestHex },
+          },
+        ],
+      },
+      account: "The 2026-11-24/25 serving pass read the router's live files and the render side by side. nginx.conf (dbe82cd6..136c0) is not the render's bytes and the difference is five admission/relocation rules written by hand under live traffic; upstreams.json (92bd52ed..f7537) carries eight live rows, of which four no render produces and four the render produces that are not live, and every retain on it is a measured cache capacity rather than the capacity anchor's figure (srv1-vllm and srv1-vllm-1 at 28 against a derived 16, srv3-strata at 16 against 8, srv4-strata at 8 against 4 -- the vLLM figures read from vllm:prefix_cache_{hits,queries}_total and vllm:external_prefix_cache_{hits,queries}_total sampled twice and differenced, with the LMCache logs on srv1, and the Strata figures read from each engine's own conversation-cache slot count). The container's boot unit is in no repo at all. Nothing refused when the files drifted and nothing refuses now if the deploy writes the render back over them; the render and the host are simply two answers, and the pass has recorded the host's.",
+    },
+  ],
+  disposition: Open,
+}

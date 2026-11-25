@@ -1402,6 +1402,7 @@ fn design_rulings() -> List<DesignRuling> {
     operator_hand_applied_srv3_srv4_power_caps_2026_11_24,
     operator_cpu_freq_cap_standing_unsaid_2026_11_24,
     heal_mirror_convergence_held_until_merge_base_build_is_measured_2026_11_24,
+    srv4_expert_l1_cap_raised_to_srv3s_2026_11_24,
     declared_intent_separates_independent_choices_2026_11_23,
     value_disposition_and_named_binding_use_are_explicit_2026_11_23,
     type_relationships_are_declared_and_transparent_reference_is_explicit_2026_11_23,
@@ -1794,6 +1795,26 @@ data market_vocabulary_is_fix_and_matching_is_std_decision: DesignRuling = Desig
   decided: "2026-11-23",
   governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "selection_precedes_convergence"),
   provenance: "Operator, 2026-11-23, directly in session proud-pike-550. On the market model, verbatim: \"regarding market ruling/broker - the terms i would use are the literal like market maker/trading terms, just to keep things consistent - i think i tried this in the past but not sure i did this well enough.  personally i don't care who acts as the broker, but just note this will be used in a very wide range of applications, not just kclusters\". Asked whether product.fabric.selection select_supply should be rebuilt on std.decision with a per-candidate run-time term rather than keeping two decision engines, verbatim: \"2. yes\". Offered the FIX protocol as the grounding for the vocabulary, verbatim: \"FIX is fine, thanks\". DECIDED. (a) The market is named in the literal vocabulary of trading: order, side, limit price, time in force, order status, fill, execution report, cancel and cancel-replace from a cited, versioned extdeps model of FIX; order book, matching engine, broker, market maker, venue, clearing and settlement as roles defined once in the market layer. The new names replace the current ones (BuyTerms, maximum_buy_order, SupplierOffer, contention and their kin); none is kept beside them (gunbc.design_argument::single_authority). (b) Broker, market maker and venue are ROLES, not components: who plays each is not fixed, and the design serves a wide range of applications, not only clusters. (c) There is one matching engine, built on std.decision over std.pareto axes, with a per-candidate run-time term; select_supply is rebuilt on it rather than kept as a second engine. Matching on several terms rather than one price is the product's own matching policy, which FIX leaves to the venue rather than forbids, and is stated on the market layer. (d) Each order declares its time in force, which is where waiting versus refusing is decided.",
+}
+
+// THE srv4 ENGINE CAP RAISED TO srv3's, ON THE OPERATOR'S WORD (2026-11-24).
+// srv4's daily engine has run under its own drop-in since 2026-11-09, when the operator accepted a small
+// RAM cap over the mmap-ed expert tier (gunbc.design_ruling::srv3_experts_mmap_under_service_cap carries
+// that direction, and srv4's 56 GiB/64 GiB drop-in is the figure it left in place). On 2026-11-24 the cap
+// was raised past that -- MemoryHigh 56G/64G to 96G/112G, srv3's numbers -- because the mmap-ed experts'
+// page cache is charged to this cgroup, so at 64G the conversation cache had ~2-3 GB of room and refused to
+// park every conversation ("skip parking (physical RAM admission ...)"), re-reading 75-95k-token prompts
+// cold on every turn. A raise that far is not a tuning edit the model may assume: the ceiling is what
+// gunbc.serving.serving_reservation charges srv4's runner seat for, and the fleet's precedent is the
+// opposite direction (gunbc.design_ruling::ken_strata_memory_trim_buys_two_build_seats_2026_11_19 lowered a
+// serving ceiling precisely to free CI seats). So the operator's word is recorded here, and the model row
+// keeps the figure its own read supports until the memory-budget class (B2) derives the cap from the
+// engine's parts and settles what srv4's seat costs at 112 GiB.
+data srv4_expert_l1_cap_raised_to_srv3s_2026_11_24: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "srv4_expert_l1_cap_raised_to_srv3s_2026_11_24"),
+  decided: "2026-11-24",
+  governs: decl_ref(module_path: "gunbc.serving.serving_host_memory", decl_name: "srv4_serving_engine_memory"),
+  provenance: "Operator, 2026-11-24, through the serving session's host pass, which recorded the host's state and the instrument behind each figure (the pass's addendum, and the repo TODO list of 2026-11-25). The change is on the host, applied live ~21:33 UTC on 2026-11-24: /etc/systemd/system/gunbc-srv4-daily-engine.service.d/60-expert-l1-cap.conf reads MemoryHigh=96G, MemoryMax=112G (sha256 eb2b16e57eea76f2dd534c0bbb7aa016024462ad580cfb3836a1e8fad8bf581b, read by sha256sum over ssh), the file's own comment dating the raise and naming the failure it fixes -- the mmap-ed experts' page cache charged to this cgroup, leaving the conversation cache ~2-3 GB and the engine refusing to park every conversation, so 75-95k-token prompts re-read cold each turn; the enclosing slice (gunbc-srv4-daily.slice) caps at 96G/120G, so the service is now the tight edge again, as it was on 2026-11-09. DEVIATION FROM A RECORDED DIRECTION: srv3_experts_mmap_under_service_cap (operator 2026-11-09, 'sounds good' to --mmap-experts under a capped memory limit like srv4) is the direction the 56 GiB/64 GiB figure came from, and this raise supersedes that figure for srv4 while leaving the direction -- experts mmap-ed under a service cap -- intact. It is not free: the ceiling is the figure gunbc.serving.serving_reservation charges srv4's runner seat for, and srv4 also serves CI (gunbc.design_ruling::srv3_srv4_fabric_slots_serve_ci). DECIDED, for the host: the file stays as the operator left it. NOT YET DECIDED, for the model: srv4_serving_engine_memory still carries the 56 GiB/64 GiB read of 2026-11-09 as a declared divergence (gunbc.serving.serving_host_memory::srv4_engine_l1_cap_drop_in_observation_2026_11_24), because the cap must be derived from the engine's parts rather than hand-set (B2) and because what a 112 GiB ceiling costs srv4's CI seat is a separate arithmetic the operator has not been asked.",
 }
 
 data live_router_changes_of_2026_11_23_are_requirements_evidence: DesignRuling = DesignRuling {
