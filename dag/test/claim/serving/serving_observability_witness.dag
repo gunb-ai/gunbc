@@ -6,69 +6,57 @@ import std.optional { Optional, Present, Absent }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import gunbc.serving.serving_observability {
   EngineFrontProxyVerdict, EngineFrontProxyRendered, EngineFrontProxyRefused,
-  EngineFrontProxyRefusal, OmitsRequiredRoute, EngineFrontRoute,
-  engine_front_required_routes, engine_front_proxy_config, engine_front_render_forwards_route,
-  engine_front_route_consumer,
-  InstrumentDecision, NotAnInstrument, cold_token_cause_breakdown_standing,
-  RouterProbeStanding, TransientReceiptOfHandManagedRouter, router_probe_line_standing,
+  EngineFrontRoute, engine_front_required_routes,
+  engine_front_proxy_config, engine_front_render_forwards_route,
+  engine_front_route_consumer, engine_front_unserved_consumers,
+  InstrumentDecision, NotAnInstrument, NamedInstrument, cold_token_cause_breakdown_standing,
+  RouterProbeStanding, TransientReceiptOfHandManagedRouter, ModelledRouterInstrument, router_probe_line_standing,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
-
-// srv4's hand-managed TLS front (/opt/gunbc-serving/srv4-daily/nginx.conf) forwards the /v1/ inference
-// routes and answers `return 404` to everything else, so /metrics is NOT forwarded. That forwarded set is
-// what a hand-written proxy actually proxies; this is the observed misconfiguration, fed as the input the
-// model must refuse.
-fn srv4_forwarded_routes() -> List<NonEmptyStr> {
-  [ "/v1/chat/completions" as NonEmptyStr, "/v1/models" as NonEmptyStr ] as List<NonEmptyStr>
-}
-
-// A front door that has learned the consumed-requirement lesson: every route a fleet reader needs is
-// forwarded, including the metrics route srv4 dropped.
-fn complete_forwarded_routes() -> List<NonEmptyStr> {
-  map(engine_front_required_routes, r => r.path)
-}
-
-fn front(forwarded: List<NonEmptyStr>) -> EngineFrontProxyVerdict {
-  engine_front_proxy_config(
-    bind_address: "0.0.0.0" as NonEmptyStr,
-    listen_port: 8443,
-    tls_cert: "/etc/tls/engine.crt" as NonEmptyStr,
-    tls_key: "/etc/tls/engine.key" as NonEmptyStr,
-    engine_host: "127.0.0.1" as NonEmptyStr,
-    engine_port: 8080,
-    forwarded: forwarded,
-  )
-}
 
 // The /metrics reader the roster names, as a typed reference the witness compares against (not a grep).
 fn metrics_reader_ref() -> DeclarationRef {
   decl_ref(module_path: "gunbc.serving.engine_progress", decl_name: "engine_progress_read")
 }
 
-// RED: srv4's front door is refused, naming the route it dropped AND the typed consumer whose read it
-// blocked. The misconfig is unrenderable rather than something a downstream check has to catch.
-test fn srv4_front_dropping_the_metrics_route_is_refused_naming_route_and_consumer() -> Bool {
-  match front(forwarded: srv4_forwarded_routes()) {
-    EngineFrontProxyRefused { refusal: OmitsRequiredRoute { route: r, consumer: c } } =>
-      (r as String) == "/metrics" && declaration_ref_eq(a: c, b: metrics_reader_ref())
-    _ => false
-  }
+// srv4's hand-managed TLS front (/opt/gunbc-serving/srv4-daily/nginx.conf) actually forwards only the /v1/
+// inference routes and answers `return 404` to everything else, so /metrics is not forwarded. This is the
+// OBSERVED host forwarded set -- an observation read off the host, used to reconcile against the roster.
+fn srv4_observed_forwarded() -> List<NonEmptyStr> {
+  [ "/v1/chat/completions" as NonEmptyStr, "/v1/models" as NonEmptyStr ] as List<NonEmptyStr>
 }
 
-// The complete front -- every consumed route forwarded -- is ACCEPTED (the refusal is discriminating, not
-// always-on: only the consumed-requirement roster is enforced).
-test fn the_complete_front_door_is_accepted() -> Bool {
-  match front(forwarded: complete_forwarded_routes()) {
-    EngineFrontProxyRendered { text: _ } => true
-    _ => false
-  }
+// A front that forwards every roster route (the reconciled, correct host state).
+fn complete_observed_forwarded() -> List<NonEmptyStr> {
+  map(engine_front_required_routes, r => r.path)
 }
 
-// The accepted front actually PROXIES the metrics and inference routes to the engine: the rendered bytes
-// carry a proxy_pass for each, which is the point of those routes being consumed requirements.
-test fn the_accepted_front_proxies_the_metrics_and_inference_routes() -> Bool {
-  match front(forwarded: complete_forwarded_routes()) {
+// RED: reconciling srv4's OBSERVED forwarded set against the roster names the consumer whose read the
+// hand-managed front blocked -- the /metrics reader, by typed reference. This is the class made decidable:
+// nothing refuses it in production yet (that is the ledger's climb), but the model now SAYS who is shut out.
+test fn srv4_observed_front_blocks_the_metrics_consumer() -> Bool {
+  let blocked = engine_front_unserved_consumers(observed: srv4_observed_forwarded())
+  any(blocked, c => declaration_ref_eq(a: c, b: metrics_reader_ref()))
+}
+
+// Positive control on the reconciliation: a front that forwards every roster route blocks no consumer.
+test fn a_complete_observed_front_blocks_no_consumer() -> Bool {
+  !any(engine_front_unserved_consumers(observed: complete_observed_forwarded()), c => true)
+}
+
+// The RENDER is derived from the roster with no forwarded input: it always proxies every consumed route,
+// so a front missing /metrics has no constructor (guarantee_ladder). This asserts the metrics and inference
+// routes really reach the engine in the rendered bytes.
+test fn the_rendered_front_always_proxies_the_consumed_routes() -> Bool {
+  match engine_front_proxy_config(
+    bind_address: "0.0.0.0" as NonEmptyStr,
+    listen_port: 8443,
+    tls_cert: "/etc/tls/engine.crt" as NonEmptyStr,
+    tls_key: "/etc/tls/engine.key" as NonEmptyStr,
+    engine_host: "127.0.0.1" as NonEmptyStr,
+    engine_port: 8080,
+  ) {
     EngineFrontProxyRendered { text: t } =>
       engine_front_render_forwards_route(text: t, route: "/metrics" as NonEmptyStr)
         && engine_front_render_forwards_route(text: t, route: "/v1/chat/completions" as NonEmptyStr)
@@ -77,7 +65,7 @@ test fn the_accepted_front_proxies_the_metrics_and_inference_routes() -> Bool {
 }
 
 // CONSUMPTION (typed, not a grep): the roster's /metrics consumer is the engine_progress reader, reached by
-// executing engine_front_route_consumer -- the same accessor the ledger uses, so this is not a shape check.
+// executing engine_front_route_consumer -- the same accessor the ledger uses, so not a shape check.
 test fn the_metrics_route_names_its_progress_consumer_by_reference() -> Bool {
   match engine_front_route_consumer(path: "/metrics" as NonEmptyStr) {
     Present { value: c } => declaration_ref_eq(a: c, b: metrics_reader_ref())
@@ -96,8 +84,7 @@ test fn cold_token_cause_breakdown_is_recorded_not_an_instrument_with_a_typed_co
 }
 
 // ITEM (3): the router probe lines' standing is the transient receipt of the HAND-MANAGED router, and it
-// names the modelled rows that retire it by typed reference -- reached by reading the typed carrier, not by
-// grepping a prose paragraph.
+// names the modelled rows that retire it by typed reference -- read off the typed carrier, not grepped.
 test fn router_probe_line_standing_is_a_hand_managed_receipt_pointing_at_the_modelled_rows() -> Bool {
   let s = router_probe_line_standing
   match s.standing {
