@@ -884,51 +884,6 @@ fn roadmap_merge_event_for_step(
   }
 }
 
-// THE MERGE TIME THIS NODE'S LOG STATES FOR ITS LIVE ACCEPTANCE, from whichever event states it — ONE
-// reader, so no reader picks a source and two readers disagree (gunbc.design_argument::single_authority).
-// The read keys on the SAME identity the admission law compares — the live acceptance's accepted pr_url +
-// head_sha (roadmap_merge_event_for) — NOT on the latest merge event anywhere. That was the defect the
-// operator's review found (via Manager B, 2026-11-24): a node merged on head A, re-accepted on head B, and
-// not yet merged on B would state A's time as if B had landed — a merge time belonging to a superseded
-// acceptance, stated for a head that has not merged, which is the plausible fabrication
-// gunbc.design_argument::fail_closed rules out ("no plausible output is fabricated"). Trust order inside
-// the identity is unchanged: the node's OWN merge event for that identity (the fact's home since the
-// ruling, and the only one that also names the merge sha) first; otherwise a live acceptance written
-// before the ruling, which carried a merge time inside its evidence, or one the operator-close route
-// recorded from GitHub-verified pull-request facts (gunbc.roadmap.roadmap_operator_acceptance
-// OperatorClosePrFacts — that route writes one only where the host has verified the merge). An empty
-// string is the row's own spelling of "no such fact is stated": a node accepted on a head that has not
-// merged states no merge time at all, and that is the point of the ruling.
-fn roadmap_merged_at_stated_by(envs: List<RoadmapEventEnvelope>) -> String {
-  match roadmap_live_acceptance_evidence(envs: envs) {
-    Absent => ""
-    Present { value: evidence } => match evidence {
-      // A migration acceptance names no thread and no head, so there is no current identity whose merge
-      // this reader could state. The whole-history read it replaces could only guess.
-      NoPullRequest => ""
-      AcceptedOnPullRequestHead { pr_url, head_sha } =>
-        match roadmap_merge_event_for(envs: envs, pr_url: pr_url as String, head_sha: head_sha as String) {
-          Present { value: env } => match env.event.kind {
-            PullRequestMergedEvent { merge } => merge.merged_at as String
-            _ => ""
-          }
-          Absent => ""
-        }
-      // The pre-ruling merged arm names its head too, so it keys the same way: this row states its own
-      // embedded time only for the identity IT names, and if that identity's own merge event landed, the
-      // merge event is the fact's home and its time is preferred.
-      EarnedByPullRequest { pr_url, merged_at: _, head_sha } =>
-        match roadmap_merge_event_for(envs: envs, pr_url: pr_url as String, head_sha: head_sha as String) {
-          Present { value: env } => match env.event.kind {
-            PullRequestMergedEvent { merge } => merge.merged_at as String
-            _ => roadmap_acceptance_pr_evidence_merged_at(evidence: evidence)
-          }
-          Absent => roadmap_acceptance_pr_evidence_merged_at(evidence: evidence)
-        }
-    }
-  }
-}
-
 // THE RECEIPT'S OWN MEMBERS, in a fixed order, with the two nested evidences as objects. The digest
 // is written as its serialize_content_hash string, which is exactly how the fabric tail spelled it,
 // so a migrated receipt and a freshly recorded one name the same bytes.

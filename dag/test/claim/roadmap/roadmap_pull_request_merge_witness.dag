@@ -28,7 +28,7 @@ import gunbc.roadmap.roadmap_event_log {
   AcceptanceRecordedEvent, AcceptancePrEvidence, NoPullRequest, AcceptedOnPullRequestHead, EarnedByPullRequest,
   PullRequestMergedEvent, PullRequestMergeEvidence, PullRequestMergeAdmission, MergeAdmitted, MergeRefused,
   roadmap_pull_request_merge_admission, roadmap_pull_request_merge_evidence_from_args,
-  roadmap_pull_request_merge_evidence_holds, roadmap_merged_at_stated_by, roadmap_node_merge_event,
+  roadmap_pull_request_merge_evidence_holds, roadmap_merge_event_for, roadmap_acceptance_pr_evidence_merged_at, roadmap_node_merge_event,
   RoadmapNodeStanding, NodeAccepted, roadmap_node_standing,
 }
 import gunbc.roadmap.roadmap_event_cli { roadmap_event_kind_from_words }
@@ -47,6 +47,27 @@ fn merge_sha() -> String { "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef" }
 fn thread() -> String { "https://github.com/gunb-ai/gunbc/pull/15267" }
 fn other_thread() -> String { "https://github.com/gunb-ai/gunbc/pull/99999" }
 fn merged_at() -> String { "2026-11-23T02:17:09Z" }
+
+// THE READER, DIRECT: the merge time for one identity comes from that identity's own merge event —
+// roadmap_merge_event_for, the same key the admission law compares. Absence is the typed Absent of
+// std.optional (gunbc.design_ruling::dag_absence_is_one_meaning): there is no empty-string sentinel, and
+// no String reader stands between the event and the witness that reads it.
+fn no_merge_for(envs: List<RoadmapEventEnvelope>, pr: String, head: String) -> Bool {
+  match roadmap_merge_event_for(envs: envs, pr_url: pr, head_sha: head) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+fn merge_states_time(envs: List<RoadmapEventEnvelope>, pr: String, head: String, want: String) -> Bool {
+  match roadmap_merge_event_for(envs: envs, pr_url: pr, head_sha: head) {
+    Present { value: env } => match env.event.kind {
+      PullRequestMergedEvent { merge } => (merge.merged_at as String) == want
+      _ => false
+    }
+    Absent => false
+  }
+}
 
 fn human() -> EventPrincipal {
   EventPrincipalAuthenticated { ref: PrincipalRef {
@@ -235,12 +256,12 @@ test fn a_reaccepted_head_states_no_merge_time_until_its_own_merge_lands() -> Bo
   let merge_b = merge_of(url: thread(), sha: head_b, at: at_b, msha: msha_b,
     parent: Present { value: acc_b.id }, at_time: "t4")
   accepted_standing(envs: [acc_a, merge_a, acc_b, merge_b])
-    // before B merges: no merge time stated for the live head, even though A's merge sits in the history
-    && roadmap_merged_at_stated_by(envs: [acc_a, merge_a, acc_b]) == ""
+    // before B merges: no merge event exists for B's identity, even though A's merge sits in the history
+    && no_merge_for(envs: [acc_a, merge_a, acc_b], pr: thread(), head: head_b)
     // after B merges: B's own time, read from B's own merge event
-    && roadmap_merged_at_stated_by(envs: [acc_a, merge_a, acc_b, merge_b]) == at_b
-    // with A still live, A's own time still reads (the keying did not break the current head)
-    && roadmap_merged_at_stated_by(envs: [acc_a, merge_a]) == merged_at()
+    && merge_states_time(envs: [acc_a, merge_a, acc_b, merge_b], pr: thread(), head: head_b, want: at_b)
+    // with A still live, A's own merge event still reads under A's identity (the keying did not break the current head)
+    && merge_states_time(envs: [acc_a, merge_a], pr: thread(), head: head(), want: merged_at())
 }
 
 // REFUSAL PLANT — malformed-merge-evidence. The law that compares heads is worthless if a head can arrive
@@ -265,15 +286,17 @@ test fn a_merge_that_does_not_name_all_four_well_is_refused() -> Bool {
       Absent => false Present { value: m } => roadmap_pull_request_merge_evidence_holds(merge: m) }
 }
 
-// THE MERGE EVENT IS THE MERGE TIME'S ONLY HOME, and a reader gets it from one place. Before the merge the
-// node's log states NO merge time; after it, the time the merge event stated. A pre-merge acceptance
-// therefore cannot be mistaken for an unmerged one, and an unmerged node is not silently given a date.
+// THE MERGE EVENT IS THE MERGE TIME'S ONLY HOME, and the reader is roadmap_merge_event_for itself — keyed
+// on the identity, answering with the typed Absent of std.optional until that identity's own merge lands.
+// Before the merge the node's log states NO merge time; after it, the time the merge event stated. A
+// pre-merge acceptance therefore cannot be mistaken for an unmerged one, and an unmerged node is not
+// silently given a date.
 test fn the_merge_time_a_reader_sees_comes_from_the_merge_event() -> Bool {
   let acc = acceptance_env(evidence: live_head(), at: "t1")
   let merged = merge_of(url: thread(), sha: head(), at: merged_at(), msha: merge_sha(),
     parent: none, at_time: "t2")
-  roadmap_merged_at_stated_by(envs: [acc]) == ""
-    && roadmap_merged_at_stated_by(envs: [acc, merged]) == merged_at()
+  no_merge_for(envs: [acc], pr: thread(), head: head())
+    && merge_states_time(envs: [acc, merged], pr: thread(), head: head(), want: merged_at())
 }
 
 // THE MERGE CHANGES NO STANDING. It records that what was accepted landed; it does not re-accept, re-open
@@ -289,10 +312,18 @@ test fn the_merge_event_moves_no_standing() -> Bool {
 // A ROW WRITTEN BEFORE THE RULING STILL READS, states the merge time it carried, and stays mergeable on the
 // head it names: the ruling is forward-looking, it revokes nothing and rewrites nothing.
 test fn a_pre_ruling_row_still_reads_and_states_its_merge_time() -> Bool {
-  let acc = acceptance_env(evidence: EarnedByPullRequest {
+  let legacy = EarnedByPullRequest {
     pr_url: thread() as NonEmptyStr, merged_at: merged_at() as NonEmptyStr,
-    head_sha: head() as NonEmptyStr }, at: "t1")
-  accepted_standing(envs: [acc]) && roadmap_merged_at_stated_by(envs: [acc]) == merged_at()
+    head_sha: head() as NonEmptyStr }
+  let acc = acceptance_env(evidence: legacy, at: "t1")
+  accepted_standing(envs: [acc])
+    // the pre-ruling row's embedded time reads through the one evidence accessor, keyed on the identity
+    // the row itself names; once a merge event for that identity exists, the event is the time's home.
+    && roadmap_acceptance_pr_evidence_merged_at(evidence: legacy) == merged_at()
+    && match roadmap_merge_event_for(envs: [acc], pr_url: thread(), head_sha: head()) {
+         Absent => true
+         Present { value: _ } => false
+       }
     && admitted(roadmap_pull_request_merge_admission(envs: [acc], merge: PullRequestMergeEvidence {
       pr_url: thread() as NonEmptyStr, head_sha: head() as NonEmptyStr,
       merged_at: merged_at() as NonEmptyStr, merge_sha: merge_sha() as NonEmptyStr }))

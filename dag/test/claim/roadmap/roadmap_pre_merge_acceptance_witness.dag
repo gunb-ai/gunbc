@@ -34,7 +34,7 @@ import gunbc.roadmap.roadmap_event_carrier {
   EventPublishState, Unpublished, Published, PublishedCoordinateUnread,
 }
 import gunbc.roadmap.roadmap_event_log {
-  NodeAccepted, roadmap_node_standing, roadmap_node_has_merge_event, roadmap_merged_at_stated_by,
+  NodeAccepted, roadmap_node_standing, roadmap_node_has_merge_event, roadmap_merge_event_for,
   roadmap_acceptance_pr_evidence_from_args, roadmap_node_standing_key,
 }
 import gunbc.roadmap.roadmap_event_cli {
@@ -182,13 +182,16 @@ fn pre_merge_witness(layout: RoadmapEventCarrierLayout) -> Bool {
                 other => claim("the node that was just accepted reads " + roadmap_node_standing_key(s: other) + " — the acceptance did not carry the standing by itself", false)
               }
               // 3. NO MERGE FACT, NOWHERE. The acceptance carries no merge field; nothing in this ledger
-              //    has ever mentioned a merge; and the time a reader would see for a merge is the empty
-              //    string, which the model reserves for "no merge has stated one" — never a guessed time
-              //    and never an empty placeholder standing in for one.
+              //    has ever mentioned a merge; and the merge event for the accepted identity is absent in
+              //    the typed sense (std.optional) — never a guessed time, never an empty string standing
+              //    in for one (gunbc.design_ruling::dag_absence_is_one_meaning).
               let no_merge = claim("no merge event exists in the ledger the acceptance was written to",
                            !roadmap_node_has_merge_event(envs: envelopes))
-                && claim("no merge time is stated by anything in it",
-                     roadmap_merged_at_stated_by(envs: envelopes) == "")
+                && claim("no merge event exists for the accepted identity — absence is typed, not an empty string",
+                     match roadmap_merge_event_for(envs: envelopes, pr_url: pair_url(), head_sha: pair_head()) {
+                       Absent => true
+                       Present { value: _ } => false
+                     })
               // 4. THE READ-BACK, in words a stranger can act on.
               let report = roadmap_event_publication_report_over(layout: layout, node: ledger_node(), event_id: event_id)
               let reads_landed = claim("the read-back says the event IS on the durable branch, and names it",
