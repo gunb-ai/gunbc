@@ -13,7 +13,7 @@ import std.optional { Present, Absent, optional_is_absent }
 import std.algebra { string_contains }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_identity }
 import std.interval { interval_high, interval_low }
-import std.measure { hertz, hertz_count, milli_tokens_per_second, milliwatt, watt, watt_count }
+import std.measure { hertz, hertz_count, milli_tokens_per_second, milliwatt, permille, permille_count, watt, watt_count }
 import std.pareto { AxisComparison, Better, SelectionAxis, UndecidedOnEvidence, Worse }
 import std.decision {
   CausalModelEstablished, ConstraintSatisfied, DecisionAssessment, FleetObservedCoupling,
@@ -30,7 +30,7 @@ import gunbc.fleet.fleet_power_circuit {
 import gunbc.serving.gpu_power_state_policy { GpuPowerCapSelection, OperatorDeclaredCap, SustainedPowerDraw }
 import gunbc.serving.gpu_power_cap_pricing {
   CapCandidate, CardCondition, CappedAt, CircuitRelief, Cool, DecodeRead, DrawRead, DrawSubject, GpuSubsystem,
-  HostLevel, Uncapped, Unlocked,
+  HostLevel, ShareRead, ShareUnread, ThrottleShare, Uncapped, Unlocked,
   ax_decode_tokens_per_second, ax_host_draw_watts, candidate_cap, cap_ask_subject, cap_ask_subject_identity,
   cap_ask_region, constraint_identity, decode_cost_of_step, funded_axes, gpu_draw_interval, host_draw_interval,
   host_draw_read_obligation, id_parameter, id_term, id_var, is_host_level_draw,
@@ -252,14 +252,28 @@ test fn a_reading_cannot_be_borrowed_across_hosts() -> Bool {
   is_undecided(c: priced_step(from: srv4_30w_30ghz_candidate, to: srv3_30w_2ghz_candidate))
 }
 
-// THE CLOCK CEILING IS PRICED ON THE SAME CANDIDATE, AND ITS PRICE DEPENDS ON THE CARD. At ken's 100 W cap,
-// the two cool T10s fell from 92-96 W unlocked to 68-80 W at a 1000 MHz ceiling -- Better -- while GPU1, at
-// 82 C, sat at 83 W at EVERY level. The ceiling and the cap are identical in those two candidates; only the
-// card's state differs, and the fold refuses to price a saving onto the leaky card. This is the pair that
-// makes "1000 MHz saves 15-25 W per card" a claim about a state rather than a fact about a control.
+// THE CLOCK CEILING IS PRICED ON THE SAME CANDIDATE, AND ITS PRICE DEPENDS ON THE CARD AND ON WHAT WAS
+// READ BESIDE THE WATTS. At ken's 100 W cap the two cool T10s read 92-96 W unlocked and 68-80 W at a 1000
+// MHz ceiling -- but the unlocked level's power-capped SHARE never made it onto the row: the label says
+// "pinned at the cap", the number is absent, and a watt saving of unknown kind (cap-bound or freewheeling)
+// is not a saving the model quotes. The typed share is read by the fold -- `priced_draw_step` refuses the
+// step across an unread one -- so it is evidence, not commentary. The leaky pair refuses for the OTHER
+// reason: same cap, same ceiling, 83 W at EVERY level while GPU1 sits at 82 C, and a fold that priced a step
+// onto that card would report a saving the card never made. Together these pairs make "1000 MHz saves 15-25
+// W per card" a claim about a state and a reading, not a fact about a control.
 test fn the_clock_ceiling_is_priced_and_the_card_conditions_it() -> Bool {
-  is_better(c: priced_draw_step(from: ken_t10_cool_unlocked_candidate, to: ken_t10_cool_1000mhz_candidate))
+  is_undecided(c: priced_draw_step(from: ken_t10_cool_unlocked_candidate, to: ken_t10_cool_1000mhz_candidate))
     && is_undecided(c: priced_draw_step(from: ken_t10_cool_unlocked_candidate, to: ken_t10_leaky_1000mhz_candidate))
+}
+
+// THE TYPED SHARE IS CONSUMED, NOT CITED. Identical watts, identical card, identical host: with the share
+// read (the 1500 MHz level) the watt step is Better; with the share unread (the twin) the SAME step is
+// UndecidedOnEvidence. This is the arm review 98680's second finding demanded -- a measured fraction that
+// changed nothing was a dangling declaration -- and it is what the share was always for: the observable that
+// tells a ceiling doing work from a card freewheeling below its cap.
+test fn a_watt_step_across_an_unread_share_is_not_priced() -> Bool {
+  is_better(c: priced_draw_step(from: srv4_sweep_unlocked_candidate, to: srv4_sweep_1500_candidate))
+    && is_undecided(c: priced_draw_step(from: srv4_sweep_unlocked_candidate, to: w_noshare_twin_candidate))
 }
 
 // ON srv4 THE CHOSEN CEILING BUYS WATTS, AND THE MODEL ALSO SEES THE LEVEL THE SWEEP DID NOT CHOOSE. At the
@@ -293,11 +307,12 @@ test fn every_gap_names_the_reading_that_would_close_it() -> Bool {
 // one-second readings per level, and the carrier holds the count so the two cannot be quoted alike.
 test fn the_sweep_carries_its_sample_count_and_its_throttle_share() -> Bool {
   match srv4_sweep_1500_candidate.draw {
-    DrawRead { draw_low: _, draw_high: _, samples: n, subject: _, throttle_share_note: note, observed_on: _, standing: _ } =>
+    DrawRead { draw_low: _, draw_high: _, samples: n, subject: _, throttle_share: sh, observed_on: _, standing: _ } =>
       n == 150
-        && match note {
-          Present { value: v } => string_contains(s: v as String, pattern: "power-capped" as String)
-          Absent => false
+        && match sh {
+          // 87% of the 1500 MHz level sat power-capped, carried as permille -- a measured fraction, not prose.
+          ShareRead { power_capped: pc, instrument: _ } => permille_count(p: pc) == 870
+          ShareUnread { read_obligation: _ } => false
         }
     _ => false
   }
@@ -396,7 +411,10 @@ data w_expensive_candidate: CapCandidate = CapCandidate {
       instrument: "fixture: wattmeter on the machine's feed, sampled across the decode window" as NonEmptyStr,
       covers: "the whole machine at its feed" as NonEmptyStr,
     },
-    throttle_share_note: Present { value: "fixture: 96% of the window power-capped" as NonEmptyStr },
+    throttle_share: ShareRead {
+      power_capped: permille(count: 960),
+      instrument: "fixture: clocks_throttle_reasons sampled across the window" as NonEmptyStr,
+    },
     observed_on: "fixture" as NonEmptyStr,
     standing: CitedToAuthority { authority: w_fixture_authority },
   },
@@ -426,7 +444,10 @@ data w_cheaper_candidate: CapCandidate = CapCandidate {
       instrument: "fixture: wattmeter on the machine's feed, sampled across the decode window" as NonEmptyStr,
       covers: "the whole machine at its feed" as NonEmptyStr,
     },
-    throttle_share_note: Present { value: "fixture: 87% of the window power-capped" as NonEmptyStr },
+    throttle_share: ShareRead {
+      power_capped: permille(count: 870),
+      instrument: "fixture: clocks_throttle_reasons sampled across the window" as NonEmptyStr,
+    },
     observed_on: "fixture" as NonEmptyStr,
     standing: CitedToAuthority { authority: w_fixture_authority },
   },
@@ -456,6 +477,43 @@ data w_cap_30: GpuPowerCapSelection = OperatorDeclaredCap {
 
 fn w_fixture_field() -> List<CapCandidate> { [w_expensive_candidate, w_cheaper_candidate] }
 
+// THE 1500 MHz LEVEL WITH ITS SHARE MISSING: every reading identical to srv4's chosen ceiling level except
+// the power-capped share, which was never written down. Used to show the fold NOTICES -- the same numbers
+// with the share present price a Better watt step; without it the step is unpriced.
+data w_noshare_identity: DeclarationRef = w_identity(name: "w-noshare-twin")
+
+data w_noshare_twin_candidate: CapCandidate = CapCandidate {
+  identity: w_noshare_identity,
+  label: "fixture twin of srv4's 1500 MHz level, 27.0 W, 26.1 tok/s, share unread" as NonEmptyStr,
+  host: operator_host_srv4,
+  gpu_cap: w_cap_30,
+  cpu_cap: Uncapped,
+  sm_clock: CappedWithin { maximum: hertz(count: 1500000000) },
+  condition: w_condition_cool,
+  decode: DecodeRead {
+    rate_low: milli_tokens_per_second(count: 26100),
+    rate_high: milli_tokens_per_second(count: 26100),
+    at_concurrency: 1,
+    window: "fixture window" as NonEmptyStr,
+    instrument: "fixture: sampled journal read" as NonEmptyStr,
+    standing: CitedToAuthority { authority: w_fixture_authority },
+  },
+  draw: DrawRead {
+    draw_low: milliwatt(count: 27000),
+    draw_high: milliwatt(count: 27000),
+    samples: 150,
+    subject: GpuSubsystem {
+      gpu: "srv4's serving pair, averaged" as NonEmptyStr,
+      instrument: "fixture: nvidia-smi power.draw across the level" as NonEmptyStr,
+    },
+    throttle_share: ShareUnread {
+      read_obligation: "fixture: clocks_throttle_reasons were sampled with the watts; the permille was not carried" as NonEmptyStr,
+    },
+    observed_on: "2026-11-24" as NonEmptyStr,
+    standing: CitedToAuthority { authority: w_fixture_authority },
+  },
+}
+
 // THE SAME TWO POINTS WITH THE HONEST SUBJECT: those watts came off nvidia-smi power.draw, which is the card
 // -- one subsystem of the machine. They are the 2026-11-24 field: the only readings the strip ask had.
 data w_gpu_only_expensive: CapCandidate = CapCandidate {
@@ -482,7 +540,10 @@ data w_gpu_only_expensive: CapCandidate = CapCandidate {
       gpu: "fixture card (nvidia-smi power.draw)" as NonEmptyStr,
       instrument: "fixture: nvidia-smi power.draw across the window" as NonEmptyStr,
     },
-    throttle_share_note: Present { value: "fixture: 96% of the window power-capped" as NonEmptyStr },
+    throttle_share: ShareRead {
+      power_capped: permille(count: 960),
+      instrument: "fixture: clocks_throttle_reasons sampled across the window" as NonEmptyStr,
+    },
     observed_on: "fixture" as NonEmptyStr,
     standing: CitedToAuthority { authority: w_fixture_authority },
   },
@@ -512,7 +573,10 @@ data w_gpu_only_cheaper: CapCandidate = CapCandidate {
       gpu: "fixture card (nvidia-smi power.draw)" as NonEmptyStr,
       instrument: "fixture: nvidia-smi power.draw across the window" as NonEmptyStr,
     },
-    throttle_share_note: Present { value: "fixture: 87% of the window power-capped" as NonEmptyStr },
+    throttle_share: ShareRead {
+      power_capped: permille(count: 870),
+      instrument: "fixture: clocks_throttle_reasons sampled across the window" as NonEmptyStr,
+    },
     observed_on: "fixture" as NonEmptyStr,
     standing: CitedToAuthority { authority: w_fixture_authority },
   },
@@ -548,7 +612,10 @@ data w_ken_host_candidate: CapCandidate = CapCandidate {
       instrument: "fixture: wattmeter on the machine's feed, sampled across the decode window" as NonEmptyStr,
       covers: "the whole machine at its feed" as NonEmptyStr,
     },
-    throttle_share_note: Present { value: "fixture: 87% of the window power-capped" as NonEmptyStr },
+    throttle_share: ShareRead {
+      power_capped: permille(count: 870),
+      instrument: "fixture: clocks_throttle_reasons sampled across the window" as NonEmptyStr,
+    },
     observed_on: "fixture" as NonEmptyStr,
     standing: CitedToAuthority { authority: w_fixture_authority },
   },

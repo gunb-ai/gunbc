@@ -6,6 +6,7 @@ import std.optional { Optional, Present, Absent, optional_is_absent }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_display_key, declaration_ref_eq }
 import std.integer { nat_to_int }
 import std.measure {
+  Permille, permille,
   Watt, watt, watt_count, Milliwatt, milliwatt, milliwatt_count,
   MilliTokensPerSecond, milli_tokens_per_second, milli_tokens_per_second_count, Hertz, hertz,
 }
@@ -227,8 +228,12 @@ type DecodeReading
 // draw here. A `DrawRead` is a sample set: `samples` says how many one-second readings the average came from,
 // which is what separates the sweep's 150-sample levels from the single hwmon apm_xgene readings the operator
 // themselves qualified ("the load also changed between readings, so the true saving is somewhat smaller").
-// `throttle_share_note` carries the share of the window the card sat power-capped -- the observable that
-// tells a ceiling doing work from a card that is leakage-bound. `DrawUnread` is still srv3's state for every
+// `throttle_share` carries the share of the window the card sat power-capped -- the observable that tells a
+// ceiling doing work from a card that is leakage-bound, which makes it a MEASURED FRACTION, not commentary:
+// it is carried in Permille (a tenth-of-a-percent resolution, so ken's "1%" and the sweep's whole-percent
+// figures live on one carrier) and `priced_draw_step` refuses to price the watt step between two levels
+// unless both sides' shares are read. A number nobody reads would be the dangling declaration this repo's
+// Consumption argument refuses; this one changes the answer. `DrawUnread` is still srv3's state for every
 // candidate, and srv4's for the single-stream windows: only the two 2026-11-24 sweeps averaged draw, at their
 // own levels.
 // WHAT THE INSTRUMENT WAS ACTUALLY ON. `GpuSubsystem` is an nvidia-smi power.draw reading off one card: a
@@ -240,13 +245,20 @@ type DrawSubject
   = GpuSubsystem { gpu: NonEmptyStr, instrument: NonEmptyStr }
   | HostLevel { instrument: NonEmptyStr, covers: NonEmptyStr }
 
+// THE SHARE OF THE WINDOW SPENT POWER-CAPPED, from clocks_throttle_reasons sampled with the watts. A card
+// pinned at its cap and a card freewheeling can print the same average watts; only the throttle share says
+// which was read, and the ceiling decision turns on it (see `priced_draw_step`).
+type ThrottleShare
+  = ShareRead { power_capped: Permille, instrument: NonEmptyStr }
+  | ShareUnread { read_obligation: NonEmptyStr }
+
 type DrawReading
   = DrawRead {
       draw_low: Milliwatt,
       draw_high: Milliwatt,
       samples: Nat,
       subject: DrawSubject,
-      throttle_share_note: Optional<NonEmptyStr>,
+      throttle_share: ThrottleShare,
       observed_on: NonEmptyStr,
       standing: CitedFigureStanding
     }
@@ -511,7 +523,7 @@ fn draw_interval_read(low: Milliwatt, high: Milliwatt) -> Optional<OrderedClosed
 // draw that can be scaled up -- the rest of the machine is unread, and an unread summand is not zero.
 fn host_draw_interval(c: CapCandidate) -> Optional<OrderedClosedInterval<Int>> {
   match c.draw {
-    DrawRead { draw_low: lo, draw_high: hi, samples: _, subject: s, throttle_share_note: _, observed_on: _, standing: _ } =>
+    DrawRead { draw_low: lo, draw_high: hi, samples: _, subject: s, throttle_share: _, observed_on: _, standing: _ } =>
       match s {
         HostLevel { instrument: _, covers: _ } => draw_interval_read(low: lo, high: hi)
         GpuSubsystem { gpu: _, instrument: _ } => Absent
@@ -522,7 +534,7 @@ fn host_draw_interval(c: CapCandidate) -> Optional<OrderedClosedInterval<Int>> {
 
 fn gpu_draw_interval(c: CapCandidate) -> Optional<OrderedClosedInterval<Int>> {
   match c.draw {
-    DrawRead { draw_low: lo, draw_high: hi, samples: _, subject: s, throttle_share_note: _, observed_on: _, standing: _ } =>
+    DrawRead { draw_low: lo, draw_high: hi, samples: _, subject: s, throttle_share: _, observed_on: _, standing: _ } =>
       match s {
         GpuSubsystem { gpu: _, instrument: _ } => draw_interval_read(low: lo, high: hi)
         HostLevel { instrument: _, covers: _ } => Absent
@@ -531,9 +543,23 @@ fn gpu_draw_interval(c: CapCandidate) -> Optional<OrderedClosedInterval<Int>> {
   }
 }
 
+// Was the power-capped share of this window read? The watt step between two levels is priced only when both
+// sides answer this: the share is what tells a ceiling doing work from a leakage-bound card, so a step across
+// an unread share would report a saving whose kind is unknown.
+fn share_is_read(c: CapCandidate) -> Bool {
+  match c.draw {
+    DrawRead { draw_low: _, draw_high: _, samples: _, subject: _, throttle_share: sh, observed_on: _, standing: _ } =>
+      match sh {
+        ShareRead { power_capped: _, instrument: _ } => true
+        ShareUnread { read_obligation: _ } => false
+      }
+    DrawUnread { read_obligation: _ } => false
+  }
+}
+
 fn is_host_level_draw(c: CapCandidate) -> Bool {
   match c.draw {
-    DrawRead { draw_low: _, draw_high: _, samples: _, subject: s, throttle_share_note: _, observed_on: _, standing: _ } =>
+    DrawRead { draw_low: _, draw_high: _, samples: _, subject: s, throttle_share: _, observed_on: _, standing: _ } =>
       match s {
         HostLevel { instrument: _, covers: _ } => true
         GpuSubsystem { gpu: _, instrument: _ } => false
@@ -561,7 +587,7 @@ fn decode_gaps_of(c: CapCandidate) -> List<AxisGap> {
 
 fn draw_gaps_of(c: CapCandidate) -> List<AxisGap> {
   match c.draw {
-    DrawRead { draw_low: lo, draw_high: hi, samples: _, subject: s, throttle_share_note: _, observed_on: _, standing: _ } =>
+    DrawRead { draw_low: lo, draw_high: hi, samples: _, subject: s, throttle_share: _, observed_on: _, standing: _ } =>
       match s {
         // The card's number sits on the card's axis -- and the host axis stays a gap HERE, its cause naming
         // what was offered and what would close it. This is the arm the 2026-11-24 pricing lacked: a GPU
@@ -819,7 +845,7 @@ fn same_state(a: CardThermalState, b: CardThermalState) -> Bool {
 
 // The same gate on the cost side, so a consumer cannot quote a watt saving across cards either.
 fn priced_draw_step(from: CapCandidate, to: CapCandidate) -> AxisComparison {
-  if cards_compare(a: from, b: to) {
+  if cards_compare(a: from, b: to) && share_is_read(c: from) && share_is_read(c: to) {
     match gpu_draw_interval(c: from) {
       Present { value: ai } => match gpu_draw_interval(c: to) {
         Present { value: bi } => axis_comparison_interval(goal: LowerIsBetter, a: bi, b: ai)
@@ -1012,12 +1038,12 @@ data draw_unread_srv4: DrawReading = DrawUnread {
 
 // One sweep level on srv4, at the 30 W cap. `samples` is the count of one-second readings behind the average
 // (the operator's own warning that the CPU figures were SINGLE readings is why the count is on the carrier
-// rather than implied); `throttle_share_note` carries what fraction of the window the card sat power-capped,
-// which is what separates a ceiling doing work from a card that is leakage-bound.
-fn srv4_sweep_decode(median_tenth: Nat) -> DecodeReading {
+// rather than implied). The rate and the watts arrive as their std.measure carriers, not as a private tenths
+// scale the call site would have to rescale correctly.
+fn srv4_sweep_decode(median: MilliTokensPerSecond) -> DecodeReading {
   DecodeRead {
-    rate_low: milli_tokens_per_second(count: median_tenth * 100),
-    rate_high: milli_tokens_per_second(count: median_tenth * 100),
+    rate_low: median,
+    rate_high: median,
     at_concurrency: 1,
     window: "2026-11-24, one 150 s level of the srv4 locked-clock sweep" as NonEmptyStr,
     instrument: "clocksweep.sh: decode from the engine's per-second progress lines, median per 150 s level" as NonEmptyStr,
@@ -1027,16 +1053,16 @@ fn srv4_sweep_decode(median_tenth: Nat) -> DecodeReading {
   }
 }
 
-fn srv4_sweep_draw(tenths_of_a_watt: Nat, note: String) -> DrawReading {
+fn srv4_sweep_draw(draw: Milliwatt, share: ThrottleShare) -> DrawReading {
   DrawRead {
-    draw_low: milliwatt(count: tenths_of_a_watt * 100),
-    draw_high: milliwatt(count: tenths_of_a_watt * 100),
+    draw_low: draw,
+    draw_high: draw,
     samples: 150,
     subject: GpuSubsystem {
       gpu: "srv4's serving pair, averaged" as NonEmptyStr,
       instrument: "clocksweep.sh: nvidia-smi power.draw read once a second across the 150 s level, averaged" as NonEmptyStr,
     },
-    throttle_share_note: Present { value: note as NonEmptyStr },
+    throttle_share: share,
     observed_on: "2026-11-24" as NonEmptyStr,
     standing: TranscribedUncited {
       read_obligation: "the sweep's raw per-second samples are on srv4, not committed; the average is over one 150 s level under live serving traffic, so it is one sample of a level, not the level" as NonEmptyStr,
@@ -1052,8 +1078,14 @@ data srv4_sweep_unlocked_candidate: CapCandidate = CapCandidate {
   cpu_cap: Uncapped,
   sm_clock: Unlocked,
   condition: condition_unread_srv4,
-  decode: srv4_sweep_decode(median_tenth: 280),
-  draw: srv4_sweep_draw(tenths_of_a_watt: 291, note: "96% of the window power-capped" as String),
+  decode: srv4_sweep_decode(median: milli_tokens_per_second(count: 28000)),
+  draw: srv4_sweep_draw(
+    draw: milliwatt(count: 29100),
+    share: ShareRead {
+      power_capped: permille(count: 960),
+      instrument: "clocksweep.sh: clocks_throttle_reasons read once a second across the 150 s level" as NonEmptyStr,
+    },
+  ),
 }
 
 data srv4_sweep_2400_candidate: CapCandidate = CapCandidate {
@@ -1064,8 +1096,14 @@ data srv4_sweep_2400_candidate: CapCandidate = CapCandidate {
   cpu_cap: Uncapped,
   sm_clock: CappedWithin { maximum: hertz(count: 2400000000) },
   condition: condition_unread_srv4,
-  decode: srv4_sweep_decode(median_tenth: 303),
-  draw: srv4_sweep_draw(tenths_of_a_watt: 280, note: "100% of the window power-capped" as String),
+  decode: srv4_sweep_decode(median: milli_tokens_per_second(count: 30300)),
+  draw: srv4_sweep_draw(
+    draw: milliwatt(count: 28000),
+    share: ShareRead {
+      power_capped: permille(count: 1000),
+      instrument: "clocksweep.sh: clocks_throttle_reasons read once a second across the 150 s level" as NonEmptyStr,
+    },
+  ),
 }
 
 data srv4_sweep_1800_candidate: CapCandidate = CapCandidate {
@@ -1076,8 +1114,14 @@ data srv4_sweep_1800_candidate: CapCandidate = CapCandidate {
   cpu_cap: Uncapped,
   sm_clock: CappedWithin { maximum: hertz(count: 1800000000) },
   condition: condition_unread_srv4,
-  decode: srv4_sweep_decode(median_tenth: 319),
-  draw: srv4_sweep_draw(tenths_of_a_watt: 276, note: "91% of the window power-capped" as String),
+  decode: srv4_sweep_decode(median: milli_tokens_per_second(count: 31900)),
+  draw: srv4_sweep_draw(
+    draw: milliwatt(count: 27600),
+    share: ShareRead {
+      power_capped: permille(count: 910),
+      instrument: "clocksweep.sh: clocks_throttle_reasons read once a second across the 150 s level" as NonEmptyStr,
+    },
+  ),
 }
 
 // THE LEVEL THE OPERATOR CHOSE for srv4: 210-1500 MHz. Priced, it is 2.1 W saved and 1.9 tok/s given up
@@ -1093,8 +1137,14 @@ data srv4_sweep_1500_candidate: CapCandidate = CapCandidate {
   cpu_cap: Uncapped,
   sm_clock: srv4_ceiling_1500_2026_11_24,
   condition: condition_unread_srv4,
-  decode: srv4_sweep_decode(median_tenth: 261),
-  draw: srv4_sweep_draw(tenths_of_a_watt: 270, note: "87% of the window power-capped" as String),
+  decode: srv4_sweep_decode(median: milli_tokens_per_second(count: 26100)),
+  draw: srv4_sweep_draw(
+    draw: milliwatt(count: 27000),
+    share: ShareRead {
+      power_capped: permille(count: 870),
+      instrument: "clocksweep.sh: clocks_throttle_reasons read once a second across the 150 s level" as NonEmptyStr,
+    },
+  ),
 }
 
 data srv4_sweep_1200_candidate: CapCandidate = CapCandidate {
@@ -1105,8 +1155,14 @@ data srv4_sweep_1200_candidate: CapCandidate = CapCandidate {
   cpu_cap: Uncapped,
   sm_clock: CappedWithin { maximum: hertz(count: 1200000000) },
   condition: condition_unread_srv4,
-  decode: srv4_sweep_decode(median_tenth: 238),
-  draw: srv4_sweep_draw(tenths_of_a_watt: 256, note: "78% of the window power-capped" as String),
+  decode: srv4_sweep_decode(median: milli_tokens_per_second(count: 23800)),
+  draw: srv4_sweep_draw(
+    draw: milliwatt(count: 25600),
+    share: ShareRead {
+      power_capped: permille(count: 780),
+      instrument: "clocksweep.sh: clocks_throttle_reasons read once a second across the 150 s level" as NonEmptyStr,
+    },
+  ),
 }
 
 data srv4_sweep_900_candidate: CapCandidate = CapCandidate {
@@ -1117,8 +1173,14 @@ data srv4_sweep_900_candidate: CapCandidate = CapCandidate {
   cpu_cap: Uncapped,
   sm_clock: CappedWithin { maximum: hertz(count: 900000000) },
   condition: condition_unread_srv4,
-  decode: srv4_sweep_decode(median_tenth: 188),
-  draw: srv4_sweep_draw(tenths_of_a_watt: 240, note: "74% of the window power-capped" as String),
+  decode: srv4_sweep_decode(median: milli_tokens_per_second(count: 18800)),
+  draw: srv4_sweep_draw(
+    draw: milliwatt(count: 24000),
+    share: ShareRead {
+      power_capped: permille(count: 740),
+      instrument: "clocksweep.sh: clocks_throttle_reasons read once a second across the 150 s level" as NonEmptyStr,
+    },
+  ),
 }
 
 // THE TWO CONTROLS THE MORNING DECISION MOVED TOGETHER, carried so the model can say which one cost the
@@ -1221,7 +1283,9 @@ data ken_t10_cool_unlocked_candidate: CapCandidate = CapCandidate {
       gpu: "ken GPU0/GPU2 (the two cool T10s)" as NonEmptyStr,
       instrument: "kensweep.sh: nvidia-smi power.draw read once a second across the 150 s level, averaged per card" as NonEmptyStr,
     },
-    throttle_share_note: Present { value: "pinned at the cap; the cards swung 510-1575 MHz" as NonEmptyStr },
+    throttle_share: ShareUnread {
+      read_obligation: "the power-capped share of this level was never read onto the row: kensweep.sh sampled clocks_throttle_reasons alongside the watts -- carry the permille; without it the level's watts cannot be read as cap-bound (the label says pinned at the cap, but the number was not written down)" as NonEmptyStr,
+    },
     observed_on: "2026-11-24" as NonEmptyStr,
     standing: TranscribedUncited {
       read_obligation: "kensweep.sh and its raw samples are on ken, not committed under artifacts/host-observations/" as NonEmptyStr,
@@ -1248,7 +1312,10 @@ data ken_t10_cool_1000mhz_candidate: CapCandidate = CapCandidate {
       gpu: "ken GPU0/GPU2 (the two cool T10s)" as NonEmptyStr,
       instrument: "kensweep.sh: nvidia-smi power.draw read once a second across the 150 s level, averaged per card" as NonEmptyStr,
     },
-    throttle_share_note: Present { value: "power-capped 1% of the window; held ~990 MHz" as NonEmptyStr },
+    throttle_share: ShareRead {
+      power_capped: permille(count: 10),
+      instrument: "kensweep.sh: clocks_throttle_reasons read once a second across the 150 s level" as NonEmptyStr,
+    },
     observed_on: "2026-11-24" as NonEmptyStr,
     standing: TranscribedUncited {
       read_obligation: "kensweep.sh and its raw samples are on ken, not committed under artifacts/host-observations/" as NonEmptyStr,
@@ -1277,7 +1344,9 @@ data ken_t10_leaky_1000mhz_candidate: CapCandidate = CapCandidate {
       gpu: "ken GPU1 (81:00.0)" as NonEmptyStr,
       instrument: "kensweep.sh: nvidia-smi power.draw read once a second across the 150 s level, averaged per card" as NonEmptyStr,
     },
-    throttle_share_note: Present { value: "power-bound at every ceiling: 83-88 W even at 600-800 MHz, holding only ~790 MHz" as NonEmptyStr },
+    throttle_share: ShareUnread {
+      read_obligation: "the power-capped share of this level was never read onto the row: kensweep.sh sampled clocks_throttle_reasons alongside the watts -- carry the permille; for this card it decides whether 'power-bound at every ceiling' is the throttle reason or an inference from the flat 83 W" as NonEmptyStr,
+    },
     observed_on: "2026-11-24" as NonEmptyStr,
     standing: TranscribedUncited {
       read_obligation: "the per-level wattage that establishes leakage is quoted from the sweep session, not from committed samples" as NonEmptyStr,
