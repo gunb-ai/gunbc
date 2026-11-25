@@ -1,4 +1,4 @@
-module v2.test.claim.enforcement.grammar_coverage_witness
+module test.claim.enforcement_grammar_coverage_witness
 
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree

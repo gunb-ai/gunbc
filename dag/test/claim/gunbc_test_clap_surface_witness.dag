@@ -1,0 +1,183 @@
+module test.claim.gunbc_test_clap_surface_witness
+
+// THE SAME WORDS, CROSSED THROUGH THE SURFACE THAT ACTUALLY READS THEM.
+//
+// `gunbc.gunbc_cli_command` renders the caller contract (`gunbc_test_batch_invocation_words`),
+// and `test.claim.gunbc_test_batch_argv_witness` receives it as a shape. Neither of those can see
+// a missing option: the argv parser is a GENERATED artifact
+// (`gunbc_cli_dispatch_generated.rs`, authority `gunbc.cli_dispatch_surface`), and 58 Rust
+// controls drove the route directly, so a whole layer -- the options themselves -- went unseen
+// by every control until a rebuilt binary rejected `--source-root` at parse time. This claim is
+// the control that was missing: it takes the words from the SAME authority the callers use,
+// hands them to the built `gunbc` as a real child process, and requires the route to run with
+// the mode and the corpus those words named. Words that parse into nothing are caught here, at
+// the layer that decides.
+//
+// The red row is the refusal half of the same contract: a corpus named by --source-root does not
+// license a subject outside the claim universe. The route must refuse, not run the default
+// corpus and report the standing anyway.
+
+import extdeps.git
+import extdeps.git.inspect
+import extdeps.gunbc
+import extdeps.rust.cargo { cargo_default_release_dir }
+import gunbc.gunbc_cli_command {
+  TestBatchMode, HermeticBatch, WetBatch, RecordBatch, gunbc_test_batch_command
+}
+import std.algebra { string_contains }
+import std.logic { Bool }
+import std.types { String, List }
+
+// The specimen is the tree's own held claim, executed against the checkout the witness runs in.
+fn clap_fixture_label() -> String {
+  "//test/claim/run_verdict_exit_status_fixture:verdict_success"
+}
+
+fn clap_held_line(label: String) -> String {
+  concat(label, " HELD outcome=Pass")
+}
+
+// THE HERMETIC WORDS, PARSED. Hermetic carries no mode flag -- so this row is also the control
+// that the ABSENCE of a flag grants the default rather than refusing: a surface that lost the
+// default would fail here, not at the caller.
+test fn the_hermetic_words_reach_the_route_held() -> Bool {
+  let command = gunbc_test_batch_command(
+    operands: [clap_fixture_label()],
+    mode: HermeticBatch {},
+    source_roots: ["dag", "src/v2"]
+  )
+  let toplevel = git.Inspect.Toplevel()
+  let result = gunbc.WitnessBin.Run(
+    workdir: toplevel.path,
+    bin_path: concat(cargo_default_release_dir(build_root: toplevel.path), "/gunbc"),
+    args: command.arguments
+  )
+  result.exit_code == 0 &&
+    string_contains(s: result.stdout, pattern: clap_held_line(label: clap_fixture_label())) &&
+    string_contains(s: result.stderr, pattern: "1 claim(s): 1 held")
+}
+
+// THE WET WORDS, PARSED: --wet must reach the route as the wet mode, not be dropped at the
+// surface -- a dropped --wet turns a wet caller into a refused one, silently.
+test fn the_wet_words_reach_the_route_held() -> Bool {
+  let command = gunbc_test_batch_command(
+    operands: [clap_fixture_label()],
+    mode: WetBatch {},
+    source_roots: ["dag", "src/v2"]
+  )
+  let toplevel = git.Inspect.Toplevel()
+  let result = gunbc.WitnessBin.Run(
+    workdir: toplevel.path,
+    bin_path: concat(cargo_default_release_dir(build_root: toplevel.path), "/gunbc"),
+    args: command.arguments
+  )
+  result.exit_code == 0 &&
+    string_contains(s: result.stdout, pattern: clap_held_line(label: clap_fixture_label())) &&
+    string_contains(s: result.stderr, pattern: "1 claim(s): 1 held")
+}
+
+// THE RECORD WORDS, PARSED: --record and its store travel together through the surface. The
+// hermetic specimen holds under record too; the row's point is that the surface delivers both
+// words to the route, which a surface missing --fixture-store cannot do.
+test fn the_record_words_reach_the_route_with_their_store() -> Bool {
+  let store = "target/keen-fox-230-clap-record-store"
+  let command = gunbc_test_batch_command(
+    operands: [clap_fixture_label()],
+    mode: RecordBatch { fixture_store: store },
+    source_roots: ["dag", "src/v2"]
+  )
+  let toplevel = git.Inspect.Toplevel()
+  let result = gunbc.WitnessBin.Run(
+    workdir: toplevel.path,
+    bin_path: concat(cargo_default_release_dir(build_root: toplevel.path), "/gunbc"),
+    args: command.arguments
+  )
+  result.exit_code == 0 &&
+    string_contains(s: result.stdout, pattern: clap_held_line(label: clap_fixture_label())) &&
+    string_contains(s: result.stderr, pattern: "1 claim(s): 1 held")
+}
+
+// SEVERAL OPERANDS, ONE PROCESS, EACH IDENTITY ONCE. An exact label plus the package that
+// contains it denote an overlapping claim; the surface must hand BOTH operands to the route
+// (one call) and the route's own tally must show the shared identity selected and run once.
+test fn overlapping_operands_select_the_shared_claim_once() -> Bool {
+  let command = gunbc_test_batch_command(
+    operands: ["//test/claim/run_verdict_exit_status_fixture/...", clap_fixture_label()],
+    mode: HermeticBatch {},
+    source_roots: ["dag", "src/v2"]
+  )
+  let toplevel = git.Inspect.Toplevel()
+  let result = gunbc.WitnessBin.Run(
+    workdir: toplevel.path,
+    bin_path: concat(cargo_default_release_dir(build_root: toplevel.path), "/gunbc"),
+    args: command.arguments
+  )
+  result.exit_code == 0 &&
+    string_contains(s: result.stderr, pattern: "1 claim(s): 1 held")
+}
+
+// THE RED: a named corpus does not license a subject outside the claims. The production module
+// exists in the roots given; the route must refuse rather than evaluate it as a claim.
+test fn a_source_root_does_not_license_a_non_claim_operand() -> Bool {
+  let command = gunbc_test_batch_command(
+    operands: ["//dag/gunbc/gunbc_cli_command:gunbc_test_batch_mode_words"],
+    mode: HermeticBatch {},
+    source_roots: ["dag", "src/v2"]
+  )
+  let toplevel = git.Inspect.Toplevel()
+  let result = gunbc.WitnessBin.Run(
+    workdir: toplevel.path,
+    bin_path: concat(cargo_default_release_dir(build_root: toplevel.path), "/gunbc"),
+    args: command.arguments
+  )
+  result.exit_code == 2 &&
+    !string_contains(s: result.stdout, pattern: "HELD outcome=Pass")
+}
+
+// THE RED, OTHER HALF: a corpus root OUTSIDE the checkout. --source-root is this change's option,
+// so its admission is this change's to own. An absolute path outside the checkout must be refused
+// TYPED AND LOCATED at the option's admission -- exit 2, no located line, the cause named -- and
+// must never unwind inside path normalization: the state this row retires printed
+// `repo_relative_path_normalized: ... is not under ...` and exited 101.
+test fn an_absolute_root_outside_the_checkout_refuses_without_unwinding() -> Bool {
+  let command = gunbc_test_batch_command(
+    operands: [clap_fixture_label()],
+    mode: HermeticBatch {},
+    source_roots: ["/tmp"]
+  )
+  let toplevel = git.Inspect.Toplevel()
+  let result = gunbc.WitnessBin.Run(
+    workdir: toplevel.path,
+    bin_path: concat(cargo_default_release_dir(build_root: toplevel.path), "/gunbc"),
+    args: command.arguments
+  )
+  result.exit_code == 2 &&
+    !string_contains(s: result.stdout, pattern: "HELD outcome=Pass") &&
+    !string_contains(s: result.stderr, pattern: "panicked at") &&
+    string_contains(s: result.stderr, pattern: "ClaimRouteSourceRootOutsideWorkspace")
+}
+
+// A PACKAGE-WIDE `:all` IS NOT A CLAIM SELECTION ON THE CLAIM ROUTE. This is the discriminating RED control
+// the cutover ruling requires: the route -- not just the model -- must refuse `//test/claim/<pkg>:all` with
+// exit 2 and the typed cause `ClaimRouteAllNotAClaimSelection`. It is discriminating because the SAME
+// package, taken by its subtree form (`/...`, exercised in `overlapping_operands_select_the_shared_claim_once`),
+// and each claim by its exact label, both run: only the `:all`/`:*` spelling refuses. The population is real
+// (this package's claims), so this is not the outside-every-universe refusal -- it is refused to keep one
+// entrypoint to one selection rule (gunbc.design_ruling::claim_execution_has_one_v1_entrypoint).
+test fn a_package_wide_all_refuses_on_the_route() -> Bool {
+  let command = gunbc_test_batch_command(
+    operands: ["//test/claim/run_verdict_exit_status_fixture:all"],
+    mode: HermeticBatch {},
+    source_roots: ["dag", "src/v2"]
+  )
+  let toplevel = git.Inspect.Toplevel()
+  let result = gunbc.WitnessBin.Run(
+    workdir: toplevel.path,
+    bin_path: concat(cargo_default_release_dir(build_root: toplevel.path), "/gunbc"),
+    args: command.arguments
+  )
+  result.exit_code == 2 &&
+    !string_contains(s: result.stdout, pattern: "HELD outcome=Pass") &&
+    !string_contains(s: result.stderr, pattern: "panicked at") &&
+    string_contains(s: result.stderr, pattern: "ClaimRouteAllNotAClaimSelection")
+}

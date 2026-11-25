@@ -7,6 +7,6 @@ fn witness_clock_now_positive_epoch() -> Bool {
   return r.timestamp != ""
 }
 
-fn clock_freshness_keystone_holds() -> Bool {
+test fn clock_freshness_keystone_holds() -> Bool {
   witness_clock_now_positive_epoch()
 }
