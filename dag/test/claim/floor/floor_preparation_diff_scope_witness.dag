@@ -397,7 +397,7 @@ fn universal_never_narrows(name: String) -> Bool {
 }
 
 fn floor_preparation_scope_markers_matching(file: String) -> List<FloorPreparationScopeUniversalRow> {
-  fold(floor_preparation_scope_marker_rows, init:  [], f: (acc, row) =>
+  fold(floor_preparation_scope_marker_rows(), init:  [], f: (acc, row) =>
     let marker = row.marker
     if length(xs: marker) == 0 {
       acc
@@ -460,7 +460,7 @@ test fn floor_preparation_every_entry_records_its_own_file() -> Bool {
 // ----------------------------------------------------------------------------------------------
 
 fn markers_carry_reasons() -> Bool {
-  let rows = floor_preparation_scope_marker_rows
+  let rows = floor_preparation_scope_marker_rows()
   length(xs: rows) > 0
     && fold(rows, init:  true, f: (acc, row) =>
       if acc {
@@ -474,7 +474,7 @@ fn markers_carry_reasons() -> Bool {
 }
 
 fn floor_preparation_marker_present(marker: String) -> Bool {
-  fold(floor_preparation_scope_marker_rows, init:  false, f: (acc, row) =>
+  fold(floor_preparation_scope_marker_rows(), init:  false, f: (acc, row) =>
     if acc {
       acc
     } else {

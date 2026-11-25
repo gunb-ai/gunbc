@@ -159,7 +159,7 @@ data floor_preparation_phase_rows: List<FloorPreparationPhaseRow> = [
   // paid the build -- the quantity cross-run reuse is proposed to stop paying -- and
   // `scope=entry-closure-union` is what says its size is set by the run's ENTRIES, so diff-closure
   // scoping reaches it without any cache at all.
-  FloorPreparationPhaseRow { phase: "bare-reference-edge-index-warm", class: PreparationCost, cost_field: "wall_ms", scale: EntryClosureScale, authority: "src/v1/stage0/src/bin/claim_batch.rs:1114 provenance=built-by-preparation scope=entry-closure-union" },
+  FloorPreparationPhaseRow { phase: "bare-reference-edge-index-warm", class: PreparationCost, cost_field: "wall_ms", scale: EntryClosureScale, authority: "src/v1/stage0/src/bin/claim_batch.rs run provenance=built-by-preparation scope=entry-closure-union" },
   // JUDGEMENT ROWS THAT CARRY NO TIMING FIELD. Counting them as zero would invent a cost; dropping them
   // would lose a line. They are counted, uncosted, and reported in `uncosted_lines`.
   FloorPreparationPhaseRow { phase: "expr-var-classification", class: NotCostBearing { reason: "prints occurrence census and per-kind counts with no timing field " }, cost_field: "", scale: EntryClosureScale, authority: "src/v1/stage0/src/cli_run.rs build_reference_closure_index" },
