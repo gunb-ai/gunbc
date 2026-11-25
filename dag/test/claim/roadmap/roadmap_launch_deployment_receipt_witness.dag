@@ -211,7 +211,7 @@ fn rlm_plan_at_scope(run: ActionsRunBinding, host: String, scope_wire: String) -
     lease_owner_fingerprint: "fnv1a64:bbbbbbbbbbbbbbbb",
     lease_generation: 5,
     apply_terminal: FullyApplied,
-    run_artifact_dir: "/tmp/gunbc-fleet-converge-runs/roadmap-launch-1/1",
+    run_artifact_dir: "/tmp/gunbc-fleet-converge-runs/roadmap-launch-1/1" as NonEmptyStr,
   }
 }
 

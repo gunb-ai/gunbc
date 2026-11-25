@@ -11,7 +11,7 @@ import gunbc.fleet.fleet_plan_artifact_location {
   fleet_converge_run_artifact_root_env_name, fleet_converge_run_artifact_plan_run_id_env_name, fleet_converge_run_artifact_attempt_env_name,
   admit_fleet_plan_anchor_env_wet, fleet_plan_anchor_admission_text, AnchorAdmitted,
   claim_fleet_plan_run_dir_exclusive_wet, fleet_plan_run_dir_claim_text,
-  FleetPlanRunDirClaim, RunDirClaimed, RunDirLeafExists, RunDirParentsRefused,
+  FleetPlanRunDirClaim, RunDirClaimed, RunDirLeafExists, RunDirParentsRefused, RunDirCreateRefused,
 }
 
 import gunbc.host.host_kernel_dependency { host_kernel_maintenance_capability }
@@ -1134,7 +1134,7 @@ fn fleet_converge_plan_scoped_bound_wet(
                   lease_owner_fingerprint: serialize_content_hash(hash: artifact.plan_lease.epoch.owner_fingerprint) as String,
                   lease_generation: artifact.plan_lease.epoch.generation,
                   apply_terminal: artifact.apply_terminal,
-                  run_artifact_dir: run_artifact_dir,
+                  run_artifact_dir: run_artifact_dir as NonEmptyStr,
                 }
                 match write_fleet_converge_plan_receipt(r: receipt) {
                   ReceiptWriteRefused { path: p, error: e } =>
@@ -1502,7 +1502,9 @@ fn fleet_converge_local_plan_wet(scope: String) -> ProcessExit
 
 // The shared body of the operator-local plan. The run-artifact directory leaf is claimed
 // EXCLUSIVELY -- mkdir -p the parents, then mkdir WITHOUT -p on the leaf -- so two runs minted
-// in the same clock tick collide into a named RunDirLeafExists refusal, never a shared dir.
+// in the same clock tick collide into a named RunDirLeafExists refusal, never a shared dir; a
+// refusal with no leaf in the way (permission denied, read-only filesystem) is the distinct
+// RunDirCreateRefused, not a fabricated collision.
 // fleet_converge_local_plan_wet mints its own binding and calls this; the operator CLI observes
 // ONE binding, passes it here, and reads the pack back from the same composed directory.
 fn fleet_converge_local_plan_bound_wet(run: ActionsRunBinding, scope: FleetConvergeScope) -> ProcessExit
@@ -1527,6 +1529,8 @@ fn fleet_converge_local_plan_bound_wet(run: ActionsRunBinding, scope: FleetConve
                     exit_failure(reason: fleet_plan_run_dir_claim_text(c: RunDirLeafExists { run_artifact_dir: taken_dir, detail: taken_detail }))
                   RunDirParentsRefused { parents: refused_parents, detail: refused_detail } =>
                     exit_failure(reason: fleet_plan_run_dir_claim_text(c: RunDirParentsRefused { parents: refused_parents, detail: refused_detail }))
+                  RunDirCreateRefused { run_artifact_dir: refused_dir, exit_code: refused_code, detail: refused_detail } =>
+                    exit_failure(reason: fleet_plan_run_dir_claim_text(c: RunDirCreateRefused { run_artifact_dir: refused_dir, exit_code: refused_code, detail: refused_detail }))
                 }
             }
         }

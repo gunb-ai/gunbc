@@ -536,17 +536,13 @@ fn swap_serve_entry_compile_for(deployment: DesiredDeployment) -> ServeEntryComp
         serve_entry_verdict_as_compile_verdict(
           consumption: ConsumedAbsent { detail: join(["the plan pack is unreadable (", reason, "), so the per-run serve-entry verdict destination is unknown; the swap does not recompute it and there is no cold resolve fallback"], "") },
         )
-      FleetConvergePlanReceiptDecoded { receipt } =>
-        if receipt.run_artifact_dir == "" {
-          serve_entry_verdict_as_compile_verdict(
-            consumption: ConsumedAbsent { detail: "the plan pack carries an empty run_artifact_dir; the swap refuses rather than falling back to /tmp/fleet-converge-plan" },
-          )
-        } else {
-          observe_plan_serve_entry_verdict(
-            spec: selected_deployment_spec(row: deployment),
-            run_artifact_dir: anchor as NonEmptyStr,
-          )
-        }
+      FleetConvergePlanReceiptDecoded { receipt: _ } =>
+        // The decoded pack exists and carries its non-empty per-run dir (the decoder's own named
+        // refusal); WHERE the verdict is read from is the admitted anchor, not the pack's dir.
+        observe_plan_serve_entry_verdict(
+          spec: selected_deployment_spec(row: deployment),
+          run_artifact_dir: anchor as NonEmptyStr,
+        )
       }
       refused_anchor => serve_entry_verdict_as_compile_verdict(
         consumption: ConsumedAbsent { detail: join(["the plan anchor is not admitted (", fleet_plan_anchor_admission_text(a: refused_anchor), "); the swap does not recompute the pack location and there is no fixed shared path to read it through"], "") },
@@ -1001,11 +997,7 @@ fn record_plan_serve_entry_compile_verdict() -> ProcessExit {
             FleetConvergePlanReceiptUnreadable { reason } =>
               exit_failure(reason: join(["live_deploy: record_plan_serve_entry_compile_verdict — the plan pack is unreadable (", reason, "), so the per-run serve-entry verdict destination is unknown; refusing rather than falling back to /tmp/fleet-converge-plan"], ""))
             FleetConvergePlanReceiptDecoded { receipt } =>
-              if receipt.run_artifact_dir == "" {
-                exit_failure(reason: "live_deploy: record_plan_serve_entry_compile_verdict — the plan pack carries an empty run_artifact_dir; refusing rather than defaulting")
-              } else {
-                record_plan_serve_entry_verdict_for(row: deployment, run_artifact_dir: receipt.run_artifact_dir as NonEmptyStr)
-              }
+              record_plan_serve_entry_verdict_for(row: deployment, run_artifact_dir: receipt.run_artifact_dir)
           }
         refused_anchor => exit_failure(reason: join(["live_deploy: record_plan_serve_entry_compile_verdict — ", fleet_plan_anchor_admission_text(a: refused_anchor)], ""))
       }

@@ -75,7 +75,11 @@ type FleetConvergePlanReceipt {
   lease_owner_fingerprint: String
   lease_generation: Int
   apply_terminal: FleetConvergeApplyTerminal
-  run_artifact_dir: String
+  // THE PER-RUN DESTINATION IS NON-EMPTY IN THE TYPE (gunbc.design_argument::fail_closed: stronger
+  // than catching a wrong state is making it unwritable). The only reader-side empty is the parsed
+  // wire, refused BY NAME in fleet_converge_plan_receipt_decode before this type is constructed;
+  // consumers receive the field already built non-empty and restate nothing.
+  run_artifact_dir: NonEmptyStr
 }
 
 type FleetConvergeApplyReceipt {
@@ -98,7 +102,7 @@ fn fleet_converge_plan_receipt_identity_text(r: FleetConvergePlanReceipt) -> Str
     r.plan_artifact_hash, "|", r.observed_baseline_hex, "|",
     to_string(r.prior_generation), "|", to_string(r.planned_generation), "|", r.lease_key, "|",
     r.lease_resource_fingerprint, "|", r.lease_owner_fingerprint, "|", to_string(r.lease_generation), "|",
-    fleet_converge_apply_terminal_wire(terminal: r.apply_terminal), "|", r.run_artifact_dir,
+    fleet_converge_apply_terminal_wire(terminal: r.apply_terminal), "|", r.run_artifact_dir as String,
   ], "")
 }
 
@@ -141,7 +145,7 @@ fn fleet_converge_plan_receipt_json(r: FleetConvergePlanReceipt) -> JsonValue {
     json_kv(key: "lease_owner_fingerprint", value: json_string(s: r.lease_owner_fingerprint)),
     json_kv(key: "lease_generation", value: json_string(s: to_string(r.lease_generation))),
     json_kv(key: "apply_terminal", value: json_string(s: fleet_converge_apply_terminal_wire(terminal: r.apply_terminal))),
-    json_kv(key: "run_artifact_dir", value: json_string(s: r.run_artifact_dir)),
+    json_kv(key: "run_artifact_dir", value: json_string(s: r.run_artifact_dir as String)),
     json_kv(key: "receipt_identity", value: json_string(s: fleet_converge_plan_receipt_identity_hex(r: r))),
   ])
 }
@@ -256,7 +260,7 @@ fn fleet_converge_plan_receipt_decode(raw: String) -> FleetConvergePlanReceiptDe
                                                   lease_owner_fingerprint: lease_ofp,
                                                   lease_generation: lease_gen,
                                                   apply_terminal: planned_terminal,
-                                                  run_artifact_dir: run_dir,
+                                                  run_artifact_dir: run_dir as NonEmptyStr,
                                                 }
                                                 match json_required_string_member(doc: doc, key: "receipt_identity") {
                                                   JsonStringMemberRefused { reason: r } => FleetConvergePlanReceiptUnreadable { reason: r }
@@ -424,7 +428,7 @@ type FleetConvergeReceiptWrite
   | ReceiptWriteRefused { path: String, error: String }
 
 fn write_fleet_converge_plan_receipt(r: FleetConvergePlanReceipt) -> FleetConvergeReceiptWrite {
-  let pack_path = fleet_plan_receipt_path_in(run_artifact_dir: r.run_artifact_dir)
+  let pack_path = fleet_plan_receipt_path_in(run_artifact_dir: r.run_artifact_dir as String)
   let w = Filesystem.Write(path: pack_path, content: serialize_json(v: fleet_converge_plan_receipt_json(r: r)))
   if w.success { ReceiptWritten { path: pack_path } } else { ReceiptWriteRefused { path: pack_path, error: w.error } }
 }

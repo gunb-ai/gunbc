@@ -7,7 +7,7 @@ import extdeps.exec.command { LocalExec }
 import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import extdeps.tools.gnu_coreutils { realpath_canonical_command }
 import extdeps.tools.mkdir { mkdir_parents_command, mkdir_exact_command }
-import extdeps.posix.test_utility { test_regular_file_command }
+import extdeps.posix.test_utility { test_regular_file_command, test_exists_command }
 import gunbc.actions_run_binding {
   actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent,
 }
@@ -67,9 +67,12 @@ data fleet_converge_apply_receipt_name: String = "apply_receipt.json"
 
 // Compose the plan receipt (pack) path from a run-scoped plan-artifact directory. Used by the
 // PRODUCER (the plan step, which owns the dir) to write the pack into
-// <run_artifact_dir>/plan_receipt.json, and by the receipt writer from the receipt's own
-// run_artifact_dir field. The dir is validated non-empty at its composition (the producer entry)
-// and at receipt decode, so a plain String is the right carrier here.
+// <run_artifact_dir>/plan_receipt.json, and by the receipt writer from the receipt's OWN
+// run_artifact_dir field, which is NonEmptyStr: emptiness is unwritable in the receipt type
+// itself, constructed by the decoder behind its named refusal. This seam takes a plain String
+// because its two callers pass directories already admitted upstream -- the producer's composed
+// dir (every field refused empty at composition) and the contained anchor -- so re-checking here
+// would be a second representation of a constraint the callers' types already carry.
 fn fleet_plan_receipt_path_in(run_artifact_dir: String) -> String {
   join([run_artifact_dir, "/", fleet_converge_plan_receipt_name], "")
 }
@@ -188,14 +191,18 @@ fn admit_fleet_plan_anchor_wet(anchor: String) -> FleetPlanAnchorAdmission {
 }
 
 // THE EXCLUSIVE CLAIM of an operator-local leaf run dir (roadmap row serve-entry-verdict-path-is-per-run,
-// operator-local route). The parents are mkdir -p'd, then the LEAF is mkdir'd WITHOUT -p: an existing
-// leaf fails the probe's own rc and becomes a NAMED typed refusal, so two local runs landing on the
-// same clock-tick run id collide into a refusal, never into a shared directory. The parents come
-// from the ONE renderer's first two fields, never from a second template.
+// operator-local route). The parents are mkdir -p'd, then the LEAF is mkdir'd WITHOUT -p. A refused
+// leaf mkdir is CLASSIFIED BY CAUSE, never blanket-named: the leaf existing (probed with the one
+// `test -e`, read by its own rc) is the same-tick COLLISION and becomes RunDirLeafExists; a refusal
+// with no leaf in the way -- permission denied, read-only filesystem, I/O failure -- is
+// RunDirCreateRefused and says so. Collapsing both into "already exists" would tell the operator
+// about a collision that never happened and hide the very failure this row's red control measured.
+// The parents come from the ONE renderer's first two fields, never from a second template.
 type FleetPlanRunDirClaim
   = RunDirClaimed { run_artifact_dir: String }
   | RunDirParentsRefused { parents: String, detail: String }
   | RunDirLeafExists { run_artifact_dir: String, detail: String }
+  | RunDirCreateRefused { run_artifact_dir: String, exit_code: Int, detail: String }
 
 fn fleet_plan_run_dir_claim_text(c: FleetPlanRunDirClaim) -> String {
   match c {
@@ -204,6 +211,8 @@ fn fleet_plan_run_dir_claim_text(c: FleetPlanRunDirClaim) -> String {
       join(["RunArtifactParentsRefused — mkdir -p refused for ", p, ": ", d], "")
     RunDirLeafExists { run_artifact_dir: d, detail: e } =>
       join(["RunArtifactDirExists — ", d, " already exists (", e, "); an operator-local run claims its leaf exclusively, so this run refuses rather than sharing a run artifact directory"], "")
+    RunDirCreateRefused { run_artifact_dir: d, exit_code: c2, detail: e } =>
+      join(["RunArtifactCreateRefused — ", d, " could not be created (exit ", to_string(c2), ": ", e, "); no leaf is in the way, so this is not a same-tick collision"], "")
   }
 }
 
@@ -216,7 +225,11 @@ fn claim_fleet_plan_run_dir_exclusive_wet(parents: String, run_artifact_dir: Str
       ProcessOutputPresent { text: _ } => RunDirClaimed { run_artifact_dir: run_artifact_dir }
       ProcessOutputAbsent => RunDirClaimed { run_artifact_dir: run_artifact_dir }
       ProcessRefused { exit_code: c, stderr: e } =>
-        RunDirLeafExists { run_artifact_dir: run_artifact_dir, detail: join(["exit ", to_string(c), " ", trim(s: e)]) }
+        match run_shell_command_capture(command: test_exists_command(path: run_artifact_dir), transport: LocalExec) {
+          ProcessRefused { exit_code: _, stderr: _ } =>
+            RunDirCreateRefused { run_artifact_dir: run_artifact_dir, exit_code: c, detail: trim(s: e) }
+          _ => RunDirLeafExists { run_artifact_dir: run_artifact_dir, detail: join(["exit ", to_string(c), " ", trim(s: e)]) }
+        }
     }
     ExitFailure { code: c, reason: r } =>
       RunDirParentsRefused { parents: parents, detail: join(["exit ", to_string(c), " ", r]) }
