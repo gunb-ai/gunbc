@@ -555,6 +555,7 @@ fn floor_preparation_scope_tool_receipt(step: String, detail: String) -> String 
 type FloorPreparationScopeToolCaptureCheck {
   gap: String,
   first: String,
+  capture_rows: Int,
   compiler_count: Int,
   known_count: Int,
   missing_count: Int,
@@ -600,6 +601,7 @@ fn floor_preparation_scope_tool_capture_gap(rows: List<FloorPreparationScopeRow>
           concat(" compiler-resolved module(s) unknown to the map; first=", first)))
     },
     first: first,
+    capture_rows: length(xs: compiler_rows),
     compiler_count: length(xs: compiler),
     known_count: length(xs: known),
     missing_count: length(xs: missing),
@@ -607,10 +609,14 @@ fn floor_preparation_scope_tool_capture_gap(rows: List<FloorPreparationScopeRow>
 }
 
 // THE NAMED NEGATIVE, in one report, from one call (the lane rule: a green half alone is not
-// evidence). Half one gives the check the fixture map's own entries -- every compiler-resolved
-// module known, so a narrowing is allowed. Half two adds a phantom module the compiler resolved:
-// the same run must report the refusal. A witness claim asserts BOTH halves' tokens appear, so
-// deleting either half turns it red.
+// evidence). BOTH halves go through the PRODUCTION decision path -- select_guarded below, the
+// very function the tree legs decide with -- over the SAME rows and the SAME diff; the capture
+// input is the only thing that differs. Half one feeds the compiler's own [resolve] rows for
+// modules the map knows, and the production guard NARROWS. Half two injects one phantom
+// [resolve] row -- exactly as the runner would print it -- and the production guard REFUSES:
+// the report carries the decision-bearing line with narrowed=false and a reason naming the
+// missing module. A hand-written refusal beside a real decision would prove nothing, so there is
+// none here: both lines come out of the function that decides real runs.
 fn floor_preparation_scope_tool_capture_check_demo() -> String {
   let map_rows = concat(floor_preparation_scope_edge_rows, floor_preparation_scope_edge_rows_variant)
   let good_entries = fold(map_rows, init: [], f: (acc, row) =>
@@ -625,17 +631,32 @@ fn floor_preparation_scope_tool_capture_check_demo() -> String {
   // feeding raw paths would silently test nothing, because unknown lines are dropped, and a
   // dropped row is exactly the false-green this lane keeps meeting.
   let good_capture = fold(good_entries, init: [], f: (acc, e) => list_push(xs: acc, item: floor_preparation_scope_tool_resolve_line(entry: e)))
-  let good = floor_preparation_scope_tool_capture_gap(rows: map_rows, compiler_rows: good_capture)
   let bad_capture = concat(good_capture, [floor_preparation_scope_tool_resolve_line(entry: "src/v2/workflow/phantom_capture_module.dag")])
+  // ONE file, and it must be one the map reaches from EXACTLY TWO entries and no universal marker
+  // matches (.rs/.pest/grammar//stage0//kernel/ -- checked against the marker rows): the permit
+  // half then narrows (2 of 5) while the refuse half returns all 5. A diff that reached every
+  // entry would show narrowed=false on both halves and the pair would prove nothing.
+  let demo_diff = ["src/v2/workflow/floor_preparation_split.dag"]
+  let good = floor_preparation_scope_tool_capture_gap(rows: map_rows, compiler_rows: good_capture)
   let bad = floor_preparation_scope_tool_capture_gap(rows: map_rows, compiler_rows: bad_capture)
+  let good_scoping = floor_preparation_scope_tool_select_guarded(
+    rows: map_rows, forced: [], hit_cap: false, gap: good.gap,
+    population: floor_preparation_scope_population, diff: demo_diff)
+  let bad_scoping = floor_preparation_scope_tool_select_guarded(
+    rows: map_rows, forced: [], hit_cap: false, gap: bad.gap,
+    population: floor_preparation_scope_population, diff: demo_diff)
   concat(
-    concat(concat(concat("[capture-check] ok=yes missing=", to_string(good.missing_count)),
-      concat(" known=", to_string(good.known_count))),
+    concat(concat(concat(concat("[capture-check] CAPTURE_ROWS=", to_string(good.capture_rows)),
       concat(" compiler=", to_string(good.compiler_count))),
-    concat(concat(concat(concat("\n[capture-check] ok=no missing=", to_string(bad.missing_count)),
-      concat(" first=", bad.first)),
-      concat(" known=", to_string(bad.known_count))),
-      concat(" compiler=", to_string(bad.compiler_count))))
+      concat(" known=", to_string(good.known_count))),
+      concat(" missing=", to_string(good.missing_count))),
+    concat(concat("\n", floor_preparation_scope_line(name: "capture-check-permit", scoping: good_scoping, population: floor_preparation_scope_population)),
+      concat(concat("\n[capture-check] CAPTURE_ROWS=", to_string(bad.capture_rows)),
+        concat(concat(" compiler=", to_string(bad.compiler_count)),
+          concat(concat(" known=", to_string(bad.known_count)),
+            concat(concat(" missing=", to_string(bad.missing_count)),
+              concat(concat(" first=", bad.first),
+                concat("\n", floor_preparation_scope_line(name: "capture-check-refuse", scoping: bad_scoping, population: floor_preparation_scope_population)))))))))
 }
 
 fn floor_preparation_scope_tool_select_guarded(rows: List<FloorPreparationScopeRow>, forced: List<String>, hit_cap: Bool, gap: String, population: List<String>, diff: List<String>) -> FloorPreparationScoping {
@@ -726,13 +747,23 @@ fn floor_preparation_scope_tool_body(tree: String, base: String, label: String) 
                     concat(concat("rows=", to_string(length(xs: rows))),
                       concat(" forced=", to_string(length(xs: forced.entries)))))
                   let capture_receipt = floor_preparation_scope_tool_receipt("compiler-capture-check",
-                    concat(concat("compiler=", to_string(capture_check.compiler_count)),
-                      concat(concat(" known=", to_string(capture_check.known_count)),
-                        concat(concat(" missing=", to_string(capture_check.missing_count)),
-                          concat(" first=", capture_check.first)))))
+                    concat(concat("CAPTURE_ROWS=", to_string(capture_check.capture_rows)),
+                      concat(concat(" compiler=", to_string(capture_check.compiler_count)),
+                        concat(concat(" known=", to_string(capture_check.known_count)),
+                          concat(concat(" missing=", to_string(capture_check.missing_count)),
+                            concat(" first=", capture_check.first))))))
                   let scoping_line = floor_preparation_scope_line(name: label, scoping: scoping, population: population)
-                  concat(concat(concat(concat(transport, "\n"), decision), concat("\n", capture_receipt)),
+                  let body_text = concat(concat(concat(concat(transport, "\n"), decision), concat("\n", capture_receipt)),
                     concat("\n", scoping_line))
+                  // A zero-row input is not a passing cross-check: it is an untested one. Say so on
+                  // the record instead of letting CAPTURE_ROWS=0 wear the badge of a green check.
+                  if capture_check.capture_rows == 0 {
+                    concat(body_text, concat("\n", floor_preparation_scope_tool_receipt(
+                      "compiler-capture-check-VACUOUS",
+                      "CAPTURE_ROWS=0: no compiler input, the superset check constrained nothing -- it bites only once capture rows are spliced")))
+                  } else {
+                    body_text
+                  }
                 }
               }
             }

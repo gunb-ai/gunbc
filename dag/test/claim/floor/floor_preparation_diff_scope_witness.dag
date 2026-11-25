@@ -542,10 +542,18 @@ test fn floor_preparation_the_line_prints_the_decision_it_made() -> Bool {
 
 test fn floor_preparation_the_compiler_capture_superset_check_refuses_in_the_same_run_it_allows() -> Bool {
   let report = floor_preparation_scope_tool_capture_check_demo()
-  floor_preparation_contains(haystack: report, needle: "[capture-check] ok=yes missing=0")
-    && floor_preparation_contains(haystack: report, needle: "[capture-check] ok=no missing=1 first=src.v2.workflow.phantom_capture_module")
-    && floor_preparation_contains(haystack: report, needle: "known=")
-    && floor_preparation_contains(haystack: report, needle: "compiler=")
+  // BOTH lines are DECISION-BEARING: they come out of select_guarded, the function that decides
+  // tree legs. Permission narrows, refusal does not, and the refusal reason NAMES the missing
+  // module. Counts printed on both halves -- a check that cannot report what it counted has not
+  // checked anything.
+  floor_preparation_contains(haystack: report, needle: "[capture-check] CAPTURE_ROWS=")
+    && floor_preparation_contains(haystack: report, needle: "diff=capture-check-permit")
+    && floor_preparation_contains(haystack: report, needle: "narrowed=true")
+    && floor_preparation_contains(haystack: report, needle: "diff=capture-check-refuse")
+    && floor_preparation_contains(haystack: report, needle: "narrowed=false")
+    && floor_preparation_contains(haystack: report, needle: "reason=compiler-capture-superset: 1 compiler-resolved module(s) unknown to the map; first=v2.workflow.phantom_capture_module")
+    && floor_preparation_contains(haystack: report, needle: "missing=0")
+    && floor_preparation_contains(haystack: report, needle: "missing=1")
 }
 
 // ----------------------------------------------------------------------------------------------
