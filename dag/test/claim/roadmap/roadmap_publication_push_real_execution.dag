@@ -6,7 +6,7 @@ import std.algebra { trim }
 import extdeps.git
 import extdeps.git.plumbing { GitWorktreeAt }
 import extdeps.shell
-import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.roadmap.roadmap_publish_actuate {
   stage_captured_candidate_sha, CapturedShaStaged, CapturedShaStageRefused,
   push_captured_sha_from_bare_mirror,

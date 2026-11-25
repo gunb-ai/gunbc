@@ -6,7 +6,7 @@ import std.algebra { Empty, Cons }
 import extdeps.git
 import gunbc.output_policy { ExpectFailure }
 import extdeps.shell
-import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.commit_workflow {
   commit_writer_heal_admission_gate,
   observe_complete_staged_commit,
