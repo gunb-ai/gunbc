@@ -2,6 +2,7 @@ module gunbc.serving.serving_observability
 
 import std.types { String, NonEmptyStr, List, Bool, Port }
 import std.optional { Optional, Present, Absent }
+import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import extdeps.proxy.openresty {
   NginxDirective, NginxToken, ServerBlock, ListenTlsOn, SslCertificate, SslCertificateKey,
   LocationBlock, PrefixMatch, ProxyPassToHost, ProxyHttpVersion11, nginx_token, render_nginx_directives,
@@ -29,43 +30,46 @@ import extdeps.proxy.openresty {
 // after the fact (gunbc.design_argument::guarantee_ladder, gunbc.design_argument::fail_closed).
 //
 // WHO CONSUMES /metrics (the consumption answer the boundary needs). Not the router (the router is one
-// of the readers that CANNOT reach srv4's /metrics today). The named consumers are the availability and
-// progress readers and the memory-provenance readers: the model+metrics probe
-// gunbc.serving.serving_availability::serving_availability_bracketing_read, the two-/metrics-body stall
-// reading gunbc.serving.engine_progress::engine_progress_read, and the /metrics provenance reads in
-// gunbc.serving.serving_host_memory (expert_cache_mib, conversation_cache_min_free_mib,
-// conversation_cache_mib -- each cites a /metrics read as its provenance). Each required route below
-// carries its named consumer for that reason.
+// of the readers that CANNOT reach srv4's /metrics today). The named consumers are typed DeclarationRefs
+// on each required route, so a rename or deletion of a consumer declaration is a decidable break
+// (gunbc.design_argument::single_authority, ::source_annotations -- a citation belongs in a typed
+// carrier, not prose): the metrics route is consumed by gunbc.serving.engine_progress::engine_progress_read,
+// the models route by gunbc.serving.serving_availability::serving_availability_bracketing_read, and the
+// chat route by gunbc.serving.serving_front_door::front_door_admit. Each consumer is CARRIED BY EXECUTION
+// into the refusal (EngineFrontProxyRefusal::OmitsRequiredRoute.consumer), so the field has a consuming
+// route rather than being read only by a witness.
 
-// A route the fleet must be able to reach THROUGH the front door, and the reader that consumes it.
+// A route the fleet must be able to reach THROUGH the front door, and the declaration of the reader that
+// consumes it -- a typed reference, not a name spelled in prose, so a renamed consumer is decidable.
 type EngineFrontRoute = EngineFrontRoute {
   path: NonEmptyStr
-  consumer: NonEmptyStr
+  consumer: DeclarationRef
 }
 
 // THE REQUIRED-ROUTE ROSTER: the single authority for what a fleet reader must reach through a serving
 // engine's front door, derived from the consumers rather than hand-listed at the proxy. srv4's proxy
 // omitted /metrics precisely because it was hand-written against one reader and never re-derived from
-// this set. The chat and models paths are the OpenAI-compatible spellings the engine serves (the same
-// paths extdeps.strata.strata_server and extdeps.vllm.server name for the engine itself).
+// this set. Each consumer is the declaration of a reader that reads that route through the front.
 data engine_front_required_routes: List<EngineFrontRoute> = [
   EngineFrontRoute {
     path: "/v1/chat/completions" as NonEmptyStr,
-    consumer: "the seat's chat request, forwarded under the seat grant by gunbc.serving.serving_front_door::front_door_tally" as NonEmptyStr,
+    consumer: decl_ref(module_path: "gunbc.serving.serving_front_door", decl_name: "front_door_admit"),
   },
   EngineFrontRoute {
     path: "/v1/models" as NonEmptyStr,
-    consumer: "the model probe of gunbc.serving.serving_availability::serving_availability_bracketing_read" as NonEmptyStr,
+    consumer: decl_ref(module_path: "gunbc.serving.serving_availability", decl_name: "serving_availability_bracketing_read"),
   },
   EngineFrontRoute {
     path: "/metrics" as NonEmptyStr,
-    consumer: "the metrics probe and stall reading gunbc.serving.engine_progress::engine_progress_read, and the /metrics provenance reads in gunbc.serving.serving_host_memory" as NonEmptyStr,
+    consumer: decl_ref(module_path: "gunbc.serving.engine_progress", decl_name: "engine_progress_read"),
   },
 ]
 
 // WHAT THE FRONT REFUSES: the case the misconfiguration becomes, so it is refused rather than rendered.
+// The refusal carries the DENIED CONSUMER as a typed reference, so the omitted route names who was shut
+// out -- and that consumer field is produced by execution, not read only by a grep (fail_closed).
 type EngineFrontProxyRefusal
-  = OmitsRequiredRoute { route: NonEmptyStr }
+  = OmitsRequiredRoute { route: NonEmptyStr, consumer: DeclarationRef }
   | InvalidToken { token: NonEmptyStr }
 
 type EngineFrontProxyVerdict
@@ -75,8 +79,8 @@ type EngineFrontProxyVerdict
 // THE FORWARDED-ROUTE SET IS DERIVED, NOT AUTHORED. `forwarded` is what a hand-managed proxy actually
 // proxies (the paths it sends to the engine; the catch-all `return 404` is what it does NOT forward).
 // The front is accepted only when every route a named consumer requires is in `forwarded`; a front that
-// omits one is refused naming it. This is the guarantee-ladder move: the bad state (forward /v1/ only,
-// 404 the metrics route) has no render, so it cannot be produced rather than needing a downstream check.
+// omits one is refused, naming the route AND the consumer whose read it blocked. This is the
+// guarantee-ladder move: the bad state (forward /v1/ only, 404 the metrics route) has no render.
 fn engine_front_proxy_config(
   bind_address: NonEmptyStr,
   listen_port: Port,
@@ -88,7 +92,7 @@ fn engine_front_proxy_config(
 ) -> EngineFrontProxyVerdict {
   match first_unforwarded_required(forwarded: forwarded) {
     Present { value: omitted } =>
-      EngineFrontProxyRefused { refusal: OmitsRequiredRoute { route: omitted } }
+      EngineFrontProxyRefused { refusal: OmitsRequiredRoute { route: omitted.path, consumer: omitted.consumer } }
     Absent =>
       match engine_front_server_directives(bind_address: bind_address, listen_port: listen_port, tls_cert: tls_cert, tls_key: tls_key, engine_host: engine_host, engine_port: engine_port, forwarded: forwarded) {
         Absent => EngineFrontProxyRefused { refusal: InvalidToken { token: "a front-door token was refused by nginx_token" as NonEmptyStr } }
@@ -98,20 +102,8 @@ fn engine_front_proxy_config(
 }
 
 // The first required route absent from `forwarded`, in roster order, or Absent when the set is complete.
-fn first_unforwarded_required(forwarded: List<NonEmptyStr>) -> Optional<NonEmptyStr> {
-  fold(
-    engine_front_required_routes,
-    init: Absent as Optional<NonEmptyStr>,
-    f: (acc: Optional<NonEmptyStr>, r: EngineFrontRoute) => match acc {
-      Present { value: found } => Present { value: found }
-      Absent =>
-        if any(forwarded, x => (x as String) == (r.path as String)) {
-          Absent
-        } else {
-          Present { value: r.path }
-        }
-    },
-  )
+fn first_unforwarded_required(forwarded: List<NonEmptyStr>) -> Optional<EngineFrontRoute> {
+  first(filter(engine_front_required_routes, r => !any(forwarded, x => (x as String) == (r.path as String))))
 }
 
 // One location per required route proxy_passing to the engine, wrapped in the TLS server. Any path that
@@ -165,7 +157,7 @@ fn engine_front_locations(
   fold(
     filter(engine_front_required_routes, r => any(forwarded, x => (x as String) == (r.path as String))),
     init: Present { value: [] as List<NginxDirective> } as Optional<List<NginxDirective>>,
-    f: (acc: Optional<List<NginxDirective>>, r: EngineFrontRoute) => match acc {
+    f: (acc, r) => match acc {
       Absent => Absent
       Present { value: accs } =>
         match nginx_token(text: r.path as String) {
@@ -190,13 +182,22 @@ fn engine_front_render_forwards_route(text: String, route: NonEmptyStr) -> Bool 
   string_contains(s: text, pattern: join(["proxy_pass http://", route as String], ""))
 }
 
+// The named consumer carried on a required route, exposed for the ledger and the witness to assert against
+// without re-spelling the reference (single authority -- the roster holds it, everything else reads it).
+fn engine_front_route_consumer(path: NonEmptyStr) -> Optional<DeclarationRef> {
+  match first(filter(engine_front_required_routes, r => (r.path as String) == (path as String))) {
+    Present { value: r } => Present { value: r.consumer }
+    Absent => Absent
+  }
+}
+
 // ── ITEM (2): THE PER-CAUSE COLD-TOKEN BREAKDOWN IS NOT A NAMED INSTRUMENT ────────────────────────
 //
 // The 2026-11-24 attribution (same-card intact / same-card rewritten / rebound (moved) / no-probe) was
 // produced ad hoc: /tmp/rlog.py on srv1 joined the router's prefixprobe/usageprobe/upgrade-move error-log
 // lines; /tmp/snap.py and /tmp/delta.py differenced engine /metrics snapshots; the per-request Strata line
-// `prompt N tokens = R reused + M read` carried the rest. It found every cause fixed that day. The
-// DESIGN question (gunbc.design_argument::how_to_work, ruling gunbc.design_ruling::bad_process_is_worse_than_no_process)
+// `prompt N tokens = R reused + M read` carried the rest. It found every cause fixed that day. The DESIGN
+// question (gunbc.design_argument::how_to_work, ruling gunbc.design_ruling::bad_process_is_worse_than_no_process)
 // and the CI contract (gunbc.design_document::ci_contract_blocks: an instrument is a row in
 // gunbc.instrument_targets produced through gunbc.target_binding::TargetProducer, and a new WIDE instrument
 // must first name its real consumer, discriminator and acceptable cost) decide it: NOT an instrument. The
@@ -208,26 +209,43 @@ fn engine_front_render_forwards_route(text: String, route: NonEmptyStr) -> Bool 
 // here, in the owning model, instead of building a row in gunbc.instrument_targets.
 
 type InstrumentDecision
-  = NamedInstrument { consumer: NonEmptyStr, discriminator: NonEmptyStr, acceptable_cost: NonEmptyStr }
-  | NotAnInstrument { reason: NonEmptyStr, would_be_consumer: NonEmptyStr, add_when_trigger: NonEmptyStr }
+  = NamedInstrument { consumer: DeclarationRef, discriminator: NonEmptyStr, acceptable_cost: NonEmptyStr }
+  | NotAnInstrument { would_be_consumer: DeclarationRef, reason: NonEmptyStr, add_when_trigger: NonEmptyStr }
 
 data cold_token_cause_breakdown_standing: InstrumentDecision = NotAnInstrument {
-  would_be_consumer: "no standing consumer: the per-cause split was read once, by the operator's 2026-11-24 tuning session, and no fold on the required path reads it" as NonEmptyStr,
-  reason: "a new wide instrument must first name its real consumer, discriminator and acceptable cost (gunbc.design_document::ci_contract_blocks), and the job roster and CI budgets are closed to growth. The breakdown joins three independent authorities (the router's prefixprobe/usageprobe/upgrade-move lines, engine /metrics snapshots, and Strata's per-request reuse line) with no single executing fold on the required path, so a permanent wide instrument has no standing consumer and a cost paid against closed budgets -- the bad process gunbc.design_ruling::bad_process_is_worse_than_no_process retires. The measured per-cause counts stand as an operator-observed receipt of the 2026-11-24 session (extdeps.external_authority::CitedFigureStanding), not as deduced facts (gunbc.design_argument::epistemic_humility).",
-  add_when_trigger: "promote it to a row in gunbc.instrument_targets only when a named consumer needs the per-cause split on an executing route and can carry the per-snapshot cost of the /metrics differencing",
+  would_be_consumer: decl_ref(module_path: "gunbc.serving.engine_progress", decl_name: "engine_progress_read"),
+  reason: "a new wide instrument must first name its real consumer, discriminator and acceptable cost (gunbc.design_document::ci_contract_blocks), and the job roster and CI budgets are closed to growth. The breakdown joins three independent authorities (the router's prefixprobe/usageprobe/upgrade-move lines, engine /metrics snapshots, and Strata's per-request reuse line) with no single executing fold on the required path, so a permanent wide instrument has no standing consumer and a cost paid against closed budgets -- the bad process gunbc.design_ruling::bad_process_is_worse_than_no_process retires. The measured per-cause counts stand as an operator-observed receipt of the 2026-11-24 session (extdeps.external_authority::CitedFigureStanding), not as deduced facts (gunbc.design_argument::epistemic_humility)." as NonEmptyStr,
+  add_when_trigger: "promote it to a row in gunbc.instrument_targets only when a named consumer needs the per-cause split on an executing route and can carry the per-snapshot cost of the /metrics differencing" as NonEmptyStr,
 }
 
 // ── ITEM (3): THE ROUTER's prefixprobe/usageprobe LINES -- WHERE THEIR STANDING BELONGS ─────────────
 //
 // The prefixprobe/usageprobe lines the attribution was built on are marked TEMPORARY (2026-10-27/28,
 // calm-crab-645) in the HAND-MANAGED srv1 ~/router/nginx.conf, yet they carried all of the day's
-// attribution. Their standing is a RECEIPT OF THE HAND-MANAGED ROUTER, not a fact of the modelled
-// router: they are not emitted by gunbc.serving.router_realization (which is a capability roster, not a
-// log emitter), so they must not be read as if the modelled router produced them. Their removal and
-// replacement belong to the modelled router's realization -- gunbc.serving.router_realization /
-// gunbc.serving.turn_admission / gunbc.serving.serving_relocation -- where the prefix-overlap and
-// token-usage facts they recorded become typed observations on the same authority that decides the move.
-// That is a separate class (B5, router relocation); this row records their standing, it does not delete
-// them while the router is hand-managed, and it does not model the relocated router here.
+// attribution. Their standing is a transient receipt of the HAND-MANAGED router, not a fact of the
+// modelled router: gunbc.serving.router_realization emits no log line, so they must not be read as if the
+// modelled router produced them. Their removal belongs to the modelled router's realization -- the typed
+// rows in retires_via -- which must first carry the same prefix-overlap and token-usage facts as typed
+// observations on the authority that decides the move (class B5). Recorded as a typed standing with typed
+// references to the retiring rows (source_annotations: a status and a dissolution condition belong in a
+// typed carrier), not as a prose paragraph.
 
-data router_probe_line_standing: NonEmptyStr = "the prefixprobe/usageprobe log lines are a receipt of the hand-managed srv1 ~/router/nginx.conf, not of the modelled router (gunbc.serving.router_realization emits no log line); their standing is transient and their removal belongs to the modelled router's realization (gunbc.serving.turn_admission / gunbc.serving.serving_relocation, class B5), which must carry the same prefix-overlap and token-usage facts as typed observations before the hand-managed lines are retired; until then the attribution built on them is an operator-observed receipt of 2026-11-24, never a modelled instrument" as NonEmptyStr
+type ProbeStanding = TransientReceiptOfHandManagedRouter | ModelledRouterInstrument
+
+type RouterProbeStanding = RouterProbeStanding {
+  hand_managed_source: NonEmptyStr
+  standing: ProbeStanding
+  retires_via: List<DeclarationRef>
+  retirement_condition: NonEmptyStr
+}
+
+data router_probe_line_standing: RouterProbeStanding = RouterProbeStanding {
+  hand_managed_source: "srv1 ~/router/nginx.conf, hand-managed; prefixprobe/usageprobe marked TEMPORARY 2026-10-27/28 (calm-crab-645)" as NonEmptyStr,
+  standing: TransientReceiptOfHandManagedRouter,
+  retires_via: [
+    decl_ref(module_path: "gunbc.serving.router_realization", decl_name: "router_realization_contract"),
+    decl_ref(module_path: "gunbc.serving.turn_admission", decl_name: "serving_co_tenancy"),
+    decl_ref(module_path: "gunbc.serving.serving_relocation", decl_name: "admit_state_method"),
+  ],
+  retirement_condition: "retire these hand-managed lines only once the rows in retires_via carry the same prefix-overlap and token-usage facts as typed observations on the authority that decides the move (class B5, router relocation); until then the attribution built on them is an operator-observed receipt of 2026-11-24, never a modelled instrument" as NonEmptyStr,
+}
