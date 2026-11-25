@@ -72,7 +72,7 @@ import v2.test.claim.compiler.operation_declaration_seam { read_seam_path }
 // =============================================================================================
 
 // The handler the native door binds reuses v1.compiler.emit_rust emit_file_call's semantics -- the
-// definition is #v1.compiler.emit_rust::emit_file_call, which is what makes
+// definition is \#v1.compiler.emit_rust::emit_file_call (escaped: src/v1 is outside the roots the marked-reference check binds), which is what makes
 // "emit_file_call" the slug a green control reaches through: it is the one filesystem realization the
 // native door binds, and the free legacy primitive `filesystem_read` is neither that handler nor its
 // interface. The handler slug a green control reaches through is a filesystem realization OTHER than the
@@ -208,8 +208,11 @@ test fn filesystem_compile_gate_trigger_names_the_two_self_host_sites() -> Bool 
   // TARGETS READ AS TYPED IDENTITIES (review 98447 finding 2 / gunbc.design_argument::single_authority):
   // QualifiedName equality against the SAME authority objects the census and the population use -- the
   // handler identity is the witness's own filesystem_handler_identity data, the module the census sites'
-  // module -- never string fields the witness string-matches. A rename of a target cannot leave this
-  // trigger claiming to hold.
+  // module -- never string fields the witness string-matches. TYPED, NOT RESOLVED (Manager A, review
+  // 98447 re-ask): these comparisons make the check an identity comparison; nothing here resolves the
+  // names against the corpus, so a corpus rename does NOT fail this leg while the fixture strings drift
+  // together. The rename guard is the deferred resolve-against-real-phase-1-rows leg, owned by Manager
+  // B's establishing roadmap row for this instrument.
   (filesystem_wall_compile_gate_trigger.awaiting_migration_module
       == qualified_name_from_dotted_string(dotted: "v2.compiler.self_host"))
     && (qualified_name_to_dotted_string(qn: filesystem_wall_compile_gate_trigger.awaiting_migration_module)
@@ -667,7 +670,12 @@ test fn filesystem_census_log_names_refused_count_bound_and_three_sites() -> Boo
 // =============================================================================================
 // THE DEBT CONTRACT (review 98447 finding 1, Manager B formulation): a MONOTONE IDENTITY-GRAIN JOIN,
 // exercised in BOTH refusal directions on fixture input plus a green control. No number here is copied
-// from a tree; every count is derived by the run that claims it.
+// from a tree; every count is derived by the run that claims it. FIXTURE-EXERCISED ONLY (Manager A,
+// review 98447 re-ask): the reaches below come from derived_row fixtures, so these legs prove the join
+// PREDICATES fire on planted input -- they cannot catch a corpus rename (contract and fixture drift
+// together). The real-reach observation is the two scratch probe trees run outside this witness (the
+// census run itself refuses), and the real-closure join leg is deferred to Manager B's establishing
+// roadmap row for this instrument.
 // =============================================================================================
 
 // Rows spelling EXACTLY the four contracted sites: two #v2.compiler.self_host declarations and two

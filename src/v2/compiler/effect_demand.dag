@@ -1250,14 +1250,19 @@ data effect_demand_seam_roster: List<SeamStanding> = [
 // capability anymore; the missing_capability field names the one that is: the EMIT-SIDE binding of the
 // native Filesystem handler (emit_file_call) to an ordinary-function entry under the NativeCliDriver root
 // (demand_engine_program.dag D10/D11). The two-site migration is the visible consequence; the capability is
-// the thing restored when this trigger dissolves. The strings are rename-guarded by CONSUMPTION, not faith:
-// the witness test filesystem_compile_gate_trigger_names_the_two_self_host_sites asserts them equal to the
-// CENSUS SITES' module and enclosing declarations (the same values the census locates offenders by), so a
-// rename that drifts one of them breaks a test rather than sitting silently stale.
+// the thing restored when this trigger dissolves. TYPED, NOT RESOLVED (Manager A, review 98447 re-ask):
+// the witness test filesystem_compile_gate_trigger_names_the_two_self_host_sites compares these fields
+// against TYPED values built from the census sites' strings -- that makes the comparison an identity
+// comparison, not a substring match, but it resolves NOTHING against the corpus: a corpus rename drifts
+// trigger data, census sites and witness fixture together and no leg fires. The rename guard is the
+// deferred leg that RESOLVES these QualifiedNames against the real closure's phase-1 rows, owned by
+// Manager B's establishing roadmap row for this instrument.
 type FilesystemWallCompileGateTrigger {
   // TARGETS ARE CITED BY IDENTITY, NOT TEXT (review 98447 finding 2 / gunbc.design_argument::single_authority:
   // "Cite the symbol, not the position... A stale symbol is decidable from the Node tree"). QualifiedName,
-  // never a String the witness string-matches: a rename makes these UNRESOLVABLE, not silently stale.
+  // never a String the witness string-matches. TYPED, NOT RESOLVED: construction spells the names with
+  // qualified_name_from_dotted_string, which resolves nothing against the corpus; a rename is caught only
+  // once the deferred resolve-against-real-rows leg (Manager B's establishing row) runs.
   awaiting_migration_module: QualifiedName
   awaiting_migration_declarations: List<QualifiedName>
   migrate_to_bound_handler: QualifiedName
@@ -1348,8 +1353,10 @@ data filesystem_free_primitive_slug: String = "filesystem_read"
 //   driver_arm          -- dag/std/compiler_entry.dag CompilerEntryDriver arm, realized at
 //                          src/v2/cli/compile_cli.dag compiler_pipeline_entry.
 //   bound_handler        -- the one Filesystem realization handler bound to the emitted shape,
-//                          #v1.compiler.emit_rust::emit_file_call (named the bound handler by
-//                          #v1.compiler.emit::its own carrier comment).
+//                          \#v1.compiler.emit_rust::emit_file_call. The citation is ESCAPED, not a
+//                          marker: the declaration lives in src/v1, outside the roots the marked-
+//                          reference check binds (dag, src/v2), and the check judges markers -- an
+//                          unescaped citation of an unread module would be a refusal, not a pass.
 //   free_primitive_slug  -- the legacy free primitive this wall refuses, the same slug the census takes
 //                          every operation at (std.primitive_projection).
 // The population is the native-emitted closure under the NativeCliDriver root bound to the E2 Filesystem
@@ -1685,13 +1692,19 @@ fn filesystem_effect_emitted_closure_census(
 // emitted closure reaching a bare primitive; the KNOWN population of those reaches is the four production
 // sites below, authored at identity grain (module path + enclosing declaration + occurrence within it --
 // no line numbers, which rot). Each site retires by REMOVING IT from this contract when its declaration
-// migrates to the bound handler (#v1.compiler.emit_rust::emit_file_call); the contract only shrinks. A
+// migrates to the bound handler (\#v1.compiler.emit_rust::emit_file_call); the contract only shrinks. A
 // direct reach at a site NOT in the contract is an unknown reach -- the join refuses it BY NAME, and the
 // wall's own refusal stands for it regardless of the join. The join goes BOTH ways: a contract site the
 // census did not locate means the census is incomplete over its named population, and that refuses too.
 // This is a typed carrier, not a comment (source_annotations: "a fact that must survive belongs in a
-// typed carrier"): the witness exercises the join, so a rename breaks the join loudly, not a numeral
-// silently.
+// typed carrier"). SCOPE OF THE EXERCISE (Manager A, review 98447 re-ask): the join PREDICATES refuse
+// in production wherever the census reaches are fed to them -- that real-reach observation is the two
+// scratch probe trees (the census run itself refuses on a planted extra reach and on a removed member).
+// The WITNESS join legs are FIXTURE-EXERCISED ONLY: their reaches come from derived_row fixtures, so a
+// corpus rename of a contracted declaration drifts contract and fixture together and no witness leg
+// fires. The leg that runs filesystem_effect_debt_join_holds over the REAL closure's reaches (real
+// phase-1 rows through the resolver fold, not fixture rows) is DEFERRED and belongs to Manager B's
+// establishing roadmap row for this instrument, alongside the trigger's resolve leg below.
 //
 // INSTRUMENT FACE (warm-fox-517 roster discipline, same fence as the parse-population and emission
 // rosters): GRAIN -- module_path # enclosing_declaration # site_occurrence, one entry per contracted
@@ -1702,7 +1715,7 @@ fn filesystem_effect_emitted_closure_census(
 // through it). READERS of the contract data -- four: the join, the census log face, the witness legs,
 // and the two scratch probe trees (refusal-direction observation only). WHO MAY DELETE IT -- not this
 // lane: the contract retires entry-by-entry only when a migration row in Manager A's stage moves a
-// declaration to #v1.compiler.emit_rust::emit_file_call, and wholesale only via the roadmap row Manager
+// declaration to \#v1.compiler.emit_rust::emit_file_call, and wholesale only via the roadmap row Manager
 // B is establishing; nobody may widen it without the row.
 data filesystem_effect_direct_reach_debt_contract: List<FilesystemEffectSite> = [
   FilesystemEffectSite {
