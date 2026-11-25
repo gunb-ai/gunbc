@@ -1,0 +1,332 @@
+module gunbc.instruments.emit_accumulator_observation
+
+import std.types { Bool, Int, List }
+import std.realization_measurement { AllocationCounter, AllocationObservation, allocation_span_observation, allocation_provider_not_selected }
+import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld }
+import gunbc.emit_building_block_contracts { BuildingBlockContract, BuildingBlockFamily, Accumulator, family_slug, building_block_contracts, contracts_of_family, contract_verdict, case_in_applicable_roster, violating_form_slug, violating_form_exercised, contract_line, roster_membership_line, MispairedProbe, mispaired_probes, probe_guard_holds, probe_lines }
+import gunbc.instruments.native_allocation_observation { AllocationCase, case_line, is_observed, operations_above, operations_within, span_text, count_text }
+import gunbc.emit_state_threading_specimen { spec_build }
+
+// THE ACCUMULATOR GROUP OF THE BUILDING-BLOCK BATTERY, deliverable two of the roadmap row
+// #gunbc.roadmap.roadmap_authority::declared_roadmap_nodes, id emission-building-block-realization.
+// Five blocks: a Loop with a record accumulator, a field read, a record rebuild with one field changed,
+// a local closure and an escaping closure. Same spine as the control-flow group: one subject body, so a
+// violating variant and its contract arm differ only in the arm; the judgement is the carrier instrument's
+// own operations_above and operations_within against the CONTRACT ARM, never against a threshold invented
+// here; and the red control is its own entry, so its non-zero exit is its own.
+//
+// THE SHAPE IS CHOSEN FROM THIS ROW'S OWN PINNED COUNTER DATA, not from a parse-population profile
+// (absent at this base) and not by taste. The discriminating gap is the cloning control against the
+// reference walk, 43711 ops / 21853472 bytes against 6112 ops / 1401008 bytes, in run3.log sha256
+// 7d722dbb2a45942a8cbe85ef7714060d2e6af6c3ed90c3032474c1f34d29dd7f. The counter arm sees OPERATIONS AND
+// BYTES ONLY: no traversal count, no per-phase lifetime (copy_work_dimension_unavailable_cause), which is
+// the limitation the recorded basis change accepts with its eyes open. That is the planning owner's ruling
+// kept as an updated() note on the row, note sha256
+// 9dd0c6865134a315b1828b55d3c8f3f649b7522bcdd5cf53a441de2088d59d88, verified by extraction from the file
+// at the planning PR's head -- see docs/measurements/emission_building_block_realization/README.md.
+// The fold and rebuild idiom is the accepted specimen's (dag/gunbc/emit_state_threading_specimen.dag:66).
+//
+// CLOSURES ARE WRITTEN THE WAY THE CORPUS WRITES THEM. A callable is a let-bound lambda invoked
+// positionally (dag/test/claim/rung_drop_superseded_standing_witness.dag:202) or passed as a labelled
+// argument (dag/test/claim/owned_directory_witness.dag:105,110 and
+// dag/test/claim/runner/runner_service_slot_start_witness.dag:157,160). This module declares NO arrow
+// type: production spellings of a function-typed formal have no corpus precedent, only prose and probe
+// mentions (dag/gunbc/recurring_failure_mode/a_value_of_any_type_is_admitted_at_an_opaque_declared_type.dag:23),
+// so borrowing one here would be inventing syntax -- the failure mode this row exists to prevent.
+
+data compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver
+
+data acc_cardinality: Int = 32
+
+// THE RECORD ACCUMULATOR: one field changes per step, the context and the tag are carried unchanged.
+// The context is a list rather than a string so the reading is about the payload, not about text layout.
+type AccRecord {
+  pos: Int
+  total: Int
+  context: List<Int>
+  tag: Int
+}
+
+type AccRow {
+  label: Int
+  width: Int
+  context: List<Int>
+}
+
+fn acc_init(context: List<Int>) -> AccRecord {
+  AccRecord { pos: 0, total: 0, context: context, tag: 7 }
+}
+
+// THE LOOP WITH A RECORD ACCUMULATOR, contract arm: one accumulator threaded through the walk; `context`
+// and `tag` are carried by reference to the enclosing value, so a step's cost is bounded by the field that
+// changes. Same fold shape as the accepted specimen's spec_walk_tokens.
+fn acc_fold_step(seed: AccRecord, xs: List<Int>) -> Int {
+  let end = fold(xs, init: seed, f: (acc, x) => if acc.pos > acc_cardinality { acc } else {
+    AccRecord { pos: acc.pos + 1, total: acc.total + x, context: acc.context, tag: acc.tag }
+  })
+  end.total + end.pos
+}
+
+// THE LOOP, violating arm (PerStepAllocation): a fresh accumulator is materialized every step from a
+// fresh pass over the whole context, so the accumulator is allocated per step instead of moved per step.
+// Same fold, same xs, same returned scalar; the only difference is that the carried value is rebuilt from
+// the context each step.
+fn acc_fold_allocates_per_step(seed: AccRecord, xs: List<Int>) -> Int {
+  let end = fold(xs, init: seed, f: (acc, x) => if acc.pos > acc_cardinality { acc } else {
+    let remade = fold(acc.context, init: acc_init(context: acc.context), f: (inner, c) => AccRecord { pos: inner.pos, total: inner.total + c, context: inner.context, tag: inner.tag })
+    AccRecord { pos: acc.pos + 1, total: remade.total + x, context: acc.context, tag: acc.tag }
+  })
+  end.total + end.pos
+}
+
+// THE FIELD READ, contract arm: the enclosing row stays live and only a field is taken.
+fn acc_field_read(row: AccRow) -> Int {
+  row.width
+}
+
+// THE FIELD READ, violating arm (CopyOfUnchangedContext): the whole enclosing record is rebuilt in order
+// to read one field, so the unchanged context is copied through the read.
+fn acc_field_read_rebuilds(row: AccRow) -> Int {
+  let rebuilt = AccRow { label: row.label, width: row.width, context: row.context }
+  rebuilt.width
+}
+
+// THE RECORD REBUILD, contract arm: one field changes, the context is carried.
+fn acc_rebuild_one_field(row: AccRow) -> Int {
+  let changed = AccRow { label: row.label, width: row.width + 1, context: row.context }
+  changed.width
+}
+
+// THE RECORD REBUILD, violating arm (CopyOfUnchangedContext): the field that does not change is pushed
+// through an extra fold over the context before the rebuild, copying the unchanged context.
+fn acc_rebuild_copies_context(row: AccRow) -> Int {
+  // The extra pass over the carried context is the whole difference from the contract arm: same fields,
+  // same returned width, but the unchanged context is walked to make a value that is then multiplied by
+  // zero, so the work is real and the answer is not.
+  let carried = fold(row.context, init: 0, f: (acc, c) => acc + c)
+  let changed = AccRow { label: row.label, width: row.width + 1 + (carried * 0), context: row.context }
+  changed.width
+}
+
+// THE LOCAL CLOSURE, contract arm: built, applied to every element, never retained and never escapes the
+// call. Invocation is positional, the corpus spelling.
+fn acc_local_closure(xs: List<Int>) -> Int {
+  let scale = x => x + 1
+  fold(xs, init: 0, f: (acc, x) => acc + scale(x))
+}
+
+// THE LOCAL CLOSURE, violating arm (OwningRetainAddedToObservation): the same local computation, but the
+// observed value is materialized once per application instead of read once, so the observation retains a
+// payload it never needed.
+fn acc_local_closure_retains(xs: List<Int>) -> Int {
+  let scale = x => x + acc_materialize(rows: xs)
+  fold(xs, init: 0, f: (acc, x) => acc + scale(x))
+}
+
+// A payload materialization used as the retained object. Returns a scalar so nothing has to be stored.
+fn acc_materialize(rows: List<Int>) -> Int {
+  fold(rows, init: 0, f: (acc, x) => acc + x)
+}
+
+// THE ESCAPING CLOSURE, contract arm: the callable leaves this body and is applied by the callee; it
+// captured the two scalars it reads and nothing else.
+fn acc_escaping_closure(xs: List<Int>) -> Int {
+  let bias = acc_field_read(row: acc_row_of(n: 3))
+  let add = x => x + bias
+  fold(xs, init: 0, f: (acc, x) => acc + add(x))
+}
+
+// THE ESCAPING CLOSURE, violating arm (CopyOfUnchangedContext): the escaping callable reads the unchanged
+// context too, so escaping costs the whole payload rather than the scalar it returns.
+fn acc_escaping_closure_copies_context(xs: List<Int>) -> Int {
+  let row = acc_row_of(n: 3)
+  let bias = acc_rebuild_copies_context(row: row)
+  let add = x => x + bias + acc_field_read_rebuilds(row: row)
+  fold(xs, init: 0, f: (acc, x) => acc + add(x))
+}
+
+fn acc_row_of(n: Int) -> AccRow {
+  AccRow { label: n, width: n * 2, context: spec_build(n: n) }
+}
+
+type AccSubject =
+    AccMeterEmpty
+  | AccMeterKnownAllocation
+  | AccFoldStep
+  | AccFoldAllocatesPerStep
+  | AccFieldRead
+  | AccFieldReadRebuilds
+  | AccRebuildOneField
+  | AccRebuildCopiesContext
+  | AccLocalClosure
+  | AccLocalClosureRetains
+  | AccEscapingClosure
+  | AccEscapingClosureCopiesContext
+
+// ONE PATH FOR EVERY ARM: same seed, same rows, same returned scalar; a violating arm differs from its
+// contract arm only in the work it does inside the same body.
+fn run_acc_subject(subject: AccSubject, src: List<Int>) -> List<Int> {
+  let rows = spec_build(n: acc_cardinality)
+  let context = spec_build(n: acc_cardinality)
+  let seed = acc_init(context: context)
+  let row = acc_row_of(n: 8)
+  match subject {
+    AccMeterEmpty => []
+    AccMeterKnownAllocation => list_push([], 4096)
+    AccFoldStep => list_push([], acc_fold_step(seed: seed, xs: rows))
+    AccFoldAllocatesPerStep => list_push([], acc_fold_allocates_per_step(seed: seed, xs: rows))
+    AccFieldRead => list_push([], acc_field_read(row: row))
+    AccFieldReadRebuilds => list_push([], acc_field_read_rebuilds(row: row))
+    AccRebuildOneField => list_push([], acc_rebuild_one_field(row: row))
+    AccRebuildCopiesContext => list_push([], acc_rebuild_copies_context(row: row))
+    AccLocalClosure => list_push([], acc_local_closure(xs: rows))
+    AccLocalClosureRetains => list_push([], acc_local_closure_retains(xs: rows))
+    AccEscapingClosure => list_push([], acc_escaping_closure(xs: rows))
+    AccEscapingClosureCopiesContext => list_push([], acc_escaping_closure_copies_context(xs: rows))
+  }
+}
+
+type AccWindow {
+  kept: List<Int>
+  observation: AllocationObservation
+}
+
+fn acc_window(subject: AccSubject, src: List<Int>) -> AccWindow uses counter: AllocationCounter {
+  if observed_allocation_available("") {
+    let ops_before = observed_allocation_operations("")
+    let bytes_before = observed_allocation_bytes("")
+    let kept = run_acc_subject(subject: subject, src: src)
+    let ops_after = observed_allocation_operations("")
+    let bytes_after = observed_allocation_bytes("")
+    AccWindow { kept: kept, observation: allocation_span_observation(operations_before: ops_before, operations_after: ops_after, bytes_before: bytes_before, bytes_after: bytes_after) }
+  } else {
+    AccWindow { kept: run_acc_subject(subject: subject, src: src), observation: allocation_provider_not_selected() }
+  }
+}
+
+fn reading(label: String, o: AllocationObservation) -> String {
+  span_text(label: label, o: o)
+}
+
+fn readings(a_label: String, a: AllocationObservation, b_label: String, b: AllocationObservation) -> String {
+  concat(reading(label: a_label, o: a), " ", reading(label: b_label, o: b))
+}
+
+// A READING, not a bound: it holds when the reading was taken.
+fn subject_case(block_id: String, own: AllocationObservation) -> AllocationCase {
+  AllocationCase {
+    identity: concat("accumulator_", block_id, "_reading_taken"),
+    held: is_observed(o: own),
+    observed: reading(label: "own", o: own)
+  }
+}
+
+fn violation_case(block_id: String, viol: AllocationObservation, contract_arm: AllocationObservation) -> AllocationCase {
+  AllocationCase {
+    identity: concat("accumulator_", block_id, "_violating_variant_above_contract_arm"),
+    held: is_observed(o: viol) && operations_above(a: viol, b: contract_arm),
+    observed: readings(a_label: "violating", a: viol, b_label: "contract_arm", b: contract_arm)
+  }
+}
+
+fn violation_contract_holds_case(block_id: String, viol: AllocationObservation, contract_arm: AllocationObservation) -> AllocationCase {
+  AllocationCase {
+    identity: concat("accumulator_", block_id, "_violating_variant_within_contract_arm"),
+    held: is_observed(o: viol) && operations_within(a: viol, b: contract_arm),
+    observed: readings(a_label: "violating", a: viol, b_label: "contract_arm", b: contract_arm)
+  }
+}
+
+fn accumulator_cases() -> List<AllocationCase> uses counter: AllocationCounter {
+  let src = spec_build(n: acc_cardinality)
+  let empty = acc_window(subject: AccMeterEmpty, src: src).observation
+  let known = acc_window(subject: AccMeterKnownAllocation, src: src).observation
+  let fold_step = acc_window(subject: AccFoldStep, src: src).observation
+  let fold_alloc = acc_window(subject: AccFoldAllocatesPerStep, src: src).observation
+  let field_read = acc_window(subject: AccFieldRead, src: src).observation
+  let field_rebuilt = acc_window(subject: AccFieldReadRebuilds, src: src).observation
+  let rebuild = acc_window(subject: AccRebuildOneField, src: src).observation
+  let rebuild_copied = acc_window(subject: AccRebuildCopiesContext, src: src).observation
+  let closure = acc_window(subject: AccLocalClosure, src: src).observation
+  let closure_retained = acc_window(subject: AccLocalClosureRetains, src: src).observation
+  let escaping = acc_window(subject: AccEscapingClosure, src: src).observation
+  let escaping_copied = acc_window(subject: AccEscapingClosureCopiesContext, src: src).observation
+  // The 13 rows are built in named groups and joined pairwise, so the parenthesis structure is legible
+  // and a missing arm shows as an unused group rather than as a brace the parser trips over.
+  let readings_meter = [subject_case(block_id: "meter_empty", own: empty), subject_case(block_id: "meter_known_allocation", own: known)]
+  let readings_step = [subject_case(block_id: "loop_record_accumulator", own: fold_step), subject_case(block_id: "field_read", own: field_read)]
+  let readings_record = [subject_case(block_id: "record_rebuild_one_field", own: rebuild), subject_case(block_id: "local_closure", own: closure)]
+  let readings_escape = [subject_case(block_id: "escaping_closure", own: escaping), violation_case(block_id: "loop_record_accumulator", viol: fold_alloc, contract_arm: fold_step)]
+  let violations_record = [violation_case(block_id: "field_read", viol: field_rebuilt, contract_arm: field_read), violation_case(block_id: "record_rebuild_one_field", viol: rebuild_copied, contract_arm: rebuild)]
+  let violations_closure = [violation_case(block_id: "local_closure", viol: closure_retained, contract_arm: closure), violation_case(block_id: "escaping_closure", viol: escaping_copied, contract_arm: escaping)]
+  let roster_row = [AllocationCase {
+    identity: "accumulator_roster_verdicts_and_probes",
+    held: (count(contracts_of_family(f: Accumulator)) == 5) && (count(filter(mispaired_probes(), p => !probe_guard_holds(p: p))) == 0),
+    observed: concat(concat("family_rows=", count_text(label: "rows", n: count(contracts_of_family(f: Accumulator)))), concat(" probes=", count_text(label: "probes", n: count(mispaired_probes())), concat(" forms_retain=", count_text(label: "retain", n: violating_form_exercised(slug: "owning_retain_added_to_observation")), concat(" forms_per_step=", count_text(label: "per_step", n: violating_form_exercised(slug: "per_step_allocation")), concat(" forms_context=", count_text(label: "context", n: violating_form_exercised(slug: "copy_of_unchanged_context")), "")))))
+  }]
+  let meter_zero_control = [violation_contract_holds_case(block_id: "meter_empty_zero", viol: empty, contract_arm: empty)]
+  let half_a = concat(concat(readings_meter, readings_step), concat(readings_record, readings_escape))
+  let half_b = concat(concat(violations_record, violations_closure), concat(meter_zero_control, roster_row))
+  concat(half_a, half_b)
+}
+
+// THE AUDIT rows the module itself judges: the family's contracts carry a verdict from the carrier, and
+// the three violating forms the row names are all exercised by real blocks.
+fn accumulator_audit_cases() -> List<AllocationCase> {
+  concat(
+    contracts_of_family(f: Accumulator) |> map(c => AllocationCase {
+      identity: concat("accumulator_contract_", c.block),
+      held: contract_verdict(c: c.case_id) == "CaseApplicable" && case_in_applicable_roster(c: c.case_id),
+      observed: concat(contract_line(b: c), " ", roster_membership_line(b: c))
+    }),
+    [AllocationCase { identity: "the_three_named_violating_forms_are_exercised",
+      held: violating_form_exercised(slug: "owning_retain_added_to_observation") > 0 && violating_form_exercised(slug: "per_step_allocation") > 0 && violating_form_exercised(slug: "copy_of_unchanged_context") > 0,
+      observed: concat(concat(concat("retain=", count_text(label: "retain", n: violating_form_exercised(slug: "owning_retain_added_to_observation"))), concat(" per_step=", count_text(label: "per_step", n: violating_form_exercised(slug: "per_step_allocation")))), concat(" unchanged_context=", count_text(label: "unchanged_context", n: violating_form_exercised(slug: "copy_of_unchanged_context")))) },
+     AllocationCase { identity: "all_mispaired_probes_are_refused",
+      held: count(filter(mispaired_probes(), p => !probe_guard_holds(p: p))) == 0,
+      observed: concat("probes=", count_text(label: "probes", n: count(mispaired_probes())), " ", fold(probe_lines(), init: "no_probes", f: (acc, line) => if acc == "no_probes" { line } else { acc })) }])
+}
+
+fn roster_lines() -> String {
+  concat("roster_contracts ", contracts_of_family(f: Accumulator) |> map(c => roster_membership_line(b: c)) |> join(separator: "; "), "\n")
+}
+
+// THE GREEN BATTERY for the accumulator group, carrying its red rows in the same log.
+fn native_claim_report() -> NativeClaimReport uses counter: AllocationCounter {
+  let cases = concat(concat(accumulator_cases(), accumulator_audit_cases()), red_control_cases())
+  let failed = cases |> filter(c => !c.held) |> map(c => c.identity)
+  let terminal = if (failed |> count) == 0 { NativeClaimHeld } else { NativeClaimNotHeld { reason: concat("not held: ", failed |> join(separator: ",")) } }
+  let roster = concat("roster ", cases |> map(c => c.identity) |> join(separator: ","), "\n")
+  NativeClaimReport { stdout: concat(concat(roster, roster_lines()), cases |> map(c => case_line(c: c)) |> join(separator: "")), terminal: terminal }
+}
+
+// THE RED ENTRY, deliberately red: the same observations, the same path, judged the opposite way. Each
+// pair names both arms, so a reader sees which contract arm the violating arm was compared against.
+fn red_control_cases() -> List<AllocationCase> uses counter: AllocationCounter {
+  let src = spec_build(n: acc_cardinality)
+  let fold_step = acc_window(subject: AccFoldStep, src: src).observation
+  let fold_alloc = acc_window(subject: AccFoldAllocatesPerStep, src: src).observation
+  let field_read = acc_window(subject: AccFieldRead, src: src).observation
+  let field_rebuilt = acc_window(subject: AccFieldReadRebuilds, src: src).observation
+  let rebuild = acc_window(subject: AccRebuildOneField, src: src).observation
+  let rebuild_copied = acc_window(subject: AccRebuildCopiesContext, src: src).observation
+  let closure = acc_window(subject: AccLocalClosure, src: src).observation
+  let closure_retained = acc_window(subject: AccLocalClosureRetains, src: src).observation
+  let escaping = acc_window(subject: AccEscapingClosure, src: src).observation
+  let escaping_copied = acc_window(subject: AccEscapingClosureCopiesContext, src: src).observation
+  [
+    violation_contract_holds_case(block_id: "loop_record_accumulator", viol: fold_alloc, contract_arm: fold_step),
+    violation_contract_holds_case(block_id: "field_read", viol: field_rebuilt, contract_arm: field_read),
+    violation_contract_holds_case(block_id: "record_rebuild_one_field", viol: rebuild_copied, contract_arm: rebuild),
+    violation_contract_holds_case(block_id: "local_closure", viol: closure_retained, contract_arm: closure),
+    violation_contract_holds_case(block_id: "escaping_closure", viol: escaping_copied, contract_arm: escaping)
+  ]
+}
+
+fn violation_contract_holds_when_violated() -> NativeClaimReport uses counter: AllocationCounter {
+  let cases = red_control_cases()
+  let failed = cases |> filter(c => !c.held) |> map(c => c.identity)
+  let terminal = if (failed |> count) == 0 { NativeClaimHeld } else { NativeClaimNotHeld { reason: concat("not held: ", failed |> join(separator: ",")) } }
+  let roster = concat("roster ", cases |> map(c => c.identity) |> join(separator: ","), "\n")
+  NativeClaimReport { stdout: concat(roster, cases |> map(c => case_line(c: c)) |> join(separator: "")), terminal: terminal }
+}
