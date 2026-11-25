@@ -491,7 +491,7 @@ type SlotCapRead
   = SlotCapReadOk { live: SlotCapLive }
   | SlotCapReadRefused { reason: String }
 
-// THE EXEC BOUNDARY AS A TYPED ARGUMENT (the machine_intake readback exemplar's RemoteAnswer shape):
+// THE EXEC BOUNDARY AS A TYPED ARGUMENT (the machine_intake readback exemplar's typed never-dispatched-or-answered shape):
 // what the exec EFFECT answers -- refused (never attempted), or a result. Splitting exec from judgement
 // is what makes the REAL route controllable: read_slot_cap_live_over and the scripted controls both
 // pass their exec answers through slot_cap_read_of_answers -- ONE decision core -- so a scripted
