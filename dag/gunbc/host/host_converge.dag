@@ -1275,7 +1275,7 @@ fn frontier_classify_target(target: ConvergeTarget) -> FrontierClassification {
       match acc {
         Classified { artifact: _, kind: _, class: _ } => acc
         UnclassifiedArtifact { artifact: _, kind: _ } =>
-          if a.identity == identity && a.kind == kind {
+          if a.identity == identity {
             Classified { artifact: identity, kind: kind, class: a.class }
           } else {
             acc
