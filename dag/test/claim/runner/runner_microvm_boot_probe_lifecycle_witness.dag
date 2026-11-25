@@ -170,7 +170,7 @@ test fn a_wedged_child_our_own_bound_signals_is_reported_as_a_deadline() -> Bool
       BoundFired { deadline: d, reaped_signal: sig } => second_count(s: d) == 3 && sig == 15
       _ => false
     })
-    && (match verdict { BootExceededHostDeadline { deadline: dl, console: _, console_cause: _, detail: _ } => dl == "3 seconds"  _ => false })
+    && (match verdict { BootExceededHostDeadline { deadline: dl, console: _, console_cause: _, detail: _ } => second_count(s: dl) == 3  _ => false })
     && !boot_probe_admitted(v: verdict)
     && string_contains(s: text, pattern: "host-deadline-expired after 3 seconds")
     && string_contains(s: text, pattern: "signal 15")
@@ -270,7 +270,7 @@ test fn a_subject_that_declines_our_term_is_killed_by_our_escalation_and_reporte
       _ => false
     })
     && (match verdict {
-      BootExceededHostDeadline { deadline: dl, console: _, console_cause: _, detail: _ } => dl == "3 seconds"
+      BootExceededHostDeadline { deadline: dl, console: _, console_cause: _, detail: _ } => second_count(s: dl) == 3
       _ => false
     })
     && string_contains(s: text, pattern: "host-deadline-expired")

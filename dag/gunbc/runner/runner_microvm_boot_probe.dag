@@ -660,13 +660,18 @@ fn runner_microvm_boot_probe_verdict_from_run(
 //        the death is not attributable to that signal. Remedy: read the subject, not the bound.
 //   GroupUnnameable           -- the pid this invocation started could not be minted as a group leader, so
 //        nothing was signalled. Remedy: the lifecycle primitive.
+// ONE REPRESENTATION OF THE BOUND. Every arm that names a bound carries it as a std.measure Second --
+// the same carrier the receipt uses -- so a consumer can compare or compute with the bound it is being told
+// about. The rendered "N seconds" form exists only inside boot_probe_verdict_text, at the boundary where a
+// duration becomes a sentence (DESIGN.md: the string form belongs only at the transport boundary; and
+// gunbc.design_argument::fail_closed on restating a constraint the model already carries).
 type EnforcementMismatch
   = SignalledWithoutOurKill { signal: Int }
   | ReapRefused { cause: String }
-  | ReapRefusedAfterOurSignal { deadline: String, cause: String }
-  | GroupSignalRefused { deadline: String, detail: String }
-  | SubjectSurvivedOurSignals { deadline: String }
-  | KillNotConfirmedByReap { deadline: String, exit_code: Int }
+  | ReapRefusedAfterOurSignal { deadline: Second, cause: String }
+  | GroupSignalRefused { deadline: Second, detail: String }
+  | SubjectSurvivedOurSignals { deadline: Second }
+  | KillNotConfirmedByReap { deadline: Second, exit_code: Int }
   | GroupUnnameable { pid: Int }
 
 type BootProbeVerdict
@@ -676,7 +681,7 @@ type BootProbeVerdict
   | BootConsoleLacksGuestBooted { console: String }
   | BootNotAttempted { cause: String }
   | BootExceededHostDeadline {
-      deadline: String
+      deadline: Second
       console: String
       console_cause: String?
       detail: String
@@ -737,7 +742,7 @@ fn boot_probe_verdict(
       }
     BoundFired { deadline: d, reaped_signal: sig } =>
       BootExceededHostDeadline {
-        deadline: runner_microvm_boot_probe_deadline_text(deadline: d),
+        deadline: d,
         console: console.stdout,
         console_cause: console.read_cause,
         detail: join([
@@ -773,7 +778,7 @@ fn boot_probe_verdict(
         console_cause: console.read_cause,
         detail: console.stderr,
         cause: ReapRefusedAfterOurSignal {
-          deadline: runner_microvm_boot_probe_deadline_text(deadline: d),
+          deadline: d,
           cause: c,
         },
       }
@@ -783,7 +788,7 @@ fn boot_probe_verdict(
         console_cause: console.read_cause,
         detail: console.stderr,
         cause: GroupSignalRefused {
-          deadline: runner_microvm_boot_probe_deadline_text(deadline: d),
+          deadline: d,
           detail: dd,
         },
       }
@@ -793,7 +798,7 @@ fn boot_probe_verdict(
         console_cause: console.read_cause,
         detail: console.stderr,
         cause: SubjectSurvivedOurSignals {
-          deadline: runner_microvm_boot_probe_deadline_text(deadline: d),
+          deadline: d,
         },
       }
     BoundKillUnconfirmed { deadline: d, exit_code: code } =>
@@ -802,7 +807,7 @@ fn boot_probe_verdict(
         console_cause: console.read_cause,
         detail: console.stderr,
         cause: KillNotConfirmedByReap {
-          deadline: runner_microvm_boot_probe_deadline_text(deadline: d),
+          deadline: d,
           exit_code: code,
         },
       }
@@ -882,7 +887,7 @@ fn boot_probe_verdict_text(v: BootProbeVerdict) -> String {
       join(["boot=console-without-guest-booted (the guest agent never reported GuestBooted)\n--- console ---\n", c, "\n--- end console ---"], "")
     BootNotAttempted { cause: c } => join(["boot=not-attempted (", c, ")"], "")
     BootExceededHostDeadline { deadline: d, console: c, console_cause: capture_cause, detail: e } =>
-      join(["boot=host-deadline-expired after ", d,
+      join(["boot=host-deadline-expired after ", runner_microvm_boot_probe_deadline_text(deadline: d),
             " -- this probe imposed that bound, signalled its own process group when the bound ran out,",
             " and the kernel reaped the subject as signalled\n", e,
             boot_probe_console_block(console: c, read_cause: capture_cause)], "")
@@ -899,7 +904,7 @@ fn boot_probe_verdict_text(v: BootProbeVerdict) -> String {
             " (gunbc.design_argument::fail_closed)\nvmm-stderr: ", e,
             boot_probe_console_block(console: c, read_cause: capture_cause)], "")
     BootDeadlineEnforcementUnobservable { console: c, console_cause: capture_cause, detail: e, cause: ReapRefusedAfterOurSignal { deadline: d, cause: rc } } =>
-      join(["boot=deadline-enforcement-unobservable -- this layer imposed ", d, ", the kernel ACCEPTED its",
+      join(["boot=deadline-enforcement-unobservable -- this layer imposed ", runner_microvm_boot_probe_deadline_text(deadline: d), ", the kernel ACCEPTED its",
             " signal to the process group this layer started, and then refused this layer's confirmation reap",
             " of that subject (", rc, "). The signal verb is not the suspect and the host's signal path is",
             " not where to look; the lifecycle that owes this layer a reap is. How the subject ended is",
@@ -907,20 +912,20 @@ fn boot_probe_verdict_text(v: BootProbeVerdict) -> String {
             " (gunbc.design_argument::fail_closed)\nvmm-stderr: ", e,
             boot_probe_console_block(console: c, read_cause: capture_cause)], "")
     BootDeadlineEnforcementUnobservable { console: c, console_cause: capture_cause, detail: e, cause: GroupSignalRefused { deadline: d, detail: dd } } =>
-      join(["boot=deadline-enforcement-unobservable -- this layer imposed ", d, " and asked the kernel to",
+      join(["boot=deadline-enforcement-unobservable -- this layer imposed ", runner_microvm_boot_probe_deadline_text(deadline: d), " and asked the kernel to",
             " signal the process group it started, and the group signal was refused (", dd, "); the subject",
             " was never confirmed dead by that signal, so NO deadline is claimed",
             " (gunbc.design_argument::fail_closed)\nvmm-stderr: ", e,
             boot_probe_console_block(console: c, read_cause: capture_cause)], "")
     BootDeadlineEnforcementUnobservable { console: c, console_cause: capture_cause, detail: e, cause: SubjectSurvivedOurSignals { deadline: d } } =>
-      join(["boot=deadline-enforcement-unobservable -- this layer imposed ", d, ", signalled the process group",
+      join(["boot=deadline-enforcement-unobservable -- this layer imposed ", runner_microvm_boot_probe_deadline_text(deadline: d), ", signalled the process group",
             " it started, escalated to the group kill when the subject was still running, and the subject was",
             " STILL there when the second post-signal bound expired: the kernel would not reap it, so the",
             " wedge is reported as a refusal and NOT as a deadline that fired (a survivor is not evidence of",
             " an enforcement event -- gunbc.design_argument::epistemic_humility)\nvmm-stderr: ", e,
             boot_probe_console_block(console: c, read_cause: capture_cause)], "")
     BootDeadlineEnforcementUnobservable { console: c, console_cause: capture_cause, detail: e, cause: KillNotConfirmedByReap { deadline: d, exit_code: code } } =>
-      join(["boot=deadline-enforcement-unobservable -- this layer imposed ", d, ", signalled the process group",
+      join(["boot=deadline-enforcement-unobservable -- this layer imposed ", runner_microvm_boot_probe_deadline_text(deadline: d), ", signalled the process group",
             " it started, and the kernel then reaped the subject as EXITED (", to_string(code), "), not as",
             " signalled: the death is not attributable to this layer's signal, so NO deadline is claimed",
             " (gunbc.design_argument::fail_closed)\nvmm-stderr: ", e,

@@ -3,7 +3,7 @@ module test.claim.runner.runner_microvm_boot_probe_witness
 import std.types { String, Bool, List, NonEmptyStr }
 import std.optional { Present, Absent }
 import std.algebra { string_contains, for_all }
-import std.measure { second }
+import std.measure { second, second_count }
 import extdeps.github.actions_runner { actions_runner_release_2_336_0 }
 import extdeps.virtualization.firecracker {
   firecracker_vm_config_document, firecracker_run_config_command,
@@ -212,7 +212,7 @@ test fn the_deadline_verdict_renders_the_bound_this_run_imposed() -> Bool {
   )
   let text = boot_probe_verdict_text(v: v)
   !boot_probe_admitted(v: v)
-    && (match v { BootExceededHostDeadline { deadline: d, console: _, console_cause: _, detail: _ } => d == "7 seconds"  _ => false })
+    && (match v { BootExceededHostDeadline { deadline: d, console: _, console_cause: _, detail: _ } => second_count(s: d) == 7  _ => false })
     && string_contains(s: text, pattern: "host-deadline-expired after 7 seconds")
     && string_contains(s: text, pattern: "signal 15")
     && !string_contains(s: text, pattern: "180")
@@ -270,7 +270,7 @@ test fn each_unobservable_cause_carries_its_own_observed_data() -> Bool {
       _ => false
     })
     && (match by_decline {
-      BootDeadlineEnforcementUnobservable { cause: SubjectSurvivedOurSignals { deadline: d }, console: _, console_cause: _, detail: _ } => d == "4 seconds"
+      BootDeadlineEnforcementUnobservable { cause: SubjectSurvivedOurSignals { deadline: d }, console: _, console_cause: _, detail: _ } => second_count(s: d) == 4
       _ => false
     })
     && (match by_exit {
@@ -327,7 +327,7 @@ test fn an_unreadable_capture_refuses_by_name_rather_than_claiming_an_empty_cons
     // the deadline arm: still a deadline (it was observed), but its console says unreadable, not empty
     && (match fired {
       BootExceededHostDeadline { deadline: d, console: _, console_cause: cc, detail: _ } =>
-        d == "7 seconds" && (match cc { Present { value: why } => string_contains(s: why, pattern: "EACCES")  Absent => false })
+        second_count(s: d) == 7 && (match cc { Present { value: why } => string_contains(s: why, pattern: "EACCES")  Absent => false })
       _ => false
     })
     && string_contains(s: fired_text, pattern: "host-deadline-expired")
@@ -372,7 +372,7 @@ test fn a_refused_reap_after_our_signal_names_the_reap_and_not_the_verb() -> Boo
     && (match v {
       BootDeadlineEnforcementUnobservable {
         cause: ReapRefusedAfterOurSignal { deadline: d, cause: rc }, console: _, console_cause: _, detail: _
-      } => d == "6 seconds" && rc == "ECHILD: no child to reap"
+      } => second_count(s: d) == 6 && rc == "ECHILD: no child to reap"
       _ => false
     })
     && string_contains(s: text, pattern: "boot=deadline-enforcement-unobservable")
