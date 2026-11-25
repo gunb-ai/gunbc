@@ -133,6 +133,7 @@ fn typed_converged_with_census_fixture() -> TypedArgvExecOutcome {
       success: true,
       stdout: census_decode_fixture,
       stderr: "",
+      wall_deadline_seconds: Absent,
     },
   }
 }
