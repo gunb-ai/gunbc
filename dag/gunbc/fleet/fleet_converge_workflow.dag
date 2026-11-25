@@ -114,7 +114,7 @@ import gunbc.auth.arrival_federation_pair {
 import gunbc.machine_intake.arrival_subject { arrival_converge_subject_options }
 import gunbc.review_sheet_federation {
   review_sheet_converge_environment, review_sheet_converge_provider_resource, review_sheet_converge_service_account,
-  review_sheet_writer_token_scopes, schedule_event_name, push_event_name,
+  review_sheet_writer_token_scopes, schedule_event_name,
 }
 import gunbc.gcp.gcp_estate_observation { review_sheet_writer_sa_email }
 import gunbc.auth.oidc_claim_pins { workflow_dispatch_event_name }
@@ -129,7 +129,7 @@ import gunbc.runner.runner_host_cap_bracket { runner_host_cap_drain_policy, host
 import extdeps.languages.yaml.types { YamlKeyValue, yaml_string, yaml_int, yaml_bool, kv, YamlValue, YamlString, YamlSequence, YamlMapping }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep, 
-  WorkflowTrigger, WorkflowDispatch, Schedule, Push, DispatchInput, InputString, InputBoolean, InputChoice, InputEnvironment,
+  WorkflowTrigger, WorkflowDispatch, Schedule, DispatchInput, InputString, InputBoolean, InputChoice, InputEnvironment,
   WorkflowPermissions, PermRead, PermWrite, 
   RunnerSpec, RunsOnExpression, SelfHosted, HostedRunner, Ubuntu2404Arm,
   ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressBool,
@@ -190,7 +190,7 @@ import v2.std.node { Node }
 import v2.workflow.bash_emit { bash_emit_stmts }
 import v2.extdeps.languages.bash_build { bash_build_with_redir, bash_build_command_with_words, bash_build_word_lit, bash_build_exit }
 import gunbc.fleet.fleet_workflow_steps {
-  ci_prelude_steps_with_checkout, fleet_converge_release_bins_job_id, ci_prelude_annotations, ci_release_build_step, ci_release_bins_pack_step, ci_release_bins_key_step, ci_release_bins_lookup_step, release_bins_key_step_name, release_bins_lookup_step_name, release_bins_cache_step_name, release_bins_outcome_step_name, ci_release_bins_cache_step, ci_release_bins_outcome_step, ci_cache_cargo_step, ci_release_bins_upload_step, ci_release_bins_download_step, ci_release_bins_unpack_verify_step, ci_release_bins_unpack_verify_step_for, ci_release_bins_key_step_for, ci_release_bins_outcome_step_for, ci_release_build_step_for, ci_release_bins_pack_step_for, ci_fleet_wif_auth_step, ci_fleet_wif_auth_step_when, ci_fleet_key_agent_step, ci_fleet_key_agent_step_when, ci_fleet_key_agent_cleanup_step, fleet_ssh_multiplex_teardown_admitted, ci_wif_auth_step_for, gunbc_ci_mtcollins1_boot_job_backstop_timeout_minutes, gunbc_ci_aux_step_timeout_minutes, gunbc_ci_fleet_converge_plan_step_timeout_minutes, gunbc_ci_plan_serve_entry_verdict_step_timeout_minutes, gunbc_ci_runner_guest_image_step_timeout_minutes, gunbc_ci_mtcollins1_census_image_step_timeout_minutes, gunbc_ci_gunbc_run_resolve_step_timeout_minutes, gunbc_ci_site_pxe_edge_converge_step_timeout_minutes, gunbc_ci_spark_serving_step_timeout_minutes, gunbc_ci_artifact_transfer_step_timeout_minutes, gunbc_ci_fleet_job_backstop_timeout_minutes, gunbc_ci_release_build_step_timeout_minutes, gunbc_ci_prelude_allowance_minutes, gunbc_ci_live_deploy_step_timeout_minutes, gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes, gunbc_ci_dashboard_deploy_step_timeout_minutes, gunbc_ci_live_deploy_shaped_job_backstop_timeout_minutes, gunbc_ci_microvm_controller_install_job_backstop_timeout_minutes, gunbc_ci_approval_broker_dark_install_step_timeout, gunbc_ci_approval_broker_dark_install_job_backstop_timeout, gunbc_ci_rlm_launch_deployment_receipt_job_backstop_timeout, fleet_host_mutation_concurrency_group_expression, fleet_host_mutation_group_prefix, fleet_arm_mutation_group_glm_group_b_native, fleet_srv1_control_plane_mutation_group, checked_job_timeout_minutes, JobTimeoutWithinCeiling, JobTimeoutExceedsCeiling, fleet_host_mutation_group_prefix, fleet_host_input_expression,
+  ci_prelude_steps_with_checkout, fleet_converge_release_bins_job_id, ci_prelude_annotations, ci_release_build_step, ci_release_bins_pack_step, ci_release_bins_key_step, ci_release_bins_lookup_step, release_bins_key_step_name, release_bins_lookup_step_name, release_bins_cache_step_name, release_bins_outcome_step_name, ci_release_bins_cache_step, ci_release_bins_outcome_step, ci_cache_cargo_step, ci_release_bins_upload_step, ci_release_bins_download_step, ci_release_bins_unpack_verify_step, ci_release_bins_unpack_verify_step_for, ci_release_bins_key_step_for, ci_release_bins_outcome_step_for, ci_release_build_step_for, ci_release_bins_pack_step_for, ci_fleet_wif_auth_step, ci_fleet_wif_auth_step_when, ci_fleet_key_agent_step, ci_fleet_key_agent_step_when, ci_fleet_key_agent_cleanup_step, fleet_ssh_multiplex_teardown_admitted, ci_wif_auth_step_for, gunbc_ci_mtcollins1_boot_job_backstop_timeout_minutes, gunbc_ci_aux_step_timeout_minutes, gunbc_ci_fleet_converge_plan_step_timeout_minutes, gunbc_ci_plan_serve_entry_verdict_step_timeout_minutes, gunbc_ci_runner_guest_image_step_timeout_minutes, gunbc_ci_mtcollins1_census_image_step_timeout_minutes, gunbc_ci_gunbc_run_resolve_step_timeout_minutes, gunbc_ci_site_pxe_edge_converge_step_timeout_minutes, gunbc_ci_spark_serving_step_timeout_minutes, gunbc_ci_artifact_transfer_step_timeout_minutes, gunbc_ci_fleet_job_backstop_timeout_minutes, gunbc_ci_release_build_step_timeout_minutes, gunbc_ci_prelude_allowance_minutes, gunbc_ci_live_deploy_step_timeout_minutes, gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes, gunbc_ci_dashboard_deploy_step_timeout_minutes, gunbc_ci_desired_instance_deploy_step_timeout_minutes, gunbc_ci_desired_instance_deploy_job_backstop_timeout_minutes, gunbc_ci_live_deploy_shaped_job_backstop_timeout_minutes, gunbc_ci_microvm_controller_install_job_backstop_timeout_minutes, gunbc_ci_approval_broker_dark_install_step_timeout, gunbc_ci_approval_broker_dark_install_job_backstop_timeout, gunbc_ci_rlm_launch_deployment_receipt_job_backstop_timeout, fleet_host_mutation_concurrency_group_expression, fleet_host_mutation_group_prefix, fleet_arm_mutation_group_glm_group_b_native, fleet_srv1_control_plane_mutation_group, checked_job_timeout_minutes, JobTimeoutWithinCeiling, JobTimeoutExceedsCeiling, fleet_host_mutation_group_prefix, fleet_host_input_expression,
 }
 import gunbc.runner.runner_spec_from_offer { gunbc_ci_runner_spec }
 import gunbc.host.host_reset_return_run { host_reset_dispatch_mode_env }
@@ -1506,14 +1506,14 @@ fn fleet_converge_reset_observer_dispatch_admission_step() -> Step {
 // own runner (gunbc.runner.runner_qualification_floor_job).
 data fleet_converge_modes_without_release_pack: List<FleetConvergeWorkflowMode> = [MtCollins1Boot, MtCollins1PxeMacDiscovery, MtCollins1BmcColdReset, FleetKeypairMint, ReviewSheetConverge, QualificationFloor]
 
-// A DISPATCH OR THE DAILY SCHEDULE BUILDS THE PACK; NOTHING ELSE DOES. The schedule (review_sheet_converge_cron,
+// A DISPATCH OR THE DAILY SCHEDULE BUILDS THE PACK; NOTHING ELSE DOES. The schedule (fleet_converge_daily_cron,
 // 06:41 UTC) builds the sixteen-binary pack every day, so the lab's pair delivery always has a built ancestor of
 // main to deliver (gunbc.design_ruling::lab_release_pack_built_daily_2026_11_23). A schedule carries no inputs:
 // inputs.mode reads empty, so plan-revision's steps (each gated on a plan-executing mode) do not run and the job is
 // a checkout, its output is empty, and build checks out the event sha (fleet_converge_build_checkout_ref), the
 // default-branch head the schedule fired on, with the sixteen-binary product (no pair mode is set). Every
-// host-actuating job still requires a positive mode match, so a schedule starts no actuation. The push trigger
-// (the review-sheet sources) starts neither job: a push builds nothing.
+// host-actuating job still requires a positive mode match, so a schedule starts no actuation. The workflow has no
+// push trigger, and were one added, neither job would start on it: a push builds nothing.
 data fleet_converge_dispatch_event: Expression = Equals {
   left: ContextAccess { context: Github, path: ["event_name"] },
   right: StringLiteral { value: workflow_dispatch_event_name },
@@ -5498,7 +5498,7 @@ fn fleet_converge_desired_instance_deploy_step() -> Step {
     working_directory: none,
     if_condition: none,
     continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_live_deploy_step_timeout_minutes }
+    timeout_minutes: Present { value: gunbc_ci_desired_instance_deploy_step_timeout_minutes }
   }
 }
 
@@ -5618,7 +5618,7 @@ fn fleet_converge_desired_instance_deploy_job() -> Job {
     env: Present { value: fleet_converge_srv1_root_mutation_job_env() },
     outputs: none,
     if_condition: Present { value: fleet_converge_desired_instance_deploy_step_if },
-    timeout_minutes: Present { value: gunbc_ci_live_deploy_shaped_job_backstop_timeout_minutes() },
+    timeout_minutes: Present { value: gunbc_ci_desired_instance_deploy_job_backstop_timeout_minutes() },
     continue_on_error: none,
     concurrency: Present {
       value: ConcurrencyMappingQueueNotMax {
@@ -8530,8 +8530,7 @@ data fleet_converge_workflow: Workflow = Workflow {
     WorkflowDispatch {
       inputs: fleet_converge_dispatch_inputs,
     },
-    Schedule { cron: review_sheet_converge_cron },
-    Push { branches: [gunbc_default_branch_name], paths: review_sheet_converge_source_paths },
+    Schedule { cron: fleet_converge_daily_cron },
   ],
   concurrency: none,
   env: none,
@@ -8909,9 +8908,10 @@ data review_sheet_converge_writer_token_step_id: String = "writer_token"
 data review_sheet_converge_mutation_group: String = "review-sheet-converge"
 
 // Daily, off the hour (06:41 UTC), so it does not land on the fleet's top-of-hour load. It is the workflow's one
-// schedule: it starts the review-sheet converge and, since 2026-11-23, the daily release pack (build and its
-// plan-revision prerequisite, fleet_converge_build_job_condition).
-data review_sheet_converge_cron: CronSchedule = CronSchedule {
+// schedule and starts the daily release pack only (build and its plan-revision prerequisite,
+// fleet_converge_build_job_condition). The review-sheet converge no longer starts on it
+// (#gunbc.design_ruling::review_sheet_converge_disabled_2026_11_24).
+data fleet_converge_daily_cron: CronSchedule = CronSchedule {
   minute: Exact { value: 41 },
   hour: Exact { value: 6 },
   day_of_month: Wildcard,
@@ -8919,21 +8919,12 @@ data review_sheet_converge_cron: CronSchedule = CronSchedule {
   day_of_week: Wildcard
 }
 
-// THE SHEET SOURCES. A push to main touching any of them converges at once rather than at the next
-// schedule: the kinds and their schemas (review_sheet_*). A source outside this glob reaches the
-// sheets at the next daily run, never silently not at all.
-data review_sheet_converge_source_paths: List<String> = [
-  "dag/gunbc/review_sheet_*.dag",
-]
-
+// THE REVIEW-SHEET CONVERGE STARTS ONLY ON ITS OWN DISPATCH. It ran on the daily schedule and on a push touching
+// the sheet sources (#15096) until the operator disabled it, 2026-11-24, because nothing consumes the sheets
+// (#gunbc.design_ruling::review_sheet_converge_disabled_2026_11_24). The mode stays dispatchable; the push trigger,
+// which existed for it alone, is gone, so the workflow's only autonomous trigger is the daily schedule.
 fn fleet_converge_review_sheet_event_admitted() -> Expression {
-  LogicalOr {
-    left: LogicalOr {
-      left: Equals { left: ContextAccess { context: Github, path: ["event_name"] }, right: StringLiteral { value: schedule_event_name } },
-      right: Equals { left: ContextAccess { context: Github, path: ["event_name"] }, right: StringLiteral { value: push_event_name } },
-    },
-    right: fleet_converge_dispatch_mode_is(mode: ReviewSheetConverge),
-  }
+  fleet_converge_dispatch_mode_is(mode: ReviewSheetConverge)
 }
 
 fn fleet_converge_review_sheet_writer_token_step() -> Step {

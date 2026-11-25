@@ -2,7 +2,7 @@ module gunbc.instruments.build_step_transport
 
 
 import extdeps.shell
-import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.git
 import extdeps.git.inspect
 import extdeps.gunbc
