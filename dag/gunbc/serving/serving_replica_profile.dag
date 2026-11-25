@@ -418,6 +418,27 @@ fn replica_share_width(p: ServingReplicaProfile) -> Nat {
   }
 }
 
+// HOW MANY TURNS THIS REPLICA RUNS AT ONCE, per replica: the concurrency its own reading was taken at,
+// divided by the replicas that share it (srv1's pair shares ONE 8-session run, so each carries 4). This is
+// the concurrent population a PER-REPLICA resource contract is stated against.
+//
+// WHY THIS AND NOT THE LADDER'S `held`: `held` is the number of conversations the warm tiers can resume, so
+// it is itself a function of the cache whose size is being decided. A contract read from it would move when
+// the tier it bounds moves, and the wall would shrink to whatever it is supposed to be checking. The reading's
+// own concurrency is the admitted population and does not depend on the tier.
+//
+// Absent when the row carries no reading: a contract whose population is unknown cannot be evaluated, and
+// the consumer refuses rather than guessing a width (gunbc.design_argument::fail_closed).
+fn replica_concurrent_turns(p: ServingReplicaProfile) -> Nat? {
+  match replica_figures_resolved(p) {
+    Absent => Absent
+    Present { value: f } => match f.throughput {
+      ThroughputUnread => Absent
+      ThroughputOperatorReading { at_concurrency: n } => Present { value: n / replica_share_width(p: p) }
+    }
+  }
+}
+
 // The anchor this profile answers with: the row's fields, handed to the anchor module's shape machinery.
 // A coordinate with no reading refuses, naming its owner module -- nothing here fabricates a rate.
 fn replica_anchor(p: ServingReplicaProfile) -> ServingCapacityAnchor {

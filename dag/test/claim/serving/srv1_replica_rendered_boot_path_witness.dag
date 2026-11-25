@@ -27,8 +27,9 @@ import v2.std.diagnostic {
   Accepted, NonEmptyDiagnostics, Outcome, Rejected, diagnostics_reason_lexemes
 }
 import std.nat { Nat }
+import std.optional { Absent, Present }
 import std.algebra { length, string_contains, string_concat_join }
-import std.measure { ByteSize, basis_point, basis_point_count, second, second_count, gibibyte, gibibyte_to_byte_size, seconds_per_day }
+import std.measure { ByteSize, basis_point, basis_point_count, second, second_count, gibibyte, gibibyte_count, gibibyte_ceiling, gibibyte_to_byte_size, seconds_per_day, byte_size_count, token_count }
 import std.decimal { fixed_point_trimmed_wire }
 import std.content_hash { lower_hex_64 }
 import std.dissolution { BoundDissolution, DissolutionCondition, UnboundDissolution }
@@ -56,7 +57,18 @@ import gunbc.serving.srv1_serving_replica_layout {
   srv1_serving_replica_roster,
   srv1_replica_launcher_shape_dissolution, srv1_serving_gpu_launcher_bash_emit_dissolution,
   srv1_replica_helper_bash_emit_dissolution,
+  // class B4: the L1 staging contract
+  Srv1KvTierVerdict, KvTiersAdmitted, KvTierRefused, Srv1KvTierTerm, L1StagingFloor, L1CheckpointArena,
+  L1CgroupCarriesTier, srv1_kv_tier_term_name, srv1_kv_tier_verdict, srv1_l1_staging_floor,
+  srv1_kv_staging_contract, srv1_kv_tier_population, srv1_kv_tier_population_source,
+  Srv1KvTierPopulationSource, MeasuredAverage, AdmittedByRow, Srv1L2StorePolicy, CheckpointOnEvict,
+  StoreAtCreation, StorePolicyUnread, srv1_l2_store_policy_reading,
+  Srv1KvTierDischarge, ContractDischarged, ContractUndischarged, srv1_l1_staging_discharge,
+  srv1_l1_missing_admitted_population, srv1_l1_missing_store_window_headroom,
+  srv1_replica_host_budget, Srv1ReplicaHostBudget, srv1_replica_total_host_claim, srv1_l1_staging_contract_identity,
+  srv1_launch_admission, Srv1LaunchAdmission, Srv1LaunchAdmitted, Srv1LaunchRefused,
 }
+import gunbc.serving.serving_host_memory { srv1_lmcache_l1_configured, srv1_lmcache_l2_configured }
 import extdeps.units.iso8601_calendar {
   Iso8601UtcInstant,
   iso8601_utc_instant,
@@ -66,10 +78,15 @@ import extdeps.units.iso8601_calendar {
 
 // ── the capture ─────────────────────────────────────────────────────────────────────────────────────
 //
-// Run identity for every value below: srv1, 2026-11-09, `docker inspect -f '{{json .Config.Cmd}}'
-// lil-flash-next` and `... lil-flash-next-1`, taken read-only before any change to the unit, the helper or
-// either container. Both containers reported the same shape; the per-replica fields (card, name, published
-// port, host directories) differ by the roster rows.
+// Run identity for every value below: srv1, `docker inspect -f '{{json .Config.Cmd}}' lil-flash-next` and
+// `... lil-flash-next-1`, taken read-only before any change to the unit, the helper or either container — on
+// 2026-11-09 for every field except the KV tier and the container's memory trio, and RE-BASED on 2026-11-24
+// for those, from the bytes the host had installed (the launcher and both args files, digested below). Both
+// containers report the same shape; the per-replica fields (card, name, published port, host directories)
+// differ by the roster rows. What the 2026-11-09 capture read for the fields that moved: `LMCACHE_L1_GB=12`,
+// `L1 12G` in the START line, `--memory=32g --memory-swap=32g --shm-size 16g`. Those figures are the ones
+// class B4 refuses to render today, and they are kept in this comment rather than deleted so the red control
+// below has a named original to be the same configuration as.
 
 // The engine argv as the running container ran it, one token per line: the same token sequence the captured
 // `-lc` string carries after `exec`, with `$D` expanded to its value on that line (`D=/root/serve`), and
@@ -77,7 +94,7 @@ import extdeps.units.iso8601_calendar {
 // removal is the switch's security content, so it is the one difference the positive control excuses by
 // name rather than by silence.
 data golden_engine_argv: String =
-  "/usr/local/bin/lil-serve\n--profile\nqwen38-flash-next\n--hardware\nrtx-pro-6000-pcie\n--env\nLMCACHE_MODE=ram-disk\n--env\nLMCACHE_L1_GB=12\n--env\nLMCACHE_L2_GB=125\n--env\nLMCACHE_L2_ROOT=/cache/kv\n--env\nLMCACHE_L2_WORKERS=16\n--env\nLMCACHE_L2_ODIRECT=1\n--env\nLMCACHE_CHECKPOINT_PROTECTED_SHARE=0.5\n--env\nLMCACHE_CHECKPOINT_PROTECTION_WINDOW_SECONDS=1800\n--\n--port\n18000\n--ssl-keyfile\n/root/serve/tls.key\n--ssl-certfile\n/root/serve/tls.crt\n--max-model-len\n229376\n"
+  "/usr/local/bin/lil-serve\n--profile\nqwen38-flash-next\n--hardware\nrtx-pro-6000-pcie\n--env\nLMCACHE_MODE=ram-disk\n--env\nLMCACHE_L1_GB=48\n--env\nLMCACHE_L2_GB=125\n--env\nLMCACHE_L2_ROOT=/cache/kv\n--env\nLMCACHE_L2_WORKERS=16\n--env\nLMCACHE_L2_ODIRECT=1\n--env\nLMCACHE_CHECKPOINT_PROTECTED_SHARE=0.5\n--env\nLMCACHE_CHECKPOINT_PROTECTION_WINDOW_SECONDS=1800\n--\n--port\n18000\n--ssl-keyfile\n/root/serve/tls.key\n--ssl-certfile\n/root/serve/tls.crt\n--max-model-len\n229376\n"
 
 // The container command's first line, verbatim from the capture: the serve directory and the event logger.
 // The `$D`, `$*` and `$(...)` spellings are the CONTAINER-side shell's, kept exactly as captured -- they are
@@ -95,10 +112,10 @@ data golden_command_tls_line: String =
 // The START event line as the running container reported it. Written here for replica 0; the claim derives
 // replica 1's by the same substitution, so a wrong card on either replica is caught, not assumed away.
 data golden_start_line_gpu0: String =
-  "ev \"START srv1 gpu0 GPU-7b58568e-8bc9-4e4b-bc6c-c414b08936c3 (driver $(nvidia-smi --query-gpu=driver_version --format=csv,noheader), TP1, cache ram-disk, L1 12G, L2 125G, disk-first, TLS)\""
+  "ev \"START srv1 gpu0 GPU-7b58568e-8bc9-4e4b-bc6c-c414b08936c3 (driver $(nvidia-smi --query-gpu=driver_version --format=csv,noheader), TP1, cache ram-disk, L1 48G, L2 125G, disk-first, TLS)\""
 
 data golden_start_line_gpu1: String =
-  "ev \"START srv1 gpu1 GPU-96b749dc-e2ea-5b6f-2e45-ee868b1a9750 (driver $(nvidia-smi --query-gpu=driver_version --format=csv,noheader), TP1, cache ram-disk, L1 12G, L2 125G, disk-first, TLS)\""
+  "ev \"START srv1 gpu1 GPU-96b749dc-e2ea-5b6f-2e45-ee868b1a9750 (driver $(nvidia-smi --query-gpu=driver_version --format=csv,noheader), TP1, cache ram-disk, L1 48G, L2 125G, disk-first, TLS)\""
 
 // ── positive controls ───────────────────────────────────────────────────────────────────────────────
 
@@ -147,7 +164,7 @@ fn render_text(render: Outcome<String>) -> String {
 }
 
 test fn the_rendered_engine_argv_is_the_captured_container_command() -> Bool {
-  srv1_render_replica_engine_args() == golden_engine_argv
+  render_text(srv1_render_replica_engine_args()) == golden_engine_argv
 }
 
 // The container command still sets up its serve directory, its event log and its TLS guard exactly as the
@@ -245,9 +262,9 @@ test fn the_docker_command_is_the_observed_container_shape() -> Bool {
     && string_contains(s: argv1, pattern: "-v /home/briansrls/lil/serve-gpu1:/root/serve")
   let shared_shape = string_contains(s: argv0, pattern: "--restart no")
     && string_contains(s: argv0, pattern: "--cgroup-parent=srv1-inference.slice")
-    && string_contains(s: argv0, pattern: "--memory=32g")
-    && string_contains(s: argv0, pattern: "--memory-swap=32g")
-    && string_contains(s: argv0, pattern: "--shm-size 16g")
+    && string_contains(s: argv0, pattern: "--memory=72g")
+    && string_contains(s: argv0, pattern: "--memory-swap=72g")
+    && string_contains(s: argv0, pattern: "--shm-size 56g")
     && string_contains(s: argv0, pattern: "-e PORT=18000")
     && string_contains(s: argv0, pattern: "-e HF_HOME=/root/.cache/huggingface")
     && string_contains(s: argv0, pattern: "-v /home/briansrls/lil/hf:/root/.cache/huggingface")
@@ -376,60 +393,60 @@ fn cfg_admitted() -> Srv1LaunchConfig {
 // that stops discriminating points at itself by which conjunct goes red.
 test fn dropping_or_changing_any_single_engine_field_changes_the_render() -> Bool {
   let a = srv1_admitted_launch_config
-  let base = srv1_replica_engine_args_body(config: cfg_admitted())
-  let r_l2_root = srv1_replica_engine_args_body(config: cfg_over(
+  let base = render_text(srv1_replica_engine_args_body(config: cfg_admitted()))
+  let r_l2_root = render_text(srv1_replica_engine_args_body(config: cfg_over(
     l2: Srv1LmCacheL2Placement { root: "/cache/other" as FilePath, workers: a.lmcache_l2_placement.workers, uses_direct_io: a.lmcache_l2_placement.uses_direct_io },
     retention: a.checkpoint_retention, tls: a.tls_material, key: a.api_key_reference, exe: a.engine_executable,
-    port: a.container_port, model_len: a.max_model_len, l1: a.lmcache_l1))
-  let r_l2_workers = srv1_replica_engine_args_body(config: cfg_over(
+    port: a.container_port, model_len: a.max_model_len, l1: a.lmcache_l1)))
+  let r_l2_workers = render_text(srv1_replica_engine_args_body(config: cfg_over(
     l2: Srv1LmCacheL2Placement { root: a.lmcache_l2_placement.root, workers: 8, uses_direct_io: a.lmcache_l2_placement.uses_direct_io },
     retention: a.checkpoint_retention, tls: a.tls_material, key: a.api_key_reference, exe: a.engine_executable,
-    port: a.container_port, model_len: a.max_model_len, l1: a.lmcache_l1))
-  let r_l2_direct = srv1_replica_engine_args_body(config: cfg_over(
+    port: a.container_port, model_len: a.max_model_len, l1: a.lmcache_l1)))
+  let r_l2_direct = render_text(srv1_replica_engine_args_body(config: cfg_over(
     l2: Srv1LmCacheL2Placement { root: a.lmcache_l2_placement.root, workers: a.lmcache_l2_placement.workers, uses_direct_io: false },
     retention: a.checkpoint_retention, tls: a.tls_material, key: a.api_key_reference, exe: a.engine_executable,
-    port: a.container_port, model_len: a.max_model_len, l1: a.lmcache_l1))
-  let r_share = srv1_replica_engine_args_body(config: cfg_over(
+    port: a.container_port, model_len: a.max_model_len, l1: a.lmcache_l1)))
+  let r_share = render_text(srv1_replica_engine_args_body(config: cfg_over(
     l2: a.lmcache_l2_placement,
     retention: Srv1CheckpointRetentionPolicy { protected_share: basis_point(count: 2500), protection_window: a.checkpoint_retention.protection_window },
     tls: a.tls_material, key: a.api_key_reference, exe: a.engine_executable,
-    port: a.container_port, model_len: a.max_model_len, l1: a.lmcache_l1))
-  let r_window = srv1_replica_engine_args_body(config: cfg_over(
+    port: a.container_port, model_len: a.max_model_len, l1: a.lmcache_l1)))
+  let r_window = render_text(srv1_replica_engine_args_body(config: cfg_over(
     l2: a.lmcache_l2_placement,
     retention: Srv1CheckpointRetentionPolicy { protected_share: a.checkpoint_retention.protected_share, protection_window: second(count: 900) },
     tls: a.tls_material, key: a.api_key_reference, exe: a.engine_executable,
-    port: a.container_port, model_len: a.max_model_len, l1: a.lmcache_l1))
-  let r_tls_dir = srv1_replica_engine_args_body(config: cfg_over(
+    port: a.container_port, model_len: a.max_model_len, l1: a.lmcache_l1)))
+  let r_tls_dir = render_text(srv1_replica_engine_args_body(config: cfg_over(
     l2: a.lmcache_l2_placement, retention: a.checkpoint_retention,
     tls: Srv1TlsMaterial { container_dir: "/root/other" as FilePath, key_path: a.tls_material.key_path, cert_path: a.tls_material.cert_path },
     key: a.api_key_reference, exe: a.engine_executable,
-    port: a.container_port, model_len: a.max_model_len, l1: a.lmcache_l1))
-  let r_tls_key = srv1_replica_engine_args_body(config: cfg_over(
+    port: a.container_port, model_len: a.max_model_len, l1: a.lmcache_l1)))
+  let r_tls_key = render_text(srv1_replica_engine_args_body(config: cfg_over(
     l2: a.lmcache_l2_placement, retention: a.checkpoint_retention,
     tls: Srv1TlsMaterial { container_dir: a.tls_material.container_dir, key_path: "other.key" as FilePath, cert_path: a.tls_material.cert_path },
     key: a.api_key_reference, exe: a.engine_executable,
-    port: a.container_port, model_len: a.max_model_len, l1: a.lmcache_l1))
-  let r_tls_cert = srv1_replica_engine_args_body(config: cfg_over(
+    port: a.container_port, model_len: a.max_model_len, l1: a.lmcache_l1)))
+  let r_tls_cert = render_text(srv1_replica_engine_args_body(config: cfg_over(
     l2: a.lmcache_l2_placement, retention: a.checkpoint_retention,
     tls: Srv1TlsMaterial { container_dir: a.tls_material.container_dir, key_path: a.tls_material.key_path, cert_path: "other.crt" as FilePath },
     key: a.api_key_reference, exe: a.engine_executable,
-    port: a.container_port, model_len: a.max_model_len, l1: a.lmcache_l1))
-  let r_exe = srv1_replica_engine_args_body(config: cfg_over(
+    port: a.container_port, model_len: a.max_model_len, l1: a.lmcache_l1)))
+  let r_exe = render_text(srv1_replica_engine_args_body(config: cfg_over(
     l2: a.lmcache_l2_placement, retention: a.checkpoint_retention, tls: a.tls_material, key: a.api_key_reference,
     exe: "lil-serve" as FilePath,
-    port: a.container_port, model_len: a.max_model_len, l1: a.lmcache_l1))
-  let r_port = srv1_replica_engine_args_body(config: cfg_over(
+    port: a.container_port, model_len: a.max_model_len, l1: a.lmcache_l1)))
+  let r_port = render_text(srv1_replica_engine_args_body(config: cfg_over(
     l2: a.lmcache_l2_placement, retention: a.checkpoint_retention, tls: a.tls_material, key: a.api_key_reference,
-    exe: a.engine_executable, port: 18100, model_len: a.max_model_len, l1: a.lmcache_l1))
-  let r_len = srv1_replica_engine_args_body(config: cfg_over(
+    exe: a.engine_executable, port: 18100, model_len: a.max_model_len, l1: a.lmcache_l1)))
+  let r_len = render_text(srv1_replica_engine_args_body(config: cfg_over(
     l2: a.lmcache_l2_placement, retention: a.checkpoint_retention, tls: a.tls_material, key: a.api_key_reference,
-    exe: a.engine_executable, port: a.container_port, model_len: 131072, l1: a.lmcache_l1))
+    exe: a.engine_executable, port: a.container_port, model_len: 131072, l1: a.lmcache_l1)))
   // L1 shows up twice in the boot path -- as the engine's own --env token and in the START line -- and both
   // derive from the one ByteSize field, so halving it must move the engine render too.
-  let r_l1 = srv1_replica_engine_args_body(config: cfg_over(
+  let r_l1 = render_text(srv1_replica_engine_args_body(config: cfg_over(
     l2: a.lmcache_l2_placement, retention: a.checkpoint_retention, tls: a.tls_material, key: a.api_key_reference,
     exe: a.engine_executable, port: a.container_port, model_len: a.max_model_len,
-    l1: gibibyte_to_byte_size(g: gibibyte(count: 6))))
+    l1: gibibyte_to_byte_size(g: gibibyte(count: 6)))))
   concat(base, "\n") == golden_engine_argv
     && r_l2_root != base && r_l2_workers != base && r_l2_direct != base
     && r_share != base && r_window != base
@@ -447,8 +464,8 @@ test fn the_retention_policy_reaches_the_engine_as_a_typed_boundary_encoding() -
   let half_share = fixed_point_trimmed_wire(value: 2500 as Int, decimals: 4)
   let window = to_string(second_count(s: a.checkpoint_retention.protection_window))
   admitted_share == "0.5" && half_share == "0.25" && window == "1800"
-    && string_contains(s: srv1_render_replica_engine_args(), pattern: concat("LMCACHE_CHECKPOINT_PROTECTED_SHARE=", admitted_share))
-    && string_contains(s: srv1_render_replica_engine_args(), pattern: concat("LMCACHE_CHECKPOINT_PROTECTION_WINDOW_SECONDS=", window))
+    && string_contains(s: render_text(srv1_render_replica_engine_args()), pattern: concat("LMCACHE_CHECKPOINT_PROTECTED_SHARE=", admitted_share))
+    && string_contains(s: render_text(srv1_render_replica_engine_args()), pattern: concat("LMCACHE_CHECKPOINT_PROTECTION_WINDOW_SECONDS=", window))
 }
 
 // The container-side fields the shape rows own. Changing any one of them must move the docker command --
@@ -462,7 +479,7 @@ test fn changing_any_single_container_shape_field_changes_the_docker_command() -
   let base = string_concat_join(render_lines(render_answer_12), " ")
   let over_cgroup = string_contains(s: base, pattern: "--cgroup-parent=srv1-inference.slice")
     && s.cgroup_parent as String == "srv1-inference.slice"
-  let over_shm = string_contains(s: base, pattern: "--shm-size 16g")
+  let over_shm = string_contains(s: base, pattern: "--shm-size 56g")
   let over_restart = string_contains(s: base, pattern: "--restart no") && s.restart_policy as String == "no"
   let over_entry = string_contains(s: base, pattern: "--entrypoint bash") && s.entrypoint as String == "bash"
   let over_args_path = string_contains(s: base, pattern: ":/root/engine.args:ro")
@@ -491,7 +508,7 @@ render_answered(render_answer_12) && render_answered(render_answer_11) && (
 test fn the_render_survives_the_printed_channel_that_installs_it() -> Bool {
   let render_answer_10 = srv1_render_replica_launcher()
   let l = render_text(render_answer_10)
-  let a = srv1_render_replica_engine_args()
+  let a = render_text(srv1_render_replica_engine_args())
 render_answered_text(render_answer_10) && (
   !string_contains(s: l, pattern: "`")
     && !string_contains(s: a, pattern: "`")
@@ -603,8 +620,8 @@ test fn the_install_and_run_receipts_hold_their_own_claim() -> Bool {
     && srv1_router_window_count_balances(record: srv1_boot_path_window_router_counting_2026_11_09)
     && render_answered_text(launcher_digest_answer)
     && install_row_digest_matches(host_path: "/usr/local/sbin/lil-replica-launch", render_digest: render_text(launcher_digest_answer))
-    && install_row_digest_matches(host_path: "/usr/local/etc/lil-replica/replica-0.args", render_digest: srv1_render_replica_engine_args_sha256())
-    && install_row_digest_matches(host_path: "/usr/local/etc/lil-replica/replica-1.args", render_digest: srv1_render_replica_engine_args_sha256())
+    && install_row_digest_matches(host_path: "/usr/local/etc/lil-replica/replica-0.args", render_digest: render_text(srv1_render_replica_engine_args_sha256()))
+    && install_row_digest_matches(host_path: "/usr/local/etc/lil-replica/replica-1.args", render_digest: render_text(srv1_render_replica_engine_args_sha256()))
     && install_row_digest_matches(host_path: "/usr/local/sbin/lil-replica", render_digest: srv1_render_replica_helper_sha256())
 }
 
@@ -649,7 +666,7 @@ render_answered_text(render_answer_7) && (
     && all(units, r => string_contains(s: launcher, pattern: srv1_replica_gpu_uuid_text(replica: r)))
     && any(units, a => any(units, b => srv1_replica_gpu_uuid_text(replica: a) != srv1_replica_gpu_uuid_text(replica: b)))
     && !string_contains(s: launcher, pattern: "NO_CARD_UUID_IN_PROFILE")
-    && !string_contains(s: srv1_render_replica_engine_args(), pattern: "NO_CARD_UUID_IN_PROFILE")
+    && !string_contains(s: render_text(srv1_render_replica_engine_args()), pattern: "NO_CARD_UUID_IN_PROFILE")
     && !string_contains(s: srv1_render_replica_helper(), pattern: "NO_CARD_UUID_IN_PROFILE")
   )}
 
@@ -845,7 +862,7 @@ test fn the_rendered_args_file_is_per_replica_root_owned_and_read_only() -> Bool
     && (srv1_replica_engine_args_host_path(replica: srv1_replica_0) as String) == "/usr/local/etc/lil-replica/replica-0.args"
     && (srv1_replica_engine_args_host_path(replica: srv1_replica_1) as String) == "/usr/local/etc/lil-replica/replica-1.args"
     && srv1_replica_engine_args_host_path(replica: srv1_replica_0) != srv1_replica_engine_args_host_path(replica: srv1_replica_1)
-    && concat(srv1_replica_engine_args_body(config: a), "\n") == srv1_render_replica_engine_args()
+    && concat(render_text(srv1_replica_engine_args_body(config: a)), "\n") == render_text(srv1_render_replica_engine_args())
     && length(xs: render_lines(launcher_answer)) > 10
 }
 
@@ -893,4 +910,221 @@ test fn one_unspellable_config_value_makes_both_renders_refuse_instead_of_render
   let launcher = srv1_replica_launcher_lines(replicas: srv1_serving_replica_roster, config: broken)
   refused_naming_the_site(render: command, site: "container command: serve directory")
     && refused_naming_the_site(render: launcher, site: "container command: serve directory")
+}
+
+
+// ── the L1 staging contract (class B4, 2026-11-24) ──────────────────────────────────────────────────
+//
+// WHY THESE CONTROLS EXIST, AND WHAT THEY ARE FOR. Under the store policy srv1's engines run with, a checkpoint
+// reaches the NVMe tier only as it leaves L1, so L1 is not a cache whose undersizing costs a hit: it is the
+// staging buffer on the ONLY path a checkpoint has to disk, in both directions. Size it below what the
+// concurrent population can hold and the eviction that was supposed to persist a checkpoint is the operation
+// that deletes it. Until this section, the tier, the /dev/shm carrying it and the cgroup charging it were three
+// unrelated numbers and every shape below was writable, renderable and installable — it failed inside the
+// engine at checkpoint time, the furthest place from the edit at which it could be seen.
+//
+// THE DISCRIMINATING RED IS NOT A MADE-UP CONFIGURATION: it is the one the host ran. `cfg_tier_as_before` puts
+// the admitted config's tier back to 12 GiB — the figure this repository carried from 2026-11-08 to 2026-11-24,
+// sized as a cache in front of a big disk — and asks the real producers for bytes. They must refuse, by name,
+// and the accepted arm must be a failure in its own right, not an empty list: the lesson of
+// gunbc.recurring_failure_mode::a_refused_emission_is_rendered_as_a_poison_string_inside_otherwise_valid_output
+// is that a refusal read as an absence turns this defect one level up.
+
+// The refusal's site, read from the diagnostic rather than from a line: the term is interned INTO the reason by
+// srv1_kv_tier_refusal, which is what lets a control say WHICH term refused instead of only that one did.
+fn kv_refused_lines(render: Outcome<List<String>>, term: String) -> Bool {
+  match render {
+    Accepted { value: _ } => false
+    Rejected { diagnostics: d } => string_contains(
+      s: diagnostics_reason_lexemes(diagnostics: d),
+      pattern: concat("srv1_kv_tier_refused:", term)
+    )
+  }
+}
+
+fn kv_refused_text(render: Outcome<String>, term: String) -> Bool {
+  match render {
+    Accepted { value: _ } => false
+    Rejected { diagnostics: d } => string_contains(
+      s: diagnostics_reason_lexemes(diagnostics: d),
+      pattern: concat("srv1_kv_tier_refused:", term)
+    )
+  }
+}
+
+// The 2026-11-08 configuration: the admitted config in every field except the tier, which is the size the host
+// actually ran for sixteen days. Nothing else is varied, so the only thing this control can be failing on is the
+// tier — which is the point.
+fn cfg_tier_as_before() -> Srv1LaunchConfig {
+  let a = srv1_admitted_launch_config
+  cfg_over(
+    l2: a.lmcache_l2_placement, retention: a.checkpoint_retention, tls: a.tls_material, key: a.api_key_reference,
+    exe: a.engine_executable, port: a.container_port, model_len: a.max_model_len,
+    l1: gibibyte_to_byte_size(g: gibibyte(count: 12))
+  )
+}
+
+test fn the_tier_the_host_ran_until_2026_11_24_refuses_both_renders_by_name() -> Bool {
+  let before = cfg_tier_as_before()
+  kv_refused_lines(render: srv1_replica_launcher_lines(replicas: srv1_serving_replica_roster, config: before), term: "l1-staging-floor")
+    && kv_refused_text(render: srv1_replica_engine_args_body(config: before), term: "l1-staging-floor")
+}
+
+// The refusal is not only a render opinion: the boot admission carries it, under its own named identity, so
+// convergence cannot arm the replica. A config that cannot be rendered AND cannot be booted is the pair that
+// makes the bad state unreachable rather than merely inconvenient.
+test fn the_refused_tier_refuses_the_boot_admission_under_the_contract_identity() -> Bool {
+  match srv1_launch_admission(config: cfg_tier_as_before()) {
+    Srv1LaunchAdmitted { } => false
+    Srv1LaunchRefused { cause: c, defect_identity: id } =>
+      (id == srv1_l1_staging_contract_identity)
+        && string_contains(s: c, pattern: "l1-staging-floor")
+  }
+}
+
+// The positive control, and it is the host's configuration: 48 GiB clears every term, the launcher renders, and
+// the digests the install row holds are the digests of those bytes (checked by
+// the_install_and_run_receipts_hold_their_own_claim against the host's own sha256sum readback).
+test fn the_admitted_tier_is_admitted_by_the_contract_and_renders() -> Bool {
+  match srv1_kv_tier_verdict(
+    config: srv1_admitted_launch_config,
+    shape: srv1_replica_container_run_shape,
+    budget: srv1_replica_host_budget
+  ) {
+    KvTiersAdmitted => render_answered(render: srv1_render_replica_launcher())
+    KvTierRefused { term: _, cause: _ } => false
+  }
+}
+
+// The floor is a DERIVED figure and this pins it: four conversations in flight on a replica (the srv1
+// coordinate's 8 sessions over a share width of 2), each at the 229,376-token context the engine admits, priced
+// by the engine's own KV density. It is stated as a GiB ceiling rather than recomputed from the same helper the
+// row uses, so the control is not a restatement of its subject
+// (gunbc.recurring_failure_mode::a_control_that_shares_its_derivation_with_its_subject).
+test fn the_staging_floor_is_the_population_priced_at_the_admitted_context() -> Bool {
+  match srv1_l1_staging_floor(contract: srv1_kv_staging_contract, context: token_count(count: srv1_admitted_launch_config.max_model_len)) {
+    Accepted { value: floor, diagnostics: _ } => gibibyte_count(g: gibibyte_ceiling(b: floor)) == 20
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// What the population is, and how it was obtained: 4 turns per replica, and a MEASURED AVERAGE rather than an
+// admitted cap. The second half is what keeps the row honest about its own ceiling — the day a row admits a
+// per-replica population, this control goes red and the contract has to be re-read, not quietly closed.
+test fn the_population_is_four_turns_read_as_a_measured_average() -> Bool {
+  let population = match srv1_kv_tier_population() {
+    Absent => false
+    Present { value: n } => n == 4
+  }
+  let source = match srv1_kv_tier_population_source {
+    MeasuredAverage { source: _ } => true
+    AdmittedByRow { source: _ } => false
+  }
+  population && source
+}
+
+// The policy the whole contract turns on, carried as a read with the flag's own spelling. If this ever changes
+// arm, the floor must stop binding — which is the point of modelling the policy instead of hard-coding a wall.
+test fn the_store_policy_row_is_the_read_that_makes_l1_the_only_path_to_disk() -> Bool {
+  match srv1_l2_store_policy_reading.policy {
+    CheckpointOnEvict { flag_value: v } => v == "checkpoint_on_evict" as NonEmptyStr
+    StoreAtCreation { flag_value: _ } => false
+    StorePolicyUnread { obligation: _ } => false
+  }
+}
+
+// ADMITTED IS NOT THE SAME AS KEEPING THE PROMISE, and this is the control that refuses to let the model
+// conflate them: at 48 GiB every priced term holds, and the contract still reports itself undischarged, naming
+// both unpriced terms. The host's own 2026-11-25 read — fresh checkpoints still deleted before their store at
+// 06:00 UTC, 187 events on GPU1 and 56 on GPU0 per 15 minutes — is the observation this conjunct exists to
+// stay honest about. A future edit that deletes it has to explain that read, not just the green.
+test fn the_admitted_tier_is_admitted_and_still_reports_the_contract_undischarged() -> Bool {
+  match srv1_l1_staging_discharge(config: srv1_admitted_launch_config) {
+    Accepted { value: d, diagnostics: _ } => match d {
+      ContractDischarged { holds: _, requires: _ } => false
+      ContractUndischarged { holds: h, requires_at_least: r, missing: m } =>
+        byte_size_count(b: h) == byte_size_count(b: srv1_lmcache_l1_configured)
+          // the priced requirement is the population STAGEABLE IN BOTH DIRECTIONS (a checkpoint being stored, and
+          // a returning conversation landing before the engine reads it), and it fits -- with the margin that
+          // makes the burst sensitivity above the thing to watch, not a rounding error.
+          && byte_size_count(b: r) < byte_size_count(b: h)
+          && byte_size_count(b: r) > byte_size_count(b: srv1_lmcache_l1_configured) / 2
+          && length(m) == 2
+          // Two distinct named terms, and BOTH of them: an indexed read would be optional (List indexing
+          // returns T?), so the list is pinned by cardinality plus presence of each name — with length 2 and
+          // two distinct names present, there is no third state. Dropping either term from the model's list
+          // takes this red, which is the point: the 2026-11-25 host read says the contract is not discharged,
+          // and the model is not allowed to answer that observation with a shorter gap list.
+          && any(m, x => (x as String) == (srv1_l1_missing_admitted_population as String))
+          && any(m, x => (x as String) == (srv1_l1_missing_store_window_headroom as String))
+    }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// The arena term, exercised at the verdict (the shape is a row, so a control varies it here rather than through
+// the render). A tier docker cannot carve is refused with lil's own reason, not rendered to die at engine init.
+test fn a_dev_shm_smaller_than_the_tier_is_refused_as_the_arena_term() -> Bool {
+  let a = srv1_admitted_launch_config
+  let s0 = srv1_replica_container_run_shape
+  let tight_arena = Srv1ContainerRunShape {
+    cgroup_parent: s0.cgroup_parent,
+    shm_size: gibibyte_to_byte_size(g: gibibyte(count: 12)),
+    restart_policy: s0.restart_policy,
+    entrypoint: s0.entrypoint,
+    engine_args_container_path: s0.engine_args_container_path,
+    pool_key_container_path: s0.pool_key_container_path,
+    tls_curve: s0.tls_curve,
+    tls_validity: s0.tls_validity,
+    tls_subject_common_name: s0.tls_subject_common_name,
+  }
+  match srv1_kv_tier_verdict(config: a, shape: tight_arena, budget: srv1_replica_host_budget) {
+    KvTiersAdmitted => false
+    KvTierRefused { term: term, cause: _ } => term == L1CheckpointArena
+  }
+}
+
+// The cgroup term, at the same boundary: a --memory that cannot charge the tier's shmem plus the process is
+// refused, so the render cannot produce a docker line that OOM-kills its own replica mid-checkpoint.
+test fn a_cgroup_that_cannot_charge_the_tier_is_refused_as_the_cgroup_term() -> Bool {
+  let a = srv1_admitted_launch_config
+  let b = srv1_replica_host_budget
+  let tight_cgroup = Srv1ReplicaHostBudget {
+    l1_shm: b.l1_shm,
+    ple_pinned: b.ple_pinned,
+    anon: b.anon,
+    cgroup_memory_limit: gibibyte_to_byte_size(g: gibibyte(count: 32)),
+  }
+  match srv1_kv_tier_verdict(config: a, shape: srv1_replica_container_run_shape, budget: tight_cgroup) {
+    KvTiersAdmitted => false
+    KvTierRefused { term: term, cause: _ } => term == L1CgroupCarriesTier
+  }
+}
+
+// The three numbers that were, until this class, three separate hand-written values — the tier, the /dev/shm
+// that carries it, and the cgroup that charges it — are checked here as one fact with its consequences: the
+// budget's shmem charge IS the tier row (not a copy of it), the arena sits above it, and the cgroup covers the
+// tier plus the process. Each conjunct fails if someone restates one of the three by hand.
+test fn the_tier_its_arena_and_its_cgroup_are_one_fact_not_three_numbers() -> Bool {
+  byte_size_count(b: srv1_replica_host_budget.l1_shm) == byte_size_count(b: srv1_lmcache_l1_configured)
+    && byte_size_count(b: srv1_replica_container_run_shape.shm_size) > byte_size_count(b: srv1_lmcache_l1_configured)
+    && byte_size_count(b: srv1_replica_host_budget.cgroup_memory_limit)
+      >= byte_size_count(b: srv1_lmcache_l1_configured) + byte_size_count(b: srv1_replica_host_budget.anon)
+    && srv1_admitted_launch_config.lmcache_l1 == srv1_lmcache_l1_configured
+}
+
+// What the pair costs the host. Held as a control and not as a refusal, because this render has no business
+// deciding srv1's whole budget: 2 replicas at the cgroup ceiling plus one PLE table each must stay inside the
+// host's admitted memory, and if that ever stops being true the finding belongs here rather than in a launcher
+// edit that quietly lowers a limit nobody agreed.
+test fn the_two_replicas_still_fit_srv1s_admitted_memory() -> Bool {
+  let per_replica = byte_size_count(b: srv1_replica_total_host_claim(budget: srv1_replica_host_budget))
+  let pair = per_replica * 2
+  // srv1's admitted RAM, from gunbc.host.host_memory_observation (operator read, 2026-11-08): ~502 GiB usable
+  // of the 503 GiB the eight DIMMs report. Stated as a GiB floor with the standing of the read it came from.
+  let srv1_admitted = 502 * 1073741824
+  pair < srv1_admitted
+    && byte_size_count(b: srv1_replica_host_budget.cgroup_memory_limit) == 72 * 1073741824
+    && byte_size_count(b: srv1_replica_container_run_shape.shm_size) == 56 * 1073741824
+    && byte_size_count(b: srv1_lmcache_l2_configured) == 125 * 1073741824
 }
