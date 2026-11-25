@@ -41,9 +41,13 @@ import extdeps.proxy.openresty {
 // single_authority, ::source_annotations). The consumer reference is READ by engine_front_unserved_consumers,
 // whose ONLY caller today is this module's claim witness at the declared frontier; no production route
 // executes it yet, and the claim does not assert one (gunbc.design_argument::epistemic_humility). The
-// roster, not this fold, is the authority. The readers: the metrics
-// route is consumed by gunbc.serving.engine_progress::engine_progress_read, the models route by
-// gunbc.serving.serving_availability::serving_availability_bracketing_read, the chat route by
+// roster, not this fold, is the authority. A route may have SEVERAL readers, so each route names ALL of them
+// (the operator's 2026-11-25 finding: a single-reader roster named only engine_progress_read for /metrics and so
+// MISSED that withholding /metrics also blocks the availability probe). The readers: the metrics route is consumed
+// by BOTH gunbc.serving.engine_progress::engine_progress_read (the two-/metrics-body stall reading) AND
+// gunbc.serving.serving_availability::serving_availability_bracketing_read (whose probe is the models read bracketed
+// by metrics-launch reads, so it needs /metrics and /v1/models); the models route by
+// gunbc.serving.serving_availability::serving_availability_bracketing_read; the chat route by
 // gunbc.serving.serving_front_door::front_door_admit.
 //
 // CONSUMER (declared frontier, gunbc.design_argument::consumption). The rendering is consumed today by
@@ -53,11 +57,16 @@ import extdeps.proxy.openresty {
 // until it lands the module is a frontier, exactly as gunbc.serving.router_proxy_config is a declared
 // frontier to gunbc.live_deploy.apply_legs.
 
-// A route the fleet must be able to reach THROUGH the front door, and the declaration of the reader that
-// consumes it -- a typed reference, not a name spelled in prose, so a renamed consumer is decidable.
+// A route the fleet must be able to reach THROUGH the front door, and the declarations of EVERY reader that
+// consumes it -- typed references, not names spelled in prose, so a renamed consumer is decidable. A route may have
+// SEVERAL readers, so it carries a LIST: /metrics is read both by the progress stall reader and by the availability
+// probe. Naming one reader per route was the defect -- with /metrics withheld, a single-reader roster reported only
+// engine_progress_read blocked and missed serving_availability_bracketing_read, which reads /metrics too. The route
+// keeps all its readers; the render still emits exactly ONE location per path (engine_front_locations folds the
+// roster by path, so a route with several readers does NOT duplicate its location).
 type EngineFrontRoute = EngineFrontRoute {
   path: NonEmptyStr
-  consumer: DeclarationRef
+  consumers: List<DeclarationRef>
 }
 
 // THE REQUIRED-ROUTE ROSTER: the single authority for what a fleet reader must reach through a serving
@@ -67,15 +76,21 @@ type EngineFrontRoute = EngineFrontRoute {
 data engine_front_required_routes: List<EngineFrontRoute> = [
   EngineFrontRoute {
     path: "/v1/chat/completions" as NonEmptyStr,
-    consumer: decl_ref(module_path: "gunbc.serving.serving_front_door", decl_name: "front_door_admit"),
+    consumers: [ decl_ref(module_path: "gunbc.serving.serving_front_door", decl_name: "front_door_admit") ],
   },
   EngineFrontRoute {
     path: "/v1/models" as NonEmptyStr,
-    consumer: decl_ref(module_path: "gunbc.serving.serving_availability", decl_name: "serving_availability_bracketing_read"),
+    consumers: [ decl_ref(module_path: "gunbc.serving.serving_availability", decl_name: "serving_availability_bracketing_read") ],
   },
+  // /metrics has TWO readers, not one: the progress stall reader and the availability probe (whose bracketing read
+  // is a models read between two metrics-launch reads, so it consumes /metrics as well as /v1/models). srv4's
+  // hand-managed front withholding /metrics blocks BOTH -- that is the operator's 2026-11-25 finding.
   EngineFrontRoute {
     path: "/metrics" as NonEmptyStr,
-    consumer: decl_ref(module_path: "gunbc.serving.engine_progress", decl_name: "engine_progress_read"),
+    consumers: [
+      decl_ref(module_path: "gunbc.serving.engine_progress", decl_name: "engine_progress_read"),
+      decl_ref(module_path: "gunbc.serving.serving_availability", decl_name: "serving_availability_bracketing_read"),
+    ],
   },
 ]
 
@@ -181,14 +196,17 @@ fn engine_front_locations(
   )
 }
 
-// Reconcile an OBSERVED hand-managed forwarded set against the roster: the consumers whose reads are
-// blocked because the host front does not forward their route. This is the class made decidable -- it
-// names who srv4 shut out. It reads each route's typed consumer, giving that field its executing consumer.
-// `observed` is the host proxy's actually-forwarded paths (a read, not an authority over the render).
+// Reconcile an OBSERVED hand-managed forwarded set against the roster: the consumers whose reads are blocked
+// because the host front does not forward their route. This is the class made decidable -- it names who srv4 shut
+// out. A route can have several readers, so every reader of every missing route is named (flatten over each route's
+// consumers): withholding /metrics names BOTH engine_progress_read and serving_availability_bracketing_read. It
+// reads each route's typed consumer list, giving that field its executing consumer. `observed` is the host proxy's
+// actually-forwarded paths (a read, not an authority over the render).
 fn engine_front_unserved_consumers(observed: List<NonEmptyStr>) -> List<DeclarationRef> {
-  map(
+  fold(
     filter(engine_front_required_routes, r => !any(observed, x => (x as String) == (r.path as String))),
-    r => r.consumer,
+    init: [] as List<DeclarationRef>,
+    f: (acc, r) => concat(acc, r.consumers),
   )
 }
 
@@ -208,12 +226,14 @@ fn engine_front_proxies_route(ds: List<NginxDirective>, route: NonEmptyStr) -> B
   any(engine_front_proxied_paths(ds: ds), p => p == (route as String))
 }
 
-// The named consumer carried on a required route, exposed for the ledger and the witness to assert against
-// without re-spelling the reference (single authority -- the roster holds it, everything else reads it).
-fn engine_front_route_consumer(path: NonEmptyStr) -> Optional<DeclarationRef> {
+// The named consumers carried on a required route, exposed for the ledger and the witness to assert against without
+// re-spelling the references (single authority -- the roster holds them, everything else reads them). A route can
+// have several readers, so this returns the WHOLE list, not one pick: /metrics yields both the progress reader and
+// the availability reader.
+fn engine_front_route_consumers(path: NonEmptyStr) -> List<DeclarationRef> {
   match first(filter(engine_front_required_routes, r => (r.path as String) == (path as String))) {
-    Present { value: r } => Present { value: r.consumer }
-    Absent => Absent
+    Present { value: r } => r.consumers
+    Absent => [] as List<DeclarationRef>
   }
 }
 

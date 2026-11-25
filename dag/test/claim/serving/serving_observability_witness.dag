@@ -1,23 +1,27 @@
 module test.claim.serving.serving_observability_witness
 
-import std.types { String, Bool, List, Port, NonEmptyStr }
+import std.types { String, Bool, List, NonEmptyStr }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.optional { Optional, Present, Absent }
 import std.algebra { length }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import gunbc.serving.serving_observability {
-  EngineFrontRoute, engine_front_required_routes,
+  engine_front_required_routes,
   engine_front_server_directives, engine_front_proxies_route,
-  engine_front_route_consumer, engine_front_unserved_consumers,
+  engine_front_route_consumers, engine_front_unserved_consumers,
   engine_front_proxy_config, EngineFrontProxyRendered, EngineFrontProxyRefused, InvalidToken,
   Built, RefusedToken,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// The /metrics reader the roster names, as a typed reference the witness compares against (not a grep).
+// The two readers the roster names for /metrics, as typed references the witness compares against (not a grep).
+// The operator's finding: srv4's front withholding /metrics blocks BOTH of them, so the model must name both.
 fn metrics_reader_ref() -> DeclarationRef {
   decl_ref(module_path: "gunbc.serving.engine_progress", decl_name: "engine_progress_read")
+}
+
+fn availability_reader_ref() -> DeclarationRef {
+  decl_ref(module_path: "gunbc.serving.serving_availability", decl_name: "serving_availability_bracketing_read")
 }
 
 // srv4's hand-managed TLS front (/opt/gunbc-serving/srv4-daily/nginx.conf) actually forwards only the /v1/
@@ -32,12 +36,16 @@ fn complete_observed_forwarded() -> List<NonEmptyStr> {
   map(engine_front_required_routes, r => r.path)
 }
 
-// RED: reconciling srv4's OBSERVED forwarded set against the roster names the consumer whose read the
-// hand-managed front blocked -- the /metrics reader, by typed reference. This is the class made decidable:
-// nothing refuses it in production yet (that is the ledger's climb), but the model now SAYS who is shut out.
-test fn srv4_observed_front_blocks_the_metrics_consumer() -> Bool {
+// RED: reconciling srv4's OBSERVED forwarded set against the roster names EVERY reader whose read the hand-managed
+// front blocked. srv4 forwards /v1/ (so /v1/models reaches the availability probe's models read) but withholds
+// /metrics -- and /metrics has TWO readers. The model must name BOTH the progress reader AND the availability reader
+// as shut out, not just the one route-reader a single-consumer roster would give (operator finding 2026-11-25).
+// This is the class made decidable: nothing refuses it in production yet (the ledger's climb), but the model now
+// SAYS who is shut out.
+test fn srv4_observed_front_blocks_both_metrics_consumers() -> Bool {
   let blocked = engine_front_unserved_consumers(observed: srv4_observed_forwarded())
   any(blocked, c => declaration_ref_eq(a: c, b: metrics_reader_ref()))
+    && any(blocked, c => declaration_ref_eq(a: c, b: availability_reader_ref()))
 }
 
 // Positive control on the reconciliation: a front that forwards every roster route blocks no consumer.
@@ -97,11 +105,11 @@ test fn a_refused_input_is_reported_as_that_input_not_a_placeholder() -> Bool {
        }
 }
 
-// CONSUMPTION (typed, not a grep): the roster's /metrics consumer is the engine_progress reader, reached by
-// executing engine_front_route_consumer -- the same accessor the ledger uses, so not a shape check.
-test fn the_metrics_route_names_its_progress_consumer_by_reference() -> Bool {
-  match engine_front_route_consumer(path: "/metrics" as NonEmptyStr) {
-    Present { value: c } => declaration_ref_eq(a: c, b: metrics_reader_ref())
-    Absent => false
-  }
+// CONSUMPTION (typed, not a grep): the roster's /metrics readers are BOTH the progress reader and the availability
+// reader, reached by executing engine_front_route_consumers -- the accessor that reads the roster's consumer list.
+// A single-reader roster fails this, which is the discriminating force of the operator's finding.
+test fn the_metrics_route_names_both_readers_by_reference() -> Bool {
+  let readers = engine_front_route_consumers(path: "/metrics" as NonEmptyStr)
+  any(readers, c => declaration_ref_eq(a: c, b: metrics_reader_ref()))
+    && any(readers, c => declaration_ref_eq(a: c, b: availability_reader_ref()))
 }
