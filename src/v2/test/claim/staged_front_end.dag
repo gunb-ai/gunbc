@@ -1,7 +1,7 @@
 module v2.test.claim.staged_front_end
 
 import std.types { List, SourceSpan }
-import std.algebra { length, string_contains }
+import std.algebra { fold_list, length, string_contains }
 import std.dissolution { dissolution_description, dissolution_is_bound }
 import std.source_annotation {
   LeadingAfterLineIndent,
@@ -11,6 +11,7 @@ import std.source_annotation {
   source_annotation_graph_rows
 }
 import v2.std.compilers.lexing { UnboundSourceAnnotation }
+import v2.compiler.parse { authored_normalized_capture }
 import v2.compiler.staged_front_end {
   FrontEndBoundReached,
   FrontEndParse,
@@ -252,10 +253,10 @@ test fn front_end_placement_next_rung_is_declared_and_names_the_control() -> Boo
 // from those captures (accepted) against the graph the fold would have made had it dropped the LAST capture
 // (refused), each leg calling the real std.source_annotation attach_annotations. Nothing here is hand-built,
 // so no claim in this file can certify a graph the authority would not itself have produced. The third claim
-// is the honest half: a joined block becomes ONE row whose origin spans the whole block, so a capture dropped
-// in the MIDDLE stays covered and the guard correctly refuses nothing. That is a weaker guard with a DECLARED
-// limit, typed in v2.compiler.staged_front_end front_end_capture_interior_loss_next_rung -- not left for a
-// reader to infer from a green tick.
+// is the honest half, and it names BOTH of the guard's limits -- an interior loss inside a joined block, and
+// a capture naming a different file -- because a claim that advertises only one of them is how the other gets
+// forgotten. That is a weaker guard with DECLARED limits, typed in v2.compiler.staged_front_end
+// front_end_capture_interior_loss_next_rung -- not left for a reader to infer from a green tick.
 fn guard_fixture_captures() -> List<UnboundSourceAnnotation> {
   [
     guard_fixture_capture(text: "// one", start: 0, end: 6, adjacent: false),
@@ -319,25 +320,57 @@ test fn front_end_annotation_guard_stays_silent_when_nothing_is_lost() -> Bool {
   }
 }
 
-// THE BLIND SPOT, EXECUTED RATHER THAN APOLOGISED FOR -- and read carefully, because its PASS is not safety:
-// it PASSES by showing the guard accept a real interior loss. One joined row's origin spans its whole block,
-// so the middle capture that is gone is still covered and coverage says nothing is missing. The first conjunct
-// proves WHY (the fold made exactly ONE row for the block); the second is the guard's own silence; the rest
-// reads the rung that carries this limit, unbound today, so a reader learns the limit from the model and not
-// from a comment. When the fold starts carrying the per-row capture count, the second conjunct must be
-// rewritten into a refusal -- that rewrite is the executed signal the limit moved.
-test fn front_end_annotation_guard_passes_an_interior_loss_unseen_as_its_declared_limit() -> Bool {
+// THE BLIND SPOTS, EXECUTED RATHER THAN APOLOGISED FOR -- and read carefully, because a PASS here is not
+// safety: it PASSES by showing the guard accept two real losses. Both limits are written into the claim's
+// NAME, because a green tick behind a one-sided name is exactly how a weak guard gets cited later as
+// protection against the case it cannot see. (1) INTERIOR LOSS: one joined row's origin spans its whole
+// block, so the middle capture that is gone is still covered and coverage reports nothing missing -- the
+// first conjunct proves WHY (the fold made exactly ONE row for that block) and the second is the guard's own
+// silence on it. (2) FILE-BLINDNESS: the predicate the guard borrows, std.source_annotation::region_contains,
+// compares start and end only -- its body at dag/std/source_annotation.dag:169 reads no file field -- so a
+// capture naming a DIFFERENT FILE than the row covering it reads as contained. The third conjunct shows the
+// capture really does name another file (asked of authored_normalized_capture, the authority's own
+// constructor, not of a hand-built span), the fourth shows the row's own file, and the fifth is the guard's
+// silence on that cross-file capture -- which is the behaviour that makes this guard a SINGLE-MODULE attach
+// check only. The rest reads the rung carrying BOTH limits, unbound today, so a reader learns the limits from
+// the model rather than from a comment. When the fold starts carrying the per-row capture count, the second
+// and fifth conjuncts must be rewritten into refusals; those rewrites are the executed signal that the limits
+// moved.
+test fn front_end_annotation_guard_declares_both_limits_interior_loss_and_file_blindness() -> Bool {
   let graph = attach_annotations(captures: fold_fixture_missing_middle(), regions: [])
   let rows = source_annotation_graph_rows(graph: graph)
-  let guard_stayed_silent =
+  let interior_loss_silent =
     match front_end_unlanded_annotation_diagnostic(captures: guard_fixture_captures(), graph: graph) {
       Absent => true
       Present { value: _ } => false
     }
+  let foreign_capture = UnboundSourceAnnotation {
+    annotation_class: ^line_comment,
+    lexeme: "// one",
+    placement: LeadingAfterLineIndent,
+    preceded_by_blank_line: false,
+    preceded_by_annotation_line: false,
+    file: ^another_module,
+    start: 0,
+    end: 6
+  }
+  let foreign_capture_silent =
+    match front_end_unlanded_annotation_diagnostic(captures: [foreign_capture], graph: graph) {
+      Absent => true
+      Present { value: _ } => false
+    }
+  let row_file = fold_list(xs: rows, empty: "", cons: fn(acc, row) { acc + row.origin.file })
+  let foreign_file = authored_normalized_capture(capture: foreign_capture, annotation_text: fn(t) { t }).origin.file
   let condition = front_end_capture_interior_loss_next_rung
   length(xs: rows) == 1
-    && guard_stayed_silent
+    && interior_loss_silent
+    && string_contains(s: foreign_file, pattern: "another_module")
+    && string_contains(s: row_file, pattern: "candidate.dag")
+    && !string_contains(s: foreign_file, pattern: "candidate")
+    && foreign_capture_silent
     && !dissolution_is_bound(condition: condition)
     && string_contains(s: dissolution_description(condition: condition), pattern: "MIDDLE")
+    && string_contains(s: dissolution_description(condition: condition), pattern: "DIFFERENT FILE")
+    && string_contains(s: dissolution_description(condition: condition), pattern: "SINGLE-MODULE")
     && string_contains(s: dissolution_description(condition: condition), pattern: "rn_ZR45MIQ7KTC56XVLT23LXQ3W4A")
 }
