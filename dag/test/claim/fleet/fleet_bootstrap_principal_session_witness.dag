@@ -25,8 +25,9 @@ import gunbc.fleet.fleet_bootstrap_principal_session {
   exec_as_fleet_principal_with_stdin_observed,
   FleetPrincipalLegRan,
   FleetPrincipalLegRefused,
+  FleetPrincipalLegOverran,
 }
-import gunbc.fleet.fleet_known_hosts_anchor { SshTarget, portable_remote_words, FleetOpenSshTrustPolicy }
+import gunbc.fleet.fleet_known_hosts_anchor { SshTarget, portable_remote_words, FleetOpenSshTrustPolicy, ProbeLeg }
 import std.optional { Present, Absent }
 import test.claim.typed_remote_file_write_fleet_ssh_fixture {
   fixture_attempt,
@@ -151,8 +152,10 @@ fn witness_leg_stdout(principal: NonEmptyStr, credential: FleetBootstrapCredenti
             stdin_payload: "",
             credential: credential,
             absence: none,
+            kind: ProbeLeg,
           ) {
             FleetPrincipalLegRefused { cause: _ } => none
+            FleetPrincipalLegOverran { session: _, deadline: _ } => none
             FleetPrincipalLegRan { session: _, result: r } => Present { value: r.stdout }
           }
       }
@@ -220,6 +223,7 @@ test fn a_missing_password_session_binary_refuses_before_the_transport() -> Bool
         Absent => false
         Present { value: words } =>
           match exec_as_fleet_principal_with_stdin_observed(
+            kind: ProbeLeg,
             context: context,
             target: SshTarget {
               address: witness_bootstrap_target_address,
@@ -238,6 +242,7 @@ test fn a_missing_password_session_binary_refuses_before_the_transport() -> Bool
             },
           ) {
             FleetPrincipalLegRan { session: _, result: _ } => false
+            FleetPrincipalLegOverran { session: _, deadline: _ } => false
             FleetPrincipalLegRefused { cause: c } =>
               string_contains(c as String, "sshpass")
                 && string_contains(c as String, "NOT attempted")

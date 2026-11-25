@@ -1,0 +1,209 @@
+module test.claim.factory_attempt_execution_on_fabric_audit_witness
+
+import gunbc.audit_verdict {
+
+  Delivered,
+  NotDelivered,
+  PartiallyDelivered,
+  clause_verdict_delivered,
+  clause_verdict_rung,
+}
+import gunbc.factory_attempt_execution_on_fabric_audit {
+  ArmDelete,
+  ArmKeep,
+  ArmReHome,
+  Delete,
+  Keep,
+  ReHome,
+  factory_attempt_all_clauses_delivered,
+  factory_attempt_clause_count,
+  factory_attempt_clauses,
+  factory_attempt_delete_count,
+  factory_attempt_disposition_arm,
+  factory_attempt_keep_count,
+  factory_attempt_progress_count,
+  factory_attempt_rehome_count,
+  factory_attempt_state_mappings,
+}
+import gunbc.harness.harness_session_recovery { SessionRecoveryNone }
+import gunbc.roadmap.roadmap_attempt_continuation {
+  CaptureOwed,
+  ContinuationPlan,
+  OperatorNotConfirmed,
+  PriorExecutionObservation,
+  Refuse,
+  RefuseCause,
+  WorktreeStands,
+  continuation_plan,
+}
+import gunbc.roadmap.roadmap_refused_retry { RefusedRetryOperatorOnly }
+import gunbc.roadmap.roadmap_session_placement { SessionWorkerOrdinals }
+import gunbc.roadmap.roadmap_submission { CaptureNotAttempted, CaptureUnreadable, SubmissionCaptureObservation }
+import gunbc.systemd_unit_invocation_liveness { DurableHoldHolderLiveness, HolderLivenessUnobservable }
+import std.types { Bool, NonEmptyStr }
+
+// THE CONSUMER of gunbc.factory_attempt_execution_on_fabric_audit and gunbc.audit_verdict
+// (gunbc.design_argument::consumption — a module nothing imports is dangling, however well modeled).
+//
+// WHAT IS EXECUTED, honestly stated (review 98038, gunbc.design_argument::fail_closed — "Done means a real
+// consumer green by execution plus a discriminating input that goes red when the behavior is wrong"; "if
+// automating its update collapses the test to measure() == measure(), it checked nothing"):
+//
+// * BEHAVIOR CHECKS OVER THE AUDITED CODE — the tests named 'behavior' below call the REAL decision
+//   function gunbc.roadmap.roadmap_attempt_continuation::continuation_plan over constructed records and
+//   assert its decision. They go red when the audited behavior changes, independent of any row authored in
+//   this PR; the audit's bug-4 clause and its capture-owed mapping row are backed by these, not by
+//   self-quotation. continuation_plan is a pure function (the module contains zero Filesystem/Exec
+//   references — grep rc=1), so running it hermetically on constructed records needs no host and lifts no
+//   gate: this executes no drain, no belt tick, no launcher (gate G0 intact; the row's red controls
+//   remain UNEXECUTED here — they are staffed on the work item and belong to the cut slices).
+// * INSTRUMENT CHECKS — the fold/rung tests exercise the AUDIT INSTRUMENT's behavior (can the summary read
+//   false; does the rung match discriminate its arms on constructed verdicts). They are marked as such;
+//   they are the audit's expect-red can-fail control, in the sense of
+//   test.claim.materialization_kernel_closing_frontier_audit_witness::expectation_red_controls_are_red.
+// WHAT THESE TESTS ARE NOT: they do not pin hand-authored rung values per clause id (that shape collapses
+// to measure() == measure()); the per-id rung pins of the first revision were deleted for exactly that
+// reason. The rungs themselves are the honesty channel: a clause climbs only when an executed witness is
+// cited beside it (gunbc.design_argument::fail_closed).
+
+// ---------------------------------------------------------------- the audited decision, EXECUTED
+// (gunbc.roadmap.roadmap_attempt_continuation is pure; construction is hermetic; G0 forbids executing
+// controls on hosts and enabling drains/ticks/launchers, not calling a pure decision fn on a constructed
+// record — see the header).
+
+fn holder_unobservable_for_test() -> DurableHoldHolderLiveness {
+  HolderLivenessUnobservable { cause: "test: not the arm under test" as NonEmptyStr }
+}
+
+fn prior_for(capture: SubmissionCaptureObservation) -> PriorExecutionObservation {
+  PriorExecutionObservation {
+    attempt_key: "a1",
+    branch: "roadmap/n1/a1",
+    standing: WorktreeStands { path: "/wt", capture: capture, recovery: SessionRecoveryNone },
+    worker_terminal: true,
+    prior_run_host_liveness: holder_unobservable_for_test(),
+    operator_worker_gone: OperatorNotConfirmed,
+    worker_slot_ordinals: SessionWorkerOrdinals { ordinals: [] },
+    verification: none,
+    review: none,
+    goal_audit: none,
+    verification_retry: RefusedRetryOperatorOnly,
+    review_retry: RefusedRetryOperatorOnly,
+    now: none,
+  }
+}
+
+// The Refuse arm carries ONE typed cause (gunbc.roadmap.roadmap_attempt_continuation::RefuseCause) plus a
+// rendering reason; the discriminator is the cause's SHAPE, never its prose (review 91440 in that module).
+
+fn plan_refuses_with_capture_owed(plan: ContinuationPlan) -> Bool {
+  match plan {
+    Refuse { cause: cause, reason: _ } => match cause {
+      CaptureOwed { reason: _ } => true
+      _ => false
+    }
+    _ => false
+  }
+}
+
+// BEHAVIOR (backs the audit's bug-4 clause and its capture-owed mapping row by EXECUTION): the real
+// continuation_plan, run on a constructed prior whose standing capture is CaptureNotAttempted, refuses with
+// the CaptureOwed cause. Discriminating: this is the decision function's behavior, not a row's text — if
+// the owed arm stops refusing, this reds.
+
+test fn audited_continuation_plan_refuses_owed_capture_by_execution() -> Bool {
+  let plan = continuation_plan(
+    obs: prior_for(CaptureNotAttempted { reason: "the belt's commit step has not run for this attempt" })
+  )
+  plan_refuses_with_capture_owed(plan: plan)
+}
+
+// BEHAVIOR, the DISCRIMINATING counterpart (gunbc.design_argument::fail_closed — a check needs an input
+// that goes red when the behavior is wrong): the same constructed prior with the capture RECORDED must NOT
+// produce the CaptureOwed refusal. If capture standing ever stopped steering the decision (every prior
+// treated as owed), this reds while the test above stays green — the pair discriminates the arm, where a
+// single case could not.
+
+test fn audited_continuation_plan_not_owed_when_capture_recorded() -> Bool {
+  let plan = continuation_plan(
+    obs: prior_for(CaptureUnreadable { reason: "test: the capture store answered, the capture did not" })
+  )
+  !plan_refuses_with_capture_owed(plan: plan)
+}
+
+// BEHAVIOR: with no prior attempt at all the same real decision function starts the initial attempt — the
+// arm the audit's mapping depends on for 'nothing owed blocks nothing'.
+
+test fn audited_continuation_plan_starts_initial_with_no_prior() -> Bool {
+  match continuation_plan(obs: none) {
+    StartInitial { reason: _ } => true
+    _ => false
+  }
+}
+
+// ---------------------------------------------------------------- instrument checks
+
+// EXPECT-RED CONTROL (gunbc.design_argument::guarantee_ladder): the AND-fold over the audited clauses is
+// FALSE — the summary can read false rather than being a vacuously always-true wrapper over authored data.
+// It stays enrolled if clauses ever climb; then it flips and a human revisits it — which is the point.
+
+test fn factory_attempt_audit_fold_reads_false_proves_can_fail() -> Bool {
+  factory_attempt_all_clauses_delivered(clauses: factory_attempt_clauses()) == false
+}
+
+// No count literal copied from the clause list (gunbc.design_argument::fail_closed — a measurement copied
+// from the same hand-authored rows is not an independent oracle): the denominator is nonzero (an empty
+// roster would make the AND-fold vacuously green) and no rung has silently climbed to Delivered — under
+// the G0 audit gate a Delivered rung is a claim about an EXECUTED witness outside this slice.
+
+test fn factory_attempt_roster_nonzero_and_no_authored_green() -> Bool {
+  factory_attempt_clause_count(clauses: factory_attempt_clauses()) > 0
+    && factory_attempt_progress_count(clauses: factory_attempt_clauses()) == 0
+}
+
+// The rung match in gunbc.audit_verdict DISCRIMINATES its three arms, exercised on constructed verdicts
+// (gunbc.design_argument::consumption: exercise behavior, not existence). Both audits share this match
+// (gunbc.design_argument::single_authority), so a broken arm here reds for both.
+
+test fn verdict_rung_match_discriminates_three_rungs() -> Bool {
+  clause_verdict_rung(v: NotDelivered { reason: "probe" as NonEmptyStr }) == 0
+    && clause_verdict_rung(
+      v: PartiallyDelivered { reason: "probe" as NonEmptyStr, evidence: "probe" as NonEmptyStr }
+    ) == 1
+    && clause_verdict_rung(
+      v: Delivered {
+        witness_module: "probe" as NonEmptyStr,
+        witness_fn: "probe" as NonEmptyStr,
+        evidence: "probe" as NonEmptyStr
+      }
+    ) == 2
+    && !clause_verdict_delivered(v: PartiallyDelivered {
+      reason: "probe" as NonEmptyStr, evidence: "probe" as NonEmptyStr
+    })
+}
+
+// THE DISPOSITION ARM, exercised on CONSTRUCTED dispositions (gunbc.design_argument::consumption —
+// exercise behavior, not existence): the one match in gunbc.factory_attempt_execution_on_fabric_audit must
+// answer each constructed recommendation with its own typed arm. Discriminating (gunbc.design_argument::
+// fail_closed): edit the match and a constructed disposition answers with the wrong arm — no string or
+// number is involved, and a mistyped arm name does not compile.
+
+test fn disposition_arm_discriminates_constructed_recommendations() -> Bool {
+  factory_attempt_disposition_arm(d: Delete { because: "probe" as NonEmptyStr }) == ArmDelete
+    && factory_attempt_disposition_arm(d: ReHome { needs: "probe" as NonEmptyStr }) == ArmReHome
+    && factory_attempt_disposition_arm(d: Keep { why: "probe" as NonEmptyStr }) == ArmKeep
+}
+
+// The mapping's covering control, FALSIFIABLE BY DATA (review 98067 deleted the exactly-one-variant fold —
+// a closed sum holds exactly one variant at every site, so that check was a decoration no input could
+// redden, gunbc.design_argument::guarantee_ladder). A per-arm count falls to zero when an arm's rows are
+// deleted: erasing every ReHome row — which would erase the metering and work-product decisions the
+// realization-home ruling must carry — drops the count and reds this. The recommendations are
+// recommendations; the decision's home is the operator's ruling (gunbc.design_ruling) and the work item.
+
+test fn mappings_per_arm_counts_nonzero() -> Bool {
+  let ms = factory_attempt_state_mappings()
+  factory_attempt_delete_count(ms: ms) > 0
+    && factory_attempt_rehome_count(ms: ms) > 0
+    && factory_attempt_keep_count(ms: ms) > 0
+}

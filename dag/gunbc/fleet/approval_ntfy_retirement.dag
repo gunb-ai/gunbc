@@ -42,12 +42,11 @@ import std.scoped_authorization { AuthorizationScope }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.fleet.fleet_bootstrap_principal { executor_bootstrap_principal }
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
-import gunbc.fleet.fleet_known_hosts_anchor {
-  SshTarget, SshTargetResolution, SshTargetRefused, SshTargetResolved, FleetSshExecutionContext,
+import gunbc.fleet.fleet_known_hosts_anchor { ActuationLeg,ProbeLeg,FleetLegKind,SshTarget, SshTargetResolution, SshTargetRefused, SshTargetResolved, FleetSshExecutionContext,
   fleet_ssh_target_at_standard_port, ssh_target_refusal_text,
 }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
-import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused }
+import gunbc.typed_argv_exec {  typed_argv_exec_over_fleet_ssh, TypedArgvExecConverged, TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason }
 import extdeps.ssh.session { SshSessionExecResult }
 import gunbc.fleet.srv1_root_mutation_approval_run {
   srv1_root_mutation_inherited_grant, Srv1InheritedGrantAdmitted, Srv1InheritedGrantRefused,
@@ -745,7 +744,7 @@ fn ntfy_retire_leg_step(
     Absent => LegsDone { decisions: decisions }
     Present { value: leg } => match ntfy_retire_leg_decision(leg: leg, verdicts: verdicts) {
       LegDecisionRun { note: note } =>
-        match ntfy_retire_elevated_exec(target: target, context: context, leg: leg) {
+        match ntfy_retire_elevated_exec(target: target, context: context, kind: ActuationLeg, leg: leg) {
           LegSucceeded =>
             ntfy_retire_leg_step(target: target, context: context, index: index + 1, decisions: concat(decisions, [note]), verdicts: verdicts)
           LegRefused { reason: why } => LegsRefused { reason: why }
@@ -768,14 +767,20 @@ type NtfyRetireLegResult
   = LegSucceeded
   | LegRefused { reason: String }
 
+// The leg's argv comes from the NtfyRetireLeg record, so the wrapper cannot name its own ceiling:
+// the caller declares it. unit-stop / unit-disable / unit-file-remove are state changes ->
+// ActuationLeg; the read-backs the same flow runs go through ntfy_retire_probe_exec with ProbeLeg.
 fn ntfy_retire_elevated_exec(
   target: SshTarget,
   context: FleetSshExecutionContext,
+  kind: FleetLegKind,
   leg: NtfyRetireLeg,
 ) -> NtfyRetireLegResult
   uses net: std.resources.Network
 {
-  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: ntfy_retire_elevated_argv(command: leg.argv)) {
+  match typed_argv_exec_over_fleet_ssh(kind: kind,target: target, context: context, argv: ntfy_retire_elevated_argv(command: leg.argv)) {
+  TypedArgvExecOverran { deadline: d } =>
+    LegRefused { reason: concat("approval ntfy retirement: ", concat(leg.name, concat(" refused: ", typed_argv_exec_overran_reason(leg_hint: "approval ntfy retirement", deadline: d)))) }
     TypedArgvExecRefused { reason: why } =>
       LegRefused { reason: concat("approval ntfy retirement: ", concat(leg.name, concat(" refused: ", why))) }
     TypedArgvExecConverged { result: r } =>
@@ -830,20 +835,25 @@ fn ntfy_retire_verdict_reads(target: SshTarget, context: FleetSshExecutionContex
   // with), the transport is broken, or the host is not the roster's host -- and then no probe result
   // says anything about the roster at all. The run stops there rather than printing six absences it
   // never read.
-  match ntfy_retire_probe_exec(target: target, context: context, command: ntfy_retire_elevation_control_argv, step: "elevation-control") {
+  match ntfy_retire_probe_exec(target: target, context: context, kind: ProbeLeg, command: ntfy_retire_elevation_control_argv, step: "elevation-control") {
+  TypedArgvExecOverran { deadline: d } =>
+    ReadsRefused { reason: concat("approval ntfy retirement: the elevation control probe could not reach the host: ", typed_argv_exec_overran_reason(leg_hint: "approval ntfy retirement", deadline: d)) }
     TypedArgvExecRefused { reason: why } =>
       ReadsRefused { reason: concat("approval ntfy retirement: the elevation control probe could not reach the host: ", why) }
     TypedArgvExecConverged { result: control } =>
       if !ntfy_retire_elevation_control_is_proven(exit_code: control.exit_code) {
         ReadsRefused { reason: concat("approval ntfy retirement: the elevated probe channel did not prove itself (test -d / exited ", concat(to_string(control.exit_code), "): no absence is read from a probe that never ran")) }
       } else {
-        match ntfy_retire_probe_exec(target: target, context: context, command: systemctl_show_load_state_argv(unit: ntfy_retire_unit_name), step: "unit-load-state-read") {
+        match ntfy_retire_probe_exec(target: target, context: context, kind: ProbeLeg, command: systemctl_show_load_state_argv(unit: ntfy_retire_unit_name), step: "unit-load-state-read") {
+        TypedArgvExecOverran { deadline: d } => ReadsRefused { reason: concat("approval ntfy retirement: ", typed_argv_exec_overran_reason(leg_hint: "approval ntfy retirement", deadline: d)) }
         TypedArgvExecRefused { reason: why } => ReadsRefused { reason: concat("approval ntfy retirement: ", why) }
         TypedArgvExecConverged { result: unit_read } =>
-          match ntfy_retire_probe_exec(target: target, context: context, command: ["getent", "passwd", ntfy_retire_account_name as String], step: "account-read") {
+          match ntfy_retire_probe_exec(target: target, context: context, kind: ProbeLeg, command: ["getent", "passwd", ntfy_retire_account_name as String], step: "account-read") {
+          TypedArgvExecOverran { deadline: d } => ReadsRefused { reason: concat("approval ntfy retirement: ", typed_argv_exec_overran_reason(leg_hint: "approval ntfy retirement", deadline: d)) }
             TypedArgvExecRefused { reason: why } => ReadsRefused { reason: concat("approval ntfy retirement: ", why) }
             TypedArgvExecConverged { result: account_read } =>
-              match ntfy_retire_probe_exec(target: target, context: context, command: argv_words(command: tailscale_serve_status_json_command()), step: "serve-status-read") {
+              match ntfy_retire_probe_exec(target: target, context: context, kind: ProbeLeg, command: argv_words(command: tailscale_serve_status_json_command()), step: "serve-status-read") {
+              TypedArgvExecOverran { deadline: d } => ReadsRefused { reason: concat("approval ntfy retirement: ", typed_argv_exec_overran_reason(leg_hint: "approval ntfy retirement", deadline: d)) }
                 TypedArgvExecRefused { reason: why } => ReadsRefused { reason: concat("approval ntfy retirement: ", why) }
                 TypedArgvExecConverged { result: serve_read } =>
                   match ntfy_retire_path_probe(target: target, context: context, path: ntfy_retire_unit_path) {
@@ -869,7 +879,8 @@ fn ntfy_retire_verdict_reads(target: SshTarget, context: FleetSshExecutionContex
                                   // that is not what this change is about is how a retirement PR ends up
                                   // changing two things at once. The words are the same shape; only who
                                   // spells them differs, and the witness for the group read pins this one.
-                                  match ntfy_retire_probe_exec(target: target, context: context, command: argv_words(command: getent_group_command(key: ntfy_retire_group_name)), step: "group-read") {
+                                  match ntfy_retire_probe_exec(target: target, context: context, kind: ProbeLeg, command: argv_words(command: getent_group_command(key: ntfy_retire_group_name)), step: "group-read") {
+                                  TypedArgvExecOverran { deadline: d } => ReadsRefused { reason: concat("approval ntfy retirement: ", typed_argv_exec_overran_reason(leg_hint: "approval ntfy retirement", deadline: d)) }
                                     TypedArgvExecRefused { reason: why } => ReadsRefused { reason: concat("approval ntfy retirement: ", why) }
                                     TypedArgvExecConverged { result: group_read } => {
                                       // EVERY VERDICT IS CHOSEN BY THE READ, through the prober's own
@@ -971,7 +982,8 @@ type NtfyRetirePathProbe
 fn ntfy_retire_path_probe(target: SshTarget, context: FleetSshExecutionContext, path: NonEmptyStr) -> NtfyRetirePathProbe
   uses net: std.resources.Network
 {
-  match ntfy_retire_probe_exec(target: target, context: context, command: ntfy_retire_path_probe_argv(path: path), step: "path-probe") {
+  match ntfy_retire_probe_exec(target: target, context: context, kind: ProbeLeg, command: ntfy_retire_path_probe_argv(path: path), step: "path-probe") {
+  TypedArgvExecOverran { deadline: d } => PathProbeTransportRefused { reason: typed_argv_exec_overran_reason(leg_hint: "approval ntfy retirement", deadline: d) }
     TypedArgvExecRefused { reason: why } => PathProbeTransportRefused { reason: why }
     TypedArgvExecConverged { result: r } => PathProbeObserved { exit_code: r.exit_code }
   }
@@ -979,13 +991,17 @@ fn ntfy_retire_path_probe(target: SshTarget, context: FleetSshExecutionContext, 
 
 // A readback probe runs elevated (the paths and tailscale's status are root's to read) but its exit
 // code is the ANSWER, not a failure: the transport refusing is the only failure here.
+// The command comes from the caller, so the caller declares the ceiling. Every current caller is a
+// read (elevation-control test, systemctl show, getent, tailscale serve status, path probe) ->
+// ProbeLeg.
 fn ntfy_retire_probe_exec(
   target: SshTarget,
   context: FleetSshExecutionContext,
+  kind: FleetLegKind,
   command: List<String>,
   step: String,
 ) -> TypedArgvExecOutcome
   uses net: std.resources.Network
 {
-  typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: ntfy_retire_elevated_argv(command: command))
+  typed_argv_exec_over_fleet_ssh(kind: kind,target: target, context: context, argv: ntfy_retire_elevated_argv(command: command))
 }

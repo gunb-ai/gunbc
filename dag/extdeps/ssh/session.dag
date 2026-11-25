@@ -2,7 +2,10 @@ module extdeps.ssh.session
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.ssh.password_session { PasswordSshExecResult }
 import std.types { Bool, FilePath, Int, List, NonEmptyStr, Unit, String }
+import std.measure { Second }
+import std.optional { Absent }
 import std.resources { Network }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -52,6 +55,76 @@ type SshSessionExecResult {
   success: Bool
   stdout: String
   stderr: String
+  // A fleet leg that ran PAST its caller-passed total-wall deadline is a VALUE, not an error: the
+  // sink sets overran=true ONLY when its own kill fired -- never inferred from the exit code, because
+  // a real remote command can exit any code. The echoed deadline rides ONLY the overran case as an
+  // Option (Absent otherwise) -- no 0-means-none sentinel. Non-fleet dispatches (no deadline passed)
+  // and the Exec/ExecScript shapes state overran: false and wall_deadline_seconds: Absent explicitly
+  // and keep today's behavior. The exit code stays the child's real code, irrelevant when overran is true.
+  overran: Bool = false
+  wall_deadline_seconds: Optional<Second>
+}
+
+// THE MODEL VIEW OF A FLEET LEG'S SESSION EXEC.
+//
+// A leg either COMPLETED (a real remote exit code, with whatever stdout/stderr came back) or it
+// OVERRAN the total-wall deadline its CALLER passed (the sink's kill fired), in which case the
+// deadline is a VALUE it carries. The wire record `SshSessionExecResult` keeps `overran: Bool` +
+// `wall_deadline_seconds: Optional<Second>` because that pair is the service JSON shape; this SUM is
+// what the model consumes. It is produced at exactly ONE site (`ssh_session_exec_outcome` below),
+// which REFUSES, by name, the two combinations the wire admits but the model forbids: an overrun
+// with no deadline, and a completed leg carrying a deadline. After this, no consumer reads the Bool.
+type SshSessionExecOutcome
+  = SessionCompleted { exit_code: Int, success: Bool, stdout: String, stderr: String }
+  | SessionOverran { deadline: Second }
+  | SessionWireInconsistent { fault: SshSessionWireFault }
+
+// The two illegal wire combinations, named. Each is a sink/transport bug surfaced as a typed
+// refusal, never silently coerced into completion or a fabricated deadline.
+type SshSessionWireFault = OverrunWithoutDeadline | DeadlineWithoutOverrun
+
+fn ssh_session_exec_wire_refusal_text(fault: SshSessionWireFault) -> String {
+  match fault {
+    OverrunWithoutDeadline => "ssh session reported overran=true but echoed no wall deadline: a tripped per-leg deadline must be echoed as its value"
+    DeadlineWithoutOverrun => "ssh session echoed a wall deadline but overran=false: a leg that completed does not report a deadline it never tripped"
+  }
+}
+
+// CARRYING THE PASSWORD TRANSPORT'S WIRE RECORD TO THAT ONE DECODE.
+// ssh.PasswordFileSsh populates its own record shape (`PasswordSshExecResult`, which other
+// dependencies also consume for their own purposes). Its six fields are the same wire fields as
+// `SshSessionExecResult`, including the overran/deadline pair, so this carries each one unchanged: it
+// decides NOTHING -- no default, no dropped field -- and the decode stays the single site it is.
+fn ssh_session_exec_result_from_password_wire(wire: PasswordSshExecResult) -> SshSessionExecResult {
+  SshSessionExecResult {
+    exit_code: wire.exit_code,
+    success: wire.success,
+    stdout: wire.stdout,
+    stderr: wire.stderr,
+    overran: wire.overran,
+    wall_deadline_seconds: wire.wall_deadline_seconds,
+  }
+}
+
+// THE ONE DECODE SITE: wire record -> model sum. The illegal combinations are refused HERE and
+// nowhere else; every consumer matches the sum instead of reading `overran`/`wall_deadline_seconds`.
+fn ssh_session_exec_outcome(result: SshSessionExecResult) -> SshSessionExecOutcome {
+  match result.overran {
+    true => match result.wall_deadline_seconds {
+      Present { value: d } => SessionOverran { deadline: d }
+      Absent => SessionWireInconsistent { fault: OverrunWithoutDeadline }
+    }
+    false => match result.wall_deadline_seconds {
+      Absent =>
+        SessionCompleted {
+          exit_code: result.exit_code,
+          success: result.success,
+          stdout: result.stdout,
+          stderr: result.stderr,
+        }
+      Present { value: _ } => SessionWireInconsistent { fault: DeadlineWithoutOverrun }
+    }
+  }
 }
 
 service ssh.Session {
@@ -75,44 +148,58 @@ service ssh.Session {
 
   operation ExecPortableWords {
     requires Network
-    input { client_args: List<String> }
+    input { client_args: List<String>, wall_deadline: Optional<Second> }
     output {
       exit_code: Int from "exit_code"
       success: Bool from "exit_success"
       stdout: String from "stdout"
       stderr: String from "stderr"
+      overran: Bool from "overran"
+      wall_deadline_seconds: Optional<Second> from "wall_deadline_seconds"
     }
     transport shell {
       argv: ["ssh", client_args]
+      // THE TRANSPORT DECLARES THE CEILING, exactly as it declares `stdin`. The interpreter
+      // arms the per-leg kill because THIS block says so -- never because a parameter happens
+      // to be spelled `wall_deadline` (review 96999). A transport without this field runs
+      // exactly as it did before this field existed: no group, no kill, no overrun arm.
+      wall_deadline: wall_deadline
     }
     exit {
       0 => Unit
       nonzero => String "ssh portable-words exec failed"
     }
     mock_response {
-      0 => { exit_code: 0, success: true, stdout: "mock-ssh-portable-words", stderr: "" } "hermetic ssh.Session.ExecPortableWords"
+      0 => { exit_code: 0, success: true, stdout: "mock-ssh-portable-words", stderr: "", overran: false } "hermetic ssh.Session.ExecPortableWords"
     }
   }
 
   operation ExecPortableWordsWithStdin {
     requires Network
-    input { client_args: List<String>, stdin_payload: String }
+    input { client_args: List<String>, stdin_payload: String, wall_deadline: Optional<Second> }
     output {
       exit_code: Int from "exit_code"
       success: Bool from "exit_success"
       stdout: String from "stdout"
       stderr: String from "stderr"
+      overran: Bool from "overran"
+      wall_deadline_seconds: Optional<Second> from "wall_deadline_seconds"
     }
     transport shell {
       argv: ["ssh", client_args]
       stdin: stdin_payload
+      // THE TRANSPORT DECLARES THE CEILING, exactly as it declares `stdin`. The interpreter
+      // arms the per-leg kill because THIS block says so -- never because a parameter happens
+      // to be spelled `wall_deadline` (review 96999). A transport without this field runs
+      // exactly as it did before this field existed: no group, no kill, no overrun arm.
+      wall_deadline: wall_deadline
     }
     exit {
       0 => Unit
       nonzero => String "ssh portable-words exec with stdin failed"
     }
     mock_response {
-      0 => { exit_code: 0, success: true, stdout: "mock-ssh-portable-words-stdin", stderr: "" } "hermetic"
+      0 => { exit_code: 0, success: true, stdout: "mock-ssh-portable-words-stdin", stderr: "", overran: false } "hermetic"
     }
   }
 
@@ -156,12 +243,16 @@ fn ssh_session_exec_result_from_service(
   success: Bool,
   stdout: String,
   stderr: String,
+  overran: Bool = false,
+  wall_deadline_seconds: Optional<Second> = Absent,
 ) -> SshSessionExecResult {
   SshSessionExecResult {
     exit_code: exit_code,
     success: success,
     stdout: stdout,
     stderr: stderr,
+    overran: overran,
+    wall_deadline_seconds: wall_deadline_seconds,
   }
 }
 
@@ -175,23 +266,32 @@ fn ssh_session_exec(host: NonEmptyStr, command: NonEmptyStr) -> SshSessionExecRe
   )
 }
 
-fn ssh_session_exec_portable_words(client_args: List<String>) -> SshSessionExecResult {
-  let result = ssh.Session.ExecPortableWords(client_args: client_args)
+// NO DEFAULT: a leg that states no ceiling is a compile error, not an unbounded ssh. A caller that
+// genuinely has no ceiling says so by passing Absent by name (gunbc.typed_argv_exec
+// typed_argv_exec_over_ssh, the non-fleet host transport); every FLEET path arms its ceiling from the
+// leg (gunbc.fleet.fleet_known_hosts_anchor fleet_ssh_armed_key_leg).
+fn ssh_session_exec_portable_words(client_args: List<String>, wall_deadline: Optional<Second>) -> SshSessionExecResult {
+  let result = ssh.Session.ExecPortableWords(client_args: client_args, wall_deadline: wall_deadline)
   ssh_session_exec_result_from_service(
     exit_code: result.exit_code,
     success: result.success,
     stdout: result.stdout,
     stderr: result.stderr,
+    overran: result.overran,
+    wall_deadline_seconds: result.wall_deadline_seconds,
   )
 }
 
-fn ssh_session_exec_portable_words_with_stdin(client_args: List<String>, stdin_payload: String) -> SshSessionExecResult {
-  let result = ssh.Session.ExecPortableWordsWithStdin(client_args: client_args, stdin_payload: stdin_payload)
+// NO DEFAULT, same rule as ssh_session_exec_portable_words.
+fn ssh_session_exec_portable_words_with_stdin(client_args: List<String>, stdin_payload: String, wall_deadline: Optional<Second>) -> SshSessionExecResult {
+  let result = ssh.Session.ExecPortableWordsWithStdin(client_args: client_args, stdin_payload: stdin_payload, wall_deadline: wall_deadline)
   ssh_session_exec_result_from_service(
     exit_code: result.exit_code,
     success: result.success,
     stdout: result.stdout,
     stderr: result.stderr,
+    overran: result.overran,
+    wall_deadline_seconds: result.wall_deadline_seconds,
   )
 }
 

@@ -1,0 +1,16 @@
+module gunbc.runner.release_images_location
+
+import std.types { String }
+
+// THE RELEASE-LOCUS IMAGES DIRECTORY: the single name of the directory the guest/workspace/revision-job
+// image legs create UNDER A RELEASE LOCUS, and that the tree-install locus-root readback must tolerate as
+// a sibling writer (its writer owns those postconditions). Declared ONCE here -- the image writers' own
+// home -- so the two image writers build their install paths from it and the readback footprint derives
+// its permitted member from it; the basename is never re-spelled as a free-standing literal.
+data release_images_dir_name: String = "images"
+
+// THE IMAGES DIRECTORY UNDER A RELEASE LOCUS: <release_dir>/images. Both image writers extend this with
+// their own sub-path (workspace/, revision-job/); the readback permits exactly this directory's name.
+fn release_images_dir(release_dir: String) -> String {
+  join([release_dir, "/", release_images_dir_name], "")
+}

@@ -33,6 +33,8 @@ import product.p4261.lot_e1_readings {
   lot_e1_c_after_both,
   lot_e1_c_b_removal_key,
   lot_e1_c_after_removal_resistances,
+  lot_e1_c_b_fit_key,
+  lot_e1_c_after_fit_resistances,
   gate_b_1_pad,
   gate_b_2_pad,
   gate_b_2_via,
@@ -103,6 +105,19 @@ fn state_after_removal_holds_its_own_readings() -> Bool {
       && all_read(os: netlist_links_at(net: board_netlist(s: after_removal), a: gate_b_1_pad, b: gate_a_1), d: DisplayZeroWithoutBaseline { reported: "baseline" })
       && all_read(os: netlist_links_at(net: board_netlist(s: after_removal), a: gate_b_2_pad, b: gate_b_2_via), d: DisplayZeroWithoutBaseline { reported: "baseline" })
       && count(netlist_links_at(net: board_netlist(s: after_removal), a: gate_b_1, b: gate_b_2)) == 0
+  }
+}
+
+// The board with the new part B: a third state, holding only the reading taken since, A2 to B2 at 11 ohm,
+// beside the untouched board's 12 ohm on the same pair; the bare-footprint readings stay in their own state.
+fn state_after_fit_holds_its_own_reading() -> Bool {
+  match board_after(b: lot_e1_c_board, keys: concat(lot_e1_c_after_both, [lot_e1_c_b_removal_key, lot_e1_c_b_fit_key]), module: ModuleRemoved) {
+    Absent => false
+    Present { value: after_fit } => count(board_readings(s: after_fit).resistances) == 1
+      && count(lot_e1_c_after_fit_resistances) == 1
+      && all_read(os: netlist_links_at(net: board_netlist(s: after_fit), a: gate_a_2, b: gate_b_2), d: DisplayValue { ohms: 11, approximate: false })
+      && count(netlist_links_at(net: board_netlist(s: after_fit), a: gate_b_1_pad, b: gate_a_1)) == 0
+      && count(netlist_links_at(net: board_netlist(s: after_fit), a: gate_a_1, b: gate_a_2)) == 0
   }
 }
 
@@ -241,4 +256,10 @@ test fn the_underside_parts_reach_each_boards_netlist() -> Bool {
 // earlier reading stays in the state after both earlier events (the first test), B's open among them.
 test fn the_removal_of_part_b_divides_the_board() -> Bool {
   state_after_removal_holds_its_own_readings()
+}
+
+// Fitting the new part B divides the board again: the state after it holds only the A2-to-B2 reading, and
+// the bare-footprint state keeps its three readings and gains none.
+test fn fitting_the_new_part_b_divides_the_board_again() -> Bool {
+  state_after_fit_holds_its_own_reading() && state_after_removal_holds_its_own_readings()
 }
