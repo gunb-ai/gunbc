@@ -2787,17 +2787,28 @@ fn harness_turn_supervise(
   events: List<String>,
   repairs_used: Int,
 ) -> HarnessTurnOutcome {
-  let observation = harness_supervision_observation_text(messages: messages, round_steps: round_steps)
+  // THE BOUNDARY IS THE ONLY WRITER OF THIS ARTIFACT (single authority), and adjudication is a reader.
+  // The bytes the boundary persisted ARE the evidence; rebuilding the round from the caller's `messages`
+  // and writing the result over that file graded a caller-supplied conversation instead of the durable
+  // one, and destroyed the very evidence the digest comparison exists to protect -- the refusal then
+  // arrived only after the checkpoint had become permanently un-adjudicable. So: read, never write; and
+  // an unreadable observation is a typed, located refusal rather than a fabricated body (fail-closed).
+  // `messages` still travels to the pause, because re-delivering the round is the dispatcher's job and
+  // the conversation's authority is the wire-log artifacts and the session stream, not this function.
   let observation_path = harness_supervision_artifact_path(check_directory: check_directory, kind: "observation", steps_taken: steps_taken, extension: ".txt")
-  let persisted = Filesystem.Write(path: observation_path, content: observation)
+  let persisted = Filesystem.Read(path: observation_path)
   if !persisted.success {
     harness_turn_supervision_unavailable(
       config: config,
-      cause: join(["the round's observation could not be persisted at ", observation_path, ": ", persisted.error], ""),
+      cause: join([
+        "the round's persisted observation could not be read at ", observation_path, ": ", persisted.error,
+        " -- adjudication grades only what the boundary wrote and fabricates no evidence in its place",
+      ], ""),
       steps_taken: steps_taken,
       events: events,
     )
   } else {
+    let observation = persisted.content
     let pause = HarnessSupervisionPause {
       config: config,
       check_prompt: check_prompt,

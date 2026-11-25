@@ -369,10 +369,48 @@ test fn a_workers_own_aligned_assertion_cannot_mint_a_continuation_receipt() -> 
       },
     ),
   )
+  // (f) THE REFUSAL DOES NOT EAT ITS EVIDENCE. A dispatcher whose conversation has moved on cannot make
+  // its own text become the evidence. The durable bytes are asserted, byte for byte, to still be the
+  // ones this leg wrote, AFTER an entry-level adjudication that refused on the digest -- so the refusal
+  // is a refusal and not an erasure, and the checkpoint stays re-adjudicable. Before this fix the
+  // check-convening step rebuilt the round from the caller's `messages` and wrote the result over the
+  // boundary's file, so the digest refusal arrived only once the evidence was already gone: this leg
+  // could not pass, which is the point of writing it.
+  let dispatcher_body = join([honest, "\nDISPATCHER REWRITE OF THE ROUND\n"], "")
+  let wrote_dispatcher = write_file(path: path, content: dispatcher_body)
+  let entry_with_divergent_messages = harness_alignment_adjudicate_and_resume(
+    config: turn_config(dir: dir),
+    checkpoint: checkpoint,
+    node_id: "align-witness-node",
+    turns_elapsed: steps,
+    cadence: alignment_base_cadence_state(),
+    check_prompt: "grade this round against the node's red control",
+    check_directory: dir,
+    round_steps: steps,
+    messages: [
+      json_object(members: [
+        json_kv(key: "role", value: json_string(s: "user")),
+        json_kv(key: "text", value: json_string(s: "the conversation has moved on since the boundary; grade THIS instead")),
+      ]),
+    ],
+    steps_taken: steps,
+    events: [],
+    repairs_used: 0,
+  )
+  let evidence_survived_the_refusal = read_file(path: path) == dispatcher_body
   let removed = shell.Remove.RecursiveForce(path: dir)
   match emitted {
     TurnAlignmentCheckpointDue { chain_fingerprint: _, conversation_tip: _, observation_path: _, round_steps: _, steps_taken: _ } =>
       removed.success && tampered && wrote_verdict && restored
+        && wrote_dispatcher && evidence_survived_the_refusal
+        && match entry_with_divergent_messages {
+             // BY NAME on the digest refusal, and the bytes on disk are the discriminator: the entry
+             // refused because the persisted evidence is not what the boundary recorded -- and refused
+             // WITHOUT overwriting it with the caller's conversation.
+             TurnSupervisionUnavailable { cause, steps_taken: _ } =>
+               string_contains(s: cause, pattern: "does not match the digest the boundary recorded")
+             _ => false
+           }
         && match tampered_read {
              // WHICH check fired is part of the claim: the expectation is the durable event's, so the
              // refusal must be the digest refusal and not the empty-file or missing-verdict one.
