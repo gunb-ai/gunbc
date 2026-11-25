@@ -284,8 +284,9 @@ data floor_record_completeness_bare_name_control_probe: GuaranteeProbeId = "floo
 // The call-argument control: the same optional value at a direct call argument IS refused
 // (DeclaredTypeNotInhabited), proving the inhabittance check runs -- the hole is position-specific.
 // ON RECORD, NOT FIXED IN THIS CHANGE (measured statically at origin/main 10142523b00 by quiet-carp-72 on
-// 2026-11-25; nothing below was executed, these are readings of the sources). Two claims in the sibling
-// witness test.claim.guarantee_probe_corpus_witness are false on main's own data today. Neither is caused by
+// 2026-11-25; nothing below was executed, these are readings of the sources). One claim in the sibling
+// witness test.claim.guarantee_probe_corpus_witness is false on main's own data today, and one earlier
+// reading of it by this worker was itself wrong and is withdrawn below. Neither remaining item is caused by
 // this enrolment and neither is fixed here, because both change measurements other lanes are certified
 // against; the lane manager files them as planning rows. They are written here so the corpus carries the
 // knowledge of what its own witness does not yet cover.
@@ -298,12 +299,17 @@ data floor_record_completeness_bare_name_control_probe: GuaranteeProbeId = "floo
 //       floor_cardinality_seam_hole_probe, floor_cardinality_seam_green_probe and
 //       floor_cardinality_seam_call_arg_control_probe. The arms must partition, so the fix is not to add the
 //       names to two of them.
-//   (2) test fn probe_ids_are_canonically_ordered (that file, line 677) asserts probe_ids_are_lexicographically_ordered
-//       over guarantee_probe_ids(), and guarantee_probe_ids() is the row list of this file mapped to row.probe - so
-//       it asserts this file's ROW ORDER is strictly increasing (the walker, line 892, uses prev < current, which
-//       also fails on a duplicate). Main's order is not: first violation at index 7 (call_shape_green_probe before
-//       call_mislabel_red_probe), then 16 and 20 inside the floor groups. Re-sorting is not a one-line fix because
-//       probe_set_digest values move with it, and receipt anchors are compared against those digests (line 826).
+//   (2) WITHDRAWN, AND THE TRAP IS RECORDED INSTEAD. test fn probe_ids_are_canonically_ordered (that file,
+//       line 677) asserts probe_ids_are_lexicographically_ordered over guarantee_probe_ids() -- the row list of
+//       this file mapped to row.probe, compared as id as String by the walker at line 892. It HOLDS on main:
+//       the 39 row-order literal id strings are strictly increasing, zero violations. An earlier reading of
+//       this file by this same worker reported it false with a first violation at index 7, and that reading
+//       walked the SYMBOL names (call_shape_green_probe before call_mislabel_red_probe) instead of the literal
+//       id strings the claim actually compares (...-green-control before ...-mislabel-red, which is correctly
+//       ordered). The two keys disagree precisely inside the call-label-surplus group. So this enrolment owes
+//       NO re-sort, and probe_set_digest anchors (line 826) do not move. Named residue
+//       (gunbc.design_argument::source_annotations): reading this corpus's ordering by symbol name instead of
+//       by id-as-String produces a false red; nothing on the page distinguishes the two keys.
 data floor_cardinality_seam_hole_probe: GuaranteeProbeId = "floor-cardinality-seam-field-projection-through-optional-hole" as GuaranteeProbeId
 data floor_cardinality_seam_green_probe: GuaranteeProbeId = "floor-cardinality-seam-required-field-read-green" as GuaranteeProbeId
 data floor_cardinality_seam_call_arg_control_probe: GuaranteeProbeId = "floor-cardinality-seam-call-argument-refusal-control" as GuaranteeProbeId
