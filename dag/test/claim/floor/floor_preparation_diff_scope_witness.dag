@@ -8,7 +8,13 @@ import v2.workflow.floor_preparation_split {
 }
 import v2.workflow.floor_preparation_scope_tool {
   floor_preparation_scope_tool_capture_check_demo,
-  floor_preparation_scope_tool_select_guarded
+  floor_preparation_scope_tool_select_guarded,
+  floor_preparation_scope_tool_module_candidates,
+  floor_preparation_scope_tool_import_edges_for,
+  floor_preparation_scope_tool_has,
+  ToolUnresolved,
+  ToolImport,
+  ToolReadLiteral
 }
 import v2.workflow.floor_preparation_capture_runner {
   floor_preparation_population_entries,
@@ -641,4 +647,95 @@ test fn floor_preparation_an_unverified_map_cannot_narrow() -> Bool {
   floor_preparation_scope_is_whole(scoping: unverified)
     && starts_with(s: floor_preparation_scope_reason(scoping: unverified), prefix: "capture-rows-absent")
     && floor_preparation_scope_is_narrowed(scoping: verified, population: floor_preparation_scope_population)
+}
+
+// ----------------------------------------------------------------------------------------------
+// THE RESOLVER (review 98571). Name-to-path comes only from `gunbc.source_layout`'s storage rule,
+// its derived-roster ledger policy, and each file's own `module` header -- never from a guess.
+// An under-reported edge narrows too far in silence, so every claim here attacks one way a guess
+// could have named the wrong file or missed the right one.
+// ----------------------------------------------------------------------------------------------
+
+test fn floor_preparation_a_v2_name_never_guesses_into_the_dag_tree() -> Bool {
+  // The struck candidate chain resolved `import v2.std.collection` into dag/std/... -- a DIFFERENT
+  // module (storage rule: std.collection). Wrong-file edges are the reviewer's silently green,
+  // under-prepared floor: they are only wrong relative to a rule, and the tool held no rule.
+  let trap_index = ["dag/std/collection.dag", "dag/gunbc/rung_drop/row_a.dag"]
+  let by_guess_replaced = floor_preparation_scope_tool_module_candidates(
+    module_name: "v2.std.collection", decls: [], index: trap_index)
+  let real_index = ["src/v2/std/collection.dag", "dag/std/collection.dag"]
+  let by_rule = floor_preparation_scope_tool_module_candidates(
+    module_name: "v2.std.collection", decls: [], index: real_index)
+  length(xs: by_guess_replaced) == 0
+    && length(xs: by_rule) == 1
+    && floor_preparation_scope_tool_has(xs: by_rule, item: "src/v2/std/collection.dag")
+}
+
+test fn floor_preparation_declared_names_resolve_only_through_declarations() -> Bool {
+  // The src/v1 mirrors sit outside the storage rule by `layout_governed_roots` policy; their v1.*
+  // names resolve ONLY through the table that read the file's own header. With the table absent the
+  // name is unresolved even though the file sits in the index -- no candidate chain may "find" it
+  // by root-guessing, because a guess is exactly what cannot be cross-checked against the compiler.
+  let decls = ["v1.std.core|src/v1/00_core.dag"]
+  let index = ["src/v1/00_core.dag"]
+  let with_table = floor_preparation_scope_tool_module_candidates(
+    module_name: "v1.std.core", decls: decls, index: index)
+  let without = floor_preparation_scope_tool_module_candidates(
+    module_name: "v1.std.core", decls: [], index: index)
+  length(xs: with_table) == 1
+    && floor_preparation_scope_tool_has(xs: with_table, item: "src/v1/00_core.dag")
+    && length(xs: without) == 0
+}
+
+test fn floor_preparation_a_derived_roster_import_unions_the_row_files() -> Bool {
+  // `<ns>.roster` is a module with NO file, contributed by the row modules under `<ns>/`
+  // (gunbc.source_layout's derived-roster policy). The map must see every row file as a target of
+  // such an import -- dropping them under-reports edges, the one failure that reads as a green
+  // floor that prepared too little.
+  let index = [
+    "dag/gunbc/rung_drop/alpha_row.dag",
+    "dag/gunbc/rung_drop/beta_row.dag",
+    "dag/gunbc/recurring_failure_mode/alpha_row.dag",
+    "dag/other.dag",
+  ]
+  let rows = floor_preparation_scope_tool_module_candidates(
+    module_name: "gunbc.rung_drop.roster", decls: [], index: index)
+  length(xs: rows) == 2
+    && floor_preparation_scope_tool_has(xs: rows, item: "dag/gunbc/rung_drop/alpha_row.dag")
+    && floor_preparation_scope_tool_has(xs: rows, item: "dag/gunbc/rung_drop/beta_row.dag")
+}
+
+test fn floor_preparation_two_authorised_names_for_one_file_follow_both() -> Bool {
+  // UNION semantics, not first-guess: when the storage rule and the declared table name two
+  // different files, the over-approximation must follow BOTH. Choosing one would under-report an
+  // edge the other file really carries.
+  let decls = ["std.pair|dag/legacy/pair.dag"]
+  let index = ["dag/std/pair.dag", "dag/legacy/pair.dag"]
+  let rows = floor_preparation_scope_tool_module_candidates(
+    module_name: "std.pair", decls: decls, index: index)
+  length(xs: rows) == 2
+    && floor_preparation_scope_tool_has(xs: rows, item: "dag/std/pair.dag")
+    && floor_preparation_scope_tool_has(xs: rows, item: "dag/legacy/pair.dag")
+}
+
+test fn floor_preparation_an_unresolvable_import_poisons_and_never_points_at_a_file() -> Bool {
+  // The named negative: `v2.ncr_disp_home` is imported by a real claim (namespace_candidate_rule)
+  // and no authorised transport names a file for it in this index. The edge must be ToolUnresolved
+  // with an empty target -- poison that forces every entry reaching the source to prepare -- never
+  // an edge at a plausible path.
+  let line = "src/v2/test/claim/resolve/namespace_candidate_rule.dag:12:import v2.ncr_disp_home"
+  let index = ["src/v2/test/claim/resolve/namespace_candidate_rule.dag"]
+  let edges = floor_preparation_scope_tool_import_edges_for(line: line, index: index, decls: [])
+  match edges.first() {
+    Absent => false
+    Present { value: e } =>
+      length(xs: edges) == 1
+        && e.source == "src/v2/test/claim/resolve/namespace_candidate_rule.dag"
+        && e.target == ""
+        && match e.kind {
+             ToolUnresolved { module: m } => m == "v2.ncr_disp_home"
+             ToolImport {} => false
+             ToolReadLiteral {} => false
+           }
+  }
 }

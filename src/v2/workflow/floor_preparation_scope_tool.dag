@@ -66,6 +66,14 @@ import v2.workflow.floor_preparation_diff_scope {
   ScopeReadLiteral,
 }
 
+// THE LAYOUT AUTHORITY, imported not re-written: the name-to-path rule and the derived-roster
+// ledger policy are `gunbc.source_layout`'s, and the resolver below consults them instead of
+// holding lookup rules of its own (review 98571; gunbc.design_argument::single_authority).
+import gunbc.source_layout {
+  layout_module_storage_path,
+  layout_derived_rosters,
+}
+
 data floor_preparation_scope_tool_git: String = "/usr/bin/git"
 
 // Reverse-walk bound. Real import chains are far shallower; hitting the cap is not "close enough",
@@ -222,38 +230,23 @@ fn floor_preparation_scope_tool_import_module(content: String) -> String {
   }
 }
 
-// drop_last without a second representation of the list: keep every element except the last.
-fn floor_preparation_scope_tool_drop_last(xs: List<String>) -> List<String> {
-  let walked = fold(xs, init: FloorPreparationScopeToolDropAcc { done: [], pending: Absent {} }, f: (acc, x) =>
-    FloorPreparationScopeToolDropAcc {
-      done: match acc.pending {
-        Present { value: p } => list_push(xs: acc.done, item: p),
-        Absent {} => acc.done,
-      },
-      pending: Present { value: x },
-    })
-  walked.done
-}
-
-// The directory of a tree path; "" for a root-level file.
-fn floor_preparation_scope_tool_dir_of(path: String) -> String {
-  let pieces = split(s: path, delimiter: "/")
-  if length(xs: pieces) <= 1 {
-    ""
-  } else {
-    join(floor_preparation_scope_tool_drop_last(xs: pieces), "/")
-  }
-}
-
-// gunbc resolves an import relative to the IMPORTING FILE first, then against each source root.
-// Fixture trees (test/fixture_roots/fixtures/...) only resolve through the importer-relative
-// candidate; dropping it poisons every entry whose closure reaches a fixture, a transport bug
-// masquerading as a forced rule.
-// The declared-name table: `module <name>` headers read straight off the tree, one grep. The
-// parser resolves an import by the name the target DECLARES, never by a path guess -- src/v2 files
-// declare v2.* names whose paths drop the v2. prefix, dag/ files declare names without the dag/
-// prefix. Guessing those rules duplicates the parser's authority; reading the declarations is one
-// transport the tool actually owns.
+// THE RESOLVER HAS NO RULES OF ITS OWN (review 98571). Name-to-path comes ONLY from the modelled
+// layout authority `gunbc.source_layout` -- the single written `layout_module_storage_path` (module
+// `a.b.c` is stored at `<root(a)>/b/c.dag`; root(v2) is src/v2, eliding its namespace) -- plus the
+// two facts that policy itself declares: the DERIVED ROSTERS (`layout_derived_rosters`: a
+// `<ns>.roster` module has NO file; the row modules under `<ns>/` contribute it) and each file's own
+// `module` header. The header is not a second location authority: it is one transport for a file's
+// OWN name, the same fact the compiler reads; src/v1 mirrors sit outside the storage rule by
+// `layout_governed_roots` policy and carry v1.* declarations no storage path names. Measured on the
+// committed tree (78,724 column-0 imports, python control beside this code): 78,422 resolve by the
+// storage rule alone, 276 -- every one a src/v1 mirror import -- need the declared table, and ZERO
+// resolve importer-relatively; the importer-relative and free root-guess candidates (bare rel,
+// dag/rel, src/v1/rel, src/v2/rel) are struck as a parallel resolver. A v2.* name could formerly
+// guess its way to dag/std/... under the old chain -- a real mis-attribution the storage rule alone
+// cannot produce. A name no rule resolves becomes a ToolUnresolved edge, never a guess: its source
+// poisons every entry reaching it, so the entry pays preparation on EVERY run (the guess chain now
+// only ever decides WHICH FILE an edge names, never whether an entry prepares -- gunbc.
+// design_argument::fail_closed).
 fn floor_preparation_scope_tool_module_decls(tree: String) -> FloorPreparationScopeToolDecls {
   let ran = floor_preparation_scope_tool_run_git(
     tree: tree, args: ["grep", "-n", "-o", "-E", "^module [a-z0-9_.]+", "--", "*.dag"])
@@ -285,59 +278,90 @@ fn floor_preparation_scope_tool_declared_path(name: String, decls: List<String>)
     })
 }
 
-fn floor_preparation_scope_tool_module_candidates(module_name: String, importer_dir: String, decls: List<String>) -> List<String> {
+// The candidates a module name may name, restricted to files the INDEX holds -- the union of the
+// three authorised transports, never a first-guess: the storage rule's path, the file that DECLARES
+// the name, and every row file under a derived roster's namespace directory. An empty list means no
+// rule resolved it: the caller must emit ToolUnresolved, and this function must never invent a path.
+fn floor_preparation_scope_tool_module_candidates(module_name: String, decls: List<String>, index: List<String>) -> List<String> {
+  let storage_rows = match layout_module_storage_path(module: module_name) {
+    Absent => []
+    Present { value: p } => if floor_preparation_scope_tool_has(xs: index, item: p) { [p] } else { [] }
+  }
   let declared = floor_preparation_scope_tool_declared_path(name: module_name, decls: decls)
-  let rel = concat(join(split(s: module_name, delimiter: "."), "/"), ".dag")
-  let dir_prefixed = if importer_dir == "" {
+  let declared_rows =
+    if declared == "" {
+      []
+    } else {
+      if floor_preparation_scope_tool_has(xs: index, item: declared) { [declared] } else { [] }
+    }
+  concat(storage_rows, concat(declared_rows, floor_preparation_scope_tool_roster_row_files(module_name: module_name, index: index)))
+}
+
+// The directory a derived roster's row modules live in: `<ns>.roster` only, and only when <ns> is a
+// ledger the layout policy lists. The roster module has no file by policy; the row files beneath the
+// directory the storage rule gives the roster are the edges the map must not miss.
+fn floor_preparation_scope_tool_roster_dir(module_name: String) -> String {
+  let ledger = fold(layout_derived_rosters(), init: false, f: (acc, r) =>
+    acc || module_name == concat(r.row_namespace, ".roster"))
+  if !ledger {
+    ""
+  } else {
+    match layout_module_storage_path(module: module_name) {
+      Absent => ""
+      Present { value: p } =>
+        if ends_with(s: p, suffix: "/roster.dag") {
+          concat(substring(s: p, start: 0, end: string_length(s: p) - 11), "/")
+        } else {
+          ""
+        }
+    }
+  }
+}
+
+fn floor_preparation_scope_tool_roster_row_files(module_name: String, index: List<String>) -> List<String> {
+  let prefix = floor_preparation_scope_tool_roster_dir(module_name: module_name)
+  if prefix == "" {
     []
   } else {
-    [concat(importer_dir, concat("/", rel))]
+    fold(index, init: [], f: (acc, path) =>
+      if starts_with(s: path, prefix: prefix) { list_push(xs: acc, item: path) } else { acc })
   }
-  concat(if declared == "" { [] } else { [declared] },
-    concat(dir_prefixed, [rel, concat("dag/", rel), concat("src/v1/", rel), concat("src/v2/", rel)]))
 }
 
-fn floor_preparation_scope_tool_first_candidate(candidates: List<String>, index: List<String>) -> String {
-  fold(candidates, init: "", f: (acc, candidate) =>
-    if acc != "" {
-      acc
-    } else {
-      if floor_preparation_scope_tool_has(xs: index, item: candidate) { candidate } else { acc }
-    })
-}
-
-// One import grep line -> one edge row, or "" when the line is not an import statement (a comment
-// mentioning import is not a read). An unresolvable import becomes a `|unresolved|` row: the
-// SOURCE file then poisons every entry whose closure contains it.
-fn floor_preparation_scope_tool_import_edge(line: String, index: List<String>, decls: List<String>) -> Optional<FloorPreparationScopeToolEdge> {
+// One import grep line -> the edge rows it justifies (usually one; more than one only when two
+// authorised transports name two files for the same name -- then the map follows both), or the empty
+// list when the line is not an import statement (a comment mentioning import is not a read). A name
+// no authorised transport resolves becomes ONE ToolUnresolved edge: the SOURCE file then poisons
+// every entry whose closure contains it -- poison, never a guess.
+fn floor_preparation_scope_tool_import_edges_for(line: String, index: List<String>, decls: List<String>) -> List<FloorPreparationScopeToolEdge> {
   let content = floor_preparation_scope_tool_grep_content(line: line)
   if !starts_with(s: content, prefix: "import ") {
-    Absent {}
+    []
   } else {
     let source = floor_preparation_scope_tool_grep_file(line: line)
     let module_name = floor_preparation_scope_tool_import_module(content: content)
-    let target = floor_preparation_scope_tool_first_candidate(
-      candidates: floor_preparation_scope_tool_module_candidates(
-        module_name: module_name,
-        importer_dir: floor_preparation_scope_tool_dir_of(path: source),
-        decls: decls),
+    let found = floor_preparation_scope_tool_module_candidates(
+      module_name: module_name,
+      decls: decls,
       index: index)
-    if target == "" {
-      Present {
-        value: FloorPreparationScopeToolEdge {
+    if length(xs: found) == 0 {
+      [
+        FloorPreparationScopeToolEdge {
           source: source,
           kind: ToolUnresolved { module: module_name },
           target: "",
         },
-      }
+      ]
     } else {
-      Present {
-        value: FloorPreparationScopeToolEdge {
+      // UNION semantics: when two authorised transports name two different files for one name, the
+      // over-approximation follows BOTH. Picking one would let the map under-report an edge the
+      // other file really carries, and an under-reported edge narrows too far in silence.
+      fold(found, init: [], f: (acc, target) =>
+        list_push(xs: acc, item: FloorPreparationScopeToolEdge {
           source: source,
           kind: ToolImport {},
           target: target,
-        },
-      }
+        }))
     }
   }
 }
@@ -351,10 +375,7 @@ fn floor_preparation_scope_tool_import_edges(tree: String, index: List<String>, 
       if line == "" {
         acc
       } else {
-        match floor_preparation_scope_tool_import_edge(line: line, index: index, decls: decls) {
-          Present { value: e } => list_push(xs: acc, item: e)
-          Absent => acc
-        }
+        concat(acc, floor_preparation_scope_tool_import_edges_for(line: line, index: index, decls: decls))
       }),
   }
 }
@@ -420,11 +441,6 @@ fn floor_preparation_scope_tool_is_path_piece(seen: Int, piece: String) -> Bool 
   seen % 2 == 1
     && floor_preparation_contains(haystack: piece, needle: "/")
     && (ends_with(s: piece, suffix: ".dag") || ends_with(s: piece, suffix: ".txt"))
-}
-
-type FloorPreparationScopeToolDropAcc {
-  done: List<String>,
-  pending: Optional<String>,
 }
 
 type FloorPreparationScopeToolQuoteWalk {
