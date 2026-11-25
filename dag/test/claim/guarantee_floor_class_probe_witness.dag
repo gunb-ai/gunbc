@@ -322,6 +322,30 @@ test fn floor_hole_receipt_records_acceptance_as_the_observation() -> Bool {
   }
 }
 
+// LEG LIFECYCLE for the three cardinality-seam legs below -- read this before deleting or "fixing"
+// any of them (ruled by bold-pike-529, 2026-11-25).
+// THE DISCRIMINATING PAIR is floor_cardinality_seam_call_argument_refuses_proving_harness_is_live (the
+// wrong case REFUSED) together with floor_cardinality_seam_green_control_is_clean (the correct case
+// ACCEPTED). Those two are what this witness CARRIES: they show the harness can both refuse and accept,
+// so a silent acceptance anywhere below is an OBSERVATION and not a broken instrument reading.
+// floor_cardinality_seam_field_projection_through_optional_is_still_silent is NOT a guarantee and never
+// was -- it PASSES ONLY WHILE THE COMPILER IS WRONG. It is the recurring-failure-mode row's twin, the
+// measured face of
+// gunbc.recurring_failure_mode.a_field_read_through_an_optional_value_is_accepted_at_the_projection,
+// whose next-rung trigger names the node that dissolves it. When that projection wall lands this leg
+// MUST FLIP TO RED and be re-ranked as a regression control beside its discriminating refusal; it is
+// never deleted while still green, because deleting a green hole leg is how a hole becomes invisible.
+// OWNER OF THE FIX, named so this leg cannot calcify into infrastructure a later reader mistakes for a
+// guarantee: roadmap row floor-optional-projection-wall, identity rn_MDGKH2UR7XGMNPT3AMWLAXVFO2
+// (owner compiler-guarantee), rostered in plan PR gunbc#17055 at head
+// 0e786380ffec33eb893884e6bf8276229f2c3b00 (that ref moves; the identity does not), carriers
+// src/v1/04_infer.dag + dag/test/claim/optional_field_read_admission_gap_witness.dag +
+// dag/gunbc/recurring_failure_mode/optional_admitted_where_a_required_value_is_declared.dag. That row
+// declares no dispatch field, so it is NotDispatchable until this node and its
+// recurring-failure-mode row land. main's two parse-hole legs of the same shape
+// (floor_parse_list_separator_omission_is_still_silent at :253 and
+// floor_hole_receipt_records_acceptance_as_the_observation at :290) carry no such note; this one does.
+
 test fn floor_cardinality_seam_field_projection_through_optional_is_still_silent() -> ProcessExit {
   census_verdict_all([
     census_premise("the probe row is a declared below-floor hole whose expectation holds", silent_hole_holds(probe: floor_cardinality_seam_hole_probe, source: cardinality_seam_hole_source)),
