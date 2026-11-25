@@ -33,9 +33,18 @@ import gunbc.host.host_effect { SshShell }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
+// ASSERTION (both sides visible): produced standing must be
+// HostCancellationUnobserved with host flow-through == literal "srv9" (the
+// carrier-declared value of gunbc.fleet.fleet_host_identity::operator_host_srv9,
+// compared as String — not the same expression as the input constant) AND
+// cause == literal "no fleet_host_ssh_transport for this host" (the exact
+// NonEmptyStr literal the consumer's Absent arm declares at
+// gunbc/compile_permit_scope_observe.dag:237). Substituting the standing, the
+// host, or the typed cause flips this arm to false; each side is reachable.
 test fn w_row19_absent_transport_yields_typed_refusal() -> Bool {
   match observe_host_compile_cancellation_for_fleet_host(host: operator_host_srv9) {
-    HostCancellationUnobserved { host: h, cause: _ } => h == operator_host_srv9
+    HostCancellationUnobserved { host: h, cause: c } =>
+      ((h as String) == "srv9") && ((c as String) == "no fleet_host_ssh_transport for this host")
     _ => false
   }
 }
@@ -44,9 +53,16 @@ test fn w_row19_absent_transport_yields_typed_refusal() -> Bool {
 // must yield Present — confirming the .first() site discriminates on table
 // membership. Without this, a mutation that made .first() always Absent would
 // pass the negative control undetected.
+// ASSERTION (both sides visible): produced ssh_host, flowed through
+// filter()+first()+Present-unwrap and srv3_host_identity_ssh_transport()
+// (host_identity_adopt.dag:47, which builds SshShell from operator_host_srv3
+// as NonEmptyStr), compared against the CARRIER-DECLARED LITERAL "srv3" — a
+// different expression than the fixture's source, so binding srv3's row to
+// another host's transport, or a lookup miss (Absent falls to `_ => false`),
+// both flip this arm.
 test fn w_row19_present_transport_positive_control() -> Bool {
   match fleet_host_ssh_transport(host: operator_host_srv3) {
-    Present { value: SshShell { ssh_host: h } } => h == operator_host_srv3
+    Present { value: SshShell { ssh_host: h } } => (h as String) == "srv3"
     _ => false
   }
 }
