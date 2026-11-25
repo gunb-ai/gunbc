@@ -1,0 +1,28 @@
+module gunbc.recurring_failure_mode.floor_class_probes_are_enrolled_before_their_owning_wall_lands
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+
+data floor_class_probes_are_enrolled_before_their_owning_wall_lands: RecurringFailureMode = RecurringFailureMode {
+  identity: "floor_class_probes_are_enrolled_before_their_owning_wall_lands" as NonEmptyStr,
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: BelowCeiling {
+      current: FoundBelowTheLadder,
+      ceiling: StructurallyGuaranteed,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "each class's probes enter the covered arms by EXECUTION, not by editing a list: when the floor node that owns a class lands its refusal witness, that witness's executed legs are what roster the class's ids into the dag-native arm, and the class's deliberately-bad probe flips from a counted silent acceptance to a refusal control beside its green twin. WHEN THIS FIRES: the probe pair for that class is no longer measuring an absent wall, its rows stop expecting red, and the row is dissolved by its own trigger rather than deleted. A class whose probes green while its wall has not landed is itself the red — see the red-control leg #test.claim.guarantee_floor_class_probe_witness::counted_below_floor_hole_rows_match_declared_count." as NonEmptyStr,
+    },
+  },
+
+  receipts: [
+    "POPULATION, named as classes not as counts: the five floor classes carried by #test.claim.guarantee_floor_class_probe_witness — #gunbc.guarantee_probe_corpus::floor_closed_match_exhaustiveness_class, ::floor_field_through_generics_class, ::floor_generic_instantiation_class, ::floor_parse_list_separator_class, ::floor_record_field_completeness_class — plus the sixth class this node enrolled, the cardinality seam ::floor_cardinality_seam_class. Their probe rows are enrolled on the v1 compile path and their legs execute; the WALLS for these classes are the separate floor-wall nodes, and four of the five owning nodes were open (undispatched work in the compiler-guarantee lane) at the time this row was written, so the probes measure an absence rather than assert one.",
+    "NOT A MIGRATION, AND NOT A GAP: these probes have no Rust dark-suite witness behind them, so recording them as migrated dispositions would assert a migration that never happened, and recording them as known gaps would assert a hole that is not there — rung inflation in either direction. They are dag-native probes whose executor was simply never recorded: their ids are rostered by the module that actually runs them (#test.claim.guarantee_floor_class_probe_witness and #test.claim.infer_record_field_completeness_zero_field_witness), which is the record of their execution.",
+    "ONE CLASS HAS ALREADY CLIMBED, NAMED SO THIS ROW IS NOT MISREAD: the generic-instantiation type-argument hole closed at b5af75f4d339 (gunbc#9416; red at its parent 107304a57920), and its leg is now #test.claim.guarantee_floor_class_probe_witness::floor_generic_instantiation_type_argument_refuses — a refusal kept enrolled as the regression control for the higher rung, not deleted. The trigger above fires per class, not for the population at once.",
+    "INSTRUMENT OF RECORD, the executed evidence for the sixth class: the cardinality-seam probe pair ran 2026-11-25 on srv1 (boot c095c0cd) through heavy-slot under HEAVY_OWNER quiet-carp-72 — claim_batch sha256 fab6957cb4e614d42efb8e4ad00832c0a585ad7f37f10e6c874a3f6920d463fe verified against release-bins.manifest (pack provenance run 45588971859, head 90455b33b870): 6 PASS, 0 FAIL, the deliberately-bad projection still silent, its green twin clean, and the call-argument twin refused, which is what proves the harness is live rather than vacuous. Raw PASS lines and the exact invocation: gunbc#16893 issuecomment-7165606551.",
+    "MEASURED DEFICIT THAT MADE THIS ROW NECESSARY: the partition check #test.claim.guarantee_probe_corpus_witness::dark_suite_dispositions_cover_migrated_v1_probes refused the corpus at head 47b6ef2374edea105c1f52cb3269618d90637f00 — executed, not reasoned: 27 per-id membership legs gave 12 PASS and 15 FAIL, the 15 being exactly these classes' probes, and the check itself printed no reason because it was a bare conjunction. Static reads of the disposition arm had been wrong twice before that run, which is why the instrument here is execution. Both defects are closed by typed changes, not by commentary: arm membership is derived from the executing modules' rosters, and the naming face prints the want/got counts and the offending ids.",
+  ],
+  evidence: [],
+}

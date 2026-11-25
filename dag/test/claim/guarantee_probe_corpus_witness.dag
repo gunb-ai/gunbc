@@ -2,7 +2,7 @@ module test.claim.guarantee_probe_corpus_witness
 
 import extdeps.filesystem.filesystem_io
 import std.process { ProcessExit }
-import gunbc.compile_census_probe { any_class_census, blocking_class_census, census_verdict, census_verdict_all, census_premise, census_exit, CensusHeld, CensusDisagreed, CensusUnobserved }
+import gunbc.compile_census_probe { any_class_census, blocking_class_census, census_int_text, census_verdict, census_verdict_all, census_premise, census_exit, CensusHeld, CensusDisagreed, CensusUnobserved }
 import std.materialization_ladder { string_list_contains }
 import gunbc.guarantee_probe_corpus {
   guarantee_probe_corpus_charter_note,
@@ -127,6 +127,25 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 fn census_of(source: String) -> CompileDiagnosticCensus {
   compile_dag_diagnostic_census(source)
+}
+
+// The ids in THIS module's arm of the partition: the v1-compile probes whose executed leg is in this
+// file. The other two arms' entries come from the roster fn of the module that executes them, so this
+// is the only hand-authored piece of the arm and it is consumed by
+// #test.claim.guarantee_probe_corpus_witness::dark_suite_dispositions_cover_migrated_v1_probes and by its
+// naming face #test.claim.guarantee_probe_corpus_witness::dark_suite_partition_names_the_uncovered_rows.
+fn dag_native_here_probe_ids() -> List<String> {
+  [
+    bare_none_collection_red_probe as String,
+    bare_none_green_probe as String,
+    bare_none_scalar_red_probe as String,
+    direct_call_arg_type_ordinary_module_red_probe as String,
+    direct_call_arg_type_v2_green_control_probe as String,
+    direct_call_arg_type_v2_module_red_probe as String,
+    sole_ctor_admitted_caller_green_probe as String,
+    sole_ctor_cast_red_probe as String,
+    sole_ctor_unadmitted_caller_red_probe as String,
+  ]
 }
 
 fn measured_harness_source_material(paths: List<String>) -> NonEmptyStr {
@@ -919,17 +938,7 @@ test fn dark_suite_dispositions_cover_migrated_v1_probes() -> Bool {
   let disposed_ids_have_no_internal_duplicates =
     distinct_string_count(values: disposition_probe_ids) == count(disposition_probe_ids)
   let known_v1_migration_gap_ids: List<String> = [sole_ctor_mint_fn_hole_probe as String]
-  let dag_native_here: List<String> = [
-    bare_none_collection_red_probe as String,
-    bare_none_green_probe as String,
-    bare_none_scalar_red_probe as String,
-    direct_call_arg_type_ordinary_module_red_probe as String,
-    direct_call_arg_type_v2_green_control_probe as String,
-    direct_call_arg_type_v2_module_red_probe as String,
-    sole_ctor_admitted_caller_green_probe as String,
-    sole_ctor_cast_red_probe as String,
-    sole_ctor_unadmitted_caller_red_probe as String,
-  ]
+  let dag_native_here: List<String> = dag_native_here_probe_ids()
   // MEMBERSHIP IS DERIVED, not asserted: this list holds only the ids whose leg runs in THIS module, and
   // each remaining entry comes from the roster fn of the module that executes it —
   // #test.claim.guarantee_floor_class_probe_witness::floor_class_executed_v1_compile_probe_ids and
@@ -969,6 +978,46 @@ test fn dark_suite_dispositions_cover_migrated_v1_probes() -> Bool {
     && arm_c_ids_are_registered_v1_compile_rows
     && arm_c_has_no_duplicates
     && every_v1_compile_probe_is_disposed_or_a_named_gap
+}
+
+// THE NAMING FACE OF THE PARTITION CHECK ABOVE. The Bool leg can only say that some row is
+// unaccounted; it printed FAIL with no reason at all, which is not evidence of a measurement — a check
+// that cannot name what it rejected has not shown what it looked at. Same three arms, same population,
+// same law; the premise label carries want/got counts and the offending ids.
+test fn dark_suite_partition_names_the_uncovered_rows() -> ProcessExit {
+  let disposition_probe_ids: List<String> = guarantee_probe_dark_suite_dispositions()
+    |> flat_map(d => match d {
+      MigratedToEnrolledDagProbe { rust_witness: _, dag_probes: probes, rust_retained_until: _ } => probes
+    })
+    |> map(p => p as String)
+  let known_v1_migration_gap_ids: List<String> = [sole_ctor_mint_fn_hole_probe as String]
+  let arm_c: List<String> = concat(
+    concat(dag_native_here_probe_ids(), floor_class_executed_v1_compile_probe_ids()),
+    record_completeness_executed_v1_compile_probe_ids()
+  )
+  let v1_rows = guarantee_probe_rows()
+    |> filter(row => (row.path as String) == (v1_compile_rust_path_id as String))
+  let uncovered = v1_rows |> filter(row => {
+    let id = row.probe as String
+    !string_list_contains(xs: disposition_probe_ids, wanted: id)
+      && !string_list_contains(xs: known_v1_migration_gap_ids, wanted: id)
+      && !string_list_contains(xs: arm_c, wanted: id)
+  })
+  let rendered = fold_list(
+    xs: uncovered,
+    empty: "",
+    cons: fn(acc, row) { concat(concat(acc, row.probe as String), "; ") }
+  )
+  census_exit(census_premise(
+    name: concat(
+      "v1-compile rows covered by the three arms: want ",
+      concat(
+        census_int_text(n: count(v1_rows)),
+        concat(", got ", concat(census_int_text(n: count(v1_rows) - count(uncovered)), concat("; uncovered rows: ", rendered)))
+      )
+    ),
+    holds: count(uncovered) == 0
+  ))
 }
 
 test fn v2_frontier_identities_are_declared() -> Bool {
