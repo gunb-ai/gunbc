@@ -386,14 +386,49 @@ type CandidateDestination { candidate: DeclarationRef, destination: ServingCoTen
 // candidate's destination is UNREAD -- never a free slot: a move candidate the guard has not been shown a
 // load for cannot be established as relief (gunbc.design_argument::fail_closed).
 fn destination_load_for(loadings: List<CandidateDestination>, candidate: DeclarationRef) -> ServingCoTenancy {
-  match fold(loadings, init: Absent, f: fn(acc, cd) {
+  let observed = fold(loadings, init: [], f: fn(acc, cd) {
+    if declaration_ref_eq(a: cd.candidate, b: candidate) { concat(acc, [cd.destination]) } else { acc }
+  })
+  if any(observed, _ => true) {
+    match all_agree(xs: observed) {
+      Present { value: d } => d
+      Absent => CoTenancyUnread { obligation: "conflicting destination co-tenancy readings were supplied for one move candidate; the move is refused rather than decided by which reading the fold met first (one authoritative reading per destination)" as NonEmptyStr }
+    }
+  } else {
+    CoTenancyUnread { obligation: "no destination co-tenancy was supplied for this move candidate; its destination load is never assumed free" as NonEmptyStr }
+  }
+}
+
+// THE SCAN STATE for whether every reading of one destination agrees -- a real sum (gunbc.design_argument::fail_closed:
+// a degradation is typed, not a Bool flag that could disagree with the values it summarizes). `Conflict` is
+// absorbing, so the verdict does not depend on the order the caller listed the readings.
+type AgreementScan = SeenNothing | Agreed { value: ServingCoTenancy } | Conflict
+
+// THE AGREED READING across one candidate's destination readings: the single value when they all name the same
+// co-tenancy, or Absent when two disagree. It compares every reading against the first, so the verdict cannot
+// depend on list order -- the order-dependence that let an idle reading and an occupied reading for the SAME
+// destination flip a move on nothing but fold position. `all_agree` is called only on a non-empty list; the
+// caller handles the no-reading case with its own obligation.
+fn all_agree(xs: List<ServingCoTenancy>) -> Optional<ServingCoTenancy> {
+  match fold(xs, init: SeenNothing, f: fn(acc, x) {
     match acc {
-      Present { value: _ } => acc
-      Absent => if declaration_ref_eq(a: cd.candidate, b: candidate) { Present { value: cd.destination } } else { Absent }
+      SeenNothing => Agreed { value: x }
+      Conflict => Conflict
+      Agreed { value: v } => if co_tenancy_eq(a: v, b: x) { acc } else { Conflict }
     }
   }) {
-    Present { value: d } => d
-    Absent => CoTenancyUnread { obligation: "no destination co-tenancy was supplied for this move candidate; its destination load is never assumed free" as NonEmptyStr }
+    Agreed { value: v } => Present { value: v }
+    _ => Absent
+  }
+}
+
+// Do two co-tenancy readings say the SAME thing: same arm, and the same occupant count for the occupied arm.
+// An unread reading equals only the identical obligation. The sum carries the arms; no tag-and-validator here.
+fn co_tenancy_eq(a: ServingCoTenancy, b: ServingCoTenancy) -> Bool {
+  match a {
+    GroupIdle => match b { GroupIdle => true _ => false }
+    GroupOccupied { occupants: s } => match b { GroupOccupied { occupants: d } => s == d _ => false }
+    CoTenancyUnread { obligation: o1 } => match b { CoTenancyUnread { obligation: o2 } => (o1 as String) == (o2 as String) _ => false }
   }
 }
 

@@ -479,3 +479,32 @@ test fn a_dominating_move_to_a_card_that_is_not_lighter_is_excluded_before_paret
   }
   excluded && relief
 }
+
+// THE ORDER-DEPENDENCE FALSIFIER (operator review). The same move candidate given CONFLICTING destination
+// readings -- an idle reading and an occupied-4 reading -- must be refused whichever order the caller listed
+// them. Before the fix `destination_load_for` took the FIRST matching reading, so [idle, occupied] let the move
+// through (idle looked like relief) while [occupied, idle] refused it (balanced): the decision turned on list
+// POSITION, the very order-dependent churn this class removes (gunbc.design_argument::fail_closed -- a wrong
+// answer is a typed refusal; gunbc.design_argument::single_authority -- one authoritative reading per
+// destination). Now both orders yield the same typed ImbalanceUnread refusal. MUTATION: restore the first-match
+// fold -> [idle, occupied] returns Move -> red.
+test fn conflicting_destination_readings_are_refused_whichever_order() -> Bool {
+  let move = move_candidate(id: w_move_id, label: "conflicting-reading" as NonEmptyStr, net: 90, service_class: 0)
+  let idle_then_full = [
+    CandidateDestination { candidate: w_move_id, destination: GroupIdle },
+    CandidateDestination { candidate: w_move_id, destination: GroupOccupied { occupants: 4 } },
+  ]
+  let full_then_idle = [
+    CandidateDestination { candidate: w_move_id, destination: GroupOccupied { occupants: 4 } },
+    CandidateDestination { candidate: w_move_id, destination: GroupIdle },
+  ]
+  let a = decide_with_imbalance_precondition(source: GroupOccupied { occupants: 4 }, destinations: idle_then_full, field: [stay_candidate(net: -50), move], assessment: fixture_assessment())
+  let b = decide_with_imbalance_precondition(source: GroupOccupied { occupants: 4 }, destinations: full_then_idle, field: [stay_candidate(net: -50), move], assessment: fixture_assessment())
+  match a {
+    ImbalanceUnread { obligation: _ } => match b {
+      ImbalanceUnread { obligation: _ } => true
+      _ => false
+    }
+    _ => false
+  }
+}
