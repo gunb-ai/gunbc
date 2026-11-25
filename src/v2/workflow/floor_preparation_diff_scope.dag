@@ -53,11 +53,12 @@ import std.algebra { length }
 // bounded by `typed_module_cache_cap` (the host-budget-derived entry cap with counted evictions),
 // `MODULE_PATH_INDEX_CACHE`, `MODULE_GRAPH_FACTS_CACHE`, `MODULE_PATH_INTERNER` and
 // `INTERNED_IMPORT_CLOSURES` (all in cli_run.rs), consumed through cli_run/emit_host.rs,
-// cli_run/entry_resolve.rs and the host budget authority `#gunbc.memory_governor::read_host_budget_bytes`
-// (memory_governor.rs; admissions stop past a fraction of the budget, and half of it is reserved for
-// maturation). Those caps are not conservatism: the fleet runs four heavy jobs on a 48G slot with NO
-// SWAP, and the restoration trigger this node is trying to make affordable --
-// `#gunbc.rung_drop::v1_required_lanes_withdrawn` member (2) -- demands that every admitted module
+// cli_run/entry_resolve.rs and the host budget authority `gunbc.host.host_budget_source`
+// (seed-realized there as memory_governor::read_host_budget_bytes; admissions stop past a fraction
+// of the budget, and half of it is reserved for maturation). Those caps are not conservatism: the
+// fleet runs four heavy jobs on a 48G slot with NO SWAP, and the restoration trigger this node is
+// trying to make affordable -- `gunbc.rung_drop v1_required_lanes_withdrawn` member (2), the row
+// `dag/gunbc/rung_drop/v1_required_lanes_withdrawn.dag` -- demands that every admitted module
 // resolve natively WITHIN the slot's memory ceiling. A persisted cache that ignores
 // the governor would therefore fail the very gate it is meant to make affordable -- and writing it is
 // seed Rust, which is the operator's decision, not this node's. Scoping needs no new state, nothing to
