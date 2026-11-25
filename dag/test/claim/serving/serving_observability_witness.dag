@@ -1,9 +1,13 @@
 module test.claim.serving.serving_observability_witness
 
-import std.types { String, Bool, List, NonEmptyStr }
+import std.types { String, Bool, List, NonEmptyStr, Int }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.algebra { length }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import extdeps.proxy.openresty {
+  ObservedFrontLocation, observed_front_locations, observed_front_serves,
+  observed_prefix, Serves, Rejects,
+}
 import gunbc.serving.serving_observability {
   engine_front_required_routes,
   engine_front_server_directives, engine_front_proxies_route,
@@ -14,8 +18,8 @@ import gunbc.serving.serving_observability {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// The two readers the roster names for /metrics, as typed references the witness compares against (not a grep).
-// The operator's finding: srv4's front withholding /metrics blocks BOTH of them, so the model must name both.
+// The readers the roster names, as typed references the witness compares against (not a grep). The operator's
+// finding: srv4's front withholding /metrics blocks BOTH of its readers, so the model must name both.
 fn metrics_reader_ref() -> DeclarationRef {
   decl_ref(module_path: "gunbc.serving.engine_progress", decl_name: "engine_progress_read")
 }
@@ -24,34 +28,73 @@ fn availability_reader_ref() -> DeclarationRef {
   decl_ref(module_path: "gunbc.serving.serving_availability", decl_name: "serving_availability_bracketing_read")
 }
 
-// srv4's hand-managed TLS front (/opt/gunbc-serving/srv4-daily/nginx.conf) actually forwards only the /v1/
-// inference routes and answers `return 404` to everything else, so /metrics is not forwarded. This is the
-// OBSERVED host forwarded set -- an observation read off the host, used to reconcile against the roster.
-fn srv4_observed_forwarded() -> List<NonEmptyStr> {
-  [ "/v1/chat/completions" as NonEmptyStr, "/v1/models" as NonEmptyStr ] as List<NonEmptyStr>
+fn chat_reader_ref() -> DeclarationRef {
+  decl_ref(module_path: "gunbc.serving.serving_front_door", decl_name: "front_door_admit")
 }
 
-// A front that forwards every roster route (the reconciled, correct host state).
-fn complete_observed_forwarded() -> List<NonEmptyStr> {
-  map(engine_front_required_routes, r => r.path)
+fn consumer_count_in(list: List<DeclarationRef>, ref: DeclarationRef) -> Int {
+  length(filter(list, c => declaration_ref_eq(a: c, b: ref)))
 }
 
-// RED: reconciling srv4's OBSERVED forwarded set against the roster names EVERY reader whose read the hand-managed
-// front blocked. srv4 forwards /v1/ (so /v1/models reaches the availability probe's models read) but withholds
-// /metrics -- and /metrics has TWO readers. The model must name BOTH the progress reader AND the availability reader
-// as shut out, not just the one route-reader a single-consumer roster would give (operator finding 2026-11-25).
-// This is the class made decidable: nothing refuses it in production yet (the ledger's climb), but the model now
-// SAYS who is shut out.
-test fn srv4_observed_front_blocks_both_metrics_consumers() -> Bool {
-  let blocked = engine_front_unserved_consumers(observed: srv4_observed_forwarded())
-  any(blocked, c => declaration_ref_eq(a: c, b: metrics_reader_ref()))
-    && any(blocked, c => declaration_ref_eq(a: c, b: availability_reader_ref()))
+// srv4's hand-managed TLS front (/opt/gunbc-serving/srv4-daily/nginx.conf) is a PREFIX location: it proxies
+// `location /v1/ { proxy_pass ... }` and answers every other request `location / { return 404; }`. This is the
+// observation AS THE HOST WRITES IT -- a /v1/ prefix that forwards, and a / prefix that refuses -- not a
+// hand-expanded list of the routes that prefix happens to carry. Whether a route is served is then decided by
+// nginx's own matching rule, so /v1/models and /v1/chat/completions come out served (the prefix covers them)
+// while /metrics comes out blocked (only the 404 location covers it).
+fn srv4_observed_locations() -> List<ObservedFrontLocation> {
+  observed_front_locations(observations: [
+    observed_prefix(path: "/v1/", action: Serves),
+    observed_prefix(path: "/", action: Rejects),
+  ])
 }
 
-// Positive control on the reconciliation: a front that forwards every roster route blocks no consumer.
-test fn a_complete_observed_front_blocks_no_consumer() -> Bool {
-  length(engine_front_unserved_consumers(observed: complete_observed_forwarded())) == 0
+// A front that forwards everything (the reconciled, correct host state): a single `/` prefix that proxies.
+fn complete_observed_locations() -> List<ObservedFrontLocation> {
+  observed_front_locations(observations: [ observed_prefix(path: "/", action: Serves) ])
 }
+
+// A front that refuses everything: a single `/` prefix that returns 404. This blocks every route, so the two
+// routes that share the availability reader (/v1/models and /metrics) would name it twice without deduping.
+fn all_rejected_locations() -> List<ObservedFrontLocation> {
+  observed_front_locations(observations: [ observed_prefix(path: "/", action: Rejects) ])
+}
+
+// RED: reconciling srv4's OBSERVED location blocks against the roster, decided by nginx's longest-prefix rule,
+// (a) does NOT falsely block the routes its `/v1/` prefix carries -- /v1/models and /v1/chat/completions are
+// SERVED -- and (b) blocks EXACTLY the two readers of /metrics, the route the `location / { return 404; }`
+// swallows. An exact-string reconciliation would have wrongly called /v1/models blocked (the host never writes
+// that path; the /v1/ prefix carries it). This is the parent's discriminating case.
+test fn srv4_observed_front_blocks_exactly_the_metrics_readers() -> Bool {
+  let blocked = engine_front_unserved_consumers(observed: srv4_observed_locations())
+  // the /v1/ prefix serves the routes it carries, and the 404 location serves nothing:
+  observed_front_serves(locations: srv4_observed_locations(), route: "/v1/models")
+    && observed_front_serves(locations: srv4_observed_locations(), route: "/v1/chat/completions")
+    && !observed_front_serves(locations: srv4_observed_locations(), route: "/metrics")
+  // and the only readers named are the two readers of /metrics -- not the chat reader, whose route is served:
+    && length(blocked) == 2
+    && consumer_count_in(list: blocked, ref: metrics_reader_ref()) == 1
+    && consumer_count_in(list: blocked, ref: availability_reader_ref()) == 1
+    && consumer_count_in(list: blocked, ref: chat_reader_ref()) == 0
+}
+
+// Positive control on the reconciliation: a front whose single `/` prefix proxies serves every route, so no
+// consumer is blocked (nginx's rule, not a special case for the correct host).
+test fn a_front_that_proxies_root_serves_everything() -> Bool {
+  length(engine_front_unserved_consumers(observed: complete_observed_locations())) == 0
+}
+
+// DEDUPE (parent finding): when a front refuses EVERYTHING, both /v1/models and /metrics are blocked, and their
+// shared reader serving_availability_bracketing_read would be named twice by a naive flatten. The reconciliation
+// names each blocked reader once: the three distinct readers, availability counted exactly once.
+test fn a_reader_of_several_missing_routes_is_named_once() -> Bool {
+  let blocked = engine_front_unserved_consumers(observed: all_rejected_locations())
+  length(blocked) == 3
+    && consumer_count_in(list: blocked, ref: chat_reader_ref()) == 1
+    && consumer_count_in(list: blocked, ref: metrics_reader_ref()) == 1
+    && consumer_count_in(list: blocked, ref: availability_reader_ref()) == 1
+}
+
 
 // The RENDER is derived from the roster with no forwarded input: it always proxies every consumed route,
 // so a front missing /metrics has no constructor (guarantee_ladder). This asserts the metrics and inference

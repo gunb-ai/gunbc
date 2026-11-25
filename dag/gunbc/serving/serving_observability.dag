@@ -2,10 +2,11 @@ module gunbc.serving.serving_observability
 
 import std.types { String, NonEmptyStr, List, Bool, Port }
 import std.optional { Optional, Present, Absent }
-import std.decl_ref { DeclarationRef, decl_ref }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import extdeps.proxy.openresty {
   NginxDirective, NginxToken, ServerBlock, ListenTlsOn, SslCertificate, SslCertificateKey,
   LocationBlock, PrefixMatch, ProxyPassToHost, ProxyHttpVersion11, nginx_token, render_nginx_directives,
+  ObservedFrontLocation, observed_front_serves,
 }
 
 // ── WHAT A FLEET READER CAN SEE ABOUT A SERVING ENGINE, THROUGH WHICH BOUNDARY, WITH WHAT STANDING ──
@@ -196,17 +197,33 @@ fn engine_front_locations(
   )
 }
 
-// Reconcile an OBSERVED hand-managed forwarded set against the roster: the consumers whose reads are blocked
-// because the host front does not forward their route. This is the class made decidable -- it names who srv4 shut
-// out. A route can have several readers, so every reader of every missing route is named (flatten over each route's
-// consumers): withholding /metrics names BOTH engine_progress_read and serving_availability_bracketing_read. It
-// reads each route's typed consumer list, giving that field its executing consumer. `observed` is the host proxy's
-// actually-forwarded paths (a read, not an authority over the render).
-fn engine_front_unserved_consumers(observed: List<NonEmptyStr>) -> List<DeclarationRef> {
+// Reconcile an OBSERVED hand-managed front door -- its location blocks, stated the way the host states them --
+// against the roster: the consumers whose reads are blocked because the host front does not forward their route.
+// This is the class made decidable -- it names who srv4 shut out. A route can have several readers, so every
+// reader of every missing route is named, WITHOUT repetition: a reader of several missing routes
+// (serving_availability_bracketing_read reads both /v1/models AND /metrics) is named once. Serving is decided by
+// nginx's own rule -- longest prefix wins, and a `return 404` location serves nothing (extdeps.proxy.openresty::
+// observed_front_serves) -- NOT by string equality on hand-expanded paths. The srv4 host writes a `location /v1/`
+// PREFIX that carries /v1/models and /v1/chat/completions, so those ARE served while /metrics is not; an exact
+// string match would have mis-called the prefix-carried routes blocked. `observed` is a read of the host proxy's
+// location blocks, not an authority over the render.
+fn engine_front_unserved_consumers(observed: List<ObservedFrontLocation>) -> List<DeclarationRef> {
   fold(
-    filter(engine_front_required_routes, r => !any(observed, x => (x as String) == (r.path as String))),
+    engine_front_required_routes,
     init: [] as List<DeclarationRef>,
-    f: (acc, r) => concat(acc, r.consumers),
+    f: (acc, r) =>
+      if observed_front_serves(locations: observed, route: r.path as String) { acc }
+      else { append_new_consumers(acc: acc, consumers: r.consumers) }
+  )
+}
+
+// Append each consumer not already named, so a reader of several missing routes is reported once. Declarations are
+// compared by their reference equality (std.decl_ref::declaration_ref_eq), not by a hand-written name string.
+fn append_new_consumers(acc: List<DeclarationRef>, consumers: List<DeclarationRef>) -> List<DeclarationRef> {
+  fold(
+    consumers,
+    init: acc,
+    f: (a, c) => if any(a, x => declaration_ref_eq(a: x, b: c)) { a } else { concat(a, [c]) }
   )
 }
 

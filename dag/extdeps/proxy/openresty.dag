@@ -263,3 +263,93 @@ fn render_nginx_directive(d: NginxDirective, indent: String) -> String {
 fn render_nginx_directives(rows: List<NginxDirective>) -> String {
   join_with(map(rows, x => render_nginx_directive(d: x, indent: "")), "")
 }
+
+// ─── OBSERVING a hand-managed front door (the read-side counterpart to the LocationBlock the model renders) ───
+// What a real proxy ACTUALLY forwards is stated the way nginx states it: a list of location blocks, each a
+// match (prefix or exact) and an action -- it either forwards to the upstream (Serves) or refuses (Rejects, a
+// `return 404`). This is modeled in openresty, not in gunbc.serving, because it is the proxy's OWN matching
+// semantics: a reconciliation compares an observed front's location roster against the route roster a consumer
+// list requires, and the matching rule (longest prefix wins; a 404 location serves nothing) belongs here.
+type FrontLocationAction = Serves | Rejects
+
+type ObservedFrontLocation = ObservedFrontLocation {
+  // How the location matches a request -- reusing the same prefix/exact match the renderer emits.
+  match: LocationMatch,
+  // Whether the location forwards to the upstream engine, or refuses the request.
+  action: FrontLocationAction,
+}
+
+// A observed prefix location, from the path text as the host wrote it. The path is validated as a token, so a
+// malformed observation is Absent: a read that did not yield a well-formed location.
+fn observed_prefix(path: String, action: FrontLocationAction) -> Optional<ObservedFrontLocation> {
+  match nginx_token(text: path) {
+    Absent => Absent
+    Present { value: p } => Present { value: ObservedFrontLocation { match: PrefixMatch { path: p }, action: action } }
+  }
+}
+
+// A observed exact-match location, from the path text as the host wrote it.
+fn observed_exact(path: String, action: FrontLocationAction) -> Optional<ObservedFrontLocation> {
+  match nginx_token(text: path) {
+    Absent => Absent
+    Present { value: p } => Present { value: ObservedFrontLocation { match: ExactMatch { path: p }, action: action } }
+  }
+}
+
+// Collect the well-formed observations, dropping any that failed to tokenise.
+fn observed_front_locations(observations: List<Optional<ObservedFrontLocation>>) -> List<ObservedFrontLocation> {
+  fold(observations, init: [] as List<ObservedFrontLocation>, f: (acc, o) => match o {
+    Present { value: v } => concat(acc, [v])
+    Absent => acc
+  })
+}
+
+// Does a location's pattern match this route path? An exact match must equal it; a prefix must begin it.
+fn location_matches_route(m: LocationMatch, route: String) -> Bool {
+  match m {
+    ExactMatch { path: p } => (p as String) == route
+    PrefixMatch { path: p } => starts_with(s: route, prefix: p as String)
+  }
+}
+
+// nginx ordering between two matching locations: an exact match beats any prefix; among prefixes, or among
+// exacts, the longer pattern wins.
+fn location_beats(a: LocationMatch, b: LocationMatch) -> Bool {
+  match a {
+    ExactMatch { path: pa } => match b {
+      ExactMatch { path: pb } => length(pa as String) > length(pb as String)
+      PrefixMatch { path: _ } => true
+    }
+    PrefixMatch { path: pa } => match b {
+      ExactMatch { path: _ } => false
+      PrefixMatch { path: pb } => length(pa as String) > length(pb as String)
+    }
+  }
+}
+
+// Absent, given its type at the boundary so the fold below can start from "no location chosen yet" (a cast will
+// not type Absent, so the absence is supplied through a typed return position).
+fn no_matching_location() -> Optional<ObservedFrontLocation> {
+  Absent
+}
+
+// The location that handles a route: the highest-ranked one whose pattern matches, or Absent if none matches.
+fn best_matching_location(locations: List<ObservedFrontLocation>, route: String) -> Optional<ObservedFrontLocation> {
+  fold(
+    filter(locations, l => location_matches_route(m: l.match, route: route)),
+    init: no_matching_location(),
+    f: (acc, l) => match acc {
+      Absent => Present { value: l }
+      Present { value: cur } => if location_beats(a: l.match, b: cur.match) { Present { value: l } } else { Present { value: cur } }
+    }
+  )
+}
+
+// Whether the observed front forwards a route path: the winning location must Serves. A Rejects location (a
+// `return 404`) serves nothing, and a route no location matches is served by nothing.
+fn observed_front_serves(locations: List<ObservedFrontLocation>, route: String) -> Bool {
+  match best_matching_location(locations: locations, route: route) {
+    Absent => false
+    Present { value: l } => match l.action { Serves => true Rejects => false }
+  }
+}
