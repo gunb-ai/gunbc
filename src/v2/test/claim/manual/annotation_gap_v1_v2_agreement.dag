@@ -40,8 +40,7 @@ import std.host_text { chars }
 // --source-root dag --source-root src/v2 refuses it at the checker, because none of those modules is in a
 // root it can see. The three roots the executed form needs are published as a carrier,
 // v2.test.claim.manual.annotation_gap_v1_v2_agreement_probe_pair annotation_gap_v1_v2_agreement_probe_argv_roots,
-// and checked there by probe_pair_receipt_records_the_route_that_ran_it; the refusal text and its exit status
-// are in the run log, not here. The executed form is:
+// and checked there by probe_pair_receipt_records_the_route_that_ran_it. The executed form is:
 //   claim_batch --source-root dag --source-root src/v2 --source-root src/v1 \
 //     --entry src/v2/test/claim/manual/annotation_gap_v1_v2_agreement.dag \
 //     --functions v1_and_v2_agree_on_neighbour_text_holds --hermetic
@@ -70,13 +69,13 @@ data agreement_control_module_name: String = "v2.test.claim.manual.annotation_ga
 
 data agreement_control_entry_fn: String = "v1_and_v2_agree_on_neighbour_text_holds"
 
-// ManualUngated, measured 2026-11-24. Enrolment in `v2.workflow.required_floor`
-// `required_gate_authored_modules` was HELD: a required-gate row is admitted by the OPERATOR on a recorded
-// ruling (`required_gate_rows_grow_by_operator_ruling` in dag/gunbc/design_ruling.dag) and no such ruling
-// exists -- the lane-manager yes that briefly carried the row was retracted, and the row went back to main's
-// bytes. Independently, the floor has no executor: `run_required_floor` is gone from src/v1/stage0 and no
-// workflow passes a --required flag, so even a GatedRow here would not be executed today. The pair claim
-// re-derives this from `v2.workflow.required_floor` `required_gate_admits` instead of trusting this line.
+// The line below IS the status; this comment does not get to state one beside it. It is re-derived from
+// `v2.workflow.required_floor` `required_gate_admits` by
+// `v2.test.claim.manual.annotation_gap_v1_v2_agreement_probe_pair`
+// `probe_pair_rung_agrees_with_the_floors_own_admission`, so raising it without a roster row, or enrolling a
+// row without raising it, refuses. Admitting a required-gate row is an operator act on a recorded ruling
+// (gunbc.design_ruling::required_gate_rows_grow_by_operator_ruling), and the moment this rung may rise is
+// declared once as `v2.compiler.staged_front_end` `front_end_placement_control_next_rung`.
 data agreement_control_rung: AgreementControlRung = ManualUngated
 
 fn row_text(row: SourceAnnotationDebt) -> String {
@@ -236,8 +235,8 @@ test fn v1_and_v2_agree_on_neighbour_text_holds() -> Bool {
     && list_at_optional(xs: v2, index: 0) == Present { value: "above the data row | module zqx.agree | data zqx_d: Int = 1" }
     // PINNED, not merely agreed. Both parsers must name the PRODUCT `2 * 3` as the neighbour after the
     // "before the product" gap. An agreement claim alone is insensitive to the roster: v1 and v2 can agree
-    // on the wrong neighbour and stay green, which is exactly what happened when this comment sat before
-    // the whole `1 + 2 * 3` (measured: the deliberate-break tree passed the agreement conjuncts, rc=0).
+    // on the wrong neighbour and stay green, which is what an unpinned fixture would let happen; the
+    // deliberate-break probe in the module beside this one is where that is exercised.
     // src/v2/compiler/parse.dag's roster comment says the infix-application arm exists precisely so
     // `1 + 2 * 3` has a region for `2 * 3`; without it the neighbour is `2`. Pinning the text is what turns
     // that roster arm into something a run can lose.

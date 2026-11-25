@@ -241,16 +241,13 @@ fn front_end_parse_step(
 // claim is what ties the two: the fold owns the separator, the counter models it, and a run over the real
 // fold is the thing that says they still agree.
 // WHAT IT DOES NOT SEE: WHICH gap a capture landed in. Placement is checked only by the v1/v2 agreement
-// control (v2.test.claim.manual.annotation_gap_v1_v2_agreement, entry fn
-// v1_and_v2_agree_on_neighbour_text_holds), which publishes its own identity and rung as carriers there;
-// this guard catches loss, that control catches placement. THE RUNG, STATED PLAINLY: that control is MANUAL
-// AND UNGATED today -- no required-floor selector admits it (enrolment was held on 2026-11-24) and the
-// required floor has no executor -- so a placement divergence is caught only when someone runs it by hand.
-// Its receipt carries the measured evidence and the same statement
-// (v2.test.claim.manual.annotation_gap_v1_v2_agreement_probe_pair), and the rung is re-derived there against
-// v2.workflow.required_floor required_gate_admits rather than trusted. So this guard has no gate behind it
-// for placement, and the moment to change that is declared rather than deferred:
-// front_end_placement_control_next_rung (gunbc.design_argument::guarantee_ladder, no untracked stall).
+// control (v2.test.claim.manual.annotation_gap_v1_v2_agreement), which publishes its identity AND its rung as
+// carriers there -- this comment states no rung, because a status written twice is a status that can lie:
+// probe_pair_rung_agrees_with_the_floors_own_admission re-derives it from v2.workflow.required_floor
+// required_gate_admits. Read that carrier: while it reads ManualUngated, a placement divergence is caught only
+// when someone runs the control by hand, so THIS guard is a loss guard and nothing more. The moment that
+// changes is declared, not deferred: front_end_placement_control_next_rung
+// (gunbc.design_argument::guarantee_ladder, no untracked stall).
 fn front_end_unlanded_annotation_diagnostic(
   captures: List<UnboundSourceAnnotation>,
   graph: SourceAnnotationGraph
