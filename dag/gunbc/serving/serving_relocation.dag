@@ -400,30 +400,37 @@ fn destination_load_for(loadings: List<CandidateDestination>, candidate: Declara
 // One pass over the field: the stay candidate always survives; a move candidate survives ONLY when ITS OWN
 // destination carries an established gap-to-relieve against the source. The screen also records whether any
 // move was unread (an obligation to measure) and a representative balanced pair (for the churn refusal).
+// A balanced (or destination-busier) pair, kept only when one is actually seen. A dedicated record so the
+// balanced pair cannot be confused with the RebalancingMove/Unread arms of LoadImbalance.
+type BalancedLoad { source: Nat, destination: Nat }
+
+// One pass over the field. `survivors` holds the stay incumbent plus every move candidate whose OWN
+// destination carries the gap. `balanced` is the first destination seen as balanced/busier, and `unread_obligation`
+// the first unread destination -- both Absent until one is actually seen, so the carrier holds NO placeholder
+// it would have to invent (a fabricated default is a hard reject, gunbc.design_argument::fail_closed; presence
+// and absence live in std.optional::Optional, the absence conformance domain). "is any move relieving" is
+// DERIVED from survivors (a survivor that is not stay), never stored as a flag that could disagree with the list.
 type ImbalanceScreen {
   survivors: List<ParetoEntry>
-  saw_relieving: Bool
-  saw_balanced: Bool
-  balanced_source: Nat
-  balanced_destination: Nat
+  balanced: Optional<BalancedLoad>
   unread_obligation: Optional<NonEmptyStr>
 }
 
 fn screen_relocation(source: ServingCoTenancy, destinations: List<CandidateDestination>, field: List<ParetoEntry>) -> ImbalanceScreen {
   fold(field,
-    init: ImbalanceScreen { survivors: [], saw_relieving: false, saw_balanced: false, balanced_source: 0, balanced_destination: 0, unread_obligation: Absent },
+    init: ImbalanceScreen { survivors: [], balanced: Absent, unread_obligation: Absent },
     f: fn(acc, e) {
       if declaration_ref_eq(a: e.identity, b: id_stay) {
         // the incumbent stay is always a candidate (the priced choice needs it to compare against)
-        ImbalanceScreen { survivors: concat(acc.survivors, [e]), saw_relieving: acc.saw_relieving, saw_balanced: acc.saw_balanced, balanced_source: acc.balanced_source, balanced_destination: acc.balanced_destination, unread_obligation: acc.unread_obligation }
+        ImbalanceScreen { survivors: concat(acc.survivors, [e]), balanced: acc.balanced, unread_obligation: acc.unread_obligation }
       } else {
         match load_imbalance(source: source, destination: destination_load_for(loadings: destinations, candidate: e.identity)) {
           RebalancingMove { source_load: _, destination_load: _ } =>
-            ImbalanceScreen { survivors: concat(acc.survivors, [e]), saw_relieving: true, saw_balanced: acc.saw_balanced, balanced_source: acc.balanced_source, balanced_destination: acc.balanced_destination, unread_obligation: acc.unread_obligation }
+            ImbalanceScreen { survivors: concat(acc.survivors, [e]), balanced: acc.balanced, unread_obligation: acc.unread_obligation }
           BalancedOrDestinationBusier { source_load: s, destination_load: d } =>
-            ImbalanceScreen { survivors: acc.survivors, saw_relieving: acc.saw_relieving, saw_balanced: true, balanced_source: s, balanced_destination: d, unread_obligation: acc.unread_obligation }
+            ImbalanceScreen { survivors: acc.survivors, balanced: match acc.balanced { Present { value: _ } => acc.balanced Absent => Present { value: BalancedLoad { source: s, destination: d } } }, unread_obligation: acc.unread_obligation }
           LoadComparisonUnread { obligation: o } =>
-            ImbalanceScreen { survivors: acc.survivors, saw_relieving: acc.saw_relieving, saw_balanced: acc.saw_balanced, balanced_source: acc.balanced_source, balanced_destination: acc.balanced_destination, unread_obligation: match acc.unread_obligation { Present { value: _ } => acc.unread_obligation Absent => Present { value: o } } }
+            ImbalanceScreen { survivors: acc.survivors, balanced: acc.balanced, unread_obligation: match acc.unread_obligation { Present { value: _ } => acc.unread_obligation Absent => Present { value: o } } }
         }
       }
     })
@@ -447,8 +454,10 @@ fn decide_with_imbalance_precondition(
   assessment: DecisionAssessment,
 ) -> RelocationDecision {
   match screen_relocation(source: source, destinations: destinations, field: field) {
-    ImbalanceScreen { survivors: surv, saw_relieving: relieving, saw_balanced: balanced, balanced_source: bs, balanced_destination: bd, unread_obligation: unread } =>
-      if relieving {
+    ImbalanceScreen { survivors: surv, balanced: bal, unread_obligation: unread } =>
+      // a relieving candidate exists iff some survivor is not the stay incumbent -- derived from the list,
+      // never a stored flag that could disagree with it
+      if any(surv, e => !declaration_ref_eq(a: e.identity, b: id_stay)) {
         // a genuine relieving candidate exists; the non-relieving ones were already excluded
         decide_relocation(field: surv, assessment: assessment)
       } else {
@@ -456,11 +465,10 @@ fn decide_with_imbalance_precondition(
           // an unread destination is an obligation to measure, and blocks a free move even when it is not
           // the candidate that would have won -- fail closed rather than fabricate a differential
           Present { value: o } => ImbalanceUnread { obligation: o }
-          Absent => if balanced {
-            NoImbalanceToRelieve { source_load: bs, destination_load: bd }
-          } else {
-            // no move candidate at all: only stay remains; the priced choice returns Stay
-            decide_relocation(field: surv, assessment: assessment)
+          Absent => match bal {
+            Present { value: b } => NoImbalanceToRelieve { source_load: b.source, destination_load: b.destination }
+            // nothing but stay in the field: the priced choice returns Stay
+            Absent => decide_relocation(field: surv, assessment: assessment)
           }
         }
       }
