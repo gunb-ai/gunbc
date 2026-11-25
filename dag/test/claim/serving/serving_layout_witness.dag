@@ -205,7 +205,7 @@ test fn witness_h11_layout_is_derived_and_fits_under_named_assumptions() -> Bool
 test fn witness_grant_size_moves_admission_and_refuses_when_short() -> Bool {
   let small = serving_layout_derive(g: sl_grant_with(g: host_6ce85c_grant, ram: sl_gib(n: 80), devices: host_6ce85c_grant.devices), groups: host_6ce85c_independent_groups, b: strata_iq3_s_a16_profile, r: serving_context_ceiling_requirement)
   let large = serving_layout_derive(g: sl_grant_with(g: host_6ce85c_grant, ram: sl_gib(n: 125), devices: host_6ce85c_grant.devices), groups: host_6ce85c_independent_groups, b: strata_iq3_s_a16_profile, r: serving_context_ceiling_requirement)
-  (match sl_refusal(r: small) { Present { value: ServingLayoutRamShort { needed: _, available: _ } } => true  _ => false })
+  (match sl_refusal(r: small) { Present { value: ServingLayoutRamShort { needed: _, available: _, terms: _ } } => true  _ => false })
     && sl_admitted_total(r: large) > sl_admitted_total(r: host_6ce85c_layout)
     && sl_all_grow_to_ceiling(r: large)
 }
