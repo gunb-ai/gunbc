@@ -8708,6 +8708,7 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "nonempty-str-becomes-a-checked-nominal", parent: "derived-type-argument-inhabitance-root"),
     edge(child: "brands-reached-by-checked-constructors", parent: "nonempty-str-becomes-a-checked-nominal"),
     edge(child: "v2-verb-reports-per-phase-counters", parent: "emission-real-consumer-profiles"),
+    edge(child: "serve-entry-compile-inhabitance-wet-lane-cost", parent: "v2-verb-reports-per-phase-counters"),
   ], guarantee_ladder_edges())
 }
 
