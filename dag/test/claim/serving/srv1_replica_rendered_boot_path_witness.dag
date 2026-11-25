@@ -31,7 +31,7 @@ import std.optional { Absent, Present }
 import std.algebra { length, string_contains, string_concat_join }
 import std.measure { ByteSize, basis_point, basis_point_count, second, second_count, gibibyte, gibibyte_count, gibibyte_ceiling, gibibyte_to_byte_size, seconds_per_day, byte_size_count, token_count }
 import std.decimal { fixed_point_trimmed_wire }
-import std.content_hash { lower_hex_64 }
+import std.content_hash { lower_hex_64, sha256_hex_of_text }
 import std.dissolution { BoundDissolution, DissolutionCondition, UnboundDissolution }
 import gunbc.serving.srv1_serving_replica_layout {
   Srv1LaunchConfig, Srv1LmCacheL2Placement, Srv1CheckpointRetentionPolicy, Srv1TlsMaterial,
@@ -982,16 +982,28 @@ test fn the_refused_tier_refuses_the_boot_admission_under_the_contract_identity(
   }
 }
 
-// The positive control, and it is the host's configuration: 48 GiB clears every term, the launcher renders, and
-// the digests the install row holds are the digests of those bytes (checked by
-// the_install_and_run_receipts_hold_their_own_claim against the host's own sha256sum readback).
+// The positive control, and it is the host's configuration: 48 GiB clears every term, and the bytes that DO
+// render -- the per-replica args file, which is where LMCACHE_L1_GB=48 lives -- hash to the digest the install
+// row holds against the host's own sha256sum readback (install_row_digest_matches compares three strings from
+// two sources, so it is not a restatement of its subject). The LAUNCHER render is deliberately not called
+// here: rendering the 5,771-byte launcher as one string trips the pre-existing CallDepthExceeded in
+// std.host_text's text_of_chars -- identically on pristine main at this pin -- so the launcher's own digest is
+// carried from the host read and executed by the_install_and_run_receipts_hold_their_own_claim under CI's
+// tree-pinned seed. What is pinned here is the half of the pair this interpreter can actually evaluate.
 test fn the_admitted_tier_is_admitted_by_the_contract_and_renders() -> Bool {
+  let args = srv1_render_replica_engine_args()
   match srv1_kv_tier_verdict(
     config: srv1_admitted_launch_config,
     shape: srv1_replica_container_run_shape,
     budget: srv1_replica_host_budget
   ) {
-    KvTiersAdmitted => render_answered(render: srv1_render_replica_launcher())
+    KvTiersAdmitted => match args {
+      Accepted { value: body, diagnostics: _ } => install_row_digest_matches(
+        host_path: "/usr/local/etc/lil-replica/replica-0.args",
+        render_digest: sha256_hex_of_text(text: body)
+      )
+      Rejected { diagnostics: _ } => false
+    }
     KvTierRefused { term: _, cause: _ } => false
   }
 }
