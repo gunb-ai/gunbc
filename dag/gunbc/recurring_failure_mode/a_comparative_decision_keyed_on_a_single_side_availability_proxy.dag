@@ -1,0 +1,55 @@
+module gunbc.recurring_failure_mode.a_comparative_decision_keyed_on_a_single_side_availability_proxy
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungRead, FoundBelowTheLadder, FoundOnRung, BelowCeiling }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+import std.decl_ref { DeclarationRef }
+
+data a_comparative_decision_keyed_on_a_single_side_availability_proxy: RecurringFailureMode = RecurringFailureMode {
+  // THE DECISION NEEDS A RELATION BETWEEN TWO SIDES AND THE CODE READS ONLY ONE. It did not fail, it
+  // was not invalid, and nothing refused: it churned, quietly, while every observable stayed identical
+  // to the balanced case.
+
+  identity: "a_comparative_decision_keyed_on_a_single_side_availability_proxy" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: StructurallyGuaranteed,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "a relocation realization that obtains every sideways move through gunbc.serving.serving_relocation's imbalance-preconditioned decision (decide_with_imbalance_precondition), so no router-local free-slot rule can mint a move intent without an established source-to-destination load differential",
+    },
+  },
+
+  receipts: [
+    "**a decision whose correctness is a RELATION between two things -- is A busier than B, is A warmer than B, does A still hold what B does not -- is keyed instead on a one-sided reading of a single side, and that reading is treated as if it settled the relation** (INVALID STATE: an action that only makes sense in one DIRECTION runs in BOTH directions, because the trigger asks a question of one participant and never asks the other. Nothing is wrong with the reading; it is complete and correct for its own subject. The defect is that a comparison was answered by a fact about one of its two terms.)",
+
+    "**THE CANONICAL SHAPE: 'is the destination less loaded than the source?' answered by 'does the destination have a free slot?'** A free slot is the complement of one card's own capacity ceiling -- a fact about the destination alone -- and the direction the decision needed is a relation between two cards. A card with a free slot and a card that is genuinely lighter present the same 'free slot' fact; only the comparison separates them. When BOTH sides are full the rule still fires, because each side, read alone, looks like it has room, and the two moves cancel into churn.",
+
+    "**SPECIMEN, MEASURED AND ON THE RECORD, which is why the class is filed rather than the instance re-investigated.** The srv1 pool router's 2026-11-23 'tier-0 sideways' rule moved a session bound to a full srv1 card to its sibling whenever the sibling showed a free slot, on the stated premise that a sibling with free slots is underloaded. With both srv1 cards full it swapped sessions both ways -- 126 moves in 39 min, 63 each way, and about 48% of all cold prompt tokens attributed to it. STANDING, carried per gunbc.design_argument::epistemic_humility: these are operator-observed figures from ad-hoc attribution over router log lines (the /tmp/rlog.py join named in the B7 observability class), NOT a standing instrument and NOT deduced facts; the absence of an instrument is itself the second finding, and the host's own narrowing of the rule on 2026-11-24 to a sibling pending-key condition is a hand-patch of exactly this missing comparison, not a re-derivation of it.",
+
+    "**WHY IT SURVIVES AND WHY THE GREEN IS DENSEST WHERE IT HURTS.** A one-sided reading is always green against its own subject -- the free-slot count is computed correctly, the gauge answers exactly, the test that asserts 'a free slot was observed' passes forever. The comparison the decision actually needed is never expressed anywhere, so there is no arm to fail and no witness to red it. The population where proxy and semantics agree (destination empty, source full) is the population where the rule is right; they diverge exactly when both sides are loaded, which is the population the rule damages and no single-side test reaches.",
+
+    "**RECOGNITION RULE, mechanical: name the predicate the action is justified by and count its PARTICIPANTS.** If the justification is a relation (busier, warmer, fuller, still-held, older) and the code reads a property of ONE participant, ask what single-side fact was accepted as standing in for the relation, and whether that fact can be true while the relation is FALSE. 'Free slot', 'headroom', 'not at cap', 'idle', 'answered 2xx' are the recurring stand-ins. Where it can, the trigger is a proxy for the comparison and the action will fire in the wrong direction.",
+
+    "**WHY A PRICE DOES NOT FIX IT AND A PRECONDITION DOES.** The natural repair is to fold the missing side into the score -- rank the move higher when the destination looks freer. That is the same error gunbc.serving.turn_admission already reversed for co-tenancy ('a soft price lets the damaging group WIN whenever the alternatives look worse'): when every candidate is bad and one is numerically least bad, the priced arm places the move exactly where the rule says it must not go, and a ranking outcome carries no refusal. The comparison is therefore a PRECONDITION run before the selection, fail-closed on unread (gunbc.design_argument::fail_closed) -- an unread side is not balanced and never a licence to move -- and the choice, once the precondition holds, still routes through std.decision (gunbc.design_argument::selection_precedes_convergence).",
+
+    "**DISTINCT FROM ITS THREE NEIGHBOURS, and the repairs differ.** `proxy_observation_mistaken_for_action_semantics` is a PROXY for the meaning of an action judged by a checking path (a destruction read off a compile); here nothing checks the relation at all -- the relation was simply never asked, and the single-side fact is not a proxy produced by a checker, it is the wrong arity of question. `observation_reports_ambient_state_while_claiming_to_judge_the_supplied_subject` judges the wrong SUBJECT; here both subjects exist and only one was consulted. `suppressed_precondition_failure_runs_the_workload_unconstrained` is a precondition that DID fail and whose diagnostic was thrown away; here the precondition never ran because it was never written -- there is no diagnostic to suppress.",
+
+    "**RUNG FOUND AT: below the ladder, current rung Mitigatable.** The churn was silent -- no refusal, no counters disagreeing -- and was caught only by a reader holding router log lines against the rule after the fact, and fixed first by hand on the host (a rung-1 mitigation: a human narrowed the proxy on the host, outside the model).",
+
+    "**CEILING: 3, structurally guaranteed, and reachable rather than aspirational.** Once every sideways move is obtained through the guarded relocation decision, a move with no established source-to-destination differential has NO reachable route -- the invalid state has no constructor, not a check that can be skipped. It cannot climb to 4: a hand-written router outside the modeled path can always re-introduce its own one-sided rule, so the guarantee binds at the realization boundary, not the substrate.",
+
+    "**NEXT-RUNG TRIGGER, named as the capability not the artifact: the R-S3 relocation realization that mints every move intent through the imbalance-preconditioned decision, so the router verifies an intent it cannot originate.** Until that realization exists, gunbc.serving.serving_relocation's guard is the model's authority and the host rule is a Part A divergence; reading either as live protection is the rung inflation gunbc.design_argument::guarantee_ladder (rung honesty) names.",
+
+    "**REVIEW TELL:** a move, a placement, a steal, or a rebalance whose trigger sentence names ONE participant's availability ('a free slot on the sibling', 'not at cap', 'an idle card', 'a slot opened up') where its justification is a comparison of two; an 'underloaded'/'available'/'warm' word doing relational work in a comment with no relational type beside it; and any capacity/headroom count that is handed to a decision whose contract is 'is A more/less X than B' without the second X being read.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.serving.serving_relocation", decl_name: "LoadImbalance", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.serving.serving_relocation", decl_name: "compare_load", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.serving.serving_relocation", decl_name: "decide_with_imbalance_precondition", field: WholeDeclaration },
+  ],
+}
