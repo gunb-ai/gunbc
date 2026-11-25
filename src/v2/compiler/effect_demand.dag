@@ -1385,7 +1385,10 @@ data filesystem_effect_emitted_closure_population: FilesystemEffectCensusPopulat
     emitted_closure_root_module: "v2.cli.compile_cli",
     emitted_closure_root_declaration: "compiler_pipeline_entry",
     bound_handler: "emit_file_call",
-    free_primitive_slug: "filesystem_read"
+    // review 98720 finding 3 (single_authority): consumed from the ONE slug declaration in this
+    // module (data filesystem_free_primitive_slug) rather than re-spelled beside it -- two literals
+    // for one operation can drift; here the census states the operation by citing its symbol.
+    free_primitive_slug: filesystem_free_primitive_slug
   }
 
 // One observed filesystem reach, at SITE grain: the site that reached and the operation it reached. The
@@ -1700,11 +1703,17 @@ fn filesystem_effect_emitted_closure_census(
 // typed carrier"). SCOPE OF THE EXERCISE (review 98447 re-ask): the join PREDICATES refuse
 // in production wherever the census reaches are fed to them -- that real-reach observation is the two
 // scratch probe trees (the census run itself refuses on a planted extra reach and on a removed member).
-// The WITNESS join legs are FIXTURE-EXERCISED ONLY: their reaches come from derived_row fixtures, so a
-// corpus rename of a contracted declaration drifts contract and fixture together and no witness leg
-// fires. The leg that runs filesystem_effect_debt_join_holds over the REAL closure's reaches (real
-// phase-1 rows through the resolver fold, not fixture rows) is DEFERRED and belongs to the establishing roadmap row's
-// establishing roadmap row for this instrument, alongside the trigger's resolve leg below.
+// The WITNESS carries TWO faces, stated separately because they prove different things (review 98720
+// finding 1): (a) the join PREDICATE legs run on derived_row fixtures, so a corpus rename of a
+// contracted declaration drifts contract and fixture together and those legs cannot fire -- they exist
+// to prove the refusals are reachable at all; (b) the GREEN leg census_reaches_exactly_four_declared_sites
+// feeds filesystem_effect_reaches_from_phase1_rows the REAL phase-1 rows of the real closure, derived at
+// run time through the resolver fold over the corpus (corpus_rows_for_witness: tokenize_prepared ->
+// parse_module -> resolve_module_phase1), not fixture rows -- so a rename that moves a contracted
+// declaration off the census fails that leg. The real-reach REFUSAL observation cannot be planted into
+// the tree a claim runs on and is executed on the two scratch probe trees outside this witness (the
+// census run itself refuses on a planted extra reach and on a removed member). What remains deferred to
+// the handler-binding row below: the emit-side binding itself, alongside the trigger's resolve leg.
 //
 // INSTRUMENT FACE (roster discipline, same fence as the parse-population and emission
 // rosters): GRAIN -- module_path # enclosing_declaration # site_occurrence, one entry per contracted

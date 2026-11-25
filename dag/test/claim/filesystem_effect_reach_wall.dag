@@ -696,12 +696,14 @@ test fn filesystem_census_log_names_refused_count_bound_and_three_sites() -> Boo
 // =============================================================================================
 // THE DEBT CONTRACT (review 98447 finding 1, formulated by the lane): a MONOTONE IDENTITY-GRAIN JOIN,
 // exercised in BOTH refusal directions on fixture input plus a green control. No number here is copied
-// from a tree; every count is derived by the run that claims it. FIXTURE-EXERCISED ONLY (review 98447 re-ask,
-// review 98447 re-ask): the reaches below come from derived_row fixtures, so these legs prove the join
-// PREDICATES fire on planted input -- they cannot catch a corpus rename (contract and fixture drift
-// together). The real-reach observation is the two scratch probe trees run outside this witness (the
-// census run itself refuses), and the real-closure join leg is deferred to the establishing roadmap row's
-// roadmap row for this instrument.
+// from a tree; every count is derived by the run that claims it. TWO FACES (review 98720 finding 1),
+// stated separately: (a) the PREDICATE legs below run on derived_row fixtures -- they prove the join
+// refusals are reachable at all and cannot catch a corpus rename (contract and fixture drift together);
+// (b) the GREEN leg census_reaches_exactly_four_declared_sites feeds the join the REAL phase-1 rows
+// derived at run time through the resolver fold over the corpus (corpus_rows_for_witness), not fixture
+// rows -- a rename moving a contracted declaration off the census fails that leg. The real-reach
+// REFUSALS are executed on the two scratch probe trees run outside this witness (the census run itself
+// refuses); the emit-side handler binding remains deferred to the establishing roadmap row below.
 // =============================================================================================
 
 // Rows spelling EXACTLY the four contracted sites: two #v2.compiler.self_host declarations and two
