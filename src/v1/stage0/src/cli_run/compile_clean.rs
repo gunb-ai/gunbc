@@ -152,57 +152,6 @@ pub(crate) fn compile_clean_policy_read_refuses_gate() -> bool {
     compile_clean_unlisted_import_use_blocks_cached().is_err()
 }
 
-/// Single-authority A+C allow-list for `ExhaustivenessUnknown` — the six frozen
-/// src/v2 blocked-lookup sites sanctioned by
-/// `gunbc.design_ruling::floor_exhaustiveness_refusal_a_plus_c_exceptions_frozen_2026_11_23`
-/// (operator, 2026-11-23: A+C; the roster is FROZEN SHRINK-ONLY). This hand-written
-/// seed-Rust arm is itself authorized by the operator's "A is fine as long as its recorded",
-/// recorded in `gunbc.design_ruling::floor_exhaustiveness_refusal_seed_rust_waiver_arm_authorized_2026_11_23`.
-/// The roster reaches
-/// this v1-stage0 gate as plain INPUT DATA only: the caller materializes
-/// `src/v2/workflow/floor_exhaustiveness_allowlist.dag` to the file named by
-/// `$GUNBC_EXHAUSTIVENESS_UNKNOWN_ALLOWLIST` (one `module_path::declaration::scrutinee`
-/// key per line, `#` comments allowed). NO v2 module import and NO interpreter run —
-/// strictly cheaper than the `UnlistedImportUse` policy read (gunbc#8286). FAIL-CLOSED:
-/// absent env var, missing file, or any read error admits NOTHING, so every
-/// `ExhaustivenessUnknown` still blocks. Dissolves when the (C) node
-/// (rn_01M8591VE1TNASV6BKCZ34HXXT) types the six sites — then this arm and the data file
-/// delete.
-fn exhaustiveness_unknown_allowlist() -> HashSet<String> {
-    thread_local! {
-        static LOADED: RefCell<Option<HashSet<String>>> = const { RefCell::new(None) };
-    }
-    LOADED.with(|c| {
-        if let Some(set) = c.borrow().clone() {
-            return set;
-        }
-        let set = std::env::var("GUNBC_EXHAUSTIVENESS_UNKNOWN_ALLOWLIST")
-            .ok()
-            .and_then(|path| std::fs::read_to_string(path).ok())
-            .map(|body| {
-                body.lines()
-                    .map(|line| line.trim())
-                    .filter(|line| !line.is_empty() && !line.starts_with('#'))
-                    .map(|line| line.to_string())
-                    .collect::<HashSet<String>>()
-            })
-            .unwrap_or_default(); // fail-closed: nothing admitted
-        *c.borrow_mut() = Some(set.clone());
-        set
-    })
-}
-
-/// Whether this `ExhaustivenessUnknown` structural key is on the sanctioned A+C
-/// allow-list. Key form matches `floor_exhaustiveness_allowlist_site_key` in the v2
-/// roster: `module_path::declaration::scrutinee`. `module_path` is the scrutinee's HOME
-/// module (the dotted module the diagnostic was raised in), never the aggregate
-/// compile-unit — this is what makes the waiver per-site and not per-file.
-fn exhaustiveness_unknown_is_waived(module_path: &str, declaration: &str, scrutinee: &str) -> bool {
-    exhaustiveness_unknown_allowlist()
-        .get(&format!("{module_path}::{declaration}::{scrutinee}"))
-        .is_some()
-}
-
 /// Single authority (gunbc.design_argument::single_authority, gunbc.design_argument::self_hosting): whether a diagnostic blocks compile-clean.
 /// `UnlistedImportUse` is governed by `gunbc.compile_clean_diagnostic_policy` (issue 11);
 /// all other classes delegate to `00_core.dag` `is_interpreter_blocking_diagnostic`.
@@ -215,12 +164,6 @@ pub fn compile_clean_diagnostic_is_hard(d: &Rc<ErrorNode>) -> bool {
                 Err(_) => true,
             }
         }
-        CompilerDiagnostic::ExhaustivenessUnknown {
-            module_path,
-            declaration,
-            scrutinee,
-            ..
-        } => !exhaustiveness_unknown_is_waived(module_path, declaration, scrutinee),
         _ => crate::v1_std_core::is_interpreter_blocking_diagnostic(d.diagnostic.clone()),
     }
 }

@@ -29,19 +29,6 @@ env:
   CARGO_TERM_COLOR: always
   GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 1da1635936582f10
   GUNBC_COMPILER_GATE_CONTRACT_STAMP: 8b09a9b18d5dc731
-  # Floor-exhaustiveness A+C waiver input. The seed-Rust arm in
-  # src/v1/stage0/src/cli_run/compile_clean.rs reads the file this names and downgrades
-  # the SIX frozen rostered ExhaustivenessUnknown sites from hard-blocking to advisory for
-  # the compile-clean decision, so the required v2-bootstrap emit steps (self-host /
-  # v2-native-cli) pass. The file is the committed materialization of
-  # v2.workflow.floor_exhaustiveness_allowlist and its consistency to that roster is
-  # enforced (both directions) by
-  # test.claim.floor_exhaustiveness_allowlist_equality_witness.floor_exhaustiveness_data_file_equals_the_roster.
-  # It is INPUT DATA only: fail-closed (a missing/blank file admits nothing, every
-  # ExhaustivenessUnknown still blocks), and the whole-corpus completeness guard is the
-  # v2-bootstrap emission wall itself (a 7th un-rostered blocking site -> EmissionRefused),
-  # not this waiver. Authorized by the operator's A+C ruling; no more exceptions.
-  GUNBC_EXHAUSTIVENESS_UNKNOWN_ALLOWLIST: src/v2/workflow/floor_exhaustiveness_allowlist.data
 jobs:
   v2-bootstrap:
     runs-on: [self-hosted, linux, arm64]

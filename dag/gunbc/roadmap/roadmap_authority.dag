@@ -9683,23 +9683,6 @@ fn guarantee_ladder_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "compiler-guarantee", contribution: "ExhaustivenessUnknown refuses instead of passing."),
     ),
     roadmap_node(
-      identity: "rn_01M8591VE1TNASV6BKCZ34HXXT",
-      id: "resolve-untypable-blocked-lookup-scrutinee-types",
-      owner: "compiler-guarantee",
-      carriers: carrier(path: "docs/plans/compiler-guarantee-recovery-gap-analysis.md"),
-      line: ticket(t: updated(t: fields(
-        headline: "Resolve the 6 frozen-corpus blocked-lookup scrutinee types so the ExhaustivenessUnknown allow-list retires",
-        boundary: "The 6 src/v2 sites waived by gunbc.design_ruling::floor_exhaustiveness_refusal_a_plus_c_exceptions_frozen_2026_11_23 have scrutinees whose type is not nameable (5 TypeVariable, 1 resolved-but-unnamed). Fund making each scrutinee's coproduct roster establishable at its construction site so the match's exhaustiveness is DECIDED, not waived.",
-        displaced_cost: "Until this lands the A+C allow-list (src/v2/workflow/floor_exhaustiveness_allowlist.dag) is the sole exemption authority; this node is the only sanctioned way for that roster to shrink.",
-        first_slice: "Give each of the 6 scrutinees a declared/expected type so check_match_exhaustiveness resolves its roster; one site per paired probe+control commit.",
-        red_control: "Probe: each site, once typed, moves from ExhaustivenessUnknown to a resolved verdict; control: its roster row is dropped and the equality-budget claim stays green with one fewer row (shrink-only).",
-        out_of_scope: "Adding any new exempted site (the roster is frozen shrink-only per the operator ruling); changing the exhaustiveness algorithm for already-resolved types.",
-        handback: "The 6 rows retired, the allow-list empty, the equality-budget claim green over an empty roster."
-      ), on: "2026-11-23", note: "Filed by floor-exhaustiveness-refusal under the operator's (C) ruling; retires the A+C allow-list once landed.")),
-      dispatch: dispatchable(),
-      parent: in_project(project: "compiler-guarantee", contribution: "Blocked-lookup scrutinee types made nameable so exhaustiveness is decided, not waived."),
-    ),
-    roadmap_node(
       identity: "rn_P64CH3KXIZGL43SFS5DNJX52EQ",
       id: "floor-generic-field-constraint-wall",
       owner: "compiler-guarantee",
