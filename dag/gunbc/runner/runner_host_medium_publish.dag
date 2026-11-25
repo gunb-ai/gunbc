@@ -26,7 +26,7 @@ import gunbc.runner.runner_host_medium {
 }
 import gunbc.host_command_binding {
   LocalCommandHost, host_run, host_transport_kind, scratch_acquisition_of, scratch_removal_of, render_scratch_outcome,
-  ScratchAcquired, ScratchNotAcquired, scratch_removed,
+  ScratchAcquired, ScratchNotAcquired, scratch_removed, ScratchOutcome,
 }
 import gunbc.host.host_effect_realize {
   tree_install_in_realm, TreeInstallStaged, ApprovalBrokerTreeInstallVerdict, TreeInstallConverged, TreeInstallRefused,
@@ -56,9 +56,17 @@ data mtcollins1_runner_host: RunnerHostMediumHost = RunnerHostMediumHost {
   console_kernel_arg: mtcollins1_census_console_arg,
 }
 
+// THE ATTEMPT TO PUT THE IMAGE WHERE A REGISTRATION POINTS, AS ONE TYPED RESULT: not derived (the release was
+// never built), ran, or ran-with-a-cleanup-whose-reply-was-lost. The ran attempt carries the publication and the
+// served-link readback as TWO SEPARATE facts; the third arm carries, alongside them, the final scratch cleanup as
+// its OWN fact (fox round 3 at 649e7857). THE CLEANUP IS NOT THE PUBLICATION: when the final `rm` came back with
+// no reply after a completed publication and a verified link, the publication and the link STAY reported as what
+// they are -- only the cleanup is unknown -- and the attempt simply does not hold. Replacing the ran attempt with
+// "not attempted" there deleted a publication the receipt had to keep naming.
 type RunnerImagePublishAttempt
   = RunnerImageNotDerived { reason: String }
   | RunnerImagePublishRan { publication: SeededImagePublication, link: ServedLinkReading }
+  | RunnerImageCleanupUnverified { publication: SeededImagePublication, link: ServedLinkReading, scratch: ScratchOutcome }
 
 // THE SERVED LINK (gunbc.host.boot_medium_reader_key boot_medium_served_link_path) IS THIS PUBLISH'S TO
 // SET. The boot medium reader key is forced to sha256sum that one fixed path, so the publish that names
@@ -172,6 +180,9 @@ fn runner_image_publication_on(host: CommandHost, image: RunnerHostMediumImage) 
 fn runner_image_attempt_holds(a: RunnerImagePublishAttempt) -> Bool {
   match a {
     RunnerImageNotDerived { reason: _ } => false
+    // THE CLEANUP IS ITS OWN FACT: a ran publication whose final `rm` never answered does not hold, and that is the
+    // ONLY thing it fails -- the publication and the link keep their own readings below.
+    RunnerImageCleanupUnverified { publication: _, link: _, scratch: _ } => false
     RunnerImagePublishRan { publication: p, link: l } =>
       seeded_image_publication_holds(p: p) && served_link_holds(l: l)
   }
@@ -180,6 +191,10 @@ fn runner_image_attempt_holds(a: RunnerImagePublishAttempt) -> Bool {
 fn render_runner_image_attempt(a: RunnerImagePublishAttempt) -> String {
   match a {
     RunnerImageNotDerived { reason: r } => concat("publication=not attempted\npublication_reason=", r, "\n")
+    // The publication is REPORTED, with the link and the cleanup as the separate facts they are: the receipt names
+    // the published image, the verified link, and the scratch whose removal reply was lost.
+    RunnerImageCleanupUnverified { publication: p, link: l, scratch: o } =>
+      concat(render_seeded_image_publication(p: p), render_served_link(l: l), render_scratch_outcome(label: "baked_release_scratch", prefix: mtcollins1_baked_release_export_prefix, o: o))
     RunnerImagePublishRan { publication: p, link: l } =>
       concat(render_seeded_image_publication(p: p), render_served_link(l: l))
   }
@@ -305,6 +320,23 @@ data mtcollins1_baked_release_export_template: NonEmptyStr = "/var/tmp/gunbc-mtc
 
 data mtcollins1_runner_image_attempt_raw: String = "mtcollins1-runner-image-publish"
 
+// THE RECEIPT AND THE EXIT ARE PURE FUNCTIONS OF THE ATTEMPT (fox round 3 at 649e7857). The wet run below writes the
+// receipt and then decides its exit from THESE, so what a witness asserts about an attempt no hermetic host can
+// produce -- above all the publication and link that completed while only the final cleanup's reply was lost -- is
+// the string the operator reads and the exit the run takes: the receipt keeps the published image and the verified
+// link, names the cleanup path and its lost-reply cause, and the run still exits failure.
+fn mtcollins1_runner_image_receipt_of(a: RunnerImagePublishAttempt) -> String {
+  render_runner_image_attempt(a: a)
+}
+
+fn mtcollins1_runner_image_exit_of(a: RunnerImagePublishAttempt) -> ProcessExit {
+  if runner_image_attempt_holds(a: a) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat("mtcollins1 runner image publication did not hold:\n", mtcollins1_runner_image_receipt_of(a: a)))
+  }
+}
+
 // CONSUMPTION (gunbc.design_argument::consumption): invoked by the fleet-converge mode MtCollins1RunnerImagePublish, which
 // consumes the fleet SSH key and runs on any runner (gunbc.fleet.fleet_converge_workflow, gunbc.ci.ci_spec).
 // The receipt is written whatever the outcome and uploaded by the step that follows.
@@ -319,14 +351,12 @@ fn mtcollins1_runner_image_publish_wet() -> ProcessExit {
           mtcollins1_runner_image_publish_at(revision: revision, export: FleetSshCommandHost { target: bmc_boot_image_export.target, context: context }, target: bmc_boot_image_export.target, context: context)
       }
   }
-  let rendered = render_runner_image_attempt(a: attempt)
+  let rendered = mtcollins1_runner_image_receipt_of(a: attempt)
   let written = Filesystem.Write(path: mtcollins1_runner_image_receipt_path, content: rendered)
   if written.success == false {
     exit_failure(reason: concat("mtcollins1 runner image: the receipt could not be written: ", written.error, "\n", rendered))
-  } else if runner_image_attempt_holds(a: attempt) {
-    ExitSuccess
   } else {
-    exit_failure(reason: concat("mtcollins1 runner image publication did not hold:\n", rendered))
+    mtcollins1_runner_image_exit_of(a: attempt)
   }
 }
 
@@ -350,8 +380,26 @@ fn mtcollins1_runner_image_publish_at(revision: CommitSha, export: CommandHost, 
           runner_image_publication_on(host: export, image: runner_host_medium_image(host: mtcollins1_runner_host, baked: baked))
       }
       let removed = scratch_removal_of(kind: kind, dir: dir, leg: host_run(host: export, command: rm_recursive_force_one_file_system_command(path: dir as String)))
-      if scratch_removed(o: removed) { published } else {
-        RunnerImageNotDerived { reason: concat("the export-host scratch was not removed after the publication (", render_runner_image_attempt(a: published), "): ", render_scratch_outcome(label: "baked_release_scratch", prefix: mtcollins1_baked_release_export_prefix, o: removed)) }
+      match published {
+        // A LOST CLEANUP REPLY DOES NOT UNPUBLISH THE IMAGE (fox round 3 at 649e7857). The publication ran and the
+        // link verified, so the attempt keeps naming them; the cleanup is carried as its own fact, and because its
+        // reply was lost the attempt does not hold. The old arm here replaced the whole ran attempt with
+        // RunnerImageNotDerived, rendering "publication=not attempted" over a publication that had completed.
+        RunnerImagePublishRan { publication: p, link: l } =>
+          if scratch_removed(o: removed) {
+            published
+          } else {
+            RunnerImageCleanupUnverified { publication: p, link: l, scratch: removed }
+          }
+        // Nothing was published, so there is nothing to keep: the refusal is the reason, and the cleanup is
+        // reported inside it rather than pretending to be the whole story.
+        RunnerImageNotDerived { reason: r } =>
+          if scratch_removed(o: removed) {
+            published
+          } else {
+            RunnerImageNotDerived { reason: concat(r, "; ", render_scratch_outcome(label: "baked_release_scratch", prefix: mtcollins1_baked_release_export_prefix, o: removed)) }
+          }
+        other => other
       }
     }
   }

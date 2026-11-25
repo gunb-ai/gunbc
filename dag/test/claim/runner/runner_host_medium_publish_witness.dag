@@ -3,15 +3,17 @@ module test.claim.runner.runner_host_medium_publish_witness
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, NonEmptyStr, String }
 import std.optional { Present }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.algebra { string_contains }
 import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMediaBuildInput, UbuntuSeededInstallMediaBuilt, ubuntu_seeded_install_media_built }
-import gunbc.host_command_binding { Removed, RemovalUnconfirmed, CreationNotRequested, HostCommandDone, HostCommandFailed, HostCommandUnanswered }
+import gunbc.host_command_binding { Removed, RemovalUnconfirmed, RemovalUnanswered, CreationNotRequested, HostCommandDone, HostCommandFailed, HostCommandUnanswered }
 import gunbc.host.boot_medium_reader_key { boot_medium_served_link_path }
 import gunbc.provisioning.seeded_install_media_publish { SeededImagePublished, SeededImageAlreadyPublished, SeededImagePublicationRefused }
 import gunbc.runner.runner_host_medium { RunnerHostMediumImageDerived, RunnerHostMediumRunnerUnpublished, RunnerHostMediumUserDataRefused, runner_host_medium_image, RunnerHostBakedRelease }
 import extdeps.crypto.hash { sha256_digest }
 import gunbc.runner.runner_host_medium_publish {
-  mtcollins1_runner_host, RunnerImageNotDerived, RunnerImagePublishRan, runner_image_attempt_holds, render_runner_image_attempt,
+  mtcollins1_runner_host, RunnerImageNotDerived, RunnerImagePublishRan, RunnerImageCleanupUnverified,
+  runner_image_attempt_holds, render_runner_image_attempt, mtcollins1_runner_image_receipt_of, mtcollins1_runner_image_exit_of,
   ServedLinkReading, ServedLinkPointsAt, ServedLinkNotSet, ServedLinkDisagrees, ServedLinkSetUnverified, ServedLinkSetUnknown, served_link_after, render_served_link,
 }
 
@@ -149,6 +151,48 @@ test fn the_served_link_is_set_after_a_holding_publication_and_read_back_exactly
         && link_word(l: unset) == "unset"
         && !runner_image_attempt_holds(a: RunnerImagePublishRan { publication: held, link: unset })
         && link_word(l: refused) == "unset"
+    }
+    RunnerHostMediumRunnerUnpublished { binary_release: _ } => false
+    RunnerHostMediumUserDataRefused { reason: _ } => false
+  }
+}
+
+// THE CLEANUP IS NOT THE PUBLICATION (fox round 3 at 649e7857, Blocker 1). CONTROL: the publication completed and
+// the served link verified, and ONLY the final export-host `rm` came back with no reply. The receipt the operator
+// reads must STILL name the published image and the verified link, must name the cleanup path and its lost-reply
+// cause, must NOT claim the publication was "not attempted" nor report the lost reply as if it were the
+// publication's verdict -- and the run must STILL exit failure, because an unverified cleanup never closes a
+// publication. RED at 649e7857: publish_at replaced the whole ran attempt with RunnerImageNotDerived there, so the
+// receipt read "publication=not attempted" over a publication that had completed. CONTROL PAIR: the same
+// publication and link with a COMPLETED cleanup hold, and their receipt says nothing of a lost reply -- so what
+// fails above is the cleanup, and only the cleanup.
+test fn a_lost_final_cleanup_reply_keeps_the_publication_and_still_fails() -> Bool {
+  match runner_host_medium_image(host: mtcollins1_runner_host, baked: fixture_baked_release()) {
+    RunnerHostMediumImageDerived { input: i, runner: _ } => {
+      let held = SeededImageAlreadyPublished { built: built_of(input: i), path: "/srv/bmc/x.iso" as NonEmptyStr }
+      let link_ok = ServedLinkPointsAt { link_path: boot_medium_served_link_path(), target: "/srv/bmc/x.iso" as NonEmptyStr }
+      let cleanup_path = "/var/tmp/gunbc-mtcollins1-baked-release.AAAAAAAA" as NonEmptyStr
+      let cleanup_lost = RunnerImageCleanupUnverified {
+        publication: held,
+        link: link_ok,
+        scratch: RemovalUnanswered { dir: cleanup_path, cause: "rm overran its deadline" },
+      }
+      let receipt = mtcollins1_runner_image_receipt_of(a: cleanup_lost)
+      let failed = match mtcollins1_runner_image_exit_of(a: cleanup_lost) {
+        ExitFailure { code: _, reason: r } => string_contains(s: r, pattern: "did not hold") && string_contains(s: r, pattern: "already_published=true")
+        ExitSuccess => false
+      }
+      let closed = RunnerImagePublishRan { publication: held, link: link_ok }
+      !runner_image_attempt_holds(a: cleanup_lost)
+        && failed
+        && string_contains(s: receipt, pattern: "already_published=true")
+        && string_contains(s: receipt, pattern: concat("served_link_target=", "/srv/bmc/x.iso"))
+        && string_contains(s: receipt, pattern: cleanup_path as String)
+        && string_contains(s: receipt, pattern: "rm overran its deadline")
+        && !string_contains(s: receipt, pattern: "publication=not attempted")
+        && !string_contains(s: receipt, pattern: "was not removed after the publication")
+        && runner_image_attempt_holds(a: closed)
+        && !string_contains(s: mtcollins1_runner_image_receipt_of(a: closed), pattern: "NO ANSWER")
     }
     RunnerHostMediumRunnerUnpublished { binary_release: _ } => false
     RunnerHostMediumUserDataRefused { reason: _ } => false
