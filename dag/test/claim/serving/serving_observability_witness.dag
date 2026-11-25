@@ -1,0 +1,106 @@
+module test.claim.serving.serving_observability_witness
+
+import std.types { String, Bool, List, Port }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.optional { Optional, Present, Absent }
+import gunbc.serving.serving_observability {
+  EngineFrontProxyVerdict, EngineFrontProxyRendered, EngineFrontProxyRefused,
+  EngineFrontProxyRefusal, OmitsRequiredRoute, EngineFrontRoute,
+  engine_front_required_routes, engine_front_proxy_config, engine_front_render_forwards_route,
+  InstrumentDecision, NotAnInstrument, cold_token_cause_breakdown_standing, router_probe_line_standing,
+}
+import std.types { string_contains }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// srv4's hand-managed TLS front (/opt/gunbc-serving/srv4-daily/nginx.conf) forwards the /v1/ inference
+// routes and answers `return 404` to everything else, so /metrics is NOT forwarded. That forwarded set is
+// what a hand-written proxy actually proxies; this is the observed misconfiguration, fed as the input the
+// model must refuse.
+fn srv4_forwarded_routes() -> List<NonEmptyStr> {
+  [ "/v1/chat/completions" as NonEmptyStr, "/v1/models" as NonEmptyStr ] as List<NonEmptyStr>
+}
+
+// A front door that has learned the consumed-requirement lesson: every route a fleet reader needs is
+// forwarded, including the metrics route srv4 dropped.
+fn complete_forwarded_routes() -> List<NonEmptyStr> {
+  map(engine_front_required_routes, r => r.path)
+}
+
+fn front(forwarded: List<NonEmptyStr>) -> EngineFrontProxyVerdict {
+  engine_front_proxy_config(
+    bind_address: "0.0.0.0" as NonEmptyStr,
+    listen_port: 8443,
+    tls_cert: "/etc/tls/engine.crt" as NonEmptyStr,
+    tls_key: "/etc/tls/engine.key" as NonEmptyStr,
+    engine_host: "127.0.0.1" as NonEmptyStr,
+    engine_port: 8080,
+    forwarded: forwarded,
+  )
+}
+
+// RED: srv4's front door is refused, naming the very route the misconfiguration dropped. The misconfig
+// is unrenderable rather than something a downstream check has to catch.
+test fn srv4_front_dropping_the_metrics_route_is_refused_naming_it() -> Bool {
+  match front(forwarded: srv4_forwarded_routes()) {
+    EngineFrontProxyRefused { refusal: OmitsRequiredRoute { route: r } } => (r as String) == "/metrics"
+    _ => false
+  }
+}
+
+// The refusal is discriminating, not always-on: a front that drops a route NO consumer requires is not
+// what is refused (only the consumed-requirement roster is enforced). And the complete front is ACCEPTED.
+test fn the_complete_front_door_is_accepted() -> Bool {
+  match front(forwarded: complete_forwarded_routes()) {
+    EngineFrontProxyRendered { text: _ } => true
+    _ => false
+  }
+}
+
+// The accepted front actually PROXIES the metrics route to the engine, not merely accepts: the rendered
+// bytes carry a proxy_pass for /metrics, which is the whole point of the route being a consumed
+// requirement. Same for the inference route -- the front really forwards what a seat sends.
+test fn the_accepted_front_proxies_the_metrics_and_inference_routes() -> Bool {
+  match front(forwarded: complete_forwarded_routes()) {
+    EngineFrontProxyRendered { text: t } =>
+      engine_front_render_forwards_route(text: t, route: "/metrics" as NonEmptyStr)
+        && engine_front_render_forwards_route(text: t, route: "/v1/chat/completions" as NonEmptyStr)
+    EngineFrontProxyRefused { refusal: _ } => false
+  }
+}
+
+// CONSUMPTION: the metrics route is required because a NAMED consumer reads it -- the availability and
+// progress readers, not the router. The roster carries that consumer on the /metrics row; if the route
+// were added without a named consumer this assertion's target would be empty.
+test fn the_metrics_route_names_its_availability_and_progress_consumer() -> Bool {
+  match first(
+    filter(engine_front_required_routes, r =>
+      (r.path as String) == "/metrics"
+        && (string_contains(s: r.consumer as String, pattern: "engine_progress")
+          || string_contains(s: r.consumer as String, pattern: "serving_availability"))),
+  ) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// ITEM (2): the per-cause cold-token breakdown is recorded as NOT an instrument, and the decision carries
+// the standing the brief asks for -- a named would-be consumer and an add-when trigger, not a bare veto.
+test fn cold_token_cause_breakdown_is_recorded_not_an_instrument() -> Bool {
+  match cold_token_cause_breakdown_standing {
+    NotAnInstrument { would_be_consumer: w, add_when_trigger: t, reason: _ } =>
+      string_contains(s: w as String, pattern: "consumer")
+        && string_contains(s: t as String, pattern: "instrument_targets")
+    NamedInstrument { consumer: _, discriminator: _, acceptable_cost: _ } => false
+  }
+}
+
+// ITEM (3): the router probe lines' standing is recorded as a receipt of the HAND-MANAGED router and is
+// pointed at its modelled replacement (router_realization / turn_admission / serving_relocation, class
+// B5), never read as if the modelled router emitted them.
+test fn router_probe_line_standing_points_at_the_modelled_replacement() -> Bool {
+  let s = router_probe_line_standing as String
+  string_contains(s: s, pattern: "hand-managed")
+    && string_contains(s: s, pattern: "router_realization")
+    && string_contains(s: s, pattern: "serving_relocation")
+}
