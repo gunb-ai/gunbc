@@ -7,7 +7,7 @@ import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_6ce85c, operator_host_srv1, operator_host_srv3, operator_host_srv4 }
 import gunbc.fleet.fleet_tailnet { tailnet_host_from }
 import gunbc.serving.serving_layout { host_6ce85c_layout, srv3_layout, srv4_layout, ServingLayoutResult, ServingLayoutConfigured, ServingLayoutRefused }
-import gunbc.serving.serving_capacity_anchor { ServingCapacityShape, ServingShapeDerived, ServingShapeEstimated, ServingShapeRefused, ShapeThroughputUnread, serving_shape_refusal_message, serving_replica_grant_for }
+import gunbc.serving.serving_capacity_anchor { ServingCapacityShape, ServingShapeDerived, ServingShapeEstimated, ServingShapeRefused, ShapeThroughputUnread, serving_shape_refusal_message, serving_replica_grant_for, serving_card_cap, CardCap, CardCapUnread, serving_conversation_policy }
 import gunbc.serving.serving_replica_profile { srv1_vllm_replica_0_profile, srv1_vllm_replica_1_profile, replica_shape_named, srv3_strata_profile, srv4_strata_profile, h11_strata_profile, replica_shape_named_with_grant, ServingReplicaProfile }
 import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, TranscribedUncited, cited_figure_read_obligation }
 import extdeps.uri { uri_https, uri_wire }
@@ -1040,9 +1040,20 @@ fn standings_obligations(ss: List<CitedFigureStanding>) -> List<String> {
 fn router_dev_shaped_under(shape: ServingCapacityShape, admission: RouterDevCapacityAdmission, row: fn(RouterDevCapacity, RouterDevRetention, List<CitedFigureStanding>) -> RouterDevUpstream) -> RouterDevShaped {
   match shape {
     ServingShapeRefused { deployment: d, reason: r } => RouterDevShapeRefused { reason: concat("capacity shape refused for ", concat(d as String, concat(": ", serving_shape_refusal_message(reason: r)))) }
-    ServingShapeDerived { deployment: _, turns: t, held: h, bound: _, cold_reread: _ } => RouterDevShapedRow { row: row(OwnedCap { turns: t }, RetentionAdmitted { conversations: h }, []) }
+    // The rendered cap is the SMALLER of the shape's throughput-derived turns and the GPU KV pool's floor
+    // (pool tokens at the policy anchor context), so a card configured for more seats than its on-GPU pool
+    // holds is capped to the pool. An unread pool REFUSES the row -- fail_closed, never a free cap.
+    ServingShapeDerived { deployment: d, turns: t, held: h, bound: _, cold_reread: _ } =>
+      match serving_card_cap(deployment: d, shape_turns: t, anchor_context: serving_conversation_policy.anchor_context) {
+        CardCap { turns: c, bound_by: _ } => RouterDevShapedRow { row: row(OwnedCap { turns: c }, RetentionAdmitted { conversations: h }, []) }
+        CardCapUnread { obligation: o } => RouterDevShapeRefused { reason: concat("gpu kv pool unread for ", concat(d as String, concat(": ", o as String))) }
+      }
     ServingShapeEstimated { deployment: d, turns: t, held: h, bound: _, cold_reread: _, standings: ss } => match admission {
-      AdmitEstimatedCapacity { directive: _ } => RouterDevShapedRow { row: row(OwnedCap { turns: t }, RetentionAdmitted { conversations: h }, ss) }
+      AdmitEstimatedCapacity { directive: _ } =>
+        match serving_card_cap(deployment: d, shape_turns: t, anchor_context: serving_conversation_policy.anchor_context) {
+          CardCap { turns: c, bound_by: _ } => RouterDevShapedRow { row: row(OwnedCap { turns: c }, RetentionAdmitted { conversations: h }, ss) }
+          CardCapUnread { obligation: o } => RouterDevShapeRefused { reason: concat("gpu kv pool unread for ", concat(d as String, concat(": ", o as String))) }
+        }
       AdmitDerivedCapacityOnly => RouterDevShapeRefused { reason: concat("capacity shape for ", concat(d as String, concat(" is an estimate and this router admits only derived capacity; it rests on: ", join(standings_obligations(ss: ss), "; ")))) }
     }
   }

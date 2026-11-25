@@ -1,0 +1,56 @@
+module gunbc.recurring_failure_mode.admission_keyed_on_a_seat_count_as_a_proxy_for_kv_capacity
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { RecurringFailureMode, RungRead, FoundBelowTheLadder, FoundOnRung, BelowCeiling }
+import gunbc.guarantee_rung { Mitigatable, StructurallyGuaranteed }
+import gunbc.rung_climb { ClimbableButUnbuilt }
+import std.decl_ref { DeclarationRef }
+
+data admission_keyed_on_a_seat_count_as_a_proxy_for_kv_capacity: RecurringFailureMode = RecurringFailureMode {
+  // THE DECISION ASKS "how much more can this card hold?" AND ANSWERS IT WITH A COUNT OF TURNS, while the
+  // quantity that actually bounds the answer -- the card's on-GPU KV pool -- is a separate figure the cap did
+  // not consult. The count is not wrong for its own subject; it is simply not the resource the decision needs,
+  // and treating it as if it were lets a card be configured for more resident conversations than its KV pool
+  // holds. Nothing crashed and no invariant broke: the pool filled, the cache fell out, and turns simply got
+  // slower, which is why it sat below the ladder until the cap-6 trial.
+
+  identity: "admission_keyed_on_a_seat_count_as_a_proxy_for_kv_capacity" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: BelowCeiling {
+      current: FoundOnRung { rung: Mitigatable },
+      ceiling: StructurallyGuaranteed,
+      blocker: ClimbableButUnbuilt,
+      trigger_capability: "every rendered owned-card cap is obtained through gunbc.serving.serving_capacity_anchor::serving_card_cap (called by gunbc.serving.router_dev_policy::router_dev_shaped_under), which caps a card to the SMALLER of the shape's throughput turns and the GPU KV pool's floor (pool tokens at the policy anchor context) and REFUSES the row on an unread pool -- so a count configured above the card's pool floor is no longer renderable. The CEILING (structurally guaranteed) needs the per-turn dynamic gate this PR does NOT build: comparing a turn's REAL context against the live committed KV of the resident turns, not a static floor at the anchor context. That gate is the declared frontier under gunbc.plans.fabric_serving_scheduler done-when 1.",
+    },
+  },
+
+  receipts: [
+    "**a decision about how much a card can hold is keyed on a COUNT of units, treated as if it were the capacity of the resource that actually bounds it, while that resource is never read** (INVALID STATE: a card is configured to hold more resident conversations than its binding resource can carry, because the gate that decides the cap asks a question about a count and never asks the resource. The count is complete and correct for its own subject -- it counts seats. The defect is that a capacity was answered by a fact about a different quantity.)",
+
+    "**THE CANONICAL SHAPE: 'how many turns may this card hold?' answered by 'is the held-count below the ceiling?'** The seat ceiling is a policy decision about how many conversations to co-locate; the binding resource is the card's on-GPU KV pool, sized by the engine (vLLM num_gpu_blocks x block_size, its 'GPU KV cache size' log line). The pool is a different quantity than the count and cannot be substituted for it.",
+
+    "**RECEIPT, srv1 cap-6 trial (operator-observed receipt, ad-hoc engine-log reads, 2026-11-24; standing: a transcription by the operator's session under CitedFigureStanding / TranscribedUncited, NOT a value this repository read).** Filling the card to its count ceiling of six turned the GPU KV pool to about 99% for +2% aggregate output while turns ran about 60% slower. Related: when live sessions exceeded the card's cache capacity the fleet prompt-cache warm fell from about 97% to about 70%. Both are read as observations with their standing, not deduced facts.",
+
+    "**HONEST SCOPE OF THE CAP-6 ATTRIBUTION.** The static bound this PR adds -- floor(pool_tokens / policy anchor context) -- is COARSE: it assumes every resident seat sits at the anchor context (100k). At the anchor context srv1's pool (744,477 tokens) holds SEVEN, so the count ceiling of SIX is not an arithmetic overflow this bound refuses; six 'fits'. The cap-6 HARM was the per-turn DYNAMIC overload -- the real per-turn footprint at that fill (about 123k tokens, and about 112k of prefix reload per turn -- both operator reads with standing) exceeded the 100k anchor, so the pool filled and prefixes were evicted. That discrimination needs the per-turn dynamic gate (the frontier above), NOT a static floor. This PR therefore keys the cap on the pool at the policy context (a real, always-computed second term that refuses a card configured above its floor and refuses an unread pool), and records the per-turn discrimination as the unbuilt rung, rather than over-claiming it.",
+
+    "**OBSERVATION (recorded, NOT changed): the policy anchor context lags the live footprint.** serving_conversation_policy.anchor_context is 100,000 tokens, but the operator's reads put a srv1 reload at about 112k tokens per turn and the cap-6 fill at about 123k per conversation. The anchor therefore UNDERSTATES the resident footprint by roughly 12-23%. Raising anchor_context is a policy decision for the operator (it re-prices every shape and cap the anchor derives), so it is left unchanged here and raised separately.",
+
+    "**DISTINGUISHING FACT: the count and the memory are two quantities with two producers.** The ceiling (a policy count) and the KV pool (an engine reading carried on gunbc.serving.serving_capacity_anchor::ServingGpuKvPool, the same per-card cap authority the router reads) are not the same number and cannot substitute. This is the SIBLING of gunbc.recurring_failure_mode.a_comparative_decision_keyed_on_a_single_side_availability_proxy: there a COMPARATIVE decision read one side of a two-term relation; here a SIZING decision reads the wrong quantity entirely for the resource it is sizing.",
+
+    "**RECOGNITION RULE:** a gate that compares a held/occupant COUNT against a ceiling to decide how much more a card takes, for a resource whose real bound is a different measured quantity (bytes, tokens, KV blocks, host RAM) that the gate never consults. The tell is a 'held >= ceiling' or 'occupants < max' predicate on a placement/cap path whose failure mode is out-of-memory, plus a capacity word ('slots', 'seats', 'turns') standing in for a resource the code never reads.",
+
+    "**RUNG FOUND AT: mitigatable -- the overload was loud in the cap-6 trial (99% pool, 60% slower turns), not silent wrongness; it had simply never been keyed against the pool. CEILING: structurally guaranteed once no cap is rendered except through the pool-keyed serving_card_cap AND the per-turn dynamic gate has replaced the static floor. NEXT-RUNG TRIGGER: the per-turn dynamic gate (a turn's real context against the live committed KV of the resident turns) shipped, so a card is refused at the turn, not only capped at the static floor.",
+
+    "**CONSUMPTION:** this per-class record joins the derived gunbc.recurring_failure_mode.roster. Enrolled controls: test.claim.serving.serving_capacity_anchor_witness a_card_over_its_gpu_kv_pool_is_capped_to_the_pool (RED: a card configured above its pool floor is capped to it), a_card_under_its_gpu_kv_pool_keeps_the_shape_turns (control: srv1's 4 turns sit under the floor of 7, shape binds), a_strata_card_is_not_gpu_kv_bound (Strata parks in RAM -- pool not binding, never a silent pass-through), an_unread_gpu_kv_pool_refuses_the_card_cap (fail closed). The fold is consumed on the production render path by gunbc.serving.router_dev_policy::router_dev_shaped_under.",
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.serving.serving_capacity_anchor", decl_name: "serving_card_cap", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.serving.serving_capacity_anchor", decl_name: "ServingCardCap", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.serving.serving_capacity_anchor", decl_name: "serving_gpu_kv_pool", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.serving.serving_capacity_anchor", decl_name: "ServingGpuKvPool", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.serving.router_dev_policy", decl_name: "router_dev_shaped_under", field: WholeDeclaration },
+  ],
+}

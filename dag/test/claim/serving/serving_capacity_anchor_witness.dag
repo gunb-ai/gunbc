@@ -17,6 +17,7 @@ import gunbc.serving.serving_capacity_anchor {
   ServingSwapMechanism, SwapByEngineEviction, SwapByRouterSlotFile, ServingSwapDurability, LostWithProcess, SurvivesProcessRestart,
   ServingRungSharing, RungAdds, RungInclusiveOfHotter, RungSharingUnread,
   serving_capacity_shape, serving_conversation_policy,
+  serving_card_cap, ServingCardCap, CardCap, CardCapUnread, CardCapBinder, Shape, GpuKv, GpuKvNotBinding,
 }
 import gunbc.serving.serving_replica_profile {
   srv1_vllm_replica_0_profile, srv1_vllm_replica_1_profile, srv3_strata_profile, srv4_strata_profile, replica_shape_named, srv3_strata_anchor, srv4_strata_anchor,
@@ -332,9 +333,11 @@ test fn the_router_rows_carry_the_derived_cap_and_retain() -> Bool {
 // THE SHAPE KEEPS ITS INPUTS' STANDING. A cited fixture: every figure cited to an authority.
 fn ca_cited() -> CitedFigureStanding { CitedToAuthority { authority: ExternalAuthority { uri: uri_https(locator: "example.org/fixture" as NonEmptyStr) } } }
 
+// deployment is a Strata card so the GPU KV cap term is a declared pass-through (GpuKvPoolNotBinding):
+// this fixture exercises STANDING, not the pool bound, and must not be entangled with the pool figure.
 fn ca_anchor_standing(throughput: CitedFigureStanding, prefill: CitedFigureStanding, warm: CitedFigureStanding) -> ServingCapacityAnchor {
   ServingCapacityAnchor {
-    deployment: "fixture" as NonEmptyStr,
+    deployment: "srv3-strata" as NonEmptyStr,
     grant: GrantAdmits { conversations: 1000 },
     context: token_count(count: 100000),
     throughput: ThroughputOperatorReading { tokens_per_second: tokens_per_second(count: 300), at_concurrency: 8, standing: throughput },
@@ -557,4 +560,56 @@ test fn witness_srv3_anchor_keeps_only_the_engine_rung() -> Bool {
   // srv3's engine is parallel 8 => the derived replica holds 8 active slots => the disk rung is refused and only
   // the engine's RAM tier survives. srv1 keeps its own one-rung ladder under gunbc.serving.srv1_topology_comparison.
   count(srv3_strata_anchor().warm_swap) == 1
+}
+
+
+// ── THE GPU KV POOL AS THE SECOND CAP BOUND (gunbc.plans.fabric_serving_scheduler, B5 count->memory) ─────────
+// The cap the router renders is the SMALLER of the shape's throughput turns and the card's on-GPU KV pool floor
+// (pool tokens at the policy anchor context). The srv1 cap-6 trial was a count cap the pool could not hold: it
+// filled the GPU KV pool to 99% for +2% output with turns 60% slower (operator-observed receipt, ad-hoc engine-log
+// reads). These cases make that a RENDERED outcome, not a runtime surprise: a card configured above its pool is
+// capped to the pool, and an unread pool refuses the row. Helpers below read the cap's terms.
+
+fn cap_turns_is(c: ServingCardCap, n: Nat) -> Bool {
+  match c { CardCap { turns: t, bound_by: _ } => t == n, CardCapUnread { obligation: _ } => false }
+}
+
+fn cap_bound_is(c: ServingCardCap, want: String) -> Bool {
+  match c {
+    CardCap { turns: _, bound_by: b } => match b { Shape {} => want == "shape", GpuKv { pool_tokens: _ } => want == "gpu_kv", GpuKvNotBinding { reason: _ } => want == "not_binding" }
+    CardCapUnread { obligation: _ } => false
+  }
+}
+
+fn cap_unread(c: ServingCardCap) -> Bool {
+  match c { CardCap { turns: _, bound_by: _ } => false, CardCapUnread { obligation: _ } => true }
+}
+
+// DISCRIMINATING: a vLLM card asking for MORE seats (10) than its on-GPU pool holds at the policy anchor context
+// (744,477 / 100,000 = 7) is capped to the pool's floor of 7, and the binder records the pool bound it. A pool a
+// card could overflow is no longer renderable as a free count.
+test fn a_card_over_its_gpu_kv_pool_is_capped_to_the_pool() -> Bool {
+  let over = serving_card_cap(deployment: "srv1-vllm", shape_turns: 10, anchor_context: serving_conversation_policy.anchor_context)
+  cap_turns_is(c: over, n: 7) && cap_bound_is(c: over, want: "gpu_kv")
+}
+
+// CONTROL: srv1's real shape turns (4) sit under the pool floor (7), so the throughput shape binds and the cap
+// stays 4. The pool term is present and always computed but non-binding on today's fleet -- as the parent's
+// reading of the anchor predicts, and stated plainly.
+test fn a_card_under_its_gpu_kv_pool_keeps_the_shape_turns() -> Bool {
+  let under = serving_card_cap(deployment: "srv1-vllm", shape_turns: 4, anchor_context: serving_conversation_policy.anchor_context)
+  cap_turns_is(c: under, n: 4) && cap_bound_is(c: under, want: "shape")
+}
+
+// A STRATA CARD parks its sessions in host RAM, so the GPU KV pool does NOT bind it: the cap is the shape's turns
+// and the binder records GpuKvNotBinding. An unclassified card is never silently passed through as strata.
+test fn a_strata_card_is_not_gpu_kv_bound() -> Bool {
+  let s = serving_card_cap(deployment: "srv3-strata", shape_turns: 9, anchor_context: serving_conversation_policy.anchor_context)
+  cap_turns_is(c: s, n: 9) && cap_bound_is(c: s, want: "not_binding")
+}
+
+// FAIL CLOSED: a GPU card with no pool reading is CardCapUnread -- which the cap derivation (router_dev_shaped_under)
+// renders as a REFUSED row, never a free cap.
+test fn an_unread_gpu_kv_pool_refuses_the_card_cap() -> Bool {
+  cap_unread(c: serving_card_cap(deployment: "some-unread-gpu-card", shape_turns: 4, anchor_context: serving_conversation_policy.anchor_context))
 }
