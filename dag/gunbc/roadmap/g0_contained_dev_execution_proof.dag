@@ -9,6 +9,7 @@ module gunbc.roadmap.g0_contained_dev_execution_proof
 // consumers) for why the decision rule must be a typed consumer and why the enforcement must be executed.
 
 import std.types { Bool, String }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -21,6 +22,21 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // absent (the unmasked observation), not a grep.
 fn g0_two_sided_isolation_holds(own_op_permitted: Bool, protected_reachable: Bool, sibling_reachable: Bool) -> Bool {
   own_op_permitted && !protected_reachable && !sibling_reachable
+}
+
+// THE VERDICT SURFACE THE HAND-SHELL PROBE CALLS WITH THE OBSERVATIONS IT RECORDED. The probe does NOT
+// decide PASS by its own exit status (a trailing echo always succeeds -- the reviewer's fail-open); it
+// records the three observations from the real per-probe rc and feeds them here. The MODEL is the verdict
+// authority: it returns ExitSuccess only when the rule holds and ExitFailure otherwise, so a broken mask
+// (protected/sibling reachable) crosses the process boundary as a nonzero status. Run it as:
+//   gunbc run --entry .../g0_contained_dev_execution_proof.dag --function g0_two_sided_isolation_verdict \
+//     --arg own_op_permitted=<true|false> --arg protected_reachable=<true|false> --arg sibling_reachable=<true|false>
+fn g0_two_sided_isolation_verdict(own_op_permitted: Bool, protected_reachable: Bool, sibling_reachable: Bool) -> ProcessExit {
+  if g0_two_sided_isolation_holds(own_op_permitted: own_op_permitted, protected_reachable: protected_reachable, sibling_reachable: sibling_reachable) {
+    ExitSuccess
+  } else {
+    ExitFailure { code: 1, reason: "G0 two-sided isolation breached: own op not permitted, or a protected/sibling fixture is reachable" }
+  }
 }
 
 // THE BASH-EMIT CAPABILITY THE HAND-SHELL WITNESS EXERCISES. The enforcement is mount-namespace

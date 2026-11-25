@@ -21,7 +21,7 @@ import gunbc.roadmap.dispatch_worker_unit_confinement { session_process_bounds }
 import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_worker_unit_properties }
 import gunbc.roadmap.roadmap_attempt_occurrence { UnitRunOnSystemManager }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_lab_dashboard_instance }
-import extdeps.systemd.systemd_run { SystemdRunProperty, systemd_run_property_assignment, SystemdRunPropertyAssignmentReady, SystemdRunPropertyAssignmentRefused, systemd_run_empty_capability_bounding_set_assignment }
+import extdeps.systemd.systemd_run { SystemdRunProperty, systemd_run_property_assignment, SystemdRunPropertyAssignmentReady, SystemdRunPropertyAssignmentRefused, systemd_run_empty_capability_bounding_set_assignment, LoadCredentialSetting }
 import gunbc.roadmap.g0_contained_dev_execution_proof { g0_two_sided_isolation_holds }
 
 // ── markdown text extraction over the typed carrier ──────────────────────────────────────────────
@@ -63,7 +63,7 @@ fn unordered_len(b: MarkdownBlock) -> Int {
 
 // THE ENUMERATED COUNT: the number of done-when condition items, summed over each UnorderedListBlock
 // that immediately follows a "**Done when" paragraph. A consumer over the typed plan value.
-data CountAcc { seen: Int, expecting: Bool }
+type CountAcc { seen: Int, expecting: Bool }
 
 fn count_conditions(body: List<MarkdownBlock>) -> Int {
   let r = fold(body, init: CountAcc { seen: 0, expecting: false }, f: (acc, b) =>
@@ -95,19 +95,38 @@ fn g0_counts_agree(body: List<MarkdownBlock>) -> Bool {
   }
 }
 
-// THE RENDERER OUTPUT: map each SystemdRunProperty through the renderer's own assignment fold.
-fn rendered_words(props: List<SystemdRunProperty>) -> List<String> {
-  map(props, pr =>
-    match systemd_run_property_assignment(property: pr) {
-      SystemdRunPropertyAssignmentReady { assignment: a } => a
-      SystemdRunPropertyAssignmentRefused { cause: _ } => ""
-    }
-  )
+// THE RENDERER OUTPUT, kept TYPED (FINDING 2): a refused rendering stays a RefusedWord, never coerced to
+// "". A silent Refused -> "" would let a property that failed to render vanish from the comparison and read
+// as "the key is absent," masking a real failure. has_refusal asserts zero refusals; the good render must
+// be all-Ready or the test fails.
+type RenderedWord = ReadyWord { word: String } | RefusedWord
+
+fn render_word(pr: SystemdRunProperty) -> RenderedWord {
+  match systemd_run_property_assignment(property: pr) {
+    SystemdRunPropertyAssignmentReady { assignment: a } => ReadyWord { word: a }
+    SystemdRunPropertyAssignmentRefused { cause: _ } => RefusedWord
+  }
 }
 
-fn g0_system_manager_render() -> List<String> {
+fn render_readings(props: List<SystemdRunProperty>) -> List<RenderedWord> { map(props, render_word) }
+
+fn has_refusal(rd: List<RenderedWord>) -> Bool {
+  any(rd, r => match r {
+    RefusedWord => true
+    ReadyWord { word: _ } => false
+  })
+}
+
+fn any_word(rd: List<RenderedWord>, want: String) -> Bool {
+  any(rd, r => match r {
+    ReadyWord { word: w } => w == want
+    RefusedWord => false
+  })
+}
+
+fn g0_system_manager_props() -> List<SystemdRunProperty> {
   let inst = srv1_lab_dashboard_instance()
-  rendered_words(dispatch_worker_unit_properties(
+  dispatch_worker_unit_properties(
     instance: inst,
     working_directory: "/w",
     attempt_worktree: "/w",
@@ -116,7 +135,7 @@ fn g0_system_manager_render() -> List<String> {
     process_bounds: session_process_bounds,
     exit_hook: "true" as NonEmptyStr,
     launch_route: UnitRunOnSystemManager,
-  ))
+  )
 }
 
 // ── CHECK 2: condition-count agreement, executed over the typed plan value ────────────────────────
@@ -137,20 +156,31 @@ test fn g0_count_predicate_rejects_a_mismatched_lift() -> Bool {
 
 // ── CHECK 3: rendered capability key, executed on the renderer's OUTPUT ────────────────────────────
 test fn g0_renderer_emits_the_expected_capability_key_and_plan_matches() -> Bool {
-  let words = g0_system_manager_render()
-  let expected = systemd_run_empty_capability_bounding_set_assignment
-  any(words, w => w == expected)
-    && !any(words, w => w == "EmptyCapabilityBoundingSet=yes")
+  let rd = render_readings(g0_system_manager_props())
+  !has_refusal(rd)
+    && any_word(rd, systemd_run_empty_capability_bounding_set_assignment)
+    && !any_word(rd, "EmptyCapabilityBoundingSet=yes")
     && has_substring_in_body(contained_development_execution_g0_plan.body, "CapabilityBoundingSet=")
     && !has_substring_in_body(contained_development_execution_g0_plan.body, "EmptyCapabilityBoundingSet=yes")
 }
 
-// NAMED negative [plan_expected_EmptyCapabilityBoundingSet=yes]: the renderer's output must NOT contain
+// NAMED negative [plan_expected_buggy_capability_key]: the renderer's output must NOT contain
 // the non-directive the plan once expected, and MUST contain the emitted key.
 test fn g0_renderer_does_not_emit_the_buggy_capability_key() -> Bool {
-  let words = g0_system_manager_render()
-  !any(words, w => w == "EmptyCapabilityBoundingSet=yes")
-    && any(words, w => w == systemd_run_empty_capability_bounding_set_assignment)
+  let rd = render_readings(g0_system_manager_props())
+  !has_refusal(rd)
+    && !any_word(rd, "EmptyCapabilityBoundingSet=yes")
+    && any_word(rd, systemd_run_empty_capability_bounding_set_assignment)
+}
+
+// NAMED negative [refused_not_coerced_to_empty] (FINDING 2): a property whose rendering is REFUSED must
+// surface as a typed Refused, never an empty word. A LoadCredential whose identifier contains "/" is
+// refused by the renderer (CredentialIdentifierInvalid); has_refusal must be true -- if refusals were
+// coerced to "" this would read as "no refusal" and silently pass.
+test fn g0_renderer_propagates_a_refusal_as_a_typed_failure() -> Bool {
+  let bad = [ LoadCredentialSetting { identifier: "bad/id" as NonEmptyStr, source: "/etc/gunbc/x" as NonEmptyStr } ]
+  has_refusal(render_readings(bad))
+    && !any_word(render_readings(bad), "")
 }
 
 // ── CHECK 1 decision rule (the bwrap OBSERVATIONS are produced by the scaffold-marked shell witness) ─
