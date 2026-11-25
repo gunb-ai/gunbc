@@ -13,7 +13,7 @@ import gunbc.emit_building_block_contracts { BuildingBlockContract, BuildingBloc
 // which declares no entry. The peer module is untouched and its own copy stays its
 // authority for its rows; this fork exists until the emitter chooses the subject's
 // entry, and the row's handback names it as the blocker for this family.
-import gunbc.emit_building_block_contracts { AllocationCase, case_line, is_observed, operations_above, operations_within, span_text, count_text }
+import gunbc.emit_building_block_contracts { AllocationCase, case_line, is_observed, operations_above, operations_within, span_text, count_text, spans_agree, bytes_above }
 import gunbc.emit_state_threading_specimen { spec_build }
 
 // THE ACCUMULATOR GROUP OF THE BUILDING-BLOCK BATTERY, deliverable two of the roadmap row
@@ -249,16 +249,20 @@ fn violation_contract_holds_case(block_id: String, viol: AccWindow, contract_arm
   }
 }
 
-// NO CALIBRATION ROWS IN THIS BATTERY, stated where the next reader hits it rather than in a
-// message: the accumulator group has no empty-window floor and no known-copying arm, so nothing
-// here would redden if the counting allocator were stuck, cached, or reading a constant -- an
-// uncalibrated battery is exactly that. The two batteries that do carry the pair are
-// emit_value_shape_observation.dag and emit_control_flow_observation.dag; this gap is owed there
-// here too, and it is the first thing to add when the battery is revisited.
+// CALIBRATION, and what it is for. These two rows are the only thing standing between this battery
+// and a stuck counter that looks fine: two empty windows must agree exactly on operations AND bytes,
+// and the known copying arm must sit STRICTLY above that floor on BOTH counters. Drop the second
+// conjunct and a sampler that were cached or stuck would pass the pair while measuring nothing.
+// The floor is printed, never pinned -- it is whatever the empty window measures this run, it is not
+// assumed to be zero (the four counter reads and the span record inside the window allocate), and it
+// is not assumed to stay where today's measurement put it. The known arm builds from the specimen
+// input, never a closed term: a literal like list_push([], 4096) has no input to allocate from and
+// measures nothing, which is the specimen being free rather than the meter being blind.
 
 fn accumulator_cases() -> List<AllocationCase> uses counter: AllocationCounter {
   let src = spec_build(n: acc_cardinality)
   let empty = acc_window(subject: AccMeterEmpty, src: src)
+  let empty_again = acc_window(subject: AccMeterEmpty, src: src)
   let known = acc_window(subject: AccMeterKnownAllocation, src: src)
   let fold_step = acc_window(subject: AccFoldStep, src: src)
   let fold_alloc = acc_window(subject: AccFoldAllocatesPerStep, src: src)
@@ -272,7 +276,7 @@ fn accumulator_cases() -> List<AllocationCase> uses counter: AllocationCounter {
   let escaping_copied = acc_window(subject: AccEscapingClosureCopiesContext, src: src)
   // The 13 rows are built in named groups and joined pairwise, so the parenthesis structure is legible
   // and a missing arm shows as an unused group rather than as a brace the parser trips over.
-  let readings_meter = [subject_case(block_id: "meter_empty", own: empty), subject_case(block_id: "meter_known_allocation", own: known)]
+  let readings_meter = [subject_case(block_id: "meter_empty", own: empty), subject_case(block_id: "meter_known_allocation", own: known), AllocationCase { identity: "accumulator_observation_calibrates_a_measured_floor_with_a_difference", held: spans_agree(a: empty.observation, b: empty_again.observation) && operations_above(a: known.observation, b: empty.observation) && bytes_above(a: known.observation, b: empty.observation), observed: concat(concat("floor_is_measured_not_assumed", span_text(label: "empty_a", o: empty.observation)), " ", span_text(label: "empty_b", o: empty_again.observation), " ", span_text(label: "known", o: known.observation), " ", count_text(label: "known_kept", n: known.kept_len), " ", count_text(label: "empty_kept", n: empty.kept_len)) }, AllocationCase { identity: "accumulator_meter_discriminates_a_copying_arm_above_empty", held: operations_above(a: known.observation, b: empty.observation), observed: concat(readings(a_label: "known", a: known.observation, b_label: "empty", b: empty.observation), " ", count_text(label: "known_kept", n: known.kept_len), " ", count_text(label: "empty_kept", n: empty.kept_len)) }]
   let readings_step = [subject_case(block_id: "loop_record_accumulator", own: fold_step), subject_case(block_id: "field_read", own: field_read)]
   let readings_record = [subject_case(block_id: "record_rebuild_one_field", own: rebuild), subject_case(block_id: "local_closure", own: closure)]
   let readings_escape = [subject_case(block_id: "escaping_closure", own: escaping), violation_case(block_id: "loop_record_accumulator", viol: fold_alloc, contract_arm: fold_step)]
