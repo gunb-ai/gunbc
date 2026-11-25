@@ -46,7 +46,7 @@ import gunbc.compile_diagnostic_census {
   CensusObserved,
   CensusNotRunnable,
 }
-import gunbc.compile_census_probe { blocking_class_census, census_verdict, census_verdict_all, census_premise, census_exit, census_int_text, CensusVerdict }
+import gunbc.compile_census_probe { blocking_class_census, census_verdict, census_verdict_all, census_verdict_worse, census_premise, census_exit, census_int_text, CensusVerdict, CensusHeld, CensusDisagreed, CensusUnobserved }
 import gunbc.guarantee_measurement { GuaranteeProbeId, MeasurementRevision }
 import std.types { String, NonEmptyStr, Bool, Int, List }
 import std.algebra { fold_list }
@@ -356,16 +356,34 @@ test fn floor_cardinality_seam_call_argument_refuses_proving_harness_is_live() -
 test fn floor_cardinality_seam_hole_receipt_joins_its_v1_compile_path() -> Bool {
   match active_v1_compile_probe_row(probe: floor_cardinality_seam_hole_probe) {
     Present { value: row } =>
+      let census = census_of(source: cardinality_seam_hole_source)
       let receipt = build_v1_compile_receipt(
         row: row,
-        census: census_of(source: cardinality_seam_hole_source),
+        census: census,
         subject_revision: synthetic_program_subject_revision(source: cardinality_seam_hole_source),
         harness_revision: witness_harness_revision(probe: row.probe),
       )
-      receipt_joins_v1_compile_path(receipt: receipt)
-        && receipt_matches_v1_compile_probe_row(receipt: receipt, row: row)
-        && observation_is_clean(o: receipt.observed)
-        && (receipt.anchor.path as String) == (v1_compile_rust_path_id as String)
+      // VERDICT-TYPED, NOT A BOOLEAN CONJUNCTION (ruled by bold-pike-529, 2026-11-25). `a && b && c && d`
+      // cannot tell a leg that never ran from a leg that disagreed, and can read either as a pass; the
+      // vacuity this claim exists to close is exactly a gutted producer still returning true. So each
+      // conjunct names itself through census_premise, and the acceptance itself is a real verdict over
+      // the census rather than a Bool over the receipt's observation: census_verdict maps a
+      // CensusNotRunnable to CensusUnobserved carrying the builtin's cause verbatim
+      // (gunbc.compile_census_probe:189), and the fold orders them on the TYPE by constructor match,
+      // CensusDisagreed outranking CensusUnobserved (:130-140). Absence therefore cannot outrank a
+      // finding, and a census that failed to execute cannot be read as one that held.
+      let verdicts = [
+        census_premise("the receipt joins the enrolled v1 compile path", receipt_joins_v1_compile_path(receipt: receipt)),
+        census_premise("the receipt names the enrolled probe row", receipt_matches_v1_compile_probe_row(receipt: receipt, row: row)),
+        census_premise("the anchor carries the v1 compile path id", (receipt.anchor.path as String) == (v1_compile_rust_path_id as String)),
+        census_premise("the hole's observation is accepted-clean", observation_is_clean(o: receipt.observed)),
+        census_verdict(census: census, holds: fn(n) { n == 0 }),
+      ]
+      match fold(verdicts, init: CensusHeld {}, f: (acc, v) => census_verdict_worse(a: acc, b: v)) {
+        CensusHeld {} => true
+        CensusDisagreed { reason: _ } => false
+        CensusUnobserved { cause: _ } => false
+      }
     Absent => false
   }
 }
