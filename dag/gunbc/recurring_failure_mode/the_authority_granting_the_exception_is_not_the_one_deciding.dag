@@ -1,0 +1,42 @@
+module gunbc.recurring_failure_mode.the_authority_granting_the_exception_is_not_the_one_deciding
+
+import std.types { NonEmptyStr }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RecurringFailureMode, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
+import gunbc.rung_climb { AwaitsOneGrounding, GroundingUndeclared }
+
+data the_authority_granting_the_exception_is_not_the_one_deciding: RecurringFailureMode = RecurringFailureMode {
+  identity: "the_authority_granting_the_exception_is_not_the_one_deciding" as NonEmptyStr,
+
+  rung: RungRead {
+    found_at: FoundBelowTheLadder,
+    standing: BelowCeiling {
+      current: FoundBelowTheLadder,
+      ceiling: StructurallyGuaranteed,
+      blocker: AwaitsOneGrounding { grounding: GroundingUndeclared },
+      trigger_capability: "an operator ruling that makes the roster consulted by the SAME authority that decides blocking on the accept path -- either by routing the five accept-path gate sites onto cli_run::compile_clean::compile_clean_diagnostic_is_hard, or by moving the new diagnostic class's blocking decision onto the single disposition authority that already decides it -- so a granted exception is read by the authority that acts on it rather than by a second one the deciding path never consults.",
+    },
+  },
+
+  receipts: [
+    "INVALID STATE: a diagnostic class is granted an exception (a roster waiver) by one authority, while the path that decides whether the diagnostic blocks an accepted executable artifact asks a DIFFERENT authority that never consults the waiver. The exception is therefore inert on the deciding path: it is recorded as granted and applied nowhere. This is the inverse of gunbc.recurring_failure_mode.a_fail_safe_reads_its_capability_from_a_second_authority -- there the two authorities must AGREE and the harm is an unreachable arm when they diverge; here the harm is that the authority which GRANTS the exception is simply not on the path that DECIDES, so agreement is never even attempted and the waiver silently admits nothing.",
+
+    "THE TWO AUTHORITIES, named at main 5611ac47e730 so a reader grepping main finds them. AUTHORITY A (the decider on the accept path): src/v1/00_core.dag:1252 fn is_interpreter_blocking_diagnostic(d) = match diagnostic_disposition(d).gate { GateBlocking => true; GateAdvisoryTypecheck => false; GateRenderedUncounted => false }. AUTHORITY B (the one that carries the waiver): src/v1/stage0/src/cli_run/compile_clean.rs:158 pub fn compile_clean_diagnostic_is_hard(d), whose arms are UnlistedImportUse (policy) and `_ => is_interpreter_blocking_diagnostic(...)` at :167 -- i.e. B delegates to A for every class except the one it overrides. On main B has NO arm for the new class at all.",
+
+    "THE BRANCH-VS-MAIN CORRECTION, stated so the operator is not asked to fix a fork main does not have. At main 5611ac47e730 the token ExhaustivenessUnknown appears 0 times in src/v1/00_core.dag and 0 times in src/v1/stage0/src/cli_run/compile_clean.rs (measured: 7 repo-wide hits, all in dag/gunbc/roadmap/roadmap_authority.dag -- the ticket text and one sibling row). The variant, its GateBlocking disposition and its refusal text exist ONLY on the floor-exhaustiveness-refusal branch (PR #16895 head c9947dfd: the variant declared in 00_core.dag and destructured in compile_clean.rs:399/:713/:815). So the six self-host blocks are PRODUCED BY THE BRANCH'S NEW GateBlocking DISPOSITION, not pre-existing on main, and the sentence 'all six block regardless of any roster' is a statement about the branch, not about main.",
+
+    "THE FIVE ACCEPT-PATH GATE SITES that answer 'is this diagnostic blocking' through Authority A and therefore decide the six blocks (these line numbers hold on main too -- none of these files is touched by the branch): src/v1/stage0/src/main.rs:800 classify_diagnostic (callers: has_blocking_diagnostics -> the Compile exit at main.rs:666, blocking_diagnostic_count -> render_diagnostics:839, render_one_diagnostic severity:857); src/v1/stage0/src/v1_compiler_compile.rs:2973 emittable_graph (any A-blocking diagnostic => None; callers emit_host.rs:2368, v1_compiler_compile.rs:3644); src/v1/stage0/src/v1_compiler_compile.rs:3452 interpreter_blocking_diagnostic_messages_with_source_indices (the located 'msg (file:line:col)' refusal lines the CI prints; callers emit_host.rs:1121, v1_compiler_compile.rs:3487, cli_run.rs:7269, target_invocation_host.rs:804); src/v1/stage0/src/cli_run/entry_resolve.rs:2412/:2417/:2516/:2530 inside resolve_span_rows_by_entry (caller cli_run.rs:13125); src/v1/stage0/src/cli_run/demand_acquire.rs:190 inside resolve_entry_graph_demand_acquired_scoped (callers incl main.rs:1178 the run verb, required_regen_host.rs:4341, demanded_typecheck_equivalence.rs:1163).",
+
+    "SITES THAT MUST NOT BE ROUTED ONTO B: the test/probe filters that call Authority A only to assert a count or a refusal line, not to gate an accepted artifact -- provider_acquire.rs:964, entry_resolve.rs:3843 (mod strict_refusal_counts_blocking_diagnostics), cli_run.rs:9128/9222/9274/9307/9335/9379/9426/9469/9502/9542/9578/9605/9639 (host_reconcile/off_chain witnesses), compiler_tests.rs:1958/2080/2213/2353/3126/3223 (call_shape/method_existence witnesses), bin/auth_declared_but_unwired_witness.rs:287. Routing these onto the waiver authority would let a roster entry change what a witness asserts, which is the witness moving to match the data rather than the data being checked.",
+
+    "EXECUTED, NOT INFERRED (acquisition 13, srv1, gate_tree at c9947dfd with the four admitted mirrors matching the consumer so the tree builds from head): the B arm was instrumented to print CWD, ALLOWLIST_PATH, BYTES_READ, LINES, SET_LEN, KEY, HIT on every call. `gunbc test //gunbc/instruments:self-host` with the roster env set to a RELATIVE path and again to an ABSOLUTE path: RUN_RC=2, BLOCK=6, IBEXDIAG_COUNT=0 -- the B arm fired ZERO times on the deciding path, identical under both path forms. So the six blocks are decided entirely by Authority A; Authority B and its roster are never consulted there. Both candidate explanations for a silent waiver -- H1 the roster file was not read (CWD-relative), H2 the runtime key shape differed -- are refuted: the arm is simply not on this path. The waiver mechanism is inert here, which is why hardening it (count-aware, path resolution) without first collapsing the two authorities changes nothing.",
+
+    "TWO CANDIDATE FIXES, not one, and the choice is operator seed-scope, not lane authority. (1) ROUTE THE GATE SITES ONTO B: change the five sites above to call compile_clean_diagnostic_is_hard instead of is_interpreter_blocking_diagnostic. Touches shared seed Rust (main.rs, v1_compiler_compile.rs, entry_resolve.rs, demand_acquire.rs) and makes B the single accept-path authority, so the roster is finally consulted. (2) MOVE THE CLASS'S BLOCKING DECISION ONTO THE DISPOSITION SIDE: give the new class its blocking answer where the single authority already decides it (the disposition that Authority A reads), so the roster never needs a second authority to reach it -- this may need NO seed Rust at all. Either fix makes the granted exception read by the deciding authority; neither is lane-authority because both touch shared seed Rust or the single_authority structure.",
+
+    "WHY THIS IS THE NODE'S REAL HANDBACK: the operator authorized six rostered waivers, and they were quietly never applied, because the waiver lives only on Authority B while the self-host/test accept path decides on Authority A. The node's red_control (rostered sites stop blocking through the waiver) cannot pass on the current criteria because on the path that decides blocking the waiver is unreachable. The fork is recorded here with a bounded trigger so the next escalation is written from this inventory rather than re-derived.",
+
+    "CONSUMPTION: this per-class record joins the derived gunbc.recurring_failure_mode.roster recurring_failure_mode_roster, which gunbc.rostered_row_join derives for the declared type RecurringFailureMode -- so the row is read by being in the tree, with no hand-listed entry to update. No acquisition was spent to author it: the inventory is a free read of the tree at main 5611ac47e730 and at branch head c9947dfd, and the one executed fact it cites (the B arm firing zero times on the deciding path) is acquisition 13, already run.",
+  ],
+
+  evidence: [],
+}
