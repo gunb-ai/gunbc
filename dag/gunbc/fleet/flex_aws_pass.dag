@@ -350,6 +350,12 @@ fn flex_aws_live_unwarned(owned: List<AwsEc2Instance>, notices: List<FlexAwsNoti
     }))
 }
 
+// "" when the write succeeded, else its error.
+fn flex_aws_write_error(path: String, content: String) -> String {
+  let w = Filesystem.Write(path: path, content: content)
+  if w.success { "" } else { concat(concat(path, ": "), w.error) }
+}
+
 // THE ROUTER CONVERGE, RUN BEFORE THE DECISION: a card under an interruption warning leaves the router in
 // the same pass that will terminate it, and a healthy card joins it. Both files are backed up before
 // either is written, the CA bundle is written before the rows that need it, and one HUP reloads both.
@@ -370,7 +376,7 @@ fn flex_aws_router_converge(region: NonEmptyStr, owned: List<AwsEc2Instance>, no
       FlexAwsRowsRefused { cause: c } => concat(probe_lines, [concat("router=REFUSED ", c)])
       FlexAwsRowsConverged { text: rows, added: added, removed: removed, changed: rows_changed } => {
         let ca = flex_aws_ca_converge(current: ca_read.content, cards: ready)
-        if !rows_changed && (ca == ca_read.content) {
+        if !rows_changed && !ca.changed {
           concat(probe_lines, ["router=unchanged"])
         } else {
           let stamp = to_string(now_unix)
@@ -379,10 +385,12 @@ fn flex_aws_router_converge(region: NonEmptyStr, owned: List<AwsEc2Instance>, no
           if !b1.success || !b2.success {
             concat(probe_lines, [concat("router=REFUSED backup failed: ", concat(b1.error, b2.error))])
           } else {
-            let w_ca = Filesystem.Write(path: dir + "/upstream_ca.pem", content: ca)
-            let w_rows = if w_ca.success { Filesystem.Write(path: dir + "/upstreams.json", content: rows) } else { w_ca }
-            if !w_ca.success || !w_rows.success {
-              concat(probe_lines, [join(["router=REFUSED write failed (backups at *.bak-flex-", stamp, "): ", w_ca.error, w_rows.error], "")])
+            // Only a file whose meaning changed is written; the other is not touched. The CA bundle goes
+            // first, so a row never names a card whose certificate the router does not yet trust.
+            let ca_error = if ca.changed { flex_aws_write_error(path: dir + "/upstream_ca.pem", content: ca.text) } else { "" }
+            let rows_error = if (ca_error == "") && rows_changed { flex_aws_write_error(path: dir + "/upstreams.json", content: rows) } else { "" }
+            if (ca_error != "") || (rows_error != "") {
+              concat(probe_lines, [join(["router=REFUSED write failed (backups at *.bak-flex-", stamp, "): ", ca_error, rows_error], "")])
             } else {
               let hup = DockerCli.Signal(docker: "docker" as NonEmptyStr, name: router_dev_srv1_container_name(), signal: SignalHangup)
               concat(probe_lines, [join([

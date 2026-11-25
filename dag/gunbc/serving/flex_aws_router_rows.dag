@@ -100,7 +100,9 @@ fn flex_aws_rows_converge(current: String, cards: List<FlexAwsEnrollable>, facts
         text: text,
         added: ours_after |> filter(n => !any(ours_before, b => b == n)),
         removed: ours_before |> filter(b => !any(ours_after, n => n == b)),
-        changed: text != serialize_json(v: json_array(elements: rows)),
+        // Changed only when OUR rows changed: the rows we do not own are passed through as parsed, so a
+        // difference there would be the serializer's spelling, never a fact.
+        changed: (ours_before != ours_after) || (serialize_json(v: json_array(elements: rows |> filter(r => flex_aws_is_ours(row: r)))) != serialize_json(v: json_array(elements: map(desired, c => flex_aws_row_json(card: c, facts: facts))))),
       }
     }
     JsonDocumentParsed { value: _ } => FlexAwsRowsRefused { cause: "upstreams.json is not a JSON array" }
@@ -153,8 +155,23 @@ fn flex_aws_pem_blocks(text: String) -> List<FlexAwsPemBlock> {
   fold(split(s: text, delimiter: flex_aws_pem_begin), init: FlexAwsPemScan { tail: "", blocks: [], seen_preamble: false }, f: (acc, part) => flex_aws_pem_step(acc: acc, part: part)).blocks
 }
 
-fn flex_aws_ca_converge(current: String, cards: List<FlexAwsEnrollable>) -> String {
+// The bundle as the set it means: each block's tag and certificate text, in order. Two bundles that
+// differ only in whitespace between blocks mean the same trust, and are not a change.
+fn flex_aws_ca_meaning(text: String) -> List<String> {
+  map(flex_aws_pem_blocks(text: text), b => join([b.tag, "|", trim(b.pem)], ""))
+}
+
+type FlexAwsCaConverge {
+  text: String
+  changed: Bool
+}
+
+// The new bundle, and whether its MEANING changed. A caller writes only on a change, so a converge with
+// nothing of ours to add or remove leaves the operator's file byte for byte as it was (2026-11-25: the
+// first srv1 run rewrote an unchanged bundle, dropping one blank line, and reloaded the router for it).
+fn flex_aws_ca_converge(current: String, cards: List<FlexAwsEnrollable>) -> FlexAwsCaConverge {
   let kept = flex_aws_pem_blocks(text: current) |> filter(b => b.tag == "")
   let ours = map(distinct_by_key(xs: cards, key: c => c.instance_id as String), c => join([flex_aws_ca_tag, c.instance_id as String, "\n", trim(c.cert_pem), "\n"], ""))
-  join(concat(map(kept, b => b.pem), ours), "")
+  let text = join(concat(map(kept, b => b.pem), ours), "")
+  FlexAwsCaConverge { text: text, changed: flex_aws_ca_meaning(text: text) != flex_aws_ca_meaning(text: current) }
 }
