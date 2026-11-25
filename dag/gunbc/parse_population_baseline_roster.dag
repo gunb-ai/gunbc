@@ -37,13 +37,18 @@ import std.algebra { count_where, fold_list, list_push }
 // of that module on srv1, posted as the PR run link. gunbc CI executes NO claims (repo policy until
 // the native frontier clears; claim_executor --required-ci is an ingestion-only stub and the manual
 // required-floor runner was deleted 2026-10-14), so a required_floor entry would be a name with no
-// route. Wiring this witness into an executed CI lane is a DECLARED LATER FRONTIER with its trigger:
-// the prerequisite row (per-phase counters in the parse-population verb). That row is ABSENT at main
-// today (own grep, origin/main roadmap_authority.dag: id values containing "counter" = 0 hits / exit 1;
-// containing "phase" = 3, none a per-phase-counters verb row), so the trigger does not yet exist and
-// consumption of these rows beyond this witness is explicitly OPEN, not claimed. A new node enters the
-// plan only via a planning PR (lane-manager queue), not authored by this row (fenced from the plan). When
-// that prerequisite lands and CI begins executing claims, this witness joins the executed CI lane.
+// route. Wiring these rows into an EXECUTED consumer is a DECLARED FOLLOW-UP with a bounded trigger: the
+// carrier<->tree reconciliation instrument over the pinned sha described in the CONSUMPTION COUNT block
+// below — an event that CAN occur: an executed leg runs `git ls-tree -r -l <pinned_sha> -- dag src/v2` and
+// ties these 170 rows to that output, not just the documented external producer above. Lane-manager has
+// asked planning to cut a dedicated row for it; if planning declines it remains a declared follow-up here
+// and the lane-manager holds it at acceptance (a new node enters the plan only via a planning PR, not
+// authored by this row, fenced from the plan). Until that instrument lands, the only executing route is
+// this roster's own consistency fold in the witness on srv1 (posted as this PR's run link), and
+// consumption of these rows beyond that fold is explicitly OPEN, not claimed. A SEPARATE frontier — joining
+// an executed CI lane — is additionally gated on gunbc CI executing claims at all, which is repo policy
+// pending the native frontier (claim_executor --required-ci is an ingestion-only stub; the manual
+// required-floor runner was deleted 2026-10-14), so a required_floor entry would be a name with no route
 
 // CONSUMPTION COUNT (reviews 98377/98381, honest statement with the count that established it):
 // this roster has EXACTLY ONE reader — the self-consistency fold in its own witness,
