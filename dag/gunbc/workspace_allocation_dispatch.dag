@@ -114,6 +114,7 @@ fn workspace_allocation_prepare_cli() -> CliWireResponse {
       }
     } }
   } }
+  }
 }
 
 // Apply re-reads only the exact request from the reviewed directive. It never runs preparation or
@@ -145,6 +146,5 @@ fn workspace_allocation_readback_cli() -> CliWireResponse {
       }
     } }
   } }
-}
-}
+  }
 }
