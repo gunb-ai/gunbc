@@ -2,14 +2,13 @@ module gunbc.serving.serving_capacity_anchor
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat, nat_max }
-import std.algebra { string_contains }
 import std.optional { Optional, Present, Absent }
-import std.measure { TokensPerSecond, tokens_per_second, tokens_per_second_count, TokenCount, token_count, token_count_value, Permille, permille, permille_count, Millisecond, millisecond, millisecond_count, token_count_duration_at, ByteSize, mebibyte, mebibyte_to_byte_size }
+import std.measure { TokensPerSecond, tokens_per_second, tokens_per_second_count, TokenCount, token_count, token_count_value, Permille, permille, permille_count, Millisecond, millisecond, millisecond_count, token_count_duration_at }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited, cited_figure_read_obligation }
 import product.fabric.serving_throughput { ServingThroughput, ThroughputOperatorReading, ThroughputUnread }
 import gunbc.serving.flash_next_maxq_fork_measurements { fork_prefill_readings, ForkPrefillReading }
 import gunbc.serving.flash_next_topology { topology_dp }
-import gunbc.serving.srv1_topology_comparison { Srv1TopologyReading, srv1_topology_reading, srv1_layout }
+import gunbc.serving.srv1_topology_comparison { Srv1TopologyReading, srv1_topology_reading, srv1_layout, srv1_tp1_kv_capacity }
 import gunbc.serving.serving_layout { ServingLayoutResult, ServingLayoutConfigured, ServingLayoutRefused, srv3_layout, srv4_layout }
 import gunbc.serving.strata_parked_tier { strata_warm_admission, srv4_strata_rung_admissible }
 import gunbc.serving.serving_warm_admission { ServingWarmAdmission, WarmAdmit, WarmRungUnread, WarmRungRefused }
@@ -108,44 +107,23 @@ type ServingWarmSwap
 // would make it bind); a GPU card nobody has read is GpuKvPoolUnread and the cap derivation REFUSES its row --
 // never a free slot, never an assumed capacity.
 type ServingGpuKvPool
-  = GpuKvPoolRead { bytes: ByteSize, tokens: TokenCount, standing: CitedFigureStanding, provenance: NonEmptyStr }
+  = GpuKvPoolRead { tokens: TokenCount, standing: CitedFigureStanding, provenance: NonEmptyStr }
   | GpuKvPoolNotBinding { reason: NonEmptyStr, trigger: NonEmptyStr }
   | GpuKvPoolUnread { obligation: NonEmptyStr }
 
-// srv1 TP=1 as relayed on 2026-11-08: vLLM sized the KV pool at 744,477 tokens in 14.3 GiB. This is the SAME
-// reading srv1_vllm_disk_snapshot_cost.per_token was derived from (14.3 GiB over 744,477 tokens = 20,625
-// B/token), and the Hyperflare trial's 744k figure matches it. Its standing is RELAYED (the operator's
-// transcription, not a read this repository took), so it carries the read_obligation naming the current
-// authority: the live config since (LMCache L1 48 GiB, two replicas) may have re-sized the pool, so the
-// engine's 'GPU KV cache size' log line (num_gpu_blocks x block_size) is the figure to re-read. 14.3 GiB is
-// held at its whole-MiB floor (14643 MiB); the provenance keeps the figure the relay gave.
-data srv1_gpu_kv_pool: ServingGpuKvPool = GpuKvPoolRead {
-  bytes: mebibyte_to_byte_size(m: mebibyte(count: 14643)),
-  tokens: token_count(count: 744477),
-  standing: TranscribedUncited { read_obligation: "Re-read srv1's vLLM 'GPU KV cache size' log line and the num_gpu_blocks x block_size it reports; the pool was relayed at 744,477 tokens in 14.3 GiB on 2026-11-08 and the live config since (LMCache L1 48 GiB, two replicas on one card pair) may have re-sized it." as NonEmptyStr },
-  provenance: "srv1 TP=1 KV pool 744,477 tokens in 14.3 GiB (operator relay, 2026-11-08)" as NonEmptyStr,
-}
-
-// THE CARD'S GPU KV POOL READING, BY ENGINE FAMILY. A first-party card's pool is bound by its engine family,
-// and the deployment name encodes it: a vLLM card (name carries "srv1-vllm") runs its live turns in the GPU KV
-// pool, so the pool is its capacity bound; a Strata card (name carries "strata" for srv3/srv4/the unread strata
-// profile, or the "h11" prefix for the Hyperflare h11 replicas, whose anchor is h11_strata_profile) parks its
-// sessions in host RAM -- its cap is the retain/RAM
-// session figure, NOT a GPU KV pool -- so it declares GpuKvPoolNotBinding with the trigger that would make the
-// pool binding. Rented capacity is not a first-party deployment and has its own owner. A deployment that is
-// neither family is NOT silently admitted: it is GpuKvPoolUnread (expected-but-not-read), which the cap
-// derivation refuses. So every card carries a typed, countable standing, not a fabricated default
-// (gunbc.design_argument::fail_closed).
-fn serving_gpu_kv_pool(deployment: String) -> ServingGpuKvPool {
-  if string_contains(s: deployment, pattern: "srv1-vllm") {
-    srv1_gpu_kv_pool
-  } else if string_contains(s: deployment, pattern: "strata") || string_contains(s: deployment, pattern: "h11") {
-    GpuKvPoolNotBinding {
-      reason: "Strata parks its sessions in host RAM; the card's cap is the retain/RAM session figure, not a GPU KV pool." as NonEmptyStr,
-      trigger: "A Strata deployment moves parked sessions onto a GPU KV pool, making the pool the binding resource." as NonEmptyStr,
+// srv1's GPU KV pool, DERIVED from the row that OWNS the figure -- srv1_topology_comparison's TP=1 KV capacity
+// (kv_tokens_per_replica = 744,477, relayed 2026-11-08) -- together with that row's standing. It is NOT
+// re-literalled here: a second copy of the count could drift from the authority (single_authority /
+// minimize_redundancy). Absent a TP=1 topology row the pool is GpuKvPoolUnread, so the cap derivation refuses
+// rather than inventing a capacity (fail_closed).
+fn srv1_gpu_kv_pool() -> ServingGpuKvPool {
+  match srv1_tp1_kv_capacity() {
+    Present { value: row } => GpuKvPoolRead {
+      tokens: row.kv_tokens_per_replica,
+      standing: row.standing,
+      provenance: "srv1 TP=1 KV pool per replica, derived from gunbc.serving.srv1_topology_comparison's srv1_topology_kv_capacities (the relayed 2026-11-08 measurement)" as NonEmptyStr,
     }
-  } else {
-    GpuKvPoolUnread { obligation: "No GPU KV pool figure has been read for this card; read the engine's 'GPU KV cache size' log line (num_gpu_blocks x block_size) before rendering its cap." as NonEmptyStr }
+    Absent => GpuKvPoolUnread { obligation: "No srv1 TP=1 KV pool row in srv1_topology_comparison; the pool is unread. Read the engine's 'GPU KV cache size' log line (num_gpu_blocks x block_size) and add the topology row before rendering this card's cap." as NonEmptyStr }
   }
 }
 
@@ -153,15 +131,16 @@ fn serving_gpu_kv_pool(deployment: String) -> ServingGpuKvPool {
 // the policy anchor context), so a card configured for more seats than its on-GPU pool holds is capped to the
 // pool. `bound_by` records WHICH term bound -- the witness that makes the discrimination reads it; the rendered
 // nginx row consumes only `turns`. An Unread pool yields CardCapUnread, which the cap derivation renders as a
-// refused row (fail_closed): a GPU card with no pool reading does not fall through to a free cap. Nat division
-// floors, so a partial seat is never counted.
+// refused row (fail_closed): a card with no pool reading does not fall through to a free cap. Nat division
+// floors, so a partial seat is never counted. The pool reading is chosen by the card's ENGINE KIND
+// (ServingEngineKind) at the router boundary -- router_dev_gpu_kv_pool -- not by a match on the deployment name.
 type CardCapBinder = Shape {} | GpuKv { pool_tokens: Nat } | GpuKvNotBinding { reason: NonEmptyStr }
 
 type ServingCardCap = CardCap { turns: Nat, bound_by: CardCapBinder } | CardCapUnread { obligation: NonEmptyStr }
 
-fn serving_card_cap(deployment: String, shape_turns: Nat, anchor_context: TokenCount) -> ServingCardCap {
-  match serving_gpu_kv_pool(deployment: deployment) {
-    GpuKvPoolRead { bytes: _, tokens: tokens, standing: _, provenance: _ } =>
+fn serving_card_cap(pool: ServingGpuKvPool, shape_turns: Nat, anchor_context: TokenCount) -> ServingCardCap {
+  match pool {
+    GpuKvPoolRead { tokens: tokens, standing: _, provenance: _ } =>
       gpu_kv_floor_cap(pool_tokens: token_count_value(t: tokens), shape_turns: shape_turns, context: token_count_value(t: anchor_context))
     GpuKvPoolNotBinding { reason: r, trigger: _ } => CardCap { turns: shape_turns, bound_by: GpuKvNotBinding { reason: r } }
     GpuKvPoolUnread { obligation: o } => CardCapUnread { obligation: o }

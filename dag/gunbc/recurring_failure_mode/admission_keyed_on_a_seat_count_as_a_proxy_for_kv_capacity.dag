@@ -49,7 +49,7 @@ data admission_keyed_on_a_seat_count_as_a_proxy_for_kv_capacity: RecurringFailur
   evidence: [
     DeclarationRef { module_path: "gunbc.serving.serving_capacity_anchor", decl_name: "serving_card_cap", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.serving.serving_capacity_anchor", decl_name: "ServingCardCap", field: WholeDeclaration },
-    DeclarationRef { module_path: "gunbc.serving.serving_capacity_anchor", decl_name: "serving_gpu_kv_pool", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.serving.serving_capacity_anchor", decl_name: "srv1_gpu_kv_pool", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.serving.serving_capacity_anchor", decl_name: "ServingGpuKvPool", field: WholeDeclaration },
     DeclarationRef { module_path: "gunbc.serving.router_dev_policy", decl_name: "router_dev_shaped_under", field: WholeDeclaration },
   ],
