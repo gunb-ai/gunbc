@@ -27,8 +27,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //       (ExitZeroSucceeds meets exit_code 1) -- never by any inability to deliver separate
 //       streams;
 //   (ii) the codex app-server trip's production path does NOT consult this classifier:
-//       dag/gunbc/codex_app_server_press.dag:1691-1722 passes shell.Exec.RunArgvStdin's run.stdout
-//       and run.stderr straight to retain_provider_wire_capture and parse_account_trip_session.
+//       in gunbc.codex_app_server_press::observe_codex_account_preflight the admission from
+//       codex_press_account_trip_argv_admission feeds shell.Exec.RunArgvStdin, and the run's
+//       run.stdout / run.stderr pass straight to gunbc.codex_app_server_press::retain_provider_wire_capture
+//       and gunbc.codex_app_server_press::parse_account_trip_session.
 //       These arms are therefore a regression control for the shell-lane CLASSIFIER's verdict
 //       shape -- classify_process_observation in dag/extdeps/shell/exec.dag, the classifier
 //       behind the shell lane's run_shell_command_observe_outcome -- kept beside this row because
@@ -56,20 +58,12 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // the typed seam. That framing too is RETRACTED -- it was wrong, and this header is its
 // correction. The row's stream-separation ENFORCEMENT clause ("a capture that cannot separate
 // streams refuses rather than muxing") is NOT HELD at the compiler-enforcement rung. The gap,
-// named: ProcessObservation and process_observation in dag/extdeps/shell/exec.dag are PUBLIC and
-// UNSEALED constructors, so any caller can construct a contradictory (exit_code, stdout, stderr)
-// triple at the DAG layer -- including one that carries a merged text on both fields -- and
-// nothing refuses it. The two declarations as they read:
-//   type ProcessObservation {
-//     exit_code: Int
-//     stdout: String
-//     stderr: String
-//   }
-//   fn process_observation(exit_code: Int, stdout: String, stderr: String) -> ProcessObservation {
-//     ProcessObservation { exit_code: exit_code, stdout: stdout, stderr: stderr }
-//   }
-// Neither carries admit_callers; the only admit_callers blocks in that file seal a different
-// carrier. What STILL HOLDS, and where it holds: the separation lives in the RUST capture path --
+// named: extdeps.shell.exec::ProcessObservation and extdeps.shell.exec::process_observation are
+// PUBLIC and UNSEALED — neither declaration carries admit_callers (the only admit_callers blocks
+// in dag/extdeps/shell/exec.dag seal a different carrier), so any caller can construct a
+// contradictory (exit_code, stdout, stderr) triple at the DAG layer -- including one that carries
+// a merged text on both fields -- and nothing refuses it. The declarations read at their own
+// module; they are cited by symbol, not restated here, per gunbc.design_argument::single_authority. What STILL HOLDS, and where it holds: the separation lives in the RUST capture path --
 // the sole production capture constructor drains the child's stdout and stderr pipes as two
 // separate bounded observations and maps them under separate evidence keys (a source-read, NOT
 // executed evidence) -- and the production census found zero live functions accepting one
@@ -79,6 +73,13 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // of separation, and NO arm here demonstrates a refusal OF A MERGED INPUT. The enforcement clause
 // -- sealed construction of process-output observations -- has MOVED to a new row of this lane,
 // working id shell-dag-process-observation-sealed-carrier, and is no longer claimed by this row.
+// WHY THIS RECORD SITS IN A COMMENT, PROVISIONALLY: the authoritative home of a status, receipt,
+// census or hand-off is a typed carrier (gunbc.design_argument::source_annotations), and the
+// hand-off above belongs in a typed planning/roadmap row that does not yet exist. Creating it is
+// a roadmap_authority.dag edit, outside an evidence worker's mandate while this node is in
+// flight -- it is escalated to Manager B through the lane manager. Until that row exists, this
+// comment is its ONLY record and must not be deleted; once the row lands, this passage shrinks
+// to a marker citation of it.
 // A verdict from this module covers exactly the classifier exit-policy and channel-selection
 // shape named above, plus the consumer's zero-sentinel-parsing residue. It does NOT claim the
 // merged-input refusal was demonstrated, does NOT claim the trip production consults this
