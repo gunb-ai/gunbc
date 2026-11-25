@@ -61,9 +61,12 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // marker to a deleted declaration is a refused reference, which is the point of the marker check.
 // A frontier over that display was considered and REFUSED: a frontier is admissible only over a REAL
 // later consumer, and nothing acting will ever consume rendered install text, because the acting route
-// is pure argv end to end -- this argv is never joined through
-// #gunbc.shell_command_text::shell_command_text_of_argv, never wrapped in a `sh -c`, never an ssh remote
-// command string, never a systemd ExecStart line (each searched, hit counts in the PR receipt). So the
+// is typed argv out of the ownership provider: #gunbc.owned_directory::owned_directory_install_argv builds
+// the words and #gunbc.typed_argv_exec::typed_argv_shell_safe_refusal_argv admits them before any dispatch
+// (searches and hit counts in the PR receipt). A later stage with its own contract —
+// #extdeps.ssh.session::ssh_session_exec_portable_words and, over the fleet leg,
+// #gunbc.fleet.fleet_bootstrap_principal_session::exec_as_fleet_principal — then hands the
+// admitted words to ssh, where the far side's shell re-parses them; nothing claims otherwise. So the
 // inert-path predicate goes WITH the display it guarded and is not ported to the acting route: the
 // hazard it guarded was a path spliced into SHELL TEXT, and under execve a path carrying ';' is a
 // filename, not a command. The display's own three arms in dag/test/claim/live_deploy/emit.dag were
