@@ -158,6 +158,47 @@ fn v1_compile_arm_membership() -> List<String> {
   )
 }
 
+// THE SINGLE AUTHORITY for the hand-authored migration-gap allowlist. Both faces of the partition check
+// call this; adding a gap anywhere else is not a declaration, it is a fork. Its one entry and the reason
+// it is allowed to exist are in the note above the partition check.
+fn known_v1_migration_gap_ids() -> List<String> {
+  [sole_ctor_mint_fn_hole_probe as String]
+}
+
+// THE SINGLE AUTHORITY for the .dag probes the dark-suite dispositions already cover, projected from the
+// typed dispositions once. The Bool leg needs the identities to resolve them; the membership law below
+// needs only their Strings, and that projection exists here alone.
+fn disposition_dag_probe_ids() -> List<GuaranteeProbeId> {
+  guarantee_probe_dark_suite_dispositions()
+    |> flat_map(d => match d {
+      MigratedToEnrolledDagProbe { rust_witness: _, dag_probes: probes, rust_retained_until: _ } => probes
+    })
+}
+
+fn disposition_probe_ids() -> List<String> {
+  disposition_dag_probe_ids() |> map(p => p as String)
+}
+
+// THE POPULATION the partition quantifies over, projected once: the ids of every row enrolled on the
+// v1-compile path. Both faces read this, so "what is there to cover" cannot differ between them.
+fn v1_compile_row_ids() -> List<String> {
+  guarantee_probe_rows()
+    |> filter(row => (row.path as String) == (v1_compile_rust_path_id as String))
+    |> map(row => row.probe as String)
+}
+
+// THE MEMBERSHIP LAW, written once: an enrolled v1-compile id is uncovered iff none of the three arms
+// holds it. The Bool leg asserts this list is empty; the naming face renders it. One law, two faces.
+fn uncovered_v1_compile_row_ids() -> List<String> {
+  let disposition_ids = disposition_probe_ids()
+  let gap_ids = known_v1_migration_gap_ids()
+  let arm_c_ids = v1_compile_arm_membership()
+  v1_compile_row_ids()
+    |> filter(id => !string_list_contains(xs: disposition_ids, wanted: id)
+      && !string_list_contains(xs: gap_ids, wanted: id)
+      && !string_list_contains(xs: arm_c_ids, wanted: id))
+}
+
 fn measured_harness_source_material(paths: List<String>) -> NonEmptyStr {
   fold_list(
     xs: paths,
@@ -929,11 +970,8 @@ test fn canonical_probe_resolution_refuses_duplicate_population() -> Bool {
 // The three arms must partition, or a row could claim two contradictory standings at once.
 test fn dark_suite_dispositions_cover_migrated_v1_probes() -> Bool {
   let dispositions = guarantee_probe_dark_suite_dispositions()
-  let disposition_probes: List<GuaranteeProbeId> = dispositions
-    |> flat_map(d => match d {
-      MigratedToEnrolledDagProbe { rust_witness: _, dag_probes: probes, rust_retained_until: _ } => probes
-    })
-  let disposition_probe_ids: List<String> = disposition_probes |> map(p => p as String)
+  let disposition_probes: List<GuaranteeProbeId> = disposition_dag_probe_ids()
+  let disposition_ids: List<String> = disposition_probe_ids()
   let dispositions_name_the_finite_classification_gate = dispositions
     |> all(d => match d {
       MigratedToEnrolledDagProbe { rust_witness: _, dag_probes: _, rust_retained_until: gate } =>
@@ -946,34 +984,26 @@ test fn dark_suite_dispositions_cover_migrated_v1_probes() -> Bool {
       ProbeRowDuplicate { wanted: _, matches: _ } => false
     })
   let disposed_ids_have_no_internal_duplicates =
-    distinct_string_count(values: disposition_probe_ids) == count(disposition_probe_ids)
-  let known_v1_migration_gap_ids: List<String> = [sole_ctor_mint_fn_hole_probe as String]
+    distinct_string_count(values: disposition_ids) == count(disposition_ids)
   // MEMBERSHIP IS DERIVED, not asserted: this list holds only the ids whose leg runs in THIS module, and
   // each remaining entry comes from the roster fn of the module that executes it —
   // #test.claim.guarantee_floor_class_probe_witness::floor_class_executed_v1_compile_probe_ids and
   // #test.claim.infer_record_field_completeness_zero_field_witness::record_completeness_executed_v1_compile_probe_ids.
   // The conjuncts carry the arm, not this note: a probe executed in a witness and not rostered there reds
-  // every_v1_compile_probe_is_disposed_or_a_named_gap, and an id listed in any roster without a registered
-  // v1-compile row reds arm_c_ids_are_registered_v1_compile_rows.
+  // dark_suite_dispositions_cover_migrated_v1_probes through uncovered_v1_compile_row_ids(), and an id
+  // listed in any roster without a registered v1-compile row reds
+  // arm_c_ids_are_registered_v1_compile_rows.
   let dag_native_v1_compile_probe_ids: List<String> = v1_compile_arm_membership()
-  let known_gaps_are_not_disposed = known_v1_migration_gap_ids
-    |> all(gap => !string_list_contains(xs: disposition_probe_ids, wanted: gap))
-  let every_v1_compile_probe_is_disposed_or_a_named_gap = guarantee_probe_rows()
-    |> filter(row => (row.path as String) == (v1_compile_rust_path_id as String))
-    |> all(row => {
-      let id = row.probe as String
-      string_list_contains(xs: disposition_probe_ids, wanted: id)
-        || string_list_contains(xs: known_v1_migration_gap_ids, wanted: id)
-        || string_list_contains(xs: dag_native_v1_compile_probe_ids, wanted: id)
-    })
+  let known_gaps_are_not_disposed = known_v1_migration_gap_ids()
+    |> all(gap => !string_list_contains(xs: disposition_ids, wanted: gap))
+  // THE MEMBERSHIP LAW IS NOT RESTATED HERE: the coverage conjunct is the shared law's own list being
+  // empty, so the face that names offenders and this assertion cannot drift apart.
+  let every_v1_compile_row_is_covered = count(uncovered_v1_compile_row_ids()) == 0
   let dag_native_ids_are_not_disposed_or_gaps = dag_native_v1_compile_probe_ids
-    |> all(id => !string_list_contains(xs: disposition_probe_ids, wanted: id)
-      && !string_list_contains(xs: known_v1_migration_gap_ids, wanted: id))
+    |> all(id => !string_list_contains(xs: disposition_ids, wanted: id)
+      && !string_list_contains(xs: known_v1_migration_gap_ids(), wanted: id))
   let arm_c_ids_are_registered_v1_compile_rows = dag_native_v1_compile_probe_ids
-    |> all(id => (guarantee_probe_rows()
-        |> filter(row => (row.path as String) == (v1_compile_rust_path_id as String)
-          && (row.probe as String) == id)
-        |> count) == 1)
+    |> all(id => (v1_compile_row_ids() |> filter(registered => registered == id) |> count) == 1)
   let arm_c_has_no_duplicates = dag_native_v1_compile_probe_ids
     |> all(id => (dag_native_v1_compile_probe_ids |> filter(other => other == id) |> count) == 1)
   disposed_ids_are_sound
@@ -983,40 +1013,30 @@ test fn dark_suite_dispositions_cover_migrated_v1_probes() -> Bool {
     && dag_native_ids_are_not_disposed_or_gaps
     && arm_c_ids_are_registered_v1_compile_rows
     && arm_c_has_no_duplicates
-    && every_v1_compile_probe_is_disposed_or_a_named_gap
+    && every_v1_compile_row_is_covered
 }
 
 // THE NAMING FACE OF THE PARTITION CHECK ABOVE. The Bool leg can only say that some row is
 // unaccounted; it printed FAIL with no reason at all, which is not evidence of a measurement — a check
-// that cannot name what it rejected has not shown what it looked at. Same three arms, same population,
-// same law; the premise label carries want/got counts and the offending ids.
+// that cannot name what it rejected has not shown what it looked at. It shares every authority with the
+// leg above: the population, the arms, and the membership law are all read from the module-level fns, so
+// the only thing this face owns is presentation - want/got counts and the offending ids in the label.
 test fn dark_suite_partition_names_the_uncovered_rows() -> ProcessExit {
-  let disposition_probe_ids: List<String> = guarantee_probe_dark_suite_dispositions()
-    |> flat_map(d => match d {
-      MigratedToEnrolledDagProbe { rust_witness: _, dag_probes: probes, rust_retained_until: _ } => probes
-    })
-    |> map(p => p as String)
-  let known_v1_migration_gap_ids: List<String> = [sole_ctor_mint_fn_hole_probe as String]
-  let arm_c: List<String> = v1_compile_arm_membership()
-  let v1_rows = guarantee_probe_rows()
-    |> filter(row => (row.path as String) == (v1_compile_rust_path_id as String))
-  let uncovered = v1_rows |> filter(row => {
-    let id = row.probe as String
-    !string_list_contains(xs: disposition_probe_ids, wanted: id)
-      && !string_list_contains(xs: known_v1_migration_gap_ids, wanted: id)
-      && !string_list_contains(xs: arm_c, wanted: id)
-  })
+  // No arm, no population, no predicate is written here. This face only RENDERS what the shared law
+  // returns, which is the only way it can stay honest while the Bool leg asserts the same law.
+  let uncovered = uncovered_v1_compile_row_ids()
+  let wanted = count(v1_compile_row_ids())
   let rendered = fold_list(
     xs: uncovered,
     empty: "",
-    cons: fn(acc, row) { concat(concat(acc, row.probe as String), "; ") }
+    cons: fn(acc, id) { concat(concat(acc, id), "; ") }
   )
   census_exit(census_premise(
     name: concat(
       "v1-compile rows covered by the three arms: want ",
       concat(
-        census_int_text(n: count(v1_rows)),
-        concat(", got ", concat(census_int_text(n: count(v1_rows) - count(uncovered)), concat("; uncovered rows: ", rendered)))
+        census_int_text(n: wanted),
+        concat(", got ", concat(census_int_text(n: wanted - count(uncovered)), concat("; uncovered rows: ", rendered)))
       )
     ),
     holds: count(uncovered) == 0
