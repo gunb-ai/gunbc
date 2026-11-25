@@ -1,0 +1,76 @@
+module test.claim.nh_tier_envelope_probe
+
+// AN INSTRUMENT ON A RED-CONTROL REF, NOT A DELIVERABLE. This file lives on
+// `red-control/floor-ceiling-roster-cut-completeness`, pushed and NEVER merged, and NEVER to have
+// a pull request opened from that ref: it carries claims that are permanently false on a fixed
+// tree, so a PR would put an rc=1 witness file in front of the heal and witness jobs (heal.yml
+// triggers on pull_request opened/synchronize/reopened against main, witnesses.yml on
+// workflow_dispatch, merge_group, push to main and pull_request against main -- a bare branch push
+// fires neither, which is why this ref can exist, but a PR from it would fire both). It carries the
+// observation of main's behaviour that cannot live in the shipped witness module, because two of
+// these three claims are true at main and permanently false at the head that fixes the roster --
+// and a witness file that runs rc=1 at the head it lands on enrols the wrong state as an asset
+// (lane manager's ruling on this node, and the guarantee ladder's rung honesty in
+// gunbc.design_argument::guarantee_ladder: "A type name, diagnostic variant, inert lens or plan
+// establishes nothing", and a claim that can only pass on the broken tree is not evidence).
+//
+// WHAT IS OBSERVED HERE, AND WHERE ITS MIRROR SHIPS. `src/v2/workflow/floor_grandfathered_roster
+// .dag`'s witness module carries the correct-property pair -- the recovered check is tiered as
+// older work and measured against the older allowance, and a name no roster holds is still
+// measured against the new-witness envelope -- and runs rc=0 at the head. The two claims below
+// that assert the NEW-WITNESS answer for the recovered check are the same instrument read at main.
+//
+// THE PAIR IS DISCRIMINATING BY CONSTRUCTION: claims 1 and 3 PASS at main (where the recovered
+// check gets the new-witness envelope) and FAIL at the head that carries the generated rows, and
+// claim 2 -- a name the roster has never seen, so the tier is the same at both heads -- PASSES at
+// both. An instrument that only ever passes proves nothing about the tier it claims to read.
+// It imports NOTHING from the roster change, so it resolves at both heads and the difference
+// cannot be an artefact of the repair being present.
+
+import v2.std.integer { Int, int_eq }
+import v2.std.text { String }
+import std.measure { EvalStepCount, eval_step_count_value }
+import v2.workflow.required_floor {
+  ClaimCeilingTier, GrandfatheredTier, NewWitnessTier,
+  claim_ceiling_tier, claim_ceiling_eval_step_budget, claim_eval_step_budget_for_identity,
+}
+
+// The check the ticket's displaced_cost is about: planned by the required-floor gate at the cut
+// 6dd2206d1258, present in the corpus at main, and absent from the roster as main draws it.
+fn the_recovered_check() -> String {
+  "test.claim.bare_name_ambiguity_wall_witness.bare_value_read_of_an_ambiguous_name_refuses"
+}
+
+// A name no roster has ever held: its tier answer must not move between the two heads, which is what
+// makes claim 1's movement attributable to the roster rather than to the runner.
+fn a_name_no_roster_holds() -> String {
+  "test.claim.bare_name_ambiguity_wall_witness.bare_value_read_of_an_ambiguous_name_refuses_never_exempted_anywhere"
+}
+
+// CLAIM 1 -- the discriminator. At main the recovered check is measured against the NEW-WITNESS
+// envelope (100ms x 723 steps/ms = 72,300); at the head carrying the generated rows it is not, and
+// this claim FAILS there. PASS at main, FAIL at head.
+test fn the_recovered_check_is_measured_against_the_new_witness_envelope() -> Bool {
+  int_eq(
+    a: eval_step_count_value(s: claim_eval_step_budget_for_identity(identity: the_recovered_check())),
+    b: eval_step_count_value(s: claim_ceiling_eval_step_budget(tier: NewWitnessTier {})),
+  )
+}
+
+// CLAIM 2 -- the control that makes claim 1's movement mean something: a name the roster has never
+// held answers the new-witness envelope at BOTH heads.
+test fn a_name_no_roster_holds_is_measured_against_the_new_witness_envelope() -> Bool {
+  int_eq(
+    a: eval_step_count_value(s: claim_eval_step_budget_for_identity(identity: a_name_no_roster_holds())),
+    b: eval_step_count_value(s: claim_ceiling_eval_step_budget(tier: NewWitnessTier {})),
+  )
+}
+
+// CLAIM 3 -- the other direction, executed rather than asserted: the same identity asked of the tier
+// authority itself answers NewWitnessTier. PASS at main, FAIL at head.
+test fn the_recovered_check_is_tiered_as_new_work_at_the_roster_as_main_draws_it() -> Bool {
+  match claim_ceiling_tier(identity: the_recovered_check()) {
+    NewWitnessTier {} => true
+    GrandfatheredTier {} => false
+  }
+}
