@@ -31,9 +31,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // WET, AND IT HAS TO BE. The subject of this file is whether the layer that IMPOSES a deadline can tell
 // a bound that fired from a child that exited with a deadline-looking status of its own accord -- a fact
-// about real processes. The operations it drives (posix.Process.StartDetached / posix.Process.Reap and
-// posix.Signal.TerminateProcessGroup) deliberately carry no mock_response: a replayed pid is a fabricated
-// process, and a replayed reap is exactly the supplied value the hermetic classifier witness
+// about real processes. The operations it drives (posix.Process.StartDetached / posix.Process.Reap,
+// posix.Signal.TerminateProcessGroup and posix.Signal.KillProcessGroup) deliberately carry no
+// mock_response: a replayed pid is a fabricated process, a replayed reap is a fabricated classification,
+// and a replayed kill is a fabricated escalation -- and a replayed reap is exactly the supplied value the hermetic classifier witness
 // (#test.claim.runner.runner_microvm_boot_probe_witness) already supplies. Local recipe, run on srv1
 // under heavy-slot and posted as the PR's execution evidence:
 //   claim_batch --wet --source-root dag --source-root src/v1 --source-root src/v2 \
@@ -47,19 +48,29 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // (process_group_leader, the sole mint, refuses 0 and 1); nothing here kills by name, by pattern, or by
 // any pid it did not start.
 //
-// THE THREE DIRECTIONS THE SHAPE IS JUDGED ON, each its own test with its own real child:
-//   (1) a child that exits 124 by itself            -> Exited{124},  refused, never a deadline;
-//   (2) a child that exits 137 by itself            -> Exited{137},  refused, never a deadline;
-//   (3) a child wedged past the bound we imposed    -> Signalled{15} after OUR TerminateProcessGroup,
-//                                                       and it IS a deadline.
+// THE FOUR DIRECTIONS THE SHAPE IS JUDGED ON, each its own test with its own real child:
+//   (1) a child that exits 124 by itself               -> Exited{124}, refused, never a deadline;
+//   (2) a child that exits 137 by itself               -> Exited{137}, refused, never a deadline;
+//   (3) a child wedged past the bound we imposed       -> Signalled{15} after OUR TerminateProcessGroup,
+//                                                         and it IS a deadline;
+//   (4) a child that DECLINES that SIGTERM             -> Signalled{9} after OUR escalated
+//                                                         KillProcessGroup, and it IS a deadline -- the
+//                                                         orphan the base route's --kill-after prevented
+//                                                         is killed here, by the layer that started it.
 // Plus the forgery the Manager B finding on gunbc#17013 requires: a child that PRINTS the bounder's
-// enforcement diagnostic and exits 124 within the bound is not a deadline either.
+// enforcement diagnostic and exits 124 within the bound is not a deadline either. The one receipt arm no
+// real child can be made to produce is BoundSubjectSurvivedOurSignals -- it needs a subject the KERNEL will
+// not reap, and SIGKILL cannot be declined -- so its planted case lives in
+// #test.claim.runner.runner_microvm_boot_probe_witness, where every other arm is planted too.
 
 // A SHORT BOUND, owned by the witness rather than by the module: the producer carries the value it was
 // given onto the receipt, so the fired verdict must name 3 seconds and not the probe's 180. The red is a
 // bounder that renders a constant nobody imposed on this run.
 data witness_bound: Second = second(count: 3)
 
+// How long the bounder waits for its OWN SIGTERM to land before it escalates to the group kill, and then
+// again for the confirming reap. Kept short here so a declined-SIGTERM case costs seconds, not the probe's
+// 10-second grace; the value is the one carried onto the receipt.
 data witness_kill_grace: Second = second(count: 5)
 
 // A LONG BOUND, for the cases in which the bound must NOT be the thing that ends the child: the child
@@ -158,7 +169,7 @@ test fn a_wedged_child_our_own_bound_signals_is_reported_as_a_deadline() -> Bool
       BoundFired { deadline: d, reaped_signal: sig } => second_count(s: d) == 3 && sig == 15
       _ => false
     })
-    && (match verdict { BootExceededHostDeadline { deadline: dl, console: _, detail: _ } => dl == "3 seconds"  _ => false })
+    && (match verdict { BootExceededHostDeadline { deadline: dl, console: _, console_cause: _, detail: _ } => dl == "3 seconds"  _ => false })
     && !boot_probe_admitted(v: verdict)
     && string_contains(s: text, pattern: "host-deadline-expired after 3 seconds")
     && string_contains(s: text, pattern: "signal 15")
@@ -220,7 +231,7 @@ test fn a_child_that_signals_itself_is_refused_and_not_attributed_to_our_bound()
   let witnessed =
     (match run.receipt { BoundSignalledByOther { signal: sig } => sig == 15  _ => false })
     && (match verdict {
-      BootDeadlineEnforcementUnobservable { console: _, detail: _, cause: _ } => true
+      BootDeadlineEnforcementUnobservable { console: _, console_cause: _, detail: _, cause: _ } => true
       _ => false
     })
     && !boot_probe_admitted(v: verdict)
@@ -230,17 +241,21 @@ test fn a_child_that_signals_itself_is_refused_and_not_attributed_to_our_bound()
   witnessed
 }
 
-// A WEDGE THIS LAYER CANNOT END IS A REFUSAL, NOT A DEADLINE. The child makes SIGTERM ignorable and execs,
-// so the ignored disposition passes to the long-running process; this layer decides at the bound, signals
-// the group it owns, and the subject is simply still there when the post-signal bound expires. There is no
-// SIGKILL verb in this repo's signal service and this layer does not invent one, so the honest answer is
-// SubjectDeclinedOurSignal -- a wedge is not evidence that a deadline fired. The child's own timer ends it
-// a few seconds later; nothing is left running on a schedule nobody set.
-test fn a_subject_that_declines_our_signal_is_refused_and_not_reported_as_a_deadline() -> Bool {
+// A WEDGE THAT DECLINES OUR TERM IS KILLED BY OUR OWN ESCALATION, AND THAT IS A DEADLINE THAT FIRED. The
+// child makes SIGTERM ignorable and then LOOPS rather than exec'ing: an exec would reset the disposition
+// and leave the kernel an ordinary sleep that dies on TERM, which would witness direction (3) a second
+// time instead of this one. (The ignored disposition is inherited by the loop's children, so nothing in
+// the group will take TERM.) This layer decides at its 3-second bound, signals the group it started, waits
+// its grace, and the confirming reap still answers StillRunning -- so the survivor is a process this layer
+// created and had not stopped, and it escalates to the posix.Signal KillProcessGroup operation on that
+// same group. The reap then answers Signalled with SIGKILL's number (signal(7): 9, the one signal a
+// subject cannot catch, block or ignore), and the verdict is the deadline: bounded VM lifetime stays
+// ENFORCED, not merely reported, and it is enforced by the layer that imposed the bound.
+test fn a_subject_that_declines_our_term_is_killed_by_our_escalation_and_reported_as_a_deadline() -> Bool {
   let dir = shell.Mktemp.Dir()
   let files = witness_files(dir: dir.path)
   let run = runner_microvm_boot_probe_run_bounded(
-    subject: posix_sh_program_command(script: "trap '' TERM; exec sleep 12"),
+    subject: posix_sh_program_command(script: "trap '' TERM; while :; do sleep 1; done"),
     deadline: witness_bound,
     kill_grace: witness_kill_grace,
     stdout_file: files.out,
@@ -250,16 +265,16 @@ test fn a_subject_that_declines_our_signal_is_refused_and_not_reported_as_a_dead
   let text = boot_probe_verdict_text(v: verdict)
   let witnessed =
     (match run.receipt {
-      BoundSubjectDeclinedSignal { deadline: d } => second_count(s: d) == 3
+      BoundFired { deadline: d, reaped_signal: sig } => second_count(s: d) == 3 && sig == 9
       _ => false
     })
     && (match verdict {
-      BootDeadlineEnforcementUnobservable { console: _, detail: _, cause: _ } => true
+      BootExceededHostDeadline { deadline: dl, console: _, console_cause: _, detail: _ } => dl == "3 seconds"
       _ => false
     })
+    && string_contains(s: text, pattern: "host-deadline-expired")
+    && !string_contains(s: text, pattern: "deadline-enforcement-unobservable")
     && !boot_probe_admitted(v: verdict)
-    && string_contains(s: text, pattern: "declined")
-    && !string_contains(s: text, pattern: "host-deadline-expired")
   let _cleanup = shell.Remove.RecursiveForce(path: dir.path)
   witnessed
 }

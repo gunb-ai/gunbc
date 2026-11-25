@@ -18,13 +18,13 @@ import gunbc.runner.runner_microvm_boot_probe {
   BootNotAttempted, BootExceededHostDeadline, BootDeadlineEnforcementUnobservable,
   BootConsoleUnreadable, BootVmmFailed,
   BootProbeConsole, EnforcementMismatch,
-  SignalledWithoutOurKill, ReapRefused, GroupSignalRefused, SubjectDeclinedOurSignal,
+  SignalledWithoutOurKill, ReapRefused, GroupSignalRefused, SubjectSurvivedOurSignals,
   KillNotConfirmedByReap, GroupUnnameable,
   boot_probe_verdict, boot_probe_verdict_text, boot_probe_admitted, guest_agent_boot_verdict,
   runner_microvm_boot_probe_rootfs, runner_microvm_boot_probe_networking,
   runner_microvm_boot_probe_bounded_command,
   ExecutionBoundReceipt, BoundFired, BoundChildExited, BoundSignalledByOther, BoundReapRefused,
-  BoundKillRefused, BoundSubjectDeclinedSignal, BoundKillUnconfirmed, BoundKillUnnameable,
+  BoundKillRefused, BoundSubjectSurvivedOurSignals, BoundKillUnconfirmed, BoundKillUnnameable,
   BoundSpawnRefused, NoExecutionBound,
 }
 import gunbc.runner.runner_guest_image { guest_observation_line, GuestBooted }
@@ -60,7 +60,7 @@ fn refusal_refuses_by_name(receipt: ExecutionBoundReceipt, discriminating: Strin
   )
   let text = boot_probe_verdict_text(v: v)
   !boot_probe_admitted(v: v)
-    && (match v { BootDeadlineEnforcementUnobservable { console: _, detail: _, cause: _ } => true  _ => false })
+    && (match v { BootDeadlineEnforcementUnobservable { console: _, console_cause: _, detail: _, cause: _ } => true  _ => false })
     && string_contains(s: text, pattern: discriminating)
     && !string_contains(s: text, pattern: "host-deadline-expired")
     && string_contains(s: text, pattern: "console survives")
@@ -211,7 +211,7 @@ test fn the_deadline_verdict_renders_the_bound_this_run_imposed() -> Bool {
   )
   let text = boot_probe_verdict_text(v: v)
   !boot_probe_admitted(v: v)
-    && (match v { BootExceededHostDeadline { deadline: d, console: _, detail: _ } => d == "7 seconds"  _ => false })
+    && (match v { BootExceededHostDeadline { deadline: d, console: _, console_cause: _, detail: _ } => d == "7 seconds"  _ => false })
     && string_contains(s: text, pattern: "host-deadline-expired after 7 seconds")
     && string_contains(s: text, pattern: "signal 15")
     && !string_contains(s: text, pattern: "180")
@@ -236,8 +236,8 @@ test fn each_unobservable_arm_names_what_was_actually_observed() -> Bool {
       discriminating: "group signal was refused",
     )
     && refusal_refuses_by_name(
-      receipt: BoundSubjectDeclinedSignal { deadline: second(count: 3) },
-      discriminating: "declined",
+      receipt: BoundSubjectSurvivedOurSignals { deadline: second(count: 3) },
+      discriminating: "the kernel would not reap it",
     )
     && refusal_refuses_by_name(
       receipt: BoundKillUnconfirmed { deadline: second(count: 3), exit_code: 0 },
@@ -256,46 +256,63 @@ test fn each_unobservable_cause_carries_its_own_observed_data() -> Bool {
   let c = console_of(stdout: "", stderr: "")
   let by_signal = boot_probe_verdict(runner: actions_runner_release_2_336_0, console: c, receipt: BoundSignalledByOther { signal: 9 })
   let by_reap = boot_probe_verdict(runner: actions_runner_release_2_336_0, console: c, receipt: BoundReapRefused { cause: "ECHILD" })
-  let by_decline = boot_probe_verdict(runner: actions_runner_release_2_336_0, console: c, receipt: BoundSubjectDeclinedSignal { deadline: second(count: 4) })
+  let by_decline = boot_probe_verdict(runner: actions_runner_release_2_336_0, console: c, receipt: BoundSubjectSurvivedOurSignals { deadline: second(count: 4) })
   let by_exit = boot_probe_verdict(runner: actions_runner_release_2_336_0, console: c, receipt: BoundKillUnconfirmed { deadline: second(count: 4), exit_code: 3 })
   let by_pid = boot_probe_verdict(runner: actions_runner_release_2_336_0, console: c, receipt: BoundKillUnnameable { pid: 1 })
   let by_kill = boot_probe_verdict(runner: actions_runner_release_2_336_0, console: c, receipt: BoundKillRefused { deadline: second(count: 4), detail: "EPERM" })
   (match by_signal {
-    BootDeadlineEnforcementUnobservable { cause: SignalledWithoutOurKill { signal: s }, console: _, detail: _ } => s == 9
+    BootDeadlineEnforcementUnobservable { cause: SignalledWithoutOurKill { signal: s }, console: _, console_cause: _, detail: _ } => s == 9
     _ => false
   })
     && (match by_reap {
-      BootDeadlineEnforcementUnobservable { cause: ReapRefused { cause: cc }, console: _, detail: _ } => cc == "ECHILD"
+      BootDeadlineEnforcementUnobservable { cause: ReapRefused { cause: cc }, console: _, console_cause: _, detail: _ } => cc == "ECHILD"
       _ => false
     })
     && (match by_decline {
-      BootDeadlineEnforcementUnobservable { cause: SubjectDeclinedOurSignal { deadline: d }, console: _, detail: _ } => d == "4 seconds"
+      BootDeadlineEnforcementUnobservable { cause: SubjectSurvivedOurSignals { deadline: d }, console: _, console_cause: _, detail: _ } => d == "4 seconds"
       _ => false
     })
     && (match by_exit {
-      BootDeadlineEnforcementUnobservable { cause: KillNotConfirmedByReap { deadline: _, exit_code: x }, console: _, detail: _ } => x == 3
+      BootDeadlineEnforcementUnobservable { cause: KillNotConfirmedByReap { deadline: _, exit_code: x }, console: _, console_cause: _, detail: _ } => x == 3
       _ => false
     })
     && (match by_pid {
-      BootDeadlineEnforcementUnobservable { cause: GroupUnnameable { pid: p }, console: _, detail: _ } => p == 1
+      BootDeadlineEnforcementUnobservable { cause: GroupUnnameable { pid: p }, console: _, console_cause: _, detail: _ } => p == 1
       _ => false
     })
     && (match by_kill {
-      BootDeadlineEnforcementUnobservable { cause: GroupSignalRefused { deadline: _, detail: dd }, console: _, detail: _ } => dd == "EPERM"
+      BootDeadlineEnforcementUnobservable { cause: GroupSignalRefused { deadline: _, detail: dd }, console: _, console_cause: _, detail: _ } => dd == "EPERM"
       _ => false
     })
 }
 
-// AN UNREADABLE CAPTURE IS NOT AN EMPTY CONSOLE. "The guest printed nothing" and "we could not read what
-// the guest printed" are different claims with different owners -- the first is a fact about the guest,
-// the second a fact about the reader -- and the captured-console route used to hand the reader's failure
-// to the classifier as an exit status, which arrived as a sentence about the VMM. Both routes now refuse
-// by name, carrying the path and the reader's cause.
+// AN UNREADABLE CAPTURE IS NOT AN EMPTY CONSOLE, ON EVERY ARM. "The guest printed nothing" and "we could
+// not read what the guest printed" are different claims with different owners -- the first is a fact about
+// the guest, the second a fact about the reader. The two content arms refuse outright (BootConsoleUnreadable,
+// carrying the path and the reader's cause). The deadline arm and the six refusal arms keep the fact they
+// exist to report -- that a bound did or did not observably fire -- and carry the reader's failure with
+// them: the console block then names the read cause instead of printing the empty string the unreadable
+// read left behind, which is the fabricated-plausible-answer shape gunbc.design_argument::fail_closed
+// refuses. A reader must never be able to mistake an unreadable capture for a silent guest.
 test fn an_unreadable_capture_refuses_by_name_rather_than_claiming_an_empty_console() -> Bool {
   let c = console_unreadable(path: "/probe/vmm-console.txt", cause: "EACCES: permission denied")
   let bounded = boot_probe_verdict(runner: actions_runner_release_2_336_0, console: c, receipt: BoundChildExited { exit_code: 0 })
   let captured = boot_probe_verdict(runner: actions_runner_release_2_336_0, console: c, receipt: NoExecutionBound)
   let bounded_text = boot_probe_verdict_text(v: bounded)
+  let fired = boot_probe_verdict(
+    runner: actions_runner_release_2_336_0,
+    console: c,
+    receipt: BoundFired { deadline: second(count: 7), reaped_signal: 15 },
+  )
+  let fired_text = boot_probe_verdict_text(v: fired)
+  let refusal_receipts = [
+    BoundSignalledByOther { signal: 9 },
+    BoundReapRefused { cause: "ECHILD" },
+    BoundKillRefused { deadline: second(count: 7), detail: "EPERM" },
+    BoundSubjectSurvivedOurSignals { deadline: second(count: 7) },
+    BoundKillUnconfirmed { deadline: second(count: 7), exit_code: 3 },
+    BoundKillUnnameable { pid: 1 },
+  ]
   !boot_probe_admitted(v: bounded)
     && !boot_probe_admitted(v: captured)
     && (match bounded {
@@ -305,6 +322,27 @@ test fn an_unreadable_capture_refuses_by_name_rather_than_claiming_an_empty_cons
     && (match captured { BootConsoleUnreadable { path: _, cause: _ } => true  _ => false })
     && string_contains(s: bounded_text, pattern: "boot=console-unreadable")
     && !string_contains(s: bounded_text, pattern: "boot=no-console")
+    // the deadline arm: still a deadline (it was observed), but its console says unreadable, not empty
+    && (match fired {
+      BootExceededHostDeadline { deadline: d, console: _, console_cause: cc, detail: _ } =>
+        d == "7 seconds" && (match cc { Present { value: why } => string_contains(s: why, pattern: "EACCES")  Absent => false })
+      _ => false
+    })
+    && string_contains(s: fired_text, pattern: "host-deadline-expired")
+    && string_contains(s: fired_text, pattern: "unreadable")
+    && string_contains(s: fired_text, pattern: "NOT the claim that the guest printed nothing")
+    // every refusal arm: still refused for its own reason, and honest that the console was not read
+    && for_all(
+         xs: refusal_receipts,
+         predicate: fn(r) {
+           let t = boot_probe_verdict_text(
+             v: boot_probe_verdict(runner: actions_runner_release_2_336_0, console: c, receipt: r),
+           )
+           string_contains(s: t, pattern: "deadline-enforcement-unobservable")
+             && string_contains(s: t, pattern: "unreadable")
+             && string_contains(s: t, pattern: "EACCES")
+         },
+       )
 }
 
 // NOTHING WAS STARTED, SO NOTHING IS JUDGED. A spawn refusal is not a boot that failed and not a bound

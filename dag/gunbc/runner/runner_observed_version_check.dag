@@ -102,8 +102,8 @@ fn verify_captured_console(path: String) -> ProcessExit
     BootConsoleLacksRunnerVersion { expected: _, console: _ } => exit_failure(reason: boot_probe_verdict_text(v: verdict))
     BootConsoleLacksGuestBooted { console: _ } => exit_failure(reason: boot_probe_verdict_text(v: verdict))
     BootNotAttempted { cause: _ } => exit_failure(reason: boot_probe_verdict_text(v: verdict))
-    BootExceededHostDeadline { deadline: _, console: _, detail: _ } => exit_failure(reason: boot_probe_verdict_text(v: verdict))
-    BootDeadlineEnforcementUnobservable { console: _, detail: _, cause: _ } => exit_failure(reason: boot_probe_verdict_text(v: verdict))
+    BootExceededHostDeadline { deadline: _, console: _, console_cause: _, detail: _ } => exit_failure(reason: boot_probe_verdict_text(v: verdict))
+    BootDeadlineEnforcementUnobservable { console: _, console_cause: _, detail: _, cause: _ } => exit_failure(reason: boot_probe_verdict_text(v: verdict))
     BootConsoleUnreadable { path: _, cause: _ } => exit_failure(reason: boot_probe_verdict_text(v: verdict))
     BootVmmFailed { exit_code: _, console: _, detail: _ } => exit_failure(reason: boot_probe_verdict_text(v: verdict))
   }

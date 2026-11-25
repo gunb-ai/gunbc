@@ -37,6 +37,15 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // (pubs.opengroup.org/onlinepubs/9699919799/functions/kill.html): it names a process group.
 // That form is TerminateProcessGroup, used by the harness shell-job backstop and job_kill,
 // not by the host reaper.
+//
+// THE SERVICE DOES MODEL ONE SIGKILL FORM, and it is the sibling KillProcessGroup below -- the same
+// negative-pid form carrying KILL instead of TERM. It is not a general "send any signal" verb and it is
+// not available to the polite stop paths: the one thing that authorises it is a bound the calling layer
+// IMPOSED ITSELF, on a subject that layer STARTED, whose confirming reap still answers StillRunning after
+// the caller's own grace period -- at which point the running process is that layer's own unfinished
+// cleanup, and leaving it alive is the state the bound existed to prevent (a wedged micro-VM holding a
+// guest running). See the escalation after the kill grace in
+// #gunbc.runner.runner_microvm_boot_probe::runner_microvm_boot_probe_run_bounded.
 service posix.Signal {
   operation TerminateProcess {
     requires none
@@ -72,6 +81,31 @@ service posix.Signal {
     exit {
       0 => Unit
       nonzero => String "kill -TERM process group failed"
+    }
+  }
+
+  // THE ESCALATION A SELF-IMPOSED BOUND OWNS, and the only SIGKILL this service models. The caller is a
+  // layer that imposed its own deadline, started the subject itself, already sent TerminateProcessGroup,
+  // and whose confirming reap still answers StillRunning: the survivor is a process THIS layer created and
+  // has not managed to stop, so it finishes the job with the one signal a subject cannot catch or ignore
+  // (signal(7): "SIGKILL and SIGSTOP cannot be caught, blocked, or ignored"). Same sealed
+  // #extdeps.posix.process::ProcessGroupLeader input -- minted only by
+  // #extdeps.posix.process::process_group_leader, from a pid the caller itself spawned, refusing pid 0, 1
+  // and negatives -- which is what keeps `kill -KILL -1`, a broadcast to every process the caller may
+  // reach, unconstructible here. No mock_response: a replayed pid is a fabricated kill, so only the wet
+  // lane runs this, against a real process group. A caller may NOT use this as a first move; the term
+  // paths above are the polite ones, and this sibling exists only as their escalation.
+  operation KillProcessGroup {
+    requires none
+    input { group: ProcessGroupLeader }
+    output {
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["kill", "-KILL", "-{group.pgid}"] }
+    exit {
+      0 => Unit
+      nonzero => String "kill -KILL process group failed"
     }
   }
 }
