@@ -12,6 +12,8 @@ import gunbc.parse_population_baseline_roster {
   parse_population_is_unique,
   parse_population_duplicate_refuses_with_trivial_eq,
   parse_population_rows_ordered_descending,
+  parse_population_ordering_accepts_descending,
+  parse_population_ordering_refuses_ascending,
 }
 
 // THE ROSTERED CLAIM for gunbc.parse_population_baseline_roster, the two fixed parse populations
@@ -43,6 +45,17 @@ test fn parse_population_baseline_roster_byte_totals_hold() -> Bool {
 // along list order, so the two fixed populations really are the largest blobs at the pinned sha.
 test fn parse_population_baseline_rows_ordered_descending_holds() -> Bool {
   parse_population_rows_ordered_descending()
+}
+
+// DISCRIMINATION (both arms shown). The ACCEPT arm: a descending synthetic list is accepted.
+test fn parse_population_ordering_accepts_descending_holds() -> Bool {
+  parse_population_ordering_accepts_descending()
+}
+
+// The REFUSE arm: an ascending synthetic list (a smaller file before a larger one) is refused by
+// the same fold. If the fold passed everything, this FAILs — so the invariant cannot be vacuous.
+test fn parse_population_ordering_refuses_ascending_holds() -> Bool {
+  parse_population_ordering_refuses_ascending()
 }
 
 // Disjointness/uniqueness over the whole roster via keyed_roster_build's Built arm.

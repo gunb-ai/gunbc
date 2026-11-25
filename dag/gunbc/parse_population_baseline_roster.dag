@@ -301,8 +301,11 @@ type ParseOrderScan {
   ok: Bool
 }
 
-fn parse_population_rows_ordered_descending() -> Bool {
-  let step = fold_list(xs: parse_population_baseline_rows,
+// General ordering check (arg-taking, so BOTH arms can be exercised, not just the fixed roster):
+// the list must be non-increasing in byte size along position. Returns false the first time a
+// member is larger than its predecessor.
+fn parse_population_check_rows_ordered_descending(rows: List<ParsePopulationRow>) -> Bool {
+  let step = fold_list(xs: rows,
     empty: ParseOrderScan { started: false, prev: byte_size(count: 0), ok: true },
     cons: fn(acc, row) {
       let le: Bool = measure_le(a: row.bytes, b: acc.prev)
@@ -310,6 +313,43 @@ fn parse_population_rows_ordered_descending() -> Bool {
       ParseOrderScan { started: true, prev: row.bytes, ok: acc.ok && step_ok }
     })
   step.ok
+}
+
+// The fixed roster, ordered descending (the ACCEPT arm on the real population).
+fn parse_population_rows_ordered_descending() -> Bool {
+  parse_population_check_rows_ordered_descending(parse_population_baseline_rows)
+}
+
+// DISCRIMINATION PROBES. A check that only ever sees already-sorted rows passes whatever the
+// emitter does (the leg-lifecycle failure mode: green on a wrong compiler). These feed the SAME fold
+// synthetic rows so it must actually refuse a bad order and accept a good one.
+//   accepts_descending: 30,20,10 (non-increasing) -> the check must say true.
+//   refuses_ascending:  10,20,30 (an ascending step) -> the check must say false.
+// If the fold were broken to always return true, refuses_ascending would FAIL; if always false,
+// accepts_descending would FAIL. Together they prove the invariant is discriminating, not vacuous
+// (gunbc.design_ruling::executed_red_control_names_its_failing_commit).
+fn parse_population_rows_descending() -> List<ParsePopulationRow> {
+  [
+    ParsePopulationRow { path: "probe/large.dag", bytes: byte_size(count: 30) },
+    ParsePopulationRow { path: "probe/middle.dag", bytes: byte_size(count: 20) },
+    ParsePopulationRow { path: "probe/small.dag", bytes: byte_size(count: 10) },
+  ]
+}
+
+fn parse_population_rows_ascending() -> List<ParsePopulationRow> {
+  [
+    ParsePopulationRow { path: "probe/small.dag", bytes: byte_size(count: 10) },
+    ParsePopulationRow { path: "probe/middle.dag", bytes: byte_size(count: 20) },
+    ParsePopulationRow { path: "probe/large.dag", bytes: byte_size(count: 30) },
+  ]
+}
+
+fn parse_population_ordering_accepts_descending() -> Bool {
+  parse_population_check_rows_ordered_descending(parse_population_rows_descending()) == true
+}
+
+fn parse_population_ordering_refuses_ascending() -> Bool {
+  parse_population_check_rows_ordered_descending(parse_population_rows_ascending()) == false
 }
 
 // Cardinalities derived from the scan's position (== whole roster) and the fixed split.
