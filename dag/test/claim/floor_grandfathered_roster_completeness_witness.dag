@@ -437,8 +437,10 @@ test fn no_typed_removal_withdraws_the_last_three_completeness_rows() -> Bool {
 // THE COMPLAINT. The roster gained 145 rows and the tree joined six of them. The other 139 were
 // carried nowhere in the repository, so deleting any of them from the list left every witness green
 // and the completeness argument was handed to a run on srv1 that nothing in the tree reads. These
-// claims close that: the expected set is declared in the carrier as ten groups of fifteen, and every
-// group is looked up in the chunk list the floor actually consults. Fifteen rows per claim is a
+// claims close that: the expected set is declared in the carrier as TEN GROUPS WHOSE SIZES ARE NINE
+// FIFTEENS PLUS ONE TEN -- 15 x 9 + 10 = 145, the sum `the_at_cut_population_carries_every_recovered_row`
+// asserts against both the group total and the recovered-region total -- and every group is looked up in
+// the chunk list the floor actually consults. Fifteen rows per claim is a
 // measured cost, not a preference -- a member costs 8,066 eval steps in this module and a non-member
 // 43,583, so one claim holding all 145 against all 3,748 rows would spend past the ceiling this node
 // governs, while fifteen-row groups stay inside it even when the mutant row forces a full descent.
