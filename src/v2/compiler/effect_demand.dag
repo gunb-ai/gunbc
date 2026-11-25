@@ -1711,7 +1711,7 @@ fn filesystem_effect_emitted_closure_census(
 // run time through the resolver fold over the corpus (corpus_rows_for_witness: tokenize_prepared ->
 // parse_module -> resolve_module_phase1), not fixture rows -- so a rename that moves a contracted
 // declaration off the census fails that leg. The real-reach REFUSAL observation cannot be planted into
-// the tree a claim runs on and is executed on the two scratch probe trees outside this witness (the
+// the tree a claim runs on and is owed by the two scratch probe trees run outside this witness (the
 // census run itself refuses on a planted extra reach and on a removed member). What remains deferred to
 // the handler-binding row below: the emit-side binding itself, alongside the trigger's resolve leg.
 //
