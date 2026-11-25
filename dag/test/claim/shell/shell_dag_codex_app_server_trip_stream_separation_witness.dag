@@ -9,83 +9,46 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// SIBLING REGRESSION CONTROL FOR shell-dag-codex-app-server-trip-script, ENROLLED AFTER LANDING.
-// The pinned acceptance oracle dag/test/claim/shell/shell_dag_codex_app_server_trip_script_witness.dag
-// is byte-untouched by this file; this module is a NEW claim module beside it, enrolled under the
-// Manager B ruling (escalation msg_4157df93, routed through the shell + primitive-egress lane
-// manager) that the row's red_control clause "a capture that cannot separate streams refuses
-// rather than muxing" had NO arm in the pinned oracle that constructs a non-separable capture and
-// shows it refusing, and that the remedy is a new sibling claim module -- never an edit of the
-// pinned oracle (an oracle move refuses verification).
+// SIBLING REGRESSION CONTROL for roadmap row shell-dag-codex-app-server-trip-script, enrolled by
+// the shell + primitive-egress lane after that row landed (lane ruling escalation msg_4157df93).
+// This is a NEW claim module beside the pinned acceptance oracle
+// dag/test/claim/shell/shell_dag_codex_app_server_trip_script_witness.dag, which this file does
+// not touch -- the remedy for a missing arm is a sibling control, never an oracle edit.
 //
-// WHAT ARMS 1-3 TEST, NAMED PRECISELY. A revision of this header (head 2dd972cb9b8) framed them
-// as testing "when the stdout channel CANNOT be delivered separated"; that framing is RETRACTED,
-// wrong on two counts, and this header is its correction (Manager B review, REQUEST_CHANGES at
-// 2dd972cb9b8, items 1):
-//   (i) every fixture below builds a process_observation whose stdout and stderr are ALREADY
-//       separate fields, and the refusal in arm 1 is triggered by the EXIT POLICY
-//       (ExitZeroSucceeds meets exit_code 1) -- never by any inability to deliver separate
-//       streams;
-//   (ii) the codex app-server trip's production path does NOT consult this classifier:
-//       in gunbc.codex_app_server_press::observe_codex_account_preflight the admission from
-//       codex_press_account_trip_argv_admission feeds shell.Exec.RunArgvStdin, and the run's
-//       run.stdout / run.stderr pass straight to gunbc.codex_app_server_press::retain_provider_wire_capture
-//       and gunbc.codex_app_server_press::parse_account_trip_session.
-//       These arms are therefore a regression control for the shell-lane CLASSIFIER's verdict
-//       shape -- classify_process_observation in dag/extdeps/shell/exec.dag, the classifier
-//       behind the shell lane's run_shell_command_observe_outcome -- kept beside this row because
-//       the row's red_control names a capture that refuses. They are NOT evidence about the
-//       trip's own capture path, and no arm here claims otherwise.
-// What arms 1-3 assert, in order -- exit-policy and channel-selection, nothing more:
-//   exit_policy_refusal_reports_exit_and_stderr_on_own_fields_never_a_merged_present:
-//     under ExitZeroSucceeds a non-zero exit REFUSES, and the refusal carries the exit code and
-//     the stderr text each on its OWN field; the classifier never hands back the stdout field's
-//     content as one Present channel.
-//   channel_selection_admitted_run_presents_stdout_field_only_never_stderr_text:
-//     an admitted run (exit 0) presents the stdout field EXACTLY -- not the stderr text, never
-//     containing it.
-//   channel_selection_empty_stdout_is_absent_not_a_refusal_and_not_stderr_content:
-//     an admitted run with EMPTY stdout and non-empty stderr is the Absent channel -- not a
-//     refusal, and never the stderr content.
-// Arm 4 is a separate property, consumer-side:
-//   muxed_sentinels_stay_data_in_the_consumer: the capture CONSUMER
-//     (parse_account_trip_stdout_for_tests) performs zero sentinel-mux parsing; BOTH planted
-//     sentinel-wrapped lines are asserted to stay UNKNOWN frames (count == 2; the arm's
-//     commentary records why the earlier count > 0 did not discriminate).
+// WHAT THESE FOUR ARMS TEST, and nothing beyond that:
 //
-// ENFORCEMENT CLAUSE: NOT HELD, gap named; the clause has MOVED out of this row. An earlier
-// revision of this header asserted the merged-input antecedent was STRUCTURALLY INEXPRESSIBLE at
-// the typed seam. That framing too is RETRACTED -- it was wrong, and this header is its
-// correction. The row's stream-separation ENFORCEMENT clause ("a capture that cannot separate
-// streams refuses rather than muxing") is NOT HELD at the compiler-enforcement rung. The gap,
-// named: extdeps.shell.exec::ProcessObservation and extdeps.shell.exec::process_observation are
-// PUBLIC and UNSEALED — neither declaration carries admit_callers (the only admit_callers blocks
-// in dag/extdeps/shell/exec.dag seal a different carrier), so any caller can construct a
-// contradictory (exit_code, stdout, stderr) triple at the DAG layer -- including one that carries
-// a merged text on both fields -- and nothing refuses it. The declarations read at their own
-// module; they are cited by symbol, not restated here, per gunbc.design_argument::single_authority. What STILL HOLDS, and where it holds: the separation lives in the RUST capture path --
-// the sole production capture constructor drains the child's stdout and stderr pipes as two
-// separate bounded observations and maps them under separate evidence keys (a source-read, NOT
-// executed evidence) -- and the production census found zero live functions accepting one
-// combined stream and producing both channels (the deleted mux split_gunbc_stdio_capture: 5 hits
-// repo-wide, all prose; the sentinel literals: 0 executable hits outside prose and the pinned
-// oracle's own negative-data list). Neither this module nor this row claims compiler enforcement
-// of separation, and NO arm here demonstrates a refusal OF A MERGED INPUT. The enforcement clause
-// -- sealed construction of process-output observations -- has MOVED to a new row of this lane,
-// working id shell-dag-process-observation-sealed-carrier, and is no longer claimed by this row.
-// WHY THIS RECORD SITS IN A COMMENT, PROVISIONALLY: the authoritative home of a status, receipt,
-// census or hand-off is a typed carrier (gunbc.design_argument::source_annotations), and the
-// hand-off above belongs in a typed planning/roadmap row that does not yet exist. Creating it is
-// a roadmap_authority.dag edit, outside an evidence worker's mandate while this node is in
-// flight -- it is escalated to Manager B through the lane manager. Until that row exists, this
-// comment is its ONLY record and must not be deleted; once the row lands, this passage shrinks
-// to a marker citation of it.
-// A verdict from this module covers exactly the classifier exit-policy and channel-selection
-// shape named above, plus the consumer's zero-sentinel-parsing residue. It does NOT claim the
-// merged-input refusal was demonstrated, does NOT claim the trip production consults this
-// classifier (it does not, see (ii)), and does NOT hold the row's stream-separation enforcement
-// clause -- the named gap above is the record for that half, and the census above stands only as
-// a measurement of the production path.
+// ARMS 1-3 -- exit-policy and channel-selection shape of the shell-lane CLASSIFIER
+// #gunbc.command_runner::classify_process_observation (policy ExitZeroSucceeds over an
+// #extdeps.shell.exec::ProcessObservation). Every fixture builds an observation whose stdout and
+// stderr are ALREADY separate fields; the refusal in arm 1 is triggered by the EXIT POLICY (a
+// non-zero exit), never by an inability to deliver separate streams. The codex trip's production
+// path does not consult this classifier for the capture pair: in
+// #gunbc.codex_app_server_press::observe_codex_account_preflight the argv admitted by
+// #gunbc.codex_app_server_press::codex_press_account_trip_argv_admission feeds
+// shell.Exec.RunArgvStdin, and the run's stdout and stderr pass straight to
+// #gunbc.codex_app_server_press::retain_provider_wire_capture and
+// #gunbc.codex_app_server_press::parse_account_trip_session. These arms are a regression control
+// for the classifier rung because the row's red_control names a capture that refuses; they are
+// not evidence about the trip's own capture path.
+//   arm 1: a refused capture reports the exit code and the stderr text each on their OWN field
+//     and never a merged Present channel;
+//   arm 2: an admitted run presents the stdout field exactly, never the stderr text;
+//   arm 3: an admitted run with empty stdout is the Absent channel -- not a refusal, and never
+//     the stderr content.
+//
+// ARM 4 -- consumer-side anti-mux residue.
+// #gunbc.codex_app_server_press::parse_account_trip_stdout_for_tests performs zero sentinel-mux
+// parsing: both planted sentinel-wrapped lines are asserted to stay unknown frames
+// (muxed_unknown_count == 2), so a parser that stripped the markers and recognised the wrapped
+// JSON frame would fail this arm.
+//
+// WHAT THIS MODULE DOES NOT CLAIM: it demonstrates no refusal OF A MERGED INPUT and holds no
+// compiler-enforcement guarantee. The enforcement half of the row's clause -- sealed
+// construction of process-output observations -- is a capability gap recorded, with its
+// next-rung trigger, in the integration register at
+// #gunbc.integration_concern.process_observation_construction_is_unsealed::process_observation_construction_is_unsealed,
+// whose preserved obligation is the consumer-side anti-mux property arm 4 checks. A verdict from
+// this module covers the classifier rung shape and the consumer residue named above, no more.
 
 data clean_frame: String = "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"ok\":true}}"
 
@@ -131,8 +94,8 @@ test fn muxed_sentinels_stay_data_in_the_consumer() -> Bool {
   // SAME frame wrapped in the deleted mux's sentinel markers, plus a sentinel-wrapped stderr-noise
   // line, arrives as two plain lines: each fails parse_json_document at position 0 (the leading
   // sentinel text is not JSON), so each receives its OWN unknown digest -- BOTH planted lines stay
-  // unknown. DISCRIMINATION, per Manager B review at head 2dd972cb9b8 (item 2): the earlier
-  // assertion (muxed_unknown_count > 0) passed even under a hypothetical parser that STRIPPED the
+  // unknown. DISCRIMINATION (Manager B review, item 2): the earlier assertion
+  // (muxed_unknown_count > 0) passed even under a hypothetical parser that STRIPPED the
   // ---GUNBC_STDOUT--- / ---GUNBC_STDERR--- prefixes and recognised the unwrapped JSON frame,
   // because the stripped 'boot noise' line alone still counts > 0. That parser is the deleted mux
   // reborn as prefix-stripping, and the wide count did not forbid it. The count == 2 below does:
