@@ -29,7 +29,6 @@ fn gunbc_ci_fabric_writer_identity_observe_invoke() -> String {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_fabric_writer_identity_observe_target,
-    claim_run: false,
     receipt_rel: fabric_writer_identity_receipt_path
   )
 }

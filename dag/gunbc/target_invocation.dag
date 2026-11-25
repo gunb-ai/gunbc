@@ -16,6 +16,7 @@ import gunbc.target_binding {
   build_target_binding_index, target_binding_lookup,
 }
 import std.types { String, Bool, List }
+import std.execution_mode { ExecutionMode, Hermetic, Wet, Record }
 import std.integer { Int }
 import extdeps.bazel.target_pattern {
   TargetPattern, SingleTarget, PackageTargets, SubtreeTargets,
@@ -108,6 +109,296 @@ fn test_operand_set_form_refusal_rendered(operand: String) -> String {
     concat("gunbc test: ", operand),
     " denotes a SET of targets outside every route's universe (the native test route and the claim route); no executor enumerates that population, and a set form is never widened into another route"
   )
+}
+
+// THE BATCH IS SUPPLIED, NOT DERIVED, AND THE TWO NO-WIDENING OBLIGATIONS SIT ON DIFFERENT SIDES.
+//
+// `gunbc.plans.claim_execution_consolidation` §2 line 25: "One invocation runs an exact supplied batch. `gunbc test`
+// accepts several operands and runs exactly the claims they denote, in one process ... Overlapping operands select each
+// claim identity once. No caller widens a sparse request to `:all` or a subtree to fit the interface, and none spawns
+// one process per claim." Three facts decide where each half of that sentence is enforced, and getting them apart is
+// the point of this fold:
+//
+//   * THE ROUTE ADMITS SET FORMS. §1 line 15 gives the interface as `gunbc test <target-pattern>...`, and a pattern
+//     that denotes many claims is a legitimate request -- `//test/claim/...` means exactly the claims under it. So a
+//     fold that refused subtree forms would be refusing something the plan asks for.
+//   * `TestOperandSetForm` CANNOT SERVE AS A WIDENING GUARD even if one were wanted: it fires only when the set form
+//     lies OUTSIDE both universes. A subtree inside the claim universe is admitted as `TestOperandClaimRoute` and
+//     carried to the executor, which selects the discovered claims the pattern contains. A reviewer who assumed
+//     otherwise would have a guard that never fires.
+//   * THE NO-WIDENING DUTY IS THE CALLER'S, so it is checkable where a reviewer can read it -- on each migrated argv
+//     (a caller that wants three claims passes three exact labels). The caller table of gunb-ai/gunbc#16872 is that
+//     control. It is not enforced here, and this comment says so rather than leaving the absence to be discovered.
+//
+// AN EMPTY BATCH IS ITS OWN CAUSE, AND THE FIRST REFUSAL WINS. `TestOperandsEmpty` and `TestOperandsRefused` have
+// different remedies: one says the invocation asked for nothing, the other names an operand to repair -- the state-space
+// conflation this repository keeps finding. A refusal is never overwritten by a later operand, because the first cause
+// is the one a reader can act on while the rest of the input is still in front of them. There is no "run everything"
+// fallback: `gunbc run --claim-run`'s no-`--entry` branch ran every test function in the roots, and it is deleted
+// rather than ported.
+//
+// OVERLAP IS DEDUPLICATED ON OPERAND TEXT, AND THAT IS THE WHOLE OF WHAT THIS FOLD CAN DO. Two occurrences of one
+// operand denote one claim, so the second adds nothing. Deduplication across DIFFERENT operand forms -- a subtree and
+// an exact label naming the same claim -- needs the discovered population, which lives with the executor, not with an
+// admission over text; the seed's control (gunb-ai/gunbc#16872, controls table) is the case that pins it, and this
+// layer deliberately does not claim a property it cannot see.
+type TestOperandSelection
+  = TestOperandsSelected { exact: List<Label>, native: List<TargetPattern>, claim: List<TargetPattern>, seen: List<String> }
+  | TestOperandsEmpty
+  | TestOperandsRefused { operand: String, cause: TestOperandFoldRefusal }
+
+// THE FOLD CARRIES THE AUTHORITY'S CAUSE, TYPED, WITH ONE ADDITION OF ITS OWN. `FoldPatternRefused` wraps the pattern
+// authority's own `TargetPatternRefusal` rather than paraphrasing it, for the reason given above at
+// `test_operand_refusal_rendered`. `FoldSetFormOutsideEveryUniverse` is the fold's own fact: a set form outside both
+// universes is refused by `admit_test_operand` as `TestOperandSetForm`, which carries the pattern and no cause, so the
+// fold names what it knows -- the operand, and the pattern that denoted nothing any executor enumerates.
+type TestOperandFoldRefusal
+  = FoldPatternRefused { cause: TargetPatternRefusal }
+  | FoldSetFormOutsideEveryUniverse { pattern: TargetPattern }
+
+// ONE OPERAND, ADMITTED ALONE. Every arm of `admit_test_operand` maps to exactly one arm here, with the contributing
+// item in a one-element list so `test_operands_merge` has a uniform shape to merge into an accumulator.
+fn test_operands_admit_one(
+  operand: String,
+  native_universe: TargetPattern,
+  claim_universe: TargetPattern
+) -> TestOperandSelection {
+  match admit_test_operand(operand: operand, native_universe: native_universe, claim_universe: claim_universe) {
+    TestOperandExactTarget { label: l } =>
+      TestOperandsSelected { exact: [l], native: [], claim: [], seen: [operand] }
+    TestOperandNativeRoute { pattern: p } =>
+      TestOperandsSelected { exact: [], native: [p], claim: [], seen: [operand] }
+    TestOperandClaimRoute { pattern: p } =>
+      TestOperandsSelected { exact: [], native: [], claim: [p], seen: [operand] }
+    TestOperandSetForm { pattern: p } =>
+      TestOperandsRefused { operand: operand, cause: FoldSetFormOutsideEveryUniverse { pattern: p } }
+    TestOperandRefused { operand: o, cause: c } =>
+      TestOperandsRefused { operand: o, cause: FoldPatternRefused { cause: c } }
+  }
+}
+
+// A refusal absorbs everything: once a batch is refused, no later operand can make it admissible, and the located cause
+// stays the one the reader sees.
+fn test_operands_merge(acc: TestOperandSelection, next: TestOperandSelection) -> TestOperandSelection {
+  match acc {
+    TestOperandsRefused { operand: o, cause: c } => TestOperandsRefused { operand: o, cause: c }
+    TestOperandsEmpty => next
+    TestOperandsSelected { exact: e, native: n, claim: c, seen: s } => match next {
+      TestOperandsSelected { exact: e2, native: n2, claim: c2, seen: s2 } => TestOperandsSelected {
+        exact: fold(e2, init: e, f: (a1, x) => append(a1, x)),
+        native: fold(n2, init: n, f: (a2, x) => append(a2, x)),
+        claim: fold(c2, init: c, f: (a3, x) => append(a3, x)),
+        seen: fold(s2, init: s, f: (a4, x) => append(a4, x))
+      }
+      TestOperandsEmpty => TestOperandsSelected { exact: e, native: n, claim: c, seen: s }
+      TestOperandsRefused { operand: o, cause: c2 } => TestOperandsRefused { operand: o, cause: c2 }
+    }
+  }
+}
+
+// THE BATCH, ADMITTED. Total over the operand list, with no reach for a population or a row: `native_universe` and
+// `claim_universe` stay parameters for the reason stated at the top of this module (a fold that pulled in the lane's own
+// rows would be checkable only against a transcription of them, which is the change detector DESIGN's oracle rule
+// rejects). `TestOperandsSelected.seen` is the fold's bookkeeping for the overlap rule and carries no meaning after
+// admission.
+fn admit_test_operands(
+  operands: List<String>,
+  native_universe: TargetPattern,
+  claim_universe: TargetPattern
+) -> TestOperandSelection {
+  if length(operands) == 0 {
+    TestOperandsEmpty
+  } else {
+    fold(
+      operands,
+      init: TestOperandsSelected { exact: [], native: [], claim: [], seen: [] },
+      f: (acc, operand) => match acc {
+        TestOperandsRefused { operand: o, cause: c } => TestOperandsRefused { operand: o, cause: c }
+        TestOperandsEmpty =>
+          test_operands_admit_one(
+            operand: operand,
+            native_universe: native_universe,
+            claim_universe: claim_universe
+          )
+        TestOperandsSelected { exact: e, native: n, claim: c, seen: s } =>
+          if any(s, t => t == operand) {
+            TestOperandsSelected { exact: e, native: n, claim: c, seen: s }
+          } else {
+            test_operands_merge(
+              acc: acc,
+              next: test_operands_admit_one(
+                operand: operand,
+                native_universe: native_universe,
+                claim_universe: claim_universe
+              )
+            )
+          }
+      }
+    )
+  }
+}
+
+// WHICH BATCH A SELECTION IS, DECIDED FROM WHAT IT CONTAINS RATHER THAN FROM A SPELLING. The option admissions below
+// (`admit_test_execution_mode`, `admit_test_source_roots`) refuse on this, and the refusal must name a batch that
+// exists: an option belonging to the claim route is refused on a native batch, an instrument batch, or a batch that
+// mixes the two -- mixing is not something the plan asks for, so it is refused rather than silently routed to whichever
+// executor would take part of it.
+// WHICH BATCH A SELECTION IS, DECIDED FROM WHAT IT CONTAINS RATHER THAN FROM A SPELLING. The option admissions below
+// (`admit_test_execution_mode`, `admit_test_source_roots`) refuse on this, and the refusal must name a batch that
+// exists: an option belonging to the claim route is refused on a native batch, a registry batch, or a batch that mixes
+// them -- mixing is not something the plan asks for, so it is refused rather than silently routed to whichever executor
+// would take part of it.
+//
+// THE REGISTRY POPULATION IS ITS OWN ARM BECAUSE IT IS NOT THE NATIVE ONE. `TestOperandAdmission`'s exact arm is what
+// `admit_test_operand` yields for a label inside NEITHER universe, and that is where the instrument subjects live
+// (`//gunbc/instruments:<name>` is outside `//v2/...` and outside `//test/claim/...`): they run today, through a
+// `gunbc.instrument_targets` binding and one `Producer` arm. Folding them into `NativeBatch` would let an instrument
+// target inherit native behaviour, and refusing them in the fold would delete a working entry point -- both are
+// regressions the field names hide, so the arm is named for who answers it.
+type TestBatchRoute
+  = ClaimBatch
+  | NativeBatch
+  | InstrumentRegistryBatch { exact: Int }
+  | MixedBatch { native: Int, claim: Int, exact: Int }
+  | NoOperandsSelected
+
+fn test_selection_batch_route(selection: TestOperandSelection) -> TestBatchRoute {
+  match selection {
+    // An empty batch, or a refused one, has no route: NoOperandsSelected makes the option admission refuse the whole
+    // invocation before anything is evaluated, rather than letting an option be admitted onto nothing.
+    TestOperandsEmpty => NoOperandsSelected
+    TestOperandsRefused { operand: o, cause: c } => NoOperandsSelected
+    TestOperandsSelected { exact: e, native: n, claim: c, seen: s } =>
+      if length(c) > 0 && length(n) == 0 && length(e) == 0 {
+        ClaimBatch
+      } else if length(n) > 0 && length(c) == 0 && length(e) == 0 {
+        NativeBatch
+      } else if length(e) > 0 && length(n) == 0 && length(c) == 0 {
+        InstrumentRegistryBatch { exact: length(e) }
+      } else if length(n) == 0 && length(c) == 0 && length(e) == 0 {
+        NoOperandsSelected
+      } else {
+        MixedBatch { native: length(n), claim: length(c), exact: length(e) }
+      }
+  }
+}
+
+// THE OPTION SURFACE IS TWO OPTIONS, AND THE DEFAULT IS A GRANT RATHER THAN A REFUSAL.
+//
+// The cutover adds exactly two things to `gunbc test`: the execution mode and the corpus it reads. Both are claim-route
+// only, and both refuse on every other route -- the same rule stated once, in the same shape, so a reader checking
+// "can this option reach the interpreter?" finds one answer in two places rather than two answers to compare.
+//
+// A MODE IS THE ONLY THING SPELLING A MODE CAN CHANGE, AND UNSPELLING IS NOT A FAILURE. With no mode flag the batch
+// runs `Hermetic`, which is what `execution_mode_for(None, is_claim = true)` does today and what every contributor's
+// `gunbc test <label>` and the remote build's test command already rely on; refusing an unspelled mode would break the
+// one-command goal and every existing invocation, so the arm below grants it and there is deliberately no refusal arm to
+// reach for. `Record` is a mode of its own -- effects run and fixtures are written -- which is why `--record` alone
+// grants the claim's host effects, `--hermetic --fixture-store <dir>` replays with none, and `--record --wet` is TWO
+// mode flags rather than a combination: the refusal names both, because a reader correcting this needs to know which
+// two they typed.
+//
+// A FIXTURE STORE NAMES A MODE AND DOES NOT DEFAULT ONE. `--fixture-store <dir>` without an explicit `--record` or
+// `--hermetic` is refused: a store is meaningful in exactly two modes and guessing which one the caller meant would put
+// the guess where the caller's intent belongs.
+type TestModeFlags {
+  hermetic: Bool
+  wet: Bool
+  record: Bool
+  fixture_store: String
+}
+
+type TestExecutionModeRefusal
+  = ModeFlagsConflict { first: String, second: String }
+  | RecordWithoutFixtureStore
+  | FixtureStoreWithoutRecordOrHermetic
+  | ModeOptionOnNonClaimBatch
+
+type TestExecutionModeAdmission
+  = TestExecutionModeGranted { mode: ExecutionMode, fixture_store: String }
+  | TestExecutionModeDenied { cause: TestExecutionModeRefusal }
+
+// Total, and the spelling of the conflict is checked rather than inferred from the count of flags: `first` and `second`
+// are the flags as typed, in the order a reader meets them in the argv.
+fn admit_test_execution_mode(
+  batch: TestBatchRoute,
+  flags: TestModeFlags
+) -> TestExecutionModeAdmission {
+  if batch != ClaimBatch {
+    TestExecutionModeDenied { cause: ModeOptionOnNonClaimBatch }
+  } else if flags.wet && flags.record {
+    TestExecutionModeDenied { cause: ModeFlagsConflict { first: "--wet", second: "--record" } }
+  } else if flags.wet && flags.hermetic {
+    TestExecutionModeDenied { cause: ModeFlagsConflict { first: "--hermetic", second: "--wet" } }
+  } else if flags.hermetic && flags.record {
+    TestExecutionModeDenied { cause: ModeFlagsConflict { first: "--hermetic", second: "--record" } }
+  } else if flags.record && length(flags.fixture_store) == 0 {
+    // Record writes fixtures; a mode that writes into nowhere is a request nobody can honour, and the fixture store is
+    // the mode's OWN argument -- never a source root.
+    TestExecutionModeDenied { cause: RecordWithoutFixtureStore }
+  } else if length(flags.fixture_store) > 0 && !flags.record && !flags.hermetic {
+    TestExecutionModeDenied { cause: FixtureStoreWithoutRecordOrHermetic }
+  } else if flags.record {
+    TestExecutionModeGranted { mode: Record, fixture_store: flags.fixture_store }
+  } else if flags.wet {
+    TestExecutionModeGranted { mode: Wet, fixture_store: "" }
+  } else {
+    // The grant every existing invocation depends on: no flag, or `--hermetic` alone (with or without a store to
+    // replay from). Hermetic is granted, not refused.
+    TestExecutionModeGranted { mode: Hermetic, fixture_store: flags.fixture_store }
+  }
+}
+
+// THE CORPUS THE ONE ROUTE READS, SELECTED NOT SWITCHED. `--source-root` is an option on the claim route for one
+// reason the plan settles by name (section 2, line 26): "For each caller that supplies source roots today, it is
+// established whether that set is redundant with `witness_layer_roots` or meaningful (fixture-driven callers
+// especially), and the migration preserves the meaningful ones." The fixture witness passes a third root today, the
+// directory its scratch entry lives in, and a label cannot reach a file outside the roots.
+//
+// THIS IS NOT A SECOND ENTRYPOINT, AND THE TEST IS THAT THE ADMISSION AND THE RESULT RULE DO NOT CHANGE. The operands
+// stay labels admitted by `admit_test_operands`; what this option selects is which corpus those labels are looked up
+// in. It is refused on the native and instrument routes exactly as the mode option is, so the number of routes that
+// read a caller-supplied corpus stays one.
+//
+// THE REPLACE-NOT-APPEND RULE IS IN THE TYPE, NOT IN A COMMENT (gunbc.design_argument::source_annotations: a comment is
+// unreadable by any pass). There is exactly one roots field, the route reads that field and nothing else, and
+// `default_roots` is a PARAMETER the caller of this admission supplies -- it never reaches a row of its own, so when an
+// option was given the defaults have nowhere to reappear. The seed control that makes this readable gives one root and
+// asserts no default is among `Granted.roots`.
+type TestSourceRootRefusal
+  = SourceRootsOnNonClaimBatch
+  | RootValueAbsent
+  | RootNotWalkable { root: String, reason: String }
+
+type TestSourceRootsAdmission
+  = TestSourceRootsGranted { roots: List<String> }
+  | TestSourceRootsDenied { cause: TestSourceRootRefusal }
+
+// Total. `default_roots` is supplied by the caller (the seed passes `gunbc.ci.ci_layer_roots.witness_layer_roots`)
+// rather than named here, for the same reason the universes are parameters above: a module that pulled in the lane's
+// own rows would be checkable only against a transcription of them.
+fn admit_test_source_roots(
+  batch: TestBatchRoute,
+  given: List<String>,
+  default_roots: List<String>
+) -> TestSourceRootsAdmission {
+  if batch != ClaimBatch {
+    TestSourceRootsDenied { cause: SourceRootsOnNonClaimBatch }
+  } else if length(given) == 0 {
+    TestSourceRootsGranted { roots: default_roots }
+  } else if any(given, r => length(r) == 0) {
+    TestSourceRootsDenied { cause: RootValueAbsent }
+  } else {
+    TestSourceRootsGranted { roots: given }
+  }
+}
+
+// A ROOT THAT TURNS OUT NOT TO BE A DIRECTORY IS DISCOVERED BY THE INDEX, NOT BY THIS ADMISSION. `RootNotWalkable`
+// stays unconstructible here -- length and emptiness are all a string can be judged by -- and exists so the seed's
+// unreadable-root path reports through THIS vocabulary next to `ClaimSourceRefusalCause.ClaimSourceRootUnreadable`
+// above, which keeps the prose cause out of a typed refusal the same way.
+fn test_source_root_not_walkable(root: String, reason: String) -> TestSourceRootRefusal {
+  RootNotWalkable { root: root, reason: reason }
 }
 
 // A CLAIM-ROOT SOURCE THE ROUTE CANNOT READ IS NO OBSERVATION, AND ITS CAUSE IS NOT A TYPO'S.

@@ -26,7 +26,6 @@ fn gunbc_ci_app_control_plane_inspect_invoke() -> String {
     prelude: gunbc_ci_app_jwt_prelude(),
     source_roots: witness_layer_roots,
     target: gunbc_ci_app_control_plane_inspect_target,
-    claim_run: false,
     receipt_rel: Present { value: app_control_plane_receipt_path }
   )
 }
