@@ -1,0 +1,20 @@
+module test.claim.live_deploy.claim_route_user_work_wrap_witness
+
+import std.types { Bool, String }
+import std.algebra { string_contains }
+import extdeps.filesystem.filesystem_io
+
+data claim_route_host_path: String = "src/v1/stage0/src/target_invocation_host.rs"
+
+// THE SURVIVING CLAIM SPAWN IS THE ROUTE, AND IT ENTERS THE WRAP. The deleted claim_batch deliberately
+// stayed outside the user-work wrap (pinned here until the cutover deleted the binary); the one v1
+// entrypoint does the opposite, and this row is the pin: the test verb reexecs into the user-work slice
+// before any producer runs (dated record: the inversion is the cutover,
+// gunbc.design_ruling::claim_execution_has_one_v1_entrypoint; gunbc.plans.claim_execution_consolidation).
+// The row lives in its own lean module, not in test.claim.live_deploy.user_work_slice_witness, so its
+// closure does not inherit that module's unrelated pre-existing red
+// (dag/gunbc/roadmap/roadmap_refused_retry.dag: non-exhaustive match, ValidationSubjectUnnameable).
+test fn the_claim_route_enters_the_user_work_wrap() -> Bool {
+  let src = filesystem_read(path: claim_route_host_path).content
+  string_contains(s: src, pattern: "reexec_into_user_work_slice_if_owed")
+}

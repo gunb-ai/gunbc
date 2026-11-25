@@ -6,7 +6,7 @@ import extdeps.shell
 import std.content_hash { Sha256Digest, Sha256Hash, ContentHash }
 import std.optional { Present, Absent }
 import gunbc.host_command_binding { LocalCommandHost }
-import gunbc.machine_intake.mtcollins1_census_member_readback { answer_on, LegAnswered, LegNotDispatched }
+import gunbc.machine_intake.mtcollins1_census_member_readback { answer_on, LegAnswered, LegNotDispatched, LegUnanswered }
 import extdeps.tools.gnu_coreutils { ln_symbolic_force_command }
 import extdeps.tools.stat { stat_file_type_command }
 import gunbc.fleet.site_pxe_edge_live_boot_pair { SitePxeEdgeLiveExtraction, SitePxeEdgeLiveBootFile }
@@ -62,8 +62,8 @@ test fn a_symlinked_destination_parent_is_never_written_by_real_execution() -> B
   }
   let wrote = answer_on(host: LocalCommandHost, command: stat_file_type_command(path: concat(base, concat("/elsewhere/", "live/1111111111111111111111111111111111111111111111111111111111111111"))))
   let cleaned = shell.Remove.RecursiveForce(path: top.path)
-  let linked_ok = match linked { LegAnswered { exit_code: c, stdout: _, stderr: _ } => c == 0  LegNotDispatched { reason: _ } => false }
-  let wrote_absent = match wrote { LegAnswered { exit_code: c, stdout: _, stderr: _ } => c != 0  LegNotDispatched { reason: _ } => false }
+  let linked_ok = match linked { LegAnswered { exit_code: c, stdout: _, stderr: _ } => c == 0  LegNotDispatched { reason: _ } => false  LegUnanswered { cause: _ } => false }
+  let wrote_absent = match wrote { LegAnswered { exit_code: c, stdout: _, stderr: _ } => c != 0  LegNotDispatched { reason: _ } => false  LegUnanswered { cause: _ } => false }
   top.success && linked_ok && refused && wrote_absent
 }
 
