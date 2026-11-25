@@ -1,6 +1,10 @@
 module gunbc.emit_building_block_contracts
 
 import std.types { Bool, Int, List, String }
+import std.optional { Optional, Present, Absent }
+import std.realization_measurement { AllocationObservation, AllocationObserved, AllocationOperationsRanBackwards, AllocationBytesRequestedRanBackwards, AllocationProviderNotSelected }
+import std.measure { byte_size_count }
+import std.nat { Nat, nat_to_decimal_string }
 import gunbc.emit_copy_qualification {
   EmitCopyQualificationCaseId,
   CaseApplicability,
@@ -416,4 +420,81 @@ fn applicability_accepted_probes() -> Int {
 
 fn applicability_discriminates(f: BuildingBlockFamily) -> Bool {
   applicability_refused_rows(f: f) == 0 && applicability_accepted_probes() == 0
+}
+
+// THE OBSERVATION VOCABULARY, carried here so a battery can read an AllocationObservation
+// without importing a module that declares a compiler pipeline entry. The reading is the
+// same four answers the allocation instrument gives -- availability, the span, whether the
+// span is above the declared reference, and whether it is within it -- over the types
+// std.realization_measurement owns. The block is copied from the instrument that first
+// needed it, not shared with it: sharing it drags a second entry into the closure, and the
+// emitter refuses that (see the note above the import in each battery). Deleting this fork
+// is the emitter's row, not this one's.
+
+type AllocationCase {
+  identity: String
+  held: Bool
+  observed: String
+}
+
+fn span_operations(o: AllocationObservation) -> Nat? {
+  match o {
+    AllocationObserved { operations: n, bytes_requested: _ } => Present { value: n }
+    AllocationOperationsRanBackwards => none
+    AllocationBytesRequestedRanBackwards => none
+    AllocationProviderNotSelected => none
+  }
+}
+
+fn is_observed(o: AllocationObservation) -> Bool {
+  match span_operations(o: o) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn span_is_zero(o: AllocationObservation) -> Bool {
+  match o {
+    AllocationObserved { operations: n, bytes_requested: b } => n == 0 && byte_size_count(b: b) == 0
+    AllocationOperationsRanBackwards => false
+    AllocationBytesRequestedRanBackwards => false
+    AllocationProviderNotSelected => false
+  }
+}
+
+fn operations_above(a: AllocationObservation, b: AllocationObservation) -> Bool {
+  match span_operations(o: a) {
+    Present { value: x } => match span_operations(o: b) {
+      Present { value: y } => x > y
+      Absent => false
+    }
+    Absent => false
+  }
+}
+
+fn operations_within(a: AllocationObservation, b: AllocationObservation) -> Bool {
+  match span_operations(o: a) {
+    Present { value: x } => match span_operations(o: b) {
+      Present { value: y } => x <= y
+      Absent => false
+    }
+    Absent => false
+  }
+}
+
+fn count_text(label: String, n: Int) -> String {
+  concat(label, "=", to_string(value: n))
+}
+
+fn span_text(label: String, o: AllocationObservation) -> String {
+  match o {
+    AllocationObserved { operations: n, bytes_requested: b } => concat(concat(label, "_ops=", nat_to_decimal_string(value: n)), " ", concat(label, "_bytes=", nat_to_decimal_string(value: byte_size_count(b: b))))
+    AllocationOperationsRanBackwards => concat(label, "=unobservable(operations: counter ran backwards)")
+    AllocationBytesRequestedRanBackwards => concat(label, "=unobservable(bytes_requested: counter ran backwards)")
+    AllocationProviderNotSelected => concat(label, "=unobservable(allocation: counting allocator not selected)")
+  }
+}
+
+fn case_line(c: AllocationCase) -> String {
+  concat("case ", c.identity, if c.held { " held" } else { " not_held" }, " observed=", c.observed, "\n")
 }

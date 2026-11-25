@@ -4,7 +4,16 @@ import std.types { Bool, Int, List }
 import std.realization_measurement { AllocationCounter, AllocationObservation, allocation_span_observation, allocation_provider_not_selected }
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld }
 import gunbc.emit_building_block_contracts { BuildingBlockContract, BuildingBlockFamily, Accumulator, family_slug, building_block_contracts, contracts_of_family, contract_verdict, contract_is_applicable, case_in_applicable_roster, violating_form_slug, violating_form_exercised, contract_line, roster_membership_line, MispairedProbe, mispaired_probes, probe_guard_holds, probe_lines , applicability_discriminates, applicability_refused_rows, applicability_accepted_probes }
-import gunbc.instruments.native_allocation_observation { AllocationCase, case_line, is_observed, operations_above, operations_within, span_text, count_text }
+// The eight observation renderers used to be imported from gunbc.instruments
+// .native_allocation_observation. That module declares a compiler pipeline entry, so
+// importing it put a SECOND entry in this closure and the emitter refused the whole
+// crate with compile_error! at src/v1/stage0/src/v1_compiler_emit_rust.rs:46363
+// (emit_ambiguous_compiler_pipeline_main_rs). The renderers are a vocabulary over
+// std.realization_measurement types, so they are carried by the contract module below,
+// which declares no entry. The peer module is untouched and its own copy stays its
+// authority for its rows; this fork exists until the emitter chooses the subject's
+// entry, and the row's handback names it as the blocker for this family.
+import gunbc.emit_building_block_contracts { AllocationCase, case_line, is_observed, operations_above, operations_within, span_text, count_text }
 import gunbc.emit_state_threading_specimen { spec_build }
 
 // THE ACCUMULATOR GROUP OF THE BUILDING-BLOCK BATTERY, deliverable two of the roadmap row
