@@ -34,7 +34,7 @@ data process_observation_construction_is_unsealed: IntegrationConcern = Integrat
     preserve: [PreservedObligation {
       holder: decl_ref(module_path: "gunbc.codex_app_server_press", decl_name: "parse_account_trip_session"),
       control: decl_ref(module_path: "test.claim.shell.shell_dag_codex_app_server_trip_stream_separation_witness", decl_name: "muxed_sentinels_stay_data_in_the_consumer"),
-      statement: "Sentinel-shaped text arriving on a legitimately separate stdout stays data in the consumer: both planted sentinel-wrapped lines remain unknown-frame data, neither parsed nor stripped, checked by the muxed arm of test.claim.shell.shell_dag_codex_app_server_trip_stream_separation_witness (no sentinel-mux behaviour exhibited on the planted input). This obligation is KEPT after any capture seal: a separate stdout can still legitimately carry sentinel-shaped text, so a constructor seal never supersedes this consumer-side test.",
+      statement: "Sentinel-shaped text arriving on a legitimately separate stdout stays data in the consumer: both planted sentinel-wrapped lines remain unknown-frame data, checked by the muxed arm of test.claim.shell.shell_dag_codex_app_server_trip_stream_separation_witness (no sentinel-mux behaviour exhibited on the planted input). This obligation is KEPT after any capture seal: a separate stdout can still legitimately carry sentinel-shaped text, so a constructor seal never supersedes this consumer-side test.",
     }, PreservedObligation {
       holder: decl_ref(module_path: "extdeps.shell.exec", decl_name: "process_observation"),
       control: Absent,
