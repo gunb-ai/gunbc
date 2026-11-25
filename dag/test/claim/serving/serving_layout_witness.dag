@@ -10,7 +10,7 @@ import gunbc.host.host_memory_carrier { HostUsableRamMeasured, HostUsableRamCons
 import gunbc.serving.serving_host_memory {
   ServingMemoryReading, ServingMemoryRead, ServingMemoryAssumed, ServingMemoryUnread, ServingMemoryFits,
   conversation_snapshot_bytes, ConversationSnapshotCost, host_6ce85c_serving_memory_observed, srv3_strata_engine_memory,
-  serving_reading_bytes_or_zero,
+  srv4_serving_engine_memory, serving_reading_bytes_or_zero,
 }
 import gunbc.serving.serving_layout {
   ServingResourceGrant, ServingDevice, ServingDeviceGroup, ServingBackendProfile, ServingRequirement, ServingReplicaConfig,
@@ -26,6 +26,7 @@ import gunbc.serving.serving_layout {
   srv4_grant, srv4_layer_split_groups, strata_srv4_layer_split_profile, srv4_layout,
   srv3_grant, srv3_layer_split_groups, strata_srv3_layer_split_profile, srv3_layout,
   srv3_routed_expert_artifact, srv4_routed_expert_artifact, serving_artifact_host_ram_charge,
+  ServingCapTerms, serving_cgroup_terms,
   ServingSharedArtifact, ServingArtifactMedium, ArtifactOnDevice, ArtifactInHostRam, ArtifactOnDisk,
   ArtifactHeldPinned, ArtifactHeldEvictable,
 }
@@ -62,13 +63,33 @@ fn sl_grant_shared(g: ServingResourceGrant, shared: List<ServingSharedArtifact>)
   }
 }
 
-// An artifact whose host-RAM rung is evictable with an UNREAD floor -- the figure serving_artifact_host_ram_charge
-// bills into the pool. Copying everything else keeps it a minimal single-variable change.
+// An artifact whose host-RAM rung is evictable with an UNREAD OCCUPANCY -- the figure
+// serving_artifact_host_ram_charge now bills into the pool (what the tier occupies inside the shared cgroup).
+// Copying everything else keeps it a minimal single-variable change.
+fn sl_host_ram_occupancy_unread(a: ServingSharedArtifact) -> ServingSharedArtifact {
+  ServingSharedArtifact {
+    name: a.name, bytes: a.bytes, owner: a.owner, device: a.device, disk: a.disk,
+    host_ram: match a.host_ram {
+      Present { value: r } => Present { value: ServingArtifactRung { bytes: r.bytes, holds: match r.holds {
+        ArtifactHeldEvictable { bound_by: bound_by, floor: f, occupies: _ } => ArtifactHeldEvictable { bound_by: bound_by, floor: f, occupies: ServingMemoryUnread { reason: "fixture: what this tier occupies inside the shared cgroup has not been read" as NonEmptyStr } }
+        ArtifactHeldPinned { mechanism: _ } => r.holds
+      } }, realizes: r.realizes } }
+      Absent => Absent
+    },
+  }
+}
+
+// The other single-variable change on the same hold: an evictable rung whose FLOOR is unread. The floor is NOT
+// billed any more (the occupancy is), so this must still CONFIGURE -- the pair with the fixture above is what shows
+// the charge really moved off the floor and did not merely gain a neighbour.
 fn sl_host_ram_floor_unread(a: ServingSharedArtifact) -> ServingSharedArtifact {
   ServingSharedArtifact {
     name: a.name, bytes: a.bytes, owner: a.owner, device: a.device, disk: a.disk,
     host_ram: match a.host_ram {
-      Present { value: r } => Present { value: ServingArtifactRung { bytes: r.bytes, holds: ArtifactHeldEvictable { bound_by: "fixture: evictable host-RAM rung" as NonEmptyStr, floor: ServingMemoryUnread { reason: "the host-RAM floor that the budget reserves has not been read" as NonEmptyStr } }, realizes: r.realizes } }
+      Present { value: r } => Present { value: ServingArtifactRung { bytes: r.bytes, holds: match r.holds {
+        ArtifactHeldEvictable { bound_by: bound_by, floor: _, occupies: o } => ArtifactHeldEvictable { bound_by: bound_by, floor: ServingMemoryUnread { reason: "fixture: the floor the tier cannot give back has not been read" as NonEmptyStr }, occupies: o }
+        ArtifactHeldPinned { mechanism: _ } => r.holds
+      } }, realizes: r.realizes } }
       Absent => Absent
     },
   }
@@ -279,24 +300,94 @@ test fn witness_each_grants_cap_is_the_engine_rows_cap() -> Bool {
     && 0 < sl_grant_ram(g: srv3_grant)
 }
 
-// srv4 AS GRANTED TODAY: one replica holding both GPUs, EIGHT maximum-context conversations inside the 56 GiB
-// MemoryHigh the engine's own guard now reads under --mmap-experts (was thirteen under the old 96 GiB slice with a
-// private 52 GiB base; the cap came down and the base came down with it, and the retained set came down to eight),
-// the budget Fits, and nothing qualified live yet. The same two-device group under h11's release, which cannot park
-// across a split, refuses by name: spanning two GPUs is a backend fact, not a topology the layout grants on its own.
+// srv4 AS GRANTED TODAY: one replica holding both GPUs, THIRTEEN maximum-context conversations inside the 96 GiB
+// MemoryHigh the engine's cgroup now carries -- the cap the operator raised it to on 2026-11-24, read from
+// srv4_serving_engine_memory.memory_cap, which is the row that owns that limit. The count moved from eight because
+// BOTH of its inputs moved on the same day: the cap came up from the 56 GiB the 2026-11-09 drop-in set, AND the
+// expert tier's charge came up to what it actually occupies in the shared cgroup (47,964 MiB of mapped shards)
+// instead of the 22 GiB floor the kernel may leave standing. The two changes are not independent -- the eight was
+// the model's own way of saying the terms did not fit, and it was the host's real state: with a 22 GiB charge the
+// layout handed 12 GiB of the cap to retention that the engine's admission gate then refused to park a single
+// conversation into. The budget Fits, and nothing qualified live yet. The same two-device group under h11's
+// release, which cannot park across a split, refuses by name: spanning two GPUs is a backend fact, not a topology
+// the layout grants on its own.
 test fn witness_srv4_is_one_replica_across_two_gpus() -> Bool {
   let old_release = serving_layout_derive(g: srv4_grant, groups: srv4_layer_split_groups,
     b: sl_profile_retaining_across(b: strata_srv4_layer_split_profile, most: 1), r: serving_context_ceiling_requirement)
   (match srv4_layout {
     ServingLayoutConfigured { replicas: rs, unallocated_ram: _, evidence: e } =>
       rs.length() == 1
-        && rs.all(c => c.devices.length() == 2 && c.admitted_conversations == 8 && byte_size_count(b: c.memory_max) <= byte_size_count(b: sl_gib(n: 56)))
+        && rs.all(c => c.devices.length() == 2 && c.admitted_conversations == 13 && byte_size_count(b: c.memory_max) <= byte_size_count(b: sl_gib(n: 96)))
         && (match e.budget { ServingMemoryFits { spare: _ } => true  _ => false })
         && (match e.live { ServingLiveStandingUnqualified { obligation: _ } => true  _ => false })
         && sl_all_grow_to_ceiling_under(r: srv4_layout, b: strata_srv4_layer_split_profile)
     _ => false
   })
     && (match sl_refusal(r: old_release) { Present { value: ServingLayoutBackendCannotRetain { group: gr, devices: n, most: m } } => gr == "gunbc-srv4-daily-engine" && n == 2 && m == 1  _ => false })
+}
+
+// THE MISCONFIGURATION, MADE UNRENDERABLE (the discriminating RED for this class). srv4 ran 2026-11-09 to
+// 2026-11-24 under MemoryHigh/MemoryMax 56G/64G: the 60-expert-l1-cap.conf drop-in, the operator's 2026-11-09
+// ruling to bound the expert RAM tier. THAT RULING IS NOT WHAT THIS REFUSES and no row here overturns it -- the
+// expert tier stays bounded, and bounding it is what serving_cgroup_terms names its occupancy for. What the model
+// now refuses is a cap whose TERMS do not fit inside it: the expert tier's occupancy in the shared cgroup, the
+// replica's fixed RAM including the admission floor the engine demands before it will park anything, the retention
+// the requirement insists on, and the rounding headroom. Re-rendering srv4's own rows against the withdrawn 56 GiB
+// cap therefore REFUSES by name, which is the state the host was actually in: an operator typed one number for
+// four terms and nothing in the model added them up.
+test fn witness_srv4_under_the_withdrawn_56g_cap_is_refused_by_its_terms() -> Bool {
+  let withdrawn = ServingResourceGrant {
+    host: srv4_grant.host, usable_ram: HostUsableRamConservativeLowerBound { bytes: sl_gib(n: 56), basis: "the withdrawn 2026-11-09 MemoryHigh of gunbc-srv4-daily-engine.service (drop-in 60-expert-l1-cap.conf), re-rendered as a fixture to refuse it" as NonEmptyStr },
+    overhead: srv4_grant.overhead, shared: srv4_grant.shared, swap_bound: srv4_grant.swap_bound, devices: srv4_grant.devices, charging: srv4_grant.charging,
+  }
+  let terms = serving_cgroup_terms(g: withdrawn, groups: srv4_layer_split_groups, b: strata_srv4_layer_split_profile, r: serving_context_ceiling_requirement)
+  let refused = serving_layout_derive(g: withdrawn, groups: srv4_layer_split_groups, b: strata_srv4_layer_split_profile, r: serving_context_ceiling_requirement)
+  // The terms themselves say the cap does not fit: the expert tier alone asks for 47,964 MiB of the 57,344 the
+  // withdrawn cap had, before the engine's own base, its active slot, its 2560 MiB admission floor or a single
+  // retained conversation is counted.
+  byte_size_count(b: terms.expert_host_ram) == byte_size_count(b: mebibyte_to_byte_size(m: mebibyte(count: 47964)))
+    && byte_size_count(b: terms.minimum_cap) > byte_size_count(b: sl_gib(n: 56))
+    // And it is the LAYOUT that says so, naming the terms -- not a check bolted on beside the derivation.
+    && (match sl_refusal(r: refused) {
+         Present { value: ServingLayoutRamShort { needed: needed, available: available, terms: t } } =>
+           byte_size_count(b: needed) == byte_size_count(b: t.minimum_cap)
+             && byte_size_count(b: available) == byte_size_count(b: sl_gib(n: 56))
+             && byte_size_count(b: t.expert_host_ram) == byte_size_count(b: terms.expert_host_ram)
+             && byte_size_count(b: t.replica_fixed_ram) == byte_size_count(b: terms.replica_fixed_ram)
+             && byte_size_count(b: t.retention_floor) == byte_size_count(b: terms.retention_floor)
+             && byte_size_count(b: t.rounding_headroom) == byte_size_count(b: terms.rounding_headroom)
+             && t.replicas == 1
+         _ => false
+       })
+    // The composition is the sum, in the order the cgroup pays it: nothing is hidden in "overhead" and nothing
+    // that shares the limit is left out of it.
+    && byte_size_count(b: terms.minimum_cap) == byte_size_count(b: terms.expert_host_ram) + byte_size_count(b: terms.replica_fixed_ram)
+       + byte_size_count(b: terms.retention_floor) + byte_size_count(b: terms.rounding_headroom)
+    // The admission floor -- the figure whose omission read as 2-3 GB of room on the host and as a 12 GiB
+    // retention budget in the model -- is IN the terms, at the engine's own read of it.
+    && byte_size_count(b: terms.replica_fixed_ram) >= byte_size_count(b: mebibyte_to_byte_size(m: mebibyte(count: 2560)))
+}
+
+// THE POSITIVE CONTROL: srv4's own rows, unmodified, under the cap the operator raised them to on 2026-11-24
+// (96 GiB MemoryHigh / 112 GiB MemoryMax, read 22:03-22:05 UTC). The same derivation that refused the 56 GiB cap
+// CONFIGURES this one, its terms sum below the cap, and the unallocated remainder of the pool is the room the
+// conversation cache was never given -- the difference between the refused case and this one is one row's figure,
+// which is what makes the pair discriminating rather than two fixtures that both happen to pass.
+test fn witness_srv4_under_the_raised_cap_fits_its_terms() -> Bool {
+  let terms = serving_cgroup_terms(g: srv4_grant, groups: srv4_layer_split_groups, b: strata_srv4_layer_split_profile, r: serving_context_ceiling_requirement)
+  let cap = byte_size_count(b: serving_reading_bytes_or_zero(r: srv4_serving_engine_memory.memory_cap))
+  let snapshot = byte_size_count(b: conversation_snapshot_bytes(cost: strata_srv4_layer_split_profile.retention, context: serving_context_ceiling_requirement.max_context))
+  match srv4_layout {
+    ServingLayoutConfigured { replicas: rs, unallocated_ram: un, evidence: e } =>
+      byte_size_count(b: terms.minimum_cap) <= cap
+        && (match e.budget { ServingMemoryFits { spare: _ } => true  _ => false })
+        // What the conversation cache is granted, plus the admission gate's headroom, fits in the room the expert
+        // tier's occupancy leaves -- the sentence the 56 GiB cap could not say.
+        && rs.all(c => byte_size_count(b: c.retention_budget) + byte_size_count(b: serving_reading_bytes_or_zero(r: strata_srv4_layer_split_profile.park_free_floor)) < cap - byte_size_count(b: terms.expert_host_ram))
+        // And the pool is spent, not left idle: what remains after the caps is less than one more snapshot.
+        && byte_size_count(b: un) < snapshot
+    _ => false
+  }
 }
 
 fn sl_replica_on(devices: List<NonEmptyStr>) -> ServingReplicaConfig {
@@ -476,13 +567,25 @@ fn has_three_expert_rungs(a: ServingSharedArtifact) -> Bool {
 }
 
 // A pinned rung's floor is its whole (nothing can be squeezed out); an evictable rung's floor is the floor it
-// states on its hold — the same reading the budget reserves.
+// states on its hold — what the kernel may leave standing, NOT the figure the budget reserves.
 fn sl_rung_floor(a: ServingSharedArtifact, m: ServingArtifactMedium) -> Nat {
   match sl_rung(a: a, m: m) {
     Absent => 0
     Present { value: r } => byte_size_count(b: match r.holds {
       ArtifactHeldPinned { mechanism: _ } => serving_reading_bytes_or_zero(r: r.bytes)
-      ArtifactHeldEvictable { bound_by: _, floor: f } => serving_reading_bytes_or_zero(r: f)
+      ArtifactHeldEvictable { bound_by: _, floor: f, occupies: _ } => serving_reading_bytes_or_zero(r: f)
+    })
+  }
+}
+
+// What an evictable rung STATES it occupies inside the cgroup it shares with the engine — the figure
+// serving_artifact_host_ram_charge bills, read from the hold rather than recomputed anywhere.
+fn sl_rung_occupies(a: ServingSharedArtifact, m: ServingArtifactMedium) -> Nat {
+  match sl_rung(a: a, m: m) {
+    Absent => 0
+    Present { value: r } => byte_size_count(b: match r.holds {
+      ArtifactHeldPinned { mechanism: _ } => byte_size(count: 0)
+      ArtifactHeldEvictable { bound_by: _, floor: _, occupies: o } => serving_reading_bytes_or_zero(r: o)
     })
   }
 }
@@ -498,38 +601,50 @@ fn sl_rung_pinned(a: ServingSharedArtifact, m: ServingArtifactMedium) -> Bool {
     Absent => false
     Present { value: r } => match r.holds {
       ArtifactHeldPinned { mechanism: _ } => true
-      ArtifactHeldEvictable { bound_by: _, floor: _ } => false
+      ArtifactHeldEvictable { bound_by: _, floor: _, occupies: _ } => false
     }
   }
 }
 
 // THE SAME ARTIFACT KIND, CHARGED TWO WAYS, WHICH IS THE WHOLE POINT OF THE HOLD. h11's experts are mlocked: the
 // host reserves them WHOLE, exactly as it did before rungs existed (that equality against the host's own reading
-// of the locked copy is the regression that proves h11's charge moved not at all). srv3 used to be private anonymous
-// memory charged whole; after the 2026-11-09 mmap+cap hand change it runs srv4's shape — a page cache under its
-// service cap — so it too reserves only its FLOOR. srv4's are the same: they grow into whatever the cap leaves and are
-// reclaimed first, so the host reserves only their FLOOR — strictly less than the resident figure at load, which is
-// the figure an unfocused model would have reserved.
-test fn witness_pinned_rungs_reserve_whole_and_evictable_ones_their_floor() -> Bool {
+// of the locked copy is the regression that proves h11's charge moved not at all). srv3 and srv4 run the mmap+cap
+// shape (srv3 since the 2026-11-09 hand change): a page cache under the engine's own service cap, which the host
+// reserves at its OCCUPANCY -- what it fills inside the cgroup the engine shares -- and NOT at its floor.
+//
+// THE FLOOR IS NO LONGER THE CHARGE, AND THAT IS THE srv4 FIX (2026-11-24). Charging the 22 GiB floor billed a tier
+// that in fact occupied the whole 46.84 GiB it maps, and the layout handed the difference to the conversation cache
+// as a retention budget the engine then refused to park one conversation into. So: charge == occupancy on both
+// hosts; the floor is still stated, still smaller, and still identity-bearing; and the occupancy never exceeds the
+// file it caches, which is what keeps "occupancy" from being an invitation to invent a size.
+test fn witness_pinned_rungs_reserve_whole_and_evictable_ones_their_occupancy() -> Bool {
   // h11: the charge IS the lock service's resident copy, unchanged.
   fold(host_6ce85c_grant.shared, init: 0, f: (acc, a) => acc + byte_size_count(b: serving_artifact_host_ram_charge(a: a)))
     == byte_size_count(b: host_6ce85c_serving_memory_observed.shared_resident)
-  // srv3: evictable under its service cap like srv4 (the 2026-11-09 mmap+cap hand change), so the charge is its
-  // 22 GiB working-set floor; its resident expert figure is UNREAD (the cgroup file counter overstates the shard and is
-  // not attributed to experts), so it is kept out of the charge entirely -- the floor reserves only what a turn must keep.
+  // srv3: evictable under its service cap, charged its occupancy -- its resident expert figure is UNREAD (the
+  // cgroup file counter overstates the shard and is not attributed to experts), so the rung states no resident figure;
+  // what it may not do is leave the budget without a figure, which is why the hold states an occupancy.
     && !sl_rung_pinned(a: srv3_routed_expert_artifact, m: ArtifactInHostRam)
     && byte_size_count(b: serving_artifact_host_ram_charge(a: srv3_routed_expert_artifact))
-      == sl_rung_floor(a: srv3_routed_expert_artifact, m: ArtifactInHostRam)
+      == sl_rung_occupies(a: srv3_routed_expert_artifact, m: ArtifactInHostRam)
+      && sl_rung_occupies(a: srv3_routed_expert_artifact, m: ArtifactInHostRam) == byte_size_count(b: mebibyte_to_byte_size(m: mebibyte(count: 47964)))
       && sl_rung_floor(a: srv3_routed_expert_artifact, m: ArtifactInHostRam) == byte_size_count(b: sl_gib(n: 22))
+      && sl_rung_floor(a: srv3_routed_expert_artifact, m: ArtifactInHostRam) < sl_rung_occupies(a: srv3_routed_expert_artifact, m: ArtifactInHostRam)
       && sl_rung_bytes(a: srv3_routed_expert_artifact, m: ArtifactInHostRam) == 0
       && sl_rung_bytes_unread(a: srv3_routed_expert_artifact, m: ArtifactInHostRam)
-  // srv4: evictable, so the charge is its 8 GiB floor and NOT its 13.2 GiB resident figure.
+      && sl_rung_occupies(a: srv3_routed_expert_artifact, m: ArtifactInHostRam) <= byte_size_count(b: srv3_routed_expert_artifact.bytes)
+  // srv4: same shape, same rule. The charge is its 47,964 MiB of mapped shards -- MORE than the 24,576 MiB file-tier
+  // slice this rung holds by the engine's own plan, because the on-card copy is uploaded through the same pages --
+  // and it is bounded by the artifact's file size, never above it.
     && !sl_rung_pinned(a: srv4_routed_expert_artifact, m: ArtifactInHostRam)
     && byte_size_count(b: serving_artifact_host_ram_charge(a: srv4_routed_expert_artifact))
-      == sl_rung_floor(a: srv4_routed_expert_artifact, m: ArtifactInHostRam)
+      == sl_rung_occupies(a: srv4_routed_expert_artifact, m: ArtifactInHostRam)
+      && sl_rung_occupies(a: srv4_routed_expert_artifact, m: ArtifactInHostRam) == byte_size_count(b: mebibyte_to_byte_size(m: mebibyte(count: 47964)))
       && sl_rung_floor(a: srv4_routed_expert_artifact, m: ArtifactInHostRam) == byte_size_count(b: sl_gib(n: 22))
+      && sl_rung_floor(a: srv4_routed_expert_artifact, m: ArtifactInHostRam) < sl_rung_bytes(a: srv4_routed_expert_artifact, m: ArtifactInHostRam)
       && sl_rung_bytes(a: srv4_routed_expert_artifact, m: ArtifactInHostRam) == byte_size_count(b: mebibyte_to_byte_size(m: mebibyte(count: 24576)))
-      && byte_size_count(b: serving_artifact_host_ram_charge(a: srv4_routed_expert_artifact)) < sl_rung_bytes(a: srv4_routed_expert_artifact, m: ArtifactInHostRam)
+      && sl_rung_occupies(a: srv4_routed_expert_artifact, m: ArtifactInHostRam) > sl_rung_bytes(a: srv4_routed_expert_artifact, m: ArtifactInHostRam)
+      && sl_rung_occupies(a: srv4_routed_expert_artifact, m: ArtifactInHostRam) <= byte_size_count(b: srv4_routed_expert_artifact.bytes)
   // The disk rungs hold the file on both hosts; the device rungs are the on-card expert cache -- pinned on the
   // card and carrying NO host-RAM floor, because a device rung reserves host RAM for nothing (review 92466; it is
   // ArtifactHeldPinned precisely so it cannot state a host-RAM floor it must not have).
@@ -541,21 +656,28 @@ test fn witness_pinned_rungs_reserve_whole_and_evictable_ones_their_floor() -> B
 
 // THE RUNGS ARE ONE ARTIFACT, NOT THREE FACTS (srv4, whose rung bytes are all READ): its engine planned "46.8 GiB
 // experts, 22.9 GiB in the GPU caches, 0.0 GiB RAM copy, file tier 24.0 GiB", so the card rung and the disk rung
-// TOGETHER are the file (figures rounded to 0.1 GiB, hence the one-gibibyte tolerance), and the host-RAM rung is the
-// part of the disk rung the page cache is holding -- never more than it, and a figure srv4 actually READ (so it must be
-// positive). A wrong figure in any rung breaks one of these. srv3's card and host-RAM bytes are UNREAD, so it does NOT
-// run through this arithmetic (sl_rung_bytes folds Unread to 0 and would make card+disk==whole pass on bytes never
-// measured); it gets its own honest typing witness below. Only "exactly three rungs" is shared (has_three_expert_rungs).
+// TOGETHER are the file (figures rounded to 0.1 GiB, hence the one-gibibyte tolerance). The host-RAM rung's BYTES are
+// the file-tier slice the engine streams -- the plan's own partition -- while its OCCUPANCY, what the cgroup pays, is
+// the whole mapped file: at least the slice it streams, never more than the file, and strictly more than the slice
+// because the on-card copy is uploaded through the same pages. That last inequality is the 2026-11-24 srv4 lesson
+// written as arithmetic: a model that read the slice as the charge under-billed the cgroup by ~23 GiB and starved
+// the conversation cache beside it. A wrong figure in any rung breaks one of these. srv3's card and host-RAM bytes
+// are UNREAD, so it does NOT run through this arithmetic (sl_rung_bytes folds Unread to 0 and would make
+// card+disk==whole pass on bytes never measured); it gets its own honest typing witness in
+// witness_pinned_rungs_reserve_whole_and_evictable_ones_their_occupancy and
+// test.claim.serving.serving_replica_profile_witness. Only "exactly three rungs" is shared (has_three_expert_rungs).
 test fn witness_srv4_expert_rungs_partition_the_file_they_came_from() -> Bool {
   let a = srv4_routed_expert_artifact
   let whole = byte_size_count(b: a.bytes)
   let on_cards = sl_rung_bytes(a: a, m: ArtifactOnDevice)
   let on_disk = sl_rung_bytes(a: a, m: ArtifactOnDisk)
   let in_ram = sl_rung_bytes(a: a, m: ArtifactInHostRam)
+  let occupied = sl_rung_occupies(a: a, m: ArtifactInHostRam)
   let one_gib = byte_size_count(b: sl_gib(n: 1))
   has_three_expert_rungs(a: a)
     && on_cards + on_disk >= whole && on_cards + on_disk <= whole + one_gib
     && in_ram <= on_disk && in_ram > 0
+    && occupied >= in_ram && occupied <= whole && occupied > in_ram
 }
 
 // SRV3 SIBLING (review 2787d022): srv3 has the SAME three-rung structure, but its card cache and resident host-RAM
@@ -579,18 +701,23 @@ test fn witness_srv3_expert_rungs_are_honestly_typed_not_partitioned() -> Bool {
 
 // SRV3 AS GRANTED, BY THE SAME DERIVATION srv4 USES: one replica holding both cards inside the 96 GiB MemoryHigh
 // its service drop-in sets, its live --batch 8 as the one batch input, the budget Fits, nothing qualified live.
-// Its group is named for the unit that runs it, which is also the group its router naming joins on. Seventeen
-// conversations is what the 64 GiB RAM conversation cache holds at srv3's declared snapshot cost inside the RAM the
-// evictable expert tier leaves the cap (it reserves only its 22 GiB working-set floor, not the unattributed page-cache
-// counter, which stays Unread); that cache budget is a CEILING the engine may spend, not a reservation this layout made, so the figure
-// is exactly as good as the memory.current reading the live obligation asks for. A layout that reserved the whole
-// resident page cache instead of the floor would admit far fewer here, which is what makes the evictable charge bite.
+// Its group is named for the unit that runs it, which is also the group its router naming joins on. TEN conversations
+// is what the pool leaves at srv3's declared snapshot cost once the expert tier is charged what it OCCUPIES inside
+// the cgroup the engine shares -- the same 47,964 MiB of mapped shards srv4 pays, because srv3 runs the same
+// mmap+cap shape on the same shards (its 2026-11-09 hand change), and its expert page-cache counter stays Unread
+// precisely because the cgroup's file counter is not attributable to experts. It was seventeen while the tier was
+// charged its 22 GiB working-set floor: the same ~25 GiB that srv4's cap was short of, subtracted from retention
+// here instead of from a starving admission gate there. That retention budget is a CEILING the engine may spend,
+// not a reservation this layout made, so the figure is exactly as good as the memory.current reading the live
+// obligation asks for. The operator's reads say srv3 itself was never starved (96% prompt-cache warm before the
+// fleet change, 99.0% after -- an operator-session ad-hoc read, 2026-11-24): this count is the model's budget
+// figure for the same artifact shape on both hosts, not a claim that srv3 was mis-sized.
 test fn witness_srv3_is_one_replica_across_two_gpus_in_its_own_slice() -> Bool {
   sl_replicas(r: srv3_layout).length() == 1
     && (match srv3_layout {
       ServingLayoutConfigured { replicas: rs, unallocated_ram: _, evidence: e } =>
         rs.all(c => c.group == "strata-pool" && c.devices.length() == 2 && c.active_slots == 8
-          && c.admitted_conversations == 17
+          && c.admitted_conversations == 10
           && byte_size_count(b: c.memory_max) <= byte_size_count(b: sl_gib(n: 96)))
         && (match e.budget { ServingMemoryFits { spare: _ } => true  _ => false })
         && (match e.live { ServingLiveStandingUnqualified { obligation: _ } => true  _ => false })
@@ -662,7 +789,17 @@ fn ca_reason_listed(r: ServingMemoryReading, list: List<NonEmptyStr>) -> Bool {
 
 fn ca_evictable_floor(a: ServingSharedArtifact) -> ServingMemoryReading {
   match a.host_ram {
-    Present { value: r } => match r.holds { ArtifactHeldEvictable { bound_by: _, floor: f } => f  _ => ServingMemoryUnread { reason: "not evictable" as NonEmptyStr } }
+    Present { value: r } => match r.holds { ArtifactHeldEvictable { bound_by: _, floor: f, occupies: _ } => f  _ => ServingMemoryUnread { reason: "not evictable" as NonEmptyStr } }
+    Absent => ServingMemoryUnread { reason: "no host-RAM rung" as NonEmptyStr }
+  }
+}
+
+// The OCCUPANCY of an evictable host-RAM rung -- the reading serving_artifact_host_ram_charge actually bills, and
+// so the one that must be an Assumed bet (with its reason in the layout's assumption list) or a read, never a
+// silently Unread zero. Read from the hold; recomputing it here would only prove the witness agrees with itself.
+fn ca_evictable_occupies(a: ServingSharedArtifact) -> ServingMemoryReading {
+  match a.host_ram {
+    Present { value: r } => match r.holds { ArtifactHeldEvictable { bound_by: _, floor: _, occupies: o } => o  _ => ServingMemoryUnread { reason: "not evictable" as NonEmptyStr } }
     Absent => ServingMemoryUnread { reason: "no host-RAM rung" as NonEmptyStr }
   }
 }
@@ -671,13 +808,14 @@ test fn witness_srv3_charged_assumptions_are_listed_not_promoted() -> Bool {
   match srv3_layout {
     ServingLayoutConfigured { replicas: _, unallocated_ram: _, evidence: e } => {
       // The swap bound is charged per replica and srv3 fills it with a borrowed srv4 figure (Assumed); the host-RAM
-      // rung's FLOOR is the 22 GiB working set taken from srv4's read (Assumed -- it, not the resident figure, is what
-      // the budget charges for the expert tier); and the disk rung holds the shard size srv3 has not du'd (Assumed).
-      // All three are bets a reader must not take as measured, and all are read from their SOURCE rows: removing the
-      // swap or artifact fold from serving_layout_assumptions drops a reason and this goes RED. The host-RAM rung BYTES
-      // are UNREAD (the cgroup file counter overstates the shard and is not attributed to experts), so they are NOT a
-      // listed assumption -- they must stay an obligation, never promoted to a figure; the check below fails if they
-      // are ever promoted to Read/Assumed.
+      // rung's OCCUPANCY -- the figure the budget actually bills for the expert tier, the whole mapped shard set the
+      // engine's cgroup pays for -- is a borrowed srv4 figure too (Assumed, with its attribution obligation); the
+      // rung's FLOOR is the 22 GiB working set taken from srv4's read (Assumed); and the disk rung holds the shard
+      // size srv3 has not du'd (Assumed). All four are bets a reader must not take as measured, and all are read
+      // from their SOURCE rows: removing the swap or artifact fold from serving_layout_assumptions drops a reason and
+      // this goes RED. The host-RAM rung BYTES are UNREAD (the cgroup file counter overstates the shard and is not
+      // attributed to experts), so they are NOT a listed assumption -- they must stay an obligation, never promoted
+      // to a figure; the check below fails if they are ever promoted to Read/Assumed.
       let disk_assumed = match srv3_routed_expert_artifact.disk {
         Present { value: r } => ca_reason_listed(r: r.bytes, list: e.assumptions)
         Absent => false
@@ -687,6 +825,7 @@ test fn witness_srv3_charged_assumptions_are_listed_not_promoted() -> Bool {
         Absent => false
       }
       ca_reason_listed(r: srv3_grant.swap_bound, list: e.assumptions)
+        && ca_reason_listed(r: ca_evictable_occupies(a: srv3_routed_expert_artifact), list: e.assumptions)
         && ca_reason_listed(r: ca_evictable_floor(a: srv3_routed_expert_artifact), list: e.assumptions)
         && host_ram_bytes_unread
         && disk_assumed
@@ -735,12 +874,14 @@ fn sl_device_bytes(a: ServingSharedArtifact, r: ServingMemoryReading) -> Serving
 // charged figure would silently widen the pool by billing 0. It now joins serving_layout_missing and the layout
 // REFUSES. Pre-fix, both these layouts configured (billed 0); each assertion is red-capable on that defect.
 test fn witness_unread_charged_host_rung_refuses_the_layout_instead_of_billing_zero() -> Bool {
-  // an evictable host-RAM rung whose reserved floor is unread ...
-  let evict = sl_grant_shared(g: srv4_grant, shared: [sl_host_ram_floor_unread(a: srv4_routed_expert_artifact)])
+  // an evictable host-RAM rung whose CHARGED occupancy is unread ...
+  let evict = sl_grant_shared(g: srv4_grant, shared: [sl_host_ram_occupancy_unread(a: srv4_routed_expert_artifact)])
   let evicted = match serving_layout_derive(g: evict, groups: srv4_layer_split_groups, b: strata_srv4_layer_split_profile, r: serving_context_ceiling_requirement) {
     ServingLayoutRefused { refusal: ServingLayoutInputsUnread { missing: ms } } => 0 < ms.length()
     _ => false
   }
+  // ... while an unread FLOOR, which the budget no longer bills, must still CONFIGURE. This is the arm that keeps
+  // the guard honest about which figure the charge is: guard the wrong one and the eviction story reappears.
   // ... a pinned host-RAM rung whose billed bytes are unread ...
   let pin = sl_grant_shared(g: srv4_grant, shared: [sl_host_ram_pinned_bytes_unread(a: srv4_routed_expert_artifact)])
   let pinned = match serving_layout_derive(g: pin, groups: srv4_layer_split_groups, b: strata_srv4_layer_split_profile, r: serving_context_ceiling_requirement) {
@@ -748,7 +889,12 @@ test fn witness_unread_charged_host_rung_refuses_the_layout_instead_of_billing_z
     _ => false
   }
   // ... and the real srv4_grant (read floor, read bytes) still CONFIGURES -- the refusal is specifically the unread charge.
-  evicted && pinned && (match srv4_layout { ServingLayoutConfigured { replicas: _, unallocated_ram: _, evidence: _ } => true  _ => false })
+  let floor_free = sl_grant_shared(g: srv4_grant, shared: [sl_host_ram_floor_unread(a: srv4_routed_expert_artifact)])
+  let floor_configured = match serving_layout_derive(g: floor_free, groups: srv4_layer_split_groups, b: strata_srv4_layer_split_profile, r: serving_context_ceiling_requirement) {
+    ServingLayoutConfigured { replicas: rs, unallocated_ram: _, evidence: _ } => 0 < rs.length()
+    ServingLayoutRefused { refusal: _ } => false
+  }
+  evicted && pinned && floor_configured && (match srv4_layout { ServingLayoutConfigured { replicas: _, unallocated_ram: _, evidence: _ } => true  _ => false })
 }
 
 // The identity frame no longer prints an UNREAD rung figure as a fabricated 0 (review 92466/92474). A device rung
