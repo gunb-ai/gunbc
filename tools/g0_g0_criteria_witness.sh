@@ -1,20 +1,19 @@
 #!/usr/bin/env bash
 # HAND-SHELL ENFORCEMENT PROBE for the G0 contained-development-execution criteria proposal (PR #16989).
 #
-# SCAFFOLD (reviewer FINDING 1): the DECISION RULE and its VERDICT are modeled in .dag and the MODEL is the
-# authority -- this file does NOT decide PASS by its own exit status (a trailing `echo` always returns 0;
-# gating PASS on the bwrap launch rc would be fail-open). This file only runs bwrap and records the REAL
-# per-probe rc, translates them into three observations, and feeds them to the model verdict, whose process
-# exit is the verdict.
+# SINGLE VERDICT AUTHORITY (review 98327 FINDING 1 / gunbc.design_argument::single_authority): this file
+# does NOT decide PASS. It runs bwrap, records each probe's OWN return code as a text token, and feeds them
+# to the model verdict, which returns ProcessExit. The shell then exits with THAT verdict's status and
+# NOTHING else (no shell-side && of mask_ok/posctl/etc). The mask-applied and positive-control observations
+# are INPUTS to the verdict, consumed there.
 #   model decision rule:   gunbc.roadmap.g0_contained_dev_execution_proof::g0_two_sided_isolation_holds
-#   model verdict surface: gunbc.roadmap.g0_contained_dev_execution_proof::g0_two_sided_isolation_verdict (-> ProcessExit)
+#   model sole verdict:    ...::g0_two_sided_isolation_verdict (-> ProcessExit; reason names the clause)
 #   bash-emit capability + dissolution trigger:
-#                          ...g0_contained_dev_execution_proof::g0_bwrap_isolation_bash_emit_dissolution_trigger (std.disposition.Scaffold)
-#   WHY it cannot be a .dag consumer: producing the three observations requires EXECUTING a real kernel
-#   mount-namespace primitive (bwrap --tmpfs masking), which no typecheck or grep can (fail_closed).
+#                          ...::g0_bwrap_isolation_bash_emit_dissolution_trigger (std.disposition.Scaffold)
+#   WHY it cannot be a .dag consumer: producing the observations requires EXECUTING a real kernel
+#   mount-namespace primitive (bwrap --tmpfs masking) that no typecheck or grep can (fail_closed).
 #
-# Run on srv1 from the repo root (Cargo.toml beside dag/ and src/), under the shared limiter; capture the
-# wrapper acquisition line as the FIRST line of the log:
+# Run on srv1 from the repo root (Cargo.toml beside dag/ and src/), under the shared limiter:
 #   HEAVY_OWNER=<session> ~/bin/heavy-slot bash tools/g0_g0_criteria_witness.sh
 # The nested `gunbc run` calls run inside THIS heavy-slot scope (one stage); they are not separately queued.
 set -u
@@ -40,24 +39,21 @@ echo "SCRIPT_SHA256=$(sha256sum "$0" | cut -d' ' -f1)"
 echo "GUNBC_BIN=${GUNBC_BIN}"
 echo "G0_REPO=${G0_REPO}"
 
-overall_rc=0
-
-model_available=true
-if [ ! -x "$GUNBC_BIN" ] || [ ! -f "$G0_REPO/Cargo.toml" ] || [ ! -f "$G0_REPO/$G0_MODEL" ]; then
-  model_available=false
-  echo "MODEL_UNAVAILABLE=gunbc or repo/model root missing (GUNBC_BIN=$GUNBC_BIN G0_REPO=$G0_REPO G0_MODEL=$G0_MODEL)"
-fi
-
-# run the model verdict with the observed booleans; echoes its process exit on its own line.
-run_model_verdict() {
-  local own="$1" prot="$2" sib="$3" tag="$4"
-  ( cd "$G0_REPO" && "$GUNBC_BIN" run --entry "$G0_MODEL" $G0_SR --function g0_two_sided_isolation_verdict \
-      --arg own_op_permitted="$own" --arg protected_reachable="$prot" --arg sibling_reachable="$sib" ) \
-      > "$SCR/model_${tag}.log" 2>&1
+# invoke the model verdict with the given key=value tokens; echoes its own stdout (the located reason) and
+# returns its PROCESS status. The shell's authority derives ONLY from a real, present binary+model.
+run_verdict() {
+  local tag="$1"; shift
+  local argv=(); local kv
+  for kv in "$@"; do argv+=(--arg "$kv"); done
+  ( cd "$G0_REPO" && "$GUNBC_BIN" run --entry "$G0_MODEL" $G0_SR \
+      --function g0_two_sided_isolation_verdict "${argv[@]}" ) > "$SCR/verdict_${tag}.log" 2>&1
   return $?
 }
 
-# ── two-sided hermetic isolation probe (bwrap mount-namespace masking) ─────────────────────────────
+# a captured return code is relayed verbatim; an absent probe line becomes the literal token MISSING so the
+# MODEL (not the shell) turns it into a located fail-closed failure (review 98327 FINDING 2).
+cap_tok() { local v; v=$(printf '%s\n' "$1" | sed -n "s/^$2=\([0-9][0-9]*\)\$/\1/p" | head -1); [ -n "$v" ] && printf '%s' "$v" || printf 'MISSING'; }
+
 W="$SCR/g0_witness.$$"; W2="$SCR/g0_neg.$$"
 rm -rf "$W" "$W2"
 mk_tree() {
@@ -71,7 +67,7 @@ mk_tree() {
 }
 mk_tree "$W"
 
-# re-run capturing stdout to parse the per-probe rc deterministically (the rc each probe echoed, not the echo's rc)
+# ENFORCED (good) run: mask sibling AND protected. Each probe records its OWN rc.
 cap=$(bwrap --dev-bind / / \
       --tmpfs "$W/instroot/attempts/attempt-B" --tmpfs "$W/protected" \
       -- /bin/sh -c "
@@ -82,87 +78,82 @@ cap=$(bwrap --dev-bind / / \
         \"$W/protected/custody/payload.sh\" >/dev/null 2>&1; echo \"NEG_protected_exec_rc=\$?\"
       ")
 bwrap_enf_rc=$?
+# UNMASKED positive control: the SAME probes must REACH (rc 0) -- proves they really read/exec.
 capu=$(bwrap --dev-bind / / -- /bin/sh -c "
         cat \"$W/instroot/attempts/attempt-B/sibling.txt\" >/dev/null 2>&1; echo \"POSCTL_sibling_read_rc=\$?\";
         \"$W/protected/custody/payload.sh\" >/dev/null 2>&1; echo \"POSCTL_protected_exec_rc=\$?\"
       ")
 bwrap_unm_rc=$?
-echo "ENFORCED_OBS:"; printf '%s\n' "$cap" | sed 's/^/  /'
-echo "UNMASKED_OBS:"; printf '%s\n' "$capu" | sed 's/^/  /'
-echo "BWRAP_ENFORCED_RC=$bwrap_enf_rc"
-echo "BWRAP_UNMASKED_RC=$bwrap_unm_rc"
+# NAMED negative [broken_mask]: separate tree, protected left UNMASKED (sibling still masked).
+mk_tree "$W2"
+negcap=$(bwrap --dev-bind / / \
+      --tmpfs "$W2/instroot/attempts/attempt-B" \
+      -- /bin/sh -c "
+        cat \"$W2/instroot/attempts/attempt-A/own.txt\" >/dev/null 2>&1; echo \"POS_own_rc=\$?\";
+        cat \"$W2/instroot/attempts/attempt-B/sibling.txt\" >/dev/null 2>&1; echo \"NEG_sibling_read_rc=\$?\";
+        cat \"$W2/protected/custody/fabric-mac-key\" >/dev/null 2>&1; echo \"NEG_protected_read_rc=\$?\";
+        \"$W2/protected/custody/payload.sh\" >/dev/null 2>&1; echo \"NEG_protected_exec_rc=\$?\"
+      ")
+bwrap_neg_rc=$?
 
-POS_own_rc=$(           printf '%s\n' "$cap"  | sed -n 's/^POS_own_rc=\([0-9]*\)$/\1/p')
-MASKED_ENTRIES=$(       printf '%s\n' "$cap"  | sed -n 's/^MASKED_ENTRIES=\([0-9]*\)$/\1/p')
-NEG_sibling_read_rc=$(  printf '%s\n' "$cap"  | sed -n 's/^NEG_sibling_read_rc=\([0-9]*\)$/\1/p')
-NEG_protected_read_rc=$(printf '%s\n' "$cap"  | sed -n 's/^NEG_protected_read_rc=\([0-9]*\)$/\1/p')
-NEG_protected_exec_rc=$(printf '%s\n' "$cap"  | sed -n 's/^NEG_protected_exec_rc=\([0-9]*\)$/\1/p')
-POSCTL_sibling_read_rc=$( printf '%s\n' "$capu" | sed -n 's/^POSCTL_sibling_read_rc=\([0-9]*\)$/\1/p')
-POSCTL_protected_exec_rc=$(printf '%s\n' "$capu" | sed -n 's/^POSCTL_protected_exec_rc=\([0-9]*\)$/\1/p')
+# relay the 14 tokens (verbatim rc, or MISSING)
+T_own=$(cap_tok "$cap"    POS_own_rc)
+T_mask=$(cap_tok "$cap"   MASKED_ENTRIES)
+T_sib=$(cap_tok "$cap"    NEG_sibling_read_rc)
+T_pread=$(cap_tok "$cap"  NEG_protected_read_rc)
+T_pexec=$(cap_tok "$cap"  NEG_protected_exec_rc)
+T_enflaunch="$bwrap_enf_rc"
+T_psib=$(cap_tok "$capu"  POSCTL_sibling_read_rc)
+T_pexec2=$(cap_tok "$capu" POSCTL_protected_exec_rc)
+T_unmlaunch="$bwrap_unm_rc"
+T_nown=$(cap_tok "$negcap" POS_own_rc)
+T_nsib=$(cap_tok "$negcap" NEG_sibling_read_rc)
+T_npread=$(cap_tok "$negcap" NEG_protected_read_rc)
+T_npexec=$(cap_tok "$negcap" NEG_protected_exec_rc)
+T_neglaunch="$bwrap_neg_rc"
 
-# ---- derive the three observations + the positive control ----
-own_perm=false; [ "$POS_own_rc" = "0" ] && own_perm=true
-sib_reach=true;  [ "$NEG_sibling_read_rc" != "0" ] && sib_reach=false
-prot_reach=true; if [ "$NEG_protected_read_rc" != "0" ] && [ "$NEG_protected_exec_rc" != "0" ]; then prot_reach=false; fi
-mask_ok=false;   [ "$MASKED_ENTRIES" = "0" ] && mask_ok=true
-posctl=false;    if [ "$POSCTL_sibling_read_rc" = "0" ] && [ "$POSCTL_protected_exec_rc" = "0" ]; then posctl=true; fi
-echo "OBS_own_op_permitted=$own_perm"
-echo "OBS_protected_reachable=$prot_reach"
-echo "OBS_sibling_reachable=$sib_reach"
-echo "OBS_mask_applied=$mask_ok"
-echo "OBS_positive_control_reached=$posctl"
+echo "RECORDED_TOKENS: own=$T_own mask=$T_mask sib=$T_sib protected_read=$T_pread protected_exec=$T_pexec enf_launch=$T_enflaunch posctl_sib=$T_psib posctl_exec=$T_pexec2 unm_launch=$T_unmlaunch neg_own=$T_nown neg_sib=$T_nsib neg_protected_read=$T_npread neg_protected_exec=$T_npexec neg_launch=$T_neglaunch"
 
-# ---- the MODEL consumes the real observations; its process exit is the verdict ----
-MODEL_RC=127
-if [ "$model_available" = true ]; then
-  run_model_verdict "$own_perm" "$prot_reach" "$sib_reach" good; MODEL_RC=$?
-  echo "MODEL_VERDICT_RC=$MODEL_RC"
-else
-  echo "MODEL_VERDICT_RC=127 (model unavailable)"
-fi
+ARGS_GOOD() {
+  printf '%s\n' \
+    "own_rc=$T_own" "masked_entries=$T_mask" "sibling_rc=$T_sib" \
+    "protected_read_rc=$T_pread" "protected_exec_rc=$T_pexec" "enf_launch_rc=$T_enflaunch" \
+    "posctl_sibling_rc=$T_psib" "posctl_exec_rc=$T_pexec2" "unm_launch_rc=$T_unmlaunch" \
+    "neg_own_rc=$T_nown" "neg_sibling_rc=$T_nsib" "neg_protected_read_rc=$T_npread" \
+    "neg_protected_exec_rc=$T_npexec" "neg_launch_rc=$T_neglaunch"
+}
 
-# ---- NAMED negative case [broken_mask]: a SEPARATE tree whose protected subtree is deliberately NOT masked
-# => protected becomes reachable => the model must go RED (nonzero). Good tree ($W) is untouched. ----
-NEG_MODEL_RC=0
-if [ "$model_available" = true ]; then
-  mk_tree "$W2"
-  negcap=$(bwrap --dev-bind / / \
-        --tmpfs "$W2/instroot/attempts/attempt-B" \
-        -- /bin/sh -c "
-          cat \"$W2/instroot/attempts/attempt-A/own.txt\" >/dev/null 2>&1; echo \"POS_own_rc=\$?\";
-          cat \"$W2/instroot/attempts/attempt-B/sibling.txt\" >/dev/null 2>&1; echo \"NEG_sibling_read_rc=\$?\";
-          cat \"$W2/protected/custody/fabric-mac-key\" >/dev/null 2>&1; echo \"NEG_protected_read_rc=\$?\";
-          \"$W2/protected/custody/payload.sh\" >/dev/null 2>&1; echo \"NEG_protected_exec_rc=\$?\"
-        ")
-  neg_own=$(printf '%s\n' "$negcap" | sed -n 's/^POS_own_rc=\([0-9]*\)$/\1/p')
-  neg_sib=$(printf '%s\n' "$negcap" | sed -n 's/^NEG_sibling_read_rc=\([0-9]*\)$/\1/p')
-  neg_pr=$(printf '%s\n' "$negcap" | sed -n 's/^NEG_protected_read_rc=\([0-9]*\)$/\1/p')
-  neg_pe=$(printf '%s\n' "$negcap" | sed -n 's/^NEG_protected_exec_rc=\([0-9]*\)$/\1/p')
-  echo "BROKEN_MASK_OBS:"; printf '%s\n' "$negcap" | sed 's/^/  /'
-  nown=false; [ "$neg_own" = "0" ] && nown=true
-  nsib=true;  [ "$neg_sib" != "0" ] && nsib=false
-  nprot=true; if [ "$neg_pr" != "0" ] && [ "$neg_pe" != "0" ]; then nprot=false; fi
-  run_model_verdict "$nown" "$nprot" "$nsib" neg; NEG_MODEL_RC=$?
-  echo "MODEL_VERDICT_NEG_RC=$NEG_MODEL_RC (expected nonzero: protected reachable when mask is broken)"
-fi
+# ---- THE SOLE VERDICT (the model decides; the shell only relays tokens and adopts its status) ----
+echo "--- MODEL VERDICT (real observations) ---"
+mapfile -t GOOD < <(ARGS_GOOD)
+run_verdict good "${GOOD[@]}"; MODEL_RC=$?
+sed 's/^/MODEL_OUT: /' "$SCR/verdict_good.log"
+echo "MODEL_VERDICT_RC=$MODEL_RC"
+
+# ---- NAMED NEGATIVE [broken_mask] (evidence the check is not vacuous): invert ONE good-path fixture --
+#      make the protected EXEC reachable (mask broken) -- the model must go RED naming protected reachable. ----
+echo "--- NAMED NEGATIVE [broken_mask]: invert protected_exec fixture (mask broken) -> expect RED ---"
+mapfile -t NEGA < <(ARGS_GOOD | sed "s#^protected_exec_rc=.*#protected_exec_rc=0#")
+run_verdict neg_broken_mask "${NEGA[@]}"; NEG_A_RC=$?
+sed 's/^/NEG_A_MODEL_OUT: /' "$SCR/verdict_neg_broken_mask.log"
+echo "NEG_A_MODEL_RC=$NEG_A_RC (expected nonzero naming ISOLATION_BREACHED:protected_exec_reachable_under_mask)"
+
+# ---- NAMED NEGATIVE [missing_observation] (review 98327 FINDING 2): a probe that produced no output must
+#      be a typed, located failure -- never a false mistaken for a denial. Feed sibling_rc=MISSING. ----
+echo "--- NAMED NEGATIVE [missing_observation]: feed sibling_rc=MISSING -> expect typed failure ---"
+mapfile -t NEGB < <(ARGS_GOOD | sed "s#^sibling_rc=.*#sibling_rc=MISSING#")
+run_verdict neg_missing "${NEGB[@]}"; NEG_B_RC=$?
+sed 's/^/NEG_B_MODEL_OUT: /' "$SCR/verdict_neg_missing.log"
+echo "NEG_B_MODEL_RC=$NEG_B_RC (expected nonzero naming MISSING_OR_UNPARSEABLE_OBSERVATION:sibling_rc)"
 
 unshare -Ur true >/dev/null 2>&1; userns_rc=$?
 if [ "$userns_rc" -ne 0 ]; then
   echo "USERNS_PROBE=UNAVAILABLE (unshare -Ur rc=$userns_rc): uid/capability (DAC) and live-unit enforcement NOT exercised here (apparmor_restrict_unprivileged_userns)"
 fi
 
-# PASS requires: the MODEL held on the good run, the per-probe observations really denied protected+sibling
-# under the mask (mask_ok, !sib_reach, !prot_reach, own permitted), the positive control really reached them
-# unmasked, AND the NAMED negative (broken mask) made the model go RED.
-if [ "$MODEL_RC" -eq 0 ] && [ "$own_perm" = true ] && [ "$sib_reach" = false ] && [ "$prot_reach" = false ] \
-   && [ "$mask_ok" = true ] && [ "$posctl" = true ] \
-   && [ "$model_available" = true ] && [ "$NEG_MODEL_RC" -ne 0 ]; then
-  echo "ISOLATION_PROBE=PASS (model verdict on real observations; NAMED negative [broken_mask] -> MODEL_VERDICT_NEG_RC=$NEG_MODEL_RC)"
-else
-  echo "ISOLATION_PROBE=FAIL (MODEL_RC=$MODEL_RC own_perm=$own_perm sib_reach=$sib_reach prot_reach=$prot_reach mask_ok=$mask_ok posctl=$posctl model_avail=$model_available NEG_MODEL_RC=$NEG_MODEL_RC)"
-  overall_rc=1
-fi
-
+# The named-negative demonstrations are evidence; their status is printed, NOT joined into the decision.
+# The model verdict itself already refuses to return ExitSuccess unless the negative run went RED for the
+# right reason (codes 8/9/10). The SHELL EXITS WITH THE MODEL VERDICT STATUS AND NOTHING ELSE.
 rm -rf "$W" "$W2"
-echo "OVERALL_RC=$overall_rc"
-exit $overall_rc
+echo "SHELL_EXITS_WITH_MODEL_RC=$MODEL_RC"
+exit "$MODEL_RC"

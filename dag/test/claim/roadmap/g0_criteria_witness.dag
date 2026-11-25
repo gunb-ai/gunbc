@@ -22,7 +22,8 @@ import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_worker_unit_properties
 import gunbc.roadmap.roadmap_attempt_occurrence { UnitRunOnSystemManager }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_lab_dashboard_instance }
 import extdeps.systemd.systemd_run { SystemdRunProperty, systemd_run_property_assignment, SystemdRunPropertyAssignmentReady, SystemdRunPropertyAssignmentRefused, systemd_run_empty_capability_bounding_set_assignment, LoadCredentialSetting }
-import gunbc.roadmap.g0_contained_dev_execution_proof { g0_two_sided_isolation_holds }
+import gunbc.roadmap.g0_contained_dev_execution_proof { g0_two_sided_isolation_holds, g0_two_sided_isolation_verdict }
+import std.process { ProcessExit, ExitSuccess }
 
 // ── markdown text extraction over the typed carrier ──────────────────────────────────────────────
 fn join_str(xs: List<String>) -> String { fold(xs, init: "", f: (acc, s) => concat(acc, s)) }
@@ -190,4 +191,32 @@ test fn g0_isolation_predicate_accepts_enforced_and_rejects_unmasked() -> Bool {
   let enforced = g0_two_sided_isolation_holds(own_op_permitted: true, protected_reachable: false, sibling_reachable: false)
   let unmasked = g0_two_sided_isolation_holds(own_op_permitted: true, protected_reachable: true, sibling_reachable: true)
   enforced && !unmasked
+}
+
+fn g0_verdict_is_success(p: ProcessExit) -> Bool {
+  match p {
+    ExitSuccess => true
+    _ => false
+  }
+}
+
+// The SOLE VERDICT consumed as a real consumer, on constructed per-probe return-code tokens, with a
+// discriminating input that goes RED (fail_closed): the enforced token set must be accepted; inverting ONE
+// protected fixture (protected_exec reachable) must be rejected; and a MISSING probe token must be a typed
+// located failure, not a silent denial. This is the in-.model proof that the verdict is the single authority
+// (review 98327), complementing the shell that feeds it the real bwrap observations.
+test fn g0_verdict_consumer_accepts_enforced_and_goes_red_when_broken() -> Bool {
+  let ok = g0_two_sided_isolation_verdict(
+    own_rc: "0", masked_entries: "0", sibling_rc: "1", protected_read_rc: "1", protected_exec_rc: "127",
+    enf_launch_rc: "0", posctl_sibling_rc: "0", posctl_exec_rc: "0", unm_launch_rc: "0",
+    neg_own_rc: "0", neg_sibling_rc: "1", neg_protected_read_rc: "0", neg_protected_exec_rc: "0", neg_launch_rc: "0")
+  let broken_mask = g0_two_sided_isolation_verdict(
+    own_rc: "0", masked_entries: "0", sibling_rc: "1", protected_read_rc: "1", protected_exec_rc: "0",
+    enf_launch_rc: "0", posctl_sibling_rc: "0", posctl_exec_rc: "0", unm_launch_rc: "0",
+    neg_own_rc: "0", neg_sibling_rc: "1", neg_protected_read_rc: "0", neg_protected_exec_rc: "0", neg_launch_rc: "0")
+  let missing = g0_two_sided_isolation_verdict(
+    own_rc: "0", masked_entries: "0", sibling_rc: "MISSING", protected_read_rc: "1", protected_exec_rc: "127",
+    enf_launch_rc: "0", posctl_sibling_rc: "0", posctl_exec_rc: "0", unm_launch_rc: "0",
+    neg_own_rc: "0", neg_sibling_rc: "1", neg_protected_read_rc: "0", neg_protected_exec_rc: "0", neg_launch_rc: "0")
+  g0_verdict_is_success(ok) && !g0_verdict_is_success(broken_mask) && !g0_verdict_is_success(missing)
 }

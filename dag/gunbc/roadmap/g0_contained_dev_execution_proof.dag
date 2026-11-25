@@ -1,57 +1,167 @@
 module gunbc.roadmap.g0_contained_dev_execution_proof
 
 // THE .dag INTENT OF THE G0 TWO-SIDED HERMETIC ISOLATION PROOF, and the scaffold marker for the one
-// realization that stays hand-shell. This is the carrier the reviewer's FINDING 1 asks for: the
-// semantics of the unreachability probe are modeled here as a .dag consumer; only the OBSERVATIONS
-// (the three booleans) are produced by hand-shell, because producing them requires executing a real
-// kernel mount-namespace primitive (bwrap --tmpfs masking) that neither a .dag typecheck nor a source
-// grep can perform. See gunbc.design_argument::fail_closed (a typecheck and a .contains() grep are not
-// consumers) for why the decision rule must be a typed consumer and why the enforcement must be executed.
+// realization that stays hand-shell. This is the carrier the reviewer's FINDING 1 (review 98246) asks
+// for: the semantics of the unreachability probe are modeled here as a .dag consumer; only the RAW
+// OBSERVATIONS (the per-probe return codes a probe records) are produced by hand-shell, because
+// producing them requires executing a real kernel mount-namespace primitive (bwrap --tmpfs masking)
+// that neither a .dag typecheck nor a source grep can perform. See gunbc.design_argument::fail_closed
+// (a typecheck and a .contains() grep are not consumers). SINGLE VERDICT AUTHORITY (gunbc.design_argument::
+// single_authority; review 98327 FINDING 1): the decision is made HERE, not by the shell. The shell
+// records each probe's own return code as a text token and feeds them to g0_two_sided_isolation_verdict;
+// it then exits with THAT verdict's process status and NOTHING else.
 
 import std.types { Bool, String }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
-// THE DECISION RULE (the .dag consumer). Given the three observations a probe records about a worker
-// placed behind a hermetic boundary -- its own operation is permitted (own_op_permitted), the
-// representative PROTECTED credential fixture is reachable (protected_reachable), and the
-// SIBLING-ATTEMPT fixture is reachable (sibling_reachable) -- the isolation HOLDS exactly when the
-// worker's own operation is permitted AND neither the protected nor the sibling fixture is reachable.
-// This is the green-by-execution consumer: a real consumer that returns false when the boundary is
-// absent (the unmasked observation), not a grep.
+// THE DECISION RULE (the .dag consumer). Given the observations a probe records about a worker placed
+// behind a hermetic boundary -- its own operation is permitted (own_op_permitted), the representative
+// PROTECTED credential fixture is reachable (protected_reachable), and the SIBLING-ATTEMPT fixture is
+// reachable (sibling_reachable) -- isolation HOLDS exactly when the worker's own operation is permitted
+// AND neither the protected nor the sibling fixture is reachable. A real consumer that returns false when
+// the boundary is absent (the unmasked observation), not a grep.
 fn g0_two_sided_isolation_holds(own_op_permitted: Bool, protected_reachable: Bool, sibling_reachable: Bool) -> Bool {
   own_op_permitted && !protected_reachable && !sibling_reachable
 }
 
-// THE VERDICT SURFACE THE HAND-SHELL PROBE CALLS WITH THE OBSERVATIONS IT RECORDED. The probe does NOT
-// decide PASS by its own exit status (a trailing echo always succeeds -- the reviewer's fail-open); it
-// records the three observations from the real per-probe rc and feeds them here. The MODEL is the verdict
-// authority: it returns ExitSuccess only when the rule holds and ExitFailure otherwise, so a broken mask
-// (protected/sibling reachable) crosses the process boundary as a nonzero status. Run it as:
-//   gunbc run --entry .../g0_contained_dev_execution_proof.dag --function g0_two_sided_isolation_verdict \
-//     --arg own_op_permitted=<true|false> --arg protected_reachable=<true|false> --arg sibling_reachable=<true|false>
-fn g0_two_sided_isolation_verdict(own_op_permitted: Bool, protected_reachable: Bool, sibling_reachable: Bool) -> ProcessExit {
-  if g0_two_sided_isolation_holds(own_op_permitted: own_op_permitted, protected_reachable: protected_reachable, sibling_reachable: sibling_reachable) {
-    ExitSuccess
+// A recorded return code is a VALID observation only when it is a non-empty run of decimal digits. The
+// shell sends the literal sentinel "MISSING" (or nothing) when a probe produced no line -- e.g. bwrap
+// failed to launch -- and an empty string would otherwise be vacuously "all digits". Treating an
+// unparseable observation as a located failure here is review 98327 FINDING 2: a missing observation is a
+// typed, located failure (fail_closed), never a silent false that could be mistaken for a denial.
+fn g0_rc_is_valid(tok: String) -> Bool {
+  match parse_int(s: tok) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn g0_rc_is_zero(tok: String) -> Bool {
+  match parse_int(s: tok) {
+    Present { value: n } => n == 0
+    Absent => false
+  }
+}
+
+// THE SOLE VERDICT AUTHORITY. Takes EVERY raw observation the probe records, as text return-code tokens
+// (the shell records $? per probe and relays it verbatim; it does NOT pre-interpret). It checks, in a
+// fail-closed order, and returns ProcessExit -- whose status the shell adopts as its own exit and whose
+// reason names the exact clause that fired. The positive-control (unmasked probe really reaches the
+// fixtures) and mask-applied (protected subtree is empty) observations are INPUTS to this verdict, not
+// a shell-side join (review 98327 FINDING 1).
+//   good-path tokens (sibling + protected MASKED):
+//     own_rc                 -- worker's own allowed op
+//     masked_entries         -- entries under the masked protected subtree (0 == mask applied)
+//     sibling_rc, protected_read_rc, protected_exec_rc -- must be DENIED (nonzero) under the mask
+//     enf_launch_rc          -- the enforced bwrap LAUNCH status
+//   positive control (NO mask): the SAME probes must REACH (rc 0) proving they really read/exec
+//     posctl_sibling_rc, posctl_exec_rc, unm_launch_rc
+//   named negative [broken_mask] (protected subtree left UNMASKED; sibling still masked):
+//     neg_own_rc, neg_sibling_rc, neg_protected_read_rc, neg_protected_exec_rc, neg_launch_rc
+//     -- requires an EXPLICIT protected-reachable observation (read AND exec both 0) before the negative
+//        is allowed to count; a failed bwrap launch is its own named diagnostic, never the negative.
+fn g0_two_sided_isolation_verdict(
+  own_rc: String,
+  masked_entries: String,
+  sibling_rc: String,
+  protected_read_rc: String,
+  protected_exec_rc: String,
+  enf_launch_rc: String,
+  posctl_sibling_rc: String,
+  posctl_exec_rc: String,
+  unm_launch_rc: String,
+  neg_own_rc: String,
+  neg_sibling_rc: String,
+  neg_protected_read_rc: String,
+  neg_protected_exec_rc: String,
+  neg_launch_rc: String
+) -> ProcessExit {
+  if !g0_rc_is_valid(enf_launch_rc) {
+    ExitFailure { code: 3, reason: "BWRAP_LAUNCH_OBSERVATION_UNPARSEABLE:enforced" }
+  } else if !g0_rc_is_zero(enf_launch_rc) {
+    ExitFailure { code: 3, reason: concat("BWRAP_LAUNCH_FAILED:enforced rc=", enf_launch_rc) }
+  } else if !g0_rc_is_valid(unm_launch_rc) {
+    ExitFailure { code: 3, reason: "BWRAP_LAUNCH_OBSERVATION_UNPARSEABLE:unmasked" }
+  } else if !g0_rc_is_zero(unm_launch_rc) {
+    ExitFailure { code: 3, reason: concat("BWRAP_LAUNCH_FAILED:unmasked rc=", unm_launch_rc) }
+  } else if !g0_rc_is_valid(neg_launch_rc) {
+    ExitFailure { code: 3, reason: "BWRAP_LAUNCH_OBSERVATION_UNPARSEABLE:negative" }
+  } else if !g0_rc_is_zero(neg_launch_rc) {
+    ExitFailure { code: 3, reason: concat("BWRAP_LAUNCH_FAILED:negative rc=", neg_launch_rc) }
+  // ---- fail-closed: every probe token must be a real recorded code (review 98327 FINDING 2) ----
+  } else if !g0_rc_is_valid(own_rc) {
+    ExitFailure { code: 2, reason: "MISSING_OR_UNPARSEABLE_OBSERVATION:own_rc" }
+  } else if !g0_rc_is_valid(masked_entries) {
+    ExitFailure { code: 2, reason: "MISSING_OR_UNPARSEABLE_OBSERVATION:masked_entries" }
+  } else if !g0_rc_is_valid(sibling_rc) {
+    ExitFailure { code: 2, reason: "MISSING_OR_UNPARSEABLE_OBSERVATION:sibling_rc" }
+  } else if !g0_rc_is_valid(protected_read_rc) {
+    ExitFailure { code: 2, reason: "MISSING_OR_UNPARSEABLE_OBSERVATION:protected_read_rc" }
+  } else if !g0_rc_is_valid(protected_exec_rc) {
+    ExitFailure { code: 2, reason: "MISSING_OR_UNPARSEABLE_OBSERVATION:protected_exec_rc" }
+  } else if !g0_rc_is_valid(posctl_sibling_rc) {
+    ExitFailure { code: 2, reason: "MISSING_OR_UNPARSEABLE_OBSERVATION:posctl_sibling_rc" }
+  } else if !g0_rc_is_valid(posctl_exec_rc) {
+    ExitFailure { code: 2, reason: "MISSING_OR_UNPARSEABLE_OBSERVATION:posctl_exec_rc" }
+  } else if !g0_rc_is_valid(neg_own_rc) {
+    ExitFailure { code: 2, reason: "MISSING_OR_UNPARSEABLE_OBSERVATION:neg_own_rc" }
+  } else if !g0_rc_is_valid(neg_sibling_rc) {
+    ExitFailure { code: 2, reason: "MISSING_OR_UNPARSEABLE_OBSERVATION:neg_sibling_rc" }
+  } else if !g0_rc_is_valid(neg_protected_read_rc) {
+    ExitFailure { code: 2, reason: "MISSING_OR_UNPARSEABLE_OBSERVATION:neg_protected_read_rc" }
+  } else if !g0_rc_is_valid(neg_protected_exec_rc) {
+    ExitFailure { code: 2, reason: "MISSING_OR_UNPARSEABLE_OBSERVATION:neg_protected_exec_rc" }
+  // ---- positive control: the probes must REACH (rc 0) the fixtures when unmasked, proving they really
+  //      read/exec and only the boundary denies them ----
+  } else if !(g0_rc_is_zero(posctl_sibling_rc) && g0_rc_is_zero(posctl_exec_rc)) {
+    ExitFailure { code: 4, reason: concat("POSITIVE_CONTROL_NOT_REACHED sib_rc=", posctl_sibling_rc, " exec_rc=", posctl_exec_rc) }
+  // ---- worker's own allowed op must be PERMITTED (rc 0) ----
+  } else if !g0_rc_is_zero(own_rc) {
+    ExitFailure { code: 6, reason: concat("OWN_OP_NOT_PERMITTED rc=", own_rc) }
+  // ---- mask applied: the masked protected subtree is empty ----
+  } else if !g0_rc_is_zero(masked_entries) {
+    ExitFailure { code: 5, reason: concat("MASK_NOT_APPLIED masked_entries=", masked_entries) }
+  // ---- the protected + sibling fixtures must be DENIED (nonzero) under the mask ----
+  } else if g0_rc_is_zero(sibling_rc) {
+    ExitFailure { code: 7, reason: "ISOLATION_BREACHED:sibling_reachable_under_mask" }
+  } else if g0_rc_is_zero(protected_read_rc) {
+    ExitFailure { code: 7, reason: "ISOLATION_BREACHED:protected_read_reachable_under_mask" }
+  } else if g0_rc_is_zero(protected_exec_rc) {
+    ExitFailure { code: 7, reason: "ISOLATION_BREACHED:protected_exec_reachable_under_mask" }
+  // ---- named negative [broken_mask]: its own op permitted, sibling still masked, and the protected
+  //      fixture EXPLICITLY reachable (both read and exec rc 0), else the negative is not RED for the
+  //      right reason and must not be counted (review 98327 FINDING 2) ----
+  } else if !g0_rc_is_zero(neg_own_rc) {
+    ExitFailure { code: 8, reason: concat("NEGATIVE_NOT_VALID:neg_own_op_not_permitted rc=", neg_own_rc) }
+  } else if g0_rc_is_zero(neg_sibling_rc) {
+    ExitFailure { code: 8, reason: "NEGATIVE_NOT_VALID:neg_sibling_not_masked (sibling reachable in negative run)" }
+  } else if !(g0_rc_is_zero(neg_protected_read_rc) && g0_rc_is_zero(neg_protected_exec_rc)) {
+    ExitFailure { code: 9, reason: concat("NEGATIVE_NOT_RED_FOR_RIGHT_REASON:protected_not_reachable read_rc=", neg_protected_read_rc, " exec_rc=", neg_protected_exec_rc) }
+  // ---- the modeled rule, on observations derived from the REAL tokens above, must hold for the good run
+  //      and be breached by the negative run's protected-reachable observation ----
+  } else if !g0_two_sided_isolation_holds(own_op_permitted: true, protected_reachable: false, sibling_reachable: false) {
+    ExitFailure { code: 10, reason: "MODELED_RULE_REJECTED_GOOD_RUN" }
+  } else if g0_two_sided_isolation_holds(own_op_permitted: true, protected_reachable: true, sibling_reachable: false) {
+    ExitFailure { code: 10, reason: "MODELED_RULE_ACCEPTED_BROKEN_MASK (negative not discriminating)" }
   } else {
-    ExitFailure { code: 1, reason: "G0 two-sided isolation breached: own op not permitted, or a protected/sibling fixture is reachable" }
+    ExitSuccess
   }
 }
 
 // THE BASH-EMIT CAPABILITY THE HAND-SHELL WITNESS EXERCISES. The enforcement is mount-namespace
 // masking: bwrap --dev-bind / with --tmpfs over the protected and sibling subtrees, run inside the
-// heavy-slot scope on srv1. This is the same mechanism family as systemd ProtectHome=tmpfs /
-// ProtectSystem / the ReadWritePaths carve-out. It is named so the scaffold is honest about exactly
-// what the shell does that .dag cannot.
+// heavy-slot scope on srv1. It is named so the scaffold is honest about exactly what the shell does that
+// .dag cannot.
 data g0_bwrap_isolation_bash_emit_capability: String = "bwrap mount-namespace tmpfs masking (--dev-bind / with --tmpfs over the protected and sibling subtrees), realized by tools/g0_g0_criteria_witness.sh inside the heavy-slot scope on srv1"
 
-// THE SCAFFOLD MARKER / DISSOLUTION TRIGGER. The decision rule above is the modeled consumer; the
-// three booleans it consumes are produced by a hand-shell probe (bwrap) until that probe is realized
-// through a typed host-effect / v2.workflow.bash_emit program (a modeled realization of the mount
-// namespace) rather than a hand-authored sh -c string. DISSOLVES WHEN the bwrap mount-namespace
-// probe is a modeled realization dispatch bound to this declaration, leaving no hand-authored medium-
-// as-string program logic. Bound to the decision rule so the marker names the carrier it scaffolds.
+// THE SCAFFOLD MARKER / DISSOLUTION TRIGGER. The decision rule + verdict above are the modeled consumer;
+// the per-probe return-code tokens they consume are produced by a hand-shell probe (bwrap) until that
+// probe is realized through a typed host-effect / v2.workflow.bash_emit program (a modeled realization of
+// the mount namespace) rather than a hand-authored sh -c string. DISSOLVES WHEN the bwrap mount-namespace
+// probe is a modeled realization dispatch bound to this declaration. Bound to the decision rule so the
+// marker names the carrier it scaffolds.
 data g0_bwrap_isolation_bash_emit_dissolution_trigger: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: DeclarationRef {
