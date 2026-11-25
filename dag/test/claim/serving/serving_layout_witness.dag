@@ -17,7 +17,7 @@ import gunbc.serving.serving_layout {
   ServingLayoutResult, ServingLayoutConfigured, ServingLayoutRefused, ServingLayoutRefusal,
   ServingLayoutRamShort, ServingLayoutDeviceTooSmall, ServingLayoutBackendCannotRetain, ServingLayoutUnknownDevice,
   ServingLayoutDeviceInTwoGroups, ServingLayoutContextAboveBackend, ServingLayoutDuplicateGroupName, ServingLayoutSnapshotCostNotPositive,
-  ServingLayoutInputsUnread,
+  ServingLayoutInputsUnread, ServingArtifactHoldBelowFloor,
   ServingBackendSupportsTopology, ServingLiveQualified, ServingLiveUnqualified,
   ServingLiveStandingUnqualified, ServingLiveStandingQualified, ServingLiveRequalificationRequired,
   ServingAdmitted, ServingAdmissionRefused, ServingAdmission,
@@ -102,6 +102,23 @@ fn sl_host_ram_pinned_bytes_unread(a: ServingSharedArtifact) -> ServingSharedArt
     name: a.name, bytes: a.bytes, owner: a.owner, device: a.device, disk: a.disk,
     host_ram: match a.host_ram {
       Present { value: r } => Present { value: ServingArtifactRung { bytes: ServingMemoryUnread { reason: "the pinned host-RAM copy has not been read" as NonEmptyStr }, holds: ArtifactHeldPinned { mechanism: "fixture: pinned host-RAM rung" as NonEmptyStr }, realizes: r.realizes } }
+      Absent => Absent
+    },
+  }
+}
+
+// An evictable host-RAM rung stating a GIVEN floor and occupancy -- the third single-variable change on the same
+// hold. It lets a witness put the two figures in any relation: the RED sets the occupancy BELOW the floor, which
+// no tier can both mean and pay for (ServingArtifactHoldBelowFloor), and the control sets them EQUAL, which must
+// still configure -- the pair is what shows the gate fires on the contradiction and not on a mere equality.
+fn sl_host_ram_hold(a: ServingSharedArtifact, fl: ServingMemoryReading, oc: ServingMemoryReading) -> ServingSharedArtifact {
+  ServingSharedArtifact {
+    name: a.name, bytes: a.bytes, owner: a.owner, device: a.device, disk: a.disk,
+    host_ram: match a.host_ram {
+      Present { value: r } => Present { value: ServingArtifactRung { bytes: r.bytes, holds: match r.holds {
+        ArtifactHeldEvictable { bound_by: bound_by, floor: _, occupies: _ } => ArtifactHeldEvictable { bound_by: bound_by, floor: fl, occupies: oc }
+        ArtifactHeldPinned { mechanism: _ } => r.holds
+      }, realizes: r.realizes } }
       Absent => Absent
     },
   }
@@ -390,6 +407,46 @@ test fn witness_srv4_under_the_raised_cap_fits_its_terms() -> Bool {
         && rs.all(c => byte_size_count(b: c.retention_budget) + byte_size_count(b: serving_reading_bytes_or_zero(r: strata_srv4_layer_split_profile.park_free_floor)) < cap - byte_size_count(b: terms.expert_host_ram))
         // And the pool is spent, not left idle: what remains after the caps is less than one more snapshot.
         && byte_size_count(b: un) < snapshot
+    _ => false
+  }
+}
+
+// THE OTHER SIDE OF THE SAME UNDER-BILLING, ALSO MADE UNRENDERABLE. The state this class root-causes billed the
+// expert tier at its FLOOR instead of its OCCUPANCY. A row can now be written the other way round -- an occupancy
+// BELOW the floor the same tier cannot give back under reclaim -- and the budget would again bill the shared
+// cgroup less than the tier actually holds: the same starvation, arriving from the other side. floor <= occupies
+// is arithmetic and not preference (the WHY is on ServingArtifactHoldBelowFloor), so the layout refuses such a
+// row BY NAME, naming both figures and the row, before it can hand out a retention budget the engine will refuse
+// to park into. This is the discriminating RED for the guard; the control below keeps the boundary admitted.
+test fn witness_evictable_hold_occupying_below_its_floor_is_refused() -> Bool {
+  let bad = sl_grant_shared(g: srv4_grant, shared: [sl_host_ram_hold(
+    a: srv4_routed_expert_artifact,
+    fl: ServingMemoryRead { bytes: gibibyte_to_byte_size(g: gibibyte(count: 22)), provenance: "fixture: what reclaim leaves standing" as NonEmptyStr },
+    oc: ServingMemoryRead { bytes: gibibyte_to_byte_size(g: gibibyte(count: 10)), provenance: "fixture: an occupancy BELOW that floor, which no tier can both mean and pay for" as NonEmptyStr },
+  )])
+  let refused = serving_layout_derive(g: bad, groups: srv4_layer_split_groups, b: strata_srv4_layer_split_profile, r: serving_context_ceiling_requirement)
+  match sl_refusal(r: refused) {
+    Present { value: ServingArtifactHoldBelowFloor { host: h, artifact: n, floor: f, occupies: o } } =>
+      h == srv4_grant.host && n == srv4_routed_expert_artifact.name
+        && byte_size_count(b: f) == byte_size_count(b: gibibyte_to_byte_size(g: gibibyte(count: 22)))
+        && byte_size_count(b: o) == byte_size_count(b: gibibyte_to_byte_size(g: gibibyte(count: 10)))
+    _ => false
+  }
+}
+
+// THE CONTROL FOR THAT RED, AT THE BOUNDARY: occupancy EQUAL to the floor is not a contradiction -- a tier that
+// fills exactly what it cannot give back is a tier with nothing evictable in it, coherent even if unusual -- and
+// the same derivation CONFIGURES it. So the guard fires on occupies < floor, not on occupies == floor, and it is
+// the relation that is enforced rather than a size preference wearing a type.
+test fn witness_evictable_hold_occupying_exactly_its_floor_is_admitted() -> Bool {
+  let same = sl_grant_shared(g: srv4_grant, shared: [sl_host_ram_hold(
+    a: srv4_routed_expert_artifact,
+    fl: ServingMemoryRead { bytes: gibibyte_to_byte_size(g: gibibyte(count: 22)), provenance: "fixture: what reclaim leaves standing" as NonEmptyStr },
+    oc: ServingMemoryRead { bytes: gibibyte_to_byte_size(g: gibibyte(count: 22)), provenance: "fixture: an occupancy EQUAL to that floor" as NonEmptyStr },
+  )])
+  match serving_layout_derive(g: same, groups: srv4_layer_split_groups, b: strata_srv4_layer_split_profile, r: serving_context_ceiling_requirement) {
+    ServingLayoutConfigured { replicas: rs, unallocated_ram: _, evidence: e } =>
+      rs.length() == 1 && (match e.budget { ServingMemoryFits { spare: _ } => true  _ => false })
     _ => false
   }
 }
