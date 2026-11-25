@@ -264,7 +264,10 @@ test fn an_unrooted_task_refuses_its_chain_and_a_rooted_one_is_admitted() -> Boo
   let removed = shell.Remove.RecursiveForce(path: dir)
   removed.success
     && match refused {
-         ProjectionRefused { cause } => trim(s: cause) != ""
+         // BY NAME: the refusal must be the chain authority's own unrooted verdict -- an
+         // AlignmentWalkUnrooted reason, not merely "some cause came back". A non-empty-cause check
+         // would still pass if a fixture defect made some unrelated arm refuse.
+         ProjectionRefused { cause } => string_contains(s: cause, pattern: "not an admitted root")
          ProjectionAdmitted { chain: _, evidence: _ } => false
        }
     && match admitted {
@@ -343,6 +346,29 @@ test fn a_workers_own_aligned_assertion_cannot_mint_a_continuation_receipt() -> 
       },
     ),
   )
+  // (e) THE POSITIVE CONTROL, inside this witness and not only across the module: honest bytes, an
+  // honest projection and the real verdict artifact DO adjudicate and DO resume, once, into the next
+  // epoch. Without it the four refusals above could all pass on a pipeline that refuses everything --
+  // a red control that cannot go green is not a control.
+  let honest_adjudicated = harness_alignment_adjudicate(
+    checkpoint: checkpoint,
+    projection: project(chain: chain, dir: dir, observation: honest, steps: steps),
+    events_path: events_in(dir: dir),
+    observation_path: path,
+    verdict_path: verdict,
+    cadence: alignment_base_cadence_state(),
+  )
+  let honest_gate = harness_alignment_resume_gate(
+    checkpoint: checkpoint,
+    published: harness_alignment_publish(
+      check_directory: dir,
+      adjudication: HarnessAlignmentAdjudication {
+        checkpoint: checkpoint,
+        verdict: Aligned,
+        cadence: alignment_base_cadence_state(),
+      },
+    ),
+  )
   let removed = shell.Remove.RecursiveForce(path: dir)
   match emitted {
     TurnAlignmentCheckpointDue { chain_fingerprint: _, conversation_tip: _, observation_path: _, round_steps: _, steps_taken: _ } =>
@@ -358,14 +384,31 @@ test fn a_workers_own_aligned_assertion_cannot_mint_a_continuation_receipt() -> 
              AdjudicationPublished { adjudication: _ } => false
            }
         && match no_verdict {
-             AdjudicationRefused { cause } => trim(s: cause) != ""
+             // BY NAME: the missing-verdict refusal, not whichever check happened to fire first.
+             AdjudicationRefused { cause } => string_contains(s: cause, pattern: "verdict artifact is unreadable")
              AdjudicationPublished { adjudication: _ } => false
            }
         && match foreign {
-             ResumeRefused { cause } => trim(s: cause) != ""
+             // BY NAME: the key mismatch is the refusal, not an unreadable body or a missing cadence.
+             ResumeRefused { cause } => string_contains(s: cause, pattern: "keyed to a different checkpoint")
              // A receipt minted for another checkpoint may not resume this lineage whether it offers an
              // epoch or a stop: neither was adjudicated against this checkpoint's evidence.
              ResumedOnce { next_epoch: _, checkpoint: _, verdict: _, cadence: _ } => false
+             StoppedByVerdict { verdict: _, cadence: _ } => false
+           }
+        && match honest_adjudicated {
+             AdjudicationPublished { adjudication: graded } =>
+               match graded.verdict {
+                 Aligned => true
+                 _ => false
+               }
+             AdjudicationRefused { cause: _ } => false
+           }
+        && match honest_gate {
+             // The honest path resumes into exactly checkpoint.epoch + 1 -- the epoch the boundary's own
+             // identity numbers next, not any epoch.
+             ResumedOnce { next_epoch: opened, checkpoint: _, verdict: _, cadence: _ } => opened == 7
+             ResumeRefused { cause: _ } => false
              StoppedByVerdict { verdict: _, cadence: _ } => false
            }
     _ => false
@@ -887,8 +930,14 @@ test fn the_adjudication_entry_refuses_an_unadmitted_chain_before_convening_any_
   let removed = shell.Remove.RecursiveForce(path: dir)
   wrote && removed.success
     && match outcome {
+         // BY NAME, and BY EXCLUSION: the refusal must be this node's chain verdict -- the reason names
+         // the node the walk could not admit -- and must not be a replay refusal or a missing-artifact
+         // refusal, either of which would make the "before convening any check" claim unverified.
          TurnSupervisionUnavailable { cause, steps_taken: taken } =>
-           trim(s: cause) != "" && taken == steps && !request_written.success
+           string_contains(s: cause, pattern: "align-witness-node-absent-from-the-declared-authority")
+             && !string_contains(s: cause, pattern: "already recorded as opened")
+             && !string_contains(s: cause, pattern: "verdict artifact")
+             && taken == steps && !request_written.success
          _ => false
        }
 }
