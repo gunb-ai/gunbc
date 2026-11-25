@@ -88,11 +88,11 @@ test fn unprobeable_transport_does_not_report_absent() -> Bool {
 // test rather than obtained from a host, so it stays pure: a converged success must read Holds
 // and a converged failure must read Fails. Only with these does "Unobserved" carry information.
 data converged_success: TypedArgvExecOutcome = TypedArgvExecConverged {
-  result: SshSessionExecResult { exit_code: 0, success: true, stdout: "", stderr: "" },
+  result: SshSessionExecResult { exit_code: 0, success: true, stdout: "", stderr: "", wall_deadline_seconds: Absent },
 }
 
 data converged_failure: TypedArgvExecOutcome = TypedArgvExecConverged {
-  result: SshSessionExecResult { exit_code: 1, success: false, stdout: "", stderr: "" },
+  result: SshSessionExecResult { exit_code: 1, success: false, stdout: "", stderr: "", wall_deadline_seconds: Absent },
 }
 
 data refused_outcome: TypedArgvExecOutcome = TypedArgvExecRefused {

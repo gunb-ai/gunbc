@@ -137,7 +137,14 @@ fn red_control_value(red_control: JsonRedControl, ctx: &InterpContext) -> Result
             executed_on,
         } => Value::Variant {
             type_name: ctx.sym("RedControlEvidence"),
-            variant_name: ctx.sym("RedControlExecuted"),
+            // THE COMMITTED LINE CARRIES NO OBSERVATION, so it is the UNRECORDED form, not the
+            // observation-bearing one. JsonRedControl reads only the three-field red_control_executed
+            // (deny_unknown_fields refuses an observation member, which is how the carrier refuses the
+            // observation-bearing line). The .dag sum names the three-field, observation-less shape
+            // RedControlTreeUnrecorded -- so the reader must build that variant, exactly as the .dag
+            // parser does (roadmap_acceptance_line_of); building RedControlExecuted here left its
+            // `observation` member null and every fold that matched it crashed (PatternMatchFailure null).
+            variant_name: ctx.sym("RedControlTreeUnrecorded"),
             fields: Rc::new(sorted_fields(vec![
                 (ctx.sym("witness_module"), str_value(witness_module)),
                 (ctx.sym("witness_fn"), str_value(witness_fn)),
@@ -300,11 +307,16 @@ fn variant_name(value: &Value, ctx: &InterpContext) -> Result<String, String> {
 fn red_control_to_json(value: &Value, ctx: &InterpContext) -> Result<JsonRedControl, String> {
     match variant_name(value, ctx)?.as_str() {
         "RedControlNotRun" => Ok(JsonRedControl::RedControlNotRun),
-        "RedControlExecuted" => Ok(JsonRedControl::RedControlExecuted {
-            witness_module: field_str(value, "witness_module", ctx)?,
-            witness_fn: field_str(value, "witness_fn", ctx)?,
-            executed_on: field_str(value, "executed_on", ctx)?,
-        }),
+        // The three-field, observation-less shape is committed as a three-field red_control_executed;
+        // both the observation-less RedControlTreeUnrecorded and the reader's own RedControlExecuted
+        // tag carry exactly {witness_module, witness_fn, executed_on} and serialise identically.
+        "RedControlExecuted" | "RedControlTreeUnrecorded" => {
+            Ok(JsonRedControl::RedControlExecuted {
+                witness_module: field_str(value, "witness_module", ctx)?,
+                witness_fn: field_str(value, "witness_fn", ctx)?,
+                executed_on: field_str(value, "executed_on", ctx)?,
+            })
+        }
         name => Err(format!("unknown RedControlEvidence variant `{name}`")),
     }
 }

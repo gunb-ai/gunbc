@@ -230,7 +230,7 @@ data anchored_host_transport_frontier_rows: List<FrontierRow> = [
     )
   ),
   frontier_row_decl(
-    ref: decl_ref(module_path: "gunbc.fleet.host_credential_custody_converge", decl_name: "host_credential_custody_row"),
+    ref: decl_ref(module_path: "gunbc.fleet.host_credential_custody_roster", decl_name: "host_credential_custody_row"),
     reason: "the Mtcollins1SshHostKey arm delivers /run/gunbc-ssh/ssh_host_ed25519_key under custody, but nothing in this diff consumes the placed file: the RAM image has no sshd in this slice (gunbc.runner.runner_host_first_boot_receipt unobserved_after_first_boot), so the delivery is the precondition of a consumer, not its proof",
     dissolution: unbound_dissolution(
       description: "dissolves when the boot route for mtcollins1 starts sshd with HostKey pointing at exactly the custody-placed path and a live boot's presented key is read back and matched (the read obligation on this module's anchor row); a placement receipt alone does not fire this"
