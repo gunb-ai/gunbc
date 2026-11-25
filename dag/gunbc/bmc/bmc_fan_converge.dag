@@ -3,7 +3,7 @@ module gunbc.bmc.bmc_fan_converge
 import extdeps.board_authority { BoardAuthorityRef }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
-import std.algebra { Cons, Empty, FreeSemigroup, trim }
+import std.algebra { Cons, Empty, trim }
 import extdeps.firmware.types { firmware_semantic_version_text }
 
 import extdeps.bmc.capability {
@@ -1221,36 +1221,24 @@ fn bmc_fan_tach_health_for_sensor(
   }
 }
 
-// A total head extractor: the FreeSemigroup carrier guarantees a head exists, so no Absent arm
-// survives. Callers construct the carrier from a Cons match, which refuses the empty roster before
-// this is reached. Per gunbc.design_argument::fail_closed, the prior sentinel string
-// "required-sensor-roster-empty" (a plausible sensor name returned on empty input) is a hard reject:
-// a receipt reader scanning a sensor column must not read a failure as a sensor name.
-fn bmc_fan_required_head(required: FreeSemigroup<NonEmptyStr>) -> NonEmptyStr {
-  required.head
-}
-
 fn bmc_fan_first_unhealthy_tach(
   health: List<OpenBmcTachHealth>,
   required: List<NonEmptyStr>,
 ) -> String? {
   match required {
     Empty => none
-    Cons { head: tach, tail: _ } => {
-      let required_head = bmc_fan_required_head(
-        required: FreeSemigroup { head: tach, tail: required.skip(n: 1) },
-      )
-      match bmc_fan_tach_health_for_sensor(health: health, sensor: required_head) {
+    Cons { head: tach, tail: _ } =>
+      match bmc_fan_tach_health_for_sensor(health: health, sensor: tach) {
         Absent =>
           Present {
-            value: join(["required tach health is absent: ", required_head as String], ""),
+            value: join(["required tach health is absent: ", tach as String], ""),
           }
         Present { value: observed } =>
           match observed {
             OpenBmcTachThresholdUnstated { sensor: _, reason } =>
               Present {
                 value: join(
-                  ["required tach threshold is unstated: ", required_head as String, ": ", reason],
+                  ["required tach threshold is unstated: ", tach as String, ": ", reason],
                   "",
                 ),
               }
@@ -1259,7 +1247,7 @@ fn bmc_fan_first_unhealthy_tach(
               value: join(
                 [
                   "required tach is below its OpenBMC threshold: ",
-                  required_head as String,
+                  tach as String,
                   "=",
                   to_string(rpm_count(reading_rpm)),
                   " < ",
@@ -1275,7 +1263,6 @@ fn bmc_fan_first_unhealthy_tach(
               )
           }
       }
-    }
   }
 }
 
@@ -1286,26 +1273,23 @@ fn bmc_fan_first_unhealthy_component(
 ) -> String? {
   match required {
     Empty => none
-    Cons { head: sensor, tail: _ } => {
-      let required_sensor = bmc_fan_required_head(
-        required: FreeSemigroup { head: sensor, tail: required.skip(n: 1) },
-      )
+    Cons { head: sensor, tail: _ } =>
       match bmc_fan_temperature_for_sensor(
         temperatures: temperatures,
-        sensor: required_sensor,
+        sensor: sensor,
       ) {
         Absent =>
           Present {
-            value: join(["required component temperature is absent: ", required_sensor as String], ""),
+            value: join(["required component temperature is absent: ", sensor as String], ""),
           }
         Present { value: BmcFanTemperatureAbsent } =>
           Present {
-            value: join(["required component temperature is absent: ", required_sensor as String], ""),
+            value: join(["required component temperature is absent: ", sensor as String], ""),
           }
         Present { value: BmcFanTemperatureRefused { reason } } =>
           Present {
             value: join(
-              ["required component temperature was refused: ", required_sensor as String, ": ", reason],
+              ["required component temperature was refused: ", sensor as String, ": ", reason],
               "",
             ),
           }
@@ -1315,7 +1299,7 @@ fn bmc_fan_first_unhealthy_component(
                 value: join(
                   [
                     "component reached rollback temperature: ",
-                    required_sensor as String,
+                    sensor as String,
                     "=",
                     to_string(celsius_count(temperature)),
                     "C >= ",
@@ -1333,7 +1317,6 @@ fn bmc_fan_first_unhealthy_component(
               )
             }
       }
-    }
   }
 }
 
