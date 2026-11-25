@@ -5,6 +5,7 @@ import gunbc.parse_population_baseline_roster {
   parse_population_total_count,
   parse_population_five_largest_count_check,
   parse_population_one_hundred_sixty_five_count_check,
+  parse_population_five_largest_byte_total,
   parse_population_partition_is_consistent,
   parse_population_zero_byte_row_count,
   parse_population_is_unique,
@@ -73,4 +74,15 @@ test fn parse_population_baseline_roster_is_unique_holds() -> Bool {
 // a run.
 test fn parse_population_baseline_roster_duplicate_key_refuses() -> Bool {
   parse_population_duplicate_refuses_with_trivial_eq()
+}
+
+// PLANTED RED CONTROL, run in the SAME claim_batch invocation as the seven PASS-by-name claims. This
+// is NOT a test fn and is NOT part of the committed witness pass-set — nothing in the repo auto-runs
+// it; it is invoked by name by the roster run only. It asserts a byte total that is false (the Five
+// Largest byte total is not 999), so claim_batch must report exactly one FAIL-by-name line while the
+// seven witnesses PASS, proving the runner reports a false claim as FAIL and not PASS
+// (gunbc.design_ruling::executed_red_control_names_its_failing_commit). Committed here so the single
+// --entry resolves all eight names in one invocation (one log, one rc, one head sha, one binary block).
+fn parse_population_roster_red_control_refuses() -> Bool {
+  parse_population_five_largest_byte_total() == 999
 }

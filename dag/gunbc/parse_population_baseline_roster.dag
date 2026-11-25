@@ -49,6 +49,21 @@ data parse_population_baseline_pinned_sha: String =
 // and the row's position; it is not stored per row.
 data parse_population_five_largest_count: Int = 5
 
+// DECLARED DEPARTURE (gunbc.design_argument::epistemic_humility: "assert as deduced only what is
+// deduced"). The row's first_slice calls the second population "a 165-module sample". As SELECTED it
+// is NOT a uniform or stratified sample of the corpus: it is the NEXT 165 files by DESCENDING blob
+// size (ranks 6..170 of the size sort), i.e. a SIZE-TAIL sample. Both populations therefore sit in the
+// heavy tail of the file-size distribution; neither represents the whole-corpus size mix.
+// Why the tail is chosen deliberately: it is deterministic and reproducible at the pinned sha with no
+// RNG seed to pin and no sampling-rule drift, and it loads the verb with its heaviest inputs — the
+// costliest, most adversarial workload for the parse-population control the row's displaced_cost names.
+// CONSEQUENCE (what is and is not deduced): the per-byte wall figures are a tail-vs-tail comparison,
+// NOT a statement about the corpus distribution. No claim is asserted that this population represents
+// the corpus, and the report's §6 per-byte number stays a scaling warning pending a controlled
+// one-shape size series. To make it a representative sample would require a seeded, declared sampling
+// rule over the full population — that is a re-measurement, not in this slice.
+data parse_population_one_hundred_sixty_five_is_size_tail_sample: Bool = true
+
 // One roster member: its repo-relative path and its blob byte size. Rank and population follow from
 // position in parse_population_baseline_rows().
 type ParsePopulationRow {
