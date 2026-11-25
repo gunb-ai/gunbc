@@ -503,7 +503,7 @@ test fn the_audit_job_binds_the_parse_verdict_publisher() -> Bool {
 
 // THE AUDIT PUBLISHES ONLY FROM THE CLOCK, AND ONLY ON MAIN. `schedule` plus `refs/heads/main`, and
 // no pull-request spelling: the pull-request-never-publishes edge the push-era guard carried, restated
-// for the audit-era pair (operator ruling 2026-11-24).
+// for the audit-era pair (gunbc.design_ruling::parse_verdict_walk_moves_to_scheduled_audit_2026_11_24).
 test fn the_audit_publish_pair_is_schedule_guarded() -> Bool {
   let guard = materialization_audit_publish_if()
   (step_if_condition(step: parse_verdict_publish_walk_step_guarded(if_value: guard)) == guard)

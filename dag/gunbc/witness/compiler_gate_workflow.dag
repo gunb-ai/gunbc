@@ -923,7 +923,7 @@ fn compiler_gate_emit_build_bound_steps() -> List<CompilerGateBoundStep> {
 // position implied by ORDER ("everything earlier in the job was green") is now a condition on the steps
 // themselves: gunbc.read_set_publish fast_lane_publish_gate runs them only when both emit steps are green on
 // a default-branch push. The parse-population walk that used to sit behind these steps no longer runs
-// in this job at all (operator ruling 2026-11-24): the FRESH walk-and-publish arm moved to the
+// in this job at all (gunbc.design_ruling::parse_verdict_walk_moves_to_scheduled_audit_2026_11_24): the FRESH walk-and-publish arm moved to the
 // scheduled audit job. The required tail keeps restore/record/reuse, so a main run still walks every
 // module its receipts do not already cover and can still redden there; what moved is the unconditional
 // full re-walk with the run's own binary, and the freshness bound on published receipts became the
@@ -1016,7 +1016,7 @@ fn compiler_gate_emit_build_tail_bound_steps() -> List<CompilerGateBoundStep> {
         role: capability_neutral,
         step_name: parse_verdict_reuse_walk_step_name,
       },
-      // THE PUBLISH PAIR IS GONE FROM THE REQUIRED TAIL (operator ruling 2026-11-24). The walk it
+      // THE PUBLISH PAIR IS GONE FROM THE REQUIRED TAIL (gunbc.design_ruling::parse_verdict_walk_moves_to_scheduled_audit_2026_11_24). The walk it
       // ran cost 512-646 s of this job's 3600 s cap (witnesses.yml step timings, runs 45488101298,
       // 45488118062, 45490755718 -- all cancelled at ~3618 s on healthy srv1 runners at full speed,
       // with the walk the step that never got to start), and the ruling moved it, coverage intact,
@@ -1032,7 +1032,7 @@ fn compiler_gate_emit_build_tail_bound_steps() -> List<CompilerGateBoundStep> {
   )
 }
 
-// ═══ THE SCHEDULED PARSE-VERDICT AUDIT (operator ruling 2026-11-24, msg_9c5aaa2b) ═══
+// ═══ THE SCHEDULED PARSE-VERDICT AUDIT (gunbc.design_ruling::parse_verdict_walk_moves_to_scheduled_audit_2026_11_24, operator msg_9c5aaa2b) ═══
 //
 // WHAT MOVED AND WHY A JOB IN THIS WORKFLOW: the daily parse-population walk left the required job
 // (its 512-646 s is what pushed the required job past the 60-minute cap on healthy hosts), keeping
