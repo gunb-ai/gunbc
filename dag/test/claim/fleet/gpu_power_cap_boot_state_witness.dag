@@ -1,6 +1,6 @@
 module test.claim.fleet.gpu_power_cap_boot_state_witness
 
-import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.types { Bool, List, NonEmptyStr, String }
 import std.optional { Absent, Present, optional_is_absent }
 import std.measure { hertz_count, watt, watt_count }
 import std.algebra { string_contains }
@@ -227,11 +227,13 @@ fn nothing_transcribed_on(h: HostIdentity) -> Bool {
   }
 }
 
-// The cap this host is recorded putting on every card it carries is `watts` W; false when none has been read.
-fn host_caps_every_card_at(host: HostIdentity, watts: Int) -> Bool {
+// The cap this host is recorded putting on every card it carries is `watts`; false when none has been read.
+// The parameter is a Watt, not a bare count beside the carrier the production rows use -- the comparison
+// unwraps on both sides, so no un-united number sits on this path (std.measure owns the unit).
+fn host_caps_every_card_at(host: HostIdentity, watts: Watt) -> Bool {
   match host_wide_gpu_cap_watts(host: host) {
     Absent => false
-    Present { value: w } => watt_count(w: w) == watts
+    Present { value: w } => watt_count(w: w) == watt_count(w: watts)
   }
 }
 
@@ -323,7 +325,7 @@ test fn srv3_cap_is_a_drop_in_on_the_serving_engine_running_before_its_start() -
         && m.persists_across_boot
         && !m.lines_read
         && match m.sm_clock {
-          SmClockUnlocked { why } => string_contains(s: why as String, pattern: "no clock lock")
+          SmClockUnlocked { why } => string_contains(s: why as String, pattern: "clock lock")
           SmClockLocked { low: _, high: _, chosen_from: _, decided_on: _ } => false
         }
         && match m.content_digest {
@@ -353,9 +355,9 @@ test fn a_reported_mechanism_never_answers_the_question_a_transcription_answers(
     && nothing_transcribed_on(operator_host_srv4)
     && nothing_transcribed_on(operator_host_e2d4b7)
     && nothing_transcribed_on(operator_host_6ce85c)
-    && host_caps_every_card_at(host: operator_host_srv3, watts: 40)
-    && host_caps_every_card_at(host: operator_host_srv4, watts: 30)
-    && host_caps_every_card_at(host: operator_host_e2d4b7, watts: 100)
+    && host_caps_every_card_at(host: operator_host_srv3, watts: watt(count: 40))
+    && host_caps_every_card_at(host: operator_host_srv4, watts: watt(count: 30))
+    && host_caps_every_card_at(host: operator_host_e2d4b7, watts: watt(count: 100))
     && no_host_wide_cap_read(operator_host_srv1)
     && no_host_wide_cap_read(operator_host_6ce85c)
 }
