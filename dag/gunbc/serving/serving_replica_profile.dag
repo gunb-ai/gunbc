@@ -501,12 +501,15 @@ fn replica_shape_named_with_grant(p: ServingReplicaProfile, grant: ServingRetent
 // production row carries StrataLaunchParameters, which has NO batch-slot field, and this function is the
 // model's ONLY consumer-side path from a profile row to a launchable record -- the slot count enters as an
 // argument of extdeps.strata.serve_flags::strata_launch_with_parallel and this is where that argument comes
-// from: the shape. That is what is established, and it is MechanicallyPreventable, not structural: the
+// from: the shape. That is what is established ON THE MODEL SIDE -- and even that is not structural: the
 // bridge is public and StrataServeFlags remains directly constructible, so nothing here makes the 2026-11-24
-// state unnameable to a caller that bypasses this derivation. The mechanical half is the witnesses
-// (test.claim.serving.replica_engine_admission_witness): the 4-way state refuses here and the 2-way
-// operating point derives exactly the 2 slots the hosts now run; the climb to a structural rung is the host
-// read-back join the recurring_failure_mode row's standing names. The benchmark cell still writes its own
+// state unnameable to a caller that bypasses this derivation. And the derivation has no production consumer
+// yet -- the witnesses execute it, nothing in production does -- so on the production path the class sits
+// BELOW THE LADDER (gunbc.design_argument::consumption: a derivation no production route runs prevents
+// nothing on that route). The witnesses (test.claim.serving.replica_engine_admission_witness) keep the
+// model-side derivation honest meanwhile: the 4-way state refuses here and the 2-way operating point derives
+// exactly the 2 slots the hosts now run. The row's trigger_capability names the two rungs up: a production
+// route consuming this function, then the host read-back join. The benchmark cell still writes its own
 // concurrency (there the number is the experiment's independent variable, not an admission).
 //
 // WHAT THE SHAPE'S STANDING DOES TO THE RESERVATION. Turns derived from uncited figures make the slots an

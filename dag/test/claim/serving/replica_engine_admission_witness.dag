@@ -48,8 +48,8 @@ import gunbc.fleet.fleet_host_identity { HostIdentity, operator_host_srv3 }
 import gunbc.recurring_failure_mode.engine_slots_written_beside_the_admission_that_bounds_them {
   engine_slots_written_beside_the_admission_that_bounds_them,
 }
-import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, FoundOnRung, RungRead }
-import gunbc.guarantee_rung { MechanicallyPreventable, StructurallyGuaranteed }
+import gunbc.recurring_failure_mode { BelowCeiling, FoundBelowTheLadder, RungRead }
+import gunbc.guarantee_rung { StructurallyGuaranteed }
 import gunbc.rung_climb { ClimbableButUnbuilt }
 
 // ── THE POSITIVE CONTROLS: ONE NUMBER, BOTH ENDS ──────────────────────────────────────────────────
@@ -62,11 +62,13 @@ fn launch_slots(launch: ReplicaEngineLaunch) -> Int {
   }
 }
 
-fn launch_flags(launch: ReplicaEngineLaunch) -> StrataServeFlags {
+// A refusal has NO flags: no arm of this helper fabricates a record. The only flag-consuming claim
+// matches Present and goes false on Absent (gunbc.design_argument::fail_closed).
+fn launch_flags(launch: ReplicaEngineLaunch) -> Optional<StrataServeFlags> {
   match launch {
-    EngineLaunchDerived { flags: f, slots: _ } => f
-    EngineLaunchEstimated { flags: f, slots: _, standings: _ } => f
-    EngineLaunchRefused { deployment: _, reason: _ } => srv3_strata_flags
+    EngineLaunchDerived { flags: f, slots: _ } => Present { value: f }
+    EngineLaunchEstimated { flags: f, slots: _, standings: _ } => Present { value: f }
+    EngineLaunchRefused { deployment: _, reason: _ } => Absent
   }
 }
 
@@ -120,7 +122,10 @@ test fn srv3_engine_launch_derives_two_slots_from_the_shape() -> Bool {
   let launch = replica_engine_launch(p: srv3_strata_profile)
   launch_slots(launch: launch) == 2
     && launch_is_estimated(launch: launch)
-    && flag_value(words: strata_serve_flag_words(flags: launch_flags(launch: launch)), flag: "--parallel") == "2"
+    && match launch_flags(launch: launch) {
+      Present { value: f } => flag_value(words: strata_serve_flag_words(flags: f), flag: "--parallel") == "2"
+      Absent => false
+    }
 }
 
 // POSITIVE CONTROL 2: the shape's turns and the engine's slots are the SAME derivation, not two numbers
@@ -158,7 +163,8 @@ test fn unread_parameters_refuse_the_launch_rather_than_inventing_argv() -> Bool
 // derive from the readings and the readings fail the policy floor at 4-way. It does NOT establish that a
 // second slot count cannot be written anywhere: strata_launch_with_parallel is public and a raw
 // StrataServeFlags is still constructible (the cell record does exactly that, with 8). Mechanically-
-// Preventable, witnesses-kept; the structural rung needs the host read-back join the row's standing names.
+// ladder until a production route runs this derivation -- the witnesses keep the model side honest, and
+// the row's trigger_capability names the two rungs up (production consumer, then host read-back join).
 fn srv3_variant_read_at(concurrency: Nat, aggregate: Nat) -> ServingReplicaProfile {
   ServingReplicaProfile {
     id: "srv3-strata",
@@ -289,13 +295,13 @@ test fn four_streams_barely_beat_one_stream_per_machine() -> Bool {
 // -- the recurring_failure_mode row this PR files, read back through its module.
 
 // The row exists, names the class once, and carries its rung reading: found below the
-// ladder (the fleet ran the state), standing on MechanicallyPreventable with the ceiling
+// ladder (the fleet ran the state), standing below the ladder on the production path with the ceiling
 // StructurallyGuaranteed -- the host read-back join that would close it is named, not built.
 fn the_failure_mode_row_names_the_class_and_its_rung() -> Bool {
   let row = engine_slots_written_beside_the_admission_that_bounds_them
   let named = row.identity == "engine_slots_written_beside_the_admission_that_bounds_them"
   let rung_ok = match row.rung {
-    RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundOnRung { rung: MechanicallyPreventable }, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: _ } } => true
+    RungRead { found_at: FoundBelowTheLadder, standing: BelowCeiling { current: FoundBelowTheLadder, ceiling: StructurallyGuaranteed, blocker: ClimbableButUnbuilt, trigger_capability: _ } } => true
     _ => false
   }
   let receipt_count = fold_list(xs: row.receipts, empty: 0, cons: (acc, r) => acc + 1)
