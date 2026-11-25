@@ -1361,9 +1361,11 @@ type FleetLegKind
 // is the only current backstop and must remain the outer bound. Each stays well under the outer
 // whole-receipt budget. There is deliberately no 'none' row: a leg kind that is a fleet leg always
 // gets a ceiling here, and non-fleet dispatches never consult this table. ServingProbeLeg and HostBuildLeg
-// are NOT spelled here at all: they are DERIVED, at serving_probe_wall_ceiling and host_build_wall_ceiling,
-// from a dated read and from fleet_whole_receipt_step_bound, because a ceiling that has to survive a
-// re-measurement is a formula over a read, not a number copied out of one.
+// are NOT spelled here at all: they are shares of ONE budget (remote_build_step_budget), derived at
+// serving_probe_wall_ceiling and host_build_wall_ceiling from fleet_whole_receipt_step_bound and from a
+// dated read of what the serving side costs to answer at all -- because two ceilings that each fit the
+// outer bound do not fit the SEQUENCE they run in, and a ceiling that has to survive a re-measurement is a
+// formula over a read, not a number copied out of one.
 type FleetSshLegDeadline {
   connect: Second
   alive_interval: Second
@@ -1396,20 +1398,48 @@ data fleet_whole_receipt_step_bound: Second = second(count: 1800)
 // transcript in the same read names the cost: resolve_entry_graph_inclusive ms=248554 over 895 modules,
 // max_rss_kib=3812072 -- the serving binary resolves its own closure before it can answer a probe at all.
 // (Cutting that per-leg cost is a separate lane, filed the same day; when it lands, this read is re-taken
-// and the ceiling below re-derived -- it is not a constant to keep.)
+// and the shares below re-derived -- it is not a constant to keep.)
 data serving_probe_cold_answer_read: Second = second(count: 240)
 
-// ServingProbeLeg: the measured cold answer with half again for host-to-host variance (2.5x the read),
-// which lands at 600 s -- a third of the outer bound, so a wedged serving host is refused in minutes while
-// a merely slow one is still answered.
-fn serving_probe_wall_ceiling() -> Second {
-  measure_scale_fraction_floor(m: serving_probe_cold_answer_read, num: 5, den: 2)
+// THE ONE BUDGET A CANDIDATE ATTEMPT SPENDS. A remote-build attempt is TWO legs in sequence inside one
+// step -- probe, then (only on a ready answer) the request -- so the two ceilings are shares of ONE
+// budget, not two ceilings each fitted under the outer bound: probe 600 s + request 1500 s would overrun a
+// 1800 s step between them, which is what the review of the first cut caught -- a bound that holds per leg
+// and not for the sequence re-creates the no-receipt failure, only scheduled. Five sixths of the outer
+// bound goes to the two legs; the sixth (300 s) is what the client owes in the same step for its own work:
+// snapshot commit, push of the hidden ref, answer decode, receipt write. Observed, that work is seconds
+// (the push answered within 2 s of the 2026-11-25 client transcript); the margin is held at the fleet's own
+// pinned-revision fetch ceiling (wall_repository_convergence, 300 s -- the same class of work, one ref over
+// one connection) rather than at the observed 2 s, because a margin has to hold on a loaded host, not on a
+// quiet one.
+//
+// WHAT THIS ROW DOES NOT CLAIM, stated so the rung is not overstated: it bounds a CANDIDATE ATTEMPT, not
+// the whole run. The walk tries the roster in order, so a run's worst case is one attempt budget per
+// candidate -- two today, and a timeout probe (600 s) plus a ready probe (600 s) plus a request (900 s) is
+// 2100 s against a 1500 s budget. No row here says that total fits anything, because no route-level budget
+// is modelled yet; naming that gap is the honest rung, and the client is a session process whose outer
+// limit today is the operator's patience -- which is exactly the thing the ceiling exists to stop
+// depending on.
+fn remote_build_step_budget() -> Second {
+  measure_scale_fraction_floor(m: fleet_whole_receipt_step_bound, num: 5, den: 6)
 }
 
-// HostBuildLeg: five sixths of the outer bound, so the leg ends while one sixth (300 s) is still left
-// inside the receipt's own step bound for the answer decode and the receipt write.
+// ServingProbeLeg: two fifths of that budget (600 s). This is where the measurement enters: the claim
+// asserts that the ceiling sits at least 5/2 ABOVE the dated cold read, so the probe's share is grounded
+// in the read while the pair still fits the sequence. A wedged serving host is refused in ten minutes; a
+// merely slow one is still answered.
+fn serving_probe_wall_ceiling() -> Second {
+  measure_scale_fraction_floor(m: remote_build_step_budget(), num: 2, den: 5)
+}
+
+// HostBuildLeg: the other three fifths (900 s) -- what the probe's measured cost LEAVES. Every second cut
+// from the read buys the build leg a second back, which is exactly why the lane that cuts the serving
+// side's per-leg closure resolve is what grows this share; re-take the read and re-derive there rather
+// than editing a number. A build that needs more than the share trips TYPED ("the host may still be
+// building, so the outcome is unknown and the walk stops") -- a visible refusal with a receipt -- rather
+// than running past the step's bound and arriving as no receipt at all.
 fn host_build_wall_ceiling() -> Second {
-  measure_scale_fraction_floor(m: fleet_whole_receipt_step_bound, num: 5, den: 6)
+  measure_scale_fraction_floor(m: remote_build_step_budget(), num: 3, den: 5)
 }
 
 fn fleet_ssh_leg_deadline_options(deadline: FleetSshLegDeadline) -> List<SshClientOption> {

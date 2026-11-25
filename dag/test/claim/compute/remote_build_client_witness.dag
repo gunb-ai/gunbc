@@ -8,7 +8,7 @@ import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }
 import gunbc.fleet.fleet_known_hosts_anchor {
   SshTargetResolved, SshTargetRefused, ssh_target_wire, anchored_host_key_row,
   FleetLegKind, FleetRemoteLeg, FleetBareWordLeg, ProbeLeg, portable_remote_words,
-  fleet_leg_wall_deadline, fleet_remote_leg_wall_deadline,
+  fleet_leg_wall_deadline, fleet_remote_leg_wall_deadline, remote_build_step_budget,
   serving_probe_cold_answer_read, fleet_whole_receipt_step_bound,
 }
 import extdeps.ssh.session {
@@ -362,19 +362,26 @@ test fn red_the_remote_build_probe_leg_is_not_sized_by_a_fleet_converge_probe() 
   fleet_probe_ceiling < cold_read && cold_read <= route_ceiling
 }
 
-// RED CONTROL -- A CEILING THAT IS ZERO, OR THAT RUNS THE WHOLE RECEIPT, IS NOT A DEADLINE. The outer
-// bound is the receipt's own step bound (the incident's backstop), so a leg allowed to use all of it
-// re-creates the no-receipt failure inside a number. Both ceilings are DERIVED (from the cold read and
-// from that bound), so the relations -- not the numbers -- are what hold: non-zero, clearing the measured
-// read, and strictly inside the bound.
-test fn red_no_remote_build_leg_is_allowed_to_run_the_whole_receipt() -> Bool {
-  let bound = fleet_whole_receipt_step_bound
-  let probe = fleet_leg_wall_deadline(kind: remote_build_probe_leg_kind())
-  let work = fleet_leg_wall_deadline(kind: remote_build_work_leg_kind())
-  second_count(s: probe) > 0 && second_count(s: work) > 0
-    && measure_le(a: probe, b: bound) && measure_le(a: work, b: bound)
-    && measure_le(a: serving_probe_cold_answer_read, b: probe)
-    && !measure_le(a: work, b: probe)
+// RED CONTROL -- THE TWO LEGS SHARE ONE STEP BUDGET, AND IT IS THE SEQUENCE THAT HAS TO FIT. A
+// candidate attempt probes, and only on a ready answer sends the request: the two legs run IN SEQUENCE
+// inside one step. Two ceilings that each fit the outer bound do not fit the pair -- probe 600 s plus
+// request 1500 s is 2100 s against a 1800 s step, and the outer bound would then kill the CLIENT before
+// the leg's own typed SessionOverran -> HostOutcomeUnknown refusal can fire: the same no-receipt failure
+// this change exists to close, rescheduled. So what is asserted is the arithmetic of the sequence, the
+// room the client owes its own step work inside the bound, and the grounding the probe's share is bought
+// with. A ceiling pair that stops fitting goes red here, not in production at minute 30.
+test fn red_the_probe_and_work_legs_fit_one_step_budget_together() -> Bool {
+  let bound = second_count(s: fleet_whole_receipt_step_bound)
+  let budget = second_count(s: remote_build_step_budget())
+  let probe = second_count(s: fleet_leg_wall_deadline(kind: remote_build_probe_leg_kind()))
+  let work = second_count(s: fleet_leg_wall_deadline(kind: remote_build_work_leg_kind()))
+  let cold_read = second_count(s: serving_probe_cold_answer_read)
+  probe > 0 && work > 0 && budget > 0
+    && measure_le(a: remote_build_step_budget(), b: fleet_whole_receipt_step_bound)
+    && budget != bound
+    && probe + work <= budget
+    && work > probe
+    && probe * 2 >= cold_read * 5
 }
 
 // AN OVERRUN IS A VALUE THAT CARRIES THE CEILING IT TRIPPED ON. The sink sets overran ONLY when its own
