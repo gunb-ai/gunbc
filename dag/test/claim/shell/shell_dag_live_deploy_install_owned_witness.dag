@@ -29,13 +29,15 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // effect. An install -d -o line authored as text carries a permission decision — who owns what on a
 // production host — that no type can check.
 //
-// THE ARMS WERE RE-POINTED ONTO THE ACTING ROUTE, authorized by the row owner (Manager B, relayed by
-// eager-koi-371): "Keep the RED enrolled by RE-POINTING it, not deleting it
-// (gunbc.design_argument::guarantee_ladder: dissolution on climb keeps the evidence). Move the
-// adversarial and benign arms onto the acting route -- gunbc.owned_directory :: owned_directory_ensure
-// / directory_owned_argv: an adversarial path still produces no shell control word, and the declared
-// path and principal are still realized." The three claim names are UNCHANGED so the ledger lines
-// compare one-for-one across the move; only what each arm reads changed.
+// THE ARMS WERE RE-POINTED ONTO THE ACTING ROUTE, on the row owner's authority. That authority is
+// NOT recorded here on purpose: a record of an oracle move kept inside the oracle it moves is the
+// weakest place it can sit. It is kept where it can be checked — the row this witness serves,
+// roadmap_node shell-dag-live-deploy-install-owned in dag/gunbc/roadmap/roadmap_authority.dag (whose
+// rewrite lands in gunbc#17067), and the PR comment on gunbc#17023 that quotes the authorizing relay.
+// What the move did is visible in this file, so nothing else needs asserting here: the three claim
+// names are UNCHANGED and the ledger lines compare one-for-one across it, and only what each arm
+// reads changed — the adversarial and benign arms now read the acting route, where an adversarial
+// path still produces no shell control word and the declared path and principal are still realized.
 //
 // WHY THE ADVERSARIAL ARM ASSERTS AN OWNERSHIP REFUSAL RATHER THAN A TEXT PROPERTY (the hazard was
 // measured before the arms were moved, per gunbc.design_argument::earliest_unjustified_boundary): the
@@ -68,8 +70,9 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // deleted in the same motion, not parked as dangling-by-consumption
 // (gunbc.design_argument::replacement_migration: the old authority ends in one motion at its root).
 //
-// PINNED AT LAUNCH: an unauthorized edit refuses verification as oracle-moved. The re-point above is
-// the authorized exception and no other line was tidied.
+// PINNED AT LAUNCH: an unauthorized edit refuses verification as oracle-moved. The only edit this
+// row makes to those arms is the re-point pointed at above, whose authority is recorded OUTSIDE this
+// file, at the row and in the PR comment it points to; no other line was tidied.
 
 data shell_control_words: List<String> = ["set -e", "||", "&&", ";", "2>/dev/null"]
 
