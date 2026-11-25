@@ -94,11 +94,17 @@ test fn locally_declared_correctly_labeled_call_compiles_clean() -> Bool {
 
 // ---------------------------------------------------------------------------
 // THE TYPED CARRIER LINK: the class row is rostered and carries the identity this module
-// imports it under. The import makes a rename a COMPILE failure; this leg refuses if the row
-// leaves the roster or the identity string drifts from the row's own field.
+// imports it under, EXACTLY ONCE. The import makes a rename a COMPILE failure; the roster
+// is DERIVED at compile time from the row directory (src/v1/stage0/src/cli_run/
+// derived_row_roster.rs: rows are imported by file stem), so a deleted row, or one whose
+// declared identity drifts from the identity this module imports, drops out of the roster
+// and reddens this leg -- and a DUPLICATED row makes the count two and also reddens it
+// (== 1, not > 0; multiplicity is a defect, not a pass, per the identity-keyed roster
+// growth #17029). The executed negative case -- row identity drifted in the run tree, leg
+// observed FAIL while the controls stay PASS -- is posted in the PR run link.
 // ---------------------------------------------------------------------------
 
 test fn class_row_is_rostered_with_matching_identity() -> Bool {
   count_where(xs: recurring_failure_mode_roster,
-    predicate: r => (r.identity as String) == (unresolved_signature_skips_call_shape_judgment.identity as String)) > 0
+    predicate: r => (r.identity as String) == (unresolved_signature_skips_call_shape_judgment.identity as String)) == 1
 }
