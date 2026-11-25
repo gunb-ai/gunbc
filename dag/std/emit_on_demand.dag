@@ -186,18 +186,6 @@ data main_wet_regen_surface: InterpreterWetSurface = InterpreterWetSurface {
   }
 }
 
-data pre_push_transport_surface: InterpreterWetSurface = InterpreterWetSurface {
-  id: "pre-push-transport",
-  membership: DeclaredFrontier {
-    authorities: [
-      wet_surface_ref(module_path: "gunbc.githooks.githooks_pre_push_cli", decl_name: "githooks_pre_push_cli_stage0_receiver_disposition"),
-      wet_surface_ref(module_path: "gunbc.githooks.githooks_pre_push_plan", decl_name: "pre_push_active_kinds")
-    ],
-    reason: "the typed pre-push plan is modeled, while its on-demand claim_batch argv/stdin transport remains in seed Rust and exact declaration-Node resolution is unavailable",
-    dissolution: unbound_dissolution(description: "the emitted crate partition deletes pre_push.rs and the on-demand seed transport, or a usage census proves the transport has no consumers")
-  }
-}
-
 data probe_bins_surface: InterpreterWetSurface = InterpreterWetSurface {
   id: "probe-bins",
   membership: DeclaredFrontier {
@@ -212,7 +200,6 @@ data probe_bins_surface: InterpreterWetSurface = InterpreterWetSurface {
 data interpreter_wet_surfaces: List<InterpreterWetSurface> = [
   gunbc_serve_wet_surface,
   main_wet_regen_surface,
-  pre_push_transport_surface,
   probe_bins_surface
 ]
 

@@ -1,7 +1,5 @@
 module test.claim.local_tidy_fmt_outcome
 
-import std.dissolution { dissolution_description }
-
 import gunbc.local_tidy_spec {
   LocalTidyFmtOutcome,
   FmtClean,
@@ -13,18 +11,8 @@ import gunbc.local_tidy_spec {
   local_tidy_fmt_pre_push_drift_recipe,
   local_tidy_fmt_pre_commit_drift_recipe,
 }
-import gunbc.githooks.githooks_pre_push_plan {
-  pre_push_fmt_outcome_recipe,
-  pre_push_fmt_outcome_blocks,
-  pre_push_fmt_spawn_refusal_recipe,
-}
 import gunbc.githooks.githooks_pre_push_emit { expected_githooks_pre_push_sh }
 import gunbc.githooks.githooks_pre_commit_emit { expected_githooks_pre_commit_sh }
-import gunbc.githooks.githooks_pre_push_fmt_transport_scaffold {
-  githooks_pre_push_fmt_transport_hand_rust_dissolve_trigger,
-  githooks_pre_push_fmt_transport_hand_rust_loc_delta_net,
-  githooks_pre_push_fmt_transport_test_discriminator,
-}
 
 // The defect under witness: a tool that COULD NOT RUN was reported as a negative finding about the
 // work, so a missing cargo printed 'rustfmt drift — run: cargo fmt --all' — a remedy that runs the
@@ -39,7 +27,14 @@ fn has(s: String, p: String) -> Bool {
 }
 
 fn unavailable_recipe(status: Int) -> String {
-  pre_push_fmt_outcome_recipe(status: status)
+  local_tidy_fmt_outcome_recipe(
+    outcome: local_tidy_fmt_outcome_of_exit_status(program: "cargo", status: status),
+    drift_recipe: local_tidy_fmt_pre_push_drift_recipe
+  )
+}
+
+fn cargo_fmt_status_blocks(status: Int) -> Bool {
+  local_tidy_fmt_outcome_blocks(outcome: local_tidy_fmt_outcome_of_exit_status(program: "cargo", status: status))
 }
 
 test fn witness_exit_zero_is_clean() -> Bool {
@@ -132,7 +127,10 @@ test fn witness_unavailable_recipe_is_reachable_for_the_pre_commit_surface_too()
 }
 
 test fn witness_spawn_refusal_is_tool_unavailable_not_drift() -> Bool {
-  let recipe = pre_push_fmt_spawn_refusal_recipe(cause: "No such file or directory")
+  let recipe = local_tidy_fmt_outcome_recipe(
+    outcome: FmtToolUnavailable { program: "cargo", cause: "No such file or directory" },
+    drift_recipe: local_tidy_fmt_pre_push_drift_recipe
+  )
   has(s: recipe, p: "No such file or directory")
     && has(s: recipe, p: "DID NOT RUN")
     && !has(s: recipe, p: "drift")
@@ -140,10 +138,10 @@ test fn witness_spawn_refusal_is_tool_unavailable_not_drift() -> Bool {
 
 test fn witness_every_non_verdict_status_still_stops_the_line() -> Bool {
   !local_tidy_fmt_outcome_blocks(outcome: FmtClean)
-    && pre_push_fmt_outcome_blocks(status: 1)
-    && pre_push_fmt_outcome_blocks(status: 127)
-    && pre_push_fmt_outcome_blocks(status: 126)
-    && !pre_push_fmt_outcome_blocks(status: 0)
+    && cargo_fmt_status_blocks(status: 1)
+    && cargo_fmt_status_blocks(status: 127)
+    && cargo_fmt_status_blocks(status: 126)
+    && !cargo_fmt_status_blocks(status: 0)
 }
 
 test fn witness_pre_push_hook_branches_on_exit_status() -> Bool {
@@ -166,17 +164,6 @@ test fn witness_pre_commit_hook_branches_on_exit_status() -> Bool {
     && has(s: sh, p: "cargo fmt --all --check || fmt_rc=$?")
     && has(s: sh, p: "if [[ \"$fmt_rc\" == \"1\" ]]; then")
     && has(s: sh, p: "could not be run (exit status $fmt_rc)")
-}
-
-test fn witness_hand_rust_receipt_is_counted_and_named() -> Bool {
-  githooks_pre_push_fmt_transport_hand_rust_loc_delta_net == 57
-    && has(s: dissolution_description(condition: githooks_pre_push_fmt_transport_hand_rust_dissolve_trigger), p: "dissolve-on")
-    && has(s: dissolution_description(condition: githooks_pre_push_fmt_transport_hand_rust_dissolve_trigger), p: "emitted crate partition")
-    && has(s: dissolution_description(condition: githooks_pre_push_fmt_transport_hand_rust_dissolve_trigger), p: "NOT a census shrink")
-}
-
-test fn witness_hand_rust_receipt_names_a_live_discriminator() -> Bool {
-  githooks_pre_push_fmt_transport_test_discriminator == "witness_unavailable_recipe_never_says_drift"
 }
 
 // witness_pre_push_emit_states_its_own_medium_disposition — DELETED with

@@ -1,4 +1,4 @@
-module v2.test.claim.witness_exclusion_reconciliation
+module test.claim.witness_exclusion_reconciliation
 
 import std.types { NonEmptyStr, List }
 

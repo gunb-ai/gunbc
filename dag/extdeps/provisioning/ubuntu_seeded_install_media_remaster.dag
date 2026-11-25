@@ -23,7 +23,7 @@ import std.algebra { trim }
 import std.content_hash { sha256_hex_digest }
 import std.optional { Present }
 import gunbc.host_command_binding {
-  CommandHost, HostCommandOutcome, HostCommandDone, HostCommandFailed, HostCommandUnconfirmed, HostCommandNotDispatched,
+  CommandHost, HostCommandOutcome, HostCommandDone, HostCommandFailed, HostCommandUnconfirmed, HostCommandNotDispatched, HostCommandUnanswered,
   host_command, host_command_outcome_text, host_run, host_transport_kind,
   HostFileWrite, HostFileWritten, HostFileWriteRefused, HostFileWriteNotConverged, host_write_file, host_file_write_text,
   ScratchOutcome, ScratchAcquired, ScratchNotAcquired, scratch_acquisition_of, scratch_removal_of, render_scratch_outcome,
@@ -199,8 +199,8 @@ fn install_media_remaster_ensure_grub_cmdline(host: CommandHost, grub_cfg: NonEm
     GrubCmdlineRefused { reason: concat("no linux line in the stock grub.cfg takes the kernel cmdline") }
   } else {
     match install_media_remaster_digest(host: host, path: grub_cfg) {
-      Absent => GrubCmdlineRefused { reason: install_media_remaster_digest_refusal(host: host, path: grub_cfg) }
-      Present { value: d } =>
+      DigestUnread { cause: c } => GrubCmdlineRefused { reason: c as String }
+      DigestMeasured { hex: d } =>
         if d != (stock.content_sha256 as String) {
           GrubCmdlineRefused { reason: concat(grub_cfg as String, " hashes to ", d, ", not the stock member's ", stock.content_sha256 as String, "; refusing to write an edit of a file this builder did not model") }
         } else {
@@ -291,8 +291,8 @@ fn install_media_remaster_fetch_artifact(host: CommandHost, nocloud_dir: NonEmpt
   match host_command(host: host, command: seed_artifact_place_command(source: artifact.source, destination: path)) {
     HostCommandDone { stdout: _ } =>
       match install_media_remaster_digest(host: host, path: path) {
-        Absent => Present { value: install_media_remaster_digest_refusal(host: host, path: path) }
-        Present { value: d } =>
+        DigestUnread { cause: c } => Present { value: c as String }
+        DigestMeasured { hex: d } =>
           if seed_artifact_readback_holds(read_back_sha256_hex: d, pin: artifact.digest) { none } else { Present { value: concat("seed artifact ", artifact.basename.value as String, " read back sha256 ", d, " but the input names ", artifact.digest.hex as String) } }
       }
     other => Present { value: concat("placing seed artifact ", artifact.basename.value as String, ": ", host_command_outcome_text(e: other)) }
@@ -333,16 +333,26 @@ fn install_media_remaster_write_nocloud_seed(host: CommandHost, work_dir: NonEmp
   }
 }
 
-fn install_media_remaster_digest(host: CommandHost, path: NonEmptyStr) -> String? {
-  match host_command(host: host, command: sha256sum_file_command(path: path as String)) {
+// THE SINGLE sha256sum READ. The digest OR the reason it could not be read is returned in one typed outcome,
+// from ONE host_command. The refusal wording reuses THIS invocation's outcome -- a second host_command to
+// "explain" a failed first read could disagree with it (different exit, different stderr), which would
+// fabricate an explanation for a failure that was never observed (gunbc.design_argument::fail_closed).
+type InstallMediaDigest
+  = DigestMeasured { hex: String }
+  | DigestUnread { cause: NonEmptyStr }
+
+fn install_media_remaster_digest(host: CommandHost, path: NonEmptyStr) -> InstallMediaDigest {
+  let outcome = host_command(host: host, command: sha256sum_file_command(path: path as String))
+  match outcome {
     HostCommandDone { stdout: o } =>
       match sha256_hex_digest(hex: trim(s: first_or_empty(xs: split(s: trim(s: o), delimiter: " ")))) {
-        Absent => none
-        Present { value: d } => Present { value: d.hex as String }
+        Absent => DigestUnread { cause: concat("the sha256 of ", path as String, " answered without a digest line: ", host_command_outcome_text(e: outcome)) as NonEmptyStr }
+        Present { value: d } => DigestMeasured { hex: d.hex as String }
       }
-    HostCommandFailed { exit_code: _, stderr: _ } => none
-    HostCommandUnconfirmed { exit_code: _, stdout: _, stderr: _ } => none
-    HostCommandNotDispatched { reason: _ } => none
+    HostCommandFailed { exit_code: _, stderr: _ } => DigestUnread { cause: concat("the sha256 of ", path as String, " could not be read: ", host_command_outcome_text(e: outcome)) as NonEmptyStr }
+    HostCommandUnconfirmed { exit_code: _, stdout: _, stderr: _ } => DigestUnread { cause: concat("the sha256 of ", path as String, " could not be read: ", host_command_outcome_text(e: outcome)) as NonEmptyStr }
+    HostCommandNotDispatched { reason: _ } => DigestUnread { cause: concat("the sha256 of ", path as String, " was never dispatched: ", host_command_outcome_text(e: outcome)) as NonEmptyStr }
+    HostCommandUnanswered { cause: c } => DigestUnread { cause: concat("the sha256 of ", path as String, " was dispatched but got no answer: ", c, "; ", host_command_outcome_text(e: outcome)) as NonEmptyStr }
   }
 }
 
@@ -351,10 +361,6 @@ fn first_or_empty(xs: List<String>) -> String {
     Absent => ""
     Present { value: x } => x
   }
-}
-
-fn install_media_remaster_digest_refusal(host: CommandHost, path: NonEmptyStr) -> String {
-  concat("the sha256 of ", path as String, " could not be read: ", host_command_outcome_text(e: host_command(host: host, command: sha256sum_file_command(path: path as String))))
 }
 
 // The steps inside an acquired work directory, in order; the first that does not hold ends the build.
@@ -390,8 +396,8 @@ fn install_media_remaster_from_tree(
                   )) {
                     HostCommandDone { stdout: _ } =>
                       match install_media_remaster_digest(host: host, path: staging_path) {
-                        Absent => Present { value: seeded_install_media_stage_refused(reason: install_media_remaster_digest_refusal(host: host, path: staging_path), work: CreationNotRequested) }
-                        Present { value: d } => Present { value: SeededInstallMediaStaged { staging_path: staging_path, output_digest: d as NonEmptyStr, work: CreationNotRequested } }
+                        DigestUnread { cause: c } => Present { value: seeded_install_media_stage_refused(reason: c as String, work: CreationNotRequested) }
+                        DigestMeasured { hex: d } => Present { value: SeededInstallMediaStaged { staging_path: staging_path, output_digest: d as NonEmptyStr, work: CreationNotRequested } }
                       }
                     other => Present { value: seeded_install_media_stage_refused(reason: concat("xorriso -boot_image any replay build: ", host_command_outcome_text(e: other)), work: CreationNotRequested) }
                   }
@@ -448,8 +454,8 @@ fn seeded_install_media_stage(
   match host_command(host: host, command: test_regular_file_command(path: stock_path as String)) {
     HostCommandDone { stdout: _ } =>
       match install_media_remaster_digest(host: host, path: stock_path) {
-        Absent => seeded_install_media_stage_refused(reason: concat("stock ISO digest could not be verified: ", install_media_remaster_digest_refusal(host: host, path: stock_path)), work: CreationNotRequested)
-        Present { value: d } =>
+        DigestUnread { cause: c } => seeded_install_media_stage_refused(reason: c as String, work: CreationNotRequested)
+        DigestMeasured { hex: d } =>
           if d == (input.stock_artifact.content_sha256 as String) {
             install_media_remaster_in_scratch(host: host, input: input, stock_path: stock_path, staging_path: staging_path)
           } else {

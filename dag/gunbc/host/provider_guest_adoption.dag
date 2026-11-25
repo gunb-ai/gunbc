@@ -22,6 +22,7 @@ import gunbc.host_command_binding {
   HostCommandFailed,
   HostCommandUnconfirmed,
   HostCommandNotDispatched,
+  HostCommandUnanswered,
   host_command,
   host_command_outcome_text,
 }
@@ -176,6 +177,7 @@ fn guest_read_stdout(reading: NonEmptyStr, outcome: HostCommandOutcome) -> Strin
     HostCommandFailed { exit_code: _, stderr: _ } => Absent
     HostCommandUnconfirmed { exit_code: _, stdout: _, stderr: _ } => Absent
     HostCommandNotDispatched { reason: _ } => Absent
+    HostCommandUnanswered { cause: _ } => Absent
   }
 }
 
@@ -192,6 +194,7 @@ fn kvm_presence_of(outcome: HostCommandOutcome) -> Bool? {
     HostCommandFailed { exit_code: c, stderr: _ } => if c == 1 { Present { value: false } } else { none }
     HostCommandUnconfirmed { exit_code: _, stdout: _, stderr: _ } => Absent
     HostCommandNotDispatched { reason: _ } => Absent
+    HostCommandUnanswered { cause: _ } => Absent
   }
 }
 
