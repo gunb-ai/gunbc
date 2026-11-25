@@ -354,11 +354,17 @@ fn prompt_render_receipt(plan: PromptPlan, wire: ProviderPromptArtifact) -> Prom
   }
 }
 
-// THE RENDER CURRENTNESS LAW: a render receipt is current for exactly one snapshot identity -- the
-// one whose digest it carries. Moving any authority revision, standing, contract revision or source
-// revision inside the snapshot invalidates every receipt admitted before the move, even one whose
-// rendered text did not change. Currentness is decided here once (anchor
-// gunbc.design_argument::single_authority); no surface re-decides it by comparing digests ad hoc.
+// THE RENDER CURRENTNESS LAW: currentness is the THREE-WAY binding of a receipt to the snapshot it
+// was admitted for AND the plan whose render it digests. The receipt must carry this snapshot's
+// digest, its input digests must be exactly this snapshot's inputs in order, the plan must be a
+// plan of this snapshot, and the receipt's semantic digest must equal the semantic render of THIS
+// plan -- so two renders with different content over one snapshot are two plans, and each carries
+// exactly its own receipt: a receipt that digests drifted prose is never current for the plan whose
+// prose it does not digest, even though the snapshot identity moved nowhere. Moving any authority
+// revision, standing, contract revision or source revision inside the snapshot invalidates every
+// receipt admitted before the move, even one whose rendered text did not change. Currentness is
+// decided here once (anchor gunbc.design_argument::single_authority); no surface re-decides it by
+// comparing digests ad hoc.
 // DECLARED FRONTIER (review 97941 finding 2 and review 97972 finding 2; gunbc.design_argument::
 // consumption): this law's named later consumer is the seat binding of the roadmap row
 // harness-seat-binds-modeled-prompt-segments (identity rn_01M86JC25E8M7NKAG6C4Y34J0C, added by this
@@ -370,8 +376,16 @@ fn prompt_render_receipt(plan: PromptPlan, wire: ProviderPromptArtifact) -> Prom
 // projection and gates every emitted envelope through this law. Until the trigger resolves no
 // surface can call it, so no surface re-decides it either; the witnesses in
 // dag/test/claim/harness_prompt_context.dag pin the law so the follow-up must satisfy it.
-fn prompt_render_is_current(receipt: PromptRenderReceipt, snapshot: PromptContextSnapshot) -> Bool {
-  receipt.plan_snapshot_digest == prompt_snapshot_digest(snapshot: snapshot)
+fn prompt_render_is_current(
+  receipt: PromptRenderReceipt,
+  snapshot: PromptContextSnapshot,
+  plan: PromptPlan,
+) -> Bool {
+  let snapshot_digest = prompt_snapshot_digest(snapshot: snapshot)
+  receipt.plan_snapshot_digest == snapshot_digest
+    && plan.snapshot_digest == snapshot_digest
+    && join(receipt.input_digests, ",") == join(map(snapshot.inputs, i => prompt_input_digest(input: i)), ",")
+    && receipt.semantic_digest == semantic_prompt_render(plan: plan).semantic_digest
 }
 
 // THE COMPACTION LAW (roadmap row harness-prompt-context-model). Compaction retires only the

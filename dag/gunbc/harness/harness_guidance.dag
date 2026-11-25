@@ -9,6 +9,7 @@ import gunbc.roadmap.roadmap_submission {
 }
 import gunbc.harness.harness_prompt_context {
   PromptInput, AuthorityInput, DerivedConclusionInput, PromptSegment, prompt_segment_render,
+  prompt_input_canonical_text,
 }
 import std.algebra { length }
 
@@ -531,30 +532,45 @@ fn harness_conclusions(rows: List<HarnessGroundedPremise>) -> List<HarnessConclu
   map(harness_conclusion_nodes(rows: rows), n => n.conclusion)
 }
 
-fn harness_guidance_prose(rows: List<HarnessGroundedPremise>) -> String {
-  join(
-    concat(
-      map(rows, r => harness_premise_text(p: r.premise)),
-      map(harness_conclusions(rows: rows), c => harness_conclusion_text(c: c)),
-    ),
-    " ",
-  )
+// THE MODELED SEGMENTS (harness-prompt-context-model's first consumer). Every grounded premise// renders as a segment whose source names the declaration it is grounded on at the caller's source
+// revision; every conclusion renders as a segment whose source names the conclusion and its
+// grounds, so a retracted premise moves the conclusion's input digest with it. harness_guidance_prose
+// below is the render projection of exactly this population -- the parity witness
+// (test.claim.harness_guidance.dag) pins that they cannot fork -- and the digests are what let a
+// later PromptPlan say precisely which guidance a worker was told.
+//
+// PREMISES SHARING AN AUTHORITY AGGREGATE INTO ONE SEGMENT, BOTH STATEMENTS PRESERVED (review
+// 97972 follow-up, Manager B): two premises grounded on the same declaration at the same revision
+// are ONE PromptInput, and the assembly law renders every input exactly once -- a second segment
+// for the same source is DuplicateRendering, an honest refusal, not something a consumer may
+// paper over by dropping one. So the producer aggregates deliberately: the aggregate segment keeps
+// the shared source and carries every premise sentence, in first-appearance order, space-joined.
+// That keeps harness_guidance_prose_from_segments character-identical to harness_guidance_prose
+// (a join of the same sentences is associative) while making the producer's complete output
+// admissible by prompt_plan_assemble as it stands -- no consumer-side filtering may be needed, and
+// none is legitimate: filtering would silently retire a statement the producer emitted.
+fn harness_premise_aggregate_fold(
+  acc: List<PromptSegment>,
+  row: HarnessGroundedPremise,
+  source_revision: String,
+) -> List<PromptSegment> {
+  let text = harness_premise_text(p: row.premise)
+  let source = AuthorityInput { declaration: row.grounds, revision: source_revision, required: true }
+  let key = prompt_input_canonical_text(input: source)
+  if any(acc, s => prompt_input_canonical_text(input: s.source) == key) {
+    map(acc, s => if prompt_input_canonical_text(input: s.source) == key {
+      prompt_segment_render(purpose: s.purpose, source: s.source, content: join([s.content, " ", text], ""))
+    } else {
+      s
+    })
+  } else {
+    concat(acc, [prompt_segment_render(purpose: "grounded premise", source: source, content: text)])
+  }
 }
 
-// THE MODELED SEGMENTS (harness-prompt-context-model's first consumer). Every grounded premise
-// renders as a segment whose source names the declaration it is grounded on at the caller's source
-// revision; every conclusion renders as a segment whose source names the conclusion and its
-// grounds, so a retracted premise moves the conclusion's input digest with it. The prose above is
-// the render projection of exactly this population -- the parity witness
-// (test.claim.harness_guidance_test) pins that they cannot fork -- and the digests are what let a
-// later PromptPlan say precisely which guidance a worker was told.
 fn harness_guidance_segments(rows: List<HarnessGroundedPremise>, source_revision: String) -> List<PromptSegment> {
   concat(
-    map(rows, r => prompt_segment_render(
-      purpose: "grounded premise",
-      source: AuthorityInput { declaration: r.grounds, revision: source_revision, required: true },
-      content: harness_premise_text(p: r.premise),
-    )),
+    fold(rows, init: [] as List<PromptSegment>, f: fn(acc, r) { harness_premise_aggregate_fold(acc: acc, row: r, source_revision: source_revision) }),
     map(harness_conclusion_nodes(rows: rows), n => prompt_segment_render(
       purpose: "derived conclusion",
       source: DerivedConclusionInput {
@@ -569,6 +585,16 @@ fn harness_guidance_segments(rows: List<HarnessGroundedPremise>, source_revision
 
 fn harness_guidance_prose_from_segments(segments: List<PromptSegment>) -> String {
   join(map(segments, s => s.content), " ")
+}
+
+// THE PROSE IS THE SEGMENT PROJECTION, ONE AUTHORITY (single_authority): the configured seat's
+// prose is exactly the segment contents joined, so what a lineage ADMITTED and what a seat SHIPS
+// cannot fork, and the sentences sharing one grounding authority appear together in the one segment
+// the assembly law admits for that input. The revision parameter of the segment render feeds only
+// input identity, never content, so the prose projection passes a fixed render token and stays
+// stable under authority moves that carry no new sentence.
+fn harness_guidance_prose(rows: List<HarnessGroundedPremise>) -> String {
+  harness_guidance_prose_from_segments(harness_guidance_segments(rows: rows, source_revision: "prose-projection"))
 }
 
 fn grounded(premise: HarnessPremise, module_path: String, decl_name: String) -> HarnessGroundedPremise {

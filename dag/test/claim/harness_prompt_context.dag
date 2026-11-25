@@ -17,7 +17,10 @@ import gunbc.harness.harness_prompt_context {
   KeptTurnForksFromDroppedParent, prompt_compaction_refusal_text,
   prompt_compact, prompt_input_uncompactable,
 }
-import gunbc.harness.harness_guidance { harness_probe_guidance, harness_guidance_segments }
+import gunbc.harness.harness_guidance {
+  harness_probe_guidance, harness_guidance_segments, harness_premise_text,
+  ToolReturns, CombinedOutput, CapabilityHeld, ReadTheTree,
+}
 
 fn fx_authority(id: String, revision: String) -> PromptInput {
   AuthorityInput {
@@ -399,10 +402,11 @@ test fn identical_compactions_digest_identically_and_any_different_population_mo
     && d_stale != d_epoch2
 }
 
-// A MOVED AUTHORITY REVISION INVALIDATES THE OLD RENDER: currentness binds a receipt to exactly one
-// snapshot identity, decided once by prompt_render_is_current. The prose is deliberately identical
-// across the move, so a witness that only compared rendered text would stay green while the old
-// render was silently stale -- the invalidation flows through the snapshot binding, never the prose.
+// A MOVED AUTHORITY REVISION INVALIDATES THE OLD RENDER: currentness binds a receipt to exactly
+// one (snapshot, plan) pair, decided once by prompt_render_is_current. The prose is deliberately
+// identical across the move, so a witness that only compared rendered text would stay green while
+// the old render was silently stale -- the invalidation flows through the snapshot binding, never
+// the prose.
 test fn a_moved_authority_revision_invalidates_the_old_render() -> Bool {
   let note = fx_evidence(standing: EstablishedObservation, required: false)
   let auth_r1 = fx_authority(id: "a", revision: "r1")
@@ -437,47 +441,39 @@ test fn a_moved_authority_revision_invalidates_the_old_render() -> Bool {
           )
           receipt_r1.semantic_digest == receipt_r2.semantic_digest
             && receipt_r1.plan_snapshot_digest != receipt_r2.plan_snapshot_digest
-            && prompt_render_is_current(receipt: receipt_r1, snapshot: snapshot_r1)
-            && prompt_render_is_current(receipt: receipt_r2, snapshot: snapshot_r2)
-            && !prompt_render_is_current(receipt: receipt_r1, snapshot: snapshot_r2)
-            && !prompt_render_is_current(receipt: receipt_r2, snapshot: snapshot_r1)
+            && prompt_render_is_current(receipt: receipt_r1, snapshot: snapshot_r1, plan: plan_r1)
+            && prompt_render_is_current(receipt: receipt_r2, snapshot: snapshot_r2, plan: plan_r2)
+            && !prompt_render_is_current(receipt: receipt_r1, snapshot: snapshot_r2, plan: plan_r2)
+            && !prompt_render_is_current(receipt: receipt_r2, snapshot: snapshot_r1, plan: plan_r1)
             && join(receipt_r1.input_digests, ",") == join([prompt_input_digest(input: auth_r1), prompt_input_digest(input: note)], ",")
         }
       }
   }
 }
 
-// RESTART RECONSTRUCTS THE IDENTICAL PROMPT FROM DURABLE INPUTS: the whole projection -- snapshot
-// admission, semantic render, provider artifact, render receipt -- is a derivation over the durable
-// records alone (lineage, epoch, source revision, contract revision, and the typed inputs). Running
-// it twice from the same records reproduces every digest; moving any durable identity moves the
-// projection instead of drifting silently. There is no process-side memo and no ambient state.
+// RESTART RECONSTRUCTS THE IDENTICAL PROMPT FROM DURABLE INPUTS: the whole projection -- segment
+// rendering from the durable guidance roster through harness_guidance_segments, snapshot admission,
+// semantic render, provider artifact, render receipt -- is re-derived on every call from the durable
+// records alone (the guidance roster rows, the lineage, epoch, source revision, and contract
+// revision); no rendered string is held as a fixture constant, so reproducing the digests twice
+// witnesses the derivation, not a copy. Moving any durable identity moves the projection instead
+// of drifting silently. There is no process-side memo and no ambient state.
 fn fx_reconstruct(lineage: String, epoch: Int, source_revision: String, contract_revision: String) -> String {
-  let auth = fx_authority(id: "a", revision: "r1")
-  let note = fx_evidence(standing: EstablishedObservation, required: false)
-  let open_receipt = fx_guidance(receipt: "receipt-open", resolved: false, required: true)
-  let call = fx_turn(turn: "turn-call", parent: "", required: true)
+  let segments = harness_guidance_segments(rows: harness_probe_guidance(), source_revision: source_revision)
   let snapshot = PromptContextSnapshot {
     attempt_lineage: lineage,
     epoch: epoch,
     source_revision: source_revision,
     work_contract_revision: contract_revision,
-    inputs: [auth, note, open_receipt, call],
+    inputs: map(segments, s => s.source),
   }
-  match prompt_plan_assemble(
-    snapshot: snapshot,
-    rendered: [
-      fx_seg(input: auth, content: "authority prose"),
-      fx_seg(input: note, content: "observation prose"),
-      fx_seg(input: open_receipt, content: "open guidance prose"),
-      fx_seg(input: call, content: "call prose"),
-    ],
-  ) {
+  match prompt_plan_assemble(snapshot: snapshot, rendered: segments) {
     PromptPlanRefused { refusals: _ } => ""
     PromptPlanReady { plan } => {
+      let semantic = semantic_prompt_render(plan: plan)
       let receipt = prompt_render_receipt(
         plan: plan,
-        wire: provider_prompt_artifact(semantic: semantic_prompt_render(plan: plan), provider_projection: "claude", wire_text: "durable projection bytes"),
+        wire: provider_prompt_artifact(semantic: semantic, provider_projection: "claude", wire_text: semantic.text),
       )
       join([
         receipt.plan_snapshot_digest,
@@ -499,29 +495,64 @@ test fn restart_reconstructs_the_identical_prompt_from_durable_inputs() -> Bool 
     && durable != fx_reconstruct(lineage: "worker:task-a-deadbeef", epoch: 1, source_revision: "rev-src", contract_revision: "rev-other")
 }
 
-// THE REAL ROSTER INHABITS THE PROMPT GRAIN (witness_one_interface duty): the actual guidance
-// producer -- harness_guidance_segments over harness_probe_guidance -- admits through
-// prompt_plan_assemble, renders through the semantic artifact into a render receipt that is current
-// for its snapshot, and CANNOT be compacted at the prompt grain: every guidance premise and
-// conclusion is a required input, so any drop refuses. The supplied-fixture witnesses above are
-// only credible because this path runs the real producer.
-fn fx_first_per_source(acc: List<PromptSegment>, segment: PromptSegment) -> List<PromptSegment> {
-  let key = prompt_input_canonical_text(input: segment.source)
-  if any(acc, s => prompt_input_canonical_text(input: s.source) == key) {
-    acc
-  } else {
-    concat(acc, [segment])
+// THE SAME SNAPSHOT WITH DIFFERENT RENDERED CONTENT IS TWO RENDERS, never one current receipt:
+// the population (and so the snapshot digest) is unchanged when a segment's prose drifts, but the
+// currentness law binds a receipt to the semantic render of the plan it digests -- so each drifted
+// render is current only for its own plan, and neither receipt reads current for the other. This
+// is the case a snapshot-digest-only currentness check cannot see: both receipts would pass for
+// the one snapshot while telling two different stories about what the model was told.
+test fn two_renders_of_different_content_never_share_currentness() -> Bool {
+  let segments = harness_guidance_segments(rows: harness_probe_guidance(), source_revision: "rev-probe")
+  let snapshot = fx_snapshot(inputs: map(segments, s => s.source))
+  let drifted = map(segments, s => prompt_segment_render(
+    purpose: s.purpose,
+    source: s.source,
+    content: join([s.content, " (drifted prose)"], ""),
+  ))
+  match prompt_plan_assemble(snapshot: snapshot, rendered: segments) {
+    PromptPlanRefused { refusals: _ } => false
+    PromptPlanReady { plan: plan_true } =>
+      match prompt_plan_assemble(snapshot: snapshot, rendered: drifted) {
+        PromptPlanRefused { refusals: _ } => false
+        PromptPlanReady { plan: plan_drifted } => {
+          let receipt_true = prompt_render_receipt(
+            plan: plan_true,
+            wire: provider_prompt_artifact(semantic: semantic_prompt_render(plan: plan_true), provider_projection: "claude", wire_text: "one request bytes"),
+          )
+          let receipt_drifted = prompt_render_receipt(
+            plan: plan_drifted,
+            wire: provider_prompt_artifact(semantic: semantic_prompt_render(plan: plan_drifted), provider_projection: "claude", wire_text: "one request bytes"),
+          )
+          receipt_true.plan_snapshot_digest == receipt_drifted.plan_snapshot_digest
+            && receipt_true.semantic_digest != receipt_drifted.semantic_digest
+            && prompt_render_is_current(receipt: receipt_true, snapshot: snapshot, plan: plan_true)
+            && prompt_render_is_current(receipt: receipt_drifted, snapshot: snapshot, plan: plan_drifted)
+            && !prompt_render_is_current(receipt: receipt_true, snapshot: snapshot, plan: plan_drifted)
+            && !prompt_render_is_current(receipt: receipt_drifted, snapshot: snapshot, plan: plan_true)
+        }
+      }
   }
 }
 
+// THE REAL ROSTER INHABITS THE PROMPT GRAIN (witness_one_interface duty): the actual guidance
+// producer -- harness_guidance_segments over harness_probe_guidance -- admits through
+// prompt_plan_assemble COMPLETE, renders through the semantic artifact into a render receipt that is
+// current for its snapshot and plan, and CANNOT be compacted at the prompt grain: every guidance
+// premise and conclusion is a required input, so any drop refuses. The supplied-fixture witnesses
+// above are only credible because this path runs the real producer. NO TEST-SIDE FILTERING: the
+// producer aggregates premises that share an authority into one segment carrying every sentence
+// (harness_premise_aggregate_fold), so the complete output joins the snapshot exactly. The probe
+// roster grounds ToolReturns(CombinedOutput) and CapabilityHeld(ReadTheTree) on the SAME
+// declaration -- both statements must survive into the semantic render, one per shared-authority
+// input; a fold that quietly retired either would fail here, not at the model.
 test fn the_real_guidance_roster_admits_at_the_prompt_grain_and_refuses_compaction() -> Bool {
   let segments = harness_guidance_segments(rows: harness_probe_guidance(), source_revision: "rev-probe")
-  let distinct = fold(segments, init: [] as List<PromptSegment>, f: fn(acc, s) { fx_first_per_source(acc: acc, segment: s) })
-  let inputs = map(distinct, s => s.source)
-  if count(distinct) == 0 {
+  let inputs = map(segments, s => s.source)
+  let snapshot = fx_snapshot(inputs: inputs)
+  if count(segments) == 0 {
     false
   } else {
-    match prompt_plan_assemble(snapshot: fx_snapshot(inputs: inputs), rendered: distinct) {
+    match prompt_plan_assemble(snapshot: snapshot, rendered: segments) {
       PromptPlanRefused { refusals: _ } => false
       PromptPlanReady { plan } => {
         let semantic = semantic_prompt_render(plan: plan)
@@ -529,10 +560,21 @@ test fn the_real_guidance_roster_admits_at_the_prompt_grain_and_refuses_compacti
           plan: plan,
           wire: provider_prompt_artifact(semantic: semantic, provider_projection: "anthropic", wire_text: semantic.text),
         )
-        count(plan.ordered_segments) == count(inputs)
-          && count(receipt.input_digests) == count(inputs)
-          && prompt_render_is_current(receipt: receipt, snapshot: fx_snapshot(inputs: inputs))
-          && (match distinct.first() {
+        count(plan.ordered_segments) == count(segments)
+          && count(receipt.input_digests) == count(segments)
+          && prompt_render_is_current(receipt: receipt, snapshot: snapshot, plan: plan)
+          && semantic.text.contains(harness_premise_text(p: ToolReturns { channel: CombinedOutput }))
+          && semantic.text.contains(harness_premise_text(p: CapabilityHeld { capability: ReadTheTree }))
+          && any(plan.ordered_segments, s =>
+            prompt_input_canonical_text(input: s.source)
+              == prompt_input_canonical_text(input: AuthorityInput {
+                   declaration: decl_ref(module_path: "gunbc.harness.harness_tool", decl_name: "harness_run_command"),
+                   revision: "rev-probe",
+                   required: true,
+                 })
+              && s.content.contains(harness_premise_text(p: ToolReturns { channel: CombinedOutput }))
+              && s.content.contains(harness_premise_text(p: CapabilityHeld { capability: ReadTheTree })))
+          && (match segments.first() {
             Absent => false
             Present { value: s } =>
               match prompt_compact(plan: plan, drop_input_keys: [prompt_input_canonical_text(input: s.source)]) {

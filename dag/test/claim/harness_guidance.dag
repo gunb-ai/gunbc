@@ -14,7 +14,7 @@ import gunbc.harness.harness_guidance { harness_worker_guidance_at, WorktreeAt, 
   HarnessConclusionNode, harness_conclusion_key,
   harness_worker_guidance, harness_probe_guidance,
 }
-import gunbc.harness.harness_prompt_context { AuthorityInput, DerivedConclusionInput, prompt_segment_required }
+import gunbc.harness.harness_prompt_context { AuthorityInput, DerivedConclusionInput, PromptSegment, prompt_segment_required, prompt_input_canonical_text }
 import gunbc.harness.harness_tool_kind { RunCommandTool, harness_tool_wire_name }
 import gunbc.roadmap.roadmap_submission {
   submission_schema, submission_decode, SubmissionDecoded, SubmissionNotDecodable, SubmissionReady,
@@ -444,9 +444,25 @@ test fn the_production_shape_without_the_schema_member_is_not_a_declaration() ->
   }
 }
 
-// THE GUIDANCE POPULATION IS THE SEGMENT POPULATION: the prose projection and the modeled segments
-// cannot fork, every premise segment names its grounding declaration at the caller's revision, and
-// every conclusion segment names its grounds so a retracted premise moves the digest.
+// THE GUIDANCE POPULATION IS THE SEGMENT POPULATION: harness_guidance_prose is defined as the
+// projection of harness_guidance_segments, so the surfaces cannot fork by construction -- this
+// witness pins that delegation against a future re-fork, every premise segment names its grounding
+// declaration at the caller's revision, and every conclusion segment names its grounds so a
+// retracted premise moves the digest. The producer aggregates premises that share an authority into
+// one segment carrying every sentence, so the complete output is already one-segment-per-input --
+// prompt_plan_assemble admits it as it stands, which is what the dedupe equality witnesses; the
+// conclusion segments still add to the premise segments, since every conclusion is its own input.
+fn fx_dedupe_by_source(segments: List<PromptSegment>) -> List<PromptSegment> {
+  fold(segments, init: [] as List<PromptSegment>, f: fn(acc, s) {
+    let key = prompt_input_canonical_text(input: s.source)
+    if any(acc, t => prompt_input_canonical_text(input: t.source) == key) {
+      acc
+    } else {
+      concat(acc, [s])
+    }
+  })
+}
+
 test fn the_segments_and_the_prose_are_one_population() -> Bool {
   let rows = harness_worker_guidance_at(
     worktree: "/wt",
@@ -457,7 +473,8 @@ test fn the_segments_and_the_prose_are_one_population() -> Bool {
   )
   let segments = harness_guidance_segments(rows: rows, source_revision: "rev-fixture")
   harness_guidance_prose_from_segments(segments: segments) == harness_guidance_prose(rows: rows)
-    && count(segments) > count(rows)
+    && count(fx_dedupe_by_source(segments: segments)) == count(segments)
+    && count(segments) >= count(harness_conclusion_nodes(rows: rows))
     && (match segments.first() {
       Present { value: s } =>
         (match s.source {
