@@ -106,7 +106,7 @@ type LocalTidyFmtOutcome
 
 data local_tidy_fmt_exit_partition_note: String = "Grounded in the observed contract of cargo fmt --all --check, pinned by execution 2026-07-30: 0 = clean, 1 = rustfmt reported diffs (the only exit that is a finding about the work), 127 = the shell could not locate cargo, 126 = located but not executable (wrong architecture, lost permission bit), 101 = cargo ran but has no fmt subcommand (rustfmt component absent mid-install). Every status other than 0 and 1 therefore says the check did not produce a verdict, so the partition is exactly clean / drift / could-not-run. The residue arm is fail-closed by refusal, never by widening: an unrecognized status still stops the line with a non-zero exit, and only the MESSAGE changes, so no unverified push is admitted."
 
-data local_tidy_fmt_pre_push_drift_recipe: String = "rustfmt drift — run: cargo fmt --all   (then commit and re-push, or 'git push --no-verify' to skip)"
+data local_tidy_fmt_pre_push_drift_recipe: String = "rustfmt drift — HOLD this push and report it to your lane manager. Do not push past this refusal and do not reformat files this branch does not own."
 
 data local_tidy_fmt_pre_commit_drift_recipe: String = "fmt drift in staged Rust — run: cargo fmt --all && git add -u, then re-commit."
 
@@ -116,17 +116,43 @@ data local_tidy_fmt_pre_commit_drift_recipe: String = "fmt drift in staged Rust 
 // stay two rows because they are two genuinely different remedies (git add -u then re-commit,
 // versus commit and re-push), not one concept spelled twice.
 
-// The could-not-run message deliberately advertises NO bypass (review 45175). An earlier draft
-// closed it with 'git's --no-verify skips this hook', which is an escape hatch in exactly the arm
-// that has the least information: a toggle whose only effect is to proceed as if the refusal had
-// not fired, offered at the moment the check could not determine anything (gunbc.design_argument::fail_closed,
-// operator ruling 2026-07-05). The only remedy this arm may propose is the one that makes the check
-// able to report — install the toolchain. The DRIFT recipe keeps its pre-existing --no-verify
-// mention untouched, and that asymmetry is the point rather than an oversight: on drift the
-// developer has been told the actual state of the tree and is choosing to skip a known finding,
-// whereas on could-not-run there is no finding to weigh, so advertising the bypass would convert a
-// refusal into a documented default. witness_unavailable_recipe_advertises_no_bypass is the RED
-// control.
+// BOTH fmt-failure arms deliberately advertise NO bypass, and both now answer to the live
+// fail_closed position rather than to a dated ruling. The could-not-run arm: an earlier draft closed
+// it with 'git's --no-verify skips this hook', an escape hatch in exactly the arm with the least
+// information — a toggle whose only effect is to proceed as if the refusal had not fired, offered at
+// the moment the check could determine nothing. That is the fail_closed position itself:
+// gunbc.design_argument::fail_closed, data fail_closed: DesignRow at dag/gunbc/design_argument.dag:745,
+// whose review tells list verbatim "a toggle, env var or flag whose only effect is to skip a refusal".
+// The only remedy this arm may propose is the one that makes the check able to report — install the
+// toolchain — and its wording ('the fmt check DID NOT RUN ... not a formatting finding') is
+// load-bearing: it keeps 'the tree is unformatted' distinct from 'the check could not run', so the
+// deficit stays observable. witness_unavailable_recipe_advertises_no_bypass is its RED control.
+//
+// STALE CITATION, STATED NOT REPEATED. An earlier version of this note attributed the could-not-run
+// no-bypass position to "operator ruling 2026-07-05", but that ruling resolves to no row in
+// gunbc.design_ruling — the roster whose whole stated purpose is a dated operator ruling, "when, and
+// on whose words" (measured at this base: 189 DesignRuling rows; 0 decided 2026-07; the decided-date
+// distribution is 2026-09 = 9, 2026-10 = 59, 2026-11 = 121; the single line matching fmt/hook/bypass/
+// no-verify is a fleet-key enrolment, not fmt). The design authority it gestures at — fail_closed —
+// is real and cited above; only the dated-ruling label dangled. NO DesignRuling row is authored to
+// fill it: that roster records dated OPERATOR rulings, this change is not one, and writing a
+// manager's ruling as an operator row is precisely the fabricated provenance the roster exists to
+// prevent.
+//
+// The DRIFT arm formerly kept a 'git push --no-verify to skip' clause, and the earlier note defended
+// that asymmetry ('on drift the developer is choosing to skip a known finding'). neat-badger-614
+// (2026-11-25) withdrew it. The asymmetry was the author's argument, and its premise — drift is
+// caught elsewhere, so skipping only defers a finding CI catches anyway — is dead:
+// gunbc.githooks.githooks_pre_push_emit:20 records that the 2026-08-15 floor cut deleted the fmt
+// build job and that neither required lane of the emitted .github/workflows/witnesses.yml runs fmt,
+// so "this hook is now the only surface that runs fmt at all." A --no-verify clause there is exactly
+// the fail_closed tell above — a flag whose only effect is to skip a refusal — standing on the fleet's
+// ONLY fmt gate. The drift recipe now says to HOLD the push and report it to the lane manager, and
+// proposes no bypass and no fleet-wide reformat (a branch reformatting files it does not own collides
+// with the lane that owns them). This TIGHTENS toward the live fail_closed position; it reverses no
+// operator words. witness_drift_recipe_advertises_no_bypass and
+// witness_emitted_pre_push_drift_text_advertises_no_bypass are the RED controls: each reads the OLD
+// '--no-verify' spelling and goes red if the clause returns.
 
 fn local_tidy_fmt_tool_unavailable_recipe(program: String, cause: String) -> String {
   concat(

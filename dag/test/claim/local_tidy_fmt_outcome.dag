@@ -115,6 +115,30 @@ test fn witness_unavailable_recipe_advertises_no_bypass() -> Bool {
     && !has(s: recipe, p: "override")
 }
 
+// RED control for the drift-message change (operator ruling 2026-11-25, neat-badger-614): the
+// pre-push drift recipe must NOT advertise --no-verify (the fleet's only formatting witness must not
+// teach the bypass it exists to prevent) and must tell the author to HOLD and report to their lane
+// manager. Goes red the moment the old '--no-verify ... to skip' clause returns to the recipe.
+test fn witness_drift_recipe_advertises_no_bypass() -> Bool {
+  let recipe = local_tidy_fmt_outcome_recipe(
+    outcome: FmtDrift,
+    drift_recipe: local_tidy_fmt_pre_push_drift_recipe
+  )
+  !has(s: recipe, p: "--no-verify")
+    && !has(s: recipe, p: "skip")
+    && has(s: recipe, p: "HOLD this push")
+    && has(s: recipe, p: "lane manager")
+}
+
+// Same property read FROM THE GENERATED FILE, not the recipe in isolation: the emitted pre-push hook
+// must carry the new hold-and-report text and must not carry the old bypass clause. This is the
+// witness that fails on the old spelling at the artifact the hook actually runs.
+test fn witness_emitted_pre_push_drift_text_advertises_no_bypass() -> Bool {
+  let sh = expected_githooks_pre_push_sh()
+  !has(s: sh, p: "--no-verify")
+    && has(s: sh, p: "rustfmt drift — HOLD this push and report it to your lane manager")
+}
+
 test fn witness_hooks_end_the_unavailable_message_at_the_remedy() -> Bool {
   let push = expected_githooks_pre_push_sh()
   let commit = expected_githooks_pre_commit_sh()
