@@ -6,15 +6,10 @@ import std.optional { Optional, Present, Absent }
 import std.algebra { length }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import gunbc.serving.serving_observability {
-  EngineFrontProxyVerdict, EngineFrontProxyRendered, EngineFrontProxyRefused,
   EngineFrontRoute, engine_front_required_routes,
-  engine_front_proxy_config, engine_front_server_directives, engine_front_proxies_route,
+  engine_front_server_directives, engine_front_proxies_route,
   engine_front_route_consumer, engine_front_unserved_consumers,
-  InstrumentStanding, InstrumentProposal, InstrumentAddGate, instrument_promotion_admitted,
-  cold_token_cause_breakdown_standing,
-  RouterProbeStanding, ProbeStanding, TransientReceiptOfHandManagedRouter, ModelledRouterInstrument,
-  router_probe_line_standing, ProbeFactsCarried, RouterProbeRetirement, MayRetire, KeepHandManagedReceipt,
-  router_probe_attribution_is_modelled, router_probe_retirement,
+  TransientReceiptOfHandManagedRouter, ModelledRouterInstrument, router_probe_line_standing,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -79,61 +74,32 @@ test fn the_metrics_route_names_its_progress_consumer_by_reference() -> Bool {
     Absent => false
   }
 }
-
-// ITEM (2): the per-cause cold-token breakdown is gated OUT of the roster. The witness drives the real gate
-// fold three ways -- the real standing refuses (RED, the decision), an open matched gate admits (accepted
-// positive control), and a missing discriminator is refused (proves the typed condition is read) -- so the
-// standing is consumed for behaviour, not existence (gunbc.design_argument::consumption).
-fn matched_open_gate() -> InstrumentStanding {
-  InstrumentStanding {
-    is_instrument: false,
-    promotion: Present { value: InstrumentAddGate {
-      budgets_open: true,
-      required_consumer: metrics_reader_ref(),
-      needs_discriminator: true,
-      needs_declared_cost: true,
-    } },
-  }
+// ITEM (3): the router prefixprobe/usageprobe lines' standing is recorded as a typed record -- a declared
+// coproduct arm plus typed references to the modelled rows that retire them. The witness reads that record's
+// discriminable content, so it is not a mere existence check: the standing is the hand-managed receipt arm
+// (NOT the modelled arm), and retires_via names exactly the three class-B5 rows by typed reference. If the
+// standing drifted to ModelledRouterInstrument (claiming a fact the modelled router does not emit) or the
+// hand-off rows drifted, this goes red. The WHEN they retire is class B5's to decide on its own typed
+// observations, so no retirement gate is mirrored here (gunbc.design_argument::single_authority).
+fn b5_hand_off_refs() -> List<DeclarationRef> {
+  [
+    decl_ref(module_path: "gunbc.serving.router_realization", decl_name: "router_realization_contract"),
+    decl_ref(module_path: "gunbc.serving.turn_admission", decl_name: "serving_co_tenancy"),
+    decl_ref(module_path: "gunbc.serving.serving_relocation", decl_name: "admit_state_method"),
+  ]
 }
 
-test fn cold_token_cause_breakdown_is_gated_out_of_the_roster() -> Bool {
-  // RED: the real standing (is_instrument:false, budgets_open:false) refuses even a fully-formed proposal --
-  // the decision that the breakdown is NOT an instrument, produced by the fold.
-  !instrument_promotion_admitted(
-    standing: cold_token_cause_breakdown_standing,
-    proposal: InstrumentProposal { consumer: metrics_reader_ref(), names_discriminator: true, declares_cost: true },
-  )
-    // ACCEPTED positive control: the SAME fold admits once the gate is open and every typed condition matches.
-    // The refusal above is therefore discriminating (driven by the typed fields), not a constant false.
-    && instrument_promotion_admitted(standing: matched_open_gate(),
-      proposal: InstrumentProposal { consumer: metrics_reader_ref(), names_discriminator: true, declares_cost: true })
-    // The discriminator condition is genuinely read: an open gate still refuses a proposal that omits it.
-    && !instrument_promotion_admitted(standing: matched_open_gate(),
-      proposal: InstrumentProposal { consumer: metrics_reader_ref(), names_discriminator: false, declares_cost: true })
+fn ref_in(list: List<DeclarationRef>, want: DeclarationRef) -> Bool {
+  any(list, d => declaration_ref_eq(a: d, b: want))
 }
 
-// ITEM (3): the router probe lines are a transient receipt of the HAND-MANAGED router. Both gate folds are
-// driven for behaviour: the receipt is not a modelled fact, the lines cannot retire while the modelled rows
-// carry no facts (RED -- the hand-managed TEMPORARY note is no authority to delete them), and once BOTH
-// facts are carried on the modelled side the same fold hands the lines off to the retires_via rows (accepted
-// positive control), so retires_via and the standing are read, not asserted to exist.
-test fn router_probe_line_standing_is_a_hand_managed_receipt_that_cannot_self_retire() -> Bool {
-  // attribution built on the hand-managed receipt is NOT a modelled fact of the router (reads the standing)
-  !router_probe_attribution_is_modelled(s: router_probe_line_standing)
-    // RED: with the modelled rows not yet carrying the facts, the lines cannot retire
-    && match router_probe_retirement(s: router_probe_line_standing,
-         carried: ProbeFactsCarried { prefix_overlap_modelled: false, token_usage_modelled: false }) {
-         KeepHandManagedReceipt => true
-         MayRetire { hands_off_to: _ } => false
-       }
-    // ACCEPTED positive control: once BOTH facts are carried the same fold hands off to the three retires_via
-    // rows -- proving the fold discriminates and reads retires_via (a structural count, not a string grep).
-    && match router_probe_retirement(s: router_probe_line_standing,
-         carried: ProbeFactsCarried { prefix_overlap_modelled: true, token_usage_modelled: true }) {
-         MayRetire { hands_off_to: rows } => length(rows) == 3
-         KeepHandManagedReceipt => false
-       }
-    // the ModelledRouterInstrument arm of the standing reads as a modelled fact (both arms exercised)
-    && router_probe_attribution_is_modelled(s: RouterProbeStanding {
-         standing: ModelledRouterInstrument, retires_via: router_probe_line_standing.retires_via })
+test fn router_probe_line_standing_records_the_hand_managed_receipt_and_its_hand_off() -> Bool {
+  // standing arm: the transient hand-managed receipt, asserted discriminably
+  (match router_probe_line_standing.standing {
+     TransientReceiptOfHandManagedRouter => true
+     ModelledRouterInstrument => false
+   })
+    // retires_via: exactly the three class-B5 rows, each by typed reference (a structural read, not a grep)
+    && length(router_probe_line_standing.retires_via) == 3
+    && all(b5_hand_off_refs(), want => ref_in(router_probe_line_standing.retires_via, want))
 }
