@@ -1,0 +1,486 @@
+// CLAIMS THE PRICING MAKES. A GPU power cap and an SM clock ceiling asked for to relieve an electrical
+// circuit, priced against the decode they cost -- pinned from BOTH sides the brief demands. On the fleet's own
+// state the fold refuses or defers: an ask that names no circuit is REFUSED, and an ask that names the strip
+// answers with the readings it owes (its rating, its per-member bound), never with a watt value. The accepted
+// positive control is a FIXTURE field and FIXTURE circuit built AT THIS BOUNDARY, with the readings the fleet
+// lacks there: a stated per-member bound excludes the expensive operating point and the fold names the
+// survivor. Nothing lets a fixture reach the fleet's answer -- the fleet's field is gap-ridden by
+// construction, and the tests below assert that it stays that way.
+module test.claim.serving.gpu_power_cap_pricing_witness
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.algebra { string_contains }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_identity }
+import std.interval { interval_high, interval_low }
+import std.measure { hertz, hertz_count, milli_tokens_per_second, milliwatt, watt, watt_count }
+import std.pareto { AxisComparison, Better, SelectionAxis, UndecidedOnEvidence, Worse }
+import std.decision {
+  CausalModelEstablished, ConstraintSatisfied, DecisionAssessment, FleetObservedCoupling,
+  MonotoneIncreasing, ParameterBound, PhysicalModelEstablished, RealizationSelectionRefused,
+  SelectedWithin, SelectionEvidenceNeed, SelectionNeedsEvidence, SelectionNeedsPolicy, VariesAlong,
+  selection_evidence_need_cause,
+}
+import extdeps.external_authority { CitedToAuthority, ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import gunbc.fleet.fleet_host_identity { operator_host_e2d4b7, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet.fleet_power_circuit {
+  SharedPowerCircuit, BoundStated, RatingCited, circuits_carrying, surge_strip,
+}
+import gunbc.serving.gpu_power_state_policy { GpuPowerCapSelection, OperatorDeclaredCap, SustainedPowerDraw }
+import gunbc.serving.gpu_power_cap_pricing {
+  CapCandidate, CardCondition, CappedAt, CircuitRelief, Cool, DecodeRead, DrawRead, Uncapped, Unlocked,
+  ax_decode_tokens_per_second, ax_host_draw_watts, candidate_cap, cap_ask_subject, cap_ask_subject_identity,
+  cap_ask_region, constraint_identity, decode_cost_of_step, funded_axes, id_parameter, id_term, id_var,
+  ken_cap_ask_candidates, ken_t10_cool_1000mhz_candidate, ken_t10_cool_unlocked_candidate,
+  ken_t10_leaky_1000mhz_candidate, priced_draw_step, priced_step, price_an_unstated_ask, price_power_cap_ask, candidate_entry,
+  price_the_2026_11_24_ask, srv3_30w_2ghz_candidate, srv3_40w_candidate, srv4_30w_20ghz_candidate,
+  srv4_30w_30ghz_candidate, srv4_40w_30ghz_afternoon_candidate, srv4_40w_30ghz_morning_candidate,
+  srv4_cap_ask_candidates, srv4_morning_candidates, srv4_sweep_1500_candidate, srv4_sweep_1800_candidate,
+  srv4_sweep_unlocked_candidate, axis_reading_of, candidate_is_on,
+}
+
+// ── THE RED: THE MISCONFIGURATION, AS A REFUSED CASE ───────────────────────────────────────────────
+//
+// THE FIRST HALF OF 2026-11-24, IN THE MODEL'S WORDS. A cap of 30 W was put forward to save power and no
+// electrical constraint it served was recorded, so the value carried no price and the same day reversed
+// itself. That is what this pins as unauthorizable -- not "30 W is wrong" (the operator's final choice WAS
+// 30 W, and the model does not overrule it), but that a cap answering no named ask is not an answer at all.
+test fn an_unstated_ask_is_refused_not_answered() -> Bool {
+  match price_an_unstated_ask() {
+    RealizationSelectionRefused { defects: ds } =>
+      (ds |> count) == 1
+        && any(ds, d => string_contains(s: d as String, pattern: "30" as String))
+        && any(ds, d => string_contains(s: d as String, pattern: "no electrical constraint" as String))
+    _ => false
+  }
+}
+
+// THE SECOND HALF OF THAT DAY, IN THE MODEL'S WORDS: the ask named the strip, and the fold answers with the
+// two readings that must exist before any watt can be chosen -- the strip's rating plate and a per-member
+// draw bound. Every need names a reading to go and take; none is a placeholder, and none is a number.
+test fn the_fleet_ask_names_every_reading_it_owes() -> Bool {
+  match price_the_2026_11_24_ask() {
+    SelectionNeedsEvidence { needs: ns } =>
+      (ns |> count) == 2
+        && needs_mention(needs: ns, pattern: "rating plate" as String)
+        && needs_mention(needs: ns, pattern: "per-member draw limit" as String)
+    _ => false
+  }
+}
+
+// ...and it never answers with a cap. The failure this refuses is the one that day committed: a watt value
+// reported as the resolution of a power ask with no performance reading and no constraint beside it.
+test fn the_fleet_ask_never_answers_with_a_cap() -> Bool {
+  match price_the_2026_11_24_ask() {
+    SelectedWithin { candidate: _, receipt: _ } => false
+    _ => true
+  }
+}
+
+// A CANDIDATE WITHOUT ITS CONSEQUENCE CANNOT BE SCANNED, even against a fully-read circuit. The morning
+// windows carry decode but no sampled draw, so the cost axis comes back as the reading it owes -- the
+// per-window power.draw average -- rather than being filled with the cap value, an inference, or a zero.
+test fn a_candidate_without_its_consequence_cannot_be_scanned() -> Bool {
+  match price_power_cap_ask(
+    ask: CircuitRelief { circuit: w_circuit_loose, asked_on: "fixture" as NonEmptyStr },
+    assessment: w_read_assessment(circuit: w_circuit_loose),
+    field: srv4_morning_candidates(),
+  ) {
+    SelectionNeedsEvidence { needs: ns } =>
+      (ns |> count) == 4
+        && needs_mention(needs: ns, pattern: "power.draw" as String)
+    _ => false
+  }
+}
+
+// ── THE ACCEPTED POSITIVE CONTROL ──────────────────────────────────────────────────────────────────
+//
+// SAME MACHINERY, READ CIRCUIT, READ FIELD: the circuit's per-member bound is stated at 80 W, both candidates
+// carry a decode reading and a sampled draw, and the assessment's completeness join is closed by fixture
+// evidence. The expensive point (85-95 W) is excluded by the circuit and the cheaper one is named -- exactly
+// the shape the fleet could reach once the readings exist, and exactly what it cannot reach today.
+test fn a_read_circuit_and_read_field_name_the_survivor() -> Bool {
+  match price_power_cap_ask(
+    ask: CircuitRelief { circuit: w_circuit_tight, asked_on: "fixture" as NonEmptyStr },
+    assessment: w_read_assessment(circuit: w_circuit_tight),
+    field: w_fixture_field(),
+  ) {
+    SelectedWithin { candidate: c, receipt: _ } =>
+      declaration_ref_identity(reference: c.identity).digest
+        == declaration_ref_identity(reference: w_cheaper_identity).digest
+    _ => false
+  }
+}
+
+// THE CONSTRAINT IS CONSUMED, NOT CITED. With the SAME fully-read fixture field, a generous bound leaves two
+// non-dominated operating points and the fold declines to invent a winner, while the tighter bound above
+// names one. If a circuit's bound were decoration, those two would behave alike.
+test fn a_generous_bound_does_not_invent_a_winner() -> Bool {
+  match price_power_cap_ask(
+    ask: CircuitRelief { circuit: w_circuit_loose, asked_on: "fixture" as NonEmptyStr },
+    assessment: w_read_assessment(circuit: w_circuit_loose),
+    field: w_fixture_field(),
+  ) {
+    SelectionNeedsPolicy { survivors: sv } => (sv |> count) == 2
+    _ => false
+  }
+}
+
+// AND WITH NO BOUND STATED AT ALL the same fully-read field cannot even be scanned: the answer is the two
+// circuit obligations, not a survivor. This is the pair that separates "the circuit is carried" from "the
+// circuit is consulted".
+test fn an_unstated_bound_stops_before_the_selection() -> Bool {
+  match price_power_cap_ask(
+    ask: CircuitRelief { circuit: surge_strip, asked_on: "fixture" as NonEmptyStr },
+    assessment: w_read_assessment(circuit: surge_strip),
+    field: w_fixture_field(),
+  ) {
+    SelectionNeedsEvidence { needs: ns } =>
+      (ns |> count) == 2
+        && needs_mention(needs: ns, pattern: "rating plate" as String)
+        && needs_mention(needs: ns, pattern: "per-member draw limit" as String)
+    _ => false
+  }
+}
+
+// ── THE PRICED CONSEQUENCE, DERIVED FROM THE WINDOWS AND THE SWEEP ─────────────────────────────────
+//
+// THE GPU CAP IS WHAT COST THE DECODE. 39.0 tok/s at 40 W / 3.0 GHz against 24.1 at 30 W / 3.0 GHz: the
+// intervals do not overlap, so this is Worse -- derived by std.pareto's own interval comparison rather than
+// by a subtraction of two figures this module re-rounded.
+test fn the_gpu_cap_is_what_cost_the_decode() -> Bool {
+  is_worse(c: priced_step(from: srv4_40w_30ghz_morning_candidate, to: srv4_30w_30ghz_candidate))
+}
+
+// AND THE CPU CAP IS NOT. Holding the GPU at 30 W and releasing the CPU cap moved decode from 24.1 to 26.5
+// tok/s -- Better. This line is only expressible because a candidate is an OPERATING POINT carrying both
+// actuators: a model whose candidate were "the GPU watt value" cannot state it, and the operator would have
+// had to discover it the way they did -- by flipping two controls a day apart.
+test fn releasing_the_cpu_cap_did_not_cost_the_decode() -> Bool {
+  cpu_is_capped_at_2ghz(c: srv4_30w_20ghz_candidate)
+    && cpu_is_uncapped(c: srv4_30w_30ghz_candidate)
+    && is_better(c: priced_step(from: srv4_30w_30ghz_candidate, to: srv4_30w_20ghz_candidate))
+}
+
+// BACK AT 40 W THE DECODE DID NOT RETURN TO THE MORNING. The afternoon window is carried with its width
+// (28.5-34 tok/s) and the whole width sits below the morning's 39.0, so this is Worse ACROSS THE WIDTH: the
+// width survives the carrier instead of being averaged to a point, and the comparison still settles.
+test fn the_window_width_survives_and_still_compares() -> Bool {
+  is_worse(c: priced_step(from: srv4_40w_30ghz_morning_candidate, to: srv4_40w_30ghz_afternoon_candidate))
+    && afternoon_window_is_carried_with_its_width()
+}
+
+// srv3's own step is the steepest in the fleet -- 15 tok/s per conversation at 40 W against 6 at 30 W, both
+// on the same host -- and the fold prices it, because two readings off one machine with no known difference in
+// card state are comparable.
+test fn srv3s_own_step_is_priced_and_it_is_the_steepest() -> Bool {
+  is_worse(c: priced_step(from: srv3_40w_candidate, to: srv3_30w_2ghz_candidate))
+    && is_worse(c: decode_cost_of_step(from: srv3_40w_candidate, to: srv3_30w_2ghz_candidate))
+}
+
+// BUT IT CANNOT BE BORROWED ACROSS HOSTS. srv3 at 6 tok/s and srv4 at 24.1 are not two points on one curve:
+// they are two machines with two card sets, and the sweep showed what a cross-card generalisation is worth.
+// UndecidedOnEvidence is the honest answer, and it is the refusal of the InferredFromSimilarBuild move
+// gunbc.fleet.fleet_host_power keeps deliberately separate from a measurement.
+test fn a_reading_cannot_be_borrowed_across_hosts() -> Bool {
+  is_undecided(c: priced_step(from: srv4_30w_30ghz_candidate, to: srv3_30w_2ghz_candidate))
+}
+
+// THE CLOCK CEILING IS PRICED ON THE SAME CANDIDATE, AND ITS PRICE DEPENDS ON THE CARD. At ken's 100 W cap,
+// the two cool T10s fell from 92-96 W unlocked to 68-80 W at a 1000 MHz ceiling -- Better -- while GPU1, at
+// 82 C, sat at 83 W at EVERY level. The ceiling and the cap are identical in those two candidates; only the
+// card's state differs, and the fold refuses to price a saving onto the leaky card. This is the pair that
+// makes "1000 MHz saves 15-25 W per card" a claim about a state rather than a fact about a control.
+test fn the_clock_ceiling_is_priced_and_the_card_conditions_it() -> Bool {
+  is_better(c: priced_draw_step(from: ken_t10_cool_unlocked_candidate, to: ken_t10_cool_1000mhz_candidate))
+    && is_undecided(c: priced_draw_step(from: ken_t10_cool_unlocked_candidate, to: ken_t10_leaky_1000mhz_candidate))
+}
+
+// ON srv4 THE CHOSEN CEILING BUYS WATTS, AND THE MODEL ALSO SEES THE LEVEL THE SWEEP DID NOT CHOOSE. At the
+// 30 W cap, 1500 MHz drew 27.0 W against the unlocked level's 29.1 W (Better on the cost axis) -- the reason
+// the operator took it. And the 1800 MHz level read a HIGHER average clock, LOWER watts AND a higher decode
+// median than 1500, which a selection over the sweep would have surfaced and a decision made on "average
+// clock and power", with a noisy decode column, did not.
+test fn the_chosen_ceiling_is_priced_and_a_better_level_is_visible() -> Bool {
+  is_better(c: priced_draw_step(from: srv4_sweep_unlocked_candidate, to: srv4_sweep_1500_candidate))
+    && is_better(c: priced_step(from: srv4_sweep_1500_candidate, to: srv4_sweep_1800_candidate))
+    && ceiling_of(c: srv4_sweep_1500_candidate) == 1500000000
+}
+
+// EVERY CANDIDATE ANSWERS FOR BOTH AXES, as a reading or as a named gap. A candidate silent on an axis would
+// let a comparison run on half the trade, which is how a cap gets priced by its benefit alone.
+test fn every_candidate_answers_for_both_axes() -> Bool {
+  fold(all_fleet_candidates(), init: true, f: (acc, c) =>
+    acc && fold(funded_axes(), init: true, f: (ok, a) => ok && axis_answered_for(c: c, a: a))
+  )
+}
+
+// AND EVERY GAP NAMES THE INSTRUMENT THAT WOULD CLOSE IT. srv3's cost side was never sampled; ken's benefit
+// side was measured into /metrics and never carried. Both obligations are actionable, neither is a shrug.
+test fn every_gap_names_the_reading_that_would_close_it() -> Bool {
+  gap_naming(c: srv3_30w_2ghz_candidate, axis: ax_host_draw_watts, pattern: "power.draw" as String)
+    && gap_naming(c: ken_t10_leaky_1000mhz_candidate, axis: ax_decode_tokens_per_second, pattern: "/metrics" as String)
+}
+
+// A SWEEP READING CARRIES HOW MANY SAMPLES STAND BEHIND IT. The operator's own warning about the CPU figures
+// was that they were SINGLE hwmon readings taken while the load was changing; the sweep averaged 150
+// one-second readings per level, and the carrier holds the count so the two cannot be quoted alike.
+test fn the_sweep_carries_its_sample_count_and_its_throttle_share() -> Bool {
+  match srv4_sweep_1500_candidate.draw {
+    DrawRead { draw_low: _, draw_high: _, samples: n, sensor: _, throttle_share_note: note, observed_on: _, standing: _ } =>
+      n == 150
+        && match note {
+          Present { value: v } => string_contains(s: v as String, pattern: "power-capped" as String)
+          Absent => false
+        }
+    _ => false
+  }
+}
+
+// THE PRICED CAP IS THE POLICY'S OWN CARRIER, not a watt restated beside it: the candidate that gets priced
+// and the cap that gets actuated are the same decision object, so they cannot drift into two values for one
+// card.
+test fn the_priced_cap_is_the_policy_carrier() -> Bool {
+  watt_count(w: candidate_cap(c: srv4_sweep_1500_candidate)) == 30
+    && watt_count(w: candidate_cap(c: srv4_40w_30ghz_morning_candidate)) == 40
+    && candidate_is_on(c: srv3_40w_candidate, host: operator_host_srv3)
+}
+
+// THE CIRCUIT CARRIES ITS MEMBERS BY IDENTITY, and the fold reaches the circuit through the host the ask is
+// about rather than a string a caller typed.
+test fn the_strip_carries_the_hosts_it_carries() -> Bool {
+  (circuits_carrying(host: operator_host_srv3) |> count) == 1
+    && (circuits_carrying(host: operator_host_srv4) |> count) == 1
+    && (circuits_carrying(host: operator_host_e2d4b7) |> count) == 1
+}
+
+// ── THE FIXTURES, MINTED AT THIS BOUNDARY ──────────────────────────────────────────────────────────
+//
+// The fleet has no circuit bound and no per-window draw beside several of its windows, so a positive control
+// cannot be built from fleet rows alone; it is built here, with the readings the fleet lacks, and it is never
+// handed to the fleet's fold. std.decision::bind_pick_to_subject_closure makes the closed assessment
+// necessary: an assessment whose physical or causal model is unestablished defers, and a deferral turns even
+// a SelectedWithin into SelectionNeedsEvidence. The fixture closes the join with fixture evidence;
+// gunbc.serving.gpu_power_cap_pricing::cap_ask_unread_assessment remains the fleet's only assessment.
+data w_fixture_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "gunb.ai/test/gpu-power-cap-pricing-witness#fixture-evidence" },
+}
+
+data w_fixture_coupling: DeclarationRef = decl_ref(
+  module_path: "test.claim.serving.gpu_power_cap_pricing_witness",
+  decl_name: "w_fixture_coupling",
+)
+
+fn w_identity(name: String) -> DeclarationRef {
+  decl_ref(module_path: "test.claim.serving.gpu_power_cap_pricing_witness", decl_name: name)
+}
+
+data w_expensive_identity: DeclarationRef = w_identity(name: "w-40w-90w-draw")
+data w_cheaper_identity: DeclarationRef = w_identity(name: "w-30w-75w-draw")
+
+// THE FIXTURE CIRCUITS: the strip's shape, with the two figures the strip lacks. `member_draw_bound` is the
+// per-MEMBER draw limit -- the number a selection can apply to one host's operating point -- stated with a
+// standing, which is exactly the field both fleet circuits leave unstated.
+data w_circuit_loose: SharedPowerCircuit = SharedPowerCircuit {
+  identity: w_identity(name: "w-circuit-loose"),
+  label: "fixture circuit, per-member bound 120 W" as NonEmptyStr,
+  members: [operator_host_srv4],
+  rating: RatingCited { carry_limit: watt(count: 1500), standing: CitedToAuthority { authority: w_fixture_authority } },
+  member_draw_bound: BoundStated { draw_limit: watt(count: 120), standing: CitedToAuthority { authority: w_fixture_authority } },
+  trips: [],
+}
+
+data w_circuit_tight: SharedPowerCircuit = SharedPowerCircuit {
+  identity: w_identity(name: "w-circuit-tight"),
+  label: "fixture circuit, per-member bound 80 W" as NonEmptyStr,
+  members: [operator_host_srv4],
+  rating: RatingCited { carry_limit: watt(count: 1500), standing: CitedToAuthority { authority: w_fixture_authority } },
+  member_draw_bound: BoundStated { draw_limit: watt(count: 80), standing: CitedToAuthority { authority: w_fixture_authority } },
+  trips: [],
+}
+
+// THE FIXTURE CANDIDATES. Draws are sampled windows naming their sensor and their sample count, not cap
+// values: a cap is a bound on sustained draw and never a measurement of it. The expensive point draws 85-95 W
+// and the cheaper one 70-78 W, against the two fixture bounds above. The cheaper one sits CLEAR of the tight
+// 80 W bound rather than touching it: an entry whose reading overlaps the bound is not excluded, it is
+// UndecidedOnEvidence, and std.pareto returns the gap rather than a verdict -- which is the right refusal and
+// is what this fixture would otherwise have been pinning by accident. Both sit on the SAME card in the SAME
+// state, which is what makes them comparable at all.
+data w_expensive_candidate: CapCandidate = CapCandidate {
+  identity: w_expensive_identity,
+  label: "fixture, 40 W cap, unlocked clock, 39.0 tok/s, 85-95 W drawn" as NonEmptyStr,
+  host: operator_host_srv4,
+  gpu_cap: w_cap_40,
+  cpu_cap: Uncapped,
+  sm_clock: Unlocked,
+  condition: w_condition_cool,
+  decode: DecodeRead {
+    rate_low: milli_tokens_per_second(count: 39000),
+    rate_high: milli_tokens_per_second(count: 39000),
+    at_concurrency: 1,
+    window: "fixture window" as NonEmptyStr,
+    instrument: "fixture: sampled journal read" as NonEmptyStr,
+    standing: CitedToAuthority { authority: w_fixture_authority },
+  },
+  draw: DrawRead {
+    draw_low: milliwatt(count: 85000),
+    draw_high: milliwatt(count: 95000),
+    samples: 150,
+    sensor: "fixture: nvidia-smi power.draw plus hwmon apm_xgene, sampled across the decode window" as NonEmptyStr,
+    throttle_share_note: Present { value: "fixture: 96% of the window power-capped" as NonEmptyStr },
+    observed_on: "fixture" as NonEmptyStr,
+    standing: CitedToAuthority { authority: w_fixture_authority },
+  },
+}
+
+data w_cheaper_candidate: CapCandidate = CapCandidate {
+  identity: w_cheaper_identity,
+  label: "fixture, 30 W cap, 1500 MHz ceiling, 24.1 tok/s, 70-78 W drawn" as NonEmptyStr,
+  host: operator_host_srv4,
+  gpu_cap: w_cap_30,
+  cpu_cap: CappedAt { maximum: hertz(count: 2000000000) },
+  sm_clock: CappedWithin { maximum: hertz(count: 1500000000) },
+  condition: w_condition_cool,
+  decode: DecodeRead {
+    rate_low: milli_tokens_per_second(count: 24100),
+    rate_high: milli_tokens_per_second(count: 24100),
+    at_concurrency: 1,
+    window: "fixture window" as NonEmptyStr,
+    instrument: "fixture: sampled journal read" as NonEmptyStr,
+    standing: CitedToAuthority { authority: w_fixture_authority },
+  },
+  draw: DrawRead {
+    draw_low: milliwatt(count: 70000),
+    draw_high: milliwatt(count: 78000),
+    samples: 150,
+    sensor: "fixture: nvidia-smi power.draw plus hwmon apm_xgene, sampled across the decode window" as NonEmptyStr,
+    throttle_share_note: Present { value: "fixture: 87% of the window power-capped" as NonEmptyStr },
+    observed_on: "fixture" as NonEmptyStr,
+    standing: CitedToAuthority { authority: w_fixture_authority },
+  },
+}
+
+data w_condition_cool: CardCondition = ConditionRead {
+  card: "fixture card" as NonEmptyStr,
+  state: Cool,
+  sensor: "fixture: nvidia-smi temperature read at the same sweep" as NonEmptyStr,
+  observed_on: "fixture" as NonEmptyStr,
+  standing: CitedToAuthority { authority: w_fixture_authority },
+}
+
+data w_cap_40: GpuPowerCapSelection = OperatorDeclaredCap {
+  cap: watt(count: 40),
+  bounds: SustainedPowerDraw,
+  decided_on: "fixture" as NonEmptyStr,
+  said: "fixture cap" as NonEmptyStr,
+}
+
+data w_cap_30: GpuPowerCapSelection = OperatorDeclaredCap {
+  cap: watt(count: 30),
+  bounds: SustainedPowerDraw,
+  decided_on: "fixture" as NonEmptyStr,
+  said: "fixture cap" as NonEmptyStr,
+}
+
+fn w_fixture_field() -> List<CapCandidate> { [w_expensive_candidate, w_cheaper_candidate] }
+
+// The whole fleet field the fold can be asked about, for the census-style claims.
+fn all_fleet_candidates() -> List<CapCandidate> {
+  concat(
+    concat(srv4_cap_ask_candidates(), srv4_morning_candidates()),
+    concat(ken_cap_ask_candidates(), [srv3_40w_candidate, srv3_30w_2ghz_candidate]),
+  )
+}
+
+// An assessment whose completeness join IS closed -- legitimate ONLY beside a fully-read fixture field, and
+// never this module's own claim.
+fn w_read_assessment(circuit: SharedPowerCircuit) -> DecisionAssessment {
+  DecisionAssessment {
+    subject: cap_ask_subject(circuit: circuit, term_ground: CitedToAuthority { authority: w_fixture_authority }),
+    sensitivities: [VariesAlong {
+      term: id_term,
+      variable: id_var,
+      region: cap_ask_region,
+      relation: MonotoneIncreasing,
+      coupling: CitedToAuthority { authority: w_fixture_authority },
+    }],
+    constraints: [ConstraintSatisfied {
+      constraint: constraint_identity(circuit: circuit),
+      evidence: "fixture: the circuit bound is stated for this witness" as NonEmptyStr,
+    }],
+    parameters: [ParameterBound {
+      parameter: id_parameter,
+      evidence: "fixture: the workload is bound for this witness" as NonEmptyStr,
+    }],
+    selected_candidate: Absent, term_drops: [],
+    physical_model: PhysicalModelEstablished { terms: [id_term] },
+    causal_model: CausalModelEstablished {
+      couplings: [FleetObservedCoupling {
+        receipt: w_fixture_coupling,
+        term: id_term,
+        variable: id_var,
+        subject: cap_ask_subject_identity(circuit: circuit),
+      }],
+    },
+  }
+}
+
+// ── THE LITTLE PREDICATES, so no test compares coproduct values with `==` ──────────────────────────
+
+fn is_worse(c: AxisComparison) -> Bool { match c { Worse => true _ => false } }
+fn is_better(c: AxisComparison) -> Bool { match c { Better => true _ => false } }
+fn is_undecided(c: AxisComparison) -> Bool { match c { UndecidedOnEvidence => true _ => false } }
+
+fn cpu_is_capped_at_2ghz(c: CapCandidate) -> Bool {
+  match c.cpu_cap {
+    CappedAt { maximum: h } => hertz_count(h: h) == 2000000000
+    _ => false
+  }
+}
+
+fn cpu_is_uncapped(c: CapCandidate) -> Bool {
+  match c.cpu_cap {
+    Uncapped => true
+    _ => false
+  }
+}
+
+fn ceiling_of(c: CapCandidate) -> Int {
+  match c.sm_clock {
+    CappedWithin { maximum: h } => hertz_count(h: h)
+    _ => 0
+  }
+}
+
+fn afternoon_window_is_carried_with_its_width() -> Bool {
+  match axis_reading_of(c: srv4_40w_30ghz_afternoon_candidate, axis: ax_decode_tokens_per_second) {
+    Present { value: iv } => interval_low(interval: iv) == 28500000 && interval_high(interval: iv) == 34000000
+    Absent => false
+  }
+}
+
+// Does this candidate ANSWER for one funded axis -- as a reading or as a named gap? A candidate silent on an
+// axis would let a comparison run on half the trade, which is how a cap gets priced by its benefit alone.
+fn axis_answered_for(c: CapCandidate, a: SelectionAxis) -> Bool {
+  let e = candidate_entry(c: c)
+  any(e.readings, r => same_ref(a: r.axis, b: a.identity))
+    || any(e.missing_inputs, g => same_ref(a: g.axis, b: a.identity))
+}
+
+// And does the gap name the reading that would close it? A gap that only said "unmeasured" would be
+// indistinguishable from one nobody can close.
+fn gap_naming(c: CapCandidate, axis: DeclarationRef, pattern: String) -> Bool {
+  let e = candidate_entry(c: c)
+  any(e.missing_inputs, g =>
+    same_ref(a: g.axis, b: axis) && string_contains(s: g.cause as String, pattern: pattern)
+  )
+}
+
+fn same_ref(a: DeclarationRef, b: DeclarationRef) -> Bool {
+  declaration_ref_identity(reference: a).digest == declaration_ref_identity(reference: b).digest
+}
+
+fn needs_mention(needs: List<SelectionEvidenceNeed>, pattern: NonEmptyStr) -> Bool {
+  any(needs, n => string_contains(s: selection_evidence_need_cause(n: n) as String, pattern: pattern as String))
+}

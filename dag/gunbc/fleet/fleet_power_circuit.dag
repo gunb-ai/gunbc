@@ -1,0 +1,206 @@
+module gunbc.fleet.fleet_power_circuit
+
+import std.types { List, NonEmptyStr }
+import std.optional { Optional, Present, Absent }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.measure { Watt, watt, watt_count }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+import product.host_identity { HostIdentity, host_identity_eq }
+import gunbc.fleet.fleet_host_identity {
+  operator_host_srv1, operator_host_srv3, operator_host_srv4, operator_host_6ce85c, operator_host_e2d4b7,
+}
+
+// WHICH MACHINES SHARE ONE PROTECTIVE DEVICE, AND WHAT THAT DEVICE HAS DONE.
+//
+// THE GAP THIS FILLS. A power cap is never asked for in the abstract: it is asked for because something
+// electrical is already at its limit. On 2026-11-24 the operator asked that question twice in one day in
+// OPPOSITE directions -- srv3/srv4's RTX 2000 Ada cards went 40 W -> 30 W, back to 40 W ("not worth 10 W
+// per card"), and then back to 30 W after the strip feeding h11 + srv3 + srv4 tripped a second time
+// (~21:57 UTC; the first trip was ~09:19 UTC). Every model check that existed passed both times, because
+// every check that existed asked only whether the watt value sits inside what the driver accepts
+// (gunbc.serving.gpu_power_state_policy admit_gpu_cap_against, against the device's own reported range).
+// Nothing in the corpus carried the thing the watts were being saved FOR: a protective device that
+// several hosts share and that has, in fact, opened. So the ask had no object, and the same number could
+// be the right answer and its opposite on the same afternoon with no record of what changed.
+//
+// WHY THIS IS NOT product.rack_power. That module is the rack deployment's feed: a PDU with a cited
+// catalog row (extdeps.power.types PduCatalogRow), a branch-circuit topology, and loads joined to mounted
+// assets at identity grain. The home fleet's constraint is none of those things -- it is a surge strip
+// and a wall breaker with NO catalog row, NO rating plate read, and no asset identity in
+// product.placement_supply. Reusing the rack carrier would assert a cited feed that does not exist, which
+// is the invention extdeps exists to prevent. The shapes are deliberately parallel (a supply, the loads
+// on it, and an honest unread arm) and the authorities are deliberately separate.
+//
+// WHY THIS IS NOT gunbc.fleet.fleet_host_power either. That module answers what ONE HOST draws and how we
+// know it; its rows are per-host and its provenance is per-host. A host's draw says nothing about which
+// other hosts share its protective device, and the shared device is the whole subject here: the first
+// trip's likely trigger (h11's R9700 spiking 400-450 W for two seconds, gunbc.serving.h11_r9700_strata_bench_receipt)
+// is a host that carries no cap in this ask at all. Draw-per-host and device-per-group are different
+// questions; one module answering both would make "these three hosts are on one strip" a property of a
+// number, which is where it got lost.
+//
+// THE RATING IS UNREAD, AND THAT IS THE HONEST ARM, NOT A TODO. Nobody has read the strip's rating plate
+// or the breaker's ampere rating, and no wattmeter has ever been on either circuit. The only evidence
+// about these two circuits is that one of them opened twice, and an estimate of what it was carrying. A
+// consumer that wants a numeric bound must therefore be refused with the read obligation named -- it
+// cannot be handed a number derived from a trip, because a trip says "the load exceeded something", not
+// what that something was. Minting a bound from the 1.3-1.6 kW estimate would be exactly the invented
+// scale gunbc.design_argument::one_source_of_truth forbids, and it would have been wrong in both
+// directions on 2026-11-24: the strip held 40 W caps for hours before it opened, and it opened again
+// after the caps came back down.
+//
+// APPARENT POWER IS NOT REAL POWER, AND NO POWER FACTOR IS INVENTED HERE. product.rack_power states the
+// rule: a supply is rated in volt-amperes, a load draws watts, and the two differ by a power factor no
+// cited row in this corpus carries. `carry_limit` below is therefore a WATT figure only when it arrives
+// with a warrant that states it in watts; there is no ampere arm and no volts-times-amps fold, because
+// that would smuggle in an assumed power factor of unity.
+
+data surge_strip_h11_srv3_srv4: DeclarationRef = decl_ref(
+  module_path: "gunbc.fleet.fleet_power_circuit",
+  decl_name: "surge_strip_h11_srv3_srv4",
+)
+data breaker_srv1_ken: DeclarationRef = decl_ref(
+  module_path: "gunbc.fleet.fleet_power_circuit",
+  decl_name: "breaker_srv1_ken",
+)
+
+// WHAT THE CIRCUIT IS RATED TO CARRY. `RatingUnread` is not a placeholder for a missing number: it is the
+// arm that says the bound the ask needs has never been read, and it carries the obligation that would
+// close it. There is no `RatingUnknown` arm beside it, because "unread" and "unknowable" answer different
+// questions and only the first has an action attached.
+type CircuitRating
+  = RatingCited { carry_limit: Watt, standing: CitedFigureStanding }
+  | RatingUnread { read_obligation: NonEmptyStr }
+
+// THE BOUND A SINGLE MEMBER MAY DRAW. This is the number a selection can actually apply to one host's
+// operating point, and it is a DECLARED figure with a standing, never a quotient: dividing a circuit's
+// rating among its members would invent a per-member scale no instrument has read and no code states, which
+// is the same refusal product.rack_power makes about assuming a power factor. `BoundUnstated` is today's arm
+// for both circuits: nobody has stated a per-member draw limit, because nobody has read the circuits.
+type MemberDrawBound
+  = BoundStated { draw_limit: Watt, standing: CitedFigureStanding }
+  | BoundUnstated { read_obligation: NonEmptyStr }
+
+// ONE OPENING OF THE DEVICE, AS SOMEBODY OBSERVED IT. `at` is the time to the grain the observation has,
+// which for 2026-11-24 is the minute, estimated by the session that was watching the hosts go away; the
+// standing says so rather than smoothing it into a timestamp. `load_note` is what the observer believed
+// the circuit was carrying at the time, in their words -- an estimate, not a measurement, and kept as
+// text precisely so that no fold can arithmetic on it.
+type CircuitTrip {
+  at: NonEmptyStr
+  standing: CitedFigureStanding
+  load_note: NonEmptyStr
+}
+
+type SharedPowerCircuit {
+  identity: DeclarationRef
+  label: NonEmptyStr
+  members: List<HostIdentity>
+  rating: CircuitRating
+  member_draw_bound: MemberDrawBound
+  trips: List<CircuitTrip>
+}
+
+// THE STRIP THAT OPENED TWICE ON 2026-11-24: h11 (host-6ce85c), srv3 and srv4. Its rating has never been
+// read. The two openings are carried with TranscribedUncited standing because they were observed over ssh
+// by the operator's session -- hosts went dark and came back -- and not by a committed instrument; the
+// read obligation names what would pin them (a power-outlet sensor or a UPS on the strip, and the strip's
+// own rating plate).
+data strip_trip_2026_11_24_first: CircuitTrip = CircuitTrip {
+  at: "2026-11-24 ~09:19 UTC" as NonEmptyStr,
+  standing: TranscribedUncited {
+    read_obligation: "observed by the operator's session as h11/srv3/srv4 going unreachable, not by an instrument on the circuit: put a wattmeter or UPS on the strip and read its rating plate" as NonEmptyStr,
+  },
+  load_note: "estimated 1.3-1.6 kW on the strip; likely trigger h11's R9700 drawing 400-450 W in two-second spikes (gunbc.serving.h11_r9700_strata_bench_receipt)" as NonEmptyStr,
+}
+
+data strip_trip_2026_11_24_second: CircuitTrip = CircuitTrip {
+  at: "2026-11-24 ~21:57 UTC" as NonEmptyStr,
+  standing: TranscribedUncited {
+    read_obligation: "observed as a reboot of h11, srv3 and srv4 read at 22:03-22:05 UTC; no instrument on the circuit recorded the opening" as NonEmptyStr,
+  },
+  load_note: "the GPUs were at 40 W again when it opened, which is the fact that reversed the earlier ruling that 10 W per card was not worth paying" as NonEmptyStr,
+}
+
+data surge_strip: SharedPowerCircuit = SharedPowerCircuit {
+  identity: surge_strip_h11_srv3_srv4,
+  label: "surge strip feeding h11 + srv3 + srv4" as NonEmptyStr,
+  members: [operator_host_6ce85c, operator_host_srv3, operator_host_srv4],
+  rating: RatingUnread {
+    read_obligation: "the strip's rating plate has never been read and no wattmeter has ever been on it; until one is, no numeric bound exists for this circuit and a power ask against it can only be answered with what is unread" as NonEmptyStr,
+  },
+  member_draw_bound: BoundUnstated {
+    read_obligation: "no per-member draw limit has been stated for this strip, and none can be derived from its unread rating; the operator states one, or a wattmeter on the strip plus per-host draws establish one" as NonEmptyStr,
+  },
+  trips: [strip_trip_2026_11_24_first, strip_trip_2026_11_24_second],
+}
+
+// THE OTHER CIRCUIT ON THE FLEET, carried so the strip is not the only named one: the breaker that feeds
+// srv1 and ken. It has not opened, and its rating is equally unread. An ask that serves THIS circuit is a
+// different decision from one that serves the strip, and the two must not be allowed to share a
+// constraint identity -- that is what std.decision's DecisionScope discriminator is for.
+data breaker_srv1_ken_circuit: SharedPowerCircuit = SharedPowerCircuit {
+  identity: breaker_srv1_ken,
+  label: "breaker carrying srv1 + ken" as NonEmptyStr,
+  members: [operator_host_srv1, operator_host_e2d4b7],
+  rating: RatingUnread {
+    read_obligation: "the breaker's ampere rating and the circuit's wiring have never been read; the 1.3-1.4 kW figure quoted for this pair is an estimate of load, not a rating" as NonEmptyStr,
+  },
+  member_draw_bound: BoundUnstated {
+    read_obligation: "no per-member draw limit has been stated for this breaker either; it has not opened, which is not evidence of a bound" as NonEmptyStr,
+  },
+  trips: [],
+}
+
+fn fleet_power_circuits() -> List<SharedPowerCircuit> {
+  [surge_strip, breaker_srv1_ken_circuit]
+}
+
+fn circuit_identity(c: SharedPowerCircuit) -> DeclarationRef { c.identity }
+fn circuit_label(c: SharedPowerCircuit) -> NonEmptyStr { c.label }
+fn circuit_members(c: SharedPowerCircuit) -> List<HostIdentity> { c.members }
+fn circuit_trips(c: SharedPowerCircuit) -> List<CircuitTrip> { c.trips }
+fn circuit_trip_at(t: CircuitTrip) -> NonEmptyStr { t.at }
+fn circuit_trip_standing(t: CircuitTrip) -> CitedFigureStanding { t.standing }
+
+// THE BOUND, OR THE OBLIGATION THAT OWES IT. A projection, not a second decision: which arm of
+// `CircuitRating` the circuit carries IS the answer to "may a numeric constraint be minted for this
+// circuit", and this only spells it out once so a consumer does not re-match the coproduct three ways.
+// There is deliberately no `circuit_is_overloaded(...) -> Bool` beside it -- no instrument has ever read
+// this circuit, so any such predicate would be a verdict with no reading behind it.
+fn circuit_carry_limit(c: SharedPowerCircuit) -> Optional<Watt> {
+  match c.rating {
+    RatingCited { carry_limit: w, standing: _ } => Present { value: w }
+    RatingUnread { read_obligation: _ } => Absent
+  }
+}
+
+fn circuit_rating_read_obligation(c: SharedPowerCircuit) -> Optional<NonEmptyStr> {
+  match c.rating {
+    RatingCited { carry_limit: _, standing: _ } => Absent
+    RatingUnread { read_obligation: o } => Present { value: o }
+  }
+}
+
+// THE PER-MEMBER BOUND, spelled out once for the same reason as the carry limit: whether a hard constraint
+// can be minted for this circuit at all is the arm of this field, and a consumer that re-matched it three
+// ways could disagree with the fold about what is owed.
+fn circuit_member_draw_bound(c: SharedPowerCircuit) -> MemberDrawBound { c.member_draw_bound }
+
+// Is this host on this circuit? Identity equality through product.host_identity's own comparison, the
+// same one gpu_power_state_policy joins on, so a host name spelled twice cannot half-match.
+fn circuit_carries(c: SharedPowerCircuit, host: HostIdentity) -> Bool {
+  c.members.any(m => host_identity_eq(a: m, b: host))
+}
+
+// The circuit a power ask serves, by the host the ask is about. Absent is an answer, not a shrug: it says
+// no circuit in this corpus is known to carry that host, and the caller that needs a constraint must then
+// refuse with that named rather than assume the strip.
+fn circuits_carrying(host: HostIdentity) -> List<SharedPowerCircuit> {
+  fleet_power_circuits().filter(c => circuit_carries(c: c, host: host))
+}
+
+data fleet_power_circuit_frontier: DissolutionCondition = unbound_dissolution(
+  description: "gunbc.design_argument::consumption: read today by gunbc.serving.gpu_power_cap_pricing (the only fold that mints a hard constraint from a circuit, and it mints none while both ratings are unread) and by test.claim.serving.gpu_power_cap_pricing_witness. TRIGGER: the strip's and the breaker's ratings are read onto rows with a standing, or a wattmeter/UPS puts a measured draw on one of them, at which point RatingUnread loses its last member and a power ask against a named circuit becomes answerable in watts instead of in read obligations. Separately and NOT covered by that trigger: the strip has no PhysicalAssetIdentity in product.placement_supply, so the circuit is named by a DeclarationRef only; giving it an asset identity is an inventory change, not this module's." as NonEmptyStr
+)
