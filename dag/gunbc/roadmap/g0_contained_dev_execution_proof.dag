@@ -159,9 +159,11 @@ data g0_bwrap_isolation_bash_emit_capability: String = "bwrap mount-namespace tm
 // THE SCAFFOLD MARKER / DISSOLUTION TRIGGER. The decision rule + verdict above are the modeled consumer;
 // the per-probe return-code tokens they consume are produced by a hand-shell probe (bwrap) until that
 // probe is realized through a typed host-effect / v2.workflow.bash_emit program (a modeled realization of
-// the mount namespace) rather than a hand-authored sh -c string. DISSOLVES WHEN the bwrap mount-namespace
-// probe is a modeled realization dispatch bound to this declaration. Bound to the decision rule so the
-// marker names the carrier it scaffolds.
+// the mount namespace) rather than a hand-authored sh -c string. THE BASH-EMIT CAPABILITY named here is
+// g0_bwrap_isolation_bash_emit_capability; its tracked bash-emit capability issue is #5828. DISSOLVES WHEN
+// the bwrap mount-namespace probe is a modeled realization dispatch bound to this declaration
+// (tracked under bash-emit capability #5828). Bound to the decision rule so the marker names the carrier
+// it scaffolds.
 data g0_bwrap_isolation_bash_emit_dissolution_trigger: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: DeclarationRef {

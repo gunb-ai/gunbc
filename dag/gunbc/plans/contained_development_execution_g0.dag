@@ -4,6 +4,7 @@ import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock }
 import gunbc.markdown_helpers { h2, h3, p, li, ul, quote }
+import gunbc.plans.contained_development_execution_g0_conditions { g0_state_groups, g0_condition_count, g0_lift_conjunction_holds, g0_groups_covered, g0_group_label, g0_conditions_for_group, G0StateGroup }
 
 fn contained_development_execution_g0_body() -> List<MarkdownBlock> {
   [
@@ -92,15 +93,8 @@ fn contained_development_execution_g0_body() -> List<MarkdownBlock> {
     ]),
 
     h2(text: "3. Lifting rule"),
-    p(text: "G0 is a conjunction gate: the operator lifts it only when ALL five state groups have every done-when condition met. The lifting table:"),
-    ul(items: [
-      li(text: "Operator home: both conditions in 2.1 must hold."),
-      li(text: "Credentials: all three conditions in 2.2 must hold."),
-      li(text: "Privilege groups: all three conditions in 2.3 must hold."),
-      li(text: "Control-plane stores: all three conditions in 2.4 must hold."),
-      li(text: "Shared state: all three conditions in 2.5 must hold."),
-    ]),
-    p(text: "ALL pass (14 conditions) -> the operator may lift G0. The lane may dispatch new autonomous workers subject to every other gate. (Count: 2 in 2.1 + 3 in 2.2 + 3 in 2.3 + 3 in 2.4 + 3 in 2.5 = 14; the agreement of this count with the enumerated conditions is a real consumer executed over the TYPED plan value by gunbc.test.claim.roadmap.g0_criteria_witness::g0_plan_condition_counts_agree_and_are_nonzero (run via gunbc run --claim-run), which fails on a mismatch or a zero count and rejects its named negative [lift_reverted_to_13].)"),
+    p(text: "G0 is a conjunction gate over TYPED condition rows, not over prose. The five state groups and every done-when condition are declared once, as data, in gunbc.plans.contained_development_execution_g0_conditions (data g0_state_groups, data g0_done_when_conditions — one G0DoneWhenCondition row per condition, each naming the state group, what unreachability requires, and the symbol that models the state). That carrier is the SINGLE AUTHORITY for the condition set and its count (gunbc.design_argument::single_authority): the count is read off it by fn gunbc.plans.contained_development_execution_g0_conditions::g0_condition_count and is written nowhere. The per-group prose under section 2 elaborates each row in human terms and states its named negative case; no consumer counts the prose."),
+    p(text: "The lifting rule is the conjunction fn gunbc.plans.contained_development_execution_g0_conditions::g0_lift_conjunction_holds over one proof per condition. The required proof-count is COMPUTED by fn gunbc.plans.contained_development_execution_g0_conditions::g0_condition_count (it reads the list; no number is written down here or in the witness). The operator may lift G0 only when that conjunction holds over one proof per condition AND every declared state group is covered (fn gunbc.plans.contained_development_execution_g0_conditions::g0_groups_covered). The lifting rule, the count, and the group coverage are a real consumer green by execution in gunbc.test.claim.roadmap.g0_criteria_witness::g0_condition_count_is_nonzero_and_groups_covered, ::g0_lift_conjunction_accepts_all_proven_and_rejects_a_hole, and ::g0_lift_conjunction_rejects_wrong_arity (named negative [lift_wrong_arity]) — run via gunbc run --claim-run."),
     p(text: "ANY single condition fails -> G0 stays closed. No partial lift is authorized."),
     p(text: "A condition whose named negative case does not fail is VOID, not a pass (this plan's own stricter proposal atop gunbc.design_argument::fail_closed, which requires a discriminating input that goes red)."),
     p(text: "G0's carrier, boundary, approach, displaced_cost, and handback fields remain DRAFT in gunbc.roadmap.roadmap_authority until the operator accepts this document (or a revision of it) as the reviewed contracts document."),

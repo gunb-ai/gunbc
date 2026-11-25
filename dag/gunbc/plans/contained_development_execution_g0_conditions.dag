@@ -1,0 +1,83 @@
+module gunbc.plans.contained_development_execution_g0_conditions
+
+// Single typed carrier for the G0 done-when conditions and the lifting count, so the
+// count and conditions live in a typed carrier (gunbc.design_argument::source_annotations)
+// and the lifting rule is a conjunction consumed by execution
+// (gunbc.design_argument::fail_closed — not a string grep over plan prose). The plan
+// module gunbc.plans.contained_development_execution_g0 renders human-readable prose and
+// the lifting rule cites these symbols by name; it does not hold the count.
+
+// The five states G0's headline names (roadmap_dispatch_actuator::g0_contained_development_execution).
+type G0StateGroup = OperatorHome | Credentials | PrivilegeGroups | ControlPlaneStores | SharedState
+
+// One done-when condition: which state it belongs to, what unreachability requires of a
+// worker, and the repository symbol that models the state it protects.
+type G0DoneWhenCondition = G0DoneWhenCondition {
+  group: G0StateGroup,
+  requires: String,
+  modelled_by: String,
+}
+
+data g0_state_groups: List<G0StateGroup> = [
+  OperatorHome,
+  Credentials,
+  PrivilegeGroups,
+  ControlPlaneStores,
+  SharedState,
+]
+
+// 2.1 operator home (2) + 2.2 credentials (3) + 2.3 privilege groups (3)
+// + 2.4 control-plane stores (3) + 2.5 shared state (3) = 14 rows.
+// The count is never written down; it is read off this list by g0_condition_count.
+data g0_done_when_conditions: List<G0DoneWhenCondition> = [
+  G0DoneWhenCondition { group: OperatorHome, requires: "rendered hardened unit carries ProtectHome=read-only and the stripped render does not", modelled_by: "gunbc.roadmap.dispatch_worker_unit_confinement::dispatch_worker_hardened_unit_settings" },
+  G0DoneWhenCondition { group: OperatorHome, requires: "no ReadWritePaths entry under the operator-home prefix unless inside the instance root", modelled_by: "gunbc.roadmap.roadmap_dashboard_instance::srv2_dashboard_preview_root" },
+  G0DoneWhenCondition { group: Credentials, requires: "no EnvironmentFile nor ReadWritePaths reaches a custody secret path", modelled_by: "gunbc.fleet.host_credential_custody_roster::HostCredentialCustodyRow" },
+  G0DoneWhenCondition { group: Credentials, requires: "no EnvironmentFile nor ReadWritePaths reaches the per-attempt credential snapshot path", modelled_by: "gunbc.roadmap.roadmap_dispatch_actuator::dispatch_credential_snapshot_path_for_attempt" },
+  G0DoneWhenCondition { group: Credentials, requires: "no EnvironmentFile nor ReadWritePaths reaches SSH private key material", modelled_by: "gunbc.fleet.fleet_ssh_access" },
+  G0DoneWhenCondition { group: PrivilegeGroups, requires: "declared supplementary groups intersect root-equivalent groups in the empty set", modelled_by: "gunbc.roadmap.dispatch_worker_unit_confinement::dispatch_worker_hardened_unit_settings" },
+  G0DoneWhenCondition { group: PrivilegeGroups, requires: "rendered hardened unit carries NoNewPrivileges=yes, RestrictSUIDSGID=yes and the empty capability-bounding-set assignment; stripped does not", modelled_by: "gunbc.extdeps.systemd.systemd_run::systemd_run_empty_capability_bounding_set_assignment" },
+  G0DoneWhenCondition { group: PrivilegeGroups, requires: "no PAM substring appears in any rendered property assignment", modelled_by: "gunbc.extdeps.systemd.systemd_run::systemd_run_property_assignment" },
+  G0DoneWhenCondition { group: ControlPlaneStores, requires: "rendered unit does not name the fabric HMAC key path, an EnvironmentFile at it, or the fabric storage URL", modelled_by: "gunbc.fabric.fabric_storage_state_location::fabric_state_key_host_path" },
+  G0DoneWhenCondition { group: ControlPlaneStores, requires: "every ReadWritePaths entry lies under the instance's own root; none names another instance's attempts member", modelled_by: "gunbc.roadmap.roadmap_dashboard_instance::dashboard_instance_dispatch_attempt_state_root" },
+  G0DoneWhenCondition { group: ControlPlaneStores, requires: "the provider-events ledger path carries the instance-root prefix and the attempt-key infix", modelled_by: "gunbc.roadmap.roadmap_attempt_state_store::attempt_state_directory_segment" },
+  G0DoneWhenCondition { group: SharedState, requires: "rendered hardened unit carries UMask=0002; the stripped render does not", modelled_by: "gunbc.roadmap.dispatch_worker_unit_confinement::dispatch_dedicated_worker_umask" },
+  G0DoneWhenCondition { group: SharedState, requires: "no ReadWritePaths entry contains the event-carrier worktree path", modelled_by: "gunbc.roadmap.roadmap_event_carrier_directory" },
+  G0DoneWhenCondition { group: SharedState, requires: "no ReadWritePaths entry contains the spool in_flight segment under the instance root", modelled_by: "gunbc.host.host_layout::attempt_unit_spool_root" },
+]
+
+// The count is computed by reading the list off the carrier; nothing in this repo writes
+// the number down.
+fn g0_condition_count() -> Int {
+  count(g0_done_when_conditions)
+}
+
+// The lifting rule as a conjunction: it holds exactly when one proof is supplied per
+// condition AND every proof is true. The arity is the computed count, never a literal.
+fn g0_lift_conjunction_holds(proofs: List<Bool>) -> Bool {
+  count(proofs) == g0_condition_count() && all(proofs, p => p)
+}
+
+// Every declared state group has at least one condition row.
+fn g0_groups_covered() -> Bool {
+  all(g0_state_groups, group => count(g0_conditions_for_group(group)) > 0)
+}
+
+// The readable name of a state group (used to render the plan's done-when list FROM these rows, so the
+// prose is generated from the carrier rather than duplicating it).
+fn g0_group_label(g: G0StateGroup) -> String {
+  match g {
+    OperatorHome => "operator home"
+    Credentials => "credentials"
+    PrivilegeGroups => "privilege groups"
+    ControlPlaneStores => "control-plane stores"
+    SharedState => "shared state"
+  }
+}
+
+// The done-when conditions belonging to one group, read off the typed rows (matched by label so group
+// membership relies only on String equality, which is a documented primitive).
+fn g0_conditions_for_group(g: G0StateGroup) -> List<G0DoneWhenCondition> {
+  let want = g0_group_label(g)
+  filter(g0_done_when_conditions, c => g0_group_label(c.group) == want)
+}

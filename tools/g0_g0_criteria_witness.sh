@@ -9,7 +9,9 @@
 #   model decision rule:   gunbc.roadmap.g0_contained_dev_execution_proof::g0_two_sided_isolation_holds
 #   model sole verdict:    ...::g0_two_sided_isolation_verdict (-> ProcessExit; reason names the clause)
 #   bash-emit capability + dissolution trigger:
-#                          ...::g0_bwrap_isolation_bash_emit_dissolution_trigger (std.disposition.Scaffold)
+#                          ...::g0_bwrap_isolation_bash_emit_dissolution_trigger (std.disposition.Scaffold),
+#                          naming capability ...::g0_bwrap_isolation_bash_emit_capability; tracked under the
+#                          bash-emit capability issue #5828 (the probe dissolves when that capability realizes it).
 #   WHY it cannot be a .dag consumer: producing the observations requires EXECUTING a real kernel
 #   mount-namespace primitive (bwrap --tmpfs masking) that no typecheck or grep can (fail_closed).
 #
