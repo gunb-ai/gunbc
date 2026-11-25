@@ -23,7 +23,7 @@ import gunbc.fabric.fabric_event_log_host { now_epoch_seconds }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import extdeps.shell
 import extdeps.languages.json.emit { serialize_json, JsonValue, json_object, json_kv, json_string }
-import gunbc.host.host_layout { belt_spawn_workdir_env_var, publication_answer_dir }
+import gunbc.host.host_layout { belt_spawn_workdir_env_var, instance_receipts_dir, publication_answer_dir }
 import std.algebra { trim }
 import gunbc.roadmap.roadmap_publish { publication_receipt_decode, ReceiptDecoded, ReceiptUndecodable }
 import gunbc.roadmap.roadmap_belt { roadmap_belt_production_spawn_mode }
@@ -818,6 +818,17 @@ fn belt_credential_reader_for(instance: HostDashboardInstance, node_id: String, 
   ))
 }
 
+// The credential-recovery receipt path: the recovery receipt lives in the instance's receipts
+// directory (the declared, install-owned briansrls-writable directory created by apply_legs),
+// alongside the tick and obligation receipts. The path is derived from the instance root through
+// instance_receipts_dir, never spelled, for the reason that constant is: two instances on one host
+// must not share it. The entry name is a fixed filename in the declared directory — the recovery
+// is one-per-unit, the receipt is idempotent, and its content is not a secret (it names
+// unit/store/recovered).
+fn belt_credential_recovery_receipt_path(instance_root: NonEmptyStr) -> NonEmptyStr {
+  join([instance_receipts_dir(instance_root: instance_root as String) as String, "/credential-acquisition-recovery.json"], "") as NonEmptyStr
+}
+
 fn belt_credential_recovery_cli() -> ProcessExit {
   belt_instance_from_env(entry: "belt_credential_recovery_cli", continuation: instance =>
     match desired_deployment_for_instance_id(instance_id: instance.instance_id as String) {
@@ -841,7 +852,7 @@ fn belt_credential_recovery_cli() -> ProcessExit {
               json_kv(key: "store", value: json_string(s: credential_acquisition_slots.member as String)),
               json_kv(key: "recovered", value: json_string(s: credential_root_recovery_report(r: recovered))),
             ]))
-            let receipt_path = join([instance.instance_root as String, "/credential-acquisition-recovery.json"], "")
+            let receipt_path = belt_credential_recovery_receipt_path(instance_root: instance.instance_root as NonEmptyStr)
             if string_length(s: receipt) == 0 {
               exit_failure(reason: "belt_credential_recovery_cli: receipt was empty")
             } else if !Filesystem.Write(path: receipt_path, content: receipt).success {
