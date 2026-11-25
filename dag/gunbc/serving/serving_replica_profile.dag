@@ -149,10 +149,10 @@ type ReplicaGpuCard {
   board: DeclarationRef
   // The card's memory AS READ on that host. Absent where unread -- an obligation, never a datasheet.
   vram: Optional<ServingMemoryReading>
-  // The card's power cap as it runs. srv1's comes from its run row (300 W each); srv3's and srv4's are read from
-  // the cap mechanism those hosts carry (30 W on every card, the operator's hand-applied 2026-11-24 change --
-  // gunbc.fleet.gpu_power_cap_boot_state hand_applied_cap_mechanisms). Absent means NO cap mechanism has been
-  // read on that host, which is not the same as the card running uncapped.
+  // The card's power cap as it runs. srv1's comes from its run row (300 W each); srv3's, srv4's and ken's are
+  // read from the cap mechanism those hosts carry (40 W, 30 W and 100 W at the operator's 2026-11-24 final
+  // pass -- gunbc.fleet.gpu_power_cap_boot_state hand_applied_cap_mechanisms). Absent means NO cap mechanism
+  // has been read on that host, which is not the same as the card running uncapped.
   power_cap: Optional<Watt>
   // The card's UUID as nvidia-smi prints it -- docker's --device word and the CDI selector are built from
   // it, so srv1_serving_replica_layout asks THIS row for it instead of keeping its own copy. Where a host's
@@ -166,8 +166,8 @@ type ReplicaGpuCard {
 // A card as its host's serving_layout grant already models it: the device row is the owner of name, board
 // and read vram, so a profile card for srv3/srv4/h11 DERIVES from it -- no figure is retyped. The cap is the
 // one field the device row does NOT carry and the host does: it comes from that host's cap mechanism roster
-// (gunbc.fleet.gpu_power_cap_boot_state host_wide_gpu_cap_watts), so srv3 and srv4 now report the 30 W the
-// operator's hand-applied mechanism puts on every card there, and a host with no mechanism read -- h11 --
+// (gunbc.fleet.gpu_power_cap_boot_state host_wide_gpu_cap_watts), so srv3, srv4 and ken report what the
+// operator's hand-applied mechanisms put on every card there, and a host with no mechanism read -- h11 --
 // still reports Absent, which means "no cap mechanism read on that host" and not "this card runs uncapped".
 fn card_of(d: ServingDevice, host: HostIdentity) -> ReplicaGpuCard {
   ReplicaGpuCard {
@@ -930,10 +930,11 @@ fn agreed_match() -> ReplicaRunIdentityMatch {
 // of what it loaded (gunbc.host.srv1_serving_startup_receipt: the digest it resolves to, the revision and
 // quantization it reported LOADING, the KV dtype it printed) plus the launch contract's profile and hardware
 // names and the cards' cap. A Strata replica's is Absent, and for TWO different reasons that must not be
-// collapsed: srv3 and srv4 have had their cards' power caps read (30 W each, the operator's hand-applied
-// mechanism on 2026-11-24, now carried on each card row through card_of), but nothing else a run identity needs
-// has been read there -- not the artifact digest on that host, not the checkpoint revision, not the P2P wiring
-// -- while on h11 the caps have never been read either. Either way a coordinate-resolved reading for such a host
+// collapsed: srv3 and srv4 have had their cards' power caps read (the operator's hand-applied mechanisms of
+// 2026-11-24, now carried on each card row through card_of), but nothing else a run identity needs has been
+// read there -- not the artifact digest on that host, not the checkpoint revision, not the P2P wiring -- while
+// on h11 the R9700 carries no cap mechanism at all yet, its clock ceiling waiting on the amdgpu OverDrive bit
+// (gunbc.integration_concern::amdgpu_ppfeaturemask_lacks_the_overdrive_bit_a_clock_ceiling_needs). Either way a coordinate-resolved reading for such a host
 // refuses rather than go unchecked; the difference matters to whoever goes to read, because it says which fields
 // are still missing on which host.
 fn replica_run_identity(p: ServingReplicaProfile) -> Optional<ReplicaRunIdentity> {

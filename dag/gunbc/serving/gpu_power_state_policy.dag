@@ -2,7 +2,10 @@ module gunbc.serving.gpu_power_state_policy
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.optional { Absent, Present }
-import std.measure { Watt, TokensPerSecond, watt, watt_count, tokens_per_second, tokens_per_second_count }
+import std.measure {
+  Hertz, Watt, TokensPerSecond, hertz, hertz_count, watt, watt_count, tokens_per_second,
+  tokens_per_second_count,
+}
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef, decl_ref }
 import product.host_identity { HostIdentity, host_identity_eq }
@@ -275,7 +278,10 @@ type MeasuredCapPrice {
   // and the host's CPU ceiling. A tok/s figure without both is not reproducible -- srv4 read 26.5 at 30 W /
   // 2.0 GHz and 24.1 at 30 W / 3.0 GHz, so the CPU ceiling alone changes it.
   card_power_limit: Watt
-  cpu_ceiling_mhz: Nat
+  // The host's CPU ceiling as a measure, not a bare count of some unit: std.measure owns frequency through
+  // Hertz, and the same ceiling travels as Hertz in gunbc.fleet.cpu_freq_cap_boot_state -- so a kHz figure
+  // cannot be parked in a MHz slot by spelling.
+  cpu_ceiling: Hertz
   // The rate, and what it is a rate of: per conversation, not aggregate.
   decode_per_conversation: TokensPerSecond
   // What the card was doing while it produced that rate.
@@ -299,7 +305,7 @@ data srv4_rtx_2000_ada_measured_prices: List<MeasuredCapPrice> = [
     decision: decl_ref(module_path: "gunbc.serving.gpu_power_state_policy", decl_name: "srv4_rtx_2000_ada_cap_decision"),
     host: operator_host_srv4,
     card_power_limit: watt(count: 40),
-    cpu_ceiling_mhz: 3000,
+    cpu_ceiling: hertz(count: 3000000000),
     decode_per_conversation: tokens_per_second(count: 39),
     card_state: "the pre-cap baseline, 06:00-09:00 UTC; the pair ran uncapped between the 40 W and 30 W edits" as NonEmptyStr,
     instrument: "engine journal \"done: N tokens in T s (R tok/s)\" averaged per conversation-window over ssh" as NonEmptyStr,
@@ -309,7 +315,7 @@ data srv4_rtx_2000_ada_measured_prices: List<MeasuredCapPrice> = [
     decision: decl_ref(module_path: "gunbc.serving.gpu_power_state_policy", decl_name: "srv4_rtx_2000_ada_cap_decision"),
     host: operator_host_srv4,
     card_power_limit: watt(count: 30),
-    cpu_ceiling_mhz: 2000,
+    cpu_ceiling: hertz(count: 2000000000),
     decode_per_conversation: tokens_per_second(count: 27),
     // 26.5 is the figure the pass printed; the row carries the rounded-up whole tok/s the measure admits, and
     // the printed figure travels with it below so nothing is lost to the rounding.
@@ -321,7 +327,7 @@ data srv4_rtx_2000_ada_measured_prices: List<MeasuredCapPrice> = [
     decision: decl_ref(module_path: "gunbc.serving.gpu_power_state_policy", decl_name: "srv4_rtx_2000_ada_cap_decision"),
     host: operator_host_srv4,
     card_power_limit: watt(count: 30),
-    cpu_ceiling_mhz: 3000,
+    cpu_ceiling: hertz(count: 3000000000),
     decode_per_conversation: tokens_per_second(count: 24),
     card_state: "power-cap throttle at 30 W with the CPU uncapped, which is the reading that separates the two caps: removing the CPU ceiling did not recover the rate" as NonEmptyStr,
     instrument: "engine journal \"done: N tokens in T s (R tok/s)\" averaged per conversation-window over ssh; printed 24.1 tok/s" as NonEmptyStr,
@@ -331,7 +337,7 @@ data srv4_rtx_2000_ada_measured_prices: List<MeasuredCapPrice> = [
     decision: decl_ref(module_path: "gunbc.serving.gpu_power_state_policy", decl_name: "srv4_rtx_2000_ada_cap_decision"),
     host: operator_host_srv4,
     card_power_limit: watt(count: 40),
-    cpu_ceiling_mhz: 2000,
+    cpu_ceiling: hertz(count: 2000000000),
     // The 28.5-34 band, carried at its low end so a consumer cannot under-price the recovery it is reading.
     decode_per_conversation: tokens_per_second(count: 29),
     card_state: "back at 40 W: the recovered band is 28.5-34 tok/s per conversation, and the pass read it as the evidence that the 30 W cap, not the CPU cap, caused the drop" as NonEmptyStr,
@@ -345,7 +351,7 @@ data srv4_rtx_2000_ada_measured_prices: List<MeasuredCapPrice> = [
 // instrument is a transcribed number of unknown origin.
 fn every_measured_cap_price_states_its_configuration() -> Bool {
   fold(srv4_rtx_2000_ada_measured_prices, init: true, f: (ok, p) =>
-    ok && p.cpu_ceiling_mhz > 0
+    ok && hertz_count(h: p.cpu_ceiling) > 0
       && (p.instrument as String) != ""
       && (p.card_state as String) != ""
       && (p.read_on_utc as String) != ""

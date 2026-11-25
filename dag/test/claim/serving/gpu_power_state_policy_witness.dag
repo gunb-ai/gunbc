@@ -3,7 +3,7 @@ module test.claim.serving.gpu_power_state_policy_witness
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import product.placement_supply { PhysicalAssetIdentity }
 import std.optional { Absent, Present }
-import std.measure { watt, watt_count }
+import std.measure { hertz_count, watt, watt_count }
 import std.algebra { string_contains }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.pci.identity { PciAddress }
@@ -235,7 +235,7 @@ test fn every_cap_price_row_states_its_two_ceilings_and_its_instrument() -> Bool
     && srv4_rtx_2000_ada_measured_prices.all(p =>
       string_contains(s: p.instrument as String, pattern: "done: N tokens in T s"))
     && srv4_rtx_2000_ada_measured_prices.any(p =>
-      watt_count(w: p.card_power_limit) == 30 && p.cpu_ceiling_mhz == 2000)
+      watt_count(w: p.card_power_limit) == 30 && hertz_count(h: p.cpu_ceiling) == 2000000000)
     && srv4_rtx_2000_ada_measured_prices.any(p =>
-      watt_count(w: p.card_power_limit) == 30 && p.cpu_ceiling_mhz == 3000)
+      watt_count(w: p.card_power_limit) == 30 && hertz_count(h: p.cpu_ceiling) == 3000000000)
 }

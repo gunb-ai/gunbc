@@ -1,11 +1,13 @@
 module test.claim.fleet.gpu_power_cap_boot_state_witness
 
-import std.types { Bool, List, NonEmptyStr, String }
+import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Absent, Present, optional_is_absent }
-import std.measure { watt, watt_count }
+import std.measure { hertz_count, watt, watt_count }
 import std.algebra { string_contains }
 import gunbc.fleet.fleet_host_identity {
-  HostIdentity, operator_host_6ce85c, operator_host_srv1, operator_host_srv3, operator_host_srv4 }
+  HostIdentity, operator_host_6ce85c, operator_host_e2d4b7, operator_host_srv1, operator_host_srv3,
+  operator_host_srv4,
+}
 import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_04, gpu_board_05, gpu_board_06 }
 import gunbc.fleet.gpu_device_observation {
   GpuDeviceEnumerated, GpuDeviceNotEnumerated, current_gpu_device_observations_of,
@@ -20,9 +22,16 @@ import gunbc.fleet.gpu_power_cap_boot_state {
   // The 2026-11-24 hand-applied sibling roster: what the operator put on srv3 and srv4, the read each unread
   // file digest carries on itself, and the card a cap line addresses.
   CapDropInOnUnit, CapUnitDigestMarkedOnly, CapUnitDigestRead, CapUnitOfItsOwn, EveryCardOnTheHost,
-  HandAppliedCapMechanism, ReportedUnsaid, srv3_hand_applied_gpu_cap, srv4_hand_applied_gpu_cap,
+  HandAppliedCapMechanism, HandAppliedScript, ReportedUnsaid, SmClockLocked, SmClockUnlocked,
+  ken_t10_hand_applied_gpu_cap, srv3_hand_applied_gpu_cap, srv4_hand_applied_gpu_cap,
   cap_card_selector, cap_unit_digest_discharge_read, declared_path_host_hash_read,
   hand_applied_cap_mechanisms, hand_applied_cap_mechanisms_on, host_wide_gpu_cap_watts,
+  // The 2026-11-24 final-state render folds: the emitted unit and script bytes, and the folds that compare
+  // them against what the hosts hashed -- asked here so a drift between a row and a host goes red in a test,
+  // not in a comment.
+  cap_mechanisms_with_unread_lines, hand_applied_digest_read, ken_t10_power_cap_script_sha256,
+  ken_t10_script_transcription_is_the_host_file, srv4_cap_unit_render_is_the_host_file,
+  srv4_gpu_power_cap_unit_sha256, the_unread_lines_row_is_the_unreachable_digest,
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -218,11 +227,11 @@ fn nothing_transcribed_on(h: HostIdentity) -> Bool {
   }
 }
 
-// The cap this host is recorded putting on every card it carries is 30 W; false when none has been read.
-fn host_caps_every_card_at_30(host: HostIdentity) -> Bool {
+// The cap this host is recorded putting on every card it carries is `watts` W; false when none has been read.
+fn host_caps_every_card_at(host: HostIdentity, watts: Int) -> Bool {
   match host_wide_gpu_cap_watts(host: host) {
     Absent => false
-    Present { value: w } => watt_count(w: w) == 30
+    Present { value: w } => watt_count(w: w) == watts
   }
 }
 
@@ -250,6 +259,35 @@ test fn the_hand_applied_caps_reach_every_card_at_the_minimum_the_cards_report()
         GpuDeviceNotEnumerated { host: _, board: _, cause: _, read_on: _ } => false
       }
     })
+  // ken's rule caps each card at the minimum THAT CARD reports, so the claim about the minimum is ken's
+  // mechanism in kind, not just srv4's in number: 100 W is what these three T10s report as their floor.
+  let ken_rule = match hand_applied_cap_mechanisms_on(host: operator_host_e2d4b7).first() {
+    Absent => false
+    Present { value: m } =>
+      watt_count(w: m.target_watts) == 100
+        && optional_is_absent(opt: cap_card_selector(m: m))
+        && m.persists_across_boot
+        && match m.placement {
+          CapUnitOfItsOwn { unit_path } =>
+            (unit_path as String) == "/etc/systemd/system/t10-power-cap.service"
+          CapDropInOnUnit { drop_in_path: _, modifies_unit: _, runs_before_the_units_own_start: _ } => false
+        }
+        && match m.runs_script {
+          Absent => false
+          Present { value: s } =>
+            (s.path as String) == "/usr/local/sbin/t10-power-cap.sh"
+              && match s.content_digest {
+                CapUnitDigestRead { sha256 } =>
+                  (sha256 as String) == "a3ce006ba5f283b47c99a0419ed14d9725dc14befb6d62984cc16d6fcf825a0a"
+                CapUnitDigestMarkedOnly { head: _, tail: _, what_would_discharge_it: _ } => false
+              }
+        }
+        && match m.sm_clock {
+          SmClockLocked { low, high, chosen_from: _, decided_on: _ } =>
+            hertz_count(h: low) == 300000000 && hertz_count(h: high) == 1000000000
+          SmClockUnlocked { why: _ } => false
+        }
+  }
   match hand_applied_cap_mechanisms_on(host: operator_host_srv4).first() {
     Absent => false
     Present { value: m } =>
@@ -262,6 +300,12 @@ test fn the_hand_applied_caps_reach_every_card_at_the_minimum_the_cards_report()
             (unit_path as String) == "/etc/systemd/system/gpu-power-cap.service"
           CapDropInOnUnit { drop_in_path: _, modifies_unit: _, runs_before_the_units_own_start: _ } => false
         }
+        && match m.sm_clock {
+          SmClockLocked { low, high, chosen_from: _, decided_on: _ } =>
+            hertz_count(h: low) == 210000000 && hertz_count(h: high) == 1500000000
+          SmClockUnlocked { why: _ } => false
+        }
+        && ken_rule
   }
 }
 
@@ -273,9 +317,20 @@ test fn srv3_cap_is_a_drop_in_on_the_serving_engine_running_before_its_start() -
   match hand_applied_cap_mechanisms_on(host: operator_host_srv3).first() {
     Absent => false
     Present { value: m } =>
-      watt_count(w: m.target_watts) == 30
+      watt_count(w: m.target_watts) == 40
+        && (m.cap_marking as String) == "-pl 40"
         && optional_is_absent(opt: cap_card_selector(m: m))
         && m.persists_across_boot
+        && !m.lines_read
+        && match m.sm_clock {
+          SmClockUnlocked { why } => string_contains(s: why as String, pattern: "no clock lock")
+          SmClockLocked { low: _, high: _, chosen_from: _, decided_on: _ } => false
+        }
+        && match m.content_digest {
+          CapUnitDigestRead { sha256 } =>
+            (sha256 as String) == "253ba1cb38070757ea89b64e8fe8d3c07939f617057ee5ea2b313254cb187636"
+          CapUnitDigestMarkedOnly { head: _, tail: _, what_would_discharge_it: _ } => false
+        }
         && match m.placement {
           CapDropInOnUnit { drop_in_path, modifies_unit, runs_before_the_units_own_start } =>
             (drop_in_path as String) == "/etc/systemd/system/strata-pool.service.d/power-cap.conf"
@@ -293,46 +348,94 @@ test fn srv3_cap_is_a_drop_in_on_the_serving_engine_running_before_its_start() -
 // never read. The two-host extent of the roster is grounded in the operator's report of which hosts they
 // touched, not in a number chosen to make a test pass.
 test fn a_reported_mechanism_never_answers_the_question_a_transcription_answers() -> Bool {
-  hand_applied_cap_mechanisms.length() == 2
+  hand_applied_cap_mechanisms.length() == 3
     && nothing_transcribed_on(operator_host_srv3)
     && nothing_transcribed_on(operator_host_srv4)
+    && nothing_transcribed_on(operator_host_e2d4b7)
     && nothing_transcribed_on(operator_host_6ce85c)
-    && host_caps_every_card_at_30(operator_host_srv3)
-    && host_caps_every_card_at_30(operator_host_srv4)
+    && host_caps_every_card_at(host: operator_host_srv3, watts: 40)
+    && host_caps_every_card_at(host: operator_host_srv4, watts: 30)
+    && host_caps_every_card_at(host: operator_host_e2d4b7, watts: 100)
     && no_host_wide_cap_read(operator_host_srv1)
     && no_host_wide_cap_read(operator_host_6ce85c)
 }
 
-// EVERY HAND-APPLIED DIGEST IS STILL A MARKING, and each marking carries the one spelled-out read that would
-// close it. The head and tail are pinned to what the operator quoted, so a transcription slip in either reds
-// here; the open read is pinned to `declared_path_host_hash_read`, the single authority, so no row gets to
-// invent its own excuse or its own closer. Nothing here can drift out of step with anything else, because the
-// unreadness and its discharge are one value -- which is why there is no frontier roster to keep in sync.
-test fn every_hand_applied_digest_is_a_marking_carrying_the_one_discharge_read() -> Bool {
-  hand_applied_cap_mechanisms.length() == 2
+// EVERY HAND-APPLIED DIGEST IS A WHOLE VALUE, read at the operator's final-state pass of 2026-11-24
+// 22:03-22:05 UTC. The three shas are pinned to what that pass hashed, so a transcription slip reds here; and
+// with every digest read, NO row carries an open head-and-tail frontier -- cap_unit_digest_discharge_read is
+// Absent for all three, the state the fixture claim below brackets from the other side. The honesty the
+// markings once carried by construction is now carried by FOLDS: srv4's unit and ken's script are EMITTED by
+// this module and compared against these digests, and srv3's -- read, never quoted -- is named by
+// cap_mechanisms_with_unread_lines rather than absorbed.
+test fn every_hand_applied_digest_is_a_whole_value_the_folds_stand_behind() -> Bool {
+  hand_applied_cap_mechanisms.length() == 3
     && hand_applied_cap_mechanisms.all(m =>
-      match cap_unit_digest_discharge_read(d: m.content_digest) {
-        Absent => false
-        Present { value: obligation } => (obligation as String) == (declared_path_host_hash_read as String)
-      })
+      optional_is_absent(opt: cap_unit_digest_discharge_read(d: m.content_digest))
+        && match m.content_digest {
+          CapUnitDigestRead { sha256: _ } => true
+          CapUnitDigestMarkedOnly { head: _, tail: _, what_would_discharge_it: _ } => false
+        })
     && match srv4_hand_applied_gpu_cap.content_digest {
-      CapUnitDigestMarkedOnly { head, tail, what_would_discharge_it: _ } =>
-        (head as String) == "2a0c8783" && (tail as String) == "594690"
-      CapUnitDigestRead { sha256: _ } => false
+      CapUnitDigestRead { sha256 } =>
+        (sha256 as String) == "2c8966d65ee15a83d13c25d1c6898321e53b98db4443c6a5c985379950b23e2a"
+      CapUnitDigestMarkedOnly { head: _, tail: _, what_would_discharge_it: _ } => false
     }
     && match srv3_hand_applied_gpu_cap.content_digest {
-      CapUnitDigestMarkedOnly { head, tail, what_would_discharge_it: _ } =>
-        (head as String) == "921f0a92" && (tail as String) == "e892"
-      CapUnitDigestRead { sha256: _ } => false
+      CapUnitDigestRead { sha256 } =>
+        (sha256 as String) == "253ba1cb38070757ea89b64e8fe8d3c07939f617057ee5ea2b313254cb187636"
+      CapUnitDigestMarkedOnly { head: _, tail: _, what_would_discharge_it: _ } => false
     }
-    && string_contains(s: declared_path_host_hash_read as String, pattern: "runner_host_file_observe")
+    && match ken_t10_hand_applied_gpu_cap.content_digest {
+      CapUnitDigestRead { sha256 } =>
+        (sha256 as String) == "a3ce006ba5f283b47c99a0419ed14d9725dc14befb6d62984cc16d6fcf825a0a"
+      CapUnitDigestMarkedOnly { head: _, tail: _, what_would_discharge_it: _ } => false
+    }
+    && srv4_cap_unit_render_is_the_host_file()
+    && ken_t10_script_transcription_is_the_host_file()
+}
+
+// THE RENDER IS THE HOST'S FILE, IN BOTH DIRECTIONS: the bytes this module emits hash to the digest the host
+// hashed, and the digest on the row is that same value -- one file, one producer
+// (gunbc.design_argument::single_authority). An edit to a directive moves the emitted hash and reds this.
+test fn the_srv4_cap_unit_is_one_file_with_one_producer() -> Bool {
+  srv4_cap_unit_render_is_the_host_file()
+    && (srv4_gpu_power_cap_unit_sha256() as String)
+      == "2c8966d65ee15a83d13c25d1c6898321e53b98db4443c6a5c985379950b23e2a"
+}
+
+// THE TRANSCRIPTION IS ken's HOST FILE to the same standard: every line the operator quoted, in order, hashes
+// to what sha256sum returned over ssh. A dropped line or a mistyped quote reds this -- the failure the
+// operator's own "do not invent them" instruction demands be made impossible rather than merely discouraged.
+// ken's cap UNIT, note, carries no digest anywhere in this module: its bytes were never read, and the frontier
+// for them stays where it was, in
+// gunbc.integration_concern::h11ssl_unit3_t10_cap_applied_by_a_unit_the_model_cannot_express.
+test fn the_ken_cap_script_transcription_is_the_host_file() -> Bool {
+  ken_t10_script_transcription_is_the_host_file()
+    && (ken_t10_power_cap_script_sha256() as String)
+      == "a3ce006ba5f283b47c99a0419ed14d9725dc14befb6d62984cc16d6fcf825a0a"
+}
+
+// THE ONE FILE NO RENDER CAN REACH IS NAMED, NOT ABSORBED: srv3's drop-in digest is a whole value with no
+// bytes behind it, and the fold that keeps it out of the digest comparisons is itself checked here -- if srv3
+// ever gets its bytes, or a third row loses its lines, this reds and someone must look at what changed.
+test fn the_unread_bytes_are_named_not_absorbed() -> Bool {
+  the_unread_lines_row_is_the_unreachable_digest()
+    && cap_mechanisms_with_unread_lines().length() == 1
+    && match cap_mechanisms_with_unread_lines().first() {
+      Absent => false
+      Present { value: row } => match hand_applied_digest_read(m: row) {
+        Absent => false
+        Present { value: sha } =>
+          (sha as String) == "253ba1cb38070757ea89b64e8fe8d3c07939f617057ee5ea2b313254cb187636"
+      }
+    }
 }
 
 // THE OPEN READ FOLLOWS THE VALUE, IN BOTH DIRECTIONS. The two fixtures are the same mechanism with the same
 // file: one digest typed as a whole value (the all-zeros literal is a fixture, not a fact about any file), one
 // still quoted short. The first carries no open read and the second does -- so the frontier is a property of the
 // digest and cannot be argued separately from it. A whole digest appearing here without a read behind it would
-// still be caught by the claim above, which pins both rows as markings.
+// still be caught by the claim above, which pins every row's digest as a whole value.
 test fn a_whole_digest_carries_no_open_read_and_a_marking_carries_one() -> Bool {
   let whole_digest_read = CapUnitDigestRead {
     sha256: "0000000000000000000000000000000000000000000000000000000000000000" as NonEmptyStr,

@@ -27,21 +27,6 @@ import gunbc.fleet.fleet_host_assembly {
 // them would let three unmeasured hosts report as measured. A consumer that must not price work on
 // an inferred figure can then still refuse, and the roster shows exactly which hosts to measure
 // when access exists.
-// WHAT CHANGED ON 2026-11-24, AND WHAT THE PARAGRAPH ABOVE NO LONGER MEANS UNQUALIFIED.
-//
-// The paragraph above was true of the session that wrote it: this repository's key authenticates as
-// ghrunner on srv3/srv4 and that account is nologin, so from here no reading could be taken. On
-// 2026-11-24 a pass that did have a shell-capable path read both hosts over ssh and brought back CPU
-// power from the same apm_xgene sensor, so srv3 and srv4 are no longer carried on srv1's similarity: their
-// rows are MeasuredOnHost now, and they carry the CAPPED operating point the fleet runs at rather than
-// srv1's 2026-09 uncapped one. srv2 still refuses the key and stays inferred, which is what
-// per_host_measurement_trigger now exists for. Two consequences a consumer should see coming: the roster is
-// no longer one operating point read four ways (cpu_ceiling_mhz says which point each figure is), and the
-// srv3/srv4 figures are single readings taken while the hosts were serving -- their bands are held beside
-// the figure in cpu_power_cap_readings, not smoothed into it, because averaging two single readings of
-// differing load would manufacture a precision the instrument never produced
-// (gunbc.design_argument::epistemic_humility).
-//
 type PowerProvenance
   = MeasuredOnHost {
       sample_count: Int
@@ -56,13 +41,6 @@ type PowerProvenance
 type HostPowerProfile {
   host: NonEmptyStr
   draw: Watt
-  // THE CLOCK CEILING THE HOST WAS RUNNING UNDER WHEN THE FIGURE WAS TAKEN, in MHz of scaling_max_freq. It
-  // belongs in the figure and not in a comment because 94 W at a 3.0 GHz ceiling and 31 W at a 2.0 GHz
-  // ceiling are not two measurements of one quantity: they are two different machines' habits, and a
-  // consumer comparing them without the ceiling would be pricing work on a difference in configuration.
-  // Nothing installed the ceilings this field reports -- gunbc.fleet.cpu_frequency_cap_boot_state is the
-  // authority on the mechanism, and this row only says what was true of the host at the read.
-  cpu_ceiling_mhz: Nat
   provenance: PowerProvenance
   // THE CONFIGURATION THIS FIGURE APPLIES TO: the physical units installed in the host when the figure was
   // taken, named by the single-authority unit identities the assembly module enumerates (it declares them in
@@ -86,7 +64,6 @@ data srv1_observed_draw_note: NonEmptyStr = "Five samples at two-second interval
 data srv1_power: HostPowerProfile = HostPowerProfile {
   host: "srv1",
   draw: watt(count: 94),
-  cpu_ceiling_mhz: 3000,
   provenance: MeasuredOnHost {
     sample_count: 5,
     sensor: "hwmon apm_xgene power1_input + power2_input",
@@ -100,101 +77,22 @@ data similar_build_basis: NonEmptyStr = "same asrock_altrad8ud_1l2t baseboard ca
 data srv2_power: HostPowerProfile = HostPowerProfile {
   host: "srv2",
   draw: watt(count: 94),
-  // Inherited from srv1's 2026-09 read, which was taken BEFORE the fleet-wide 2.0 GHz cap of 2026-11-24 was
-  // installed -- and srv2 runs that cap today (same two files, same digest, on all four Altra hosts). So this
-  // row is an inference from an operating point its own host no longer has, the stalest figure in the roster,
-  // and the reason per_host_measurement_trigger is still bound.
-  cpu_ceiling_mhz: 3000,
   provenance: InferredFromSimilarBuild { basis_host: "srv1", basis_reason: similar_build_basis },
   applies_to: srv2_assembly_as_measured,
 }
 
 data srv3_power: HostPowerProfile = HostPowerProfile {
   host: "srv3",
-  // The upper end of the 29-31 W band, so a consumer pricing work on it cannot under-price. The band and the
-  // 3.0 GHz figure it came down from are the rows below, with the instrument each was read by.
-  draw: watt(count: 31),
-  cpu_ceiling_mhz: 2000,
-  provenance: MeasuredOnHost {
-    sample_count: 2,
-    sensor: "hwmon apm_xgene \"CPU power\" over ssh; single readings, not averages",
-    observed_on: "2026-11-24 ~09:3x UTC under serving load, CPU capped at 2.0 GHz; band 29-31 W",
-  },
+  draw: watt(count: 94),
+  provenance: InferredFromSimilarBuild { basis_host: "srv1", basis_reason: similar_build_basis },
   applies_to: srv3_assembly_as_measured,
 }
 
 data srv4_power: HostPowerProfile = HostPowerProfile {
   host: "srv4",
-  // The upper end of the 39-42 W band, for the same reason srv3 carries its upper end.
-  draw: watt(count: 42),
-  cpu_ceiling_mhz: 2000,
-  provenance: MeasuredOnHost {
-    sample_count: 2,
-    sensor: "hwmon apm_xgene \"CPU power\" over ssh; single readings, not averages",
-    observed_on: "2026-11-24 ~09:3x UTC under serving load, CPU capped at 2.0 GHz; band 39-42 W",
-  },
+  draw: watt(count: 94),
+  provenance: InferredFromSimilarBuild { basis_host: "srv1", basis_reason: similar_build_basis },
   applies_to: srv4_assembly_as_measured,
-}
-
-// THE PAIRED READINGS BEHIND THOSE TWO FIGURES. A profile row holds one wattage, and the fact the pass
-// produced was a pair -- a host's draw at its full 3.0 GHz ceiling and its draw at the 2.0 GHz cap the
-// operator installed that morning, both read once on the apm_xgene "CPU power" input over ssh. Holding the
-// pair rather than only the survivor is what lets the drop be stated at all, and stating it honestly needs
-// the bias named: the load also changed between the two reads, so the arithmetic below is an UPPER bound on
-// what the cap saves, not the saving. srv1 and srv2 have no rows here because their 3.0 GHz reads predate
-// the cap by nearly three months and were never repeated.
-type CpuPowerCapReading {
-  host: NonEmptyStr
-  ceiling_mhz: Nat
-  low_watts: Watt
-  high_watts: Watt
-  instrument: NonEmptyStr
-  read_on: NonEmptyStr
-}
-
-data cpu_power_cap_readings: List<CpuPowerCapReading> = [
-  CpuPowerCapReading {
-    host: "srv3", ceiling_mhz: 3000, low_watts: watt(count: 65), high_watts: watt(count: 65),
-    instrument: "hwmon apm_xgene \"CPU power\" read over ssh; a single reading, not an average",
-    read_on: "2026-11-24 ~09:3x UTC, before the CPU cap was applied that morning",
-  },
-  CpuPowerCapReading {
-    host: "srv3", ceiling_mhz: 2000, low_watts: watt(count: 29), high_watts: watt(count: 31),
-    instrument: "hwmon apm_xgene \"CPU power\" read over ssh; single readings bracketing the band, not averages",
-    read_on: "2026-11-24 ~09:3x UTC, under serving load with scaling_max_freq read back at 2000000 kHz",
-  },
-  CpuPowerCapReading {
-    host: "srv4", ceiling_mhz: 3000, low_watts: watt(count: 101), high_watts: watt(count: 101),
-    instrument: "hwmon apm_xgene \"CPU power\" read over ssh; a single reading, not an average",
-    read_on: "2026-11-24 ~09:3x UTC, before the CPU cap was applied that morning",
-  },
-  CpuPowerCapReading {
-    host: "srv4", ceiling_mhz: 2000, low_watts: watt(count: 39), high_watts: watt(count: 42),
-    instrument: "hwmon apm_xgene \"CPU power\" read over ssh; single readings bracketing the band, not averages",
-    read_on: "2026-11-24 ~09:3x UTC, under serving load with scaling_max_freq read back at 2000000 kHz",
-  },
-]
-
-// THE UPPER BOUND ON WHAT THE 2.0 GHz CAP SAVED, per host: the lowest uncapped reading minus the highest
-// capped one. Deliberately the least favourable subtraction available -- the load differed between the two
-// reads and a lighter load at the capped point flatters the cap, so the true saving is somewhat smaller than
-// this. A consumer that wants the difference quoted as a fact instead of a bound should ask for the paired
-// idle-to-loaded reading the trigger below names, which nobody has been able to take on a host that serves.
-fn reported_saving_upper_bound(host: NonEmptyStr) -> Watt? {
-  let uncapped = filter(cpu_power_cap_readings, r => r.host == host && r.ceiling_mhz == 3000).first()
-  let capped = filter(cpu_power_cap_readings, r => r.host == host && r.ceiling_mhz == 2000).first()
-  match uncapped {
-    Absent => Absent
-    Present { value: u } => match capped {
-      Absent => Absent
-      Present { value: c } =>
-        if watt_count(w: u.low_watts) > watt_count(w: c.high_watts) {
-          Present { value: watt(count: watt_count(w: u.low_watts) - watt_count(w: c.high_watts)) }
-        } else {
-          Absent
-        }
-    }
-  }
 }
 
 data fleet_host_power_roster: List<HostPowerProfile> = [srv1_power, srv2_power, srv3_power, srv4_power]
@@ -222,21 +120,21 @@ type ConfoundedHostPowerReading {
 
 data srv4_confounded_cpu_power_reading_2026_11_24: ConfoundedHostPowerReading = ConfoundedHostPowerReading {
   host: "srv4",
-  sensor: "CPU package power",
+  sensor: "hwmon apm_xgene \"CPU power\" (the Altra CPU package power input), read over ssh",
   earlier_watts: watt(count: 101),
   later_low_watts: watt(count: 39),
   later_high_watts: watt(count: 42),
-  observed_on: "2026-11-24, operator hand read around the GPU cap and the CPU frequency cap going in",
+  observed_on: "2026-11-24, operator hand read around the GPU cap and the CPU frequency cap going in; the earlier figure was taken with the cores at their 3.0 GHz ceiling and the 39-42 W band with scaling_max_freq at 2000000 kHz -- the ceiling itself is gunbc.fleet.cpu_freq_cap_boot_state's, and what moved between these reads was the load as well as the clock",
   confound: "the load on the host changed between the two readings, so the 101 W to 39-42 W step is not attributable to the caps alone",
 }
 
 data srv3_confounded_cpu_power_reading_2026_11_24: ConfoundedHostPowerReading = ConfoundedHostPowerReading {
   host: "srv3",
-  sensor: "CPU package power",
+  sensor: "hwmon apm_xgene \"CPU power\" (the Altra CPU package power input), read over ssh",
   earlier_watts: watt(count: 65),
   later_low_watts: watt(count: 29),
   later_high_watts: watt(count: 31),
-  observed_on: "2026-11-24, operator hand read around the GPU cap and the CPU frequency cap going in",
+  observed_on: "2026-11-24, operator hand read around the GPU cap and the CPU frequency cap going in; the earlier figure was taken with the cores at their 3.0 GHz ceiling and the 29-31 W band with scaling_max_freq at 2000000 kHz -- the ceiling itself is gunbc.fleet.cpu_freq_cap_boot_state's, and what moved between these reads was the load as well as the clock",
   confound: "the load on the host changed between the two readings, so the 65 W to 29-31 W step is not attributable to the caps alone",
 }
 
@@ -279,5 +177,5 @@ fn host_power_profile(host: NonEmptyStr) -> HostPowerProfile? {
 }
 
 data per_host_measurement_trigger: DissolutionCondition = unbound_dissolution(
-  description: "PARTLY SATISFIED 2026-11-24: srv3 and srv4 were read over ssh and their rows became MeasuredOnHost, so this trigger now names srv2 only -- the host that still refuses the operator key, whose 94 W figure is inherited from a srv1 read taken at a 3.0 GHz ceiling srv2 itself has not run since 2026-11-24. Dissolve-on: a shell-capable path exists for srv2 and its row is replaced by its own MeasuredOnHost reading, bringing inferred_host_count to zero. Separately and not covered by that trigger: every row here is a single LOADED operating point, so the idle-to-loaded DIFFERENCE that a true marginal figure needs is still unobserved, and obtaining it requires quiescing a host that currently serves production CI."
+  description: "dissolve-on: a shell-capable credential exists for srv2, srv3 and srv4 -- the fleet key authenticates as ghrunner there but that account is nologin, so no reading can be taken -- at which point each InferredFromSimilarBuild row is replaced by its own MeasuredOnHost reading and inferred_host_count reaches zero. Separately and not covered by that trigger: every row here is a single LOADED operating point, so the idle-to-loaded DIFFERENCE that a true marginal figure needs is still unobserved, and obtaining it requires quiescing a host that currently serves production CI."
 )
