@@ -673,9 +673,15 @@ fn stage0_cross_unit_import_edges() -> List<ModuleDagEdge> {
     stage0_module_dag_edge(from: "gunbc_rust_emitted_crate", to: "std_types"),
     stage0_module_dag_edge(from: "v1_compiler_emit_core_support", to: "gunbc_rust_emitted_crate"),
     stage0_module_dag_edge(from: "v1_compiler_emit_core_support", to: "std_unicode_scalar"),
-    // Import edges for the stage0-crate-partition-covers-every-emitted-module tier, derived from
-    // each module's own `import` statements (dotted path -> flat basename), so none is emitted as
-    // an edgeless island; follows the extdeps_posix_clock_gettime pattern at the head of this list.
+    // Import edges for the stage0-crate-partition-covers-every-emitted-module tier. AUTHORED, not derived
+    // — see the disposition comment above stage0_cross_unit_import_edges: no live parsed-import authority
+    // exists to derive from (the only live import fact is the hand-written scanner in seed Rust, so a
+    // derivation would fork an authority rather than consume one; the rung is the compiler itself minting
+    // an import fact, tracked by #gunbc.integration_concern.stage0_cross_unit_import_edges_authored_not_derived).
+    // Their content was CHECKED equal to each module's own `import` statements (dotted path -> flat
+    // basename; 62 authored rows == 62 parsed imports for these twelve, symmetric difference empty in both
+    // directions), so none is emitted as an edgeless island; follows the extdeps_posix_clock_gettime
+    // pattern at the head of this list.
     stage0_module_dag_edge(from: "extdeps_exec_command", to: "extdeps_exec_program"),
     stage0_module_dag_edge(from: "extdeps_exec_command", to: "extdeps_external_authority"),
     stage0_module_dag_edge(from: "extdeps_exec_command", to: "extdeps_posix_shell_command_language"),
