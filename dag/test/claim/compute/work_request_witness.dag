@@ -35,7 +35,7 @@ import extdeps.systemd.systemd_run { SystemdRunProperty, systemd_run_property_as
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_live_dashboard_instance }
 import std.content_hash { serialize_content_hash, content_hash_atom, content_hash_equal, sha256_hex_digest, as_content_hash_cryptographic }
 import std.cache_identity { compute_work_artifact_kind }
-import std.judgment_contract { ArtifactOutputId, output_compute_work_outcome, output_compute_work_log, output_compute_work_outputs, output_compute_work_gunbc_binary, output_compute_work_claim_batch_binary }
+import std.judgment_contract { ArtifactOutputId, output_compute_work_outcome, output_compute_work_log, output_compute_work_outputs, output_compute_work_gunbc_binary }
 import std.materialization_ladder { DemandNature, IdempotentEffect, FreshEffect, PureComputation, WorldRead }
 import std.materialization_provider {
   ArtifactRequest, ComputeWorkRequest, request_key, request_kind, request_required_outputs, request_judgment_contract,
@@ -48,7 +48,8 @@ import gunbc.compute.work_provider_local {
   compute_work_identity, compute_execution_identity, compute_toolchain_decide, ToolchainObserved, ToolchainObservationRefused,
   ComputeExecOk, ComputeExecFailed, compute_materialization_plan, ComputeMaterializationPlanned, ComputeMaterializationRefused,
   ComputeMemoized, ComputeRecomputed, compute_store_read_decide, ComputeStoreServed, ComputeStoreAbsent, ComputeStoreRefused,
-  ComputeStoreNotConsulted, compute_operation_env, compute_command_argv, NoComputeDependency,
+  ComputeStoreNotConsulted, compute_operation_env, compute_command_argv, is_compute_command_refused,
+  compute_command_argv_words_of, NoComputeDependency,
   compute_dependency_decide, ComputeDependencyResolved, ComputeDependencyRefused,
 }
 import std.materialization_object {
@@ -58,7 +59,7 @@ import std.materialization_object {
 import extdeps.realization.materialization_store_local { LocalStorePartsLookup }
 import std.content_hash { content_hash_tagged_structural }
 import gunbc.compute.work_request {
-  ClaimDiffWindow, GunbcDriver, ClaimBatchRunner, WorkSubject, GitTreeProvenance, WorkToolchainRequirement, AdmittedToolchain, work_toolchain_admitted, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoRelease, CargoDebug,
+  ClaimDiffWindow, GunbcDriver, WorkSubject, GitTreeProvenance, WorkToolchainRequirement, AdmittedToolchain, work_toolchain_admitted, WorkOperation, BuildGunbcBinaries, CompileEntry, RunClaims, CargoRelease, CargoDebug,
   WorkToolchainIdentity, work_toolchain_observed, work_default_build, work_declared_outputs,
   DeclaredOutput, WorkOutputRoot, CheckoutRoot, TargetRoot,
   WorkOutput, WorkOutcome, WorkSucceeded, WorkFailed, WorkRefusedByInfrastructure, HostComputeCapacityFull,
@@ -142,13 +143,15 @@ test fn identical_requests_share_an_identity_and_every_difference_separates_them
 // gunbc#13072, items 1 and 4). Each pair below is two different computations that a delimiter-joined
 // preimage, or a key missing an axis, collapsed into one -- and one request then received the other's
 // result. Each must key apart on its own. The ruling's ["a,b"] / ["a", "b"] pair is now unwritable: a
-// bin is a GunbcBinary variant, never a name; what remains to show is that distinct closed bin lists
-// key apart under the length-prefixed encoding, including a list and its prefix.
+// bin is a GunbcBinary variant, never a name; and since the claim-execution cutover deleted the
+// `claim_batch` binary the closed set is the driver alone, so the list/prefix pair is unwritable too --
+// what remains to show is that a distinct profile and a distinct closed list key apart under the
+// length-prefixed encoding.
 test fn colliding_display_text_and_every_execution_axis_key_apart() -> Bool {
   let subject = tree(hex: tree_a)
   let t = tc_default(rustc: "rustc 1.90.0")
-  let one_bin = BuildGunbcBinaries { profile: CargoRelease, bins: [ClaimBatchRunner] }
-  let two_bins = BuildGunbcBinaries { profile: CargoRelease, bins: [GunbcDriver, ClaimBatchRunner] }
+  let one_bin = BuildGunbcBinaries { profile: CargoRelease, bins: [GunbcDriver] }
+  let two_bins = BuildGunbcBinaries { profile: CargoDebug, bins: [GunbcDriver] }
   let colon_entry = RunClaims { entry: "a:b" as FilePath, functions: "c" as NonEmptyStr, hermetic: true, window: none }
   let colon_functions = RunClaims { entry: "a" as FilePath, functions: "b:c" as NonEmptyStr, hermetic: true, window: none }
   let base = key_with(subject: subject, op: work_default_build(), toolchain: t)
@@ -252,7 +255,7 @@ test fn the_compute_family_derives_kind_outputs_and_demand_nature() -> Bool {
   let build = req(subject: subject, op: work_default_build(), rustc: "rustc 1.90.0")
   request_kind(req: build) == compute_work_artifact_kind
     && request_required_outputs(req: build) == [output_compute_work_outcome, output_compute_work_log, output_compute_work_outputs,
-         output_compute_work_gunbc_binary, output_compute_work_claim_batch_binary]
+         output_compute_work_gunbc_binary]
     && request_required_outputs(req: hermetic) == [output_compute_work_outcome, output_compute_work_log, output_compute_work_outputs]
     && demand_is_fresh(d: request_judgment_contract(req: wet).demand_nature)
     && !demand_is_fresh(d: request_judgment_contract(req: hermetic).demand_nature)
@@ -268,11 +271,11 @@ fn part(text: String) -> ArtifactPart {
 // family's roster drop a part).
 test fn the_compute_artifact_round_trips_its_manifest_and_a_missing_log_is_incomplete() -> Bool {
   let k = request_key(req: req(subject: tree(hex: tree_a), op: work_default_build(), rustc: "rustc 1.90.0"))
-  let artifact = ComputeWorkArtifact { request_key: k, outcome: part(text: "o"), log: part(text: "l"), outputs: part(text: "x"), gunbc_binary: none, claim_batch_binary: none }
+  let artifact = ComputeWorkArtifact { request_key: k, outcome: part(text: "o"), log: part(text: "l"), outputs: part(text: "x"), gunbc_binary: none }
   let m = artifact_manifest(artifact: artifact)
   let dropped = ArtifactManifest { kind: m.kind, request_key: m.request_key, parts: m.parts |> filter(p => p.id != output_compute_work_log) }
   (match artifact_from_manifest(m: m) {
-    ManifestDecoded { artifact: a } => match a { ComputeWorkArtifact { request_key: rk, outcome: _, log: _, outputs: _, gunbc_binary: _, claim_batch_binary: _ } => rk == k  _ => false }
+    ManifestDecoded { artifact: a } => match a { ComputeWorkArtifact { request_key: rk, outcome: _, log: _, outputs: _, gunbc_binary: _ } => rk == k  _ => false }
     _ => false
   })
     && (match artifact_from_manifest(m: dropped) {
@@ -288,7 +291,7 @@ test fn the_compute_artifact_round_trips_its_manifest_and_a_missing_log_is_incom
 test fn declared_outputs_follow_the_operation() -> Bool {
   let build = work_declared_outputs(op: work_default_build())
   let debug = work_declared_outputs(op: BuildGunbcBinaries { profile: CargoDebug, bins: [GunbcDriver] })
-  map(build, d => d.path) == ["release/gunbc", "release/claim_batch"]
+  map(build, d => d.path) == ["release/gunbc"]
     && all(build, d => match d.root { TargetRoot => true  CheckoutRoot => false })
     && map(debug, d => d.path) == ["debug/gunbc"]
     && count(work_declared_outputs(op: CompileEntry { entry: "dag/x.dag" as FilePath })) == 0
@@ -823,26 +826,90 @@ test fn the_claim_window_keys_apart_and_binds_the_unit_environment() -> Bool {
     && count(compute_operation_env(op: work_default_build())) == 0
 }
 
-// THE RUNNER IS TOLD THE MODE THE KEY SAYS. claim_batch defaults to hermetic, so a wet request that
-// spelled no flag ran hermetic under a wet identity. RED against an argv that omits --wet.
+// THE RUNNER IS TOLD THE MODE THE KEY SAYS, AND THE REQUEST IS A CLAIM REQUEST. The old form of this
+// control existed because `claim_batch` defaulted to hermetic: a wet request that spelled no flag ran
+// hermetic under a wet identity. On the one route the mode is a required argument of the request, so the
+// guarantee is now double -- the argv shows the mode the key carries (pinned here, in both directions),
+// and the call site cannot be written without deciding it. The subject is a REAL claim of the claim
+// universe: this used to pass `"dag/t.dag"` and a name that exists nowhere, which was harmless while the
+// builder spelled words for anything it was handed and is a refusal now that the request is admitted.
 test fn a_claim_run_names_its_mode_in_both_directions() -> Bool {
-  let layout = compute_layout_in(instance: srv1_live_dashboard_instance(), store_root: DurableHostVolume, identity_hex: "abc")
-  let wet = compute_command_argv(instance: srv1_live_dashboard_instance(), layout: layout, op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a" as NonEmptyStr, hermetic: false, window: none }, dependency: NoComputeDependency)
-  let hermetic = compute_command_argv(instance: srv1_live_dashboard_instance(), layout: layout, op: RunClaims { entry: "dag/t.dag" as FilePath, functions: "a" as NonEmptyStr, hermetic: true, window: none }, dependency: NoComputeDependency)
-  any(wet, a => a == "--wet") && !any(wet, a => a == "--hermetic")
-    && any(hermetic, a => a == "--hermetic") && !any(hermetic, a => a == "--wet")
+  let layout = compute_layout_in(instance: srv1_live_dashboard_instance(), store_root: DurableHostVolume, identity_hex: "claim-mode")
+  let wet = compute_command_argv(
+    instance: srv1_live_dashboard_instance(),
+    layout: layout,
+    op: RunClaims {
+      entry: "dag/test/claim/github_pull_request_decode_witness.dag" as FilePath,
+      functions: "the_recorded_pull_request_body_decodes_at_all" as NonEmptyStr,
+      hermetic: false,
+      window: none
+    },
+    dependency: NoComputeDependency
+  )
+  let hermetic = compute_command_argv(
+    instance: srv1_live_dashboard_instance(),
+    layout: layout,
+    op: RunClaims {
+      entry: "dag/test/claim/github_pull_request_decode_witness.dag" as FilePath,
+      functions: "the_recorded_pull_request_body_decodes_at_all" as NonEmptyStr,
+      hermetic: true,
+      window: none
+    },
+    dependency: NoComputeDependency
+  )
+  // A REFUSAL IS A RED, NOT A PASS: these rows name a claim module and one of its residents, so a
+  // builder that cannot spell them has broken and must say so rather than compare two empty word lists.
+  !is_compute_command_refused(command: wet)
+    && !is_compute_command_refused(command: hermetic)
+    && any(compute_command_argv_words_of(command: wet), a => a == "--wet")
+    && !any(compute_command_argv_words_of(command: wet), a => a == "--hermetic")
+    && any(compute_command_argv_words_of(command: hermetic), a => a == "--hermetic")
+    && !any(compute_command_argv_words_of(command: hermetic), a => a == "--wet")
+}
+
+// A SUBJECT OUTSIDE THE CLAIM UNIVERSE IS REFUSED, NOT RUN SMALLER. This is the half the type exists
+// for: `--entry dag/gunbc/compute/work_request.dag` is a production module, and under the legacy builder
+// it produced an argv that ran whatever it found. Under the typed builder the whole request comes back
+// refused, with the row it could not name -- so a compute record can never again say "we ran the claims
+// of X" about something that was never a claim of X. The red half is the same request with a claim-module
+// entry, which must NOT refuse.
+test fn a_compute_claim_request_refuses_a_subject_that_is_not_a_claim() -> Bool {
+  let layout = compute_layout_in(instance: srv1_live_dashboard_instance(), store_root: DurableHostVolume, identity_hex: "claim-refusal")
+  let not_a_claim = compute_command_argv(
+    instance: srv1_live_dashboard_instance(),
+    layout: layout,
+    op: RunClaims {
+      entry: "dag/gunbc/compute/work_request.dag" as FilePath,
+      functions: "work_refusal_detail" as NonEmptyStr,
+      hermetic: true,
+      window: none
+    },
+    dependency: NoComputeDependency
+  )
+  let is_a_claim = compute_command_argv(
+    instance: srv1_live_dashboard_instance(),
+    layout: layout,
+    op: RunClaims {
+      entry: "dag/test/claim/github_pull_request_decode_witness.dag" as FilePath,
+      functions: "the_recorded_pull_request_body_decodes_at_all" as NonEmptyStr,
+      hermetic: true,
+      window: none
+    },
+    dependency: NoComputeDependency
+  )
+  is_compute_command_refused(command: not_a_claim) && !is_compute_command_refused(command: is_a_claim)
 }
 
 // A BUILD RECORD CARRIES ITS BINARIES AS PARTS, AND THE DECODE ADMITS NOTHING ELSE. RED against a
 // decode that lets an arbitrary extra part ride into a compute record.
 test fn a_compute_record_admits_binary_parts_and_refuses_any_other() -> Bool {
   let k = request_key(req: req(subject: tree(hex: tree_a), op: work_default_build(), rustc: "rustc 1.90.0"))
-  let artifact = ComputeWorkArtifact { request_key: k, outcome: part(text: "o"), log: part(text: "l"), outputs: part(text: "x"), gunbc_binary: none, claim_batch_binary: none }
+  let artifact = ComputeWorkArtifact { request_key: k, outcome: part(text: "o"), log: part(text: "l"), outputs: part(text: "x"), gunbc_binary: none }
   let m = artifact_manifest(artifact: artifact)
   let bin = ArtifactManifest { kind: m.kind, request_key: m.request_key, parts: concat(m.parts, [CarriedOutput { id: output_compute_work_gunbc_binary, digest: content_hash_atom(value: "b" as NonEmptyStr), bytes: byte_size(count: 1) }]) }
   let stray = ArtifactManifest { kind: m.kind, request_key: m.request_key, parts: concat(m.parts, [CarriedOutput { id: "stray" as ArtifactOutputId, digest: content_hash_atom(value: "s" as NonEmptyStr), bytes: byte_size(count: 1) }]) }
   (match artifact_from_manifest(m: bin) {
-    ManifestDecoded { artifact: a } => match a { ComputeWorkArtifact { request_key: _, outcome: _, log: _, outputs: _, gunbc_binary: g, claim_batch_binary: c } => (match g { Present { value: _ } => true  Absent => false }) && (match c { Present { value: _ } => false  Absent => true })  _ => false }
+    ManifestDecoded { artifact: a } => match a { ComputeWorkArtifact { request_key: _, outcome: _, log: _, outputs: _, gunbc_binary: g } => match g { Present { value: _ } => true  Absent => false }  _ => false }
     _ => false
   })
     && (match artifact_from_manifest(m: stray) { ManifestPartUndeclared { kind: _, part: p } => (p as String) == "stray"  _ => false })

@@ -142,7 +142,7 @@ fn fixture_evidence(
     provider_events: events,
     provider_events_error: "",
     process: process,
-    validation_summary: "gunbc run --claim-run",
+    validation_summary: "gunbc test",
     verification_subject: VerificationSubjectObserved {
       subject: fixture_verification_subject(),
     },
@@ -434,7 +434,7 @@ test fn truncated_receipt_with_admitted_prefix_is_not_admitted() -> Bool {
   let truncated = "{\"schema\": \"roadmap-dispatch-environment/v1\", \"status\": \"admitted\", \"validation\": \"gunbc ru"
   let genuine = admission_receipt_for(admission: EnvironmentAdmitted {
     receipts: [],
-    validation_summary: "gunbc run --claim-run",
+    validation_summary: "gunbc test",
   })
   starts_with(
     s: truncated,
@@ -450,7 +450,7 @@ test fn refused_receipt_quoting_admitted_fragments_is_not_admitted() -> Bool {
   let forged = nested_admitted_forgery()
   let genuine = admission_receipt_for(admission: EnvironmentAdmitted {
     receipts: [],
-    validation_summary: "gunbc run --claim-run",
+    validation_summary: "gunbc test",
   })
   string_contains(s: forged, pattern: "\"schema\": \"roadmap-dispatch-environment/v1\"")
     && string_contains(s: forged, pattern: "\"status\": \"admitted\"")
@@ -472,7 +472,7 @@ test fn receipt_decode_separates_refusal_from_undecodable() -> Bool {
   let foreign = "{\"schema\": \"some-other-emitter/v1\", \"status\": \"admitted\"}"
   let admitted = admission_receipt_for(admission: EnvironmentAdmitted {
     receipts: [],
-    validation_summary: "gunbc run --claim-run",
+    validation_summary: "gunbc test",
   })
   match dispatch_environment_receipt_decode(receipt: refused) {
     ReceiptDecoded { status } =>

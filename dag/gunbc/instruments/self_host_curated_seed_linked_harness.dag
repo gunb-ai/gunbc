@@ -1,5 +1,10 @@
 module gunbc.instruments.self_host_curated_seed_linked_harness
 
+import gunbc.instruments.claim_operand {
+  ClaimOperand,
+  ClaimOperandUnnameable,
+  claim_identity_operand,
+}
 import std.types { List }
 
 import extdeps.shell
@@ -131,18 +136,27 @@ fn cssl_supplemental_claim_run_ok(
   gunbc_bin: String,
   run: CuratedSeedLinkedClaimRun
 ) -> Bool {
-  let eval = gunbc.WitnessBin.Run(
-    workdir: root,
-    bin_path: gunbc_bin,
-    args: [
-      "run", "--claim-run",
-      "--source-root", "dag",
-      "--source-root", "src/v2",
-      "--entry", run.entry_rel,
-      "--function", run.function
-    ]
-  )
-  eval.success
+  // THE SUPPLEMENTAL SEED-LINKED CLAIM RUNS AS A CLAIM, NAMED AS ONE. The row still carries a module path
+  // and a function -- the roster format is a caller's business, and a caller migration does not perturb it --
+  // but the words are a label admitted by `claim_identity_operand`, the rule every migrated caller's rows go
+  // through. A row that is not a module of the claim universe FAILS THE HARNESS RATHER THAN SILENTLY RUNNING
+  // SOMETHING ELSE: `false` is the same verdict a failing claim gives, and it arrives without paying for a
+  // child that would only exit 2.
+  //
+  // NO MODE WORD: an unspelled `gunbc test` is admitted Hermetic, which is what this harness asked for when
+  // it spelled nothing to the legacy entrypoint; the two roots stay spelled explicitly, because `--source-root`
+  // REPLACES the default pair and this harness means exactly that corpus.
+  match claim_identity_operand(entry: run.entry_rel, function: run.function) {
+    ClaimOperandUnnameable { entry: _, function: _, reason: _ } => false
+    ClaimOperand { label: label } => {
+      let eval = gunbc.WitnessBin.Run(
+        workdir: root,
+        bin_path: gunbc_bin,
+        args: concat(["test", "--source-root", "dag", "--source-root", "src/v2"], [label])
+      )
+      eval.success
+    }
+  }
 }
 
 fn cssl_supplemental_claims_ok(
