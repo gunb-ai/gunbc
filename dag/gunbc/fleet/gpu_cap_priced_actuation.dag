@@ -380,7 +380,7 @@ fn price_the_admitted_cap(
   candidates: List<CapCandidate>,
   ask: Optional<PowerAsk>,
 ) -> ActuationAdmission {
-  price_the_actuation(
+  price_the_request(
     request: ActuationRequest {
       host: host,
       board: Present { value: board },
@@ -388,7 +388,25 @@ fn price_the_admitted_cap(
       cap: cap,
       ceiling: Absent,
     },
-    candidate: candidates_for_admission(candidates: candidates, host: host, cap: cap),
+    candidates: candidates,
+    ask: ask,
+  )
+}
+
+// THE ONE LOOKUP, OPEN TO EVERY SHAPE THE ACTUATION PATH HOLDS. The converge holds a policy admission and a
+// boot unit holds its own cap line; both come through here, so "which candidate prices this value" is decided
+// once, in this module (#gunbc.design_argument::single_authority -- a second copy of the match is a second
+// place for it to drift from the gate's, and the boot path and the converge path would otherwise each hold
+// their own rule about what counts as this operating point). Callers pass the REQUEST they hold and the rows;
+// they never pass a candidate they chose themselves.
+fn price_the_request(
+  request: ActuationRequest,
+  candidates: List<CapCandidate>,
+  ask: Optional<PowerAsk>,
+) -> ActuationAdmission {
+  price_the_actuation(
+    request: request,
+    candidate: candidate_pricing(candidates: candidates, host: request.host, cap: request.cap),
     ask: ask,
   )
 }
@@ -397,7 +415,7 @@ fn price_the_admitted_cap(
 // clock ceiling is deliberately NOT matched here: it is not on the admission (no -lgc line exists there), and
 // matching it at lookup time would hide a ceiling mismatch inside a "no candidate" refusal instead of
 // reporting it as the mismatch it is.
-fn candidates_for_admission(
+fn candidate_pricing(
   candidates: List<CapCandidate>,
   host: HostIdentity,
   cap: Watt,

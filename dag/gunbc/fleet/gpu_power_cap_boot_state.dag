@@ -45,9 +45,9 @@ import gunbc.fleet.gpu_device_observation {
   current_gpu_device_observations, current_gpu_device_observations_of,
   gpu_device_observation_board, gpu_device_observation_default,
 }
-import gunbc.serving.gpu_power_cap_pricing { CapCandidate, PowerAsk, candidate_cap, candidate_is_on }
+import gunbc.serving.gpu_power_cap_pricing { CapCandidate, PowerAsk }
 import gunbc.fleet.gpu_cap_priced_actuation {
-  ActuationAdmission, ActuationRequest, actuation_admits, actuation_refusal_text, price_the_actuation,
+  ActuationAdmission, ActuationRequest, actuation_admits, actuation_refusal_text, price_the_request,
 }
 
 // A LINE AS SYSTEMD WILL RUN IT, with the two prefixes recorded as the separate facts they are. systemd gives
@@ -128,14 +128,16 @@ fn boot_command_actuation(
   candidates: List<CapCandidate>,
   ask: PowerAsk?,
 ) -> BootCapActuation {
-  let board = board_addressed_by(unit: unit, uuid: command.addressed_gpu_uuid)
-  let priced = filter(candidates, c => candidate_is_on(c: c, host: unit.host) && watt_count(w: candidate_cap(c: c)) == watt_count(w: command.target_watts)).first()
   BootCapActuation {
     command: command,
-    board: board,
-    admission: price_the_actuation(
+    board: board_addressed_by(unit: unit, uuid: command.addressed_gpu_uuid),
+    // THE SAME LOOKUP THE CONVERGE USES, NOT A COPY OF IT. The unit hands over the request its cap line
+    // actually is and the rows; which candidate prices that operating point is decided once, in
+    // gunbc.fleet.gpu_cap_priced_actuation -- a private filter here would be a second rule about what counts
+    // as this operating point, and the boot path and the converge path would drift apart (#gunbc.design_argument::single_authority).
+    admission: price_the_request(
       request: boot_command_request(unit: unit, command: command),
-      candidate: priced,
+      candidates: candidates,
       ask: ask,
     ),
   }

@@ -1465,8 +1465,10 @@ fn price_an_unstated_ask() -> RealizationSelectionResult<ParetoEntry> {
 
 // The ask the srv3/srv4 caps were asked to serve: the strip that opened twice on 2026-11-24, at ~09:19 and
 // again at ~21:57 UTC. Named once, here, so the actuation path and the selection answer to the same ask
-// rather than each carrying its own copy of which circuit was being protected.
-data srv4_strip_ask_2026_11_24: PowerAsk = CircuitRelief {
+// rather than each carrying its own copy of which circuit was being protected. This is the ASK VALUE; the
+// claim that a given machine's actuation served it lives in `HostPowerAsk` below, because who asked for what
+// is a fact somebody wrote down, not a property of the wiring.
+data strip_relief_ask_2026_11_24: PowerAsk = CircuitRelief {
   circuit: surge_strip,
   asked_on: "2026-11-24" as NonEmptyStr,
 }
@@ -1484,16 +1486,48 @@ fn srv3_cap_ask_candidates() -> List<CapCandidate> {
   [srv3_40w_candidate, srv3_30w_2ghz_candidate]
 }
 
-// The ask recorded against a machine, if anybody recorded one. srv3 and srv4 are strip members, and the ask
-// their caps served is the strip that opened twice; srv1 and ken sit on a breaker nobody has read and nobody
-// recorded an ask for either, so the honest answer is Absent -- which the gate turns into a refusal under a
-// demonstrated constraint and a warranted admission under none. It is NOT a free pass: Absent means "no ask is
-// written down", never "there was no ask".
+// WHO ASKED FOR WHICH MACHINE'S WATTS, AND AGAINST WHICH CONSTRAINT. An ask is a decision somebody made about
+// one machine's actuation, so it is recorded per host, next to the machine it was about -- never derived from
+// the wiring. The derivation this replaces returned the strip's ask for every host the strip carries, which
+// made the gate's two ask arms unreachable in production: a strip member's ask would always name the strip,
+// and the strip is always one of its demonstrated constraints, so the default decided what the check was
+// supposed to decide (#gunbc.design_argument::fail_closed, no fabricated default;
+// #gunbc.design_argument::single_authority on who may state a decision). A host with no row here has no
+// recorded ask, and `recorded_ask_for_host` answers Absent -- which the gate turns into a refusal under a
+// demonstrated constraint. Absent means "nobody wrote one down", never "there was none".
+// Read by: gunbc.fleet.gpu_cap_priced_actuation (whose production entry asks this module for the asking
+// machine's ask, and refuses when the lookup is Absent) and test.claim.fleet.gpu_cap_priced_actuation_witness,
+// which asserts both that a strip member WITH a row admits and that one WITHOUT one refuses. A host whose cap
+// is actuated under a demonstrated constraint and has no row here is a modeling gap the gate reports, not a
+// state it works around.
+type HostPowerAsk {
+  host: HostIdentity
+  ask: PowerAsk
+  recorded_by: NonEmptyStr
+}
+
+data srv4_strip_relief_ask: HostPowerAsk = HostPowerAsk {
+  host: operator_host_srv4,
+  ask: strip_relief_ask_2026_11_24,
+  recorded_by: "operator's late 2026-11-24 act on srv4, after the strip's second trip (~21:57 UTC); the standing of every figure read off that host is on this module's candidates" as NonEmptyStr,
+}
+
+data srv3_strip_relief_ask: HostPowerAsk = HostPowerAsk {
+  host: operator_host_srv3,
+  ask: strip_relief_ask_2026_11_24,
+  recorded_by: "operator's late 2026-11-24 act on srv3, after the strip's second trip (~21:57 UTC)" as NonEmptyStr,
+}
+
+fn host_power_asks() -> List<HostPowerAsk> {
+  [srv4_strip_relief_ask, srv3_strip_relief_ask]
+}
+
+// The ask recorded for this machine, or Absent when nobody wrote one down. A lookup over the rows above and
+// nothing else: no host inherits an ask because of what it is plugged into.
 fn recorded_ask_for_host(host: HostIdentity) -> Optional<PowerAsk> {
-  if circuit_carries(c: surge_strip, host: host) {
-    Present { value: srv4_strip_ask_2026_11_24 }
-  } else {
-    Absent
+  match host_power_asks().filter(r => host_identity_eq(a: r.host, b: host)).first() {
+    Present { value: r } => Present { value: r.ask }
+    Absent => Absent
   }
 }
 

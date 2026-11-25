@@ -19,9 +19,11 @@ import std.nat { Nat }
 import std.optional { Optional, Present, Absent }
 import std.measure { Watt, watt, watt_count, milliwatt, Hertz, hertz }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
-import product.host_identity { HostIdentity }
+import product.host_identity { HostIdentity, host_identity_eq }
 import product.placement_supply { PhysicalAssetIdentity }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet.fleet_host_identity {
+  operator_host_srv1, operator_host_srv3, operator_host_srv4, operator_host_6ce85c,
+}
 import gunbc.fleet.fleet_asset_identity { gpu_board_05 }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import extdeps.nvidia.system_management_interface { PersistenceEnabled }
@@ -41,7 +43,8 @@ import gunbc.fleet.fleet_power_circuit {
 import gunbc.serving.gpu_power_cap_pricing {
   CapCandidate, PowerAsk, AskUnstated, CircuitRelief,
   srv4_sweep_unlocked_candidate, srv4_sweep_1500_candidate, srv4_sweep_1200_candidate,
-  srv3_40w_candidate, srv3_30w_2ghz_candidate, srv4_strip_ask_2026_11_24, priced_candidates_on,
+  srv3_40w_candidate, srv3_30w_2ghz_candidate, strip_relief_ask_2026_11_24, priced_candidates_on,
+  recorded_ask_for_host,
   candidate_cap,
 }
 import gunbc.fleet.gpu_cap_priced_actuation {
@@ -77,7 +80,7 @@ fn srv1_request(w: Nat) -> ActuationRequest {
   }
 }
 
-fn strip_ask() -> Optional<PowerAsk> { Present { value: srv4_strip_ask_2026_11_24 } }
+fn strip_ask() -> Optional<PowerAsk> { Present { value: strip_relief_ask_2026_11_24 } }
 
 // A card that accepts every write and reads back whatever it was asked to hold: the only reason a line can
 // refuse here is the gate.
@@ -229,6 +232,52 @@ test fn an_ask_for_another_circuit_does_not_price_this_actuation() -> Bool {
         && any(ds, d => contains(d as String, "surge strip"))
     _ => false
   } && !admitted(a) && actuation_still_owed(a: a).length() == 0
+}
+
+// THE ASK IS A ROW SOMEBODY WROTE DOWN, NOT A PROPERTY OF THE WIRING. h11 hangs off the same strip as srv3 and
+// srv4, sits under the same demonstrated constraint, and has no ask row: nobody recorded that any watts of
+// h11's were being saved for the strip. srv1 and ken, on a breaker that has never opened, have neither a row
+// nor a demonstrated constraint. So the ask arms are reachable from production data and the answer comes from
+// the rows alone.
+test fn the_ask_comes_from_a_row_and_a_strip_member_without_one_has_none() -> Bool {
+  match recorded_ask_for_host(host: operator_host_srv4) {
+    Present { value: CircuitRelief { circuit: c, asked_on: d } } =>
+      declaration_ref_eq(a: circuit_identity(c: c), b: circuit_identity(c: surge_strip))
+        && d as String == "2026-11-24"
+    _ => false
+  }
+    && match recorded_ask_for_host(host: operator_host_srv3) {
+         Present { value: CircuitRelief { circuit: c, asked_on: _ } } =>
+           declaration_ref_eq(a: circuit_identity(c: c), b: circuit_identity(c: surge_strip))
+         _ => false
+       }
+    && match recorded_ask_for_host(host: operator_host_6ce85c) { Absent => true _ => false }
+    && match recorded_ask_for_host(host: operator_host_srv1) { Absent => true _ => false }
+    && under_demonstrated_constraint(host: operator_host_6ce85c)
+    && !under_demonstrated_constraint(host: operator_host_srv1)
+}
+
+// ...AND THE MISSING ROW IS ITSELF ENOUGH TO REFUSE. This is the gate called the way production calls it: the
+// ask is whatever `recorded_ask_for_host` returns for that machine, and on a strip member with no row that is
+// Absent, which refuses under the strip rather than defaulting to the strip's own ask.
+test fn a_strip_member_with_no_ask_row_refuses_on_the_production_lookup() -> Bool {
+  let h11_request = ActuationRequest {
+    host: operator_host_6ce85c,
+    board: Absent,
+    gpu_uuid: "GPU-11111111-0000-4000-8000-000000000001" as NonEmptyStr,
+    cap: watt(count: 100),
+    ceiling: Absent,
+  }
+  let a = price_the_actuation(
+    request: h11_request,
+    candidate: Present { value: srv4_sweep_1500_candidate },
+    ask: recorded_ask_for_host(host: operator_host_6ce85c),
+  )
+  match a {
+    ActuationAskUnstatedRefused { request: r, candidate_label: _, said: s } =>
+      host_identity_eq(a: r.host, b: operator_host_6ce85c) && contains(s as String, "no ask is recorded")
+    _ => false
+  } && !admitted(a)
 }
 
 // THE RIGHT OPERATING POINT, WITH ITS CONSEQUENCE UNREAD. srv3's 40 W candidate carries its decode windows and
