@@ -36,7 +36,7 @@ import gunbc.ci.ci_run_step_target {
 
 data gunbc_ci_srv1_root_mutation_approval_target: GunbcRunStepTarget = gunbc_run_step_target(
   module: "gunbc.fleet.srv1_root_mutation_approval_run",
-  function: "srv1_root_mutation_approval_wet",
+  function: "srv1_root_mutation_approval_wet"
 )
 
 // THE srv1 ROOT-MUTATION APPROVAL (gunbc.fleet.srv1_root_mutation_approval_run): the approval
@@ -63,22 +63,21 @@ fn gunbc_ci_srv1_root_mutation_approval_prelude_statements() -> Outcome<List<Nod
       left: bash_build_command_with_words(words: [
         bash_build_word_lit(text: "curl"), bash_build_word_lit(text: "-sSf"), bash_build_word_lit(text: "--connect-timeout"), bash_build_word_lit(text: to_string(second_count(s: gunbc_ci_sm_connect_timeout))),
         bash_build_word_lit(text: "--max-time"), bash_build_word_lit(text: to_string(second_count(s: gunbc_ci_sm_max_time))), bash_build_word_lit(text: "-o"), bash_build_word_var(name: "RESP_FILE"),
-        bash_build_word_lit(text: "-H"), bash_build_word_concat_from_nodes(parts: [bash_build_word_lit(text: "@"), bash_build_word_var(name: "HDR_FILE")]), bash_build_word_lit(text: approval_submission_mac_access_url()),
+        bash_build_word_lit(text: "-H"), bash_build_word_concat_from_nodes(parts: [bash_build_word_lit(text: "@"), bash_build_word_var(name: "HDR_FILE")]), bash_build_word_lit(text: approval_submission_mac_access_url())
       ]),
-      right: bash_build_with_redir_to_file(inner: bash_build_command_with_words(words: [bash_build_word_lit(text: "python3"), bash_build_word_lit(text: "-c"), bash_build_word_lit(text: gunbc_ci_sm_decode_payload_program), bash_build_word_var(name: "RESP_FILE")]), path: bash_build_word_var(name: "SUB_FILE")),
+      right: bash_build_with_redir_to_file(inner: bash_build_command_with_words(words: [bash_build_word_lit(text: "python3"), bash_build_word_lit(text: "-c"), bash_build_word_lit(text: gunbc_ci_sm_decode_payload_program), bash_build_word_var(name: "RESP_FILE")]), path: bash_build_word_var(name: "SUB_FILE"))
     ),
     bash_build_command_with_words(words: [bash_build_word_lit(text: "chmod"), bash_build_word_lit(text: "600"), bash_build_word_var(name: "SUB_FILE")]),
     bash_build_command_with_words(words: [bash_build_word_lit(text: "rm"), bash_build_word_lit(text: "-f"), bash_build_word_var(name: "HDR_FILE"), bash_build_word_var(name: "RESP_FILE")]),
     bash_build_command_with_words(words: [bash_build_word_lit(text: "export"), bash_build_word_concat_from_nodes(parts: [bash_build_word_lit(text: concat(approval_submission_mac_key_path_env as String, "=")), bash_build_word_var(name: "SUB_FILE")])]),
-    bash_build_assign(name: "ROOT", value: bash_build_word_cmdsubst(body: bash_build_or_else(left: bash_build_with_redir(inner: bash_build_command_from_lits(lits: ["git", "rev-parse", "--show-toplevel"]), redir: ^bash_production_fold_redir_stderr_null), right: bash_build_command_from_lits(lits: ["pwd"])))),
+    bash_build_assign(name: "ROOT", value: bash_build_word_cmdsubst(body: bash_build_or_else(left: bash_build_with_redir(inner: bash_build_command_from_lits(lits: ["git", "rev-parse", "--show-toplevel"]), redir: ^bash_production_fold_redir_stderr_null), right: bash_build_command_from_lits(lits: ["pwd"]))))
   ]) }
   )
 }
 
 fn gunbc_ci_srv1_root_mutation_approval_invoke() -> Outcome<String> {
   bind_outcome(
-    o: gunbc_run_command_for_target(source_roots: witness_layer_roots, target: gunbc_ci_srv1_root_mutation_approval_target,
-    claim_run: false),
+    o: gunbc_run_command_for_target(source_roots: witness_layer_roots, target: gunbc_ci_srv1_root_mutation_approval_target),
     f: fn(zesty_c) {
       bind_outcome(
         o: gunbc_ci_srv1_root_mutation_approval_prelude_statements(),

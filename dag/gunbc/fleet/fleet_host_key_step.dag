@@ -36,7 +36,6 @@ fn gunbc_ci_fleet_keypair_mint_invoke(subject: FleetKeypairMintSubject) -> Outco
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: target,
-    claim_run: false,
     receipt_rel: none
   )
 }
@@ -66,7 +65,6 @@ fn gunbc_ci_fleet_host_key_scan_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_fleet_host_key_scan_target,
-    claim_run: false,
     receipt_rel: fleet_host_key_scan_receipt_path
   )
 }
@@ -75,7 +73,6 @@ fn gunbc_ci_fleet_host_key_enroll_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_fleet_host_key_enroll_target,
-    claim_run: false,
     receipt_rel: "target/fleet-host-key-enroll-receipt.txt"
   )
 }

@@ -693,7 +693,6 @@ fn gunbc_ci_heal_candidate_stage0_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_heal_candidate_stage0_target,
-    claim_run: false,
     receipt_rel: none
   )
 }

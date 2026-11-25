@@ -41,7 +41,6 @@ fn gunbc_ci_service_runner_lost_boot_sweep_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_service_runner_lost_boot_sweep_target,
-    claim_run: false,
     receipt_rel: none
   )
 }
@@ -49,7 +48,6 @@ fn gunbc_ci_service_runner_lost_boot_sweep_dry_run_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_service_runner_lost_boot_sweep_dry_run_target,
-    claim_run: false,
     receipt_rel: none
   )
 }
@@ -57,7 +55,6 @@ fn gunbc_ci_jit_dead_sweep_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_jit_dead_sweep_target,
-    claim_run: false,
     receipt_rel: none
   )
 }
@@ -65,7 +62,6 @@ fn gunbc_ci_jit_dead_sweep_dry_run_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_jit_dead_sweep_dry_run_target,
-    claim_run: false,
     receipt_rel: none
   )
 }
@@ -73,7 +69,6 @@ fn gunbc_ci_service_slot_start_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_service_slot_start_target,
-    claim_run: false,
     receipt_rel: none
   )
 }

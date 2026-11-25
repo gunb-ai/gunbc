@@ -132,7 +132,6 @@ test fn gunbc_invoke_word_wall_refuses_metacharacter_entry_holds() -> Bool {
     source_roots: witness_layer_roots,
     entry: "dag/gunbc/evil.dag; rm -rf /",
     function: "probe_wet",
-    claim_run: false,
     receipt_rel: none
   ) {
     // The word wall now returns a TYPED, located Rejected (no in-band marker string). The discriminating
@@ -153,7 +152,6 @@ test fn gunbc_invoke_word_wall_admits_ordinary_entry_holds() -> Bool {
     source_roots: witness_layer_roots,
     entry: "dag/gunbc/host/host_reach_identity_probe.dag",
     function: "probe_fleet_reach_wet",
-    claim_run: false,
     receipt_rel: "target/fleet-reach-probe-receipt.txt"
   ) {
     Accepted { value: admitted } =>
@@ -168,14 +166,12 @@ test fn gunbc_invoke_argv_and_emitted_step_share_one_authority_holds() -> Bool {
   let argv = gunbc_run_transport_argv(
     source_roots: witness_layer_roots,
     entry: "dag/gunbc/host/host_reach_identity_probe.dag",
-    function: "probe_fleet_reach_wet",
-    claim_run: false
+    function: "probe_fleet_reach_wet"
   )
   let words = gunbc_run_invocation_words(
     source_roots: witness_layer_roots,
     entry: "dag/gunbc/host/host_reach_identity_probe.dag",
-    function: "probe_fleet_reach_wet",
-    claim_run: false
+    function: "probe_fleet_reach_wet"
   )
   argv == invocation_words_bare(words: words)
     && transport_argv_contains_flag(argv: argv, flag: "--entry")

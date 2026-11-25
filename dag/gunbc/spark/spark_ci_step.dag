@@ -204,7 +204,6 @@ fn gunbc_ci_spark_bootstrap_invoke() -> Outcome<String> {
     prelude: gunbc_ci_spark_grant_install_credential_prelude(),
     source_roots: witness_layer_roots,
     target: gunbc_ci_spark_bootstrap_target,
-    claim_run: false,
     receipt_rel: spark_apply_receipt_path
   )
 }
@@ -217,7 +216,6 @@ fn gunbc_ci_spark_grants_observe_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_spark_grants_observe_target,
-    claim_run: false,
     receipt_rel: "target/spark-exact-grant-probe-receipt.txt"
   )
 }
@@ -227,7 +225,6 @@ fn gunbc_ci_spark_wireless_link_converge_invoke() -> Outcome<String> {
     prelude: gunbc_ci_spark_grant_install_credential_prelude(),
     source_roots: witness_layer_roots,
     target: gunbc_ci_spark_wireless_link_converge_target,
-    claim_run: false,
     receipt_rel: "target/spark-wireless-link-converge-receipt.txt"
   )
 }
@@ -237,7 +234,6 @@ fn gunbc_ci_spark_grant_install_invoke() -> Outcome<String> {
     prelude: gunbc_ci_spark_grant_install_credential_prelude(),
     source_roots: witness_layer_roots,
     target: gunbc_ci_spark_grant_install_target,
-    claim_run: false,
     receipt_rel: "target/spark-grant-install-receipt.txt"
   )
 }

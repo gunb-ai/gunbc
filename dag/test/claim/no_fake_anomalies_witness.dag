@@ -7,7 +7,16 @@ import gunbc.ci.ci_layer_roots { compile_clean_source_roots }
 import gunbc.output_policy { ExpectSuccess }
 import std.logic { Bool }
 import std.types { String }
-import gunbc.instruments.host_prelude { ClaimRun, claim_batch_claims_argv, witness_bin_release_path }
+import std.optional { Optional, Absent, Present }
+import gunbc.instruments.host_prelude {
+  ClaimRun,
+  TestClaimsArgvBuilt,
+  TestClaimsArgvRefused,
+  gunbc_test_claims_argv,
+  witness_bin_release_path,
+}
+import gunbc.gunbc_cli_command { TestBatchMode, WetBatch }
+import gunbc.ci.ci_release_bins { gunbc_release_bin_name }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
@@ -17,23 +26,48 @@ data no_fake_anomalies_note: String = "THE WALL for the expectation backfill (op
 data anomaly_glyph_emoji: String = "❌"
 data anomaly_glyph_ascii: String = "✗"
 
-fn claim_batch_path() -> String {
+fn verb_path() -> String {
   let root = git.Inspect.Toplevel()
-  witness_bin_release_path(root: root.path, bin_name: "claim_batch")
+  witness_bin_release_path(root: root.path, bin_name: gunbc_release_bin_name)
 }
 
-fn run_corpus_capturing_stderr(entry: String, function: String) -> String {
+// THE CHILD IS THE ONE ROUTE, WET, AND THE GLYPH IS NOT THE ROUTE'S TO LOSE. The anomaly glyph this
+// witness greps for is rendered by the interpreter itself -- `v1_interpreter`
+// `render_shell_effect_failed_line_mirror`, the shell-effect failure line -- not by whichever
+// entrypoint was invoked, so switching the child from the legacy binary to `gunbc test` cannot make
+// the red control vacuously false: a subject whose shell effect fails still prints the glyph. Wet is
+// what keeps that true -- Hermetic would refuse the effect before it ran, and the absence of a glyph
+// would then measure the mode rather than the subject, which is the false-green shape this witness
+// exists to catch. It runs through `gunbc_test_claims_argv`, the pooled builder, rather than a
+// hand-spelled argv: the shape of a request is pinned once, in
+// `dag/test/claim/gunbc_test_batch_argv_witness.dag`.
+// THE ARGV BUILDER RETURNS A SUM, NOT THE ARGV. `gunbc_test_claims_argv` answers
+// `TestClaimsArgv = Built { argv } | Refused { .. }`; handing that value straight to WitnessBin.Run's
+// `args:` (a List<String>) made the seed pass the child its Debug rendering --
+// `unrecognized subcommand 'TestClaimsArgvBuilt { argv: [test, ...] }'` -- so the child never ran.
+// The sum is matched the way host_prelude's own `run_gunbc_claims_ready` matches it. This helper
+// returns `Optional<String>` rather than a bare stderr: the two claims below want OPPOSITE glyph
+// presence, so no single sentinel string can red both, and a Refused request means the subject was
+// NEVER ASKED -- the observation is simply absent, and each claim then fails closed (the wall cannot
+// pass on a run that did not happen, and the red control cannot go vacuously green on it either).
+fn run_corpus_capturing_stderr(entry: String, function: String) -> Optional<String> {
   let root = git.Inspect.Toplevel()
-  let result = gunbc.WitnessBin.Run(
-    workdir: root.path,
-    bin_path: claim_batch_path(),
-    args: claim_batch_claims_argv(
-      source_roots: compile_clean_source_roots(),
-      claims: [ClaimRun { entry: entry, function: function }]
-    ),
-    expect: ExpectSuccess
-  )
-  result.stderr
+  match gunbc_test_claims_argv(
+    source_roots: compile_clean_source_roots(),
+    claims: [ClaimRun { entry: entry, function: function }],
+    mode: WetBatch
+  ) {
+    TestClaimsArgvRefused { entry: _, function: _, reason: _ } => Absent
+    TestClaimsArgvBuilt { argv: argv } => {
+      let result = gunbc.WitnessBin.Run(
+        workdir: root.path,
+        bin_path: verb_path(),
+        args: argv,
+        expect: ExpectSuccess
+      )
+      Present { value: result.stderr }
+    }
+  }
 }
 
 fn stderr_has_anomaly_glyph(stderr: String) -> Bool {
@@ -42,19 +76,25 @@ fn stderr_has_anomaly_glyph(stderr: String) -> Bool {
 }
 
 test fn passing_run_shows_no_fake_anomaly_holds() -> Bool {
-  let stderr = run_corpus_capturing_stderr(
+  match run_corpus_capturing_stderr(
     entry: "dag/test/claim/roadmap/roadmap_belt_actuate_witness.dag",
     function: "witness_uuid_deterministic"
-  )
-  !stderr_has_anomaly_glyph(stderr: stderr)
+  ) {
+    // The wall does not pass on a subject that was never asked.
+    Absent => false
+    Present { value: stderr } => !stderr_has_anomaly_glyph(stderr: stderr)
+  }
 }
 
 data no_fake_anomalies_red_control_note: String = "The RED control does not perturb anything: it points at an entry that STILL carries a deliberate anomaly — typed_witness_bin_run_loud_failure_red_control_holds calls gunbc.WitnessBin.Run(/bin/false) with no ExpectFailure / OutcomeIsData, so the observation layer paints ❌/✗. Re-pointed 2026-07-26 off typed_run_witness_bin_unbuildable_red_control_holds (WitnessBinNotEnrolled refuses before cargo — no glyph) and off a cargo.BuildInheritEnv missing-bin variant that restored the glyph but blew FLOOR-BATCH-OVER-BUDGET (~90s child wall). So the pair is genuine: an entry whose probes are all annotated shows no glyph, an entry with a real remaining one does. NOTE THE COUPLING, because it is load-bearing: if that Run is ever annotated, or the witness stops exercising it, THIS control goes vacuously green and the wall above loses its proof of discrimination. Re-point it at another entry carrying a deliberate anomaly at that moment — do not delete it, and do not let it pass by accident."
 
 test fn red_control_entry_with_real_anomaly_still_shows_glyph_holds() -> Bool {
-  let stderr = run_corpus_capturing_stderr(
+  match run_corpus_capturing_stderr(
     entry: "dag/test/claim/typed_witness_invocation.dag",
     function: "typed_witness_bin_run_loud_failure_red_control_holds"
-  )
-  stderr_has_anomaly_glyph(stderr: stderr)
+  ) {
+    // The discrimination is only proven on a run that happened; a refusal is not a silent green.
+    Absent => false
+    Present { value: stderr } => stderr_has_anomaly_glyph(stderr: stderr)
+  }
 }

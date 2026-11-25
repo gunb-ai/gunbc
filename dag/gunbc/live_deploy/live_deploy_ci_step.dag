@@ -89,7 +89,6 @@ fn gunbc_ci_live_deploy_apply_srv1_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_live_deploy_apply_srv1_target,
-    claim_run: false,
     receipt_rel: none
   )
 }
@@ -98,7 +97,6 @@ fn gunbc_ci_live_deploy_transaction_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_live_deploy_transaction_target,
-    claim_run: false,
     receipt_rel: live_deploy_apply_receipt_artifact_path_for(instance_id: srv1_dashboard_live_id as String)
   )
 }
@@ -117,7 +115,6 @@ fn gunbc_ci_desired_instance_deploy_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_desired_instance_deploy_target,
-    claim_run: false,
     receipt_rel: none
   )
 }
@@ -135,7 +132,6 @@ fn gunbc_ci_desired_instance_receipt_identity_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_desired_instance_receipt_identity_target,
-    claim_run: false,
     // receipt_rel: none -- live_deploy_ci_instance_receipt_identity_from_ci writes ONLY $GITHUB_OUTPUT, it never
     // creates a receipt file. A Some(receipt_rel) here makes the projection append a
     // `cat "$ROOT/<receipt>"` for a file that is never written, which fails the step with
@@ -150,7 +146,6 @@ fn gunbc_ci_microvm_controller_install_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_microvm_controller_install_target,
-    claim_run: false,
     receipt_rel: none
   )
 }
@@ -165,7 +160,6 @@ fn gunbc_ci_microvm_controller_install_admission_invoke() -> Outcome<String> {
     prelude: gunbc_ci_org_roster_read_app_token_prelude(),
     source_roots: witness_layer_roots,
     target: gunbc_ci_microvm_controller_install_admission_target,
-    claim_run: false,
     receipt_rel: none
   )
 }
@@ -174,7 +168,6 @@ fn gunbc_ci_assert_dashboard_deploy_receipts_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_assert_dashboard_deploy_receipts_target,
-    claim_run: false,
     receipt_rel: none
   )
 }
@@ -183,7 +176,6 @@ fn gunbc_ci_record_plan_serve_entry_verdict_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_record_plan_serve_entry_verdict_target,
-    claim_run: false,
     receipt_rel: none
   )
 }

@@ -161,7 +161,6 @@ fn gunbc_invoke_word_wall_diagnostic(word: String) -> Diagnostic {
   }
 }
 
-
 // THE ORCHESTRATION REFUSAL carries no text of its own: the orchestration emitter
 // (v2.compiler.emit_orchestration orch_emit_pipeline) ALREADY answers with a located
 // v2.std.diagnostic Outcome, so the step emitter FORWARDS those diagnostics rather than collapsing them
@@ -276,14 +275,12 @@ fn gunbc_invoke_receipt_steps(receipt_rel: String?) -> List<PipelineStep> {
 fn gunbc_run_command(
   source_roots: List<String>,
   entry: String,
-  function: String,
-  claim_run: Bool
+  function: String
 ) -> Outcome<String> {
   let words = gunbc_run_invocation_words(
     source_roots: source_roots,
     entry: entry,
-    function: function,
-    claim_run: claim_run
+    function: function
   )
   let unsafe_word = gunbc_invoke_first_unsafe_word(words: words)
   if unsafe_word != "" {
@@ -304,8 +301,7 @@ fn gunbc_run_command(
 // entry points delegate to; no caller composes those from a target's parts.
 fn gunbc_run_command_for_target(
   source_roots: List<String>,
-  target: GunbcRunStepTarget,
-  claim_run: Bool
+  target: GunbcRunStepTarget
 ) -> Outcome<String> {
   bind_outcome(
     o: gunbc_run_step_target_entry_or_refusal(target: target),
@@ -313,8 +309,7 @@ fn gunbc_run_command_for_target(
       gunbc_run_command(
         source_roots: source_roots,
         entry: path,
-        function: target.declaration.decl_name as String,
-        claim_run: claim_run
+        function: target.declaration.decl_name as String
       )
     }
   )
@@ -328,15 +323,13 @@ fn gunbc_run_step_intent(
   source_roots: List<String>,
   entry: String,
   function: String,
-  claim_run: Bool,
   receipt_rel: String?
 ) -> Outcome<Pipeline> {
   bind_outcome(
     o: gunbc_run_command(
       source_roots: source_roots,
       entry: entry,
-      function: function,
-      claim_run: claim_run
+      function: function
     ),
     f: fn(command) {
       outcome_accepted(value: Pipeline {
@@ -375,7 +368,6 @@ fn gunbc_run_step_script(
   source_roots: List<String>,
   entry: String,
   function: String,
-  claim_run: Bool,
   receipt_rel: String?
 ) -> Outcome<String> {
   bind_outcome(
@@ -384,7 +376,6 @@ fn gunbc_run_step_script(
       source_roots: source_roots,
       entry: entry,
       function: function,
-      claim_run: claim_run,
       receipt_rel: receipt_rel
     ),
     f: fn(p) { gunbc_invoke_step_emit_pipeline(p: p) }
@@ -396,7 +387,6 @@ fn gunbc_run_step_script(
 fn gunbc_run_step_script_for_target(
   source_roots: List<String>,
   target: GunbcRunStepTarget,
-  claim_run: Bool,
   receipt_rel: String?
 ) -> Outcome<String> {
   bind_outcome(
@@ -406,7 +396,6 @@ fn gunbc_run_step_script_for_target(
         source_roots: source_roots,
         entry: path,
         function: target.declaration.decl_name as String,
-        claim_run: claim_run,
         receipt_rel: receipt_rel
       )
     }
@@ -419,7 +408,6 @@ fn gunbc_run_step_script_with_prelude_for_target(
   prelude: List<PipelineStep>,
   source_roots: List<String>,
   target: GunbcRunStepTarget,
-  claim_run: Bool,
   receipt_rel: String?
 ) -> Outcome<String> {
   bind_outcome(
@@ -430,7 +418,6 @@ fn gunbc_run_step_script_with_prelude_for_target(
         source_roots: source_roots,
         entry: path,
         function: target.declaration.decl_name as String,
-        claim_run: claim_run,
         receipt_rel: receipt_rel
       )
     }
@@ -445,7 +432,6 @@ fn gunbc_run_step_script_with_prelude(
   source_roots: List<String>,
   entry: String,
   function: String,
-  claim_run: Bool,
   receipt_rel: String?
 ) -> Outcome<String> {
   bind_outcome(
@@ -454,7 +440,6 @@ fn gunbc_run_step_script_with_prelude(
       source_roots: source_roots,
       entry: entry,
       function: function,
-      claim_run: claim_run,
       receipt_rel: receipt_rel
     ),
     f: fn(p) { gunbc_invoke_step_emit_pipeline(p: p) }

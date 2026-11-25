@@ -209,7 +209,6 @@ test fn the_sweep_step_has_no_prelude_credential_path() -> Bool {
     prelude: gunbc_ci_org_admin_app_token_prelude(),
     source_roots: witness_layer_roots,
     target: gunbc_ci_service_runner_lost_boot_sweep_target,
-    claim_run: false,
     receipt_rel: none
   ) {
     Rejected { diagnostics: _ } => false

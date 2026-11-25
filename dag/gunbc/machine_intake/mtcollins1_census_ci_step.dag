@@ -32,7 +32,6 @@ fn gunbc_ci_mtcollins1_census_image_publish_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_mtcollins1_census_image_publish_target,
-    claim_run: false,
     receipt_rel: mtcollins1_census_image_receipt_path
   )
 }
@@ -46,7 +45,6 @@ fn gunbc_ci_mtcollins1_census_member_readback_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_mtcollins1_census_member_readback_target,
-    claim_run: false,
     receipt_rel: census_member_readback_receipt_path
   )
 }
@@ -59,7 +57,6 @@ fn gunbc_ci_mtcollins1_census_qemu_host_observe_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_mtcollins1_census_qemu_host_observe_target,
-    claim_run: false,
     receipt_rel: census_qemu_host_observe_receipt_path
   )
 }
@@ -72,7 +69,6 @@ fn gunbc_ci_mtcollins1_census_qemu_toolchain_converge_invoke() -> Outcome<String
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_mtcollins1_census_qemu_toolchain_converge_target,
-    claim_run: false,
     receipt_rel: census_qemu_host_observe_receipt_path
   )
 }

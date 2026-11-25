@@ -185,7 +185,7 @@ fn sample_receipt() -> LegacySingleValidationVerificationReceipt {
     worktree: "/srv/attempts/shell-typed-invocation-aa1b2c3" as FilePath,
     revision: "deadbeefcafe" as NonEmptyStr,
     validation_label: "gunbc-claim" as NonEmptyStr,
-    command_wire: "/opt/gunbc/bin/gunbc run --claim-run",
+    command_wire: "/opt/gunbc/bin/gunbc test //test/claim/example:holds",
     exit: ExitObserved { code: 0 },
     evidence: "true",
   }
@@ -196,7 +196,7 @@ test fn receipt_projection_carries_host_worktree_revision_and_command() -> Bool 
   string_contains(s: j, pattern: "srv1")
     && string_contains(s: j, pattern: "/srv/attempts/shell-typed-invocation-aa1b2c3")
     && string_contains(s: j, pattern: "deadbeefcafe")
-    && string_contains(s: j, pattern: "/opt/gunbc/bin/gunbc run --claim-run")
+    && string_contains(s: j, pattern: "/opt/gunbc/bin/gunbc test")
     && string_contains(s: j, pattern: "a1b2c3")
     && string_contains(s: j, pattern: "gunbc-claim")
 }
@@ -216,7 +216,7 @@ test fn unobserved_exit_never_serializes_as_zero() -> Bool {
       worktree: "/w" as FilePath,
       revision: "r" as NonEmptyStr,
       validation_label: "gunbc-claim" as NonEmptyStr,
-      command_wire: "gunbc run",
+      command_wire: "gunbc test",
       exit: ExitNotObserved { reason: "transport refused" },
       evidence: "",
     },

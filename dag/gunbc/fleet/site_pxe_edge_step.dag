@@ -31,7 +31,6 @@ fn gunbc_ci_site_pxe_edge_observe_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_site_pxe_edge_observe_target,
-    claim_run: false,
     receipt_rel: site_pxe_edge_converge_receipt_path
   )
 }
@@ -40,7 +39,6 @@ fn gunbc_ci_site_pxe_edge_converge_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_site_pxe_edge_converge_target,
-    claim_run: false,
     receipt_rel: site_pxe_edge_converge_receipt_path
   )
 }

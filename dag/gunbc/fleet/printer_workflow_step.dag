@@ -19,5 +19,5 @@ data gunbc_ci_printer_workflow_target: GunbcRunStepTarget = gunbc_run_step_targe
 fn gunbc_ci_printer_workflow_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(source_roots: witness_layer_roots,
     target: gunbc_ci_printer_workflow_target,
-    claim_run: false, receipt_rel: printer_workflow_receipt_path)
+    receipt_rel: printer_workflow_receipt_path)
 }

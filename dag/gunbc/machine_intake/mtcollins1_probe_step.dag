@@ -64,7 +64,7 @@ import gunbc.machine_intake.mtcollins1_fan_observe {
 
 data gunbc_ci_mtcollins1_fan_observe_target: GunbcRunStepTarget = gunbc_run_step_target(
   module: "gunbc.machine_intake.mtcollins1_fan_observe",
-  function: "mtcollins1_fan_observe_wet",
+  function: "mtcollins1_fan_observe_wet"
 )
 
 // THE VENDOR UI'S OWN STATUS MAPPING, READ OFF THE CONTROLLER'S SERVED BYTES (gunbc.machine_intake
@@ -73,22 +73,22 @@ data gunbc_ci_mtcollins1_fan_observe_target: GunbcRunStepTarget = gunbc_run_step
 // mode list is a closed choice and this probe shares that lane's credential, host and authority.
 data gunbc_ci_mtcollins1_ui_status_asset_observe_target: GunbcRunStepTarget = gunbc_run_step_target(
   module: "gunbc.machine_intake.mtcollins1_ui_status_asset_observation",
-  function: "mtcollins1_ui_status_asset_observation_wet",
+  function: "mtcollins1_ui_status_asset_observation_wet"
 )
 
 data gunbc_ci_mtcollins1_fan_observe_boot_phase_target: GunbcRunStepTarget = gunbc_run_step_target(
   module: "gunbc.machine_intake.mtcollins1_fan_observe",
-  function: "mtcollins1_fan_observe_boot_phase_wet",
+  function: "mtcollins1_fan_observe_boot_phase_wet"
 )
 
 data gunbc_ci_mtcollins1_kvm_observer_observe_target: GunbcRunStepTarget = gunbc_run_step_target(
   module: "gunbc.machine_intake.mtcollins1_kvm_observer_observe",
-  function: "mtcollins1_kvm_observer_observe_wet",
+  function: "mtcollins1_kvm_observer_observe_wet"
 )
 
 data gunbc_ci_mtcollins1_kvm_observer_release_target: GunbcRunStepTarget = gunbc_run_step_target(
   module: "gunbc.machine_intake.mtcollins1_kvm_observer_observe",
-  function: "mtcollins1_kvm_observer_release_wet",
+  function: "mtcollins1_kvm_observer_release_wet"
 )
 
 // THE MT. COLLINS BMC CREDENTIAL FETCH, FACTORED SO ONE SECRET HAS ONE FETCH.
@@ -115,7 +115,7 @@ fn gunbc_ci_mtcollins1_bmc_credential_fetch_steps(dest_path_env: NonEmptyStr) ->
     Do { run: ci_retry_body_run(command: gunbc_ci_auth_header_file_write_command()) },
     Do { run: ci_retry_body_run(command: gunbc_ci_sm_secret_to_dest_file_command(url: secret_ref_access_url(ref: mtcollins1_bmc_gunbc_secret_ref))) },
     Do { run: ci_retry_body_run(command: "chmod 600 \"$DEST_FILE\"") },
-    Do { run: ci_retry_body_run(command: concat("export ", concat(dest_path_env as String, "=\"$DEST_FILE\""))) },
+    Do { run: ci_retry_body_run(command: concat("export ", concat(dest_path_env as String, "=\"$DEST_FILE\""))) }
   ]
 }
 
@@ -129,10 +129,9 @@ fn gunbc_ci_mtcollins1_fan_observe_credential_prelude() -> List<PipelineStep> {
     Do { run: ci_retry_body_run(command: "HDR_FILE=\"$RUNNER_TEMP/mtcollins1-fan-auth-header\"") },
     Do { run: ci_retry_body_run(command: "RESP_FILE=\"$RUNNER_TEMP/mtcollins1-fan-sm.json\"") },
     Do { run: ci_retry_body_run(command: "DEST_FILE=\"$RUNNER_TEMP/mtcollins1-bmc-credential\"") },
-    Do { run: ci_retry_body_run(command: "trap 'rm -f \"$HDR_FILE\" \"$RESP_FILE\" \"$DEST_FILE\"' EXIT") },
+    Do { run: ci_retry_body_run(command: "trap 'rm -f \"$HDR_FILE\" \"$RESP_FILE\" \"$DEST_FILE\"' EXIT") }
   ].concat(gunbc_ci_mtcollins1_bmc_credential_fetch_steps(dest_path_env: mtcollins1_fan_credential_path_env))
 }
-
 
 // THE FAN LANE'S RUNNER IS THE SAME HAND-SHELL CREDENTIAL TRANSPORT ITS TWO SIBLINGS ARE, AND IT
 // CARRIES THE SAME MARKER. It landed without one, which is the failure worth naming rather than
@@ -162,7 +161,6 @@ fn gunbc_ci_mtcollins1_fan_observe_invoke() -> Outcome<String> {
       prelude: gunbc_ci_mtcollins1_fan_observe_credential_prelude(),
       source_roots: witness_layer_roots,
       target: gunbc_ci_mtcollins1_fan_observe_target,
-      claim_run: false,
       receipt_rel: mtcollins1_fan_observation_receipt_path
     ),
     f: fn(zesty_c) {
@@ -173,7 +171,6 @@ fn gunbc_ci_mtcollins1_fan_observe_invoke() -> Outcome<String> {
     }
   )
 }
-
 
 // THE UI-ASSET PROBE RUNS ON THE MODELED BASH ROUTE, exactly like the kvm observer beside it: the
 // credential fetch, the 0600 file, the trap armed BEFORE the credential touches disk, the strict
@@ -188,7 +185,6 @@ fn gunbc_ci_mtcollins1_fan_observe_invoke() -> Outcome<String> {
 fn gunbc_ci_mtcollins1_ui_status_asset_observe_invoke() -> Outcome<String> {
   gunbc_ci_mtcollins1_probe_invoke(stem: "mtcollins1-ui-status", target: gunbc_ci_mtcollins1_ui_status_asset_observe_target)
 }
-
 
 // THE READ-ONLY MT. COLLINS PROBES' STEPS ARE bash_build NODES RENDERED BY v2.workflow.bash_emit
 // bash_emit_stmts (review 73415): the modeled route the fan lane's marker names as available, so these
@@ -223,7 +219,7 @@ fn gunbc_ci_mtcollins1_probe_credential_statements(stem: String, typed_fetch_fai
   let fetch = bash_build_command_with_words(words: [
     bash_build_word_lit(text: "curl"), bash_build_word_lit(text: "-sSf"), bash_build_word_lit(text: "--connect-timeout"), bash_build_word_lit(text: to_string(second_count(s: gunbc_ci_sm_connect_timeout))),
     bash_build_word_lit(text: "--max-time"), bash_build_word_lit(text: to_string(second_count(s: gunbc_ci_sm_max_time))), bash_build_word_lit(text: "-o"), bash_build_word_var(name: "RESP_FILE"),
-    bash_build_word_lit(text: "-H"), bash_build_word_concat_from_nodes(parts: [bash_build_word_lit(text: "@"), bash_build_word_var(name: "HDR_FILE")]), bash_build_word_lit(text: secret_ref_access_url(ref: mtcollins1_bmc_gunbc_secret_ref)),
+    bash_build_word_lit(text: "-H"), bash_build_word_concat_from_nodes(parts: [bash_build_word_lit(text: "@"), bash_build_word_var(name: "HDR_FILE")]), bash_build_word_lit(text: secret_ref_access_url(ref: mtcollins1_bmc_gunbc_secret_ref))
   ])
   let decode = bash_build_command_with_words(words: [bash_build_word_lit(text: "python3"), bash_build_word_lit(text: "-c"), bash_build_word_lit(text: gunbc_ci_sm_decode_payload_program), bash_build_word_var(name: "RESP_FILE")])
   let chmod = bash_build_command_with_words(words: [bash_build_word_lit(text: "chmod"), bash_build_word_lit(text: "600"), bash_build_word_var(name: "DEST_FILE")])
@@ -243,15 +239,15 @@ fn gunbc_ci_mtcollins1_probe_credential_statements(stem: String, typed_fetch_fai
             left: bash_build_with_redir_to_file(inner: decode, path: bash_build_word_var(name: "DEST_FILE")),
             right: bash_build_and_then(
               left: chmod,
-              right: bash_build_with_redir_to_file(inner: bash_build_command_with_words(words: [bash_build_word_lit(text: "printf"), bash_build_word_lit(text: "ok")]), path: bash_build_word_var(name: "STATUS_FILE")),
-            ),
-          ),
-        ),
+              right: bash_build_with_redir_to_file(inner: bash_build_command_with_words(words: [bash_build_word_lit(text: "printf"), bash_build_word_lit(text: "ok")]), path: bash_build_word_var(name: "STATUS_FILE"))
+            )
+          )
+        )
       ),
       right: bash_build_and_then(
         left: rm_dest,
-        right: bash_build_with_redir_to_file(inner: bash_build_command_with_words(words: [bash_build_word_lit(text: "printf"), bash_build_word_lit(text: "fetch-failed")]), path: bash_build_word_var(name: "STATUS_FILE")),
-      ),
+        right: bash_build_with_redir_to_file(inner: bash_build_command_with_words(words: [bash_build_word_lit(text: "printf"), bash_build_word_lit(text: "fetch-failed")]), path: bash_build_word_var(name: "STATUS_FILE"))
+      )
     )
   } else {
     bash_build_and_then(left: fetch, right: bash_build_with_redir_to_file(inner: decode, path: bash_build_word_var(name: "DEST_FILE")))
@@ -261,7 +257,7 @@ fn gunbc_ci_mtcollins1_probe_credential_statements(stem: String, typed_fetch_fai
     bash_build_command_from_lits(lits: ["umask", "077"]),
     bash_build_assign(name: "HDR_FILE", value: bash_build_word_concat_from_nodes(parts: [bash_build_word_var(name: "RUNNER_TEMP"), bash_build_word_lit(text: concat(concat("/", stem), "-auth-header"))])),
     bash_build_assign(name: "RESP_FILE", value: bash_build_word_concat_from_nodes(parts: [bash_build_word_var(name: "RUNNER_TEMP"), bash_build_word_lit(text: concat(concat("/", stem), "-sm.json"))])),
-    bash_build_assign(name: "DEST_FILE", value: bash_build_word_concat_from_nodes(parts: [bash_build_word_var(name: "RUNNER_TEMP"), bash_build_word_lit(text: concat(concat("/", stem), "-bmc-credential"))])),
+    bash_build_assign(name: "DEST_FILE", value: bash_build_word_concat_from_nodes(parts: [bash_build_word_var(name: "RUNNER_TEMP"), bash_build_word_lit(text: concat(concat("/", stem), "-bmc-credential"))]))
   ]
   // THE TRAP MUST NEVER MEET AN UNSET VARIABLE (the cleanup trap is nounset-unsafe as it was
   // installed): set -u is already on, so an EXIT trap naming $STATUS_FILE while it is still unset
@@ -274,18 +270,18 @@ fn gunbc_ci_mtcollins1_probe_credential_statements(stem: String, typed_fetch_fai
     bash_build_assign(name: "STATUS_FILE", value: bash_build_word_concat_from_nodes(parts: [bash_build_word_var(name: "DEST_FILE"), bash_build_word_lit(text: mtcollins1_fan_credential_fetch_status_suffix)])),
     bash_build_command_with_words(words: [bash_build_word_lit(text: "trap"), bash_build_word_lit(text: trap_body), bash_build_word_lit(text: "EXIT")]),
     bash_build_command_with_words(words: [bash_build_word_lit(text: "rm"), bash_build_word_lit(text: "-f"), bash_build_word_var(name: "STATUS_FILE")]),
-    bash_build_with_redir_to_file(inner: bash_build_command_with_words(words: [bash_build_word_lit(text: "printf"), bash_build_word_lit(text: gunbc_ci_auth_header_format), bash_build_word_var(name: "WIF_ACCESS_TOKEN")]), path: bash_build_word_var(name: "HDR_FILE")),
+    bash_build_with_redir_to_file(inner: bash_build_command_with_words(words: [bash_build_word_lit(text: "printf"), bash_build_word_lit(text: gunbc_ci_auth_header_format), bash_build_word_var(name: "WIF_ACCESS_TOKEN")]), path: bash_build_word_var(name: "HDR_FILE"))
   ])
   let strict_head = concat(head, [
     bash_build_command_with_words(words: [bash_build_word_lit(text: "trap"), bash_build_word_lit(text: trap_body), bash_build_word_lit(text: "EXIT")]),
-    bash_build_with_redir_to_file(inner: bash_build_command_with_words(words: [bash_build_word_lit(text: "printf"), bash_build_word_lit(text: gunbc_ci_auth_header_format), bash_build_word_var(name: "WIF_ACCESS_TOKEN")]), path: bash_build_word_var(name: "HDR_FILE")),
+    bash_build_with_redir_to_file(inner: bash_build_command_with_words(words: [bash_build_word_lit(text: "printf"), bash_build_word_lit(text: gunbc_ci_auth_header_format), bash_build_word_var(name: "WIF_ACCESS_TOKEN")]), path: bash_build_word_var(name: "HDR_FILE"))
   ])
   // The status assignment now lives in the typed head, before the trap; past the head the typed lane
   // is just the fetch, while the strict lane still carries the trailing chmod its fetch does not own.
   let middle = if typed_fetch_failure { [fetch_pair] } else { [fetch_pair, chmod] }
   let tail = [
     bash_build_command_with_words(words: [bash_build_word_lit(text: "export"), bash_build_word_concat_from_nodes(parts: [bash_build_word_lit(text: concat(mtcollins1_fan_credential_path_env as String, "=")), bash_build_word_var(name: "DEST_FILE")])]),
-    gunbc_ci_repo_root_statement(),
+    gunbc_ci_repo_root_statement()
   ]
   outcome_accepted(value: if typed_fetch_failure {
     concat(concat(typed_head, middle), tail)
@@ -308,8 +304,7 @@ fn gunbc_ci_mtcollins1_probe_invoke_typed(stem: String, target: GunbcRunStepTarg
         o: gunbc_ci_bash_rendered(stmts: stmts, set_e: false),
         f: fn(key_text) {
           bind_outcome(
-            o: gunbc_run_command_for_target(source_roots: witness_layer_roots, target: target,
-            claim_run: false),
+            o: gunbc_run_command_for_target(source_roots: witness_layer_roots, target: target),
             f: fn(zesty_c) {
               outcome_accepted(value:join([key_text, "\n", zesty_c, "\n"], ""))
             }
@@ -332,15 +327,15 @@ fn gunbc_ci_mtcollins1_fan_boot_phase_outcome_statements() -> List<Node> {
   bash_build_if_else_from_stmts(
     cond: bash_build_and_then(
       left: bash_build_test_bracket(words: [bash_build_word_lit(text: "-f"), receipt], spelling: BracketQuoted),
-      right: bash_build_test_bracket(words: [bash_build_word_var(name: "first_line"), bash_build_word_lit(text: "="), bash_build_word_lit(text: fan_boot_phase_taken_prefix), bash_build_word_lit(text: "-o"), bash_build_word_var(name: "first_line"), bash_build_word_lit(text: "="), bash_build_word_lit(text: fan_boot_phase_unestablished_host_off_line)], spelling: BracketQuoted),
+      right: bash_build_test_bracket(words: [bash_build_word_var(name: "first_line"), bash_build_word_lit(text: "="), bash_build_word_lit(text: fan_boot_phase_taken_prefix), bash_build_word_lit(text: "-o"), bash_build_word_var(name: "first_line"), bash_build_word_lit(text: "="), bash_build_word_lit(text: fan_boot_phase_unestablished_host_off_line)], spelling: BracketQuoted)
     ),
     then_stmts: [bash_build_with_redir_to_file(inner: bash_build_command_with_words(words: [bash_build_word_lit(text: "printf"), bash_build_word_lit(text: "%s\n"), bash_build_word_lit(text: gunbc_ci_fan_outcome_line(outcome: mtcollins1_fan_boot_phase_outcome_observed))]), path: output_line)],
     else_stmts: [
       bash_build_with_redir_to_file(inner: bash_build_command_with_words(words: [bash_build_word_lit(text: "printf"), bash_build_word_lit(text: "%s\n"), bash_build_word_lit(text: gunbc_ci_fan_outcome_line(outcome: mtcollins1_fan_boot_phase_outcome_refused))]), path: output_line),
       bash_build_with_redir_to_file(inner: bash_build_command_with_words(words: [bash_build_word_lit(text: "cat"), receipt]), path: bash_build_word_var(name: github_step_summary_variable_name)),
       bash_build_command_with_words(words: [bash_build_word_lit(text: "echo"), bash_build_word_lit(text: "::error::mtcollins1 boot stopped - the fan observation was refused; the typed cause and the controller's verbatim answers are in the job summary and the fan-policy-phase-observation artifact")]),
-      bash_build_exit(code: "1"),
-    ],
+      bash_build_exit(code: "1")
+    ]
   )]
 }
 
@@ -371,8 +366,7 @@ fn gunbc_ci_mtcollins1_kvm_observer_observe_invoke() -> Outcome<String> {
 // mtcollins1_kvm_observer_release_wet).
 fn gunbc_ci_mtcollins1_kvm_observer_release_invoke() -> Outcome<String> {
   bind_outcome(
-    o: gunbc_run_command_for_target(source_roots: witness_layer_roots, target: gunbc_ci_mtcollins1_kvm_observer_release_target,
-    claim_run: false),
+    o: gunbc_run_command_for_target(source_roots: witness_layer_roots, target: gunbc_ci_mtcollins1_kvm_observer_release_target),
     f: fn(zesty_c) {
       bind_outcome(
         o: gunbc_ci_bash_rendered(stmts: [bash_build_command_from_lits(lits: ["set", "-euo", "pipefail"]), gunbc_ci_repo_root_statement()], set_e: false),

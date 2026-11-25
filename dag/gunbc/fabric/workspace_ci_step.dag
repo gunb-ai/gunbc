@@ -43,7 +43,6 @@ fn gunbc_ci_workspace_source_pack_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_workspace_source_pack_target,
-    claim_run: false,
     receipt_rel: workspace_source_receipt_path
   )
 }
@@ -52,7 +51,6 @@ fn gunbc_ci_workspace_checkpoint_measure_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_workspace_checkpoint_measure_target,
-    claim_run: false,
     receipt_rel: workspace_measure_receipt_path
   )
 }
@@ -61,7 +59,6 @@ fn gunbc_ci_workspace_checkpoint_restore_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_workspace_checkpoint_restore_target,
-    claim_run: false,
     receipt_rel: workspace_restore_receipt_path
   )
 }
@@ -70,7 +67,6 @@ fn gunbc_ci_workspace_transcript_rate_observe_invoke() -> Outcome<String> {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_workspace_transcript_rate_observe_target,
-    claim_run: false,
     receipt_rel: workspace_transcript_rate_receipt_path
   )
 }

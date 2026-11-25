@@ -1,8 +1,6 @@
 module gunbc.drift_watch_workflow
 import gunbc.ci.repository_ci_profile { gunbc_repository_ci_profile }
 
-
-
 import std.types { Bool, Int, List, String, NonEmptyStr }
 import std.measure { minute_count }
 import std.optional { Present, Absent }
@@ -92,7 +90,6 @@ fn drift_watch_check_step(row: ProjectionDrift) -> Outcome<Step> {
           source_roots: witness_layer_roots,
           entry: check.entry as String,
           function: check.function as String,
-          claim_run: false,
           receipt_rel: none
         ),
         f: fn(script) {
@@ -146,7 +143,7 @@ fn drift_watch_bound_steps(row: ProjectionDrift) -> List<DriftWatchBoundStep> {
       role: consumes_only(capabilities: [CargoCapability]),
       step_name: drift_watch_build_step_name,
     },
-    DriftWatchBoundStep { step: drift_watch_check_step(row: row), role: capability_neutral, step_name: "Compare each Tier O artifact with its authority (read-only)" },
+    DriftWatchBoundStep { step: drift_watch_check_step(row: row), role: capability_neutral, step_name: "Compare each Tier O artifact with its authority (read-only)" }
   ]
 }
 
@@ -155,9 +152,9 @@ fn drift_watch_capability_closure_holds(row: ProjectionDrift) -> Bool {
     v: workflow_job_capability_closure(
       steps: list_map(
         xs: drift_watch_bound_steps(row: row),
-        f: fn(b) { CapabilityAnnotatedStep { step_name: b.step_name, role: b.role } },
+        f: fn(b) { CapabilityAnnotatedStep { step_name: b.step_name, role: b.role } }
       )
-    ),
+    )
   )
 }
 
@@ -227,7 +224,6 @@ data drift_watch_capability_refusal_reason: String = "REFUSED gunbc.drift_watch_
 
 // WHAT THE ROW FORBIDS, BEFORE ANY OF THE ADMISSIONS RUN. The admissions are about the emitted job;
 // this is about whether the row entitles the repository to have the job at all.
-
 
 data drift_watch_no_job_refusal_reason: String = "REFUSED gunbc.drift_watch_workflow: this repository's RepositoryCiProfile carries no ProjectionDrift row, so there is no scheduled drift watch to emit. The absence is the repository's data, not this emitter's default."
 
