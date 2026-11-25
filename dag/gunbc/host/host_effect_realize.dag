@@ -5128,43 +5128,21 @@ fn observe_slot_population_over_host_effect_transport(
   host: HostIdentity,
   transport: HostEffectTransport,
 ) -> SlotCensus {
-  match transport {
-    LocalShell =>
-      slot_census_from_process_outcome(
-        host: host,
-        outcome: run_shell_command_capture(
-          command: systemctl_list_all_service_units_command(),
-          transport: LocalExec,
-        ),
-      )
-    SshShell { ssh_host: _ } =>
-      slot_census_from_typed_argv_outcome(
-        host: host,
-        outcome: run_typed_argv_transport(
-          argv: systemctl_list_all_service_units_argv(),
-          transport: transport,
-        ),
-        edge_noun: "the transport",
-      )
-    FleetSsh { target: _, context: _, kind: _} =>
-      slot_census_from_typed_argv_outcome(
-        host: host,
-        outcome: run_typed_argv_transport(
-          argv: systemctl_list_all_service_units_argv(),
-          transport: transport,
-        ),
-        edge_noun: "the transport",
-      )
-    EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
-      slot_census_from_typed_argv_outcome(
-        host: host,
-        outcome: run_typed_argv_transport(
-          argv: systemctl_list_all_service_units_argv(),
-          transport: transport,
-        ),
-        edge_noun: "the transport",
-      )
-  }
+  let observed = run_shell_transport(
+    script: RetainedShellScript {
+      body: shell_command_text_of_argv(argv: systemctl_list_all_service_units_argv()),
+      reason: "runner slot population census (systemctl list-units)",
+      dissolves_to: retained_srvn_takeover_ref,
+    },
+    transport: transport,
+  )
+  slot_census_from_command_outcome(
+    host: host,
+    success: observed.success,
+    exit_code: observed.exit_code,
+    stdout: observed.stdout,
+    stderr: observed.stderr,
+  )
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════════════════
