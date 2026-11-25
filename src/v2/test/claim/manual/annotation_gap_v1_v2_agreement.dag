@@ -51,21 +51,32 @@ data agreement_source: String = "module zqx.agree\n\n// above the data row\ndata
 
 data agreement_texts: List<String> = ["above the data row", "between the items", "between the arguments", "before the product", "between the statements"]
 
-// THE CONTROL'S OWN IDENTITY AND RUNG, published here so a receipt in another module has something to agree
-// with. The probe pair imports these three and refuses when its own copy disagrees, so renaming this module,
-// renaming its entry fn, or enrolling this control without restating its rung turns THAT claim red -- the rung
-// is enforced against the floor's own admission decision, not asserted beside it. Rung is a closed set of
-// facts, so it is a declared sum and not a String: a free String cannot refuse an invented rung
-// (gunbc.design_argument::guarantee_ladder, rung honesty; gunbc.design_argument::source_annotations, a status
-// belongs in a typed carrier).
+// THE CONTROL'S OWN PATH AND RUNG, published here because something OUTSIDE this file decides the rung and has
+// to be asked, not because a receipt wanted a string to repeat. `agreement_control_module_name` is the key
+// `v2.workflow.required_floor` `required_gate_admits` is asked with, so the rung below is enforced against the
+// floor's own admission decision rather than asserted beside it: while this reads ManualUngated the claim fails
+// the moment any selector -- including a family row that later sweeps this path in -- admits it, and it fails a
+// GatedRow that was raised without a roster. What a path literal does NOT do is catch a rename: that is caught
+// twice over by things that actually consume the name -- this module is IMPORTED BY NAME by
+// `v2.test.claim.manual.annotation_gap_v1_v2_agreement_probe_pair`, so renaming it fails to resolve rather than
+// quietly agreeing with a stale copy, and the entry fn below is consumed by the executor's `--functions` argv.
+// Rung is a closed set of facts, so it is a declared sum and not a String: a free String cannot refuse an
+// invented rung (gunbc.design_argument::guarantee_ladder, rung honesty; gunbc.design_argument::source_annotations,
+// a status belongs in a typed carrier).
+// THE ENTRY FN IS DELIBERATELY NOT PUBLISHED HERE. A `String` naming this module's test fn has no consumer
+// that could refuse anything: the only reader such a carrier can have is another module's copy of the SAME
+// literal, and comparing a copy against its original stays green through the rename it promises to catch --
+// which is a second place independently deciding one fact (gunbc.design_argument::single_authority) read by a
+// `.contains()` grep that is not a consumer (gunbc.design_argument::fail_closed). The fn name IS consumed, by
+// the executor's `--functions` argv: rename the fn and the run itself refuses with
+// "does not declare requested function(s)" at rc=2, which is the executed protection and is recorded with its
+// raw lines in the pull-request run log rather than restated here where nothing could read it.
 type AgreementControlRung =
     ManualUngated
   | GatedRow
   | FloorExecuted
 
 data agreement_control_module_name: String = "v2.test.claim.manual.annotation_gap_v1_v2_agreement"
-
-data agreement_control_entry_fn: String = "v1_and_v2_agree_on_neighbour_text_holds"
 
 // The line below IS the status; this comment does not get to state one beside it. It is re-derived from
 // `v2.workflow.required_floor` `required_gate_admits` by

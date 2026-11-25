@@ -1,34 +1,36 @@
 module v2.test.claim.manual.annotation_gap_v1_v2_agreement_probe_pair
 
-import std.types { String }
-import std.algebra { string_contains }
 import v2.test.claim.manual.annotation_gap_v1_v2_agreement {
   AgreementControlRung, ManualUngated, GatedRow, FloorExecuted,
-  agreement_control_module_name, agreement_control_entry_fn, agreement_control_rung
+  agreement_control_module_name, agreement_control_rung
 }
 import v2.workflow.required_floor { required_gate_admits }
 
-// THE TWO CLAIMS THAT REACH OUTSIDE THIS FILE, and nothing else. This module used to carry its own receipt:
-// the kind of probe, the ref the broken tree is durable on, the two commits where the control was observed
+// THE ONE CLAIM THAT REACHES OUTSIDE THIS FILE, and why it survives. This module used to carry its own receipt
+// -- the kind of probe, the ref the broken tree is durable on, the two commits where the control was observed
 // failing and passing, the date, the roster arm it removed, the three source roots and the run-log pointers --
 // and the only reader of all of it was a claim in this same file running `string_contains` over those same
 // strings. Data that no consumer outside its own file reads cannot refuse anything: it is self-certification
-// with extra steps, and it makes the module look like it is checking something when it is checking its own
-// transcription (gunbc.design_argument::consumption, "a witness asserting existence rather than exercising
-// behavior"; gunbc.design_argument::source_annotations, a `String` declaration whose only purpose is
-// commentary is misplaced or dead data). Every one of those carriers is gone, along with the well-formedness
-// claim that read them.
+// with extra steps (gunbc.design_argument::consumption, "a witness asserting existence rather than exercising
+// behavior"; gunbc.design_argument::source_annotations, a `String` declaration whose only purpose is commentary
+// is misplaced or dead data). Every one of those carriers is gone, along with the well-formedness claim that read
+// them.
 //
-// WHAT REMAINS, and why these two survive the deletion: each one compares something published HERE against
-// something computed ELSEWHERE, so an edit on the other side can turn it red.
-//   * `probe_pair_witness_identity_agrees_with_the_control` -- the witness module and entry fn this pair was
-//     executed against are checked against the CONTROL'S OWN published carriers, imported from the control
-//     module. Renaming the module or its entry fn turns this red instead of leaving a green receipt about a
-//     file that no longer exists.
-//   * `probe_pair_rung_agrees_with_the_floors_own_admission` -- the control's declared rung is matched against
-//     `required_gate_admits`, which the floor computes from its own two selector rosters. Enrolling this
-//     control without restating its rung, or raising the rung while no roster names it, turns this red. That
-//     is the only way a rung statement earns more than its author's word.
+// A SECOND CLAIM used to live here too, and it is gone for the same reason with a sharper edge: it compared this
+// module's copies of the control's module path and entry-fn name against the control's published carriers. That
+// is a copy checked against its original. Renaming the control's entry fn leaves BOTH literals untouched, so the
+// claim stayed green while its own comment promised red -- two places independently deciding one fact
+// (gunbc.design_argument::single_authority) and a `.contains()` grep standing in for a consumer
+// (gunbc.design_argument::fail_closed). The entry fn is no longer published by the control at all; the name is
+// consumed by the executor's `--functions` argv, which refuses a rename with
+// "does not declare requested function(s)" at rc=2, and that refusal is recorded in the pull-request run log.
+//
+// WHAT REMAINS is a claim that compares something published HERE against something computed ELSEWHERE, so an
+// edit on the other side can turn it red: the control's declared rung, matched against `required_gate_admits`,
+// which the floor computes from its own selector rosters. Enrolling this control without restating its rung, or
+// raising the rung while no roster names it, refuses. Admitting a required-gate row is an operator act on a
+// recorded ruling (gunbc.design_ruling::required_gate_rows_grow_by_operator_ruling), and the moment this rung
+// may rise is declared once as `v2.compiler.staged_front_end` `front_end_placement_control_next_rung`.
 //
 // WHERE THE EXECUTIONS ARE, since they are deliberately NOT stored here: no predicate in this language
 // observes a process or a filesystem, so a Bool or a commit-sha string beside a run certifies nothing about
@@ -40,31 +42,29 @@ import v2.workflow.required_floor { required_gate_admits }
 // therefore a parent of the break and not a break. Both are named, with their hashes, in that run log rather
 // than repeated here where nothing could read them.
 
-data annotation_gap_v1_v2_agreement_probe_witness_module: String = "v2.test.claim.manual.annotation_gap_v1_v2_agreement"
 
-data annotation_gap_v1_v2_agreement_probe_witness_fn: String = "v1_and_v2_agree_on_neighbour_text_holds"
-
-// THE RECEIPT AND THE CONTROL MUST NAME THE SAME WITNESS. These two strings are a copy of what the control
-// publishes, and a copy that drifts is a receipt for a run of some other file -- so they are checked against
-// the control's OWN imported carriers rather than against prose. The two `string_contains` conjuncts refuse a
-// carrier that was emptied on both sides at once, which equality alone would pass.
-test fn probe_pair_witness_identity_agrees_with_the_control() -> Bool {
-  annotation_gap_v1_v2_agreement_probe_witness_module == agreement_control_module_name
-    && annotation_gap_v1_v2_agreement_probe_witness_fn == agreement_control_entry_fn
-    && string_contains(s: agreement_control_entry_fn, pattern: "v1_and_v2_agree")
-    && string_contains(s: agreement_control_module_name, pattern: "annotation_gap_v1_v2_agreement")
-}
-
-// THE RUNG IS CHECKED AGAINST THE GATE'S OWN DECISION, NOT ASSERTED BESIDE IT. `agreement_control_rung` is
-// published by the control; the admission decision is `required_gate_admits`, computed by the floor from its
-// own two selector rosters. All three arms consult the floor, so the claim cannot be satisfied by the rung's
-// own value. ManualUngated is therefore not a confession filed here for readers to trust; it is a claim that
-// the floor admits this module under NEITHER selector kind, and a family row that later swept this path in
-// would fail it too.
+// THE RUNG IS CHECKED AGAINST THE GATE'S OWN DECISION, AND THE THREE ARMS ARE NOT THE SAME QUESTION.
+// `agreement_control_rung` is published by the control; admission is computed ELSEWHERE by
+// `required_gate_admits`, from the floor's own selector rosters, so the claim cannot be satisfied by the rung's
+// own value. The arms answer three different questions, and that is the whole point:
+//   ManualUngated  -- the floor must admit this path under NEITHER selector kind. A family row that later swept
+//                     this path in fails this arm, so silence here is not a confession filed for readers to trust.
+//   GatedRow       -- the floor DOES admit it. Admitting is an operator act; the rung may not outrun the roster.
+//   FloorExecuted  -- REFUSES, unconditionally, and must keep refusing until something can evidence it. Nothing
+//                     in the tree can: `required_gate_admits` answers whether the floor ADMITS a path, and no
+//                     predicate anywhere observes that a floor EXECUTED one -- the required-floor runner is
+//                     deleted (gunbc.rung_drop_amendment.manual_required_floor_runner_deleted) and no workflow
+//                     passes `--required-floor` (witnessed in the negative by
+//                     dag.test.claim.witness_floor_workflow_consolidation_witness). Two arms both answering
+//                     "does the floor admit it" would let the rung be raised to FloorExecuted on an admission
+//                     alone, which is an inflated rung passing; an arm that cannot be satisfied is the honest
+//                     shape while the authority for that fact is missing. When such an authority lands, THIS arm
+//                     is rewritten to consult it, and the moment that happens is declared once as
+//                     `v2.compiler.staged_front_end` `front_end_placement_control_next_rung`.
 test fn probe_pair_rung_agrees_with_the_floors_own_admission() -> Bool {
   match agreement_control_rung {
     ManualUngated => !required_gate_admits(module_path: agreement_control_module_name)
     GatedRow => required_gate_admits(module_path: agreement_control_module_name)
-    FloorExecuted => required_gate_admits(module_path: agreement_control_module_name)
+    FloorExecuted => false
   }
 }
