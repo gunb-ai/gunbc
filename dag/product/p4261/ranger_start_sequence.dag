@@ -35,7 +35,7 @@ type StartStanding
   = OnRangerLadder { state: RangerState }
   | ManualHotSwapForcedWithModulePartialPower { seen: NonEmptyStr }
 
-data lot_e1_218_standing: StartStanding = ManualHotSwapForcedWithModulePartialPower { seen: "S/N 1583323120218, 2026-11-15 and 2026-11-16: Q300's node pulled low by hand, the 48 V stage up, a cooled module fitted, a steady 0.33 A at 48 V (about 16 W), no console output" }
+data lot_e1_218_standing: StartStanding = ManualHotSwapForcedWithModulePartialPower { seen: "S/N 1583323120218, Q300's node pulled low by hand and the 48 V stage up: on 2026-11-15 a 699-2G530-0215-DV5 C1 module (S/N 1582823830042) run without its cooler, then powered down; on 2026-11-16 a 699-2G530-0215-DV9 D1 module (S/N 1583023920032) with its heatsink and a box fan. Each drew a steady 0.33 A at 48 V (about 16 W) with no console output; the carrier's own draw with the override held and no module was never read" }
 
 fn is_on_ladder(s: StartStanding) -> Bool {
   match s {

@@ -419,10 +419,10 @@ fn runner_user_session_converge_receipt_names_host(receipt: RunnerUserSessionCon
 // HOW OLD A RECEIPT MAY BE AND STILL BE EVIDENCE (review 87218: the parser dropped the header's probed_at,
 // so a document left in the artifact store from an old run granted the label FOREVER after the host lost
 // its linger -- the same silent-wrong-answer the hand-copied rows were deleted for, arriving by a different
-// road). The bound is three daily fleet-converge cadences: the receipt is written by the daily
-// review-sheet converge (gunbc.fleet.fleet_converge_workflow review_sheet_converge_cron), so a receipt
-// older than three cycles means the converge leg has missed two consecutive scheduled runs -- the host is
-// no longer being checked, and the last thing said about it stops being evidence. The consumer is
+// road). The bound is three days: the receipt is written by the runner-user-session converge
+// (gunbc.fleet.fleet_converge_workflow fleet_converge_runner_user_session_converge_step_if, a dispatched mode,
+// not the review-sheet converge this comment once named), so a receipt older than three days means the host
+// has not been checked since, and the last thing said about it stops being evidence. The consumer is
 // runner_user_session_converge_receipt_staleness below; the label witness drives both sides of the bound.
 data runner_user_session_converge_receipt_max_age: Second = second(count: 259200)
 

@@ -149,7 +149,7 @@ import gunbc.roadmap.roadmap_document {
   RoadmapSection
 }
 import gunbc.roadmap.roadmap_status {
-  RedObservedOnMain, RedControlExecuted,
+  RedObservedOnMain, RedControlExecuted, RedControlTreeUnrecorded,
   HandbackDelivered
 }
 
@@ -160,8 +160,7 @@ import test.claim.roadmap.roadmap_task_record_witness {
 import gunbc.roadmap.roadmap_acceptance_history_carrier {
   RoadmapAcceptanceEventHistoryLoad,
   RoadmapAcceptanceEventHistoryLoaded,
-  RoadmapAcceptanceEventHistoryLoadRefused,
-  load_roadmap_acceptance_event_history_from_carrier_text
+  RoadmapAcceptanceEventHistoryLoadRefused
 }
 import gunbc.roadmap.roadmap_node_terminality {
   LineageOpen,
@@ -540,7 +539,11 @@ fn node_param(node_id: String) -> List<PathParamBinding> {
   [ PathParamBinding { name: "node_id" as NonEmptyStr, value: node_id as NonEmptyStr } ]
 }
 
-data close_body_ready: String = "key=op-serve-close-1&csrf=csrf-opr&repo=briansrls/gunbc&pr=999999999&witness_module=test%2Fclaim%2Fx&witness_fn=w&first_artifact=a"
+data close_body_ready: String = "key=op-serve-close-1&csrf=csrf-opr&repo=briansrls/gunbc&pr=999999999&witness_module=test%2Fclaim%2Fx&witness_fn=w&first_artifact=a&red_kind=on_main&red_at=aaaabbbbccccddddeeeeffff0000111122223333&green_at=1111222233334444555566667777888899990000"
+// A close form that fills a PROBE field but names NO arm: red_kind is blank, red_base is present. The arm is
+// SAID, never guessed — this is refused with the word naming it, never read as a probe (the very inference
+// the recorder was stripped of). gunbc.design_ruling::executed_red_control_names_its_failing_commit
+data close_body_probe_without_kind: String = "key=op-serve-close-1&csrf=csrf-opr&repo=briansrls/gunbc&pr=999999999&witness_module=test%2Fclaim%2Fx&witness_fn=w&first_artifact=a&red_at=aaaabbbbccccddddeeeeffff0000111122223333&green_at=1111222233334444555566667777888899990000&red_base=aaaabbbbccccddddeeeeffff0000111122223333&probe_ref=red-control%2Frow-7"
 
 data close_body_no_csrf: String = "key=op-serve-close-1&repo=briansrls/gunbc&pr=999999999&witness_module=test%2Fclaim%2Fx&witness_fn=w&first_artifact=a"
 
@@ -580,17 +583,40 @@ fn sample_receipt(node: String) -> RoadmapAcceptanceReceipt {
   }
 }
 
-test fn a_receipt_writes_one_canonical_line_the_seed_parser_accepts_once() -> Bool {
+test fn a_receipt_writes_one_canonical_line_the_one_reader_accepts_once() -> Bool {
   let receipt = sample_receipt("node-wire-roundtrip")
   let line = roadmap_operator_acceptance_receipt_line(receipt: receipt)
   let again = roadmap_operator_acceptance_receipt_line(receipt: receipt)
   let e1 = claim("the same receipt serializes byte-identically", line == again)
   let e2 = claim("the line is not empty", line != "")
-  let e3 = match load_roadmap_acceptance_event_history_from_carrier_text(text: line) {
-    RoadmapAcceptanceEventHistoryLoaded { events: evs } => claim("the seed parser accepts exactly this line, once", count(evs) == 1)
-    RoadmapAcceptanceEventHistoryLoadRefused { detail: d } => claim("the seed parser refused its own line: " + d, false)
+  let e3 = match roadmap_operator_acceptance_parse_tail(lines: [line]) {
+    RoadmapAcceptanceTailOk { events: evs } => claim("the one reader accepts exactly this line, once", count(evs) == 1)
+    RoadmapAcceptanceTailBad { line_index: _, detail: d } => claim("the one reader refused its own line: " + (d as String), false)
   }
   e1 && e2 && e3
+}
+
+// THE ONE READER READS THE REAL (PRE-RULING) SHAPE. Every acceptance_recorded line the log actually holds
+// carries a three-field red_control (witness_module, witness_fn, executed_on) and NO red_at/green_at -- the
+// pre-ruling wire form the one-time migration wrote. The single reader (roadmap_operator_acceptance_line_parse,
+// reached through parse_tail) must read it, or migration_verify would refuse the real recorded manifest. This
+// drives exactly that shape: a receipt whose red_control is RedControlTreeUnrecorded serializes to the three-
+// field line and reads back through the one reader.
+test fn the_pre_ruling_three_field_red_control_round_trips_through_the_one_reader() -> Bool {
+  // THE ONE-TIME MIGRATION WROTE THIS SHAPE: red_control_executed with only
+  // witness_module / witness_fn / executed_on — no red_at / green_at, no observation. Today's record route
+  // REFUSES to WRITE that shape (review 97749(a): the tree-unrecorded shape is refused at the record path, not
+  // only the half-spelled one), so it cannot be spelled with roadmap_operator_acceptance_receipt_line — that is
+  // why this row hands the recorded line to the reader DIRECTLY, exactly as roadmap_acceptance_migration_verify
+  // does when it replays the real recorded manifest. The asymmetry is the point: the write path refuses the old
+  // shape, the read path must still accept it, or the migration cannot replay.
+  let line = "{\"variant\":\"acceptance_recorded\",\"receipt\":{\"node\":\"pr1-cell\",\"criteria_digest\":\"3502539e920d9e40\",\"red_control\":{\"variant\":\"red_control_executed\",\"witness_module\":\"test.claim.roadmap.roadmap_red_control_tree_witness\",\"witness_fn\":\"fixture\",\"executed_on\":\"2026-11-23\"},\"handback\":{\"variant\":\"handback_delivered\",\"first_artifact\":\"fixture-artifact\",\"further_artifacts\":[]},\"accepted_by\":\"briansrls\",\"accepted_on\":\"2026-11-23\"}}"
+  match roadmap_operator_acceptance_parse_tail(lines: [line]) {
+    RoadmapAcceptanceTailOk { events: evs } =>
+      claim("the pre-ruling three-field red_control line reads back through the one reader", count(evs) == 1)
+    RoadmapAcceptanceTailBad { line_index: _, detail: d } =>
+      claim("the one reader refused the pre-ruling shape: " + (d as String), false)
+  }
 }
 
 test fn a_corrupt_tail_line_refuses_located_and_never_silently() -> Bool {
@@ -805,14 +831,14 @@ fn duplicate_acceptance_witness(instance: HostDashboardInstance, scratch: Roadma
             operation: "op-duplicate-one" as NonEmptyStr, expected: none },
           receipt: receipt, evidence: earned(facts) },
         recorded_at: "2026-11-04T08:00:00Z") {
-        CarrierClosed { result: EventAppended { id: first_id }, close: _ } =>
+        CarrierClosed { result: EventAppended { id: first_id, published_as: _ }, close: _ } =>
           match issue_command_apply(layout: layout,
             command: AcceptNode {
               subject: IssueCommandSubject { node: node, author: opr_principal(),
                 operation: "op-duplicate-two" as NonEmptyStr, expected: Present { value: first_id } },
               receipt: receipt, evidence: earned(facts) },
             recorded_at: "2026-11-04T08:00:01Z") {
-            CarrierClosed { result: EventAppended { id: _ }, close: _ } =>
+            CarrierClosed { result: EventAppended { id: _, published_as: _ }, close: _ } =>
               // TWO acceptances of one node are committed. The LOAD — the same reader production uses — must
               // REFUSE and LOCATE the refusal on the node: a duplicate-specific cause, not a bare non-empty
               // detail (any read or parse failure has one), and never a Loaded history the fold lets through.
@@ -942,7 +968,7 @@ fn retired_belt_lineage_witness(instance: HostDashboardInstance, scratch: Roadma
           expected: none },
           reason: "ended by the operator" as NonEmptyStr },
         recorded_at: "2026-11-04T08:00:00Z") {
-        CarrierClosed { result: EventAppended { id: _ }, close: _ } => {
+        CarrierClosed { result: EventAppended { id: _, published_as: _ }, close: _ } => {
           let retired = match belt_node_lineage_terminal_read(instance: instance, node_id: "node-retired-belt", history: belt_history) {
             // The retired half reads the TYPED LineageRetired{by,reason}, not a flattened LineageTerminal prose
             // tag. Reaching this variant (rather than LineageTerminal/LineageOpen) is itself the discriminating
@@ -1004,7 +1030,7 @@ fn launch_gate_refusal_witness(instance: HostDashboardInstance, scratch: Roadmap
             expected: none },
             reason: "ended at the launch gate" as NonEmptyStr },
           recorded_at: "2026-11-04T08:00:00Z") {
-          CarrierClosed { result: EventAppended { id: _ }, close: _ } => {
+          CarrierClosed { result: EventAppended { id: _, published_as: _ }, close: _ } => {
             let refused = match belt_node_launch_refusal(instance: instance, node_id: "node-launch-gate-retired", history: gate_history) {
               Present { value: LaunchNodeRetired { by: _, reason } } =>
                 claim("a retired node's launch is refused with the typed LaunchNodeRetired naming the retirement", string_contains(s: reason, pattern: "ended at the launch gate"))
@@ -1233,6 +1259,19 @@ test fn the_close_route_names_an_unknown_node_and_refuses_an_unreadable_lane() -
   let e2 = claim("an unreadable lane refuses fail-closed, not blind: " + lane_unreadable.body,
     lane_unreadable.status == 503 && string_contains(s: lane_unreadable.body, pattern: "lane unavailable"))
   e1 && e2
+}
+
+// THE OPERATOR CLOSE NAMES ITS RED ARM TOO. A close whose form fills red_base but leaves red_kind blank is
+// refused with the word naming it, and is NEVER read as a probe (nor as on main) — the exact emptiness-
+// inference the recorder was stripped of. The serve close routes through red_kind_parse + red_observation_validate, the same
+// single authority the CLI uses (gunbc.design_ruling::executed_red_control_names_its_failing_commit).
+test fn a_close_with_a_probe_base_but_no_named_kind_is_refused_not_read_as_a_probe() -> Bool {
+  let refused = serve_issue_close_response_over(
+    instance: srv2_preview_dashboard_instance(), plan: fn() { plan_with_nodes(["operator-node"]) },
+    request: close_request_as_operator(body: close_body_probe_without_kind, node_id: "operator-node"), params: node_param("operator-node"), read: fn(_repo, n) { merged_readback(n) })
+  claim("a close with red_base filled but no red_kind is refused, not read as a probe: " + refused.body,
+    refused.status == 400 && string_contains(s: refused.body, pattern: "red_kind")
+      && string_contains(s: refused.body, pattern: "refused"))
 }
 
 test fn the_retire_route_refuses_anonymously_by_token_by_name_and_by_form() -> Bool {

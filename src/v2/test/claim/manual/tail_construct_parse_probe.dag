@@ -2,7 +2,7 @@ module v2.test.claim.manual.tail_construct_parse_probe
 
 import extdeps.filesystem.filesystem_io
 import v2.compiler.normalize { normalize }
-import v2.compiler.parse { grammar_validate_for_parse, parse_production }
+import v2.compiler.parse { grammar_validate_and_analyze, parse_production }
 import v2.compiler.tokenize { tokenize }
 
 
@@ -23,16 +23,16 @@ fn tcp_cause(source_text: String) -> Symbol {
   match lm.grammar {
     VoidGrammar => ^language_grammar_unavailable
     ModeledGrammar { root: root } =>
-      match grammar_validate_for_parse(root: root, at: at) {
+      match grammar_validate_and_analyze(root: root, at: at) {
         Rejected { diagnostics: _ } => ^language_grammar_rejected
-        Accepted { value: validated, diagnostics: _ } =>
+        Accepted { value: modeled, diagnostics: _ } =>
           match tokenize(text: source_text, file: tcp_subject, rules: lm.lex) {
             Rejected { diagnostics: _ } => ^source_tokenization_rejected
             Accepted { value: stream, diagnostics: _ } =>
               match parse_production(
                 tokens: token_stream_remaining(stream: stream),
-                validated: validated,
-                production_name: validated.root.start
+                modeled: modeled,
+                production_name: modeled.validated.root.start
               ) {
                 Rejected { diagnostics: _ } => ^source_parse_rejected
                 Accepted { value: artifact, diagnostics: _ } =>

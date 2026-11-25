@@ -18,7 +18,7 @@ import std.goal_assessment {
   ObservationAttempt, ObservationEstablished, ObservationRefused,
   GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused,
 }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv9, operator_host_e2d4b7 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv9, operator_host_e2d4b7, operator_host_srv14 }
 // RB-M3: ServingPlanInput.executor_arch is an Architecture (projected from uname -m by the converge producer).
 // All assess fixtures here use operator_host_srv1, whose authored row is Aarch64, so executor_arch is Aarch64
 // (row == executor => the upload path and the serve-binary pin compare stay active) and the default target_arch
@@ -146,6 +146,22 @@ test fn a_host_outside_the_candidate_row_has_no_forced_command() -> Bool {
       Present { value: l } => false
     }
   }
+}
+
+// ── POSITIVE CONTROL: butch (srv14) is an admitted candidate and renders its forced-command ──
+// The other half of the discriminating pair with the red above (srv9, off the row, has none). srv14 joins
+// remote_build_serving_candidate_hosts on the same footing as ken so the peer-executor OBSERVE/CONVERGE arms
+// can create its serving home. Grounded in host reads, not the ruling row alone: run 45173386343
+// (fleet-converge remote_build_serving_observe host=srv1 subject_host=srv14) read butch over the tailnet --
+// known_hosts anchor materialized + content-verified, endpoint butch.tailecbe08.ts.net,
+// provenance scanned-first-contact -- and gunbc.serving.serving_reservation::srv14_serving_unit_boot_states
+// records the operator's hand retirement of its Strata serving engines.
+test fn srv14_is_an_admitted_candidate_and_renders_its_forced_command() -> Bool {
+  remote_build_host_is_serving_candidate(host: operator_host_srv14)
+    && match serving_forced_command_line(host: operator_host_srv14) {
+         Absent => false
+         Present { value: line } => line != ""
+       }
 }
 
 // ── observation builders for the assessment cells ───────────────────────────────

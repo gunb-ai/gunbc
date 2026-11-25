@@ -6,7 +6,7 @@ import std.occurrence_identity { OccurrenceSynthetic }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
 import extdeps.shell
-import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.rust.cargo { cargo_default_dev_profile, cargo_default_profile_dir, cargo_default_target_dir }
 import extdeps.rust.cargo_build
 import extdeps.python
