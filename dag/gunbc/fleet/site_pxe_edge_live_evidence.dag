@@ -321,9 +321,23 @@ fn site_pxe_edge_live_find_names_absent_path(path: String, answer: HostLeg) -> B
 
 fn site_pxe_edge_live_path_standing(path: String, as_required: HostLeg, anything: HostLeg) -> SitePxeEdgeLivePathStanding {
   match as_required {
-    LegAnswered { exit_code: ar_code, stdout: ar_out, stderr: _ } =>
-      if ar_code == 0 && trim(s: ar_out) == path { PathAsRequired }
-      else { site_pxe_edge_live_path_standing_from_anything(path: path, anything: anything) }
+    LegAnswered { exit_code: ar_code, stdout: ar_out, stderr: ar_err } =>
+      if ar_code == 0 && trim(s: ar_out) == path {
+        PathAsRequired
+      } else if ar_code == 0 {
+        // The property probe SUCCEEDED and did not print the path: the requirement was measured and found unmet.
+        // This is the ONLY route to PathPresentButNotAsRequired (via the existence probe, which says it is there).
+        site_pxe_edge_live_path_standing_from_anything(path: path, anything: anything)
+      } else {
+        // The property probe itself ERRORED: the requirement was never measured, so an answered existence probe may
+        // establish presence but can never establish a mismatch (fox round 4 at 5b5829eb, Blocker 2). The property
+        // probe's own exit and stderr are kept.
+        site_pxe_edge_live_property_read_lost(
+          path: path,
+          property_cause: concat("the property probe failed: exit=", to_string(ar_code), " ", trim(s: ar_err)),
+          anything: anything,
+        )
+      }
     LegNotDispatched { reason: why } =>
       site_pxe_edge_live_property_read_lost(path: path, property_cause: concat("the property probe was never dispatched: ", why), anything: anything)
     LegUnanswered { cause: why } =>
@@ -331,17 +345,18 @@ fn site_pxe_edge_live_path_standing(path: String, as_required: HostLeg, anything
   }
 }
 
-// A PROPERTY READ THAT NEVER COMPLETED KEEPS ITS CAUSE (fox round 3 at 649e7857). The property probe is the ONLY
-// thing that can refute "as required", so while its reply is lost or it was never handed to the host, the existence
-// probe may establish PRESENCE but may never establish a MISMATCH: PathPresentButNotAsRequired is reserved for a
-// COMPLETED property check that printed nothing while the path itself printed. Presence with an unread requirement
-// reads PathPresenceUnverified carrying the cause; an absence or a failed existence probe is still decided by the
-// existence leg alone, because that leg did complete.
+// A PROPERTY READ THAT NEVER COMPLETED KEEPS ITS CAUSE (fox round 3 at 649e7857, widened at round 4). The property
+// probe is the ONLY thing that can refute "as required", so while its reply is lost, it was never handed to the
+// host, or IT ERRORED, the existence probe may establish PRESENCE but may never establish a MISMATCH:
+// PathPresentButNotAsRequired is reserved for a property find that SUCCEEDED and printed nothing while the path
+// itself printed. Presence without a completed property check reads PathPresenceUnverified carrying the property
+// probe's cause; an absence or a failed existence probe is still decided by the existence leg alone, which did
+// complete -- including find's own exact-path "No such file or directory", which stays absence.
 fn site_pxe_edge_live_property_read_lost(path: String, property_cause: String, anything: HostLeg) -> SitePxeEdgeLivePathStanding {
   match anything {
     LegAnswered { exit_code: code, stdout: out, stderr: _ } =>
       if code == 0 && trim(s: out) == path {
-        PathPresenceUnverified { reason: concat("the path is present but its required properties were never read: ", property_cause) }
+        PathPresenceUnverified { reason: concat("the path is present but its required properties could not be verified: ", property_cause) }
       } else {
         site_pxe_edge_live_path_standing_from_anything(path: path, anything: anything)
       }
@@ -501,16 +516,37 @@ fn site_pxe_edge_live_publish_on(host: CommandHost, tftp_root: NonEmptyStr, sour
 
 // WHAT A STANDING REPORTS AT THE PLACE (fox round 3 at 649e7857). The operator's reason is decided from the
 // standing ALONE, in one place, so the placement below cannot drift from what a witness asserts, and so a lost
-// property reply is reported as ITS OWN cause rather than as the mismatch wording: only a completed property check
-// may say "not as required". The last two arms are what the standing itself never refuses -- the digest check
-// decides an already-required path and the publish decides an absent one -- and are named so the match is total.
+// property reply is reported as ITS OWN cause rather than as the mismatch wording: only a property check that
+// COMPLETED may say "not as required". The last two arms are what the standing itself never refuses -- the digest
+// check decides an already-required path and the publish decides an absent one -- and are named so the match is
+// total. Wording: an unread requirement "could not be verified", never "was not checked".
 fn site_pxe_edge_live_standing_refusal_reason(standing: SitePxeEdgeLivePathStanding) -> String {
   match standing {
     PathPresentButNotAsRequired => "something that is not a root-owned regular file closed to group and other writes is already at the digest-addressed path; it was not overwritten"
-    PathPresenceUnverified { reason: r } => concat(r, "; the requirement was never checked, so nothing was overwritten")
+    PathPresenceUnverified { reason: r } => concat(r, "; the requirement could not be verified, so nothing was overwritten")
     PathObservationFailed { reason: r } => concat(r, "; absence was not established, so nothing was published")
     PathAsRequired => "the path already satisfied its requirements: the digest of what is already published decides it"
     PathAbsent => "the path was absent: the publish decides it"
+  }
+}
+
+// WHAT THE PLACEMENT DOES WITH A STANDING (fox round 4 at 5b5829eb, Blocker 1). The decision is EXTRACTED so the
+// wet path and the witness share one authority and one arm list: a frontend typecheck cannot see match-ARM ORDER,
+// and at 5b5829eb a catch-all `other =>` arm placed above `PathAbsent` silently turned a confirmed-absent
+// destination into a refusal, making first publication unreachable while every typecheck stayed green. No catch-all
+// remains -- every arm of the standing is named, and the witness asserts each one through THIS function.
+type SitePxeEdgeLiveMemberDispatch
+  = DispatchPublish
+  | DispatchVerifyPublishedDigest
+  | DispatchRefused { reason: String }
+
+fn site_pxe_edge_live_member_dispatch(standing: SitePxeEdgeLivePathStanding) -> SitePxeEdgeLiveMemberDispatch {
+  match standing {
+    PathAbsent => DispatchPublish
+    PathAsRequired => DispatchVerifyPublishedDigest
+    PathPresentButNotAsRequired => DispatchRefused { reason: site_pxe_edge_live_standing_refusal_reason(standing: standing) }
+    PathPresenceUnverified { reason: r } => DispatchRefused { reason: site_pxe_edge_live_standing_refusal_reason(standing: PathPresenceUnverified { reason: r }) }
+    PathObservationFailed { reason: r } => DispatchRefused { reason: site_pxe_edge_live_standing_refusal_reason(standing: PathObservationFailed { reason: r }) }
   }
 }
 
@@ -526,15 +562,15 @@ fn site_pxe_edge_live_install_member_on(host: CommandHost, tftp_root: NonEmptySt
       match site_pxe_edge_live_ensure_real_dir_on(host: host, tftp_root: tftp_root, rel: cas as String) {
         LivePlacementDone => {
           let dest: String = site_pxe_edge_live_absolute_path(tftp_root: tftp_root, tftp_path: tftp_path) as String
-          match site_pxe_edge_live_path_standing_on(host: host, path: dest, kind: "f") {
-            PathAsRequired =>
+          match site_pxe_edge_live_member_dispatch(standing: site_pxe_edge_live_path_standing_on(host: host, path: dest, kind: "f")) {
+            DispatchVerifyPublishedDigest =>
               match site_pxe_edge_live_published_matches_on(host: host, tftp_root: tftp_root, tftp_path: tftp_path, digest: digest) {
                 PublishedDigestMatch => LivePlacementDone
                 PublishedDigestMismatch => LivePlacementRefused { step: concat("verify ", dest), reason: "a file already published at the digest-addressed path is not that digest; it was not overwritten" }
                 PublishedDigestUnverified { reason: r } => LivePlacementRefused { step: concat("verify ", dest), reason: concat("the already-published file's digest could not be verified (", r, "); it was not overwritten") }
               }
-            other => LivePlacementRefused { step: concat("find ", dest), reason: site_pxe_edge_live_standing_refusal_reason(standing: other) }
-            PathAbsent => site_pxe_edge_live_publish_on(host: host, tftp_root: tftp_root, source: source, tftp_path: tftp_path, digest: digest)
+            DispatchPublish => site_pxe_edge_live_publish_on(host: host, tftp_root: tftp_root, source: source, tftp_path: tftp_path, digest: digest)
+            DispatchRefused { reason: r } => LivePlacementRefused { step: concat("find ", dest), reason: r }
           }
         }
         other => other
