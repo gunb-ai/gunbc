@@ -375,16 +375,31 @@ data srv1_lmcache_l2_configured: ByteSize = gibibyte_to_byte_size(g: gibibyte(co
 
 data srv1_lmcache_l2_eviction_watermark: Permille = permille(count: 800)
 
-// srv1's LMCache L1 PER REPLICA as it runs: LMCACHE_L1_GB=12 on each container, read from the run identity's
-// own environment (srv1_topology_comparison's run row records the container environment, read 2026-11-08) and
-// corroborated by srv1_lil_serve.sh's LMCache block, which passes 12. LMCache's GB is GiB, as the L2 row's
-// rejection reading established. NOT the 2026-10-30 engine-memory figure below (L1_GB=100): the tier has been
-// 12 GiB per replica since the 2026-11-08 move to two replicas, which is also why no 110 GiB /dev/shm is needed.
-data srv1_lmcache_l1_configured: ByteSize = gibibyte_to_byte_size(g: gibibyte(count: 12))
+// srv1's LMCache L1 PER REPLICA as it runs: LMCACHE_L1_GB=48 on each container. THE single authority for the
+// L1 tier size — the launcher's `--env LMCACHE_L1_GB=` token, the START line's "L1 <n>G", and the host budget's
+// `l1_shm` all cite THIS row, so the number that serves and the number that is priced cannot disagree (they
+// could, until 2026-11-24: srv1_serving_replica_layout held its own copy and its comment asserted no owner
+// here existed. It did, at this row).
+//
+// Read 2026-11-24 from the host's own bytes: /usr/local/etc/lil-replica/replica-{0,1}.args carry
+// `LMCACHE_L1_GB=48` (both files identical, sha256 76737a58839259d3ecf4626a47bee489aea4d959cd64789e24f4e1b9bef95aca
+// read on srv1), and the launcher's START event reads "L1 48G, L2 125G". The value BEFORE this read was 12 GiB
+// — the run identity's environment of 2026-11-08, corroborated by srv1_lil_serve.sh's LMCache block — and the
+// raise is what the eviction path's contract made necessary: under `--l2-store-policy checkpoint_on_evict` L1
+// is not an optional cache but the only staging buffer between a checkpoint and the NVMe tier, so the old
+// "small 12 GiB RAM tier" figure was priced against nothing. The contract and its refusal live with the
+// launcher: gunbc.serving.srv1_serving_replica_layout::srv1_l1_staging_floor. The observation that found it —
+// L1 pinned at 90-99%, ~740k fresh pages deleted 0.07-1 s after creation without being written, saves granted
+// 48%/43% of the bytes they asked for, read from LMCache's own lines in ~/lil/serve/serve.log and
+// ~/lil/serve-gpu1/serve.log by the operator's session on 2026-11-24 — is carried as the receipt on
+// gunbc.recurring_failure_mode::a_serving_tier_sized_as_a_cache_while_the_store_policy_makes_it_the_only_path_to_disk.
+// LMCache's GB is GiB, as the L2 row's rejection reading established. NOT the 2026-10-30 engine-memory figure
+// below (L1_GB=100): that predates the 2026-11-08 move to two replicas.
+data srv1_lmcache_l1_configured: ByteSize = gibibyte_to_byte_size(g: gibibyte(count: 48))
 
 data srv1_lmcache_l1_tier: ServingMemoryReading = ServingMemoryRead {
   bytes: srv1_lmcache_l1_configured,
-  provenance: "srv1 lil-flash-next and lil-flash-next-1 LMCACHE_L1_GB=12 each (the run identity's environment, srv1_topology_comparison; corroborated by srv1_lil_serve.sh's LMCache block), 2026-11-08" as NonEmptyStr,
+  provenance: "srv1 lil-flash-next and lil-flash-next-1 LMCACHE_L1_GB=48 each (the rendered args files installed on the host, sha256 76737a58839259d3ecf4626a47bee489aea4d959cd64789e24f4e1b9bef95aca read 2026-11-24; the launcher's START event reads L1 48G), was 12 GiB per replica from 2026-11-08 until that raise" as NonEmptyStr,
 }
 
 data srv1_vllm_disk_tier: ServingMemoryReading = ServingMemoryRead {
