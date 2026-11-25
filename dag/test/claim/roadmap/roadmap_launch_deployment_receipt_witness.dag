@@ -211,6 +211,12 @@ fn rlm_plan_at_scope(run: ActionsRunBinding, host: String, scope_wire: String) -
     lease_owner_fingerprint: "fnv1a64:bbbbbbbbbbbbbbbb",
     lease_generation: 5,
     apply_terminal: FullyApplied,
+    source_closure: Present { value: [
+      "dag/gunbc/fleet/fleet_converge_plan_cli.dag",
+      "dag/gunbc/fleet/fleet_converge_receipt.dag",
+    ] },
+    source_closure_entry_path: Present { value: "dag/gunbc/fleet/fleet_converge_plan_cli.dag" },
+    source_closure_pool_roots: Present { value: ["dag", "src/v2"] },
   }
 }
 

@@ -3,11 +3,13 @@ module gunbc.fleet.fleet_converge_receipt
 import gunbc.fleet.fleet_converge_terminal { FleetConvergeApplyTerminal, FullyApplied, PartiallyApplied, fleet_converge_apply_terminal_wire, fleet_converge_apply_terminal_of_wire }
 
 import std.types { String, Bool, NonEmptyStr, Int, List }
-import std.algebra { trim }
+import std.algebra { trim, list_map, fold_list }
+import std.optional { Optional, Present, Absent }
 import std.content_hash { Fnv1a64Structural, content_hash_atom, content_hash_tagged_structural }
-import extdeps.languages.json.emit { JsonValue, json_kv, json_string, json_object, serialize_json }
+import extdeps.languages.json.emit { JsonValue, JsonString, JsonArray, JsonNull, JsonBool, JsonNumber, JsonObject, json_kv, json_string, json_object, json_array, serialize_json }
 import extdeps.languages.json.parse {
   parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
+  json_object_unique_member, JsonMemberLookup, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
 }
 import extdeps.filesystem.filesystem_io { Filesystem }
 
@@ -49,6 +51,15 @@ import gunbc.actions_run_binding {
 // not the input's host refuses before writing anything -- artifact naming from an input was never
 // host evidence, and this is the row that makes the input a CHECK rather than a label.
 data fleet_converge_plan_receipt_schema: String = "fleet-converge-plan-receipt/v1"
+// THE v2 SCHEMA IS THE SAME RECEIPT PLUS THE RECORDED SOURCE CLOSURE. The tag is not decoration:
+// it pins WHICH bytes the identity covers. A v1 receipt never carried the closure, so its identity
+// covers the original members exactly as before and pre-closure plans keep verifying byte-for-byte;
+// a v2 receipt's identity covers the closure triple too (fleet_converge_plan_receipt_identity_hex),
+// so editing source_closure on a v2 receipt breaks the identity and the receipt is refused. The
+// schema and the presence of the members are cross-checked in the decoder: a v2 receipt missing a
+// closure member, or a v1 receipt carrying one, is FleetConvergePlanReceiptUnreadable — never a
+// silently-absent member (gunbc.design_argument::declared_intent).
+data fleet_converge_plan_receipt_schema_v2: String = "fleet-converge-plan-receipt/v2"
 data fleet_converge_apply_receipt_schema: String = "fleet-converge-apply-receipt/v1"
 
 data fleet_converge_plan_receipt_path: String = "/tmp/fleet-converge-plan/plan_receipt.json"
@@ -71,6 +82,12 @@ type FleetConvergePlanReceipt {
   lease_owner_fingerprint: String
   lease_generation: Int
   apply_terminal: FleetConvergeApplyTerminal
+  // Absent is honest absence (a v1 receipt); Present([]) is a recorded-but-empty closure, a
+  // materially different case the admission refuses on its own arm. No sentinel stands in for
+  // either (gunbc.design_argument::declared_intent).
+  source_closure: Optional<List<String>>
+  source_closure_entry_path: Optional<String>
+  source_closure_pool_roots: Optional<List<String>>
 }
 
 type FleetConvergeApplyReceipt {
@@ -97,11 +114,63 @@ fn fleet_converge_plan_receipt_identity_text(r: FleetConvergePlanReceipt) -> Str
   ], "")
 }
 
+// Does this receipt carry the source closure? Presence is decided by the record's Optionals, which
+// the decoder fills only from members actually present in the document.
+fn fleet_converge_plan_receipt_carries_closure(r: FleetConvergePlanReceipt) -> Bool {
+  match r.source_closure {
+    Absent => false
+    Present { value: _ } => true
+  }
+}
+
+// The schema a receipt of this shape is written under: v2 exactly when it carries the closure.
+fn fleet_converge_plan_receipt_schema_of(r: FleetConvergePlanReceipt) -> String {
+  if fleet_converge_plan_receipt_carries_closure(r) {
+    fleet_converge_plan_receipt_schema_v2
+  } else {
+    fleet_converge_plan_receipt_schema
+  }
+}
+
+// The recorded closure rendered for the identity. Deterministic over the record: entry, pool roots
+// and closure in that fixed order, each list joined by commas in its recorded order. An entry or
+// root list that is Absent renders as the empty segment, which only ever happens on the v1 path
+// (where the suffix is not appended at all), so no meaning is invented here.
+fn fleet_converge_plan_receipt_closure_identity_suffix(r: FleetConvergePlanReceipt) -> String {
+  let closure_text = match r.source_closure {
+    Present { value: c } => join(c, ",")
+    Absent => ""
+  }
+  let entry_text = match r.source_closure_entry_path {
+    Present { value: e } => e
+    Absent => ""
+  }
+  let roots_text = match r.source_closure_pool_roots {
+    Present { value: p } => join(p, ",")
+    Absent => ""
+  }
+  join(["|closure_entry=", entry_text, "|closure_roots=", roots_text, "|closure=", closure_text], "")
+}
+
+// THE IDENTITY COVERS THE CLOSURE WHEN THERE IS ONE. A v2 receipt whose source_closure (or its
+// attribution) is edited no longer hashes to the identity it carries, and the decoder refuses it:
+// the admission that lets a descending main tip through trusts these fields, so they are identity
+// material (gunbc.design_argument::fail_closed). v1 receipts keep the original tag and the original
+// text, so pre-closure plans verify exactly as before.
 fn fleet_converge_plan_receipt_identity_hex(r: FleetConvergePlanReceipt) -> String {
-  content_hash_tagged_structural(
-    tag: "fleet-converge-plan-receipt-v1" as NonEmptyStr,
-    payload: content_hash_atom(value: fleet_converge_plan_receipt_identity_text(r: r) as NonEmptyStr),
-  ).digest as String
+  if fleet_converge_plan_receipt_carries_closure(r) {
+    content_hash_tagged_structural(
+      tag: "fleet-converge-plan-receipt-v2" as NonEmptyStr,
+      payload: content_hash_atom(
+        value: join([fleet_converge_plan_receipt_identity_text(r: r), fleet_converge_plan_receipt_closure_identity_suffix(r: r)], "") as NonEmptyStr,
+      ),
+    ).digest as String
+  } else {
+    content_hash_tagged_structural(
+      tag: "fleet-converge-plan-receipt-v1" as NonEmptyStr,
+      payload: content_hash_atom(value: fleet_converge_plan_receipt_identity_text(r: r) as NonEmptyStr),
+    ).digest as String
+  }
 }
 
 fn fleet_converge_apply_receipt_identity_text(r: FleetConvergeApplyReceipt) -> String {
@@ -121,8 +190,8 @@ fn fleet_converge_apply_receipt_identity_hex(r: FleetConvergeApplyReceipt) -> St
 }
 
 fn fleet_converge_plan_receipt_json(r: FleetConvergePlanReceipt) -> JsonValue {
-  json_object(members: [
-    json_kv(key: "schema", value: json_string(s: fleet_converge_plan_receipt_schema)),
+  json_object(members: concat([
+    json_kv(key: "schema", value: json_string(s: fleet_converge_plan_receipt_schema_of(r: r))),
     json_kv(key: "run", value: actions_run_binding_json(binding: r.run)),
     json_kv(key: "observed_host", value: json_string(s: r.observed_host)),
     json_kv(key: "scope_wire", value: json_string(s: r.scope_wire)),
@@ -137,7 +206,26 @@ fn fleet_converge_plan_receipt_json(r: FleetConvergePlanReceipt) -> JsonValue {
     json_kv(key: "lease_generation", value: json_string(s: to_string(r.lease_generation))),
     json_kv(key: "apply_terminal", value: json_string(s: fleet_converge_apply_terminal_wire(terminal: r.apply_terminal))),
     json_kv(key: "receipt_identity", value: json_string(s: fleet_converge_plan_receipt_identity_hex(r: r))),
-  ])
+  ], closure_members(r)))
+}
+
+// The three closure members, emitted only when the receipt carries them. A v1-shaped receipt
+// therefore serializes to exactly the bytes it did before this change.
+fn closure_members(r: FleetConvergePlanReceipt) -> List<JsonValue> {
+  match r.source_closure {
+    Absent => []
+    Present { value: c } => [
+      json_kv(key: "source_closure", value: json_array(elements: list_map(xs: c, f: fn(s) { json_string(s: s) }))),
+      json_kv(key: "source_closure_entry_path", value: json_string(s: match r.source_closure_entry_path {
+        Present { value: e } => e
+        Absent => ""
+      })),
+      json_kv(key: "source_closure_pool_roots", value: json_array(elements: list_map(xs: match r.source_closure_pool_roots {
+        Present { value: p } => p
+        Absent => []
+      }, f: fn(s) { json_string(s: s) }))),
+    ]
+  }
 }
 
 fn fleet_converge_apply_receipt_json(r: FleetConvergeApplyReceipt) -> JsonValue {
@@ -185,8 +273,8 @@ fn fleet_converge_plan_receipt_decode(raw: String) -> FleetConvergePlanReceiptDe
       match json_required_string_member(doc: doc, key: "schema") {
         JsonStringMemberRefused { reason: r } => FleetConvergePlanReceiptUnreadable { reason: r }
         JsonStringMemberFound { value: schema } =>
-          if schema != fleet_converge_plan_receipt_schema {
-            FleetConvergePlanReceiptUnreadable { reason: join(["plan receipt schema is not ", fleet_converge_plan_receipt_schema, ": ", schema], "") }
+          if schema != fleet_converge_plan_receipt_schema && schema != fleet_converge_plan_receipt_schema_v2 {
+            FleetConvergePlanReceiptUnreadable { reason: join(["plan receipt schema is neither ", fleet_converge_plan_receipt_schema, " nor ", fleet_converge_plan_receipt_schema_v2, ": ", schema], "") }
           } else {
             match actions_run_binding_of_member(doc: doc, key: "run") {
               ActionsRunBindingUnreadable { reason: r } => FleetConvergePlanReceiptUnreadable { reason: join(["plan receipt run: ", r], "") }
@@ -229,33 +317,28 @@ fn fleet_converge_plan_receipt_decode(raw: String) -> FleetConvergePlanReceiptDe
                                                   JsonStringMemberFound { value: terminal_wire } =>
                                                 match fleet_converge_apply_terminal_of_wire(text: terminal_wire) {
                                                   Absent => FleetConvergePlanReceiptUnreadable { reason: join(["plan receipt apply_terminal wire is unknown: ", terminal_wire], "") }
-                                                  Present { value: planned_terminal } => {
-                                                let receipt = FleetConvergePlanReceipt {
-                                                  run: run,
-                                                  observed_host: observed_host,
-                                                  scope_wire: scope_wire,
-                                                  member_set_fingerprint_hex: member_fp,
-                                                  plan_artifact_hash: plan_hash,
-                                                  observed_baseline_hex: baseline,
-                                                  prior_generation: prior,
-                                                  planned_generation: planned,
-                                                  lease_key: lease_key,
-                                                  lease_resource_fingerprint: lease_rfp,
-                                                  lease_owner_fingerprint: lease_ofp,
-                                                  lease_generation: lease_gen,
-                                                  apply_terminal: planned_terminal,
-                                                }
-                                                match json_required_string_member(doc: doc, key: "receipt_identity") {
-                                                  JsonStringMemberRefused { reason: r } => FleetConvergePlanReceiptUnreadable { reason: r }
-                                                  JsonStringMemberFound { value: claimed } =>
-                                                    if claimed != fleet_converge_plan_receipt_identity_hex(r: receipt) {
-                                                      FleetConvergePlanReceiptUnreadable { reason: "plan receipt identity does not match its members" }
-                                                    } else {
-                                                      FleetConvergePlanReceiptDecoded { receipt: receipt }
-                                                    }
+                                                  Present { value: planned_terminal } =>
+                                                match decode_plan_receipt_closure(doc: doc, schema: schema) {
+                                                  PlanReceiptClosureRefused { reason: why } => FleetConvergePlanReceiptUnreadable { reason: why }
+                                                  PlanReceiptClosureOk { members: closure_members_read } => finish_fleet_converge_plan_receipt_decode(
+                                                    run: run,
+                                                    observed_host: observed_host,
+                                                    scope_wire: scope_wire,
+                                                    member_set_fingerprint_hex: member_fp,
+                                                    plan_artifact_hash: plan_hash,
+                                                    observed_baseline_hex: baseline,
+                                                    prior_generation: prior,
+                                                    planned_generation: planned,
+                                                    lease_key: lease_key,
+                                                    lease_resource_fingerprint: lease_rfp,
+                                                    lease_owner_fingerprint: lease_ofp,
+                                                    lease_generation: lease_gen,
+                                                    apply_terminal: planned_terminal,
+                                                    members: closure_members_read,
+                                                    doc: doc,
+                                                  )
                                                 }
                                               }
-                                                }
                                                 }
                                                 }
                                                 }
@@ -433,5 +516,202 @@ fn read_fleet_converge_apply_receipt_at(path: String) -> FleetConvergeApplyRecei
     FleetConvergeApplyReceiptUnreadable { reason: join(["apply receipt could not be read at ", path, ": ", read.error], "") }
   } else {
     fleet_converge_apply_receipt_decode(raw: read.content)
+  }
+}
+
+
+
+// THE TYPED READERS FOR THE RECEIPT'S OPTIONAL MEMBERS. Absence is the type's Absent, never an
+// empty string or an empty list fabricated from a missing member, and a member that is present but
+// malformed — wrong JSON type, a duplicated key, an array holding a non-string — is its own typed
+// refusal that the decode surfaces as FleetConvergePlanReceiptUnreadable. No in-band sentinel value
+// can collide with a real path (gunbc.design_argument::declared_intent, fail_closed).
+type ReceiptStringMember
+  = StringMemberAbsent
+  | StringMemberPresent { value: String }
+  | StringMemberRefused { reason: String }
+
+fn receipt_string_member(doc: JsonValue, key: String) -> ReceiptStringMember {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberFound { value: JsonString { value: s } } => StringMemberPresent { value: s }
+    JsonMemberFound { value: other } =>
+      StringMemberRefused { reason: join(["plan receipt member ", key, " is present but is a ", json_value_kind(value: other), ", not a JSON string"], "") }
+    JsonMemberAbsent => StringMemberAbsent
+    JsonMemberDuplicated { count: n } =>
+      StringMemberRefused { reason: join(["plan receipt member ", key, " appears ", to_string(n), " times"], "") }
+    JsonMemberNotAnObject =>
+      StringMemberRefused { reason: join(["plan receipt member ", key, " cannot be read: the document is not a JSON object"], "") }
+  }
+}
+
+type ReceiptStringArrayMember
+  = StringArrayMemberAbsent
+  | StringArrayMemberPresent { values: List<String> }
+  | StringArrayMemberRefused { reason: String }
+
+fn receipt_string_array_member(doc: JsonValue, key: String) -> ReceiptStringArrayMember {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberFound { value: JsonArray { elements: elements } } =>
+      match first_non_string_element_kind(elements: elements) {
+        Present { value: kind } =>
+          StringArrayMemberRefused { reason: join(["plan receipt member ", key, " is an array holding a ", kind, "; every element must be a JSON string"], "") }
+        Absent => StringArrayMemberPresent { values: string_elements(elements: elements) }
+      }
+    JsonMemberFound { value: other } =>
+      StringArrayMemberRefused { reason: join(["plan receipt member ", key, " is present but is a ", json_value_kind(value: other), ", not a JSON array"], "") }
+    JsonMemberAbsent => StringArrayMemberAbsent
+    JsonMemberDuplicated { count: n } =>
+      StringArrayMemberRefused { reason: join(["plan receipt member ", key, " appears ", to_string(n), " times"], "") }
+    JsonMemberNotAnObject =>
+      StringArrayMemberRefused { reason: join(["plan receipt member ", key, " cannot be read: the document is not a JSON object"], "") }
+  }
+}
+
+fn json_value_kind(value: JsonValue) -> String {
+  match value {
+    JsonString { value: _ } => "string"
+    JsonNull => "null"
+    JsonBool { value: _ } => "boolean"
+    JsonNumber { lexeme: _ } => "number"
+    JsonArray { elements: _ } => "array"
+    JsonObject { members: _ } => "object"
+  }
+}
+
+// Present carries the kind of the first element that is not a JSON string; Absent means the array
+// is all strings and can be read whole.
+fn first_non_string_element_kind(elements: List<JsonValue>) -> Optional<String> {
+  fold_list(
+    xs: elements,
+    empty: Absent,
+    cons: fn(acc, e) {
+      match acc {
+        Present { value: seen } => Present { value: seen }
+        Absent => match e {
+          JsonString { value: _ } => Absent
+          other => Present { value: json_value_kind(value: other) }
+        }
+      }
+    },
+  )
+}
+
+fn string_elements(elements: List<JsonValue>) -> List<String> {
+  list_map(xs: elements, f: fn(e) {
+    match e {
+      JsonString { value: s } => s
+      other => ""
+    }
+  })
+}
+
+// THE CLOSURE TRIPLE AS ONE TYPED READ, so the schema tag and the presence of the members cannot
+// disagree: v2 is exactly the shape that carries all three, v1 exactly the shape that carries none.
+// A partial triple is a refusal naming what is missing, never a half-filled receipt.
+type PlanReceiptClosureMembers
+  = MembersAbsent
+  | MembersRecorded { closure: List<String>, entry: String, roots: List<String> }
+
+type PlanReceiptClosureDecode
+  = PlanReceiptClosureOk { members: PlanReceiptClosureMembers }
+  | PlanReceiptClosureRefused { reason: String }
+
+fn decode_plan_receipt_closure(doc: JsonValue, schema: String) -> PlanReceiptClosureDecode {
+  match receipt_string_array_member(doc: doc, key: "source_closure") {
+    StringArrayMemberRefused { reason: r } => PlanReceiptClosureRefused { reason: r }
+    StringArrayMemberAbsent =>
+      match receipt_string_member(doc: doc, key: "source_closure_entry_path") {
+        StringMemberRefused { reason: r } => PlanReceiptClosureRefused { reason: r }
+        StringMemberPresent { value: _ } =>
+          PlanReceiptClosureRefused { reason: "plan receipt records source_closure_entry_path without source_closure" }
+        StringMemberAbsent =>
+          match receipt_string_array_member(doc: doc, key: "source_closure_pool_roots") {
+            StringArrayMemberRefused { reason: r } => PlanReceiptClosureRefused { reason: r }
+            StringArrayMemberPresent { values: _ } =>
+              PlanReceiptClosureRefused { reason: "plan receipt records source_closure_pool_roots without source_closure" }
+            StringArrayMemberAbsent =>
+              if schema == fleet_converge_plan_receipt_schema_v2 {
+                PlanReceiptClosureRefused { reason: join(["plan receipt declares schema ", fleet_converge_plan_receipt_schema_v2, " but omits the source_closure members"], "") }
+              } else {
+                PlanReceiptClosureOk { members: MembersAbsent }
+              }
+          }
+      }
+    StringArrayMemberPresent { values: c } =>
+      match receipt_string_member(doc: doc, key: "source_closure_entry_path") {
+        StringMemberAbsent =>
+          PlanReceiptClosureRefused { reason: "plan receipt records source_closure but omits source_closure_entry_path" }
+        StringMemberRefused { reason: r } => PlanReceiptClosureRefused { reason: r }
+        StringMemberPresent { value: e } =>
+          match receipt_string_array_member(doc: doc, key: "source_closure_pool_roots") {
+            StringArrayMemberAbsent =>
+              PlanReceiptClosureRefused { reason: "plan receipt records source_closure but omits source_closure_pool_roots" }
+            StringArrayMemberRefused { reason: r } => PlanReceiptClosureRefused { reason: r }
+            StringArrayMemberPresent { values: p } =>
+              if schema != fleet_converge_plan_receipt_schema_v2 {
+                PlanReceiptClosureRefused { reason: join(["plan receipt declares schema ", schema, " but carries source_closure members; only ", fleet_converge_plan_receipt_schema_v2, " may"], "") }
+              } else {
+                PlanReceiptClosureOk { members: MembersRecorded { closure: c, entry: e, roots: p } }
+              }
+          }
+      }
+  }
+}
+
+// THE TAIL OF THE PLAN RECEIPT DECODE, shared by both closure shapes: build the record from the
+// members already read, then verify the identity it claims. The identity covers the closure exactly
+// when the receipt carries one, so editing a recorded closure (or its attribution) breaks this check.
+fn finish_fleet_converge_plan_receipt_decode(
+  run: ActionsRunBinding,
+  observed_host: String,
+  scope_wire: String,
+  member_set_fingerprint_hex: String,
+  plan_artifact_hash: String,
+  observed_baseline_hex: String,
+  prior_generation: Int,
+  planned_generation: Int,
+  lease_key: String,
+  lease_resource_fingerprint: String,
+  lease_owner_fingerprint: String,
+  lease_generation: Int,
+  apply_terminal: FleetConvergeApplyTerminal,
+  members: PlanReceiptClosureMembers,
+  doc: JsonValue,
+) -> FleetConvergePlanReceiptDecode {
+  let receipt = FleetConvergePlanReceipt {
+    run: run,
+    observed_host: observed_host,
+    scope_wire: scope_wire,
+    member_set_fingerprint_hex: member_set_fingerprint_hex,
+    plan_artifact_hash: plan_artifact_hash,
+    observed_baseline_hex: observed_baseline_hex,
+    prior_generation: prior_generation,
+    planned_generation: planned_generation,
+    lease_key: lease_key,
+    lease_resource_fingerprint: lease_resource_fingerprint,
+    lease_owner_fingerprint: lease_owner_fingerprint,
+    lease_generation: lease_generation,
+    apply_terminal: apply_terminal,
+    source_closure: match members {
+      MembersRecorded { closure: c, entry: _, roots: _ } => Present { value: c }
+      MembersAbsent => Absent
+    },
+    source_closure_entry_path: match members {
+      MembersRecorded { closure: _, entry: e, roots: _ } => Present { value: e }
+      MembersAbsent => Absent
+    },
+    source_closure_pool_roots: match members {
+      MembersRecorded { closure: _, entry: _, roots: p } => Present { value: p }
+      MembersAbsent => Absent
+    },
+  }
+  match json_required_string_member(doc: doc, key: "receipt_identity") {
+    JsonStringMemberRefused { reason: r } => FleetConvergePlanReceiptUnreadable { reason: r }
+    JsonStringMemberFound { value: claimed } =>
+      if claimed != fleet_converge_plan_receipt_identity_hex(r: receipt) {
+        FleetConvergePlanReceiptUnreadable { reason: "plan receipt identity does not match its members" }
+      } else {
+        FleetConvergePlanReceiptDecoded { receipt: receipt }
+      }
   }
 }

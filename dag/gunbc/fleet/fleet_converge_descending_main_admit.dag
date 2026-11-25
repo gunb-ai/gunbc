@@ -1,7 +1,9 @@
 module gunbc.fleet.fleet_converge_descending_main_admit
 
 import std.types { String, Bool, List }
+import v2.std.text { string_eq }
 import std.algebra { Cons, Empty, FreeMonoid, contains, fold_list, is_empty }
+import std.optional { Optional, Present, Absent }
 import v2.lens.module_graph { path_matches_touched }
 
 // ============================================================================
@@ -12,20 +14,18 @@ import v2.lens.module_graph { path_matches_touched }
 // refuses M != P by name). This module extends admission: when M != P, the apply is admitted
 // exactly when M DESCENDS from P (P is an ancestor of M, proven by git merge-base) AND the diff
 // P..M touches NOTHING in the plan's source closure (the transitive import set of the plan CLI's
-// entry module, computed at plan-production time and recorded in the plan receipt).
+// entry module, computed at plan-production time via import_closure_live and recorded in the plan
+// receipt by the plan CLI's receipt constructor).
 //
-// WHY THE CLOSURE COMES FROM THE PLAN'S OWN MODELED READS. The plan CLI produces its output by
-// reading DAG source files through its transitive import chain (v2.lens.module_graph
-// import_closure_live). Those files are what the plan reads from repo bytes at P; no other repo
-// file is consulted (every Filesystem.Read in the plan CLI targets /tmp/fleet-converge-plan/
-// runtime artifacts). So the import closure IS the plan's source closure, derived from the plan
-// artifact's own modeled reads, not a hand-maintained path list.
+// THE ENTRY AND POOL ROOTS ARE DERIVED, not hand-typed. The consumer derives them from the plan
+// CLI's CI target module field and witness_layer_roots (the existing authority in
+// gunbc.ci.ci_layer_roots). This module takes them as parameters to admit_descending_main.
 //
 // WHAT THIS MODULE DOES NOT DO. It does not perform IO: the caller observes the merge base and the
-// changed-path list through extdeps.git.Core (MergeBase, DiffNameOnlyMerge) and passes them here.
-// It does not weaken any existing refusal: when M == P the existing path admits exactly as before.
-// When the receipt carries no source_closure (a plan made before this field existed), this module
-// refuses the descending case, preserving the strict M == P requirement for old plans.
+// changed-path list through extdeps.git (git.Inspect.MergeBase, git.Core.DiffNameOnlyMerge) and
+// passes them here. It does not weaken any existing refusal: when M == P the existing path admits
+// exactly as before. When the receipt carries no source_closure (a plan made before this field
+// existed), this module refuses the descending case, preserving the strict M == P requirement.
 // ============================================================================
 
 type DescendingMainAdmission
@@ -33,72 +33,95 @@ type DescendingMainAdmission
   | DescendingMainNotDescendant { checkout: String, plan_revision: String, merge_base: String }
   | DescendingMainTouchesClosure { checkout: String, plan_revision: String, offending_path: String }
   | DescendingMainClosureAbsent { plan_revision: String }
-  | DescendingMainClosureMisattributed { expected_entry: String, recorded_entry: String }
+  | DescendingMainClosureEmpty { plan_revision: String }
+  | DescendingMainAttributionAbsent { plan_revision: String, missing: String }
+  | DescendingMainEntryMismatch { expected: String, recorded: String }
+  | DescendingMainPoolRootsMismatch { expected: String, recorded: String }
 
-// THE ENTRY THE PLAN CLI IS BUILT FROM: recorded in the receipt alongside the closure so admission
-// can re-verify the closure was computed from this entry (not hand-typed or from a different entry).
-data plan_cli_entry_path: String = "dag/gunbc/fleet/fleet_converge_plan_cli.dag"
-data plan_cli_pool_roots: List<String> = ["dag", "src/v2"]
-
-// THE PURE DECISION. Given the merge base and changed paths (observed externally), decide whether
-// the apply at M is safe. The fast path (M == P) short-circuits to Admitted with no further checks.
+// THE PURE DECISION. Given the merge base and changed paths (observed externally by the caller
+// through extdeps.git), and the expected entry path and pool roots (derived by the caller from the
+// plan CI target and witness_layer_roots), decide whether the apply may reuse the plan while the
+// dispatch names a later main tip. The fast path (M == P) short-circuits to Admitted.
 //
-// RE-VERIFICATION: before trusting the closure, confirm that the receipt's recorded entry_path and
-// pool_roots match what we expect the plan CLI's entry and pool roots to be. A receipt with an
-// empty closure or a closure attributed to a different entry cannot admit.
+// THE RECORDED TRIPLE IS TYPED, NOT SENTINEL-BACKED: the receipt's members arrive as Optional, so
+// "never recorded" (Absent, a v1 receipt) is distinct from "recorded empty" (Present([])), and each
+// refuses on its own arm. A closure whose attribution is missing cannot admit either — the
+// attribution is what ties the closure to the entry module it was computed from.
+//
+// RE-VERIFICATION: before trusting the closure, confirm the recorded entry path and pool roots match
+// the derived expectations, each mismatch on its own variant. The receipt's own identity covers
+// these fields (fleet-converge-plan-receipt/v2), so tampering is refused before this decision runs;
+// this re-verification is the second, independent check that the closure is the one the plan CLI's
+// entry would produce today.
 fn admit_descending_main(
   checkout: String,
   plan_revision: String,
   merge_base: String,
   changed_paths: List<String>,
-  source_closure: List<String>,
-  source_closure_entry_path: String,
-  source_closure_pool_roots: List<String>,
+  source_closure: Optional<List<String>>,
+  source_closure_entry_path: Optional<String>,
+  source_closure_pool_roots: Optional<List<String>>,
+  expected_entry_path: String,
+  expected_pool_roots: List<String>,
 ) -> DescendingMainAdmission {
   if checkout == plan_revision {
     DescendingMainAdmitted { checkout: checkout, plan_revision: plan_revision }
-  } else if source_closure_entry_path != plan_cli_entry_path {
-    DescendingMainClosureMisattributed {
-      expected_entry: plan_cli_entry_path,
-      recorded_entry: source_closure_entry_path,
-    }
-  } else if !pool_roots_match(recorded: source_closure_pool_roots, expected: plan_cli_pool_roots) {
-    DescendingMainClosureMisattributed {
-      expected_entry: plan_cli_entry_path,
-      recorded_entry: source_closure_entry_path,
-    }
-  } else if is_empty(xs: source_closure) {
-    DescendingMainClosureAbsent { plan_revision: plan_revision }
-  } else if merge_base != plan_revision {
-    DescendingMainNotDescendant { checkout: checkout, plan_revision: plan_revision, merge_base: merge_base }
   } else {
-    match first_touched_closure_path(paths: changed_paths, closure: source_closure) {
-      AbsentString => DescendingMainAdmitted { checkout: checkout, plan_revision: plan_revision }
-      PresentString(p) => DescendingMainTouchesClosure {
-        checkout: checkout,
-        plan_revision: plan_revision,
-        offending_path: p,
-      }
+    match source_closure {
+      Absent =>
+        // A receipt that never recorded a closure (minted before this field existed) cannot support
+        // the descending case: the strict M == P requirement stands, refusal text unchanged.
+        DescendingMainClosureAbsent { plan_revision: plan_revision }
+      Present { value: closure } =>
+        match source_closure_entry_path {
+          Absent => DescendingMainAttributionAbsent { plan_revision: plan_revision, missing: "source_closure_entry_path" }
+          Present { value: recorded_entry } =>
+            match source_closure_pool_roots {
+              Absent => DescendingMainAttributionAbsent { plan_revision: plan_revision, missing: "source_closure_pool_roots" }
+              Present { value: recorded_roots } =>
+                if is_empty(xs: closure) {
+                  // Recorded-empty is a materially different case from never-recorded: a real
+                  // import closure of a real module is never empty, so this receipt is not one.
+                  DescendingMainClosureEmpty { plan_revision: plan_revision }
+                } else if recorded_entry != expected_entry_path {
+                  DescendingMainEntryMismatch { expected: expected_entry_path, recorded: recorded_entry }
+                } else if !pool_roots_match(recorded: recorded_roots, expected: expected_pool_roots) {
+                  DescendingMainPoolRootsMismatch {
+                    expected: pool_roots_wire(xs: expected_pool_roots),
+                    recorded: pool_roots_wire(xs: recorded_roots),
+                  }
+                } else if merge_base != plan_revision {
+                  DescendingMainNotDescendant { checkout: checkout, plan_revision: plan_revision, merge_base: merge_base }
+                } else {
+                  match first_touched_closure_path(paths: changed_paths, closure: closure) {
+                    Absent => DescendingMainAdmitted { checkout: checkout, plan_revision: plan_revision }
+                    Present { value: p } => DescendingMainTouchesClosure {
+                      checkout: checkout,
+                      plan_revision: plan_revision,
+                      offending_path: p,
+                    }
+                  }
+                }
+            }
+        }
     }
   }
 }
 
 // THE INTERSECTION TEST. For each changed path, check whether it matches any closure path using
-// v2.lens.module_graph path_matches_touched (the model's own vocabulary for "does this change touch
-// the closure"). Returns the first offending changed path if any match; returns the no-match
-// sentinel if none do.
-fn first_touched_closure_path(paths: List<String>, closure: List<String>) -> StringOption {
+// v2.lens.module_graph path_matches_touched. Returns the first offending path, or Absent.
+fn first_touched_closure_path(paths: List<String>, closure: List<String>) -> Optional<String> {
   fold_list(
     xs: paths,
-    empty: AbsentString as StringOption,
-    cons: fn(acc: StringOption, path: String) -> StringOption {
+    empty: Absent,
+    cons: fn(acc, path) {
       match acc {
-        PresentString(_) => acc
-        AbsentString => {
+        Present { value: _ } => acc
+        Absent => {
           if closure_contains_path(closure: closure, path: path) {
-            PresentString(v: path)
+            Present { value: path }
           } else {
-            AbsentString
+            Absent
           }
         }
       }
@@ -111,7 +134,7 @@ fn closure_contains_path(closure: List<String>, path: String) -> Bool {
   fold_list(
     xs: closure,
     empty: false,
-    cons: fn(acc: Bool, c: String) -> Bool {
+    cons: fn(acc, c) {
       if acc { true } else { path_matches_touched(closure_path: c, touched_path: path) }
     },
   )
@@ -122,25 +145,28 @@ fn pool_roots_match(recorded: List<String>, expected: List<String>) -> Bool {
   let all_expected_in_recorded = fold_list(
     xs: expected,
     empty: true,
-    cons: fn(acc: Bool, e: String) -> Bool {
+    cons: fn(acc, e) {
       if !acc { false } else { contains(xs: recorded, item: e, eq: string_eq) }
     },
   )
   let all_recorded_in_expected = fold_list(
     xs: recorded,
     empty: true,
-    cons: fn(acc: Bool, r: String) -> Bool {
+    cons: fn(acc, r) {
       if !acc { false } else { contains(xs: expected, item: r, eq: string_eq) }
     },
   )
   all_expected_in_recorded && all_recorded_in_expected
 }
 
-fn string_eq(a: String, b: String) -> Bool {
-  a == b
-}
 
-// StringOption sentinel for the first-touched-path fold result.
-type StringOption
-  = PresentString { v: String }
-  | AbsentString
+// Render pool roots for an error message.
+fn pool_roots_wire(xs: List<String>) -> String {
+  fold_list(
+    xs: xs,
+    empty: "",
+    cons: fn(acc, r) {
+      if acc == "" { r } else { join([acc, ",", r], "") }
+    },
+  )
+}

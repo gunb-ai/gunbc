@@ -1,5 +1,6 @@
 module test.claim.workspace_executor_plan_witness
 
+import std.optional { Present, Absent }
 import std.types { String, Bool }
 import gunbc.actions_run_binding { ActionsRunBinding }
 import gunbc.fleet.fleet_converge_receipt { FleetConvergePlanReceipt, fleet_converge_plan_receipt_json }
@@ -33,6 +34,9 @@ fn executor_plan_fixture_receipt(body: String, shell: String, host: String, scop
     prior_generation: 17, planned_generation: 18, lease_key: "fleet-converge-plan:srv1",
     lease_resource_fingerprint: "fnv1a64:aaaaaaaaaaaaaaaa", lease_owner_fingerprint: "fnv1a64:bbbbbbbbbbbbbbbb",
     lease_generation: 18, apply_terminal: FullyApplied,
+    source_closure: Present { value: ["dag/gunbc/fleet/fleet_converge_plan_cli.dag"] },
+    source_closure_entry_path: Present { value: "dag/gunbc/fleet/fleet_converge_plan_cli.dag" },
+    source_closure_pool_roots: Present { value: ["dag", "src/v2"] },
   }))
 }
 

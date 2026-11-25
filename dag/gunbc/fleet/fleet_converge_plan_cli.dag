@@ -46,7 +46,8 @@ import extdeps.languages.json.emit { serialize_json }
 
 import extdeps.shell
 import extdeps.tools.chmod { chmod_path_resolved_program }
-import std.types { String, List, Bool, NonEmptyStr, Int }
+import std.types { String, List, Bool, NonEmptyStr, Int, GitRef }
+import std.integer { int_to_decimal_string }
 import std.durable_compare_and_set { cas_generation_count }
 import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.algebra { trim, length }
@@ -234,6 +235,7 @@ import gunbc.actions_run_binding {
   ActionsRunBinding, observe_actions_run_binding, ActionsRunBound, ActionsRunUnbound,
   actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent,
   admit_optional_expected_revision,
+  RunRevisionAdmission,
   RunRevisionAdmitted,
   RunRevisionRefused,
   fleet_converge_expected_host_env_name,
@@ -249,6 +251,23 @@ import gunbc.fleet.fleet_converge_receipt {
   admit_apply_plan_binding, PlanBindingAdmitted, plan_binding_admission_text,
   PlanBindingRunIdMismatch, PlanBindingHashMismatch, PlanBindingRevisionMismatch, PlanBindingRepositoryMismatch,
 }
+import v2.lens.module_graph { import_closure_live }
+import gunbc.fleet.fleet_converge_descending_main_admit {
+  admit_descending_main,
+  DescendingMainAdmitted,
+  DescendingMainNotDescendant,
+  DescendingMainTouchesClosure,
+  DescendingMainClosureAbsent,
+  DescendingMainClosureEmpty,
+  DescendingMainAttributionAbsent,
+  DescendingMainEntryMismatch,
+  DescendingMainPoolRootsMismatch,
+}
+import gunbc.fleet.fleet_plan_apply_ci_step {
+  fleet_converge_plan_cli_entry,
+  fleet_converge_plan_cli_pool_roots,
+}
+import std.optional { Present, Absent }
 // The apply script is written by this CLI and then executed, so its mode is a decision this module
 // makes rather than a fact about a host: 0755 is owner-write, everyone-read-and-execute.
 data fleet_converge_plan_apply_shell_mode: NonEmptyStr = "0755"
@@ -1017,6 +1036,13 @@ fn fleet_converge_plan_scoped_bound_wet(
                 && w_prior.success
                 && w_member_fp.success
                 && w_scope.success {
+                match fleet_converge_plan_cli_entry {
+                  Absent => exit_failure(reason: "fleet_converge_plan: the plan CLI entry module has no storage path under the registered layout roots; refusing to mint a receipt without a source closure (fail_closed, never fabricate)")
+                  Present { value: entry_path } => {
+                let source_closure = import_closure_live(
+                  entry_path: entry_path,
+                  pool_roots: fleet_converge_plan_cli_pool_roots,
+                )
                 let receipt = FleetConvergePlanReceipt {
                   run: run,
                   observed_host: host_short,
@@ -1031,6 +1057,9 @@ fn fleet_converge_plan_scoped_bound_wet(
                   lease_owner_fingerprint: serialize_content_hash(hash: artifact.plan_lease.epoch.owner_fingerprint) as String,
                   lease_generation: artifact.plan_lease.epoch.generation,
                   apply_terminal: artifact.apply_terminal,
+                  source_closure: Present { value: source_closure },
+                  source_closure_entry_path: Present { value: entry_path },
+                  source_closure_pool_roots: Present { value: fleet_converge_plan_cli_pool_roots },
                 }
                 match write_fleet_converge_plan_receipt(r: receipt) {
                   ReceiptWriteRefused { path: p, error: e } =>
@@ -1045,6 +1074,8 @@ fn fleet_converge_plan_scoped_bound_wet(
                       ],
                       transport: LocalExec,
                     )
+                }
+                  }
                 }
               } else {
                 exit_failure(reason: fleet_converge_plan_artifact_write_refusal(rows: [
@@ -1083,7 +1114,7 @@ fn fleet_converge_apply_wet() -> ProcessExit
     ActionsRunUnbound { variable: v, detail: d } =>
       exit_failure(reason: join(["fleet_converge_apply: RunUnbound — ", v, " ", d, "; the apply mode mints a run-bound receipt and runs only inside the fleet-converge workflow"], ""))
     ActionsRunBound { binding: run } =>
-      match admit_optional_expected_revision(binding: run) {
+      match admit_apply_revision_at_plan_wet(binding: run) {
         RunRevisionRefused { expected: e, observed: o } =>
           exit_failure(reason: join(["fleet_converge_apply: RunRevisionRefused — expected ", e, " but this run checked out ", o, "; refusing before the locked actuator"], ""))
         RunRevisionAdmitted { revision: admitted_r } =>
@@ -1801,4 +1832,90 @@ fn fleet_converge_workspace_commissioning_plan_wet() -> ProcessExit {
 
 fn fleet_converge_workspace_allocation_plan_wet() -> ProcessExit {
   fleet_converge_scoped_plan_wet(scope: WorkspaceAllocationOnly)
+}
+
+// THE APPLY LEG'S EXPECTED-REVISION CROSS-CHECK, DESCENDING-MAIN AWARE. The plain cross-check runs
+// FIRST and its verdict is returned untouched whenever it admits; only when it refuses — the
+// operator named a main tip M (= expected) while the checkout is the plan's revision P (= observed) —
+// is the descending path considered, and it can only ever TURN A REFUSAL INTO AN ADMISSION OF THE
+// PLAN REVISION: the admitted revision returned is o = P, never the later tip, so what the apply
+// executes is exactly the tree the plan was made for. Any other outcome returns the ORIGINAL
+// RunRevisionRefused, same variant, same fields, same words — every other case keeps refusing
+// exactly as it does today (the measured stall: 3 cutover attempts lost to this refusal after a
+// merge to main, each costing a ~35-minute plan run).
+//
+// The observations are git reads over the checked-out tree (which is P); a failed read refuses, it
+// never widens. The closure is the one the plan recorded under fleet-converge-plan-receipt/v2, whose
+// identity covers those bytes; the attribution is re-verified against the entry derived from the
+// plan CI target through gunbc.source_layout, so a receipt attributed elsewhere cannot admit.
+fn admit_apply_revision_at_plan_wet(binding: ActionsRunBinding) -> RunRevisionAdmission {
+  match admit_optional_expected_revision(binding: binding) {
+    RunRevisionAdmitted { revision: r } => RunRevisionAdmitted { revision: r }
+    RunRevisionRefused { expected: e, observed: o } =>
+      match descending_plan_reuse_proven(dispatch_tip: e, plan_revision: o) {
+        DescendingReuseProven => RunRevisionAdmitted { revision: o }
+        DescendingReuseNotProven { reason: _ } => RunRevisionRefused { expected: e, observed: o }
+      }
+  }
+}
+
+type DescendingPlanReuse
+  = DescendingReuseProven
+  | DescendingReuseNotProven { reason: String }
+
+// THE OBSERVATIONS AND THE DECISION, with no widening on any failure arm: unreadable receipt, failed
+// merge-base, failed diff, an entry with no storage path, or any refusal from admit_descending_main
+// all land in DescendingReuseNotProven, which the caller renders as the original refusal.
+fn descending_plan_reuse_proven(dispatch_tip: String, plan_revision: String) -> DescendingPlanReuse {
+  let mb = git.Inspect.MergeBase(
+    repository_path: ".",
+    left: plan_revision as GitRef,
+    right: dispatch_tip as GitRef,
+  )
+  if !mb.success {
+    DescendingReuseNotProven { reason: join(["merge-base read failed (rc=", int_to_decimal_string(value: mb.exit_code), ")"], "") }
+  } else {
+    let diff = git.Core.DiffNameOnlyMerge(
+      base: plan_revision as GitRef,
+      head: dispatch_tip as GitRef,
+    )
+    if !diff.success {
+      DescendingReuseNotProven { reason: "diff --name-only read failed" }
+    } else {
+      match read_fleet_converge_plan_receipt_at(path: fleet_converge_plan_receipt_path) {
+        FleetConvergePlanReceiptUnreadable { reason: r } => DescendingReuseNotProven { reason: r }
+        FleetConvergePlanReceiptDecoded { receipt: plan_receipt } =>
+          match fleet_converge_plan_cli_entry {
+            Absent => DescendingReuseNotProven { reason: "the plan CLI entry module has no storage path under the registered layout roots" }
+            Present { value: expected_entry } => match admit_descending_main(
+              checkout: dispatch_tip,
+              plan_revision: plan_revision,
+              merge_base: mb.sha,
+              changed_paths: diff.paths,
+              source_closure: plan_receipt.source_closure,
+              source_closure_entry_path: plan_receipt.source_closure_entry_path,
+              source_closure_pool_roots: plan_receipt.source_closure_pool_roots,
+              expected_entry_path: expected_entry,
+              expected_pool_roots: fleet_converge_plan_cli_pool_roots,
+            ) {
+              DescendingMainAdmitted { checkout: _, plan_revision: _ } => DescendingReuseProven
+              DescendingMainNotDescendant { checkout: _, plan_revision: _, merge_base: m } =>
+                DescendingReuseNotProven { reason: join(["not a descendant (merge-base=", m, ")"], "") }
+              DescendingMainTouchesClosure { checkout: _, plan_revision: _, offending_path: op } =>
+                DescendingReuseNotProven { reason: join(["diff touches the plan source closure at ", op], "") }
+              DescendingMainClosureAbsent { plan_revision: _ } =>
+                DescendingReuseNotProven { reason: "the plan receipt carries no source closure" }
+              DescendingMainClosureEmpty { plan_revision: _ } =>
+                DescendingReuseNotProven { reason: "the plan receipt records an empty source closure" }
+              DescendingMainAttributionAbsent { plan_revision: _, missing: m } =>
+                DescendingReuseNotProven { reason: join(["the plan receipt records a closure without ", m], "") }
+              DescendingMainEntryMismatch { expected: e, recorded: r } =>
+                DescendingReuseNotProven { reason: join(["closure attributed to '", r, "' but expected '", e, "'"], "") }
+              DescendingMainPoolRootsMismatch { expected: e, recorded: r } =>
+                DescendingReuseNotProven { reason: join(["pool roots '", r, "' but expected '", e, "'"], "") }
+            }
+          }
+      }
+    }
+  }
 }
