@@ -532,7 +532,8 @@ fn harness_conclusions(rows: List<HarnessGroundedPremise>) -> List<HarnessConclu
   map(harness_conclusion_nodes(rows: rows), n => n.conclusion)
 }
 
-// THE MODELED SEGMENTS (harness-prompt-context-model's first consumer). Every grounded premise// renders as a segment whose source names the declaration it is grounded on at the caller's source
+// THE MODELED SEGMENTS (harness-prompt-context-model's first consumer). Every grounded premise
+// renders as a segment whose source names the declaration it is grounded on at the caller's source
 // revision; every conclusion renders as a segment whose source names the conclusion and its
 // grounds, so a retracted premise moves the conclusion's input digest with it. harness_guidance_prose
 // below is the render projection of exactly this population -- the parity witness
@@ -555,7 +556,7 @@ fn harness_conclusions(rows: List<HarnessGroundedPremise>) -> List<HarnessConclu
 // declaration are one statement of what that declaration authorizes and may not be delivered
 // apart from each other under a segmentation the assembly law would refuse. The consequence is
 // pinned by an expectation INDEPENDENT OF THE FOLD --
-// #dag/test/claim/harness_guidance.dag::the_worker_prompt_delivers_shared_authority_groups_as_declared
+// #test.claim.harness_guidance::the_worker_prompt_delivers_shared_authority_groups_as_declared
 // spells the delivered population as a literal grouping of the roster -- so reversing the grouping
 // silently, in either direction, refuses at the witness rather than at the model.
 // That keeps harness_guidance_prose_from_segments character-identical to the group join it projects
