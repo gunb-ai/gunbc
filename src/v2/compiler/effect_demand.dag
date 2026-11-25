@@ -1818,7 +1818,7 @@ fn filesystem_effect_debt_site_identity(site: FilesystemEffectSite) -> String {
     site.enclosing_declaration,
     "#",
     int_to_decimal_string(value: site.site_occurrence)
-  ])
+  ], separator: "")
 }
 
 // THE DUPLICATE CHECK (review 98447 condition 3): distinct identity strings over the contract, counted. If
@@ -1880,7 +1880,7 @@ fn filesystem_effect_census_log(report: FilesystemEffectCensusReport) -> String 
         report.population_source.bound_handler,
         " free_primitive=",
         report.population_source.free_primitive_slug
-      ]),
+      ], separator: ""),
       "arms: derived=free_primitive_direct(refused) and through_handler(authorised); ReachedOutsideBoundHandler is supplied-population-only (synthetic leg)",
       "scope: declaration-resolved callees only -- any reference, broader than a call (fail-closed direction); ambient builtin-route calls are counted only where the resolve fold records a resolved callee path, which the executed ambient-callee leg must show before a clean census is read as builtin-route coverage",
       string_join(fields: [
@@ -1890,7 +1890,7 @@ fn filesystem_effect_census_log(report: FilesystemEffectCensusReport) -> String 
         int_to_decimal_string(value: length(xs: filesystem_effect_direct_reach_debt_contract)),
         " contract_distinct=",
         int_to_decimal_string(value: filesystem_effect_debt_contract_distinct_count())
-      ])
+      ], separator: "")
     ],
     right: list_append(
       left: debt_contract_log_lines(),
@@ -1931,7 +1931,7 @@ fn offender_log_lines(offenders: List<FilesystemEffectReach>) -> List<String> {
             site.enclosing_declaration,
             "#",
             int_to_decimal_string(value: site.site_occurrence)
-          ])
+          ], separator: "")
         ]
       )
     }
