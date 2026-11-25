@@ -501,3 +501,51 @@ test fn chains_present_true_permits_nested_comparison() -> Bool {
     operands: [claim_lt_apply(), claim_flat_binding()]
   ) == false
 }
+
+// Chain-side counterpart of grouping_undecodable_apply_operand_wraps: an operand whose operation
+// cannot be decoded is UNKNOWN, not "not a comparison", so the slot predicate treats it as a
+// comparison (fail closed) and the target's chains row decides. With no chains edge — every
+// target's shape today — the chain check refuses rather than letting `a < b == c` through.
+test fn chains_undecodable_operand_treated_as_comparison_refuses() -> Bool {
+  target_value_expr_comparison_chain_refuses(
+    catalog: claim_grouping_catalog(rows: [
+      target_operator_realization_node_with_precedence(
+        operation: canonical_operation_op_lt(),
+        shape: InfixToken { token: ^claim_token_lt },
+        precedence_node: target_operator_precedence_level_node(level: 3)
+      )
+    ]),
+    enclosing_op: canonical_operation_op_lt(),
+    operands: [
+      TargetValueExpression {
+        kind: TargetValueExprPrimitiveApply,
+        node: target_model_type_atom_node(identity: ^target_value_expression_primitive_apply_atom)
+      },
+      claim_flat_binding()
+    ]
+  )
+}
+
+// The chain check's scope is the chaining POLICY, not operand decodability: with chains=yes
+// declared, an undecodable operand does not make THIS check refuse — the operand's own emit path
+// rejects it with its own typed reason. Keeps the refusal attributed to the right decision.
+test fn chains_undecodable_operand_chains_yes_does_not_refuse() -> Bool {
+  target_value_expr_comparison_chain_refuses(
+    catalog: claim_grouping_catalog(rows: [
+      target_operator_realization_node_with_precedence_and_chains(
+        operation: canonical_operation_op_lt(),
+        shape: InfixToken { token: ^claim_token_lt },
+        precedence_node: target_operator_precedence_level_node(level: 3),
+        chains_node: target_operator_chains_yes_node()
+      )
+    ]),
+    enclosing_op: canonical_operation_op_lt(),
+    operands: [
+      TargetValueExpression {
+        kind: TargetValueExprPrimitiveApply,
+        node: target_model_type_atom_node(identity: ^target_value_expression_primitive_apply_atom)
+      },
+      claim_flat_binding()
+    ]
+  ) == false
+}

@@ -1703,6 +1703,18 @@ fn equality_predicate_accepts(predicate: EqualityPredicate) -> Bool {
   }
 }
 
+// Classification on CanonicalOperation itself (closed-variant predicates belong with the type, not
+// at call sites): the comparison variants are exactly those whose realized form is an infix
+// operator and whose catalog row governs chain participation. Both the chain-shape predicate and
+// the operand-slot predicate consult this one decision.
+fn canonical_operation_is_comparison(op: CanonicalOperation) -> Bool {
+  match op {
+    OrderingComparison { compare_field: _, predicate: _ } => true
+    EqualityComparison { eq_field: _, predicate: _ } => true
+    _ => false
+  }
+}
+
 fn canonical_operation_op_add() -> CanonicalOperation {
   AlgebraPrimitive { algebra_field: ^ring_field_add }
 }
@@ -6612,19 +6624,17 @@ fn target_value_expression_emit_comparison_operand_is_comparison_diagnostic(expr
   }
 }
 
-// True when the enclosing operator is a comparison and either positional operand is itself a
-// comparison apply — the shape Rust rejects because its comparison operators do not chain. Both
-// comparison variants are named where the decision is made; nothing is collapsed behind a flag.
+// True when the enclosing operator is a comparison (canonical_operation_is_comparison) and either
+// positional operand is itself a comparison apply — the shape Rust rejects because its comparison
+// operators do not chain. The variant decision lives in the classification, not here.
 fn target_value_expr_operands_form_comparison_chain(
   enclosing_op: CanonicalOperation,
   operands: List<TargetValueExpression>
 ) -> Bool {
-  match enclosing_op {
-    OrderingComparison { compare_field: _, predicate: _ } =>
-      target_value_expr_operands_hold_comparison(operands: operands)
-    EqualityComparison { eq_field: _, predicate: _ } =>
-      target_value_expr_operands_hold_comparison(operands: operands)
-    _ => false
+  if canonical_operation_is_comparison(op: enclosing_op) {
+    target_value_expr_operands_hold_comparison(operands: operands)
+  } else {
+    false
   }
 }
 
@@ -6640,13 +6650,15 @@ fn target_value_expr_operand_slot_holds_comparison(
   match list_at_optional(xs: operands, index: index) {
     Present { value: operand } =>
       match target_value_expr_primitive_apply_operation_from_wire(wire: operand.node) {
-        Accepted { value: op, diagnostics: _ } =>
-          match op {
-            OrderingComparison { compare_field: _, predicate: _ } => true
-            EqualityComparison { eq_field: _, predicate: _ } => true
-            _ => false
-          }
-        Rejected { diagnostics: _ } => false
+        Accepted { value: op, diagnostics: _ } => canonical_operation_is_comparison(op: op)
+        // A rejected operand decode is UNKNOWN, not "not a comparison": the chain check must not
+        // widen on it (gunbc.design_argument::fail_closed — a failure arm refuses, never widens).
+        // The operand is therefore treated as a comparison, so the target's chains row decides:
+        // today every row is chains=no or Absent, so the emit refuses with its own typed reason
+        // (target_value_expression_emit_comparison_operand_is_comparison) instead of handing the
+        // target `a < b == c`. Same fail-closed direction as the grouping rule, where this same
+        // decode failure wraps the operand.
+        Rejected { diagnostics: _ } => true
       }
     Absent => false
   }
