@@ -872,7 +872,7 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     pattern: "interp_recorded_fixture_witness.dag",
     classification: OfflineLocalRecipe,
     reason: "PER-PR ENROLLMENT REVERTED 2026-07-23 (the cold-child class, measured): the witness drives ~13+ claim_batch children each given --source-root <workspace root> — every child indexes the ENTIRE repo cold, serially — 2556s (42.6min) on run 29995111208's wet batch, the dominating row of the 53.2min batch-4 wall. That is a cold corpus-scan on the merge path (the record->replay lifecycle it witnesses is real coverage, but its transport class is the exact disease the pooled-child lever removes elsewhere). Too heavy for the falsifier wet lane's 600s per-receipt wall budget as-is, so it reverts to local recipe rather than enshrining a nightly refusal. Local recipe: target/release/interp_recorded_fixture_witness (builds gunbc on demand).",
-    dissolution: unbound_dissolution(description: "re-enrolls (falsifier wet or per-PR) when its claim_batch children are pooled/scoped (fixture-dir source roots instead of the workspace root, or one pooled child per lifecycle phase) and a measured run fits the destination lane's budget; the enrollment flip cites that receipt")
+    dissolution: unbound_dissolution(description: "re-enrolls (falsifier wet or per-PR) when its claim-route children (`gunbc test`) are pooled/scoped (fixture-dir source roots instead of the workspace root, or one pooled child per lifecycle phase) and a measured run fits the destination lane's budget; the enrollment flip cites that receipt")
   },
   WitnessExclusionRow {
     pattern: "test/claim/parse.dag",
