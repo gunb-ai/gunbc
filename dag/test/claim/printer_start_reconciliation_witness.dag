@@ -21,8 +21,20 @@ test fn other_project_and_finished_previous_job_never_confirm() -> Bool {
  all(["IDLE","FINISH","PREPARE","SLICING","UNKNOWN"],state=>match observe_start(text:report(state:state,file:"gunbc-abc.3mf",code:"0"),remote:"gunbc-abc.3mf") {StartUnresolved=>true _=>false}) &&
  match observe_start(text:report(state:"RUNNING",file:"gunbc-other.3mf",code:"0"),remote:"gunbc-abc.3mf") {StartUnresolved=>true _=>false}
 }
-test fn partial_duplicate_and_display_only_reports_cannot_confirm() -> Bool {
- all(["{}","not json","{\"print\":{\"gcode_state\":\"RUNNING\",\"subtask_name\":\"gunbc-abc.3mf\",\"print_error\":0}}","{\"print\":{\"gcode_state\":\"RUNNING\",\"gcode_file\":\"gunbc-abc.3mf\"}}","{\"print\":{\"gcode_state\":\"RUNNING\",\"gcode_file\":\"gunbc-abc.3mf\",\"print_error\":0,\"print_error\":1}}"],text=>match observe_start(text:text,remote:"gunbc-abc.3mf") {StartUnresolved=>true _=>false})
+// WHAT CANNOT CONFIRM: an unreadable document, a missing print member, a MISSING error code (no
+// error standing to judge), and a DUPLICATED error code (the vendor contradicts itself; observe_job
+// answers the duplicate through json_object_unique_member's JsonMemberDuplicated arm, never by
+// picking a winner). A report naming the expected job only through subtask_name is NOT in this
+// set: gunbc.fleet.printer_job_monitor::job_file admits subtask_name as the job's identity when
+// gcode_file is absent, pinned by that module's own claim a_finished_job_is_found_by_subtask_name.
+// The start boundary asks observe_job -- the ONE job-identity decision -- so it must not demand a
+// stricter name than the monitor itself holds; a second, stricter identity here would be a second
+// authority over one fact (gunbc.design_argument::single_authority). The confirmation that alias
+// grants is pinned below so it cannot drift silently.
+test fn partial_and_duplicate_reports_cannot_confirm_and_the_monitor_alias_confirms() -> Bool {
+ all(["{}","not json","{\"print\":{\"gcode_state\":\"RUNNING\",\"gcode_file\":\"gunbc-abc.3mf\"}}","{\"print\":{\"gcode_state\":\"RUNNING\",\"gcode_file\":\"gunbc-abc.3mf\",\"print_error\":0,\"print_error\":1}}"],text=>match observe_start(text:text,remote:"gunbc-abc.3mf") {StartUnresolved=>true _=>false}) &&
+ // The accepted alias confirms -- the monitor's decision, not a second one made here.
+ match observe_start(text:"{\"print\":{\"gcode_state\":\"RUNNING\",\"subtask_name\":\"gunbc-abc.3mf\",\"print_error\":0}}",remote:"gunbc-abc.3mf") {ExpectedProjectRunning=>true _=>false}
 }
 test fn expected_project_pause_failure_and_real_errors_are_distinct() -> Bool {
  all(["PAUSE","FAILED"],state=>match observe_start(text:report(state:state,file:"gunbc-abc.3mf",code:"0"),remote:"gunbc-abc.3mf") {ExpectedProjectBlocked=>true _=>false}) &&
