@@ -1,6 +1,7 @@
 module gunbc.harness.harness_prompt_context
 
 import std.types { String, Bool, Int, List, NonEmptyStr }
+import std.algebra { zip_map }
 import std.decl_ref { DeclarationRef }
 import std.content_hash { content_hash_atom }
 import gunbc.roadmap.roadmap_model { RoadmapNodeId }
@@ -336,9 +337,18 @@ fn provider_prompt_artifact(semantic: SemanticPromptArtifact, provider_projectio
 // THE RENDER RECEIPT, one per provider projection: which snapshot, which inputs, and the digests
 // of exactly what rendered. Cache-hit and cache-miss renders of the same plan must produce the
 // same semantic digest -- residency is a performance fact, never part of correctness.
+// THE RENDER RECEIPT carries, besides the digests of the snapshot and the wire projection, the
+// ORDERED ATTRIBUTION of what rendered: one entry per rendered segment, in render order, pairing
+// each segment's source key with its content digest. Text alone does not identify a render -- the
+// same joined text can be produced by different segmentations of the same inputs ([x\ny | z] and
+// [x | y\nz] both render "x\ny\nz") -- so a receipt that digests only the text cannot tell two
+// segmentations apart. Attribution is part of what was rendered, so it is part of what the receipt
+// digests.
 type PromptRenderReceipt {
   plan_snapshot_digest: String
   input_digests: List<String>
+  segment_sources: List<String>
+  segment_digests: List<String>
   semantic_digest: String
   provider_projection: String
   wire_digest: String
@@ -348,23 +358,41 @@ fn prompt_render_receipt(plan: PromptPlan, wire: ProviderPromptArtifact) -> Prom
   PromptRenderReceipt {
     plan_snapshot_digest: plan.snapshot_digest,
     input_digests: map(plan.snapshot.inputs, i => prompt_input_digest(input: i)),
+    segment_sources: map(plan.ordered_segments, s => prompt_input_canonical_text(input: s.source)),
+    segment_digests: map(plan.ordered_segments, s => s.content_digest),
     semantic_digest: wire.semantic_digest,
     provider_projection: wire.provider_projection,
     wire_digest: wire.wire_digest,
   }
 }
 
+// ELEMENTWISE LIST IDENTITY, one authority: equal length AND equal at every position. Comparing
+// lists by joining them with a separator is NOT identity -- joining hides list structure, so a
+// receipt that collapsed two digests into one element could match a two-element population. The
+// currentness law uses this for every positional comparison (anchor single_authority: decided once
+// here, never re-derived by ad hoc join comparisons).
+fn prompt_string_lists_identical(a: List<String>, b: List<String>) -> Bool {
+  count(a) == count(b)
+    && all(zip_map(a: a, b: b, f: fn(x, y) { x == y }), t => t)
+}
+
 // THE RENDER CURRENTNESS LAW: currentness is the THREE-WAY binding of a receipt to the snapshot it
 // was admitted for AND the plan whose render it digests. The receipt must carry this snapshot's
-// digest, its input digests must be exactly this snapshot's inputs in order, the plan must be a
-// plan of this snapshot, and the receipt's semantic digest must equal the semantic render of THIS
-// plan -- so two renders with different content over one snapshot are two plans, and each carries
-// exactly its own receipt: a receipt that digests drifted prose is never current for the plan whose
-// prose it does not digest, even though the snapshot identity moved nowhere. Moving any authority
-// revision, standing, contract revision or source revision inside the snapshot invalidates every
-// receipt admitted before the move, even one whose rendered text did not change. Currentness is
-// decided here once (anchor gunbc.design_argument::single_authority); no surface re-decides it by
-// comparing digests ad hoc.
+// digest; its input digests must equal this snapshot's input digests ELEMENTWISE, in order -- never
+// by comparing joined strings, which hides list structure and lets a collapsed digest list pass for
+// the population it does not digest; the plan must be a plan of this snapshot; the receipt's
+// ordered segment attribution must equal the plan's rendered segments ELEMENTWISE, in order, both
+// by source key and by content digest -- the same joined text rendered under two different
+// segmentations ([x\ny | z] versus [x | y\nz]) is two renders, and each receipt is current only for
+// the plan whose segmentation it digests; and the receipt's semantic digest must equal the semantic
+// render of THIS plan. So two renders with different content, or with the same content attributed
+// across segments differently, are two plans, and each carries exactly its own receipt: a receipt
+// that digests drifted prose, or a different attribution of the prose, is never current for the
+// plan whose render it does not digest, even though the snapshot identity moved nowhere. Moving any
+// authority revision, standing, contract revision or source revision inside the snapshot
+// invalidates every receipt admitted before the move, even one whose rendered text did not change.
+// Currentness is decided here once (anchor gunbc.design_argument::single_authority); no surface
+// re-decides it by comparing digests ad hoc.
 // DECLARED FRONTIER (review 97941 finding 2 and review 97972 finding 2; gunbc.design_argument::
 // consumption): this law's named later consumer is the seat binding of the roadmap row
 // harness-seat-binds-modeled-prompt-segments (identity rn_01M86JC25E8M7NKAG6C4Y34J0C, added by this
@@ -384,7 +412,9 @@ fn prompt_render_is_current(
   let snapshot_digest = prompt_snapshot_digest(snapshot: snapshot)
   receipt.plan_snapshot_digest == snapshot_digest
     && plan.snapshot_digest == snapshot_digest
-    && join(receipt.input_digests, ",") == join(map(snapshot.inputs, i => prompt_input_digest(input: i)), ",")
+    && prompt_string_lists_identical(receipt.input_digests, map(snapshot.inputs, i => prompt_input_digest(input: i)))
+    && prompt_string_lists_identical(receipt.segment_sources, map(plan.ordered_segments, s => prompt_input_canonical_text(input: s.source)))
+    && prompt_string_lists_identical(receipt.segment_digests, map(plan.ordered_segments, s => s.content_digest))
     && receipt.semantic_digest == semantic_prompt_render(plan: plan).semantic_digest
 }
 

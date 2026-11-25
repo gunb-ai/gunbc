@@ -9,7 +9,9 @@ import gunbc.harness.harness_guidance { harness_worker_guidance_at, WorktreeAt, 
   CompletionRequires, FilesOnDiskDiffer, AcceptanceCheckPasses,
   RoundsRemaining,
   ChangeTheTreeWithTheTool, VerifyWithTheTool, ReadingAloneCompletesNothing,
-  grounded, harness_conclusions, harness_guidance_prose,
+  grounded, harness_conclusions, harness_guidance_prose, harness_premise_text, harness_conclusion_text,
+  ToolIs, ToolRunsIn, TheAttemptWorktree, ToolReturns, CombinedOutput, ExitStatus,
+  CapabilityHeld, ReadTheTree, ChangeTheTree, InPlaceEdit, SubmissionDeclared,
   harness_guidance_segments, harness_guidance_prose_from_segments, harness_conclusion_nodes,
   HarnessConclusionNode, harness_conclusion_key,
   harness_worker_guidance, harness_probe_guidance,
@@ -18,6 +20,7 @@ import gunbc.harness.harness_prompt_context { AuthorityInput, DerivedConclusionI
 import gunbc.harness.harness_tool_kind { RunCommandTool, harness_tool_wire_name }
 import gunbc.roadmap.roadmap_submission {
   submission_schema, submission_decode, SubmissionDecoded, SubmissionNotDecodable, SubmissionReady,
+  submission_artifact_name,
 }
 import gunbc.harness.harness_guidance { submission_declaration_skeleton }
 import std.measure { token_count_value, second_count }
@@ -518,4 +521,40 @@ test fn a_moved_revision_moves_the_segment_inputs() -> Bool {
             })
       }
   }
+}
+
+// THE WORKER PROMPT DELIVERS SHARED-AUTHORITY GROUPS AS DECLARED (side-chat review of 69bde15c,
+// defect 2 disposition (b)): the aggregation of premises grounded on one declaration into one
+// segment is an EXPLICIT behavior change with a stated delivered order, pinned here by an
+// expectation INDEPENDENT OF THE FOLD -- the grouping is spelled as a literal over the roster, not
+// recomputed by the machinery under test. The five harness_run_command sentences (combined output,
+// read, change, heredoc, edit) are delivered together as one group at the combined output's
+// position, in roster order, and the exit-status sentence follows the whole group -- it does not
+// sit inside it, and no group sentence is left behind or shipped separately. The conclusion tail
+// is unchanged by the fold and pinned through the text authority. Under the pre-aggregation
+// producer (one segment per premise) this prose does not assemble at all -- DuplicateRendering --
+// and any fold that drops, splits, or reorders a group refuses here, not at the model.
+test fn the_worker_prompt_delivers_shared_authority_groups_as_declared() -> Bool {
+  let rows = harness_worker_guidance()
+  let run_command_group = join([
+    harness_premise_text(p: ToolReturns { channel: CombinedOutput }),
+    harness_premise_text(p: CapabilityHeld { capability: ReadTheTree }),
+    harness_premise_text(p: CapabilityHeld { capability: ChangeTheTree }),
+    harness_premise_text(p: ToolCanWriteBy { form: HeredocWrite }),
+    harness_premise_text(p: ToolCanWriteBy { form: InPlaceEdit }),
+  ], " ")
+  let expected_prose = join([
+    harness_premise_text(p: ActingAs { role: CodingWorkerInWorktree }),
+    harness_premise_text(p: ToolIs { tool: RunCommandTool }),
+    harness_premise_text(p: ToolRunsIn { locus: TheAttemptWorktree }),
+    run_command_group,
+    harness_premise_text(p: ToolReturns { channel: ExitStatus }),
+    harness_premise_text(p: CompletionRequires { term: FilesOnDiskDiffer }),
+    harness_premise_text(p: CompletionRequires { term: AcceptanceCheckPasses }),
+    harness_premise_text(p: CompletionRequires { term: SubmissionDeclared { artifact: submission_artifact_name as String } }),
+    harness_premise_text(p: CapabilityWithheld { capability: CommitTheChange }),
+    harness_premise_text(p: CapabilityWithheld { capability: PublishTheBranch }),
+    join(map(harness_conclusion_nodes(rows: rows), n => harness_conclusion_text(c: n.conclusion)), " "),
+  ], " ")
+  harness_guidance_prose(rows: rows) == expected_prose
 }

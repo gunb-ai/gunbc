@@ -590,3 +590,87 @@ test fn the_real_guidance_roster_admits_at_the_prompt_grain_and_refuses_compacti
     }
   }
 }
+
+// THE SAME JOINED TEXT UNDER DIFFERENT SEGMENTATIONS IS TWO RENDERS (side-chat defect 1, review
+// of 69bde15c): [x\ny | z] over inputs A,B and [x | y\nz] over the same A,B both render "x\ny\nz",
+// so a currentness law that digests only the joined text passes each receipt for the other's plan.
+// Attribution is part of what rendered: each receipt is current for its own plan's segmentation and
+// REFUSED for the other, while the semantic digests witness equal. This is the case the pre-fix
+// law failed -- under it the two receipts read cross-current.
+test fn same_text_different_segmentation_is_never_current_for_the_other_plan() -> Bool {
+  let a = fx_authority(id: "split-a", revision: "r1")
+  let b = fx_authority(id: "split-b", revision: "r1")
+  let snapshot = fx_snapshot(inputs: [a, b])
+  let plan_one = prompt_plan_assemble(snapshot: snapshot, rendered: [
+    fx_seg(input: a, content: "x\ny"),
+    fx_seg(input: b, content: "z"),
+  ])
+  let plan_two = prompt_plan_assemble(snapshot: snapshot, rendered: [
+    fx_seg(input: a, content: "x"),
+    fx_seg(input: b, content: "y\nz"),
+  ])
+  match plan_one {
+    PromptPlanRefused { refusals: _ } => false
+    PromptPlanReady { plan: p_one } =>
+      match plan_two {
+        PromptPlanRefused { refusals: _ } => false
+        PromptPlanReady { plan: p_two } => {
+          let sem_one = semantic_prompt_render(plan: p_one)
+          let sem_two = semantic_prompt_render(plan: p_two)
+          let receipt_one = prompt_render_receipt(
+            plan: p_one,
+            wire: provider_prompt_artifact(semantic: sem_one, provider_projection: "claude", wire_text: "one request"),
+          )
+          let receipt_two = prompt_render_receipt(
+            plan: p_two,
+            wire: provider_prompt_artifact(semantic: sem_two, provider_projection: "claude", wire_text: "one request"),
+          )
+          sem_one.semantic_digest == sem_two.semantic_digest
+            && receipt_one.semantic_digest == receipt_two.semantic_digest
+            && receipt_one.plan_snapshot_digest == receipt_two.plan_snapshot_digest
+            && prompt_render_is_current(receipt: receipt_one, snapshot: snapshot, plan: p_one)
+            && prompt_render_is_current(receipt: receipt_two, snapshot: snapshot, plan: p_two)
+            && !prompt_render_is_current(receipt: receipt_one, snapshot: snapshot, plan: p_two)
+            && !prompt_render_is_current(receipt: receipt_two, snapshot: snapshot, plan: p_one)
+        }
+      }
+  }
+}
+
+// A COLLAPSED DIGEST LIST IS NOT AN ELEMENTWISE MATCH (side-chat defect 1, review of 69bde15c):
+// comparing digest lists by their joined strings equates the one-element list ["d1,d2"] with the
+// two-element population [d1, d2] -- a receipt could claim to have digested one collapsed digest
+// and read current for the two-input snapshot. The currentness law compares lists elementwise
+// through one authority, so this receipt is refused while the honest receipt over the same plan is
+// current. Under the pre-fix join-comparison law this receipt read current -- the case that law
+// cannot see.
+test fn a_receipt_with_a_collapsed_input_digest_list_is_not_current() -> Bool {
+  let a = fx_authority(id: "collapse-a", revision: "r1")
+  let b = fx_authority(id: "collapse-b", revision: "r1")
+  let snapshot = fx_snapshot(inputs: [a, b])
+  match prompt_plan_assemble(snapshot: snapshot, rendered: [
+    fx_seg(input: a, content: "first sentence"),
+    fx_seg(input: b, content: "second sentence"),
+  ]) {
+    PromptPlanRefused { refusals: _ } => false
+    PromptPlanReady { plan } => {
+      let sem = semantic_prompt_render(plan: plan)
+      let wire = provider_prompt_artifact(semantic: sem, provider_projection: "claude", wire_text: "collapse wire")
+      let honest = prompt_render_receipt(plan: plan, wire: wire)
+      let d_a = prompt_input_digest(input: a)
+      let d_b = prompt_input_digest(input: b)
+      let forged = PromptRenderReceipt {
+        plan_snapshot_digest: honest.plan_snapshot_digest,
+        input_digests: [join([d_a, ",", d_b], "")],
+        segment_sources: honest.segment_sources,
+        segment_digests: honest.segment_digests,
+        semantic_digest: honest.semantic_digest,
+        provider_projection: honest.provider_projection,
+        wire_digest: honest.wire_digest,
+      }
+      join(honest.input_digests, ",") == join(forged.input_digests, ",")
+        && prompt_render_is_current(receipt: honest, snapshot: snapshot, plan: plan)
+        && !prompt_render_is_current(receipt: forged, snapshot: snapshot, plan: plan)
+    }
+  }
+}

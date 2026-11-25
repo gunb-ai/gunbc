@@ -540,12 +540,25 @@ fn harness_conclusions(rows: List<HarnessGroundedPremise>) -> List<HarnessConclu
 // later PromptPlan say precisely which guidance a worker was told.
 //
 // PREMISES SHARING AN AUTHORITY AGGREGATE INTO ONE SEGMENT, BOTH STATEMENTS PRESERVED (review
-// 97972 follow-up, Manager B): two premises grounded on the same declaration at the same revision
-// are ONE PromptInput, and the assembly law renders every input exactly once -- a second segment
-// for the same source is DuplicateRendering, an honest refusal, not something a consumer may
-// paper over by dropping one. So the producer aggregates deliberately: the aggregate segment keeps
-// the shared source and carries every premise sentence, in first-appearance order, space-joined.
-// That keeps harness_guidance_prose_from_segments character-identical to harness_guidance_prose
+// 97972 follow-up, Manager B; delivered-order semantics pinned by the side-chat review of
+// 69bde15c, defect 2 disposition (b): EXPLICIT BEHAVIOR CHANGE, not an accident of the fold). Two
+// premises grounded on the same declaration at the same revision are ONE PromptInput, and the
+// assembly law renders every input exactly once -- a second segment for the same source is
+// DuplicateRendering, an honest refusal, not something a consumer may paper over by dropping one.
+// So the producer aggregates deliberately, and the aggregation has a stated consequence for
+// DELIVERED ORDER: the aggregate segment sits at the position of the group's FIRST premise, and
+// every sentence of the group travels with it, in roster order. A premise whose authority first
+// appeared earlier is therefore delivered earlier than its raw roster position -- concretely, in
+// the worker roster the four write/read instructions grounded on harness_run_command are delivered
+// inside the combined-output group, ahead of the exit-status sentence that sits between them and
+// that group in the raw list. This is the law, not an artifact: sentences grounded on one
+// declaration are one statement of what that declaration authorizes and may not be delivered
+// apart from each other under a segmentation the assembly law would refuse. The consequence is
+// pinned by an expectation INDEPENDENT OF THE FOLD --
+// #dag/test/claim/harness_guidance.dag::the_worker_prompt_delivers_shared_authority_groups_as_declared
+// spells the delivered population as a literal grouping of the roster -- so reversing the grouping
+// silently, in either direction, refuses at the witness rather than at the model.
+// That keeps harness_guidance_prose_from_segments character-identical to the group join it projects
 // (a join of the same sentences is associative) while making the producer's complete output
 // admissible by prompt_plan_assemble as it stands -- no consumer-side filtering may be needed, and
 // none is legitimate: filtering would silently retire a statement the producer emitted.
