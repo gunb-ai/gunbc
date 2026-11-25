@@ -9,6 +9,8 @@ import gunbc.serving.serving_observability {
   EngineFrontRoute, engine_front_required_routes,
   engine_front_server_directives, engine_front_proxies_route,
   engine_front_route_consumer, engine_front_unserved_consumers,
+  engine_front_proxy_config, EngineFrontProxyRendered, EngineFrontProxyRefused, InvalidToken,
+  Built, RefusedToken,
   TransientReceiptOfHandManagedRouter, ModelledRouterInstrument, router_probe_line_standing,
 }
 
@@ -57,13 +59,43 @@ test fn the_rendered_front_always_proxies_the_consumed_routes() -> Bool {
     engine_host: "127.0.0.1" as NonEmptyStr,
     engine_port: 8080,
   ) {
-    Present { value: rows } =>
+    Built { directives: rows } =>
       engine_front_proxies_route(ds: rows, route: "/metrics" as NonEmptyStr)
         && engine_front_proxies_route(ds: rows, route: "/v1/chat/completions" as NonEmptyStr)
         && engine_front_proxies_route(ds: rows, route: "/v1/models" as NonEmptyStr)
         && !engine_front_proxies_route(ds: rows, route: "/debug" as NonEmptyStr)
-    Absent => false
+    RefusedToken { token: _ } => false
   }
+}
+
+// REFUSAL IS LOCATED (fail_closed): passing a cert path nginx_token refuses must report THAT input, not a
+// placeholder. `bad;cert` contains ';' (outside the admitted char class), so the render is refused and the
+// InvalidToken carries "bad;cert" -- the argument that failed. Discriminating: an all-valid front renders
+// (no refusal), so this proves the refusal is caused by the bad input, not a constant.
+test fn a_refused_input_is_reported_as_that_input_not_a_placeholder() -> Bool {
+  match engine_front_proxy_config(
+    bind_address: "0.0.0.0" as NonEmptyStr,
+    listen_port: 8443,
+    tls_cert: "bad;cert" as NonEmptyStr,
+    tls_key: "/etc/tls/engine.key" as NonEmptyStr,
+    engine_host: "127.0.0.1" as NonEmptyStr,
+    engine_port: 8080,
+  ) {
+    EngineFrontProxyRefused { refusal: InvalidToken { token: t } } => (t as String) == "bad;cert"
+    EngineFrontProxyRendered { text: _ } => false
+  }
+    // positive control: with every input admitted, the same front renders (the refusal above is the bad input)
+    && match engine_front_proxy_config(
+         bind_address: "0.0.0.0" as NonEmptyStr,
+         listen_port: 8443,
+         tls_cert: "/etc/tls/engine.crt" as NonEmptyStr,
+         tls_key: "/etc/tls/engine.key" as NonEmptyStr,
+         engine_host: "127.0.0.1" as NonEmptyStr,
+         engine_port: 8080,
+       ) {
+         EngineFrontProxyRendered { text: _ } => true
+         EngineFrontProxyRefused { refusal: _ } => false
+       }
 }
 
 // CONSUMPTION (typed, not a grep): the roster's /metrics consumer is the engine_progress reader, reached by

@@ -79,13 +79,21 @@ data engine_front_required_routes: List<EngineFrontRoute> = [
   },
 ]
 
-// The only way a correct front fails to render: an admitted-token refusal. There is no OmitsRequiredRoute
-// arm, because a front that omits a required route cannot be authored at all (guarantee_ladder).
+// The only way a correct front fails to render: an admitted-token refusal, carrying THE INPUT nginx_token
+// refused -- not a placeholder. There is no OmitsRequiredRoute arm, because a front that omits a required
+// route cannot be authored at all (guarantee_ladder).
 type EngineFrontProxyRefusal = InvalidToken { token: NonEmptyStr }
 
 type EngineFrontProxyVerdict
   = EngineFrontProxyRendered { text: String }
   | EngineFrontProxyRefused { refusal: EngineFrontProxyRefusal }
+
+// The builder's result. A refusal LOCATES the failing input (fail_closed: "a wrong answer is a loud, typed,
+// located error ... every degradation is typed, located and countable"), so the caller reports which argument
+// nginx_token refused rather than a generic sentence. Returning Optional here would throw away that location.
+type EngineFrontBuild
+  = Built { directives: List<NginxDirective> }
+  | RefusedToken { token: NonEmptyStr }
 
 // RENDER THE FRONT FROM THE ROSTER. No forwarded parameter: the server block always proxies every route a
 // named consumer requires. A front missing /metrics is unrenderable, so the srv4 misconfiguration has no
@@ -99,13 +107,14 @@ fn engine_front_proxy_config(
   engine_port: Port,
 ) -> EngineFrontProxyVerdict {
   match engine_front_server_directives(bind_address: bind_address, listen_port: listen_port, tls_cert: tls_cert, tls_key: tls_key, engine_host: engine_host, engine_port: engine_port) {
-    Absent => EngineFrontProxyRefused { refusal: InvalidToken { token: "a front-door token was refused by nginx_token" as NonEmptyStr } }
-    Present { value: rows } => EngineFrontProxyRendered { text: render_nginx_directives(rows: rows) }
+    RefusedToken { token: t } => EngineFrontProxyRefused { refusal: InvalidToken { token: t } }
+    Built { directives: rows } => EngineFrontProxyRendered { text: render_nginx_directives(rows: rows) }
   }
 }
 
 // One location per REQUIRED route proxy_passing to the engine, wrapped in the TLS server. Built from the
-// roster alone. Any path nginx_token refuses is an Absent, which the caller turns into InvalidToken.
+// roster alone. Each input passes through nginx_token; the first that refuses is returned by name, so the
+// refusal is located on the failing argument.
 fn engine_front_server_directives(
   bind_address: NonEmptyStr,
   listen_port: Port,
@@ -113,24 +122,24 @@ fn engine_front_server_directives(
   tls_key: NonEmptyStr,
   engine_host: NonEmptyStr,
   engine_port: Port,
-) -> Optional<List<NginxDirective>> {
+) -> EngineFrontBuild {
   match nginx_token(text: bind_address as String) {
-    Absent => Absent
+    Absent => RefusedToken { token: bind_address }
     Present { value: bind } =>
       match nginx_token(text: tls_cert as String) {
-        Absent => Absent
+        Absent => RefusedToken { token: tls_cert }
         Present { value: cert } =>
           match nginx_token(text: tls_key as String) {
-            Absent => Absent
+            Absent => RefusedToken { token: tls_key }
             Present { value: key } =>
               match nginx_token(text: engine_host as String) {
-                Absent => Absent
+                Absent => RefusedToken { token: engine_host }
                 Present { value: host } =>
                   match engine_front_locations(engine_host_token: host, engine_port: engine_port) {
-                    Absent => Absent
-                    Present { value: locations } =>
-                      Present {
-                        value: [
+                    RefusedToken { token: t } => RefusedToken { token: t }
+                    Built { directives: locations } =>
+                      Built {
+                        directives: [
                           ServerBlock {
                             body: concat(
                               [ ListenTlsOn { address: bind, port: listen_port }, SslCertificate { path: cert }, SslCertificateKey { path: key } ],
@@ -149,18 +158,18 @@ fn engine_front_server_directives(
 fn engine_front_locations(
   engine_host_token: NginxToken,
   engine_port: Port,
-) -> Optional<List<NginxDirective>> {
+) -> EngineFrontBuild {
   fold(
     engine_front_required_routes,
-    init: Present { value: [] as List<NginxDirective> },
+    init: Built { directives: [] as List<NginxDirective> },
     f: (acc, r) => match acc {
-      Absent => Absent
-      Present { value: accs } =>
+      RefusedToken { token: t } => RefusedToken { token: t }
+      Built { directives: accs } =>
         match nginx_token(text: r.path as String) {
-          Absent => Absent
+          Absent => RefusedToken { token: r.path }
           Present { value: loc } =>
-            Present {
-              value: concat(accs, [
+            Built {
+              directives: concat(accs, [
                 LocationBlock {
                   matching: PrefixMatch { path: loc },
                   body: [ ProxyHttpVersion11, ProxyPassToHost { host: engine_host_token, port: engine_port, path: loc } ],
