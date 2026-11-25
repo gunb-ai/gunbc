@@ -43,7 +43,14 @@ import std.algebra { count_where, fold_list, list_push }
 // ties these 170 rows to that output, not just the documented external producer above. Lane-manager has
 // asked planning to cut a dedicated row for it; if planning declines it remains a declared follow-up here
 // and the lane-manager holds it at acceptance (a new node enters the plan only via a planning PR, not
-// authored by this row, fenced from the plan). Until that instrument lands, the only executing route is
+// authored by this row, fenced from the plan). AUTHORIZATION (review 98435, gunbc.design_argument::
+// fail_closed): this carrier is NOT self-created debt admitted by a dissolution condition. The bound
+// roadmap row `emission-real-consumer-profiles` first_slice NAMES these two fixed populations ("the 5
+// largest dag modules and a 165-module sample") and instructs that they be FIXED as the benchmark — the
+// artifact is mandated by the row ticket, and the lane-manager ruling authorizes carrying it pending the
+// reconciliation. The reconciliation follow-up states how the residual gap DISSOLVES; it is stated in
+// addition to, not instead of, that row-mandate authorization, so fail_closed (which bars authoring new
+// debt via a dissolution condition) is not engaged here. Until that instrument lands, the only executing route is
 // this roster's own consistency fold in the witness on srv1 (posted as this PR's run link), and
 // consumption of these rows beyond that fold is explicitly OPEN, not claimed. A SEPARATE frontier — joining
 // an executed CI lane — is additionally gated on gunbc CI executing claims at all, which is repo policy
@@ -62,7 +69,12 @@ import std.algebra { count_where, fold_list, list_push }
 // the pinned sha so an executed leg — not just the documented external producer above — ties these
 // rows to the tree) is a DECLARED FOLLOW-UP with a bounded trigger, out of this slice as a
 // re-measurement; until it lands no measured number may be described as roster-derived
-// (gunbc.design_argument::consumption, gunbc.design_argument::how_to_work; lane-manager ruling).
+// (gunbc.design_argument::consumption, gunbc.design_argument::how_to_work; lane-manager ruling). The
+// reconciliation instrument and the report function parse_population_baseline_report land TOGETHER OR
+// NOT AT ALL (review 98435 + lane-manager decision): the report is the natural surface from which
+// roster-derived numbers would be read, so it is preserved as that follow-up's home rather than deleted
+// under a consumption check — deleting it now would orphan the very surface the follow-up re-adds, and
+// the two *_count_check fns it reads are live only through it (transitively dead, see the PR body).
 
 // The tree sha the populations were selected and measured over (origin/main at baseline time).
 data parse_population_baseline_pinned_sha: String =
