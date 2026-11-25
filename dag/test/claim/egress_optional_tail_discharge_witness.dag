@@ -2,21 +2,22 @@ module test.claim.egress_optional_tail_discharge_witness
 
 // ROW egress-optional-at-required-tail, row 19 DISCHARGE WITNESS.
 //
-// fleet_host_ssh_transport (fleet_show_effective_read.dag:353) returns Optional<HostEffectTransport>.
-// Its Absent arm yields `none` — the site itself does NOT refuse with a typed cause; it defers
-// judgment to its sole consumer observe_host_compile_cancellation_for_fleet_host
-// (compile_permit_scope_observe.dag:232), whose Absent arm produces
-// HostCancellationUnobserved{host, cause}. Manager B ruled (interface_realization_policy):
-// the refusal policy belongs to the consumer; a refusing lookup would duplicate the key it was
-// handed. This witness EXECUTES the consumer path so that weakening the consumer's typed arm
-// turns this row red, rather than silently discharging the site.
+// gunbc.fleet.fleet_show_effective_read::fleet_host_ssh_transport returns
+// Optional<HostEffectTransport>. Its Absent arm yields `none`; the refusal is
+// discharged by its sole consumer
+// gunbc.compile_permit_scope_observe::observe_host_compile_cancellation_for_fleet_host,
+// whose Absent arm produces HostCancellationUnobserved{host, cause}.
+// Per gunbc.design_argument::interface_realization_policy the refusal policy
+// belongs to the consumer; a refusing lookup would duplicate the key it was
+// handed. This witness EXECUTES the consumer path so that weakening the
+// consumer's typed arm turns this row red, not silently discharging the site.
 //
-// DISCRIMINATION: srv9 is a valid enrolled HostIdentity (fleet_host_identity.dag:55) that is
-// deliberately absent from fleet_host_ssh_transport_rows (only srv1–4 are listed), so the site
-// yields Absent for the right reason: the transport table does not cover this host.
-// Perturbing the consumer's Absent arm from HostCancellationUnobserved to any other standing
-// (e.g. HostCancellationObserved or HostCancellationUnreadable) makes this witness return false,
-// because the match falls to `_ => false` rather than the typed-refusal arm.
+// DISCRIMINATION: operator_host_srv9 (gunbc.fleet.fleet_host_identity::operator_host_srv9)
+// is deliberately absent from fleet_host_ssh_transport_rows (only srv1-4 listed),
+// so the .first() site yields Absent for the right reason: the transport table
+// does not cover this host. Perturbing the consumer's Absent arm from
+// HostCancellationUnobserved to any other standing makes this witness return
+// false, because the match falls to `_ => false` rather than the typed-refusal arm.
 
 import std.logic { Bool }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
