@@ -263,6 +263,20 @@ type ConvergeTarget
     }
   | CodexRuntimeBundle { host_identity: HostIdentity }
 
+// Frontier classification (fleet-state-frontier node deliverable): the
+// converge route's machine artifacts are written down ONCE, in
+// frontier_machine_artifacts below, keyed by each artifact's own identity as
+// it appears in the knob target's typed fields (a systemd unit name, a
+// drop-in file path, the pinned tree root, the codex runtime bundle). The
+// gate reads the classification there -- no class or kind is stored on the
+// knob (one representation, gunbc.design_argument::single_authority; review
+// 98094), and an artifact no agreed classification covers refuses before any
+// change is attempted (the row's red_control, gunbc.design_argument::
+// fail_closed). Scoped to this one machine-touching workflow; it does NOT
+// assert whole-host state truth (gunbc.design_argument::epistemic_humility).
+
+type FrontierArtifactClass = DerivedByUs | OwnedByUs | ContractedExternally
+
 type ConvergeKnob {
   slice: ConvergeSlice
   name: String
@@ -1072,6 +1086,19 @@ fn host_converge_of(h: RunnerHostDeployment, session_knobs: List<ConvergeKnob>, 
   }
 }
 
+// Production route: assembles the host converge and gates every knob through
+// the frontier classification before admitting the host. An undeclared knob
+// refuses the host with FleetConvergeUnsound before any change is attempted.
+fn frontier_gate_host(h: RunnerHostDeployment, session_knobs: List<ConvergeKnob>, backstop_knobs: List<ConvergeKnob>, hosts: List<HostConverge>) -> FleetConvergeAcc {
+  let assembled = host_converge_of(h: h, session_knobs: session_knobs, backstop_knobs: backstop_knobs)
+  match frontier_validate_knobs(knobs: assembled.knobs) {
+    HostFrontierAdmitted { classified: _ } =>
+      FleetConvergeHosts { hosts: concat(hosts, [assembled]) }
+    HostFrontierRefused { artifact: a, cause: c } =>
+      FleetConvergeUnsound { reason: concat("frontier classification refused: ", concat(a, ": ", c)) }
+  }
+}
+
 // CONVERGENCE IS A HOST-TARGETED TRANSACTION, so it selects the hosts that derived rather than
 // refusing the fleet because one host did not. The shape this replaces widened a fleet-level
 // PlanUnsound into ConvergePolicyUnsound before any host was chosen -- so srv2's unestablished
@@ -1105,20 +1132,14 @@ fn converge_hosts_of_plan(plan: RunnerDeploymentPlan) -> FleetConvergeAcc {
           match user_manager_backstop_for(host: h.identity) {
             UserManagerBackstopRefused { cause } => FleetConvergeUnsound { reason: cause }
             UserManagerBackstopNotOwed =>
-              FleetConvergeHosts {
-                hosts: concat(hosts, [host_converge_of(h: h, session_knobs: session_knobs_for(host: h.identity), backstop_knobs: [])]),
-              }
+              frontier_gate_host(h: h, session_knobs: session_knobs_for(host: h.identity), backstop_knobs: [], hosts: hosts)
             UserManagerBackstopDerived { knobs } =>
               match approval_broker_runtime_caps_for(host: h.identity) {
                 ApprovalBrokerRuntimeCapsRefused { cause } => FleetConvergeUnsound { reason: cause }
                 ApprovalBrokerRuntimeCapsNotOwed =>
-                  FleetConvergeHosts {
-                    hosts: concat(hosts, [host_converge_of(h: h, session_knobs: session_knobs_for(host: h.identity), backstop_knobs: knobs)]),
-                  }
+                  frontier_gate_host(h: h, session_knobs: session_knobs_for(host: h.identity), backstop_knobs: knobs, hosts: hosts)
                 ApprovalBrokerRuntimeCapsDerived { knobs: broker } =>
-                  FleetConvergeHosts {
-                    hosts: concat(hosts, [host_converge_of(h: h, session_knobs: session_knobs_for(host: h.identity), backstop_knobs: concat(knobs, broker))]),
-                  }
+                  frontier_gate_host(h: h, session_knobs: session_knobs_for(host: h.identity), backstop_knobs: concat(knobs, broker), hosts: hosts)
               }
           }
       }
@@ -1127,4 +1148,197 @@ fn converge_hosts_of_plan(plan: RunnerDeploymentPlan) -> FleetConvergeAcc {
 
 fn fleet_converge_policy() -> ConvergePolicy {
   fleet_converge_policy_from(plan: runner_deployment_plan(), image_baked: runner_image_baked_deployment_plan())
+}
+
+// Frontier classification (fleet-state-frontier node deliverable): the
+// written-down frontier of this machine-touching workflow. Each machine
+// artifact the converge route changes is named ONCE here by the kind and
+// identity it carries in the knob target's own typed fields (the systemd unit
+// name, the drop-in file path, the pinned tree root path, the codex runtime
+// bundle family) with its class -- derived-by-us, owned-by-us, or contracted
+// externally (the row's boundary). This data plus the identity read below is
+// the ONLY place a classification exists (the single authority,
+// gunbc.design_argument::single_authority; review 98094: no class is stored
+// on the knob and no agreement check restates it). An artifact the route is
+// asked to change that no row covers under its own kind has no agreed
+// classification: the gate refuses it before any change is attempted,
+// carrying the artifact's identity and kind (the row's red_control,
+// gunbc.design_argument::fail_closed -- the refusal is typed, located and
+// countable).
+//
+// The row's boundary quantifies over files, services, credentials and
+// devices. This workflow's route changes services (systemd units and slices)
+// and files (drop-ins, the pinned tree, the contracted codex runtime bundle);
+// it changes no credential and no device artifact, so no credential or device
+// row or arm is fabricated (gunbc.design_argument::epistemic_humility: the
+// claim is exactly as wide as the arms that execute). The refusal is by
+// identity and does not branch on kind: anything unclassified refuses, of
+// any kind.
+
+type FrontierArtifactKind = FileArtifact | ServiceArtifact
+
+// One classified machine artifact: the artifact's own identity (as the knob
+// target carries it), the kind the artifact actually is, and the class agreed
+// for it. The classifier below keys on the PAIR (kind, identity): an identity
+// classifies only the kind it is, so a same-name target of a different kind
+// cannot inherit a class (review 98127 follow-up: no name-keyed inheritance).
+// Rows reference the SAME carrier symbols the route's producers use, so a
+// rename that changes the artifact breaks the build instead of silently
+// drifting (review 98034).
+type FrontierMachineArtifact {
+  identity: String
+  kind: FrontierArtifactKind
+  class: FrontierArtifactClass
+}
+
+// The codex runtime bundle is one artifact family materialized per host under
+// the agreed package contract (gunbc.package_delivery,
+// gunbc.host.host_codex_runtime_provision); the family label is the identity
+// the classifier below and this row share, and host_identity parameterizes
+// the family without classifying it per host.
+data frontier_codex_runtime_bundle_artifact: NonEmptyStr = "codex-runtime-bundle"
+
+data frontier_machine_artifacts: List<FrontierMachineArtifact> = [
+  // Services: the systemd units and slices whose properties the route sets.
+  FrontierMachineArtifact { identity: gunbc_runner_slot_unit_placeholder as String, kind: ServiceArtifact, class: DerivedByUs },
+  FrontierMachineArtifact { identity: gunbc_oomd_sessions_slice as String, kind: ServiceArtifact, class: DerivedByUs },
+  FrontierMachineArtifact { identity: user_manager_instance_unit(), kind: ServiceArtifact, class: DerivedByUs },
+  FrontierMachineArtifact { identity: gunbc_approval_broker_slice_unit_name as String, kind: ServiceArtifact, class: DerivedByUs },
+  // Files: the per-slot drop-ins the route renders and writes.
+  FrontierMachineArtifact { identity: gunbc_runner_per_slot_cpu_dropin_path, kind: FileArtifact, class: DerivedByUs },
+  FrontierMachineArtifact { identity: gunbc_runner_per_slot_dropin_path, kind: FileArtifact, class: DerivedByUs },
+  FrontierMachineArtifact { identity: gunbc_runner_per_slot_swap_dropin_path, kind: FileArtifact, class: DerivedByUs },
+  FrontierMachineArtifact { identity: gunbc_runner_per_slot_tasks_dropin_path, kind: FileArtifact, class: DerivedByUs },
+  FrontierMachineArtifact { identity: gunbc_runner_per_slot_high_dropin_path, kind: FileArtifact, class: DerivedByUs },
+  // Services: the per-slot template whose instance width the route realizes.
+  FrontierMachineArtifact { identity: runner_unit_template_name as String, kind: ServiceArtifact, class: DerivedByUs },
+  // Files: the pinned gunbc tree checkout the route places and reads.
+  FrontierMachineArtifact { identity: gunbc_host_gunbc_root_path, kind: FileArtifact, class: OwnedByUs },
+  // Files: the contracted codex runtime bundle (someone else's runtime under
+  // an agreed package contract). The family label classifies the FILE only;
+  // a same-name target of any other kind has no row and refuses.
+  FrontierMachineArtifact { identity: frontier_codex_runtime_bundle_artifact as String, kind: FileArtifact, class: ContractedExternally },
+]
+
+// The artifact a knob target actually changes, read from the target's own
+// typed fields. Exhaustive over ConvergeTarget: a new target variant forces
+// a new identity read here or the build fails (gunbc.design_argument::fail_closed).
+fn frontier_artifact_identity(target: ConvergeTarget) -> String {
+  match target {
+    SliceProperty { unit: u, property: _, apply_value: _, expected_effective: _ } => u
+    PerSlotMemoryCap { dropin_path: p, instance_glob: _, property: _, bytes_value: _ } => p
+    // The width realizes instances of the per-slot template unit; the glob is
+    // a host projection of that template, the artifact is the template.
+    RunnerWidth { instance_glob: _ } => runner_unit_template_name as String
+    GunbcPinnedTree { gunbc_root_env_key: _, gunbc_root_path: r, dag_root: _, ctrl_checkout_path: _, binary: _, pin_read_script: _, green_place_marker: _, live_apply: _ } => r
+    CodexRuntimeBundle { host_identity: _ } => frontier_codex_runtime_bundle_artifact as String
+    VerifyOnlyCap { slice_unit: u, property: _ } => u
+  }
+}
+
+// Which kind of machine artifact a target variant touches. Structural to the
+// variant, so it has exactly one source; exhaustive so a new variant fails
+// the build until declared.
+fn frontier_target_kind(target: ConvergeTarget) -> FrontierArtifactKind {
+  match target {
+    SliceProperty { unit: _, property: _, apply_value: _, expected_effective: _ } => ServiceArtifact
+    PerSlotMemoryCap { dropin_path: _, instance_glob: _, property: _, bytes_value: _ } => FileArtifact
+    RunnerWidth { instance_glob: _ } => ServiceArtifact
+    GunbcPinnedTree { gunbc_root_env_key: _, gunbc_root_path: _, dag_root: _, ctrl_checkout_path: _, binary: _, pin_read_script: _, green_place_marker: _, live_apply: _ } => FileArtifact
+    CodexRuntimeBundle { host_identity: _ } => FileArtifact
+    VerifyOnlyCap { slice_unit: _, property: _ } => ServiceArtifact
+  }
+}
+
+fn frontier_kind_text(k: FrontierArtifactKind) -> String {
+  match k {
+    FileArtifact => "file"
+    ServiceArtifact => "service"
+  }
+}
+
+// THE classification read: asks the written-down frontier what class, if any,
+// the artifact a target changes has. Classified carries the class from the
+// row; UnclassifiedArtifact carries the artifact's identity and kind for the
+// refusal. Nothing else decides a class (gunbc.design_argument::single_authority).
+type FrontierClassification
+  = Classified { artifact: String, kind: FrontierArtifactKind, class: FrontierArtifactClass }
+  | UnclassifiedArtifact { artifact: String, kind: FrontierArtifactKind }
+
+fn frontier_classify_target(target: ConvergeTarget) -> FrontierClassification {
+  let identity = frontier_artifact_identity(target: target)
+  let kind = frontier_target_kind(target: target)
+  fold_list(
+    xs: frontier_machine_artifacts,
+    empty: UnclassifiedArtifact { artifact: identity, kind: kind },
+    cons: fn(acc, a) {
+      match acc {
+        Classified { artifact: _, kind: _, class: _ } => acc
+        UnclassifiedArtifact { artifact: _, kind: _ } =>
+          if a.identity == identity && a.kind == kind {
+            Classified { artifact: identity, kind: kind, class: a.class }
+          } else {
+            acc
+          }
+      }
+    }
+  )
+}
+
+// One machine artifact of a host as the gate reads it: the identity the
+// target carries, the kind the variant says it is, and the class the
+// written-down frontier agrees to. The admitting verdict below carries these
+// so the three-way classification is consumed, not decorative
+// (gunbc.design_argument::consumption); the closing witness asserts the
+// production route admits hosts whose artifacts span all three classes.
+type FrontierClassifiedHostArtifact {
+  identity: String
+  kind: FrontierArtifactKind
+  class: FrontierArtifactClass
+}
+
+// The verdict over a host's knob LIST, separate from the per-artifact
+// classification above. The refusing arm carries the offending artifact's
+// identity and why, read from the artifact itself; the admitting arm carries
+// what was classified and fabricates nothing
+// (gunbc.design_argument::fail_closed: no fabricated default, every
+// degradation typed and countable).
+type HostFrontierVerdict
+  = HostFrontierAdmitted { classified: List<FrontierClassifiedHostArtifact> }
+  | HostFrontierRefused { artifact: String, cause: String }
+
+// Production gate: the converge route calls this on every assembled host's
+// knobs before admitting the host into the converge plan. A fold over the
+// knobs that returns the verdict directly, holding the first refusal (no
+// predicate, no partial match -- the compiler checks every arm,
+// gunbc.design_argument::guarantee_ladder; review 98127). Each knob is
+// classified ONCE; the refusal carries the artifact's identity and kind and
+// refuses, never widens (gunbc.design_argument::fail_closed).
+fn frontier_validate_knobs(knobs: List<ConvergeKnob>) -> HostFrontierVerdict {
+  fold_list(
+    xs: knobs,
+    empty: HostFrontierAdmitted { classified: [] },
+    cons: fn(acc, k) {
+      match acc {
+        HostFrontierRefused { artifact: _, cause: _ } => acc
+        HostFrontierAdmitted { classified: c } =>
+          match frontier_classify_target(target: k.target) {
+            UnclassifiedArtifact { artifact: a, kind: kind } => HostFrontierRefused {
+              artifact: a,
+              cause: concat(
+                concat(
+                  concat("this ", frontier_kind_text(k: kind)),
+                  concat(" artifact (", a),
+                ),
+                ") is not in the written-down frontier classification for this machine-touching workflow; it refuses before any change is attempted",
+              ),
+            }
+            Classified { artifact: id, kind: kind, class: cls } =>
+              HostFrontierAdmitted {
+                classified: concat(c, [FrontierClassifiedHostArtifact { identity: id, kind: kind, class: cls }]),
+              }
+          }
+      }
+    },
+  )
 }
