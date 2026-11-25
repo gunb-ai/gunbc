@@ -8,7 +8,7 @@ import gunbc.fleet.fleet_host_identity { operator_host_6ce85c, operator_host_srv
 import gunbc.fleet.fleet_tailnet { tailnet_host_from }
 import gunbc.serving.serving_layout { host_6ce85c_layout, srv3_layout, srv4_layout, ServingLayoutResult, ServingLayoutConfigured, ServingLayoutRefused }
 import gunbc.serving.serving_capacity_anchor { ServingCapacityShape, ServingShapeDerived, ServingShapeEstimated, ServingShapeRefused, ShapeThroughputUnread, serving_shape_refusal_message, serving_replica_grant_for }
-import gunbc.serving.serving_replica_profile { srv1_vllm_replica_shape, srv3_strata_profile, srv4_strata_profile, h11_strata_profile, replica_shape_named_with_grant, ServingReplicaProfile }
+import gunbc.serving.serving_replica_profile { srv1_vllm_replica_0_profile, srv1_vllm_replica_1_profile, replica_shape_named, srv3_strata_profile, srv4_strata_profile, h11_strata_profile, replica_shape_named_with_grant, ServingReplicaProfile }
 import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, TranscribedUncited, cited_figure_read_obligation }
 import extdeps.uri { uri_https, uri_wire }
 import extdeps.currency.currency { CurrencyCode, Usd, currency_alphabetic_code }
@@ -1387,6 +1387,9 @@ fn router_dev_first_party() -> RouterDevFirstParty {
 
 // srv1 serves as two TP=1 replicas, one container per RTX PRO 6000 (operator, 2026-11-08): lil-flash-next on 18000 and
 // lil-flash-next-1 on 18001, each with its own LMCache and TLS (CN=pool-card). The router splits traffic between them.
+// EACH ROW READS ITS OWN CARD'S PROFILE: the two boards differ (Max-Q and Workstation Edition), so a figure read
+// for one board must attach to that board's row. Today both profiles resolve the same pair-averaged reading, so
+// both caps are 4; a per-board reading changes one row without touching the other.
 // The head's address is DERIVED from srv1's tailnet name like any other upstream — even the router's OWN host is
 // addressed by machine, not by a loopback/LAN literal (operator decision 2026-11-15: no IP literal is a router
 // upstream host; the engine listens 0.0.0.0, so it is reachable on the tailnet address, and the upstream SNI is
@@ -1395,8 +1398,8 @@ fn router_dev_head_shaped() -> List<RouterDevShaped> {
   match tailnet_host_from(machine: operator_host_srv1) {
     Absent => [RouterDevShapeRefused { reason: concat("router head refused: srv1 (the machine ", concat(operator_host_srv1 as String, " that runs the router and its local vLLM head) has no tailnet name, so its engine's address cannot be derived on the fleet tailnet; a router upstream NEVER falls back to a loopback or LAN address — register srv1's hostname (gunbc.hostname_allocation) or take the head off the router route")) }]
     Present { value: engine_host } => [
-      router_dev_shaped(shape: srv1_vllm_replica_shape(deployment: "srv1-vllm"), row: (cap, retention, rests) => RouterDevUpstream { name: "srv1-vllm", scheme: UpstreamHttps, host: engine_host as String, port: 18000, tls_name: Present { value: "pool-card" }, model: "Qwen3.8-Flash-Next", capacity: cap, max_model_len: 229376, path_prefix: "", retiring_names: [], in_service: true, retention: retention, effort_effects: qwen3_effort_rules(), capacity_rests_on: rests }),
-      router_dev_shaped(shape: srv1_vllm_replica_shape(deployment: "srv1-vllm-1"), row: (cap, retention, rests) => RouterDevUpstream { name: "srv1-vllm-1", scheme: UpstreamHttps, host: engine_host as String, port: 18001, tls_name: Present { value: "pool-card" }, model: "Qwen3.8-Flash-Next", capacity: cap, max_model_len: 229376, path_prefix: "", retiring_names: [], in_service: true, retention: retention, effort_effects: qwen3_effort_rules(), capacity_rests_on: rests }),
+      router_dev_shaped(shape: replica_shape_named(p: srv1_vllm_replica_0_profile, deployment: srv1_vllm_replica_0_profile.id as String), row: (cap, retention, rests) => RouterDevUpstream { name: "srv1-vllm", scheme: UpstreamHttps, host: engine_host as String, port: 18000, tls_name: Present { value: "pool-card" }, model: "Qwen3.8-Flash-Next", capacity: cap, max_model_len: 229376, path_prefix: "", retiring_names: [], in_service: true, retention: retention, effort_effects: qwen3_effort_rules(), capacity_rests_on: rests }),
+      router_dev_shaped(shape: replica_shape_named(p: srv1_vllm_replica_1_profile, deployment: srv1_vllm_replica_1_profile.id as String), row: (cap, retention, rests) => RouterDevUpstream { name: "srv1-vllm-1", scheme: UpstreamHttps, host: engine_host as String, port: 18001, tls_name: Present { value: "pool-card" }, model: "Qwen3.8-Flash-Next", capacity: cap, max_model_len: 229376, path_prefix: "", retiring_names: [], in_service: true, retention: retention, effort_effects: qwen3_effort_rules(), capacity_rests_on: rests }),
     ]
   }
 }
