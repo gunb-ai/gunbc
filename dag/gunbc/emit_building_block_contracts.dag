@@ -394,3 +394,26 @@ fn probe_lines() -> List<String> {
 fn all_probes_held() -> Bool {
   mispaired_probes() |> all(p => probe_guard_holds(p: p))
 }
+
+// A JUDGEMENT MUST BE SEEN TO REFUSE, not only to accept: a boolean read from a carrier that accepted
+// everything would print the same log as this one. `fn contract_is_applicable` replaced a comparison of its
+// own rendering against a literal written in a battery, and a fix to a judgement is only evidence when the
+// same leg goes red on a planted wrong applicability. Both halves below are that leg, and they read the
+// carrier's `fn case_applicability` through the sum: no string is compared, so the carrier can change how it
+// spells an outcome without changing what these say, and a row it refuses cannot pass as applicable.
+//
+// The planted wrong applicabilities are the deliberate mis-pairings in `fn mispaired_probes`, one per judging
+// rule. `fn applicability_refused_rows` counts family rows the carrier refuses -- a roster that outgrows what
+// the carrier will admit goes red here. `fn applicability_accepted_probes` counts planted tuples the carrier
+// accepts -- a judgement that had stopped consulting the carrier accepts them and goes red here.
+fn applicability_refused_rows(f: BuildingBlockFamily) -> Int {
+  count(filter(contracts_of_family(f: f), c => !contract_is_applicable(c: c.case_id)))
+}
+
+fn applicability_accepted_probes() -> Int {
+  count(filter(mispaired_probes(), p => contract_is_applicable(c: p.case_id)))
+}
+
+fn applicability_discriminates(f: BuildingBlockFamily) -> Bool {
+  applicability_refused_rows(f: f) == 0 && applicability_accepted_probes() == 0
+}

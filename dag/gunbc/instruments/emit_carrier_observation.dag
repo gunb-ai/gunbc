@@ -4,7 +4,7 @@ import std.types { Bool, Int, List }
 import std.optional { Optional, Present, Absent }
 import std.realization_measurement { AllocationCounter, AllocationObservation, allocation_span_observation, allocation_provider_not_selected }
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld }
-import gunbc.emit_building_block_contracts { BuildingBlockFamily, Carriers, contracts_of_family, contract_verdict, contract_is_applicable, case_in_applicable_roster, violating_form_exercised, contract_line, roster_membership_line, mispaired_probes, probe_guard_holds, probe_lines }
+import gunbc.emit_building_block_contracts { BuildingBlockFamily, Carriers, contracts_of_family, contract_verdict, contract_is_applicable, case_in_applicable_roster, violating_form_exercised, contract_line, roster_membership_line, mispaired_probes, probe_guard_holds, probe_lines , applicability_discriminates, applicability_refused_rows, applicability_accepted_probes }
 import gunbc.instruments.native_allocation_observation { AllocationCase, case_line, is_observed, operations_above, operations_within, span_text, count_text }
 import gunbc.emit_state_threading_specimen { spec_build }
 
@@ -339,7 +339,7 @@ fn roster_lines() -> String {
 }
 
 fn native_claim_report() -> NativeClaimReport uses counter: AllocationCounter {
-  let cases = concat(concat(carrier_cases(), carrier_audit_cases()), red_control_cases())
+  let cases = concat(concat(concat(carrier_cases(), carrier_audit_cases()), red_control_cases()), carriers_discrimination_cases())
   let failed = cases |> filter(c => !c.held) |> map(c => c.identity)
   let terminal = if (failed |> count) == 0 { NativeClaimHeld } else { NativeClaimNotHeld { reason: concat("not held: ", failed |> join(separator: ",")) } }
   let roster = concat("roster ", cases |> map(c => c.identity) |> join(separator: ","), "\n")
@@ -387,4 +387,27 @@ fn violation_contract_holds_when_violated() -> NativeClaimReport uses counter: A
   let terminal = if (failed |> count) == 0 { NativeClaimHeld } else { NativeClaimNotHeld { reason: concat("not held: ", failed |> join(separator: ",")) } }
   let roster = concat("roster ", cases |> map(c => c.identity) |> join(separator: ","), "\n")
   NativeClaimReport { stdout: concat(roster, cases |> map(c => case_line(c: c)) |> join(separator: "")), terminal: terminal }
+}
+
+// THE DISCRIMINATOR for the applicability repair. `fn contract_is_applicable` replaced a battery comparing
+// that judgement's own rendering to a literal of its own, which could never be true -- so a leg whose only
+// source was that comparison was red by construction, not by measurement. This leg must be seen to refuse:
+// the carrier refuses every planted mis-pairing, and a judgement that stopped asking the carrier would
+// accept them and go red here, by name, in the same run as the rows it accepted. What each half means is
+// decided once, in `fn applicability_discriminates` in gunbc.emit_building_block_contracts; nothing here
+// judges, it only names the leg and prints the counts that were compared.
+fn carriers_discrimination_cases() -> List<AllocationCase> {
+  [AllocationCase {
+    identity: "carriers_applicability_judgement_discriminates",
+    held: applicability_discriminates(f: Carriers),
+    observed: carriers_discrimination_line()
+  }]
+}
+
+fn carriers_discrimination_line() -> String {
+  let parts = [concat("family=", "carriers"),
+               count_text(label: "family_rows", n: count(contracts_of_family(f: Carriers))),
+               count_text(label: "rows_refused_by_carrier", n: applicability_refused_rows(f: Carriers)),
+               count_text(label: "planted_mis_pairings_accepted", n: applicability_accepted_probes())]
+  parts |> join(separator: " ")
 }
