@@ -277,7 +277,12 @@ fn fleet_converge_plan_receipt_decode(raw: String) -> FleetConvergePlanReceiptDe
         JsonStringMemberRefused { reason: r } => FleetConvergePlanReceiptUnreadable { reason: r }
         JsonStringMemberFound { value: schema } =>
           if schema != fleet_converge_plan_receipt_schema && schema != fleet_converge_plan_receipt_schema_v2 {
-            FleetConvergePlanReceiptUnreadable { reason: join(["plan receipt schema is neither ", fleet_converge_plan_receipt_schema, " nor ", fleet_converge_plan_receipt_schema_v2, ": ", schema], "") }
+            // The wording keeps its pre-existing prefix: the sibling witness
+            // //dag/test/claim/fleet/fleet_converge_receipt_witness.dag::witness_plan_receipt_wrong_schema_refuses
+            // asserts the substring "schema is not", and a refusal that existed before this change must
+            // not be reworded by it. The second admissible schema is appended, in the repo's schema-wall
+            // idiom (//dag/gunbc/live_deploy/apply_receipt.dag).
+            FleetConvergePlanReceiptUnreadable { reason: join(["plan receipt schema is not ", fleet_converge_plan_receipt_schema, " nor ", fleet_converge_plan_receipt_schema_v2, ": ", schema], "") }
           } else {
             match actions_run_binding_of_member(doc: doc, key: "run") {
               ActionsRunBindingUnreadable { reason: r } => FleetConvergePlanReceiptUnreadable { reason: join(["plan receipt run: ", r], "") }
