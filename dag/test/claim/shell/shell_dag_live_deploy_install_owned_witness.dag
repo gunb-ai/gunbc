@@ -32,8 +32,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // THE ARMS WERE RE-POINTED ONTO THE ACTING ROUTE, on the row owner's authority. That authority is
 // NOT recorded here on purpose: a record of an oracle move kept inside the oracle it moves is the
 // weakest place it can sit. It is kept where it can be checked — the row this witness serves,
-// roadmap_node shell-dag-live-deploy-install-owned in dag/gunbc/roadmap/roadmap_authority.dag (whose
-// rewrite lands in gunbc#17067), and the PR comment on gunbc#17023 that quotes the authorizing relay.
+// roadmap_node shell-dag-live-deploy-install-owned in dag/gunbc/roadmap/roadmap_authority.dag, plus
+// the authorization comment on the pull request carrying this row's change, which quotes the relay.
+// No pull-request number is promised here: a promise about someone else's future merge rots, and one
+// such promise in this file outlived its own pull request as a closed one.
 // What the move did is visible in this file, so nothing else needs asserting here: the three claim
 // names are UNCHANGED and the ledger lines compare one-for-one across it, and only what each arm
 // reads changed — the adversarial and benign arms now read the acting route, where an adversarial
