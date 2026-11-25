@@ -8,7 +8,6 @@ import v2.workflow.floor_preparation_split {
 import v2.workflow.floor_preparation_diff_scope {
   floor_preparation_scope_diff_files,
   floor_preparation_scope_diff_fixtures,
-  floor_preparation_scope_edge_kinds,
   floor_preparation_scope_edge_rows,
   floor_preparation_scope_edge_rows_variant,
   floor_preparation_scope_entries_for,
@@ -21,7 +20,6 @@ import v2.workflow.floor_preparation_diff_scope {
   floor_preparation_scope_is_narrowed,
   floor_preparation_scope_is_whole,
   floor_preparation_scope_line,
-  floor_preparation_scope_map_is_well_formed,
   floor_preparation_scope_marker_reason,
   floor_preparation_scope_marker_rows,
   floor_preparation_scope_population,
@@ -430,18 +428,17 @@ test fn floor_preparation_a_universal_marker_is_never_narrowed() -> Bool {
 }
 
 // ----------------------------------------------------------------------------------------------
-// 11. THE MAP IS ONE THE TOOL CAN REPRODUCE. Kills: a row missing `entry=`, `file=` or `kind=`, and a
-// row naming an edge kind the tool does not implement -- both would narrow on an edge nobody can
-// re-derive. Both committed maps must pass, and every entry must record its own file, or a diff touching
-// only that entry's file could narrow the entry away entirely.
+// 11. THE MAP IS ONE THE TOOL CAN REPRODUCE. A row missing a field, or naming an edge kind the tool
+// does not implement, used to be writable as text and was refused at run time; the map is now a
+// coproduct (ScopeImport | ScopeModuleDecl | ScopeReadLiteral), so those states cannot be constructed
+// and the runtime check is GONE with them. What this claim still witnesses is the shape the decision
+// consumes: both maps non-empty (an empty committed map would silently narrow every diff to the
+// forced set), and the variant richer than the base -- the pair the fail-closed counterfactual runs.
 // ----------------------------------------------------------------------------------------------
 
 test fn floor_preparation_the_committed_maps_are_well_formed() -> Bool {
   length(xs: floor_preparation_scope_edge_rows) > 0
     && length(xs: floor_preparation_scope_edge_rows_variant) > length(xs: floor_preparation_scope_edge_rows)
-    && floor_preparation_scope_map_is_well_formed(rows: floor_preparation_scope_edge_rows)
-    && floor_preparation_scope_map_is_well_formed(rows: floor_preparation_scope_edge_rows_variant)
-    && length(xs: floor_preparation_scope_edge_kinds) == 3
 }
 
 test fn floor_preparation_every_entry_records_its_own_file() -> Bool {

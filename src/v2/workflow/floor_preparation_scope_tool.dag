@@ -53,7 +53,11 @@ import v2.workflow.floor_preparation_diff_scope {
   floor_preparation_scope_select_over,
   floor_preparation_scope_whole,
   floor_preparation_scope_line,
-  FloorPreparationScoping
+  FloorPreparationScoping,
+  FloorPreparationScopeRow,
+  ScopeImport,
+  ScopeModuleDecl,
+  ScopeReadLiteral,
 }
 
 data floor_preparation_scope_tool_git: String = "/usr/bin/git"
@@ -65,6 +69,58 @@ data floor_preparation_scope_tool_depth_cap: Int = 64
 type FloorPreparationScopeToolSpawn {
   rc: Int,
   stdout: String,
+}
+
+// A transport edge as the tool sees it. `unresolved` is a CONSTRUCTION, not a magic string: the
+// source file of a ToolUnresolved edge poisons every entry whose closure contains it (the refusal
+// is the thing under test, so that entry pays preparation either way), and it is excluded from the
+// reverse walk -- an edge whose target is unknown leads nowhere.
+type FloorPreparationScopeToolEdgeKind
+  = ToolImport {}
+  | ToolReadLiteral {}
+  | ToolUnresolved { module: String }
+
+type FloorPreparationScopeToolEdge {
+  source: String,
+  kind: FloorPreparationScopeToolEdgeKind,
+  target: String,
+}
+
+// What one whole-tree grep produced, WITH ITS EXIT CODE. git grep exits 1 for "nothing matched" --
+// an honest empty -- and 2 or higher for an error (an unreadable tree, a broken index). Collapsing
+// those into "no edges" would silently under-prepare (review 98304, DESIGN
+// gunbc.design_argument::fail_closed: "A failure arm refuses, never widens").
+type FloorPreparationScopeToolGreps {
+  rc: Int,
+  lines: List<String>,
+}
+
+type FloorPreparationScopeToolImportRead {
+  rc: Int,
+  edges: List<FloorPreparationScopeToolEdge>,
+}
+
+type FloorPreparationScopeToolDecls {
+  rc: Int,
+  rows: List<String>,
+}
+
+// The reverse-walk result. The depth cap is a FLAG, not a value stuffed into the path list: a list
+// of tree paths that sometimes contains "DEPTH_CAP" needs a check to tell paths from sentinel, and
+// checks that exist only because bad states are writable are themselves the defect.
+type FloorPreparationScopeToolReach {
+  reached: List<String>,
+  hit_cap: Bool,
+}
+
+type FloorPreparationScopeToolRowBuild {
+  rows: List<FloorPreparationScopeRow>,
+  hit_cap: Bool,
+}
+
+type FloorPreparationScopeToolForced {
+  entries: List<String>,
+  hit_cap: Bool,
 }
 
 // ----------------------------------------------------------------------------------------------
@@ -126,9 +182,11 @@ fn floor_preparation_scope_tool_required_env_missing() -> String {
 // over the whole tree; parsing happens here, in the model, not in a pipeline.
 // ----------------------------------------------------------------------------------------------
 
-fn floor_preparation_scope_tool_index(tree: String) -> List<String> {
+// ls-files has no "exit 1 means empty" reading: any nonzero rc is an error, and an empty index
+// read from a failed spawn is the "diff touched nothing" lie in its purest form.
+fn floor_preparation_scope_tool_index(tree: String) -> FloorPreparationScopeToolGreps {
   let ran = floor_preparation_scope_tool_run_git(tree: tree, args: ["ls-files", "*.dag"])
-  if ran.rc != 0 { [] } else { floor_preparation_lines(text: ran.stdout) }
+  FloorPreparationScopeToolGreps { rc: ran.rc, lines: floor_preparation_lines(text: ran.stdout) }
 }
 
 // "path:num:content" -> path (the first colon-delimited piece).
@@ -190,11 +248,12 @@ fn floor_preparation_scope_tool_dir_of(path: String) -> String {
 // declare v2.* names whose paths drop the v2. prefix, dag/ files declare names without the dag/
 // prefix. Guessing those rules duplicates the parser's authority; reading the declarations is one
 // transport the tool actually owns.
-fn floor_preparation_scope_tool_module_decls(tree: String) -> List<String> {
+fn floor_preparation_scope_tool_module_decls(tree: String) -> FloorPreparationScopeToolDecls {
   let ran = floor_preparation_scope_tool_run_git(
     tree: tree, args: ["grep", "-n", "-o", "-E", "^module [a-z0-9_.]+", "--", "*.dag"])
-  if ran.rc != 0 { [] } else {
-    fold(floor_preparation_lines(text: ran.stdout), init: [], f: (acc, line) =>
+  FloorPreparationScopeToolDecls {
+    rc: ran.rc,
+    rows: fold(floor_preparation_lines(text: ran.stdout), init: [], f: (acc, line) =>
       if line == "" { acc } else {
         let path = floor_preparation_scope_tool_grep_file(line: line)
         let content = floor_preparation_scope_tool_grep_content(line: line)
@@ -204,7 +263,7 @@ fn floor_preparation_scope_tool_module_decls(tree: String) -> List<String> {
         } else {
           list_push(xs: acc, item: concat(concat(rest, "|"), path))
         }
-      })
+      }),
   }
 }
 
@@ -244,10 +303,10 @@ fn floor_preparation_scope_tool_first_candidate(candidates: List<String>, index:
 // One import grep line -> one edge row, or "" when the line is not an import statement (a comment
 // mentioning import is not a read). An unresolvable import becomes a `|unresolved|` row: the
 // SOURCE file then poisons every entry whose closure contains it.
-fn floor_preparation_scope_tool_import_edge(line: String, index: List<String>, decls: List<String>) -> String {
+fn floor_preparation_scope_tool_import_edge(line: String, index: List<String>, decls: List<String>) -> Optional<FloorPreparationScopeToolEdge> {
   let content = floor_preparation_scope_tool_grep_content(line: line)
   if !starts_with(s: content, prefix: "import ") {
-    ""
+    Absent {}
   } else {
     let source = floor_preparation_scope_tool_grep_file(line: line)
     let module_name = floor_preparation_scope_tool_import_module(content: content)
@@ -258,23 +317,54 @@ fn floor_preparation_scope_tool_import_edge(line: String, index: List<String>, d
         decls: decls),
       index: index)
     if target == "" {
-      concat(concat(source, "|unresolved|"), module_name)
+      Present {
+        value: FloorPreparationScopeToolEdge {
+          source: source,
+          kind: ToolUnresolved { module: module_name },
+          target: "",
+        },
+      }
     } else {
-      concat(concat(source, "|import|"), target)
+      Present {
+        value: FloorPreparationScopeToolEdge {
+          source: source,
+          kind: ToolImport {},
+          target: target,
+        },
+      }
     }
   }
 }
 
 // Import edges over the whole tree in ONE grep.
-fn floor_preparation_scope_tool_import_edges(tree: String, index: List<String>, decls: List<String>) -> List<String> {
+fn floor_preparation_scope_tool_import_edges(tree: String, index: List<String>, decls: List<String>) -> FloorPreparationScopeToolImportRead {
   let ran = floor_preparation_scope_tool_run_git(tree: tree, args: ["grep", "-n", "-o", "-E", "^import [a-z0-9_.]+", "--", "*.dag"])
-  if ran.rc != 0 { [] } else {
-    fold(floor_preparation_lines(text: ran.stdout), init: [], f: (acc, line) =>
-      if line == "" { acc } else {
-        let edge = floor_preparation_scope_tool_import_edge(line: line, index: index, decls: decls)
-        if edge == "" { acc } else { list_push(xs: acc, item: edge) }
-      })
+  FloorPreparationScopeToolImportRead {
+    rc: ran.rc,
+    edges: fold(floor_preparation_lines(text: ran.stdout), init: [], f: (acc, line) =>
+      if line == "" {
+        acc
+      } else {
+        match floor_preparation_scope_tool_import_edge(line: line, index: index, decls: decls) {
+          Present { value: e } => list_push(xs: acc, item: e)
+          Absent => acc
+        }
+      }),
   }
+}
+
+// The sources of unresolved imports, over TYPED edges: no contains("|unresolved|") string test,
+// because the unresolved state is a construction the pattern can name.
+fn floor_preparation_scope_tool_poison_sources(edges: List<FloorPreparationScopeToolEdge>) -> List<String> {
+  fold(edges, init: [], f: (acc, edge) =>
+    let unresolved = match edge.kind {
+      ToolUnresolved { module: _ } => true,
+      ToolImport {} => false,
+      ToolReadLiteral {} => false,
+    }
+    if unresolved {
+      if floor_preparation_scope_tool_has(xs: acc, item: edge.source) { acc } else { list_push(xs: acc, item: edge.source) }
+    } else { acc })
 }
 
 // Path literals in string arguments, over-approximated by grepping the closing quote of a .dag or
@@ -282,18 +372,23 @@ fn floor_preparation_scope_tool_import_edges(tree: String, index: List<String>, 
 // -o prints ONLY the quoted literal, not the whole line: generated .dag files carry string
 // literals long enough that whole-line output blew the host's 8 MiB stdout bound (measured:
 // 9.1 MB on this corpus). The match is the path itself, quotes included.
-fn floor_preparation_scope_tool_literal_edges(tree: String) -> List<String> {
+fn floor_preparation_scope_tool_literal_edges(tree: String) -> FloorPreparationScopeToolImportRead {
   let ran = floor_preparation_scope_tool_run_git(
     tree: tree, args: ["grep", "-n", "-o", "-E", "\"[^\"]*[.](dag|txt)\"", "--", "*.dag"])
-  if ran.rc != 0 { [] } else {
-    fold(floor_preparation_lines(text: ran.stdout), init: [], f: (acc, line) =>
+  FloorPreparationScopeToolImportRead {
+    rc: ran.rc,
+    edges: fold(floor_preparation_lines(text: ran.stdout), init: [], f: (acc, line) =>
       if line == "" { acc } else {
         let source = floor_preparation_scope_tool_grep_file(line: line)
         let content = floor_preparation_scope_tool_grep_content(line: line)
         let walked = fold(floor_preparation_scope_tool_quoted_paths(content: content), init: acc, f: (inner, path) =>
-          list_push(xs: inner, item: concat(concat(source, "|read-literal|"), path)))
+          list_push(xs: inner, item: FloorPreparationScopeToolEdge {
+            source: source,
+            kind: ToolReadLiteral {},
+            target: path,
+          }))
         walked
-      })
+      }),
   }
 }
 
@@ -337,24 +432,31 @@ type FloorPreparationScopeToolQuoteWalk {
 // DOWN from every entry over a 2378-module closure is the cost this construction exists to cut.
 // ----------------------------------------------------------------------------------------------
 
-fn floor_preparation_scope_tool_frontier(edges: List<String>, frontier: List<String>, visited: List<String>) -> List<String> {
+fn floor_preparation_scope_tool_frontier(edges: List<FloorPreparationScopeToolEdge>, frontier: List<String>, visited: List<String>) -> List<String> {
   fold(edges, init: [], f: (acc, edge) =>
-    if floor_preparation_scope_tool_has(xs: frontier, item: floor_preparation_scope_tool_field_at(row: edge, position: 2))
-      && !floor_preparation_scope_tool_has(xs: visited, item: floor_preparation_scope_tool_field_at(row: edge, position: 0))
-      && !floor_preparation_scope_tool_has(xs: acc, item: floor_preparation_scope_tool_field_at(row: edge, position: 0)) {
-      list_push(xs: acc, item: floor_preparation_scope_tool_field_at(row: edge, position: 0))
+    let leads = match edge.kind {
+      ToolImport {} => true,
+      ToolReadLiteral {} => true,
+      ToolUnresolved { module: _ } => false,
+    }
+    if leads
+      && floor_preparation_scope_tool_has(xs: frontier, item: edge.target)
+      && !floor_preparation_scope_tool_has(xs: visited, item: edge.source)
+      && !floor_preparation_scope_tool_has(xs: acc, item: edge.source) {
+      list_push(xs: acc, item: edge.source)
     } else { acc })
 }
 
-// Returns the reached set. If the cap is hit with a non-empty frontier, DEPTH_CAP is in the set:
-// the caller must refuse to narrow, because the map is then known-incomplete.
-fn floor_preparation_scope_tool_reverse_bfs(edges: List<String>, seeds: List<String>, visited: List<String>, depth: Int) -> List<String> {
+// Returns the reached set and whether the cap was hit with a non-empty frontier. A hit means the
+// map is known-incomplete and the caller must refuse to narrow; the fact travels as a flag on the
+// reach record, never as a value stuffed into the path list.
+fn floor_preparation_scope_tool_reverse_bfs(edges: List<FloorPreparationScopeToolEdge>, seeds: List<String>, visited: List<String>, depth: Int) -> FloorPreparationScopeToolReach {
   let next = floor_preparation_scope_tool_frontier(edges: edges, frontier: seeds, visited: visited)
   if length(xs: next) == 0 {
-    visited
+    FloorPreparationScopeToolReach { reached: visited, hit_cap: false }
   } else {
     if depth <= 0 {
-      list_push(xs: visited, item: "DEPTH_CAP")
+      FloorPreparationScopeToolReach { reached: visited, hit_cap: true }
     } else {
       floor_preparation_scope_tool_reverse_bfs(
         edges: edges,
@@ -388,57 +490,46 @@ fn floor_preparation_scope_tool_diff_files(tree: String, base: String) -> FloorP
   FloorPreparationScopeToolDiff { rc: ran.rc, files: floor_preparation_lines(text: ran.stdout) }
 }
 
-fn floor_preparation_scope_tool_rows_for_file(edges: List<String>, file: String, population: List<String>) -> List<String> {
-  let reached = floor_preparation_scope_tool_reverse_bfs(
+// Rows this file earns: every population entry that reaches it (or IS it), in the authority's
+// typed row language -- the module-decl/import distinction is a constructor choice, not a string.
+fn floor_preparation_scope_tool_rows_for_file(edges: List<FloorPreparationScopeToolEdge>, file: String, population: List<String>) -> FloorPreparationScopeToolRowBuild {
+  let reach = floor_preparation_scope_tool_reverse_bfs(
     edges: edges, seeds: [file], visited: [file], depth: floor_preparation_scope_tool_depth_cap)
+  FloorPreparationScopeToolRowBuild {
+    hit_cap: reach.hit_cap,
+    rows: fold(population, init: [], f: (acc, entry) =>
+      if floor_preparation_scope_tool_has(xs: reach.reached, item: entry) {
+        if entry == file {
+          list_push(xs: acc, item: ScopeModuleDecl { entry: entry })
+        } else {
+          list_push(xs: acc, item: ScopeImport { entry: entry, file: file })
+        }
+      } else { acc }),
+  }
+}
+
+fn floor_preparation_scope_tool_rows_for(edges: List<FloorPreparationScopeToolEdge>, diff: List<String>, population: List<String>) -> FloorPreparationScopeToolRowBuild {
+  fold(diff, init: FloorPreparationScopeToolRowBuild { rows: [], hit_cap: false }, f: (acc, file) =>
+    let built = floor_preparation_scope_tool_rows_for_file(edges: edges, file: file, population: population)
+    FloorPreparationScopeToolRowBuild {
+      rows: concat(acc.rows, built.rows),
+      hit_cap: acc.hit_cap || built.hit_cap,
+    })
+}
+
+fn floor_preparation_scope_tool_self_rows(population: List<String>) -> List<FloorPreparationScopeRow> {
   fold(population, init: [], f: (acc, entry) =>
-    if floor_preparation_scope_tool_has(xs: reached, item: entry) {
-      let kind = if entry == file { "module-decl" } else { "import" }
-      list_push(xs: acc, item: concat(concat(concat("entry=", entry), "|file="), concat(file, concat("|kind=", kind))))
-    } else { acc })
+    list_push(xs: acc, item: ScopeModuleDecl { entry: entry }))
 }
 
-fn floor_preparation_scope_tool_rows_for(edges: List<String>, diff: List<String>, population: List<String>) -> List<String> {
-  fold(diff, init: [], f: (acc, file) =>
-    concat(acc, floor_preparation_scope_tool_rows_for_file(edges: edges, file: file, population: population)))
-}
-
-fn floor_preparation_scope_tool_self_rows(population: List<String>) -> List<String> {
-  fold(population, init: [], f: (acc, entry) =>
-    list_push(xs: acc, item: concat(concat(concat("entry=", entry), "|file="), concat(entry, "|kind=module-decl"))))
-}
-
-fn floor_preparation_scope_tool_poison_sources(edges: List<String>) -> List<String> {
-  fold(edges, init: [], f: (acc, edge) =>
-    if floor_preparation_contains(haystack: edge, needle: "|unresolved|") {
-      let source = floor_preparation_scope_tool_field_at(row: edge, position: 0)
-      if floor_preparation_scope_tool_has(xs: acc, item: source) { acc } else { list_push(xs: acc, item: source) }
-    } else { acc })
-}
-
-fn floor_preparation_scope_tool_forced(edges: List<String>, population: List<String>) -> List<String> {
-  let poisons = floor_preparation_scope_tool_poison_sources(edges: edges)
-  let reached = floor_preparation_scope_tool_reverse_bfs(
+fn floor_preparation_scope_tool_forced(poisons: List<String>, edges: List<FloorPreparationScopeToolEdge>, population: List<String>) -> FloorPreparationScopeToolForced {
+  let reach = floor_preparation_scope_tool_reverse_bfs(
     edges: edges, seeds: poisons, visited: poisons, depth: floor_preparation_scope_tool_depth_cap)
-  fold(population, init: [], f: (acc, entry) =>
-    if floor_preparation_scope_tool_has(xs: reached, item: entry) { list_push(xs: acc, item: entry) } else { acc })
-}
-
-// A diagnostic, not a verdict: prints the unresolved imports (module-name@importer) so a forced
-// decision can be diagnosed without re-running the fold. Read it, fix the transport, delete it.
-fn floor_preparation_scope_tool_poison_report(tree: String) -> String {
-  let index = floor_preparation_scope_tool_index(tree: tree)
-  let decls = floor_preparation_scope_tool_module_decls(tree: tree)
-  let import_edges = floor_preparation_scope_tool_import_edges(tree: tree, index: index, decls: decls)
-  let poisons = fold(import_edges, init: [], f: (acc, edge) =>
-    if floor_preparation_contains(haystack: edge, needle: "|unresolved|") {
-      list_push(xs: acc, item: edge)
-    } else { acc })
-  let uniq = fold(poisons, init: [], f: (acc, edge) =>
-    if floor_preparation_scope_tool_has(xs: acc, item: edge) { acc } else { list_push(xs: acc, item: edge) })
-  concat("[scope-tool] step=poison-report detail=count=",
-    concat(to_string(length(xs: uniq)),
-      concat("\n", join(uniq, "\n"))))
+  FloorPreparationScopeToolForced {
+    hit_cap: reach.hit_cap,
+    entries: fold(population, init: [], f: (acc, entry) =>
+      if floor_preparation_scope_tool_has(xs: reach.reached, item: entry) { list_push(xs: acc, item: entry) } else { acc }),
+  }
 }
 
 fn floor_preparation_scope_tool_receipt(step: String, detail: String) -> String {
@@ -448,8 +539,8 @@ fn floor_preparation_scope_tool_receipt(step: String, detail: String) -> String 
 // The depth cap is a tool-side fact the authority has no row for: if any reverse walk hit it, the
 // map is known-incomplete and the only honest scoping is Whole -- built through the authority's
 // own constructor, never by naming the variant from out here.
-fn floor_preparation_scope_tool_select_guarded(rows: List<String>, forced: List<String>, population: List<String>, diff: List<String>) -> FloorPreparationScoping {
-  if floor_preparation_contains(haystack: join(rows, "\n"), needle: "DEPTH_CAP") {
+fn floor_preparation_scope_tool_select_guarded(rows: List<FloorPreparationScopeRow>, forced: List<String>, hit_cap: Bool, population: List<String>, diff: List<String>) -> FloorPreparationScoping {
+  if hit_cap {
     floor_preparation_scope_whole(reason: "depth-cap: a reverse walk hit the bound, so the edge map is known-incomplete and narrowing is refused")
   } else {
     floor_preparation_scope_select_over(rows: rows, forced: forced, population: population, diff: diff)
@@ -467,38 +558,72 @@ fn floor_preparation_scope_tool_body(tree: String, base: String, label: String) 
     }
     let index = floor_preparation_scope_tool_index(tree: tree)
     let population = floor_preparation_scope_tool_population_entries()
-    if length(xs: index) == 0 {
-      "[scope-tool-REFUSED] empty-dag-index (git ls-files found no .dag -- an index built from nothing resolves nothing, and nothing looks a lot like the diff touching no closure)"
+    if index.rc != 0 {
+      // ls-files has no honest "empty" exit: any rc is an error, and an empty index read as truth
+      // would make every diff look like it touched nothing (review 98304).
+      floor_preparation_scope_tool_receipt("REFUSED",
+        concat("ls-files rc=", to_string(index.rc)))
     } else {
-      if length(xs: population) == 0 {
-        "[scope-tool-REFUSED] empty-population (an empty enrollment makes every decision prepare nothing -- the false-green this lane has already been bitten by)"
+      if length(xs: index.lines) == 0 {
+        "[scope-tool-REFUSED] empty-dag-index (git ls-files found no .dag -- an index built from nothing resolves nothing, and nothing looks a lot like the diff touching no closure)"
       } else {
-        let decls = floor_preparation_scope_tool_module_decls(tree: tree)
-        let import_edges = floor_preparation_scope_tool_import_edges(tree: tree, index: index, decls: decls)
-        let literal_edges = floor_preparation_scope_tool_literal_edges(tree: tree)
-        let edges = concat(import_edges, literal_edges)
-        let diff_run = floor_preparation_scope_tool_diff_files(tree: tree, base: base)
-        if diff_run.rc != 0 {
-          floor_preparation_scope_tool_receipt("REFUSED",
-            concat(concat("git-diff rc=", to_string(diff_run.rc)),
-              concat(" base=", concat(base, concat(" head=", head_line))))
-          )
+        if length(xs: population) == 0 {
+          "[scope-tool-REFUSED] empty-population (an empty enrollment makes every decision prepare nothing -- the false-green this lane has already been bitten by)"
         } else {
-        let diff = diff_run.files
-        let rows = concat(
-          floor_preparation_scope_tool_rows_for(edges: edges, diff: diff, population: population),
-          floor_preparation_scope_tool_self_rows(population: population))
-        let forced = floor_preparation_scope_tool_forced(edges: edges, population: population)
-        let scoping = floor_preparation_scope_tool_select_guarded(rows: rows, forced: forced, population: population, diff: diff)
-        let transport = floor_preparation_scope_tool_receipt("tree-transport",
-          concat(concat("head=", head_line),
-            concat(concat(" index=", to_string(length(xs: index))),
-              concat(concat(" edges=", to_string(length(xs: edges))),
-                concat(" diff_files=", to_string(length(xs: diff)))))))
-        let decision = floor_preparation_scope_tool_receipt("decision",
-          concat(concat("rows=", to_string(length(xs: rows))), concat(" forced=", to_string(length(xs: forced)))))
-        let line = floor_preparation_scope_line(name: label, scoping: scoping, population: population)
-        concat(concat(concat(transport, "\n"), decision), concat("\n", line))
+          let decls = floor_preparation_scope_tool_module_decls(tree: tree)
+          // git grep exits 1 for "no match" -- honest empty, the whole tree simply has no such line.
+          // Anything 2 or higher is an error, and its edge set is UNKNOWN, not empty: reading it as
+          // empty would drop edges, keep the surviving ones' files "covered", and silently
+          // under-prepare the entries that only the lost edges reached.
+          if decls.rc >= 2 {
+            floor_preparation_scope_tool_receipt("REFUSED",
+              concat("module-grep rc=", to_string(decls.rc)))
+          } else {
+            let import_read = floor_preparation_scope_tool_import_edges(tree: tree, index: index.lines, decls: decls.rows)
+            if import_read.rc >= 2 {
+              floor_preparation_scope_tool_receipt("REFUSED",
+                concat("import-grep rc=", to_string(import_read.rc)))
+            } else {
+              let literal_read = floor_preparation_scope_tool_literal_edges(tree: tree)
+              if literal_read.rc >= 2 {
+                floor_preparation_scope_tool_receipt("REFUSED",
+                  concat("literal-grep rc=", to_string(literal_read.rc)))
+              } else {
+                let edges = concat(import_read.edges, literal_read.edges)
+                let diff_run = floor_preparation_scope_tool_diff_files(tree: tree, base: base)
+                if diff_run.rc != 0 {
+                  floor_preparation_scope_tool_receipt("REFUSED",
+                    concat(concat("git-diff rc=", to_string(diff_run.rc)),
+                      concat(" base=", concat(base, concat(" head=", head_line))))
+                  )
+                } else {
+                  let diff = diff_run.files
+                  let built = floor_preparation_scope_tool_rows_for(edges: edges, diff: diff, population: population)
+                  let rows = concat(built.rows, floor_preparation_scope_tool_self_rows(population: population))
+                  let forced = floor_preparation_scope_tool_forced(
+                    poisons: floor_preparation_scope_tool_poison_sources(edges: import_read.edges),
+                    edges: edges,
+                    population: population)
+                  let scoping = floor_preparation_scope_tool_select_guarded(
+                    rows: rows,
+                    forced: forced.entries,
+                    hit_cap: built.hit_cap || forced.hit_cap,
+                    population: population,
+                    diff: diff)
+                  let transport = floor_preparation_scope_tool_receipt("tree-transport",
+                    concat(concat("head=", head_line),
+                      concat(concat(" index=", to_string(length(xs: index.lines))),
+                        concat(concat(" edges=", to_string(length(xs: edges))),
+                          concat(" diff_files=", to_string(length(xs: diff)))))))
+                  let decision = floor_preparation_scope_tool_receipt("decision",
+                    concat(concat("rows=", to_string(length(xs: rows))),
+                      concat(" forced=", to_string(length(xs: forced.entries)))))
+                  let line = floor_preparation_scope_line(name: label, scoping: scoping, population: population)
+                  concat(concat(concat(transport, "\n"), decision), concat("\n", line))
+                }
+              }
+            }
+          }
         }
       }
     }
@@ -510,13 +635,9 @@ fn floor_preparation_scope_tool_run() -> String {
   if missing != "" {
     concat("[scope-tool-REFUSED] required-env name=", missing)
   } else {
-    if floor_preparation_env_value(name: "SCOPE_DIAG") == "poison" {
-      floor_preparation_scope_tool_poison_report(tree: floor_preparation_env_value(name: "SCOPE_TREE"))
-    } else {
-      floor_preparation_scope_tool_body(
+    floor_preparation_scope_tool_body(
       tree: floor_preparation_env_value(name: "SCOPE_TREE"),
       base: floor_preparation_env_value(name: "SCOPE_BASE"),
       label: floor_preparation_env_value(name: "SCOPE_LABEL"))
-    }
   }
 }

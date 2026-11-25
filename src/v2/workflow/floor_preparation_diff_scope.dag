@@ -91,39 +91,39 @@ import v2.workflow.floor_preparation_split {
 // invalidated by that file, and a map that followed only imports would narrow a run away from a module it
 // still reads. That is the dangerous direction of error: too little preparation looks like a green floor
 // while checking nothing.
-data floor_preparation_scope_edge_rows: List<String> = [
-  "entry=dag/test/claim/floor/floor_phase_attribution_witness.dag|file=dag/test/claim/floor/floor_phase_attribution_witness.dag|kind=module-decl",
-  "entry=dag/test/claim/floor/floor_phase_attribution_witness.dag|file=src/v2/workflow/floor_preparation_split.dag|kind=import",
-  "entry=dag/test/claim/floor/floor_phase_attribution_witness.dag|file=src/v2/workflow/floor_cost_debt.dag|kind=import",
-  "entry=dag/test/claim/floor/floor_phase_attribution_witness.dag|file=dag/gunbc/witness/witness_floor_workflow.dag|kind=read-literal",
-  "entry=dag/test/claim/floor/floor_phase_attribution_witness.dag|file=dag/test/claim/floor/floor_preparation_split_population.txt|kind=read-literal",
-  "entry=dag/test/claim/arity_zero_import_refusal_witness.dag|file=dag/test/claim/arity_zero_import_refusal_witness.dag|kind=module-decl",
-  "entry=dag/test/claim/arity_zero_import_refusal_witness.dag|file=src/v2/workflow/floor_preparation_split.dag|kind=import",
-  "entry=dag/test/claim/match_exhaustiveness_coproduct_witness.dag|file=dag/test/claim/match_exhaustiveness_coproduct_witness.dag|kind=module-decl",
-  "entry=dag/test/claim/match_exhaustiveness_coproduct_witness.dag|file=src/v2/workflow/floor_cost_debt.dag|kind=import",
-  "entry=dag/test/claim/floor/floor_non_verdict_classification_witness.dag|file=dag/test/claim/floor/floor_non_verdict_classification_witness.dag|kind=module-decl",
-  "entry=dag/test/claim/declared_type_expected_type_path_witness.dag|file=dag/test/claim/declared_type_expected_type_path_witness.dag|kind=module-decl",
-  "entry=dag/test/claim/declared_type_expected_type_path_witness.dag|file=dag/gunbc/witness/witness_floor_workflow.dag|kind=import",
+data floor_preparation_scope_edge_rows: List<FloorPreparationScopeRow> = [
+  ScopeModuleDecl { entry: "dag/test/claim/floor/floor_phase_attribution_witness.dag" },
+  ScopeImport { entry: "dag/test/claim/floor/floor_phase_attribution_witness.dag", file: "src/v2/workflow/floor_preparation_split.dag" },
+  ScopeImport { entry: "dag/test/claim/floor/floor_phase_attribution_witness.dag", file: "src/v2/workflow/floor_cost_debt.dag" },
+  ScopeReadLiteral { entry: "dag/test/claim/floor/floor_phase_attribution_witness.dag", file: "dag/gunbc/witness/witness_floor_workflow.dag" },
+  ScopeReadLiteral { entry: "dag/test/claim/floor/floor_phase_attribution_witness.dag", file: "dag/test/claim/floor/floor_preparation_split_population.txt" },
+  ScopeModuleDecl { entry: "dag/test/claim/arity_zero_import_refusal_witness.dag" },
+  ScopeImport { entry: "dag/test/claim/arity_zero_import_refusal_witness.dag", file: "src/v2/workflow/floor_preparation_split.dag" },
+  ScopeModuleDecl { entry: "dag/test/claim/match_exhaustiveness_coproduct_witness.dag" },
+  ScopeImport { entry: "dag/test/claim/match_exhaustiveness_coproduct_witness.dag", file: "src/v2/workflow/floor_cost_debt.dag" },
+  ScopeModuleDecl { entry: "dag/test/claim/floor/floor_non_verdict_classification_witness.dag" },
+  ScopeModuleDecl { entry: "dag/test/claim/declared_type_expected_type_path_witness.dag" },
+  ScopeImport { entry: "dag/test/claim/declared_type_expected_type_path_witness.dag", file: "dag/gunbc/witness/witness_floor_workflow.dag" }
 ]
 
 // THE SAME MAP, ONE EDGE RICHER: the non-verdict classification entry opens the plan file with a path
 // literal. `the_uncovered_file_fails_closed_to_the_whole_population` runs the SAME diff against both maps
 // and demands opposite outcomes -- which is what makes the fail-closed rule a witnessed behaviour rather
 // than a comment about one.
-data floor_preparation_scope_edge_rows_variant: List<String> = [
-  "entry=dag/test/claim/floor/floor_phase_attribution_witness.dag|file=dag/test/claim/floor/floor_phase_attribution_witness.dag|kind=module-decl",
-  "entry=dag/test/claim/floor/floor_phase_attribution_witness.dag|file=src/v2/workflow/floor_preparation_split.dag|kind=import",
-  "entry=dag/test/claim/floor/floor_phase_attribution_witness.dag|file=src/v2/workflow/floor_cost_debt.dag|kind=import",
-  "entry=dag/test/claim/floor/floor_phase_attribution_witness.dag|file=dag/gunbc/witness/witness_floor_workflow.dag|kind=read-literal",
-  "entry=dag/test/claim/floor/floor_phase_attribution_witness.dag|file=dag/test/claim/floor/floor_preparation_split_population.txt|kind=read-literal",
-  "entry=dag/test/claim/arity_zero_import_refusal_witness.dag|file=dag/test/claim/arity_zero_import_refusal_witness.dag|kind=module-decl",
-  "entry=dag/test/claim/arity_zero_import_refusal_witness.dag|file=src/v2/workflow/floor_preparation_split.dag|kind=import",
-  "entry=dag/test/claim/match_exhaustiveness_coproduct_witness.dag|file=dag/test/claim/match_exhaustiveness_coproduct_witness.dag|kind=module-decl",
-  "entry=dag/test/claim/match_exhaustiveness_coproduct_witness.dag|file=src/v2/workflow/floor_cost_debt.dag|kind=import",
-  "entry=dag/test/claim/floor/floor_non_verdict_classification_witness.dag|file=dag/test/claim/floor/floor_non_verdict_classification_witness.dag|kind=module-decl",
-  "entry=dag/test/claim/floor/floor_non_verdict_classification_witness.dag|file=dag/gunbc/roadmap/roadmap_authority.dag|kind=read-literal",
-  "entry=dag/test/claim/declared_type_expected_type_path_witness.dag|file=dag/test/claim/declared_type_expected_type_path_witness.dag|kind=module-decl",
-  "entry=dag/test/claim/declared_type_expected_type_path_witness.dag|file=dag/gunbc/witness/witness_floor_workflow.dag|kind=import",
+data floor_preparation_scope_edge_rows_variant: List<FloorPreparationScopeRow> = [
+  ScopeModuleDecl { entry: "dag/test/claim/floor/floor_phase_attribution_witness.dag" },
+  ScopeImport { entry: "dag/test/claim/floor/floor_phase_attribution_witness.dag", file: "src/v2/workflow/floor_preparation_split.dag" },
+  ScopeImport { entry: "dag/test/claim/floor/floor_phase_attribution_witness.dag", file: "src/v2/workflow/floor_cost_debt.dag" },
+  ScopeReadLiteral { entry: "dag/test/claim/floor/floor_phase_attribution_witness.dag", file: "dag/gunbc/witness/witness_floor_workflow.dag" },
+  ScopeReadLiteral { entry: "dag/test/claim/floor/floor_phase_attribution_witness.dag", file: "dag/test/claim/floor/floor_preparation_split_population.txt" },
+  ScopeModuleDecl { entry: "dag/test/claim/arity_zero_import_refusal_witness.dag" },
+  ScopeImport { entry: "dag/test/claim/arity_zero_import_refusal_witness.dag", file: "src/v2/workflow/floor_preparation_split.dag" },
+  ScopeModuleDecl { entry: "dag/test/claim/match_exhaustiveness_coproduct_witness.dag" },
+  ScopeImport { entry: "dag/test/claim/match_exhaustiveness_coproduct_witness.dag", file: "src/v2/workflow/floor_cost_debt.dag" },
+  ScopeModuleDecl { entry: "dag/test/claim/floor/floor_non_verdict_classification_witness.dag" },
+  ScopeReadLiteral { entry: "dag/test/claim/floor/floor_non_verdict_classification_witness.dag", file: "dag/gunbc/roadmap/roadmap_authority.dag" },
+  ScopeModuleDecl { entry: "dag/test/claim/declared_type_expected_type_path_witness.dag" },
+  ScopeImport { entry: "dag/test/claim/declared_type_expected_type_path_witness.dag", file: "dag/gunbc/witness/witness_floor_workflow.dag" }
 ]
 
 // THE ENROLLED POPULATION the fixture map is over. Carried APART from the edges on purpose: an entry with
@@ -170,15 +170,14 @@ data floor_preparation_scope_diff_fixtures: List<String> = [
   "name=empty|files=",
 ]
 
-// The three kinds the tool knows how to over-approximate. A row naming anything else is a malformed map
-// and is refused, because an unknown kind means the map thinks it recorded an edge the tool cannot
-// reproduce -- and narrowing on a map nobody can reproduce is the silent under-preparation this file
-// exists to make impossible.
-data floor_preparation_scope_edge_kinds: List<String> = [
-  "import",
-  "module-decl",
-  "read-literal",
-]
+// THE THREE KINDS THE TOOL KNOWS HOW TO OVER-APPROXIMATE, AS A SUM, NOT A STRING. An unknown kind was
+// once writable as free text and guarded by a runtime "is the kind known" check; writing it as a
+// coproduct makes the unknown state impossible to construct, which retires the check (DESIGN
+// gunbc.design_argument::fail_closed: "stronger than catching a wrong state is making it unwritable").
+type FloorPreparationScopeRow
+  = ScopeImport { entry: String, file: String }
+  | ScopeModuleDecl { entry: String }
+  | ScopeReadLiteral { entry: String, file: String }
 
 // ---------------------------------------------------------------------------
 // THE DECISION
@@ -268,10 +267,19 @@ fn floor_preparation_scope_marker_reason(row: String) -> String {
 
 // ENTRIES WHOSE CLOSURE CONTAINS THE FILE, over a given map. The empty list means the file is in no
 // closure at all -- the caller turns that into the fail-closed whole-population decision.
-fn floor_preparation_scope_entries_for(rows: List<String>, file: String) -> List<String> {
+fn floor_preparation_scope_entries_for(rows: List<FloorPreparationScopeRow>, file: String) -> List<String> {
   fold(rows, init:  [], f: (acc, row) =>
-    if floor_preparation_scope_row_field(row: row, key: "file") == file {
-      let entry = floor_preparation_scope_row_field(row: row, key: "entry")
+    let reached = match row {
+      ScopeImport { entry: e, file: f2 } => f2 == file,
+      ScopeModuleDecl { entry: e } => e == file,
+      ScopeReadLiteral { entry: e, file: f2 } => f2 == file,
+    }
+    if reached {
+      let entry = match row {
+        ScopeImport { entry: e, file: f2 } => e,
+        ScopeModuleDecl { entry: e } => e,
+        ScopeReadLiteral { entry: e, file: f2 } => e,
+      }
       if floor_preparation_scope_contains(xs: acc, target: entry) {
         acc
       } else {
@@ -294,7 +302,7 @@ fn floor_preparation_scope_first_universal(diff: List<String>) -> Optional<Strin
 // a way the map does not model, so the answer is the whole population, never an empty one. An entry file
 // is exempt because an entry trivially belongs to its own closure -- asserted by
 // `the_map_records_every_entry_with_its_own_module_decl`.
-fn floor_preparation_scope_first_uncovered(rows: List<String>, population: List<String>, diff: List<String>) -> Optional<String> {
+fn floor_preparation_scope_first_uncovered(rows: List<FloorPreparationScopeRow>, population: List<String>, diff: List<String>) -> Optional<String> {
   fold(diff, init:  none, f: (acc, file) =>
     match acc {
       Present { value: _ } => acc
@@ -311,7 +319,7 @@ fn floor_preparation_scope_first_uncovered(rows: List<String>, population: List<
     })
 }
 
-fn floor_preparation_scope_selected(rows: List<String>, forced: List<String>, diff: List<String>) -> List<String> {
+fn floor_preparation_scope_selected(rows: List<FloorPreparationScopeRow>, forced: List<String>, diff: List<String>) -> List<String> {
   let hits = fold(diff, init:  [], f: (acc, file) => floor_preparation_scope_union(a: acc, b: floor_preparation_scope_entries_for(rows: rows, file: file)))
   floor_preparation_scope_union(a: hits, b: forced)
 }
@@ -319,7 +327,7 @@ fn floor_preparation_scope_selected(rows: List<String>, forced: List<String>, di
 // THE DECISION, OVER A GIVEN MAP. Parameterised by the map so a witness can run the SAME diff against two
 // maps and require opposite answers -- the only way to show the fail-closed rule fires because of
 // COVERAGE and not because of a file's name.
-fn floor_preparation_scope_select_over(rows: List<String>, forced: List<String>, population: List<String>, diff: List<String>) -> FloorPreparationScoping {
+fn floor_preparation_scope_select_over(rows: List<FloorPreparationScopeRow>, forced: List<String>, population: List<String>, diff: List<String>) -> FloorPreparationScoping {
   if length(xs: diff) == 0 {
     Selected { entries: forced, reason: "empty-diff" }
   } else {
@@ -479,38 +487,10 @@ fn floor_preparation_scope_report() -> String {
 
 // THE MAP'S OWN SANITY. A row missing a field, or naming a kind the tool cannot reproduce, is a malformed
 // map; a malformed map narrows silently, so it is refused rather than skipped.
-fn floor_preparation_scope_map_is_well_formed(rows: List<String>) -> Bool {
-  fold(rows, init:  true, f: (acc, row) =>
-    if acc {
-      let entry = floor_preparation_scope_row_field(row: row, key: "entry")
-      let file = floor_preparation_scope_row_field(row: row, key: "file")
-      let kind = floor_preparation_scope_row_field(row: row, key: "kind")
-      if length(xs: entry) == 0 {
-        false
-      } else {
-        if length(xs: file) == 0 {
-          false
-        } else {
-          if length(xs: kind) == 0 {
-            false
-          } else {
-            floor_preparation_scope_kind_is_known(kind: kind)
-          }
-        }
-      }
-    } else {
-      false
-    })
-}
-
-fn floor_preparation_scope_kind_is_known(kind: String) -> Bool {
-  floor_preparation_scope_contains(xs: floor_preparation_scope_edge_kinds, target: kind)
-}
-
 // EVERY ENTRY RECORDS ITS OWN FILE. Without that edge a diff touching only an entry's own file could
 // narrow the entry away and the entry would never be prepared -- the dangerous direction, so it is a
 // claim and not an assumption.
-fn floor_preparation_scope_every_entry_declares_itself(rows: List<String>, population: List<String>) -> Bool {
+fn floor_preparation_scope_every_entry_declares_itself(rows: List<FloorPreparationScopeRow>, population: List<String>) -> Bool {
   fold(population, init:  true, f: (acc, entry) =>
     if acc {
       if length(xs: floor_preparation_scope_entries_for(rows: rows, file: entry)) > 0 {
@@ -524,7 +504,7 @@ fn floor_preparation_scope_every_entry_declares_itself(rows: List<String>, popul
 }
 
 // CLOSEDNESS: nothing is selected that no diff file reaches, forced entries aside.
-fn floor_preparation_scope_selection_is_closed(rows: List<String>, forced: List<String>, diff: List<String>) -> Bool {
+fn floor_preparation_scope_selection_is_closed(rows: List<FloorPreparationScopeRow>, forced: List<String>, diff: List<String>) -> Bool {
   let selected = floor_preparation_scope_selected(rows: rows, forced: forced, diff: diff)
   fold(selected, init:  true, f: (acc, entry) =>
     if acc {
@@ -550,7 +530,7 @@ fn floor_preparation_scope_selection_is_closed(rows: List<String>, forced: List<
 // MINIMALITY: nothing a diff file reaches is skipped. Closedness alone would be satisfied by an empty
 // selection, which would be the bug; this is the half that says the selection is still CHECKING what it
 // claims to check.
-fn floor_preparation_scope_selection_is_minimal(rows: List<String>, forced: List<String>, diff: List<String>) -> Bool {
+fn floor_preparation_scope_selection_is_minimal(rows: List<FloorPreparationScopeRow>, forced: List<String>, diff: List<String>) -> Bool {
   let selected = floor_preparation_scope_selected(rows: rows, forced: forced, diff: diff)
   fold(diff, init:  true, f: (acc, file) =>
     if acc {
@@ -567,7 +547,7 @@ fn floor_preparation_scope_selection_is_minimal(rows: List<String>, forced: List
 }
 
 // THE FORCED SET SURVIVES EVERY SELECTION, including the empty diff.
-fn floor_preparation_scope_forced_survive(rows: List<String>, forced: List<String>, diff: List<String>) -> Bool {
+fn floor_preparation_scope_forced_survive(rows: List<FloorPreparationScopeRow>, forced: List<String>, diff: List<String>) -> Bool {
   let selected = floor_preparation_scope_selected(rows: rows, forced: forced, diff: diff)
   fold(forced, init:  true, f: (acc, entry) =>
     if acc {
