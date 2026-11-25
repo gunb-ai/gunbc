@@ -20638,6 +20638,19 @@ pub fn claim_source_refusal_rendered(path: &str, cause: &ClaimSourceRefusalCause
 pub fn claim_route_module_paths(
     source_roots: &[String],
 ) -> Result<std::collections::HashSet<String>, String> {
+    // The same fallible walk `run_claim_route` takes first, so an unreadable or unparseable source
+    // is refused here with the route's own located causes, not read as a corpus without that module.
+    if let Err(refusals) = entry_resolve::try_with_module_path_index(source_roots) {
+        return Err(format!(
+            "{} unreadable claim source(s):\n  {}",
+            refusals.len(),
+            refusals
+                .iter()
+                .map(ModuleIndexRefusal::rendered)
+                .collect::<Vec<_>>()
+                .join("\n  ")
+        ));
+    }
     let index = entry_resolve::try_process_shared_index(source_roots)?;
     Ok(index
         .source_files
