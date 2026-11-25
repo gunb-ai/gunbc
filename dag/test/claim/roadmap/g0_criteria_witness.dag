@@ -1,0 +1,163 @@
+module test.claim.roadmap.g0_criteria_witness
+
+// EXECUTED CONSUMERS for the G0 contained-development-execution criteria proposal (PR #16989), the
+// two checks the reviewer's FINDING 2 said must be real consumers green by execution rather than text
+// greps over .dag source:
+//   * the rendered capability key is read from the OUTPUT of the renderer (dispatch_worker_unit_properties
+//     -> systemd_run_property_assignment), not assembled with sed; and
+//   * the condition-count agreement is read from the TYPED plan value (MarkdownBlock tree), not from a grep
+//     of the source file.
+// Each check is deterministic and fails its NAMED negative case in the same run (run --claim-run turns a
+// `test fn` returning false into exit 1). The two-sided bwrap enforcement probe stays hand-shell and is
+// scaffold-marked in gunbc.roadmap.g0_contained_dev_execution_proof (its decision rule is modeled there).
+
+import std.types { Bool, String, Int, List, NonEmptyStr }
+import std.algebra { string_contains }
+import std.markdown { MarkdownBlock, MarkdownInline, MarkdownListItem, TextInline, CodeInline, HeadingBlock, ParagraphBlock, UnorderedListBlock, BlockquoteBlock }
+import std.measure { kibibyte }
+import gunbc.markdown_helpers { p, li, ul }
+import gunbc.plans.contained_development_execution_g0 { contained_development_execution_g0_plan }
+import gunbc.roadmap.dispatch_worker_unit_confinement { session_process_bounds }
+import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_worker_unit_properties }
+import gunbc.roadmap.roadmap_attempt_occurrence { UnitRunOnSystemManager }
+import gunbc.roadmap.roadmap_dashboard_instance { srv1_lab_dashboard_instance }
+import extdeps.systemd.systemd_run { SystemdRunProperty, systemd_run_property_assignment, SystemdRunPropertyAssignmentReady, SystemdRunPropertyAssignmentRefused, systemd_run_empty_capability_bounding_set_assignment }
+import gunbc.roadmap.g0_contained_dev_execution_proof { g0_two_sided_isolation_holds }
+
+// ── markdown text extraction over the typed carrier ──────────────────────────────────────────────
+fn join_str(xs: List<String>) -> String { fold(xs, init: "", f: (acc, s) => concat(acc, s)) }
+
+fn inline_text(i: MarkdownInline) -> String {
+  match i {
+    TextInline { text: t } => t
+    CodeInline { text: t } => t
+    _ => ""
+  }
+}
+
+fn item_text(it: MarkdownListItem) -> String { join_str(map(it.blocks, block_text)) }
+
+fn block_text(b: MarkdownBlock) -> String {
+  match b {
+    HeadingBlock { inlines: is } => join_str(map(is, inline_text))
+    ParagraphBlock { inlines: is } => join_str(map(is, inline_text))
+    UnorderedListBlock { items: its } => join_str(map(its, item_text))
+    BlockquoteBlock { blocks: bs } => join_str(map(bs, block_text))
+    _ => ""
+  }
+}
+
+fn is_done_when_paragraph(b: MarkdownBlock) -> Bool {
+  match b {
+    ParagraphBlock { inlines: is } => string_contains(s: join_str(map(is, inline_text)), pattern: "**Done when")
+    _ => false
+  }
+}
+
+fn unordered_len(b: MarkdownBlock) -> Int {
+  match b {
+    UnorderedListBlock { items: its } => count(its)
+    _ => -1
+  }
+}
+
+// THE ENUMERATED COUNT: the number of done-when condition items, summed over each UnorderedListBlock
+// that immediately follows a "**Done when" paragraph. A consumer over the typed plan value.
+data CountAcc { seen: Int, expecting: Bool }
+
+fn count_conditions(body: List<MarkdownBlock>) -> Int {
+  let r = fold(body, init: CountAcc { seen: 0, expecting: false }, f: (acc, b) =>
+    if is_done_when_paragraph(b) {
+      CountAcc { seen: acc.seen, expecting: true }
+    } else {
+      if acc.expecting && unordered_len(b) >= 0 {
+        CountAcc { seen: acc.seen + unordered_len(b), expecting: false }
+      } else {
+        CountAcc { seen: acc.seen, expecting: false }
+      }
+    }
+  )
+  r.seen
+}
+
+fn has_substring_in_body(body: List<MarkdownBlock>, needle: String) -> Bool {
+  any(body, b => string_contains(s: block_text(b), pattern: needle))
+}
+
+// THE PREDICATE: enumerated count is nonzero AND the lifting line "ALL pass (<n> conditions)" names the
+// same n. Both sides read from the typed value; a mismatch (the pre-fix 13-vs-14) returns false.
+fn g0_counts_agree(body: List<MarkdownBlock>) -> Bool {
+  let n = count_conditions(body)
+  if n > 0 {
+    has_substring_in_body(body, concat("ALL pass (", concat(to_string(n), " conditions)")))
+  } else {
+    false
+  }
+}
+
+// THE RENDERER OUTPUT: map each SystemdRunProperty through the renderer's own assignment fold.
+fn rendered_words(props: List<SystemdRunProperty>) -> List<String> {
+  map(props, pr =>
+    match systemd_run_property_assignment(property: pr) {
+      SystemdRunPropertyAssignmentReady { assignment: a } => a
+      SystemdRunPropertyAssignmentRefused { cause: _ } => ""
+    }
+  )
+}
+
+fn g0_system_manager_render() -> List<String> {
+  let inst = srv1_lab_dashboard_instance()
+  rendered_words(dispatch_worker_unit_properties(
+    instance: inst,
+    working_directory: "/w",
+    attempt_worktree: "/w",
+    worker_log_path: "/l",
+    granted: kibibyte(count: 1048576),
+    process_bounds: session_process_bounds,
+    exit_hook: "true" as NonEmptyStr,
+    launch_route: UnitRunOnSystemManager,
+  ))
+}
+
+// ── CHECK 2: condition-count agreement, executed over the typed plan value ────────────────────────
+test fn g0_plan_condition_counts_agree_and_are_nonzero() -> Bool {
+  g0_counts_agree(contained_development_execution_g0_plan.body)
+}
+
+// NAMED negative [lift_reverted_to_13]: two done-when conditions but the lift line says 1 -> the same
+// predicate must reject it. If the predicate wrongly returned true, this test fn returns false (exit 1).
+test fn g0_count_predicate_rejects_a_mismatched_lift() -> Bool {
+  let bad = [
+    p("**Done when (both must hold):**"),
+    ul([li("first condition"), li("second condition")]),
+    p("ALL pass (1 conditions) -> the operator may lift G0."),
+  ]
+  !g0_counts_agree(bad)
+}
+
+// ── CHECK 3: rendered capability key, executed on the renderer's OUTPUT ────────────────────────────
+test fn g0_renderer_emits_the_expected_capability_key_and_plan_matches() -> Bool {
+  let words = g0_system_manager_render()
+  let expected = systemd_run_empty_capability_bounding_set_assignment
+  any(words, w => w == expected)
+    && !any(words, w => w == "EmptyCapabilityBoundingSet=yes")
+    && has_substring_in_body(contained_development_execution_g0_plan.body, "CapabilityBoundingSet=")
+    && !has_substring_in_body(contained_development_execution_g0_plan.body, "EmptyCapabilityBoundingSet=yes")
+}
+
+// NAMED negative [plan_expected_EmptyCapabilityBoundingSet=yes]: the renderer's output must NOT contain
+// the non-directive the plan once expected, and MUST contain the emitted key.
+test fn g0_renderer_does_not_emit_the_buggy_capability_key() -> Bool {
+  let words = g0_system_manager_render()
+  !any(words, w => w == "EmptyCapabilityBoundingSet=yes")
+    && any(words, w => w == systemd_run_empty_capability_bounding_set_assignment)
+}
+
+// ── CHECK 1 decision rule (the bwrap OBSERVATIONS are produced by the scaffold-marked shell witness) ─
+// NAMED negative [unmasked_boundary]: the same rule, given the unmasked observations (own op permitted
+// but protected + sibling reachable), must be false.
+test fn g0_isolation_predicate_accepts_enforced_and_rejects_unmasked() -> Bool {
+  let enforced = g0_two_sided_isolation_holds(own_op_permitted: true, protected_reachable: false, sibling_reachable: false)
+  let unmasked = g0_two_sided_isolation_holds(own_op_permitted: true, protected_reachable: true, sibling_reachable: true)
+  enforced && !unmasked
+}

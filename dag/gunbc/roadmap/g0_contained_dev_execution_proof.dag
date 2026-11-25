@@ -1,0 +1,46 @@
+module gunbc.roadmap.g0_contained_dev_execution_proof
+
+// THE .dag INTENT OF THE G0 TWO-SIDED HERMETIC ISOLATION PROOF, and the scaffold marker for the one
+// realization that stays hand-shell. This is the carrier the reviewer's FINDING 1 asks for: the
+// semantics of the unreachability probe are modeled here as a .dag consumer; only the OBSERVATIONS
+// (the three booleans) are produced by hand-shell, because producing them requires executing a real
+// kernel mount-namespace primitive (bwrap --tmpfs masking) that neither a .dag typecheck nor a source
+// grep can perform. See gunbc.design_argument::fail_closed (a typecheck and a .contains() grep are not
+// consumers) for why the decision rule must be a typed consumer and why the enforcement must be executed.
+
+import std.types { Bool, String }
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// THE DECISION RULE (the .dag consumer). Given the three observations a probe records about a worker
+// placed behind a hermetic boundary -- its own operation is permitted (own_op_permitted), the
+// representative PROTECTED credential fixture is reachable (protected_reachable), and the
+// SIBLING-ATTEMPT fixture is reachable (sibling_reachable) -- the isolation HOLDS exactly when the
+// worker's own operation is permitted AND neither the protected nor the sibling fixture is reachable.
+// This is the green-by-execution consumer: a real consumer that returns false when the boundary is
+// absent (the unmasked observation), not a grep.
+fn g0_two_sided_isolation_holds(own_op_permitted: Bool, protected_reachable: Bool, sibling_reachable: Bool) -> Bool {
+  own_op_permitted && !protected_reachable && !sibling_reachable
+}
+
+// THE BASH-EMIT CAPABILITY THE HAND-SHELL WITNESS EXERCISES. The enforcement is mount-namespace
+// masking: bwrap --dev-bind / with --tmpfs over the protected and sibling subtrees, run inside the
+// heavy-slot scope on srv1. This is the same mechanism family as systemd ProtectHome=tmpfs /
+// ProtectSystem / the ReadWritePaths carve-out. It is named so the scaffold is honest about exactly
+// what the shell does that .dag cannot.
+data g0_bwrap_isolation_bash_emit_capability: String = "bwrap mount-namespace tmpfs masking (--dev-bind / with --tmpfs over the protected and sibling subtrees), realized by tools/g0_g0_criteria_witness.sh inside the heavy-slot scope on srv1"
+
+// THE SCAFFOLD MARKER / DISSOLUTION TRIGGER. The decision rule above is the modeled consumer; the
+// three booleans it consumes are produced by a hand-shell probe (bwrap) until that probe is realized
+// through a typed host-effect / v2.workflow.bash_emit program (a modeled realization of the mount
+// namespace) rather than a hand-authored sh -c string. DISSOLVES WHEN the bwrap mount-namespace
+// probe is a modeled realization dispatch bound to this declaration, leaving no hand-authored medium-
+// as-string program logic. Bound to the decision rule so the marker names the carrier it scaffolds.
+data g0_bwrap_isolation_bash_emit_dissolution_trigger: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "gunbc.roadmap.g0_contained_dev_execution_proof",
+    decl_name: "g0_two_sided_isolation_holds",
+    field: WholeDeclaration,
+  }
+}
