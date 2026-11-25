@@ -57,6 +57,9 @@ type SourceAnnotationDebt {
   text: String
   origin: SourceSpan
   placement: AnnotationPlacement
+  // SCRATCH PLANNING PROBE, NOT A DELIVERABLE: the fold STATES how many lex captures it
+  // absorbed into this row, so a consumer reads a decided quantity instead of re-counting them.
+  absorbed_capture_count: Int
 }
 
 // An ORDERED sequence, because order and multiplicity are the whole of an annotation's identity here. Two annotations with the same text in the same gap are two annotations, and the one written first is written first — a set would silently merge them and a map would need the per-row key this carrier deliberately does not have. Consecutive lines group into one block at attachment, so a block is one row whose text carries its own line breaks, not N rows a consumer must re-associate.
@@ -302,6 +305,8 @@ fn annotation_attach_step(
               text: concat(open.text, concat("\n", capture.text)),
               origin: SourceSpan { file: open.origin.file, start: open.origin.start, end: capture.origin.end },
               placement: open.placement,
+              // THE DECIDING DECLARATION: the absorbing fold carries the count forward.
+              absorbed_capture_count: open.absorbed_capture_count + 1,
             },
           },
           pending_adjacent: true,
@@ -309,14 +314,14 @@ fn annotation_attach_step(
       } else {
         AnnotationAttachAcc {
           rows: list_push(acc.rows, open),
-          pending: Present { value: SourceAnnotationDebt { gap: gap, text: capture.text, origin: capture.origin, placement: capture.placement } },
+          pending: Present { value: SourceAnnotationDebt { gap: gap, text: capture.text, origin: capture.origin, placement: capture.placement, absorbed_capture_count: 1 } },
           pending_adjacent: true,
         }
       }
     Absent =>
       AnnotationAttachAcc {
         rows: acc.rows,
-        pending: Present { value: SourceAnnotationDebt { gap: gap, text: capture.text, origin: capture.origin, placement: capture.placement } },
+        pending: Present { value: SourceAnnotationDebt { gap: gap, text: capture.text, origin: capture.origin, placement: capture.placement, absorbed_capture_count: 1 } },
         pending_adjacent: true,
       }
   }
