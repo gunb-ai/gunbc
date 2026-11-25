@@ -3537,9 +3537,10 @@ fn harness_alignment_resume_apply(
 // after adjudication -- the party that holds the AlignmentCheckpointIdentity for a chain-carrying
 // attempt and calls this entry against the durable turn.alignment_checkpoint_due event at that attempt's
 // events path. That loop is row rn_763VRA2TGQ2F7XN7QVQH20P4DJ
-// (id roadmap-dispatch-loop-resumes-adjudicated-seat) under harness-recursive-alignment, with its edge
-// to factory-attempt-execution-on-fabric-lease, and its trigger is the operator's realization-home
-// ruling:
+// (id roadmap-dispatch-loop-resumes-adjudicated-seat), whose own ticket parents it under project factory
+// (in_project project factory, contribution: work runs on one execution and lease model), with edges to
+// factory-attempt-execution-on-fabric-lease AND to this row -- that second edge is the plan's statement
+// that the loop consumes THIS row's adjudication. Its trigger is the operator's realization-home ruling:
 // gunbc.plans.planning_consolidation records the belt's attempt, lease and slot state as a duplicate to
 // be deleted into fabric, so this row claims no future carrier file for it. Until that leg lands, a
 // checkpoint that cannot be adjudicated stays refused and the worker exits a labelled refusal -- the
