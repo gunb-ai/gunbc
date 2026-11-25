@@ -13,7 +13,7 @@ import std.source_annotation {
 }
 import extdeps.languages.dag.syntax { dag_parse_environment, strip_line_comment_delimiter }
 import v1.compiler.tokenize { tokenize_artifact }
-import v1.compiler.parse { parse_with_table }
+import v1.compiler.parse { parse_with_table, ParsedSourceExtents }
 import v1.compiler.annotation_bind { bind_annotations, keyed_annotation_regions }
 import v1.std.core { build_newline_index, empty_intern_table }
 import v2.compiler.parse { parse_artifact_span_index, parse_module_authored, authored_parse_annotations, authored_parse_semantic }
@@ -38,9 +38,7 @@ import std.host_text { chars }
 // HOW TO EXECUTE THIS CONTROL, and two traps on the way there (node parse-comment-gap-attachment-v2-consumed).
 // It imports v1.compiler.*, so it needs src/v1 as a source root -- claim_batch with only
 // --source-root dag --source-root src/v2 refuses it at the checker, because none of those modules is in a
-// root it can see. The three roots the executed form needs are published as a carrier,
-// v2.test.claim.manual.annotation_gap_v1_v2_agreement_probe_pair annotation_gap_v1_v2_agreement_probe_argv_roots,
-// and checked there by probe_pair_receipt_records_the_route_that_ran_it. The executed form is:
+// root it can see. The executed form names all three roots itself:
 //   claim_batch --source-root dag --source-root src/v2 --source-root src/v1 \
 //     --entry src/v2/test/claim/manual/annotation_gap_v1_v2_agreement.dag \
 //     --functions v1_and_v2_agree_on_neighbour_text_holds --hermetic
@@ -94,8 +92,18 @@ fn slice(source: String, start: Int, end: Int) -> String {
   substring(s: source, start: start, end: end)
 }
 
-// ---- v1: neighbour text through the binder's own keyed regions.
-fn v1_neighbours(source: String) -> List<String> {
+// ONE REALIZATION PER PARSER, and both projections derived from it (gunbc.design_argument::minimize_redundancy,
+// "a concept is modeled once and every use derived from it"). The v1 route is tokenize -> parse_with_table ->
+// bind_annotations, and the v2 route is lex_walk_artifact -> parse_module_authored; each appears HERE and only
+// here. The neighbour triple and the after-neighbour alone that the pinned conjunct needs are two projections
+// over the SAME rows and the SAME recorded extents, so the fixture cannot drift between the copy that asserts
+// agreement and the copy that pins the product -- which is the thing the break has to be visible to.
+type AgreementProducts {
+  neighbours: List<String>
+  after_products: List<String>
+}
+
+fn v1_agree_products(source: String) -> AgreementProducts {
   let file = "zqx_agree.dag"
   let artifact = tokenize_artifact(source: source, file: file, env: dag_parse_environment)
   let parsed = parse_with_table(
@@ -104,89 +112,48 @@ fn v1_neighbours(source: String) -> List<String> {
     intern_table: empty_intern_table(),
   )
   let graph = bind_annotations(transport: parsed.occurrence_transport, extents: parsed.source_extents, captures: artifact.annotations)
-  source_annotation_graph_rows(graph: graph)
+  let rows = source_annotation_graph_rows(graph: graph)
     |> filter(r => agreement_texts |> any(t => t == row_text(row: r)))
-    |> map(r => concat(row_text(row: r), " | ", v1_scope_text(source: source, scope: row_before(row: r)), " | ", v1_scope_text(source: source, scope: row_after(row: r))))
+  AgreementProducts {
+    neighbours: rows |> map(r => concat(row_text(row: r), " | ", v1_scope_text(source: source, extents: parsed.source_extents, scope: row_before(row: r)), " | ", v1_scope_text(source: source, extents: parsed.source_extents, scope: row_after(row: r)))),
+    after_products: rows |> map(r => v1_scope_text(source: source, extents: parsed.source_extents, scope: row_after(row: r))),
+  }
 }
 
-fn v1_scope_text(source: String, scope: Optional<AnnotationScope>) -> String {
+fn v2_agree_products(source: String) -> AgreementProducts {
+  match lex_walk_artifact(source: chars(text: source), file: ^zqx_agree, rules: dag_lex_rules()) {
+    Rejected { diagnostics: _ } => AgreementProducts { neighbours: ["<no lex>"], after_products: ["<no lex>"] }
+    Accepted { value: artifact, diagnostics: _ } =>
+      match parse_module_authored(artifact: artifact, grammar: dag_language_model().grammar, annotation_text: fn(t) { strip_line_comment_delimiter(lexeme: t) }) {
+        Rejected { diagnostics: _ } => AgreementProducts { neighbours: ["<no parse>"], after_products: ["<no parse>"] }
+        Accepted { value: authored, diagnostics: _ } =>
+          let rows = source_annotation_graph_rows(graph: authored_parse_annotations(artifact: authored))
+            |> filter(r => agreement_texts |> any(t => t == row_text(row: r)))
+          let index = parse_artifact_span_index(artifact: authored_parse_semantic(artifact: authored))
+          AgreementProducts {
+            neighbours: rows |> map(r => concat(row_text(row: r), " | ", v2_scope_text(source: source, index: index, scope: row_before(row: r)), " | ", v2_scope_text(source: source, index: index, scope: row_after(row: r)))),
+            after_products: rows |> map(r => v2_scope_text(source: source, index: index, scope: row_after(row: r))),
+          }
+      }
+  }
+}
+
+// The extent is the one the v1 parser recorded, read back out of the table that realization already holds --
+// this function no longer re-parses to look an occurrence up.
+fn v1_scope_text(source: String, extents: ParsedSourceExtents, scope: Optional<AnnotationScope>) -> String {
   match scope {
     Absent => "<none>"
     Present { value: s } =>
       match s {
         FileScope => "<file>"
         ErasedSourceRegion { extent: e } => slice(source: source, start: e.start, end: e.end)
-        OccurrenceScope { occurrence: _ } => v1_occurrence_text(source: source, scope: s)
+        OccurrenceScope { occurrence: id } =>
+          match extents.extents |> filter(row => row.occurrence == id) |> first {
+            Present { value: row } => slice(source: source, start: row.extent.start, end: row.extent.end)
+            Absent => "<no extent>"
+          }
       }
   }
-}
-
-// Recomputes nothing: the extent is the one the v1 parser recorded, read back by re-parsing the same
-// bytes and looking the occurrence up in the published table.
-fn v1_occurrence_text(source: String, scope: AnnotationScope) -> String {
-  match scope {
-    OccurrenceScope { occurrence: id } =>
-      let file = "zqx_agree.dag"
-      let parsed = parse_with_table(
-        tokens: tokenize_artifact(source: source, file: file, env: dag_parse_environment).tokens,
-        source_indices: map_insert(empty_map(), file, build_newline_index(file: file, source: source)),
-        intern_table: empty_intern_table(),
-      )
-      match parsed.source_extents.extents |> filter(row => row.occurrence == id) |> first {
-        Present { value: row } => slice(source: source, start: row.extent.start, end: row.extent.end)
-        Absent => "<no extent>"
-      }
-    _ => "<not an occurrence>"
-  }
-}
-
-// ---- v2: neighbour text through the recorded SpanIndex extents.
-fn v2_neighbours(source: String) -> List<String> {
-  match lex_walk_artifact(source: chars(text: source), file: ^zqx_agree, rules: dag_lex_rules()) {
-    Rejected { diagnostics: _ } => ["<no lex>"]
-    Accepted { value: artifact, diagnostics: _ } =>
-      match parse_module_authored(artifact: artifact, grammar: dag_language_model().grammar, annotation_text: fn(t) { strip_line_comment_delimiter(lexeme: t) }) {
-        Rejected { diagnostics: _ } => ["<no parse>"]
-        Accepted { value: authored, diagnostics: _ } =>
-          v2_rows_text(source: source, rows: source_annotation_graph_rows(graph: authored_parse_annotations(artifact: authored)), index: parse_artifact_span_index(artifact: authored_parse_semantic(artifact: authored)))
-      }
-  }
-}
-
-// After-neighbour only, for the pinned conjunct: the row's `gap.after` text, without the before side, so
-// the assertion names the region the roster is supposed to have produced and nothing else.
-fn v1_after_products(source: String) -> List<String> {
-  let file = "zqx_agree.dag"
-  let artifact = tokenize_artifact(source: source, file: file, env: dag_parse_environment)
-  let parsed = parse_with_table(
-    tokens: artifact.tokens,
-    source_indices: map_insert(empty_map(), file, build_newline_index(file: file, source: source)),
-    intern_table: empty_intern_table(),
-  )
-  let graph = bind_annotations(transport: parsed.occurrence_transport, extents: parsed.source_extents, captures: artifact.annotations)
-  source_annotation_graph_rows(graph: graph)
-    |> filter(r => agreement_texts |> any(t => t == row_text(row: r)))
-    |> map(r => v1_scope_text(source: source, scope: row_after(row: r)))
-}
-
-fn v2_after_products(source: String) -> List<String> {
-  match lex_walk_artifact(source: chars(text: source), file: ^zqx_agree, rules: dag_lex_rules()) {
-    Rejected { diagnostics: _ } => ["<no lex>"]
-    Accepted { value: artifact, diagnostics: _ } =>
-      match parse_module_authored(artifact: artifact, grammar: dag_language_model().grammar, annotation_text: fn(t) { strip_line_comment_delimiter(lexeme: t) }) {
-        Rejected { diagnostics: _ } => ["<no parse>"]
-        Accepted { value: authored, diagnostics: _ } =>
-          source_annotation_graph_rows(graph: authored_parse_annotations(artifact: authored))
-            |> filter(r => agreement_texts |> any(t => t == row_text(row: r)))
-            |> map(r => v2_scope_text(source: source, index: parse_artifact_span_index(artifact: authored_parse_semantic(artifact: authored)), scope: row_after(row: r)))
-      }
-  }
-}
-
-fn v2_rows_text(source: String, rows: List<SourceAnnotationDebt>, index: v2.std.provenance.SpanIndex) -> List<String> {
-  rows
-    |> filter(r => agreement_texts |> any(t => t == row_text(row: r)))
-    |> map(r => concat(row_text(row: r), " | ", v2_scope_text(source: source, index: index, scope: row_before(row: r)), " | ", v2_scope_text(source: source, index: index, scope: row_after(row: r))))
 }
 
 fn v2_scope_text(source: String, index: v2.std.provenance.SpanIndex, scope: Optional<AnnotationScope>) -> String {
@@ -223,8 +190,10 @@ fn v2_scope_text(source: String, index: v2.std.provenance.SpanIndex, scope: Opti
 // production, so a comment below it has the header before it; v1's module node has no header child,
 // so the same comment has nothing before it. Everything after the first row must match exactly.
 test fn v1_and_v2_agree_on_neighbour_text_holds() -> Bool {
-  let v1 = v1_neighbours(source: agreement_source)
-  let v2 = v2_neighbours(source: agreement_source)
+  let v1_realized = v1_agree_products(source: agreement_source)
+  let v2_realized = v2_agree_products(source: agreement_source)
+  let v1 = v1_realized.neighbours
+  let v2 = v2_realized.neighbours
   (v1 |> length) == 5
     && (v2 |> length) == 5
     && list_at_optional(xs: v1, index: 1) == list_at_optional(xs: v2, index: 1)
@@ -240,7 +209,6 @@ test fn v1_and_v2_agree_on_neighbour_text_holds() -> Bool {
     // src/v2/compiler/parse.dag's roster comment says the infix-application arm exists precisely so
     // `1 + 2 * 3` has a region for `2 * 3`; without it the neighbour is `2`. Pinning the text is what turns
     // that roster arm into something a run can lose.
-    && list_at_optional(xs: v2_after_products(source: agreement_source), index: 3) == Present { value: "2 * 3" }
-    && list_at_optional(xs: v1_after_products(source: agreement_source), index: 3) == Present { value: "2 * 3" }
-    && list_at_optional(xs: v1, index: 3) == list_at_optional(xs: v2, index: 3)
+    && list_at_optional(xs: v2_realized.after_products, index: 3) == Present { value: "2 * 3" }
+    && list_at_optional(xs: v1_realized.after_products, index: 3) == Present { value: "2 * 3" }
 }

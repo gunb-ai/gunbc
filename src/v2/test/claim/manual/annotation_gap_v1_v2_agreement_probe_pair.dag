@@ -1,116 +1,53 @@
 module v2.test.claim.manual.annotation_gap_v1_v2_agreement_probe_pair
 
-import std.types { CommitSha, List, String, commit_sha_text_holds }
-import std.algebra { fold_list, length, string_contains }
+import std.types { String }
+import std.algebra { string_contains }
 import v2.test.claim.manual.annotation_gap_v1_v2_agreement {
   AgreementControlRung, ManualUngated, GatedRow, FloorExecuted,
   agreement_control_module_name, agreement_control_entry_fn, agreement_control_rung
 }
 import v2.workflow.required_floor { required_gate_admits }
 
-// THE PROBE PAIR THAT SHOWS THE AGREEMENT CONTROL IS NOT VACUOUS, recorded as data rather than as prose
-// a reader has to trust. The fields are the receipt: kind, the ref the red tree is durable on, the main
-// commit it was cut from, the two commits where the control was OBSERVED failing and passing, and the
-// date it was executed.
+// THE TWO CLAIMS THAT REACH OUTSIDE THIS FILE, and nothing else. This module used to carry its own receipt:
+// the kind of probe, the ref the broken tree is durable on, the two commits where the control was observed
+// failing and passing, the date, the roster arm it removed, the three source roots and the run-log pointers --
+// and the only reader of all of it was a claim in this same file running `string_contains` over those same
+// strings. Data that no consumer outside its own file reads cannot refuse anything: it is self-certification
+// with extra steps, and it makes the module look like it is checking something when it is checking its own
+// transcription (gunbc.design_argument::consumption, "a witness asserting existence rather than exercising
+// behavior"; gunbc.design_argument::source_annotations, a `String` declaration whose only purpose is
+// commentary is misplaced or dead data). Every one of those carriers is gone, along with the well-formedness
+// claim that read them.
 //
-// WHY A DELIBERATE BREAK RATHER THAN A BEFORE/AFTER FEATURE TEST. The row this node closes says the
-// "gated agreement control turns red" when the v2 roster drops infix applications as regions. The control
-// is called that here because the row calls it so; it is NOT enrolled in any gated row -- the admission was
-// held -- so this red witness is carried by its executions alone, in the runs pinned on the pull request.
-// That red
-// cannot exist on any main commit -- on main the roster is whole -- so the only honest witness of it is
-// a tree where the arm was removed by hand. `kind` records that: red_at is NOT a claim that main is
-// broken, it is evidence the control is not vacuous. The arm is the second disjunct of
-// v2.compiler.parse parse_node_is_source_region (the infix-application projection); drop it and a
-// comment before `2 * 3` loses `2 * 3` as its neighbour on the v2 side while v1 still names it, so the
-// fixture row "before the product" in v2.test.claim.manual.annotation_gap_v1_v2_agreement -- the row the
-// control gained for exactly this reason, the four rows before it contain no infix application and could
-// not see the break -- disagrees and the claim fails.
+// WHAT REMAINS, and why these two survive the deletion: each one compares something published HERE against
+// something computed ELSEWHERE, so an edit on the other side can turn it red.
+//   * `probe_pair_witness_identity_agrees_with_the_control` -- the witness module and entry fn this pair was
+//     executed against are checked against the CONTROL'S OWN published carriers, imported from the control
+//     module. Renaming the module or its entry fn turns this red instead of leaving a green receipt about a
+//     file that no longer exists.
+//   * `probe_pair_rung_agrees_with_the_floors_own_admission` -- the control's declared rung is matched against
+//     `required_gate_admits`, which the floor computes from its own two selector rosters. Enrolling this
+//     control without restating its rung, or raising the rung while no roster names it, turns this red. That
+//     is the only way a rung statement earns more than its author's word.
 //
-// `git diff <red_at>^ <red_at>` is the break and nothing else. green_at is a real commit on the PR
-// lineage, and the witness file is BYTE-IDENTICAL between red_at and green_at -- only the roster differs
-// -- which is what makes the pair a mutation control rather than two different tests.
-// WHAT THIS MODULE IS, AND WHAT IT IS NOT. A mutation control over the agreement control: a tree where the
-// roster arm is removed, the same tree with the arm restored, and the two observations of ONE witness fn on
-// those two trees. It does not show main broken -- on main the roster is whole -- and `kind` records that in a
-// type rather than in prose. The EXECUTIONS are deliberately not stored here: a claim in this language cannot
-// observe a run, and a Bool set beside a run certifies nothing about it, so the raw PASS/FAIL lines and each
-// command's real exit status live in the run log on the pull request, cited by a typed carrier
-// (`…_run_log_refs`) instead of retold. To reproduce any leg: the broken tree is durable on the ref named by
-// `…_durable_ref`; every earlier break attempt is an ancestor of its tip, so `git log <that ref>` and
-// `git diff <commit>^ <commit>` show each plant. No break was rewritten away, and an attempt whose diff
-// against its first parent is EMPTY is not a break at all -- it survives only as a parent in that history.
-
-type AgreementProbeKind =
-    DeliberateBreak
-  | BeforeAfterFeatureTest
-
-data annotation_gap_v1_v2_agreement_probe_kind: AgreementProbeKind = DeliberateBreak
-
-data annotation_gap_v1_v2_agreement_probe_durable_ref: String = "refs/heads/red-control/parse-comment-gap-attachment-v2-consumed"
-
-data annotation_gap_v1_v2_agreement_probe_executed_on: String = "2026-11-25"
+// WHERE THE EXECUTIONS ARE, since they are deliberately NOT stored here: no predicate in this language
+// observes a process or a filesystem, so a Bool or a commit-sha string beside a run certifies nothing about
+// it. The raw PASS/FAIL lines, each command's real exit status, the exact argv, the binary's sha256 and the
+// tree sha it ran on are recorded in the pull-request run log; the deliberately-broken tree (the roster arm
+// of `v2.compiler.parse` `parse_node_is_source_region` removed, so a comment before `2 * 3` loses `2 * 3` as
+// its neighbour on the v2 side while v1 still names it) is durable as a named ref in the same repository, and
+// its history shows every plant, including the one whose diff against its first parent was EMPTY and which is
+// therefore a parent of the break and not a break. Both are named, with their hashes, in that run log rather
+// than repeated here where nothing could read them.
 
 data annotation_gap_v1_v2_agreement_probe_witness_module: String = "v2.test.claim.manual.annotation_gap_v1_v2_agreement"
 
 data annotation_gap_v1_v2_agreement_probe_witness_fn: String = "v1_and_v2_agree_on_neighbour_text_holds"
 
-data annotation_gap_v1_v2_agreement_probe_roster_arm: String = "parse_node_is_source_region || parse_node_has_authored_edge(name: ^grammar_infix_left_node_projection)"
-
-data annotation_gap_v1_v2_agreement_probe_argv_roots: List<String> = ["dag", "src/v1", "src/v2"]
-
-// WHERE THE EXECUTIONS ARE RECORDED, as a citation in a carrier rather than as prose in a comment: each entry
-// is a pull-request comment holding the runner's own PASS/FAIL lines, the exact claim_batch argv, the binary's
-// sha256 and the tree sha it ran on. This module does not restate them, and no predicate here certifies them;
-// the claim below only refuses if a carrier stops pointing at a run-log comment, so a receipt that quietly
-// loses its evidence trail is caught.
-data annotation_gap_v1_v2_agreement_probe_run_log_refs: List<String> = ["https://github.com/gunb-ai/gunbc/pull/16942#issuecomment-7154698398", "https://github.com/gunb-ai/gunbc/pull/16942#issuecomment-7155279996", "https://github.com/gunb-ai/gunbc/pull/16942#issuecomment-7157087347", "https://github.com/gunb-ai/gunbc/pull/16942#issuecomment-7162186260"]
-
-data annotation_gap_v1_v2_agreement_probe_red_base: CommitSha = "8c86ee47f68ec1f451e25a8cb8f594a868e5c384"
-
-data annotation_gap_v1_v2_agreement_probe_red_at: CommitSha = "08febdd150a4dc3df9d0b45b77897156a7ba47c1"
-
-data annotation_gap_v1_v2_agreement_probe_green_at: CommitSha = "66e290f5ea8c24a3c118d50d998da0a35cea5702"
-// ONE SHAPE CHECK OVER THIS FILE'S OWN CARRIERS, NAMED AS SUCH. It refuses a receipt whose DATA broke: a
-// placeholder where a commit sha belongs (`CommitSha` in dag/std/types.dag is an unvalidated String alias, so
-// a placeholder parses, typechecks and passes CI as a receipt that looks complete -- a fiction that merges), a
-// pair whose two names are the same commit, a deliberate break with no durable ref or no named arm, a source
-// root missing or duplicated, an evidence pointer that stopped being a run-log comment. What it CANNOT refuse
-// is a run that never happened: nothing in this language observes a process or a filesystem, which is exactly
-// why the runs live in the log the pointers name and not here. It is a well-formedness check on carriers this
-// module owns, and it is not offered as evidence that the pair was executed -- the two claims below are the
-// ones that reach outside this file.
-fn probe_pair_kind_promises_are_kept() -> Bool {
-  match annotation_gap_v1_v2_agreement_probe_kind {
-    DeliberateBreak =>
-      string_contains(s: annotation_gap_v1_v2_agreement_probe_durable_ref, pattern: "refs/heads/")
-        && string_contains(s: annotation_gap_v1_v2_agreement_probe_roster_arm, pattern: "parse_node_is_source_region")
-        && string_contains(s: annotation_gap_v1_v2_agreement_probe_roster_arm, pattern: "parse_node_has_authored_edge")
-        && string_contains(s: annotation_gap_v1_v2_agreement_probe_roster_arm, pattern: "grammar_infix_left_node_projection")
-    BeforeAfterFeatureTest => true
-  }
-}
-
-test fn probe_pair_receipt_is_well_formed_data() -> Bool {
-  commit_sha_text_holds(head: annotation_gap_v1_v2_agreement_probe_red_base)
-    && commit_sha_text_holds(head: annotation_gap_v1_v2_agreement_probe_red_at)
-    && commit_sha_text_holds(head: annotation_gap_v1_v2_agreement_probe_green_at)
-    && annotation_gap_v1_v2_agreement_probe_red_at != annotation_gap_v1_v2_agreement_probe_green_at
-    && probe_pair_kind_promises_are_kept()
-    && length(xs: annotation_gap_v1_v2_agreement_probe_argv_roots) == 3
-    && probe_roots_counted(wanted: "dag") == 1
-    && probe_roots_counted(wanted: "src/v1") == 1
-    && probe_roots_counted(wanted: "src/v2") == 1
-    && length(xs: annotation_gap_v1_v2_agreement_probe_run_log_refs) > 0
-    && probe_run_log_refs_cited() == length(xs: annotation_gap_v1_v2_agreement_probe_run_log_refs)
-}
-
-// THE RECEIPT AND THE CONTROL MUST NAME THE SAME WITNESS. The witness module and fn are copied into this
-// receipt, and a copy that drifts is a receipt for a run of some other file. They are checked against the
-// control's OWN published carriers, imported from the control module, so renaming the module or the entry fn
-// turns this claim red instead of leaving a green receipt about a file that no longer exists. The two
-// `string_contains` conjuncts refuse an emptied carrier, which equality alone would pass if both sides were
-// blanked together.
+// THE RECEIPT AND THE CONTROL MUST NAME THE SAME WITNESS. These two strings are a copy of what the control
+// publishes, and a copy that drifts is a receipt for a run of some other file -- so they are checked against
+// the control's OWN imported carriers rather than against prose. The two `string_contains` conjuncts refuse a
+// carrier that was emptied on both sides at once, which equality alone would pass.
 test fn probe_pair_witness_identity_agrees_with_the_control() -> Bool {
   annotation_gap_v1_v2_agreement_probe_witness_module == agreement_control_module_name
     && annotation_gap_v1_v2_agreement_probe_witness_fn == agreement_control_entry_fn
@@ -120,11 +57,10 @@ test fn probe_pair_witness_identity_agrees_with_the_control() -> Bool {
 
 // THE RUNG IS CHECKED AGAINST THE GATE'S OWN DECISION, NOT ASSERTED BESIDE IT. `agreement_control_rung` is
 // published by the control; the admission decision is `required_gate_admits`, computed by the floor from its
-// own two selector rosters. If this control is ever enrolled without its rung being restated -- or its rung
-// is raised to GatedRow while no roster row names it -- this claim refuses, which is the only way a rung
-// statement earns more than its author's word. ManualUngated is therefore not a confession filed here for
-// readers to trust; it is a claim that the floor admits this module under NEITHER selector kind, and a
-// family row that later swept this path in would fail it too.
+// own two selector rosters. All three arms consult the floor, so the claim cannot be satisfied by the rung's
+// own value. ManualUngated is therefore not a confession filed here for readers to trust; it is a claim that
+// the floor admits this module under NEITHER selector kind, and a family row that later swept this path in
+// would fail it too.
 test fn probe_pair_rung_agrees_with_the_floors_own_admission() -> Bool {
   match agreement_control_rung {
     ManualUngated => !required_gate_admits(module_path: agreement_control_module_name)
@@ -132,20 +68,3 @@ test fn probe_pair_rung_agrees_with_the_floors_own_admission() -> Bool {
     FloorExecuted => required_gate_admits(module_path: agreement_control_module_name)
   }
 }
-
-fn probe_run_log_refs_cited() -> Int {
-  fold_list(
-    xs: annotation_gap_v1_v2_agreement_probe_run_log_refs,
-    empty: 0,
-    cons: fn(acc, url) { if string_contains(s: url, pattern: "issuecomment-") { acc + 1 } else { acc } }
-  )
-}
-
-fn probe_roots_counted(wanted: String) -> Int {
-  fold_list(
-    xs: annotation_gap_v1_v2_agreement_probe_argv_roots,
-    empty: 0,
-    cons: fn(acc, root) { if root == wanted { acc + 1 } else { acc } }
-  )
-}
-
