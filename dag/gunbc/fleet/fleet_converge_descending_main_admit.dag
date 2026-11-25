@@ -45,8 +45,9 @@ type DescendingMainAdmission
 //
 // THE RECORDED TRIPLE IS TYPED, NOT SENTINEL-BACKED: the receipt's members arrive as Optional, so
 // "never recorded" (Absent, a v1 receipt) is distinct from "recorded empty" (Present([])), and each
-// refuses on its own arm. A closure whose attribution is missing cannot admit either — the
-// attribution is what ties the closure to the entry module it was computed from.
+// refuses on its own arm. A closure recorded without its attribution never reaches this decision at
+// all: the receipt's typed Optional members refuse at the decoder (FleetConvergePlanReceiptUnreadable),
+// because the attribution is what ties the closure to the entry module it was computed from.
 //
 // RE-VERIFICATION: before trusting the closure, confirm the recorded entry path and pool roots match
 // the derived expectations, each mismatch on its own variant. The receipt's own identity covers

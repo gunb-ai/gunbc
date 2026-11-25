@@ -21,7 +21,6 @@ import gunbc.fleet.fleet_converge_descending_main_admit {
   DescendingMainTouchesClosure,
   DescendingMainClosureAbsent,
   DescendingMainClosureEmpty,
-  DescendingMainAttributionAbsent,
   DescendingMainEntryMismatch,
   DescendingMainPoolRootsMismatch,
 }
@@ -333,8 +332,6 @@ fn descending_main_verdict_text(v: DescendingMainVerdict) -> String {
         join(["plan receipt at ", p, " carries no source closure; descending-main apply is not admitted for this plan"], "")
       DescendingMainClosureEmpty { plan_revision: p } =>
         join(["plan receipt at ", p, " records an empty source closure; a real import closure is never empty, so the descending-main apply is not admitted"], "")
-      DescendingMainAttributionAbsent { plan_revision: p, missing: m } =>
-        join(["plan receipt at ", p, " records a source closure without ", m, "; refusing (fail_closed)"], "")
       DescendingMainEntryMismatch { expected: e, recorded: r } =>
         join(["plan receipt source closure attributed to '", r, "' but expected '", e, "'"], "")
       DescendingMainPoolRootsMismatch { expected: e, recorded: r } =>
