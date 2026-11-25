@@ -80,12 +80,6 @@ import gunbc.guarantee_probe_corpus {
   DarkSuiteWitnessDisposition,
   MigratedToEnrolledDagProbe,
 }
-// AUTHORED-IN-THIS-PR (review 98503 follow-up): `disposed_ids_have_no_internal_duplicates` calls
-// distinct_string_count directly, but only its WRAPPERS (guarantee_class_ids_unique et al.) were
-// imported, so the bare name had no established callee identity and the whole leg failed at resolve
-// -- the check the reviewer asked to be made true could not execute at all. The callee is
-// #gunbc.guarantee_measurement::distinct_string_count; importing it names the identity the effect
-// join needs. Nothing else in this file changes meaning.
 import gunbc.guarantee_measurement {
   observed_is_verdict,
   MeasurementRevision, ContentFingerprint, GitRevision,
@@ -932,24 +926,12 @@ test fn dark_suite_dispositions_cover_migrated_v1_probes() -> Bool {
     direct_call_arg_type_ordinary_module_red_probe as String,
     direct_call_arg_type_v2_green_control_probe as String,
     direct_call_arg_type_v2_module_red_probe as String,
-    // Admitted by gunbc#16893 (roadmap node ladder-probe-corpus), enrolled in
-    // #gunbc.guarantee_probe_corpus::guarantee_probe_rows on v1_compile_rust_path_id with no Rust witness
-    // behind them, which is what this arm is for. THE ARM'S OWN CONDITION IS SATISFIED OUTSIDE THIS FILE for
-    // these three, and saying so is the point of this note rather than an exemption from it: the condition is
-    // that each member carries a discriminating RED or a positive control, and for the nine members above that
-    // is a test in this file, while for these three it is the sibling module
-    // #test.claim.guarantee_floor_class_probe_witness::floor_cardinality_seam_call_argument_refuses_proving_harness_is_live
-    // (the RED -- the same optional value at a call argument is refused DeclaredTypeNotInhabited, so the
-    // harness is proven to reach the judgment),
-    // #test.claim.guarantee_floor_class_probe_witness::floor_cardinality_seam_green_control_is_clean (the
-    // POSITIVE CONTROL -- the legitimate required-field read is accepted clean), and
-    // #test.claim.guarantee_floor_class_probe_witness::floor_cardinality_seam_hole_receipt_joins_its_v1_compile_path
-    // (the ROUTE -- the observation came through the real v1 compile path, so an emptied-out harness cannot
-    // pass here vacuously). Executed 2026-11-25 by claim_batch over that module at tree
-    // 97950fee4146101ba85127fdb301931ea45f383c with claim_batch sha256
-    // fab6957cb4e614d42efb8e4ad00832c0a585ad7f37f10e6c874a3f6920d463fe (main's released pack, verified against
-    // release-bins.manifest rc 0): 6 PASS, 0 FAIL, receipt on gunbc#16893 issuecomment-7165606551. Read the nine
-    // members above as NO evidence that this file executes these three: it does not.
+    // Membership in this list IS the admission condition: the partition guard
+    // #test.claim.guarantee_probe_corpus_witness::dark_suite_dispositions_cover_migrated_v1_probes enforces
+    // it structurally (its dag_native_ids_are_not_disposed_or_gaps conjunct), so no prose here can carry it.
+    // These three are enrolled on v1_compile_rust_path_id with no Rust witness behind them, which is what
+    // this arm exists for; the legs that executed them are named by the recurring-failure-mode row's
+    // receipts, not by this comment.
     floor_cardinality_seam_call_arg_control_probe as String,
     floor_cardinality_seam_green_probe as String,
     floor_cardinality_seam_hole_probe as String,

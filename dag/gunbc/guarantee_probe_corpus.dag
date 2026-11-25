@@ -283,44 +283,14 @@ data floor_record_completeness_bare_name_control_probe: GuaranteeProbeId = "floo
 // optionals in general.
 // The call-argument control: the same optional value at a direct call argument IS refused
 // (DeclaredTypeNotInhabited), proving the inhabittance check runs -- the hole is position-specific.
-// ON RECORD, NOT FIXED IN THIS CHANGE (measured statically at origin/main 10142523b00 by quiet-carp-72 on
-// 2026-11-25; nothing below was executed, these are readings of the sources). One claim in the sibling
-// witness test.claim.guarantee_probe_corpus_witness is false on main's own data today, and one earlier
-// reading of it by this worker was itself wrong and is withdrawn below. Neither remaining item is caused by
-// this enrolment and neither is fixed here, because both change measurements other lanes are certified
-// against. THEY ARE NOT A PROMISE: both are rostered roadmap rows, cited by identity below, which is the
-// durable handle (positions in roadmap_authority are not carried). They are written here so the corpus carries
-// the knowledge of what its own witness does not yet cover, beside the rows that own them.
-//   (1) OWNED BY A ROW, NOT BY THIS COMMENT. #test.claim.guarantee_probe_corpus_witness::dark_suite_dispositions_cover_migrated_v1_probes
-//       partitions every row on v1_compile_rust_path_id over exactly three arms: the dispositions above
-//       (5 MigratedToEnrolledDagProbe entries, 12 probe ids), known_v1_migration_gap_ids (1 entry), and a
-//       hand-maintained dag_native_v1_compile_probe_ids arm (9 entries) inside that same test fn. Measured at
-//       main 0d399a799b64 and stated by the owning row: 39 rows in this file's guarantee_probe_rows(), 37 on
-//       v1_compile_rust_path_id, 15 of those floor-prefixed and belonging to NO arm - so no floor class enrolled
-//       so far has ever been admitted to the partition. That row is roadmap_node identity
-//       rn_RNY67KVQ3FG5GVXYZX75DGSH6L, id floor-class-probes-have-no-dark-suite-migration-disposition, owner
-//       compiler-guarantee, whose carriers are exactly this file and guarantee_floor_class_probe_witness. The
-//       second rostered row, identity rn_BXTBZQ7JL4H5AIXPPQ7JNG2GZD, id
-//       guarantee-probe-corpus-fixtures-exercise-no-flat-map-and-no-service, owns the population defect: the
-//       check's population is a list written inside the witness rather than derived from the corpus, which is why
-//       the 15 went unseen. THIS ENROLMENT DOES NOT WORSEN (1): it enrols
-//       floor_cardinality_seam_hole_probe, floor_cardinality_seam_green_probe and
-//       floor_cardinality_seam_call_arg_control_probe on v1_compile_rust_path_id, which would take the unlisted
-//       count from 15 to 18, and it admits all three to the dag_native_v1_compile_probe_ids arm instead (9 to 12
-//       entries), so the partition HOLDS and the check is TRUE at this head rather than knowingly
-//       more-false-than-before. The arms must partition, so the fix was never to add names to two of them; the
-//       machine-enforced guard is dag_native_ids_are_not_disposed_or_gaps inside that same test fn.
-//   (2) WITHDRAWN, AND THE TRAP IS RECORDED INSTEAD. #test.claim.guarantee_probe_corpus_witness::probe_ids_are_canonically_ordered
-//       asserts #gunbc.guarantee_probe_corpus::probe_ids_are_lexicographically_ordered over guarantee_probe_ids()
-//       -- the row list of this file mapped to row.probe, compared as id as String by that same walker. It HOLDS on main:
-//       the 39 row-order literal id strings are strictly increasing, zero violations. An earlier reading of
-//       this file by this same worker reported it false with a first violation at index 7, and that reading
-//       walked the SYMBOL names (call_shape_green_probe before call_mislabel_red_probe) instead of the literal
-//       id strings the claim actually compares (...-green-control before ...-mislabel-red, which is correctly
-//       ordered). The two keys disagree precisely inside the call-label-surplus group. So this enrolment owes
-//       NO re-sort, and the receipts' #gunbc.guarantee_measurement::probe_set_digest does not move. Named residue
-//       (gunbc.design_argument::source_annotations): reading this corpus's ordering by symbol name instead of
-//       by id-as-String produces a false red; nothing on the page distinguishes the two keys.
+// WHAT THIS ENROLMENT DOES NOT CLOSE, cited by identity so the carriers stay in the plan:
+// #test.claim.guarantee_probe_corpus_witness::dark_suite_dispositions_cover_migrated_v1_probes partitions
+// every row on v1_compile_rust_path_id over three arms, and the six-class floor_* probes belong to none of
+// them. Both defects here -- that missing partition coverage, and the fixture population beside it -- are
+// rostered roadmap rows: rn_RNY67KVQ3FG5GVXYZX75DGSH6L
+// (floor-class-probes-have-no-dark-suite-migration-disposition) and rn_BXTBZQ7JL4H5AIXPPQ7JNG2GZD
+// (guarantee-probe-corpus-fixtures-exercise-no-flat-map-and-no-service). Their counts, owners, status and
+// dispatch are carried by those rows, not restated in this file.
 data floor_cardinality_seam_hole_probe: GuaranteeProbeId = "floor-cardinality-seam-field-projection-through-optional-hole" as GuaranteeProbeId
 data floor_cardinality_seam_green_probe: GuaranteeProbeId = "floor-cardinality-seam-required-field-read-green" as GuaranteeProbeId
 data floor_cardinality_seam_call_arg_control_probe: GuaranteeProbeId = "floor-cardinality-seam-call-argument-refusal-control" as GuaranteeProbeId
