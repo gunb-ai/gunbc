@@ -9,7 +9,7 @@ import product.fabric.isolation { FreshWritableRoot }
 import extdeps.git.object_store { GitObjectId, GitSha1ObjectId }
 import std.content_hash { Sha1Digest, Sha1DigestHex }
 import extdeps.toolchain.types { Aarch64, X86_64, architecture_diagnostic_name }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv14, operator_host_e2d4b7 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv9, operator_host_srv14, operator_host_e2d4b7 }
 import gunbc.fabric.fabric_executor_class {
   ExecutorExecutionClass, HostArchitectureKnown, HostArchitectureUnclassified,
   ExecutionClassStanding, ExecutionClassObserved, ExecutionClassExpected,
@@ -255,10 +255,12 @@ test fn the_execution_class_row_is_the_architecture_authority() -> Bool {
     && match executor_host_architecture(host: operator_host_e2d4b7) { HostArchitectureKnown { host: h, arch: a } => h == operator_host_e2d4b7 && a == X86_64  _ => false }
     && match executor_host_architecture(host: operator_host_srv1) { HostArchitectureKnown { host: h, arch: a } => h == operator_host_srv1 && a == Aarch64  _ => false }
     && match executor_host_architecture(host: operator_host_srv2) { HostArchitectureKnown { host: h, arch: a } => h == operator_host_srv2 && a == Aarch64  _ => false }
-    // and Unclassified, rather than a guessed default, for a host no consumer has needed yet: srv14 is
-    // the CI-only host, neither on the dispatch roster nor on the candidate roster the serving converge
-    // reads this row for.
-    && match executor_host_architecture(host: operator_host_srv14) { HostArchitectureUnclassified { host: h } => h == operator_host_srv14  _ => false }
+    // and Unclassified, rather than a guessed default, for a host no consumer has needed yet: srv9 sits on
+    // neither the dispatch roster nor the candidate roster, so nothing has ever read its class.
+    && match executor_host_architecture(host: operator_host_srv9) { HostArchitectureUnclassified { host: h } => h == operator_host_srv9  _ => false }
+    // srv14 (butch) joined the candidate roster on 2026-11-23 (butch admission), so its Expected Aarch64 row
+    // now answers Known -- the row is the authority, and the row landed with the admission that needed it.
+    && match executor_host_architecture(host: operator_host_srv14) { HostArchitectureKnown { host: h, arch: a } => h == operator_host_srv14 && a == Aarch64  _ => false }
 }
 
 // THE STANDING OF THE EVIDENCE IS IN THE ROW, NOT ONLY IN ITS COMMENT, because placement consumes these
@@ -277,7 +279,7 @@ test fn the_placed_upon_rows_cite_what_they_rest_on() -> Bool {
         HostArchitectureKnown { host: _, arch: _ } => true
         HostArchitectureUnclassified { host: _ } => false
       })
-    && match executor_host_architecture(host: operator_host_srv14) { HostArchitectureUnclassified { host: _ } => true  _ => false }
+    && match executor_host_architecture(host: operator_host_srv14) { HostArchitectureKnown { host: h, arch: a } => h == operator_host_srv14 && a == Aarch64 && row_is_expected(host: operator_host_srv14)  _ => false }
 }
 
 fn row_standing(host: HostIdentity) -> Optional<ExecutionClassStanding> {
@@ -292,6 +294,17 @@ fn row_is_observed(host: HostIdentity) -> Bool {
   match row_standing(host: host) {
     Present { value: ExecutionClassObserved { evidence: _ } } => true
     Present { value: ExecutionClassExpected { catalog: _, what_would_ground_it: _ } } => false
+    Absent => false
+  }
+}
+
+// A candidate host may sit on the roster at Expected standing (its class corroborated, not yet read on the
+// host) -- srv14/butch is such a host: not on the dispatch roster, so the dispatch-Observed rule does not
+// bind it, and its serve receipt is what flips it to Observed.
+fn row_is_expected(host: HostIdentity) -> Bool {
+  match row_standing(host: host) {
+    Present { value: ExecutionClassExpected { catalog: _, what_would_ground_it: _ } } => true
+    Present { value: ExecutionClassObserved { evidence: _ } } => false
     Absent => false
   }
 }

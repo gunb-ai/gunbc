@@ -7,7 +7,7 @@ import extdeps.shell
 import extdeps.shell.exec
 import extdeps.git
 import gunbc.git_workdir_free_route { run_git_argv_workdir_free, git_workdir_free_succeeded }
-import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io { Filesystem }
 import std.algebra { trim }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
