@@ -81,6 +81,17 @@ type StrataServeFlags {
   // `--max-context N`
   max_context: TokenCount
   // `--parallel N` (README.md): slots answered at once; one by default.
+  //
+  // THE ONE FLAG THAT IS NOT A LAUNCH PARAMETER. `parallel` is the replica's admitted concurrency:
+  // the engine reserves VRAM per slot, and the pool router caps the upstream at the SAME number, so
+  // writing it here beside the router row is writing one fact twice. When that happened on srv3 (slots
+  // 8 written here while the router admitted 4), the surplus reservation came straight out of the
+  // expert cache and every stream paid for it (gunbc.recurring_failure_mode::engine_slots_written_beside_the_admission_that_bounds_them).
+  // A production row therefore carries StrataLaunchParameters, NOT this record: the slot count enters
+  // a production launch only through the bridge below, from its authority -- the deployment's capacity
+  // shape (gunbc.serving.serving_capacity_anchor::ServingCapacityShape's turns, via
+  // gunbc.serving.serving_replica_profile::replica_engine_launch). A benchmark cell may still write it
+  // itself, because there the concurrency is the experiment's independent variable, not an admission.
   parallel: PositiveSlotCount
   batch_groups: StrataBatchGroups?
   // `--pool-workers N` (docs/DETAILS.md): CPU expert-pool worker threads, used as given; absent lets
@@ -90,6 +101,46 @@ type StrataServeFlags {
   experts: StrataExpertResidency
   // `--vram-reserve-mib N` (docs/DETAILS.md)
   vram_reserve: Mebibyte?
+}
+
+// THE LAUNCH PARAMETERS, MINUS THE ADMISSION NUMBER. This is the record a production replica row
+// carries: everything the engine is launched with EXCEPT the batch slot count, which has an authority
+// of its own (see the note on StrataServeFlags.parallel). A type with no writable `parallel` field is
+// how this corpus makes "engine slots disagree with admitted concurrency" not a checked condition but
+// an unnameable one (gunbc.design_argument::guarantee_ladder: derive, do not check).
+type StrataLaunchParameters {
+  kv_format: StrataKvFormat
+  kv_residency: StrataKvResidency
+  max_context: TokenCount
+  batch_groups: StrataBatchGroups?
+  pool_workers: Nat?
+  stages: StrataStagePlacement
+  experts: StrataExpertResidency
+  vram_reserve: Mebibyte?
+}
+
+// THE ONE BRIDGE FROM PARAMETERS TO A FULL FLAG RECORD. It receives the slot count as an argument, so
+// no construction puts a `parallel` into a record from anywhere but the caller's authority: a
+// benchmark cell passes the concurrency it means to measure; a production replica's slots come from
+// its capacity shape through gunbc.serving.serving_replica_profile::replica_engine_launch.
+fn strata_launch_with_parallel(parameters: StrataLaunchParameters, parallel: PositiveSlotCount) -> StrataServeFlags {
+  StrataServeFlags {
+    kv_format: parameters.kv_format,
+    kv_residency: parameters.kv_residency,
+    max_context: parameters.max_context,
+    parallel: parallel,
+    batch_groups: parameters.batch_groups,
+    pool_workers: parameters.pool_workers,
+    stages: parameters.stages,
+    experts: parameters.experts,
+    vram_reserve: parameters.vram_reserve,
+  }
+}
+
+// Rendering the argv of a launch whose slots an authority supplied: rendering lives here, the DECISION
+// of the number lives with the shape (gunbc.serving.serving_replica_profile::replica_engine_launch).
+fn strata_launch_flag_words(parameters: StrataLaunchParameters, parallel: PositiveSlotCount) -> List<String> {
+  strata_serve_flag_words(flags: strata_launch_with_parallel(parameters: parameters, parallel: parallel))
 }
 
 // ── THE FLAGS AS ARGV WORDS, spelled as the docs above spell them ───────────────────────────────

@@ -33,15 +33,16 @@ import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.optional { Optional, Present, Absent }
 import std.measure {
-  ByteSize, Millisecond, MoneyAmountMicro, TokenCount, TokensPerSecond, Watt,
-  byte_size, byte_size_count, millisecond, money_amount_micro, token_count,
-  tokens_per_second, tokens_per_second_count, watt_count,
+  ByteSize, Millisecond, MoneyAmountMicro, PositiveMeasureCountBuilt, PositiveMeasureCountRefused,
+  PositiveSlotCount, TokenCount, TokensPerSecond, Watt,
+  byte_size, byte_size_count, millisecond, money_amount_micro, positive_slot_count,
+  positive_measure_count_from_int, token_count, tokens_per_second, tokens_per_second_count, watt_count,
 }
 import std.algebra { string_contains }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_identity }
-import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited, cited_figure_read_obligation }
 import extdeps.huggingface.hub { HubRepoId }
-import extdeps.strata.serve_flags { StrataServeFlags }
+import extdeps.strata.serve_flags { StrataServeFlags, StrataLaunchParameters, strata_launch_with_parallel }
 import product.fabric.serving_throughput { ServingThroughput, ThroughputOperatorReading, ThroughputUnread }
 import gunbc.fleet.fleet_host_identity {
   HostIdentity, operator_host_6ce85c, operator_host_srv1, operator_host_srv3, operator_host_srv4,
@@ -66,7 +67,8 @@ import gunbc.serving.serving_layout {
 import gunbc.serving.serving_warm_admission { ServingWarmAdmission }
 import gunbc.serving.serving_capacity_anchor {
   GrantAdmits, GrantUnmodeled, RungAdds, RungInclusiveOfHotter, ServingCapacityAnchor, ServingCapacityShape,
-  ServingRetentionGrant, ServingRungSharing, ServingSwapDurability, ServingSwapMechanism, ServingSwapTier,
+  ServingRetentionGrant, ServingRungSharing, ServingShapeDerived, ServingShapeEstimated, ServingShapeRefusalReason,
+  ServingShapeRefused, ServingSwapDurability, ServingSwapMechanism, ServingSwapTier,
   ServingWarmSwap, SwapByEngineEviction, SwapTierDisk, SwapTierHostRam, SurvivesProcessRestart,
   WarmSwapRestores,
   engine_warm_swap, serving_capacity_shape, serving_conversation_policy, serving_replica_grant_for,
@@ -81,7 +83,7 @@ import gunbc.serving.srv1_serving_launch { LilServeLaunch, srv1_serving_launch }
 import extdeps.vllm.lil_serve {
   LilServeHardware, LilServeHardwareName, LilServeProfile, LilServeProfileName,
 }
-import gunbc.serving.strata_ada_pair_cell { srv3_iq3_s_artifact, srv3_strata_flags }
+import gunbc.serving.strata_ada_pair_cell { srv3_iq3_s_artifact, srv3_strata_launch_parameters }
 import gunbc.serving.strata_parked_tier { strata_warm_admission, srv4_strata_rung_admissible }
 import gunbc.serving.serving_benchmark_run_receipt { ServingArtifact }
 
@@ -121,11 +123,13 @@ type ReplicaModel
       // IQ3_S shards (their anchors say so, from the operator's launches) but the digests were never read
       // on those hosts, and the standing says exactly that rather than letting a borrowed digest read local.
       artifact_standing: CitedFigureStanding
-      // The launch flags as a row, where one exists: srv3's are strata_ada_pair_cell's. srv4's and h11's
-      // launched flags (batch size, experts mmap/locked) are described in their memory rows but no typed
+      // The launch parameters as a row, where one exists: srv3's are strata_ada_pair_cell's. srv4's and h11's
+      // launched parameters (batch size, experts mmap/locked) are described in their memory rows but no typed
       // flag row has been read from their systemd units -- Absent with the obligation on its standing,
-      // never invented argv.
-      flags: Optional<StrataServeFlags>
+      // never invented argv. THERE IS NO BATCH-SLOT FIELD HERE ON PURPOSE: the slots the engine reserves are
+      // the conversations the replica is admitted, one fact with one owner (the capacity shape), asked of it
+      // by replica_engine_launch below; see extdeps.strata.serve_flags.StrataLaunchParameters.
+      flags: Optional<StrataLaunchParameters>
       flags_standing: Optional<CitedFigureStanding>
     }
 
@@ -479,6 +483,154 @@ fn replica_shape_named_with_grant(p: ServingReplicaProfile, grant: ServingRetent
   serving_capacity_shape(a: replica_anchor_named_with_grant(p: p, grant: grant, deployment: deployment), p: serving_conversation_policy)
 }
 
+// ── THE ENGINE'S BATCH SLOTS ARE THE ADMISSION NUMBER, READ FROM ITS AUTHORITY ─────────────────
+//
+// ONE FACT, ONE OWNER (gunbc.design_argument::single_authority). How many conversations a replica runs at
+// once is decided ONCE, by the capacity shape: the aggregate decode the deployment was measured at, the
+// conversation policy's least rate per stream, and the grant (serving_capacity_anchor). That same number is
+// what the pool router puts in the upstream row as `cap` (gunbc.serving.router_dev_policy::router_dev_shaped
+// reads the shape's turns). The engine's `--parallel` is not a second decision beside it: every slot reserves
+// VRAM whether or not a turn ever lands in it, so an over-written slot count taxes the expert cache for
+// capacity the router will never send, and an under-written one leaves admitted turns queued behind a
+// reservation the policy never asked for. srv3 ran exactly the first case on 2026-11-24 -- 8 slots written
+// beside a router cap of 4 -- at 4,642 experts resident against srv4's 6,867 and ~6.6 tok/s per conversation;
+// the class is filed as gunbc.recurring_failure_mode::engine_slots_written_beside_the_admission_that_bounds_them.
+//
+// THE REPAIR IS STRUCTURAL, NOT A CHECK (gunbc.design_argument::guarantee_ladder, ::fail_closed): a
+// production row carries StrataLaunchParameters, which has NO batch-slot field, and the only bridge from
+// parameters to a launchable record (extdeps.strata.serve_flags::strata_launch_with_parallel) receives the
+// slot count as an argument. This function is where that argument comes from -- the shape -- so the
+// misconfiguration is not refused at render time, it is unnameable at authoring time. The benchmark cell
+// still writes its own concurrency (there the number is the experiment's independent variable, not an
+// admission), which is why the bridge stays reachable from extdeps.
+//
+// WHAT THE SHAPE'S STANDING DOES TO THE RESERVATION. Turns derived from uncited figures make the slots an
+// estimate too (serving_capacity_anchor's shape_of never promotes one); EngineLaunchEstimated carries every
+// standing the turns rode on, so a reader cannot quote a reservation as derived when it extrapolated.
+type EngineLaunchRefusalReason
+  = LaunchParametersUnread { obligation: NonEmptyStr }
+  | LaunchShapeRefused { reason: ServingShapeRefusalReason }
+  | LaunchTurnsZero
+
+type ReplicaEngineLaunch
+  = EngineLaunchDerived { flags: StrataServeFlags, slots: PositiveSlotCount }
+  | EngineLaunchEstimated { flags: StrataServeFlags, slots: PositiveSlotCount, standings: List<CitedFigureStanding> }
+  | EngineLaunchRefused { deployment: NonEmptyStr, reason: EngineLaunchRefusalReason }
+
+// THE ONLY PATH FROM A PROFILE'S LAUNCH PARAMETERS TO A LAUNCHABLE STRATA RECORD. The slot count is not a
+// parameter of this call -- callers cannot pass one; it is read from the replica's own capacity shape.
+fn replica_engine_launch(p: ServingReplicaProfile) -> ReplicaEngineLaunch {
+  match p.model {
+    LilModel { } => EngineLaunchRefused {
+      deployment: p.id,
+      reason: LaunchParametersUnread { obligation: "vLLM replicas do not take Strata serve flags; their admitted concurrency is the shape's turns and their engine queues on it -- no --parallel to derive here" as NonEmptyStr },
+    },
+    StrataModel { artifact: _, artifact_standing: _, flags: Absent, flags_standing: st } => EngineLaunchRefused {
+      deployment: p.id,
+      reason: LaunchParametersUnread { obligation: match st {
+        Present { value: s } => match cited_figure_read_obligation(standing: s) {
+          Present { value: o } => o
+          Absent => "the parameter row's standing names no read obligation; read the live unit's ExecStart before quoting its launch" as NonEmptyStr
+        }
+        Absent => "no launched parameter row exists for this replica; read the live unit's ExecStart before quoting its launch" as NonEmptyStr
+      } },
+    },
+    StrataModel { artifact: _, artifact_standing: _, flags: Present { value: params }, flags_standing: _ } =>
+      match replica_shape_named(p: p, deployment: p.id as String) {
+        ServingShapeRefused { deployment: _, reason: r } => EngineLaunchRefused { deployment: p.id, reason: LaunchShapeRefused { reason: r } }
+        ServingShapeDerived { deployment: _, turns: t, held: _, bound: _, cold_reread: _ } => match positive_measure_count_from_int(count: t as Int) {
+          PositiveMeasureCountRefused { cause: _ } => EngineLaunchRefused { deployment: p.id, reason: LaunchTurnsZero }
+          PositiveMeasureCountBuilt { count: c } =>
+            let slots = positive_slot_count(count: c)
+            EngineLaunchDerived { flags: strata_launch_with_parallel(parameters: params, parallel: slots), slots: slots }
+        }
+        ServingShapeEstimated { deployment: _, turns: t, held: _, bound: _, cold_reread: _, standings: ss } => match positive_measure_count_from_int(count: t as Int) {
+          PositiveMeasureCountRefused { cause: _ } => EngineLaunchRefused { deployment: p.id, reason: LaunchTurnsZero }
+          PositiveMeasureCountBuilt { count: c } =>
+            let slots = positive_slot_count(count: c)
+            EngineLaunchEstimated { flags: strata_launch_with_parallel(parameters: params, parallel: slots), slots: slots, standings: ss }
+        }
+      },
+  }
+}
+
+// ── THE MEASURED PRICE OF CONCURRENCY (operator's hand tuning, 2026-11-24; ad-hoc reads, not instruments) ──
+//
+// WHY THESE ROWS EXIST. The shape derivation prices concurrency -- turns falls to the most streams that each
+// still get the policy's least rate -- but until 2026-11-24 no measurement of THIS fleet's MoE cards said the
+// price is real. The operator's session read it by hand while fixing srv3 and ken: concurrent MoE streams on
+// these cards gain little aggregate throughput (each stream needs DISJOINT experts, so a second stream mostly
+// adds misses) while every stream in flight slows several-fold. The rows below are those readings, carried
+// with their standing and their instrument (gunbc.design_argument::epistemic_humility; DESIGN's "name the
+// instrument") -- they are observations of one ad-hoc afternoon, each with the obligation to re-read them from
+// the engine journals, never deduced facts and never a rate to quote in a decision until re-read.
+// The pair the addendum names: srv3 at 4-way ran 14.5 tok/s PER MACHINE while srv4 at 1-way ran 11.2 --
+// quadrupling streams bought barely one more stream's worth. srv3's experts tell the mechanism: 4,642 experts
+// (8.34 GiB) resident at parallel 8, hit ratio 77%, against 6,307 (11.35 GiB) and 91-95% at parallel 2.
+// This is the evidence that the shape's turns, not a hand-written slot count, is the operating point worth
+// selecting (gunbc.design_argument::selection_precedes_convergence): the 4-way arm sits BELOW the conversation
+// policy's floor and is excluded before any aggregate-optimising comparison runs.
+type ConcurrencyObservation
+  = PerStreamAtConcurrency {
+      deployment: NonEmptyStr,
+      concurrency: Nat,
+      tokens_per_second: TokensPerSecond,
+      window: NonEmptyStr,
+      standing: CitedFigureStanding,
+    }
+  | AggregatePerMachine {
+      deployment: NonEmptyStr,
+      concurrency: Nat,
+      tokens_per_second: TokensPerSecond,
+      window: NonEmptyStr,
+      standing: CitedFigureStanding,
+    }
+
+fn stream_reading(deployment: String, n: Nat, tok: Nat, window: String, instrument: String) -> ConcurrencyObservation {
+  PerStreamAtConcurrency {
+    deployment: deployment as NonEmptyStr,
+    concurrency: n,
+    tokens_per_second: tokens_per_second(count: tok),
+    window: window as NonEmptyStr,
+    standing: TranscribedUncited { read_obligation: ("instrument: the engine journal's own per-turn line 'done: N tokens in T s (R tok/s)', averaged by the operator's session over the named window (ad-hoc read, 2026-11-24); " + instrument) as NonEmptyStr },
+  }
+}
+
+fn machine_reading(deployment: String, n: Nat, tok: Nat, window: String, instrument: String) -> ConcurrencyObservation {
+  AggregatePerMachine {
+    deployment: deployment as NonEmptyStr,
+    concurrency: n,
+    tokens_per_second: tokens_per_second(count: tok),
+    window: window as NonEmptyStr,
+    standing: TranscribedUncited { read_obligation: ("instrument: engine /metrics totals differenced by the operator's ad-hoc /tmp/snap.py and /tmp/delta.py on srv1 (not an instrument; DESIGN 'name the instrument'); " + instrument) as NonEmptyStr },
+  }
+}
+
+data strata_concurrency_price_observations: List<ConcurrencyObservation> = [
+  // srv3 before the fix: engine parallel 8 (reserving 8 slots), router cap 4; the fleet was sending 4-way.
+  stream_reading("srv3-strata", 4, 6, "before 2026-11-24 19:56 UTC (operator set parallel 8 -> 2 and router cap 4 -> 2 at 19:56); ~6.6 tok/s relayed, recorded as the engine prints integers", "srv3 strata-pool engine journal"),
+  // srv3 after: parallel 2, cap 2. The 21:40-21:55 window read 15.1; the ad-hoc range across the evening was 13.6-15.8.
+  stream_reading("srv3-strata", 2, 15, "21:40-21:55 UTC 2026-11-24 (15.1 tok/s; the wider ad-hoc range 13.6-15.8 sits in the read obligation's source, not restated as a figure)", "srv3 strata-pool engine journal"),
+  // ken (host-e2d4b7, the three-T10 Strata engine): the router row's hand cap 4 alone bound it -- the engine was never modeled -- and each stream fell to 1.0 tok/s there.
+  stream_reading("ken", 4, 1, "before 2026-11-24 20:09 UTC (operator cut the ken router row's cap 4 -> 2 at 20:09)", "ken engine journal via the router host"),
+  stream_reading("ken", 2, 25, "after 2026-11-24 20:09 UTC (25.7 tok/s relayed; 24.5 in the 21:15-21:30 window -- the integer this row carries is the relayed figure's floor of the two)", "ken engine journal via the router host"),
+  // The pair the addendum prices with: a machine at 4-way against a machine at 1-way.
+  machine_reading("srv3-strata", 4, 14, "2026-11-24, before the 19:56 fix (14.5 tok/s per machine at 4-way, relayed)", "srv3 engine /metrics via srv1 ad-hoc scripts"),
+  machine_reading("srv4-strata", 1, 11, "2026-11-24 (11.2 tok/s per machine at 1-way, relayed)", "srv4 engine log (its TLS proxy does not expose /metrics -- see the 2026-11-24 observability note)"),
+]
+
+// The floor every stream must clear (the conversation policy's), as the measurements above are checked
+// against: every stream figure read at 3-way or more sits below it, every 2-way figure above it. The shape
+// derivation refuses the below-floor arms on the same arithmetic.
+fn stream_reading_meets_policy_floor(o: ConcurrencyObservation) -> Bool {
+  match o {
+    AggregatePerMachine { } => true
+    PerStreamAtConcurrency { deployment: _, concurrency: n, tokens_per_second: r, window: _, standing: _ } =>
+      if n < 3 { true } else { tokens_per_second_count(r: r) >= tokens_per_second_count(r: serving_conversation_policy.min_stream_rate) }
+  }
+}
+
+
 // srv1's cold prefill: the fork's 128k reading, resolved from the module that owns the readings.
 fn fork_cold_prefill_128k() -> Optional<TokensPerSecond> {
   fold(fork_prefill_readings, init: Absent, f: (acc, r) =>
@@ -665,8 +817,8 @@ data srv3_strata_profile: ServingReplicaProfile = ServingReplicaProfile {
   model: StrataModel {
     artifact: srv3_iq3_s_artifact,
     artifact_standing: borrowed(o: "srv3's own artifact digests, read on srv3 (strata_ada_pair_cell srv3_iq3_s_artifact)"),
-    flags: Present { value: srv3_strata_flags },
-    flags_standing: Present { value: borrowed(o: "srv3's flags are the benchmark cell's launched flags (strata_ada_pair_cell srv3_strata_flags); re-read from the live unit") },
+    flags: Present { value: srv3_strata_launch_parameters },
+    flags_standing: Present { value: borrowed(o: "srv3's launched parameters are calm-crab-645's, carried by the benchmark cell's parameter row (strata_ada_pair_cell srv3_strata_launch_parameters); the live cfg.json was hand-edited and its parallel 8 -> 2 on 2026-11-24 -- re-read the live unit before quoting the launch") },
   },
   gpu: map(srv3_grant.devices, d => card_of(d: d)),
   parallelism: ReplicaAcrossDevices { devices: srv3_grant.devices.length() },
