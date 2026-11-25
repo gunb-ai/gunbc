@@ -14,7 +14,7 @@ import gunbc.emit_building_block_contracts { BuildingBlockContract, BuildingBloc
 // which declares no entry. The peer module is untouched and its own copy stays its
 // authority for its rows; this fork exists until the emitter chooses the subject's
 // entry, and the row's handback names it as the blocker for this family.
-import gunbc.emit_building_block_contracts { AllocationCase, case_line, is_observed, span_is_zero, operations_above, operations_within, span_text, count_text }
+import gunbc.emit_building_block_contracts { AllocationCase, case_line, is_observed, span_is_zero, operations_above, operations_within, span_text, count_text, spans_agree, bytes_above }
 import gunbc.emit_state_threading_specimen { spec_build }
 
 // THE CONTROL-FLOW GROUP OF THE BUILDING-BLOCK BATTERY, deliverable two of the roadmap row
