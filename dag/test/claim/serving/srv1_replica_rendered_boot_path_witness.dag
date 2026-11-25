@@ -29,7 +29,8 @@ import v2.std.diagnostic {
 import std.nat { Nat }
 import std.optional { Absent, Present }
 import std.algebra { length, string_contains, string_concat_join }
-import std.measure { ByteSize, basis_point, basis_point_count, second, second_count, gibibyte, gibibyte_count, gibibyte_ceiling, gibibyte_to_byte_size, seconds_per_day, byte_size_count, token_count }
+import std.measure { ByteSize, basis_point, basis_point_count, second, second_count, gibibyte, gibibyte_count, gibibyte_ceiling, gibibyte_to_byte_size, seconds_per_day, byte_size, byte_size_count, token_count }
+import gunbc.serving.serving_replica_profile { concurrent_turns_shared }
 import std.decimal { fixed_point_trimmed_wire }
 import std.content_hash { lower_hex_64, sha256_hex_of_text }
 import std.dissolution { BoundDissolution, DissolutionCondition, UnboundDissolution }
@@ -1008,14 +1009,17 @@ test fn the_admitted_tier_is_admitted_by_the_contract_and_renders() -> Bool {
   }
 }
 
-// The floor is a DERIVED figure and this pins it: four conversations in flight on a replica (the srv1
+// The REQUIREMENT is a DERIVED figure and this pins it: four conversations in flight on a replica (the srv1
 // coordinate's 8 sessions over a share width of 2), each at the 229,376-token context the engine admits, priced
-// by the engine's own KV density. It is stated as a GiB ceiling rather than recomputed from the same helper the
-// row uses, so the control is not a restatement of its subject
+// by the engine's own KV density, and priced TWICE because the tier is the only path in both directions -- a
+// checkpoint leaving for disk, and a returning conversation landing before the engine can read it. 4 x 4.906
+// GiB x 2 = 39.25 GiB, so the ceiling is 40, not the 20 a single-direction bound would give. It is stated as a
+// GiB ceiling rather than recomputed from the same helper the row uses, so the control is not a restatement of
+// its subject
 // (gunbc.recurring_failure_mode::a_control_that_shares_its_derivation_with_its_subject).
-test fn the_staging_floor_is_the_population_priced_at_the_admitted_context() -> Bool {
+test fn the_staging_requirement_is_the_population_priced_both_ways_at_the_admitted_context() -> Bool {
   match srv1_l1_staging_floor(contract: srv1_kv_staging_contract, context: token_count(count: srv1_admitted_launch_config.max_model_len)) {
-    Accepted { value: floor, diagnostics: _ } => gibibyte_count(g: gibibyte_ceiling(b: floor)) == 20
+    Accepted { value: floor, diagnostics: _ } => gibibyte_count(g: gibibyte_ceiling(b: floor)) == 40
     Rejected { diagnostics: _ } => false
   }
 }
@@ -1139,4 +1143,96 @@ test fn the_two_replicas_still_fit_srv1s_admitted_memory() -> Bool {
     && byte_size_count(b: srv1_replica_host_budget.cgroup_memory_limit) == 72 * 1073741824
     && byte_size_count(b: srv1_replica_container_run_shape.shm_size) == 56 * 1073741824
     && byte_size_count(b: srv1_lmcache_l2_configured) == 125 * 1073741824
+}
+
+// ── class B4, review 98546 ───────────────────────────────────────────────────────────────
+//
+// Two findings from the review of the first head, each turned into the control that would have caught it
+// rather than into a sentence agreeing with it.
+
+// A launch config in every field except the tier, which the caller supplies. Same shape the pre-2026-11-24
+// control uses, so a tier varied here cannot be varied against a different configuration by accident.
+fn cfg_tier(bytes: ByteSize) -> Srv1LaunchConfig {
+  let a = srv1_admitted_launch_config
+  cfg_over(
+    l2: a.lmcache_l2_placement,
+    retention: a.checkpoint_retention,
+    tls: a.tls_material,
+    key: a.api_key_reference,
+    exe: a.engine_executable,
+    port: a.container_port,
+    model_len: a.max_model_len,
+    l1: bytes
+  )
+}
+
+// FINDING 2, and the counterexample it named is now a control. A tier that holds ONE direction's worth -- 24 GiB,
+// above the 19.625 GiB single-direction figure and below the 39.25 GiB the contract needs -- used to be ADMITTED
+// by the boot gate while the safety reading called the same configuration undischarged. Two answers to one
+// question, "how much L1 does this contract require", is how a tier that cannot stage a restore boots anyway.
+// There is one requirement now, and the tier that cannot hold both directions is refused by the gate AND by boot
+// admission. The other two terms hold by construction at 24 GiB (/dev/shm is 56 GiB, the cgroup 72 GiB), so this
+// control can only fail on the staging term.
+test fn a_tier_that_holds_only_one_direction_is_refused_by_the_gate_and_the_admission() -> Bool {
+  let half = cfg_tier(bytes: gibibyte_to_byte_size(g: gibibyte(count: 24)))
+  let gate = match srv1_kv_tier_verdict(config: half, shape: srv1_replica_container_run_shape, budget: srv1_replica_host_budget) {
+    KvTiersAdmitted => false
+    KvTierRefused { term: L1StagingFloor, cause: _ } => true
+    KvTierRefused { term: _, cause: _ } => false
+  }
+  let admission = match srv1_launch_admission(config: half) {
+    Srv1LaunchAdmitted { } => false
+    Srv1LaunchRefused { cause: _, defect_identity: id } => id == srv1_l1_staging_contract_identity
+  }
+  gate && admission
+}
+
+// The same requirement from both readings at its exact boundary: one byte short refuses, the requirement itself
+// admits, and the safety reading's stated requirement IS that integer. Holds the gate and the reading to a
+// number rather than to prose -- if they ever grow separate requirements again, this is the control that goes red.
+test fn the_gate_and_the_safety_reading_demand_the_same_number() -> Bool {
+  match srv1_l1_staging_floor(contract: srv1_kv_staging_contract, context: token_count(count: srv1_admitted_launch_config.max_model_len)) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: floor, diagnostics: _ } => {
+      let need = byte_size_count(b: floor)
+      let short = cfg_tier(bytes: byte_size(count: need - 1))
+      let exact = cfg_tier(bytes: byte_size(count: need))
+      let short_refused = match srv1_kv_tier_verdict(config: short, shape: srv1_replica_container_run_shape, budget: srv1_replica_host_budget) {
+        KvTiersAdmitted => false
+        KvTierRefused { term: _, cause: _ } => true
+      }
+      let exact_admitted = match srv1_kv_tier_verdict(config: exact, shape: srv1_replica_container_run_shape, budget: srv1_replica_host_budget) {
+        KvTiersAdmitted => true
+        KvTierRefused { term: _, cause: _ } => false
+      }
+      let reading_agrees = match srv1_l1_staging_discharge(config: exact) {
+        Accepted { value: d, diagnostics: _ } => match d {
+          ContractDischarged { requires: requires } => byte_size_count(b: requires) == need
+          ContractUndischarged { holds: _, requires_at_least: requires_at_least, missing: _ } => byte_size_count(b: requires_at_least) == need
+        }
+        Rejected { diagnostics: _ } => false
+      }
+      short_refused && exact_admitted && reading_agrees
+    }
+  }
+}
+
+// FINDING 1: the population is the population of a LOWER bound, so the share width divides UP, not down.
+// 8 over 2 is 4 -- srv1's own coordinate, unchanged, which is why the host is unaffected. 8 over 3 is 3, not the
+// 2 that truncating division returned: a whole conversation snapshot silently missing from the requirement, on
+// the unsafe side of a bound. And a share width of zero has no quotient rather than a guessed one.
+test fn the_population_rounds_up_because_it_bounds_a_buffer() -> Bool {
+  let exact = match concurrent_turns_shared(sessions: 8, share_width: 2) {
+    Present { value: a } => a == 4
+    Absent => false
+  }
+  let rounds_up = match concurrent_turns_shared(sessions: 8, share_width: 3) {
+    Present { value: b } => b == 3
+    Absent => false
+  }
+  let no_divisor = match concurrent_turns_shared(sessions: 8, share_width: 0) {
+    Absent => true
+    Present { value: _ } => false
+  }
+  exact && rounds_up && no_divisor
 }

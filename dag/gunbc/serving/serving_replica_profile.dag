@@ -30,7 +30,7 @@
 module gunbc.serving.serving_replica_profile
 
 import std.types { Bool, List, NonEmptyStr, String }
-import std.nat { Nat }
+import std.nat { Nat, nat_ceil_div }
 import std.optional { Optional, Present, Absent }
 import std.measure {
   ByteSize, Millisecond, MoneyAmountMicro, TokenCount, TokensPerSecond, Watt,
@@ -429,14 +429,30 @@ fn replica_share_width(p: ServingReplicaProfile) -> Nat {
 //
 // Absent when the row carries no reading: a contract whose population is unknown cannot be evaluated, and
 // the consumer refuses rather than guessing a width (gunbc.design_argument::fail_closed).
+//
+// REVIEW 98546, and the arithmetic is the finding: this quantity is the population in a LOWER bound on a
+// buffer, so the division rounds UP. Natural-number division truncates, and a coordinate whose share width did
+// not divide its concurrency (8 over 3) would have answered 2 where 3 conversations are actually in flight —
+// the floor would drop by a whole conversation snapshot, silently, on the unsafe side of a bound. That is an
+// uncounted degradation and DESIGN refuses it (gunbc.design_argument::fail_closed, "no plausible output is
+// fabricated"); std already carries the ceil without leaving the naturals (std.nat::nat_ceil_div), so the repair
+// is to use it and to make the rounding observable. srv1's own coordinate divides exactly (8 over 2 is 4), so
+// nothing on the host moves; what moves is what a NEW coordinate could get away with.
 fn replica_concurrent_turns(p: ServingReplicaProfile) -> Nat? {
   match replica_figures_resolved(p) {
     Absent => Absent
     Present { value: f } => match f.throughput {
       ThroughputUnread => Absent
-      ThroughputOperatorReading { at_concurrency: n } => Present { value: n / replica_share_width(p: p) }
+      ThroughputOperatorReading { at_concurrency: n } => concurrent_turns_shared(sessions: n, share_width: replica_share_width(p: p))
     }
   }
+}
+
+// The population's arithmetic on its own, so the rounding rule is testable without inventing a whole profile
+// row. Ceiling, and Absent for a zero share width — a replica that shares itself with nobody has no quotient,
+// and each caller says what that means in its own domain (std.nat::nat_ceil_div).
+fn concurrent_turns_shared(sessions: Nat, share_width: Nat) -> Nat? {
+  nat_ceil_div(a: sessions, b: share_width)
 }
 
 // The anchor this profile answers with: the row's fields, handed to the anchor module's shape machinery.

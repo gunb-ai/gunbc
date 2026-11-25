@@ -1255,11 +1255,20 @@ fn srv1_kv_tier_population() -> Nat? {
   }
 }
 
-// The bytes L1 must be able to hold at once for the eviction path to keep its promise: every in-flight
-// checkpoint, priced at the largest context the engine admits each of them to hold. Zero when the policy writes
-// at creation — L1 is then only a cache, and sizing it is an efficiency question, not a correctness one. That
-// is the whole point of modelling the policy: the SAME tier figure is a violation under one policy and
-// ordinary under the other, so the refusal is driven by the fact and not by a remembered incident.
+// THE ONE ANSWER TO "HOW MUCH L1 DOES THIS CONTRACT REQUIRE". The boot gate (srv1_kv_tier_verdict, via
+// srv1_launch_check_kv_tier) and the safety reading (srv1_l1_staging_discharge) both test against THIS number
+// and no other: review 98546 caught the gate testing one direction while the discharge reported the pair, which
+// was two answers to one question and let a tier that could not stage a restore boot anyway. A requirement is
+// not allowed a second home (gunbc.design_argument::single_authority).
+//
+// Both directions are priced, because the tier is the only path in BOTH of them: a checkpoint being written to
+// the disk tier is resident here, and a conversation returning after minutes away must LAND here before the
+// engine can read it back (the 2026-11-24 read's 50-75% same-card miss is that landing failing). A restore in
+// flight is not smaller than the checkpoint it restores, and an arrival whose size is unknown is not entitled to
+// the smaller assumption — so the population is priced twice, fail-closed. Zero when the policy writes at
+// creation — L1 is then only a cache, and sizing it is an efficiency question, not a correctness one. That is
+// the whole point of modelling the policy: the SAME tier figure is a violation under one policy and ordinary
+// under the other, so the refusal is driven by the fact and not by a remembered incident.
 fn srv1_l1_staging_floor(contract: Srv1KvStagingContract, context: TokenCount) -> Outcome<ByteSize> {
   if !srv1_store_reaches_disk_only_by_eviction(policy: contract.store_policy) {
     outcome_accepted(value: byte_size(count: 0))
@@ -1272,7 +1281,8 @@ fn srv1_l1_staging_floor(contract: Srv1KvStagingContract, context: TokenCount) -
         )
       )
       Present { value: n } => outcome_accepted(
-        value: byte_size(count: byte_size_count(b: conversation_snapshot_bytes(cost: contract.snapshot, context: context)) * n)
+        // n + n, not n * 2 spelled as a literal: both directions of the only path, in the naturals.
+        value: byte_size(count: byte_size_count(b: conversation_snapshot_bytes(cost: contract.snapshot, context: context)) * (n + n))
       )
     }
   }
@@ -1315,11 +1325,9 @@ type Srv1KvTierDischarge
       missing: List<NonEmptyStr>
     }
 
-// Both directions, because the tier is the only path in BOTH of them: a checkpoint being written to the disk
-// tier is resident here, and a conversation returning after minutes away must LAND here before the engine can
-// read it back (the 2026-11-24 read's 50-75% same-card miss is that landing failing). The bound is the same
-// population priced twice — fail-closed, because a restore in flight is not smaller than the checkpoint it
-// restores, and an arrival whose size is unknown is not entitled to the smaller assumption.
+// The requirement this reading tests against is srv1_l1_staging_floor's, read and not recomputed — the
+// direction-pair argument lives there, beside the multiplication, so that the boot gate cannot enforce a
+// smaller number than the contract claims to need (review 98546).
 // Which terms are still unpriced, as a list a control can assert against by BINDING the named rows below.
 // Empty only when every term is priced, which is the day this contract can say it is kept.
 fn srv1_l1_missing_terms(population_admitted: Bool, headroom_priced: Bool) -> List<NonEmptyStr> {
@@ -1343,7 +1351,9 @@ fn srv1_l1_staging_discharge(config: Srv1LaunchConfig) -> Outcome<Srv1KvTierDisc
   bind_outcome(
     o: srv1_l1_staging_floor(contract: contract, context: token_count(count: config.max_model_len)),
     f: floor => {
-      let requires = byte_size(count: byte_size_count(b: floor) * 2)
+      // Not floor * 2: the factor of two is IN srv1_l1_staging_floor, so the gate and this reading cannot
+      // drift apart again (review 98546). One requirement, read by both.
+      let requires = floor
       let holds = byte_size_count(b: config.lmcache_l1)
       let headroom_priced = match srv1_l2_store_window_headroom {
         Absent => false
