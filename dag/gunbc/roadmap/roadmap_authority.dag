@@ -6787,6 +6787,28 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       dispatch: dispatchable(),
       parent: in_project(project: "factory", contribution: "Acceptance is the factory's closing half; a digest checked only at the closing page admits a bad receipt at write and fails far from the cause -- validating it at write keeps the closing honest."),
     ),
+    // DECLARED, NOT DISPATCHED (routed by the roadmap lanes manager 2026-11-25 as the #16965 follow-up):
+    // the recorder write route refuses a receipt whose criteria_digest does not match the node's plan
+    // digest. It is held until the runnable plan-digest print of roadmap-criteria-digest-validated-at-write
+    // (its parent edge) exists, because that print is what its red control uses to compute the expected
+    // digest -- dispatch defaults to NotDispatchable (gunbc.design_argument::fail_closed: the row names
+    // its own blocker instead of pretending to be startable).
+    roadmap_node(
+      identity: "rn_Z5UD7TNEA2AWNMSKQKEYZWG446",
+      id: "roadmap-acceptance-receipt-digest-refused-at-the-recorder-write",
+      owner: "harness",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_event_cli.dag"),
+      line: ticket(t: fields(
+        headline: "The recorder CLI itself refuses a receipt line whose criteria digest does not match the node's plan digest",
+        boundary: "roadmap_acceptance_record_cli (gunbc.roadmap.roadmap_event_cli) admits an acceptance receipt carrying ANY criteria_digest -- the recorder trusts the operator's law as-spelled, and nothing on the write route recomputes the digest (a wrong digest records silently today). Only the closing page-join live_receipts_join_declared_nodes (gunbc.roadmap.roadmap_model, via receipt_matches_node) notices a mismatch, so a bad receipt enters the event log and surfaces much later, far from the mistake. Refuse, at the recorder write route itself, a receipt whose criteria_digest does not equal node_criteria_digest (gunbc.roadmap.roadmap_model, roadmap_criteria_digest) of the node on the declared plan, with a typed located diagnostic naming the node, the stated digest and the recomputed one. This row carries ONLY the write-route refusal; the runnable route that prints a named node's plan digest -- which the red control needs to compute the expected digest -- is the obligation of the parent row roadmap-criteria-digest-validated-at-write, and the digest definition itself is unchanged (out_of_scope below).",
+        displaced_cost: "Today a mistyped digest is admitted silently: the event log carries an acceptance the closing page will never pass, the operator's audit trail reads as accepted until the page-join fails much later, and the diagnosis must walk back from the closing failure to the receipt that caused it. Every recorder pays a re-derivation by hand because the write route checks nothing.",
+        first_slice: "At the roadmap_acceptance_record_cli write route, compare the receipt's criteria_digest against the declared node's plan digest (read through the parent row's runnable print route once it exists) and refuse a mismatch with a typed located diagnostic; admit the exact match unchanged.",
+        red_control: "A receipt whose criteria_digest differs from the declared node's plan digest refuses at the recorder write route with the typed located diagnostic and a non-zero exit, and no event reaches any carrier; a receipt carrying the matching digest records exactly as it does today; the expected digest is read through the runnable print route the parent row roadmap-criteria-digest-validated-at-write provides, never hand-recomputed by the test (gunbc.design_argument::single_authority). Reverting the write-route check turns this control red.",
+        out_of_scope: "Keep live_receipts_join_declared_nodes as the closing backstop -- this moves the check earlier, it does not remove it; do not change what the digest is computed over (the node's criteria rows via roadmap_criteria_digest); the runnable plan-digest print belongs to the parent row roadmap-criteria-digest-validated-at-write, not this one; and the migration closed-set route stays as #16965 shaped it (a migrated identity in the closed set is admitted on its own terms).",
+        handback: "The write-route refusal with its typed located diagnostic, the admitted-on-match case, and the witness driving both legs.",
+      )),
+      parent: in_project(project: "factory", contribution: "Acceptance is the factory's closing half; a digest the recorder trusts as-spelled admits a bad receipt at write and fails far from the cause -- the recorder refusing it keeps the closing honest from the first gate."),
+    ),
     // ---- dispatch from the simulated execution (gunbc.plans.planning_consolidation, 2026-11-17):
     // The workspace and its workers belong to factory (#gunbc.design_ruling::roadmap_scheduling_units_belong_to_factory).
     // The schedule a read answers -- leaf occurrences, a list schedule over them, the calendar that
@@ -8391,6 +8413,8 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
   concat([
     // The bare-124 class: the shared receipt lands with the boot probe's row.
     edge(child: "bare-124-timeout-readers-consume-the-bound-observation", parent: "boot-probe-must-not-read-a-bare-124-as-a-deadline"),
+    // The recorder write-route refusal waits on the runnable plan-digest print the validator row provides.
+    edge(child: "roadmap-acceptance-receipt-digest-refused-at-the-recorder-write", parent: "roadmap-criteria-digest-validated-at-write"),
     // ---- #gunbc.plans.fabric_market::fabric_market_plan (2026-11-23), including the existing consumers of its common contracts:
     edge(child: "market-fix-product-mapping", parent: "market-fix-upstream-model"),
     edge(child: "execution-attempt-one-record", parent: "lease-fence-one-identity"),
