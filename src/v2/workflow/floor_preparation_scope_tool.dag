@@ -640,10 +640,10 @@ fn floor_preparation_scope_tool_capture_check_demo() -> String {
   let good = floor_preparation_scope_tool_capture_gap(rows: map_rows, compiler_rows: good_capture)
   let bad = floor_preparation_scope_tool_capture_gap(rows: map_rows, compiler_rows: bad_capture)
   let good_scoping = floor_preparation_scope_tool_select_guarded(
-    rows: map_rows, forced: [], hit_cap: false, gap: good.gap,
+    rows: map_rows, forced: [], hit_cap: false, gap: good.gap, capture_rows: good.capture_rows,
     population: floor_preparation_scope_population, diff: demo_diff)
   let bad_scoping = floor_preparation_scope_tool_select_guarded(
-    rows: map_rows, forced: [], hit_cap: false, gap: bad.gap,
+    rows: map_rows, forced: [], hit_cap: false, gap: bad.gap, capture_rows: bad.capture_rows,
     population: floor_preparation_scope_population, diff: demo_diff)
   concat(
     concat(concat(concat(concat("[capture-check] CAPTURE_ROWS=", to_string(good.capture_rows)),
@@ -659,14 +659,29 @@ fn floor_preparation_scope_tool_capture_check_demo() -> String {
                 concat("\n", floor_preparation_scope_line(name: "capture-check-refuse", scoping: bad_scoping, population: floor_preparation_scope_population)))))))))
 }
 
-fn floor_preparation_scope_tool_select_guarded(rows: List<FloorPreparationScopeRow>, forced: List<String>, hit_cap: Bool, gap: String, population: List<String>, diff: List<String>) -> FloorPreparationScoping {
+fn floor_preparation_scope_tool_select_guarded(rows: List<FloorPreparationScopeRow>, forced: List<String>, hit_cap: Bool, gap: String, capture_rows: Int, population: List<String>, diff: List<String>) -> FloorPreparationScoping {
   if hit_cap {
     floor_preparation_scope_whole(reason: "depth-cap: a reverse walk hit the bound, so the edge map is known-incomplete and narrowing is refused")
   } else {
     if gap != "" {
       floor_preparation_scope_whole(reason: gap)
     } else {
-      floor_preparation_scope_select_over(rows: rows, forced: forced, population: population, diff: diff)
+      let decided = floor_preparation_scope_select_over(rows: rows, forced: forced, population: population, diff: diff)
+      match decided {
+        Selected { entries: e, reason: r } =>
+          if capture_rows == 0 {
+            // A zero-row capture means the compiler cross-check saw NOTHING. The grep map is a
+            // plan-time over-approximation whose ONLY warrant is that cross-check (review 98532:
+            // beside-the-compiler resolution is tolerable while the compiler is the decider); with
+            // no rows the map is unverified, so the one decision that could hurt -- narrowing --
+            // is refused and the run pays the sweep. Whole decisions pass untouched: absence of
+            // verification must never widen what a run prepares.
+            floor_preparation_scope_whole(reason: "capture-rows-absent: no compiler rows, so the grep map is unverified; narrowing without the cross-check is refused (splice the capture or pay the sweep)")
+          } else {
+            decided
+          }
+        Whole { reason: w } => decided
+      }
     }
   }
 }
@@ -736,6 +751,7 @@ fn floor_preparation_scope_tool_body(tree: String, base: String, label: String) 
                     forced: forced.entries,
                     hit_cap: built.hit_cap || forced.hit_cap,
                     gap: capture_check.gap,
+                    capture_rows: capture_check.capture_rows,
                     population: population,
                     diff: diff)
                   let transport = floor_preparation_scope_tool_receipt("tree-transport",

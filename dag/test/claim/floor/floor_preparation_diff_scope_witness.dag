@@ -7,7 +7,8 @@ import v2.workflow.floor_preparation_split {
   floor_preparation_split_report
 }
 import v2.workflow.floor_preparation_scope_tool {
-  floor_preparation_scope_tool_capture_check_demo
+  floor_preparation_scope_tool_capture_check_demo,
+  floor_preparation_scope_tool_select_guarded
 }
 import v2.workflow.floor_preparation_capture_runner {
   floor_preparation_population_entries,
@@ -616,4 +617,28 @@ test fn floor_preparation_the_runner_actually_references_the_decision() -> Bool 
   text_contains(runner_text, "floor_preparation_scope_line_parse")
     && text_contains(runner_text, "floor_preparation_runner_plan")
     && text_contains(runner_text, "SCOPE_DECISION_LINE")
+}
+
+// ----------------------------------------------------------------------------------------------
+// 16. AN UNVERIFIED MAP CANNOT NARROW (review 98532). Kills: the grep-and-guess edge map narrowing
+// a run's preparation while the compiler cross-check has seen ZERO rows -- the map's only warrant is
+// that cross-check (it is a plan-time over-approximation beside the compiler's resolver, tolerable
+// exactly while the compiler is the decider), so the one decision that can hurt -- narrowing -- must
+// be the first to refuse. Same function the tree legs decide with, the SAME well-formed map and the
+// SAME diff as claim 12's permit half; the ONLY difference is the capture row count: zero rows and
+// the guard answers Whole with `capture-rows-absent`; one row and the same inputs narrow.
+// ----------------------------------------------------------------------------------------------
+
+test fn floor_preparation_an_unverified_map_cannot_narrow() -> Bool {
+  let rows = concat(floor_preparation_scope_edge_rows, floor_preparation_scope_edge_rows_variant)
+  let diff = floor_preparation_scope_diff_files(name: "shared-import")
+  let unverified = floor_preparation_scope_tool_select_guarded(
+    rows: rows, forced: [], hit_cap: false, gap: "", capture_rows: 0,
+    population: floor_preparation_scope_population, diff: diff)
+  let verified = floor_preparation_scope_tool_select_guarded(
+    rows: rows, forced: [], hit_cap: false, gap: "", capture_rows: 1,
+    population: floor_preparation_scope_population, diff: diff)
+  floor_preparation_scope_is_whole(scoping: unverified)
+    && starts_with(s: floor_preparation_scope_reason(scoping: unverified), prefix: "capture-rows-absent")
+    && floor_preparation_scope_is_narrowed(scoping: verified, population: floor_preparation_scope_population)
 }
