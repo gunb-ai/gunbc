@@ -1619,6 +1619,7 @@ fn bmc_fan_observe_with_credential(
                             controller_machine: projection.controller_machine,
                           )
                       }
+                      }
                     }
                 }
             }
