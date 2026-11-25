@@ -179,7 +179,7 @@ test fn a_failed_extraction_is_unread_without_a_measure() -> Bool {
 // ---- the attempt consumer: every workspace outcome, composed as the producer composes it ----
 
 fn ran(code: Int, stdout: String, stderr: String) -> HostLeg {
-  host_leg_of_typed_argv(outcome: TypedArgvExecConverged { result: SshSessionExecResult { exit_code: code, success: code == 0, stdout: stdout, stderr: stderr } })
+  host_leg_of_typed_argv(outcome: TypedArgvExecConverged { result: SshSessionExecResult { exit_code: code, success: code == 0, stdout: stdout, stderr: stderr, wall_deadline_seconds: Absent } })
 }
 
 fn not_dispatched(reason: String) -> HostLeg { host_leg_of_typed_argv(outcome: TypedArgvExecRefused { reason: reason }) }
