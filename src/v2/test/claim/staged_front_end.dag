@@ -1,13 +1,18 @@
 module v2.test.claim.staged_front_end
 
 import std.types { List, SourceSpan }
+import std.algebra { length, string_contains }
+import std.dissolution { dissolution_description, dissolution_is_bound }
 import std.source_annotation {
   AnnotationGap,
   AnnotationScope,
   FileScope,
   LeadingAfterLineIndent,
+  NormalizedAnnotationCapture,
   SourceAnnotationDebt,
-  SourceAnnotationGraph
+  SourceAnnotationGraph,
+  attach_annotations,
+  source_annotation_graph_rows
 }
 import v2.std.compilers.lexing { UnboundSourceAnnotation }
 import v2.compiler.staged_front_end {
@@ -22,6 +27,7 @@ import v2.compiler.staged_front_end {
   FrontEndStageReceipt,
   ParsedModule,
   front_end_landed_capture_count,
+  front_end_placement_control_next_rung,
   front_end_stage_index,
   front_end_run_outcome,
   front_end_unlanded_annotation_diagnostic,
@@ -201,6 +207,54 @@ test fn front_end_landed_capture_count_models_a_block_as_its_line_count() -> Boo
     && front_end_landed_capture_count(
       rows: [annotation_row(text: "// one\n// two"), annotation_row(text: "// three")]
     ) == 3
+}
+
+// THE TIE, RUN AGAINST THE PRODUCER RATHER THAN ASSUMED. The claim above pins the model against a hand-built
+// row, and a hand-built row is written by the same author who wrote the counter -- if the fold's separator ever
+// stopped being a single line feed, both could stay mutually consistent and the guard would then either refuse
+// every multi-line block in the corpus or pass a real loss. So the model is checked against the ONE thing whose
+// rule it models: three captures go into `attach_annotations`, the shared fold itself, two of them adjacent so
+// the join actually fires. It must group them into two rows, and the counter must account for all THREE
+// captures -- which is the count the guard compares against the lexer. Change the join separator, or the rule
+// for what extends a block, and this claim is the thing that goes red. It is the reason the separator is not a
+// second copy of the rule: the fold owns it, and this is the check that says so.
+fn attach_fixture_capture(text: String, start: Int, end: Int, adjacent: Bool) -> NormalizedAnnotationCapture {
+  NormalizedAnnotationCapture {
+    text: text,
+    origin: SourceSpan { file: "candidate.dag", start: start, end: end },
+    placement: LeadingAfterLineIndent,
+    preceded_by_blank_line: false,
+    preceded_by_annotation_line: adjacent
+  }
+}
+
+test fn front_end_landed_capture_count_agrees_with_the_real_attach_fold() -> Bool {
+  let graph = attach_annotations(
+    captures: [
+      attach_fixture_capture(text: "// one", start: 0, end: 6, adjacent: false),
+      attach_fixture_capture(text: "// two", start: 7, end: 13, adjacent: true),
+      attach_fixture_capture(text: "// three", start: 14, end: 22, adjacent: false)
+    ],
+    regions: []
+  )
+  let rows = source_annotation_graph_rows(graph: graph)
+  length(xs: rows) == 2
+    && front_end_landed_capture_count(rows: rows) == 3
+    && front_end_landed_capture_count(rows: rows) != length(xs: rows)
+}
+
+// THE RUNG STATEMENT IN THE GUARD'S COMMENT HAS A TYPE BEHIND IT. The guard above says placement is checked
+// only by a manual, ungated control and that the moment to gate it is declared, not deferred -- a claim a
+// reader would otherwise have to take from prose. It is a DissolutionCondition carrier
+// (front_end_placement_control_next_rung), read here: unbound today, because nothing in the tree fires it, and
+// naming the control whose absence it is about plus the roster an admission would have to appear in. A
+// rewrite that quietly turned this into a bound trigger, or that dissolved the sentence naming the control,
+// refuses here rather than in review.
+test fn front_end_placement_next_rung_is_declared_and_names_the_control() -> Bool {
+  let condition = front_end_placement_control_next_rung
+  !dissolution_is_bound(condition: condition)
+    && string_contains(s: dissolution_description(condition: condition), pattern: "v2.test.claim.manual.annotation_gap_v1_v2_agreement")
+    && string_contains(s: dissolution_description(condition: condition), pattern: "required_gate_authored_modules")
 }
 
 // NON-VACUITY: the guard is a comparison, and a comparison that can never fire is decoration. One

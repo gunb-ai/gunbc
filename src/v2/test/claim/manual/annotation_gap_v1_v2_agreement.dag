@@ -35,10 +35,13 @@ import std.host_text { chars }
 // legitimately differ (v2's stmt_seq has no braces, v1's block does) the scopes' extents differ, so
 // this control compares neighbours, not scopes.
 //
-// HOW TO EXECUTE THIS CONTROL, and two measured traps on the way there (node parse-comment-gap-attachment-v2-consumed).
+// HOW TO EXECUTE THIS CONTROL, and two traps on the way there (node parse-comment-gap-attachment-v2-consumed).
 // It imports v1.compiler.*, so it needs src/v1 as a source root -- claim_batch with only
-// --source-root dag --source-root src/v2 refuses it at the checker ('unresolved import: module
-// v1.compiler.tokenize not found', exit 1, measured with a main-built binary), so the executed form is:
+// --source-root dag --source-root src/v2 refuses it at the checker, because none of those modules is in a
+// root it can see. The three roots the executed form needs are published as a carrier,
+// v2.test.claim.manual.annotation_gap_v1_v2_agreement_probe_pair annotation_gap_v1_v2_agreement_probe_argv_roots,
+// and checked there by probe_pair_receipt_records_the_route_that_ran_it; the refusal text and its exit status
+// are in the run log, not here. The executed form is:
 //   claim_batch --source-root dag --source-root src/v2 --source-root src/v1 \
 //     --entry src/v2/test/claim/manual/annotation_gap_v1_v2_agreement.dag \
 //     --functions v1_and_v2_agree_on_neighbour_text_holds --hermetic
@@ -50,6 +53,31 @@ import std.host_text { chars }
 data agreement_source: String = "module zqx.agree\n\n// above the data row\ndata zqx_d: Int = 1\n\n// between the items\nfn zqx_f(a: Int, b: Int) -> Int \{\n  let x = zqx_g(\n    a,\n    // between the arguments\n    b,\n    1 +\n    // before the product\n    2 * 3\n  )\n  // between the statements\n  x\n\}\n\nfn zqx_g(p: Int, q: Int) -> Int \{\n  p\n\}\n"
 
 data agreement_texts: List<String> = ["above the data row", "between the items", "between the arguments", "before the product", "between the statements"]
+
+// THE CONTROL'S OWN IDENTITY AND RUNG, published here so a receipt in another module has something to agree
+// with. The probe pair imports these three and refuses when its own copy disagrees, so renaming this module,
+// renaming its entry fn, or enrolling this control without restating its rung turns THAT claim red -- the rung
+// is enforced against the floor's own admission decision, not asserted beside it. Rung is a closed set of
+// facts, so it is a declared sum and not a String: a free String cannot refuse an invented rung
+// (gunbc.design_argument::guarantee_ladder, rung honesty; gunbc.design_argument::source_annotations, a status
+// belongs in a typed carrier).
+type AgreementControlRung =
+    ManualUngated
+  | GatedRow
+  | FloorExecuted
+
+data agreement_control_module_name: String = "v2.test.claim.manual.annotation_gap_v1_v2_agreement"
+
+data agreement_control_entry_fn: String = "v1_and_v2_agree_on_neighbour_text_holds"
+
+// ManualUngated, measured 2026-11-24. Enrolment in `v2.workflow.required_floor`
+// `required_gate_authored_modules` was HELD: a required-gate row is admitted by the OPERATOR on a recorded
+// ruling (`required_gate_rows_grow_by_operator_ruling` in dag/gunbc/design_ruling.dag) and no such ruling
+// exists -- the lane-manager yes that briefly carried the row was retracted, and the row went back to main's
+// bytes. Independently, the floor has no executor: `run_required_floor` is gone from src/v1/stage0 and no
+// workflow passes a --required flag, so even a GatedRow here would not be executed today. The pair claim
+// re-derives this from `v2.workflow.required_floor` `required_gate_admits` instead of trusting this line.
+data agreement_control_rung: AgreementControlRung = ManualUngated
 
 fn row_text(row: SourceAnnotationDebt) -> String {
   row.text

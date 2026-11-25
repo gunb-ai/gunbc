@@ -10,6 +10,7 @@ import extdeps.languages.dag.syntax { strip_line_comment_delimiter }
 import std.algebra { fold_list, length, list_snoc_item }
 import std.host_text { chars }
 import std.source_annotation { SourceAnnotationDebt, SourceAnnotationGraph, code_point_is_line_feed, source_annotation_graph_rows }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.unicode.char_class { unicode_char_code_point }
 import v2.std.compilers.lexing { LexArtifact, lex_artifact_annotations, lex_artifact_semantic_tokens, token_stream_remaining_count, UnboundSourceAnnotation }
 import v2.std.language_model { LanguageModel }
@@ -231,21 +232,25 @@ fn front_end_parse_step(
 // is wrong, and a compiler that silently drops authored prose at the parse stage is exactly what
 // gunbc.design_argument::fail_closed refuses to let happen quietly. The check is language-neutral: it
 // counts, it does not interpret. Adjacent captures share one row: std.source_annotation
-// annotation_attach_step joins an extending capture with the one separator "\n", so a row accounts for
-// as many captures as its text has line feeds plus one; a total over rows equals the capture count
-// exactly when none was lost or duplicated. The model is pinned claim-side, not assumed:
-// v2.test.claim.staged_front_end front_end_landed_capture_count_models_a_block_as_its_line_count.
-// WHAT IT DOES NOT SEE: WHICH gap a capture landed in. Placement is checked ONLY by the v1/v2 agreement
-// control (v2.test.claim.manual.annotation_gap_v1_v2_agreement), which puts one source text through both
-// parsers and refuses when a row's neighbours disagree -- a roster or gap-rule divergence is caught THERE,
-// and this guard catches only the loss. THE RUNG, STATED PLAINLY: that control is MANUAL AND UNGATED. No
-// required floor row admits it (enrolment was held on 2026-11-24) and the required floor has no executor at
-// all, so a divergence in placement is caught only when someone runs it by hand; its receipt, which says the
-// same thing, is v2.test.claim.manual.annotation_gap_v1_v2_agreement_probe_pair. So this guard has no gate
-// behind it for placement, and its next-rung trigger is named rather than deferred: the first placement
-// divergence found with no executed run of that control behind it -- gunbc.design_argument::guarantee_ladder
-// (no untracked stall) makes that the moment to ask for a floor that can execute, not a moment to call this
-// covered.
+// annotation_attach_step joins an extending capture with one separator, and front_end_landed_capture_count
+// below reads that separator back -- one capture per line feed, one more per row. The model is not taken on
+// faith from a hand-built row: v2.test.claim.staged_front_end
+// front_end_landed_capture_count_models_a_block_as_its_line_count pins the arithmetic, and
+// front_end_landed_capture_count_agrees_with_the_real_attach_fold runs std.source_annotation
+// attach_annotations itself and refuses if the fold's join rule and this model ever diverge. That second
+// claim is what ties the two: the fold owns the separator, the counter models it, and a run over the real
+// fold is the thing that says they still agree.
+// WHAT IT DOES NOT SEE: WHICH gap a capture landed in. Placement is checked only by the v1/v2 agreement
+// control (v2.test.claim.manual.annotation_gap_v1_v2_agreement, entry fn
+// v1_and_v2_agree_on_neighbour_text_holds), which publishes its own identity and rung as carriers there;
+// this guard catches loss, that control catches placement. THE RUNG, STATED PLAINLY: that control is MANUAL
+// AND UNGATED today -- no required-floor selector admits it (enrolment was held on 2026-11-24) and the
+// required floor has no executor -- so a placement divergence is caught only when someone runs it by hand.
+// Its receipt carries the measured evidence and the same statement
+// (v2.test.claim.manual.annotation_gap_v1_v2_agreement_probe_pair), and the rung is re-derived there against
+// v2.workflow.required_floor required_gate_admits rather than trusted. So this guard has no gate behind it
+// for placement, and the moment to change that is declared rather than deferred:
+// front_end_placement_control_next_rung (gunbc.design_argument::guarantee_ladder, no untracked stall).
 fn front_end_unlanded_annotation_diagnostic(
   captures: List<UnboundSourceAnnotation>,
   graph: SourceAnnotationGraph
@@ -266,6 +271,14 @@ fn front_end_unlanded_annotation_diagnostic(
     }
   }
 }
+
+// THE DECLARED MOMENT TO GATE THE PLACEMENT HALF, not a promise in a comment: a dissolution condition, so a
+// reader and a claim can both reach it. It is UNBOUND because nothing in the tree fires it -- the runner that
+// judged this floor was deleted and no workflow passes a --required flag, so binding it to a declaration today
+// would be a trigger that can never fire beside a control that is never run. v2.test.claim.staged_front_end
+// front_end_placement_next_rung_is_declared_and_names_the_control reads it back and refuses if the condition
+// ever stops naming the control whose absence it is about.
+data front_end_placement_control_next_rung: DissolutionCondition = unbound_dissolution(description: "GATE THE PLACEMENT HALF WHEN v2.test.claim.manual.annotation_gap_v1_v2_agreement is both enrolled by name in v2.workflow.required_floor required_gate_authored_modules on an operator ruling AND executed by some floor that can execute -- the required-floor runner was deleted on 2026-10-14 and no workflow passes a --required flag, so neither half holds today. Until both halves hold, front_end_unlanded_annotation_diagnostic checks loss only and placement is checked by hand. At that moment agreement_control_rung in that control must be restated, which v2.test.claim.manual.annotation_gap_v1_v2_agreement_probe_pair probe_pair_rung_agrees_with_the_floors_own_admission refuses if it is left stale.")
 
 fn front_end_landed_capture_count(rows: List<SourceAnnotationDebt>) -> Int {
   fold_list(
