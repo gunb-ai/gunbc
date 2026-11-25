@@ -22,7 +22,7 @@
 //      --entry src/v2/test/claim/parse/prepared_child_first_summary_retained.dag \
 //      --functions pcfs_probe_sequence_carries_its_right_child_summary,pcfs_probe_choice_alternatives_carry_their_right_child_summaries"
 
-module gunbc.test.claim.parse.prepared_child_first_summary_retained
+module v2.test.claim.parse.prepared_child_first_summary_retained
 
 import std.types { Bool }
 import std.algebra { Empty, empty_map }
