@@ -19,12 +19,12 @@ import gunbc.runner.runner_microvm_boot_probe {
   BootConsoleUnreadable, BootVmmFailed,
   BootProbeConsole, EnforcementMismatch,
   SignalledWithoutOurKill, ReapNeverAnswered, ReapRefusedAfterOurSignal, GroupSignalRefused,
-  SubjectSurvivedOurSignals,
+  ConfirmationUnobserved,
   KillNotConfirmedByReap, GroupUnnameable,
   boot_probe_verdict, boot_probe_verdict_text, boot_probe_admitted, guest_agent_boot_verdict,
   runner_microvm_boot_probe_rootfs, runner_microvm_boot_probe_networking,
     ExecutionBoundReceipt, BoundFired, BoundChildExited, BoundSignalledByOther, BoundReapRefused,
-  BoundReapRefusedAfterOurSignal, BoundKillRefused, BoundSubjectSurvivedOurSignals,
+  BoundReapRefusedAfterOurSignal, BoundKillRefused, BoundDeathUnconfirmedWithinBound,
   BoundKillUnconfirmed, BoundKillUnnameable,
   BoundSpawnRefused, NoExecutionBound,
 }
@@ -237,8 +237,11 @@ test fn each_unobservable_arm_names_what_was_actually_observed() -> Bool {
       discriminating: "group signal was refused",
     )
     && refusal_refuses_by_name(
-      receipt: BoundSubjectSurvivedOurSignals { deadline: second(count: 3) },
-      discriminating: "the kernel would not reap it",
+      receipt: BoundDeathUnconfirmedWithinBound {
+        deadline: second(count: 3),
+        confirmation_bound: second(count: 10),
+      },
+      discriminating: "was never observed gone",
     )
     && refusal_refuses_by_name(
       receipt: BoundKillUnconfirmed { deadline: second(count: 3), exit_code: 0 },
@@ -257,7 +260,11 @@ test fn each_unobservable_cause_carries_its_own_observed_data() -> Bool {
   let c = console_of(stdout: "", stderr: "")
   let by_signal = boot_probe_verdict(runner: actions_runner_release_2_336_0, console: c, receipt: BoundSignalledByOther { signal: 9 })
   let by_reap = boot_probe_verdict(runner: actions_runner_release_2_336_0, console: c, receipt: BoundReapRefused { cause: "ECHILD" })
-  let by_decline = boot_probe_verdict(runner: actions_runner_release_2_336_0, console: c, receipt: BoundSubjectSurvivedOurSignals { deadline: second(count: 4) })
+  let by_decline = boot_probe_verdict(
+    runner: actions_runner_release_2_336_0,
+    console: c,
+    receipt: BoundDeathUnconfirmedWithinBound { deadline: second(count: 4), confirmation_bound: second(count: 10) },
+  )
   let by_exit = boot_probe_verdict(runner: actions_runner_release_2_336_0, console: c, receipt: BoundKillUnconfirmed { deadline: second(count: 4), exit_code: 3 })
   let by_pid = boot_probe_verdict(runner: actions_runner_release_2_336_0, console: c, receipt: BoundKillUnnameable { pid: 1 })
   let by_kill = boot_probe_verdict(runner: actions_runner_release_2_336_0, console: c, receipt: BoundKillRefused { deadline: second(count: 4), detail: "EPERM" })
@@ -270,7 +277,12 @@ test fn each_unobservable_cause_carries_its_own_observed_data() -> Bool {
       _ => false
     })
     && (match by_decline {
-      BootDeadlineEnforcementUnobservable { cause: SubjectSurvivedOurSignals { deadline: d }, console: _, console_cause: _, detail: _ } => second_count(s: d) == 4
+      BootDeadlineEnforcementUnobservable {
+        cause: ConfirmationUnobserved { deadline: d, confirmation_bound: cb },
+        console: _,
+        console_cause: _,
+        detail: _,
+      } => second_count(s: d) == 4 && second_count(s: cb) == 10
       _ => false
     })
     && (match by_exit {
@@ -285,6 +297,56 @@ test fn each_unobservable_cause_carries_its_own_observed_data() -> Bool {
       BootDeadlineEnforcementUnobservable { cause: GroupSignalRefused { deadline: _, detail: dd }, console: _, console_cause: _, detail: _ } => dd == "EPERM"
       _ => false
     })
+}
+
+// DELIVERY IS NOT CONFIRMATION: THE PAIR THAT MAY NEVER AGREE. Both arms below describe the SAME event
+// as far as any actuation return can describe it -- this layer imposed a 3-second bound on a group it
+// started, the bound ran out, and the group was signalled. They differ in exactly one thing: whether the
+// confirming reap OBSERVED the death. The arm that observed it (BoundFired, the answer the wet witness's
+// escalation arm gets from a real child) reports the deadline. The arm that did not
+// (BoundDeathUnconfirmedWithinBound, the answer the wet witness's zero-confirmation-window arm gets from
+// the SAME real child) refuses, and its cause carries BOTH bounds it ran out -- the deadline it was
+// enforcing and the confirmation window it was given to look in. A fold that read the kill's 0 as the
+// group being gone would print a deadline sentence in the second arm too, so this pair, not the prose, is
+// the witness (gunbc.design_argument::selection_precedes_convergence: an actuation return cannot mint
+// convergence; the wet pair in
+// #test.claim.runner.runner_microvm_boot_probe_lifecycle_witness varies ONLY the confirmation window over
+// real processes, and this arm is its planted mirror at classifier grain).
+test fn a_delivered_signal_without_a_confirmed_death_refuses_where_the_confirmed_one_reports() -> Bool {
+  let c = console_of(stdout: "", stderr: "")
+  let confirmed = boot_probe_verdict(
+    runner: actions_runner_release_2_336_0,
+    console: c,
+    receipt: BoundFired { deadline: second(count: 3), reaped_signal: 9 },
+  )
+  let unconfirmed = boot_probe_verdict(
+    runner: actions_runner_release_2_336_0,
+    console: c,
+    receipt: BoundDeathUnconfirmedWithinBound {
+      deadline: second(count: 3),
+      confirmation_bound: second(count: 10),
+    },
+  )
+  let confirmed_text = boot_probe_verdict_text(v: confirmed)
+  let unconfirmed_text = boot_probe_verdict_text(v: unconfirmed)
+  (match confirmed {
+    BootExceededHostDeadline { deadline: d, console: _, console_cause: _, detail: _ } => second_count(s: d) == 3
+    _ => false
+  })
+    && string_contains(s: confirmed_text, pattern: "host-deadline-expired")
+    && (match unconfirmed {
+      BootDeadlineEnforcementUnobservable {
+        cause: ConfirmationUnobserved { deadline: d, confirmation_bound: cb },
+        console: _,
+        console_cause: _,
+        detail: _,
+      } => second_count(s: d) == 3 && second_count(s: cb) == 10
+      _ => false
+    })
+    && !string_contains(s: unconfirmed_text, pattern: "host-deadline-expired")
+    && string_contains(s: unconfirmed_text, pattern: "deadline-enforcement-unobservable")
+    && !boot_probe_admitted(v: confirmed)
+    && !boot_probe_admitted(v: unconfirmed)
 }
 
 // AN UNREADABLE CAPTURE IS NOT AN EMPTY CONSOLE, ON EVERY ARM. "The guest printed nothing" and "we could
@@ -311,7 +373,7 @@ test fn an_unreadable_capture_refuses_by_name_rather_than_claiming_an_empty_cons
     BoundReapRefused { cause: "ECHILD" },
     BoundReapRefusedAfterOurSignal { deadline: second(count: 7), cause: "ECHILD" },
     BoundKillRefused { deadline: second(count: 7), detail: "EPERM" },
-    BoundSubjectSurvivedOurSignals { deadline: second(count: 7) },
+    BoundDeathUnconfirmedWithinBound { deadline: second(count: 7), confirmation_bound: second(count: 10) },
     BoundKillUnconfirmed { deadline: second(count: 7), exit_code: 3 },
     BoundKillUnnameable { pid: 1 },
   ]

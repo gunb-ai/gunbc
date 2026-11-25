@@ -3,7 +3,7 @@ module gunbc.process_lifecycle
 // ONE BOUNDED WAIT ON A PROCESS THIS LAYER STARTED.
 //
 // WHAT IS SHARED HERE, AND WHY IT IS NOT IN extdeps. The syscall layer's contribution is waitpid(2) with
-// WNOHANG, and that is already modelled, whole, in #extdeps.posix.process::Reap: StillRunning, Exited with
+// WNOHANG, and that is already modelled, whole, in posix.Process.Reap: StillRunning, Exited with
 // the raw code, Signaled with the fatal signal, or ReapRefused when waitpid itself answers ECHILD or an
 // error. Nothing in POSIX adds a poll cadence, a pause between polls, or a duration at which the caller
 // gives up. Those three are a DECISION of the layer that imposed a bound on a process it started: the
@@ -62,13 +62,32 @@ import std.measure { Second, second, measure_le, measure_sub, MeasureDifference,
 // The one-second reap poll described above. `remaining` is the bound the CALLER still holds; the recursion
 // is bounded by it, and both the zero and the underflow answers are StillRunning, so no caller can be left
 // without an answer and none can be handed a fabricated death.
+//
+// A NON-POSITIVE BOUND OBSERVES NOTHING, NOT EVEN ONCE. When the caller holds no window there is no
+// observation to make, so no Reap is attempted: the answer is StillRunning without asking. This is not an
+// optimisation -- it is what keeps the bound honest. A caller that grants zero seconds for confirmation is
+// saying "I will not look", and a helper that looked anyway and returned what it saw would let the caller
+// report a fact it did not observe (gunbc.design_argument::epistemic_humility). Consumers that want the
+// observation pass a positive bound; consumers that pass zero get the refusal their bound describes.
 fn process_await_reap(pid: Int, remaining: Second) -> ProcessReapOutcome {
-  let reaped = posix.Process.Reap(pid: pid)
-  match reaped.reaped {
-    StillRunning =>
-      if measure_le(a: remaining, b: second(count: 0)) {
-        StillRunning
-      } else {
+  if measure_le(a: remaining, b: second(count: 0)) {
+    StillRunning
+  } else {
+    let reaped = posix.Process.Reap(pid: pid)
+    match reaped.reaped {
+      StillRunning => {
+        let _pause = sleep.Delay.Seconds(seconds: "1" as NonEmptyStr)
+        match measure_sub(a: remaining, b: second(count: 1)) {
+          MeasureDifference { value: next } => process_await_reap(pid: pid, remaining: next)
+          MeasureSubtrahendExceedsMinuend => StillRunning
+        }
+      }
+      Exited { code } => Exited { code: code }
+      Signaled { signal } => Signaled { signal: signal }
+      ReapRefused { cause } => ReapRefused { cause: cause }
+    }
+  }
+}
         let _pause = sleep.Delay.Seconds(seconds: "1" as NonEmptyStr)
         match measure_sub(a: remaining, b: second(count: 1)) {
           MeasureDifference { value: next } => process_await_reap(pid: pid, remaining: next)

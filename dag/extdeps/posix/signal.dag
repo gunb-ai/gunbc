@@ -95,11 +95,23 @@ service posix.Signal {
   // reach, unconstructible here. No mock_response: a replayed pid is a fabricated kill, so only the wet
   // lane runs this, against a real process group. A caller may NOT use this as a first move; the term
   // paths above are the polite ones, and this sibling exists only as their escalation.
+  //
+  // THE ANSWER IS DELIVERY, NOT TERMINATION (gunbc.design_argument::selection_precedes_convergence: an
+  // actuation return cannot mint convergence). kill(2) returns 0 when the signal has been QUEUED for the
+  // group, not when the group has gone away -- a leader blocked in an uninterruptible section, a stopped
+  // process, or a signal simply not yet dispatched all answer 0 here. So the field is `delivered`, and an
+  // exit status is never evidence that the processes are gone. WHAT ENDED THEM is a waitpid(2) fact, and
+  // the only layer that can establish it is the one holding the pid it started: the confirmation, its
+  // bound, and the typed refusal when the confirmation never come all belong to the gunbc caller
+  // (#gunbc.runner.runner_microvm_boot_probe::boot_probe_escalate_kill), NOT in this service, so a reader
+  // of extdeps can still tell which facts are POSIX's and which are ours
+  // (gunbc.design_argument::external_upstreams). A caller that folds `delivered` into "terminated" has
+  // built exactly the defect this file's header comment exists to prevent.
   operation KillProcessGroup {
     requires none
     input { group: ProcessGroupLeader }
     output {
-      success: Bool from "exit_success"
+      delivered: Bool from "exit_success"
       stderr: String from "stderr"
     }
     transport shell { argv: ["kill", "-KILL", "-{group.pgid}"] }

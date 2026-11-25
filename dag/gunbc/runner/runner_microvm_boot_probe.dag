@@ -238,10 +238,15 @@ type ExecutionBoundReceipt
   // error, never a warning or a plausible fabrication").
   | BoundReapRefusedAfterOurSignal { deadline: Second, cause: String }
   | BoundKillRefused { deadline: Second, detail: String }
-  // Still alive after BOTH signals this layer holds -- its own TERM and its own escalated KILL -- for a
-  // full grace period each. Practically unreachable (signal(7): SIGKILL cannot be caught or ignored); it
-  // is the honest answer for a subject the kernel will not reap, and it is never a fired deadline.
-  | BoundSubjectSurvivedOurSignals { deadline: Second }
+  // THE CONFIRMATION NEVER CAME. This layer delivered its signals to the group it started and the
+  // confirming reap did not answer a death inside the confirmation bound this layer itself imposed
+  // (`confirmation_bound`). Two situations reach it, and this layer observed NEITHER of them as a death:
+  // a subject the kernel is not reaping (signal(7): SIGKILL cannot be caught, blocked or ignored, so this
+  // is the kernel's own accounting, not the bound's), and a caller who imposed a zero-length confirmation
+  // window, where no death was looked for at all. Both are refusals with the bound they were refused
+  // under, and neither is ever rendered as a fired deadline -- an actuation this layer performed is not
+  // evidence of the convergence it was meant to cause (gunbc.design_argument::selection_precedes_convergence).
+  | BoundDeathUnconfirmedWithinBound { deadline: Second, confirmation_bound: Second }
   | BoundKillUnconfirmed { deadline: Second, exit_code: Int }
   | BoundKillUnnameable { pid: Int }
   | BoundSpawnRefused { program: String, cause: String }
@@ -392,6 +397,9 @@ fn boot_probe_after_group_signal(
   stdout_file: NonEmptyStr,
   stderr_file: NonEmptyStr,
 ) -> BoundedBootRun {
+  // kill(2) answers when the signal is QUEUED for the group, so this answer is DELIVERY only. Nothing
+  // below reads it as termination: the death is established solely by the confirming reap in
+  // boot_probe_confirm_signal, and a refused delivery is a different event from an unconfirmed one.
   let killed = posix.Signal.TerminateProcessGroup(group: group)
   if !killed.success {
     boot_probe_bounded_read(
@@ -455,12 +463,16 @@ fn boot_probe_confirm_signal(
         stderr_file: stderr_file,
       )
     StillRunning =>
-      // The bound ran out with the subject alive. That is this layer's own unfinished business, never a
-      // fact about the subject, and it is decided here -- escalate once, and if this pass IS the
-      // escalation, refuse rather than call a survivor a fired deadline.
+      // The confirmation bound ran out without the kernel having answered a death. That is this layer's
+      // own unfinished business, never a fact about the subject, and it is decided here -- escalate once,
+      // and if this pass IS the escalation, refuse under the bound it was refused under rather than call
+      // an unobserved death a fired deadline.
       if escalated {
         boot_probe_bounded_read(
-          receipt: BoundSubjectSurvivedOurSignals { deadline: deadline },
+          receipt: BoundDeathUnconfirmedWithinBound {
+            deadline: deadline,
+            confirmation_bound: kill_grace,
+          },
           stdout_file: stdout_file,
           stderr_file: stderr_file,
         )
@@ -491,8 +503,12 @@ fn boot_probe_escalate_kill(
   stdout_file: NonEmptyStr,
   stderr_file: NonEmptyStr,
 ) -> BoundedBootRun {
+  // posix.Signal.KillProcessGroup answers DELIVERY (`delivered`, kill(2) 0 = queued), never
+  // termination, so this arm can only say the kernel refused to take the signal. Whether the group is
+  // GONE is asked of the confirming reap below -- an exit status from the kill would have minted a
+  // convergence the kernel never reported (gunbc.design_argument::selection_precedes_convergence).
   let killed = posix.Signal.KillProcessGroup(group: group)
-  if !killed.success {
+  if !killed.delivered {
     boot_probe_bounded_read(
       receipt: BoundKillRefused {
         deadline: deadline,
@@ -608,11 +624,12 @@ fn runner_microvm_boot_probe_verdict_from_run(
 //        this one says it was enforced and then could not be read back.
 //   GroupSignalRefused        -- this layer decided at the deadline and asked the kernel to signal the
 //        group it started, and the group verb refused. Remedy: the host's signal path.
-//   SubjectSurvivedOurSignals -- this layer signalled the group it started, escalated to the group kill
-//        when the confirming reap still answered StillRunning, and the subject was STILL there a full grace
-//        after THAT. signal(7): SIGKILL cannot be caught, blocked or ignored, so a survivor here is a
-//        process the kernel itself is not reaping -- and the honest answer is a refusal, because a survivor
-//        is not evidence that a deadline fired. Remedy: the host's process accounting, not a claim about
+//   ConfirmationUnobserved    -- this layer delivered its signals to the group it started and the
+//        confirming reap never answered a death inside the confirmation bound IT imposed. Either the
+//        kernel is not reaping the process (signal(7): SIGKILL cannot be caught, blocked or ignored -- a
+//        matter for the host's process accounting) or the window was too short to look -- and in neither
+//        case did this layer observe the death, so the answer is a refusal naming both bounds, never a
+//        deadline. Remedy: the host's process accounting or a wider confirmation bound, not a claim about
 //        this bound.
 //   KillNotConfirmedByReap    -- this layer signalled and the kernel then reaped the subject as EXITED, so
 //        the death is not attributable to that signal. Remedy: read the subject, not the bound.
@@ -628,7 +645,7 @@ type EnforcementMismatch
   | ReapNeverAnswered { cause: String }
   | ReapRefusedAfterOurSignal { deadline: Second, cause: String }
   | GroupSignalRefused { deadline: Second, detail: String }
-  | SubjectSurvivedOurSignals { deadline: Second }
+  | ConfirmationUnobserved { deadline: Second, confirmation_bound: Second }
   | KillNotConfirmedByReap { deadline: Second, exit_code: Int }
   | GroupUnnameable { pid: Int }
 
@@ -750,13 +767,14 @@ fn boot_probe_verdict(
           detail: dd,
         },
       }
-    BoundSubjectSurvivedOurSignals { deadline: d } =>
+    BoundDeathUnconfirmedWithinBound { deadline: d, confirmation_bound: cb } =>
       BootDeadlineEnforcementUnobservable {
         console: console.stdout,
         console_cause: console.read_cause,
         detail: console.stderr,
-        cause: SubjectSurvivedOurSignals {
+        cause: ConfirmationUnobserved {
           deadline: d,
+          confirmation_bound: cb,
         },
       }
     BoundKillUnconfirmed { deadline: d, exit_code: code } =>
@@ -875,12 +893,14 @@ fn boot_probe_verdict_text(v: BootProbeVerdict) -> String {
             " was never confirmed dead by that signal, so NO deadline is claimed",
             " (gunbc.design_argument::fail_closed)\nvmm-stderr: ", e,
             boot_probe_console_block(console: c, read_cause: capture_cause)], "")
-    BootDeadlineEnforcementUnobservable { console: c, console_cause: capture_cause, detail: e, cause: SubjectSurvivedOurSignals { deadline: d } } =>
-      join(["boot=deadline-enforcement-unobservable -- this layer imposed ", runner_microvm_boot_probe_deadline_text(deadline: d), ", signalled the process group",
-            " it started, escalated to the group kill when the subject was still running, and the subject was",
-            " STILL there when the second post-signal bound expired: the kernel would not reap it, so the",
-            " wedge is reported as a refusal and NOT as a deadline that fired (a survivor is not evidence of",
-            " an enforcement event -- gunbc.design_argument::epistemic_humility)\nvmm-stderr: ", e,
+    BootDeadlineEnforcementUnobservable { console: c, console_cause: capture_cause, detail: e, cause: ConfirmationUnobserved { deadline: d, confirmation_bound: cb } } =>
+      join(["boot=deadline-enforcement-unobservable -- this layer imposed ", runner_microvm_boot_probe_deadline_text(deadline: d),
+            ", DELIVERED its signal to the process group it started, escalated to the group kill, and the",
+            " confirming reap answered no death inside the ", runner_microvm_boot_probe_deadline_text(deadline: cb),
+            " confirmation bound this layer itself set. This layer therefore holds NO observation that its",
+            " signal ended the group -- kill(2) 0 means queued, and only the reap can report the death --",
+            " so the run is a refusal and NOT a deadline that fired (an actuation is not the convergence it",
+            " aimed at -- gunbc.design_argument::selection_precedes_convergence, epistemic_humility)\nvmm-stderr: ", e,
             boot_probe_console_block(console: c, read_cause: capture_cause)], "")
     BootDeadlineEnforcementUnobservable { console: c, console_cause: capture_cause, detail: e, cause: KillNotConfirmedByReap { deadline: d, exit_code: code } } =>
       join(["boot=deadline-enforcement-unobservable -- this layer imposed ", runner_microvm_boot_probe_deadline_text(deadline: d), ", signalled the process group",
