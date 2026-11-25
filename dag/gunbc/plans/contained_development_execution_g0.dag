@@ -29,7 +29,7 @@ fn contained_development_execution_g0_body() -> List<MarkdownBlock> {
     ]),
     p(text: "**Done when (both must hold):**"),
     ul(items: [
-      li(text: "The rendered worker unit from gunbc.roadmap.dispatch_worker_unit_confinement::dispatch_worker_unit_render contains ProtectHome=read-only for a hardened render (the properties from gunbc.roadmap.dispatch_worker_unit_confinement::dispatch_worker_hardened_unit_settings) and does NOT contain it for a stripped render (gunbc.roadmap.dispatch_worker_unit_confinement::DispatchUnitStripped). The negative case: if the check passes on the stripped render, it does not measure the property."),
+      li(text: "The worker unit property list rendered by gunbc.roadmap.roadmap_dispatch_actuator::dispatch_worker_unit_properties on the UnitRunOnSystemManager route contains ProtectHome=read-only (emitted by gunbc.roadmap.dispatch_worker_unit_confinement::dispatch_worker_unit_stream_properties), rendered to text by gunbc.extdeps.systemd.systemd_run::systemd_run_property_assignment, and the non-hardened route arm does NOT contain it. The negative case: if the check passes on the stripped render, it does not measure the property."),
       li(text: "No rendered ReadWritePaths= entry from the handed set (gunbc.roadmap.dispatch_worker_handed_set) begins with the operator home prefix (/home/<login>) UNLESS the entry lies under the instance's own root (the prefix from gunbc.roadmap.roadmap_dashboard_instance::dashboard_instance_child applied to the instance root). The srv2 preview root is under operator home by design (the operator should confirm that scoping-to-instance-root is the correct resolution; see the [srv2-root-inside-operator-home] finding). The negative case: a hand-constructed handed set containing /home/briansrls/some-path-outside-the-instance-root makes the check fail."),
     ]),
 
@@ -42,7 +42,7 @@ fn contained_development_execution_g0_body() -> List<MarkdownBlock> {
     ]),
     p(text: "**Done when (all three must hold):**"),
     ul(items: [
-      li(text: "The rendered hardened worker unit contains ProtectSystem=strict (from gunbc.roadmap.dispatch_worker_unit_confinement::dispatch_worker_hardened_unit_settings) and the stripped render does not. The negative case: if the check passes on the stripped render, it does not measure the property."),
+      li(text: "The worker unit property list rendered by gunbc.roadmap.roadmap_dispatch_actuator::dispatch_worker_unit_properties contains ProtectSystem=strict (emitted by gunbc.roadmap.dispatch_worker_unit_confinement::dispatch_worker_unit_stream_properties) and the non-hardened route arm does not. The negative case: if the check passes on the stripped render, it does not measure the property."),
       li(text: "No ReadWritePaths= entry from the handed set equals any HostCredentialCustodyRow's path field. The negative case: a hand-crafted handed set containing the fabric HMAC key path (/etc/gunbc-fabric-storage/state-writer-mac-key) makes the check fail."),
       li(text: "The rendered unit contains no EnvironmentFile= pointing at a custody path, and no custody path appears in any ExecStart= argument. The negative case: a hand-crafted unit with EnvironmentFile= naming the fabric HMAC key path makes the check fail."),
     ]),
@@ -52,7 +52,7 @@ fn contained_development_execution_g0_body() -> List<MarkdownBlock> {
     ul(items: [
       li(text: "The worker account: gunbc.fleet.fleet_posix_accounts::fleet_posix_worker_user. Its supplementary group list: gunbc.fleet.fleet_posix_accounts::fleet_posix_worker_supplementary_groups (the single group gunbc.fleet.fleet_posix_accounts::fleet_posix_worker_shared_group_name)."),
       li(text: "Root-equivalent groups: gunbc.fleet.fleet_root_equivalent_groups::fleet_root_equivalent_group_names (docker, lxd, sudo, adm)."),
-      li(text: "Capability bounding set, NoNewPrivileges and RestrictSUIDSGID: all from gunbc.roadmap.dispatch_worker_unit_confinement::dispatch_worker_hardened_unit_settings (the EmptyCapabilityBoundingSet arm under UnitRunOnSystemManager, NoNewPrivilegesProperty, RestrictSUIDSGIDProperty)."),
+      li(text: "Capability bounding set, NoNewPrivileges and RestrictSUIDSGID: all emitted by gunbc.roadmap.dispatch_worker_unit_confinement::dispatch_model_driven_privilege_confinement_properties (the EmptyCapabilityBoundingSet arm under UnitRunOnSystemManager, NoNewPrivilegesProperty, RestrictSUIDSGIDProperty)."),
     ]),
     p(text: "**Done when (all three must hold):**"),
     ul(items: [

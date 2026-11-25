@@ -8,9 +8,12 @@ module test.claim.roadmap.g0_criteria_witness
 //   * the condition set and the lifting count are read from the TYPED condition carrier
 //     gunbc.plans.contained_development_execution_g0_conditions (data g0_done_when_conditions; count via
 //     g0_condition_count; lifting via g0_lift_conjunction_holds), NOT from a grep of the plan's prose.
+//   * every modelled_by citation in the condition carrier is a DeclarationRef that RESOLVES against the
+//     parsed declaration pool (v2.std.decl_index.decl_facts) — a stale or module-only citation goes red.
 // Each check is deterministic and fails its NAMED negative case in the same run (run --claim-run turns a
-// `test fn` returning false into exit 1). The two-sided bwrap enforcement probe stays hand-shell and is
-// scaffold-marked in gunbc.roadmap.g0_contained_dev_execution_proof (its decision rule is modeled there).
+// `test fn` returning false into exit 1). The two-sided bwrap enforcement probe is EXTERNAL lane evidence
+// (PR #16989 evidence comment, probe recorded by sha256 d9702374...); this witness feeds the modeled
+// verdict CONSTRUCTED tokens only (review 98584 FINDING 3) — nothing here executes the probe.
 
 import std.types { Bool, String, Int, List, NonEmptyStr }
 import std.algebra { string_contains }
@@ -25,7 +28,9 @@ import gunbc.roadmap.roadmap_attempt_occurrence { UnitRunOnSystemManager }
 import gunbc.roadmap.roadmap_dashboard_instance { srv1_lab_dashboard_instance }
 import extdeps.systemd.systemd_run { SystemdRunProperty, systemd_run_property_assignment, SystemdRunPropertyAssignmentReady, SystemdRunPropertyAssignmentRefused, systemd_run_empty_capability_bounding_set_assignment, LoadCredentialSetting }
 import gunbc.roadmap.g0_contained_dev_execution_proof { g0_two_sided_isolation_holds, g0_two_sided_isolation_verdict }
-import std.process { ProcessExit, ExitSuccess }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import v2.std.decl_index { DeclFact, decl_facts }
 
 // ── markdown text extraction over the typed carrier ──────────────────────────────────────────────
 fn join_str(xs: List<String>) -> String { fold(xs, init: "", f: (acc, s) => concat(acc, s)) }
@@ -124,6 +129,26 @@ test fn g0_lift_conjunction_rejects_wrong_arity() -> Bool {
   count(proofs) == n - 1 && !g0_lift_conjunction_holds(proofs)
 }
 
+// NAMED negative [stale_modelled_by_ref] (review 98584 FINDING 2): every condition's modelled_by is a
+// DeclarationRef, checked here by execution against the parsed declaration pool -- not an unchecked
+// string. The row set must be non-empty, EVERY ref must resolve to a declaration the index reports, and
+// a deliberately bogus ref must NOT resolve (the search can go red; an empty pool cannot pass).
+fn g0_ref_resolves(facts: List<DeclFact>, ref: DeclarationRef) -> Bool {
+  any(xs: facts, predicate: f => f.qualified_name == concat(ref.module_path as String, ".", ref.decl_name as String))
+}
+
+data g0_stale_ref_probe: DeclarationRef = DeclarationRef {
+  module_path: "gunbc.roadmap.g0_contained_dev_execution_proof" as NonEmptyStr,
+  decl_name: "g0_symbol_that_does_not_exist_stale_ref" as NonEmptyStr,
+  field: WholeDeclaration,
+}
+
+test fn g0_condition_modelled_by_refs_resolve_in_the_declaration_pool() -> Bool {
+  let facts = decl_facts(pool_roots: ["dag"])
+  let unresolved = filter(g0_done_when_conditions, c => !g0_ref_resolves(facts, c.modelled_by))
+  count(g0_done_when_conditions) > 0 && count(facts) > 0 && count(unresolved) == 0 && !g0_ref_resolves(facts, g0_stale_ref_probe)
+}
+
 // ── CHECK 3: rendered capability key, executed on the renderer's OUTPUT ────────────────────────────
 test fn g0_renderer_emits_the_expected_capability_key_and_plan_matches() -> Bool {
   let rd = render_readings(g0_system_manager_props())
@@ -187,5 +212,14 @@ test fn g0_verdict_consumer_accepts_enforced_and_goes_red_when_broken() -> Bool 
     own_rc: "0", masked_entries: "0", sibling_rc: "MISSING", protected_read_rc: "1", protected_exec_rc: "127",
     enf_launch_rc: "0", posctl_sibling_rc: "0", posctl_exec_rc: "0", unm_launch_rc: "0",
     neg_own_rc: "0", neg_sibling_rc: "1", neg_protected_read_rc: "0", neg_protected_exec_rc: "0", neg_launch_rc: "0")
+  let broken_named = match broken_mask {
+    ExitFailure { code: _, reason: r } => string_contains(s: r, pattern: "ISOLATION_BREACHED:protected_reachable_under_mask")
+    _ => false
+  }
+  let missing_named = match missing {
+    ExitFailure { code: _, reason: r } => string_contains(s: r, pattern: "MISSING_OR_UNPARSEABLE_OBSERVATION:sibling_rc")
+    _ => false
+  }
   g0_verdict_is_success(ok) && !g0_verdict_is_success(broken_mask) && !g0_verdict_is_success(missing)
+    && broken_named && missing_named
 }

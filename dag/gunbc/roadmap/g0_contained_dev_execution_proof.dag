@@ -2,14 +2,26 @@ module gunbc.roadmap.g0_contained_dev_execution_proof
 
 // THE .dag INTENT OF THE G0 TWO-SIDED HERMETIC ISOLATION PROOF, and the scaffold marker for the one
 // realization that stays hand-shell. This is the carrier the reviewer's FINDING 1 (review 98246) asks
-// for: the semantics of the unreachability probe are modeled here as a .dag consumer; only the RAW
-// OBSERVATIONS (the per-probe return codes a probe records) are produced by hand-shell, because
-// producing them requires executing a real kernel mount-namespace primitive (bwrap --tmpfs masking)
-// that neither a .dag typecheck nor a source grep can perform. See gunbc.design_argument::fail_closed
-// (a typecheck and a .contains() grep are not consumers). SINGLE VERDICT AUTHORITY (gunbc.design_argument::
-// single_authority; review 98327 FINDING 1): the decision is made HERE, not by the shell. The shell
-// records each probe's own return code as a text token and feeds them to g0_two_sided_isolation_verdict;
-// it then exits with THAT verdict's process status and NOTHING else.
+// for: the semantics of the unreachability probe are modeled here as a .dag consumer. The consumer
+// takes OBSERVATION TOKENS on two channels, and this module claims only what each channel proves
+// (review 98584 FINDING 3):
+//   - IN REPO: the claim witness dag/test/claim/roadmap/g0_criteria_witness.dag feeds CONSTRUCTED
+//     tokens to g0_two_sided_isolation_verdict and discriminates red on broken-mask and missing-observation
+//     token sets. G0-compliant: constructed records only; nothing in this repo executes the probe.
+//   - LANE EVIDENCE ONLY: the REAL-observation pair (enforced deny + unmasked reach) was produced by
+//     the bwrap probe recorded in the PR #16989 evidence comment by sha256 d9702374b787297de2601a363133bf7981d953b8d6da7ac5895bcc322a2117ca
+//     (external; NOT a file in this repository; its run logs are pasted in that comment). There is NO
+//     in-repo runner: no committed script invokes the probe or joins its results — a committed
+//     hand-shell scaffold would need operator approval OUTSIDE the diff per
+//     gunbc.design_argument::fail_closed, which was not given.
+// Producing the real tokens requires executing a real kernel mount-namespace primitive (bwrap --tmpfs
+// masking) that neither a .dag typecheck nor a source grep can perform. See gunbc.design_argument::
+// fail_closed (a typecheck and a .contains() grep are not consumers). SINGLE VERDICT AUTHORITY
+// (gunbc.design_argument::single_authority; reviews 98327 FINDING 1, 98584 FINDING 1): the decision is
+// made HERE. Raw tokens enter only through g0_two_sided_isolation_verdict, each raw return code becomes
+// an isolation fact exactly ONCE through the single derivation helpers below, and the verdict's decision
+// is gated on g0_two_sided_isolation_holds applied to those derived Bools; the located diagnostics only
+// NAME the clause that fired.
 
 import std.types { Bool, String }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
@@ -45,6 +57,24 @@ fn g0_rc_is_zero(tok: String) -> Bool {
   }
 }
 
+// SINGLE DERIVATION OF THE ISOLATION FACTS (review 98584 FINDING 1). These are the
+// ONLY places a raw probe return code becomes an isolation fact: own-op permission from
+// own_rc, protected reachability from the two protected rcs, sibling reachability from
+// the sibling rc. The verdict classifies with THESE Bool bindings and gates its decision
+// on g0_two_sided_isolation_holds applied to them — nothing else re-decides isolation
+// from raw rc comparisons (gunbc.design_argument::single_authority).
+fn g0_own_op_permitted(own_rc: String) -> Bool {
+  g0_rc_is_zero(own_rc)
+}
+
+fn g0_protected_reachable(protected_read_rc: String, protected_exec_rc: String) -> Bool {
+  g0_rc_is_zero(protected_read_rc) || g0_rc_is_zero(protected_exec_rc)
+}
+
+fn g0_sibling_reachable(sibling_rc: String) -> Bool {
+  g0_rc_is_zero(sibling_rc)
+}
+
 // THE SOLE VERDICT AUTHORITY. Takes EVERY raw observation the probe records, as text return-code tokens
 // (the shell records $? per probe and relays it verbatim; it does NOT pre-interpret). It checks, in a
 // fail-closed order, and returns ProcessExit -- whose status the shell adopts as its own exit and whose
@@ -78,6 +108,24 @@ fn g0_two_sided_isolation_verdict(
   neg_protected_exec_rc: String,
   neg_launch_rc: String
 ) -> ProcessExit {
+  // the ONLY isolation derivations; every clause below reads these bindings, never a
+  // raw rc comparison for an isolation judgement (review 98584 FINDING 1)
+  let own_op_permitted = g0_own_op_permitted(own_rc)
+  let protected_reachable = g0_protected_reachable(protected_read_rc, protected_exec_rc)
+  let sibling_reachable = g0_sibling_reachable(sibling_rc)
+  let neg_own_op_permitted = g0_own_op_permitted(neg_own_rc)
+  let neg_protected_reachable = g0_protected_reachable(neg_protected_read_rc, neg_protected_exec_rc)
+  let neg_sibling_reachable = g0_sibling_reachable(neg_sibling_rc)
+  let good_isolation_holds = g0_two_sided_isolation_holds(
+    own_op_permitted: own_op_permitted,
+    protected_reachable: protected_reachable,
+    sibling_reachable: sibling_reachable
+  )
+  let negative_isolation_holds = g0_two_sided_isolation_holds(
+    own_op_permitted: neg_own_op_permitted,
+    protected_reachable: neg_protected_reachable,
+    sibling_reachable: neg_sibling_reachable
+  )
   if !g0_rc_is_valid(enf_launch_rc) {
     ExitFailure { code: 3, reason: "BWRAP_LAUNCH_OBSERVATION_UNPARSEABLE:enforced" }
   } else if !g0_rc_is_zero(enf_launch_rc) {
@@ -117,53 +165,59 @@ fn g0_two_sided_isolation_verdict(
   //      read/exec and only the boundary denies them ----
   } else if !(g0_rc_is_zero(posctl_sibling_rc) && g0_rc_is_zero(posctl_exec_rc)) {
     ExitFailure { code: 4, reason: concat("POSITIVE_CONTROL_NOT_REACHED sib_rc=", posctl_sibling_rc, " exec_rc=", posctl_exec_rc) }
-  // ---- worker's own allowed op must be PERMITTED (rc 0) ----
-  } else if !g0_rc_is_zero(own_rc) {
-    ExitFailure { code: 6, reason: concat("OWN_OP_NOT_PERMITTED rc=", own_rc) }
-  // ---- mask applied: the masked protected subtree is empty ----
+  // ---- mask applied: the masked protected subtree is empty. This is a probe-integrity
+  //      observation (did the mask land), not an isolation judgement. ----
   } else if !g0_rc_is_zero(masked_entries) {
     ExitFailure { code: 5, reason: concat("MASK_NOT_APPLIED masked_entries=", masked_entries) }
-  // ---- the protected + sibling fixtures must be DENIED (nonzero) under the mask ----
-  } else if g0_rc_is_zero(sibling_rc) {
-    ExitFailure { code: 7, reason: "ISOLATION_BREACHED:sibling_reachable_under_mask" }
-  } else if g0_rc_is_zero(protected_read_rc) {
-    ExitFailure { code: 7, reason: "ISOLATION_BREACHED:protected_read_reachable_under_mask" }
-  } else if g0_rc_is_zero(protected_exec_rc) {
-    ExitFailure { code: 7, reason: "ISOLATION_BREACHED:protected_exec_reachable_under_mask" }
-  // ---- named negative [broken_mask]: its own op permitted, sibling still masked, and the protected
-  //      fixture EXPLICITLY reachable (both read and exec rc 0), else the negative is not RED for the
-  //      right reason and must not be counted (review 98327 FINDING 2) ----
-  } else if !g0_rc_is_zero(neg_own_rc) {
-    ExitFailure { code: 8, reason: concat("NEGATIVE_NOT_VALID:neg_own_op_not_permitted rc=", neg_own_rc) }
-  } else if g0_rc_is_zero(neg_sibling_rc) {
-    ExitFailure { code: 8, reason: "NEGATIVE_NOT_VALID:neg_sibling_not_masked (sibling reachable in negative run)" }
-  } else if !(g0_rc_is_zero(neg_protected_read_rc) && g0_rc_is_zero(neg_protected_exec_rc)) {
-    ExitFailure { code: 9, reason: concat("NEGATIVE_NOT_RED_FOR_RIGHT_REASON:protected_not_reachable read_rc=", neg_protected_read_rc, " exec_rc=", neg_protected_exec_rc) }
-  // ---- the modeled rule, on observations derived from the REAL tokens above, must hold for the good run
-  //      and be breached by the negative run's protected-reachable observation ----
-  } else if !g0_two_sided_isolation_holds(own_op_permitted: true, protected_reachable: false, sibling_reachable: false) {
+  // ---- good run: the model predicate g0_two_sided_isolation_holds, fed the derived
+  //      Bools, is THE isolation decision. The clauses below only LOCATE which derived
+  //      Bool made it false; the holds gate guarantees nothing passes unless it holds. ----
+  } else if !own_op_permitted {
+    ExitFailure { code: 6, reason: concat("OWN_OP_NOT_PERMITTED rc=", own_rc) }
+  } else if protected_reachable {
+    ExitFailure { code: 7, reason: concat("ISOLATION_BREACHED:protected_reachable_under_mask read_rc=", protected_read_rc, " exec_rc=", protected_exec_rc) }
+  } else if sibling_reachable {
+    ExitFailure { code: 7, reason: concat("ISOLATION_BREACHED:sibling_reachable_under_mask rc=", sibling_rc) }
+  } else if !good_isolation_holds {
     ExitFailure { code: 10, reason: "MODELED_RULE_REJECTED_GOOD_RUN" }
-  } else if g0_two_sided_isolation_holds(own_op_permitted: true, protected_reachable: true, sibling_reachable: false) {
+  // ---- named negative [broken_mask]: its own op permitted, sibling still masked, and the protected
+  //      fixture EXPLICITLY reachable (a real unmasked probe observed reach=true), else the negative
+  //      is not RED for the right reason and must not be counted (review 98327 FINDING 2). All three
+  //      read the SAME derivation helpers as the good run. ----
+  } else if !neg_own_op_permitted {
+    ExitFailure { code: 8, reason: concat("NEGATIVE_NOT_VALID:neg_own_op_not_permitted rc=", neg_own_rc) }
+  } else if neg_sibling_reachable {
+    ExitFailure { code: 8, reason: "NEGATIVE_NOT_VALID:neg_sibling_not_masked (sibling reachable in negative run)" }
+  } else if !neg_protected_reachable {
+    ExitFailure { code: 9, reason: concat("NEGATIVE_NOT_RED_FOR_RIGHT_REASON:protected_not_reachable read_rc=", neg_protected_read_rc, " exec_rc=", neg_protected_exec_rc) }
+  // ---- the negative run must BREACH the model rule: fed its derived Bools (protected reachable),
+  //      g0_two_sided_isolation_holds must be false. A rule that still holds is a decoration. ----
+  } else if negative_isolation_holds {
     ExitFailure { code: 10, reason: "MODELED_RULE_ACCEPTED_BROKEN_MASK (negative not discriminating)" }
   } else {
     ExitSuccess
   }
 }
 
-// THE BASH-EMIT CAPABILITY THE HAND-SHELL WITNESS EXERCISES. The enforcement is mount-namespace
+// THE BASH-EMIT CAPABILITY THE LANE-EVIDENCE PROBE EXERCISES. The enforcement is mount-namespace
 // masking: bwrap --dev-bind / with --tmpfs over the protected and sibling subtrees, run inside the
-// heavy-slot scope on srv1. It is named so the scaffold is honest about exactly what the shell does that
-// .dag cannot.
-data g0_bwrap_isolation_bash_emit_capability: String = "bwrap mount-namespace tmpfs masking (--dev-bind / with --tmpfs over the protected and sibling subtrees), realized by the external bwrap evidence probe recorded in the PR #16989 evidence comment (NOT a file in this repository; sha256 d9702374b787297de2601a363133bf7981d953b8d6da7ac5895bcc322a2117ca), run inside the heavy-slot scope on srv1"
+// heavy-slot scope on srv1. It is named so the scaffold is honest about exactly what the external probe
+// does that .dag cannot. EXECUTING this capability is NOT claimed in-repo: the in-repo claim witness
+// consumes CONSTRUCTED tokens only; real-observation execution lives in the PR #16989 evidence comment
+// (probe recorded by sha256, run logs pasted there), never as a repo path or in-repo runner.
+data g0_bwrap_isolation_bash_emit_capability: String = "bwrap mount-namespace tmpfs masking (--dev-bind / with --tmpfs over the protected and sibling subtrees), exercised ONLY by the external bwrap evidence probe recorded in the PR #16989 evidence comment (NOT a file in this repository; sha256 d9702374b787297de2601a363133bf7981d953b8d6da7ac5895bcc322a2117ca), run inside the heavy-slot scope on srv1; the in-repo consumer g0_criteria_witness consumes constructed tokens, never real probe output"
 
-// THE SCAFFOLD MARKER / DISSOLUTION TRIGGER. The decision rule + verdict above are the modeled consumer;
-// the per-probe return-code tokens they consume are produced by a hand-shell probe (bwrap) until that
-// probe is realized through a typed host-effect / v2.workflow.bash_emit program (a modeled realization of
-// the mount namespace) rather than a hand-authored sh -c string. THE BASH-EMIT CAPABILITY named here is
-// g0_bwrap_isolation_bash_emit_capability; its tracked bash-emit capability issue is #5828. DISSOLVES WHEN
-// the bwrap mount-namespace probe is a modeled realization dispatch bound to this declaration
-// (tracked under bash-emit capability #5828). Bound to the decision rule so the marker names the carrier
-// it scaffolds.
+// THE SCAFFOLD MARKER / DISSOLUTION TRIGGER. The decision rule + verdict above are the modeled consumer.
+// IN REPO the tokens it consumes are CONSTRUCTED by the claim witness (a G0-compliant constructed-record
+// exercise); the REAL per-probe return codes are produced only by the external lane-evidence bwrap probe
+// recorded in the PR #16989 evidence comment by sha256 — no hand-shell probe is committed here, and none
+// may be without operator approval outside the diff. The scaffold dissolves when that probe is realized
+// through a typed host-effect / v2.workflow.bash_emit program (a modeled realization of the mount
+// namespace) rather than a hand-authored sh -c string. THE BASH-EMIT CAPABILITY named here is
+// g0_bwrap_isolation_bash_emit_capability (v2.workflow.bash_emit); its tracked bash-emit capability issue
+// is #5828. DISSOLVES WHEN the bwrap mount-namespace probe is a modeled realization dispatch bound to
+// this declaration (tracked under bash-emit capability #5828). Bound to the decision rule so the marker
+// names the carrier it scaffolds.
 data g0_bwrap_isolation_bash_emit_dissolution_trigger: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: DeclarationRef {
