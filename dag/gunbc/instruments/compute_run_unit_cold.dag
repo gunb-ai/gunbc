@@ -36,7 +36,7 @@ import extdeps.rust.rustup { rustup_home_env_name }
 import gunbc.compute.compute_work_records { ComputeWorkRecords, compute_work_log_path, compute_work_consumption_path }
 import gunbc.compute.work_provider_local {
   ComputeLayout, compute_layout, compute_exec, ComputeExecOk, ComputeExecFailed,
-  compute_command_argv, compute_operation_env, compute_run_unit, ComputeUnitRunExecuted, ComputeUnitRunRefused,
+  compute_build_command_argv, compute_operation_env, compute_run_unit, ComputeUnitRunExecuted, ComputeUnitRunRefused,
   ComputeUnitStopObservationRefused,
   ComputeUnitStopObservation, NoStopObservation, SccacheStatsAtStop, NoPathVirtualization, CheckoutAndTargetAtStablePaths,
   NoComputeDependency, compute_program, compute_summary_result_wire, compute_summary_peak_wire,
@@ -619,7 +619,7 @@ fn cold_unit_run_at(runtime_dir: FilePath, toolchain_homes: IsolatedJobToolchain
                     instance: instance,
                     layout: layout,
                     identity_hex: identity,
-                    argv: compute_command_argv(instance: instance, layout: argv_layout, op: op, dependency: NoComputeDependency),
+                    argv: compute_build_command_argv(instance: instance, layout: argv_layout, op: op, dependency: NoComputeDependency),
                     env: concat(
                       concat(
                         concat(compute_operation_env(op: op), user_session_unit_setenv(runtime_dir: runtime_dir)),

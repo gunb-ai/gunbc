@@ -149,7 +149,7 @@ fn admitted_fixture() -> DispatchEnvironmentAdmission
         evidence: "A causal compiler",
       )],
     ),
-    validation_summary: "/opt/gunbc/bin/gunbc run --claim-run",
+    validation_summary: "/opt/gunbc/bin/gunbc test",
   )
 }
 

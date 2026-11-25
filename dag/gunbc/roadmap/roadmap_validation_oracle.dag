@@ -487,6 +487,11 @@ type ValidationRefusalCause
   | ValidationOraclePinUnrecorded { channel: NonEmptyStr }
   | ValidationPinReceiptUnreadable { detail: String }
   | ValidationCommandUnrealized
+  | ValidationSubjectUnnameable {
+      entry: String,
+      function: String,
+      reason: String,
+    }
   | ValidationCommandRefused {
       program: String,
       reason: String,
@@ -785,6 +790,7 @@ fn validation_refusal_cause_key(cause: ValidationRefusalCause) -> String {
     ValidationOraclePinUnrecorded { channel: _ } => "oracle-pin-unrecorded"
     ValidationPinReceiptUnreadable { detail: _ } => "pin-receipt-unreadable"
     ValidationCommandUnrealized => "command-unrealized"
+    ValidationSubjectUnnameable { entry: _, function: _, reason: _ } => "subject-unnameable"
     ValidationCommandRefused { program: _, reason: _ } => "command-refused"
     ValidationComputeInfrastructureRefused { reason: _ } => "compute-infrastructure-refused"
     ValidationChangeWindowRefused { cause: _ } => "change-window-refused"
@@ -850,6 +856,8 @@ fn validation_refusal_cause_detail(cause: ValidationRefusalCause) -> String {
     ValidationPinReceiptUnreadable { detail } => detail
     ValidationCommandUnrealized =>
       "the declared validation has no host capability realization, so no command exists to run"
+    ValidationSubjectUnnameable { entry, function, reason } =>
+      join([entry, ":", function, " ", reason], "")
     ValidationCommandRefused { program, reason } =>
       join([program, ": ", reason], "")
     ValidationComputeInfrastructureRefused { reason } => reason
