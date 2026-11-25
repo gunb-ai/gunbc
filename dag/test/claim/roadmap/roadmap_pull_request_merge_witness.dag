@@ -214,6 +214,35 @@ test fn a_new_head_merges_after_an_earlier_acceptance_was_merged() -> Bool {
   admitted(admitted_b) && rule_of(second_b) == "already-merged"
 }
 
+// THE MERGE-TIME READ KEYS ON THE LIVE IDENTITY, not on the latest merge event anywhere (operator-provided
+// review via Manager B, 2026-11-24). A merge event belongs to the acceptance it merges: a node merged on
+// head A, re-accepted on head B, and NOT yet merged on B states no merge time for B — A's time belongs to
+// a superseded acceptance, and stating it while B has not landed is a plausible fabrication
+// (gunbc.design_argument::fail_closed: "no plausible output is fabricated"). The read uses the SAME
+// identity the admission law compares: the live acceptance's accepted pr_url + head_sha. Leg lifecycle:
+// RED against a whole-history read (it returned A's time for B), GREEN against the identity-keyed read.
+test fn a_reaccepted_head_states_no_merge_time_until_its_own_merge_lands() -> Bool {
+  let head_b = "11223344556677889900aabbccddeeff00112233"
+  let msha_b = "22334455667788990011aabbccddeeff00112233"
+  let at_b = "2026-11-23T05:00:00Z"
+  let acc_a = acceptance_env(evidence: AcceptedOnPullRequestHead {
+    pr_url: thread() as NonEmptyStr, head_sha: head() as NonEmptyStr }, at: "t1")
+  let merge_a = merge_of(url: thread(), sha: head(), at: merged_at(), msha: merge_sha(),
+    parent: Present { value: acc_a.id }, at_time: "t2")
+  let acc_b = acceptance_env_under(evidence: AcceptedOnPullRequestHead {
+    pr_url: thread() as NonEmptyStr, head_sha: head_b as NonEmptyStr }, at: "t3",
+    parent: Present { value: merge_a.id })
+  let merge_b = merge_of(url: thread(), sha: head_b, at: at_b, msha: msha_b,
+    parent: Present { value: acc_b.id }, at_time: "t4")
+  accepted_standing(envs: [acc_a, merge_a, acc_b, merge_b])
+    // before B merges: no merge time stated for the live head, even though A's merge sits in the history
+    && roadmap_merged_at_stated_by(envs: [acc_a, merge_a, acc_b]) == ""
+    // after B merges: B's own time, read from B's own merge event
+    && roadmap_merged_at_stated_by(envs: [acc_a, merge_a, acc_b, merge_b]) == at_b
+    // with A still live, A's own time still reads (the keying did not break the current head)
+    && roadmap_merged_at_stated_by(envs: [acc_a, merge_a]) == merged_at()
+}
+
 // REFUSAL PLANT — malformed-merge-evidence. The law that compares heads is worthless if a head can arrive
 // as prose, so a sha that is not 40 hex digits refuses, and so does a missing member: the command line
 // builds no evidence at all rather than an evidence with a hole in it (never an empty string, never a
