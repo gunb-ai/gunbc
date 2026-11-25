@@ -69,7 +69,8 @@ import std.algebra { string_concat_join }
 import std.content_hash { sha256_hex_of_text }
 import std.nat { Nat, NatDivisionByZero, NatQuotientRemainder, nat_div_rem }
 import std.optional { Absent, Optional, Present }
-import std.measure { ByteSize, Second, BasisPoint, byte_size, byte_size_count, second, second_count, basis_point, basis_point_count, gibibyte, gibibyte_count, gibibyte_to_byte_size, gibibyte_ceiling, seconds_per_day }
+import std.measure { ByteSize, Second, BasisPoint, TokenCount, byte_size, byte_size_count, second, second_count, basis_point, basis_point_count, gibibyte, gibibyte_count, gibibyte_to_byte_size, gibibyte_ceiling, seconds_per_day, token_count, token_count_value }
+import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import std.decimal { fixed_point_trimmed_wire }
 import std.decl_ref { DeclarationRef, WholeDeclaration, decl_ref }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
@@ -79,7 +80,10 @@ import extdeps.units.iso8601_calendar { Iso8601UtcInstant, iso8601_utc_instant, 
 import gunbc.retained_shell_script { RetainedShellScript }
 import gunbc.serving.rented_replica { RentedReplicaIdentity }
 import gunbc.serving.serving_enrollment { ServingRoute, CeilingByDeclaredPolicy, serving_replica_route }
-import gunbc.serving.serving_host_memory { srv1_lmcache_l2_configured }
+import gunbc.serving.serving_host_memory {
+  ConversationSnapshotCost, conversation_snapshot_bytes, srv1_lmcache_l1_configured,
+  srv1_lmcache_l2_configured, srv1_vllm_disk_snapshot_cost,
+}
 import extdeps.network.ipv4 { Ipv4Address, ipv4_address, render_ipv4_address }
 import gunbc.serving.lil_serving_defects { LilServingDefect, srv1_f24_b12x_tp2_hang_defect, srv1_f25_nvfp4_kv_defect, srv1_f26a_lmcache_replica_crash_defect }
 import extdeps.container.nvidia_container_toolkit { nvidia_cdi_device_selector_of }
@@ -495,20 +499,28 @@ data srv1_serving_replica_routes: List<ServingRoute> = [
 // ── per-replica host memory budget (C14, addendum item 3) ───────────────────────────────────────────
 //
 // Each replica's HOST CLAIM is the sum of charges the host kernel accounts outside GPU memory:
-//   - L1 shm: 12 GiB (LMCACHE_L1_GB=12; lives in /dev/shm as a tmpfs, charged to the container's cgroup
-//     under memory.stat shmem; the --shm-size 16g provides headroom for temp pages during checkpoint
-//     writes; only 12 GiB is the steady-state L1 tier);
+//   - L1 shm: the LMCache L1 tier (srv1_lmcache_l1_configured, 48 GiB as of 2026-11-24; it lives in /dev/shm as
+//     a tmpfs, charged to the container's cgroup under memory.stat shmem; the --shm-size 56g provides headroom
+//     for the engine's own shared-memory allocations in the same tmpfs — see
+//     gunbc.serving.srv1_serving_replica_layout::srv1_kv_tier_verdict's arena term, which refuses a /dev/shm
+//     smaller than the tier it has to hold). This field CITES the tier row rather than restating it: the tier
+//     and the charge for it are one fact (gunbc.design_argument::single_authority), and the 2026-11-24 raise
+//     12 -> 48 is exactly the change a restated copy would have survived, unfalsified, in this row.
 //   - PLE table: 26.8 GiB pinned host memory (b12x_ple.py allocates a pinned host page-table for the
 //     PagedAttention block-to-GPU mapping). VERIFIED OUTSIDE THE CONTAINER CGROUP: the container's cgroup
-//     memory.stat shows anon 7.28 GiB + shmem 13.04 GiB = approximately 20 GiB (within the --memory=32g
-//     limit); the 26.8 GiB PLE is allocated by the nvidia driver in kernel context and is charged to the
-//     host kernel, not to any user cgroup. The host's total Mlocked (21.5 MiB) is too small to contain
-//     26.8 GiB of mlock, confirming the driver allocates it through a separate path (GPU BAR1 mapping,
-//     not process mlock).
+//     memory.stat under the 12 GiB tier showed anon 7.28 GiB + shmem 13.04 GiB = approximately 20 GiB (within
+//     the --memory=32g limit then in force); the 26.8 GiB PLE is allocated by the nvidia driver in kernel
+//     context and is charged to the host kernel, not to any user cgroup. The host's total Mlocked (21.5 MiB) is
+//     too small to contain 26.8 GiB of mlock, confirming the driver allocates it through a separate path (GPU
+//     BAR1 mapping, not process mlock).
 //   - anon: ~6 GiB (Python interpreter, PyTorch worker threads, vLLM scheduler, LMCache multiprocess
 //     server). Observed at 7.28 GiB (cgroup anon) minus the shared portion.
 //
-// Total per replica: ~45 GiB (12 + 26.8 + 6). Both replicas: ~90 GiB total.
+// Total per replica: ~81 GiB (48 + 26.8 + 6). Both replicas: ~162 GiB, against srv1's OS-usable RAM
+// (gunbc.host.host_memory_observation::gunbc_ci_host_usable_ram_for(operator_host_srv1), ~502 GiB measured) —
+// so the 2026-11-24 raise of both the tier and the container limit still fits the host, and the pair plus the
+// two PLE tables is checked as a conjunct by
+// test.claim.serving.srv1_replica_rendered_boot_path_witness::the_two_replicas_still_fit_srv1s_admitted_memory.
 //
 // DO NOT budget the shared-PLE saving: the lil fix (VLLM_PLE_SHARED_TABLE_DIR) that would let two replicas
 // share one PLE table is in #16110 but the IMAGE DOES NOT HAVE IT (the env variable is absent from the
@@ -516,13 +528,16 @@ data srv1_serving_replica_routes: List<ServingRoute> = [
 // allocates its own table.
 
 type Srv1ReplicaHostBudget {
-  // The per-replica L1 shm: the LMCache L1 tier in /dev/shm (charged as shmem in cgroup).
+  // The per-replica L1 shm: the LMCache L1 tier in /dev/shm (charged as shmem in cgroup). CITED from its
+  // single authority, srv1_lmcache_l1_configured — see srv1_kv_tier_verdict for what the tier must satisfy.
   l1_shm: ByteSize
   // The PLE table pinned by the nvidia driver in kernel context, outside any user cgroup.
   ple_pinned: ByteSize
   // Anonymous memory: process heap and stack (inside the cgroup limit).
   anon: ByteSize
   // The docker --memory limit: what the cgroup enforces for container-internal allocations. Excludes PLE.
+  // 72 GiB as installed on the host from 2026-11-24 (was 32 GiB); it must hold the L1 tier's shmem plus the
+  // anonymous process, which the arena term of srv1_kv_tier_verdict refuses when it does not.
   cgroup_memory_limit: ByteSize
 }
 
@@ -533,16 +548,18 @@ fn srv1_replica_total_host_claim(budget: Srv1ReplicaHostBudget) -> ByteSize {
   byte_size(count: byte_size_count(b: budget.l1_shm) + byte_size_count(b: budget.ple_pinned) + byte_size_count(b: budget.anon))
 }
 
-// 12 GiB = 12 * 1024^3 = 12884901888; 26.8 GiB ~= 28776280832 (the b12x_ple.py table allocation);
-// 6 GiB = 6442450944; docker --memory=32g = 34359738368. The PLE table is charged ONE COPY PER REPLICA:
-// this lil image lacks VLLM_PLE_SHARED_TABLE_DIR, so launcher.py keeps ple_copy_per_replica = True (the
-// shared-table saving needs both a lil fix and that vLLM capability -- see the F26 rows and #16110 -- and
-// is NOT budgeted here). See gunbc.serving.lil_serving_defects for the observed defect receipts.
+// 48 GiB = 48 * 1024^3 = 51539607552, CITED from srv1_lmcache_l1_configured (the tier's single authority) so
+// the charge cannot lag the tier; 26.8 GiB ~= 28776280832 (the b12x_ple.py table allocation);
+// 6 GiB = 6442450944; docker --memory=72g = 77309411328, the value installed on the host 2026-11-24. The PLE
+// table is charged ONE COPY PER REPLICA: this lil image lacks VLLM_PLE_SHARED_TABLE_DIR, so launcher.py keeps
+// ple_copy_per_replica = True (the shared-table saving needs both a lil fix and that vLLM capability -- see the
+// F26 rows and #16110 -- and is NOT budgeted here). See gunbc.serving.lil_serving_defects for the observed
+// defect receipts.
 data srv1_replica_host_budget: Srv1ReplicaHostBudget = Srv1ReplicaHostBudget {
-  l1_shm: byte_size(count: 12884901888),
+  l1_shm: srv1_lmcache_l1_configured,
   ple_pinned: byte_size(count: 28776280832),
   anon: byte_size(count: 6442450944),
-  cgroup_memory_limit: byte_size(count: 34359738368),
+  cgroup_memory_limit: byte_size(count: 77309411328),
 }
 
 // ── disk budget and free-space guard (C15, addendum item 5) ─────────────────────────────────────────
@@ -716,10 +733,15 @@ type Srv1LaunchConfig {
   profile: NonEmptyStr
   // The hardware target (the lil-serve --hardware value; rtx-pro-6000-pcie on srv1).
   hardware: NonEmptyStr
-  // The LMCache L1 (RAM / shm) tier size, typed. No serving_host_memory owner exists for the L1 tier, so this
-  // module owns it as a ByteSize; it is rendered as LMCACHE_L1_GB=<n> only at the env boundary. (The L2 tier is
-  // NOT held here -- srv1_replica_engine_argv reads gunbc.serving.serving_host_memory::srv1_lmcache_l2_configured
-  // directly, the single authority for that configured size, per review 92343.)
+  // The LMCache L1 (RAM / shm) tier size, typed. Its SINGLE AUTHORITY is
+  // gunbc.serving.serving_host_memory::srv1_lmcache_l1_configured, exactly as the L2 tier's size is
+  // srv1_lmcache_l2_configured; this field CITES it and renders nothing of its own. The comment here used to
+  // read "no serving_host_memory owner exists for the L1 tier, so this module owns it as a ByteSize" — that
+  // was false (the row was there all along, at serving_host_memory line ~383 with its own provenance), and a
+  // false "no owner exists" is how one number came to be decided twice: the tier could be moved in either
+  // place and both rows stayed green. It is also why the tier could be wrong without consequence: nothing
+  // between the size and what the size is FOR read it (see srv1_l1_staging_floor below).
+  // Rendered as LMCACHE_L1_GB=<n> only at the env boundary.
   lmcache_l1: ByteSize
   // The engine --max-model-len value.
   max_model_len: Nat
@@ -771,7 +793,7 @@ data srv1_admitted_launch_config: Srv1LaunchConfig = Srv1LaunchConfig {
   kv_cache_dtype: Fp8E4m3,
   profile: "qwen38-flash-next" as NonEmptyStr,
   hardware: "rtx-pro-6000-pcie" as NonEmptyStr,
-  lmcache_l1: gibibyte_to_byte_size(g: gibibyte(count: 12)),
+  lmcache_l1: srv1_lmcache_l1_configured,
   max_model_len: 229376,
   image_digest: "sha256:2ad6245e058de7b4d0b973b08d60f67b18f563e4bd63d6a0e9b0406222a098e9" as NonEmptyStr,
   lil_replicas: 1,
@@ -844,7 +866,25 @@ fn srv1_launch_check_f26(config: Srv1LaunchConfig) -> Srv1LaunchAdmission {
   if config.lil_replicas > 1 {
     srv1_launch_refuse(defect: srv1_f26a_lmcache_replica_crash_defect)
   } else {
-    Srv1LaunchAdmitted { layout: "two independent TP=1 containers (srv1_serving_replica_roster)" as NonEmptyStr }
+    srv1_launch_check_kv_tier(config: config)
+  }
+}
+
+// THE FOURTH CHECK: the KV tier ladder. The three defect-bound checks above refuse shapes the IMAGE cannot
+// run; this one refuses a shape the RUNTIME can run and silently lose data through — an L1 tier too small to
+// stage the checkpoints the policy says must pass through it. It is on the same route as the other three
+// (srv1_replica_boot_unit_names gates the boot plan on srv1_launch_admission), so a too-small tier does not
+// merely fail to be warm: convergence refuses to arm the replica at all, loudly, naming the term that refused.
+// Its identity comes from a named declaration (srv1_l1_staging_contract_identity), so a rename is a compile
+// error at every consumer rather than a string two files have to agree on
+// (gunbc.design_argument::single_authority, ::fail_closed).
+fn srv1_launch_check_kv_tier(config: Srv1LaunchConfig) -> Srv1LaunchAdmission {
+  match srv1_kv_tier_verdict(config: config, shape: srv1_replica_container_run_shape, budget: srv1_replica_host_budget) {
+    KvTiersAdmitted => Srv1LaunchAdmitted { layout: "two independent TP=1 containers (srv1_serving_replica_roster)" as NonEmptyStr }
+    KvTierRefused { term: term, cause: cause } => Srv1LaunchRefused {
+      cause: concat(srv1_kv_tier_term_name(term: term), concat(": ", cause)) as NonEmptyStr,
+      defect_identity: srv1_l1_staging_contract_identity,
+    }
   }
 }
 
@@ -1029,9 +1069,13 @@ type Srv1ContainerRunShape {
   // gunbc.fleet.fleet_host_budget. Omit the flag and the container is created outside the slice the memory
   // budget is enforced in -- nothing errors, and the next OOM lands on whichever tenant got there first.
   cgroup_parent: NonEmptyStr
-  // HostConfig.ShmSize: the /dev/shm the engine sees. 16 GiB, deliberately ABOVE the 12 GiB LMCache L1 tier
-  // it carries, because the engine's own shared-memory allocations live in the same tmpfs. Omit the flag and
-  // docker gives 64 MiB, which fails INSIDE LMCache under load rather than at launch.
+  // HostConfig.ShmSize: the /dev/shm the engine sees, deliberately ABOVE the LMCache L1 tier it carries
+  // (srv1_lmcache_l1_configured), because the engine's own shared-memory allocations live in the same tmpfs.
+  // Omit the flag and docker gives 64 MiB, which fails INSIDE LMCache under load rather than at launch; set it
+  // BELOW the tier and the L1 arena cannot be carved at all -- lil's own fit_l1_arena refuses an explicit L1
+  // that does not fit, and srv1_kv_tier_verdict refuses the render here instead of installing a launcher whose
+  // container dies at engine init (the observed F26a "Checkpoint DMA requires a registered SHM mapping" is the
+  // same family: a tier the shm cannot hold fails inside the engine, late).
   shm_size: ByteSize
   // HostConfig.RestartPolicy.Name: "no", on purpose. The systemd unit owns the lifecycle (the helper blocks
   // in `docker wait`, so the unit is active exactly while the container is), and a docker-side restart
@@ -1066,7 +1110,10 @@ type Srv1ContainerRunShape {
 // a bound would let the two drift apart while both looked green.
 data srv1_replica_container_run_shape: Srv1ContainerRunShape = Srv1ContainerRunShape {
   cgroup_parent: "srv1-inference.slice" as NonEmptyStr,
-  shm_size: byte_size(count: 17179869184),
+  // 56 GiB = 60129542144, as installed on the host 2026-11-24 (was 16 GiB beside the 12 GiB tier). The rule
+  // it satisfies is the arena term of srv1_kv_tier_verdict: /dev/shm must hold the whole L1 tier PLUS the
+  // engine's own shared-memory allocations, and a smaller one is refused rather than rendered.
+  shm_size: byte_size(count: 60129542144),
   restart_policy: "no" as NonEmptyStr,
   entrypoint: "bash" as NonEmptyStr,
   engine_args_container_path: "/root/engine.args" as NonEmptyStr,
@@ -1082,6 +1129,245 @@ data srv1_replica_container_run_shape: Srv1ContainerRunShape = Srv1ContainerRunS
 // covers.
 data srv1_replica_launcher_shape_dissolution: DissolutionCondition = unbound_dissolution(description: "dissolve-on: gunbc.serving.srv1_serving_replica_layout srv1_replica_docker_argv and Srv1ContainerRunShape — the container the launcher asks docker for is emitted as flag STRINGS from typed shape rows, which pins the SPELLINGS docker reported (--volume host:container, --memory=32g, --shm-size=16g) rather than the input the flag names. DISSOLVES WHEN the same container is described through extdeps.docker.create_spec DockerCreateSpec, where the mount TYPE and the IPC namespace are explicit fields instead of implied by a spelling, KEEPING the byte-for-byte control against docker inspect so an adoption diff stays attributable. Left open deliberately mid-window: switching --volume to --mount while switching a live replica puts two changes in one diff and leaves neither isolated.")
 
+
+// ── THE KV TIER LADDER AND THE L1 STAGING CONTRACT (class B4, 2026-11-24) ──────────────────────────
+//
+// THE CLAIM THIS SECTION EXISTS TO KEEP TRUE. srv1's KV hierarchy is two tiers: L1 in host RAM (/dev/shm) and
+// L2 on NVMe. Under the store policy the engine actually runs with, a checkpoint reaches the NVMe tier ONLY as
+// it leaves L1. L1 is therefore not a cache with an optional backing store: it is the staging buffer on the
+// ONLY path a checkpoint has to disk — for a save, and for a restore (a returning conversation lands in L1
+// before the engine can read it back). An L1 that cannot hold the checkpoints in flight at once turns the
+// eviction that was supposed to persist a checkpoint into the deletion of one that was never written, and no
+// watermark, protected share or retry recovers it: the bytes it would have staged into do not exist.
+//
+// WHAT BREAKING IT COST, AND HOW THAT WAS SEEN. At L1 = 12 GiB — the figure carried here from 2026-11-08 until
+// 2026-11-24, chosen as "a small RAM cache in front of a big disk" (srv1_serving_gpu_launcher's own comment:
+// "Disk-first KV (2026-11-08, operator): small 12 GiB RAM tier L1") — the operator's session read LMCache's own
+// lines in ~/lil/serve/serve.log and ~/lil/serve-gpu1/serve.log on srv1: the tier sat at 90-99% full; the
+// evict-immediately path deleted fresh pages 0.07-1 s after creation without writing them (log suppressed_total
+// ~740k pages on GPU0 in 3.9 h); the saves each replica attempted were granted only 48% / 43% of the bytes they
+// asked for (2,760 / 4,224 saves, GPU0 / GPU1); and a conversation returning to the same card after 5-60 min
+// missed 50-75% of the time. Raising the tier to 48 GiB (replicas restarted 19:28:12 and 19:38:04 UTC) took
+// same-card unchanged-prefix warmth from 86-90% to 96-99%, measured on vLLM's own counters
+// vllm:prefix_cache_{hits,queries}_total and vllm:external_prefix_cache_{hits,queries}_total, sampled twice and
+// differenced. THESE ARE OBSERVATIONS RELAYED FROM THE OPERATOR'S SESSION WITH THE INSTRUMENT NAMED, not
+// readings this repository re-took; they are carried with that standing on
+// gunbc.recurring_failure_mode::a_serving_tier_sized_as_a_cache_while_the_store_policy_makes_it_the_only_path_to_disk.
+// The wall below is NOT derived from them. It is derived from the store policy, the per-conversation cost row
+// and the admitted concurrent population, so it holds without the receipt (gunbc.design_argument::epistemic_humility:
+// an inference stays a bet; the numbers above stay observations).
+//
+// WHY THE FLOOR IS population x snapshot bytes, and not the observed ratio. Under CheckpointOnEvict a
+// checkpoint is resident while it is being staged, and must not be evictable before its store to L2 completes.
+// The population that can be staging at once is the number of turns the replica runs concurrently, each holding
+// a conversation of up to the context the engine admits. If the tier is smaller than that many full-context
+// checkpoints, a burst can always drive it into the deleting path; if it is at least that large, eviction can
+// still happen but never has to destroy an unstored checkpoint to make room. That is the whole promise the
+// policy makes, stated in the units the workload consumes. It is NECESSARY, not sufficient: satisfying the floor
+// removes the silent-loss mode; it promises no hit ratio (warmth depends on the working set, the L2 watermark
+// and the protection window, each with its own row).
+//
+// WHY THE REFUSAL IS A REFUSAL AND NOT A WARNING. The tier size, the /dev/shm that carries it and the cgroup
+// that charges it are one fact about one allocation, decided in three rows; before this section they were three
+// independent numbers, and the shape "L1 bigger than /dev/shm" was writable, renderable and installable, to
+// fail inside the engine at checkpoint time — late, in the runtime, far from the edit. The terms below refuse
+// the render and the boot admission, so the earliest point that can see the contradiction is the one that
+// enforces it (gunbc.design_argument::earliest_unjustified_boundary, ::fail_closed; the ladder's rung for this
+// class is its ledger row).
+
+// What the engine does with a checkpoint when the L1 tier is full. The distinction the contract turns on is
+// WHEN the bytes go to disk, so the arms differ in that and nothing else; `flag_value` carries the engine's own
+// spelling rather than a paraphrase of it.
+type Srv1L2StorePolicy
+  = CheckpointOnEvict { flag_value: NonEmptyStr }
+  | StoreAtCreation { flag_value: NonEmptyStr }
+  // The policy nobody has read. Not "assume the cheaper one": an uncited policy does not license the smaller
+  // tier, so this arm keeps the floor binding (fail_closed — an uncomputed answer is not a conservative one).
+  | StorePolicyUnread { obligation: NonEmptyStr }
+
+// Whether a checkpoint reaches the disk tier only by leaving L1. Unread counts as true: the floor binds until
+// someone reads the policy and says otherwise.
+fn srv1_store_reaches_disk_only_by_eviction(policy: Srv1L2StorePolicy) -> Bool {
+  match policy {
+    CheckpointOnEvict { } => true
+    StoreAtCreation { } => false
+    StorePolicyUnread { } => true
+  }
+}
+
+// The policy AS READ, with the standing of the read. The flag is not in the launcher or the args file: lil's
+// runtime chooses it (/opt/lil/runtime/cache.py in the admitted image, whose replacement digest this repository
+// carries at gunbc.serving.srv1_serving_launch::srv1_serving_image_derivation), which is why no render control
+// can pin it and why its standing is an obligation rather than a witness.
+type Srv1L2StorePolicyReading {
+  policy: Srv1L2StorePolicy
+  standing: CitedFigureStanding
+}
+
+data srv1_l2_store_policy_reading: Srv1L2StorePolicyReading = Srv1L2StorePolicyReading {
+  policy: CheckpointOnEvict { flag_value: "checkpoint_on_evict" as NonEmptyStr },
+  standing: TranscribedUncited {
+    read_obligation: "read the store-policy line the live replica prints and the branch in /opt/lil/runtime/cache.py that selects it (the file whose admitted-image digest this repository carries), and re-take this row against that read; the value here is the operator's read of the two running engines on 2026-11-24, relayed in the 2026-11-24 fleet brief, not a value this repository derived from the image. Note the asymmetry it leaves open and records: --emergency-evict-for-prefetch is passed for GLM models only, so a non-GLM replica under this policy has no emergency-evict path at all." as NonEmptyStr,
+  },
+}
+
+// The inputs the floor is computed from — every one of them an existing row, none of them a hand-tuned number.
+type Srv1KvStagingContract {
+  // How many checkpoints can be in flight on one replica at once. Absent when the replica's population is
+  // unread, which refuses the render rather than guessing a width.
+  in_flight: Nat?
+  // What one conversation's checkpoint costs on THIS engine, from the row that prices it.
+  snapshot: ConversationSnapshotCost
+  // The policy that decides whether L1 is a cache or the only path to disk.
+  store_policy: Srv1L2StorePolicy
+  store_policy_standing: CitedFigureStanding
+}
+
+data srv1_kv_staging_contract: Srv1KvStagingContract = Srv1KvStagingContract {
+  in_flight: srv1_kv_tier_population(),
+  // srv1_vllm_disk_snapshot_cost is the per-conversation cost read off this engine's own KV pool density
+  // (512 MiB of recurrent state plus 20,625 bytes per token), in gunbc.serving.serving_host_memory.
+  snapshot: srv1_vllm_disk_snapshot_cost,
+  store_policy: srv1_l2_store_policy_reading.policy,
+  store_policy_standing: srv1_l2_store_policy_reading.standing,
+}
+
+// The population the ONE rendered config must satisfy: srv1's replicas share one measured coordinate, and the
+// launcher renders a single config for both, so the larger admitted population governs. Absent when either
+// replica's population is unread — a contract with an unknown population is not evaluable, and the honest
+// answer is the refusal that names the missing reading.
+fn srv1_kv_tier_population() -> Nat? {
+  match replica_concurrent_turns(p: srv1_vllm_replica_0_profile) {
+    Absent => Absent
+    Present { value: x } => match replica_concurrent_turns(p: srv1_vllm_replica_1_profile) {
+      Absent => Absent
+      Present { value: y } => Present { value: if x > y { x } else { y } }
+    }
+  }
+}
+
+// The bytes L1 must be able to hold at once for the eviction path to keep its promise: every in-flight
+// checkpoint, priced at the largest context the engine admits each of them to hold. Zero when the policy writes
+// at creation — L1 is then only a cache, and sizing it is an efficiency question, not a correctness one. That
+// is the whole point of modelling the policy: the SAME tier figure is a violation under one policy and
+// ordinary under the other, so the refusal is driven by the fact and not by a remembered incident.
+fn srv1_l1_staging_floor(contract: Srv1KvStagingContract, context: TokenCount) -> Outcome<ByteSize> {
+  if !srv1_store_reaches_disk_only_by_eviction(policy: contract.store_policy) {
+    outcome_accepted(value: byte_size(count: 0))
+  } else {
+    match contract.in_flight {
+      Absent => outcome_rejected(
+        d: srv1_kv_tier_refusal(
+          term: "l1-staging-floor" as NonEmptyStr,
+          cause: "the concurrent-turn population is unread on this replica's profile row (gunbc.serving.serving_replica_profile::replica_concurrent_turns answers Absent), so the tier cannot be shown to stage every checkpoint that may be in flight" as NonEmptyStr
+        )
+      )
+      Present { value: n } => outcome_accepted(
+        value: byte_size(count: byte_size_count(b: conversation_snapshot_bytes(cost: contract.snapshot, context: context)) * n)
+      )
+    }
+  }
+}
+
+// WHICH TERM refused, as a failure mode rather than prose: consumers match this, they do not compare the
+// cause string (the precedent this module follows is ServingShapeRefusalReason in
+// gunbc.serving.serving_capacity_anchor — a prose reason that a consumer compares becomes a second home for
+// the fact).
+type Srv1KvTierTerm
+  = L1StagingFloor
+  | L1CheckpointArena
+  | L1CgroupCarriesTier
+
+// The refusal's site name, rendered from the term. One home for the wording; matching is on the constructor.
+fn srv1_kv_tier_term_name(term: Srv1KvTierTerm) -> NonEmptyStr {
+  match term {
+    L1StagingFloor => "l1-staging-floor"
+    L1CheckpointArena => "l1-checkpoint-arena"
+    L1CgroupCarriesTier => "l1-cgroup-carries-tier"
+  }
+}
+
+type Srv1KvTierVerdict
+  = KvTiersAdmitted
+  | KvTierRefused { term: Srv1KvTierTerm, cause: NonEmptyStr }
+
+// The three terms, in the order a reader would check them: can the tier stage what the policy puts in it; can
+// /dev/shm hold the tier at all (lil's own fit_l1_arena refuses an explicit L1 that does not fit — rendering a
+// launcher that boots a container doomed to die at engine init would move the refusal from the build to the
+// boot log); and can the cgroup charge the tier plus the process beside it.
+//
+// The host-total term is NOT a refusal here: what the pair costs the host against its usable RAM is a
+// host-admission fact (gunbc.host.host_memory_observation), checked as a control by
+// the_two_replicas_still_fit_srv1s_admitted_memory rather than by this render, which has no business deciding
+// the host's whole budget.
+fn srv1_kv_tier_verdict(config: Srv1LaunchConfig, shape: Srv1ContainerRunShape, budget: Srv1ReplicaHostBudget) -> Srv1KvTierVerdict {
+  let l1 = byte_size_count(b: config.lmcache_l1)
+  bind_outcome(
+    o: srv1_l1_staging_floor(contract: srv1_kv_staging_contract, context: token_count(count: config.max_model_len)),
+    f: floor => {
+      let floor_bytes = byte_size_count(b: floor)
+      if l1 < floor_bytes {
+        KvTierRefused {
+          term: L1StagingFloor,
+          cause: concat(
+            "the store policy puts every checkpoint through L1 on its way to disk, so every checkpoint in flight at once must be stageable at once: that needs ",
+            concat(srv1_gib_text(size: floor), concat(" of L1 at ",
+              concat(to_string(token_count_value(t: token_count(count: config.max_model_len))),
+                concat(" tokens per conversation, and L1 is ", srv1_gib_text(size: config.lmcache_l1))))) as NonEmptyStr,
+        }
+      } else if byte_size_count(b: shape.shm_size) < l1 {
+        KvTierRefused {
+          term: L1CheckpointArena,
+          cause: concat("/dev/shm ", concat(srv1_gib_text(size: shape.shm_size), concat(" is smaller than the L1 tier (",
+            concat(srv1_gib_text(size: config.lmcache_l1), concat("): the arena cannot be carved (lil's fit_l1_arena refuses an L1 that does not fit), so the container would boot and die at checkpoint time", ""))))) as NonEmptyStr,
+        }
+      } else if byte_size_count(b: budget.cgroup_memory_limit) < l1 + byte_size_count(b: budget.anon) {
+        KvTierRefused {
+          term: L1CgroupCarriesTier,
+          cause: concat("--memory ", concat(srv1_gib_text(size: budget.cgroup_memory_limit), concat(" is smaller than the L1 shmem (",
+            concat(srv1_gib_text(size: config.lmcache_l1), concat(") plus the process (", concat(srv1_gib_text(size: budget.anon), concat(") = ",
+              concat(to_string(gibibyte_count(g: gibibyte_ceiling(b: byte_size(count: l1 + byte_size_count(b: budget.anon)))), " GiB required"))))))) as NonEmptyStr,
+        }
+      } else {
+        KvTiersAdmitted
+      }
+    }
+  )
+}
+
+// GiB at the boundary, from the ByteSize — the same rounding the env token uses, so a refusal quotes the tier
+// in the unit the row that names it is quoted in.
+fn srv1_gib_text(size: ByteSize) -> String {
+  concat(to_string(gibibyte_count(g: gibibyte_ceiling(b: size))), " GiB")
+}
+
+// The refusal's diagnostic: the same shape as srv1_bash_refusal, under its own prefix so a reader can tell a
+// tier-contract refusal from an unspellable word. The term is interned INTO the reason, which is what lets a
+// control name WHICH term refused rather than only that one did.
+fn srv1_kv_tier_refusal(term: NonEmptyStr, cause: NonEmptyStr) -> Diagnostic {
+  Diagnostic {
+    reason: symbol_intern_lexeme(lexeme: concat("srv1_kv_tier_refused:", concat(term, concat(": ", cause)))),
+    at: textual_whole_file_locus(file: ^srv1_serving_replica_layout),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+// The contract as the renders see it: Accepted when every term holds, Rejected carrying the refusing term and
+// its numbers. BOTH producers of installed bytes bind this — the launcher and the engine args file — so a
+// config that breaks the ladder has no bytes to install and no digest to record, rather than bytes that
+// describe a replica which silently loses what it was serving.
+fn srv1_kv_tier_contract_check(config: Srv1LaunchConfig) -> Outcome<Bool> {
+  match srv1_kv_tier_verdict(config: config, shape: srv1_replica_container_run_shape, budget: srv1_replica_host_budget) {
+    KvTiersAdmitted => outcome_accepted(value: true)
+    KvTierRefused { term: term, cause: cause } =>
+      outcome_rejected(d: srv1_kv_tier_refusal(term: srv1_kv_tier_term_name(term: term), cause: cause))
+  }
+}
+
+// The identity the boot admission names when this contract refuses. A NAMED declaration, so every consumer
+// that quotes it fails to compile if it is renamed (the defect-bound checks above bind their defects the same
+// way, by declaration rather than by string).
+data srv1_l1_staging_contract_identity: NonEmptyStr = "srv1-l1-staging-contract" as NonEmptyStr
 
 // The directory the TLS identity is copied FROM when a replica's own serve directory has none. Both replicas
 // present ONE certificate identity and the router pins it (upstream_ca.pem), so a replica that minted its own
@@ -2204,8 +2490,13 @@ fn srv1_replica_launcher_lines(replicas: List<Srv1ServingReplicaSpec>, config: S
 // on the host and cannot be installed by whoever is holding the pipe.
 fn srv1_render_replica_launcher() -> Outcome<String> {
   bind_outcome(
-    o: srv1_replica_launcher_lines(replicas: srv1_serving_replica_roster, config: srv1_admitted_launch_config),
-    f: lines => outcome_accepted(value: concat(string_concat_join(lines, "\n"), "\n"))
+    // The KV tier contract first: a launcher whose replica cannot stage what the store policy puts through L1
+    // has no bytes to install, and a digest printed for it would be a claim that something was installed.
+    o: srv1_kv_tier_contract_check(config: srv1_admitted_launch_config),
+    ok: _ => bind_outcome(
+      o: srv1_replica_launcher_lines(replicas: srv1_serving_replica_roster, config: srv1_admitted_launch_config),
+      f: lines => outcome_accepted(value: concat(string_concat_join(lines, "\n"), "\n"))
+    )
   )
 }
 
@@ -2215,8 +2506,15 @@ fn srv1_render_replica_launcher() -> Outcome<String> {
 // Both replicas take these same bytes today, because the engine argv is configuration and not identity; it is
 // still a per-replica FILE so that a future per-replica engine difference is a row change rather than a
 // renderer change.
-fn srv1_render_replica_engine_args() -> String {
-  concat(srv1_replica_engine_args_body(config: srv1_admitted_launch_config), "\n")
+//
+// An Outcome for the same reason the launcher is one: this file carries LMCACHE_L1_GB, and emitting bytes for a
+// tier that cannot stage the policy's own checkpoints would hand the host a config to install rather than
+// refusing the config.
+fn srv1_render_replica_engine_args() -> Outcome<String> {
+  bind_outcome(
+    o: srv1_kv_tier_contract_check(config: srv1_admitted_launch_config),
+    ok: _ => outcome_accepted(value: concat(srv1_replica_engine_args_body(config: srv1_admitted_launch_config), "\n"))
+  )
 }
 
 // The digest of exactly the bytes the two CLI entries above print. The install step on srv1 recomputes
@@ -2232,8 +2530,11 @@ fn srv1_render_replica_launcher_sha256() -> Outcome<String> {
   )
 }
 
-fn srv1_render_replica_engine_args_sha256() -> String {
-  sha256_hex_of_text(text: srv1_render_replica_engine_args())
+fn srv1_render_replica_engine_args_sha256() -> Outcome<String> {
+  bind_outcome(
+    o: srv1_render_replica_engine_args(),
+    f: bytes => outcome_accepted(value: sha256_hex_of_text(text: bytes))
+  )
 }
 
 // ── the systemd helper, rendered ───────────────────────────────────────────────────────────────────────
