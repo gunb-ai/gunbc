@@ -3,7 +3,20 @@ module test.claim.floor.floor_preparation_diff_scope_witness
 import std.types { Bool, Int, List, Present, Absent, String }
 import std.algebra { length }
 import v2.workflow.floor_preparation_split {
+  floor_preparation_contains,
   floor_preparation_split_report
+}
+import v2.workflow.floor_preparation_scope_tool {
+  floor_preparation_scope_tool_capture_check_demo
+}
+import v2.workflow.floor_preparation_capture_runner {
+  floor_preparation_population_entries,
+  floor_preparation_runner_plan_from_line,
+  floor_preparation_runner_plan_over,
+  FloorPreparationRunnerPlan,
+  Sweep,
+  Scoped,
+  PlanRefused,
 }
 import v2.workflow.floor_preparation_diff_scope {
   floor_preparation_scope_diff_files,
@@ -516,4 +529,99 @@ fn all_fixtures_lines_agree() -> Bool {
 
 test fn floor_preparation_the_line_prints_the_decision_it_made() -> Bool {
   all_fixtures_lines_agree()
+}
+
+// ----------------------------------------------------------------------------------------------
+// 12. THE COMPILER-CAPTURE SUPERSET CHECK (review 98336, finding 1). The compiler decides what an
+// entry resolves to; the grep map is only a plan-time over-approximation of that decision. A map
+// that does not know every compiler-resolved module must REFUSE to narrow -- and per the lane rule
+// the refusal and the permission are witnessed IN THE SAME RUN: the tool's demo report carries an
+// ok=yes half (map complete) and an ok=no half (a phantom compiler-resolved module withheld), each
+// printing its own hit counts. Deleting either half, or the counts, turns this red.
+// ----------------------------------------------------------------------------------------------
+
+test fn floor_preparation_the_compiler_capture_superset_check_refuses_in_the_same_run_it_allows() -> Bool {
+  let report = floor_preparation_scope_tool_capture_check_demo()
+  floor_preparation_contains(haystack: report, needle: "[capture-check] ok=yes missing=0")
+    && floor_preparation_contains(haystack: report, needle: "[capture-check] ok=no missing=1 first=src.v2.workflow.phantom_capture_module")
+    && floor_preparation_contains(haystack: report, needle: "known=")
+    && floor_preparation_contains(haystack: report, needle: "compiler=")
+}
+
+// ----------------------------------------------------------------------------------------------
+// 13. THE RUNNER CONSUMES THE DECISION (review 98336, finding 2), as BEHAVIOUR and not prose:
+// an entry from which no edge reaches the diff does not pay preparation on that revision's plan,
+// a reached entry still pays, a corrupt line REFUSES the plan instead of planning "whatever the
+// string said", and absence of a line is the sweep -- the full population, which is what keeps
+// red_control: the complete roster still pays preparation when nobody handed the runner a
+// decision to trust. The text claim below pins that the runner really references the decision.
+// ----------------------------------------------------------------------------------------------
+
+fn narrow_plan_is_behaviourally_correct(name: String) -> Bool {
+  let diff = floor_preparation_scope_diff_files(name: name)
+  let scoping = floor_preparation_scope_select(diff: diff)
+  let line = floor_preparation_scope_line(name: name, scoping: scoping, population: floor_preparation_scope_population)
+  let plan = floor_preparation_runner_plan_over(line: line, population: floor_preparation_scope_population)
+  if floor_preparation_scope_is_whole(scoping: scoping) {
+    // A whole decision sweeps: the plan pays the full population, the same shape as absence.
+    match plan {
+      Sweep { entries: e, reason: _ } => length(xs: e) == length(xs: floor_preparation_scope_population)
+      _ => false
+    }
+  } else {
+    match plan {
+      Scoped { entries: e, reason: _ } =>
+        // every reached entry pays, and no unreached one does; forced entries pay regardless.
+        fold(floor_preparation_scope_population, init: true, f: (acc, entry) =>
+          if !acc {
+            false
+          } else {
+            let reached = fold(diff, init: false, f: (inner, file) =>
+              inner || floor_preparation_scope_contains(
+                xs: floor_preparation_scope_entries_for(rows: floor_preparation_scope_edge_rows, file: file),
+                target: entry))
+            if floor_preparation_scope_contains(xs: floor_preparation_scope_forced, target: entry) {
+              floor_preparation_scope_contains(xs: e, target: entry)
+            } else {
+              reached == floor_preparation_scope_contains(xs: e, target: entry)
+            }
+          })
+      _ => false
+    }
+  }
+}
+
+test fn floor_preparation_a_reached_entry_pays_and_an_unreached_one_does_not() -> Bool {
+  fold(floor_preparation_scope_fixture_names(), init: true, f: (acc, name) =>
+    acc && narrow_plan_is_behaviourally_correct(name: name))
+}
+
+test fn floor_preparation_a_corrupt_plan_line_refuses_and_absence_sweeps_the_full_roster() -> Bool {
+  let sweep = floor_preparation_runner_plan_from_line(line: "")
+  let tampered = floor_preparation_runner_plan_from_line(
+    line: "floor-diff-scope diff=x reason=r selected_entries=2 of=16 narrowed=yes entries=a,b,c")
+  let junk = floor_preparation_runner_plan_from_line(line: "floor-cost-debt-population rows=0")
+  match sweep {
+    Sweep { entries: e, reason: _ } =>
+      length(xs: e) == length(xs: floor_preparation_population_entries())
+        && match tampered {
+          PlanRefused { cause: _ } =>
+            match junk {
+              PlanRefused { cause: _ } => true
+              _ => false
+            }
+          _ => false
+        }
+    _ => false
+  }
+}
+
+// The pairing royal-newt-240 required: the text claim (the runner references the decision) beside
+// the behaviour claims above. A runner that kept the import but lost the call, or the reverse, is
+// caught by exactly one of the two.
+test fn floor_preparation_the_runner_actually_references_the_decision() -> Bool {
+  let runner_text = filesystem_read(path: "src/v2/workflow/floor_preparation_capture_runner.dag").content
+  text_contains(runner_text, "floor_preparation_scope_line_parse")
+    && text_contains(runner_text, "floor_preparation_runner_plan")
+    && text_contains(runner_text, "SCOPE_DECISION_LINE")
 }

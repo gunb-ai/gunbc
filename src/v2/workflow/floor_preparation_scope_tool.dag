@@ -41,8 +41,12 @@ import std.algebra { length, list_push }
 import extdeps.shell
 import extdeps.shell.exec
 import v2.workflow.floor_preparation_split {
+  floor_preparation_capture,
   floor_preparation_contains,
-  floor_preparation_population_rows
+  floor_preparation_entry_paths,
+  floor_preparation_module_of_path,
+  floor_preparation_population_rows,
+  floor_preparation_resolve_tag
 }
 import v2.workflow.floor_preparation_capture_runner {
   floor_preparation_lines,
@@ -50,6 +54,8 @@ import v2.workflow.floor_preparation_capture_runner {
   floor_preparation_strip_prefix
 }
 import v2.workflow.floor_preparation_diff_scope {
+  floor_preparation_scope_edge_rows,
+  floor_preparation_scope_edge_rows_variant,
   floor_preparation_scope_select_over,
   floor_preparation_scope_whole,
   floor_preparation_scope_line,
@@ -539,11 +545,108 @@ fn floor_preparation_scope_tool_receipt(step: String, detail: String) -> String 
 // The depth cap is a tool-side fact the authority has no row for: if any reverse walk hit it, the
 // map is known-incomplete and the only honest scoping is Whole -- built through the authority's
 // own constructor, never by naming the variant from out here.
-fn floor_preparation_scope_tool_select_guarded(rows: List<FloorPreparationScopeRow>, forced: List<String>, hit_cap: Bool, population: List<String>, diff: List<String>) -> FloorPreparationScoping {
+// THE COMPILER-CAPTURE SUPERSET CHECK (review 98336, finding 1). The compiler -- not this tool --
+// decides what an entry resolves to. The capture legs print the compiler's own resolve lines and
+// `v2.workflow.floor_preparation_split` parses them at module grain, so the compiler's resolved
+// module set is available to a consumer without any new seed surface. This tool's grep map is a
+// PLAN-TIME OVER-APPROXIMATION of that set; if the compiler resolved a module the map does not
+// even name, the map is provably too small, and the only honest decision is the whole population.
+// The compiler stays the decider; a narrowing is trusted only while it survives the cross-check.
+type FloorPreparationScopeToolCaptureCheck {
+  gap: String,
+  first: String,
+  compiler_count: Int,
+  known_count: Int,
+  missing_count: Int,
+}
+
+fn floor_preparation_scope_tool_known_keys(rows: List<FloorPreparationScopeRow>) -> List<String> {
+  fold(rows, init: [], f: (acc, row) =>
+    let paths = match row {
+      ScopeImport { entry: e, file: f2 } => [e, f2],
+      ScopeModuleDecl { entry: e } => [e],
+      ScopeReadLiteral { entry: e, file: f2 } => [e, f2],
+    }
+    fold(paths, init: acc, f: (inner, path) =>
+      let key = floor_preparation_module_of_path(path: path)
+      if floor_preparation_scope_tool_has(xs: inner, item: key) { inner } else { list_push(xs: inner, item: key) }))
+}
+
+fn floor_preparation_scope_tool_compiler_keys(compiler_rows: List<String>) -> List<String> {
+  fold(floor_preparation_entry_paths(capture: compiler_rows), init: [], f: (acc, path) =>
+    let key = floor_preparation_module_of_path(path: path)
+    if floor_preparation_scope_tool_has(xs: acc, item: key) { acc } else { list_push(xs: acc, item: key) })
+}
+fn floor_preparation_scope_tool_resolve_line(entry: String) -> String {
+  concat(concat(floor_preparation_resolve_tag, " "),
+    concat(entry, ": 1ms  (1 modules, 1 resolved items in closure)"))
+}
+
+fn floor_preparation_scope_tool_capture_gap(rows: List<FloorPreparationScopeRow>, compiler_rows: List<String>) -> FloorPreparationScopeToolCaptureCheck {
+  let known = floor_preparation_scope_tool_known_keys(rows: rows)
+  let compiler = floor_preparation_scope_tool_compiler_keys(compiler_rows: compiler_rows)
+  let missing = fold(compiler, init: [], f: (acc, key) =>
+    if floor_preparation_scope_tool_has(xs: known, item: key) { acc } else { list_push(xs: acc, item: key) })
+  let first = match missing.first() {
+    Present { value: v } => v
+    Absent => "none"
+  }
+  FloorPreparationScopeToolCaptureCheck {
+    gap: if length(xs: missing) == 0 {
+      ""
+    } else {
+      concat("compiler-capture-superset: ",
+        concat(to_string(length(xs: missing)),
+          concat(" compiler-resolved module(s) unknown to the map; first=", first)))
+    },
+    first: first,
+    compiler_count: length(xs: compiler),
+    known_count: length(xs: known),
+    missing_count: length(xs: missing),
+  }
+}
+
+// THE NAMED NEGATIVE, in one report, from one call (the lane rule: a green half alone is not
+// evidence). Half one gives the check the fixture map's own entries -- every compiler-resolved
+// module known, so a narrowing is allowed. Half two adds a phantom module the compiler resolved:
+// the same run must report the refusal. A witness claim asserts BOTH halves' tokens appear, so
+// deleting either half turns it red.
+fn floor_preparation_scope_tool_capture_check_demo() -> String {
+  let map_rows = concat(floor_preparation_scope_edge_rows, floor_preparation_scope_edge_rows_variant)
+  let good_entries = fold(map_rows, init: [], f: (acc, row) =>
+    let e = match row {
+      ScopeImport { entry: e2, file: _ } => e2
+      ScopeModuleDecl { entry: e2 } => e2
+      ScopeReadLiteral { entry: e2, file: _ } => e2
+    }
+    if floor_preparation_scope_tool_has(xs: acc, item: e) { acc } else { list_push(xs: acc, item: e) })
+  // THE COMPILER'S OWN ROW FORMAT, not a convenient one: the capture legs print
+  // `[resolve] <entry>: <ms>ms ...` and the fold's entry_paths only accepts that shape. A demo
+  // feeding raw paths would silently test nothing, because unknown lines are dropped, and a
+  // dropped row is exactly the false-green this lane keeps meeting.
+  let good_capture = fold(good_entries, init: [], f: (acc, e) => list_push(xs: acc, item: floor_preparation_scope_tool_resolve_line(entry: e)))
+  let good = floor_preparation_scope_tool_capture_gap(rows: map_rows, compiler_rows: good_capture)
+  let bad_capture = concat(good_capture, [floor_preparation_scope_tool_resolve_line(entry: "src/v2/workflow/phantom_capture_module.dag")])
+  let bad = floor_preparation_scope_tool_capture_gap(rows: map_rows, compiler_rows: bad_capture)
+  concat(
+    concat(concat(concat("[capture-check] ok=yes missing=", to_string(good.missing_count)),
+      concat(" known=", to_string(good.known_count))),
+      concat(" compiler=", to_string(good.compiler_count))),
+    concat(concat(concat(concat("\n[capture-check] ok=no missing=", to_string(bad.missing_count)),
+      concat(" first=", bad.first)),
+      concat(" known=", to_string(bad.known_count))),
+      concat(" compiler=", to_string(bad.compiler_count))))
+}
+
+fn floor_preparation_scope_tool_select_guarded(rows: List<FloorPreparationScopeRow>, forced: List<String>, hit_cap: Bool, gap: String, population: List<String>, diff: List<String>) -> FloorPreparationScoping {
   if hit_cap {
     floor_preparation_scope_whole(reason: "depth-cap: a reverse walk hit the bound, so the edge map is known-incomplete and narrowing is refused")
   } else {
-    floor_preparation_scope_select_over(rows: rows, forced: forced, population: population, diff: diff)
+    if gap != "" {
+      floor_preparation_scope_whole(reason: gap)
+    } else {
+      floor_preparation_scope_select_over(rows: rows, forced: forced, population: population, diff: diff)
+    }
   }
 }
 
@@ -604,10 +707,14 @@ fn floor_preparation_scope_tool_body(tree: String, base: String, label: String) 
                     poisons: floor_preparation_scope_tool_poison_sources(edges: import_read.edges),
                     edges: edges,
                     population: population)
+                  let capture_check = floor_preparation_scope_tool_capture_gap(
+                    rows: rows,
+                    compiler_rows: floor_preparation_capture())
                   let scoping = floor_preparation_scope_tool_select_guarded(
                     rows: rows,
                     forced: forced.entries,
                     hit_cap: built.hit_cap || forced.hit_cap,
+                    gap: capture_check.gap,
                     population: population,
                     diff: diff)
                   let transport = floor_preparation_scope_tool_receipt("tree-transport",
@@ -618,8 +725,14 @@ fn floor_preparation_scope_tool_body(tree: String, base: String, label: String) 
                   let decision = floor_preparation_scope_tool_receipt("decision",
                     concat(concat("rows=", to_string(length(xs: rows))),
                       concat(" forced=", to_string(length(xs: forced.entries)))))
-                  let line = floor_preparation_scope_line(name: label, scoping: scoping, population: population)
-                  concat(concat(concat(transport, "\n"), decision), concat("\n", line))
+                  let capture_receipt = floor_preparation_scope_tool_receipt("compiler-capture-check",
+                    concat(concat("compiler=", to_string(capture_check.compiler_count)),
+                      concat(concat(" known=", to_string(capture_check.known_count)),
+                        concat(concat(" missing=", to_string(capture_check.missing_count)),
+                          concat(" first=", capture_check.first)))))
+                  let scoping_line = floor_preparation_scope_line(name: label, scoping: scoping, population: population)
+                  concat(concat(concat(concat(transport, "\n"), decision), concat("\n", capture_receipt)),
+                    concat("\n", scoping_line))
                 }
               }
             }

@@ -63,6 +63,13 @@ import v2.workflow.floor_preparation_split {
   FloorPreparationPopulationRow,
   floor_preparation_population_rows
 }
+import v2.workflow.floor_preparation_diff_scope {
+  floor_preparation_scope_line_parse,
+  floor_preparation_scope_planned_entries,
+  FloorPreparationScopePlanned,
+  Planned,
+  Refused,
+}
 
 // ----------------------------------------------------------------------------------------------
 // SUPPLY DATA. Paths and digests the measurement is pinned to. One authority, read by every leg;
@@ -516,6 +523,72 @@ fn floor_preparation_population_entries() -> List<String> {
     else { list_push(xs: acc, item: row.entry) })
 }
 
+// THE REVISION PLAN (review 98336, finding 2 -- the decision's consumer). The scope tool runs the
+// grep map over the tree and PRINTS one authority-owned line; this runner is what consumes it, so
+// the scoping decides real work instead of being an unread ledger. The line is parsed back through
+// the authority's own reader (never a second format), and the plan it yields is what the legs run:
+// entries the diff does not reach do not pay preparation on THAT revision; a reachable entry still
+// pays, and a missing or corrupt line never plans "whatever the string said" -- absence is the
+// sweep (the full roster, the shape that preserves red_control), corruption is a refusal.
+type FloorPreparationRunnerPlan
+  = Sweep { entries: List<String>, reason: String }
+  | Scoped { entries: List<String>, reason: String }
+  | PlanRefused { cause: String }
+
+fn floor_preparation_runner_plan() -> FloorPreparationRunnerPlan {
+  floor_preparation_runner_plan_from_line(line: floor_preparation_env_value(name: "SCOPE_DECISION_LINE"))
+}
+
+// The plan function proper, split from its environment read so the BEHAVIOUR of consuming a
+// decision line is witnessed directly -- an env-gated function alone would let the claim pass on
+// the absence path while the parse path rotted.
+fn floor_preparation_runner_plan_from_line(line: String) -> FloorPreparationRunnerPlan {
+  floor_preparation_runner_plan_over(line: line, population: floor_preparation_population_entries())
+}
+
+// Population is a PARAMETER, not a read from inside: a consumer that compared the line's counts
+// against a population it invented itself would be a second decider about what "narrowed" means.
+// Production passes the model's rows; the witness passes the fixture's, and both flow through the
+// same code path -- which is what makes the behavioural claims real instead of decorative.
+fn floor_preparation_runner_plan_over(line: String, population: List<String>) -> FloorPreparationRunnerPlan {
+  if line == "" {
+    Sweep {
+      entries: population,
+      reason: "no-scope-decision: full roster pays preparation (the sweep behaviour that preserves red_control)",
+    }
+  } else {
+    match floor_preparation_scope_planned_entries(
+      read: floor_preparation_scope_line_parse(line: line),
+      population: population) {
+      Planned { entries: e, reason: r } =>
+        if length(xs: e) < length(xs: population) {
+          Scoped { entries: e, reason: r }
+        } else {
+          Sweep { entries: e, reason: r }
+        }
+      Refused { cause: c } => PlanRefused { cause: c }
+    }
+  }
+}
+
+fn floor_preparation_plan_entries(plan: FloorPreparationRunnerPlan) -> List<String> {
+  match plan {
+    Sweep { entries: e, reason: _ } => e
+    Scoped { entries: e, reason: _ } => e
+    PlanRefused { cause: _ } => []
+  }
+}
+
+fn floor_preparation_plan_receipt(plan: FloorPreparationRunnerPlan) -> String {
+  match plan {
+    Sweep { entries: e, reason: r } =>
+      concat("mode=sweep entries=", concat(to_string(length(xs: e)), concat(" reason=", r)))
+    Scoped { entries: e, reason: r } =>
+      concat("mode=scoped entries=", concat(to_string(length(xs: e)), concat(" reason=", r)))
+    PlanRefused { cause: c } => concat("mode=REFUSED cause=", c)
+  }
+}
+
 fn floor_preparation_functions_for(entry: String) -> String {
   join(floor_preparation_entry_claim_names(entry: entry), ",")
 }
@@ -731,7 +804,9 @@ fn floor_preparation_capture_run() -> String {
   if !floor_preparation_supplies_hold(receipts: supply_receipts) {
     concat(concat(join(supplies, "\n"), "\n"), verify_receipt)
   } else {
-    let entries = floor_preparation_population_entries()
+    let plan = floor_preparation_runner_plan()
+    let entries = floor_preparation_plan_entries(plan: plan)
+    let plan_receipt = floor_preparation_receipt("revision-plan", floor_preparation_plan_receipt(plan: plan))
     let tree_sha = floor_preparation_git_tree_sha()
     let head_sha = floor_preparation_git_head_sha()
     let untrimmed = floor_preparation_spawn_slot_captured(
@@ -842,7 +917,7 @@ fn floor_preparation_capture_run() -> String {
     // and its kept set is non-empty"; report_record.rc is the command's own exit status.
     let report_ok = report_read && report_record.rc == 2
       && (length(xs: survivors) == 0 || graded_record.clean)
-    let receipts = concat(concat(concat(supplies, [verify_receipt]),
+    let receipts = concat(concat(concat(supplies, [verify_receipt, plan_receipt]),
         [build_argv_receipt,
          untrimmed_receipt,
          leg_stderr_untrimmed,

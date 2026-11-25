@@ -464,6 +464,136 @@ fn floor_preparation_scope_line(name: String, scoping: FloorPreparationScoping, 
   )
 }
 
+// ---------------------------------------------------------------------------
+// THE LINE AS A CONSUMABLE. `floor_preparation_scope_line` RENDERS the decision; the capture
+// runner must CONSUME it (review 98336, finding 2) without becoming a second decider. It does so
+// by parsing the authority-owned wire format back into a typed scoping here, in the module that
+// owns both ends of the format -- never from an ad-hoc plan file or an invented env shape. A line
+// that does not parse is a REFUSAL, never a guess: a plan read from a corrupt line must prepare
+// everything or stop, never "whatever the string happened to say" (fail-closed).
+// ---------------------------------------------------------------------------
+
+type FloorPreparationScopePlanned
+  = Planned { entries: List<String>, reason: String }
+  | Refused { cause: String }
+
+type FloorPreparationScopeNthWalk {
+  i: Int,
+  found: Optional<String>,
+}
+
+// Structural index: walk the list counting, and keep the piece at `position` when the counter
+// reaches it. No recursion, no panics, no out-of-range -- Absent is the honest answer.
+fn floor_preparation_scope_nth(pieces: List<String>, position: Int) -> Optional<String> {
+  let walked = fold(pieces, init: FloorPreparationScopeNthWalk { i: 0, found: none }, f: (acc, piece) =>
+    if acc.i == position {
+      FloorPreparationScopeNthWalk { i: acc.i + 1, found: Present { value: piece } }
+    } else {
+      FloorPreparationScopeNthWalk { i: acc.i + 1, found: acc.found }
+    })
+  walked.found
+}
+
+fn floor_preparation_scope_after(text: String, marker: String) -> Optional<String> {
+  let pieces = split(s: text, delimiter: marker)
+  match floor_preparation_scope_nth(pieces: pieces, position: 1) {
+    Present { value: v } => Present { value: v }
+    Absent => Absent
+  }
+}
+
+fn floor_preparation_scope_before(text: String, marker: String) -> String {
+  match floor_preparation_scope_nth(pieces: split(s: text, delimiter: marker), position: 0) {
+    Present { value: v } => v
+    Absent => ""
+  }
+}
+
+// `left..right` where left must occur; the value runs to the next occurrence of right.
+fn floor_preparation_scope_between(text: String, left: String, right: String) -> Optional<String> {
+  match floor_preparation_scope_after(text: text, marker: left) {
+    Present { value: after } =>
+      match floor_preparation_scope_nth(pieces: split(s: after, delimiter: right), position: 0) {
+        Present { value: v } => Present { value: v }
+        Absent => Absent
+      }
+    Absent => Absent
+  }
+}
+
+fn floor_preparation_scope_count_is_honest(rendered: String, actual: List<String>) -> Bool {
+  rendered == to_string(length(xs: actual))
+}
+
+fn floor_preparation_scope_split_entries(text: String) -> List<String> {
+  fold(split(s: text, delimiter: ","), init:  [], f: (acc, piece) =>
+    if piece == "" { acc } else { concat(acc, [ piece ]) })
+}
+
+// The ONE parse of the rendered decision. Every field the renderer writes must be recoverable or
+// the read refuses with the missing field NAMED -- the same discipline the instrument lines use.
+fn floor_preparation_scope_line_parse(line: String) -> FloorPreparationScopePlanned {
+  if starts_with(s: line, prefix: "floor-diff-scope diff=") {
+    let name_opt = floor_preparation_scope_between(text: line, left: "floor-diff-scope diff=", right: " reason=")
+    let reason_opt = floor_preparation_scope_between(text: line, left: " reason=", right: " selected_entries=")
+    let count_opt = floor_preparation_scope_between(text: line, left: " selected_entries=", right: " of=")
+    let narrowed_opt = floor_preparation_scope_between(text: line, left: " narrowed=", right: " entries=")
+    let entries_opt = floor_preparation_scope_after(text: line, marker: " entries=")
+    match name_opt {
+      Absent => Refused { cause: "missing field name" }
+      Present { value: name } =>
+        match reason_opt {
+          Absent => Refused { cause: concat("line for ", concat(name, " has no reason field")) }
+          Present { value: reason } =>
+            match count_opt {
+              Absent => Refused { cause: concat("line for ", concat(name, " has no selected_entries field")) }
+              Present { value: count } =>
+                match narrowed_opt {
+                  Absent => Refused { cause: concat("line for ", concat(name, " has no narrowed field")) }
+                  Present { value: narrowed } =>
+                    match entries_opt {
+                      Absent => Refused { cause: concat("line for ", concat(name, " has no entries field")) }
+                      Present { value: entries_text } =>
+                        let entries = floor_preparation_scope_split_entries(text: entries_text)
+                        if narrowed != "yes" && narrowed != "no" {
+                          Refused { cause: concat("narrowed field is neither yes nor no: ", narrowed) }
+                        } else if !floor_preparation_scope_count_is_honest(rendered: count, actual: entries) {
+                          // A line whose count does not match its own list is corrupt, not merely odd:
+                          // trusting either half is the false-green this reader exists to stop.
+                          Refused { cause: concat("count/entries mismatch for ", name) }
+                        } else if narrowed == "yes" && length(xs: entries) == 0 {
+                          Refused { cause: concat("line for ", concat(name, " claims narrowed=yes with an empty entry list")) }
+                        } else {
+                          Planned {
+                            entries: entries,
+                            reason: concat(name, concat("/", concat(narrowed, concat(":", reason)))),
+                          }
+                        }
+                    }
+                }
+            }
+        }
+    }
+  } else {
+    Refused { cause: "not a floor-diff-scope line" }
+  }
+}
+
+// WHAT A CONSUMER PLAN LOOKS LIKE: the planned entries for a revision, or the refusal to plan.
+// A Whole decision plans the WHOLE population -- the caller's population, not some list carried
+// inside the line -- so a consumer never trusts the line's copy over the model's rows.
+fn floor_preparation_scope_planned_entries(read: FloorPreparationScopePlanned, population: List<String>) -> FloorPreparationScopePlanned {
+  match read {
+    Refused { cause: c } => Refused { cause: c }
+    Planned { entries: e, reason: r } =>
+      if floor_preparation_scope_contains(xs: r, target: "/yes:") {
+        Planned { entries: e, reason: r }
+      } else {
+        Planned { entries: population, reason: r }
+      }
+  }
+}
+
 // THE ENTRY POINT. One line per fixture diff, so a reader can see the decision and its reason for each
 // shape of revision without running anything -- and each line is re-derived from the committed rows, not
 // typed in. A report, not a verdict: the host maps a verdict to an exit code and only `ProcessExit`
