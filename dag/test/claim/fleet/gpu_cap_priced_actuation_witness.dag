@@ -18,7 +18,7 @@ import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.optional { Optional, Present, Absent }
 import std.measure { Watt, watt, watt_count, milliwatt, Hertz, hertz }
-import std.decl_ref { DeclarationRef, decl_ref }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import product.host_identity { HostIdentity }
 import product.placement_supply { PhysicalAssetIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
@@ -28,7 +28,7 @@ import extdeps.nvidia.system_management_interface { PersistenceEnabled }
 import gunbc.serving.gpu_power_state_policy { GpuCapAdmission, GpuCapAdmitted, GpuCapDevicePending }
 import gunbc.fleet.gpu_power_cap_converge {
   GpuCapLine, GpuCapPorts, GpuCapProbe, GpuCapReading, GpuCapRead, GpuCapUnread,
-  gpu_cap_priced_lines_over, gpu_cap_actuation_request,
+  gpu_cap_priced_lines_over,
 }
 import gunbc.fleet.gpu_power_cap_boot_state {
   BootCapActuation, BootCapCommand, BootCommandLine, PowerCapBootUnit,
@@ -36,7 +36,7 @@ import gunbc.fleet.gpu_power_cap_boot_state {
 }
 import gunbc.fleet.fleet_power_circuit {
   SharedPowerCircuit, CircuitRating, MemberDrawBound, RatingUnread, BoundStated, BoundUnstated,
-  circuit_label, surge_strip,
+  circuit_identity, circuit_label, surge_strip, breaker_srv1_ken_circuit,
 }
 import gunbc.serving.gpu_power_cap_pricing {
   CapCandidate, PowerAsk, AskUnstated, CircuitRelief,
@@ -47,7 +47,7 @@ import gunbc.serving.gpu_power_cap_pricing {
 import gunbc.fleet.gpu_cap_priced_actuation {
   ActuationAdmission, ActuationRequest,
   ActuationPriced, NoDemonstratedConstraint, UnpricedActuationRefused, ActuationValueMismatchRefused,
-  ActuationConsequenceUnreadRefused, ActuationAskUnstatedRefused,
+  ActuationConsequenceUnreadRefused, ActuationAskUnstatedRefused, ActuationAskUnservedRefused,
   price_the_actuation, price_the_actuation_against, actuation_admits, actuation_refusal_text,
   actuation_still_owed, priced_cap_of, under_demonstrated_constraint, demonstrated_constraints_on,
 }
@@ -124,6 +124,9 @@ test fn the_priced_cap_and_ceiling_is_admitted_at_the_priced_value() -> Bool {
             Absent => false
           }
         && watt_count(w: candidate_cap(c: p.candidate)) == 30
+        // The receipt names the circuit the ASK served, by identity -- not whichever circuit the constraint
+        // list happened to put first.
+        && declaration_ref_eq(a: circuit_identity(c: p.circuit), b: circuit_identity(c: surge_strip))
         && any(actuation_still_owed(a: a), o => contains(o as String, "card state"))
     _ => false
   }
@@ -204,6 +207,28 @@ test fn a_value_with_no_ask_recorded_refuses_under_a_tripped_circuit() -> Bool {
     ActuationAskUnstatedRefused { request: _, candidate_label: _, said: s } => contains(s as String, "save power on the strip")
     _ => false
   } && !admitted(no_ask) && !admitted(unstated)
+}
+
+// AN ASK WRITTEN FOR ONE CIRCUIT DOES NOT PRICE A CAP AGAINST ANOTHER. srv4 sits on the strip; the breaker
+// carrying srv1 + ken is a different constraint, with its own identity and its own unread rating. An ask
+// naming it cannot admit an actuation on srv4 -- and it must not leave a receipt behind claiming the strip,
+// which is what a gate that recorded "the first demonstrated circuit" would do.
+test fn an_ask_for_another_circuit_does_not_price_this_actuation() -> Bool {
+  let a = price_the_actuation(
+    request: srv4_request(w: 30, ceiling: Present { value: mhz(1500) }),
+    candidate: Present { value: srv4_sweep_1500_candidate },
+    ask: Present {
+      value: CircuitRelief { circuit: breaker_srv1_ken_circuit, asked_on: "2026-11-24" as NonEmptyStr },
+    },
+  )
+  match a {
+    ActuationAskUnservedRefused { request: _, candidate_label: l, asked_for: f, demonstrated: ds } =>
+      contains(f as String, "breaker carrying srv1 + ken")
+        && l != ""
+        && ds.length() == 1
+        && any(ds, d => contains(d as String, "surge strip"))
+    _ => false
+  } && !admitted(a) && actuation_still_owed(a: a).length() == 0
 }
 
 // THE RIGHT OPERATING POINT, WITH ITS CONSEQUENCE UNREAD. srv3's 40 W candidate carries its decode windows and

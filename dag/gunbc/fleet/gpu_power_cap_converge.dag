@@ -25,11 +25,11 @@ import gunbc.serving.gpu_power_state_policy {
 }
 import std.optional { Optional }
 import gunbc.serving.gpu_power_cap_pricing {
-  CapCandidate, PowerAsk, candidate_cap, candidate_is_on, priced_candidates_on, recorded_ask_for_host,
+  CapCandidate, PowerAsk, priced_candidates_on, recorded_ask_for_host,
 }
 import gunbc.fleet.gpu_cap_priced_actuation {
-  ActuationAdmission, ActuationRequest, actuation_admits, actuation_refusal_text, actuation_still_owed,
-  price_the_actuation, priced_cap_of,
+  actuation_admits, actuation_refusal_text, actuation_still_owed,
+  price_the_admitted_cap, priced_cap_of,
 }
 import gunbc.fleet.gpu_power_cap_boot_state {
   PowerCapBootUnit, cap_boot_unit_for, boot_unit_restores_unpriced_cap,
@@ -249,9 +249,19 @@ fn gpu_cap_priced_admission_line(
 ) -> GpuCapLine {
   match admission {
     GpuCapAdmitted { host: h, board: b, gpu_uuid: u, cap: c } =>
-      let request = gpu_cap_actuation_request(host: h, board: b, uuid: u, cap: c)
-      let priced = candidate_pricing(candidates: candidates, host: h, cap: c)
-      let admission_answer = price_the_actuation(request: request, candidate: priced, ask: ask)
+      // ONE LOOKUP, IN THE MODULE THAT OWNS THE GATE. `price_the_admitted_cap` builds the request from this
+      // admission -- `ceiling: Absent`, because what the converge writes is the power limit, and a clock
+      // ceiling belongs to a boot unit's -lgc line, where the request is built with the ceiling it actually
+      // carries -- and finds the candidate that prices it. The converge holds no private copy of that search:
+      // a second copy of the match is a second place for it to drift from the gate's.
+      let admission_answer = price_the_admitted_cap(
+        host: h,
+        board: b,
+        gpu_uuid: u,
+        cap: c,
+        candidates: candidates,
+        ask: ask,
+      )
       if actuation_admits(a: admission_answer) {
         match priced_cap_of(a: admission_answer) {
           Absent => gpu_cap_refused_line(board: b, uuid: u, cap: c, cause: "the gate admitted the actuation and named no watt value to write")
@@ -267,17 +277,6 @@ fn gpu_cap_priced_admission_line(
     GpuCapDevicePending { board: b, cap: c, read_obligation: o } =>
       GpuCapLine { text: join(["gpu power cap ", b as String, " at ", to_string(watt_count(w: c)), " W: pending, not part of the selected configuration, not a failure: ", o as String], ""), refused: false }
   }
-}
-
-// The request the gate sees for one admission. `ceiling: Absent` says what the converge actually writes: it
-// writes the power limit only. A ceiling belongs to a boot unit's -lgc line, and there the request is built by
-// gunbc.fleet.gpu_power_cap_boot_state with the ceiling it actually carries.
-fn gpu_cap_actuation_request(host: HostIdentity, board: PhysicalAssetIdentity, uuid: NonEmptyStr, cap: Watt) -> ActuationRequest {
-  ActuationRequest { host: host, board: Present { value: board }, gpu_uuid: uuid, cap: cap, ceiling: Absent }
-}
-
-fn candidate_pricing(candidates: List<CapCandidate>, host: HostIdentity, cap: Watt) -> Optional<CapCandidate> {
-  filter(candidates, c => candidate_is_on(c: c, host: host) && watt_count(w: candidate_cap(c: c)) == watt_count(w: cap)).first()
 }
 
 // A refusal line in the converge's own words, so a priced refusal fails the unit exactly as a failed readback

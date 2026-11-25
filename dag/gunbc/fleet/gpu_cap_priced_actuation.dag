@@ -40,11 +40,12 @@ import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
 import std.optional { Optional, Present, Absent }
 import std.measure { Watt, watt_count, Hertz, hertz_count }
+import std.decl_ref { declaration_ref_eq }
 import product.host_identity { HostIdentity }
 import product.placement_supply { PhysicalAssetIdentity }
 import gunbc.fleet.fleet_power_circuit {
   SharedPowerCircuit, BoundStated, BoundUnstated, MemberDrawBound,
-  circuit_label, circuit_member_draw_bound, circuit_trips, circuits_carrying, surge_strip,
+  circuit_identity, circuit_label, circuit_member_draw_bound, circuit_trips, circuits_carrying,
 }
 import gunbc.serving.gpu_power_cap_pricing {
   CapCandidate, ConditionRead, ConditionUnread,
@@ -52,7 +53,6 @@ import gunbc.serving.gpu_power_cap_pricing {
   SmClockCeiling, CappedWithin, CeilingUnread, Unlocked, PowerAsk, AskUnstated, CircuitRelief,
   candidate_cap, candidate_is_on,
 }
-import gunbc.serving.gpu_power_state_policy { GpuCapAdmission, GpuCapAdmitted }
 
 // ── THE REQUEST, AS THE ACTUATION PATH HOLDS IT ─────────────────────────────────────────────────────
 //
@@ -77,7 +77,8 @@ type ActuationRequest {
 
 // THE PRICED ACTUATION. One arm admits, and its fields cannot be filled in without a candidate: the watt
 // value the converge writes is read out of `candidate` (see `priced_cap_of`), the candidate must be on the
-// machine being actuated, and the circuit named is the one the ask served. `still_owed` carries what this
+// machine being actuated, and `circuit` is the circuit the ASK NAMED, matched by identity against the
+// constraints demonstrated on this host -- never the first circuit on a list. `still_owed` carries what this
 // actuation admits but has not read -- today the card's thermal state, which conditions the reading the
 // whole price rests on and is unread on srv3/srv4.
 type PricedActuation {
@@ -121,6 +122,16 @@ type ActuationAdmission
   // power and named no constraint. Under a demonstrated constraint that is refused, because the day this
   // class was found on turned entirely on which constraint was being served.
   | ActuationAskUnstatedRefused { request: ActuationRequest, candidate_label: NonEmptyStr, said: NonEmptyStr }
+  // The ask named a circuit, and that circuit is not one of the constraints demonstrated on this host. Watts
+  // saved on the strip are not watts saved on the breaker, so an ask written for one circuit does not license
+  // a cap priced against another; and the receipt may not quietly record the constraint that happened to be
+  // first on the list (#gunbc.design_argument::fail_closed: no silent widen, no fabricated default).
+  | ActuationAskUnservedRefused {
+      request: ActuationRequest,
+      candidate_label: NonEmptyStr,
+      asked_for: NonEmptyStr,
+      demonstrated: List<NonEmptyStr>,
+    }
 
 // ── THE DEMONSTRATED CONSTRAINT ─────────────────────────────────────────────────────────────────────
 //
@@ -147,6 +158,20 @@ fn demonstrated_constraints_on(host: HostIdentity) -> List<SharedPowerCircuit> {
 
 fn under_demonstrated_constraint(host: HostIdentity) -> Bool {
   demonstrated_constraints_on(host: host).length() > 0
+}
+
+// Which of the demonstrated constraints is the one the ASK named -- identity equality through
+// std.decl_ref, the same comparison gunbc.extdeps.board_authority uses for a subject's own declaration. An
+// ask for a circuit that is not on the table prices nothing, so the answer is an Optional and the caller
+// refuses on Absent rather than picking a substitute.
+fn circuit_asked_for(
+  constraints: List<SharedPowerCircuit>,
+  asked: SharedPowerCircuit,
+) -> Optional<SharedPowerCircuit> {
+  filter(
+    constraints,
+    c => declaration_ref_eq(a: circuit_identity(c: c), b: circuit_identity(c: asked)),
+  ).first()
 }
 
 // ── THE COMPARISONS THE CANDIDATE MUST PASS ─────────────────────────────────────────────────────────
@@ -254,17 +279,15 @@ fn price_the_actuation_against(
   ask: Optional<PowerAsk>,
   constraints: List<SharedPowerCircuit>,
 ) -> ActuationAdmission {
-  if constraints.length() == 0 {
-    NoDemonstratedConstraint {
+  match constraints.first() {
+    // Nothing demonstrated on this host: no obligation, and a warrant that says so.
+    Absent => NoDemonstratedConstraint {
       request: request,
       warrant: no_constraint_warrant(host: request.host),
     }
-  } else {
-    let first_circuit = match constraints.first() {
-      Present { value: c } => c
-      Absent => surge_strip
-    }
-    match candidate {
+    // The list is non-empty by construction here -- matched, not counted -- so nothing downstream needs a
+    // stand-in circuit to satisfy the type, and no real circuit can be substituted for one nobody named.
+    Present { value: _ } => match candidate {
       Absent => UnpricedActuationRefused {
         request: request,
         circuits: map(constraints, c => circuit_label(c: c)),
@@ -284,29 +307,42 @@ fn price_the_actuation_against(
                 candidate_label: c.label,
                 said: said,
               }
-              CircuitRelief { circuit: _, asked_on: asked_on } =>
-                let mismatches = candidate_mismatches(request: request, candidate: c)
-                if mismatches.length() > 0 {
-                  ActuationValueMismatchRefused {
+              // THE ASK IS CHECKED AGAINST THE CONSTRAINT, not against nothing. An ask naming a circuit that
+              // is not demonstrated on this host does not price this actuation: it may be the right ask for
+              // another machine's constraint, and a receipt carrying whichever circuit happened to be first
+              // would say the cap served a constraint nobody asked it to serve.
+              CircuitRelief { circuit: asked_for, asked_on: asked_on } =>
+                match circuit_asked_for(constraints: constraints, asked: asked_for) {
+                  Absent => ActuationAskUnservedRefused {
                     request: request,
                     candidate_label: c.label,
-                    mismatches: mismatches,
+                    asked_for: circuit_label(c: asked_for),
+                    demonstrated: map(constraints, x => circuit_label(c: x)),
                   }
-                } else {
-                  let owed = unread_consequence_owed(candidate: c)
-                  if owed.length() > 0 {
-                    ActuationConsequenceUnreadRefused { request: request, owed: owed }
-                  } else {
-                    ActuationPriced {
-                      actuation: PricedActuation {
+                  Present { value: served } =>
+                    let mismatches = candidate_mismatches(request: request, candidate: c)
+                    if mismatches.length() > 0 {
+                      ActuationValueMismatchRefused {
                         request: request,
-                        candidate: c,
-                        circuit: first_circuit,
-                        ask_said_on: asked_on,
-                        still_owed: card_state_owed(candidate: c),
-                      },
+                        candidate_label: c.label,
+                        mismatches: mismatches,
+                      }
+                    } else {
+                      let owed = unread_consequence_owed(candidate: c)
+                      if owed.length() > 0 {
+                        ActuationConsequenceUnreadRefused { request: request, owed: owed }
+                      } else {
+                        ActuationPriced {
+                          actuation: PricedActuation {
+                            request: request,
+                            candidate: c,
+                            circuit: served,
+                            ask_said_on: asked_on,
+                            still_owed: card_state_owed(candidate: c),
+                          },
+                        }
+                      }
                     }
-                  }
                 }
             }
         }
@@ -330,28 +366,31 @@ fn price_the_actuation(
   )
 }
 
-// The actuation for one admission of the policy, looked up in the candidates priced for that machine. This is
-// the call a converge makes: it holds a GpuCapAdmission and must not write anything until this answers.
-fn price_the_admission(
-  admission: GpuCapAdmission,
+// THE ADMITTED CARD'S ACTUATION, PRICED -- the entry the actuation path calls. `GpuCapAdmission` has three
+// arms and only `GpuCapAdmitted` names a device and a value at once, so this takes that arm's contents: a
+// pending card is nobody's actuation (the converge reports it and writes nothing) and an out-of-range value
+// has already refused at admission. The request is built HERE, from the admission, and the candidate that
+// prices it is looked up HERE -- the converge keeps no private copy of either, because a second copy of the
+// match is a second place for it to drift from the gate's.
+fn price_the_admitted_cap(
+  host: HostIdentity,
+  board: PhysicalAssetIdentity,
+  gpu_uuid: NonEmptyStr,
+  cap: Watt,
   candidates: List<CapCandidate>,
   ask: Optional<PowerAsk>,
-) -> Optional<ActuationAdmission> {
-  match admission {
-    // Only an admission addressed to a real device can actuate. A pending card is nobody's actuation (the
-    // converge reports it and writes nothing), and a value outside the device's range has already refused at
-    // admission, so neither reaches this gate.
-    GpuCapAdmitted { host: h, board: b, gpu_uuid: u, cap: cap } =>
-      let request = ActuationRequest {
-        host: h,
-        board: Present { value: b },
-        gpu_uuid: u,
-        cap: cap,
-        ceiling: Absent,
-      }
-      let priced = candidates_for_admission(candidates: candidates, host: h, cap: cap)
-      Present { value: price_the_actuation(request: request, candidate: priced, ask: ask) }
-  }
+) -> ActuationAdmission {
+  price_the_actuation(
+    request: ActuationRequest {
+      host: host,
+      board: Present { value: board },
+      gpu_uuid: gpu_uuid,
+      cap: cap,
+      ceiling: Absent,
+    },
+    candidate: candidates_for_admission(candidates: candidates, host: host, cap: cap),
+    ask: ask,
+  )
 }
 
 // The candidate that prices exactly this admission's operating point on this machine, if one exists. The
@@ -376,6 +415,7 @@ fn priced_cap_of(a: ActuationAdmission) -> Optional<Watt> {
     ActuationValueMismatchRefused { request: _, candidate_label: _, mismatches: _ } => Absent
     ActuationConsequenceUnreadRefused { request: _, owed: _ } => Absent
     ActuationAskUnstatedRefused { request: _, candidate_label: _, said: _ } => Absent
+    ActuationAskUnservedRefused { request: _, candidate_label: _, asked_for: _, demonstrated: _ } => Absent
   }
 }
 
@@ -387,6 +427,7 @@ fn actuation_admits(a: ActuationAdmission) -> Bool {
     ActuationValueMismatchRefused { request: _, candidate_label: _, mismatches: _ } => false
     ActuationConsequenceUnreadRefused { request: _, owed: _ } => false
     ActuationAskUnstatedRefused { request: _, candidate_label: _, said: _ } => false
+    ActuationAskUnservedRefused { request: _, candidate_label: _, asked_for: _, demonstrated: _ } => false
   }
 }
 
@@ -408,6 +449,12 @@ fn actuation_refusal_text(a: ActuationAdmission) -> String {
     ], "")
     ActuationAskUnstatedRefused { request: _, candidate_label: l, said: s } => join([
       "no ask names the constraint the watts were saved for (candidate ", l as String, "; said: ", s as String, ")",
+    ], "")
+    ActuationAskUnservedRefused { request: _, candidate_label: l, asked_for: a, demonstrated: ds } => join([
+      "the ask named ", a as String, ", which is not a constraint demonstrated on this host (candidate ",
+      l as String, "; demonstrated here: ",
+      if ds.length() > 0 { join(map(ds, d => d as String), ", ") } else { "none" },
+      ")",
     ], "")
     ActuationPriced { actuation: _ } => ""
     NoDemonstratedConstraint { request: _, warrant: w } => w as String
