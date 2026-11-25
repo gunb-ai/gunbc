@@ -4,12 +4,42 @@ Roadmap node: `emission-building-block-realization`, declared as a row of
 `gunbc.roadmap.roadmap_authority::declared_roadmap_nodes` (rows carry no symbol of their own, so the row `id:` is the
 name; the file position of that row is carried only beside it, never instead of it).
 Lane: v2 self-host and native emission. Manager: warm-fox-517. Planning owner: still-gull-398.
-Session: tidy-hawk-691. Shape: MILESTONE, deliverable one of two — this is the map. Deliverable two,
-the specimens, is released separately and only after the parse-population profile exists.
+Session: tidy-hawk-691. Manager's ruling on shape (2026-11-24): **one PR, one leaf**, the battery carried as
+commits behind this report rather than as a second PR.
 
-This report is a **measurement**. It repairs nothing, emits nothing new, and adds no claim rows. The
-only file it changes is `dag/gunbc/emit_state_threading_specimen.dag`, whose provenance sentence
-pointed at an artifact that does not exist (§1).
+## Scope of THIS PR, stated so a reader is not misled
+
+The paragraphs below describe **the measurement commit**, not the whole branch, and the two are not the
+same thing. Concretely:
+
+| Commits | What they add |
+|---|---|
+| `8e3b2847a1` (amended as `ec2ba22b`, then `82ecabc035566df010b510795b0370d783969a34`) | this report, and one comment in `dag/gunbc/emit_state_threading_specimen.dag` |
+| `b30632eda1c`, then `187b6f719fc` and later battery commits | `dag/gunbc/emit_building_block_contracts.dag` (the 23 building-block contracts), the instrument batteries `dag/gunbc/instruments/emit_*_observation.dag`, and their target rows in `dag/gunbc/instrument_targets.dag` |
+
+So the sentence "this report repairs nothing, emits nothing new, and adds no claim rows" is true **of the
+measurement commit** and was, until this section, being read as a statement about the PR. It is not: the PR
+now carries the first batteries of deliverable two, and they add claim rows and a target. Reading the
+earlier wording as the PR's file list will get the change's scope wrong, which is why it is now scoped to
+the commit that earned it.
+
+**Why deliverable two lands while the parse-population profile still does not exist.** The profile is still
+absent at this revision (§1 is unchanged on that point, and the specimen comment still says so). The
+precondition was not quietly dropped; it was **replaced by a recorded basis change**. The planning owner's
+ruling (neat-badger-614, relayed by warm-fox-517) permits this row's observations to be selected from this
+row's own pinned allocation-counter data, with the profile cited as corroboration only, provided the reason
+is stated with numbers and the basis's limitation is stated with it. That ruling is recorded on the roadmap
+row itself, as an `updated(t:, note:)` in the updates layer of `dag/gunbc/roadmap/roadmap_authority.dag` —
+the note is 1974 characters, sha256 `9dd0c6865134a315b1828b55d3c8f3f649b7522bcdd5cf53a441de2088d59d88`,
+verified by extraction from the file at the head of the batched planning PR, not from memory. What the basis
+can see is operations and bytes only: no traversal count, no per-phase lifetime, and those two gaps remain
+owed by the vocabulary work rather than being claimed here
+(`gunbc.emit_copy_qualification copy_work_dimension_unavailable_cause`). A reader who wants the profile's own
+numbers is still waiting on that row; nothing in this PR supplies them.
+
+This report is a **measurement**. It repairs nothing and changes no emitter: the only file the measurement
+commit changes is `dag/gunbc/emit_state_threading_specimen.dag`, whose provenance sentence pointed at an
+artifact that does not exist (§1).
 
 ## Evidence header
 

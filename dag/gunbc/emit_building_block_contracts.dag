@@ -89,6 +89,70 @@ type BuildingBlockContract {
   violation: String
 }
 
+// THE VIOLATING FORM IS TYPED, NOT PROSE. The row's red_control names exactly three violating forms,
+// so they are a sum, and the batteries assert against THAT. `observation` and `violation` above are
+// commentary for a human reader: no judgement anywhere reads them -- verified, nothing in the repo
+// reads BuildingBlockContract.observation or .violation -- and the roster lines print them with a
+// `note=` prefix so a reader who meets them in a log is not invited to read prose as a verdict
+// (gunbc.design_argument epistemic_humility: do not assert as deduced what is only inferred).
+//
+// An id missing from the table below lands in UndeclaredViolatingForm, and every battery's audit goes
+// red if any block is there, so the table cannot drift silently. Comparing slugs rather than sum
+// members is deliberate: string equality is what the corpus does (emit_copy_qualification.dag:206-217
+// renders refusals to strings for exactly this reason), and member equality has no precedent to lean on.
+type ViolatingForm =
+    OwningRetainAddedToObservation
+  | PerStepAllocation
+  | CopyOfUnchangedContext
+  | UndeclaredViolatingForm
+
+fn violating_form_slug(f: ViolatingForm) -> String {
+  match f {
+    OwningRetainAddedToObservation => "owning_retain_added_to_observation"
+    PerStepAllocation => "per_step_allocation"
+    CopyOfUnchangedContext => "copy_of_unchanged_context"
+    UndeclaredViolatingForm => "UNDECLARED"
+  }
+}
+
+// The violating arm each block's battery implements, by id. This table IS the red_control plan: the
+// instrument's violating subject must be the form named here, and the audit case refuses if a block
+// has no form at all.
+fn declared_violation_form(id: String) -> ViolatingForm {
+  if id == "value_scalar" { OwningRetainAddedToObservation }
+  else if id == "value_record" { CopyOfUnchangedContext }
+  else if id == "value_nonrecursive_variant" { CopyOfUnchangedContext }
+  else if id == "generic_over_scalar" { PerStepAllocation }
+  else if id == "generic_over_payload" { OwningRetainAddedToObservation }
+  else if id == "transform" { PerStepAllocation }
+  else if id == "branch" { CopyOfUnchangedContext }
+  else if id == "bind" { PerStepAllocation }
+  else if id == "match_owned_temporary" { OwningRetainAddedToObservation }
+  else if id == "match_borrowed_shared_sum" { OwningRetainAddedToObservation }
+  else if id == "loop_record_accumulator" { PerStepAllocation }
+  else if id == "field_read" { CopyOfUnchangedContext }
+  else if id == "record_rebuild_one_field" { CopyOfUnchangedContext }
+  else if id == "local_closure" { OwningRetainAddedToObservation }
+  else if id == "escaping_closure" { OwningRetainAddedToObservation }
+  else if id == "sequence_build" { PerStepAllocation }
+  else if id == "element_read" { OwningRetainAddedToObservation }
+  else if id == "sequential_traversal" { PerStepAllocation }
+  else if id == "persistent_sequence_carrier_snapshot" { CopyOfUnchangedContext }
+  else if id == "persistent_map_carrier_snapshot" { CopyOfUnchangedContext }
+  else if id == "index_build" { PerStepAllocation }
+  else if id == "index_lookup" { OwningRetainAddedToObservation }
+  else if id == "index_traversal" { PerStepAllocation }
+  else { UndeclaredViolatingForm }
+}
+
+fn undeclared_violation_form_count() -> Int {
+  count(building_block_contracts() |> filter(b => violating_form_slug(f: declared_violation_form(id: b.block)) == "UNDECLARED"))
+}
+
+fn violating_form_exercised(slug: String) -> Int {
+  count(building_block_contracts() |> filter(b => violating_form_slug(f: declared_violation_form(id: b.block)) == slug))
+}
+
 // A tuple that must be refused, with the refusal the carrier must name.
 type MispairedProbe {
   probe: String
@@ -251,9 +315,10 @@ fn case_in_applicable_roster(c: EmitCopyQualificationCaseId) -> Bool {
 }
 
 fn contract_line(b: BuildingBlockContract) -> String {
-  concat(concat(concat("contract ", b.block), " family=", family_slug(f: b.family)),
-    concat(concat(" case=", case_slug(id: b.case_id)),
-      concat(" verdict=", contract_verdict(c: b.case_id))))
+  let head = concat(concat(concat("contract ", b.block), " family=", family_slug(f: b.family)),
+    concat(concat(" case=", case_slug(id: b.case_id)), concat(" verdict=", contract_verdict(c: b.case_id))))
+  concat(concat(head, " violation_form=", violating_form_slug(f: declared_violation_form(id: b.block))),
+    concat(" observation_note=", b.observation), concat(" violation_note=", b.violation))
 }
 
 fn roster_membership_line(b: BuildingBlockContract) -> String {
