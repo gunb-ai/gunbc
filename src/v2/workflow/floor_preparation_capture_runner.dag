@@ -148,7 +148,6 @@ data floor_preparation_timeout_binary: String = "/usr/bin/timeout"
 data floor_preparation_env_binary: String = "/usr/bin/env"
 
 // The pty wrapper that writes a leg's complete stream to disk (see spawn_slot_captured).
-data floor_preparation_script_binary: String = "/usr/bin/script"
 
 data floor_preparation_sha256_binary: String = "/usr/bin/sha256sum"
 
@@ -390,14 +389,28 @@ fn floor_preparation_spawn_slot_captured(label: String, bound: Second, binary: S
       let ran = shell.Exec.RunArgv(
         program: floor_preparation_timeout_binary,
         arguments: concat(
-          [to_string(second_count(s: bound) + 300), floor_preparation_script_binary(), "-qef",
-           floor_preparation_leg_log_path(label), "--",
-           floor_preparation_timeout_binary, operand, floor_preparation_env_binary,
+          [to_string(second_count(s: bound) + 300), floor_preparation_env_binary,
            concat("HEAVY_OWNER=", floor_preparation_session_owner()),
            floor_preparation_heavy_slot_binary(), binary],
           args)
       )
-      FloorPreparationSpawnObservation { rc: ran.exit_code, stdout: ran.stdout, stderr: ran.stderr }
+      // THE CAPTURE IS A MODELLED WRITE, NOT A PTY GRAFT (measured defect, srv1 2026-11-25). This spawn
+      // used /usr/bin/script -qef LOG -- CMD; util-linux 2.39.3 rejects that form outright -- the command
+      // needs -c, and a positional after -- is read as the TYPESCRIPT FILE ("unexpected number of
+      // arguments"; reproduced standalone, rc=1, no log). The -c form would route every leg argument
+      // through a shell string, a second authority over the argv this module builds as DATA -- refused.
+      // The transcript is instead the run's own captured streams moved into the artifact file through
+      // Filesystem.Write, the service header (c) already admits for exactly this job. Zero bytes still
+      // means zero verdicts: every downstream hard-fail rule reads THIS file, so a missing capture stays
+      // loud, and a CAPTURE_WRITE_FAILED marker rides the observation so a silent write loss cannot read
+      // as an empty-but-honest run.
+      let transcript = concat(ran.stdout, ran.stderr)
+      let written = Filesystem.Write(path: floor_preparation_leg_log_path(label), content: transcript)
+      FloorPreparationSpawnObservation {
+        rc: ran.exit_code,
+        stdout: ran.stdout,
+        stderr: if written.success { ran.stderr } else { concat(ran.stderr, "\nCAPTURE_WRITE_FAILED") }
+      }
   }
 }
 

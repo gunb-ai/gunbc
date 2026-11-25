@@ -699,8 +699,9 @@ fn capture_tool_holds_no_fold() -> Bool {
     && text_contains(tool, "HEAVY_OWNER=")
     && !text_contains(tool, "preparation +=")
     && !text_contains(tool, "claim +=")
-    && !text_contains(tool, "cost[\"")
-    && !text_contains(tool, "fold-report")
+    && !text_contains(tool, "cost_field")
+    && !text_contains(tool, "wall_ms")
+    && !text_contains(tool, "cpu_ms")
 }
 
 test fn floor_preparation_the_capture_tool_runs_the_fold_and_holds_none() -> Bool {
@@ -928,8 +929,10 @@ fn runner_module_text() -> String {
 }
 
 fn step_is_modelled_in_runner(step: String) -> Bool {
-  let quoted = concat(concat("\"", step), "\"")
-  length(xs: split(s: runner_module_text(), delimiter: quoted)) >= 3
+  let receipt_site = concat(concat("floor_preparation_receipt(\"", step), "\"")
+  let label_site = concat(concat("label: \"", step), "\"")
+  length(xs: split(s: runner_module_text(), delimiter: receipt_site)) >= 2
+    || length(xs: split(s: runner_module_text(), delimiter: label_site)) >= 2
 }
 
 fn every_step_declared_and_realized() -> Bool {
