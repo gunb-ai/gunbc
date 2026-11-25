@@ -564,9 +564,12 @@ fn serving_dealt(index: Nat, replicas: Nat, base: Nat, extra: Nat) -> Nat {
 fn serving_allocate(g: ServingResourceGrant, groups: List<ServingDeviceGroup>, b: ServingBackendProfile, r: ServingRequirement) -> ServingLayoutResult {
   let n = groups.length()
   let pool_total = serving_grant_ram(g: g)
-  let reserved = serving_grant_overhead(g: g) + serving_bytes_sum(xs: map(g.shared, a => serving_artifact_host_ram_charge(a: a)))
-  let snapshot = byte_size_count(b: conversation_snapshot_bytes(cost: b.retention, context: r.max_context))
   let terms = serving_cgroup_terms(g: g, groups: groups, b: b, r: r)
+  let snapshot = byte_size_count(b: conversation_snapshot_bytes(cost: b.retention, context: r.max_context))
+  // THE EXPERT TIER IS FOLDED ONCE. `terms.expert_host_ram` already summed the shared artifacts' occupancy; the
+  // committed total reuses that fold rather than running its own, so the occupancy rule has exactly one site here
+  // (gunbc.design_argument::minimize_redundancy -- review 98565 on PR #17078 named the second fold).
+  let reserved = serving_grant_overhead(g: g) + byte_size_count(b: terms.expert_host_ram)
   let needed = byte_size_count(b: terms.minimum_cap)
   if pool_total < needed {
     // REFUSED, WITH THE TERMS NAMED: the cap did not fail as a number, one of its terms failed it. A reader sees
