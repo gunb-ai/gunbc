@@ -9117,8 +9117,7 @@ fn target_primitive_arguments_to_tokens(
   separator: Symbol,
   at: Node
 ) -> Outcome<List<ConcreteSyntaxToken>> {
-  bind_outcome(
-    o: fold(
+  let folded: Outcome<TargetPrimitiveArgumentFold> = fold(
       args,
       init: Accepted {
         value: TargetPrimitiveArgumentFold { tokens: Empty, pending_arguments: row.arguments, count: 0 },
@@ -9156,7 +9155,9 @@ fn target_primitive_arguments_to_tokens(
           }
         )
       }
-    ),
+  )
+  bind_outcome(
+    o: folded,
     f: fn(state) {
       match state.pending_arguments {
         Empty => outcome_accepted(state.tokens)

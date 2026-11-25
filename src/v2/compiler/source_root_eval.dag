@@ -111,6 +111,7 @@ import v2.std.demand_engine {
   DemandAdmitted,
   DemandAvailable,
   DemandEngine,
+  DemandEntry,
   DemandIdentity,
   DemandLeaseOffer,
   DemandNotAdmitted,
@@ -5108,7 +5109,8 @@ fn native_demand_prepared(
   module: String,
   compiler: DeclaredInput
 ) -> Optional<NativeTestPreparedModule> {
-  match demand_engine_entry(e: engine, id: native_demand_infer_identity(module: module, compiler: compiler)) {
+  let entry_opt: Optional<DemandEntry<NativeDemandValue>> = demand_engine_entry(e: engine, id: native_demand_infer_identity(module: module, compiler: compiler))
+  match entry_opt {
     Absent => optional_absent()
     Present { value: entry } =>
       match entry.state {
