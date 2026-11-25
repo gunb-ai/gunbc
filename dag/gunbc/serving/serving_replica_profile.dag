@@ -36,7 +36,8 @@ import std.measure {
   ByteSize, Millisecond, MoneyAmountMicro, PositiveMeasureCountBuilt, PositiveMeasureCountRefused,
   PositiveSlotCount, TokenCount, TokensPerSecond, Watt,
   byte_size, byte_size_count, millisecond, money_amount_micro, positive_slot_count,
-  positive_measure_count_from_int, token_count, tokens_per_second, tokens_per_second_count, watt_count,
+  positive_measure_count, positive_measure_count_from_int, token_count, tokens_per_second,
+  tokens_per_second_count, watt_count,
 }
 import std.algebra { string_contains }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_identity }
@@ -496,13 +497,17 @@ fn replica_shape_named_with_grant(p: ServingReplicaProfile, grant: ServingRetent
 // beside a router cap of 4 -- at 4,642 experts resident against srv4's 6,867 and ~6.6 tok/s per conversation;
 // the class is filed as gunbc.recurring_failure_mode::engine_slots_written_beside_the_admission_that_bounds_them.
 //
-// THE REPAIR IS STRUCTURAL, NOT A CHECK (gunbc.design_argument::guarantee_ladder, ::fail_closed): a
-// production row carries StrataLaunchParameters, which has NO batch-slot field, and the only bridge from
-// parameters to a launchable record (extdeps.strata.serve_flags::strata_launch_with_parallel) receives the
-// slot count as an argument. This function is where that argument comes from -- the shape -- so the
-// misconfiguration is not refused at render time, it is unnameable at authoring time. The benchmark cell
-// still writes its own concurrency (there the number is the experiment's independent variable, not an
-// admission), which is why the bridge stays reachable from extdeps.
+// THE REPAIR AND THE RUNG IT ESTABLISHES (gunbc.design_argument::guarantee_ladder, ::fail_closed): a
+// production row carries StrataLaunchParameters, which has NO batch-slot field, and this function is the
+// model's ONLY consumer-side path from a profile row to a launchable record -- the slot count enters as an
+// argument of extdeps.strata.serve_flags::strata_launch_with_parallel and this is where that argument comes
+// from: the shape. That is what is established, and it is MechanicallyPreventable, not structural: the
+// bridge is public and StrataServeFlags remains directly constructible, so nothing here makes the 2026-11-24
+// state unnameable to a caller that bypasses this derivation. The mechanical half is the witnesses
+// (test.claim.serving.replica_engine_admission_witness): the 4-way state refuses here and the 2-way
+// operating point derives exactly the 2 slots the hosts now run; the climb to a structural rung is the host
+// read-back join the recurring_failure_mode row's standing names. The benchmark cell still writes its own
+// concurrency (there the number is the experiment's independent variable, not an admission).
 //
 // WHAT THE SHAPE'S STANDING DOES TO THE RESERVATION. Turns derived from uncited figures make the slots an
 // estimate too (serving_capacity_anchor's shape_of never promotes one); EngineLaunchEstimated carries every
@@ -570,23 +575,27 @@ fn replica_engine_launch(p: ServingReplicaProfile) -> ReplicaEngineLaunch {
 // This is the evidence that the shape's turns, not a hand-written slot count, is the operating point worth
 // selecting (gunbc.design_argument::selection_precedes_convergence): the 4-way arm sits BELOW the conversation
 // policy's floor and is excluded before any aggregate-optimising comparison runs.
+// `concurrency` is the same quantity the engine reserves slots for and the shape counts as turns, so it
+// rides the same std.measure carrier (PositiveSlotCount) the launch record and the shape use -- the
+// readings and the derivation they evidence are one kind of number, not a bare Nat beside a typed count
+// (gunbc.design_argument::minimize_redundancy).
 type ConcurrencyObservation
   = PerStreamAtConcurrency {
       deployment: NonEmptyStr,
-      concurrency: Nat,
+      concurrency: PositiveSlotCount,
       tokens_per_second: TokensPerSecond,
       window: NonEmptyStr,
       standing: CitedFigureStanding,
     }
   | AggregatePerMachine {
       deployment: NonEmptyStr,
-      concurrency: Nat,
+      concurrency: PositiveSlotCount,
       tokens_per_second: TokensPerSecond,
       window: NonEmptyStr,
       standing: CitedFigureStanding,
     }
 
-fn stream_reading(deployment: String, n: Nat, tok: Nat, window: String, instrument: String) -> ConcurrencyObservation {
+fn stream_reading(deployment: String, n: PositiveSlotCount, tok: Nat, window: String, instrument: String) -> ConcurrencyObservation {
   PerStreamAtConcurrency {
     deployment: deployment as NonEmptyStr,
     concurrency: n,
@@ -596,7 +605,7 @@ fn stream_reading(deployment: String, n: Nat, tok: Nat, window: String, instrume
   }
 }
 
-fn machine_reading(deployment: String, n: Nat, tok: Nat, window: String, instrument: String) -> ConcurrencyObservation {
+fn machine_reading(deployment: String, n: PositiveSlotCount, tok: Nat, window: String, instrument: String) -> ConcurrencyObservation {
   AggregatePerMachine {
     deployment: deployment as NonEmptyStr,
     concurrency: n,
@@ -608,28 +617,16 @@ fn machine_reading(deployment: String, n: Nat, tok: Nat, window: String, instrum
 
 data strata_concurrency_price_observations: List<ConcurrencyObservation> = [
   // srv3 before the fix: engine parallel 8 (reserving 8 slots), router cap 4; the fleet was sending 4-way.
-  stream_reading("srv3-strata", 4, 6, "before 2026-11-24 19:56 UTC (operator set parallel 8 -> 2 and router cap 4 -> 2 at 19:56); ~6.6 tok/s relayed, recorded as the engine prints integers", "srv3 strata-pool engine journal"),
+  stream_reading("srv3-strata", positive_slot_count(count: positive_measure_count(predecessor: 3)), 6, "before 2026-11-24 19:56 UTC (operator set parallel 8 -> 2 and router cap 4 -> 2 at 19:56); ~6.6 tok/s relayed, recorded as the engine prints integers", "srv3 strata-pool engine journal"),
   // srv3 after: parallel 2, cap 2. The 21:40-21:55 window read 15.1; the ad-hoc range across the evening was 13.6-15.8.
-  stream_reading("srv3-strata", 2, 15, "21:40-21:55 UTC 2026-11-24 (15.1 tok/s; the wider ad-hoc range 13.6-15.8 sits in the read obligation's source, not restated as a figure)", "srv3 strata-pool engine journal"),
+  stream_reading("srv3-strata", positive_slot_count(count: positive_measure_count(predecessor: 1)), 15, "21:40-21:55 UTC 2026-11-24 (15.1 tok/s; the wider ad-hoc range 13.6-15.8 sits in the read obligation's source, not restated as a figure)", "srv3 strata-pool engine journal"),
   // ken (host-e2d4b7, the three-T10 Strata engine): the router row's hand cap 4 alone bound it -- the engine was never modeled -- and each stream fell to 1.0 tok/s there.
-  stream_reading("ken", 4, 1, "before 2026-11-24 20:09 UTC (operator cut the ken router row's cap 4 -> 2 at 20:09)", "ken engine journal via the router host"),
-  stream_reading("ken", 2, 25, "after 2026-11-24 20:09 UTC (25.7 tok/s relayed; 24.5 in the 21:15-21:30 window -- the integer this row carries is the relayed figure's floor of the two)", "ken engine journal via the router host"),
+  stream_reading("ken", positive_slot_count(count: positive_measure_count(predecessor: 3)), 1, "before 2026-11-24 20:09 UTC (operator cut the ken router row's cap 4 -> 2 at 20:09)", "ken engine journal via the router host"),
+  stream_reading("ken", positive_slot_count(count: positive_measure_count(predecessor: 1)), 25, "after 2026-11-24 20:09 UTC (25.7 tok/s relayed; 24.5 in the 21:15-21:30 window -- the integer this row carries is the relayed figure's floor of the two)", "ken engine journal via the router host"),
   // The pair the addendum prices with: a machine at 4-way against a machine at 1-way.
-  machine_reading("srv3-strata", 4, 14, "2026-11-24, before the 19:56 fix (14.5 tok/s per machine at 4-way, relayed)", "srv3 engine /metrics via srv1 ad-hoc scripts"),
-  machine_reading("srv4-strata", 1, 11, "2026-11-24 (11.2 tok/s per machine at 1-way, relayed)", "srv4 engine log (its TLS proxy does not expose /metrics -- see the 2026-11-24 observability note)"),
+  machine_reading("srv3-strata", positive_slot_count(count: positive_measure_count(predecessor: 3)), 14, "2026-11-24, before the 19:56 fix (14.5 tok/s per machine at 4-way, relayed)", "srv3 engine /metrics via srv1 ad-hoc scripts"),
+  machine_reading("srv4-strata", positive_slot_count(count: positive_measure_count(predecessor: 0)), 11, "2026-11-24 (11.2 tok/s per machine at 1-way, relayed)", "srv4 engine log (its TLS proxy does not expose /metrics -- see the 2026-11-24 observability note)"),
 ]
-
-// The floor every stream must clear (the conversation policy's), as the measurements above are checked
-// against: every stream figure read at 3-way or more sits below it, every 2-way figure above it. The shape
-// derivation refuses the below-floor arms on the same arithmetic.
-fn stream_reading_meets_policy_floor(o: ConcurrencyObservation) -> Bool {
-  match o {
-    AggregatePerMachine { } => true
-    PerStreamAtConcurrency { deployment: _, concurrency: n, tokens_per_second: r, window: _, standing: _ } =>
-      if n < 3 { true } else { tokens_per_second_count(r: r) >= tokens_per_second_count(r: serving_conversation_policy.min_stream_rate) }
-  }
-}
-
 
 // srv1's cold prefill: the fork's 128k reading, resolved from the module that owns the readings.
 fn fork_cold_prefill_128k() -> Optional<TokensPerSecond> {

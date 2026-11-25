@@ -212,14 +212,17 @@ test fn the_benchmark_cell_still_writes_its_own_concurrency() -> Bool {
 }
 
 // ── THE PRICE THE ROWS CARRY (observations, not facts) ────────────────────────────────────────────
-// Every stream figure read at 3-way or more on these cards sits BELOW the conversation policy's floor;
-// every 2-way figure sits above it. The shape's refusal arithmetic and the operator's hand tuning agree
-// because they are the same arithmetic -- and that is what prices concurrency as a selection rather than
-// a knob (gunbc.design_argument::selection_precedes_convergence).
+// The stream figures read at 4-way -- the concurrency the hand-written router cap imposed -- sit BELOW
+// the conversation policy's floor; the figures read at the 2-way operating point sit above it. The
+// comparison is made HERE, against serving_conversation_policy.min_stream_rate, on every arm these
+// claims select: no reading is exempted by its concurrency and no threshold is hard-coded beside the
+// policy's own number. The shape's refusal arithmetic and the operator's hand tuning agree because they
+// are the same arithmetic -- that is what prices concurrency as a selection rather than a knob
+// (gunbc.design_argument::selection_precedes_convergence).
 
 fn is_n_way_stream(o: ConcurrencyObservation, n: Nat) -> Bool {
   match o {
-    PerStreamAtConcurrency { deployment: _, concurrency: c, tokens_per_second: _, window: _, standing: _ } => c == n
+    PerStreamAtConcurrency { deployment: _, concurrency: c, tokens_per_second: _, window: _, standing: _ } => positive_slot_count_value(slots: c) == n
     AggregatePerMachine { deployment: _, concurrency: _, tokens_per_second: _, window: _, standing: _ } => false
   }
 }
@@ -262,7 +265,7 @@ fn machine_aggregate(deployment: String, concurrency: Nat) -> Optional<Nat> {
       Present { value: n } => Present { value: n }
       Absent => match x {
         AggregatePerMachine { deployment: d, concurrency: c, tokens_per_second: r, window: _, standing: _ } =>
-          if d == deployment && c == concurrency { Present { value: tokens_per_second_count(r: r) } } else { Absent }
+          if d == deployment && positive_slot_count_value(slots: c) == concurrency { Present { value: tokens_per_second_count(r: r) } } else { Absent }
         PerStreamAtConcurrency { deployment: _, concurrency: _, tokens_per_second: _, window: _, standing: _ } => Absent
       }
     })
