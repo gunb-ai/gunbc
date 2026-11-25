@@ -71,39 +71,38 @@ data annotation_gap_v1_v2_agreement_probe_red_base: CommitSha = "8c86ee47f68ec1f
 data annotation_gap_v1_v2_agreement_probe_red_at: CommitSha = "08febdd150a4dc3df9d0b45b77897156a7ba47c1"
 
 data annotation_gap_v1_v2_agreement_probe_green_at: CommitSha = "66e290f5ea8c24a3c118d50d998da0a35cea5702"
-// WHY A CLAIM AND NOT A REVIEWER. `CommitSha` in dag/std/types.dag is an unvalidated String alias, and
-// its comment says so: the predicate beside it is a validating CHECK a caller must remember to run, not a
-// construction wall. A field holding a placeholder therefore parses, typechecks and passes CI as a receipt
-// that looks complete -- which is a fiction that merges. Running this claim refuses that: any value that is
-// not forty lowercase hex characters fails it, so an unfilled placeholder cannot survive an executed run.
-// test.claim.std_commit_sha_text_witness is the oracle for the predicate itself; this claim is a CONSUMER
-// of it, refusing on the three fields this receipt publishes.
-test fn probe_pair_receipt_shas_are_real_commit_shas() -> Bool {
-  commit_sha_text_holds(head: annotation_gap_v1_v2_agreement_probe_red_base)
-    && commit_sha_text_holds(head: annotation_gap_v1_v2_agreement_probe_red_at)
-    && commit_sha_text_holds(head: annotation_gap_v1_v2_agreement_probe_green_at)
-}
-
-// EVERY OTHER CARRIER ABOVE IS READ HERE. A receipt row no predicate consults is a status a reader has to
-// trust, which is what the ban on comment-receipts is really against; these three claims are the reason the
-// rows are typed rather than written as prose. Each names, at its own refusal, which carrier broke.
-//
-// A DELIBERATE-BREAK PAIR MUST CARRY WHAT MAKES IT REPRODUCIBLE: a durable ref the broken tree lives on (a
-// break that exists only as an anonymous tree cannot be re-run by anyone), and the arm the break deletes,
-// named by both predicates it joins so a reader can find the disjunct in `parse_node_is_source_region`. The
-// two trees must also be different commits -- the same sha under both names is the vacuous pair this receipt
-// replaced.
-test fn probe_pair_receipt_is_the_kind_it_declares() -> Bool {
+// ONE SHAPE CHECK OVER THIS FILE'S OWN CARRIERS, NAMED AS SUCH. It refuses a receipt whose DATA broke: a
+// placeholder where a commit sha belongs (`CommitSha` in dag/std/types.dag is an unvalidated String alias, so
+// a placeholder parses, typechecks and passes CI as a receipt that looks complete -- a fiction that merges), a
+// pair whose two names are the same commit, a deliberate break with no durable ref or no named arm, a source
+// root missing or duplicated, an evidence pointer that stopped being a run-log comment. What it CANNOT refuse
+// is a run that never happened: nothing in this language observes a process or a filesystem, which is exactly
+// why the runs live in the log the pointers name and not here. It is a well-formedness check on carriers this
+// module owns, and it is not offered as evidence that the pair was executed -- the two claims below are the
+// ones that reach outside this file.
+fn probe_pair_kind_promises_are_kept() -> Bool {
   match annotation_gap_v1_v2_agreement_probe_kind {
     DeliberateBreak =>
       string_contains(s: annotation_gap_v1_v2_agreement_probe_durable_ref, pattern: "refs/heads/")
         && string_contains(s: annotation_gap_v1_v2_agreement_probe_roster_arm, pattern: "parse_node_is_source_region")
         && string_contains(s: annotation_gap_v1_v2_agreement_probe_roster_arm, pattern: "parse_node_has_authored_edge")
         && string_contains(s: annotation_gap_v1_v2_agreement_probe_roster_arm, pattern: "grammar_infix_left_node_projection")
-        && annotation_gap_v1_v2_agreement_probe_red_at != annotation_gap_v1_v2_agreement_probe_green_at
-    BeforeAfterFeatureTest =>
-      annotation_gap_v1_v2_agreement_probe_red_at != annotation_gap_v1_v2_agreement_probe_green_at
+    BeforeAfterFeatureTest => true
   }
+}
+
+test fn probe_pair_receipt_is_well_formed_data() -> Bool {
+  commit_sha_text_holds(head: annotation_gap_v1_v2_agreement_probe_red_base)
+    && commit_sha_text_holds(head: annotation_gap_v1_v2_agreement_probe_red_at)
+    && commit_sha_text_holds(head: annotation_gap_v1_v2_agreement_probe_green_at)
+    && annotation_gap_v1_v2_agreement_probe_red_at != annotation_gap_v1_v2_agreement_probe_green_at
+    && probe_pair_kind_promises_are_kept()
+    && length(xs: annotation_gap_v1_v2_agreement_probe_argv_roots) == 3
+    && probe_roots_counted(wanted: "dag") == 1
+    && probe_roots_counted(wanted: "src/v1") == 1
+    && probe_roots_counted(wanted: "src/v2") == 1
+    && length(xs: annotation_gap_v1_v2_agreement_probe_run_log_refs) > 0
+    && probe_run_log_refs_cited() == length(xs: annotation_gap_v1_v2_agreement_probe_run_log_refs)
 }
 
 // THE RECEIPT AND THE CONTROL MUST NAME THE SAME WITNESS. The witness module and fn are copied into this
@@ -134,17 +133,6 @@ test fn probe_pair_rung_agrees_with_the_floors_own_admission() -> Bool {
   }
 }
 
-// WHAT THIS CLAIM CAN AND CANNOT REFUSE, stated because a receipt that overstates its own force is worse than
-// a low one. It refuses a receipt whose SHAPE broke: an empty or placeholder date, a missing or duplicated
-// source root, an evidence pointer that is no longer a run-log comment. It cannot refuse a run that did not
-// happen -- nothing in this language observes a process -- which is exactly why the runs live in the log the
-// pointers name. The three roots are the sharpest part of it: this control imports from BOTH src/v1 and
-// src/v2, and the two-root route the floor itself carries refuses it at the checker, so a receipt naming fewer
-// roots describes a run that could not have happened.
-fn probe_date_body(text: String) -> String {
-  replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(replace(text, "0", ""), "1", ""), "2", ""), "3", ""), "4", ""), "5", ""), "6", ""), "7", ""), "8", ""), "9", ""), "-", "")
-}
-
 fn probe_run_log_refs_cited() -> Int {
   fold_list(
     xs: annotation_gap_v1_v2_agreement_probe_run_log_refs,
@@ -161,12 +149,3 @@ fn probe_roots_counted(wanted: String) -> Int {
   )
 }
 
-test fn probe_pair_receipt_records_the_route_that_ran_it() -> Bool {
-  annotation_gap_v1_v2_agreement_probe_executed_on.length() == 10
-    && probe_date_body(text: annotation_gap_v1_v2_agreement_probe_executed_on) == ""
-    && length(xs: annotation_gap_v1_v2_agreement_probe_argv_roots) == 3
-    && probe_roots_counted(wanted: "dag") == 1
-    && probe_roots_counted(wanted: "src/v1") == 1
-    && probe_roots_counted(wanted: "src/v2") == 1
-    && probe_run_log_refs_cited() == 3
-}

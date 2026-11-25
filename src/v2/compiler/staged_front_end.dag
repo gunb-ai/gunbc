@@ -233,8 +233,11 @@ fn front_end_parse_step(
 // gunbc.design_argument::fail_closed refuses to let happen quietly. The check is language-neutral: it
 // counts, it does not interpret. Adjacent captures share one row: std.source_annotation
 // annotation_attach_step joins an extending capture with one separator, and front_end_landed_capture_count
-// below reads that separator back -- one capture per line feed, one more per row. The model is not taken on
-// faith from a hand-built row: v2.test.claim.staged_front_end
+// below reads that separator back -- one capture per line feed, one more per row. That reading-back is a
+// SECOND place deciding how many captures a row holds, and it is declared as one beside the counter
+// (front_end_capture_count_next_rung) rather than argued away in prose: the alternative is vacuous, because
+// the parse's rows are that same fold's own product, and std.source_annotation carries no capture count to
+// read instead. The model is not taken on faith from a hand-built row: v2.test.claim.staged_front_end
 // front_end_landed_capture_count_models_a_block_as_its_line_count pins the arithmetic, and
 // front_end_landed_capture_count_agrees_with_the_real_attach_fold runs std.source_annotation
 // attach_annotations itself and refuses if the fold's join rule and this model ever diverge. That second
@@ -276,6 +279,18 @@ fn front_end_unlanded_annotation_diagnostic(
 // front_end_placement_next_rung_is_declared_and_names_the_control reads it back and refuses if the condition
 // ever stops naming the control whose absence it is about.
 data front_end_placement_control_next_rung: DissolutionCondition = unbound_dissolution(description: "GATE THE PLACEMENT HALF WHEN v2.test.claim.manual.annotation_gap_v1_v2_agreement is both enrolled by name in v2.workflow.required_floor required_gate_authored_modules on an operator ruling AND executed by some floor that can execute -- gunbc.rung_drop_amendment.manual_required_floor_runner_deleted records the required-floor runner as deleted (amended 2026-10-14) and no workflow passes a --required flag, so neither half holds today. Until both halves hold, front_end_unlanded_annotation_diagnostic checks loss only and placement is checked by hand. At that moment agreement_control_rung in that control must be restated, which v2.test.claim.manual.annotation_gap_v1_v2_agreement_probe_pair probe_pair_rung_agrees_with_the_floors_own_admission refuses if it is left stale.")
+
+// THE FORK IS DECLARED, NOT HIDDEN. This counter decides, in a second place, how many captures a row holds:
+// std.source_annotation `annotation_attach_step` owns the join (it extends an open row with one line feed),
+// and this reads that separator back -- a second representation of a constraint the model already carries
+// (gunbc.design_argument::single_authority, gunbc.design_argument::fail_closed). It stays only because every
+// non-duplicating alternative is unavailable here: the parse's rows ARE that fold's product
+// (v2.compiler.parse `parse_module_authored` calls `attach_annotations` over the same captures), so comparing
+// the graph against a second fold run compares a function with itself, and `SourceAnnotationDebt` carries no
+// capture count to read instead. Removing the fork means putting the count where the fold decides it, which is
+// a change to dag/std/source_annotation.dag -- the gap rule this node names out_of_scope. Meanwhile the copy is
+// tied to its producer by an executed claim, and the moment to delete it is a carrier, not a wish:
+data front_end_capture_count_next_rung: DissolutionCondition = unbound_dissolution(description: "DELETE front_end_landed_capture_count WHEN dag/std/source_annotation.dag carries the count where the fold decides it -- a field on SourceAnnotationDebt, or a count on SourceAnnotationGraph, set by annotation_attach_step -- so front_end_unlanded_annotation_diagnostic compares two lengths the model already carries instead of reading the fold's separator back. Until that exists this counter is a second authority over the join rule, which gunbc.design_argument::single_authority forbids, and v2.test.claim.staged_front_end front_end_landed_capture_count_agrees_with_the_real_attach_fold running std.source_annotation attach_annotations itself is what keeps the second copy honest.")
 
 fn front_end_landed_capture_count(rows: List<SourceAnnotationDebt>) -> Int {
   fold_list(

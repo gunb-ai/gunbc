@@ -26,6 +26,7 @@ import v2.compiler.staged_front_end {
   FrontEndStageRejected,
   FrontEndStageReceipt,
   ParsedModule,
+  front_end_capture_count_next_rung,
   front_end_landed_capture_count,
   front_end_placement_control_next_rung,
   front_end_stage_index,
@@ -199,6 +200,20 @@ fn annotation_row(text: String) -> SourceAnnotationDebt {
     origin: SourceSpan { file: "candidate.dag", start: 0, end: 12 },
     placement: LeadingAfterLineIndent
   }
+}
+
+// A COUNTER THAT MODELS SOMEONE ELSE'S JOIN RULE HAS TO SAY SO, IN A TYPE, AND SAY WHEN IT STOPS. The guard
+// above counts captures back out of the fold's rows; that is a second place deciding the join rule, so the
+// module declares it (front_end_capture_count_next_rung) instead of leaving a reader to infer it from a
+// comment. Read here: unbound today, and naming both the carrier it would replace and the type that would have
+// to grow the field. When the fork is removed this claim goes red until the carrier is removed with it, which
+// is the point -- a declared fork that quietly outlives its fix is the failure mode this refuses.
+test fn front_end_capture_count_next_rung_declares_the_fork_it_leaves() -> Bool {
+  let condition = front_end_capture_count_next_rung
+  !dissolution_is_bound(condition: condition)
+    && string_contains(s: dissolution_description(condition: condition), pattern: "front_end_landed_capture_count")
+    && string_contains(s: dissolution_description(condition: condition), pattern: "SourceAnnotationDebt")
+    && string_contains(s: dissolution_description(condition: condition), pattern: "annotation_attach_step")
 }
 
 test fn front_end_landed_capture_count_models_a_block_as_its_line_count() -> Bool {
