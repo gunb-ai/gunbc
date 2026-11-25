@@ -4,12 +4,8 @@ import std.types { List, SourceSpan }
 import std.algebra { length, string_contains }
 import std.dissolution { dissolution_description, dissolution_is_bound }
 import std.source_annotation {
-  AnnotationGap,
-  AnnotationScope,
-  FileScope,
   LeadingAfterLineIndent,
   NormalizedAnnotationCapture,
-  SourceAnnotationDebt,
   SourceAnnotationGraph,
   attach_annotations,
   source_annotation_graph_rows
@@ -27,7 +23,7 @@ import v2.compiler.staged_front_end {
   FrontEndStageReceipt,
   ParsedModule,
   front_end_capture_count_next_rung,
-  front_end_landed_capture_count,
+  front_end_capture_interior_loss_next_rung,
   front_end_placement_control_next_rung,
   front_end_stage_index,
   front_end_run_outcome,
@@ -151,15 +147,19 @@ test fn staged_front_end_unbound_value_name_refuses_with_its_own_reason() -> Boo
 // front end (v2.compiler.staged_front_end front_end_parse_step), which is the route every .dag
 // candidate the acceptance harness runs walks. The four tests above pin the ladder's SHAPE -- which
 // stage a candidate dies at -- and every one of them would still pass if the parse stage dropped the
-// authored artifact's annotations, because none of them reads the attachment. These three read it:
-// the positive control that a comment-bearing module walks all four stages through the authored parse
-// (a lost capture refuses there, so its passing is the guard being silent on real input), the row/line
-// model the comparison counts by, and the guard's NON-VACUITY: it fires when the graph accounts for
-// fewer captures than the lex made. The v1/v2 agreement half -- WHICH gap a capture landed in -- is
-// the MANUAL, UNGATED control v2.test.claim.manual.annotation_gap_v1_v2_agreement, whose probe-pair receipt
-// is v2.test.claim.manual.annotation_gap_v1_v2_agreement_probe_pair. It sits under manual/, no gated row
-// admits it and the required floor executes nothing, so none of these tests stands in for it and none of them
-// is run by CI either: its rung is green by hand execution under claim_batch, recorded in that receipt.
+// authored artifact's annotations, because none of them reads the attachment. These read it: the
+// positive control that a comment-bearing module walks all four stages through the authored parse, and
+// the guard's DISCRIMINATING PAIR -- a graph the fold made from the same captures is accepted, a graph
+// missing an edge capture is refused. The guard asks COVERAGE, not multiplicity (an interior loss stays
+// unseen by it, which its own claim pins by executing it and whose end is typed in
+// v2.compiler.staged_front_end front_end_capture_interior_loss_next_rung). The v1/v2 agreement half --
+// WHICH gap a capture landed in -- is the MANUAL, UNGATED control
+// v2.test.claim.manual.annotation_gap_v1_v2_agreement, whose probe pair
+// v2.test.claim.manual.annotation_gap_v1_v2_agreement_probe_pair reads that control's published identity
+// and re-derives its rung from v2.workflow.required_floor required_gate_admits. It sits under manual/, no
+// gated row admits it and the required floor executes nothing, so none of these tests stands in for it and
+// none of them is run by CI either; the executed evidence for all of these lives in this PR's run-log
+// comments, not in carriers inside these modules.
 
 data annotated_candidate_source: String = "module m\n\n// why the reader needs this\nfn add(x: Int, y: Int) -> Int { x + y }\n"
 
@@ -187,52 +187,29 @@ test fn staged_front_end_produces_the_authored_parse_for_an_annotated_module() -
   }
 }
 
-// THE MODEL THE COMPARISON COUNTS BY, PINNED. attach_annotations groups consecutive captures into one
-// block whose text carries its own line breaks (std.source_annotation annotation_attach_step joins an
-// extending capture with "\n"), so the number of captures a graph accounts for is the rows plus the
-// line feeds each row's text carries -- NOT the row count. A guard written against rows would refuse
-// every multi-line comment block in the corpus; a guard written here against a wrong model goes red
-// before that ever ships.
-fn annotation_row(text: String) -> SourceAnnotationDebt {
-  SourceAnnotationDebt {
-    gap: AnnotationGap { scope: FileScope, before: Absent, after: Absent },
-    text: text,
-    origin: SourceSpan { file: "candidate.dag", start: 0, end: 12 },
-    placement: LeadingAfterLineIndent
-  }
-}
-
-// A COUNTER THAT MODELS SOMEONE ELSE'S JOIN RULE HAS TO SAY SO, IN A TYPE, AND SAY WHEN IT STOPS. The guard
-// above counts captures back out of the fold's rows; that is a second place deciding the join rule, so the
-// module declares it (front_end_capture_count_next_rung) instead of leaving a reader to infer it from a
-// comment. Read here: unbound today, and naming both the carrier it would replace and the type that would have
-// to grow the field. When the fork is removed this claim goes red until the carrier is removed with it, which
-// is the point -- a declared fork that quietly outlives its fix is the failure mode this refuses.
-test fn front_end_capture_count_next_rung_declares_the_fork_it_leaves() -> Bool {
+// THE LOSS CHECK IS INTERIM, AND THE RUNG SAYS SO IN A TYPE. The guard used to count captures back out of
+// the fold's rows -- a second place deciding the join rule -- and the operator ruling on review 98556 of
+// gunb-ai/gunbc#16942 deleted that counter instead of admitting the fork, leaving a coverage guard with a
+// declared limit. Read this carrier here: unbound today, naming the deleted counter (so the deletion cannot
+// be quietly undone or forgotten), the field the fold would have to grow, and the PLAN ROW that carries the
+// obligation -- not prose this module wrote about itself. If the row is renamed, or the carrier drops the
+// count it promises, or the condition is bound without the count existing, this claim refuses.
+test fn front_end_capture_count_next_rung_declares_the_interim_guard_it_leaves() -> Bool {
   let condition = front_end_capture_count_next_rung
   !dissolution_is_bound(condition: condition)
     && string_contains(s: dissolution_description(condition: condition), pattern: "front_end_landed_capture_count")
     && string_contains(s: dissolution_description(condition: condition), pattern: "SourceAnnotationDebt")
     && string_contains(s: dissolution_description(condition: condition), pattern: "annotation_attach_step")
+    && string_contains(s: dissolution_description(condition: condition), pattern: "source-annotation-fold-carries-absorbed-capture-count")
+    && string_contains(s: dissolution_description(condition: condition), pattern: "rn_ZR45MIQ7KTC56XVLT23LXQ3W4A")
 }
 
-test fn front_end_landed_capture_count_models_a_block_as_its_line_count() -> Bool {
-  front_end_landed_capture_count(rows: []) == 0
-    && front_end_landed_capture_count(rows: [annotation_row(text: "// one")]) == 1
-    && front_end_landed_capture_count(
-      rows: [annotation_row(text: "// one\n// two"), annotation_row(text: "// three")]
-    ) == 3
-}
-
-// THE TIE, RUN AGAINST THE PRODUCER RATHER THAN ASSUMED. The claim above pins the model against a hand-built
-// row, and a hand-built row is written by the same author who wrote the counter -- if the fold's separator ever
-// stopped being a single line feed, both could stay mutually consistent and the guard would then either refuse
-// every multi-line block in the corpus or pass a real loss. So the model is checked against the ONE thing whose
-// rule it models: three captures go into `attach_annotations`, the shared fold itself, two of them adjacent so
-// the join actually fires. It must group them into two rows, and the counter must account for all THREE
-// captures -- which is the count the guard compares against the lexer. Change the join separator, or the rule
-// for what extends a block, and this claim is the thing that goes red. It is the reason the separator is not a
-// second copy of the rule: the fold owns it, and this is the check that says so.
+// THE FIXTURES FOR THE GUARD'S DISCRIMINATING PAIR. Three comment captures at adjacent offsets, spelled
+// TWICE: as the lexer emits them (guard_fixture_capture, what the guard is given) and as the fold consumes
+// them (attach_fixture_capture, what attach_annotations is given), with IDENTICAL offsets so the only thing
+// that can make the guard refuse is what the fold was handed. The fold is called for real in every leg below
+// -- no row in these fixtures is hand-built, so no claim here can certify a graph the authority would not
+// have produced.
 fn attach_fixture_capture(text: String, start: Int, end: Int, adjacent: Bool) -> NormalizedAnnotationCapture {
   NormalizedAnnotationCapture {
     text: text,
@@ -243,19 +220,17 @@ fn attach_fixture_capture(text: String, start: Int, end: Int, adjacent: Bool) ->
   }
 }
 
-test fn front_end_landed_capture_count_agrees_with_the_real_attach_fold() -> Bool {
-  let graph = attach_annotations(
-    captures: [
-      attach_fixture_capture(text: "// one", start: 0, end: 6, adjacent: false),
-      attach_fixture_capture(text: "// two", start: 7, end: 13, adjacent: true),
-      attach_fixture_capture(text: "// three", start: 14, end: 22, adjacent: false)
-    ],
-    regions: []
-  )
-  let rows = source_annotation_graph_rows(graph: graph)
-  length(xs: rows) == 2
-    && front_end_landed_capture_count(rows: rows) == 3
-    && front_end_landed_capture_count(rows: rows) != length(xs: rows)
+fn guard_fixture_capture(text: String, start: Int, end: Int, adjacent: Bool) -> UnboundSourceAnnotation {
+  UnboundSourceAnnotation {
+    annotation_class: ^line_comment,
+    lexeme: text,
+    placement: LeadingAfterLineIndent,
+    preceded_by_blank_line: false,
+    preceded_by_annotation_line: adjacent,
+    file: ^candidate_module,
+    start: start,
+    end: end
+  }
 }
 
 // THE RUNG STATEMENT IN THE GUARD'S COMMENT HAS A TYPE BEHIND IT. The guard above says placement is checked
@@ -272,33 +247,97 @@ test fn front_end_placement_next_rung_is_declared_and_names_the_control() -> Boo
     && string_contains(s: dissolution_description(condition: condition), pattern: "required_gate_authored_modules")
 }
 
-// NON-VACUITY: the guard is a comparison, and a comparison that can never fire is decoration. One
-// capture against an empty graph must refuse; no capture against an empty graph must not.
-fn one_capture() -> List<UnboundSourceAnnotation> {
+// THE GUARD'S DISCRIMINATING PAIR, AND THE LIMIT IT CANNOT CROSS. The guard asks whether SOME row's origin
+// covers each capture's span, through the authority's own predicate -- so the pair is a graph the fold made
+// from those captures (accepted) against the graph the fold would have made had it dropped the LAST capture
+// (refused), each leg calling the real std.source_annotation attach_annotations. Nothing here is hand-built,
+// so no claim in this file can certify a graph the authority would not itself have produced. The third claim
+// is the honest half: a joined block becomes ONE row whose origin spans the whole block, so a capture dropped
+// in the MIDDLE stays covered and the guard correctly refuses nothing. That is a weaker guard with a DECLARED
+// limit, typed in v2.compiler.staged_front_end front_end_capture_interior_loss_next_rung -- not left for a
+// reader to infer from a green tick.
+fn guard_fixture_captures() -> List<UnboundSourceAnnotation> {
   [
-    UnboundSourceAnnotation {
-      annotation_class: ^line_comment,
-      lexeme: "// why the reader needs this",
-      placement: LeadingAfterLineIndent,
-      preceded_by_blank_line: false,
-      preceded_by_annotation_line: false,
-      file: ^candidate_module,
-      start: 0,
-      end: 12
-    }
+    guard_fixture_capture(text: "// one", start: 0, end: 6, adjacent: false),
+    guard_fixture_capture(text: "// two", start: 7, end: 13, adjacent: true),
+    guard_fixture_capture(text: "// three", start: 14, end: 22, adjacent: true)
   ]
 }
 
-test fn front_end_annotation_guard_refuses_a_capture_the_graph_lost() -> Bool {
-  match front_end_unlanded_annotation_diagnostic(captures: one_capture(), graph: SourceAnnotationGraph { rows: [] }) {
+fn fold_fixture_all_three() -> List<NormalizedAnnotationCapture> {
+  [
+    attach_fixture_capture(text: "// one", start: 0, end: 6, adjacent: false),
+    attach_fixture_capture(text: "// two", start: 7, end: 13, adjacent: true),
+    attach_fixture_capture(text: "// three", start: 14, end: 22, adjacent: true)
+  ]
+}
+
+// The same block with its LAST capture already gone: no surviving row's origin reaches 14..22.
+fn fold_fixture_missing_edge() -> List<NormalizedAnnotationCapture> {
+  [
+    attach_fixture_capture(text: "// one", start: 0, end: 6, adjacent: false),
+    attach_fixture_capture(text: "// two", start: 7, end: 13, adjacent: true)
+  ]
+}
+
+// The same block with its MIDDLE capture already gone: "// three" still claims to continue the line above, so
+// the fold joins it to "// one" and the surviving row's origin runs 0..22 -- which is precisely what covers
+// the capture that is missing.
+fn fold_fixture_missing_middle() -> List<NormalizedAnnotationCapture> {
+  [
+    attach_fixture_capture(text: "// one", start: 0, end: 6, adjacent: false),
+    attach_fixture_capture(text: "// three", start: 14, end: 22, adjacent: true)
+  ]
+}
+
+// THE ACCEPTED LEG. A graph the fold produced from exactly the captures the lexer made must be silent: this
+// is also the positive control that keeps the refused leg from passing because the guard refuses everything.
+test fn front_end_annotation_guard_accepts_the_graph_the_fold_made_from_the_same_captures() -> Bool {
+  let graph = attach_annotations(captures: fold_fixture_all_three(), regions: [])
+  match front_end_unlanded_annotation_diagnostic(captures: guard_fixture_captures(), graph: graph) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// THE REFUSED LEG. Drop the last capture before the fold ever sees it and the parse stage must refuse with
+// its own reason -- the loss is the fold's, never the author's, and fail_closed says a silently dropped
+// piece of authored prose may not pass quietly.
+test fn front_end_annotation_guard_refuses_an_edge_loss_the_fold_dropped() -> Bool {
+  let graph = attach_annotations(captures: fold_fixture_missing_edge(), regions: [])
+  match front_end_unlanded_annotation_diagnostic(captures: guard_fixture_captures(), graph: graph) {
     Present { value: refusal } => refusal.reason == ^staged_front_end_annotation_capture_unlanded
     Absent => false
   }
 }
 
+// NON-VACUITY OF THE PAIR: no captures at all, nothing to cover, silence.
 test fn front_end_annotation_guard_stays_silent_when_nothing_is_lost() -> Bool {
   match front_end_unlanded_annotation_diagnostic(captures: [], graph: SourceAnnotationGraph { rows: [] }) {
     Absent => true
     Present { value: _ } => false
   }
+}
+
+// THE BLIND SPOT, EXECUTED RATHER THAN APOLOGISED FOR -- and read carefully, because its PASS is not safety:
+// it PASSES by showing the guard accept a real interior loss. One joined row's origin spans its whole block,
+// so the middle capture that is gone is still covered and coverage says nothing is missing. The first conjunct
+// proves WHY (the fold made exactly ONE row for the block); the second is the guard's own silence; the rest
+// reads the rung that carries this limit, unbound today, so a reader learns the limit from the model and not
+// from a comment. When the fold starts carrying the per-row capture count, the second conjunct must be
+// rewritten into a refusal -- that rewrite is the executed signal the limit moved.
+test fn front_end_annotation_guard_passes_an_interior_loss_unseen_as_its_declared_limit() -> Bool {
+  let graph = attach_annotations(captures: fold_fixture_missing_middle(), regions: [])
+  let rows = source_annotation_graph_rows(graph: graph)
+  let guard_stayed_silent =
+    match front_end_unlanded_annotation_diagnostic(captures: guard_fixture_captures(), graph: graph) {
+      Absent => true
+      Present { value: _ } => false
+    }
+  let condition = front_end_capture_interior_loss_next_rung
+  length(xs: rows) == 1
+    && guard_stayed_silent
+    && !dissolution_is_bound(condition: condition)
+    && string_contains(s: dissolution_description(condition: condition), pattern: "MIDDLE")
+    && string_contains(s: dissolution_description(condition: condition), pattern: "rn_ZR45MIQ7KTC56XVLT23LXQ3W4A")
 }
