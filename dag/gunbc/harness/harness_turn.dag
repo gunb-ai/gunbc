@@ -72,7 +72,8 @@ import gunbc.roadmap.roadmap_alignment {
   alignment_checkpoint_identity_digest, AlignmentCheckpointIdentity,
   AlignmentCadenceState, CadenceStepInterval, CadenceStepStopTheLine,
   alignment_base_cadence_state, alignment_next_interval, alignment_state_interval,
-  alignment_cadence_state_json,
+  alignment_cadence_state_json, alignment_cadence_state_decode_document,
+  AlignmentCadenceStateDecode, AlignmentCadenceStateDecoded, AlignmentCadenceStateNotDecodable,
 }
 import extdeps.filesystem.filesystem_io { Filesystem,
   filesystem_listing_observation, filesystem_entry_presence,
@@ -2827,10 +2828,12 @@ fn harness_turn_supervise(
         match harness_supervision_verdict_decode(text: text) {
           SupervisionVerdictUnreadable { cause } =>
             harness_turn_supervision_unavailable(config: config, cause: cause, steps_taken: steps_taken, events: concat(events, carried))
-          SupervisionVerdictDecoded { verdict } =>
+          // The in-loop decode stays as the boundary's own readability check -- an undecided check is a
+          // refusal -- but it is NOT what the lineage is continued on. That verdict comes out of the
+          // published adjudication, below.
+          SupervisionVerdictDecoded { verdict: _ } =>
             harness_alignment_resume_apply(
               pause: pause,
-              verdict: verdict,
               checkpoint: checkpoint,
               projection: projection,
               cadence: cadence,
@@ -2896,7 +2899,26 @@ type HarnessAlignmentAdjudication {
 // closed. `ResumedOnce` names the epoch it opened, so a witness can assert the lineage advanced by
 // one and only one; `Refused` is the absence of an epoch, not a zero-th one.
 type HarnessAlignmentResume
-  = ResumedOnce { next_epoch: Int, checkpoint: AlignmentCheckpointIdentity }
+  // THE RESUMPTION CARRIES THE RECORD'S OWN VERDICT AND CADENCE. The continuation effect downstream acts
+  // on THESE, never on a verdict supplied alongside the call: only adjudication resumes the lineage, and
+  // it resumes it with what was adjudicated. The cadence travels too, so a reader of the resumption can
+  // see the interval state the next epoch inherits instead of inferring it.
+  = ResumedOnce {
+      next_epoch: Int
+      checkpoint: AlignmentCheckpointIdentity
+      verdict: AlignmentVerdict
+      cadence: AlignmentCadenceState
+    }
+  // THE LINEAGE STOPS, IT IS NOT BLOCKED. A verdict the cadence authority maps to
+  // CadenceStepStopTheLine opens no further epoch, but the verdict is still an ADJUDICATED outcome of
+  // this lineage and must reach the worker as one -- so it travels out here, to be applied by the
+  // verdict-to-action authority, where it writes the durable stopped-by-supervision event. Refusing it
+  // instead would record "supervision unavailable" over a check that ran and decided, and would leave
+  // the row's own stop clause unimplemented.
+  | StoppedByVerdict {
+      verdict: AlignmentVerdict
+      cadence: AlignmentCadenceState
+    }
   | ResumeRefused { cause: String }
 
 fn harness_alignment_observation_digest(observation: String) -> String {
@@ -3253,6 +3275,98 @@ fn harness_alignment_replace_level0_verdict(verdicts: List<AlignmentVerdict>, he
   ).out
 }
 
+// THE RESUMPTION IS DURABLE BEFORE IT IS ACTED ON, and the durable record is the idempotency key.
+// "A crash after verdict publication produces exactly one next epoch" is not a property a return value
+// can promise: a caller may discard one, and two callers reading one publication may resume twice. So
+// opening the next epoch is a create-if-absent write keyed by the checkpoint digest AND the epoch it
+// opens -- the same key discipline the publication uses. The run that crashed after the verdict landed
+// and before the epoch was opened finds no record and opens it; any run that replays after it finds the
+// record and is refused, so the continuation effect -- the verdict applied to the worker's own turn --
+// is entered exactly once per (checkpoint, epoch). Presence is decided by ONE authority, the exact-read
+// seam, and an unreadable record counts as OPEN: a half-read record never licenses a second epoch.
+type HarnessAlignmentEpochPresence
+  = EpochRecordPresent
+  | EpochRecordAbsent
+  | EpochRecordUnreadable { detail: String }
+
+type HarnessAlignmentEpochOpening
+  = EpochOpened { path: String }
+  | EpochAlreadyOpen { path: String, detail: String }
+  | EpochOpeningUnwritable { cause: String }
+
+fn harness_alignment_epoch_opened_path(check_directory: String, checkpoint: AlignmentCheckpointIdentity, next_epoch: Int) -> String {
+  join([
+    check_directory, "/alignment-epoch-opened-",
+    alignment_checkpoint_identity_digest(id: checkpoint),
+    "-epoch-", to_string(value: next_epoch), ".json",
+  ], "")
+}
+
+fn harness_alignment_epoch_opened_line(checkpoint: AlignmentCheckpointIdentity, next_epoch: Int, verdict: AlignmentVerdict) -> String {
+  serialize_json(v: json_object([
+    json_kv(key: "type", value: json_string(s: "alignment.epoch_opened")),
+    json_kv(key: "checkpoint_digest", value: json_string(s: harness_alignment_checkpoint_digest(checkpoint: checkpoint))),
+    json_kv(key: "attempt_lineage", value: json_string(s: checkpoint.attempt_lineage)),
+    json_kv(key: "epoch", value: json_int(n: checkpoint.epoch)),
+    json_kv(key: "next_epoch", value: json_int(n: next_epoch)),
+    json_kv(key: "verdict", value: alignment_verdict_json(v: verdict)),
+  ]))
+}
+
+// THE ONE ANSWER TO "HAS THIS EPOCH ALREADY BEEN OPENED?". Both the entry's fast refusal and the
+// create-if-absent gate below ask this and nothing else, so the two can never disagree about whether
+// the lineage has already advanced -- and both read the keyed record, never a counter.
+fn harness_alignment_epoch_record_present(check_directory: String, checkpoint: AlignmentCheckpointIdentity, next_epoch: Int) -> HarnessAlignmentEpochPresence {
+  let path = harness_alignment_epoch_opened_path(check_directory: check_directory, checkpoint: checkpoint, next_epoch: next_epoch)
+  let read = Filesystem.Read(path: path)
+  match filesystem_exact_read(path: path, content: read.content, success: read.success, error: read.error, error_kind: read.error_kind) {
+    FilesystemExactPathRead { path: _, content: _ } => EpochRecordPresent
+    FilesystemExactPathAbsent { path: _ } => EpochRecordAbsent
+    FilesystemExactPathUnreadable { path: _, kind: _, error } =>
+      EpochRecordUnreadable { detail: join([path, " is unreadable (", error, ") -- a half-read record never licenses a second epoch"], "") }
+    FilesystemExactPathKindUnrecognized { path: _, observed: _, error } =>
+      EpochRecordUnreadable { detail: join([path, " is not a file (", error, ") -- no epoch is opened over an object nobody wrote"], "") }
+  }
+}
+
+fn harness_alignment_epoch_already_opened(check_directory: String, checkpoint: AlignmentCheckpointIdentity, next_epoch: Int) -> Bool {
+  match harness_alignment_epoch_record_present(check_directory: check_directory, checkpoint: checkpoint, next_epoch: next_epoch) {
+    EpochRecordPresent => true
+    EpochRecordUnreadable { detail: _ } => true
+    EpochRecordAbsent => false
+  }
+}
+
+fn harness_alignment_open_epoch(
+  check_directory: String,
+  checkpoint: AlignmentCheckpointIdentity,
+  next_epoch: Int,
+  verdict: AlignmentVerdict,
+) -> HarnessAlignmentEpochOpening {
+  let path = harness_alignment_epoch_opened_path(check_directory: check_directory, checkpoint: checkpoint, next_epoch: next_epoch)
+  match harness_alignment_epoch_record_present(check_directory: check_directory, checkpoint: checkpoint, next_epoch: next_epoch) {
+    EpochRecordPresent =>
+      EpochAlreadyOpen {
+        path: path,
+        detail: join([
+          "epoch ", to_string(value: next_epoch), " of attempt ", checkpoint.attempt_lineage,
+          " is already recorded as opened at ", path,
+          " -- the lineage advances once per checkpoint, so the continuation does not run again",
+        ], ""),
+      }
+    EpochRecordUnreadable { detail } =>
+      EpochOpeningUnwritable { cause: join(["the epoch record ", detail], "") }
+    EpochRecordAbsent => {
+      let written = Filesystem.Write(path: path, content: harness_alignment_epoch_opened_line(checkpoint: checkpoint, next_epoch: next_epoch, verdict: verdict))
+      if written.success {
+        EpochOpened { path: path }
+      } else {
+        EpochOpeningUnwritable { cause: join(["the epoch opening could not be recorded at ", path, ": ", written.error, " -- an epoch that cannot be recorded was not opened"], "") }
+      }
+    }
+  }
+}
+
 // THE PUBLICATION, in one write. The verdict and the next cadence state travel together in one body
 // at a path keyed by the checkpoint digest; either the whole record lands or nothing does, and a
 // caller that gets `Published { success: false }` has resumed nothing.
@@ -3301,10 +3415,39 @@ fn harness_alignment_resume_gate(
                   JsonMemberFound { value: verdict_json } =>
                     match alignment_verdict_decode_json(v: verdict_json) {
                       Present { value: verdict } =>
-                        if harness_alignment_is_stopped(verdict: verdict) {
-                          ResumeRefused { cause: "the published verdict stops the line -- a stopped lineage resumes on a re-plan, not on this gate" }
-                        } else {
-                          ResumedOnce { next_epoch: checkpoint.epoch + 1, checkpoint: checkpoint }
+                        // THE GATE HOLDS NO STOP DECISION OF ITS OWN. Which verdict stops the line is
+                        // decided in exactly one place -- alignment_next_interval, which maps that verdict
+                        // to CadenceStepStopTheLine -- and this gate already reads that step's output into
+                        // the published cadence. So the gate asks the SAME authority the same question
+                        // about the SAME published state and matches its coproduct. A Bool predicate here
+                        // restating the constraint would be a second representation of it, free to drift
+                        // the day the law moves -- and the drift would be silent, because the publication
+                        // would say stopped while the gate kept opening epochs.
+                        match json_object_unique_member(v: doc, key: "cadence") {
+                          JsonMemberFound { value: cadence_json } =>
+                            match alignment_cadence_state_decode_document(doc: cadence_json) {
+                              AlignmentCadenceStateDecoded { state: published_cadence } =>
+                                match alignment_next_interval(
+                                  level_index: 0,
+                                  current: alignment_state_interval(state: published_cadence, level_index: 0),
+                                  verdict: verdict,
+                                ) {
+                                  CadenceStepStopTheLine => StoppedByVerdict {
+                                    verdict: verdict,
+                                    cadence: published_cadence,
+                                  }
+                                  CadenceStepInterval { turns: _ } => ResumedOnce {
+                                    next_epoch: checkpoint.epoch + 1,
+                                    checkpoint: checkpoint,
+                                    verdict: verdict,
+                                    cadence: published_cadence,
+                                  }
+                                }
+                              AlignmentCadenceStateNotDecodable { reason } => ResumeRefused {
+                                cause: join(["the published cadence does not decode -- verdict and cadence are published as ONE body, so a record without a decodable cadence is not a publication: ", reason], ""),
+                              }
+                            }
+                          _ => ResumeRefused { cause: "the published adjudication carries no cadence state -- verdict and cadence travel together or the record is not a publication" }
                         }
                       Absent => ResumeRefused { cause: "the published verdict names no kind the gate can act on" }
                     }
@@ -3324,7 +3467,6 @@ fn harness_alignment_resume_gate(
 // a supervision refusal so the caller sees WHY the lineage stayed closed.
 fn harness_alignment_resume_apply(
   pause: HarnessSupervisionPause,
-  verdict: AlignmentVerdict,
   checkpoint: AlignmentCheckpointIdentity,
   projection: HarnessAlignmentChainProjection,
   cadence: AlignmentCadenceState,
@@ -3354,7 +3496,33 @@ fn harness_alignment_resume_apply(
       ) {
         ResumeRefused { cause } =>
           harness_turn_supervision_unavailable(config: pause.config, cause: cause, steps_taken: pause.steps_taken, events: events)
-        ResumedOnce { next_epoch: _, checkpoint: _ } => harness_pause_apply(pause: pause, verdict: verdict, events: events)
+        // THE CONTINUATION EFFECT RUNS ON THE RECORD'S VERDICT. There is no verdict parameter on this
+        // function any more, by design: a separately supplied verdict that the caller acts on while a
+        // different one was adjudicated is a second authority over the same lineage, and the second one
+        // wins in practice because it is the one the code reads. And the epoch is opened through the
+        // durable record BEFORE the continuation runs, so a replay cannot run the effect twice.
+        ResumedOnce { next_epoch: next_epoch, checkpoint: resumed, verdict: verdict, cadence: _ } =>
+          match harness_alignment_open_epoch(
+            check_directory: pause.check_directory,
+            checkpoint: resumed,
+            next_epoch: next_epoch,
+            verdict: verdict,
+          ) {
+            EpochOpeningUnwritable { cause } =>
+              harness_turn_supervision_unavailable(config: pause.config, cause: cause, steps_taken: pause.steps_taken, events: events)
+            EpochAlreadyOpen { path: _, detail } =>
+              harness_turn_supervision_unavailable(config: pause.config, cause: detail, steps_taken: pause.steps_taken, events: events)
+            // The turn's own log carries the opening it made, as a trace; the durable record above is
+            // what decides whether this line is reached at all.
+            EpochOpened { path: _ } =>
+              harness_pause_apply(
+                pause: pause,
+                verdict: verdict,
+                events: concat(events, [harness_alignment_epoch_opened_line(checkpoint: resumed, next_epoch: next_epoch, verdict: verdict)]),
+              )
+          }
+        StoppedByVerdict { verdict: verdict, cadence: _ } =>
+          harness_pause_apply(pause: pause, verdict: verdict, events: events)
       }
   }
 }
@@ -3399,6 +3567,22 @@ fn harness_alignment_adjudicate_and_resume(
     steps_taken: steps_taken,
     extension: ".txt",
   )
+  // THE REPLAY IS REFUSED BEFORE ANYTHING ELSE RUNS. The keyed epoch record is the durable answer to
+  // "has this checkpoint already been resumed", so it is consulted first -- before the evidence log is
+  // read, before a chain is resolved, before a check is convened. A run that replays after a crash
+  // mid-resumption therefore cannot re-adopt an observation the worker has since extended, cannot
+  // resolve a chain that may have moved, and cannot convene a second check for an epoch already opened.
+  if harness_alignment_epoch_already_opened(check_directory: check_directory, checkpoint: checkpoint, next_epoch: checkpoint.epoch + 1) {
+    harness_turn_supervision_unavailable(
+      config: config,
+      cause: join([
+        "epoch ", to_string(value: checkpoint.epoch + 1), " of attempt ", checkpoint.attempt_lineage,
+        " is already recorded as opened -- this checkpoint has been adjudicated and resumed once; the entry re-opens nothing and convenes no check",
+      ], ""),
+      steps_taken: steps_taken,
+      events: events,
+    )
+  } else {
   match harness_alignment_recorded_evidence(events_path: config.events_path as String, observation_path: observation_path) {
     RecordedEvidenceAbsent { cause } =>
       harness_turn_supervision_unavailable(config: config, cause: cause, steps_taken: steps_taken, events: events)
@@ -3427,22 +3611,11 @@ fn harness_alignment_adjudicate_and_resume(
           )
       }
   }
+  }
 }
 
 // The projection travels to the resume step unchanged -- it is the admitted-root fact the receipt is
 // bound to, and rebuilding it downstream would be a second authority for the same claim.
 fn harness_alignment_projection_with_chain(chain: AlignmentResolvedChain, evidence: HarnessAlignmentCheckpointEvidence) -> HarnessAlignmentChainProjection {
   ProjectionAdmitted { chain: chain, evidence: evidence }
-}
-
-// A STOPPED LINEAGE IS NOT RESUMED BY THIS GATE: catastrophic misalignment is the verdict the belt
-// routes to a re-plan, and the only authority for what "stopped" means is the verdict sum itself.
-fn harness_alignment_is_stopped(verdict: AlignmentVerdict) -> Bool {
-  match verdict {
-    CatastrophicallyMisaligned { reason: _ } => true
-    Aligned => false
-    Misaligned { direction: _ } => false
-    ExtremelyMisaligned { direction: _ } => false
-    RoutedConflict { conflict: _ } => false
-  }
 }
