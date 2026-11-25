@@ -61,6 +61,7 @@ import gunbc.serving.serving_host_memory {
 }
 import gunbc.serving.serving_layout {
   ArtifactHeldEvictable, ArtifactHeldPinned, ServingArtifactHold, ServingArtifactRung, ServingDevice,
+  ServingLayoutResult,
   ServingSharedArtifact, host_6ce85c_a16_buses, host_6ce85c_grant, host_6ce85c_routed_expert_artifact,
   serving_artifact_charged_host_ram, srv3_grant, srv3_layout, srv3_routed_expert_artifact, srv4_grant,
   srv4_layout, srv4_routed_expert_artifact,
@@ -484,6 +485,20 @@ fn replica_shape_named_with_grant(p: ServingReplicaProfile, grant: ServingRetent
   serving_capacity_shape(a: replica_anchor_named_with_grant(p: p, grant: grant, deployment: deployment), p: serving_conversation_policy)
 }
 
+// THE JOINED ADMISSION: the replica's shape at the grant the LAYOUT BEING PROJECTED carries for this
+// deployment's device-group -- never the profile's own quote. THE OPERATOR'S REVIEW OF #17060 (2026-11-25)
+// FOUND THE SPLIT THIS CLOSES: the router row already joined on the projected layout (router_dev_policy::
+// router_dev_replica_shape through serving_replica_grant_for), but replica_engine_launch recomputed the shape
+// from the grant written on the PROFILE row -- so the same 2-turn srv3 profile projected onto a one-conversation
+// layout capped the router at 1 while the engine still reserved --parallel 2: the admitted concurrency decided
+// twice at a seam this PR had left (gunbc.design_argument::single_authority). BOTH CONSUMERS OF THE ADMISSION
+// NUMBER NOW RUN THIS ONE FUNCTION -- the router row's cap (router_dev_replica_shape) and the engine's batch
+// slots (replica_engine_launch) -- and a layout or group the fold does not carry refuses as a grant
+// (serving_replica_grant_for), a refusal that reaches BOTH ends: the router row refuses, the launch refuses.
+fn replica_admission_named(p: ServingReplicaProfile, layout: ServingLayoutResult, deployment: String, group: NonEmptyStr) -> ServingCapacityShape {
+  replica_shape_named_with_grant(p: p, grant: serving_replica_grant_for(layout: layout, deployment: deployment, group: group), deployment: deployment)
+}
+
 // ── THE ENGINE'S BATCH SLOTS ARE THE ADMISSION NUMBER, READ FROM ITS AUTHORITY ─────────────────
 //
 // ONE FACT, ONE OWNER (gunbc.design_argument::single_authority). How many conversations a replica runs at
@@ -501,7 +516,8 @@ fn replica_shape_named_with_grant(p: ServingReplicaProfile, grant: ServingRetent
 // production row carries StrataLaunchParameters, which has NO batch-slot field, and this function is the
 // model's ONLY consumer-side path from a profile row to a launchable record -- the slot count enters as an
 // argument of extdeps.strata.serve_flags::strata_launch_with_parallel and this is where that argument comes
-// from: the shape. That is what is established ON THE MODEL SIDE -- and even that is not structural: the
+// from: the replica's JOINED ADMISSION (replica_admission_named -- the projected layout's grant x the shape),
+// the one fact the router row also caps on. That is what is established ON THE MODEL SIDE -- and even that is not structural: the
 // bridge is public and StrataServeFlags remains directly constructible, so nothing here makes the 2026-11-24
 // state unnameable to a caller that bypasses this derivation. And the derivation has no production consumer
 // yet -- the witnesses execute it, nothing in production does -- so on the production path the class sits
@@ -526,8 +542,11 @@ type ReplicaEngineLaunch
   | EngineLaunchRefused { deployment: NonEmptyStr, reason: EngineLaunchRefusalReason }
 
 // THE ONLY PATH FROM A PROFILE'S LAUNCH PARAMETERS TO A LAUNCHABLE STRATA RECORD. The slot count is not a
-// parameter of this call -- callers cannot pass one; it is read from the replica's own capacity shape.
-fn replica_engine_launch(p: ServingReplicaProfile) -> ReplicaEngineLaunch {
+// parameter of this call -- callers cannot pass one; it is read from the replica's JOINED ADMISSION
+// (replica_admission_named: the grant of the layout being projected, x the shape), the same function the
+// router row's cap reads. The layout and group are the projection's inputs, not decisions: a caller supplies
+// WHICH layout is being projected (the same ServingLayoutResult the router roster projects), never a number.
+fn replica_engine_launch(p: ServingReplicaProfile, layout: ServingLayoutResult, group: NonEmptyStr) -> ReplicaEngineLaunch {
   match p.model {
     LilModel { } => EngineLaunchRefused {
       deployment: p.id,
@@ -544,7 +563,7 @@ fn replica_engine_launch(p: ServingReplicaProfile) -> ReplicaEngineLaunch {
       } },
     },
     StrataModel { artifact: _, artifact_standing: _, flags: Present { value: params }, flags_standing: _ } =>
-      match replica_shape_named(p: p, deployment: p.id as String) {
+      match replica_admission_named(p: p, layout: layout, deployment: p.id as String, group: group) {
         ServingShapeRefused { deployment: _, reason: r } => EngineLaunchRefused { deployment: p.id, reason: LaunchShapeRefused { reason: r } }
         ServingShapeDerived { deployment: _, turns: t, held: _, bound: _, cold_reread: _ } => match positive_measure_count_from_int(count: t as Int) {
           PositiveMeasureCountRefused { cause: _ } => EngineLaunchRefused { deployment: p.id, reason: LaunchTurnsZero }
