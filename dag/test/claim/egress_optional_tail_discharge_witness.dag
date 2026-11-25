@@ -14,10 +14,13 @@ module test.claim.egress_optional_tail_discharge_witness
 // WHERE THIS WITNESS EXECUTES, stated rather than implied
 // (gunbc.design_argument::fail_closed). This module is outside
 // v2.workflow.required_floor required_gate_prefixes and
-// required_gate_authored_modules, so the floor DISCOVERS it and never plans
-// it there (DeclinedOutsideGateClosure); its neighbours under test.claim (the
-// fabric grant witnesses state their own position in the same pattern) sit in
-// the same position. The executions this evidence gets are (1) local runs and
+// required_gate_authored_modules (git grep of this module's name across the
+// repo on main: 0 hits — no gate plans it, hence DeclinedOutsideGateClosure); it sits under test.claim among
+// the claim-module corpus the floor walks, the same position its neighbours
+// occupy (the fabric grant witnesses state their own position in the same
+// pattern). Corpus-walk discovery is asserted by placement here and shown by
+// this row's whole-corpus leg when it runs. The executions this evidence
+// gets are (1) local runs and
 // this PR's changed-witness selection, and (2) this row's leg D claim_batch
 // --entry run, whose raw PASS lines are posted to PR #17041 as a run link —
 // a green claimed here without a posted run link is not done. Weakening the
@@ -29,7 +32,7 @@ module test.claim.egress_optional_tail_discharge_witness
 // so the .first() site yields Absent for the right reason: the transport table
 // does not cover this host. The positive control asserts srv3 IS present in the
 // table, confirming the .first() site discriminates on table membership rather
-// than always yielding Absent. Perturbing the consumer's Absent arm from
+// than yielding Absent for every host. Perturbing the consumer's Absent arm from
 // HostCancellationUnobserved to any other standing makes the negative-control arm
 // return false, because the match falls to `_ => false` rather than the typed-
 // refusal arm.
