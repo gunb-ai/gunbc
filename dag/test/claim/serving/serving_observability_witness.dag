@@ -3,14 +3,18 @@ module test.claim.serving.serving_observability_witness
 import std.types { String, Bool, List, Port, NonEmptyStr }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Optional, Present, Absent }
+import std.algebra { length }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import gunbc.serving.serving_observability {
   EngineFrontProxyVerdict, EngineFrontProxyRendered, EngineFrontProxyRefused,
   EngineFrontRoute, engine_front_required_routes,
   engine_front_proxy_config, engine_front_server_directives, engine_front_proxies_route,
   engine_front_route_consumer, engine_front_unserved_consumers,
-  InstrumentDecision, NotAnInstrument, NamedInstrument, cold_token_cause_breakdown_standing,
-  RouterProbeStanding, TransientReceiptOfHandManagedRouter, ModelledRouterInstrument, router_probe_line_standing,
+  InstrumentStanding, InstrumentProposal, InstrumentAddGate, instrument_promotion_admitted,
+  cold_token_cause_breakdown_standing,
+  RouterProbeStanding, ProbeStanding, TransientReceiptOfHandManagedRouter, ModelledRouterInstrument,
+  router_probe_line_standing, ProbeFactsCarried, RouterProbeRetirement, MayRetire, KeepHandManagedReceipt,
+  router_probe_attribution_is_modelled, router_probe_retirement,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -76,24 +80,60 @@ test fn the_metrics_route_names_its_progress_consumer_by_reference() -> Bool {
   }
 }
 
-// ITEM (2): the per-cause cold-token breakdown is recorded NOT an instrument, and its would-be consumer is
-// a typed reference (a rename of engine_progress_read would break this), not prose.
-test fn cold_token_cause_breakdown_is_recorded_not_an_instrument_with_a_typed_consumer() -> Bool {
-  match cold_token_cause_breakdown_standing {
-    NotAnInstrument { would_be_consumer: w, reason: _, add_when_trigger: _ } =>
-      declaration_ref_eq(a: w, b: metrics_reader_ref())
-    NamedInstrument { consumer: _, discriminator: _, acceptable_cost: _ } => false
+// ITEM (2): the per-cause cold-token breakdown is gated OUT of the roster. The witness drives the real gate
+// fold three ways -- the real standing refuses (RED, the decision), an open matched gate admits (accepted
+// positive control), and a missing discriminator is refused (proves the typed condition is read) -- so the
+// standing is consumed for behaviour, not existence (gunbc.design_argument::consumption).
+fn matched_open_gate() -> InstrumentStanding {
+  InstrumentStanding {
+    is_instrument: false,
+    promotion: Present { value: InstrumentAddGate {
+      budgets_open: true,
+      required_consumer: metrics_reader_ref(),
+      needs_discriminator: true,
+      needs_declared_cost: true,
+    } },
   }
 }
 
-// ITEM (3): the router probe lines' standing is the transient receipt of the HAND-MANAGED router, and it
-// names the modelled rows that retire it by typed reference -- read off the typed carrier, not grepped.
-test fn router_probe_line_standing_is_a_hand_managed_receipt_pointing_at_the_modelled_rows() -> Bool {
-  let s = router_probe_line_standing
-  match s.standing {
-    TransientReceiptOfHandManagedRouter =>
-      any(s.retires_via, d => (d.module_path as String) == "gunbc.serving.serving_relocation")
-        && any(s.retires_via, d => (d.module_path as String) == "gunbc.serving.router_realization")
-    ModelledRouterInstrument => false
-  }
+test fn cold_token_cause_breakdown_is_gated_out_of_the_roster() -> Bool {
+  // RED: the real standing (is_instrument:false, budgets_open:false) refuses even a fully-formed proposal --
+  // the decision that the breakdown is NOT an instrument, produced by the fold.
+  !instrument_promotion_admitted(
+    standing: cold_token_cause_breakdown_standing,
+    proposal: InstrumentProposal { consumer: metrics_reader_ref(), names_discriminator: true, declares_cost: true },
+  )
+    // ACCEPTED positive control: the SAME fold admits once the gate is open and every typed condition matches.
+    // The refusal above is therefore discriminating (driven by the typed fields), not a constant false.
+    && instrument_promotion_admitted(standing: matched_open_gate(),
+      proposal: InstrumentProposal { consumer: metrics_reader_ref(), names_discriminator: true, declares_cost: true })
+    // The discriminator condition is genuinely read: an open gate still refuses a proposal that omits it.
+    && !instrument_promotion_admitted(standing: matched_open_gate(),
+      proposal: InstrumentProposal { consumer: metrics_reader_ref(), names_discriminator: false, declares_cost: true })
+}
+
+// ITEM (3): the router probe lines are a transient receipt of the HAND-MANAGED router. Both gate folds are
+// driven for behaviour: the receipt is not a modelled fact, the lines cannot retire while the modelled rows
+// carry no facts (RED -- the hand-managed TEMPORARY note is no authority to delete them), and once BOTH
+// facts are carried on the modelled side the same fold hands the lines off to the retires_via rows (accepted
+// positive control), so retires_via and the standing are read, not asserted to exist.
+test fn router_probe_line_standing_is_a_hand_managed_receipt_that_cannot_self_retire() -> Bool {
+  // attribution built on the hand-managed receipt is NOT a modelled fact of the router (reads the standing)
+  !router_probe_attribution_is_modelled(s: router_probe_line_standing)
+    // RED: with the modelled rows not yet carrying the facts, the lines cannot retire
+    && match router_probe_retirement(s: router_probe_line_standing,
+         carried: ProbeFactsCarried { prefix_overlap_modelled: false, token_usage_modelled: false }) {
+         KeepHandManagedReceipt => true
+         MayRetire { hands_off_to: _ } => false
+       }
+    // ACCEPTED positive control: once BOTH facts are carried the same fold hands off to the three retires_via
+    // rows -- proving the fold discriminates and reads retires_via (a structural count, not a string grep).
+    && match router_probe_retirement(s: router_probe_line_standing,
+         carried: ProbeFactsCarried { prefix_overlap_modelled: true, token_usage_modelled: true }) {
+         MayRetire { hands_off_to: rows } => length(rows) == 3
+         KeepHandManagedReceipt => false
+       }
+    // the ModelledRouterInstrument arm of the standing reads as a modelled fact (both arms exercised)
+    && router_probe_attribution_is_modelled(s: RouterProbeStanding {
+         standing: ModelledRouterInstrument, retires_via: router_probe_line_standing.retires_via })
 }

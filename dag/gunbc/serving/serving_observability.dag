@@ -2,7 +2,8 @@ module gunbc.serving.serving_observability
 
 import std.types { String, NonEmptyStr, List, Bool, Port }
 import std.optional { Optional, Present, Absent }
-import std.decl_ref { DeclarationRef, decl_ref }
+import std.algebra { length }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import extdeps.proxy.openresty {
   NginxDirective, NginxToken, ServerBlock, ListenTlsOn, SslCertificate, SslCertificateKey,
   LocationBlock, PrefixMatch, ProxyPassToHost, ProxyHttpVersion11, nginx_token, render_nginx_directives,
@@ -38,8 +39,10 @@ import extdeps.proxy.openresty {
 // WHO CONSUMES /metrics (the consumption answer the boundary needs). Not the router (the router is one
 // of the readers that CANNOT reach srv4's /metrics today). Each required route carries its consumer as a
 // typed DeclarationRef (a rename/deletion of a consumer is a decidable break -- gunbc.design_argument::
-// single_authority, ::source_annotations), and the consumer reference is CONSUMED BY EXECUTION by
-// engine_front_unserved_consumers, so the field is not read only by a witness. The readers: the metrics
+// single_authority, ::source_annotations). The consumer reference is READ by engine_front_unserved_consumers,
+// whose ONLY caller today is this module's claim witness at the declared frontier; no production route
+// executes it yet, and the claim does not assert one (gunbc.design_argument::epistemic_humility). The
+// roster, not this fold, is the authority. The readers: the metrics
 // route is consumed by gunbc.serving.engine_progress::engine_progress_read, the models route by
 // gunbc.serving.serving_availability::serving_availability_bracketing_read, the chat route by
 // gunbc.serving.serving_front_door::front_door_admit.
@@ -223,14 +226,68 @@ fn engine_front_route_consumer(path: NonEmptyStr) -> Optional<DeclarationRef> {
 // as deduced facts (gunbc.design_argument::epistemic_humility). The decision and its reason are recorded
 // here, in the owning model, instead of building a row in gunbc.instrument_targets.
 
-type InstrumentDecision
-  = NamedInstrument { consumer: DeclarationRef, discriminator: NonEmptyStr, acceptable_cost: NonEmptyStr }
-  | NotAnInstrument { would_be_consumer: DeclarationRef, reason: NonEmptyStr, add_when_trigger: NonEmptyStr }
+// What a candidate wide instrument must already carry to enter gunbc.instrument_targets. The CI contract's
+// three preconditions (consumer, discriminator, acceptable cost) are typed facts, not sentences: a consumer
+// is a typed DeclarationRef, a discriminator and a cost are Booleans a fold branches on
+// (gunbc.design_argument::source_annotations -- these are the conditions, so they are a typed carrier).
+type InstrumentProposal = InstrumentProposal {
+  consumer: DeclarationRef
+  names_discriminator: Bool
+  declares_cost: Bool
+}
 
-data cold_token_cause_breakdown_standing: InstrumentDecision = NotAnInstrument {
-  would_be_consumer: decl_ref(module_path: "gunbc.serving.engine_progress", decl_name: "engine_progress_read"),
-  reason: "a new wide instrument must first name its real consumer, discriminator and acceptable cost (gunbc.design_document::ci_contract_blocks), and the job roster and CI budgets are closed to growth. The breakdown joins three independent authorities (the router's prefixprobe/usageprobe/upgrade-move lines, engine /metrics snapshots, and Strata's per-request reuse line) with no single executing fold on the required path, so a permanent wide instrument has no standing consumer and a cost paid against closed budgets -- the bad process gunbc.design_ruling::bad_process_is_worse_than_no_process retires. The measured per-cause counts stand as an operator-observed receipt of the 2026-11-24 session (extdeps.external_authority::CitedFigureStanding), not as deduced facts (gunbc.design_argument::epistemic_humility)." as NonEmptyStr,
-  add_when_trigger: "promote it to a row in gunbc.instrument_targets only when a named consumer needs the per-cause split on an executing route and can carry the per-snapshot cost of the /metrics differencing" as NonEmptyStr,
+// What the standing records about whether the roster may grow a row for this observation.
+type InstrumentAddGate = InstrumentAddGate {
+  budgets_open: Bool
+  required_consumer: DeclarationRef
+  needs_discriminator: Bool
+  needs_declared_cost: Bool
+}
+
+type InstrumentStanding = InstrumentStanding {
+  is_instrument: Bool
+  promotion: Optional<InstrumentAddGate>
+}
+
+// THE GATE -- the real consumer of the standing. It produces a decision (a Bool) from the standing's typed
+// fields, so the standing is read for behaviour, not asserted to exist (gunbc.design_argument::consumption:
+// "a witness asserting existence rather than exercising behavior" is the tell this removes). The claim
+// witness drives BOTH outcomes: the real standing refuses (the breakdown stays out of the roster), and a
+// standing whose gate is open and matched admits -- proving the refusal is discriminating, not a constant
+// false. The CI contract it encodes: gunbc.design_document::ci_contract_blocks; the ruling it enforces:
+// gunbc.design_ruling::bad_process_is_worse_than_no_process.
+fn instrument_promotion_admitted(standing: InstrumentStanding, proposal: InstrumentProposal) -> Bool {
+  if standing.is_instrument {
+    true
+  } else {
+    match standing.promotion {
+      Present { value: gate } =>
+        gate.budgets_open
+          && declaration_ref_eq(a: gate.required_consumer, b: proposal.consumer)
+          && (!gate.needs_discriminator || proposal.names_discriminator)
+          && (!gate.needs_declared_cost || proposal.declares_cost)
+      Absent => false
+    }
+  }
+}
+
+// The decision, recorded as typed facts the gate reads. is_instrument: false and budgets_open: false encode
+// "not a named instrument while the roster and CI budgets are closed to growth"; required_consumer is the
+// would-be consumer as a typed reference (a rename of engine_progress_read is a decidable break). The prose
+// WHY -- that the breakdown joins three independent authorities (router prefixprobe/usageprobe/upgrade-move
+// lines, engine /metrics snapshots, Strata's per-request reuse line) with no single executing fold on the
+// required path, so a permanent wide instrument has no standing consumer and a cost paid against closed
+// budgets -- lives in the block comment above this row, and the measured per-cause counts are an
+// operator-observed receipt of the 2026-11-24 session (extdeps.external_authority::CitedFigureStanding),
+// never deduced facts (gunbc.design_argument::epistemic_humility).
+data cold_token_cause_breakdown_standing: InstrumentStanding = InstrumentStanding {
+  is_instrument: false,
+  promotion: Present { value: InstrumentAddGate {
+    budgets_open: false,
+    required_consumer: decl_ref(module_path: "gunbc.serving.engine_progress", decl_name: "engine_progress_read"),
+    needs_discriminator: true,
+    needs_declared_cost: true,
+  } },
 }
 
 // ── ITEM (3): THE ROUTER's prefixprobe/usageprobe LINES -- WHERE THEIR STANDING BELONGS ─────────────
@@ -247,20 +304,50 @@ data cold_token_cause_breakdown_standing: InstrumentDecision = NotAnInstrument {
 
 type ProbeStanding = TransientReceiptOfHandManagedRouter | ModelledRouterInstrument
 
+// The two facts the 2026-11-24 attribution drew from these lines, as a typed carrier of the retirement
+// condition rather than a prose paragraph (source_annotations: a dissolution condition belongs in a typed
+// carrier). The hand-managed lines retire only when the modelled rows in retires_via carry BOTH.
+type ProbeFactsCarried = ProbeFactsCarried {
+  prefix_overlap_modelled: Bool
+  token_usage_modelled: Bool
+}
+
 type RouterProbeStanding = RouterProbeStanding {
-  hand_managed_source: NonEmptyStr
   standing: ProbeStanding
   retires_via: List<DeclarationRef>
-  retirement_condition: NonEmptyStr
+}
+
+type RouterProbeRetirement = MayRetire { hands_off_to: List<DeclarationRef> } | KeepHandManagedReceipt
+
+// REAL CONSUMER of `standing`: is attribution built on these lines a modelled fact of the router, or only an
+// operator-observed receipt of the hand-managed router? It reads the standing, and the hand-managed receipt
+// never reads as modelled (gunbc.design_argument::epistemic_humility). gunbc.serving.router_realization
+// emits no log line, so a fact of these lines must not be read as a fact of the modelled router.
+fn router_probe_attribution_is_modelled(s: RouterProbeStanding) -> Bool {
+  match s.standing {
+    ModelledRouterInstrument => true
+    TransientReceiptOfHandManagedRouter => false
+  }
+}
+
+// REAL CONSUMER of `retires_via` and of the retirement condition: when may the hand-managed prefixprobe/
+// usageprobe lines be removed? Only once the modelled rows in retires_via carry BOTH facts -- the move the
+// modelled router's realization must make first (class B5, router relocation). The TEMPORARY note written on
+// the hand-managed file cannot retire them on its own; that note outranked no consumer, which is exactly the
+// failure this class records. The witness drives both outcomes.
+fn router_probe_retirement(s: RouterProbeStanding, carried: ProbeFactsCarried) -> RouterProbeRetirement {
+  if length(s.retires_via) > 0 && carried.prefix_overlap_modelled && carried.token_usage_modelled {
+    MayRetire { hands_off_to: s.retires_via }
+  } else {
+    KeepHandManagedReceipt
+  }
 }
 
 data router_probe_line_standing: RouterProbeStanding = RouterProbeStanding {
-  hand_managed_source: "srv1 ~/router/nginx.conf, hand-managed; prefixprobe/usageprobe marked TEMPORARY 2026-10-27/28 (calm-crab-645)" as NonEmptyStr,
   standing: TransientReceiptOfHandManagedRouter,
   retires_via: [
     decl_ref(module_path: "gunbc.serving.router_realization", decl_name: "router_realization_contract"),
     decl_ref(module_path: "gunbc.serving.turn_admission", decl_name: "serving_co_tenancy"),
     decl_ref(module_path: "gunbc.serving.serving_relocation", decl_name: "admit_state_method"),
   ],
-  retirement_condition: "retire these hand-managed lines only once the rows in retires_via carry the same prefix-overlap and token-usage facts as typed observations on the authority that decides the move (class B5, router relocation); until then the attribution built on them is an operator-observed receipt of 2026-11-24, never a modelled instrument" as NonEmptyStr,
 }
