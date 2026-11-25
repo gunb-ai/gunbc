@@ -80,11 +80,18 @@ import gunbc.guarantee_probe_corpus {
   DarkSuiteWitnessDisposition,
   MigratedToEnrolledDagProbe,
 }
+// AUTHORED-IN-THIS-PR (review 98503 follow-up): `disposed_ids_have_no_internal_duplicates` calls
+// distinct_string_count directly, but only its WRAPPERS (guarantee_class_ids_unique et al.) were
+// imported, so the bare name had no established callee identity and the whole leg failed at resolve
+// -- the check the reviewer asked to be made true could not execute at all. The callee is
+// #gunbc.guarantee_measurement::distinct_string_count; importing it names the identity the effect
+// join needs. Nothing else in this file changes meaning.
 import gunbc.guarantee_measurement {
   observed_is_verdict,
   MeasurementRevision, ContentFingerprint, GitRevision,
   guarantee_class_ids_unique, guarantee_path_ids_unique, guarantee_probe_ids_unique,
   probe_set_digest,
+  distinct_string_count,
 }
 import gunbc.compile_diagnostic_census {
   CompileDiagnosticCensus,
