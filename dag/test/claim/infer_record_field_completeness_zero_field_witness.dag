@@ -9,7 +9,7 @@ import gunbc.guarantee_probe_corpus {
 }
 import gunbc.compile_diagnostic_census { CompileDiagnosticCensus }
 import gunbc.guarantee_measurement { GuaranteeProbeId }
-import std.types { String, Bool, Int }
+import std.types { String, Bool, Int, List }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.optional { Present, Absent }
 import std.process { ProcessExit }
@@ -73,6 +73,18 @@ data record_completeness_zero_field_product_source: String = "module probe_floor
 data record_completeness_zero_field_variant_source: String = "module probe_floor_record_zero_variant\ntype Shape = Circle { radius: Int } | Square\nfn f() -> Shape { Circle { } }\n"
 data record_completeness_bare_name_variant_source: String = "module probe_floor_record_bare_variant\ntype Shape = Circle { radius: Int } | Square\nfn f() -> Shape { Circle }\n"
 data record_completeness_bare_name_product_source: String = "module probe_floor_record_bare_product\ntype Pair { a: Int, b: Int }\nfn f() -> Pair { Pair }\n"
+
+// THE ROSTER OF WHAT THIS MODULE EXECUTES. Each id below is passed to a census route by a leg in this
+// file through row_premise, and this fn is a derived source of the dag-native arm in
+// #test.claim.guarantee_probe_corpus_witness::dark_suite_dispositions_cover_migrated_v1_probes — so a
+// v1-compile probe leg added here without rostering its id reds that leg's completeness conjunct.
+fn record_completeness_executed_v1_compile_probe_ids() -> List<String> {
+  [
+    floor_record_completeness_bare_name_control_probe as String,
+    floor_record_completeness_zero_field_product_control_probe as String,
+    floor_record_completeness_zero_field_variant_control_probe as String,
+  ]
+}
 
 // A PRODUCT WITH AN EMPTY BRACE PAIR REFUSES, ONE MissingField PER DECLARED FIELD. This is the
 // adequacy control for the zero-field family: it establishes that the completeness check DOES

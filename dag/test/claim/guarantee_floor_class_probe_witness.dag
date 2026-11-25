@@ -210,6 +210,31 @@ data cardinality_seam_green_source: String = "module probe_floor_cs_green\ntype 
 
 data cardinality_seam_call_arg_control_source: String = "module probe_floor_cs_callarg\ntype Level { id: String, parent: Level? }\nfn use_level(l: Level) -> String { l.id }\nfn probe(l: Level) -> String { use_level(l: l.parent) }\n"
 
+// THE ROSTER OF WHAT THIS MODULE EXECUTES. Each id below is passed to a census route by a leg in this
+// file, and this fn is the derived source of the dag-native arm in
+// #test.claim.guarantee_probe_corpus_witness::dark_suite_dispositions_cover_migrated_v1_probes — so a v1
+// -compile probe leg added here without rostering its id reds that leg's completeness conjunct, and an id
+// rostered without a registered row reds its registration conjunct.
+fn floor_class_executed_v1_compile_probe_ids() -> List<String> {
+  [
+    floor_exhaustiveness_type_variable_hole_probe as String,
+    floor_field_through_generics_record_control_probe as String,
+    floor_field_through_generics_green_probe as String,
+    floor_field_through_generics_hole_probe as String,
+    floor_generic_instantiation_green_probe as String,
+    floor_generic_instantiation_monomorphic_control_probe as String,
+    floor_generic_instantiation_hole_probe as String,
+    floor_parse_list_separator_control_probe as String,
+    floor_parse_list_separator_green_probe as String,
+    floor_parse_list_separator_hole_probe as String,
+    floor_record_completeness_green_probe as String,
+    floor_record_completeness_red_probe as String,
+    floor_cardinality_seam_hole_probe as String,
+    floor_cardinality_seam_green_probe as String,
+    floor_cardinality_seam_call_arg_control_probe as String,
+  ]
+}
+
 // CLIMBED: the type-argument hole is closed at b5af75f4d339 (gunbc#9416; red at its parent 107304a57920). The probe was
 // `floor_generic_instantiation_is_still_silently_accepted`; per gunbc.design_argument::guarantee_ladder (dissolution on
 // climb) it is flipped to the refusal and stays enrolled as the permanent regression control for the higher rung.
