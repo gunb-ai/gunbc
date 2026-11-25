@@ -17957,6 +17957,8 @@ fn bootstrap_invocation_receipt_path(receipt_root: &str) -> Result<std::path::Pa
 /// this declaration knows only source/declaration identity, named String bindings, an internal
 /// receipt channel, and the BootstrapSuccessorOperation execution class enforced by the model.
 /// It reuses the retained resolver/evaluator in-process and never shells out to another gunbc.
+/// `seed_identity` is the running binary's build identity, handed in by the CLI host: this library
+/// never reads `GUNBC_BUILD_IDENTITY` itself, so its compilation does not move with the commit.
 pub fn run_bootstrap_dag_operation(
     source_roots: &[String],
     entry_path: &str,
@@ -17965,6 +17967,7 @@ pub fn run_bootstrap_dag_operation(
     mut public_operands: Vec<(String, String)>,
     receipt_parameter: &str,
     receipt_root: &str,
+    seed_identity: &str,
 ) -> ! {
     if source_roots.is_empty() || entry_path.is_empty() || declaration_module.is_empty() {
         eprintln!("REFUSED: known bootstrap operation has an incomplete modeled binding");
@@ -18042,7 +18045,6 @@ pub fn run_bootstrap_dag_operation(
     if !receipt.ends_with('\n') {
         println!();
     }
-    let seed_identity = env!("GUNBC_BUILD_IDENTITY");
     match terminal {
         ExitClass::Success => {
             eprintln!(
