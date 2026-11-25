@@ -213,13 +213,33 @@ test fn filesystem_compile_gate_trigger_names_the_two_self_host_sites() -> Bool 
     && (filesystem_wall_compile_gate_trigger.migrate_to_bound_handler == "emit_file_call")
     && (filesystem_wall_compile_gate_trigger.gate_connects_when
       == ^self_host_direct_reaches_migrate_to_bound_handler)
-    // THE CAPABILITY IS NAMED, not just the consequence (guarantee_ladder; Manager B): the carrier names
-    // the emit-side handler BINDING as the missing capability, and names it as a DIFFERENT thing from the
-    // site migration -- two symbols, not one blurred rung.
+    // THE CAPABILITY IS NAMED, not just the consequence (gunbc.design_argument::guarantee_ladder; Manager
+    // B): the carrier holds Manager B's capability SENTENCE verbatim -- "emit_rust binds a native handler at
+    // an ordinary-function entry" -- and the witness asserts THAT STRING, not a row id: a row id asserted
+    // here could be renamed under the trigger and leave it claiming to hold (B: "Not a row id, so it
+    // survives a rename"). The symbol handle and the consequence symbol are separate, so capability and
+    // consequence cannot collapse into one word.
     && (filesystem_wall_compile_gate_trigger.missing_capability
       == ^emit_side_native_filesystem_handler_binding_to_ordinary_function_entry)
     && (filesystem_wall_compile_gate_trigger.missing_capability
       != filesystem_wall_compile_gate_trigger.gate_connects_when)
+    && (filesystem_wall_compile_gate_trigger.capability_text
+      == "emit_rust binds a native handler at an ordinary-function entry")
+    // Non-echo legs: the string's CONTENT is checked piecewise against what it must name (the emitter stage
+    // as subject, the entry kind as object), and it is checked to be NEITHER of the other carrier strings --
+    // so an edit that swaps the capability for the migration text or the handler name fails on shape, not
+    // just on the constant comparison.
+    && string_contains(s: filesystem_wall_compile_gate_trigger.capability_text, pattern: "emit_rust")
+    && string_contains(s: filesystem_wall_compile_gate_trigger.capability_text, pattern: "ordinary-function entry")
+    && (filesystem_wall_compile_gate_trigger.capability_text
+      != filesystem_wall_compile_gate_trigger.migrate_to_bound_handler)
+    && (filesystem_wall_compile_gate_trigger.capability_text
+      != filesystem_wall_compile_gate_trigger.awaiting_migration_module)
+    && (!string_contains(s: filesystem_wall_compile_gate_trigger.capability_text, pattern: "self_host"))
+    // A row id may sit BESIDE the capability as a cross-reference, never instead of it: the capability text
+    // itself must not be a row identifier.
+    && (!string_contains(s: filesystem_wall_compile_gate_trigger.capability_text, pattern: "rn_"))
+    && (!string_contains(s: filesystem_wall_compile_gate_trigger.capability_text, pattern: "egress-effects-1"))
 }
 
 // THE NEWLY-ADDED-SITE CONTROL (Manager B's binding arm). This is NOT the planted-out-of-bounds arm: a

@@ -1241,8 +1241,9 @@ data effect_demand_seam_roster: List<SeamStanding> = [
 // "a dissolution condition belongs in a typed carrier"). The census predicates above refuse a direct
 // filesystem_read reach by name; the gate that turns a red census into a compile-time stop connects when
 // THIS trigger dissolves -- i.e. when the two named self_host.dag sites migrate to the bound handler and so
-// leave the in-population offender set. WHAT THE TRIGGER CARRIES (guarantee_ladder: the trigger names the
-// CAPABILITY; review 98184 finding 1 asked that the named capability be the RIGHT one): the reach EXTRACTOR
+// leave the in-population offender set. WHAT THE TRIGGER CARRIES (gunbc.design_argument::guarantee_ladder:
+// "the trigger names the CAPABILITY restored"; Manager B via eager-koi-371, verbatim: the trigger names
+// "the emit-side binding of a Filesystem handler to an ordinary-function entry (D11)"): the reach EXTRACTOR
 // shipped in this change -- filesystem_effect_reaches_from_phase1_rows /
 // filesystem_effect_emitted_closure_census, consuming the resolver's own phase-1 rows -- is NOT the missing
 // capability anymore; the missing_capability field names the one that is: the EMIT-SIDE binding of the
@@ -1257,14 +1258,22 @@ type FilesystemWallCompileGateTrigger {
   awaiting_migration_declarations: List<String>
   migrate_to_bound_handler: String
   gate_connects_when: Symbol
-  // THE CAPABILITY THIS TRIGGER CARRIES, named on its face (guarantee_ladder: "the trigger names the
-  // CAPABILITY restored"; Manager B via eager-koi-371: the trigger must name the EMIT-SIDE HANDLER BINDING
-  // explicitly, not a generic migration). What is missing is not a handler -- emit_file_call exists and is
-  // the one realization handler -- but its BINDING, on the emit side, to an ordinary-function entry under
-  // the NativeCliDriver root (dag/gunbc/plans/demand_engine_program.dag D10: "what is missing is not a
+  // THE CAPABILITY THIS TRIGGER CARRIES, named on its face (gunbc.design_argument::guarantee_ladder: "the
+  // trigger names the CAPABILITY restored"; Manager B, verbatim: "the emit-side binding of a Filesystem
+  // handler to an ordinary-function entry (D11)"). What is missing is not a handler -- emit_file_call exists
+  // and is the one realization handler -- but its BINDING, on the emit side, to an ordinary-function entry
+  // under the NativeCliDriver root (dag/gunbc/plans/demand_engine_program.dag D10: "what is missing is not a
   // handler but its binding to an ordinary-function entry under D11"). The two-site migration is the
-  // visible consequence; this symbol is the capability.
+  // visible consequence; this symbol is the capability, and that binding is its OWN cut in Manager A's
+  // stage (a separate row citing D10/D11, filed by sleek-fox-889, owner A, NotDispatchable until
+  // warm-fox-517 staffs it) -- this carrier names it, it does not implement it.
   missing_capability: Symbol
+  // THE CAPABILITY TEXT, Manager B's wording VERBATIM: "emit_rust binds a native handler at an
+  // ordinary-function entry". B's rule: the capability is the sentence, NOT a row id -- "Not a row id, so it
+  // survives a rename"; a row id may be cited BESIDE the capability as a cross-reference, never instead of
+  // it (the witness asserts THIS string, so renaming the row cannot leave a trigger that still claims to
+  // hold). The symbol above is a stable handle; this string is the authority.
+  capability_text: String
 }
 
 data filesystem_wall_compile_gate_trigger: FilesystemWallCompileGateTrigger = FilesystemWallCompileGateTrigger {
@@ -1272,7 +1281,8 @@ data filesystem_wall_compile_gate_trigger: FilesystemWallCompileGateTrigger = Fi
   awaiting_migration_declarations: ["read_roster_manifest", "fold_side_bytes"],
   migrate_to_bound_handler: "emit_file_call",
   gate_connects_when: ^self_host_direct_reaches_migrate_to_bound_handler,
-  missing_capability: ^emit_side_native_filesystem_handler_binding_to_ordinary_function_entry
+  missing_capability: ^emit_side_native_filesystem_handler_binding_to_ordinary_function_entry,
+  capability_text: "emit_rust binds a native handler at an ordinary-function entry"
 }
 
 // ---- WALL 2 (predicate): an emitted closure reaching `filesystem_read` directly is LOCATED and refused by the census ----
