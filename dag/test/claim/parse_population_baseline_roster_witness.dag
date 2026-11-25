@@ -1,14 +1,13 @@
 module test.claim.parse_population_baseline_roster_witness
 
 import std.types { Bool }
-import std.measure { byte_size }
 import gunbc.parse_population_baseline_roster {
   parse_population_total_count,
   parse_population_five_largest_count_check,
   parse_population_one_hundred_sixty_five_count_check,
-  parse_population_five_largest_byte_total,
-  parse_population_one_hundred_sixty_five_byte_total,
-  parse_population_total_byte_total,
+  parse_population_partition_is_consistent,
+  parse_population_zero_byte_row_count,
+  parse_population_membership_boundary_holds,
   parse_population_is_unique,
   parse_population_duplicate_refuses_with_trivial_eq,
   parse_population_rows_ordered_descending,
@@ -35,10 +34,16 @@ test fn parse_population_baseline_roster_cardinality_holds() -> Bool {
 
 // Byte totals per fixed population and combined, compared IN the ByteSize measure (no bare-Int
 // re-representation; gunbc.design_argument::single_authority).
-test fn parse_population_baseline_roster_byte_totals_hold() -> Bool {
-  parse_population_five_largest_byte_total() == byte_size(count: 4575463)
-    && parse_population_one_hundred_sixty_five_byte_total() == byte_size(count: 29960631)
-    && parse_population_total_byte_total() == byte_size(count: 34536094)
+// Non-circular byte invariants: the two populations are a disjoint cover of the roster and no row is
+// zero. These are derived from the roster's own rows, NOT compared against literals copied from the
+// same tree read (fail_closed: "a count copied from the current tree is a change detector"). The
+// absolute measured totals live in the measurement report as the recorded baseline, with the pinned
+// sha and the producer command, so they are reproducible there; asserting them here would only restate
+// the roster against itself.
+test fn parse_population_baseline_roster_byte_invariants_hold() -> Bool {
+  parse_population_partition_is_consistent()
+    && parse_population_zero_byte_row_count() == 0
+    && parse_population_membership_boundary_holds()
 }
 
 // The selection rule's ordering invariant, executed: the roster is non-increasing in byte size

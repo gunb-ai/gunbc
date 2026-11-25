@@ -258,24 +258,61 @@ fn parse_population_select_rest(position: Int, b: ByteSize) -> ByteSize {
 }
 
 // Scan accumulator carrying the 1-based position while summing the two population byte totals, both
-// held in the ByteSize measure.
+// held in the ByteSize measure. It also remembers the boundary sizes — the smallest FiveLargest row
+// (last FiveLargest under the descending order) and the largest remaining row (first of the rest) —
+// so the membership split can be checked against the ordering, not just summed.
 type ParsePopulationScan {
   position: Int
   five_bytes: ByteSize
   rest_bytes: ByteSize
+  last_five: ByteSize
+  first_rest: ByteSize
 }
 
 fn parse_population_scan(rows: List<ParsePopulationRow>) -> ParsePopulationScan {
   fold_list(xs: rows,
-    empty: ParsePopulationScan { position: 0, five_bytes: byte_size(count: 0), rest_bytes: byte_size(count: 0) },
+    empty: ParsePopulationScan {
+      position: 0, five_bytes: byte_size(count: 0), rest_bytes: byte_size(count: 0),
+      last_five: byte_size(count: 0), first_rest: byte_size(count: 0),
+    },
     cons: fn(acc, row) {
       let next: Int = acc.position + 1
       ParsePopulationScan {
         position: next,
         five_bytes: measure_add(acc.five_bytes, parse_population_select_five(next, row.bytes)),
         rest_bytes: measure_add(acc.rest_bytes, parse_population_select_rest(next, row.bytes)),
+        last_five: parse_population_select_five(next, row.bytes),
+        first_rest: parse_population_select_first_rest(acc.position, next, row.bytes, acc.first_rest),
       }
     })
+}
+
+// The first row past the FiveLargest cut keeps its size; before the cut, or after it has been set,
+// the accumulator value is carried through untouched.
+fn parse_population_select_first_rest(previous: Int, next: Int, b: ByteSize, carried: ByteSize) -> ByteSize {
+  if previous == parse_population_five_largest_count { b } else { carried }
+}
+
+// No row may have a zero byte count: a roster that silently collapsed to empty or zeroed rows fails,
+// so a 0 population is reported as a refusal rather than a pass.
+fn parse_population_zero_byte_row_count() -> Int {
+  count_where(xs: parse_population_baseline_rows, predicate: fn(row) { row.bytes == byte_size(count: 0) })
+}
+
+// The two populations are a disjoint cover of the roster: the FiveLargest total plus the remaining
+// total equals the whole-roster total. Derived from the roster, not copied from a tree read, so it is
+// a real check rather than the fail_closed "count copied from the current tree" change detector.
+fn parse_population_partition_is_consistent() -> Bool {
+  measure_add(parse_population_five_largest_byte_total(), parse_population_one_hundred_sixty_five_byte_total())
+    == parse_population_total_byte_total()
+}
+
+// The size-based split is the largest five: under the descending order the last FiveLargest row is at
+// least as large as the first remaining row. If the cut were placed wrong (a smaller row promoted into
+// the five, or a larger row demoted into the rest), this fails.
+fn parse_population_membership_boundary_holds() -> Bool {
+  measure_le(parse_population_scan(parse_population_baseline_rows).first_rest,
+    parse_population_scan(parse_population_baseline_rows).last_five)
 }
 
 fn parse_population_five_largest_byte_total() -> ByteSize {
