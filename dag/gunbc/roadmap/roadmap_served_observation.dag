@@ -185,7 +185,7 @@ type ServedObservationWrite
 // THE SHARED OBSERVATION->READING CONVERSION, PURE (side-chat round 4 sweep, same ruling as the census
 // twin): it classifies an already-taken Filesystem.List observation and calls no Filesystem operation.
 // The listing EFFECT lives only in the mint below, over the root the mint derives for its own business key.
-fn served_observation_root_reading_of_observation(root: String, success: Bool, entries: List<String>, error: String) -> ServedObservationRootReading {
+fn served_observation_root_reading_of_observation(root: String, success: Bool, entries: String, error: String) -> ServedObservationRootReading {
   match filesystem_listing_observation(directory: root, success: success, entries: entries, error: error) {
     FilesystemDirectorySubjectRefused { directory: _, cause: c } =>
       ServedObservationRootUnlistable { detail: join(["the served observation directory is not admissible: ", c], "") }

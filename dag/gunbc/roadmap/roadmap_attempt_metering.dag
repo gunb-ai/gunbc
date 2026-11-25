@@ -1203,7 +1203,7 @@ fn attempt_metering_index_store_root(store: AttemptMeteringIndexStore) -> String
 // a new name (side-chat REQUEST_CHANGES round 4, 2026-11-25). Its signature is DELETED, not kept
 // alongside; the foreign control proves the store-bound listing is admitted and a caller-chosen directory
 // is refused, from this module's own import surface.
-fn attempt_metering_listing_of_observation(directory: String, what: String, success: Bool, entries: List<String>, error: String) -> AttemptMeteringListing {
+fn attempt_metering_listing_of_observation(directory: String, what: String, success: Bool, entries: String, error: String) -> AttemptMeteringListing {
   match filesystem_listing_observation(directory: directory, success: success, entries: entries, error: error) {
     FilesystemDirectoryListed(l) => AttemptMeteringListingRead { names: filesystem_listing_entry_names(listing: l) }
     FilesystemDirectoryListingRefused { directory: _, error: e } => AttemptMeteringListingUnreadable { detail: join([what, " could not be listed: ", directory, " (", e, ")"], "") }

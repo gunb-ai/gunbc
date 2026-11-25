@@ -357,7 +357,7 @@ type SnapshotCensusReceiptWrite
 // language a top-level helper of that shape is a listing route any module can import -- even with zero
 // importers today). The listing EFFECT lives only in the mint below, over the root the mint derives from
 // the declaration for its own business key.
-fn snapshot_census_receipt_root_reading_of_observation(root: String, success: Bool, entries: List<String>, error: String) -> SnapshotCensusReceiptRootReading {
+fn snapshot_census_receipt_root_reading_of_observation(root: String, success: Bool, entries: String, error: String) -> SnapshotCensusReceiptRootReading {
   match filesystem_listing_observation(directory: root, success: success, entries: entries, error: error) {
     FilesystemDirectorySubjectRefused { directory: _, cause: c } =>
       SnapshotCensusReceiptRootUnlistable { detail: join(["the snapshot census receipt's directory is not admissible: ", c], "") }
