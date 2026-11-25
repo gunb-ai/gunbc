@@ -181,20 +181,6 @@ fn engine_front_unserved_consumers(observed: List<NonEmptyStr>) -> List<Declarat
   )
 }
 
-// The directives a correct front renders, for structural assertion (not the rendered bytes). The witness
-// checks these for a ProxyPassToHost on each consumed route -- a real discriminating check: drop /metrics
-// from the roster and engine_front_proxies_route("/metrics") goes red.
-fn engine_front_proxy_directives(
-  bind_address: NonEmptyStr,
-  listen_port: Port,
-  tls_cert: NonEmptyStr,
-  tls_key: NonEmptyStr,
-  engine_host: NonEmptyStr,
-  engine_port: Port,
-) -> Optional<List<NginxDirective>> {
-  engine_front_server_directives(bind_address: bind_address, listen_port: listen_port, tls_cert: tls_cert, tls_key: tls_key, engine_host: engine_host, engine_port: engine_port)
-}
-
 // Walk the server/location tree and collect every ProxyPassToHost target path.
 fn engine_front_proxied_paths(ds: List<NginxDirective>) -> List<String> {
   fold(ds, init: [] as List<String>, f: (acc, d) => concat(acc, match d {
