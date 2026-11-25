@@ -232,10 +232,10 @@ fn gunbc_repository_ci_profile() -> RepositoryCiProfile {
       job_display_name: required_ci_context_name,
       required_context: required_ci_context_name,
       runner: selected_ci_runner_target(),
-      // 60, lowered from 90 by #gunbc.design_ruling::heal_and_v2_bootstrap_ci_timeouts_lowered_2026_11_22
-      // (the operator, 2026-11-22): over the last 25 runs the required build took 6-52 min, the 52 on a
-      // cold cache. A reduction, so no BudgetRaiseGrant; the ceiling still clears the slowest measured run.
-      timeout: minute(60),
+      // 90, raised from 60 by #gunbc.design_ruling::heal_and_v2_bootstrap_ci_timeouts_raised_2026_11_25
+      // (the operator, 2026-11-25): the fleet's cores were slowed, and every main run from 2026-11-24
+      // 21:24Z on was cancelled at 60.
+      timeout: minute(90),
       source_roots: witness_layer_roots
     },
     // GUNBC IS THE COMPILER'S HOME: no repository to check out beside itself, no overlay to compose, and the
@@ -248,11 +248,10 @@ fn gunbc_repository_ci_profile() -> RepositoryCiProfile {
         job_id: "heal-generated-artifacts" as NonEmptyStr,
         job_display_name: "heal-generated-artifacts" as NonEmptyStr,
         runner: selected_ci_runner_target(),
-        // 60, lowered from 120 by #gunbc.design_ruling::heal_and_v2_bootstrap_ci_timeouts_lowered_2026_11_22
-        // (the operator, 2026-11-22), which supersedes the 120-minute part of
-        // #gunbc.design_ruling::heal_convergence_job_budget_increase_2026_11_20: over the last 25 successful
-        // runs heal took 15-45 min. A reduction, so no BudgetRaiseGrant; the ceiling still clears the slowest.
-        timeout: minute(60)
+        // 90, raised from 60 by #gunbc.design_ruling::heal_and_v2_bootstrap_ci_timeouts_raised_2026_11_25
+        // (the operator, 2026-11-25: the fleet's cores were slowed), which supersedes the 60-minute figure of
+        // #gunbc.design_ruling::heal_and_v2_bootstrap_ci_timeouts_lowered_2026_11_22.
+        timeout: minute(90)
       }
     },
     drift: Present {
