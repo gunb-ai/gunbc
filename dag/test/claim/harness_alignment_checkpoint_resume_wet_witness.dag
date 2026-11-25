@@ -896,6 +896,22 @@ test fn the_published_record_carries_the_verdict_and_the_stepped_cadence() -> Bo
     verdict_path: verdict,
     cadence: carried,
   )
+  // THE BASE STATE IS NOT A MUTE, and it is the state every lineage really starts from: both lists
+  // empty, every level reading its declared magnitudinal base. A fold that only REPLACES an existing
+  // head answered this step with the empty list back -- the interval the interval law had just computed
+  // and the verdict that decided it both dropped out, the ladder never left its starting rung, and the
+  // published record still read like a cadence. So the base is adjudicated here too, and the published
+  // state must GAIN exactly one entry carrying the authority's own interval and the deciding verdict.
+  // Under the fold-that-only-replaced code this leg cannot pass: the lengths come out 0, not 1.
+  let from_base = checkpoint_bound_to(chain: chain, dir: dir, observation: observation, steps: steps, lineage: "align-witness-cadence-from-base", epoch: 4)
+  let read_from_base = harness_alignment_adjudicate(
+    checkpoint: from_base,
+    projection: project(chain: chain, dir: dir, observation: observation, steps: steps),
+    events_path: events_in(dir: dir),
+    observation_path: path,
+    verdict_path: verdict,
+    cadence: alignment_base_cadence_state(),
+  )
   let removed = shell.Remove.RecursiveForce(path: dir)
   // THE STEP IS TAKEN FROM THE STATE THAT WAS CARRIED IN, not from a fresh base, and level 0 is the
   // HEAD that moves -- a deeper level the lineage already recorded survives. Both halves of that
@@ -926,6 +942,32 @@ test fn the_published_record_carries_the_verdict_and_the_stepped_cadence() -> Bo
            }
          // An ALIGNED verdict never stops the line; if the interval authority ever says otherwise this
          // witness has no answer to give and must fail rather than assume one.
+         CadenceStepStopTheLine => false
+       }
+    // THE BASE-STATE LEG -- the discriminating one for the cadence step. The state every lineage
+    // starts from has NO level 0 to replace, so this is where a step that only replaces an existing
+    // head silently publishes the input back and leaves the ladder at its starting rung forever.
+    && match alignment_next_interval(level_index: 0, current: alignment_state_interval(state: alignment_base_cadence_state(), level_index: 0), verdict: Aligned) {
+         CadenceStepInterval { turns } =>
+           match read_from_base {
+             AdjudicationPublished { adjudication: stepped } => {
+               let body_from_base = harness_alignment_publication_text(adjudication: stepped)
+               // One entry, the authority's own interval, and the verdict that decided it -- the lists
+               // stay the same length, which is the codec's own invariant, and neither stays empty.
+               length(xs: stepped.cadence.level_intervals) == 1
+                 && stepped.cadence.level_intervals == [turns]
+                 && length(xs: stepped.cadence.last_verdicts) == 1
+                 && match stepped.cadence.last_verdicts.first() {
+                      Present { value: Aligned } => true
+                      _ => false
+                    }
+                 && string_contains(s: body_from_base, pattern: "alignment.checkpoint_adjudicated")
+                 && string_contains(s: body_from_base, pattern: alignment_checkpoint_identity_digest(id: stepped.checkpoint))
+             }
+             // The base state is a legitimate input, not a missing artifact: the boundary ran and the
+             // verdict artifact is present, so a refusal here is the defect wearing a different hat.
+             AdjudicationRefused { cause: _ } => false
+           }
          CadenceStepStopTheLine => false
        }
 }

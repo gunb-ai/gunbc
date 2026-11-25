@@ -3300,24 +3300,34 @@ fn harness_alignment_next_cadence(verdict: AlignmentVerdict, cadence: AlignmentC
   }
 }
 
+// REPLACE THE HEAD, OR GAIN ONE ENTRY -- the promise the comment above makes, in code. A fold over an
+// EMPTY list replaces nothing and returns the empty list, so stepping the state every lineage actually
+// starts from (`alignment_base_cadence_state`: both lists empty, every level reading its declared
+// magnitudinal base) used to publish the base back: the interval the interval law just computed and the
+// verdict that decided it were silently dropped, the ladder never left its starting rung, and the record
+// still read like an adaptive cadence. So the fold carries whether it reached level 0 at all, and a
+// state that never got there gains exactly one entry -- which is also what keeps the two lists the same
+// length, the invariant the cadence codec refuses to decode without.
 fn harness_alignment_replace_level0_number(intervals: List<Int>, head: Int) -> List<Int> {
-  fold(
+  let stepped = fold(
     intervals,
-    init: { index: 0, out: [] as List<Int> },
+    init: { index: 0, out: [] as List<Int>, reached: false },
     f: fn(acc, item) {
-      { index: acc.index + 1, out: concat(acc.out, [if acc.index == 0 { head } else { item }]) }
+      { index: acc.index + 1, reached: true, out: concat(acc.out, [if acc.index == 0 { head } else { item }]) }
     },
-  ).out
+  )
+  if stepped.reached { stepped.out } else { [head] }
 }
 
 fn harness_alignment_replace_level0_verdict(verdicts: List<AlignmentVerdict>, head: AlignmentVerdict) -> List<AlignmentVerdict> {
-  fold(
+  let stepped = fold(
     verdicts,
-    init: { index: 0, out: [] as List<AlignmentVerdict> },
+    init: { index: 0, out: [] as List<AlignmentVerdict>, reached: false },
     f: fn(acc, item) {
-      { index: acc.index + 1, out: concat(acc.out, [if acc.index == 0 { head } else { item }]) }
+      { index: acc.index + 1, reached: true, out: concat(acc.out, [if acc.index == 0 { head } else { item }]) }
     },
-  ).out
+  )
+  if stepped.reached { stepped.out } else { [head] }
 }
 
 // THE RESUMPTION IS DURABLE BEFORE IT IS ACTED ON, and the durable record is the idempotency key.
