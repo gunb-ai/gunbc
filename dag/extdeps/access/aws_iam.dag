@@ -3,8 +3,13 @@ module extdeps.access.aws_iam
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
-import std.types { List, NonEmptyStr }
+import std.types { List, NonEmptyStr, String }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.optional { Present, Absent }
+import std.types { Map }
+import std.algebra { empty_map, map_insert, map_lookup }
+import std.list { distinct_by_key }
+import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_string, json_array, json_object, serialize_json }
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -55,3 +60,91 @@ type PolicyDocument {
   id: NonEmptyStr?
   statements: List<Statement>
 }
+
+// ---- the policy document as its JSON wire form -----------------------------------------------------
+
+// THE GRAMMAR'S OWN SPELLING (reference_policies_grammar): `Version`, `Id`, `Statement`, and per statement
+// `Sid`, `Effect`, `Principal`, `Action`, `Resource`, `Condition`. A list is always written as an array,
+// which the grammar admits for every one of these members, so a one-element list never changes type on the
+// wire. Conditions group by operator then key: `{ "<operator>": { "<key>": [values] } }`; two entries with
+// one operator and two keys share the operator object, and two entries with the same operator AND key are
+// two facts the grammar cannot carry in one object, so the renderer keeps the first and the caller's
+// duplicate is its defect (aws_iam_condition_pairs_unique states the check).
+fn aws_iam_effect_wire(e: Effect) -> String {
+  match e {
+    Allow => "Allow"
+    Deny => "Deny"
+  }
+}
+
+fn aws_iam_strings(xs: List<NonEmptyStr>) -> JsonValue {
+  json_array(elements: map(xs, x => json_string(s: x as String)))
+}
+
+fn aws_iam_principal_json(p: Principal) -> JsonValue {
+  match p {
+    AnyPrincipal => json_string(s: "*")
+    AwsPrincipal { arns: a } => json_object(members: [json_kv(key: "AWS", value: aws_iam_strings(xs: a))])
+    ServicePrincipal { services: s } => json_object(members: [json_kv(key: "Service", value: aws_iam_strings(xs: s))])
+    FederatedPrincipal { providers: f } => json_object(members: [json_kv(key: "Federated", value: aws_iam_strings(xs: f))])
+    CanonicalUserPrincipal { ids: c } => json_object(members: [json_kv(key: "CanonicalUser", value: aws_iam_strings(xs: c))])
+  }
+}
+
+// One pass groups the entries by operator (first-seen operator order, entry order within an operator).
+fn aws_iam_condition_groups(conditions: List<ConditionEntry>) -> Map<String, List<JsonKeyValue>> {
+  fold(conditions, init: empty_map(), f: (acc, c) => {
+    let kv = json_kv(key: c.key as String, value: aws_iam_strings(xs: c.values))
+    match map_lookup(m: acc, key: c.operator as String) {
+      Present { value: members } => map_insert(acc, c.operator as String, concat(members, [kv]))
+      Absent => map_insert(acc, c.operator as String, [kv])
+    }
+  })
+}
+
+fn aws_iam_condition_json(conditions: List<ConditionEntry>) -> JsonValue {
+  let groups = aws_iam_condition_groups(conditions: conditions)
+  let operators = distinct_by_key(xs: conditions, key: c => c.operator as String)
+  json_object(members: map(operators, c => json_kv(key: c.operator as String, value: json_object(members: match map_lookup(m: groups, key: c.operator as String) {
+    Present { value: members } => members
+    Absent => []
+  }))))
+}
+
+// A (operator, key) pair named twice is two facts one JSON object cannot carry; distinct pairs only. The
+// space separator cannot occur inside an operator name (the grammar spells them alphanumerically).
+fn aws_iam_condition_pairs_unique(conditions: List<ConditionEntry>) -> Bool {
+  count(distinct_by_key(xs: conditions, key: c => join([c.operator as String, " ", c.key as String], ""))) == count(conditions)
+}
+
+fn aws_iam_statement_json(s: Statement) -> JsonValue {
+  json_object(members: concat(
+    concat(
+      match s.sid { Present { value: v } => [json_kv(key: "Sid", value: json_string(s: v as String))]  Absent => [] },
+      concat(
+        [json_kv(key: "Effect", value: json_string(s: aws_iam_effect_wire(e: s.effect)))],
+        match s.principal { Present { value: p } => [json_kv(key: "Principal", value: aws_iam_principal_json(p: p))]  Absent => [] },
+      ),
+    ),
+    concat(
+      [json_kv(key: "Action", value: aws_iam_strings(xs: s.actions))],
+      concat(
+        if count(s.resources) == 0 { [] } else { [json_kv(key: "Resource", value: aws_iam_strings(xs: s.resources))] },
+        if count(s.conditions) == 0 { [] } else { [json_kv(key: "Condition", value: aws_iam_condition_json(conditions: s.conditions))] },
+      ),
+    ),
+  ))
+}
+
+fn aws_iam_policy_document_json(d: PolicyDocument) -> String {
+  serialize_json(v: json_object(members: concat(
+    concat(
+      [json_kv(key: "Version", value: json_string(s: d.version as String))],
+      match d.id { Present { value: v } => [json_kv(key: "Id", value: json_string(s: v as String))]  Absent => [] },
+    ),
+    [json_kv(key: "Statement", value: json_array(elements: map(d.statements, s => aws_iam_statement_json(s: s))))],
+  )))
+}
+
+// The grammar's current version string; every document this repository authors states it.
+data aws_iam_policy_version: NonEmptyStr = "2012-10-17" as NonEmptyStr

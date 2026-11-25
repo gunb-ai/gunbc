@@ -4,7 +4,7 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, String, Int, List }
 import std.optional { Present, Absent }
 import std.decimal { ExactDecimal, exact_decimal_equal }
-import std.measure { mebibyte_count, gigabyte_count }
+import std.measure { mebibyte_count, gigabyte_count, hardware_thread_count_value, money_per_hour_micros }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.exec.command { argv_words }
 import extdeps.cloud.aws_ec2 { AwsEc2OptInNotRequired, AwsEc2NotOptedIn, AwsEc2Running, AwsEc2LifecycleSpot }
@@ -28,15 +28,15 @@ test fn the_six_projections_read_their_recorded_shapes() -> Bool {
   && (match aws_cli_read_offerings(stdout: "\{\"InstanceTypeOfferings\":[\{\"InstanceType\":\"g7e.2xlarge\",\"LocationType\":\"availability-zone\",\"Location\":\"us-east-1a\"},\{\"InstanceType\":\"g7e.12xlarge\",\"LocationType\":\"availability-zone\",\"Location\":\"us-east-1b\"}]}") { AwsCliReadOk { value: os } => length(os) == 2  AwsCliReadRefused { cause: _ } => false })
   && (match aws_cli_read_instance_types(stdout: "\{\"InstanceTypes\":[\{\"InstanceType\":\"g7e.12xlarge\",\"VCpuInfo\":\{\"DefaultVCpus\":48},\"MemoryInfo\":\{\"SizeInMiB\":524288},\"GpuInfo\":\{\"Gpus\":[\{\"Name\":\"RTX PRO 6000\",\"Manufacturer\":\"NVIDIA\",\"Count\":2,\"MemoryInfo\":\{\"SizeInMiB\":98304}}],\"TotalGpuMemoryInMiB\":196608},\"InstanceStorageSupported\":true,\"InstanceStorageInfo\":\{\"TotalSizeInGB\":3800,\"Disks\":[\{\"SizeInGB\":3800,\"Count\":1,\"Type\":\"ssd\"}],\"NvmeSupport\":\"required\"},\"SupportedUsageClasses\":[\"on-demand\",\"spot\"]}]}") {
     AwsCliReadOk { value: ts } => match ts.first() {
-      Present { value: t } => (t.default_vcpus == 48) && (mebibyte_count(t.memory_size_in_mib) == 524288)
-        && (match t.gpus.first() { Present { value: g } => g.count == 2  Absent => false })
-        && (match t.instance_storage { Present { value: s } => gigabyte_count(s.total_size_in_gb) == 3800  Absent => false })
+      Present { value: t } => (hardware_thread_count_value(t: t.v_cpu_info.default_vcpus) == 48) && (mebibyte_count(t.memory_info.size_in_mib) == 524288)
+        && (match t.gpu_info { Present { value: gi } => (match gi.gpus.first() { Present { value: g } => g.count == 2  Absent => false }) && (mebibyte_count(gi.total_gpu_memory_in_mib) == 196608)  Absent => false })
+        && (match t.instance_storage_info { Present { value: s } => gigabyte_count(s.total_size_in_gb) == 3800  Absent => false })
       Absent => false
     }
     AwsCliReadRefused { cause: _ } => false
   })
   && (match aws_cli_read_spot_prices(stdout: "\{\"SpotPriceHistory\":[\{\"AvailabilityZone\":\"us-east-1a\",\"InstanceType\":\"g7e.2xlarge\",\"ProductDescription\":\"Linux/UNIX\",\"SpotPrice\":\"1.234500\",\"Timestamp\":\"2026-10-23T09:00:00+00:00\"}]}") {
-    AwsCliReadOk { value: ps } => match ps.first() { Present { value: p } => exact_decimal_equal(a: p.spot_price, b: ExactDecimal { units: 12345, fraction_digits: 4 })  Absent => false }
+    AwsCliReadOk { value: ps } => match ps.first() { Present { value: p } => money_per_hour_micros(q: p.spot_price) == 1234500  Absent => false }
     AwsCliReadRefused { cause: _ } => false
   })
   && (match aws_cli_read_instances(stdout: "\{\"Reservations\":[\{\"ReservationId\":\"r-1\",\"OwnerId\":\"000000000000\",\"Instances\":[\{\"InstanceId\":\"i-0abc\",\"InstanceType\":\"g7e.2xlarge\",\"Placement\":\{\"AvailabilityZone\":\"us-east-1a\"},\"State\":\{\"Code\":16,\"Name\":\"running\"},\"InstanceLifecycle\":\"spot\",\"SpotInstanceRequestId\":\"sir-1\",\"LaunchTime\":\"2026-10-23T08:00:00+00:00\",\"Tags\":[\{\"Key\":\"gunbc-flex-owner\",\"Value\":\"gunbc-flex\"}]}]}]}") {
@@ -48,7 +48,17 @@ test fn the_six_projections_read_their_recorded_shapes() -> Bool {
     AwsCliReadRefused { cause: _ } => false
   })
   && (match aws_cli_read_service_quota(stdout: "\{\"Quota\":\{\"ServiceCode\":\"ec2\",\"QuotaCode\":\"L-3819A6DF\",\"QuotaName\":\"All G and VT Spot Instance Requests\",\"Value\":64.0,\"Unit\":\"None\",\"Adjustable\":true}}") {
-    AwsCliReadOk { value: q } => exact_decimal_equal(a: q.value, b: ExactDecimal { units: 64, fraction_digits: 0 }) && q.adjustable
+    AwsCliReadOk { value: q } => exact_decimal_equal(a: q.value, b: ExactDecimal { units: 64, fraction_digits: 0 }) && q.adjustable && match q.usage_metric { Absent => true  Present { value: _ } => false }
+    AwsCliReadRefused { cause: _ } => false
+  })
+  // The metered shape, as get-service-quota answered for L-3819A6DF in us-east-1 on 2026-11-25 (Value and
+  // ARN aside): the usage metric is read with its four dimensions in the answer's order.
+  && (match aws_cli_read_service_quota(stdout: "\{\"Quota\":\{\"ServiceCode\":\"ec2\",\"QuotaCode\":\"L-3819A6DF\",\"QuotaName\":\"All G and VT Spot Instance Requests\",\"Value\":8.0,\"Unit\":\"None\",\"Adjustable\":true,\"GlobalQuota\":false,\"UsageMetric\":\{\"MetricNamespace\":\"AWS/Usage\",\"MetricName\":\"ResourceCount\",\"MetricDimensions\":\{\"Class\":\"G/Spot\",\"Resource\":\"vCPU\",\"Service\":\"EC2\",\"Type\":\"Resource\"},\"MetricStatisticRecommendation\":\"Maximum\"}}}") {
+    AwsCliReadOk { value: q } => match q.usage_metric {
+      Present { value: m } => ((m.metric_namespace as String) == "AWS/Usage") && (length(m.metric_dimensions) == 4)
+        && (match m.metric_dimensions.first() { Present { value: d } => ((d.name as String) == "Class") && (d.value == "G/Spot")  Absent => false })
+      Absent => false
+    }
     AwsCliReadRefused { cause: _ } => false
   })
 }
@@ -58,6 +68,7 @@ test fn the_six_projections_read_their_recorded_shapes() -> Bool {
 test fn incomplete_or_malformed_answers_refuse_with_their_reason() -> Bool {
   (match aws_cli_read_spot_prices(stdout: "\{\"SpotPriceHistory\":[],\"NextToken\":\"abc\"}") { AwsCliReadRefused { cause: c } => c.contains("NextToken")  AwsCliReadOk { value: _ } => false })
   && (match aws_cli_read_spot_prices(stdout: "\{\"SpotPriceHistory\":[\{\"AvailabilityZone\":\"us-east-1a\",\"InstanceType\":\"g7e.2xlarge\",\"ProductDescription\":\"Linux/UNIX\",\"SpotPrice\":\"one dollar\",\"Timestamp\":\"2026-10-23T09:00:00+00:00\"}]}") { AwsCliReadRefused { cause: c } => c.contains("SpotPrice")  AwsCliReadOk { value: _ } => false })
+  && (match aws_cli_read_spot_prices(stdout: "\{\"SpotPriceHistory\":[\{\"AvailabilityZone\":\"us-east-1a\",\"InstanceType\":\"g7e.2xlarge\",\"ProductDescription\":\"Linux/UNIX\",\"SpotPrice\":\"-1.000000\",\"Timestamp\":\"2026-10-23T09:00:00+00:00\"}]}") { AwsCliReadRefused { cause: c } => c.contains("SpotPrice")  AwsCliReadOk { value: _ } => false })
   && (match aws_cli_read_instances(stdout: "\{\"Reservations\":[\{\"ReservationId\":\"r-1\",\"OwnerId\":\"000000000000\",\"Instances\":[\{\"InstanceType\":\"g7e.2xlarge\"}]}]}") { AwsCliReadRefused { cause: c } => c.contains("InstanceId")  AwsCliReadOk { value: _ } => false })
   && (match aws_cli_read_regions(stdout: "not json") { AwsCliReadRefused { cause: _ } => true  AwsCliReadOk { value: _ } => false })
 }

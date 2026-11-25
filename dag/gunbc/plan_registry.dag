@@ -17,6 +17,7 @@ import gunbc.plans.closure_consolidation { closure_consolidation_plan }
 import gunbc.plans.planning_consolidation { planning_consolidation_plan }
 import gunbc.plans.declaration_acquisition { declaration_acquisition_plan }
 import gunbc.plans.new_server_bringup { new_server_bringup_plan }
+import gunbc.plans.aws_spot_serving { aws_spot_serving_plan }
 import gunbc.plans.v2_self_host { v2_self_host_plan }
 import gunbc.plans.factory_dogfood { factory_dogfood_plan }
 import gunbc.plans.debt_payoff { debt_payoff_plan }
@@ -42,6 +43,8 @@ import gunbc.plans.required_lane_claim_clause_grain { required_lane_claim_clause
 // (2026-11-10); planning_consolidation: plans are intentions; realization, execution and projection are downstream (rulings in gunbc.design_ruling, 2026-11-10 and 2026-11-11);
 // declaration_acquisition is the v2 adoption program for the gate, heal and regen closures (2026-11-11);
 // v2_self_host, factory_dogfood, debt_payoff and names_without_imports are the 2026 intentions of the root's programs (2026-11-16);
+// aws_spot_serving is the AWS spot demand-filler program (2026-11-25): its realization is the nodes under
+// aws-spot-serving on the roadmap.
 // new_server_bringup is the site's boot and management edge program: it holds the intention and cites its design
 // evidence, and its realization is carried as work items under site-boot-and-management-edge on the roadmap at
 // dag/gunbc/roadmap/roadmap_authority.dag, each naming this intention.
@@ -68,7 +71,7 @@ data all_plans: List<Plan> = [
   read_set_convergence_plan, fleet_machine_authority_plan, closure_consolidation_plan,
   planning_consolidation_plan, declaration_acquisition_plan, v2_self_host_plan,
   factory_dogfood_plan, debt_payoff_plan, names_without_imports_plan, first_customer_service_plan,
-  new_server_bringup_plan, one_source_tree_plan, claim_execution_consolidation_plan,
+  new_server_bringup_plan, aws_spot_serving_plan, one_source_tree_plan, claim_execution_consolidation_plan,
   desired_state_follows_the_machine_plan, fabric_market_plan,
   derived_types_keep_their_name_plan,
   required_lane_claim_clause_grain_plan,

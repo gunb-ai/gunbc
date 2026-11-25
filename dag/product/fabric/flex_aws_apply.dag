@@ -1,0 +1,256 @@
+module product.fabric.flex_aws_apply
+
+import std.types { String, NonEmptyStr, Bool, Int, List }
+import std.optional { Present, Absent }
+import std.list { first_where }
+import std.apply_mode { ApplyMode, Plan, Apply }
+import std.measure { Second, second_count, MoneyPerHour, MoneyAmountMicro, money_per_hour_micros, money_amount_micro_count }
+import extdeps.languages.json.emit { JsonValue, JsonString }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_field, FieldRead, FieldAbsent, FieldMalformed }
+import extdeps.time.rfc3339 { rfc3339_parse_instant, Rfc3339InstantParsed, Rfc3339InstantRefused, rfc3339_instant_unix_seconds }
+import extdeps.cloud.aws_ec2 {
+  AwsEc2Instance, AwsEc2Pending, AwsEc2Running, AwsEc2Tag, AwsEc2TagSpecification, AwsEc2TagInstance, AwsEc2TagVolume,
+  AwsEc2RunInstancesRequest, AwsEc2LaunchInline, AwsEc2LaunchTemplateData, AwsEc2NetworkInterfaceSpecification,
+  AwsEc2SpotMarket, AwsEc2SpotMarketOptions, AwsEc2OneTimeTerminate, AwsEc2InstanceAction, AwsEc2ActionTerminate,
+  AwsEc2ActionStop, AwsEc2ActionHibernate, aws_ec2_spot_interruption_event_detail_type,
+}
+import product.fabric.flex_aws_row { FlexAwsCandidate, FlexAwsSpot, flex_aws_owner_tag_key, flex_aws_owner_tag_value }
+import product.fabric.flex_ec2_boot { FlexEc2BootPolicy, flex_ec2_launch_template_data }
+
+// THE APPLY HALF OF THE AWS SUPPLIER ROW: what one pass decides to write, given what the Plan half
+// observed. PURE: every input is a value (the screened candidates, the owned roster, the queued notices,
+// the clock), so each decision is witnessed by supplying them, and the effectful pass
+// (gunbc.fleet.flex_aws_pass) only reads, calls this, and performs the one write it returns.
+//
+// ONE WRITE PER PASS, release before launch (the flex loop's shape, product.fabric.flex_vast_loop): a pass
+// that releases does not also launch, and the next pass sees the roster the release left. A card being
+// taken back is released before any new card is asked for, so the quota and the cap are never counted
+// against a card AWS is already reclaiming.
+
+// ---- the notices ------------------------------------------------------------------------------------
+
+// The two EventBridge events the gunbc-flex queue receives (gunbc.flex_aws_iam; the rules name them by
+// detail-type). The interruption warning carries the action AWS will take two minutes after it; the
+// rebalance recommendation is the earlier, softer signal that the card is at elevated risk and carries no
+// action. Both are best-effort (extdeps.cloud.aws_ec2): their absence is never read as safety.
+type FlexAwsNotice
+  = FlexAwsInterruptionWarning { instance_id: NonEmptyStr, action: AwsEc2InstanceAction }
+  | FlexAwsRebalanceRecommendation { instance_id: NonEmptyStr }
+
+data flex_aws_rebalance_detail_type: NonEmptyStr = "EC2 Instance Rebalance Recommendation" as NonEmptyStr
+
+type FlexAwsNoticeRead
+  = FlexAwsNoticeParsed { notice: FlexAwsNotice }
+  | FlexAwsNoticeForeign { detail_type: String }
+  | FlexAwsNoticeUnreadable { cause: String }
+
+fn flex_aws_json_text(v: JsonValue, key: String) -> String? {
+  match json_field(obj: v, key: key) {
+    FieldRead { value: JsonString { value: s } } => Present { value: s }
+    _ => none
+  }
+}
+
+fn flex_aws_action(s: String) -> AwsEc2InstanceAction? {
+  if s == "terminate" { Present { value: AwsEc2ActionTerminate } }
+  else if s == "stop" { Present { value: AwsEc2ActionStop } }
+  else if s == "hibernate" { Present { value: AwsEc2ActionHibernate } }
+  else { none }
+}
+
+// One queue body. An event of another detail-type is foreign (the queue is ours, but a rule could be
+// widened); a known event missing its instance or action is unreadable, never guessed.
+fn flex_aws_read_notice(body: String) -> FlexAwsNoticeRead {
+  match parse_json_document(s: body) {
+    JsonDocumentUnreadable { gap: _ } => FlexAwsNoticeUnreadable { cause: "the body is not one JSON document" }
+    JsonDocumentParsed { value: event } =>
+      match flex_aws_json_text(v: event, key: "detail-type") {
+        Absent => FlexAwsNoticeUnreadable { cause: "no detail-type" }
+        Present { value: dt } =>
+          match json_field(obj: event, key: "detail") {
+            FieldRead { value: detail } =>
+              match flex_aws_json_text(v: detail, key: "instance-id") {
+                Absent => FlexAwsNoticeUnreadable { cause: concat("no detail.instance-id in ", dt) }
+                Present { value: iid } =>
+                  if iid == "" { FlexAwsNoticeUnreadable { cause: "an empty instance-id" } }
+                  else if dt == (aws_ec2_spot_interruption_event_detail_type as String) {
+                    match flex_aws_json_text(v: detail, key: "instance-action") {
+                      Present { value: a } => match flex_aws_action(s: a) {
+                        Present { value: action } => FlexAwsNoticeParsed { notice: FlexAwsInterruptionWarning { instance_id: iid as NonEmptyStr, action: action } }
+                        Absent => FlexAwsNoticeUnreadable { cause: concat("an unknown instance-action: ", a) }
+                      }
+                      Absent => FlexAwsNoticeUnreadable { cause: "an interruption warning with no instance-action" }
+                    }
+                  } else if dt == (flex_aws_rebalance_detail_type as String) {
+                    FlexAwsNoticeParsed { notice: FlexAwsRebalanceRecommendation { instance_id: iid as NonEmptyStr } }
+                  } else {
+                    FlexAwsNoticeForeign { detail_type: dt }
+                  }
+              }
+            _ => FlexAwsNoticeUnreadable { cause: concat("no detail object in ", dt) }
+          }
+      }
+  }
+}
+
+fn flex_aws_notice_instance(n: FlexAwsNotice) -> NonEmptyStr {
+  match n {
+    FlexAwsInterruptionWarning { instance_id: i, action: _ } => i
+    FlexAwsRebalanceRecommendation { instance_id: i } => i
+  }
+}
+
+// ---- the policy -------------------------------------------------------------------------------------
+
+// What the operator admitted (gunbc.design_ruling aws_spot_g7e_launches_admitted_capped_2026_11_25): one
+// size, one region, a card count, and a per-card liability ceiling over a bounded lifetime. The admitted
+// rate is the observed spot price; a card whose rate times lifetime exceeds the ceiling is refused before
+// RunInstances, and a card older than its lifetime is released, so the ceiling bounds what any card can
+// cost (the spot price can rise after launch only up to MaxPrice, which is set to the admitted rate).
+type FlexAwsApplyPolicy {
+  actuation: ApplyMode
+  region: NonEmptyStr
+  instance_type: NonEmptyStr
+  cards: Int
+  liability_ceiling: MoneyAmountMicro
+  lifetime: Second
+}
+
+// ---- the decision -----------------------------------------------------------------------------------
+
+type FlexAwsReleaseWhy
+  = FlexAwsReleaseAnnounced { notice: FlexAwsNotice }
+  | FlexAwsReleaseLifetimeSpent { age_seconds: Int }
+  | FlexAwsReleaseSurplus { live: Int, wanted: Int }
+  | FlexAwsReleaseLaunchTimeUnreadable { launch_time: String }
+
+type FlexAwsDecision
+  = FlexAwsRelease { instance_id: NonEmptyStr, why: FlexAwsReleaseWhy }
+  | FlexAwsLaunch { candidate: FlexAwsCandidate, max_price: MoneyPerHour }
+  | FlexAwsHold { why: String }
+
+fn flex_aws_live(i: AwsEc2Instance) -> Bool {
+  match i.state.name { AwsEc2Pending => true  AwsEc2Running => true  _ => false }
+}
+
+fn flex_aws_age_seconds(i: AwsEc2Instance, now_unix: Int) -> Int? {
+  match rfc3339_parse_instant(text: i.launch_time) {
+    Rfc3339InstantParsed { instant: t, spelling: _ } => Present { value: now_unix - rfc3339_instant_unix_seconds(i: t) }
+    Rfc3339InstantRefused { cause: _ } => none
+  }
+}
+
+fn flex_aws_notice_for(notices: List<FlexAwsNotice>, instance_id: NonEmptyStr, interruption: Bool) -> FlexAwsNotice? {
+  first_where(notices, n => ((flex_aws_notice_instance(n: n) as String) == (instance_id as String)) && match n {
+    FlexAwsInterruptionWarning { instance_id: _, action: _ } => interruption
+    FlexAwsRebalanceRecommendation { instance_id: _ } => !interruption
+  })
+}
+
+// Rate times lifetime in micros, against the ceiling. Hours are counted up: a lifetime of 61 minutes is
+// charged two hours, so the check never admits a card the ceiling does not cover.
+fn flex_aws_liability_micros(rate: MoneyPerHour, lifetime: Second) -> Int {
+  let hours = ((second_count(lifetime) as Int) + 3599) / 3600
+  (money_per_hour_micros(q: rate) as Int) * hours
+}
+
+fn flex_aws_admissible(c: FlexAwsCandidate, policy: FlexAwsApplyPolicy) -> Bool {
+  (count(c.walls) == 0)
+    && match c.market { FlexAwsSpot => true  _ => false }
+    && ((c.region as String) == (policy.region as String))
+    && ((c.instance_type as String) == (policy.instance_type as String))
+    && match c.rate {
+      Present { value: r } => flex_aws_liability_micros(rate: r, lifetime: policy.lifetime) <= (money_amount_micro_count(m: policy.liability_ceiling) as Int)
+      Absent => false
+    }
+}
+
+// The cheapest by rate; candidates reaching here are admissible, so each has one (an unpriced one ranks
+// last). The minimum is an Int fold, then the first candidate at it, so ties go to the screen's order.
+fn flex_aws_rate_micros(c: FlexAwsCandidate) -> Int {
+  match c.rate {
+    Present { value: r } => money_per_hour_micros(q: r) as Int
+    Absent => -1
+  }
+}
+
+fn flex_aws_cheapest(cs: List<FlexAwsCandidate>) -> FlexAwsCandidate? {
+  let priced = cs |> filter(c => flex_aws_rate_micros(c: c) >= 0)
+  let lowest = fold(priced, init: -1, f: (m, c) => if (m < 0) || (flex_aws_rate_micros(c: c) < m) { flex_aws_rate_micros(c: c) } else { m })
+  first_where(priced, c => flex_aws_rate_micros(c: c) == lowest)
+}
+
+// THE ORDER IS THE POLICY: an announced reclaim first (two minutes is all there is), then a card whose
+// launch time cannot be read (its lifetime cannot be bounded), then a spent lifetime, then surplus, then a
+// launch if live cards not under a rebalance recommendation are fewer than wanted. A rebalanced card is
+// kept serving -- it has not been reclaimed -- but no longer counts toward the wanted number, so its
+// replacement is asked for while it still serves.
+fn flex_aws_decide(policy: FlexAwsApplyPolicy, candidates: List<FlexAwsCandidate>, owned: List<AwsEc2Instance>, notices: List<FlexAwsNotice>, now_unix: Int) -> FlexAwsDecision {
+  let live = owned |> filter(i => flex_aws_live(i: i))
+  let announced = flat_map(live, i => match flex_aws_notice_for(notices: notices, instance_id: i.instance_id, interruption: true) {
+    Present { value: n } => [FlexAwsRelease { instance_id: i.instance_id, why: FlexAwsReleaseAnnounced { notice: n } }]
+    Absent => []
+  })
+  match announced.first() {
+    Present { value: first_announced } => first_announced
+    Absent =>
+      match first_where(live, i => match flex_aws_age_seconds(i: i, now_unix: now_unix) { Absent => true  Present { value: _ } => false }) {
+        Present { value: u } => FlexAwsRelease { instance_id: u.instance_id, why: FlexAwsReleaseLaunchTimeUnreadable { launch_time: u.launch_time } }
+        Absent =>
+          match first_where(live, i => match flex_aws_age_seconds(i: i, now_unix: now_unix) { Present { value: a } => a >= (second_count(policy.lifetime) as Int)  Absent => false }) {
+            Present { value: old } => FlexAwsRelease { instance_id: old.instance_id, why: FlexAwsReleaseLifetimeSpent { age_seconds: match flex_aws_age_seconds(i: old, now_unix: now_unix) { Present { value: a } => a  Absent => 0 } } }
+            Absent =>
+              if count(live) > policy.cards {
+                match live.first() {
+                  Present { value: s } => FlexAwsRelease { instance_id: s.instance_id, why: FlexAwsReleaseSurplus { live: count(live), wanted: policy.cards } }
+                  Absent => FlexAwsHold { why: "surplus with no live card" }
+                }
+              } else {
+                let steady = live |> filter(i => match flex_aws_notice_for(notices: notices, instance_id: i.instance_id, interruption: false) { Present { value: _ } => false  Absent => true })
+                if count(steady) >= policy.cards {
+                  FlexAwsHold { why: join(["live=", to_string(count(live)), " steady=", to_string(count(steady)), " wanted=", to_string(policy.cards)], "") }
+                } else {
+                  match flex_aws_cheapest(cs: candidates |> filter(c => flex_aws_admissible(c: c, policy: policy))) {
+                    Present { value: c } => match c.rate {
+                      Present { value: r } => FlexAwsLaunch { candidate: c, max_price: r }
+                      Absent => FlexAwsHold { why: "the cheapest admissible candidate has no rate" }
+                    }
+                    Absent => FlexAwsHold { why: join(["no admissible candidate: ", policy.instance_type as String, " spot in ", policy.region as String, " clear of walls within the liability ceiling"], "") }
+                  }
+                }
+              }
+          }
+      }
+  }
+}
+
+// ---- the launch request -----------------------------------------------------------------------------
+
+fn flex_aws_owner_tags() -> List<AwsEc2Tag> {
+  [AwsEc2Tag { key: flex_aws_owner_tag_key, value: flex_aws_owner_tag_value as String }]
+}
+
+// One spot card, one-time and terminate-on-interruption, MaxPrice the admitted rate, the owner tag on the
+// instance AND its volume at creation (the IAM conditions of gunbc.flex_aws_iam refuse either missing),
+// launched inline from the one launch-data shape product.fabric.flex_ec2_boot builds.
+fn flex_aws_run_request(candidate: FlexAwsCandidate, max_price: MoneyPerHour, ami: NonEmptyStr, user_data: String, boot: FlexEc2BootPolicy, subnet_id: NonEmptyStr, security_group_id: NonEmptyStr, client_token: NonEmptyStr) -> AwsEc2RunInstancesRequest {
+  AwsEc2RunInstancesRequest {
+    launch: AwsEc2LaunchInline { data: flex_ec2_launch_template_data(ami: ami, user_data: user_data, policy: boot, interface: AwsEc2NetworkInterfaceSpecification {
+      device_index: 0,
+      subnet_id: subnet_id,
+      groups: [security_group_id],
+      associate_public_ip_address: true,
+      delete_on_termination: true,
+    }) },
+    instance_type: candidate.instance_type,
+    min_count: 1,
+    max_count: 1,
+    placement: none,
+    instance_market_options: Present { value: AwsEc2SpotMarket { spot_options: AwsEc2SpotMarketOptions { max_price: Present { value: max_price }, request_behavior: AwsEc2OneTimeTerminate } } },
+    tag_specifications: [
+      AwsEc2TagSpecification { resource_type: AwsEc2TagInstance, tags: flex_aws_owner_tags() },
+      AwsEc2TagSpecification { resource_type: AwsEc2TagVolume, tags: flex_aws_owner_tags() },
+    ],
+    client_token: client_token,
+  }
+}

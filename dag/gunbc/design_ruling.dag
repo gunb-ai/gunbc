@@ -1520,6 +1520,9 @@ fn design_rulings() -> List<DesignRuling> {
     pxe_default_install_and_no_standing_erase_2026_11_10,
     runner_capacity_counts_only_when_observed_2026_11_10,
     pxe_witnesses_need_no_required_ci_2026_11_10,
+    aws_spot_loop_runs_as_a_scoped_principal_2026_11_25,
+    aws_spot_quota_requests_held_2026_11_25,
+    aws_spot_g7e_launches_admitted_capped_2026_11_25,
     install_target_is_designated_or_unformatted_2026_11_24,
     fleet_observation_deferral_2026_11_12,
     refreshes_regularly_every_10_minutes_2026_11_16,
@@ -1694,4 +1697,24 @@ data live_router_changes_of_2026_11_23_are_requirements_evidence: DesignRuling =
   decided: "2026-11-23",
   governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "replacement_migration"),
   provenance: "Operator, 2026-11-23, directly in session proud-pike-550. Told that the router changes made by hand that day (efficiency tiers, upward-only session moves, live retain counting, a router-side binding table) contradict gunbc.serving.router_realization router_capability_permission and are recorded nowhere in the repository, and asked whether to keep and record them or roll them back, the operator said, verbatim: \"i would respect todays changes but not anchor on them - all of that solution has to go in the end, but it may bear on future requriements\". DECIDED. The 2026-11-23 router changes stay in place and are recorded as requirements evidence in gunbc.plans.fabric_market section 5: each is a behaviour the market must be able to express, and none is a mechanism to build on. They are debt of the hand-written router, deleted with it at the serving cutover, which owes a read-back of the live configuration and a disposition for each behaviour.",
+}
+data aws_spot_loop_runs_as_a_scoped_principal_2026_11_25: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "aws_spot_loop_runs_as_a_scoped_principal_2026_11_25"),
+  decided: "2026-11-25",
+  governs: decl_ref(module_path: "gunbc.flex_aws_iam", decl_name: "flex_aws_loop_policy"),
+  provenance: "Operator, in a Claude Code session on srv2, 2026-11-25, answering which principal the AWS spot loop should run as when the only session was the account root (via `aws login`). Chosen option, verbatim: \"Scoped IAM user (Recommended)\". The option as offered: the IAM policy is written as a modeled document (EC2 launch/terminate limited to the owner tag, describe calls, SSM, SQS), the operator approves it, it is created with the root session, and its key goes into fleet secret custody; no root use after that. RULED: the loop's principal is an IAM user holding exactly gunbc.flex_aws_iam flex_aws_loop_policy.",
+}
+
+data aws_spot_quota_requests_held_2026_11_25: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "aws_spot_quota_requests_held_2026_11_25"),
+  decided: "2026-11-25",
+  governs: decl_ref(module_path: "product.fabric.flex_aws_row", decl_name: "flex_aws_type_walls"),
+  provenance: "Operator, same session, answering whether to file quota increases when the applied G and VT spot quota was 8 vCPU in us-east-1 and 0 elsewhere, and P spot was 0 everywhere. Chosen option, verbatim: \"Don't file yet\" (offered as: start with the single g7e.2xlarge and decide on quota later). RULED: no quota request is filed by this program until the operator decides otherwise; the quota wall of flex_aws_type_walls stays the bound.",
+}
+
+data aws_spot_g7e_launches_admitted_capped_2026_11_25: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "aws_spot_g7e_launches_admitted_capped_2026_11_25"),
+  decided: "2026-11-25",
+  governs: decl_ref(module_path: "gunbc.design_argument", decl_name: "fail_closed"),
+  provenance: "Operator, same session, answering whether real spot instances may be launched while the program iterates in its PR (the 2026-10-23 plan required a separate go-ahead for AWS Apply). Chosen option, verbatim: \"Yes, g7e.2xlarge, capped\" (offered as: launch g7e.2xlarge spot with a hard per-test liability cap, for example 50 USD, plus an AWS Budget backstop, terminating after each test). Context, verbatim from the operator earlier the same session: \"we have 10k in aws credits i need to spend ( to unlock 25k total)\". RULED: g7e.2xlarge spot Apply is admitted during iteration under a per-test cap; a wider size, on-demand, or an uncapped run is not covered.",
 }

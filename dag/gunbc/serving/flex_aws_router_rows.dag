@@ -1,0 +1,160 @@
+module gunbc.serving.flex_aws_router_rows
+
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.algebra { trim }
+import std.list { distinct_by_key }
+import extdeps.languages.json.emit { JsonValue, JsonKeyValue, JsonString, JsonArray, JsonObject, json_kv, json_string, json_int, json_bool, json_array, json_object, serialize_json }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_field, FieldRead, FieldAbsent, FieldMalformed }
+
+// THE AWS SPOT CARDS AS RENTED ROWS OF THE SRV1 ROUTER (gunbc.plans.aws_spot_serving section 4, enroll).
+//
+// WHOSE ROWS THESE ARE. gunbc.serving.router_dev_policy is the authority for the router's FIRST-PARTY rows
+// and, by the operator decision of 2026-11-10 it records, produces no rented row. The live proxy still
+// carries the rented arm (an `overflow` row ranks after every owned row and bills rented_hourly), and its
+// upstreams.json is the hand-kept file that arm reads. This module owns exactly the rows whose name starts
+// with flex_aws_row_prefix and the CA-bundle certificates tagged flex_aws_ca_tag, and NOTHING ELSE in those
+// two files: every other row and certificate passes through unchanged, so the first-party writer and this
+// one never contend for a row.
+//
+// PURE: the converge takes the files' current text and the enrollable cards and returns the new text, so
+// it is witnessed by supplying both; gunbc.fleet.flex_aws_pass reads, calls this, and writes.
+
+data flex_aws_row_prefix: String = "aws-"
+data flex_aws_ca_tag: String = "# gunbc-flex "
+
+// ONE CARD, READY TO ROUTE: its address, the certificate it published under its own instance id (the
+// router pins exactly that certificate; proxy_ssl_verify is on at depth 1), and the pool key the loop
+// minted for it. A card is enrollable only once all three are read AND it answered /health over the pinned
+// certificate; the pass decides that, this module only renders.
+type FlexAwsEnrollable {
+  instance_id: NonEmptyStr
+  public_ip: NonEmptyStr
+  cert_pem: String
+  pool_key: String
+}
+
+// THE ROW'S SERVING FACTS. They are the srv1 vLLM row's, because the card is the same RTX PRO 6000 running
+// the same image and checkpoint (product.fabric.flex_serving_image flex_lil_serving_image, the pinned
+// qwen3_8_flash_next revision): model id, context and the TLS name the image's certificate carries. The
+// active-turn cap and retention are the srv1 row's as read live 2026-11-25 (cap 4, retain 8); deriving them
+// from serving_capacity_anchor for this card's measured throughput is the router-enrollment node's slice.
+type FlexAwsRowFacts {
+  model: NonEmptyStr
+  max_model_len: Int
+  port: Int
+  sni: NonEmptyStr
+  cap: Int
+  retain: Int
+  tier: Int
+}
+
+fn flex_aws_row_name(instance_id: NonEmptyStr) -> String { join([flex_aws_row_prefix, instance_id as String], "") }
+
+fn flex_aws_row_json(card: FlexAwsEnrollable, facts: FlexAwsRowFacts) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "name", value: json_string(s: flex_aws_row_name(instance_id: card.instance_id))),
+    json_kv(key: "scheme", value: json_string(s: "https")),
+    json_kv(key: "host", value: json_string(s: card.public_ip as String)),
+    json_kv(key: "port", value: json_int(n: facts.port)),
+    json_kv(key: "sni", value: json_string(s: facts.sni as String)),
+    json_kv(key: "model", value: json_string(s: facts.model as String)),
+    json_kv(key: "cap", value: json_int(n: facts.cap)),
+    json_kv(key: "max_model_len", value: json_int(n: facts.max_model_len)),
+    json_kv(key: "overflow", value: json_bool(b: true)),
+    json_kv(key: "path_prefix", value: json_string(s: "")),
+    json_kv(key: "retiring_names", value: json_array(elements: [])),
+    json_kv(key: "key", value: json_string(s: card.pool_key)),
+    json_kv(key: "retain", value: json_int(n: facts.retain)),
+    json_kv(key: "tier", value: json_int(n: facts.tier)),
+  ])
+}
+
+fn flex_aws_row_name_of(row: JsonValue) -> String {
+  match json_field(obj: row, key: "name") {
+    FieldRead { value: JsonString { value: n } } => n
+    _ => ""
+  }
+}
+
+fn flex_aws_is_ours(row: JsonValue) -> Bool { flex_aws_row_name_of(row: row).starts_with(flex_aws_row_prefix) }
+
+type FlexAwsRowsConverge
+  = FlexAwsRowsConverged { text: String, added: List<String>, removed: List<String>, changed: Bool }
+  | FlexAwsRowsRefused { cause: String }
+
+// The upstreams file is a JSON array of row objects. Anything else refuses: rewriting a file this module
+// cannot read would drop the rows it does not own. Our rows are replaced wholesale by the desired set (one
+// per card, distinct by instance), in instance-id order, after every row we do not own.
+fn flex_aws_rows_converge(current: String, cards: List<FlexAwsEnrollable>, facts: FlexAwsRowFacts) -> FlexAwsRowsConverge {
+  match parse_json_document(s: current) {
+    JsonDocumentUnreadable { gap: _ } => FlexAwsRowsRefused { cause: "upstreams.json is not one JSON document" }
+    JsonDocumentParsed { value: JsonArray { elements: rows } } => {
+      let theirs = rows |> filter(r => !flex_aws_is_ours(row: r))
+      let ours_before = map(rows |> filter(r => flex_aws_is_ours(row: r)), r => flex_aws_row_name_of(row: r))
+      let desired = distinct_by_key(xs: cards, key: c => c.instance_id as String)
+      let ours_after = map(desired, c => flex_aws_row_name(instance_id: c.instance_id))
+      let next = concat(theirs, map(desired, c => flex_aws_row_json(card: c, facts: facts)))
+      let text = serialize_json(v: json_array(elements: next))
+      FlexAwsRowsConverged {
+        text: text,
+        added: ours_after |> filter(n => !any(ours_before, b => b == n)),
+        removed: ours_before |> filter(b => !any(ours_after, n => n == b)),
+        changed: text != serialize_json(v: json_array(elements: rows)),
+      }
+    }
+    JsonDocumentParsed { value: _ } => FlexAwsRowsRefused { cause: "upstreams.json is not a JSON array" }
+  }
+}
+
+// THE CA BUNDLE: certificates the router trusts for upstream TLS. OpenSSL reads PEM blocks and ignores
+// text between them, so each of our certificates is preceded by one tag line naming its instance; a block
+// is ours exactly when the line before its BEGIN is our tag. Every untagged block passes through as it is.
+type FlexAwsPemBlock {
+  tag: String
+  pem: String
+}
+
+data flex_aws_pem_begin: String = "-----BEGIN CERTIFICATE-----"
+data flex_aws_pem_end: String = "-----END CERTIFICATE-----"
+
+// Split on BEGIN: the first part is the preamble, and every later part is one certificate body, its END,
+// and the text up to the next BEGIN -- where the NEXT block's tag line sits. So the fold carries the text
+// after the previous END forward as the tag source of the block it is reading.
+type FlexAwsPemScan {
+  tail: String
+  blocks: List<FlexAwsPemBlock>
+  seen_preamble: Bool
+}
+
+fn flex_aws_tag_in(text: String) -> String {
+  match (split(s: text, delimiter: "\n") |> filter(l => trim(l).starts_with(trim(flex_aws_ca_tag)))).last() {
+    Present { value: t } => trim(t)
+    Absent => ""
+  }
+}
+
+fn flex_aws_pem_step(acc: FlexAwsPemScan, part: String) -> FlexAwsPemScan {
+  if !acc.seen_preamble {
+    FlexAwsPemScan { tail: part, blocks: [], seen_preamble: true }
+  } else {
+    let halves = split(s: part, delimiter: flex_aws_pem_end)
+    let body = match halves.first() { Present { value: h } => h  Absent => "" }
+    let after = match halves.last() { Present { value: t } => t  Absent => "" }
+    FlexAwsPemScan {
+      tail: after,
+      blocks: concat(acc.blocks, [FlexAwsPemBlock { tag: flex_aws_tag_in(text: acc.tail), pem: join([flex_aws_pem_begin, body, flex_aws_pem_end, "\n"], "") }]),
+      seen_preamble: true,
+    }
+  }
+}
+
+fn flex_aws_pem_blocks(text: String) -> List<FlexAwsPemBlock> {
+  fold(split(s: text, delimiter: flex_aws_pem_begin), init: FlexAwsPemScan { tail: "", blocks: [], seen_preamble: false }, f: (acc, part) => flex_aws_pem_step(acc: acc, part: part)).blocks
+}
+
+fn flex_aws_ca_converge(current: String, cards: List<FlexAwsEnrollable>) -> String {
+  let kept = flex_aws_pem_blocks(text: current) |> filter(b => b.tag == "")
+  let ours = map(distinct_by_key(xs: cards, key: c => c.instance_id as String), c => join([flex_aws_ca_tag, c.instance_id as String, "\n", trim(c.cert_pem), "\n"], ""))
+  join(concat(map(kept, b => b.pem), ours), "")
+}

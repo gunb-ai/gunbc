@@ -21,6 +21,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // producers, so the render below is the one an EC2 card would boot.
 data policy: FlexEc2BootPolicy = FlexEc2BootPolicy {
   ssm_key_prefix: "/gunbc-flex/pool-key" as NonEmptyStr,
+  cert_prefix: "/gunbc-flex/card-cert" as NonEmptyStr,
   bucket_parameter: "/gunbc-flex/weights-bucket" as NonEmptyStr,
   key_wait: second(count: 600),
   root_volume_gib: 200,

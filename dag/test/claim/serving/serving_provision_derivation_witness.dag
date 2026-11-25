@@ -138,9 +138,9 @@ test fn a_vllm_recipe_derives_from_the_modeled_launch_and_never_falls_back() -> 
         && (match i.launch.engine.max_model_len { Present { value: n } => n == serving_fleet_context_cap _ => false })
         && (match i.launch.engine.kv_cache_dtype { Absent => true, _ => false })
         && (match i.launch.engine.served_model_name { Absent => true, _ => false })
-        // The provision names the bytes it starts from shard by shard: the derived per-file roster is
-        // the publisher's pinned 23, and it folds against the manifest it accompanies.
-        && length(xs: i.weights_digests) == 23
+        // The provision names the bytes it starts from file by file: the derived per-file roster is
+        // the revision's complete 37, and it folds against the manifest it accompanies.
+        && length(xs: i.weights_digests) == 37
         && qwen3_8_flash_next_pins_cohere()
     _ => false
   }

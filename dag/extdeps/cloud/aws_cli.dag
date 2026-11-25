@@ -3,14 +3,15 @@ module extdeps.cloud.aws_cli
 import std.types { String, NonEmptyStr, Bool, Int, List, FilePath }
 import std.optional { Present, Absent }
 import std.decimal { ExactDecimal }
+import std.algebra { trim }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.env_binding { EnvBinding, EnvSet, EnvUnset }
-import std.measure { mebibyte, gigabyte }
+import std.measure { mebibyte, gigabyte, gibibyte_count, hardware_thread_count, MoneyPerHour, money_per_hour_micros, exact_decimal_to_money_per_hour_ceil, DecimalMoneyPerHourConverted, DecimalMoneyPerHourRefused }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import extdeps.exec.program { ProgramIdentity, uncataloged_program }
 import extdeps.exec.command { ArgvCommand, argv_command, env_prefixed_command }
-import extdeps.languages.json.emit { JsonValue, JsonString, JsonNumber, JsonArray, JsonObject, JsonBool, JsonNull }
+import extdeps.languages.json.emit { JsonValue, JsonKeyValue, JsonString, JsonNumber, JsonArray, JsonObject, JsonBool, JsonNull, json_kv, json_string, json_array, json_object, json_int, json_bool, serialize_json }
 import extdeps.languages.json.parse {
   parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_document_gap_text,
   JsonFieldRead, FieldAbsent, FieldRead, FieldMalformed, json_field, json_field_string, json_field_int, json_field_bool,
@@ -20,13 +21,20 @@ import extdeps.languages.json.number { read_json_number, JsonNumberExact, JsonNu
 import extdeps.cloud.aws_ec2 {
   AwsEc2Region, AwsEc2RegionOptInStatus, AwsEc2OptInNotRequired, AwsEc2OptedIn, AwsEc2NotOptedIn,
   AwsEc2InstanceTypeOffering, AwsEc2LocationAvailabilityZone,
-  AwsEc2InstanceTypeInfo, AwsEc2GpuDeviceInfo, AwsEc2InstanceStorageInfo, AwsEc2DiskInfo,
+  AwsEc2InstanceTypeInfo, AwsEc2GpuDeviceInfo, AwsEc2GpuDeviceMemoryInfo, AwsEc2GpuInfo, AwsEc2VCpuInfo, AwsEc2MemoryInfo,
+  AwsEc2InstanceStorageInfo, AwsEc2DiskInfo,
   AwsEc2SpotPrice, AwsEc2Instance, AwsEc2Placement, AwsEc2InstanceState, AwsEc2InstanceStateName,
   AwsEc2Pending, AwsEc2Running, AwsEc2ShuttingDown, AwsEc2Terminated, AwsEc2Stopping, AwsEc2Stopped,
   AwsEc2InstanceLifecycle, AwsEc2LifecycleSpot, AwsEc2LifecycleScheduled, AwsEc2LifecycleCapacityBlock,
-  AwsEc2Tag, AwsEc2StateReason,
+  AwsEc2Tag, AwsEc2StateReason, aws_ec2_quote_currency,
+  AwsEc2TagSpecification, AwsEc2TaggedResourceType, AwsEc2TagInstance, AwsEc2TagVolume,
+  AwsEc2InstanceMarketOptions, AwsEc2SpotMarket, aws_ec2_spot_request_wire, aws_ec2_market_type_wire,
+  AwsEc2BlockDeviceMapping, AwsEc2EbsMapping, AwsEc2InstanceStoreMapping, AwsEc2NetworkInterfaceSpecification,
+  AwsEc2MetadataOptions, AwsEc2IamInstanceProfileSpecification, AwsEc2IamInstanceProfileByArn, AwsEc2IamInstanceProfileByName,
+  AwsEc2LaunchSource, AwsEc2LaunchFromTemplate, AwsEc2LaunchInline, AwsEc2LaunchTemplateById, AwsEc2LaunchTemplateByName,
+  AwsEc2RunInstancesRequest,
 }
-import extdeps.cloud.aws_service_quotas { AwsServiceQuota }
+import extdeps.cloud.aws_service_quotas { AwsServiceQuota, AwsQuotaMetricInfo, AwsQuotaMetricDimension }
 
 // THE AWS COMMAND LINE INTERFACE, VERSION 2, AS ONE TRANSPORT HANDLER FOR THE AWS SHAPES. Its own
 // upstream (aws/aws-cli, versioned separately from every service API), so its own module: the API
@@ -329,7 +337,7 @@ fn aws_cli_gpu(v: JsonValue) -> AwsCliRead<AwsEc2GpuDeviceInfo> {
             AwsCliReadOk { value: n } =>
               match aws_cli_mib(obj: v, key: "MemoryInfo") {
                 AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
-                AwsCliReadOk { value: mib } => AwsCliReadOk { value: AwsEc2GpuDeviceInfo { name: name, manufacturer: maker, count: n, memory_size_in_mib: mebibyte(count: mib) } }
+                AwsCliReadOk { value: mib } => AwsCliReadOk { value: AwsEc2GpuDeviceInfo { name: name, manufacturer: maker, count: n, memory_info: AwsEc2GpuDeviceMemoryInfo { size_in_mib: mebibyte(count: mib) } } }
               }
           }
       }
@@ -371,6 +379,24 @@ fn aws_cli_storage(v: JsonValue) -> AwsCliRead<AwsEc2InstanceStorageInfo?> {
   }
 }
 
+// GpuInfo is absent for a type with no GPU (AwsEc2InstanceTypeInfo gpu_info); present, both of its members
+// are read and a missing TotalGpuMemoryInMiB refuses rather than reading as zero.
+fn aws_cli_gpu_info(v: JsonValue) -> AwsCliRead<AwsEc2GpuInfo?> {
+  match json_field(obj: v, key: "GpuInfo") {
+    FieldAbsent => AwsCliReadOk { value: none }
+    FieldMalformed { cause: c } => aws_cli_refused(cause: c)
+    FieldRead { value: g } =>
+      match aws_cli_list(doc: g, key: "Gpus", read: d => aws_cli_gpu(v: d)) {
+        AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+        AwsCliReadOk { value: gpus } =>
+          match aws_cli_int(obj: g, key: "TotalGpuMemoryInMiB") {
+            AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+            AwsCliReadOk { value: total } => AwsCliReadOk { value: Present { value: AwsEc2GpuInfo { gpus: gpus, total_gpu_memory_in_mib: mebibyte(count: total) } } }
+          }
+      }
+  }
+}
+
 fn aws_cli_usage_class(v: JsonValue) -> AwsCliRead<NonEmptyStr> {
   match v { JsonString { value: s } => if s == "" { aws_cli_refused(cause: "an empty usage class") } else { AwsCliReadOk { value: s as NonEmptyStr } }  _ => aws_cli_refused(cause: "a usage class is not a string") }
 }
@@ -388,12 +414,9 @@ fn aws_cli_instance_type(v: JsonValue) -> AwsCliRead<AwsEc2InstanceTypeInfo> {
   match aws_cli_mib(obj: v, key: "MemoryInfo") {
     AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
     AwsCliReadOk { value: mem } =>
-  match aws_cli_object(obj: v, key: "GpuInfo") {
+  match aws_cli_gpu_info(v: v) {
     AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
     AwsCliReadOk { value: gpu_info } =>
-  match aws_cli_list(doc: gpu_info, key: "Gpus", read: g => aws_cli_gpu(v: g)) {
-    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
-    AwsCliReadOk { value: gpus } =>
   match aws_cli_bool(obj: v, key: "InstanceStorageSupported") {
     AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
     AwsCliReadOk { value: storage_supported } =>
@@ -406,16 +429,14 @@ fn aws_cli_instance_type(v: JsonValue) -> AwsCliRead<AwsEc2InstanceTypeInfo> {
       AwsCliReadOk {
         value: AwsEc2InstanceTypeInfo {
           instance_type: t,
-          default_vcpus: vcpus,
-          memory_size_in_mib: mebibyte(count: mem),
-          gpus: gpus,
-          total_gpu_memory_in_mib: match json_field_int(obj: gpu_info, key: "TotalGpuMemoryInMiB") { FieldRead { value: n } => Present { value: mebibyte(count: n) }  _ => none },
+          v_cpu_info: AwsEc2VCpuInfo { default_vcpus: hardware_thread_count(count: vcpus) },
+          memory_info: AwsEc2MemoryInfo { size_in_mib: mebibyte(count: mem) },
+          gpu_info: gpu_info,
           instance_storage_supported: storage_supported,
-          instance_storage: storage,
+          instance_storage_info: storage,
           supported_usage_classes: classes,
         },
       }
-  }
   }
   }
   }
@@ -435,6 +456,16 @@ fn aws_cli_read_instance_types(stdout: String) -> AwsCliRead<List<AwsEc2Instance
 
 // ---- describe-spot-price-history ----
 
+// THE WIRE PRICE INTO THE CARRIER (extdeps.cloud.aws_ec2's note: money is MoneyPerHour, parsed at ingest).
+// EC2 states six fractional digits, which the micro carrier holds exactly; a finer answer is rounded UP,
+// the direction std.measure sanctions for a liability, and a negative or unrepresentable one refuses.
+fn aws_cli_money_per_hour(key: String, d: ExactDecimal) -> AwsCliRead<MoneyPerHour> {
+  match exact_decimal_to_money_per_hour_ceil(d: d, currency: aws_ec2_quote_currency) {
+    DecimalMoneyPerHourConverted { rate: r } => AwsCliReadOk { value: r }
+    DecimalMoneyPerHourRefused { conversion: _ } => aws_cli_refused(cause: concat(key, " is not a non-negative price the micro carrier holds"))
+  }
+}
+
 fn aws_cli_spot_price(v: JsonValue) -> AwsCliRead<AwsEc2SpotPrice> {
   match aws_cli_string(obj: v, key: "AvailabilityZone") {
     AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
@@ -447,11 +478,15 @@ fn aws_cli_spot_price(v: JsonValue) -> AwsCliRead<AwsEc2SpotPrice> {
     AwsCliReadOk { value: pd } =>
   match aws_cli_decimal(obj: v, key: "SpotPrice") {
     AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: decimal } =>
+  match aws_cli_money_per_hour(key: "SpotPrice", d: decimal) {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
     AwsCliReadOk { value: price } =>
   match aws_cli_string(obj: v, key: "Timestamp") {
     AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
     AwsCliReadOk { value: at } =>
       AwsCliReadOk { value: AwsEc2SpotPrice { availability_zone: az, instance_type: t, product_description: pd, spot_price: price, timestamp: at as String } }
+  }
   }
   }
   }
@@ -611,6 +646,58 @@ fn aws_cli_read_instances(stdout: String) -> AwsCliRead<List<AwsEc2Instance>> {
 
 // ---- service-quotas get-service-quota ----
 
+// UsageMetric is absent for a quota AWS does not meter (AwsServiceQuota usage_metric); present, its
+// MetricDimensions is a JSON object of name -> value, read member by member in the answer's order.
+fn aws_cli_metric_dimension(name: String, v: JsonValue) -> AwsCliRead<AwsQuotaMetricDimension> {
+  match v {
+    JsonString { value: s } => if name == "" { aws_cli_refused(cause: "a metric dimension with an empty name") } else { AwsCliReadOk { value: AwsQuotaMetricDimension { name: name as NonEmptyStr, value: s } } }
+    _ => aws_cli_refused(cause: concat("metric dimension is not a string: ", name))
+  }
+}
+
+fn aws_cli_usage_metric(q: JsonValue) -> AwsCliRead<AwsQuotaMetricInfo?> {
+  match json_field(obj: q, key: "UsageMetric") {
+    FieldAbsent => AwsCliReadOk { value: none }
+    FieldMalformed { cause: c } => aws_cli_refused(cause: c)
+    FieldRead { value: m } =>
+      match aws_cli_string(obj: m, key: "MetricNamespace") {
+        AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+        AwsCliReadOk { value: ns } =>
+          match aws_cli_string(obj: m, key: "MetricName") {
+            AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+            AwsCliReadOk { value: name } =>
+              match aws_cli_object(obj: m, key: "MetricDimensions") {
+                AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+                AwsCliReadOk { value: dims } =>
+                  match dims {
+                    JsonObject { members: ms } =>
+                      match aws_cli_dimensions(members: ms) {
+                        AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+                        AwsCliReadOk { value: ds } => AwsCliReadOk { value: Present { value: AwsQuotaMetricInfo {
+                          metric_namespace: ns,
+                          metric_name: name,
+                          metric_dimensions: ds,
+                          metric_statistic_recommendation: match json_field_string(obj: m, key: "MetricStatisticRecommendation") { FieldRead { value: r } => Present { value: r }  _ => none },
+                        } } }
+                      }
+                    _ => aws_cli_refused(cause: "MetricDimensions is not an object")
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn aws_cli_dimensions(members: List<JsonKeyValue>) -> AwsCliRead<List<AwsQuotaMetricDimension>> {
+  fold(members, init: AwsCliReadOk { value: [] }, f: (acc, kv) => match acc {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: ds } => match aws_cli_metric_dimension(name: kv.key, v: kv.value) {
+      AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+      AwsCliReadOk { value: d } => AwsCliReadOk { value: concat(ds, [d]) }
+    }
+  })
+}
+
 fn aws_cli_read_service_quota(stdout: String) -> AwsCliRead<AwsServiceQuota> {
   match aws_cli_document(stdout: stdout) {
     AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
@@ -630,6 +717,9 @@ fn aws_cli_read_service_quota(stdout: String) -> AwsCliRead<AwsServiceQuota> {
   match aws_cli_bool(obj: q, key: "Adjustable") {
     AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
     AwsCliReadOk { value: adjustable } =>
+  match aws_cli_usage_metric(q: q) {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: usage } =>
       AwsCliReadOk {
         value: AwsServiceQuota {
           service_code: service,
@@ -638,6 +728,7 @@ fn aws_cli_read_service_quota(stdout: String) -> AwsCliRead<AwsServiceQuota> {
           value: value,
           unit: match json_field_string(obj: q, key: "Unit") { FieldRead { value: u } => u  _ => "" },
           adjustable: adjustable,
+          usage_metric: usage,
         },
       }
   }
@@ -645,5 +736,265 @@ fn aws_cli_read_service_quota(stdout: String) -> AwsCliRead<AwsServiceQuota> {
   }
   }
   }
+  }
+  }
+}
+
+// ---- THE APPLY PASS: the writes, and the reads that name what the writes reference ------------------
+//
+// Every write states its region, carries no credential in argv (the environment names the credential
+// FILE), and takes a secret only as a file:// path. A structured member is passed as the JSON the API
+// reference names it with, rendered by extdeps.languages.json.emit, never assembled by spelling.
+
+// MONEY ON THE WIRE: a decimal string in US dollars with the micro carrier's six fractional digits, so a
+// price read from the wire and written back is the same string (extdeps.cloud.aws_ec2's note).
+fn aws_cli_money_wire(m: MoneyPerHour) -> String {
+  let micros = money_per_hour_micros(q: m) as Int
+  let whole = micros / 1000000
+  let frac = micros - (whole * 1000000)
+  // 1000000 + frac is seven digits whose first is 1; the remaining six are frac zero-padded.
+  let padded = to_string(1000000 + frac)
+  join([to_string(whole), ".", substring(s: padded, start: 1, end: 7)], "")
+}
+
+fn aws_cli_tags_json(tags: List<AwsEc2Tag>) -> JsonValue {
+  json_array(elements: map(tags, t => json_object(members: [json_kv(key: "Key", value: json_string(s: t.key as String)), json_kv(key: "Value", value: json_string(s: t.value))])))
+}
+
+fn aws_cli_tag_resource_wire(r: AwsEc2TaggedResourceType) -> String {
+  match r {
+    AwsEc2TagInstance => "instance"
+    AwsEc2TagVolume => "volume"
+  }
+}
+
+fn aws_cli_tag_specifications_json(specs: List<AwsEc2TagSpecification>) -> String {
+  serialize_json(v: json_array(elements: map(specs, s => json_object(members: [
+    json_kv(key: "ResourceType", value: json_string(s: aws_cli_tag_resource_wire(r: s.resource_type))),
+    json_kv(key: "Tags", value: aws_cli_tags_json(tags: s.tags)),
+  ]))))
+}
+
+fn aws_cli_market_options_json(o: AwsEc2InstanceMarketOptions) -> String {
+  match o {
+    AwsEc2SpotMarket { spot_options: so } => {
+      let wire = aws_ec2_spot_request_wire(behavior: so.request_behavior)
+      serialize_json(v: json_object(members: [
+        json_kv(key: "MarketType", value: json_string(s: aws_ec2_market_type_wire(options: o) as String)),
+        json_kv(key: "SpotOptions", value: json_object(members: concat(
+          match so.max_price { Present { value: m } => [json_kv(key: "MaxPrice", value: json_string(s: aws_cli_money_wire(m: m)))]  Absent => [] },
+          [
+            json_kv(key: "SpotInstanceType", value: json_string(s: wire.spot_instance_type as String)),
+            json_kv(key: "InstanceInterruptionBehavior", value: json_string(s: wire.instance_interruption_behavior as String)),
+          ],
+        ))),
+      ]))
+    }
+  }
+}
+
+fn aws_cli_block_devices_json(ms: List<AwsEc2BlockDeviceMapping>) -> String {
+  serialize_json(v: json_array(elements: map(ms, m => match m {
+    AwsEc2EbsMapping { device_name: d, ebs: e } => json_object(members: [
+      json_kv(key: "DeviceName", value: json_string(s: d as String)),
+      json_kv(key: "Ebs", value: json_object(members: [
+        json_kv(key: "VolumeSize", value: json_int(n: gibibyte_count(e.volume_size_gib) as Int)),
+        json_kv(key: "VolumeType", value: json_string(s: e.volume_type as String)),
+        json_kv(key: "DeleteOnTermination", value: json_bool(b: e.delete_on_termination)),
+      ])),
+    ])
+    AwsEc2InstanceStoreMapping { device_name: d, virtual_name: v } => json_object(members: [
+      json_kv(key: "DeviceName", value: json_string(s: d as String)),
+      json_kv(key: "VirtualName", value: json_string(s: v as String)),
+    ])
+  })))
+}
+
+fn aws_cli_network_interfaces_json(nics: List<AwsEc2NetworkInterfaceSpecification>) -> String {
+  serialize_json(v: json_array(elements: map(nics, n => json_object(members: [
+    json_kv(key: "DeviceIndex", value: json_int(n: n.device_index)),
+    json_kv(key: "SubnetId", value: json_string(s: n.subnet_id as String)),
+    json_kv(key: "Groups", value: json_array(elements: map(n.groups, g => json_string(s: g as String)))),
+    json_kv(key: "AssociatePublicIpAddress", value: json_bool(b: n.associate_public_ip_address)),
+    json_kv(key: "DeleteOnTermination", value: json_bool(b: n.delete_on_termination)),
+  ]))))
+}
+
+fn aws_cli_metadata_options_json(m: AwsEc2MetadataOptions) -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "HttpTokens", value: json_string(s: m.http_tokens as String)),
+    json_kv(key: "HttpPutResponseHopLimit", value: json_int(n: m.http_put_response_hop_limit)),
+  ]))
+}
+
+fn aws_cli_instance_profile_json(p: AwsEc2IamInstanceProfileSpecification) -> String {
+  serialize_json(v: json_object(members: [match p {
+    AwsEc2IamInstanceProfileByArn { arn: a } => json_kv(key: "Arn", value: json_string(s: a as String))
+    AwsEc2IamInstanceProfileByName { name: n } => json_kv(key: "Name", value: json_string(s: n as String))
+  }]))
+}
+
+// The launch members, from a stored template or inline. The CLI base64-encodes --user-data itself
+// (run-instances reference, --user-data), so the text is passed as written.
+fn aws_cli_launch_source_args(source: AwsEc2LaunchSource) -> List<String> {
+  match source {
+    AwsEc2LaunchFromTemplate { template: t } => ["--launch-template", match t {
+      AwsEc2LaunchTemplateById { launch_template_id: i, version: v } => join(["LaunchTemplateId=", i as String, ",Version=", v as String], "")
+      AwsEc2LaunchTemplateByName { launch_template_name: n, version: v } => join(["LaunchTemplateName=", n as String, ",Version=", v as String], "")
+    }]
+    AwsEc2LaunchInline { data: d } => [
+      "--image-id", d.image_id as String,
+      "--block-device-mappings", aws_cli_block_devices_json(ms: d.block_device_mappings),
+      "--user-data", d.user_data,
+      "--metadata-options", aws_cli_metadata_options_json(m: d.metadata_options),
+      "--iam-instance-profile", aws_cli_instance_profile_json(p: d.iam_instance_profile),
+      "--network-interfaces", aws_cli_network_interfaces_json(nics: d.network_interfaces),
+      "--instance-initiated-shutdown-behavior", d.instance_initiated_shutdown_behavior as String,
+    ]
+  }
+}
+
+fn aws_cli_run_instances(credentials_file: FilePath, region: NonEmptyStr, request: AwsEc2RunInstancesRequest) -> ArgvCommand {
+  aws_cli_command(credentials_file: credentials_file, region: region, service: "ec2" as NonEmptyStr, operation: "run-instances" as NonEmptyStr,
+    arguments: concat(concat(
+      aws_cli_launch_source_args(source: request.launch),
+      [
+        "--instance-type", request.instance_type as String,
+        "--count", join([to_string(request.min_count), ":", to_string(request.max_count)], ""),
+        "--client-token", request.client_token as String,
+        "--tag-specifications", aws_cli_tag_specifications_json(specs: request.tag_specifications),
+      ]),
+      concat(
+        match request.placement { Present { value: p } => ["--placement", join(["AvailabilityZone=", p.availability_zone as String], "")]  Absent => [] },
+        match request.instance_market_options { Present { value: o } => ["--instance-market-options", aws_cli_market_options_json(o: o)]  Absent => [] },
+      )))
+}
+
+fn aws_cli_terminate_instances(credentials_file: FilePath, region: NonEmptyStr, instance_ids: List<NonEmptyStr>) -> ArgvCommand {
+  aws_cli_command(credentials_file: credentials_file, region: region, service: "ec2" as NonEmptyStr, operation: "terminate-instances" as NonEmptyStr,
+    arguments: concat(["--instance-ids"], map(instance_ids, i => i as String)))
+}
+
+fn aws_cli_describe_subnets_in_default_vpc(credentials_file: FilePath, region: NonEmptyStr, zone: NonEmptyStr) -> ArgvCommand {
+  aws_cli_command(credentials_file: credentials_file, region: region, service: "ec2" as NonEmptyStr, operation: "describe-subnets" as NonEmptyStr,
+    arguments: ["--filters", "Name=default-for-az,Values=true", join(["Name=availability-zone,Values=", zone as String], "")])
+}
+
+fn aws_cli_describe_security_group_named(credentials_file: FilePath, region: NonEmptyStr, group_name: NonEmptyStr) -> ArgvCommand {
+  aws_cli_command(credentials_file: credentials_file, region: region, service: "ec2" as NonEmptyStr, operation: "describe-security-groups" as NonEmptyStr,
+    arguments: ["--filters", join(["Name=group-name,Values=", group_name as String], "")])
+}
+
+// SSM GetParameter: a public parameter (an AMI id under /aws/service/...) or one of the loop's own.
+fn aws_cli_get_parameter(credentials_file: FilePath, region: NonEmptyStr, name: NonEmptyStr) -> ArgvCommand {
+  aws_cli_command(credentials_file: credentials_file, region: region, service: "ssm" as NonEmptyStr, operation: "get-parameter" as NonEmptyStr,
+    arguments: ["--name", name as String])
+}
+
+// A SecureString read back decrypted. Its value reaches the caller on stdout, never argv; the caller
+// owns keeping it out of any receipt.
+fn aws_cli_get_secure_parameter(credentials_file: FilePath, region: NonEmptyStr, name: NonEmptyStr) -> ArgvCommand {
+  aws_cli_command(credentials_file: credentials_file, region: region, service: "ssm" as NonEmptyStr, operation: "get-parameter" as NonEmptyStr,
+    arguments: ["--name", name as String, "--with-decryption"])
+}
+
+// A SecureString whose value is READ FROM A FILE (file://), so the secret never appears in argv.
+fn aws_cli_put_secure_parameter(credentials_file: FilePath, region: NonEmptyStr, name: NonEmptyStr, value_file: FilePath) -> ArgvCommand {
+  aws_cli_command(credentials_file: credentials_file, region: region, service: "ssm" as NonEmptyStr, operation: "put-parameter" as NonEmptyStr,
+    arguments: ["--name", name as String, "--type", "SecureString", "--overwrite", "--value", join(["file://", value_file as String], "")])
+}
+
+fn aws_cli_delete_parameter(credentials_file: FilePath, region: NonEmptyStr, name: NonEmptyStr) -> ArgvCommand {
+  aws_cli_command(credentials_file: credentials_file, region: region, service: "ssm" as NonEmptyStr, operation: "delete-parameter" as NonEmptyStr,
+    arguments: ["--name", name as String])
+}
+
+fn aws_cli_get_queue_url(credentials_file: FilePath, region: NonEmptyStr, queue_name: NonEmptyStr) -> ArgvCommand {
+  aws_cli_command(credentials_file: credentials_file, region: region, service: "sqs" as NonEmptyStr, operation: "get-queue-url" as NonEmptyStr,
+    arguments: ["--queue-name", queue_name as String])
+}
+
+// Up to ten messages, without waiting: the pass reads what is queued now and returns.
+fn aws_cli_receive_messages(credentials_file: FilePath, region: NonEmptyStr, queue_url: NonEmptyStr) -> ArgvCommand {
+  aws_cli_command(credentials_file: credentials_file, region: region, service: "sqs" as NonEmptyStr, operation: "receive-message" as NonEmptyStr,
+    arguments: ["--queue-url", queue_url as String, "--max-number-of-messages", "10", "--wait-time-seconds", "0", "--visibility-timeout", "60"])
+}
+
+fn aws_cli_delete_message(credentials_file: FilePath, region: NonEmptyStr, queue_url: NonEmptyStr, receipt_handle: NonEmptyStr) -> ArgvCommand {
+  aws_cli_command(credentials_file: credentials_file, region: region, service: "sqs" as NonEmptyStr, operation: "delete-message" as NonEmptyStr,
+    arguments: ["--queue-url", queue_url as String, "--receipt-handle", receipt_handle as String])
+}
+
+// ---- the Apply pass's readers ----
+
+// RunInstances answers a Reservation at the root (extdeps.cloud.aws_ec2 AwsEc2RunInstancesResponse).
+fn aws_cli_read_run_instances(stdout: String) -> AwsCliRead<List<AwsEc2Instance>> {
+  match aws_cli_document(stdout: stdout) {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: doc } => aws_cli_reservation_instances(v: doc)
+  }
+}
+
+fn aws_cli_read_subnet_ids(stdout: String) -> AwsCliRead<List<NonEmptyStr>> {
+  match aws_cli_document(stdout: stdout) {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: doc } => aws_cli_list(doc: doc, key: "Subnets", read: s => aws_cli_string(obj: s, key: "SubnetId"))
+  }
+}
+
+fn aws_cli_read_security_group_ids(stdout: String) -> AwsCliRead<List<NonEmptyStr>> {
+  match aws_cli_document(stdout: stdout) {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: doc } => aws_cli_list(doc: doc, key: "SecurityGroups", read: g => aws_cli_string(obj: g, key: "GroupId"))
+  }
+}
+
+fn aws_cli_read_parameter_value(stdout: String) -> AwsCliRead<NonEmptyStr> {
+  match aws_cli_document(stdout: stdout) {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: doc } =>
+      match aws_cli_object(obj: doc, key: "Parameter") {
+        AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+        AwsCliReadOk { value: p } => aws_cli_string(obj: p, key: "Value")
+      }
+  }
+}
+
+fn aws_cli_read_queue_url(stdout: String) -> AwsCliRead<NonEmptyStr> {
+  match aws_cli_document(stdout: stdout) {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: doc } => aws_cli_string(obj: doc, key: "QueueUrl")
+  }
+}
+
+// One queued message: its receipt handle (to delete it) and its body text (an EventBridge event).
+type AwsCliQueuedMessage {
+  receipt_handle: NonEmptyStr
+  body: String
+}
+
+// receive-message with nothing queued prints NOTHING (no document at all), which is the empty answer,
+// not an unreadable one; any non-empty output must be the documented shape.
+fn aws_cli_read_messages(stdout: String) -> AwsCliRead<List<AwsCliQueuedMessage>> {
+  if trim(stdout) == "" {
+    AwsCliReadOk { value: [] }
+  } else {
+    match aws_cli_document(stdout: stdout) {
+      AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+      AwsCliReadOk { value: doc } =>
+        match json_field(obj: doc, key: "Messages") {
+          FieldAbsent => AwsCliReadOk { value: [] }
+          FieldMalformed { cause: c } => aws_cli_refused(cause: c)
+          FieldRead { value: _ } => aws_cli_list(doc: doc, key: "Messages", read: m =>
+            match aws_cli_string(obj: m, key: "ReceiptHandle") {
+              AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+              AwsCliReadOk { value: h } =>
+                match aws_cli_string(obj: m, key: "Body") {
+                  AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+                  AwsCliReadOk { value: b } => AwsCliReadOk { value: AwsCliQueuedMessage { receipt_handle: h, body: b as String } }
+                }
+            })
+        }
+    }
   }
 }

@@ -840,7 +840,15 @@ fn router_dev_srv1_site() -> RouterDevSite {
 // The hand-run deploy's render step: writes the proxy's nginx.conf into the host state directory the
 // container mounts, and refuses (exit 1) when the site's tokens are refused or the write fails:
 // gunbc run --source-root dag --source-root src/v2 --entry dag/gunbc/serving/router_dev_policy.dag --function router_dev_srv1_write_config
-fn router_dev_srv1_host_config_path() -> String { "/home/briansrls/router/nginx.conf" }
+// The host directory the container mounts at the site's state_dir (router_dev_srv1_site); every host-side
+// path of the srv1 router is under it.
+fn router_dev_srv1_host_state_dir() -> String { "/home/briansrls/router" }
+
+fn router_dev_srv1_host_config_path() -> String { router_dev_srv1_host_state_dir() + "/nginx.conf" }
+
+// The srv1 router container (gunbc-router.service runs `docker start gunbc-router`, read 2026-11-25); a
+// HUP to it reloads nginx.conf and re-runs init_by_lua, which re-reads upstreams.json and the CA bundle.
+fn router_dev_srv1_container_name() -> NonEmptyStr { "gunbc-router" as NonEmptyStr }
 
 fn router_dev_srv1_write_config() -> ProcessExit {
   match router_dev_first_party_refusal(fp: router_dev_first_party()) {
@@ -1467,7 +1475,7 @@ fn router_dev_srv1_write_first_party_upstreams() -> ProcessExit {
     Absent => match router_dev_first_party_json(fp: router_dev_first_party()) {
       Absent => ExitFailure { code: 1, reason: "refused upstream rows: no first-party projection" }
       Present { value: j } => {
-        let w = Filesystem.Write(path: "/home/briansrls/router/upstreams.first_party.json", content: j)
+        let w = Filesystem.Write(path: router_dev_srv1_host_state_dir() + "/upstreams.first_party.json", content: j)
         if w.success { ExitSuccess } else { ExitFailure { code: 1, reason: concat("write failed: ", w.error) } }
       }
     }
@@ -1481,7 +1489,7 @@ fn router_dev_srv1_write_candidate() -> ProcessExit {
     Absent => match router_dev_config(site: router_dev_srv1_site()) {
     RouterDevConfigRefused { token: k } => ExitFailure { code: 1, reason: concat("refused token: ", k) }
     RouterDevConfigRendered { text: t } => {
-        let w = Filesystem.Write(path: "/home/briansrls/router/nginx.candidate.conf", content: t)
+        let w = Filesystem.Write(path: router_dev_srv1_host_state_dir() + "/nginx.candidate.conf", content: t)
         if w.success { ExitSuccess } else { ExitFailure { code: 1, reason: concat("write failed: ", w.error) } }
       }
     }

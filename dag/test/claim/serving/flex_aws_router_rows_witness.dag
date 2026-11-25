@@ -1,0 +1,63 @@
+module test.claim.serving.flex_aws_router_rows_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, String, NonEmptyStr, List }
+import std.algebra { length }
+import gunbc.serving.flex_aws_router_rows {
+  FlexAwsEnrollable, FlexAwsRowFacts, FlexAwsRowsConverged, FlexAwsRowsRefused,
+  flex_aws_rows_converge, flex_aws_ca_converge, flex_aws_pem_blocks,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUPPLIED: the live file's shape (srv1 upstreams.json field names, read 2026-11-25) with stand-in keys
+// and addresses, and stand-in certificate bodies. The inhabitance run is the srv1 pass that enrolls a
+// real card (gunbc.fleet.flex_aws_pass).
+data first_party: String = "[\{\"name\": \"srv1-vllm\", \"scheme\": \"https\", \"host\": \"127.0.0.1\", \"port\": 18000, \"sni\": \"pool-card\", \"model\": \"Qwen3.8-Flash-Next\", \"cap\": 4, \"overflow\": false, \"key\": \"k1\", \"retain\": 8, \"tier\": 0}, \{\"name\": \"ken\", \"scheme\": \"http\", \"host\": \"100.96.80.109\", \"port\": 18081, \"model\": \"qwen3.8-flash-next-iq3_s\", \"cap\": 2, \"overflow\": false, \"key\": \"k2\", \"retain\": 4, \"tier\": 1}]"
+
+data facts: FlexAwsRowFacts = FlexAwsRowFacts { model: "Qwen3.8-Flash-Next" as NonEmptyStr, max_model_len: 229376, port: 18000, sni: "pool-card" as NonEmptyStr, cap: 4, retain: 8, tier: 0 }
+
+fn card(id: String, ip: String, body: String) -> FlexAwsEnrollable {
+  FlexAwsEnrollable { instance_id: id as NonEmptyStr, public_ip: ip as NonEmptyStr, cert_pem: join(["-----BEGIN CERTIFICATE-----\n", body, "\n-----END CERTIFICATE-----\n"], ""), pool_key: "pk" }
+}
+
+data bundle: String = "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n-----BEGIN CERTIFICATE-----\nBBBB\n-----END CERTIFICATE-----\n"
+
+// Adding a card keeps both first-party rows byte-for-byte in value and appends one overflow row; a second
+// converge over its own output changes nothing (idempotent), and an empty card set removes only our row.
+test fn our_rows_converge_and_first_party_rows_pass_through() -> Bool {
+  match flex_aws_rows_converge(current: first_party, cards: [card(id: "i-0abc", ip: "3.4.5.6", body: "CCCC")], facts: facts) {
+    FlexAwsRowsConverged { text: t, added: a, removed: r, changed: c } =>
+      c && (a == ["aws-i-0abc"]) && (r == [])
+        && t.contains("\"name\": \"srv1-vllm\"") && t.contains("\"name\": \"ken\"") && t.contains("\"key\": \"k2\"")
+        && t.contains("\"name\": \"aws-i-0abc\"") && t.contains("\"host\": \"3.4.5.6\"") && t.contains("\"overflow\": true")
+        && (match flex_aws_rows_converge(current: t, cards: [card(id: "i-0abc", ip: "3.4.5.6", body: "CCCC")], facts: facts) {
+          FlexAwsRowsConverged { text: _, added: a2, removed: r2, changed: c2 } => !c2 && (a2 == []) && (r2 == [])
+          FlexAwsRowsRefused { cause: _ } => false
+        })
+        && (match flex_aws_rows_converge(current: t, cards: [], facts: facts) {
+          FlexAwsRowsConverged { text: t3, added: _, removed: r3, changed: c3 } => c3 && (r3 == ["aws-i-0abc"]) && !t3.contains("aws-i-0abc") && t3.contains("\"name\": \"ken\"")
+          FlexAwsRowsRefused { cause: _ } => false
+        })
+    FlexAwsRowsRefused { cause: _ } => false
+  }
+}
+
+// A file this module cannot read is refused, never rewritten (rewriting it would drop rows it does not own).
+test fn an_unreadable_or_non_array_upstreams_file_refuses() -> Bool {
+  (match flex_aws_rows_converge(current: "\{\"name\": \"x\"}", cards: [], facts: facts) { FlexAwsRowsRefused { cause: c } => c.contains("array")  _ => false })
+    && (match flex_aws_rows_converge(current: "[\{", cards: [], facts: facts) { FlexAwsRowsRefused { cause: _ } => true  _ => false })
+}
+
+// The CA bundle: untagged certificates are kept, ours are tagged and replaced wholesale; removing the card
+// removes exactly its certificate.
+test fn our_certificates_converge_and_the_others_are_kept() -> Bool {
+  let with_card = flex_aws_ca_converge(current: bundle, cards: [card(id: "i-0abc", ip: "3.4.5.6", body: "CCCC")])
+  let without = flex_aws_ca_converge(current: with_card, cards: [])
+  (length(xs: flex_aws_pem_blocks(text: with_card)) == 3)
+    && with_card.contains("# gunbc-flex i-0abc\n-----BEGIN CERTIFICATE-----\nCCCC")
+    && with_card.contains("AAAA") && with_card.contains("BBBB")
+    && (length(xs: flex_aws_pem_blocks(text: without)) == 2)
+    && !without.contains("CCCC") && without.contains("AAAA") && without.contains("BBBB")
+    && (flex_aws_ca_converge(current: with_card, cards: [card(id: "i-0abc", ip: "3.4.5.6", body: "CCCC")]) == with_card)
+}

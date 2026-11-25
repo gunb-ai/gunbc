@@ -5,13 +5,13 @@ import std.optional { Present, Absent }
 import std.list { first_where }
 import std.decimal { ExactDecimal, canonical_exact_decimal, exact_decimal_wire }
 import std.integer { int_to_decimal_string }
-import std.measure { Mebibyte, mebibyte, mebibyte_count, gigabyte_count, money_per_hour_micros, exact_decimal_to_money_per_hour_ceil, DecimalMoneyPerHourConverted, DecimalMoneyPerHourRefused }
+import std.measure { hardware_thread_count_value, Mebibyte, mebibyte, mebibyte_count, gigabyte_count, money_per_hour_micros, exact_decimal_to_money_per_hour_ceil, DecimalMoneyPerHourConverted, DecimalMoneyPerHourRefused }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import extdeps.exec.command { LocalExec }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import gunbc.command_runner { run_shell_command_capture }
 import extdeps.cloud.aws_ec2 {
-  AwsEc2Region, AwsEc2NotOptedIn, AwsEc2InstanceTypeOffering, AwsEc2InstanceTypeInfo, AwsEc2SpotPrice, AwsEc2Instance,
+  AwsEc2Region, AwsEc2NotOptedIn, AwsEc2InstanceTypeOffering, AwsEc2InstanceTypeInfo, AwsEc2GpuDeviceInfo, AwsEc2SpotPrice, AwsEc2Instance,
   aws_ec2_product_description_linux, aws_ec2_quote_currency,
 }
 import extdeps.cloud.aws_service_quotas { AwsServiceQuota, aws_service_quotas_ec2_service_code, aws_quota_code_g_vt_spot_vcpus, aws_quota_code_g_vt_on_demand_vcpus }
@@ -23,6 +23,8 @@ import extdeps.cloud.aws_cli {
   aws_cli_read_service_quota,
 }
 import product.fabric.serving_recipe { ServingRecipe }
+import extdeps.gpu.nvidia { nvidia_rtx_pro_6000_server_catalog }
+import extdeps.gpu.types { GpuDeviceCatalogRow }
 
 // THE AWS EC2 SUPPLIER ROW OF THE FLEX PASS, PLAN MODE ONLY (gunbc.plans.flex_supplier_generalization
 // section 3c, 4b). It OBSERVES (regions, g7e offerings per zone, instance types, the current spot price
@@ -34,6 +36,9 @@ import product.fabric.serving_recipe { ServingRecipe }
 
 data flex_aws_type_pattern: NonEmptyStr = "g7e.*" as NonEmptyStr
 data flex_aws_owner_tag_key: NonEmptyStr = "gunbc-flex-owner" as NonEmptyStr
+// The owner VALUE every card this loop launches carries, and the only value the IAM conditions of
+// gunbc.flex_aws_iam admit; the roster reads by the same pair, so a card not launched here is never ours.
+data flex_aws_owner_tag_value: NonEmptyStr = "gunbc-flex" as NonEmptyStr
 // DescribeRegions is answered by any region; this one is only the endpoint the region list is asked from.
 data flex_aws_region_list_endpoint: NonEmptyStr = "us-east-1" as NonEmptyStr
 
@@ -45,15 +50,19 @@ data flex_aws_region_list_endpoint: NonEmptyStr = "us-east-1" as NonEmptyStr
 data flex_aws_host_ram_floor: Mebibyte = mebibyte(count: 27444)
 data flex_aws_host_ram_floor_standing: CitedFigureStanding = TranscribedUncited { read_obligation: "read the Flash-Next PLE table size and the serving process's resident overhead from the lil image (lil-serve --print-config or a measured RSS on a served card); the 26.8 GiB is the operator's figure" }
 
-// THE GPU NAME DescribeInstanceTypes reports for the RTX PRO 6000 Server card has not been read, so no
-// name maps yet and every candidate carries the wall; the receipt prints the observed name for the row
-// to be added from the first Plan-mode read (the name is an observation, never guessed here).
+// THE GPU NAME DescribeInstanceTypes reports, mapped to the catalog row it names. The name is AWS's own
+// spelling and is an observation, never guessed: g7e.2xlarge in us-east-1 answered GpuInfo.Gpus[0].Name
+// "RTX PRO Server 6000", Manufacturer NVIDIA, MemoryInfo.SizeInMiB 98304 (read 2026-11-25 through
+// DescribeInstanceTypes). The catalog row is the card it is (96 GiB, Blackwell, Server edition), so the
+// mapping is a row to the catalog's declaration, not a second name for it carried as a string.
 type FlexAwsGpuNameRow {
   aws_gpu_name: NonEmptyStr
-  catalog_identity: NonEmptyStr
+  catalog: GpuDeviceCatalogRow
 }
 
-data flex_aws_gpu_names: List<FlexAwsGpuNameRow> = []
+data flex_aws_gpu_names: List<FlexAwsGpuNameRow> = [
+  FlexAwsGpuNameRow { aws_gpu_name: "RTX PRO Server 6000" as NonEmptyStr, catalog: nvidia_rtx_pro_6000_server_catalog },
+]
 
 type FlexAwsMarket
   = FlexAwsSpot
@@ -67,7 +76,6 @@ type FlexAwsWall
   | FlexAwsGpuNameUnmapped { names: List<String> }
   | FlexAwsUsageClassNotOffered
   | FlexAwsSpotPriceUnobserved
-  | FlexAwsPriceUnconvertible
   | FlexAwsOnDemandPriceUnobserved
   | FlexAwsTypeUndescribed
 
@@ -78,7 +86,7 @@ type FlexAwsCandidate {
   market: FlexAwsMarket
   gpus: Int
   vcpus: Int
-  rate: ExactDecimal?
+  rate: MoneyPerHour?
   per_gpu_hour_micros: Int?
   walls: List<FlexAwsWall>
 }
@@ -165,7 +173,7 @@ fn flex_aws_observe_region(credentials: FilePath, region: NonEmptyStr, now_epoch
     match flex_aws_quota(credentials: credentials, region: region, code: aws_quota_code_g_vt_on_demand_vcpus) {
       AwsCliReadRefused { cause: c } => FlexAwsRegionRefused { region: region, step: "get-service-quota on-demand" as NonEmptyStr, cause: c }
       AwsCliReadOk { value: od_quota } =>
-    match flex_aws_outcome_text(outcome: run_shell_command_capture(command: aws_cli_describe_owned_instances(credentials_file: credentials, region: region, tag_key: flex_aws_owner_tag_key, owner: "gunbc-flex" as NonEmptyStr), transport: LocalExec)) {
+    match flex_aws_outcome_text(outcome: run_shell_command_capture(command: aws_cli_describe_owned_instances(credentials_file: credentials, region: region, tag_key: flex_aws_owner_tag_key, owner: flex_aws_owner_tag_value), transport: LocalExec)) {
       AwsCliReadRefused { cause: c } => FlexAwsRegionRefused { region: region, step: "describe-instances" as NonEmptyStr, cause: c }
       AwsCliReadOk { value: it } =>
     match aws_cli_read_instances(stdout: it) {
@@ -204,19 +212,31 @@ fn flex_aws_observe(credentials: FilePath, now_epoch_seconds: Int) -> FlexAwsPas
 
 // ---- THE SCREEN. Pure: one region's observation and the recipe give every candidate and its walls.
 
+fn flex_aws_gpus(info: AwsEc2InstanceTypeInfo) -> List<AwsEc2GpuDeviceInfo> {
+  match info.gpu_info {
+    Present { value: g } => g.gpus
+    Absent => []
+  }
+}
+
 fn flex_aws_gpu_count(info: AwsEc2InstanceTypeInfo) -> Int {
-  fold(info.gpus, init: 0, f: (acc, g) => acc + g.count)
+  fold(flex_aws_gpus(info: info), init: 0, f: (acc, g) => acc + g.count)
+}
+
+fn flex_aws_vcpus(info: AwsEc2InstanceTypeInfo) -> Int {
+  hardware_thread_count_value(t: info.v_cpu_info.default_vcpus) as Int
 }
 
 fn flex_aws_has_local_nvme(info: AwsEc2InstanceTypeInfo) -> Bool {
-  match info.instance_storage {
+  match info.instance_storage_info {
     Absent => false
     Present { value: s } => (gigabyte_count(s.total_size_in_gb) > 0) && (((s.nvme_support as String) == "required") || ((s.nvme_support as String) == "supported"))
   }
 }
 
 fn flex_aws_gpu_names_mapped(info: AwsEc2InstanceTypeInfo, names: List<FlexAwsGpuNameRow>) -> Bool {
-  (length(info.gpus) > 0) && all(info.gpus, g => any(names, row => (row.aws_gpu_name as String) == (g.name as String)))
+  let gpus = flex_aws_gpus(info: info)
+  (length(gpus) > 0) && all(gpus, g => any(names, row => (row.aws_gpu_name as String) == (g.name as String)))
 }
 
 fn flex_aws_type_walls(info: AwsEc2InstanceTypeInfo, recipe: ServingRecipe, names: List<FlexAwsGpuNameRow>, market: FlexAwsMarket, quota_vcpus: Int) -> List<FlexAwsWall> {
@@ -224,30 +244,22 @@ fn flex_aws_type_walls(info: AwsEc2InstanceTypeInfo, recipe: ServingRecipe, name
   let gpus = flex_aws_gpu_count(info: info)
   let class = match market { FlexAwsSpot => "spot"  FlexAwsOnDemand => "on-demand" }
   concat(concat(concat(
-    if quota_vcpus < info.default_vcpus { [FlexAwsQuotaBelowVcpus { quota_vcpus: quota_vcpus, needs: info.default_vcpus }] } else { [] },
+    if quota_vcpus < flex_aws_vcpus(info: info) { [FlexAwsQuotaBelowVcpus { quota_vcpus: quota_vcpus, needs: flex_aws_vcpus(info: info) }] } else { [] },
     if flex_aws_has_local_nvme(info: info) { [] } else { [FlexAwsNoLocalNvme] }),
     concat(
-      if mebibyte_count(info.memory_size_in_mib) < mebibyte_count(flex_aws_host_ram_floor) { [FlexAwsHostRamBelowFloor { ram: info.memory_size_in_mib }] } else { [] },
+      if mebibyte_count(info.memory_info.size_in_mib) < mebibyte_count(flex_aws_host_ram_floor) { [FlexAwsHostRamBelowFloor { ram: info.memory_info.size_in_mib }] } else { [] },
       if gpus < tp { [FlexAwsTpExceedsGpus { tp: tp, gpus: gpus }] } else { [] })),
     concat(
-      if flex_aws_gpu_names_mapped(info: info, names: names) { [] } else { [FlexAwsGpuNameUnmapped { names: map(info.gpus, g => g.name as String) }] },
+      if flex_aws_gpu_names_mapped(info: info, names: names) { [] } else { [FlexAwsGpuNameUnmapped { names: map(flex_aws_gpus(info: info), g => g.name as String) }] },
       if any(info.supported_usage_classes, c => (c as String) == class) { [] } else { [FlexAwsUsageClassNotOffered] }))
 }
 
-fn flex_aws_per_gpu_micros(rate: ExactDecimal, gpus: Int) -> FlexAwsPerGpu {
-  match exact_decimal_to_money_per_hour_ceil(d: rate, currency: aws_ec2_quote_currency) {
-    DecimalMoneyPerHourRefused { conversion: _ } => FlexAwsPerGpuUnconvertible
-    DecimalMoneyPerHourConverted { rate: r } =>
-      if gpus < 1 { FlexAwsPerGpuUnconvertible } else {
-        // Rounded UP, so a per-GPU price never reads cheaper than the instance price divided.
-        FlexAwsPerGpuMicros { micros: ((money_per_hour_micros(q: r) as Int) + (gpus - 1)) / gpus }
-      }
-  }
+// Rounded UP, so a per-GPU price never reads cheaper than the instance price divided. A type with no
+// GPU has no per-GPU price; its TP wall already stands in front of it.
+fn flex_aws_per_gpu_micros(rate: MoneyPerHour, gpus: Int) -> Int? {
+  if gpus < 1 { none } else { Present { value: ((money_per_hour_micros(q: rate) as Int) + (gpus - 1)) / gpus } }
 }
 
-type FlexAwsPerGpu
-  = FlexAwsPerGpuMicros { micros: Int }
-  | FlexAwsPerGpuUnconvertible
 
 fn flex_aws_zone_price(prices: List<AwsEc2SpotPrice>, zone: NonEmptyStr, instance_type: NonEmptyStr) -> AwsEc2SpotPrice? {
   first_where(prices, p => ((p.availability_zone as String) == (zone as String)) && ((p.instance_type as String) == (instance_type as String)))
@@ -260,15 +272,12 @@ fn flex_aws_candidate(region: NonEmptyStr, o: AwsEc2InstanceTypeOffering, infos:
       let gpus = flex_aws_gpu_count(info: i)
       let base = flex_aws_type_walls(info: i, recipe: recipe, names: names, market: market, quota_vcpus: quota)
       match market {
-        FlexAwsOnDemand => FlexAwsCandidate { region: region, zone: o.location, instance_type: o.instance_type, market: market, gpus: gpus, vcpus: i.default_vcpus, rate: none, per_gpu_hour_micros: none, walls: concat(base, [FlexAwsOnDemandPriceUnobserved]) }
+        FlexAwsOnDemand => FlexAwsCandidate { region: region, zone: o.location, instance_type: o.instance_type, market: market, gpus: gpus, vcpus: flex_aws_vcpus(info: i), rate: none, per_gpu_hour_micros: none, walls: concat(base, [FlexAwsOnDemandPriceUnobserved]) }
         FlexAwsSpot =>
           match flex_aws_zone_price(prices: prices, zone: o.location, instance_type: o.instance_type) {
-            Absent => FlexAwsCandidate { region: region, zone: o.location, instance_type: o.instance_type, market: market, gpus: gpus, vcpus: i.default_vcpus, rate: none, per_gpu_hour_micros: none, walls: concat(base, [FlexAwsSpotPriceUnobserved]) }
+            Absent => FlexAwsCandidate { region: region, zone: o.location, instance_type: o.instance_type, market: market, gpus: gpus, vcpus: flex_aws_vcpus(info: i), rate: none, per_gpu_hour_micros: none, walls: concat(base, [FlexAwsSpotPriceUnobserved]) }
             Present { value: p } =>
-              match flex_aws_per_gpu_micros(rate: p.spot_price, gpus: gpus) {
-                FlexAwsPerGpuUnconvertible => FlexAwsCandidate { region: region, zone: o.location, instance_type: o.instance_type, market: market, gpus: gpus, vcpus: i.default_vcpus, rate: Present { value: p.spot_price }, per_gpu_hour_micros: none, walls: concat(base, [FlexAwsPriceUnconvertible]) }
-                FlexAwsPerGpuMicros { micros: m } => FlexAwsCandidate { region: region, zone: o.location, instance_type: o.instance_type, market: market, gpus: gpus, vcpus: i.default_vcpus, rate: Present { value: p.spot_price }, per_gpu_hour_micros: Present { value: m }, walls: base }
-              }
+              FlexAwsCandidate { region: region, zone: o.location, instance_type: o.instance_type, market: market, gpus: gpus, vcpus: flex_aws_vcpus(info: i), rate: Present { value: p.spot_price }, per_gpu_hour_micros: flex_aws_per_gpu_micros(rate: p.spot_price, gpus: gpus), walls: base }
           }
       }
     }
@@ -300,7 +309,6 @@ fn flex_aws_wall_wire(w: FlexAwsWall) -> String {
     FlexAwsGpuNameUnmapped { names: ns } => join(["gpu-name-unmapped names=", join(ns, "|")], "")
     FlexAwsUsageClassNotOffered => "usage-class-not-offered"
     FlexAwsSpotPriceUnobserved => "spot-price-unobserved"
-    FlexAwsPriceUnconvertible => "price-unconvertible"
     FlexAwsOnDemandPriceUnobserved => "on-demand-price-unobserved"
     FlexAwsTypeUndescribed => "type-undescribed"
   }
@@ -311,7 +319,7 @@ fn flex_aws_candidate_line(c: FlexAwsCandidate) -> String {
     "aws ", c.region as String, " ", c.zone as String, " ", c.instance_type as String, " ",
     match c.market { FlexAwsSpot => "spot"  FlexAwsOnDemand => "on-demand" },
     " gpus=", to_string(c.gpus), " vcpus=", to_string(c.vcpus),
-    " rate=", match c.rate { Present { value: d } => exact_decimal_wire(d: d)  Absent => "-" },
+    " rate_micros=", match c.rate { Present { value: r } => to_string(money_per_hour_micros(q: r))  Absent => "-" },
     " per_gpu_micros=", match c.per_gpu_hour_micros { Present { value: m } => to_string(m)  Absent => "-" },
     " walls=", if length(c.walls) == 0 { "none" } else { join(map(c.walls, w => flex_aws_wall_wire(w: w)), ",") },
   ], "")

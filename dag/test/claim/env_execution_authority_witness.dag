@@ -8,6 +8,7 @@ import extdeps.tools.env {
   env_absolute_program,
   env_path_resolved_program,
   env_binding_argv,
+  env_bindings_argv,
   env_prefixed_argv,
   env_prefixed_args,
 }
@@ -85,4 +86,13 @@ test fn the_path_resolved_name_is_a_second_fact_not_the_binary_path() -> Bool {
   (env_path_resolved_program().invocation as String) == "env"
     && (env_absolute_program().invocation as String) == "/usr/bin/env"
     && (env_path_resolved_program().invocation as String) != (env_absolute_program().invocation as String)
+}
+
+// THE GRAMMAR ORDER (GNU env invocation: options before assignments). A list that sets before it unsets
+// still renders every -u before the first NAME=value, so env never reads an option as the command; the
+// order within each kind is kept. RED for the 2026-11-25 defect, where extdeps.cloud.aws_cli's
+// environment rendered `AWS_PAGER= -u AWS_PROFILE` and env exited 127 trying to run `-u`.
+test fn every_unset_precedes_every_assignment_whatever_the_list_order() -> Bool {
+  env_bindings_argv(bindings: [EnvSet { name: "A", value: "1" }, EnvUnset { name: "B" }, EnvSet { name: "C", value: "3" }, EnvUnset { name: "D" }])
+    == ["-u", "B", "-u", "D", "A=1", "C=3"]
 }
