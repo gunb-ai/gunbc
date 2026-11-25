@@ -360,33 +360,110 @@ fn load_imbalance(source: ServingCoTenancy, destination: ServingCoTenancy) -> Lo
   }
 }
 
-// A rebalancing move exists only when the destination carries STRICTLY fewer occupants than the source.
-// Equal load — the both-cards-full state that swapped sessions both ways — is churn, and an idle source has
-// no pressure to relieve.
+// A rebalancing move exists only when the move LEAVES THE DESTINATION NO BUSIER THAN THE SOURCE WAS, so
+// the single occupant it carries cannot itself create the reverse differential. A move from source S to a
+// destination with D occupants makes them S-1 and D+1; if that only evens them out (a gap of one), the
+// other card is now the busier side and the SAME rule admits moving the session straight back -- the same
+// ping-pong the 2026-11-23 rule produced, only between near-balanced cards instead of full ones. Relief
+// therefore requires a gap of AT LEAST TWO: D + 1 < S. Equal load (the both-cards-full churn), a gap of
+// one, a busier destination, and an idle source (no pressure to relieve) are all refused, never handed to
+// the price. (gunbc.design_argument::fail_closed -- a move that is churn reports refusal, not RebalancingMove.)
 fn compare_load(source: Nat, destination: Nat) -> LoadImbalance {
-  if destination < source {
+  if nat_to_int(destination) + 1 < nat_to_int(source) {
     RebalancingMove { source_load: source, destination_load: destination }
   } else {
     BalancedOrDestinationBusier { source_load: source, destination_load: destination }
   }
 }
 
-// THE GUARD, run before the economic decision like the demand-readiness and retained-capacity guards. A
-// move reaches select_realization only when the source is established to be busier than the destination.
-// A balanced or destination-busier field is refused as churn (NoImbalanceToRelieve), never handed to the
-// price; an unread load is ImbalanceUnread and never a free move (gunbc.design_argument::fail_closed).
+// Which move candidate lands on WHICH card. The imbalance is a property of a SPECIFIC destination, so it
+// is keyed to the candidate whose destination it is, not handed to the whole field. A move candidate's own
+// destination is the only placement its load differential may speak for; a field may name several
+// destinations and each is read for itself.
+type CandidateDestination { candidate: DeclarationRef, destination: ServingCoTenancy }
+
+// A candidate's destination load, read from the caller's per-candidate loadings. Absent a reading, the
+// candidate's destination is UNREAD -- never a free slot: a move candidate the guard has not been shown a
+// load for cannot be established as relief (gunbc.design_argument::fail_closed).
+fn destination_load_for(loadings: List<CandidateDestination>, candidate: DeclarationRef) -> ServingCoTenancy {
+  match fold(loadings, init: Absent, f: fn(acc, cd) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => if declaration_ref_eq(a: cd.candidate, b: candidate) { Present { value: cd.destination } } else { Absent }
+    }
+  }) {
+    Present { value: d } => d
+    Absent => CoTenancyUnread { obligation: "no destination co-tenancy was supplied for this move candidate; its destination load is never assumed free" as NonEmptyStr }
+  }
+}
+
+// One pass over the field: the stay candidate always survives; a move candidate survives ONLY when ITS OWN
+// destination carries an established gap-to-relieve against the source. The screen also records whether any
+// move was unread (an obligation to measure) and a representative balanced pair (for the churn refusal).
+type ImbalanceScreen {
+  survivors: List<ParetoEntry>
+  saw_relieving: Bool
+  saw_balanced: Bool
+  balanced_source: Nat
+  balanced_destination: Nat
+  unread_obligation: Optional<NonEmptyStr>
+}
+
+fn screen_relocation(source: ServingCoTenancy, destinations: List<CandidateDestination>, field: List<ParetoEntry>) -> ImbalanceScreen {
+  fold(field,
+    init: ImbalanceScreen { survivors: [], saw_relieving: false, saw_balanced: false, balanced_source: 0, balanced_destination: 0, unread_obligation: Absent },
+    f: fn(acc, e) {
+      if declaration_ref_eq(a: e.identity, b: id_stay) {
+        // the incumbent stay is always a candidate (the priced choice needs it to compare against)
+        ImbalanceScreen { survivors: concat(acc.survivors, [e]), saw_relieving: acc.saw_relieving, saw_balanced: acc.saw_balanced, balanced_source: acc.balanced_source, balanced_destination: acc.balanced_destination, unread_obligation: acc.unread_obligation }
+      } else {
+        match load_imbalance(source: source, destination: destination_load_for(loadings: destinations, candidate: e.identity)) {
+          RebalancingMove { source_load: _, destination_load: _ } =>
+            ImbalanceScreen { survivors: concat(acc.survivors, [e]), saw_relieving: true, saw_balanced: acc.saw_balanced, balanced_source: acc.balanced_source, balanced_destination: acc.balanced_destination, unread_obligation: acc.unread_obligation }
+          BalancedOrDestinationBusier { source_load: s, destination_load: d } =>
+            ImbalanceScreen { survivors: acc.survivors, saw_relieving: acc.saw_relieving, saw_balanced: true, balanced_source: s, balanced_destination: d, unread_obligation: acc.unread_obligation }
+          LoadComparisonUnread { obligation: o } =>
+            ImbalanceScreen { survivors: acc.survivors, saw_relieving: acc.saw_relieving, saw_balanced: acc.saw_balanced, balanced_source: acc.balanced_source, balanced_destination: acc.balanced_destination, unread_obligation: match acc.unread_obligation { Present { value: _ } => acc.unread_obligation Absent => Present { value: o } } }
+        }
+      }
+    })
+}
+
+// THE GUARD, run before the economic decision like the demand-readiness and retained-capacity guards.
+// EXCLUSION IS BEFORE PARETO, NEVER A RANK (gunbc.design_argument::selection_precedes_convergence): a move
+// candidate is handed to select_realization only if ITS OWN destination -- not some caller-supplied
+// destination for the field -- is established to carry at least two more occupants than the source. A
+// candidate whose destination is balanced, busier, a gap of one, or unread is EXCLUDED from the field
+// before the priced selection, so a field naming a light host A and a full host B can never select B on
+// the strength of A's light reading (the "reads one side" defect moved into the selector). If no move
+// candidate survives, the field is refused as churn (NoImbalanceToRelieve) when a balanced destination was
+// seen, or ImbalanceUnread when a destination was unread -- never handed to the price, never a free move.
 // The stay-preference policy would otherwise resolve a dominating move, which is the discriminating arm:
 // removing this guard lets the host's ping-pong move through.
 fn decide_with_imbalance_precondition(
   source: ServingCoTenancy,
-  destination: ServingCoTenancy,
+  destinations: List<CandidateDestination>,
   field: List<ParetoEntry>,
   assessment: DecisionAssessment,
 ) -> RelocationDecision {
-  match load_imbalance(source: source, destination: destination) {
-    RebalancingMove { source_load: _, destination_load: _ } => decide_relocation(field: field, assessment: assessment)
-    BalancedOrDestinationBusier { source_load: s, destination_load: d } => NoImbalanceToRelieve { source_load: s, destination_load: d }
-    LoadComparisonUnread { obligation: o } => ImbalanceUnread { obligation: o }
+  match screen_relocation(source: source, destinations: destinations, field: field) {
+    ImbalanceScreen { survivors: surv, saw_relieving: relieving, saw_balanced: balanced, balanced_source: bs, balanced_destination: bd, unread_obligation: unread } =>
+      if relieving {
+        // a genuine relieving candidate exists; the non-relieving ones were already excluded
+        decide_relocation(field: surv, assessment: assessment)
+      } else {
+        match unread {
+          // an unread destination is an obligation to measure, and blocks a free move even when it is not
+          // the candidate that would have won -- fail closed rather than fabricate a differential
+          Present { value: o } => ImbalanceUnread { obligation: o }
+          Absent => if balanced {
+            NoImbalanceToRelieve { source_load: bs, destination_load: bd }
+          } else {
+            // no move candidate at all: only stay remains; the priced choice returns Stay
+            decide_relocation(field: surv, assessment: assessment)
+          }
+        }
+      }
   }
 }
 
@@ -431,7 +508,7 @@ fn render_move_intent(
   method: StateEstablishmentMethod,
   evidence: ReconstructionEvidence,
   source: ServingCoTenancy,
-  destination: ServingCoTenancy,
+  destinations: List<CandidateDestination>,
   field: List<ParetoEntry>,
   assessment: DecisionAssessment,
 ) -> RenderedIntent {
@@ -442,7 +519,7 @@ fn render_move_intent(
     MethodAdmitted { method: admitted } => render_admitted_move_intent(
       conversation: conversation, from_launch: from_launch, current_revision: current_revision,
       authorization: authorization, allowance: allowance, method: admitted,
-      source: source, destination: destination, field: field, assessment: assessment,
+      source: source, destinations: destinations, field: field, assessment: assessment,
     )
   }
 }
@@ -455,17 +532,19 @@ fn render_admitted_move_intent(
   allowance: TransitionAllowance,
   method: StateEstablishmentMethod,
   source: ServingCoTenancy,
-  destination: ServingCoTenancy,
+  destinations: List<CandidateDestination>,
   field: List<ParetoEntry>,
   assessment: DecisionAssessment,
 ) -> RenderedIntent {
   // THE IMBALANCE PRECONDITION IS ENFORCED HERE, not left to the caller. The move intent this module
   // renders is the ONLY source the R-S3 realization posts (gunbc.plans.fabric_serving_router R-S3), so
-  // routing it through the guard makes the 2026-11-23 churn UNRENDERABLE rather than a value a caller
-  // could forget to filter (gunbc.design_argument::fail_closed, ::guarantee_ladder). A balanced or
-  // destination-busier field renders NO intent; the priced selection is reached only on an established
-  // source-busier differential.
-  match decide_with_imbalance_precondition(source: source, destination: destination, field: field, assessment: assessment) {
+  // routing it through the guard makes a churn move UNRENDERABLE rather than a value a caller could forget
+  // to filter (gunbc.design_argument::fail_closed, ::guarantee_ladder). What is unrenderable is exactly
+  // what the guard refuses: a move whose OWN destination is not established (by a gap of at least two, so
+  // the single moved occupant cannot flip the balance back) to be lighter than the source -- equal load, a
+  // gap of one, a busier or unread destination, and a full card reached on another candidate's light
+  // reading all render NO intent. The priced selection is reached only on surviving relieving candidates.
+  match decide_with_imbalance_precondition(source: source, destinations: destinations, field: field, assessment: assessment) {
     Move { destination_label: dest, receipt: r } =>
       intent_payload(i: MoveIntent {
         conversation: conversation,

@@ -22,7 +22,7 @@ import gunbc.serving.serving_relocation {
   move_candidate, stay_candidate, decide_evacuation,
   decide_with_retain_promise, claim_move, attempt_dispatch, render_move_intent, TransitionAllowance,
   Move, Stay, DeferredDemandNotReady, AwaitingPerson, AwaitingTool, Evacuate, ReconciliationRequired,
-  NoImbalanceToRelieve, ImbalanceUnread,
+  NoImbalanceToRelieve, ImbalanceUnread, CandidateDestination,
   Prepared, Interrupted, Committed, SentOnce, DispatchAfterCommitRefused,
   MoveClaimed, MoveAlreadyClaimed, RecoveredRecordedAttempt,
   HandoffRecord, HandoffPhase, ReconstructionEvidence, RestoreCompatibleSavedState, Dispatched, ConversationId, ReconstructFromCompleteRequest,
@@ -36,6 +36,7 @@ import gunbc.serving.caller_backlog {
 }
 
 data w_move_id: DeclarationRef = decl_ref(module_path: "test.claim.serving.serving_relocation_witness", decl_name: "w_move_id")
+data w_move_id_b: DeclarationRef = decl_ref(module_path: "test.claim.serving.serving_relocation_witness", decl_name: "w_move_id_b")
 
 // FIXTURE EVIDENCE, supplied at this witness boundary and nowhere else. These witnesses pin the
 // DECISION the model reaches GIVEN established evidence; they do not claim the evidence exists. The
@@ -229,7 +230,7 @@ test fn render_move_intent_emits_the_router_payload_from_a_real_decision() -> Bo
     method: ReconstructFromCompleteRequest,
     evidence: complete_evidence(),
     source: GroupOccupied { occupants: 4 },
-    destination: GroupIdle,
+    destinations: [CandidateDestination { candidate: w_move_id, destination: GroupIdle }],
     field: [stay_candidate(net: -50), move],
     assessment: fixture_assessment(),
   ) {
@@ -260,7 +261,7 @@ test fn render_move_intent_emits_no_intent_when_the_model_stays() -> Bool {
     method: ReconstructFromCompleteRequest,
     evidence: complete_evidence(),
     source: GroupOccupied { occupants: 4 },
-    destination: GroupIdle,
+    destinations: [CandidateDestination { candidate: w_move_id, destination: GroupIdle }],
     field: [stay_candidate(net: -5), move],
     assessment: fixture_assessment(),
   ) {
@@ -288,7 +289,7 @@ test fn the_unread_production_assessment_establishes_no_move() -> Bool {
     method: ReconstructFromCompleteRequest,
     evidence: complete_evidence(),
     source: GroupOccupied { occupants: 4 },
-    destination: GroupIdle,
+    destinations: [CandidateDestination { candidate: w_move_id, destination: GroupIdle }],
     field: [stay_candidate(net: -50), move],
     assessment: rloc_unread_assessment(),
   ) {
@@ -312,7 +313,7 @@ test fn an_unadmitted_state_establishment_method_renders_no_intent() -> Bool {
     conversation: "conv-13" as ConversationId, from_launch: "srv3" as NonEmptyStr, current_revision: 1,
     authorization: "trial-allowance-1" as NonEmptyStr, allowance: trial_allowance(),
     method: RestoreCompatibleSavedState, evidence: complete_evidence(),
-    source: GroupOccupied { occupants: 4 }, destination: GroupIdle,
+    source: GroupOccupied { occupants: 4 }, destinations: [CandidateDestination { candidate: w_move_id, destination: GroupIdle }],
     field: [stay_candidate(net: -50), move], assessment: fixture_assessment(),
   ) {
     NoIntent { reason: _ } => true
@@ -322,7 +323,7 @@ test fn an_unadmitted_state_establishment_method_renders_no_intent() -> Bool {
     conversation: "conv-13" as ConversationId, from_launch: "srv3" as NonEmptyStr, current_revision: 1,
     authorization: "trial-allowance-1" as NonEmptyStr, allowance: trial_allowance(),
     method: ReconstructFromCompleteRequest, evidence: incomplete,
-    source: GroupOccupied { occupants: 4 }, destination: GroupIdle,
+    source: GroupOccupied { occupants: 4 }, destinations: [CandidateDestination { candidate: w_move_id, destination: GroupIdle }],
     field: [stay_candidate(net: -50), move], assessment: fixture_assessment(),
   ) {
     NoIntent { reason: _ } => true
@@ -350,7 +351,7 @@ test fn an_unadmitted_state_establishment_method_renders_no_intent() -> Bool {
 //     decide_relocation directly, as the host effectively did) -> the dominating move is selected -> red.
 test fn a_sideways_move_onto_an_occupied_sibling_is_refused_as_churn() -> Bool {
   let move = move_candidate(id: w_move_id, label: "sibling-free-slot" as NonEmptyStr, net: 90, service_class: 0)
-  match decide_with_imbalance_precondition(source: GroupOccupied { occupants: 4 }, destination: GroupOccupied { occupants: 4 }, field: [stay_candidate(net: -50), move], assessment: fixture_assessment()) {
+  match decide_with_imbalance_precondition(source: GroupOccupied { occupants: 4 }, destinations: [CandidateDestination { candidate: w_move_id, destination: GroupOccupied { occupants: 4 } }], field: [stay_candidate(net: -50), move], assessment: fixture_assessment()) {
     NoImbalanceToRelieve { source_load: s, destination_load: d } => s == 4 && d == 4
     _ => false
   }
@@ -363,7 +364,7 @@ test fn a_sideways_move_onto_an_occupied_sibling_is_refused_as_churn() -> Bool {
 //     move is established on an unread destination and selected -> red.
 test fn a_move_onto_an_unread_sibling_is_not_established() -> Bool {
   let move = move_candidate(id: w_move_id, label: "unread-sibling" as NonEmptyStr, net: 90, service_class: 0)
-  match decide_with_imbalance_precondition(source: GroupOccupied { occupants: 4 }, destination: CoTenancyUnread { obligation: "the sibling's occupancy was never read" as NonEmptyStr }, field: [stay_candidate(net: -50), move], assessment: fixture_assessment()) {
+  match decide_with_imbalance_precondition(source: GroupOccupied { occupants: 4 }, destinations: [CandidateDestination { candidate: w_move_id, destination: CoTenancyUnread { obligation: "the sibling's occupancy was never read" as NonEmptyStr } }], field: [stay_candidate(net: -50), move], assessment: fixture_assessment()) {
     ImbalanceUnread { obligation: o } => string_contains(s: o as String, pattern: "never read")
     _ => false
   }
@@ -377,7 +378,7 @@ test fn a_move_onto_an_unread_sibling_is_not_established() -> Bool {
 //     comparison) -> the legitimate move is refused and the dominating field never moves -> red.
 test fn an_established_differential_toward_a_lighter_sibling_moves() -> Bool {
   let move = move_candidate(id: w_move_id, label: "lighter-sibling" as NonEmptyStr, net: 90, service_class: 0)
-  match decide_with_imbalance_precondition(source: GroupOccupied { occupants: 4 }, destination: GroupOccupied { occupants: 1 }, field: [stay_candidate(net: -50), move], assessment: fixture_assessment()) {
+  match decide_with_imbalance_precondition(source: GroupOccupied { occupants: 4 }, destinations: [CandidateDestination { candidate: w_move_id, destination: GroupOccupied { occupants: 1 } }], field: [stay_candidate(net: -50), move], assessment: fixture_assessment()) {
     Move { destination_label: _, receipt: _ } => true
     _ => false
   }
@@ -396,7 +397,7 @@ test fn the_both_cards_full_churn_renders_no_intent() -> Bool {
     conversation: "conv-17" as ConversationId, from_launch: "srv1-a" as NonEmptyStr, current_revision: 3,
     authorization: "trial-allowance-1" as NonEmptyStr, allowance: trial_allowance(),
     method: ReconstructFromCompleteRequest, evidence: complete_evidence(),
-    source: GroupOccupied { occupants: 4 }, destination: GroupOccupied { occupants: 4 },
+    source: GroupOccupied { occupants: 4 }, destinations: [CandidateDestination { candidate: w_move_id, destination: GroupOccupied { occupants: 4 } }],
     field: [stay_candidate(net: -50), move], assessment: fixture_assessment(),
   ) {
     NoIntent { reason: r } => string_contains(s: r as String, pattern: "churn")
@@ -408,11 +409,73 @@ test fn the_both_cards_full_churn_renders_no_intent() -> Bool {
     conversation: "conv-17" as ConversationId, from_launch: "srv1-a" as NonEmptyStr, current_revision: 3,
     authorization: "trial-allowance-1" as NonEmptyStr, allowance: trial_allowance(),
     method: ReconstructFromCompleteRequest, evidence: complete_evidence(),
-    source: GroupOccupied { occupants: 4 }, destination: GroupOccupied { occupants: 1 },
+    source: GroupOccupied { occupants: 4 }, destinations: [CandidateDestination { candidate: w_move_id, destination: GroupOccupied { occupants: 1 } }],
     field: [stay_candidate(net: -50), move], assessment: fixture_assessment(),
   ) {
     IntentPayload { intent: i, payload: _ } => i.destination_label == "sibling-free-slot"
     NoIntent { reason: _ } => false
   }
   churn && relief
+}
+
+// 18. A GAP OF ONE IS CHURN, NOT RELIEF. Source 4, destination 3: moving the one occupant only LEVELS the
+//     two cards (3 vs 4), so the very next evaluation sees the old destination as the busier side and the
+//     SAME rule admits moving the session straight back -- the 2026-11-23 ping-pong between near-balanced
+//     cards. Relief requires a gap of at least two, so the moved occupant cannot itself flip the balance.
+//     The dominating move (net 90 vs stay -50) is refused BEFORE the price. MUTATION: compare_load on plain
+//     destination < source (a gap of one admitted) -> this field moves, then ping-pongs -> red.
+test fn a_move_that_only_levels_the_two_cards_is_refused_as_churn() -> Bool {
+  let move = move_candidate(id: w_move_id, label: "near-level-sibling" as NonEmptyStr, net: 90, service_class: 0)
+  match decide_with_imbalance_precondition(
+    source: GroupOccupied { occupants: 4 },
+    destinations: [CandidateDestination { candidate: w_move_id, destination: GroupOccupied { occupants: 3 } }],
+    field: [stay_candidate(net: -50), move], assessment: fixture_assessment(),
+  ) {
+    NoImbalanceToRelieve { source_load: s, destination_load: d } => s == 4 && d == 3
+    Move { destination_label: _, receipt: _ } => false
+    _ => false
+  }
+}
+
+// 19. THE COMPARED DESTINATION IS THE ONE THE SELECTOR PICKS, not a caller-chosen light read for the field.
+//     One field names TWO destinations. move_a lands on a genuinely lighter card but is the WEAKER candidate;
+//     move_b DOMINATES on net yet its OWN card is as full as the source. The old guard read one (light)
+//     destination for the whole field and handed it all to select_realization, which picked the dominating
+//     move_b -- a session onto a full card, the "reads one side" defect moved into the selector. Per-candidate
+//     exclusion drops move_b BEFORE Pareto (selection_precedes_convergence: a hard-constraint violator is
+//     never ranked); only move_a survives, it is net-negative against stay, so the priced choice stays.
+//     CONTROL: the same field with move_b's OWN destination read lighter makes move_b the selected move -- so
+//     the exclusion tracks each candidate's own load, not a label ban. MUTATION: hand the guard one light
+//     destination for the whole field -> the dominating move_b is selected and the session lands on the full
+//     card -> red.
+test fn a_dominating_move_to_a_card_that_is_not_lighter_is_excluded_before_pareto() -> Bool {
+  let move_a = move_candidate(id: w_move_id, label: "lighter-card-a" as NonEmptyStr, net: -20, service_class: 0)
+  let move_b = move_candidate(id: w_move_id_b, label: "full-card-b" as NonEmptyStr, net: 500, service_class: 0)
+  let excluded = match decide_with_imbalance_precondition(
+    source: GroupOccupied { occupants: 4 },
+    destinations: [
+      CandidateDestination { candidate: w_move_id, destination: GroupOccupied { occupants: 2 } },
+      CandidateDestination { candidate: w_move_id_b, destination: GroupOccupied { occupants: 4 } },
+    ],
+    field: [stay_candidate(net: 0), move_a, move_b], assessment: fixture_assessment(),
+  ) {
+    // move_b dominates but its own card is not lighter, so it is excluded and never the selected destination.
+    Stay => true
+    Move { destination_label: dl, receipt: _ } => dl != "full-card-b"
+    _ => false
+  }
+  let relief = match decide_with_imbalance_precondition(
+    source: GroupOccupied { occupants: 4 },
+    destinations: [
+      CandidateDestination { candidate: w_move_id, destination: GroupOccupied { occupants: 2 } },
+      CandidateDestination { candidate: w_move_id_b, destination: GroupOccupied { occupants: 1 } },
+    ],
+    field: [stay_candidate(net: 0), move_a, move_b], assessment: fixture_assessment(),
+  ) {
+    // move_b's own card is now genuinely lighter and it dominates: it is selected. Exclusion followed the
+    // per-candidate load, not the label.
+    Move { destination_label: dl, receipt: _ } => dl == "full-card-b"
+    _ => false
+  }
+  excluded && relief
 }
