@@ -252,7 +252,7 @@ fn witness_verdict_state(v: NtfyRetireVerdict) -> String {
 // included, because a `tailscale serve status` that never ran prints nothing and an empty document
 // parses to "no routes" -- which is exactly how a failed close could be certified as a closed door.
 fn witness_serve_status(stdout: String) -> SshSessionExecResult {
-  SshSessionExecResult { exit_code: 0, success: true, stdout: stdout, stderr: "" }
+  SshSessionExecResult { exit_code: 0, success: true, stdout: stdout, stderr: "", wall_deadline_seconds: Absent }
 }
 
 data failed_serve_status: SshSessionExecResult = SshSessionExecResult {
@@ -260,6 +260,7 @@ data failed_serve_status: SshSessionExecResult = SshSessionExecResult {
   success: false,
   stdout: "",
   stderr: "sudo: serve: command not found",
+  wall_deadline_seconds: Absent,
 }
 
 data serve_status_with_route: String = "{\"TCP\":{\"8443\":{\"HTTPS\":true}},\"Web\":{\"srv1.example.ts.net:8443\":{\"Handlers\":{\"/\":{\"Proxy\":\"http://127.0.0.1:2586\"}}}}}"
@@ -271,9 +272,9 @@ data serve_status_unparseable: String = "{\"TCP\":{"
 // not loaded while its file is still on disk -- exactly what a stop+disable that never removed the
 // file leaves behind. Half of that is not a retirement.
 test fn the_unit_absence_needs_both_of_its_reads() -> Bool {
-  let load_state_gone = SshSessionExecResult { exit_code: 0, success: true, stdout: "not-found\n", stderr: "" }
-  let load_state_loaded = SshSessionExecResult { exit_code: 0, success: true, stdout: "loaded\n", stderr: "" }
-  let systemctl_failed = SshSessionExecResult { exit_code: 3, success: false, stdout: "not-found\n", stderr: "" }
+  let load_state_gone = SshSessionExecResult { exit_code: 0, success: true, stdout: "not-found\n", stderr: "", wall_deadline_seconds: Absent }
+  let load_state_loaded = SshSessionExecResult { exit_code: 0, success: true, stdout: "loaded\n", stderr: "", wall_deadline_seconds: Absent }
+  let systemctl_failed = SshSessionExecResult { exit_code: 3, success: false, stdout: "not-found\n", stderr: "", wall_deadline_seconds: Absent }
   witness_read_state(read: ntfy_retire_unit_read(load_state: load_state_gone, unit_path_exit: 1)) == "absent"
     && witness_read_state(read: ntfy_retire_unit_read(load_state: load_state_gone, unit_path_exit: 0)) == "present"
     && witness_read_state(read: ntfy_retire_unit_read(load_state: load_state_loaded, unit_path_exit: 1)) == "present"
@@ -285,21 +286,21 @@ test fn the_unit_absence_needs_both_of_its_reads() -> Bool {
 // unit, and a value with no rule here (masked, failed, a usage line, an empty answer) is not absence
 // either: it is a read this model did not make.
 test fn the_unit_load_state_is_read_from_the_value_and_only_two_values_answer() -> Bool {
-  witness_read_state(read: ntfy_retire_load_state_read(read: SshSessionExecResult { exit_code: 0, success: true, stdout: "not-found\n", stderr: "" })) == "absent"
-    && witness_read_state(read: ntfy_retire_load_state_read(read: SshSessionExecResult { exit_code: 0, success: true, stdout: "loaded\n", stderr: "" })) == "present"
-    && witness_read_state(read: ntfy_retire_load_state_read(read: SshSessionExecResult { exit_code: 0, success: true, stdout: "masked\n", stderr: "" })) == "unreadable"
-    && witness_read_state(read: ntfy_retire_load_state_read(read: SshSessionExecResult { exit_code: 0, success: true, stdout: "", stderr: "" })) == "unreadable"
-    && witness_read_state(read: ntfy_retire_load_state_read(read: SshSessionExecResult { exit_code: 1, success: false, stdout: "not-found\n", stderr: "" })) == "unreadable"
+  witness_read_state(read: ntfy_retire_load_state_read(read: SshSessionExecResult { exit_code: 0, success: true, stdout: "not-found\n", stderr: "", wall_deadline_seconds: Absent })) == "absent"
+    && witness_read_state(read: ntfy_retire_load_state_read(read: SshSessionExecResult { exit_code: 0, success: true, stdout: "loaded\n", stderr: "", wall_deadline_seconds: Absent })) == "present"
+    && witness_read_state(read: ntfy_retire_load_state_read(read: SshSessionExecResult { exit_code: 0, success: true, stdout: "masked\n", stderr: "", wall_deadline_seconds: Absent })) == "unreadable"
+    && witness_read_state(read: ntfy_retire_load_state_read(read: SshSessionExecResult { exit_code: 0, success: true, stdout: "", stderr: "", wall_deadline_seconds: Absent })) == "unreadable"
+    && witness_read_state(read: ntfy_retire_load_state_read(read: SshSessionExecResult { exit_code: 1, success: false, stdout: "not-found\n", stderr: "", wall_deadline_seconds: Absent })) == "unreadable"
 }
 
 // THE ACCOUNT. getent's not-found exit AND no line, together: an exit code alone would read a
 // transport error as an absent account, and an empty stdout at exit 0 is a read that answered nothing.
 test fn the_account_absence_is_getent_not_found_and_no_line() -> Bool {
-  witness_read_state(read: ntfy_retire_account_read(read: SshSessionExecResult { exit_code: getent_key_not_found_exit, success: false, stdout: "", stderr: "" })) == "absent"
-    && witness_read_state(read: ntfy_retire_account_read(read: SshSessionExecResult { exit_code: 0, success: true, stdout: "gunbc-ntfy:x:994:984::/nonexistent:/usr/sbin/nologin", stderr: "" })) == "present"
-    && witness_read_state(read: ntfy_retire_account_read(read: SshSessionExecResult { exit_code: getent_key_not_found_exit, success: false, stdout: "Usage: getent [OPTION]... DATABASE", stderr: "" })) == "unreadable"
-    && witness_read_state(read: ntfy_retire_account_read(read: SshSessionExecResult { exit_code: 0, success: true, stdout: "", stderr: "" })) == "unreadable"
-    && witness_read_state(read: ntfy_retire_account_read(read: SshSessionExecResult { exit_code: 1, success: false, stdout: "", stderr: "" })) == "unreadable"
+  witness_read_state(read: ntfy_retire_account_read(read: SshSessionExecResult { exit_code: getent_key_not_found_exit, success: false, stdout: "", stderr: "", wall_deadline_seconds: Absent })) == "absent"
+    && witness_read_state(read: ntfy_retire_account_read(read: SshSessionExecResult { exit_code: 0, success: true, stdout: "gunbc-ntfy:x:994:984::/nonexistent:/usr/sbin/nologin", stderr: "", wall_deadline_seconds: Absent })) == "present"
+    && witness_read_state(read: ntfy_retire_account_read(read: SshSessionExecResult { exit_code: getent_key_not_found_exit, success: false, stdout: "Usage: getent [OPTION]... DATABASE", stderr: "", wall_deadline_seconds: Absent })) == "unreadable"
+    && witness_read_state(read: ntfy_retire_account_read(read: SshSessionExecResult { exit_code: 0, success: true, stdout: "", stderr: "", wall_deadline_seconds: Absent })) == "unreadable"
+    && witness_read_state(read: ntfy_retire_account_read(read: SshSessionExecResult { exit_code: 1, success: false, stdout: "", stderr: "", wall_deadline_seconds: Absent })) == "unreadable"
 }
 
 // A PATH. test(1) exits 0 when the operand is there and 1 when it is not, and exits 2 on its OWN
@@ -334,9 +335,9 @@ test fn red_a_probe_that_errored_is_not_read_as_absent() -> Bool {
 // nothing, a getent that exited 1, a tailscale status that does not parse and a path probe that errored
 // are five reads that say NOTHING about the roster, and none of them may reach a verdict as Absent.
 test fn red_a_read_that_was_never_made_never_becomes_an_absent_verdict() -> Bool {
-  let failed_systemctl = SshSessionExecResult { exit_code: 3, success: false, stdout: "yes", stderr: "Failed to connect to bus" }
-  let hollow_getent = SshSessionExecResult { exit_code: 0, success: true, stdout: "", stderr: "" }
-  let errored_getent = SshSessionExecResult { exit_code: 1, success: false, stdout: "", stderr: "" }
+  let failed_systemctl = SshSessionExecResult { exit_code: 3, success: false, stdout: "yes", stderr: "Failed to connect to bus", wall_deadline_seconds: Absent }
+  let hollow_getent = SshSessionExecResult { exit_code: 0, success: true, stdout: "", stderr: "", wall_deadline_seconds: Absent }
+  let errored_getent = SshSessionExecResult { exit_code: 1, success: false, stdout: "", stderr: "", wall_deadline_seconds: Absent }
   witness_read_state(read: ntfy_retire_load_state_read(read: failed_systemctl)) == "unreadable"
     && witness_read_state(read: ntfy_retire_account_read(read: hollow_getent)) == "unreadable"
     && witness_read_state(read: ntfy_retire_account_read(read: errored_getent)) == "unreadable"
@@ -351,13 +352,13 @@ test fn red_a_read_that_was_never_made_never_becomes_an_absent_verdict() -> Bool
 // between a read and a verdict: the receipt built from seven real answers is clean, and each line names
 // the prober that decided it rather than restating the run's intent.
 test fn a_read_that_happened_is_classified_by_what_it_answered() -> Bool {
-  let unit_absent = ntfy_retire_verdict_from_read(member: MemberUnit, read: ntfy_retire_unit_read(load_state: SshSessionExecResult { exit_code: 0, success: true, stdout: "not-found\n", stderr: "" }, unit_path_exit: 1))
+  let unit_absent = ntfy_retire_verdict_from_read(member: MemberUnit, read: ntfy_retire_unit_read(load_state: SshSessionExecResult { exit_code: 0, success: true, stdout: "not-found\n", stderr: "", wall_deadline_seconds: Absent }, unit_path_exit: 1))
   let door_absent = ntfy_retire_verdict_from_read(member: MemberFrontDoor, read: ntfy_retire_front_door_read(status_read: witness_serve_status(stdout: serve_status_without_route)))
-  let account_absent = ntfy_retire_verdict_from_read(member: MemberAccount, read: ntfy_retire_account_read(read: SshSessionExecResult { exit_code: getent_key_not_found_exit, success: false, stdout: "", stderr: "" }))
+  let account_absent = ntfy_retire_verdict_from_read(member: MemberAccount, read: ntfy_retire_account_read(read: SshSessionExecResult { exit_code: getent_key_not_found_exit, success: false, stdout: "", stderr: "", wall_deadline_seconds: Absent }))
   let config_absent = ntfy_retire_verdict_from_read(member: MemberConfigDir, read: ntfy_retire_path_read(exit_code: 1))
   let state_absent = ntfy_retire_verdict_from_read(member: MemberStateRoot, read: ntfy_retire_path_read(exit_code: 1))
   let binary_absent = ntfy_retire_verdict_from_read(member: MemberBinary, read: ntfy_retire_path_read(exit_code: 1))
-  let group_absent = ntfy_retire_verdict_from_read(member: MemberGroup, read: ntfy_retire_group_read(read: SshSessionExecResult { exit_code: getent_key_not_found_exit, success: false, stdout: "", stderr: "" }))
+  let group_absent = ntfy_retire_verdict_from_read(member: MemberGroup, read: ntfy_retire_group_read(read: SshSessionExecResult { exit_code: getent_key_not_found_exit, success: false, stdout: "", stderr: "", wall_deadline_seconds: Absent }))
   // All SEVEN, not the original six: the receipt is clean only over the whole roster, so a claim that
   // quietly kept the pre-group list would be certified by a receipt that forgot a member.
   let vs = [unit_absent, door_absent, account_absent, config_absent, state_absent, binary_absent, group_absent]
@@ -536,7 +537,7 @@ test fn every_leg_removes_a_roster_member_the_readback_attests() -> Bool {
 // the state a retirement certifies as finished.
 
 fn witness_group_probe(code: Int, line: String) -> SshSessionExecResult {
-  SshSessionExecResult { exit_code: code, success: code == 0, stdout: line, stderr: "" }
+  SshSessionExecResult { exit_code: code, success: code == 0, stdout: line, stderr: "", wall_deadline_seconds: Absent }
 }
 
 // THE GROUP IS READ BY THE DATABASE THAT OWNS GROUPS, and every answer that is not one of getent's own
