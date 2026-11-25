@@ -213,6 +213,13 @@ test fn filesystem_compile_gate_trigger_names_the_two_self_host_sites() -> Bool 
     && (filesystem_wall_compile_gate_trigger.migrate_to_bound_handler == "emit_file_call")
     && (filesystem_wall_compile_gate_trigger.gate_connects_when
       == ^self_host_direct_reaches_migrate_to_bound_handler)
+    // THE CAPABILITY IS NAMED, not just the consequence (guarantee_ladder; Manager B): the carrier names
+    // the emit-side handler BINDING as the missing capability, and names it as a DIFFERENT thing from the
+    // site migration -- two symbols, not one blurred rung.
+    && (filesystem_wall_compile_gate_trigger.missing_capability
+      == ^emit_side_native_filesystem_handler_binding_to_ordinary_function_entry)
+    && (filesystem_wall_compile_gate_trigger.missing_capability
+      != filesystem_wall_compile_gate_trigger.gate_connects_when)
 }
 
 // THE NEWLY-ADDED-SITE CONTROL (Manager B's binding arm). This is NOT the planted-out-of-bounds arm: a
