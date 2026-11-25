@@ -848,6 +848,24 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "the_census_names_what_the_seat_exit_spool_said" },
+      entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
+      function: "the_census_names_what_the_seat_exit_spool_said",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "the_census_carries_a_planted_stop_hook_record" },
+      entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
+      function: "the_census_carries_a_planted_stop_hook_record",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.compute_recover_catalog_witness", function: "the_door_refusal_carries_the_planted_stop_hook_record" },
+      entry: "dag/test/claim/compute/compute_recover_catalog_witness.dag",
+      function: "the_door_refusal_carries_the_planted_stop_hook_record",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.compute.manager_unaskable_wet_witness", function: "a_host_without_a_user_manager_reaches_the_unavailable_arm_instead_of_aborting" },
       entry: "dag/test/claim/compute/manager_unaskable_wet_witness.dag",
       function: "a_host_without_a_user_manager_reaches_the_unavailable_arm_instead_of_aborting",
