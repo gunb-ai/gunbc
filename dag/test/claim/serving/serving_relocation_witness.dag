@@ -18,15 +18,18 @@ import extdeps.uri { Uri, Https }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.algebra { string_contains }
 import gunbc.serving.serving_relocation {
-  decide_relocation, defer_when_demand_not_ready, move_candidate, stay_candidate, decide_evacuation,
+  decide_relocation, defer_when_demand_not_ready, decide_with_imbalance_precondition,
+  move_candidate, stay_candidate, decide_evacuation,
   decide_with_retain_promise, claim_move, attempt_dispatch, render_move_intent, TransitionAllowance,
   Move, Stay, DeferredDemandNotReady, AwaitingPerson, AwaitingTool, Evacuate, ReconciliationRequired,
+  NoImbalanceToRelieve, ImbalanceUnread,
   Prepared, Interrupted, Committed, SentOnce, DispatchAfterCommitRefused,
   MoveClaimed, MoveAlreadyClaimed, RecoveredRecordedAttempt,
   HandoffRecord, HandoffPhase, ReconstructionEvidence, RestoreCompatibleSavedState, Dispatched, ConversationId, ReconstructFromCompleteRequest,
   IntentPayload, NoIntent, NotEstablished,
   rloc_subject, rloc_unread_assessment, rloc_decision_region, id_subject, id_term, id_var, id_constraints, id_parameter,
 }
+import gunbc.serving.turn_admission { ServingCoTenancy, GroupIdle, GroupOccupied, CoTenancyUnread }
 import gunbc.serving.caller_backlog {
   CallerBacklogSnapshot, CallerWorkRecord, WorkWaiting, RecoveryEvent, SeatRef, PartitionId,
   ReservationRef, LogicalWorkId,
@@ -316,5 +319,58 @@ test fn an_unadmitted_state_establishment_method_renders_no_intent() -> Bool {
   ) {
     NoIntent { reason: _ } => true
     IntentPayload { intent: _, payload: _ } => false
+  }
+}
+
+// ── THE IMBALANCE PRECONDITION (the B5 repair) ───────────────────────────────────────────────────
+//
+// The economic field in each of these three witnesses is IDENTICAL — stay net -50 (a bound session
+// refused behind a long turn on the source), a dominating move candidate net 90 at a passing service
+// class. That is the field the 2026-11-23 host "tier-0 sideways" rule fired on, and the priced selector
+// would MOVE it (witness 1). The ONLY thing that varies is the load differential the guard is shown, so
+// the trio discriminates exactly the rule the host omitted: a move is a rebalancing move, not churn, only
+// when the destination is established to carry fewer occupants than the source. The observed churn — 126
+// sideways moves in 39 min with both srv1 cards full, 63 each way (ad-hoc attribution from router log
+// lines, an operator-observed receipt, never a deduced fleet fact:
+// gunbc.design_argument::epistemic_humility) — is the same dominating field with NO differential read.
+
+// 14. THE MISCONFIGURATION AS A REFUSED CASE. A session bound to a full srv1 card, refused, whose sibling
+//     "has a free slot": both cards at four occupants. The free slot is a release the destination reclaims
+//     the moment the move lands, not a load comparison, so the source is not established busier and the
+//     move is churn. It is refused BEFORE the price (NoImbalanceToRelieve), never ranked — this is the
+//     both-cards-full state that swapped sessions both ways. MUTATION: drop the imbalance guard (call
+//     decide_relocation directly, as the host effectively did) -> the dominating move is selected -> red.
+test fn a_sideways_move_onto_an_occupied_sibling_is_refused_as_churn() -> Bool {
+  let move = move_candidate(id: w_move_id, label: "sibling-free-slot" as NonEmptyStr, net: 90, service_class: 0)
+  match decide_with_imbalance_precondition(source: GroupOccupied { occupants: 4 }, destination: GroupOccupied { occupants: 4 }, field: [stay_candidate(net: -50), move], assessment: fixture_assessment()) {
+    NoImbalanceToRelieve { source_load: s, destination_load: d } => s == 4 && d == 4
+    _ => false
+  }
+}
+
+// 15. UNREAD IS NOT BALANCE, AND NEVER A FREE MOVE. The host never read the sibling's load — it read a free
+//     slot — which is the unread standing dressed as underload. With the destination's occupancy unread,
+//     even a dominating move is ImbalanceUnread, not Move: unread is an obligation to measure, not a
+//     licence (gunbc.design_argument::fail_closed). MUTATION: collapse CoTenancyUnread to GroupIdle -> the
+//     move is established on an unread destination and selected -> red.
+test fn a_move_onto_an_unread_sibling_is_not_established() -> Bool {
+  let move = move_candidate(id: w_move_id, label: "unread-sibling" as NonEmptyStr, net: 90, service_class: 0)
+  match decide_with_imbalance_precondition(source: GroupOccupied { occupants: 4 }, destination: CoTenancyUnread { obligation: "the sibling's occupancy was never read" as NonEmptyStr }, field: [stay_candidate(net: -50), move], assessment: fixture_assessment()) {
+    ImbalanceUnread { obligation: o } => string_contains(s: o as String, pattern: "never read")
+    _ => false
+  }
+}
+
+// 16. ACCEPTED POSITIVE CONTROL. The same dominating field, and the ONLY change is that the destination is
+//     read carrying FEWER occupants than the source: a genuine rebalancing direction. The guard admits it
+//     and the priced selector moves. Together with witness 14 this proves the guard discriminates rather
+//     than blanket-refusing — the difference between move and refuse is exactly the differential, never a
+//     fixed 30 s timer. MUTATION: require the destination to be strictly busier in compare_load (flip the
+//     comparison) -> the legitimate move is refused and the dominating field never moves -> red.
+test fn an_established_differential_toward_a_lighter_sibling_moves() -> Bool {
+  let move = move_candidate(id: w_move_id, label: "lighter-sibling" as NonEmptyStr, net: 90, service_class: 0)
+  match decide_with_imbalance_precondition(source: GroupOccupied { occupants: 4 }, destination: GroupOccupied { occupants: 1 }, field: [stay_candidate(net: -50), move], assessment: fixture_assessment()) {
+    Move { destination_label: _, receipt: _ } => true
+    _ => false
   }
 }
