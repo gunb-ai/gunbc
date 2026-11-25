@@ -14,6 +14,7 @@ import extdeps.tools.sha256sum { sha256sum_stdin_digest_via_shell, Sha256FileDig
 
 import std.types { String, NonEmptyStr, CommitSha, Bool }
 import std.algebra { trim }
+import std.list { first_where }
 import extdeps.systemd.systemctl
 import gunbc.workspace_commissioning_executor { workspace_commissioning_executor_script }
 import gunbc.workspace_commissioning_executor_artifact { workspace_executor_helper_script }
@@ -47,14 +48,44 @@ type WorkspaceExecutorInputRead
   = WorkspaceExecutorInputObserved { input: WorkspaceExecutorInput }
   | WorkspaceExecutorInputRefused { reason: String }
 
-fn workspace_executor_protected_text(path: String) -> String? {
+// AN INSTALLED TEXT IS READ, HELD-DIFFERENT, OR UNREADABLE -- three standings, like the grant.
+// Collapsing "the ownership probe or the file read did not answer" into the same answer as "the
+// bytes differ" lets silence certify a mismatch (round-3 review, blocker 4): the aggregate then
+// says the artifacts differ from the reviewed release when nothing actually established either.
+type WorkspaceExecutorTextRead
+  = ExecutorTextRead { text: String }
+  | ExecutorTextDiffers
+  | ExecutorTextUnreadable { cause: String }
+
+fn workspace_executor_protected_text(path: String) -> WorkspaceExecutorTextRead {
   match read_store_ownership(path: path) {
     OwnershipRead { ownership: StoreRootOwned } => {
       let read = Filesystem.Read(path: path)
-      if read.success { Present { value: read.content } } else { none }
+      if read.success { ExecutorTextRead { text: read.content } }
+      else { ExecutorTextUnreadable { cause: join([path, " could not be read: ", (read.error as String)], "") } }
     }
-    OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => none
-    OwnershipUnread { reason: _ } => none
+    // A protected artifact not owned by root is not the reviewed artifact: that is a held fact,
+    // not a lost read (same ruling as the grant's ownership arm below).
+    OwnershipRead { ownership: StoreNotRootOwned { owner_uid: _, mode: _ } } => ExecutorTextDiffers
+    OwnershipUnread { reason: r } => ExecutorTextUnreadable { cause: join([path, " ownership could not be read: ", r], "") }
+  }
+}
+
+// ONE CHECK, THREE STANDINGS, SHARED BY THE SYSTEMD PROPERTIES AND THE INSTALLED TEXTS. A property
+// read that failed (success=false) did not answer; it does not establish a difference either.
+type WorkspaceExecutorCheck = CheckHeld | CheckDiffers { name: String } | CheckUnreadable { cause: String }
+
+fn workspace_executor_property_check(name: String, answered: Bool, value: String, expected: String) -> WorkspaceExecutorCheck {
+  if !answered { CheckUnreadable { cause: join(["systemctl show ", name, " did not answer"], "") } }
+  else if trim(s: value) == expected { CheckHeld }
+  else { CheckDiffers { name: name } }
+}
+
+fn workspace_executor_text_check(path: String, expected: String) -> WorkspaceExecutorCheck {
+  match workspace_executor_protected_text(path: path) {
+    ExecutorTextRead { text: t } => if t == expected { CheckHeld } else { CheckDiffers { name: path } }
+    ExecutorTextDiffers => CheckDiffers { name: path }
+    ExecutorTextUnreadable { cause: c } => CheckUnreadable { cause: c }
   }
 }
 
@@ -90,13 +121,6 @@ fn workspace_executor_input_from_plan(plan: WorkspaceExecutorPlanBytes) -> Works
       NetworkSubjectRefused { refusal: _ } => WorkspaceExecutorInputRefused { reason: "commissioning network subject is unavailable" }
     }
     MicrovmHostBindingRefused { cause: _ } => WorkspaceExecutorInputRefused { reason: "commissioning input is not on its selected host" }
-  }
-}
-
-fn workspace_executor_owned_text_equals(path: String, expected: String) -> Bool {
-  match workspace_executor_protected_text(path: path) {
-    Present { value } => value == expected
-    Absent => false
   }
 }
 
@@ -152,16 +176,27 @@ fn workspace_executor_installed_adapter_verdict(release_dir: String, slot: NonEm
   let fragment = systemd.Systemctl.ShowProperty(unit: unit, property: "FragmentPath")
   let dropins = systemd.Systemctl.ShowProperty(unit: unit, property: "DropInPaths")
   let reload = systemd.Systemctl.ShowProperty(unit: unit, property: "NeedDaemonReload")
-  let conjuncts_held = fragment.success && trim(s: fragment.value) == (workspace_executor_unit_path() as String)
-    && dropins.success && trim(s: dropins.value) == ""
-    && reload.success && trim(s: reload.value) == "no"
-    && workspace_executor_owned_text_equals(path: workspace_executor_unit_path() as String,
-      expected: workspace_executor_unit_text(release_dir: release_dir, fleet_lock: fleet_generation_lock, wait_bound: workspace_executor_wait_bound))
-    && workspace_executor_owned_text_equals(path: join([release_dir, "/", workspace_executor_script_name], ""), expected: workspace_commissioning_executor_script())
-    && workspace_executor_owned_text_equals(path: join([release_dir, "/", workspace_executor_helper_name], ""), expected: workspace_executor_helper_script(release_dir: release_dir))
+  let checks = [
+    workspace_executor_property_check(name: "FragmentPath", answered: fragment.success, value: fragment.value, expected: workspace_executor_unit_path() as String),
+    workspace_executor_property_check(name: "DropInPaths", answered: dropins.success, value: dropins.value, expected: ""),
+    workspace_executor_property_check(name: "NeedDaemonReload", answered: reload.success, value: reload.value, expected: "no"),
+    workspace_executor_text_check(path: workspace_executor_unit_path() as String,
+      expected: workspace_executor_unit_text(release_dir: release_dir, fleet_lock: fleet_generation_lock, wait_bound: workspace_executor_wait_bound)),
+    workspace_executor_text_check(path: join([release_dir, "/", workspace_executor_script_name], ""), expected: workspace_commissioning_executor_script()),
+    workspace_executor_text_check(path: join([release_dir, "/", workspace_executor_helper_name], ""), expected: workspace_executor_helper_script(release_dir: release_dir)),
+  ]
   match workspace_executor_grant_verdict(expected: concat(workspace_dispatch_grant_content(release_dir: release_dir as NonEmptyStr), "\n")) {
     GrantUnreadable { cause: c } => AdapterUnreadable { cause: c }
     GrantDiffers => AdapterDiffers
-    GrantMatches => if conjuncts_held { AdapterMatches } else { AdapterDiffers }
+    // UNREADABLE OUTRANKS DIFFERS: a check that did not answer cannot be outvoted by one that
+    // did. Only when every check answered may the aggregate claim a difference, and the reason
+    // names which check answered "no".
+    GrantMatches => match first_where(xs: checks, keep: c => match c { CheckUnreadable { cause: _ } => true CheckHeld => false CheckDiffers { name: _ } => false }) {
+      Present { value: CheckUnreadable { cause: c } } => AdapterUnreadable { cause: c }
+      _ => match first_where(xs: checks, keep: c => match c { CheckDiffers { name: _ } => true _ => false }) {
+        Present { value: CheckDiffers { name: _ } } => AdapterDiffers
+        _ => AdapterMatches
+      }
+    }
   }
 }

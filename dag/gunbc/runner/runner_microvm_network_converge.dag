@@ -421,6 +421,10 @@ type HostReading {
   generation: ConvergeGeneration
   ip_forward: IpForwardStanding
   ruleset_digest: Sha256Digest?
+  // WHY the installed-table read did not answer, when it did not answer: the deadline cause of
+  // an overran leg, or the spawner's words for an unspawned one. The generic "not digestible"
+  // diagnosis is honest only for a child that RETURNED and produced no digestible listing.
+  table_cause: NonEmptyStr?
   auto_assignment: HelperAutoAssignment
   nft_ct_helper_statements: HelperSurfaceReading
   xtables_ct_helper_targets: HelperSurfaceReading
@@ -511,7 +515,10 @@ fn host_refusals(h: HostReading) -> List<ConvergeRefusal> {
       },
       match h.ruleset_digest {
         Present { value: _ } => []
-        Absent => [RulesetUnread { reason: "nft list table did not return a digestible listing of the installed table" as NonEmptyStr }]
+        Absent => [RulesetUnread { reason: match h.table_cause {
+          Present { value: c } => join(["nft list table could not answer: ", c], "")
+          Absent => "nft list table did not return a digestible listing of the installed table"
+        } as NonEmptyStr }]
       },
     ),
     match h.auto_assignment {
@@ -566,7 +573,10 @@ fn converge_outcome(slots: List<SlotReading>, h: HostReading) -> ConvergeOutcome
   match first_refusal(rs: refusals) {
     Present { value: r } => ConvergeRefused { refusal: r }
     Absent => match h.ruleset_digest {
-      Absent => ConvergeRefused { refusal: RulesetUnread { reason: "no digestible listing of the installed table" as NonEmptyStr } }
+      Absent => ConvergeRefused { refusal: RulesetUnread { reason: match h.table_cause {
+        Present { value: c } => join(["no digestible listing of the installed table: ", c], "")
+        Absent => "no digestible listing of the installed table"
+      } as NonEmptyStr } }
       Present { value: d } => ConvergedNetwork {
         receipt: ConvergedSlotNetwork {
           host: h.host,
@@ -671,6 +681,22 @@ fn read_slot_wet(slot: RunnerSlotIdentity) -> SlotReading {
   }
 }
 
+// THE TABLE READ'S OWN REFUSAL FACT, carried beside the digest decision (round-3 review, blocker
+// 3). An overran or unspawned installed-table read must not be flattened into the generic "no
+// digestible listing" diagnosis: that diagnosis is honest only for a child that RETURNED without a
+// digestible listing. This is the whole projection from the read to its cause, so the witness drives
+// the same function the wet fold calls -- the digest half (host_ruleset_digest_wet) spawns a child
+// and stays wet; the cause half is total over the reading and testable hermetically.
+fn table_read_cause(table: PrivilegedRead) -> NonEmptyStr? {
+  match table {
+    PrivilegedReadOverran { cause: why } => Present { value: join(["overran its deadline without returning a result: ", why], "") as NonEmptyStr }
+    PrivilegedReadCaptured { outcome: cap } => match cap {
+      ProcessCaptureNotSpawned { program: p, cause: why } => Present { value: join(["probe was never spawned: ", p, ": ", why], "") as NonEmptyStr }
+      _ => none
+    }
+  }
+}
+
 // THE LISTING IS DIGESTED BY THE HOST, not by this process reading its own rendering: the receipt's
 // digest must be of the bytes `nft list table` produced, because that is what the per-attempt
 // readback will compare against.
@@ -707,11 +733,13 @@ fn read_host_wet(host: HostIdentity, generation: ConvergeGeneration, reads: Micr
   let expectations = reads.expectations
   let kernel = capture_stdout(c: uname_release_command())
   let digest = if privileged_read_ran(r: table) { listing_digest(d: host_ruleset_digest_wet(listing: privileged_read_stdout(r: table))) } else { none }
+  let table_cause = table_read_cause(table: table)
   HostReading {
     host: host,
     generation: generation,
     ip_forward: ip_forward_standing(readable: proc_readable(o: forward), text: proc_text(o: forward)),
     ruleset_digest: digest,
+    table_cause: table_cause,
     auto_assignment: parse_auto_assignment(
       observed: observe_helper_sysctl_wet(),
       kernel_release: trim(s: outcome_stdout(o: kernel)),

@@ -53,6 +53,12 @@ type StartEvidenceStore sole_constructor { root: NonEmptyStr }
 
 type StartEvidenceStoreReading = StartEvidenceStoreReady { store: StartEvidenceStore } | StartEvidenceStoreUnready { detail: String }
 
+fn start_evidence_store_at(root: NonEmptyStr) -> StartEvidenceStore {
+  // ADMITTED CONSTRUCTOR for callers that already hold an admitted evidence root (the reconciliation
+  // witness, via its HostStateTree-derived path): sole_constructor keeps the type sealed to this module.
+  StartEvidenceStore { root: root }
+}
+
 fn start_evidence_store(tree: HostStateTree) -> StartEvidenceStoreReading {
   match printer_starts_legacy_scan(tree: tree, owns: n => start_evidence_legacy_entry(name: n)) {
     PrinterStartsUnreadable { detail: d } => StartEvidenceStoreUnready { detail: d }

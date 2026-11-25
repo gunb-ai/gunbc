@@ -93,9 +93,14 @@ fn workspace_operator_host_standing() -> WorkspaceHostStanding {
   match run_shell_command_capture(command: hostname_short_read_command(), transport: LocalExec) {
     ProcessCaptured { outcome: observed } => match observed {
       ProcessOutputPresent { text } =>
-        if any(workspace_execution_slot_identities(), slot => (slot.host as String) == trim(s: text)) { OnCandidateHost } else { NotOnCandidateHost }
-      ProcessOutputAbsent => NotOnCandidateHost
-      ProcessRefused { exit_code: _, stderr: _ } => NotOnCandidateHost
+        if trim(s: text) == "" {
+          // An EMPTY NAME PROVES NOTHING. "Not on the candidate list" is a definite verdict that
+          // requires a name to compare; a hostname read that returned no name left the identity
+          // unread, exactly as a refused or empty-spawn read does.
+          HostIdentityUnreadable { cause: "the hostname read returned no name" }
+        } else if any(workspace_execution_slot_identities(), slot => (slot.host as String) == trim(s: text)) { OnCandidateHost } else { NotOnCandidateHost }
+      ProcessOutputAbsent => HostIdentityUnreadable { cause: "the hostname read admitted an exit but returned no name" }
+      ProcessRefused { exit_code: c, stderr: e } => HostIdentityUnreadable { cause: join(["the hostname read exited ", to_string(c), ": ", e], "") }
     }
     ProcessCaptureNotSpawned { program: p, cause: why } => HostIdentityUnreadable { cause: join([p, ": ", why], "") }
   }

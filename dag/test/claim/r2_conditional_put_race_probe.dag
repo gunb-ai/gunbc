@@ -31,6 +31,17 @@ import extdeps.uri { Uri, Https }
 // fleet-converge mode r2_conditional_put_race_probe, whose receipt is the live reading; the route
 // claims below run the real argv builder and the real parsers over the shapes curl writes.
 
+// THE MUTATION CONTROL (documented, not inlined) -- PRODUCER DECISION, NOT TYPES (review 97468).
+// The testable types stay in place; restore ONLY the old producer decisions and the writers claims
+// turn RED:
+//  * in r2_conditional_put_race_probe.race_round_line, map the RaceRoundWritersUnstarted arm back
+//    to concat("seed refused: ", c as String) -- the round-trip claim (race_round_line then
+//    race_receipt_round) then reads the line back as RaceRoundUnseeded and its pattern fails;
+//  * in race_round_verdict, map RaceRoundWritersUnstarted back to the shared
+//    "the round was not seeded" inconclusive -- the verdict claim's "seed is confirmed" and
+//    "writers never started" assertions both fail while the seed tag is still in hand.
+// Both mutations were run and reverted in-PR; the head carries the honest producer decisions.
+
 fn rep(status: Int) -> CurlParallelTransferReport { CurlParallelTransferReported { status: status } }
 
 fn raced(a: CurlParallelTransferReport, b: CurlParallelTransferReport) -> RaceRoundObservation { RaceRoundRaced { a: a, b: b, overlap: RaceOverlapEstablished } }

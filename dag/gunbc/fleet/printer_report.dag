@@ -58,6 +58,17 @@ type PrinterReportCapture
 
 // Words for the last capture an exhausted attempt budget returned. Every arm is a fact the capture
 // itself carries (the spawner's refusal, an exit the child reported, output that stayed unread).
+// THE CLEANUP STANDING IN WORDS, for every refusal that withholds an approval or a start over a
+// report that also leaked its credential-bound file: the leak is a known fact and must travel to
+// the operator wherever the refusal text is produced (round-3 review: approval and pre-start paths
+// discarded it).
+fn printer_report_cleanup_note(c: PrinterCleanupStanding) -> String {
+  match c {
+    PrinterCleanupOutstanding { detail: d } => join(["; the report cleanup left ", d, " outstanding"], "")
+    PrinterCleanupClean => ""
+  }
+}
+
 fn printer_report_last_words(capture: ProcessCaptureOutcome) -> String {
   match capture {
     ProcessCaptureNotSpawned { program: p, cause: why } => join(["never spawned: ", p, " -- ", why], "")
@@ -143,6 +154,10 @@ fn report_with_credential(serial: NonEmptyStr, address: NonEmptyStr, credential:
             PrinterReported { outcome: outcome, cleanup: PrinterCleanupOutstanding { detail: "credential-bound options directory (binding.dir) AND the CA workspace both leaked after forced removal" } }
           } else if lo && lp {
             PrinterReported { outcome: outcome, cleanup: PrinterCleanupOutstanding { detail: "credential-bound options directory (binding.dir) leaked: shred of the placed binding directory failed" } }
+          } else if lo && !ca_removed {
+            // Refusal residue AND a CA workspace leak: two independent facts, both named (the
+            // old `else if lo` branch reported only the residue and silently dropped the CA leak).
+            PrinterReported { outcome: outcome, cleanup: PrinterCleanupOutstanding { detail: join(["placed options refusal residue remains in the private options directory (binding.dir), AND CA workspace ", workspace, " leaked after forced removal"], "") as NonEmptyStr } }
           } else if lo {
             PrinterReported { outcome: outcome, cleanup: PrinterCleanupOutstanding { detail: join(["placed options refusal residue remains in the private options directory (binding.dir), NOT the CA workspace -- forced removal did not clear it"], "") as NonEmptyStr } }
           } else if !ca_removed {

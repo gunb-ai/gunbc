@@ -1,0 +1,49 @@
+module test.claim.printer_report_exhaustion_witness
+
+// CLAIMS FOR THE EXHAUSTED REPORT BUDGET (review 97468, blocker 5 / round-3 "no control exercises
+// the decision"). After eight admitted captures none of which completed into a state or error
+// report, the consumer refuses with the LAST CAPTURE'S OWN facts. Before the fix the exhaustion
+// path fabricated ProcessOutputAbsent -- a verdict of "no output" over children that printed bytes
+// -- and the CLI could exit on a silence that never happened. The claims drive the one consumer
+// decision (printer_report_exhaustion_refusal), not a re-implemented classifier.
+//
+// THE MUTATION CONTROL (documented, not inlined). Restore in printer_report.dag either
+//  * printer_report_last_words's ProcessOutputPresent arm to "returned no output" (the old
+//    silence claim), or
+//  * printer_report_exhaustion_refusal's leak arm to discard the outstanding standing,
+// and the matching claim below turns false on its contains-assertions. Both mutations were run
+// and reverted in-PR; the head carries the honest arms.
+
+import std.types { String, NonEmptyStr, Bool }
+import std.process { ExitFailure }
+import gunbc.command_runner { ProcessCaptureOutcome }
+import extdeps.shell.exec { ProcessCaptured, ProcessOutputPresent }
+import gunbc.fleet.printer_report {
+  printer_report_exhaustion_refusal, PrinterCleanupClean, PrinterCleanupOutstanding,
+}
+
+// EIGHT PARTIAL NON-EMPTY REPORTS REFUSE WITH THE LAST CAPTURE'S FACTS. The last capture printed
+// bytes that never completed -- the refusal must SAY so, with the byte count, never "no output".
+test fn exhausted_reports_refuse_with_the_last_capture_facts() -> Bool {
+  let partial = "telemetry: 90"
+  match printer_report_exhaustion_refusal(last: ProcessCaptured { outcome: ProcessOutputPresent { text: partial } }, cleanup: PrinterCleanupClean) {
+    ExitFailure { code: _, reason: r } =>
+      string_contains(s: r, pattern: "incomplete after all admitted captures")
+        && string_contains(s: r, pattern: "printed 13 bytes that never completed")
+        && !string_contains(s: r, pattern: "returned no output")
+    _ => false
+  }
+}
+
+// A CREDENTIAL-BOUND LEAK RIDES THE EXHAUSTION REFUSAL. The leak is a known fact; dropping it
+// would fail the operator's only signal that a secret-bearing file stands on disk.
+test fn an_outstanding_report_leak_rides_the_exhaustion_refusal() -> Bool {
+  let partial = "telemetry: 90"
+  match printer_report_exhaustion_refusal(last: ProcessCaptured { outcome: ProcessOutputPresent { text: partial } }, cleanup: PrinterCleanupOutstanding { detail: "/tmp/options-binding" as NonEmptyStr }) {
+    ExitFailure { code: _, reason: r } =>
+      string_contains(s: r, pattern: "printed 13 bytes that never completed")
+        && string_contains(s: r, pattern: "leaked")
+        && string_contains(s: r, pattern: "/tmp/options-binding")
+    _ => false
+  }
+}

@@ -6,11 +6,11 @@ import extdeps.tools.sleep
 import extdeps.languages.json.emit {json_object,json_kv,json_string,json_bool,serialize_json}
 import extdeps.shell.exec {ProcessOutputPresent,ProcessOutputAbsent,ProcessRefused,ProcessCaptured}
 import gunbc.fleet.printer_job_monitor {observe_job,JobRunning,JobPaused,JobFailed,JobCompletedAwaitingInspection,JobUnresolved}
-import gunbc.fleet.fleet_printer_access {PrinterCredentialSession,session_printer}
+import gunbc.fleet.fleet_types {PhysicalAssetIdentity}
 import gunbc.fleet.printer_report {report_once_using_session, PrinterReported, PrinterReportExhausted, PrinterCleanupClean, PrinterCleanupOutstanding}
 import gunbc.fleet.printer_receipt {write_receipt,write_receipt_at}
 import gunbc.auth.access_token_source {AccessTokenSource}
-import gunbc.fleet.printer_start_evidence_store {StartEvidenceStore,start_evidence_record}
+import gunbc.fleet.printer_start_evidence_store {StartEvidenceStore,start_evidence_store_at,start_evidence_record}
 import gunbc.durable_create_once { CreateOnceRecorded, CreateOnceAlreadyRecorded, CreateOnceRefused }
 
 // Observing activity is not proof of application-level exactly-once delivery. The
@@ -45,25 +45,27 @@ fn reconcile_step(observation:StartObservation,remaining:Int) -> ReconcileStep {
 // filesystem operations add their own runtime. Cleanup faults never become success.
 // THE TELEMETRY READ IS AN INJECTED SOURCE: production supplies the live session read; a claim can
 // script the reads and drive the whole loop -- evidence, folding, receipt and exit -- hermetically.
-fn reconcile_start(session:PrinterCredentialSession,remote:NonEmptyStr,version:String,digest:String,credential_source:PrinterCredentialSource,evidence_prefix:String,evidence_store:StartEvidenceStore,claim_key:NonEmptyStr,publish_standing:String,cleanup_issue:String,read:fn(Int) -> PrinterReportCapture) -> ProcessExit {
- reconcile_reads(session:session,remote:remote,version:version,digest:digest,credential_source:credential_source,evidence_prefix:evidence_prefix,evidence_store:evidence_store,claim_key:claim_key,publish_standing:publish_standing,cleanup_issue:cleanup_issue,remaining:8,read:read)
+fn reconcile_start(printer:PhysicalAssetIdentity,remote:NonEmptyStr,version:String,digest:String,credential_source:PrinterCredentialSource,evidence_prefix:String,evidence_store:StartEvidenceStore,claim_key:NonEmptyStr,publish_standing:String,cleanup_issue:String,read:fn(Int) -> PrinterReportCapture) -> ProcessExit {
+ reconcile_reads(printer:printer,remote:remote,version:version,digest:digest,credential_source:credential_source,evidence_prefix:evidence_prefix,evidence_store:evidence_store,claim_key:claim_key,publish_standing:publish_standing,cleanup_issue:cleanup_issue,remaining:8,read:read)
 }
-fn reconcile_reads(session:PrinterCredentialSession,remote:NonEmptyStr,version:String,digest:String,credential_source:PrinterCredentialSource,evidence_prefix:String,evidence_store:StartEvidenceStore,claim_key:NonEmptyStr,publish_standing:String,cleanup_issue:String,remaining:Int,read:fn(Int) -> PrinterReportCapture) -> ProcessExit {
- let response=read(read)
+fn reconcile_reads(printer:PhysicalAssetIdentity,remote:NonEmptyStr,version:String,digest:String,credential_source:PrinterCredentialSource,evidence_prefix:String,evidence_store:StartEvidenceStore,claim_key:NonEmptyStr,publish_standing:String,cleanup_issue:String,remaining:Int,read:fn(Int) -> PrinterReportCapture) -> ProcessExit {
+ let attempt=8-remaining
+ let response=read(attempt)
+ // CLASSIFY THE ORIGINAL TELEMETRY. observe_start's job reader expects a top-level `print`
+ // member; wrapping a genuine response in a `read` envelope before classification would make a
+ // real RUNNING answer unread to it and trigger a spurious re-read. The capture verdict passes
+ // through untransformed; cleanup travels SEPARATELY (below), never inside the classified text.
  let text=match response {
-  PrinterReported { outcome: ProcessCaptured { outcome: observed }, cleanup: PrinterCleanupClean } => match observed {ProcessOutputPresent {text:t}=>t ProcessOutputAbsent=>"" ProcessRefused {exit_code:_,stderr:e}=>serialize_json(v:json_object(members:[json_kv(key:"read_refused",value:json_string(s:e))]))}
+  PrinterReported { outcome: ProcessCaptured { outcome: ProcessOutputPresent {text:t} }, cleanup: _ } => t
+  PrinterReported { outcome: ProcessCaptured { outcome: ProcessOutputAbsent }, cleanup: _ } => ""
+  PrinterReported { outcome: ProcessCaptured { outcome: ProcessRefused {exit_code:_,stderr:e} }, cleanup: _ } => serialize_json(v:json_object(members:[json_kv(key:"read_refused",value:json_string(s:e))]))
   // The telemetry client was never spawned: the read is recorded as never having run, with the
   // spawner's cause, rather than as a read that came back refusing.
   PrinterReported { outcome: ProcessCaptureNotSpawned {program:pp,cause:why}, cleanup: _ } => serialize_json(v:json_object(members:[json_kv(key:"read_never_spawned",value:json_string(s:join([pp," -- ",why],"")))]))
-  // A credential-bound leak outstanding after the read is recorded as such beside the read's
-  // own verdict -- the standing is never dropped.
-  PrinterReported { outcome: ProcessCaptured { outcome: ProcessOutputPresent {text:t} }, cleanup: PrinterCleanupOutstanding { detail: d } } => serialize_json(v:json_object(members:[json_kv(key:"read",value:json_string(s:t)),json_kv(key:"cleanup_outstanding",value:json_string(s:d))]))
-  PrinterReported { outcome: ProcessCaptured { outcome: ProcessOutputAbsent }, cleanup: PrinterCleanupOutstanding { detail: d } } => serialize_json(v:json_object(members:[json_kv(key:"read_empty",value:json_bool(b: true)),json_kv(key:"cleanup_outstanding",value:json_string(s:d))]))
-  PrinterReported { outcome: ProcessCaptured { outcome: ProcessRefused {exit_code:_,stderr:e} }, cleanup: PrinterCleanupOutstanding { detail: d } } => serialize_json(v:json_object(members:[json_kv(key:"read_refused",value:json_string(s:e)),json_kv(key:"cleanup_outstanding",value:json_string(s:d))]))
   // Exhaustion cannot arise from the single admitted read this loop makes (remaining starts at 1),
   // but the carrier admits it, so the loop records it honestly rather than matching unconditionally.
   PrinterReportExhausted { last: _, cleanup: PrinterCleanupClean } => serialize_json(v:json_object(members:[json_kv(key:"read_exhausted",value:json_string(s:"exhausted post-start telemetry attempts without a complete standing"))]))
-  PrinterReportExhausted { last: _, cleanup: PrinterCleanupOutstanding { detail: d } } => serialize_json(v:json_object(members:[json_kv(key:"read_exhausted",value:json_string(s:join(["exhausted post-start telemetry attempts without a complete standing; client binding outstanding at ",d],"")))]))
+  PrinterReportExhausted { last: _, cleanup: PrinterCleanupOutstanding { detail: d } } => serialize_json(v:json_object(members:[json_kv(key:"read_exhausted",value:json_string(s:join(["exhausted post-start telemetry attempts without a complete standing",d],"")))]))
  }
  // THE READ'S CLEANUP STANDING IS PART OF ITS EVIDENCE. A read whose post-start telemetry cleanup
  // left the client binding outstanding is not forgotten by the next read: the leak is folded into the
@@ -78,25 +80,34 @@ fn reconcile_reads(session:PrinterCredentialSession,remote:NonEmptyStr,version:S
  }
  let cleanup_carried=if cleanup_issue=="" {leak} else {if leak=="" {cleanup_issue} else {concat(cleanup_issue,concat("; ",leak))}}
  let read_index=9-remaining
- let evidence=match start_evidence_record(store:evidence_store,claim_key:claim_key,read:read_index,content:text) {
+ // THE CLEANUP EVIDENCE IS SERIALIZED SEPARATELY beside the classified read: the retained
+ // evidence shows both the telemetry as observed and the standing the cleanup left, as
+ // independent members -- never a re-encoded telemetry whose envelope hides `print`.
+ let evidence_text=if leak=="" {text} else {serialize_json(v:json_object(members:[json_kv(key:"read",value:json_string(s:text)),json_kv(key:"cleanup",value:json_string(s:leak))]))}
+ let evidence=match start_evidence_record(store:evidence_store,claim_key:claim_key,read:read_index,content:evidence_text) {
   CreateOnceRecorded {path:p}=>p
-  CreateOnceAlreadyRecorded {path:p}=>return exit_failure(reason:concat("Post-start evidence already retained at ",concat(p,"; refusing to overwrite; claim retained, DO NOT REPLAY")))
-  CreateOnceRefused {path:p,cause:c}=>return exit_failure(reason:join(["Cannot retain post-start evidence at ",p,": ",c,"; claim retained, DO NOT REPLAY"],""))
+  // BOTH FACTS SURVIVE A PERSISTENCE FAILURE: when evidence retention fails, the operator
+  // still learns a credential-bound directory leaked in this run.
+  CreateOnceAlreadyRecorded {path:p}=>return exit_failure(reason:join(["Post-start evidence already retained at ",p,"; refusing to overwrite; cleanup: ",cleanup_carried,"; claim retained, DO NOT REPLAY"],""))
+  CreateOnceRefused {path:p,cause:c}=>return exit_failure(reason:join(["Cannot retain post-start evidence at ",p,": ",c,"; cleanup: ",cleanup_carried,"; claim retained, DO NOT REPLAY"],""))
  }
  match reconcile_step(observation:observe_start(text:text,remote:remote as String),remaining:remaining) {
   ReadAgain {remaining:n}=>{
-   if !sleep.Delay.Seconds(seconds:"5").success {return finish_reconciliation(session:session,remote:remote,version:version,digest:digest,credential_source:credential_source,evidence:evidence,publish_standing:publish_standing,cleanup_issue:cleanup_carried,outcome:"uncertain: observation delay failed",confirmed:false,evidence_prefix:evidence_prefix)}
-   reconcile_reads(session:session,remote:remote,version:version,digest:digest,credential_source:credential_source,evidence_prefix:evidence_prefix,evidence_store:evidence_store,claim_key:claim_key,publish_standing:publish_standing,cleanup_issue:cleanup_carried,remaining:n,read:read)
+   if !sleep.Delay.Seconds(seconds:"5").success {return finish_reconciliation(printer:printer,remote:remote,version:version,digest:digest,credential_source:credential_source,evidence:evidence,publish_standing:publish_standing,cleanup_issue:cleanup_carried,outcome:"uncertain: observation delay failed",confirmed:false,evidence_prefix:evidence_prefix)}
+   reconcile_reads(printer:printer,remote:remote,version:version,digest:digest,credential_source:credential_source,evidence_prefix:evidence_prefix,evidence_store:evidence_store,claim_key:claim_key,publish_standing:publish_standing,cleanup_issue:cleanup_carried,remaining:n,read:read)
   }
-  ConfirmRunning=>finish_reconciliation(session:session,remote:remote,version:version,digest:digest,credential_source:credential_source,evidence:evidence,publish_standing:publish_standing,cleanup_issue:cleanup_carried,outcome:"running-confirmed",confirmed:true,evidence_prefix:evidence_prefix)
-  StopBlocked=>finish_reconciliation(session:session,remote:remote,version:version,digest:digest,credential_source:credential_source,evidence:evidence,publish_standing:publish_standing,cleanup_issue:cleanup_carried,outcome:"expected-project-blocked",confirmed:false,evidence_prefix:evidence_prefix)
-  StopUncertain=>finish_reconciliation(session:session,remote:remote,version:version,digest:digest,credential_source:credential_source,evidence:evidence,publish_standing:publish_standing,cleanup_issue:cleanup_carried,outcome:"uncertain: observation budget exhausted",confirmed:false,evidence_prefix:evidence_prefix)
+  ConfirmRunning=>finish_reconciliation(printer:printer,remote:remote,version:version,digest:digest,credential_source:credential_source,evidence:evidence,publish_standing:publish_standing,cleanup_issue:cleanup_carried,outcome:"running-confirmed",confirmed:true,evidence_prefix:evidence_prefix)
+  StopBlocked=>finish_reconciliation(printer:printer,remote:remote,version:version,digest:digest,credential_source:credential_source,evidence:evidence,publish_standing:publish_standing,cleanup_issue:cleanup_carried,outcome:"expected-project-blocked",confirmed:false,evidence_prefix:evidence_prefix)
+  StopUncertain=>finish_reconciliation(printer:printer,remote:remote,version:version,digest:digest,credential_source:credential_source,evidence:evidence,publish_standing:publish_standing,cleanup_issue:cleanup_carried,outcome:"uncertain: observation budget exhausted",confirmed:false,evidence_prefix:evidence_prefix)
  }
 }
-fn finish_reconciliation(session:PrinterCredentialSession,remote:NonEmptyStr,version:String,digest:String,credential_source:PrinterCredentialSource,evidence:String,publish_standing:String,cleanup_issue:String,outcome:String,confirmed:Bool,evidence_prefix:String) -> ProcessExit {
+fn finish_reconciliation(printer:PhysicalAssetIdentity,remote:NonEmptyStr,version:String,digest:String,credential_source:PrinterCredentialSource,evidence:String,publish_standing:String,cleanup_issue:String,outcome:String,confirmed:Bool,evidence_prefix:String) -> ProcessExit {
  let standing=join([outcome,"; publisher: ",publish_standing,"; cleanup: ",cleanup_issue,"; evidence: ",evidence],"")
- match write_receipt_at(path:concat(evidence_prefix,".receipt.json"),printer:session_printer(s:session),standing:standing,version:version,remote:remote as String,digest:digest,credential_source:credential_source) {
-  ExitSuccess=>if confirmed && cleanup_issue=="" {write_receipt(printer:session_printer(s:session),standing:standing,version:version,remote:remote as String,digest:digest,credential_source:credential_source)} else {exit_failure(reason:concat(standing,"; claim retained, DO NOT REPLAY"))}
+ match write_receipt_at(path:concat(evidence_prefix,".receipt.json"),printer:printer,standing:standing,version:version,remote:remote as String,digest:digest,credential_source:credential_source) {
+  ExitSuccess=>if confirmed && cleanup_issue=="" {write_receipt(printer:printer,standing:standing,version:version,remote:remote as String,digest:digest,credential_source:credential_source)} else {exit_failure(reason:concat(standing,"; claim retained, DO NOT REPLAY"))}
+  // A RECEIPT-WRITE FAILURE STILL DISCHARGES THE CLEANUP FACT: the standing (with every folded
+  // leak) is appended to the persistence error rather than discarded behind it.
+  ExitFailure { code: _, reason: r }=>exit_failure(reason:join([r,"; ",standing,"; claim retained, DO NOT REPLAY"],""))
   other=>other
  }
 }

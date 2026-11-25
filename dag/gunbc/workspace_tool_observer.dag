@@ -12,6 +12,7 @@ import gunbc.runner.runner_microvm_host_ready { FirecrackerHostStanding, observe
 import gunbc.runner.runner_microvm_slot_unit { microvm_controller_vmm_binary, microvm_controller_jailer_binary }
 import gunbc.hostname_allocation { canonical_hostname_for_fleet_slot }
 import product.host_identity { HostIdentity }
+import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
 
 // THE JAILER EXECUTABLE CHECK HAS THREE STANDINGS. A test that was never spawned answered nothing:
 // it is neither executable nor non-executable, and the refusal carries the probe's own cause.
@@ -23,10 +24,9 @@ type WorkspaceJailerStanding
 fn workspace_jailer_standing(captured: ProcessCaptureOutcome) -> WorkspaceJailerStanding {
   match captured {
     ProcessCaptureNotSpawned { program: p, cause: why } => JailerStandingUnreadable { cause: join([p, ": ", why], "") }
-    ProcessCaptured { outcome: observed } => if process_outcome_admitted(o: observed) { JailerExecutable } else { JailerNotExecutable }
+    ProcessCaptured { outcome: observed } => if process_outcome_admitted(outcome: observed) { JailerExecutable } else { JailerNotExecutable }
   }
 }
-import gunbc.build_cache.build_cache_instance { RunnerSlotIdentity }
 
 type WorkspaceToolsObserved sole_constructor { host: NonEmptyStr, observed_at: Timestamp, release_dir: NonEmptyStr, standing: FirecrackerHostStanding }
 type WorkspaceToolsRead = WorkspaceToolsReady { observation: WorkspaceToolsObserved } | WorkspaceToolsUnobserved { reason: NonEmptyStr }

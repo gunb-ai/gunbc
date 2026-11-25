@@ -156,7 +156,14 @@ fn qemu_toolchain_tree_standing(captured: ProcessCaptureOutcome) -> QemuToolchai
     ProcessCaptureNotSpawned { program: p, cause: why } => QemuToolchainTreeUnreadable { cause: join([p, ": ", why], "") }
     ProcessCaptured { outcome: ProcessOutputPresent { text: _ } } => QemuToolchainTreeStands
     ProcessCaptured { outcome: ProcessOutputAbsent } => QemuToolchainTreeStands
-    ProcessCaptured { outcome: ProcessRefused { exit_code: _, stderr: _ } } => QemuToolchainTreeAbsent
+    // A CAPTURED NONZERO IS NOT AUTOMATICALLY "ABSENT". test(1) answers false with exit 1 and
+    // errors with exit 2 (or never runs at all, exit 127 -- the utility is missing). Only the
+    // answer is evidence of absence; an error answered nothing and must not select staging
+    // (round-3 review: every captured nonzero test -e became TreeAbsent, so a utility error
+    // could still stage a replacement over a tree the recipe may already own).
+    ProcessCaptured { outcome: ProcessRefused { exit_code: code, stderr: err } } =>
+      if code == 1 { QemuToolchainTreeAbsent }
+      else { QemuToolchainTreeUnreadable { cause: join(["the existence check errored: exit ", to_string(code), " ", trim(s: err)], "") } }
   }
 }
 
