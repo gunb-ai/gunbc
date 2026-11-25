@@ -1672,10 +1672,19 @@ fn filesystem_effect_emitted_closure_census(
 }
 // THE STATIC UPPER BOUND OVER PRODUCTION SOURCE, with the per-tier exclusions counted (warm-fox: the
 // reader must see how far the refused set sits under the declared bound). This is a TEXT bound: every line
-// carrying `filesystem_read(` under src/ and dag/, split into tiers, so it can only sit ABOVE the derived
-// census, never below it. The split was measured at this head by:
-//   for t in <each path below>; do grep -rn "filesystem_read(" --include=*.dag $t | wc -l; done
-//   (total: grep -rn "filesystem_read(" --include=*.dag src dag | wc -l)
+// carrying `filesystem_read(` under src/ and dag/ (.dag files), split into tiers, so it can only sit ABOVE
+// the derived census, never below it. RE-DERIVE THE FIGURES WITH (Manager A: figures go stale with the
+// tree; these are pinned to a base, not to "now"):
+//   BASE = 8d789fee811 (the review base of this PR; figures measured at that commit via git grep)
+//   total:                      git grep -n "filesystem_read(" $BASE -- src dag | grep -v '\.rs:' | wc -l                     # 160
+//   production_call_sites:      git grep -n "filesystem_read(" $BASE -- src/v2/compiler/self_host.dag src/v2/workflow/compile_door_ledger.dag | grep -v '\.rs:' | wc -l   # 4 (self_host.dag:319,329; compile_door_ledger.dag:116,144)
+//   excluded_declaration_module: git grep -n "filesystem_read(" $BASE -- src/v2/std/live_read.dag | grep -v '\.rs:' | wc -l                      # 2
+//   excluded_test_tier:         git grep -n "filesystem_read(" $BASE -- src/v2/test | grep -v '\.rs:' | wc -l                                    # 31
+//   excluded_lens_tier:         git grep -n "filesystem_read(" $BASE -- src/v2/lens | grep -v '\.rs:' | wc -l                                    # 5
+//   excluded_v1_tier:           git grep -n "filesystem_read(" $BASE -- src/v1 | grep -v '\.rs:' | wc -l                       # 2
+//   excluded_rust_fixture_prose: git grep -n "filesystem_read(" $BASE -- src/v2/extdeps/languages/rust_fixtures.dag | wc -l    # 3
+//   excluded_dag_corpus:        total minus all of the above -- the remainder (.dag corpus under dag/ plus
+//                               any src/.dag file not in a named tier)                                                     # 113
 // and the arms are exhaustive: production_call_sites + every excluded_* == total_text_hits (checked by
 // filesystem_effect_static_bound_is_exhaustive, so a number copied wrong cannot sit unnoticed). The bound
 // counts TEXT occurrences, which over-counts (prose, fixtures, embedded Rust strings) and under-counts
@@ -1729,7 +1738,7 @@ fn filesystem_effect_census_log(
   let n = int_to_decimal_string(value: length(xs: report.offenders))
   let lines = list_append(
     left: [
-      cat([
+      string_join(fields: [
         "filesystem-effect-reach-wall population=",
         report.population_source.emitted_closure_root_module,
         "#",
@@ -1743,13 +1752,13 @@ fn filesystem_effect_census_log(
       ]),
       "arms: derived=free_primitive_direct(refused) and through_handler(authorised); ReachedOutsideBoundHandler is supplied-population-only (synthetic leg)",
       "scope: declaration-resolved callees only -- any reference, broader than a call (fail-closed direction); ambient builtin-route calls are counted only where the resolve fold records a resolved callee path, which the executed ambient-callee leg must show before a clean census is read as builtin-route coverage",
-      cat([
+      string_join(fields: [
         "refused=",
         n,
         " static_upper_bound_production_call_sites=",
         int_to_decimal_string(value: bound.production_call_sites)
       ]),
-      cat([
+      string_join(fields: [
         "tier_exclusions: declaration_module=",
         int_to_decimal_string(value: bound.excluded_declaration_module),
         " test=",
@@ -1771,12 +1780,6 @@ fn filesystem_effect_census_log(
   string_join(fields: lines, separator: "\n")
 }
 
-// STRING CONCATENATION OVER PARTS -- the FreeMonoid fold the dialect's concat provides, list-shaped so a
-// log line reads as its parts instead of a tower of nested calls.
-fn cat(parts: List<String>) -> String {
-  fold_list(xs: parts, empty: "", cons: fn(acc, part) { concat(acc, part) })
-}
-
 // One line per refused offender, LOCATED: module#enclosing_declaration#occurrence. A census that refused
 // without naming the sites would be an oracle, not a report.
 fn offender_log_lines(offenders: List<FilesystemEffectReach>) -> List<String> {
@@ -1788,7 +1791,7 @@ fn offender_log_lines(offenders: List<FilesystemEffectReach>) -> List<String> {
       list_append(
         left: acc,
         right: [
-          cat([
+          string_join(fields: [
             "offender ",
             site.module_path,
             "#",
