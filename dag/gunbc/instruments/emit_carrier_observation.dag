@@ -1,0 +1,390 @@
+module gunbc.instruments.emit_carrier_observation
+
+import std.types { Bool, Int, List }
+import std.optional { Optional, Present, Absent }
+import std.realization_measurement { AllocationCounter, AllocationObservation, allocation_span_observation, allocation_provider_not_selected }
+import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld }
+import gunbc.emit_building_block_contracts { BuildingBlockFamily, Carriers, contracts_of_family, contract_verdict, case_in_applicable_roster, violating_form_exercised, contract_line, roster_membership_line, mispaired_probes, probe_guard_holds, probe_lines }
+import gunbc.instruments.native_allocation_observation { AllocationCase, case_line, is_observed, operations_above, operations_within, span_text, count_text }
+import gunbc.emit_state_threading_specimen { spec_build }
+
+// THE CARRIER GROUP OF THE BUILDING-BLOCK BATTERY, deliverable two of the roadmap row
+// #gunbc.roadmap.roadmap_authority::declared_roadmap_nodes, id emission-building-block-realization.
+// Eight blocks: sequence build, element read and sequential traversal under PersistentSequenceCarrier, and
+// index build, lookup and traversal under PersistentMapCarrier, plus one retained-snapshot block per carrier.
+// Same spine as the other three groups: one subject body, a violating arm that differs from its contract arm
+// only in the work inside the same body, judgement delegated to the carrier instrument's operations_above /
+// operations_within against the CONTRACT ARM, and the red control as its own entry.
+//
+// WHAT THIS GROUP IS EXPECTED TO SHOW, said before the run rather than after it. The carrier instrument
+// calls PersistentSequenceCarrier and PersistentMapCarrier production-realized and CaseApplicable
+// (dag/gunbc/emit_copy_qualification.dag:357-364 refuses only DeepCloningSequenceCarrier), while the two
+// ordinary collections available to a .dag specimen share by reference-count bump and copy wholesale on
+// update. So the measured reading for the persistent-carrier rows is expected to DISAGREE with the
+// applicability verdict, and that disagreement is this row's finding rather than a specimen defect: four
+// places in one module call a placeholder a production carrier (carrier_realized 357, carrier_is_record
+// 268-277, carrier_is_sized 345, and line 499 handing PersistentSequenceCarrier a StructuralShareRealization
+// outright). The reported state for any leg that comes back the other way -- a persistent carrier measured
+// CHEAP where the reading says wholesale copy, or refused where the ruling says realized -- is a stop and
+// report, not a specimen edit.
+//
+// THE SHAPE IS CHOSEN FROM THIS ROW'S OWN PINNED COUNTER DATA, not from a parse-population profile (absent
+// at this base) and not by taste; see docs/measurements/emission_building_block_realization/README.md and
+// the recorded basis-change note, sha256
+// 9dd0c6865134a315b1828b55d3c8f3f649b7522bcdd5cf53a441de2088d59d88. The counter arm sees operations and
+// bytes only: no traversal count, no per-phase lifetime (copy_work_dimension_unavailable_cause).
+//
+// THE COLLECTIONS ARE THE ORDINARY ONES, named as stand-ins: List<Int> stands for the sequence carrier and
+// Map<String, Int> for the index carrier, because no other persistent collection is reachable from .dag.
+// Builtins are the corpus spellings, used without an import the way the corpus uses them
+// (dag/gunbc/action_use_admission.dag:107 map_insert, :210 map_get, :819 map_contains_key).
+
+data compiler_pipeline_entry: CompilerEntryDriver = NativeClaimDriver
+
+data car_cardinality: Int = 24
+
+// The keys an index specimen walks. A literal list, so no string-building primitive is smuggled into the
+// measurement -- the cost being measured is the carrier's, not the key generator's.
+fn car_keys() -> List<String> {
+  ["k0", "k1", "k2", "k3", "k4", "k5", "k6", "k7"]
+}
+
+// ── SEQUENCE BUILD ────────────────────────────────────────────────────────────────────────────────
+
+// Contract: build the sequence once, by appending each element to the carried list.
+fn car_sequence_build(xs: List<Int>) -> List<Int> {
+  fold(xs, init: [], f: (acc, x) => list_push(acc, x))
+}
+
+// Violating (PerStepAllocation): each step COPIES the accumulator it was given and pushes onto the copy,
+// keeping the previous one alive until the step returns. Same elements in, same list out, one sequence
+// allocated per step instead of one append per step.
+fn car_sequence_build_retains_prefixes(xs: List<Int>) -> List<Int> {
+  fold(xs, init: [], f: (acc, x) => list_push(fold(acc, init: [], f: (inner, y) => list_push(inner, y)), x))
+}
+
+// ── ELEMENT READ ──────────────────────────────────────────────────────────────────────────────────
+
+// Contract: read one element through a borrow; the sequence is not rebuilt to look at it.
+fn car_element_read(xs: List<Int>) -> Int {
+  match get(xs: xs, index: 3) {
+    Present { value: v } => v
+    Absent => 0 - 1
+  }
+}
+
+// Violating (CopyOfUnchangedContext): the whole sequence is copied before the single element is read.
+fn car_element_read_copies_sequence(xs: List<Int>) -> Int {
+  let copied = fold(xs, init: [], f: (acc, x) => list_push(acc, x))
+  match get(xs: copied, index: 3) {
+    Present { value: v } => v
+    Absent => 0 - 1
+  }
+}
+
+// ── SEQUENTIAL TRAVERSAL ──────────────────────────────────────────────────────────────────────────
+
+// Contract: one pass, scalar accumulator.
+fn car_traversal(xs: List<Int>) -> Int {
+  fold(xs, init: 0, f: (acc, x) => acc + x)
+}
+
+// Violating (PerStepAllocation): the sequence is rebuilt on every step of the traversal.
+fn car_traversal_rebuilds_per_step(xs: List<Int>) -> Int {
+  fold(xs, init: 0, f: (acc, x) => acc + (fold(xs, init: 0, f: (inner, y) => inner + (y * 0)) + x))
+}
+
+// ── PERSISTENT SEQUENCE CARRIER: RETAINED SNAPSHOT ────────────────────────────────────────────────
+
+// Contract: one snapshot is taken and read once after the update; sharing a snapshot before any mutation
+// is a reference-count bump, not a copy, and that is what the reading is expected to show.
+fn car_sequence_snapshot(xs: List<Int>) -> Int {
+  let snapshot = xs
+  let updated = list_push(xs, 97)
+  (count(snapshot) + count(updated)) + car_element_read(xs: updated)
+}
+
+// Violating (OwningRetainAddedToObservation): the snapshot is read repeatedly AFTER the update, so the
+// observation keeps an owning retain on the pre-update sequence alive across the mutation, which is the
+// state where copy-on-write has to copy.
+fn car_sequence_snapshot_retained(xs: List<Int>) -> Int {
+  let snapshot = xs
+  let updated = list_push(xs, 97)
+  let first_read = count(snapshot) + count(updated)
+  let second_read = fold(snapshot, init: 0, f: (acc, x) => acc + x)
+  let third_read = fold(updated, init: 0, f: (acc, x) => acc + x)
+  first_read + second_read + third_read
+}
+
+// ── INDEX BUILD ───────────────────────────────────────────────────────────────────────────────────
+
+// Contract: build the index once by inserting each key.
+fn car_index_build() -> Int {
+  let built = fold(car_keys(), init: empty_map(), f: (acc, k) => map_insert(acc, k, count(car_keys())))
+  count(car_keys()) + (match map_get(built, "k3") { Present { value: v } => v  Absent => 0 - 1 })
+}
+
+// Violating (PerStepAllocation): the index is rebuilt from scratch for every key instead of extended, so
+// construction is quadratic in the number of keys.
+fn car_index_build_remakes_per_key() -> Int {
+  let built = fold(car_keys(), init: empty_map(), f: (acc, k) => fold(car_keys(), init: empty_map(), f: (inner, j) => map_insert(inner, j, count(car_keys()))))
+  count(car_keys()) + (match map_get(built, "k3") { Present { value: v } => v  Absent => 0 - 1 })
+}
+
+// ── INDEX LOOKUP ──────────────────────────────────────────────────────────────────────────────────
+
+// Contract: one lookup, no rebuild.
+fn car_index_lookup() -> Int {
+  let index = fold(car_keys(), init: empty_map(), f: (acc, k) => map_insert(acc, k, count(car_keys())))
+  match map_get(index, "k3") { Present { value: v } => v  Absent => 0 - 1 }
+}
+
+// Violating (CopyOfUnchangedContext): the index is rebuilt in order to look up one key.
+fn car_index_lookup_rebuilds_index() -> Int {
+  let index = fold(car_keys(), init: empty_map(), f: (acc, k) => map_insert(acc, k, count(car_keys())))
+  let remade = fold(car_keys(), init: empty_map(), f: (acc, k) => map_insert(acc, k, match map_get(index, k) { Present { value: v } => v  Absent => 0 - 1 }))
+  match map_get(remade, "k3") { Present { value: v } => v  Absent => 0 - 1 }
+}
+
+// ── INDEX TRAVERSAL ───────────────────────────────────────────────────────────────────────────────
+
+// Contract: walk the keys once, reading each out of the index.
+fn car_index_traversal() -> Int {
+  let index = fold(car_keys(), init: empty_map(), f: (acc, k) => map_insert(acc, k, count(car_keys())))
+  fold(car_keys(), init: 0, f: (acc, k) => acc + (match map_get(index, k) { Present { value: v } => v  Absent => 0 - 1 }))
+}
+
+// Violating (PerStepAllocation): the index is rematerialized for every key the traversal visits.
+fn car_index_traversal_remakes_per_key() -> Int {
+  fold(car_keys(), init: 0, f: (acc, k) =>
+    acc + (match map_get(fold(car_keys(), init: empty_map(), f: (inner, j) => map_insert(inner, j, count(car_keys()))), k) {
+      Present { value: v } => v
+      Absent => 0 - 1
+    }))
+}
+
+// ── PERSISTENT MAP CARRIER: RETAINED SNAPSHOT ─────────────────────────────────────────────────────
+
+// Contract: take one snapshot of the index, insert into it, read both versions once.
+fn car_index_snapshot() -> Int {
+  let index = fold(car_keys(), init: empty_map(), f: (acc, k) => map_insert(acc, k, count(car_keys())))
+  let snapshot = index
+  let updated = map_insert(index, "k9", 9)
+  (match map_get(snapshot, "k3") { Present { value: v } => v  Absent => 0 - 1 }) + (match map_get(updated, "k9") { Present { value: v } => v  Absent => 0 - 1 })
+}
+
+// Violating (CopyOfUnchangedContext): the snapshot is taken by copying the whole index key by key, so
+// retaining a version costs a full rebuild rather than a reference-count bump.
+fn car_index_snapshot_copies_whole_index() -> Int {
+  let index = fold(car_keys(), init: empty_map(), f: (acc, k) => map_insert(acc, k, count(car_keys())))
+  let snapshot = fold(car_keys(), init: empty_map(), f: (acc, k) => map_insert(acc, k, match map_get(index, k) { Present { value: v } => v  Absent => 0 - 1 }))
+  let updated = map_insert(index, "k9", 9)
+  (match map_get(snapshot, "k3") { Present { value: v } => v  Absent => 0 - 1 }) + (match map_get(updated, "k9") { Present { value: v } => v  Absent => 0 - 1 })
+}
+
+type CarSubject =
+    CarMeterEmpty
+  | CarMeterKnownAllocation
+  | CarSequenceBuild
+  | CarSequenceBuildRetainsPrefixes
+  | CarElementRead
+  | CarElementReadCopiesSequence
+  | CarTraversal
+  | CarTraversalRebuildsPerStep
+  | CarSequenceSnapshot
+  | CarSequenceSnapshotRetained
+  | CarIndexBuild
+  | CarIndexBuildRemakesPerKey
+  | CarIndexLookup
+  | CarIndexLookupRebuildsIndex
+  | CarIndexTraversal
+  | CarIndexTraversalRemakesPerKey
+  | CarIndexSnapshot
+  | CarIndexSnapshotCopiesWholeIndex
+
+// ONE PATH FOR EVERY ARM: same source sequence, same returned scalar.
+fn run_car_subject(subject: CarSubject, src: List<Int>) -> List<Int> {
+  match subject {
+    CarMeterEmpty => []
+    CarMeterKnownAllocation => list_push([], 4096)
+    CarSequenceBuild => car_sequence_build(xs: src)
+    CarSequenceBuildRetainsPrefixes => car_sequence_build_retains_prefixes(xs: src)
+    CarElementRead => list_push([], car_element_read(xs: src))
+    CarElementReadCopiesSequence => list_push([], car_element_read_copies_sequence(xs: src))
+    CarTraversal => list_push([], car_traversal(xs: src))
+    CarTraversalRebuildsPerStep => list_push([], car_traversal_rebuilds_per_step(xs: src))
+    CarSequenceSnapshot => list_push([], car_sequence_snapshot(xs: src))
+    CarSequenceSnapshotRetained => list_push([], car_sequence_snapshot_retained(xs: src))
+    CarIndexBuild => list_push([], car_index_build())
+    CarIndexBuildRemakesPerKey => list_push([], car_index_build_remakes_per_key())
+    CarIndexLookup => list_push([], car_index_lookup())
+    CarIndexLookupRebuildsIndex => list_push([], car_index_lookup_rebuilds_index())
+    CarIndexTraversal => list_push([], car_index_traversal())
+    CarIndexTraversalRemakesPerKey => list_push([], car_index_traversal_remakes_per_key())
+    CarIndexSnapshot => list_push([], car_index_snapshot())
+    CarIndexSnapshotCopiesWholeIndex => list_push([], car_index_snapshot_copies_whole_index())
+  }
+}
+
+type CarWindow {
+  kept: List<Int>
+  observation: AllocationObservation
+}
+
+fn car_window(subject: CarSubject, src: List<Int>) -> CarWindow uses counter: AllocationCounter {
+  if observed_allocation_available("") {
+    let ops_before = observed_allocation_operations("")
+    let bytes_before = observed_allocation_bytes("")
+    let kept = run_car_subject(subject: subject, src: src)
+    let ops_after = observed_allocation_operations("")
+    let bytes_after = observed_allocation_bytes("")
+    CarWindow { kept: kept, observation: allocation_span_observation(operations_before: ops_before, operations_after: ops_after, bytes_before: bytes_before, bytes_after: bytes_after) }
+  } else {
+    CarWindow { kept: run_car_subject(subject: subject, src: src), observation: allocation_provider_not_selected() }
+  }
+}
+
+fn reading(label: String, o: AllocationObservation) -> String {
+  span_text(label: label, o: o)
+}
+
+fn readings(a_label: String, a: AllocationObservation, b_label: String, b: AllocationObservation) -> String {
+  concat(reading(label: a_label, o: a), " ", reading(label: b_label, o: b))
+}
+
+fn subject_case(block_id: String, own: AllocationObservation) -> AllocationCase {
+  AllocationCase {
+    identity: concat("carrier_", block_id, "_reading_taken"),
+    held: is_observed(o: own),
+    observed: reading(label: "own", o: own)
+  }
+}
+
+fn violation_case(block_id: String, viol: AllocationObservation, contract_arm: AllocationObservation) -> AllocationCase {
+  AllocationCase {
+    identity: concat("carrier_", block_id, "_violating_variant_above_contract_arm"),
+    held: is_observed(o: viol) && operations_above(a: viol, b: contract_arm),
+    observed: readings(a_label: "violating", a: viol, b_label: "contract_arm", b: contract_arm)
+  }
+}
+
+fn violation_contract_holds_case(block_id: String, viol: AllocationObservation, contract_arm: AllocationObservation) -> AllocationCase {
+  AllocationCase {
+    identity: concat("carrier_", block_id, "_violating_variant_within_contract_arm"),
+    held: is_observed(o: viol) && operations_within(a: viol, b: contract_arm),
+    observed: readings(a_label: "violating", a: viol, b_label: "contract_arm", b: contract_arm)
+  }
+}
+
+fn carrier_cases() -> List<AllocationCase> uses counter: AllocationCounter {
+  let src = spec_build(n: car_cardinality)
+  let empty = car_window(subject: CarMeterEmpty, src: src).observation
+  let known = car_window(subject: CarMeterKnownAllocation, src: src).observation
+  let seq_build = car_window(subject: CarSequenceBuild, src: src).observation
+  let seq_build_prefixes = car_window(subject: CarSequenceBuildRetainsPrefixes, src: src).observation
+  let element_read = car_window(subject: CarElementRead, src: src).observation
+  let element_copied = car_window(subject: CarElementReadCopiesSequence, src: src).observation
+  let traversal = car_window(subject: CarTraversal, src: src).observation
+  let traversal_rebuilt = car_window(subject: CarTraversalRebuildsPerStep, src: src).observation
+  let seq_snapshot = car_window(subject: CarSequenceSnapshot, src: src).observation
+  let seq_snapshot_retained = car_window(subject: CarSequenceSnapshotRetained, src: src).observation
+  let index_build = car_window(subject: CarIndexBuild, src: src).observation
+  let index_build_remade = car_window(subject: CarIndexBuildRemakesPerKey, src: src).observation
+  let index_lookup = car_window(subject: CarIndexLookup, src: src).observation
+  let index_lookup_rebuilt = car_window(subject: CarIndexLookupRebuildsIndex, src: src).observation
+  let index_traversal = car_window(subject: CarIndexTraversal, src: src).observation
+  let index_traversal_remade = car_window(subject: CarIndexTraversalRemakesPerKey, src: src).observation
+  let index_snapshot = car_window(subject: CarIndexSnapshot, src: src).observation
+  let index_snapshot_copied = car_window(subject: CarIndexSnapshotCopiesWholeIndex, src: src).observation
+  let readings_meter = [subject_case(block_id: "meter_empty", own: empty), subject_case(block_id: "meter_known_allocation", own: known)]
+  let readings_sequence = [subject_case(block_id: "sequence_build", own: seq_build), subject_case(block_id: "element_read", own: element_read), subject_case(block_id: "sequential_traversal", own: traversal)]
+  let readings_persistent_sequence = [subject_case(block_id: "persistent_sequence_carrier_snapshot", own: seq_snapshot)]
+  let readings_index = [subject_case(block_id: "index_build", own: index_build), subject_case(block_id: "index_lookup", own: index_lookup), subject_case(block_id: "index_traversal", own: index_traversal)]
+  let readings_persistent_map = [subject_case(block_id: "persistent_map_carrier_snapshot", own: index_snapshot)]
+  let violations_sequence = [violation_case(block_id: "sequence_build", viol: seq_build_prefixes, contract_arm: seq_build), violation_case(block_id: "element_read", viol: element_copied, contract_arm: element_read)]
+  let violations_traversal = [violation_case(block_id: "sequential_traversal", viol: traversal_rebuilt, contract_arm: traversal), violation_case(block_id: "persistent_sequence_carrier_snapshot", viol: seq_snapshot_retained, contract_arm: seq_snapshot)]
+  let violations_index = [violation_case(block_id: "index_build", viol: index_build_remade, contract_arm: index_build), violation_case(block_id: "index_lookup", viol: index_lookup_rebuilt, contract_arm: index_lookup)]
+  let violations_map = [violation_case(block_id: "index_traversal", viol: index_traversal_remade, contract_arm: index_traversal), violation_case(block_id: "persistent_map_carrier_snapshot", viol: index_snapshot_copied, contract_arm: index_snapshot)]
+  let half_a = concat(concat(readings_meter, readings_sequence), concat(readings_persistent_sequence, readings_index))
+  let half_b = concat(concat(readings_persistent_map, violations_sequence), concat(violations_traversal, concat(violations_index, violations_map)))
+  concat(half_a, half_b)
+}
+
+fn carrier_audit_cases() -> List<AllocationCase> {
+  let judged = contracts_of_family(f: Carriers) |> map(c => AllocationCase {
+    identity: concat("carrier_contract_", c.block),
+    held: contract_verdict(c: c.case_id) == "CaseApplicable" && case_in_applicable_roster(c: c.case_id),
+    observed: concat(contract_line(b: c), " ", roster_membership_line(b: c))
+  })
+  let forms = AllocationCase {
+    identity: "the_three_named_violating_forms_are_exercised",
+    held: violating_form_exercised(slug: "owning_retain_added_to_observation") > 0 && violating_form_exercised(slug: "per_step_allocation") > 0 && violating_form_exercised(slug: "copy_of_unchanged_context") > 0,
+    observed: concat(concat(concat("retain=", count_text(label: "retain", n: violating_form_exercised(slug: "owning_retain_added_to_observation"))), concat(" per_step=", count_text(label: "per_step", n: violating_form_exercised(slug: "per_step_allocation")))), concat(" unchanged_context=", count_text(label: "unchanged_context", n: violating_form_exercised(slug: "copy_of_unchanged_context"))))
+  }
+  let probes = AllocationCase {
+    identity: "all_mispaired_probes_are_refused",
+    held: count(filter(mispaired_probes(), p => !probe_guard_holds(p: p))) == 0,
+    observed: concat("probes=", count_text(label: "probes", n: count(mispaired_probes())), " ", fold(probe_lines(), init: "no_probes", f: (acc, line) => if acc == "no_probes" { line } else { acc }))
+  }
+  let family = AllocationCase {
+    identity: "carrier_family_rows_are_judged_by_the_carrier",
+    held: count(contracts_of_family(f: Carriers)) == 8,
+    observed: concat("family_rows=", count_text(label: "rows", n: count(contracts_of_family(f: Carriers))))
+  }
+  concat(judged, [forms, probes, family])
+}
+
+fn roster_lines() -> String {
+  concat("roster_contracts ", contracts_of_family(f: Carriers) |> map(c => roster_membership_line(b: c)) |> join(separator: "; "), "\n")
+}
+
+fn native_claim_report() -> NativeClaimReport uses counter: AllocationCounter {
+  let cases = concat(concat(carrier_cases(), carrier_audit_cases()), red_control_cases())
+  let failed = cases |> filter(c => !c.held) |> map(c => c.identity)
+  let terminal = if (failed |> count) == 0 { NativeClaimHeld } else { NativeClaimNotHeld { reason: concat("not held: ", failed |> join(separator: ",")) } }
+  let roster = concat("roster ", cases |> map(c => c.identity) |> join(separator: ","), "\n")
+  NativeClaimReport { stdout: concat(concat(roster, roster_lines()), cases |> map(c => case_line(c: c)) |> join(separator: "")), terminal: terminal }
+}
+
+// THE RED ENTRY, deliberately red: the eight violating arms, each judged the opposite way against its own
+// contract arm on the same path. Both arms are named in every row.
+fn red_control_cases() -> List<AllocationCase> uses counter: AllocationCounter {
+  let src = spec_build(n: car_cardinality)
+  let seq_build = car_window(subject: CarSequenceBuild, src: src).observation
+  let seq_build_prefixes = car_window(subject: CarSequenceBuildRetainsPrefixes, src: src).observation
+  let element_read = car_window(subject: CarElementRead, src: src).observation
+  let element_copied = car_window(subject: CarElementReadCopiesSequence, src: src).observation
+  let traversal = car_window(subject: CarTraversal, src: src).observation
+  let traversal_rebuilt = car_window(subject: CarTraversalRebuildsPerStep, src: src).observation
+  let seq_snapshot = car_window(subject: CarSequenceSnapshot, src: src).observation
+  let seq_snapshot_retained = car_window(subject: CarSequenceSnapshotRetained, src: src).observation
+  let index_build = car_window(subject: CarIndexBuild, src: src).observation
+  let index_build_remade = car_window(subject: CarIndexBuildRemakesPerKey, src: src).observation
+  let index_lookup = car_window(subject: CarIndexLookup, src: src).observation
+  let index_lookup_rebuilt = car_window(subject: CarIndexLookupRebuildsIndex, src: src).observation
+  let index_traversal = car_window(subject: CarIndexTraversal, src: src).observation
+  let index_traversal_remade = car_window(subject: CarIndexTraversalRemakesPerKey, src: src).observation
+  let index_snapshot = car_window(subject: CarIndexSnapshot, src: src).observation
+  let index_snapshot_copied = car_window(subject: CarIndexSnapshotCopiesWholeIndex, src: src).observation
+  let head = [
+    violation_contract_holds_case(block_id: "sequence_build", viol: seq_build_prefixes, contract_arm: seq_build),
+    violation_contract_holds_case(block_id: "element_read", viol: element_copied, contract_arm: element_read),
+    violation_contract_holds_case(block_id: "sequential_traversal", viol: traversal_rebuilt, contract_arm: traversal),
+    violation_contract_holds_case(block_id: "persistent_sequence_carrier_snapshot", viol: seq_snapshot_retained, contract_arm: seq_snapshot),
+    violation_contract_holds_case(block_id: "index_build", viol: index_build_remade, contract_arm: index_build)
+  ]
+  let tail = [
+    violation_contract_holds_case(block_id: "index_lookup", viol: index_lookup_rebuilt, contract_arm: index_lookup),
+    violation_contract_holds_case(block_id: "index_traversal", viol: index_traversal_remade, contract_arm: index_traversal),
+    violation_contract_holds_case(block_id: "persistent_map_carrier_snapshot", viol: index_snapshot_copied, contract_arm: index_snapshot)
+  ]
+  concat(head, tail)
+}
+
+fn violation_contract_holds_when_violated() -> NativeClaimReport uses counter: AllocationCounter {
+  let cases = red_control_cases()
+  let failed = cases |> filter(c => !c.held) |> map(c => c.identity)
+  let terminal = if (failed |> count) == 0 { NativeClaimHeld } else { NativeClaimNotHeld { reason: concat("not held: ", failed |> join(separator: ",")) } }
+  let roster = concat("roster ", cases |> map(c => c.identity) |> join(separator: ","), "\n")
+  NativeClaimReport { stdout: concat(roster, cases |> map(c => case_line(c: c)) |> join(separator: "")), terminal: terminal }
+}
