@@ -5,7 +5,7 @@ import extdeps.posix.process
 import extdeps.posix.signal
 import extdeps.http.client
 import extdeps.tools.sleep
-import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.shell
 import std.algebra { list_at_optional }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }

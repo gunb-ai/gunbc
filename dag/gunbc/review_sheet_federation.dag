@@ -7,7 +7,7 @@ import gunbc.actions_run_binding { ActionsVariableRead, ActionsVariablePresent, 
 import extdeps.cloud.gcp.gcp { ServiceAccountEmail, WifProvider, wif_provider_resource, wif_pool_resource }
 import gunbc.auth.github_gcp_federation { fleet_secrets_project_number, github_wif_issuer_uri, federated_service_account_member }
 import gunbc.auth.oidc_claim_pins {
-  OidcClaimPin, oidc_equals, oidc_equals_any, claim_pins_attribute_condition,
+  OidcClaimPin, oidc_equals, claim_pins_attribute_condition,
   fleet_converge_workflow_ref_at_main, workflow_dispatch_event_name,
 }
 import gunbc.auth.heal_publisher_provision { DedicatedFederation, StandingPoolDelegation }
@@ -39,9 +39,10 @@ import extdeps.google.drive { drive_full_oauth_scope }
 //
 // WHICH JOBS MAY BECOME IT. The pins are the privileged fleet-converge list (repository and owner by
 // numeric identity, the fleet-converge workflow file AT MAIN, ref == main) plus this job's environment,
-// with ONE widening: the event may be a dispatch, the daily schedule, or a push to main touching the
-// sheet sources. All three run reviewed main's workflow file at main; a pull request, a session-branch
-// dispatch or a push anywhere else presents another ref or workflow_ref and is refused by IAM itself.
+// and the event is a dispatch only: the job starts on nothing else
+// (#gunbc.design_ruling::review_sheet_converge_disabled_2026_11_24), so a grant admitting the schedule or a push
+// would be admitted for no consumer. A pull request, a session-branch dispatch or any other event presents
+// another ref, workflow_ref or event_name and is refused by IAM itself.
 data review_sheet_converge_environment: NonEmptyStr = "review-sheet-converge"
 
 data review_sheet_converge_wif_pool_id: NonEmptyStr = "github-review-sheet-converge"
@@ -53,8 +54,6 @@ data review_sheet_converge_service_account_id: NonEmptyStr = "review-sheet-conve
 data review_sheet_converge_service_account: ServiceAccountEmail = review_sheet_converge_sa_email
 
 data schedule_event_name: String = "schedule"
-
-data push_event_name: String = "push"
 
 data review_sheet_converge_attribute_mapping: Map<String, String> = {
   "google.subject": "assertion.sub",
@@ -68,7 +67,7 @@ fn review_sheet_converge_claim_pins() -> List<OidcClaimPin> {
     oidc_equals(claim: "repository_owner_id", value: to_string(gunbc_repository_numeric_identity.owner_id)),
     oidc_equals(claim: "workflow_ref", value: fleet_converge_workflow_ref_at_main()),
     oidc_equals(claim: "ref", value: concat("refs/heads/", gunbc_default_branch_name)),
-    oidc_equals_any(claim: "event_name", value: workflow_dispatch_event_name, alternatives: [schedule_event_name, push_event_name]),
+    oidc_equals(claim: "event_name", value: workflow_dispatch_event_name),
     oidc_equals(claim: "environment", value: review_sheet_converge_environment as String),
   ]
 }

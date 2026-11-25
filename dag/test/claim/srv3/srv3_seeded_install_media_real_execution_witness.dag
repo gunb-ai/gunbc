@@ -12,7 +12,7 @@ import extdeps.provisioning.ubuntu_seeded_install_media_remaster { install_media
 import extdeps.provisioning.ubuntu_install_media { noble_numbat_2404_3_live_server_arm64_grub_cfg }
 import gunbc.host_command_binding { LocalCommandHost }
 import extdeps.shell
-import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io { Filesystem }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
