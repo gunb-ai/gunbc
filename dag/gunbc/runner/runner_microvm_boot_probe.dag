@@ -233,6 +233,14 @@ type ExecutionBoundReceipt
   | BoundChildExited { exit_code: Int }
   | BoundSignalledByOther { signal: Int }
   | BoundReapRefused { cause: String }
+  // The reap refused AFTER this layer's own group signal was accepted by the kernel. It is its own arm,
+  // not a sharing of BoundKillRefused, because the two events have different remedies: there the signal
+  // verb refused and the host's signal path is where to look, and here the signal SUCCEEDED and the
+  // confirmation reap is what refused, so the lifecycle is where to look. A review finding on gunbc#17013
+  // (review 98366) required this split -- folding a refused reap into a refused signal sends the operator
+  // to the wrong machine (gunbc.design_argument::fail_closed: "a wrong answer is a loud, typed, located
+  // error, never a warning or a plausible fabrication").
+  | BoundReapRefusedAfterOurSignal { deadline: Second, cause: String }
   | BoundKillRefused { deadline: Second, detail: String }
   // Still alive after BOTH signals this layer holds -- its own TERM and its own escalated KILL -- for a
   // full grace period each. Practically unreachable (signal(7): SIGKILL cannot be caught or ignored); it
@@ -467,10 +475,7 @@ fn boot_probe_confirm_signal(
       )
     ReapRefused { cause: cause } =>
       boot_probe_bounded_read(
-        receipt: BoundKillRefused {
-          deadline: deadline,
-          detail: join(["the reap after this layer's own group signal was refused: ", cause], ""),
-        },
+        receipt: BoundReapRefusedAfterOurSignal { deadline: deadline, cause: cause },
         stdout_file: stdout_file,
         stderr_file: stderr_file,
       )
@@ -641,6 +646,11 @@ fn runner_microvm_boot_probe_verdict_from_run(
 //        exonerated.
 //   ReapRefused               -- waitpid refused, so how the subject ended is unknown at all. Remedy: the
 //        lifecycle, not the subject.
+//   ReapRefusedAfterOurSignal -- this layer imposed the bound, its group signal was ACCEPTED by the kernel,
+//        and the confirmation reap that followed is what refused. The signal is not the suspect and the
+//        host's signal path is the wrong place to look; the remedy is the lifecycle that owes this layer a
+//        reap. Kept apart from ReapRefused because the first says the bound was never enforced at all and
+//        this one says it was enforced and then could not be read back.
 //   GroupSignalRefused        -- this layer decided at the deadline and asked the kernel to signal the
 //        group it started, and the group verb refused. Remedy: the host's signal path.
 //   SubjectSurvivedOurSignals -- this layer signalled the group it started, escalated to the group kill
@@ -656,6 +666,7 @@ fn runner_microvm_boot_probe_verdict_from_run(
 type EnforcementMismatch
   = SignalledWithoutOurKill { signal: Int }
   | ReapRefused { cause: String }
+  | ReapRefusedAfterOurSignal { deadline: String, cause: String }
   | GroupSignalRefused { deadline: String, detail: String }
   | SubjectSurvivedOurSignals { deadline: String }
   | KillNotConfirmedByReap { deadline: String, exit_code: Int }
@@ -758,6 +769,16 @@ fn boot_probe_verdict(
         console_cause: console.read_cause,
         detail: console.stderr,
         cause: ReapRefused { cause: c },
+      }
+    BoundReapRefusedAfterOurSignal { deadline: d, cause: c } =>
+      BootDeadlineEnforcementUnobservable {
+        console: console.stdout,
+        console_cause: console.read_cause,
+        detail: console.stderr,
+        cause: ReapRefusedAfterOurSignal {
+          deadline: runner_microvm_boot_probe_deadline_text(deadline: d),
+          cause: c,
+        },
       }
     BoundKillRefused { deadline: d, detail: dd } =>
       BootDeadlineEnforcementUnobservable {
@@ -878,6 +899,14 @@ fn boot_probe_verdict_text(v: BootProbeVerdict) -> String {
     BootDeadlineEnforcementUnobservable { console: c, console_cause: capture_cause, detail: e, cause: ReapRefused { cause: rc } } =>
       join(["boot=deadline-enforcement-unobservable -- the kernel refused this layer's reap of the bounded",
             " subject (", rc, "), so how it ended is unknown and NO deadline is claimed",
+            " (gunbc.design_argument::fail_closed)\nvmm-stderr: ", e,
+            boot_probe_console_block(console: c, read_cause: capture_cause)], "")
+    BootDeadlineEnforcementUnobservable { console: c, console_cause: capture_cause, detail: e, cause: ReapRefusedAfterOurSignal { deadline: d, cause: rc } } =>
+      join(["boot=deadline-enforcement-unobservable -- this layer imposed ", d, ", the kernel ACCEPTED its",
+            " signal to the process group this layer started, and then refused this layer's confirmation reap",
+            " of that subject (", rc, "). The signal verb is not the suspect and the host's signal path is",
+            " not where to look; the lifecycle that owes this layer a reap is. How the subject ended is",
+            " unknown, so NO deadline is claimed",
             " (gunbc.design_argument::fail_closed)\nvmm-stderr: ", e,
             boot_probe_console_block(console: c, read_cause: capture_cause)], "")
     BootDeadlineEnforcementUnobservable { console: c, console_cause: capture_cause, detail: e, cause: GroupSignalRefused { deadline: d, detail: dd } } =>

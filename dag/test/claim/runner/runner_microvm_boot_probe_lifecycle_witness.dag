@@ -58,9 +58,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 //                                                         orphan the base route's --kill-after prevented
 //                                                         is killed here, by the layer that started it.
 // Plus the forgery the Manager B finding on gunbc#17013 requires: a child that PRINTS the bounder's
-// enforcement diagnostic and exits 124 within the bound is not a deadline either. The one receipt arm no
-// real child can be made to produce is BoundSubjectSurvivedOurSignals -- it needs a subject the KERNEL will
-// not reap, and SIGKILL cannot be declined -- so its planted case lives in
+// enforcement diagnostic and exits 124 within the bound is not a deadline either. The receipt arms no
+// real child can be made to produce are BoundSubjectSurvivedOurSignals -- it needs a subject the KERNEL
+// will not reap, and SIGKILL cannot be declined -- and BoundReapRefusedAfterOurSignal, which needs a
+// kernel that accepts the signal and then refuses the reap it owes. Their planted cases live in
 // #test.claim.runner.runner_microvm_boot_probe_witness, where every other arm is planted too.
 
 // A SHORT BOUND, owned by the witness rather than by the module: the producer carries the value it was

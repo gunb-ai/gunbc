@@ -18,13 +18,15 @@ import gunbc.runner.runner_microvm_boot_probe {
   BootNotAttempted, BootExceededHostDeadline, BootDeadlineEnforcementUnobservable,
   BootConsoleUnreadable, BootVmmFailed,
   BootProbeConsole, EnforcementMismatch,
-  SignalledWithoutOurKill, ReapRefused, GroupSignalRefused, SubjectSurvivedOurSignals,
+  SignalledWithoutOurKill, ReapRefused, ReapRefusedAfterOurSignal, GroupSignalRefused,
+  SubjectSurvivedOurSignals,
   KillNotConfirmedByReap, GroupUnnameable,
   boot_probe_verdict, boot_probe_verdict_text, boot_probe_admitted, guest_agent_boot_verdict,
   runner_microvm_boot_probe_rootfs, runner_microvm_boot_probe_networking,
   runner_microvm_boot_probe_bounded_command,
   ExecutionBoundReceipt, BoundFired, BoundChildExited, BoundSignalledByOther, BoundReapRefused,
-  BoundKillRefused, BoundSubjectSurvivedOurSignals, BoundKillUnconfirmed, BoundKillUnnameable,
+  BoundReapRefusedAfterOurSignal, BoundKillRefused, BoundSubjectSurvivedOurSignals,
+  BoundKillUnconfirmed, BoundKillUnnameable,
   BoundSpawnRefused, NoExecutionBound,
 }
 import gunbc.runner.runner_guest_image { guest_observation_line, GuestBooted }
@@ -308,6 +310,7 @@ test fn an_unreadable_capture_refuses_by_name_rather_than_claiming_an_empty_cons
   let refusal_receipts = [
     BoundSignalledByOther { signal: 9 },
     BoundReapRefused { cause: "ECHILD" },
+    BoundReapRefusedAfterOurSignal { deadline: second(count: 7), cause: "ECHILD" },
     BoundKillRefused { deadline: second(count: 7), detail: "EPERM" },
     BoundSubjectSurvivedOurSignals { deadline: second(count: 7) },
     BoundKillUnconfirmed { deadline: second(count: 7), exit_code: 3 },
@@ -343,6 +346,45 @@ test fn an_unreadable_capture_refuses_by_name_rather_than_claiming_an_empty_cons
              && string_contains(s: t, pattern: "EACCES")
          },
        )
+}
+
+// A REFUSED REAP AFTER OUR OWN SIGNAL IS NOT A REFUSED SIGNAL, and it says so. review 98366 on
+// gunbc#17013 found this exact fold: the group verb was ACCEPTED and the confirmation reap refused, and
+// the arm reported it as a refused group verb -- a typed answer that named the wrong event and sent the
+// operator to the host's signal path. The remedy is what separates these arms (the lifecycle owes a reap;
+// the signal path owes nothing here), so the split is kept and witnessed in both directions: the sentence
+// must name the reap and must not blame the verb that succeeded.
+test fn a_refused_reap_after_our_signal_names_the_reap_and_not_the_verb() -> Bool {
+  let v = boot_probe_verdict(
+    runner: actions_runner_release_2_336_0,
+    console: console_of(stdout: "Linux version", stderr: "virtio: probe failed"),
+    receipt: BoundReapRefusedAfterOurSignal { deadline: second(count: 6), cause: "ECHILD: no child to reap" },
+  )
+  let text = boot_probe_verdict_text(v: v)
+  // the pre-bound reap refusal keeps ITS own sentence, so the two arms are not synonyms
+  let pre = boot_probe_verdict_text(
+    v: boot_probe_verdict(
+      runner: actions_runner_release_2_336_0,
+      console: console_of(stdout: "", stderr: ""),
+      receipt: BoundReapRefused { cause: "ECHILD: not our child" },
+    ),
+  )
+  !boot_probe_admitted(v: v)
+    && (match v {
+      BootDeadlineEnforcementUnobservable {
+        cause: ReapRefusedAfterOurSignal { deadline: d, cause: rc }, console: _, console_cause: _, detail: _
+      } => d == "6 seconds" && rc == "ECHILD: no child to reap"
+      _ => false
+    })
+    && string_contains(s: text, pattern: "boot=deadline-enforcement-unobservable")
+    && string_contains(s: text, pattern: "confirmation reap")
+    && string_contains(s: text, pattern: "ACCEPTED")
+    && string_contains(s: text, pattern: "6 seconds")
+    && string_contains(s: text, pattern: "ECHILD: no child to reap")
+    && !string_contains(s: text, pattern: "the group signal was refused")
+    && !string_contains(s: text, pattern: "host-deadline-expired")
+    && string_contains(s: pre, pattern: "refused this layer's reap")
+    && !string_contains(s: pre, pattern: "ACCEPTED")
 }
 
 // NOTHING WAS STARTED, SO NOTHING IS JUDGED. A spawn refusal is not a boot that failed and not a bound
