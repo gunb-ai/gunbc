@@ -9,10 +9,11 @@ import std.types { CommitSha, List }
 import v2.workflow.floor_discovery { FloorDiscoveryTreeId, floor_discovery_tree_identity }
 import std.execution_mode { ExecutionMode, Wet, execution_mode_eq }
 import std.primitive_projection { PrimitiveIdentity, primitive_identity_slug }
-import std.algebra { Cons, Empty, fold_list, length, list_reverse }
+import std.algebra { Cons, Empty, fold_list, length, list_append, list_reverse }
+import std.integer { int_to_decimal_string }
 import v2.std.integer { Int }
 import v2.std.node { Symbol, symbol_lexeme }
-import v2.std.text { String }
+import v2.std.text { String, string_join }
 import std.optional { Absent, Optional, Present }
 import v2.std.qualified_name {
   QualifiedName, qualified_name_last_segment, qualified_name_to_dotted_string
@@ -1211,8 +1212,8 @@ data effect_demand_seam_roster: List<SeamStanding> = [
 // =============================================================================================
 // EFFECTS-1 (egress-effects-1-filesystem-provider) -- TWO LOCATED REFUSAL PREDICATES.
 // RUNG, STATED PLAINLY: the two walls below are LOCATED REFUSAL PREDICATES -- typed census functions
-// that name each offender by identity -- EXECUTED by src/v2/test/claim/native_census/
-// filesystem_handler_binding_and_restatement_refusal.dag. As authored in this cut they are NOT wired as
+// that name each offender by identity -- EXECUTED by src/v2/test/claim/
+// filesystem_effect_reach_wall.dag. As authored in this cut they are NOT wired as
 // a compile-phase gate that stops the compiler: a direct filesystem_read reach still reaches the runtime
 // unrealized_host_seam panic, and a new restatement row still lands unchecked by any compiler phase. The
 // gate that turns a red census into a compile-time stop is wired at the trigger carried by
@@ -1240,9 +1241,15 @@ data effect_demand_seam_roster: List<SeamStanding> = [
 // "a dissolution condition belongs in a typed carrier"). The census predicates above refuse a direct
 // filesystem_read reach by name; the gate that turns a red census into a compile-time stop connects when
 // THIS trigger dissolves -- i.e. when the two named self_host.dag sites migrate to the bound handler and so
-// leave the in-population offender set. It names the offending module and its two enclosing declarations by
-// identity, so a named known offender is visible in the artifact rather than hidden in prose, and it is
-// consumed (not dangling) by the witness test filesystem_compile_gate_trigger_names_the_two_self_host_sites.
+// leave the in-population offender set. WHAT THE TRIGGER GATES (guarantee_ladder: the trigger names the
+// CAPABILITY, and review 98184 finding 1 asked that the named capability be the RIGHT one): the reach
+// EXTRACTOR shipped in this change -- filesystem_effect_reaches_from_phase1_rows /
+// filesystem_effect_emitted_closure_census, consuming the resolver's own phase-1 rows -- so the capability
+// still gated here is the COMPILE-PHASE WIRING of that census plus the migration of the two sites, not a
+// missing extractor. The strings are rename-guarded by CONSUMPTION, not faith: the witness test
+// filesystem_compile_gate_trigger_names_the_two_self_host_sites asserts them equal to the CENSUS SITES'
+// module and enclosing declarations (the same values the census locates offenders by), so a rename that
+// drifts one of them breaks a test rather than sitting silently stale.
 type FilesystemWallCompileGateTrigger {
   awaiting_migration_module: String
   awaiting_migration_declarations: List<String>
@@ -1265,7 +1272,7 @@ data filesystem_wall_compile_gate_trigger: FilesystemWallCompileGateTrigger = Fi
 // NOR its interface -- it is the free legacy primitive whose realization panics. An emitted closure
 // that reaches it directly bypasses the handler's typed read/write contract and is the defect this wall
 // names. THE RUNG, HONESTLY: as authored in this cut the located refusal is a census predicate EXECUTED by
-// src/v2/test/claim/native_census/filesystem_handler_binding_and_restatement_refusal.dag over the named
+// src/v2/test/claim/filesystem_effect_reach_wall.dag over the named
 // population -- it is NOT yet wired as a compile-phase gate, because wiring one now would refuse the two
 // self_host.dag sites this cut's ruling keeps OUT of scope (their migration to the bound handler is the
 // trigger that connects this wall to the compile path). Until that trigger lands a closure reaching
@@ -1317,13 +1324,14 @@ data filesystem_free_primitive_slug: String = "filesystem_read"
 //                          src/v1/05_emit.dag's own comment).
 //   free_primitive_slug  -- the legacy free primitive this wall refuses, the same slug the census takes
 //                          every operation at (std.primitive_projection).
-//   excluded_population  -- the boundary stated ON ITS FACE with its reason (not a silent omission): the
-//                          claim/test, test-support/fixture, and generated stage0 tiers are excluded
-//                          because they are not authored production model source, and a static call count
-//                          over production source is only an UPPER BOUND on the refused population.
 // The population is the native-emitted closure under the NativeCliDriver root bound to the E2 Filesystem
 // handler -- an EMITTED closure reaching filesystem_read directly -- NOT every module with a
-// filesystem_read call site.
+// filesystem_read call site. THIS label is for the REAL-root leg only (the resolve fold driven from
+// compiler_pipeline_entry); a witness that resolves a fixture closure runs under its OWN population label
+// (see filesystem_effect_fixture_closure_population in the wall claim), so the report never prints
+// provenance it did not measure. The population's EXCLUSIONS are not prose on this record: they are the
+// counted per-tier arms of FilesystemEffectStaticBound (total = production + every excluded tier), so a
+// boundary the census omits is a NUMBER that must reconcile, not a sentence (review 98184 finding 2).
 type FilesystemEffectCensusPopulation {
   rule: Symbol
   driver_arm: String
@@ -1331,7 +1339,6 @@ type FilesystemEffectCensusPopulation {
   emitted_closure_root_declaration: String
   bound_handler: String
   free_primitive_slug: String
-  excluded_population: String
 }
 
 data filesystem_effect_emitted_closure_population: FilesystemEffectCensusPopulation =
@@ -1341,8 +1348,7 @@ data filesystem_effect_emitted_closure_population: FilesystemEffectCensusPopulat
     emitted_closure_root_module: "v2.cli.compile_cli",
     emitted_closure_root_declaration: "compiler_pipeline_entry",
     bound_handler: "emit_file_call",
-    free_primitive_slug: "filesystem_read",
-    excluded_population: "excluded, not silent omission: claim/test witnesses and test-support/fixture modules are the test not a production reach, and generated stage0 Rust is not authored model source -- a static call count over the remaining production source is an UPPER BOUND, the refused population is the emitted closure under the binding"
+    free_primitive_slug: "filesystem_read"
   }
 
 // One observed filesystem reach, at SITE grain: the site that reached and the operation it reached. The
@@ -1415,7 +1421,7 @@ fn filesystem_effect_reach_site(reach: FilesystemEffectReach) -> FilesystemEffec
 }
 
 // Two reach sites are the SAME site only when module, enclosing declaration and occurrence index all match.
-// This is the located identity the wall keys offenders on (filesystem_effect_offender_sites_are_distinct
+// This is the located identity the wall keys reaches on (filesystem_effect_reaches_are_located_distinct
 // folds over it), so the two self_host reaches in read_roster_manifest and fold_side_bytes are TWO distinct
 // offenders and any new occurrence index is a new offender rather than a silent match against a rostered one.
 fn filesystem_effect_site_eq(left: FilesystemEffectSite, right: FilesystemEffectSite) -> Bool {
@@ -1424,15 +1430,16 @@ fn filesystem_effect_site_eq(left: FilesystemEffectSite, right: FilesystemEffect
     && (left.site_occurrence == right.site_occurrence)
 }
 
-// How many refused offenders sit at the SAME located site as `target`, keyed on filesystem_effect_site_eq.
-// An Int fold over the offender list -- the proven census counting idiom (parse.dag's lookahead count uses
-// the same fold_list with an Int seed), consumed by filesystem_effect_offender_sites_are_distinct below.
-fn filesystem_effect_offender_site_count(
-  offenders: List<FilesystemEffectReach>,
+// How many REACHES (not offenders) sit at the SAME located site as `target`, keyed on
+// filesystem_effect_site_eq. An Int fold over the extractor's reaches -- the proven census counting idiom
+// (parse.dag's lookahead count uses the same fold_list with an Int seed), consumed by
+// filesystem_effect_reaches_are_located_distinct below.
+fn filesystem_effect_reach_count_at_site(
+  reaches: List<FilesystemEffectReach>,
   target: FilesystemEffectReach
 ) -> Int {
   fold_list(
-    xs: offenders,
+    xs: reaches,
     empty: 0,
     cons: fn(acc, other) {
       if filesystem_effect_site_eq(
@@ -1447,18 +1454,21 @@ fn filesystem_effect_offender_site_count(
   )
 }
 
-// THE WALL'S DISTINCTNESS INVARIANT, enforced THROUGH filesystem_effect_site_eq. Each refused offender must
-// sit at a located site NO other offender shares: a site reported zero times would drop a located offender
-// silently, and a site reported more than once would mean two distinct defects collapsed onto one entry.
-// This is why site_eq is a wall consumer and not a test-only helper -- the census is dishonest if the wall
-// does not check that every located site appears exactly once.
-fn filesystem_effect_offender_sites_are_distinct(
-  offenders: List<FilesystemEffectReach>
+// THE WALL'S DISTINCTNESS INVARIANT, enforced THROUGH filesystem_effect_site_eq OVER THE EXTRACTOR'S
+// REACHES (review 98184 finding 3: keyed on the OFFENDER list this arm was inert -- an empty offender list
+// is always distinct, so its RED was unauthorable). Keyed on the extractor's reaches, where a duplicate
+// located site CAN actually occur: two phase-1 rows for the same declaration (module + name) number the
+// same callee occurrence 1 twice, which is two entries for one located defect -- the collapse this arm
+// exists to refuse. Its RED is authorable: a reach population with the same (module, declaration,
+// occurrence) twice breaks the wall even when the offender list is empty, and the same-site-twice leg
+// drives it THROUGH the wall, not around it.
+fn filesystem_effect_reaches_are_located_distinct(
+  reaches: List<FilesystemEffectReach>
 ) -> Bool {
   ! any(
-    xs: offenders,
+    xs: reaches,
     predicate: fn(reach) {
-      !(filesystem_effect_offender_site_count(offenders: offenders, target: reach) == 1)
+      !(filesystem_effect_reach_count_at_site(reaches: reaches, target: reach) == 1)
     }
   )
 }
@@ -1470,6 +1480,7 @@ fn filesystem_effect_offender_sites_are_distinct(
 // caller over the population the named rule selects.
 type FilesystemEffectCensusReport {
   population_source: FilesystemEffectCensusPopulation
+  reaches: List<FilesystemEffectReach>
   offenders: List<FilesystemEffectReach>
 }
 
@@ -1479,20 +1490,23 @@ fn filesystem_effect_reach_census(
 ) -> FilesystemEffectCensusReport {
   FilesystemEffectCensusReport {
     population_source: population_source,
+    reaches: reaches,
     offenders: filesystem_effect_direct_reach_refusals(reaches: reaches)
   }
 }
 
 // THE WALL HOLDS exactly when the emitted closure under the named population rule reaches no filesystem
-// effect the free primitive directly AND the offender list is honest about site identity. Same shape as
-// effect_demand_census_total_holds (a Bool from the census report's offender list being empty -- a red
+// effect the free primitive directly AND the EXTRACTOR'S REACHES are honest about site identity. Same shape
+// as effect_demand_census_total_holds (a Bool from the census report's offender list being empty -- a red
 // fixture that plants a direct reach makes it false, a green control reaching only through the handler keeps
-// it true), PLUS the distinctness invariant: the census consumes filesystem_effect_site_eq here so two
-// located defects can never collapse onto one entry and a new site is always a new offender. A red fixture
-// that reports the SAME site twice fails this arm even with a nonempty list, proving the check is live.
+// it true), PLUS the distinctness invariant over report.reaches (review 98184 finding 3: over the offender
+// list the arm was inert, because an empty offender list is trivially distinct). Its RED is authorable: the
+// same located site reported twice -- two phase-1 rows numbering the same callee occurrence 1 -- fails this
+// arm EVEN WITH AN EMPTY OFFENDER LIST, which is exactly the shape the same-site-twice leg drives THROUGH
+// the wall.
 fn filesystem_effect_direct_reach_wall_holds(report: FilesystemEffectCensusReport) -> Bool {
   length(xs: report.offenders) == 0
-    && filesystem_effect_offender_sites_are_distinct(offenders: report.offenders)
+    && filesystem_effect_reaches_are_located_distinct(reaches: report.reaches)
 }
 
 // THE REAL PRODUCER (A condition 2: the consumer that makes the new name_resolve rows field non-dangling,
@@ -1549,6 +1563,14 @@ fn filesystem_effect_callee_matches_identity(callee: QualifiedName, identity: Qu
   }
 }
 
+// THE FIFTH PARAMETER IS JUSTIFIED, not redundancy (warm-fox): bound_handler_slug is NOT derived from
+// bound_handler_identity's last segment because they name different things -- the identity is the handler's
+// DECLARATION path (v1.compiler.emit_rust.emit_file_call), the slug is the name the bound handler is
+// REACHABLE UNDER in the emitted closure's dispatch surface at the NativeCliDriver root, which the emitter's
+// dispatch table controls. Today they coincide; the day the dispatch surface renames the arm (or aliases it)
+// while the declaration keeps its name, deriving one from the other would silently mis-key the census. The
+// classifier is the consumer: operation == slug decides the arm, so the slug is dispatch-surface data and the
+// identity is declaration data -- two authorities, two parameters.
 fn filesystem_effect_reaches_from_phase1_rows(
   rows: List<DeclPhase1Row>,
   free_primitive_identity: QualifiedName,
@@ -1627,6 +1649,138 @@ fn filesystem_effect_emitted_closure_census(
     )
   )
 }
+// THE STATIC UPPER BOUND OVER PRODUCTION SOURCE, with the per-tier exclusions counted (warm-fox: the
+// reader must see how far the refused set sits under the declared bound). This is a TEXT bound: every line
+// carrying `filesystem_read(` under src/ and dag/, split into tiers, so it can only sit ABOVE the derived
+// census, never below it. The split was measured at this head by:
+//   for t in <each path below>; do grep -rn "filesystem_read(" --include=*.dag $t | wc -l; done
+//   (total: grep -rn "filesystem_read(" --include=*.dag src dag | wc -l)
+// and the arms are exhaustive: production_call_sites + every excluded_* == total_text_hits (checked by
+// filesystem_effect_static_bound_is_exhaustive, so a number copied wrong cannot sit unnoticed). The bound
+// counts TEXT occurrences, which over-counts (prose, fixtures, embedded Rust strings) and under-counts
+// nothing -- an upper bound in both directions of error. The refused census population is always a subset.
+type FilesystemEffectStaticBound {
+  total_text_hits: Int
+  production_call_sites: Int
+  excluded_declaration_module: Int
+  excluded_test_tier: Int
+  excluded_lens_tier: Int
+  excluded_v1_tier: Int
+  excluded_rust_fixture_prose: Int
+  excluded_dag_corpus: Int
+}
+
+// Measured at head (see the command above the type). production_call_sites = the two self_host.dag sites
+// (319, 329) + the two v2/workflow/compile_door_ledger.dag sites (116, 144).
+data filesystem_effect_static_bound_over_production_source: FilesystemEffectStaticBound =
+  FilesystemEffectStaticBound {
+    total_text_hits: 160,
+    production_call_sites: 4,
+    excluded_declaration_module: 2,
+    excluded_test_tier: 31,
+    excluded_lens_tier: 5,
+    excluded_v1_tier: 2,
+    excluded_rust_fixture_prose: 3,
+    excluded_dag_corpus: 113
+  }
+
+// THE BOUND IS EXHAUSTIVE: production + every excluded tier == the total. A wrong copy breaks this.
+fn filesystem_effect_static_bound_is_exhaustive(bound: FilesystemEffectStaticBound) -> Bool {
+  bound.production_call_sites
+    + bound.excluded_declaration_module
+    + bound.excluded_test_tier
+    + bound.excluded_lens_tier
+    + bound.excluded_v1_tier
+    + bound.excluded_rust_fixture_prose
+    + bound.excluded_dag_corpus
+    == bound.total_text_hits
+}
+
+// THE CENSUS LOG FACE (warm-fox: print the bound with per-tier exclusions BESIDE the derived refused
+// count; and the log must not overclaim the arms). One line per fact; the witness asserts the refused
+// count, the bound, and each planted offender's module#declaration#occurrence appear in it, so the PASS
+// line for that test IS the proof the log says what it must. The arms line states the rung honestly:
+// the derived producer can only build two arms; ReachedOutsideBoundHandler is supplied-population-only.
+fn filesystem_effect_census_log(
+  report: FilesystemEffectCensusReport,
+  bound: FilesystemEffectStaticBound
+) -> String {
+  let n = int_to_decimal_string(value: length(xs: report.offenders))
+  let lines = list_append(
+    left: [
+      cat([
+        "filesystem-effect-reach-wall population=",
+        report.population_source.emitted_closure_root_module,
+        "#",
+        report.population_source.emitted_closure_root_declaration,
+        " driver=",
+        report.population_source.driver_arm,
+        " bound_handler=",
+        report.population_source.bound_handler,
+        " free_primitive=",
+        report.population_source.free_primitive_slug
+      ]),
+      "arms: derived=free_primitive_direct(refused) and through_handler(authorised); ReachedOutsideBoundHandler is supplied-population-only (synthetic leg)",
+      "scope: declaration-resolved callees only -- any reference, broader than a call (fail-closed direction); ambient builtin-route calls are counted only where the resolve fold records a resolved callee path, which the executed ambient-callee leg must show before a clean census is read as builtin-route coverage",
+      cat([
+        "refused=",
+        n,
+        " static_upper_bound_production_call_sites=",
+        int_to_decimal_string(value: bound.production_call_sites)
+      ]),
+      cat([
+        "tier_exclusions: declaration_module=",
+        int_to_decimal_string(value: bound.excluded_declaration_module),
+        " test=",
+        int_to_decimal_string(value: bound.excluded_test_tier),
+        " lens=",
+        int_to_decimal_string(value: bound.excluded_lens_tier),
+        " v1=",
+        int_to_decimal_string(value: bound.excluded_v1_tier),
+        " rust_fixture_prose=",
+        int_to_decimal_string(value: bound.excluded_rust_fixture_prose),
+        " dag_corpus=",
+        int_to_decimal_string(value: bound.excluded_dag_corpus),
+        " total=",
+        int_to_decimal_string(value: bound.total_text_hits)
+      ])
+    ],
+    right: offender_log_lines(offenders: report.offenders)
+  )
+  string_join(fields: lines, separator: "\n")
+}
+
+// STRING CONCATENATION OVER PARTS -- the FreeMonoid fold the dialect's concat provides, list-shaped so a
+// log line reads as its parts instead of a tower of nested calls.
+fn cat(parts: List<String>) -> String {
+  fold_list(xs: parts, empty: "", cons: fn(acc, part) { concat(acc, part) })
+}
+
+// One line per refused offender, LOCATED: module#enclosing_declaration#occurrence. A census that refused
+// without naming the sites would be an oracle, not a report.
+fn offender_log_lines(offenders: List<FilesystemEffectReach>) -> List<String> {
+  fold_list(
+    xs: offenders,
+    empty: [],
+    cons: fn(acc, reach) {
+      let site = filesystem_effect_reach_site(reach: reach)
+      list_append(
+        left: acc,
+        right: [
+          cat([
+            "offender ",
+            site.module_path,
+            "#",
+            site.enclosing_declaration,
+            "#",
+            int_to_decimal_string(value: site.site_occurrence)
+          ])
+        ]
+      )
+    }
+  )
+}
+
 // ---- WALL 1 (predicate): a new demand_restatement row is LOCATED and refused by the census ----
 // THE AUTHORIZED RESTATEMENT ROSTER IS A PARAMETER, not a tree-derived oracle. A `demand_restatement`
 // row restates a service demand that is already derivable; the census (cut (c)) deleted every authored
