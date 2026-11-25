@@ -1,0 +1,85 @@
+module gunbc.integration_concern.filesystem_bare_name_census_cannot_separate_sibling_homonyms
+
+// One row of the integration-concern register. The roster derives the row from this file (module gunbc.integration_concern.roster);
+// there is no list to append to.
+
+import std.algebra { FreeSemigroup }
+import std.decl_ref { decl_ref }
+import std.types { CommitSha }
+import std.optional { Absent }
+import gunbc.guarantee_stall { climbs_when }
+import gunbc.integration_concern { CitesDeclaration, ConcernSighting, ExistingHome, IntegrationConcern, PreservedObligation, RequirementEstablished, SuspectedCapabilityGap, Triaged }
+
+// The main revision the resolve refusal was reproduced against (manager decision 2026-11-21, ad hoc
+// node adhoc-ef5256c2-9eb): an unimported `Filesystem.<op>` cleared resolve until the closure also
+// reached `std.resources`, whose resource `Filesystem` is a second candidate for the bare name.
+data filesystem_bare_name_census_sighting_revision: CommitSha = "28eb4ff01d9d390537af77ced881bc49e548ccd9"
+
+// The main revision the 43-site census re-verification was reproduced against (engine f9b5ba207b9),
+// same ad hoc node. The main delta from 28eb4ff01d9 to this tip is proven Filesystem-inert -- it touches
+// no std.resources, no extdeps.filesystem.filesystem_io, no bare-Filesystem site and no Rust -- so the
+// refusals recorded in the second sighting below hold at this tip.
+data filesystem_bare_name_census_reverification_revision: CommitSha = "32b9202cec7c559fefd44da47ce7965e2ad6f99a"
+
+// THE BARE-NAME CENSUS COLLIDES SIBLING HOMONYMS. `extdeps.filesystem.filesystem_io` declares
+// `service Filesystem` (the host file transport: Write/WriteBytes/WriteOwnerOnly/WriteCreateNew/
+// WriteCreateNewWithMode/LinkCreateNew/Read/Delete/List, external-authority anchored) and `std.resources`
+// declares `resource Filesystem` (a capability grant: acquire/release with lowercase capability ops
+// probe/read/read_bytes/write). Both are legitimate single-authority names in their own scopes; the refusal
+// is not a meaning fork. It is the resolver's unimported-name rule: a bare name is answered by a corpus-wide
+// candidate census keyed on the leaf name, tie-broken by nearest-ancestor containment, which cannot separate
+// two declarations that live in neither the referencing module's chain nor each other's. Every genuine call
+// site uses a SERVICE op (all uppercase); the resource's lowercase capability ops never appear bare, so the
+// resource is never the intended callee -- it only collides.
+data filesystem_bare_name_census_cannot_separate_sibling_homonyms: IntegrationConcern = IntegrationConcern {
+  identity: "filesystem_bare_name_census_cannot_separate_sibling_homonyms",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.plans.names_without_imports", decl_name: "names_without_imports_plan"),
+    requirement: "an unimported reference to a service operation resolves to exactly the provider the author intends, so two same-named declarations in distinct scopes never render the service call ambiguous -- the plan's end state is a fully qualified reference with no bare-name pool, no ambient table, no candidate search",
+    standing: RequirementEstablished {
+      by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.plans.names_without_imports", decl_name: "names_without_imports_plan") },
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "extdeps.filesystem.filesystem_io", decl_name: "Filesystem"),
+    tail: [
+      decl_ref(module_path: "std.resources", decl_name: "Filesystem"),
+    ],
+  },
+  question: "Which boundary is unjustified -- the two names, or the rule that resolves an unimported name by a leaf-name candidate census? Evidence says the rule: the two declarations are distinct contracts in distinct scopes (a transport service and a capability resource), each a legitimate single-authority name; only the bare-name census, keyed on the leaf name across the closure, makes a service call refuse. The unwritable fix is the plan's fully-qualified-reference end state that retires the corpus bare-name pool. Interim: every genuine transport-service site binds the provider explicitly. Bounded census -- detection command (it resolves every function body, so it actually exercises the call; the earlier `--function __no_such_function__` probe was insufficient, it stops before resolving bodies): `gunbc compile --dry-run --target dag --output-dir <tmp> --source-root dag --source-root src/v2 --entry <file>`; a refusal prints \"refused at emit ... ambiguous reference 'Filesystem': 2 candidates: std.resources, extdeps.filesystem.filesystem_io\". Inspected population: 8,710 .dag files under dag/ at main 32b9202cec7. Candidate screen (census, reproducible): per file strip block/line comments and double-quoted strings, then match a bare receiver shaped like Filesystem.<UppercaseOp>( on the code region; classify by first match -- declaring 1; bound (Filesystem is a named member of an explicit import from extdeps.filesystem.filesystem_io or std.resources) 461 + 12; v2-provider 2 (test.claim.filesystem_write_witness, test.claim.filesystem_list_hermetic_witness, bound to the v2 Filesystem type, not the transport service, left untouched); expect-wrapper 5 (test.claim.action_use_admission_witness, test.claim.approve_ios_vectors_envelope_witness, test.claim.approve_ios_vectors_escape_witness, test.claim.compiler_gate_emit_build_lane_witness, test.claim.parse_compiler_identity_witness, which call Filesystem.<op>(path:, expect:) -- an expect-carrying hermetic provider that is neither the transport service (no such operation) nor std.resources, a THIRD homonym in the same census class, so the transport binding does not apply and they are left unchanged); and AT-RISK 43. The 43 AT-RISK are the genuine transport-service sites: a bare uppercase transport op (Write/Read/List/WriteCreateNew) with no lexical Filesystem binding. Run one compile at a time on main (engine f9b5ba207b9): each of the 43 refuses with the 2-candidate ambiguity, and the one-line explicit transport binding clears every one (0 ambiguity on the companion interim PR). This supersedes the earlier 28eb4ff01d9 figure (51 screens, 35 transport, 2 wrapper): the census grew -- 8 sites newly reached std.resources on main (instruments.fabric_seat_probe, instruments.floor_cost_distribution_instrument, runner.runner_qualification_attempt_run, host.host_build_cache_provision_real_execution_witness, live_deploy.observed_unhealthy_probe_wet_witness, live_deploy.pre_swap_admission_merge_base_inhabitance_witness, live_deploy.tailnet_door_cutover_journal_live_bytes_witness, claim.workspace_old_bytes_readback_witness) -- and the wrapper class is 5, not 2.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: filesystem_bare_name_census_sighting_revision,
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "test.claim.roadmap.roadmap_authority", decl_name: "witness_committed_fixture_bytes_are_the_encoders_own") },
+        tail: [
+          CitesDeclaration { declaration: decl_ref(module_path: "gunbc.compute.host_capacity", decl_name: "compute_launching_uid") },
+        ],
+      },
+      account: "Reproduced on main and verified with the body-resolving compile detector (an earlier `--function __no_such_function__` run was insufficient -- it stops before resolving function bodies, so it neither exercises the call nor catches the ambiguity). (1) gunbc.compute.host_capacity: a bare Filesystem.<op> refused once its closure reached std.resources -- fixed by naming the provider (#16843). (2) test.claim.roadmap.roadmap_authority, the committed-bytes witness: the bare receiver refused with \"ambiguous reference 'Filesystem': 2 candidates: std.resources, extdeps.filesystem.filesystem_io -- qualify by containment path, alias, or rename\" (engine 28eb4ff01d9), blocking every witness that imports the module (row/frontier/presentation/hierarchy_view). The resolver's own remedy names qualification, which is exactly the direction gunbc.plans.names_without_imports is driving. 37 of the 51 screens refuse between the two providers (census in the question); the same one-line explicit transport binding clears each of the 35 transport-service sites. The 2 approve_ios_vectors sites are a separate hermetic-wrapper provider (Filesystem.Read with an expect: argument the transport service has no operation for) -- the same ambiguity shape under a third provider, so they are recorded here rather than bound to the transport service.",
+    },
+    tail: [
+      ConcernSighting {
+        revision: filesystem_bare_name_census_reverification_revision,
+        evidence: FreeSemigroup {
+          head: CitesDeclaration { declaration: decl_ref(module_path: "extdeps.filesystem.filesystem_io", decl_name: "Filesystem") },
+          tail: [
+            CitesDeclaration { declaration: decl_ref(module_path: "std.resources", decl_name: "Filesystem") },
+          ],
+        },
+        account: "Re-verified at main 32b9202cec7 with the body-resolving compile detector (engine f9b5ba207b9; the earlier --function __no_such_function__ probe was insufficient -- it stops before resolving function bodies, so it neither exercises the call nor catches the ambiguity). Census: population 8,710 .dag under dag/, 524 code-region matches classified as declaring 1, bound-transport 461, bound-std.resources 12, v2-provider 2, expect-wrapper 5, AT-RISK 43. Each of the 43 AT-RISK transports, compiled alone on main one at a time (engine f9b5ba207b9), refuses with \"ambiguous reference 'Filesystem': 2 candidates: std.resources, extdeps.filesystem.filesystem_io\" -- e.g. runner.runner_qualification_attempt_run:233, host.host_build_cache_provision_real_execution_witness:45, live_deploy.pre_swap_admission_merge_base_inhabitance_witness:43 and :55, live_deploy.tailnet_door_cutover_journal_live_bytes_witness:83, instruments.floor_cost_distribution_instrument:130. The one-line explicit transport binding (import extdeps.filesystem.filesystem_io { Filesystem }) clears all 43 (0 ambiguity on the companion interim PR). The 5 expect-wrapper and 2 v2-provider sites are left unbound: their correct provider is a third homonym / the v2 Filesystem type respectively, not the transport service.",
+      },
+    ],
+  },
+  disposition: Triaged {
+    home: ExistingHome { model: decl_ref(module_path: "gunbc.plans.names_without_imports", decl_name: "names_without_imports_plan") },
+    preserve: [
+      PreservedObligation {
+        holder: decl_ref(module_path: "extdeps.filesystem.filesystem_io", decl_name: "Filesystem"),
+        control: Absent,
+        statement: "neither Filesystem is renamed: the transport service and the capability resource are distinct contracts in distinct scopes, each a legitimate single-authority name; the resolver's unimported-name rule is changed (or the call sites qualified), not the names",
+      },
+    ],
+    next: climbs_when(capability: "gunbc.plans.names_without_imports lands the fully-qualified-reference end state (a bare name is a lexical binder and nothing else, with no corpus bare-name pool), after which the per-site explicit bindings are removable and this refusal can no longer be written"),
+  },
+}
