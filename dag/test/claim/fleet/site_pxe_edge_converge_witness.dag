@@ -2441,6 +2441,54 @@ test fn a_property_probe_that_exited_zero_with_an_unexpected_reply_never_refutes
     && empty_still_refutes && empty_never_refutes_absence && exact_still_satisfies
 }
 
+// FOX ROUND 7 (at 40207278): THE VERDICTS ARE THE RAW BYTES. A whitespace-only reply is not the zero-byte negative,
+// and a space-padded path is not the path. Both must be read as a property read that gave NO verdict -- refused, with
+// the reply rendered escaped so the whitespace that damned it is visible -- never as a refuted requirement or a
+// satisfied one. Driven through the production dispatch, the same path the operator's placement takes.
+test fn a_whitespace_only_property_reply_is_not_the_empty_negative_and_a_padded_path_is_not_the_path() -> Bool {
+  let p = "/srv/tftp/live"
+  let present = ans(code: 0, out: "/srv/tftp/live\n", err: "")
+  // (1) " \t\n" over a CONFIRMED presence: the trimmed classifier called this the empty negative and refuted the
+  // requirement. It must instead be an unverified property read, and its reason must show the whitespace.
+  let whitespace = site_pxe_edge_live_path_standing(path: p, as_required: ans(code: 0, out: " \t\n", err: ""), anything: present)
+  let whitespace_is_unverified = match whitespace { PathPresenceUnverified { reason: _ } => true  _ => false }
+  let whitespace_is_not_the_mismatch = match whitespace { PathPresentButNotAsRequired => false  _ => true }
+  let whitespace_refused = match site_pxe_edge_live_member_dispatch(standing: whitespace) {
+    DispatchRefused { reason: r } =>
+      string_contains(s: r, pattern: "unexpected reply")
+        && string_contains(s: r, pattern: "\\s\\t\\n")
+        && string_contains(s: r, pattern: "could not be verified")
+        && string_contains(s: r, pattern: "nothing was overwritten")
+        && !string_contains(s: r, pattern: "is not a root-owned regular file")
+    _ => false
+  }
+  // (2) A padded path is not the path: the trimmed classifier read it as satisfied.
+  let padded = site_pxe_edge_live_path_standing(path: p, as_required: ans(code: 0, out: " /srv/tftp/live\n", err: ""), anything: present)
+  let padded_is_not_satisfied = match padded { PathAsRequired => false  _ => true }
+  let padded_refused = match site_pxe_edge_live_member_dispatch(standing: padded) {
+    DispatchRefused { reason: r } =>
+      string_contains(s: r, pattern: "unexpected reply") && string_contains(s: r, pattern: "\\s/srv/tftp/live")
+    _ => false
+  }
+  // (3) THE TWO RAW SHAPES THAT ARE VERDICTS, both still accepted: the path with no trailing newline, and the path
+  // with exactly one. (4) The neighbour: a genuine zero-byte read over a confirmed presence still refutes.
+  let bare_path_satisfies = match site_pxe_edge_live_path_standing(path: p, as_required: ans(code: 0, out: "/srv/tftp/live", err: ""), anything: present) {
+    PathAsRequired => true
+    _ => false
+  }
+  let one_newline_satisfies = match site_pxe_edge_live_path_standing(path: p, as_required: ans(code: 0, out: "/srv/tftp/live\n", err: ""), anything: present) {
+    PathAsRequired => true
+    _ => false
+  }
+  let true_empty_still_refutes = match site_pxe_edge_live_path_standing(path: p, as_required: ans(code: 0, out: "", err: ""), anything: present) {
+    PathPresentButNotAsRequired => true
+    _ => false
+  }
+  whitespace_is_unverified && whitespace_is_not_the_mismatch && whitespace_refused
+    && padded_is_not_satisfied && padded_refused
+    && bare_path_satisfies && one_newline_satisfies && true_empty_still_refutes
+}
+
 // Fox fix 4, hermetic: kernel placed, initrd refused (the refusal is the placement's result) => evidence UNREAD => the client's admission is the extraction refusal =>
 // no SitePxeEdgeLiveServe => no per-MAC cfg and no HTTP unit. The sealed LiveBound evidence is never fabricated: nothing here constructs it. The privileged
 // wet partial-failure arm is owed to the live srv4 readback.

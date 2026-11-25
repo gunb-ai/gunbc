@@ -319,16 +319,41 @@ fn site_pxe_edge_live_find_names_absent_path(path: String, answer: HostLeg) -> B
   }
 }
 
+// THE PROPERTY REPLY IS CLASSIFIED ON ITS RAW BYTES, NEVER TRIMMED (fox round 7 at 40207278). A real negative find
+// prints ZERO bytes; a positive one prints the path, with at most ONE trailing newline. Trimming first makes both
+// verdicts forgeable by whitespace: " \t\n" would pass as the empty negative and hand a confirmed presence to
+// PathPresentButNotAsRequired -- a refuted requirement nobody measured -- and " /srv/tftp/live " would pass as the
+// path itself, satisfied by a reply that never named the path. Anything other than those raw shapes printed no
+// verdict about THIS path, and is reported as such.
+fn site_pxe_edge_live_property_reply_is_negative(reply: String) -> Bool {
+  reply == ""
+}
+
+fn site_pxe_edge_live_property_reply_is_positive(reply: String, path: String) -> Bool {
+  reply == path || reply == concat(path, "\n")
+}
+
+// A MALFORMED REPLY IS RENDERED ESCAPED, so the whitespace that made it malformed is VISIBLE to the operator instead
+// of invisible inside the reason they read.
+fn site_pxe_edge_live_render_reply_escaped(reply: String) -> String {
+  let slashes = replace(s: reply, from: "\\", to: "\\\\")
+  let tabs = replace(s: slashes, from: "\t", to: "\\t")
+  let breaks = replace(s: tabs, from: "\n", to: "\\n")
+  let returns = replace(s: breaks, from: "\r", to: "\\r")
+  replace(s: returns, from: " ", to: "\\s")
+}
+
 fn site_pxe_edge_live_path_standing(path: String, as_required: HostLeg, anything: HostLeg) -> SitePxeEdgeLivePathStanding {
   match as_required {
     LegAnswered { exit_code: ar_code, stdout: ar_out, stderr: ar_err } =>
-      if ar_code == 0 && trim(s: ar_out) == path {
-        // (a) The property find printed EXACTLY the path: the requirement was measured and MET.
+      if ar_code == 0 && site_pxe_edge_live_property_reply_is_positive(reply: ar_out, path: path) {
+        // (a) The property find printed EXACTLY the path (one trailing newline allowed): measured and MET.
         PathAsRequired
-      } else if ar_code == 0 && trim(s: ar_out) == "" {
-        // (b) The property probe SUCCEEDED and printed NOTHING: the requirement was measured and found unmet.
-        // This is the ONLY route to PathPresentButNotAsRequired, and only when the existence probe confirms the
-        // path is there (a completed, empty property read says nothing about absence).
+      } else if ar_code == 0 && site_pxe_edge_live_property_reply_is_negative(reply: ar_out) {
+        // (b) The property probe SUCCEEDED and printed NOTHING AT ALL -- zero raw bytes, not a trimmed approximation
+        // of nothing: the requirement was measured and found unmet. This is the ONLY route to
+        // PathPresentButNotAsRequired, and only when the existence probe confirms the path is there (a completed,
+        // empty property read says nothing about absence).
         site_pxe_edge_live_path_standing_from_anything(path: path, anything: anything)
       } else if ar_code == 0 {
         // (c) THE REPLY IS MALFORMED (fox round 5 at 153ae43d). A property find that exited 0 but printed something
@@ -339,7 +364,7 @@ fn site_pxe_edge_live_path_standing(path: String, as_required: HostLeg, anything
         // are still decided by the existence leg, which did complete.
         site_pxe_edge_live_property_read_lost(
           path: path,
-          property_cause: concat("the property probe exited 0 with an unexpected reply: <", trim(s: ar_out), ">"),
+          property_cause: concat("the property probe exited 0 with an unexpected reply: <", site_pxe_edge_live_render_reply_escaped(reply: ar_out), ">"),
           anything: anything,
         )
       } else {
