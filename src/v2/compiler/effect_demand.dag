@@ -1241,27 +1241,38 @@ data effect_demand_seam_roster: List<SeamStanding> = [
 // "a dissolution condition belongs in a typed carrier"). The census predicates above refuse a direct
 // filesystem_read reach by name; the gate that turns a red census into a compile-time stop connects when
 // THIS trigger dissolves -- i.e. when the two named self_host.dag sites migrate to the bound handler and so
-// leave the in-population offender set. WHAT THE TRIGGER GATES (guarantee_ladder: the trigger names the
-// CAPABILITY, and review 98184 finding 1 asked that the named capability be the RIGHT one): the reach
-// EXTRACTOR shipped in this change -- filesystem_effect_reaches_from_phase1_rows /
-// filesystem_effect_emitted_closure_census, consuming the resolver's own phase-1 rows -- so the capability
-// still gated here is the COMPILE-PHASE WIRING of that census plus the migration of the two sites, not a
-// missing extractor. The strings are rename-guarded by CONSUMPTION, not faith: the witness test
-// filesystem_compile_gate_trigger_names_the_two_self_host_sites asserts them equal to the CENSUS SITES'
-// module and enclosing declarations (the same values the census locates offenders by), so a rename that
-// drifts one of them breaks a test rather than sitting silently stale.
+// leave the in-population offender set. WHAT THE TRIGGER CARRIES (guarantee_ladder: the trigger names the
+// CAPABILITY; review 98184 finding 1 asked that the named capability be the RIGHT one): the reach EXTRACTOR
+// shipped in this change -- filesystem_effect_reaches_from_phase1_rows /
+// filesystem_effect_emitted_closure_census, consuming the resolver's own phase-1 rows -- is NOT the missing
+// capability anymore; the missing_capability field names the one that is: the EMIT-SIDE binding of the
+// native Filesystem handler (emit_file_call) to an ordinary-function entry under the NativeCliDriver root
+// (demand_engine_program.dag D10/D11). The two-site migration is the visible consequence; the capability is
+// the thing restored when this trigger dissolves. The strings are rename-guarded by CONSUMPTION, not faith:
+// the witness test filesystem_compile_gate_trigger_names_the_two_self_host_sites asserts them equal to the
+// CENSUS SITES' module and enclosing declarations (the same values the census locates offenders by), so a
+// rename that drifts one of them breaks a test rather than sitting silently stale.
 type FilesystemWallCompileGateTrigger {
   awaiting_migration_module: String
   awaiting_migration_declarations: List<String>
   migrate_to_bound_handler: String
   gate_connects_when: Symbol
+  // THE CAPABILITY THIS TRIGGER CARRIES, named on its face (guarantee_ladder: "the trigger names the
+  // CAPABILITY restored"; Manager B via eager-koi-371: the trigger must name the EMIT-SIDE HANDLER BINDING
+  // explicitly, not a generic migration). What is missing is not a handler -- emit_file_call exists and is
+  // the one realization handler -- but its BINDING, on the emit side, to an ordinary-function entry under
+  // the NativeCliDriver root (dag/gunbc/plans/demand_engine_program.dag D10: "what is missing is not a
+  // handler but its binding to an ordinary-function entry under D11"). The two-site migration is the
+  // visible consequence; this symbol is the capability.
+  missing_capability: Symbol
 }
 
 data filesystem_wall_compile_gate_trigger: FilesystemWallCompileGateTrigger = FilesystemWallCompileGateTrigger {
   awaiting_migration_module: "v2.compiler.self_host",
   awaiting_migration_declarations: ["read_roster_manifest", "fold_side_bytes"],
   migrate_to_bound_handler: "emit_file_call",
-  gate_connects_when: ^self_host_direct_reaches_migrate_to_bound_handler
+  gate_connects_when: ^self_host_direct_reaches_migrate_to_bound_handler,
+  missing_capability: ^emit_side_native_filesystem_handler_binding_to_ordinary_function_entry
 }
 
 // ---- WALL 2 (predicate): an emitted closure reaching `filesystem_read` directly is LOCATED and refused by the census ----
