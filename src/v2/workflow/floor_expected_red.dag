@@ -1288,7 +1288,7 @@ fn floor_expected_red_chunk_inferred_collection_key_census() -> List<String> {
 }
 
 fn floor_expected_red_chunks() -> List<List<String>> {
-  Cons { head: floor_expected_red_chunk_required_lane_materialized_workflow_red(), tail: Cons { head: floor_expected_red_chunk_inferred_collection_key_census(), tail: Cons { head: floor_expected_red_chunk_append_log_store(), tail: Cons { head: floor_expected_red_chunk_cas_outcome_seal(), tail: Cons { head: floor_expected_red_chunk_text_wall_generic_formal(), tail: Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_24(), tail: Cons { head: floor_expected_red_chunk_interpreter_first_optional_divergence(), tail: Cons { head: floor_expected_red_chunk_optional_equality_by_representation(), tail: Cons { head: floor_expected_red_chunk_disjoint_refinement_chains(), tail: Cons { head: floor_expected_red_chunk_live_tree_admission(), tail: Cons { head: floor_expected_red_chunk_emitted_add_algebra_ref_ungrounded(), tail: Cons { head: floor_expected_red_chunk_infer_checking_mode(), tail: Cons { head: floor_expected_red_chunk_cursor_dispatch_credential_wet_red(), tail: Cons { head: floor_expected_red_chunk_pair_serving_authority_wet_red(), tail: Cons { head: floor_expected_red_chunk_constructor_tag_route_probe_red(), tail: Empty {} } } } } } } } }  } } } } } } } } } } } } } } } } } } } } } } } } } } 
+  Cons { head: floor_expected_red_chunk_lowered_call_cast_normalize_red(), tail: Cons { head: floor_expected_red_chunk_required_lane_materialized_workflow_red(), tail: Cons { head: floor_expected_red_chunk_inferred_collection_key_census(), tail: Cons { head: floor_expected_red_chunk_append_log_store(), tail: Cons { head: floor_expected_red_chunk_cas_outcome_seal(), tail: Cons { head: floor_expected_red_chunk_text_wall_generic_formal(), tail: Cons { head: floor_expected_red_chunk_00(), tail: Cons { head: floor_expected_red_chunk_02(), tail: Cons { head: floor_expected_red_chunk_03(), tail: Cons { head: floor_expected_red_chunk_04(), tail: Cons { head: floor_expected_red_chunk_05(), tail: Cons { head: floor_expected_red_chunk_06(), tail: Cons { head: floor_expected_red_chunk_07(), tail: Cons { head: floor_expected_red_chunk_08(), tail: Cons { head: floor_expected_red_chunk_09(), tail: Cons { head: floor_expected_red_chunk_10(), tail: Cons { head: floor_expected_red_chunk_13(), tail: Cons { head: floor_expected_red_chunk_14(), tail: Cons { head: floor_expected_red_chunk_15(), tail: Cons { head: floor_expected_red_chunk_16(), tail: Cons { head: floor_expected_red_chunk_17(), tail: Cons { head: floor_expected_red_chunk_18(), tail: Cons { head: floor_expected_red_chunk_19(), tail: Cons { head: floor_expected_red_chunk_20(), tail: Cons { head: floor_expected_red_chunk_21(), tail: Cons { head: floor_expected_red_chunk_24(), tail: Cons { head: floor_expected_red_chunk_interpreter_first_optional_divergence(), tail: Cons { head: floor_expected_red_chunk_optional_equality_by_representation(), tail: Cons { head: floor_expected_red_chunk_disjoint_refinement_chains(), tail: Cons { head: floor_expected_red_chunk_live_tree_admission(), tail: Cons { head: floor_expected_red_chunk_emitted_add_algebra_ref_ungrounded(), tail: Cons { head: floor_expected_red_chunk_infer_checking_mode(), tail: Cons { head: floor_expected_red_chunk_cursor_dispatch_credential_wet_red(), tail: Cons { head: floor_expected_red_chunk_pair_serving_authority_wet_red(), tail: Cons { head: floor_expected_red_chunk_constructor_tag_route_probe_red(), tail: Empty {} } } } } } } } }  } } } } } } } } } } } } } } } } } } } } } } } } } }  }
 }
 
 // THE TWO CONSTRUCTOR-TAG QUARANTINE PROBES THAT ARE LIVE REDS, enrolled as expected reds. These are
@@ -1350,6 +1350,51 @@ fn floor_expected_red_chunk_required_lane_materialized_workflow_red() -> List<St
 // 2026-10-01: v2.test.lens_mock_totality's explicit-import closure had turned the whole family
 // green, so the rows asserted nothing. The floor_expected_red_is_live filter that excluded them
 // dissolved in the same change, and the roster is again the plain fold over the chunks.
+
+// THE SIX LOWERED PRIMARY-CALL / CAST OCCURRENCE CLAIMS AT THE NORMALIZE DOOR (node
+// adhoc-78f5bb8e-0cf, keen-raven-287, 2026-11-25). Three primary-call and three cast witnesses of
+// v2.test.claim.body_lowering_call_node_occurrence are RED at main (tree 90455b33, measured twice --
+// calm-boar-153 and again here with main's RELEASED claim_batch sha256 dbcf0419f7a6 read from disk on
+// srv1, BOOT c095c0cd), twelve witnesses PASS, and the six reach their SUBJECT and ANSWER: the per-
+// witness lines carry cpu/wall/eval_steps and a subject (e.g. the locatable witness answers false at
+// eval_steps=237970 subject=28cde0a71fe3e9e3), so this enrolment is the opposite of the 101 rows the
+// header records -- it enrolls claims that RUN and answer, not rows that route-gapped. A control in the
+// same batch (lowered_qualified_call_node_is_locatable_by_the_census) PASSES, so the tool prints PASS
+// and the six are a population of real failures, not a broken harness.
+
+// WHAT THE MEASUREMENT SHOWS, NOT A CONCLUSION. The six drive the primary-call and cast shapes through
+// the NORMALIZE door (conserved_normalize_of_text), and at that door the source is REFUSED -- no tree
+// is handed back (probe facets cn_accepted and kn_accepted both FAIL). The same two shapes driven
+// through the FOLD door (body_lower_dotted_chain_lowered_optional on the captured postfix capture) DO
+// yield the authored, Minted, census-Present root the claims name: for the cast kf_transform/kf_minted/
+// kf_census PASS while kf_synthetic/kf_projected/kf_pending FAIL, and for a call cq_transform/cq_minted/
+// cq_census PASS while cq_synthetic/cq_projected/cq_pending FAIL, both measured this run with the
+// passing qualified_call caller copied verbatim from this module -- the fold-door callers
+// `v2.test.claim.body_lowering_call_node_occurrence.seat16_door_lowered` over its
+// `seat16_qualified_call_source`, named not located. HYPOTHESIS (not established, do not read as a finding): the six
+// are mis-specified for the door they drive -- the census contract the fix established holds at the FOLD
+// door, where all twelve passing siblings live, and the normalize door simply never produces the root. A
+// bare `leaf()` is declined by the dotted-chain door, which is a door-applicability limit, not a census
+// result; the twelve passing siblings stand as that door's positive control for the call shape.
+
+// REGRESSION VERSUS NEVER-WORKED STAYS UNRESOLVED. The required-floor admission at
+// The `v2.workflow.required_floor` admission of this module at exact grain carries a green-by-execution receipt at the October fix head;
+// that head cannot be re-run under main's RELEASED binary (the Oct tree predates newer parse/type rules
+// and refuses at policy-resolve), so it is not determinable today whether the normalize-door root ever
+// existed. That receipt's unverifiability was routed to ci-control (roadmap_authority.dag floor-memory,
+// owner ci-control) by the lane manager; it is not restated or re-litigated here.
+
+// WHY ENROLMENT AND NOT WITHDRAWAL. The `v2.workflow.required_floor` admission of this module is KEPT (it is not touched by
+// this change): withdrawing it would convert a visible red into a coverage loss, because the module
+// would stop being run and nobody could observe the six going green. Enrolled-with-trigger keeps the
+// observation live -- the difference between a tracked stall and an untracked one.
+
+// WHAT DISCHARGES THIS CHUNK IS THE SIX GOING GREEN. When all six pass, each becomes a KnownRedNowPassing
+// refusal that names it for removal, and this chunk is deleted with them. No repair is offered here; the
+// diagnosis is what is filed.
+fn floor_expected_red_chunk_lowered_call_cast_normalize_red() -> List<String> {
+  Cons { head: "v2.test.claim.body_lowering_call_node_occurrence.lowered_primary_call_node_is_locatable_by_the_census", tail: Cons { head: "v2.test.claim.body_lowering_call_node_occurrence.lowered_primary_call_still_lowers_to_a_transform_over_its_callee", tail: Cons { head: "v2.test.claim.body_lowering_call_node_occurrence.lowered_primary_call_node_is_not_synthetic", tail: Cons { head: "v2.test.claim.body_lowering_call_node_occurrence.lowered_cast_node_is_locatable_by_the_census", tail: Cons { head: "v2.test.claim.body_lowering_call_node_occurrence.lowered_cast_still_lowers_to_a_transform_over_its_as_operator", tail: Cons { head: "v2.test.claim.body_lowering_call_node_occurrence.lowered_cast_node_is_not_synthetic", tail: Empty {} } } } } } }
+}
 fn floor_expected_red_roster() -> List<String> {
   list_flat_map(xs: floor_expected_red_chunks(), f: fn(chunk) { chunk })
 }
