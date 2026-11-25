@@ -1602,7 +1602,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         first_slice: "A roster projected from one parsed module, with the argument-list control: a comment between two arguments lands before = a, after = b in the call's scope.",
         red_control: "A comment inside f's body never attaches to the next declaration g; a comment between call arguments lands between the argument productions, not on spine nodes; v1 and v2 name the same neighbour SOURCE TEXT for every comment between siblings both trees retain (structural keys are not comparable across the two trees: v1 keys name authored identifiers, v2 keys name productions), with the places the trees differ asserted rather than dropped.",
         out_of_scope: "The attachment rule and the v1 realization (parse-comment-gap-attachment).",
-        handback: "parse_module_authored attaches every capture of a parsed module through attach_annotations, the roster disposition note on AuthoredParseArtifact is deleted, and the v1/v2 neighbour-text agreement control is green; its production consumer and gating are parse-comment-gap-attachment-v2-consumed."
+        handback: "parse_module_authored attaches every capture of a parsed module through attach_annotations, the roster disposition note on AuthoredParseArtifact is deleted, and the v1/v2 neighbour-text agreement control is green; its production consumer is parse-comment-gap-attachment-v2-consumed and its gate admission is parse-comment-gap-agreement-control-gated."
       )),
       dispatch: dispatchable(),
       parent: in_project(project: "v2-compiler-live", contribution: "The v2 compiler keeps authored prose under the same gap rule as the seed."),
@@ -1614,16 +1614,34 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       owner: "parse",
       carriers: carrier(path: "src/v2/compiler/parse.dag"),
       line: ticket(t: fields(
-        headline: "The authored v2 parse has a production consumer and a gated agreement control",
-        boundary: "parse_module_authored attaches comments by the shared gap rule but nothing in the production parse path calls it, and the v1/v2 neighbour-text agreement control (v2.test.claim.manual.annotation_gap_v1_v2_agreement) sits under manual/, so no gated row executes it. A v2-built consumer of AuthoredParseArtifact lands, and the agreement control joins a row the required gate judges.",
+        headline: "The authored v2 parse has a production consumer and an executed agreement control",
+        boundary: "parse_module_authored attaches comments by the shared gap rule but nothing in the production parse path calls it, and the v1/v2 neighbour-text agreement control (v2.test.claim.manual.annotation_gap_v1_v2_agreement) sits under manual/, so no gated row executes it. A v2-built consumer of AuthoredParseArtifact lands and is executed by a claim naming it. Gate admission of the agreement control is its own row (parse-comment-gap-agreement-control-gated): the required-floor rosters have no executor on main today, so admitting the control onto one would green nothing.",
         displaced_cost: "Until consumed, the authored v2 parse is executed only by claims, and a v1/v2 divergence in attachment goes unseen by CI.",
-        first_slice: "One production caller of parse_module_authored, exercised by a gated row.",
-        red_control: "Breaking the v2 roster (dropping infix applications as regions) turns the gated agreement control red.",
-        out_of_scope: "The roster and the gap rule (parse-comment-gap-attachment-v2).",
-        handback: "A production route calls parse_module_authored and the agreement control runs under the required gate."
+        first_slice: "One production caller of parse_module_authored, exercised by an executed claim.",
+        red_control: "Breaking the v2 roster (dropping infix applications as regions) turns the v1/v2 neighbour-text agreement control (v2.test.claim.manual.annotation_gap_v1_v2_agreement.v1_and_v2_agree_on_neighbour_text_holds) red, and restoring the roster greens it again.",
+        out_of_scope: "The roster and the gap rule (parse-comment-gap-attachment-v2), and gate admission of the agreement control (parse-comment-gap-agreement-control-gated).",
+        handback: "A production route calls parse_module_authored -- fn front_end_parse_step in v2.compiler.staged_front_end -- and its consumer claim staged_front_end_produces_the_authored_parse_for_an_annotated_module passes by name."
       )),
       dispatch: dispatchable(),
       parent: in_project(project: "v2-compiler-live", contribution: "The v2 compiler keeps authored prose under the same gap rule as the seed."),
+    ),
+
+    roadmap_node(
+      identity: "rn_30G4GZEQCTUA45T46NVD37H29Q",
+      id: "parse-comment-gap-agreement-control-gated",
+      owner: "parse",
+      carriers: concat(carrier(path: "src/v2/test/claim/manual/annotation_gap_v1_v2_agreement.dag"), carrier(path: "src/v2/workflow/required_floor.dag")),
+      line: ticket(t: fields(
+        headline: "The v1/v2 agreement control runs under a row the required gate judges",
+        boundary: "The v1/v2 neighbour-text agreement control (v2.test.claim.manual.annotation_gap_v1_v2_agreement) is the only check that the two parsers attach the same source text around a comment, and it sits under manual/, so no gated row executes it. It cannot simply be admitted: the required-floor rosters have no executor on main, so admitting it today would be a false green beside dag/test/claim/v1_dag_parse_witness.dag -- the reason neat-badger-614 held it on 2026-11-25. Its rung is published and re-derived rather than asserted: AgreementControlRung = ManualUngated | GatedRow | FloorExecuted, re-derived by probe_pair_rung_agrees_with_the_floors_own_admission from the floor's own required_gate_admits. This row opens on that rung and closes when the control is admitted onto a roster the required path actually executes.",
+        displaced_cost: "While the control is ungated, a v1/v2 divergence in comment-attachment text is invisible to CI, and the control's green is only what an interactive claim_batch run says it is.",
+        first_slice: "The required-floor rosters gain an executor on main, and the control's rung moves from ManualUngated to GatedRow with the probe pair still re-deriving it from the floor's own admission.",
+        red_control: "Admitting the control onto a roster the required path does not execute turns probe_pair_rung_agrees_with_the_floors_own_admission (src/v2/test/claim/manual/annotation_gap_v1_v2_agreement_probe_pair.dag) red, because the rung it publishes no longer agrees with the floor's own required_gate_admits; with an executor present the same admission greens it.",
+        out_of_scope: "The consumer (parse-comment-gap-attachment-v2-consumed), the roster contents and the gap rule (parse-comment-gap-attachment-v2).",
+        handback: "The agreement control runs under the required gate."
+      )),
+      dispatch: dispatchable(),
+      parent: in_project(project: "v2-compiler-live", contribution: "The v2 compiler keeps authored prose under the same gap rule as the seed, and the agreement that rule holds is executed by the gate rather than by an interactive run."),
     ),
 
     roadmap_node(
@@ -10268,6 +10286,7 @@ fn guarantee_ladder_edges() -> List<RoadmapEdge> {
     edge(child: "extended-admission-cardinality", parent: "cardinality-vertical-slice"),
     edge(child: "parse-comment-gap-attachment", parent: "parse-node-source-extent"),
     edge(child: "parse-comment-gap-attachment-v2", parent: "parse-comment-gap-attachment"),
+    edge(child: "parse-comment-gap-agreement-control-gated", parent: "parse-comment-gap-attachment-v2-consumed"),
     edge(child: "v2-parse-final-token-retained", parent: "parse-node-source-extent"),
     edge(child: "per-function-claim-refuses-after-admission", parent: "per-function-claim-run-loads-string-dispatched-names"),
     edge(child: "p256-verify-cost-cut", parent: "v1-interpreter-p256-verify-cost-shape"),
