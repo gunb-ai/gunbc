@@ -4,7 +4,7 @@ import std.types { Bool, NonEmptyStr, List, Port }
 import std.nat { Nat }
 import std.algebra { length, string_contains }
 import std.optional { Absent, Present }
-import std.measure { byte_size_count, gibibyte, gibibyte_count, gibibyte_to_byte_size, gibibyte_ceiling }
+import std.measure { ByteSize, byte_size, byte_size_count, token_count, gibibyte, gibibyte_count, gibibyte_to_byte_size, gibibyte_ceiling }
 import gunbc.serving.srv1_serving_replica_layout {
   srv1_replica_0, srv1_replica_1, srv1_serving_replica_roster,
   srv1_replica_host_budget, srv1_replica_total_host_claim,
@@ -22,10 +22,10 @@ import gunbc.serving.srv1_serving_replica_layout {
   srv1_fleet_boot_survival_audit, srv1_audit_entry_is_unreadable, srv1_audit_entry_is_enabled_at_boot,
   srv1_audit_entry_is_user_scope, srv1_audit_entry_is_user_scope_with_linger, srv1_audit_entry_is_restart_unless_stopped,
   srv1_test_only_artifacts,
-  BootSurvivalObservation,
+  BootSurvivalObservation, srv1_l1_staging_floor
 }
 import extdeps.container.nvidia_container_toolkit { nvidia_cdi_device_selector_of, nvidia_cdi_device_name_prefix }
-import gunbc.serving.serving_host_memory { srv1_lmcache_l2_configured }
+import gunbc.serving.serving_host_memory { srv1_lmcache_l1_configured, srv1_lmcache_l2_configured }
 import gunbc.rung_drop.srv1_serving_boot_installer_is_adopted_not_staged { srv1_serving_boot_installer_is_adopted_not_staged }
 import gunbc.rung_drop { Standing, TypedDeclaration, AuthoredProse, Retired, Superseded, Dissolved }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
@@ -52,7 +52,9 @@ fn witness_cfg_full(tp: Nat, kv: Srv1KvCacheDtype, reps: Nat, p2p: Bool, l2: Srv
     kv_cache_dtype: kv,
     profile: "qwen38-flash-next" as NonEmptyStr,
     hardware: "rtx-pro-6000-pcie" as NonEmptyStr,
-    lmcache_l1: gibibyte_to_byte_size(g: gibibyte(count: 12)),
+    // The tier is not this helper's to state: it is the single row (class B4), and a helper that
+    // restated it as a literal would silently build test shapes the model now refuses.
+    lmcache_l1: srv1_admitted_launch_config.lmcache_l1,
     max_model_len: 229376,
     image_digest: "sha256:2ad6245e058de7b4d0b973b08d60f67b18f563e4bd63d6a0e9b0406222a098e9" as NonEmptyStr,
     lil_replicas: reps,
@@ -299,24 +301,52 @@ test fn the_replica_device_word_uses_the_shared_selector() -> Bool {
   model_ok && launcher_ok
 }
 
-// THE LAUNCHER RECEIPT AGREES WITH THE TYPED ROWS (review 92353: the retained body restates the 32g memory
-// limit and the L1/L2 tier sizes as literals — a hash-pinned ADOPTED on-host receipt, not a second authority).
-// This ties each restated literal to its typed source so a drift between the host file and the model is a RED
-// witness, not a silent authority fork: --memory=32g tracks srv1_replica_host_budget.cgroup_memory_limit (32
-// GiB), the L1/L2 env values track srv1_admitted_launch_config.lmcache_l1 and srv1_lmcache_l2_configured, and
-// --max-model-len tracks the config. If the operator edits the on-host script (its sha256 no longer matches
-// srv1_serving_gpu_launcher) the receipt itself is stale; if only a typed row moves, this catches the divergence.
+// THE LAUNCHER RECEIPT AGREES WITH THE SHAPE IT WAS CAPTURED AT (review 92353: the retained body restates the
+// memory limit and the L1/L2 tier sizes as literals — a hash-pinned ADOPTED on-host receipt, not a second
+// authority).
+//
+// IT NO LONGER AGREES WITH THE TYPED ROWS, AND THAT IS THE TRUTH WORTH KEEPING. This file is the RESTORE PATH
+// ONLY since 2026-11-09T21:44:07Z (its own reason field says so): no systemd path reaches it, the installed
+// helper points LAUNCH= at the rendered launcher instead. On 2026-11-24 the shape moved — L1 12 -> 48 GiB,
+// --memory/--memory-swap 32g -> 72g, --shm-size 16g -> 56g — and only the RENDERED path moved with it, because
+// that is the path that launches anything. The rollback target was not re-cut, so it still carries the
+// 2026-11-08 shape. Tying its literals to the typed rows would have been a false claim about the rollback
+// target; asserting they still match the captured shape is the claim the receipt can actually support, and the
+// control below pins the divergence so nobody can roll back into the B4 configuration without a witness
+// going red first. --max-model-len is still shared by both paths and still ties to the config.
 test fn the_launcher_receipt_agrees_with_the_typed_rows() -> Bool {
   let body = srv1_serving_gpu_launcher.body as String
   let cfg = srv1_admitted_launch_config
-  let mem_gib = gibibyte_count(g: gibibyte_ceiling(b: srv1_replica_host_budget.cgroup_memory_limit))
-  let l1_gib = gibibyte_count(g: gibibyte_ceiling(b: cfg.lmcache_l1))
-  let l2_gib = gibibyte_count(g: gibibyte_ceiling(b: srv1_lmcache_l2_configured))
-  let mem_ok = mem_gib == 32 && string_contains(s: body, pattern: "--memory=32g")
-  let l1_ok = l1_gib == 12 && string_contains(s: body, pattern: "LMCACHE_L1_GB=12")
-  let l2_ok = l2_gib == 125 && string_contains(s: body, pattern: "LMCACHE_L2_GB=125")
+  // The captured 2026-11-08 shape, restated as literals in the retained script.
+  let mem_ok = string_contains(s: body, pattern: "--memory=32g")
+    && string_contains(s: body, pattern: "--shm-size 16g")
+  let l1_ok = string_contains(s: body, pattern: "LMCACHE_L1_GB=12")
+  let l2_ok = string_contains(s: body, pattern: "LMCACHE_L2_GB=125")
   let mml_ok = cfg.max_model_len == 229376 && string_contains(s: body, pattern: "--max-model-len 229376")
   mem_ok && l1_ok && l2_ok && mml_ok
+}
+
+// THE RESTORE PATH IS NOT THE CONTRACT SHAPE (class B4). The rollback target still stages L1 at 12 GiB while
+// the rendered, admitted shape puts the tier at 48 GiB and the contract floor at 20 GiB — so rolling back
+// srv1_lil_serve_gpu.sh would reinstall the configuration this class exists to make unrenderable. That hazard
+// is recorded, not smoothed over: if the two ever become equal this goes red and says which way to look.
+test fn the_restore_path_carries_the_pre_contract_tier_and_says_so() -> Bool {
+  let body = srv1_serving_gpu_launcher.body as String
+  let restore_l1_is_the_2026_11_08_shape = string_contains(s: body, pattern: "LMCACHE_L1_GB=12")
+  let admitted_l1 = srv1_admitted_launch_config.lmcache_l1
+  // ByteSize has no declared ordering; the comparison is on the counts, on both sides.
+  let floor_bytes = match srv1_l1_staging_floor(
+    contract: srv1_kv_staging_contract,
+    context: token_count(count: srv1_admitted_launch_config.max_model_len)
+  ) { Accepted { value: v, diagnostics: _ } => byte_size_count(b: v), Rejected { diagnostics: _ } => 0 }
+  let tier_bytes = byte_size_count(b: srv1_lmcache_l1_configured)
+  restore_l1_is_the_2026_11_08_shape
+    && srv1_lmcache_l1_configured == admitted_l1
+    && tier_bytes > floor_bytes
+    // the admitted tier clears the floor but not by an order of magnitude: it is a real buffer, not a token
+    // gesture, and it is not so far above the floor that the floor stops being the thing that binds.
+    && floor_bytes > tier_bytes / 4
+    && byte_size_count(b: admitted_l1) == 48 * 1073741824
 }
 
 // THE RUNG DROP IS ROSTERED (review 92440, guarantee_ladder "no silent regression"): the boot path's
