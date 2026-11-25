@@ -147,13 +147,18 @@ test fn unread_parameters_refuse_the_launch_rather_than_inventing_argv() -> Bool
   }
 }
 
-// ── THE DISCRIMINATING REDS: THE 2026-11-24 STATE IS NO LONGER RENDERABLE ─────────────────────────
+// ── THE DISCRIMINATING REDS: THE 2026-11-24 OPERATING POINT REFUSES THE SHAPE AND THE LAUNCH ──
 
 // The fixture: srv3's row with the throughput read at FOUR-way -- the shape the fleet actually ran
 // before 19:56 UTC on 2026-11-24 (router cap 4 with the engine reserving 8 slots). The same 26 tok/s
 // aggregate read at 4 puts every stream at ~6.5, below the policy's 10 tok/s floor, so the arm must
-// refuse: no production row can reserve 4 slots for a fleet whose policy asks 10 tok/s per stream. On
-// main, where --parallel was a writable field, this was a row anyone could author; here it has no render.
+// refuse: no production row can reserve 4 slots for a fleet whose policy asks 10 tok/s per stream. What
+// this refusal establishes is exactly the rung the failure-mode row declares: the 2026-11-24 OPERATING
+// POINT can no longer be the shape of a production launch through replica_engine_launch -- the turns
+// derive from the readings and the readings fail the policy floor at 4-way. It does NOT establish that a
+// second slot count cannot be written anywhere: strata_launch_with_parallel is public and a raw
+// StrataServeFlags is still constructible (the cell record does exactly that, with 8). Mechanically-
+// Preventable, witnesses-kept; the structural rung needs the host read-back join the row's standing names.
 fn srv3_variant_read_at(concurrency: Nat, aggregate: Nat) -> ServingReplicaProfile {
   ServingReplicaProfile {
     id: "srv3-strata",
