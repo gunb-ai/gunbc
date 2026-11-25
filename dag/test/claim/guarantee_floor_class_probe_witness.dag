@@ -343,8 +343,9 @@ test fn floor_hole_receipt_records_acceptance_as_the_observation() -> Bool {
 // dag/gunbc/recurring_failure_mode/optional_admitted_where_a_required_value_is_declared.dag. That row
 // declares no dispatch field, so it is NotDispatchable until this node and its
 // recurring-failure-mode row land. main's two parse-hole legs of the same shape
-// (floor_parse_list_separator_omission_is_still_silent at :253 and
-// floor_hole_receipt_records_acceptance_as_the_observation at :290) carry no such note; this one does.
+// (#test.claim.guarantee_floor_class_probe_witness::floor_parse_list_separator_omission_is_still_silent and
+// #test.claim.guarantee_floor_class_probe_witness::floor_hole_receipt_records_acceptance_as_the_observation)
+// carry no such note; this one does.
 
 test fn floor_cardinality_seam_field_projection_through_optional_is_still_silent() -> ProcessExit {
   census_verdict_all([
@@ -367,7 +368,8 @@ test fn floor_cardinality_seam_call_argument_refuses_proving_harness_is_live() -
   ])
 }
 
-// THE ROUTE, NOT ONLY THE ANSWER (gunbc.design_argument::witness_one_interface, DESIGN.md:427: "every supplied
+// THE ROUTE, NOT ONLY THE ANSWER (gunbc.design_argument::witness_one_interface -- the argument is the authority here, and the prose
+// restatement in ctrl docs/dag-modeling/DESIGN.md carries no symbol and so no position: "every supplied
 // boundary owes one inhabitance claim that still executes the real path... asserting the ROUTE and not only the
 // answer, and SUPPLYING INPUTS MAY NEVER REMOVE THE LAST EXECUTION OF THE REAL PATH - deleting the integration
 // must make a control fail"). The three verdict tests above assert WHAT the census says for the fixtures this
@@ -393,8 +395,8 @@ test fn floor_cardinality_seam_hole_receipt_joins_its_v1_compile_path() -> Bool 
       // conjunct names itself through census_premise, and the acceptance itself is a real verdict over
       // the census rather than a Bool over the receipt's observation: census_verdict maps a
       // CensusNotRunnable to CensusUnobserved carrying the builtin's cause verbatim
-      // (gunbc.compile_census_probe:189), and the fold orders them on the TYPE by constructor match,
-      // CensusDisagreed outranking CensusUnobserved (:130-140). Absence therefore cannot outrank a
+      // #gunbc.compile_census_probe::census_verdict, and the fold orders them on the TYPE by constructor match,
+      // CensusDisagreed outranking CensusUnobserved #gunbc.compile_census_probe::census_verdict_worse. Absence therefore cannot outrank a
       // finding, and a census that failed to execute cannot be read as one that held.
       let verdicts = [
         census_premise("the receipt joins the enrolled v1 compile path", receipt_joins_v1_compile_path(receipt: receipt)),
