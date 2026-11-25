@@ -18,7 +18,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // WHAT THESE FOUR ARMS TEST, and nothing beyond that:
 //
 // ARMS 1-3 -- exit-policy and channel-selection shape of the shell-lane CLASSIFIER
-// #gunbc.command_runner::classify_process_observation (policy ExitZeroSucceeds over an
+// #extdeps.shell.exec::classify_process_observation, which this claim reaches through the one
+// re-export hop gunbc.command_runner performs (policy ExitZeroSucceeds over an
 // #extdeps.shell.exec::ProcessObservation). Every fixture builds an observation whose stdout and
 // stderr are ALREADY separate fields; the refusal in arm 1 is triggered by the EXIT POLICY (a
 // non-zero exit), never by an inability to deliver separate streams. The codex trip's production
