@@ -187,8 +187,8 @@ data retained_item_kind_dispatch_totality: RetainedLegacyRustTestModule = Retain
 
 data retained_unimported_bare_name_floor: RetainedLegacyRustTestModule = RetainedLegacyRustTestModule {
   source_file: "unimported_bare_name_floor_test.rs",
-  purpose: "The Rust test compiles multi-file fixtures and asserts the refusal message names the unimported bare name, with controls that compile clean. The census takes ONE source string, so the multi-module fixture cannot be handed to it, and the message-naming assertion is message text, which the census row does not carry." as NonEmptyStr,
-  dissolution: UnboundDissolution { description: "A claim surface that compiles a multi-module fixture and reads the refusal's message text lets this row be deleted." as NonEmptyStr },
+  purpose: "The Rust test compiles multi-file fixtures and asserts the refusal message names the unimported bare name, with controls that compile clean. A multi-module compile is reachable from a claim (gunbc.instruments.multi_module_compile_fixture compile_fixture, used by test.claim.emitted_symbol_collision), so the multi-module shape is not what keeps this in Rust; what stays is the message-naming assertion, which is message text that the fixture's census rows do not carry." as NonEmptyStr,
+  dissolution: UnboundDissolution { description: "A claim that reads the refusal's message text (the unimported name named in it) lets this row be deleted." as NonEmptyStr },
 }
 
 data retained_map_insert_record_shaped_refusal: RetainedLegacyRustTestModule = RetainedLegacyRustTestModule {
@@ -205,8 +205,8 @@ data retained_native_driver_cost_refusal: RetainedLegacyRustTestModule = Retaine
 
 data retained_record_literal_names_a_union_type_refusal: RetainedLegacyRustTestModule = RetainedLegacyRustTestModule {
   source_file: "record_literal_names_a_union_type_refusal_test.rs",
-  purpose: "Three checks stay in Rust: the variant list inside the refusal message ('[ZzNamed, ZzEmpty]' and the repair instruction), the_refusal_message_says_what_it_says wording, and the three-file pool-collision control, whose fixture needs three modules where the census takes one source string. The counts at each position, the located name (census subject), the alias, the unknown-name and the accept cases are witnessed by test.claim.record_literal_names_a_union_type_refusal_witness; the Rust file is kept whole and those are duplicated." as NonEmptyStr,
-  dissolution: UnboundDissolution { description: "A claim surface that reads refusal message text and compiles a multi-module fixture lets this row be deleted." as NonEmptyStr },
+  purpose: "Three checks stay in Rust: the variant list inside the refusal message ('[ZzNamed, ZzEmpty]' and the repair instruction), the_refusal_message_says_what_it_says wording, and the three-file pool-collision control, whose assertion is on refusal message text; the three-module compile itself is reachable from a claim through compile_fixture, so it is not what keeps it in Rust. The counts at each position, the located name (census subject), the alias, the unknown-name and the accept cases are witnessed by test.claim.record_literal_names_a_union_type_refusal_witness; the Rust file is kept whole and those are duplicated." as NonEmptyStr,
+  dissolution: UnboundDissolution { description: "A claim that reads refusal message text lets this row be deleted." as NonEmptyStr },
 }
 
 data retained_record_literal_declared_type_inhabitance: RetainedLegacyRustTestModule = RetainedLegacyRustTestModule {
