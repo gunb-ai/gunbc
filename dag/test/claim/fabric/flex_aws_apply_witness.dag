@@ -8,7 +8,7 @@ import std.measure { second, MoneyPerHour, money_amount_micro, money_per_hour_mi
 import extdeps.currency.currency { Usd }
 import extdeps.cloud.aws_ec2 {
   AwsEc2Instance, AwsEc2InstanceState, AwsEc2Placement, AwsEc2Running, AwsEc2Terminated, AwsEc2ShuttingDown, AwsEc2ActionTerminate,
-  AwsEc2LaunchInline, AwsEc2SpotMarket, AwsEc2TagInstance, AwsEc2TagVolume,
+  AwsEc2LaunchInline, AwsEc2SpotMarket, AwsEc2TagInstance, AwsEc2TagVolume, AwsEc2Tag,
 }
 import extdeps.cloud.aws_cli { aws_cli_run_instances, aws_cli_money_wire }
 import extdeps.exec.command { argv_words }
@@ -18,9 +18,11 @@ import product.fabric.flex_ec2_boot { FlexEc2BootPolicy }
 import product.fabric.flex_aws_apply {
   FlexAwsApplyPolicy, FlexAwsNotice, FlexAwsInterruptionWarning, FlexAwsRebalanceRecommendation,
   FlexAwsNoticeParsed, FlexAwsNoticeForeign, FlexAwsNoticeUnreadable,
-  FlexAwsRelease, FlexAwsLaunch, FlexAwsHold, FlexAwsReleaseLifetimeSpent, FlexAwsReleaseSurplus,
-  FlexAwsReleaseLaunchTimeUnreadable, FlexAwsDemandFixed, FlexAwsDemandRouter, FlexAwsRegionQuota,
-  flex_aws_read_notice, flex_aws_decide, flex_aws_run_request,
+  FlexAwsDrain, FlexAwsTerminate, FlexAwsLaunch, FlexAwsHold, FlexAwsDemand, FlexAwsDemandFixed, FlexAwsDemandRouter, FlexAwsRegionQuota,
+  FlexAwsCardUse, FlexAwsDrainIdle, FlexAwsDrainSurplus, FlexAwsTerminateDrained, FlexAwsTerminateDrainTimedOut,
+  FlexAwsTerminateDrainMarkUnreadable, FlexAwsTerminateNeverReady, FlexAwsMarkWrite, FlexAwsMarkSet, FlexAwsMarkClear,
+  flex_aws_mark_unready, flex_aws_mark_idle, flex_aws_mark_drain,
+  flex_aws_read_notice, flex_aws_decide, flex_aws_run_request, flex_aws_marks,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -38,8 +40,9 @@ data policy: FlexAwsApplyPolicy = FlexAwsApplyPolicy {
   // Claims about notices, walls and regions run under a ceiling that never binds; the burn claim below
   // builds the operator's $5/h policy itself.
   burn_ceiling: rate(micros: 100000000),
-  liability_ceiling: money_amount_micro(count: 50000000),
-  lifetime: second(count: 14400),
+  idle_window: second(count: 1800),
+  drain_timeout: second(count: 600),
+  boot_deadline: second(count: 2700),
 }
 
 fn cand(zone: String, micros: Int) -> FlexAwsCandidate {
@@ -55,6 +58,30 @@ fn card(id: String, launched: String) -> AwsEc2Instance {
     launch_time: launched, public_ip_address: none, tags: [],
   }
 }
+
+fn tagged(id: String, tags: List<AwsEc2Tag>) -> AwsEc2Instance {
+  AwsEc2Instance {
+    instance_id: id as NonEmptyStr, instance_type: "g7e.2xlarge" as NonEmptyStr,
+    placement: AwsEc2Placement { availability_zone: "us-east-1b" as NonEmptyStr },
+    state: AwsEc2InstanceState { code: 16, name: AwsEc2Running },
+    state_reason: none, instance_lifecycle: none, spot_instance_request_id: none,
+    launch_time: "2026-11-25T02:30:00+00:00", public_ip_address: none, tags: tags,
+  }
+}
+
+fn tag_at(key: NonEmptyStr, unix: Int) -> AwsEc2Tag { AwsEc2Tag { key: key, value: to_string(unix) } }
+
+fn card_use(id: String, enrolled: Bool, in_flight: Int, seen: Int) -> FlexAwsCardUse { FlexAwsCardUse { instance_id: id as NonEmptyStr, enrolled: enrolled, in_flight: in_flight, seen_10m: seen } }
+
+fn router(waiting: Bool, active: Int, cap: Int, uses: List<FlexAwsCardUse>) -> FlexAwsDemand {
+  FlexAwsDemandRouter { rentable_waiting: waiting, rented_active: active, rented_cap: cap, cards: uses, max_cards: 3 }
+}
+
+fn idle_for(seconds: Int) -> AwsEc2Instance { tagged(id: "i-0idle", tags: [tag_at(key: flex_aws_mark_idle, unix: now_unix - seconds)]) }
+fn draining(seconds: Int) -> AwsEc2Instance { tagged(id: "i-0dr", tags: [tag_at(key: flex_aws_mark_drain, unix: now_unix - seconds)]) }
+fn unready_for(seconds: Int) -> AwsEc2Instance { tagged(id: "i-0slow", tags: [tag_at(key: flex_aws_mark_unready, unix: now_unix - seconds)]) }
+
+data quota24: List<FlexAwsRegionQuota> = [FlexAwsRegionQuota { region: "us-east-1" as NonEmptyStr, spot_vcpus: 24 }]
 
 // 2026-11-25T03:00:00Z
 data now_unix: Int = 1795575600
@@ -82,13 +109,14 @@ test fn an_empty_pool_launches_the_cheapest_admissible_card() -> Bool {
   }
 }
 
-// REDs of admission: a walled candidate, an on-demand one, a two-GPU size, and one whose rate times the
-// four-hour lifetime exceeds the 50 USD ceiling (13 USD/h x 4 h = 52 USD) are all refused; the pass holds.
-test fn walled_on_demand_wrong_size_and_over_ceiling_candidates_hold() -> Bool {
+// REDs of admission: a walled candidate, an on-demand one, a two-GPU size, and one with no price are all
+// refused, and the pass holds; the same card priced is admitted.
+test fn walled_on_demand_wrong_size_and_unpriced_candidates_hold() -> Bool {
   let walled = FlexAwsCandidate { region: "us-east-1" as NonEmptyStr, zone: "us-east-1a" as NonEmptyStr, instance_type: "g7e.2xlarge" as NonEmptyStr, market: FlexAwsSpot, gpus: 1, vcpus: 8, rate: Present { value: rate(micros: 1000000) }, per_gpu_hour_micros: none, walls: [FlexAwsQuotaBelowVcpus { quota_vcpus: 0, needs: 8 }] }
   let on_demand = FlexAwsCandidate { region: "us-east-1" as NonEmptyStr, zone: "us-east-1a" as NonEmptyStr, instance_type: "g7e.2xlarge" as NonEmptyStr, market: FlexAwsOnDemand, gpus: 1, vcpus: 8, rate: Present { value: rate(micros: 1000000) }, per_gpu_hour_micros: none, walls: [] }
   let other_size = FlexAwsCandidate { region: "us-east-1" as NonEmptyStr, zone: "us-east-1a" as NonEmptyStr, instance_type: "g7e.12xlarge" as NonEmptyStr, market: FlexAwsSpot, gpus: 2, vcpus: 48, rate: Present { value: rate(micros: 1000000) }, per_gpu_hour_micros: none, walls: [] }
-  match flex_aws_decide(policy: policy, demand: FlexAwsDemandFixed { cards: 1 }, candidates: [walled, on_demand, other_size, cand(zone: "us-east-1d", micros: 13000000)], owned: [], notices: [], quotas: [FlexAwsRegionQuota { region: "us-east-1" as NonEmptyStr, spot_vcpus: 16 }], now_unix: now_unix) {
+  let unpriced = FlexAwsCandidate { region: "us-east-1" as NonEmptyStr, zone: "us-east-1d" as NonEmptyStr, instance_type: "g7e.2xlarge" as NonEmptyStr, market: FlexAwsSpot, gpus: 1, vcpus: 8, rate: none, per_gpu_hour_micros: none, walls: [] }
+  match flex_aws_decide(policy: policy, demand: FlexAwsDemandFixed { cards: 1 }, candidates: [walled, on_demand, other_size, unpriced], owned: [], notices: [], quotas: [FlexAwsRegionQuota { region: "us-east-1" as NonEmptyStr, spot_vcpus: 16 }], now_unix: now_unix) {
     FlexAwsHold { why: w } => w.contains("no admissible candidate")
     _ => false
   }
@@ -108,30 +136,44 @@ test fn an_interruption_warning_asks_for_a_replacement_elsewhere() -> Bool {
   }
 }
 
-// DEMAND IS THE ROUTER'S: stranded conversations ask for a card only when the rented pool is full (or there
-// is none, as after a card dies and takes its row with it); stranded demand beside a pool with room holds;
-// no card is asked for past the ceiling.
-test fn stranded_demand_rents_only_when_the_rented_pool_is_full_or_gone() -> Bool {
+// DEMAND IS THE ROUTER'S: a waiter a rented card could take asks for a card only when the rented pool is
+// full (or gone, as after a card dies and takes its row with it); the same waiter beside a pool with room
+// holds; waiters bound to their own engines ask for nothing; no card is asked for past the ceiling.
+test fn rentable_waiters_rent_only_when_the_rented_pool_is_full_or_gone() -> Bool {
   let cs = [cand(zone: "us-east-1b", micros: 2350500)]
-  let one = [card(id: "i-0abc", launched: "2026-11-25T02:30:00+00:00")]
-  (match flex_aws_decide(policy: policy, demand: FlexAwsDemandRouter { stranded: 57, rented_active: 0, rented_cap: 0, max_cards: 3 }, candidates: cs, owned: [], notices: [], quotas: [FlexAwsRegionQuota { region: "us-east-1" as NonEmptyStr, spot_vcpus: 24 }], now_unix: now_unix) {
+  (match flex_aws_decide(policy: policy, demand: router(waiting: true, active: 0, cap: 0, uses: []), candidates: cs, owned: [], notices: [], quotas: quota24, now_unix: now_unix) {
     FlexAwsLaunch { candidate: _, max_price: _, fallbacks: _ } => true
     _ => false
   })
-  && (match flex_aws_decide(policy: policy, demand: FlexAwsDemandRouter { stranded: 57, rented_active: 4, rented_cap: 4, max_cards: 3 }, candidates: cs, owned: one, notices: [], quotas: [FlexAwsRegionQuota { region: "us-east-1" as NonEmptyStr, spot_vcpus: 24 }], now_unix: now_unix) {
+  && (match flex_aws_decide(policy: policy, demand: router(waiting: true, active: 4, cap: 4, uses: [card_use(id: "i-0abc", enrolled: true, in_flight: 4, seen: 6)]), candidates: cs, owned: [tagged(id: "i-0abc", tags: [])], notices: [], quotas: quota24, now_unix: now_unix) {
     FlexAwsLaunch { candidate: _, max_price: _, fallbacks: _ } => true
     _ => false
   })
-  && (match flex_aws_decide(policy: policy, demand: FlexAwsDemandRouter { stranded: 57, rented_active: 2, rented_cap: 4, max_cards: 3 }, candidates: cs, owned: one, notices: [], quotas: [FlexAwsRegionQuota { region: "us-east-1" as NonEmptyStr, spot_vcpus: 24 }], now_unix: now_unix) {
+  && (match flex_aws_decide(policy: policy, demand: router(waiting: true, active: 2, cap: 4, uses: [card_use(id: "i-0abc", enrolled: true, in_flight: 2, seen: 3)]), candidates: cs, owned: [tagged(id: "i-0abc", tags: [])], notices: [], quotas: quota24, now_unix: now_unix) {
     FlexAwsHold { why: w } => w.contains("wanted=1")
     _ => false
   })
-  && (match flex_aws_decide(policy: policy, demand: FlexAwsDemandRouter { stranded: 0, rented_active: 0, rented_cap: 0, max_cards: 3 }, candidates: cs, owned: [], notices: [], quotas: [FlexAwsRegionQuota { region: "us-east-1" as NonEmptyStr, spot_vcpus: 24 }], now_unix: now_unix) {
+  && (match flex_aws_decide(policy: policy, demand: router(waiting: false, active: 0, cap: 0, uses: []), candidates: cs, owned: [], notices: [], quotas: quota24, now_unix: now_unix) {
     FlexAwsHold { why: w } => w.contains("wanted=0")
     _ => false
   })
-  && (match flex_aws_decide(policy: policy, demand: FlexAwsDemandRouter { stranded: 57, rented_active: 0, rented_cap: 0, max_cards: 0 }, candidates: cs, owned: [], notices: [], quotas: [FlexAwsRegionQuota { region: "us-east-1" as NonEmptyStr, spot_vcpus: 24 }], now_unix: now_unix) {
+  && (match flex_aws_decide(policy: policy, demand: FlexAwsDemandRouter { rentable_waiting: true, rented_active: 0, rented_cap: 0, cards: [], max_cards: 0 }, candidates: cs, owned: [], notices: [], quotas: quota24, now_unix: now_unix) {
     FlexAwsHold { why: _ } => true
+    _ => false
+  })
+}
+
+// THE OVERSHOOT RED (observed 2026-11-25 13:21-13:32): a card still booting is not in the router, so the
+// router reports no rented pool and keeps asking. That ask is already answered by the booting card, so the
+// pass holds instead of launching a second; once the card is enrolled and its pool fills, a second is asked.
+test fn a_booting_card_answers_the_ask_it_was_launched_for() -> Bool {
+  let cs = [cand(zone: "us-east-1b", micros: 2350500), cand(zone: "us-east-1c", micros: 2719400)]
+  (match flex_aws_decide(policy: policy, demand: router(waiting: true, active: 0, cap: 0, uses: [card_use(id: "i-0boot", enrolled: false, in_flight: 0, seen: 0)]), candidates: cs, owned: [tagged(id: "i-0boot", tags: [tag_at(key: flex_aws_mark_unready, unix: now_unix - 300)])], notices: [], quotas: quota24, now_unix: now_unix) {
+    FlexAwsHold { why: w } => w.contains("steady=1 wanted=1")
+    _ => false
+  })
+  && (match flex_aws_decide(policy: policy, demand: router(waiting: true, active: 4, cap: 4, uses: [card_use(id: "i-0boot", enrolled: true, in_flight: 4, seen: 5)]), candidates: cs, owned: [tagged(id: "i-0boot", tags: [])], notices: [], quotas: quota24, now_unix: now_unix) {
+    FlexAwsLaunch { candidate: _, max_price: _, fallbacks: _ } => true
     _ => false
   })
 }
@@ -150,27 +192,107 @@ test fn a_rebalance_recommendation_asks_for_a_replacement_and_keeps_serving() ->
   })
 }
 
-// THE LIFETIME BOUND: a card older than four hours is released; a card whose launch time cannot be read
-// is released rather than kept unbounded; a terminated card neither counts nor is released.
-test fn a_spent_or_unreadable_lifetime_releases_and_a_dead_card_is_ignored() -> Bool {
-  (match flex_aws_decide(policy: policy, demand: FlexAwsDemandFixed { cards: 1 }, candidates: [], owned: [card(id: "i-0old", launched: "2026-11-24T22:59:00+00:00")], notices: [], quotas: [FlexAwsRegionQuota { region: "us-east-1" as NonEmptyStr, spot_vcpus: 16 }], now_unix: now_unix) {
-    FlexAwsRelease { instance_id: i, why: FlexAwsReleaseLifetimeSpent { age_seconds: a } } => ((i as String) == "i-0old") && (a == 14460)
+// IDLE RELEASE: an enrolled card unused for the whole window is drained, never one second sooner, and not
+// while demand is asking; a terminated card neither counts nor is let go.
+test fn an_idle_card_is_drained_after_the_window_and_a_dead_card_is_ignored() -> Bool {
+  let quiet = router(waiting: false, active: 0, cap: 4, uses: [card_use(id: "i-0idle", enrolled: true, in_flight: 0, seen: 0)])
+  (match flex_aws_decide(policy: policy, demand: quiet, candidates: [], owned: [idle_for(1800)], notices: [], quotas: quota24, now_unix: now_unix) {
+    FlexAwsDrain { instance_id: i, why: FlexAwsDrainIdle { idle_seconds: a } } => ((i as String) == "i-0idle") && (a == 1800)
     _ => false
   })
-  && (match flex_aws_decide(policy: policy, demand: FlexAwsDemandFixed { cards: 1 }, candidates: [], owned: [card(id: "i-0bad", launched: "yesterday")], notices: [], quotas: [FlexAwsRegionQuota { region: "us-east-1" as NonEmptyStr, spot_vcpus: 16 }], now_unix: now_unix) {
-    FlexAwsRelease { instance_id: _, why: FlexAwsReleaseLaunchTimeUnreadable { launch_time: _ } } => true
+  && (match flex_aws_decide(policy: policy, demand: quiet, candidates: [], owned: [idle_for(1799)], notices: [], quotas: quota24, now_unix: now_unix) {
+    FlexAwsHold { why: _ } => true
     _ => false
+  })
+  && (match flex_aws_decide(policy: policy, demand: router(waiting: true, active: 0, cap: 0, uses: [card_use(id: "i-0idle", enrolled: true, in_flight: 0, seen: 0)]), candidates: [], owned: [idle_for(3600)], notices: [], quotas: quota24, now_unix: now_unix) {
+    FlexAwsDrain { instance_id: _, why: _ } => false
+    _ => true
   })
   && (match flex_aws_decide(policy: policy, demand: FlexAwsDemandFixed { cards: 1 }, candidates: [cand(zone: "us-east-1b", micros: 2350500)], owned: [AwsEc2Instance {
       instance_id: "i-0dead" as NonEmptyStr, instance_type: "g7e.2xlarge" as NonEmptyStr,
       placement: AwsEc2Placement { availability_zone: "us-east-1b" as NonEmptyStr },
       state: AwsEc2InstanceState { code: 48, name: AwsEc2Terminated },
       state_reason: none, instance_lifecycle: none, spot_instance_request_id: none,
-      launch_time: "2026-11-24T00:00:00+00:00", public_ip_address: none, tags: [],
-    }], notices: [], quotas: [FlexAwsRegionQuota { region: "us-east-1" as NonEmptyStr, spot_vcpus: 16 }], now_unix: now_unix) {
+      launch_time: "2026-11-25T00:00:00+00:00", public_ip_address: none, tags: [tag_at(key: flex_aws_mark_idle, unix: 0)],
+    }], notices: [], quotas: quota24, now_unix: now_unix) {
     FlexAwsLaunch { candidate: _, max_price: _, fallbacks: _ } => true
     _ => false
   })
+}
+
+// DRAIN, THEN TERMINATE: a draining card is terminated once the router has withdrawn it and nothing of it
+// is in flight; while a turn runs it is kept, up to the drain timeout; a drain mark that does not read is
+// terminated rather than guessed. A draining card does not count, so its replacement can be asked for.
+test fn a_drained_card_terminates_only_when_its_turns_finish_or_time_runs_out() -> Bool {
+  let gone = router(waiting: false, active: 0, cap: 0, uses: [card_use(id: "i-0dr", enrolled: false, in_flight: 0, seen: 2)])
+  let busy = router(waiting: false, active: 0, cap: 0, uses: [card_use(id: "i-0dr", enrolled: false, in_flight: 2, seen: 2)])
+  (match flex_aws_decide(policy: policy, demand: gone, candidates: [], owned: [draining(40)], notices: [], quotas: quota24, now_unix: now_unix) {
+    FlexAwsTerminate { instance_id: i, why: FlexAwsTerminateDrained { drain_seconds: d } } => ((i as String) == "i-0dr") && (d == 40)
+    _ => false
+  })
+  && (match flex_aws_decide(policy: policy, demand: busy, candidates: [], owned: [draining(40)], notices: [], quotas: quota24, now_unix: now_unix) {
+    FlexAwsHold { why: w } => w.contains("steady=0")
+    _ => false
+  })
+  && (match flex_aws_decide(policy: policy, demand: busy, candidates: [], owned: [draining(600)], notices: [], quotas: quota24, now_unix: now_unix) {
+    FlexAwsTerminate { instance_id: _, why: FlexAwsTerminateDrainTimedOut { drain_seconds: d } } => d == 600
+    _ => false
+  })
+  && (match flex_aws_decide(policy: policy, demand: busy, candidates: [], owned: [tagged(id: "i-0dr", tags: [AwsEc2Tag { key: flex_aws_mark_drain, value: "soon" }])], notices: [], quotas: quota24, now_unix: now_unix) {
+    FlexAwsTerminate { instance_id: _, why: FlexAwsTerminateDrainMarkUnreadable { value: v } } => v == "soon"
+    _ => false
+  })
+  && (match flex_aws_decide(policy: policy, demand: router(waiting: true, active: 0, cap: 0, uses: [card_use(id: "i-0dr", enrolled: false, in_flight: 2, seen: 2)]), candidates: [cand(zone: "us-east-1b", micros: 2350500), cand(zone: "us-east-1c", micros: 2719400)], owned: [draining(40)], notices: [], quotas: quota24, now_unix: now_unix) {
+    FlexAwsLaunch { candidate: _, max_price: _, fallbacks: _ } => true
+    _ => false
+  })
+}
+
+// THE BOOT DEADLINE: a card out of the router since its unready mark for the whole deadline is terminated
+// (it carries nothing, so it is not drained); one second short it is kept; a card the router lists is
+// never judged by that clock.
+test fn a_card_never_ready_by_its_deadline_is_terminated() -> Bool {
+  let out = router(waiting: false, active: 0, cap: 0, uses: [card_use(id: "i-0slow", enrolled: false, in_flight: 0, seen: 0)])
+  (match flex_aws_decide(policy: policy, demand: out, candidates: [], owned: [unready_for(2700)], notices: [], quotas: quota24, now_unix: now_unix) {
+    FlexAwsTerminate { instance_id: i, why: FlexAwsTerminateNeverReady { unready_seconds: u } } => ((i as String) == "i-0slow") && (u == 2700)
+    _ => false
+  })
+  && (match flex_aws_decide(policy: policy, demand: out, candidates: [], owned: [unready_for(2699)], notices: [], quotas: quota24, now_unix: now_unix) {
+    FlexAwsHold { why: _ } => true
+    _ => false
+  })
+  && (match flex_aws_decide(policy: policy, demand: router(waiting: false, active: 1, cap: 4, uses: [card_use(id: "i-0slow", enrolled: true, in_flight: 1, seen: 1)]), candidates: [], owned: [unready_for(9000)], notices: [], quotas: quota24, now_unix: now_unix) {
+    FlexAwsTerminate { instance_id: _, why: _ } => false
+    _ => true
+  })
+}
+
+// THE MARKS: a card out of the router starts its unready clock and loses it once enrolled; an enrolled card
+// with nothing in flight and no conversation seen starts its idle clock and loses it once used; a fixed
+// count reads no use and starts no clock.
+fn mark_set_of(ms: List<FlexAwsMarkWrite>, key: NonEmptyStr) -> Bool {
+  (count(ms) == 1) && match ms.first() {
+    Present { value: FlexAwsMarkSet { instance_id: _, key: k, unix: t } } => ((k as String) == (key as String)) && (t == now_unix)
+    _ => false
+  }
+}
+
+fn mark_clear_of(ms: List<FlexAwsMarkWrite>, key: NonEmptyStr) -> Bool {
+  (count(ms) == 1) && match ms.first() {
+    Present { value: FlexAwsMarkClear { instance_id: _, key: k } } => (k as String) == (key as String)
+    _ => false
+  }
+}
+
+test fn the_marks_start_and_clear_each_clock() -> Bool {
+  let fresh = tagged(id: "i-0m", tags: [])
+  let unready = tagged(id: "i-0m", tags: [tag_at(key: flex_aws_mark_unready, unix: now_unix - 60)])
+  let idle = tagged(id: "i-0m", tags: [tag_at(key: flex_aws_mark_idle, unix: now_unix - 60)])
+  mark_set_of(ms: flex_aws_marks(demand: router(waiting: false, active: 0, cap: 0, uses: [card_use(id: "i-0m", enrolled: false, in_flight: 0, seen: 0)]), owned: [fresh], notices: [], now_unix: now_unix), key: flex_aws_mark_unready)
+  && mark_clear_of(ms: flex_aws_marks(demand: router(waiting: false, active: 0, cap: 4, uses: [card_use(id: "i-0m", enrolled: true, in_flight: 1, seen: 1)]), owned: [unready], notices: [], now_unix: now_unix), key: flex_aws_mark_unready)
+  && mark_set_of(ms: flex_aws_marks(demand: router(waiting: false, active: 0, cap: 4, uses: [card_use(id: "i-0m", enrolled: true, in_flight: 0, seen: 0)]), owned: [fresh], notices: [], now_unix: now_unix), key: flex_aws_mark_idle)
+  && mark_clear_of(ms: flex_aws_marks(demand: router(waiting: false, active: 0, cap: 4, uses: [card_use(id: "i-0m", enrolled: true, in_flight: 0, seen: 3)]), owned: [idle], notices: [], now_unix: now_unix), key: flex_aws_mark_idle)
+  && (count(flex_aws_marks(demand: FlexAwsDemandFixed { cards: 1 }, owned: [fresh], notices: [], now_unix: now_unix)) == 0)
 }
 
 // THE REQUEST ON THE WIRE: spot one-time/terminate, MaxPrice the admitted rate in six digits, the owner tag
@@ -178,7 +300,8 @@ test fn a_spent_or_unreadable_lifetime_releases_and_a_dead_card_is_ignored() -> 
 test fn the_launch_argv_is_tagged_spot_at_the_admitted_rate() -> Bool {
   let boot = FlexEc2BootPolicy {
     ssm_key_prefix: "/gunbc-flex/pool-key" as NonEmptyStr, cert_prefix: "/gunbc-flex/card-cert" as NonEmptyStr,
-    bucket_parameter: "/gunbc-flex/weights-bucket" as NonEmptyStr, key_wait: second(count: 600), root_volume_gib: 150,
+    bucket_parameter: "/gunbc-flex/weights-bucket" as NonEmptyStr, key_wait: second(count: 600),
+    heartbeat_parameter: "/gunbc-flex/heartbeat" as NonEmptyStr, heartbeat_stale: second(count: 1800), root_volume_gib: 150,
     instance_profile: AwsEc2IamInstanceProfileByName { name: "gunbc-flex-card" as NonEmptyStr },
   }
   let request = flex_aws_run_request(candidate: cand(zone: "us-east-1b", micros: 2350500), max_price: rate(micros: 2350500), ami: "ami-0ba1ac2e319bff082" as NonEmptyStr, user_data: "#!/bin/bash\ntrue\n", boot: boot, subnet_id: "subnet-0c20b51dafdea4021" as NonEmptyStr, security_group_id: "sg-0c7d008b7591fca04" as NonEmptyStr, client_token: "gunbc-flex-us-east-1b-29926260" as NonEmptyStr)
@@ -254,7 +377,7 @@ test fn the_cheapest_card_anywhere_wins_where_its_region_has_quota() -> Bool {
 // $1.35/h would make $6.20/h and is not asked for even though demand and quota allow it; a third at $0.15/h
 // fits. A live card whose price was not read refuses rather than counting as free.
 test fn the_burn_ceiling_bounds_the_summed_hourly_price() -> Bool {
-  let five = FlexAwsApplyPolicy { actuation: Apply, gpus_per_card: 1, burn_ceiling: rate(micros: 5000000), liability_ceiling: money_amount_micro(count: 50000000), lifetime: second(count: 14400) }
+  let five = FlexAwsApplyPolicy { actuation: Apply, gpus_per_card: 1, burn_ceiling: rate(micros: 5000000), idle_window: second(count: 1800), drain_timeout: second(count: 600), boot_deadline: second(count: 2700) }
   let a = AwsEc2Instance { instance_id: "i-0a" as NonEmptyStr, instance_type: "g7e.2xlarge" as NonEmptyStr, placement: AwsEc2Placement { availability_zone: "us-east-1b" as NonEmptyStr }, state: AwsEc2InstanceState { code: 16, name: AwsEc2Running }, state_reason: none, instance_lifecycle: none, spot_instance_request_id: none, launch_time: "2026-11-25T02:30:00+00:00", public_ip_address: none, tags: [] }
   let b = AwsEc2Instance { instance_id: "i-0b" as NonEmptyStr, instance_type: "g7e.2xlarge" as NonEmptyStr, placement: AwsEc2Placement { availability_zone: "us-east-1d" as NonEmptyStr }, state: AwsEc2InstanceState { code: 16, name: AwsEc2Running }, state_reason: none, instance_lifecycle: none, spot_instance_request_id: none, launch_time: "2026-11-25T02:30:00+00:00", public_ip_address: none, tags: [] }
   let priced = [cand(zone: "us-east-1b", micros: 2365300), cand(zone: "us-east-1d", micros: 2481800)]

@@ -1,0 +1,45 @@
+module test.claim.live_deploy.flex_aws_loop_unit_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, String, NonEmptyStr, CommitSha, List }
+import extdeps.systemd.unit_file { serialize_systemd_unit_file }
+import gunbc.live_deploy.release_locus { ReleaseRevisionBinding, RevisionBoundAtEmission }
+import gunbc.live_deploy.desired { deployment_spec_srv1 }
+import gunbc.live_deploy.flex_aws_loop_unit { flex_aws_loop_unit_file, flex_aws_loop_unit_name }
+import gunbc.live_deploy.apply_legs { deploy_apply_flex_aws_loop_legs, deploy_apply_leg_step }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUPPLIED: a release revision; the spec is the real srv1 deployment's (gunbc.live_deploy.desired), so the
+// unit below is the one the srv1 deploy would install.
+fn revision() -> ReleaseRevisionBinding {
+  RevisionBoundAtEmission { revision: "0123456789abcdef0123456789abcdef01234567" as CommitSha }
+}
+
+fn unit() -> String { serialize_systemd_unit_file(file: flex_aws_loop_unit_file(spec: deployment_spec_srv1(), revision: revision())) }
+
+// THE UNIT RUNS THE DEPLOYED REVISION: the release's own entry and source roots, as the operator user, under
+// a real memory bound, restarted whenever its bounded loop exits, and started at boot.
+test fn the_loop_unit_runs_the_released_pass_as_the_operator_with_a_memory_bound() -> Bool {
+  let u = unit()
+  let locus = "/releases/0123456789abcdef0123456789abcdef01234567"
+  u.contains(join([locus, "/dag/gunbc/fleet/flex_aws_pass.dag"], ""))
+    && u.contains(join([locus, "/src/v2"], ""))
+    && u.contains("run_loop")
+    && u.contains("--arg mode=apply") && u.contains("--arg cards=3") && u.contains("--arg router=on")
+    && u.contains("User=briansrls")
+    && u.contains("Restart=always")
+    && u.contains("MemoryMax=")
+    && u.contains("MemorySwapMax=0")
+    && u.contains("WantedBy=multi-user.target")
+    && !u.contains("gunbc-flex-run")
+}
+
+// THE DEPLOY INSTALLS IT: the legs write the unit, reload the manager, and enable and restart the service.
+test fn the_srv1_deploy_writes_enables_and_restarts_the_loop() -> Bool {
+  let steps = map(deploy_apply_flex_aws_loop_legs(spec: deployment_spec_srv1(), revision: revision()), l => deploy_apply_leg_step(leg: l))
+  any(steps, s => s == "flex-aws-loop-unit")
+    && any(steps, s => s == "flex-aws-loop-reload")
+    && any(steps, s => s.starts_with("flex-aws-loop") && s.contains("restart"))
+    && ((flex_aws_loop_unit_name as String) == "gunbc-flex-aws-loop.service")
+}

@@ -89,6 +89,12 @@ test fn the_loop_launches_only_tagged_spot_cards_and_holds_no_iam_or_s3_write() 
     Absent => false
   })
   && (match terminate { Present { value: s } => has_condition(s: s, key: "aws:ResourceTag/gunbc-flex-owner", value: "gunbc-flex")  Absent => false })
+  // The marks: only on our cards, and only the mark keys.
+  && (match statement_with(d: flex_aws_loop_policy, sid: "FlexMarkOwnCards") {
+    Present { value: s } => has_condition(s: s, key: "aws:ResourceTag/gunbc-flex-owner", value: "gunbc-flex")
+      && has_condition(s: s, key: "aws:TagKeys", value: "gunbc-flex-*-since")
+    Absent => false
+  })
   && !any(actions, a => a.starts_with("s3:"))
   && !any(actions, a => a.starts_with("iam:") && a != "iam:PassRole")
 }

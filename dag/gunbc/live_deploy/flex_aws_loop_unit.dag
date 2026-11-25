@@ -1,0 +1,85 @@
+module gunbc.live_deploy.flex_aws_loop_unit
+
+import std.types { List, NonEmptyStr, String }
+import std.measure { ByteSize, byte_size }
+import extdeps.systemd.unit_file {
+  SystemdUnitFile, ServiceUnitFile, Description, After, Wants,
+  ServiceType, SimpleMode, ServiceUser, ServiceGroup, WorkingDirectory, ExecStart, Restart, RestartSec,
+  ServiceResourceControl, service_memory_max, service_memory_swap_max,
+  Installable, WantedBy,
+}
+import gunbc.executor_privileged_operation { gunbc_entry_run_argv }
+import gunbc.live_deploy.release_locus { ReleaseRevisionBinding, release_locus_dir, release_locus_tree_subdirs }
+import gunbc.live_deploy.serve_binary { serve_binary_path }
+import gunbc.live_deploy.spec { DeploymentSpec }
+import gunbc.live_deploy.emit { release_locus_workspace_root_environment }
+
+// THE AWS SPOT DEMAND FILLER AS A SERVICE OF SRV1 (gunbc.plans.aws_spot_serving, roadmap leaf
+// aws-spot-unattended-settled). It replaces the transient `systemd-run --user` unit that ran from a
+// hand-synced, non-git copy (~/gunbc-flex-run, 2026-11-25), which survived no reboot and ran whatever was last
+// copied: the unit is installed by the srv1 deploy, runs THE DEPLOYED REVISION from the approval broker's
+// release locus (the same tree, binary and service user the broker and its sidecar run from), and starts at
+// boot. It must run on the router's host: the pass converges the router's files and reads its stats there.
+//
+// THE LOOP IS BOUNDED BY ITS OWN TICKS AND RESTARTED: run_loop resolves once and ticks for a bounded count,
+// then exits 0, and Restart=always starts it again on the same revision (gunbc.fleet.flex_aws_pass run_loop).
+// A failed tick exits non-zero with its cause and is restarted after RestartSec the same way. Its receipts
+// and per-card files live in the flex custody directory (gunbc.flex_aws_credential), not in the release.
+
+data flex_aws_loop_unit_name: NonEmptyStr = "gunbc-flex-aws-loop.service"
+
+fn flex_aws_loop_unit_path() -> NonEmptyStr {
+  join(["/etc/systemd/system/", flex_aws_loop_unit_name as String], "") as NonEmptyStr
+}
+
+data flex_aws_loop_entry: String = "dag/gunbc/fleet/flex_aws_pass.dag"
+data flex_aws_loop_function: NonEmptyStr = "run_loop" as NonEmptyStr
+
+// The operator's admitted run: Apply, at most three cards (gunbc.design_ruling
+// aws_spot_three_card_ceiling_2026_11_25), demand from the router, 120 ticks 30 seconds apart.
+data flex_aws_loop_arguments: List<String> = ["mode=apply", "cards=3", "router=on", "ticks=120", "interval_seconds=30"]
+
+// The transient unit's whole-life peak was 3.8 GiB over 1 h 52 min on srv1 (systemd, 2026-11-25, resolve
+// included); four times that bounds the interpreter, and swap stays off so the bound is real memory.
+data flex_aws_loop_memory_max: ByteSize = byte_size(16 * 1073741824)
+data flex_aws_loop_memory_swap_max: ByteSize = byte_size(0)
+
+fn flex_aws_loop_argv(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<String> {
+  let svc = spec.approval_broker
+  let dir = release_locus_dir(root: svc.repo_root as String, revision: revision)
+  concat(
+    map(gunbc_entry_run_argv(
+      workspace_root: dir as NonEmptyStr,
+      binary: serve_binary_path(binary: svc.serve_binary, release_root: svc.repo_root as String, revision: revision) as NonEmptyStr,
+      source_roots: map(release_locus_tree_subdirs, sub => join([dir, "/", sub], "") as NonEmptyStr),
+      entry: join([dir, "/", flex_aws_loop_entry], "") as NonEmptyStr,
+      function: flex_aws_loop_function,
+    ), w => w as String),
+    flat_map(flex_aws_loop_arguments, a => ["--arg", a]),
+  )
+}
+
+fn flex_aws_loop_unit_file(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> SystemdUnitFile {
+  let svc = spec.approval_broker
+  let dir = release_locus_dir(root: svc.repo_root as String, revision: revision)
+  ServiceUnitFile {
+    unit: [
+      Description { text: "gunbc AWS spot demand filler (gunbc.fleet.flex_aws_pass run_loop)" as NonEmptyStr },
+      After { target: "network-online.target" as NonEmptyStr },
+      Wants { target: "network-online.target" as NonEmptyStr },
+    ],
+    service: [
+      ServiceType { mode: SimpleMode },
+      ServiceUser { name: svc.service_user },
+      ServiceGroup { name: svc.service_user },
+      WorkingDirectory { path: dir as NonEmptyStr },
+      release_locus_workspace_root_environment(release_dir: dir),
+      ServiceResourceControl { directive: service_memory_max(bytes: flex_aws_loop_memory_max) },
+      ServiceResourceControl { directive: service_memory_swap_max(bytes: flex_aws_loop_memory_swap_max) },
+      ExecStart { command: join(flex_aws_loop_argv(spec: spec, revision: revision), " ") as NonEmptyStr },
+      Restart { policy: "always" as NonEmptyStr },
+      RestartSec { duration: "30" as NonEmptyStr },
+    ],
+    install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] },
+  }
+}

@@ -1175,7 +1175,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       carriers: carrier(path: "dag/gunbc/plans/aws_spot_serving.dag"),
       line: ticket(t: fields(
           headline: "The loop runs unattended on srv1 under its cap and its AWS cost is observed, retiring aws_flex_settlement_unobserved",
-          boundary: "Serves gunbc.plans.aws_spot_serving. A timer on the custody host runs the pass; the router's stranded count is the demand signal; an AWS Budget denies RunInstances to the loop principal as a backstop above the loop's own liability ceiling; settlement joins billing observations by instance id.",
+          boundary: "Serves gunbc.plans.aws_spot_serving. The srv1 deploy installs the loop as a service on the deployed revision (gunbc.live_deploy.flex_aws_loop_unit); the waiters a rented card could take are the demand signal (gunbc.serving.flex_aws_router_rows flex_aws_rentable_waiting); cards drain when idle and terminate themselves on a stale heartbeat (gunbc.design_ruling aws_spot_idle_release_and_dead_man_2026_11_25); an AWS Budget is the backstop above the loop's own burn ceiling; settlement joins billing observations by instance id.",
           displaced_cost: "Without it every card is a hand-started experiment and its cost is an estimate.",
           first_slice: "The timer unit and one unattended launch-serve-release cycle with its cost row.",
           red_control: "A pass that cannot read the stranded count launches nothing; the Budget action fires on a test budget.",

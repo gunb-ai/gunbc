@@ -1,0 +1,353 @@
+module gunbc.fleet.flex_aws_regions
+
+import std.types { Bool, Int, List, NonEmptyStr, String, FilePath }
+import std.optional { Present, Absent }
+import std.algebra { trim }
+import std.measure { second }
+import std.apply_mode { ApplyMode, Plan, Apply, parse_apply_mode, ModeParsed, ModeParseRefused }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.languages.json.emit { JsonValue, json_kv, json_string, json_array, json_object }
+import extdeps.exec.command { LocalExec }
+import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.tools.curl { curl_bounded_get_command }
+import gunbc.command_runner { run_shell_command_capture }
+import extdeps.cloud.aws_ec2 { AwsEc2Tag, aws_ec2_spot_interruption_event_detail_type }
+import extdeps.cloud.aws_cli {
+  AwsCliRead, AwsCliReadOk, AwsCliReadRefused, AwsS3PrefixCensus,
+  aws_cli_get_caller_identity, aws_cli_read_account, aws_cli_describe_default_vpcs, aws_cli_read_vpc_ids,
+  aws_cli_describe_security_group_named, aws_cli_read_security_group_ids, aws_cli_create_security_group, aws_cli_read_group_id,
+  aws_cli_authorize_ingress_tcp, aws_cli_duplicate_permission,
+  aws_cli_create_queue, aws_cli_get_queue_url, aws_cli_read_queue_url, aws_cli_get_queue_arn, aws_cli_read_queue_arn, aws_cli_set_queue_attributes,
+  aws_cli_put_rule, aws_cli_read_rule_arn, aws_cli_put_target,
+  aws_cli_head_bucket, aws_cli_bucket_absent, aws_cli_create_bucket, aws_cli_block_public_access, aws_cli_put_bucket_tagging,
+  aws_cli_get_parameter, aws_cli_read_parameter_value, aws_cli_put_string_parameter,
+  aws_cli_s3_sync_prefix, aws_cli_prefix_census, aws_cli_read_prefix_census,
+}
+import extdeps.access.aws_iam { aws_iam_policy_document_json }
+import product.fabric.flex_aws_row { flex_aws_owner_tag_key, flex_aws_owner_tag_value, flex_aws_one_line }
+import product.fabric.flex_aws_apply { flex_aws_rebalance_detail_type }
+import gunbc.flex_aws_iam {
+  flex_aws_card_role_name, flex_aws_notice_queue, flex_aws_rule_interruption, flex_aws_rule_rebalance,
+  flex_aws_weights_bucket_prefix, flex_aws_notice_queue_policy,
+}
+import gunbc.flex_aws_credential { flex_aws_provisioner_credentials_host_path, flex_aws_custody_path }
+import gunbc.fleet.flex_aws_pass { flex_aws_boot_policy, flex_aws_row_facts, flex_aws_scan_regions }
+
+// A REGION MADE LAUNCHABLE (gunbc.design_ruling aws_spot_any_region_quota_requested_2026_11_25: each region is
+// set up once AWS grants its quota). The pass launches in a region only when that region carries the card's
+// security group, its notice queue (a card with no notice path is never launched), the weights bucket named
+// by /gunbc-flex/weights-bucket, and the pinned weights and tuning cache in it. This converges exactly those,
+// idempotently: each is read first and created only when missing, so a re-run over a set-up region writes
+// nothing it did not need to, and the copy moves only objects not yet present. Plan reads and reports;
+// Apply creates. Run on the ROUTER HOST: the card ingress admits that host's own public address, read here.
+//
+// The source of the weights is the first region set up (us-east-1, verified 2026-11-25 against the pin:
+// 37 files under hf/ and the complete tuning cache under jit/); a copy is verified by object count and
+// total bytes against it, never assumed.
+
+fn flex_aws_regions_receipt_path() -> String { flex_aws_custody_path(name: "flex-aws-regions-receipt.txt") }
+data flex_aws_weights_source_region: NonEmptyStr = "us-east-1" as NonEmptyStr
+data flex_aws_weights_prefixes: List<NonEmptyStr> = ["hf/" as NonEmptyStr, "jit/" as NonEmptyStr]
+data flex_aws_card_group_description: NonEmptyStr = "gunbc flex spot card: serving port from the router host only" as NonEmptyStr
+data flex_aws_router_ingress_description: NonEmptyStr = "srv1 router egress" as NonEmptyStr
+// AWS's own what-is-my-address endpoint; it answers the caller's public IPv4 address and nothing else.
+data flex_aws_checkip_url: String = "https://checkip.amazonaws.com"
+// The notice queue's retention: a notice older than an hour is about a card AWS has already reclaimed.
+data flex_aws_notice_retention_seconds: String = "3600"
+
+fn flex_aws_provisioner() -> FilePath { flex_aws_provisioner_credentials_host_path as String as FilePath }
+
+fn flex_aws_outcome(outcome: ProcessOutcome) -> AwsCliRead<String> {
+  match outcome {
+    ProcessOutputPresent { text: t } => AwsCliReadOk { value: t }
+    ProcessOutputAbsent => AwsCliReadOk { value: "" }
+    ProcessRefused { exit_code: c, stderr: e } => AwsCliReadRefused { cause: join(["the CLI exited ", to_string(c), ": ", flex_aws_one_line(text: e)], "") }
+  }
+}
+
+fn flex_aws_owner_tags() -> List<AwsEc2Tag> { [AwsEc2Tag { key: flex_aws_owner_tag_key, value: flex_aws_owner_tag_value as String }] }
+
+fn flex_aws_weights_bucket(account: NonEmptyStr, region: NonEmptyStr) -> NonEmptyStr {
+  join([flex_aws_weights_bucket_prefix as String, account as String, "-", region as String], "") as NonEmptyStr
+}
+
+// ---- the facts read once ----------------------------------------------------------------------------
+
+type FlexAwsProvisionFacts
+  = FlexAwsProvisionFactsRead { account: NonEmptyStr, cidr: NonEmptyStr, source: List<FlexAwsPrefixWant> }
+  | FlexAwsProvisionFactsRefused { cause: String }
+
+// The account the provisioner acts in, this host's public address as a /32, and the source bucket's census
+// per prefix -- the figures every copy is verified against.
+fn flex_aws_provision_facts() -> FlexAwsProvisionFacts {
+  match flex_aws_outcome(outcome: run_shell_command_capture(command: aws_cli_get_caller_identity(credentials_file: flex_aws_provisioner(), region: flex_aws_weights_source_region), transport: LocalExec)) {
+    AwsCliReadRefused { cause: c } => FlexAwsProvisionFactsRefused { cause: concat("account unreadable: ", c) }
+    AwsCliReadOk { value: t } => match aws_cli_read_account(stdout: t) {
+      AwsCliReadRefused { cause: c } => FlexAwsProvisionFactsRefused { cause: concat("account unreadable: ", c) }
+      AwsCliReadOk { value: account } => match flex_aws_outcome(outcome: run_shell_command_capture(command: curl_bounded_get_command(url: flex_aws_checkip_url, connect_timeout: second(count: 5), max_time: second(count: 10)), transport: LocalExec)) {
+        AwsCliReadRefused { cause: c } => FlexAwsProvisionFactsRefused { cause: concat("this host's public address is unreadable: ", c) }
+        AwsCliReadOk { value: ip } =>
+          if !flex_aws_ipv4(text: trim(ip)) { FlexAwsProvisionFactsRefused { cause: concat("this host's public address is not one IPv4 address: ", trim(ip)) } }
+          else {
+            let censuses = map(flex_aws_weights_prefixes, p => FlexAwsCensusOf { prefix: p, read: flex_aws_census(region: flex_aws_weights_source_region, bucket: flex_aws_weights_bucket(account: account, region: flex_aws_weights_source_region), prefix: p) })
+            let read = flat_map(censuses, c => match c.read { AwsCliReadOk { value: x } => [FlexAwsPrefixWant { prefix: c.prefix, want: x }]  AwsCliReadRefused { cause: _ } => [] })
+            let causes = flat_map(censuses, c => match c.read { AwsCliReadRefused { cause: e } => [join([c.prefix as String, ": ", e], "")]  AwsCliReadOk { value: _ } => [] })
+            if count(causes) > 0 { FlexAwsProvisionFactsRefused { cause: concat("the source bucket's census is unreadable: ", join(causes, "; ")) } }
+            else if any(read, c => c.want.objects == 0) { FlexAwsProvisionFactsRefused { cause: "the source bucket has an empty prefix; nothing would be verified" } }
+            else { FlexAwsProvisionFactsRead { account: account, cidr: concat(trim(ip), "/32") as NonEmptyStr, source: read } }
+          }
+      }
+    }
+  }
+}
+
+// Four dot-separated whole numbers 0-255: the one address shape the ingress rule may carry.
+fn flex_aws_ipv4(text: String) -> Bool {
+  let parts = split(s: text, delimiter: ".")
+  (count(parts) == 4) && all(parts, p => (p != "") && match parse_int(s: p) { Present { value: n } => (n >= 0) && (n <= 255) && (to_string(n) == p)  Absent => false })
+}
+
+fn flex_aws_census(region: NonEmptyStr, bucket: NonEmptyStr, prefix: NonEmptyStr) -> AwsCliRead<AwsS3PrefixCensus> {
+  match flex_aws_outcome(outcome: run_shell_command_capture(command: aws_cli_prefix_census(credentials_file: flex_aws_provisioner(), region: region, bucket: bucket, prefix: prefix), transport: LocalExec)) {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: t } => aws_cli_read_prefix_census(stdout: t)
+  }
+}
+
+// ---- one region -------------------------------------------------------------------------------------
+
+// The card's security group: found by name, else (Apply) created tagged in the default VPC; then the one
+// ingress rule, where EC2's duplicate answer is the rule already present.
+fn flex_aws_converge_group(apply: Bool, region: NonEmptyStr, cidr: NonEmptyStr) -> String {
+  match flex_aws_outcome(outcome: run_shell_command_capture(command: aws_cli_describe_security_group_named(credentials_file: flex_aws_provisioner(), region: region, group_name: flex_aws_card_role_name), transport: LocalExec)) {
+    AwsCliReadRefused { cause: c } => concat("group REFUSED describe: ", c)
+    AwsCliReadOk { value: t } => match aws_cli_read_security_group_ids(stdout: t) {
+      AwsCliReadRefused { cause: c } => concat("group REFUSED describe: ", c)
+      AwsCliReadOk { value: ids } =>
+        if count(ids) > 1 { "group REFUSED more than one gunbc-flex-card group" }
+        else {
+          match ids.first() {
+            Present { value: g } => if apply { flex_aws_converge_ingress(region: region, group: g, cidr: cidr, created: false) } else { join(["group ", g as String, " present (ingress not checked in plan)"], "") }
+            Absent => if !apply { "group MISSING" } else { flex_aws_create_group(region: region, cidr: cidr) }
+          }
+        }
+    }
+  }
+}
+
+fn flex_aws_create_group(region: NonEmptyStr, cidr: NonEmptyStr) -> String {
+  match flex_aws_outcome(outcome: run_shell_command_capture(command: aws_cli_describe_default_vpcs(credentials_file: flex_aws_provisioner(), region: region), transport: LocalExec)) {
+    AwsCliReadRefused { cause: c } => concat("group REFUSED default VPC: ", c)
+    AwsCliReadOk { value: t } => match aws_cli_read_vpc_ids(stdout: t) {
+      AwsCliReadRefused { cause: c } => concat("group REFUSED default VPC: ", c)
+      AwsCliReadOk { value: vpcs } => match vpcs.first() {
+        Absent => "group REFUSED the region has no default VPC"
+        Present { value: vpc } => match flex_aws_outcome(outcome: run_shell_command_capture(command: aws_cli_create_security_group(credentials_file: flex_aws_provisioner(), region: region, group_name: flex_aws_card_role_name, description: flex_aws_card_group_description, vpc_id: vpc, tags: flex_aws_owner_tags()), transport: LocalExec)) {
+          AwsCliReadRefused { cause: c } => concat("group REFUSED create: ", c)
+          AwsCliReadOk { value: t2 } => match aws_cli_read_group_id(stdout: t2) {
+            AwsCliReadRefused { cause: c } => concat("group REFUSED create answer: ", c)
+            AwsCliReadOk { value: g } => flex_aws_converge_ingress(region: region, group: g, cidr: cidr, created: true)
+          }
+        }
+      }
+    }
+  }
+}
+
+fn flex_aws_converge_ingress(region: NonEmptyStr, group: NonEmptyStr, cidr: NonEmptyStr, created: Bool) -> String {
+  let head = join(["group ", group as String, if created { " created" } else { " present" }, " ingress tcp/", to_string(flex_aws_row_facts.port), " from ", cidr as String], "")
+  match flex_aws_outcome(outcome: run_shell_command_capture(command: aws_cli_authorize_ingress_tcp(credentials_file: flex_aws_provisioner(), region: region, group_id: group, port: flex_aws_row_facts.port, cidr: cidr, description: flex_aws_router_ingress_description), transport: LocalExec)) {
+    AwsCliReadOk { value: _ } => concat(head, " added")
+    AwsCliReadRefused { cause: c } => if c.contains(aws_cli_duplicate_permission) { concat(head, " present") } else { join([head, " REFUSED ", c], "") }
+  }
+}
+
+// The notice queue and the two rules that feed it. Plan reads the queue; Apply creates it (CreateQueue is
+// idempotent for matching attributes), puts both rules and their targets, and writes the queue policy that
+// admits exactly those rules.
+fn flex_aws_event_pattern(detail_type: String) -> JsonValue {
+  json_object(members: [json_kv(key: "source", value: json_array(elements: [json_string(s: "aws.ec2")])), json_kv(key: "detail-type", value: json_array(elements: [json_string(s: detail_type)]))])
+}
+
+fn flex_aws_converge_queue(apply: Bool, region: NonEmptyStr) -> String {
+  let found = if apply {
+    flex_aws_outcome(outcome: run_shell_command_capture(command: aws_cli_create_queue(credentials_file: flex_aws_provisioner(), region: region, queue_name: flex_aws_notice_queue, attributes: [
+      json_kv(key: "MessageRetentionPeriod", value: json_string(s: flex_aws_notice_retention_seconds)),
+      json_kv(key: "SqsManagedSseEnabled", value: json_string(s: "true")),
+    ]), transport: LocalExec))
+  } else {
+    flex_aws_outcome(outcome: run_shell_command_capture(command: aws_cli_get_queue_url(credentials_file: flex_aws_provisioner(), region: region, queue_name: flex_aws_notice_queue), transport: LocalExec))
+  }
+  match found {
+    AwsCliReadRefused { cause: c } => if apply { concat("queue REFUSED create: ", c) } else { concat("queue MISSING or unreadable: ", c) }
+    AwsCliReadOk { value: t } => match aws_cli_read_queue_url(stdout: t) {
+      AwsCliReadRefused { cause: c } => concat("queue REFUSED answer: ", c)
+      AwsCliReadOk { value: url } => if !apply { "queue present (rules not checked in plan)" } else { flex_aws_converge_rules(region: region, queue_url: url) }
+    }
+  }
+}
+
+fn flex_aws_put_rule(region: NonEmptyStr, name: NonEmptyStr, detail_type: String, queue_arn: NonEmptyStr) -> AwsCliRead<NonEmptyStr> {
+  match flex_aws_outcome(outcome: run_shell_command_capture(command: aws_cli_put_rule(credentials_file: flex_aws_provisioner(), region: region, name: name, event_pattern: flex_aws_event_pattern(detail_type: detail_type)), transport: LocalExec)) {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: join(["rule ", name as String, ": ", c], "") }
+    AwsCliReadOk { value: t } => match aws_cli_read_rule_arn(stdout: t) {
+      AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: join(["rule ", name as String, ": ", c], "") }
+      AwsCliReadOk { value: arn } => match flex_aws_outcome(outcome: run_shell_command_capture(command: aws_cli_put_target(credentials_file: flex_aws_provisioner(), region: region, rule: name, target_id: flex_aws_notice_queue, target_arn: queue_arn), transport: LocalExec)) {
+        AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: join(["target of ", name as String, ": ", c], "") }
+        AwsCliReadOk { value: _ } => AwsCliReadOk { value: arn }
+      }
+    }
+  }
+}
+
+fn flex_aws_converge_rules(region: NonEmptyStr, queue_url: NonEmptyStr) -> String {
+  match flex_aws_outcome(outcome: run_shell_command_capture(command: aws_cli_get_queue_arn(credentials_file: flex_aws_provisioner(), region: region, queue_url: queue_url), transport: LocalExec)) {
+    AwsCliReadRefused { cause: c } => concat("queue REFUSED arn: ", c)
+    AwsCliReadOk { value: t } => match aws_cli_read_queue_arn(stdout: t) {
+      AwsCliReadRefused { cause: c } => concat("queue REFUSED arn: ", c)
+      AwsCliReadOk { value: arn } => match flex_aws_put_rule(region: region, name: flex_aws_rule_interruption, detail_type: aws_ec2_spot_interruption_event_detail_type as String, queue_arn: arn) {
+        AwsCliReadRefused { cause: c } => concat("queue REFUSED ", c)
+        AwsCliReadOk { value: interruption } => match flex_aws_put_rule(region: region, name: flex_aws_rule_rebalance, detail_type: flex_aws_rebalance_detail_type as String, queue_arn: arn) {
+          AwsCliReadRefused { cause: c } => concat("queue REFUSED ", c)
+          AwsCliReadOk { value: rebalance } => match flex_aws_outcome(outcome: run_shell_command_capture(command: aws_cli_set_queue_attributes(credentials_file: flex_aws_provisioner(), region: region, queue_url: queue_url, attributes: [
+              json_kv(key: "Policy", value: json_string(s: aws_iam_policy_document_json(d: flex_aws_notice_queue_policy(queue_arn: arn, rule_arns: [interruption, rebalance])))),
+            ]), transport: LocalExec)) {
+            AwsCliReadRefused { cause: c } => concat("queue REFUSED policy: ", c)
+            AwsCliReadOk { value: _ } => "queue present, both rules and the delivery policy converged"
+          }
+        }
+      }
+    }
+  }
+}
+
+// The weights bucket: HeadBucket answers present or Not Found; Apply creates it in the region, blocks all
+// public access and tags it; then the parameter the card reads names it.
+fn flex_aws_converge_bucket(apply: Bool, region: NonEmptyStr, bucket: NonEmptyStr) -> String {
+  match flex_aws_outcome(outcome: run_shell_command_capture(command: aws_cli_head_bucket(credentials_file: flex_aws_provisioner(), region: region, bucket: bucket), transport: LocalExec)) {
+    AwsCliReadOk { value: _ } => join(["bucket ", bucket as String, " present"], "")
+    AwsCliReadRefused { cause: c } =>
+      if !c.contains(aws_cli_bucket_absent) { join(["bucket ", bucket as String, " REFUSED head: ", c], "") }
+      else if !apply { join(["bucket ", bucket as String, " MISSING"], "") }
+      else {
+        match flex_aws_outcome(outcome: run_shell_command_capture(command: aws_cli_create_bucket(credentials_file: flex_aws_provisioner(), region: region, bucket: bucket), transport: LocalExec)) {
+          AwsCliReadRefused { cause: c2 } => join(["bucket ", bucket as String, " REFUSED create: ", c2], "")
+          AwsCliReadOk { value: _ } => match flex_aws_outcome(outcome: run_shell_command_capture(command: aws_cli_block_public_access(credentials_file: flex_aws_provisioner(), region: region, bucket: bucket), transport: LocalExec)) {
+            AwsCliReadRefused { cause: c3 } => join(["bucket ", bucket as String, " created, REFUSED public-access block: ", c3], "")
+            AwsCliReadOk { value: _ } => match flex_aws_outcome(outcome: run_shell_command_capture(command: aws_cli_put_bucket_tagging(credentials_file: flex_aws_provisioner(), region: region, bucket: bucket, tags: flex_aws_owner_tags()), transport: LocalExec)) {
+              AwsCliReadRefused { cause: c4 } => join(["bucket ", bucket as String, " created and private, REFUSED tagging: ", c4], "")
+              AwsCliReadOk { value: _ } => join(["bucket ", bucket as String, " created, private, tagged"], "")
+            }
+          }
+        }
+      }
+  }
+}
+
+fn flex_aws_converge_parameter(apply: Bool, region: NonEmptyStr, bucket: NonEmptyStr) -> String {
+  let name = flex_aws_boot_policy().bucket_parameter
+  let current = match flex_aws_outcome(outcome: run_shell_command_capture(command: aws_cli_get_parameter(credentials_file: flex_aws_provisioner(), region: region, name: name), transport: LocalExec)) {
+    AwsCliReadOk { value: t } => match aws_cli_read_parameter_value(stdout: t) { AwsCliReadOk { value: v } => v as String  AwsCliReadRefused { cause: _ } => "" }
+    AwsCliReadRefused { cause: _ } => ""
+  }
+  if current == (bucket as String) { join(["parameter ", name as String, " present"], "") }
+  else if !apply { join(["parameter ", name as String, " MISSING or stale (", current, ")"], "") }
+  else {
+    match flex_aws_outcome(outcome: run_shell_command_capture(command: aws_cli_put_string_parameter(credentials_file: flex_aws_provisioner(), region: region, name: name, value: bucket), transport: LocalExec)) {
+      AwsCliReadOk { value: _ } => join(["parameter ", name as String, " written"], "")
+      AwsCliReadRefused { cause: c } => join(["parameter ", name as String, " REFUSED ", c], "")
+    }
+  }
+}
+
+// THE COPY, then its proof: each prefix synced from the source bucket (Apply only), then counted, and the
+// region is complete only when every prefix matches the source in object count AND total bytes.
+fn flex_aws_converge_copy(apply: Bool, region: NonEmptyStr, account: NonEmptyStr, source: List<FlexAwsPrefixWant>) -> List<String> {
+  let bucket = flex_aws_weights_bucket(account: account, region: region)
+  let source_bucket = flex_aws_weights_bucket(account: account, region: flex_aws_weights_source_region)
+  map(source, w => {
+    let synced = if !apply { "" } else {
+      match flex_aws_outcome(outcome: run_shell_command_capture(command: aws_cli_s3_sync_prefix(credentials_file: flex_aws_provisioner(), region: region, source_region: flex_aws_weights_source_region, source_bucket: source_bucket, bucket: bucket, prefix: w.prefix), transport: LocalExec)) {
+        AwsCliReadOk { value: _ } => ""
+        AwsCliReadRefused { cause: c } => concat(" sync REFUSED ", c)
+      }
+    }
+    match flex_aws_census(region: region, bucket: bucket, prefix: w.prefix) {
+      AwsCliReadRefused { cause: c } => join(["copy ", w.prefix as String, synced, " census REFUSED ", c], "")
+      AwsCliReadOk { value: got } => join([
+        "copy ", w.prefix as String, " objects=", to_string(got.objects), "/", to_string(w.want.objects),
+        " bytes=", to_string(got.bytes), "/", to_string(w.want.bytes),
+        if (got.objects == w.want.objects) && (got.bytes == w.want.bytes) { " complete" } else { " INCOMPLETE" }, synced,
+      ], "")
+    }
+  })
+}
+
+type FlexAwsCensusOf {
+  prefix: NonEmptyStr
+  read: AwsCliRead<AwsS3PrefixCensus>
+}
+
+type FlexAwsPrefixWant {
+  prefix: NonEmptyStr
+  want: AwsS3PrefixCensus
+}
+
+fn flex_aws_converge_region(apply: Bool, region: NonEmptyStr, facts: FlexAwsProvisionFacts) -> List<String> {
+  match facts {
+    FlexAwsProvisionFactsRefused { cause: c } => [join(["region ", region as String, " REFUSED ", c], "")]
+    FlexAwsProvisionFactsRead { account: account, cidr: cidr, source: source } => {
+      let bucket = flex_aws_weights_bucket(account: account, region: region)
+      let lines = concat([
+        flex_aws_converge_group(apply: apply, region: region, cidr: cidr),
+        flex_aws_converge_queue(apply: apply, region: region),
+        flex_aws_converge_bucket(apply: apply, region: region, bucket: bucket),
+        flex_aws_converge_parameter(apply: apply, region: region, bucket: bucket),
+      ], flex_aws_converge_copy(apply: apply, region: region, account: account, source: source))
+      // A region is launchable when no step refused, none is missing, and every copy is complete.
+      let ready = !any(lines, l => l.contains("REFUSED") || l.contains("MISSING") || l.contains("INCOMPLETE") || l.contains("stale"))
+      concat([join(["region ", region as String, if ready { " READY" } else { " NOT-READY" }], "")], map(lines, l => concat("  ", l)))
+    }
+  }
+}
+
+// ---- the entry --------------------------------------------------------------------------------------
+
+// regions=all converges every region the pass scans; otherwise a comma-separated list of scanned regions
+// (a region the pass does not scan is refused: setting it up would launch nothing).
+fn flex_aws_regions_asked(regions: String) -> List<NonEmptyStr>? {
+  if regions == "all" { Present { value: flex_aws_scan_regions } }
+  else {
+    let asked = map(split(s: regions, delimiter: ","), r => trim(r))
+    if (count(asked) == 0) || any(asked, r => !any(flex_aws_scan_regions, s => (s as String) == r)) { none }
+    else { Present { value: map(asked, r => r as NonEmptyStr) } }
+  }
+}
+
+fn converge(mode: String, regions: String) -> ProcessExit {
+  match parse_apply_mode(value: mode) {
+    ModeParseRefused { reason: r } => exit_failure(reason: r)
+    ModeParsed { mode: m } => match flex_aws_regions_asked(regions: regions) {
+      Absent => exit_failure(reason: concat("regions must be all or a comma-separated list of scanned regions, not ", regions))
+      Present { value: rs } => {
+        let apply = match m { Apply => true  Plan => false }
+        let facts = flex_aws_provision_facts()
+        let text = join(concat(
+          [join(["aws-regions mode=", if apply { "apply" } else { "plan" }, match facts {
+            FlexAwsProvisionFactsRead { account: _, cidr: c, source: s } => join([" ingress=", c as String, " source=", join(map(s, w => join([w.prefix as String, "=", to_string(w.want.objects), "/", to_string(w.want.bytes)], "")), ",")], "")
+            FlexAwsProvisionFactsRefused { cause: c } => concat(" REFUSED ", c)
+          }], "")],
+          flat_map(rs, r => flex_aws_converge_region(apply: apply, region: r, facts: facts))), "\n")
+        let written = Filesystem.Write(path: flex_aws_regions_receipt_path(), content: text)
+        if !written.success { exit_failure(reason: concat("THE RECEIPT COULD NOT BE WRITTEN: ", written.error)) }
+        else {
+          match facts {
+            FlexAwsProvisionFactsRefused { cause: c } => exit_failure(reason: c)
+            FlexAwsProvisionFactsRead { account: _, cidr: _, source: _ } => ExitSuccess
+          }
+        }
+      }
+    }
+  }
+}

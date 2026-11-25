@@ -3,9 +3,10 @@ module gunbc.serving.flex_aws_router_rows
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.optional { Present, Absent }
 import std.algebra { trim }
-import std.list { distinct_by_key }
-import extdeps.languages.json.emit { JsonValue, JsonKeyValue, JsonString, JsonArray, JsonObject, json_kv, json_string, json_int, json_bool, json_array, json_object, serialize_json }
+import std.list { distinct_by_key, first_where }
+import extdeps.languages.json.emit { JsonValue, JsonKeyValue, JsonString, JsonNumber, JsonArray, JsonObject, json_kv, json_string, json_int, json_bool, json_array, json_object, serialize_json }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_field, FieldRead, FieldAbsent, FieldMalformed }
+import product.fabric.flex_aws_apply { FlexAwsDemand, FlexAwsDemandRouter, FlexAwsCardUse }
 
 // THE AWS SPOT CARDS AS RENTED ROWS OF THE SRV1 ROUTER (gunbc.plans.aws_spot_serving section 4, enroll).
 //
@@ -174,4 +175,129 @@ fn flex_aws_ca_converge(current: String, cards: List<FlexAwsEnrollable>) -> Flex
   let ours = map(distinct_by_key(xs: cards, key: c => c.instance_id as String), c => join([flex_aws_ca_tag, c.instance_id as String, "\n", trim(c.cert_pem), "\n"], ""))
   let text = join(concat(map(kept, b => b.pem), ours), "")
   FlexAwsCaConverge { text: text, changed: flex_aws_ca_meaning(text: text) != flex_aws_ca_meaning(text: current) }
+}
+
+// ---- what the router reports about our rows ---------------------------------------------------------
+
+// THE ROUTER'S LONG WAIT (srv1 nginx.conf "LONG WAIT", 2026-11-24, with "RENTED TOO", 2026-11-25): a
+// conversation bound to a full owned engine that has waited this long may take any free slot, a rented
+// card's included. The router is the authority; this restates its constant so the loop can read which
+// waiters a rented card could take, and is re-read whenever that router rule changes.
+data flex_aws_router_long_wait_bound_seconds: Int = 600
+
+// WHICH WAITERS A RENTED CARD COULD TAKE, from `pending_bound` (each upstream a waiting conversation is
+// bound to, or "unbound", with that group's longest wait in seconds). An unbound waiter binds to any card
+// with room, a rented one included; a waiter bound to one of our rented rows is waiting for rented
+// capacity; a waiter bound to an owned engine moves only after the long wait. Every other waiter is
+// waiting for ITS engine, and a rented card does nothing for it.
+fn flex_aws_rentable_waiting(pending_bound: List<JsonKeyValue>) -> Bool {
+  any(pending_bound, m => (m.key == "unbound") || m.key.starts_with(flex_aws_row_prefix) || match flex_aws_json_number(v: m.value) {
+    Present { value: s } => s >= flex_aws_router_long_wait_bound_seconds
+    Absent => false
+  })
+}
+
+fn flex_aws_json_number(v: JsonValue) -> Int? {
+  match v { JsonNumber { lexeme: _ } => parse_int(s: serialize_json(v: v))  _ => none }
+}
+
+// An object's members; the router's encoder writes an EMPTY table as {} or [], so an empty array reads as
+// no members, and anything else is not an object.
+fn flex_aws_json_object_members(v: JsonValue) -> List<JsonKeyValue>? {
+  match v {
+    JsonObject { members: ms } => Present { value: ms }
+    JsonArray { elements: es } => if count(es) == 0 { Present { value: [] } } else { none }
+    _ => none
+  }
+}
+
+type FlexAwsStatsRead
+  = FlexAwsStatsReadOk { demand: FlexAwsDemand }
+  | FlexAwsStatsRefused { cause: String }
+
+fn flex_aws_stats_member(d: JsonValue, key: String) -> List<JsonKeyValue>? {
+  match json_field(obj: d, key: key) {
+    FieldRead { value: v } => flex_aws_json_object_members(v: v)
+    _ => none
+  }
+}
+
+fn flex_aws_stats_int(d: JsonValue, outer: String, inner: String) -> Int? {
+  match json_field(obj: d, key: outer) {
+    FieldRead { value: o } => match json_field(obj: o, key: inner) {
+      FieldRead { value: v } => flex_aws_json_number(v: v)
+      _ => none
+    }
+    _ => none
+  }
+}
+
+// The router's names of the rows it routes now.
+fn flex_aws_routed_names(d: JsonValue) -> List<String>? {
+  match json_field(obj: d, key: "usage_by_route") {
+    FieldRead { value: u } => match json_field(obj: u, key: "routes") {
+      FieldRead { value: JsonArray { elements: rs } } => Present { value: map(rs, r => flex_aws_row_name_of(row: r)) }
+      _ => none
+    }
+    _ => none
+  }
+}
+
+// A counter the router never created is its own zero; a counter that is not a number is not read as one.
+fn flex_aws_counter(members: List<JsonKeyValue>, key: String) -> Int? {
+  match first_where(members, m => m.key == key) {
+    Absent => Present { value: 0 }
+    Present { value: m } => flex_aws_json_number(v: m.value)
+  }
+}
+
+fn flex_aws_card_use(d: List<JsonKeyValue>, routed: List<String>, bound: List<JsonKeyValue>, instance_id: NonEmptyStr) -> FlexAwsCardUse? {
+  let row = flex_aws_row_name(instance_id: instance_id)
+  match flex_aws_counter(members: d, key: concat("active:", row)) {
+    Absent => none
+    Present { value: n } => match first_where(bound, m => m.key == row) {
+      Absent => Present { value: FlexAwsCardUse { instance_id: instance_id, enrolled: any(routed, r => r == row), in_flight: n, seen_10m: 0 } }
+      Present { value: b } => match json_field(obj: b.value, key: "seen_10m") {
+        FieldRead { value: v } => match flex_aws_json_number(v: v) {
+          Present { value: s } => Present { value: FlexAwsCardUse { instance_id: instance_id, enrolled: any(routed, r => r == row), in_flight: n, seen_10m: s } }
+          Absent => none
+        }
+        _ => none
+      }
+    }
+  }
+}
+
+// THE ROUTER'S DEMAND, for the cards we own. Every field read is required: a stats answer missing one is
+// refused, never read as zero demand or as an unused card.
+fn flex_aws_read_router_stats(body: String, instance_ids: List<NonEmptyStr>, max_cards: Int) -> FlexAwsStatsRead {
+  match parse_json_document(s: body) {
+    JsonDocumentUnreadable { gap: _ } => FlexAwsStatsRefused { cause: "router stats are not one JSON document" }
+    JsonDocumentParsed { value: d } => match flex_aws_json_object_members(v: d) {
+      Absent => FlexAwsStatsRefused { cause: "router stats are not an object" }
+      Present { value: top } => match flex_aws_stats_member(d: d, key: "pending_bound") {
+        Absent => FlexAwsStatsRefused { cause: "router stats carry no pending_bound object" }
+        Present { value: pb } => match flex_aws_stats_member(d: d, key: "bound") {
+          Absent => FlexAwsStatsRefused { cause: "router stats carry no bound object" }
+          Present { value: bound } => match flex_aws_routed_names(d: d) {
+            Absent => FlexAwsStatsRefused { cause: "router stats carry no usage_by_route.routes" }
+            Present { value: routed } => match flex_aws_stats_int(d: d, outer: "rented", inner: "active") {
+              Absent => FlexAwsStatsRefused { cause: "router stats carry no rented.active" }
+              Present { value: active } => match flex_aws_stats_int(d: d, outer: "rented", inner: "cap") {
+                Absent => FlexAwsStatsRefused { cause: "router stats carry no rented.cap" }
+                Present { value: cap } => {
+                  let uses = flat_map(instance_ids, i => match flex_aws_card_use(d: top, routed: routed, bound: bound, instance_id: i) { Present { value: u } => [u]  Absent => [] })
+                  if count(uses) != count(instance_ids) {
+                    FlexAwsStatsRefused { cause: "a card's active counter or bound entry is not a number" }
+                  } else {
+                    FlexAwsStatsReadOk { demand: FlexAwsDemandRouter { rentable_waiting: flex_aws_rentable_waiting(pending_bound: pb), rented_active: active, rented_cap: cap, cards: uses, max_cards: max_cards } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
 }

@@ -5,10 +5,9 @@ import std.optional { Present, Absent }
 import std.list { first_where }
 import std.algebra { list_sort_by_key, int_total_order, length }
 import std.apply_mode { ApplyMode, Plan, Apply }
-import std.measure { Second, second_count, MoneyPerHour, MoneyAmountMicro, money_per_hour_micros, money_amount_micro_count }
+import std.measure { Second, second_count, MoneyPerHour, money_per_hour_micros }
 import extdeps.languages.json.emit { JsonValue, JsonString }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_field, FieldRead, FieldAbsent, FieldMalformed }
-import extdeps.time.rfc3339 { rfc3339_parse_instant, Rfc3339InstantParsed, Rfc3339InstantRefused, rfc3339_instant_unix_seconds }
 import extdeps.cloud.aws_ec2 {
   AwsEc2Instance, AwsEc2Pending, AwsEc2Running, AwsEc2Terminated, AwsEc2Tag, AwsEc2TagSpecification, AwsEc2TagInstance, AwsEc2TagVolume,
   AwsEc2RunInstancesRequest, AwsEc2LaunchInline, AwsEc2LaunchTemplateData, AwsEc2NetworkInterfaceSpecification,
@@ -23,10 +22,10 @@ import product.fabric.flex_ec2_boot { FlexEc2BootPolicy, flex_ec2_launch_templat
 // the clock), so each decision is witnessed by supplying them, and the effectful pass
 // (gunbc.fleet.flex_aws_pass) only reads, calls this, and performs the one write it returns.
 //
-// ONE WRITE PER PASS, release before launch (the flex loop's shape, product.fabric.flex_vast_loop): a pass
-// that releases does not also launch, and the next pass sees the roster the release left. A card being
-// taken back is released before any new card is asked for, so the quota and the cap are never counted
-// against a card AWS is already reclaiming.
+// ONE DECISION WRITE PER PASS, a card let go before one is launched (the flex loop's shape,
+// product.fabric.flex_vast_loop): a pass that drains or terminates does not also launch, and the next pass
+// sees the roster that write left. Beside it a pass writes only bookkeeping that changes no card's life --
+// the marks (flex_aws_marks) and the loop's heartbeat.
 
 // ---- the notices ------------------------------------------------------------------------------------
 
@@ -103,58 +102,176 @@ fn flex_aws_notice_instance(n: FlexAwsNotice) -> NonEmptyStr {
 
 // ---- the policy -------------------------------------------------------------------------------------
 
-// What the operator admitted (gunbc.design_ruling aws_spot_g7e_launches_admitted_capped_2026_11_25, widened by
-// aws_spot_cheapest_single_gpu_blackwell_2026_11_25): one region, ANY size of the flex type family that
-// carries exactly the GPUs one replica uses (the boot path serves one replica per card, so a wider card's
-// other GPUs would be billed idle), and a per-card liability ceiling over a bounded lifetime. Among the
-// admitted sizes the cheapest per GPU wins each pass: spot prices are per (type, zone) pool, not per size,
-// and on 2026-11-25 the 4xlarge cleared at a third of list while the 2xlarge sat near it. How many cards
-// is demand's. The admitted
-// rate is the observed spot price; a card whose rate times lifetime exceeds the ceiling is refused before
-// RunInstances, and a card older than its lifetime is released, so the ceiling bounds what any card can
-// cost (the spot price can rise after launch only up to MaxPrice, which is set to the admitted rate).
+// What the operator admitted (gunbc.design_ruling aws_spot_cheapest_single_gpu_blackwell_2026_11_25 and
+// aws_spot_lowest_price_globally_2026_11_25): ANY size of the flex type family that carries exactly the GPUs
+// one replica uses (the boot path serves one replica per card, so a wider card's other GPUs would be billed
+// idle), in whichever region is cheapest. Spot prices are per (type, zone) pool, not per size: on 2026-11-25
+// the 4xlarge cleared at a third of list while the 2xlarge sat near it. How many cards is demand's.
+//
+// HOW LONG A CARD LIVES is no longer a fixed lifetime (operator ruling aws_spot_idle_release_and_dead_man_2026_11_25,
+// superseding the per-test cap of aws_spot_g7e_launches_admitted_capped_2026_11_25): a card lives while the
+// router uses it, is drained and released after `idle_window` unused, and terminates ITSELF when the loop's
+// heartbeat goes stale (product.fabric.flex_ec2_boot flex_ec2_deadman), so a dead loop cannot leave cards
+// running. Spend stays bounded by the burn ceiling, the card ceiling and the AWS Budget.
 type FlexAwsApplyPolicy {
   actuation: ApplyMode
   gpus_per_card: Int
   // OUR DOLLAR BUDGET (operator ruling aws_spot_burn_ceiling_2026_11_25): the summed current spot price of
   // every live card plus the card being asked for may not exceed this rate.
   burn_ceiling: MoneyPerHour
-  liability_ceiling: MoneyAmountMicro
-  lifetime: Second
+  // An enrolled card the router has not used (no turn in flight, no conversation seen in its last ten
+  // minutes) for this long is drained and released (operator: 30 minutes).
+  idle_window: Second
+  // A draining card is terminated once its in-flight turns finish, or after this long regardless.
+  drain_timeout: Second
+  // A card not in the router for this long -- never became ready, or stopped answering -- is terminated.
+  // Boot is ~17 minutes with the tuning cache warm (measured 2026-11-25).
+  boot_deadline: Second
 }
 
 // ---- the demand -------------------------------------------------------------------------------------
 
+// HOW THE ROUTER IS USING ONE OF OUR CARDS, from its stats: whether its row is in the router's live
+// upstreams (`usage_by_route.routes`), its turns in flight (`active:<row>`, kept for a removed row until its
+// last turn ends, which is what a drain waits on), and the conversations bound to it that were seen in the
+// last ten minutes (`bound.<row>.seen_10m`). The router keeps no counter for a row that never carried a
+// turn, and reads that absence as zero itself; so do we.
+type FlexAwsCardUse {
+  instance_id: NonEmptyStr
+  enrolled: Bool
+  in_flight: Int
+  seen_10m: Int
+}
+
 // WHAT THE ROUTER SAYS IT NEEDS (operator, 2026-11-25: "if it dies, we should naturally rent another due to
-// surplus demand in the router"). The router counts each refused conversation as stranded demand
-// (`pending.total`) and reports its rented pool (`rented.active`, `rented.cap`); its own admission rule
-// (srv1 nginx.conf, 2026-10-27) is that stranded demand asks for a card only when the rented pool is full.
-// A card that dies takes its row and its cap with it, so its traffic strands and the same rule asks again:
+// surplus demand in the router"). Not every stranded conversation can use a rented card: the router never
+// moves a bound conversation on congestion, so most of `pending.total` waits for ITS OWN engine (measured
+// 2026-11-25: 30-44 stranded while the rented card sat at 0/4 for hours). `rentable_waiting` is whether any
+// waiting conversation is one the router WOULD place on a rented card (gunbc.serving.flex_aws_router_rows
+// flex_aws_rentable_waiting reads it). A card is asked for only while such a waiter exists AND the rented
+// pool is full or gone; a card that dies takes its row and cap with it, so the same rule asks again:
 // replacement is demand, not a notice.
 type FlexAwsDemand
   = FlexAwsDemandFixed { cards: Int }
-  | FlexAwsDemandRouter { stranded: Int, rented_active: Int, rented_cap: Int, max_cards: Int }
+  | FlexAwsDemandRouter { rentable_waiting: Bool, rented_active: Int, rented_cap: Int, cards: List<FlexAwsCardUse>, max_cards: Int }
 
-fn flex_aws_wanted(demand: FlexAwsDemand, steady: Int) -> Int {
+fn flex_aws_asks(demand: FlexAwsDemand) -> Bool {
+  match demand {
+    FlexAwsDemandFixed { cards: _ } => false
+    FlexAwsDemandRouter { rentable_waiting: w, rented_active: a, rented_cap: c, cards: _, max_cards: _ } => w && ((c == 0) || (a >= c))
+  }
+}
+
+fn flex_aws_use_of(demand: FlexAwsDemand, instance_id: NonEmptyStr) -> FlexAwsCardUse {
+  let unused = FlexAwsCardUse { instance_id: instance_id, enrolled: false, in_flight: 0, seen_10m: 0 }
+  match demand {
+    FlexAwsDemandFixed { cards: _ } => unused
+    FlexAwsDemandRouter { rentable_waiting: _, rented_active: _, rented_cap: _, cards: cs, max_cards: _ } =>
+      match first_where(cs, u => (u.instance_id as String) == (instance_id as String)) {
+        Present { value: u } => u
+        Absent => unused
+      }
+  }
+}
+
+// HOW MANY CARDS DEMAND WANTS, given the steady cards (live, not warned, not draining). An ask is ONE MORE
+// THAN THE CARDS THE ROUTER ALREADY HAS, never one more than the steady cards: a card still booting is not
+// in the router yet, so the router keeps asking while it boots, and that ask is already answered by it
+// (observed 2026-11-25 13:21-13:32 and 17:41-17:51: with quota in three regions, "steady + 1" launched a
+// second card while the first booted). Without an ask, demand keeps what is steady; shrinking is the idle
+// release's, not demand's.
+fn flex_aws_wanted(demand: FlexAwsDemand, steady: List<AwsEc2Instance>) -> Int {
   match demand {
     FlexAwsDemandFixed { cards: n } => n
-    FlexAwsDemandRouter { stranded: s, rented_active: a, rented_cap: c, max_cards: m } => {
-      let asks = (s > 0) && ((c == 0) || (a >= c))
-      let want = if asks { steady + 1 } else { steady }
+    FlexAwsDemandRouter { rentable_waiting: _, rented_active: _, rented_cap: _, cards: _, max_cards: m } => {
+      let enrolled = count(steady |> filter(i => flex_aws_use_of(demand: demand, instance_id: i.instance_id).enrolled))
+      let want = if flex_aws_asks(demand: demand) { enrolled + 1 } else { count(steady) }
       if want > m { m } else { want }
     }
   }
 }
 
+// ---- the marks --------------------------------------------------------------------------------------
+
+// A CARD'S OWN STATE IS A TAG ON THE CARD: when it was first seen out of the router, first seen unused, and
+// when its drain began, each as unix seconds. The tag is the authority (it is read back with the roster
+// every pass, and it dies with the instance), so the loop keeps no store and a restarted loop resumes
+// every drain and idle clock where it was.
+data flex_aws_mark_unready: NonEmptyStr = "gunbc-flex-unready-since" as NonEmptyStr
+data flex_aws_mark_idle: NonEmptyStr = "gunbc-flex-idle-since" as NonEmptyStr
+data flex_aws_mark_drain: NonEmptyStr = "gunbc-flex-drain-since" as NonEmptyStr
+// The one IAM tag-key pattern covering every mark above and nothing else (gunbc.flex_aws_iam
+// FlexMarkOwnCards); in particular it does not match the owner tag.
+data flex_aws_mark_key_pattern: NonEmptyStr = "gunbc-flex-*-since" as NonEmptyStr
+
+type FlexAwsMark
+  = FlexAwsMarkAbsent
+  | FlexAwsMarkAt { unix: Int }
+  | FlexAwsMarkUnreadable { value: String }
+
+fn flex_aws_mark(i: AwsEc2Instance, key: NonEmptyStr) -> FlexAwsMark {
+  match first_where(i.tags, t => (t.key as String) == (key as String)) {
+    Absent => FlexAwsMarkAbsent
+    Present { value: t } => match parse_int(s: t.value) {
+      Present { value: n } => FlexAwsMarkAt { unix: n }
+      Absent => FlexAwsMarkUnreadable { value: t.value }
+    }
+  }
+}
+
+fn flex_aws_marked(m: FlexAwsMark) -> Bool { match m { FlexAwsMarkAbsent => false  _ => true } }
+
+fn flex_aws_draining(i: AwsEc2Instance) -> Bool { flex_aws_marked(m: flex_aws_mark(i: i, key: flex_aws_mark_drain)) }
+
+// The bookkeeping a pass writes before it decides: a card out of the router gets its unready clock, a card
+// back in loses it; an enrolled card with nothing in flight and no conversation seen in ten minutes gets
+// its idle clock, and loses it the moment it is used. Only with the router's demand: a fixed count reads no
+// use, so it starts no clock. A draining or warned card is past both clocks.
+type FlexAwsMarkWrite
+  = FlexAwsMarkSet { instance_id: NonEmptyStr, key: NonEmptyStr, unix: Int }
+  | FlexAwsMarkClear { instance_id: NonEmptyStr, key: NonEmptyStr }
+
+fn flex_aws_card_idle(u: FlexAwsCardUse) -> Bool { u.enrolled && (u.in_flight == 0) && (u.seen_10m == 0) }
+
+fn flex_aws_marks(demand: FlexAwsDemand, owned: List<AwsEc2Instance>, notices: List<FlexAwsNotice>, now_unix: Int) -> List<FlexAwsMarkWrite> {
+  match demand {
+    FlexAwsDemandFixed { cards: _ } => []
+    FlexAwsDemandRouter { rentable_waiting: _, rented_active: _, rented_cap: _, cards: _, max_cards: _ } =>
+      flat_map(flex_aws_steady(owned: owned, notices: notices), i => {
+        let u = flex_aws_use_of(demand: demand, instance_id: i.instance_id)
+        let unready = flex_aws_marked(m: flex_aws_mark(i: i, key: flex_aws_mark_unready))
+        let idle = flex_aws_marked(m: flex_aws_mark(i: i, key: flex_aws_mark_idle))
+        concat(
+          if !u.enrolled && !unready { [FlexAwsMarkSet { instance_id: i.instance_id, key: flex_aws_mark_unready, unix: now_unix }] }
+          else if u.enrolled && unready { [FlexAwsMarkClear { instance_id: i.instance_id, key: flex_aws_mark_unready }] }
+          else { [] },
+          if flex_aws_card_idle(u: u) && !idle { [FlexAwsMarkSet { instance_id: i.instance_id, key: flex_aws_mark_idle, unix: now_unix }] }
+          else if !flex_aws_card_idle(u: u) && idle { [FlexAwsMarkClear { instance_id: i.instance_id, key: flex_aws_mark_idle }] }
+          else { [] })
+      })
+  }
+}
+
 // ---- the decision -----------------------------------------------------------------------------------
 
-type FlexAwsReleaseWhy
-  = FlexAwsReleaseLifetimeSpent { age_seconds: Int }
-  | FlexAwsReleaseSurplus { live: Int, wanted: Int }
-  | FlexAwsReleaseLaunchTimeUnreadable { launch_time: String }
+// DRAIN, THEN TERMINATE (operator, 2026-11-25: "will the card wind down gracefully?"). A card leaving by
+// our choice is first DRAINED -- its drain mark is set, which withdraws its router row, so the router stops
+// placing turns on it while the turns already running finish -- and only TERMINATED once the router shows
+// none in flight, or the drain timeout passes. A card that was never in the router has nothing to drain.
+type FlexAwsDrainWhy
+  = FlexAwsDrainIdle { idle_seconds: Int }
+  | FlexAwsDrainSurplus { live: Int, ceiling: Int }
+  | FlexAwsDrainMarkUnreadable { key: NonEmptyStr, value: String }
+
+type FlexAwsTerminateWhy
+  = FlexAwsTerminateDrained { drain_seconds: Int }
+  | FlexAwsTerminateDrainTimedOut { drain_seconds: Int }
+  | FlexAwsTerminateDrainMarkUnreadable { value: String }
+  | FlexAwsTerminateNeverReady { unready_seconds: Int }
 
 type FlexAwsDecision
-  = FlexAwsRelease { instance_id: NonEmptyStr, why: FlexAwsReleaseWhy }
+  = FlexAwsDrain { instance_id: NonEmptyStr, why: FlexAwsDrainWhy }
+  | FlexAwsTerminate { instance_id: NonEmptyStr, why: FlexAwsTerminateWhy }
   | FlexAwsLaunch { candidate: FlexAwsCandidate, max_price: MoneyPerHour, fallbacks: List<FlexAwsCandidate> }
   | FlexAwsHold { why: String }
 
@@ -162,28 +279,16 @@ fn flex_aws_live(i: AwsEc2Instance) -> Bool {
   match i.state.name { AwsEc2Pending => true  AwsEc2Running => true  _ => false }
 }
 
-fn flex_aws_age_seconds(i: AwsEc2Instance, now_unix: Int) -> Int? {
-  match rfc3339_parse_instant(text: i.launch_time) {
-    Rfc3339InstantParsed { instant: t, spelling: _ } => Present { value: now_unix - rfc3339_instant_unix_seconds(i: t) }
-    Rfc3339InstantRefused { cause: _ } => none
-  }
-}
-
-// Rate times lifetime in micros, against the ceiling. Hours are counted up: a lifetime of 61 minutes is
-// charged two hours, so the check never admits a card the ceiling does not cover.
-fn flex_aws_liability_micros(rate: MoneyPerHour, lifetime: Second) -> Int {
-  let hours = ((second_count(lifetime) as Int) + 3599) / 3600
-  (money_per_hour_micros(q: rate) as Int) * hours
+// The live cards that count: not under a notice, not draining.
+fn flex_aws_steady(owned: List<AwsEc2Instance>, notices: List<FlexAwsNotice>) -> List<AwsEc2Instance> {
+  owned |> filter(i => flex_aws_live(i: i) && !flex_aws_leaving(notices: notices, instance_id: i.instance_id) && !flex_aws_draining(i: i))
 }
 
 fn flex_aws_admissible(c: FlexAwsCandidate, policy: FlexAwsApplyPolicy) -> Bool {
   (count(c.walls) == 0)
     && match c.market { FlexAwsSpot => true  _ => false }
     && (c.gpus == policy.gpus_per_card)
-    && match c.rate {
-      Present { value: r } => flex_aws_liability_micros(rate: r, lifetime: policy.lifetime) <= (money_amount_micro_count(m: policy.liability_ceiling) as Int)
-      Absent => false
-    }
+    && match c.rate { Present { value: _ } => true  Absent => false }
 }
 
 // The admissible candidates, cheapest first (ties keep the screen's order). The first is the launch; the
@@ -205,8 +310,8 @@ fn flex_aws_ranked(cs: List<FlexAwsCandidate>) -> List<FlexAwsCandidate> {
 // should start a new reservation elsewhere"). A notice -- the rebalance recommendation or the two-minute
 // interruption warning -- is not something to drain or to terminate for: the card stops COUNTING, its
 // router row is withdrawn (gunbc.fleet.flex_aws_pass), and a replacement is asked for at once, in another
-// zone first. AWS reclaims the card itself. The pass releases only what AWS will not: a card whose launch
-// time cannot be read (its lifetime cannot be bounded), a spent lifetime, and surplus over the wanted count.
+// zone first. AWS reclaims the card itself. The pass releases only what AWS will not: a card unused for the
+// idle window, surplus over the ceiling, and a card that has been out of the router past its boot deadline.
 
 fn flex_aws_leaving(notices: List<FlexAwsNotice>, instance_id: NonEmptyStr) -> Bool {
   any(notices, n => (flex_aws_notice_instance(n: n) as String) == (instance_id as String))
@@ -275,39 +380,106 @@ fn flex_aws_free_in(quotas: List<FlexAwsRegionQuota>, owned: List<AwsEc2Instance
   }
 }
 
+// ONE DECISION PER PASS, in this order: a card whose own mark cannot be read; a drain that has finished
+// or run out of time; a card out of the router past its boot deadline; surplus over the ceiling; then
+// demand -- an idle card released when nothing asks, or the cheapest admissible card launched when it does.
 fn flex_aws_decide(policy: FlexAwsApplyPolicy, demand: FlexAwsDemand, candidates: List<FlexAwsCandidate>, owned: List<AwsEc2Instance>, notices: List<FlexAwsNotice>, quotas: List<FlexAwsRegionQuota>, now_unix: Int) -> FlexAwsDecision {
   let live = owned |> filter(i => flex_aws_live(i: i))
-  match first_where(live, i => match flex_aws_age_seconds(i: i, now_unix: now_unix) { Absent => true  Present { value: _ } => false }) {
-    Present { value: u } => FlexAwsRelease { instance_id: u.instance_id, why: FlexAwsReleaseLaunchTimeUnreadable { launch_time: u.launch_time } }
-    Absent => match first_where(live, i => match flex_aws_age_seconds(i: i, now_unix: now_unix) { Present { value: a } => a >= (second_count(policy.lifetime) as Int)  Absent => false }) {
-      Present { value: old } => FlexAwsRelease { instance_id: old.instance_id, why: FlexAwsReleaseLifetimeSpent { age_seconds: match flex_aws_age_seconds(i: old, now_unix: now_unix) { Present { value: a } => a  Absent => 0 } } }
-      Absent => flex_aws_decide_count(policy: policy, demand: demand, candidates: candidates, owned: owned, live: live, notices: notices, quotas: quotas)
+  match flex_aws_unreadable_mark(live: live) {
+    Present { value: d } => d
+    Absent => match flex_aws_drain_settled(policy: policy, demand: demand, live: live, now_unix: now_unix) {
+      Present { value: d } => d
+      Absent => match flex_aws_never_ready(policy: policy, demand: demand, live: live, notices: notices, now_unix: now_unix) {
+        Present { value: d } => d
+        Absent => flex_aws_decide_count(policy: policy, demand: demand, candidates: candidates, owned: owned, live: live, notices: notices, quotas: quotas, now_unix: now_unix)
+      }
     }
   }
+}
+
+// A mark that does not read as unix seconds is our own bookkeeping corrupted: a drain mark means the card
+// was already being let go, so it is terminated; any other mark drains the card rather than guess a clock.
+fn flex_aws_unreadable_mark(live: List<AwsEc2Instance>) -> FlexAwsDecision? {
+  flat_map(live, i => match flex_aws_mark(i: i, key: flex_aws_mark_drain) {
+    FlexAwsMarkUnreadable { value: v } => [FlexAwsTerminate { instance_id: i.instance_id, why: FlexAwsTerminateDrainMarkUnreadable { value: v } }]
+    FlexAwsMarkAt { unix: _ } => []
+    FlexAwsMarkAbsent => match flex_aws_mark(i: i, key: flex_aws_mark_unready) {
+      FlexAwsMarkUnreadable { value: v } => [FlexAwsDrain { instance_id: i.instance_id, why: FlexAwsDrainMarkUnreadable { key: flex_aws_mark_unready, value: v } }]
+      _ => match flex_aws_mark(i: i, key: flex_aws_mark_idle) {
+        FlexAwsMarkUnreadable { value: v } => [FlexAwsDrain { instance_id: i.instance_id, why: FlexAwsDrainMarkUnreadable { key: flex_aws_mark_idle, value: v } }]
+        _ => []
+      }
+    }
+  }).first()
+}
+
+// A draining card is done when the router no longer routes it and has no turn of it in flight; it is let
+// go regardless once the drain timeout passes, so a stuck turn cannot hold a card forever.
+fn flex_aws_drain_settled(policy: FlexAwsApplyPolicy, demand: FlexAwsDemand, live: List<AwsEc2Instance>, now_unix: Int) -> FlexAwsDecision? {
+  flat_map(live, i => match flex_aws_mark(i: i, key: flex_aws_mark_drain) {
+    FlexAwsMarkAt { unix: t } => {
+      let u = flex_aws_use_of(demand: demand, instance_id: i.instance_id)
+      if !u.enrolled && (u.in_flight == 0) { [FlexAwsTerminate { instance_id: i.instance_id, why: FlexAwsTerminateDrained { drain_seconds: now_unix - t } }] }
+      else if (now_unix - t) >= (second_count(policy.drain_timeout) as Int) { [FlexAwsTerminate { instance_id: i.instance_id, why: FlexAwsTerminateDrainTimedOut { drain_seconds: now_unix - t } }] }
+      else { [] }
+    }
+    _ => []
+  }).first()
+}
+
+// A steady card out of the router since its unready mark, past the boot deadline: it never became ready,
+// or it stopped answering and the converge withdrew it. It carries no traffic, so it is terminated, not
+// drained. A card the router still lists is never judged by this clock.
+fn flex_aws_never_ready(policy: FlexAwsApplyPolicy, demand: FlexAwsDemand, live: List<AwsEc2Instance>, notices: List<FlexAwsNotice>, now_unix: Int) -> FlexAwsDecision? {
+  flat_map(flex_aws_steady(owned: live, notices: notices), i => match flex_aws_mark(i: i, key: flex_aws_mark_unready) {
+    FlexAwsMarkAt { unix: t } =>
+      if !flex_aws_use_of(demand: demand, instance_id: i.instance_id).enrolled && ((now_unix - t) >= (second_count(policy.boot_deadline) as Int)) {
+        [FlexAwsTerminate { instance_id: i.instance_id, why: FlexAwsTerminateNeverReady { unready_seconds: now_unix - t } }]
+      } else { [] }
+    _ => []
+  }).first()
 }
 
 fn flex_aws_demand_ceiling(demand: FlexAwsDemand) -> Int {
   match demand {
     FlexAwsDemandFixed { cards: n } => n
-    FlexAwsDemandRouter { stranded: _, rented_active: _, rented_cap: _, max_cards: m } => m
+    FlexAwsDemandRouter { rentable_waiting: _, rented_active: _, rented_cap: _, cards: _, max_cards: m } => m
   }
 }
 
-// Surplus over the ceiling is released; below what demand wants, the cheapest admissible card elsewhere
+// Surplus over the ceiling is drained (a card not in the router first: it carries nothing); with no ask,
+// a card idle past the window is drained; below what demand wants, the cheapest admissible card elsewhere
 // first is asked for; otherwise the pass holds.
-fn flex_aws_decide_count(policy: FlexAwsApplyPolicy, demand: FlexAwsDemand, candidates: List<FlexAwsCandidate>, owned: List<AwsEc2Instance>, live: List<AwsEc2Instance>, notices: List<FlexAwsNotice>, quotas: List<FlexAwsRegionQuota>) -> FlexAwsDecision {
-  let steady = live |> filter(i => !flex_aws_leaving(notices: notices, instance_id: i.instance_id))
-  let wanted = flex_aws_wanted(demand: demand, steady: count(steady))
-  if count(live) > flex_aws_demand_ceiling(demand: demand) {
-    match live.first() {
-      Present { value: s } => FlexAwsRelease { instance_id: s.instance_id, why: FlexAwsReleaseSurplus { live: count(live), wanted: wanted } }
+fn flex_aws_decide_count(policy: FlexAwsApplyPolicy, demand: FlexAwsDemand, candidates: List<FlexAwsCandidate>, owned: List<AwsEc2Instance>, live: List<AwsEc2Instance>, notices: List<FlexAwsNotice>, quotas: List<FlexAwsRegionQuota>, now_unix: Int) -> FlexAwsDecision {
+  let steady = flex_aws_steady(owned: live, notices: notices)
+  let kept = live |> filter(i => !flex_aws_draining(i: i))
+  let wanted = flex_aws_wanted(demand: demand, steady: steady)
+  let ceiling = flex_aws_demand_ceiling(demand: demand)
+  if count(kept) > ceiling {
+    match concat(kept |> filter(i => !flex_aws_use_of(demand: demand, instance_id: i.instance_id).enrolled), kept).first() {
+      Present { value: s } => FlexAwsDrain { instance_id: s.instance_id, why: FlexAwsDrainSurplus { live: count(kept), ceiling: ceiling } }
       Absent => FlexAwsHold { why: "surplus with no live card" }
     }
-  } else if count(steady) >= wanted {
-    FlexAwsHold { why: join(["live=", to_string(count(live)), " steady=", to_string(count(steady)), " wanted=", to_string(wanted)], "") }
   } else {
-    flex_aws_launch_decision(policy: policy, candidates: candidates, owned: owned, notices: notices, quotas: quotas)
+    match if flex_aws_asks(demand: demand) { none } else { flex_aws_idle_past(policy: policy, steady: steady, now_unix: now_unix) } {
+      Present { value: d } => d
+      Absent =>
+        if count(steady) >= wanted {
+          FlexAwsHold { why: join(["live=", to_string(count(live)), " steady=", to_string(count(steady)), " wanted=", to_string(wanted)], "") }
+        } else {
+          flex_aws_launch_decision(policy: policy, candidates: candidates, owned: owned, notices: notices, quotas: quotas)
+        }
+    }
   }
+}
+
+fn flex_aws_idle_past(policy: FlexAwsApplyPolicy, steady: List<AwsEc2Instance>, now_unix: Int) -> FlexAwsDecision? {
+  flat_map(steady, i => match flex_aws_mark(i: i, key: flex_aws_mark_idle) {
+    FlexAwsMarkAt { unix: t } =>
+      if (now_unix - t) >= (second_count(policy.idle_window) as Int) { [FlexAwsDrain { instance_id: i.instance_id, why: FlexAwsDrainIdle { idle_seconds: now_unix - t } }] }
+      else { [] }
+    _ => []
+  }).first()
 }
 
 // THE BURN RATE: what our live cards cost per hour now -- each at the current spot price of its type in its
@@ -348,7 +520,7 @@ fn flex_aws_launch_within(policy: FlexAwsApplyPolicy, candidates: List<FlexAwsCa
       Present { value: r } => FlexAwsLaunch { candidate: c, max_price: r, fallbacks: ranked.skip(n: 1) }
       Absent => FlexAwsHold { why: "the cheapest admissible candidate has no rate" }
     }
-    Absent => FlexAwsHold { why: join(["no admissible candidate: no ", to_string(policy.gpus_per_card), "-GPU spot card in any scanned region is clear of walls, within the liability ceiling, inside its region's free spot vCPUs, and within the burn ceiling (live burn ", to_string(burn), " micros/h of ", to_string(money_per_hour_micros(q: policy.burn_ceiling)), ")"], "") }
+    Absent => FlexAwsHold { why: join(["no admissible candidate: no ", to_string(policy.gpus_per_card), "-GPU spot card in any scanned region is clear of walls, inside its region's free spot vCPUs, and within the burn ceiling (live burn ", to_string(burn), " micros/h of ", to_string(money_per_hour_micros(q: policy.burn_ceiling)), ")"], "") }
   }
 }
 

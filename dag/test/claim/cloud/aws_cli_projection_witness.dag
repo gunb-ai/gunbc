@@ -1,7 +1,7 @@
 module test.claim.cloud.aws_cli_projection_witness
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { Bool, String, Int, List }
+import std.types { Bool, String, Int, List, NonEmptyStr }
 import std.optional { Present, Absent }
 import std.decimal { ExactDecimal, exact_decimal_equal }
 import std.measure { mebibyte_count, gigabyte_count, hardware_thread_count_value, money_per_hour_micros }
@@ -11,7 +11,10 @@ import extdeps.cloud.aws_ec2 { AwsEc2OptInNotRequired, AwsEc2NotOptedIn, AwsEc2R
 import extdeps.cloud.aws_cli {
   AwsCliReadOk, AwsCliReadRefused, aws_cli_read_regions, aws_cli_read_offerings, aws_cli_read_instance_types,
   aws_cli_read_spot_prices, aws_cli_read_instances, aws_cli_read_service_quota, aws_cli_describe_spot_prices,
+  aws_cli_read_prefix_census, aws_cli_create_tags, aws_cli_delete_tags,
 }
+import extdeps.cloud.aws_ec2 { AwsEc2Tag }
+import extdeps.exec.command { argv_words }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -80,4 +83,25 @@ test fn the_cli_argv_pins_the_region_and_carries_no_credential() -> Bool {
     && words.contains("AWS_SHARED_CREDENTIALS_FILE=/etc/gunbc-flex/aws-credentials")
     && !(join(words, " ").contains("AWS_SECRET_ACCESS_KEY="))
     && !words.contains("--debug")
+}
+
+// THE REGIONAL CENSUS: the CLI's --query answer for the us-east-1 weights prefix as srv1 read it on
+// 2026-11-25 (a bare array, which the object reader refused before this claim existed); an empty prefix;
+// and a reply that is not [count, bytes] refuses.
+test fn the_prefix_census_reads_the_bare_query_array() -> Bool {
+  (match aws_cli_read_prefix_census(stdout: "[\n    37,\n    102262354720\n]\n") {
+    AwsCliReadOk { value: c } => (c.objects == 37) && (c.bytes == 102262354720)
+    AwsCliReadRefused { cause: _ } => false
+  })
+  && (match aws_cli_read_prefix_census(stdout: "[0, 0]") { AwsCliReadOk { value: c } => (c.objects == 0) && (c.bytes == 0)  AwsCliReadRefused { cause: _ } => false })
+  && (match aws_cli_read_prefix_census(stdout: "[37]") { AwsCliReadRefused { cause: _ } => true  AwsCliReadOk { value: _ } => false })
+  && (match aws_cli_read_prefix_census(stdout: "\{\"Contents\": []}") { AwsCliReadRefused { cause: _ } => true  AwsCliReadOk { value: _ } => false })
+}
+
+// THE MARK WRITES carry the tag as Key=,Value= and a deletion by key alone.
+test fn the_mark_tag_writes_name_the_card_and_the_key() -> Bool {
+  let set = join(argv_words(command: aws_cli_create_tags(credentials_file: "/etc/gunbc-flex/aws-credentials", region: "us-west-2" as NonEmptyStr, resource_ids: ["i-0abc" as NonEmptyStr], tags: [AwsEc2Tag { key: "gunbc-flex-idle-since" as NonEmptyStr, value: "1795646284" }])), " ")
+  let clear = join(argv_words(command: aws_cli_delete_tags(credentials_file: "/etc/gunbc-flex/aws-credentials", region: "us-west-2" as NonEmptyStr, resource_ids: ["i-0abc" as NonEmptyStr], keys: ["gunbc-flex-idle-since" as NonEmptyStr])), " ")
+  set.contains("ec2 create-tags --region us-west-2") && set.contains("--resources i-0abc --tags Key=gunbc-flex-idle-since,Value=1795646284")
+    && clear.contains("ec2 delete-tags --region us-west-2") && clear.contains("--resources i-0abc --tags Key=gunbc-flex-idle-since")
 }

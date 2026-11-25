@@ -1,12 +1,15 @@
 module test.claim.serving.flex_aws_router_rows_witness
 
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.types { Bool, String, NonEmptyStr, List }
+import std.types { Bool, String, NonEmptyStr, List, Int }
+import std.optional { Present, Absent }
 import std.algebra { length }
 import gunbc.serving.flex_aws_router_rows {
   FlexAwsEnrollable, FlexAwsRowFacts, FlexAwsRowsConverged, FlexAwsRowsRefused,
   flex_aws_rows_converge, flex_aws_ca_converge, flex_aws_pem_blocks,
+  flex_aws_read_router_stats, FlexAwsStatsReadOk, FlexAwsStatsRefused,
 }
+import product.fabric.flex_aws_apply { FlexAwsDemandRouter, FlexAwsCardUse }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -73,4 +76,76 @@ test fn nothing_of_ours_to_change_is_not_a_change() -> Bool {
       FlexAwsRowsConverged { text: _, added: _, removed: _, changed: c } => !c
       FlexAwsRowsRefused { cause: _ } => false
     })
+}
+
+// ---- the router's stats ----------------------------------------------------------------------------
+
+// SUPPLIED: /router/stats as srv1 served it on 2026-11-25 (the fields the reader uses, other fields
+// elided): one enrolled card with two turns in flight and three conversations seen, a removed row's
+// counter still running, and every waiter bound to an owned engine for under the long wait.
+fn stats(pending_bound: String) -> String {
+  join(["\{\"pending\": \{\"total\": 31}, \"pending_bound\": ", pending_bound,
+    ", \"rented\": \{\"active\": 2, \"cap\": 4, \"full\": false}",
+    ", \"bound\": \{\"srv1-vllm\": \{\"total\": 20, \"seen_10m\": 9, \"seen_60m\": 15}, \"aws-i-0a\": \{\"total\": 3, \"seen_10m\": 3, \"seen_60m\": 3}}",
+    ", \"usage_by_route\": \{\"version\": 1, \"routes\": [\{\"name\": \"srv1-vllm\", \"active\": 4}, \{\"name\": \"aws-i-0a\", \"active\": 2}]}",
+    ", \"active:srv1-vllm\": 4, \"active:aws-i-0a\": 2, \"active:aws-i-0gone\": 1}"], "")
+}
+
+data owned_only: String = "\{\"srv1-vllm\": 412, \"ken\": 95}"
+
+fn use_of(body: String, ids: List<String>) -> List<FlexAwsCardUse> {
+  match flex_aws_read_router_stats(body: body, instance_ids: map(ids, i => i as NonEmptyStr), max_cards: 3) {
+    FlexAwsStatsReadOk { demand: FlexAwsDemandRouter { rentable_waiting: _, rented_active: _, rented_cap: _, cards: cs, max_cards: _ } } => cs
+    _ => []
+  }
+}
+
+fn rentable(pending_bound: String) -> Int {
+  match flex_aws_read_router_stats(body: stats(pending_bound: pending_bound), instance_ids: [], max_cards: 3) {
+    FlexAwsStatsReadOk { demand: FlexAwsDemandRouter { rentable_waiting: w, rented_active: _, rented_cap: _, cards: _, max_cards: _ } } => if w { 1 } else { 0 }
+    _ => -1
+  }
+}
+
+// WHICH WAITERS A RENTED CARD COULD TAKE: none while every waiter is bound to its own engine under the long
+// wait (31 stranded, the 2026-11-25 shape); an unbound waiter, one bound to our rented row, or one past the
+// router's long wait each could.
+test fn only_waiters_a_rented_card_could_take_count_as_demand() -> Bool {
+  (rentable(pending_bound: owned_only) == 0)
+    && (rentable(pending_bound: "\{\"srv1-vllm\": 40, \"unbound\": 3}") == 1)
+    && (rentable(pending_bound: "\{\"aws-i-0a\": 12}") == 1)
+    && (rentable(pending_bound: "\{\"ken\": 600}") == 1)
+    && (rentable(pending_bound: "\{\"ken\": 599}") == 0)
+    && (rentable(pending_bound: "[]") == 0)
+}
+
+// EACH CARD'S USE: an enrolled card's turns and recent conversations; a card the router no longer routes
+// whose last turn is still running (a drain in progress); a card the router never counted reads as the
+// router reads it, zero.
+test fn each_card_reads_its_enrollment_turns_and_recent_conversations() -> Bool {
+  let us = use_of(body: stats(pending_bound: owned_only), ids: ["i-0a", "i-0gone", "i-0new"])
+  (count(us) == 3)
+    && match us.first() { Present { value: u } => u.enrolled && (u.in_flight == 2) && (u.seen_10m == 3)  Absent => false }
+    && match us.skip(n: 1).first() { Present { value: u } => !u.enrolled && (u.in_flight == 1) && (u.seen_10m == 0)  Absent => false }
+    && match us.last() { Present { value: u } => !u.enrolled && (u.in_flight == 0) && (u.seen_10m == 0)  Absent => false }
+}
+
+// A STATS ANSWER MISSING A FIELD IS REFUSED, never read as no demand or an unused card.
+test fn stats_missing_a_field_are_refused() -> Bool {
+  (match flex_aws_read_router_stats(body: "\{\"pending_bound\": \{}, \"bound\": \{}, \"usage_by_route\": \{\"routes\": []}}", instance_ids: [], max_cards: 3) {
+    FlexAwsStatsRefused { cause: c } => c.contains("rented.active")
+    _ => false
+  })
+  && (match flex_aws_read_router_stats(body: "\{\"rented\": \{\"active\": 0, \"cap\": 0}, \"bound\": \{}, \"usage_by_route\": \{\"routes\": []}}", instance_ids: [], max_cards: 3) {
+    FlexAwsStatsRefused { cause: c } => c.contains("pending_bound")
+    _ => false
+  })
+  && (match flex_aws_read_router_stats(body: "not json", instance_ids: [], max_cards: 3) {
+    FlexAwsStatsRefused { cause: _ } => true
+    _ => false
+  })
+  && (match flex_aws_read_router_stats(body: join(["\{\"pending_bound\": \{}, \"bound\": \{}, \"rented\": \{\"active\": 0, \"cap\": 0}, \"usage_by_route\": \{\"routes\": []}, \"active:aws-i-0a\": \"two\"}"], ""), instance_ids: ["i-0a" as NonEmptyStr], max_cards: 3) {
+    FlexAwsStatsRefused { cause: c } => c.contains("not a number")
+    _ => false
+  })
 }

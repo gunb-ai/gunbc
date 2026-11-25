@@ -77,8 +77,10 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: [aws_cli_pagination_page, aws_cli_environment_variables_page, aws_cli_changelog],
 }
 
-// The newest release in the changelog when read, 2026-10-23. The custody host installs exactly this.
-data aws_cli_pinned_version: NonEmptyStr = "2.38.5" as NonEmptyStr
+// The version the custody host (srv1) and the operator host run, read with `aws --version` on 2026-11-25;
+// every projection in this module was exercised against it live that day. Was 2.38.5 (the changelog's
+// newest on 2026-10-23), never installed on either host.
+data aws_cli_pinned_version: NonEmptyStr = "2.42.3" as NonEmptyStr
 
 fn aws_cli_program() -> ProgramIdentity = uncataloged_program(invocation: "aws" as NonEmptyStr)
 
@@ -875,6 +877,18 @@ fn aws_cli_terminate_instances(credentials_file: FilePath, region: NonEmptyStr, 
     arguments: concat(["--instance-ids"], map(instance_ids, i => i as String)))
 }
 
+// CreateTags / DeleteTags (EC2 API reference): tags given as Key=,Value= pairs; a deletion by key alone
+// removes the tag whatever its value.
+fn aws_cli_create_tags(credentials_file: FilePath, region: NonEmptyStr, resource_ids: List<NonEmptyStr>, tags: List<AwsEc2Tag>) -> ArgvCommand {
+  aws_cli_command(credentials_file: credentials_file, region: region, service: "ec2" as NonEmptyStr, operation: "create-tags" as NonEmptyStr,
+    arguments: concat(concat(["--resources"], map(resource_ids, i => i as String)), concat(["--tags"], map(tags, t => join(["Key=", t.key as String, ",Value=", t.value], "")))))
+}
+
+fn aws_cli_delete_tags(credentials_file: FilePath, region: NonEmptyStr, resource_ids: List<NonEmptyStr>, keys: List<NonEmptyStr>) -> ArgvCommand {
+  aws_cli_command(credentials_file: credentials_file, region: region, service: "ec2" as NonEmptyStr, operation: "delete-tags" as NonEmptyStr,
+    arguments: concat(concat(["--resources"], map(resource_ids, i => i as String)), concat(["--tags"], map(keys, k => concat("Key=", k as String)))))
+}
+
 fn aws_cli_describe_subnets_in_default_vpc(credentials_file: FilePath, region: NonEmptyStr, zone: NonEmptyStr) -> ArgvCommand {
   aws_cli_command(credentials_file: credentials_file, region: region, service: "ec2" as NonEmptyStr, operation: "describe-subnets" as NonEmptyStr,
     arguments: ["--filters", "Name=default-for-az,Values=true", join(["Name=availability-zone,Values=", zone as String], "")])
@@ -902,6 +916,12 @@ fn aws_cli_get_secure_parameter(credentials_file: FilePath, region: NonEmptyStr,
 fn aws_cli_put_secure_parameter(credentials_file: FilePath, region: NonEmptyStr, name: NonEmptyStr, value_file: FilePath) -> ArgvCommand {
   aws_cli_command(credentials_file: credentials_file, region: region, service: "ssm" as NonEmptyStr, operation: "put-parameter" as NonEmptyStr,
     arguments: ["--name", name as String, "--type", "SecureString", "--overwrite", "--value", join(["file://", value_file as String], "")])
+}
+
+// A plain String parameter whose value is not a secret (it rides argv), overwritten in place.
+fn aws_cli_put_string_parameter(credentials_file: FilePath, region: NonEmptyStr, name: NonEmptyStr, value: NonEmptyStr) -> ArgvCommand {
+  aws_cli_command(credentials_file: credentials_file, region: region, service: "ssm" as NonEmptyStr, operation: "put-parameter" as NonEmptyStr,
+    arguments: ["--name", name as String, "--type", "String", "--overwrite", "--value", value as String])
 }
 
 fn aws_cli_delete_parameter(credentials_file: FilePath, region: NonEmptyStr, name: NonEmptyStr) -> ArgvCommand {
@@ -964,6 +984,183 @@ fn aws_cli_read_queue_url(stdout: String) -> AwsCliRead<NonEmptyStr> {
   match aws_cli_document(stdout: stdout) {
     AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
     AwsCliReadOk { value: doc } => aws_cli_string(obj: doc, key: "QueueUrl")
+  }
+}
+
+// ---- regional setup (the provisioner's operations) -----------------------------------------------
+
+// STS GetCallerIdentity: the account the credentials act in. Read at run time, never written as data.
+fn aws_cli_get_caller_identity(credentials_file: FilePath, region: NonEmptyStr) -> ArgvCommand {
+  aws_cli_command(credentials_file: credentials_file, region: region, service: "sts" as NonEmptyStr, operation: "get-caller-identity" as NonEmptyStr, arguments: [])
+}
+
+fn aws_cli_read_account(stdout: String) -> AwsCliRead<NonEmptyStr> {
+  match aws_cli_document(stdout: stdout) {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: doc } => aws_cli_string(obj: doc, key: "Account")
+  }
+}
+
+fn aws_cli_describe_default_vpcs(credentials_file: FilePath, region: NonEmptyStr) -> ArgvCommand {
+  aws_cli_command(credentials_file: credentials_file, region: region, service: "ec2" as NonEmptyStr, operation: "describe-vpcs" as NonEmptyStr,
+    arguments: ["--filters", "Name=is-default,Values=true"])
+}
+
+fn aws_cli_read_vpc_ids(stdout: String) -> AwsCliRead<List<NonEmptyStr>> {
+  match aws_cli_document(stdout: stdout) {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: doc } => aws_cli_list(doc: doc, key: "Vpcs", read: v => aws_cli_string(obj: v, key: "VpcId"))
+  }
+}
+
+fn aws_cli_tag_shorthand(tags: List<AwsEc2Tag>) -> String {
+  join(["[", join(map(tags, t => join(["\{Key=", t.key as String, ",Value=", t.value, "}"], "")), ","), "]"], "")
+}
+
+// CreateSecurityGroup in a VPC, tagged at creation (the provisioner may create only a tagged group).
+fn aws_cli_create_security_group(credentials_file: FilePath, region: NonEmptyStr, group_name: NonEmptyStr, description: NonEmptyStr, vpc_id: NonEmptyStr, tags: List<AwsEc2Tag>) -> ArgvCommand {
+  aws_cli_command(credentials_file: credentials_file, region: region, service: "ec2" as NonEmptyStr, operation: "create-security-group" as NonEmptyStr,
+    arguments: ["--group-name", group_name as String, "--description", description as String, "--vpc-id", vpc_id as String,
+      "--tag-specifications", join(["ResourceType=security-group,Tags=", aws_cli_tag_shorthand(tags: tags)], "")])
+}
+
+fn aws_cli_read_group_id(stdout: String) -> AwsCliRead<NonEmptyStr> {
+  match aws_cli_document(stdout: stdout) {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: doc } => aws_cli_string(obj: doc, key: "GroupId")
+  }
+}
+
+// One TCP port from one CIDR, with its description. EC2 answers InvalidPermission.Duplicate when the
+// exact rule already exists; that answer is the rule present, which the caller reads as converged.
+data aws_cli_duplicate_permission: String = "InvalidPermission.Duplicate"
+
+fn aws_cli_authorize_ingress_tcp(credentials_file: FilePath, region: NonEmptyStr, group_id: NonEmptyStr, port: Int, cidr: NonEmptyStr, description: NonEmptyStr) -> ArgvCommand {
+  aws_cli_command(credentials_file: credentials_file, region: region, service: "ec2" as NonEmptyStr, operation: "authorize-security-group-ingress" as NonEmptyStr,
+    arguments: ["--group-id", group_id as String, "--ip-permissions",
+      serialize_json(v: json_array(elements: [json_object(members: [
+        json_kv(key: "IpProtocol", value: json_string(s: "tcp")),
+        json_kv(key: "FromPort", value: json_int(n: port)),
+        json_kv(key: "ToPort", value: json_int(n: port)),
+        json_kv(key: "IpRanges", value: json_array(elements: [json_object(members: [json_kv(key: "CidrIp", value: json_string(s: cidr as String)), json_kv(key: "Description", value: json_string(s: description as String))])])),
+      ])]))])
+}
+
+// CreateQueue is idempotent for an existing queue whose attributes match; the answer is its URL.
+fn aws_cli_create_queue(credentials_file: FilePath, region: NonEmptyStr, queue_name: NonEmptyStr, attributes: List<JsonKeyValue>) -> ArgvCommand {
+  aws_cli_command(credentials_file: credentials_file, region: region, service: "sqs" as NonEmptyStr, operation: "create-queue" as NonEmptyStr,
+    arguments: ["--queue-name", queue_name as String, "--attributes", serialize_json(v: json_object(members: attributes))])
+}
+
+fn aws_cli_get_queue_arn(credentials_file: FilePath, region: NonEmptyStr, queue_url: NonEmptyStr) -> ArgvCommand {
+  aws_cli_command(credentials_file: credentials_file, region: region, service: "sqs" as NonEmptyStr, operation: "get-queue-attributes" as NonEmptyStr,
+    arguments: ["--queue-url", queue_url as String, "--attribute-names", "QueueArn"])
+}
+
+fn aws_cli_read_queue_arn(stdout: String) -> AwsCliRead<NonEmptyStr> {
+  match aws_cli_document(stdout: stdout) {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: doc } => match aws_cli_object(obj: doc, key: "Attributes") {
+      AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+      AwsCliReadOk { value: a } => aws_cli_string(obj: a, key: "QueueArn")
+    }
+  }
+}
+
+fn aws_cli_set_queue_attributes(credentials_file: FilePath, region: NonEmptyStr, queue_url: NonEmptyStr, attributes: List<JsonKeyValue>) -> ArgvCommand {
+  aws_cli_command(credentials_file: credentials_file, region: region, service: "sqs" as NonEmptyStr, operation: "set-queue-attributes" as NonEmptyStr,
+    arguments: ["--queue-url", queue_url as String, "--attributes", serialize_json(v: json_object(members: attributes))])
+}
+
+// EventBridge PutRule (idempotent by name; the answer carries the rule ARN) and PutTargets (idempotent by
+// target id).
+fn aws_cli_put_rule(credentials_file: FilePath, region: NonEmptyStr, name: NonEmptyStr, event_pattern: JsonValue) -> ArgvCommand {
+  aws_cli_command(credentials_file: credentials_file, region: region, service: "events" as NonEmptyStr, operation: "put-rule" as NonEmptyStr,
+    arguments: ["--name", name as String, "--event-pattern", serialize_json(v: event_pattern), "--state", "ENABLED"])
+}
+
+fn aws_cli_read_rule_arn(stdout: String) -> AwsCliRead<NonEmptyStr> {
+  match aws_cli_document(stdout: stdout) {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: doc } => aws_cli_string(obj: doc, key: "RuleArn")
+  }
+}
+
+fn aws_cli_put_target(credentials_file: FilePath, region: NonEmptyStr, rule: NonEmptyStr, target_id: NonEmptyStr, target_arn: NonEmptyStr) -> ArgvCommand {
+  aws_cli_command(credentials_file: credentials_file, region: region, service: "events" as NonEmptyStr, operation: "put-targets" as NonEmptyStr,
+    arguments: ["--rule", rule as String, "--targets", serialize_json(v: json_array(elements: [json_object(members: [json_kv(key: "Id", value: json_string(s: target_id as String)), json_kv(key: "Arn", value: json_string(s: target_arn as String))])]))])
+}
+
+// S3 HeadBucket: exit 0 when the bucket exists and the caller may list it; a 404 when it does not.
+data aws_cli_bucket_absent: String = "Not Found"
+
+fn aws_cli_head_bucket(credentials_file: FilePath, region: NonEmptyStr, bucket: NonEmptyStr) -> ArgvCommand {
+  aws_cli_command(credentials_file: credentials_file, region: region, service: "s3api" as NonEmptyStr, operation: "head-bucket" as NonEmptyStr, arguments: ["--bucket", bucket as String])
+}
+
+// CreateBucket: outside us-east-1 the location constraint must name the region (S3 API reference); in
+// us-east-1 it must be absent.
+fn aws_cli_create_bucket(credentials_file: FilePath, region: NonEmptyStr, bucket: NonEmptyStr) -> ArgvCommand {
+  aws_cli_command(credentials_file: credentials_file, region: region, service: "s3api" as NonEmptyStr, operation: "create-bucket" as NonEmptyStr,
+    arguments: concat(["--bucket", bucket as String], if (region as String) == "us-east-1" { [] } else { ["--create-bucket-configuration", concat("LocationConstraint=", region as String)] }))
+}
+
+fn aws_cli_block_public_access(credentials_file: FilePath, region: NonEmptyStr, bucket: NonEmptyStr) -> ArgvCommand {
+  aws_cli_command(credentials_file: credentials_file, region: region, service: "s3api" as NonEmptyStr, operation: "put-public-access-block" as NonEmptyStr,
+    arguments: ["--bucket", bucket as String, "--public-access-block-configuration", "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true"])
+}
+
+fn aws_cli_put_bucket_tagging(credentials_file: FilePath, region: NonEmptyStr, bucket: NonEmptyStr, tags: List<AwsEc2Tag>) -> ArgvCommand {
+  aws_cli_command(credentials_file: credentials_file, region: region, service: "s3api" as NonEmptyStr, operation: "put-bucket-tagging" as NonEmptyStr,
+    arguments: ["--bucket", bucket as String, "--tagging", join(["TagSet=", aws_cli_tag_shorthand(tags: tags)], "")])
+}
+
+// A server-side copy of one prefix from a bucket in another region; objects already present with the same
+// size and time are skipped, so a re-run copies only what is missing.
+fn aws_cli_s3_sync_prefix(credentials_file: FilePath, region: NonEmptyStr, source_region: NonEmptyStr, source_bucket: NonEmptyStr, bucket: NonEmptyStr, prefix: NonEmptyStr) -> ArgvCommand {
+  aws_cli_command(credentials_file: credentials_file, region: region, service: "s3" as NonEmptyStr, operation: "sync" as NonEmptyStr,
+    arguments: [join(["s3://", source_bucket as String, "/", prefix as String], ""), join(["s3://", bucket as String, "/", prefix as String], ""), "--source-region", source_region as String, "--only-show-errors"])
+}
+
+// The object count and total bytes under a prefix (the CLI pages ListObjectsV2 and applies the query to
+// every page together); an empty prefix answers [0, 0].
+fn aws_cli_prefix_census(credentials_file: FilePath, region: NonEmptyStr, bucket: NonEmptyStr, prefix: NonEmptyStr) -> ArgvCommand {
+  aws_cli_command(credentials_file: credentials_file, region: region, service: "s3api" as NonEmptyStr, operation: "list-objects-v2" as NonEmptyStr,
+    arguments: ["--bucket", bucket as String, "--prefix", prefix as String, "--query", "[length(Contents || `[]`), sum(Contents[].Size || `[]`)]"])
+}
+
+type AwsS3PrefixCensus {
+  objects: Int
+  bytes: Int
+}
+
+fn aws_cli_whole(v: JsonValue) -> Int? {
+  match v { JsonNumber { lexeme: _ } => parse_int(s: serialize_json(v: v))  _ => none }
+}
+
+// The census is the CLI's --query answer, applied after the CLI has paged through every object, so the
+// answer is a bare array with no NextToken to check (aws_cli_document's guard is for object answers).
+fn aws_cli_read_prefix_census(stdout: String) -> AwsCliRead<AwsS3PrefixCensus> {
+  match parse_json_document(s: stdout) {
+    JsonDocumentUnreadable { gap: g } => AwsCliReadRefused { cause: concat("the census is not one JSON document: ", json_document_gap_text(gap: g)) }
+    JsonDocumentParsed { value: JsonArray { elements: es } } =>
+      if count(es) != 2 { AwsCliReadRefused { cause: "the census is not [count, bytes]" } }
+      else {
+        match es.first() {
+          Present { value: first } => match aws_cli_whole(v: first) {
+            Present { value: n } => match es.last() {
+              Present { value: last } => match aws_cli_whole(v: last) {
+                Present { value: b } => AwsCliReadOk { value: AwsS3PrefixCensus { objects: n, bytes: b } }
+                Absent => AwsCliReadRefused { cause: "the census byte total is not a whole number" }
+              }
+              Absent => AwsCliReadRefused { cause: "the census is empty" }
+            }
+            Absent => AwsCliReadRefused { cause: "the census object count is not a whole number" }
+          }
+          Absent => AwsCliReadRefused { cause: "the census is empty" }
+        }
+      }
+    JsonDocumentParsed { value: _ } => AwsCliReadRefused { cause: "the census is not an array" }
   }
 }
 

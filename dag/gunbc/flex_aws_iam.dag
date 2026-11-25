@@ -9,6 +9,7 @@ import extdeps.access.aws_iam {
   aws_iam_policy_version, aws_iam_policy_document_json,
 }
 import product.fabric.flex_aws_row { flex_aws_owner_tag_key, flex_aws_owner_tag_value, flex_aws_type_pattern }
+import product.fabric.flex_aws_apply { flex_aws_mark_key_pattern }
 
 // THE TWO AWS PRINCIPALS OF THE FLEX SPOT LOOP AND WHAT EACH MAY DO, as policy documents rather than JSON
 // typed by hand. The deleted plan gunbc.plans.flex_supplier_generalization (section 4, recovered from
@@ -105,6 +106,12 @@ data flex_aws_loop_policy: PolicyDocument = PolicyDocument {
     flex_aws_allow(sid: "FlexTagOnCreate", actions: ["ec2:CreateTags"], resources: ["*"], conditions: [
       flex_aws_cond(operator: "StringEquals", key: "ec2:CreateAction", values: ["RunInstances", "CreateLaunchTemplate"]),
     ]),
+    // A card's own clocks (product.fabric.flex_aws_apply flex_aws_mark_*): set and cleared on our cards only,
+    // and only those keys, so the loop can never strip or rewrite the owner tag that scopes every grant here.
+    flex_aws_allow(sid: "FlexMarkOwnCards", actions: ["ec2:CreateTags", "ec2:DeleteTags"], resources: ["arn:aws:ec2:*:*:instance/*"], conditions: [
+      flex_aws_resource_owner(),
+      flex_aws_cond(operator: "ForAllValues:StringLike", key: "aws:TagKeys", values: [flex_aws_mark_key_pattern as String]),
+    ]),
     flex_aws_allow(sid: "FlexTerminateOwn", actions: ["ec2:TerminateInstances"], resources: ["arn:aws:ec2:*:*:instance/*"], conditions: [flex_aws_resource_owner()]),
     flex_aws_allow(sid: "FlexTemplateCreate", actions: ["ec2:CreateLaunchTemplate"], resources: ["arn:aws:ec2:*:*:launch-template/*"], conditions: [flex_aws_request_owner()]),
     flex_aws_allow(sid: "FlexTemplateRevise", actions: ["ec2:CreateLaunchTemplateVersion", "ec2:ModifyLaunchTemplate", "ec2:DeleteLaunchTemplate"], resources: ["arn:aws:ec2:*:*:launch-template/*"], conditions: [flex_aws_resource_owner()]),
@@ -183,6 +190,62 @@ data flex_aws_fis_policy: PolicyDocument = PolicyDocument {
   ],
 }
 
+// ---- the provisioner --------------------------------------------------------------------------------
+
+// A REGION'S SETUP IS A SEPARATE PRINCIPAL'S (gunbc.fleet.flex_aws_regions). Making a region launchable takes
+// create rights -- a security group, the notice queue and its rules, the weights bucket and its copy --
+// that the resident loop must not hold: the loop acts every 30 seconds unattended, the provisioner only when
+// the operator runs it. Every grant is scoped to the gunbc-flex names or the owner tag; it holds no IAM,
+// launches nothing and terminates nothing.
+data flex_aws_provisioner_user_name: NonEmptyStr = "gunbc-flex-provisioner" as NonEmptyStr
+data flex_aws_notice_queue: NonEmptyStr = "gunbc-flex-notices" as NonEmptyStr
+data flex_aws_rule_interruption: NonEmptyStr = "gunbc-flex-spot-interruption" as NonEmptyStr
+data flex_aws_rule_rebalance: NonEmptyStr = "gunbc-flex-rebalance" as NonEmptyStr
+data flex_aws_weights_bucket_prefix: NonEmptyStr = "gunbc-flex-weights-" as NonEmptyStr
+
+data flex_aws_provisioner_policy: PolicyDocument = PolicyDocument {
+  version: aws_iam_policy_version,
+  id: none,
+  statements: [
+    flex_aws_allow(sid: "ProvisionRead", actions: [
+      "ec2:DescribeVpcs", "ec2:DescribeSecurityGroups", "servicequotas:GetServiceQuota", "sts:GetCallerIdentity",
+    ], resources: ["*"], conditions: []),
+    flex_aws_allow(sid: "ProvisionCardGroup", actions: ["ec2:CreateSecurityGroup"], resources: ["arn:aws:ec2:*:*:security-group/*"], conditions: [flex_aws_request_owner()]),
+    flex_aws_allow(sid: "ProvisionCardGroupInVpc", actions: ["ec2:CreateSecurityGroup"], resources: ["arn:aws:ec2:*:*:vpc/*"], conditions: []),
+    flex_aws_allow(sid: "ProvisionTagGroupOnCreate", actions: ["ec2:CreateTags"], resources: ["arn:aws:ec2:*:*:security-group/*"], conditions: [
+      flex_aws_cond(operator: "StringEquals", key: "ec2:CreateAction", values: ["CreateSecurityGroup"]),
+    ]),
+    flex_aws_allow(sid: "ProvisionCardIngress", actions: ["ec2:AuthorizeSecurityGroupIngress"], resources: ["arn:aws:ec2:*:*:security-group/*"], conditions: [flex_aws_resource_owner()]),
+    flex_aws_allow(sid: "ProvisionNoticeQueue", actions: [
+      "sqs:CreateQueue", "sqs:GetQueueUrl", "sqs:GetQueueAttributes", "sqs:SetQueueAttributes", "sqs:TagQueue",
+    ], resources: [join(["arn:aws:sqs:*:*:", flex_aws_queue_name_prefix as String, "*"], "")], conditions: []),
+    flex_aws_allow(sid: "ProvisionNoticeRules", actions: ["events:PutRule", "events:PutTargets", "events:DescribeRule"], resources: [join(["arn:aws:events:*:*:rule/", flex_aws_queue_name_prefix as String, "*"], "")], conditions: []),
+    flex_aws_allow(sid: "ProvisionWeightsBucket", actions: [
+      "s3:CreateBucket", "s3:PutBucketPublicAccessBlock", "s3:PutBucketTagging", "s3:ListBucket", "s3:GetBucketLocation",
+    ], resources: [join(["arn:aws:s3:::", flex_aws_weights_bucket_prefix as String, "*"], "")], conditions: []),
+    flex_aws_allow(sid: "ProvisionWeightsCopy", actions: ["s3:GetObject", "s3:PutObject"], resources: [join(["arn:aws:s3:::", flex_aws_weights_bucket_prefix as String, "*/*"], "")], conditions: []),
+    flex_aws_allow(sid: "ProvisionWeightsParameter", actions: ["ssm:GetParameter", "ssm:PutParameter"], resources: [join(["arn:aws:ssm:*:*:parameter", flex_aws_parameter_prefix as String, "/weights-bucket"], "")], conditions: []),
+  ],
+}
+
+// THE NOTICE QUEUE'S OWN POLICY: EventBridge may deliver to it, and only from our two rules.
+fn flex_aws_notice_queue_policy(queue_arn: NonEmptyStr, rule_arns: List<NonEmptyStr>) -> PolicyDocument {
+  PolicyDocument {
+    version: aws_iam_policy_version,
+    id: none,
+    statements: [
+      Statement {
+        sid: Present { value: flex_aws_ne(s: "EventBridgeDelivers") },
+        effect: Allow,
+        principal: Present { value: ServicePrincipal { services: [flex_aws_ne(s: "events.amazonaws.com")] } },
+        actions: [flex_aws_ne(s: "sqs:SendMessage")],
+        resources: [queue_arn],
+        conditions: [ConditionEntry { operator: flex_aws_ne(s: "ArnEquals"), key: flex_aws_ne(s: "aws:SourceArn"), values: rule_arns }],
+      },
+    ],
+  }
+}
+
 // AWS-managed policies the card role also carries. AmazonSSMManagedInstanceCore lets Session Manager and
 // Run Command reach the card without SSH or an inbound port, which is how a booting card is inspected.
 data flex_aws_card_managed_policy_arns: List<NonEmptyStr> = ["arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore" as NonEmptyStr]
@@ -193,6 +256,7 @@ fn flex_aws_card_trust_policy_json() -> String { aws_iam_policy_document_json(d:
 fn flex_aws_card_policy_json() -> String { aws_iam_policy_document_json(d: flex_aws_card_policy) }
 fn flex_aws_fis_trust_policy_json() -> String { aws_iam_policy_document_json(d: flex_aws_fis_trust_policy) }
 fn flex_aws_fis_policy_json() -> String { aws_iam_policy_document_json(d: flex_aws_fis_policy) }
+fn flex_aws_provisioner_policy_json() -> String { aws_iam_policy_document_json(d: flex_aws_provisioner_policy) }
 
 // THE PROVISIONING READ. The operator creates the user, the role and its instance profile once, from these
 // files and nothing else (gunbc run --entry dag/gunbc/flex_aws_iam.dag --function render_policies
@@ -204,6 +268,7 @@ fn render_policies(out_dir: String) -> ProcessExit {
   let card = Filesystem.Write(path: join([out_dir, "/flex-card-policy.json"], ""), content: flex_aws_card_policy_json())
   let fis_trust = Filesystem.Write(path: join([out_dir, "/flex-fis-trust-policy.json"], ""), content: flex_aws_fis_trust_policy_json())
   let fis = Filesystem.Write(path: join([out_dir, "/flex-fis-policy.json"], ""), content: flex_aws_fis_policy_json())
+  let provisioner = Filesystem.Write(path: join([out_dir, "/flex-provisioner-policy.json"], ""), content: flex_aws_provisioner_policy_json())
   if !loop.success {
     exit_failure(reason: concat("THE LOOP POLICY COULD NOT BE WRITTEN: ", loop.error))
   } else if !trust.success {
@@ -212,6 +277,8 @@ fn render_policies(out_dir: String) -> ProcessExit {
     exit_failure(reason: concat("THE CARD POLICY COULD NOT BE WRITTEN: ", card.error))
   } else if !fis_trust.success || !fis.success {
     exit_failure(reason: concat("THE FIS POLICIES COULD NOT BE WRITTEN: ", concat(fis_trust.error, fis.error)))
+  } else if !provisioner.success {
+    exit_failure(reason: concat("THE PROVISIONER POLICY COULD NOT BE WRITTEN: ", provisioner.error))
   } else {
     ExitSuccess
   }

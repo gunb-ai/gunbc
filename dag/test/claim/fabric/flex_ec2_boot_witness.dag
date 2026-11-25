@@ -3,6 +3,7 @@ module test.claim.fabric.flex_ec2_boot_witness
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, String, NonEmptyStr, List, Int }
 import std.measure { second }
+import std.optional { Present, Absent }
 import std.bytes { utf8_encode_bytes, bytes_octets }
 import product.fabric.flex_serving_image { FlexServingImage, flex_lil_serving_image }
 import product.fabric.flex_ec2_boot {
@@ -24,6 +25,8 @@ data policy: FlexEc2BootPolicy = FlexEc2BootPolicy {
   cert_prefix: "/gunbc-flex/card-cert" as NonEmptyStr,
   bucket_parameter: "/gunbc-flex/weights-bucket" as NonEmptyStr,
   key_wait: second(count: 600),
+  heartbeat_parameter: "/gunbc-flex/heartbeat" as NonEmptyStr,
+  heartbeat_stale: second(count: 1800),
   root_volume_gib: 200,
   instance_profile: AwsEc2IamInstanceProfileByName { name: "gunbc-flex-card" as NonEmptyStr },
 }
@@ -53,6 +56,21 @@ test fn the_real_user_data_renders_within_the_ec2_limit_and_carries_the_one_onst
     && t.contains("tensors/model-00021-of-00021.safetensors")
     && t.contains("tokenizer.json")
     && !t.contains("git hash-object")
+}
+
+// THE DEAD-MAN rides the real user data, installed as a unit and started BEFORE the pre-step (the part that
+// can hang or refuse), so a card whose loop is gone is bounded from its first minute; its environment names
+// the heartbeat and the stale window; the unit restarts the watcher if it dies.
+test fn the_dead_man_starts_before_the_boot_can_hang() -> Bool {
+  let t = rendered()
+  let before = match split(s: t, delimiter: "# flex EC2 boot pre-step").first() { Present { value: h } => h  Absent => "" }
+  (t != "")
+    && before.contains("systemctl enable --now flex-deadman.service")
+    && before.contains("/etc/systemd/system/flex-deadman.service")
+    && before.contains("shutdown -h now")
+    && t.contains("HEARTBEAT_PARAM=/gunbc-flex/heartbeat")
+    && t.contains("HEARTBEAT_STALE_S=1800")
+    && t.contains("Restart=always")
 }
 
 // THE TUNING-CACHE KEY is what selects the kernels: the serving profile and hardware class ride in the
