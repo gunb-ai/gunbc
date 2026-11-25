@@ -4,24 +4,23 @@ import std.types { String, NonEmptyStr, Bool, List, FilePath, Int }
 import std.optional { Present, Absent }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.algebra { trim, string_contains }
-import std.measure {
-  Second, second, second_count, measure_le, measure_sub, MeasureDifference,
-  MeasureSubtrahendExceedsMinuend,
-}
+import std.measure { Second, second, second_count }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.disposition { ConstructionMechanism, SingleAuthority }
 import extdeps.shell
 import extdeps.exec.command { ArgvCommand }
 import extdeps.tools.mkdir { mkdir_parents_command }
 import extdeps.tools.gnu_coreutils { cp_command, rm_force_command }
-// THE LIFECYCLE PRIMITIVES THE BOUND IS IMPOSED WITH. This module starts the subject, waits on the
-// kernel's own classification of how it ended, and signals ONLY the process group it started --
-// the repo-owned construction gunbc.harness.harness_shell_job already uses for its backstopped jobs
-// (its StartDetached call and harness_await_pid). The import is bare, exactly as that module takes
-// it, so posix.Process / posix.Signal and the closed ProcessReapOutcome coproduct arrive whole.
+// THE LIFECYCLE PRIMITIVES THE BOUND IS IMPOSED WITH. This module starts the subject and signals ONLY the
+// process group it started, on the same primitives gunbc.harness.harness_shell_job uses for its backstopped
+// jobs. The import is bare, exactly as that module takes it, so posix.Process / posix.Signal and the closed
+// ProcessReapOutcome coproduct arrive whole. The bounded WAIT over Reap is NOT duplicated here: it is
+// gunbc.process_lifecycle::process_await_reap, the single implementation this module and the harness share
+// (review 98515 on this PR, gunbc.design_argument::root_generalization -- the trigger was the second local
+// implementation of one rule, and this module's copy was the second).
 import extdeps.posix.process
 import extdeps.posix.signal
-import extdeps.tools.sleep
+import gunbc.process_lifecycle { process_await_reap }
 import extdeps.virtualization.firecracker {
   FirecrackerVmConfig, firecracker_release_aarch64,
   firecracker_vm_config_document, firecracker_run_config_command,
@@ -270,31 +269,6 @@ type BoundedBootRun {
   console: BootProbeConsole
 }
 
-// THE AWAIT LOOP, on the kernel's own answer: one Reap per second, bounded by `remaining`. Running the
-// bound out while the subject is alive answers StillRunning, which is NOT a fact about the subject -- it
-// is the signal that THIS layer must decide. The loop is the shape #gunbc.harness.harness_shell_job::harness_await_pid
-// already uses for its own job backstop, taken from the same primitives rather than borrowed across the
-// harness boundary (no dag/gunbc/runner module imports the harness; the precedent for taking these
-// primitives bare is the harness module itself).
-fn boot_probe_await_reap(pid: Int, remaining: Second) -> ProcessReapOutcome {
-  let reaped = posix.Process.Reap(pid: pid)
-  match reaped.reaped {
-    StillRunning =>
-      if measure_le(a: remaining, b: second(count: 0)) {
-        StillRunning
-      } else {
-        let _pause = sleep.Delay.Seconds(seconds: "1" as NonEmptyStr)
-        match measure_sub(a: remaining, b: second(count: 1)) {
-          MeasureDifference { value: next } => boot_probe_await_reap(pid: pid, remaining: next)
-          MeasureSubtrahendExceedsMinuend => StillRunning
-        }
-      }
-    Exited { code } => Exited { code: code }
-    Signaled { signal } => Signaled { signal: signal }
-    ReapRefused { cause } => ReapRefused { cause: cause as String }
-  }
-}
-
 // THE BOUNDED INVOCATION. One call, one subject, one bound. `deadline` and `kill_grace` are THE VALUES
 // THIS LAYER IMPOSES, and the receipt carries them back rather than re-reading the module data, so a
 // verdict can never render a bound that was not the one imposed on the run it describes. The production
@@ -346,7 +320,7 @@ fn boot_probe_after_first_reap(
   stdout_file: NonEmptyStr,
   stderr_file: NonEmptyStr,
 ) -> BoundedBootRun {
-  match boot_probe_await_reap(pid: pid, remaining: deadline) {
+  match process_await_reap(pid: pid, remaining: deadline) {
     Exited { code: code } =>
       boot_probe_bounded_read(
         receipt: BoundChildExited { exit_code: code },
@@ -456,8 +430,12 @@ fn boot_probe_confirm_signal(
   stdout_file: NonEmptyStr,
   stderr_file: NonEmptyStr,
 ) -> BoundedBootRun {
-  let reaped = posix.Process.Reap(pid: pid)
-  match reaped.reaped {
+  // THE POLL IS NOT THIS MODULE'S TO WRITE. gunbc.process_lifecycle::process_await_reap holds the one
+  // implementation of "poll Reap once a second until the bound the caller holds runs out"; this function
+  // decides only what each of its four answers MEANS for a bound this layer imposed. That split is what
+  // review 98515 asked for, and it is why a StillRunning here can lead to an escalation or a refusal
+  // without either one being a second copy of the wait.
+  match process_await_reap(pid: pid, remaining: remaining) {
     Signaled { signal: signal } =>
       boot_probe_bounded_read(
         receipt: BoundFired { deadline: deadline, reaped_signal: signal },
@@ -477,46 +455,24 @@ fn boot_probe_confirm_signal(
         stderr_file: stderr_file,
       )
     StillRunning =>
-      if measure_le(a: remaining, b: second(count: 0)) {
-        if escalated {
-          // Alive through TERM and through the escalated KILL. This layer holds no further signal, so it
-          // refuses rather than call a survivor a fired deadline.
-          boot_probe_bounded_read(
-            receipt: BoundSubjectSurvivedOurSignals { deadline: deadline },
-            stdout_file: stdout_file,
-            stderr_file: stderr_file,
-          )
-        } else {
-          boot_probe_escalate_kill(
-            pid: pid,
-            deadline: deadline,
-            kill_grace: kill_grace,
-            group: group,
-            stdout_file: stdout_file,
-            stderr_file: stderr_file,
-          )
-        }
+      // The bound ran out with the subject alive. That is this layer's own unfinished business, never a
+      // fact about the subject, and it is decided here -- escalate once, and if this pass IS the
+      // escalation, refuse rather than call a survivor a fired deadline.
+      if escalated {
+        boot_probe_bounded_read(
+          receipt: BoundSubjectSurvivedOurSignals { deadline: deadline },
+          stdout_file: stdout_file,
+          stderr_file: stderr_file,
+        )
       } else {
-        let _pause = sleep.Delay.Seconds(seconds: "1" as NonEmptyStr)
-        match measure_sub(a: remaining, b: second(count: 1)) {
-          MeasureDifference { value: next } =>
-            boot_probe_confirm_signal(
-              pid: pid,
-              deadline: deadline,
-              remaining: next,
-              kill_grace: kill_grace,
-              group: group,
-              escalated: escalated,
-              stdout_file: stdout_file,
-              stderr_file: stderr_file,
-            )
-          MeasureSubtrahendExceedsMinuend =>
-            boot_probe_bounded_read(
-              receipt: BoundSubjectSurvivedOurSignals { deadline: deadline },
-              stdout_file: stdout_file,
-              stderr_file: stderr_file,
-            )
-        }
+        boot_probe_escalate_kill(
+          pid: pid,
+          deadline: deadline,
+          kill_grace: kill_grace,
+          group: group,
+          stdout_file: stdout_file,
+          stderr_file: stderr_file,
+        )
       }
   }
 }
