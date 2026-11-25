@@ -165,7 +165,14 @@ fn word_mismatch(argv: List<String>, index: Int, wanted: String) -> String {
   concat(concat(concat("index ", int_to_decimal_string(value: index)), concat(" got ", at)), concat(" want ", wanted))
 }
 
+// THE OPERANDS ARE BOUND IN lets, NOT CAST IN THE CONDITIONS. `as` is not accepted in
+// if-condition position by the parser: an `if ... as String != x` arm fails at the cast token
+// with "expected LBrace, found Ident" (measured at :199:57 on the first draft of this arm, which
+// cost a leg). service_user is NonEmptyStr (live_deploy/spec.dag:332), so the cast is required;
+// it is taken once here and every condition below compares plain values.
 fn first_shape_mismatch(argv: List<String>) -> String {
+  let spec_user: String = deployment_spec_srv1().service.service_user as String
+  let planted_occurrences: Int = count_where(xs: argv, predicate: w => w == planted_separator_path)
   if length(xs: argv) != 9 {
     concat("length: got ", concat(int_to_decimal_string(value: length(xs: argv)), " want 9"))
   } else if !argv_word_at(argv: argv, index: 0, wanted: "install") {
@@ -194,11 +201,11 @@ fn first_shape_mismatch(argv: List<String>) -> String {
     word_mismatch(argv: argv, index: 7, wanted: fixture_group)
   } else if !argv_word_at(argv: argv, index: 8, wanted: planted_separator_path) {
     word_mismatch(argv: argv, index: 8, wanted: planted_separator_path)
-  } else if count_where(xs: argv, predicate: w => w == planted_separator_path) != 1 {
-    concat("planted path occurs ", concat(int_to_decimal_string(value: count_where(xs: argv, predicate: w => w == planted_separator_path)), " times, want exactly 1"))
-  } else if deployment_spec_srv1().service.service_user as String != spec_service_user_literal {
-    concat("the deployment spec no longer declares the pinned service user: got ", deployment_spec_srv1().service.service_user as String)
-  } else if deployment_spec_srv1().service.service_user as String == fixture_group {
+  } else if planted_occurrences != 1 {
+    concat("planted path occurs ", concat(int_to_decimal_string(value: planted_occurrences), " times, want exactly 1"))
+  } else if spec_user != spec_service_user_literal {
+    concat("the deployment spec no longer declares the pinned service user: got ", spec_user)
+  } else if spec_user == fixture_group {
     "the fixture's group is no longer distinct from its user, so an -o/-g transposition has no witness"
   } else {
     "ok"
