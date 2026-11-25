@@ -5,7 +5,7 @@ Scope: measured evidence for the `emission-real-consumer-profiles` row. Realizat
 Row: `emission-real-consumer-profiles`.
 Host: srv1 (`srv1.tailecbe08.ts.net`, aarch64, kernel 7.0.0-43-generic), heavy-slot evidence runs, `HEAVY_OWNER=bright-hawk-891`, one stage per acquisition.
 Pinned sha: `65230868362de3efc0ddfeeaeef5d83eeb2fa385` (origin/main).
-Companion manifest: `docs/plans/parse-population-baseline-workloads.md`.
+Companion carrier (single home for the populations): `dag/gunbc/parse_population_baseline_roster.dag`, executed by `dag/test/claim/parse_population_baseline_roster_witness.dag`.
 
 ## 1. Premise finding — the baseline did not exist; it had to be taken
 
@@ -54,7 +54,7 @@ It is emitted, not an interpreted stand-in: `target/release/gunbc test //gunbc/i
 
 ## 4. The two fixed populations (committed, byte-identity proven)
 
-The selection rule, membership, per-member byte size, population rank and pinned tree sha have their **single home on the typed `.dag` carrier** `gunbc.parse_population_baseline_roster` (`dag/gunbc/parse_population_baseline_roster.dag`), executed by its rostered claim `test.claim.parse_population_baseline_roster_witness` — per `gunbc.design_argument::planning_has_one_home` this report holds no copy of the rule (see `parse-population-baseline-workloads.md`, itself a pointer). The populations staged and measured below are exactly those the carrier enumerates. Both roots (`dag/` and `src/v2/`) are required because Population 1 spans both (four `dag/` data files + one `src/v2/` roster).
+The selection rule, membership, per-member byte size, population rank and pinned tree sha have their **single home on the typed `.dag` carrier** `gunbc.parse_population_baseline_roster` (`dag/gunbc/parse_population_baseline_roster.dag`), executed by its rostered claim `test.claim.parse_population_baseline_roster_witness` — per `gunbc.design_argument::planning_has_one_home` this report holds no copy of the rule. The populations staged and measured below are exactly those the carrier enumerates. Both roots (`dag/` and `src/v2/`) are required because Population 1 spans both (four `dag/` data files + one `src/v2/` roster).
 
 The verb accepts only **governed tree directories** as `--source-root` (a copied dump at an arbitrary path is refused: `REFUSED: source root is not a governed tree directory`). The governed-tree predicate matches by directory name (`ends_with "/dag"`, `"/src/v2"`), so each population was staged under scratch directories named `…/dag` and `…/src/v2`, preserving relative paths. Each staged file is byte-identical to the same path at the pinned sha:
 
