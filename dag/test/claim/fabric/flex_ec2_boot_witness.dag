@@ -55,6 +55,17 @@ test fn the_real_user_data_renders_within_the_ec2_limit_and_carries_the_one_onst
     && !t.contains("git hash-object")
 }
 
+// THE TUNING-CACHE KEY is what selects the kernels: the serving profile and hardware class ride in the
+// boot environment and the key, and the onstart's own hash does not -- editing the onstart's cache sizing
+// (as the 2026-11-25 RAM-tier fix did) must not cold-start every card's kernel tuning.
+test fn the_tuning_cache_is_keyed_by_the_serving_profile_not_the_onstart_text() -> Bool {
+  let t = rendered()
+  t.contains("SERVE_PROFILE=qwen38-flash-next+rtx-pro-6000-pcie")
+    && t.contains("$REVISION/$SERVE_PROFILE")
+    && !t.contains("sha256sum /opt/flex/onstart.sh")
+    && flex_lil_serving_image.onstart.contains("lil-serve --profile qwen38-flash-next --hardware rtx-pro-6000-pcie")
+}
+
 // The credential reaches the container through a file, never through an argv word.
 test fn the_container_argv_takes_the_pool_key_by_file_not_by_value() -> Bool {
   let argv = docker_create_arguments(spec: flex_ec2_container_spec(image: flex_lil_serving_image))
