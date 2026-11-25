@@ -68,9 +68,12 @@ import v2.test.claim.compiler.operation_declaration_seam { read_seam_path }
 // WALL 2 -- filesystem_read direct reach, located BY SITE over the NAMED typed population source
 // =============================================================================================
 
-// The handler the native door binds reuses v1.compiler.emit_rust emit_file_call's semantics; the free
-// legacy primitive `filesystem_read` is neither the handler nor its interface. The handler slug a green
-// control reaches through is a filesystem realization OTHER than the free primitive's slug.
+// The handler the native door binds reuses v1.compiler.emit_rust emit_file_call's semantics -- the
+// definition is at src/v1/05_emit_rust.dag:19806 (the emit_file_call declaration), which is what makes
+// "emit_file_call" the slug a green control reaches through: it is the one filesystem realization the
+// native door binds, and the free legacy primitive `filesystem_read` is neither that handler nor its
+// interface. The handler slug a green control reaches through is a filesystem realization OTHER than the
+// free primitive's slug.
 data filesystem_handler_slug: String = "emit_file_call"
 
 // The two self_host.dag direct reaches, located by SITE (module + enclosing declaration + OCCURRENCE
@@ -621,6 +624,10 @@ test fn filesystem_census_log_names_refused_count_bound_and_three_sites() -> Boo
     )
     && string_contains(s: log, pattern: "tier_exclusions: declaration_module=2 test=31 lens=5 v1=2")
     && string_contains(s: log, pattern: "rust_fixture_prose=3 dag_corpus=113 total=160")
+    && string_contains(
+      s: log,
+      pattern: "arms: derived=free_primitive_direct(refused) and through_handler(authorised)"
+    )
     && string_contains(s: log, pattern: "ReachedOutsideBoundHandler is supplied-population-only")
     && string_contains(s: log, pattern: "ambient builtin-route calls are counted only where")
     && (string_contains(s: log, pattern: "offender v2.compiler.self_host#local_filesystem_read_holder")
