@@ -5,7 +5,7 @@ import gunbc.output_policy { OutcomeIsData }
 import std.types { String, FilePath, GitRef }
 import extdeps.git
 import extdeps.shell
-import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.generated_artifact_merge_driver {
   expected_generated_artifact_merge_driver_sh,
   generated_artifact_merge_driver_config_value_at,

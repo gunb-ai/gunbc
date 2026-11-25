@@ -6,7 +6,7 @@ import std.nat { Nat }
 import std.algebra { trim }
 import std.measure { Measure }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.hostname
 import extdeps.tools.sleep
 import product.capacity.pool { NoReplenishment, pool_of }

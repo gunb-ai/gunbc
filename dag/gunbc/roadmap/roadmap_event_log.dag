@@ -1,6 +1,6 @@
 module gunbc.roadmap.roadmap_event_log
 
-import std.types { String, Int, Bool, List, NonEmptyStr, brand, CommitSha }
+import std.types { String, Int, Bool, List, NonEmptyStr, brand, CommitSha, commit_sha_text_holds }
 import std.nat { Nat }
 import std.integer { nat_to_int }
 import std.checked_arithmetic { checked_int_to_nat }
@@ -16,7 +16,7 @@ import extdeps.languages.json.parse {
 // one every other date in the tree reads. The day-count comparator the deleted dated rule used is NOT imported:
 // acceptances are no longer ordered against a date, they are admitted by the closed set below.
 import extdeps.units.iso8601_calendar { Iso8601CivilDate, iso8601_two_digits, iso8601_utc_instant_parts_are_valid }
-import gunbc.roadmap.roadmap_status { red_observation_holds, RedObservation, RedObservedOnMain, RedProbe }
+import gunbc.roadmap.roadmap_status { red_observation_holds, red_observation_validate, red_kind_parse, RedKind, RedKindOutcome, KindNamed, KindUnrecognized, RedObsBuilt, RedObsRefused, RedObservationCause, RedAtAbsent, GreenAtAbsent, RedAtMalformed, GreenAtMalformed, RedAtEqualsGreenAt, MainNamesBase, MainNamesRef, ProbeNoBase, ProbeNoRef, RedBaseMalformed, RedBaseEqualsRedAt, ProbeRefMalformed, RedObservation, RedObservedOnMain, RedProbe }
 import gunbc.roadmap.roadmap_model {
   RoadmapNodeId, RoadmapAcceptanceEvent, RoadmapAcceptanceRevocationFacts, RoadmapAcceptanceReceipt,
   roadmap_acceptance_line_of_receipt, roadmap_acceptance_line_of_revocation, roadmap_node_ids_contain,
@@ -1129,78 +1129,145 @@ fn red_observation_members(o: RedObservation) -> List<JsonKeyValue> {
 // A decoded observation must HOLD (well-formed shas, distinctness, probe ref spelling): a malformed or equal
 // pair is no observation, so the line is undecodable instead of reading as evidence.
 fn red_observation_decode(doc: JsonValue) -> RedObservation? {
-  match red_observation_decode_shape(doc: doc) {
-    Absent => none
-    Present { value: ob } => if red_observation_holds(o: ob) { Present { value: ob } } else { none }
+  match red_observation_read(doc: doc) {
+    ObservationRead { observation: ob } => Present { value: ob }
+    ObservationUnrecordedStanding => none
+    ObservationRefused { detail: _ } => none
   }
 }
 
-fn red_observation_decode_shape(doc: JsonValue) -> RedObservation? {
+// THE OBSERVATION, READ WITH THE REASON IT REFUSES. One reader spells the members (this is the grammar the
+// operator's line and the durable row share); the outcome names WHICH standing the row holds rather than
+// flattening every refusal to `none`. This reader decides only WHICH ARM the row names and then asks the ONE
+// shape authority (red_observation_validate) to judge it — it re-checks no commit, no pair, no ref itself
+// (gunbc.design_argument::single_authority). The rules it does own: the pre-2026-11-23 row (neither member)
+// is the unrecorded standing; one member without the other was never a tree fact and is refused; the arm is
+// READ from red_kind and never inferred from which members are empty (the ruling). THE READ RULE TIGHTENED:
+// a row that names a probe member (red_base or probe_ref) but no red_kind is REFUSED, where the pre-ruling
+// reader would have read it as on_main. Proven safe — at refs/heads/roadmap-events tip
+// 05db3e6e8a2ae175b38b8e8131cedc9690b040f8, 0 of 109 rows carry red_base or probe_ref under no kind, so no
+// real row changes reading; a bare pair under no kind still reads as the on_main standing it always was.
+type RedObservationRead
+  = ObservationUnrecordedStanding
+  | ObservationRead { observation: RedObservation }
+  | ObservationRefused { detail: NonEmptyStr }
+
+fn red_observation_read(doc: JsonValue) -> RedObservationRead {
   match event_member_nonempty(doc: doc, key: "red_at") {
-    Absent => none
+    Absent =>
+      match event_member_nonempty(doc: doc, key: "green_at") {
+        Absent => ObservationUnrecordedStanding
+        Present { value: _ } => ObservationRefused { detail: "green_at names the commit the witness passed on; an observation names the commit it FAILED on too (red_at)" }
+      }
     Present { value: r } =>
       match event_member_nonempty(doc: doc, key: "green_at") {
-        Absent => none
+        Absent => ObservationRefused { detail: "red_at names the commit the witness failed on; an observation names the commit it passed on too (green_at)" }
         Present { value: g } =>
-          match event_member_nonempty(doc: doc, key: "red_kind") {
-            Absent => Present { value: RedObservedOnMain { red_at: r as String, green_at: g as String } }
+          match event_member_string(doc: doc, key: "red_kind") {
+            // No kind named: a probe member under no kind is a half-spelled standing (the tightening above);
+            // a bare pair keeps its old reading as the on_main standing, judged by the one shape authority.
+            Absent =>
+              if red_observation_probe_members_named(doc: doc) { ObservationRefused { detail: "red_base and probe_ref belong to the probe arm; say red_kind=probe to name them" } }
+              else { match red_observation_validate(kind: OnMain, red_at: r as String, green_at: g as String, red_base: "", probe_ref: "") {
+                RedObsBuilt { observation: ob } => ObservationRead { observation: ob }
+                RedObsRefused { cause: c } => ObservationRefused { detail: reader_cause_words(cause: c) } } }
             Present { value: kind } =>
-              if (kind as String) == "on_main" { Present { value: RedObservedOnMain { red_at: r as String, green_at: g as String } } }
-              else if (kind as String) == "probe" {
-                match event_member_nonempty(doc: doc, key: "red_base") {
-                  Absent => none
-                  Present { value: base } =>
-                    match event_member_nonempty(doc: doc, key: "probe_ref") {
-                      Absent => none
-                      Present { value: pref } => Present { value: RedProbe { red_at: r as String, red_base: base as String, green_at: g as String, probe_ref: pref } }
-                    }
-                }
-              } else { none }
+              match red_kind_parse(word: kind as String) {
+                KindUnrecognized { given: gk } => ObservationRefused { detail: join(["red_kind is neither of the two standings the log spells (on_main, probe): ", gk], "") }
+                KindNamed { kind: k } =>
+                  match red_observation_validate(kind: k, red_at: r as String, green_at: g as String,
+                    red_base: match event_member_nonempty(doc: doc, key: "red_base") { Present { value: b } => b as String  Absent => "" },
+                    probe_ref: match event_member_nonempty(doc: doc, key: "probe_ref") { Present { value: p } => p as String  Absent => "" }) {
+                    RedObsBuilt { observation: ob } => ObservationRead { observation: ob }
+                    RedObsRefused { cause: c } => ObservationRefused { detail: reader_cause_words(cause: c) } }
+              }
           }
       }
   }
 }
 
-fn roadmap_red_control_decode(red: JsonValue, variant: String) -> RedControlEvidence? {
-  if variant == "red_control_not_run" { Present { value: RedControlNotRun {} } }
+// A probe's two members, asked of a row that never said it was a probe. The on_main arm reads NEITHER, so a
+// row carrying one of them under no kind is a half-spelled standing, not a main observation with spare text.
+fn red_observation_probe_members_named(doc: JsonValue) -> Bool {
+  match event_member_nonempty(doc: doc, key: "red_base") {
+    Present { value: _ } => true
+    Absent =>
+      match event_member_nonempty(doc: doc, key: "probe_ref") {
+        Present { value: _ } => true
+        Absent => false
+      }
+  }
+}
+
+// THE EVENT-LOG READER'S OWN WORDS FOR A REFUSAL CAUSE. The validator (roadmap_status red_observation_validate)
+// decided WHY the named arm does not hold; this fn is the ONE place the reader turns that cause into a
+// sentence naming the ROW MEMBERS (red_at/green_at/red_base/probe_ref) — never the CLI's --flags, so a row
+// refused while folding the durable log reads as a row problem, not a command-line one (single_authority).
+fn reader_cause_words(cause: RedObservationCause) -> String {
+  match cause {
+    RedAtAbsent => "red_at names the commit the witness failed on; an observation names the commit it passed on too (green_at)"
+    GreenAtAbsent => "green_at names the commit the witness passed on; an observation names the commit it FAILED on too (red_at)"
+    RedAtMalformed => "red_at is malformed: a commit is 40 lowercase hex characters"
+    GreenAtMalformed => "green_at is malformed: a commit is 40 lowercase hex characters"
+    RedAtEqualsGreenAt => "red_at equals green_at: a witness observed failing and passing on one tree was not observed failing there"
+    MainNamesBase => "red_base and probe_ref belong to the probe arm; the on_main arm names none"
+    MainNamesRef => "red_base and probe_ref belong to the probe arm; the on_main arm names none"
+    ProbeNoBase => "the probe arm names no red_base: a probe names the main commit it breaks"
+    ProbeNoRef => "the probe arm names no probe_ref: it is the durable ref red-control/<row-id> that makes red_at fetchable"
+    RedBaseMalformed => "red_base is malformed: a commit is 40 lowercase hex characters"
+    RedBaseEqualsRedAt => "red_base equals red_at: a probe breaks its base, so it is a different commit"
+    ProbeRefMalformed => "probe_ref is malformed: it is spelled red-control/<row-id>"
+  }
+}
+
+// THE RED CONTROL, READ WITH THE REASON IT REFUSES — the one reader the durable row and the operator's line
+// share. `roadmap_red_control_decode` below is this reader flattened for the log, which has always read an
+// unspellable control as no receipt at all and must go on doing so: what is written stays readable, and
+// only the route that gates a NEW record quotes the words.
+type RoadmapRedControlRead
+  = RedControlReadValue { control: RedControlEvidence }
+  | RedControlReadRefused { detail: NonEmptyStr }
+
+fn roadmap_red_control_read(red: JsonValue, variant: String) -> RoadmapRedControlRead {
+  if variant == "red_control_not_run" { RedControlReadValue { control: RedControlNotRun {} } }
   else if variant == "red_control_executed" {
     match event_member_nonempty(doc: red, key: "witness_module") {
-      Absent => none
+      Absent => RedControlReadRefused { detail: "an executed red control names no witness module" }
       Present { value: witness_module } =>
         match event_member_nonempty(doc: red, key: "witness_fn") {
-          Absent => none
+          Absent => RedControlReadRefused { detail: "an executed red control names no witness function" }
           Present { value: witness_fn } =>
             match event_member_nonempty(doc: red, key: "executed_on") {
-              Absent => none
+              Absent => RedControlReadRefused { detail: "an executed red control names no executed_on day" }
               // THE TREE IS ONE FACT OR NONE. Both members present is the recorded pair; both absent is the
               // pre-ruling wire form, read as its own standing (RedControlTreeUnrecorded), never as valid red
-              // evidence; one without the other is not a receipt at all.
+              // evidence; one without the other is not a receipt at all, and is said so.
               Present { value: executed_on } =>
-                match event_member_nonempty(doc: red, key: "red_at") {
-                  Absent =>
-                    match event_member_nonempty(doc: red, key: "green_at") {
-                      Absent => Present { value: RedControlTreeUnrecorded {
-                        witness_module: witness_module as String,
-                        witness_fn: witness_fn as String,
-                        executed_on: executed_on as String,
-                      } }
-                      Present { value: _ } => none
-                    }
-                  Present { value: _ } =>
-                    match red_observation_decode(doc: red) {
-                      Absent => none
-                      Present { value: ob } => Present { value: RedControlExecuted {
-                        witness_module: witness_module as String,
-                        witness_fn: witness_fn as String,
-                        executed_on: executed_on as String,
-                        observation: ob,
-                      } }
-                    }
+                match red_observation_read(doc: red) {
+                  ObservationUnrecordedStanding => RedControlReadValue { control: RedControlTreeUnrecorded {
+                    witness_module: witness_module as String,
+                    witness_fn: witness_fn as String,
+                    executed_on: executed_on as String,
+                  } }
+                  ObservationRead { observation: ob } => RedControlReadValue { control: RedControlExecuted {
+                    witness_module: witness_module as String,
+                    witness_fn: witness_fn as String,
+                    executed_on: executed_on as String,
+                    observation: ob,
+                  } }
+                  ObservationRefused { detail: why } => RedControlReadRefused { detail: why }
                 }
             }
         }
     }
-  } else { none }
+  } else { RedControlReadRefused { detail: join(["the red control's variant is not one of the two the log spells: ", variant]) } }
+}
+
+fn roadmap_red_control_decode(red: JsonValue, variant: String) -> RedControlEvidence? {
+  match roadmap_red_control_read(red: red, variant: variant) {
+    RedControlReadValue { control: control } => Present { value: control }
+    RedControlReadRefused { detail: _ } => none
+  }
 }
 
 fn roadmap_handback_decode(handback: JsonValue, variant: String) -> HandbackEvidence? {
