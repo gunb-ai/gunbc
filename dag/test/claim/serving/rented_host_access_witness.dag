@@ -1,6 +1,7 @@
 module test.claim.serving.rented_host_access_witness
 
 import std.types { String, Bool, NonEmptyStr, Int, Port }
+import gunbc.fleet.fleet_known_hosts_anchor { ProbeLeg }
 import extdeps.network.endpoint { SocketAddress, socket_address, host_by_ipv4 }
 import extdeps.network.ipv4 { ipv4_address }
 import product.host_identity { HostIdentity }
@@ -45,7 +46,7 @@ fn w_declaration(octet4: Int) -> RentedHostAccessDeclaration {
 // A HOST KEY ROW FOR ANOTHER ENDPOINT MUST NOT ANCHOR THIS NODE: the row is the whole trust anchor of a
 // rental, so accepting a mismatch would pin the declared address to a key observed elsewhere.
 test fn a_host_key_row_for_another_endpoint_is_refused_and_names_both() -> Bool {
-  match rented_host_access(declaration: w_declaration(octet4: 8), attempt_raw: "w-attempt") {
+  match rented_host_access(kind: ProbeLeg, declaration: w_declaration(octet4: 8), attempt_raw: "w-attempt") {
     RentedHostAccessRefused { node: _, cause: c } =>
       string_contains(c, "203.0.113.7") && string_contains(c, "203.0.113.8")
     RentedHostAccessReady { node: _, transport: _, receipt: _ } => false
@@ -53,7 +54,7 @@ test fn a_host_key_row_for_another_endpoint_is_refused_and_names_both() -> Bool 
 }
 
 test fn an_unsafe_attempt_identity_refuses_before_any_leg() -> Bool {
-  match rented_host_access(declaration: w_declaration(octet4: 7), attempt_raw: "../escape") {
+  match rented_host_access(kind: ProbeLeg, declaration: w_declaration(octet4: 7), attempt_raw: "../escape") {
     RentedHostAccessRefused { node: _, cause: c } => string_contains(c, "attempt identity")
     RentedHostAccessReady { node: _, transport: _, receipt: _ } => false
   }
@@ -63,7 +64,7 @@ test fn an_unsafe_attempt_identity_refuses_before_any_leg() -> Bool {
 // sshd on 11055, which is a different daemon behind a provider's port mapping; the refusal names both
 // host fields in the form ssh looks them up by.
 test fn a_port_22_row_does_not_anchor_the_same_host_on_another_port() -> Bool {
-  match rented_host_access(declaration: w_declaration_with(address: w_address(octet4: 7, port: 11055), row: w_row), attempt_raw: "w-attempt") {
+  match rented_host_access(kind: ProbeLeg, declaration: w_declaration_with(address: w_address(octet4: 7, port: 11055), row: w_row), attempt_raw: "w-attempt") {
     RentedHostAccessRefused { node: _, cause: c } =>
       string_contains(c, "`203.0.113.7`") && string_contains(c, "`[203.0.113.7]:11055`")
     RentedHostAccessReady { node: _, transport: _, receipt: _ } => false
@@ -78,7 +79,7 @@ test fn a_port_22_row_does_not_anchor_the_same_host_on_another_port() -> Bool {
 // (test.claim.fleet.fleet_ssh_target_address_witness).
 test fn a_rental_on_another_port_is_not_refused_as_a_mismatch() -> Bool {
   let at = w_address(octet4: 7, port: 11055)
-  match rented_host_access(declaration: w_declaration_with(address: at, row: w_row_at(address: at)), attempt_raw: "../escape") {
+  match rented_host_access(kind: ProbeLeg, declaration: w_declaration_with(address: at, row: w_row_at(address: at)), attempt_raw: "../escape") {
     RentedHostAccessRefused { node: _, cause: c } =>
       string_contains(c, "attempt identity") && !string_contains(c, "would anchor a different host") && !string_contains(c, "cannot carry a port")
     RentedHostAccessReady { node: _, transport: _, receipt: _ } => false

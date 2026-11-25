@@ -23,9 +23,7 @@ data python_multi_statement_suite_text: String = "def f(x):\n    y = x\n    retu
 data python_empty_suite_text: String = "def f(x):\n    "
 
 // Through the prepared door: prepare_grammar validates AND analyzes the grammar once, and the
-// module parse starts at the grammar's start production, python_production_fn_def. (Validating
-// with grammar_validate_for_parse and then calling parse_production_tree computes the FIRST
-// analysis twice, which is what put this control over its floor budget.)
+// module parse starts at the grammar's start production, python_production_fn_def.
 fn python_fn_def_parse(text: String) -> Outcome<ParseTree> {
   match prepare_grammar(grammar: ModeledGrammar { root: python_grammar_root() }) {
     Rejected { diagnostics: diags } => Rejected { diagnostics: diags }

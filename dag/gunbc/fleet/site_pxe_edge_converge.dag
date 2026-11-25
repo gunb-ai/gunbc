@@ -78,10 +78,10 @@ import product.host_identity { HostIdentity }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word, observer_clock_read, ObserverClockObserved, ObserverClockUnreadable, observer_instant_millis }
 import gunbc.actions_run_binding { actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent, fleet_converge_expected_host_env_name }
 import gunbc.fleet.fleet_ssh_locus { prepare_fleet_ssh_agent_context, FleetSshContextReady, FleetSshContextRefused }
-import gunbc.fleet.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget, SshTargetResolution, SshTargetResolved, SshTargetRefused, fleet_ssh_target_at_standard_port, ssh_target_refusal_text }
+import gunbc.fleet.fleet_known_hosts_anchor { ProbeLeg, ActuationLeg,FleetSshExecutionContext, SshTarget, SshTargetResolution, SshTargetResolved, SshTargetRefused, fleet_ssh_target_at_standard_port, ssh_target_refusal_text }
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.file_access { FileTreeScope }
-import gunbc.typed_argv_exec { typed_argv_exec_over_fleet_ssh, typed_argv_exec_over_fleet_ssh_posix, TypedArgvExecConverged, TypedArgvExecRefused }
+import gunbc.typed_argv_exec {  typed_argv_exec_over_fleet_ssh, typed_argv_exec_over_fleet_ssh_posix, TypedArgvExecConverged, TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason }
 import gunbc.machine_intake.boot_image_fetch { boot_image_staging_path }
 import gunbc.typed_remote_file_write { NoValidation,
   RemoteFileModeOwnerReadWriteWorldRead,
@@ -1854,7 +1854,8 @@ fn site_pxe_edge_http_listen_poll_settled(standing: SitePxeEdgeHttpListenStandin
 }
 
 fn observe_site_pxe_edge_http_listen(target: SshTarget, context: FleetSshExecutionContext, bind: Ipv4Address) -> SitePxeEdgeHttpListenStanding {
-  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: ["ss", "-ltnH"]) {
+  match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,target: target, context: context, argv: ["ss", "-ltnH"]) {
+  TypedArgvExecOverran { deadline: d } => HttpListenUnobservable { reason: typed_argv_exec_overran_reason(leg_hint: "site PXE edge", deadline: d) }
     TypedArgvExecRefused { reason: why } => HttpListenUnobservable { reason: why }
     TypedArgvExecConverged { result: r } =>
       if r.success { site_pxe_edge_http_listen_standing(output: r.stdout, bind: bind) }
@@ -2228,7 +2229,8 @@ fn site_pxe_edge_package_outcome_wire(outcome: SitePxeEdgePackageOutcome) -> Str
 
 fn site_pxe_edge_argv_probe(target: SshTarget, context: FleetSshExecutionContext, argv: List<String>, what: String) -> SitePxeEdgeProbe
 {
-  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: argv) {
+  match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,target: target, context: context, argv: argv) {
+  TypedArgvExecOverran { deadline: d } => SitePxeEdgeProbeUnobservable { reason: typed_argv_exec_overran_reason(leg_hint: "site PXE edge", deadline: d) }
     TypedArgvExecRefused { reason: why } => SitePxeEdgeProbeUnobservable { reason: why }
     TypedArgvExecConverged { result: r } =>
       if r.success {
@@ -2245,7 +2247,8 @@ fn observe_site_pxe_edge_member(target: SshTarget, context: FleetSshExecutionCon
   let path = site_pxe_edge_member_path(member: member)
   SitePxeEdgeMemberObservation {
     served_path: member.member.served_path,
-    digest: match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: ["sha256sum", path as String]) {
+    digest: match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,target: target, context: context, argv: ["sha256sum", path as String]) {
+    TypedArgvExecOverran { deadline: d } => ChainloaderDigestUnobservable { reason: typed_argv_exec_overran_reason(leg_hint: "site PXE edge", deadline: d) }
       TypedArgvExecRefused { reason: why } => ChainloaderDigestUnobservable { reason: why }
       TypedArgvExecConverged { result: r } => site_pxe_edge_digest_observation(path: path, success: r.success, line: r.stdout)
     },
@@ -2276,7 +2279,8 @@ fn site_pxe_edge_file_admission(file: SitePxeEdgeFile) -> TypedRemoteFileWriteAd
 // the write's read-back are one judgment.
 fn observe_site_pxe_edge_file(target: SshTarget, context: FleetSshExecutionContext, file: SitePxeEdgeFile) -> SitePxeEdgeFileStanding
 {
-  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: ["test", "-e", file.path as String]) {
+  match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,target: target, context: context, argv: ["test", "-e", file.path as String]) {
+  TypedArgvExecOverran { deadline: d } => EdgeFileUnobservable { reason: typed_argv_exec_overran_reason(leg_hint: "site PXE edge", deadline: d) }
     TypedArgvExecRefused { reason: why } => EdgeFileUnobservable { reason: why }
     TypedArgvExecConverged { result: presence } =>
       if presence.exit_code == 1 {
@@ -2304,7 +2308,8 @@ fn observe_site_pxe_edge_file(target: SshTarget, context: FleetSshExecutionConte
 
 fn observe_site_pxe_edge_unit_active(target: SshTarget, context: FleetSshExecutionContext) -> SitePxeEdgeProbe
 {
-  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: systemctl_show_property_argv(unit: site_pxe_edge_unit_name, property: ActiveState)) {
+  match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,target: target, context: context, argv: systemctl_show_property_argv(unit: site_pxe_edge_unit_name, property: ActiveState)) {
+  TypedArgvExecOverran { deadline: d } => SitePxeEdgeProbeUnobservable { reason: typed_argv_exec_overran_reason(leg_hint: "site PXE edge", deadline: d) }
     TypedArgvExecRefused { reason: why } => SitePxeEdgeProbeUnobservable { reason: why }
     TypedArgvExecConverged { result: r } =>
       if (r.success == false) {
@@ -2319,7 +2324,8 @@ fn observe_site_pxe_edge_unit_active(target: SshTarget, context: FleetSshExecuti
 fn observe_site_pxe_edge_client_requests(target: SshTarget, context: FleetSshExecutionContext, decided_at: EpochMs) -> SitePxeEdgeClientRequestReading
 {
   let window = site_pxe_edge_request_window(until_epoch_ms: decided_at)
-  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: sudo_elevate_argv(command: site_pxe_edge_client_requests_argv(unit: site_pxe_edge_unit_name, window: window))) {
+  match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,target: target, context: context, argv: sudo_elevate_argv(command: site_pxe_edge_client_requests_argv(unit: site_pxe_edge_unit_name, window: window))) {
+  TypedArgvExecOverran { deadline: d } => ClientRequestsUnread { reason: typed_argv_exec_overran_reason(leg_hint: "site PXE edge", deadline: d) }
     TypedArgvExecRefused { reason: why } => ClientRequestsUnread { reason: why }
     TypedArgvExecConverged { result: r } =>
       if r.success { site_pxe_edge_client_requests_of(journal: r.stdout, window: window) } else { ClientRequestsUnread { reason: join(["journalctl exit=", to_string(r.exit_code), " ", trim(s: r.stderr)], "") } }
@@ -2354,7 +2360,8 @@ fn site_pxe_edge_unit_active_standing(capture: SystemdPropertyCapture) -> SitePx
 
 fn observe_site_pxe_edge_package(target: SshTarget, context: FleetSshExecutionContext) -> DpkgInstalledState
 {
-  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: dpkg_query_status_argv(package: site_pxe_edge_package)) {
+  match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,target: target, context: context, argv: dpkg_query_status_argv(package: site_pxe_edge_package)) {
+  TypedArgvExecOverran { deadline: d } => DpkgQueryUndecidable { reason: typed_argv_exec_overran_reason(leg_hint: "site PXE edge", deadline: d) }
     TypedArgvExecRefused { reason: why } => DpkgQueryUndecidable { reason: why }
     TypedArgvExecConverged { result: r } => dpkg_query_status_verdict_of(exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr)
   }
@@ -2362,7 +2369,8 @@ fn observe_site_pxe_edge_package(target: SshTarget, context: FleetSshExecutionCo
 
 fn observe_site_pxe_edge_package_binary(target: SshTarget, context: FleetSshExecutionContext) -> SitePxeEdgePackageBinaryDigest
 {
-  match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: ["sha256sum", site_pxe_edge_dnsmasq_binary as String]) {
+  match typed_argv_exec_over_fleet_ssh(kind: ProbeLeg,target: target, context: context, argv: ["sha256sum", site_pxe_edge_dnsmasq_binary as String]) {
+  TypedArgvExecOverran { deadline: d } => PackageBinaryDigestUnread { reason: typed_argv_exec_overran_reason(leg_hint: "site PXE edge", deadline: d) }
     TypedArgvExecRefused { reason: why } => PackageBinaryDigestUnread { reason: why }
     TypedArgvExecConverged { result: r } =>
       site_pxe_edge_package_binary_digest(observation: site_pxe_edge_digest_observation(path: site_pxe_edge_dnsmasq_binary, success: r.success, line: r.stdout))
@@ -2596,14 +2604,16 @@ type SitePxeEdgePlacementOutcome
   | PlacementVerified { placed: List<NonEmptyStr> }
 
 fn site_pxe_edge_posix_leg(target: SshTarget, context: FleetSshExecutionContext, argv: List<String>, step: String) -> String? {
-  match typed_argv_exec_over_fleet_ssh_posix(target: target, context: context, argv: sudo_elevate_argv(command: argv)) {
+  match typed_argv_exec_over_fleet_ssh_posix(kind: ActuationLeg,target: target, context: context, argv: sudo_elevate_argv(command: argv)) {
+  TypedArgvExecOverran { deadline: d } => Present { value: typed_argv_exec_overran_reason(leg_hint: "site PXE edge", deadline: d) }
     TypedArgvExecRefused { reason: why } => Present { value: why }
     TypedArgvExecConverged { result: r } => if r.success { Absent } else { Present { value: join([step, " exit=", to_string(r.exit_code), " ", trim(s: r.stderr)], "") } }
   }
 }
 
 fn site_pxe_edge_posix_digest(target: SshTarget, context: FleetSshExecutionContext, path: NonEmptyStr) -> SitePxeEdgeChainloaderObservation {
-  match typed_argv_exec_over_fleet_ssh_posix(target: target, context: context, argv: sudo_elevate_argv(command: ["sha256sum", path as String])) {
+  match typed_argv_exec_over_fleet_ssh_posix(kind: ProbeLeg,target: target, context: context, argv: sudo_elevate_argv(command: ["sha256sum", path as String])) {
+  TypedArgvExecOverran { deadline: d } => ChainloaderDigestUnobservable { reason: typed_argv_exec_overran_reason(leg_hint: "site PXE edge", deadline: d) }
     TypedArgvExecRefused { reason: why } => ChainloaderDigestUnobservable { reason: why }
     TypedArgvExecConverged { result: r } => site_pxe_edge_digest_observation(path: path, success: r.success, line: r.stdout)
   }
@@ -3017,7 +3027,8 @@ fn site_pxe_edge_remove_empty_install_dirs(target: SshTarget, context: FleetSshE
 // not assumed from find's failure.
 fn site_pxe_edge_stale_install_files(target: SshTarget, context: FleetSshExecutionContext, mode: SitePxeEdgeMode, desired: List<SitePxeEdgeFile>) -> SitePxeEdgeStaleStanding {
   let root = site_pxe_edge_served_root()
-  match typed_argv_exec_over_fleet_ssh_posix(target: target, context: context, argv: sudo_elevate_argv(command: ["find", root, "-type", "f"])) {
+  match typed_argv_exec_over_fleet_ssh_posix(kind: ActuationLeg, target: target, context: context, argv: sudo_elevate_argv(command: ["find", root, "-type", "f"])) {
+  TypedArgvExecOverran { deadline: d } => StaleInstallFilesUnobservable { reason: typed_argv_exec_overran_reason(leg_hint: "site PXE edge", deadline: d) }
     TypedArgvExecRefused { reason: why } => StaleInstallFilesUnobservable { reason: why }
     TypedArgvExecConverged { result: r } =>
       if r.success {
@@ -3025,7 +3036,8 @@ fn site_pxe_edge_stale_install_files(target: SshTarget, context: FleetSshExecuti
         let stale = site_pxe_edge_stale_install_paths(listed: listed_files, desired: desired)
         // The directory listing is read the same way the file listing is, and its failure makes the whole standing
         // unobservable rather than "nothing empty": an unreadable listing has never been allowed to read as clear.
-        match typed_argv_exec_over_fleet_ssh_posix(target: target, context: context, argv: sudo_elevate_argv(command: ["find", root, "-type", "d"])) {
+        match typed_argv_exec_over_fleet_ssh_posix(kind: ActuationLeg, target: target, context: context, argv: sudo_elevate_argv(command: ["find", root, "-type", "d"])) {
+          TypedArgvExecOverran { deadline: d } => StaleInstallFilesUnobservable { reason: typed_argv_exec_overran_reason(leg_hint: "site PXE edge directory listing", deadline: d) }
           TypedArgvExecRefused { reason: why } => StaleInstallFilesUnobservable { reason: join(["directory listing refused: ", why], "") }
           TypedArgvExecConverged { result: d } =>
             if !d.success {
@@ -3151,7 +3163,8 @@ fn run_site_pxe_edge(
     let install = site_pxe_edge_install_chain(architecture: b.architecture, chains: servable)
     let image = match install {
       Absent => InstallerImageUnplaced { reason: "no servable install chain for the binding's architecture" }
-      Present { value: ic } => site_pxe_edge_image_standing(image: ic.image, observation: match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: ["sha256sum", site_pxe_edge_installer_image_path(image: ic.image) as String]) {
+      Present { value: ic } => site_pxe_edge_image_standing(image: ic.image, observation: match typed_argv_exec_over_fleet_ssh(kind: ActuationLeg,target: target, context: context, argv: ["sha256sum", site_pxe_edge_installer_image_path(image: ic.image) as String]) {
+      TypedArgvExecOverran { deadline: d } => ChainloaderDigestUnobservable { reason: typed_argv_exec_overran_reason(leg_hint: "site PXE edge", deadline: d) }
         TypedArgvExecRefused { reason: why } => ChainloaderDigestUnobservable { reason: why }
         TypedArgvExecConverged { result: r } => site_pxe_edge_digest_observation(path: site_pxe_edge_installer_image_path(image: ic.image), success: r.success, line: r.stdout)
       })

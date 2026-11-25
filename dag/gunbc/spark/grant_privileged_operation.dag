@@ -17,8 +17,7 @@ import std.scoped_authorization {
   AuthorizationRequest,
 }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import gunbc.fleet.fleet_known_hosts_anchor {
-  FleetSshExecutionContext,
+import gunbc.fleet.fleet_known_hosts_anchor { ActuationLeg,ProvisioningLeg,FleetSshExecutionContext,
   SshTarget,
   SshTargetResolution,
   SshTargetResolved,
@@ -36,6 +35,7 @@ import gunbc.fleet.fleet_bootstrap_principal_session {
   exec_as_fleet_principal_with_stdin,
   FleetPrincipalLegRan,
   FleetPrincipalLegRefused,
+  FleetPrincipalLegOverran,
 }
 import gunbc.fleet.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.spark.managed_grant_reconcile {
@@ -61,7 +61,7 @@ import gunbc.typed_remote_file_write {
   TypedRemoteFileWriteAdmissionRefused,
 }
 import gunbc.host.host_effect_realize { run_typed_argv_transport, HostEffectTransport, FleetSsh }
-import gunbc.typed_argv_exec { TypedArgvExecConverged, TypedArgvExecRefused }
+import gunbc.typed_argv_exec {  TypedArgvExecConverged, TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason }
 import gunbc.remote_operation { RemoteStepStanding, RemoteStepUnattempted, RemoteStepCompleted, RemoteStepFailed, remote_step_standing_wire, remote_step_failure_cause }
 import gunbc.spark.remote_step_sequence {
   run_remote_step_sequence,
@@ -625,6 +625,7 @@ fn run_privileged_step(
                 CredentialNotMaterialized { lease: effective_lease, cause: ssh_target_refusal_text(endpoint: e, refusal: why) }
               SshTargetResolved { target: lease_target } =>
               match exec_as_fleet_principal_with_stdin(
+                kind: ProvisioningLeg,
                 context: context,
                 target: lease_target,
                 words: words,
@@ -633,6 +634,11 @@ fn run_privileged_step(
               ) {
                 FleetPrincipalLegRefused { cause: why } =>
                   CredentialNotMaterialized { lease: effective_lease, cause: why as String }
+                  FleetPrincipalLegOverran { session: _, deadline: d } =>
+                    CredentialNotMaterialized {
+                      lease: effective_lease,
+                      cause: typed_argv_exec_overran_reason(leg_hint: "spark grant privileged materialize", deadline: d),
+                    }
                 FleetPrincipalLegRan { session: _, result: result } =>
                   if result.success {
                     PrivilegedCommandSucceeded { command: command }
@@ -875,7 +881,7 @@ fn spark_grant_install_target(host: HostIdentity, principal: NonEmptyStr) -> Ssh
 }
 
 fn spark_grant_install_transport(context: FleetSshExecutionContext, target: SshTarget) -> HostEffectTransport {
-  FleetSsh { target: target, context: context }
+  FleetSsh {kind: ProvisioningLeg, target: target, context: context }
 }
 
 // AWAITING A CREDENTIAL IS NOT A FLOOR, and calling it one was the error this arm is named for. An
@@ -1252,6 +1258,7 @@ fn spark_grant_probe_outcome(
         argv: ["sudo", "-n", "-l"],
         transport: spark_grant_install_transport(context: context, target: target),
       ) {
+      TypedArgvExecOverran { deadline: d } => GrantProbeRefused { cause: typed_argv_exec_overran_reason(leg_hint: "spark privileged grant", deadline: d) }
         TypedArgvExecRefused { reason: why } => GrantProbeRefused { cause: why }
         TypedArgvExecConverged { result: r } =>
           if r.success {

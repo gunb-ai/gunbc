@@ -7,7 +7,7 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import product.host_identity { host_identity_eq }
 import gunbc.fleet.fleet_host_identity { operator_host_mtcollins1, operator_host_mtjade1 }
 import gunbc.fleet.fleet_ssh_locus { fleet_locus_ssh_target }
-import gunbc.fleet.fleet_known_hosts_anchor { SshTargetResolved, SshTargetRefused }
+import gunbc.fleet.fleet_known_hosts_anchor { ProbeLeg,SshTargetResolved, SshTargetRefused }
 import gunbc.fleet.fleet_host_key_enrollment { known_hosts_line }
 import gunbc.host.host_effect { HostEffectTransport, FleetSsh }
 import gunbc.host.host_operation_exec { HostOperationOutcome, HostOperationObserved }
@@ -47,7 +47,7 @@ fn mtcollins1_fleet_transport() -> HostEffectTransport? {
     Present { value: ctx } =>
       match fleet_locus_ssh_target(host: operator_host_mtcollins1) {
         SshTargetRefused { endpoint: _, refusal: _ } => none
-        SshTargetResolved { target: t } => Present { value: FleetSsh { target: t, context: ctx } }
+        SshTargetResolved { target: t } => Present { value: FleetSsh {kind: ProbeLeg, target: t, context: ctx } }
       }
   }
 }

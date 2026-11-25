@@ -129,7 +129,7 @@ fn deploy_target_proof(host: HostIdentity, transport: HostEffectTransport) -> De
       RunnerIdentityOnHost { host: host }
     SshShell { ssh_host: h } =>
       SshExplicitHost { host: host, ssh_host: h }
-    FleetSsh { target: t, context: _ } =>
+    FleetSsh { target: t, context: _, kind: _ } =>
       SshExplicitHost { host: host, ssh_host: known_hosts_host_field(address: t.address) }
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       RunnerIdentityOnHost { host: host }
@@ -216,7 +216,7 @@ fn deploy_local_apply_refused_for_observed_host(
       )
     SshShell { ssh_host: _ } =>
       !deploy_target_ssh_proof_structurally_valid(proof: proof)
-    FleetSsh { target: _, context: _ } =>
+    FleetSsh { target: _, context: _, kind: _} =>
       !deploy_target_ssh_proof_structurally_valid(proof: proof)
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } => true
   }

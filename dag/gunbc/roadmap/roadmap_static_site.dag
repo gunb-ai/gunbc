@@ -164,6 +164,12 @@ fn served_surface_digest_kv(url_path: NonEmptyStr, body: String) -> JsonKeyValue
   json_kv(key: url_path as String, value: json_string(s: site_artifact_digest(body: body).digest as String))
 }
 
+// SERVE-SIDE RENDERERS. These emit the process's OWN /healthz bytes (the /healthz document and the release-
+// stamped variant the live route serves). They render what the process serves, under the process's own
+// principal — the authority, not an expectation compared across a boundary — so they render directly. The
+// trigger that moves them onto the typed observation is exactly the day one of them mints an identity a
+// DIFFERENT process compares against. (gunbc.recurring_failure_mode
+// readback_expectation_rendered_over_a_refused_read_under_the_wrong_principal.)
 fn roadmap_site_healthz_body() -> String {
   materialize_live_roadmap_site_surface_bundle().healthz_body
 }

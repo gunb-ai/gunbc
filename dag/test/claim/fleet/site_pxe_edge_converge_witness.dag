@@ -62,7 +62,7 @@ import gunbc.host.network_install {
 import gunbc.host_command_binding { LocalCommandHost }
 import gunbc.fleet.site_pxe_edge_live_evidence { site_pxe_edge_live_absolute_path, site_pxe_edge_live_cas_path_is, site_pxe_edge_live_cas_path, site_pxe_edge_live_image_is_pinned, site_pxe_edge_live_place_on, site_pxe_edge_live_path_standing, site_pxe_edge_live_trusted_chain_on, site_pxe_edge_live_placement_refusal_reading, PathAsRequired, PathAbsent, PathPresentButNotAsRequired, PathObservationFailed, LiveDoNotPlace, LivePlacementNotAttempted, LivePlaceFromStaging, LivePlacementRefused }
 import extdeps.exec.command { argv_words }
-import gunbc.host.boot_medium_served_readback { RemoteAnswer }
+import gunbc.machine_intake.mtcollins1_census_member_readback { HostLeg, LegAnswered, LegNotDispatched }
 import gunbc.fleet.site_pxe_edge_client_requests { SitePxeEdgeClientRequestReading, ClientRequestsUnread }
 import gunbc.fleet.site_pxe_edge_converge {
   site_pxe_edge_no_install_requests, LiveRoleCensus, site_pxe_edge_live_unread_admission, site_pxe_edge_live_serves, site_pxe_edge_live_files_without_unit }
@@ -2278,8 +2278,12 @@ test fn a_non_sha256_member_digest_is_refused_before_any_write() -> Bool {
   }
 }
 
-fn ans(code: Int, out: String, err: String) -> RemoteAnswer {
-  RemoteAnswer { exit_code: code, stdout: out, stderr: err }
+fn ans(code: Int, out: String, err: String) -> HostLeg {
+  LegAnswered { exit_code: code, stdout: out, stderr: err }
+}
+
+fn not_dispatched(why: String) -> HostLeg {
+  LegNotDispatched { reason: why }
 }
 
 // Fox fix 1: absent is ONLY find's own "No such file or directory"; a refused or failed observation is never absence (the old `stat -c %F` was refused by the fleet
@@ -2291,7 +2295,7 @@ test fn only_a_find_no_such_file_is_absence_and_every_other_failure_refuses() ->
   let linked = match site_pxe_edge_live_path_standing(path: p, as_required: ans(code: 0, out: "", err: ""), anything: ans(code: 0, out: "/srv/tftp/live\n", err: "")) { PathPresentButNotAsRequired => true  _ => false }
   let boundary = match site_pxe_edge_live_path_standing(path: p, as_required: ans(code: 255, out: "", err: "refused: argument contains %"), anything: ans(code: 255, out: "", err: "refused: argument contains %")) { PathObservationFailed { reason: _ } => true  _ => false }
   let denied = match site_pxe_edge_live_path_standing(path: p, as_required: ans(code: 1, out: "", err: "Permission denied"), anything: ans(code: 1, out: "", err: "Permission denied")) { PathObservationFailed { reason: _ } => true  _ => false }
-  let undispatched = match site_pxe_edge_live_path_standing(path: p, as_required: ans(code: -1, out: "", err: "not dispatched: ssh executable: No such file or directory"), anything: ans(code: -1, out: "", err: "not dispatched: ssh executable: No such file or directory")) { PathObservationFailed { reason: _ } => true  _ => false }
+  let undispatched = match site_pxe_edge_live_path_standing(path: p, as_required: not_dispatched("ssh executable: No such file or directory"), anything: not_dispatched("ssh executable: No such file or directory")) { PathObservationFailed { reason: _ } => true  _ => false }
   let other_path = match site_pxe_edge_live_path_standing(path: p, as_required: ans(code: 1, out: "", err: "find: '/elsewhere': No such file or directory"), anything: ans(code: 1, out: "", err: "find: '/elsewhere': No such file or directory")) { PathObservationFailed { reason: _ } => true  _ => false }
   let prefix_collision = match site_pxe_edge_live_path_standing(path: p, as_required: ans(code: 1, out: "", err: "find: '/srv/tftp/live-other': No such file or directory"), anything: ans(code: 1, out: "", err: "find: '/srv/tftp/live-other': No such file or directory")) { PathObservationFailed { reason: _ } => true  _ => false }
   required && absent && linked && boundary && denied && undispatched && other_path && prefix_collision

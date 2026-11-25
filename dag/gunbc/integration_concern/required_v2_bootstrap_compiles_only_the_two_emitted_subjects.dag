@@ -1,0 +1,68 @@
+module gunbc.integration_concern.required_v2_bootstrap_compiles_only_the_two_emitted_subjects
+
+// One row of the integration-concern register (roster: gunbc.integration_concern.roster), one row per
+// file. The required merge gate is the `v2-bootstrap` context (#gunbc.required_ci_contract_epoch
+// required_ci_context_name). What it COMPILES is the two emitted subjects listed by
+// #gunbc.emitted_subject_build_gate emitted_subject_build_rows -- the self-host closure and the v2 native
+// CLI closure -- and nothing else on the required path compiles the rest of the authored corpus. A module
+// that is neither of those closures is therefore free to be red on main so long as it is not reached by the
+// two emitted builds, which is exactly how #16877 shipped a blocking emit error in an extdeps library.
+//
+// THIS IS NOT THE BROKEN CAST AND NOT A SECOND COPY OF THAT FIX. The cast is repaired in
+// #extdeps.cloud.gcp.secret_manager utf8_secret_from_access_payload (it crossed the host-text /
+// structural-text meeting with `as` instead of the declared fold). This row records the CONTROL that let
+// that cast reach main: a change to a non-emitted authored module was merged green because no required lane
+// ever compiled it. The failure is a population the floor does not read, not a defect in what it reads.
+//
+// THE SIBLINGS THIS ROW STAYS BESIDE. #gunbc.recurring_failure_mode
+// witness_outside_gate_closure_falsified_by_other_file is the same shape one class over -- a module outside
+// the gate closure whose property is falsified by a change to another file, its author told "the floor was
+// green, nothing here fails", the green true because the floor never looked -- but it is scoped to a claim
+// WITNESS, where the author was told to look at that one file's pass/fail. #gunbc.recurring_failure_mode
+// a_v1_unit_test_red_on_main_runs_in_no_required_lane is "red on main, no required lane reads it" for the
+// v1 unit-test population. This row is that failure class for the AUTHORED PRODUCT corpus (non-emitted
+// libraries reached by authored importers), where the break is not a test that cannot execute but a product
+// module that does not compile for its target at all. It stays a separate row because the population is
+// different, the owner who is misled is different (a consumer or an operator, not the author), and what is
+// owed is a corpus-compile control, not a runner fix.
+
+import std.algebra { FreeSemigroup }
+import std.content_hash { Sha256Digest, Sha256DigestHex }
+import std.decl_ref { decl_ref }
+import gunbc.integration_concern { CitesArtifact, CitesDeclaration, ConcernSighting, IntegrationConcern, Open, RequirementEstablished, SuspectedCapabilityGap }
+
+data required_v2_bootstrap_compiles_only_the_two_emitted_subjects: IntegrationConcern = IntegrationConcern {
+  identity: "required_v2_bootstrap_compiles_only_the_two_emitted_subjects",
+  kind: SuspectedCapabilityGap {
+    model: decl_ref(module_path: "gunbc.emitted_subject_build_gate", decl_name: "emitted_subject_build_rows"),
+    requirement: "a change that makes an authored, non-emitted product module fail to compile for its target must not be mergeable. The required v2-bootstrap gate compiles only the two emitted subjects this table lists, so an extdeps library (or any authored module not reached by those two builds) can be red on main while the floor is green; the required population, or a standing lane, must also compile every authored module an authored importer reaches",
+    standing: RequirementEstablished {
+      by: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.recurring_failure_mode.a_v1_unit_test_red_on_main_runs_in_no_required_lane", decl_name: "a_v1_unit_test_red_on_main_runs_in_no_required_lane") },
+    },
+  },
+  affected: FreeSemigroup {
+    head: decl_ref(module_path: "extdeps.cloud.gcp.secret_manager", decl_name: "utf8_secret_from_access_payload"),
+    tail: [
+      decl_ref(module_path: "gunbc.emitted_subject_build_gate", decl_name: "emitted_subject_build_rows"),
+      decl_ref(module_path: "gunbc.required_ci_contract_epoch", decl_name: "required_ci_context_name"),
+    ],
+  },
+  question: "Where does the corpus-compile control belong -- a standing lane that compiles every authored product module import-reachable from a real entry, a widening of the required gate's population beyond the two emitted subjects, or a per-change rule that any PR touching a non-emitted module runs that module's compile before merge? The gate extension raises a CI time cost, so it is not taken here: the proposal is written in the implementation PR for the operator to rule on. The open question this row carries is which closure that control compiles and at what measured cost.",
+  sightings: FreeSemigroup {
+    head: ConcernSighting {
+      revision: "700b8b0f76b87f7d2af4a7fd13078500c7e08c0c",
+      evidence: FreeSemigroup {
+        head: CitesDeclaration { declaration: decl_ref(module_path: "gunbc.recurring_failure_mode.witness_outside_gate_closure_falsified_by_other_file", decl_name: "witness_outside_gate_closure_falsified_by_other_file") },
+        tail: [
+          CitesArtifact {
+            label: "gunbc compile --output-dir <out> --entry dag/extdeps/cloud/gcp/secret_manager.dag --source-root dag --source-root src/v2 at 700b8b0f76b8 -> 1 blocking error at secret_manager.dag:396:86, HostText to String, no declared conversion route",
+            sha256: Sha256Digest { hex: "10bea80703741f85c8fa424cf83217dc29c89d2ca25bbe00b44ca523a6f9c5fe" as Sha256DigestHex },
+          },
+        ],
+      },
+      account: "Surfaced restoring main after #16877 (dev/utf8-decode-host-seam-row) merged it: `utf8_secret_from_access_payload` wrote the credential as `text_of_chars(scalars: chars) as Secret`, and text_of_chars returns the host-text representation while Secret's carrier is String, so the rust target refused the bare `as` with no declared conversion route (the ruling text_crossings_go_through_the_unfold: the crossing must go through the declared fold or refuse). The fix is to route the decoded scalars through std.coercion::unicode_scalar_fold before branding, the idiom the sibling extdeps consumer http.form_urlencoded already uses. The CONTROL that should have caught it did not exist on the required path: v2-bootstrap builds only the two emitted subjects, so secret_manager.dag -- an extdeps library, not an emitted subject -- was never compiled by any required lane, and the PR that introduced the bad cast merged green. A bounded git grep at this revision finds this cast of a text_of_chars result is the only one in the repo outside tests, so the corpus-compile gap bit once, here.",
+    },
+    tail: [],
+  },
+  disposition: Open,
+}

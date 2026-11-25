@@ -32,7 +32,7 @@ env:
 jobs:
   v2-bootstrap:
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 90
+    timeout-minutes: 60
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     permissions:
       contents: read

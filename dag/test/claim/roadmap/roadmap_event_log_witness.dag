@@ -13,6 +13,7 @@ import gunbc.roadmap.roadmap_event_log {
   RoadmapEventDecode, RoadmapEventDecoded, RoadmapEventUndecodable, roadmap_event_decode,
   RoadmapNodeStanding, NodeOpen, NodeClaimed, NodeInProgress, NodeBlocked, NodeHandedBack, NodeForked, NodeHistoryIncomplete,
   roadmap_node_standing, roadmap_history_unordered_reason, roadmap_node_standing_key, roadmap_node_standing_text,
+  NodeAccepted,
   IssueAssignmentProjection, roadmap_issue_assignment,
   IssueComment, roadmap_issue_comments, roadmap_comment_created_key_present, roadmap_comment_retry_present, issue_comment_anchor,
   roadmap_recent_claimed_assignees, roadmap_events_newest_first, roadmap_result_returned_event, ResultReturned, AttemptResultOutcome, ResultPublished, ResultVerificationFailed, ResultHandedBack, NodeReadyForReview,
@@ -26,9 +27,14 @@ import gunbc.roadmap.roadmap_event_log {
   roadmap_migration_retirement_ids, roadmap_migration_retirement_authority,
 }
 import gunbc.roadmap.roadmap_authority { declared_roadmap_nodes }
+import std.dissolution { dissolution_is_bound }
+import gunbc.roadmap.roadmap_authority_fixture {
+  roadmap_node_standing_keys,
+  roadmap_node_standing_keys_next_rung,
+}
 import gunbc.roadmap.roadmap_model {
   roadmap_node_ids_contain, RoadmapNode,
-  RoadmapAcceptanceReceipt, RedControlExecuted, HandbackDelivered,
+  RoadmapAcceptanceReceipt, RedObservedOnMain, RedControlExecuted, HandbackDelivered,
   AcceptanceRevocationDisposition, AcceptanceNodeReopensActiveFrontier, AcceptanceNodeRemainsSuperseded,
 }
 import std.content_hash { content_hash_atom }
@@ -129,6 +135,7 @@ test fn a_v2_claimed_event_decodes_as_a_legacy_email_principal_never_auto_matche
           HandedBack { reason: _ } => false
           Retired { reason: _ } => false
           ReceiptReferenced { obligation: _, address: _, verdict: _ } => false
+          RedTreeRecorded { observation: _ } => false
           CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => false
           CommentEdited { comment: _, body: _ } => false
           CommentDeleted { comment: _ } => false
@@ -160,6 +167,7 @@ test fn a_v1_claimed_event_still_reads_as_a_legacy_self_claim() -> Bool {
           HandedBack { reason: _ } => false
           Retired { reason: _ } => false
           ReceiptReferenced { obligation: _, address: _, verdict: _ } => false
+          RedTreeRecorded { observation: _ } => false
           CommentCreated { comment: _, body: _, visibility: _, parent_comment: _ } => false
           CommentEdited { comment: _, body: _ } => false
           CommentDeleted { comment: _ } => false
@@ -556,7 +564,7 @@ fn receipt_fixture() -> RoadmapAcceptanceReceipt {
     red_control: RedControlExecuted {
       witness_module: "test.claim.roadmap.roadmap_event_log_witness" as NonEmptyStr,
       witness_fn: "fixture" as NonEmptyStr,
-      executed_on: "2026-11-09" as NonEmptyStr,
+      executed_on: "2026-11-09" as NonEmptyStr, observation: RedObservedOnMain { red_at: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", green_at: "0f1e2d3c4b5a69788796a5b4c3d2e1f001234567" },
     },
     handback: HandbackDelivered {
       first_artifact: "fixture-artifact" as NonEmptyStr,
@@ -574,7 +582,7 @@ fn receipt_for(other: RoadmapNodeId) -> RoadmapAcceptanceReceipt {
     red_control: RedControlExecuted {
       witness_module: "test.claim.roadmap.roadmap_event_log_witness" as NonEmptyStr,
       witness_fn: "fixture" as NonEmptyStr,
-      executed_on: "2026-11-09" as NonEmptyStr,
+      executed_on: "2026-11-09" as NonEmptyStr, observation: RedObservedOnMain { red_at: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", green_at: "0f1e2d3c4b5a69788796a5b4c3d2e1f001234567" },
     },
     handback: HandbackDelivered {
       first_artifact: "fixture-artifact" as NonEmptyStr,
@@ -608,7 +616,7 @@ fn receipt_dated(day: String) -> RoadmapAcceptanceReceipt {
     red_control: RedControlExecuted {
       witness_module: "test.claim.roadmap.roadmap_event_log_witness" as NonEmptyStr,
       witness_fn: "fixture" as NonEmptyStr,
-      executed_on: "2026-11-09" as NonEmptyStr,
+      executed_on: "2026-11-09" as NonEmptyStr, observation: RedObservedOnMain { red_at: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", green_at: "0f1e2d3c4b5a69788796a5b4c3d2e1f001234567" },
     },
     handback: HandbackDelivered {
       first_artifact: "fixture-artifact" as NonEmptyStr,
@@ -990,4 +998,65 @@ test fn witness_a_roster_retirement_event_retires_its_node() -> Bool {
         !roadmap_node_ids_contain(ids: loaded, node: id as RoadmapNodeId))
     RetiredNodeIdsRefused { detail: _ } => false
   }
+}
+
+// ONE SAMPLE PER STANDING — the witness's OWN hand-written enumeration, kept deliberately separate
+// from the fixture list the export is built over
+// (#gunbc.roadmap.roadmap_authority_fixture::roadmap_authority_fixture_standing_samples). The export is
+// derived, not written: it is `roadmap_node_standing_key` mapped over that fixture list. So the check
+// available here is to require the derived list to equal the fold over an INDEPENDENT enumeration --
+// this one. Each way the two can disagree fails on its own:
+//   - the fixture list omits a standing: this list still names its word, the lengths disagree, red;
+//   - a reordered export: list equality is positional, and order is part of the contract because the
+//     ctrl bridge serves readiness in the authority's declaration order -- a reader comparing sorted
+//     copies would pass while the two orders disagreed;
+//   - a standing sampled twice: the fold-over-this-list comparison catches a length change on its own,
+//     and `deduped` below catches the case where BOTH copies repeat it, which equality alone would wave
+//     through.
+//
+// WHAT THIS DOES NOT CATCH, said plainly rather than claimed as coverage. Both lists are hand-written.
+// Growing the type forces the fold's no-wildcard match to grow -- so the WORD gets written -- but
+// nothing here, and nothing in the compiler, forces the new variant into EITHER list; a variant absent
+// from both leaves every comparison above equal and the export one word short. The rung this pair
+// establishes is "the export is the fold over the samples written, and the two written copies agree" --
+// not "one entry per constructor". The reader's failure mode for the residual is a refusal, not a
+// mis-staffing: the ctrl bridge refuses an unknown standing key instead of treating the node as
+// absent. The rung above it -- the language handing a witness the constructors of a closed sum, so the
+// list is checked rather than asserted -- is gunb-ai/gunbc#16925.
+fn canonical_standing_samples() -> List<RoadmapNodeStanding> {
+  [
+    NodeOpen,
+    NodeClaimed { by: human_principal(), since: "t1" },
+    NodeInProgress { by: human_principal(), last_note: "half done" as NonEmptyStr },
+    NodeBlocked { by: human_principal(), reason: "oracle needs a fixture" as NonEmptyStr },
+    NodeHandedBack { by: human_principal(), reason: "handed to the reviewer" as NonEmptyStr },
+    NodeRetired { by: human_principal(), reason: "superseded by the operator" as NonEmptyStr },
+    NodeAccepted { by: human_principal(), receipt: receipt_fixture() },
+    NodeReadyForReview { by: human_principal(), pr: "16890" as NonEmptyStr, head: "abc1234" as NonEmptyStr },
+    NodeForked { heads: ["e1" as RoadmapEventId, "e2" as RoadmapEventId] },
+    NodeHistoryIncomplete { missing_parents: ["e0" as RoadmapEventId] },
+  ]
+}
+
+// The typed empty the dedup fold below starts from: `init: []` alone leaves the accumulator's element
+// type unjudged, and the compiler refuses `==` on it ('' has no declaration identity) rather than
+// admitting the comparison unseen.
+data no_standing_keys: List<String> = []
+
+// THE EXPORT IS THE FOLD, checked against an independent enumeration of it.
+test fn roadmap_standing_key_export_matches_the_fold() -> Bool {
+  let from_witness = map(canonical_standing_samples(), s => roadmap_node_standing_key(s: s))
+  let deduped = fold(roadmap_node_standing_keys, init: no_standing_keys, f: (acc, k) => if any(acc, x => x == k) { acc } else { concat(acc, [k]) })
+  from_witness == roadmap_node_standing_keys
+    && deduped == roadmap_node_standing_keys
+}
+
+// THE RUNG ABOVE THE EXPORT IS CARRIED, AND UNREACHED. `roadmap_node_standing_keys_next_rung` is the
+// typed carrier for what the pair above cannot enforce (a hand-written sample list can be left short;
+// #gunb-ai/gunbc#16925 is the language capability that would make it checked). A carrier nobody reads
+// is a comment with a type on it, so this asks the tree the question the comment would have asked:
+// nothing has claimed the rung. A carrier flipped to BoundDissolution -- someone declaring the
+// capability arrived when it has not -- turns this red.
+test fn roadmap_standing_key_rung_is_carried_and_unreached() -> Bool {
+  !dissolution_is_bound(condition: roadmap_node_standing_keys_next_rung)
 }

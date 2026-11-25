@@ -11,10 +11,13 @@ import gunbc.fleet.fleet_bootstrap_principal_session {
   BootstrapCredentialFileHeld,
   FleetPrincipalLegRan,
   FleetPrincipalLegRefused,
+  FleetPrincipalLegOverran,
 }
+import gunbc.typed_argv_exec { typed_argv_exec_overran_reason }
 import gunbc.spark.fabric_reach { SparkReachPath, spark_reach_path_wire, spark_reach_endpoint }
 import gunbc.fleet.fleet_known_hosts_anchor {
   FleetOpenSshTrustPolicy,
+  ProvisioningLeg,
   SshTarget, portable_remote_words,
   SshTargetResolved, SshTargetRefused, fleet_ssh_target_at_standard_port, ssh_target_refusal_text,
 }
@@ -115,6 +118,7 @@ fn spark_pair_privileged_session(trust: FleetOpenSshTrustPolicy, path: SparkReac
           SshTargetRefused { endpoint: e, refusal: why } => PrivilegedSessionNotRun { cause: ssh_target_refusal_text(endpoint: e, refusal: why) }
           SshTargetResolved { target: target } =>
           match exec_as_fleet_principal_trusting_with_stdin(
+            kind: ProvisioningLeg,
             trust: trust,
             target: target,
             words: words,
@@ -122,6 +126,14 @@ fn spark_pair_privileged_session(trust: FleetOpenSshTrustPolicy, path: SparkReac
             credential: BootstrapCredentialFileHeld { path: admin_credential_file },
           ) {
             FleetPrincipalLegRefused { cause: why } => PrivilegedSessionNotRun { cause: why as String }
+            // The overrun lands on this file's non-success arm, with what the arm alone cannot say:
+            // the leg WAS carried and then killed at its ceiling, so the pairing script's effect on the
+            // host is unknown -- it is not established that it did not run, and a retry is not known safe.
+            FleetPrincipalLegOverran { session: _, deadline: d } =>
+              PrivilegedSessionNotRun {
+                cause: join(["the privileged leg overran its ceiling; its effect on the host is UNKNOWN, not "
+                  "established as not-run: ", typed_argv_exec_overran_reason(leg_hint: "spark host privileged apply", deadline: d)], "")
+              }
             FleetPrincipalLegRan { session: _, result: r } => PrivilegedSessionRan { result: r }
           }
           }
