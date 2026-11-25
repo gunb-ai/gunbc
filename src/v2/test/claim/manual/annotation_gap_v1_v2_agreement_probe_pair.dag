@@ -64,7 +64,7 @@ data annotation_gap_v1_v2_agreement_probe_argv_roots: List<String> = ["dag", "sr
 // sha256 and the tree sha it ran on. This module does not restate them, and no predicate here certifies them;
 // the claim below only refuses if a carrier stops pointing at a run-log comment, so a receipt that quietly
 // loses its evidence trail is caught.
-data annotation_gap_v1_v2_agreement_probe_run_log_refs: List<String> = ["https://github.com/gunb-ai/gunbc/pull/16942#issuecomment-7154698398", "https://github.com/gunb-ai/gunbc/pull/16942#issuecomment-7155279996", "https://github.com/gunb-ai/gunbc/pull/16942#issuecomment-7157087347"]
+data annotation_gap_v1_v2_agreement_probe_run_log_refs: List<String> = ["https://github.com/gunb-ai/gunbc/pull/16942#issuecomment-7154698398", "https://github.com/gunb-ai/gunbc/pull/16942#issuecomment-7155279996", "https://github.com/gunb-ai/gunbc/pull/16942#issuecomment-7157087347", "https://github.com/gunb-ai/gunbc/pull/16942#issuecomment-7162186260"]
 
 data annotation_gap_v1_v2_agreement_probe_red_base: CommitSha = "8c86ee47f68ec1f451e25a8cb8f594a868e5c384"
 
