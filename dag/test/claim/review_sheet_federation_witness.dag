@@ -25,27 +25,29 @@ fn admitted(claims: List<OidcPresentedClaim>) -> Bool {
   claim_pins_admit(pins: review_sheet_converge_claim_pins(), claims: claims)
 }
 
-// POSITIVE CONTROLS: reviewed main's fleet-converge file, on each of the three events this job runs on.
-test fn the_pool_admits_dispatch_schedule_and_push_at_main() -> Bool {
+// POSITIVE CONTROL: reviewed main's fleet-converge file, on the one event this job runs on.
+test fn the_pool_admits_a_dispatch_at_main() -> Bool {
   admitted(claims: presented_on(event: "workflow_dispatch"))
-    && admitted(claims: presented_on(event: "schedule"))
-    && admitted(claims: presented_on(event: "push"))
 }
 
-// THE RED THE OPERATOR ASKED FOR: a non-main ref is refused on EVERY admitted event, the push trigger
-// included. A session branch dispatching, or a push to a session branch, presents its own ref.
-test fn a_non_main_ref_is_refused_on_every_event_including_push() -> Bool {
+// RED: the job no longer starts on the schedule or a push (gunbc.design_ruling
+// review_sheet_converge_disabled_2026_11_24), so the grant refuses both, at main, with every other pin met.
+test fn the_schedule_and_a_push_are_refused_at_main() -> Bool {
+  !admitted(claims: presented_on(event: "schedule"))
+    && !admitted(claims: presented_on(event: "push"))
+}
+
+// THE RED THE OPERATOR ASKED FOR: a non-main ref is refused on the admitted event. A session branch
+// dispatching presents its own ref.
+test fn a_non_main_ref_is_refused_on_a_dispatch() -> Bool {
   let branch = "refs/heads/session/wise-heron-757"
   !admitted(claims: with_presented_value(claims: presented_on(event: "workflow_dispatch"), claim: "ref", value: branch))
-    && !admitted(claims: with_presented_value(claims: presented_on(event: "schedule"), claim: "ref", value: branch))
-    && !admitted(claims: with_presented_value(claims: presented_on(event: "push"), claim: "ref", value: branch))
 }
 
 // The workflow FILE is pinned at main too: the same file at a branch ref is another workflow_ref.
 test fn the_fleet_converge_file_at_a_branch_is_refused() -> Bool {
   let at_branch = concat(fleet_converge_workflow_ref_heads_prefix(), "session/wise-heron-757")
-  !admitted(claims: with_presented_value(claims: presented_on(event: "push"), claim: "workflow_ref", value: at_branch))
-    && !admitted(claims: with_presented_value(claims: presented_on(event: "workflow_dispatch"), claim: "workflow_ref", value: at_branch))
+  !admitted(claims: with_presented_value(claims: presented_on(event: "workflow_dispatch"), claim: "workflow_ref", value: at_branch))
 }
 
 // A pull request's job presents pull_request (and refs/pull/N/merge); neither is admitted alone.
@@ -57,15 +59,17 @@ test fn a_pull_request_event_is_refused_even_at_main() -> Bool {
 
 // Only the job that declares the environment is admitted; another job of the same file is not.
 test fn a_job_without_the_environment_is_refused() -> Bool {
-  !admitted(claims: without_presented_claim(claims: presented_on(event: "schedule"), claim: "environment"))
-    && !admitted(claims: with_presented_value(claims: presented_on(event: "schedule"), claim: "environment", value: "namecheap-dns"))
+  !admitted(claims: without_presented_claim(claims: presented_on(event: "workflow_dispatch"), claim: "environment"))
+    && !admitted(claims: with_presented_value(claims: presented_on(event: "workflow_dispatch"), claim: "environment", value: "namecheap-dns"))
 }
 
-// THE CONDITION GCP STORES is the same pins: ref equality at main, and the closed event list.
-test fn the_stored_condition_pins_main_and_the_closed_event_list() -> Bool {
+// THE CONDITION GCP STORES is the same pins: ref equality at main, and the one admitted event.
+test fn the_stored_condition_pins_main_and_the_dispatch_event() -> Bool {
   let c = review_sheet_converge_attribute_condition()
   string_contains(s: c, pattern: concat("assertion.ref == 'refs/heads/", concat(gunbc_default_branch_name, "'")))
-    && string_contains(s: c, pattern: "assertion.event_name in ['workflow_dispatch', 'schedule', 'push']")
+    && string_contains(s: c, pattern: "assertion.event_name == 'workflow_dispatch'")
+    && !string_contains(s: c, pattern: "'schedule'")
+    && !string_contains(s: c, pattern: "'push'")
     && string_contains(s: c, pattern: "assertion.environment == 'review-sheet-converge'")
 }
 

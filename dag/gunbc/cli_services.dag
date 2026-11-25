@@ -15,7 +15,6 @@ service gunbc.Cli {
       source_roots: List<String>
       entry: String
       function: String
-      claim_run: Bool = false
     }
     output {
       success: Bool from "exit_success"
@@ -32,8 +31,7 @@ service gunbc.Cli {
         gunbc_run_transport_argv(
           source_roots: source_roots,
           entry: entry,
-          function: function,
-          claim_run: claim_run
+          function: function
         )
       ]
     }

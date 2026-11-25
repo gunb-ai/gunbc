@@ -171,7 +171,6 @@ fn gunbc_entry_run_argv(
         source_roots: map(source_roots, r => r as String),
         entry: entry as String,
         functions: [function as String],
-        claim_run: false,
         arguments: [],
       )),
       w => w as NonEmptyStr,

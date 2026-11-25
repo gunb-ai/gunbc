@@ -70,6 +70,16 @@ type GitHubAuthTokenRead
   = GitHubAuthTokenObserved { token: GitHubAuthToken }
   | GitHubAuthTokenUnavailable { variable: NonEmptyStr }
 
+// THE VARIABLE NAME IS THE AUTH SOURCE'S, NOT THE STEP'S. A workflow step that binds GITHUB_TOKEN by
+// literal can bind a name this module never reads, and the fold would then see an absent token while the
+// step believes it supplied one -- the a_step_carries_a_script_that_reads_env_the_step_never_binds shape.
+// The step's env entry is emitted from here instead, so the name and the reader cannot drift apart.
+fn github_token_env_name() -> NonEmptyStr {
+  match default_github_auth_source.credential_source {
+    EnvVar { name } => name as NonEmptyStr
+  }
+}
+
 fn github_token() -> GitHubAuthTokenRead
 {
   cred = match default_github_auth_source.credential_source {
