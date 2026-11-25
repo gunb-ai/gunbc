@@ -1305,7 +1305,7 @@ data filesystem_wall_compile_gate_trigger: FilesystemWallCompileGateTrigger = Fi
 // NOR its interface -- it is the free legacy primitive whose realization panics. An emitted closure
 // that reaches it directly bypasses the handler's typed read/write contract and is the defect this wall
 // names. THE RUNG, HONESTLY: as authored in this cut the located refusal is a census predicate EXECUTED by
-// src/v2/test/claim/filesystem_effect_reach_wall.dag over the named
+// dag/test/claim/filesystem_effect_reach_wall.dag over the named
 // population -- it is NOT yet wired as a compile-phase gate, because wiring one now would refuse the two
 // self_host.dag sites this cut's ruling keeps OUT of scope (their migration to the bound handler is the
 // trigger that connects this wall to the compile path). Until that trigger lands a closure reaching
