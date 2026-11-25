@@ -1142,12 +1142,22 @@ fn gunbc_ci_root_mutation_job_frame_timeout_minutes() -> Int {
     + gunbc_ci_artifact_transfer_step_timeout_minutes
 }
 
+// ONE rule, ONE implementation. A srv1 root-mutation job's backstop is the shared frame plus the
+// budget constant the job's single live-deploy-tier fold actually uses. Generalized per
+// gunbc.design_argument::root_generalization (the trigger is the second local implementation of one
+// rule): the dashboard-deploy, named-instance-deploy and shaped live-deploy backstops below are this
+// one expression applied at three different step budgets, not three hand-copied sums. A fold that
+// needs its own budget adds a named application here, never a new copy of the sum.
+fn gunbc_ci_job_backstop_for(step_timeout: Duration) -> Int {
+  gunbc_ci_root_mutation_job_frame_timeout_minutes() + step_timeout
+}
+
 // The dashboard-deploy job's backstop: the shared frame plus its own deploy fold at
 // gunbc_ci_dashboard_deploy_step_timeout_minutes (60) -- NOT the shared 30-minute live-deploy tier.
 // The fold's raise, and this job's bound rising to cover it, are the operator-approved change recorded
 // at gunbc.design_ruling::srv1_dashboard_deploy_step_timeout_raised.
 fn gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_root_mutation_job_frame_timeout_minutes() + gunbc_ci_dashboard_deploy_step_timeout_minutes
+  gunbc_ci_job_backstop_for(step_timeout: gunbc_ci_dashboard_deploy_step_timeout_minutes)
 }
 
 // The named-instance-deploy job's backstop: the shared frame plus ITS OWN deploy fold at
@@ -1161,14 +1171,17 @@ fn gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes() -> Int {
 // gunbc.design_ruling::srv1_desired_instance_deploy_step_timeout_raised; the 344 is the SAME +30 the operator
 // approved for the fold, derived (Manager B's reading), not an additional budget.
 fn gunbc_ci_desired_instance_deploy_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_root_mutation_job_frame_timeout_minutes() + gunbc_ci_desired_instance_deploy_step_timeout_minutes
+  gunbc_ci_job_backstop_for(step_timeout: gunbc_ci_desired_instance_deploy_step_timeout_minutes)
 }
 
 // The backstop for the jobs that share the dashboard-deploy job's shape but whose single live-deploy-tier
-// fold is still the shared gunbc_ci_live_deploy_step_timeout_minutes (30): desired-instance-deploy and
-// approval-ntfy-retire. Their value is UNCHANGED by the dashboard-deploy fold's raise.
+// fold is still the shared gunbc_ci_live_deploy_step_timeout_minutes (30): approval-ntfy-retire (and the
+// microVM controller install, which composes this fn plus its own tenancy-admission step). desired-instance-
+// deploy no longer uses this fn -- it moved to its own budget via
+// gunbc_ci_desired_instance_deploy_job_backstop_timeout_minutes, so it is NOT named here. Their value is
+// UNCHANGED by the dashboard-deploy or named-instance-deploy fold raises.
 fn gunbc_ci_live_deploy_shaped_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_root_mutation_job_frame_timeout_minutes() + gunbc_ci_live_deploy_step_timeout_minutes
+  gunbc_ci_job_backstop_for(step_timeout: gunbc_ci_live_deploy_step_timeout_minutes)
 }
 
 // The microVM controller install's backstop: the shared live-deploy-shaped frame, which it shares, plus
