@@ -43,7 +43,8 @@ import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import extdeps.huggingface.hub { HubRepoId }
 import extdeps.strata.serve_flags {
   StrataServeFlags, StrataConversationCache, StrataConversationCacheBudget, StrataConversationCacheOff,
-  StrataConversationCacheUnset, strata_conversation_cache_words, strata_parallel_minimum_slots,
+  StrataConversationCacheUnset, StrataConversationCacheUnread, strata_conversation_cache_words,
+  strata_parallel_minimum_slots, strata_conversation_cache_unset_ask,
 }
 import product.fabric.serving_throughput { ServingThroughput, ThroughputOperatorReading, ThroughputUnread }
 import gunbc.fleet.fleet_host_identity {
@@ -883,9 +884,14 @@ type StrataParkingAgreement
   // A figure the answer stands on has not been read: no grant, no flags, no live slot count. Never a zero.
   | ParkingNeedsReading { obligation: NonEmptyStr }
 
-// What the model says may be parked at once, from the two authorities and no third: the launch's typed
-// flags when they name a budget, else the engine's memory row. Absent when neither states it -- an absent
-// figure, never zero, because "no row states it" and "it holds nothing" are different facts.
+// What SOME ROW of the model states may be parked at once: the launch's typed flags when they name a budget,
+// else the engine's memory row. This is EVIDENCE, not authority -- the agreement below takes a figure from
+// here only into the TEXT of an ask or a finding, never as the reason to agree, because the memory row is a
+// capacity read off a bus, and the h11 misconfiguration stayed invisible exactly while such a row stood in for
+// what the launch itself named (recurring-failure row
+// `a_required_launch_capability_the_model_cannot_name_is_decided_by_the_engine_build`). Absent when neither
+// states it -- an absent figure, never zero, because "no row states it" and "it holds nothing" are different
+// facts.
 fn replica_parked_conversations(
   model: ReplicaModel,
   engine_memory: Optional<ServingEngineMemory>,
@@ -904,9 +910,13 @@ fn replica_parked_conversations(
             // An explicit off is a named policy: it states NO parked capacity even beside a memory row
             // that says otherwise, and the disagreement is what the refusal below names.
             StrataConversationCacheOff { reason: _ } => Absent
-            // An argv that says nothing lets the read memory row answer, which is what srv3's row does:
-            // its typed flags are the benchmark cell's, its live engine's cache was read from the unit.
+            // An argv that says nothing carries whatever the read memory row states -- as evidence for the
+            // ask below, which is what srv3's row needs: its typed flags are the benchmark cell's and its
+            // live engine's cache was read from the unit, so the row is the only figure the ask can name.
             StrataConversationCacheUnset { detail: _ } => from_memory
+            // An argv nobody has read likewise carries whatever the read memory row states -- evidence for the
+            // ask, never an answer to it.
+            StrataConversationCacheUnread { detail: _ } => from_memory
           }
         Absent => from_memory
       }
@@ -929,7 +939,10 @@ fn replica_live_slots(model: ReplicaModel) -> Optional<Nat> {
 }
 
 // THE AGREEMENT. Grant first, because it is what the host's layout admits this replica to hold warm; then
-// the engine's live slots; then the two authorities for parked capacity. The refusal fires exactly where
+// the engine's live slots; then what the LAUNCH NAMED. Only a named budget can be agreed, and it is agreed
+// only when it reaches the conversations the grant holds beyond those slots; an explicit off is a refusal
+// with its reason; silence -- whether the argv named nothing, or was never read at all -- is an ask, and any
+// figure another row states travels inside that ask as evidence. The refusal fires exactly where
 // conversations are held beyond the live slots AND nothing in the model says any of them may be parked.
 
 // The sentence both refusals share, so the two state the same fact about what the grant holds and differ
@@ -950,6 +963,52 @@ fn parking_short_of_grant_sentence(held: Nat, live: Nat, beyond: Nat, parked: Na
     " the model says may be parked is " + to_string(parked) + " -- from " + source) as NonEmptyStr
 }
 
+// The ASK both never-read paths give, from one place: what the grant admits, how much of it can only be warm
+// by being parked (EXACTLY when the argv was read far enough to know the live slots, only BOUNDED by the
+// engine's documented minimum when it was not), what another row states about parked capacity -- carried in
+// the TEXT as evidence, never as the reason to agree -- and the read that would settle it. `why` is the row's
+// own account of what has not been read; what the build's default does is composed from the standings
+// (`extdeps.strata.serve_flags::strata_conversation_cache_unset_ask`), never from a figure of ours.
+fn parking_ask_sentence(held: Nat, beyond: Optional<Nat>, parked: Optional<Nat>, why: String) -> NonEmptyStr {
+  let held_part = ("the layout grants this replica " + to_string(held) + " conversations warm") as String
+  let beyond_part = match beyond {
+    Present { value: b } => (", of which " + to_string(b) + " can only be warm by being parked") as String
+    Absent => (", and how many of them can only be warm by being parked is unknown, because the live slot count" +
+      " sits in the same unread argv") as String
+  }
+  let parked_part = match parked {
+    Present { value: n } =>
+      ("; the model's memory row for this engine states " + to_string(n) +
+        " parked slots, which is evidence for the ask and not authority to answer it") as String
+    Absent => "" as String
+  }
+  ((held_part + beyond_part + parked_part +
+    "; this launch's argv as launched has never been read (" + why +
+    "). Read the unit's ExecStart -- " + strata_conversation_cache_unset_ask()) as NonEmptyStr)
+}
+
+// Whether the ask can be skipped because NOTHING can need parking: exactly, where the live slots are known, or
+// against the documented floor where they are not -- a grant the floor already covers keeps nothing beyond its
+// own slots whatever the argv says. The bound is used ONLY to conclude that nothing is needed, never to
+// conclude that some capacity stated elsewhere is enough; that substitution is the defect this agreement
+// exists to refuse (gunbc.design_argument::fail_closed).
+fn parking_ask_agreement(
+  held: Nat,
+  beyond: Optional<Nat>,
+  parked: Optional<Nat>,
+  why: String,
+) -> StrataParkingAgreement {
+  let nothing_to_park = match beyond {
+    Present { value: b } => b == 0
+    Absent => held <= strata_parallel_minimum_slots
+  }
+  if nothing_to_park {
+    ParkedConversationsAgreed { parked: 0 }
+  } else {
+    ParkingNeedsReading { obligation: parking_ask_sentence(held: held, beyond: beyond, parked: parked, why: why) }
+  }
+}
+
 fn strata_launch_parking_agreement(
   model: ReplicaModel,
   grant: ServingRetentionGrant,
@@ -966,32 +1025,24 @@ fn strata_launch_parking_agreement(
         GrantAdmits { conversations: held } =>
           match f {
             Absent =>
-              // The argv has never been read, so the engine's live slot count is unknown and `beyond` cannot
-              // be computed exactly -- but it can still be BOUNDED, because every legal launch answers at
-              // least `strata_parallel_minimum_slots` conversations at once (that flag's documented default,
-              // README.md, carried beside the flag it describes rather than repeated here). The most that can
-              // need parking is therefore `held - that floor`, and a stated capacity covering THAT covers the
-              // grant whatever the argv turns out to say -- the conclusion holds for every legal slot count,
-              // so this is a bound the type licenses, not a guess at the unread figure. Where the stated
-              // capacity does not even cover the bound, nothing is concluded: the answer is the obligation,
-              // because the unread argv might itself name a larger budget.
-              match replica_parked_conversations(model: model, engine_memory: engine_memory) {
-                Present { value: p } =>
-                  if held <= strata_parallel_minimum_slots || p >= held - strata_parallel_minimum_slots {
-                    ParkedConversationsAgreed { parked: p }
-                  } else {
-                    ParkingNeedsReading {
-                      obligation: ("the layout grants this replica " + to_string(held) + " conversations warm and the most the model says may be parked is " + to_string(p) + ", which bounds the shortfall only at the engine's minimum live slots (" + to_string(strata_parallel_minimum_slots) + "); its launched argv has never been read, so it may name a larger budget -- read the unit's ExecStart") as NonEmptyStr,
-                    }
-                  }
-                Absent => ParkingNeedsReading {
-                  obligation: match fs {
-                    Absent => "this replica's launched flags have never been read from the unit that runs it; read them before asking what its launch parks" as NonEmptyStr
-                    Present { value: TranscribedUncited { read_obligation: o } } => o
-                    Present { value: _ } => "this replica's launched flags carry a standing this reader does not answer for; read them before asking what its launch parks" as NonEmptyStr
-                  },
-                }
-              }
+              // The argv has never been read, so NOTHING is known about what this launch parks -- not its live
+              // slot count, and not whether a budget is in the argv at all. The answer is the ask, and a
+              // capacity stated by another row travels inside it as evidence -- never as authority to agree.
+              // That substitution is the defect this class was filed for: while a memory row (read on another
+              // bus -- see the recurring-failure row
+              // `a_required_launch_capability_the_model_cannot_name_is_decided_by_the_engine_build`) stood in
+              // for the launch's own words, the h11 misconfiguration read as agreed.
+              parking_ask_agreement(
+                held: held,
+                beyond: Absent,
+                parked: replica_parked_conversations(model: model, engine_memory: engine_memory),
+                why: match fs {
+                  Absent => "this replica's launched flags have never been read from the unit that runs it" as String
+                  Present { value: TranscribedUncited { read_obligation: o } } => (o + "") as String
+                  Present { value: _ } =>
+                    "this replica's launched flags carry a standing this reader does not answer for" as String
+                },
+              )
             Present { value: fl } =>
               match replica_live_slots(model: model) {
                 Absent => ParkingNeedsReading { obligation: "the launch states no slot count (--parallel)" as NonEmptyStr }
@@ -1025,34 +1076,48 @@ fn strata_launch_parking_agreement(
                         ParkedConversationsAgreed { parked: 0 }
                       }
                     StrataConversationCacheUnset { detail: d } =>
-                      match parked {
-                        // Another row of the model states the parked capacity (the engine's read memory
-                        // row), so the claim is not left to a build default -- but a stated capacity that
-                        // does not reach `beyond` is a shortfall, not an agreement.
-                        Present { value: n } =>
-                          if n >= beyond {
-                            ParkedConversationsAgreed { parked: n }
-                          } else {
-                            ParkedConversationsShortOfTheGrant {
-                              parked: n, beyond: beyond,
-                              detail: parking_short_of_grant_sentence(
-                                held: held, live: live, beyond: beyond, parked: n,
-                                source: "the engine's read memory row, while its argv names neither cache flag (" + d + ")",
-                              ),
-                            }
+                      // The argv WAS read and the pair is not in it. That is not "no opinion somewhere else":
+                      // it is the build's default deciding a policy the launch had to state, which is the
+                      // fail-open default this class exists to refuse. So no figure from another row turns
+                      // this into an agreement -- the memory row's slot count travels with the finding as
+                      // evidence of what to go and read, and the ask stays the ask.
+                      if beyond > 0 {
+                        match parked {
+                          // The figure another row states rides in the finding as evidence of what to read;
+                          // it is not the reason for the verdict, and the verdict is the same either way.
+                          Present { value: n } => ParkedConversationsLeftToTheBuild {
+                            detail: parking_beyond_live_slots_sentence(
+                              held: held, live: live, beyond: beyond,
+                              policy: ("neither --conversation-cache-mib nor --conversation-cache-slots is in its argv: " + d) as String,
+                            ) +
+                              ("; the model's memory row for this engine states " + to_string(n) +
+                                " parked slots, which is evidence for what to read, not a policy this launch" +
+                                " chose -- a row read on another bus is the weakest authority in the model" +
+                                " (see the recurring-failure row it is named in). " +
+                                strata_conversation_cache_unset_ask()) as NonEmptyStr,
                           }
-                        Absent =>
-                          if beyond > 0 {
-                            ParkedConversationsLeftToTheBuild {
-                              detail: parking_beyond_live_slots_sentence(
-                                held: held, live: live, beyond: beyond,
-                                policy: ("neither --conversation-cache-mib nor --conversation-cache-slots is in its argv: " + d) as String,
-                              ),
-                            }
-                          } else {
-                            ParkedConversationsAgreed { parked: 0 }
+                          // What the build decides on its own is read from the standings here, not asserted:
+                          // which release's answer is cited, and which build still has an open read.
+                          Absent => ParkedConversationsLeftToTheBuild {
+                            detail: parking_beyond_live_slots_sentence(
+                              held: held, live: live, beyond: beyond,
+                              policy: ("neither --conversation-cache-mib nor --conversation-cache-slots is in its argv: " + d) as String,
+                            ) + strata_conversation_cache_unset_ask(),
                           }
+                        }
+                      } else {
+                        ParkedConversationsAgreed { parked: 0 }
                       }
+                    // READ IS NOT SILENCE. An argv nobody has read is not a launch that declined to state a
+                    // policy: the pair may be in it, and refusing it for something it was never read for would
+                    // be the invented-fact failure in the other direction. So this arm asks, with the same
+                    // evidence-only treatment of any figure another row states.
+                    StrataConversationCacheUnread { detail: d } => parking_ask_agreement(
+                      held: held,
+                      beyond: Present { value: beyond },
+                      parked: replica_parked_conversations(model: model, engine_memory: engine_memory),
+                      why: (d + "") as String,
+                    )
                   }
               }
           }

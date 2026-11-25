@@ -6,7 +6,7 @@ import std.measure { TokenCount, token_count_value, Mebibyte, mebibyte_count, Po
 import std.optional { Present, Absent }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority, TranscribedUncited }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef, CitedFigureStanding, CitedToAuthority, TranscribedUncited, ObservedByReceipt, cited_figure_read_obligation }
 
 // THE STRATA ENGINE'S SERVING FLAGS, as the upstream documents them at commit
 // 8183c6b67162340c09b67360860177c577a65f2e of https://github.com/Niko1221/Strata (README.md "Good to
@@ -101,8 +101,16 @@ type StrataConversationCache
   | StrataConversationCacheOff { reason: NonEmptyStr }
   // The argv as READ carries neither flag, so this build's default decides and this row does not claim
   // to know what that default is. This is a transcription of someone else's argv, never a policy a plan
-  // picks; `detail` names the argv and the read.
+  // picks; `detail` names the argv and the read. READ IS NOT SILENCE: a launch whose argv nobody has read
+  // is the arm below, not this one (gunbc.recurring_failure_mode::absent_reads_identically_to_never_looked
+  // is the same confusion on the reading side, and the two arms are what keeps them apart here).
   | StrataConversationCacheUnset { detail: NonEmptyStr }
+  // The argv has NEVER BEEN READ, so this row holds no claim about whether the pair is in it: the launch may
+  // carry a budget, and nothing has looked. `detail` names what would settle it -- for a cell that has never
+  // run, whose image is still pending, that is the argv it will be launched with. It renders no word, like
+  // the arm above, and the two differ only where a judgement is asked: silence is the build deciding a policy
+  // nobody stated, unread is this repository not knowing yet.
+  | StrataConversationCacheUnread { detail: NonEmptyStr }
 
 type StrataServeFlags {
   kv_format: StrataKvFormat
@@ -142,6 +150,32 @@ data strata_conversation_cache_unset_standing_pre_0_2_3: CitedFigureStanding = T
   read_obligation: "read what Strata 0.1.38 (the HIP build on h11) does with --conversation-cache-mib unset: its own docs/CHANGELOG at that tag, or the engine log line the docs promise names the budget it chose; the operator's 2026-11-24 report (0% warm with the pair unset, warm within minutes of setting it) is consistent with off and is the only evidence held today" as NonEmptyStr,
 }
 
+// WHAT TO TELL SOMETHING THAT ASKS WHAT AN UNNAMED PAIR PARKS. Both standings above are READ here, by the
+// serving agreement that asks (gunbc.serving.serving_replica_profile::strata_launch_parking_agreement): a
+// consumer cannot know which release the engine is, so it is given the cited answer for the release the docs
+// cover and the open read for a build this repository has not read. The standings are the policy the build
+// chose, carried as standings and never as a figure a verdict could compute from
+// (gunbc.design_argument::epistemic_humility: what is only transcribed never enters as a number).
+fn strata_conversation_cache_unset_ask() -> NonEmptyStr {
+  match strata_conversation_cache_unset_standing {
+    CitedToAuthority { authority: _ } =>
+      match cited_figure_read_obligation(standing: strata_conversation_cache_unset_standing_pre_0_2_3) {
+        Present { value: o } =>
+          (("what a build whose argv names neither cache flag parks is that build's own policy, not a fact of" +
+          " this repository: for the release the citation above documents the answer is cited, and for a build" +
+          " this repository has not read the release notes of -- which is every build whose launched argv it" +
+          " has not read either -- the open read is: " + o) as NonEmptyStr)
+        Absent =>
+          "what a build whose argv names neither cache flag parks is that build's own policy, not a fact of this repository; the answer above is cited only for the release its citation covers, and nothing may be assumed for any other release" as NonEmptyStr
+      }
+    TranscribedUncited { read_obligation: o } =>
+      (("what a build whose argv names neither cache flag parks is that build's own policy, not a fact of this" +
+      " repository, and this repository has not read even the release it points at: " + o) as NonEmptyStr)
+    ObservedByReceipt { observed: _ } =>
+      "what a build whose argv names neither cache flag parks is that build's own policy; what this repository holds about it is a receipt of its own observation, not the engine's documentation" as NonEmptyStr
+  }
+}
+
 // ── THE FLAGS AS ARGV WORDS, spelled as the docs above spell them ───────────────────────────────
 
 // `--parallel N` (README.md): slots answered at once, ONE by default. This is the flag's documented
@@ -176,7 +210,10 @@ fn strata_conversation_cache_words(cache: StrataConversationCache) -> List<Strin
     StrataConversationCacheBudget { budget: n, slots: k } =>
       ["--conversation-cache-mib", to_string(mebibyte_count(m: n)), "--conversation-cache-slots", to_string(positive_slot_count_value(slots: k))]
     StrataConversationCacheOff { reason: _ } => ["--conversation-cache-mib", "0"]
+    // Neither silence nor unread renders a word: to emit one would be to write an argv nobody launched
+    // (gunbc.design_argument::fail_closed -- no plausible text for a fact never read).
     StrataConversationCacheUnset { detail: _ } => [] as List<String>
+    StrataConversationCacheUnread { detail: _ } => [] as List<String>
   }
 }
 

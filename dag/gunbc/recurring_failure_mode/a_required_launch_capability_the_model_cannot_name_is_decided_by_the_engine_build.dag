@@ -45,6 +45,8 @@ data a_required_launch_capability_the_model_cannot_name_is_decided_by_the_engine
     "RECOGNITION RULE: for every flag an upstream binary documents as gating a capability a consumer depends on, ask which of the two the model holds -- a typed field on the launch row, or a figure read somewhere else about the host. If only the second, the first is a fail-open default with no owner, and the fix is the field, not a check on the figure. AND WHERE A CAPACITY IS NAMED, ask whether it REACHES what the grant holds beyond the engine's live slots: an undersized cache is this same failure with a number in it, and quieter still, because a row now states a figure and reads as covered.",
 
     "CEILING AND ITS TELL: StructurallyGuaranteed, because a launch row whose agreement is judged against the argv the running unit actually carries (or the budget the engine itself reports) cannot vouch for a capability the engine lacks -- the disagreement becomes the finding. The tell that the ceiling has NOT been reached: a launch row's agreement still rests on a memory row read on another bus, another date, or another host -- as h11's did here -- and the fleet discovers the disagreement by walking onto the machine.",
+
+    "WHAT THIS ROW'S OWN PR REMOVED, AND WHAT IT LEFT: the agreement now refuses to AGREE on a row it did not read. A launch whose argv was read and carries neither flag is `left to the build` even when a memory row states a capacity that would cover the grant, and a launch whose argv was never read gets an ask that CARRIES that capacity as evidence and says which read settles it (`gunbc.serving.serving_replica_profile::strata_launch_parking_agreement`, with `extdeps.strata.serve_flags::strata_conversation_cache_unset_ask` composing the two standings the model holds for the build's default). That closes the false agreement; it does not raise the rung, because the verdict still has the single consumer named above -- a claim route, not a launcher. The rung moves when a launch row is judged against the `ExecStart` its unit actually carries, or the budget the engine itself reports.",
   ],
 
   evidence: [
@@ -57,5 +59,10 @@ data a_required_launch_capability_the_model_cannot_name_is_decided_by_the_engine
     DeclarationRef { module_path: "test.claim.serving.strata_conversation_cache_parking_witness", decl_name: "witness_the_operator_named_budget_is_accepted", field: WholeDeclaration },
     DeclarationRef { module_path: "test.claim.serving.strata_conversation_cache_parking_witness", decl_name: "witness_a_budget_smaller_than_the_grant_needs_is_a_located_shortfall", field: WholeDeclaration },
     DeclarationRef { module_path: "extdeps.strata.serve_flags", decl_name: "strata_parallel_minimum_slots", field: WholeDeclaration },
+    DeclarationRef { module_path: "extdeps.strata.serve_flags", decl_name: "strata_conversation_cache_unset_ask", field: WholeDeclaration },
+    DeclarationRef { module_path: "extdeps.strata.serve_flags", decl_name: "StrataConversationCacheUnread", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.serving.serving_replica_profile", decl_name: "parking_ask_agreement", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.serving.strata_conversation_cache_parking_witness", decl_name: "witness_a_read_row_does_not_answer_a_launch_that_names_nothing", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.serving.strata_conversation_cache_parking_witness", decl_name: "witness_read_silence_and_an_unread_argv_are_different_facts", field: WholeDeclaration },
   ]
 }

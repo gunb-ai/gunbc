@@ -9,7 +9,7 @@ import gunbc.serving.serving_context_cap { serving_fleet_context_cap }
 import extdeps.docker { BindMount }
 import extdeps.strata.serve_flags {
   StrataServeFlags, StrataKvQ4_0, StrataKvResidentWindow, StrataBatchGroupsAuto, StrataSplitStages, StrataLayerSplitAt, StrataExpertsPrivate,
-  StrataConversationCacheUnset,
+  StrataConversationCacheUnread,
 }
 import gunbc.serving.serving_benchmark_run_receipt { ServingArtifact, ServingArtifactFile, ServingTopology }
 import gunbc.serving.serving_benchmark_cell_plan { ServingBenchmarkCellPlan, EngineImagePending, KitImagePending }
@@ -41,12 +41,15 @@ data srv3_strata_flags: StrataServeFlags = StrataServeFlags {
   // here would state a launch nobody has launched, while making the two figures a second authority beside
   // the memory row that read them (gunbc.design_argument::single_authority). srv3's LIVE engine does carry
   // the pair -- 64 GiB in 24 slots, read 2026-11-08 -- and that reading has ONE home:
-  // gunbc.serving.serving_host_memory srv3_strata_engine_memory, which is what answers the parking question
-  // for this engine (serving_replica_profile replica_parked_conversations reads it).
+  // gunbc.serving.serving_host_memory srv3_strata_engine_memory, whose figure the agreement carries as
+  // EVIDENCE in the ask it gives this engine (serving_replica_profile::parking_ask_agreement); it is not what
+  // answers the question, because a launch this repository has not read cannot be agreed with a row read off
+  // the machine (gunbc.recurring_failure_mode::
+  // a_required_launch_capability_the_model_cannot_name_is_decided_by_the_engine_build).
   // NOTE FOR THE NEXT RUNG: when this cell's image is pinned by digest, its in-image argv must NAME the
-  // pair, and this arm becomes the budget the image carries -- a serving launch does not render `Unset`
+  // pair, and this arm becomes the budget the image carries -- a serving launch does not render `Unread`
   // (strata_conversation_cache_words answers it with nothing, which is the build deciding again).
-  conversation_cache: StrataConversationCacheUnset {
+  conversation_cache: StrataConversationCacheUnread {
     detail: "the cell's in-image argv has never been read: this plan's engine image is EngineImagePending (no rootless Docker on srv3 yet), so no container has run these flags; srv3's live strata-pool.service carries the pair (64 GiB in 24 slots, read 2026-11-08) and gunbc.serving.serving_host_memory srv3_strata_engine_memory is the single authority for that figure" as NonEmptyStr,
   },
 }
