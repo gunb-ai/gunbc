@@ -703,6 +703,38 @@ fn compiler_gate_emit_build_notice_step() -> Step {
   }
 }
 
+// THE AUDIT'S OWN NOTICE, NEVER THE REQUIRED LANE'S. The audit job is not a required context: it
+// blocks no merge, and a scheduled run has no author whose change could have caused its red. The
+// required lane's lines ("BLOCKS your merge", "most likely yours") would be false there -- a
+// fabricated explanation at the one moment a stranger is reading (gunbc.design_argument::fail_closed;
+// process observability requires reports traceable to the facts and occurrences they describe).
+// These lines say what the lane is, what a red means, and what it does NOT gate.
+fn compiler_gate_parse_verdict_audit_notice_lines() -> List<String> {
+  list_append(
+    left: [
+      "parse-verdict-audit is the DAILY SCHEDULED MAIN AUDIT of the fresh parse-population walk and its receipt save (gunbc.design_ruling::parse_verdict_walk_moves_to_scheduled_audit_2026_11_24).",
+      "It is NOT a required check: a red here blocks no merge, and no pull-request author owns this run -- a scheduled audit has no author.",
+      "What a red means: this run's judged head of main failed the walk, the receipt save, or a subject arm before them. The required lane `v2-bootstrap` is a separate job and is unaffected by this one.",
+      "Consequence of leaving it red: the published parse-verdict receipts age past this lane's cadence (once daily is the freshness bound), and pull-request fast-lane reuse falls back to walking the nearest published ancestor. No gate degrades silently: the required lane still walks every module those receipts do not cover.",
+    ],
+    right: emit_build_memory_envelope_lines(ownership: gunbc_runner_slot_job_cgroup_ownership)
+  )
+}
+
+fn compiler_gate_parse_verdict_audit_notice_step() -> Step {
+  RunStep {
+    name: Present { value: "Why this scheduled audit is red, and what a red here means" },
+    id: none,
+    run: join(list_map(xs: compiler_gate_parse_verdict_audit_notice_lines(), f: emit_line_shell), "\n"),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: "failure()" },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
 fn compiler_gate_emit_build_subject_bound_steps() -> List<CompilerGateBoundStep> {
   list_map(xs: required_ci_emitted_subject_obligations(), f: fn(subject) {
     CompilerGateBoundStep {
@@ -1066,8 +1098,10 @@ data parse_verdict_audit_job_id: String = "parse-verdict-audit"
 // unit must never be re-published as this run's fresh product -- gunbc.parse_verdict_publish's
 // fresh-product rule), and the parse-verdict restore/record/reuse steps (the audit IS the fresh walk;
 // restoring receipts to then save them would publish an ancestor's product under this run's key).
-// The failure notice stays: a red 03:37Z run is a report somebody has to read, and its arms below
-// name the walk's own diagnostics.
+// The failure notice is the AUDIT'S OWN (compiler_gate_parse_verdict_audit_notice_step), never the
+// required lane's: the audit blocks no merge and has no author, so the required lane's "BLOCKS your
+// merge" and "most likely yours" arms would fabricate ownership at the moment a reader needs facts
+// (gunbc.design_argument::fail_closed). A red 03:37Z run is still a report somebody has to read.
 // THE FAST-LANE CONDITIONS ARE NOT CARRIED IN, THEY ARE LEFT OUT: the required job hangs "unless the
 // fast lane reused" conditions on the seed build and the subject arms at ASSEMBLY time
 // (compiler_gate_fast_lane_guarded); the audit binds no decision step, so it deliberately assembles
@@ -1101,9 +1135,9 @@ fn compiler_gate_parse_verdict_audit_bound_steps() -> List<CompilerGateBoundStep
           step_name: parse_verdict_save_step_name(),
         },
         CompilerGateBoundStep {
-          step: compiler_gate_emit_build_notice_step(),
+          step: compiler_gate_parse_verdict_audit_notice_step(),
           role: capability_neutral,
-          step_name: "Why this lane is red, and what would be a real finding",
+          step_name: "Why this scheduled audit is red, and what a red here means",
         },
       ]
     ),

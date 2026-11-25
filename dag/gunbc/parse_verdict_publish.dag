@@ -252,11 +252,11 @@ fn parse_verdict_publish_memory_env() -> List<YamlKeyValue> {
 }
 
 // THE WALK STEP WITH AN EXPLICIT GUARD, the same shape as materialization_family_cache_save_step_guarded
-// below. The publisher left the required push lane for the scheduled audit (operator ruling
-// 2026-11-24), so the guard is CALLER-supplied rather than a nullary default: a step carrying the old
+// below. The publisher left the required push lane for the scheduled audit
+// (gunbc.design_ruling::parse_verdict_walk_moves_to_scheduled_audit_2026_11_24), so the guard is CALLER-supplied rather than a nullary default: a step carrying the old
 // push guard into a scheduled run would not fail there -- an unmet `if` SKIPS, and a job of skipped
 // steps is green -- so the audit would report success having walked nothing and published nothing
-// (gunbc.design_argument::fail_closed, INVARIANTS rule 12: a check that cannot fail is not a check).
+// (gunbc.design_argument::fail_closed: a check that cannot fail is not a check).
 fn parse_verdict_publish_walk_step_guarded(if_value: String) -> Step {
   RunStep {
     name: Present { value: parse_verdict_publish_step_name },

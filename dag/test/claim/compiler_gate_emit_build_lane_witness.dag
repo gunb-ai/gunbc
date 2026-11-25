@@ -6,7 +6,7 @@ import gunbc.shell_command_text { shell_command_text_refusal_marker }
 import extdeps.github.actions { Step, RunStep, UsesStep, WorkflowPermissions }
 import extdeps.languages.yaml.types { YamlString }
 import gunbc.ci.repository_ci_profile { gunbc_required_context_name }
-import gunbc.witness.compiler_gate_workflow { compiler_gate_workflow, compiler_gate_required_job, compiler_gate_fleet_job_condition, compiler_gate_emit_build_bound_steps, compiler_gate_emit_build_capability_closure_holds, compiler_gate_emit_build_notice_step, compiler_gate_emit_build_notice_lines, compiler_gate_emit_build_step, compiler_gate_v1_unit_test_compile_step, compiler_gate_v1_unit_test_step_id, compiler_gate_v1_unit_test_step_name, compiler_gate_parse_verdict_audit_job, parse_verdict_audit_job_id }
+import gunbc.witness.compiler_gate_workflow { compiler_gate_workflow, compiler_gate_required_job, compiler_gate_fleet_job_condition, compiler_gate_emit_build_bound_steps, compiler_gate_emit_build_capability_closure_holds, compiler_gate_emit_build_notice_step, compiler_gate_emit_build_notice_lines, compiler_gate_emit_build_step, compiler_gate_v1_unit_test_compile_step, compiler_gate_v1_unit_test_step_id, compiler_gate_v1_unit_test_step_name, compiler_gate_parse_verdict_audit_job, parse_verdict_audit_job_id, compiler_gate_parse_verdict_audit_bound_steps, compiler_gate_parse_verdict_audit_notice_step, compiler_gate_parse_verdict_audit_notice_lines }
 import gunbc.parse_verdict_publish { materialization_audit_publish_if, parse_verdict_publish_walk_step_guarded, parse_verdict_publish_save_step_guarded, parse_verdict_publish_step_name, parse_verdict_save_step_name, parse_verdict_publish_cache_key, parse_verdict_publish_command, parse_verdict_compiler_output, parse_verdict_generation_one_basename }
 import gunbc.parse_verdict_schema { parse_verdict_request_family }
 import gunbc.required_ci_contract_epoch { required_ci_context_name, required_ci_emitted_subject_obligations }
@@ -525,6 +525,34 @@ test fn only_the_clock_runs_the_audit_and_the_clock_never_runs_the_gate() -> Boo
       Present { value: c } => string_contains(s: c, pattern: "github.event_name != 'schedule'")
       Absent => false
     })
+}
+
+// THE AUDIT'S NOTICE TELLS THE TRUTH ABOUT THE AUDIT. The audit is not a required context and a
+// scheduled run has no author, so the required lane's blocking/ownership arms must not appear in it
+// (gunbc.design_argument::fail_closed: never a plausible fabrication); it must instead name what the
+// lane is and what a red means, run only on failure, and stand last in the job. And the required
+// lane's notice must not be bound into the audit at all.
+test fn the_audit_notice_is_true_of_the_audit() -> Bool {
+  let text = join(compiler_gate_parse_verdict_audit_notice_lines(), "\n")
+  string_contains(s: text, pattern: "blocks no merge")
+    && string_contains(s: text, pattern: "has no author")
+    && string_contains(s: text, pattern: "DAILY SCHEDULED MAIN AUDIT")
+    && (string_contains(s: text, pattern: "BLOCKS your merge") == false)
+    && (string_contains(s: text, pattern: "most likely yours") == false)
+    && (match compiler_gate_parse_verdict_audit_notice_step() {
+      RunStep { name: n, id: _, run: _, shell: _, env: _, working_directory: _, if_condition: c, continue_on_error: _, timeout_minutes: _ } =>
+        (match n {
+          Present { value: nm } => nm == "Why this scheduled audit is red, and what a red here means"
+          Absent => false
+        })
+          && (match c {
+            Present { value: cond } => cond == "failure()"
+            Absent => false
+          })
+      UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
+    })
+    && (fold(compiler_gate_parse_verdict_audit_bound_steps(), init: "", f: (acc, b) => b.step_name) == "Why this scheduled audit is red, and what a red here means")
+    && (names_include(names: map(xs: compiler_gate_parse_verdict_audit_bound_steps(), f: b => b.step_name), needle: "Why this lane is red, and what would be a real finding") == false)
 }
 
 test fn the_walk_argv_has_no_lookup_shell() -> Bool {

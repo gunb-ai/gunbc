@@ -1300,10 +1300,12 @@ jobs:
             gunbc-parse-verdict-receipts.tsv
           key: gunbc-materialization-parse-verdict-${{ steps.fast_lane.outputs.skip == 'true' && steps.fast_lane.outputs.compiler_identity || steps.emit_build_v2_native_cli.outputs.compiler_identity }}-${{ github.sha }}
         if: github.event_name == 'schedule' && github.ref == 'refs/heads/main'
-      - name: Why this lane is red, and what would be a real finding
+      - name: Why this scheduled audit is red, and what a red here means
         run: |-
-          printf '%s\n' 'emit-build is a REQUIRED lane: a red here BLOCKS your merge, through the required context `v2-bootstrap`.'
-          printf '%s\n' 'No standing break is declared, so a red here is a REAL FINDING -- most likely yours.'
+          printf '%s\n' 'parse-verdict-audit is the DAILY SCHEDULED MAIN AUDIT of the fresh parse-population walk and its receipt save (gunbc.design_ruling::parse_verdict_walk_moves_to_scheduled_audit_2026_11_24).'
+          printf '%s\n' 'It is NOT a required check: a red here blocks no merge, and no pull-request author owns this run -- a scheduled audit has no author.'
+          printf '%s\n' 'What a red means: this run'\''s judged head of main failed the walk, the receipt save, or a subject arm before them. The required lane `v2-bootstrap` is a separate job and is unaffected by this one.'
+          printf '%s\n' 'Consequence of leaving it red: the published parse-verdict receipts age past this lane'\''s cadence (once daily is the freshness bound), and pull-request fast-lane reuse falls back to walking the nearest published ancestor. No gate degrades silently: the required lane still walks every module those receipts do not cover.'
           printf '%s\n' 'This step ran inside the fleet slot'\''s memory envelope (gunbc.runner.runner_slot_desired: MemoryMax 26843545600 bytes, no swap once converged), which gunbc test required (GUNBC_MEMORY_ENVELOPE_REQUIRED=slot) and receipted at exit.'
           printf '%s\n' 'The per-step trip at 25769803776 bytes is not asked for: a fleet job runs as the setpriv'\''d job user under a root unit (gunbc.runner.runner_host_deploy unit_user and job_user) and memory_governor apply_memory_cgroup_bind creates its leaf at the cgroup root, so no process of a job can create or join a bounded cgroup; the first required run that asked refused in four seconds (run 38002497388, MemoryCgroupBindRefused) (gunbc.runner.runner_slot_desired gunbc_runner_slot_job_cgroup_ownership; the climb is gunbc.guarantee_stall native_step_trip_awaits_fleet_job_cgroup_stall).'
           printf '%s\n' 'An exit of 137 here is the kernel tripping the envelope'\''s memory.max: the compiler outgrew it. There is no larger runner and no retry; the line stops until the growth is understood (gunbc.design_argument::earliest_unjustified_boundary).'
