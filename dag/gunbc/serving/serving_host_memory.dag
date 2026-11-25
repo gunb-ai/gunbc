@@ -669,7 +669,7 @@ data srv3_engine_cfg_json_observation_2026_11_24: ServingHostConfigObservation =
 data h11_engine_cfg_83_observation_2026_11_24: ServingHostConfigObservation = ServingHostConfigObservation {
   host: operator_host_6ce85c,
   config_path: "/home/ubuntu/strata-pool/cfg-83.json" as NonEmptyStr,
-  read_on_utc: "2026-11-24T22:03-22:05Z; h11-strata@83 restarted 21:35 UTC after the ~21:57 UTC strip trip brought the host back" as NonEmptyStr,
+  read_on_utc: "2026-11-24T22:03-22:05Z; h11-strata@83 was restarted at 21:35 UTC to pick the appended arguments up, and the host then went down in the ~21:57 UTC strip trip and came back with both engines starting on their own" as NonEmptyStr,
   instrument: "sha256sum over ssh on h11-a16; the two arguments read from the file's argv list in the same pass" as NonEmptyStr,
   sha256_computed_on_host: "4a2345f803863c0a4f5af57973383382b4dc48dc1253c3302d1980c766dfa806" as NonEmptyStr,
   what_it_holds: "--conversation-cache-mib 8192 and --conversation-cache-slots 4, both appended by the 2026-11-24 pass. Before that the file carried neither, so this engine ran with the cache at its 0 default while the model's h11 engine row reported an 8 GiB cache for the fleet's buses." as NonEmptyStr,
@@ -699,7 +699,7 @@ data h11_engine_cfg_c3_observation_2026_11_24: ServingHostConfigObservation = Se
     diverging_fields: ["conversation-cache-slots" as NonEmptyStr, "which engines the row describes" as NonEmptyStr],
     why: "As cfg-83.json: 4 slots against the row's 6, and the cache argument absent until the pass wrote it. Read together, the two rows are the evidence that host_6ce85c_engine_as_launched is a template inferred from one bus, not a render of the fleet's h11 launch -- which is the same finding the router's live rows make from the other side (gunbc.serving.router_dev_policy::srv1_router_live_rows_2026_11_25 lists h11-03 and h11-83 as rows no naming row produces)." as NonEmptyStr,
     owed_by: "the conversation-cache class (B1), and the h11 naming/layout drift the router rows record" as NonEmptyStr,
-    read_obligation: "As cfg-83.json: transcribe and hash, then read each engine's own /metrics rather than its argv, since the argument list is what was edited and /metrics is what the engine allocated." as NonEmptyStr,
+    read_obligation: "Read /home/ubuntu/strata-pool/cfg-c3.json on h11 in full over a host principal, transcribe it, and hash the transcription against 38eb8256e7adf87c6f25a9ed105b7e4802a1c351f2a7985f1cc0131d410b7438 (cfg-83.json carries its own digest, 4a2345f803863c0a4f5af57973383382b4dc48dc1253c3302d1980c766dfa806, and is owed the same treatment). Then read each engine's own /metrics rather than its argv, since the argument list is what was edited and /metrics is what the engine actually allocated." as NonEmptyStr,
   },
 }
 

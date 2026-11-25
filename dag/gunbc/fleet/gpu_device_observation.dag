@@ -118,7 +118,7 @@ data current_gpu_device_observations: List<GpuDeviceObservation> = [
     power_limit_current: watt(count: 300),
     power_limit_default: Present { value: watt(count: 300) },
     power_limit_control: NvidiaSmiPowerLimit,
-    read_on: "2026-11-08 srv1 nvidia-smi" as NonEmptyStr,
+    read_on: "2026-11-08 srv1 nvidia-smi, re-read unchanged at the 2026-11-24 22:03-22:05 UTC ssh pass (nvidia-smi power.limit 300.00 W; the operator asked whether srv1 had changed and it had not)" as NonEmptyStr,
   },
   // srv1's Workstation card, re-read 2026-11-08: it NOW ENUMERATES -- UUID
   // GPU-96b749dc-e2ea-5b6f-2e45-ee868b1a9750, serial 1792726101367, VBIOS 98.02.81.00.07, 97887 MiB, ECC
@@ -135,7 +135,7 @@ data current_gpu_device_observations: List<GpuDeviceObservation> = [
     power_limit_current: watt(count: 300),
     power_limit_default: Present { value: watt(count: 600) },
     power_limit_control: NvidiaSmiPowerLimit,
-    read_on: "2026-11-08 srv1 nvidia-smi" as NonEmptyStr,
+    read_on: "2026-11-08 srv1 nvidia-smi, re-read unchanged at the 2026-11-24 22:03-22:05 UTC ssh pass (nvidia-smi power.limit 300.00 W; the operator asked whether srv1 had changed and it had not)" as NonEmptyStr,
   },
   // srv4's RTX 2000 Ada pair, first read 2026-11-07 15:35Z (fleet survey, jolly-moth-61); the CURRENT limit
   // below is the 2026-11-24 re-read over ssh, which is where the row stands today. What changed is not the
@@ -210,7 +210,7 @@ data current_gpu_device_observations: List<GpuDeviceObservation> = [
     power_limit_current: watt(count: 210),
     power_limit_default: Present { value: watt(count: 300) },
     power_limit_control: AmdgpuHwmonPowerCap { attribute: Power1Cap },
-    read_on: "2026-11-12 host-6ce85c amdgpu sysfs/hwmon (read_r9700_device.sh)" as NonEmptyStr,
+    read_on: "2026-11-12 host-6ce85c amdgpu sysfs/hwmon (read_r9700_device.sh); the 2026-11-24 22:03-22:05 UTC ssh pass found the cap unchanged at the card's 210 W floor" as NonEmptyStr,
   },
   // host-6ce85c's SECOND R9700: installed (operator, 2026-11-12) and absent from the bus. Every 1002:7551 function
   // the host lists is 0000:83:00.0, which is gpu_board_02 (r9700_device_reading.txt at 16:31Z; lspci re-read the same

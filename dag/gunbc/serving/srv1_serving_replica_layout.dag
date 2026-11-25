@@ -2754,7 +2754,7 @@ data srv1_boot_path_divergences_of_the_2026_11_24_pass: List<Srv1InstalledArtifa
       "the START event text, which reads \"L1 48G, L2 125G\" on the host and \"L1 12G, L2 125G\" in the render" as NonEmptyStr,
     ],
     why: "Twelve gigabytes of L1 is not a small cache -- it is the staging buffer every checkpoint passes through on its way to the NVMe tier under --l2-store-policy checkpoint_on_evict, so at 12 GiB it sat at 90-99% full, the evict-immediately path deleted fresh pages 0.07-1 s after creation without writing them (~740k pages on GPU0 in 3.9 h), 2,760 of 4,224 saves on GPU0 and GPU1 got only 48%/43% of the space they asked for, and same-card returns missed 50-75% of the time. At 48 GiB the same-card unchanged-prefix warm rate measured 96-99% against 86-90%, which is why the container's memory and shm went with it. The render still says 32/32/16 and L1 12 because the sizing rule that would set these numbers is the thing being built (Part B4); a row that silently adopted the operator's figures would leave the renderers wrong and the host unexplained in the same commit." as NonEmptyStr,
-    closed_by: "warm-badger-640's re-render at L1 48 / memory 72g / swap 72g / shm 56g (branch session/warm-badger-640), after which srv1_replica_launcher_sha256 must equal this row's digest. Until then this is a declared divergence, not a pass." as NonEmptyStr,
+    closed_by: "gunbc#17089 (warm-badger-640's re-render at L1 48 / memory 72g / swap 72g / shm 56g, branch session/warm-badger-640), after which srv1_replica_launcher_sha256 must equal this row's digest. Until that PR merges this is a declared divergence, not a pass; if it has merged by the time this row is read, srv1_replica_launcher_sha256 already equals the digest above and this row is a receipt that must be converted, not a divergence to be kept." as NonEmptyStr,
   },
   Srv1InstalledArtifactDivergence {
     host_path: "/usr/local/etc/lil-replica/replica-0.args and /usr/local/etc/lil-replica/replica-1.args (identical bytes, one digest)" as NonEmptyStr,
@@ -2767,7 +2767,7 @@ data srv1_boot_path_divergences_of_the_2026_11_24_pass: List<Srv1InstalledArtifa
       "and so the figure gunbc.serving.serving_host_memory::srv1_lmcache_l1_configured carries (12 GiB per replica), which feeds the shared-host budget and the warm-session count that depends on it" as NonEmptyStr,
     ],
     why: "Same change as the launcher, seen from the argument side: the RAM tier every checkpoint is staged through, raised fourfold on the operator's decision after the eviction-path measurements. The model row that carries 12 GiB is not merely stale -- it is the figure the L2 watermark, the per-replica host claim and the warm-session arithmetic are derived from, so raising it is a budget change and belongs in the same PR as the re-render, with the sizing rule that justifies it." as NonEmptyStr,
-    closed_by: "the same re-render (warm-badger-640), which must move srv1_lmcache_l1_configured and its consumers together with these two files; a digest match here is the completion check." as NonEmptyStr,
+    closed_by: "the same re-render, gunbc#17089 (warm-badger-640), which moves srv1_lmcache_l1_configured -- now the single L1 row, 48 GiB -- and srv1_replica_container_memory_cap (72g) together with these two files. A digest match here is that PR's completion check; until it merges, the render at 32g/32g/16g and L1 12 and the host at 72g/72g/56g and L1 48 are a declared divergence, and this row is what makes the gap visible instead of silent." as NonEmptyStr,
   },
 ]
 
