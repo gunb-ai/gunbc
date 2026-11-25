@@ -244,6 +244,24 @@ data executor_execution_class_roster: List<ExecutorExecutionClass> = [
       evidence: decl_ref(module_path: "gunbc.machine_intake.h11ssl_x86_bringup_frontier", decl_name: "h11ssl_x86_bringup_frontier"),
     },
   },
+  // - srv14 (butch): EXPECTED, CORROBORATED BY THE BOARD ITS PEER srv4 CARRIES. Butch joined the CANDIDATE
+  //   roster (gunbc.compute.remote_build_hosts::remote_build_serving_candidate_hosts) on 2026-11-23 when it
+  //   was admitted as a remote-build host, so an unclassified srv14 would refuse it at the placement check the
+  //   candidate roster feeds -- the same regression srv2's row above was authored to prevent. Its board is an
+  //   ALTRAD8UD-1L2T (gunbc.fleet.fleet_host_smbios_observation names srv14 among the ALTRAD8UD boards read,
+  //   the same board srv4 carries and that its row rests on extdeps.cpu.ampere::altra_max_m12830_catalog for),
+  //   so the catalog is srv4's and srv2's, not a new guess. It is EXPECTED, not OBSERVED, because srv14 is not
+  //   on the DISPATCH roster -- the dispatch roster is what must be Observed, and butch gets there through the
+  //   step-6 serve receipt, which flips this row to Observed (its read of host.arch on srv14 is exactly
+  //   what_would_ground_it). Authoring the row with the standing its evidence actually has, never dressing it.
+  ExecutorExecutionClass {
+    host: operator_host_srv14,
+    architecture: Aarch64,
+    standing: ExecutionClassExpected {
+      catalog: decl_ref(module_path: "extdeps.cpu.ampere", decl_name: "altra_max_m12830_catalog"),
+      what_would_ground_it: "the remote_build_serving_observe host.arch read on srv14 (the step-6 serve-observe receipt on the peer-executor lane, host=srv1 subject_host=srv14)",
+    },
+  },
 ]
 
 // HOW THE ROW KNOWS WHAT IT SAYS. Placement consumes these rows as a hard fact, so the standing of the
