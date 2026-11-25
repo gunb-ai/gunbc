@@ -1,0 +1,182 @@
+module test.claim.shell.shell_dag_live_deploy_install_owned_argv_route_witness
+
+import std.types { Bool, String, List, NonEmptyStr, FilePath }
+import std.optional { Absent, Present }
+import std.algebra { count_where, length, list_at_optional, string_contains }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.posix.identity { PosixOwnerNames }
+import gunbc.ensure {
+  EnsureAbsent,
+  EnsureObservation,
+  EnsurePlanAvailable,
+  EnsurePlanUnavailable,
+}
+import gunbc.managed_directory { DirectoryOwnerAllEveryoneTraverse }
+import gunbc.owned_directory {
+  ForeignOwnershipRefuses,
+  OwnedDirectoryDeclared,
+  OwnedDirectoryReading,
+  OwnedDirectoryTarget,
+  owned_directory_install_argv,
+  owned_directory_plan,
+}
+import gunbc.live_deploy.desired { deployment_spec_srv1 }
+import gunbc.typed_argv_exec { typed_argv_shell_safe_refusal_argv }
+import gunbc.fleet.fleet_known_hosts_anchor { portable_remote_words }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE ARGV-AND-ROUTE HALF OF THE SAME BAR as
+// dag/test/claim/shell/shell_dag_live_deploy_install_owned_witness.dag, added at the reviewer's request (Manager
+// B's change request against head f165571017c3 on gunbc#17023, relayed by eager-koi-371) as a SIBLING module
+// rather than an edit to that file's assertions. The pinned oracle keeps its three claim identities untouched --
+// those three arms are the ones the executed historical pair (caf15db4bac0 RED / 7510e9b5e7adc GREEN) decided --
+// so the pair's ledger lines stay comparable one for one and no claim identity moves mid-row. What lives here is
+// the two things the change request found missing, and neither was something the pinned arms could have caught:
+// a control that cannot fail is not a control.
+//
+// (1) THE POSITIONAL ASSERTION. The pinned positive control asks whether the argv CONTAINS the path, "-o", "-g"
+// and the declared user. Containment cannot see an ORDER, so an argv carrying a correct -o value and a wrong -g
+// value -- or the mode operand in another slot -- satisfied every assertion it made. These arms assert the WHOLE
+// SHAPE by position against the one builder that owns the spelling, extdeps.tools.gnu_coreutils
+// coreutils_install_directory_owned_arguments (dag/extdeps/tools/gnu_coreutils.dag:457-472), whose emitted order
+// is: program, -d, -m, <mode operand>, -o, <owner>, -g, <group>, <path>. That order was read off the builder, not
+// taken from anyone's summary of it. The fixture's group is deliberately NOT its user, because with owner == group
+// a transposition of the two values is a fact with no witness.
+//
+// (2) THE ROUTE CLAIM, CORRECTED. The pinned header says this argv "never becomes shell text". For the LOCAL route
+// that is exactly right and is what arm 1 pins: the words go to execve unchanged, and under execve a ';' in a
+// filename is a filename. As a BLANKET claim it is wrong, and the blanket form is what the change request caught.
+// The local route has no SSH command string because it keeps an argv; over the REMOTE routes the argv does reach a
+// place where a shell reads it, and those routes REFUSE rather than quote.
+// gunbc.typed_argv_exec typed_argv_shell_safe_refusal_argv admits only [A-Za-z0-9._-/@:=], refuses the empty word,
+// and runs before the transport call (dag/gunbc/typed_argv_exec.dag:100-152); the module's own header at :52-67
+// states why the wall is where it is -- RFC 4254 s.6.5 gives the exec request one string-typed command field, so
+// argv structure cannot cross as structure under any client, and the OpenSSH deployment this corpus deploys against
+// re-parses that string with the far side's shell. The fleet edge does the same before
+// exec_as_fleet_principal, via gunbc.fleet.fleet_known_hosts_anchor portable_remote_words
+// (dag/gunbc/typed_argv_exec.dag:243-266). That refusal is a GOOD fact about this node's surface, so the second
+// arm PINS it for the fixture instead of asserting an absence. The quoted sibling
+// typed_argv_exec_over_fleet_ssh_posix (dag/gunbc/typed_argv_exec.dag:326-357) is deliberately NOT claimed here:
+// it quotes only under a login-shell proof and a route standing it reads in the same call, which no hermetic arm
+// can mint -- an arm over it would assert a transport fact this witness cannot supply.
+//
+// SCOPED GUARANTEE, said at its real width. The foreign-ownership refusal this row establishes is a property of
+// the OWNERSHIP route: gunbc.host.host_effect_realize deploy_apply_run_leg's ApplyLegEnsureDirectory arm calls the
+// ports.ensure_directory decision over the target (dag/gunbc/host/host_effect_realize.dag:6419-6423). The
+// neighbouring ApplyLegInstallDirectory arm, twelve lines below in the same function (:6433), executes a PREBUILT
+// command and carries no ownership decision at all -- so a foreign-owner guarantee stated over both legs is a
+// guarantee neither one carries. Both legs do reach this row through the shared argv builder, which is exactly
+// what these two arms pin.
+//
+// STILL OPEN AND NAMED, not dropped -- the plan-to-apply handover. The provider takes its baseline from a FRESH
+// OBSERVATION INSIDE THE CALL: gunbc.owned_directory owned_directory_ensure_observed passes plan_reading: Absent
+// (dag/gunbc/owned_directory.dag:611-627), so the rung it establishes is the decide-to-act window inside that call,
+// not the plan-to-apply window. Threading the plan's own observation through is that node's next rung, and it is
+// carried in the handback as an open item rather than quietly dropped.
+//
+// NOTHING HERE TOUCHES A HOST. No transport is invoked: both remote checks call the ADMISSION PREDICATES, which are
+// pure functions over words, so the refusals are pinned without a leg running anywhere.
+
+// THE PLAINTED FIXTURE PATH, carrying the separator the reviewer named. Harmless as a filename -- a leaf under the
+// deployment root that nothing reads -- and exactly the word a far-side shell would split.
+data planted_separator_path: String = "/opt/gunbc/fixture;label"
+
+// THE GROUP THE FIXTURE DECLARES, distinct from its user ON PURPOSE. The deployment spec's own service group IS its
+// user (gunbc.live_deploy.emit:633-634 mints ServiceGroup from svc.service_user), so a fixture copied straight from
+// the spec would leave an -o/-g transposition unobservable. Both are declared, never observed: an observation can
+// report a principal, it cannot grant one.
+data fixture_group: String = "gunbc-attempt-writers"
+
+fn separator_fixture() -> OwnedDirectoryTarget {
+  OwnedDirectoryDeclared {
+    member: "fixture-label" as NonEmptyStr,
+    path: planted_separator_path as FilePath,
+    owner: PosixOwnerNames {
+      user: deployment_spec_srv1().service.service_user,
+      group: fixture_group as NonEmptyStr,
+    },
+    mode: DirectoryOwnerAllEveryoneTraverse,
+    group_adoption: ForeignOwnershipRefuses,
+  }
+}
+
+fn absent_leaf_read() -> EnsureObservation<OwnedDirectoryReading> {
+  EnsureAbsent { reason: "hermetic witness: the supplied leaf read reports the path absent" }
+}
+
+fn argv_word_at(argv: List<String>, index: Int, wanted: String) -> Bool {
+  match list_at_optional(xs: argv, index: index) {
+    Present { value: word } => word == wanted
+    Absent => false
+  }
+}
+
+// EVERY POSITION ASSERTED, INCLUDING LENGTH. Split out so both arms read as one expression each, the way the
+// package's other witnesses do.
+fn install_argv_shape_is_the_builders_order(argv: List<String>) -> Bool {
+  length(xs: argv) == 9
+    && argv_word_at(argv: argv, index: 0, wanted: "install")
+    && argv_word_at(argv: argv, index: 1, wanted: "-d")
+    && argv_word_at(argv: argv, index: 2, wanted: "-m")
+    && argv_word_at(argv: argv, index: 3, wanted: "0755")
+    && argv_word_at(argv: argv, index: 4, wanted: "-o")
+    && argv_word_at(
+      argv: argv,
+      index: 5,
+      wanted: deployment_spec_srv1().service.service_user as String,
+    )
+    && argv_word_at(argv: argv, index: 6, wanted: "-g")
+    && argv_word_at(argv: argv, index: 7, wanted: fixture_group)
+    && argv_word_at(argv: argv, index: 8, wanted: planted_separator_path)
+    && count_where(xs: argv, predicate: w => w == planted_separator_path) == 1
+}
+
+// ADVERSARIAL-PATH CONTROL, RESTORED. An admitted creation plan over a path carrying ';' realizes as a TYPED WRITE
+// whose path is ONE word and the FINAL word -- not spliced, not split, not quoted into a command -- and the whole
+// argv matches the builder's fixed order by position. Every assertion here can fail: drop the mode operand and
+// index 3 goes red; put the group where the owner belongs and index 5 or 7 goes red; join the path into the mode
+// operand and both the length and index 8 go red; quote the path for a shell and index 8 stops equalling the
+// planted string. The mode operand is asserted literally: DirectoryOwnerAllEveryoneTraverse is rwxr-xr-x with
+// setuid, setgid and sticky all false (gunbc.managed_directory:126-133) and the operand spells the special digit
+// explicitly (extdeps.tools.gnu_coreutils:443-455, the GNU directory set-id rule), so "0755" pins both the value
+// and the five-digit spelling.
+test fn separator_path_realizes_as_one_final_argv_element() -> Bool {
+  match owned_directory_plan(t: separator_fixture(), o: absent_leaf_read()) {
+    EnsurePlanUnavailable { reason } => false
+    EnsurePlanAvailable { plan } =>
+      install_argv_shape_is_the_builders_order(argv: owned_directory_install_argv(plan: plan))
+  }
+}
+
+fn remote_refusal_names_the_separator(argv: List<String>) -> Bool {
+  match typed_argv_shell_safe_refusal_argv(argv: argv) {
+    Present { value: why } =>
+      string_contains(s: why, pattern: planted_separator_path)
+        && string_contains(s: why, pattern: "outside portable allowlist")
+    Absent => false
+  }
+}
+
+fn fleet_admission_refuses_the_argv(argv: List<String>) -> Bool {
+  match portable_remote_words(raws: argv) {
+    Absent => true
+    Present { value: admitted } => false
+  }
+}
+
+// THE REMOTE ROUTE, PINNED AS A REFUSAL RATHER THAN ASSERTED AS AN ABSENCE. The same nine words, handed to the
+// edges that would put them in front of a far-side shell, are refused before dispatch by BOTH remote admission
+// walls, and the ssh-edge refusal NAMES THE WORD -- so the ';' fixture is stopped by the wall that actually exists
+// on this surface, and the stop is legible rather than silent. Naming the planted path is the assertion, not an
+// accident of the outcome: every other word is inside the alphabet ("install", "-d", "-m", "0755", "-o", "-g", an
+// account name, a group name), so the path is the only word that can be the first offender. Both calls are pure
+// admission predicates; no transport runs, so nothing reaches a host.
+test fn remote_routes_refuse_the_separator_word_before_dispatch() -> Bool {
+  match owned_directory_plan(t: separator_fixture(), o: absent_leaf_read()) {
+    EnsurePlanUnavailable { reason } => false
+    EnsurePlanAvailable { plan } =>
+      remote_refusal_names_the_separator(argv: owned_directory_install_argv(plan: plan))
+        && fleet_admission_refuses_the_argv(argv: owned_directory_install_argv(plan: plan))
+  }
+}
