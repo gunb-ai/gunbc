@@ -1,4 +1,5 @@
 module test.claim.spool_queue_old_bytes_wet_witness
+import extdeps.filesystem.filesystem_io { Filesystem }
 
 import extdeps.shell
 import std.optional { Present, Absent }
