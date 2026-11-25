@@ -249,6 +249,13 @@ fn violation_contract_holds_case(block_id: String, viol: AccWindow, contract_arm
   }
 }
 
+// NO CALIBRATION ROWS IN THIS BATTERY, stated where the next reader hits it rather than in a
+// message: the accumulator group has no empty-window floor and no known-copying arm, so nothing
+// here would redden if the counting allocator were stuck, cached, or reading a constant -- an
+// uncalibrated battery is exactly that. The two batteries that do carry the pair are
+// emit_value_shape_observation.dag and emit_control_flow_observation.dag; this gap is owed there
+// here too, and it is the first thing to add when the battery is revisited.
+
 fn accumulator_cases() -> List<AllocationCase> uses counter: AllocationCounter {
   let src = spec_build(n: acc_cardinality)
   let empty = acc_window(subject: AccMeterEmpty, src: src)
@@ -293,10 +300,10 @@ fn accumulator_audit_cases() -> List<AllocationCase> {
     }),
     [AllocationCase { identity: "the_three_named_violating_forms_are_exercised",
       held: violating_form_exercised(slug: "owning_retain_added_to_observation") > 0 && violating_form_exercised(slug: "per_step_allocation") > 0 && violating_form_exercised(slug: "copy_of_unchanged_context") > 0,
-      observed: concat(concat(count_text(label: "retain", n: violating_form_exercised(slug: "owning_retain_added_to_observation")), concat(" per_step=", count_text(label: "per_step", n: violating_form_exercised(slug: "per_step_allocation")))), concat(" unchanged_context=", count_text(label: "unchanged_context", n: violating_form_exercised(slug: "copy_of_unchanged_context")))) },
+      observed: concat(concat(concat(count_text(label: "retain", n: violating_form_exercised(slug: "owning_retain_added_to_observation"))), concat(" per_step=", count_text(label: "per_step", n: violating_form_exercised(slug: "per_step_allocation")))), concat(" unchanged_context=", count_text(label: "unchanged_context", n: violating_form_exercised(slug: "copy_of_unchanged_context")))) },
      AllocationCase { identity: "all_mispaired_probes_are_refused",
       held: count(filter(mispaired_probes(), p => !probe_guard_holds(p: p))) == 0,
-      observed: count_text(label: "probes", n: count(mispaired_probes())), " ", fold(probe_lines(), init: "no_probes", f: (acc, line) => if acc == "no_probes" { line } else { acc }) }])
+      observed: concat(count_text(label: "probes", n: count(mispaired_probes())), " ", fold(probe_lines(), init: "no_probes", f: (acc, line) => if acc == "no_probes" { line } else { acc })) }])
 }
 
 
@@ -312,7 +319,7 @@ fn roster_membership_case() -> AllocationCase {
   AllocationCase {
     identity: "carrier_roster_membership_printed_for_every_contract",
     held: count(printed) == total && total > 0,
-    observed: concat(count_text(label: "printed", n: count(printed)), " ", printed |> join(separator: "; "))
+    observed: concat(concat("printed=", count_text(label: "printed", n: count(printed))), " ", printed |> join(separator: "; "))
   }
 }
 

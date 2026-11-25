@@ -498,3 +498,41 @@ fn span_text(label: String, o: AllocationObservation) -> String {
 fn case_line(c: AllocationCase) -> String {
   concat("case ", c.identity, if c.held { " held" } else { " not_held" }, " observed=", c.observed, "\n")
 }
+// The floor is a measurement, not a constant. These two read the byte axis the way span_operations
+// reads the operation axis, so a row can say two windows agree exactly, or one sits strictly above
+// the other, without either hard-coding what an empty window happens to cost.
+
+fn span_bytes(o: AllocationObservation) -> Nat? {
+  match o {
+    AllocationObserved { operations: _, bytes_requested: b } => Present { value: byte_size_count(b: b) }
+    AllocationOperationsRanBackwards => none
+    AllocationBytesRequestedRanBackwards => none
+    AllocationProviderNotSelected => none
+  }
+}
+
+fn spans_agree(a: AllocationObservation, b: AllocationObservation) -> Bool {
+  match span_operations(o: a) {
+    Present { value: ax } => match span_operations(o: b) {
+      Present { value: bx } => match span_bytes(o: a) {
+        Present { value: ay } => match span_bytes(o: b) {
+          Present { value: by } => ax == bx && ay == by
+          Absent => false
+        }
+        Absent => false
+      }
+      Absent => false
+    }
+    Absent => false
+  }
+}
+
+fn bytes_above(a: AllocationObservation, b: AllocationObservation) -> Bool {
+  match span_bytes(o: a) {
+    Present { value: ay } => match span_bytes(o: b) {
+      Present { value: by } => ay > by
+      Absent => false
+    }
+    Absent => false
+  }
+}

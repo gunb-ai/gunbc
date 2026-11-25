@@ -210,6 +210,7 @@ fn violation_contract_holds_case(block_id: String, viol: BbWindow, contract_arm:
 fn value_shape_cases() -> List<AllocationCase> uses counter: AllocationCounter {
   let src = spec_build(n: specimen_cardinality)
   let empty = bb_window(subject: MeterEmpty, src: src)
+  let empty_again = bb_window(subject: MeterEmpty, src: src)
   let known = bb_window(subject: MeterKnownAllocation, src: src)
   let scalar_read = bb_window(subject: ScalarRead, src: src)
   let scalar_retain = bb_window(subject: ScalarRetainAddedToObservation, src: src)
@@ -223,7 +224,17 @@ fn value_shape_cases() -> List<AllocationCase> uses counter: AllocationCounter {
   let generic_copied = bb_window(subject: GenericPayloadCopiedAtBoundary, src: src)
   [
     AllocationCase { identity: "value_shape_availability_provider_registered_by_the_selecting_main", held: observed_allocation_available(""), observed: concat("available=", to_string(value: observed_allocation_available(""))) },
-    AllocationCase { identity: "value_shape_observation_empty_window_reads_zero", held: span_is_zero(o: empty.observation), observed: concat(reading(label: "empty", o: empty.observation), " ", count_text(label: "empty_kept", n: empty.kept_len)) },
+  // SUPERSEDED CLAIM, kept visible: this row was
+  // `value_shape_observation_empty_window_reads_zero`, asserting an empty window reads zero.
+  // Measurement refused that on srv1 (acquisition 9, head 859f8b97e93): the empty window
+  // read 38 operations and 2,648 bytes, because the four counter reads and the span record
+  // inside the window allocate that themselves -- zero is unreachable for any sampler that
+  // allocates. It is redefined as floor-plus-difference: two empty windows must agree
+  // exactly AND the known copying arm must sit strictly above that floor on BOTH counters.
+  // Without the second conjunct a stuck or cached sampler would pass it, which is what
+  // acquisition 9 showed (both arms of a retain pair read 75). The floor is printed, never
+  // pinned: 38 and 2,648 are properties of the sampler and may move when it stops leaking.
+    AllocationCase { identity: "value_shape_observation_calibrates_a_measured_floor_with_a_difference", held: spans_agree(a: empty.observation, b: empty_again.observation) && operations_above(a: known.observation, b: empty.observation) && bytes_above(a: known.observation, b: empty.observation), observed: concat(concat("floor_is_measured_not_assumed", span_text(label: "empty_a", o: empty.observation)), " ", span_text(label: "empty_b", o: empty_again.observation), " ", span_text(label: "known", o: known.observation), " ", count_text(label: "known_kept", n: known.kept_len), " ", count_text(label: "empty_kept", n: empty.kept_len)) },
     AllocationCase { identity: "value_shape_meter_discriminates_a_copying_arm_above_empty", held: operations_above(a: known.observation, b: empty.observation), observed: concat(readings(a_label: "known", a: known.observation, b_label: "empty", b: empty.observation), " ", count_text(label: "known_kept", n: known.kept_len), " ", count_text(label: "empty_kept", n: empty.kept_len)) },
     subject_case(block_id: "value_scalar", own: scalar_read),
     violation_case(block_id: "value_scalar", viol: scalar_retain, contract_arm: scalar_read),
@@ -297,7 +308,7 @@ fn roster_against_declared_case() -> AllocationCase {
   AllocationCase {
     identity: "contract_roster_matches_the_declared_block_id_set",
     held: missing_declared_count() == 0 && duplicate_id_count() == 0 && count(declared_block_ids()) == count(building_block_contracts()),
-    observed: concat(concat(concat(count_text(label: "declared", n: count(declared_block_ids())), concat(" roster=", count_text(label: "roster", n: count(building_block_contracts())))), concat(" missing=", count_text(label: "missing", n: missing_declared_count()))), concat(" duplicates=", count_text(label: "duplicates", n: duplicate_id_count())), concat(" family_sum_reading=", count_text(label: "family_sum", n: family_sum())))
+    observed: concat(concat(concat(concat(count_text(label: "declared", n: count(declared_block_ids()))), concat(" roster=", count_text(label: "roster", n: count(building_block_contracts())))), concat(" missing=", count_text(label: "missing", n: missing_declared_count()))), concat(" duplicates=", count_text(label: "duplicates", n: duplicate_id_count())), concat(" family_sum_reading=", count_text(label: "family_sum", n: family_sum())))
   }
 }
 
@@ -311,8 +322,8 @@ fn contract_audit_cases() -> List<AllocationCase> {
     refusal_not_hit(name: "pattern_requires_borrowing_contract", refusal: PatternRequiresBorrowingContract),
     refusal_not_hit(name: "scalar_basis_requires_copy_scalar_carrier", refusal: ScalarBasisRequiresCopyScalarCarrier),
     refusal_not_hit(name: "sized_basis_requires_sized_carrier", refusal: SizedBasisRequiresSizedCarrier),
-    AllocationCase { identity: "the_three_named_violating_forms_are_exercised", held: violating_form_exercised(slug: "owning_retain_added_to_observation") > 0 && violating_form_exercised(slug: "per_step_allocation") > 0 && violating_form_exercised(slug: "copy_of_unchanged_context") > 0, observed: concat(concat(count_text(label: "retain", n: violating_form_exercised(slug: "owning_retain_added_to_observation")), concat(" per_step=", count_text(label: "per_step", n: violating_form_exercised(slug: "per_step_allocation")))), concat(" unchanged_context=", count_text(label: "unchanged_context", n: violating_form_exercised(slug: "copy_of_unchanged_context")))) },
-    AllocationCase { identity: "guard_fires_on_every_deliberate_mis_pairing", held: all_probes_refused(), observed: count_text(label: "probes", n: count(mispaired_probes())), " ", fold(probe_lines(), init: "no_probes", f: (acc, line) => if acc == "no_probes" { line } else { acc }) }
+    AllocationCase { identity: "the_three_named_violating_forms_are_exercised", held: violating_form_exercised(slug: "owning_retain_added_to_observation") > 0 && violating_form_exercised(slug: "per_step_allocation") > 0 && violating_form_exercised(slug: "copy_of_unchanged_context") > 0, observed: concat(concat(concat(count_text(label: "retain", n: violating_form_exercised(slug: "owning_retain_added_to_observation"))), concat(" per_step=", count_text(label: "per_step", n: violating_form_exercised(slug: "per_step_allocation")))), concat(" unchanged_context=", count_text(label: "unchanged_context", n: violating_form_exercised(slug: "copy_of_unchanged_context")))) },
+    AllocationCase { identity: "guard_fires_on_every_deliberate_mis_pairing", held: all_probes_refused(), observed: concat(count_text(label: "probes", n: count(mispaired_probes())), " ", fold(probe_lines(), init: "no_probes", f: (acc, line) => if acc == "no_probes" { line } else { acc })) }
   ]
 }
 
@@ -330,7 +341,7 @@ fn roster_membership_case() -> AllocationCase {
   AllocationCase {
     identity: "carrier_roster_membership_printed_for_every_contract",
     held: count(printed) == total && total > 0,
-    observed: concat(count_text(label: "printed", n: count(printed)), " ", printed |> join(separator: "; "))
+    observed: concat(concat("printed=", count_text(label: "printed", n: count(printed))), " ", printed |> join(separator: "; "))
   }
 }
 

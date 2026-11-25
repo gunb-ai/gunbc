@@ -188,6 +188,7 @@ fn violation_contract_holds_case(block_id: String, viol: CfWindow, contract_arm:
 fn control_flow_cases() -> List<AllocationCase> uses counter: AllocationCounter {
   let src = spec_build(n: cf_cardinality)
   let empty = cf_window(subject: CfMeterEmpty, src: src)
+  let empty_again = cf_window(subject: CfMeterEmpty, src: src)
   let known = cf_window(subject: CfMeterKnownAllocation, src: src)
   let transform = cf_window(subject: CfTransformApplied, src: src)
   let transform_rebuilt = cf_window(subject: CfTransformRebuiltPerStep, src: src)
@@ -201,7 +202,17 @@ fn control_flow_cases() -> List<AllocationCase> uses counter: AllocationCounter 
   let match_retained = cf_window(subject: CfMatchBorrowedRetainedAfterMatch, src: src)
   [
     AllocationCase { identity: "control_flow_availability_provider_registered_by_the_selecting_main", held: observed_allocation_available(""), observed: concat("available=", to_string(value: observed_allocation_available(""))) },
-    AllocationCase { identity: "control_flow_observation_empty_window_reads_zero", held: span_is_zero(o: empty.observation), observed: concat(reading(label: "empty", o: empty.observation), " ", count_text(label: "empty_kept", n: empty.kept_len)) },
+  // SUPERSEDED CLAIM, kept visible: this row was
+  // `control_flow_observation_empty_window_reads_zero`, asserting an empty window reads zero.
+  // Measurement refused that on srv1 (acquisition 9, head 859f8b97e93): the empty window
+  // read 38 operations and 2,648 bytes, because the four counter reads and the span record
+  // inside the window allocate that themselves -- zero is unreachable for any sampler that
+  // allocates. It is redefined as floor-plus-difference: two empty windows must agree
+  // exactly AND the known copying arm must sit strictly above that floor on BOTH counters.
+  // Without the second conjunct a stuck or cached sampler would pass it, which is what
+  // acquisition 9 showed (both arms of a retain pair read 75). The floor is printed, never
+  // pinned: 38 and 2,648 are properties of the sampler and may move when it stops leaking.
+    AllocationCase { identity: "control_flow_observation_calibrates_a_measured_floor_with_a_difference", held: spans_agree(a: empty.observation, b: empty_again.observation) && operations_above(a: known.observation, b: empty.observation) && bytes_above(a: known.observation, b: empty.observation), observed: concat(concat("floor_is_measured_not_assumed", span_text(label: "empty_a", o: empty.observation)), " ", span_text(label: "empty_b", o: empty_again.observation), " ", span_text(label: "known", o: known.observation), " ", count_text(label: "known_kept", n: known.kept_len), " ", count_text(label: "empty_kept", n: empty.kept_len)) },
     AllocationCase { identity: "control_flow_meter_discriminates_a_copying_arm_above_empty", held: operations_above(a: known.observation, b: empty.observation), observed: concat(readings(a_label: "known", a: known.observation, b_label: "empty", b: empty.observation), " ", count_text(label: "known_kept", n: known.kept_len), " ", count_text(label: "empty_kept", n: empty.kept_len)) },
     subject_case(block_id: "transform", own: transform),
     violation_case(block_id: "transform", viol: transform_rebuilt, contract_arm: transform),
@@ -232,8 +243,8 @@ fn control_flow_audit_cases() -> List<AllocationCase> {
     AllocationCase { identity: "every_control_flow_contract_is_carrier_applicable", held: count(filter(group, c => !case_in_applicable_roster(c: c.case_id))) == 0, observed: concat("judged_by=case_applicability first=", fold(group, init: "none", f: (acc, c) => if acc == "none" { contract_line(b: c) } else { acc })) },
     refusal_not_hit(name: "pattern_requires_branch_shape", refusal: PatternRequiresBranchShape),
     refusal_not_hit(name: "pattern_requires_loop_shape", refusal: PatternRequiresLoopShape),
-    AllocationCase { identity: "the_three_named_violating_forms_are_exercised", held: violating_form_exercised(slug: "owning_retain_added_to_observation") > 0 && violating_form_exercised(slug: "per_step_allocation") > 0 && violating_form_exercised(slug: "copy_of_unchanged_context") > 0, observed: concat(concat(count_text(label: "retain", n: violating_form_exercised(slug: "owning_retain_added_to_observation")), concat(" per_step=", count_text(label: "per_step", n: violating_form_exercised(slug: "per_step_allocation")))), concat(" unchanged_context=", count_text(label: "unchanged_context", n: violating_form_exercised(slug: "copy_of_unchanged_context")))) },
-    AllocationCase { identity: "control_flow_guard_fires_on_every_deliberate_mis_pairing", held: count(filter(mispaired_probes(), p => !probe_guard_holds(p: p))) == 0, observed: count_text(label: "probes", n: count(mispaired_probes())), " ", fold(probe_lines(), init: "no_probes", f: (acc, line) => if acc == "no_probes" { line } else { acc }) }
+    AllocationCase { identity: "the_three_named_violating_forms_are_exercised", held: violating_form_exercised(slug: "owning_retain_added_to_observation") > 0 && violating_form_exercised(slug: "per_step_allocation") > 0 && violating_form_exercised(slug: "copy_of_unchanged_context") > 0, observed: concat(concat(concat(count_text(label: "retain", n: violating_form_exercised(slug: "owning_retain_added_to_observation"))), concat(" per_step=", count_text(label: "per_step", n: violating_form_exercised(slug: "per_step_allocation")))), concat(" unchanged_context=", count_text(label: "unchanged_context", n: violating_form_exercised(slug: "copy_of_unchanged_context")))) },
+    AllocationCase { identity: "control_flow_guard_fires_on_every_deliberate_mis_pairing", held: count(filter(mispaired_probes(), p => !probe_guard_holds(p: p))) == 0, observed: concat(count_text(label: "probes", n: count(mispaired_probes())), " ", fold(probe_lines(), init: "no_probes", f: (acc, line) => if acc == "no_probes" { line } else { acc })) }
   ]
 }
 
@@ -250,7 +261,7 @@ fn roster_membership_case() -> AllocationCase {
   AllocationCase {
     identity: "carrier_roster_membership_printed_for_every_contract",
     held: count(printed) == total && total > 0,
-    observed: concat(count_text(label: "printed", n: count(printed)), " ", printed |> join(separator: "; "))
+    observed: concat(concat("printed=", count_text(label: "printed", n: count(printed))), " ", printed |> join(separator: "; "))
   }
 }
 
