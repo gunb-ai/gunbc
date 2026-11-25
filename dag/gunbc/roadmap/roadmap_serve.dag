@@ -1108,7 +1108,7 @@ fn serve_issue_assign_permitted(
                         expected: if expected == "" { none } else { Present { value: expected as NonEmptyStr as RoadmapEventId } } },
                         assignee: EventPrincipalAuthenticated { ref: assignee }, return_to: EventPrincipalAuthenticated { ref: return_to }, grain: admitted }, recorded_at: observed_at))
                     match outcome {
-                      EventAppended { id } => serve_with_operator_follow_ups(instance: instance, action: OperatorIssueWrite, response: serve_assignment_launch_follow_through(instance: instance, plan: plan, node_id: node_id, assignee: assignee, event_id: id as String))
+                      EventAppended { id, published_as: _ } => serve_with_operator_follow_ups(instance: instance, action: OperatorIssueWrite, response: serve_assignment_launch_follow_through(instance: instance, plan: plan, node_id: node_id, assignee: assignee, event_id: id as String))
                       EventAlreadyPresent { id } => serve_with_operator_follow_ups(instance: instance, action: OperatorIssueWrite, response: serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["assigned: ", node_id, " (already recorded event ", id as String, ")\n"], "")))
                       EventAppendRefused { id: _, step, reason } => issue_command_refusal_response(step: step, reason: reason)
                     }
@@ -1381,7 +1381,7 @@ fn serve_issue_retire_response_over(
                       expected: if expected == "" { none } else { Present { value: expected as NonEmptyStr as RoadmapEventId } } },
                       reason: if get("reason") == "" { "retired by the operator" as NonEmptyStr } else { get("reason") as NonEmptyStr } }, recorded_at: observed_at))
                   match outcome {
-                    EventAppended { id } => serve_with_operator_follow_ups(instance: instance, action: OperatorIssueWrite, response:serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["retired: ", node_id, " (event ", id as String, ")\n"], "")))
+                    EventAppended { id, published_as: _ } => serve_with_operator_follow_ups(instance: instance, action: OperatorIssueWrite, response:serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["retired: ", node_id, " (event ", id as String, ")\n"], "")))
                     EventAlreadyPresent { id } => serve_with_operator_follow_ups(instance: instance, action: OperatorIssueWrite, response:serve_text_response(status: 200, content_type: text_plain_utf8, body: join(["retired: ", node_id, " (already recorded event ", id as String, ")\n"], "")))
                     EventAppendRefused { id: _, step, reason } => issue_command_refusal_response(step: step, reason: reason)
                   }
@@ -1593,7 +1593,7 @@ fn serve_issue_comment_permitted(
           expected: if expected == "" { none } else { Present { value: expected as NonEmptyStr as RoadmapEventId } } }, body: body as NonEmptyStr }, recorded_at: observed_at))
         match outcome {
           EventAppendRefused { id: _, step, reason } => issue_command_refusal_response(step: step, reason: reason)
-          EventAppended { id } => serve_with_operator_follow_ups(instance: instance, action: OperatorIssueWrite, response: issue_comment_readback_response(layout: layout, node_id: node_id, operation: operation, event_id: id as String, already_present: false))
+          EventAppended { id, published_as: _ } => serve_with_operator_follow_ups(instance: instance, action: OperatorIssueWrite, response: issue_comment_readback_response(layout: layout, node_id: node_id, operation: operation, event_id: id as String, already_present: false))
           EventAlreadyPresent { id } => serve_with_operator_follow_ups(instance: instance, action: OperatorIssueWrite, response: issue_comment_readback_response(layout: layout, node_id: node_id, operation: operation, event_id: id as String, already_present: true))
         }
       }

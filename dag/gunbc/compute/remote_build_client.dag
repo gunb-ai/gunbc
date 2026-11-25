@@ -31,6 +31,7 @@ import gunbc.fleet.fleet_known_hosts_anchor {
   FleetSshAttemptIdentity, FleetSshExecutionContext, SshTargetResolution, SshTargetResolved, SshTargetRefused,
   anchored_ssh_target, ssh_target_refusal_text, ssh_target_wire, fleet_ssh_attempt_identity, known_hosts_file_rows,
   portable_remote_words, shape_fleet_ssh_exec,
+  FleetLegKind, FleetBareWordLeg, fleet_ssh_exec_key_leg,
   OwnerOnlyDirectoryUnreadable, OwnerOnlyDirectoryObserved, create_or_adopt_owner_only_directory,
 }
 import gunbc.fleet.fleet_ssh_locus {

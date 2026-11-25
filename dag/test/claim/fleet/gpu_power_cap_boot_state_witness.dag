@@ -1,11 +1,12 @@
 module test.claim.fleet.gpu_power_cap_boot_state_witness
 
 import std.types { Bool, List, NonEmptyStr, String }
-import std.optional { Absent, Present }
+import std.optional { Absent, Present, optional_is_absent }
 import std.measure { watt, watt_count }
 import std.algebra { string_contains }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
-import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_04, gpu_board_05 }
+import gunbc.fleet.fleet_host_identity {
+  HostIdentity, operator_host_6ce85c, operator_host_srv1, operator_host_srv3, operator_host_srv4 }
+import gunbc.fleet.fleet_asset_identity { gpu_board_01, gpu_board_04, gpu_board_05, gpu_board_06 }
 import gunbc.fleet.gpu_device_observation {
   GpuDeviceEnumerated, GpuDeviceNotEnumerated, current_gpu_device_observations_of,
 }
@@ -16,6 +17,12 @@ import gunbc.fleet.gpu_power_cap_boot_state {
   boot_unit_addresses, cap_application_claims_on, cap_boot_unit_for, device_uuid_of,
   gunbc_cap_unit_is_installed, installed_unit_addresses_board, unit_lines_can_fail,
   unit_lines_run_with_full_privileges,
+  // The 2026-11-24 hand-applied sibling roster: what the operator put on srv3 and srv4, the read each unread
+  // file digest carries on itself, and the card a cap line addresses.
+  CapDropInOnUnit, CapUnitDigestMarkedOnly, CapUnitDigestRead, CapUnitOfItsOwn, EveryCardOnTheHost,
+  HandAppliedCapMechanism, ReportedUnsaid, srv3_hand_applied_gpu_cap, srv4_hand_applied_gpu_cap,
+  cap_card_selector, cap_unit_digest_discharge_read, declared_path_host_hash_read,
+  hand_applied_cap_mechanisms, hand_applied_cap_mechanisms_on, host_wide_gpu_cap_watts,
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -190,3 +197,151 @@ test fn agreeing_numbers_do_not_become_an_act_this_module_didnt_record() -> Bool
     && installed_unit_addresses_board(host: operator_host_srv1, board: gpu_board_01)
 }
 
+
+
+
+// --------------------------------------------------------------------------------
+// THE OPERATOR'S HAND-APPLIED CAPS ON srv3 AND srv4, 2026-11-24. These rows record what the operator applied by
+// hand and read themselves, and the witnesses below hold the three things that record could get wrong: that a
+// host-wide cap is claimed only where the report saw every card, that a hand-applied report is never dressed up
+// as a transcription of a unit file, and that a digest quoted with its middle elided is never allowed to read as
+// a digest. The rule they enforce is the one this change lives by -- an unread value stays unread, and the
+// unreadness carries on itself the read that would close it.
+// --------------------------------------------------------------------------------
+
+// Did any unit file get TRANSCRIBED from these hosts? Nothing has: what exists for srv3 and srv4 is a report,
+// which the module keeps in a different roster.
+fn nothing_transcribed_on(h: HostIdentity) -> Bool {
+  match cap_boot_unit_for(host: h) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// The cap this host is recorded putting on every card it carries is 30 W; false when none has been read.
+fn host_caps_every_card_at_30(host: HostIdentity) -> Bool {
+  match host_wide_gpu_cap_watts(host: host) {
+    Absent => false
+    Present { value: w } => watt_count(w: w) == 30
+  }
+}
+
+fn no_host_wide_cap_read(host: HostIdentity) -> Bool {
+  match host_wide_gpu_cap_watts(host: host) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// THE CAP REACHES EVERY CARD ON THE HOST THAT CARRIES IT, and it sits exactly at the floor those cards' own
+// device readings report (gunbc.fleet.gpu_device_observation: the srv4 pair's minimum is 30 W). Reach is asked
+// through the selector the line carries -- no `-i`, so no card is addressed and every card is covered -- rather
+// than through a second claim about coverage. A cap row that drifted above the floor, or that quietly narrowed
+// itself to one card, stops holding here.
+test fn the_hand_applied_caps_reach_every_card_at_the_minimum_the_cards_report() -> Bool {
+  let srv4_pair_minimum_is_30 = [gpu_board_05, gpu_board_06].all(b =>
+    match current_gpu_device_observations_of(board: b).first() {
+      Absent => false
+      Present { value: o } => match o {
+        GpuDeviceEnumerated {
+          host: _, board: _, gpu_uuid: _, pci_address: _, power_limit_minimum: minimum, power_limit_maximum: _,
+          power_limit_current: _, power_limit_default: _, power_limit_control: _, read_on: _,
+        } => watt_count(w: minimum) == 30
+        GpuDeviceNotEnumerated { host: _, board: _, cause: _, read_on: _ } => false
+      }
+    })
+  match hand_applied_cap_mechanisms_on(host: operator_host_srv4).first() {
+    Absent => false
+    Present { value: m } =>
+      watt_count(w: m.target_watts) == 30
+        && optional_is_absent(opt: cap_card_selector(m: m))
+        && m.persists_across_boot
+        && srv4_pair_minimum_is_30
+        && match m.placement {
+          CapUnitOfItsOwn { unit_path } =>
+            (unit_path as String) == "/etc/systemd/system/gpu-power-cap.service"
+          CapDropInOnUnit { drop_in_path: _, modifies_unit: _, runs_before_the_units_own_start: _ } => false
+        }
+  }
+}
+
+// srv3's cap is a DROP-IN ON THE SERVING ENGINE, not a unit of its own, and the report says it runs before that
+// unit starts. Three facts, read off the row: the path, the unit it belongs to, and the ordering. A row that kept
+// the 30 W and lost where it comes from is the kind of record that sends a later session hunting for a unit file
+// that was never there.
+test fn srv3_cap_is_a_drop_in_on_the_serving_engine_running_before_its_start() -> Bool {
+  match hand_applied_cap_mechanisms_on(host: operator_host_srv3).first() {
+    Absent => false
+    Present { value: m } =>
+      watt_count(w: m.target_watts) == 30
+        && optional_is_absent(opt: cap_card_selector(m: m))
+        && m.persists_across_boot
+        && match m.placement {
+          CapDropInOnUnit { drop_in_path, modifies_unit, runs_before_the_units_own_start } =>
+            (drop_in_path as String) == "/etc/systemd/system/strata-pool.service.d/power-cap.conf"
+              && (modifies_unit as String) == "strata-pool.service"
+              && runs_before_the_units_own_start
+          CapUnitOfItsOwn { unit_path: _ } => false
+        }
+  }
+}
+
+// A REPORTED MECHANISM NEVER ANSWERS THE QUESTION A TRANSCRIPTION ANSWERS. The two rosters answer different
+// questions: cap_boot_unit_for asks "what unit file was transcribed from this host?" and still answers nothing
+// for srv3, srv4 or h11, while host_wide_gpu_cap_watts asks "what cap does this host put on every card?" and
+// answers 30 W for srv3 and srv4, and nothing for srv1 -- whose cap addresses ONE card by UUID -- or for h11,
+// never read. The two-host extent of the roster is grounded in the operator's report of which hosts they
+// touched, not in a number chosen to make a test pass.
+test fn a_reported_mechanism_never_answers_the_question_a_transcription_answers() -> Bool {
+  hand_applied_cap_mechanisms.length() == 2
+    && nothing_transcribed_on(operator_host_srv3)
+    && nothing_transcribed_on(operator_host_srv4)
+    && nothing_transcribed_on(operator_host_6ce85c)
+    && host_caps_every_card_at_30(operator_host_srv3)
+    && host_caps_every_card_at_30(operator_host_srv4)
+    && no_host_wide_cap_read(operator_host_srv1)
+    && no_host_wide_cap_read(operator_host_6ce85c)
+}
+
+// EVERY HAND-APPLIED DIGEST IS STILL A MARKING, and each marking carries the one spelled-out read that would
+// close it. The head and tail are pinned to what the operator quoted, so a transcription slip in either reds
+// here; the open read is pinned to `declared_path_host_hash_read`, the single authority, so no row gets to
+// invent its own excuse or its own closer. Nothing here can drift out of step with anything else, because the
+// unreadness and its discharge are one value -- which is why there is no frontier roster to keep in sync.
+test fn every_hand_applied_digest_is_a_marking_carrying_the_one_discharge_read() -> Bool {
+  hand_applied_cap_mechanisms.length() == 2
+    && hand_applied_cap_mechanisms.all(m =>
+      match cap_unit_digest_discharge_read(d: m.content_digest) {
+        Absent => false
+        Present { value: obligation } => (obligation as String) == (declared_path_host_hash_read as String)
+      })
+    && match srv4_hand_applied_gpu_cap.content_digest {
+      CapUnitDigestMarkedOnly { head, tail, what_would_discharge_it: _ } =>
+        (head as String) == "2a0c8783" && (tail as String) == "594690"
+      CapUnitDigestRead { sha256: _ } => false
+    }
+    && match srv3_hand_applied_gpu_cap.content_digest {
+      CapUnitDigestMarkedOnly { head, tail, what_would_discharge_it: _ } =>
+        (head as String) == "921f0a92" && (tail as String) == "e892"
+      CapUnitDigestRead { sha256: _ } => false
+    }
+    && string_contains(s: declared_path_host_hash_read as String, pattern: "runner_host_file_observe")
+}
+
+// THE OPEN READ FOLLOWS THE VALUE, IN BOTH DIRECTIONS. The two fixtures are the same mechanism with the same
+// file: one digest typed as a whole value (the all-zeros literal is a fixture, not a fact about any file), one
+// still quoted short. The first carries no open read and the second does -- so the frontier is a property of the
+// digest and cannot be argued separately from it. A whole digest appearing here without a read behind it would
+// still be caught by the claim above, which pins both rows as markings.
+test fn a_whole_digest_carries_no_open_read_and_a_marking_carries_one() -> Bool {
+  let whole_digest_read = CapUnitDigestRead {
+    sha256: "0000000000000000000000000000000000000000000000000000000000000000" as NonEmptyStr,
+  }
+  let digest_still_marked = CapUnitDigestMarkedOnly {
+    head: "921f0a92" as NonEmptyStr,
+    tail: "e892" as NonEmptyStr,
+    what_would_discharge_it: declared_path_host_hash_read,
+  }
+  optional_is_absent(opt: cap_unit_digest_discharge_read(d: whole_digest_read))
+    && !optional_is_absent(opt: cap_unit_digest_discharge_read(d: digest_still_marked))
+}
