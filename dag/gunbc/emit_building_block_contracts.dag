@@ -85,72 +85,42 @@ type BuildingBlockContract {
   block: String
   family: BuildingBlockFamily
   case_id: EmitCopyQualificationCaseId
-  observation: String
-  violation: String
+  violation_form: ViolatingForm
 }
 
-// THE VIOLATING FORM IS TYPED, NOT PROSE. The row's red_control names exactly three violating forms,
-// so they are a sum, and the batteries assert against THAT. `observation` and `violation` above are
-// commentary for a human reader: no judgement anywhere reads them -- verified, nothing in the repo
-// reads BuildingBlockContract.observation or .violation -- and the roster lines print them with a
-// `note=` prefix so a reader who meets them in a log is not invited to read prose as a verdict
-// (gunbc.design_argument epistemic_humility: do not assert as deduced what is only inferred).
+// THE VIOLATING FORM IS A FIELD OF THE CONTRACT, NOT A SECOND TABLE. The row's red_control names exactly
+// three violating forms, so they are a sum, and the form that violates a block is set where the block is
+// declared: a block without a form cannot be written at all, which is what fail_closed asks for ("stronger
+// than catching a wrong state is making it unwritable"). An earlier revision kept a parallel id->form
+// table beside the roster and a drift detector for it; review 98213 named both defects -- the table is a
+// second place that independently decides the form (single_authority), and a detector catches what the
+// schema should make unwritable. The two free-text fields this record used to carry went the same way:
+// commentary held in a field is dead data and `//` is the quarantine boundary (source_annotations), so
+// what a block observes lives in the structured fields above and what it violates in the typed field here,
+// with the prose in comments beside the row that earned it.
 //
-// An id missing from the table below lands in UndeclaredViolatingForm, and every battery's audit goes
-// red if any block is there, so the table cannot drift silently. Comparing slugs rather than sum
-// members is deliberate: string equality is what the corpus does (emit_copy_qualification.dag:206-217
-// renders refusals to strings for exactly this reason), and member equality has no precedent to lean on.
+// The slug is for PRINTING and for counting how often a form is used; it is not a second authority because
+// it is derived from the field and nothing decides anything with it. Counting uses string equality because
+// sum-member equality on this runtime carries a documented false-adjudication class
+// (recurring_failure_mode/optional_equality_answers_by_representation) and slug equality is what the carrier
+// itself does for refusals (#gunbc.emit_copy_qualification::structural_inapplicability_slug).
 type ViolatingForm =
     OwningRetainAddedToObservation
   | PerStepAllocation
   | CopyOfUnchangedContext
-  | UndeclaredViolatingForm
 
 fn violating_form_slug(f: ViolatingForm) -> String {
   match f {
     OwningRetainAddedToObservation => "owning_retain_added_to_observation"
     PerStepAllocation => "per_step_allocation"
     CopyOfUnchangedContext => "copy_of_unchanged_context"
-    UndeclaredViolatingForm => "UNDECLARED"
   }
 }
 
-// The violating arm each block's battery implements, by id. This table IS the red_control plan: the
-// instrument's violating subject must be the form named here, and the audit case refuses if a block
-// has no form at all.
-fn declared_violation_form(id: String) -> ViolatingForm {
-  if id == "value_scalar" { OwningRetainAddedToObservation }
-  else if id == "value_record" { CopyOfUnchangedContext }
-  else if id == "value_nonrecursive_variant" { CopyOfUnchangedContext }
-  else if id == "generic_over_scalar" { PerStepAllocation }
-  else if id == "generic_over_payload" { OwningRetainAddedToObservation }
-  else if id == "transform" { PerStepAllocation }
-  else if id == "branch" { CopyOfUnchangedContext }
-  else if id == "bind" { PerStepAllocation }
-  else if id == "match_owned_temporary" { OwningRetainAddedToObservation }
-  else if id == "match_borrowed_shared_sum" { OwningRetainAddedToObservation }
-  else if id == "loop_record_accumulator" { PerStepAllocation }
-  else if id == "field_read" { CopyOfUnchangedContext }
-  else if id == "record_rebuild_one_field" { CopyOfUnchangedContext }
-  else if id == "local_closure" { OwningRetainAddedToObservation }
-  else if id == "escaping_closure" { OwningRetainAddedToObservation }
-  else if id == "sequence_build" { PerStepAllocation }
-  else if id == "element_read" { OwningRetainAddedToObservation }
-  else if id == "sequential_traversal" { PerStepAllocation }
-  else if id == "persistent_sequence_carrier_snapshot" { CopyOfUnchangedContext }
-  else if id == "persistent_map_carrier_snapshot" { CopyOfUnchangedContext }
-  else if id == "index_build" { PerStepAllocation }
-  else if id == "index_lookup" { OwningRetainAddedToObservation }
-  else if id == "index_traversal" { PerStepAllocation }
-  else { UndeclaredViolatingForm }
-}
-
-fn undeclared_violation_form_count() -> Int {
-  count(building_block_contracts() |> filter(b => violating_form_slug(f: declared_violation_form(id: b.block)) == "UNDECLARED"))
-}
-
+// How many roster blocks are violated by this form. A battery's audit refuses if any of the three forms
+// the row names has zero blocks, so a named form nobody implements cannot pass.
 fn violating_form_exercised(slug: String) -> Int {
-  count(building_block_contracts() |> filter(b => violating_form_slug(f: declared_violation_form(id: b.block)) == slug))
+  count(building_block_contracts() |> filter(b => violating_form_slug(f: b.violation_form) == slug))
 }
 
 // A tuple that must be refused, with the refusal the carrier must name.
@@ -166,7 +136,7 @@ type MispairedProbe {
 // a per-step allocation of the accumulator, a copy of the unchanged context).
 
 fn block(b: String, f: BuildingBlockFamily, p: OwnershipPattern, c: CarrierRealization, s: ControlShape,
-         k: ConsumerContract, bs: InputSizeBasis, obs: String, viol: String) -> BuildingBlockContract {
+         k: ConsumerContract, bs: InputSizeBasis, form: ViolatingForm) -> BuildingBlockContract {
   BuildingBlockContract {
     block: b,
     family: f,
@@ -177,77 +147,62 @@ fn block(b: String, f: BuildingBlockFamily, p: OwnershipPattern, c: CarrierReali
       consumer_contract: k,
       input_size_basis: bs
     },
-    observation: obs,
-    violation: viol
+    violation_form: form
   }
 }
 
 fn building_block_contracts() -> List<BuildingBlockContract> {
   [
     // ── T1 value shapes ─────────────────────────────────────────────────────────────────────
-    block("value_scalar", ValueShapes, ConsumedOnce, CopyScalarControl, StraightLine, ConsumesByValue,
-      ScalarUnitBasis,
-      "read a scalar across one window",
-      "materialize an owned carrier to read the scalar (an owning retain added to the observation)"),
-    block("value_record", ValueShapes, FieldExtractThenReuseEnclosing, NestedCheapDeepRecordCarrier,
-      StraightLine, BorrowsByRef, SizedCardinalityBasis,
-      "read one field while the enclosing record stays live",
-      "rebuild the whole record to read one field (a copy of the unchanged context)"),
-    block("value_nonrecursive_variant", ValueShapes, ConsumedOnce, SharedRecordCarrier, StraightLine,
-      ConsumesByValue, SizedCardinalityBasis,
-      "build a nonrecursive variant and consume it once",
-      "retain the variant after consuming it (an owning retain added to the observation)"),
-    block("generic_over_scalar", ValueShapes, ConsumedOnce, CopyScalarControl, StraightLine, ConsumesByValue,
-      ScalarUnitBasis,
-      "one generic instance over a scalar, read across one window",
-      "materialize a carrier per instantiation instead of passing the scalar"),
-    block("generic_over_payload", ValueShapes, ByValueThenReused, NestedCheapDeepRecordCarrier, StraightLine,
-      ConsumesByValue, SizedCardinalityBasis,
-      "pass a nontrivial payload through one instance and reuse it",
-      "let the instance boundary clone the payload"),
+        // observation: read a scalar across one window
+    // violation: materialize an owned carrier to read the scalar (an owning retain added to the observation)
+    block("value_scalar", ValueShapes, ConsumedOnce, CopyScalarControl, StraightLine, ConsumesByValue, ScalarUnitBasis, OwningRetainAddedToObservation),
+        // observation: read one field while the enclosing record stays live
+    // violation: rebuild the whole record to read one field (a copy of the unchanged context)
+    block("value_record", ValueShapes, FieldExtractThenReuseEnclosing, NestedCheapDeepRecordCarrier, StraightLine, BorrowsByRef, SizedCardinalityBasis, CopyOfUnchangedContext),
+        // observation: build a nonrecursive variant and consume it once
+    // violation: retain the variant after consuming it (an owning retain added to the observation)
+    block("value_nonrecursive_variant", ValueShapes, ConsumedOnce, SharedRecordCarrier, StraightLine, ConsumesByValue, SizedCardinalityBasis, CopyOfUnchangedContext),
+        // observation: one generic instance over a scalar, read across one window
+    // violation: materialize a carrier per instantiation instead of passing the scalar
+    block("generic_over_scalar", ValueShapes, ConsumedOnce, CopyScalarControl, StraightLine, ConsumesByValue, ScalarUnitBasis, PerStepAllocation),
+        // observation: pass a nontrivial payload through one instance and reuse it
+    // violation: let the instance boundary clone the payload
+    block("generic_over_payload", ValueShapes, ByValueThenReused, NestedCheapDeepRecordCarrier, StraightLine, ConsumesByValue, SizedCardinalityBasis, OwningRetainAddedToObservation),
 
     // ── T2 control flow ─────────────────────────────────────────────────────────────────────
-    block("transform", ControlFlow, ConsumedOnce, OwnedStringCarrier, StraightLine, ConsumesByValue,
-      SizedCardinalityBasis,
-      "one transform step over the declared cardinality",
-      "allocate a fresh intermediate per step"),
-    block("branch", ControlFlow, BranchExclusive, CopyScalarControl, IfSplit, BorrowsByRef, ScalarUnitBasis,
-      "take one arm of an if split",
-      "copy the unchanged context into both arms (a copy of the unchanged context)"),
-    block("bind", ControlFlow, BorrowedReadOnly, CopyScalarControl, StraightLine, BorrowsByRef,
-      ScalarUnitBasis,
-      "bind a value and use it once",
-      "materialize at the binding site rather than at the use"),
-    block("match_owned_temporary", ControlFlow, BranchExclusive, OwnedStringCarrier, MatchBinding,
-      ConsumesByValue, SizedCardinalityBasis,
-      "match an owned temporary and consume it in the arm",
-      "retain the temporary after the match (an owning retain added to the observation)"),
-    block("match_borrowed_shared_sum", ControlFlow, ReuseAcrossJoin, SharedRecordCarrier, MatchBinding,
-      BorrowsByRef, SizedCardinalityBasis,
-      "match through a shared borrow of a sum the match does not consume",
-      "clone the shared sum in order to match it (an owning retain added to the observation)"),
+        // observation: one transform step over the declared cardinality
+    // violation: allocate a fresh intermediate per step
+    block("transform", ControlFlow, ConsumedOnce, OwnedStringCarrier, StraightLine, ConsumesByValue, SizedCardinalityBasis, PerStepAllocation),
+        // observation: take one arm of an if split
+    // violation: copy the unchanged context into both arms (a copy of the unchanged context)
+    block("branch", ControlFlow, BranchExclusive, CopyScalarControl, IfSplit, BorrowsByRef, ScalarUnitBasis, CopyOfUnchangedContext),
+        // observation: bind a value and use it once
+    // violation: materialize at the binding site rather than at the use
+    block("bind", ControlFlow, BorrowedReadOnly, CopyScalarControl, StraightLine, BorrowsByRef, ScalarUnitBasis, PerStepAllocation),
+        // observation: match an owned temporary and consume it in the arm
+    // violation: retain the temporary after the match (an owning retain added to the observation)
+    block("match_owned_temporary", ControlFlow, BranchExclusive, OwnedStringCarrier, MatchBinding, ConsumesByValue, SizedCardinalityBasis, OwningRetainAddedToObservation),
+        // observation: match through a shared borrow of a sum the match does not consume
+    // violation: clone the shared sum in order to match it (an owning retain added to the observation)
+    block("match_borrowed_shared_sum", ControlFlow, ReuseAcrossJoin, SharedRecordCarrier, MatchBinding, BorrowsByRef, SizedCardinalityBasis, OwningRetainAddedToObservation),
 
     // ── T3 accumulator and closures ─────────────────────────────────────────────────────────
-    block("loop_record_accumulator", Accumulator, LoopCarriedAccumulator, NestedCheapDeepRecordCarrier,
-      LoopRecursion, ConsumesByValue, SizedCardinalityBasis,
-      "carry one record accumulator, changing one field per step",
-      "allocate a new accumulator per step (a per-step allocation of the accumulator)"),
-    block("field_read", Accumulator, FieldExtractThenReuseEnclosing, SharedRecordCarrier, StraightLine,
-      BorrowsByRef, SizedCardinalityBasis,
-      "read a field through the share",
-      "clone the enclosing record at the read"),
-    block("record_rebuild_one_field", Accumulator, AliasThenMutate, NestedCheapDeepRecordCarrier,
-      StraightLine, ConsumesByValue, SizedCardinalityBasis,
-      "produce an updated record sharing the untouched fields",
-      "rebuild by copying every field (a copy of the unchanged context)"),
-    block("local_closure", Accumulator, BorrowIntoClosure, CopyScalarControl, StraightLine, BorrowsByRef,
-      ScalarUnitBasis,
-      "call a non-escaping closure over a scalar",
-      "capture by clone rather than by borrow"),
-    block("escaping_closure", Accumulator, MoveIntoClosure, SharedRecordCarrier, StraightLine,
-      ConsumesByValue, SizedCardinalityBasis,
-      "move a captured context out and call it later",
-      "clone the captured context per call"),
+        // observation: carry one record accumulator, changing one field per step
+    // violation: allocate a new accumulator per step (a per-step allocation of the accumulator)
+    block("loop_record_accumulator", Accumulator, LoopCarriedAccumulator, NestedCheapDeepRecordCarrier, LoopRecursion, ConsumesByValue, SizedCardinalityBasis, PerStepAllocation),
+        // observation: read a field through the share
+    // violation: clone the enclosing record at the read
+    block("field_read", Accumulator, FieldExtractThenReuseEnclosing, SharedRecordCarrier, StraightLine, BorrowsByRef, SizedCardinalityBasis, CopyOfUnchangedContext),
+        // observation: produce an updated record sharing the untouched fields
+    // violation: rebuild by copying every field (a copy of the unchanged context)
+    block("record_rebuild_one_field", Accumulator, AliasThenMutate, NestedCheapDeepRecordCarrier, StraightLine, ConsumesByValue, SizedCardinalityBasis, CopyOfUnchangedContext),
+        // observation: call a non-escaping closure over a scalar
+    // violation: capture by clone rather than by borrow
+    block("local_closure", Accumulator, BorrowIntoClosure, CopyScalarControl, StraightLine, BorrowsByRef, ScalarUnitBasis, OwningRetainAddedToObservation),
+        // observation: move a captured context out and call it later
+    // violation: clone the captured context per call
+    block("escaping_closure", Accumulator, MoveIntoClosure, SharedRecordCarrier, StraightLine, ConsumesByValue, SizedCardinalityBasis, OwningRetainAddedToObservation),
 
     // ── T4 carriers, run against the stand-ins that exist ───────────────────────────────────
     // The two persistent members are run as what the production emitter can actually build for them
@@ -257,38 +212,30 @@ fn building_block_contracts() -> List<BuildingBlockContract> {
     // `fn carrier_realized` calls these two realized while `fn carrier_is_record` says neither is a record,
     // and the stand-ins share on clone through a reference count and copy on update. A specimen that goes
     // red here is the row succeeding, not a failing worker.
-    block("sequence_build", Carriers, ConsumedOnce, PersistentSequenceCarrier, StraightLine, ConsumesByValue,
-      SizedCardinalityBasis,
-      "build a sequence once at the declared cardinality",
-      "rebuild the sequence per element rather than once"),
-    block("element_read", Carriers, BorrowedReadOnly, PersistentSequenceCarrier, StraightLine, BorrowsByRef,
-      SizedCardinalityBasis,
-      "read one element by index",
-      "materialize the whole sequence to read one element"),
-    block("sequential_traversal", Carriers, LoopCarriedAccumulator, PersistentSequenceCarrier, LoopRecursion,
-      ConsumesByValue, SizedCardinalityBasis,
-      "traverse once, threading a counter accumulator",
-      "allocate a new accumulator per step (a per-step allocation of the accumulator)"),
-    block("persistent_sequence_carrier_snapshot", Carriers, ReuseAcrossJoin, PersistentSequenceCarrier,
-      IfSplit, BorrowsByRef, SizedCardinalityBasis,
-      "construct uniquely, keep a snapshot, read both",
-      "retain an owning copy of the snapshot (an owning retain added to the observation)"),
-    block("index_build", Carriers, ConsumedOnce, PersistentMapCarrier, StraightLine, ConsumesByValue,
-      SizedCardinalityBasis,
-      "build an index once at the declared cardinality",
-      "rebuild the index per key rather than once"),
-    block("index_lookup", Carriers, BorrowedReadOnly, PersistentMapCarrier, StraightLine, BorrowsByRef,
-      SizedCardinalityBasis,
-      "look one key up",
-      "materialize the whole index to look one key up"),
-    block("index_traversal", Carriers, LoopCarriedAccumulator, PersistentMapCarrier, LoopRecursion,
-      ConsumesByValue, SizedCardinalityBasis,
-      "traverse the index once, threading a counter accumulator",
-      "allocate a new accumulator per step (a per-step allocation of the accumulator)"),
-    block("persistent_map_carrier_snapshot", Carriers, ReuseAcrossJoin, PersistentMapCarrier, IfSplit,
-      BorrowsByRef, SizedCardinalityBasis,
-      "construct uniquely, keep a snapshot, read both",
-      "retain an owning copy of the snapshot (an owning retain added to the observation)")
+        // observation: build a sequence once at the declared cardinality
+    // violation: rebuild the sequence per element rather than once
+    block("sequence_build", Carriers, ConsumedOnce, PersistentSequenceCarrier, StraightLine, ConsumesByValue, SizedCardinalityBasis, PerStepAllocation),
+        // observation: read one element by index
+    // violation: materialize the whole sequence to read one element
+    block("element_read", Carriers, BorrowedReadOnly, PersistentSequenceCarrier, StraightLine, BorrowsByRef, SizedCardinalityBasis, OwningRetainAddedToObservation),
+        // observation: traverse once, threading a counter accumulator
+    // violation: allocate a new accumulator per step (a per-step allocation of the accumulator)
+    block("sequential_traversal", Carriers, LoopCarriedAccumulator, PersistentSequenceCarrier, LoopRecursion, ConsumesByValue, SizedCardinalityBasis, PerStepAllocation),
+        // observation: construct uniquely, keep a snapshot, read both
+    // violation: retain an owning copy of the snapshot (an owning retain added to the observation)
+    block("persistent_sequence_carrier_snapshot", Carriers, ReuseAcrossJoin, PersistentSequenceCarrier, IfSplit, BorrowsByRef, SizedCardinalityBasis, CopyOfUnchangedContext),
+        // observation: build an index once at the declared cardinality
+    // violation: rebuild the index per key rather than once
+    block("index_build", Carriers, ConsumedOnce, PersistentMapCarrier, StraightLine, ConsumesByValue, SizedCardinalityBasis, PerStepAllocation),
+        // observation: look one key up
+    // violation: materialize the whole index to look one key up
+    block("index_lookup", Carriers, BorrowedReadOnly, PersistentMapCarrier, StraightLine, BorrowsByRef, SizedCardinalityBasis, OwningRetainAddedToObservation),
+        // observation: traverse the index once, threading a counter accumulator
+    // violation: allocate a new accumulator per step (a per-step allocation of the accumulator)
+    block("index_traversal", Carriers, LoopCarriedAccumulator, PersistentMapCarrier, LoopRecursion, ConsumesByValue, SizedCardinalityBasis, PerStepAllocation),
+        // observation: construct uniquely, keep a snapshot, read both
+    // violation: retain an owning copy of the snapshot (an owning retain added to the observation)
+    block("persistent_map_carrier_snapshot", Carriers, ReuseAcrossJoin, PersistentMapCarrier, IfSplit, BorrowsByRef, SizedCardinalityBasis, CopyOfUnchangedContext)
   ]
 }
 
@@ -317,8 +264,7 @@ fn case_in_applicable_roster(c: EmitCopyQualificationCaseId) -> Bool {
 fn contract_line(b: BuildingBlockContract) -> String {
   let head = concat(concat(concat("contract ", b.block), " family=", family_slug(f: b.family)),
     concat(concat(" case=", case_slug(id: b.case_id)), concat(" verdict=", contract_verdict(c: b.case_id))))
-  concat(concat(head, " violation_form=", violating_form_slug(f: declared_violation_form(id: b.block))),
-    concat(" observation_note=", b.observation), concat(" violation_note=", b.violation))
+  concat(head, concat(" violation_form=", violating_form_slug(f: b.violation_form)))
 }
 
 fn roster_membership_line(b: BuildingBlockContract) -> String {
