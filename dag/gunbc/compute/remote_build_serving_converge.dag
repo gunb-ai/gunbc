@@ -1572,6 +1572,19 @@ fn converge_gunbc_door_argv(d: RemoteBuildServingDesired, function: String, argu
   }
 }
 
+// WHAT CEILING A RUNNING OF A RECOVERY DOOR ON THE HOST GETS, decided once for all three doors.
+// A door is a gunbc CLI run: its wall-clock begins with the host engine's cold entry resolution —
+// hundreds of closure files before a single seat is read — nothing like the one-shot commands
+// ActuationLeg's 60s ceiling was written for. The serve route met this same seam and classified its
+// host-side gunbc request leg as ProvisioningLeg (gunbc.compute.remote_build_client); the recovery
+// doors ride the SAME kind, declared here once so no leg restates a ceiling. Measured necessity:
+// converge apply 45354782930 killed the seat census at the 60s actuation ceiling "before the host
+// could answer" while the door was still resolving its entry — an overrun that proved nothing about
+// any seat, folded (correctly, by the fold's own rule) into an unknown census that refused the plan.
+fn serving_door_leg_kind() -> FleetLegKind {
+  ProvisioningLeg
+}
+
 // The as-account run that KEEPS the exit code. converge_as_user collapses a non-zero run into a
 // failed step, erasing the three-way answer; the recovery doors' verdict lives IN the code and must
 // arrive whole at recover_door_verdict.
@@ -1626,8 +1639,8 @@ fn serving_leg_seat_census(elevation: ObservationAttempt<Bool, ServingLegFailure
       ) {
         Absent => RecoverCatalogLegUnknown { detail: "the census run's named arguments could not be admitted" }
         Present { value: argv } => {
-          // the seat census is a gunbc CLI run under the same door grammar as its siblings: ActuationLeg.
-          let outcome = converge_as_user_outcome(kind: ActuationLeg, target: target, context: context, account: d.account_name, argv: argv)
+          // the seat census is a gunbc CLI run under the same door grammar and door ceiling as its siblings.
+          let outcome = converge_as_user_outcome(kind: serving_door_leg_kind(), target: target, context: context, account: d.account_name, argv: argv)
           match outcome {
             TypedArgvExecRefused { reason: r } => RecoverCatalogLegUnknown { detail: join(["the census run was refused before it executed: ", r], "") }
             // an overran census leg says nothing about the seat: unknown census, never a settled read.
@@ -1670,7 +1683,7 @@ fn converge_recover_stale_seat(target: SshTarget, context: FleetSshExecutionCont
         ], runtime_dir: runtime_dir) {
           Absent => StepFailed { cause: join(["the recovery run's named arguments for ", reference as String, " could not be admitted"], "") }
           Present { value: argv } => {
-            let door = converge_as_user_outcome(kind: ActuationLeg, target: target, context: context, account: d.account_name, argv: argv)
+            let door = converge_as_user_outcome(kind: serving_door_leg_kind(), target: target, context: context, account: d.account_name, argv: argv)
             match door {
               TypedArgvExecRefused { reason: r } => StepFailed { cause: join(["the recovery run was refused before it executed: ", r], "") }
               // an overran recovery write is never a settled write: the step fails, the next assessment re-decides.
@@ -1703,7 +1716,7 @@ fn converge_recover_readbacks(target: SshTarget, context: FleetSshExecutionConte
     Present { value: argv } => {
       // the read-back is a gunbc CLI run on the host, so it carries the same declared ceiling as
       // the census and the door, not the 15s probe ceiling the file's plain reads use.
-      let outcome = converge_as_user_outcome(kind: ActuationLeg, target: target, context: context, account: d.account_name, argv: argv)
+      let outcome = converge_as_user_outcome(kind: serving_door_leg_kind(), target: target, context: context, account: d.account_name, argv: argv)
       match outcome {
         TypedArgvExecRefused { reason: r } => StepFailed { cause: join(["the read-back run was refused before it executed: ", r], "") }
         // an overran read-back cannot confirm or deny the seat: fail the step, never claim done.

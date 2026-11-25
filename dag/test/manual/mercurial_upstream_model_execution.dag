@@ -3,7 +3,7 @@ module test.manual.mercurial_upstream_model_execution
 import std.algebra { trim }
 
 import extdeps.shell
-import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.gunbc
 import gunbc.output_policy { ExpectSuccess }
 import extdeps.mercurial {

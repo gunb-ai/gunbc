@@ -78,13 +78,10 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import gunbc.fleet.gpu_interconnect_observation { srv1_collective_read_executed_2026_11_09, srv1_collective_read_measurement_duration, srv1_collective_read_window_duration }
 import extdeps.units.iso8601_calendar { Iso8601UtcInstant, iso8601_utc_instant, iso8601_utc_instant_seconds_between }
 import gunbc.retained_shell_script { RetainedShellScript }
-import gunbc.serving.rented_replica { RentedReplicaIdentity }
-import gunbc.serving.serving_enrollment { ServingRoute, CeilingByDeclaredPolicy, serving_replica_route }
 import gunbc.serving.serving_host_memory {
   ConversationSnapshotCost, conversation_snapshot_bytes, srv1_lmcache_l1_configured,
   srv1_lmcache_l2_configured, srv1_replica_container_memory_cap, srv1_vllm_disk_snapshot_cost,
 }
-import extdeps.network.ipv4 { Ipv4Address, ipv4_address, render_ipv4_address }
 import gunbc.serving.lil_serving_defects { LilServingDefect, srv1_f24_b12x_tp2_hang_defect, srv1_f25_nvfp4_kv_defect, srv1_f26a_lmcache_replica_crash_defect }
 import extdeps.container.nvidia_container_toolkit { nvidia_cdi_device_selector_of }
 import gunbc.serving.serving_replica_profile {
@@ -464,37 +461,13 @@ data srv1_replica_boot_path_guard: FrontierRow = frontier_row_decl(
 )
 
 // ── the router's view: one endpoint per replica ─────────────────────────────────────────────────────
-
-// The loopback address both replicas bind (srv1 and the router share the host network stack).
-data srv1_serving_replica_listen_address: Ipv4Address = ipv4_address(octet1: 127, octet2: 0, octet3: 0, octet4: 1)
-
-// A route for one replica: the router connects over https to 127.0.0.1:<host_port> with TLS name
-// pool-card, and admits up to the declared per-replica ceiling. The engine always binds 18000 inside the
-// container; Docker maps host_port:18000. The router connects on the HOST port.
-fn srv1_replica_route(replica: Srv1ServingReplicaSpec) -> ServingRoute {
-  serving_replica_route(
-    replica: RentedReplicaIdentity {
-      node: "srv1" as NonEmptyStr,
-      device_index: replica.index,
-      served_name: replica.label,
-    },
-    address: render_ipv4_address(addr: srv1_serving_replica_listen_address),
-    port: replica.host_port,
-    ceiling: CeilingByDeclaredPolicy {
-      count: 4,
-      decider: "operator" as NonEmptyStr,
-      decided_on: "2026-11-08" as NonEmptyStr,
-      basis: "two-replica layout (2026-11-08): per-replica cap 4; aggregate capacity restored to the old single-container cap of 4 per card; confirmed on the live router" as NonEmptyStr,
-    },
-  )
-}
-
-// The per-replica route list. gunbc.serving.router_dev_policy should import this in place of its
-// hard-coded srv1 rows once the parent's #16104 router row lands.
-data srv1_serving_replica_routes: List<ServingRoute> = [
-  srv1_replica_route(replica: srv1_replica_0),
-  srv1_replica_route(replica: srv1_replica_1),
-]
+//
+// THERE IS NO SECOND CEILING HERE. This module once declared srv1_serving_replica_routes, a route per replica
+// with a hand-written CeilingByDeclaredPolicy of 4. Nothing consumed it, and the cap it restated already has an
+// authority: gunbc.serving.router_dev_policy renders each replica's cap from its own profile row
+// (gunbc.serving.serving_replica_profile), whose turns are the concurrency the srv1 topology run measured per
+// card at the policy's least stream rate (gunbc.serving.serving_capacity_anchor serving_capacity_shape). A cap
+// changes by a new reading on that row, not by editing a literal here.
 
 // ── per-replica host memory budget (C14, addendum item 3) ───────────────────────────────────────────
 //

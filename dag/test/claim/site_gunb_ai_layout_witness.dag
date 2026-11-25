@@ -3,7 +3,7 @@ module test.claim.site_gunb_ai_layout_witness
 import std.types { Bool, Int, List, String }
 import std.algebra { string_contains, collection_concat_shape, collection_map_shape, collection_join_shape, list_push }
 import std.optional { Optional, Absent, Present }
-import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.shell
 import gunbc.design.material { CssDecl, BuildRule, StaticRule, MediaRule, AmbientRule, ResponseRule, decl, serialize_rules, css_block }
 import extdeps.languages.css.properties { GridTemplateColumns }

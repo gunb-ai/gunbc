@@ -855,9 +855,8 @@ data serving_replica_roster: List<ServingReplicaProfile> =
 // answers with. A joined deployment carries its own name (the join names replicas as they come up), so the
 // wrappers pass that name; every other figure on the shape comes from the row.
 
-fn srv1_vllm_replica_shape(deployment: String) -> ServingCapacityShape {
-  replica_shape_named(p: srv1_vllm_replica_0_profile, deployment: deployment)
-}
+// (srv1_vllm_replica_shape is GONE: it read replica 0's profile for BOTH srv1 rows, so a reading taken on
+// the Workstation board could never reach its own row. The router asks replica_shape_named of each row.)
 
 // The anchors the witness inspects directly (their warm ladders, their grants). A row answers with its
 // anchor; these are those answers, named as they were when they stood in serving_capacity_anchor.
