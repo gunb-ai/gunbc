@@ -5,14 +5,25 @@ import std.optional { Present, Absent }
 import product.host_identity { HostIdentity }
 import extdeps.clock { ClockUnixMillisObserved, ClockUnixMillisRefused }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }
-import gunbc.fleet.fleet_known_hosts_anchor { SshTargetResolved, SshTargetRefused, ssh_target_wire, anchored_host_key_row }
+import gunbc.fleet.fleet_known_hosts_anchor {
+  SshTargetResolved, SshTargetRefused, ssh_target_wire, anchored_host_key_row,
+  FleetLegKind, FleetRemoteLeg, FleetBareWordLeg, ProbeLeg, portable_remote_words,
+  fleet_leg_wall_deadline, fleet_remote_leg_wall_deadline,
+  serving_probe_cold_answer_read, fleet_whole_receipt_step_bound,
+}
+import extdeps.ssh.session {
+  ssh_session_exec_outcome, ssh_session_exec_result_from_service,
+  SessionCompleted, SessionOverran, SessionWireInconsistent,
+}
+import std.nat { nat_to_decimal_string }
+
 import extdeps.ssh.known_hosts { known_hosts_host_field }
-import std.measure { second }
+import std.measure { second, second_count, measure_le }
 import std.algebra { string_contains }
 import gunbc.compute.remote_build {
   RemoteBuildSourceRef, remote_build_source_ref_name, RemoteCompileEntry,
   HostServed, HostWorkFailed, HostCapacityFull, RemoteBuildAnswered, RemoteBuildNoHostAvailable, RemoteBuildAttempt,
-  HostLegOverran, remote_build_answer_moves_on,
+  HostLegOverran, HostOutcomeUnknown, remote_build_answer_moves_on,
   RemoteBuildHostPin, PinRostered, PinOffRoster, remote_build_host_pin, remote_build_pinned_candidates, remote_build_pin_refusal,
 }
 import gunbc.compute.remote_build_hosts {
@@ -24,6 +35,7 @@ import gunbc.compute.test_run {
 import gunbc.compute.remote_build_client {
   remote_build_answer_word, remote_build_answer_text, remote_gate_step_outcome,
   GateNoHostAdmitted, GateVerdictOnCode,
+  remote_build_probe_leg_kind, remote_build_work_leg_kind, remote_build_work_leg_overrun_detail,
   remote_build_client_source_ref, remote_build_client_push_argv, remote_build_client_delete_argv,
   remote_build_client_target, remote_build_step_served, remote_build_run_served, remote_build_run_clean,
   RemoteBuildRun, RemoteBuildRan, RemoteBuildNotSent, RemoteBuildRequestResult, RemoteBuildRefDeleted,
@@ -289,4 +301,139 @@ test fn the_snapshot_commit_argv_carries_its_identity_not_the_box_s() -> Bool {
       "commit-tree", "TREE", "-p", "HEAD", "-m", "msg",
     ]
   && compute_snapshot_author_email == "snapshot@compute.gunbc.invalid"
+}
+
+// ── THE DISPATCH LEG'S WALL-CLOCK CEILING ───────────────────────────────────────────────────────────
+//
+// THE CLASS THIS IS FOR, REPRODUCED 2026-11-25 (quiet-pike-440, three runs: 46 m, 1 h, 3 h of silence,
+// no receipt, no HostComputeCapacityFull). The client resolved its closure and then sat inside
+// ssh.Session.ExecPortableWords. That leg carries no ceiling at the deployed client pin: ConnectTimeout
+// bounds only the TCP connect and ServerAliveInterval x ServerAliveCountMax (60 s) bounds only a path that
+// goes DARK, and sshd answers keepalives itself -- so a remote command that is merely SILENT is never cut,
+// and there is no ssh keyword for a session's total wall time. The ceiling is armed by the runtime, at the
+// transport's declaration, from the ceiling the CALLER passes; a wait with no deadline is the defect, not a
+// configuration choice. These claims hold that the remote-build route PASSES one, that it is sized by this
+// route's own read rather than by a fleet-converge leg's, and that overrunning it refuses typed.
+//
+// Every claim here is hermetic: the ceiling authority, the wire decode and the answer routing are all pure
+// readings, so no claim goes red because a host is down, and none can pass because a host happened to answer.
+
+// A leg of THIS route, at the route's own kind, with the fleet authority's ceiling read back off it.
+fn w_route_leg(kind: FleetLegKind) -> FleetRemoteLeg? {
+  match remote_build_client_target(host: "srv1" as HostIdentity) {
+    SshTargetResolved { target } =>
+      match portable_remote_words(raws: ["true"]) {
+        Present { value: w } => Present { value: FleetBareWordLeg { target: target, words: w, kind: kind } }
+        Absent => Absent
+      }
+    SshTargetRefused { endpoint: _, refusal: _ } => Absent
+  }
+}
+
+// THE DISPATCH LEG CARRIES A WALL-CLOCK DEADLINE, and the ceiling it carries is the one the authority
+// gives its declared kind -- not a caller's guess, and never Absent. The work leg's ceiling sits above the
+// probe's because its far side builds the pushed revision before it answers.
+test fn a_remote_build_dispatch_leg_arms_a_ceiling_at_the_one_authority() -> Bool {
+  let probe_ceiling = fleet_leg_wall_deadline(kind: remote_build_probe_leg_kind())
+  let work_ceiling = fleet_leg_wall_deadline(kind: remote_build_work_leg_kind())
+  second_count(s: probe_ceiling) > 0
+    && match w_route_leg(kind: remote_build_work_leg_kind()) {
+      Absent => false
+      Present { value: leg } => match fleet_remote_leg_wall_deadline(leg: leg) {
+        Absent => false
+        Present { value: armed } =>
+          second_count(s: armed) == second_count(s: work_ceiling)
+            && second_count(s: work_ceiling) > second_count(s: probe_ceiling)
+      }
+    }
+}
+
+// RED CONTROL -- THE PROBE IS NOT SIZED BY A FLEET-CONVERGE PROBE. ProbeLeg's ceiling comes from a 0.26 s
+// `git rev-parse HEAD` read; the far side of a remote-build probe cannot answer at all until the serving
+// interpreter has resolved its own closure, read at 240 s wall on srv1 (resolve_entry_graph_inclusive
+// ms=248554, 895 modules, max_rss 3.7 GiB) -- the same 4 minutes the client log watched with no ceiling
+// armed. So the measured cold answer must sit AT OR UNDER this route's probe ceiling and STRICTLY ABOVE
+// ProbeLeg's: re-pointing the route at ProbeLeg turns every roster host into probe-leg-overran, which is
+// fail-closed and serves nothing, and this claim goes red the moment that re-point happens.
+test fn red_the_remote_build_probe_leg_is_not_sized_by_a_fleet_converge_probe() -> Bool {
+  let cold_read = second_count(s: serving_probe_cold_answer_read)
+  let route_ceiling = second_count(s: fleet_leg_wall_deadline(kind: remote_build_probe_leg_kind()))
+  let fleet_probe_ceiling = second_count(s: fleet_leg_wall_deadline(kind: ProbeLeg))
+  fleet_probe_ceiling < cold_read && cold_read <= route_ceiling
+}
+
+// RED CONTROL -- A CEILING THAT IS ZERO, OR THAT RUNS THE WHOLE RECEIPT, IS NOT A DEADLINE. The outer
+// bound is the receipt's own step bound (the incident's backstop), so a leg allowed to use all of it
+// re-creates the no-receipt failure inside a number. Both ceilings are DERIVED (from the cold read and
+// from that bound), so the relations -- not the numbers -- are what hold: non-zero, clearing the measured
+// read, and strictly inside the bound.
+test fn red_no_remote_build_leg_is_allowed_to_run_the_whole_receipt() -> Bool {
+  let bound = fleet_whole_receipt_step_bound
+  let probe = fleet_leg_wall_deadline(kind: remote_build_probe_leg_kind())
+  let work = fleet_leg_wall_deadline(kind: remote_build_work_leg_kind())
+  second_count(s: probe) > 0 && second_count(s: work) > 0
+    && measure_le(a: probe, b: bound) && measure_le(a: work, b: bound)
+    && measure_le(a: serving_probe_cold_answer_read, b: probe)
+    && !measure_le(a: work, b: probe)
+}
+
+// AN OVERRUN IS A VALUE THAT CARRIES THE CEILING IT TRIPPED ON. The sink sets overran ONLY when its own
+// kill fired, so the decode -- one site, extdeps.ssh.session ssh_session_exec_outcome -- turns the wire
+// into SessionOverran{deadline}, and the route answers with a capacity fact that moves the walk on: a
+// probe sends no work, so the next candidate is still safe to try.
+test fn an_overran_probe_leg_decodes_to_its_ceiling_and_moves_the_walk_on() -> Bool {
+  let ceiling = fleet_leg_wall_deadline(kind: remote_build_probe_leg_kind())
+  let outcome = ssh_session_exec_outcome(
+    result: ssh_session_exec_result_from_service(
+      exit_code: 255, success: false, stdout: "", stderr: "",
+      overran: true, wall_deadline_seconds: Present { value: ceiling },
+    ),
+  )
+  match outcome {
+    SessionOverran { deadline: d } =>
+      second_count(s: d) == second_count(s: ceiling)
+        && remote_build_answer_moves_on(a: HostLegOverran { deadline: d })
+        && string_contains(
+          s: remote_build_answer_text(a: HostLegOverran { deadline: d }),
+          pattern: join([nat_to_decimal_string(value: second_count(s: d)), "s wall-clock deadline"], ""),
+        )
+    SessionCompleted { exit_code: _, success: _, stdout: _, stderr: _ } => false
+    SessionWireInconsistent { fault: _ } => false
+  }
+}
+
+// RED CONTROL -- AN OVERRUN THAT ECHOES NO CEILING IS REFUSED, NEVER COMPLETED. A sink that killed the
+// group but lost the deadline would otherwise hand the consumer an overrun it cannot report, and the
+// route's older shape turned a killed leg into "the host answered 255" (review 96994). There is no arm
+// here that reads an exit code out of a killed leg.
+test fn red_an_overrun_that_echoes_no_ceiling_is_never_routed_as_an_answer() -> Bool {
+  let outcome = ssh_session_exec_outcome(
+    result: ssh_session_exec_result_from_service(
+      exit_code: 255, success: false, stdout: "", stderr: "",
+      overran: true, wall_deadline_seconds: Absent,
+    ),
+  )
+  match outcome {
+    SessionWireInconsistent { fault: _ } => true
+    SessionCompleted { exit_code: _, success: _, stdout: _, stderr: _ } => false
+    SessionOverran { deadline: _ } => false
+  }
+}
+
+// RED CONTROL -- AN OVERRUN ON THE WORK LEG REFUSES TYPED AND STOPS THE WALK. Unlike the probe, this leg
+// SENT work: a second host would be a second producer of one identity, so the refusal is final, names the
+// ceiling the authority armed, and is never routed as a verdict on the code (a commit is not failed over a
+// wall clock).
+test fn red_an_overran_work_leg_refuses_typed_and_stops_the_walk() -> Bool {
+  let ceiling = fleet_leg_wall_deadline(kind: remote_build_work_leg_kind())
+  let answer = HostOutcomeUnknown { detail: remote_build_work_leg_overrun_detail(deadline: ceiling) }
+  let step = RemoteBuildAnswered { host: "srv3" as HostIdentity, answer: answer }
+  remote_build_answer_word(a: answer) == "outcome-unknown"
+    && !remote_build_answer_moves_on(a: answer)
+    && string_contains(
+      s: remote_build_answer_text(a: answer),
+      pattern: join([nat_to_decimal_string(value: second_count(s: ceiling)), "s wall-clock deadline"], ""),
+    )
+    && string_contains(s: remote_build_answer_text(a: answer), pattern: "walk stops")
+    && !match remote_gate_step_outcome(s: step) { GateVerdictOnCode => true  _ => false }
 }
