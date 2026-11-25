@@ -1115,9 +1115,9 @@ fn fleet_converge_apply_wet() -> ProcessExit
       exit_failure(reason: join(["fleet_converge_apply: RunUnbound — ", v, " ", d, "; the apply mode mints a run-bound receipt and runs only inside the fleet-converge workflow"], ""))
     ActionsRunBound { binding: run } =>
       match admit_apply_revision_at_plan_wet(binding: run) {
-        RunRevisionRefused { expected: e, observed: o } =>
-          exit_failure(reason: join(["fleet_converge_apply: RunRevisionRefused — expected ", e, " but this run checked out ", o, "; refusing before the locked actuator"], ""))
-        RunRevisionAdmitted { revision: admitted_r } =>
+        ApplyRevisionRefused { expected: e, observed: o, descending_cause: c } =>
+          exit_failure(reason: apply_revision_refusal_text(expected: e, observed: o, descending_cause: c))
+        ApplyRevisionAdmitted { revision: admitted_r } =>
       match actions_variable_read(name: fleet_converge_plan_run_id_env_name) {
         ActionsVariableAbsent { variable: v, detail: d } =>
           exit_failure(reason: join(["fleet_converge_apply: PlanRunIdAbsent — ", v, " ", d], ""))
@@ -1848,15 +1848,48 @@ fn fleet_converge_workspace_allocation_plan_wet() -> ProcessExit {
 // never widens. The closure is the one the plan recorded under fleet-converge-plan-receipt/v2, whose
 // identity covers those bytes; the attribution is re-verified against the entry derived from the
 // plan CI target through gunbc.source_layout, so a receipt attributed elsewhere cannot admit.
-fn admit_apply_revision_at_plan_wet(binding: ActionsRunBinding) -> RunRevisionAdmission {
+fn admit_apply_revision_at_plan_wet(binding: ActionsRunBinding) -> ApplyRevisionDecision {
   match admit_optional_expected_revision(binding: binding) {
-    RunRevisionAdmitted { revision: r } => RunRevisionAdmitted { revision: r }
+    RunRevisionAdmitted { revision: r } => ApplyRevisionAdmitted { revision: r }
     RunRevisionRefused { expected: e, observed: o } =>
       match descending_plan_reuse_proven(dispatch_tip: e, plan_revision: o) {
-        DescendingReuseProven => RunRevisionAdmitted { revision: o }
-        DescendingReuseNotProven { reason: _ } => RunRevisionRefused { expected: e, observed: o }
+        DescendingReuseProven => ApplyRevisionAdmitted { revision: o }
+        DescendingReuseNotProven { reason: r } =>
+          ApplyRevisionRefused { expected: e, observed: o, descending_cause: Present { value: r } }
       }
   }
+}
+
+// THE VERDICT OF THAT CROSS-CHECK, one level richer than the shared RunRevisionAdmission so the
+// descending arm's CAUSE survives to an operator-visible sink. Admitting still names only the plan
+// revision; every refusal is the same refusal — the shared cross-check's own variant and words —
+// and descending_cause is diagnostic detail carried alongside it, never a widening.
+type ApplyRevisionDecision
+  = ApplyRevisionAdmitted { revision: String }
+  | ApplyRevisionRefused { expected: String, observed: String, descending_cause: Optional<String> }
+
+// THE ONE RENDERING of that refusal, consumed by the apply wet entry's exit text and pinned by the
+// witness. The historic sentence — exactly what the plain cross-check printed before this change —
+// is the prefix and is unchanged; the descending cause is APPENDED after it, so an operator or a
+// log grep matching the old words still matches, and the cause of THIS refusal (which of the typed
+// DescendingMain* arms fired, with its observed values) is no longer thrown away.
+fn apply_revision_refusal_text(
+  expected: String,
+  observed: String,
+  descending_cause: Optional<String>,
+) -> String {
+  let cause_clause = match descending_cause {
+    Absent => ""
+    Present { value: r } => join(["; descending plan reuse not proven — ", r], "")
+  }
+  join([
+    "fleet_converge_apply: RunRevisionRefused — expected ",
+    expected,
+    " but this run checked out ",
+    observed,
+    "; refusing before the locked actuator",
+    cause_clause,
+  ], "")
 }
 
 type DescendingPlanReuse

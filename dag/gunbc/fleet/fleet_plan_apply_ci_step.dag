@@ -44,15 +44,6 @@ data fleet_converge_plan_cli_entry: Optional<String> = gunbc_run_step_target_ent
 
 data fleet_converge_plan_cli_pool_roots: List<String> = witness_layer_roots
 
-fn module_qn_as_dag_path(module_qn: String) -> String {
-  let joined = fold(
-    split(s: module_qn, delimiter: "."),
-    init: "dag",
-    f: fn(acc, segment) { concat(concat(acc, "/"), segment) }
-  )
-  concat(joined, ".dag")
-}
-
 data gunbc_ci_fleet_converge_launch_environment_plan_target: GunbcRunStepTarget = gunbc_run_step_target(
   module: "gunbc.fleet.fleet_converge_plan_cli",
   function: "fleet_converge_launch_environment_plan_wet",

@@ -21,7 +21,7 @@ module test.claim.fleet_converge_descending_main_admit_witness
 
 import std.types { Bool, List, String }
 import std.optional { Optional, Present, Absent }
-import std.algebra { contains }
+import std.algebra { contains, string_contains }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.text { string_eq }
 import v2.lens.module_graph { import_closure_live }
@@ -72,6 +72,7 @@ import gunbc.fleet.fleet_plan_apply_ci_step {
   fleet_converge_plan_cli_entry,
   fleet_converge_plan_cli_pool_roots,
 }
+import gunbc.fleet.fleet_converge_plan_cli { apply_revision_refusal_text }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
@@ -595,4 +596,48 @@ test fn determinism_repeat_admitted() -> Bool {
     roots: rec_roots,
   )
   admitted(a) && admitted(b)
+}
+
+// --- THE REFUSAL RENDERING, the reason's consumer -------------------------------------------
+// The descending arm builds a typed cause for every way reuse can fail (merge-base read failure
+// with its exit code, the offending path touching the closure, an unreadable receipt, a mismatched
+// attribution…). fleet_converge_apply_wet renders it through apply_revision_refusal_text — THE one
+// rendering — so the cause reaches the operator's exit text instead of being discarded with
+// `reason: _` (gunbc.design_argument::fail_closed: every degradation is named where an operator
+// reads it). The historic sentence is preserved as an exact prefix: an operator or log grep that
+// matched the pre-change refusal still matches.
+
+data refusal_cause_fixture: String = "diff touches the plan source closure at dag/gunbc/fleet/fleet_converge_receipt.dag"
+
+data refusal_text_with_cause: String = apply_revision_refusal_text(
+  expected: main_m,
+  observed: plan_p,
+  descending_cause: Present { value: refusal_cause_fixture },
+)
+
+data refusal_text_without_cause: String = apply_revision_refusal_text(
+  expected: main_m,
+  observed: plan_p,
+  descending_cause: Absent,
+)
+
+test fn refusal_text_keeps_the_historic_sentence_verbatim() -> Bool {
+  string_contains(s: refusal_text_with_cause, pattern: "fleet_converge_apply: RunRevisionRefused — expected ")
+    && string_contains(s: refusal_text_with_cause, pattern: main_m)
+    && string_contains(s: refusal_text_with_cause, pattern: plan_p)
+    && string_contains(s: refusal_text_with_cause, pattern: "; refusing before the locked actuator")
+}
+
+// The cause is not merely present, it is the tail of the message — a caller cannot print the head
+// and lose the tail without printing the whole string.
+test fn refusal_text_carries_the_typed_cause_of_this_refusal() -> Bool {
+  let head = "fleet_converge_apply: RunRevisionRefused — expected "
+  string_contains(s: refusal_text_with_cause, pattern: head)
+    && string_contains(s: refusal_text_with_cause, pattern: "descending plan reuse not proven — ")
+    && string_contains(s: refusal_text_with_cause, pattern: refusal_cause_fixture)
+}
+
+// The arm without a cause renders exactly the historic words — no invented suffix.
+test fn refusal_text_without_a_cause_is_the_historic_sentence_alone() -> Bool {
+  refusal_text_without_cause == "fleet_converge_apply: RunRevisionRefused — expected 2222222222222222222222222222222222222222 but this run checked out 1111111111111111111111111111111111111111; refusing before the locked actuator"
 }
