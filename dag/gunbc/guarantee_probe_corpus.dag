@@ -266,6 +266,7 @@ data floor_field_through_generics_deferral_lambda_param_probe: GuaranteeProbeId 
 data floor_field_through_generics_deferral_lambda_param_green_probe: GuaranteeProbeId = "floor-field-through-generics-deferral-lambda-param-base-green" as GuaranteeProbeId
 data floor_field_through_generics_deferral_generic_result_probe: GuaranteeProbeId = "floor-field-through-generics-deferral-generic-result-base" as GuaranteeProbeId
 data floor_field_through_generics_deferral_generic_result_hole_probe: GuaranteeProbeId = "floor-field-through-generics-deferral-generic-result-base-hole" as GuaranteeProbeId
+data floor_field_through_generics_deferral_generic_result_hole_green_probe: GuaranteeProbeId = "floor-field-through-generics-deferral-generic-result-base-hole-green" as GuaranteeProbeId
 data floor_generic_instantiation_green_probe: GuaranteeProbeId = "floor-generic-instantiation-green-control" as GuaranteeProbeId
 data floor_generic_instantiation_monomorphic_control_probe: GuaranteeProbeId = "floor-generic-instantiation-monomorphic-control" as GuaranteeProbeId
 data floor_generic_instantiation_hole_probe: GuaranteeProbeId = "floor-generic-instantiation-type-argument-hole" as GuaranteeProbeId
@@ -670,10 +671,14 @@ fn guarantee_probe_rows() -> List<GuaranteeProbeRow> {
       expectation: ExpectBlockingRefusal { diagnostic_class: "InternalError" as NonEmptyStr },
     },
     GuaranteeProbeRow {
+      // Flipped 2026-11-25 after review 17051: the twin reads the field that EXISTS on
+      // the instantiated callback receiver (Boxed { inner: 5 } with T inferred), which is
+      // a valid program - measured RC=0 with the main pack. Enrolling it as a refusal
+      // control pinned a refusal the wall does not (and must not) make.
       probe: floor_field_through_generics_deferral_lambda_param_green_probe,
       class: floor_field_through_generics_deferral_class,
       path: v1_compile_rust_path_id,
-      expectation: ExpectBlockingRefusal { diagnostic_class: "InternalError" as NonEmptyStr },
+      expectation: ExpectZeroDiagnostics,
     },
     GuaranteeProbeRow {
       probe: floor_field_through_generics_deferral_generic_result_probe,
@@ -682,22 +687,27 @@ fn guarantee_probe_rows() -> List<GuaranteeProbeRow> {
       expectation: ExpectBlockingRefusal { diagnostic_class: "InternalError" as NonEmptyStr },
     },
     GuaranteeProbeRow {
-      // Climbed at the closing wall and dissolved per guarantee_ladder.md on 2026-11-24:
-      // measured with the main-equivalent released pack (run 45457628228, head 6e4f2148767,
-      // gunbc sha 6707d9c4...), the fixture inj(v: Boxed<Int> { inner: 5 }).no_such_field
-      // REFUSES: error[..:4:48] no field 'no_such_field' on type 'Bool' - located at the
-      // fixture span. The licensed twin (.inner on the same base) refuses identically
-      // ("no field 'inner' on type 'Bool'"): the field-miss on an unsolved type-variable
-      // result base now routes to a located refusal instead of fabrication, exactly the
-      // trigger named in this row's former invalid_state. This row is the permanent
-      // regression control for that wall (same treatment generic instantiation got at
-      // 51130ba47ad). Earlier light-probe notes that an equivalent string compiled clean
-      // predate this fixture string and were not re-verified; the executed refusal above
-      // is the authoritative observation.
+      // Re-measured 2026-11-25 after review 17051. The fixture formerly written as
+      // inj(v: Boxed<Int> { inner: 5 }).no_such_field was a MIS-PARSED program: an
+      // explicit-type-argument record literal in expression position parses as the
+      // comparison chain Boxed < Int > {...}, so the "no field ... on type 'Bool'"
+      // refusal was of a Bool-valued comparison, not of a generic field read - a real
+      // base, but not the base the fixture claimed. The fixture now uses the grammar's
+      // inferred form (Boxed { inner: 5 }) and refuses "no field 'no_such_field' on type
+      // 'Boxed'" at the fixture span (main pack, gunbc sha 6707d9c4...): the wall's
+      // located refusal on a genuinely instantiated generic result. Its twin, reading
+      // the field that EXISTS (.inner), is ACCEPTED (its own ExpectZeroDiagnostics row
+      // below) - the discriminating pair the guarantee ladder's rung honesty asks for.
       probe: floor_field_through_generics_deferral_generic_result_hole_probe,
       class: floor_field_through_generics_deferral_class,
       path: v1_compile_rust_path_id,
       expectation: ExpectBlockingRefusal { diagnostic_class: "InternalError" as NonEmptyStr },
+    },
+    GuaranteeProbeRow {
+      probe: floor_field_through_generics_deferral_generic_result_hole_green_probe,
+      class: floor_field_through_generics_deferral_class,
+      path: v1_compile_rust_path_id,
+      expectation: ExpectZeroDiagnostics,
     },
     GuaranteeProbeRow {
       probe: floor_generic_instantiation_green_probe,
