@@ -1,0 +1,151 @@
+heavy-slot: slot 5/12 acquired by royal-swift-552 at 2026-11-25T11:12:05Z: bash /home/briansrls/scratch/royal-swift-552/parse4.sh
+INNER_CGROUP=0::/user.slice/user-1000.slice/user@1000.service/app.slice/heavy-slot-2167577.scope
+=== build gunbc at head ===
+   Compiling v1-compiler v0.1.0 (/home/briansrls/scratch/royal-swift-552/bhead3/src/v1/stage0)
+    Finished `release` profile [optimized] target(s) in 4m 40s
+BUILD_RC=0
+GIT_HEAD_BUILD=4dc4800f13f15944ea8a51bf9247d8422c56e37b
+GIT_HEAD_TREE_BUILD=6da80b6903ac648e12ab8565fe0e6883042d760e
+GIT_STATUS_PORCELAIN_AFTER=[]
+BIN_PATH=/home/briansrls/scratch/royal-swift-552/bhead3/target/release/gunbc
+BIN_SHA256=1e3632b60f0c3a8eee6f3497fe5c4dea73076a59a62f4100bf96dbe8bc390f65  target/release/gunbc
+BIN_VERSION=gunbc 4dc4800f13f15944ea8a51bf9247d8422c56e37b
+===== CLAIM-RUN roadmap_identity_witness (entry=dag/test/claim/roadmap/roadmap_identity_witness.dag total_test_fns_on_this_tree=9) =====
+user_work_scope: skip wrap into gunbc-user-work.slice (BoundedByObservedCgroup)
+[workspace-root] discovered /home/briansrls/scratch/royal-swift-552/bhead3
+◐ started compile.frontend
+✓ compile.frontend done in 47 seconds
+✓ compile.normalize done in 1 seconds
+✓ compile.reconcile done in 5 minutes
+✓ compile.analyses done in 2 seconds
+[pre-entry] phase=workspace_discovery ms=11 scale=closure
+[pre-entry] phase=pool_source_newline_index ms=966 scale=closure
+[pre-entry] phase=pool_source_tokenize ms=27612 scale=closure
+[pre-entry] phase=demand_layout_acquire ms=42188 scale=closure
+[pre-entry] phase=pool_heads_parse ms=2920 scale=closure
+[pre-entry] phase=pool_census_parse ms=3968 scale=closure
+[pre-entry] phase=closure_name_census_build ms=1728 scale=closure
+[pre-entry] phase=reference_pool_names_from_census ms=35 scale=closure
+[pre-entry] phase=closure_load ms=0 scale=closure
+[pre-entry] phase=closure_parse ms=0 scale=closure
+[pre-entry] phase=closure_resolve ms=0 scale=closure
+[pre-entry] phase=closure_normalize ms=0 scale=closure
+[pre-entry] phase=closure_typecheck ms=0 scale=closure
+[pre-entry] phase=closure_parent_envs ms=0 scale=closure
+[pre-entry] phase=closure_reconcile_assembly ms=0 scale=closure
+[pre-entry] phase=closure_ownership ms=0 scale=closure
+[pre-entry] phase=reconcile_root_bare_underlay ms=0 scale=closure
+[pre-entry] phase=reconcile_root_variant_base ms=0 scale=closure
+[pre-entry] phase=resolve_entry_graph_inclusive ms=469186 scale=closure
+[pre-entry] population pool_modules=refused closure_files=492 demand_acquired_modules=492
+[pre-entry] process_cpu user_ms=463986 sys_ms=3779 max_rss_kib=3774296
+PASS every_declared_node_carries_an_identity
+PASS identities_are_unique_across_the_registry
+PASS active_slugs_are_unique
+PASS index_is_total_over_declared_nodes
+PASS resolution_is_exactly_one_not_first_pick
+PASS an_unknown_slug_is_unknown_not_a_plausible_first_row
+PASS identity_survives_a_slug_rename
+PASS registry_is_active_plus_tombstoned
+PASS tombstoned_records_are_not_active
+RC_roadmap_identity_witness=0
+===== end roadmap_identity_witness =====
+===== CLAIM-RUN roadmap_frontier_witness (entry=dag/test/claim/roadmap/roadmap_frontier_witness.dag total_test_fns_on_this_tree=15) =====
+user_work_scope: skip wrap into gunbc-user-work.slice (BoundedByObservedCgroup)
+[workspace-root] discovered /home/briansrls/scratch/royal-swift-552/bhead3
+◐ started compile.frontend
+✓ compile.frontend done in 1 minutes
+✓ compile.normalize done in 4 seconds
+✓ compile.reconcile done in 18 minutes
+✓ compile.analyses done in 7 seconds
+[pre-entry] phase=workspace_discovery ms=9 scale=closure
+[pre-entry] phase=pool_source_newline_index ms=2383 scale=closure
+[pre-entry] phase=pool_source_tokenize ms=47702 scale=closure
+[pre-entry] phase=demand_layout_acquire ms=82121 scale=closure
+[pre-entry] phase=pool_heads_parse ms=6447 scale=closure
+[pre-entry] phase=pool_census_parse ms=8988 scale=closure
+[pre-entry] phase=closure_name_census_build ms=4033 scale=closure
+[pre-entry] phase=reference_pool_names_from_census ms=90 scale=closure
+[pre-entry] phase=closure_load ms=0 scale=closure
+[pre-entry] phase=closure_parse ms=0 scale=closure
+[pre-entry] phase=closure_resolve ms=0 scale=closure
+[pre-entry] phase=closure_normalize ms=0 scale=closure
+[pre-entry] phase=closure_typecheck ms=0 scale=closure
+[pre-entry] phase=closure_parent_envs ms=0 scale=closure
+[pre-entry] phase=closure_reconcile_assembly ms=0 scale=closure
+[pre-entry] phase=closure_ownership ms=0 scale=closure
+[pre-entry] phase=reconcile_root_bare_underlay ms=0 scale=closure
+[pre-entry] phase=reconcile_root_variant_base ms=0 scale=closure
+[pre-entry] phase=resolve_entry_graph_inclusive ms=1329356 scale=closure
+[pre-entry] population pool_modules=refused closure_files=1456 demand_acquired_modules=1456
+[pre-entry] process_cpu user_ms=1317572 sys_ms=9080 max_rss_kib=10940732
+PASS witness_ready_matches_next_spawnable
+PASS witness_upcoming_is_blocked_sized_node
+PASS witness_merged_unsigned_node_stays_ready_for_acceptance
+PASS witness_merged_unsigned_parent_does_not_unblock_child
+PASS witness_withdrawn_parent_leaves_the_child_ready
+PASS witness_unsized_excluded_from_frontier
+PASS witness_buckets_are_disjoint
+PASS witness_page_renders_four_buckets
+PASS witness_page_places_ready_node_in_ready_bucket
+PASS witness_page_band_holds_the_child_back_while_its_parent_stands_open
+PASS witness_frontier_holds_the_child_back_while_its_parent_stands_open
+PASS witness_page_band_moves_the_child_when_its_parent_is_accepted
+PASS witness_frontier_moves_the_child_when_its_parent_is_accepted
+PASS witness_a_merged_row_is_in_review_for_the_page_and_ready_to_the_frontier
+PASS witness_page_buckets_and_frontier_move_a_child_on_the_same_decision
+RC_roadmap_frontier_witness=0
+===== end roadmap_frontier_witness =====
+===== CLAIM-RUN roadmap_decomposition_witness (entry=dag/test/claim/roadmap/roadmap_decomposition_witness.dag total_test_fns_on_this_tree=21) =====
+user_work_scope: skip wrap into gunbc-user-work.slice (BoundedByObservedCgroup)
+[workspace-root] discovered /home/briansrls/scratch/royal-swift-552/bhead3
+◐ started compile.frontend
+✓ compile.frontend done in 46 seconds
+✓ compile.normalize done in 1 seconds
+✓ compile.reconcile done in 5 minutes
+✓ compile.analyses done in 2 seconds
+[pre-entry] phase=workspace_discovery ms=10 scale=closure
+[pre-entry] phase=pool_source_newline_index ms=951 scale=closure
+[pre-entry] phase=pool_source_tokenize ms=27909 scale=closure
+[pre-entry] phase=demand_layout_acquire ms=40990 scale=closure
+[pre-entry] phase=pool_heads_parse ms=2685 scale=closure
+[pre-entry] phase=pool_census_parse ms=3761 scale=closure
+[pre-entry] phase=closure_name_census_build ms=1649 scale=closure
+[pre-entry] phase=reference_pool_names_from_census ms=35 scale=closure
+[pre-entry] phase=closure_load ms=0 scale=closure
+[pre-entry] phase=closure_parse ms=0 scale=closure
+[pre-entry] phase=closure_resolve ms=0 scale=closure
+[pre-entry] phase=closure_normalize ms=0 scale=closure
+[pre-entry] phase=closure_typecheck ms=0 scale=closure
+[pre-entry] phase=closure_parent_envs ms=0 scale=closure
+[pre-entry] phase=closure_reconcile_assembly ms=0 scale=closure
+[pre-entry] phase=closure_ownership ms=0 scale=closure
+[pre-entry] phase=reconcile_root_bare_underlay ms=0 scale=closure
+[pre-entry] phase=reconcile_root_variant_base ms=0 scale=closure
+[pre-entry] phase=resolve_entry_graph_inclusive ms=420062 scale=closure
+[pre-entry] population pool_modules=refused closure_files=491 demand_acquired_modules=491
+[pre-entry] process_cpu user_ms=416312 sys_ms=3681 max_rss_kib=3804864
+PASS every_decomposition_names_a_declared_node
+PASS a_decomposition_for_an_undeclared_node_is_refused
+PASS no_node_is_decomposed_twice
+PASS every_leaf_is_within_the_leaf_rule
+PASS a_six_day_leaf_is_refused
+PASS a_six_day_leaf_inside_a_composite_is_refused_at_depth
+PASS a_decision_needs_two_alternatives
+PASS no_stage_is_empty
+PASS an_empty_stage_is_refused
+PASS a_family_counts_one_leaf_per_member
+PASS a_findings_family_is_counted_as_unknown_and_reported
+PASS every_findings_family_names_a_probe_leaf_of_its_item
+PASS a_findings_family_naming_no_probe_is_refused
+PASS every_family_owner_is_declared
+PASS every_stage_dependency_is_well_formed
+PASS a_dependency_on_a_non_parent_is_refused
+PASS a_dependency_on_a_stage_the_parent_lacks_is_refused
+PASS every_decomposed_parent_is_waited_on
+PASS a_child_that_drops_a_decomposed_parent_is_refused
+PASS the_direct_rust_door_is_its_residual
+PASS an_item_with_no_decomposition_reads_as_none
+RC_roadmap_decomposition_witness=0
+===== end roadmap_decomposition_witness =====
+PARSE4_DONE
