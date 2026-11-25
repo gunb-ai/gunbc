@@ -289,26 +289,31 @@ test fn a_retired_node_is_retired_once_because_its_key_is_the_reason_not_the_cal
     key != roadmap_retirement_operation_identity(node: node, reason: "a second retirement naming a different reason"))
 }
 
-// Half a pull request is refused where the three arguments are READ, by name of what is missing; a whole
+// Half a pull request is refused where the two arguments are READ, by name of what is missing; a whole
 // one converts; an absence is the one-time migration's case, admitted only for a receipt the closed set
 // names by its bytes, and the refusal says where that set lives.
 test fn half_a_pull_request_is_refused_where_the_arguments_are_read() -> Bool {
-  let facts = fact_set()
-  let half = roadmap_acceptance_pr_evidence_from_args(url: facts.url as String, at: "", sha: "")
-  let shape = roadmap_acceptance_pr_evidence_from_args(url: "https://github.com/gunb-ai/gunbc/pull/16100", at: " ", sha: "abc123def456")
-  let none_conv = roadmap_acceptance_pr_evidence_from_args(url: "", at: "", sha: "")
-  let all_conv = roadmap_acceptance_pr_evidence_from_args(url: facts.url as String, at: facts.merged_at as String, sha: facts.head as String)
-  claim("half a pull request is refused where the three arguments are read",
+  let half = roadmap_acceptance_pr_evidence_from_args(url: "https://github.com/gunb-ai/gunbc/pull/16101", sha: "")
+  let shape = roadmap_acceptance_pr_evidence_from_args(url: "https://github.com/gunb-ai/gunbc/pull/16100", sha: "abc123def456")
+  let short_head = roadmap_acceptance_pr_evidence_from_args(url: "https://github.com/gunb-ai/gunbc/pull/16102", sha: "9e0d1c2b3a4f5e6d7c8b9a012345")
+  let upper_head = roadmap_acceptance_pr_evidence_from_args(url: "https://github.com/gunb-ai/gunbc/pull/16103", sha: "9E0D1C2B3A4F5E6D7C8B9A01234567890FEDCBA9")
+  let none_conv = roadmap_acceptance_pr_evidence_from_args(url: "", sha: "")
+  let all_conv = roadmap_acceptance_pr_evidence_from_args(url: "https://github.com/gunb-ai/gunbc/pull/16101", sha: "9e0d1c2b3a4f5e6d7c8b9a01234567890fedcba9")
+  claim("half a pull request is refused where the two arguments are read",
     match half { Absent => true, Present { value: _ } => false })
-  && claim("a pull request that never merged is refused where they are read",
+  && claim("a head that is not 40 lowercase hex is refused where the arguments are read, so an acceptance recorded with a malformed head can never have its merge recorded",
     match shape { Absent => true, Present { value: _ } => false })
+  && claim("a SHORT head — a real prefix, but not a full commit — is refused: it is the join key to the merge event and a prefix joins nothing",
+    match short_head { Absent => true, Present { value: _ } => false })
+  && claim("an UPPERCASE 40-hex head is refused: the sha shape is lowercase, the same check --red-at/--green-at/--red-base hold to",
+    match upper_head { Absent => true, Present { value: _ } => false })
   && claim("three empty arguments are the ONE admissible absence, not three refusals",
     match none_conv { Present { value: NoPullRequest } => true, _ => false })
-  && claim("three complete arguments fold into one typed fact that the row's own readers spell back",
+  && claim("two complete arguments fold into one typed fact that the row's own readers spell back; the live arm states no merge time",
     match all_conv {
-      Present { value } => roadmap_acceptance_pr_evidence_url(evidence: value) == (facts.url as String)
-        && roadmap_acceptance_pr_evidence_merged_at(evidence: value) == (facts.merged_at as String)
-        && roadmap_acceptance_pr_evidence_head_sha(evidence: value) == (facts.head as String)
+      Present { value } => roadmap_acceptance_pr_evidence_url(evidence: value) == "https://github.com/gunb-ai/gunbc/pull/16101"
+        && roadmap_acceptance_pr_evidence_merged_at(evidence: value) == ""
+        && roadmap_acceptance_pr_evidence_head_sha(evidence: value) == "9e0d1c2b3a4f5e6d7c8b9a01234567890fedcba9"
       Absent => false })
   && claim("the admissible absence is the row's own spelling of no pull request: three empty fields, not three refusals",
     match none_conv {
