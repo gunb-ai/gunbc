@@ -1,0 +1,46 @@
+module gunbc.plans.fabric_serving_scheduler
+
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
+import std.markdown { MarkdownBlock }
+import gunbc.markdown_helpers { p }
+
+// WHAT/WHY/DONE-WHEN ONLY (gunbc.design_argument::plans_are_intentions): no phase list, no slices. The
+// realization order is carried by the PRs that name this intention, not by the plan. Authority-only: the
+// plan is rostered and generated, its bytes are not a committed checkout artifact
+// (gunbc.design_ruling::project_documentation_projections_are_not_checkout_artifacts).
+
+fn fabric_serving_scheduler_body() -> List<MarkdownBlock> {
+  [
+    // ── MOTIVATION ───────────────────────────────────────────────────────────────────────────────
+    p(text: "Operator 2026-11-25: \"we just need a real fabric/scheduler implementation.\" On 2026-11-24 the serving fleet was tuned BY HAND on the hosts and in ctrl (prompt-cache warm 76% -> 93-94%, output 256 -> 462 tok/s, longest wait 15-20 min -> 4.7 min), and the model derives none of it. Each hand figure is an operator-observed receipt from ad-hoc reads, standing CitedFigureStanding (extdeps.external_authority), never a deduced fact (gunbc.design_argument::epistemic_humility). This plan holds the intention to realize the scheduler that decision belongs in the model, not the router or a hand-patched nginx."),
+
+    // ── WHY (the earliest unjustified boundary) ──────────────────────────────────────────────────
+    p(text: "Admission today keys on REQUEST/OCCUPANT COUNT, not memory. gunbc.serving.turn_admission reads a group's load as its occupant count, GroupOccupied's occupants field (a count). The hand trials show count is the wrong quantity: the srv1 cap-6 trial filled the KV pool to 99% for +2% output while turns ran 60% slower; overloading a card's live sessions dropped prompt-cache from 97% to 70%; and after strict Retry-After compliance (ctrl#2526) GPU-resident prefix hits fell from 50-70% to ~0%, so every turn reloads ~112k tokens (~3.3 s of ~17.5 s) from RAM. A count admits what the memory cannot hold and ignores what the cache already holds. That is the earliest boundary whose derivation cannot be justified."),
+
+    // ── WHAT (the intention; one sentence, then the relations it must carry) ─────────────────────
+    p(text: "The scheduler is the WHERE/WHEN of a serving turn — which waiter lands on which card, when, under which escape — decided by the fabric and priced, not by a fixed host timer or a hand-written router rule. A turn stays provider-neutral: gunbc.serving.turn_demand's work.dag excludes host, cache presence and queue position; those enter ONLY at admission/arbitration. Every priced choice routes through std.decision (gunbc.design_argument::selection_precedes_convergence). Nothing is hand-written in the router; nothing lives in work."),
+
+    p(text: "Reuse, never re-declare (gunbc.design_argument::minimize_redundancy, ::single_authority): the memory quantity is product.fabric.memory_grant's per-attempt authorized-bytes CEILING (already the right primitive — a grant, not envelope.MemoryRequirement's work-side minimum); capacity/permits are product.fabric.capacity_admission; ordering and affordability are product.fabric.contention and product.fabric.arbitration; the waiting pool, its oldest_first fold and grant redemption are gunbc.serving.serving_front_door; prefix residency is gunbc.serving.turn_admission (prefix_intact, GpuPrefixStanding, HostTierRetains/Empty/Unread, fail-closed on unread); moves are gunbc.serving.serving_relocation; rental is gunbc.serving.rented_*; the caller-side wait is gunbc.serving.caller_backlog and caller_retry_contract. This plan adds only the missing comparatives and re-keyings, not a second home for any of them."),
+
+    // ── DONE-WHEN (each assessable against the tree; each red when its rule is removed) ──────────
+    p(text: "DONE-WHEN, each falsifiable against the current tree and red when its rule is removed:"),
+    p(text: "1. ADMIT BY MEMORY. Placement and retention key on a memory_grant reading (granted bytes per attempt), not request or occupant count; an admission keyed on count where a granted-bytes reading is available is refused or unrenderable, not silently chosen. (srv1 cap-6 filling KV to 99% for +2% output, turns 60% slower, is the specimen this must refuse.)"),
+    p(text: "2. RETAIN IS CACHE CAPACITY, DERIVED. Each card retains live sessions only within its own cache capacity, and the retain value is derived from that capacity in conversations (operator 2026-11-25 receipts: srv1 28, srv3 16, srv4 8, h11 4, ken 6 — CitedFigureStanding), not an unpoliced constant; an overload that drops cache (the observed 97% -> 70%) refuses, never quietly evicts below the retained set."),
+    p(text: "3. LIVE-WAITER ADMIT GATE. A request is admitted to an upstream only when no OLDER LIVE eligible waiter exists than that upstream has a grant-fitting slot; otherwise a typed refusal with Retry-After (client honors it — ctrl#2526). A waiter is live by its own refusal cadence, not ambient state. The 2026-11-25 05:18 specimen — two fresh requests taking srv3's freed slots ahead of an 827 s live waiter bound to srv3 — must be refused. This is an instance of gunbc.recurring_failure_mode.a_comparative_decision_keyed_on_a_single_side_availability_proxy (a two-sided relation answered by a one-sided free-slot reading)."),
+    p(text: "4. RESIDENT-PREFIX AGAINST FAIRNESS IS PRICED, not fixed. Preferring a waiter whose KV prefix is still GPU-resident, versus strict oldest-first, is a std.decision over funded axes consuming turn_admission's residency reading; no rule hard-codes either side. The ~0%-hit / ~112k-token reload regime is the observed cost the resident-preferring axis prices."),
+    p(text: "5. BOUNDED ESCAPE, NOT CACHE OVERLOAD. A bound waiter past a declared wait may take a free rented slot only when the destination's memory_grant headroom fits the move — a bounded escape that does not overload a cache; rented capacity is paid whether used (the grant-ceiling semantics already carry the charge). The host-only RESPECT RETAIN and RENTED TOO rules are this done-when's hand approximations, recorded as Part A divergences until derived here."),
+    p(text: "6. RENTAL FEEDBACK ON MOVES. Rental demand is a function of POST-MOVE occupancy: gunbc.serving.rented_* must account for in-flight gunbc.serving.serving_relocation claims, so a long waiter filling a rented slot re-prices the rental. The stale assumption that bound sessions never move (rented_* never references relocation today) is the defect; a move that fills a rented slot must be visible to the rental loop and must not trigger a spurious further rental."),
+
+    // ── RELATION TO THE ROUTER PLAN (single authority) ───────────────────────────────────────────
+    p(text: "This is NOT the router data-plane (gunbc.plans.fabric_serving_router — proxy bytes, native-door decisions, the OpenAI wire, rent-to-enroll and reclaim, retiring when S1-S7 are realized). The two share modules (front_door, turn_admission, rented_*) but are distinct intentions: that plan realizes the pipe; this plan realizes the decision of which waiter the pipe serves. Its realization is carried as PRs naming this intention (the count->memory re-key, the live-waiter admit-gate, the rental feedback loop), the way gunbc.plans.new_server_bringup's realization is carried as roadmap work items naming it."),
+  ]
+}
+
+data fabric_serving_scheduler_plan: Plan = Plan {
+  projection: PlanIsAuthorityOnly,
+  slug: "fabric-serving-scheduler",
+  title: "Fabric serving scheduler: memory-keyed admission, cache-bounded retention, live-waiter fairness, bounded escape, rental feedback on moves",
+  body: fabric_serving_scheduler_body(),
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Delete this plan when admission keys on a memory_grant reading, retain is derived from per-card cache capacity, the live-waiter admit-gate and the resident-prefix-versus-fairness choice are realized through std.decision, bounded escape respects destination memory headroom, and rental demand is derived from post-move occupancy — each carried by the fabric, serving_front_door, turn_admission, serving_relocation and rented_* modules' own declarations and witnesses.") },
+}
