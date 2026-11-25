@@ -267,11 +267,9 @@ fn migration_evidence_text(r: ConsumerMigrationRow) -> String {
 // host, a hash quoted with its middle elided being presented as read, a CPU ceiling whose standing was asserted
 // without the read it owes, and a wattage pair that left the load confound behind and reached a priced figure.
 fn cap_mechanisms_recorded_phrase() -> String {
-  let both = concat([
-    hand_applied_cap_mechanisms_on(host: operator_host_srv3),
-    hand_applied_cap_mechanisms_on(host: operator_host_srv4),
-  ])
-  if hand_applied_cap_mechanisms.length() == 2 && both.length() == 2 { "both hand-applied GPU caps on their hosts" } else { "A HAND-APPLIED GPU CAP IS OFF ITS HOST" }
+  let on_srv3 = hand_applied_cap_mechanisms_on(host: operator_host_srv3)
+  let on_srv4 = hand_applied_cap_mechanisms_on(host: operator_host_srv4)
+  if hand_applied_cap_mechanisms.length() == 2 && on_srv3.length() == 1 && on_srv4.length() == 1 { "both hand-applied GPU caps on their hosts" } else { "A HAND-APPLIED GPU CAP IS OFF ITS HOST" }
 }
 
 fn cap_reaches_every_card_phrase() -> String {
@@ -289,18 +287,22 @@ fn cap_digests_marked_phrase() -> String {
 }
 
 fn cpu_ceiling_unsaid_phrase() -> String {
-  let on_both = concat([
-    cpu_freq_cap_mechanisms_on(host: operator_host_srv3),
-    cpu_freq_cap_mechanisms_on(host: operator_host_srv4),
-  ])
-  if on_both.length() == 2 && all(on_both, m => match cpu_freq_cap_standing_discharge_read(m: m) {
-    Present { value: owed } => (owed as String) == (cpu_freq_ceiling_standing_read as String)
-    Absent => false
-  }) { "both CPU ceilings unsaid, each carrying the standing read it owes" } else { "A CPU CEILING ANSWERS WITHOUT THE READ, OR A HOST LOST ITS ROW" }
+  let on_srv3 = cpu_freq_cap_mechanisms_on(host: operator_host_srv3)
+  let on_srv4 = cpu_freq_cap_mechanisms_on(host: operator_host_srv4)
+  let each_carries_its_read =
+    on_srv3.all(m => match cpu_freq_cap_standing_discharge_read(m: m) {
+      Present { value: owed } => (owed as String) == (cpu_freq_ceiling_standing_read as String)
+      Absent => false
+    })
+      && on_srv4.all(m => match cpu_freq_cap_standing_discharge_read(m: m) {
+      Present { value: owed } => (owed as String) == (cpu_freq_ceiling_standing_read as String)
+      Absent => false
+    })
+  if on_srv3.length() == 1 && on_srv4.length() == 1 && each_carries_its_read { "both CPU ceilings unsaid, each carrying the standing read it owes" } else { "A CPU CEILING ANSWERS WITHOUT THE READ, OR A HOST LOST ITS ROW" }
 }
 
 fn confounded_wattage_phrase() -> String {
-  if confounded_host_power_readings.length() == 2 && all(confounded_host_power_readings, r => host_figure_is_still_inferred(host: r.host)) { "the cap-day wattages stay out of the priced figures, both hosts still inferred" } else { "A CONFOUNDED WATTAGE HAS REACHED A PRICED FIGURE" }
+  if confounded_host_power_readings.length() == 2 && confounded_host_power_readings.all(r => host_figure_is_still_inferred(host: r.host)) { "the cap-day wattages stay out of the priced figures, both hosts still inferred" } else { "A CONFOUNDED WATTAGE HAS REACHED A PRICED FIGURE" }
 }
 
 fn hand_applied_power_cap_evidence() -> String {

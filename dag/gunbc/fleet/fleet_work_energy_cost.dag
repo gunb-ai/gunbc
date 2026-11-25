@@ -207,7 +207,7 @@ fn moved_power_state_gap_on(host: NonEmptyStr, profile: HostPowerProfile) -> Dra
 // asked of every host rather than short-circuited, because a host can carry both -- srv3 and srv4 today do -- and
 // a consumer deciding whether to quote against the figure needs to see both.
 fn host_draw_power_state_attribution(host: NonEmptyStr, profile: HostPowerProfile) -> DrawPowerStateAttribution {
-  let gaps = concat([
+  let gaps = concat(
     match cpu_ceiling_gap_on(host: host) {
       Absent => []
       Present { value: g } => [g]
@@ -216,7 +216,7 @@ fn host_draw_power_state_attribution(host: NonEmptyStr, profile: HostPowerProfil
       Absent => []
       Present { value: g } => [g]
     },
-  ])
+  )
   if gaps.length() == 0 {
     DrawAttributableToHostPowerState { host: host }
   } else {
