@@ -1524,6 +1524,7 @@ fn design_rulings() -> List<DesignRuling> {
     aws_spot_quota_requests_held_2026_11_25,
     aws_spot_g7e_launches_admitted_capped_2026_11_25,
     aws_spot_quota_three_cards_requested_2026_11_25,
+    aws_spot_cheapest_single_gpu_blackwell_2026_11_25,
     install_target_is_designated_or_unformatted_2026_11_24,
     fleet_observation_deferral_2026_11_12,
     refreshes_regularly_every_10_minutes_2026_11_16,
@@ -1725,4 +1726,11 @@ data aws_spot_quota_three_cards_requested_2026_11_25: DesignRuling = DesignRulin
   decided: "2026-11-25",
   governs: decl_ref(module_path: "product.fabric.flex_aws_row", decl_name: "flex_aws_type_walls"),
   provenance: "Operator, same session, later the same day, verbatim: \"also for spot we need to request more vcpu - at least enough for 2 or three gpus, lets ask them for three, one is too few\" and \"for spot\". SUPERSEDES aws_spot_quota_requests_held_2026_11_25. ACTED: a Service Quotas increase for L-3819A6DF (All G and VT Spot Instance Requests) in us-east-1 to 24 vCPUs (three g7e.2xlarge) was requested 2026-11-25T05:02Z, status PENDING at filing. The quota wall still reads the APPLIED value, so nothing launches against the request until AWS grants it.",
+}
+
+data aws_spot_cheapest_single_gpu_blackwell_2026_11_25: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "aws_spot_cheapest_single_gpu_blackwell_2026_11_25"),
+  decided: "2026-11-25",
+  governs: decl_ref(module_path: "product.fabric.flex_aws_apply", decl_name: "flex_aws_admissible"),
+  provenance: "Operator, same session, after seeing g7e.4xlarge spot at $1.35/h against g7e.2xlarge at $2.37/h (on-demand $4.00 vs $3.36), verbatim: \"OK - basically yeah i want the cheapest possible blackwell for now that works for our use case - next we can make a more general purpose one\". RULED: any single-GPU size of the admitted g7e family is admissible and the cheapest per GPU is chosen each pass, within the applied quota and the per-card liability ceiling; multi-GPU sizes stay out until the boot path serves more than one replica per card. WIDENS aws_spot_g7e_launches_admitted_capped_2026_11_25 (which named g7e.2xlarge). Quota consequence recorded, not acted: three g7e.4xlarge need 48 vCPUs; the open 24-vCPU request (aws_spot_quota_three_cards_requested_2026_11_25) blocks a second request until AWS closes it.",
 }

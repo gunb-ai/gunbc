@@ -35,7 +35,7 @@ fn rate(micros: Int) -> MoneyPerHour { MoneyPerHour { amount: money_amount_micro
 data policy: FlexAwsApplyPolicy = FlexAwsApplyPolicy {
   actuation: Apply,
   region: "us-east-1" as NonEmptyStr,
-  instance_type: "g7e.2xlarge" as NonEmptyStr,
+  gpus_per_card: 1,
   liability_ceiling: money_amount_micro(count: 50000000),
   lifetime: second(count: 14400),
 }
@@ -80,12 +80,12 @@ test fn an_empty_pool_launches_the_cheapest_admissible_card() -> Bool {
   }
 }
 
-// REDs of admission: a walled candidate, an on-demand one, another size, and one whose rate times the
+// REDs of admission: a walled candidate, an on-demand one, a two-GPU size, and one whose rate times the
 // four-hour lifetime exceeds the 50 USD ceiling (13 USD/h x 4 h = 52 USD) are all refused; the pass holds.
 test fn walled_on_demand_wrong_size_and_over_ceiling_candidates_hold() -> Bool {
   let walled = FlexAwsCandidate { region: "us-east-1" as NonEmptyStr, zone: "us-east-1a" as NonEmptyStr, instance_type: "g7e.2xlarge" as NonEmptyStr, market: FlexAwsSpot, gpus: 1, vcpus: 8, rate: Present { value: rate(micros: 1000000) }, per_gpu_hour_micros: none, walls: [FlexAwsQuotaBelowVcpus { quota_vcpus: 0, needs: 8 }] }
   let on_demand = FlexAwsCandidate { region: "us-east-1" as NonEmptyStr, zone: "us-east-1a" as NonEmptyStr, instance_type: "g7e.2xlarge" as NonEmptyStr, market: FlexAwsOnDemand, gpus: 1, vcpus: 8, rate: Present { value: rate(micros: 1000000) }, per_gpu_hour_micros: none, walls: [] }
-  let other_size = FlexAwsCandidate { region: "us-east-1" as NonEmptyStr, zone: "us-east-1a" as NonEmptyStr, instance_type: "g7e.4xlarge" as NonEmptyStr, market: FlexAwsSpot, gpus: 1, vcpus: 16, rate: Present { value: rate(micros: 1000000) }, per_gpu_hour_micros: none, walls: [] }
+  let other_size = FlexAwsCandidate { region: "us-east-1" as NonEmptyStr, zone: "us-east-1a" as NonEmptyStr, instance_type: "g7e.12xlarge" as NonEmptyStr, market: FlexAwsSpot, gpus: 2, vcpus: 48, rate: Present { value: rate(micros: 1000000) }, per_gpu_hour_micros: none, walls: [] }
   match flex_aws_decide(policy: policy, demand: FlexAwsDemandFixed { cards: 1 }, candidates: [walled, on_demand, other_size, cand(zone: "us-east-1d", micros: 13000000)], owned: [], notices: [], spot_quota_vcpus: 16, now_unix: now_unix) {
     FlexAwsHold { why: w } => w.contains("no admissible candidate")
     _ => false
@@ -209,6 +209,20 @@ test fn a_card_still_shutting_down_holds_the_quota() -> Bool {
   })
   && (match flex_aws_decide(policy: policy, demand: FlexAwsDemandFixed { cards: 1 }, candidates: [cand(zone: "us-east-1b", micros: 2350500)], owned: [], notices: [], spot_quota_vcpus: 8, now_unix: now_unix) {
     FlexAwsLaunch { candidate: _, max_price: _, fallbacks: _ } => true
+    _ => false
+  })
+}
+
+// THE CHEAPEST SINGLE-GPU SIZE WINS: a 4xlarge cheaper than the 2xlarge (as on 2026-11-25) is chosen, its
+// 16 vCPUs counted against the quota; with 8 vCPUs free only the 2xlarge fits.
+test fn the_cheapest_single_gpu_size_wins_within_the_free_quota() -> Bool {
+  let big = FlexAwsCandidate { region: "us-east-1" as NonEmptyStr, zone: "us-east-1c" as NonEmptyStr, instance_type: "g7e.4xlarge" as NonEmptyStr, market: FlexAwsSpot, gpus: 1, vcpus: 16, rate: Present { value: rate(micros: 1353200) }, per_gpu_hour_micros: Present { value: 1353200 }, walls: [] }
+  (match flex_aws_decide(policy: policy, demand: FlexAwsDemandFixed { cards: 1 }, candidates: [cand(zone: "us-east-1b", micros: 2365300), big], owned: [], notices: [], spot_quota_vcpus: 24, now_unix: now_unix) {
+    FlexAwsLaunch { candidate: c, max_price: _, fallbacks: _ } => (c.instance_type as String) == "g7e.4xlarge"
+    _ => false
+  })
+  && (match flex_aws_decide(policy: policy, demand: FlexAwsDemandFixed { cards: 1 }, candidates: [cand(zone: "us-east-1b", micros: 2365300), big], owned: [], notices: [], spot_quota_vcpus: 8, now_unix: now_unix) {
+    FlexAwsLaunch { candidate: c, max_price: _, fallbacks: f } => ((c.instance_type as String) == "g7e.2xlarge") && (count(f) == 0)
     _ => false
   })
 }

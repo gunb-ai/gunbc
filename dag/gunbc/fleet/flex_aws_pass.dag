@@ -81,15 +81,15 @@ fn flex_aws_snapshot() -> FlexEc2PinnedSnapshot {
   FlexEc2PinnedSnapshot { repo: qwen3_8_flash_next_hub_repo, revision: qwen3_8_flash_next_pinned_revision, files: qwen3_8_flash_next_pin_roster() }
 }
 
-// The admitted policy of gunbc.design_ruling aws_spot_g7e_launches_admitted_capped_2026_11_25: g7e.2xlarge
-// spot in us-east-1 (the only region with G and VT spot quota on 2026-11-25), 50 USD per card over a four
+// The admitted policy of gunbc.design_ruling aws_spot_g7e_launches_admitted_capped_2026_11_25 and
+// aws_spot_cheapest_single_gpu_blackwell_2026_11_25: single-GPU g7e spot in us-east-1 (the only region with G and VT spot quota on 2026-11-25), 50 USD per card over a four
 // hour lifetime. The write mode is the caller's; how many cards is the router's demand (or, with the
 // router off, the caller's fixed count).
 fn flex_aws_admitted_policy(mode: ApplyMode) -> FlexAwsApplyPolicy {
   FlexAwsApplyPolicy {
     actuation: mode,
     region: "us-east-1" as NonEmptyStr,
-    instance_type: "g7e.2xlarge" as NonEmptyStr,
+    gpus_per_card: 1,
     liability_ceiling: money_amount_micro(count: 50000000),
     lifetime: second(count: 14400),
   }

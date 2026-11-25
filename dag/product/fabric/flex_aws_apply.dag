@@ -103,15 +103,20 @@ fn flex_aws_notice_instance(n: FlexAwsNotice) -> NonEmptyStr {
 
 // ---- the policy -------------------------------------------------------------------------------------
 
-// What the operator admitted (gunbc.design_ruling aws_spot_g7e_launches_admitted_capped_2026_11_25): one
-// size, one region, and a per-card liability ceiling over a bounded lifetime. How many cards is demand's. The admitted
+// What the operator admitted (gunbc.design_ruling aws_spot_g7e_launches_admitted_capped_2026_11_25, widened by
+// aws_spot_cheapest_single_gpu_blackwell_2026_11_25): one region, ANY size of the flex type family that
+// carries exactly the GPUs one replica uses (the boot path serves one replica per card, so a wider card's
+// other GPUs would be billed idle), and a per-card liability ceiling over a bounded lifetime. Among the
+// admitted sizes the cheapest per GPU wins each pass: spot prices are per (type, zone) pool, not per size,
+// and on 2026-11-25 the 4xlarge cleared at a third of list while the 2xlarge sat near it. How many cards
+// is demand's. The admitted
 // rate is the observed spot price; a card whose rate times lifetime exceeds the ceiling is refused before
 // RunInstances, and a card older than its lifetime is released, so the ceiling bounds what any card can
 // cost (the spot price can rise after launch only up to MaxPrice, which is set to the admitted rate).
 type FlexAwsApplyPolicy {
   actuation: ApplyMode
   region: NonEmptyStr
-  instance_type: NonEmptyStr
+  gpus_per_card: Int
   liability_ceiling: MoneyAmountMicro
   lifetime: Second
 }
@@ -173,7 +178,7 @@ fn flex_aws_admissible(c: FlexAwsCandidate, policy: FlexAwsApplyPolicy) -> Bool 
   (count(c.walls) == 0)
     && match c.market { FlexAwsSpot => true  _ => false }
     && ((c.region as String) == (policy.region as String))
-    && ((c.instance_type as String) == (policy.instance_type as String))
+    && (c.gpus == policy.gpus_per_card)
     && match c.rate {
       Present { value: r } => flex_aws_liability_micros(rate: r, lifetime: policy.lifetime) <= (money_amount_micro_count(m: policy.liability_ceiling) as Int)
       Absent => false
@@ -288,7 +293,7 @@ fn flex_aws_launch_decision(policy: FlexAwsApplyPolicy, candidates: List<FlexAws
       Present { value: r } => FlexAwsLaunch { candidate: c, max_price: r, fallbacks: ranked.skip(n: 1) }
       Absent => FlexAwsHold { why: "the cheapest admissible candidate has no rate" }
     }
-    Absent => FlexAwsHold { why: join(["no admissible candidate: ", policy.instance_type as String, " spot in ", policy.region as String, " clear of walls within the liability ceiling and the ", to_string(free_vcpus), " spot vCPUs our own cards leave free"], "") }
+    Absent => FlexAwsHold { why: join(["no admissible candidate: a ", to_string(policy.gpus_per_card), "-GPU spot card in ", policy.region as String, " clear of walls within the liability ceiling and the ", to_string(free_vcpus), " spot vCPUs our own cards leave free"], "") }
   }
 }
 

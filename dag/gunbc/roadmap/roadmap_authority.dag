@@ -1186,6 +1186,23 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       centering: plan(text: "dag/gunbc/plans/aws_spot_serving.dag"),
     ),
     roadmap_node(
+      identity: "rn_NAKS2AM3R8Z74AJ5E2TP4WRFMT",
+      id: "aws-spot-general-purpose-cards",
+      owner: "fleet",
+      carriers: carrier(path: "dag/gunbc/plans/aws_spot_serving.dag"),
+      line: ticket(t: fields(
+          headline: "Cheaper non-RTX-PRO-6000 AWS cards serve the Strata iq3_s tier as rented overflow",
+          boundary: "Serves gunbc.plans.aws_spot_serving. The fleet already serves Qwen3.8-Flash-Next iq3_s (Strata) on RTX 2000 Ada pairs, A16, T10 and A2 pairs (gunbc.serving.serving_replica_profile); AWS offers g7 (RTX PRO 4500 32 GB, ~$0.50-0.53/h spot on 2026-11-25), g6 (L4) and g6e (L40S). Needs: a Strata arm of product.fabric.serving_recipe ServingEngine with its release row, a pinned x86 CUDA Strata image (only an arm64 sm_89 image is planned, srv3_strata_ada_pair_plan), the GGUF shards in the regional bucket verified against srv3_iq3_s_artifact, a recipe whose card requirement admits one >=32 GB or two layer-split >=16 GB cards with ~50-56 GiB host RAM, and the router row for the iq3_s model id at its tier.",
+          displaced_cost: "Rented overflow exists only for the RTX PRO 6000 tier, the dearest per card; the operator ruled the cheapest Blackwell first and a general-purpose tier next (gunbc.design_ruling aws_spot_cheapest_single_gpu_blackwell_2026_11_25).",
+          first_slice: "The Strata recipe and image row, then one g7.4xlarge card booted from the bucket and measured against the T10/Ada bench rows.",
+          red_control: "A card whose VRAM or host RAM is below the recipe's floor is walled before launch; a GGUF shard whose sha256 differs from the pin refuses the boot.",
+          out_of_scope: "The RTX PRO 6000 tier (aws-spot-launch-and-boot); multi-replica cards.",
+          handback: "The recipe, the image, one measured rented iq3_s card serving routed turns."
+        )),
+      parent: in_project(project: "aws-spot-serving", contribution: "One link of the AWS spot chain: observe, launch, boot, enroll, drain, settle."),
+      centering: plan(text: "dag/gunbc/plans/aws_spot_serving.dag"),
+    ),
+    roadmap_node(
       identity: "rn_9HTGHV23AEQG0SVCF8KGXSCXJ5",
       id: "fabric-market-convergence",
       owner: "fleet",
