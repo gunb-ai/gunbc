@@ -19,7 +19,7 @@ data a_comparative_decision_keyed_on_a_single_side_availability_proxy: Recurring
       current: FoundOnRung { rung: Mitigatable },
       ceiling: StructurallyGuaranteed,
       blocker: ClimbableButUnbuilt,
-      trigger_capability: "a relocation realization that obtains every sideways move through gunbc.serving.serving_relocation's imbalance-preconditioned decision (decide_with_imbalance_precondition), so no router-local free-slot rule can mint a move intent without an established source-to-destination load differential",
+      trigger_capability: "a relocation realization that obtains every sideways move through gunbc.serving.serving_relocation's imbalance-preconditioned decision (decide_with_imbalance_precondition), which excludes a move candidate before Pareto unless ITS OWN destination is established to carry at least two more occupants than the source, so no router-local free-slot rule can mint a move intent from a single-side reading, a gap of one, or a light reading of some other candidate's destination",
     },
   },
 
