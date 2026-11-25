@@ -31,16 +31,16 @@ import std.types { NonEmptyStr, List }
 import std.optional { Optional, Present, Absent }
 import std.measure { EvalStepCount, eval_step_count_value }
 import std.algebra { Cons, Empty, length }
+import std.content_hash { Sha256DigestHex }
 import v2.workflow.floor_grandfathered_roster {
   GrandfatheredPopulationReport,
   RosterPopulationAdoption, RosterPopulationAdmitted, RefusedPullRequestRun, RefusedIncompleteRun,
   RefusedCheckMissingFromRoster, RefusedRosterCoversWholeCorpus,
   floor_grandfathered_population, floor_grandfathered_population_prefix_total,
   floor_grandfathered_completeness_probes,
-  roster_population_adoption_verdict, roster_population_adoption_admitted,
-  roster_population_adoption_missing_identity, first_check_missing_from_roster,
+  roster_population_adoption_verdict, first_check_missing_from_roster,
   population_sites_total, population_planned_total, population_declined_total,
-  population_source, population_reach, population_standing,
+  population_source, population_reach, population_standing, population_instrument_sha256,
   floor_grandfathered_chunks, grandfathered_in_chunks, removal_withdraws, floor_grandfathered_removals,
   floor_grandfathered_cut_size,
   PopulationSource, FullRoutedPopulationRun, PullRequestRun,
@@ -75,7 +75,9 @@ fn fixture_report(
 ) -> GrandfatheredPopulationReport {
   GrandfatheredPopulationReport {
     producer: "fixture" as NonEmptyStr,
-    run_identity: "fixture" as NonEmptyStr,
+    // A well-formed digest of no particular binary: the refinement is lower_hex_64, so this is the
+    // shape a run reference must have and the fixture's is 64 zeros.
+    instrument_sha256: "0000000000000000000000000000000000000000000000000000000000000000" as Sha256DigestHex,
     at_sha: "0000000000000000000000000000000000000000" as NonEmptyStr,
     source: source,
     reach: reach,
@@ -211,11 +213,15 @@ test fn a_report_whose_arms_do_not_sum_to_the_site_census_refuses() -> Bool {
 // CONTROL, and the direction that proves the three REDs above are not a constant refusal: the same
 // verdict over an admissible report admits.
 test fn an_admissible_population_report_is_adopted() -> Bool {
-  roster_population_adoption_admitted(
-    verdict: roster_population_adoption_verdict(
+  match roster_population_adoption_verdict(
       report: admissible_report(), prefix_total: 60, roster_rows: 60, first_missing: Absent {},
-    )
-  )
+    ) {
+    RosterPopulationAdmitted => true
+    RefusedIncompleteRun { sites_total: _, planned_total: _, prefix_total: _, arm_total: _ } => false
+    RefusedPullRequestRun { pr_number: _ } => false
+    RefusedCheckMissingFromRoster { identity: _ } => false
+    RefusedRosterCoversWholeCorpus { roster_rows: _, sites_total: _ } => false
+  }
 }
 
 // ── ARM 2: A LIST DRAWN FROM A PULL REQUEST RUN REFUSES ON THAT GROUND ALONE ─────────────────
@@ -248,11 +254,15 @@ test fn a_list_drawn_from_a_pull_request_run_refuses_on_that_ground_alone() -> B
 // CONTROL: the identical report, with the SOURCE constructor the only thing changed, is adopted -- so
 // the refusal above is the source and not some other property of the fixture.
 test fn the_same_report_from_a_full_population_run_is_adopted() -> Bool {
-  roster_population_adoption_admitted(
-    verdict: roster_population_adoption_verdict(
+  match roster_population_adoption_verdict(
       report: admissible_report(), prefix_total: 60, roster_rows: 60, first_missing: Absent {},
-    )
-  )
+    ) {
+    RosterPopulationAdmitted => true
+    RefusedIncompleteRun { sites_total: _, planned_total: _, prefix_total: _, arm_total: _ } => false
+    RefusedPullRequestRun { pr_number: _ } => false
+    RefusedCheckMissingFromRoster { identity: _ } => false
+    RefusedRosterCoversWholeCorpus { roster_rows: _, sites_total: _ } => false
+  }
 }
 
 // ── ARM 3: A CHECK PLANNED AT THE CUT AND ABSENT FROM THE LIST IS A FINDING, NOT A TIER ───────
@@ -286,11 +296,15 @@ test fn a_planned_check_missing_from_the_list_is_named_as_a_finding() -> Bool {
 test fn rows_the_list_holds_yield_no_finding_and_are_adopted() -> Bool {
   match first_check_missing_from_roster(rows: fixture_rows_three(), chunks: fixture_chunks_three()) {
     Present { value: v } => false
-    Absent {} => roster_population_adoption_admitted(
-      verdict: roster_population_adoption_verdict(
+    Absent {} => match roster_population_adoption_verdict(
         report: admissible_report(), prefix_total: 60, roster_rows: 60, first_missing: Absent {},
-      )
-    )
+      ) {
+    RosterPopulationAdmitted => true
+    RefusedIncompleteRun { sites_total: _, planned_total: _, prefix_total: _, arm_total: _ } => false
+    RefusedPullRequestRun { pr_number: _ } => false
+    RefusedCheckMissingFromRoster { identity: _ } => false
+    RefusedRosterCoversWholeCorpus { roster_rows: _, sites_total: _ } => false
+  }
   }
 }
 
@@ -321,11 +335,15 @@ test fn a_list_larger_than_the_corpus_refuses() -> Bool {
 // CONTROL: the same report admits at 99 rows, so the arm measures the list against the corpus rather
 // than refusing any count it is handed.
 test fn a_list_smaller_than_the_corpus_is_adopted() -> Bool {
-  roster_population_adoption_admitted(
-    verdict: roster_population_adoption_verdict(
+  match roster_population_adoption_verdict(
       report: admissible_report(), prefix_total: 60, roster_rows: 99, first_missing: Absent {},
-    )
-  )
+    ) {
+    RosterPopulationAdmitted => true
+    RefusedIncompleteRun { sites_total: _, planned_total: _, prefix_total: _, arm_total: _ } => false
+    RefusedPullRequestRun { pr_number: _ } => false
+    RefusedCheckMissingFromRoster { identity: _ } => false
+    RefusedRosterCoversWholeCorpus { roster_rows: _, sites_total: _ } => false
+  }
 }
 
 // AND THE ALLOWANCES THEMSELVES ARE DISTINCT, at the budget surface the floor compares a completed
@@ -361,8 +379,7 @@ test fn a_name_the_list_has_never_seen_answers_the_tighter_allowance() -> Bool {
 // refuses with rc 1 -- because a verdict that only ever admits proves nothing about the population it
 // claims to have checked.
 test fn the_measured_population_report_is_adopted_by_the_verdict() -> Bool {
-  roster_population_adoption_admitted(
-    verdict: roster_population_adoption_verdict(
+  match roster_population_adoption_verdict(
       report: floor_grandfathered_population,
       prefix_total: floor_grandfathered_population_prefix_total(),
       roster_rows: floor_grandfathered_cut_size(),
@@ -370,8 +387,13 @@ test fn the_measured_population_report_is_adopted_by_the_verdict() -> Bool {
         rows: floor_grandfathered_completeness_probes,
         chunks: floor_grandfathered_chunks(),
       ),
-    )
-  )
+    ) {
+    RosterPopulationAdmitted => true
+    RefusedIncompleteRun { sites_total: _, planned_total: _, prefix_total: _, arm_total: _ } => false
+    RefusedPullRequestRun { pr_number: _ } => false
+    RefusedCheckMissingFromRoster { identity: _ } => false
+    RefusedRosterCoversWholeCorpus { roster_rows: _, sites_total: _ } => false
+  }
     && int_gt(a: floor_grandfathered_cut_size(), b: 3000)
     && int_gt(a: population_sites_total(report: floor_grandfathered_population), b: floor_grandfathered_cut_size())
 }
@@ -523,7 +545,13 @@ test fn the_recovered_region_is_the_at_cut_population_row_for_row() -> Bool {
 // runs, and returns Admitted over the roster as shipped -- and the paired mutation run (one of the 145
 // rows deleted) is what shows it can return something else.
 test fn the_live_roster_data_yields_an_adoption_verdict_that_admits() -> Bool {
-  roster_population_adoption_admitted(verdict: floor_grandfathered_roster_adoption())
+  match floor_grandfathered_roster_adoption() {
+    RosterPopulationAdmitted => true
+    RefusedIncompleteRun { sites_total: _, planned_total: _, prefix_total: _, arm_total: _ } => false
+    RefusedPullRequestRun { pr_number: _ } => false
+    RefusedCheckMissingFromRoster { identity: _ } => false
+    RefusedRosterCoversWholeCorpus { roster_rows: _, sites_total: _ } => false
+  }
 }
 
 // THE FIGURES STAND AS TRANSCRIBED, AND SAY SO. The population numbers were observed by a run of this
@@ -550,4 +578,19 @@ test fn the_population_figures_carry_a_read_obligation_and_not_a_receipt() -> Bo
     Present { value: _ } => true
     Absent {} => false
   }
+}
+
+// THE RUN REFERENCE IS THE BINARY'S OWN CONTENT ADDRESS, READ BACK OUT OF THE RECORD (review 98263).
+// The record used to describe its run in a free-form sentence naming a machine, a boot id, a limiter
+// holder and a host-local path; it now holds the sha256 of the binary that printed the figures, in
+// std.content_hash's refined carrier `String where lower_hex_64`, so a malformed or upper-case digest
+// is not a value the field can hold and a digest swapped for another binary turns this claim red rather
+// than passing unnoticed. The digest asserted here is the one the run link prints for the released
+// claim_batch (Actions artifact release-bins, sha256 verified against release-bins.manifest before it
+// was executed); where the run happened, under whose limiter slot and on which boot belongs to that run
+// link, because a host-local path is not something another reader can check
+// (gunbc.design_argument::grounding_is_intersubjective).
+test fn the_population_run_reference_is_the_digest_of_the_binary_that_produced_the_figures() -> Bool {
+  population_instrument_sha256(report: floor_grandfathered_population)
+    == "fab6957cb4e614d42efb8e4ad00832c0a585ad7f37f10e6c874a3f6920d463fe"
 }

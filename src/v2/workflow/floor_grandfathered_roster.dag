@@ -8,6 +8,7 @@ import std.measure { EvalStepCount }
 import std.types { NonEmptyStr, List }
 import std.algebra { Cons, Empty, list_flat_map, length, contains }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
+import std.content_hash { Sha256DigestHex }
 
 // THE CLOSED ROSTER OF WITNESS IDENTITIES GRANDFATHERED AT THE CUT COMMIT (operator ruling via
 // fierce-lark-661, 2026-09-13). It exists so the required floor can carry TWO ceilings without
@@ -2920,7 +2921,17 @@ type PopulationReach =
 
 type GrandfatheredPopulationReport = GrandfatheredPopulationReport {
   producer: NonEmptyStr,
-  run_identity: NonEmptyStr,
+  // THE RUN REFERENCE IS A TYPED DIGEST, NOT PROSE (review 98263). The record used to carry a free-form
+  // sentence naming the machine, the boot id, the limiter holder and a host-local path: unclassified text
+  // standing in as provenance (gunbc.design_argument::source_annotations -- "An invariant, receipt,
+  // event, ruling, citation, status, count or dissolution condition belongs in a typed carrier"), and a
+  // path no one else can check (gunbc.design_argument::grounding_is_intersubjective -- point at "a
+  // shared, time-stable framework"). What is left is the content address of the binary that printed the
+  // figures, in std.content_hash's refined carrier: `String where lower_hex_64`, so a malformed or
+  // upper-case digest is not a value this field can hold. Where the run happened, under whose limiter
+  // slot, on which boot -- that is the run link's business, and the run link is a PR comment, not a
+  // record in the substrate.
+  instrument_sha256: Sha256DigestHex,
   at_sha: NonEmptyStr,
   source: PopulationSource,
   reach: PopulationReach,
@@ -2938,7 +2949,7 @@ type GrandfatheredPopulationReport = GrandfatheredPopulationReport {
 // data under the floor's roots at the cut sha, and the five disposition arms sum to exactly that.
 data floor_grandfathered_population: GrandfatheredPopulationReport = GrandfatheredPopulationReport {
   producer: "replay of v2.workflow.required_floor required_floor_site_disposition over every module declaration and every test fn / test data under the floor roots, at the cut sha named below" as NonEmptyStr,
-  run_identity: "nh-extract-srv1 stage 1b, srv1 aarch64 BOOT=c095c0cd, 2026-11-24, taken under the shared limiter HEAVY_OWNER=nimble-heron-431 via /home/briansrls/bin/heavy-slot, EXTRACT_RC=0" as NonEmptyStr,
+  instrument_sha256: "fab6957cb4e614d42efb8e4ad00832c0a585ad7f37f10e6c874a3f6920d463fe" as Sha256DigestHex,
   at_sha: "6dd2206d1258ffd8f9c32cf472f3e24e82b60c56" as NonEmptyStr,
   source: FullRoutedPopulationRun { roots: "dag/ + src/v2/" as NonEmptyStr },
   reach: ReachedWholeRoutedPopulation,
@@ -3002,7 +3013,7 @@ data floor_grandfathered_population_prefixes: List<GrandfatheredPopulationPrefix
 fn population_sites_total(report: GrandfatheredPopulationReport) -> Int {
   match report {
     GrandfatheredPopulationReport {
-      producer: _, run_identity: _, at_sha: _, source: _, reach: _,
+      producer: _, instrument_sha256: _, at_sha: _, source: _, reach: _,
       standing: _, sites_total: s, planned_total: _, declined_long_module: _,
       declined_fixture_member: _, declined_cost_debt: _, declined_outside_required_gate: _,
     } => s
@@ -3012,7 +3023,7 @@ fn population_sites_total(report: GrandfatheredPopulationReport) -> Int {
 fn population_planned_total(report: GrandfatheredPopulationReport) -> Int {
   match report {
     GrandfatheredPopulationReport {
-      producer: _, run_identity: _, at_sha: _, source: _, reach: _,
+      producer: _, instrument_sha256: _, at_sha: _, source: _, reach: _,
       standing: _, sites_total: _, planned_total: p, declined_long_module: _,
       declined_fixture_member: _, declined_cost_debt: _, declined_outside_required_gate: _,
     } => p
@@ -3022,17 +3033,29 @@ fn population_planned_total(report: GrandfatheredPopulationReport) -> Int {
 fn population_declined_total(report: GrandfatheredPopulationReport) -> Int {
   match report {
     GrandfatheredPopulationReport {
-      producer: _, run_identity: _, at_sha: _, source: _, reach: _,
+      producer: _, instrument_sha256: _, at_sha: _, source: _, reach: _,
       standing: _, sites_total: _, planned_total: _, declined_long_module: l,
       declined_fixture_member: f, declined_cost_debt: c, declined_outside_required_gate: g,
     } => int_add(a: int_add(a: int_add(a: l, b: f), b: c), b: g)
   }
 }
 
+// THE RUN REFERENCE READ BACK OUT OF THE RECORD, so the witness asserts what the record holds rather
+// than restating a constant the record could have quietly dropped.
+fn population_instrument_sha256(report: GrandfatheredPopulationReport) -> Sha256DigestHex {
+  match report {
+    GrandfatheredPopulationReport {
+      producer: _, instrument_sha256: h, at_sha: _, source: _, reach: _,
+      standing: _, sites_total: _, planned_total: _, declined_long_module: _,
+      declined_fixture_member: _, declined_cost_debt: _, declined_outside_required_gate: _,
+    } => h
+  }
+}
+
 fn population_source(report: GrandfatheredPopulationReport) -> PopulationSource {
   match report {
     GrandfatheredPopulationReport {
-      producer: _, run_identity: _, at_sha: _, source: s, reach: _,
+      producer: _, instrument_sha256: _, at_sha: _, source: s, reach: _,
       standing: _, sites_total: _, planned_total: _, declined_long_module: _,
       declined_fixture_member: _, declined_cost_debt: _, declined_outside_required_gate: _,
     } => s
@@ -3042,7 +3065,7 @@ fn population_source(report: GrandfatheredPopulationReport) -> PopulationSource 
 fn population_reach(report: GrandfatheredPopulationReport) -> PopulationReach {
   match report {
     GrandfatheredPopulationReport {
-      producer: _, run_identity: _, at_sha: _, source: _, reach: r,
+      producer: _, instrument_sha256: _, at_sha: _, source: _, reach: r,
       standing: _, sites_total: _, planned_total: _, declined_long_module: _,
       declined_fixture_member: _, declined_cost_debt: _, declined_outside_required_gate: _,
     } => r
@@ -3060,7 +3083,7 @@ fn population_reach(report: GrandfatheredPopulationReport) -> PopulationReach {
 fn population_standing(report: GrandfatheredPopulationReport) -> CitedFigureStanding {
   match report {
     GrandfatheredPopulationReport {
-      producer: _, run_identity: _, at_sha: _, source: _, reach: _,
+      producer: _, instrument_sha256: _, at_sha: _, source: _, reach: _,
       standing: s, sites_total: _, planned_total: _, declined_long_module: _,
       declined_fixture_member: _, declined_cost_debt: _, declined_outside_required_gate: _,
     } => s
@@ -3201,30 +3224,6 @@ fn roster_population_adoption_verdict(
   }
 }
 
-fn roster_population_adoption_admitted(verdict: RosterPopulationAdoption) -> Bool {
-  match verdict {
-    RosterPopulationAdmitted => true
-    RefusedPullRequestRun { pr_number: _ } => false
-    RefusedIncompleteRun { sites_total: _, planned_total: _, prefix_total: _, arm_total: _ } => false
-    RefusedCheckMissingFromRoster { identity: _ } => false
-    RefusedRosterCoversWholeCorpus { roster_rows: _, sites_total: _ } => false
-  }
-}
-
-fn roster_population_adoption_missing_identity(verdict: RosterPopulationAdoption) -> String {
-  match verdict {
-    RefusedCheckMissingFromRoster { identity: i } => i
-    RosterPopulationAdmitted => ""
-    RefusedPullRequestRun { pr_number: _ } => ""
-    RefusedIncompleteRun { sites_total: _, planned_total: _, prefix_total: _, arm_total: _ } => ""
-    RefusedRosterCoversWholeCorpus { roster_rows: _, sites_total: _ } => ""
-  }
-}
-
-// THE IDENTITY-GRAIN JOIN, AS A FUNCTION OVER ANY PAIR OF LISTS. THE ORDERING IS DECLARED RATHER
-// THAN ASSUMED: rows arrives sorted from the producer, the chunks are the frozen cut, and the
-// descent stops at the first miss -- which is why the witnesses can name the identity that is
-// missing instead of reporting that two counts disagreed.
 fn first_check_missing_from_roster(rows: List<String>, chunks: List<List<String>>) -> Optional<String> {
   match rows {
     Empty {} => Absent {}
