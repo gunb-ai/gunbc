@@ -1,13 +1,16 @@
 module test.claim.serving.serving_observability_witness
 
-import std.types { String, Bool, List, Port }
+import std.types { String, Bool, List, Port, NonEmptyStr }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Optional, Present, Absent }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import gunbc.serving.serving_observability {
   EngineFrontProxyVerdict, EngineFrontProxyRendered, EngineFrontProxyRefused,
   EngineFrontProxyRefusal, OmitsRequiredRoute, EngineFrontRoute,
   engine_front_required_routes, engine_front_proxy_config, engine_front_render_forwards_route,
-  InstrumentDecision, NotAnInstrument, cold_token_cause_breakdown_standing, router_probe_line_standing,
+  engine_front_route_consumer,
+  InstrumentDecision, NotAnInstrument, cold_token_cause_breakdown_standing,
+  RouterProbeStanding, TransientReceiptOfHandManagedRouter, router_probe_line_standing,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -38,17 +41,23 @@ fn front(forwarded: List<NonEmptyStr>) -> EngineFrontProxyVerdict {
   )
 }
 
-// RED: srv4's front door is refused, naming the very route the misconfiguration dropped. The misconfig
-// is unrenderable rather than something a downstream check has to catch.
-test fn srv4_front_dropping_the_metrics_route_is_refused_naming_it() -> Bool {
+// The /metrics reader the roster names, as a typed reference the witness compares against (not a grep).
+fn metrics_reader_ref() -> DeclarationRef {
+  decl_ref(module_path: "gunbc.serving.engine_progress", decl_name: "engine_progress_read")
+}
+
+// RED: srv4's front door is refused, naming the route it dropped AND the typed consumer whose read it
+// blocked. The misconfig is unrenderable rather than something a downstream check has to catch.
+test fn srv4_front_dropping_the_metrics_route_is_refused_naming_route_and_consumer() -> Bool {
   match front(forwarded: srv4_forwarded_routes()) {
-    EngineFrontProxyRefused { refusal: OmitsRequiredRoute { route: r } } => (r as String) == "/metrics"
+    EngineFrontProxyRefused { refusal: OmitsRequiredRoute { route: r, consumer: c } } =>
+      (r as String) == "/metrics" && declaration_ref_eq(a: c, b: metrics_reader_ref())
     _ => false
   }
 }
 
-// The refusal is discriminating, not always-on: a front that drops a route NO consumer requires is not
-// what is refused (only the consumed-requirement roster is enforced). And the complete front is ACCEPTED.
+// The complete front -- every consumed route forwarded -- is ACCEPTED (the refusal is discriminating, not
+// always-on: only the consumed-requirement roster is enforced).
 test fn the_complete_front_door_is_accepted() -> Bool {
   match front(forwarded: complete_forwarded_routes()) {
     EngineFrontProxyRendered { text: _ } => true
@@ -56,9 +65,8 @@ test fn the_complete_front_door_is_accepted() -> Bool {
   }
 }
 
-// The accepted front actually PROXIES the metrics route to the engine, not merely accepts: the rendered
-// bytes carry a proxy_pass for /metrics, which is the whole point of the route being a consumed
-// requirement. Same for the inference route -- the front really forwards what a seat sends.
+// The accepted front actually PROXIES the metrics and inference routes to the engine: the rendered bytes
+// carry a proxy_pass for each, which is the point of those routes being consumed requirements.
 test fn the_accepted_front_proxies_the_metrics_and_inference_routes() -> Bool {
   match front(forwarded: complete_forwarded_routes()) {
     EngineFrontProxyRendered { text: t } =>
@@ -68,38 +76,34 @@ test fn the_accepted_front_proxies_the_metrics_and_inference_routes() -> Bool {
   }
 }
 
-// CONSUMPTION: the metrics route is required because a NAMED consumer reads it -- the availability and
-// progress readers, not the router. The roster carries that consumer on the /metrics row; if the route
-// were added without a named consumer this assertion's target would be empty.
-test fn the_metrics_route_names_its_availability_and_progress_consumer() -> Bool {
-  match first(
-    filter(engine_front_required_routes, r =>
-      (r.path as String) == "/metrics"
-        && (string_contains(s: r.consumer as String, pattern: "engine_progress")
-          || string_contains(s: r.consumer as String, pattern: "serving_availability"))),
-  ) {
-    Present { value: _ } => true
+// CONSUMPTION (typed, not a grep): the roster's /metrics consumer is the engine_progress reader, reached by
+// executing engine_front_route_consumer -- the same accessor the ledger uses, so this is not a shape check.
+test fn the_metrics_route_names_its_progress_consumer_by_reference() -> Bool {
+  match engine_front_route_consumer(path: "/metrics" as NonEmptyStr) {
+    Present { value: c } => declaration_ref_eq(a: c, b: metrics_reader_ref())
     Absent => false
   }
 }
 
-// ITEM (2): the per-cause cold-token breakdown is recorded as NOT an instrument, and the decision carries
-// the standing the brief asks for -- a named would-be consumer and an add-when trigger, not a bare veto.
-test fn cold_token_cause_breakdown_is_recorded_not_an_instrument() -> Bool {
+// ITEM (2): the per-cause cold-token breakdown is recorded NOT an instrument, and its would-be consumer is
+// a typed reference (a rename of engine_progress_read would break this), not prose.
+test fn cold_token_cause_breakdown_is_recorded_not_an_instrument_with_a_typed_consumer() -> Bool {
   match cold_token_cause_breakdown_standing {
-    NotAnInstrument { would_be_consumer: w, add_when_trigger: t, reason: _ } =>
-      string_contains(s: w as String, pattern: "consumer")
-        && string_contains(s: t as String, pattern: "instrument_targets")
+    NotAnInstrument { would_be_consumer: w, reason: _, add_when_trigger: _ } =>
+      declaration_ref_eq(a: w, b: metrics_reader_ref())
     NamedInstrument { consumer: _, discriminator: _, acceptable_cost: _ } => false
   }
 }
 
-// ITEM (3): the router probe lines' standing is recorded as a receipt of the HAND-MANAGED router and is
-// pointed at its modelled replacement (router_realization / turn_admission / serving_relocation, class
-// B5), never read as if the modelled router emitted them.
-test fn router_probe_line_standing_points_at_the_modelled_replacement() -> Bool {
-  let s = router_probe_line_standing as String
-  string_contains(s: s, pattern: "hand-managed")
-    && string_contains(s: s, pattern: "router_realization")
-    && string_contains(s: s, pattern: "serving_relocation")
+// ITEM (3): the router probe lines' standing is the transient receipt of the HAND-MANAGED router, and it
+// names the modelled rows that retire it by typed reference -- reached by reading the typed carrier, not by
+// grepping a prose paragraph.
+test fn router_probe_line_standing_is_a_hand_managed_receipt_pointing_at_the_modelled_rows() -> Bool {
+  let s = router_probe_line_standing
+  match s.standing {
+    TransientReceiptOfHandManagedRouter =>
+      any(s.retires_via, d => (d.module_path as String) == "gunbc.serving.serving_relocation")
+        && any(s.retires_via, d => (d.module_path as String) == "gunbc.serving.router_realization")
+    ModelledRouterInstrument => false
+  }
 }
