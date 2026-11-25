@@ -49,7 +49,7 @@ import v2.workflow.floor_grandfathered_roster {
   floor_grandfathered_at_cut_group_02, floor_grandfathered_at_cut_group_03,
   floor_grandfathered_at_cut_group_04, floor_grandfathered_at_cut_group_05,
   floor_grandfathered_at_cut_group_06, floor_grandfathered_at_cut_group_07,
-  floor_grandfathered_at_cut_group_08, floor_grandfathered_at_cut_group_09,
+  floor_grandfathered_at_cut_group_08,
   floor_grandfathered_at_cut_rows, floor_grandfathered_recovered_rows,
   floor_grandfathered_at_cut_row_total, floor_grandfathered_recovered_row_total,
   floor_grandfathered_recovered_region, first_recovered_row_divergence,
@@ -432,17 +432,17 @@ test fn no_typed_removal_withdraws_the_last_three_completeness_rows() -> Bool {
     && removal_withdraws(name: "v2.test.floor_enrolment_margin.a_bound_with_no_ceiling_blocks_under_a_cause_distinct_from_both_neighbours", removals: floor_grandfathered_removals) == false
 }
 
-// ── THE 145 CARRIED IN THE TREE, JOINED AT IDENTITY GRAIN (review 98219) ────────────────────────
+// ── THE 135 CARRIED IN THE TREE, JOINED AT IDENTITY GRAIN (review 98219) ────────────────────────
 //
-// THE COMPLAINT. The roster gained 145 rows and the tree joined six of them. The other 139 were
+// THE COMPLAINT. The roster gained 135 rows and the tree joined six of them. The other 129 were
 // carried nowhere in the repository, so deleting any of them from the list left every witness green
 // and the completeness argument was handed to a run on srv1 that nothing in the tree reads. These
-// claims close that: the expected set is declared in the carrier as TEN GROUPS WHOSE SIZES ARE NINE
-// FIFTEENS PLUS ONE TEN -- 15 x 9 + 10 = 145, the sum `the_at_cut_population_carries_every_recovered_row`
-// asserts against both the group total and the recovered-region total -- and every group is looked up in
-// the chunk list the floor actually consults. Fifteen rows per claim is a
+// claims close that: the expected set is declared in the carrier as NINE GROUPS OF FIFTEEN --
+// 15 x 9 = 135, the sum `the_at_cut_population_carries_every_recovered_row` asserts against both the
+// group total and the recovered-region total -- and every group is looked up in the chunk list the floor
+// actually consults. Fifteen rows per claim is a
 // measured cost, not a preference -- a member costs 8,066 eval steps in this module and a non-member
-// 43,583, so one claim holding all 145 against all 3,748 rows would spend past the ceiling this node
+// 43,583, so one claim holding all 135 against all 3,916 rows would spend past the ceiling this node
 // governs, while fifteen-row groups stay inside it even when the mutant row forces a full descent.
 
 test fn the_at_cut_group_00_rows_are_held_by_the_list() -> Bool {
@@ -508,12 +508,6 @@ test fn the_at_cut_group_08_rows_are_held_by_the_list() -> Bool {
   }
 }
 
-test fn the_at_cut_group_09_rows_are_held_by_the_list() -> Bool {
-  match first_check_missing_from_roster(rows: floor_grandfathered_at_cut_group_09, chunks: floor_grandfathered_chunks()) {
-    Absent {} => true
-    Present { value: v } => false
-  }
-}
 
 // THE COUNT, AS A SECONDARY BOUND AND NOT AS THE CLAIM. A count over a weak bound is not a
 // completeness check -- that is the defect this node exists to close, and the identity joins above
@@ -521,11 +515,11 @@ test fn the_at_cut_group_09_rows_are_held_by_the_list() -> Bool {
 // the alignment the positional join below depends on, and naming the size beside the join is what
 // makes the join's scope readable rather than inferred.
 test fn the_at_cut_population_carries_every_recovered_row() -> Bool {
-  int_eq(a: floor_grandfathered_at_cut_row_total(), b: 145)
-    && int_eq(a: floor_grandfathered_recovered_row_total(), b: 145)
+  int_eq(a: floor_grandfathered_at_cut_row_total(), b: 135)
+    && int_eq(a: floor_grandfathered_recovered_row_total(), b: 135)
 }
 
-// THE WHOLE-POPULATION ARM, ONE PASS OVER ALL 145. Both sides come off the same producer run in the
+// THE WHOLE-POPULATION ARM, ONE PASS OVER ALL 135. Both sides come off the same producer run in the
 // same order, so a row deleted from either side misaligns the pass and the population row that lost
 // its partner is returned by identity.
 test fn the_recovered_region_is_the_at_cut_population_row_for_row() -> Bool {
@@ -544,7 +538,7 @@ test fn the_recovered_region_is_the_at_cut_population_row_for_row() -> Bool {
 // consumer to come is the route that adopts a roster, and its trigger is a ruling that enrols this
 // module on the floor through v2.workflow.required_floor required_gate_authored_modules, which is grown
 // one exact module name at a time, on a ruling. What this claim establishes is that the fold exists,
-// runs, and returns Admitted over the roster as shipped -- and the paired mutation run (one of the 145
+// runs, and returns Admitted over the roster as shipped -- and the paired mutation run (one of the 135
 // rows deleted) is what shows it can return something else.
 test fn the_live_roster_data_yields_an_adoption_verdict_that_admits() -> Bool {
   match floor_grandfathered_roster_adoption() {
@@ -565,7 +559,7 @@ fn live_population_standing() -> CitedFigureStanding {
   population_standing(report: floor_grandfathered_population)
 }
 
-// THE LIVE JOIN, OVER ALL 145, AGAINST THE LIVE CHUNK LIST -- the same call the production entry
+// THE LIVE JOIN, OVER ALL 135, AGAINST THE LIVE CHUNK LIST -- the same call the production entry
 // point makes, asserted on its own so a refusal can be attributed to the join rather than to the
 // arithmetic around it. Absent is the answer: every check the floor planned at the cut is held.
 test fn the_live_join_over_every_at_cut_check_finds_nothing_missing() -> Bool {

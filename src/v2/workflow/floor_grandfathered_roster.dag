@@ -2863,14 +2863,14 @@ fn roster_change_admitted(verdict: RosterChangeVerdict) -> Bool {
 // measured rather than argued: the disposition policy in v2.workflow.required_floor, replayed over
 // every module declaration and every test fn / test data under the floor's OWN roots
 // (dag/ and src/v2/) at the cut commit named below, plans 4,153 identities; the list above held
-// 1,423 of the ones still present in the corpus at the head this change was cut against, and 145
+// 1,423 of the ones still present in the corpus at the head this change was cut against, and 135
 // identities that the floor PLANNED at the cut, that still exist in the tree, and that no typed
 // removal named were simply absent. Absence is what this section closes -- and it closes it by
 // stating the population beside the list, because a list with no stated population cannot be
 // found incomplete by anything.
 //
 // ONE AUTHORITY, NOT TWO LISTS. The record below is the single statement of the population, and
-// it is the record the completeness witnesses read: the 145 rows were generated from the producer
+// it is the record the completeness witnesses read: the 135 rows were generated from the producer
 // run this record names, and the witnesses refuse unless the list holds them. A second copy of the
 // population kept off to one side by a test is the gunbc.design_argument::single_authority fork -- it can
 // go green while the roster is wrong. Here the population is the thing the roster is measured
@@ -2890,7 +2890,7 @@ fn roster_change_admitted(verdict: RosterChangeVerdict) -> Bool {
 //
 // WHAT THIS SECTION DOES NOT CLAIM. The population is the routed population AT THE CUT. The floor
 // routes 659 identities today (its required_gate_prefixes list has been cut from 31 rows to 14),
-// so none of the 145 is measured against either ceiling at this head: the missing exemptions were
+// so none of the 135 is measured against either ceiling at this head: the missing exemptions were
 // latent, not live, and the tier authority -- claim_ceiling_tier, which consults nothing but
 // membership -- is where they were misclassified. The opposite sign, rows that did not exist at
 // the cut sitting in the older allowance, is a separate defect with its own node and is NOT
@@ -3236,20 +3236,20 @@ fn first_check_missing_from_roster(rows: List<String>, chunks: List<List<String>
   }
 }
 
-// THE COMPLETENESS SAMPLE, HELD IN THE LIST ITSELF. These are six of the 145, chosen as the
-// alphabetically first row of each of the five largest declaring modules among the 145 plus the
+// THE COMPLETENESS SAMPLE, HELD IN THE LIST ITSELF. These are six of the 135, chosen as the
+// alphabetically first row of each of the five largest declaring modules among the 135 plus the
 // identity the tier handback moves. They live in the chunk list like any other row -- they are
 // roster rows, produced by the same generator -- and they are ALSO named here so the witnesses can
 // look them up without folding 4,150 rows six times over. A probe that is in this list and not in
 // the chunks is a red claim; a probe in the chunks and not in this list costs nothing, because the
-// list is a sample and not an authority. THE 145 ARE NOT LEFT TO A HARNESS: they are carried as
-// floor_grandfathered_at_cut_group_00 .. _09 below and joined against the roster row for row, in ten
+// list is a sample and not an authority. THE 135 ARE NOT LEFT TO A HARNESS: they are carried as
+// floor_grandfathered_at_cut_group_00 .. _08 below and joined against the roster row for row, in ten
 // claims of fifteen rows each. The grain of the split is a measured cost, not a preference: the
 // whole-roster descent is 8,066 eval steps for a member and 43,583 for a non-member in this module, so
-// one claim that joined all 145 against all 3,748 rows inside itself would spend between 1.1M and 6.3M
+// one claim that joined all 135 against all 3,916 rows inside itself would spend between 1.1M and 6.3M
 // steps -- past the very ceiling this node governs -- where fifteen-row groups stay inside it. The
 // positional join in first_recovered_row_divergence is the cheap whole-population arm, and it is what
-// makes deleting any one of the 145 a red claim rather than a green one.
+// makes deleting any one of the 135 a red claim rather than a green one.
 data floor_grandfathered_completeness_probes: List<String> = [
 
   "test.claim.bare_name_ambiguity_wall_witness.a_field_label_sharing_an_ambiguous_name_does_not_refuse",
@@ -3261,52 +3261,72 @@ data floor_grandfathered_completeness_probes: List<String> = [
 ]
 
 // THE SAMPLE, AS CHUNK ROWS. First in the chunk list on purpose: a lookup of a completeness
-// probe should pay the head of the list, not the cut, and the 145 rows this change adds are
+// probe should pay the head of the list, not the cut, and the 135 rows this change adds are
 // appended at the TAIL so no existing lookup pays for them.
 fn floor_grandfathered_chunk_158() -> List<String> {
   Cons { head: "test.claim.bare_name_ambiguity_wall_witness.a_field_label_sharing_an_ambiguous_name_does_not_refuse", tail: Cons { head: "test.claim.bare_name_ambiguity_wall_witness.bare_value_read_of_an_ambiguous_name_refuses", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_corpus_roster_nonempty", tail: Cons { head: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_corpus_roster_dedupes_decl_facts", tail: Cons { head: "v2.test.claim.fold_lowering.algebra_carrying_fold_is_step_form_unresolved", tail: Cons { head: "v2.test.floor_enrolment_margin.a_bound_with_no_ceiling_blocks_under_a_cause_distinct_from_both_neighbours", tail: Empty {} } } } } } }
 }
 
-// GENERATED: completeness rows 1-25 of the 139 appended (the other 6 are the named probes in
-// floor_grandfathered_chunk_158). Producer run named in floor_grandfathered_population.
+// TEN IDENTITIES PLANNED AT THE CUT ARE NOT ADDED HERE, AND THE REASON IS MEASURED. The extractor's
+// set was "planned by the required-floor gate at the cut sha 6dd2206d1258 and still in the corpus at
+// main", which is 145 identities; ten of them are ALREADY exempted in main's roster -- measured at
+// origin/main 5611ac47e730 and again at d508254b0667 over chunks 000..151: 152 chunk functions, 3,781
+// rows, 3,781 distinct, 0 duplicates, and one occurrence of each of the ten, in chunk 029 (four of
+// them), 040 (three), 056, 062 and 145. Adding them a second time would put 10 duplicate rows in the
+// roster, which is the multiplicity defect this lane is planning separately, and a duplicate buys nothing:
+// membership is a boolean. They are test.claim.self_host_regen_affected_set_witness
+// .w_RED_an_edit_with_no_dependents_bounds_to_itself and .w_RED_an_unlocatable_edited_path_refuses_without
+// _widening, test.claim.self_host_regen_round_cost_witness.w_RED_an_emit_sub_mark_is_unattributed_not
+// _folded_into_emit and .w_RED_one_unreadable_cpu_row_makes_the_cpu_total_unreadable, v2.test.claim
+// .body_lowering.arrow_body_form_witness.arrow_body_form_RED_no_computation_admits_atom_body_holds,
+// .arrow_body_form_RED_no_computation_refuses_transform_body_holds, .arrow_body_form_RED_no_direct_atom
+// _refuses_atom_body_holds, v2.test.claim.grounding_lens.witness_decide_clears_clean_RED, v2.test.claim
+// .normalized_tree_admission.plural_admission_does_not_duplicate_shared_diagnostics_RED, and v2.test.std
+// .reducible.reducible_reduce_verdicts_located_RED. So the population this list is drawn from is stated
+// as 4,153 Planned at the cut, 145 of them absent from the roster AS THE CUT DREW IT, and 135 of those
+// still absent as main draws it -- the latter is what this change adds. None of the 135 is withdrawn by a
+// record in floor_grandfathered_removals (measured: 0 of 135 against 476 distinct removal identities).
+
+// GENERATED: completeness rows 1-25 of the 129 appended (the other 6 are the named probes
+// in floor_grandfathered_chunk_158). Producer run named in floor_grandfathered_population.
 fn floor_grandfathered_chunk_152() -> List<String> {
-  Cons { head: "test.claim.bare_name_ambiguity_wall_witness.a_local_parameter_sharing_an_ambiguous_name_does_not_refuse", tail: Cons { head: "test.claim.bare_name_ambiguity_wall_witness.a_singly_declared_variant_arm_read_does_not_refuse", tail: Cons { head: "test.claim.bare_name_ambiguity_wall_witness.an_arm_declared_by_two_visible_coproducts_is_refused_by_the_compile", tail: Cons { head: "test.claim.bare_name_ambiguity_wall_witness.an_arm_of_the_sites_own_coproduct_does_not_refuse", tail: Cons { head: "test.claim.bare_name_ambiguity_wall_witness.the_refusal_carries_a_pasteable_import_line", tail: Cons { head: "test.claim.bare_name_ambiguity_wall_witness.the_refusal_names_a_declaring_module", tail: Cons { head: "test.claim.compiler_frontend_program_status_witness.seed_retirement_awaits_an_instrument_rather_than_only_its_prerequisites", tail: Cons { head: "test.claim.compiler_frontend_program_status_witness.the_native_route_fold_answers_both_ways", tail: Cons { head: "test.claim.compiler_frontend_program_status_witness.the_native_route_milestone_is_wired_to_its_drop_row", tail: Cons { head: "test.claim.self_host_generation_identity_witness.perturbing_one_axis_leaves_the_others_agreeing", tail: Cons { head: "test.claim.self_host_promotion_admission_witness.a_contract_stale_build_receipt_refuses_naming_that_axis", tail: Cons { head: "test.claim.self_host_promotion_admission_witness.a_contract_stale_equivalence_receipt_refuses_naming_that_axis", tail: Cons { head: "test.claim.self_host_promotion_admission_witness.a_contract_stale_provenance_receipt_refuses_naming_that_axis", tail: Cons { head: "test.claim.self_host_promotion_admission_witness.the_same_bundle_with_no_axis_moved_promotes", tail: Cons { head: "test.claim.self_host_regen_affected_set_witness.w_RED_an_edit_with_no_dependents_bounds_to_itself", tail: Cons { head: "test.claim.self_host_regen_affected_set_witness.w_RED_an_unlocatable_edited_path_refuses_without_widening", tail: Cons { head: "test.claim.self_host_regen_round_cost_witness.w_RED_an_emit_sub_mark_is_unattributed_not_folded_into_emit", tail: Cons { head: "test.claim.self_host_regen_round_cost_witness.w_RED_one_unreadable_cpu_row_makes_the_cpu_total_unreadable", tail: Cons { head: "v2.test.claim.body_lowering.arrow_body_form_witness.arrow_body_form_RED_no_computation_admits_atom_body_holds", tail: Cons { head: "v2.test.claim.body_lowering.arrow_body_form_witness.arrow_body_form_RED_no_computation_refuses_transform_body_holds", tail: Cons { head: "v2.test.claim.body_lowering.arrow_body_form_witness.arrow_body_form_RED_no_direct_atom_refuses_atom_body_holds", tail: Cons { head: "v2.test.claim.body_lowering.data_initializer_fn_value.data_record_arrow_lambda_field_is_not_retained_holds", tail: Cons { head: "v2.test.claim.body_lowering.data_initializer_fn_value.data_record_fn_literal_field_is_not_retained_holds", tail: Cons { head: "v2.test.claim.body_lowering.data_initializer_fn_value.lambda_in_fn_body_control_holds", tail: Cons { head: "v2.test.claim.body_lowering.declaration_structure_preserved.coproduct_declaration_interior_is_not_retained_holds", tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } }
+  Cons { head: "test.claim.bare_name_ambiguity_wall_witness.a_local_parameter_sharing_an_ambiguous_name_does_not_refuse", tail: Cons { head: "test.claim.bare_name_ambiguity_wall_witness.a_singly_declared_variant_arm_read_does_not_refuse", tail: Cons { head: "test.claim.bare_name_ambiguity_wall_witness.an_arm_declared_by_two_visible_coproducts_is_refused_by_the_compile", tail: Cons { head: "test.claim.bare_name_ambiguity_wall_witness.an_arm_of_the_sites_own_coproduct_does_not_refuse", tail: Cons { head: "test.claim.bare_name_ambiguity_wall_witness.the_refusal_carries_a_pasteable_import_line", tail: Cons { head: "test.claim.bare_name_ambiguity_wall_witness.the_refusal_names_a_declaring_module", tail: Cons { head: "test.claim.compiler_frontend_program_status_witness.seed_retirement_awaits_an_instrument_rather_than_only_its_prerequisites", tail: Cons { head: "test.claim.compiler_frontend_program_status_witness.the_native_route_fold_answers_both_ways", tail: Cons { head: "test.claim.compiler_frontend_program_status_witness.the_native_route_milestone_is_wired_to_its_drop_row", tail: Cons { head: "test.claim.self_host_generation_identity_witness.perturbing_one_axis_leaves_the_others_agreeing", tail: Cons { head: "test.claim.self_host_promotion_admission_witness.a_contract_stale_build_receipt_refuses_naming_that_axis", tail: Cons { head: "test.claim.self_host_promotion_admission_witness.a_contract_stale_equivalence_receipt_refuses_naming_that_axis", tail: Cons { head: "test.claim.self_host_promotion_admission_witness.a_contract_stale_provenance_receipt_refuses_naming_that_axis", tail: Cons { head: "test.claim.self_host_promotion_admission_witness.the_same_bundle_with_no_axis_moved_promotes", tail: Cons { head: "v2.test.claim.body_lowering.data_initializer_fn_value.data_record_arrow_lambda_field_is_not_retained_holds", tail: Cons { head: "v2.test.claim.body_lowering.data_initializer_fn_value.data_record_fn_literal_field_is_not_retained_holds", tail: Cons { head: "v2.test.claim.body_lowering.data_initializer_fn_value.lambda_in_fn_body_control_holds", tail: Cons { head: "v2.test.claim.body_lowering.declaration_structure_preserved.coproduct_declaration_interior_is_not_retained_holds", tail: Cons { head: "v2.test.claim.body_lowering.declaration_structure_preserved.fn_type_alias_interior_is_not_retained_holds", tail: Cons { head: "v2.test.claim.body_lowering.declaration_structure_preserved.record_literal_field_init_is_not_retained_holds", tail: Cons { head: "v2.test.claim.body_lowering.declaration_structure_preserved.where_refinement_clause_interior_is_not_retained_holds", tail: Cons { head: "v2.test.claim.body_lowering.match_as_field_name.field_named_loop_control_holds", tail: Cons { head: "v2.test.claim.body_lowering.match_as_field_name.field_named_match_normalizes_holds", tail: Cons { head: "v2.test.claim.body_lowering.match_as_field_name.field_named_type_control_holds", tail: Cons { head: "v2.test.claim.body_lowering.match_as_field_name.field_renamed_other_control_holds", tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } }
 }
 
-// GENERATED: completeness rows 26-50 of the 139 appended (the other 6 are the named probes in
-// floor_grandfathered_chunk_158). Producer run named in floor_grandfathered_population.
+// GENERATED: completeness rows 26-50 of the 129 appended (the other 6 are the named probes
+// in floor_grandfathered_chunk_158). Producer run named in floor_grandfathered_population.
 fn floor_grandfathered_chunk_153() -> List<String> {
-  Cons { head: "v2.test.claim.body_lowering.declaration_structure_preserved.fn_type_alias_interior_is_not_retained_holds", tail: Cons { head: "v2.test.claim.body_lowering.declaration_structure_preserved.record_literal_field_init_is_not_retained_holds", tail: Cons { head: "v2.test.claim.body_lowering.declaration_structure_preserved.where_refinement_clause_interior_is_not_retained_holds", tail: Cons { head: "v2.test.claim.body_lowering.match_as_field_name.field_named_loop_control_holds", tail: Cons { head: "v2.test.claim.body_lowering.match_as_field_name.field_named_match_normalizes_holds", tail: Cons { head: "v2.test.claim.body_lowering.match_as_field_name.field_named_type_control_holds", tail: Cons { head: "v2.test.claim.body_lowering.match_as_field_name.field_renamed_other_control_holds", tail: Cons { head: "v2.test.claim.body_lowering.match_as_field_name.infix_field_named_match_normalizes_holds", tail: Cons { head: "v2.test.claim.body_lowering.single_arm_match.one_arm_constructor_pattern_normalizes_holds", tail: Cons { head: "v2.test.claim.body_lowering.single_arm_match.one_arm_shorthand_field_pattern_normalizes_holds", tail: Cons { head: "v2.test.claim.body_lowering.single_arm_match.single_arm_wildcard_match_normalizes_holds", tail: Cons { head: "v2.test.claim.body_lowering.single_arm_match.two_arm_match_still_accepts_holds", tail: Cons { head: "v2.test.claim.body_lowering.statement_let_bind.single_statement_body_unchanged_holds", tail: Cons { head: "v2.test.claim.body_lowering.statement_let_bind.statement_let_chain_lowers_holds", tail: Cons { head: "v2.test.claim.body_lowering.statement_let_bind.statement_let_then_reference_lowers_holds", tail: Cons { head: "v2.test.claim.body_lowering.statement_let_bind.unbound_statement_prefix_refuses_holds", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_gate.a_readable_clean_subject_is_established_clean", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_gate.an_unreadable_subject_is_not_established_rather_than_clean", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_gate.red_control_planted_copy_still_alarms", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_gate.roster_lens_cost_model_zero_suspects_within_ratchet", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_gate.roster_machine_code_zero_suspects_within_ratchet", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_gate.roster_std_algebra_zero_suspects_within_ratchet", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_gate_std.roster_std_change_dag_zero_suspects_within_ratchet", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_standing.malformed_source_reports_tokenization_rejection", tail: Cons { head: "v2.test.claim.dag_acceptance.acceptance_accounts_for_a_stage_the_contract_never_asked_for", tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } }
+  Cons { head: "v2.test.claim.body_lowering.match_as_field_name.infix_field_named_match_normalizes_holds", tail: Cons { head: "v2.test.claim.body_lowering.single_arm_match.one_arm_constructor_pattern_normalizes_holds", tail: Cons { head: "v2.test.claim.body_lowering.single_arm_match.one_arm_shorthand_field_pattern_normalizes_holds", tail: Cons { head: "v2.test.claim.body_lowering.single_arm_match.single_arm_wildcard_match_normalizes_holds", tail: Cons { head: "v2.test.claim.body_lowering.single_arm_match.two_arm_match_still_accepts_holds", tail: Cons { head: "v2.test.claim.body_lowering.statement_let_bind.single_statement_body_unchanged_holds", tail: Cons { head: "v2.test.claim.body_lowering.statement_let_bind.statement_let_chain_lowers_holds", tail: Cons { head: "v2.test.claim.body_lowering.statement_let_bind.statement_let_then_reference_lowers_holds", tail: Cons { head: "v2.test.claim.body_lowering.statement_let_bind.unbound_statement_prefix_refuses_holds", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_gate.a_readable_clean_subject_is_established_clean", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_gate.an_unreadable_subject_is_not_established_rather_than_clean", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_gate.red_control_planted_copy_still_alarms", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_gate.roster_lens_cost_model_zero_suspects_within_ratchet", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_gate.roster_machine_code_zero_suspects_within_ratchet", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_gate.roster_std_algebra_zero_suspects_within_ratchet", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_gate_std.roster_std_change_dag_zero_suspects_within_ratchet", tail: Cons { head: "v2.test.claim.complexity.accumulator_copy_roster_standing.malformed_source_reports_tokenization_rejection", tail: Cons { head: "v2.test.claim.dag_acceptance.acceptance_accounts_for_a_stage_the_contract_never_asked_for", tail: Cons { head: "v2.test.claim.dag_acceptance.acceptance_blocks_infer_behind_a_failed_resolve", tail: Cons { head: "v2.test.claim.dag_acceptance.acceptance_infer_row_for_a_resolvable_candidate_is_determinate", tail: Cons { head: "v2.test.claim.dag_acceptance.acceptance_locates_a_resolve_death_at_resolve", tail: Cons { head: "v2.test.claim.dag_acceptance.acceptance_resolve_contract_accepts_a_resolvable_candidate", tail: Cons { head: "v2.test.claim.dag_acceptance.acceptance_translate_row_is_determinate", tail: Cons { head: "v2.test.claim.emit.trait_derive_supplemental_generic_bound_contract.rust_btree_set_debug_contract_requires_ord_from_im_ord_set_authority", tail: Cons { head: "v2.test.claim.emit.trait_derive_supplemental_generic_bound_contract.rust_btree_set_partial_eq_contract_requires_ord_from_im_ord_set_authority", tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } }
 }
 
-// GENERATED: completeness rows 51-75 of the 139 appended (the other 6 are the named probes in
-// floor_grandfathered_chunk_158). Producer run named in floor_grandfathered_population.
+// GENERATED: completeness rows 51-75 of the 129 appended (the other 6 are the named probes
+// in floor_grandfathered_chunk_158). Producer run named in floor_grandfathered_population.
 fn floor_grandfathered_chunk_154() -> List<String> {
-  Cons { head: "v2.test.claim.dag_acceptance.acceptance_blocks_infer_behind_a_failed_resolve", tail: Cons { head: "v2.test.claim.dag_acceptance.acceptance_infer_row_for_a_resolvable_candidate_is_determinate", tail: Cons { head: "v2.test.claim.dag_acceptance.acceptance_locates_a_resolve_death_at_resolve", tail: Cons { head: "v2.test.claim.dag_acceptance.acceptance_resolve_contract_accepts_a_resolvable_candidate", tail: Cons { head: "v2.test.claim.dag_acceptance.acceptance_translate_row_is_determinate", tail: Cons { head: "v2.test.claim.emit.trait_derive_supplemental_generic_bound_contract.rust_btree_set_debug_contract_requires_ord_from_im_ord_set_authority", tail: Cons { head: "v2.test.claim.emit.trait_derive_supplemental_generic_bound_contract.rust_btree_set_partial_eq_contract_requires_ord_from_im_ord_set_authority", tail: Cons { head: "v2.test.claim.emit.trait_derive_supplemental_generic_bound_contract.rust_btree_set_serialize_contract_requires_ord_and_clone_from_im_ord_set_authority", tail: Cons { head: "v2.test.claim.emit.trait_derive_supplemental_generic_bound_contract.rust_hash_set_unrepresentable_hash_contracts_refuse_with_typed_blockers", tail: Cons { head: "v2.test.claim.emit.trait_derive_supplemental_generic_bound_contract.rust_set_target_bundle_round_trip_preserves_both_production_policies", tail: Cons { head: "v2.test.claim.emit.trait_derive_supplemental_generic_bound_contract.rust_vec_serialize_contract_requires_clone_from_im_vector_authority", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_dag_logic_has_three_fn_bodies", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_dag_tree_receipt_by_execution", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_decl_facts_roster_smoke_totality_holds", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_file_row_totality_holds_on_smoke", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_reject_is_typed_not_silent", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_smoke_recomputed_by_execution_holds", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_smoke_totality_holds", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_v2_ingested_body_is_not_decl_facts_skeleton", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_v2_tree_receipt_by_execution", tail: Cons { head: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_dag_tree_receipt_by_execution", tail: Cons { head: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_dag_tree_totality_holds", tail: Cons { head: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_decl_facts_roster_smoke_totality_holds", tail: Cons { head: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_parse_fraction_is_derived", tail: Cons { head: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_reject_is_typed_not_silent", tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } }
+  Cons { head: "v2.test.claim.emit.trait_derive_supplemental_generic_bound_contract.rust_btree_set_serialize_contract_requires_ord_and_clone_from_im_ord_set_authority", tail: Cons { head: "v2.test.claim.emit.trait_derive_supplemental_generic_bound_contract.rust_hash_set_unrepresentable_hash_contracts_refuse_with_typed_blockers", tail: Cons { head: "v2.test.claim.emit.trait_derive_supplemental_generic_bound_contract.rust_set_target_bundle_round_trip_preserves_both_production_policies", tail: Cons { head: "v2.test.claim.emit.trait_derive_supplemental_generic_bound_contract.rust_vec_serialize_contract_requires_clone_from_im_vector_authority", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_dag_logic_has_three_fn_bodies", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_dag_tree_receipt_by_execution", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_decl_facts_roster_smoke_totality_holds", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_file_row_totality_holds_on_smoke", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_reject_is_typed_not_silent", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_smoke_recomputed_by_execution_holds", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_smoke_totality_holds", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_v2_ingested_body_is_not_decl_facts_skeleton", tail: Cons { head: "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_v2_tree_receipt_by_execution", tail: Cons { head: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_dag_tree_receipt_by_execution", tail: Cons { head: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_dag_tree_totality_holds", tail: Cons { head: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_decl_facts_roster_smoke_totality_holds", tail: Cons { head: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_parse_fraction_is_derived", tail: Cons { head: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_reject_is_typed_not_silent", tail: Cons { head: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_smoke_recomputed_by_execution_holds", tail: Cons { head: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_smoke_totality_holds", tail: Cons { head: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_take_n_fixed_roster_saturates_by_execution", tail: Cons { head: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_take_n_live_dag_subset10_work_units_by_execution", tail: Cons { head: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_take_n_live_dag_subset5_work_units_by_execution", tail: Cons { head: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_v1_tree_receipt_by_execution", tail: Cons { head: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_v2_tree_receipt_by_execution", tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } }
 }
 
-// GENERATED: completeness rows 76-100 of the 139 appended (the other 6 are the named probes in
-// floor_grandfathered_chunk_158). Producer run named in floor_grandfathered_population.
+// GENERATED: completeness rows 76-100 of the 129 appended (the other 6 are the named probes
+// in floor_grandfathered_chunk_158). Producer run named in floor_grandfathered_population.
 fn floor_grandfathered_chunk_155() -> List<String> {
-  Cons { head: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_smoke_recomputed_by_execution_holds", tail: Cons { head: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_smoke_totality_holds", tail: Cons { head: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_take_n_fixed_roster_saturates_by_execution", tail: Cons { head: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_take_n_live_dag_subset10_work_units_by_execution", tail: Cons { head: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_take_n_live_dag_subset5_work_units_by_execution", tail: Cons { head: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_v1_tree_receipt_by_execution", tail: Cons { head: "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_v2_tree_receipt_by_execution", tail: Cons { head: "v2.test.claim.enforcement.lens_module_gate_witness.lens_closure_question_zero_holds_live", tail: Cons { head: "v2.test.claim.enforcement.lens_module_gate_witness.lens_closure_question_zero_live_matches_gate", tail: Cons { head: "v2.test.claim.enforcement.lens_module_gate_witness.lens_module_gate_holds_live", tail: Cons { head: "v2.test.claim.enforcement_inventory_witness.enforcement_inventory_global_receipt_holds", tail: Cons { head: "v2.test.claim.enforcement_live_witness.bound_contracts_derive_live_receipts", tail: Cons { head: "v2.test.claim.enforcement_live_witness.complexity_repo_wide_verdict_matches_roadmap", tail: Cons { head: "v2.test.claim.enforcement_live_witness.enforcement_consistency_gate_holds", tail: Cons { head: "v2.test.claim.enforcement_live_witness.live_corpus_is_currently_all_body_unavailable", tail: Cons { head: "v2.test.claim.enforcement_live_witness.per_root_sentinels_hold_in_one_walk", tail: Cons { head: "v2.test.claim.enforcement_live_witness.unbound_contracts_omit_semantic_receipts", tail: Cons { head: "v2.test.claim.fold_lowering.bodyless_fold_call_refuses_no_loop_fabricated", tail: Cons { head: "v2.test.claim.fold_lowering.bodyless_fold_is_step_form_unresolved", tail: Cons { head: "v2.test.claim.fold_lowering.duplicate_carrier_edge_is_malformed", tail: Cons { head: "v2.test.claim.fold_lowering.fold_call_lowers_to_terminating_loop", tail: Cons { head: "v2.test.claim.fold_lowering.fold_callee_name_survives_parse", tail: Cons { head: "v2.test.claim.fold_lowering.fold_collection_name_survives_parse", tail: Cons { head: "v2.test.claim.fold_lowering.fold_probe_ingest_is_accepted", tail: Cons { head: "v2.test.claim.fold_lowering.named_step_fold_is_step_form_unresolved", tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } }
+  Cons { head: "v2.test.claim.enforcement.lens_module_gate_witness.lens_closure_question_zero_holds_live", tail: Cons { head: "v2.test.claim.enforcement.lens_module_gate_witness.lens_closure_question_zero_live_matches_gate", tail: Cons { head: "v2.test.claim.enforcement.lens_module_gate_witness.lens_module_gate_holds_live", tail: Cons { head: "v2.test.claim.enforcement_inventory_witness.enforcement_inventory_global_receipt_holds", tail: Cons { head: "v2.test.claim.enforcement_live_witness.bound_contracts_derive_live_receipts", tail: Cons { head: "v2.test.claim.enforcement_live_witness.complexity_repo_wide_verdict_matches_roadmap", tail: Cons { head: "v2.test.claim.enforcement_live_witness.enforcement_consistency_gate_holds", tail: Cons { head: "v2.test.claim.enforcement_live_witness.live_corpus_is_currently_all_body_unavailable", tail: Cons { head: "v2.test.claim.enforcement_live_witness.per_root_sentinels_hold_in_one_walk", tail: Cons { head: "v2.test.claim.enforcement_live_witness.unbound_contracts_omit_semantic_receipts", tail: Cons { head: "v2.test.claim.fold_lowering.bodyless_fold_call_refuses_no_loop_fabricated", tail: Cons { head: "v2.test.claim.fold_lowering.bodyless_fold_is_step_form_unresolved", tail: Cons { head: "v2.test.claim.fold_lowering.duplicate_carrier_edge_is_malformed", tail: Cons { head: "v2.test.claim.fold_lowering.fold_call_lowers_to_terminating_loop", tail: Cons { head: "v2.test.claim.fold_lowering.fold_callee_name_survives_parse", tail: Cons { head: "v2.test.claim.fold_lowering.fold_collection_name_survives_parse", tail: Cons { head: "v2.test.claim.fold_lowering.fold_probe_ingest_is_accepted", tail: Cons { head: "v2.test.claim.fold_lowering.named_step_fold_is_step_form_unresolved", tail: Cons { head: "v2.test.claim.fold_lowering.non_fold_call_is_not_a_fold_disposition", tail: Cons { head: "v2.test.claim.fold_lowering.non_fold_call_refuses", tail: Cons { head: "v2.test.claim.fold_lowering.paramless_step_fold_is_step_shape_invalid", tail: Cons { head: "v2.test.claim.fold_lowering.paramless_step_fold_refuses_no_loop_fabricated", tail: Cons { head: "v2.test.claim.fold_lowering.well_formed_fold_still_lowers_through_the_split", tail: Cons { head: "v2.test.claim.generated_conformance_floor.generated_coproduct_exhaustiveness_covers_every_coproduct", tail: Cons { head: "v2.test.claim.generated_conformance_floor.generated_coproduct_exhaustiveness_roster_covers_testclaim", tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } }
 }
 
-// GENERATED: completeness rows 101-125 of the 139 appended (the other 6 are the named probes in
-// floor_grandfathered_chunk_158). Producer run named in floor_grandfathered_population.
+// GENERATED: completeness rows 101-125 of the 129 appended (the other 6 are the named probes
+// in floor_grandfathered_chunk_158). Producer run named in floor_grandfathered_population.
 fn floor_grandfathered_chunk_156() -> List<String> {
-  Cons { head: "v2.test.claim.fold_lowering.non_fold_call_is_not_a_fold_disposition", tail: Cons { head: "v2.test.claim.fold_lowering.non_fold_call_refuses", tail: Cons { head: "v2.test.claim.fold_lowering.paramless_step_fold_is_step_shape_invalid", tail: Cons { head: "v2.test.claim.fold_lowering.paramless_step_fold_refuses_no_loop_fabricated", tail: Cons { head: "v2.test.claim.fold_lowering.well_formed_fold_still_lowers_through_the_split", tail: Cons { head: "v2.test.claim.generated_conformance_floor.generated_coproduct_exhaustiveness_covers_every_coproduct", tail: Cons { head: "v2.test.claim.generated_conformance_floor.generated_coproduct_exhaustiveness_roster_covers_testclaim", tail: Cons { head: "v2.test.claim.grounding_lens.witness_decide_clears_clean_RED", tail: Cons { head: "v2.test.claim.normalized_tree_admission.plural_admission_does_not_duplicate_shared_diagnostics_RED", tail: Cons { head: "v2.test.claim.provenance.loaded_carrier_receipts.a_real_loaded_compilation_is_reachable_without_reading_the_live_tree_holds", tail: Cons { head: "v2.test.claim.rust_crate_partition_witness.witness_partition_perturbation_member_coverage_holds", tail: Cons { head: "v2.test.claim.rust_crate_partition_witness.witness_partition_r4_valid_on_interim_holds", tail: Cons { head: "v2.test.claim.staged_front_end.staged_front_end_accepts_a_well_formed_module", tail: Cons { head: "v2.test.claim.staged_front_end.staged_front_end_bound_stops_before_the_stages_it_was_not_asked_for", tail: Cons { head: "v2.test.claim.staged_front_end.staged_front_end_bounded_run_refuses_the_whole_front_end_question", tail: Cons { head: "v2.test.claim.staged_front_end.staged_front_end_parse_and_resolve_deaths_land_on_different_stages", tail: Cons { head: "v2.test.claim.staged_front_end.staged_front_end_projection_agrees_with_the_staged_steps", tail: Cons { head: "v2.test.claim.staged_front_end.staged_front_end_resolve_death_still_passes_parse", tail: Cons { head: "v2.test.claim.staged_front_end.staged_front_end_unbound_value_name_refuses_with_its_own_reason", tail: Cons { head: "v2.test.claim.translate_underived_refusal.translate_derived_emit_byte_identical_to_before_holds", tail: Cons { head: "v2.test.compiler.pipeline.lower_stage.pipeline_lower_add_fixture_relationship_green", tail: Cons { head: "v2.test.compiler.pipeline.tokenize_stage.pipeline_tokenize_pick_relationship_green", tail: Cons { head: "v2.test.floor_enrolment_margin.a_declared_identity_censored_at_the_ceiling_does_not_block_at_enrolment", tail: Cons { head: "v2.test.floor_enrolment_margin.a_declared_identity_measured_over_the_margin_does_not_block_here", tail: Cons { head: "v2.test.floor_enrolment_margin.a_declared_identity_the_runner_withheld_stays_outside_this_runs_execution", tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } }
+  Cons { head: "v2.test.claim.provenance.loaded_carrier_receipts.a_real_loaded_compilation_is_reachable_without_reading_the_live_tree_holds", tail: Cons { head: "v2.test.claim.rust_crate_partition_witness.witness_partition_perturbation_member_coverage_holds", tail: Cons { head: "v2.test.claim.rust_crate_partition_witness.witness_partition_r4_valid_on_interim_holds", tail: Cons { head: "v2.test.claim.staged_front_end.staged_front_end_accepts_a_well_formed_module", tail: Cons { head: "v2.test.claim.staged_front_end.staged_front_end_bound_stops_before_the_stages_it_was_not_asked_for", tail: Cons { head: "v2.test.claim.staged_front_end.staged_front_end_bounded_run_refuses_the_whole_front_end_question", tail: Cons { head: "v2.test.claim.staged_front_end.staged_front_end_parse_and_resolve_deaths_land_on_different_stages", tail: Cons { head: "v2.test.claim.staged_front_end.staged_front_end_projection_agrees_with_the_staged_steps", tail: Cons { head: "v2.test.claim.staged_front_end.staged_front_end_resolve_death_still_passes_parse", tail: Cons { head: "v2.test.claim.staged_front_end.staged_front_end_unbound_value_name_refuses_with_its_own_reason", tail: Cons { head: "v2.test.claim.translate_underived_refusal.translate_derived_emit_byte_identical_to_before_holds", tail: Cons { head: "v2.test.compiler.pipeline.lower_stage.pipeline_lower_add_fixture_relationship_green", tail: Cons { head: "v2.test.compiler.pipeline.tokenize_stage.pipeline_tokenize_pick_relationship_green", tail: Cons { head: "v2.test.floor_enrolment_margin.a_declared_identity_censored_at_the_ceiling_does_not_block_at_enrolment", tail: Cons { head: "v2.test.floor_enrolment_margin.a_declared_identity_measured_over_the_margin_does_not_block_here", tail: Cons { head: "v2.test.floor_enrolment_margin.a_declared_identity_the_runner_withheld_stays_outside_this_runs_execution", tail: Cons { head: "v2.test.floor_enrolment_margin.a_declared_identity_with_no_measurement_does_not_block_at_enrolment", tail: Cons { head: "v2.test.floor_enrolment_margin.a_long_home_declares_at_enrolment_even_when_a_string_roster_line_exists", tail: Cons { head: "v2.test.floor_enrolment_margin.a_string_roster_hold_does_not_declare_at_enrolment", tail: Cons { head: "v2.test.floor_enrolment_margin.the_pairing_hole_is_exhaustive_over_standing", tail: Cons { head: "v2.test.floor_enrolment_margin.typed_admission_is_the_only_roster_ground_at_enrolment", tail: Cons { head: "v2.test.lens_registry.sg_claims.lens_registry_required_ids_resolve_holds", tail: Cons { head: "v2.test.lens_testgen.generator_provenance.lens_testgen_scheduled_generators_carry_provenance_holds", tail: Cons { head: "v2.test.lens_testgen.shadow_ci_receipt.lens_testgen_shadow_ci_run_receipt_holds", tail: Cons { head: "v2.test.manual.ownership_movable.witness_double_consume_is_not_movable", tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } }
 }
 
-// GENERATED: completeness rows 126-139 of the 139 appended (the other 6 are the named probes in
-// floor_grandfathered_chunk_158). Producer run named in floor_grandfathered_population.
+// GENERATED: completeness rows 126-129 of the 129 appended (the other 6 are the named probes
+// in floor_grandfathered_chunk_158). Producer run named in floor_grandfathered_population.
 fn floor_grandfathered_chunk_157() -> List<String> {
-  Cons { head: "v2.test.floor_enrolment_margin.a_declared_identity_with_no_measurement_does_not_block_at_enrolment", tail: Cons { head: "v2.test.floor_enrolment_margin.a_long_home_declares_at_enrolment_even_when_a_string_roster_line_exists", tail: Cons { head: "v2.test.floor_enrolment_margin.a_string_roster_hold_does_not_declare_at_enrolment", tail: Cons { head: "v2.test.floor_enrolment_margin.the_pairing_hole_is_exhaustive_over_standing", tail: Cons { head: "v2.test.floor_enrolment_margin.typed_admission_is_the_only_roster_ground_at_enrolment", tail: Cons { head: "v2.test.lens_registry.sg_claims.lens_registry_required_ids_resolve_holds", tail: Cons { head: "v2.test.lens_testgen.generator_provenance.lens_testgen_scheduled_generators_carry_provenance_holds", tail: Cons { head: "v2.test.lens_testgen.shadow_ci_receipt.lens_testgen_shadow_ci_run_receipt_holds", tail: Cons { head: "v2.test.manual.ownership_movable.witness_double_consume_is_not_movable", tail: Cons { head: "v2.test.manual.ownership_movable.witness_read_then_consume_param_is_movable", tail: Cons { head: "v2.test.manual.ownership_movable.witness_threaded_then_consume_is_not_movable", tail: Cons { head: "v2.test.manual.ownership_movable.witness_whole_read_then_consume_is_not_movable", tail: Cons { head: "v2.test.manual.ownership_movable.witness_zero_consume_is_not_movable", tail: Cons { head: "v2.test.std.reducible.reducible_reduce_verdicts_located_RED", tail: Empty {} } } } } } } } } } } } } } }
+  Cons { head: "v2.test.manual.ownership_movable.witness_read_then_consume_param_is_movable", tail: Cons { head: "v2.test.manual.ownership_movable.witness_threaded_then_consume_is_not_movable", tail: Cons { head: "v2.test.manual.ownership_movable.witness_whole_read_then_consume_is_not_movable", tail: Cons { head: "v2.test.manual.ownership_movable.witness_zero_consume_is_not_movable", tail: Empty {} } } } }
 }
 
 // ── THE POPULATION CARRIED IN THE TREE, NOT IN A HARNESS (review 98219) ────────────────────────
 //
-// THE COMPLAINT THIS SECTION ANSWERS. The 145 rows the roster gained were joined inside the tree
-// against only six named probes; the other 139 were carried nowhere, so deleting any of them left every
+// THE COMPLAINT THIS SECTION ANSWERS. The 135 rows the roster gained were joined inside the tree
+// against only six named probes; the other 129 were carried nowhere, so deleting any of them left every
 // witness green and the completeness argument was handed to an off-tree run on srv1 that nothing in the
 // repository reads. gunbc.design_argument::fail_closed: "Completeness is an identity join, not a count
 // equality", and "Done means a real consumer green by execution plus a discriminating input that goes
@@ -3319,9 +3339,8 @@ fn floor_grandfathered_chunk_157() -> List<String> {
 // what keep them in step: delete a row from either side and a claim goes red naming that identity. A
 // test holding its own copy of the expected set is the gunbc.design_argument::single_authority fork this
 // refuses; there is exactly one expected-set declaration in the tree and the witnesses read it.
-// GENERATED: at-cut population group 00, rows 1-15 of the 145. Producer run named in
-// floor_grandfathered_population; same run and same order as floor_grandfathered_chunk_158
-// and chunk_152..157, which is what makes the positional join legal.
+// GENERATED: at-cut population group 00, rows 1-15 of the 135. Producer run named in
+// floor_grandfathered_population.
 data floor_grandfathered_at_cut_group_00: List<String> = [
   "test.claim.bare_name_ambiguity_wall_witness.a_field_label_sharing_an_ambiguous_name_does_not_refuse",
   "test.claim.bare_name_ambiguity_wall_witness.bare_value_read_of_an_ambiguous_name_refuses",
@@ -3340,31 +3359,17 @@ data floor_grandfathered_at_cut_group_00: List<String> = [
   "test.claim.compiler_frontend_program_status_witness.the_native_route_milestone_is_wired_to_its_drop_row",
 ]
 
-// GENERATED: at-cut population group 01, rows 16-30 of the 145. Producer run named in
-// floor_grandfathered_population; same run and same order as floor_grandfathered_chunk_158
-// and chunk_152..157, which is what makes the positional join legal.
+// GENERATED: at-cut population group 01, rows 16-30 of the 135. Producer run named in
+// floor_grandfathered_population.
 data floor_grandfathered_at_cut_group_01: List<String> = [
   "test.claim.self_host_generation_identity_witness.perturbing_one_axis_leaves_the_others_agreeing",
   "test.claim.self_host_promotion_admission_witness.a_contract_stale_build_receipt_refuses_naming_that_axis",
   "test.claim.self_host_promotion_admission_witness.a_contract_stale_equivalence_receipt_refuses_naming_that_axis",
   "test.claim.self_host_promotion_admission_witness.a_contract_stale_provenance_receipt_refuses_naming_that_axis",
   "test.claim.self_host_promotion_admission_witness.the_same_bundle_with_no_axis_moved_promotes",
-  "test.claim.self_host_regen_affected_set_witness.w_RED_an_edit_with_no_dependents_bounds_to_itself",
-  "test.claim.self_host_regen_affected_set_witness.w_RED_an_unlocatable_edited_path_refuses_without_widening",
-  "test.claim.self_host_regen_round_cost_witness.w_RED_an_emit_sub_mark_is_unattributed_not_folded_into_emit",
-  "test.claim.self_host_regen_round_cost_witness.w_RED_one_unreadable_cpu_row_makes_the_cpu_total_unreadable",
-  "v2.test.claim.body_lowering.arrow_body_form_witness.arrow_body_form_RED_no_computation_admits_atom_body_holds",
-  "v2.test.claim.body_lowering.arrow_body_form_witness.arrow_body_form_RED_no_computation_refuses_transform_body_holds",
-  "v2.test.claim.body_lowering.arrow_body_form_witness.arrow_body_form_RED_no_direct_atom_refuses_atom_body_holds",
   "v2.test.claim.body_lowering.data_initializer_fn_value.data_record_arrow_lambda_field_is_not_retained_holds",
   "v2.test.claim.body_lowering.data_initializer_fn_value.data_record_fn_literal_field_is_not_retained_holds",
   "v2.test.claim.body_lowering.data_initializer_fn_value.lambda_in_fn_body_control_holds",
-]
-
-// GENERATED: at-cut population group 02, rows 31-45 of the 145. Producer run named in
-// floor_grandfathered_population; same run and same order as floor_grandfathered_chunk_158
-// and chunk_152..157, which is what makes the positional join legal.
-data floor_grandfathered_at_cut_group_02: List<String> = [
   "v2.test.claim.body_lowering.declaration_structure_preserved.coproduct_declaration_interior_is_not_retained_holds",
   "v2.test.claim.body_lowering.declaration_structure_preserved.fn_type_alias_interior_is_not_retained_holds",
   "v2.test.claim.body_lowering.declaration_structure_preserved.record_literal_field_init_is_not_retained_holds",
@@ -3372,6 +3377,11 @@ data floor_grandfathered_at_cut_group_02: List<String> = [
   "v2.test.claim.body_lowering.match_as_field_name.field_named_loop_control_holds",
   "v2.test.claim.body_lowering.match_as_field_name.field_named_match_normalizes_holds",
   "v2.test.claim.body_lowering.match_as_field_name.field_named_type_control_holds",
+]
+
+// GENERATED: at-cut population group 02, rows 31-45 of the 135. Producer run named in
+// floor_grandfathered_population.
+data floor_grandfathered_at_cut_group_02: List<String> = [
   "v2.test.claim.body_lowering.match_as_field_name.field_renamed_other_control_holds",
   "v2.test.claim.body_lowering.match_as_field_name.infix_field_named_match_normalizes_holds",
   "v2.test.claim.body_lowering.single_arm_match.one_arm_constructor_pattern_normalizes_holds",
@@ -3380,12 +3390,6 @@ data floor_grandfathered_at_cut_group_02: List<String> = [
   "v2.test.claim.body_lowering.single_arm_match.two_arm_match_still_accepts_holds",
   "v2.test.claim.body_lowering.statement_let_bind.single_statement_body_unchanged_holds",
   "v2.test.claim.body_lowering.statement_let_bind.statement_let_chain_lowers_holds",
-]
-
-// GENERATED: at-cut population group 03, rows 46-60 of the 145. Producer run named in
-// floor_grandfathered_population; same run and same order as floor_grandfathered_chunk_158
-// and chunk_152..157, which is what makes the positional join legal.
-data floor_grandfathered_at_cut_group_03: List<String> = [
   "v2.test.claim.body_lowering.statement_let_bind.statement_let_then_reference_lowers_holds",
   "v2.test.claim.body_lowering.statement_let_bind.unbound_statement_prefix_refuses_holds",
   "v2.test.claim.complexity.accumulator_copy_roster_gate.a_readable_clean_subject_is_established_clean",
@@ -3393,6 +3397,11 @@ data floor_grandfathered_at_cut_group_03: List<String> = [
   "v2.test.claim.complexity.accumulator_copy_roster_gate.red_control_planted_copy_still_alarms",
   "v2.test.claim.complexity.accumulator_copy_roster_gate.roster_lens_cost_model_zero_suspects_within_ratchet",
   "v2.test.claim.complexity.accumulator_copy_roster_gate.roster_machine_code_zero_suspects_within_ratchet",
+]
+
+// GENERATED: at-cut population group 03, rows 46-60 of the 135. Producer run named in
+// floor_grandfathered_population.
+data floor_grandfathered_at_cut_group_03: List<String> = [
   "v2.test.claim.complexity.accumulator_copy_roster_gate.roster_std_algebra_zero_suspects_within_ratchet",
   "v2.test.claim.complexity.accumulator_copy_roster_gate_std.roster_std_change_dag_zero_suspects_within_ratchet",
   "v2.test.claim.complexity.accumulator_copy_roster_standing.malformed_source_reports_tokenization_rejection",
@@ -3401,12 +3410,6 @@ data floor_grandfathered_at_cut_group_03: List<String> = [
   "v2.test.claim.dag_acceptance.acceptance_infer_row_for_a_resolvable_candidate_is_determinate",
   "v2.test.claim.dag_acceptance.acceptance_locates_a_resolve_death_at_resolve",
   "v2.test.claim.dag_acceptance.acceptance_resolve_contract_accepts_a_resolvable_candidate",
-]
-
-// GENERATED: at-cut population group 04, rows 61-75 of the 145. Producer run named in
-// floor_grandfathered_population; same run and same order as floor_grandfathered_chunk_158
-// and chunk_152..157, which is what makes the positional join legal.
-data floor_grandfathered_at_cut_group_04: List<String> = [
   "v2.test.claim.dag_acceptance.acceptance_translate_row_is_determinate",
   "v2.test.claim.emit.trait_derive_supplemental_generic_bound_contract.rust_btree_set_debug_contract_requires_ord_from_im_ord_set_authority",
   "v2.test.claim.emit.trait_derive_supplemental_generic_bound_contract.rust_btree_set_partial_eq_contract_requires_ord_from_im_ord_set_authority",
@@ -3414,6 +3417,11 @@ data floor_grandfathered_at_cut_group_04: List<String> = [
   "v2.test.claim.emit.trait_derive_supplemental_generic_bound_contract.rust_hash_set_unrepresentable_hash_contracts_refuse_with_typed_blockers",
   "v2.test.claim.emit.trait_derive_supplemental_generic_bound_contract.rust_set_target_bundle_round_trip_preserves_both_production_policies",
   "v2.test.claim.emit.trait_derive_supplemental_generic_bound_contract.rust_vec_serialize_contract_requires_clone_from_im_vector_authority",
+]
+
+// GENERATED: at-cut population group 04, rows 61-75 of the 135. Producer run named in
+// floor_grandfathered_population.
+data floor_grandfathered_at_cut_group_04: List<String> = [
   "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_dag_logic_has_three_fn_bodies",
   "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_dag_tree_receipt_by_execution",
   "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_decl_facts_roster_smoke_totality_holds",
@@ -3422,12 +3430,6 @@ data floor_grandfathered_at_cut_group_04: List<String> = [
   "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_smoke_recomputed_by_execution_holds",
   "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_smoke_totality_holds",
   "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_v2_ingested_body_is_not_decl_facts_skeleton",
-]
-
-// GENERATED: at-cut population group 05, rows 76-90 of the 145. Producer run named in
-// floor_grandfathered_population; same run and same order as floor_grandfathered_chunk_158
-// and chunk_152..157, which is what makes the positional join legal.
-data floor_grandfathered_at_cut_group_05: List<String> = [
   "v2.test.claim.enforcement.cost_coverage_witness.cost_coverage_v2_tree_receipt_by_execution",
   "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_dag_tree_receipt_by_execution",
   "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_dag_tree_totality_holds",
@@ -3435,6 +3437,11 @@ data floor_grandfathered_at_cut_group_05: List<String> = [
   "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_parse_fraction_is_derived",
   "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_reject_is_typed_not_silent",
   "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_smoke_recomputed_by_execution_holds",
+]
+
+// GENERATED: at-cut population group 05, rows 76-90 of the 135. Producer run named in
+// floor_grandfathered_population.
+data floor_grandfathered_at_cut_group_05: List<String> = [
   "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_smoke_totality_holds",
   "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_take_n_fixed_roster_saturates_by_execution",
   "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_take_n_live_dag_subset10_work_units_by_execution",
@@ -3443,12 +3450,6 @@ data floor_grandfathered_at_cut_group_05: List<String> = [
   "v2.test.claim.enforcement.grammar_coverage_witness.grammar_coverage_v2_tree_receipt_by_execution",
   "v2.test.claim.enforcement.lens_module_gate_witness.lens_closure_question_zero_holds_live",
   "v2.test.claim.enforcement.lens_module_gate_witness.lens_closure_question_zero_live_matches_gate",
-]
-
-// GENERATED: at-cut population group 06, rows 91-105 of the 145. Producer run named in
-// floor_grandfathered_population; same run and same order as floor_grandfathered_chunk_158
-// and chunk_152..157, which is what makes the positional join legal.
-data floor_grandfathered_at_cut_group_06: List<String> = [
   "v2.test.claim.enforcement.lens_module_gate_witness.lens_module_gate_holds_live",
   "v2.test.claim.enforcement_inventory_witness.enforcement_inventory_global_receipt_holds",
   "v2.test.claim.enforcement_live_witness.bound_contracts_derive_live_receipts",
@@ -3456,6 +3457,11 @@ data floor_grandfathered_at_cut_group_06: List<String> = [
   "v2.test.claim.enforcement_live_witness.enforcement_consistency_gate_holds",
   "v2.test.claim.enforcement_live_witness.live_corpus_is_currently_all_body_unavailable",
   "v2.test.claim.enforcement_live_witness.per_root_sentinels_hold_in_one_walk",
+]
+
+// GENERATED: at-cut population group 06, rows 91-105 of the 135. Producer run named in
+// floor_grandfathered_population.
+data floor_grandfathered_at_cut_group_06: List<String> = [
   "v2.test.claim.enforcement_live_witness.unbound_contracts_omit_semantic_receipts",
   "v2.test.claim.fold_lowering.bodyless_fold_call_refuses_no_loop_fabricated",
   "v2.test.claim.fold_lowering.bodyless_fold_is_step_form_unresolved",
@@ -3464,12 +3470,6 @@ data floor_grandfathered_at_cut_group_06: List<String> = [
   "v2.test.claim.fold_lowering.fold_callee_name_survives_parse",
   "v2.test.claim.fold_lowering.fold_collection_name_survives_parse",
   "v2.test.claim.fold_lowering.fold_probe_ingest_is_accepted",
-]
-
-// GENERATED: at-cut population group 07, rows 106-120 of the 145. Producer run named in
-// floor_grandfathered_population; same run and same order as floor_grandfathered_chunk_158
-// and chunk_152..157, which is what makes the positional join legal.
-data floor_grandfathered_at_cut_group_07: List<String> = [
   "v2.test.claim.fold_lowering.named_step_fold_is_step_form_unresolved",
   "v2.test.claim.fold_lowering.non_fold_call_is_not_a_fold_disposition",
   "v2.test.claim.fold_lowering.non_fold_call_refuses",
@@ -3477,20 +3477,17 @@ data floor_grandfathered_at_cut_group_07: List<String> = [
   "v2.test.claim.fold_lowering.paramless_step_fold_refuses_no_loop_fabricated",
   "v2.test.claim.fold_lowering.well_formed_fold_still_lowers_through_the_split",
   "v2.test.claim.generated_conformance_floor.generated_coproduct_exhaustiveness_covers_every_coproduct",
+]
+
+// GENERATED: at-cut population group 07, rows 106-120 of the 135. Producer run named in
+// floor_grandfathered_population.
+data floor_grandfathered_at_cut_group_07: List<String> = [
   "v2.test.claim.generated_conformance_floor.generated_coproduct_exhaustiveness_roster_covers_testclaim",
-  "v2.test.claim.grounding_lens.witness_decide_clears_clean_RED",
-  "v2.test.claim.normalized_tree_admission.plural_admission_does_not_duplicate_shared_diagnostics_RED",
   "v2.test.claim.provenance.loaded_carrier_receipts.a_real_loaded_compilation_is_reachable_without_reading_the_live_tree_holds",
   "v2.test.claim.rust_crate_partition_witness.witness_partition_perturbation_member_coverage_holds",
   "v2.test.claim.rust_crate_partition_witness.witness_partition_r4_valid_on_interim_holds",
   "v2.test.claim.staged_front_end.staged_front_end_accepts_a_well_formed_module",
   "v2.test.claim.staged_front_end.staged_front_end_bound_stops_before_the_stages_it_was_not_asked_for",
-]
-
-// GENERATED: at-cut population group 08, rows 121-135 of the 145. Producer run named in
-// floor_grandfathered_population; same run and same order as floor_grandfathered_chunk_158
-// and chunk_152..157, which is what makes the positional join legal.
-data floor_grandfathered_at_cut_group_08: List<String> = [
   "v2.test.claim.staged_front_end.staged_front_end_bounded_run_refuses_the_whole_front_end_question",
   "v2.test.claim.staged_front_end.staged_front_end_parse_and_resolve_deaths_land_on_different_stages",
   "v2.test.claim.staged_front_end.staged_front_end_projection_agrees_with_the_staged_steps",
@@ -3500,18 +3497,17 @@ data floor_grandfathered_at_cut_group_08: List<String> = [
   "v2.test.compiler.pipeline.lower_stage.pipeline_lower_add_fixture_relationship_green",
   "v2.test.compiler.pipeline.tokenize_stage.pipeline_tokenize_pick_relationship_green",
   "v2.test.floor_enrolment_margin.a_declared_identity_censored_at_the_ceiling_does_not_block_at_enrolment",
+]
+
+// GENERATED: at-cut population group 08, rows 121-135 of the 135. Producer run named in
+// floor_grandfathered_population.
+data floor_grandfathered_at_cut_group_08: List<String> = [
   "v2.test.floor_enrolment_margin.a_declared_identity_measured_over_the_margin_does_not_block_here",
   "v2.test.floor_enrolment_margin.a_declared_identity_the_runner_withheld_stays_outside_this_runs_execution",
   "v2.test.floor_enrolment_margin.a_declared_identity_with_no_measurement_does_not_block_at_enrolment",
   "v2.test.floor_enrolment_margin.a_long_home_declares_at_enrolment_even_when_a_string_roster_line_exists",
   "v2.test.floor_enrolment_margin.a_string_roster_hold_does_not_declare_at_enrolment",
   "v2.test.floor_enrolment_margin.the_pairing_hole_is_exhaustive_over_standing",
-]
-
-// GENERATED: at-cut population group 09, rows 136-145 of the 145. Producer run named in
-// floor_grandfathered_population; same run and same order as floor_grandfathered_chunk_158
-// and chunk_152..157, which is what makes the positional join legal.
-data floor_grandfathered_at_cut_group_09: List<String> = [
   "v2.test.floor_enrolment_margin.typed_admission_is_the_only_roster_ground_at_enrolment",
   "v2.test.lens_registry.sg_claims.lens_registry_required_ids_resolve_holds",
   "v2.test.lens_testgen.generator_provenance.lens_testgen_scheduled_generators_carry_provenance_holds",
@@ -3521,14 +3517,13 @@ data floor_grandfathered_at_cut_group_09: List<String> = [
   "v2.test.manual.ownership_movable.witness_threaded_then_consume_is_not_movable",
   "v2.test.manual.ownership_movable.witness_whole_read_then_consume_is_not_movable",
   "v2.test.manual.ownership_movable.witness_zero_consume_is_not_movable",
-  "v2.test.std.reducible.reducible_reduce_verdicts_located_RED",
 ]
 
 fn floor_grandfathered_at_cut_groups() -> List<List<String>> {
-  Cons { head: floor_grandfathered_at_cut_group_00, tail: Cons { head: floor_grandfathered_at_cut_group_01, tail: Cons { head: floor_grandfathered_at_cut_group_02, tail: Cons { head: floor_grandfathered_at_cut_group_03, tail: Cons { head: floor_grandfathered_at_cut_group_04, tail: Cons { head: floor_grandfathered_at_cut_group_05, tail: Cons { head: floor_grandfathered_at_cut_group_06, tail: Cons { head: floor_grandfathered_at_cut_group_07, tail: Cons { head: floor_grandfathered_at_cut_group_08, tail: Cons { head: floor_grandfathered_at_cut_group_09, tail: Empty {} } } } } } } } } } }
+  Cons { head: floor_grandfathered_at_cut_group_00, tail: Cons { head: floor_grandfathered_at_cut_group_01, tail: Cons { head: floor_grandfathered_at_cut_group_02, tail: Cons { head: floor_grandfathered_at_cut_group_03, tail: Cons { head: floor_grandfathered_at_cut_group_04, tail: Cons { head: floor_grandfathered_at_cut_group_05, tail: Cons { head: floor_grandfathered_at_cut_group_06, tail: Cons { head: floor_grandfathered_at_cut_group_07, tail: Cons { head: floor_grandfathered_at_cut_group_08, tail: Empty {} } } } } } } } } }
 }
 
-// THE ROSTER SIDE OF THE SAME 145: the chunks the generator appended at the cut, and nothing else.
+// THE ROSTER SIDE OF THE SAME 135: the chunks the generator appended at the cut, and nothing else.
 // Reading the region rather than all 159 chunks is not a weakening -- these identities live only in
 // these seven chunks -- and it is what keeps the whole-population join inside the ceiling this node
 // governs. The full-roster path is still walked, at identity grain, by
@@ -3553,8 +3548,8 @@ fn floor_grandfathered_recovered_row_total() -> Int {
   length(xs: floor_grandfathered_recovered_rows())
 }
 
-// THE POSITIONAL JOIN, OVER ALL 145 AT ONCE. Both sides are emitted sorted by the same producer run, so
-// the descent is one pass and the cost is O(145) rather than 145 descents of 3,748 rows -- which is the
+// THE POSITIONAL JOIN, OVER ALL 135 AT ONCE. Both sides are emitted sorted by the same producer run, so
+// the descent is one pass and the cost is O(135) rather than 135 descents of 3,916 rows -- which is the
 // only reason a whole-population claim fits under the ceiling at all. A row deleted from either side
 // misaligns the pass from that row on, and the identity returned is the population row that lost its
 // partner: a FINDING, named, never a silent reclassification.
