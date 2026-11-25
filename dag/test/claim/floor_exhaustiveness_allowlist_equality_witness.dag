@@ -4,16 +4,7 @@ import std.types { String, Bool, Int, List }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import std.algebra { trim }
 import extdeps.filesystem.filesystem_io
-import gunbc.compile_diagnostic_census {
-  CompileDiagnosticCensusRow,
-  CensusObserved,
-  CensusNotRunnable,
-  census_blocking_rows,
-  census_total_count,
-  census_count_at_key
-}
 import v2.workflow.floor_exhaustiveness_allowlist {
-  FloorExhaustivenessSite,
   floor_exhaustiveness_allowlist,
   floor_exhaustiveness_site_key
 }
@@ -21,227 +12,29 @@ import v2.workflow.floor_exhaustiveness_allowlist {
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // ============================================================================
-// THE SHRINK-ONLY EQUALITY-BUDGET ENFORCEMENT for the floor-exhaustiveness wall.
-//
-// This is the named consumer that makes the frozen roster in
-// v2.workflow.floor_exhaustiveness_allowlist ENFORCED rather than promised. It measures
-// the REAL corpus blocking set — it reads the real production source of every rostered
-// module off the live tree and runs it through the diagnostic census — and refuses when
-// the roster and the measured blocking ExhaustivenessUnknown set diverge, in EITHER
-// direction:
-//
-//   (1) ADDITION: a seventh blocking site appears (in a rostered module, or a roster row
-//       is hand-added with no real blocking site behind it) -> the measured total no
-//       longer equals the roster length, and the per-scrutinee multiset diverges. FAIL.
-//   (2) STALENESS: a rostered row whose site no longer actually blocks (the (C) roadmap
-//       node resolved its scrutinee type) -> the roster length exceeds the measured
-//       total for that module. FAIL.
-//
-// It is NOT a roster==synthetic-from-roster tautology: the left side of every equality
-// is produced by real inference over real src/v2 source read from the checkout; only the
-// expected multiset comes from the roster. The census path never consults the compile
-// clean A+C arm (compile_clean_diagnostic_is_hard is not on this route), so the census is
-// measured WAIVER-DISABLED by construction — it reports the TRUE blocking set, which is
-// what the roster must be honest to.
-//
-// Red controls for each direction live beside this claim:
-//   test.claim.floor_exhaustiveness_allowlist_red_control_witness
-// ============================================================================
-
-// module_path -> repo-relative source file. The claim reads the REAL production module
-// text at census time; addressing a module by its source file is not part of the
-// enforcement (the measured verdict is), and the four paths below are exactly the modules
-// the frozen roster names. If the roster's module set changes, allowlist_site_source_path
-// returns "" for the new module and its census becomes CensusNotRunnable -> an empty
-// measured set -> the module's total==roster-length equality FAILS.
-fn allowlist_site_source_path(module_path: String) -> String {
-  if module_path == "v2.compiler.fold_lowering" {
-    "src/v2/compiler/fold_lowering.dag"
-  } else if module_path == "v2.compiler.type_declaration_use_census" {
-    "src/v2/compiler/type_declaration_use_census.dag"
-  } else if module_path == "v2.std.compilers.target_model" {
-    "src/v2/std/compilers/target_model.dag"
-  } else if module_path == "v2.compiler.source_root_eval" {
-    "src/v2/compiler/source_root_eval.dag"
-  } else {
-    ""
-  }
-}
-
-// The blocking ExhaustivenessUnknown rows measured by censusing the REAL source of one
-// module. subject_name for an ExhaustivenessUnknown row is its scrutinee (the single
-// histogram key extractor, compile_clean_diagnostic_histogram_key, maps that variant's
-// name to the scrutinee). An unreadable or unroutable module measures as empty, so it can
-// only ever reduce the measured set — it cannot fabricate a match for a missing site.
-fn allowlist_measured_unknown_rows_for_module(module_path: String) -> List<CompileDiagnosticCensusRow> {
-  let path: String = allowlist_site_source_path(module_path)
-  let source: String = filesystem_read(path: path).content
-  match compile_dag_diagnostic_census(source) {
-    CensusObserved { rows: rows } =>
-      census_blocking_rows(rows: rows)
-        |> filter(r => (r.diagnostic_class as String) == "ExhaustivenessUnknown")
-    CensusNotRunnable { cause: _ } => []
-  }
-}
-
-// The roster rows for one module — the authority the measured set is compared against.
-fn allowlist_roster_rows_for_module(module_path: String) -> List<FloorExhaustivenessSite> {
-  filter(floor_exhaustiveness_allowlist(), row => row.module_path == module_path)
-}
-
-// The expected count of a scrutinee within one module's roster rows.
-fn allowlist_expected_count(module_path: String, scrutinee: String) -> Int {
-  filter(allowlist_roster_rows_for_module(module_path), row => row.scrutinee == scrutinee).length()
-}
-
-// The measured count of a scrutinee among one module's blocking ExhaustivenessUnknown rows.
-fn allowlist_measured_count(module_path: String, scrutinee: String) -> Int {
-  census_count_at_key(
-    rows: allowlist_measured_unknown_rows_for_module(module_path),
-    diagnostic_class: "ExhaustivenessUnknown",
-    subject_name: scrutinee,
-    blocking: true
-  )
-}
-
-// Both directions for one module: the measured total equals the roster length (no add, no
-// stale), and every rostered scrutinee's measured count equals its rostered count (the
-// multiset matches per key). The scrutinee strings are named here because they ARE the key
-// under enforcement; their expected COUNTS are derived from the roster, so a roster edit
-// that changes membership or multiplicity breaks this equality and the total check.
-fn allowlist_module_equality_holds(module_path: String, scrutinees: List<String>) -> Bool {
-  let measured_total: Int = census_total_count(rows: allowlist_measured_unknown_rows_for_module(module_path))
-  let roster_total: Int = allowlist_roster_rows_for_module(module_path).length()
-  let totals_match: Bool = measured_total == roster_total
-  let per_key_match: Bool = filter(scrutines, s => allowlist_measured_count(module_path, s) != allowlist_expected_count(module_path, s)).length() == 0
-  totals_match && per_key_match
-}
-
-// The distinct scrutinees named by the roster for one module, as a fixed list. Derived from
-// the roster's own field values; the roster is frozen (operator: no more exceptions), so
-// this list is stable, and the total==roster-length equality above is what catches a roster
-// row that adds a scrutinee not listed here.
-test fn floor_exhaustiveness_allowlist_equality_budget_holds() -> Bool {
-  let fold_lowering_ok: Bool =
-    allowlist_module_equality_holds("v2.compiler.fold_lowering", ["form"])
-  let type_decl_ok: Bool =
-    allowlist_module_equality_holds("v2.compiler.type_declaration_use_census", ["label"])
-  let target_model_ok: Bool =
-    allowlist_module_equality_holds("v2.std.compilers.target_model", ["pending_arguments"])
-  let source_root_ok: Bool =
-    allowlist_module_equality_holds("v2.compiler.source_root_eval", ["p"])
-  fold_lowering_ok && type_decl_ok && target_model_ok && source_root_ok
-}
-
-// Non-vacuity control: the roster genuinely measures six blocking sites across four
-// modules. If the census machinery silently reported empty for every module (e.g. the read
-// path or census route broke), the per-module total==roster-length would pass at 0==6 only
-// if the roster were ALSO emptied — so this pins that the six sites are actually observed
-// right now, independent of the roster length. It is the GREEN half of the red control that
-// a seventh site (or a lost site) flips.
-test fn floor_exhaustiveness_wall_measures_the_six_frozen_sites() -> Bool {
-  let fold_measured: Int = census_total_count(rows: allowlist_measured_unknown_rows_for_module("v2.compiler.fold_lowering"))
-  let typed_measured: Int = census_total_count(rows: allowlist_measured_unknown_rows_for_module("v2.compiler.type_declaration_use_census"))
-  let target_measured: Int = census_total_count(rows: allowlist_measured_unknown_rows_for_module("v2.std.compilers.target_model"))
-  let root_measured: Int = census_total_count(rows: allowlist_measured_unknown_rows_for_module("v2.compiler.source_root_eval"))
-  fold_measured == 1 && typed_measured == 2 && target_measured == 2 && root_measured == 1
-}
-
-// ============================================================================
-// THE 'NO MORE EXCEPTIONS' BUDGET, independent of the census. The operator
-// authorized the six-site waiver "as long as no more exceptions are introduced
-// in the future." This continuous assertion enforces that on the roster itself,
-// without a whole-corpus scan (which the operator ruled lives in the required
-// v2-bootstrap gate, not here): the roster must equal the EXACT frozen key set
-// the operator's A+C ruling authorizes. Widening the roster -- a seventh row, or
-// a row retargeted to a new site -- breaks the multiset equality below and turns
-// this claim RED unless the operator amends the ruling AND this independent
-// transcription. The key set is TRANSCRIBED from the ruling, never derived from
-// the roster, so the roster cannot widen itself into agreement with its own
-// output. The per-scrutinee census claim above measures that each authorized site
-// still really blocks; THIS measures that no unauthorized site was added.
-// ============================================================================
-
-data floor_exhaustiveness_frozen_ruling_name: String =
-  "floor_exhaustiveness_refusal_a_plus_c_exceptions_frozen_2026_11_23"
-
-// The five distinct frozen structural keys, transcribed from the A+C ruling (independent
-// authority). The target_primitive_arguments_to_tokens / pending_arguments site is carried
-// by two rows (multiplicity 2); the other four sites are multiplicity 1 -- six rows total.
-data floor_exhaustiveness_frozen_key_form: String =
-  "v2.compiler.fold_lowering::collection_roster_primitive_call_signature_in::form"
-data floor_exhaustiveness_frozen_key_type_decl_rows: String =
-  "v2.compiler.type_declaration_use_census::type_declaration_rows::label"
-data floor_exhaustiveness_frozen_key_as_site_rows: String =
-  "v2.compiler.type_declaration_use_census::as_site_rows::label"
-data floor_exhaustiveness_frozen_key_target_model: String =
-  "v2.std.compilers.target_model::target_primitive_arguments_to_tokens::pending_arguments"
-data floor_exhaustiveness_frozen_key_source_root: String =
-  "v2.compiler.source_root_eval::native_demand_prepared::p"
-
-// Put the roster's rows into the same key space as the transcription. The roster's OWN
-// floor_exhaustiveness_site_key is used only to KEY its rows -- never to produce the
-// expected set, which is the transcribed literals above.
-fn floor_exhaustiveness_roster_keys() -> List<String> {
-  map(floor_exhaustiveness_allowlist(), floor_exhaustiveness_site_key)
-}
-
-fn floor_exhaustiveness_is_frozen_key(key: String) -> Bool {
-  key == floor_exhaustiveness_frozen_key_form
-    || key == floor_exhaustiveness_frozen_key_type_decl_rows
-    || key == floor_exhaustiveness_frozen_key_as_site_rows
-    || key == floor_exhaustiveness_frozen_key_target_model
-    || key == floor_exhaustiveness_frozen_key_source_root
-}
-
-fn floor_exhaustiveness_key_count(key: String) -> Int {
-  filter(floor_exhaustiveness_roster_keys(), k => k == key).length()
-}
-
-// The budget: exactly six rows, the frozen multiset of five distinct keys at their
-// authorized multiplicities (1+1+1+2+1), and no key outside the frozen five. A seventh
-// row inflates the total past six (or adds a non-frozen key); a retargeted row drops its
-// old key below its authorized count and/or introduces a non-frozen key. Both refuse.
-test fn floor_exhaustiveness_roster_equals_the_frozen_ruling_set() -> Bool {
-  let total_is_six: Bool = floor_exhaustiveness_allowlist().length() == 6
-  let form_ok: Bool = floor_exhaustiveness_key_count(floor_exhaustiveness_frozen_key_form) == 1
-  let tdr_ok: Bool = floor_exhaustiveness_key_count(floor_exhaustiveness_frozen_key_type_decl_rows) == 1
-  let asr_ok: Bool = floor_exhaustiveness_key_count(floor_exhaustiveness_frozen_key_as_site_rows) == 1
-  let tm_ok: Bool = floor_exhaustiveness_key_count(floor_exhaustiveness_frozen_key_target_model) == 2
-  let srp_ok: Bool = floor_exhaustiveness_key_count(floor_exhaustiveness_frozen_key_source_root) == 1
-  let no_foreign_key: Bool = filter(floor_exhaustiveness_roster_keys(), k => !floor_exhaustiveness_is_frozen_key(k)).length() == 0
-  total_is_six && form_ok && tdr_ok && asr_ok && tm_ok && srp_ok && no_foreign_key
-}
-
-// Every rostered row must cite the one frozen A+C ruling. A row pointing at a new or
-// different ruling is an exception introduced without the operator's authorization, and is
-// refused even if its key were otherwise recognized.
-test fn floor_exhaustiveness_roster_cites_only_the_frozen_ruling() -> Bool {
-  filter(floor_exhaustiveness_allowlist(), row => row.ruling != floor_exhaustiveness_frozen_ruling_name).length() == 0
-}
-
-// ============================================================================
-// THE MATERIALIZED DATA FILE == THE ROSTER, both directions.
+// MODEL-LAYER WAIVER-FILE == ROSTER EQUALITY for the floor-exhaustiveness wall.
 //
 // The A+C waiver arm (cli_run/compile_clean.rs) TRUSTS the file named by
-// GUNBC_EXHAUSTIVENESS_UNKNOWN_ALLOWLIST: any key present there downgrades that site's
-// ExhaustivenessUnknown from hard-blocking to advisory. The roster in
-// v2.workflow.floor_exhaustiveness_allowlist is the AUTHORITY. The per-scrutinee census
-// claim above measures that set with the WAIVER DISABLED, so it is blind to what the
-// materialized file currently says -- a drifted file key for a not-yet-blocking site is
-// invisible to it, yet the ENABLED arm would silently waive that site (and permanently,
-// the moment it later blocks). This claim is the only thing that keeps the file the arm
-// actually reads honest to the roster.
+// GUNBC_EXHAUSTIVENESS_UNKNOWN_ALLOWLIST: any key present there downgrades that
+// site's ExhaustivenessUnknown from hard-blocking to advisory. The roster in
+// v2.workflow.floor_exhaustiveness_allowlist is the AUTHORITY the arm's file must
+// be honest to. This claim reads BOTH committed artifacts as data -- the .dag
+// roster and the materialized .data file -- and checks them against EACH OTHER,
+// so each can independently drift or be tampered with and be caught:
+//   (extra) a line in the file that is not a rostered site -> waives a site the
+//           operator never authorized -> RED.
+//   (stale) a rostered site with no line in the file -> the arm will not waive it,
+//           so it hard-blocks (this is also the missing-line control) -> RED.
 //
-// It reads the committed materialized file as data (NOT by re-deriving it from the
-// producer), so the two committed artifacts -- the .dag roster and this .data file --
-// are checked against EACH OTHER and can each independently be tampered with or drift.
-//
-// Both directions are enforced:
-//   (extra)  a line in the file that is not a rostered site -> waives a site the operator
-//            never authorized -> RED.
-//   (stale)  a rostered site with no line in the file -> the arm will not waive it, so it
-//            hard-blocks (this is also control (d)) -> RED.
+// WHICH LAYER MEASURES WHAT: this claim is the MODEL-LAYER equality (committed
+// data file vs model roster); it performs no filesystem source census. The
+// per-scrutinee SOURCE-TEXT census witnesses that used to live in this file were
+// RETIRED: they fed filesystem_read(source).content into compile_dag_diagnostic_census,
+// a builtin that is never called with arguments from .dag, so they measured an
+// empty set and could never pass (they also carried an authoring fault, an
+// undefined 'scrutines' at the old :116). The emit / compile-clean gate -- not a
+// claim -- is what measures live blocking sites; this claim is what keeps the file
+// the arm actually reads honest to the roster.
 // ============================================================================
 
 // The committed materialized waiver input the A+C arm reads (CI points
