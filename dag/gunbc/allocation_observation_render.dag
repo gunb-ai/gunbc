@@ -61,6 +61,13 @@ fn span_is_zero(o: AllocationObservation) -> Bool {
   }
 }
 
+// span_at_least keeps the (bytes: Nat) shape it ARRIVED with, from the instrument this block was
+// moved out of. It is the same unit defect review 98559 stopped in span_bytes, and this row neither
+// chose it nor repeats it; a verbatim move is not a licence to give a known unit error a permanent
+// home. Its repair belongs to the roadmap row that owns repairing a cost defect at its earliest
+// incorrect layer, #gunbc.roadmap.roadmap_authority::declared_roadmap_nodes id
+// emission-ownership-facts-survive-lowering. If planning assigns the reading vocabulary to another
+// row, re-point this line rather than leaving the shape without an owner.
 fn span_at_least(o: AllocationObservation, operations: Nat, bytes: Nat) -> Bool {
   match o {
     AllocationObserved { operations: n, bytes_requested: b } => n >= operations && byte_size_count(b: b) >= bytes
