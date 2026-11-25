@@ -90,7 +90,7 @@ fn cli_reason(red_at: String, green_at: String) -> String { cli_arm_reason(arm: 
 fn cli_probe_reason(red_at: String, green_at: String, red_base: String, probe_ref: String) -> String { cli_arm_reason(arm: "probe", red_at: red_at, green_at: green_at, red_base: red_base, probe_ref: probe_ref) }
 
 fn cli_arm_reason(arm: String, red_at: String, green_at: String, red_base: String, probe_ref: String) -> String {
-  match roadmap_acceptance_record_cli(repo_root: "/nonexistent", receipt_line: "", pr_url: pair_url(), head_sha: pair_head(), author: "", red_kind: arm, red_at: red_at, green_at: green_at, red_base: red_base, probe_ref: probe_ref) {
+  match roadmap_acceptance_record_cli(repo_root: "/nonexistent", receipt_line: "", pr_url: pair_url(), merged_at: "", head_sha: pair_head(), author: "", red_kind: arm, red_at: red_at, green_at: green_at, red_base: red_base, probe_ref: probe_ref) {
     ExitFailure { code: _, reason: r } => r
     ExitSuccess => "success"
   }
@@ -259,7 +259,7 @@ fn probe_members() -> String { ",\"red_kind\":\"probe\",\"red_at\":\"a1b2c3d4e5f
 
 // What the recorder answers for a given line, arm and pair — the production route, refusal words included.
 fn cli_line_reason(line: String, arm: String, r: String, g: String, b: String, ref: String) -> String {
-  match roadmap_acceptance_record_cli(repo_root: "/nonexistent", receipt_line: line, pr_url: pair_url(), head_sha: pair_head(), author: "", red_kind: arm, red_at: r, green_at: g, red_base: b, probe_ref: ref) {
+  match roadmap_acceptance_record_cli(repo_root: "/nonexistent", receipt_line: line, pr_url: pair_url(), merged_at: "2026-11-23T00:00:00Z", head_sha: pair_head(), author: "", red_kind: arm, red_at: r, green_at: g, red_base: b, probe_ref: ref) {
     ExitFailure { code: _, reason: rr } => rr
     ExitSuccess => "success"
   }

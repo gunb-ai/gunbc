@@ -5,7 +5,7 @@
 // store: observe_install. Everything checkable without an ssh session is therefore what decides whether a
 // completion is ever written: which parent disk is believed, which MAC set carries the client, which installer
 // record counts, and which instant may be called the root's creation time. The claims run the reader over
-// supplied RemoteAnswers, so they stay hermetic; the live leg of this port is the production ssh exec and, later,
+// supplied HostLegs, so they stay hermetic; the live leg of this port is the production ssh exec and, later,
 // the run the manager dispatches.
 //
 // THE POSITIVE CONTROL IS A REAL INPUT, not a made-up shape. srv15's authorized disk is admitted here from the
@@ -24,14 +24,14 @@ import std.types { Int, NonEmptyStr, String }
 import std.optional { Optional, Present, Absent }
 import std.algebra { FreeSemigroup, length, string_contains }
 import extdeps.network.mac { Eui48Address, mac_address }
-import extdeps.tools.util_linux_lsblk { LsblkDeviceType, LsblkPart }
-import gunbc.host.boot_medium_served_readback { RemoteAnswer }
+import extdeps.tools.util_linux_lsblk { LsblkDeviceType, LsblkOtherType, LsblkPart }
+import gunbc.host_command_binding { HostLeg, LegAnswered, LegNotDispatched }
 import gunbc.host.network_install_host_reader {
   InstalledHostEvidence, InstalledHostRemoteLegs, InstalledHostRootChainBroken, InstalledHostRootFound,
   InstalledHostRootNotMounted, InstalledHostOsNotReported, InstalledHostOsReported,
   installed_host_block_rows, installed_host_carries_mac, installed_host_created_at, installed_host_mac_set,
   installed_host_os_report,
-  installed_host_record_reading, installed_host_root_report, network_install_host_evidence,
+  installed_host_record_reading, installed_host_root_reading, installed_host_root_report, network_install_host_evidence,
   network_install_host_readings,
 }
 import gunbc.fleet.fleet_host_identity { operator_host_srv15 }
@@ -42,6 +42,7 @@ import extdeps.storage.device_identification { device_identification_token_text 
 import gunbc.provisioning.install_target_disk { InstallTargetDisk, InstallTargetDiskAdmitted, InstallTargetDiskWithheld, admit_install_target_disk }
 import gunbc.provisioning.network_install_receipt {
   ClientClassRead, ClientClassUnread, InstalledRootDevice, InstalledRootRead, InstalledRootUnbacked, InstalledRootUnread,
+  InterfaceMacsObserved, InterfaceMacsUnread,
   InstallerRecordAbsent, InstallerRecordRead, InstallerRecordUnread, NetworkInstallReadings,
 }
 import gunbc.secure_boot_observation { SecureBootDisabled, SecureBootEnabled, SecureBootRefused, SecureBootUnobserved }
@@ -115,9 +116,16 @@ data installed_machine_id: String = "3f2a9c1d4b5e6789a0b1c2d3e4f50617"
 data installer_record_mtime: String = "1793232030"
 data root_birth_time_seconds: String = "1793232025"
 
-fn answered(text: String) -> RemoteAnswer {
-  RemoteAnswer { exit_code: 0, stdout: text, stderr: "" }
+fn answered(text: String) -> HostLeg {
+  LegAnswered { exit_code: 0, stdout: text, stderr: "" }
 }
+
+fn answered_exit(exit_code: Int, text: String) -> HostLeg {
+  LegAnswered { exit_code: exit_code, stdout: text, stderr: "" }
+}
+
+// A leg the host was never handed: it carries its cause and no bytes, no exit status.
+fn not_dispatched(reason: String) -> HostLeg { LegNotDispatched { reason: reason } }
 
 // The six legs, with the identity columns and the refusals left open so a claim changes exactly ONE fact and every
 // other fact stays as the positive control printed it.
@@ -127,7 +135,7 @@ fn legs(machine_id: String, block: String, record_text: String, record_exit: Int
     machine_id: fn() { answered(machine_id) }
     link_list: fn() { answered(installed_link_list) }
     block_report: fn() { answered(block) }
-    installer_record: fn() { RemoteAnswer { exit_code: record_exit, stdout: record_text, stderr: "" } }
+    installer_record: fn() { answered_exit(exit_code: record_exit, text: record_text) }
     root_created: fn() { answered(created) }
   }
 }
@@ -179,9 +187,13 @@ test fn w_srv15_s_installed_host_is_read_as_installed_to_disk() -> Bool {
 test fn w_the_bound_mac_is_a_member_of_a_three_port_host_and_the_edge_gaps_stay_gaps() -> Bool {
   with_srv15_target(apply: target => {
     let readings = reading_with(target: target, host_legs: srv15_legs())
-    installed_host_carries_mac(mac_set: readings.host.interface_macs, client: bobo_netboot_mac)
-      && installed_host_carries_mac(mac_set: readings.host.interface_macs, client: other_port_mac)
-      && length(xs: readings.host.interface_macs) == 3
+    match readings.host.interface_macs {
+      InterfaceMacsObserved { macs: ms } =>
+        installed_host_carries_mac(mac_set: ms, client: bobo_netboot_mac)
+          && installed_host_carries_mac(mac_set: ms, client: other_port_mac)
+          && length(xs: ms) == 3
+      InterfaceMacsUnread { reason: _ } => false
+    }
       && match readings.host.installer_record {
         InstallerRecordRead { written_at: written_at } => written_at == 1793232030000
         InstallerRecordAbsent => false
@@ -423,13 +435,12 @@ test fn w_an_os_release_that_names_no_os_reports_nothing() -> Bool {
 
 fn evidence_with(record_text: String, record_exit: Int) -> InstalledHostEvidence {
   InstalledHostEvidence {
-    os_release_raw: installed_os_release
-    machine_id_raw: installed_machine_id
-    link_list_raw: installed_link_list
-    block_report_raw: installed_block_report(serial: srv15_reported_serial, model: srv15_reported_model)
-    installer_record_raw: record_text
-    root_created_raw: root_birth_time_seconds
-    installer_record_exit: record_exit
+    os_release: answered(installed_os_release)
+    machine_id: answered(installed_machine_id)
+    link_list: answered(installed_link_list)
+    block_report: answered(installed_block_report(serial: srv15_reported_serial, model: srv15_reported_model))
+    installer_record: answered_exit(exit_code: record_exit, text: record_text)
+    root_created: answered(root_birth_time_seconds)
   }
 }
 
@@ -574,4 +585,83 @@ test fn p_the_root_source_equals_the_partition_without_a_cast() -> Bool {
     InstalledHostRootNotMounted { why: _ } => false
     InstalledHostRootChainBroken { why: _ } => false
   }
+}
+
+// ── NEVER-DISPATCHED LEGS (fabricated-value discriminators) ──────────────
+// Each of these runs the READING function on a leg the host was never handed and requires that reading's OWN
+// typed unread/unobserved outcome carrying the cause. They are red on the pre-PR behavior, where the leg came back
+// as a fabricated exit 255 with empty stdout and the gate read that absence as a substantive claim (installer
+// record "absent", root present, or "the host does not carry the mac"). gunbc.design_argument::fail_closed.
+
+fn evidence_with_leg_not_dispatched(leg: String) -> InstalledHostEvidence {
+  let reason = concat(leg, " never dispatched")
+  InstalledHostEvidence {
+    os_release: if leg == "os_release" { not_dispatched(reason: reason) } else { answered(installed_os_release) }
+    machine_id: if leg == "machine_id" { not_dispatched(reason: reason) } else { answered(installed_machine_id) }
+    link_list: if leg == "link_list" { not_dispatched(reason: reason) } else { answered(installed_link_list) }
+    block_report: if leg == "block_report" { not_dispatched(reason: reason) } else { answered(installed_block_report(serial: srv15_reported_serial, model: srv15_reported_model)) }
+    installer_record: if leg == "installer_record" { not_dispatched(reason: reason) } else { answered_exit(exit_code: 0, text: installer_record_mtime) }
+    root_created: if leg == "root_created" { not_dispatched(reason: reason) } else { answered(root_birth_time_seconds) }
+  }
+}
+
+// THE FABRICATED EXIT, THE WHOLE POINT: a stat leg never handed to the host must NOT become InstallerRecordAbsent
+// ("the installed root's record is not there") via a fabricated non-zero exit. It refuses as InstallerRecordUnread
+// carrying the cause. Red if a never-dispatched leg is read through an invented exit status as Absent.
+test fn w_a_never_dispatched_installer_record_is_unread_never_absent() -> Bool {
+  match installed_host_record_reading(evidence: evidence_with_leg_not_dispatched(leg: "installer_record")) {
+    InstallerRecordUnread { why: why } => string_contains(s: why as String, pattern: "never dispatched")
+      && !string_contains(s: why as String, pattern: "exit=")
+    InstallerRecordRead { written_at: _ } => false
+    InstallerRecordAbsent => false
+  }
+}
+
+test fn w_a_never_dispatched_machine_id_root_is_unread_naming_the_leg() -> Bool {
+  with_srv15_target(
+    apply: target => match installed_host_root_reading(target: target, evidence: evidence_with_leg_not_dispatched(leg: "machine_id")) {
+      InstalledRootUnread { why: why } => string_contains(s: why as String, pattern: "never dispatched") && string_contains(s: why as String, pattern: "machine-id")
+      InstalledRootRead { source: _, chain: _, disk_serial: _, created_at: _ } => false
+      InstalledRootUnbacked { source: _ } => false
+    }
+  )
+}
+
+test fn w_a_never_dispatched_root_created_root_is_unread_naming_the_leg() -> Bool {
+  with_srv15_target(
+    apply: target => match installed_host_root_reading(target: target, evidence: evidence_with_leg_not_dispatched(leg: "root_created")) {
+      InstalledRootUnread { why: why } => string_contains(s: why as String, pattern: "never dispatched") && string_contains(s: why as String, pattern: "root-creation-time")
+      InstalledRootRead { source: _, chain: _, disk_serial: _, created_at: _ } => false
+      InstalledRootUnbacked { source: _ } => false
+    }
+  )
+}
+
+test fn w_a_never_dispatched_block_report_root_is_unread_naming_the_leg() -> Bool {
+  with_srv15_target(
+    apply: target => match installed_host_root_reading(target: target, evidence: evidence_with_leg_not_dispatched(leg: "block_report")) {
+      InstalledRootUnread { why: why } => string_contains(s: why as String, pattern: "never dispatched") && string_contains(s: why as String, pattern: "lsblk")
+      InstalledRootRead { source: _, chain: _, disk_serial: _, created_at: _ } => false
+      InstalledRootUnbacked { source: _ } => false
+    }
+  )
+}
+
+// At the reader level (the receipt witness has the fold-level red): a link leg never handed to the host reads its
+// MACs as Unread with the cause, never an observed set the fold would turn into "does not carry".
+test fn w_a_never_dispatched_link_leg_reads_the_macs_unread() -> Bool {
+  let host_legs = InstalledHostRemoteLegs {
+    os_release: fn() { answered(installed_os_release) }
+    machine_id: fn() { answered(installed_machine_id) }
+    link_list: fn() { not_dispatched(reason: "ip link never dispatched") }
+    block_report: fn() { answered(installed_block_report(serial: srv15_reported_serial, model: srv15_reported_model)) }
+    installer_record: fn() { answered_exit(exit_code: 0, text: installer_record_mtime) }
+    root_created: fn() { answered(root_birth_time_seconds) }
+  }
+  with_srv15_target(
+    apply: target => match reading_with(target: target, host_legs: host_legs).host.interface_macs {
+      InterfaceMacsUnread { reason: reason } => string_contains(s: reason as String, pattern: "never dispatched")
+      InterfaceMacsObserved { macs: _ } => false
+    }
+  )
 }

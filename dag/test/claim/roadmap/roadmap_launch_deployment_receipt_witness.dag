@@ -63,8 +63,10 @@ import gunbc.live_deploy.unit_standing {
   BeltEventPathConverged,
   BeltEventPathRefused,
   BeltEventPathStanding,
+  BeltTimerStanding,
   DashboardServiceConverged,
   LaunchUnitStanding,
+  judge_belt_timer,
 }
 import gunbc.roadmap.roadmap_belt { AutomaticReady, ManualReady, SpawnMode }
 import gunbc.roadmap.roadmap_belt_actuate {
@@ -286,7 +288,7 @@ fn rlm_tick_fact(t: BeltTickReceipt) -> TickFact {
   TickObserved { receipt: t }
 }
 
-fn rlm_units(exit_path: BeltEventPathStanding, oneshot: BeltOneshotStanding) -> LaunchUnitStanding {
+fn rlm_units(exit_path: BeltEventPathStanding, oneshot: BeltOneshotStanding, timer: BeltTimerStanding) -> LaunchUnitStanding {
   LaunchUnitStanding {
     dashboard: DashboardServiceConverged { unit: "gunbc-roadmap.service" },
     exit_path: exit_path,
@@ -294,7 +296,14 @@ fn rlm_units(exit_path: BeltEventPathStanding, oneshot: BeltOneshotStanding) -> 
     publication_path: BeltEventPathConverged { unit: "gunbc-roadmap-publication.path" },
     publication_helper: BeltOneshotConverged { unit: "gunbc-roadmap-publication.service", active_state: "inactive" },
     oneshot: oneshot,
+    standings_refresh_timer: timer,
   }
+}
+
+// THE TIMER ROW OF EVERY GREEN FIXTURE: active and enabled, which is what the deploy carrying PR #16918
+// restores on srv1 after the 2026-11-23T06:42:26Z hand-stop ruling (review 97571).
+fn rlm_timer_active() -> BeltTimerStanding {
+  judge_belt_timer(active_state: "active", unit_file_state: "enabled")
 }
 
 fn rlm_release_binding(revision_hex: String) -> DeployedReleaseBinding {
@@ -346,7 +355,7 @@ fn rlm_complete_facts() -> RoadmapLaunchDeploymentFacts {
     release_binding: rlm_release_binding(revision_hex: rlm_fixture_r),
     readiness: ReadinessServed { revision: rlm_fixture_r, surface: rlm_fixture_surface },
     transition: ActuationPermitted,
-    unit_standing: rlm_units(exit_path: BeltEventPathConverged { unit: "gunbc-roadmap-belt-exit.path" }, oneshot: BeltOneshotConverged { unit: "gunbc-belt.service", active_state: "inactive" }),
+    unit_standing: rlm_units(exit_path: BeltEventPathConverged { unit: "gunbc-roadmap-belt-exit.path" }, oneshot: BeltOneshotConverged { unit: "gunbc-belt.service", active_state: "inactive" }, timer: rlm_timer_active()),
     tick_standing: rlm_tick_fact(t: tick),
     event_backlog: EventBacklogClear { inbox: 0, queued: 0 },
     footprint: FootprintAdmitted,
@@ -510,7 +519,7 @@ test fn witness_v3_tick_on_disk_is_incomplete_at_tick_standing() -> Bool {
 // a disabled exit path unit beside an otherwise complete population: the watcher is not armed
 test fn witness_disabled_exit_path_is_incomplete_at_unit_standing() -> Bool {
   incomplete_at(
-    facts: with_units(f: rlm_complete_facts(), u: rlm_units(exit_path: BeltEventPathRefused { unit: "gunbc-roadmap-belt-exit.path", property: "UnitFileState", expected: "enabled", observed: "disabled" }, oneshot: BeltOneshotConverged { unit: "gunbc-belt.service", active_state: "inactive" })),
+    facts: with_units(f: rlm_complete_facts(), u: rlm_units(exit_path: BeltEventPathRefused { unit: "gunbc-roadmap-belt-exit.path", property: "UnitFileState", expected: "enabled", observed: "disabled" }, oneshot: BeltOneshotConverged { unit: "gunbc-belt.service", active_state: "inactive" }, timer: rlm_timer_active())),
     member: "unit_standing",
   )
 }
@@ -519,7 +528,25 @@ test fn witness_disabled_exit_path_is_incomplete_at_unit_standing() -> Bool {
 // exactly that (active_state "inactive") and is Complete; an ACTIVE oneshot mid-tick is equally
 // accepted.
 test fn witness_active_oneshot_mid_tick_is_still_complete() -> Bool {
-  unit_standing_blockers(f: rlm_units(exit_path: BeltEventPathConverged { unit: "gunbc-roadmap-belt-exit.path" }, oneshot: BeltOneshotConverged { unit: "gunbc-belt.service", active_state: "active" })).length() == 0
+  unit_standing_blockers(f: rlm_units(exit_path: BeltEventPathConverged { unit: "gunbc-roadmap-belt-exit.path" }, oneshot: BeltOneshotConverged { unit: "gunbc-belt.service", active_state: "active" }, timer: rlm_timer_active())).length() == 0
+}
+
+// THE STANDINGS-REFRESH TIMER ROW IS LOAD-BEARING AT THE RECEIPT (review 97571; review 97601
+// non-blocking (c)). Loaded, enabled, HAND-STOPPED -- the exact state srv1 sat in from the
+// 2026-11-23T06:42:26Z operator ruling -- must hold the deploy at DeploymentIncomplete on
+// unit_standing, and the blocker must carry the timer's own words. This is the COMPILABLE red the
+// row needs: delete the timer arm from unit_standing_blockers (the row itself stays on the type) and
+// this claim fails while everything still resolves -- which is what the type-level row claim in
+// test.claim.live_deploy.unit_standing_witness cannot show on its own.
+test fn witness_hand_stopped_standings_timer_is_incomplete_at_unit_standing() -> Bool {
+  let units = rlm_units(
+    exit_path: BeltEventPathConverged { unit: "gunbc-roadmap-belt-exit.path" },
+    oneshot: BeltOneshotConverged { unit: "gunbc-belt.service", active_state: "inactive" },
+    timer: judge_belt_timer(active_state: "inactive", unit_file_state: "enabled"),
+  )
+  incomplete_at(facts: with_units(f: rlm_complete_facts(), u: units), member: "unit_standing")
+    && any(unit_standing_blockers(f: units), b =>
+      b.member == "unit_standing" && string_contains(s: b.detail, pattern: "timer active state is 'inactive'"))
 }
 
 // wrong effective principal

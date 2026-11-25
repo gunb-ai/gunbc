@@ -8,17 +8,19 @@ module gunbc.live_deploy.release_pair_delivery
 // the fetch actually produced, and its observed verdict is what feeds the fold).
 //
 // STAGE 1 #gunbc.live_deploy.release_pair_delivery::release_pair_fetch_argv emits the typed argv that fetches
-// the head's release-bins pack (reusing #extdeps.tools.gh::gh_run_download_argv — no hand-spelled gh command
-// line). Running it yields a PackFetch OBSERVATION (#gunbc.live_deploy.release_pair_delivery::PackFetch):
-// the pack is present — with its observed digest and the path of the file it produced — or absent (the head was
-// never built).
+// the target's release-bins pack (reusing #extdeps.tools.gh::gh_run_download_argv — no hand-spelled gh command
+// line). The pack is the producing run's artifact as the build uploads it: release-bins.tgz, its manifest and its
+// preimage, flat in the pack directory. Running the fetch and reading the manifest yields a PackFetch OBSERVATION
+// (#gunbc.live_deploy.release_pair_delivery::PackFetch): the pack is present — with the digest its manifest
+// declares for the serve member and the path that member is promoted to — or absent.
 //
 // STAGE 2 #gunbc.live_deploy.release_pair_delivery::release_pair_verify_dispatch is a function OF that
-// observation: it emits the consumer build-key verify dispatch (#gunbc.fleet.fleet_release_bins_key::release_bins_consumer_key_check_script,
-// the same --verify-build-artifacts script the fleet consumer runs) ONLY for a pack observed present. For a pack
-// never fetched there is NO dispatch to run — you cannot verify what you did not fetch. Running the dispatch yields
-// a PackVerify OBSERVATION (#gunbc.live_deploy.release_pair_delivery::PackVerify) that NAMES the pack_dir it
-// was run on.
+// observation and of the source tree placed for the same revision: it emits the lab consumer
+// (#gunbc.fleet.fleet_release_bins_key::release_bins_lab_consumer_script), which admits the pack against that
+// source tree (kind, source closure, listing, manifest, every member digest) and only then extracts and promotes
+// the members. For a pack never fetched there is NO dispatch to run — you cannot verify what you did not fetch.
+// Running the dispatch yields a PackVerify OBSERVATION (#gunbc.live_deploy.release_pair_delivery::PackVerify)
+// that NAMES the pack_dir and the source tree it was run on.
 //
 // STAGE 3 #gunbc.live_deploy.release_pair_delivery::release_pair_install_plan consumes BOTH observations and
 // the single delivery decision #gunbc.live_deploy.release_locus::deliver_release_pair. By this point the fetch
@@ -44,12 +46,13 @@ module gunbc.live_deploy.release_pair_delivery
 import std.types { String, NonEmptyStr, Bool, CommitSha }
 import std.algebra { trim }
 import extdeps.tools.gh { gh_run_download_argv }
-import gunbc.fleet.fleet_release_bins_key { release_bins_consumer_key_check_script }
+import gunbc.fleet.fleet_release_bins_key { release_bins_lab_consumer_script, release_bins_promoted_member_path }
+import gunbc.ci.ci_release_bins { gunbc_release_bin_name }
 import gunbc.live_deploy.release_locus {
   ReleaseRevisionBinding, RevisionBoundAtEmission, RevisionNotInstalled,
   ReleasePairDelivery, PairInstalled, PairRefused,
   deliver_release_pair, delivered_pair_revision, VerifiedPack,
-  release_locus_member_path, release_locus_tree_receipt_path,
+  release_locus_member_path, release_locus_tree_receipt_path, release_locus_dir,
 }
 import gunbc.live_deploy.operations { systemctl_restart_command }
 import extdeps.filesystem.filesystem_io { FilesystemReadOutcome, FilesystemReadSucceeded, FilesystemReadRefused }
@@ -69,11 +72,13 @@ type PackFetch
   | PackAbsent { reason: NonEmptyStr }
 
 // THE OBSERVED OUTCOME OF THE BUILD-KEY VERIFY STAGE. Produced ONLY by running the verify dispatch on a pack
-// observed present, and it NAMES the pack_dir it was run on. VerifiedOn names that pack; Refused names why the
-// pack's build key was not trusted. There is no way to assert a verdict for a pack that was never fetched, because
-// the install stage accepts VerifiedOn only when it names the pack_dir the fetch observed.
+// observed present, and it NAMES the pack_dir and the source tree it was run on. VerifiedOn names both; Refused names
+// why the pack was not admitted (the lab consumer's own refusal name). There is no way to assert a verdict for a
+// pack that was never fetched, or for a source tree other than the one being installed, because the install stage
+// accepts VerifiedOn only when it names the pack_dir the fetch observed AND the source dir of the observed source
+// head.
 type PackVerify
-  = VerifiedOn { pack_dir: NonEmptyStr }
+  = VerifiedOn { pack_dir: NonEmptyStr, source_dir: NonEmptyStr }
   | Refused { reason: NonEmptyStr }
 
 // ONE ORDERED FILE PLACEMENT: copy the file the fetch OBSERVED (its source) into the bound-pair locus location its
@@ -197,10 +202,6 @@ fn release_pair_occupied_link_benign(link_read: ProcessOutcome, expected_source:
 // must not be polluted by the incoming pack, so the fetch writes here and the placement steps read from it.
 data release_pair_incoming_pack_dir_name: NonEmptyStr = "incoming-release-bins"
 
-// THE ONE member of the fetched pack the pair places, as its OWN row so the placement source is not re-spelled at
-// each call site (single_authority). Consumed by #gunbc.live_deploy.release_pair_delivery::release_pair_incoming_serve_source.
-data release_pair_incoming_serve_member_name: NonEmptyStr = "gunbc_serve"
-
 // The release-bins ARTIFACT name is NOT a row here: it comes from gunbc.fleet.fleet_workflow_steps::
 // ci_release_bins_artifact_name — the name the producer uploads under — imported and used directly below
 // (review 96275), so the consumer's fetch name can never drift from the producer's upload name.
@@ -216,9 +217,20 @@ fn release_pair_incoming_pack_dir(base_root: String, revision: String) -> String
   join([base_root, "/", release_pair_incoming_pack_dir_name, "/", revision], "")
 }
 
-// The path of the serve member INSIDE the fetched pack, derived from the single per-revision incoming-dir authority.
+// The path the serve member is PROMOTED to once the lab consumer has admitted the pack: the pack's archive is never
+// read in place, so the placement source is the verified copy. The member is the compiler binary the release pack
+// carries (#gunbc.ci.ci_release_bins::gunbc_release_bin_name, the one row the pack roster and every deploy that copies
+// it read), and where it lands is the promotion authority's
+// (#gunbc.fleet.fleet_release_bins_key::release_bins_promoted_member_path).
 fn release_pair_incoming_serve_source(base_root: String, revision: String) -> String {
-  join([release_pair_incoming_pack_dir(base_root: base_root, revision: revision), "/", release_pair_incoming_serve_member_name], "")
+  release_bins_promoted_member_path(root: release_pair_incoming_pack_dir(base_root: base_root, revision: revision), member: gunbc_release_bin_name)
+}
+
+// THE SINGLE AUTHORITY for where a revision's source tree is placed: the release locus of that revision, /source.
+// The placement legs write it, the lab consumer admits the pack against it, and the install stage requires the
+// verdict to name it.
+fn release_pair_source_dir(base_root: String, revision: CommitSha) -> String {
+  join([release_locus_dir(root: base_root, revision: RevisionBoundAtEmission { revision: revision }), "/source"], "")
 }
 
 // STAGE 1 (fetch, DRY): the argv to fetch the head's release-bins pack into its OWN per-revision directory, built
@@ -230,12 +242,13 @@ fn release_pair_fetch_argv(base_root: String, run_id: String, repo: String, revi
   )
 }
 
-// STAGE 2 (build-key verify, DRY), a FUNCTION OF THE OBSERVED FETCH: the consumer verify dispatch exists only for
-// a pack observed present; for an absent pack there is nothing to verify, so no dispatch exists. This is the shape
-// that makes "verify before fetch" unrepresentable — the dispatch is downstream of the fetch observation.
-fn release_pair_verify_dispatch(fetch: PackFetch) -> String? {
+// STAGE 2 (lab admission, DRY), a FUNCTION OF THE OBSERVED FETCH and the placed source tree: the lab consumer
+// dispatch exists only for a pack observed present, and it admits that pack against source_dir; for an absent pack
+// there is nothing to verify, so no dispatch exists. This is the shape that makes "verify before fetch"
+// unrepresentable — the dispatch is downstream of the fetch observation.
+fn release_pair_verify_dispatch(fetch: PackFetch, source_dir: String) -> String? {
   match fetch {
-    PackPresent { sha256: _, pack_dir: _, binary_source: _ } => Present { value: release_bins_consumer_key_check_script() }
+    PackPresent { sha256: _, pack_dir: dir, binary_source: _ } => Present { value: release_bins_lab_consumer_script(pack_dir: dir as String, source_dir: source_dir) }
     PackAbsent { reason: _ } => none
   }
 }
@@ -256,13 +269,15 @@ fn release_pair_install_plan(base_root: String, serving: ReleaseRevisionBinding,
     PackPresent { sha256: _, pack_dir: _, binary_source: src } => Present { value: src }
     PackAbsent { reason: _ } => none
   }
-  // The verdict counts ONLY when it names the pack the fetch actually observed present — the cross-stage fact that
-  // forbids verifying a pack that was never fetched.
+  // The verdict counts ONLY when it names the pack the fetch actually observed present AND the source tree placed for
+  // the observed source head — the cross-stage facts that forbid verifying a pack that was never fetched, or
+  // admitting it against a tree other than the one installed beside it.
   let verified = match fetch {
     PackPresent { sha256: sha, pack_dir: fetched_dir, binary_source: _ } =>
       match verify {
-        VerifiedOn { pack_dir: verified_dir } =>
-          if (fetched_dir as String) == (verified_dir as String) {
+        VerifiedOn { pack_dir: verified_dir, source_dir: verified_source } =>
+          if (fetched_dir as String) == (verified_dir as String)
+            && (verified_source as String) == release_pair_source_dir(base_root: base_root, revision: source_head) {
             Present { value: VerifiedPack { digest: sha } }
           } else {
             none
@@ -270,6 +285,18 @@ fn release_pair_install_plan(base_root: String, serving: ReleaseRevisionBinding,
         Refused { reason: _ } => none
       }
     PackAbsent { reason: _ } => none
+  }
+  // AN OBSERVED REFUSAL KEEPS ITS OWN REASON. A download or manifest that failed (PackAbsent) and a lab admission that
+  // refused (Refused, carrying the consumer's own refusal name) each already say why; folding them would replace
+  // that with the fold's generic "unbuilt" / "unverified", so a tampered member, a pack keyed on another tree and a
+  // pack missing a member would all read alike on the kept-last-good plan.
+  let observed_refusal = match fetch {
+    PackAbsent { reason: why } => Present { value: why }
+    PackPresent { sha256: _, pack_dir: _, binary_source: _ } =>
+      match verify {
+        Refused { reason: why } => Present { value: why }
+        VerifiedOn { pack_dir: _, source_dir: _ } => none
+      }
   }
   let decision = deliver_release_pair(
     base_root: base_root,
@@ -280,6 +307,9 @@ fn release_pair_install_plan(base_root: String, serving: ReleaseRevisionBinding,
     binary_source: binary_source,
     verified: verified,
   )
+  match observed_refusal {
+  Present { value: why } => PlanKeepsLastGood { kept: serving, reason: why }
+  Absent =>
   match decision {
     PairInstalled { pair: p, locus: _ } =>
       // The placement source is the pair's OWN observed fetched file (not a re-derived path); the destination is the
@@ -306,5 +336,6 @@ fn release_pair_install_plan(base_root: String, serving: ReleaseRevisionBinding,
     // must surface red, never keep the timer green and silent (review 96234). PackAbsent's reason names WHICH refusal
     // (fetch vs digest); the exit code is the variant, not that text.
     PairRefused { reason: reason, kept: kept } => PlanKeepsLastGood { kept: kept, reason: reason }
+  }
   }
 }

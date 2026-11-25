@@ -149,7 +149,7 @@ import gunbc.roadmap.roadmap_document {
   RoadmapSection
 }
 import gunbc.roadmap.roadmap_status {
-  RedObservedOnMain, RedControlExecuted,
+  RedObservedOnMain, RedControlExecuted, RedControlTreeUnrecorded,
   HandbackDelivered
 }
 
@@ -160,8 +160,7 @@ import test.claim.roadmap.roadmap_task_record_witness {
 import gunbc.roadmap.roadmap_acceptance_history_carrier {
   RoadmapAcceptanceEventHistoryLoad,
   RoadmapAcceptanceEventHistoryLoaded,
-  RoadmapAcceptanceEventHistoryLoadRefused,
-  load_roadmap_acceptance_event_history_from_carrier_text
+  RoadmapAcceptanceEventHistoryLoadRefused
 }
 import gunbc.roadmap.roadmap_node_terminality {
   LineageOpen,
@@ -584,17 +583,40 @@ fn sample_receipt(node: String) -> RoadmapAcceptanceReceipt {
   }
 }
 
-test fn a_receipt_writes_one_canonical_line_the_seed_parser_accepts_once() -> Bool {
+test fn a_receipt_writes_one_canonical_line_the_one_reader_accepts_once() -> Bool {
   let receipt = sample_receipt("node-wire-roundtrip")
   let line = roadmap_operator_acceptance_receipt_line(receipt: receipt)
   let again = roadmap_operator_acceptance_receipt_line(receipt: receipt)
   let e1 = claim("the same receipt serializes byte-identically", line == again)
   let e2 = claim("the line is not empty", line != "")
-  let e3 = match load_roadmap_acceptance_event_history_from_carrier_text(text: line) {
-    RoadmapAcceptanceEventHistoryLoaded { events: evs } => claim("the seed parser accepts exactly this line, once", count(evs) == 1)
-    RoadmapAcceptanceEventHistoryLoadRefused { detail: d } => claim("the seed parser refused its own line: " + d, false)
+  let e3 = match roadmap_operator_acceptance_parse_tail(lines: [line]) {
+    RoadmapAcceptanceTailOk { events: evs } => claim("the one reader accepts exactly this line, once", count(evs) == 1)
+    RoadmapAcceptanceTailBad { line_index: _, detail: d } => claim("the one reader refused its own line: " + (d as String), false)
   }
   e1 && e2 && e3
+}
+
+// THE ONE READER READS THE REAL (PRE-RULING) SHAPE. Every acceptance_recorded line the log actually holds
+// carries a three-field red_control (witness_module, witness_fn, executed_on) and NO red_at/green_at -- the
+// pre-ruling wire form the one-time migration wrote. The single reader (roadmap_operator_acceptance_line_parse,
+// reached through parse_tail) must read it, or migration_verify would refuse the real recorded manifest. This
+// drives exactly that shape: a receipt whose red_control is RedControlTreeUnrecorded serializes to the three-
+// field line and reads back through the one reader.
+test fn the_pre_ruling_three_field_red_control_round_trips_through_the_one_reader() -> Bool {
+  // THE ONE-TIME MIGRATION WROTE THIS SHAPE: red_control_executed with only
+  // witness_module / witness_fn / executed_on — no red_at / green_at, no observation. Today's record route
+  // REFUSES to WRITE that shape (review 97749(a): the tree-unrecorded shape is refused at the record path, not
+  // only the half-spelled one), so it cannot be spelled with roadmap_operator_acceptance_receipt_line — that is
+  // why this row hands the recorded line to the reader DIRECTLY, exactly as roadmap_acceptance_migration_verify
+  // does when it replays the real recorded manifest. The asymmetry is the point: the write path refuses the old
+  // shape, the read path must still accept it, or the migration cannot replay.
+  let line = "{\"variant\":\"acceptance_recorded\",\"receipt\":{\"node\":\"pr1-cell\",\"criteria_digest\":\"3502539e920d9e40\",\"red_control\":{\"variant\":\"red_control_executed\",\"witness_module\":\"test.claim.roadmap.roadmap_red_control_tree_witness\",\"witness_fn\":\"fixture\",\"executed_on\":\"2026-11-23\"},\"handback\":{\"variant\":\"handback_delivered\",\"first_artifact\":\"fixture-artifact\",\"further_artifacts\":[]},\"accepted_by\":\"briansrls\",\"accepted_on\":\"2026-11-23\"}}"
+  match roadmap_operator_acceptance_parse_tail(lines: [line]) {
+    RoadmapAcceptanceTailOk { events: evs } =>
+      claim("the pre-ruling three-field red_control line reads back through the one reader", count(evs) == 1)
+    RoadmapAcceptanceTailBad { line_index: _, detail: d } =>
+      claim("the one reader refused the pre-ruling shape: " + (d as String), false)
+  }
 }
 
 test fn a_corrupt_tail_line_refuses_located_and_never_silently() -> Bool {
