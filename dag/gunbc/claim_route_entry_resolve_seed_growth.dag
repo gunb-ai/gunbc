@@ -1,0 +1,21 @@
+module gunbc.claim_route_entry_resolve_seed_growth
+
+import gunbc.roadmap.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// FORWARD-FREEZE RECEIPT for the typed entry-resolve refusal. These three declarations entered with
+// claim_batch's exit composition (that row's other three items, batch_exit_code, report_unresolved_group
+// and RunWitnessesRefusal, were deleted with the binary in the claim-execution cutover). Their consumer
+// is now cli_run::run_claim_route, the gunbc test claim route.
+data claim_route_entry_resolve_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "EntryResolveRefusal", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "resolve_entry_with_index_typed", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.cli_run.entry_resolve", decl_name: "ResolveFailure", field: WholeDeclaration }
+  ],
+  reason: "WHY RUST IS STILL NEEDED: entry resolution runs in the seed host before any .dag evaluation frame exists, so the claim route (cli_run::run_claim_route, reached by gunbc test) receives the resolver's refusal from Rust. The refusal is kept TYPED by what it says about the claim (EntryResolveRefusal): EntryMissing (the entry is not a readable file), ClosureDiagnostics (a name or type error inside the entry's closure, the corpus's own diagnostic) and ResolveInfrastructure (a refusal that is not a corpus diagnostic: host budget unreadable, assembly attribution, unreadable source). ResolveFailure is the resolver-internal split that feeds it, so an unclassified String cause fails toward infrastructure and never toward a finding. run_claim_route records every kind as an unresolved member, the absence of an observation, carrying its kind on the line; the verdict rule that folds members into the process exit is gunbc.target_invocation's, not this Rust.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete these declarations when entry resolution is modeled in .dag and the claim route receives a typed resolve standing from that model rather than from EntryResolveRefusal in Rust.",
+  current_boundary: "Pure classification of one resolve attempt: the entry's own source is read first (absent or unreadable is EntryMissing), then the resolver's ResolveFailure decides ClosureDiagnostics versus ResolveInfrastructure. No claim is evaluated and no exit code is chosen here."
+}

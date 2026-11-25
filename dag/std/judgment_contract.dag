@@ -124,8 +124,6 @@ data output_compute_work_outputs: ArtifactOutputId = "compute_work_outputs"
 // so each binary part has its own row rather than an id recovered from a name.
 data output_compute_work_gunbc_binary: ArtifactOutputId = "compute_work_gunbc_binary"
 
-data output_compute_work_claim_batch_binary: ArtifactOutputId = "compute_work_claim_batch_binary"
-
 
 // AN IDENTITY COMPONENT IS THE VALUE ITSELF OR A DIGEST THAT SAYS WHICH FAMILY MINTED IT.
 //

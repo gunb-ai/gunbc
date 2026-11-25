@@ -18,8 +18,7 @@ import v2.workflow.gunbc_invoke_step_emit {
 }
 
 fn gunbc_ci_guest_image_build_invoke(target: GunbcRunStepTarget) -> String {
-  join([gunbc_invoke_root_stamp_script(), "fakeroot -- ", gunbc_run_command_for_target(source_roots: witness_layer_roots, target: target,
-  claim_run: false), "\n"], "")
+  join([gunbc_invoke_root_stamp_script(), "fakeroot -- ", gunbc_run_command_for_target(source_roots: witness_layer_roots, target: target), "\n"], "")
 }
 
 data gunbc_ci_workspace_image_build_target: GunbcRunStepTarget = gunbc_run_step_target(

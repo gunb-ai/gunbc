@@ -43,7 +43,7 @@ import gunbc.roadmap.roadmap_event_log {
 }
 import gunbc.roadmap.roadmap_authority { roadmap_acceptance_event_history_load, roadmap_retired_node_ids_load }
 import gunbc.roadmap.roadmap_acceptance_history_carrier { RoadmapAcceptanceEventHistoryLoad }
-import gunbc.roadmap.roadmap_event_cli { roadmap_acceptance_line_of, RoadmapAcceptanceLineParse, AcceptanceLineParsed, AcceptanceLineRefused, roadmap_acceptance_record_cli, roadmap_event_record_cli }
+import gunbc.roadmap.roadmap_event_cli { roadmap_acceptance_line_of, RoadmapAcceptanceLineParse, AcceptanceLineParsed, AcceptanceLineRefused, roadmap_acceptance_record_migration_cli, roadmap_event_record_cli }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 // THE PRE-WRITE REFUSAL FOR THE ONE-TIME CUTOVER
@@ -422,33 +422,33 @@ fn roadmap_cutover_retire_cli(
 // roadmap_acceptance_record_cli untouched, so the operator reads the located refusal the record route already knows
 // how to give — the gate does not get to invent a worse message for a malformed line, and a malformed line never
 // reaches the carrier either way.
+//
+// THE ARGUMENTS ARE THE THREE THE MIGRATION CAN ACTUALLY STATE — the line, the thread and the head, plus
+// who and where. There is no --merged-at: an acceptance is recorded on a head, BEFORE the merge, and the
+// merge time belongs to the merge event (gunbc.design_ruling::
+// acceptance_is_earned_on_a_head_and_the_merge_is_its_own_event). There is no --red-kind / --red-at /
+// --green-at / --red-base / --probe-ref either: the migrated rows state no observation, and the ordinary
+// recorder refuses a line without one (gunbc.roadmap.roadmap_event_cli roadmap_acceptance_record_cli);
+// recording them is what the closed migration gate above authorises, through
+// roadmap_acceptance_record_migration_cli, and nothing else.
 fn roadmap_cutover_acceptance_record_cli(
   repo_root: String,
   receipt_line: String,
   pr_url: String,
-  merged_at: String,
   head_sha: String,
   author: String,
   report_path: String,
-  red_kind: String,
-  red_at: String,
-  green_at: String,
-  red_base: String,
-  probe_ref: String
 ) -> ProcessExit {
   let report = Filesystem.Read(path: report_path)
   match roadmap_acceptance_line_of(text: receipt_line) {
-    // A LINE THE READERS REFUSED is handed to the record route UNTOUCHED, so the operator reads the located
-    // refusal the record route already knows how to give (roadmap_acceptance_line_of delegates to
-    // gunbc.roadmap.roadmap_operator_acceptance roadmap_operator_acceptance_line_parse; the gate does not get
-    // to invent a worse message for a malformed line, and a malformed line never reaches the carrier either way).
-    AcceptanceLineRefused { reason: _ } => roadmap_acceptance_record_cli(
-      repo_root: repo_root, receipt_line: receipt_line, pr_url: pr_url,
-      merged_at: merged_at, head_sha: head_sha, author: author, red_kind: red_kind, red_at: red_at, green_at: green_at, red_base: red_base, probe_ref: probe_ref)
+    // A LINE THE READERS REFUSED goes to the record route UNTOUCHED, so the operator reads the located
+    // refusal that route already knows how to give; the gate does not invent a worse message for a
+    // malformed line, and a malformed line reaches no carrier either way.
+    AcceptanceLineRefused { reason: _ } => roadmap_acceptance_record_migration_cli(
+      repo_root: repo_root, receipt_line: receipt_line, pr_url: pr_url, head_sha: head_sha, author: author)
     AcceptanceLineParsed { line: line } => match roadmap_acceptance_line_acceptance_receipt(line: line) {
-      Absent => roadmap_acceptance_record_cli(
-        repo_root: repo_root, receipt_line: receipt_line, pr_url: pr_url,
-        merged_at: merged_at, head_sha: head_sha, author: author, red_kind: red_kind, red_at: red_at, green_at: green_at, red_base: red_base, probe_ref: probe_ref)
+      Absent => roadmap_acceptance_record_migration_cli(
+        repo_root: repo_root, receipt_line: receipt_line, pr_url: pr_url, head_sha: head_sha, author: author)
       Present { value: _ } => {
         let gate = roadmap_cutover_migration_gate_decide_acceptance(
           identity: roadmap_acceptance_migration_identity(e: line),
@@ -459,9 +459,16 @@ fn roadmap_cutover_acceptance_record_cli(
             code: 1,
             reason: join(["roadmap_cutover_acceptance_record_cli: ", detail,
               "; the acceptance was NOT handed to the carrier (report ", report_path, ")"], "") }
-          GateAdmitted { fact: _ } => roadmap_acceptance_record_cli(
-            repo_root: repo_root, receipt_line: receipt_line, pr_url: pr_url,
-            merged_at: merged_at, head_sha: head_sha, author: author, red_kind: red_kind, red_at: red_at, green_at: green_at, red_base: red_base, probe_ref: probe_ref)
+          // THE MIGRATION RECORDS WHAT THE SEED HOLDS. The migrated rows carry a red control with witness,
+          // function and date and NO commit pair, and the readers read exactly that as
+          // RedControlTreeUnrecorded — accepted, never revoked, not valid red evidence until an observation
+          // is appended (gunbc.design_ruling::executed_red_control_names_its_failing_commit). This is the one
+          // route allowed to record without naming an observation, and the authority for that is the gate
+          // two lines above: the receipt's OWN canonical bytes must sit in the migration's closed set
+          // (roadmap_migration_acceptance_identities). Nothing outside that set can reach this call, and no
+          // ordinary recorder accepts a line whose pair is missing.
+          GateAdmitted { fact: _ } => roadmap_acceptance_record_migration_cli(
+            repo_root: repo_root, receipt_line: receipt_line, pr_url: pr_url, head_sha: head_sha, author: author)
         }
       }
     }

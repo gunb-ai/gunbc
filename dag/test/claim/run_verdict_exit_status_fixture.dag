@@ -25,7 +25,11 @@ fn verdict_failure() -> ProcessExit {
   }
 }
 
-fn verdict_success() -> ProcessExit {
+// MARKED, because this specimen is enumerated by the claim route's discovery: `gunbc test` selects claims by
+// the marker, not by location. It stays an ordinary run subject too -- the run path binds a named function
+// without filtering on the marker (src/v1/stage0/src/main.rs run_one_function, cli_run::bind_run_args_for_entry)
+// -- so the three run arms below keep their codes 3/0/2 unchanged.
+test fn verdict_success() -> ProcessExit {
   ExitSuccess
 }
 

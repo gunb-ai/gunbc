@@ -26,7 +26,6 @@ fn gunbc_ci_org_runner_roster_observe_invoke() -> String {
       module: "gunbc.fleet.organization_runner_roster_read",
       function: "organization_runner_roster_observe_wet",
     ),
-    claim_run: false,
     receipt_rel: none
   )
 }

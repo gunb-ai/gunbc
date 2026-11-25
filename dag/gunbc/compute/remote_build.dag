@@ -20,7 +20,7 @@ import gunbc.compute.work_request {
   WorkOutcome, WorkSucceeded, WorkFailed, WorkRefusedByInfrastructure, WorkCancelled, WorkOutputMismatch,
   WorkInfrastructureRefusal, ProducerInFlight, HostComputeCapacityFull, HostBelowMemoryFloor, ComputeCapacityLedgerUnavailable,
   CheckoutUnavailable, StoreUnavailable, MaterializationStoreUndeclared, ToolchainUnobserved, DependencyNotSucceeded,
-  SubjectUnresolved, ToolchainMismatchRefused, UnitMemoryGrantExceeded, UnitEndingUnclassifiable, UnitLaunchRefused,
+  SubjectUnresolved, ClaimRequestSubjectUnnameable, ToolchainMismatchRefused, UnitMemoryGrantExceeded, UnitEndingUnclassifiable, UnitLaunchRefused,
   SeatStopObservationUnrenderable,
 }
 import gunbc.roadmap.roadmap_dashboard_instance {
@@ -1115,6 +1115,7 @@ fn remote_build_ending_of_refusal(cause: WorkInfrastructureRefusal) -> RemoteBui
     ToolchainUnobserved { detail: _ } => ServeHostCannotServe
     ToolchainMismatchRefused { field: _, declared: _, observed: _ } => ServeHostCannotServe
     SubjectUnresolved { detail: _ } => ServeHostCannotServe
+    ClaimRequestSubjectUnnameable { entry: _, function: _, reason: _ } => ServeRequestRefused
     UnitLaunchRefused { cause: _ } => ServeHostCannotServe
     SeatStopObservationUnrenderable { detail: _ } => ServeHostCannotServe
     DependencyNotSucceeded { dependency_identity: _, ending: _ } => ServeHostCannotServe
