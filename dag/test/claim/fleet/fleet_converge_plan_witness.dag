@@ -29,6 +29,7 @@ import gunbc.executor_privileged_operation {
   executor_managed_directory_mode,
   executor_privileged_operation_shell_command,
 }
+import gunbc.fleet.fleet_plan_artifact_location { fleet_plan_artifact_path_at }
 import gunbc.fleet.fleet_converge_plan {
   fleet_converge_member_set_drift_text,
   fleet_converge_retirement_drift_text,
@@ -147,7 +148,7 @@ import gunbc.fleet.fleet_converge_plan {
   fabric_cell_apply_effects_header,
   timer_retirement_plan,
   fleet_converge_locked_apply_script,
-  fleet_converge_plan_apply_shell_path,
+  fleet_converge_plan_apply_shell_name,
   fleet_converge_parse_nonneg_generation_text,
   fleet_converge_generation_observation,
   fleet_converge_generation_admission,
@@ -159,7 +160,7 @@ import gunbc.fleet.fleet_converge_plan {
   GenerationUnobserved,
   GenerationAdmitted,
   GenerationAdmissionRefused,
-  fleet_converge_plan_content_hash_path,
+  fleet_converge_plan_content_hash_name,
   fleet_converge_plan_bundle_digest_hex,
   fleet_converge_plan_bundle_matches,
   fleet_converge_slot_lines,
@@ -209,6 +210,12 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data witness_host_srv1: NonEmptyStr = "srv1" as NonEmptyStr
 
 data witness_host_srv2: NonEmptyStr = "srv2" as NonEmptyStr
+
+// The shell member is COMPOSED under a per-run directory by the ONE locator; the witness passes
+// the composed path to the locked-script fold exactly as the plan writer now does.
+fn witness_apply_shell_path() -> String {
+  fleet_plan_artifact_path_at(run_artifact_dir: "/tmp/gunbc-witness-plan-run", name: fleet_converge_plan_apply_shell_name)
+}
 
 test fn timer_retirement_plan_shows_refused_removal_for_foreign_cap() -> Bool {
   let foreign = CapMember {
@@ -553,7 +560,8 @@ test fn member_set_drift_refusal_is_located_at_the_row() -> Bool {
 }
 
 test fn plan_content_hash_path_is_apply_interlock_sidecar() -> Bool {
-  fleet_converge_plan_content_hash_path == "/tmp/fleet-converge-plan/plan_content.hex"
+  fleet_converge_plan_content_hash_name == "plan_content.hex"
+    && fleet_plan_artifact_path_at(run_artifact_dir: "/run/7/1", name: fleet_converge_plan_content_hash_name) == "/run/7/1/plan_content.hex"
 }
 
 test fn plan_cli_surfaces_content_hash_for_apply_dispatch() -> Bool {
@@ -665,7 +673,7 @@ test fn locked_apply_script_serializes_generation_under_flock() -> Bool {
     subject_host: "srv1" as NonEmptyStr,
     prior_generation: 4,
     planned_generation: 5,
-    apply_shell_path: fleet_converge_plan_apply_shell_path,
+    apply_shell_path: witness_apply_shell_path(),
     plan_hash: "0123456789abcdef",
     invoker: InvokerIsLeaseOwner,
   )
@@ -673,12 +681,12 @@ test fn locked_apply_script_serializes_generation_under_flock() -> Bool {
     subject_host: "srv1" as NonEmptyStr,
     prior_generation: 4,
     planned_generation: 5,
-    apply_shell_path: fleet_converge_plan_apply_shell_path,
+    apply_shell_path: witness_apply_shell_path(),
     plan_hash: "0123456789abcdef",
   )
   string_contains(s: script, pattern: "flock")
     && string_contains(s: script, pattern: "LeaseGenerationStale")
-    && string_contains(s: script, pattern: fleet_converge_plan_apply_shell_path)
+    && string_contains(s: script, pattern: witness_apply_shell_path())
     && inner != fleet_converge_locked_apply_emit_refused_poison
     && script != fleet_converge_locked_apply_emit_refused_poison
 }
@@ -693,14 +701,14 @@ test fn locked_apply_inner_program_is_quoted_not_spliced() -> Bool {
     subject_host: "srv1" as NonEmptyStr,
     prior_generation: 4,
     planned_generation: 5,
-    apply_shell_path: fleet_converge_plan_apply_shell_path,
+    apply_shell_path: witness_apply_shell_path(),
     plan_hash: "0123456789abcdef",
   )
   let script = fleet_converge_locked_apply_script(
     subject_host: "srv1" as NonEmptyStr,
     prior_generation: 4,
     planned_generation: 5,
-    apply_shell_path: fleet_converge_plan_apply_shell_path,
+    apply_shell_path: witness_apply_shell_path(),
     plan_hash: "0123456789abcdef",
     invoker: InvokerIsLeaseOwner,
   )
@@ -717,7 +725,7 @@ test fn locked_apply_guard_does_not_coerce_an_unreadable_store_to_zero() -> Bool
     subject_host: "srv1" as NonEmptyStr,
     prior_generation: 4,
     planned_generation: 5,
-    apply_shell_path: fleet_converge_plan_apply_shell_path,
+    apply_shell_path: witness_apply_shell_path(),
     plan_hash: "0123456789abcdef",
   )
   !string_contains(s: inner, pattern: "|| echo 0")
@@ -734,7 +742,7 @@ test fn locked_apply_guard_compares_the_modelled_prior_generation() -> Bool {
     subject_host: "srv1" as NonEmptyStr,
     prior_generation: 4,
     planned_generation: 5,
-    apply_shell_path: fleet_converge_plan_apply_shell_path,
+    apply_shell_path: witness_apply_shell_path(),
     plan_hash: "0123456789abcdef",
   )
   string_contains(s: inner, pattern: to_string(4))
@@ -899,7 +907,7 @@ test fn locked_apply_stale_diagnostic_keeps_observed_value_in_one_word() -> Bool
     subject_host: "srv1" as NonEmptyStr,
     prior_generation: 4,
     planned_generation: 5,
-    apply_shell_path: fleet_converge_plan_apply_shell_path,
+    apply_shell_path: witness_apply_shell_path(),
     plan_hash: "0123456789abcdef",
   )
   !string_contains(s: inner, pattern: "observed= ")
@@ -1053,7 +1061,7 @@ test fn lease_guard_sudoes_only_granted_binaries() -> Bool {
     subject_host: "srv1" as NonEmptyStr,
     prior_generation: 4,
     planned_generation: 5,
-    apply_shell_path: fleet_converge_plan_apply_shell_path,
+    apply_shell_path: witness_apply_shell_path(),
     plan_hash: "0123456789abcdef",
     invoker: InvokerIsLeaseOwner,
   )
@@ -2498,7 +2506,7 @@ test fn generation_store_is_keyed_by_subject_host() -> Bool {
          subject_host: "srv5" as NonEmptyStr,
          prior_generation: 1,
          planned_generation: 2,
-         apply_shell_path: fleet_converge_plan_apply_shell_path,
+         apply_shell_path: witness_apply_shell_path(),
          plan_hash: "0123456789abcdef",
        ), pattern: b)
 }
@@ -2513,7 +2521,7 @@ test fn locked_apply_runs_the_guard_as_the_lease_owner_for_any_invoker() -> Bool
     subject_host: "srv2" as NonEmptyStr,
     prior_generation: 0,
     planned_generation: 1,
-    apply_shell_path: fleet_converge_plan_apply_shell_path,
+    apply_shell_path: witness_apply_shell_path(),
     plan_hash: "0123456789abcdef",
     invoker: fleet_converge_apply_invoker(effective_user: owner),
   )
@@ -2521,7 +2529,7 @@ test fn locked_apply_runs_the_guard_as_the_lease_owner_for_any_invoker() -> Bool
     subject_host: "srv2" as NonEmptyStr,
     prior_generation: 0,
     planned_generation: 1,
-    apply_shell_path: fleet_converge_plan_apply_shell_path,
+    apply_shell_path: witness_apply_shell_path(),
     plan_hash: "0123456789abcdef",
     invoker: fleet_converge_apply_invoker(effective_user: "briansrls" as NonEmptyStr),
   )

@@ -1,7 +1,6 @@
 module gunbc.fleet.fleet_converge_plan
 
 import gunbc.fleet.fleet_converge_scope { FabricAllocationStoreOnly, FabricExecutionCellsOnly, FleetConvergeScope, FullHost, LaunchEnvironment, LiveDeploy, WorkspaceAllocationOnly, WorkspaceSlotCommissioningOnly }
-import gunbc.fleet.fleet_plan_artifact_location { fleet_converge_plan_artifact_dir }
 
 import gunbc.host.host_kernel_dependency { HostKernelDependencyPlan, host_kernel_dependency_action_lines, host_kernel_maintenance_capability }
 import gunbc.host.host_kernel_dependency_wire { host_kernel_dependency_row }
@@ -11,7 +10,6 @@ import gunbc.workspace_commissioning_executor_plan { workspace_executor_scope_wi
 import gunbc.workspace_commissioning_dispatch_transport { workspace_dispatch_apply_script }
 import gunbc.build_cache.build_cache_instance { runner_slot_instance_name }
 
-import gunbc.fleet.fleet_plan_artifact_location { fleet_reviewed_plan_path, fleet_reviewed_apply_path }
 
 import gunbc.fleet.fleet_plan_bundle { fleet_plan_component_hash, fleet_plan_bundle_hash }
 
@@ -3620,22 +3618,30 @@ fn fleet_converge_allocation_store_plan_artifact(
 }
 
 
-data fleet_converge_plan_body_path: String = fleet_reviewed_plan_path
+// THE PLAN-ARTIFACT MEMBER NAMES of the run-scoped family (roadmap row
+// serve-entry-verdict-path-is-per-run). Each member sits at <run_artifact_dir>/<name> on the plan
+// side (composed by gunbc.fleet.fleet_plan_artifact_location fleet_plan_artifact_path_at) and at
+// <admitted-anchor>/<name> on the apply side; no member has a fixed shared path any more, and no
+// *_path constant survives -- a path constant would re-create the one-file every run collides on.
+// The NAME is the stable identity of a member; the directory is per-run (plan side) or per-job
+// (anchor, apply side). The manifest classifier in gunbc.fleet.fleet_converge_plan_manifest judges
+// members by exactly these names.
+data fleet_converge_plan_body_name: String = "plan.txt"
 
-data fleet_converge_plan_baseline_hex_path: String = "/tmp/fleet-converge-plan/observed_baseline.hex"
+data fleet_converge_plan_baseline_hex_name: String = "observed_baseline.hex"
 
-data fleet_converge_plan_apply_shell_path: String = fleet_reviewed_apply_path
+data fleet_converge_plan_apply_shell_name: String = "apply.sh"
 
-data fleet_converge_plan_content_hash_path: String = "/tmp/fleet-converge-plan/plan_content.hex"
+data fleet_converge_plan_content_hash_name: String = "plan_content.hex"
 
-data fleet_converge_plan_subject_host_path: String = "/tmp/fleet-converge-plan/subject_host.txt"
+data fleet_converge_plan_subject_host_name: String = "subject_host.txt"
 
-data fleet_converge_plan_generation_path: String = "/tmp/fleet-converge-plan/plan_generation.txt"
+data fleet_converge_plan_generation_name: String = "plan_generation.txt"
 
-data fleet_converge_plan_prior_generation_path: String = "/tmp/fleet-converge-plan/prior_generation.txt"
+data fleet_converge_plan_prior_generation_name: String = "prior_generation.txt"
 
-data fleet_converge_plan_member_set_fp_path: String = "/tmp/fleet-converge-plan/subject_member_set.txt"
-data fleet_converge_plan_subject_scope_path: String = "/tmp/fleet-converge-plan/subject_scope.txt"
+data fleet_converge_plan_member_set_fp_name: String = "subject_member_set.txt"
+data fleet_converge_plan_subject_scope_name: String = "subject_scope.txt"
 
 fn fleet_converge_observed_baseline_matches(
   observed_baseline_hex: Fnv1a64StructuralDigestHex,

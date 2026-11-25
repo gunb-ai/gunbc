@@ -1,6 +1,6 @@
 module gunbc.fleet.fleet_converge_receipt
 
-import gunbc.fleet.fleet_plan_artifact_location { fleet_plan_receipt_path_in }
+import gunbc.fleet.fleet_plan_artifact_location { fleet_plan_receipt_path_in, fleet_plan_artifact_path_at, fleet_converge_apply_receipt_name }
 import gunbc.fleet.fleet_converge_terminal { FleetConvergeApplyTerminal, FullyApplied, PartiallyApplied, fleet_converge_apply_terminal_wire, fleet_converge_apply_terminal_of_wire }
 
 import std.types { String, Bool, NonEmptyStr, Int, List }
@@ -52,9 +52,12 @@ import gunbc.actions_run_binding {
 data fleet_converge_plan_receipt_schema: String = "fleet-converge-plan-receipt/v2"
 data fleet_converge_apply_receipt_schema: String = "fleet-converge-apply-receipt/v1"
 
-data fleet_converge_plan_receipt_path: String = "/tmp/fleet-converge-plan/plan_receipt.json"
-data fleet_converge_apply_receipt_dir: String = "/tmp/fleet-converge-apply"
-data fleet_converge_apply_receipt_path: String = "/tmp/fleet-converge-apply/apply_receipt.json"
+// THE RECEIPTS CARRY NO FIXED LOCATION (roadmap row serve-entry-verdict-path-is-per-run). There is
+// no /tmp/fleet-converge-plan and no /tmp/fleet-converge-apply constant: the plan pack is written at
+// <run_artifact_dir>/plan_receipt.json from the receipt's OWN run_artifact_dir field, and the apply
+// receipt is written into the admitted anchor the writer already holds (fleet_converge_apply_receipt_name
+// in gunbc.fleet.fleet_plan_artifact_location). A reader locates the family only through the admitted
+// anchor; a location constant here would be the collision this row removes.
 
 data fleet_converge_plan_run_id_env_name: String = "FLEET_CONVERGE_PLAN_RUN_ID"
 
@@ -426,9 +429,10 @@ fn write_fleet_converge_plan_receipt(r: FleetConvergePlanReceipt) -> FleetConver
   if w.success { ReceiptWritten { path: pack_path } } else { ReceiptWriteRefused { path: pack_path, error: w.error } }
 }
 
-fn write_fleet_converge_apply_receipt(r: FleetConvergeApplyReceipt) -> FleetConvergeReceiptWrite {
-  let w = Filesystem.Write(path: fleet_converge_apply_receipt_path, content: serialize_json(v: fleet_converge_apply_receipt_json(r: r)))
-  if w.success { ReceiptWritten { path: fleet_converge_apply_receipt_path } } else { ReceiptWriteRefused { path: fleet_converge_apply_receipt_path, error: w.error } }
+fn write_fleet_converge_apply_receipt(apply_receipt_dir: String, r: FleetConvergeApplyReceipt) -> FleetConvergeReceiptWrite {
+  let receipt_path = fleet_plan_artifact_path_at(run_artifact_dir: apply_receipt_dir, name: fleet_converge_apply_receipt_name)
+  let w = Filesystem.Write(path: receipt_path, content: serialize_json(v: fleet_converge_apply_receipt_json(r: r)))
+  if w.success { ReceiptWritten { path: receipt_path } } else { ReceiptWriteRefused { path: receipt_path, error: w.error } }
 }
 
 fn read_fleet_converge_plan_receipt_at(path: String) -> FleetConvergePlanReceiptDecode {

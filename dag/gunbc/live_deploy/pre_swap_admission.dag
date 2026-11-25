@@ -37,13 +37,14 @@ import gunbc.actions_run_binding {
   JsonStringMemberFound,
   JsonStringMemberRefused,
 }
-import gunbc.fleet.fleet_plan_artifact_location { fleet_converge_plan_artifact_dir }
+import gunbc.fleet.fleet_plan_artifact_location {
+  admit_fleet_plan_anchor_env_wet, AnchorAdmitted, fleet_plan_anchor_admission_text, fleet_plan_receipt_path_in,
+}
 import gunbc.fleet.fleet_converge_receipt {
   receipt_int_member,
   ReceiptIntFound,
   ReceiptIntRefused,
   read_fleet_converge_plan_receipt_at,
-  fleet_converge_plan_receipt_path,
   FleetConvergePlanReceiptDecoded,
   FleetConvergePlanReceiptUnreadable,
 }
@@ -519,11 +520,18 @@ fn live_deploy_pre_swap_for_deployment(deployment: DesiredDeployment) -> PreSwap
 // separate node, not a ride-along in this one.
 fn swap_serve_entry_compile_for(deployment: DesiredDeployment) -> ServeEntryCompileVerdict {
   if deployment_requires_plan_serve_entry_verdict(deployment: deployment) {
-    // The destination is read ONLY from the decoded pack; the swap never reads the run-artifact
-    // root/plan-run-id/attempt env and never recomputes the dir -- the pack is the sole authority
-    // after the plan step. A pack without the dir is a named refusal, not a fallback to
-    // /tmp/fleet-converge-plan. (Witness leg 3 sets those env vars to prove they are ignored here.)
-    match read_fleet_converge_plan_receipt_at(path: fleet_converge_plan_receipt_path) {
+    // THE PACK IS THE SOLE AUTHORITY on whether this run carries a verdict: the swap never reads
+    // the run-artifact root/plan-run-id/attempt env and never recomputes the plan's dir -- the
+    // pack's run_artifact_dir is the recorder's WRITE destination on the plan runner, published by
+    // the plan step, and a pack without it is a named refusal, not a fallback. WHERE the swap READS
+    // is a different fact and lives on the apply runner: the plan job records the verdict beside
+    // the pack before the upload, so on this runner both sit at the admitted anchor's root
+    // (<anchor>/plan_receipt.json, <anchor>/serve_entry_verdict.json). The anchor is contained-
+    // checked, not trusted, and the swap never composes a location from root/run id/attempt.
+    // (Witness leg 3 sets the run-artifact env vars to prove they are ignored here.)
+    match admit_fleet_plan_anchor_env_wet() {
+      AnchorAdmitted { anchor: anchor } =>
+      match read_fleet_converge_plan_receipt_at(path: fleet_plan_receipt_path_in(run_artifact_dir: anchor)) {
       FleetConvergePlanReceiptUnreadable { reason } =>
         serve_entry_verdict_as_compile_verdict(
           consumption: ConsumedAbsent { detail: join(["the plan pack is unreadable (", reason, "), so the per-run serve-entry verdict destination is unknown; the swap does not recompute it and there is no cold resolve fallback"], "") },
@@ -536,9 +544,13 @@ fn swap_serve_entry_compile_for(deployment: DesiredDeployment) -> ServeEntryComp
         } else {
           observe_plan_serve_entry_verdict(
             spec: selected_deployment_spec(row: deployment),
-            run_artifact_dir: receipt.run_artifact_dir as NonEmptyStr,
+            run_artifact_dir: anchor as NonEmptyStr,
           )
         }
+      }
+      refused_anchor => serve_entry_verdict_as_compile_verdict(
+        consumption: ConsumedAbsent { detail: join(["the plan anchor is not admitted (", fleet_plan_anchor_admission_text(a: refused_anchor), "); the swap does not recompute the pack location and there is no fixed shared path to read it through"], "") },
+      )
     }
   } else {
     let spec = selected_deployment_spec(row: deployment)
@@ -898,8 +910,8 @@ type ServeEntryVerdictDirAdmission
 // THE VERDICT'S DESTINATION IS ADMITTED BEFORE THE WITNESS RUNS. The served-command witness costs
 // minutes; a destination that cannot take the verdict used to be discovered only at the final write,
 // after the witness had completed (pull/16891#issuecomment-7103879443). The probe outcome is read
-// from the same directory the verdict is written to (fleet_converge_plan_artifact_dir), so no second
-// location is decided here.
+// from the same directory the verdict is written to (the pack's run_artifact_dir, admitted with
+// the pack), so no second location is decided here.
 fn serve_entry_verdict_dir_admission(dir: String, probe_success: Bool, probe_error: String) -> ServeEntryVerdictDirAdmission {
   if probe_success {
     ServeEntryVerdictDirWritable
@@ -983,15 +995,19 @@ fn record_plan_serve_entry_verdict_after_dir_admitted(row: DesiredDeployment, ru
 fn record_plan_serve_entry_compile_verdict() -> ProcessExit {
   match prod_role_desired_deployment() {
     ProdRoleDeploymentSelected { deployment } =>
-      match read_fleet_converge_plan_receipt_at(path: fleet_converge_plan_receipt_path) {
-        FleetConvergePlanReceiptUnreadable { reason } =>
-          exit_failure(reason: join(["live_deploy: record_plan_serve_entry_compile_verdict — the plan pack is unreadable (", reason, "), so the per-run serve-entry verdict destination is unknown; refusing rather than falling back to /tmp/fleet-converge-plan"], ""))
-        FleetConvergePlanReceiptDecoded { receipt } =>
-          if receipt.run_artifact_dir == "" {
-            exit_failure(reason: "live_deploy: record_plan_serve_entry_compile_verdict — the plan pack carries an empty run_artifact_dir; refusing rather than defaulting")
-          } else {
-            record_plan_serve_entry_verdict_for(row: deployment, run_artifact_dir: receipt.run_artifact_dir as NonEmptyStr)
+      match admit_fleet_plan_anchor_env_wet() {
+        AnchorAdmitted { anchor: plan_anchor } =>
+          match read_fleet_converge_plan_receipt_at(path: fleet_plan_receipt_path_in(run_artifact_dir: plan_anchor)) {
+            FleetConvergePlanReceiptUnreadable { reason } =>
+              exit_failure(reason: join(["live_deploy: record_plan_serve_entry_compile_verdict — the plan pack is unreadable (", reason, "), so the per-run serve-entry verdict destination is unknown; refusing rather than falling back to /tmp/fleet-converge-plan"], ""))
+            FleetConvergePlanReceiptDecoded { receipt } =>
+              if receipt.run_artifact_dir == "" {
+                exit_failure(reason: "live_deploy: record_plan_serve_entry_compile_verdict — the plan pack carries an empty run_artifact_dir; refusing rather than defaulting")
+              } else {
+                record_plan_serve_entry_verdict_for(row: deployment, run_artifact_dir: receipt.run_artifact_dir as NonEmptyStr)
+              }
           }
+        refused_anchor => exit_failure(reason: join(["live_deploy: record_plan_serve_entry_compile_verdict — ", fleet_plan_anchor_admission_text(a: refused_anchor)], ""))
       }
     ProdRoleDeploymentRefused =>
       exit_failure(reason: "live_deploy: record_plan_serve_entry_compile_verdict — the prod-role desired deployment is refused; the serve-entry verdict has no subject")

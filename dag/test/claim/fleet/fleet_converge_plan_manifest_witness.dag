@@ -32,18 +32,18 @@ import gunbc.fleet.fleet_converge_plan_manifest {
   PersistedMemberClassified,
   UnclassifiedPersistedMember,
   fleet_converge_persisted_member_authority,
-  fleet_converge_persisted_member_paths,
+  fleet_converge_persisted_member_names,
 }
 import gunbc.fleet.fleet_converge_plan {
-  fleet_converge_plan_body_path,
-  fleet_converge_plan_apply_shell_path,
-  fleet_converge_plan_subject_host_path,
-  fleet_converge_plan_subject_scope_path,
-  fleet_converge_plan_member_set_fp_path,
-  fleet_converge_plan_baseline_hex_path,
-  fleet_converge_plan_prior_generation_path,
-  fleet_converge_plan_generation_path,
-  fleet_converge_plan_content_hash_path,
+  fleet_converge_plan_body_name,
+  fleet_converge_plan_apply_shell_name,
+  fleet_converge_plan_subject_host_name,
+  fleet_converge_plan_subject_scope_name,
+  fleet_converge_plan_member_set_fp_name,
+  fleet_converge_plan_baseline_hex_name,
+  fleet_converge_plan_prior_generation_name,
+  fleet_converge_plan_generation_name,
+  fleet_converge_plan_content_hash_name,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -152,7 +152,7 @@ fn is_admitted_routing_launch(a: FleetConvergeApplyPayloadAdmission) -> Bool {
     PayloadSidecarDiverged { field: _, receipt_value: _, on_disk_value: _ } => false
     PayloadGenerationTextCorrupt { field: _, on_disk_value: _ } => false
     PayloadBundleDigestMismatch { receipt_value: _, on_disk_value: _ } => false
-    PayloadDigestUncomputable { path: _ } => false
+    PayloadDigestUncomputable { member: _ } => false
   }
 }
 
@@ -163,7 +163,7 @@ fn diverged_field(a: FleetConvergeApplyPayloadAdmission) -> String {
     PayloadScopeUndecodableInReceipt { cause: _ } => "scope-undecodable"
     PayloadGenerationTextCorrupt { field: _, on_disk_value: _ } => "generation-corrupt"
     PayloadBundleDigestMismatch { receipt_value: _, on_disk_value: _ } => "bundle-mismatch"
-    PayloadDigestUncomputable { path: _ } => "digest-uncomputable"
+    PayloadDigestUncomputable { member: _ } => "digest-uncomputable"
   }
 }
 
@@ -199,7 +199,7 @@ fn coordinated_full_host_substitution() -> FleetConvergeApplyPayload {
 test fn a_coordinated_other_scope_substitution_refuses_before_any_observation() -> Bool {
   let a = admission_of(payload: coordinated_full_host_substitution())
   !is_admitted_routing_launch(a: a)
-    && diverged_field(a: a) == fleet_converge_plan_subject_scope_path
+    && diverged_field(a: a) == fleet_converge_plan_subject_scope_name
 }
 
 // AND EACH SIDECAR ALONE, so the coordinated refusal above cannot be passing for a reason that
@@ -217,7 +217,7 @@ test fn a_substituted_member_set_fingerprint_alone_refuses() -> Bool {
     plan_body: p.plan_body,
     apply_shell: p.apply_shell,
     plan_content_hex: p.plan_content_hex,
-  })) == fleet_converge_plan_member_set_fp_path
+  })) == fleet_converge_plan_member_set_fp_name
 }
 
 test fn a_substituted_baseline_digest_alone_refuses() -> Bool {
@@ -232,7 +232,7 @@ test fn a_substituted_baseline_digest_alone_refuses() -> Bool {
     plan_body: p.plan_body,
     apply_shell: p.apply_shell,
     plan_content_hex: p.plan_content_hex,
-  })) == fleet_converge_plan_baseline_hex_path
+  })) == fleet_converge_plan_baseline_hex_name
 }
 
 test fn a_substituted_subject_host_alone_refuses() -> Bool {
@@ -247,7 +247,7 @@ test fn a_substituted_subject_host_alone_refuses() -> Bool {
     plan_body: p.plan_body,
     apply_shell: p.apply_shell,
     plan_content_hex: p.plan_content_hex,
-  })) == fleet_converge_plan_subject_host_path
+  })) == fleet_converge_plan_subject_host_name
 }
 
 // A REWOUND GENERATION IS A REPLAY, not drift: it is how a spent plan is presented as unspent.
@@ -263,7 +263,7 @@ test fn a_rewound_generation_sidecar_refuses() -> Bool {
     plan_body: p.plan_body,
     apply_shell: p.apply_shell,
     plan_content_hex: p.plan_content_hex,
-  })) == fleet_converge_plan_prior_generation_path
+  })) == fleet_converge_plan_prior_generation_name
 }
 
 // A CORRUPT GENERATION FILE IS ITS OWN ARM, never coerced to zero.
@@ -281,12 +281,12 @@ test fn a_corrupt_generation_sidecar_refuses_rather_than_coercing() -> Bool {
     plan_content_hex: p.plan_content_hex,
   }) {
     PayloadGenerationTextCorrupt { field: f, on_disk_value: _ } =>
-      f == fleet_converge_plan_prior_generation_path
+      f == fleet_converge_plan_prior_generation_name
     PayloadAdmitted { routed_scope: _ } => false
     PayloadScopeUndecodableInReceipt { cause: _ } => false
     PayloadSidecarDiverged { field: _, receipt_value: _, on_disk_value: _ } => false
     PayloadBundleDigestMismatch { receipt_value: _, on_disk_value: _ } => false
-    PayloadDigestUncomputable { path: _ } => false
+    PayloadDigestUncomputable { member: _ } => false
   }
 }
 
@@ -309,7 +309,7 @@ test fn a_bundle_hash_that_disagrees_with_the_receipt_refuses() -> Bool {
     PayloadScopeUndecodableInReceipt { cause: _ } => false
     PayloadSidecarDiverged { field: _, receipt_value: _, on_disk_value: _ } => false
     PayloadGenerationTextCorrupt { field: _, on_disk_value: _ } => false
-    PayloadDigestUncomputable { path: _ } => false
+    PayloadDigestUncomputable { member: _ } => false
   }
 }
 
@@ -326,7 +326,7 @@ test fn a_receipt_naming_an_undecodable_scope_selects_no_observer() -> Bool {
     PayloadSidecarDiverged { field: _, receipt_value: _, on_disk_value: _ } => false
     PayloadGenerationTextCorrupt { field: _, on_disk_value: _ } => false
     PayloadBundleDigestMismatch { receipt_value: _, on_disk_value: _ } => false
-    PayloadDigestUncomputable { path: _ } => false
+    PayloadDigestUncomputable { member: _ } => false
   }
 }
 
@@ -356,7 +356,7 @@ test fn the_routed_scope_is_the_receipts_and_never_the_files() -> Bool {
     PayloadSidecarDiverged { field: _, receipt_value: _, on_disk_value: _ } => false
     PayloadGenerationTextCorrupt { field: _, on_disk_value: _ } => false
     PayloadBundleDigestMismatch { receipt_value: _, on_disk_value: _ } => false
-    PayloadDigestUncomputable { path: _ } => false
+    PayloadDigestUncomputable { member: _ } => false
   }
 }
 
@@ -390,7 +390,7 @@ test fn doctored_apply_bytes_refuse_even_when_the_hex_claim_still_matches_the_re
     PayloadScopeUndecodableInReceipt { cause: _ } => false
     PayloadSidecarDiverged { field: _, receipt_value: _, on_disk_value: _ } => false
     PayloadGenerationTextCorrupt { field: _, on_disk_value: _ } => false
-    PayloadDigestUncomputable { path: _ } => false
+    PayloadDigestUncomputable { member: _ } => false
   }
 }
 
@@ -416,7 +416,7 @@ test fn doctored_plan_body_bytes_refuse_even_when_the_hex_claim_still_matches() 
     PayloadScopeUndecodableInReceipt { cause: _ } => false
     PayloadSidecarDiverged { field: _, receipt_value: _, on_disk_value: _ } => false
     PayloadGenerationTextCorrupt { field: _, on_disk_value: _ } => false
-    PayloadDigestUncomputable { path: _ } => false
+    PayloadDigestUncomputable { member: _ } => false
   }
 }
 
@@ -431,36 +431,36 @@ test fn doctored_plan_body_bytes_refuse_even_when_the_hex_claim_still_matches() 
 // same path.
 // ---------------------------------------------------------------------------
 
-fn classifies_receipt_bound_to(path: String, receipt_field: String) -> Bool {
-  match fleet_converge_persisted_member_authority(path: path) {
-    PersistedMemberClassified { path: p, authority: a } =>
-      p == path
+fn classifies_receipt_bound_to(name: String, receipt_field: String) -> Bool {
+  match fleet_converge_persisted_member_authority(name: name) {
+    PersistedMemberClassified { name: p, authority: a } =>
+      p == name
         && match a {
              ReceiptBoundMember { receipt_field: f } => f == receipt_field
              DerivedFromBoundAuthority { recomputed_into: _ } => false
              NonAuthoritativePresentation { justification: _ } => false
            }
-    UnclassifiedPersistedMember { path: _ } => false
+    UnclassifiedPersistedMember { name: _ } => false
   }
 }
 
-fn classifies_derived_into(path: String, recomputed_into: String) -> Bool {
-  match fleet_converge_persisted_member_authority(path: path) {
-    PersistedMemberClassified { path: p, authority: a } =>
-      p == path
+fn classifies_derived_into(name: String, recomputed_into: String) -> Bool {
+  match fleet_converge_persisted_member_authority(name: name) {
+    PersistedMemberClassified { name: p, authority: a } =>
+      p == name
         && match a {
              DerivedFromBoundAuthority { recomputed_into: r } => r == recomputed_into
              ReceiptBoundMember { receipt_field: _ } => false
              NonAuthoritativePresentation { justification: _ } => false
            }
-    UnclassifiedPersistedMember { path: _ } => false
+    UnclassifiedPersistedMember { name: _ } => false
   }
 }
 
-fn is_classified(path: String) -> Bool {
-  match fleet_converge_persisted_member_authority(path: path) {
-    PersistedMemberClassified { path: _, authority: _ } => true
-    UnclassifiedPersistedMember { path: _ } => false
+fn is_classified(name: String) -> Bool {
+  match fleet_converge_persisted_member_authority(name: name) {
+    PersistedMemberClassified { name: _, authority: _ } => true
+    UnclassifiedPersistedMember { name: _ } => false
   }
 }
 
@@ -475,15 +475,15 @@ fn is_classified(path: String) -> Bool {
 // `all` over an empty roster is true for free and a roster that silently stopped being populated
 // would satisfy this row without classifying anything.
 test fn every_rostered_persisted_member_is_classified() -> Bool {
-  length(xs: fleet_converge_persisted_member_paths) > 0
-    && all(fleet_converge_persisted_member_paths, p => is_classified(path: p))
+  length(xs: fleet_converge_persisted_member_names) > 0
+    && all(fleet_converge_persisted_member_names, p => is_classified(name: p))
 }
 
 // EVERY ROSTERED IDENTITY APPEARS EXACTLY ONCE, and this row exists because the classification join
 // above CANNOT SEE A DUPLICATE. It requires only that the roster is nonempty and that every
 // occurrence classifies, so repeating a path that is already classified satisfies it BY
 // CONSTRUCTION -- the witness passes for a reason unrelated to the property it names. That is not
-// hypothetical: this PR inserted a second fleet_converge_plan_content_hash_path into this roster
+// hypothetical: this PR inserted a second fleet_converge_plan_content_hash_name into this roster
 // while adding a missing import, every row here stayed green, and a reader caught it rather than
 // the gate.
 //
@@ -511,9 +511,9 @@ fn occurs_exactly_once(path: String, roster: List<String>) -> Bool {
 }
 
 test fn no_persisted_member_path_is_rostered_twice() -> Bool {
-  length(xs: fleet_converge_persisted_member_paths) > 0
-    && all(fleet_converge_persisted_member_paths, p =>
-        occurs_exactly_once(path: p, roster: fleet_converge_persisted_member_paths))
+  length(xs: fleet_converge_persisted_member_names) > 0
+    && all(fleet_converge_persisted_member_names, p =>
+        occurs_exactly_once(path: p, roster: fleet_converge_persisted_member_names))
 }
 
 // THE MUTATION CONTROL, so the zero above is a measurement and not a blind spot. The predicate is
@@ -521,8 +521,8 @@ test fn no_persisted_member_path_is_rostered_twice() -> Bool {
 // committed -- and must refuse it. Without this row, "no duplicates" would be indistinguishable
 // from a check that cannot see one.
 data roster_with_one_identity_repeated: List<String> = concat(
-  fleet_converge_persisted_member_paths,
-  [fleet_converge_plan_content_hash_path],
+  fleet_converge_persisted_member_names,
+  [fleet_converge_plan_content_hash_name],
 )
 
 test fn a_repeated_existing_identity_is_refused_by_the_uniqueness_wall() -> Bool {
@@ -536,11 +536,11 @@ test fn a_repeated_existing_identity_is_refused_by_the_uniqueness_wall() -> Bool
 // row the "no fourth category" property would be a reading of the source rather than a wall.
 test fn an_unrecognized_persisted_path_is_refused_rather_than_defaulted() -> Bool {
   match fleet_converge_persisted_member_authority(
-    path: "/tmp/fleet-converge-plan/an_eleventh_sidecar_nobody_classified.txt",
+    name: "an_eleventh_sidecar_nobody_classified.txt",
   ) {
-    UnclassifiedPersistedMember { path: p } =>
-      p == "/tmp/fleet-converge-plan/an_eleventh_sidecar_nobody_classified.txt"
-    PersistedMemberClassified { path: _, authority: _ } => false
+    UnclassifiedPersistedMember { name: p } =>
+      p == "an_eleventh_sidecar_nobody_classified.txt"
+    PersistedMemberClassified { name: _, authority: _ } => false
   }
 }
 
@@ -549,7 +549,7 @@ test fn an_unrecognized_persisted_path_is_refused_rather_than_defaulted() -> Boo
 // names the same path, so the two cannot drift apart without a red.
 test fn the_receipt_bound_classification_matches_the_executed_refusal() -> Bool {
   let p = coherent_payload()
-  classifies_receipt_bound_to(path: fleet_converge_plan_subject_host_path, receipt_field: "observed_host")
+  classifies_receipt_bound_to(name: fleet_converge_plan_subject_host_name, receipt_field: "observed_host")
     && diverged_field(a: admission_of(payload: FleetConvergeApplyPayload {
          subject_host_text: "srv2",
          subject_scope_text: p.subject_scope_text,
@@ -560,28 +560,28 @@ test fn the_receipt_bound_classification_matches_the_executed_refusal() -> Bool 
          plan_body: p.plan_body,
          apply_shell: p.apply_shell,
          plan_content_hex: p.plan_content_hex,
-       })) == fleet_converge_plan_subject_host_path
-    && classifies_receipt_bound_to(path: fleet_converge_plan_subject_scope_path, receipt_field: "scope_wire")
+       })) == fleet_converge_plan_subject_host_name
+    && classifies_receipt_bound_to(name: fleet_converge_plan_subject_scope_name, receipt_field: "scope_wire")
     && diverged_field(a: admission_of(payload: coordinated_full_host_substitution()))
-         == fleet_converge_plan_subject_scope_path
+         == fleet_converge_plan_subject_scope_name
     && classifies_receipt_bound_to(
-         path: fleet_converge_plan_member_set_fp_path,
+         name: fleet_converge_plan_member_set_fp_name,
          receipt_field: "member_set_fingerprint_hex",
        )
     && classifies_receipt_bound_to(
-         path: fleet_converge_plan_baseline_hex_path,
+         name: fleet_converge_plan_baseline_hex_name,
          receipt_field: "observed_baseline_hex",
        )
     && classifies_receipt_bound_to(
-         path: fleet_converge_plan_prior_generation_path,
+         name: fleet_converge_plan_prior_generation_name,
          receipt_field: "prior_generation",
        )
     && classifies_receipt_bound_to(
-         path: fleet_converge_plan_generation_path,
+         name: fleet_converge_plan_generation_name,
          receipt_field: "planned_generation",
        )
     && classifies_receipt_bound_to(
-         path: fleet_converge_plan_content_hash_path,
+         name: fleet_converge_plan_content_hash_name,
          receipt_field: "plan_artifact_hash",
        )
 }
@@ -591,8 +591,8 @@ test fn the_receipt_bound_classification_matches_the_executed_refusal() -> Bool 
 // as a per-file comparison -- the map says derived, and that is exactly what the executed rows
 // doctored_apply_bytes_* and doctored_plan_body_bytes_* observe.
 test fn the_derived_classification_names_the_bound_value_it_is_recomputed_into() -> Bool {
-  classifies_derived_into(path: fleet_converge_plan_body_path, recomputed_into: "plan_artifact_hash")
-    && classifies_derived_into(path: fleet_converge_plan_apply_shell_path, recomputed_into: "plan_artifact_hash")
+  classifies_derived_into(name: fleet_converge_plan_body_name, recomputed_into: "plan_artifact_hash")
+    && classifies_derived_into(name: fleet_converge_plan_apply_shell_name, recomputed_into: "plan_artifact_hash")
 }
 
 // CATEGORY THREE IS EMPTY, EXECUTED RATHER THAN ASSERTED IN PROSE. An empty set has two causes --
@@ -600,15 +600,15 @@ test fn the_derived_classification_names_the_bound_value_it_is_recomputed_into()
 // asked, and none answers NonAuthoritativePresentation.
 test fn no_persisted_member_is_currently_non_authoritative() -> Bool {
   all(
-    fleet_converge_persisted_member_paths,
-    p => match fleet_converge_persisted_member_authority(path: p) {
-      PersistedMemberClassified { path: _, authority: a } =>
+    fleet_converge_persisted_member_names,
+    p => match fleet_converge_persisted_member_authority(name: p) {
+      PersistedMemberClassified { name: _, authority: a } =>
         match a {
           NonAuthoritativePresentation { justification: _ } => false
           ReceiptBoundMember { receipt_field: _ } => true
           DerivedFromBoundAuthority { recomputed_into: _ } => true
         }
-      UnclassifiedPersistedMember { path: _ } => false
+      UnclassifiedPersistedMember { name: _ } => false
     },
   )
 }

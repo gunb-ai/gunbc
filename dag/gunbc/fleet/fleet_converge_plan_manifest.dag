@@ -11,23 +11,23 @@ import gunbc.fleet.fleet_converge_plan {
   ScopeUndecodable,
   fleet_converge_scope_of_wire,
   fleet_converge_scope_wire,
-  fleet_converge_plan_body_path,
-  fleet_converge_plan_content_hash_path,
-  fleet_converge_plan_apply_shell_path,
-  fleet_converge_plan_subject_host_path,
-  fleet_converge_plan_subject_scope_path,
-  fleet_converge_plan_member_set_fp_path,
-  fleet_converge_plan_baseline_hex_path,
-  fleet_converge_plan_prior_generation_path,
-  fleet_converge_plan_generation_path,
+  fleet_converge_plan_body_name,
+  fleet_converge_plan_content_hash_name,
+  fleet_converge_plan_apply_shell_name,
+  fleet_converge_plan_subject_host_name,
+  fleet_converge_plan_subject_scope_name,
+  fleet_converge_plan_member_set_fp_name,
+  fleet_converge_plan_baseline_hex_name,
+  fleet_converge_plan_prior_generation_name,
+  fleet_converge_plan_generation_name,
   fleet_converge_parse_nonneg_generation_text,
   fleet_converge_plan_bundle_digest_hex
 }
 
 // EVERY VALUE APPLY TRUSTS, JUDGED IN ONE PLACE AGAINST ONE RUN-BOUND ANCHOR.
 //
-// THE HOLE THIS CLOSES, stated as the attack rather than as a property. The plan writes seven files
-// into /tmp/fleet-converge-plan. plan_content.hex covers exactly two of them -- plan.txt and
+// THE HOLE THIS CLOSES, stated as the attack rather than as a property. The plan writes its member
+// family into the run-scoped plan-artifact directory. plan_content.hex covers exactly two of them -- plan.txt and
 // apply.sh -- and subject_scope.txt, subject_host.txt, subject_member_set.txt,
 // observed_baseline.hex and the two generation files were covered by nothing. Apply then read the
 // SCOPE out of subject_scope.txt and used it for BOTH halves of its own admission: it was the
@@ -73,50 +73,54 @@ type FleetConvergePersistedMemberAuthority
   | DerivedFromBoundAuthority { recomputed_into: String }
   | NonAuthoritativePresentation { justification: String }
 
-// TOTAL OVER THE PATH, and the refusal arm is what makes it total honestly: a path this fold does
-// not recognize is UnclassifiedPersistedMember rather than a default category, so adding an eighth
+// TOTAL OVER THE MEMBER NAME, and the refusal arm is what makes it total honestly: a member this fold does
+// not recognize is UnclassifiedPersistedMember rather than a default category, so adding an extra
 // sidecar without classifying it is a loud failure at the witness rather than a silent third rail.
+// CLASSIFIED BY MEMBER NAME (roadmap row serve-entry-verdict-path-is-per-run). The directory that
+// holds the member is per-run on the plan side and per-job (the admitted anchor) on the apply side,
+// so the directory is NOT part of a member's identity; the NAME is. A path comparison here would
+// re-fuse a location into the classification the moment a directory changed.
 type FleetConvergePersistedMemberClassification
-  = PersistedMemberClassified { path: String, authority: FleetConvergePersistedMemberAuthority }
-  | UnclassifiedPersistedMember { path: String }
+  = PersistedMemberClassified { name: String, authority: FleetConvergePersistedMemberAuthority }
+  | UnclassifiedPersistedMember { name: String }
 
-fn fleet_converge_persisted_member_authority(path: String) -> FleetConvergePersistedMemberClassification {
-  if path == fleet_converge_plan_subject_host_path {
-    PersistedMemberClassified { path: path, authority: ReceiptBoundMember { receipt_field: "observed_host" } }
-  } else if path == fleet_converge_plan_subject_scope_path {
-    PersistedMemberClassified { path: path, authority: ReceiptBoundMember { receipt_field: "scope_wire" } }
-  } else if path == fleet_converge_plan_member_set_fp_path {
-    PersistedMemberClassified { path: path, authority: ReceiptBoundMember { receipt_field: "member_set_fingerprint_hex" } }
-  } else if path == fleet_converge_plan_baseline_hex_path {
-    PersistedMemberClassified { path: path, authority: ReceiptBoundMember { receipt_field: "observed_baseline_hex" } }
-  } else if path == fleet_converge_plan_prior_generation_path {
-    PersistedMemberClassified { path: path, authority: ReceiptBoundMember { receipt_field: "prior_generation" } }
-  } else if path == fleet_converge_plan_generation_path {
-    PersistedMemberClassified { path: path, authority: ReceiptBoundMember { receipt_field: "planned_generation" } }
-  } else if path == fleet_converge_plan_content_hash_path {
-    PersistedMemberClassified { path: path, authority: ReceiptBoundMember { receipt_field: "plan_artifact_hash" } }
-  } else if path == fleet_converge_plan_body_path {
-    PersistedMemberClassified { path: path, authority: DerivedFromBoundAuthority { recomputed_into: "plan_artifact_hash" } }
-  } else if path == fleet_converge_plan_apply_shell_path {
-    PersistedMemberClassified { path: path, authority: DerivedFromBoundAuthority { recomputed_into: "plan_artifact_hash" } }
+fn fleet_converge_persisted_member_authority(name: String) -> FleetConvergePersistedMemberClassification {
+  if name == fleet_converge_plan_subject_host_name {
+    PersistedMemberClassified { name: name, authority: ReceiptBoundMember { receipt_field: "observed_host" } }
+  } else if name == fleet_converge_plan_subject_scope_name {
+    PersistedMemberClassified { name: name, authority: ReceiptBoundMember { receipt_field: "scope_wire" } }
+  } else if name == fleet_converge_plan_member_set_fp_name {
+    PersistedMemberClassified { name: name, authority: ReceiptBoundMember { receipt_field: "member_set_fingerprint_hex" } }
+  } else if name == fleet_converge_plan_baseline_hex_name {
+    PersistedMemberClassified { name: name, authority: ReceiptBoundMember { receipt_field: "observed_baseline_hex" } }
+  } else if name == fleet_converge_plan_prior_generation_name {
+    PersistedMemberClassified { name: name, authority: ReceiptBoundMember { receipt_field: "prior_generation" } }
+  } else if name == fleet_converge_plan_generation_name {
+    PersistedMemberClassified { name: name, authority: ReceiptBoundMember { receipt_field: "planned_generation" } }
+  } else if name == fleet_converge_plan_content_hash_name {
+    PersistedMemberClassified { name: name, authority: ReceiptBoundMember { receipt_field: "plan_artifact_hash" } }
+  } else if name == fleet_converge_plan_body_name {
+    PersistedMemberClassified { name: name, authority: DerivedFromBoundAuthority { recomputed_into: "plan_artifact_hash" } }
+  } else if name == fleet_converge_plan_apply_shell_name {
+    PersistedMemberClassified { name: name, authority: DerivedFromBoundAuthority { recomputed_into: "plan_artifact_hash" } }
   } else {
-    UnclassifiedPersistedMember { path: path }
+    UnclassifiedPersistedMember { name: name }
   }
 }
 
-// THE PERSISTED POPULATION, AS A ROSTER. The classification above answers per path; this states
-// WHICH paths the plan writes, so the two together are a closed map rather than a lookup nobody
-// enumerates. The witness joins them at identity grain.
-data fleet_converge_persisted_member_paths: List<String> = [
-  fleet_converge_plan_subject_host_path,
-  fleet_converge_plan_subject_scope_path,
-  fleet_converge_plan_member_set_fp_path,
-  fleet_converge_plan_baseline_hex_path,
-  fleet_converge_plan_prior_generation_path,
-  fleet_converge_plan_generation_path,
-  fleet_converge_plan_content_hash_path,
-  fleet_converge_plan_body_path,
-  fleet_converge_plan_apply_shell_path,
+// THE PERSISTED POPULATION, AS A ROSTER OF NAMES. The classification above answers per name; this
+// states WHICH members the plan writes into its run-scoped directory, so the two together are a
+// closed map rather than a lookup nobody enumerates. The witness joins them at identity grain.
+data fleet_converge_persisted_member_names: List<String> = [
+  fleet_converge_plan_subject_host_name,
+  fleet_converge_plan_subject_scope_name,
+  fleet_converge_plan_member_set_fp_name,
+  fleet_converge_plan_baseline_hex_name,
+  fleet_converge_plan_prior_generation_name,
+  fleet_converge_plan_generation_name,
+  fleet_converge_plan_content_hash_name,
+  fleet_converge_plan_body_name,
+  fleet_converge_plan_apply_shell_name,
 ]
 
 // CATEGORY THREE IS EMPTY TODAY, AND THAT IS AN OBSERVATION RATHER THAN AN OMISSION. Every file the
@@ -153,7 +157,7 @@ type FleetConvergeApplyPayloadAdmission
   | PayloadSidecarDiverged { field: String, receipt_value: String, on_disk_value: String }
   | PayloadGenerationTextCorrupt { field: String, on_disk_value: String }
   | PayloadBundleDigestMismatch { receipt_value: String, on_disk_value: String }
-  | PayloadDigestUncomputable { path: String }
+  | PayloadDigestUncomputable { member: String }
 
 // THE ORDER OF THESE CHECKS IS THE SAFETY PROPERTY AND IS NOT COSMETIC.
 //
@@ -178,25 +182,25 @@ fn fleet_converge_apply_payload_admits(
         }
       } else if trim(s: payload.subject_host_text) != receipt.observed_host {
         PayloadSidecarDiverged {
-          field: fleet_converge_plan_subject_host_path,
+          field: fleet_converge_plan_subject_host_name,
           receipt_value: receipt.observed_host,
           on_disk_value: trim(s: payload.subject_host_text),
         }
       } else if trim(s: payload.subject_scope_text) != receipt.scope_wire {
         PayloadSidecarDiverged {
-          field: fleet_converge_plan_subject_scope_path,
+          field: fleet_converge_plan_subject_scope_name,
           receipt_value: receipt.scope_wire,
           on_disk_value: trim(s: payload.subject_scope_text),
         }
       } else if trim(s: payload.subject_member_set_text) != receipt.member_set_fingerprint_hex {
         PayloadSidecarDiverged {
-          field: fleet_converge_plan_member_set_fp_path,
+          field: fleet_converge_plan_member_set_fp_name,
           receipt_value: receipt.member_set_fingerprint_hex,
           on_disk_value: trim(s: payload.subject_member_set_text),
         }
       } else if trim(s: payload.observed_baseline_hex_text) != receipt.observed_baseline_hex {
         PayloadSidecarDiverged {
-          field: fleet_converge_plan_baseline_hex_path,
+          field: fleet_converge_plan_baseline_hex_name,
           receipt_value: receipt.observed_baseline_hex,
           on_disk_value: trim(s: payload.observed_baseline_hex_text),
         }
@@ -213,25 +217,25 @@ fn payload_generation_admits(
 ) -> FleetConvergeApplyPayloadAdmission {
   match fleet_converge_parse_nonneg_generation_text(content: payload.prior_generation_text) {
     Absent => PayloadGenerationTextCorrupt {
-      field: fleet_converge_plan_prior_generation_path,
+      field: fleet_converge_plan_prior_generation_name,
       on_disk_value: trim(s: payload.prior_generation_text),
     }
     Present { value: prior } =>
       match fleet_converge_parse_nonneg_generation_text(content: payload.planned_generation_text) {
         Absent => PayloadGenerationTextCorrupt {
-          field: fleet_converge_plan_generation_path,
+          field: fleet_converge_plan_generation_name,
           on_disk_value: trim(s: payload.planned_generation_text),
         }
         Present { value: planned } =>
           if prior != receipt.prior_generation {
             PayloadSidecarDiverged {
-              field: fleet_converge_plan_prior_generation_path,
+              field: fleet_converge_plan_prior_generation_name,
               receipt_value: to_string(receipt.prior_generation),
               on_disk_value: to_string(prior),
             }
           } else if planned != receipt.planned_generation {
             PayloadSidecarDiverged {
-              field: fleet_converge_plan_generation_path,
+              field: fleet_converge_plan_generation_name,
               receipt_value: to_string(receipt.planned_generation),
               on_disk_value: to_string(planned),
             }
@@ -266,7 +270,7 @@ fn payload_digest_admits(
     plan_body: payload.plan_body,
     apply_shell: payload.apply_shell,
   ) {
-    Absent => PayloadDigestUncomputable { path: fleet_converge_plan_body_path }
+    Absent => PayloadDigestUncomputable { member: fleet_converge_plan_body_name }
     Present { value: computed } =>
       if (computed as String) != receipt.plan_artifact_hash {
         PayloadBundleDigestMismatch {
@@ -298,7 +302,7 @@ fn fleet_converge_apply_payload_refusal_text(a: FleetConvergeApplyPayloadAdmissi
       join(["PlanGenerationTextCorrupt — ", f, " holds ", o, "; refuse rather than coerce to 0"], "")
     PayloadBundleDigestMismatch { receipt_value: r, on_disk_value: o } =>
       join(["PlanBundleDigestMismatch — plan_content.hex holds ", o, " and the plan receipt minted ", r], "")
-    PayloadDigestUncomputable { path: p } =>
-      join(["PlanPayloadDigestUncomputable — ", p, " did not hash as Fnv1a64Structural"], "")
+    PayloadDigestUncomputable { member: m } =>
+      join(["PlanPayloadDigestUncomputable — ", m, " did not hash as Fnv1a64Structural"], "")
   }
 }

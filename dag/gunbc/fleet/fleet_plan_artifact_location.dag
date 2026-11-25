@@ -1,10 +1,16 @@
 module gunbc.fleet.fleet_plan_artifact_location
-import std.types { String, NonEmptyStr }
-
-data fleet_converge_plan_artifact_dir: String = "/tmp/fleet-converge-plan"
-
-data fleet_reviewed_plan_path: String = "/tmp/fleet-converge-plan/plan.txt"
-data fleet_reviewed_apply_path: String = "/tmp/fleet-converge-plan/apply.sh"
+import std.types { String, NonEmptyStr, Int }
+import std.algebra { trim }
+import std.process { ExitSuccess, ExitFailure }
+import gunbc.command_runner { run_shell_commands, run_shell_command_capture }
+import extdeps.exec.command { LocalExec }
+import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
+import extdeps.tools.gnu_coreutils { realpath_canonical_command }
+import extdeps.tools.mkdir { mkdir_parents_command, mkdir_exact_command }
+import extdeps.posix.test_utility { test_regular_file_command }
+import gunbc.actions_run_binding {
+  actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent,
+}
 
 // THE PRODUCER-SIDE COMPOSITION of the run-scoped plan-artifact directory (roadmap row
 // serve-entry-verdict-path-is-per-run). The destination of a run's plan artifacts -- plan text,
@@ -15,12 +21,25 @@ data fleet_reviewed_apply_path: String = "/tmp/fleet-converge-plan/apply.sh"
 // run: their scratch), the run's plan id, and its attempt. Each is NonEmptyStr, so an absent input
 // is refused at the producer entry's typed argument binding and never defaulted -- there is no
 // fallback to /tmp/fleet-converge-plan or any other constant.
+//
+// ONE RENDERER, TWO CALLERS (manager ruling 2026-11-24): this function is the single spelling of
+// the dir shape. The runtime composer (compose_fleet_converge_run_artifact_dir*) calls it with the
+// env values; gunbc.fleet.fleet_converge_workflow.dag calls it with the GitHub expressions and uses
+// the rendering for the plan upload path and the recorder's anchor env. The same three expression
+// rows feed the three GUNBC_FLEET_CONVERGE_RUN_ARTIFACT_* env inputs. The shape cannot drift
+// between runtime and workflow because there is no second template to drift.
 fn fleet_plan_run_artifact_dir(
   root: NonEmptyStr,
   plan_run_id: NonEmptyStr,
   attempt: NonEmptyStr,
 ) -> String {
   join([root as String, "/", plan_run_id as String, "/", attempt as String], "")
+}
+
+// The parents of a run-scoped plan-artifact directory -- the same first two fields of the ONE
+// renderer, so the leaf-exclusive claim (below) and the leaf path can never disagree.
+fn fleet_plan_run_artifact_dir_parents(root: NonEmptyStr, plan_run_id: NonEmptyStr) -> String {
+  join([root as String, "/", plan_run_id as String], "")
 }
 
 // The three per-run ENVIRONMENT names the PLAN STEP reads (via actions_variable_read, the same
@@ -33,12 +52,18 @@ data fleet_converge_run_artifact_root_env_name: String = "GUNBC_FLEET_CONVERGE_R
 data fleet_converge_run_artifact_plan_run_id_env_name: String = "GUNBC_FLEET_CONVERGE_RUN_ARTIFACT_PLAN_RUN_ID"
 data fleet_converge_run_artifact_attempt_env_name: String = "GUNBC_FLEET_CONVERGE_RUN_ARTIFACT_ATTEMPT"
 
-// THE PACK (plan receipt) FILENAME inside the per-run plan-artifact directory. The plan step writes
+// THE PACK (plan receipt) FILENAME inside the run-scoped plan-artifact directory. The plan step writes
 // the plan receipt here, into the run-scoped dir it composes above -- never at a fixed shared path,
 // because two concurrent plan runs must not overwrite one receipt and have a later reader pick up
-// another run's run_artifact_dir. Consumers locate it by the opaque handle below, not by recomposing
-// it from the run identity.
+// another run's run_artifact_dir. Consumers locate it by the admitted anchor below, not by
+// recomposing it from the run identity.
 data fleet_converge_plan_receipt_name: String = "plan_receipt.json"
+
+// THE APPLY RECEIPT FILENAME of the same family. Apply writes it beside the pack it admitted -- under
+// the anchor on a CI apply, under the same admitted handle on an operator-local apply -- and the
+// upload step carries it from there. There is no /tmp/fleet-converge-apply family anymore: one run's
+// apply receipt must not sit on one fixed path beside every other run's.
+data fleet_converge_apply_receipt_name: String = "apply_receipt.json"
 
 // Compose the plan receipt (pack) path from a run-scoped plan-artifact directory. Used by the
 // PRODUCER (the plan step, which owns the dir) to write the pack into
@@ -50,11 +75,11 @@ fn fleet_plan_receipt_path_in(run_artifact_dir: String) -> String {
 }
 
 // THE GENERIC MEMBER of the run-scoped plan-artifact family. Every plan artifact file (plan text,
-// apply shell, baseline, content hash, subject fields, the plan pack, the apply receipt) lives
-// inside a single run-scoped directory; none sits at a fixed shared path, because two concurrent
-// runs must not overwrite one another's artifacts. The producer composes each path from its
-// run_artifact_dir and the file's name; consumers read members by the opaque handle, never by
-// recomposing from the run identity.
+// apply shell, baseline, content hash, subject fields, the plan pack, the apply receipt, the
+// serve-entry verdict) lives inside a single run-scoped directory; none sits at a fixed shared
+// path, because two concurrent runs must not overwrite one another's artifacts. The producer
+// composes each path from its run_artifact_dir and the file's name; consumers read members by the
+// admitted anchor, never by recomposing from the run identity.
 fn fleet_plan_artifact_path_at(run_artifact_dir: String, name: String) -> String {
   join([run_artifact_dir, "/", name], "")
 }
@@ -64,9 +89,136 @@ fn fleet_plan_artifact_path_at(run_artifact_dir: String, name: String) -> String
 // uploaded plan artifact, and the apply runner downloads it to a JOB-SCOPED, runner-writable
 // directory -- the download step's path, ${{ runner.temp }}/fleet-converge-plan -- so no cross-run or
 // cross-user collision. That download directory is the SINGLE admitted anchor: the workflow .dag
-// emits it once, and apply, the swap and the recorder read the pack at <anchor>/plan_receipt.json --
-// a CONSTANT file name inside an ADMITTED anchor, which is not composition from run identity. They
-// REFUSE if the anchor is absent, if the pack is absent, or if the canonicalized pack path is not
-// under the canonicalized anchor (a symlinked pack must not escape). One value, so there is no
-// handle/anchor pair that can disagree.
+// emits it once (as this expression, used for every consumer download and as the env value below),
+// and apply, the swap and the receipt readers receive ONLY the anchor env name and read
+// <anchor>/<name> -- a CONSTANT file name inside an ADMITTED anchor, which is not composition from
+// run identity. On the PLAN side the same anchor name carries the plan step's per-run dir (rendered
+// by the ONE renderer above), so the recorder locates the pack the same single way. Every reader
+// REFUSES, typed, if the anchor env is absent, if the pack is absent, if a realpath probe fails, or
+// if the canonicalized pack path is not under the canonicalized anchor (a symlinked pack must not
+// escape). One name, so there is no handle/anchor pair that can disagree.
 data fleet_converge_plan_anchor_env_name: String = "GUNBC_FLEET_CONVERGE_PLAN_ANCHOR"
+
+// The ONE anchor expression the workflow .dag emits: the download step's path for every consumer
+// job, and the value exported as fleet_converge_plan_anchor_env_name on the steps whose code reads
+// the family. It is an Actions expression, so it resolves to the job's real runner-temp path at run
+// time; the .dag NEVER spells a second template of it.
+data fleet_converge_plan_anchor_path_expr: String = "${{ runner.temp }}/fleet-converge-plan"
+
+// THE ANCHOR ADMISSION (containment, in the admission layer -- gunbc.fleet.fleet_converge_receipt
+// stays pure data). The anchor is an operator/runner-supplied handle; a name inside it must not
+// become a way to read OUTSIDE it. The probe is argv `realpath -e -- <path>` (extdeps.tools.gnu_coreutils,
+// POSIX -e: print the canonical spelling, refuse if a component is missing), and the probe's OWN rc
+// decides -- run_shell_command_capture classifies the process exit directly, no pipe in front of
+// the probe (a pipe would replace the probe's rc with the pipeline's). Existence of the pack is a
+// SEPARATE probe (test -f), so "pack absent" and "realpath refused" stay distinct typed causes.
+type FleetPlanAnchorAdmission
+  = AnchorAdmitted { anchor: String }
+  | AnchorEnvAbsent { variable: String, detail: String }
+  | AnchorPackAbsent { pack_path: String }
+  | AnchorProbeRefused { path: String, exit_code: Int, detail: String }
+  | PackOutsideAnchor { anchor: String, pack_path: String, canonical_anchor: String, canonical_pack: String }
+
+fn fleet_plan_anchor_admission_text(a: FleetPlanAnchorAdmission) -> String {
+  match a {
+    AnchorAdmitted { anchor: a } => join(["anchor admitted: ", a], "")
+    AnchorEnvAbsent { variable: v, detail: d } =>
+      join(["PlanAnchorAbsent — ", v, " ", d, "; the plan-artifact anchor is a required input, there is no default and no fallback path"], "")
+    AnchorPackAbsent { pack_path: p } =>
+      join(["PlanArtifactPackAbsent — no regular pack file at ", p, "; the anchor does not carry this run's plan pack"], "")
+    AnchorProbeRefused { path: p, exit_code: c, detail: d } =>
+      join(["PlanAnchorProbeRefused — realpath -e refused for ", p, " (exit ", to_string(c), "): ", d, "; refusing to decide containment on a path realpath cannot canonicalize"], "")
+    PackOutsideAnchor { anchor: a, pack_path: p, canonical_anchor: ca, canonical_pack: cp } =>
+      join([
+        "PlanArtifactPackOutsideAnchor — the pack at ", p, " canonicalizes to ", cp,
+        ", which is not under the canonical anchor ", ca, " plus a separator; a symlinked or prefix-sibling pack must not be read through this anchor",
+      ], "")
+  }
+}
+
+// Read the anchor from its env name and admit it. Every apply-side / recorder reader enters here,
+// so the four typed refusals are spelled once.
+fn admit_fleet_plan_anchor_env_wet() -> FleetPlanAnchorAdmission {
+  match actions_variable_read(name: fleet_converge_plan_anchor_env_name) {
+    ActionsVariableAbsent { variable: v, detail: d } =>
+      AnchorEnvAbsent { variable: v, detail: d }
+    ActionsVariablePresent { value: anchor } =>
+      if anchor == "" {
+        AnchorEnvAbsent { variable: fleet_converge_plan_anchor_env_name, detail: "is set but empty" }
+      } else {
+        admit_fleet_plan_anchor_wet(anchor: anchor)
+      }
+  }
+}
+
+// Admit an anchor DIRECTORY: the pack must exist as a regular file directly reachable at the
+// constant name, both paths must canonicalize, and the canonical pack must sit under the canonical
+// anchor followed by a SEPARATOR -- a string prefix is not containment ("<anchor>EVIL/x" starts
+// with "<anchor>" but is a different directory).
+fn admit_fleet_plan_anchor_wet(anchor: String) -> FleetPlanAnchorAdmission {
+  let pack_path = fleet_plan_artifact_path_at(run_artifact_dir: anchor, name: fleet_converge_plan_receipt_name)
+  match run_shell_command_capture(command: test_regular_file_command(path: pack_path), transport: LocalExec) {
+    ProcessRefused { exit_code: _, stderr: _ } => AnchorPackAbsent { pack_path: pack_path }
+    _ => match run_shell_command_capture(command: realpath_canonical_command(path: anchor), transport: LocalExec) {
+      ProcessRefused { exit_code: c, stderr: e } =>
+        AnchorProbeRefused { path: anchor, exit_code: c, detail: trim(s: e) }
+      ProcessOutputAbsent =>
+        AnchorProbeRefused { path: anchor, exit_code: 0, detail: "realpath succeeded without printing a canonical path" }
+      ProcessOutputPresent { text: raw_anchor } =>
+        match run_shell_command_capture(command: realpath_canonical_command(path: pack_path), transport: LocalExec) {
+          ProcessRefused { exit_code: c, stderr: e } =>
+            AnchorProbeRefused { path: pack_path, exit_code: c, detail: trim(s: e) }
+          ProcessOutputAbsent =>
+            AnchorProbeRefused { path: pack_path, exit_code: 0, detail: "realpath succeeded without printing a canonical path" }
+          ProcessOutputPresent { text: raw_pack } => {
+            let canonical_anchor = trim(s: raw_anchor)
+            let canonical_pack = trim(s: raw_pack)
+            if starts_with(s: canonical_pack, prefix: join([canonical_anchor, "/"], "")) {
+              AnchorAdmitted { anchor: anchor }
+            } else {
+              PackOutsideAnchor {
+                anchor: anchor, pack_path: pack_path,
+                canonical_anchor: canonical_anchor, canonical_pack: canonical_pack,
+              }
+            }
+          }
+        }
+    }
+  }
+}
+
+// THE EXCLUSIVE CLAIM of an operator-local leaf run dir (roadmap row serve-entry-verdict-path-is-per-run,
+// operator-local route). The parents are mkdir -p'd, then the LEAF is mkdir'd WITHOUT -p: an existing
+// leaf fails the probe's own rc and becomes a NAMED typed refusal, so two local runs landing on the
+// same clock-tick run id collide into a refusal, never into a shared directory. The parents come
+// from the ONE renderer's first two fields, never from a second template.
+type FleetPlanRunDirClaim
+  = RunDirClaimed { run_artifact_dir: String }
+  | RunDirParentsRefused { parents: String, detail: String }
+  | RunDirLeafExists { run_artifact_dir: String, detail: String }
+
+fn fleet_plan_run_dir_claim_text(c: FleetPlanRunDirClaim) -> String {
+  match c {
+    RunDirClaimed { run_artifact_dir: d } => join(["run artifact directory claimed: ", d], "")
+    RunDirParentsRefused { parents: p, detail: d } =>
+      join(["RunArtifactParentsRefused — mkdir -p refused for ", p, ": ", d], "")
+    RunDirLeafExists { run_artifact_dir: d, detail: e } =>
+      join(["RunArtifactDirExists — ", d, " already exists (", e, "); an operator-local run claims its leaf exclusively, so this run refuses rather than sharing a run artifact directory"], "")
+  }
+}
+
+fn claim_fleet_plan_run_dir_exclusive_wet(parents: String, run_artifact_dir: String) -> FleetPlanRunDirClaim {
+  match run_shell_commands(
+    commands: [mkdir_parents_command(path: parents)],
+    transport: LocalExec,
+  ) {
+    ExitSuccess => match run_shell_command_capture(command: mkdir_exact_command(path: run_artifact_dir), transport: LocalExec) {
+      ProcessOutputPresent { text: _ } => RunDirClaimed { run_artifact_dir: run_artifact_dir }
+      ProcessOutputAbsent => RunDirClaimed { run_artifact_dir: run_artifact_dir }
+      ProcessRefused { exit_code: c, stderr: e } =>
+        RunDirLeafExists { run_artifact_dir: run_artifact_dir, detail: join(["exit ", to_string(c), " ", trim(s: e)]) }
+    }
+    ExitFailure { code: c, reason: r } =>
+      RunDirParentsRefused { parents: parents, detail: join(["exit ", to_string(c), " ", r]) }
+  }
+}
