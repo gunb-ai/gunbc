@@ -11,7 +11,6 @@ import gunbc.serving.serving_observability {
   engine_front_route_consumer, engine_front_unserved_consumers,
   engine_front_proxy_config, EngineFrontProxyRendered, EngineFrontProxyRefused, InvalidToken,
   Built, RefusedToken,
-  TransientReceiptOfHandManagedRouter, ModelledRouterInstrument, router_probe_line_standing,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -105,33 +104,4 @@ test fn the_metrics_route_names_its_progress_consumer_by_reference() -> Bool {
     Present { value: c } => declaration_ref_eq(a: c, b: metrics_reader_ref())
     Absent => false
   }
-}
-// ITEM (3): the router prefixprobe/usageprobe lines' standing is recorded as a typed record -- a declared
-// coproduct arm plus typed references to the modelled rows that retire them. The witness reads that record's
-// discriminable content, so it is not a mere existence check: the standing is the hand-managed receipt arm
-// (NOT the modelled arm), and retires_via names exactly the three class-B5 rows by typed reference. If the
-// standing drifted to ModelledRouterInstrument (claiming a fact the modelled router does not emit) or the
-// hand-off rows drifted, this goes red. The WHEN they retire is class B5's to decide on its own typed
-// observations, so no retirement gate is mirrored here (gunbc.design_argument::single_authority).
-fn b5_hand_off_refs() -> List<DeclarationRef> {
-  [
-    decl_ref(module_path: "gunbc.serving.router_realization", decl_name: "router_realization_contract"),
-    decl_ref(module_path: "gunbc.serving.turn_admission", decl_name: "serving_co_tenancy"),
-    decl_ref(module_path: "gunbc.serving.serving_relocation", decl_name: "admit_state_method"),
-  ]
-}
-
-fn ref_in(list: List<DeclarationRef>, want: DeclarationRef) -> Bool {
-  any(list, d => declaration_ref_eq(a: d, b: want))
-}
-
-test fn router_probe_line_standing_records_the_hand_managed_receipt_and_its_hand_off() -> Bool {
-  // standing arm: the transient hand-managed receipt, asserted discriminably
-  (match router_probe_line_standing.standing {
-     TransientReceiptOfHandManagedRouter => true
-     ModelledRouterInstrument => false
-   })
-    // retires_via: exactly the three class-B5 rows, each by typed reference (a structural read, not a grep)
-    && length(router_probe_line_standing.retires_via) == 3
-    && all(b5_hand_off_refs(), want => ref_in(router_probe_line_standing.retires_via, want))
 }

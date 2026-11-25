@@ -237,36 +237,16 @@ fn engine_front_route_consumer(path: NonEmptyStr) -> Optional<DeclarationRef> {
 
 // ── ITEM (3): THE ROUTER's prefixprobe/usageprobe LINES -- WHERE THEIR STANDING BELONGS ─────────────
 //
-// The prefixprobe/usageprobe lines the attribution was built on are marked TEMPORARY (2026-10-27/28,
-// calm-crab-645) in the HAND-MANAGED srv1 ~/router/nginx.conf, yet they carried all of the day's
-// attribution. Their standing is a transient receipt of the HAND-MANAGED router, not a fact of the modelled
-// router: gunbc.serving.router_realization emits no log line, so they must not be read as if the modelled
-// router produced them. Their removal belongs to the modelled router's realization -- the rows in retires_via
-// -- which must first carry the same prefix-overlap and token-usage facts as typed observations on the
-// authority that decides the move (class B5). Recorded here as a TYPED RECORD of the standing, with typed
-// references to the retiring rows (source_annotations: a status belongs in a typed carrier). It deliberately
-// carries no retirement fold: the modelled-router side (class B5) owns WHEN these retire, on its own typed
-// observations, not a Bool mirror kept here while it is unbuilt.
-
-// The standing of a router observation line: is it a fact of the modelled router, or a transient receipt of
-// the hand-managed one? A declared coproduct (ctrl review policy: a tag-plus-predicate shape must be a
-// declared sum, not a Bool next to an Optional).
-type ProbeStanding = TransientReceiptOfHandManagedRouter | ModelledRouterInstrument
-
-// A typed record of where the hand-managed prefixprobe/usageprobe lines' standing belongs: the transient
-// receipt of the hand-managed router, pointed at the modelled rows (class B5) whose realization retires them.
-// Its only consumer is the recurring-failure-mode ledger row that cites it, and that is enough: a standing is
-// a fact to be recorded, not a gate to be run.
-type RouterProbeStanding = RouterProbeStanding {
-  standing: ProbeStanding
-  retires_via: List<DeclarationRef>
-}
-
-data router_probe_line_standing: RouterProbeStanding = RouterProbeStanding {
-  standing: TransientReceiptOfHandManagedRouter,
-  retires_via: [
-    decl_ref(module_path: "gunbc.serving.router_realization", decl_name: "router_realization_contract"),
-    decl_ref(module_path: "gunbc.serving.turn_admission", decl_name: "serving_co_tenancy"),
-    decl_ref(module_path: "gunbc.serving.serving_relocation", decl_name: "admit_state_method"),
-  ],
-}
+// The prefixprobe/usageprobe lines the 2026-11-24 cold-token attribution was built on are marked TEMPORARY
+// (2026-10-27/28, calm-crab-645) in the HAND-MANAGED srv1 ~/router/nginx.conf, yet they carried all of the
+// day's attribution. Their standing is a transient receipt of the hand-managed router, NOT a fact of the
+// modelled router: gunbc.serving.router_realization emits no log line, so they must not be read as if the
+// modelled router produced them. Their removal belongs to the modelled router's realization -- class B5
+// (gunbc.serving.router_realization / turn_admission / serving_relocation) -- which must first carry the same
+// prefix-overlap and token-usage facts as typed observations on the authority that decides the move.
+//
+// That standing is RECORDED IN THE OWNING MODEL, the recurring-failure-mode ledger row
+// (a_hand_managed_proxy_edge_drops_a_route_its_consumers_read), which is a consumed row. This module carries
+// no standing type for it: the only consumer would be a fold in the B5 router realization (a fork B5 owns, not
+// this PR), and a typed record here that no fold reads is a row no fold reads -- dangling
+// (gunbc.design_argument::consumption). So item (3) is a recorded receipt in the ledger, not a carrier here.
