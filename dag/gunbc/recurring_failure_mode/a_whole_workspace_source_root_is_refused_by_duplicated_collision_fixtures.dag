@@ -1,0 +1,37 @@
+module gunbc.recurring_failure_mode.a_whole_workspace_source_root_is_refused_by_duplicated_collision_fixtures
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
+
+// Consumer: directory-derived recurring_failure_mode.roster, projected by
+// gunbc.design_ledgers.expected_design_failure_modes_md through docs_projection_gate.
+
+// A LEGITIMATE WHOLE-WORKSPACE `--source-root` REFUSES BEFORE ANY CLAIM RUNS, because the corpus carries
+// DELIBERATELY-DUPLICATED collision fixtures. The claim route builds its module index by walking every
+// source root and enforcing `one module, one authority`; a workspace-wide root sweeps the collision-test
+// fixtures under docs/measurements, fixtures/ and test/fixture_roots/ that declare the SAME module name
+// in two files, so the index build refuses the run. claim_batch's closure was entry-rooted and never
+// blanket-indexed the workspace, so a caller that named the workspace as a root (main's interp witness did)
+// ran; the route's whole-root index does not. This is a route/runner asymmetry, pre-existing, recorded so the
+// claim_batch deletion is honest that the route is no better than the runner it replaces on this input.
+
+data a_whole_workspace_source_root_is_refused_by_duplicated_collision_fixtures: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_whole_workspace_source_root_is_refused_by_duplicated_collision_fixtures" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
+
+  receipts: [
+    "INVALID STATE: passing the workspace itself (repo-relative `.`) as a claim-route --source-root refuses before any claim is evaluated, with `shared index refused: module-path collision: module gunbc.t is declared by both docs/measurements/value_position_block_nests/multi_d10/dag/gunbc/t.dag and docs/measurements/value_position_block_nests/multi_d14/dag/gunbc/t.dag — one module, one authority`. The duplicated fixtures are deliberate collision-test subjects; the run cannot ask for the whole tree.",
+
+    "IT IS THE ROOT SET, NOT THE CLAIM. A caller that hands the route subtree roots (`dag`, `src/v2`) gets past the index and runs; a caller that hands the workspace, as main's interp_recorded_fixture_witness did (it passed the absolute workspace, then workspace/dag, then the scratch store), trips it. srv1 (lively-dove-824) reproduced this on origin/main 454b3aec1fe: main's OWN interp_recorded_fixture_witness, driving main's claim_batch, gave 21 of 23 FAIL in 5.5s, 2 PASS, with every record/replay check dying on this collision — i.e. it is PRE-EXISTING, not introduced by gunbc#16872.",
+
+    "NO LANE EXECUTES THE WITNESS. The required CI job runs no claims and no v1 unit tests (gunbc.design_ruling::no_ci_claim_execution_until_native_frontier_clears); interp_recorded_fixture_witness is spawned by no lane, so this has been red on main unseen. Deleting claim_batch (plan section 6) removes no working capability here: the runner that took the workspace root refused on main too.",
+
+    "SEPARATE FROM THE INDEX MECHANISM ROWS. This is not gunbc.recurring_failure_mode seal_diagnostic_named_module_while_enforcing_file_path (that files the seal diagnostic naming a MODULE while comparing FILE paths). Here the index build correctly enforces one-module-one-authority; the defect is that a legitimate whole-workspace root is unusable because the corpus intentionally contains duplicate-name fixtures, with no exclusion to opt them out of a whole-tree sweep."
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "test.claim.filesystem_write_witness", decl_name: "filesystem_write_keystone_holds", field: WholeDeclaration }
+  ]
+}

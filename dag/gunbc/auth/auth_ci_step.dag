@@ -70,7 +70,6 @@ fn gunbc_ci_branch_run_grant_apply_invoke() -> String {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_branch_run_grant_apply_target,
-    claim_run: false,
     receipt_rel: none
   )
 }
@@ -79,7 +78,6 @@ fn gunbc_ci_branch_run_grant_await_invoke() -> String {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_branch_run_grant_await_target,
-    claim_run: false,
     receipt_rel: none
   )
 }
@@ -109,7 +107,6 @@ fn gunbc_ci_srv15_bmc_secret_versions_read_invoke() -> String {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_srv15_bmc_secret_versions_read_target,
-    claim_run: false,
     receipt_rel: none
   )
 }
@@ -124,7 +121,6 @@ fn gunbc_ci_gcp_iam_bootstrap_delta_apply_invoke() -> String {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_gcp_iam_bootstrap_delta_apply_target,
-    claim_run: false,
     receipt_rel: none
   )
 }
@@ -133,7 +129,6 @@ fn gunbc_ci_gcp_iam_converge_apply_invoke() -> String {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_gcp_iam_converge_apply_target,
-    claim_run: false,
     receipt_rel: none
   )
 }

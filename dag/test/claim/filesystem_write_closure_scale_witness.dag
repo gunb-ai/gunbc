@@ -17,6 +17,6 @@ fn witness_filesystem_write_survives_name_collision() -> Bool {
   return w.success && (w.path == target) && r.success && (r.content == payload)
 }
 
-fn filesystem_write_closure_scale_holds() -> Bool {
+test fn filesystem_write_closure_scale_holds() -> Bool {
   return witness_filesystem_write_survives_name_collision()
 }

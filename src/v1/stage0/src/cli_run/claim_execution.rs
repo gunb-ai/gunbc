@@ -1,7 +1,9 @@
 // The live claim-evaluation kernel: eval-context construction, the unwind boundary, and the
 // measured single-claim run. Split from required_floor_runner.rs (pure code motion; no semantic
-// change) so the callers that evaluate claims (claim_batch, `gunbc run`, target invocation,
-// regen hosts) do not depend on the required-floor host runner.
+// change) so the callers that evaluate claims (the `gunbc test` route's host kernel, target
+// invocation, regen hosts) do not depend on the required-floor host runner. The claim-execution
+// cutover (gunbc.plans.claim_execution_consolidation) left the `gunbc test` route as the one
+// claim entrypoint; the `claim_batch` binary and the `gunbc run --claim-run` path are deleted.
 
 use super::*;
 use crate::v1_compiler_compile;
@@ -12,28 +14,29 @@ use std::rc::Rc;
 
 /// THE SINGLE authority that maps a caller's flags to an [`ExecutionMode`].
 ///
-/// gunbc.design_argument::root_generalization root generalization. `claim_batch` and the `gunbc run` verb both EVALUATE CLAIMS, and
-/// each used to decide the mode at its own site: `claim_batch` defaulted to Hermetic and took
-/// Wet/Record only by explicit flag, while `gunbc run` derived the mode from `--dry-run` alone and
-/// let `--claim-run` fall to Wet. Two authorities for one decision drifted, and that divergence WAS
-/// the defect: a `--claim-run` without `--dry-run` ran WET, so a claim whose mocked effect had no
-/// bound mock silently dispatched the REAL effect against the host (the mocked journalctl ran live
-/// against srv1's journal — a gunbc.design_argument::fail_closed fail-open with a live side effect). One total function now
-/// owns the mapping; both entrypoints call it.
+/// gunbc.design_argument::root_generalization root generalization. DATED RECORD: `claim_batch` and
+/// the `gunbc run --claim-run` path each used to decide the mode at its own site — `claim_batch`
+/// defaulted to Hermetic and took Wet/Record only by explicit flag, while `gunbc run` derived the
+/// mode from `--dry-run` alone and let `--claim-run` fall to Wet. Two authorities for one decision
+/// drifted, and that divergence WAS the defect: a `--claim-run` without `--dry-run` ran WET, so a
+/// claim whose mocked effect had no bound mock silently dispatched the REAL effect against the host
+/// (the mocked journalctl ran live against srv1's journal — a gunbc.design_argument::fail_closed
+/// fail-open with a live side effect). One total function now owns the mapping; the one claim
+/// entrypoint, the `gunbc test` route, calls it with `is_claim = true`.
 ///
 /// The rule, in priority order:
 ///  1. An EXPLICIT mode (last `--wet` / `--hermetic` / `--record` the caller parsed) always wins —
 ///     that is the operator's positive authority to perform or record a real effect.
 ///  2. Otherwise `--dry-run` means Hermetic (its incumbent meaning).
-///  3. Otherwise a CLAIM run (`--claim-run`, or `claim_batch`, which is always a claim context)
-///     means Hermetic: a claim verifies against declared mocks and is never the operator's authority
-///     to run a host effect. Fail-closed — a mocked effect with no bound mock refuses typed rather
+///  3. Otherwise a CLAIM run (`is_claim = true`, which the `gunbc test` route passes) means
+///     Hermetic: a claim verifies against declared mocks and is never the operator's authority to
+///     run a host effect. Fail-closed — a mocked effect with no bound mock refuses typed rather
 ///     than dispatching live.
-///  4. Otherwise (an ordinary `gunbc run` with no claim/dry flag) it is Wet: an ordinary run
-///     legitimately performs real effects (witnesses, the required-floor route).
+///  4. Otherwise (an ordinary `gunbc run` with no dry flag) it is Wet: an ordinary run legitimately
+///     performs real effects (witnesses, the required-floor route).
 ///
-/// Wet claims are NOT lost: they take the declared Wet carrier, `claim_batch --wet` (or an ordinary
-/// `gunbc run` with no `--claim-run`), which lands in (1)/(4).
+/// Wet claims are NOT lost: they take the declared Wet carrier, `gunbc test --wet`, which lands
+/// in (1).
 pub fn execution_mode_for(
     explicit: Option<v1_interpreter::ExecutionMode>,
     is_claim: bool,
@@ -45,6 +48,21 @@ pub fn execution_mode_for(
         None if is_claim => v1_interpreter::ExecutionMode::Hermetic,
         None => v1_interpreter::ExecutionMode::Wet,
     }
+}
+
+/// THE FIXTURE STORE, OPENED THE ONE WAY A CLAIM EVALUATION OPENS IT. The deleted `claim_batch` had
+/// its own two lines for this; the route needs the same store and a second construction would be a
+/// second authority over where recorded fixtures live -- and the entrypoints were consolidated, so
+/// the copy lives HERE rather than being forked. `RecordedFixtureStore::open` is the store's own
+/// authority for a path; nothing is read until a claim's effect asks for a key.
+pub fn claim_fixture_store_rc(
+    path: &Option<std::path::PathBuf>,
+) -> Option<Rc<crate::recorded_fixture::RecordedFixtureStore>> {
+    path.as_ref().map(|p| {
+        Rc::new(crate::recorded_fixture::RecordedFixtureStore::open(
+            p.clone(),
+        ))
+    })
 }
 
 pub fn make_eval_context(
@@ -289,10 +307,12 @@ mod execution_mode_for_tests {
     use super::execution_mode_for;
     use crate::v1_interpreter::ExecutionMode;
 
-    // --- the `gunbc run` verb: (explicit=None, is_claim=claim_run, dry_run) ---
+    // --- the flags as callers pass them: (explicit=None, is_claim, dry_run) ---
 
-    // THE BOUNDARY RED (the defect): a claim run with neither --dry-run nor an explicit mode must
-    // be Hermetic. Pre-fix, `run --claim-run` fell to Wet and dispatched a mocked effect live.
+    // THE BOUNDARY RED (the dated defect): a claim run with neither --dry-run nor an explicit mode
+    // must be Hermetic. Pre-fix, `gunbc run --claim-run` fell to Wet and dispatched a mocked effect
+    // live; the claim path was later deleted entirely by the claim-execution cutover
+    // (gunbc.plans.claim_execution_consolidation) and the `gunbc test` route now passes is_claim.
     #[test]
     fn claim_run_defaults_hermetic() {
         assert!(matches!(
@@ -324,11 +344,11 @@ mod execution_mode_for_tests {
         ));
     }
 
-    // --- claim_batch: always a claim context, mode by explicit flag (last parsed wins upstream) ---
+    // --- the claim route: always a claim context, mode by explicit flag (last parsed wins upstream) ---
 
     // The default (no --wet/--hermetic/--record) is Hermetic — claims verify against mocks.
     #[test]
-    fn claim_batch_default_is_hermetic() {
+    fn claim_route_default_is_hermetic() {
         assert!(matches!(
             execution_mode_for(None, true, false),
             ExecutionMode::Hermetic
@@ -336,7 +356,7 @@ mod execution_mode_for_tests {
     }
 
     // An explicit operator mode wins over the claim default and over --dry-run: this is what keeps
-    // the declared Wet route (claim_batch --wet) and the record route expressible after the fix.
+    // the declared Wet route (gunbc test --wet) and the record route expressible after the fix.
     #[test]
     fn explicit_mode_wins() {
         assert!(matches!(
