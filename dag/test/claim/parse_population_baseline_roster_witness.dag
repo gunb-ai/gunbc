@@ -3,9 +3,8 @@ module test.claim.parse_population_baseline_roster_witness
 import std.types { Bool }
 import std.measure { byte_size }
 import gunbc.parse_population_baseline_roster {
-  parse_population_total_count,
-  parse_population_five_largest_count_check,
-  parse_population_one_hundred_sixty_five_count_check,
+  parse_population_cardinality_accepts_real,
+  parse_population_cardinality_refuses_planted_extra_row,
   parse_population_five_largest_byte_total,
   parse_population_partition_is_consistent,
   parse_population_zero_byte_row_count,
@@ -28,9 +27,14 @@ import gunbc.parse_population_baseline_roster {
 
 // Whole-roster cardinality: the 170 members the row fixes (5 + 165).
 test fn parse_population_baseline_roster_cardinality_holds() -> Bool {
-  parse_population_total_count() == 170
-    && parse_population_five_largest_count_check() == 5
-    && parse_population_one_hundred_sixty_five_count_check() == 165
+  // review 98328 + warm-fox rule: a cardinality claim must be discriminating, not a constant
+  // readback. The former ==5 / ==165 conjuncts only read the constants back (fail_closed); the real
+  // check is the fixed benchmark size, and it is PAIRED with a planted-row refusal in this same leg
+  // so it can actually fail for the reason it claims: the ACCEPT arm (real roster is exactly the
+  // expected 170 = 5 largest + 165 sample) AND the REFUSE arm (a roster with one planted extra row
+  // must be refused). Both arms run in this one witness so the negative fails in the same run.
+  parse_population_cardinality_accepts_real()
+    && parse_population_cardinality_refuses_planted_extra_row()
 }
 
 // Byte totals per fixed population and combined, compared IN the ByteSize measure (no bare-Int
