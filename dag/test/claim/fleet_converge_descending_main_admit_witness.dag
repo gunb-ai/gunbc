@@ -24,6 +24,8 @@ module test.claim.fleet_converge_descending_main_admit_witness
 // live (import_closure_live over the derived entry). Negative arms are named claims, not prose.
 
 import std.types { Bool, List, String }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import std.optional { Optional, Present, Absent }
 import std.algebra { contains, string_contains }
 import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
@@ -46,6 +48,7 @@ import gunbc.fleet.fleet_converge_receipt {
   FleetConvergePlanReceiptUnreadable,
   fleet_converge_plan_receipt_json,
   fleet_converge_plan_receipt_decode,
+  read_fleet_converge_plan_receipt_at,
   fleet_converge_plan_receipt_identity_hex,
   fleet_converge_plan_receipt_schema,
   fleet_converge_plan_receipt_schema_v2,
@@ -76,10 +79,12 @@ import gunbc.fleet.fleet_converge_descending_main_admit {
 }
 import gunbc.fleet.fleet_converge_plan_revision {
   descending_main_verdict_text,
+  decide_descending_main_reuse,
   DescendingMainVerdict,
   DescendingMainUnobservable,
   MergeBaseUnreadable,
   EntryUnderived,
+  DispatchTipAbsent,
   DescendingMainAdmissionRefused,
   DescendingMainReusable,
 }
@@ -649,4 +654,169 @@ test fn verdict_text_refuses_a_missing_attribution_source_without_fabricating_on
 test fn verdict_text_reports_the_reusable_case_by_both_revisions() -> Bool {
   let t = descending_main_verdict_text(v: DescendingMainReusable { checkout: main_m, plan_revision: plan_p })
   string_contains(s: t, pattern: main_m) && string_contains(s: t, pattern: plan_p)
+}
+
+// --- ROUTE DRIVER (the hands of the executed evidence; NOT claims, NOT production) --------------
+//
+// WHAT THESE ARE AND WHY THEY ARE HERE. The row's red_control and the manager's deferred dispatch
+// leg both need the ONE route driven from a shell over REAL git state and REAL receipt bytes, the
+// same way fleet-converge.yml drives its entry points (`gunbc run --entry <file> --function <fn>
+// --arg k=v`). A `test fn` is pure, so it cannot read git or the filesystem; these two wet
+// functions are the thin wet shells around the two production entry points the workflow itself
+// calls — decide_descending_main_reuse (through the plan receipt's own bytes) and the mint of a
+// REAL v2 receipt with the DERIVED closure. They add no decision of their own: every verdict they
+// print is descending_main_verdict_text, THE one vocabulary, and their exit codes are the caller's
+// gate (rc 0 admit / rc 1 refuse). Named consumers: this module's header (CONSUMER ROUTE), the
+// row fleet-converge-descending-main-admit's red_control, and the PR's executed-evidence comment.
+
+fn route_fixture_receipt(
+  plan_revision: String,
+  closure: Optional<FleetConvergePlanSourceClosure>,
+) -> FleetConvergePlanReceipt {
+  FleetConvergePlanReceipt {
+    run: ActionsRunBinding {
+      repository: "gunb-ai/gunbc",
+      workflow_ref: "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/heads/main",
+      run_id: "1001",
+      run_revision: plan_revision,
+      // THE EXECUTION REVISION IS THE PLAN'S, never the later tip — the same pin the exact
+      // readback enforces in the checkout-verify step.
+      execution_revision: plan_revision,
+    },
+    observed_host: "srv1",
+    scope_wire: "srv1",
+    member_set_fingerprint_hex: "mfp",
+    plan_artifact_hash: "pah",
+    observed_baseline_hex: "obh",
+    prior_generation: 1,
+    planned_generation: 2,
+    lease_key: "lk",
+    lease_resource_fingerprint: "lrf",
+    lease_owner_fingerprint: "lof",
+    lease_generation: 3,
+    apply_terminal: FullyApplied,
+    source_closure: closure,
+  }
+}
+
+// MINT A REAL v2 PLAN RECEIPT FOR A ROUTE CASE: the closure is the plan's OWN modeled content —
+// import_closure_live over the derived entry and the derived pool roots — never a hand-typed list,
+// and the entry/roots come from the ONE name-to-path authority (fleet_converge_plan_cli_entry /
+// fleet_converge_plan_cli_pool_roots). An underived attribution refuses rather than minting.
+fn mint_route_receipt_wet(out_path: String, plan_revision: String) -> ProcessExit {
+  match fleet_converge_plan_cli_entry {
+    Absent => exit_failure(
+      reason: "mint_route_receipt_wet: EntryUnderived — refusing to mint a receipt without a source closure (fail_closed, never fabricate)",
+    )
+    Present { value: entry_path } => {
+      let closure = Present {
+        value: FleetConvergePlanSourceClosure {
+          paths: import_closure_live(
+            entry_path: entry_path,
+            pool_roots: fleet_converge_plan_cli_pool_roots,
+          ),
+          entry_path: entry_path,
+          pool_roots: fleet_converge_plan_cli_pool_roots,
+        },
+      }
+      let w = Filesystem.Write(
+        path: out_path,
+        content: serialize_json(
+          v: fleet_converge_plan_receipt_json(r: route_fixture_receipt(plan_revision: plan_revision, closure: closure))
+        ),
+      )
+      if w.success {
+        ExitSuccess
+      } else {
+        exit_failure(reason: join(["mint_route_receipt_wet: write refused at ", out_path, ": ", w.error], ""))
+      }
+    }
+  }
+}
+
+// RUN THE ONE ROUTE OVER REAL GIT STATE, THROUGH THE RECEIPT'S OWN BYTES. Reads the receipt at
+// out_path with the production decoder (so a malformed or old receipt is refused by the decoder,
+// not by a test's assumption), then calls decide_descending_main_reuse — the same function the
+// regenerated checkout-verify step runs — and renders its verdict with THE one vocabulary. rc 0
+// only for the reusable verdict; every refusal, including an empty dispatch tip (the malformed /
+// absent pointer case), exits 1 with the verdict text as its reason.
+fn route_decide_wet(
+  receipt_path: String,
+  plan_revision: String,
+  dispatch_tip: String,
+) -> ProcessExit {
+  if dispatch_tip == "" {
+    exit_failure(
+      reason: join(
+        ["route_decide_wet: ", descending_main_verdict_text(v: DescendingMainUnobservable { failure: DispatchTipAbsent })],
+        "",
+      ),
+    )
+  } else {
+    match read_fleet_converge_plan_receipt_at(path: receipt_path) {
+      FleetConvergePlanReceiptUnreadable { reason: r } =>
+        exit_failure(reason: join(["route_decide_wet: ", r], ""))
+      FleetConvergePlanReceiptDecoded { receipt: receipt } => {
+        let verdict = decide_descending_main_reuse(
+          dispatch_tip: dispatch_tip,
+          plan_revision: plan_revision,
+          plan_receipt: receipt,
+        )
+        let text = join(["route_decide_wet: ", descending_main_verdict_text(v: verdict)], "")
+        match verdict {
+          DescendingMainReusable { checkout: _, plan_revision: _ } => ExitSuccess
+          other => exit_failure(reason: text)
+        }
+      }
+    }
+  }
+}
+
+// THE DEFERRAL CASE THE APPLY LEG SEES: same route, but reached the way fleet_converge_apply_wet
+// reaches it — through the plan CLI's expected-revision cross-check — so the evidence can show the
+// unchanged historic sentence alongside the typed cause from apply_revision_refusal_text. rc 0 only
+// when the apply leg would run the PLAN's revision.
+fn route_apply_leg_wet(
+  receipt_path: String,
+  expected_revision: String,
+  dispatch_tip: String,
+) -> ProcessExit {
+  match read_fleet_converge_plan_receipt_at(path: receipt_path) {
+    FleetConvergePlanReceiptUnreadable { reason: r } =>
+      exit_failure(reason: join(["route_apply_leg_wet: ", r], ""))
+    FleetConvergePlanReceiptDecoded { receipt: receipt } => {
+      let plan_rev = receipt.run.run_revision
+      if plan_rev != expected_revision {
+        exit_failure(reason: "route_apply_leg_wet: the expected-revision input does not name the plan revision; refused by name")
+      } else if dispatch_tip == "" {
+        exit_failure(
+          reason: join(
+            ["route_apply_leg_wet: ", apply_revision_refusal_text(expected: expected_revision, observed: "", descending_cause: Present { value: descending_main_verdict_text(v: DescendingMainUnobservable { failure: DispatchTipAbsent }) })],
+            "",
+          ),
+        )
+      } else {
+        match decide_descending_main_reuse(
+          dispatch_tip: dispatch_tip,
+          plan_revision: plan_rev,
+          plan_receipt: receipt,
+        ) {
+          DescendingMainReusable { checkout: _, plan_revision: _ } => ExitSuccess
+          other => exit_failure(
+            reason: join(
+              [
+                "route_apply_leg_wet: ",
+                apply_revision_refusal_text(
+                  expected: expected_revision,
+                  observed: dispatch_tip,
+                  descending_cause: Present { value: descending_main_verdict_text(v: other) },
+                ),
+              ],
+              "",
+            ),
+          )
+        }
+      }
+    }
+  }
 }
