@@ -1403,6 +1403,7 @@ fn design_rulings() -> List<DesignRuling> {
     operator_cpu_freq_cap_standing_unsaid_2026_11_24,
     heal_mirror_convergence_held_until_merge_base_build_is_measured_2026_11_24,
     srv4_expert_l1_cap_raised_to_srv3s_2026_11_24,
+    acceptance_is_earned_on_a_head_and_the_merge_is_its_own_event,
     declared_intent_separates_independent_choices_2026_11_23,
     value_disposition_and_named_binding_use_are_explicit_2026_11_23,
     type_relationships_are_declared_and_transparent_reference_is_explicit_2026_11_23,
