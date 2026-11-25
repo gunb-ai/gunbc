@@ -5,7 +5,6 @@ import std.algebra { string_contains }
 import std.measure { Second, second, second_count }
 import extdeps.posix.sh_invocation { posix_sh_program_command }
 import extdeps.virtualization.firecracker { firecracker_run_config_command }
-import extdeps.tools.gnu_coreutils { coreutils_timeout_enforcing_diagnostic }
 import extdeps.shell
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.runner.runner_microvm { gunbc_runner_guest_image }
@@ -18,6 +17,15 @@ import gunbc.runner.runner_microvm_boot_probe {
   boot_probe_verdict_text, boot_probe_admitted,
 }
 import gunbc.runner.runner_guest_image { guest_observation_line, GuestBooted }
+
+// THE BOUNDER'S ENFORCEMENT SENTENCE, QUOTED FROM THE UPSTREAM CONTRACT AND MODELLED NOWHERE. GNU
+// `timeout --verbose` prints this shape on stderr at the moment it decides to signal its subject
+// (timeout(1); the rendering observed here on coreutils 9.4 under LC_ALL=C). It is a FIXTURE for the
+// forgery planted below -- the whole point is that a SUBJECT can write these bytes to the stderr it
+// shares with a bounder -- so it belongs with the witness that plants it. It is deliberately NOT a data
+// in #extdeps.tools.gnu_coreutils: nothing on any production route matches that text any more, and a
+// modelled fact with no consumer is dangling (gunbc.design_argument::consumption).
+data forged_bounder_diagnostic_prefix: String = "timeout: sending signal TERM to command"
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -170,7 +178,7 @@ test fn a_child_that_forges_the_bounders_diagnostic_is_not_reported_as_a_deadlin
   let dir = shell.Mktemp.Dir()
   let files = witness_files(dir: dir.path)
   let forged = join(
-    ["printf '%s\\n' '", coreutils_timeout_enforcing_diagnostic, " TERM to command `firecracker`' >&2; exit 124"],
+    ["printf '%s\\n' '", forged_bounder_diagnostic_prefix, " firecracker' >&2; exit 124"],
     "",
   )
   let run = runner_microvm_boot_probe_run_bounded(
@@ -185,7 +193,7 @@ test fn a_child_that_forges_the_bounders_diagnostic_is_not_reported_as_a_deadlin
   let witnessed =
     (match run.receipt { BoundChildExited { exit_code: code } => code == 124  _ => false })
     && (match verdict { BootVmmFailed { exit_code: code, console: _, detail: _ } => code == 124  _ => false })
-    && string_contains(s: run.console.stderr, pattern: coreutils_timeout_enforcing_diagnostic)
+    && string_contains(s: run.console.stderr, pattern: forged_bounder_diagnostic_prefix)
     && !string_contains(s: text, pattern: "host-deadline-expired")
     && !boot_probe_admitted(v: verdict)
   let _cleanup = shell.Remove.RecursiveForce(path: dir.path)

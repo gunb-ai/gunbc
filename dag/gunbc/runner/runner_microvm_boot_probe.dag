@@ -12,7 +12,7 @@ import std.disposition { ConstructionMechanism, SingleAuthority }
 import extdeps.shell
 import extdeps.exec.command { ArgvCommand }
 import extdeps.tools.mkdir { mkdir_parents_command }
-import extdeps.tools.gnu_coreutils { cp_command, rm_force_command, timeout_command_enforcing_bound }
+import extdeps.tools.gnu_coreutils { cp_command, rm_force_command, timeout_command }
 // THE LIFECYCLE PRIMITIVES THE BOUND IS IMPOSED WITH. This module starts the subject, waits on the
 // kernel's own classification of how it ended, and signals ONLY the process group it started --
 // the repo-owned construction gunbc.harness.harness_shell_job already uses for its backstopped jobs
@@ -176,11 +176,13 @@ data runner_microvm_boot_probe_kill_grace: Second = second(count: 10)
 // #gunbc.recurring_failure_mode::bare_exit_124_read_as_an_observed_timeout_event names it by
 // DeclarationRef as the place where a bound was REQUESTED -- its own text is the reason the route was
 // dropped: "CONSTRUCTING A GNU TIMEOUT INVOCATION DOES NOT ESTABLISH THAT ITS DEADLINE FIRED". Its argv
-// shape (escalation and the pinned locale) is still witnessed, in
+// shape (the escalation flag pair, the bound value, the subject) is still witnessed, in
 // #test.claim.runner.runner_microvm_boot_probe_witness, because the facts it asserts are upstream
-// facts about timeout(1) that other readers rely on. Nothing on a production path calls it.
+// facts about timeout(1) that OTHER readers still rely on. Nothing on a production path calls it: the
+// production route is #gunbc.runner.runner_microvm_boot_probe::runner_microvm_boot_probe_run_bounded,
+// which imposes its own bound rather than asking an external tool to hold one.
 fn runner_microvm_boot_probe_bounded_command(binary: String, config_path: String) -> ArgvCommand {
-  timeout_command_enforcing_bound(
+  timeout_command(
     duration: runner_microvm_boot_probe_deadline,
     kill_after: runner_microvm_boot_probe_kill_grace,
     command: firecracker_run_config_command(binary: binary, config_path: config_path),

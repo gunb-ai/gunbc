@@ -2,12 +2,8 @@ module test.claim.runner.runner_microvm_boot_probe_witness
 
 import std.types { String, Bool, List, NonEmptyStr }
 import std.algebra { string_contains, for_all }
-import std.measure { second, second_count }
+import std.measure { second }
 import extdeps.github.actions_runner { actions_runner_release_2_336_0 }
-import extdeps.posix.sh_invocation { posix_sh_program_command }
-import extdeps.tools.gnu_coreutils { timeout_command_enforcing_bound }
-import extdeps.exec.command { env_prefixed_command }
-import std.env_binding { EnvSet }
 import extdeps.virtualization.firecracker {
   firecracker_vm_config_document, firecracker_run_config_command,
 }
@@ -363,41 +359,19 @@ test fn the_run_command_boots_rather_than_waiting_for_an_api_call() -> Bool {
     && any(xs: c.arguments, predicate: fn(w) { w == "--config-file" })
 }
 
-// THE UPSTREAM CONVENTION STAYS DOCUMENTED WHERE IT BELONGS, AND SO DOES THE ENVIRONMENT THAT MAKES IT
-// READABLE. The production boot route no longer wraps the subject in GNU timeout -- a bound this layer
-// does not own cannot evidence its own firing to this layer -- but the wrapper remains modelled, cited to
-// upstream timeout(1), because other readers consume its contract (the follow-up row
-// bare-124-timeout-readers-consume-the-bound-observation names them). Its argv is witnessed here: the
-// escalation flag pair, and the LC_ALL=C pin that keeps the diagnostic whose text other readers match
-// renderable at all (timeout(1) localises its messages).
-test fn the_bounded_command_escalates_and_pins_the_diagnostic_locale() -> Bool {
+// THE UPSTREAM CONVENTION STAYS MODELLED, AND ITS ESCALATION IS WITNESSED. The production boot route
+// no longer wraps the subject in GNU timeout -- a bound this layer does not own cannot evidence its own
+// firing to this layer (the receipt's comment carries that reasoning) -- but the wrapper stays modelled
+// in #extdeps.tools.gnu_coreutils, cited to upstream timeout(1), because OTHER readers still consume its
+// contract: the follow-up row bare-124-timeout-readers-consume-the-bound-observation names them. What is
+// witnessed here is the argv the retained composition builds: TERM escalating to KILL, the bound value,
+// and the subject underneath it.
+test fn the_bounded_command_escalates_rather_than_asking_politely() -> Bool {
   let c = runner_microvm_boot_probe_bounded_command(binary: "/fc/firecracker", config_path: "/r/probe/probe-vm-config.json")
-  c.program.invocation as String == "env"
-    && any(xs: c.arguments, predicate: fn(w) { w == "LC_ALL=C" })
-    && any(xs: c.arguments, predicate: fn(w) { w == "timeout" })
-    && any(xs: c.arguments, predicate: fn(w) { w == "--verbose" })
+  c.program.invocation as String == "timeout"
     && any(xs: c.arguments, predicate: fn(w) { w == "--kill-after" })
     && any(xs: c.arguments, predicate: fn(w) { w == "/fc/firecracker" })
     && any(xs: c.arguments, predicate: fn(w) { w == "--no-api" })
-}
-
-// AND THE PIN IS THE BUILDER'S OWN, not the caller's: an OUTER env asking for a different locale must
-// still be overridden by the pin the builder puts on the timeout process itself. This is the static half
-// of the claim; the executed half (the real timeout under a hostile outer locale) is carried in the srv1
-// evidence block of the PR, because it needs a real process and a real locale.
-test fn the_locale_pin_is_carried_by_the_builder_itself_not_by_the_caller() -> Bool {
-  let wrapped = env_prefixed_command(
-    bindings: [EnvSet { name: "LC_ALL", value: "de_DE.UTF-8" }],
-    command: timeout_command_enforcing_bound(
-      duration: second(count: 5),
-      kill_after: second(count: 1),
-      command: posix_sh_program_command(script: "sleep 30"),
-    ),
-  )
-  wrapped.program.invocation as String == "env"
-    && any(xs: wrapped.arguments, predicate: fn(w) { w == "LC_ALL=de_DE.UTF-8" })
-    && any(xs: wrapped.arguments, predicate: fn(w) { w == "LC_ALL=C" })
-    && any(xs: wrapped.arguments, predicate: fn(w) { w == "--verbose" })
 }
 
 // A LIVE BOOT IS JUDGED THROUGH THE HOST'S CONSOLE READER, AND THIS IS THE PAIR. The same version

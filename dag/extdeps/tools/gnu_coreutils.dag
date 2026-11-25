@@ -1,7 +1,6 @@
 module extdeps.tools.gnu_coreutils
 
 import extdeps.exec.program { ProgramIdentity, uncataloged_program }
-import extdeps.tools.env { env_path_resolved_program }
 
 import std.types { NonEmptyStr, FilePath, String, List, Int }
 import std.measure { Second, second_count }
@@ -626,76 +625,10 @@ fn timeout_command(duration: Second, kill_after: Second, command: ArgvCommand) -
   )
 }
 
-// THE BOUND THAT EMITS ITS OWN ENFORCEMENT OBSERVATION. This wraps the subject exactly as
-// timeout_command does (TERM, escalating to KILL after the grace period) but adds `--verbose`, so that
-// when the deadline FIRES GNU timeout writes a positive diagnostic to stderr AT THE ENFORCEMENT
-// DECISION itself -- the moment it decides to signal the bounded command. That diagnostic is the
-// discriminating fact gunbc.recurring_failure_mode.bare_exit_124_read_as_an_observed_timeout_event
-// requires: it is produced only when the bound actually does the killing, so the two events whose exit
-// STATUSES are identical (a child exiting 124 on its own, and timeout killing the child at expiry) are
-// distinguished by the presence of the diagnostic, NEVER by the bare exit status. A consumer that
-// reads only the status reproduces the very failure that row names.
-//
-// LC_ALL=C IS PINNED HERE, NOT LEFT TO THE CALLER. The diagnostic is a TRANSLATED string: the upstream
-// renders it in the active locale's message catalog, so under a non-C locale its text changes and a
-// matcher keyed on the English form silently stops matching. The receipt a consumer derives from this
-// diagnostic is therefore readable only if the environment of THIS invocation -- the one this builder
-// imposes -- is pinned to C. Pinning at the bound is what keeps the observation from becoming
-// unreadable; it is the observing contract, and the matcher lives in the observing layer that imposes
-// this bound (see gunbc.runner.runner_microvm_boot_probe.runner_microvm_boot_probe_enforcement_observation).
-//
-// A THIRD ARGV COMPOSITION, ADMITTED BY NAME ON extdeps.exec.command.argv_command: the bounder is
-// reached through `env`, the GNU coreutils program-prefix tool, so that LC_ALL=C is set on the timeout
-// process specifically. This composes over an already-built ArgvCommand and re-spells no program, so
-// the seal extdeps.exec.command holds is not weakened.
-fn timeout_command_enforcing_bound(
-  duration: Second,
-  kill_after: Second,
-  command: ArgvCommand,
-) -> ArgvCommand {
-  argv_command(
-    program: env_path_resolved_program(),
-    arguments: concat(
-      [
-        "LC_ALL=C",
-        timeout_program().invocation as String,
-        "--verbose",
-        "--kill-after", coreutils_duration_operand(d: kill_after),
-        coreutils_duration_operand(d: duration),
-        command.program.invocation as String,
-      ],
-      command.arguments,
-    ),
-  )
-}
-
-// The prefix GNU `timeout --verbose` prints on stderr when it decides to signal the bounded command at
-// an expired deadline. Cited to GNU coreutils (timeout(1), the --verbose diagnostic, observed here on
-// 9.4): "timeout: sending signal TERM to command '...'". The text is locale-dependent, which is why
-// timeout_command_enforcing_bound pins LC_ALL=C. This prefix is the discriminator the boot-probe receipt
-// matches; it is a UPSTREAM fact (gunbc.design_argument::external_upstreams), and the gunbc receipt
-// that consumes it is a type in the observing layer, not here.
-data coreutils_timeout_enforcement_diagnostic: String = "timeout: sending signal"
-
-// THE STATUSES A FIRED BOUNDER EMITS (timeout(1), no --preserve-status), MEASURED on coreutils 9.4.
-// These are UPSTREAM facts (gunbc.design_argument::external_upstreams), NOT gunbc facts, and they are
-// NOT the deadline observation on their own:
-//   * 124 -- the bound fired and the first TERM ended the command (timeout(1): "the command timed out").
-//   * 137 -- the bound fired and the command IGNORED TERM, so --kill-after escalated to KILL and the
-//     command died by SIGKILL (128 + 9). This is the case this bound exists for: a wedged Firecracker VMM
-//     ignores TERM. Observed: `timeout --verbose --kill-after 1s 1s sh -c "trap '' TERM; sleep 30"` ->
-//     rc 137 with BOTH "sending signal TERM" and "sending signal KILL" on stderr.
-// A fired bounder ALWAYS pairs one of these statuses with the --verbose diagnostic
-// (coreutils_timeout_enforcement_diagnostic). The status alone is NOT the deadline observation, because
-// the SAME statuses arise WITHOUT the bound firing: a child that exits 124 itself, or that is killed by
-// SIGKILL from elsewhere (host OOM, a self `kill -9`), also yields 124/137 -- but with NO diagnostic
-// (measured: `timeout --verbose --kill-after 1s 30s sh -c "kill -9 $"` -> rc 137, empty stderr). So the
-// boot-probe receipt treats a fired bound as diagnostic AND status-in-{124,137}; a status in that set
-// WITHOUT the diagnostic is refused, never a deadline. 124 is additionally retained because an unrelated
-// sibling reader (dispatch_credential_snapshot) still consumes it; no classifier may key a deadline on a
-// bare status (the row's out_of_scope).
+// EXIT 124 IS `timeout`'s OWN ANSWER, and reading it as an ordinary failure would conflate two very
+// different events: a subject that ran and failed, and a subject that was still running when its
+// deadline arrived. Only the second says the bound did work.
 data coreutils_timeout_expired_exit_code: Int = 124
-data coreutils_bound_killed_exit_code: Int = 137
 
 // THE BYTES AVAILABLE ON THE FILESYSTEM HOLDING A PATH (df(1): -B1 byte units, --output=avail the one
 // column). df prints a header line and then the figure, so the caller reads the last line.
