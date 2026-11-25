@@ -34,7 +34,7 @@ module gunbc.instruments.scm_acceptance
 // the stronger result.
 
 import extdeps.shell
-import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.git
 import extdeps.git.inspect
 import extdeps.gunbc

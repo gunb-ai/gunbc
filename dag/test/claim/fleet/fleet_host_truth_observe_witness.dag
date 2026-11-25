@@ -1,0 +1,233 @@
+module test.claim.fleet.fleet_host_truth_observe_witness
+
+// CLAIMS ON THE OBSERVE-ONLY HOST-TRUTH READ (gunbc.fleet.fleet_host_truth_observe), option A as the manager
+// ruled it. The producers are witnessed by dag/test/claim/fleet/fleet_host_truth_sources_witness.dag and the
+// verdict algebra by dag/test/claim/fleet/fleet_host_truth_read_witness.dag. These claims are the mode's OWN
+// contract: over the TWO axes that have an on-route producer (the cgroup cap, the leaf swap ceiling) the observe
+// reads and never mutates; over the other THREE (the identity anchor, per-host PCI enumeration count, per-host
+// enabled-unit list) it REFUSES with a typed HostTruthReadRefused, and those refusals -- never silence -- are
+// what make it impossible for a host to be reported as following its desired state while an axis is unread.
+//
+// RED BY CONSTRUCTION: a host whose two readable axes both agree must still be refused, because three of the five
+// axes refuse. If someone deleted the refusals (a "fail open" edit), the readable axes could agree and the host
+// would be admitted -- that is exactly what the last claim makes impossible.
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.optional { Present, Absent }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.measure { ByteSize, byte_size }
+import extdeps.systemd { SystemdCgroupMemoryLimit, MemoryLimitBytes, MemoryLimitUnbounded, MemoryLimitAbsent }
+import gunbc.fleet.fleet_host_truth_read {
+  HostTruthRead, HostTruthObserved, HostTruthReadBlank, HostTruthReadRefused, HostTruthVerdict, HostTruthFollowsDesiredState, HostTruthDiverges, HostTruthRefused, HostTruthNothingRead,
+  HostTruthExpectation, HostTruthDeclared, HostTruthNothingDeclared,
+  HostTruthAxis, host_truth_axes_match,
+  fleet_host_truth_verdict_for_host, fleet_truth_admits_host,
+}
+import gunbc.fleet.fleet_host_truth_sources { host_truth_cap_read }
+import gunbc.fleet.fleet_host_truth_observe {
+  host_truth_observe_reads, host_truth_observe_expectations, host_truth_observe_verdict,
+  host_truth_observe_cap_expectation,
+  host_truth_observe_identity_refusal, host_truth_observe_pci_refusal, host_truth_observe_unit_refusal,
+  host_truth_observe_exit,
+}
+import gunbc.runner.runner_slot_desired { gunbc_runner_slot_desired }
+
+data witness_run_id: String = "converge-2026-11-23"
+
+// IS THE READ ON THIS AXIS A TYPED REFUSAL? A refusal read, matching this axis, is present in the set.
+fn refused_on_axis(reads: List<HostTruthRead>, axis: HostTruthAxis) -> Bool {
+  reads.filter(read => match read {
+    HostTruthReadRefused { host: _, axis: a, cause: _ } => host_truth_axes_match(left: a, right: axis)
+    _ => false
+  }).length() > 0
+}
+
+// A VALUE READ (not a refusal) on this axis is present: cap and swap are read, not refused.
+fn value_read_on_axis(reads: List<HostTruthRead>, axis: HostTruthAxis) -> Bool {
+  reads.filter(read => match read {
+    HostTruthReadRefused { host: _, axis: a, cause: _ } => host_truth_axes_match(left: a, right: axis)
+    _ => host_truth_axes_match(left: host_truth_read_axis(read: read), right: axis)
+  }).length() > 0
+}
+
+// THE READ SET IS FIVE ENTRIES: two value reads (cap, leaf swap) and three typed refusals (identity, PCI,
+// enabled units). Nothing is omitted -- a host the observe looked at owes all five, refused or read.
+test fn test_the_reads_are_two_values_and_three_refusals() -> Bool {
+  let reads = host_truth_observe_reads(
+    host: "srv1" as NonEmptyStr,
+    at_run: witness_run_id,
+    cap_limit: MemoryLimitBytes { bytes: gunbc_runner_slot_desired().memory_max },
+    swap_limit: MemoryLimitAbsent,
+  )
+  reads.length() == 5
+    && value_read_on_axis(reads: reads, axis: TruthCapBindsDeclaredWorkingSet)
+    && value_read_on_axis(reads: reads, axis: TruthSlotSwapBackingDeclared)
+    && refused_on_axis(reads: reads, axis: TruthIdentityAnchoredNotAddressed)
+    && refused_on_axis(reads: reads, axis: TruthDeclaredHardwareEnumerates)
+    && refused_on_axis(reads: reads, axis: TruthEnabledUnitHasItsHardware)
+}
+
+// THE THREE REFUSED AXES ARE ALWAYS REFUSED, not absent and not blank-without-cause: a typed refusal naming the
+// probe that is missing on this route. The identity refusal is as firm as the PCI and unit ones.
+test fn test_the_three_unread_axes_are_always_refused() -> Bool {
+  let reads = host_truth_observe_reads(
+    host: "srv1" as NonEmptyStr,
+    at_run: witness_run_id,
+    cap_limit: MemoryLimitBytes { bytes: gunbc_runner_slot_desired().memory_max },
+    swap_limit: MemoryLimitBytes { bytes: gunbc_runner_slot_desired().memory_swap_max },
+  )
+  refused_on_axis(reads: reads, axis: TruthIdentityAnchoredNotAddressed)
+    && refused_on_axis(reads: reads, axis: TruthDeclaredHardwareEnumerates)
+    && refused_on_axis(reads: reads, axis: TruthEnabledUnitHasItsHardware)
+}
+
+// THE THREE REFUSALS ALONE CANNOT ADMIT. With only the three refused reads and no expectation, the fold has three
+// refusal-class comparisons and must answer HostTruthRefused, never HostTruthFollowsDesiredState.
+test fn test_the_three_refusals_alone_cannot_admit() -> Bool {
+  let reads: List<HostTruthRead> = [
+    host_truth_observe_identity_refusal(host: "srv1" as NonEmptyStr),
+    host_truth_observe_pci_refusal(host: "srv1" as NonEmptyStr),
+    host_truth_observe_unit_refusal(host: "srv1" as NonEmptyStr),
+  ]
+  let verdict = fleet_host_truth_verdict_for_host(host: "srv1" as NonEmptyStr, reads: reads, expectations: [])
+  match verdict {
+    HostTruthRefused { host: _, refusals: rs } => rs.length() >= 3 && !fleet_truth_admits_host(verdict: verdict)
+    _ => false
+  }
+}
+
+// NEVER ADMITTED, EVEN WHEN THE READABLE AXES LOOK FINE. The cap at-or-above the declared working set, the swap
+// absent -- every readable axis benign -- and the host is still refused by the three unread axes. If those three
+// refusals were removed this would admit; with them it cannot. This is the whole of option A in one claim.
+test fn RED_a_host_with_all_readable_axes_benign_is_still_not_admitted() -> Bool {
+  let verdict = host_truth_observe_verdict(
+    host: "srv1" as NonEmptyStr,
+    at_run: witness_run_id,
+    cap_limit: MemoryLimitBytes { bytes: gunbc_runner_slot_desired().memory_max },
+    swap_limit: MemoryLimitAbsent,
+  )
+  match verdict {
+    HostTruthFollowsDesiredState { host: _, compared: _, undeclared: _ } => false
+    _ => !fleet_truth_admits_host(verdict: verdict)
+  }
+}
+
+// THE REFUSALS ARE LOAD-BEARING. With ONLY the cap read and its matching expectation -- nothing refused -- a
+// benign host IS admitted. Adding the three refusals on top makes it not admitted. This names precisely the
+// thing that keeps the observe fail-closed: remove the refusals and the readable axes alone would admit.
+test fn RED_the_three_refusals_are_what_keep_a_benign_host_from_being_admitted() -> Bool {
+  let cap_only_reads: List<HostTruthRead> = [
+    host_truth_cap_read(host: "srv1" as NonEmptyStr, at_run: witness_run_id, limit: MemoryLimitBytes { bytes: gunbc_runner_slot_desired().memory_max }),
+  ]
+  let cap_only_expectations: List<HostTruthExpectation> = [ host_truth_observe_cap_expectation(host: "srv1" as NonEmptyStr) ]
+  let admitted = fleet_truth_admits_host(fleet_host_truth_verdict_for_host(host: "srv1" as NonEmptyStr, reads: cap_only_reads, expectations: cap_only_expectations))
+  let with_refusals: List<HostTruthRead> = [
+    host_truth_cap_read(host: "srv1" as NonEmptyStr, at_run: witness_run_id, limit: MemoryLimitBytes { bytes: gunbc_runner_slot_desired().memory_max }),
+    host_truth_observe_identity_refusal(host: "srv1" as NonEmptyStr),
+    host_truth_observe_pci_refusal(host: "srv1" as NonEmptyStr),
+    host_truth_observe_unit_refusal(host: "srv1" as NonEmptyStr),
+  ]
+  let refused_verdict = fleet_host_truth_verdict_for_host(host: "srv1" as NonEmptyStr, reads: with_refusals, expectations: cap_only_expectations)
+  admitted && !fleet_truth_admits_host(verdict: refused_verdict)
+}
+
+// THE EXPECTATIONS ARE THE TWO READABLE AXES ONLY. The three refused axes carry no expectation on purpose -- an
+// expectation would pull one out of the refusal class into a comparison, which is how a host could be admitted
+// while an axis is unread. The readable axes are declared; the refused axes are not present in the set.
+test fn test_the_expectations_are_the_two_readable_axes_only() -> Bool {
+  let expectations = host_truth_observe_expectations(host: "srv1" as NonEmptyStr)
+  let cap_declared = expectations.filter(e => host_truth_axes_match(left: expectation_axis(e), right: TruthCapBindsDeclaredWorkingSet)).length() == 1
+  let swap_declared = expectations.filter(e => host_truth_axes_match(left: expectation_axis(e), right: TruthSlotSwapBackingDeclared)).length() == 1
+  let identity_absent = expectations.filter(e => host_truth_axes_match(left: expectation_axis(e), right: TruthIdentityAnchoredNotAddressed)).length() == 0
+  let pci_absent = expectations.filter(e => host_truth_axes_match(left: expectation_axis(e), right: TruthDeclaredHardwareEnumerates)).length() == 0
+  let unit_absent = expectations.filter(e => host_truth_axes_match(left: expectation_axis(e), right: TruthEnabledUnitHasItsHardware)).length() == 0
+  expectations.length() == 2 && cap_declared && swap_declared && identity_absent && pci_absent && unit_absent
+}
+
+// A HOST WITH NO READABLE DATA AT ALL IS REFUSED, NEVER ADMITTED. Both readable limits absent (blank) on top of
+// the three refusals: five refusal-class comparisons, HostTruthRefused, never admitted -- never a false "follows".
+test fn RED_a_host_with_no_readable_data_is_refused_not_admitted() -> Bool {
+  let verdict = host_truth_observe_verdict(
+    host: "dan" as NonEmptyStr,
+    at_run: witness_run_id,
+    cap_limit: MemoryLimitAbsent,
+    swap_limit: MemoryLimitAbsent,
+  )
+  match verdict {
+    HostTruthRefused { host: _, refusals: rs } => rs.length() == 5 && !fleet_truth_admits_host(verdict: verdict)
+    _ => false
+  }
+}
+
+// THE OBSERVE EXIT FOR A HOST GIVEN ITS OBSERVED LIMITS -- the wet's terminal decision, exercised purely so the
+// 0/1/2 contract is witnessed without a wet run. Reads come from host_truth_observe_reads, the verdict from the
+// real fold over the real expectations, the terminal from host_truth_observe_exit.
+fn observe_exit_case(host_name: String, cap_limit: SystemdCgroupMemoryLimit, swap_limit: SystemdCgroupMemoryLimit) -> ProcessExit {
+  let h = host_name as NonEmptyStr
+  let reads = host_truth_observe_reads(host: h, at_run: witness_run_id, cap_limit: cap_limit, swap_limit: swap_limit)
+  let verdict = fleet_host_truth_verdict_for_host(host: h, reads: reads, expectations: host_truth_observe_expectations(host: h))
+  host_truth_observe_exit(host: h, reads: reads, verdict: verdict)
+}
+
+// HELD IS THE ONLY GREEN. Both readable axes observed and agreeing (the cap at the declared working set, the leaf
+// swap at the declared ceiling -- which is 0) exit 0. The three frontier refusals do not make it red.
+test fn test_a_held_host_exits_zero() -> Bool {
+  match observe_exit_case("srv1", MemoryLimitBytes { bytes: gunbc_runner_slot_desired().memory_max }, MemoryLimitBytes { bytes: gunbc_runner_slot_desired().memory_swap_max }) {
+    ExitSuccess => true
+    _ => false
+  }
+}
+
+// A DIVERGENCE IS NOT HELD (exit 1). A 1 GiB cap under the declared working set, swap at its ceiling: the cap
+// diverges, so the terminal is not-held, code 1 -- regardless of the frontier refusals.
+test fn test_a_divergent_host_exits_one() -> Bool {
+  match observe_exit_case("srv4", MemoryLimitBytes { bytes: byte_size(count: 1073741824) }, MemoryLimitBytes { bytes: gunbc_runner_slot_desired().memory_swap_max }) {
+    ExitFailure { code: c, reason: _ } => c == 1
+    _ => false
+  }
+}
+
+// CANNOT BE READ IS NOT GREEN (exit 2). With no runner parent slice the cgroup cap cannot be read (absent), so
+// the readable axis is a refusal, not a value -- the terminal must be no-observation, code 2. This is the exact
+// case review 97726 caught finishing green.
+test fn RED_a_host_that_cannot_be_read_is_not_green() -> Bool {
+  match observe_exit_case("dan", MemoryLimitAbsent, MemoryLimitBytes { bytes: gunbc_runner_slot_desired().memory_swap_max }) {
+    ExitFailure { code: c, reason: _ } => c == 2
+    _ => false
+  }
+}
+
+// AND SO IS THE SWAP CEILING UNREADABLE. Symmetric: cap read fine, leaf swap ceiling absent -> code 2, not green.
+test fn RED_an_unreadable_swap_ceiling_is_not_green() -> Bool {
+  match observe_exit_case("butch", MemoryLimitBytes { bytes: gunbc_runner_slot_desired().memory_max }, MemoryLimitAbsent) {
+    ExitFailure { code: c, reason: _ } => c == 2
+    _ => false
+  }
+}
+
+// A DIVERGENCE OUTRANKS A MISSING READ. Cap absent (unobservable) and swap below its ceiling would diverge -- but
+// the fold puts divergence first, so the terminal is code 1 (diverged), not code 2. A divergence is the louder
+// signal and must not be downgraded to "not observed."
+test fn test_divergence_outranks_a_missing_read() -> Bool {
+  match observe_exit_case("srv2", MemoryLimitAbsent, MemoryLimitBytes { bytes: byte_size(count: 1073741824) }) {
+    ExitFailure { code: c, reason: _ } => c == 1
+    _ => false
+  }
+}
+
+// WHICH AXIS AN EXPECTATION BELONGS TO (local projection; the model keeps this internal).
+fn expectation_axis(expectation: HostTruthExpectation) -> HostTruthAxis {
+  match expectation {
+    HostTruthDeclared { host: _, axis: a, expected: _, declared_by: _ } => a
+    HostTruthNothingDeclared { host: _, axis: a } => a
+  }
+}
+
+// WHICH AXIS A READ BELONGS TO (local projection over the read sum).
+fn host_truth_read_axis(read: HostTruthRead) -> HostTruthAxis {
+  match read {
+    HostTruthObserved { host: _, axis: a, at_run: _, observed: _, receipt: _ } => a
+    HostTruthReadBlank { host: _, axis: a } => a
+    HostTruthReadRefused { host: _, axis: a, cause: _ } => a
+  }
+}
