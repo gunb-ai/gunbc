@@ -1528,6 +1528,7 @@ fn design_rulings() -> List<DesignRuling> {
     aws_spot_lowest_price_globally_2026_11_25,
     aws_spot_three_card_ceiling_2026_11_25,
     aws_spot_burn_ceiling_2026_11_25,
+    aws_spot_any_region_quota_requested_2026_11_25,
     install_target_is_designated_or_unformatted_2026_11_24,
     fleet_observation_deferral_2026_11_12,
     refreshes_regularly_every_10_minutes_2026_11_16,
@@ -1757,4 +1758,11 @@ data aws_spot_burn_ceiling_2026_11_25: DesignRuling = DesignRuling {
   decided: "2026-11-25",
   governs: decl_ref(module_path: "product.fabric.flex_aws_apply", decl_name: "flex_aws_burn_micros"),
   provenance: "Operator, same session, verbatim: \"i think we should have a $ budget and a count budget too\"; then, offered hourly burn caps, chose \"$5/h (~$3.6k/mo max)\". RULED: the loop refuses any launch that would take the summed current spot price of all live cards above 5 USD per hour, beside the three-card count ceiling (aws_spot_three_card_ceiling_2026_11_25). Burn is enforced, not cumulative spend: burn is read exactly each pass, while billed spend lags (gunbc.rung_drop aws_flex_settlement_unobserved); the 2,000 USD monthly AWS Budget remains the lagging backstop.",
+}
+
+data aws_spot_any_region_quota_requested_2026_11_25: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "aws_spot_any_region_quota_requested_2026_11_25"),
+  decided: "2026-11-25",
+  governs: decl_ref(module_path: "gunbc.fleet.flex_aws_pass", decl_name: "flex_aws_scan_regions"),
+  provenance: "Operator, same session: asked whether to set up us-west-2 and eu-north-1 ahead of their quota grants, verbatim \"yes please.\", and then \"i can do non US if they have nthem for GPU as well\". ACTED 2026-11-25: us-west-2 and eu-north-1 provisioned (security group admitting the router host on 18000, notice queue with the interruption and rebalance rules, weights bucket and its /gunbc-flex/weights-bucket parameter, weights and tuning cache copied server-side from us-east-1); G and VT spot quota increases of 24 vCPU requested in the remaining six g7e regions (us-east-2, eu-west-2, eu-central-1, ap-south-1, ap-northeast-1, ap-northeast-2), all PENDING at filing. Each of those regions is set up only once AWS grants its quota.",
 }
