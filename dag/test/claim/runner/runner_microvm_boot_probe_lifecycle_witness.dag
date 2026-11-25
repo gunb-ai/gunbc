@@ -37,9 +37,11 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // mock_response: a replayed pid is a fabricated process, a replayed reap is a fabricated classification,
 // and a replayed kill is a fabricated escalation -- and a replayed reap is exactly the supplied value the hermetic classifier witness
 // (#test.claim.runner.runner_microvm_boot_probe_witness) already supplies. Local recipe, run on srv1
-// under heavy-slot and posted as the PR's execution evidence:
-//   claim_batch --wet --source-root dag --source-root src/v1 --source-root src/v2 \
-//     --entry dag/test/claim/runner/runner_microvm_boot_probe_lifecycle_witness.dag
+// under heavy-slot and posted as the PR's execution evidence. The route is the one that exists at this
+// head -- `gunbc test`, with the label spelled as target_invocation_host::render_label renders it, one
+// operand per test fn:
+//   gunbc test --source-root dag --source-root src/v1 --source-root src/v2 --wet \
+//     //test/claim/runner/runner_microvm_boot_probe_lifecycle_witness:<test-fn-name>
 //
 // EVERY SPAWN HERE IS REAL AND EVERY CHILD IS OUR OWN: each test starts its subject with
 // runner_microvm_boot_probe_run_bounded, whose StartDetached spawns with SETPGROUP (the child leads the
