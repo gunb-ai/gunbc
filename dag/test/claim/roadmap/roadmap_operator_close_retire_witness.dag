@@ -831,14 +831,14 @@ fn duplicate_acceptance_witness(instance: HostDashboardInstance, scratch: Roadma
             operation: "op-duplicate-one" as NonEmptyStr, expected: none },
           receipt: receipt, evidence: earned(facts) },
         recorded_at: "2026-11-04T08:00:00Z") {
-        CarrierClosed { result: EventAppended { id: first_id }, close: _ } =>
+        CarrierClosed { result: EventAppended { id: first_id, published_as: _ }, close: _ } =>
           match issue_command_apply(layout: layout,
             command: AcceptNode {
               subject: IssueCommandSubject { node: node, author: opr_principal(),
                 operation: "op-duplicate-two" as NonEmptyStr, expected: Present { value: first_id } },
               receipt: receipt, evidence: earned(facts) },
             recorded_at: "2026-11-04T08:00:01Z") {
-            CarrierClosed { result: EventAppended { id: _ }, close: _ } =>
+            CarrierClosed { result: EventAppended { id: _, published_as: _ }, close: _ } =>
               // TWO acceptances of one node are committed. The LOAD — the same reader production uses — must
               // REFUSE and LOCATE the refusal on the node: a duplicate-specific cause, not a bare non-empty
               // detail (any read or parse failure has one), and never a Loaded history the fold lets through.
@@ -968,7 +968,7 @@ fn retired_belt_lineage_witness(instance: HostDashboardInstance, scratch: Roadma
           expected: none },
           reason: "ended by the operator" as NonEmptyStr },
         recorded_at: "2026-11-04T08:00:00Z") {
-        CarrierClosed { result: EventAppended { id: _ }, close: _ } => {
+        CarrierClosed { result: EventAppended { id: _, published_as: _ }, close: _ } => {
           let retired = match belt_node_lineage_terminal_read(instance: instance, node_id: "node-retired-belt", history: belt_history) {
             // The retired half reads the TYPED LineageRetired{by,reason}, not a flattened LineageTerminal prose
             // tag. Reaching this variant (rather than LineageTerminal/LineageOpen) is itself the discriminating
@@ -1030,7 +1030,7 @@ fn launch_gate_refusal_witness(instance: HostDashboardInstance, scratch: Roadmap
             expected: none },
             reason: "ended at the launch gate" as NonEmptyStr },
           recorded_at: "2026-11-04T08:00:00Z") {
-          CarrierClosed { result: EventAppended { id: _ }, close: _ } => {
+          CarrierClosed { result: EventAppended { id: _, published_as: _ }, close: _ } => {
             let refused = match belt_node_launch_refusal(instance: instance, node_id: "node-launch-gate-retired", history: gate_history) {
               Present { value: LaunchNodeRetired { by: _, reason } } =>
                 claim("a retired node's launch is refused with the typed LaunchNodeRetired naming the retirement", string_contains(s: reason, pattern: "ended at the launch gate"))
