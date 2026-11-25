@@ -91,19 +91,7 @@ data generated_partition_crate_rows: List<GeneratedPartitionCrateRow> = [
         "std_import_statement",
         "v1_std_core",
         "gunbc_rust_emitted_edge",
-        "gunbc_rust_emitted_crate",
-        "extdeps_exec_program",
-        "extdeps_exec_command",
-        "extdeps_tools_env",
-        "extdeps_tools_ls",
-        "extdeps_posix_shell_command_language",
-        "extdeps_posix_process",
-        "extdeps_access_posix",
-        "extdeps_filesystem_filesystem_io",
-        "gunbc_remote_shell_command",
-        "std_env_binding",
-        "std_operation_argv",
-        "std_template"
+        "gunbc_rust_emitted_crate"
       ],
       reexport_packages: [
         "v1-stage0-runtime"
