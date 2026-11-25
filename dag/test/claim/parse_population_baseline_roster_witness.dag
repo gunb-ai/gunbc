@@ -18,8 +18,10 @@ import gunbc.parse_population_baseline_roster {
 // the selection rule (that is the carrier's single home, gunbc.design_argument::planning_has_one_home);
 // it EXECUTES the carrier and refuses if the roster silently lost or gained a member, or if a byte
 // total moved, so a claim that reads an empty or short roster cannot pass
-// (gunbc.design_argument::checks_must_prove_they_measured). NONZERO by construction: every count is
-// asserted EQUAL to a positive figure, so a 0 roster fails, not passes.
+// (gunbc.design_argument::fail_closed — a check standing where construction was available must
+// actually measure). NONZERO by construction: every count is asserted EQUAL to a positive figure,
+// so a 0 roster fails, not passes, and the named negative control proves the discrimination
+// (gunbc.design_ruling::executed_red_control_names_its_failing_commit).
 
 // Whole-roster cardinality: the 170 members the row fixes (5 + 165).
 test fn parse_population_baseline_roster_cardinality_holds() -> Bool {

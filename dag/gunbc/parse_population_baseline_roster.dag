@@ -30,6 +30,16 @@ import std.algebra { count_where, fold_list, list_push }
 // test.claim.parse_population_baseline_roster_witness re-checks cardinality, per-population byte
 // totals and path-uniqueness, and an executed red control (a planted false claim) proves the run
 // discriminates rather than passing on nothing (gunbc.design_ruling::executed_red_control_names_its_failing_commit).
+//
+// CONSUMER AND EXECUTING ROUTE (gunbc.design_argument::consumption): the named consumer is the
+// rostered claim module test.claim.parse_population_baseline_roster_witness, which imports these
+// functions and asserts their cardinality and byte totals; its executing route is a claim_batch run
+// of that module on srv1, posted as the PR run link. gunbc CI executes NO claims (repo policy until
+// the native frontier clears; claim_executor --required-ci is an ingestion-only stub and the manual
+// required-floor runner was deleted 2026-10-14), so a required_floor entry would be a name with no
+// route. Wiring this witness into an executed CI lane is a DECLARED LATER FRONTIER with its trigger:
+// the prerequisite row (per-phase counters in the parse-population verb) that the lane manager is
+// putting into the plan; when that lands and CI begins executing claims, this witness joins the lane.
 
 // The tree sha the populations were selected and measured over (origin/main at baseline time).
 data parse_population_baseline_pinned_sha: String =

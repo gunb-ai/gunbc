@@ -28,7 +28,11 @@ selection rule or the roster, so it cannot drift from it.
 The rostered claim executes the carrier and asserts cardinality (5, 165, 170),
 per-population byte totals, and a **named negative control** (the same fold with
 a trivial always-equal `key_eq` must refuse), so a short or empty roster cannot
-pass (`gunbc.design_argument::checks_must_prove_they_measured`).
+pass (`gunbc.design_argument::fail_closed`; the negative control's discrimination is ruled by
+`gunbc.design_ruling::executed_red_control_names_its_failing_commit`). The claim's executing route
+is a `claim_batch` run posted as a PR run link: gunbc CI executes no claims (repo policy until the
+native frontier clears, and `--required-ci` is a deleted ingestion stub), so the in-session srv1
+execution is the route, not a CI job.
 
 ## Measured results
 
