@@ -17,7 +17,7 @@ import gunbc.serving.serving_capacity_anchor {
   ServingSwapMechanism, SwapByEngineEviction, SwapByRouterSlotFile, ServingSwapDurability, LostWithProcess, SurvivesProcessRestart,
   ServingRungSharing, RungAdds, RungInclusiveOfHotter, RungSharingUnread,
   serving_capacity_shape, serving_conversation_policy,
-  serving_card_cap, ServingCardCap, CardCap, CardCapUnread, CardCapBinder, Shape, GpuKv, GpuKvNotBinding,
+  serving_card_cap, ServingCardCap, CardCap, CardCapUnread, CardCapRefused, CardCapBinder, Shape, GpuKv, GpuKvNotBinding,
   ServingGpuKvPool, GpuKvPoolRead, GpuKvPoolNotBinding, GpuKvPoolUnread,
 }
 import gunbc.serving.serving_replica_profile {
@@ -572,18 +572,26 @@ test fn witness_srv3_anchor_keeps_only_the_engine_rung() -> Bool {
 // capped to the pool, and an unread pool refuses the row. Helpers below read the cap's terms.
 
 fn cap_turns_is(c: ServingCardCap, n: Nat) -> Bool {
-  match c { CardCap { turns: t, bound_by: _ } => t == n, CardCapUnread { obligation: _ } => false }
+  match c { CardCap { turns: t, bound_by: _ } => t == n, CardCapUnread { obligation: _ } => false, CardCapRefused { reason: _ } => false }
 }
 
 fn cap_bound_is(c: ServingCardCap, want: String) -> Bool {
   match c {
     CardCap { turns: _, bound_by: b } => match b { Shape {} => want == "shape", GpuKv { pool_tokens: _ } => want == "gpu_kv", GpuKvNotBinding { reason: _ } => want == "not_binding" }
     CardCapUnread { obligation: _ } => false
+    CardCapRefused { reason: _ } => false
   }
 }
 
 fn cap_unread(c: ServingCardCap) -> Bool {
-  match c { CardCap { turns: _, bound_by: _ } => false, CardCapUnread { obligation: _ } => true }
+  match c { CardCap { turns: _, bound_by: _ } => false, CardCapUnread { obligation: _ } => true, CardCapRefused { reason: _ } => false }
+}
+
+// A card whose GPU KV pool cannot hold even one conversation at the policy context is REFUSED (a typed refusal),
+// never a CardCap whose turns are 0 -- which the cap derivation would render as an in_service upstream that
+// silently admits nothing.
+fn cap_refused(c: ServingCardCap) -> Bool {
+  match c { CardCap { turns: _, bound_by: _ } => false, CardCapUnread { obligation: _ } => false, CardCapRefused { reason: _ } => true }
 }
 
 // A pool fixture for the cap tests: the srv1 GPU KV pool figure (744,477 tokens, derived from the topology
@@ -629,6 +637,19 @@ test fn a_strata_card_is_not_gpu_kv_bound() -> Bool {
 test fn an_unread_gpu_kv_pool_refuses_the_card_cap() -> Bool {
   cap_unread(c: serving_card_cap(
     pool: GpuKvPoolUnread { obligation: "read the engine's reported KV pool" as NonEmptyStr },
+    shape_turns: 4,
+    anchor_context: serving_conversation_policy.anchor_context,
+  ))
+}
+
+// DISCRIMINATING: a pool too small to hold even ONE conversation at the policy anchor context (pool 50k < the 100k
+// context -> floor 0) is REFUSED with a typed reason, NOT rendered as CardCap { turns: 0 }. Pre-fix, the zero floor
+// fell through to the GpuKv arm and the cap derivation rendered an in_service upstream with OwnedCap { turns: 0 } --
+// a live row that silently admits nothing. Same rung as B3's refusal of a zero-turn shape; a partial seat is never
+// counted, and neither is a zero seat.
+test fn a_pool_holding_no_conversation_at_the_policy_context_is_refused() -> Bool {
+  cap_refused(c: serving_card_cap(
+    pool: GpuKvPoolRead { tokens: token_count(count: 50000), standing: ca_cited(), provenance: "fixture: pool below one conversation at the policy context" as NonEmptyStr },
     shape_turns: 4,
     anchor_context: serving_conversation_policy.anchor_context,
   ))

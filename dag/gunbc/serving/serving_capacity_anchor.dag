@@ -136,7 +136,7 @@ fn srv1_gpu_kv_pool() -> ServingGpuKvPool {
 // (ServingEngineKind) at the router boundary -- router_dev_gpu_kv_pool -- not by a match on the deployment name.
 type CardCapBinder = Shape {} | GpuKv { pool_tokens: Nat } | GpuKvNotBinding { reason: NonEmptyStr }
 
-type ServingCardCap = CardCap { turns: Nat, bound_by: CardCapBinder } | CardCapUnread { obligation: NonEmptyStr }
+type ServingCardCap = CardCap { turns: Nat, bound_by: CardCapBinder } | CardCapUnread { obligation: NonEmptyStr } | CardCapRefused { reason: NonEmptyStr }
 
 fn serving_card_cap(pool: ServingGpuKvPool, shape_turns: Nat, anchor_context: TokenCount) -> ServingCardCap {
   match pool {
@@ -156,7 +156,8 @@ fn gpu_kv_floor_cap(pool_tokens: Nat, shape_turns: Nat, context: Nat) -> Serving
   if context == 0 { CardCapUnread { obligation: "policy anchor_context is zero, so the GPU KV pool floor (pool tokens / context) is undefined and the pool was never consulted; the serving_conversation_policy anchor_context must be read before this card's cap renders" as NonEmptyStr } }
   else {
     let kv_floor = pool_tokens / context
-    if kv_floor < shape_turns { CardCap { turns: kv_floor, bound_by: GpuKv { pool_tokens: pool_tokens } } }
+    if kv_floor == 0 { CardCapRefused { reason: "the GPU KV pool holds fewer than one conversation at the policy anchor context (pool tokens below the context), so this card could serve no turn: render a refused row, then re-read the pool or lower the policy context -- never an in_service upstream with a zero cap that silently admits nothing (fail_closed)" as NonEmptyStr } }
+    else if kv_floor < shape_turns { CardCap { turns: kv_floor, bound_by: GpuKv { pool_tokens: pool_tokens } } }
     else { CardCap { turns: shape_turns, bound_by: Shape {} } }
   }
 }

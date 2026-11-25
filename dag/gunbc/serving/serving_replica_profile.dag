@@ -224,8 +224,8 @@ type ReplicaFigures
 // path that hands it another card's pool (single_authority / fail_closed: no escape hatch, no fabricated default).
 fn strata_gpu_kv_pool() -> ServingGpuKvPool {
   GpuKvPoolNotBinding {
-    reason: "Strata parks its sessions in host RAM; the card's cap is the retain/RAM session figure, not a GPU KV pool." as NonEmptyStr,
-    trigger: "A Strata deployment moves parked sessions onto a GPU KV pool, making the pool the binding resource." as NonEmptyStr,
+    reason: "Bet, not fact: this Strata card's cap is bounded by the retain/RAM session figure rather than the on-GPU KV pool, because Strata parks IDLE sessions in host RAM. Active turns still hold their KV on the GPU, so the bet is wrong -- the pool is the binding term -- if the active turns' on-GPU KV alone fills the pool at the policy context before the RAM session figure is reached; read that card's 'GPU KV cache size' log line and switch it to GpuKvPoolRead to check the bet." as NonEmptyStr,
+    trigger: "A Strata deployment's active-turn KV fills the GPU pool at the policy context, or parked sessions move onto a GPU KV pool -- either makes the pool the binding resource." as NonEmptyStr,
   }
 }
 
