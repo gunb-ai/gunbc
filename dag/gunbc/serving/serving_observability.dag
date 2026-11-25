@@ -217,23 +217,31 @@ fn engine_front_route_consumer(path: NonEmptyStr) -> Optional<DeclarationRef> {
   }
 }
 
-// ── ITEM (2): THE PER-CAUSE COLD-TOKEN BREAKDOWN IS NOT A NAMED INSTRUMENT ────────────────────────
+// ── ITEM (2): THE PER-CAUSE COLD-TOKEN BREAKDOWN -- AN INSTRUMENT TO BUILD, NOT YET (DECLARED FRONTIER) ──
 //
-// The 2026-11-24 attribution (same-card intact / same-card rewritten / rebound (moved) / no-probe) was
-// produced ad hoc (/tmp/rlog.py over the router's prefixprobe/usageprobe/upgrade-move lines; /tmp/snap.py
-// and /tmp/delta.py differencing engine /metrics; the Strata per-request reuse line). It is NOT a named
-// instrument. That decision, and its reason, are recorded ONCE in the owning model -- the recurring-failure-
-// mode row gunbc.recurring_failure_mode.a_hand_managed_proxy_edge_drops_a_route_its_consumers_read -- which
-// is what the brief asks for ("record that decision and its reason in the owning model instead of building
-// one"). A decision NOT to build an instrument needs no gate type here: the ruling it rests on,
-// gunbc.design_ruling::bad_process_is_worse_than_no_process, argues for deleting such machinery rather than
-// keeping a local copy. The admission rule is not restated in this module either -- it is consumed from the
-// authorities that own it: gunbc.design_document::ci_contract_blocks (a new wide instrument must first name
-// its real consumer, discriminator and acceptable cost), gunbc.design_ruling::job_roster_closed_to_growth,
-// and gunbc.design_ruling::ci_job_budgets_closed_to_growth (gunbc.design_argument::single_authority: a
-// second place that independently decides it would be a fork). The measured per-cause counts stand as an
-// operator-observed receipt of that session (extdeps.external_authority::CitedFigureStanding), never as
-// deduced facts (gunbc.design_argument::epistemic_humility).
+// The 2026-11-24 per-cause cold-token attribution (same-card intact / same-card rewritten / rebound (moved)
+// / no-probe) was produced ad hoc (/tmp/rlog.py over the router's prefixprobe/usageprobe/upgrade-move lines;
+// /tmp/snap.py and /tmp/delta.py differencing engine /metrics; the Strata per-request reuse line). Its honest
+// standing: it SHOULD become a named instrument, but NOT YET -- a declared frontier with a named trigger, not
+// a refusal (gunbc.design_argument::consumption -- consumed by a named later change with its trigger).
+//   - CONSUMER: gunbc.plans.fabric_serving_scheduler (PR #17076, pending operator merge), done-when 4 -- the
+//     resident-prefix-vs-fairness decision that prices the ~0% GPU-resident-hit / ~112k-token reload regime.
+//   - DISCRIMINATOR: a turn's reused tokens vs its prompt tokens, per cause.
+//   - PRODUCER (missing -- the trigger): the inputs are the HAND-MANAGED router's TEMPORARY prefixprobe/
+//     usageprobe lines (item 3); gunbc.serving.router_realization emits no such observation. It becomes a row
+//     in gunbc.instrument_targets when class B5's modelled router emits prefix-overlap / token-usage facts --
+//     which is what ties item (2) to item (3).
+// So no instrument_targets row and no gate type are built ahead of a producer that does not exist; the
+// admission rule is consumed from its owner, not restated (gunbc.design_argument::single_authority):
+// gunbc.design_document::ci_contract_blocks -- a new wide instrument must first name its real consumer,
+// discriminator and acceptable cost (all three are named above; only the producer is absent). An
+// instrument_targets row is a `gunbc test <label>` run on dispatch (gunbc.instruments.instrument_dispatch_
+// workflow), NOT a rostered CI job, so the job-roster and CI-budget closures do NOT bear on it and are not
+// reasons here. The decision and reason live ONCE in the owning ledger row
+// (gunbc.recurring_failure_mode.a_hand_managed_proxy_edge_drops_a_route_its_consumers_read). The measured
+// per-cause counts stand as an operator-observed receipt of that session
+// (extdeps.external_authority::CitedFigureStanding), never deduced facts
+// (gunbc.design_argument::epistemic_humility).
 
 // ── ITEM (3): THE ROUTER's prefixprobe/usageprobe LINES -- WHERE THEIR STANDING BELONGS ─────────────
 //
