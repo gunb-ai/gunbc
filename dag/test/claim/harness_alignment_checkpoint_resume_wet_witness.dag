@@ -30,6 +30,7 @@ import gunbc.roadmap.roadmap_alignment {
   alignment_chain_fingerprint, alignment_checkpoint_identity_digest, AlignmentCheckpointIdentity,
   alignment_base_cadence_state, AlignmentCadenceState, alignment_state_interval,
   alignment_next_interval, CadenceStepInterval, CadenceStepStopTheLine,
+  alignment_resolve_chain, AlignmentReady,
 }
 import gunbc.harness.harness_turn {
   HarnessTurnConfig, Unsupervised, BackendAdmittedBySeat, CompletesOnProviderStop,
@@ -155,30 +156,47 @@ fn emit_boundary(dir: String, chain: AlignmentChain, steps: Int) -> Bool {
   }
 }
 
-fn evidence_in(dir: String, observation: String, steps: Int) -> HarnessAlignmentCheckpointEvidence {
+// THE EVIDENCE AS PRESENTED FOR ADJUDICATION. The fingerprint here is a CLAIM -- the projection travels
+// to adjudication from the caller -- so adjudication checks it against the durable record instead of
+// trusting it, and one witness leg below deliberately gets it wrong to prove that check has teeth.
+fn evidence_in(dir: String, observation: String, steps: Int, claimed_fingerprint: String) -> HarnessAlignmentCheckpointEvidence {
   HarnessAlignmentCheckpointEvidence {
     observation_path: observation_in(dir: dir, steps: steps),
     observation_digest: harness_alignment_observation_digest(observation: observation),
     conversation_tip: boundary_tip(),
+    chain_fingerprint: claimed_fingerprint,
     round_steps: steps,
     steps_taken: steps,
   }
 }
 
 fn project(chain: AlignmentChain, dir: String, observation: String, steps: Int) -> HarnessAlignmentChainProjection {
+  project_claiming(chain: chain, dir: dir, observation: observation, steps: steps, claimed_fingerprint: derive_fingerprint(chain: chain, steps: steps))
+}
+
+// A projection whose evidence CLAIMS a fingerprint of the caller's choosing. Used by the red control 3
+// legs, which need to show that a claim buys nothing: the durable record decides.
+fn project_claiming(chain: AlignmentChain, dir: String, observation: String, steps: Int, claimed_fingerprint: String) -> HarnessAlignmentChainProjection {
   harness_alignment_chain_projection(
     chain: chain,
     turns_elapsed: steps,
     cadence: alignment_base_cadence_state(),
-    evidence: evidence_in(dir: dir, observation: observation, steps: steps),
+    evidence: evidence_in(dir: dir, observation: observation, steps: steps, claimed_fingerprint: claimed_fingerprint),
   )
 }
 
-fn fingerprint(chain: AlignmentChain, dir: String, observation: String, steps: Int) -> String {
-  match project(chain: chain, dir: dir, observation: observation, steps: steps) {
-    ProjectionAdmitted { chain: resolved, evidence: _ } => harness_alignment_fingerprint_of(chain: resolved)
-    ProjectionRefused { cause: _ } => ""
+// WHAT THE CHAIN AUTHORITY DERIVES TODAY, asked of the authority itself rather than through a
+// projection -- a projection would need an evidence claim, which would need this, and the witness would
+// be defining its own expectation.
+fn derive_fingerprint(chain: AlignmentChain, steps: Int) -> String {
+  match alignment_resolve_chain(chain: chain, turns_elapsed: steps, state: alignment_base_cadence_state()) {
+    AlignmentReady { chain: resolved, due_levels: _, rendered_prompt: _ } => alignment_chain_fingerprint(chain: resolved)
+    _ => ""
   }
+}
+
+fn fingerprint(chain: AlignmentChain, dir: String, observation: String, steps: Int) -> String {
+  derive_fingerprint(chain: chain, steps: steps)
 }
 
 fn checkpoint_bound_to(chain: AlignmentChain, dir: String, observation: String, steps: Int, lineage: String, epoch: Int) -> AlignmentCheckpointIdentity {
@@ -356,9 +374,17 @@ test fn a_workers_own_aligned_assertion_cannot_mint_a_continuation_receipt() -> 
 
 // RED CONTROL 3 -- A CHANGED NODE CONTRACT OR EDGE CONTRIBUTION INVALIDATES EARLIER RECEIPTS. The
 // checkpoint is bound to the fingerprint the chain authority derived for the spine as it stood; re-word
-// one link's red control and the derived fingerprint moves, so adjudication under the retuned chain
-// refuses rather than honouring the stale binding. Honouring the untouched chain still publishes, and
-// publishes under the identity digest the chain authority derives -- no second key exists here.
+// one link's red control and the derived fingerprint moves. Four legs, each pinning WHICH refusal fires
+// by its named cause, because three different mismatches refuse here and a witness that only checks
+// "something refused" would not notice the wrong one firing:
+//   stale       the caller keeps the old identity while the chain moved -- the identity binding refuses;
+//   revived     the caller re-mints its identity under TODAY's fingerprint and presents the same
+//               tip and evidence -- the fingerprint recorded in the durable checkpoint event refuses,
+//               which is the leg that makes the durable event load-bearing rather than decorative;
+//   misclaimed  the caller presents evidence claiming a fingerprint of its own choosing -- the durable
+//               record refuses the claim, so a projection cannot pick its own binding;
+//   honoured    the untouched chain still publishes, under the identity digest the chain authority
+//               derives -- no second key exists here.
 test fn a_changed_node_contract_or_edge_contribution_invalidates_earlier_receipts() -> Bool {
   let dir = fresh_dir(tag: "retuned")
   let steps = 3
@@ -382,6 +408,31 @@ test fn a_changed_node_contract_or_edge_contribution_invalidates_earlier_receipt
     verdict_path: verdict,
     cadence: alignment_base_cadence_state(),
   )
+  // THE CASE THE DURABLE EVENT EXISTS FOR. The plan moves, and the caller re-mints its identity under
+  // TODAY's fingerprint -- same conversation tip, same evidence, an identity the checkpoint authority
+  // itself would derive. Comparing the derived fingerprint only against a caller-supplied identity lets
+  // that through; it is the fingerprint the boundary wrote at the boundary that invalidates the earlier
+  // receipt, so this leg must refuse, and refuse BY NAME of the durable event.
+  let revived = harness_alignment_adjudicate(
+    checkpoint: checkpoint_bound_to(chain: after, dir: dir, observation: observation, steps: steps, lineage: "align-witness-retuned", epoch: 2),
+    projection: project(chain: after, dir: dir, observation: observation, steps: steps),
+    events_path: events_in(dir: dir),
+    observation_path: path,
+    verdict_path: verdict,
+    cadence: alignment_base_cadence_state(),
+  )
+  // AND A CLAIM BUYS NOTHING. Evidence presented under a fingerprint of the caller's choosing -- here,
+  // today's fingerprint against the untouched chain -- is refused on the durable record, under its own
+  // cause, so the two mismatched-presentation refusals stay distinguishable rather than collapsing into
+  // one "something did not match".
+  let misclaimed = harness_alignment_adjudicate(
+    checkpoint: checkpoint,
+    projection: project_claiming(chain: before, dir: dir, observation: observation, steps: steps, claimed_fingerprint: fingerprint_after),
+    events_path: events_in(dir: dir),
+    observation_path: path,
+    verdict_path: verdict,
+    cadence: alignment_base_cadence_state(),
+  )
   let honoured = harness_alignment_adjudicate(
     checkpoint: checkpoint,
     projection: project(chain: before, dir: dir, observation: observation, steps: steps),
@@ -395,7 +446,27 @@ test fn a_changed_node_contract_or_edge_contribution_invalidates_earlier_receipt
     && trim(s: fingerprint_before) != ""
     && fingerprint_before != fingerprint_after
     && match stale {
-         AdjudicationRefused { cause } => trim(s: cause) != ""
+         // WHICH refusal fired is part of the claim: the identity is the thing that went stale here, so
+         // the cause must name the identity binding, and must not be the durable-event refusal.
+         AdjudicationRefused { cause } =>
+           string_contains(s: cause, pattern: "but the checkpoint is bound to")
+             && !string_contains(s: cause, pattern: "durable checkpoint event was admitted under")
+         AdjudicationPublished { adjudication: _ } => false
+       }
+    && match revived {
+         // The durable event's fingerprint is what refuses, and it names both fingerprints so a reader
+         // can see the drift rather than being told a check failed.
+         AdjudicationRefused { cause } =>
+           string_contains(s: cause, pattern: "durable checkpoint event was admitted under")
+             && string_contains(s: cause, pattern: fingerprint_before)
+             && string_contains(s: cause, pattern: fingerprint_after)
+         AdjudicationPublished { adjudication: _ } => false
+       }
+    && match misclaimed {
+         AdjudicationRefused { cause } =>
+           string_contains(s: cause, pattern: "the evidence presented for adjudication is bound to chain fingerprint")
+             && string_contains(s: cause, pattern: fingerprint_after)
+             && string_contains(s: cause, pattern: fingerprint_before)
          AdjudicationPublished { adjudication: _ } => false
        }
     && match honoured {

@@ -2874,6 +2874,11 @@ type HarnessAlignmentCheckpointEvidence {
   observation_path: String
   observation_digest: String
   conversation_tip: String
+  // THE FINGERPRINT THE BOUNDARY RECORDED, read out of the durable event and carried, not dropped. A
+  // value that is parsed and discarded is not a binding: the receipt's claim about WHICH chain it was
+  // admitted under has to survive to the comparison, or red control 3 is enforced only against a
+  // fingerprint the caller chose to present.
+  chain_fingerprint: String
   round_steps: Int
   steps_taken: Int
 }
@@ -2933,8 +2938,11 @@ fn harness_alignment_conversation_tip(messages: List<JsonValue>) -> String {
 }
 
 // THE DURABLE CHECKPOINT EVENT. The chain fingerprint is a FIELD, not an inference: whoever reads
-// this line learns which chain the boundary was admitted under, and adjudication refuses to grade a
-// checkpoint whose fingerprint the chain authority no longer derives.
+// this line learns which chain the boundary was admitted under. Adjudication then makes that field
+// bear weight in two comparisons, both against what the chain authority derives here and now -- it
+// refuses a checkpoint whose fingerprint the authority no longer derives, and it refuses a durable
+// event whose recorded fingerprint differs from that derivation, which is the refusal a caller cannot
+// sidestep by re-keying its own identity after the plan moved.
 fn harness_event_alignment_checkpoint_due(
   chain_fingerprint: String,
   conversation_tip: String,
@@ -3056,6 +3064,7 @@ fn harness_alignment_checkpoint_event_decode(text: String, observation_path: Str
                                         observation_path: path,
                                         observation_digest: digest,
                                         conversation_tip: tip,
+                                        chain_fingerprint: fingerprint,
                                         round_steps: round_steps,
                                         steps_taken: steps_taken,
                                       },
@@ -3159,7 +3168,9 @@ fn harness_alignment_publication_text(adjudication: HarnessAlignmentAdjudication
 // persisted verdict artifact; it is given no message list, no worker text and no capability to
 // continue anything. Refusals are typed and say what is missing: no checkpoint event, an evidence
 // claim that is not the event's own, an artifact that no longer matches the digest the boundary wrote,
-// no verdict the check can act on, or a fingerprint the chain authority no longer derives.
+// no verdict the check can act on, a fingerprint the chain authority no longer derives, or a durable
+// event that recorded a DIFFERENT fingerprint than the chain now derives -- the last one being the
+// refusal that survives a caller re-keying its identity after the plan moved.
 fn harness_alignment_adjudicate(
   checkpoint: AlignmentCheckpointIdentity,
   projection: HarnessAlignmentChainProjection,
@@ -3188,8 +3199,31 @@ fn harness_alignment_adjudicate(
         match harness_alignment_recorded_evidence(events_path: events_path, observation_path: observation_path) {
           RecordedEvidenceAbsent { cause } => AdjudicationRefused { cause: cause }
           RecordedEvidence { evidence: recorded } =>
-            if recorded.conversation_tip != checkpoint.conversation_tip {
+            // THE DURABLE EVENT'S OWN FINGERPRINT IS THE BINDING. The identity above is supplied by the
+            // caller, so comparing the derived fingerprint only against it proves that the caller's
+            // claim matches today's chain -- it does not prove the RECEIPT predates no change. A worker
+            // (or a lane) that re-mints an identity under the new fingerprint after a node contract or
+            // edge contribution moved would otherwise be handed back its earlier receipt, which is the
+            // exact drift this checkpoint exists to catch. So the fingerprint the boundary wrote at the
+            // boundary is compared with what the chain authority derives here, and a mismatch refuses.
+            if recorded.chain_fingerprint != fingerprint {
+              AdjudicationRefused { cause: join([
+                "the durable checkpoint event was admitted under chain fingerprint ", recorded.chain_fingerprint,
+                " while the chain authority now derives ", fingerprint,
+                " -- a changed node contract or edge contribution invalidates the earlier receipt, and re-keying the identity to today's chain does not revive it",
+              ], "") }
+            } else if recorded.conversation_tip != checkpoint.conversation_tip {
               AdjudicationRefused { cause: "the durable checkpoint event binds a different conversation tip than the checkpoint identity carries" }
+            } else if evidence.chain_fingerprint != recorded.chain_fingerprint {
+              // The projection arrives from the CALLER, so the chain its evidence claims to be bound to
+              // is a claim, not a fact. It is checked against the durable record rather than trusted:
+              // evidence presented under one chain cannot be adjudicated against a receipt the boundary
+              // emitted under another.
+              AdjudicationRefused { cause: join([
+                "the evidence presented for adjudication is bound to chain fingerprint ", evidence.chain_fingerprint,
+                " while the durable checkpoint event recorded ", recorded.chain_fingerprint,
+                " -- a claim about the evidence is not the evidence",
+              ], "") }
             } else if recorded.observation_digest != evidence.observation_digest || recorded.conversation_tip != evidence.conversation_tip {
               AdjudicationRefused { cause: "the evidence presented for adjudication is not the evidence the durable checkpoint event bound -- a claim about the evidence is not the evidence" }
             } else {
