@@ -818,6 +818,22 @@ fn check_match_exhaustiveness(
     // `ConstructorsOpen => []`. It is kept OUTSIDE the proof-bearing
     // `ExhaustivenessVerdict` so we never fabricate an `Exhaustive` (established
     // coverage) for an outcome we did not judge.
+    //
+    // CARRIER, not a comment-only note: this residual is enrolled in
+    // `gunbc.recurring_failure_mode.accepted_source_emits_uncompilable_target`,
+    // component (vi) -- "a constructor roster that distinguishes a genuine open
+    // scalar, a closed single-constructor product and an unresolved lookup,
+    // sufficient BOTH that no Accepted program has an unresolved type adjudicated
+    // as open AND that a closed single-constructor product is adjudicated closed."
+    // That component is the bounded trigger that dissolves THIS arm: the day the
+    // roster is split and an unresolved lookup refuses as ExhaustivenessUnknown,
+    // component (vi) is discharged and this `=> []` becomes a real refusal. It is
+    // named at the `constructor_roster_for` header (the NEXT-RUNG TRIGGER note) and
+    // joined to the derived roster by the row's named identity. The split is NOT
+    // taken in this change: it was implemented and reverted (nineteen false-positive
+    // sites, which are that trigger's acceptance corpus), and adjudicating the
+    // single-constructor-product half is an exhaustiveness-algorithm change for
+    // resolved types -- out of this node's scope.
     ConstructorsOpen => []
     ConstructorsClosed { names: _ } =>
       exhaustiveness_verdict_diags(
