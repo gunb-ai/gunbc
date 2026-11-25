@@ -64,6 +64,8 @@ data roadmap_intention_bindings: List<IntentionBinding> = [
   serves(node: "serving-router-native-transport", module_path: fabric_market_intention, plan: "fabric_market_plan", layer: 3),
   serves(node: "serving-relocation-realization", module_path: fabric_market_intention, plan: "fabric_market_plan", layer: 4),
   serves(node: "serving-router-lua-cutover", module_path: fabric_market_intention, plan: "fabric_market_plan", layer: 5),
+  serves(node: "serving-capacity-qualification", module_path: fabric_market_intention, plan: "fabric_market_plan", layer: 0),
+  serves(node: "serving-engine-level-seller", module_path: fabric_market_intention, plan: "fabric_market_plan", layer: 3),
   serves(node: "fabric-market-convergence", module_path: fabric_market_intention, plan: "fabric_market_plan", layer: 6),
   // gunbc.plans.one_source_tree: layers follow the dependency edges (1 the manifest, 2 the harness, 3 the other callers, 4 the cut,
   // 5 the renames and the extdeps reconciliation, 6 the terminal). one-standard-library is a prerequisite of the
