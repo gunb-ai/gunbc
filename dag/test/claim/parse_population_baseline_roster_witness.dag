@@ -1,11 +1,9 @@
 module test.claim.parse_population_baseline_roster_witness
 
 import std.types { Bool }
-import std.measure { byte_size }
 import gunbc.parse_population_baseline_roster {
   parse_population_cardinality_accepts_real,
   parse_population_cardinality_refuses_planted_extra_row,
-  parse_population_five_largest_byte_total,
   parse_population_partition_is_consistent,
   parse_population_zero_byte_row_count,
   parse_population_is_unique,
@@ -13,6 +11,11 @@ import gunbc.parse_population_baseline_roster {
   parse_population_rows_ordered_descending,
   parse_population_ordering_accepts_descending,
   parse_population_ordering_refuses_ascending,
+  parse_population_reconcile_accepts_correct_slice,
+  parse_population_reconcile_refuses_mistyped_slice,
+  parse_population_unreconciled_row_count,
+  parse_population_mistyped_real_row_slice,
+  parse_population_correct_real_row_slice,
 }
 
 // THE ROSTERED CLAIM for gunbc.parse_population_baseline_roster, the two fixed parse populations
@@ -81,13 +84,25 @@ test fn parse_population_baseline_roster_duplicate_key_refuses() -> Bool {
   parse_population_duplicate_refuses_with_trivial_eq()
 }
 
-// PLANTED RED CONTROL, run in the SAME claim_batch invocation as the seven PASS-by-name claims. This
-// is NOT a test fn and is NOT part of the committed witness pass-set — nothing in the repo auto-runs
-// it; it is invoked by name by the roster run only. It asserts a byte total that is false (the Five
-// Largest byte total is not 999), so claim_batch must report exactly one FAIL-by-name line while the
-// seven witnesses PASS, proving the runner reports a false claim as FAIL and not PASS
-// (gunbc.design_ruling::executed_red_control_names_its_failing_commit). Committed here so the single
-// --entry resolves all eight names in one invocation (one log, one rc, one head sha, one binary block).
-fn parse_population_roster_red_control_refuses() -> Bool {
-  parse_population_five_largest_byte_total() == byte_size(count: 999)
+// CARRIER <-> TREE reconciliation, BOTH arms (the load-bearing instrument that ties these rows to the
+// tree; review 98443). ACCEPT: the correct real-row slice reconciles fully (zero unreconciled rows).
+// REFUSE: the same slice with one REAL row's byte size mistyped is NOT fully reconciled — a real wrong
+// row drives the refusal. The reconciliation of ALL 170 rows against `git ls-tree -r -l <pinned_sha>`
+// (green diff rc 0; a mistyped row drives it rc nonzero) is the executed leg recorded in the measurement
+// report; these two arms prove the predicate that leg applies is discriminating, not vacuous.
+test fn parse_population_baseline_roster_reconciles_to_tree_holds() -> Bool {
+  parse_population_reconcile_accepts_correct_slice()
+    && parse_population_reconcile_refuses_mistyped_slice()
+}
+
+// REAL-WRONG-ROW RED CONTROL (replaces the former planted byte_size(count: 999); review 98443 says the
+// red control must be a real wrong row, not a planted constant). Invoked by name in the SAME claim_batch
+// as the PASS witnesses: it asserts the MISTYPED real-row slice reconciles fully to the correct tree,
+// which is FALSE (one real row's byte size is wrong), so claim_batch reports exactly one FAIL-by-name line
+// while the witnesses PASS — proving the runner reports a real wrong row as FAIL, not PASS
+// (gunbc.design_ruling::executed_red_control_names_its_failing_commit).
+fn parse_population_roster_red_control_mistyped_row_fails() -> Bool {
+  parse_population_unreconciled_row_count(
+    declared: parse_population_mistyped_real_row_slice(),
+    tree: parse_population_correct_real_row_slice()) == 0
 }

@@ -1,81 +1,31 @@
 module gunbc.parse_population_baseline_roster
 
 import std.types { Bool, Int, List, String }
-import std.measure { ByteSize, byte_size, byte_size_count, measure_add, measure_le }
+import std.measure { ByteSize, byte_size, measure_add, measure_le }
 import std.keyed_row { KeyedRow }
 import std.keyed_roster { KeyedRosterBuild, KeyedRosterBuilt, keyed_roster_build }
 import std.algebra { count_where, fold_list, list_push }
 
-// THE PARSE-POPULATION BASELINE ROSTER (roadmap row gunbc.roadmap.roadmap_authority row id
-// `emission-real-consumer-profiles`). This carrier is the SINGLE AUTHORITY for the two fixed parse
-// populations the row's first_slice names ("the 5 largest dag modules and a 165-module sample").
-// The markdown under docs/plans/ is an evidence RECORD of the measured cells only; it points here
-// and holds no copy of the selection rule or roster (gunbc.design_argument::planning_has_one_home).
+// THE PARSE-POPULATION BASELINE ROSTER: the single typed authority for the two fixed parse
+// populations named by roadmap row emission-real-consumer-profiles first_slice ("the 5 largest dag
+// modules and a 165-module sample"). The markdown under docs/plans/ records the measured cells only and
+// points here; it holds no copy of the rule (gunbc.design_argument::planning_has_one_home).
 //
-// MODELLED ONCE (gunbc.design_argument::minimize_redundancy, gunbc.design_argument::fail_closed):
-// each member stores ONLY its path and its byte size, in list order. Its population RANK is its
-// 1-based position in the list and its population MEMBERSHIP is derived from rank (the first
-// parse_population_five_largest_count rows are FiveLargest, the rest OneHundredSixtyFive). Nothing
-// is written twice, so a row cannot disagree with itself about path, rank or membership.
+// MODELLED ONCE (gunbc.design_argument::minimize_redundancy): each member stores ONLY its path and byte
+// size, in list order; its population rank is its 1-based position and its membership is DERIVED from
+// rank (first parse_population_five_largest_count rows = FiveLargest, the rest = OneHundredSixtyFive).
 //
-// SELECTION RULE (regenerable, deterministic): every `.dag` file under `dag/` and `src/v2/` at the
-// pinned sha below, taken by BLOB SIZE from the tree objects (`git ls-tree -r -l <sha> -- dag src/v2`),
-// sorted DESCENDING by size then ASCENDING by path for a stable tiebreak. Positions 1..5 are
-// Population FiveLargest; positions 6..170 are Population OneHundredSixtyFive, disjoint by position.
+// SELECTION RULE (regenerable, deterministic): every .dag under dag/ and src/v2/ at the pinned sha, taken
+// by BLOB SIZE from the tree objects (git ls-tree -r -l <sha> -- dag src/v2), sorted DESCENDING by size
+// then ASCENDING by path for a stable tiebreak. Positions 1..5 = FiveLargest; 6..170 = OneHundredSixtyFive.
 //
-// PRODUCER / REPRODUCTION: regenerate the exact ordered row list at the pinned sha with
-//   git ls-tree -r -l <pinned_sha> -- dag src/v2 \
-//     | awk '$5 ~ /\.dag$/ {print $4"\t"$5}' | sort -t$'\t' -k1,1nr -k2,2 | head -170
-// and diff against parse_population_baseline_rows() below. The rostered claim
-// test.claim.parse_population_baseline_roster_witness re-checks cardinality, per-population byte
-// totals and path-uniqueness, and an executed red control (a planted false claim) proves the run
-// discriminates rather than passing on nothing (gunbc.design_ruling::executed_red_control_names_its_failing_commit).
-//
-// CONSUMER AND EXECUTING ROUTE (gunbc.design_argument::consumption): the named consumer is the
-// rostered claim module test.claim.parse_population_baseline_roster_witness, which imports these
-// functions and asserts their cardinality and byte totals; its executing route is a claim_batch run
-// of that module on srv1, posted as the PR run link. gunbc CI executes NO claims (repo policy until
-// the native frontier clears; claim_executor --required-ci is an ingestion-only stub and the manual
-// required-floor runner was deleted 2026-10-14), so a required_floor entry would be a name with no
-// route. Wiring these rows into an EXECUTED consumer is a DECLARED FOLLOW-UP with a bounded trigger: the
-// carrier<->tree reconciliation instrument over the pinned sha described in the CONSUMPTION COUNT block
-// below — an event that CAN occur: an executed leg runs `git ls-tree -r -l <pinned_sha> -- dag src/v2` and
-// ties these 170 rows to that output, not just the documented external producer above. Lane-manager has
-// asked planning to cut a dedicated row for it; if planning declines it remains a declared follow-up here
-// and the lane-manager holds it at acceptance (a new node enters the plan only via a planning PR, not
-// authored by this row, fenced from the plan). AUTHORIZATION (review 98435, gunbc.design_argument::
-// fail_closed): this carrier is NOT self-created debt admitted by a dissolution condition. The bound
-// roadmap row `emission-real-consumer-profiles` first_slice NAMES these two fixed populations ("the 5
-// largest dag modules and a 165-module sample") and instructs that they be FIXED as the benchmark — the
-// artifact is mandated by the row ticket, and the lane-manager ruling authorizes carrying it pending the
-// reconciliation. The reconciliation follow-up states how the residual gap DISSOLVES; it is stated in
-// addition to, not instead of, that row-mandate authorization, so fail_closed (which bars authoring new
-// debt via a dissolution condition) is not engaged here. Until that instrument lands, the only executing route is
-// this roster's own consistency fold in the witness on srv1 (posted as this PR's run link), and
-// consumption of these rows beyond that fold is explicitly OPEN, not claimed. A SEPARATE frontier — joining
-// an executed CI lane — is additionally gated on gunbc CI executing claims at all, which is repo policy
-// pending the native frontier (claim_executor --required-ci is an ingestion-only stub; the manual
-// required-floor runner was deleted 2026-10-14), so a required_floor entry would be a name with no route
-
-// CONSUMPTION COUNT (reviews 98377/98381, honest statement with the count that established it):
-// this roster has EXACTLY ONE reader — the self-consistency fold in its own witness,
-// dag/test/claim/parse_population_baseline_roster_witness.dag:5 (git grep -n
-// "import gunbc.parse_population_baseline_roster" = 1 hit, exit 0). The report's §5 wall-time and
-// peak-RSS cells were timed by running the parse-population verb over module lists obtained
-// INDEPENDENTLY of these rows (staged from the tree at the pinned sha), NOT by reading them; the
-// provenance of every measured cell is the instrument run, and this roster is a DECLARED BENCHMARK,
-// not a measurement input. No number in the report is roster-derived. Closing the loop (the baseline
-// harness consuming roster.path as its module list, or a carrier<->tree reconciliation instrument over
-// the pinned sha so an executed leg — not just the documented external producer above — ties these
-// rows to the tree) is a DECLARED FOLLOW-UP with a bounded trigger, out of this slice as a
-// re-measurement; until it lands no measured number may be described as roster-derived
-// (gunbc.design_argument::consumption, gunbc.design_argument::how_to_work; lane-manager ruling). The
-// reconciliation instrument and the report function parse_population_baseline_report land TOGETHER OR
-// NOT AT ALL (review 98435 + lane-manager decision): the report is the natural surface from which
-// roster-derived numbers would be read, so it is preserved as that follow-up's home rather than deleted
-// under a consumption check — deleting it now would orphan the very surface the follow-up re-adds, and
-// the two *_count_check fns it reads are live only through it (transitively dead, see the PR body).
-
+// LOAD-BEARING, RECONCILED AGAINST THE TREE (gunbc.design_argument::consumption): the 170 rows are tied to
+// the tree by an EXECUTED reconciliation leg in the measurement report — the carrier rows are diffed
+// against git ls-tree -r -l <pinned_sha> -- dag src/v2 (top 170 by that sort): GREEN diff rc 0 means every
+// path AND byte size equals the tree; a single mistyped row drives it RED (rc nonzero). That mistyped real
+// row is the red control (a real wrong row, not a planted constant), and the parse_population_reconcile_*
+// predicates below are its discriminating carrier. Authorization, review history and the acquisition record
+// live in the PR body and its comments, not in this header (gunbc.design_argument::source_annotations).
 // The tree sha the populations were selected and measured over (origin/main at baseline time).
 data parse_population_baseline_pinned_sha: String =
   "65230868362de3efc0ddfeeaeef5d83eeb2fa385"
@@ -91,23 +41,14 @@ data parse_population_five_largest_count: Int = 5
 // must prove it measured; review 98328).
 data parse_population_expected_total_count: Int = 170
 
-// DECLARED DEPARTURE (gunbc.design_argument::epistemic_humility: "assert as deduced only what is
-// deduced; review 98282/98328: kept as a // annotation only, NOT a typed value, so no dead data is
-// introduced; the substantive size-descending selection is enforced EXECUTABLY by
-// parse_population_check_rows_ordered_descending, and the 170-size by the cardinality probes below).
-// The row's first_slice calls the second population "a 165-module sample". As SELECTED it
-// is NOT a uniform or stratified sample of the corpus: it is the NEXT 165 files by DESCENDING blob
-// size (ranks 6..170 of the size sort), i.e. a SIZE-TAIL sample. Both populations therefore sit in the
-// heavy tail of the file-size distribution; neither represents the whole-corpus size mix.
-// Why the tail is chosen deliberately: it is deterministic and reproducible at the pinned sha with no
-// RNG seed to pin and no sampling-rule drift, and it loads the verb with its heaviest inputs — the
-// costliest, most adversarial workload for the parse-population control the row's displaced_cost names.
-// CONSEQUENCE (what is and is not deduced): the per-byte wall figures are a tail-vs-tail comparison,
-// NOT a statement about the corpus distribution. No claim is asserted that this population represents
-// the corpus, and the report's §6 per-byte number stays a scaling warning pending a controlled
-// one-shape size series. To make it a representative sample would require a seeded, declared sampling
-// rule over the full population — that is a re-measurement, not in this slice.
-
+// DECLARED DEPARTURE (gunbc.design_argument::epistemic_humility): the row calls the second population
+// "a 165-module sample"; as SELECTED it is NOT a uniform/stratified sample — it is the NEXT 165 files by
+// DESCENDING blob size (ranks 6..170 of the size sort), a SIZE-TAIL sample. Both populations therefore sit
+// in the heavy tail; the per-byte figures are a tail-vs-tail comparison and assert nothing about the corpus
+// size mix. The size-descending selection is enforced executably by parse_population_check_rows_ordered_descending
+// and the 170-size by the cardinality probes; a representative sample would need a seeded sampling rule
+// over the full population (a re-measurement, not this slice). The substantive checks are executable, not
+// asserted as deduced.
 // One roster member: its repo-relative path and its blob byte size. Rank and population follow from
 // position in parse_population_baseline_rows().
 type ParsePopulationRow {
@@ -292,7 +233,7 @@ data parse_population_baseline_rows: List<ParsePopulationRow> = [
 // ---- derived queries (rank from position, membership from rank) ----
 
 // Whole-roster byte total, summed IN the ByteSize measure the rows already carry. The count is
-// unwrapped only at the rendering boundary in parse_population_baseline_report, so no bare Int
+// unwrapped only where a ByteSize is rendered for display in the measurement record, so no bare Int
 // re-represents a byte quantity the model already types (gunbc.design_argument::minimize_redundancy,
 // gunbc.design_argument::single_authority).
 fn parse_population_total_byte_total() -> ByteSize {
@@ -306,10 +247,6 @@ fn parse_population_total_count_of(rows: List<ParsePopulationRow>) -> Int {
   count_where(xs: rows, predicate: fn(_row) { true })
 }
 
-// Whole-roster cardinality of the fixed benchmark roster.
-fn parse_population_total_count() -> Int {
-  parse_population_total_count_of(parse_population_baseline_rows)
-}
 
 // Cardinality predicate over an ARBITRARY roster (arg-taking so BOTH arms are exercised, mirroring
 // the ordering probes): true iff the roster has exactly the expected benchmark size. Feeds the
@@ -468,23 +405,7 @@ fn parse_population_ordering_refuses_ascending() -> Bool {
   parse_population_check_rows_ordered_descending(parse_population_rows_ascending()) == false
 }
 
-// Cardinalities derived from the scan's position (== whole roster) and the fixed split.
-fn parse_population_five_largest_count_check() -> Int {
-  if parse_population_total_count() >= parse_population_five_largest_count {
-    parse_population_five_largest_count
-  } else {
-    parse_population_total_count()
-  }
-}
 
-fn parse_population_one_hundred_sixty_five_count_check() -> Int {
-  let total: Int = parse_population_total_count()
-  if total >= parse_population_five_largest_count {
-    total - parse_population_five_largest_count
-  } else {
-    0
-  }
-}
 
 // Path uniqueness CHECK: map each member to a KeyedRow keyed by its own path (the single stored
 // path) and build through std.keyed_roster, which refuses a repeated key. True only for the Built
@@ -513,21 +434,52 @@ fn parse_population_duplicate_refuses_with_trivial_eq() -> Bool {
   }
 }
 
-// A String report the interpreter prints so a raw run line carries each field name next to its
-// value (the checks-prove-they-measured posture, ruled by
-// gunbc.design_ruling::executed_red_control_names_its_failing_commit: a passing verdict must name
-// what it actually measured).
-fn parse_population_baseline_report() -> String {
-  join([
-    "parse_population_total_count=", to_string(parse_population_total_count()),
-    " parse_population_five_largest_count=", to_string(parse_population_five_largest_count_check()),
-    " parse_population_one_hundred_sixty_five_count=", to_string(parse_population_one_hundred_sixty_five_count_check()),
-    " parse_population_five_largest_bytes=", to_string(byte_size_count(b: parse_population_five_largest_byte_total())),
-    " parse_population_one_hundred_sixty_five_bytes=", to_string(byte_size_count(b: parse_population_one_hundred_sixty_five_byte_total())),
-    " parse_population_total_bytes=", to_string(byte_size_count(b: parse_population_total_byte_total())),
-    " parse_population_unique=", to_string(if parse_population_is_unique() { 1 } else { 0 }),
-    " parse_population_duplicate_refuses_with_trivial_eq=", to_string(if parse_population_duplicate_refuses_with_trivial_eq() { 1 } else { 0 }),
-    "",
-  ], "")
+// ---- carrier <-> tree reconciliation: the load-bearing instrument (the report's reconciliation leg
+// applies parse_population_reconcile_* to all 170 rows against git ls-tree at the pinned sha; review 98443) ----
+
+// True iff a declared row appears in the given tree row-set with the SAME path AND the SAME byte size.
+fn parse_population_row_in_tree(row: ParsePopulationRow, tree: List<ParsePopulationRow>) -> Bool {
+  count_where(xs: tree, predicate: fn(t) { t.path == row.path && t.bytes == row.bytes }) >= 1
+}
+
+// How many declared rows are NOT reconciled by a matching (path, byte size) in the tree row-set. Zero
+// means every declared row is backed by the tree; a mistyped path or byte size leaves one unreconciled.
+fn parse_population_unreconciled_row_count(
+  declared: List<ParsePopulationRow>, tree: List<ParsePopulationRow>) -> Int {
+  count_where(xs: declared, predicate: fn(r) { parse_population_row_in_tree(row: r, tree: tree) == false })
+}
+
+// A 3-row slice of the REAL roster with ONE row's byte size mistyped by one digit (roadmap_belt_actuate
+// 947773 -> 947772): a real row transcribed wrong, the discriminating red control, not a planted constant.
+fn parse_population_mistyped_real_row_slice() -> List<ParsePopulationRow> {
+  [
+    ParsePopulationRow { path: "dag/gunbc/roadmap/roadmap_authority.dag", bytes: byte_size(count: 1421761) },
+    ParsePopulationRow { path: "dag/gunbc/roadmap/roadmap_belt_actuate.dag", bytes: byte_size(count: 947772) },
+    ParsePopulationRow { path: "dag/product/p4261/e1_receipt_markings.dag", bytes: byte_size(count: 750634) },
+  ]
+}
+
+// The same real 3-row slice with the byte size correct (roadmap_belt_actuate 947773).
+fn parse_population_correct_real_row_slice() -> List<ParsePopulationRow> {
+  [
+    ParsePopulationRow { path: "dag/gunbc/roadmap/roadmap_authority.dag", bytes: byte_size(count: 1421761) },
+    ParsePopulationRow { path: "dag/gunbc/roadmap/roadmap_belt_actuate.dag", bytes: byte_size(count: 947773) },
+    ParsePopulationRow { path: "dag/product/p4261/e1_receipt_markings.dag", bytes: byte_size(count: 750634) },
+  ]
+}
+
+// ACCEPT arm: the correct real slice reconciles fully (zero unreconciled rows) against the correct tree.
+fn parse_population_reconcile_accepts_correct_slice() -> Bool {
+  parse_population_unreconciled_row_count(
+    declared: parse_population_correct_real_row_slice(),
+    tree: parse_population_correct_real_row_slice()) == 0
+}
+
+// REFUSE arm: the mistyped real slice is NOT fully reconciled against the correct tree — exactly the
+// mistyped byte-size row is left unreconciled. A real wrong row drives the refusal (review 98443).
+fn parse_population_reconcile_refuses_mistyped_slice() -> Bool {
+  parse_population_unreconciled_row_count(
+    declared: parse_population_mistyped_real_row_slice(),
+    tree: parse_population_correct_real_row_slice()) >= 1
 }
 

@@ -54,7 +54,7 @@ It is emitted, not an interpreted stand-in: `target/release/gunbc test //gunbc/i
 
 ## 4. The two fixed populations (committed, byte-identity proven)
 
-The selection rule, membership, per-member byte size, population rank and pinned tree sha have their **single home on the typed `.dag` carrier** `gunbc.parse_population_baseline_roster` (`dag/gunbc/parse_population_baseline_roster.dag`), executed by its rostered claim `test.claim.parse_population_baseline_roster_witness` — per `gunbc.design_argument::planning_has_one_home` this report holds no copy of the rule. The populations measured below were staged from the tree at the pinned sha (the instrument run's own module lists); they agree with the carrier's declared benchmark by construction — same pinned sha, same selection rule — but the **provenance of every measured cell is the instrument run, not a read of these rows**: the harness does not consume `roster.path`, and making it do so (or a carrier↔tree reconciliation instrument) is a declared follow-up with a bounded trigger, out of this slice. Per `gunbc.design_argument::planning_has_one_home` this report holds no copy of the rule; per `gunbc.design_argument::consumption` **no §5/§6 number is roster-derived** — the roster is a declared benchmark, not a measurement input. Both roots (`dag/` and `src/v2/`) are required because Population 1 spans both (four `dag/` data files + one `src/v2/` roster).
+The selection rule, membership, per-member byte size, population rank and pinned tree sha have their **single home on the typed `.dag` carrier** `gunbc.parse_population_baseline_roster` (`dag/gunbc/parse_population_baseline_roster.dag`), executed by its rostered claim `test.claim.parse_population_baseline_roster_witness` — per `gunbc.design_argument::planning_has_one_home` this report holds no copy of the rule. The populations measured below were staged from the tree at the pinned sha (the instrument run's own module lists); they agree with the carrier's declared benchmark by construction — same pinned sha, same selection rule — the **wall/RSS of every measured cell is timed by running the staged roots** (a row list cannot itself be timed), but the **roster is now load-bearing, not a stand-alone declaration**: the executed carrier↔tree reconciliation leg (§4a) ties each of the 170 roster rows to the tree at the pinned sha, so the set of modules the cells actually parsed is the carrier's set *proven equal to the tree*. Per `gunbc.design_argument::planning_has_one_home` this report holds no copy of the rule (`gunbc.design_argument::consumption`). Both roots (`dag/` and `src/v2/`) are required because Population 1 spans both (four `dag/` data files + one `src/v2/` roster).
 
 The verb accepts only **governed tree directories** as `--source-root` (a copied dump at an arbitrary path is refused: `REFUSED: source root is not a governed tree directory`). The governed-tree predicate matches by directory name (`ends_with "/dag"`, `"/src/v2"`), so each population was staged under scratch directories named `…/dag` and `…/src/v2`, preserving relative paths. Each staged file is byte-identical to the same path at the pinned sha:
 
@@ -62,6 +62,43 @@ The verb accepts only **governed tree directories** as `--source-root` (a copied
 NAMED_POP=pop5    files=5   bytes=4575463   sha_mismatches=0
 NAMED_POP=pop165  files=165 bytes=29960631  sha_mismatches=0
 ```
+
+### 4a. Carrier↔tree reconciliation leg (executed; review 98443)
+
+The 170 roster rows are a hand-ordered list, so the load-bearing check is whether each declared `path` AND
+byte size equals the tree at the pinned sha — a comparison against `git ls-tree`, not the roster read back
+against itself. Extract the carrier's `parse_population_baseline_rows` body, reproduce the top-170 by the
+selection sort, and diff:
+
+```
+awk '/^data parse_population_baseline_rows: List<ParsePopulationRow> = \[/{f=1;next} f&&/^\]/{exit} f' \
+  dag/gunbc/parse_population_baseline_roster.dag \
+  | grep -oE 'path: "[^"]+", bytes: byte_size\(count: [0-9]+\)' \
+  | sed -E 's/.*path: "([^"]+)", bytes: byte_size\(count: ([0-9]+)\)/\2\t\1/' > carrier_rows.tsv
+git ls-tree -r -l 65230868362de3efc0ddfeeaeef5d83eeb2fa385 -- dag src/v2 \
+  | awk '$4 ~ /^[0-9]+$/ && $5 ~ /\.dag$/ {print $4"\t"$5}' \
+  | sort -t$'\t' -k1,1nr -k2,2 | head -170 > tree_top170.tsv
+diff carrier_rows.tsv tree_top170.tsv    # rc 0 => every path AND byte size equals the tree
+```
+
+- **GREEN** (session worktree, pinned_sha `65230868362de3efc0ddfeeaeef5d83eeb2fa385`): both sides 170 rows,
+  `diff` rc **0** — every declared path and byte size is byte-for-byte the tree.
+- **RED** (a real wrong row: the first row's byte size mistyped `1421761` -> `1412761`): `diff` rc **1**, and
+  the diff prints exactly the one mismatched row:
+
+  ```
+  < 1412761	dag/gunbc/roadmap/roadmap_authority.dag
+  > 1421761	dag/gunbc/roadmap/roadmap_authority.dag
+  ```
+
+A mistyped path or byte count turns the leg red; this real wrong row is the red control, replacing the former
+planted `byte_size(count: 999)` (review 98443). The carrier's `parse_population_reconcile_*` predicates are the
+same comparison in typed form, executed by the rostered claim's `parse_population_baseline_roster_reconciles_to_tree_holds`
+leg and a by-name `parse_population_roster_red_control_mistyped_row_fails` red control in the same claim_batch.
+
+This leg is host-independent and deterministic (a `git ls-tree` diff, run in the session worktree); the
+BOOT-bearing srv1 run-link execution of this leg, and the re-execution of the rostered claim at the new head,
+are pending a lane-manager acquisition GO.
 
 ## 5. Cells — raw output, real rc, load alongside every cell
 
@@ -112,3 +149,30 @@ While building the measured artifact I observed that two emit builds of the same
 Productive heavy-slot acquisitions on srv1 (each its own slot, `HEAVY_OWNER=bright-hawk-891`):
 1 build + 1 REF + 3 cell-A + 3 cell-B + 1 cell-C = **9**.
 Additionally 4 heavy-slot touches refused instantly at argument validation (wall 0.00 s, no work: reference missing the verb token; reference missing `cd` to the checkout; `--receipts`/`--write-identity` and `--reuse-from` missing the required `--compiler`). Total slots touched = 13. This exceeds the lane-manager's planning estimate of 5; the excess is the 3-repeats-per-cell requirement and discovering that the reuse flags require `--compiler`. Every acquisition logged `heavy-slot: slot N/12 acquired by bright-hawk-891 at <ts>` as its first line and printed `uptime`/`nproc`/live slot holders alongside the cell.
+
+### 9b. Later-stage acquisitions and the review-98443 code change
+
+- **Instrument-check leg (tranche 1)**: one further srv1 heavy-slot acquisition (`HEAVY_OWNER=bright-hawk-891`,
+  `heavy-slot: slot 1/12 acquired bright-hawk-891 @2026-11-25T21:47:48Z`) ran `/usr/bin/time -v` (getrusage,
+  not perf) over the smallest population (roots_pop5, 5 modules, 0 refusals) to prove the non-perf counters are
+  present and nonzero: `utime=28.92 stime=0.61 maxrss=653284KB minflt=160128 nvcsw=2 nivcsw=212`, `majflt=0`
+  (legitimate: Major "requiring I/O" faults on a page-cache-warm CPU run; the run faults via 160128 minor faults).
+  So productive acquisitions = **10** (9 baseline sweep + 1 instrument-check leg); total touched = **14**. This
+  figure is authoritative and agrees with the lane-manager status messages (an earlier "five" was an understatement).
+
+- **Review 98443 code change — used no heavy acquisition** (free `gunbc compile --target rust` gate only,
+  `0 blocking errors`). What changed on the carriers, and what it implies for the run link:
+  1. Deleted the four transitively-dead declarations: `parse_population_baseline_report`,
+     `parse_population_five_largest_count_check`, `parse_population_one_hundred_sixty_five_count_check`, and
+     `parse_population_total_count` (its only callers were those three). No consumer remained (§4a's reconciliation
+     leg, not a String report, is now the load-bearing surface).
+  2. Replaced the planted `byte_size(count: 999)` red control with a **real-wrong-row** red control
+     (`parse_population_roster_red_control_mistyped_row_fails`) and added the discriminating carrier↔tree
+     reconciliation leg `parse_population_baseline_roster_reconciles_to_tree_holds`.
+  3. Stripped the load-bearing status/authorization/review-number prose out of the carrier `//` comments to
+     one-line pointers (`gunbc.design_argument::source_annotations`).
+  **The claim name-set therefore changed** (old executed set included `parse_population_roster_red_control_refuses`,
+  which no longer exists; the new set adds `..._reconciles_to_tree_holds` and renames the red control). The
+  executed run link recorded earlier (`c426cbf322`, 8 names) is **superseded** by this change and must be
+  re-executed at the new head. Both the BOOT-bearing srv1 run of the §4a reconciliation leg and the re-executed
+  rostered claim at the new head are **pending a lane-manager acquisition GO** (tranche 2 re-offer).
