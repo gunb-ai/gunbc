@@ -9,9 +9,20 @@ module test.claim.egress_optional_tail_discharge_witness
 // whose Absent arm produces HostCancellationUnobserved{host, cause}.
 // Per gunbc.design_argument::interface_realization_policy the refusal policy
 // belongs to the consumer; a refusing lookup would duplicate the key it was
-// handed. This witness is executed by this row's leg D claim_batch --entry run
-// (evidence posted to PR #17041); weakening the consumer's typed arm would make
-// that run fail, which is how the row detects a silent discharge.
+// handed.
+//
+// WHERE THIS WITNESS EXECUTES, stated rather than implied
+// (gunbc.design_argument::fail_closed). This module is outside
+// v2.workflow.required_floor required_gate_prefixes and
+// required_gate_authored_modules, so the floor DISCOVERS it and never plans
+// it there (DeclinedOutsideGateClosure); its neighbours under test.claim (the
+// fabric grant witnesses state their own position in the same pattern) sit in
+// the same position. The executions this evidence gets are (1) local runs and
+// this PR's changed-witness selection, and (2) this row's leg D claim_batch
+// --entry run, whose raw PASS lines are posted to PR #17041 as a run link —
+// a green claimed here without a posted run link is not done. Weakening the
+// consumer's typed arm makes both fail, which is how the row detects a silent
+// discharge.
 //
 // DISCRIMINATION: operator_host_srv9 (gunbc.fleet.fleet_host_identity::operator_host_srv9)
 // is deliberately absent from fleet_host_ssh_transport_rows (only srv1-4 listed),
@@ -38,8 +49,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // carrier-declared value of gunbc.fleet.fleet_host_identity::operator_host_srv9,
 // compared as String — not the same expression as the input constant) AND
 // cause == literal "no fleet_host_ssh_transport for this host" (the exact
-// NonEmptyStr literal the consumer's Absent arm declares at
-// gunbc/compile_permit_scope_observe.dag:237). Substituting the standing, the
+// NonEmptyStr literal the consumer's Absent arm declares in
+// #gunbc.compile_permit_scope_observe::observe_host_compile_cancellation_for_fleet_host). Substituting the standing, the
 // host, or the typed cause flips this arm to false; each side is reachable.
 test fn w_row19_absent_transport_yields_typed_refusal() -> Bool {
   match observe_host_compile_cancellation_for_fleet_host(host: operator_host_srv9) {
@@ -55,7 +66,8 @@ test fn w_row19_absent_transport_yields_typed_refusal() -> Bool {
 // pass the negative control undetected.
 // ASSERTION (both sides visible): produced ssh_host, flowed through
 // filter()+first()+Present-unwrap and srv3_host_identity_ssh_transport()
-// (host_identity_adopt.dag:47, which builds SshShell from operator_host_srv3
+// (#gunbc.host.host_identity_adopt::srv3_host_identity_ssh_transport,
+// which builds SshShell from operator_host_srv3
 // as NonEmptyStr), compared against the CARRIER-DECLARED LITERAL "srv3" — a
 // different expression than the fixture's source, so binding srv3's row to
 // another host's transport, or a lookup miss (Absent falls to `_ => false`),
