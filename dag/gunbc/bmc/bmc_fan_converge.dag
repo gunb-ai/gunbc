@@ -3,7 +3,7 @@ module gunbc.bmc.bmc_fan_converge
 import extdeps.board_authority { BoardAuthorityRef }
 import std.dissolution { DissolutionCondition, dissolution_description, unbound_dissolution }
 
-import std.algebra { Cons, Empty, trim }
+import std.algebra { Cons, Empty, trim, FreeSemigroup }
 import extdeps.firmware.types { firmware_semantic_version_text }
 
 import extdeps.bmc.capability {
@@ -254,29 +254,52 @@ fn bmc_fan_cooling_refusal_reason(verdict: CoolingCatalogVerdict) -> String {
   )
 }
 
+// tach_sensors is carried by std.algebra::FreeSemigroup — the canonical
+// nonempty sequence (no empty inhabitant), so the empty-roster state is
+// unwritable at this boundary rather than checked for at read time
+// (gunbc.design_argument::fail_closed: making a wrong state unwritable beats
+// catching it). The single refusal lives where the roster is built: an empty
+// projection.required_tach_inputs is refused once, with a typed cause, by
+// bmc_fan_typed_observation_plan below.
 type BmcFanTypedObservationPlan {
   config_path: NonEmptyStr
   controller_service: NonEmptyStr
   controller_zone_path: NonEmptyStr
-  tach_sensors: List<NonEmptyStr>
+  tach_sensors: FreeSemigroup<NonEmptyStr>
   temperature_sensors: List<NonEmptyStr>
   controller_machine: NonEmptyStr
 }
 
+type BmcFanTypedObservationPlanBuild
+  = BmcFanTypedObservationPlanBuilt { plan: BmcFanTypedObservationPlan }
+  | BmcFanTypedObservationPlanRefused { reason: NonEmptyStr }
+
 fn bmc_fan_typed_observation_plan(
   projection: BmcFanPolicyProjectionCapability,
   intent: BmcControlPlaneIntent,
-) -> BmcFanTypedObservationPlan {
-  BmcFanTypedObservationPlan {
-    config_path: projection.config_path,
-    controller_service: projection.controller_service,
-    controller_zone_path: projection.controller_zone_path,
-    tach_sensors: projection.required_tach_inputs,
-    temperature_sensors: append(
-      ["TEMP_SOC"],
-      items: intent.fan_policy.thermal_guard.required_component_sensors,
-    ),
-    controller_machine: projection.controller_machine,
+) -> BmcFanTypedObservationPlanBuild {
+  match projection.required_tach_inputs.first() {
+    Absent =>
+      BmcFanTypedObservationPlanRefused {
+        reason: "BMC fan convergence refused: projection required_tach_inputs is empty; a typed observation plan needs a nonempty tach roster",
+      }
+    Present { value: first_tach } =>
+      BmcFanTypedObservationPlanBuilt {
+        plan: BmcFanTypedObservationPlan {
+          config_path: projection.config_path,
+          controller_service: projection.controller_service,
+          controller_zone_path: projection.controller_zone_path,
+          tach_sensors: FreeSemigroup {
+            head: first_tach,
+            tail: projection.required_tach_inputs.skip(n: 1),
+          },
+          temperature_sensors: append(
+            ["TEMP_SOC"],
+            items: intent.fan_policy.thermal_guard.required_component_sensors,
+          ),
+          controller_machine: projection.controller_machine,
+        },
+      }
   }
 }
 
@@ -834,47 +857,42 @@ type BmcFanTachHealthListResult
 
 fn bmc_fan_observe_tach_health_rec(
   session: PasswordSshSession,
-  sensors: List<NonEmptyStr>,
+  sensors: FreeSemigroup<NonEmptyStr>,
   built: List<OpenBmcTachHealth>,
 ) -> BmcFanTachHealthListResult {
-  match sensors.first() {
-    Absent => BmcFanTachHealthListObserved { values: built }
-    Present { value: sensor } =>
-    match openbmc_tach_health(session: session, sensor: sensor) {
-      OpenBmcTachHealthRefused { reason } =>
-        BmcFanTachHealthListRefused { reason: reason }
-      OpenBmcTachHealthObserved { health } =>
-        bmc_fan_observe_tach_health_rec(
-          session: session,
-          sensors: sensors.skip(n: 1),
-          built: append(built, items: [health]),
-        )
-    }
+  match openbmc_tach_health(session: session, sensor: sensors.head) {
+    OpenBmcTachHealthRefused { reason } =>
+      BmcFanTachHealthListRefused { reason: reason }
+    OpenBmcTachHealthObserved { health } =>
+      match sensors.tail {
+        Empty =>
+          BmcFanTachHealthListObserved { values: append(built, items: [health]) }
+        Cons { head: next, tail: rest } =>
+          bmc_fan_observe_tach_health_rec(
+            session: session,
+            sensors: FreeSemigroup { head: next, tail: rest },
+            built: append(built, items: [health]),
+          )
+      }
   }
 }
 
-// Runtime guard, not a carrier: `sensors` is List<NonEmptyStr>, so an EMPTY
-// roster is still constructible at this boundary; the length check below is a
-// runtime refusal at the entry point (rung: runtime check, per
-// gunbc.design_argument::guarantee_ladder rung honesty), and the caller in
-// bmc_fan_observe_typed_parts lifts BmcFanTachHealthListRefused to
-// BmcFanObservedPartsRefused. The recursive fold
-// bmc_fan_observe_tach_health_rec consumes the roster by matching on
-// sensors.first() (Absent ends the fold; Present binds the head), so no
-// placeholder element is fabricated at any position.
+// The roster arrives as std.algebra::FreeSemigroup (std.algebra): a sequence
+// with no empty inhabitant, so this boundary has no empty case to guard — the
+// guarantee is at the carrier, not a validation check (the
+// gunbc.design_argument::guarantee_ladder ceiling for this domain). The only
+// refusal this fold can produce is a per-sensor observation refusal from
+// openbmc_tach_health, lifted by bmc_fan_observe_typed_parts to
+// BmcFanObservedPartsRefused.
 fn bmc_fan_observe_tach_health(
   session: PasswordSshSession,
-  sensors: List<NonEmptyStr>,
+  sensors: FreeSemigroup<NonEmptyStr>,
 ) -> BmcFanTachHealthListResult {
-  if sensors.length() == 0 {
-    BmcFanTachHealthListRefused { reason: "no tach sensors in observation plan" }
-  } else {
-    bmc_fan_observe_tach_health_rec(
-      session: session,
-      sensors: sensors,
-      built: [],
-    )
-  }
+  bmc_fan_observe_tach_health_rec(
+    session: session,
+    sensors: sensors,
+    built: [],
+  )
 }
 
 fn bmc_fan_observe_typed_parts(
@@ -1551,12 +1569,16 @@ fn bmc_fan_observe_with_credential(
                         ),
                       }
                     } else {
+                      match bmc_fan_typed_observation_plan(
+                        projection: projection,
+                        intent: fleet_bmc_valid_state,
+                      ) {
+                        BmcFanTypedObservationPlanRefused { reason: reason } =>
+                          BmcFanLiveObservationRefused { reason: reason as String }
+                        BmcFanTypedObservationPlanBuilt { plan: plan } =>
                       match bmc_fan_observe_typed_parts(
                         session: session,
-                        plan: bmc_fan_typed_observation_plan(
-                          projection: projection,
-                          intent: fleet_bmc_valid_state,
-                        ),
+                        plan: plan,
                       ) {
                         BmcFanObservedPartsRefused { reason: reason } =>
                           BmcFanLiveObservationRefused { reason: reason }
