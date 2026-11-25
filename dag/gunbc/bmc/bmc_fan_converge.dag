@@ -856,10 +856,12 @@ fn bmc_fan_observe_tach_health_rec(
 // Runtime guard, not a carrier: `sensors` is List<NonEmptyStr>, so an EMPTY
 // roster is still constructible at this boundary; the length check below is a
 // runtime refusal at the entry point (rung: runtime check, per
-// gunbc.design_argument::guarantee_ladder rung honesty), and the caller near
-// the observe-typed-parts fold lifts BmcFanTachHealthListRefused to
-// BmcFanObservedPartsRefused. The per-sensor fold consumes the roster through
-// Empty/Cons matching, so no placeholder element is fabricated.
+// gunbc.design_argument::guarantee_ladder rung honesty), and the caller in
+// bmc_fan_observe_typed_parts lifts BmcFanTachHealthListRefused to
+// BmcFanObservedPartsRefused. The recursive fold
+// bmc_fan_observe_tach_health_rec consumes the roster by matching on
+// sensors.first() (Absent ends the fold; Present binds the head), so no
+// placeholder element is fabricated at any position.
 fn bmc_fan_observe_tach_health(
   session: PasswordSshSession,
   sensors: List<NonEmptyStr>,
