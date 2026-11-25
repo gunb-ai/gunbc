@@ -6,6 +6,7 @@ import std.algebra { length, string_contains }
 import std.optional { Absent, Present }
 import std.measure { ByteSize, byte_size, byte_size_count, token_count, gibibyte, gibibyte_count, gibibyte_to_byte_size, gibibyte_ceiling }
 import gunbc.serving.srv1_serving_replica_layout {
+  srv1_l1_staging_contract_identity,
   srv1_replica_0, srv1_replica_1, srv1_serving_replica_roster,
   srv1_replica_host_budget, srv1_replica_total_host_claim,
   srv1_admitted_launch_config, Srv1LaunchConfig, Srv1LaunchAdmission,
@@ -26,6 +27,7 @@ import gunbc.serving.srv1_serving_replica_layout {
 }
 import extdeps.container.nvidia_container_toolkit { nvidia_cdi_device_selector_of, nvidia_cdi_device_name_prefix }
 import gunbc.serving.serving_host_memory { srv1_lmcache_l1_configured, srv1_lmcache_l2_configured }
+import gunbc.serving.lil_serving_defects { srv1_f24_b12x_tp2_hang_defect }
 import gunbc.rung_drop.srv1_serving_boot_installer_is_adopted_not_staged { srv1_serving_boot_installer_is_adopted_not_staged }
 import gunbc.rung_drop { Standing, TypedDeclaration, AuthoredProse, Retired, Superseded, Dissolved }
 import gunbc.guarantee_rung { Mitigatable, MechanicallyPreventable }
@@ -102,11 +104,22 @@ test fn tp2_without_p2p_is_refused_by_f24() -> Bool {
 
 // (a') TP=2 WITH P2P is not refused by F24 (the defect is specifically about no-P2P; with P2P, TP=2
 // works). Discriminates on host_gpu_p2p: the only difference from the refusal test is p2p=true.
+// THE SHAPE F24 REFUSES, WITH THE P2P SWITCH ON, IS NO LONGER REFUSED BY F24. It is now refused by a different
+// term with a different identity, and that is the truer answer rather than a regression: binding the
+// conversation-snapshot price to the shape it was read under (FP8 K/V at tensor-parallel width 1 --
+// gunbc.serving.srv1_serving_replica_layout::srv1_vllm_disk_snapshot_cost_measured_under) means a TP=2 launch has
+// no applicable price anywhere in this tree, and a staging buffer cannot be sized from a measurement of a
+// different pool. So: the hang defect does NOT refuse (the assertion this control has always made), the refusal
+// that does arrive is the staging contract's, and its term says the price is unpriced rather than the tier too
+// small. Read a TP=2 pool figure and this arm goes back to admitting on its own.
 test fn tp2_with_p2p_passes_f24_check() -> Bool {
   let request = witness_cfg(tp: 2, kv: Fp8E4m3, reps: 1, p2p: true)
   match srv1_launch_admission(config: request) {
     Srv1LaunchAdmitted { layout: _ } => true
-    Srv1LaunchRefused { cause: _, defect_identity: _ } => false
+    Srv1LaunchRefused { cause: c, defect_identity: id } =>
+      id != srv1_f24_b12x_tp2_hang_defect.identity
+        && id == srv1_l1_staging_contract_identity
+        && string_contains(s: c, pattern: "l1-staging-price-unpriced")
   }
 }
 
@@ -327,7 +340,8 @@ test fn the_launcher_receipt_agrees_with_the_typed_rows() -> Bool {
 }
 
 // THE RESTORE PATH IS NOT THE CONTRACT SHAPE (class B4). The rollback target still stages L1 at 12 GiB while
-// the rendered, admitted shape puts the tier at 48 GiB and the contract floor at 20 GiB — so rolling back
+// the rendered, admitted shape puts the tier at 48 GiB against a contract requirement of 39.25 GiB (40 GiB at
+// the ceiling) — so rolling back
 // srv1_lil_serve_gpu.sh would reinstall the configuration this class exists to make unrenderable. That hazard
 // is recorded, not smoothed over: if the two ever become equal this goes red and says which way to look.
 test fn the_restore_path_carries_the_pre_contract_tier_and_says_so() -> Bool {
@@ -337,7 +351,7 @@ test fn the_restore_path_carries_the_pre_contract_tier_and_says_so() -> Bool {
   // ByteSize has no declared ordering; the comparison is on the counts, on both sides.
   let floor_bytes = match srv1_l1_staging_floor(
     contract: srv1_kv_staging_contract,
-    context: token_count(count: srv1_admitted_launch_config.max_model_len)
+    config: srv1_admitted_launch_config
   ) { Accepted { value: v, diagnostics: _ } => byte_size_count(b: v), Rejected { diagnostics: _ } => 0 }
   let tier_bytes = byte_size_count(b: srv1_lmcache_l1_configured)
   restore_l1_is_the_2026_11_08_shape

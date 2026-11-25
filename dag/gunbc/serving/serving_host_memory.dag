@@ -371,7 +371,9 @@ data srv1_vllm_disk_snapshot_cost: ConversationSnapshotCost = ConversationSnapsh
 // at its eviction watermark of 0.80 ("L2 usage 0.80 above watermark 0.80; triggering eviction" in serve.log). The
 // bytes that stay warm are the configured size at the watermark, derived from the two readings. It evicts; it does
 // not refuse once full.
-data srv1_lmcache_l2_configured: ByteSize = gibibyte_to_byte_size(g: gibibyte(count: 125))
+data srv1_lmcache_l2_configured_gib: Nat = 125
+
+data srv1_lmcache_l2_configured: ByteSize = gibibyte_to_byte_size(g: gibibyte(count: srv1_lmcache_l2_configured_gib))
 
 data srv1_lmcache_l2_eviction_watermark: Permille = permille(count: 800)
 
@@ -395,7 +397,35 @@ data srv1_lmcache_l2_eviction_watermark: Permille = permille(count: 800)
 // gunbc.recurring_failure_mode::a_serving_tier_sized_as_a_cache_while_the_store_policy_makes_it_the_only_path_to_disk.
 // LMCache's GB is GiB, as the L2 row's rejection reading established. NOT the 2026-10-30 engine-memory figure
 // below (L1_GB=100): that predates the 2026-11-08 move to two replicas.
-data srv1_lmcache_l1_configured: ByteSize = gibibyte_to_byte_size(g: gibibyte(count: 48))
+// THE SAME TIER IN THE UNIT THE ENGINE'S KNOB TAKES IT, which is where the authority has to sit: LMCACHE_L1_GB
+// is a whole number of gibibytes, so a row holding bytes and a second row dividing them back to GB is a second
+// home for the number plus a division that can round. This is the ONE place the figure is written; the byte
+// form below is DERIVED from it, and both launch paths read it — the provisioning launch's environment entry
+// (gunbc.serving.srv1_serving_launch::srv1_serving_launch, which is copied into every provisioned container by
+// gunbc.serving.serving_provision_derivation::srv1_serving_launch_for_port) and the boot launcher's
+// LMCACHE_L1_GB argument (gunbc.serving.srv1_serving_replica_layout::srv1_replica_engine_args_body). That is
+// the defect this row's existence removes: on 2026-11-24 the installed args files carried 48 while the
+// provisioning row still carried the 2026-11-08 figure of 12, so a container provisioned from the model rather
+// than installed by hand would have come up with a quarter of the tier its contract needs. The dated capture of
+// that older reading is KEPT, as a capture, in gunbc.serving.srv1_serving_launch_witness::observed_cmd_tail.
+data srv1_lmcache_l1_configured_gib: Nat = 48
+
+data srv1_lmcache_l1_configured: ByteSize = gibibyte_to_byte_size(g: gibibyte(count: srv1_lmcache_l1_configured_gib))
+
+// The tier as its OWN KNOB spells it. The authority above is already a whole number of gibibytes, so this is a
+// read of that row and not a conversion — which is the point: neither launch path has to divide bytes back into
+// GB, and a division is exactly where a second copy of the figure used to live. The boot launcher's args file
+// (gunbc.serving.srv1_serving_replica_layout::srv1_lmcache_engine_env) and this module's provisioning environment
+// entry (gunbc.serving.srv1_serving_launch::srv1_serving_launch) both take the tier from here, and
+// gunbc.serving.srv1_replica_rendered_boot_path_witness reads the operand out of BOTH and refuses if they differ.
+fn srv1_lmcache_l1_gb_value() -> NonEmptyStr {
+  to_string(srv1_lmcache_l1_configured_gib) as NonEmptyStr
+}
+
+// The disk tier's knob, spelled the same way for the same reason.
+fn srv1_lmcache_l2_gb_value() -> NonEmptyStr {
+  to_string(srv1_lmcache_l2_configured_gib) as NonEmptyStr
+}
 
 // THE CONTAINER'S HARD RAM CEILING, PER REPLICA — the same collapse applied to the number beside the tier.
 // `docker run --memory=` (with --memory-swap equal, so it is an absolute stop and not a soft cap) was written

@@ -1241,6 +1241,53 @@ data srv1_kv_staging_contract: Srv1KvStagingContract = Srv1KvStagingContract {
   population_source: srv1_kv_tier_population_source,
 }
 
+// THE SHAPE THE DISK-SNAPSHOT PRICE WAS READ UNDER. A price and a shape are one fact or neither: the bytes in
+// gunbc.serving.serving_host_memory::srv1_vllm_disk_snapshot_cost were read off an FP8 K/V pool on ONE card, and
+// spent on a launch that runs bf16 KV, or on two cards, they would price a margin nobody measured. The review
+// that found this changed exactly ONE field — kv_cache_dtype to Bf16 — and watched admission keep pricing at
+// 20,625 bytes per token from the FP8 reading while the renderer emitted `--kv-cache-dtype bf16`. No multiplier
+// is guessed for a shape no one observed (gunbc.design_argument::fail_closed: "no plausible output is
+// fabricated"): a launch either matches the shape the price stands for, or the tier's requirement is unpriced
+// and the boot refuses rather than booting on an invented number. The price keeps its own standing as an
+// operator read, and its extrapolation past the 150,000-token observation stays where it was declared, in
+// ConversationSnapshotCost::observed_up_to (gunbc.design_argument::epistemic_humility).
+type Srv1SnapshotCostMeasuredUnder {
+  // The variant this engine starts with; Fp8E4m3 is the one that renders no --kv-cache-dtype flag because it is
+  // the engine's default, which is exactly why the shape is named by the variant and not by a flag spelling.
+  kv_cache_dtype: Srv1KvCacheDtype
+  // The width the pool was read at. A TP=2 pool does not hold the same bytes per token as a TP=1 pool: the
+  // cache is split across the cards, so the figure is width-specific and not merely host-specific.
+  tensor_parallel_size: Nat
+  provenance: NonEmptyStr
+}
+
+data srv1_vllm_disk_snapshot_cost_measured_under: Srv1SnapshotCostMeasuredUnder = Srv1SnapshotCostMeasuredUnder {
+  kv_cache_dtype: Fp8E4m3,
+  tensor_parallel_size: 1,
+  provenance: "the same operator read as the price it binds — srv1_vllm_disk_snapshot_cost's own provenance: 'srv1 TP=1 KV pool 744,477 tokens in 14.3 GiB (operator relay, 2026-11-08)', which names both the width and that the pool is the FP8 K/V one. It is also what srv1_admitted_launch_config says: kv_cache_dtype Fp8E4m3, tensor_parallel_size 1 (gunbc.serving.srv1_serving_replica_layout::srv1_admitted_launch_config)" as NonEmptyStr,
+}
+
+// A variant tag, not a string comparison: two different dtypes must never compare equal, and a sum carries no
+// spelling to compare — the flag text exists only at the render boundary, and comparing there would let the
+// render's encoding decide a safety question.
+fn srv1_kv_dtype_tag(dtype: Srv1KvCacheDtype) -> Nat {
+  match dtype {
+    Fp8E4m3 => 0
+    Fp8 => 1
+    Bf16 => 2
+    Auto => 3
+    NvFp4 => 4
+  }
+}
+
+// Whether the single snapshot price in the tree is a price for THIS launch. Absence of a matching price is
+// handled by the caller as an unpriced term, never as a cheaper tier.
+fn srv1_snapshot_cost_applies_to(config: Srv1LaunchConfig) -> Bool {
+  let priced = srv1_vllm_disk_snapshot_cost_measured_under
+  srv1_kv_dtype_tag(dtype: priced.kv_cache_dtype) == srv1_kv_dtype_tag(dtype: config.kv_cache_dtype)
+    && priced.tensor_parallel_size == config.tensor_parallel_size
+}
+
 // The population the ONE rendered config must satisfy: srv1's replicas share one measured coordinate, and the
 // launcher renders a single config for both, so the larger admitted population governs. Absent when either
 // replica's population is unread — a contract with an unknown population is not evaluable, and the honest
@@ -1269,23 +1316,52 @@ fn srv1_kv_tier_population() -> Nat? {
 // creation — L1 is then only a cache, and sizing it is an efficiency question, not a correctness one. That is
 // the whole point of modelling the policy: the SAME tier figure is a violation under one policy and ordinary
 // under the other, so the refusal is driven by the fact and not by a remembered incident.
-fn srv1_l1_staging_floor(contract: Srv1KvStagingContract, context: TokenCount) -> Outcome<ByteSize> {
+// The two causes the staging term can refuse for, as named rows: the floor puts one in its diagnostic and the
+// boot gate quotes the SAME row in its verdict, so the refusal cannot be worded one way by the producer and
+// another way by the consumer (a string that lives twice drifts, and this one is quoted in boot logs).
+data srv1_l1_cause_price_unpriced: NonEmptyStr = "the only conversation-snapshot price in the tree was read under a different launch shape than this one — srv1_vllm_disk_snapshot_cost_measured_under binds it to the engine's default FP8 K/V at tensor-parallel width 1, and this config's kv_cache_dtype or width differs — so the cost of a checkpoint in flight is UNPRICED here, and an unpriced term is not entitled to the smaller assumption (no dtype multiplier is guessed)" as NonEmptyStr
+
+data srv1_l1_cause_population_unread: NonEmptyStr = "the concurrent-turn population is unread on this replica's profile row (gunbc.serving.serving_replica_profile::replica_concurrent_turns answers Absent), so the tier cannot be shown to stage every checkpoint that may be in flight" as NonEmptyStr
+
+fn srv1_l1_staging_floor(contract: Srv1KvStagingContract, config: Srv1LaunchConfig) -> Outcome<ByteSize> {
   if !srv1_store_reaches_disk_only_by_eviction(policy: contract.store_policy) {
     outcome_accepted(value: byte_size(count: 0))
+  } else if !srv1_snapshot_cost_applies_to(config: config) {
+    // The price does not stand for this launch. That is a missing reading, not a licence to spend the one that
+    // is there: the alternative to refusing is to multiply an FP8 TP=1 figure by a guessed factor and boot a
+    // replica whose staging buffer was sized by arithmetic no measurement supports.
+    outcome_rejected(
+      d: srv1_kv_tier_refusal(term: "l1-staging-price-unpriced" as NonEmptyStr, cause: srv1_l1_cause_price_unpriced)
+    )
   } else {
     match contract.in_flight {
       Absent => outcome_rejected(
-        d: srv1_kv_tier_refusal(
-          term: "l1-staging-floor" as NonEmptyStr,
-          cause: "the concurrent-turn population is unread on this replica's profile row (gunbc.serving.serving_replica_profile::replica_concurrent_turns answers Absent), so the tier cannot be shown to stage every checkpoint that may be in flight" as NonEmptyStr
-        )
+        d: srv1_kv_tier_refusal(term: "l1-staging-floor" as NonEmptyStr, cause: srv1_l1_cause_population_unread)
       )
       Present { value: n } => outcome_accepted(
         // n + n, not n * 2 spelled as a literal: both directions of the only path, in the naturals.
-        value: byte_size(count: byte_size_count(b: conversation_snapshot_bytes(cost: contract.snapshot, context: context)) * (n + n))
+        value: byte_size(count: byte_size_count(b: conversation_snapshot_bytes(cost: contract.snapshot, context: token_count(count: config.max_model_len))) * (n + n))
       )
     }
   }
+}
+
+// THE ONE NUMBER BOTH ANSWERS ASK ABOUT: the staged population, plus whatever headroom has actually been priced.
+// The boot gate and the safety reading call THIS and never the floor on its own — the day a store-window
+// bandwidth is read, a gate testing the floor while a report quotes the total is two answers to one question
+// again, which is the defect review 98546 found one rung earlier (it caught the same split across the direction
+// pair). Headroom is a PARAMETER as well as a row so that a control can price it and watch both consumers move
+// together; the two production callers pass srv1_l2_store_window_headroom itself.
+fn srv1_l1_staging_requirement(config: Srv1LaunchConfig, headroom: ByteSize?) -> Outcome<ByteSize> {
+  bind_outcome(
+    o: srv1_l1_staging_floor(contract: srv1_kv_staging_contract, config: config),
+    f: floor => match headroom {
+      Absent => outcome_accepted(value: floor)
+      Present { value: h } => outcome_accepted(
+        value: byte_size(count: byte_size_count(b: floor) + byte_size_count(b: h))
+      )
+    }
+  )
 }
 
 // ── DISCHARGE, AS DISTINCT FROM NON-VIOLATION ────────────────────────────────────────────────────────
@@ -1311,7 +1387,9 @@ data srv1_l2_store_window_headroom: ByteSize? = Absent
 
 // The two unpriced terms, as named declarations rather than prose: a control asserts the gap BY BINDING THESE,
 // so renaming a term is a compile error at the control instead of a string that quietly stops matching.
-data srv1_l1_missing_admitted_population: NonEmptyStr = "the in-flight population is the AVERAGE of a measured run (8 sessions / share width 2 = 4), not a per-replica population anyone admits; srv1 has no row admitting a per-replica concurrency, and a fleet whose longest wait for a slot was 15-20 minutes is a fleet that queues, which is to say a fleet that arrives in bursts above its own average. A floor at the average is a floor the next burst walks through." as NonEmptyStr
+data srv1_l1_missing_admitted_population: NonEmptyStr = "what bounds the population is the ROUTED-TURN cap, not the checkpoint population. srv1 DOES admit a per-replica concurrency: gunbc.serving.router_dev_policy emits an OwnedCap of 4 turns per replica and begin_turn is the one place a turn is reserved (its own comment: 'begin_turn is the ONE place a turn is reserved, and the only place ngx.ctx.counted is set'), so 8 sessions over a share width of 2 is not an unadmitted average. What no row relates is the OTHER half of the term: a checkpoint an eviction set down can still be owed its store after the turn that produced it has been released, so routed turns bound the DECODE population and not the bytes in flight, and the second in the pair this contract prices — the restore landing — is bounded by neither. Until a row states how long a store stays outstanding after its turn ends, the population the tier must stage is read from a measured run (8 / 2 = 4) and carried as MeasuredAverage: a floor at the average is a floor the next burst walks through, and the 2026-11-25 read (187 fresh-page deletes without a store on GPU1, 56 on GPU0, per 15 minutes) is that walk-through at 48 GiB." as NonEmptyStr
+
+data srv1_l1_missing_price_extrapolated: NonEmptyStr = "the staged population is priced by a straight line drawn from a read that stops at 150,000 tokens (ConversationSnapshotCost::observed_up_to) and spent at the admitted 229,376-token context: the per-token slope is the measured part and the fixed 512 MiB is the largest state bundle read at the OLD context, so a full-length conversation's bundle has never been measured. Carried as a term rather than corrected by a guess — the same humility rule that keeps the operator's figures as observations (gunbc.design_argument::epistemic_humility)." as NonEmptyStr
 
 data srv1_l1_missing_store_window_headroom: NonEmptyStr = "no row prices the bytes that arrive while a checkpoint is being written to the disk tier (srv1_l2_store_window_headroom is Absent, and the store path's real bandwidth is unread — the only receipt in the tree grants 48% / 43% of requested store bytes). Until it is read, the tier's requirement is its staged population PLUS an unknown, and 'unknown' is not a quantity that can be declared satisfied." as NonEmptyStr
 
@@ -1325,54 +1403,101 @@ type Srv1KvTierDischarge
       missing: List<NonEmptyStr>
     }
 
-// The requirement this reading tests against is srv1_l1_staging_floor's, read and not recomputed — the
-// direction-pair argument lives there, beside the multiplication, so that the boot gate cannot enforce a
-// smaller number than the contract claims to need (review 98546).
 // Which terms are still unpriced, as a list a control can assert against by BINDING the named rows below.
 // Empty only when every term is priced, which is the day this contract can say it is kept.
-fn srv1_l1_missing_terms(population_admitted: Bool, headroom_priced: Bool) -> List<NonEmptyStr> {
-  if population_admitted {
-    if headroom_priced {
-      [] as List<NonEmptyStr>
-    } else {
-      [ srv1_l1_missing_store_window_headroom ]
-    }
+fn srv1_l1_missing_terms(
+  // ALL THREE PARAMETERS ARE THE GOOD CONDITION — a true one retires its term and a false one raises it. The
+  // third reads backwards at first glance and was a real defect once (the gap list came out two items long and a
+  // control that counted three went red): the price is good while the context it was read under reaches, so the
+  // parameter is named for the absence of the gap rather than the gap.
+  population_admitted: Bool,
+  headroom_priced: Bool,
+  price_reaches_the_admitted_context: Bool
+) -> List<NonEmptyStr> {
+  let unpriced_population = if population_admitted {
+    [] as List<NonEmptyStr>
   } else {
-    if headroom_priced {
-      [ srv1_l1_missing_admitted_population ]
-    } else {
-      [ srv1_l1_missing_admitted_population, srv1_l1_missing_store_window_headroom ]
-    }
+    [ srv1_l1_missing_admitted_population ]
   }
+  let unpriced_window = if headroom_priced {
+    [] as List<NonEmptyStr>
+  } else {
+    [ srv1_l1_missing_store_window_headroom ]
+  }
+  let unpriced_shape = if price_reaches_the_admitted_context {
+    [] as List<NonEmptyStr>
+  } else {
+    [ srv1_l1_missing_price_extrapolated ]
+  }
+  concat(concat(unpriced_population, unpriced_window), unpriced_shape)
+}
+
+// A shortfall is a TERM, not the mere absence of a discharge. Review 98546 found this reading quoting 39.25 GiB
+// as the requirement with an EMPTY missing list while a priced 8 GiB headroom put the requirement at 47.25 and
+// the held tier at 40: the shortfall had been computed (the comparison did add the headroom) and then thrown
+// away, because the number reported was the floor alone. The reading now quotes the priced total, and being
+// short of it is named with both numbers.
+fn srv1_l1_holds_short_of_term(holds: ByteSize, required: ByteSize) -> NonEmptyStr {
+  // hoisted rather than nested: the term is a sentence, and its two numbers should be readable in the code too
+  let short_by = byte_size_count(b: required) - byte_size_count(b: holds)
+  let short_gib = to_string(gibibyte_count(g: gibibyte_ceiling(b: byte_size(count: short_by))))
+  concat(
+    "the tier holds ",
+    concat(
+      srv1_gib_text(size: holds),
+      concat(
+        " against a priced requirement of ",
+        concat(srv1_gib_text(size: required), concat(" — short by ", concat(short_gib, " GiB")))
+      )
+    )
+  ) as NonEmptyStr
 }
 
 fn srv1_l1_staging_discharge(config: Srv1LaunchConfig) -> Outcome<Srv1KvTierDischarge> {
+  srv1_l1_staging_discharge_with(config: config, headroom: srv1_l2_store_window_headroom)
+}
+
+// The headroom is a PARAMETER here so a control can price one and watch this reading and the boot gate move to
+// the same number; production reads the row, through the wrapper above (review 98546 asked for exactly the
+// Present(headroom) control this makes authorable).
+fn srv1_l1_staging_discharge_with(config: Srv1LaunchConfig, headroom: ByteSize?) -> Outcome<Srv1KvTierDischarge> {
   let contract = srv1_kv_staging_contract
   bind_outcome(
-    o: srv1_l1_staging_floor(contract: contract, context: token_count(count: config.max_model_len)),
-    f: floor => {
-      // Not floor * 2: the factor of two is IN srv1_l1_staging_floor, so the gate and this reading cannot
-      // drift apart again (review 98546). One requirement, read by both.
-      let requires = floor
-      let holds = byte_size_count(b: config.lmcache_l1)
-      let headroom_priced = match srv1_l2_store_window_headroom {
+    o: srv1_l1_staging_requirement(config: config, headroom: headroom),
+    f: requires => {
+      let holds = config.lmcache_l1
+      let headroom_priced = match headroom {
         Absent => false
         Present { value: _ } => true
       }
-      let headroom = match srv1_l2_store_window_headroom {
-        Absent => 0
-        Present { value: h } => byte_size_count(b: h)
-      }
       let admitted = srv1_kv_tier_population_is_admitted(source: contract.population_source)
-      let need = byte_size_count(b: requires) + headroom
-      if holds >= need && admitted && headroom_priced {
-        outcome_accepted(value: ContractDischarged { holds: config.lmcache_l1, requires: requires })
+      // The price's own boundary: ConversationSnapshotCost::observed_up_to is where the read stops and the
+      // straight line continues. Beyond it the staged population is an extrapolation, which is a degradation
+      // to be read rather than a reason to refuse a boot — but a degradation no consumer may read as satisfied.
+      let extrapolated = token_count_value(t: token_count(count: config.max_model_len))
+        > token_count_value(t: contract.snapshot.observed_up_to)
+      if byte_size_count(b: holds) >= byte_size_count(b: requires) && admitted && headroom_priced {
+        outcome_accepted(value: ContractDischarged { holds: holds, requires: requires })
       } else {
+        let short_of = if byte_size_count(b: holds) < byte_size_count(b: requires) {
+          [ srv1_l1_holds_short_of_term(holds: holds, required: requires) ]
+        } else {
+          [] as List<NonEmptyStr>
+        }
         outcome_accepted(
           value: ContractUndischarged {
-            holds: config.lmcache_l1,
+            holds: holds,
+            // The PRICED total — floor plus every headroom that has been priced — and not the floor on its own.
+            // One requirement, read by the gate and by this reading alike (srv1_l1_staging_requirement).
             requires_at_least: requires,
-            missing: srv1_l1_missing_terms(population_admitted: admitted, headroom_priced: headroom_priced),
+            missing: concat(
+              srv1_l1_missing_terms(
+                population_admitted: admitted,
+                headroom_priced: headroom_priced,
+                price_reaches_the_admitted_context: !extrapolated
+              ),
+              short_of
+            ),
           }
         )
       }
@@ -1385,14 +1510,18 @@ fn srv1_l1_staging_discharge(config: Srv1LaunchConfig) -> Outcome<Srv1KvTierDisc
 // gunbc.serving.serving_capacity_anchor — a prose reason that a consumer compares becomes a second home for
 // the fact).
 type Srv1KvTierTerm
-  = L1StagingFloor
+  = L1TierNotWholeGib
+  | L1StagingFloor
+  | L1StagingPriceUnpriced
   | L1CheckpointArena
   | L1CgroupCarriesTier
 
 // The refusal's site name, rendered from the term. One home for the wording; matching is on the constructor.
 fn srv1_kv_tier_term_name(term: Srv1KvTierTerm) -> NonEmptyStr {
   match term {
+    L1TierNotWholeGib => "l1-tier-not-whole-gib"
     L1StagingFloor => "l1-staging-floor"
+    L1StagingPriceUnpriced => "l1-staging-price-unpriced"
     L1CheckpointArena => "l1-checkpoint-arena"
     L1CgroupCarriesTier => "l1-cgroup-carries-tier"
   }
@@ -1402,55 +1531,106 @@ type Srv1KvTierVerdict
   = KvTiersAdmitted
   | KvTierRefused { term: Srv1KvTierTerm, cause: NonEmptyStr }
 
-// The three terms, in the order a reader would check them: can the tier stage what the policy puts in it; can
-// /dev/shm hold the tier at all (lil's own fit_l1_arena refuses an explicit L1 that does not fit — rendering a
-// launcher that boots a container doomed to die at engine init would move the refusal from the build to the
+// THE TERMS, in the order a reader would check them: can the tier be EXPRESSED by the engine's knob at all; can
+// it stage what the store policy puts in it, and is the price behind that number even a price for THIS launch;
+// can /dev/shm hold the tier at all (lil's own fit_l1_arena refuses an explicit L1 that does not fit — rendering
+// a launcher that boots a container doomed to die at engine init would move the refusal from the build to the
 // boot log); and can the cgroup charge the tier plus the process beside it.
+//
+// The requirement is srv1_l1_staging_requirement's — the same number the safety reading quotes, priced headroom
+// included — so the day a store-window bandwidth is read, boot and the report move together (review 98546).
 //
 // The host-total term is NOT a refusal here: what the pair costs the host against its usable RAM is a
 // host-admission fact (gunbc.host.host_memory_observation), checked as a control by
 // the_two_replicas_still_fit_srv1s_admitted_memory rather than by this render, which has no business deciding
 // the host's whole budget.
 fn srv1_kv_tier_verdict(config: Srv1LaunchConfig, shape: Srv1ContainerRunShape, budget: Srv1ReplicaHostBudget) -> Srv1KvTierVerdict {
+  srv1_kv_tier_verdict_with_headroom(
+    config: config,
+    shape: shape,
+    budget: budget,
+    headroom: srv1_l2_store_window_headroom
+  )
+}
+
+// The headroom is a PARAMETER beneath the row, for the same reason the discharge has one: a control must be able
+// to price a store window and watch the GATE and the safety reading move to the same number, and a row that only
+// ever reads Absent cannot be varied. Production reads the row, through the wrapper above — so today, with the
+// row Absent, what boot enforces is the staged population and nothing more, and the control
+// a_priced_store_window_raises_the_gate_and_the_reading_to_the_same_number says that out loud rather than
+// leaving it to be discovered when the row is finally filled.
+fn srv1_kv_tier_verdict_with_headroom(
+  config: Srv1LaunchConfig,
+  shape: Srv1ContainerRunShape,
+  budget: Srv1ReplicaHostBudget,
+  headroom: ByteSize?
+) -> Srv1KvTierVerdict {
   let l1 = byte_size_count(b: config.lmcache_l1)
-  match srv1_l1_staging_floor(contract: srv1_kv_staging_contract, context: token_count(count: config.max_model_len)) {
-    Accepted { value: floor } => {
-      let floor_bytes = byte_size_count(b: floor)
-      let need = srv1_gib_text(size: floor)
-      let have = srv1_gib_text(size: config.lmcache_l1)
-      let tokens = to_string(token_count_value(t: token_count(count: config.max_model_len)))
-      let arena = srv1_gib_text(size: shape.shm_size)
-      let ceiling = srv1_gib_text(size: budget.cgroup_memory_limit)
-      let process = srv1_gib_text(size: budget.anon)
-      let required = to_string(gibibyte_count(g: gibibyte_ceiling(b: byte_size(count: l1 + byte_size_count(b: budget.anon)))))
-      let why_arena = "the arena cannot be carved: lil's fit_l1_arena refuses an explicit L1 that does not fit, so the container would boot and die at checkpoint time"
-      if l1 < floor_bytes {
-        KvTierRefused {
-          term: L1StagingFloor,
-          cause: concat("the store policy puts every checkpoint through L1 on its way to disk, so every checkpoint in flight at once must be stageable at once: that needs ", concat(need, concat(" of L1 at ", concat(tokens, concat(" tokens per conversation, and L1 is ", have))))) as NonEmptyStr,
+  if !srv1_tier_is_whole_gib(value: config.lmcache_l1) {
+    KvTierRefused {
+      term: L1TierNotWholeGib,
+      cause: concat(
+        "LMCACHE_L1_GB takes a whole number of gibibytes and this tier is not one: ",
+        concat(to_string(l1), concat(" bytes is ", concat(srv1_gib_text(size: config.lmcache_l1), " only after rounding, so the installed bytes would name a different tier than the row that authorises it")))
+      ) as NonEmptyStr,
+    }
+  } else {
+    match srv1_l1_staging_requirement(config: config, headroom: headroom) {
+      Accepted { value: requirement } => {
+        let need_bytes = byte_size_count(b: requirement)
+        let need = srv1_gib_text(size: requirement)
+        let have = srv1_gib_text(size: config.lmcache_l1)
+        let tokens = to_string(token_count_value(t: token_count(count: config.max_model_len)))
+        let arena = srv1_gib_text(size: shape.shm_size)
+        let ceiling = srv1_gib_text(size: budget.cgroup_memory_limit)
+        let process = srv1_gib_text(size: budget.anon)
+        let required = to_string(gibibyte_count(g: gibibyte_ceiling(b: byte_size(count: l1 + byte_size_count(b: budget.anon)))))
+        let why_arena = "the arena cannot be carved: lil's fit_l1_arena refuses an explicit L1 that does not fit, so the container would boot and die at checkpoint time"
+        if l1 < need_bytes {
+          KvTierRefused {
+            term: L1StagingFloor,
+            cause: concat("the store policy puts every checkpoint through L1 on its way to disk, so every checkpoint in flight at once must be stageable at once: that needs ", concat(need, concat(" of L1 at ", concat(tokens, concat(" tokens per conversation, and L1 is ", have))))) as NonEmptyStr,
+          }
+        } else if byte_size_count(b: shape.shm_size) < l1 {
+          KvTierRefused {
+            term: L1CheckpointArena,
+            cause: concat(concat("/dev/shm ", arena), concat(" is smaller than the L1 tier ", concat(have, concat(": ", why_arena)))) as NonEmptyStr,
+          }
+        } else if byte_size_count(b: budget.cgroup_memory_limit) < l1 + byte_size_count(b: budget.anon) {
+          KvTierRefused {
+            term: L1CgroupCarriesTier,
+            cause: concat(concat("--memory ", ceiling), concat(" cannot charge the L1 shmem ", concat(have, concat(" plus the process ", concat(process, concat(" = ", concat(required, " GiB required"))))))) as NonEmptyStr,
+          }
+        } else {
+          KvTiersAdmitted
         }
-      } else if byte_size_count(b: shape.shm_size) < l1 {
-        KvTierRefused {
-          term: L1CheckpointArena,
-          cause: concat(concat("/dev/shm ", arena), concat(" is smaller than the L1 tier ", concat(have, concat(": ", why_arena)))) as NonEmptyStr,
-        }
-      } else if byte_size_count(b: budget.cgroup_memory_limit) < l1 + byte_size_count(b: budget.anon) {
-        KvTierRefused {
-          term: L1CgroupCarriesTier,
-          cause: concat(concat("--memory ", ceiling), concat(" cannot charge the L1 shmem ", concat(have, concat(" plus the process ", concat(process, concat(" = ", concat(required, " GiB required"))))))) as NonEmptyStr,
-        }
+      }
+      // The requirement could not be computed at all, which is a TERM refusing and not an absence of verdict:
+      // an uncomputed answer is never read as "big enough" (gunbc.design_argument::fail_closed). The two causes
+      // are attributed by testing the two facts — a refusal may not guess which one it is, and both wordings
+      // come from the same rows the floor put into its own diagnostic.
+      Rejected { diagnostics: _ } => if srv1_snapshot_cost_applies_to(config: config) {
+        KvTierRefused { term: L1StagingFloor, cause: srv1_l1_cause_population_unread }
       } else {
-        KvTiersAdmitted
+        KvTierRefused { term: L1StagingPriceUnpriced, cause: srv1_l1_cause_price_unpriced }
       }
     }
-    // The floor could not be computed: the population is unread. That is the tier-contract term refusing, not
-    // an absence of verdict — an unread population is exactly the case in which nobody may say the tier is
-    // big enough (gunbc.design_argument::fail_closed: an uncomputed answer is not a conservative one).
-    Rejected { diagnostics: _ } => KvTierRefused {
-      term: L1StagingFloor,
-      cause: "the in-flight population is unread on this replica's profile row (gunbc.serving.serving_replica_profile::replica_concurrent_turns answers Absent), so the tier cannot be shown to stage every checkpoint that may be in flight" as NonEmptyStr,
-    }
   }
+}
+
+// Whether a tier can be EXPRESSED by the engine's knob at all. LMCACHE_L1_GB takes a whole number of gibibytes
+// (and LMCache's GB is 2^30 exactly — the L2 row's rejection reading is the receipt: at L2_GB=150 it refused
+// stores past 161,061,273,600 bytes = 150 x 2^30). A tier that is not a whole number of them has no token that
+// names it: ceiling would install a bigger tier than the row authorises, flooring a smaller one than the gate
+// just admitted — either way the bytes stop describing the config, so the ladder refuses instead
+// (gunbc.design_argument::fail_closed). srv1's tier is whole BY CONSTRUCTION — the authority is
+// gunbc.serving.serving_host_memory::srv1_lmcache_l1_configured_gib and the ByteSize is derived from it — so
+// this term guards against a future edit rather than refusing anything today.
+fn srv1_tier_is_whole_gib(value: ByteSize) -> Bool {
+  let total = byte_size_count(b: value)
+  let width = byte_size_count(b: gibibyte_to_byte_size(g: gibibyte(count: 1)))
+  let whole = total / width
+  whole * width == total
 }
 
 // GiB at the boundary, from the ByteSize — the same rounding the env token uses, so a refusal quotes the tier
@@ -2090,7 +2270,9 @@ fn srv1_replica_docker_argv(replica: Srv1ServingReplicaSpec, config: Srv1LaunchC
 
 // THE INSTALLED LAUNCHER, rendered. These are the bytes of /usr/local/sbin/lil-replica-launch; the digest the
 // interpreter computes for them and the sha256sum the host read back are recorded side by side in
-// srv1_installed_boot_path_artifacts_2026_11_09, and
+// srv1_installed_boot_path_artifacts_2026_11_24 — the row dated with the window that installed these bytes;
+// srv1_installed_boot_path_artifacts_2026_11_09 above stays as the dated capture of what was installed then,
+// because the cold-start and crash witnesses cite it — and
 //   gunbc run --entry dag/gunbc/serving/srv1_serving_replica_layout.dag --function srv1_render_replica_launcher
 // prints them and nothing else, which is how the host file is produced -- no editor touches them.
 //
@@ -2120,7 +2302,7 @@ fn srv1_replica_docker_argv(replica: Srv1ServingReplicaSpec, config: Srv1LaunchC
 // a redirection operator or a quote.
 //
 // The bytes are the bytes installed at /usr/local/sbin/lil-replica-launch; the on-host
-// sha256 of that file is the row in srv1_installed_boot_path_artifacts_2026_11_09, and
+// sha256 of that file is the row in srv1_installed_boot_path_artifacts_2026_11_24, and
 // the_install_and_run_receipts_hold_their_own_claim (dag/test/claim/serving/
 // srv1_replica_rendered_boot_path_witness.dag) re-derives this render and compares
 // against it. That control, not a preference about formatting, is why the case arms
@@ -2791,6 +2973,45 @@ type Srv1InstalledArtifact {
 // say so rather than look unchanged. The helper's own bytes did not move in that window (its only content that
 // could is the roster's name table and the LAUNCH= line), so its digest is the 2026-11-09 one still.
 data srv1_installed_boot_path_artifacts_2026_11_09: List<Srv1InstalledArtifact> = [
+  Srv1InstalledArtifact {
+    host_path: "/usr/local/sbin/lil-replica-launch" as NonEmptyStr,
+    rendered_by: "srv1_render_replica_launcher" as NonEmptyStr,
+    bytes: byte_size(5771),
+    render_sha256: "c4ef731472a71c78d8e9ae24b306decd4c683934a8d76ff2e5d70020614925a9" as NonEmptyStr,
+    installed_sha256_computed_on_host: "c4ef731472a71c78d8e9ae24b306decd4c683934a8d76ff2e5d70020614925a9" as NonEmptyStr,
+  },
+  Srv1InstalledArtifact {
+    host_path: "/usr/local/etc/lil-replica/replica-0.args" as NonEmptyStr,
+    rendered_by: "srv1_render_replica_engine_args" as NonEmptyStr,
+    bytes: byte_size(453),
+    render_sha256: "972103406df3cede0104bd8847f5902b57095cfa54c4b7ec88be68633cc41fce" as NonEmptyStr,
+    installed_sha256_computed_on_host: "972103406df3cede0104bd8847f5902b57095cfa54c4b7ec88be68633cc41fce" as NonEmptyStr,
+  },
+  Srv1InstalledArtifact {
+    host_path: "/usr/local/etc/lil-replica/replica-1.args" as NonEmptyStr,
+    rendered_by: "srv1_render_replica_engine_args" as NonEmptyStr,
+    bytes: byte_size(453),
+    render_sha256: "972103406df3cede0104bd8847f5902b57095cfa54c4b7ec88be68633cc41fce" as NonEmptyStr,
+    installed_sha256_computed_on_host: "972103406df3cede0104bd8847f5902b57095cfa54c4b7ec88be68633cc41fce" as NonEmptyStr,
+  },
+  Srv1InstalledArtifact {
+    host_path: "/usr/local/sbin/lil-replica" as NonEmptyStr,
+    rendered_by: "srv1_render_replica_helper" as NonEmptyStr,
+    bytes: byte_size(1222),
+    render_sha256: "8ced9f2ab4bfc8a46fac7a93324b0ec24ec66043f9ceb1942a0bd7c42d2f484e" as NonEmptyStr,
+    installed_sha256_computed_on_host: "8ced9f2ab4bfc8a46fac7a93324b0ec24ec66043f9ceb1942a0bd7c42d2f484e" as NonEmptyStr,
+  },
+]
+
+// THE SAME THREE PATHS AS INSTALLED BY THE 2026-11-24 FLEET WINDOW, which is what the render has to equal NOW.
+// Kept as a SEPARATE dated row rather than written over the 2026-11-09 one: the 11-09 list is the evidence the
+// cold-start and crash witnesses cite (srv1_boot_path_runs_executed_2026_11_09 says which path was executed
+// against which bytes), and a dated capture that gets silently re-based stops being evidence of anything.
+// Digests read on srv1 with sha256sum 2026-11-24 by the operator's session, and compared by execution against
+// what these rows render (the_two_installed_artifacts_are_what_the_rows_render, and the control of the same
+// standing in gunbc.serving.srv1_replica_rendered_boot_path_witness). The helper is the same bytes as 11-09:
+// the window moved the tier and the cgroup ceiling, not the helper.
+data srv1_installed_boot_path_artifacts_2026_11_24: List<Srv1InstalledArtifact> = [
   Srv1InstalledArtifact {
     host_path: "/usr/local/sbin/lil-replica-launch" as NonEmptyStr,
     rendered_by: "srv1_render_replica_launcher" as NonEmptyStr,

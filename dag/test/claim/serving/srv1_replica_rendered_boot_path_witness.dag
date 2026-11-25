@@ -54,7 +54,10 @@ import gunbc.serving.srv1_serving_replica_layout {
   srv1_boot_path_run_claims_reboot, srv1_replica_unit_contract, srv1_tls_validity_days_for_flag, srv1_replica_gpu_uuid_text,
   srv1_boot_path_run_ready_duration, srv1_boot_path_incident_downtime,
   srv1_boot_path_window_router_counting_2026_11_09, srv1_router_window_count_balances, srv1_boot_path_incident_2026_11_09,
-  srv1_installed_boot_path_artifacts_2026_11_09,
+  srv1_installed_boot_path_artifacts_2026_11_09, srv1_installed_boot_path_artifacts_2026_11_24,
+  Srv1KvCacheDtype, Bf16, Fp8E4m3, L1StagingPriceUnpriced, srv1_snapshot_cost_applies_to,
+  srv1_l1_staging_requirement, srv1_l1_staging_discharge_with, srv1_tier_is_whole_gib,
+  srv1_kv_tier_verdict_with_headroom,
   srv1_serving_replica_roster,
   srv1_replica_launcher_shape_dissolution, srv1_serving_gpu_launcher_bash_emit_dissolution,
   srv1_replica_helper_bash_emit_dissolution,
@@ -65,11 +68,19 @@ import gunbc.serving.srv1_serving_replica_layout {
   Srv1KvTierPopulationSource, MeasuredAverage, AdmittedByRow, Srv1L2StorePolicy, CheckpointOnEvict,
   StoreAtCreation, StorePolicyUnread, srv1_l2_store_policy_reading,
   Srv1KvTierDischarge, ContractDischarged, ContractUndischarged, srv1_l1_staging_discharge,
-  srv1_l1_missing_admitted_population, srv1_l1_missing_store_window_headroom,
+  srv1_l1_missing_admitted_population, srv1_l1_missing_store_window_headroom, srv1_l1_missing_price_extrapolated,
   srv1_replica_host_budget, Srv1ReplicaHostBudget, srv1_replica_total_host_claim, srv1_l1_staging_contract_identity,
   srv1_launch_admission, Srv1LaunchAdmission, Srv1LaunchAdmitted, Srv1LaunchRefused,
 }
-import gunbc.serving.serving_host_memory { srv1_lmcache_l1_configured, srv1_lmcache_l2_configured }
+import gunbc.serving.serving_host_memory {
+  srv1_lmcache_l1_configured, srv1_lmcache_l2_configured, srv1_lmcache_l1_gb_value, srv1_lmcache_l2_gb_value,
+  srv1_lmcache_l1_configured_gib, serving_usable_ram_bytes_or_zero,
+}
+import gunbc.host.host_memory_observation { gunbc_ci_srv1_memtotal_measured }
+import gunbc.serving.serving_reservation { host_memory_reserved }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
+import gunbc.serving.srv1_serving_launch { srv1_serving_launch }
+import std.list { first_where }
 import extdeps.units.iso8601_calendar {
   Iso8601UtcInstant,
   iso8601_utc_instant,
@@ -594,7 +605,12 @@ test fn the_helper_name_table_comes_from_the_roster() -> Bool {
 // was run. The bars are read from the rows, not copied: a deadline or a RestartSec that changes moves this
 // test, which is the whole point of the closed kind and the typed durations.
 test fn the_install_and_run_receipts_hold_their_own_claim() -> Bool {
+  // The 2026-11-09 rows are the dated capture the cold-start and crash witnesses cite; the 2026-11-24 rows are
+  // what today's render must equal (install_row_digest_matches). Both lists are checked for internal agreement
+  // between "what the renderer emitted" and "what the host read back", because a row that claims an install
+  // while its two halves differ is the window's own incident written into the model.
   let arts = srv1_installed_boot_path_artifacts_2026_11_09
+  let arts_now = srv1_installed_boot_path_artifacts_2026_11_24
   let runs = srv1_boot_path_runs_executed_2026_11_09
   let launcher_digest_answer = srv1_render_replica_launcher_sha256()
   let deadline = srv1_boot_path_ready_deadline_seconds()
@@ -604,6 +620,8 @@ test fn the_install_and_run_receipts_hold_their_own_claim() -> Bool {
     && length(runs) == 4
     && deadline == 600 && floor == 30
     && all(runs, r => match srv1_boot_path_run_ready_duration(run: r) { Absent => false Present { value: e } => second_count(e) >= 1 && second_count(e) <= deadline })
+    && length(arts_now) == 4
+    && all(arts_now, a => lower_hex_64(value: a.render_sha256) && a.render_sha256 == a.installed_sha256_computed_on_host)
     && !any(runs, r => srv1_boot_path_run_claims_reboot(r))
     && all(filter(runs, r => srv1_boot_path_run_is_cold_start(r)), r => string_contains(s: r.note, pattern: "NOT a host reboot"))
     && all(filter(runs, r => srv1_boot_path_run_is_crash(r)), r => second_count(r.container_created) >= floor)
@@ -632,9 +650,14 @@ test fn the_install_and_run_receipts_hold_their_own_claim() -> Bool {
 // shape as the window's own incident (installed bytes that disagreed with every claim about them) one step
 // earlier. So the digest computed HERE, from the current renderer, is compared against the digest each row
 // records the host reading back over the file it holds.
+// WHICH ROW the render is compared against is itself a fact: the render must equal the bytes the CURRENT
+// window installed, which is srv1_installed_boot_path_artifacts_2026_11_24 -- not the 2026-11-09 row, which is
+// kept as the dated capture of an earlier render (its digest pair describes bytes the tier had when they were
+// 12 GiB). Comparing today's render against the older capture would make every tier change a red test, which
+// is how a capture gets silently re-based and stops being evidence.
 fn install_row_digest_matches(host_path: String, render_digest: String) -> Bool {
   any(
-    srv1_installed_boot_path_artifacts_2026_11_09,
+    srv1_installed_boot_path_artifacts_2026_11_24,
     a => a.host_path as String == host_path
       && a.render_sha256 as String == render_digest
       && a.installed_sha256_computed_on_host as String == render_digest
@@ -985,7 +1008,8 @@ test fn the_refused_tier_refuses_the_boot_admission_under_the_contract_identity(
 
 // The positive control, and it is the host's configuration: 48 GiB clears every term, and the bytes that DO
 // render -- the per-replica args file, which is where LMCACHE_L1_GB=48 lives -- hash to the digest the install
-// row holds against the host's own sha256sum readback (install_row_digest_matches compares three strings from
+// row holds against the host's own sha256sum readback (install_row_digest_matches reads the 2026-11-24 row, and
+// compares three strings from
 // two sources, so it is not a restatement of its subject). The LAUNCHER render is deliberately not called
 // here: rendering the 5,771-byte launcher as one string trips the pre-existing CallDepthExceeded in
 // std.host_text's text_of_chars -- identically on pristine main at this pin -- so the launcher's own digest is
@@ -1018,7 +1042,7 @@ test fn the_admitted_tier_is_admitted_by_the_contract_and_renders() -> Bool {
 // its subject
 // (gunbc.recurring_failure_mode::a_control_that_shares_its_derivation_with_its_subject).
 test fn the_staging_requirement_is_the_population_priced_both_ways_at_the_admitted_context() -> Bool {
-  match srv1_l1_staging_floor(contract: srv1_kv_staging_contract, context: token_count(count: srv1_admitted_launch_config.max_model_len)) {
+  match srv1_l1_staging_floor(contract: srv1_kv_staging_contract, config: srv1_admitted_launch_config) {
     Accepted { value: floor, diagnostics: _ } => gibibyte_count(g: gibibyte_ceiling(b: floor)) == 40
     Rejected { diagnostics: _ } => false
   }
@@ -1065,14 +1089,17 @@ test fn the_admitted_tier_is_admitted_and_still_reports_the_contract_undischarge
           // makes the burst sensitivity above the thing to watch, not a rounding error.
           && byte_size_count(b: r) < byte_size_count(b: h)
           && byte_size_count(b: r) > byte_size_count(b: srv1_lmcache_l1_configured) / 2
-          && length(m) == 2
-          // Two distinct named terms, and BOTH of them: an indexed read would be optional (List indexing
-          // returns T?), so the list is pinned by cardinality plus presence of each name — with length 2 and
-          // two distinct names present, there is no third state. Dropping either term from the model's list
+          && length(m) == 3
+          // Three distinct named terms, and all three of them: an indexed read would be optional (List indexing
+          // returns T?), so the list is pinned by cardinality plus presence of each name — with length 3 and
+          // three distinct names present, there is no fourth state. Dropping any term from the model's list
           // takes this red, which is the point: the 2026-11-25 host read says the contract is not discharged,
-          // and the model is not allowed to answer that observation with a shorter gap list.
+          // and the model is not allowed to answer that observation with a shorter gap list. The third is the
+          // newest one -- the price is spent past the context it was read at (observed_up_to 150,000 against the
+          // admitted 229,376), which is a degradation the reading must show rather than fold into the number.
           && any(m, x => (x as String) == (srv1_l1_missing_admitted_population as String))
           && any(m, x => (x as String) == (srv1_l1_missing_store_window_headroom as String))
+          && any(m, x => (x as String) == (srv1_l1_missing_price_extrapolated as String))
     }
     Rejected { diagnostics: _ } => false
   }
@@ -1133,14 +1160,37 @@ test fn the_tier_its_arena_and_its_cgroup_are_one_fact_not_three_numbers() -> Bo
 // deciding srv1's whole budget: 2 replicas at the cgroup ceiling plus one PLE table each must stay inside the
 // host's admitted memory, and if that ever stops being true the finding belongs here rather than in a launcher
 // edit that quietly lowers a limit nobody agreed.
+// THE PAIR STILL FITS SRV1 -- against the host's OWN RAM row, and against the quantity this control claims to
+// check. An earlier arm of this control compared an ESTIMATED footprint (L1 + PLE + anon, 161.6 GiB for the
+// pair) against a 502 GiB literal copied into the test, while its comment said it was checking two cgroup
+// ceilings plus two PLE tables. The ceilings are the enforceable quantity -- what the kernel will let the two
+// containers hold, plus what the nvidia driver pins outside every cgroup -- and they are the larger number,
+// 197.6 GiB. So this checks THAT, and against gunbc.host.host_memory_observation::gunbc_ci_srv1_memtotal_measured,
+// the row the host itself read off /proc/meminfo (539,281,129,472 bytes, 2026-08-23), not a transcription of it
+// into a test. The estimate is still stated, labelled as the estimate it is, because it is the figure the
+// operator's read of a working host supports and the ceiling is the figure the model must admit against.
+//
+// THE FLEET RESERVATION TERM IS MISSING, AND STAYS EXPLICIT. gunbc.serving.serving_reservation carries no srv1
+// entry, so host_memory_reserved(operator_host_srv1) answers Present { bytes: 0 } -- the host budgets its
+// replicas with NOTHING withheld for the runner, sshd, or page cache. The comparison therefore includes
+// whatever the row says rather than assuming zero: the day a srv1 reservation is authored, this control starts
+// charging it, and if it goes red the fit has genuinely narrowed. Asserting the zero instead would have made
+// the model's improvement a test failure.
 test fn the_two_replicas_still_fit_srv1s_admitted_memory() -> Bool {
-  let per_replica = byte_size_count(b: srv1_replica_total_host_claim(budget: srv1_replica_host_budget))
-  let pair = per_replica * 2
-  // srv1's admitted RAM, from gunbc.host.host_memory_observation (operator read, 2026-11-08): ~502 GiB usable
-  // of the 503 GiB the eight DIMMs report. Stated as a GiB floor with the standing of the read it came from.
-  let srv1_admitted = 502 * 1073741824
-  pair < srv1_admitted
-    && byte_size_count(b: srv1_replica_host_budget.cgroup_memory_limit) == 72 * 1073741824
+  let ceiling = byte_size_count(b: srv1_replica_host_budget.cgroup_memory_limit)
+  let ple = byte_size_count(b: srv1_replica_host_budget.ple_pinned)
+  let pair_ceilings = (ceiling * 2) + (ple * 2)
+  let reservation = match host_memory_reserved(host: operator_host_srv1) {
+    Absent => 0
+    Present { value: v } => byte_size_count(b: v)
+  }
+  let host_ram = byte_size_count(b: serving_usable_ram_bytes_or_zero(r: gunbc_ci_srv1_memtotal_measured))
+  let estimate = byte_size_count(b: srv1_replica_total_host_claim(budget: srv1_replica_host_budget)) * 2
+  host_ram > 0
+    && pair_ceilings + reservation < host_ram
+    // the estimate is the smaller quantity, so the ceiling check is the binding one and not a restatement of it
+    && estimate < pair_ceilings
+    && ceiling == 72 * 1073741824
     && byte_size_count(b: srv1_replica_container_run_shape.shm_size) == 56 * 1073741824
     && byte_size_count(b: srv1_lmcache_l2_configured) == 125 * 1073741824
 }
@@ -1191,12 +1241,24 @@ test fn a_tier_that_holds_only_one_direction_is_refused_by_the_gate_and_the_admi
 // admits, and the safety reading's stated requirement IS that integer. Holds the gate and the reading to a
 // number rather than to prose -- if they ever grow separate requirements again, this is the control that goes red.
 test fn the_gate_and_the_safety_reading_demand_the_same_number() -> Bool {
-  match srv1_l1_staging_floor(contract: srv1_kv_staging_contract, context: token_count(count: srv1_admitted_launch_config.max_model_len)) {
+  match srv1_l1_staging_floor(contract: srv1_kv_staging_contract, config: srv1_admitted_launch_config) {
     Rejected { diagnostics: _ } => false
     Accepted { value: floor, diagnostics: _ } => {
       let need = byte_size_count(b: floor)
-      let short = cfg_tier(bytes: byte_size(count: need - 1))
-      let exact = cfg_tier(bytes: byte_size(count: need))
+      let whole_gib = byte_size_count(b: gibibyte_to_byte_size(g: gibibyte(count: 1)))
+      // THE BOUNDARY THE OPERATOR CAN ACTUALLY SPELL. The tier is named in whole GiB — an engine argument takes a
+      // whole number, so a tier at the byte-exact floor is not authorable at all (see
+      // gunbc.serving.srv1_serving_replica_layout::srv1_tier_is_whole_gib). The gate's first admissible tier is
+      // therefore the floor rounded UP to a whole GiB, and this control tests that tier and the one GiB below it
+      // rather than pretending a byte-exact boundary is reachable. The byte-exact floor itself must still be
+      // refused, and refused for the whole-GiB reason — a tier the engine cannot be told is not a staging answer.
+      let admissible_count = ((need + whole_gib - 1) / whole_gib) * whole_gib
+      let short = cfg_tier(bytes: byte_size(count: admissible_count - whole_gib))
+      let exact = cfg_tier(bytes: byte_size(count: admissible_count))
+      let byte_floor_term = match srv1_kv_tier_verdict(config: cfg_tier(bytes: byte_size(count: need)), shape: srv1_replica_container_run_shape, budget: srv1_replica_host_budget) {
+        KvTiersAdmitted => "admitted" as String
+        KvTierRefused { term: t, cause: _ } => srv1_kv_tier_term_name(term: t) as String
+      }
       let short_refused = match srv1_kv_tier_verdict(config: short, shape: srv1_replica_container_run_shape, budget: srv1_replica_host_budget) {
         KvTiersAdmitted => false
         KvTierRefused { term: _, cause: _ } => true
@@ -1213,6 +1275,9 @@ test fn the_gate_and_the_safety_reading_demand_the_same_number() -> Bool {
         Rejected { diagnostics: _ } => false
       }
       short_refused && exact_admitted && reading_agrees
+        && byte_floor_term == "l1-tier-not-whole-gib"
+        && admissible_count >= need
+        && admissible_count - need < whole_gib
     }
   }
 }
@@ -1235,4 +1300,276 @@ test fn the_population_rounds_up_because_it_bounds_a_buffer() -> Bool {
     Present { value: _ } => false
   }
   exact && rounds_up && no_divisor
+}
+
+// ── class B4, operator review 2026-11-25 ───────────────────────────────────
+//
+// Three findings from the operator's read of the head, each landed as the control that would have caught it.
+// Together they say the same thing about a different seam: a number that lives in two places is two numbers as
+// soon as one of them is edited, and a price that does not name the shape it was read under is a number that
+// will be spent on a shape it never measured.
+
+// (1) PROVISIONING AND BOOT MUST AGREE ON THE TIER, because they are two different consumers of it and only one
+// of them is the launcher. The provisioning record (gunbc.serving.srv1_serving_launch::srv1_serving_launch) is
+// copied verbatim into a provisioned container's environment by
+// gunbc.serving.serving_provision_derivation::srv1_serving_launch_for_port, and it carried LMCACHE_L1_GB=12 --
+// the 2026-11-08 reading -- for two days after the boot path had moved to 48. A container built from the model
+// would have come up with a quarter of the tier the contract requires, and no control could have seen it,
+// because the only comparison that existed read the boot render. This reads the operand out of BOTH producers
+// and requires them to be the same text as the authority row's, so the copy has nowhere to lag.
+test fn the_tier_operand_is_the_same_number_in_the_provisioning_launch_and_the_boot_render() -> Bool {
+  let provisioned = first_where(
+    xs: srv1_serving_launch.environment,
+    keep: e => (e.key as String) == "LMCACHE_L1_GB"
+  )
+  let args = srv1_replica_engine_args_body(config: srv1_admitted_launch_config)
+  let token = concat("LMCACHE_L1_GB=", srv1_lmcache_l1_gb_value() as String)
+  let boot_carries_the_authority = match args {
+    Accepted { value: body, diagnostics: _ } => string_contains(s: body, pattern: token)
+    Rejected { diagnostics: _ } => false
+  }
+  let provisioned_carries_the_authority = match provisioned {
+    Absent => false
+    Present { value: e } => (e.value as String) == (srv1_lmcache_l1_gb_value() as String)
+  }
+  // The disk tier travels the same route and had the same exposure: one authority, both consumers.
+  let l2_provisioned = first_where(
+    xs: srv1_serving_launch.environment,
+    keep: e => (e.key as String) == "LMCACHE_L2_GB"
+  )
+  let l2_token = concat("LMCACHE_L2_GB=", srv1_lmcache_l2_gb_value() as String)
+  let l2_boot = match args {
+    Accepted { value: body, diagnostics: _ } => string_contains(s: body, pattern: l2_token)
+    Rejected { diagnostics: _ } => false
+  }
+  let l2_provisioned_ok = match l2_provisioned {
+    Absent => false
+    Present { value: e } => (e.value as String) == (srv1_lmcache_l2_gb_value() as String)
+  }
+  srv1_lmcache_l1_configured_gib == 48
+    && provisioned_carries_the_authority
+    && boot_carries_the_authority
+    && l2_provisioned_ok
+    && l2_boot
+}
+
+// A launch config that differs from the admitted shape ONLY in the fields the snapshot price was read under.
+fn cfg_shape(dtype: Srv1KvCacheDtype, width: Nat) -> Srv1LaunchConfig {
+  let a = srv1_admitted_launch_config
+  Srv1LaunchConfig {
+    tensor_parallel_size: width,
+    kv_cache_dtype: dtype,
+    profile: a.profile,
+    hardware: a.hardware,
+    lmcache_l1: a.lmcache_l1,
+    max_model_len: a.max_model_len,
+    image_digest: a.image_digest,
+    lil_replicas: a.lil_replicas,
+    host_gpu_p2p: a.host_gpu_p2p,
+    engine_executable: a.engine_executable,
+    lmcache_l2_placement: a.lmcache_l2_placement,
+    checkpoint_retention: a.checkpoint_retention,
+    tls_material: a.tls_material,
+    api_key_reference: a.api_key_reference,
+    container_port: a.container_port,
+  }
+}
+
+// (2) THE CHECKPOINT PRICE IS BOUND TO THE SHAPE IT WAS READ UNDER. The operator changed exactly ONE field --
+// kv_cache_dtype to Bf16 -- and admission went on pricing the conversation at 20,625 bytes per token, the figure
+// read off the FP8 K/V pool at tensor-parallel width 1, while the renderer emitted `--kv-cache-dtype bf16`. A
+// price spent on a shape it never measured fabricates the margin between them, and there is no honest multiplier
+// for bf16 KV in this tree to substitute, so the term goes unpriced and the boot refuses. The refusing term is
+// its OWN term (L1StagingPriceUnpriced), not a reuse of the too-small-tier term: "your tier is too small" and "I
+// cannot price your tier" are different findings and a consumer must be able to tell them apart. The last arm is
+// the discrimination: the admitted FP8 TP=1 shape IS priced, so this control can only be failing on the dtype.
+test fn the_price_refuses_a_launch_it_was_never_read_under() -> Bool {
+  let bf16 = cfg_shape(dtype: Bf16, width: 1)
+  let floor_refuses = match srv1_l1_staging_floor(contract: srv1_kv_staging_contract, config: bf16) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: d } => string_contains(
+      s: diagnostics_reason_lexemes(diagnostics: d),
+      pattern: "srv1_kv_tier_refused:l1-staging-price-unpriced"
+    )
+  }
+  let args_refuse = kv_refused_text(
+    render: srv1_replica_engine_args_body(config: bf16),
+    term: "l1-staging-price-unpriced"
+  )
+  let gate_refuses = match srv1_kv_tier_verdict(
+    config: bf16,
+    shape: srv1_replica_container_run_shape,
+    budget: srv1_replica_host_budget
+  ) {
+    KvTiersAdmitted => false
+    KvTierRefused { term: t, cause: _ } => match t {
+      L1StagingPriceUnpriced => true
+      _ => false
+    }
+  }
+  let boot_refuses = match srv1_launch_admission(config: bf16) {
+    Srv1LaunchAdmitted { } => false
+    Srv1LaunchRefused { cause: c, defect_identity: id } =>
+      (id == srv1_l1_staging_contract_identity)
+        && string_contains(s: c, pattern: "l1-staging-price-unpriced")
+  }
+  floor_refuses
+    && args_refuse
+    && gate_refuses
+    && boot_refuses
+    && srv1_snapshot_cost_applies_to(config: srv1_admitted_launch_config)
+    && !srv1_snapshot_cost_applies_to(config: bf16)
+    // and the tensor-parallel width is a priced dimension too: the same dtype at width 2 is a different pool
+    && !srv1_snapshot_cost_applies_to(config: cfg_shape(dtype: Fp8E4m3, width: 2))
+}
+
+// (3) A PRICED HEADROOM RAISES THE GATE AND THE READING TO THE SAME NUMBER. The review caught the discharge
+// comparing holds against floor+headroom while REPORTING the floor: with 8 GiB priced and 40 GiB held it said
+// "39.25 GiB required" with an empty missing list, while the requirement it had actually tested was 47.25. So
+// the priced total is what is quoted now, and a shortfall against it is a named term. The gate reads the same
+// requirement function, so the 40 GiB tier that boots with the headroom unpriced is refused once it is priced --
+// the two consumers move together, which is the property, not the number.
+//
+// WITH THE ROW Absent AS IT STANDS, WHAT BOOT ENFORCES IS THE STAGED POPULATION AND NOTHING MORE: the row is
+// srv1_l2_store_window_headroom, boot reads it through srv1_kv_tier_verdict, and an unpriced term adds zero.
+// That is deliberate -- an unknown is not a quantity an operator can be refused for -- but it is named here
+// rather than left to be discovered, because the same silence is what made the old reading report a requirement
+// it had not tested.
+test fn a_priced_store_window_raises_the_gate_and_the_reading_to_the_same_number() -> Bool {
+  let eight = gibibyte_to_byte_size(g: gibibyte(count: 8))
+  let floor_only = match srv1_l1_staging_requirement(config: srv1_admitted_launch_config, headroom: Absent) {
+    Accepted { value: v, diagnostics: _ } => byte_size_count(b: v)
+    Rejected { diagnostics: _ } => 0
+  }
+  let priced = match srv1_l1_staging_requirement(
+    config: srv1_admitted_launch_config,
+    headroom: Present { value: eight }
+  ) {
+    Accepted { value: v, diagnostics: _ } => byte_size_count(b: v)
+    Rejected { diagnostics: _ } => 0
+  }
+  let forty = cfg_tier(bytes: gibibyte_to_byte_size(g: gibibyte(count: 40)))
+  let boots_unpriced = match srv1_kv_tier_verdict_with_headroom(
+    config: forty,
+    shape: srv1_replica_container_run_shape,
+    budget: srv1_replica_host_budget,
+    headroom: Absent
+  ) {
+    KvTiersAdmitted => true
+    KvTierRefused { term: _, cause: _ } => false
+  }
+  let gate_term = match srv1_kv_tier_verdict_with_headroom(
+    config: forty,
+    shape: srv1_replica_container_run_shape,
+    budget: srv1_replica_host_budget,
+    headroom: Present { value: eight }
+  ) {
+    KvTiersAdmitted => "admitted" as String
+    KvTierRefused { term: t, cause: _ } => srv1_kv_tier_term_name(term: t) as String
+  }
+  // what the reading QUOTES, and what it names as missing -- read apart and combined below, because a
+  // requirement number and a gap list are two different claims and the review's finding was that one of them
+  // was being computed and the other reported
+  let discharge = srv1_l1_staging_discharge_with(config: forty, headroom: Present { value: eight })
+  let quoted = match discharge {
+    Accepted { value: d, diagnostics: _ } => match d {
+      ContractDischarged { holds: _, requires: r } => Present { value: byte_size_count(b: r) }
+      ContractUndischarged { holds: _, requires_at_least: r, missing: _ } => Present { value: byte_size_count(b: r) }
+    }
+    Rejected { diagnostics: _ } => Absent
+  }
+  let missing = match discharge {
+    Accepted { value: ContractUndischarged { holds: _, requires_at_least: _, missing: m }, diagnostics: _ } => m
+    _ => [] as List<NonEmptyStr>
+  }
+  let names_the_shortfall = any(
+    missing,
+    term => string_contains(s: term as String, pattern: "short by ")
+      && string_contains(s: term as String, pattern: "48 GiB")
+  )
+  priced == floor_only + byte_size_count(b: eight)
+    && floor_only > 0
+    && boots_unpriced
+    && gate_term == "l1-staging-floor"
+    // the reading quotes the PRICED TOTAL, the same number the gate tested against, and it says so in the gap
+    // list rather than reporting an empty one
+    && match quoted {
+      Present { value: v } => v == priced && names_the_shortfall
+      Absent => false
+    }
+}
+
+// A tier the engine cannot be TOLD about, refused before any sizing question is asked. LMCACHE_L1_GB takes a
+// whole number of gibibytes, so a tier that is not one has no rendering: ceiling would install more tier than
+// the authority row names, flooring less than the gate just admitted, and both leave the installed bytes
+// describing a configuration the model does not hold. srv1's tier is whole by construction (the authority IS a
+// GiB count), so this is the guard against the next edit, exercised against a byte that is not a GiB.
+test fn a_tier_the_engine_cannot_be_told_in_whole_gibibytes_is_refused() -> Bool {
+  let ragged = cfg_tier(bytes: byte_size(count: (48 * 1073741824) + 1))
+  let gate = match srv1_kv_tier_verdict(
+    config: ragged,
+    shape: srv1_replica_container_run_shape,
+    budget: srv1_replica_host_budget
+  ) {
+    KvTiersAdmitted => "admitted" as String
+    KvTierRefused { term: t, cause: _ } => srv1_kv_tier_term_name(term: t) as String
+  }
+  gate == "l1-tier-not-whole-gib"
+    && kv_refused_text(render: srv1_replica_engine_args_body(config: ragged), term: "l1-tier-not-whole-gib")
+    && srv1_tier_is_whole_gib(value: srv1_lmcache_l1_configured)
+}
+
+// THE DATED CAPTURES MUST STAY DISTINCT. The 2026-11-09 list is the evidence the cold-start and crash witnesses
+// cite; the 2026-11-24 list is what today's render must equal. Written over one another, either the crash
+// witness starts certifying bytes that were never crashed against, or the render stops being checkable -- which
+// is how the 2026-11-09 window got its incident in the first place. So: same paths, same count, the helper
+// unchanged by the window (it moved the tier and the ceiling, not the helper), and the launcher moved.
+test fn the_two_dated_install_receipts_stay_distinct_captures() -> Bool {
+  let before = srv1_installed_boot_path_artifacts_2026_11_09
+  let now_row = srv1_installed_boot_path_artifacts_2026_11_24
+  let helper_before = first_where(
+    xs: before,
+    keep: a => (a.host_path as String) == "/usr/local/sbin/lil-replica"
+  )
+  let helper_now = first_where(
+    xs: now_row,
+    keep: a => (a.host_path as String) == "/usr/local/sbin/lil-replica"
+  )
+  let launcher_before = first_where(
+    xs: before,
+    keep: a => (a.host_path as String) == "/usr/local/sbin/lil-replica-launch"
+  )
+  let launcher_now = first_where(
+    xs: now_row,
+    keep: a => (a.host_path as String) == "/usr/local/sbin/lil-replica-launch"
+  )
+  let helper_same = match helper_before {
+    Absent => false
+    Present { value: b } => match helper_now {
+      Absent => false
+      Present { value: n } => (b.render_sha256 as String) == (n.render_sha256 as String)
+    }
+  }
+  let launcher_moved = match launcher_before {
+    Absent => false
+    Present { value: b } => match launcher_now {
+      Absent => false
+      Present { value: n } => (b.render_sha256 as String) != (n.render_sha256 as String)
+    }
+  }
+  length(before) == length(now_row) && helper_same && launcher_moved
+}
+
+// THE MISSING FLEET RESERVATION, AS ITS OWN CLAIM. gunbc.serving.serving_reservation has no srv1 entry, so the
+// host's replica budget is charged against its whole usable RAM with nothing withheld for the runner, sshd or
+// page cache. Carried as a control rather than only a comment because the fit above is what makes it safe to
+// forget: 197.6 GiB of ceilings against 502.25 GiB of MemTotal leaves room, and a reader who sees only the
+// margin will not go looking for the term that is missing. If this goes red, a srv1 reservation has been
+// AUTHORED -- that is the model getting better, and this claim retires with the finding, it does not get
+// reverted.
+test fn srv1_has_no_fleet_memory_reservation_row_yet() -> Bool {
+  match host_memory_reserved(host: operator_host_srv1) {
+    Absent => true
+    Present { value: v } => byte_size_count(b: v) == 0
+  }
 }
