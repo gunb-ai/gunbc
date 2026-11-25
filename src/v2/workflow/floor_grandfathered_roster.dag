@@ -3590,13 +3590,28 @@ fn floor_grandfathered_first_missing_at_cut_check() -> Optional<String> {
   first_missing_across_groups(groups: floor_grandfathered_at_cut_groups(), chunks: floor_grandfathered_chunks())
 }
 
-// THE PRODUCTION ENTRY POINT (review 98219: the verdict had no consumer outside the tests). This takes
-// NO parameters: it reads the live population record, the live per-prefix rows, the live roster size and
-// the live join over the live chunks. The witnesses call THIS rather than re-assembling its arguments,
-// so what the claims execute is the same fold a generator or a floor phase would call before adopting a
-// list -- and the route that executes it is the dry claim corpus the required lane runs on every pull
-// request, which is the route the plan itself names for this module (roadmap_authority.dag:3419: "the dry
-// claim corpus .github/workflows/witnesses.yml executes on every pull request").
+// THE LIVE-DATA FOLD THE CLAIMS EXECUTE -- AND WHAT IT DOES NOT GATE (review 98256).
+//
+// It takes NO parameters: it reads the live population record, the live per-prefix rows, the live roster
+// size and the live join over the live chunks, so the witnesses execute one fold over the data instead of
+// re-assembling its arguments. It is NOT a gate, and saying so plainly is why this handback can be read:
+// its only callers today live in dag/test/claim/floor_grandfathered_roster_completeness_witness.dag, and
+// DESIGN.md (Reference: building and checks, "What a green `v2-bootstrap` does not say") states "Nothing
+// on the required path evaluates a witness". The witness corpus runs on pull requests under changed-witness
+// selection; the required gate does not read it. A generator could therefore still emit a pull-request
+// -sourced list, or one missing an at-cut check, and nothing on a production route would refuse it. The
+// refusal is specified and witnessed, and it is not yet load-bearing. An earlier cut of this comment
+// claimed required-path execution for the witness corpus; that was false, and it is the record of the drop
+// that replaces it (the drop is declared upstream as gunbc.rung_drop `v1_required_lanes_withdrawn`).
+//
+// THE CONSUMER TO COME, AND ITS TRIGGER -- the remedy review 98256 names. The consumer this fold is shaped
+// for is the route that ADOPTS a roster: a generator, or a floor phase, that calls it and refuses the list
+// before the rows land, so a pull-request-sourced population cannot reach the tier authority. Its trigger
+// is a ruling that enrols this module on the floor: `required_gate_authored_modules` in
+// v2.workflow.required_floor is grown one exact module name at a time, on a ruling (the same DESIGN.md
+// section), and a worker adding its own module name to the gate is the self-authorisation that section
+// refuses. gunbc.design_argument::guarantee_ladder -- "A type name, diagnostic variant, inert lens or plan
+// establishes nothing" -- is why the wording here says what is WITNESSED rather than what is GATED.
 fn floor_grandfathered_roster_adoption() -> RosterPopulationAdoption {
   roster_population_adoption_verdict(
     report: floor_grandfathered_population,

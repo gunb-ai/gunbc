@@ -18,10 +18,12 @@ module test.claim.floor_grandfathered_roster_completeness_witness
 // the chunk list the floor actually consults.
 //
 // THE PARAMETERS ARE NOT HOW THE LIVE ROSTER IS JUDGED. For that there is
-// floor_grandfathered_roster_adoption(), a production fold in the carrier that takes NO arguments and
-// supplies the live population record, the live per-prefix rows, the live row count and the live join
-// over the live chunks. The claims that speak about THIS roster call it, so the verdict has a consumer
-// that is not a test assembling its own inputs (review 98219, gunbc.design_argument::consumption).
+// floor_grandfathered_roster_adoption(), a fold in the carrier that takes NO arguments and supplies the
+// live population record, the live per-prefix rows, the live row count and the live join over the live
+// chunks, so the claims about THIS roster do not assemble the verdict's inputs themselves (review 98219).
+// It is a fold over live data, not a gate: its only callers are in this file, and DESIGN.md is explicit
+// that nothing on the required path evaluates a witness. The carrier's comment on that fold carries the
+// consumer to come and its trigger.
 
 import v2.std.integer { Int, int_add, int_eq, int_gt }
 import v2.std.text { String }
@@ -510,13 +512,17 @@ test fn the_recovered_region_is_the_at_cut_population_row_for_row() -> Bool {
   }
 }
 
-// THE PRODUCTION CONSUMER (gunbc.design_argument::consumption: "Every declaration a change adds is
-// consumed by a named consumer over an executing route, or it is dangling"). This calls the carrier's
-// own zero-argument fold -- live population record, live per-prefix rows, live row count, live join
-// over the live chunks -- and asserts it admits. The route that executes it is the dry claim corpus
-// the required lane runs on every pull request, the route the plan names for this module
-// (roadmap_authority.dag:3419).
-test fn the_live_roster_admits_itself_through_the_production_entry_point() -> Bool {
+// THE ONE FOLD OVER THE LIVE DATA, AND THE HONEST SCOPE OF THAT WORD (review 98256). This calls the
+// carrier's zero-argument fold -- live population record, live per-prefix rows, live row count, live
+// join over the live chunks -- and asserts it admits, so no argument of the verdict is assembled by the
+// test. It does NOT claim the verdict gates anything: DESIGN.md (Reference: building and checks) says
+// "Nothing on the required path evaluates a witness", and the only callers of that fold are here. The
+// consumer to come is the route that adopts a roster, and its trigger is a ruling that enrols this
+// module on the floor through v2.workflow.required_floor required_gate_authored_modules, which is grown
+// one exact module name at a time, on a ruling. What this claim establishes is that the fold exists,
+// runs, and returns Admitted over the roster as shipped -- and the paired mutation run (one of the 145
+// rows deleted) is what shows it can return something else.
+test fn the_live_roster_data_yields_an_adoption_verdict_that_admits() -> Bool {
   roster_population_adoption_admitted(verdict: floor_grandfathered_roster_adoption())
 }
 
