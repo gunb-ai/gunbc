@@ -1,0 +1,75 @@
+module test.claim.scratch_absorbed_capture_count_direct_read_test
+
+// SCRATCH WITNESS, PLANNING ONLY, NOT A DELIVERABLE. Same roadmap row and same pair as
+// test.claim.scratch_absorbed_capture_count_discriminating_test; this module is the DIRECT READ:
+// it reads the absorbed-capture count off the row that std.source_annotation::attach_annotations
+// produced, so at main -- where std.source_annotation::SourceAnnotationDebt carries no such field
+// -- the entry does not resolve and claim_batch refuses these two claims by name. That refusal is
+// the count's absence reaching the operator; it is not a claim answering false.
+//
+// At the tree that carries the field these two claims answer true, which is the fold's reported
+// count read as a number: 2 for the two-line block, 3 for the three-line block.
+
+import std.types { Bool, Int, List, SourceSpan, String }
+import std.occurrence_identity { OccurrenceId }
+import std.source_annotation {
+  AnnotationRegion,
+  AnnotationScope,
+  FileScope,
+  LeadingAfterLineIndent,
+  NormalizedAnnotationCapture,
+  OccurrenceScope,
+  SourceAnnotationDebt,
+  attach_annotations,
+  source_annotation_graph_rows
+}
+
+fn span(start: Int, end: Int) -> SourceSpan {
+  SourceSpan { file: "probe.dag", start: start, end: end }
+}
+
+fn occ(n: Int) -> AnnotationScope {
+  OccurrenceScope { occurrence: OccurrenceId { value: n } }
+}
+
+fn regions() -> List<AnnotationRegion> {
+  [ AnnotationRegion { scope: occ(n: 1), extent: span(start: 50, end: 900), parent: FileScope } ]
+}
+
+fn block_head(text: String, start: Int, end: Int) -> NormalizedAnnotationCapture {
+  NormalizedAnnotationCapture { text: text, origin: span(start: start, end: end), placement: LeadingAfterLineIndent, preceded_by_blank_line: true, preceded_by_annotation_line: false }
+}
+
+fn block_next(text: String, start: Int, end: Int) -> NormalizedAnnotationCapture {
+  NormalizedAnnotationCapture { text: text, origin: span(start: start, end: end), placement: LeadingAfterLineIndent, preceded_by_blank_line: false, preceded_by_annotation_line: true }
+}
+
+// THE FOLD INPUT, byte-identical to the discriminating module's fixture.
+fn inputs_two() -> List<NormalizedAnnotationCapture> {
+  [block_head(text: "alpha", start: 60, end: 65), block_next(text: "beta", start: 66, end: 71)]
+}
+
+fn inputs_three() -> List<NormalizedAnnotationCapture> {
+  [block_head(text: "alpha", start: 60, end: 65), block_next(text: "beta", start: 66, end: 71), block_next(text: "gamma", start: 72, end: 77)]
+}
+
+// THE READ. This is the line that cannot resolve where the count is not carried.
+fn absorbed_count(row: SourceAnnotationDebt) -> Int {
+  row.absorbed_capture_count
+}
+
+// THE COUNT THE FOLD REPORTS for a block of two lex captures absorbed into one annotation row.
+test fn w_source_annotation_debt_reports_absorbed_capture_count_two() -> Bool {
+  match source_annotation_graph_rows(graph: attach_annotations(captures: inputs_two(), regions: regions())) |> first {
+    Present { value: row } => absorbed_count(row: row) == 2
+    Absent => false
+  }
+}
+
+// THE COUNT THE FOLD REPORTS for a block of three.
+test fn w_source_annotation_debt_reports_absorbed_capture_count_three() -> Bool {
+  match source_annotation_graph_rows(graph: attach_annotations(captures: inputs_three(), regions: regions())) |> first {
+    Present { value: row } => absorbed_count(row: row) == 3
+    Absent => false
+  }
+}

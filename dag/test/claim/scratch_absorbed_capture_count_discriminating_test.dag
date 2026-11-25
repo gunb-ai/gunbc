@@ -1,0 +1,146 @@
+module test.claim.scratch_absorbed_capture_count_discriminating_test
+
+// SCRATCH WITNESS, PLANNING ONLY, NOT A DELIVERABLE. It exists to observe the discriminating pair
+// for roadmap row source-annotation-fold-carries-absorbed-capture-count
+// (identity rn_ZR45MIQ7KTC56XVLT23LXQ3W4A). It lives in the planning scratch tree only: never in
+// the production repo, never staged, never committed there.
+//
+// WHAT IS UNDER TEST, by symbol: std.source_annotation::SourceAnnotationDebt declares gap, text,
+// origin, placement and NO count of the lex captures std.source_annotation::attach_annotations
+// absorbed into that row. The three absorbing claims below therefore state the defect WITHOUT
+// naming a field main does not have: they resolve and run at main, and they REFUSE there.
+//
+// THE PAIR, one fixture, two trees, one binary:
+//   WRONG (main): a row produced by absorbing several lex captures into one annotation row is
+//     structurally indistinguishable from a row produced from ONE capture that carries the same
+//     text, the same origin and the same placement. So the absorbed multiplicity is not on the
+//     row, and any consumer that wants it must re-count the captures -- the second authority the
+//     row exists to remove. The absorbing claims answer false: REFUSED.
+//   RIGHT (the scratch tree that carries the count): the two rows differ in exactly the carried
+//     count, so the same claims answer true: ACCEPTED.
+//
+// WHY THE COMPARATOR IS A LEGITIMATE FOLD INPUT. NormalizedAnnotationCapture.text is the raw
+// normalized annotation text of ONE capture, and a realization whose annotation syntax spans
+// several lines hands the fold one capture whose text already carries its line breaks -- that is
+// the same row shape the block rule produces by merging. Both sides of each pair go through the
+// one attachment authority, attach_annotations, over the same roster, and land in the same gap
+// with the same placement; the fold's product differs only in how many captures were absorbed.
+// That isolates the carried quantity: nothing else about the two rows can account for a refusal.
+
+import std.types { Bool, Int, List, SourceSpan, String }
+import std.occurrence_identity { OccurrenceId }
+import std.source_annotation {
+  AnnotationPlacement,
+  AnnotationRegion,
+  AnnotationScope,
+  FileScope,
+  LeadingAfterLineIndent,
+  NormalizedAnnotationCapture,
+  OccurrenceScope,
+  SourceAnnotationDebt,
+  SourceAnnotationGraph,
+  attach_annotations,
+  source_annotation_graph_rows
+}
+
+fn span(start: Int, end: Int) -> SourceSpan {
+  SourceSpan { file: "probe.dag", start: start, end: end }
+}
+
+fn occ(n: Int) -> AnnotationScope {
+  OccurrenceScope { occurrence: OccurrenceId { value: n } }
+}
+
+// One module region; every capture of the fixture lies inside it, so every row lands in one gap.
+fn regions() -> List<AnnotationRegion> {
+  [ AnnotationRegion { scope: occ(n: 1), extent: span(start: 50, end: 900), parent: FileScope } ]
+}
+
+// The first line of a block: blank-preceded, not annotation-preceded. The fold OPENS a row on it.
+fn block_head(text: String, start: Int, end: Int) -> NormalizedAnnotationCapture {
+  NormalizedAnnotationCapture { text: text, origin: span(start: start, end: end), placement: LeadingAfterLineIndent, preceded_by_blank_line: true, preceded_by_annotation_line: false }
+}
+
+// A continuation line: annotation-preceded, not blank-preceded. The fold ABSORBS it into the open row.
+fn block_next(text: String, start: Int, end: Int) -> NormalizedAnnotationCapture {
+  NormalizedAnnotationCapture { text: text, origin: span(start: start, end: end), placement: LeadingAfterLineIndent, preceded_by_blank_line: false, preceded_by_annotation_line: true }
+}
+
+fn rows(captures: List<NormalizedAnnotationCapture>) -> List<SourceAnnotationDebt> {
+  source_annotation_graph_rows(graph: attach_annotations(captures: captures, regions: regions()))
+}
+
+// THE FIXTURE. merged_two absorbs 2 captures; merged_three absorbs 3. each_single is ONE capture
+// whose text already carries the same embedded line breaks and whose origin is the same span.
+fn merged_two() -> List<SourceAnnotationDebt> {
+  rows(captures: [block_head(text: "alpha", start: 60, end: 65), block_next(text: "beta", start: 66, end: 71)])
+}
+
+fn merged_three() -> List<SourceAnnotationDebt> {
+  rows(captures: [block_head(text: "alpha", start: 60, end: 65), block_next(text: "beta", start: 66, end: 71), block_next(text: "gamma", start: 72, end: 77)])
+}
+
+fn one_capture_written_as_two() -> List<SourceAnnotationDebt> {
+  rows(captures: [block_head(text: "alpha\nbeta", start: 60, end: 71)])
+}
+
+fn one_capture_written_as_three() -> List<SourceAnnotationDebt> {
+  rows(captures: [block_head(text: "alpha\nbeta\ngamma", start: 60, end: 77)])
+}
+
+// Row equality by VALUE, over the whole record -- every field the carrier declares, whatever its
+// number. The claims below never name a field that main lacks, which is what lets them run there.
+fn row_agrees(left: SourceAnnotationDebt, right: SourceAnnotationDebt) -> Bool {
+  left == right
+}
+
+fn first_agreement(left: List<SourceAnnotationDebt>, right: List<SourceAnnotationDebt>) -> Bool {
+  match left |> first {
+    Present { value: l } =>
+      match right |> first {
+        Present { value: r } => row_agrees(left: l, right: r)
+        Absent => false
+      }
+    Absent => false
+  }
+}
+
+// CONTROL, green on both trees: the WRONG fixture really is what the row describes -- several lex
+// captures absorbed into ONE annotation row. Without this the refusal would prove nothing.
+test fn w_the_fixture_absorbs_two_captures_into_one_annotation_row() -> Bool {
+  (merged_two() |> count) == 1 && first_text_of(merged_two()) == "alpha\nbeta"
+}
+
+fn first_text_of(rs: List<SourceAnnotationDebt>) -> String {
+  match rs |> first {
+    Present { value: row } => row.text
+    Absent => ""
+  }
+}
+
+// CONTROL, green on both trees: the absorption is the fold's, not the fixture's -- one row spans
+// both captures and carries the first capture's placement.
+test fn w_the_absorbed_row_spans_both_captures_it_merged() -> Bool {
+  match merged_two() |> first {
+    Present { value: row } => row.origin.start == 60 && row.origin.end == 71 && row.placement == LeadingAfterLineIndent
+    Absent => false
+  }
+}
+
+// INSTRUMENT GUARD, green on both trees: the whole-record equality the absorbing claims use
+// answers by value, not by identity. If it answered false always, the absorbing claims would be
+// vacuously green on the count-carrying tree.
+test fn w_row_equality_answers_by_value_and_not_by_identity() -> Bool {
+  first_agreement(left: merged_two(), right: merged_two())
+    && first_agreement(left: one_capture_written_as_two(), right: one_capture_written_as_two())
+    && !first_agreement(left: merged_two(), right: merged_three())
+}
+
+// THE ABSORBING CLAIMS. Green only on a tree whose annotation rows carry what they absorbed.
+test fn w_attach_annotations_row_distinguishes_one_absorbed_capture_from_two() -> Bool {
+  !first_agreement(left: merged_two(), right: one_capture_written_as_two())
+}
+
+test fn w_attach_annotations_row_distinguishes_one_absorbed_capture_from_three() -> Bool {
+  !first_agreement(left: merged_three(), right: one_capture_written_as_three())
+}
