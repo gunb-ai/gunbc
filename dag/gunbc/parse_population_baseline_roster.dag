@@ -294,7 +294,9 @@ fn parse_population_cardinality_accepts_real() -> Bool {
   parse_population_cardinality_predicate(parse_population_baseline_rows) == true
 }
 
-// A roster with one row PLANTED (duplicated-path member pushed onto the real roster). Same fold +
+// A roster with one row PLANTED: a NEW-path member (probe/planted_extra.dag, count 1) pushed onto the
+// real roster. Not a duplicated path -- the leg discriminates on the COUNT, which the new member
+// pushes from 170 to 171, so a fresh path is what the roster below actually builds. Same fold +
 // same predicate, one extra member -- so its count is 171 and the predicate must REFUSE it.
 fn parse_population_planted_extra_row() -> List<ParsePopulationRow> {
   list_push(xs: parse_population_baseline_rows,
