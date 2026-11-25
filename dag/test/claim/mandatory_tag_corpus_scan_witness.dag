@@ -1,4 +1,4 @@
-module v2.lens.mandatory_tag.corpus_scan_witness
+module test.claim.mandatory_tag_corpus_scan_witness
 
 import v2.lens.mandatory_tag.corpus_scan {
   corpus_anchor_facts,
