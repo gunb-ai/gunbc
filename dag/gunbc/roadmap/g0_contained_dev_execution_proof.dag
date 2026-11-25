@@ -154,7 +154,7 @@ fn g0_two_sided_isolation_verdict(
 // masking: bwrap --dev-bind / with --tmpfs over the protected and sibling subtrees, run inside the
 // heavy-slot scope on srv1. It is named so the scaffold is honest about exactly what the shell does that
 // .dag cannot.
-data g0_bwrap_isolation_bash_emit_capability: String = "bwrap mount-namespace tmpfs masking (--dev-bind / with --tmpfs over the protected and sibling subtrees), realized by tools/g0_g0_criteria_witness.sh inside the heavy-slot scope on srv1"
+data g0_bwrap_isolation_bash_emit_capability: String = "bwrap mount-namespace tmpfs masking (--dev-bind / with --tmpfs over the protected and sibling subtrees), realized by the external bwrap evidence probe recorded in the PR #16989 evidence comment (NOT a file in this repository; sha256 d9702374b787297de2601a363133bf7981d953b8d6da7ac5895bcc322a2117ca), run inside the heavy-slot scope on srv1"
 
 // THE SCAFFOLD MARKER / DISSOLUTION TRIGGER. The decision rule + verdict above are the modeled consumer;
 // the per-probe return-code tokens they consume are produced by a hand-shell probe (bwrap) until that
