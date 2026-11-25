@@ -25,6 +25,7 @@ import v2.std.compilers.target_model {
   target_operator_realization_row_wire_schema_valid,
   target_operator_realizations_catalog_node,
   target_value_expression_binding_ref,
+  target_value_expression_int_literal,
   target_value_expression_operand_needs_grouping,
   target_value_expression_primitive_apply,
   target_value_expr_comparison_chain_refuses,
@@ -546,6 +547,31 @@ test fn chains_undecodable_operand_chains_yes_does_not_refuse() -> Bool {
         node: target_model_type_atom_node(identity: ^target_value_expression_primitive_apply_atom)
       },
       claim_flat_binding()
+    ]
+  ) == false
+}
+
+// NEGATIVE CASE of the class that regressed at head c5ad78cb8eb (measured: subject
+// v2.test.claim.self_host.literal_compare_operand_subject_fixture, body `n > 0`, refused emission —
+// witness of the FAIL in leg_LEG1.20261125T123320Z.log): a NON-apply operand (Int literal, binding
+// ref) is not "an apply whose operation failed to decode", so it must never be classified as an
+// unknown comparison. Without the kind gate this witness refuses and goes red.
+test fn chains_two_non_apply_operands_do_not_refuse() -> Bool {
+  target_value_expr_comparison_chain_refuses(
+    catalog: claim_grouping_catalog(rows: [
+      target_operator_realization_node_with_precedence(
+        operation: canonical_operation_op_lt(),
+        shape: InfixToken { token: ^claim_token_lt },
+        precedence_node: target_operator_precedence_level_node(level: 3)
+      )
+    ]),
+    enclosing_op: canonical_operation_op_lt(),
+    operands: [
+      claim_flat_binding(),
+      target_value_expression_int_literal(
+        lexeme: "0",
+        source: target_model_type_atom_node(identity: ^target_value_expression_int_literal_atom)
+      )
     ]
   ) == false
 }
