@@ -10,7 +10,7 @@ import gunbc.fleet.fleet_asset_identity {PhysicalAssetIdentity}
 import gunbc.fleet.printer_report {report_once_using_session, PrinterReported, PrinterReportExhausted, PrinterCleanupClean, PrinterCleanupOutstanding}
 import gunbc.fleet.printer_receipt {write_receipt,write_receipt_at}
 import gunbc.auth.access_token_source {AccessTokenSource}
-import gunbc.fleet.printer_start_evidence_store {StartEvidenceStore,start_evidence_store_at,start_evidence_record}
+import gunbc.fleet.printer_start_evidence_store {StartEvidenceStore,start_evidence_record}
 import gunbc.durable_create_once { CreateOnceRecorded, CreateOnceAlreadyRecorded, CreateOnceRefused }
 
 // Observing activity is not proof of application-level exactly-once delivery. The

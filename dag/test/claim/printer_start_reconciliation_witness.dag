@@ -1,15 +1,29 @@
 module test.claim.printer_start_reconciliation_witness
 import std.types {Bool,String,NonEmptyStr,Secret,FilePath}
 import std.process {ExitFailure}
+import std.optional {Present, Absent}
 import extdeps.shell
 import extdeps.filesystem.filesystem_io {Filesystem, filesystem_read_outcome, FilesystemReadOutcome, FilesystemReadSucceeded, FilesystemReadRefused}
 import extdeps.shell.exec {ProcessCaptured,ProcessOutputPresent}
 import extdeps.cloud.gcp.secret_manager {SmResolvedVersionIdentity}
 import product.placement_supply {PhysicalAssetIdentity}
 import gunbc.fleet.printer_credential_source {PrinterCredentialSource,HostCustodyCredentialSource}
-import gunbc.fleet.printer_start_evidence_store {start_evidence_store_at}
+import gunbc.fleet.printer_start_evidence_store {start_evidence_path,start_evidence_store,StartEvidenceStore,StartEvidenceStoreReady,StartEvidenceStoreUnready}
+import gunbc.host_state_root {HostStateTree,isolated_host_state_tree}
 import gunbc.fleet.printer_report {PrinterReported,PrinterCleanupClean,PrinterCleanupOutstanding}
 import gunbc.fleet.printer_start_reconciliation {observe_start,reconcile_step,reconcile_reads,ExpectedProjectRunning,ExpectedProjectBlocked,StartUnresolved,ConfirmRunning,StopBlocked,StopUncertain,ReadAgain}
+
+// THE STORE, THE ADMITTED WAY (round-4 review item 5): a sealed StartEvidenceStore is minted by
+// this module's guarded start_evidence_store(tree) -- legacy scan and directory admission included --
+// over an ISOLATED HostStateTree, exactly as the sealed-createonce stores witness does. The former
+// start_evidence_store_at(root) let any string mint the sealed type from outside its module and is
+// deleted.
+fn fresh_evidence_store() -> StartEvidenceStore? {
+  let dir = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_start_reconcile_store.XXXXXX").path
+  let tree = isolated_host_state_tree(dir: dir as NonEmptyStr)
+  if !shell.Mkdir.Parents(path: start_evidence_path(tree: tree) as String as FilePath).success { return none }
+  match start_evidence_store(tree: tree) { StartEvidenceStoreReady { store: s } => Present { value: s } StartEvidenceStoreUnready { detail: _ } => none }
+}
 
 fn report(state:String,file:String,code:String) -> String {
  join(["{\"print\":{\"gcode_state\":\"",state,"\",\"gcode_file\":\"",file,"\",\"print_error\":",code,"}}"],"")
@@ -55,6 +69,7 @@ test fn unresolved_budget_terminates_and_confirmation_stops_reads() -> Bool {
 test fn leaked_first_read_survives_a_clean_running_second_read_and_refuses_the_exit() -> Bool {
   let dir = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_start_reconcile.XXXXXX").path
   if !shell.Mkdir.Parents(path: dir as FilePath).success { return false }
+  let start_store = match fresh_evidence_store() { Absent => return false Present { value: s } => s }
   let exit = reconcile_reads(
     printer: "gunbc-abc.3mf" as PhysicalAssetIdentity,
     remote: "gunbc-abc.3mf",
@@ -62,7 +77,7 @@ test fn leaked_first_read_survives_a_clean_running_second_read_and_refuses_the_e
     digest: "d",
     credential_source: HostCustodyCredentialSource { run_id: "test-run" },
     evidence_prefix: dir,
-    evidence_store: start_evidence_store_at(root: dir as NonEmptyStr),
+    evidence_store: start_store,
     claim_key: "test-claim" as NonEmptyStr,
     publish_standing: "publish-acknowledged",
     cleanup_issue: "",

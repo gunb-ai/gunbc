@@ -15,7 +15,7 @@ import gunbc.cloudflare.r2_conditional_put_race_probe {
   RaceRoundObservation, RaceRoundUnseeded, RaceRoundRaced,
   RaceOverlap, RaceOverlapEstablished, RaceOverlapUnestablished, race_overlap_of_trace,
   RaceRoundConsistent, RaceRoundBothSucceeded, RaceRoundInconclusive, race_round_verdict,
-  RaceRoundWritersUnstarted, race_round_line, race_receipt_round,
+  RaceRoundWritersUnstarted, race_round_line, race_receipt_round, race_probe_receipt,
   RaceProbePassed, RaceProbeFalsified, RaceProbeInconclusive, race_probe_verdict,
   race_writer_a, race_writer_b, race_probe_rounds,
   r2_conditional_put_race_receipt, race_receipt_reading, RaceReceiptRead, RaceReceiptUnreadable,
@@ -394,6 +394,26 @@ test fn writers_unstarted_verdict_keeps_the_seed_and_refuses_the_unseeded_words(
 // THE RECORD CARRIES ITS OWN IDENTITY THROUGH RENDER AND PARSE: the receipt line round trips
 // to the SAME observation, seed tag and cause intact -- never collapsing back to "seed
 // refused", which is the difference between keeping a sealed entity and republishing it.
+// THE PRODUCTION FOLD, NOT THE CLASSIFIER ALONE (round-4 review item 6): a declared 3-round run
+// whose two raced rounds are consistent and whose THIRD round had a confirmed seed with writers
+// that never spawned. Through race_probe_verdict and the receipt the probe publishes: the run is
+// inconclusive (the unstarted round proved nothing), never passed, and the receipt keeps the seed
+// tag -- the round the probe lost is recorded as itself in the fold's own output. Red before the
+// seed-preserving fold existed: the variant did not compile, and its pre-fix rendering parsed as
+// an unseeded round.
+test fn a_run_with_a_confirmed_seed_and_one_unstarted_round_is_inconclusive_never_passed() -> Bool {
+  let rounds = [raced(a: rep(status: 200), b: rep(status: 412)), raced(a: rep(status: 412), b: rep(status: 200)), RaceRoundWritersUnstarted { seed_tag: "seed-tag-9", cause: "curl was never spawned: transport refused" }]
+  match race_probe_verdict(declared_rounds: 3, observations: rounds) {
+    RaceProbeInconclusive { rounds: n, cause: c, witnesses: _ } =>
+      n == 3
+        && string_contains(s: c as String, pattern: "proved nothing")
+        && string_contains(s: race_probe_receipt(declared_rounds: 3, transport: "transport=local", observations: rounds, cleanup: "cleanup=clean"), pattern: "writers unstarted seed=seed-tag-9")
+        && string_contains(s: race_probe_receipt(declared_rounds: 3, transport: "transport=local", observations: rounds, cleanup: "cleanup=clean"), pattern: "verdict=inconclusive")
+        && !string_contains(s: race_probe_receipt(declared_rounds: 3, transport: "transport=local", observations: rounds, cleanup: "cleanup=clean"), pattern: "verdict=passed")
+    _ => false
+  }
+}
+
 test fn writers_unstarted_round_round_trips_through_the_receipt_line() -> Bool {
   let line = race_round_line(round: 3, observation: RaceRoundWritersUnstarted { seed_tag: "seed-tag-9", cause: "curl was never spawned: transport refused" })
   match race_receipt_round(line: line, position: 3) {

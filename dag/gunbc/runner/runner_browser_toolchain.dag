@@ -4,7 +4,7 @@ import gunbc.runner.runner_user_session_receipt { RunnerUserSessionReceiptInput 
 import gunbc.runner.runner_user_session_receipt_observed { runner_user_session_receipt_observed }
 import std.types { Bool, Int, List, NonEmptyStr, FilePath }
 import extdeps.shell
-import extdeps.posix.test_utility { test_exists_command }
+import gunbc.live_deploy.member_observe { path_parent, path_basename, listing_contains_entry }
 import std.measure { ByteSize, byte_size }
 import std.algebra { Cons, Empty, list_append, trim, length }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -32,7 +32,7 @@ import extdeps.tools.curl { curl_download_command }
 import extdeps.tools.tar { tar_extract_command }
 import extdeps.tools.mkdir { mkdir_parents_command }
 import extdeps.tools.findutils { find_regular_files_sha256_command, find_owner_executable_files_command, find_symlink_targets_command }
-import extdeps.tools.gnu_coreutils { rm_recursive_force_command, mv_exact_destination_command, sort_in_place_command, ls_one_per_line_command }
+import extdeps.tools.gnu_coreutils { rm_recursive_force_command, mv_exact_destination_command, sort_in_place_command, ls_one_per_line_command, ls_almost_all_one_per_line_command }
 import extdeps.tools.sha256sum { sha256sum_file_digest_via_shell, Sha256FileDigest, Sha256FileDigestUnavailable }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -564,7 +564,7 @@ fn tree_admission_of(tree: NonEmptyStr, presence: PathExistence, pinned: NonEmpt
     PathAbsent => TreeAbsent { tree: tree }
     // An unreadable existence check is not absence: the tree may be sitting right there, and this
     // is the same arm the placement already refuses to replace from.
-    PathExistenceUnreadable { program: p, cause: c } => TreeUnobservable { tree: tree, reason: join(["the existence check was never spawned: ", p, " -- ", c], "") }
+    PathExistenceUnreadable { program: p, cause: c } => TreeUnobservable { tree: tree, reason: join(["the existence reading established nothing (never spawned, or its parent listing errored): ", p, " -- ", c], "") }
     PathPresent =>
       match observation {
         TreeDigestUnobservable { reason: r } => TreeUnobservable { tree: tree, reason: r }
@@ -1182,20 +1182,35 @@ fn toolchain_placement_text(p: ToolchainPlacement) -> String {
   }
 }
 
-// AN EXISTENCE READING IS NOT A BOOL. `test -e` refusing (exit 1) answers 'absent'; a reader child
-// that was never spawned answers NOTHING -- and reading that nothing as 'absent' lets a placement
-// stage a fresh tree beside one this process could not look at (the :1182 defect: the unspawned
-// existence check returned false, was read as TreeAbsent, and staged fresh). The reading carries
-// the reader's own program and cause.
+// AN EXISTENCE READING IS NOT A BOOL, AND test(1) CANNOT ESTABLISH ABSENCE (round-4 review item
+// 3). `test -e` exit 1 was read as PathAbsent, but a mode-000 parent answers exit 1 with empty
+// stderr exactly as an absent entry does -- and a reader child that was never spawned answers
+// NOTHING. The reading that establishes both answers is the shared parent listing
+// (gunbc.live_deploy.member_observe parent_listing_argv / listing_contains_entry, the route
+// #16984 and runner_host_file_converge ride; the mint below is argv-equal to it): a SUCCESSFUL
+// listing naming the entry is present, a successful listing its parent positively lacks it is
+// absent, and a listing that errored or never spawned is neither -- reading its silence as
+// absence lets a placement stage a fresh tree beside one this process could not look at (the
+// :1182 defect: the unspawned existence check returned false, was read as TreeAbsent, and staged
+// fresh). The reading carries the reader's own program and cause.
 type PathExistence = PathPresent | PathAbsent | PathExistenceUnreadable { program: String, cause: String }
 
-fn path_exists_wet(path: String) -> PathExistence {
-  let captured = run_shell_command_capture(command: test_exists_command(path: path), transport: LocalExec)
+fn path_existence_standing(captured: ProcessCaptureOutcome, entry_name: String) -> PathExistence {
   match captured {
-    ProcessCaptured { outcome: _ } =>
-      if process_capture_admitted(captured: captured) { PathPresent } else { PathAbsent }
     ProcessCaptureNotSpawned { program: p, cause: why } => PathExistenceUnreadable { program: p as String, cause: why as String }
+    ProcessCaptured { outcome: ProcessOutputPresent { text: t } } =>
+      if listing_contains_entry(stdout: t, name: entry_name) { PathPresent } else { PathAbsent }
+    ProcessCaptured { outcome: ProcessOutputAbsent } => PathAbsent
+    ProcessCaptured { outcome: ProcessRefused { exit_code: code, stderr: err } } =>
+      PathExistenceUnreadable { program: "ls -1 -A", cause: join(["the parent listing errored: exit ", to_string(code), " ", trim(s: err)], "") }
   }
+}
+
+fn path_exists_wet(path: String) -> PathExistence {
+  path_existence_standing(
+    captured: run_shell_command_capture(command: ls_almost_all_one_per_line_command(path: path_parent(path: path)), transport: LocalExec),
+    entry_name: path_basename(path: path),
+  )
 }
 
 fn run_ok(command: ArgvCommand) -> Bool {

@@ -2,7 +2,11 @@ module test.claim.runner.runner_browser_toolchain_witness
 
 import std.logic { Bool }
 import std.types { String, NonEmptyStr, List }
-import std.algebra { length }
+import std.algebra { length, join, string_contains, trim }
+import extdeps.shell
+import extdeps.tools.chmod { chmod_set_mode_command, chmod_path_resolved_program }
+import extdeps.tools.mkdir { mkdir_parents_command }
+import gunbc.command_runner { run_shell_command_capture, process_capture_admitted, LocalExec }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Present, Absent }
 import extdeps.github.actions { SelfHosted }
@@ -23,7 +27,7 @@ import gunbc.runner.runner_browser_toolchain {
   runner_browser_toolchain_recipe_identity, runner_browser_toolchain_tree_sha256,
   TreeAdmitted, TreeAbsent, TreeContentMismatch, TreeUnobservable, TreeDigestObserved, TreeDigestUnobservable,
   tree_admission_of, PathExistence, PathPresent, PathAbsent, PathExistenceUnreadable, tree_manifest_text_of, runner_browser_toolchain_node_command, superseded_entries_of,
-  browser_toolchain_probe_fragment,
+  browser_toolchain_probe_fragment, admit_tree_wet,
   runner_browser_toolchain_archives, runner_browser_toolchain_apt_requirements,
 }
 import extdeps.package_managers.dpkg { dpkg_query_status_verdict_of, dpkg_query_status_argv, DpkgInstalledState, DpkgPackageInstalled, DpkgPackageNotInstalled, DpkgPackageUnknown, DpkgQueryUndecidable }
@@ -392,4 +396,24 @@ test fn a_runs_on_naming_the_user_session_label_has_no_declared_pool() -> Bool {
       BrowserToolchainPoolDerived { hosts: hs } => length(hs) > 0
       BrowserToolchainPoolUndefined { cause: _ } => false
     }
+}
+
+// THE PARENT THAT CANNOT BE SEARCHED IS NOT AN ABSENT TREE (round-4 review item 3, through real
+// placement): `test -e` answered exit 2 here and the old reading called every nonzero PathAbsent,
+// so an unreadable parent staged a fresh tree beside one that may well stand. The shared parent
+// listing fails too -- and failure is PathExistenceUnreadable, which admission reports as
+// TreeUnobservable, never TreeAbsent. Driven through the production consumer admit_tree_wet.
+test fn an_unreadable_parent_admits_nothing_and_reports_unobservable_not_absent() -> Bool {
+  let home = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_browser_tree_parent.XXXXXX").path as String
+  let tree = join([home, "/chromium-tree"], "")
+  let made = run_shell_command_capture(command: mkdir_parents_command(path: tree), transport: LocalExec)
+  if !process_capture_admitted(captured: made) { return false }
+  let locked = run_shell_command_capture(command: chmod_set_mode_command(chmod_program: chmod_path_resolved_program, mode: "000" as NonEmptyStr, path: home), transport: LocalExec)
+  if !process_capture_admitted(captured: locked) { return false }
+  let admission = admit_tree_wet(tree: tree as NonEmptyStr, manifest_path: join([home, "/manifest"], ""), pinned: "aa" as NonEmptyStr)
+  let _restore = run_shell_command_capture(command: chmod_set_mode_command(chmod_program: chmod_path_resolved_program, mode: "755" as NonEmptyStr, path: home), transport: LocalExec)
+  match admission {
+    TreeUnobservable { tree: _, reason: r } => string_contains(s: r, pattern: "parent listing errored")
+    _ => false
+  }
 }

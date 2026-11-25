@@ -739,17 +739,52 @@ fn pin_readback_block(staged: String) -> String {
     join([
       "enroll host=", k.host as String, " endpoint=", known_host_row_field(k: k),
       " provenance=", host_key_provenance_label(p: k.provenance),
-      // NOT FOUND AND NEVER CHECKED ARE DIFFERENT SENTENCES: `ssh-keygen -F` refusing answers
-      // 'absent from the fragment'; a reader child never spawned answers nothing, and printing
-      // that as ABSENT would let a receipt claim the fragment lacks a row nobody looked for.
+      // THREE SENTENCES, NOT TWO (round-4 review): `ssh-keygen -F` exits 0 when the row is
+      // FOUND, 1 when it is positively NOT THERE, and anything else (255 on an unreadable
+      // file, a bad argument, a killed reader) is a READ ERROR -- neither found nor absent.
+      // A reader child never spawned answers nothing at all. Collapsing exit 255 into ABSENT
+      // let an unreadable fragment exit success on an unverified pin, and ABSENT itself is
+      // not a success: SUCCESS REQUIRES THE POSITIVE READBACK (readback=found on every
+      // enrolled endpoint; the entry refuses every other standing).
       match f {
         ProcessCaptureNotSpawned { program: p, cause: why } =>
           join([" readback=UNOBSERVED never-spawned: ", p as String, " -- ", why as String], "")
-        ProcessCaptured { outcome: _ } =>
-          if process_capture_admitted(captured: f) { " readback=found-in-pinned-fragment" } else { " readback=ABSENT" }
+        ProcessCaptured { outcome: ProcessOutputPresent { text: _ } } => " readback=found-in-pinned-fragment"
+        ProcessCaptured { outcome: ProcessOutputAbsent } => " readback=ERROR exit=0-without-output: a positive ssh-keygen -F finding prints the row"
+        ProcessCaptured { outcome: ProcessRefused { exit_code: c, stderr: e } } =>
+          if c == 1 { " readback=ABSENT" }
+          else { join([" readback=ERROR exit=", to_string(c), " unreadable fragment: ", e as String, ""], "") }
       }, "\n",
     ], "")
   }), "")
+}
+
+// THE ENTRY'S FINAL DECISION OVER A COMPLETED RECEIPT, extracted as a pure fn so the
+// claim drives the PRODUCER DECISION itself (round-4 control ruling): "" means every
+// enrolled endpoint carries a positive readback=found; any other return is the refusal
+// reason the entry exits failure with. Read-error and positive-absent readbacks both
+// refuse -- success REQUIRES the positive readback on every row.
+fn fleet_host_key_enroll_receipt_refusal(receipt: String) -> String {
+  if string_contains(s: receipt, pattern: "outcome=refused") {
+    concat("fleet_host_key_enroll: apply refused — ", receipt)
+  } else if string_contains(s: receipt, pattern: "readback=UNOBSERVED") {
+    // An enrollment whose pin could not be READ BACK is not proven pinned; the entry refuses
+    // rather than reporting an unverified pin as enrolled (the readback never ran -- its receipt
+    // line names the program and cause).
+    concat("fleet_host_key_enroll: pin readback unobserved — ", receipt)
+  } else if string_contains(s: receipt, pattern: "readback=ERROR") {
+    // ROUND-4 REVIEW: an ssh-keygen -F that EXITED WRONG (255 on an unreadable fragment, a
+    // killed reader, a bad argument) proves neither found nor absent. Collapsing it into
+    // ABSENT let a read error exit success on an unverified pin; the entry now refuses, and
+    // the receipt line carries the exit code and the child's stderr.
+    concat("fleet_host_key_enroll: pin readback unreadable — ", receipt)
+  } else if string_contains(s: receipt, pattern: "readback=ABSENT") {
+    // POSITIVE READBACK REQUIRED: exit 1 is a genuine observation that the row is NOT in the
+    // staged fragment -- the pin did not pin. That is a failure to enroll, not an enrollment.
+    concat("fleet_host_key_enroll: pin readback positively absent — ", receipt)
+  } else {
+    ""
+  }
 }
 
 fn fleet_host_key_enroll_wet() -> ProcessExit
@@ -761,13 +796,9 @@ fn fleet_host_key_enroll_wet() -> ProcessExit
   let receipt = fleet_host_key_enroll_apply(home: home)
   let wr = Filesystem.Write(path: fleet_host_key_enroll_receipt_path, content: receipt)
   if wr.success {
-    if string_contains(s: receipt, pattern: "outcome=refused") {
-      exit_failure(reason: concat("fleet_host_key_enroll: apply refused — ", receipt))
-    } else if string_contains(s: receipt, pattern: "readback=UNOBSERVED") {
-      // An enrollment whose pin could not be READ BACK is not proven pinned; the entry refuses
-      // rather than reporting an unverified pin as enrolled (the readback never ran -- its receipt
-      // line names the program and cause).
-      exit_failure(reason: concat("fleet_host_key_enroll: pin readback unobserved — ", receipt))
+    let refusal = fleet_host_key_enroll_receipt_refusal(receipt: receipt)
+    if refusal != "" {
+      exit_failure(reason: refusal)
     } else {
       ExitSuccess
     }

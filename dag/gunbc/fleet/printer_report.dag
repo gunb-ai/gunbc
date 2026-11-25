@@ -232,8 +232,14 @@ fn report_has_state_and_error(text: String) -> Bool {
   }
 }
 
-fn complete_report_with_credential(serial: NonEmptyStr, address: NonEmptyStr, credential: Secret, remaining: Int) -> PrinterReportCapture {
-  match report_with_credential(serial: serial, address: address, credential: credential) {
+// THE RETRY FOLD ITSELF, EXTRACTED (round-4 review item 6): the budget walk -- complete report
+// stops the loop, exhausted budget keeps the LAST real capture under the exhaustion marker, and a
+// leaked credential-bearing file from an EARLIER attempt is folded forward into whatever later
+// attempts return -- lives in ONE fn that both production and the claim drive. The claim injects
+// its own capture source (an fn from the remaining budget to a capture); the walk is this same
+// code, so a mutation of the fold turns the claim red (gunbc.design_argument::witness_one_interface).
+fn complete_report_attempts(remaining: Int, attempt: fn(Int) -> PrinterReportCapture) -> PrinterReportCapture {
+  match attempt(remaining) {
     PrinterReported { outcome: ProcessCaptured { outcome: ProcessOutputPresent { text: text } }, cleanup: cleanup } =>
       if report_has_state_and_error(text: text) { PrinterReported { outcome: ProcessCaptured { outcome: ProcessOutputPresent { text: text } }, cleanup: cleanup } }
       // THE BUDGET IS OUT AND THIS WAS THE LAST REAL CAPTURE: keep it under the exhaustion marker --
@@ -242,11 +248,20 @@ fn complete_report_with_credential(serial: NonEmptyStr, address: NonEmptyStr, cr
       else if remaining <= 1 { PrinterReportExhausted { last: ProcessCaptured { outcome: ProcessOutputPresent { text: text } }, cleanup: cleanup } }
       // Retrying discards THIS attempt's capture, but a leaked credential-bearing file must not
       // be discarded with it: the standing is folded into whatever the later attempts return.
-      else { fold_cleanup(previous: cleanup, next: complete_report_with_credential(serial: serial, address: address, credential: credential, remaining: remaining - 1)) }
-    // A report that never ran is not an incomplete report: retrying a program the spawner refused
-    // would only answer the same refusal eight times.
+      else { fold_cleanup(previous: cleanup, next: complete_report_attempts(remaining: remaining - 1, attempt: attempt)) }
     other => other
   }
+}
+
+// THE PRODUCTION ENTRY rides the one fold above: every real attempt is a fresh
+// report_with_credential (the retry RE-RUNS the capture, which is why it has its own budget), and
+// a report that never ran is not an incomplete report -- retrying a program the spawner refused
+// would only answer the same refusal eight times, so the fold hands `other` straight back.
+fn complete_report_with_credential(serial: NonEmptyStr, address: NonEmptyStr, credential: Secret, remaining: Int) -> PrinterReportCapture {
+  complete_report_attempts(
+    remaining: remaining,
+    attempt: _ => report_with_credential(serial: serial, address: address, credential: credential),
+  )
 }
 
 // Carry an earlier attempt's outstanding cleanup across a retry that replaces the capture.

@@ -1,20 +1,23 @@
 module test.claim.runner.runner_qemu_toolchain_placement_witness
 
-// CLAIMS FOR THE QEMU TOOLCHAIN TREE CHECK (review 97468 blocker 4). The existence probe is a
-// WET child: the transport refuses under a remote or declined session, and no claim here can
-// force LocalExec to refuse hermetically -- so the claims pin the CLASSIFIER, which is where the
-// false diagnosis lived, and the compile proves place_qemu_toolchain_wet routes Unreadable to a
-// refusal BEFORE any staging write (the arm sits before mkdir, mktemp and publish).
+// CLAIMS FOR THE QEMU TOOLCHAIN TREE CHECK (review 97468 blocker 4; round-4 review item 3: the
+// probe is the shared PARENT LISTING, not test(1) -- exit 1 never established absence, because a
+// mode-000 parent answers exit 1 with empty stderr just like an absent entry, and only a
+// SUCCESSFUL listing establishes it). The listing is a WET child: the transport refuses under a
+// remote or declined session, and no claim here can force LocalExec to refuse hermetically -- so
+// the classifier claims pin the decoding, and the production claims drive the real entry, the
+// place_qemu_toolchain_wet placement itself.
 
 // THE MUTATION CONTROL (documented, not inlined) -- PRODUCER DECISION, NOT TYPES (review 97468).
 // Restore in runner_qemu_toolchain.qemu_toolchain_tree_standing either
 //  * the ProcessCaptureNotSpawned arm to QemuToolchainTreeAbsent (the original defect: silence as
 //    absence), or
 //  * the ProcessRefused arms to one blanket QemuToolchainTreeAbsent (every nonzero as absence),
-// and the matching claims above go false. Restore in place_qemu_toolchain_wet a stage-on-Unreadable
+// and the matching claims below go false. Restore in place_qemu_toolchain_wet a stage-on-Unreadable
 // route (the Unreadable arm falling through to the staging branch) and the production placement
-// claim goes false -- the refusal it asserts never appears. All three mutations were run and
-// reverted in-PR; the head carries the honest arms.
+// claim goes false -- the refusal it asserts never appears. Restore the membership predicate to a
+// constant (Stands always, or Absent always) and the wet production claims go false. All mutations
+// were run and reverted in-PR; the head carries the honest arms.
 
 import std.types { String, NonEmptyStr, Bool }
 import gunbc.runner.runner_qemu_toolchain {
@@ -27,35 +30,34 @@ import gunbc.command_runner { run_shell_command_capture, process_capture_admitte
 import extdeps.tools.mkdir { mkdir_parents_command }
 import extdeps.tools.chmod { chmod_set_mode_command }
 import extdeps.shell
-import extdeps.shell.exec { ProcessCaptureOutcome, ProcessCaptureNotSpawned, ProcessCaptured, ProcessRefused }
+import extdeps.shell.exec { ProcessCaptureOutcome, ProcessCaptureNotSpawned, ProcessCaptured, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 
-// A TREE CHECK THAT NEVER SPAWNED ANSWERED NOTHING. It is NOT "absent": treating silence as
+// A LISTING THAT NEVER SPAWNED ANSWERED NOTHING. It is NOT "absent": treating silence as
 // absence would let placement stage a replacement over a tree the recipe may already own -- the
-// exact defect the reviewer named ("an unspawned `test -e` selects staging").
+// exact defect the reviewer named ("an unspawned `test -e` selects staging"), one grain later in
+// the shared-listing route that replaced test(1).
 test fn spawn_refused_tree_check_is_unreadable_not_absent() -> Bool {
-  match qemu_toolchain_tree_standing(captured: ProcessCaptureNotSpawned { program: "test -e <tree>" as NonEmptyStr, cause: "ssh session declined" as NonEmptyStr }) {
+  match qemu_toolchain_tree_standing(captured: ProcessCaptureNotSpawned { program: "ls -1 -A -- <parent>" as NonEmptyStr, cause: "the transport refused to build the child" as NonEmptyStr }, entry_name: "qemu") {
     QemuToolchainTreeUnreadable { cause: c } =>
-      string_contains(s: c, pattern: "test -e <tree>")
-        && string_contains(s: c, pattern: "ssh session declined")
+      string_contains(s: c, pattern: "ls -1 -A -- <parent>")
+        && string_contains(s: c, pattern: "the transport refused to build the child")
     _ => false
   }
 }
 
-// A RETURNED CHILD VERDICT STILL CLASSIFIES AT ITS OWN GRAIN: exit nonzero is the answer "no
-// tree", exit zero is "tree stands". (Guard: the Unreadable arm never swallows a real verdict.)
-test fn a_returned_absent_verdict_is_still_absent() -> Bool {
-  match qemu_toolchain_tree_standing(captured: ProcessCaptured { outcome: ProcessRefused { exit_code: 1, stderr: "" } }) {
-    QemuToolchainTreeAbsent => true
+// A MODE-000 PARENT IS NOT AN ABSENT TREE (round-4 review item 3). ls exits 2 on the denied
+// directory and exits 1 on some usage errors; test(1) answered BOTH old absence and old
+// unreadable with exit 1, which is exactly why the listing replaced it. Every captured nonzero of
+// the LISTING is a reading that failed -- never absence.
+test fn a_denied_parent_listing_is_unreadable_not_absent() -> Bool {
+  match qemu_toolchain_tree_standing(captured: ProcessCaptured { outcome: ProcessRefused { exit_code: 1, stderr: "" } }, entry_name: "qemu") {
+    QemuToolchainTreeUnreadable { cause: c } => string_contains(s: c, pattern: "exit 1")
     _ => false
   }
 }
 
-// AN ERRORED CHECK IS NOT "ABSENT" (round-3 review). test(1) answers "no tree" with exit 1 and
-// ERRORS with 2 or 127 (the utility itself missing). The old classifier called every captured
-// nonzero absent, so a utility error selected staging -- the same false diagnosis as the
-// never-spawned arm, one grain later.
 test fn an_errored_tree_check_is_unreadable_not_absent() -> Bool {
-  match qemu_toolchain_tree_standing(captured: ProcessCaptured { outcome: ProcessRefused { exit_code: 2, stderr: "cannot access: Permission denied" } }) {
+  match qemu_toolchain_tree_standing(captured: ProcessCaptured { outcome: ProcessRefused { exit_code: 2, stderr: "cannot access: Permission denied" } }, entry_name: "qemu") {
     QemuToolchainTreeUnreadable { cause: c } =>
       string_contains(s: c, pattern: "exit 2")
         && string_contains(s: c, pattern: "Permission denied")
@@ -63,10 +65,28 @@ test fn an_errored_tree_check_is_unreadable_not_absent() -> Bool {
   }
 }
 
+// THE LISTING ESTABLISHES BOTH ANSWERS IT CLAIMS: a successful listing that names the entry is
+// present; a successful listing the parent positively lacks it is absent (empty stdout is the
+// empty-directory case of the same reading).
+test fn a_successful_listing_answers_present_and_absent_by_membership() -> Bool {
+  match qemu_toolchain_tree_standing(captured: ProcessCaptured { outcome: ProcessOutputPresent { text: "qemu\narchives\n" } }, entry_name: "qemu") {
+    QemuToolchainTreeStands =>
+      match qemu_toolchain_tree_standing(captured: ProcessCaptured { outcome: ProcessOutputPresent { text: "archives\n" } }, entry_name: "qemu") {
+        QemuToolchainTreeAbsent =>
+          match qemu_toolchain_tree_standing(captured: ProcessCaptured { outcome: ProcessOutputAbsent }, entry_name: "qemu") {
+            QemuToolchainTreeAbsent => true
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
 // THE PRODUCTION FOLD, NOT THE CLASSIFIER (round-3 review, controls). The wet tree check runs the
-// real child over a real tree: a directory that stands classifies Stands, and a name under the
-// same parent that does not exist classifies Absent. A mutation that collapsed Stands or conflated
-// the two turns this red at the entry the placement itself calls.
+// real listing child over a real tree: a directory that stands classifies Stands, and a name under
+// the same parent that does not exist classifies Absent. A mutation that collapsed Stands or
+// conflated the two turns this red at the entry the placement itself calls.
 test fn the_wet_tree_check_answers_for_a_real_tree_and_for_a_missing_one() -> Bool {
   let made = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_qemu_tree.XXXXXX").path
   let stands = qemu_toolchain_tree_test_wet(path: made as String)
@@ -77,12 +97,12 @@ test fn the_wet_tree_check_answers_for_a_real_tree_and_for_a_missing_one() -> Bo
   }
 }
 
-// PLACE_QEMU_TOOLCHAIN_WET REFUSES BEFORE STAGING WHEN THE CHECK ERRORS (round-3 review: "a
+// PLACE_QEMU_TOOLCHAIN_WET REFUSES BEFORE STAGING WHEN THE LISTING ERRORS (round-3 review: "a
 // mutation that retains TreeUnreadable there but stages on it in place_qemu_toolchain_wet escapes
-// the test"). An inaccessible parent makes the real `test -e` exit 2 -- the unreadable standing
-// arrives through the transport, with no injection. A refusal that staged would leave a staging
-// directory under the base and a Published/absent-path arm; this asserts the refusal names the
-// failed check.
+// the test"; round-4 item 3: THE CASE IS THE MODE-000 PARENT, which test(1) hid behind exit 1).
+// A chmod-000 home makes the real parent listing exit 2 -- the unreadable standing arrives through
+// the transport, with no injection. A refusal that staged would leave a staging directory under
+// the base and a Published/absent-path arm; this asserts the refusal names the failed check.
 test fn place_refuses_before_staging_when_the_existence_check_errors() -> Bool {
   let home = shell.Mktemp.DirWithTemplate(template: "/tmp/gunbc_qemu_home.XXXXXX").path
   let locked = run_shell_command_capture(command: chmod_set_mode_command(chmod_program: "/bin/chmod" as NonEmptyStr, mode: "000" as NonEmptyStr, path: home as String), transport: LocalExec)
