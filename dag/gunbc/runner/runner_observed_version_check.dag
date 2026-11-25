@@ -2,13 +2,13 @@ module gunbc.runner.runner_observed_version_check
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import extdeps.shell.exec { ProcessObservation, process_observation }
 import extdeps.tools.gnu_coreutils { cat_command }
 import gunbc.command_runner { run_shell_command_observe, LocalExec }
 import gunbc.runner.runner_microvm { gunbc_runner_guest_image }
 import gunbc.runner.runner_microvm_boot_probe {
   BootProbeVerdict, BootPrintedRunnerVersion, BootConsoleLacksRunnerVersion,
   BootProducedNoConsole, BootVmmFailed, BootExceededHostDeadline,
+  BootConsoleUnreadable, BootProbeConsole,
   boot_probe_verdict, boot_probe_verdict_text, NoExecutionBound,
 }
 
@@ -53,13 +53,26 @@ data runner_version_check_standing: VersionCheckStanding = CheckedAtReceiptTime 
 
 // ── the check ──────────────────────────────────────────────────────────────────────────────────
 
-// A CAPTURE THAT CANNOT BE READ IS NOT A PASS. boot_probe_verdict already refuses an empty console,
-// and feeding it a failed read would produce BootVmmFailed -- which names the VMM rather than the
-// reader. The exit code is taken from cat so the two causes stay distinguishable.
-fn observe_captured_console(path: String) -> ProcessObservation
+// A CAPTURE THAT CANNOT BE READ IS NOT A PASS, AND IT IS NOT AN EMPTY CONSOLE EITHER. An earlier
+// revision handed the reader's own failure to the classifier as an exit status, which arrived as
+// BootVmmFailed -- a sentence about the VMM authored by a failed cat. Here the reader's status is kept
+// where it belongs: a failed read becomes BootProbeConsole { read_cause: ... }, which the classifier
+// refuses BY NAME as BootConsoleUnreadable, and the subject's status is never supplied at all (this
+// route has no reaper -- see the NoExecutionBound arm of
+// #gunbc.runner.runner_microvm_boot_probe::boot_probe_verdict).
+fn observe_captured_console(path: String) -> BootProbeConsole
 {
   let obs = run_shell_command_observe(command: cat_command(path: path), transport: LocalExec)
-  process_observation(exit_code: obs.exit_code, stdout: obs.stdout, stderr: obs.stderr)
+  if obs.exit_code != 0 {
+    BootProbeConsole {
+      stdout: "",
+      stderr: obs.stderr,
+      source: path,
+      read_cause: join(["the committed capture could not be read: ", obs.stderr], ""),
+    }
+  } else {
+    BootProbeConsole { stdout: obs.stdout, stderr: "", source: path, read_cause: "" }
+  }
 }
 
 // THE MODELED RELEASE COMES FROM THE GUEST IMAGE ROW, not from a literal here. A version string in
@@ -72,7 +85,7 @@ fn check_captured_console(path: String) -> BootProbeVerdict
   // (124 included) is read as a deadline.
   boot_probe_verdict(
     runner: gunbc_runner_guest_image.runner,
-    observed: observe_captured_console(path: path),
+    console: observe_captured_console(path: path),
     receipt: NoExecutionBound,
   )
 }
@@ -89,6 +102,8 @@ fn verify_captured_console(path: String) -> ProcessExit
     BootConsoleLacksGuestBooted { console: _ } => exit_failure(reason: boot_probe_verdict_text(v: verdict))
     BootNotAttempted { cause: _ } => exit_failure(reason: boot_probe_verdict_text(v: verdict))
     BootExceededHostDeadline { deadline: _, console: _, detail: _ } => exit_failure(reason: boot_probe_verdict_text(v: verdict))
+    BootDeadlineEnforcementUnobservable { console: _, detail: _, cause: _ } => exit_failure(reason: boot_probe_verdict_text(v: verdict))
+    BootConsoleUnreadable { path: _, cause: _ } => exit_failure(reason: boot_probe_verdict_text(v: verdict))
     BootVmmFailed { exit_code: _, console: _, detail: _ } => exit_failure(reason: boot_probe_verdict_text(v: verdict))
   }
 }
