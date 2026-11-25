@@ -10,6 +10,8 @@ import gunbc.plans.fleet_hardware_fact_consumption {
   migration_evidence_text, peer_access_phrase, pair_readings_phrase, first_hand_phrase, acs_phrase,
   iommu_phrase, reread_phrase, explanation_phrase, unit_lines_phrase, cap_below_default_phrase,
   max_q_phrase, journal_phrase, gunbc_unit_phrase,
+  cap_mechanisms_recorded_phrase, cap_reaches_every_card_phrase, cap_digests_marked_phrase,
+  cpu_ceiling_unsaid_phrase, confounded_wattage_phrase, hand_applied_power_cap_evidence,
 }
 import gunbc.fleet.gpu_interconnect_observation { gpu_pair_peer_access_is_absent }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
@@ -24,7 +26,7 @@ test fn the_carrier_is_registered() -> Bool {
 
 // EVERY CONSUMER IN THE OPERATOR'S REVIEW HAS ONE ROW, and no consumer is listed twice.
 test fn every_consumer_has_exactly_one_row() -> Bool {
-  fleet_hardware_consumer_migrations.length() == 12
+  fleet_hardware_consumer_migrations.length() == 13
     && all(fleet_hardware_consumer_migrations, r => count(filter(fleet_hardware_consumer_migrations, q => (q.consumer as String) == (r.consumer as String))) == 1)
 }
 
@@ -90,11 +92,32 @@ test fn the_cap_rows_evidence_compares_against_the_read_default() -> Bool {
 }
 
 // A ROW THAT OWES NO READINGS SAYS SO, rather than leaving a blank a reader could fill with anything; and the
-// two srv1 rows never render that sentence.
+// rows that DO owe readings never render that sentence. The count is 9 because the two 2026-11-24 rows (the
+// energy-and-cost row and the CPU-clock/hash frontier row) are computed from the cap modules, as are the two
+// srv1 rows this carrier was written for.
 test fn rows_that_owe_no_readings_say_so() -> Bool {
-  filter(fleet_hardware_consumer_migrations, r => migration_evidence_text(r: r) == "no first-hand reading is owed by this row yet").length() == 10
+  filter(fleet_hardware_consumer_migrations, r => migration_evidence_text(r: r) == "no first-hand reading is owed by this row yet").length() == 9
     && filter(fleet_hardware_consumer_migrations, r => (r.consumer as String) == "topology and benchmark applicability")
       .all(r => !(migration_evidence_text(r: r) == "no first-hand reading is owed by this row yet"))
     && filter(fleet_hardware_consumer_migrations, r => (r.consumer as String) == "GPU power-cap realization")
       .all(r => !(migration_evidence_text(r: r) == "no first-hand reading is owed by this row yet"))
+    && filter(fleet_hardware_consumer_migrations, r => (r.consumer as String) == "energy and cost")
+      .all(r => !(migration_evidence_text(r: r) == "no first-hand reading is owed by this row yet"))
+    && filter(fleet_hardware_consumer_migrations, r => (r.consumer as String) == "CPU clock realization, and the cap files' own hashes")
+      .all(r => !(migration_evidence_text(r: r) == "no first-hand reading is owed by this row yet"))
+}
+
+// THE 2026-11-24 CAP ROWS RENDER WHAT THE CAP MODULES ANSWER, not what this file says about them. Each phrase
+// below is the output of a join in gunbc.fleet.cpu_freq_cap_boot_state, gunbc.fleet.gpu_power_cap_boot_state or
+// gunbc.fleet.fleet_host_power, so the table EXECUTES those readings (review 92338's rule): retype a ceiling's
+// standing as settled, promote one half of the confounded wattage pair into a priced figure, drop a cap from its
+// host, or type a whole digest without discharging its frontier row, and the rendered cell changes and this test
+// goes red.
+test fn the_hand_applied_cap_rows_evidence_is_the_joins_answer() -> Bool {
+  cap_mechanisms_recorded_phrase() == "both hand-applied GPU caps on their hosts"
+    && cap_reaches_every_card_phrase() == "each cap reaches every card on its host"
+    && cap_digests_marked_phrase() == "every cap file digest is a marking carrying the hash read it owes"
+    && cpu_ceiling_unsaid_phrase() == "both CPU ceilings unsaid, each carrying the standing read it owes"
+    && confounded_wattage_phrase() == "the cap-day wattages stay out of the priced figures, both hosts still inferred"
+    && (hand_applied_power_cap_evidence() as String) == "both hand-applied GPU caps on their hosts; each cap reaches every card on its host; every cap file digest is a marking carrying the hash read it owes; both CPU ceilings unsaid, each carrying the standing read it owes; the cap-day wattages stay out of the priced figures, both hosts still inferred"
 }

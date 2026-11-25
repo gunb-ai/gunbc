@@ -127,6 +127,7 @@ fn seeded_image_publish_refusal(outcome: BootImageFetchOutcome) -> String {
   match outcome {
     BootImageAdmitted { path: p, digest: _ } => concat("published at ", p as String)
     BootImageAdmittedStagingRemains { path: p, digest: _, staging: st, reason: r } => concat("published at ", p as String, "; staging ", st as String, " not removed: ", r)
+    BootImageAdmittedStagingUnconfirmed { path: p, digest: _, staging: st, reason: r } => concat("published at ", p as String, "; whether staging ", st as String, " was removed is UNCONFIRMED: ", r)
     BootImageFetchFailed { url: u } => concat("fetch failed for ", u as String)
     BootImageDigestUnreadable { path: p, reason: r } => concat("digest unreadable at ", p as String, ": ", r)
     BootImageDigestMismatchRefused { expected: e, observed: o } => concat("digest ", o as String, " is not ", e as String)
@@ -183,6 +184,10 @@ fn publish_built_seeded_image(host: CommandHost, input: UbuntuSeededInstallMedia
         BootImageAdmitted { path: _, digest: _ } => record_published_seeded_image(host: host, input: input, dir: dir, built: built, path: path, work: w, staging_residue: none)
         BootImageAdmittedStagingRemains { path: _, digest: _, staging: st, reason: r } =>
           record_published_seeded_image(host: host, input: input, dir: dir, built: built, path: path, work: w, staging_residue: Present { value: concat(st as String, ": ", r) })
+        // The image published and verified; only the staging cleanup is unconfirmed. Keep the publication and
+        // its record; carry the residue as explicitly UNCONFIRMED rather than dropping it or claiming remains.
+        BootImageAdmittedStagingUnconfirmed { path: _, digest: _, staging: st, reason: r } =>
+          record_published_seeded_image(host: host, input: input, dir: dir, built: built, path: path, work: w, staging_residue: Present { value: concat(st as String, ": UNCONFIRMED ", r) })
         other => SeededImagePublicationRefused { reason: seeded_image_publish_refusal(outcome: other), work: w }
       }
     }

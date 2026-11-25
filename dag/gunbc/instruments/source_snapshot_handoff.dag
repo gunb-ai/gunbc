@@ -128,6 +128,10 @@ import gunbc.roadmap.roadmap_execution_contract {
   CapabilityRealization,
   DispatchHostEnvironment,
   ModeledValidationCommand,
+  ValidationOperationCommandResult,
+  ValidationCommandBuilt,
+  ValidationCommandCapabilityUnrealized,
+  ValidationCommandSubjectUnnameable,
   validation_operation_command,
 }
 import gunbc.instruments.scm_acceptance_binary {
@@ -408,8 +412,9 @@ fn run_snapshot_request(destination: String, binary: ScmAcceptanceBinary) -> Exe
     environment: snapshot_request_environment(binary: binary),
     source_roots: snapshot_handoff_layout(),
   ) {
-    Absent => RequestUnspellable
-    Present { value: command } =>
+    ValidationCommandCapabilityUnrealized => RequestUnspellable
+    ValidationCommandSubjectUnnameable { entry: _, function: _, reason: _ } => RequestUnspellable
+    ValidationCommandBuilt { command: command } =>
       let ran = gunbc.WitnessBin.Run(
         workdir: destination as FilePath,
         bin_path: command.program,
