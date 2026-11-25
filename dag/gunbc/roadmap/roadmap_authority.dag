@@ -8309,9 +8309,10 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     // direction -- closure -> join -> completion. The provenance join waits on the assessment
     // closure row fleet-retirement-assessment-closure (its verdict is the join's consumer and the
     // closure's build-identity blocker arm), and fleet-srv2-retirement-completion waits on the
-    // join. The earlier edge (join -> completion) formed a cycle with the completion first slice
-    // needing the join, and is replaced. roadmap_parent_ids preserves every prerequisite for
-    // admission, so gating is data, not prose.
+    // join. The join carried no typed edge on main; a candidate edge (join -> completion) added in
+    // this PR at head 816d8eaed3de formed a cycle with the completion first slice needing the join,
+    // so Manager B's re-review round replaced it with the closure in between. roadmap_parent_ids
+    // preserves every prerequisite for admission, so gating is data, not prose.
     edge(child: "fleet-assessment-build-provenance-join", parent: "fleet-retirement-assessment-closure"),
     edge(child: "fleet-srv2-retirement-completion", parent: "fleet-assessment-build-provenance-join"),
     edge(child: "egress-numeric-bit-kernel-arms", parent: "egress-numeric-bit-sealed-carrier"),
