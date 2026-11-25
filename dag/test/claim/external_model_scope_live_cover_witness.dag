@@ -1,6 +1,6 @@
 module test.claim.external_model_scope_live_cover_witness
 
-import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.instruments.extdeps_scope_placement_gate { scope_placement_added_paths }
 import gunbc.extdeps_scope_frontier {
   scope_carrier_paths, scope_machinery_exempt_paths,

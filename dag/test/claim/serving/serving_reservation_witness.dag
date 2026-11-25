@@ -35,10 +35,7 @@ import gunbc.serving.serving_reservation {
   memory_reservation_bytes, memory_reserved_by_replicas, ReplicaReservation,
   cpu_range_width, cpu_set_width, cpu_reservation_excluded_cores,
   host_cores_withheld_from_runner, host_memory_reserved,
-  srv14_serving_memory_charge_retirement_frontier,
 }
-import std.dissolution { dissolution_description, dissolution_is_bound }
-import std.algebra { string_contains }
 import gunbc.host.host_memory_observation {
   HostFixedOverheadMeasured, srv14_strata_engine_residency_at_read, gunbc_ci_srv14_host_fixed_overhead,
 }
@@ -87,7 +84,7 @@ test fn witness_a_non_prod_serving_host_is_charged_for_memory_by_its_own_identit
 // the host is NOT certified for runners until the per-engine reservation is read. That is stronger than "charges
 // zero" -- a zero would silently overbook CI on a number nobody read (gunbc.design_argument::fail_closed). The
 // primitive `memory_reservation_bytes` distinguishes the states (Measured=Present, Assumed=Absent, Unmeasured=Absent);
-// the fold `host_memory_reserved` on butch's two unread replicas returns Absent (a fabricated Present(0) would be the bug).
+// the fold `host_memory_reserved` on a SYNTHETIC two-replica unread set returns Absent (a fabricated Present(0) would be the bug).
 test fn witness_an_unmeasured_memory_replica_fails_the_host_width_closed_not_a_fabricated_zero() -> Bool {
   let read = ServingMemoryRead { bytes: byte_size(count: 8), provenance: "witness synthetic replica" as NonEmptyStr }
   let unread = ServingMemoryUnread { reason: "no per-engine memory figure has been read" as NonEmptyStr }
@@ -176,56 +173,36 @@ test fn the_conservation_tree_refuses_an_unmeasured_serving_reservation() -> Boo
   }
 }
 
-// THE HELD BUTCH MEMORY CHARGE IS STILL HELD, AND THE FRONTIER THAT OWNS ITS DISSOLUTION STILL NAMES BOTH
-// TRIGGERS. Butch's four A2s were retired on 2026-11-17 (operator report: physically removed, to be sold; butch
-// is CI only, no serving) and the cap intents + device rows + containment rows went with them. What did NOT go
-// is the SERVING MEMORY CHARGE, because deleting it is not neutral: `host_memory_reserved` returns Present(0)
-// for a host with no reservation row, so dropping srv14's row would hand the runner pool the whole 192 GiB the
-// two engines are charged for and widen butch's CI runners on nobody's measurement -- and the operator has
-// banned a CI memory budget rise without explicit sign-off. It REDS if anyone retires the retirement too far.
+// WHY THIS CLAIM EXISTS. Butch WAS in the roster as a SERVING host; the single row that charged it -- the
+// ServingHostReservation for operator_host_srv14 -- is now GONE, discharged 2026-11-24 under the operator's
+// verbatim ruling "yes you can retire the 192gib serving reservation" (gunbc.design_ruling::
+// srv14_serving_memory_charge_retirement_operator_approved_2026_11_24) after BOTH retirement triggers landed:
+// the hand-retired engines (srv14_serving_unit_boot_states, read by
+// test.claim.serving.butch_serving_retirement_witness) and the quiescent peer re-read (run 45321352046,
+// MemAvailable 259550704 KiB). Deleting the charge is NOT neutral, and this claim pins every number that moves
+// with it: (a) host_memory_reserved(srv14) resolves the fold's no-reservation arm, Present(0) -- the CORRECT
+// charge for a host with no serving row, not the fabricated zero the fail-closed gate refuses (there is no
+// charge to read because there is no charge); (b) the two engine rows that fed the overhead subtraction are
+// gone, so srv14_strata_engine_residency_at_read is empty; (c) the overhead renumbers to the post-retirement
+// pair, 3468107776 bytes (was 4842987520). CI width stays the ruled zero regardless of the freed 192 GiB
+// (test.claim.runner.runner_ci_width_ruled_zero_witness); the 192 GiB is back in srv14's build-pool envelope.
 //
-// WHAT THIS GUARD ACTUALLY IS, stated plainly because the difference matters (gunbc.design_argument::
-// fail_closed: "a typecheck and a .contains() grep are not consumers"). Two of its three legs are BEHAVIOURAL
-// -- they evaluate the production fold and the committed number, so they move when the model's behaviour
-// moves: (a) `host_memory_reserved` must still yield the measured 2 x 96 GiB for srv14, which is exactly what
-// runner_slot_allocation spends, and deleting the reservation row flips it to Present(0); (b)
-// `gunbc_ci_srv14_host_fixed_overhead` must still measure 4,842,987,520, which is what the engine-residency
-// subtraction produces, and deleting the subtraction while the charge stays moves it to 45,243,404,288 and
-// double-charges CI. Those two legs are the teeth, and they are the reason the claim exists.
-//
-// The third leg is NOT a consumer and is not claimed as one: the string checks read
-// srv14_serving_memory_charge_retirement_frontier's own description text, so they only detect someone SILENTLY
-// DELETING A TRIGGER from the declaration. The frontier remains an unconsumed declaration -- exactly like its
-// sibling srv14_serving_deferred_consumer_frontier, which has had no consumer since it was written -- and no
-// amount of reading its prose makes it executed. A DissolutionCondition has no runtime to fire: an
-// unbound_dissolution waits for a human act, so the honest state of that row is "declared, unread by
-// production, pinned in its wording by a test". If the corpus ever wants the hold enforced rather than
-// recorded, the thing to build is a claim over the DISSOLUTION ITSELF -- a check that refuses to certify
-// srv14's serving footprint as retired while either trigger is unmet -- and that is a larger shape than this
-// retirement should invent.
-test fn witness_the_held_butch_memory_charge_and_its_two_trigger_frontier_stand() -> Bool {
-  // (a) the charge production actually spends: two replicas at their measured 96 GiB MemoryMax ceiling.
-  let charge_is_the_measured_192_gib = match host_memory_reserved(operator_host_srv14) {
-    Present { value: b } =>
-      byte_size_count(b) == 2 * byte_size_count(gibibyte_to_byte_size(gibibyte(count: 96)))
+// THE REDS: re-add the reservation row and (a) flips to Present(2 x 96 GiB); restore an engine residency row
+// and (b) flips; regress host_memory_observation to the pre-retirement read pair and (c) flips back to
+// 4842987520. Prose is nowhere a consumer here.
+test fn witness_the_discharged_butch_memory_charge_reads_zero_and_renumbers_the_overhead() -> Bool {
+  // (a) the charge production spends for srv14 is now ZERO -- the row is gone; the fold's no-reservation arm.
+  let charge_is_released = match host_memory_reserved(operator_host_srv14) {
+    Present { value: b } => byte_size_count(b) == 0
     Absent => false
   }
-  // (b) the coupled half: both engine residencies are still subtracted, so the committed bound is the base
-  // residency and not the pre-subtraction residency.
-  let both_engine_residencies_still_subtracted = srv14_strata_engine_residency_at_read.length() == 2
-  let committed_overhead_is_the_base = match gunbc_ci_srv14_host_fixed_overhead {
-    HostFixedOverheadMeasured { bytes: b } => byte_size_count(b) == 4842987520
+  // (b) the coupled half: both engine rows are retired, so the overhead fold has nothing left to subtract.
+  let both_engine_residencies_gone = srv14_strata_engine_residency_at_read.length() == 0
+  // (c) the renumbered overhead: the post-retirement quiescent pair, not the pre-retirement 4842987520.
+  let committed_overhead_is_the_post_retirement_pair = match gunbc_ci_srv14_host_fixed_overhead {
+    HostFixedOverheadMeasured { bytes: b } => byte_size_count(b) == 3468107776
     _ => false
   }
-  // (c) the frontier is unbound -- a premature trigger cannot fire it -- and still names BOTH releases it
-  // waits on. The unbound leg is a real predicate on the value (it flips if anyone binds this to a trigger);
-  // the wording legs only read prose, which is why the comment above refuses to call them consumers.
-  let frontier_text = dissolution_description(srv14_serving_memory_charge_retirement_frontier)
-  let frontier_cannot_fire_early = !dissolution_is_bound(srv14_serving_memory_charge_retirement_frontier)
-  let frontier_names_both_triggers = frontier_cannot_fire_early
-      && string_contains(s: frontier_text, pattern: "a2-power-cap")
-      && string_contains(s: frontier_text, pattern: "strata-pool@a")
-      && string_contains(s: frontier_text, pattern: "quiescent")
-  charge_is_the_measured_192_gib && both_engine_residencies_still_subtracted
-    && committed_overhead_is_the_base && frontier_names_both_triggers
+  charge_is_released && both_engine_residencies_gone
+    && committed_overhead_is_the_post_retirement_pair
 }
