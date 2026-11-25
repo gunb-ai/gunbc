@@ -11,7 +11,7 @@ module test.claim.attempt_metering_traversal_foreign_witness
 
 import std.types { String, Bool, NonEmptyStr, PathSegment, path_segment_is_safe }
 import std.optional { Present, Absent }
-import gunbc.compile_diagnostic_census { compile_dag_diagnostic_census, census_rows_of_class, census_total_count }
+import gunbc.compile_diagnostic_census { compile_dag_diagnostic_census, census_rows_of_class, census_total_count, census_blocking_rows }
 import gunbc.roadmap.roadmap_attempt_metering {
   AttemptMeteringMemberName, attempt_metering_member_name, attempt_metering_declared_member_name,
   attempt_metering_member_name_segment,
@@ -52,6 +52,41 @@ data safe_read_source: String = "module probe_amt_safe_read\nimport std.optional
 data hostile_index_source: String = "module probe_amt_hostile_index\nimport std.types { NonEmptyStr }\nimport gunbc.roadmap.roadmap_attempt_metering { AttemptMeteringIndexStore, attempt_metering_index_create_once, AttemptMeteringCreateOnce }\nfn f(store: AttemptMeteringIndexStore) -> AttemptMeteringCreateOnce { attempt_metering_index_create_once(store: store, entry: \"../../outside.index.json\" as NonEmptyStr, content: \"escaped\") }\n"
 
 data safe_index_source: String = "module probe_amt_safe_index\nimport std.types { NonEmptyStr }\nimport std.optional { Present, Absent }\nimport gunbc.roadmap.roadmap_attempt_metering { AttemptMeteringIndexStore, attempt_metering_index_create_once, AttemptMeteringCreateOnce, attempt_metering_member_name }\nfn f(store: AttemptMeteringIndexStore) -> AttemptMeteringCreateOnce? { match attempt_metering_member_name(raw: \"metering-attempt.1.a.json\") { Absent => none, Present { value: mname } => Present { value: attempt_metering_index_create_once(store: store, entry: mname, content: \"sealed\") } } }\n"
+
+// THE LISTING ROUTE, ROUND 4. The finding: attempt_metering_listing(root: String, what: String) let a
+// foreign module list ANY directory (metering_list(dir) reborn). Its root-taking signature is deleted; a
+// post-mint listing takes the applicable sealed store and lists the directory the store itself owns; each
+// mint lists the directory it derived from its own business key. Probes, foreign to the definer: the
+// store-bound listing is ADMITTED (0 TypeMismatch rows) and a caller-chosen directory is REFUSED through
+// every listing shape, including importing the deleted name outright (blocking rows, positive control 0).
+
+data safe_listing_source: String = "module probe_amt_safe_listing\nimport gunbc.roadmap.roadmap_attempt_metering { AttemptMeteringStore, AttemptMeteringListing, attempt_metering_listing_of }\nfn f(store: AttemptMeteringStore) -> AttemptMeteringListing { attempt_metering_listing_of(store: store) }\n"
+
+data hostile_listing_source: String = "module probe_amt_hostile_listing\nimport gunbc.roadmap.roadmap_attempt_metering { AttemptMeteringListing, attempt_metering_listing_of }\nfn f() -> AttemptMeteringListing { attempt_metering_listing_of(store: \"/tmp/any-dir-chosen-by-the-caller\") }\n"
+
+data safe_index_listing_source: String = "module probe_amt_safe_index_listing\nimport gunbc.roadmap.roadmap_attempt_metering { AttemptMeteringIndexStore, AttemptMeteringListing, attempt_metering_index_listing }\nfn f(store: AttemptMeteringIndexStore) -> AttemptMeteringListing { attempt_metering_index_listing(store: store) }\n"
+
+data hostile_index_listing_source: String = "module probe_amt_hostile_index_listing\nimport gunbc.roadmap.roadmap_attempt_metering { AttemptMeteringListing, attempt_metering_index_listing }\nfn f() -> AttemptMeteringListing { attempt_metering_index_listing(store: \"/tmp/any-root-chosen-by-the-caller\") }\n"
+
+data deleted_listing_import_source: String = "module probe_amt_deleted_listing\nimport gunbc.roadmap.roadmap_attempt_metering { attempt_metering_listing }\nfn f(root: String) -> Bool { true }\n"
+
+data control_import_source: String = "module probe_amt_control_import\nimport gunbc.roadmap.roadmap_attempt_metering { AttemptMeteringStore, attempt_metering_listing_of }\nfn f(store: AttemptMeteringStore) -> Bool { true }\n"
+
+fn blocking_rows(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => -1
+  }
+}
+
+test fn the_listing_route_takes_the_sealed_store_only() -> Bool {
+  type_mismatch_count(source: safe_listing_source) == 0
+    && type_mismatch_count(source: hostile_listing_source) >= 1
+    && type_mismatch_count(source: safe_index_listing_source) == 0
+    && type_mismatch_count(source: hostile_index_listing_source) >= 1
+    && blocking_rows(source: deleted_listing_import_source) >= 1
+    && blocking_rows(source: control_import_source) == 0
+}
 
 fn type_mismatch_count(source: String) -> Int {
   match compile_dag_diagnostic_census(source) {

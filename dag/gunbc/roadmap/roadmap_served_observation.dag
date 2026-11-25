@@ -182,9 +182,11 @@ type ServedObservationWrite
   = ServedObservationWritten
   | ServedObservationWriteRefused { error: String }
 
-fn served_observation_root_reading(root: String) -> ServedObservationRootReading {
-  let listed = Filesystem.List(path: root)
-  match filesystem_listing_observation(directory: root, success: listed.success, entries: listed.entries, error: listed.error) {
+// THE SHARED OBSERVATION->READING CONVERSION, PURE (side-chat round 4 sweep, same ruling as the census
+// twin): it classifies an already-taken Filesystem.List observation and calls no Filesystem operation.
+// The listing EFFECT lives only in the mint below, over the root the mint derives for its own business key.
+fn served_observation_root_reading_of_observation(root: String, success: Bool, entries: List<String>, error: String) -> ServedObservationRootReading {
+  match filesystem_listing_observation(directory: root, success: success, entries: entries, error: error) {
     FilesystemDirectorySubjectRefused { directory: _, cause: c } =>
       ServedObservationRootUnlistable { detail: join(["the served observation directory is not admissible: ", c], "") }
     FilesystemDirectoryListingRefused { directory: _, error: e } =>
@@ -216,7 +218,9 @@ fn served_observation_store(instance: HostDashboardInstance) -> ServedObservatio
   // directory its OWN declaration names is created if absent and listed if present, so the mint never hands
   // out a store over a root it has not observed, and no second provisioning literal exists.
   if !shell.Mkdir.Parents(path: root as FilePath).success { return ServedObservationStoreUnready { detail: concat("Cannot create the served-observation receipts directory ", root) } }
-  match served_observation_root_reading(root: root) {
+  // THE MINT LISTS THE ROOT IT DERIVED, here.
+  let mint_listing = Filesystem.List(path: root)
+  match served_observation_root_reading_of_observation(root: root, success: mint_listing.success, entries: mint_listing.entries, error: mint_listing.error) {
     ServedObservationRootUnlistable { detail } => ServedObservationStoreUnready { detail: detail }
     ServedObservationRootListed => ServedObservationStoreReady { store: ServedObservationStore { instance: instance.instance_id, root: root as NonEmptyStr } }
   }

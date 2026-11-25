@@ -1142,7 +1142,8 @@ type MeteringListing
 // (gunbc.roadmap.roadmap_attempt_metering_slots). The pre-seal code exported metering_read_file(path),
 // metering_list(dir), metering_create_only(path) and metering_attempt_dir(...): four routes that handed any
 // module a record over a path or a directory it chose. They are deleted; the operations below take the
-// sealed record and an ENTRY NAME from the declaration.
+// sealed record and an ENTRY NAME from the declaration. Round 4 deleted the FIFTH such route this PR had
+// re-opened: attempt_metering_listing(root, what), the same metering_list(dir) under a new name.
 //
 // WHAT IS ESTABLISHED: a consumer cannot be handed a forged store or one over the wrong root, because
 // construction is sealed (sole_constructor, non-generic, never a variant arm), and the directory has to
@@ -1193,14 +1194,19 @@ fn attempt_metering_index_store_root(store: AttemptMeteringIndexStore) -> String
   store.root as String
 }
 
-// THE DIRECTORY OBSERVATION EVERY MINT FOLDS (the attempt-identity precedent,
-// gunbc.roadmap.roadmap_attempt_identity_store_root attempt_identity_listing). It is not a route a caller
-// reaches with a path: both callers pass the root they derived from the attempt-state declaration.
-fn attempt_metering_listing(root: String, what: String) -> AttemptMeteringListing {
-  let listing = Filesystem.List(path: root)
-  match filesystem_listing_observation(directory: root, success: listing.success, entries: listing.entries, error: listing.error) {
+// THE SHARED OBSERVATION->LISTING CONVERSION, PURE: it classifies an already-taken Filesystem.List
+// observation and calls no Filesystem operation, so it is not a route. The listing EFFECT lives only at the
+// four store-rooted sites in this module -- the two mints, which list the directory each DERIVES from its
+// business key, and the two post-mint listings, which list the directory of the sealed store they are
+// handed. The old root-taking shape `attempt_metering_listing(root: String, what: String)` was a fifth
+// site: a foreign module could import it and list ANY directory, which kept metering_list(dir) alive under
+// a new name (side-chat REQUEST_CHANGES round 4, 2026-11-25). Its signature is DELETED, not kept
+// alongside; the foreign control proves the store-bound listing is admitted and a caller-chosen directory
+// is refused, from this module's own import surface.
+fn attempt_metering_listing_of_observation(directory: String, what: String, success: Bool, entries: List<String>, error: String) -> AttemptMeteringListing {
+  match filesystem_listing_observation(directory: directory, success: success, entries: entries, error: error) {
     FilesystemDirectoryListed(l) => AttemptMeteringListingRead { names: filesystem_listing_entry_names(listing: l) }
-    FilesystemDirectoryListingRefused { directory: _, error: e } => AttemptMeteringListingUnreadable { detail: join([what, " could not be listed: ", root, " (", e, ")"], "") }
+    FilesystemDirectoryListingRefused { directory: _, error: e } => AttemptMeteringListingUnreadable { detail: join([what, " could not be listed: ", directory, " (", e, ")"], "") }
     FilesystemDirectorySubjectRefused { directory: _, cause: c } => AttemptMeteringListingUnreadable { detail: join([what, " is not admissible: ", c], "") }
   }
 }
@@ -1214,7 +1220,9 @@ fn attempt_metering_store(instance: HostDashboardInstance, node_id: RoadmapNodeI
   // never hands out a store over a root it has not itself observed, and it keeps the dispatcher's
   // provisioning and the store's reading on the SAME declaration rather than two literals.
   if !shell.Mkdir.Parents(path: directory as FilePath).success { return AttemptMeteringStoreUnready { detail: concat("Cannot create the attempt metering directory ", directory) } }
-  match attempt_metering_listing(root: directory, what: "the attempt metering directory") {
+  // THE MINT LISTS THE DIRECTORY IT DERIVED from the attempt-state declaration for its own business key.
+  let mint_listing = Filesystem.List(path: directory)
+  match attempt_metering_listing_of_observation(directory: directory, what: "the attempt metering directory", success: mint_listing.success, entries: mint_listing.entries, error: mint_listing.error) {
     AttemptMeteringListingUnreadable { detail } => AttemptMeteringStoreUnready { detail: detail }
     AttemptMeteringListingRead { names } =>
       if attempt_metering_closing_held(names: names) {
@@ -1232,7 +1240,9 @@ fn attempt_metering_index_store(instance: HostDashboardInstance) -> AttemptMeter
   let root = dashboard_instance_dispatch_attempt_state_root(instance: instance) as String
   // Ensured, then listed, from the same parent declaration (see the attempt mint above).
   if !shell.Mkdir.Parents(path: root as FilePath).success { return AttemptMeteringIndexStoreUnready { detail: concat("Cannot create the dispatch attempt-state root ", root) } }
-  match attempt_metering_listing(root: root, what: "the dispatch attempt-state root") {
+  // THE MINT LISTS THE ROOT IT DERIVED from the same parent declaration.
+  let mint_listing = Filesystem.List(path: root)
+  match attempt_metering_listing_of_observation(directory: root, what: "the dispatch attempt-state root", success: mint_listing.success, entries: mint_listing.entries, error: mint_listing.error) {
     AttemptMeteringListingUnreadable { detail } => AttemptMeteringIndexStoreUnready { detail: detail }
     AttemptMeteringListingRead { names: _ } => AttemptMeteringIndexStoreReady { store: AttemptMeteringIndexStore { instance: instance.instance_id, root: root as NonEmptyStr } }
   }
@@ -1444,7 +1454,11 @@ fn attempt_metering_optional_of_observation(o: FilesystemFileObservation) -> Opt
 
 
 fn attempt_metering_listing_of(store: AttemptMeteringStore) -> AttemptMeteringListing {
-  attempt_metering_listing(root: store.directory as String, what: "the attempt metering directory")
+  // A POST-MINT LISTING TAKES THE APPLICABLE SEALED STORE and lists the directory the store itself owns,
+  // via the store projection. A caller cannot reach this effect with a directory of its own choosing.
+  let listing_directory = attempt_metering_store_directory(store: store)
+  let listing = Filesystem.List(path: listing_directory)
+  attempt_metering_listing_of_observation(directory: listing_directory, what: "the attempt metering directory", success: listing.success, entries: listing.entries, error: listing.error)
 }
 
 // THE CREATE-ONCE. The roster's launch entries are create-once RECORDS, not locks: an entry says a launch
@@ -1633,7 +1647,10 @@ fn attempt_metering_index_read_derived(store: AttemptMeteringIndexStore, name: A
 }
 
 fn attempt_metering_index_listing(store: AttemptMeteringIndexStore) -> AttemptMeteringListing {
-  attempt_metering_listing(root: store.root as String, what: "the dispatch attempt-state root")
+  // The index twin of the post-mint listing above: the root comes from the sealed index store alone.
+  let listing_root = attempt_metering_index_store_root(store: store)
+  let listing = Filesystem.List(path: listing_root)
+  attempt_metering_listing_of_observation(directory: listing_root, what: "the dispatch attempt-state root", success: listing.success, entries: listing.entries, error: listing.error)
 }
 
 // THE CALLER-SIDE ADAPTERS. They take the business key, mint through the one mint, and hand the typed
