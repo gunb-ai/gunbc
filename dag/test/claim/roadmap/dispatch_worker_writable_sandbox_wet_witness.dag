@@ -128,6 +128,7 @@ import test.claim.roadmap.witness_supplied_instance {
   witness_locus_install_spine, witness_fold_spine_dir_is_admissible,
   witness_tree_destination_subtree_outcome, witness_tree_destination_subtree_outcome_label,
   witness_tree_destination_subtree_is_link_free, witness_tree_install_destinations_are_admitted,
+  witness_directory_listing_is_provably_empty,
 }
 import extdeps.tools.stat { stat_mode_command, stat_size_bytes_command }
 import extdeps.tools.gnu_coreutils {
@@ -2922,7 +2923,7 @@ test fn the_locus_install_refuses_a_link_at_a_fold_destination() -> Bool {
   let src_refused = src_staged
     && src_linked
     && string_contains(s: src_cause, pattern: plan_cause)
-    && wet_out(command: ls_almost_all_one_per_line_command(path: away)) == ""
+    && witness_directory_listing_is_provably_empty(path: away)
   let deep_key = "fold-plan-dag-link"
   let deep_locus = witness_locus_dir_text(instance: inst, locus_key: deep_key as NonEmptyStr)
   let deep_staged = wet_ok(command: mkdir_parents_command(path: join([deep_locus, "/dag/sub"], "")))
@@ -2935,20 +2936,22 @@ test fn the_locus_install_refuses_a_link_at_a_fold_destination() -> Bool {
   let deep_refused = deep_staged
     && deep_linked
     && string_contains(s: deep_cause, pattern: plan_cause)
-    && wet_out(command: ls_almost_all_one_per_line_command(path: away_deep)) == ""
+    && witness_directory_listing_is_provably_empty(path: away_deep)
   let removed = wet_ok(command: rm_force_command(path: join([src_locus, "/src"], "")))
   let removed_cause = witness_locus_install_refusal_cause(
     verdict: witness_locus_install(instance: inst, locus_key: src_key, revision_text: revision),
   )
   let removal_admitted = removed && !string_contains(s: removed_cause, pattern: plan_cause)
-  // THE ESCAPE TARGETS WERE THERE. Both escape directories exist, empty, for the duration of the run -- the
-  // readback that removes each one and proves it gone is only a verdict if the name was standing to be
-  // removed in the first place. They live under /var/tmp, OUTSIDE the scratch tree the root sweep reaches,
-  // which is exactly why each is passed to the readback helper by name.
-  let away_present = wet_path_exists(path: away)
-    && wet_out(command: ls_almost_all_one_per_line_command(path: away)) == ""
-  let away_deep_present = wet_path_exists(path: away_deep)
-    && wet_out(command: ls_almost_all_one_per_line_command(path: away_deep)) == ""
+  // THE ESCAPE TARGETS WERE THERE, AND WERE PROVABLY EMPTY. Both escape directories exist, EMPTY, for the
+  // duration of the run -- the readback that removes each one and proves it gone is only a verdict if the
+  // name was standing to be removed in the first place. They live under /var/tmp, OUTSIDE the scratch tree
+  // the root sweep reaches, which is exactly why each is passed to the readback helper by name. THE
+  // EMPTINESS IS THE LISTING'S OWN ANSWER, not `wet_out`: a refused process returns the empty string, so
+  // "exists and ls says nothing" passes blind over a directory the host would not list. The helper requires
+  // the listing to exit 0 AND report zero entries, so a leak the listing could not show, and a leak the
+  // listing could show, are two different answers.
+  let away_present = witness_directory_listing_is_provably_empty(path: away)
+  let away_deep_present = witness_directory_listing_is_provably_empty(path: away_deep)
   // EVERY ROOT THIS CLAIM ALLOCATES GOES TO CLEANUP AND READBACK, not just the scratch root. `away` and
   // `away_deep` are mktemp'd under /var/tmp -- outside the scratch tree the root readback sweeps -- so a
   // verdict that cleaned only `root` left two escape targets on the host and never read back that the
@@ -2968,16 +2971,24 @@ test fn the_locus_install_refuses_a_link_at_a_fold_destination() -> Bool {
 // there", and the elevated installer -- which may hold access the checker did not -- then wrote through
 // whatever stood at the destination. The scan now answers with a typed outcome, and admission takes only the
 // two answers that are positive: LinkFree (a clean scan of a present subtree that reported no link) and
-// Absent (a clean scan, a failed existence read, AND the parent established readable or genuinely missing).
-// LinkFound and Unobservable refuse. Four states are pinned at the scan interface, because that is the one
-// interface where the conflation lived, and the install boundary is pinned to refuse as well.
+// Absent (the walk from the filesystem root found its first missing component OMITTED by a successful
+// listing of its parent). LinkFound and Unobservable refuse. Seven legs are pinned at the scan interface,
+// because that is the one interface where the conflation lived, and the install boundary is pinned to
+// refuse as well: (a) genuinely missing -> Absent and admitted; (b) present link-free -> LinkFree; (c) a
+// planted link -> LinkFound; (d) a destination under a sealed (000) parent -> Unobservable; (e) a
+// destination under a sealed GRANDPARENT, where the immediate parent is perfectly searchable -- the shape
+// the second-round proof still got wrong, because `test -e` needs search on EVERY ancestor and `realpath
+// -m` does not fail on unreadable components at all; (f) a destination whose parent is readable but not
+// searchable (0444) and whose NAME a successful listing reports -- the shape that proof got wrong in the
+// other direction, answering Absent from a listing that named the destination; (g) the emptiness read the
+// fold control uses, pinned so a refused listing is never again read as "empty" (the blindness side-chat
+// called P2).
 //
-// The unobservable state is authored WITHOUT any elevation and WITHOUT chmod: `mkdir -m 000 -- PATH` (the
-// modeled create-only row) makes a directory this process can neither read nor search, and the destination
-// under it is a name that has never been planted. The listing fails (the parent cannot be searched), the
-// existence read fails (same reason), and the only read that separates this from a genuinely missing
-// destination is the parent read -- which fails here and succeeds in the missing case. Under the old Bool
-// this exact input was ADMITTED; the claim is the RED that mutation `mut_scan_failopen` restores.
+// Every unobservable shape is authored WITHOUT any elevation: the modes come from the modeled shell.Chmod
+// rows (NotSearchableDirectory 00000, ListableNotSearchableDirectory 00444), and the bits bind this
+// process because it is an ordinary uid with no CAP_FOWNER. Under the old reads (d), (e) and (f) were all
+// ADMITTED; the claim is the RED that mutations `mut_scan_failopen`, `mut_walk_present_absent` and
+// `mut_walk_listfail_absent` restore, and leg (g) is the RED that `mut_p2_blind_readback` restores.
 test fn the_subtree_scan_admits_only_what_it_positively_saw() -> Bool {
   let root = wet_claim_root(tag: "subtree-scan-outcome" as NonEmptyStr)
   // (a) A destination that is genuinely missing, under a parent that exists and can be read: Absent.
@@ -2998,6 +3009,40 @@ test fn the_subtree_scan_admits_only_what_it_positively_saw() -> Bool {
   ))
   let sealed_blind = wet_out(command: ls_almost_all_one_per_line_command(path: sealed)) == ""
   let sealed_target = join([sealed, "/v2"], "")
+  // (e) A destination under a SEALED GRANDPARENT. The destination's own parent exists and is searchable;
+  // two levels up stands a directory this process can neither read nor search (mode 000, staged without
+  // elevation). Every read below the sealed ancestor then fails in the SAME direction as absence: `test -e`
+  // needs search on every ancestor and refuses, and `realpath -m` -- which realpath(1) documents as
+  // resolving what exists and appending the rest WITHOUT failing on unreadable components -- sails through
+  // it, so the ancestry read this proof used before this pass found nothing to complain about and the old
+  // absence pair answered Absent for a subtree that may have been standing. The walk cannot list the
+  // sealed grandparent, so everything below it is Unobservable at any depth.
+  let sealed_gp = join([root, "/loci/sealed-gp"], "")
+  let gp_inner = join([sealed_gp, "/inner"], "")
+  let gp_staged = wet_ok(command: mkdir_parents_command(path: gp_inner))
+  let gp_sealed = shell.Chmod.NotSearchableDirectory(path: sealed_gp as FilePath).success
+  let gp_target = join([gp_inner, "/v2"], "")
+  // (f) A destination that a SUCCESSFUL listing of its parent NAMES. The parent is readable but not
+  // searchable (mode 0444, shell.Chmod.ListableNotSearchableDirectory -- read enumerates, search resolves,
+  // path_resolution(7)), so `ls -1 -A` answers and prints the destination's name, while `test -e` on that
+  // name refuses for want of search. The old proof listed the parent, saw exit 0, and answered Absent for
+  // a directory standing in the very listing it had just taken. The walk reads the same listing, finds the
+  // name, answers Present, and the scan reports Unobservable: the scan failed over a destination a clean
+  // listing named.
+  let ro_parent = join([root, "/loci/ro-parent"], "")
+  let ro_target = join([ro_parent, "/v2"], "")
+  let ro_staged = wet_ok(command: mkdir_parents_command(path: ro_target))
+  let ro_listable = shell.Chmod.ListableNotSearchableDirectory(path: ro_parent as FilePath).success
+  // (g) THE EMPTINESS READ THE FOLD CONTROL USES, pinned at its own interface. `wet_out` returns the empty
+  // string for a process the host REFUSED, so "the directory exists and ls said nothing" was true of a
+  // directory ls was never allowed to take -- the blindness the fold control's escape-target readbacks had.
+  // The helper asks the listing for its exit code: the sealed (000) directory is NOT provably empty, even
+  // though the blind read found it so (sealed_blind above is that blindness, measured); a staged, listable,
+  // empty directory IS. Mutation `mut_p2_blind_readback` restores the blind read and this leg goes RED.
+  let empty_dir = join([root, "/loci/empty-dir"], "")
+  let empty_staged = wet_ok(command: mkdir_parents_command(path: empty_dir))
+  let sealed_not_provably_empty = !witness_directory_listing_is_provably_empty(path: sealed)
+  let empty_provably_empty = witness_directory_listing_is_provably_empty(path: empty_dir)
   let missing_answer = witness_tree_destination_subtree_outcome_label(
     outcome: witness_tree_destination_subtree_outcome(root: missing),
   )
@@ -3010,10 +3055,24 @@ test fn the_subtree_scan_admits_only_what_it_positively_saw() -> Bool {
   let sealed_answer = witness_tree_destination_subtree_outcome_label(
     outcome: witness_tree_destination_subtree_outcome(root: sealed_target),
   )
+  let gp_answer = witness_tree_destination_subtree_outcome_label(
+    outcome: witness_tree_destination_subtree_outcome(root: gp_target),
+  )
+  let ro_answer = witness_tree_destination_subtree_outcome_label(
+    outcome: witness_tree_destination_subtree_outcome(root: ro_target),
+  )
   let missing_admitted = witness_tree_destination_subtree_is_link_free(root: missing)
   let present_admitted = witness_tree_destination_subtree_is_link_free(root: present)
   let linked_admitted = witness_tree_destination_subtree_is_link_free(root: linked)
   let sealed_admitted = witness_tree_destination_subtree_is_link_free(root: sealed_target)
+  let gp_admitted = witness_tree_destination_subtree_is_link_free(root: gp_target)
+  let ro_admitted = witness_tree_destination_subtree_is_link_free(root: ro_target)
+  // THE STAGED MODES ARE LIFTED BEFORE THE ROOT LEAVES, because a recursive removal cannot see inside a
+  // directory it cannot list: the sealed grandparent holds `inner`, and rm would fail on a non-empty
+  // directory it cannot enumerate. The claim pays for the lift -- if restoration fails, the claim fails --
+  // so a leftover sealed tree can never be quietly swept under the readback.
+  let gp_restored = shell.Chmod.OwnerOnlyDirectory(path: sealed_gp as FilePath).success
+  let ro_restored = shell.Chmod.OwnerOnlyDirectory(path: ro_parent as FilePath).success
   // AT THE INSTALL BOUNDARY, the same two inputs go through the gate that guards a fold. A missing
   // destination is admitted there -- the fold creates what it lists, and every path the source walk reports
   // is admitted on its own spelling before anything is created -- and a destination under the unreadable
@@ -3033,11 +3092,17 @@ test fn the_subtree_scan_admits_only_what_it_positively_saw() -> Bool {
     verdict: root != ""
       && present_staged && linked_staged && linked_planted
       && sealed_staged && sealed_blind && source_staged
+      && gp_staged && gp_sealed && ro_staged && ro_listable
+      && gp_restored && ro_restored
       && missing_answer == "Absent"
       && present_answer == "LinkFree"
       && linked_answer == "LinkFound"
       && sealed_answer == "Unobservable"
+      && gp_answer == "Unobservable"
+      && ro_answer == "Unobservable"
       && missing_admitted && present_admitted && !linked_admitted && !sealed_admitted
+      && !gp_admitted && !ro_admitted
+      && empty_staged && sealed_not_provably_empty && empty_provably_empty
       && boundary_missing && !boundary_sealed,
     roots: [root as NonEmptyStr],
   )

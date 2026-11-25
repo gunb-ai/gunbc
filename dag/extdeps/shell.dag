@@ -708,6 +708,26 @@ service shell.Chmod {
     }
   }
 
+  // LISTABLE, NOT SEARCHABLE -- the dual of SearchableNotListableByEveryPrincipal above, and the shape that
+  // makes the two directory permissions of path_resolution(7) observably different: read (0400) lets `ls`
+  // ENUMERATE the names inside, search (0100) lets a name be RESOLVED, and this mode grants the first
+  // without the second. A name inside it can be listed but not statted: `ls -1 -A` answers, `test -e NAME`
+  // refuses, and a presence route that concluded "absent" from the refused lookup would certify a standing
+  // destination as missing. Five digits, per extdeps.tools.gnu_coreutils coreutils_directory_mode_operand.
+  // Consumer: test.claim.roadmap.dispatch_worker_writable_sandbox_wet_witness
+  // (the_subtree_scan_admits_only_what_it_positively_saw), which stages this mode under the owner's own uid
+  // -- no elevation needed, because the owner has no CAP_FOWNER here and the bits bind the owner too.
+  operation ListableNotSearchableDirectory {
+    requires none
+    input { path: FilePath }
+    output { success: Bool from "exit_success" }
+    transport shell { argv: ["chmod", "00444", "{path}"] }
+    exit {
+      0 => Unit
+      nonzero => String "chmod 00444 failed"
+    }
+  }
+
   operation OwnerReadWriteFile {
     requires none
     input { path: FilePath }
