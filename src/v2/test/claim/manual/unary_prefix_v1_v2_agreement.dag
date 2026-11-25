@@ -22,7 +22,8 @@ module v2.test.claim.manual.unary_prefix_v1_v2_agreement
 //   gunbc --dry-run run --source-root dag --source-root src --source-root src/v1 --source-root src/v2 \
 //     --entry src/v2/test/claim/manual/unary_prefix_v1_v2_agreement.dag \
 //     --function unary_prefix_v1_v2_agreement_reports
-//   (no gunbc test route reaches this module: the seed reports the claim's Bool in its refusal line, exit 2)
+//   (gunbc test sends a //v2/... label to the native route, not the seed interpreter this comparison needs;
+//   the seed reports the claim's Bool in its refusal line, exit 2)
 
 import std.types { Bool, Int, String, List }
 import std.optional { Absent, Present }

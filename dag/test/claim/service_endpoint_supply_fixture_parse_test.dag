@@ -16,7 +16,7 @@
 //
 // Run:
 //   gunbc test --source-root dag --source-root src/v1 --source-root src/v2 \
-//     //test/claim/service_endpoint_supply_fixture_parse_test:every_fixture_parses_to_a_service_with_operations_holds
+//     //test/claim/service_endpoint_supply_fixture_parse_test:<test fn>   (one operand per test fn)
 module test.claim.service_endpoint_supply_fixture_parse_test
 
 
