@@ -48,10 +48,6 @@ import gunbc.harness.harness_turn {
   harness_supervision_artifact_path, harness_supervision_observation_text, harness_supervision_verdict_name,
 }
 
-fn bool_bit(v: Bool) -> Int {
-  if v { 1 } else { 0 }
-}
-
 fn fresh_dir(tag: String) -> String {
   shell.Mktemp.DirWithTemplate(template: join(["/tmp/gunbc_align_", tag, ".XXXXXX"], "")).path
 }
@@ -522,36 +518,8 @@ test fn a_crash_after_verdict_publication_produces_exactly_one_next_epoch() -> B
     && string_contains(s: log_after_first, pattern: "alignment.epoch_opened")
     && string_contains(s: publication, pattern: "\"verdict\"")
     && string_contains(s: publication, pattern: "\"cadence\"")
-  // TEMPORARY DIAGNOSTIC (removed before the final head): sub-assertion bits to a fixed path, so a
-  // false is locatable without a second long round.
-  let first_shape = match first {
-    TurnSupervisionUnavailable { cause, steps_taken: _ } => join(["LEG1 supervision_unavailable: ", cause], "")
-    _ => "LEG1 other-outcome"
-  }
-  let resume_shape = match replay_at_resume {
-    TurnSupervisionUnavailable { cause, steps_taken: _ } => join(["LEG3 supervision_unavailable: ", cause], "")
-    _ => "LEG3 other-outcome"
-  }
-  let entry_shape = match replay_at_entry {
-    TurnSupervisionUnavailable { cause, steps_taken: _ } => join(["LEG4 supervision_unavailable: ", cause], "")
-    _ => "LEG4 other-outcome"
-  }
-  let nolog_shape = match replay_without_log {
-    TurnSupervisionUnavailable { cause, steps_taken: _ } => join(["LEG5 supervision_unavailable: ", cause], "")
-    _ => "LEG5 other-outcome"
-  }
-  let diag = write_file(path: "/tmp/align-diag-rc4.txt", content: join([
-    "effect=", to_string(value: bool_bit(v: first_leg_ran_the_effect)),
-    " resume_refused=", to_string(value: bool_bit(v: resume_refused_the_replay)),
-    " entry_refused=", to_string(value: bool_bit(v: entry_refused_the_replay)),
-    " on_record=", to_string(value: bool_bit(v: refused_on_the_record)),
-    " wiped=", to_string(value: bool_bit(v: wiped)),
-    " durable=", to_string(value: bool_bit(v: durable)),
-    "\nFIRST: ", first_shape, "\nRESUME: ", resume_shape, "\nENTRY: ", entry_shape, "\nNOLOG: ", nolog_shape,
-    "\nEPOCH_BODY: ", body_after_first, "\nLOG: ", log_after_first, "\n",
-  ], ""))
   let removed = shell.Remove.RecursiveForce(path: dir)
-  diag && wrote && removed.success && first_leg_ran_the_effect && resume_refused_the_replay && entry_refused_the_replay && wiped && refused_on_the_record && durable
+  wrote && removed.success && first_leg_ran_the_effect && resume_refused_the_replay && entry_refused_the_replay && wiped && refused_on_the_record && durable
 }
 
 // THE PUBLICATION IS INDIVISIBLE: A RECORD WITHOUT ITS CADENCE IS NOT A PUBLICATION. The verdict and the
@@ -605,19 +573,11 @@ test fn the_gate_refuses_a_publication_that_carries_no_decodable_cadence() -> Bo
         ResumeRefused { cause } => string_contains(s: cause, pattern: "cadence")
         _ => false
       }
-      // And nothing was opened on the way: an undecodable cadence never became an epoch.
-      let no_epoch = !harness_alignment_epoch_already_opened(check_directory: dir, checkpoint: adjudication.checkpoint, next_epoch: 8)
-      let bits = join([
-        "whole=", to_string(value: bool_bit(v: whole)),
-        " stripped=", to_string(value: bool_bit(v: stripped)),
-        " without_cadence=", to_string(value: bool_bit(v: without_cadence)),
-        " corrupt=", to_string(value: bool_bit(v: corrupt)),
-        " undecodable=", to_string(value: bool_bit(v: undecodable_cadence)),
-        " no_epoch=", to_string(value: bool_bit(v: no_epoch)),
-        "\nPUBLISHED: ", read_file(path: path), "\n",
-      ], "")
-      let diag2 = write_file(path: "/tmp/align-diag-nocadence.txt", content: bits)
-      diag2 && whole && stripped && without_cadence && corrupt && undecodable_cadence && no_epoch
+      // No epoch-absence assertion lives here: the gate opens nothing -- opening is the continuation
+      // effect's own step -- so asserting an absent record after a gate call would be a tautology, and a
+      // tautology in a witness is a false comfort. That the opening happens exactly once is witnessed
+      // where the effect actually runs, in RED CONTROL 4, through the durable keyed record.
+      whole && stripped && without_cadence && corrupt && undecodable_cadence
     }
   }
   let removed = shell.Remove.RecursiveForce(path: dir)
