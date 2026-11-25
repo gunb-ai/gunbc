@@ -3,7 +3,10 @@ module test.claim.shell.shell_dag_live_deploy_install_owned_argv_route_witness
 import std.types { Bool, String, List, NonEmptyStr, FilePath }
 import std.optional { Absent, Present }
 import std.algebra { count_where, length, list_at_optional, string_contains }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.integer { int_to_decimal_string }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.access.posix { FileMode, file_mode_octal }
 import extdeps.posix.identity { PosixOwnerNames }
 import gunbc.ensure {
   EnsureAbsent,
@@ -11,7 +14,7 @@ import gunbc.ensure {
   EnsurePlanAvailable,
   EnsurePlanUnavailable,
 }
-import gunbc.managed_directory { DirectoryOwnerAllEveryoneTraverse }
+import gunbc.managed_directory { DirectoryOwnerAllEveryoneTraverse, declared_directory_mode }
 import gunbc.owned_directory {
   ForeignOwnershipRefuses,
   OwnedDirectoryDeclared,
@@ -112,71 +115,150 @@ fn argv_word_at(argv: List<String>, index: Int, wanted: String) -> Bool {
   }
 }
 
-// EVERY POSITION ASSERTED, INCLUDING LENGTH. Split out so both arms read as one expression each, the way the
-// package's other witnesses do.
-fn install_argv_shape_is_the_builders_order(argv: List<String>) -> Bool {
-  length(xs: argv) == 9
-    && argv_word_at(argv: argv, index: 0, wanted: "install")
-    && argv_word_at(argv: argv, index: 1, wanted: "-d")
-    && argv_word_at(argv: argv, index: 2, wanted: "-m")
-    && argv_word_at(argv: argv, index: 3, wanted: "0755")
-    && argv_word_at(argv: argv, index: 4, wanted: "-o")
-    && argv_word_at(
-      argv: argv,
-      index: 5,
-      wanted: deployment_spec_srv1().service.service_user as String,
-    )
-    && argv_word_at(argv: argv, index: 6, wanted: "-g")
-    && argv_word_at(argv: argv, index: 7, wanted: fixture_group)
-    && argv_word_at(argv: argv, index: 8, wanted: planted_separator_path)
-    && count_where(xs: argv, predicate: w => w == planted_separator_path) == 1
+// THE SPEC'S OWN DECLARED SERVICE USER, PINNED AS A LITERAL. This is the value the fixture's owner is built
+// from (separator_fixture below), so an assertion that compared argv index 5 to
+// deployment_spec_srv1().service.service_user would have been comparing the word with itself along the chain
+// fixture -> plan -> argv -- a control that cannot fail, and the wet diagnostic found it by PRINTING the argv
+// rather than by reading it: the realized word is "briansrls". Now the value is pinned on both sides of the
+// chain: this literal pins what the spec declares (a spec edit that moves service_user breaks the witness),
+// and the positional check below pins what the argv carries. Both are needed; neither alone is a control.
+data spec_service_user_literal: String = "briansrls"
+
+// THE MODE, PINNED TO THE DECLARATION RATHER THAN TO THE BUILDER THAT USES IT. Asserting the operand only
+// against coreutils_directory_mode_operand would compare the value with itself: a flipped bit in
+// gunbc.managed_directory and a dropped leading zero in the builder are two different defects, and each has to
+// break this witness on its own. So the six permission bits and the three special bits are stated here, the
+// four-digit spelling they render is stated here, and the operand is asserted below to be that spelling with
+// the builder's leading zero in front of it. The four digits ARE special, owner, group, other
+// (extdeps.access.posix file_mode_octal, dag/extdeps/access/posix.dag:154-160), so the five-digit operand is
+// not a typo for 0755: GNU coreutils keeps an existing directory's set-id bits under a mode of four or fewer
+// digits and states them explicitly under a five-digit one (the rule the builder cites at
+// dag/extdeps/tools/gnu_coreutils.dag:443-455), and this row's operand is the explicit form.
+// DirectoryOwnerAllEveryoneTraverse is rwxr-xr-x with setuid, setgid and sticky all false
+// (gunbc.managed_directory:126-133), so the digit it must render is 0755. Both spellings were PRINTED, not
+// reasoned about: the diagnostic at probe-cr.log printed `mode_dump: file_mode_octal=0755,
+// operand_via_builder=00755`.
+fn declared_mode_is_the_pinned_everyone_traverse() -> Bool {
+  let m: FileMode = declared_directory_mode(m: DirectoryOwnerAllEveryoneTraverse)
+  m.owner.read && m.owner.write && m.owner.execute
+    && m.group.read && !m.group.write && m.group.execute
+    && m.other.read && !m.other.write && m.other.execute
+    && !m.setuid && !m.setgid && !m.sticky
+    && file_mode_octal(mode: m) == "0755"
 }
 
-// ADVERSARIAL-PATH CONTROL, RESTORED. An admitted creation plan over a path carrying ';' realizes as a TYPED WRITE
-// whose path is ONE word and the FINAL word -- not spliced, not split, not quoted into a command -- and the whole
-// argv matches the builder's fixed order by position. Every assertion here can fail: drop the mode operand and
-// index 3 goes red; put the group where the owner belongs and index 5 or 7 goes red; join the path into the mode
-// operand and both the length and index 8 go red; quote the path for a shell and index 8 stops equalling the
-// planted string. The mode operand is asserted literally: DirectoryOwnerAllEveryoneTraverse is rwxr-xr-x with
-// setuid, setgid and sticky all false (gunbc.managed_directory:126-133) and the operand spells the special digit
-// explicitly (extdeps.tools.gnu_coreutils:443-455, the GNU directory set-id rule), so "0755" pins both the value
-// and the five-digit spelling.
-test fn separator_path_realizes_as_one_final_argv_element() -> Bool {
-  match owned_directory_plan(t: separator_fixture(), o: absent_leaf_read()) {
-    EnsurePlanUnavailable { reason } => false
-    EnsurePlanAvailable { plan } =>
-      install_argv_shape_is_the_builders_order(argv: owned_directory_install_argv(plan: plan))
+// THE FIRST MISMATCH, NAMED. Both arms return ProcessExit because that is the only channel the harness prints a
+// reason on: src/v1/stage0/src/bin/claim_batch.rs:395-437 renders Pass as `PASS {fn}`, an ExitFailure of code 2
+// as `UNOBSERVED`, and any other code as `FAIL {fn} (returned ProcessExit::ExitFailure, code {code}: {reason})`,
+// while a Bool claim that does not hold prints the bare word `FAIL {fn}`. A one-word FAIL cannot distinguish
+// the plan refusing from a position being wrong from a module that never resolved -- so each position reports
+// itself, and each is a DIFFERENT defect class: a length that is not 9 is a splice or a split; index 3 against
+// the literal is a builder that stopped stating the special digit; index 3 against the derived spelling is a
+// declaration that moved under a stale literal; the bit check is a declaration that moved under any literal at
+// all; 5 and 7 are an -o/-g transposition; 8 and the occurrence count are the planted word quoted, spliced, or
+// used twice.
+fn word_mismatch(argv: List<String>, index: Int, wanted: String) -> String {
+  let at: String = match list_at_optional(xs: argv, index: index) {
+    Present { value: word } => word
+    Absent => "<absent>"
+  }
+  concat(concat(concat("index ", int_to_decimal_string(value: index)), concat(" got ", at)), concat(" want ", wanted))
+}
+
+fn first_shape_mismatch(argv: List<String>) -> String {
+  if length(xs: argv) != 9 {
+    concat("length: got ", concat(int_to_decimal_string(value: length(xs: argv)), " want 9"))
+  } else if !argv_word_at(argv: argv, index: 0, wanted: "install") {
+    word_mismatch(argv: argv, index: 0, wanted: "install")
+  } else if !argv_word_at(argv: argv, index: 1, wanted: "-d") {
+    word_mismatch(argv: argv, index: 1, wanted: "-d")
+  } else if !argv_word_at(argv: argv, index: 2, wanted: "-m") {
+    word_mismatch(argv: argv, index: 2, wanted: "-m")
+  } else if !argv_word_at(argv: argv, index: 3, wanted: "00755") {
+    word_mismatch(argv: argv, index: 3, wanted: "00755")
+  } else if !argv_word_at(
+    argv: argv,
+    index: 3,
+    wanted: concat("0", file_mode_octal(mode: declared_directory_mode(m: DirectoryOwnerAllEveryoneTraverse))),
+  ) {
+    "index 3 is not the derived operand 0 <> file_mode_octal(declared_directory_mode(DirectoryOwnerAllEveryoneTraverse))"
+  } else if !declared_mode_is_the_pinned_everyone_traverse() {
+    "declared_directory_mode(DirectoryOwnerAllEveryoneTraverse) moved off rwxr-xr-x with setuid, setgid and sticky all false, or its four-digit spelling moved off 0755"
+  } else if !argv_word_at(argv: argv, index: 4, wanted: "-o") {
+    word_mismatch(argv: argv, index: 4, wanted: "-o")
+  } else if !argv_word_at(argv: argv, index: 5, wanted: spec_service_user_literal) {
+    word_mismatch(argv: argv, index: 5, wanted: spec_service_user_literal)
+  } else if !argv_word_at(argv: argv, index: 6, wanted: "-g") {
+    word_mismatch(argv: argv, index: 6, wanted: "-g")
+  } else if !argv_word_at(argv: argv, index: 7, wanted: fixture_group) {
+    word_mismatch(argv: argv, index: 7, wanted: fixture_group)
+  } else if !argv_word_at(argv: argv, index: 8, wanted: planted_separator_path) {
+    word_mismatch(argv: argv, index: 8, wanted: planted_separator_path)
+  } else if count_where(xs: argv, predicate: w => w == planted_separator_path) != 1 {
+    concat("planted path occurs ", concat(int_to_decimal_string(value: count_where(xs: argv, predicate: w => w == planted_separator_path)), " times, want exactly 1"))
+  } else if deployment_spec_srv1().service.service_user as String != spec_service_user_literal {
+    concat("the deployment spec no longer declares the pinned service user: got ", deployment_spec_srv1().service.service_user as String)
+  } else if deployment_spec_srv1().service.service_user as String == fixture_group {
+    "the fixture's group is no longer distinct from its user, so an -o/-g transposition has no witness"
+  } else {
+    "ok"
   }
 }
 
-fn remote_refusal_names_the_separator(argv: List<String>) -> Bool {
+fn shape_verdict(argv: List<String>) -> ProcessExit {
+  let why: String = first_shape_mismatch(argv: argv)
+  if why == "ok" {
+    ExitSuccess
+  } else {
+    ExitFailure { code: 1, reason: concat("shape_mismatch: ", why) }
+  }
+}
+
+// ADVERSARIAL-PATH CONTROL, RESTORED. An admitted creation plan over a path carrying ';' realizes as a TYPED
+// WRITE whose path is ONE word and the FINAL word -- not spliced, not split, not quoted into a command -- and
+// the whole argv matches the builder's fixed order by position: install, -d, -m, <mode operand>, -o, <owner>,
+// -g, <group>, <path> (extdeps.tools.gnu_coreutils coreutils_install_directory_owned_arguments,
+// dag/extdeps/tools/gnu_coreutils.dag:457-472, read off the builder rather than from anyone's summary of it).
+// The plan's refusal is reported as its own class rather than folded into the same verdict: an admission
+// refusal is news about who may own the leaf, and a positional mismatch is news about the write.
+test fn separator_path_realizes_as_one_final_argv_element() -> ProcessExit {
+  match owned_directory_plan(t: separator_fixture(), o: absent_leaf_read()) {
+    EnsurePlanUnavailable { reason } => ExitFailure { code: 1, reason: concat("plan_refused: ", reason) }
+    EnsurePlanAvailable { plan } => shape_verdict(argv: owned_directory_install_argv(plan: plan))
+  }
+}
+
+// THE REMOTE ROUTE, PINNED AS A REFUSAL RATHER THAN ASSERTED AS AN ABSENCE, with each wall's failure named
+// separately: the ssh edge refusing nothing, the ssh edge refusing but not naming the planted word, the ssh
+// edge refusing for some other reason, and the fleet admission admitting the argv at all are four different
+// facts, and a one-word FAIL would have merged them. The same nine words are handed to the ADMISSION PREDICATES
+// -- pure functions over words -- so no transport runs and nothing reaches a host. Both walls must refuse: the
+// ssh edge (typed_argv_shell_safe_refusal_argv, whose allowlist is [A-Za-z0-9._-/@:=], dag/gunbc/typed_argv_exec
+// .dag:75-121) and the fleet edge (portable_remote_words, the same alphabet at
+// dag/gunbc/fleet/fleet_known_hosts_anchor.dag). Naming the planted path is the assertion, not an accident of
+// the outcome: every other word is inside the alphabet ("install", "-d", "-m", "00755", "-o", "-g", an account
+// name, a group name), so the path is the only word that can be the first offender.
+fn remote_refusal_verdict(argv: List<String>) -> ProcessExit {
   match typed_argv_shell_safe_refusal_argv(argv: argv) {
+    Absent => ExitFailure { code: 1, reason: "ssh_edge_accepted_the_argv: no refusal before dispatch" }
     Present { value: why } =>
-      string_contains(s: why, pattern: planted_separator_path)
-        && string_contains(s: why, pattern: "outside portable allowlist")
-    Absent => false
+      if !string_contains(s: why, pattern: planted_separator_path) {
+        ExitFailure { code: 1, reason: concat("ssh_refusal_does_not_name_the_planted_word: ", why) }
+      } else if !string_contains(s: why, pattern: "outside portable allowlist") {
+        ExitFailure { code: 1, reason: concat("ssh_refusal_wrong_class: ", why) }
+      } else {
+        match portable_remote_words(raws: argv) {
+          Present { value: _admitted } =>
+            ExitFailure { code: 1, reason: "fleet_admission_accepted_the_argv: a nonportable word passed the fleet edge" }
+          Absent => ExitSuccess
+        }
+      }
   }
 }
 
-fn fleet_admission_refuses_the_argv(argv: List<String>) -> Bool {
-  match portable_remote_words(raws: argv) {
-    Absent => true
-    Present { value: admitted } => false
-  }
-}
-
-// THE REMOTE ROUTE, PINNED AS A REFUSAL RATHER THAN ASSERTED AS AN ABSENCE. The same nine words, handed to the
-// edges that would put them in front of a far-side shell, are refused before dispatch by BOTH remote admission
-// walls, and the ssh-edge refusal NAMES THE WORD -- so the ';' fixture is stopped by the wall that actually exists
-// on this surface, and the stop is legible rather than silent. Naming the planted path is the assertion, not an
-// accident of the outcome: every other word is inside the alphabet ("install", "-d", "-m", "0755", "-o", "-g", an
-// account name, a group name), so the path is the only word that can be the first offender. Both calls are pure
-// admission predicates; no transport runs, so nothing reaches a host.
-test fn remote_routes_refuse_the_separator_word_before_dispatch() -> Bool {
+test fn remote_routes_refuse_the_separator_word_before_dispatch() -> ProcessExit {
   match owned_directory_plan(t: separator_fixture(), o: absent_leaf_read()) {
-    EnsurePlanUnavailable { reason } => false
-    EnsurePlanAvailable { plan } =>
-      remote_refusal_names_the_separator(argv: owned_directory_install_argv(plan: plan))
-        && fleet_admission_refuses_the_argv(argv: owned_directory_install_argv(plan: plan))
+    EnsurePlanUnavailable { reason } => ExitFailure { code: 1, reason: concat("plan_refused: ", reason) }
+    EnsurePlanAvailable { plan } => remote_refusal_verdict(argv: owned_directory_install_argv(plan: plan))
   }
 }
