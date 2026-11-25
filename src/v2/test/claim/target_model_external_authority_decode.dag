@@ -29,6 +29,9 @@ import v2.std.compilers.target_model {
   target_value_expression_operand_needs_grouping,
   target_value_expression_primitive_apply,
   target_value_expr_comparison_chain_refuses,
+  target_value_expression_emit_comparison_operand_is_comparison_diagnostic,
+  target_value_expression_emit_comparison_nesting_policy_undeclared_diagnostic,
+  OperatorChainsPolicy,
   TargetRealizationCatalog,
   TargetValueExpression,
   TargetValueExprPrimitiveApply,
@@ -294,7 +297,7 @@ test fn operator_row_unencodable_precedence_level_refuses_decode() -> Bool {
 // side (refuse unless a row declares chains=yes) is carried by the census, whose emitted corpus
 // contains the comparison renders under the Rust catalog.
 
-fn chains_row_decode(chains_node: Node) -> Optional<Bool> {
+fn chains_row_decode(chains_node: Node) -> OperatorChainsPolicy {
   match target_operator_realization_from_wire_row(
     row: target_operator_realization_node_with_precedence_and_chains(
       operation: canonical_operation_op_lt(),
@@ -304,25 +307,30 @@ fn chains_row_decode(chains_node: Node) -> Optional<Bool> {
     )
   ) {
     Accepted { value: realization, diagnostics: _ } => realization.chains
-    Rejected { diagnostics: _ } => Absent
+    // Unreachable in these legs (the rows built here are well-formed); a malformed row would have
+    // to refuse, and refusing is exactly what ChainsUndeclared drives at the emit seam.
+    Rejected { diagnostics: _ } => OperatorChainsPolicy::ChainsUndeclared
   }
 }
 
-test fn operator_row_with_chains_yes_decodes_present_true() -> Bool {
+// The three-state chains fact is a DECLARED sum (review 98497 at 9581ae9ddac: it was an
+// Optional<Bool>, which hand-rolled the same three states and left Absent-vs-declared-no to
+// comments). Each state decodes to its own variant.
+test fn operator_row_with_chains_yes_decodes_chains_yes() -> Bool {
   match chains_row_decode(chains_node: target_operator_chains_yes_node()) {
-    Present { value: declared } => declared == true
-    Absent => false
+    OperatorChainsPolicy::ChainsYes => true
+    _ => false
   }
 }
 
-test fn operator_row_with_chains_no_decodes_present_false() -> Bool {
+test fn operator_row_with_chains_no_decodes_chains_no() -> Bool {
   match chains_row_decode(chains_node: target_operator_chains_no_node()) {
-    Present { value: declared } => declared == false
-    Absent => false
+    OperatorChainsPolicy::ChainsNo => true
+    _ => false
   }
 }
 
-test fn operator_row_without_chains_edge_decodes_absent() -> Bool {
+test fn operator_row_without_chains_edge_decodes_chains_undeclared() -> Bool {
   match target_operator_realization_from_wire_row(
     row: target_operator_realization_node_with_precedence(
       operation: canonical_operation_op_lt(),
@@ -332,10 +340,33 @@ test fn operator_row_without_chains_edge_decodes_absent() -> Bool {
   ) {
     Accepted { value: realization, diagnostics: _ } =>
       match realization.chains {
-        Present { value: _ } => false
-        Absent => true
+        OperatorChainsPolicy::ChainsUndeclared => true
+        _ => false
       }
     Rejected { diagnostics: _ } => false
+  }
+}
+
+// The two refusal states render under DIFFERENT reasons (review 98497): a target that declared
+// ChainsNo and a target that never declared a policy must be tellable apart by a reader of the
+// diagnostic. These legs pin the two reason names at the constructors the emit seam selects.
+test fn comparison_chain_declared_no_diagnostic_carries_declared_reason() -> Bool {
+  match target_value_expression_emit_comparison_operand_is_comparison_diagnostic(
+    expr: target_value_expression_int_literal(lexeme: "0", source: target_model_type_atom_node(identity: ^target_value_expression_int_literal_atom))
+  ) {
+    Diagnostic { reason: reason, at: _, correction: _ } =>
+      reason == ^target_value_expression_emit_comparison_operand_is_comparison
+    _ => false
+  }
+}
+
+test fn comparison_chain_undeclared_diagnostic_carries_undeclared_reason() -> Bool {
+  match target_value_expression_emit_comparison_nesting_policy_undeclared_diagnostic(
+    expr: target_value_expression_int_literal(lexeme: "0", source: target_model_type_atom_node(identity: ^target_value_expression_int_literal_atom))
+  ) {
+    Diagnostic { reason: reason, at: _, correction: _ } =>
+      reason == ^target_value_expression_emit_comparison_nesting_policy_undeclared
+    _ => false
   }
 }
 

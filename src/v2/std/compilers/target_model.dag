@@ -1711,6 +1711,10 @@ fn equality_predicate_accepts(predicate: EqualityPredicate) -> Bool {
 // CanonicalOperation — a classification of the closed sum, not a flag hiding a decision elsewhere.
 // Total by enumeration: every variant is named, so a new comparison variant forces this decision
 // (gunbc.design_argument::fail_closed: make the wrong state unwritable, not merely caught).
+// Typed carrier below (review 98497: prose alone is an insufficient disposition carrier).
+data canonical_operation_is_comparison_dissolve_on: DissolutionCondition =
+  unbound_dissolution(description: "🟢 never dissolves as long as the only second candidate carrier is the catalog chains fact: shape semantics (which canonical family an operator belongs to) and target permission (may that family nest) are two facts with two homes, and merging them fails open for a target that omits the edge -- routing the shape test through chains would read an undeclared target as 'not a comparison' and emit `a < b == c`. BOUNDED REVISIT TRIGGER: dissolve into a single authority IF a target-neutral semantic-family field (a declared comparison group per catalog row) is ever added; no such field exists today and no roadmap row owns adding one, so there is no expiry being missed.")
+
 fn canonical_operation_is_comparison(op: CanonicalOperation) -> Bool {
   match op {
     OrderingComparison { compare_field: _, predicate: _ } => true
@@ -1805,6 +1809,18 @@ type TargetOperatorShape
 // e.g. `"lit" as NonEmptyStr` where NonEmptyStr is String in Rust) -- not the target's own `as`,
 // which converts numerics and would claim a different operation.
 
+// The chaining permission of an operator row, as a DECLARED three-state sum (review 98497 at
+// 9581ae9ddac: an Optional<Bool> here hand-rolled the same three states, leaving the difference
+// between "declared no" and "never declared" to comments alone; a choice that changes meaning must
+// be stated -- gunbc.design_argument::declared_intent). ChainsYes lets a comparison take a
+// comparison operand; ChainsNo is an explicit refusal; ChainsUndeclared means the target made no
+// declaration (no chains edge, or no row at all) and refuses, because silence fabricates no
+// permission to emit a form the target may reject (gunbc.design_argument::fail_closed).
+type OperatorChainsPolicy
+  = ChainsYes
+  | ChainsNo
+  | ChainsUndeclared
+
 type TargetOperatorRealization {
   operation: CanonicalOperation
   shape: TargetOperatorShape
@@ -1814,11 +1830,10 @@ type TargetOperatorRealization {
   // numeric sentinel that could fail open by treating an undeclared operator as binding tightest.
   precedence: Optional<Int>
   // Whether this operator may take an operand that is itself the same comparison family. The fact
-  // belongs to the language. Today only Rust declares a chains row (chains=no: the Rust Reference
-  // marks its comparison group non-associative). Every other target carries no chains edge, so
-  // nesting there is Absent and refuses. Absent refuses because silence cannot fabricate
-  // permission to emit a form the target may reject (gunbc.design_argument::fail_closed).
-  chains: Optional<Bool>
+  // belongs to the language. Today only Rust declares one (ChainsNo: the Rust Reference marks its
+  // comparison group non-associative). Every other target carries no chains edge, so nesting there
+  // decodes ChainsUndeclared and refuses. See OperatorChainsPolicy above for the three states.
+  chains: OperatorChainsPolicy
 }
 
 type TargetBindingRefShape {
@@ -2980,13 +2995,13 @@ fn target_operator_realization_row_wire_schema_valid(row: Node) -> Outcome<Bool>
   }
 }
 
-fn target_operator_chains_from_wire_node(wire: Node) -> Outcome<Optional<Bool>> {
+fn target_operator_chains_from_wire_node(wire: Node) -> Outcome<OperatorChainsPolicy> {
   match wire.kind {
     TypeNode { connective: Atom { identity: id } } =>
       if id == ^target_operator_chains_yes {
-        outcome_accepted(optional_present(value: true))
+        outcome_accepted(OperatorChainsPolicy::ChainsYes)
       } else if id == ^target_operator_chains_no {
-        outcome_accepted(optional_present(value: false))
+        outcome_accepted(OperatorChainsPolicy::ChainsNo)
       } else {
         outcome_rejected(target_operator_realization_wire_malformed_diagnostic(row: wire))
       }
@@ -3026,7 +3041,9 @@ fn target_operator_realization_from_wire_row(row: Node) -> Outcome<TargetOperato
                             match find_named_child(root: row, name: ^target_operator_realization_field_chains) {
                               Accepted { value: chains_wire, diagnostics: _ } =>
                                 target_operator_chains_from_wire_node(wire: chains_wire)
-                              Rejected { diagnostics: _ } => outcome_accepted(optional_absent())
+                              // No chains edge on the row: the target never declared a policy.
+                              Rejected { diagnostics: _ } =>
+                                outcome_accepted(OperatorChainsPolicy::ChainsUndeclared)
                             },
                             fn(chains) {
                               outcome_accepted(
@@ -6630,6 +6647,18 @@ fn target_value_expression_emit_comparison_operand_is_comparison_diagnostic(expr
   }
 }
 
+// The target never declared a chaining policy for this comparison operator (a row without a
+// chains edge). Refused identically to an explicit ChainsNo -- silence fabricates no permission
+// -- but under its OWN reason so a reader tells a target that never spoke from one that said no
+// (review 98497; gunbc.design_argument::declared_intent).
+fn target_value_expression_emit_comparison_nesting_policy_undeclared_diagnostic(expr: TargetValueExpression) -> Diagnostic {
+  Diagnostic {
+    reason: ^target_value_expression_emit_comparison_nesting_policy_undeclared,
+    at: node_locus(node: expr.node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
 // True when the enclosing operator is a comparison (canonical_operation_is_comparison) and either
 // positional operand is itself a comparison apply — the shape Rust rejects because its comparison
 // operators do not chain. The variant decision lives in the classification, not here.
@@ -7003,10 +7032,14 @@ fn target_operator_realization_precedence(
 fn target_operator_realization_chains(
   catalog: TargetRealizationCatalog,
   op: CanonicalOperation
-) -> Optional<Bool> {
+) -> OperatorChainsPolicy {
   match target_operator_realization_catalog_lookup(catalog: catalog.operators, canonical_op: op) {
     Accepted { value: row, diagnostics: _ } => row.chains
-    _ => Absent
+    // No row at all: the target never spoke about this operator. Same permission state as a row
+    // with no chains edge -- absence of a declaration is absence of permission either way
+    // (fail-closed). The emit seam refuses a missing row with catalog_miss before this runs, so
+    // ChainsUndeclared here is reachable only via a row that exists but does not declare chains.
+    _ => OperatorChainsPolicy::ChainsUndeclared
   }
 }
 
@@ -7016,21 +7049,46 @@ fn target_operator_realization_chains(
 // this refuses. The model holds only the POLICY: nesting needs a permission, and a row that does
 // not declare chains=yes cannot fabricate permission to emit a form the target may reject
 // (gunbc.design_argument::fail_closed).
-fn target_value_expr_comparison_chain_refuses(
+// Whether a comparison carrying a comparison operand must be refused, and UNDER WHICH POLICY.
+// Present(ChainsNo) means the target explicitly said its comparison operators do not chain;
+// Present(ChainsUndeclared) means the target never spoke (row without a chains edge -- a missing
+// row cannot reach here, the emit seam refuses catalog_miss first). The two states refuse
+// IDENTICALLY (fail-closed: silence fabricates no permission) but are carried apart so the emit
+// seam renders them under visibly different reasons: a reader can tell a target that never spoke
+// from a target that said no (review 98497). Absent means no refusal.
+fn target_value_expr_comparison_chain_refusal_policy(
   catalog: TargetRealizationCatalog,
   enclosing_op: CanonicalOperation,
   operands: List<TargetValueExpression>
-) -> Bool {
+) -> Optional<OperatorChainsPolicy> {
   if target_value_expr_operands_form_comparison_chain(
     enclosing_op: enclosing_op,
     operands: operands
   ) {
     match target_operator_realization_chains(catalog: catalog, op: enclosing_op) {
-      Present { value: declared } => declared == false
-      Absent => true
+      OperatorChainsPolicy::ChainsYes => optional_absent()
+      OperatorChainsPolicy::ChainsNo =>
+        optional_present(value: OperatorChainsPolicy::ChainsNo)
+      OperatorChainsPolicy::ChainsUndeclared =>
+        optional_present(value: OperatorChainsPolicy::ChainsUndeclared)
     }
   } else {
-    false
+    optional_absent()
+  }
+}
+
+fn target_value_expr_comparison_chain_refuses(
+  catalog: TargetRealizationCatalog,
+  enclosing_op: CanonicalOperation,
+  operands: List<TargetValueExpression>
+) -> Bool {
+  match target_value_expr_comparison_chain_refusal_policy(
+    catalog: catalog,
+    enclosing_op: enclosing_op,
+    operands: operands
+  ) {
+    Present { value: _ } => true
+    Absent => false
   }
 }
 
@@ -7137,14 +7195,27 @@ fn target_operator_shape_emit_primitive_apply_tokens(
             enclosing_op: enclosing_op,
             operands: operands
           ) {
-            // The target's catalog row declares its comparison operators do not chain (only Rust
-            // declares a chains row today, chains=no; every other target is Absent and also
-            // refuses). A comparison carrying a comparison operand would render a form that target
-            // rejects, so the emitter refuses with its own typed reason rather than handing the
-            // target's compiler output it will reject. Pure refusal: no currently-emitting subject
-            // forms such a chain, so nothing that renders correctly today changes a byte.
+            // The target's catalog row either declares its comparison operators do not chain
+            // (only Rust declares a chains row today, ChainsNo) or never declared a policy (no
+            // chains edge -- every other target), and both refuse. A comparison carrying a
+            // comparison operand would render a form that target rejects, so the emitter refuses
+            // with its own typed reason rather than handing the target's compiler output it will
+            // reject. The two states refuse identically but render under DIFFERENT reasons (review
+            // 98497): declared-no says the target spoke, undeclared says it never did. The Absent
+            // arm is unreachable under the refuses guard and kept as a fail-safe.
             outcome_rejected(
-              target_value_expression_emit_comparison_operand_is_comparison_diagnostic(expr: expr)
+              match target_value_expr_comparison_chain_refusal_policy(
+                catalog: catalog,
+                enclosing_op: enclosing_op,
+                operands: operands
+              ) {
+                Present { value: OperatorChainsPolicy::ChainsNo } =>
+                  target_value_expression_emit_comparison_operand_is_comparison_diagnostic(expr: expr)
+                Present { value: _ } =>
+                  target_value_expression_emit_comparison_nesting_policy_undeclared_diagnostic(expr: expr)
+                Absent =>
+                  target_value_expression_emit_comparison_operand_is_comparison_diagnostic(expr: expr)
+              }
             )
           } else {
             match list_at_optional(xs: operands, index: 0) {
