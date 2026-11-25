@@ -266,6 +266,7 @@ test fn w_fresh_host_dpkg_answer_installs_not_refuses() -> Bool {
         success: false,
         stdout: "",
         stderr: "dpkg-query: package 'tailscale' is not installed and no information is available\nUse dpkg --info (= dpkg-deb --info) to examine archive files.",
+        wall_deadline_seconds: Absent,
       },
     },
   )
@@ -279,6 +280,7 @@ test fn w_fresh_host_dpkg_answer_installs_not_refuses() -> Bool {
         success: false,
         stdout: "",
         stderr: "dpkg-query: an unexpected failure with no recognizable answer",
+        wall_deadline_seconds: Absent,
       },
     },
   )

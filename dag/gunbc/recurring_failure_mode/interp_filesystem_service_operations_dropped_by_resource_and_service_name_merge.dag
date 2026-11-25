@@ -1,0 +1,46 @@
+module gunbc.recurring_failure_mode.interp_filesystem_service_operations_dropped_by_resource_and_service_name_merge
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
+
+// Consumer: directory-derived recurring_failure_mode.roster, projected by
+// gunbc.design_ledgers.expected_design_failure_modes_md through docs_projection_gate.
+
+// A FILESYSTEM OPERATION THAT CLAIM_BATCH-ERA RUNNERS ANSWERED AND THE ROUTE REFUSES, BECAUSE TWO
+// TOP-LEVEL ITEMS SHARE THE NAME `Filesystem`. std.resources declares `resource Filesystem` (an OtherItem);
+// extdeps.filesystem declares `service Filesystem` (a ServiceItem). Inside one import closure the NON-SERVICE
+// entry can win the registry name-merge and silently drop the service's operations, so an authored
+// `Filesystem.Write` / `Filesystem.Read` call finds no method surface and the runner raises `unknown service
+// operation` at runtime. The hazard is named in the code that performs the merge: src/v1/stage0/src/
+// v1_interpreter.rs:6870-6872 ("the non-service entry can win the registry merge and silently drop the
+// service's operations (-> 'unknown service operation' at runtime)").
+
+// WHY THIS IS FILED AND NOT FIXED HERE. It is PRE-EXISTING, not a capability the claim-entrypoints route
+// lost: srv1 ran main's OWN interp_recorded_fixture_witness driving main's claim_batch at origin/main
+// 454b3aec1fe and got 21 of 23 checks FAIL in 5.5s, 2 PASS — the same Filesystem service-vs-resource
+// refusal, on the same tree that has no route at all. No lane in the required CI job executes this witness
+// (gunbc.design_ruling::no_ci_claim_execution_until_native_frontier_clears), so it has been red on main
+// unseen. Deleting claim_batch therefore removes no working capability; the route is no worse than the
+// runner it replaces. This row records the defect and its reach so the deletion is made with the truth
+// written down, not as an unrecorded regression.
+data interp_filesystem_service_operations_dropped_by_resource_and_service_name_merge: RecurringFailureMode = RecurringFailureMode {
+  identity: "interp_filesystem_service_operations_dropped_by_resource_and_service_name_merge" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
+
+  receipts: [
+    "INVALID STATE (the name-merge drop): an authored Filesystem.Write or Filesystem.Read reaches `unknown service operation: Filesystem.Write` (cause=unimplemented) or, when the copy is loaded from a non-live source root, `receiver type 'Primitive(Filesystem)' establishes no method surface ... no declared frontier row admits it` — because std.resources `resource Filesystem` (OtherItem) beat extdeps.filesystem `service Filesystem` (ServiceItem) in the import-closure registry name-merge and the service's operation map never entered the scope. Re-derive: the merge hazard is stated at src/v1/stage0/src/v1_interpreter.rs:6870-6872.",
+
+    "HOW IT SURFACED, AND WHY IT IS PRE-EXISTING. srv1 (lively-dove-824) ran origin/main 454b3aec1fe's OWN interp_recorded_fixture_witness against main's claim_batch: 21 of 23 checks FAIL in 5.5s, 2 PASS. The record/replay checks die on the module-path collision below, and the closure-scale check names this same Filesystem service-vs-resource merge. On gunbc#16872 head the route reproduces the identical verdicts (the in-tree //test/claim/filesystem_write_witness:filesystem_write_keystone_holds reaches eval_steps then `outcome=RuntimeError cause=unimplemented detail=unknown service operation: Filesystem.Write` with `[expectation-frontier] undeclared: Filesystem.Write`; the scratch copy refuses earlier at the method-surface form).",
+
+    "NO LANE EXECUTES IT. The required CI job runs no claims and no v1 unit tests (gunbc.design_ruling::no_ci_claim_execution_until_native_frontier_clears); this Rust witness is spawned by no lane. Both this merge and the collision row beside it have been red on main without anyone seeing them.",
+
+    "THE DISPOSITION, NOT A FIX IN gunbc#16872. The route is asked to resolve a capability its predecessor also failed to resolve, so this is not a route gap the cutover owns. It is recorded here so the claim_batch deletion (plan section 6) is honest about what it removes: nothing that executed."
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "test.claim.filesystem_write_witness", decl_name: "filesystem_write_keystone_holds", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.filesystem_write_closure_scale_witness", decl_name: "filesystem_write_closure_scale_holds", field: WholeDeclaration }
+  ]
+}
