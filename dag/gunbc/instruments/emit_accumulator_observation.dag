@@ -24,16 +24,18 @@ import gunbc.emit_state_threading_specimen { spec_build }
 // own operations_above and operations_within against the CONTRACT ARM, never against a threshold invented
 // here; and the red control is its own entry, so its non-zero exit is its own.
 //
-// THE SHAPE IS CHOSEN FROM THIS ROW'S OWN PINNED COUNTER DATA, not from a parse-population profile
-// (absent at this base) and not by taste. The discriminating gap is the cloning control against the
-// reference walk, 43711 ops / 21853472 bytes against 6112 ops / 1401008 bytes, in run3.log sha256
-// 7d722dbb2a45942a8cbe85ef7714060d2e6af6c3ed90c3032474c1f34d29dd7f. The counter arm sees OPERATIONS AND
-// BYTES ONLY: no traversal count, no per-phase lifetime (copy_work_dimension_unavailable_cause), which is
-// the limitation the recorded basis change accepts with its eyes open. That is the planning owner's ruling
-// kept as an updated() note on the row, note sha256
-// 9dd0c6865134a315b1828b55d3c8f3f649b7522bcdd5cf53a441de2088d59d88, verified by extraction from the file
-// at the planning PR's head -- see docs/measurements/emission_building_block_realization/README.md.
-// The fold and rebuild idiom is the accepted specimen's (dag/gunbc/emit_state_threading_specimen.dag:66).
+// THE SHAPE IS CHOSEN FROM THIS ROW'S OWN PINNED COUNTER DATA, not by taste. The basis for that choice is
+// the plan row itself (#gunbc.roadmap.roadmap_authority::declared_roadmap_nodes, the row whose id is
+// "emission-building-block-realization"); the basis is cited there and is not copied here, since a plan's
+// authority is its .dag carrier and every surface that shows a plan renders it. MEASURED NUMBERS DO NOT
+// LIVE IN THIS FILE: the discriminating gap between the cloning control and the reference walk, with the
+// binary sha, the acquisition line and the raw verdict lines, is in the executed legs posted as run links
+// on the pull request -- a figure re-spelled into a comment is a copy of a measurement, free to drift from
+// the run it came from. The counter arm sees OPERATIONS AND BYTES ONLY: no traversal count, no per-phase
+// lifetime (copy_work_dimension_unavailable_cause), the limitation the basis change accepts with its eyes
+// open. The fold and rebuild idiom is the accepted specimen's,
+// #gunbc.emit_state_threading_specimen::spec_walk_tokens, which returns the sequence it built so the
+// caller can keep and walk it.
 //
 // CLOSURES ARE WRITTEN THE WAY THE CORPUS WRITES THEM. A callable is a let-bound lambda invoked
 // positionally (dag/test/claim/rung_drop_superseded_standing_witness.dag:202) or passed as a labelled

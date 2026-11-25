@@ -31,17 +31,20 @@ import gunbc.emit_state_threading_specimen { spec_build }
 // ordinary collections available to a .dag specimen share by reference-count bump and copy wholesale on
 // update. So the measured reading for the persistent-carrier rows is expected to DISAGREE with the
 // applicability verdict, and that disagreement is this row's finding rather than a specimen defect: four
-// places in one module call a placeholder a production carrier (carrier_realized 357, carrier_is_record
-// 268-277, carrier_is_sized 345, and line 499 handing PersistentSequenceCarrier a StructuralShareRealization
-// outright). The reported state for any leg that comes back the other way -- a persistent carrier measured
+// places in one module call a placeholder a production carrier -- #gunbc.emit_copy_qualification::carrier_realized,
+// #gunbc.emit_copy_qualification::carrier_is_record, #gunbc.emit_copy_qualification::carrier_is_sized, and the
+// arm handing PersistentSequenceCarrier a StructuralShareRealization outright. The reported state for any leg that comes back the other way -- a persistent carrier measured
 // CHEAP where the reading says wholesale copy, or refused where the ruling says realized -- is a stop and
 // report, not a specimen edit.
 //
-// THE SHAPE IS CHOSEN FROM THIS ROW'S OWN PINNED COUNTER DATA, not from a parse-population profile (absent
-// at this base) and not by taste; see docs/measurements/emission_building_block_realization/README.md and
-// the recorded basis-change note, sha256
-// 9dd0c6865134a315b1828b55d3c8f3f649b7522bcdd5cf53a441de2088d59d88. The counter arm sees operations and
-// bytes only: no traversal count, no per-phase lifetime (copy_work_dimension_unavailable_cause).
+// THE SHAPE IS CHOSEN FROM THIS ROW'S OWN PINNED COUNTER DATA, not by taste. The basis is recorded on the
+// plan itself (#gunbc.roadmap.roadmap_authority::declared_roadmap_nodes, the row whose id is
+// "emission-building-block-realization"), which is the one authority for it; what the row says is not
+// restated here, because a restatement is a copy and a copy can drift from the thing it copies.
+// MEASURED NUMBERS DO NOT LIVE IN THIS FILE: they are in the executed legs, posted as run links on the
+// pull request, where the binary sha, the acquisition line and the raw verdict lines travel together.
+// The counter arm sees operations and bytes only: no traversal count, no per-phase lifetime
+// (copy_work_dimension_unavailable_cause), which is the limitation the basis change accepts openly.
 //
 // THE COLLECTIONS ARE THE ORDINARY ONES, named as stand-ins: List<Int> stands for the sequence carrier and
 // Map<String, Int> for the index carrier, because no other persistent collection is reachable from .dag.

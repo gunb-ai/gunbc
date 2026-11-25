@@ -209,13 +209,14 @@ fn building_block_contracts() -> List<BuildingBlockContract> {
     block("escaping_closure", Accumulator, MoveIntoClosure, SharedRecordCarrier, StraightLine, ConsumesByValue, SizedCardinalityBasis, OwningRetainAddedToObservation),
 
     // ── T4 carriers, run against the stand-ins that exist ───────────────────────────────────
-    // The two persistent members are run as what the production emitter can actually build for them
-    // (gunbc.emit_copy_qualification_fixture_gen `fn carrier_type_text` realizes PersistentSequenceCarrier
-    // as List<Int> and PersistentMapCarrier as Map<String, Int>). The expectation is recorded in
-    // docs/measurements/emission_building_block_realization/README.md: the carrier's own
-    // `fn carrier_realized` calls these two realized while `fn carrier_is_record` says neither is a record,
-    // and the stand-ins share on clone through a reference count and copy on update. A specimen that goes
-    // red here is the row succeeding, not a failing worker.
+    // The two persistent members are run as what the production emitter can actually build for them:
+    // #gunbc.emit_copy_qualification_fixture_gen::carrier_type_text realizes PersistentSequenceCarrier as
+    // List<Int> and PersistentMapCarrier as Map<String, Int>. The expectation this leg is written to test
+    // is the carrier model's own, read from the declarations rather than quoted from a report:
+    // #gunbc.emit_copy_qualification::carrier_realized calls these two realized while
+    // #gunbc.emit_copy_qualification::carrier_is_record says neither is a record, and the stand-ins share on
+    // clone through a reference count and copy on update. A specimen that goes red here is the row
+    // succeeding, not a failing worker.
         // observation: build a sequence once at the declared cardinality
     // violation: rebuild the sequence per element rather than once
     block("sequence_build", Carriers, ConsumedOnce, PersistentSequenceCarrier, StraightLine, ConsumesByValue, SizedCardinalityBasis, PerStepAllocation),
