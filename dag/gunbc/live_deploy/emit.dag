@@ -1834,7 +1834,7 @@ fn tailscale_serve_apply_step(spec: DeploymentSpec) -> PipelineStep {
 // unchanged: production's bin directory is root-owned, and this route claims no ownership decision for it. What
 // switching it to the service-user-owned provider would actually do is REFUSE rather than re-own:
 // #gunbc.owned_directory::owned_directory_plan returns EnsurePlanUnavailable when the observed owner is foreign
-// ("ownership is never adopted", dag/gunbc/owned_directory.dag:413-437), so the live root-owned directory would
+// ("ownership is never adopted"), so the live root-owned directory would
 // stop the deploy with a named cause instead of being quietly re-chowned to satisfy a twin — the refusal is the
 // planner's, and it is the reason the deliberate choice here is stated rather than a hazard being dodged.
 
@@ -1927,10 +1927,12 @@ data install_d_mode_derivation_dissolution: DissolutionCondition = retires_disso
 // leaves that do install an owned directory on the acting route do it through two DIFFERENT legs, which must not
 // be collapsed into one claim: the ownership DECISION -- plan, then provider -- is
 // #gunbc.owned_directory::owned_directory_plan over #gunbc.owned_directory::owned_directory_ensure, reached ONLY
-// by ApplyLegEnsureDirectory (gunbc.host.host_effect_realize:6421-6424); ApplyLegInstallDirectory runs a PREBUILT
-// install argv carrying no ownership decision at all (:6434, built at gunbc.live_deploy.apply_legs:659-661 and
-// :683-685, and it is THAT leg the published tree uses for `tree-repo-root` and `instance-receipts-dir` at :743
-// and :746). What the two legs share is the argv authority, #gunbc.owned_directory::owned_directory_install_argv,
+// by the ApplyLegEnsureDirectory arm of #gunbc.host.host_effect_realize::deploy_apply_run_leg;
+// ApplyLegInstallDirectory runs a PREBUILT install argv carrying no ownership decision at all, built by
+// #gunbc.live_deploy.apply_legs::apply_root_directory_leg_typed over
+// #gunbc.live_deploy.apply_legs::apply_owned_directory_leg, and it is THAT leg
+// #gunbc.live_deploy.apply_legs::deploy_apply_tree_plan uses for `tree-repo-root` and `instance-receipts-dir`.
+// What the two legs share is the argv authority, #gunbc.owned_directory::owned_directory_install_argv,
 // and it is that authority -- not either leg's dispatch -- that the row's witness reads.
 // THE DISPLAY ITSELF IS DELETED IN THIS SAME MOTION — the typed outcome and its total
 // display -- InstallLineRender over its InstallLine / InstallLineRefused variants, the
@@ -1938,8 +1940,9 @@ data install_d_mode_derivation_dissolution: DissolutionCondition = retires_disso
 // classifier and label, and the two render callables -- are gone rather than parked: a frontier is
 // admissible only over a REAL later consumer, and the census found none. What the acting route is, stated at the
 // width actually proved: the local route exec's the argv as WORDS, and the remote routes hand the ADMITTED words
-// to ssh, where the far side's shell re-parses them (gunbc.typed_argv_exec:140-154 for the non-fleet transport,
-// :243-267 for the fleet leg). So this is NOT a claim that no shell is ever downstream -- it is a claim that a
+// to ssh, where the far side's shell re-parses them (#gunbc.typed_argv_exec::typed_argv_exec_over_ssh for the
+// non-fleet transport, #gunbc.typed_argv_exec::typed_argv_exec_over_fleet_ssh for the fleet leg). So this is NOT a
+// claim that no shell is ever downstream -- it is a claim that a
 // word that shell would have to re-parse never reaches it, because the admission predicates refuse it BEFORE
 // dispatch, and that refusal (not any absence of a shell) is what the row's witness pins.
 // Their only consumers were three arms of
