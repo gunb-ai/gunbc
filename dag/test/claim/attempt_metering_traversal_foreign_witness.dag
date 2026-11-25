@@ -68,8 +68,9 @@ data safe_index_listing_source: String = "module probe_amt_safe_index_listing\ni
 
 data hostile_index_listing_source: String = "module probe_amt_hostile_index_listing\nimport gunbc.roadmap.roadmap_attempt_metering { AttemptMeteringListing, attempt_metering_index_listing }\nfn f() -> AttemptMeteringListing { attempt_metering_index_listing(store: \"/tmp/any-root-chosen-by-the-caller\") }\n"
 
-data deleted_listing_import_source: String = "module probe_amt_deleted_listing\nimport gunbc.roadmap.roadmap_attempt_metering { attempt_metering_listing }\nfn f(root: String) -> Bool { true }\n"
+data old_caller_listing_call_source: String = "module probe_amt_old_caller_listing_call\nimport gunbc.roadmap.roadmap_attempt_metering { AttemptMeteringListingRead, AttemptMeteringListingUnreadable, attempt_metering_listing }\nfn old_caller() -> Bool { match attempt_metering_listing(root: \"/tmp/caller-chooses\", what: \"records\") { AttemptMeteringListingRead { names: _ } => true, AttemptMeteringListingUnreadable { detail: _ } => false } }\n"
 
+data lawful_listing_call_source: String = "module probe_amt_lawful_listing_call\nimport gunbc.roadmap.roadmap_attempt_metering { AttemptMeteringStore, AttemptMeteringListingRead, AttemptMeteringListingUnreadable, attempt_metering_listing_of, attempt_metering_listing }\nfn lawful(store: AttemptMeteringStore) -> Bool { match attempt_metering_listing_of(store: store) { AttemptMeteringListingRead { names: _ } => true, AttemptMeteringListingUnreadable { detail: _ } => false } }\n"
 data control_import_source: String = "module probe_amt_control_import\nimport gunbc.roadmap.roadmap_attempt_metering { AttemptMeteringStore, attempt_metering_listing_of }\nfn f(store: AttemptMeteringStore) -> Bool { true }\n"
 
 fn blocking_rows(source: String) -> Int {
@@ -84,7 +85,8 @@ test fn the_listing_route_takes_the_sealed_store_only() -> Bool {
     && type_mismatch_count(source: hostile_listing_source) >= 1
     && type_mismatch_count(source: safe_index_listing_source) == 0
     && type_mismatch_count(source: hostile_index_listing_source) >= 1
-    && blocking_rows(source: deleted_listing_import_source) >= 1
+    && blocking_rows(source: old_caller_listing_call_source) >= 1
+    && type_mismatch_count(source: lawful_listing_call_source) == 0
     && blocking_rows(source: control_import_source) == 0
 }
 
