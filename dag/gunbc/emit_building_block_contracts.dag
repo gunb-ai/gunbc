@@ -248,6 +248,17 @@ fn contracts_of_family(f: BuildingBlockFamily) -> List<BuildingBlockContract> {
 }
 
 // The carrier judges the row. This file never reports an applicability it did not obtain from the carrier.
+// The boolean form of the same judgement, for a claim that must not compare strings. `fn contract_verdict`
+// renders a row for a LOG; a held/unheld decision that compares its output to a literal written in another
+// module is a second authority over what applicability means, and one battery did exactly that and was red
+// for it. The carrier decides; this only names the two outcomes.
+fn contract_is_applicable(c: EmitCopyQualificationCaseId) -> Bool {
+  match case_applicability(id: c) {
+    CaseApplicable => true
+    CaseNotApplicable { reason: _ } => false
+  }
+}
+
 fn contract_verdict(c: EmitCopyQualificationCaseId) -> String {
   match case_applicability(id: c) {
     CaseApplicable => "applicable"
