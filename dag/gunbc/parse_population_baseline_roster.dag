@@ -45,6 +45,20 @@ import std.algebra { count_where, fold_list, list_push }
 // plan only via a planning PR (lane-manager queue), not authored by this row (fenced from the plan). When
 // that prerequisite lands and CI begins executing claims, this witness joins the executed CI lane.
 
+// CONSUMPTION COUNT (reviews 98377/98381, honest statement with the count that established it):
+// this roster has EXACTLY ONE reader — the self-consistency fold in its own witness,
+// dag/test/claim/parse_population_baseline_roster_witness.dag:5 (git grep -n
+// "import gunbc.parse_population_baseline_roster" = 1 hit, exit 0). The report's §5 wall-time and
+// peak-RSS cells were timed by running the parse-population verb over module lists obtained
+// INDEPENDENTLY of these rows (staged from the tree at the pinned sha), NOT by reading them; the
+// provenance of every measured cell is the instrument run, and this roster is a DECLARED BENCHMARK,
+// not a measurement input. No number in the report is roster-derived. Closing the loop (the baseline
+// harness consuming roster.path as its module list, or a carrier<->tree reconciliation instrument over
+// the pinned sha so an executed leg — not just the documented external producer above — ties these
+// rows to the tree) is a DECLARED FOLLOW-UP with a bounded trigger, out of this slice as a
+// re-measurement; until it lands no measured number may be described as roster-derived
+// (gunbc.design_argument::consumption, gunbc.design_argument::how_to_work; lane-manager ruling).
+
 // The tree sha the populations were selected and measured over (origin/main at baseline time).
 data parse_population_baseline_pinned_sha: String =
   "65230868362de3efc0ddfeeaeef5d83eeb2fa385"
