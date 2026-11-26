@@ -241,10 +241,13 @@ type ExecutionBoundReceipt
   // printed a reason in its own words (an errno line from kill(1)) while the confirming reap answered no
   // death -- the one arm where anything from the tool decides, and it decides only a REFUSAL, routing the
   // operator to the host's signal path (LSM, seccomp, a permission boundary) rather than to this
-  // repository's lifecycle. The tool's exit STATUS is never consulted for this arm or against it: for the
-  // negative-pid group form it is measured inverted against the kernel's witness on procps-ng 4.0.4
-  // (boot_probe_judge_confirmation carries the measurement), so a key on it would mint both this refusal
-  // and its opposite from a liar (gunbc.design_argument::external_upstreams).
+  // repository's lifecycle. The tool's exit STATUS is never consulted for this arm or against it: for
+  // the negative-pid group form it was measured answering BOTH WAYS on two instruments of one kernel
+  // (boot_id c095c0cd) -- exit 0 with empty stderr having signalled nobody on srv1 at 2026-11-26
+  // 13:49Z, exit 1 while the group died of that very signal in the session container at 13:48Z -- and
+  // boot_probe_judge_confirmation carries both measurements, each naming its kill(1) by sha256 rather
+  // than by a version string, so a key on it would mint both this refusal and its opposite from a liar
+  // (gunbc.design_argument::external_upstreams).
   | BoundKillRefused { deadline: Second, detail: String }
   // THE CONFIRMATION NEVER CAME. This layer delivered its signals to the group it started and the
   // confirming reap did not answer a death inside the confirmation bound this layer itself imposed
@@ -410,13 +413,23 @@ type ConfirmationAnswer
 
 // THE DEATH IS THE REAP'S TO REPORT, AND THE REAP'S ALONE. posix.Process.Reap is waitpid(2) about the
 // very pid this layer started, so its four answers decide every arm here. The signal tool's answer is a
-// different kind of fact, and a weaker one: both group signals ride procps kill(1) (`kill -TERM -<pgid>`,
-// `kill -KILL -<pgid>`) -- an independently versioned upstream whose exit status for the NEGATIVE-PID
-// form is measured INVERTED against what the kernel did. On srv1 against procps-ng 4.0.4, on the same
-// subjects the wet lane drives: it exits 1 while the group dies of that very signal (an escalated group
-// reached SIGKILL death, reported by the reap as Signalled{9}, with the tool's status saying failure),
-// and it exits 0 against an already-absent group. So the status gates NOTHING here -- neither a fired
-// bound nor a refused one, because a key on it could mint either from a liar
+// different kind of fact, and a weaker one: both group signals ride procps kill(1) -- the transports of
+// the TerminateProcessGroup and KillProcessGroup operations of the extdeps.posix.signal module, which since
+// the measured mis-parse now emit the negative group target AFTER a "--" separator, the one rendering
+// this repository also declares at #extdeps.procps.kill::procps_ng_kill_term_pgid_argv -- and an
+// independently versioned upstream's exit status is worth nothing here. It was MEASURED answering
+// OPPOSITELY on two instruments of ONE kernel (boot_id c095c0cd) for the bare negative form, so a key on
+// it would mint either verdict from a liar. On srv1 at 2026-11-26 13:49Z, in the strace-wrapped wet
+// escalation of this very path, the argv left this layer as issued -- execve("/usr/bin/kill", ["kill",
+// "-TERM", "-3971854"]) and execve("/usr/bin/kill", ["kill", "-KILL", "-3975026"]) -- and kill(1) called
+// kill(-3, SIGTERM) = -1 ESRCH and kill(-3, SIGKILL) = -1 ESRCH: the bare negative target was parsed to
+// 3, a group that does not exist. It exited 0 with empty stderr while the subjects, whose pgrp equalled
+// the pid this layer had recorded at spawn, were alive at t=0/1/3/5 s in state S (wchan do_wait,
+// hrtimer_nanosleep). In the session container on that same kernel at 13:48Z, /usr/bin/kill sha256
+// 390f101aa531bed0639f8637f4a1350453347b36f6a15e148f5300db8788c5d1 (67824 bytes, printing "kill from
+// procps-ng 4.0.4"), the SAME argv exited 1 while the group died of that very signal. One reported
+// version string, two instruments, opposite statuses -- and neither status is kill(2)'s answer, so the
+// status gates NOTHING here -- neither a fired bound nor a refused one
 // (gunbc.design_argument::external_upstreams,
 // gunbc.design_argument::selection_precedes_convergence -- an actuation return cannot mint convergence).
 // What the tool says in WORDS still carries weight, because kill(1) prints an errno line only when

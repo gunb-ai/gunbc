@@ -85,7 +85,7 @@ service posix.Signal {
   // in state S, wchan do_wait / hrtimer_nanosleep, and the tool exited 0 with empty stderr. So a
   // bare negative target is not a quieter spelling of the same thing; it is a different target.
   // This is not an invention of a second rendering: it is the rendering this repository ALREADY
-  // declares for the same upstream tool at #extdeps.procps::procps_ng_kill_term_pgid_argv --
+  // declares for the same upstream tool at #extdeps.procps.kill::procps_ng_kill_term_pgid_argv --
   // [kill_program().invocation, "-TERM", "--", concat("-", to_string(pgid))] -- and that sibling is
   // the authority these transports now agree with: one upstream tool, one rendering
   // (gunbc.design_argument::root_generalization), the tool itself remaining an extdeps-grade fact
