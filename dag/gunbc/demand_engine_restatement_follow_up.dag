@@ -46,11 +46,20 @@ type RetainedRowTrigger
   | ProbeLeavesCorpus
   | EditedWitnessHasNoHermeticRoute
 
-type DemandRestatementRetainedRow {
+// THE ROW IDENTITY, owned ONCE here (review 98769 finding 1, minimize_redundancy): the four fields
+// that identify a retained restatement row live in exactly this type. The retained row NESTS it
+// rather than repeating the field set -- a second spelling of the same four fields, even in the same
+// module, is the fork this rule exists to refuse, and nesting keeps the trigger out of the arriving
+// rows (an arriving row is an identity, never a retention decision).
+type DemandRestatementRowIdentity {
   module_path: NonEmptyStr
   declaration: NonEmptyStr
   alias: NonEmptyStr
   authored_type: NonEmptyStr
+}
+
+type DemandRestatementRetainedRow {
+  identity: DemandRestatementRowIdentity
   trigger: RetainedRowTrigger
 }
 
@@ -71,25 +80,25 @@ type DemandRestatementRetainedRow {
 // each carrying the capability that makes the deletion landable.
 
 data demand_restatement_retained_fn_rows: List<DemandRestatementRetainedRow> = [
-  DemandRestatementRetainedRow { module_path: "test.probe.census_app_acquisition_forged_probe" as NonEmptyStr, declaration: "mint_a_receipt_from_authored_standings" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: ProbeLeavesCorpus },
-  DemandRestatementRetainedRow { module_path: "test.probe.census_app_acquisition_forged_probe" as NonEmptyStr, declaration: "mint_a_receipt_from_authored_standings" as NonEmptyStr, alias: "fs" as NonEmptyStr, authored_type: "std.resources.Filesystem" as NonEmptyStr, trigger: ProbeLeavesCorpus },
-  DemandRestatementRetainedRow { module_path: "test.manual.runner_microvm_lifecycle_wet_receipt" as NonEmptyStr, declaration: "start_payload" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: EditedWitnessHasNoHermeticRoute },
-  DemandRestatementRetainedRow { module_path: "test.manual.runner_microvm_lifecycle_wet_receipt" as NonEmptyStr, declaration: "clear_slice" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: EditedWitnessHasNoHermeticRoute },
-  DemandRestatementRetainedRow { module_path: "test.manual.runner_microvm_lifecycle_wet_receipt" as NonEmptyStr, declaration: "slice_is_quiet" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: EditedWitnessHasNoHermeticRoute },
-  DemandRestatementRetainedRow { module_path: "test.manual.runner_microvm_lifecycle_wet_receipt" as NonEmptyStr, declaration: "a_sigterm_ignoring_child_is_stopped_by_force" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: EditedWitnessHasNoHermeticRoute },
-  DemandRestatementRetainedRow { module_path: "test.manual.runner_microvm_lifecycle_wet_receipt" as NonEmptyStr, declaration: "a_process_in_a_child_cgroup_is_found_and_the_flat_read_is_empty" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: EditedWitnessHasNoHermeticRoute },
-  DemandRestatementRetainedRow { module_path: "test.manual.runner_microvm_lifecycle_wet_receipt" as NonEmptyStr, declaration: "a_missing_cgroup_events_is_unobservable_and_never_empty" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: EditedWitnessHasNoHermeticRoute },
-  DemandRestatementRetainedRow { module_path: "test.manual.runner_microvm_lifecycle_wet_receipt" as NonEmptyStr, declaration: "show_property_reads_a_units_active_state" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: EditedWitnessHasNoHermeticRoute },
-  DemandRestatementRetainedRow { module_path: "test.manual.runner_microvm_lifecycle_wet_receipt" as NonEmptyStr, declaration: "show_property_reads_a_units_environment" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: EditedWitnessHasNoHermeticRoute },
-  DemandRestatementRetainedRow { module_path: "test.manual.runner_microvm_lifecycle_wet_receipt" as NonEmptyStr, declaration: "unit_property_text" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: EditedWitnessHasNoHermeticRoute },
-  DemandRestatementRetainedRow { module_path: "test.manual.runner_microvm_lifecycle_wet_receipt" as NonEmptyStr, declaration: "the_unit_reports_the_attempt_invocation_id_it_was_started_with" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: EditedWitnessHasNoHermeticRoute },
-  DemandRestatementRetainedRow { module_path: "test.manual.runner_microvm_lifecycle_wet_receipt" as NonEmptyStr, declaration: "a_unit_with_no_attempt_assignment_reads_as_unread" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: EditedWitnessHasNoHermeticRoute },
-  DemandRestatementRetainedRow { module_path: "test.manual.runner_microvm_lifecycle_wet_receipt" as NonEmptyStr, declaration: "start_with_invocation" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: EditedWitnessHasNoHermeticRoute },
-  DemandRestatementRetainedRow { module_path: "test.manual.runner_microvm_lifecycle_wet_receipt" as NonEmptyStr, declaration: "stop_incarnation_unit" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: EditedWitnessHasNoHermeticRoute },
-  DemandRestatementRetainedRow { module_path: "test.manual.runner_microvm_lifecycle_wet_receipt" as NonEmptyStr, declaration: "a_successful_job_can_leave_the_cell_subtree_populated" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: EditedWitnessHasNoHermeticRoute },
-  DemandRestatementRetainedRow { module_path: "test.manual.runner_microvm_lifecycle_wet_receipt" as NonEmptyStr, declaration: "the_cell_wide_force_ends_a_survivor_in_a_sibling_cgroup" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: EditedWitnessHasNoHermeticRoute },
-  DemandRestatementRetainedRow { module_path: "test.manual.runner_microvm_lifecycle_wet_receipt" as NonEmptyStr, declaration: "the_cell_wide_force_ends_a_survivor_in_a_sibling_cgroup" as NonEmptyStr, alias: "fs" as NonEmptyStr, authored_type: "std.resources.Filesystem" as NonEmptyStr, trigger: EditedWitnessHasNoHermeticRoute },
-  DemandRestatementRetainedRow { module_path: "test.manual.runner_microvm_lifecycle_wet_receipt" as NonEmptyStr, declaration: "a_clean_slice_reads_empty_and_absent_paths_read_absent" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: EditedWitnessHasNoHermeticRoute },
+  DemandRestatementRetainedRow { identity: DemandRestatementRowIdentity { module_path: "test.probe.census_app_acquisition_forged_probe" as NonEmptyStr, declaration: "mint_a_receipt_from_authored_standings" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr }, trigger: ProbeLeavesCorpus },
+  DemandRestatementRetainedRow { identity: DemandRestatementRowIdentity { module_path: "test.probe.census_app_acquisition_forged_probe" as NonEmptyStr, declaration: "mint_a_receipt_from_authored_standings" as NonEmptyStr, alias: "fs" as NonEmptyStr, authored_type: "std.resources.Filesystem" as NonEmptyStr }, trigger: ProbeLeavesCorpus },
+  DemandRestatementRetainedRow { identity: DemandRestatementRowIdentity { module_path: "test.manual.runner_microvm_lifecycle_wet_receipt" as NonEmptyStr, declaration: "start_payload" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr }, trigger: EditedWitnessHasNoHermeticRoute },
+  DemandRestatementRetainedRow { identity: DemandRestatementRowIdentity { module_path: "test.manual.runner_microvm_lifecycle_wet_receipt" as NonEmptyStr, declaration: "clear_slice" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr }, trigger: EditedWitnessHasNoHermeticRoute },
+  DemandRestatementRetainedRow { identity: DemandRestatementRowIdentity { module_path: "test.manual.runner_microvm_lifecycle_wet_receipt" as NonEmptyStr, declaration: "slice_is_quiet" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr }, trigger: EditedWitnessHasNoHermeticRoute },
+  DemandRestatementRetainedRow { identity: DemandRestatementRowIdentity { module_path: "test.manual.runner_microvm_lifecycle_wet_receipt" as NonEmptyStr, declaration: "a_sigterm_ignoring_child_is_stopped_by_force" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr }, trigger: EditedWitnessHasNoHermeticRoute },
+  DemandRestatementRetainedRow { identity: DemandRestatementRowIdentity { module_path: "test.manual.runner_microvm_lifecycle_wet_receipt" as NonEmptyStr, declaration: "a_process_in_a_child_cgroup_is_found_and_the_flat_read_is_empty" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr }, trigger: EditedWitnessHasNoHermeticRoute },
+  DemandRestatementRetainedRow { identity: DemandRestatementRowIdentity { module_path: "test.manual.runner_microvm_lifecycle_wet_receipt" as NonEmptyStr, declaration: "a_missing_cgroup_events_is_unobservable_and_never_empty" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr }, trigger: EditedWitnessHasNoHermeticRoute },
+  DemandRestatementRetainedRow { identity: DemandRestatementRowIdentity { module_path: "test.manual.runner_microvm_lifecycle_wet_receipt" as NonEmptyStr, declaration: "show_property_reads_a_units_active_state" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr }, trigger: EditedWitnessHasNoHermeticRoute },
+  DemandRestatementRetainedRow { identity: DemandRestatementRowIdentity { module_path: "test.manual.runner_microvm_lifecycle_wet_receipt" as NonEmptyStr, declaration: "show_property_reads_a_units_environment" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr }, trigger: EditedWitnessHasNoHermeticRoute },
+  DemandRestatementRetainedRow { identity: DemandRestatementRowIdentity { module_path: "test.manual.runner_microvm_lifecycle_wet_receipt" as NonEmptyStr, declaration: "unit_property_text" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr }, trigger: EditedWitnessHasNoHermeticRoute },
+  DemandRestatementRetainedRow { identity: DemandRestatementRowIdentity { module_path: "test.manual.runner_microvm_lifecycle_wet_receipt" as NonEmptyStr, declaration: "the_unit_reports_the_attempt_invocation_id_it_was_started_with" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr }, trigger: EditedWitnessHasNoHermeticRoute },
+  DemandRestatementRetainedRow { identity: DemandRestatementRowIdentity { module_path: "test.manual.runner_microvm_lifecycle_wet_receipt" as NonEmptyStr, declaration: "a_unit_with_no_attempt_assignment_reads_as_unread" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr }, trigger: EditedWitnessHasNoHermeticRoute },
+  DemandRestatementRetainedRow { identity: DemandRestatementRowIdentity { module_path: "test.manual.runner_microvm_lifecycle_wet_receipt" as NonEmptyStr, declaration: "start_with_invocation" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr }, trigger: EditedWitnessHasNoHermeticRoute },
+  DemandRestatementRetainedRow { identity: DemandRestatementRowIdentity { module_path: "test.manual.runner_microvm_lifecycle_wet_receipt" as NonEmptyStr, declaration: "stop_incarnation_unit" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr }, trigger: EditedWitnessHasNoHermeticRoute },
+  DemandRestatementRetainedRow { identity: DemandRestatementRowIdentity { module_path: "test.manual.runner_microvm_lifecycle_wet_receipt" as NonEmptyStr, declaration: "a_successful_job_can_leave_the_cell_subtree_populated" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr }, trigger: EditedWitnessHasNoHermeticRoute },
+  DemandRestatementRetainedRow { identity: DemandRestatementRowIdentity { module_path: "test.manual.runner_microvm_lifecycle_wet_receipt" as NonEmptyStr, declaration: "the_cell_wide_force_ends_a_survivor_in_a_sibling_cgroup" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr }, trigger: EditedWitnessHasNoHermeticRoute },
+  DemandRestatementRetainedRow { identity: DemandRestatementRowIdentity { module_path: "test.manual.runner_microvm_lifecycle_wet_receipt" as NonEmptyStr, declaration: "the_cell_wide_force_ends_a_survivor_in_a_sibling_cgroup" as NonEmptyStr, alias: "fs" as NonEmptyStr, authored_type: "std.resources.Filesystem" as NonEmptyStr }, trigger: EditedWitnessHasNoHermeticRoute },
+  DemandRestatementRetainedRow { identity: DemandRestatementRowIdentity { module_path: "test.manual.runner_microvm_lifecycle_wet_receipt" as NonEmptyStr, declaration: "a_clean_slice_reads_empty_and_absent_paths_read_absent" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr }, trigger: EditedWitnessHasNoHermeticRoute },
 ]
 
 // THE EIGHT PATTERN DECLARATIONS. These are outside the criterion's range rather than unmeasured
@@ -98,13 +107,13 @@ data demand_restatement_retained_fn_rows: List<DemandRestatementRetainedRow> = [
 // TRIGGER, per row: derived demand ranges over pattern declarations.
 
 data demand_restatement_retained_pattern_rows: List<DemandRestatementRetainedRow> = [
-  DemandRestatementRetainedRow { module_path: "gunbc.auth.credentials" as NonEmptyStr, declaration: "gcp_secret_credential" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: CriterionDoesNotRangeOverPatterns },
-  DemandRestatementRetainedRow { module_path: "gunbc.auth.credentials" as NonEmptyStr, declaration: "gcp_oauth_access_token_via_adc_refresh" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: CriterionDoesNotRangeOverPatterns },
-  DemandRestatementRetainedRow { module_path: "gunbc.auth.credentials" as NonEmptyStr, declaration: "gcp_adc_token_from_credentials" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: CriterionDoesNotRangeOverPatterns },
-  DemandRestatementRetainedRow { module_path: "gunbc.auth.credentials" as NonEmptyStr, declaration: "gcp_oauth_access_token_adc_for_path" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: CriterionDoesNotRangeOverPatterns },
-  DemandRestatementRetainedRow { module_path: "gunbc.tailscale_acl_phase2_credential" as NonEmptyStr, declaration: "tailscale_acl_operator_ephemeral_credential" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: CriterionDoesNotRangeOverPatterns },
-  DemandRestatementRetainedRow { module_path: "gunbc.tailscale_acl_phase2_credential" as NonEmptyStr, declaration: "tailscale_acl_credential_with_operator_token" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: CriterionDoesNotRangeOverPatterns },
-  DemandRestatementRetainedRow { module_path: "gunbc.assimilate.bmc_bootstrap_provision" as NonEmptyStr, declaration: "bmc_bootstrap_provision_srv3" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr, trigger: CriterionDoesNotRangeOverPatterns },
+  DemandRestatementRetainedRow { identity: DemandRestatementRowIdentity { module_path: "gunbc.auth.credentials" as NonEmptyStr, declaration: "gcp_secret_credential" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr }, trigger: CriterionDoesNotRangeOverPatterns },
+  DemandRestatementRetainedRow { identity: DemandRestatementRowIdentity { module_path: "gunbc.auth.credentials" as NonEmptyStr, declaration: "gcp_oauth_access_token_via_adc_refresh" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr }, trigger: CriterionDoesNotRangeOverPatterns },
+  DemandRestatementRetainedRow { identity: DemandRestatementRowIdentity { module_path: "gunbc.auth.credentials" as NonEmptyStr, declaration: "gcp_adc_token_from_credentials" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr }, trigger: CriterionDoesNotRangeOverPatterns },
+  DemandRestatementRetainedRow { identity: DemandRestatementRowIdentity { module_path: "gunbc.auth.credentials" as NonEmptyStr, declaration: "gcp_oauth_access_token_adc_for_path" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr }, trigger: CriterionDoesNotRangeOverPatterns },
+  DemandRestatementRetainedRow { identity: DemandRestatementRowIdentity { module_path: "gunbc.tailscale_acl_phase2_credential" as NonEmptyStr, declaration: "tailscale_acl_operator_ephemeral_credential" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr }, trigger: CriterionDoesNotRangeOverPatterns },
+  DemandRestatementRetainedRow { identity: DemandRestatementRowIdentity { module_path: "gunbc.tailscale_acl_phase2_credential" as NonEmptyStr, declaration: "tailscale_acl_credential_with_operator_token" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr }, trigger: CriterionDoesNotRangeOverPatterns },
+  DemandRestatementRetainedRow { identity: DemandRestatementRowIdentity { module_path: "gunbc.assimilate.bmc_bootstrap_provision" as NonEmptyStr, declaration: "bmc_bootstrap_provision_srv3" as NonEmptyStr, alias: "net" as NonEmptyStr, authored_type: "std.resources.Network" as NonEmptyStr }, trigger: CriterionDoesNotRangeOverPatterns },
 ]
 
 // EACH RETAINED ROW AS PROSE, so every field of the row identity reaches a reader and the trigger
@@ -119,7 +128,7 @@ fn retained_row_trigger_text(t: RetainedRowTrigger) -> String {
 }
 
 fn retained_row_text(r: DemandRestatementRetainedRow) -> String {
-  join([r.module_path as String, "::", r.declaration as String, " (uses ", r.alias as String, ": ", r.authored_type as String, "; ", retained_row_trigger_text(t: r.trigger), ")"], "")
+  join([r.identity.module_path as String, "::", r.identity.declaration as String, " (uses ", r.identity.alias as String, ": ", r.identity.authored_type as String, "; ", retained_row_trigger_text(t: r.trigger), ")"], "")
 }
 
 fn demand_restatement_retained_row_texts() -> List<String> {
@@ -130,23 +139,25 @@ fn demand_restatement_retained_row_texts() -> List<String> {
 // =============================================================================================
 // THE RESTATEMENT WALL (egress-effects-1-filesystem-provider, red_control half 1: "A new
 // demand_restatement row refuses"). THE WALL LIVES BESIDE THE ROSTER AND THE ROW ITSELF. The row
-// identity (module, declaration, alias, authored type) is owned by DemandRestatementRetainedRow above;
-// the wall decides over THE IDENTITY PART OF IT, projected here by a function in the SAME module --
-// DemandRestatementRowIdentity repeats no field name that is not this module's own, and the projection
-// demand_restatement_retained_identity is the only bridge. A second row type elsewhere repeating the
+// identity (module, declaration, alias, authored type) is owned ONCE by DemandRestatementRowIdentity,
+// which DemandRestatementRetainedRow NESTS (review 98769 finding 1, minimize_redundancy: the field set
+// is spelled in exactly one type; the former projection bridge is deleted because nesting needs no
+// bridge). The wall decides over row.identity directly. A second row type elsewhere repeating the
 // four fields, with an adapter to convert between them, would be a fork of this module's authority
 // (gunbc.design_argument::single_authority: "a second place that independently decides it is a fork"),
 // so there is none: effect_demand.dag carries NO restatement predicate, and the witness imports these
 // functions rather than restating them.
 //
-// WHY THE PROJECTION AND NOT THE RETAINED ROW ITSELF: `trigger` states WHY a RETAINED row is retained,
-// and it plays no part in the authorization decision. A NEW arrival carries no true trigger -- forcing
+// WHY THE IDENTITY AND NOT THE RETAINED ROW ITSELF: `trigger` states WHY a RETAINED row is retained,
+// and it plays no part in the authorization decision -- nesting keeps it OUT of the arriving rows,
+// which is the point. A NEW arrival carries no true trigger -- forcing
 // the arriving grain to be the full retained row would make a red-direction fixture type a trigger lie
 // to express the very refusal the row demands (gunbc.design_argument::fail_closed's refusal must not
 // require fabricating provenance). So the wall's grain is the four identity fields, and the retained
-// population reaches it through the projection below, never by hand.
+// population reaches it through the nested field, never by hand.
 //
-// THE TWO SIDES COME FROM DIFFERENT PRODUCERS. The roster is this module's data, projected; the
+// THE TWO SIDES COME FROM DIFFERENT PRODUCERS. The roster is this module's data, read at
+// r.identity; the
 // ARRIVING population is what a consumer derives from the tree (test.claim.filesystem_effect_reach_wall
 // parses the corpus and reads the uses clauses the parser records). An arriving list built from the
 // roster itself is green by construction and certifies nothing
@@ -155,34 +166,17 @@ fn demand_restatement_retained_row_texts() -> List<String> {
 // identity below or a new arrival this wall refuses.
 // =============================================================================================
 
-type DemandRestatementRowIdentity {
-  module_path: NonEmptyStr
-  declaration: NonEmptyStr
-  alias: NonEmptyStr
-  authored_type: NonEmptyStr
-}
-
 type DemandRestatementVerdict
   = AuthorizedRow { row: DemandRestatementRowIdentity }
   | NewRestatementRowRefused { row: DemandRestatementRowIdentity, cause: Symbol }
 
-// THE ONLY BRIDGE from the retained row to the wall's grain: a field-for-field projection, in this
-// module, next to the type that owns the fields. It reads the four identity fields and stops.
-fn demand_restatement_retained_identity(row: DemandRestatementRetainedRow) -> DemandRestatementRowIdentity {
-  DemandRestatementRowIdentity {
-    module_path: row.module_path,
-    declaration: row.declaration,
-    alias: row.alias,
-    authored_type: row.authored_type
-  }
-}
-
-// THE AUTHORIZED ROSTER AS ONE IDENTITY LIST: the two retained populations of this module, concatenated
-// and projected through the single bridge above. Callers that derive the arriving list from the tree
-// must take THE ROSTER FROM HERE -- never from the arriving list.
+// THE AUTHORIZED ROSTER AS ONE IDENTITY LIST: the two retained populations of this module, read at
+// their nested identity (review 98769 finding 1: the field set lives in ONE type; the projection
+// bridge is gone because nothing projects when the row NESTS the identity). Callers that derive the
+// arriving list from the tree must take THE ROSTER FROM HERE -- never from the arriving list.
 data demand_restatement_authorized_roster: List<DemandRestatementRowIdentity> =
   concat(demand_restatement_retained_fn_rows, demand_restatement_retained_pattern_rows)
-    |> map(r => demand_restatement_retained_identity(row: r))
+    |> map(r => r.identity)
 
 fn demand_restatement_identity_eq(
   left: DemandRestatementRowIdentity,

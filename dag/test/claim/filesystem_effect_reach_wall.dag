@@ -37,7 +37,7 @@ import gunbc.demand_engine_restatement_follow_up {
   DemandRestatementRowIdentity,
   AuthorizedRow,
   NewRestatementRowRefused,
-  demand_restatement_retained_identity,
+
   demand_restatement_identity_eq,
   demand_restatement_row_verdict,
   demand_restatement_new_row_refusals,
@@ -1098,15 +1098,16 @@ test fn demand_restatement_new_row_refuses_against_the_real_roster() -> Bool {
     && (!demand_restatement_wall_holds(arriving: arriving, roster: demand_restatement_authorized_roster))
 }
 
-// THE PROJECTION CARRIES A REAL RETAINED ROW THROUGH THE WALL AS AUTHORIZED -- the bridge function,
-// exercised on real data rather than asserted to exist. Both sides visible: the row is the follow-up
-// module's retained data; the roster is that same data projected (authorized by identity, so this arm
-// checks the projection PRESERVES the four fields -- an identity-dropping projection fails it).
+// A REAL RETAINED ROW CARRIES THROUGH THE WALL AS AUTHORIZED via its NESTED identity (review 98769
+// finding 1: the row nests DemandRestatementRowIdentity; the projection bridge is deleted). Exercised
+// on real data rather than asserted to exist. Both sides visible: the row is the follow-up module's
+// retained data; the roster is that same data read at r.identity (authorized by identity, so this arm
+// checks the nesting PRESERVES the four fields -- an identity-dropping row fails it).
 test fn demand_restatement_real_retained_row_is_authorized() -> Bool {
   match demand_restatement_retained_fn_rows {
     Cons { head: first_real_row, tail: _ } =>
       match demand_restatement_row_verdict(
-        row: demand_restatement_retained_identity(row: first_real_row),
+        row: first_real_row.identity,
         roster: demand_restatement_authorized_roster
       ) {
         AuthorizedRow { row: _ } => true

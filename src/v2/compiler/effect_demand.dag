@@ -1849,27 +1849,24 @@ fn filesystem_effect_debt_contract_identity_strings() -> List<String> {
   )
 }
 
+// DISTINCT identity count over the contract (review 98769 finding 2). The previous shape called the
+// identity-string builder once per element INSIDE the fold on top of the outer call -- cubic over a
+// builder that is itself quadratic via list_append -- and counted entries occurring exactly once, so
+// a duplicated pair reported n-2, not the number of distinct identities its own comment describes.
+// Now: the list is built ONCE and folded into an already-seen list; the count is the length of the
+// seen set, so four entries spelling three identities print 3, and a true duplicate is visible.
 fn filesystem_effect_debt_contract_distinct_count() -> Int {
-  fold_list(
+  length(xs: fold_list(
     xs: filesystem_effect_debt_contract_identity_strings(),
-    empty: 0,
-    cons: fn(acc, identity) {
-      let seen = fold_list(
-        xs: filesystem_effect_debt_contract_identity_strings(),
-        empty: 0,
-        cons: fn(n, other) {
-          match other == identity {
-            true => n + 1
-            false => n
-          }
-        }
-      )
-      match seen == 1 {
-        true => acc + 1
-        false => acc
+    empty: [],
+    cons: fn(seen, identity) {
+      if any(xs: seen, predicate: fn(other) { other == identity }) {
+        seen
+      } else {
+        Cons { head: identity, tail: seen }
       }
     }
-  )
+  ))
 }
 
 
