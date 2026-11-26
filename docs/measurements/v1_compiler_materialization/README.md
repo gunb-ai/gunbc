@@ -34,3 +34,7 @@ For the next bounded comparison, call the existing stage0 front end and normaliz
 | Leaf-to-owner index produced by reconciliation | Set of `(declaration leaf, owning module)` pairs | Equal; add `other` with another `answer` and the same leaf should become ambiguous |
 
 The signature and checked body of `answer` are separate proposed questions. A body-only change can leave the former equal while changing the latter. Rust emission needs an explicit emit request; `gunbc run` provides no emission sample. A full cross-worker experiment additionally needs the producer/toolchain and result-format compatibility established for that host.
+
+## Deliberately wrong prior answer
+
+After the original helper has been restored, place the digest of the real edited helper's answer under the original input key, with a valid integrity check for that key. The caller should still report an equal hit. The helper should report a hit with a different fresh answer, return the original fresh answer digest, and preserve the disagreeing record for inspection. The program should exit 0. Flipping an integrity byte in that same record should instead report a corrupt observation and the same program result. This control tests whether a wrong prediction is observable through the CLI, even when command success alone would hide it.
