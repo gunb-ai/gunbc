@@ -114,6 +114,17 @@ data srv1_topology_kv_capacities: List<Srv1TopologyKvCapacity> = [
   Srv1TopologyKvCapacity { topology: srv1_layout(tp: 2, dp: 1), kv_tokens_per_replica: token_count(count: 4887258), standing: srv1_relayed(what: "TP=2 KV pool 4,887,258 tokens") },
 ]
 
+// THE srv1 vLLM per-replica KV pool, taken from the topology measurement that OWNS the figure (the TP=1 row:
+// 744,477 tokens per replica, relayed 2026-11-08). A caller that needs the card's KV pool DERIVES it from this
+// row and its standing rather than copying the count -- one authority (single_authority / minimize_redundancy).
+fn srv1_tp1_kv_capacity() -> Optional<Srv1TopologyKvCapacity> {
+  fold(srv1_topology_kv_capacities, init: Absent, f: (acc, r) =>
+    match acc {
+      Present { value: _ } => acc,
+      Absent => if topology_tp(t: r.topology) == 1 { Present { value: r } } else { Absent },
+    })
+}
+
 fn srv1_same_topology(a: ServingTopology, b: ServingTopology) -> Bool {
   topology_tp(t: a) == topology_tp(t: b) && topology_dp(t: a) == topology_dp(t: b) && a.expert_parallel == b.expert_parallel
 }

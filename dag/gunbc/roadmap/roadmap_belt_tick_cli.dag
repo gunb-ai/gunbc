@@ -69,7 +69,7 @@ import gunbc.roadmap.roadmap_result_returned {
   ResultReturnPass, ResultReturnPassRan, ResultReturnPassWithheld, ResultReturnPassRefused,
   ResultReturnPassRun, result_return_attempts_for_instance, result_return_pass_exit, result_return_pass_failure,
 }
-import gunbc.roadmap.roadmap_event_carrier { CarrierSnapshotClose, carrier_snapshot_close_failures }
+import gunbc.roadmap.roadmap_event_carrier { CarrierSnapshotClose, carrier_snapshot_close_failures, roadmap_event_carrier_layout_for_instance }
 import gunbc.roadmap.roadmap_belt_obligation {
   BeltInstanceObligationKind, LaunchObligation, ServedObservationObligation, ResultReturnObligation, MeteringObligation,
   DogfoodStartRecordObligation, SnapshotCensusObligation, belt_record_moved_obligation_kinds, belt_instance_obligation_kind_of_key,
@@ -107,7 +107,7 @@ import gunbc.roadmap.roadmap_launch_deployment_observe {
 import gunbc.roadmap.roadmap_site_surface_observe {
   RoadmapSiteSurfaceBundleReadRefused,
   RoadmapSiteSurfaceBundleRendered,
-  roadmap_site_surface_bundle_observation,
+  roadmap_site_surface_bundle_observation_of_layout,
 }
 
 // THE LAUNCH ENTRYPOINT, and the home of every belt entry, because the served observation module
@@ -321,7 +321,7 @@ fn with_local_cause_kept(verdict: LabServePairVerdict, local_cause: String) -> L
 fn belt_pair_serve_gate_at(instance: HostDashboardInstance, observation: DeployedTreeObservation) -> LabServePairVerdict {
   match observe_healthz(port: instance.listen_port as Int) {
     HealthzServed { body: _, identity: id } =>
-      match roadmap_site_surface_bundle_observation() {
+      match roadmap_site_surface_bundle_observation_of_layout(layout: roadmap_event_carrier_layout_for_instance(instance: instance)) {
         // The belt serve gate mints the EXPECTED surface for the pair verdict. It reads via the INSTANCE
         // observation, NOT the launcher one, because it does not run in the CI deploy job: the belt tick is
         // spawned under the belt service's OWN principal/slice/spawn root on the instance tree
@@ -329,7 +329,10 @@ fn belt_pair_serve_gate_at(instance: HostDashboardInstance, observation: Deploye
         // this principal opens, exactly as for the live service. This is the same law as the candidate and the
         // readiness gate — read under the principal that can open the authority — with the layout chosen by the
         // principal that actually runs (roadmap_site_surface_bundle_observation vs _for_launcher). Over a refused
-        // roster read it refuses rather than pairing against a fabricated identity (fail-closed).
+        // roster read it refuses rather than pairing against a fabricated identity (fail-closed). The layout is
+        // THIS gate's instance's, not srv1 live's: the expected surface must be rendered from the carrier the
+        // probed process renders from (gunbc.roadmap.roadmap_serve threads the same instance into /healthz), or
+        // the pair would compare two instances' surfaces.
         RoadmapSiteSurfaceBundleReadRefused { detail } => {
           let binding: DeployedReleaseBinding = ReleaseBindingUnobserved {
             cause: join(["roadmap roster read refused; expected surface unobservable: ", detail], ""),
