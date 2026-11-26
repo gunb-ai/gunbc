@@ -309,8 +309,10 @@ fn flex_aws_converge_marker(apply: Bool, region: NonEmptyStr, ready: Bool) -> St
         AwsCliReadRefused { cause: c } => join(["marker ", name as String, " REFUSED ", c], "")
       }
     }
-  } else if current == "" { join(["marker ", name as String, " absent (region not ready)"], "") }
-  else if !apply { join(["marker ", name as String, " would be removed (region not ready)"], "") }
+  // A region that is not ready loses its marker whether or not the read answered: a refused read reads as "" here,
+  // and trusting it would leave a stale marker offering the region (review of 96bcd207). The delete is the read:
+  // an absent marker answers ParameterNotFound.
+  } else if !apply { join(["marker ", name as String, if current == "" { " absent or unread; removed on apply (region not ready)" } else { " would be removed (region not ready)" }], "") }
   else {
     match flex_aws_outcome(outcome: run_shell_command_capture(command: aws_cli_delete_parameter(credentials_file: flex_aws_provisioner(), region: region, name: name), transport: LocalExec)) {
       AwsCliReadOk { value: _ } => join(["marker ", name as String, " removed (region not ready)"], "")

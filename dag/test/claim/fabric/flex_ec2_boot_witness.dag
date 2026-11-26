@@ -75,11 +75,12 @@ test fn the_dead_man_starts_before_the_boot_can_hang() -> Bool {
 
 // THE CARD PUBLISHES ONLY ITS OWN CERTIFICATE, OVER THE LOOP'S PLACEHOLDER: an overwrite of the one name the loop
 // created for it (tagged with its ARN), carrying no tag of its own -- so the boot needs neither the account nor its
-// ARN, and never creates a name (the squatting the 2026-11-26 policy closes). A refused publish stops the boot.
+// ARN, and never creates a name (the squatting the 2026-11-26 policy closes). The placeholder can lag the boot, so the
+// publish retries for the pool key's bounded wait, and only then stops the boot.
 test fn the_certificate_overwrites_only_the_placeholder_the_loop_made() -> Bool {
   let t = rendered()
-  t.contains("put-parameter --name \"$CERT_PREFIX/$IID\" --type String --overwrite --value file:///opt/flex/serve/tls.crt")
-    && t.contains("refuse \"cannot publish the card certificate over its placeholder\"")
+  t.contains("put-parameter --name \"$CERT_PREFIX/$IID\" --type String --overwrite --value file:///opt/flex/serve/tls.crt > /dev/null 2>> $L && \{ C=1; break; }")
+    && t.contains("refuse \"cannot publish the card certificate over its placeholder after $BOOT_WAIT_S s\"")
     && !t.contains("--tags \"Key=$CARD_TAG_KEY")
     && !t.contains("CARD_ARN")
     && !t.contains("instance-identity/document")

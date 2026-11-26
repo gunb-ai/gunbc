@@ -14,7 +14,7 @@ import extdeps.tools.sleep { sleep_delay_seconds_second_carrier_projection }
 import std.measure { second, second_count, money_amount_micro, money_per_hour_micros, milliseconds_per_second, MoneyPerHour }
 import extdeps.currency.currency { Usd }
 import extdeps.entropy { Urandom }
-import extdeps.filesystem.filesystem_io { Filesystem, filesystem_exact_read, FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized, filesystem_create_new, FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused, FilesystemCreateKindUnrecognized }
+import extdeps.filesystem.filesystem_io { Filesystem, filesystem_exact_read, FilesystemExactPathRead, FilesystemExactPathAbsent, FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized, filesystem_create_new, FilesystemCreated, filesystem_delete, FilesystemDeleted, FilesystemDeleteTargetAbsent, FilesystemDeleteRefused, FilesystemDeleteKindUnrecognized, FilesystemCreateTargetOccupied, FilesystemCreateRefused, FilesystemCreateKindUnrecognized }
 import extdeps.exec.command { LocalExec }
 import extdeps.shell.exec { ProcessOutcome, ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
 import gunbc.command_runner { run_shell_command_capture }
@@ -298,6 +298,12 @@ fn flex_aws_mark_batch(owned: List<FlexAwsOwnedIn>, instance_id: NonEmptyStr, ma
 // clock, written in every region where we hold a live card AND every region whose ownership this pass could
 // not read (the dead-man bounds a dead LOOP; a live loop that cannot see a region must not starve its cards).
 // A card whose region's heartbeat is older than the stale window terminates itself.
+// The heartbeat is renewed only by a pass that read its demand, so it decided: a pass that did not leaves every card
+// to its dead-man (see the pass's step 7).
+fn flex_aws_heartbeat_due(demand: AwsCliRead<FlexAwsDemand>) -> Bool {
+  match demand { AwsCliReadOk { value: _ } => true  AwsCliReadRefused { cause: _ } => false }
+}
+
 fn flex_aws_heartbeat(owned: List<FlexAwsOwnedIn>, blind: List<String>, now_unix: Int) -> String {
   let regions = distinct_by_key(xs: concat(map(owned |> filter(o => flex_aws_live(i: o.instance)), o => o.region as String), blind), key: r => r)
   if count(regions) == 0 { "heartbeat=none (no live card)" } else {
@@ -725,6 +731,10 @@ fn flex_aws_router_demand(max_cards: Int, instance_ids: List<NonEmptyStr>) -> Aw
           Absent => AwsCliReadRefused { cause: concat("the router client key is unreadable or empty: ", key.error) }
           Present { value: header } => {
             let header_path = flex_aws_custody_path(name: "router-stats.header")
+            // A header left by a pass killed mid-read is cleared first: the owner-only write creates, and would
+            // otherwise refuse every later pass on the file the dead one left (review of 96bcd207).
+            let cleared = flex_aws_clear_file(path: header_path)
+            if cleared != "" { AwsCliReadRefused { cause: concat("the stats header: ", cleared) } } else {
             let wrote = Filesystem.WriteOwnerOnly(path: header_path, content: concat(header as String, "\n"))
             if !wrote.success {
               AwsCliReadRefused { cause: concat("the stats header could not be written: ", wrote.error) }
@@ -738,6 +748,7 @@ fn flex_aws_router_demand(max_cards: Int, instance_ids: List<NonEmptyStr>) -> Aw
                   FlexAwsStatsRefused { cause: c } => AwsCliReadRefused { cause: c }
                 }
               }
+            }
             }
           }
         }
@@ -767,6 +778,17 @@ type FlexAwsProbe
   = FlexAwsProbeReady { card: FlexAwsEnrollable }
   | FlexAwsProbeNotReady { instance_id: NonEmptyStr, why: String }
 
+// "" when the path is gone (deleted now or already absent), else why it is still there.
+fn flex_aws_clear_file(path: String) -> String {
+  let d = Filesystem.Delete(path: path)
+  match filesystem_delete(path: path, success: d.success, error: d.error, error_kind: d.error_kind) {
+    FilesystemDeleted { path: _ } => ""
+    FilesystemDeleteTargetAbsent { path: _ } => ""
+    FilesystemDeleteRefused { path: _, kind: _, error: e } => concat("a stale file could not be removed: ", e)
+    FilesystemDeleteKindUnrecognized { path: _, observed: o, error: e } => join(["a stale file could not be removed: ", o, ": ", e], "")
+  }
+}
+
 fn flex_aws_card_cert_path(instance_id: NonEmptyStr) -> String { flex_aws_custody_path(name: join(["card-", instance_id as String, ".pem"], "")) }
 
 // A card is ready to route when it has an address, has published its certificate, answers /health over
@@ -775,7 +797,9 @@ fn flex_aws_probe(region: NonEmptyStr, i: AwsEc2Instance) -> FlexAwsProbe {
   match i.public_ip_address {
     Absent => FlexAwsProbeNotReady { instance_id: i.instance_id, why: "no public address yet" }
     Present { value: ip } => match flex_aws_read_param(region: region, name: join([flex_aws_boot_policy().cert_prefix as String, "/", i.instance_id as String], "") as NonEmptyStr) {
-      AwsCliReadRefused { cause: c } => FlexAwsProbeNotReady { instance_id: i.instance_id, why: concat("no certificate published: ", c) }
+      // No placeholder at all: the pass that named this card did not deliver to it (an answer read late under a
+      // newer release, a failed ARN read). Delivered now, create-once, so the card's bounded wait finds it.
+      AwsCliReadRefused { cause: c } => FlexAwsProbeNotReady { instance_id: i.instance_id, why: if c.contains(aws_cli_parameter_absent) { concat("no certificate placeholder; delivered now: ", flex_aws_deliver_key(region: region, instance_id: i.instance_id)) } else { concat("no certificate published: ", c) } }
       AwsCliReadOk { value: pem } => if pem == (flex_aws_certificate_placeholder as String) { FlexAwsProbeNotReady { instance_id: i.instance_id, why: "certificate not published yet (placeholder)" } } else {
         let pem_path = flex_aws_card_cert_path(instance_id: i.instance_id)
         let wrote = Filesystem.Write(path: pem_path, content: pem as String)
@@ -1152,8 +1176,14 @@ fn flex_aws_pass_text(policy: FlexAwsApplyPolicy, router: Bool, cards: Int, now_
       }
     }
   }
-  // 7. The heartbeat, in every region holding a live card and every region whose ownership is unknown.
-  let heartbeat_line = if apply { flex_aws_heartbeat(owned: owned2, blind: blind, now_unix: now_unix) } else { "heartbeat=none (plan)" }
+  // 7. The heartbeat, in every region holding a live card and every region whose ownership is unknown -- and only on
+  // a pass that read the router. A pass that cannot read it decides nothing (no idle release, no drain timeout, no
+  // never-ready termination), so renewing the heartbeat would let every card bill for as long as the router stays
+  // unreadable; withheld, each card's dead-man stops it once the heartbeat is stale (product.fabric.flex_ec2_boot,
+  // HEARTBEAT_STALE_S) -- the same bound as a dead loop (review of 96bcd207).
+  let heartbeat_line = if !apply { "heartbeat=none (plan)" }
+    else if flex_aws_heartbeat_due(demand: demand_read) { flex_aws_heartbeat(owned: owned2, blind: blind, now_unix: now_unix) }
+    else { "heartbeat=WITHHELD (demand unreadable: cards stop themselves once it is stale)" }
   let cleanup_lines = if apply { flex_aws_cleanup_terminated(owned: owned2) } else { [] }
   let sweep_due = apply && ((now_unix - state.swept_unix) >= flex_aws_sweep_interval_seconds)
   let sweep_lines = if sweep_due { flex_aws_sweep_orphans(scans: scans, keep: intent.card, now_unix: now_unix) } else { [] }

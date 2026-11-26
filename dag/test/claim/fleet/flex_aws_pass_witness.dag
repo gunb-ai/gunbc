@@ -10,12 +10,12 @@ import extdeps.currency.currency { Usd }
 import extdeps.cloud.aws_ec2 { AwsEc2Instance, AwsEc2InstanceState, AwsEc2Placement, AwsEc2Terminated }
 import extdeps.cloud.aws_cli { AwsCliReadOk, AwsCliReadRefused, AwsSsmParameterListed }
 import product.fabric.flex_aws_row { FlexAwsCandidate, FlexAwsSpot }
-import product.fabric.flex_aws_apply { FlexAwsLaunch, FlexAwsHold, FlexAwsDrain, FlexAwsDrainIdle }
+import product.fabric.flex_aws_apply { FlexAwsLaunch, FlexAwsHold, FlexAwsDrain, FlexAwsDrainIdle, FlexAwsDemandFixed }
 import gunbc.serving.flex_aws_router_rows { FlexAwsRouterReading, FlexAwsCardUse }
 import gunbc.fleet.flex_aws_pass {
   flex_aws_reload_owed, flex_aws_inventory_gate, flex_aws_intent_gate,
   FlexAwsIntent, FlexAwsIntentOpen, FlexAwsIntentUnreadable, FlexAwsIntentNone, flex_aws_intent_json, flex_aws_intent_of,
-  flex_aws_open_intent_at, flex_aws_name_intent_at,
+  flex_aws_open_intent_at, flex_aws_name_intent_at, flex_aws_heartbeat_due,
   flex_aws_intent_step, FlexAwsIntentListed, FlexAwsIntentWaiting, FlexAwsIntentAskAgain, FlexAwsIntentLapsed,
   flex_aws_orphans, flex_aws_region_provisioned, flex_aws_weights_revision,
 }
@@ -125,6 +125,14 @@ test fn only_a_region_marked_with_the_weights_revision_offers_candidates() -> Bo
   flex_aws_region_provisioned(marker: AwsCliReadOk { value: flex_aws_weights_revision() })
     && !flex_aws_region_provisioned(marker: AwsCliReadOk { value: "0000000000000000000000000000000000000000" as NonEmptyStr })
     && !flex_aws_region_provisioned(marker: AwsCliReadRefused { cause: "ParameterNotFound" })
+}
+
+// A PASS THAT COULD NOT READ ITS DEMAND DOES NOT RENEW THE HEARTBEAT (review of 96bcd207): it decides nothing --
+// no idle release, no drain timeout, no never-ready termination -- so a renewed heartbeat let every card bill for as
+// long as the router stayed unreadable; withheld, each card's dead-man bounds it.
+test fn a_pass_that_cannot_read_its_demand_withholds_the_heartbeat() -> Bool {
+  flex_aws_heartbeat_due(demand: AwsCliReadOk { value: FlexAwsDemandFixed { cards: 3 } })
+    && !flex_aws_heartbeat_due(demand: AwsCliReadRefused { cause: "router stats: the CLI exited 7: curl: (7) Failed to connect" })
 }
 
 // REAL EXECUTION of the two intent writes, in a scratch directory: a purchase is opened create-only (a second

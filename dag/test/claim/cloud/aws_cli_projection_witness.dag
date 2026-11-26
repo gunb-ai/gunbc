@@ -136,6 +136,7 @@ test fn only_an_answered_client_error_is_a_definite_refusal() -> Bool {
   aws_cli_refusal_is_definite(cause: "the CLI exited 254: An error occurred (InsufficientInstanceCapacity) when calling the RunInstances operation (reached max retries: 2): ...")
     && aws_cli_refusal_is_definite(cause: "the CLI exited 254: An error occurred (MaxSpotInstanceCountExceeded) when calling the RunInstances operation: ...")
     && !aws_cli_refusal_is_definite(cause: "the CLI exited 254: An error occurred (InternalError) when calling the RunInstances operation: ...")
+    && !aws_cli_refusal_is_definite(cause: "the CLI exited 254: An error occurred (RequestLimitExceeded) when calling the RunInstances operation (reached max retries: 2): Request limit exceeded.")
     && !aws_cli_refusal_is_definite(cause: "the CLI exited 255: Read timeout on endpoint URL: \"https://ec2.us-east-1.amazonaws.com/\"")
     && !aws_cli_refusal_is_definite(cause: "the CLI exited 255: Could not connect to the endpoint URL")
 }

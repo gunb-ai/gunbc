@@ -988,9 +988,18 @@ fn aws_cli_parameter_listed(name: JsonValue?, at: JsonValue?) -> List<AwsSsmPara
 // (<Code>) when calling ..."; an answer means the service decided the request, and a client-side error code is a
 // refusal of it. A server-side code (InternalError, InternalFailure, ServiceUnavailable, Unavailable) or no
 // answer at all -- a connection or read timeout -- leaves the outcome unknown: the call may have been carried
-// out. A caller that must not repeat a purchase treats only a definite refusal as "nothing was bought".
+// out. So does a THROTTLING code: the CLI retries (its answer then says "reached max retries"), and a throttled
+// LAST attempt says nothing of an earlier attempt whose answer was lost after the service carried it out. The
+// throttling and transient codes are the CLI's own retry sets (aws-cli 2.42.3, awscli/botocore/retries/standard.py:
+// ThrottledRetryableChecker._THROTTLED_ERROR_CODES and TransientRetryableChecker._TRANSIENT_ERROR_CODES, read 2026-11-26). A caller that must not repeat a purchase treats only a definite refusal as "nothing was bought".
 data aws_cli_service_error_marker: String = "An error occurred ("
-data aws_cli_outcome_unknown_codes: List<String> = ["(InternalError)", "(InternalFailure)", "(ServiceUnavailable)", "(Unavailable)"]
+data aws_cli_outcome_unknown_codes: List<String> = [
+  "(InternalError)", "(InternalFailure)", "(ServiceUnavailable)", "(Unavailable)",
+  "(Throttling)", "(ThrottlingException)", "(ThrottledException)", "(RequestThrottledException)", "(TooManyRequestsException)",
+  "(ProvisionedThroughputExceededException)", "(TransactionInProgressException)", "(RequestLimitExceeded)", "(BandwidthLimitExceeded)",
+  "(LimitExceededException)", "(RequestThrottled)", "(SlowDown)", "(PriorRequestNotComplete)", "(EC2ThrottledException)",
+  "(RequestTimeout)", "(RequestTimeoutException)",
+]
 
 fn aws_cli_refusal_is_definite(cause: String) -> Bool {
   cause.contains(aws_cli_service_error_marker) && !any(aws_cli_outcome_unknown_codes, c => cause.contains(c))
