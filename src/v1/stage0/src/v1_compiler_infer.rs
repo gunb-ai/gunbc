@@ -15429,10 +15429,8 @@ pub fn annotated_let_declared_type(texpr: Rc<Node>) -> Option<Rc<Node>> {
 }
 
 pub fn annotated_let_bound_type(declared: Option<Rc<Node>>, val_type: Rc<Node>) -> Rc<Node> {
-    match declared.clone() {
-        Some(d) => d.clone(),
-        std::option::Option::None => val_type,
-    }
+    // RED PROBE: discard declared type to simulate pre-#10820 behavior.
+    val_type
 }
 
 pub fn extend_scope(

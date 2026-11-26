@@ -9984,10 +9984,8 @@ fn annotated_let_declared_type(texpr: Node) -> Node? {
 }
 
 fn annotated_let_bound_type(declared: Node?, val_type: Node) -> Node {
-  match declared {
-    Present { value: d } => d
-    Absent => val_type
-  }
+  // RED PROBE: discard declared type to simulate pre-#10820 behavior.
+  val_type
 }
 
 fn extend_scope(scope: InferScope, name: String, resolved: Node, provenance: SubValueRelation) -> InferScope {
