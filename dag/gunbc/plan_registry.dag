@@ -6,6 +6,7 @@ import gunbc.plans.extdeps_modeling_preflight { extdeps_modeling_preflight_plan 
 import gunbc.plans.demand_engine_program { demand_engine_program_plan }
 import gunbc.plans.input_envelope_roadmap { input_envelope_roadmap_plan }
 import gunbc.plans.fabric_serving_router { fabric_serving_router_plan }
+import gunbc.plans.fabric_serving_scheduler { fabric_serving_scheduler_plan }
 import gunbc.plans.fleet_subsumption_manual_gaps { fleet_subsumption_manual_gaps_plan }
 import gunbc.plans.interpreter_kernel_d { interpreter_kernel_d_plan }
 import gunbc.plans.fleet_hardware_fact_consumption { fleet_hardware_fact_consumption_plan }
@@ -25,6 +26,7 @@ import gunbc.plans.first_customer_service { first_customer_service_plan }
 import gunbc.plans.desired_state_follows_the_machine { desired_state_follows_the_machine_plan }
 import gunbc.plans.one_source_tree { one_source_tree_plan }
 import gunbc.plans.derived_types_keep_their_name { derived_types_keep_their_name_plan }
+import gunbc.plans.github_actions_retirement { github_actions_retirement_plan }
 import gunbc.plans.gunbhub_source_of_truth { gunbhub_source_of_truth_plan }
 import gunbc.plans.claim_execution_consolidation { claim_execution_consolidation_plan }
 import gunbc.plans.contained_development_execution_g0 { contained_development_execution_g0_plan }
@@ -65,7 +67,7 @@ import gunbc.plans.required_lane_claim_clause_grain { required_lane_claim_clause
 // Each deletes with its last consumer.
 data all_plans: List<Plan> = [
   cli_run_hollowing_plan, extdeps_modeling_preflight_plan, demand_engine_program_plan,
-  input_envelope_roadmap_plan, fabric_serving_router_plan, fleet_subsumption_manual_gaps_plan, interpreter_kernel_d_plan,
+  input_envelope_roadmap_plan, fabric_serving_router_plan, fabric_serving_scheduler_plan, fleet_subsumption_manual_gaps_plan, interpreter_kernel_d_plan,
   fleet_hardware_fact_consumption_plan, host_thermal_operating_point_plan, v2_complexity_capability_parity_plan,
   read_set_convergence_plan, fleet_machine_authority_plan, closure_consolidation_plan,
   planning_consolidation_plan, declaration_acquisition_plan, v2_self_host_plan,
@@ -73,6 +75,7 @@ data all_plans: List<Plan> = [
   new_server_bringup_plan, one_source_tree_plan, claim_execution_consolidation_plan,
   desired_state_follows_the_machine_plan, fabric_market_plan,
   derived_types_keep_their_name_plan,
+  github_actions_retirement_plan,
   contained_development_execution_g0_plan,
   gunbhub_source_of_truth_plan,
   required_lane_claim_clause_grain_plan,

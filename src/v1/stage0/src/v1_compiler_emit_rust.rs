@@ -12,6 +12,7 @@ pub use crate::extdeps_languages_rust_emit::{rust_trait_derive_attr_from_traits,
 pub use crate::extdeps_languages_rust_representation::{rust_exact_type_checkpoint};
 pub use crate::extdeps_rust_cargo::{CargoFeature};
 pub use crate::extdeps_rust_version::{render_cargo_package_header_prefix};
+pub use crate::gunbc_cli_dispatch_surface::{CliOperandArity};
 pub use crate::gunbc_cli_dispatch_surface::{admitted_bootstrap_operation_declaration, CliArmRealization, CliBootstrapDagOperationBinding, CliOperandRow, CliOptionRow, CliOptionValue, CliSubcommandRow, cli_subcommand_generated_dispatch_operands, cli_subcommand_generated_dispatch_options, dispatch_local_binding_names, gunbc_cli_dispatch_executor_binding_prefix, gunbc_cli_about, gunbc_cli_binary_name, gunbc_cli_generated_dispatch_subcommands, modeled_subcommand_bound_fields, CliBootstrapExecutionClass, CliOptionArity};
 pub use crate::gunbc_namespace_cut_reference_derived_candidate::{ReferenceDerivedCandidateDisposition, ReferenceDerivedCandidateRow};
 pub use crate::gunbc_rust_decl_type_overlay::{rust_decl_type_container_overlay_is_admitted};
@@ -71,6 +72,7 @@ pub use crate::v1_compiler_trait_derive_emit::{v1_emit_enum_derives, v1_emit_str
 pub use crate::v1_std_core::{expr_literal_string_optional, item_generic_param_names, expr_literal_int_optional, call_semantics_target, ParsedModuleItemKind, resolved_node_is_kernel_identity_for_name, match_pattern_is_irrefutable, declaration_provenance_of, type_reference_provenance, Node, InferredNode, is_compiler_error, import_is_all, import_specific_names_at, module_imports, module_items, param_node_type_expr, param_node_default_value, authored_name_at, NewlineIndex, find_child_named, tuple_type_name, render_span_location, qualified_last_segment, expr_var_name_at, expr_call_func_at, field_access_field_at, param_node_name_at, resource_use_name_at, field_binding_name_at, field_node_name_at, field_node_type_expr, generic_param_name_at, ExprData, make_expr_node, FieldSummary, VarBindingKind, CallTargetIdentity, DeclaredCallableIdentity, CallSemantics, ResolvedCallFormal, MethodSemantics, MatchPattern, field_binding_pattern, TextFile, ErrorNode, make_error_node, is_error_diagnostic, resource_use_resource, UnaryOpKind, unaryop_operand, StringPart, transport_base_url, transport_has_auth, transport_auth_token, transport_auth_header_name, transport_headers, transport_env, transport_method, transport_path_template, transport_query, transport_request_body, transport_stdin, transport_response_format, transport_auth_basic, transport_tls_posture, service_config_auth, service_config_auth_input, service_config_auth_source, service_config_endpoint, expr_has_self_call, expr_has_non_tail_self_call, field_access_base, foreach_variable_at, expr_method_name_at, let_binding_name_at, record_lit_type_name_at, arg_name_at, arg_value, arm_body, arm_pattern, arm_guard, field_init_node_name_at, field_init_node_value, record_lit_named_field_value_optional, find_property, make_arg_node, make_named_expr_node, let_value, let_body, lambda_body, field_from_key_property_name, lambda_param_names_at, foreach_collection, foreach_body, method_receiver, method_arg_nodes, match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch, index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value, binop_left, binop_right, no_span, with_required_cardinality, Connective, Cardinality, is_rest_transport, transport_base_path, empty_intern_table, LeafOwner, DeclarationMarker, FieldAccessStyle, FieldValueShape, CompilerDiagnostic};
 use crate::gunbc_cli_dispatch_surface::CliArmRealization::{CliDelegatesToHostFn, CliInvokesBootstrapDagOperation, CliInvokesBoundTargetProducer, CliKnownOperationNoRealization, CliRefusesUnwired, CliRetainedHostKernel};
 use crate::gunbc_cli_dispatch_surface::CliBootstrapExecutionClass::{BootstrapSuccessorOperation};
+use crate::gunbc_cli_dispatch_surface::CliOperandArity::*;
 use crate::gunbc_cli_dispatch_surface::CliOptionArity::{CliAtMostOne, CliRepeated, CliRequired};
 use crate::gunbc_cli_dispatch_surface::CliOptionValue::{CliMillisecondValue, CliPortValue, CliTextValue, CliToggleValue};
 use crate::gunbc_namespace_cut_reference_derived_candidate::ReferenceDerivedCandidateDisposition::{CandidateSurvived, CandidateOwnModule, CandidateVariantDelegatedToParent, CandidateVariantParentUnresolved, CandidateRegistryAbsent, CandidateLeafAmbiguous, CandidateExportProofFailed};
@@ -45855,7 +45857,10 @@ pub fn cli_dispatch_field_type(sub: Rc<CliSubcommandRow>, field: String) -> Stri
     .first()
     .cloned()
     {
-        Some(_) => "String".to_string(),
+        Some(operand) => match operand.arity.clone() {
+            CliOperandArity::CliExactlyOneOperand => "String".to_string(),
+            CliOperandArity::CliOneOrMoreOperands => "Vec<String>".to_string(),
+        },
         std::option::Option::None => match Rc::new({
             let mut __result = Vec::new();
             for o in crate::gunbc_cli_dispatch_surface::cli_subcommand_generated_dispatch_options(
@@ -46078,7 +46083,7 @@ pub fn emit_gunbc_cli_dispatch_generated_with_executor_name(
         .join(&"\n".to_string());
         Rc::new(TextFile {
     path: v1_rt::concat(v1_rt::concat(rust_source_root(), "gunbc_cli_dispatch_generated".to_string()), rust_source_ext()),
-    content: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated by v1 compiler -- do not edit.\n".to_string(), "// Authority: gunbc.cli_dispatch_surface.\n\n".to_string()), "use clap::{Parser, Subcommand};\n\n".to_string()), emit_cli_root_struct(crate::gunbc_cli_dispatch_surface::gunbc_cli_binary_name(), crate::gunbc_cli_dispatch_surface::gunbc_cli_about(), ", version = env!(\"GUNBC_BUILD_IDENTITY\")".to_string(), true)), "\n\n".to_string()), "#[derive(Subcommand)]\npub enum Commands {\n".to_string()), variants.clone()), "\n}\n\n".to_string()), "pub trait CliDispatchHost {\n".to_string()), host_methods.clone()), "}\n\n".to_string()), "pub fn dispatch<H: CliDispatchHost>(command: Commands, dry_run: bool, ".to_string()), executor_name.clone()), ": &H) -> ! {\n    match (command, dry_run) {\n".to_string()), arms.clone()), "\n    }\n}\n".to_string()),
+    content: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated by v1 compiler -- do not edit.\n".to_string(), "// Authority: gunbc.cli_dispatch_surface.\n\n".to_string()), "use clap::{Parser, Subcommand};\n\n".to_string()), emit_cli_root_struct(crate::gunbc_cli_dispatch_surface::gunbc_cli_binary_name(), crate::gunbc_cli_dispatch_surface::gunbc_cli_about(), true)), "\n\n".to_string()), "#[derive(Subcommand)]\npub enum Commands {\n".to_string()), variants.clone()), "\n}\n\n".to_string()), "pub trait CliDispatchHost {\n".to_string()), host_methods.clone()), "}\n\n".to_string()), "pub fn dispatch<H: CliDispatchHost>(command: Commands, dry_run: bool, ".to_string()), executor_name.clone()), ": &H) -> ! {\n    match (command, dry_run) {\n".to_string()), arms.clone()), "\n    }\n}\n".to_string()),
 })
     }
 }
@@ -48257,7 +48262,7 @@ emit_native_ingress_driver_main_rs(crate_name.clone(), r.clone(), bindings.clone
         } else {
             "".to_string()
         };
-        let content = v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(header.clone(), crate_use.clone()), emit_retained_host_main_mod_uses(crate_name.clone(), pipeline_module.clone())), "\n".to_string()), "\n\n".to_string()), "\n\n".to_string()), v1_rt::concat(emit_main_pipeline_fns(crate_name.clone(), pipeline_module.clone()), emit_candidate_cli_host(crate_name.clone()))), v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("fn main() {\n".to_string(), "    let cli = ".to_string()), crate_name.clone()), "::gunbc_cli_dispatch_generated::Cli::parse();\n".to_string()), "    let host = CandidateCliHost;\n".to_string()), "    ".to_string()), crate_name.clone()), "::gunbc_cli_dispatch_generated::dispatch(cli.command, cli.dry_run, &host)\n".to_string()), "}\n".to_string())), "\n".to_string()), emit_main_diagnostic_fns(crate_name.clone()));
+        let content = v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(header.clone(), crate_use.clone()), emit_retained_host_main_mod_uses(crate_name.clone(), pipeline_module.clone())), "\n".to_string()), "\n\n".to_string()), "\n\n".to_string()), v1_rt::concat(emit_main_pipeline_fns(crate_name.clone(), pipeline_module.clone()), emit_candidate_cli_host(crate_name.clone()))), v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("fn main() {\n".to_string(), "    let mut command = <".to_string()), crate_name.clone()), "::gunbc_cli_dispatch_generated::Cli as clap::CommandFactory>::command().version(env!(\"GUNBC_BUILD_IDENTITY\"));\n".to_string()), "    let mut matches = command.clone().get_matches();\n".to_string()), "    let cli = match <".to_string()), crate_name.clone()), "::gunbc_cli_dispatch_generated::Cli as clap::FromArgMatches>::from_arg_matches_mut(&mut matches) {\n".to_string()), "        Ok(cli) => cli,\n".to_string()), "        Err(error) => error.format(&mut command).exit(),\n".to_string()), "    };\n".to_string()), "    let host = CandidateCliHost;\n".to_string()), "    ".to_string()), crate_name.clone()), "::gunbc_cli_dispatch_generated::dispatch(cli.command, cli.dry_run, &host)\n".to_string()), "}\n".to_string())), "\n".to_string()), emit_main_diagnostic_fns(crate_name.clone()));
         Rc::new(TextFile {
             path: v1_rt::concat(
                 v1_rt::concat(rust_source_root(), "main".to_string()),
@@ -48878,12 +48883,7 @@ pub fn entry_point_absent_refusal_text(crate_name: String) -> String {
     v1_rt::concat(v1_rt::concat(v1_rt::concat(entry_point_absent_refusal_marker(), " -- crate ".to_string()), crate_name.clone()), " was emitted from a corpus that declares no compiler_pipeline_entry, so it is a library and there is nothing to run".to_string())
 }
 
-pub fn emit_cli_root_struct(
-    binary_name: String,
-    about: String,
-    version_attr: String,
-    public: bool,
-) -> String {
+pub fn emit_cli_root_struct(binary_name: String, about: String, public: bool) -> String {
     {
         let about_attr = if (about.clone() != "".to_string()) {
             v1_rt::concat(
@@ -48898,7 +48898,61 @@ pub fn emit_cli_root_struct(
         } else {
             "".to_string()
         };
-        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("#[derive(Parser)]\n".to_string(), "#[command(name = \"".to_string()), binary_name.clone()), "\"".to_string()), about_attr.clone()), version_attr.clone()), ")]\n".to_string()), visibility.clone()), "struct Cli {\n".to_string()), "    #[command(subcommand)]\n".to_string()), "    ".to_string()), visibility.clone()), "command: Commands,\n".to_string()), "    /// Run in dry-run mode (mock all service calls)\n".to_string()), "    #[arg(long, global = true)]\n".to_string()), "    ".to_string()), visibility.clone()), "dry_run: bool,\n".to_string()), "}".to_string())
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                v1_rt::concat(
+                                                    v1_rt::concat(
+                                                        v1_rt::concat(
+                                                            v1_rt::concat(
+                                                                v1_rt::concat(
+                                                                    v1_rt::concat(
+                                                                        v1_rt::concat(
+                                                                            "#[derive(Parser)]\n"
+                                                                                .to_string(),
+                                                                            "#[command(name = \""
+                                                                                .to_string(),
+                                                                        ),
+                                                                        binary_name.clone(),
+                                                                    ),
+                                                                    "\"".to_string(),
+                                                                ),
+                                                                about_attr.clone(),
+                                                            ),
+                                                            ")]\n".to_string(),
+                                                        ),
+                                                        visibility.clone(),
+                                                    ),
+                                                    "struct Cli {\n".to_string(),
+                                                ),
+                                                "    #[command(subcommand)]\n".to_string(),
+                                            ),
+                                            "    ".to_string(),
+                                        ),
+                                        visibility.clone(),
+                                    ),
+                                    "command: Commands,\n".to_string(),
+                                ),
+                                "    /// Run in dry-run mode (mock all service calls)\n"
+                                    .to_string(),
+                            ),
+                            "    #[arg(long, global = true)]\n".to_string(),
+                        ),
+                        "    ".to_string(),
+                    ),
+                    visibility.clone(),
+                ),
+                "dry_run: bool,\n".to_string(),
+            ),
+            "}".to_string(),
+        )
     }
 }
 
@@ -49016,25 +49070,46 @@ pub fn emit_modeled_operand_field(operand: Rc<CliOperandRow>, depth: i64) -> Str
             __result
         })
         .join(&"".to_string());
-        v1_rt::concat(
-            v1_rt::concat(
+        match operand.arity.clone() {
+            CliOperandArity::CliExactlyOneOperand => v1_rt::concat(
                 v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(
                             v1_rt::concat(
-                                v1_rt::concat(doc_str.clone(), indent.clone()),
-                                "#[arg(value_name = \"".to_string(),
+                                v1_rt::concat(
+                                    v1_rt::concat(doc_str.clone(), indent.clone()),
+                                    "#[arg(value_name = \"".to_string(),
+                                ),
+                                operand.placeholder.clone(),
                             ),
-                            operand.placeholder.clone(),
+                            "\")]\n".to_string(),
                         ),
-                        "\")]\n".to_string(),
+                        indent.clone(),
                     ),
-                    indent.clone(),
+                    operand.field.clone(),
                 ),
-                operand.field.clone(),
+                ": String,\n".to_string(),
             ),
-            ": String,\n".to_string(),
-        )
+            CliOperandArity::CliOneOrMoreOperands => v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(doc_str.clone(), indent.clone()),
+                                    "#[arg(value_name = \"".to_string(),
+                                ),
+                                operand.placeholder.clone(),
+                            ),
+                            "\", num_args = 1..)]\n".to_string(),
+                        ),
+                        indent.clone(),
+                    ),
+                    operand.field.clone(),
+                ),
+                ": Vec<String>,\n".to_string(),
+            ),
+        }
     }
 }
 

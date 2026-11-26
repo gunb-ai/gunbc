@@ -23,7 +23,6 @@ fn gunbc_ci_arrival_admit_invoke() -> String {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_arrival_admit_target,
-    claim_run: false,
     receipt_rel: none
   )
 }
@@ -32,7 +31,6 @@ fn gunbc_ci_arrival_converge_invoke() -> String {
   gunbc_run_step_script_for_target(
     source_roots: witness_layer_roots,
     target: gunbc_ci_arrival_converge_target,
-    claim_run: false,
     receipt_rel: none
   )
 }

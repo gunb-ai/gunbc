@@ -31,7 +31,6 @@ fn gunbc_ci_org_actions_inspect_invoke() -> String {
     prelude: gunbc_ci_org_admin_app_token_prelude(),
     source_roots: witness_layer_roots,
     target: gunbc_ci_org_actions_inspect_target,
-    claim_run: false,
     receipt_rel: none
   )
 }

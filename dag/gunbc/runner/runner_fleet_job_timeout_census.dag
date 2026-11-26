@@ -23,8 +23,9 @@ module gunbc.runner.runner_fleet_job_timeout_census
 //      to a runner slot with no operator at the keyboard. That is the 'longest expected job on a
 //      runner slot' the bracket's comment means: the bracket drains a fleet host so GitHub can park
 //      fleet-pool work on it, and the drain must outlast the work GitHub will park there unprompted.
-// A dispatch-only workflow (workflow_dispatch alone: instrument-dispatch's job at 240 minutes,
-// fleet-converge's build at 95) is excluded by the SAME predicate, not by a name list: the operator
+// A dispatch-only workflow (workflow_dispatch alone: instrument-dispatch's job at 240 minutes) is
+// excluded by the SAME predicate, not by a name list (fleet-converge is not one: its daily schedule starts
+// plan-revision and build, which enter as fleet_converge_autonomous_job_rows): the operator
 // who dispatches it owns its sequencing against a drain. The residual is declared at
 // runner_host_cap_drain_policy and in the PR body, per the ruling: a dispatch-only fleet job still
 // running when a drain starts can exceed the bound, the bracket then refuses typed (caps withheld),
@@ -43,7 +44,7 @@ module gunbc.runner.runner_fleet_job_timeout_census
 
 import std.types { Bool, Int, String, List }
 import std.algebra { list_flat_map }
-import std.measure { Second, second, second_count }
+import std.measure { Second, second, second_count, Minute, minute, minute_count }
 import std.optional { Absent, Present }
 import extdeps.github.actions {
   Workflow,
@@ -74,6 +75,7 @@ import gunbc.generated_artifact {
   DriftWatchWorkflowYamlArtifact,
   BranchRunGrantBrokerWorkflowYamlArtifact,
   HostedRunnerShadowGateYamlArtifact,
+  ReleaseBinsConsumerCheckScriptArtifact,
 }
 import gunbc.generated_artifact_registry { committed_generated_artifacts }
 import gunbc.witness.compiler_gate_workflow { compiler_gate_workflow }
@@ -195,7 +197,7 @@ fn fleet_workflow_census_omissions() -> List<FleetWorkflowCensusOmission> {
   [
     FleetWorkflowCensusOmission {
       artifact: FleetConvergeYamlArtifact,
-      reason: "gunbc.fleet.fleet_converge_workflow imports gunbc.runner.runner_host_cap_bracket, so importing it from a module the bracket imports would cycle the corpus; its fleet-pool jobs (plan-revision 65, build 95) are workflow_dispatch-only and fall under the declared dispatch residual, and its bracket-enclosing budgets fold over the policy through gunbc.fleet.fleet_converge_workflow fleet_converge_host_cap_job_floor_minutes.",
+      reason: "gunbc.fleet.fleet_converge_workflow imports gunbc.runner.runner_host_cap_bracket, so importing it from a module the bracket imports would cycle the corpus. Its workflow is NOT dispatch-only: the daily schedule starts plan-revision and build on the fleet pool (gunbc.design_ruling::lab_release_pack_built_daily_2026_11_23). Those two jobs enter the fold as fleet_converge_autonomous_job_rows, declared here because they cannot be read here (gunbc.rung_drop.fleet_converge_autonomous_jobs_declared_beside_their_authority); test.claim.runner.runner_fleet_job_timeout_bound_witness, which can import the workflow, holds the rows equal to its autonomous fleet-pool jobs by id and declared timeout. Every other fleet-converge job is dispatch-only and falls under the declared dispatch residual, and its bracket-enclosing budgets fold over the policy through gunbc.fleet.fleet_converge_workflow fleet_converge_host_cap_job_floor_minutes.",
     },
     FleetWorkflowCensusOmission {
       artifact: InstrumentDispatchYamlArtifact,
@@ -204,6 +206,10 @@ fn fleet_workflow_census_omissions() -> List<FleetWorkflowCensusOmission> {
     FleetWorkflowCensusOmission {
       artifact: MicrovmShakedownYamlArtifact,
       reason: "the Workflow value is a function of the dispatch input (microvm_shakedown_workflow(script), gunbc.runner.runner_microvm_shakedown_workflow); its trigger set is the module constant microvm_shakedown_workflow_triggers (input independence by construction), which carries only WorkflowDispatch — fleet_workflow_omissions_are_discharged proves the constant is autonomous-free, so the autonomous predicate excludes it regardless; its 10-minute job timeout is under the bound either way.",
+    },
+    FleetWorkflowCensusOmission {
+      artifact: ReleaseBinsConsumerCheckScriptArtifact,
+      reason: "not a workflow: a bash script (#16426) that fleet-converge's release-bins consumer step runs (bash -e on its committed path). Its commit policy names GithubActionsWorkflow as its CONSUMER, which is why it is in this domain, but it declares no jobs and no trigger, so it holds nothing GitHub assigns to a runner slot; the time it runs is inside the fleet-converge step that runs it, and that step's job is in fleet-converge's own accounting.",
     },
     FleetWorkflowCensusOmission {
       artifact: HostedRunnerShadowGateYamlArtifact,
@@ -253,6 +259,25 @@ fn fleet_census_domain_is_explained() -> Bool {
     && fleet_workflow_omissions_are_discharged()
 }
 
+// THE FLEET-CONVERGE JOBS GITHUB STARTS UNPROMPTED, DECLARED BECAUSE THEY CANNOT BE READ HERE. The daily schedule
+// starts plan-revision and build on the fleet pool (gunbc.design_ruling::lab_release_pack_built_daily_2026_11_23), so
+// they belong to the population; but their authority, gunbc.fleet.fleet_converge_workflow, imports the bracket that
+// imports this census, so they are written here as rows (#gunbc.rung_drop.fleet_converge_autonomous_jobs_declared_beside_their_authority::fleet_converge_autonomous_jobs_declared_beside_their_authority).
+// The control that keeps these rows honest is test.claim.runner.runner_fleet_job_timeout_bound_witness
+// fleet_converge_autonomous_jobs_are_exactly_the_declared_rows: it reads the workflow, finds every fleet-pool job a
+// schedule can start, and requires exactly these ids at exactly these declared timeouts, so a timeout edit, a new
+// scheduled job or a job that stops being scheduled turns it red until the row moves with it. The operator chose
+// to let the bound grow with these jobs (gunbc.design_ruling::runner_host_drain_bound_covers_scheduled_fleet_converge_jobs_2026_11_24).
+type FleetConvergeAutonomousJobRow {
+  job_id: String
+  timeout: Minute
+}
+
+data fleet_converge_autonomous_job_rows: List<FleetConvergeAutonomousJobRow> = [
+  FleetConvergeAutonomousJobRow { job_id: "plan-revision", timeout: minute(count: 70) },
+  FleetConvergeAutonomousJobRow { job_id: "build", timeout: minute(count: 100) },
+]
+
 // THE FOLD. Every job of every censused workflow that both selects the fleet pool and belongs to a
 // workflow GitHub can start by itself.
 fn fleet_job_belongs_to_population(w: Workflow, j: Job) -> Bool {
@@ -272,12 +297,21 @@ fn fleet_targeted_autonomous_jobs() -> List<Job> {
   )
 }
 
+// THE POPULATION'S LONGEST DECLARED JOB: the censused workflows' autonomous fleet-pool jobs and the declared
+// fleet-converge rows, one maximum over both.
 fn fleet_targeted_declared_timeout_minutes() -> Int {
   fold(
-    xs: fleet_targeted_autonomous_jobs(),
-    init: 0,
-    f: fn(acc, j) {
-      let m = job_declared_timeout_minutes(j: j)
+    xs: fleet_converge_autonomous_job_rows,
+    init: fold(
+      xs: fleet_targeted_autonomous_jobs(),
+      init: 0,
+      f: fn(acc, j) {
+        let m = job_declared_timeout_minutes(j: j)
+        if m > acc { m } else { acc }
+      }
+    ),
+    f: fn(acc, r) {
+      let m = minute_count(m: r.timeout) as Int
       if m > acc { m } else { acc }
     }
   )
@@ -308,4 +342,5 @@ fn fleet_bound_covers_population(bound: Second, jobs: List<Job>) -> Bool {
 
 fn fleet_drain_bound_is_sound(bound: Second) -> Bool {
   fleet_bound_covers_population(bound: bound, jobs: fleet_targeted_autonomous_jobs())
+    && all(fleet_converge_autonomous_job_rows, r => fleet_bound_covers_declared_minutes(bound: bound, minutes: minute_count(m: r.timeout) as Int))
 }
