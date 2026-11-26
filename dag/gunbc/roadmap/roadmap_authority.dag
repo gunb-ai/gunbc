@@ -6308,7 +6308,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_RVJ5GW9Q2D7Y3PKAKTNRT0DCSB",
       id: "egress-numeric-bit-sealed-carrier",
       owner: "primitive-egress",
-      carriers: carrier(path: "docs/plans/demand-engine-program.md"),
+      carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
       line: ticket(t: updated(t: fields(
         headline: "NUMERIC-BIT cut 1: one sealed octet carrier minted only by admission (gunbc#11643)",
         boundary: "A sole_constructor QualifiedOctets { members: List<UInt8> } minted only by the admission functions, RealizableWidth sole_constructor, and every bit-width operation consuming the sealed carrier. UInt8 is a Phantom transparent to Int and cannot carry the proof, so 256 inhabits List<UInt8> today.",
@@ -6325,7 +6325,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_06FZGM9B7W8J44J7R6QXA1MJWM",
       id: "egress-numeric-bit-kernel-arms",
       owner: "primitive-egress",
-      carriers: carrier(path: "docs/plans/demand-engine-program.md"),
+      carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
       line: ticket(t: fields(
         headline: "NUMERIC-BIT cut 2: Width32/Width64 kernel arms in the interpreter and the emitter",
         boundary: "The bit operations over the sealed carrier at machine widths 32 and 64 realized as kernel arms in the v1 interpreter and in the Rust emitter, with one differential witness proving both targets agree on a discriminating corpus.",
@@ -6342,7 +6342,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_V42QB2G0GX8FK5APP66A0MPRNE",
       id: "egress-numeric-bit-multi-limb",
       owner: "primitive-egress",
-      carriers: carrier(path: "docs/plans/demand-engine-program.md"),
+      carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
       line: ticket(t: fields(
         headline: "NUMERIC-BIT cut 3: the multi-limb carrier for widths above 64",
         boundary: "A carrier of N sealed limbs for P-256 field arithmetic and SHA-512 words, derived from the same width axis rather than a fresh type per width.",
@@ -6359,7 +6359,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_SYXHP92KEGX92XNFBZRXBQW2BV",
       id: "egress-crypto-0-sha256-landing",
       owner: "primitive-egress",
-      carriers: carrier(path: "docs/plans/demand-engine-program.md"),
+      carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
       line: ticket(t: updated(t: fields(
         headline: "CRYPTO-0: after the HMAC landing -- the native receipt instrument and the cost of interpreted SHA-256",
         boundary: "SHA-256 landed on main as extdeps.crypto.sha2 over std.bitwise (gunbc#11645). HMAC-SHA-256 over it, utf8_encode_octets, and the deletion of the hmac interpreter primitives, crate and evidence rows were reconciled in gunbc#11895 and SPLIT OUT of its landing (operator ruling 2026-09-21): under the honest floor their witnesses run at 0.8-1.4M eval steps against the 100ms-equivalent new-witness budget, so they wait on the kernel arms. Also owed with that landing: the gunbc.design_argument::guarantee_ladder (no silent regression) declared drop for the constant-time tag comparison that verify_slice realized mechanically and hmac_tag_difference cannot observe (review 69492).",
@@ -6376,7 +6376,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_YFQ6WQM8AAHBKJ5CASXXZPJ569",
       id: "egress-crypto-0-curve-and-sign",
       owner: "primitive-egress",
-      carriers: carrier(path: "docs/plans/demand-engine-program.md"),
+      carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
       line: ticket(t: fields(
         headline: "CRYPTO-0: SHA-384/512, P-256 ECDSA, ES256 for APNs, App Attest verification",
         boundary: "The remaining primitives App Attest and APNs consume, each pure .dag over the multi-limb carrier, replacing the typed ECDSA frontier at which ios_enrolment_admission currently refuses.",
@@ -6393,7 +6393,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_KKAGM3C9SB50J0KSHGPYXDTM4J",
       id: "egress-encoding-0-cbor-der-landing",
       owner: "primitive-egress",
-      carriers: carrier(path: "docs/plans/demand-engine-program.md"),
+      carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
       line: ticket(t: updated(t: updated(t: fields(
         headline: "ENCODING-0: land pure .dag CBOR, DER and X.509 parsing (gunbc#11727)",
         boundary: "Pure .dag CBOR, DER and X.509 parsing, reconciled in quarry/11895, DEFERRED on its witness redesign (supplied pre-parsed values plus one real-bytes inhabitance claim) or the kernel arms. Five acceptance obligations, each with a discriminating control: (1) DER OID arcs bounded before pending * 128 + low overflows; (2) the App Attest bundle-version extension enforced before the ECDSA frontier returns; (3) a BIT STRING with nonzero declared-unused bits refuses; (4) the DER primitive/constructed bit enforced IN BOTH DIRECTIONS (controls: Certificate SEQUENCE 0x30 -> 0x10 refuses; a primitive universal value with the constructed bit refuses); (5) CBOR map keys in deterministic order.",
@@ -6410,7 +6410,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_TNT1ZEDDB0C3KNE6CYV9K4GJBX",
       id: "egress-encoding-0-bytes-seam",
       owner: "primitive-egress",
-      carriers: carrier(path: "docs/plans/demand-engine-program.md"),
+      carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
       line: ticket(t: fields(
         headline: "ENCODING-0: content_hash hex consolidation, UTF-8 typed causes, the std.bytes seam",
         boundary: "std.content_hash consumes extdeps.numeric.base16 with the stage0 mirror regenerated and the seed population change declared; utf8_decode_octets refuses malformed, incomplete and bad-octet distinctly at construction instead of collapsing onto Absent; utf8_encode_bytes, utf8_decode_bytes, bytes_octets and octets_bytes switch to the .dag route with the displaced interpreter routes deleted and the registry deletion last and serialized.",
@@ -6427,7 +6427,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_RTHC6H20EMH3K0C8TAMCJ6P527",
       id: "egress-effects-1-filesystem-provider",
       owner: "primitive-egress",
-      carriers: carrier(path: "docs/plans/demand-engine-program.md"),
+      carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
       line: ticket(t: updated(t: updated(t: fields(
         headline: "EFFECTS-1: the E2 LocalFilesystem provider and the restatement refusal",
         boundary: "Cut (c) lands through gunbc#11993; its in-flight population is closed by the final-base census recorded in gunbc.demand_engine_restatement_follow_up. What remains open: E2 binds one native Filesystem handler at the NativeCliDriver root reusing emit_file_call's semantics, the follow-up roster rows it discharges retire, and a refusal lands on any new restatement row; separately, the route-blocked identities retire once extdeps.linux.cgroup_v2 ReadInterfaceFile gains a mock_response, which E2 does not provide.",
@@ -6444,7 +6444,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_5NMAXZFR0Q4ER63G6VYDH6NHA5",
       id: "egress-content-hash-fnv-kernel",
       owner: "primitive-egress",
-      carriers: carrier(path: "docs/plans/demand-engine-program.md"),
+      carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
       line: ticket(t: fields(
         headline: "CONTENT-HASH cut 2: the FNV kernel arm and the final registry deletion",
         boundary: "FNV realized as a kernel arm over the sealed carrier in both targets, then the content-hash registry entry deleted once nothing routes through it.",
@@ -6461,7 +6461,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_AEJBJV14KK79Y09AY00WVZ0056",
       id: "egress-census-quiet-host-and-decomposition",
       owner: "primitive-egress",
-      carriers: carrier(path: "docs/plans/demand-engine-program.md"),
+      carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
       line: ticket(t: fields(
         headline: "CENSUS-0 follow-ups: quiet-host runs at one sha and the open class rows",
         boundary: "The -dag, -seed and full census runs executed on a quiet host at one sha; the reference_deps class-2 open row; the D13 DependencyDemand carrier join; decomposition of the 44 MixedSemanticQuestions rows; and retirement of the hmac evidence rows after CRYPTO-0 lands.",
@@ -6478,7 +6478,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       identity: "rn_Q71AC17SGZB8PMP7PF756C3P13",
       id: "egress-optional-at-required-tail",
       owner: "primitive-egress",
-      carriers: carrier(path: "docs/plans/demand-engine-program.md"),
+      carriers: carrier(path: "dag/gunbc/plans/demand_engine_program.dag"),
       line: ticket(t: fields(
         headline: "Optional-at-required tail: five modules outside every gated closure",
         boundary: "bmc_fan_monitor, bmc_fan_converge, fabric_required_build_cell, fleet_show_effective_read and srv3_install_media_fetch matched on their Optional first() sites so gunbc#11720's wall holds over them; the srv3 module's own Present/Absent variants shadow Optional's and must be qualified or renamed. Branch fierce-seal-607/optional-at-required-tail carries the uncommitted work.",
