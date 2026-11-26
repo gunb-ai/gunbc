@@ -9628,23 +9628,6 @@ fn body_lower_else_less_branch(guard: BodyLowerGuard) -> Outcome<Node> {
   })
 }
 
-// THE ELSE-LESS `if` WITH A SUCCESSOR: the statement form. The arm runs when the condition holds and its value
-// is DISCARDED; the rest of the spine runs either way, so the whole `if` sits in the value slot of a statement
-// Bind, whose absent binder is what "nothing receives the value" means at the table. This is the shape the
-// operator's fall-through `if c { i }  i` lowers to.
-// THE ONLY STATEMENT BIND: an else-less if followed by another statement. A NON-BINDING statement of any
-// other shape before a successor still refuses as statement_precedes_without_binding -- admitting those
-// too would silently drop their values (the recorded recurring failure mode
-// lowering_accessor_collapses_a_sequence_operand: `fn f() -> Int { 1 \n 2 }` accepting and discarding the
-// 1). Value-discard for other shapes is a question of its own, to be modeled on its own terms.
-fn body_lower_else_less_if_statement(guard: BodyLowerGuard, rest: Node) -> Outcome<Node> {
-  bind_outcome(o: body_lower_else_less_branch(guard: guard), f: fn(branch) {
-    bind_outcome(o: body_lower_stmt_spine(spine: rest), f: fn(body) {
-      outcome_accepted(value: lower_bind_statement(value: branch, body_binding: body))
-    })
-  })
-}
-
 fn body_lower_if_expr_valued(shell: Node) -> Outcome<Node> {
   match body_lower_unwrap_captured(shell: shell) {
     Absent =>
@@ -12805,15 +12788,18 @@ fn body_lower_production_emitted_non_leaf(shell: Node, emitted: Symbol, fn_body_
 //   Branch(c, arm, rest of the spine) (body_lower_guard_branch). That fold is exact only because the arm
 //   EXITS: with the arm taken, the rest of the spine is never reached, so "else the rest" is precisely
 //   "fall through". body_lower_admitted_guard_optional admits it and body_lower_exit_walk_if walks its arm.
-// - A FALL-THROUGH `if` with a following statement lowers to the STATEMENT BIND over the ELSE-LESS BRANCH
-//   (body_lower_else_less_if_statement): the arm's value is discarded by the absent binder, and the rest of
-//   the spine runs whether or not the arm ran. This is the shape `if c { i }  i` has.
+// - A FALL-THROUGH `if` with a following statement REFUSES, located, as statement_precedes_without_binding:
+//   the arm produced a value, the absent binder receives nothing, and the spine continues after it -- the
+//   same dropped-value statement any other shape refuses for (the recurring failure mode
+//   lowering_accessor_collapses_a_sequence_operand records what admitting such statements does). The
+//   statement Bind over the ELSE-LESS BRANCH this arm used to build is gone with it; the operator's
+//   fall-through `if c { i }  i` now names its cause instead of discarding `i` (the 2026-11-23
+//   value-disposition ruling this fold now matches; the tail path and the guard idiom above are untouched).
 // - An ELSE-LESS `if` where a VALUE is owed -- a value position, or the tail of a body -- lowers to the
 //   ELSE-LESS BRANCH itself (body_lower_else_less_branch). Lowering does not guess whether the demand is
 //   there; the consumers that owe a value refuse it with their own reason (v2.compiler.infer
 //   infer_branch_else_less_as_value_diagnostic, v2.std.compilers.target_model
-//   target_value_expr_reason_branch_else_less_as_value), and the consumer that owes none -- the statement
-//   Bind -- admits it. A refusal never fabricates a value (DESIGN 5).
+//   target_value_expr_reason_branch_else_less_as_value). A refusal never fabricates a value (DESIGN 5).
 // An `if` whose parts this reader cannot navigate still refuses, located, rather than dropping a part.
 fn body_lower_else_less_if_reject(shell: Node) -> Outcome<Node> {
   outcome_rejected(
