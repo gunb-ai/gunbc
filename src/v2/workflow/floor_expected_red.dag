@@ -1352,43 +1352,87 @@ fn floor_expected_red_chunk_required_lane_materialized_workflow_red() -> List<St
 // dissolved in the same change, and the roster is again the plain fold over the chunks.
 
 // THE SIX LOWERED PRIMARY-CALL / CAST OCCURRENCE CLAIMS AT THE NORMALIZE DOOR (node
-// adhoc-78f5bb8e-0cf, keen-raven-287, 2026-11-25). Three primary-call and three cast witnesses of
-// v2.test.claim.body_lowering_call_node_occurrence are RED at main (tree 90455b33, measured twice --
-// calm-boar-153 and again here with main's RELEASED claim_batch sha256 dbcf0419f7a6 read from disk on
-// srv1, BOOT c095c0cd), twelve witnesses PASS, and the six reach their SUBJECT and ANSWER: the per-
-// witness lines carry cpu/wall/eval_steps and a subject (e.g. the locatable witness answers false at
-// eval_steps=237970 subject=28cde0a71fe3e9e3), so this enrolment is the opposite of the 101 rows the
-// header records -- it enrolls claims that RUN and answer, not rows that route-gapped. A control in the
-// same batch (lowered_qualified_call_node_is_locatable_by_the_census) PASSES, so the tool prints PASS
-// and the six are a population of real failures, not a broken harness.
+// adhoc-78f5bb8e-0cf, keen-raven-287, 2026-11-25/26). Three primary-call and three cast witnesses of
+// `v2.test.claim.body_lowering_call_node_occurrence` are RED at main; the module's other twelve witnesses
+// PASS. The six REACH THEIR SUBJECT AND ANSWER, which is what this roster admits: they execute and return
+// a verdict rather than routing away, the opposite of the 101 rows the header of this file records.
+// Verified-release telemetry, printed on its own `[witness]` line:
+//   [witness] lowered_primary_call_node_is_locatable_by_the_census: cpu=909ms wall=25703ms eval_steps=237970 subject=2e7ab36c9ed1a1b3 eval_self=0.000ms
+// `v2.test.claim.body_lowering_call_node_occurrence.lowered_qualified_call_node_is_locatable_by_the_census`
+// PASSes in the same batch on BOTH execution routes, so the tool does print PASS here and the six are a
+// population of real failures rather than a broken harness.
 
-// WHAT THE MEASUREMENT SHOWS, NOT A CONCLUSION. The six drive the primary-call and cast shapes through
-// the NORMALIZE door (conserved_normalize_of_text), and at that door the source is REFUSED -- no tree
-// is handed back (probe facets cn_accepted and kn_accepted both FAIL). The same two shapes driven
-// through the FOLD door (body_lower_dotted_chain_lowered_optional on the captured postfix capture) DO
-// yield the authored, Minted, census-Present root the claims name: for the cast kf_transform/kf_minted/
-// kf_census PASS while kf_synthetic/kf_projected/kf_pending FAIL, and for a call cq_transform/cq_minted/
-// cq_census PASS while cq_synthetic/cq_projected/cq_pending FAIL, both measured this run with the
-// passing qualified_call caller copied verbatim from this module -- the fold-door callers
+// PROVENANCE, BY BUILD -- stated because it changes what the counts are worth. ACQ6 through ACQ10 ran on the
+// MANIFEST-VERIFIED release binary: `claim_batch` sha256 c75390c0e07115074fd5170425ac461c89ac725e1796765cdc32b1a61b6e32dd,
+// from artifact 15058930199 / run 45686569467 / head_sha d861bea8e193f3174db64d60bb04092c5735e3d7, with
+// `sha256sum -c release-bins.manifest` rc 0 over 16 entries and the binary sha re-read from disk in each leg.
+// ACQ1 through ACQ5 ran on an UNVERIFIED CONVENIENCE BUILD, sha256 dbcf0419f7a67b5d127b0b6249e119c9172937554aea1374b5e46ace706e5d58,
+// which matches NO release manifest. That build was cited elsewhere as "main's RELEASED claim_batch" and the
+// attribution does not hold; it is recorded as unverified here rather than repeated. The consequence is
+// stated plainly: the probe populations are THREE on the verified binary (ACQ6, ACQ7, ACQ9), not four, and
+// only ACQ9 is single-variable. Every leg ran on srv1, BOOT c095c0cd, through heavy-slot, each printing its
+// own acquisition line; the production module's sha256 was re-read after each and never moved.
+
+// THE ROUTES, measured rather than assumed. Of the three routes that could execute these claims, two have
+// been run and the third is gone: **Hermetic and wet routes agree; the native route has never executed these
+// six; the floor-prepared-subject route is deleted code (0 definitions of `run_required_floor`).** Hermetic is
+// what an unflagged `claim_batch` silently does: `src/v1/stage0/src/bin/claim_batch.rs` leaves `explicit_mode`
+// at None and resolves it through `v1_compiler::cli_run::execution_mode_for`
+// (`src/v1/stage0/src/cli_run/claim_execution.rs:37`) with `is_claim: true`, which yields Hermetic for any
+// claim context. That is the route of every leg before ACQ10 -- calm-boar-153's two plus ACQ5, ACQ6, ACQ7,
+// ACQ9. The wet route (the v1-interpreter route) was run exactly once, ACQ10, as a bounded one-off
+// diagnostic: tree d861bea8e193 with porcelain 0, the same binary, the entry module byte-unchanged at sha256
+// cb89413022e0de9a5f8b117246edc56f82f8d624b846a8ab4712aa8b1dea0191, rc 1 at 1196 s against a 1200 s bound,
+// verdict lines 7 of 7 with the six FAIL and the control PASS, and `resolve failed`, `blocking error` and
+// `effect summary incomplete` all 0 hits at rc 1. It is a measurement and not a CI step:
+// `gunbc.design_ruling::no_ci_claim_execution_until_native_frontier_clears` governs CI claim-executing steps
+// and their restoration, and nothing in this row touches that exit. One instrumentation gap is named rather
+// than papered over: `claim_batch` does not print its resolved ExecutionMode, so no in-artifact mode
+// assertion exists -- the route is established by the argv recorded in the log together with the identical
+// tree, binary and module sha reproducing the Hermetic verdicts. Cost is NOT a route marker: per-entry
+// resolve measured 699963 ms over 272 modules and 13341 resolved items unflagged (ACQ6) against 777256 ms
+// over the same 272 modules and the same 13341 items under wet (ACQ10), a noise-level difference.
+
+// WHAT IS UNREAD, AND STAYS UNREAD. The cause at the conserved door is UNREAD. Every probe that reached that
+// door read `v2.compiler.reference_conservation::OccurrenceRoleTableUnadmitted` (its arm is declared at
+// `v2.compiler.reference_conservation:142` over `unlisted`, `unknown`, `unkeyed`) with `authored` 0 and
+// `conserved` 0 on all three sources, under THREE subject-building routes (`v2.test.claim.namespace_xl0.reference_conservation::conservation_subject`,
+// `::conservation_fixture_read`, and local builders over byte-identical source) and BOTH artifact identities
+// tried -- a never-minted `id_tail` and the witness's own `clean` -- over the SAME source bytes (sha256
+// f608aa23c821df0559fd761a6b4d9c2b52a0c845961347bc043f158e1af1b7a0, `cmp` rc 0 against `git show`). Artifact
+// identity is RULED OUT by that pair: the two sides agree field for field, `unlisted` non-empty and `unknown`
+// and `unkeyed` empty in every reading. The POSITIVE CONTROL NEVER FIRED. No leg, probe or release, has ever
+// observed that census author a single atom at the door these six drive
+// (`v2.compiler.reference_conservation_admission::conserved_normalize_of_text`), including the module's own
+// admitting witness. What the same two shapes do at the FOLD door
+// (`v2.compiler.body_lowering_fold::body_lower_dotted_chain_lowered_optional`, reached from
 // `v2.test.claim.body_lowering_call_node_occurrence.seat16_door_lowered` over its
-// `seat16_qualified_call_source`, named not located. HYPOTHESIS (not established, do not read as a finding): the six
-// are mis-specified for the door they drive -- the census contract the fix established holds at the FOLD
-// door, where all twelve passing siblings live, and the normalize door simply never produces the root. A
-// bare `leaf()` is declined by the dotted-chain door, which is a door-applicability limit, not a census
-// result; the twelve passing siblings stand as that door's positive control for the call shape.
+// `seat16_qualified_call_source`) is the opposite: there they yield an authored, Minted, census-Present root,
+// and that is where all twelve passing siblings live. The standing reading is therefore
+// `mis-specified-pending-planning` -- a contract with no witnessed instance at the door that asserts it --
+// and it is held as a reading, not established as a cause. No shape language is asserted here about any
+// lowered node; the claim set, the doors and the verdicts are the whole of the evidence.
 
-// REGRESSION VERSUS NEVER-WORKED STAYS UNRESOLVED. The required-floor admission at
-// The `v2.workflow.required_floor` admission of this module at exact grain carries a green-by-execution receipt at the October fix head;
-// that head cannot be re-run under main's RELEASED binary (the Oct tree predates newer parse/type rules
-// and refuses at policy-resolve), so it is not determinable today whether the normalize-door root ever
-// existed. That receipt's unverifiability was routed to ci-control (roadmap_authority.dag floor-memory,
-// owner ci-control) by the lane manager; it is not restated or re-litigated here.
+// REGRESSION VERSUS NEVER-WORKED STAYS UNRESOLVED. The `v2.workflow.required_floor` admission of this module
+// at exact grain carries a green-by-execution receipt at the October fix head. That head cannot be re-run
+// under main's released binaries -- it predates newer parse and type rules and refuses at policy-resolve --
+// so it is not determinable today whether the normalize-door root ever existed. That receipt's
+// unverifiability was routed to ci-control (roadmap_authority.dag floor-memory, owner ci-control) by the lane
+// manager; it is not restated or re-litigated here.
 
-// WHY ENROLMENT AND NOT WITHDRAWAL. The `v2.workflow.required_floor` admission of this module is KEPT (it is not touched by
-// this change): withdrawing it would convert a visible red into a coverage loss, because the module
-// would stop being run and nobody could observe the six going green. Enrolled-with-trigger keeps the
+// WHY ENROLMENT AND NOT WITHDRAWAL. The `v2.workflow.required_floor` admission of this module is KEPT (this
+// change does not touch it): withdrawing it would convert a visible red into a coverage loss, because the
+// module would stop being run and nobody could observe the six going green. Enrolled-with-trigger keeps the
 // observation live -- the difference between a tracked stall and an untracked one.
 
+// CONSISTENT WITH, NOT A MEMBER OF. These six are CONSISTENT WITH
+// `gunbc.recurring_failure_mode.green_floor_executes_no_claim_whose_verdict_a_body_change_can_move`, whose
+// rung is still `RungUnread { cause: BlockerClassUnstated }` and whose own evidence keys an authored
+// population on the consumer via `v2.workflow.floor_subject_seed::reach_propagates`. Structural similarity is
+// a pointer, not a membership: one specimen plus an analogy does not join a population, and this row claims
+// no class for the six. Per DESIGN.md, a newly discovered error class "files or updates one row" under
+// `dag/gunbc/recurring_failure_mode/`; no new row is filed here, and any future update to that row belongs to
+// the lane manager, not to this chunk.
 // WHAT DISCHARGES THIS CHUNK IS THE SIX GOING GREEN. When all six pass, each becomes a KnownRedNowPassing
 // refusal that names it for removal, and this chunk is deleted with them. No repair is offered here; the
 // diagnosis is what is filed.
