@@ -216,7 +216,7 @@ data method_missing_red_probe: GuaranteeProbeId = "method-established-surface-mi
 data method_green_probe: GuaranteeProbeId = "method-established-surface-green-control" as GuaranteeProbeId
 // Carrier for the alias-return hole (roadmap node method-receiver-normalization,
 // rn_TMC5UFTYNMSBMS7FLXYIVQCSRE). Observed red ON MAIN, executed: the census observes 0 blocking
-// rows for the alias-return program (handback line: DID-NOT-HOLD 'census observed 0', rc=1) while
+// rows for the alias-return program (the executed DID-NOT-HOLD line lives in the node handback) while
 // the nominal spelling of the same program is accepted with zero blocking. This is the typed
 // carrier for a known hole -- NOT a witness leg that asserts a refusal main does not raise
 // (a merged claim that does not hold is a red that means 'unfixed', and the next session 'repairs'
