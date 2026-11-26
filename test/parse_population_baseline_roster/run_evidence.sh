@@ -37,7 +37,7 @@ set -u
 run_token="ppbr-$(date -u +%Y%m%dT%H%M%SZ)-$$"
 repo="$(cd "$(dirname "$0")/../.." && pwd)"
 carrier="dag/gunbc/parse_population_baseline_roster.dag"
-expected_rows=170
+expected_rows=""   # READ FROM THE CARRIER below (single_authority; review 98824) -- never a second literal.
 scratch="$(mktemp -d)"; trap 'rm -rf "$scratch"' EXIT
 carrier_rows="$scratch/carrier_rows.tsv"; tree_top="$scratch/tree_top.tsv"
 mistyped="$scratch/mistyped.tsv"; red_diff="$scratch/red_diff.txt"
@@ -51,6 +51,16 @@ cd "$repo" || { echo "no repo root"; exit 2; }
 sha="$(awk '/^data parse_population_baseline_pinned_sha: String =/{getline; gsub(/[ "]/,""); print; exit}' "$carrier")"
 [ -n "$sha" ] || { echo "could not read parse_population_baseline_pinned_sha from carrier"; exit 1; }
 echo "== parse_population_baseline_pinned_sha (read from carrier): $sha"
+
+# 1b. the fixed benchmark size, BY NAME out of the SAME carrier -- single_authority (review 98824).
+# The carrier owns this fact as parse_population_expected_total_count; a second literal `=170` here
+# would be a fork that drifts the moment the population changes (stage_roster_roots.sh reads the SAME
+# constant, and both scripts' headers say they hold no roster table of their own). Same grep/sed read
+# as the sibling, so it is the reader the F2 rung drop parse_population_carrier_reader_rung_drop already
+# declares (a misparsed field, not a dropped row, is its blind spot).
+expected_rows="$(grep -E '^data parse_population_expected_total_count: Int = ' "$carrier" | sed -E 's/.*= *([0-9]+).*/\1/')"
+[ -n "$expected_rows" ] || { echo "could not read parse_population_expected_total_count from carrier"; exit 1; }
+echo "== parse_population_expected_total_count (read from carrier): $expected_rows"
 
 # 2. the declared rows read out of the SAME carrier: "<bytes>\t<path>", in declared (rank-desc) order.
 awk '/^data parse_population_baseline_rows: List<ParsePopulationRow> = \[/{f=1;next} f&&/^\]/{exit} f' "$carrier" \
