@@ -7,7 +7,8 @@ import v2.compiler.resolve { ResolvedTree, resolve }
 import v2.compiler.tokenize { tokenize_artifact }
 import v2.extdeps.languages.dag { dag_language_model }
 import extdeps.languages.dag.syntax { strip_line_comment_delimiter }
-import std.algebra { fold_list, length, list_snoc_item }
+import std.algebra { list_snoc_item }
+import std.list { first_where }
 import std.source_annotation { region_contains, SourceAnnotationDebt, SourceAnnotationGraph, source_annotation_graph_rows }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import v2.std.compilers.lexing { LexArtifact, lex_artifact_annotations, lex_artifact_semantic_tokens, token_stream_remaining_count, UnboundSourceAnnotation }
@@ -260,35 +261,44 @@ fn front_end_capture_origin_as_the_fold_sees(capture: UnboundSourceAnnotation) -
   authored_normalized_capture(capture: capture, annotation_text: fn(t) { t }).origin
 }
 
-// A capture is landed when SOME row's origin covers its span -- asked of the authority's own predicate, with
-// no local comparison of offsets.
+// A capture is landed when SOME row's origin covers its span -- asked of the authority's own predicate, with no
+// local comparison of offsets. THE SCAN IS THE REPO'S OWN SHORT-CIRCUITING ONE and the capture's span is built
+// ONCE per capture rather than once per (capture, row) pair: std.list::first_where stops calling the predicate as
+// soon as it holds a witness, so the rows stop being visited the moment the answer is known, and
+// authored_normalized_capture runs exactly once per capture instead of once per pair.
+// WHAT THIS DOES NOT REMOVE, stated rather than left to be inferred: with no ordering decision available from the
+// authority -- std.source_annotation::region_contains answers containment for ONE pair and nothing else -- "does
+// SOME row cover this span" must still be asked pair by pair in the worst case. Removing that residue is the
+// fold's work, not a consumer's: it is the field front_end_capture_count_next_rung names, because a consumer that
+// guessed where a row ends would be deciding std.source_annotation annotation_attach_step's join rule in a second
+// place (gunbc.design_argument::single_authority, and how_to_work on a proven cost-shape defect being always
+// fixed). The consumer's own waste -- one authority call per pair, and visits after the answer was known -- is
+// what is fixed here.
 fn front_end_capture_is_covered(
   capture: UnboundSourceAnnotation,
   rows: List<SourceAnnotationDebt>
 ) -> Bool {
-  fold_list(
-    xs: rows,
-    empty: false,
-    cons: fn(found, row) {
-      found || region_contains(
-        extent: row.origin,
-        origin: front_end_capture_origin_as_the_fold_sees(capture: capture)
-      )
-    }
-  )
+  let origin = front_end_capture_origin_as_the_fold_sees(capture: capture)
+  match first_where(xs: rows, keep: fn(row) {
+    region_contains(extent: row.origin, origin: origin)
+  }) {
+    Present { value: _ } => true
+    Absent => false
+  }
 }
 
+// The outer scan short-circuits the same way: the FIRST capture no row covers decides the whole answer, so a
+// module that is already refused does not pay for the captures that follow it.
 fn front_end_captures_all_covered(
   captures: List<UnboundSourceAnnotation>,
   rows: List<SourceAnnotationDebt>
 ) -> Bool {
-  fold_list(
-    xs: captures,
-    empty: true,
-    cons: fn(all, capture) {
-      all && front_end_capture_is_covered(capture: capture, rows: rows)
-    }
-  )
+  match first_where(xs: captures, keep: fn(capture) {
+    !front_end_capture_is_covered(capture: capture, rows: rows)
+  }) {
+    Present { value: _ } => false
+    Absent => true
+  }
 }
 
 fn front_end_unlanded_annotation_diagnostic(
