@@ -3533,6 +3533,22 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "claim-loop-is-tight", contribution: "Waiting on a run is visible and holds nothing else."),
     ),
     roadmap_node(
+      identity: "rn_5CM43VXJ2NWLNZQWTOMTD6WP3I",
+      id: "source-carries-no-comments",
+      owner: "source-intent",
+      carriers: carrier(path: "dag/gunbc/design_ruling.dag"),
+      line: ticket(t: fields(
+          headline: "Source carries no comments: rationale lives in planning items and typed carriers, not beside the code",
+          boundary: "Operator direction 2026-11-26: \"we will probably be banning comments in the long run - they are basically dual representations better left out of the code completely (moreso left to planning items/etc, not the literal code)\". A comment restates what the code or a plan owns, and nothing checks the two agree. Specimen: target_invocation_host said a bare claim label selects a package, the code selected nothing, and the generated help repeated it. At 4507527721b about 507,000 of 2.78 million .dag lines and 31,000 of 415,000 seed Rust lines are comments.",
+          displaced_cost: "A reader trusts the comment, the code does something else, and the cost is paid as trial runs; every edit owes a second edit to prose nothing verifies.",
+          first_slice: "A ruling revising DESIGN section 4c, which today admits leading // annotations for rationale, and settling the standing of the comment-capture nodes (parse-comment-gap-attachment and its v2 successors). Then a census by kind: rationale that belongs to a plan or ruling, restatement to delete, and doc text that is a generated surface (clap help) and is therefore data, not a comment.",
+          red_control: "Once ruled, a new comment in source refuses at parse, located; the generated help keeps its text because it is carried as data.",
+          out_of_scope: "Moving any rationale before the ruling; the generated help rows in gunbc.cli_dispatch_surface, which are data.",
+          handback: "The ruling, the census, and the parse refusal enrolled with a discriminating RED."
+        )),
+      parent: in_project(project: "debt-payoff", contribution: "One representation per fact: the code says what it does, and the reasons live where plans live."),
+    ),
+    roadmap_node(
       identity: "rn_B766TJR5AXG2AHSG4EJ5AP5DBE",
       id: "printed-chassis-python-kernel-retirement",
       owner: "debt",
