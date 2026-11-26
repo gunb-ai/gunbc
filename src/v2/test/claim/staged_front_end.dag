@@ -11,6 +11,7 @@ import std.source_annotation {
   source_annotation_graph_rows
 }
 import v2.std.compilers.lexing { UnboundSourceAnnotation }
+import v2.std.qualified_name { qualified_name_to_dotted_string }
 import v2.compiler.parse { authored_normalized_capture }
 import v2.compiler.staged_front_end {
   FrontEndBoundReached,
@@ -28,11 +29,14 @@ import v2.compiler.staged_front_end {
   front_end_placement_control_next_rung,
   front_end_stage_index,
   front_end_run_outcome,
+  front_end_bounded_diagnostics,
+  front_end_capture_authority_declarer,
+  front_end_incomplete_diagnostics,
   front_end_unlanded_annotation_diagnostic,
   run_front_end,
   run_front_end_to
 }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.diagnostic { Accepted, DeclarerRefused, Diagnostic, Unavailable }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Absent, Optional, Present }
 import v2.std.text { String }
@@ -175,9 +179,13 @@ fn parse_stage_passed_with_nodes(run: FrontEndRun) -> Bool {
   })
 }
 
-// POSITIVE CONTROL ON THE PRODUCTION ROUTE: a comment above a declaration is not merely tolerated by
-// the authored parse -- the module reaches resolve, which it could not do if the capture the lexer
-// made failed to land, because front_end_parse_step refuses on exactly that mismatch.
+// POSITIVE CONTROL ON THE PRODUCTION ROUTE: the production parse step calls parse_module_authored and a module
+// carrying a comment above a declaration reaches resolve -- which is exactly this row's handback claim ("A
+// production route calls parse_module_authored -- fn front_end_parse_step in v2.compiler.staged_front_end --
+// and its consumer claim staged_front_end_produces_the_authored_parse_for_an_annotated_module passes by name").
+// WHAT IT DOES NOT PROVE, AND NOW SAYS SO: since the loss guard moved out of the production path, a module
+// whose comment was silently dropped still reaches resolve. LANDING is decided by the guard witnesses below,
+// executed by name; this claim is control over the ROUTE, not over the attachment.
 test fn staged_front_end_produces_the_authored_parse_for_an_annotated_module() -> Bool {
   let run = run_front_end(source: annotated_candidate_source, file: ^candidate_module)
   match run.completion {
@@ -363,4 +371,49 @@ test fn front_end_annotation_guard_declares_both_limits_interior_loss_and_file_b
     && !string_contains(s: foreign_file, pattern: "candidate")
     && foreign_capture_silent
     && !dissolution_is_bound(condition: condition)
+}
+
+// FINDING 2, POSITIVE: THE REFUSAL NAMES WHO REFUSED. An uncovered capture is the fold's defect, not the
+// author's, so the correction must carry the qualified path of the declarer whose contract was refused --
+// std.source_annotation::annotation_attach_step, the fold deciding both the join rule and the containment
+// predicate the guard borrows -- in SEGMENTS a census can join on, not as prose to be read. A refusal that
+// fires for the right reason but names nobody cannot be routed to a repair.
+test fn front_end_unlanded_capture_refusal_names_the_fold_as_the_refused_declarer() -> Bool {
+  let graph = attach_annotations(captures: fold_fixture_missing_edge(), regions: [])
+  match front_end_unlanded_annotation_diagnostic(captures: guard_fixture_captures(), graph: graph) {
+    Present { value: refusal } =>
+      match refusal.correction {
+        Unavailable { reason: DeclarerRefused { declarer: d } } =>
+          qualified_name_to_dotted_string(qn: d) == "std.source_annotation.annotation_attach_step"
+        _ => false
+      }
+    Absent => false
+  }
+}
+
+// FINDING 2, NEGATIVE: THE ARM IS NOT A DEFAULT. The two refusals this module makes for its OWN bounded and
+// incomplete runs name no refused declarer -- they are the front end's own bounded questions, and main's
+// ExternalContractUnknown on them is correct -- so neither may take the DeclarerRefused arm. Without this leg
+// the positive above would also pass if every correction in the module matched DeclarerRefused, which is not a
+// witness. The carrier is read back too, so a stale or wrong path cannot hide behind the arm's shape.
+fn claim_names_a_refused_declarer(d: Diagnostic) -> Bool {
+  match d.correction {
+    Unavailable { reason: DeclarerRefused { declarer: _ } } => true
+    _ => false
+  }
+}
+
+fn claim_refused_declarer_count(xs: List<Diagnostic>) -> Int {
+  fold_list(xs: xs, empty: 0, cons: fn(acc, d) { if claim_names_a_refused_declarer(d: d) { acc + 1 } else { acc } })
+}
+
+test fn front_end_sibling_refusals_name_no_refused_declarer() -> Bool {
+  let bounded = front_end_bounded_diagnostics(last: FrontEndParse)
+  let incomplete = front_end_incomplete_diagnostics()
+  let carrier = front_end_capture_authority_declarer()
+  qualified_name_to_dotted_string(qn: carrier) == "std.source_annotation.annotation_attach_step"
+    && !claim_names_a_refused_declarer(d: bounded.head)
+    && !claim_names_a_refused_declarer(d: incomplete.head)
+    && claim_refused_declarer_count(xs: bounded.tail) == 0
+    && claim_refused_declarer_count(xs: incomplete.tail) == 0
 }

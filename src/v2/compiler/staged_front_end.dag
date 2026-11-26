@@ -2,16 +2,16 @@ module v2.compiler.staged_front_end
 
 import std.types { List, SourceSpan }
 import v2.compiler.normalize { normalize }
-import v2.compiler.parse { authored_normalized_capture, authored_parse_annotations, authored_parse_semantic, parse_module_authored }
+import v2.compiler.parse { authored_normalized_capture, authored_parse_semantic, parse_module_authored }
 import v2.compiler.resolve { ResolvedTree, resolve }
 import v2.compiler.tokenize { tokenize_artifact }
 import v2.extdeps.languages.dag { dag_language_model }
 import extdeps.languages.dag.syntax { strip_line_comment_delimiter }
-import std.algebra { list_snoc_item }
+import std.algebra { Cons, Empty, FreeMonoid, list_snoc_item }
 import std.list { first_where }
 import std.source_annotation { region_contains, SourceAnnotationDebt, SourceAnnotationGraph, source_annotation_graph_rows }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import v2.std.compilers.lexing { LexArtifact, lex_artifact_annotations, lex_artifact_semantic_tokens, token_stream_remaining_count, UnboundSourceAnnotation }
+import v2.std.compilers.lexing { LexArtifact, lex_artifact_semantic_tokens, token_stream_remaining_count, UnboundSourceAnnotation }
 import v2.std.language_model { LanguageModel }
 import std.optional { Absent, Optional, Present, optional_absent, optional_present }
 import v2.std.text { String }
@@ -19,6 +19,7 @@ import v2.compiler.normalized_tree { NormalizedTree }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
+  DeclarerRefused,
   ExternalContractUnknown,
   Unavailable,
   diagnostics_singleton,
@@ -178,14 +179,31 @@ fn front_end_continue_parse(
   }
 }
 
-// THE PARSE STAGE LEXES AUTHORED AND READS WHAT IT ATTACHED. The stage calls the authored sibling of
-// parse_module -- the same semantic parse of the same one lex, plus every capture of that lex attached
-// to its gap by the SHARED rule (std.source_annotation attach_annotations, the fold the v1 realization
-// calls) -- and then READS the annotation half: front_end_unlanded_annotation_diagnostic below, so the
-// attachment is executed by the production parse path and not only by the claims that call
-// parse_module_authored directly. The semantic half the ladder hands on is authored_parse_semantic of
-// the artifact, which is the ParseArtifact parse_module returned before this change: the projection is
-// a field read, so no emitted behaviour depends on the prose half.
+// THE PARSE STAGE LEXES AUTHORED AND HANDS ON THE SEMANTIC HALF. The stage calls the authored sibling of
+// parse_module -- the same semantic parse of the same one lex, plus every capture of that lex attached to its
+// gap by the SHARED rule (std.source_annotation attach_annotations, the fold the v1 realization calls) -- and
+// reads authored_parse_semantic of the artifact, which is the ParseArtifact parse_module returned before this
+// change: the projection is a field read, so no emitted behaviour depends on the prose half.
+// THE LOSS GUARD IS NOT CALLED HERE, AND THAT IS A MOVE WITH A NAMED EXIT, NOT A DELETION. The pair below
+// (front_end_captures_all_covered calling front_end_capture_is_covered once per capture) answers ONE coverage
+// question and, in the worst case, pays captures x rows calls to the borrowed
+// std.source_annotation::region_contains. That is a proven cost-shape defect, and
+// gunbc.design_argument::how_to_work does not let a proven cost shape ship because n is small today, while
+// gunbc.design_argument::fail_closed is the reason the check exists at all -- so the check stays and the
+// production call goes. The guard is executed BY NAME where the invariant is still decided, on the witnesses
+// lane: v2.test.claim.staged_front_end front_end_annotation_guard_refuses_an_edge_loss_the_fold_dropped (the
+// wrong case refused), ..._accepts_the_graph_the_fold_made_from_the_same_captures (the right case accepted) and
+// ..._stays_silent_when_nothing_is_lost (the pair is not one-sided).
+// IT RETURNS TO THIS PATH WHEN THE FOLD CARRIES THE PER-ROW CAPTURE COUNT. The exit is gunbc roadmap node
+// rn_ZR45MIQ7KTC56XVLT23LXQ3W4A (source-annotation-fold-carries-absorbed-capture-count), the same identity
+// front_end_capture_count_next_rung names beside the guard: with that count the authority answers the coverage
+// question once per row instead of a consumer asking pair by pair. That is an exit, not an authorisation -- the
+// scan is simply ABSENT from production until the count lands, and no dissolution condition here licenses
+// creating the cost in the meantime.
+// THE ROW LICENSES THE MOVE, in its own words: no field of parse-comment-gap-attachment-v2-consumed asks for a
+// refusal in production. Its handback is exactly "A production route calls parse_module_authored -- fn
+// front_end_parse_step in v2.compiler.staged_front_end -- and its consumer claim
+// staged_front_end_produces_the_authored_parse_for_an_annotated_module passes by name."
 // `annotation_text` is .dag's delimiter stripping, named at the .dag entry above (run_front_end_to
 // already calls dag_language_model()); the parse itself names no annotation syntax.
 fn front_end_parse_step(
@@ -202,30 +220,22 @@ fn front_end_parse_step(
     Rejected { diagnostics: r } =>
       front_end_stopped(steps: steps, stage: FrontEndParse, diagnostics: r)
     Accepted { value: authored, diagnostics: d } =>
-      match front_end_unlanded_annotation_diagnostic(
-        captures: lex_artifact_annotations(artifact: artifact),
-        graph: authored_parse_annotations(artifact: authored)
-      ) {
-        Present { value: refusal } =>
-          front_end_stopped(steps: steps, stage: FrontEndParse, diagnostics: diagnostics_singleton(d: refusal))
-        Absent =>
-          let semantic = authored_parse_semantic(artifact: authored)
-          front_end_continue_normalize(
-            steps: front_end_passed(
-              steps: steps,
-              stage: FrontEndParse,
-              receipt: ParsedModule { node_count: node_subtree_count(n: semantic.tree) },
-              diagnostics: d
-            ),
-            parse_tree: semantic.tree,
-            lm: lm,
-            depth: depth
-          )
-      }
+      let semantic = authored_parse_semantic(artifact: authored)
+      front_end_continue_normalize(
+        steps: front_end_passed(
+          steps: steps,
+          stage: FrontEndParse,
+          receipt: ParsedModule { node_count: node_subtree_count(n: semantic.tree) },
+          diagnostics: d
+        ),
+        parse_tree: semantic.tree,
+        lm: lm,
+        depth: depth
+      )
   }
 }
 
-// WHAT THE PARSE STAGE READS, AND WHAT THAT READ CANNOT SEE. attach_annotations is total by
+// WHAT THE GATED CLAIM READS, AND WHAT THAT READ CANNOT SEE. attach_annotations is total by
 // construction: every capture lies in some gap, the file's at worst -- so a capture whose span NO row's
 // origin covers was lost by the attachment itself. The fold, not the source, is wrong, and a compiler that
 // silently drops authored prose at the parse stage is exactly what gunbc.design_argument::fail_closed
@@ -255,6 +265,13 @@ fn front_end_parse_step(
 // when someone runs the control by hand, so THIS guard is a loss guard and nothing more. The moment that
 // changes is declared, not deferred: front_end_placement_control_next_rung
 // (gunbc.design_argument::guarantee_ladder, no untracked stall).
+// WHO EXECUTES THIS GUARD TODAY, AND WHERE IT WOULD GO BACK. Production no longer calls it (see
+// front_end_parse_step): the pair's worst-case captures x rows cost is why, and v2.test.claim.staged_front_end
+// is where it is executed by name, refusal AND acceptance, on the witnesses lane. The way back into
+// front_end_parse_step is the fold carrying a per-row capture count -- gunbc roadmap node
+// rn_ZR45MIQ7KTC56XVLT23LXQ3W4A (source-annotation-fold-carries-absorbed-capture-count) -- because with that
+// count the coverage question is answered once per row by the authority that decides attachment, instead of
+// pair by pair by a consumer (the debt front_end_capture_count_next_rung names).
 fn front_end_capture_origin_as_the_fold_sees(capture: UnboundSourceAnnotation) -> SourceSpan {
   // Identity stripping, because only the span is read. Routing through the fold's own normalization is the
   // point: the guard measures a capture by the span attachment was handed, never by one it minted itself.
@@ -301,6 +318,21 @@ fn front_end_captures_all_covered(
   }
 }
 
+// WHO REFUSED, IN A FORM A CENSUS CAN JOIN ON. An uncovered capture means the fold, not the source, is
+// wrong, so the refusal names the declarer whose contract it depends on instead of shrugging with
+// ExternalContractUnknown: std.source_annotation::annotation_attach_step, the fold that decides both the join
+// rule and the containment predicate this guard borrows. Carried as the qualified path in SEGMENTS, exactly as
+// DeclarationLocus carries one (v2.std.diagnostic NoCorrectionReason DeclarerRefused), so a census joins on the
+// identity and never on the reason's prose. v2.test.claim.staged_front_end
+// front_end_unlanded_capture_refusal_names_the_fold_as_the_refused_declarer pins it, and
+// front_end_sibling_refusals_name_no_refused_declarer keeps the arm from being a default.
+fn front_end_capture_authority_declarer() -> FreeMonoid<Symbol> {
+  Cons {
+    head: ^std,
+    tail: Cons { head: ^source_annotation, tail: Cons { head: ^annotation_attach_step, tail: Empty } }
+  }
+}
+
 fn front_end_unlanded_annotation_diagnostic(
   captures: List<UnboundSourceAnnotation>,
   graph: SourceAnnotationGraph
@@ -318,7 +350,7 @@ fn front_end_unlanded_annotation_diagnostic(
           port: ^staged_front_end_locus_port,
           invariant: ^staged_front_end_annotation_capture_unlanded
         ),
-        correction: Unavailable { reason: ExternalContractUnknown }
+        correction: Unavailable { reason: DeclarerRefused { declarer: front_end_capture_authority_declarer() } }
       }
     }
   }
