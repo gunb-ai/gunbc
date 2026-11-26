@@ -56,9 +56,8 @@ import v1.gunbc.occurrence_binding_parser_walk {
 // never evidence that CI runs them. Next-rung trigger: a witness home whose source roots reach
 // src/v1.
 //
-//   gunbc run --source-root dag --source-root src/v1 --source-root src/v2 --claim-run \
-//     --entry src/v1/tests/claim/production_fed_exposure_discrimination_control_test.dag \
-//     --function production_fed_exposure_discrimination_holds
+//   gunbc test --source-root dag --source-root src/v1 --source-root src/v2 \
+//     //v1/tests/claim/production_fed_exposure_discrimination_control_test:production_fed_exposure_discrimination_holds
 
 data exposure_subject: String = "module zqxexp.provider\n\ntype ZqxProvided {\n  field_one: Int\n}\n\nfn zqx_consumer(arg: ZqxProvided) -> Int {\n    1\n}\n"
 

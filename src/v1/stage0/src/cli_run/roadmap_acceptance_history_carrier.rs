@@ -310,11 +310,13 @@ fn red_control_to_json(value: &Value, ctx: &InterpContext) -> Result<JsonRedCont
         // The three-field, observation-less shape is committed as a three-field red_control_executed;
         // both the observation-less RedControlTreeUnrecorded and the reader's own RedControlExecuted
         // tag carry exactly {witness_module, witness_fn, executed_on} and serialise identically.
-        "RedControlExecuted" | "RedControlTreeUnrecorded" => Ok(JsonRedControl::RedControlExecuted {
-            witness_module: field_str(value, "witness_module", ctx)?,
-            witness_fn: field_str(value, "witness_fn", ctx)?,
-            executed_on: field_str(value, "executed_on", ctx)?,
-        }),
+        "RedControlExecuted" | "RedControlTreeUnrecorded" => {
+            Ok(JsonRedControl::RedControlExecuted {
+                witness_module: field_str(value, "witness_module", ctx)?,
+                witness_fn: field_str(value, "witness_fn", ctx)?,
+                executed_on: field_str(value, "executed_on", ctx)?,
+            })
+        }
         name => Err(format!("unknown RedControlEvidence variant `{name}`")),
     }
 }

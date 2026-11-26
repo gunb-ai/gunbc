@@ -161,7 +161,6 @@ fn fci1_child_words(gunbc_bin: String, function: String, arguments: List<NamedAr
     source_roots: ["dag", "src/v2"],
     entry: fci1_bounded_controls_entry,
     function: function,
-    claim_run: false,
     arguments: arguments,
   )))
 }

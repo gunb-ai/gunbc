@@ -29,16 +29,30 @@ type CommandHost
   = LocalCommandHost
   | FleetSshCommandHost { target: SshTarget, context: FleetSshExecutionContext }
 
-// ONE LEG AS THE TRANSPORT ANSWERED IT. NotDispatched means no process was started for it: the local
-// runner could not spawn it, or the typed-argv transport refused it before sending
-// (gunbc.fleet.fleet_bootstrap_principal_session FleetPrincipalLegRefused: the invocation was never made).
+// ONE LEG AS THE TRANSPORT ANSWERED IT. Three states, never collapsed:
+// - LegNotDispatched: NO process was started for it -- the local runner could not spawn it, or the
+//   typed-argv transport refused it BEFORE sending (gunbc.fleet.fleet_bootstrap_principal_session
+//   FleetPrincipalLegRefused: the invocation was never made). Nothing ran, so nothing can have changed.
+// - LegUnanswered: the command WAS DISPATCHED but the transport never got an answer (the leg overran its
+//   wall-clock ceiling). The effect is UNKNOWN: the remote command may already have run. It must never be
+//   read as not-happened (gunbc.design_argument::fail_closed; method_separate_order_compose: a timeout
+//   keeps the uncertainty about effects whenever the transport cannot establish what happened).
+// - LegAnswered: the host answered with an exit code.
 type HostLeg
   = LegNotDispatched { reason: String }
+  | LegUnanswered { cause: String }
   | LegAnswered { exit_code: Int, stdout: String, stderr: String }
 
 fn host_leg_of_typed_argv(outcome: TypedArgvExecOutcome) -> HostLeg {
   match outcome {
-  TypedArgvExecOverran { deadline: d } => LegNotDispatched { reason: typed_argv_exec_overran_reason(leg_hint: "host command binding", deadline: d) }
+  TypedArgvExecOverran { deadline: d } => LegUnanswered { cause: typed_argv_exec_overran_reason(leg_hint: "host command binding", deadline: d) }
+    // SHOULD BE GENERALIZED, NOT NOW (gunbc.design_argument::root_generalization). GAP: a POST-INVOCATION
+    // SessionWireInconsistent still arrives as TypedArgvExecRefused (fleet_bootstrap_principal_session maps
+    // the wire fault to FleetPrincipalLegRefused), so it lands here as LegNotDispatched even though the
+    // command was in fact dispatched and its effect is unknown -- it belongs in LegUnanswered. TRIGGER:
+    // #16984 merged. FOLLOW-UP: a staged PR adding a 4th TypedArgvExecOutcome / FleetPrincipalLegOutcome arm
+    // for "dispatched, no answer" that host_leg_of_typed_argv maps to LegUnanswered, distinguishing it from
+    // proven pre-dispatch refusal. OWNER: vivid-tern-749. SWEEPER: bright-ibex-807.
     TypedArgvExecRefused { reason: r } => LegNotDispatched { reason: r }
     TypedArgvExecConverged { result: r } => LegAnswered { exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr }
   }
@@ -87,6 +101,7 @@ fn host_leg_reply_lost(kind: HostTransportKind, leg: HostLeg) -> Bool {
     FleetSshTransport =>
       match leg {
         LegNotDispatched { reason: _ } => false
+        LegUnanswered { cause: _ } => true
         LegAnswered { exit_code: c, stdout: _, stderr: _ } => c == ssh_client_error_exit_status
       }
   }
@@ -101,10 +116,14 @@ type HostCommandOutcome
   | HostCommandFailed { exit_code: Int, stderr: String }
   | HostCommandUnconfirmed { exit_code: Int, stdout: String, stderr: String }
   | HostCommandNotDispatched { reason: String }
+  // DISPATCHED, NO ANSWER (the leg overran its ceiling): the effect is UNKNOWN. No exit code is carried,
+  // because there is no answer to read -- inventing one is exactly what fail_closed forbids.
+  | HostCommandUnanswered { cause: String }
 
 fn host_command_outcome_of(kind: HostTransportKind, leg: HostLeg) -> HostCommandOutcome {
   match leg {
     LegNotDispatched { reason: r } => HostCommandNotDispatched { reason: r }
+    LegUnanswered { cause: c } => HostCommandUnanswered { cause: c }
     LegAnswered { exit_code: c, stdout: o, stderr: e } =>
       if c == 0 { HostCommandDone { stdout: o } }
       else if host_leg_reply_lost(kind: kind, leg: leg) { HostCommandUnconfirmed { exit_code: c, stdout: o, stderr: e } }
@@ -122,6 +141,7 @@ fn host_command_outcome_text(e: HostCommandOutcome) -> String {
     HostCommandFailed { exit_code: c, stderr: s } => concat("failed exit=", to_string(c), " ", trim(s: s))
     HostCommandUnconfirmed { exit_code: c, stdout: _, stderr: s } => concat("UNCONFIRMED (reply lost) exit=", to_string(c), " ", trim(s: s))
     HostCommandNotDispatched { reason: r } => concat("not dispatched: ", r)
+    HostCommandUnanswered { cause: c } => concat("DISPATCHED, NO ANSWER (effect unknown): ", c)
   }
 }
 
@@ -184,9 +204,15 @@ type ScratchOutcome
   | CreationNotDispatched { reason: String }
   | CreationFailed { exit_code: Int, stderr: String }
   | CreationUnconfirmed { exit_code: Int, stdout: String, stderr: String }
+  // DISPATCHED, NO ANSWER: mktemp was issued but the reply was lost before any value came back. Unlike
+  // CreationUnconfirmed no stdout/exit is retained (there was no answer to read), so no name is known and
+  // a directory MAY remain at an unknown path. Inventing an exit code or a path is what fail_closed forbids.
+  | CreationUnanswered { cause: String }
   | Removed { dir: NonEmptyStr }
   | RemovalFailed { dir: NonEmptyStr, exit_code: Int, stderr: String }
   | RemovalUnconfirmed { dir: NonEmptyStr, exit_code: Int, stderr: String }
+  // DISPATCHED, NO ANSWER: rm was issued but the reply was lost. The dir MAY remain; effect is unknown.
+  | RemovalUnanswered { dir: NonEmptyStr, cause: String }
   | RemovalNotDispatched { dir: NonEmptyStr, reason: String }
 
 type ScratchAcquisition
@@ -206,6 +232,7 @@ fn admitted_scratch_path(prefix: String, stdout: String) -> String? {
 fn scratch_acquisition_of(kind: HostTransportKind, prefix: String, leg: HostLeg) -> ScratchAcquisition {
   match host_command_outcome_of(kind: kind, leg: leg) {
     HostCommandNotDispatched { reason: r } => ScratchNotAcquired { outcome: CreationNotDispatched { reason: r } }
+    HostCommandUnanswered { cause: c } => ScratchNotAcquired { outcome: CreationUnanswered { cause: c } }
     HostCommandUnconfirmed { exit_code: c, stdout: o, stderr: e } => ScratchNotAcquired { outcome: CreationUnconfirmed { exit_code: c, stdout: o, stderr: e } }
     HostCommandFailed { exit_code: c, stderr: e } => ScratchNotAcquired { outcome: CreationFailed { exit_code: c, stderr: e } }
     HostCommandDone { stdout: o } =>
@@ -219,6 +246,7 @@ fn scratch_acquisition_of(kind: HostTransportKind, prefix: String, leg: HostLeg)
 fn scratch_removal_of(kind: HostTransportKind, dir: NonEmptyStr, leg: HostLeg) -> ScratchOutcome {
   match host_command_outcome_of(kind: kind, leg: leg) {
     HostCommandNotDispatched { reason: r } => RemovalNotDispatched { dir: dir, reason: r }
+    HostCommandUnanswered { cause: c } => RemovalUnanswered { dir: dir, cause: c }
     HostCommandDone { stdout: _ } => Removed { dir: dir }
     HostCommandUnconfirmed { exit_code: c, stdout: _, stderr: e } => RemovalUnconfirmed { dir: dir, exit_code: c, stderr: e }
     HostCommandFailed { exit_code: c, stderr: e } => RemovalFailed { dir: dir, exit_code: c, stderr: e }
@@ -232,8 +260,10 @@ fn scratch_removed(o: ScratchOutcome) -> Bool {
     CreationNotDispatched { reason: _ } => false
     CreationFailed { exit_code: _, stderr: _ } => false
     CreationUnconfirmed { exit_code: _, stdout: _, stderr: _ } => false
+    CreationUnanswered { cause: _ } => false
     RemovalFailed { dir: _, exit_code: _, stderr: _ } => false
     RemovalUnconfirmed { dir: _, exit_code: _, stderr: _ } => false
+    RemovalUnanswered { dir: _, cause: _ } => false
     RemovalNotDispatched { dir: _, reason: _ } => false
   }
 }
@@ -245,9 +275,12 @@ fn render_scratch_outcome(label: String, prefix: String, o: ScratchOutcome) -> S
     CreationFailed { exit_code: c, stderr: e } => concat(label, "=never created: mktemp reported failure exit=", to_string(c), " ", trim(s: e), "\n")
     CreationUnconfirmed { exit_code: c, stdout: out, stderr: e } =>
       concat(label, "=CREATION UNCONFIRMED exit=", to_string(c), ": a directory under ", prefix, " MAY REMAIN (residue outstanding; not removed, nothing written into it); returned stdout=\"", out, "\" stderr=\"", trim(s: e), "\"\n")
+    CreationUnanswered { cause: c } =>
+      concat(label, "=CREATION DISPATCHED, NO ANSWER (effect unknown): ", c, ": a directory under ", prefix, " MAY REMAIN at an unknown path (no path came back; never written into, never removed)\n")
     Removed { dir: d } => concat(label, "=", d as String, " removed\n")
     RemovalFailed { dir: d, exit_code: c, stderr: e } => concat(label, "=", d as String, " REMOVAL FAILED exit=", to_string(c), " ", trim(s: e), " (the path may remain)\n")
     RemovalUnconfirmed { dir: d, exit_code: c, stderr: e } => concat(label, "=", d as String, " REMOVAL UNCONFIRMED exit=", to_string(c), " ", trim(s: e), " (the reply was lost; the path may or may not remain)\n")
+    RemovalUnanswered { dir: d, cause: c } => concat(label, "=", d as String, " REMOVAL DISPATCHED, NO ANSWER (effect unknown): ", c, " (the path may remain; never re-attempted)\n")
     RemovalNotDispatched { dir: d, reason: r } => concat(label, "=", d as String, " NOT REMOVED: rm was not dispatched (residue outstanding): ", r, "\n")
   }
 }
