@@ -9,7 +9,6 @@ module test.claim.gate668_value_disposition_prodr
 import std.types { String, Bool }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.algebra { Cons, Empty }
-import std.content_hash { fnv1a64_digest_hex_total_order }
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.std.diagnostic { Accepted, BinderUseExplicitnessRequired, LambdaParameterBinder, LetBinder, ParameterBinder, Outcome, Rejected, Suggested, diagnostics_fatal, diagnostics_fatal_reason }
 import v2.std.node { Atom, Node, TypeNode }
@@ -205,7 +204,7 @@ test fn vd_r_same_spelled_not_read_refused_holds() -> Bool { prod_refused_author
 // FIXED EXISTING Correction (Suggested over a fixed synthetic atom) must equal the value measured
 // at the base tree -- the pinned literal below is that base value, captured by execution (see the
 // receipt pair: same claim, base-built binary and head-built binary, side by side).
-data vd_digest_hex_pinned: String = "PLACEHOLDER_BASE_HEX"
+data vd_digest_hex_pinned: String = "623492a110c0e342"
 
 fn vd_fixed_suggested_node() -> Node {
   Node {
@@ -216,7 +215,7 @@ fn vd_fixed_suggested_node() -> Node {
 }
 
 fn vd_digest_hex() -> String {
-  fnv1a64_digest_hex_total_order(h: correction_verdict_digest(c: Suggested { node: vd_fixed_suggested_node() }))
+  correction_verdict_digest(c: Suggested { node: vd_fixed_suggested_node() }).digest as String
 }
 
 test fn vd_digest_stable_holds() -> Bool { vd_digest_hex() == vd_digest_hex_pinned }
