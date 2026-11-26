@@ -5,7 +5,7 @@ import std.realization_measurement { AllocationCounter, AllocationObservation, a
 import std.compiler_entry { NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld, NativeClaimNoObservation }
 import gunbc.emit_copy_qualification { StructuralInapplicability, structural_inapplicability_slug }
 import gunbc.emit_building_block_contracts { BuildingBlockFamily, building_block_contracts, violation_axis_of_block, violation_form_slug_of_block, contracts_of_family, contract_verdict, case_in_applicable_roster, violating_form_exercised, contract_line, roster_membership_lines, MispairedProbe, mispaired_probes, probe_guard_holds, probe_lines, applicability_discriminates, applicability_refused_rows, applicability_accepted_probes }
-import gunbc.allocation_observation_render { AllocationCase, case_line, is_observed, operations_above, operations_within, span_text, count_text, spans_agree, bytes_above }
+import gunbc.allocation_observation_render { AllocationCase, case_line, is_observed, operations_above, span_text, count_text, spans_agree, bytes_above }
 
 // THE ONE HOME FOR THE BATTERY MACHINERY the four building-block families share: the metered window,
 // the row shapes, the calibration pair, the contract-audit rows, the execution qualifier and the report
@@ -88,16 +88,30 @@ fn kept_above(a: BatteryWindow, b: BatteryWindow) -> Bool {
 // THE AXIS IS NOT CHOICE HERE. It is derived from the roster's typed violation_form by
 // violation_axis_of_block: a retain moves the retained-handle count, a copy moves the operations and
 // bytes. The axis and the form behind it are printed, so every line says which judgement it made.
-fn violation_above_on_axis(viol: BatteryWindow, arm: BatteryWindow, axis: String) -> Bool {
-  if axis == "retained_handles" { kept_above(a: viol, b: arm) } else { operations_above(a: viol.observation, b: arm.observation) }
+// The form names the axis the violation is PREDICTED to move -- that is the discriminator, printed so a
+// reader sees the claim that was made. Visibility is what the row asserts: an owning retain may show up
+// as an extra retained handle, or as operations and bytes if the emitted clone really allocates. So the
+// arm must move on the predicted axis OR be visible on operations or bytes, and the red row is its exact
+// negation: an arm indistinguishable from its contract arm on every axis. Requiring the predicted axis
+// alone would call a real, measured clone invisible (the control-flow match arms cost 72 operations
+// against 37 while holding one handle each); requiring any axis alone is what the executed measurement
+// at 1541d8af0437 showed to be wrong for a retain, whose ops and bytes were equal and whose only evidence
+// was violating_kept=2 against contract_arm_kept=1.
+fn violation_visible(viol: BatteryWindow, arm: BatteryWindow, axis: String) -> Bool {
+  if axis == "retained_handles" { kept_above(a: viol, b: arm) || operations_above(a: viol.observation, b: arm.observation) || bytes_above(a: viol.observation, b: arm.observation) } else { operations_above(a: viol.observation, b: arm.observation) || bytes_above(a: viol.observation, b: arm.observation) || kept_above(a: viol, b: arm) }
 }
 
-fn violation_within_on_axis(viol: BatteryWindow, arm: BatteryWindow, axis: String) -> Bool {
-  if axis == "retained_handles" { !kept_above(a: viol, b: arm) } else { operations_within(a: viol.observation, b: arm.observation) }
+// Every axis that actually moved, printed. "none" is the case the red row exists to catch.
+fn detected_on_text(viol: BatteryWindow, arm: BatteryWindow) -> String {
+  let ops = if operations_above(a: viol.observation, b: arm.observation) { "operations," } else { "" }
+  let byt = if bytes_above(a: viol.observation, b: arm.observation) { "bytes," } else { "" }
+  let ke = if kept_above(a: viol, b: arm) { "retained_handles," } else { "" }
+  let joined = concat(concat(ops, byt), ke)
+  if joined == "" { "detected_on=none" } else { concat("detected_on=", joined) }
 }
 
-fn axis_text(block_id: String) -> String {
-  concat(concat("discriminator=", violation_axis_of_block(block_id: block_id)), concat(" form=", violation_form_slug_of_block(block_id: block_id)))
+fn axis_text(block_id: String, viol: BatteryWindow, arm: BatteryWindow) -> String {
+  concat(concat(concat("discriminator=", violation_axis_of_block(block_id: block_id)), concat(" form=", violation_form_slug_of_block(block_id: block_id))), concat(" ", detected_on_text(viol: viol, arm: arm)))
 }
 
 // THE DISCRIMINATING ROW: the violating arm must sit strictly above its contract arm on the axis the
@@ -105,8 +119,8 @@ fn axis_text(block_id: String) -> String {
 fn violation_case(prefix: String, block_id: String, viol: BatteryWindow, contract_arm: BatteryWindow) -> BatteryRow {
   metered_row(windows: [viol, contract_arm], c: AllocationCase {
     identity: concat(prefix, "_", block_id, "_violating_variant_above_contract_arm"),
-    held: is_observed(o: viol.observation) && violation_above_on_axis(viol: viol, arm: contract_arm, axis: violation_axis_of_block(block_id: block_id)),
-    observed: concat(concat(readings(a_label: "violating", a: viol.observation, b_label: "contract_arm", b: contract_arm.observation), " ", count_text(label: "violating_kept", n: viol.kept_len), " ", count_text(label: "contract_arm_kept", n: contract_arm.kept_len)), " ", axis_text(block_id: block_id))
+    held: is_observed(o: viol.observation) && violation_visible(viol: viol, arm: contract_arm, axis: violation_axis_of_block(block_id: block_id)),
+    observed: concat(concat(readings(a_label: "violating", a: viol.observation, b_label: "contract_arm", b: contract_arm.observation), " ", count_text(label: "violating_kept", n: viol.kept_len), " ", count_text(label: "contract_arm_kept", n: contract_arm.kept_len)), " ", axis_text(block_id: block_id, viol: viol, arm: contract_arm))
   })
 }
 
@@ -116,8 +130,8 @@ fn violation_case(prefix: String, block_id: String, viol: BatteryWindow, contrac
 fn violation_contract_holds_case(prefix: String, block_id: String, viol: BatteryWindow, contract_arm: BatteryWindow) -> BatteryRow {
   metered_row(windows: [viol, contract_arm], c: AllocationCase {
     identity: concat(prefix, "_", block_id, "_violating_variant_within_contract_arm"),
-    held: is_observed(o: viol.observation) && violation_within_on_axis(viol: viol, arm: contract_arm, axis: violation_axis_of_block(block_id: block_id)),
-    observed: concat(concat(readings(a_label: "violating", a: viol.observation, b_label: "contract_arm", b: contract_arm.observation), " ", count_text(label: "violating_kept", n: viol.kept_len), " ", count_text(label: "contract_arm_kept", n: contract_arm.kept_len)), " ", axis_text(block_id: block_id))
+    held: is_observed(o: viol.observation) && !violation_visible(viol: viol, arm: contract_arm, axis: violation_axis_of_block(block_id: block_id)),
+    observed: concat(concat(readings(a_label: "violating", a: viol.observation, b_label: "contract_arm", b: contract_arm.observation), " ", count_text(label: "violating_kept", n: viol.kept_len), " ", count_text(label: "contract_arm_kept", n: contract_arm.kept_len)), " ", axis_text(block_id: block_id, viol: viol, arm: contract_arm))
   })
 }
 

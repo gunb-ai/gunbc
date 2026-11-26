@@ -76,6 +76,43 @@ fn bb_scalar_with_retain(payload: BbTriple) -> List<Int> {
   list_push(list_push([], retained.k), retained.k)
 }
 
+// THE SAME OWNING RETAIN AT THE NONTRIVIAL PAYLOAD. The contract arm leaves one value in hand; this arm
+// leaves the payload's three fields in hand, because what an owning retain costs is what the caller is
+// still holding when the operation is over, which is exactly what the battery's retained-handle axis
+// reads (BatteryWindow.kept_len is count(kept), the output the window returns).
+fn bb_payload_with_retain(payload: BbTriple) -> List<Int> {
+  let retained = bb_select(first_value: payload, second_value: bb_payload_of(src: spec_build(n: 1)), take_first: true)
+  list_push(list_push(list_push([], retained.k), count(retained.xs)), count(retained.log))
+}
+
+// A COPY OF THE UNCHANGED CONTEXT, BUILT FIELD BY FIELD so it allocates. WHY THIS EXISTS, measured rather
+// than assumed: the first executed run read this block's payload "copy" — passing the payload through the
+// generic instance — as IDENTICAL to the arm that copies nothing on all three axes at once
+// (violating_ops=39 contract_arm_ops=39, violating_bytes=2680 contract_arm_bytes=2680,
+// violating_kept=1 contract_arm_kept=1), because the emitter lowers that copy to an Rc clone: a refcount
+// bump allocates nothing and keeps no new handle. An Rc-clone copy is invisible to every counter this row
+// has, which is the seed habit the row's displaced_cost names, and it is reported as a finding rather than
+// hidden. The violating arm therefore copies the payload the way a program that actually copies would, so
+// the discriminating run measures a copy instead of measuring a refcount.
+fn bb_copy_payload(p: BbTriple) -> BbTriple {
+  BbTriple {
+    xs: fold(p.xs, init: [], f: (acc, x) => list_push(acc, x)),
+    k: p.k,
+    log: fold(p.log, init: [], f: (acc, x) => list_push(acc, x))
+  }
+}
+
+// A PER-STEP MATERIALIZATION of the generic instance, which is what the block's declared violating form
+// (PerStepAllocation) says the emitter would have to do: take a fresh instance of the generic body at a
+// materialized payload for every element of the traversal, instead of the scalar instance the contract arm
+// takes. THE FIRST RUN MEASURED WHY THIS TOO CHANGED: the arm that was here passed a scalar through a
+// nested select, so both arms read identical (38 / 2648 / 1 against 38 / 2648 / 1) — a violating arm whose
+// extra work is never executed is not a violation, it is a second copy of the contract arm.
+fn bb_per_step_instances(src: List<Int>) -> List<Int> {
+  fold(src, init: [], f: (acc, x) =>
+    list_push(acc, bb_select(first_value: bb_payload_of(src: spec_build(n: 1)).k, second_value: x, take_first: true)))
+}
+
 // ONE PATH FOR EVERY ARM. Every subject runs inside this single body, so a violating variant and its
 // contract arm differ only in the arm, never in the path around it, which is what the row's
 // red_control means by "goes through the same path".
@@ -90,12 +127,11 @@ fn run_bb_subject(subject: BbSubject, src: List<Int>) -> List<Int> {
     RecordFieldRead => list_push([], payload.k)
     RecordRebuiltToReadOneField => list_push([], bb_rebuild(p: payload, k: payload.k + 1).k)
     VariantConsumedOnce => list_push([], variant_total(v: VariantNumber { value: n }))
-    VariantPayloadCopiedToMatch => list_push([], variant_total(v: VariantWords {
-      payload: bb_select(first_value: payload, second_value: payload, take_first: true) }))
+    VariantPayloadCopiedToMatch => list_push([], variant_total(v: VariantWords { payload: bb_copy_payload(p: payload) }))
     GenericScalarSelected => list_push([], bb_select(first_value: n, second_value: 0 - n, take_first: true))
     GenericPayloadSelected => list_push([], bb_select(first_value: payload, second_value: bb_payload_of(src: src), take_first: false).k)
-    GenericPayloadCopiedAtBoundary => list_push([], bb_select(first_value: payload, second_value: bb_payload_of(src: src), take_first: true).k)
-    GenericPayloadMaterializedPerInstantiation => list_push([], bb_select(first_value: bb_select(first_value: n, second_value: payload.k, take_first: true), second_value: n, take_first: true))
+    GenericPayloadCopiedAtBoundary => bb_payload_with_retain(payload: payload)
+    GenericPayloadMaterializedPerInstantiation => bb_per_step_instances(src: src)
   }
 }
 
@@ -136,8 +172,8 @@ fn bb_measurement_rows() -> List<BatteryRow> uses counter: AllocationCounter {
       [subject_case(prefix: "value_shape", block_id: "value_record", own: field_read), violation_case(prefix: "value_shape", block_id: "value_record", viol: rebuilt, contract_arm: field_read)]),
       concat(
       [subject_case(prefix: "value_shape", block_id: "value_nonrecursive_variant", own: variant_once), violation_case(prefix: "value_shape", block_id: "value_nonrecursive_variant", viol: variant_copied, contract_arm: variant_once)],
-      [subject_case(prefix: "value_shape", block_id: "generic_instance_over_scalar", own: generic_scalar), violation_case(prefix: "value_shape", block_id: "generic_instance_over_scalar", viol: generic_materialized, contract_arm: generic_scalar)])),
-      [subject_case(prefix: "value_shape", block_id: "generic_instance_over_nontrivial_payload", own: generic_selected), violation_case(prefix: "value_shape", block_id: "generic_instance_over_nontrivial_payload", viol: generic_copied, contract_arm: generic_selected)]))
+      [subject_case(prefix: "value_shape", block_id: "generic_over_scalar", own: generic_scalar), violation_case(prefix: "value_shape", block_id: "generic_over_scalar", viol: generic_materialized, contract_arm: generic_scalar)])),
+      [subject_case(prefix: "value_shape", block_id: "generic_over_payload", own: generic_selected), violation_case(prefix: "value_shape", block_id: "generic_over_payload", viol: generic_copied, contract_arm: generic_selected)]))
 }
 
 // THE RED MEASUREMENTS: the same windows, the same path, judged the opposite way. Every specimen's
@@ -160,8 +196,8 @@ fn bb_red_rows() -> List<BatteryRow> uses counter: AllocationCounter {
     violation_contract_holds_case(prefix: "value_shape", block_id: "value_scalar", viol: scalar_retain, contract_arm: scalar_read),
     violation_contract_holds_case(prefix: "value_shape", block_id: "value_record", viol: rebuilt, contract_arm: field_read),
     violation_contract_holds_case(prefix: "value_shape", block_id: "value_nonrecursive_variant", viol: variant_copied, contract_arm: variant_once),
-    violation_contract_holds_case(prefix: "value_shape", block_id: "generic_instance_over_scalar", viol: generic_materialized, contract_arm: generic_scalar),
-    violation_contract_holds_case(prefix: "value_shape", block_id: "generic_instance_over_nontrivial_payload", viol: generic_copied, contract_arm: generic_selected)
+    violation_contract_holds_case(prefix: "value_shape", block_id: "generic_over_scalar", viol: generic_materialized, contract_arm: generic_scalar),
+    violation_contract_holds_case(prefix: "value_shape", block_id: "generic_over_payload", viol: generic_copied, contract_arm: generic_selected)
   ]
 }
 

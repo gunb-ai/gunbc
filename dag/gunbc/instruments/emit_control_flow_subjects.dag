@@ -148,8 +148,8 @@ fn cf_measurement_rows() -> List<BatteryRow> uses counter: AllocationCounter {
       [subject_case(prefix: "control_flow", block_id: "branch", own: branch), violation_case(prefix: "control_flow", block_id: "branch", viol: branch_copied, contract_arm: branch)]),
       concat(
       [subject_case(prefix: "control_flow", block_id: "bind", own: bind), violation_case(prefix: "control_flow", block_id: "bind", viol: bind_remade, contract_arm: bind)],
-      [subject_case(prefix: "control_flow", block_id: "match_on_owned_temporary", own: match_owned), violation_case(prefix: "control_flow", block_id: "match_on_owned_temporary", viol: match_copied, contract_arm: match_owned)])),
-      [subject_case(prefix: "control_flow", block_id: "match_on_borrowed_shared_sum", own: match_borrowed), violation_case(prefix: "control_flow", block_id: "match_on_borrowed_shared_sum", viol: match_retained, contract_arm: match_borrowed)]))
+      [subject_case(prefix: "control_flow", block_id: "match_owned_temporary", own: match_owned), violation_case(prefix: "control_flow", block_id: "match_owned_temporary", viol: match_copied, contract_arm: match_owned)])),
+      [subject_case(prefix: "control_flow", block_id: "match_borrowed_shared_sum", own: match_borrowed), violation_case(prefix: "control_flow", block_id: "match_borrowed_shared_sum", viol: match_retained, contract_arm: match_borrowed)]))
 }
 
 // THE RED MEASUREMENTS: the same windows, the same path, judged the opposite way. Only these rows appear
@@ -168,7 +168,7 @@ fn cf_red_rows() -> List<BatteryRow> uses counter: AllocationCounter {
     violation_contract_holds_case(prefix: "control_flow", block_id: "transform", viol: transform_rebuilt, contract_arm: transform),
     violation_contract_holds_case(prefix: "control_flow", block_id: "branch", viol: branch_copied, contract_arm: branch),
     violation_contract_holds_case(prefix: "control_flow", block_id: "bind", viol: bind_remade, contract_arm: bind),
-    violation_contract_holds_case(prefix: "control_flow", block_id: "match_on_borrowed_shared_sum", viol: match_retained, contract_arm: match_borrowed)
+    violation_contract_holds_case(prefix: "control_flow", block_id: "match_borrowed_shared_sum", viol: match_retained, contract_arm: match_borrowed)
   ]
 }
 
