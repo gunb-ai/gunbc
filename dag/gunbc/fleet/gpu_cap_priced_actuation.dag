@@ -51,7 +51,7 @@ import gunbc.serving.gpu_power_cap_pricing {
   CapCandidate, ConditionRead, ConditionUnread,
   DecodeRead, DecodeUnread, DrawRead, DrawUnread, ShareRead, ShareUnread,
   SmClockCeiling, CappedWithin, CeilingUnread, Unlocked, PowerAsk, AskUnstated, CircuitRelief,
-  candidate_cap, candidate_is_on,
+  candidate_cap, candidate_is_on, oversubscription_defects,
 }
 
 // ── THE REQUEST, AS THE ACTUATION PATH HOLDS IT ─────────────────────────────────────────────────────
@@ -131,6 +131,17 @@ type ActuationAdmission
       candidate_label: NonEmptyStr,
       asked_for: NonEmptyStr,
       demonstrated: List<NonEmptyStr>,
+    }
+  // THE CONSTRAINT THE ASK SERVES CONTRADICTS ITS OWN DECLARATION. The fold owns this predicate
+  // (oversubscription_defects in gunbc.serving.gpu_power_cap_pricing) and the gate consumes it, so the gate
+  // cannot admit what the fold refuses: a cited rating and a stated per-member bound whose count x bound
+  // exceeds the rating describe a circuit no cap value can serve -- the ask is unservable as declared, and
+  // admitting any value under it would price watts against a constraint that does not add up
+  // (#gunbc.design_argument::fail_closed).
+  | ContradictoryConstraintRefused {
+      request: ActuationRequest,
+      circuit: NonEmptyStr,
+      defect: NonEmptyStr,
     }
 
 // ── THE DEMONSTRATED CONSTRAINT ─────────────────────────────────────────────────────────────────────
@@ -338,14 +349,24 @@ fn price_the_actuation_against(
                       if owed.length() > 0 {
                         ActuationConsequenceUnreadRefused { request: request, owed: owed }
                       } else {
-                        ActuationPriced {
-                          actuation: PricedActuation {
+                        // Every candidate check has passed; what remains is whether the served constraint
+                        // itself adds up. It is asked here, last, so the refusal that fires is always the
+                        // most specific true one, and never before the ask has been established.
+                        match oversubscription_defects(circuit: served).first() {
+                          Present { value: defect } => ContradictoryConstraintRefused {
                             request: request,
-                            candidate: c,
-                            circuit: served,
-                            ask_said_on: asked_on,
-                            still_owed: card_state_owed(candidate: c),
-                          },
+                            circuit: circuit_label(c: served),
+                            defect: defect,
+                          }
+                          Absent => ActuationPriced {
+                            actuation: PricedActuation {
+                              request: request,
+                              candidate: c,
+                              circuit: served,
+                              ask_said_on: asked_on,
+                              still_owed: card_state_owed(candidate: c),
+                            },
+                          }
                         }
                       }
                     }
@@ -443,6 +464,7 @@ fn actuation_admits(a: ActuationAdmission) -> Bool {
     ActuationConsequenceUnreadRefused { request: _, owed: _ } => false
     ActuationAskUnstatedRefused { request: _, candidate_label: _, said: _ } => false
     ActuationAskUnservedRefused { request: _, candidate_label: _, asked_for: _, demonstrated: _ } => false
+    ContradictoryConstraintRefused { request: _, circuit: _, defect: _ } => false
   }
 }
 
@@ -470,6 +492,9 @@ fn actuation_refusal_text(a: ActuationAdmission) -> String {
       l as String, "; demonstrated here: ",
       if ds.length() > 0 { join(map(ds, d => d as String), ", ") } else { "none" },
       ")",
+    ], "")
+    ContradictoryConstraintRefused { request: _, circuit: l, defect: d } => join([
+      "the constraint the ask serves contradicts its own declaration: ", l as String, " -- ", d as String,
     ], "")
     ActuationPriced { actuation: _ } => ""
     NoDemonstratedConstraint { request: _, warrant: w } => w as String

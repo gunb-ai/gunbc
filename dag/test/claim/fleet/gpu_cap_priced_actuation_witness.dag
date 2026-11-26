@@ -37,9 +37,11 @@ import gunbc.fleet.gpu_power_cap_boot_state {
   boot_unit_admits_every_command, boot_unit_restores_unpriced_cap, boot_unit_unpriced_commands,
 }
 import gunbc.fleet.fleet_power_circuit {
-  SharedPowerCircuit, CircuitRating, MemberDrawBound, RatingUnread, BoundStated, BoundUnstated,
+  SharedPowerCircuit, CircuitRating, MemberDrawBound, RatingUnread, RatingCited, BoundStated, BoundUnstated,
   circuit_identity, circuit_label, surge_strip, breaker_srv1_ken_circuit,
 }
+import extdeps.external_authority { CitedToAuthority, ExternalAuthority }
+import extdeps.uri { Uri, Https }
 import gunbc.serving.gpu_power_cap_pricing {
   CapCandidate, PowerAsk, AskUnstated, CircuitRelief,
   srv4_sweep_unlocked_candidate, srv4_sweep_1500_candidate, srv4_sweep_1200_candidate,
@@ -51,6 +53,7 @@ import gunbc.fleet.gpu_cap_priced_actuation {
   ActuationAdmission, ActuationRequest,
   ActuationPriced, NoDemonstratedConstraint, UnpricedActuationRefused, ActuationValueMismatchRefused,
   ActuationConsequenceUnreadRefused, ActuationAskUnstatedRefused, ActuationAskUnservedRefused,
+  ContradictoryConstraintRefused,
   price_the_actuation, price_the_actuation_against, actuation_admits, actuation_refusal_text,
   actuation_still_owed, under_demonstrated_constraint, demonstrated_constraints_on,
 }
@@ -437,5 +440,69 @@ fn srv4_unit_at(w: Nat) -> PowerCapBootUnit {
     active_state: "active (exited)" as NonEmptyStr,
     since: "fixture" as NonEmptyStr,
     read_on: "fixture: no host read; srv4 has no modeled boot unit" as NonEmptyStr,
+  }
+}
+
+// ── THE CONSTRAINT THE ASK SERVES MUST ADD UP ──────────────────────────────────────────────────────
+//
+// The oversubscription predicate has one home -- oversubscription_defects in gunbc.serving.gpu_power_cap_pricing
+// -- and the gate CONSUMES it rather than restating the inequality, so the gate cannot admit what the fold
+// refuses (#gunbc.design_argument::single_authority). The two fixtures differ only in the member bound, so
+// whatever separates these outcomes is the inequality, not an accident of the fixture.
+
+data w_strip_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "gunb.ai/test/gpu-cap-priced-actuation-witness#fixture-evidence" },
+}
+
+fn w_strip(bound_w: Nat, name: String, label: String) -> SharedPowerCircuit {
+  SharedPowerCircuit {
+    identity: decl_ref(module_path: "test.claim.fleet.gpu_cap_priced_actuation_witness", decl_name: name),
+    label: label as NonEmptyStr,
+    members: [operator_host_srv4, operator_host_srv3],
+    rating: RatingCited { carry_limit: watt(count: 200), standing: CitedToAuthority { authority: w_strip_authority } },
+    member_draw_bound: BoundStated {
+      draw_limit: watt(count: bound_w),
+      standing: CitedToAuthority { authority: w_strip_authority },
+    },
+    trips: [],
+  }
+}
+
+// THE ASK SERVES A CIRCUIT THAT DOES NOT ADD UP. The fully-priced candidate, the matching ceiling, the ask
+// naming the circuit: every other check passes. And still the actuation refuses, because the constraint the
+// ask serves is cited to 200 W while its stated per-member bound x member count demands 300 W -- no cap value
+// serves that circuit as declared, so the gate that priced every other refusal must refuse this one too.
+test fn an_ask_served_by_an_oversubscribed_circuit_refuses() -> Bool {
+  let oversub = w_strip(bound_w: 150, name: "w-gate-oversubscribed-strip", label: "fixture strip, rating 200 W cited, per-member bound 150 W, 2 members")
+  let a = price_the_actuation_against(
+    request: srv4_request(w: 30, ceiling: Present { value: mhz(1500) }),
+    candidate: Present { value: srv4_sweep_1500_candidate },
+    ask: Present { value: CircuitRelief { circuit: oversub, asked_on: "2026-11-24" as NonEmptyStr } },
+    constraints: [oversub],
+  )
+  match a {
+    ContradictoryConstraintRefused { request: _, circuit: l, defect: d } =>
+      contains(l as String, "fixture strip")
+        && contains(d as String, "oversubscribes")
+        && contains(d as String, "2 members x 150 W = 300 W")
+        && contains(d as String, "carry 200 W")
+    _ => false
+  } && !admitted(a)
+}
+
+// THE SAME ACTUATION, UNDER A CIRCUIT THAT FITS. 2 x 80 W = 160 W on a strip cited to 200 W: every field
+// identical to the refused case but the bound, and the gate admits and names the served circuit by identity.
+test fn the_same_actuation_under_a_circuit_that_fits_is_admitted() -> Bool {
+  let within = w_strip(bound_w: 80, name: "w-gate-within-strip", label: "fixture strip, rating 200 W cited, per-member bound 80 W, 2 members")
+  let a = price_the_actuation_against(
+    request: srv4_request(w: 30, ceiling: Present { value: mhz(1500) }),
+    candidate: Present { value: srv4_sweep_1500_candidate },
+    ask: Present { value: CircuitRelief { circuit: within, asked_on: "2026-11-24" as NonEmptyStr } },
+    constraints: [within],
+  )
+  match a {
+    ActuationPriced { actuation: p } =>
+      admitted(a) && declaration_ref_eq(a: circuit_identity(c: p.circuit), b: circuit_identity(c: within))
+    _ => false
   }
 }
