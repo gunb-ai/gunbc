@@ -1,0 +1,70 @@
+module test.claim.algebra_receiver_alias_agreement_witness
+
+import std.types { Bool, Int, List, String }
+import std.process { ProcessExit }
+import gunbc.compile_census_probe { blocking_subject_census, total_blocking_census, census_verdict, census_exit, census_verdict_all }
+
+// THE ALIAS-NOMINAL AGREEMENT PAIR for roadmap node method-receiver-normalization
+// (rn_TMC5UFTYNMSBMS7FLXYIVQCSRE). dag/std/types.dag declares `type List<element> =
+// FreeMonoid<element>`, so the alias spelling and the nominal spelling denote the SAME type.
+// Before receiver normalization closed, the alias spelling keyed a MethodNotFound refusal
+// (wanted_subject "Coproduct(FreeMonoid)") that the nominal spelling never raised: that refusal
+// WAS the bug's spelling, so the old refusal fixtures in algebra_receiver_alias_witness passed
+// only while the compiler was wrong. This witness asserts the decidable shape instead: the two
+// spellings AGREE in both directions -- the correct program is accepted under both, and a bogus
+// method refuses under both with the same class. A change that accepted both spellings but
+// stopped refusing the bogus method, or that refused the bogus method under only one spelling,
+// has not made the receiver decidable; it has moved the guess, and these three legs are what
+// says so. Each leg asserts an OBSERVED census count (a census that cannot run returns
+// UNOBSERVED through census_verdict, which is not a pass), so neither an empty projection nor
+// an unarmed builtin can green this vacuously.
+
+// Same program, one variable: the declared return's spelling. Alias spelling.
+data alias_return_source: String = "module alias_agree_return\nimport std.types { Int, List }\nimport std.algebra { Empty, FreeMonoid }\nfn asks() -> List<Int> { [1, 2] |> fold(init: Empty, f: fn(acc, value) { acc |> list_push(value) }) }\n"
+
+// Nominal spelling of the same declared type.
+data nominal_return_source: String = "module nominal_agree_return\nimport std.types { Int, List }\nimport std.algebra { Empty, FreeMonoid }\nfn asks() -> FreeMonoid<Int> { [1, 2] |> fold(init: Empty, f: fn(acc, value) { acc |> list_push(value) }) }\n"
+
+// Same program through a record field, alias spelling.
+data alias_field_source: String = "module alias_agree_field\nimport std.types { Int, List }\nimport std.algebra { Empty, FreeMonoid }\ntype Box { values: List<Int> }\nfn asks() -> List<Int> { let b = Box { values: [1, 2] |> fold(init: Empty, f: fn(acc, value) { acc |> list_push(value) }) }; b.values }\n"
+
+// The nominal-field control: one variable, the field's declared spelling.
+data nominal_field_source: String = "module nominal_agree_field\nimport std.types { Int, List }\nimport std.algebra { Empty, FreeMonoid }\ntype Box { values: FreeMonoid<Int> }\nfn asks() -> FreeMonoid<Int> { let b = Box { values: [1, 2] |> fold(init: Empty, f: fn(acc, value) { acc |> list_push(value) }) }; b.values }\n"
+
+// The bogus-method pair: identical to the acceptance sources except the last expression calls a
+// method that exists nowhere, on the bound receiver. The refusal must be MethodNotFound on the
+// same coproduct subject under BOTH spellings -- the alias spelling must no longer be special.
+data alias_bogus_method_source: String = "module alias_agree_bogus\nimport std.types { Int, List }\nimport std.algebra { Empty, FreeMonoid }\nfn asks() -> List<Int> { let l: List<Int> = [1, 2] |> fold(init: Empty, f: fn(acc, value) { acc |> list_push(value) }); l.totally_absent_method() }\n"
+
+data nominal_bogus_method_source: String = "module nominal_agree_bogus\nimport std.types { Int, List }\nimport std.algebra { Empty, FreeMonoid }\nfn asks() -> FreeMonoid<Int> { let l: FreeMonoid<Int> = [1, 2] |> fold(init: Empty, f: fn(acc, value) { acc |> list_push(value) }); l.totally_absent_method() }\n"
+
+// AGREEMENT, accepting direction: the alias return and the nominal return must return the SAME
+// verdict -- total blocking census zero for both. This is the pair that replaces the retired
+// alias_return_is_a_refusal_fixture: agreement, not a hole-enrolled refusal.
+test fn alias_and_nominal_return_agree_by_accepting() -> ProcessExit {
+  census_verdict_all([
+    census_verdict(census: total_blocking_census(source: alias_return_source), holds: fn(n) { n == 0 }),
+    census_verdict(census: total_blocking_census(source: nominal_return_source), holds: fn(n) { n == 0 })
+  ])
+}
+
+// AGREEMENT, accepting direction through a record field: same verdict (zero) for both spellings.
+// Replaces the retired alias_field_is_a_refusal_fixture and its no-observation companion.
+test fn alias_and_nominal_field_agree_by_accepting() -> ProcessExit {
+  census_verdict_all([
+    census_verdict(census: total_blocking_census(source: alias_field_source), holds: fn(n) { n == 0 }),
+    census_verdict(census: total_blocking_census(source: nominal_field_source), holds: fn(n) { n == 0 })
+  ])
+}
+
+// AGREEMENT, refusing direction: the bogus method must raise MethodNotFound on
+// Coproduct(FreeMonoid) under BOTH spellings, each >= 1. This is the discriminating half: it
+// keeps a real wall (an unresolved method on a coproduct receiver refuses) and pins the alias to
+// the nominal. If this leg reads zero for either spelling, the coproduct receiver is still
+// frontier-admitted rather than decided, and the node's carrier is a rung-drop row, not this leg.
+test fn bogus_method_refuses_under_both_spellings() -> ProcessExit {
+  census_verdict_all([
+    census_verdict(census: blocking_subject_census(source: alias_bogus_method_source, wanted_class: "MethodNotFound", wanted_subject: "Coproduct(FreeMonoid)"), holds: fn(n) { n >= 1 }),
+    census_verdict(census: blocking_subject_census(source: nominal_bogus_method_source, wanted_class: "MethodNotFound", wanted_subject: "Coproduct(FreeMonoid)"), holds: fn(n) { n >= 1 })
+  ])
+}
