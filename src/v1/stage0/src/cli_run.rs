@@ -17952,6 +17952,27 @@ fn bootstrap_invocation_receipt_path(receipt_root: &str) -> Result<std::path::Pa
         .join(format!("receipt-{}-{sequence}", std::process::id())))
 }
 
+/// THE SEED'S BUILD IDENTITY IS BOUND BY THE BINARY, NOT READ BY THIS LIBRARY. A compile-time read
+/// of `GUNBC_BUILD_IDENTITY` here made the library's compilation depend on the commit, so every
+/// commit recompiled it. The retained-host main binds the value once, before dispatch; a bootstrap
+/// operation reached with nothing bound refuses rather than writing a receipt that names no seed.
+/// It crosses here rather than as a dispatch argument because the generated dispatch's call
+/// signature is emitted surface: changing it beside this hand-written callee is a change heal's
+/// round 1 cannot build (#gunbc.recurring_failure_mode.heal_round_one_bootstraps_from_the_mirror_the_change_must_repair::heal_round_one_bootstraps_from_the_mirror_the_change_must_repair).
+static SEED_BUILD_IDENTITY: std::sync::OnceLock<&'static str> = std::sync::OnceLock::new();
+
+/// Bind the running binary's build identity. A second bind with a different value refuses: one
+/// process has one seed.
+pub fn bind_seed_build_identity(identity: &'static str) {
+    let bound = *SEED_BUILD_IDENTITY.get_or_init(|| identity);
+    if bound != identity {
+        eprintln!(
+            "REFUSED: seed build identity bound twice with different values ({bound} then {identity})"
+        );
+        std::process::exit(2);
+    }
+}
+
 /// Generic, temporary launcher for a successor-authored bootstrap operation whose import closure
 /// cannot enter the frozen v1 seed. All operation-specific facts arrive from the modeled CLI row;
 /// this declaration knows only source/declaration identity, named String bindings, an internal
@@ -17966,6 +17987,12 @@ pub fn run_bootstrap_dag_operation(
     receipt_parameter: &str,
     receipt_root: &str,
 ) -> ! {
+    let Some(seed_identity) = SEED_BUILD_IDENTITY.get().copied() else {
+        eprintln!(
+            "REFUSED: no seed build identity was bound before dispatch, so a bootstrap receipt could not name the seed that ran it"
+        );
+        std::process::exit(2);
+    };
     if source_roots.is_empty() || entry_path.is_empty() || declaration_module.is_empty() {
         eprintln!("REFUSED: known bootstrap operation has an incomplete modeled binding");
         std::process::exit(2);
@@ -18042,7 +18069,6 @@ pub fn run_bootstrap_dag_operation(
     if !receipt.ends_with('\n') {
         println!();
     }
-    let seed_identity = env!("GUNBC_BUILD_IDENTITY");
     match terminal {
         ExitClass::Success => {
             eprintln!(
