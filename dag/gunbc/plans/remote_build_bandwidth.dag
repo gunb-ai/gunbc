@@ -71,12 +71,12 @@ fn remote_build_bandwidth_body() -> List<MarkdownBlock> {
       li(text: "operator ruling `srv1_stale_seats_released_proven_ended_2026_11_26` (#17124) is now a fallback; A and B are the cause."),
     ]),
     p(text: "**Addendum (2026-11-26, from quiet-pike-440 and a read-only check of ken and butch):** ken and butch both reach github.com, static.rust-lang.org and index.crates.io (HTTP 200), so converge egress is not a blocker. Their disks: ken 333G free, butch 247G free."),
+    p(text: "**Addendum, settled the ken slice question (2026-11-26, lively-owl-722, reads only -- no dispatch, no host contact):** ken's user work slice ceiling is 44 GiB = 47,244,640,256 bytes -- InstallUserWorkSlice MemoryMax is user_work_slice_memory_max_for_host(host-e2d4b7) (dag/gunbc/compute/host_capacity.dag:558); host_build_pool_is_carved(ken) is false because ken is not on remote_build_serving_hosts() (that roster is [srv3, srv4]; ken is candidate-only), so ken takes the user_work_pool_slots branch: user_work_slice_memory_max_of = user_work_slot_memory_max (23,622,320,128 B, dag/gunbc/runner/slice_bounds.dag:329) x 2 charged slots (user_work_pool_slots.dag:27) = 47,244,640,256 B. The native serve build runs INSIDE gunbc-user-work.slice, with no uncapped fallback. No measured peak RSS exists for the exact command (the native BuildServeBinary route #16885 has never executed; the arm64 hosts use the upload path). The closest measured build-class records: srv1 lab builds-run-in-cgroup peak 15.8 GiB against the 22 GiB fleet per-build ceiling, and srv1 attempt-worker transient peaks of 12.5-18.2 GiB (max 18.2, median 15.8 over eight) in gunbc.live_deploy.srv1_worker_slice_receipt, which carries a standing read_obligation: a reading above the bound is answered by lowering the work, never by widening the bound. VERDICT: fits, with margin, on the cited build-class evidence -- not proven for the exact command. The first native build's receipt records its peak and closes that measurement."),
     h2(text: "5. Open questions for the operator"),
     ul(items: [
       li(text: "The CPU frequency cap on srv1, srv3 and srv4 (2.0 of 3.0 GHz; \"we slowed the cores on all computers\"): keep it as a standing decision, or lift it."),
       li(text: "The srv3 request held since 2026-11-25 12:46 (unit gunbc-compute-d6481839...): let it finish or stop it."),
       li(text: "butch's tailnet tag:serving."),
-      li(text: "Does the native cargo serve build on ken run inside the capped user work slice? If it does, the engine carve may be too small for a cargo build. Decide this before the ken converge, not during it."),
     ]),
   ]
 }
