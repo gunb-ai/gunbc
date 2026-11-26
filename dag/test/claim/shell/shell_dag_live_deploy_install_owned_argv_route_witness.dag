@@ -328,52 +328,82 @@ fn reading_words(r: OwnedDirectoryReading) -> String {
   concat(concat("user=", user), concat(" group=", group))
 }
 
-// (a) THE UNEXPRESSIBLE PRINCIPAL: the expressible line MUST parse and the two unexpressible ones MUST NOT.
-fn unexpressible_principal_failure() -> Optional<String> {
-  let expressible: Bool = match owned_directory_reading_of_stat_line(line: expressible_stat_line) {
+// (a) THE UNEXPRESSIBLE PRINCIPAL: the expressible line MUST parse, and the two unexpressible ones MUST NOT.
+fn expressible_control_parses() -> Bool {
+  match owned_directory_reading_of_stat_line(line: expressible_stat_line) {
     Present { value: r } => reading_is_the_planted_principal(r: r)
     Absent => false
   }
-  if !expressible {
+}
+
+fn unexpressible_group_refused() -> Optional<String> {
+  match owned_directory_reading_of_stat_line(line: empty_group_stat_line) {
+    Present { value: r } => Present { value: concat("an EMPTY GROUP was accepted as a reading: ", reading_words(r: r)) }
+    Absent => Absent
+  }
+}
+
+fn unexpressible_user_refused() -> Optional<String> {
+  match owned_directory_reading_of_stat_line(line: empty_user_stat_line) {
+    Present { value: r } => Present { value: concat("an EMPTY USER was accepted as a reading: ", reading_words(r: r)) }
+    Absent => unexpressible_group_refused()
+  }
+}
+
+fn unexpressible_principal_failure() -> Optional<String> {
+  if !expressible_control_parses() {
     Present { value: "the expressible control line did not parse to the planted principal, so both refusals below would be vacuous" }
   } else {
-    match owned_directory_reading_of_stat_line(line: empty_user_stat_line) {
-      Present { value: r } => Present { value: concat("an EMPTY USER was accepted as a reading: ", reading_words(r: r)) }
-      Absent => match owned_directory_reading_of_stat_line(line: empty_group_stat_line) {
-        Present { value: r } => Present { value: concat("an EMPTY GROUP was accepted as a reading: ", reading_words(r: r)) }
-        Absent => none
-      }
-    }
+    unexpressible_user_refused()
   }
 }
 
 // (b) THE UNADOPTABLE PRINCIPAL: expressible, present, and refused by the very plan the install would have used.
+// The reason is required to carry the rule's own words AND to name the principal it found, which is what stops a
+// missing-path or mode refusal standing in for the ownership rule. That makes this arm sensitive to that wording:
+// if #gunbc.owned_directory::owned_directory_plan changes those words, this arm FAILS, and it fails on purpose.
+fn refusal_reason_refused(reason: String) -> Optional<String> {
+  if reason == "" {
+    Present { value: "the refusal carried no reason, so any refusal at all would have satisfied this arm" }
+  } else if !string_contains(s: reason, pattern: never_adopted_rule_words) {
+    Present { value: concat("the refusal does not state the ownership rule: ", reason) }
+  } else if !string_contains(s: reason, pattern: foreign_principal_word) {
+    Present { value: concat("the refusal does not name the principal it found: ", reason) }
+  } else {
+    Absent
+  }
+}
+
+fn unadoptable_plan_failure(t: OwnedDirectoryTarget, reading: OwnedDirectoryReading) -> Optional<String> {
+  match owned_directory_plan(t: t, o: EnsureObserved { evidence: reading }) {
+    EnsurePlanAvailable { plan: _ } =>
+      Present { value: "a plan CARRIED a foreign owner: the effect adopted an ownership it declares it never adopts" }
+    EnsurePlanUnavailable { reason } => refusal_reason_refused(reason: reason)
+  }
+}
+
 fn unadoptable_owner_failure() -> Optional<String> {
   match owned_directory_reading_of_stat_line(line: foreign_stat_line) {
     Absent => Present { value: "the foreign control line did not parse, so the arm cannot test a refusal it cannot build" }
-    Present { value: r } => match owned_directory_plan(t: separator_fixture(), o: EnsureObserved { evidence: r }) {
-      EnsurePlanAvailable { plan } =>
-        Present { value: "a plan CARRIED a foreign owner: the effect adopted an ownership it declares it never adopts" }
-      EnsurePlanUnavailable { reason } =>
-        if reason == "" {
-          Present { value: "the refusal carried no reason, so any refusal at all would have satisfied this arm" }
-        } else if !string_contains(s: reason, pattern: never_adopted_rule_words) {
-          Present { value: concat("the refusal does not state the ownership rule: ", reason) }
-        } else if !string_contains(s: reason, pattern: foreign_principal_word) {
-          Present { value: concat("the refusal does not name the principal it found: ", reason) }
-        } else {
-          none
-        }
-    }
+    Present { value: r } => unadoptable_plan_failure(t: separator_fixture(), reading: r)
   }
 }
 
 test fn the_typed_effect_refuses_an_ownership_it_cannot_carry() -> ProcessExit {
   match unexpressible_principal_failure() {
     Present { value: why } => ExitFailure { code: 1, reason: concat("unexpressible_principal: ", why) }
-    Absent => match unadoptable_owner_failure() {
-      Present { value: why } => ExitFailure { code: 1, reason: concat("unadoptable_owner: ", why) }
-      Absent => ExitSuccess
-    }
+    Absent => unadoptable_arm()
+  }
+}
+
+// THE SECOND HALF OF THE SAME CLAIM, split into its own arm body so every branch in this file is a plain match
+// arm or a plain fn-body if branch: the first draft of this arm nested an else-if chain inside a match arm
+// inside a match arm and the closure refused it -- "if branches resolve to incompatible types:
+// Node(Optional<Primitive(String)>) vs Product(Unit)" -- and that failure is recorded in the run receipt rather
+// than edited out. Splitting is the fix, and it also makes each refusal face readable on its own.
+fn unadoptable_arm() -> ProcessExit {
+  match unadoptable_owner_failure() {
+    Present { value: why } => ExitFailure { code: 1, reason: concat("unadoptable_owner: ", why) }
+    Absent => ExitSuccess
   }
 }
