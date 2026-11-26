@@ -3,16 +3,18 @@ module test.claim.runner.runner_host_medium_publish_witness
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { Bool, NonEmptyStr, String }
 import std.optional { Present }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.algebra { string_contains }
 import extdeps.provisioning.ubuntu_seeded_install_media { UbuntuSeededInstallMediaBuildInput, UbuntuSeededInstallMediaBuilt, ubuntu_seeded_install_media_built }
-import gunbc.host_command_binding { Removed, RemovalUnconfirmed, CreationNotRequested, HostCommandDone, HostCommandFailed }
+import gunbc.host_command_binding { Removed, RemovalUnconfirmed, RemovalUnanswered, CreationNotRequested, HostCommandDone, HostCommandFailed, HostCommandUnanswered }
 import gunbc.host.boot_medium_reader_key { boot_medium_served_link_path }
 import gunbc.provisioning.seeded_install_media_publish { SeededImagePublished, SeededImageAlreadyPublished, SeededImagePublicationRefused }
 import gunbc.runner.runner_host_medium { RunnerHostMediumImageDerived, RunnerHostMediumRunnerUnpublished, RunnerHostMediumUserDataRefused, runner_host_medium_image, RunnerHostBakedRelease }
 import extdeps.crypto.hash { sha256_digest }
 import gunbc.runner.runner_host_medium_publish {
-  mtcollins1_runner_host, RunnerImageNotDerived, RunnerImagePublishRan, runner_image_attempt_holds, render_runner_image_attempt,
-  ServedLinkReading, ServedLinkPointsAt, ServedLinkNotSet, ServedLinkDisagrees, served_link_after,
+  mtcollins1_runner_host, RunnerImageNotDerived, RunnerImagePublishRan, RunnerImageCleanupUnverified,
+  runner_image_attempt_holds, render_runner_image_attempt, mtcollins1_runner_image_receipt_of, mtcollins1_runner_image_exit_of, runner_image_attempt_after_scratch,
+  ServedLinkReading, ServedLinkPointsAt, ServedLinkNotSet, ServedLinkDisagrees, ServedLinkSetUnverified, ServedLinkSetUnknown, served_link_after, render_served_link,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -103,6 +105,31 @@ fn link_word(l: ServedLinkReading) -> String {
     ServedLinkPointsAt { link_path: _, target: _ } => "points"
     ServedLinkNotSet { reason: _ } => "unset"
     ServedLinkDisagrees { link_path: _, expected: _, read: _ } => "disagrees"
+    ServedLinkSetUnverified { link_path: _, target: _, reason: _ } => "set-unverified"
+    ServedLinkSetUnknown { link_path: _, target: _, reason: _ } => "set-unknown"
+  }
+}
+
+// SET AND VERIFY ARE SEPARATE FACTS. When the `ln` COMPLETED but the readlink verification was lost, the link
+// IS set -- it must read "set-unverified", never "unset" (which would fabricate an absent link we created).
+// When the `ln`'s own reply was lost, whether the link moved is UNKNOWN -- "set-unknown", never "unset".
+// Neither holds. RED against pre-fix served_link_after (both were ServedLinkNotSet / "unset").
+test fn a_lost_set_or_readback_keeps_the_set_fact_separate_from_its_verification() -> Bool {
+  match runner_host_medium_image(host: mtcollins1_runner_host, baked: fixture_baked_release()) {
+    RunnerHostMediumImageDerived { input: i, runner: _ } => {
+      let held = SeededImageAlreadyPublished { built: built_of(input: i), path: "/srv/bmc/x.iso" as NonEmptyStr }
+      let set_ok_read_lost = served_link_after(publication: held, set: fn(path) { HostCommandDone { stdout: "" } }, read: fn() { HostCommandUnanswered { cause: "readlink overran its deadline" } })
+      let set_lost = served_link_after(publication: held, set: fn(path) { HostCommandUnanswered { cause: "ln overran its deadline" } }, read: fn() { HostCommandDone { stdout: "/srv/bmc/x.iso" } })
+      link_word(l: set_ok_read_lost) == "set-unverified"
+        && !runner_image_attempt_holds(a: RunnerImagePublishRan { publication: held, link: set_ok_read_lost })
+        && link_word(l: set_lost) == "set-unknown"
+        && !runner_image_attempt_holds(a: RunnerImagePublishRan { publication: held, link: set_lost })
+        && string_contains(s: render_served_link(l: set_ok_read_lost), pattern: "served_link_set_unverified")
+        && !string_contains(s: render_served_link(l: set_ok_read_lost), pattern: "served_link=not set")
+        && !string_contains(s: render_served_link(l: set_lost), pattern: "served_link=not set")
+    }
+    RunnerHostMediumRunnerUnpublished { binary_release: _ } => false
+    RunnerHostMediumUserDataRefused { reason: _ } => false
   }
 }
 
@@ -124,6 +151,52 @@ test fn the_served_link_is_set_after_a_holding_publication_and_read_back_exactly
         && link_word(l: unset) == "unset"
         && !runner_image_attempt_holds(a: RunnerImagePublishRan { publication: held, link: unset })
         && link_word(l: refused) == "unset"
+    }
+    RunnerHostMediumRunnerUnpublished { binary_release: _ } => false
+    RunnerHostMediumUserDataRefused { reason: _ } => false
+  }
+}
+
+// THE CLEANUP IS NOT THE PUBLICATION (fox round 3 at 649e7857 Blocker 1; driven through the production decision per
+// fox round 4 at 5b5829eb, Blocker 3). THE SAME holding publication and verified link are passed through
+// `runner_image_attempt_after_scratch` -- the ONE function `mtcollins1_runner_image_publish_at` calls -- TWICE, so
+// the control fails if the old decision ever comes back: with the final `rm` UNANSWERED the attempt must keep both
+// facts and still fail, and with the `rm` REMOVED it must keep both facts and succeed. A control that built
+// `RunnerImageCleanupUnverified` by hand would stay green while `publish_at` still replaced a completed publication
+// with "not attempted", which is exactly the regression this head had.
+test fn a_lost_final_cleanup_reply_keeps_the_publication_and_still_fails() -> Bool {
+  match runner_host_medium_image(host: mtcollins1_runner_host, baked: fixture_baked_release()) {
+    RunnerHostMediumImageDerived { input: i, runner: _ } => {
+      let held = SeededImageAlreadyPublished { built: built_of(input: i), path: "/srv/bmc/x.iso" as NonEmptyStr }
+      let link_ok = ServedLinkPointsAt { link_path: boot_medium_served_link_path(), target: "/srv/bmc/x.iso" as NonEmptyStr }
+      let ran = RunnerImagePublishRan { publication: held, link: link_ok }
+      let cleanup_path = "/var/tmp/gunbc-mtcollins1-baked-release.AAAAAAAA" as NonEmptyStr
+      // THE SAME two facts, twice, through the production decision.
+      let lost = runner_image_attempt_after_scratch(published: ran, removed: RemovalUnanswered { dir: cleanup_path, cause: "rm overran its deadline" })
+      let clean = runner_image_attempt_after_scratch(published: ran, removed: Removed { dir: cleanup_path })
+      let lost_receipt = mtcollins1_runner_image_receipt_of(a: lost)
+      let clean_receipt = mtcollins1_runner_image_receipt_of(a: clean)
+      let lost_failed = match mtcollins1_runner_image_exit_of(a: lost) {
+        ExitFailure { code: _, reason: r } => string_contains(s: r, pattern: "did not hold") && string_contains(s: r, pattern: "already_published=true")
+        ExitSuccess => false
+      }
+      let clean_succeeded = match mtcollins1_runner_image_exit_of(a: clean) { ExitSuccess => true  ExitFailure { code: _, reason: _ } => false }
+      // THE LOST CLEANUP: the publication and the link SURVIVE in the receipt, the cleanup names its path and its
+      // lost reply, nothing says the publication was not attempted, and the run still exits failure.
+      !runner_image_attempt_holds(a: lost)
+        && lost_failed
+        && string_contains(s: lost_receipt, pattern: "already_published=true")
+        && string_contains(s: lost_receipt, pattern: concat("served_link_target=", "/srv/bmc/x.iso"))
+        && string_contains(s: lost_receipt, pattern: cleanup_path as String)
+        && string_contains(s: lost_receipt, pattern: "rm overran its deadline")
+        && !string_contains(s: lost_receipt, pattern: "publication=not attempted")
+        && !string_contains(s: lost_receipt, pattern: "was not removed after the publication")
+        // THE COMPLETED CLEANUP, same two facts: it holds, the receipt keeps them, and says nothing of a lost reply.
+        && runner_image_attempt_holds(a: clean)
+        && clean_succeeded
+        && string_contains(s: clean_receipt, pattern: "already_published=true")
+        && string_contains(s: clean_receipt, pattern: concat("served_link_target=", "/srv/bmc/x.iso"))
+        && !string_contains(s: clean_receipt, pattern: "NO ANSWER")
     }
     RunnerHostMediumRunnerUnpublished { binary_release: _ } => false
     RunnerHostMediumUserDataRefused { reason: _ } => false

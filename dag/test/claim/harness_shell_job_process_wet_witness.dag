@@ -5,7 +5,8 @@ import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.measure { second }
 import extdeps.shell
 import extdeps.posix.signal
-import extdeps.filesystem.filesystem_io
+import extdeps.posix.process { signal_target_pid_of_text }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.posix.process
 import extdeps.tools.gnu_coreutils { coreutils_timeout_expired_exit_code }
 import gunbc.harness.harness_shell_job_policy { ShellJobSchedule }
@@ -117,7 +118,11 @@ test fn the_backstop_expiry_kills_the_process_group_and_an_unobserved_exit_reads
   }
   let grandchild = Filesystem.Read(path: marker)
   let gone = if grandchild.success && grandchild.content.length() > 0 {
-    !posix.Signal.TerminateProcess(pid: grandchild.content as NonEmptyStr).success
+    match signal_target_pid_of_text(text: grandchild.content) {
+      Present { value: target } => !posix.Signal.TerminateProcess(target: target).success
+      // A marker that is not one signalable pid proves nothing about the grandchild: never read as gone.
+      Absent => false
+    }
   } else {
     false
   }

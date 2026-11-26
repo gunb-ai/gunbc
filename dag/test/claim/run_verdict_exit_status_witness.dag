@@ -130,7 +130,12 @@ test fn run_non_process_exit_return_refuses() -> Bool {
   result.exit_code == 2
 }
 
-// --claim-run must produce a visible PASS line for a ProcessExit claim that succeeds.
+// A HELD ProcessExit claim prints its located line and the process exits 0.
+// The located-line schema is the claim route's result contract (gunbc.plans.claim_result_contract, landed in
+// gunb-ai/gunbc#16873): `<label> HELD outcome=Pass eval_steps=N cpu_ms=N`, and this assertion keys only on
+// label, verdict and outcome -- the fields the contract fixes -- never on the timing columns or the detail.
+// A claim that returns std.process.ProcessExit is classified by cli_run::classify_exit, the single authority
+// for the ProcessExit convention shared with `gunbc run`: ExitSuccess is a held claim, not a printed value.
 // The Bool(true) path prints "PASS <function>"; ProcessExit(ExitSuccess) under --claim-run
 // must be symmetric. Before the harness fix, exit_status_for_class(ExitClass::Success)
 // returned (0, None) and the claim-run loop only printed when message was Some, making
@@ -141,13 +146,17 @@ test fn claim_run_process_exit_success_prints_pass_line() -> Bool {
     workdir: toplevel.path,
     bin_path: concat(cargo_default_release_dir(build_root: toplevel.path), "/gunbc"),
     args: [
-      "run",
-      "--claim-run",
+      "test",
       "--source-root", "dag",
       "--source-root", "src/v2",
-      "--entry", "dag/test/claim/run_verdict_exit_status_fixture.dag",
-      "--function", "verdict_success"
+      "//test/claim/run_verdict_exit_status_fixture:verdict_success"
     ]
   )
-  result.exit_code == 0 && string_contains(s: result.stdout, pattern: "PASS verdict_success")
+  // The exit code is the route's termination rule, not a formatter's: 0 means every selected claim held, so
+  // this arm fails if the ProcessExit specimen is classified as anything but held.
+  result.exit_code == 0 &&
+    string_contains(
+      s: result.stdout,
+      pattern: "//test/claim/run_verdict_exit_status_fixture:verdict_success HELD outcome=Pass"
+    )
 }

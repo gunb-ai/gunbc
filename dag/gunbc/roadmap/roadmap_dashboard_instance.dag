@@ -23,6 +23,7 @@ import extdeps.git {
   git_maintenance_auto_disabled_config_command,
 }
 import std.optional { Optional, Present, Absent }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, Port, GitRef }
 import std.nat { Nat }
 import gunbc.roadmap.roadmap_attempt_state_layout_move { MoveRow, LegacyWriterFence, LegacyWriterFenceRow, LegacyWriterUnits, LegacyWriterUnit, legacy_writer_fence_for }
@@ -45,7 +46,9 @@ import extdeps.tmux { TmuxServerScope, DefaultTmuxServer, NamedTmuxServer }
 import gunbc.ensure { EnsureObserveOnly }
 import extdeps.posix.identity { PosixOwnerNames }
 import gunbc.managed_directory { DeclaredDirectoryMode, DirectoryOwnerOnly, DirectoryOwnerAllGroupTraverse, DirectoryOwnerAllEveryoneTraverse, DirectoryOwnerGroupWritableSetgid, DirectoryOwnerGroupWritableSetgidSticky, declared_directory_mode, srv1_dashboard_service_principal }
-import gunbc.fleet.fleet_posix_accounts { fleet_posix_worker_user, fleet_posix_worker_shared_group_name }
+import gunbc.fleet.fleet_posix_accounts { fleet_posix_worker_user, fleet_posix_worker_shared_group_name, fleet_posix_remote_build_user }
+import gunbc.fleet.fleet_host_identity { operator_host_srv3, operator_host_srv4 }
+import product.host_identity { HostIdentity }
 import gunbc.owned_directory {
   OwnedDirectoryTarget,
   OwnedDirectoryDeclared,
@@ -1405,13 +1408,136 @@ type HostCapacityHome sole_constructor {
   dispatch_worker_memory_max: ByteSize
 }
 
+// THE ONE DECISION: WHO OWNS THIS HOST'S CAPACITY LEDGER, per-host. This is the single authority
+// (gunbc.design_argument::single_authority) for the ledger's directory owner; both host_capacity and the
+// serving setup read it (through host_capacity_ledger_home). The three arms:
+//
+// 1. A host that carries a dashboard instance (srv1, srv2): the instance's service principal. The ledger
+//    is that instance's home, and its owner names the service user who reserves in it alongside the
+//    remote-build account.
+//
+// 2. A host in the legacy-owner frontier (see capacity_ledger_legacy_owner_frontier): the operator login.
+//    These hosts carry on-disk ledger directories already owned by the operator login, created by earlier
+//    converge runs under the old universal linux_service_directory_owner() rule. The model's "re-grouped,
+//    never re-owned" posture prevents the converge from re-owning them, so the declared owner MUST remain
+//    the operator to keep their ledger rows byte-identical to the live state.
+//
+// 3. A host with neither (ken, butch, fresh serving hosts): the remote-build account. This is the only
+//    principal that reserves in a host-home ledger on a host with no dashboard instance; its account is
+//    ensured by the converge itself (converge_add_account), so every group_member the converge emits
+//    names a principal the converge guarantees to exist at apply time.
+//
+// THE DISCRIMINATOR IS THE DECLARED FRONTIER'S OWN MEMBERSHIP, NOT A LIVE-ROSTER PREDICATE: it is not
+// keyed on remote_build_host_is_serving (the live roster) or remote_build_host_is_serving_candidate,
+// because a fresh host joins those rows as it converges and is admitted — if the discriminator flipped on
+// admission, a freshly-converged host's ledger would re-own (from gunbc-build back to briansrls) on the
+// very next run. Witness the_owner_discriminator_is_the_frontier_not_the_candidate_or_roster_row pins this.
+
+// THE LEGACY-OWNER FRONTIER: the hosts whose on-disk ledger directories are still operator-owned, and the
+// CONSUMED discharge below that says when each leaves. The frontier is deliberately NOT a live-roster
+// predicate — see the note on capacity_ledger_directory_owner.
+// THE FRONTIER'S DISCHARGE STATE, as CONSUMED DATA, not prose. The frontier retires when BOTH gates are
+// satisfied: the live ledger-entry-owner read has PROVEN the ledger clear of operator-owned entries, AND a
+// gunbc.design_ruling has authorized the re-own. Each gate is its own closed coproduct so every field is
+// read by the single consumer below on the executing route (consumption: a row no fold reads is dangling).
+//
+// The ledger-entry-owner read — the converge's own stat reader, naming the path's owner user and group:
+type CapacityLedgerEntryOwnerRead
+  = ReadNotYetPerformed
+  | ReadProvedClear
+
+// The re-own ruling that ends the frontier:
+type CapacityLedgerReOwnRuling
+  = ReOwnRulingNotYetMade
+  | ReOwnRulingMade { ruling: DeclarationRef }
+
+type CapacityLedgerFrontierDischarge {
+  // Whether the live read has run and proven no operator-owned ledger entry. Not yet, for srv3/srv4.
+  entry_owner_read: CapacityLedgerEntryOwnerRead
+  // The INSTRUMENT that performs that read, named by reference. The read only counts as discharging when
+  // performed by THIS instrument — so the field is consumed by the gate, not a caption. It is the
+  // converge's own ledger-row owner reader, serving_ledger_row_read.
+  read_instrument: DeclarationRef
+  // Whether the re-own ruling that ends the frontier has been authored. Not yet, for srv3/srv4.
+  re_own_ruling: CapacityLedgerReOwnRuling
+}
+
+// THE designated discharge read instrument: the converge's own ledger-row owner stat reader. The gate
+// compares a discharge's read_instrument against THIS row, so a discharge cannot claim a clear read from
+// some unrelated instrument — the named instrument is load-bearing, closing the dangling-field defect.
+data capacity_ledger_entry_owner_read_instrument: DeclarationRef =
+  decl_ref(module_path: "gunbc.compute.remote_build_serving_converge", decl_name: "serving_ledger_row_read")
+
+// THE SINGLE CONSUMER of the whole discharge: true while the frontier confers operator ownership on its
+// members (their live rows stay byte-identical), false once the frontier is discharged. Discharged means:
+// the read PROVED the ledger clear (entry_owner_read == ReadProvedClear), AND that read was performed by the
+// DESIGNATED instrument (read_instrument equals capacity_ledger_entry_owner_read_instrument), AND the re-own
+// ruling has landed (ReOwnRulingMade). Every field is read here, on the route the single authority runs.
+// capacity_ledger_directory_owner is the only model caller; witness (4) drives all arms, so gutting any one
+// of the three gates — or the instrument comparison — goes red (guarantee_ladder: discriminating reds).
+fn capacity_ledger_frontier_confers_operator_ownership(discharge: CapacityLedgerFrontierDischarge) -> Bool {
+  let read_clear = match discharge.entry_owner_read {
+    ReadNotYetPerformed => false
+    ReadProvedClear => true
+  }
+  let by_right_instrument = declaration_ref_eq(a: discharge.read_instrument, b: capacity_ledger_entry_owner_read_instrument)
+  let ruling_made = match discharge.re_own_ruling {
+    ReOwnRulingNotYetMade => false
+    ReOwnRulingMade { ruling: _ } => true
+  }
+  !(read_clear && by_right_instrument && ruling_made)
+}
+
+type CapacityLedgerLegacyOwnerFrontier {
+  members: List<HostIdentity>
+  discharge: CapacityLedgerFrontierDischarge
+}
+
+data capacity_ledger_legacy_owner_frontier: CapacityLedgerLegacyOwnerFrontier = CapacityLedgerLegacyOwnerFrontier {
+  members: [operator_host_srv3, operator_host_srv4],
+  discharge: CapacityLedgerFrontierDischarge {
+    entry_owner_read: ReadNotYetPerformed,
+    read_instrument: capacity_ledger_entry_owner_read_instrument,
+    re_own_ruling: ReOwnRulingNotYetMade,
+  },
+}
+
+// THE FRONTIER DECISION, factored out so it is testable against a SYNTHETIC membership list (the shipped
+// frontier [srv3, srv4] is coincident with the live serving roster, so real data alone cannot distinguish a
+// frontier-keyed authority from a roster-keyed one; this pure fn lets witness (3) drive a case where the two
+// DISAGREE and pin which one the model consults). Operator login iff the host is a declared member AND the
+// discharge is unmet; else the remote-build account. Deliberately does NOT read remote_build_host_is_serving.
+fn capacity_ledger_owner_for_membership(host: NonEmptyStr, members: List<HostIdentity>, discharge: CapacityLedgerFrontierDischarge) -> PosixOwnerNames {
+  if any(members, h => (h as String) == (host as String))
+    && capacity_ledger_frontier_confers_operator_ownership(discharge: discharge) {
+    linux_service_directory_owner()
+  } else {
+    PosixOwnerNames {
+      user: fleet_posix_remote_build_user.name,
+      group: fleet_posix_remote_build_user.name,
+    }
+  }
+}
+
+fn capacity_ledger_directory_owner(host: NonEmptyStr) -> PosixOwnerNames {
+  match dashboard_instance_for_host(host: host as String) {
+    DashboardInstanceForHost { instance } => instance.directory_owner
+    DashboardInstanceHostUnknown { host: _ } =>
+      capacity_ledger_owner_for_membership(
+        host: host,
+        members: capacity_ledger_legacy_owner_frontier.members,
+        discharge: capacity_ledger_legacy_owner_frontier.discharge,
+      )
+  }
+}
+
 // The host-scoped ledger home: the root and owner are the host's, the ceilings come from the carve. srv1
 // resolves to the same /opt/gunbc root and owner it resolved through its dashboard instance, so it is
 // byte-identical on every field the ledger reads -- the bar the ledger's compute-provider reader depends on.
 fn host_capacity_ledger_home(host: NonEmptyStr, build_seat: ByteSize) -> HostCapacityHome {
   HostCapacityHome {
     host_identity: host,
-    directory_owner: linux_service_directory_owner(),
+    directory_owner: capacity_ledger_directory_owner(host: host),
     instance_root: host_capacity_home_root,
     compute_build_memory_ceiling: build_seat,
     dispatch_worker_memory_max: dispatch_worker_memory_ceiling,

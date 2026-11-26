@@ -2,17 +2,22 @@ module gunbc.roadmap.roadmap_served_observation
 
 import gunbc.roadmap.roadmap_attempt_state_store { AttemptLaunchIdentity, attempt_state_read_at }
 import extdeps.shell
-import gunbc.roadmap.roadmap_runtime_plan { roadmap_plan_projection }
+import gunbc.roadmap.roadmap_runtime_plan { roadmap_plan_projection_for_instance }
 import gunbc.roadmap.roadmap_page { issue_query_snapshot_for_projection }
 import gunbc.site.markup { page_render_refusal_body }
 
-import gunbc.roadmap.roadmap_event_log { RoadmapStandings, RoadmapEventEnvelope }
+import gunbc.roadmap.roadmap_event_log { RoadmapStandings, RoadmapEventEnvelope, roadmap_acceptance_day }
+import gunbc.roadmap.roadmap_work_item_projection {
+  roadmap_projection_document_for_read, roadmap_work_item_projection_refusal_json,
+}
+import gunbc.roadmap.roadmap_intention_binding { roadmap_intention_bindings }
 import gunbc.roadmap.roadmap_standings_document { roadmap_standings_document_json, roadmap_standings_document_refusal_json, ServedReleaseIdentity }
 import gunbc.roadmap.roadmap_event_carrier {
   roadmap_standings_at_head_read, StandingsAtHead, StandingsAtHeadUnobserved,
   roadmap_event_carrier_layout_for_instance, roadmap_standings_read, roadmap_events_read_all,
+  roadmap_projection_read_one_snapshot, CarrierProjectionRead,
   CarrierClosed, SnapshotNotOpened, SnapshotClosed, SnapshotCloseFailed, SnapshotCloseVerificationFailed, carrier_close_verification_reason,
-  RoadmapAllEventsRead, AllEventsRead, AllEventsReadRefused,
+  RoadmapAllEventsRead, AllEventsRead, AllEventsReadRefused, RoadmapStandings, StandingsUnobserved,
   CarrierReadAttached,
 }
 import std.types { String, Int, Bool, List, NonEmptyStr , FilePath}
@@ -78,6 +83,7 @@ import gunbc.roadmap.roadmap_session_placement {
 }
 import gunbc.roadmap.roadmap_belt_actuate {
   BeltPassOutcome, BeltPassRecorded, BeltPassFailed,
+  belt_capacity_of_instance,
   belt_launch_host_standing_for_page_over,
   belt_sessions_observe_for_instance, belt_sessions_observed_json, belt_sessions_http_status,
   belt_attempts_observe_for_instance, belt_attempts_observed_json, belt_attempts_http_status,
@@ -115,6 +121,7 @@ type ServedObservationKind
   | SessionsJson
   | IssueQueryRows
   | StandingsJson
+  | ProjectionJson
 
 type ServedObservationSurface {
   kind: ServedObservationKind
@@ -276,6 +283,7 @@ fn served_observation_kind_key(kind: ServedObservationKind) -> String {
     IssueQueryRows => "issue_query_rows"
     SessionsJson => "sessions_json"
     StandingsJson => "standings_json"
+    ProjectionJson => "projection_json"
   }
 }
 
@@ -287,6 +295,7 @@ fn served_observation_kind_url_path(kind: ServedObservationKind) -> String {
     IssueQueryRows => "/issues/query"
     SessionsJson => "/sessions.json"
     StandingsJson => "/standings.json"
+    ProjectionJson => "/projection.json"
   }
 }
 
@@ -298,6 +307,7 @@ fn served_observation_kind_media_type(kind: ServedObservationKind, status: Int) 
     IssueQueryRows => text_plain_utf8
     SessionsJson => application_json_utf8
     StandingsJson => application_json_utf8
+    ProjectionJson => application_json_utf8
   }
 }
 
@@ -312,6 +322,7 @@ fn served_observation_kind_of_key(key: String) -> ServedObservationKindDecode {
   else if key == "issue_query_rows" { ServedObservationKindDecoded { kind: IssueQueryRows } }
   else if key == "sessions_json" { ServedObservationKindDecoded { kind: SessionsJson } }
   else if key == "standings_json" { ServedObservationKindDecoded { kind: StandingsJson } }
+  else if key == "projection_json" { ServedObservationKindDecoded { kind: ProjectionJson } }
   else { ServedObservationKindUnknown { key: key } }
 }
 
@@ -472,6 +483,66 @@ fn served_observation_standings_surface_for_instance(instance: HostDashboardInst
   }
 }
 
+// THE PROJECTED WORK-ITEM TIMELINE, produced by the tick beside /standings.json. One row per intention-bound
+// work item (roadmap_intention_bindings), assembled by the projection module's single read
+// (roadmap_projection_document_for_read), which drives the schedule, the one calendar, the log's derived
+// in-flight set and the standing -- and computes no timeline of its own. THIS ARM IS A READER AND NOTHING
+// ELSE: the whole per-item composition lives in gunbc.roadmap.roadmap_work_item_projection, so the standings
+// arm's path above is untouched (the manager ruling 2026-11-24; its witnesses in CI are the guard). A
+// refusal here -- the clock refusing the day, the assumed findings count refusing, the log unreadable, or any
+// item whose row cannot be honestly built -- is THE PROJECTION'S OWN 503 refused{step,reason}: it never fails
+// the tick and never reaches /standings.json, which are produced by their own arms. It is the same fail-closed
+// shape as the standings arm -- a refusal serves refused, never an empty rows list a Timeline would draw as an
+// empty plan.
+fn served_observation_projection_surface_for_instance(instance: HostDashboardInstance, observed_at: String) -> ServedObservationSurface {
+  let layout = roadmap_event_carrier_layout_for_instance(instance: instance)
+  // ONE admitted snapshot: standings AND the envelopes the row's standing, events, acceptance evidence and
+  // in-flight set are all derived from come off the SAME head. Two separate reads (standings, then events) let
+  // a release land in between and yield a row showing a claim, a release event AND no held leaf -- three facts
+  // about three heads stitched into one row (the manager's ruling 2026-11-24; roadmap_event_carrier pairs
+  // standings with its log head the same way). The close follows the same after_snapshot_close discipline as
+  // the two standalone readers.
+  let read = served_projection_after_snapshot_close(read: roadmap_projection_read_one_snapshot(layout: layout))
+  let standings = read.standings
+  match read.events {
+    AllEventsReadRefused { step, reason } => ServedObservationSurface {
+      kind: ProjectionJson, status: 503,
+      body: serialize_json(v: roadmap_work_item_projection_refusal_json(read_on: observed_at, step: step, reason: reason)),
+    }
+    AllEventsRead { envelopes } => match roadmap_acceptance_day(text: substring(s: observed_at, start: 0, end: 10)) {
+      Absent => ServedObservationSurface {
+        kind: ProjectionJson, status: 503,
+        body: serialize_json(v: roadmap_work_item_projection_refusal_json(read_on: observed_at, step: "read_day", reason: "the tick clock carries no parseable YYYY-MM-DD day")),
+      }
+      Present { value: read_on_date } => match checked_int_to_nat(n: roadmap_projection_assumed_findings_count()) {
+        Absent => ServedObservationSurface {
+          kind: ProjectionJson, status: 503,
+          body: serialize_json(v: roadmap_work_item_projection_refusal_json(read_on: observed_at, step: "findings_count", reason: "the assumed findings count is not a natural number")),
+        }
+        Present { value: findings } => ServedObservationSurface {
+          kind: ProjectionJson, status: 200,
+          body: serialize_json(v: roadmap_projection_document_for_read(
+            nodes: map(roadmap_intention_bindings, b => b.node),
+            read_on_date: read_on_date,
+            workers: belt_capacity_of_instance(instance: instance),
+            findings_count: findings,
+            standings: standings,
+            envs: envelopes,
+          )),
+        }
+      }
+    }
+  }
+}
+
+// The findings count the projection ASSUMES when it reads: an input the document shows beside worker_count,
+// not a fact about how many findings any item has (the boundary names it exactly this way). A single positive
+// number stands in for "assume each findings family can expand," so the schedule places its finding leaves and
+// the Timeline shows the planned shape rather than an under-expanded one. It is printed under "inputs" so a
+// reader sees precisely what the read assumed, and it is deliberately not sourced from any finding: inventing
+// one would turn a shown input into a hidden claim.
+fn roadmap_projection_assumed_findings_count() -> Int { 4 }
+
 fn served_observation_sessions_surface_for_instance(instance: HostDashboardInstance) -> ServedObservationSurface {
   let o = belt_sessions_observe_for_instance(instance: instance)
   ServedObservationSurface { kind: SessionsJson, status: belt_sessions_http_status(o: o), body: belt_sessions_observed_json(o: o) }
@@ -493,6 +564,7 @@ fn served_observation_snapshot_observe_over(instance: HostDashboardInstance, pla
       served_observation_workflow_surface_for_instance(instance: instance, observed: observed, launch: launch),
       served_observation_sessions_surface_for_instance(instance: instance),
       served_observation_standings_surface_for_instance(instance: instance, plan: plan, observed_at: observed_at, identity: identity),
+      served_observation_projection_surface_for_instance(instance: instance, observed_at: observed_at),
     ],
   }
 }
@@ -744,7 +816,7 @@ fn served_observation_observe_and_write_over(instance: HostDashboardInstance, pl
 fn served_observation_observe_and_write_for_instance(instance: HostDashboardInstance, observed_at: String, identity: ServedReleaseIdentity) -> BeltPassOutcome {
   served_observation_observe_and_write_over(
     instance: instance,
-    plan: roadmap_plan_projection(),
+    plan: roadmap_plan_projection_for_instance(instance: instance),
     observed_at: observed_at,
     identity: identity,
   )
@@ -966,8 +1038,7 @@ fn served_observation_freshness_from_events(observed_at: String, events: Roadmap
   }
 }
 
-fn served_events_after_snapshot_close(read: CarrierClosed<RoadmapAllEventsRead>) -> RoadmapAllEventsRead {
-  match read.close {
+fn served_events_after_snapshot_close(read: CarrierClosed<RoadmapAllEventsRead>) -> RoadmapAllEventsRead {  match read.close {
     SnapshotNotOpened => read.result
     SnapshotClosed => read.result
     SnapshotCloseFailed { worktree, exit_code: _, stderr } =>
@@ -985,6 +1056,34 @@ fn served_events_after_snapshot_close(read: CarrierClosed<RoadmapAllEventsRead>)
           carrier_close_verification_reason(verification: verification),
         ], ""),
       }
+  }
+}
+
+// The one-snapshot projection read, released through the SAME close discipline as the standalone event read:
+// if the snapshot could not be closed, or its close could not be verified clean, the read REFUSES -- a
+// left-open event-log snapshot is reported, never served as a clean projection. Standing and events are refused
+// together, because they came off the one head (they cannot be trusted independently once the snapshot leaks).
+fn served_projection_after_snapshot_close(read: CarrierClosed<CarrierProjectionRead>) -> CarrierProjectionRead {
+  match read.close {
+    SnapshotNotOpened => read.result
+    SnapshotClosed => read.result
+    SnapshotCloseFailed { worktree, exit_code: _, stderr } => CarrierProjectionRead {
+      standings: read.result.standings,
+      events: AllEventsReadRefused {
+        step: "snapshot-close",
+        reason: join(["the projection snapshot was not closed (", worktree as String, "): ", stderr], ""),
+      },
+    }
+    SnapshotCloseVerificationFailed { worktree, verification } => CarrierProjectionRead {
+      standings: read.result.standings,
+      events: AllEventsReadRefused {
+        step: "snapshot-close",
+        reason: join([
+          "the projection snapshot close could not be verified clean (", worktree as String, "): ",
+          carrier_close_verification_reason(verification: verification),
+        ], ""),
+      },
+    }
   }
 }
 
@@ -1106,6 +1205,7 @@ fn served_observation_surface_response_for_instance(instance: HostDashboardInsta
         ServedObservationPresent { index } =>
           match kind {
             StandingsJson => served_observation_age_staleness(observed_at: index.observed_at)
+            ProjectionJson => served_observation_age_staleness(observed_at: index.observed_at)
             _ => freshness
           }
         _ => freshness

@@ -40,7 +40,7 @@ import gunbc.gunbc_cli_command { NamedArgumentRequest, gunbc_installed_run_with_
 import gunbc.runner.runner_host_file_converge { administrator_ssh_target }
 import gunbc.compute.remote_build_serving_setup { serving_toolchain_line_names_channel,
   remote_build_serving_desired, RemoteBuildServingDesired, ServingObserved,
-  serving_observed_from_reads, serving_assess, ServingAssessment, ServingDeviation, serving_deviation_item,
+  serving_observed_from_reads, serving_assess, serving_assess_readiness, ServingAssessment, ServingDeviation, serving_deviation_item,
   serving_assessment_settled, serving_assessment_runnable, serving_assessment_receipt_text,
   ServingLegFailure, ServingPlanInput, ServingLedgerRowObserved, serving_ledger_item,
   serving_passwd_uid, serving_gate_and, serving_account_presence_gate,
@@ -797,7 +797,11 @@ fn remote_build_serving_observe_ci_wet_hosted(host: String?) -> ProcessExit {
                 Absent => exit_failure(reason: concat("remote_build_serving_observe: the executor plan-time pin (binary sha / arch / GITHUB_SHA / rust-toolchain channel) could not be read; refusing to assess ", raw_host))
                 Present { value: pin } => {
                   let view = observe_host_reads(target: target, context: context, d: hi_desired, pin: pin)
-                  let assessment = serving_assess(d: view.desired, o: view.observed, pin: pin)
+                  // READINESS, not advance: the pre-service read assesses the host against its own settle
+                  // record, so a host that converged at X and is observed from a newer head Y reports no
+                  // checkout/serve_binary drift (serving-observe-assesses-installed-revision). The converge
+                  // entry below keeps serving_assess (advance) so a dispatched converge still moves a host.
+                  let assessment = serving_assess_readiness(d: view.desired, o: view.observed, pin: pin)
                   let body = serving_receipt_body(host_name: raw_host, probed_at: probed_at_word(reading: clock_now_probed_at()) as String, context_receipt: context_receipt, assessment: assessment)
                   let w = Filesystem.Write(path: gunbc_ci_remote_build_serving_observe_receipt_path, content: body)
                   if w.success == false {
@@ -1572,6 +1576,19 @@ fn converge_gunbc_door_argv(d: RemoteBuildServingDesired, function: String, argu
   }
 }
 
+// WHAT CEILING A RUNNING OF A RECOVERY DOOR ON THE HOST GETS, decided once for all three doors.
+// A door is a gunbc CLI run: its wall-clock begins with the host engine's cold entry resolution —
+// hundreds of closure files before a single seat is read — nothing like the one-shot commands
+// ActuationLeg's 60s ceiling was written for. The serve route met this same seam and classified its
+// host-side gunbc request leg as ProvisioningLeg (gunbc.compute.remote_build_client); the recovery
+// doors ride the SAME kind, declared here once so no leg restates a ceiling. Measured necessity:
+// converge apply 45354782930 killed the seat census at the 60s actuation ceiling "before the host
+// could answer" while the door was still resolving its entry — an overrun that proved nothing about
+// any seat, folded (correctly, by the fold's own rule) into an unknown census that refused the plan.
+fn serving_door_leg_kind() -> FleetLegKind {
+  ProvisioningLeg
+}
+
 // The as-account run that KEEPS the exit code. converge_as_user collapses a non-zero run into a
 // failed step, erasing the three-way answer; the recovery doors' verdict lives IN the code and must
 // arrive whole at recover_door_verdict.
@@ -1626,8 +1643,8 @@ fn serving_leg_seat_census(elevation: ObservationAttempt<Bool, ServingLegFailure
       ) {
         Absent => RecoverCatalogLegUnknown { detail: "the census run's named arguments could not be admitted" }
         Present { value: argv } => {
-          // the seat census is a gunbc CLI run under the same door grammar as its siblings: ActuationLeg.
-          let outcome = converge_as_user_outcome(kind: ActuationLeg, target: target, context: context, account: d.account_name, argv: argv)
+          // the seat census is a gunbc CLI run under the same door grammar and door ceiling as its siblings.
+          let outcome = converge_as_user_outcome(kind: serving_door_leg_kind(), target: target, context: context, account: d.account_name, argv: argv)
           match outcome {
             TypedArgvExecRefused { reason: r } => RecoverCatalogLegUnknown { detail: join(["the census run was refused before it executed: ", r], "") }
             // an overran census leg says nothing about the seat: unknown census, never a settled read.
@@ -1670,7 +1687,7 @@ fn converge_recover_stale_seat(target: SshTarget, context: FleetSshExecutionCont
         ], runtime_dir: runtime_dir) {
           Absent => StepFailed { cause: join(["the recovery run's named arguments for ", reference as String, " could not be admitted"], "") }
           Present { value: argv } => {
-            let door = converge_as_user_outcome(kind: ActuationLeg, target: target, context: context, account: d.account_name, argv: argv)
+            let door = converge_as_user_outcome(kind: serving_door_leg_kind(), target: target, context: context, account: d.account_name, argv: argv)
             match door {
               TypedArgvExecRefused { reason: r } => StepFailed { cause: join(["the recovery run was refused before it executed: ", r], "") }
               // an overran recovery write is never a settled write: the step fails, the next assessment re-decides.
@@ -1703,7 +1720,7 @@ fn converge_recover_readbacks(target: SshTarget, context: FleetSshExecutionConte
     Present { value: argv } => {
       // the read-back is a gunbc CLI run on the host, so it carries the same declared ceiling as
       // the census and the door, not the 15s probe ceiling the file's plain reads use.
-      let outcome = converge_as_user_outcome(kind: ActuationLeg, target: target, context: context, account: d.account_name, argv: argv)
+      let outcome = converge_as_user_outcome(kind: serving_door_leg_kind(), target: target, context: context, account: d.account_name, argv: argv)
       match outcome {
         TypedArgvExecRefused { reason: r } => StepFailed { cause: join(["the read-back run was refused before it executed: ", r], "") }
         // an overran read-back cannot confirm or deny the seat: fail the step, never claim done.
@@ -2248,6 +2265,11 @@ fn converge_run_checkout(target: SshTarget, context: FleetSshExecutionContext, d
 // on it and were never attempted. A pass with no failure has failed = [] and skipped = [].
 type ConvergeExecuted {
   attempted: List<String>,
+  // The writes that returned WriteSettled — the arms the apply ACTUALLY mutated on the host. Distinct
+  // from `attempted` (which includes the one write that failed): a receipt that names only failed/skipped
+  // writes cannot tell "applied every arm, then the re-observe refused" from "refused before mutating
+  // anything" — both have no failed and no skipped write. `applied` is what makes those two receipts differ.
+  applied: List<String>,
   failed: List<ConvergeWriteFailure>,
   skipped: List<String>
 }
@@ -2258,29 +2280,61 @@ type ConvergeExecuted {
 // converge_kind_rank) — runs against an absent prerequisite. The write itself is a parameter: the wet
 // apply passes converge_run_write over the fleet SSH edge, and the hermetic witness passes an injected
 // runner, so the claim exercises the same fold the apply runs (gunbc.design_argument::witness_one_interface).
-fn converge_execute_with(remaining: List<ConvergeAction>, attempted: List<String>, run: fn(ConvergeAction) -> ConvergeWriteOutcome) -> ConvergeExecuted {
+fn converge_execute_with(remaining: List<ConvergeAction>, attempted: List<String>, applied: List<String>, run: fn(ConvergeAction) -> ConvergeWriteOutcome) -> ConvergeExecuted {
   match remaining {
-    Empty => ConvergeExecuted { attempted: attempted, failed: [], skipped: [] }
+    Empty => ConvergeExecuted { attempted: attempted, applied: applied, failed: [], skipped: [] }
     Cons { head: a, tail: rest } => {
       let done = concat(attempted, [converge_action_key(a)])
       match run(a) {
-        WriteSettled => converge_execute_with(remaining: rest, attempted: done, run: run)
-        WriteFailed { failure: f } => ConvergeExecuted { attempted: done, failed: [f], skipped: map(rest, r => converge_action_key(r)) }
+        WriteSettled => converge_execute_with(remaining: rest, attempted: done, applied: concat(applied, [converge_action_key(a)]), run: run)
+        WriteFailed { failure: f } => ConvergeExecuted { attempted: done, applied: applied, failed: [f], skipped: map(rest, r => converge_action_key(r)) }
       }
     }
   }
 }
 
 fn converge_execute_plan(target: SshTarget, context: FleetSshExecutionContext, d: RemoteBuildServingDesired, writes: FreeSemigroup<ConvergeAction>) -> ConvergeExecuted {
-  converge_execute_with(remaining: non_empty_to_list(writes), attempted: [], run: a => converge_run_write(target: target, context: context, d: d, action: a))
+  converge_execute_with(remaining: non_empty_to_list(writes), attempted: [], applied: [], run: a => converge_run_write(target: target, context: context, d: d, action: a))
 }
 
-// The execution lines the apply receipt carries after the re-observed assessment: the failed write with
-// its CAUSE, then the writes skipped after it. Empty for a pass with no failure.
-fn converge_execution_receipt_lines(executed: ConvergeExecuted) -> String {
+// THE apply's terminal state, decided ONCE from the re-observed plan plus what the write fold did. It is a
+// coproduct so the SHAPE routes the receipt wording: a String verdict would let "applied arms, then the
+// re-observe refused" and "refused before mutating anything" collapse to the same text — the defect this
+// closes (srv3 converge 45762320308 applied every arm and then exited 1 at recover-catalog, and its receipt
+// was indistinguishable from a converge that touched nothing).
+type ConvergeApplyTerminal =
+  | ApplySettled
+  | ApplyRefused { reason: String }
+  | ApplyUnhandled { items: List<String> }
+  | ApplyStillNeedsWrites { count: Int }
+
+// The arms the apply actually mutated, named — empty when it mutated nothing.
+fn converge_applied_arm_line(executed: ConvergeExecuted) -> String {
+  if length(executed.applied) == 0 { "" } else { join(["applied: ", join(executed.applied, "; "), "\n"], "") }
+}
+
+// THE execution section the apply receipt carries after the re-observed assessment, decided by ONE function
+// over the executed fold and the terminal. A clean settle adds nothing (the assessment already says all-met).
+// Any other terminal names what was mutated and frames the outcome by whether anything was: applied arms +
+// a refusal read "applied-then-refused"; no applied arm + the same refusal read "refused-before-apply" — a
+// DIFFERENT receipt, so a converge that mutated the host and then refused is never mistaken for one that
+// refused before touching it. The failed write (with its cause) and the writes it made us skip stay named.
+fn converge_apply_receipt_lines(executed: ConvergeExecuted, terminal: ConvergeApplyTerminal) -> String {
   let failed_lines = join(map(executed.failed, f => join(["failed write: ", f.key, ": ", f.cause, "\n"], "")), "")
   let skip_line = if length(executed.skipped) == 0 { "" } else { join(["skipped after the first failed write: ", join(executed.skipped, "; "), "\n"], "") }
-  join([failed_lines, skip_line], "")
+  let applied_any = length(executed.applied) != 0
+  match terminal {
+    ApplySettled => ""
+    ApplyRefused { reason: r } =>
+      join([converge_applied_arm_line(executed: executed), failed_lines, skip_line,
+        if applied_any { join(["applied-then-refused: ", r, "\n"], "") } else { join(["refused-before-apply: ", r, "\n"], "") }], "")
+    ApplyUnhandled { items: u } =>
+      join([converge_applied_arm_line(executed: executed), failed_lines, skip_line,
+        if applied_any { join(["applied-then-unhandled: ", to_string(length(u)), " deviations remain\n"], "") } else { join(["unhandled-before-apply: ", to_string(length(u)), " deviations\n"], "") }], "")
+    ApplyStillNeedsWrites { count: c } =>
+      join([converge_applied_arm_line(executed: executed), failed_lines, skip_line,
+        if applied_any { join(["applied-then-unsettled: still needs ", to_string(c), " writes\n"], "") } else { join(["unsettled-before-apply: still needs ", to_string(c), " writes\n"], "") }], "")
+  }
 }
 
 // The three exits, each spelled ONCE, so the SHAPE of the decision is the only thing that routes
@@ -2290,9 +2344,14 @@ fn converge_execution_receipt_lines(executed: ConvergeExecuted) -> String {
 // (gunbc.design_argument::fail_closed: "no plausible output is fabricated").
 
 // REFUSE PATH: an unread leg, a refused assessment, or any unhandled deviation (incl. host.arch —
-// there is no arch arm). Write the plan receipt and fail; mutate NOTHING.
+// there is no arch arm). Write the plan receipt and fail; mutate NOTHING. The receipt routes through the
+// SAME execution-section function as the apply, with an empty fold, so it reads "refused-before-apply" —
+// never the "applied-then-refused" text an apply that mutated arms before refusing would print.
 fn converge_wet_refusal(host_name: String, context_receipt: String, assessment: ServingAssessment) -> ProcessExit {
-  let refuse_body = serving_receipt_body(host_name: host_name, probed_at: probed_at_word(reading: clock_now_probed_at()) as String, context_receipt: context_receipt, assessment: assessment)
+  let refuse_body = join([
+    serving_receipt_body(host_name: host_name, probed_at: probed_at_word(reading: clock_now_probed_at()) as String, context_receipt: context_receipt, assessment: assessment),
+    converge_apply_receipt_lines(executed: ConvergeExecuted { attempted: [], applied: [], failed: [], skipped: [] }, terminal: ApplyRefused { reason: "the plan refused before any write; the host was not mutated" }),
+  ], "")
   let rw = Filesystem.Write(path: gunbc_ci_remote_build_serving_apply_receipt_path, content: refuse_body)
   if rw.success == false {
     exit_failure(reason: join(["remote_build_serving_converge: plan receipt write failed: ", rw.error, "\n", refuse_body], ""))
@@ -2316,28 +2375,35 @@ fn converge_wet_settled(host_name: String, context_receipt: String, assessment: 
 // require the re-observed decision to have settled. Not settled -> exit failure (fail_closed).
 fn converge_wet_apply(target: SshTarget, context: FleetSshExecutionContext, d: RemoteBuildServingDesired, pin: ServingPlanInput, host_name: String, context_receipt: String, writes: FreeSemigroup<ConvergeAction>) -> ProcessExit {
   let executed = converge_execute_plan(target: target, context: context, d: d, writes: writes)
-  let failed = executed.failed
-  let skipped = executed.skipped
   let after = observe_host_reads(target: target, context: context, d: d, pin: pin)
   let after_assessment = serving_assess(d: after.desired, o: after.observed, pin: pin)
   let after_plan = converge_plan(d: after.desired, a: after_assessment, pin: pin, target_arch: after.observed.target_arch, rustup: after.observed.rustup)
+  // THE terminal state, decided ONCE from the re-observed plan plus what the write fold did. Its SHAPE
+  // routes both the receipt wording and the exit; it is not re-combined by hand from record fields.
+  let terminal = match after_plan {
+    ConvergeSettled => if length(executed.failed) != 0 || length(executed.skipped) != 0 || serving_assessment_settled(a: after_assessment) == false {
+      ApplyRefused { reason: join(["host did not settle after apply; ", to_string(length(executed.failed)), " writes failed, ", to_string(length(executed.skipped)), " skipped"], "") }
+    } else {
+      ApplySettled
+    }
+    ConvergeRefused { reason: r } => ApplyRefused { reason: join(["the re-observe refused after apply: ", r], "") }
+    ConvergeUnhandled { items: u } => ApplyUnhandled { items: u }
+    ConvergePlan { writes: ws } => ApplyStillNeedsWrites { count: length(non_empty_to_list(ws)) }
+  }
   let body = serving_receipt_body(host_name: host_name, probed_at: probed_at_word(reading: clock_now_probed_at()) as String, context_receipt: context_receipt, assessment: after_assessment)
-  // B3 + review 96096: the receipt names the failed write WITH ITS CAUSE, and the writes that failure made
-  // us SKIP, never attempted.
-  let body_with_skips = join([body, converge_execution_receipt_lines(executed: executed)], "")
+  // B3 + review 96096: the receipt names the failed write WITH ITS CAUSE and the writes that failure made
+  // us SKIP; and (the applied-then-refused fix) it names the arms that DID settle, so an apply that mutated
+  // the host before refusing is never mistaken for one that refused before touching it.
+  let body_with_skips = join([body, converge_apply_receipt_lines(executed: executed, terminal: terminal)], "")
   let w = Filesystem.Write(path: gunbc_ci_remote_build_serving_apply_receipt_path, content: body_with_skips)
   if w.success == false {
     exit_failure(reason: join(["remote_build_serving_converge: receipt write failed: ", w.error, "\n", body_with_skips], ""))
   } else {
-    match after_plan {
-      ConvergeSettled => if length(failed) != 0 || length(skipped) != 0 || serving_assessment_settled(a: after_assessment) == false {
-        exit_failure(reason: join(["remote_build_serving_converge: host did not settle after apply; ", to_string(length(failed)), " writes failed, ", to_string(length(skipped)), " skipped\n", body_with_skips], ""))
-      } else {
-        ExitSuccess
-      }
-      ConvergeRefused { reason: r } => exit_failure(reason: join(["remote_build_serving_converge: the re-observe refused after apply: ", r, "\n", body_with_skips], ""))
-      ConvergeUnhandled { items: u } => exit_failure(reason: join(["remote_build_serving_converge: ", to_string(length(u)), " deviations remain unhandled after apply\n", body_with_skips], ""))
-      ConvergePlan { writes: ws } => exit_failure(reason: join(["remote_build_serving_converge: the host still needs ", to_string(length(non_empty_to_list(ws))), " writes after apply\n", body_with_skips], ""))
+    match terminal {
+      ApplySettled => ExitSuccess
+      ApplyRefused { reason: r } => exit_failure(reason: join(["remote_build_serving_converge: ", r, "\n", body_with_skips], ""))
+      ApplyUnhandled { items: u } => exit_failure(reason: join(["remote_build_serving_converge: ", to_string(length(u)), " deviations remain unhandled after apply\n", body_with_skips], ""))
+      ApplyStillNeedsWrites { count: c } => exit_failure(reason: join(["remote_build_serving_converge: the host still needs ", to_string(c), " writes after apply\n", body_with_skips], ""))
     }
   }
 }

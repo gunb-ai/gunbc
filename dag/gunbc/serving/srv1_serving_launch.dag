@@ -11,16 +11,15 @@ import std.content_hash { sha256_hex_of_text }
 import std.roster_frontier { FrontierRow, frontier_row_decl }
 import std.dissolution { unbound_dissolution, bound_dissolution }
 import gunbc.retained_shell_script { RetainedShellScript }
-import gunbc.serving.rented_replica { RentedReplicaIdentity }
-import gunbc.serving.serving_enrollment { ServingRoute, CeilingByDeclaredPolicy, serving_replica_route }
 import extdeps.external_authority { CitedFigureStanding, TranscribedUncited }
 import extdeps.uri { UriScheme, Https }
-import extdeps.network.ipv4 { Ipv4Address, ipv4_address, render_ipv4_address }
+import extdeps.network.ipv4 { Ipv4Address, ipv4_address }
 import extdeps.huggingface.hub { HubCheckpointManifest }
 import extdeps.vllm.lil_serve { LilServeLaunch, LilServeEngineFlags, LilServeApiKeyFromFile, lil_serve_launch_argv, lil_serve_profile_qwen38_flash_next, lil_serve_hardware_rtx_pro_6000_pcie, lil_serve_environment_entry }
 import extdeps.vllm.local_inference_lab_build { VllmServingImage, local_inference_lab_vllm_image }
 import extdeps.local_inference_lab.qwen3_8_flash_next { qwen3_8_flash_next_manifest }
 import gunbc.serving.serving_context_cap { serving_fleet_context_cap }
+import gunbc.serving.serving_host_memory { srv1_lmcache_l1_gb_value, srv1_lmcache_l2_gb_value }
 import gunbc.host.srv1_serving_startup_receipt { srv1_serving_startup_reading, srv1_serving_startup_ground }
 import gunbc.serving.serving_enrollment { ServingRouteUnresolved }
 import product.placement_supply { PhysicalAssetIdentity, physical_asset_identity_eq }
@@ -120,8 +119,15 @@ data srv1_serving_launch: LilServeLaunch = LilServeLaunch {
   hardware: lil_serve_hardware_rtx_pro_6000_pcie,
   environment: [
     lil_serve_environment_entry(key: "LMCACHE_MODE" as NonEmptyStr, value: "ram-disk" as NonEmptyStr),
-    lil_serve_environment_entry(key: "LMCACHE_L1_GB" as NonEmptyStr, value: "12" as NonEmptyStr),
-    lil_serve_environment_entry(key: "LMCACHE_L2_GB" as NonEmptyStr, value: "125" as NonEmptyStr),
+    // Both tiers come from their authority rows (gunbc.serving.serving_host_memory::
+    // srv1_lmcache_l1_configured / srv1_lmcache_l2_configured, both typed Gibibyte) rather than from a literal written here.
+    // The "12" that used to sit in this slot was the 2026-11-08 reading, copied: the boot launcher had moved to
+    // 48 on 2026-11-24 and this row — which serving_provision_derivation::srv1_serving_launch_for_port copies
+    // into every provisioned container's environment — had not, so a container provisioned from the model would
+    // have come up with a quarter of the tier the eviction contract needs. The dated capture of the older
+    // reading is kept, as a capture, in gunbc.serving.srv1_serving_launch_witness::observed_cmd_tail.
+    lil_serve_environment_entry(key: "LMCACHE_L1_GB" as NonEmptyStr, value: srv1_lmcache_l1_gb_value()),
+    lil_serve_environment_entry(key: "LMCACHE_L2_GB" as NonEmptyStr, value: srv1_lmcache_l2_gb_value()),
     lil_serve_environment_entry(key: "LMCACHE_L2_ROOT" as NonEmptyStr, value: "/cache/kv" as NonEmptyStr),
     lil_serve_environment_entry(key: "LMCACHE_L2_WORKERS" as NonEmptyStr, value: "16" as NonEmptyStr),
     lil_serve_environment_entry(key: "LMCACHE_L2_ODIRECT" as NonEmptyStr, value: "1" as NonEmptyStr),
@@ -675,62 +681,14 @@ fn srv1_serving_wrapper_adoption() -> Srv1ServingWrapperAdoption {
 // next-rung trigger"; DESIGN 3 "a home that does not resolve is a citation defect").
 data srv1_serving_device_flag_adoption_node: Srv1ServingWrapperAdoption = srv1_serving_wrapper_adoption()
 
-// ── the enrollment row: this launch, routable, with a declared ceiling ───────────────────────
+// ── no enrollment row: srv1's caps have one authority ───────────────────────────────────────
 //
-// The FIRST-PARTY replica (srv1 is owned hardware, not rented): the identity, address and port are the
-// launch's; the turn ceiling is the operator's decision (cap 4 at the 2026-10-24 router cutover,
-// relayed by merry-fox-82) and is spelled CeilingByDeclaredPolicy — an allocation with a decider and a
-// date, not a fabricated measurement (gunbc.design_argument::fail_closed). serving_enrollment's own rule holds: admission takes
-// the minimum of this ceiling and what the route says about itself live.
-//
-// The device_index the replica identity carries is now DERIVED from the declared group's served member,
-// not a literal `0`: the literal was an independent value that did not track the device the engine
-// actually runs on, and it silently lied once `all` grew to a second card. The route resolves only when
-// the group's own devices resolve and admit; if they do not, it is ServingRouteUnresolved (a declared
-// obligation), never a route pinned to an unqualified device.
-data srv1_serving_route: ServingRoute = srv1_serving_declared_route()
-
-// The ordinal the engine binds, carried in RentedReplicaIdentity.device_index. It is the served device's
-// position in the DECLARED group, which is ALSO its ordinal inside the container: the installed wrapper
-// passes exactly the admitted devices via per-device CDI selectors (the device flag srv1_serving_wrapper_of renders into the Installable body),
-// so the container re-enumerates only those, in this declared order — it cannot name a host device the group
-// does not declare. This is deliberately NOT a host nvidia-smi index (which is what the rented pool's
-// device_index tracks): deriving it from the declared ordering is what keeps the route correct when a second
-// card is later powered and the Max-Q re-enumerates to a different host index.
-fn srv1_serving_served_device_rank() -> Nat {
-  // The served member's own rank — total, because every group names its served board (no defaulted index for
-  // an empty group: one cannot be declared). Review 92246.
-  match srv1_serving_served_member(group: srv1_serving_gpu_group) {
-    Srv1ServingDeviceSelected { board: _, gpu_uuid: _, rank: r } => r
-    Srv1ServingDevicePending { board: _, rank: r, pending: _ } => r
-  }
-}
-
-fn srv1_serving_declared_route() -> ServingRoute {
-  let replica = RentedReplicaIdentity {
-    node: "srv1" as NonEmptyStr,
-    device_index: srv1_serving_served_device_rank(),
-    served_name: srv1_router_upstream_launch_facts.name,
-  }
-  let ceiling = CeilingByDeclaredPolicy {
-    count: 4,
-    decider: "operator" as NonEmptyStr,
-    decided_on: "2026-10-24" as NonEmptyStr,
-    basis: "S1 router cutover to srv1 (gunbc.serving.router_dev_policy, #15113): active-turn cap 4, router-side policy per proud-bear-756; restored after any maintenance relaunch" as NonEmptyStr,
-  }
-  match srv1_serving_group_selection(group: srv1_serving_gpu_group) {
-    Srv1ServingDevicesSelected { tensor_parallel: _, members: _ } => serving_replica_route(
-      replica: replica,
-      address: render_ipv4_address(addr: srv1_router_upstream_launch_facts.host),
-      port: srv1_router_upstream_launch_facts.port,
-      ceiling: ceiling,
-    )
-    Srv1ServingDevicesRefused { tensor_parallel: _, pending: _ } => ServingRouteUnresolved {
-      replica: replica,
-      obligation: "the declared GPU group has no fully admitted device to serve from; see srv1_serving_group_selection for which member is unresolved" as NonEmptyStr,
-    }
-  }
-}
+// This module once declared srv1_serving_route, the single-container route of the 2026-10-24 router cutover with
+// a hand-written CeilingByDeclaredPolicy of 4. The two-replica layout of 2026-11-08 superseded that container, no
+// production path read the route, and its cap restated a figure that has an authority: each replica's cap is
+// rendered by gunbc.serving.router_dev_policy from that replica's own row in gunbc.serving.serving_replica_profile
+// (turns = the measured per-card concurrency at the policy's least stream rate). The route's device_index
+// derivation went with it, since the route was its only consumer.
 
 // ── what this module does NOT model, keyed ───────────────────────────────────────────────────
 data srv1_serving_unmodeled_frontier_rows: List<FrontierRow> = [

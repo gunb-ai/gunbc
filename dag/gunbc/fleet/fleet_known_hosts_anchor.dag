@@ -6,7 +6,7 @@ import std.bytes { bytes_octets, utf8_encode_bytes }
 import extdeps.crypto.sha2 { sha256_hex }
 import extdeps.shell
 import extdeps.linux.unix_socket { linux_unix_socket_pathname_max_length }
-import std.measure { Second, second, ByteSize, byte_size, byte_size_count }
+import std.measure { Second, second, measure_scale_fraction_floor, ByteSize, byte_size, byte_size_count }
 import std.algebra { trim, list_head, skip }
 import std.content_hash {
   ContentHash,
@@ -1328,11 +1328,23 @@ fn fleet_ssh_password_client_options(
 // shell sink honors exactly the deadline the caller passes. Non-fleet dispatches (gunbc.WitnessBin.Run
 // and any other transport-shell caller) are NOT a fleet leg kind: they carry no FleetLegKind and pass
 // no deadline at all, keeping today's behavior under the outer whole-receipt budget.
+// TWO KINDS THE REMOTE-BUILD ROUTE NAMED ON 2026-11-25, because the four above do not fit it. Its probe
+// leg does not run a bare command on the far side: it asks the SERVING CONTRACT, which cannot answer until
+// the host's own interpreter has resolved the serve closure -- read at 240 s wall (resolve_entry_graph_inclusive
+// 248554 ms, 895 modules, max_rss 3.7 GiB) for the trivial "remote-build-v1 probe" against srv1 at
+// 2026-11-25T14:27Z, from the client's own transcript. A ProbeLeg ceiling (15 s) on that leg refuses every
+// host the roster has, which is fail-closed but serves nothing. Its request leg does not provision a toolchain:
+// it fetches the pushed revision, BUILDS it and runs the work, which is longer again. Both are named here
+// rather than riding a fleet-converge bound, and their ceilings are DERIVED from the read and the outer bound
+// below -- never hand-spelled -- so the lane that cuts the per-leg closure resolve (its own lane, filed 2026-11-25)
+// re-derives this row when it lands instead of leaving a stale constant behind.
 type FleetLegKind
   = ProbeLeg
   | ActuationLeg
   | RepositoryConvergenceLeg
   | ProvisioningLeg
+  | ServingProbeLeg
+  | HostBuildLeg
 
 // THE ONE AUTHORITY FOR A FLEET LEG'S BOUNDS. connect/alive_interval/alive_count_max stay exactly as
 // they were: they bound the TCP connect and a path that goes dark (per-master), which is NOT the leg's
@@ -1348,7 +1360,12 @@ type FleetLegKind
 // stays under the 30-minute whole-receipt step bound named in the incident (rn_883 boundary), which
 // is the only current backstop and must remain the outer bound. Each stays well under the outer
 // whole-receipt budget. There is deliberately no 'none' row: a leg kind that is a fleet leg always
-// gets a ceiling here, and non-fleet dispatches never consult this table.
+// gets a ceiling here, and non-fleet dispatches never consult this table. ServingProbeLeg and HostBuildLeg
+// are NOT spelled here at all: they are shares of ONE budget (remote_build_step_budget), derived at
+// serving_probe_wall_ceiling and host_build_wall_ceiling from fleet_whole_receipt_step_bound and from a
+// dated read of what the serving side costs to answer at all -- because two ceilings that each fit the
+// outer bound do not fit the SEQUENCE they run in, and a ceiling that has to survive a re-measurement is a
+// formula over a read, not a number copied out of one.
 type FleetSshLegDeadline {
   connect: Second
   alive_interval: Second
@@ -1369,6 +1386,78 @@ data fleet_ssh_leg_deadline: FleetSshLegDeadline = FleetSshLegDeadline {
   wall_provisioning: second(count: 900),
 }
 
+// THE OUTER BOUND, AS A ROW, because the two ceilings below are DERIVED from it and a derivation cannot
+// cite prose. 1800 s is the 30-minute whole-receipt step bound named in the incident (rn_883 boundary):
+// it is the receipt's own backstop, NOT a leg's ceiling -- a leg allowed to run the whole bound would
+// leave the receipt write and the roster walk nothing, which is the same no-receipt failure the incident
+// reported, only scheduled.
+data fleet_whole_receipt_step_bound: Second = second(count: 1800)
+
+// THE COLD SERVING-CONTRACT ANSWER, AS READ, not estimated: the trivial "remote-build-v1 probe" against
+// srv1 answered ServeHostCannotServe (exit 5) after 4 MINUTES of wall clock at 2026-11-25T14:27Z. The host
+// transcript in the same read names the cost: resolve_entry_graph_inclusive ms=248554 over 895 modules,
+// max_rss_kib=3812072 -- the serving binary resolves its own closure before it can answer a probe at all.
+// (Cutting that per-leg cost is a separate lane, filed the same day; when it lands, this read is re-taken
+// and the shares below re-derived -- it is not a constant to keep.)
+//
+// THIS READ MEASURES A COST THAT SHOULD NOT EXIST, and it is scheduled to: the 895-module resolve is the
+// SERVE ENTRY's own import closure, which the run verb pays before ANY function runs -- the probe answer
+// itself is a constant plus a principal reading (remote_build_serve.dag). loyal-badger-240 (work item
+// adhoc-de69a4c6-929) is building the probe front door for exactly this: a probe entry whose closure is
+// ~136 modules today, ~25 after two leaf cuts, handing a real request off to the existing serve entry.
+// When it ships, this row re-takes at single-digit seconds and ServingProbeLeg's share SHRINKS with it,
+// which is what makes the roster walk move off a wedged host faster. Sizing a probe to a number this
+// large is a bridge over a known defect, not a defence of 240 s as a property of probes.
+data serving_probe_cold_answer_read: Second = second(count: 240)
+
+// THE ONE BUDGET A CANDIDATE ATTEMPT SPENDS. A remote-build attempt is TWO legs in sequence inside one
+// step -- probe, then (only on a ready answer) the request -- so the two ceilings are shares of ONE
+// budget, not two ceilings each fitted under the outer bound: probe 600 s + request 1500 s would overrun a
+// 1800 s step between them, which is what the review of the first cut caught -- a bound that holds per leg
+// and not for the sequence re-creates the no-receipt failure, only scheduled. Five sixths of the outer
+// bound goes to the two legs; the sixth (300 s) is what the client owes in the same step for its own work:
+// snapshot commit, push of the hidden ref, answer decode, receipt write. Observed, that work is seconds
+// (the push answered within 2 s of the 2026-11-25 client transcript); the margin is held at the fleet's own
+// pinned-revision fetch ceiling (wall_repository_convergence, 300 s -- the same class of work, one ref over
+// one connection) rather than at the observed 2 s, because a margin has to hold on a loaded host, not on a
+// quiet one.
+//
+// WHAT THIS ROW DOES NOT CLAIM, stated so the rung is not overstated: it bounds a CANDIDATE ATTEMPT, not
+// the whole run. The walk tries the roster in order, so a run's worst case is one attempt budget per
+// candidate -- two today, and a timeout probe (600 s) plus a ready probe (600 s) plus a request (900 s) is
+// 2100 s against a 1500 s budget. No row here says that total fits anything, because no route-level budget
+// is modelled yet; naming that gap is the honest rung, and the client is a session process whose outer
+// limit today is the operator's patience -- which is exactly the thing the ceiling exists to stop
+// depending on.
+fn remote_build_step_budget() -> Second {
+  measure_scale_fraction_floor(m: fleet_whole_receipt_step_bound, num: 5, den: 6)
+}
+
+// ServingProbeLeg: two fifths of that budget (600 s). This is where the measurement enters: the claim
+// asserts that the ceiling sits at least 5/2 ABOVE the dated cold read, so the probe's share is grounded
+// in the read while the pair still fits the sequence. A wedged serving host is refused in ten minutes; a
+// merely slow one is still answered.
+//
+// THIS KIND EXISTS SO THE FLEET-WIDE ProbeLeg DOES NOT HAVE TO MOVE. wall_probe (15 s) is grounded by a
+// 0.26 s pinned-revision rev-parse read, and test.claim.live_deploy.deployed_tree_leg_deadline_witness
+// pins it; raising it to cover a serving-side closure resolve would make every unreachable host cost
+// minutes of the roster walk and ask that witness to defend a number nobody can ground. The remote-build
+// probe pays a different, larger fact, so it gets its own kind beside that one -- and it is the row above
+// that grows it, not a guess.
+fn serving_probe_wall_ceiling() -> Second {
+  measure_scale_fraction_floor(m: remote_build_step_budget(), num: 2, den: 5)
+}
+
+// HostBuildLeg: the other three fifths (900 s) -- what the probe's measured cost LEAVES. Every second cut
+// from the read buys the build leg a second back, which is exactly why the lane that cuts the serving
+// side's per-leg closure resolve is what grows this share; re-take the read and re-derive there rather
+// than editing a number. A build that needs more than the share trips TYPED ("the host may still be
+// building, so the outcome is unknown and the walk stops") -- a visible refusal with a receipt -- rather
+// than running past the step's bound and arriving as no receipt at all.
+fn host_build_wall_ceiling() -> Second {
+  measure_scale_fraction_floor(m: remote_build_step_budget(), num: 3, den: 5)
+}
+
 fn fleet_ssh_leg_deadline_options(deadline: FleetSshLegDeadline) -> List<SshClientOption> {
   [
     ConnectTimeout { seconds: deadline.connect },
@@ -1385,6 +1474,8 @@ fn fleet_leg_wall_deadline(kind: FleetLegKind) -> Second {
     ActuationLeg => fleet_ssh_leg_deadline.wall_actuation,
     RepositoryConvergenceLeg => fleet_ssh_leg_deadline.wall_repository_convergence,
     ProvisioningLeg => fleet_ssh_leg_deadline.wall_provisioning,
+    ServingProbeLeg => serving_probe_wall_ceiling(),
+    HostBuildLeg => host_build_wall_ceiling(),
   }
 }
 

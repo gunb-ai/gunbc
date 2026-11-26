@@ -883,7 +883,7 @@ data roadmap_decompositions: List<WorkDecomposition> = [
       leaf(label: "a deliberately missing emission rule refuses, typed, through the written-file route", days: 2),
     ],
     [
-      probe(label: "extend the closing contract to written source, rustc result, provenance and refusal; its subject must be the written artifact, not the in-memory string", days: 2, module_path: "v2.test.claim.long.direct_rust_door_production_group", decl_name: "direct_rust_door_production_group_closing_expectation_holds"),
+      probe(label: "extend the closing contract to written source, rustc result, provenance and refusal; its subject must be the written artifact, not the in-memory string", days: 2, module_path: "test.claim.long.direct_rust_door_production_group", decl_name: "direct_rust_door_production_group_closing_expectation_holds"),
     ],
     [
       leaf(label: "acceptance run at exact head; receipt", days: 1),
@@ -1645,7 +1645,14 @@ data roadmap_decompositions: List<WorkDecomposition> = [
     waits(item: "roadmap-leaf-in-flight-set", from_stage: 0, into_stage: 0),
   ], stages: [
     [
-      leaf(label: "one JSON row per work item served at projection.json beside standings.json, in the shape the ticket declares, in-flight leaves read from the derived set and past events read from the log", days: 3),
+      leaf(label: "one JSON row per intention-bound work item served at projection.json beside standings.json, in the shape the ticket declares, in-flight leaves read from the derived set and past events read from the log", days: 3),
+    ],
+  ]),
+  decomposition(node: "roadmap-work-item-projection-unbound-coverage", waits_on: [
+    waits(item: "roadmap-work-item-projection", from_stage: 0, into_stage: 0),
+  ], stages: [
+    [
+      leaf(label: "every dispatchable work item gets a projection row; a dispatchable item with no intention binding refuses with a typed error naming the node instead of being silently absent, with floor-parse-formation-wall as the live specimen", days: 2),
     ],
   ]),
   decomposition(node: "roadmap-timeline-page", waits_on: [

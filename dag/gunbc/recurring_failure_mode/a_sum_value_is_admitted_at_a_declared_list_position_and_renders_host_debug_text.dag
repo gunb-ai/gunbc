@@ -1,0 +1,41 @@
+module gunbc.recurring_failure_mode.a_sum_value_is_admitted_at_a_declared_list_position_and_renders_host_debug_text
+
+import std.types { NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.recurring_failure_mode { BlockerClassUnstated, RecurringFailureMode, RungUnread }
+
+// Consumer: directory-derived recurring_failure_mode.roster, projected by
+// gunbc.design_ledgers.expected_design_failure_modes_md through docs_projection_gate.
+
+// THE DECLARED-CONTAINER MANIFESTATION OF THE HOST-DEBUG-RENDERING FAMILY. The sibling
+// gunbc.recurring_failure_mode a_nominal_value_reaches_a_string_position_and_renders_host_debug_text is
+// about a nominal value reaching a STRING position; this is a nominal COPRODUCT (a `sum` value) reaching a
+// position whose declared type is a LIST of strings, and the checker admitting it. It is also NOT
+// gunbc.recurring_failure_mode list_typed_value_element_mismatch_admitted: there both sides are `List`
+// applications with distinct element types; here the source is not a list at all -- it is a coproduct whose
+// arms carry a list, so there is no element type to compare, and the whole value is fabricated into the
+// slot's shape by the host's debug printer.
+data a_sum_value_is_admitted_at_a_declared_list_position_and_renders_host_debug_text: RecurringFailureMode = RecurringFailureMode {
+  identity: "a_sum_value_is_admitted_at_a_declared_list_position_and_renders_host_debug_text" as NonEmptyStr,
+
+  rung: RungUnread { cause: BlockerClassUnstated },
+
+  receipts: [
+    "INVALID STATE: a value whose type is a `sum` (coproduct) reaches a parameter/field position whose declared type is List<String>, and the seed ACCEPTS the call -- no located refusal at the position. HARM: the child at that position receives the host's Debug rendering of the whole sum as its argument, not the list it declared. The defect is silent at compile time and only visible downstream as a malformed request.",
+
+    "HOW IT SURFACED (srv1 run of gunbc#16872 at e4e7108c997, receipt ~/lively-dove-baseline/verify16872-e4e7108c997/summary.txt, run by lively-dove-824). Two witnesses -- test.claim.expectation_frontier_witness run_entry_capturing_stderr and test.claim.no_fake_anomalies_witness run_corpus_capturing_stderr -- passed the result of gunbc.instruments.host_prelude gunbc_test_claims_argv (type TestClaimsArgv, a coproduct with arms TestClaimsArgvBuilt { argv: List<String> } and TestClaimsArgvRefused { entry, function, reason }) straight into gunbc.WitnessBin.Run's args:, which is declared List<String>. The seed admitted it. The child received the Debug text and died: stderr showed `error: unrecognized subcommand 'TestClaimsArgvBuilt { argv: [test, --source-root, dag, ...] }'`, and expectation_frontier went DID-NOT-HOLD at rc=1.",
+
+    "THE CORRECT SHAPE, already used in the same tree. gunbc.instruments.host_prelude run_gunbc_claims_ready matches the sum: TestClaimsArgvRefused makes the claim false and TestClaimsArgvBuilt runs argv. merge_admission_capture_transport run_merge_admission_capture_subprocess and test.claim.gunbc_test_batch_argv_witness pooled_argv already match it the same way. The bug is ONLY where a caller skipped the match and passed the sum where a List<String> was declared -- so the checker, not the caller, is the wall this row files.",
+
+    "DISTINGUISHING FACTS. NOT list_typed_value_element_mismatch_admitted: there the source and target are both List applications and the element types are established and distinct; here the source is a coproduct, not a list, so there is no element type established at all. NOT a_nominal_value_reaches_a_string_position_and_renders_host_debug_text: that class is a String position (an `as String` or an untyped builtin formal); here the target is a declared List<String> field/parameter, and the same host-debug-rendering harm appears at a container position the seed ought to typecheck against its declared element type.",
+
+    "THE CHECKER GAP: the seed must refuse a coproduct-typed actual at a declared List<t> position, located, the same way a value of the wrong kernel type is refused at a declared scalar. Until that refusal exists, every caller of a sum-returning argv builder must itself match the sum, and one un-matched call ships a child that never received its arguments."
+  ],
+
+  evidence: [
+    DeclarationRef { module_path: "gunbc.instruments.host_prelude", decl_name: "gunbc_test_claims_argv", field: WholeDeclaration },
+    DeclarationRef { module_path: "gunbc.instruments.host_prelude", decl_name: "run_gunbc_claims_ready", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.expectation_frontier_witness", decl_name: "run_entry_capturing_stderr", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.no_fake_anomalies_witness", decl_name: "run_corpus_capturing_stderr", field: WholeDeclaration }
+  ]
+}

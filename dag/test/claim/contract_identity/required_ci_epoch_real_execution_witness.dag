@@ -4,7 +4,7 @@ import std.types { Bool, String, Int, NonEmptyStr, FilePath, GitRef }
 import extdeps.git
 import std.algebra { trim }
 import extdeps.shell
-import extdeps.filesystem.filesystem_io
+import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.git.plumbing { GitRepositoryAddress, GitWorktreeAt }
 import extdeps.github.workflow_runs { WorkflowRunConclusion, Success, WorkflowRun, WorkflowRunList, WorkflowRunStatus, Completed }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }

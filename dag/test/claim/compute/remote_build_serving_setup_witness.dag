@@ -8,8 +8,7 @@ module test.claim.compute.remote_build_serving_setup_witness
 // gunbc.design_argument::fail_closed). The paired control proves the opposite direction:
 // a CONFIRMED-absent read (test exit 1) IS a divergence the apply should write — so we have
 // not collapsed real drift into indeterminate either. Run:
-//   gunbc run --source-root dag --source-root src/v2 \
-//     --entry dag/test/claim/compute/remote_build_serving_setup_witness.dag --claim-run
+//   gunbc test //test/claim/compute/remote_build_serving_setup_witness:<test fn>   (one operand per test fn)
 
 import std.types { Bool, String, FilePath }
 import std.optional { Present, Absent }
@@ -18,7 +17,7 @@ import std.goal_assessment {
   ObservationAttempt, ObservationEstablished, ObservationRefused,
   GoalSatisfied, GoalDiverged, GoalIndeterminate, GoalAssessmentRefused,
 }
-import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv9, operator_host_e2d4b7 }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv9, operator_host_e2d4b7, operator_host_srv14 }
 // RB-M3: ServingPlanInput.executor_arch is an Architecture (projected from uname -m by the converge producer).
 // All assess fixtures here use operator_host_srv1, whose authored row is Aarch64, so executor_arch is Aarch64
 // (row == executor => the upload path and the serve-binary pin compare stay active) and the default target_arch
@@ -31,12 +30,17 @@ import gunbc.compute.work_provider_local {
 import gunbc.compute.remote_build_serving_setup { serving_toolchain_line_names_channel,
   remote_build_serving_desired, RemoteBuildServingDesired, serving_ledger_service_user,
   serving_forced_command_line, serving_observed_from_reads, serving_assess, ServingAssessment,
+  serving_assess_readiness, SidecarRead, SidecarAbsent, SidecarMalformed, SidecarRecorded,
   serving_assessment_settled, serving_assessment_terminal, serving_assessment_runnable,
   serving_assessment_receipt_text, ServingLegFailure, ServingObserved, serving_deviation_item,
   ServingPlanInput, ServingLedgerRowObserved, serving_ledger_declared_mode_octal,
   serving_store_dir_mode_octal,
   serving_scratch_root_mode_octal,
   serving_authorized_keys_mode_octal, serving_serve_binary_mode_octal,
+  serving_group_deviations,
+}
+import gunbc.fleet.fleet_posix_accounts {
+  fleet_posix_remote_build_user, fleet_posix_compute_ledger_group_gid, fleet_posix_operator_user,
 }
 import gunbc.compute.remote_build { remote_build_serving_instance }
 import gunbc.owned_directory { OwnedDirectoryTarget, owned_directory_owner, owned_directory_path, owned_directory_member }
@@ -146,6 +150,22 @@ test fn a_host_outside_the_candidate_row_has_no_forced_command() -> Bool {
       Present { value: l } => false
     }
   }
+}
+
+// ── POSITIVE CONTROL: butch (srv14) is an admitted candidate and renders its forced-command ──
+// The other half of the discriminating pair with the red above (srv9, off the row, has none). srv14 joins
+// remote_build_serving_candidate_hosts on the same footing as ken so the peer-executor OBSERVE/CONVERGE arms
+// can create its serving home. Grounded in host reads, not the ruling row alone: run 45173386343
+// (fleet-converge remote_build_serving_observe host=srv1 subject_host=srv14) read butch over the tailnet --
+// known_hosts anchor materialized + content-verified, endpoint butch.tailecbe08.ts.net,
+// provenance scanned-first-contact -- and gunbc.serving.serving_reservation::srv14_serving_unit_boot_states
+// records the operator's hand retirement of its Strata serving engines.
+test fn srv14_is_an_admitted_candidate_and_renders_its_forced_command() -> Bool {
+  remote_build_host_is_serving_candidate(host: operator_host_srv14)
+    && match serving_forced_command_line(host: operator_host_srv14) {
+         Absent => false
+         Present { value: line } => line != ""
+       }
 }
 
 // ── observation builders for the assessment cells ───────────────────────────────
@@ -333,6 +353,134 @@ test fn a_matching_host_is_adopted_as_a_settled_assessment() -> Bool {
     Absent => false
     Present { value: line } => serving_assessment_settled(a: serving_assess(d: d, o: converged_observed(line, d), pin: pin_ok()))
   }
+    }
+  }
+}
+
+// ── serving-observe-assesses-installed-revision (RB-M3, lively-owl-722) ──────────
+// The pre-service READINESS read assesses the host against its OWN settle record (the identity
+// sidecar RecordServeIdentity wrote at its last converge), NOT against whatever head dispatched the
+// observe. An admissible serving state is self-consistent: the running binary's sha equals the sha the
+// sidecar records, and the checkout stands at the revision the sidecar records. These claims pin both
+// halves: (a) the row's RED CONTROL — a just-converged host observed from a NEWER head reports NO
+// checkout and NO serve_binary drift, yet the SAME observation under the converge's advance basis still
+// names both, so the two bases are genuinely different and the converge can still advance a host; and
+// (b) the fail-closed reservations — a checkout moved off its settled revision, a binary that no longer
+// matches its sidecar, and an absent/malformed sidecar each STILL drift under readiness (no silent settle).
+
+// A host whose every fact was read and is self-consistent with a settle sidecar, with the checkout
+// HEAD, the running binary sha and the sidecar contents supplied independently (so a claim can move one
+// leg out from under the others). serve_binary is present, so the observe would have read the sidecar.
+fn settled_host_reads(dline: String, d: RemoteBuildServingDesired, checkout_head: String, binary_sha: String, sidecar: SidecarRead) -> ServingObserved {
+  serving_observed_from_reads(
+    elevation: est_elevation(),
+    account_name: d.account_name,
+    passwd: est_s(converged_passwd()),
+    group: est_s(converged_group()),
+    authorized_keys: est_s(dline),
+    store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+    scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d),
+    checkout: est_ok(), toolchain: est_ok(), rustup: est_ok(),
+    serve_binary_sha256: Present { value: est_s(binary_sha) }, checkout_revision: Present { value: est_s(checkout_head) }, authorized_keys_mode: Present { value: ak_mode_ok(d: d) }, serve_binary_mode: Present { value: binary_mode_ok(d: d) }, target_arch: pin_arch_leg(),
+    user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
+    user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
+    user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
+    user_manager_linger: ObservationEstablished { observed: true },
+    ledger_rows: converged_ledger(d: d),
+    serve_identity: Present { value: ObservationEstablished { observed: sidecar } },
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
+}
+
+// The executor plan-time pin at an ARBITRARY head, so a claim can put the observing head at odds with
+// what the host settled at. The host is read as an upload host (executor Aarch64 == srv1's row).
+fn pin_at_head(rev: String, sha: String) -> ServingPlanInput {
+  ServingPlanInput { local_binary_sha256: sha, dispatched_revision: rev, executor_arch: Aarch64, toolchain_channel: "1.92.0" }
+}
+
+fn settled_rev() -> String { "1111111111111111111111111111111111111111" }
+fn settled_sha() -> String { "2222222222222222222222222222222222222222" }
+fn newer_head_rev() -> String { "3333333333333333333333333333333333333333" }
+fn newer_head_sha() -> String { "4444444444444444444444444444444444444444" }
+fn drifted_checkout_rev() -> String { "9999999999999999999999999999999999999999" }
+fn tampered_binary_sha() -> String { "5555555555555555555555555555555555555555" }
+
+// THE RED CONTROL (the row, verbatim): a just-converged host — its checkout at the revision its sidecar
+// records and its running binary at the sha its sidecar records — observed from a NEWER, different head,
+// reports NO checkout and NO serve_binary drift. The same observation under the CONVERGE's advance basis
+// still names BOTH, which is what makes this a discriminating input: it goes red if readiness reverts to
+// the head-equality compare, and red if the converge ever stops advancing a host.
+test fn a_just_converged_host_observed_from_a_newer_head_reports_no_drift_yet_the_converge_still_advances() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      match d.forced_command_line {
+        Absent => false
+        Present { value: line } => {
+          let o = settled_host_reads(dline: line, d: d, checkout_head: settled_rev(), binary_sha: settled_sha(), sidecar: SidecarRecorded { revision: settled_rev(), sha256: settled_sha() })
+          let pin_y = pin_at_head(rev: newer_head_rev(), sha: newer_head_sha())
+          // readiness: the newer head is not a drift signal for a serving read.
+          serving_assessment_settled(a: serving_assess_readiness(d: d, o: o, pin: pin_y))
+          // advance (the converge): the same host, same head, still owes the move — both named items.
+          && has_deviation(a: serving_assess(d: d, o: o, pin: pin_y), item: "checkout.revision")
+          && has_deviation(a: serving_assess(d: d, o: o, pin: pin_y), item: "serve_binary.sha256")
+        }
+      }
+    }
+  }
+}
+
+// Reservation (fail-closed): a checkout moved OFF the revision its sidecar records is still drift under
+// readiness — the binding is now to the host's own settle record, and breaking it is real drift.
+test fn a_checkout_moved_off_its_settled_revision_still_drifts_under_readiness() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      match d.forced_command_line {
+        Absent => false
+        Present { value: line } => {
+          let o = settled_host_reads(dline: line, d: d, checkout_head: drifted_checkout_rev(), binary_sha: settled_sha(), sidecar: SidecarRecorded { revision: settled_rev(), sha256: settled_sha() })
+          let a = serving_assess_readiness(d: d, o: o, pin: pin_ok())
+          is_diverged(a) && has_deviation(a: a, item: "serve.binary.identity") && serving_assessment_runnable(a: a) && serving_assessment_settled(a: a) == false
+        }
+      }
+    }
+  }
+}
+
+// Reservation (fail-closed): a running binary whose sha no longer matches its sidecar is still drift —
+// this is the ONLY thing that checks the binary under readiness (the pin-sha compare was dropped), so an
+// unrecorded/mismatched binary must never read settled.
+test fn a_binary_that_no_longer_matches_its_sidecar_still_drifts_under_readiness() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      match d.forced_command_line {
+        Absent => false
+        Present { value: line } => {
+          let o = settled_host_reads(dline: line, d: d, checkout_head: settled_rev(), binary_sha: tampered_binary_sha(), sidecar: SidecarRecorded { revision: settled_rev(), sha256: settled_sha() })
+          let a = serving_assess_readiness(d: d, o: o, pin: pin_ok())
+          is_diverged(a) && has_deviation(a: a, item: "serve.binary.identity") && serving_assessment_settled(a: a) == false
+        }
+      }
+    }
+  }
+}
+
+// Reservation (fail-closed): a present binary with NO settle record at all is NOT admissible — a host
+// that never completed a converge (no sidecar) must not read ready. Guards the silent-widen that dropping
+// the pin-sha compare could otherwise open.
+test fn a_present_binary_with_no_sidecar_is_not_read_ready_under_readiness() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      match d.forced_command_line {
+        Absent => false
+        Present { value: line } => {
+          let o = settled_host_reads(dline: line, d: d, checkout_head: settled_rev(), binary_sha: settled_sha(), sidecar: SidecarAbsent)
+          let a = serving_assess_readiness(d: d, o: o, pin: pin_ok())
+          is_diverged(a) && has_deviation(a: a, item: "serve.binary.identity") && serving_assessment_settled(a: a) == false
+        }
+      }
     }
   }
 }
@@ -1629,4 +1777,159 @@ test fn ken_candidate_row_does_not_admit_to_roster_or_dispatch() -> Bool {
     && !remote_build_host_is_serving(host: operator_host_e2d4b7)
     && !any(remote_build_serving_candidate_hosts(), h => h == operator_host_srv9)
     && !remote_build_host_is_serving(host: operator_host_srv9)
+}
+
+// ── the fresh-host ledger owner: a single deduped, converge-ensured member ──────────────────────────
+//
+// ken (operator_host_e2d4b7) and butch (operator_host_srv14) carry NO operator login. Their ledger is
+// owned by the remote-build account (capacity_ledger_directory_owner's third arm), so the ledger service
+// user and the serving account are the SAME name. remote_build_serving_desired therefore emits
+// group_members = DEDUPED([service_user, account]) = a single "gunbc-build". An UNDEDUPED
+// [gunbc-build, gunbc-build] never settles against the one real member the apply's usermod creates
+// (serving_group_deviations compares counts), trading the usermod crash for a permanent
+// GroupMembersMismatch. These witnesses (relocated from the account sweep — they are serving-model claims)
+// pin the dedupe and prove the settle comparison is live. (guarantee_ladder: positive + discriminating red.)
+
+// Positive: on a fresh host the desired gunbc-compute has EXACTLY ONE member, the remote-build account —
+// the only principal the converge itself ensures (converge_add_account creates fleet_posix_remote_build_user).
+test fn fresh_host_group_members_are_a_single_converge_ensured_principal() -> Bool {
+  all([operator_host_e2d4b7, operator_host_srv14], h => {
+    match remote_build_serving_desired(host: h) {
+      Absent => false
+      Present { value: d } => {
+        count(d.group_members) == 1
+          && all(d.group_members, m => m == (fleet_posix_remote_build_user.name as String))
+      }
+    }
+  })
+}
+
+// Positive (the settle, per lively-owl-722): serving_group_deviations over the REAL deduped desired for
+// ken, against an /etc/group whose gunbc-compute carries exactly the single ensured member, is empty —
+// the comparison the wet receipt takes returns no drift. This is the claim the dedupe exists to make true.
+test fn fresh_host_deduped_desired_settles_against_the_single_observed_member() -> Bool {
+  match remote_build_serving_desired(host: operator_host_e2d4b7) {
+    Absent => false
+    Present { value: d } => {
+      let single = concat(
+        concat(concat(concat("gunbc-compute:x:", to_string(value: fleet_posix_compute_ledger_group_gid)), ":"),
+          fleet_posix_remote_build_user.name as String),
+        "",
+      )
+      count(serving_group_deviations(d: d, group: ObservationEstablished { observed: single })) == 0
+    }
+  }
+}
+
+// RED CONTROL (the discriminating red for the dedupe, per lively-owl-722): against the SAME deduped desired,
+// an /etc/group whose gunbc-compute lists the member TWICE — the state the undeduped [gunbc-build,
+// gunbc-build] desired would demand, which is what the model would now compare against — must NOT be
+// drift-free, proving serving_group_deviations's count check is live. The empty deviation list in the
+// settle witness is therefore meaningful, not vacuous: had the dedupe been removed, the desired's two
+// members against the apply's single real member diverge the same way this red diverges.
+test fn a_undeduped_second_member_diverges_at_plan_time() -> Bool {
+  match remote_build_serving_desired(host: operator_host_e2d4b7) {
+    Absent => false
+    Present { value: d } => {
+      let dup = concat(
+        concat(concat(concat("gunbc-compute:x:", to_string(value: fleet_posix_compute_ledger_group_gid)), ":"),
+          fleet_posix_remote_build_user.name as String),
+        concat(",", fleet_posix_remote_build_user.name as String),
+      )
+      count(serving_group_deviations(d: d, group: ObservationEstablished { observed: dup })) > 0
+    }
+  }
+}
+
+// ── serving-observe-reads-absent-toolchain-as-drift (RB-M3 follow-up, lively-owl-722) ──
+//
+// On a FRESH serving account (ken host-e2d4b7 run 45823194417, butch run 45823189449) rustup has never
+// been installed, so `rustup toolchain list` cannot run and exits 127 -- the toolchain leg reads Refused.
+// The observe used to fold that 127 into an unknown and answer INDETERMINATE, which blocked the whole
+// converge. But rustup PROVEN ABSENT (the `test -x` leg Established false) makes that 127 the EXPECTED
+// consequence, and bootstrapping rustup then the pinned channel is the converge's work -- so the toolchain
+// leg must report DRIFT, not unknown. The three claims below pin the rule and its two fail-closed edges:
+//   (1) fresh (rustup proven absent, list refused 127) -> toolchain DRIFT, runnable, NOT indeterminate;
+//   (2) rustup PRESENT but the listing refused (present-but-failing) -> toolchain UNKNOWN (indeterminate);
+//   (3) rustup itself UNREADABLE (elevation refused) with the listing refused -> toolchain UNKNOWN.
+// The base is a fully settled, sidecar-coherent host, so the toolchain legs are the only thing that moves.
+
+// The settled host with the rustup and toolchain legs supplied independently (so a claim can move just
+// those two out from under an otherwise-settled observation).
+fn toolchain_probe_observed(dline: String, d: RemoteBuildServingDesired, rustup_leg: ObservationAttempt<Bool, ServingLegFailure>, toolchain_leg: ObservationAttempt<Bool, ServingLegFailure>) -> ServingObserved {
+  serving_observed_from_reads(
+    elevation: est_elevation(),
+    account_name: d.account_name,
+    passwd: est_s(converged_passwd()),
+    group: est_s(converged_group()),
+    authorized_keys: est_s(dline),
+    store_root: est_ok(), store_staging: est_ok(), store_root_mode: store_mode_ok(d: d), store_staging_mode: store_mode_ok(d: d), serve_binary: est_ok(),
+    scratch_root: est_ok(), scratch_root_mode: scratch_mode_ok(d: d),
+    checkout: est_ok(), toolchain: toolchain_leg, rustup: rustup_leg,
+    serve_binary_sha256: Present { value: est_s(settled_sha()) }, checkout_revision: Present { value: est_s(settled_rev()) }, authorized_keys_mode: Present { value: ak_mode_ok(d: d) }, serve_binary_mode: Present { value: binary_mode_ok(d: d) }, target_arch: pin_arch_leg(),
+    user_work_slice_max: settled_slice_max(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
+    user_work_slice_high: settled_slice_high(ceiling: user_work_slice_memory_max_for_host(host: d.host)),
+    user_work_slice_swap: ObservationEstablished { observed: CgroupMemoryLimited { bytes: user_work_slice_memory_swap_max } },
+    user_manager_linger: ObservationEstablished { observed: true },
+    ledger_rows: converged_ledger(d: d),
+    serve_identity: Present { value: ObservationEstablished { observed: SidecarRecorded { revision: settled_rev(), sha256: settled_sha() } } },
+    seat_census: RecoverCatalogLegEstablished { entries: [] },)
+}
+
+// (1) THE RED CONTROL (the follow-up row, verbatim): a fresh account -- rustup proven absent, toolchain
+// listing refused (the 127) -- reports toolchain DRIFT and is runnable, NOT indeterminate. Reverting the
+// gate (always fold a refused toolchain into an unknown) makes this red: is_indeterminate flips true.
+test fn a_fresh_accounts_refused_toolchain_read_is_drift_not_indeterminate() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      match d.forced_command_line {
+        Absent => false
+        Present { value: line } => {
+          let o = toolchain_probe_observed(dline: line, d: d, rustup_leg: ObservationEstablished { observed: false }, toolchain_leg: refused_b(item: "toolchain"))
+          let a = serving_assess_readiness(d: d, o: o, pin: pin_ok())
+          is_diverged(a) && has_deviation(a: a, item: "toolchain") && serving_assessment_runnable(a: a)
+            && is_indeterminate(a) == false && has_unknown(a: a, item: "toolchain") == false
+        }
+      }
+    }
+  }
+}
+
+// (2) RESERVATION (fail-closed): rustup PRESENT (the test -x leg established true) but `toolchain list`
+// REFUSED is a present-but-failing rustup -- a genuinely unreadable channel -- so it stays UNKNOWN, never
+// silently a plan. Widening this arm to drift would make this red.
+test fn a_present_but_failing_rustup_listing_stays_unknown_under_readiness() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      match d.forced_command_line {
+        Absent => false
+        Present { value: line } => {
+          let o = toolchain_probe_observed(dline: line, d: d, rustup_leg: est_ok(), toolchain_leg: refused_b(item: "toolchain"))
+          let a = serving_assess_readiness(d: d, o: o, pin: pin_ok())
+          is_indeterminate(a) && has_unknown(a: a, item: "toolchain")
+        }
+      }
+    }
+  }
+}
+
+// (3) RESERVATION (fail-closed): rustup itself UNREADABLE (elevation refused) with the listing refused is
+// an unreadable fact, not a proven absence -- it stays UNKNOWN. The gate reads rustup's ESTABLISHED false,
+// never its refused, so this arm is unaffected by the fix.
+test fn an_unreadable_rustup_presence_with_a_refused_listing_stays_unknown_under_readiness() -> Bool {
+  match remote_build_serving_desired(host: operator_host_srv1) {
+    Absent => false
+    Present { value: d } => {
+      match d.forced_command_line {
+        Absent => false
+        Present { value: line } => {
+          let o = toolchain_probe_observed(dline: line, d: d, rustup_leg: refused_b(item: "rustup"), toolchain_leg: refused_b(item: "toolchain"))
+          let a = serving_assess_readiness(d: d, o: o, pin: pin_ok())
+          is_indeterminate(a) && has_unknown(a: a, item: "toolchain")
+        }
+      }
+    }
+  }
 }

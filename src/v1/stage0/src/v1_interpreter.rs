@@ -3072,7 +3072,7 @@ pub fn clear_cross_claim_pure_memos() {
 /// Install the declared producer roster as RESOLVED fn nodes (the caller resolves each
 /// qualified spelling in a frame over the prepared subject). Replaces any previous roster and
 /// keeps the nodes alive for the tier's lifetime; the built-in `prepare_grammar` arm stays
-/// admitted, so roster-less surfaces (claim_batch, `gunbc run`) are unchanged.
+/// admitted, so roster-less surfaces (`gunbc run`) are unchanged.
 pub fn install_cross_claim_pure_share_roster<I: IntoIterator<Item = Rc<Node>>>(nodes: I) {
     let nodes: Vec<Rc<Node>> = nodes.into_iter().collect();
     CROSS_CLAIM_PURE_ROSTER.with(|r| {
@@ -4556,8 +4556,8 @@ mod cross_claim_memo_tests {
 
     // INTERPRETER-LAYER fail-closed control for the claim-run route defect (gunbc.design_argument::fail_closed). A claim run is
     // executed in Hermetic mode — the mode is chosen by the ONE shared authority
-    // `cli_run::execution_mode_for` (a claim ⇒ Hermetic), which the `run` verb and `claim_batch` both
-    // call; this unit test pins the interpreter half of that guarantee (Hermetic ⇒ refuses an unbound
+    // `cli_run::execution_mode_for` (a claim ⇒ Hermetic), which the `run` verb
+    // calls; this unit test pins the interpreter half of that guarantee (Hermetic ⇒ refuses an unbound
     // mock), while `main.rs::claim_run_mode_tests` pins the route half (the claim route selects Hermetic
     // AND discriminates Wet). This is the INTERPRETER layer, so it drives `InterpContext::new(.., Hermetic)`
     // directly; the route-driven test in main.rs is what exercises the mode the route actually selects.
@@ -6437,7 +6437,7 @@ pub fn set_eval_call_memo_enabled(ctx: &InterpContext, enabled: bool) {
 }
 
 /// Frame exit for the eval-call memo: eviction scope is the WITNESS frame, not the ctx. Batch
-/// surfaces (claim_batch, claim_executor) share one ctx across an entry's witnesses for the
+/// surfaces (claim_executor, the claim route) share one ctx across an entry's witnesses for the
 /// resolve-side ReferenceTier share, but the memo stores full argument+result VALUES, so
 /// ctx-lifetime retention across N witnesses is byte-unbounded (measured 2026-07-10: one
 /// witness plateaus ~3.4GiB, six in one ctx pass ~20GiB to SIGKILL). Called after each claim
@@ -13607,7 +13607,7 @@ fn cross_claim_demand_absorb_one(
 /// THE CALLER MUST OWN A FRESH FRAME PER CLAIM, and that is a real precondition rather than a
 /// style note. The ledger accumulates for the lifetime of its `InterpContext` and is NOT
 /// cleared by `eval_call_memo_frame_exit`, so a surface that shares one context across several
-/// claims — `claim_batch` shares one per ENTRY — would fold each claim's ledger again on the
+/// claims — the claim route shares one per ENTRY — would fold each claim's ledger again on the
 /// next call, inflating both `evals` and `total_ns` and, worse, reporting cross-claim demand
 /// where there is only one frame's. The required floor builds a frame per claim
 /// (`required_floor_runner`, "FRESH PER CLAIM"), which is exactly the boundary this census
@@ -15747,8 +15747,8 @@ fn hermetic_checkout_input_disposition_under(
     Ok(())
 }
 
-/// The runner contract binds the process cwd to the checkout root (claim_batch and
-/// claim_executor both run from the repo root), so cwd IS the injected input root.
+/// The runner contract binds the process cwd to the checkout root (claim_executor runs
+/// from the repo root), so cwd IS the injected input root.
 fn hermetic_checkout_input_disposition(requested: &str) -> Result<(), String> {
     let cwd =
         std::env::current_dir().map_err(|e| format!("checkout root (cwd) unresolvable: {e}"))?;
@@ -17893,6 +17893,67 @@ pub fn untraced_expectation_frontier() -> Vec<(String, u64)> {
     UNTRACED_EXPECTATION_SITES.with(|m| m.borrow().iter().map(|(k, v)| (k.clone(), *v)).collect())
 }
 
+/// The `[expectation-frontier]` receipt, rendered in ONE place.
+///
+/// The tally above is a declared interim frontier only if something PRINTS it — a counter that is
+/// never read is the same lie as no counter — and the line's format is the contract a consumer
+/// parses: `dag/test/claim/expectation_frontier_witness.dag` reads it out of a real child's stderr,
+/// and `gunbc.ci.ci_layer_roots` carries the row that bills that read. Having the claim route and
+/// the legacy batch each format it is how a receipt and its counter start to disagree, which is the
+/// same two-renderers defect this cutover deletes elsewhere; so neither call site formats, both
+/// call this. `None` is the dissolution condition: every effect this process dispatched declared its
+/// arm, and silence is then the correct output rather than an empty line to parse.
+pub fn expectation_frontier_receipt_line() -> Option<String> {
+    let frontier = untraced_expectation_frontier();
+    if frontier.is_empty() {
+        return None;
+    }
+    let total: u64 = frontier.iter().map(|(_, count)| *count).sum();
+    let rendered = frontier
+        .iter()
+        .map(|(site, count)| format!("{site}={count}"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    Some(format!(
+        "[expectation-frontier] {} site(s), {} dispatch(es) undeclared: {}",
+        frontier.len(),
+        total,
+        rendered
+    ))
+}
+
+#[cfg(test)]
+mod expectation_frontier_receipt_tests {
+    use super::{expectation_frontier_receipt_line, record_untraced_expectation_site};
+
+    /// An empty tally renders NOTHING, not an empty receipt. The line's presence is the
+    /// observation, and a fully-annotated subject is the negative half of the pair at
+    /// `dag/test/claim/expectation_frontier_witness.dag`: were the empty case rendered as a line,
+    /// that control would pass on a counter that always fires.
+    #[test]
+    fn an_untouched_tally_renders_no_receipt_line() {
+        assert!(expectation_frontier_receipt_line().is_none());
+    }
+
+    /// The format is the consumer's contract, byte for byte: marker, site count, dispatch total,
+    /// then `service.op=count` ascending by key. Two sites and a repeat pin the plural forms and the
+    /// ordering, so a rename of the marker or a dropped count cannot pass by coincidence. Each Rust
+    /// test runs on its own thread and the tally is thread-local, so this records without
+    /// disturbing the empty-tally control above.
+    #[test]
+    fn the_receipt_names_sites_dispatches_and_each_located_site() {
+        record_untraced_expectation_site("Filesystem", "Write");
+        record_untraced_expectation_site("Filesystem", "Read");
+        record_untraced_expectation_site("Filesystem", "Read");
+        let line = expectation_frontier_receipt_line()
+            .expect("a tally with entries must render a receipt");
+        assert_eq!(
+            line,
+            "[expectation-frontier] 2 site(s), 3 dispatch(es) undeclared: Filesystem.Read=2 Filesystem.Write=1"
+        );
+    }
+}
+
 /// Carrier for `gunbc.output_policy.ExpectedOutcome` — what the caller DECLARED an effect
 /// would do. Deliberately no `ExpectAny`: an unknown expectation makes every observation
 /// agree, the empty set the untyped `exit != 0` proxy assumed (gunbc.design_argument::fail_closed — a failure arm
@@ -18466,20 +18527,31 @@ fn configure_shell_process_group_for_wall_kill(
     }
 }
 
-fn kill_shell_process_group(pid: u32) {
+/// Kill the child itself, then its process group (set when a wall deadline is armed) so
+/// cargo→rustc descendants die with the parent; the direct pid kill covers the no-setpgid path.
+/// This IS `process_group::signal_process_group` with SIGKILL -- the leader-and-group pair and the
+/// refusal of a pid outside 2..=i32::MAX have one authority there, so a pid of 0, 1 or one whose
+/// `as i32` would wrap to -1 is refused with no signal sent, never widened into "every process".
+fn kill_shell_process_group(pid: u32) -> Result<(), crate::process_group::UnsignalablePid> {
     #[cfg(unix)]
     {
-        // SAFETY: kill the child itself, then its process group (set when a wall
-        // deadline is armed) so cargo→rustc descendants die with the parent.
-        // The direct pid kill covers the no-setpgid path (tests / non-unix fallbacks).
-        unsafe {
-            let _ = libc::kill(pid as i32, libc::SIGKILL);
-            let _ = libc::kill(-(pid as i32), libc::SIGKILL);
-        }
+        crate::process_group::signal_process_group(pid, libc::SIGKILL)
     }
     #[cfg(not(unix))]
     {
         let _ = pid;
+        Ok(())
+    }
+}
+
+/// A group kill that was REFUSED is not a killed group: the child is still ours and running, so the
+/// leg cannot report an overrun as if its group had died. Typed and located, never a widened signal.
+fn shell_group_kill_refused(
+    argv0: &str,
+    refusal: crate::process_group::UnsignalablePid,
+) -> InterpError {
+    InterpError::TypeError {
+        msg: format!("wall-deadline kill of '{argv0}' refused: {refusal}"),
     }
 }
 
@@ -18529,7 +18601,12 @@ fn wait_child_honoring_wall_deadline(
     loop {
         // OUTER bound: still a refusal, never a per-leg overrun.
         if let Some(err) = ctx.wall_deadline_exceeded_error() {
-            kill_shell_process_group(pid);
+            if let Err(refusal) = kill_shell_process_group(pid) {
+                // No signal was sent, so the drain cannot be expected to end: detach it and
+                // refuse with the located cause rather than waiting on a child nobody killed.
+                drop(worker);
+                return Err(shell_group_kill_refused(argv0, refusal));
+            }
             // The settlement is BOUNDED, under the same contract as the per-leg trip below. A
             // descendant that escaped the group with `setsid` can hold a stream open, so the
             // drain worker may never return; the unconditional `worker.join()` that followed the
@@ -18545,7 +18622,11 @@ fn wait_child_honoring_wall_deadline(
         // PER-LEG bound: its trip is a value. Kill the group, drain, report overran.
         if let Some(leg) = leg_deadline {
             if leg_start.elapsed() >= leg {
-                kill_shell_process_group(pid);
+                if let Err(refusal) = kill_shell_process_group(pid) {
+                    // An overrun is a value only when the group was killed; this one was not.
+                    drop(worker);
+                    return Err(shell_group_kill_refused(argv0, refusal));
+                }
                 // The drain worker returns once the killed child's pipes close.
                 let captured = match rx.recv_timeout(std::time::Duration::from_secs(5)) {
                     Ok(Ok(output)) => {
@@ -29352,7 +29433,7 @@ mod wall_deadline_kill_tests {
             pid as i32,
             "armed: the child must lead its own group"
         );
-        kill_shell_process_group(pid);
+        kill_shell_process_group(pid).expect("a spawned child's pid is signalable");
         let _ = child.wait();
 
         let unarmed = wet_ctx();
@@ -29433,7 +29514,7 @@ mod wall_deadline_kill_tests {
             pid as i32,
             "a per-leg ceiling alone must arm the group so the per-leg kill is total"
         );
-        kill_shell_process_group(pid);
+        kill_shell_process_group(pid).expect("a spawned child's pid is signalable");
         let _ = child.wait();
     }
 

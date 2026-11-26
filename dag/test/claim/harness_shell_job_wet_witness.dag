@@ -6,7 +6,8 @@ import std.measure { second }
 import std.algebra { trim }
 import extdeps.shell
 import extdeps.posix.signal
-import extdeps.filesystem.filesystem_io
+import extdeps.posix.process { signal_target_pid_of_text }
+import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.tools.gnu_coreutils { pwd_command }
 import gunbc.command_runner { run_shell_command_capture, LocalExec }
 import extdeps.shell.exec { ProcessOutputPresent, ProcessOutputAbsent, ProcessRefused }
@@ -320,7 +321,11 @@ test fn the_backstop_kills_the_process_group() -> Bool {
     || is_duration_exceeded(outcome: read.outcome)
   let grandchild = Filesystem.Read(path: marker)
   let grandchild_gone = if grandchild.success && grandchild.content.length() > 0 {
-    !posix.Signal.TerminateProcess(pid: grandchild.content as NonEmptyStr).success
+    match signal_target_pid_of_text(text: grandchild.content) {
+      Present { value: target } => !posix.Signal.TerminateProcess(target: target).success
+      // A marker that is not one signalable pid proves nothing about the grandchild: never read as gone.
+      Absent => false
+    }
   } else {
     false
   }
