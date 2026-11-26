@@ -101,26 +101,18 @@ becomes a new emitted verb; anything reaching the seed goes to the operator firs
 approval outside the diff) is DECLINED** (neat-badger-614, 2026-11-26) and is not a path forward.
 
 
-**The gap is a rostered STALL, and its guard can fail (review 98901 F1/F2; review 98937 F2).** This class was
-first recorded as a rung DROP with `previous: StructurallyGuaranteed` — and that rung was **never held**, so
-the ledger would have shown a regression from a state that never existed (rung inflation in reverse). The
-honest record per `gunbc.design_argument::guarantee_ladder` (no untracked stall) is a class **below its
-ceiling with a named next-rung trigger**:
+**The gap is a rostered STALL, and its guard can fail.** The authoritative status is the carrier row
 `gunbc.guarantee_stall.parse_population_carrier_reader_beside_grammar_stall`
-(`dag/gunbc/guarantee_stall/parse_population_carrier_reader_beside_grammar_stall.dag`) — current rung 1
-(mitigatable: typed predicates with a discriminating pair over hand-built slices; no executable reader of the
-real 170 rows), ceiling 4 (structurally guaranteed: the one grammar route reads a data binding), blocker
-`ClimbableButUnbuilt`, and a next-rung trigger naming **THE CAPABILITY** (an emitted declared route that
-evaluates a named data binding and returns its rows typed — a call, not a text parse). Route A is carried as
-a modelled *awaiting referent* and labelled honestly: a **planned** row in **draft** plan PR #17116, **not on
-main** at this head (`rn_VDAPYQNAW2T3U26OZ5JUHRBVC6` resolves to zero files at origin/main today; the staffed
-route fires the trigger, not the plan). The carrier holds no copy of the text (`single_authority`); its
-consumer renders the row's capability into a ledger line, and the witness carries the discriminating pair, not
-a presence check (the earlier `!= ""` guard was green by construction and was deleted; the first red control
-asserted real==planted and failed under BOTH worlds — warm-fox F4 — so its polarity is now fixed): GREEN —
-the rendered line contains the row identity and the capability text; RED — the extraction applied to a planted
-row whose trigger is a bare `NextRungTrigger` outside the declared constructors yields `""`, so an extraction
-that ignored the declared shape is caught. Correct world: HELD/HELD; broken world: HELD/FAILED.
+(`dag/gunbc/guarantee_stall/parse_population_carrier_reader_beside_grammar_stall.dag`) — current rung, ceiling,
+blocker, the next-rung trigger naming THE CAPABILITY, and the awaiting route-A referent are all read there,
+not restated here (a second copy of stall status in prose is a fork; `source_annotations`). What this report
+keeps is only why the row exists in that form: it was first filed as a rung DROP whose `previous` named a rung
+that was **never held**, which the ladder forbids as rung inflation in reverse — the honest record is a
+below-ceiling class with a named trigger ("no untracked stall"). The consumer of the row is the carrier's
+ledger renderer plus the discriminating pair in
+`dag/test/claim/parse_population_baseline_roster_witness.dag`; the history of how the guard reached that form
+(the green-by-construction `!= ""` guard deleted; the first red control replaced because it failed under both
+worlds) is event record — it lives in the PR #17037 review thread, not in this file.
 
 ### 4b. Emitted-roster reproduction — how the compiler already evaluates the named binding
 
@@ -202,14 +194,17 @@ once, and the witness adds a second refusal leg: a planted reversed `min > max` 
 
 Machine: srv1, 48–50 concurrent sessions, load average 15–21 during the sweep (other lanes running `claim_batch` over the floor and a `--regen-round-cost` converge; slots 2,3,6,7,11 held by four other owners).
 
-| cell | population | runs | wall s (min / median / max) | peak RSS KB (median) | modules | declared refusals | load avg (at run) | real rc |
-|---|---|---|---|---|---|---|---|---|
-| REF | full `dag`+`src/v2` roots | 1 | 563.94 | 657660 | 10567 | 0 | 20.56, 21.24, 23.08 (48 users) | 0 |
-| A | Five Largest (5) | 3 | 20.16 / 22.79 / 23.30 | 653412 | 5 | 0 | 18.3–21.0 (48–50 users) | 0 |
-| B | 165-Sample | 3 | 132.19 / 132.51 / 143.84 | 491264 | 166 | 0 | 15.30–21.57 (48–49 users) | 0 |
-| C | 165-Sample verdict-only (`--reuse-from`) | 1 | 136.66 | 488408 | 166 | reused=0 | 16.64, 19.96, 21.13 (50 users) | 0 |
+**No cell table here (review 99002).** Cell values — runs, wall statistics, peak RSS, module counts,
+declared refusals, rc, artifact shas, host and boot — have exactly one home: the typed binding
+`parse_population_measurement_receipts` (`gunbc.parse_population_baseline_roster`). A hand-built table here
+was a second, independently-drifting copy (it kept KiB where the binding keeps `ByteSize`); it is deleted
+rather than corrected. What this section keeps is only what no typed carrier holds: the run environment and
+the verbatim prints below.
 
-Refusal comparability: the reference run over the full roots reports **0 declared refusals**, and cells A and B each report **0 refusals** for their modules — equal to the reference baseline, so both cells measure the same program and are publishable.
+Refusal comparability: every cell reports the same declared-refusal count as the reference run (the
+values are in the typed receipts; the publishability witness leg asserts exactly this), so all cells measure
+the same program and are publishable. Load averages at run time were recorded in the run logs behind the
+acquisitions and are deliberately not re-typed here — no claim consumes them.
 
 Verdict-only control (cell C) printed:
 ```
@@ -240,81 +235,34 @@ The row's `boundary` asks each hot spot be attributed to a building-block/compos
 
 While building the measured artifact I observed that two emit builds of the same closure produced different files with an identical `.text` section. That section-by-section observation is relay data for the reproducibility row and is carried there, not duplicated in this report. The artifact this report measured is identified in §3.
 
-## 9. Acquisition count actually used
+## 9. What this merge lands, and where the record lives (review 99002 trim)
 
-Productive heavy-slot acquisitions on srv1 (each its own slot, `HEAVY_OWNER=bright-hawk-891`):
-1 build + 1 REF + 3 cell-A + 3 cell-B + 1 cell-C = **9**.
-Additionally 4 heavy-slot touches refused instantly at argument validation (wall 0.00 s, no work: reference missing the verb token; reference missing `cd` to the checkout; `--receipts`/`--write-identity` and `--reuse-from` missing the required `--compiler`). Total slots touched = 13. This exceeds the lane-manager's planning estimate of 5; the excess is the 3-repeats-per-cell requirement and discovering that the reuse flags require `--compiler`. Every acquisition logged `heavy-slot: slot N/12 acquired by bright-hawk-891 at <ts>` as its first line and printed `uptime`/`nproc`/live slot holders alongside the cell.
+This merge lands exactly four files: `dag/gunbc/parse_population_baseline_roster.dag` (the carrier: the
+170-row pin, the selection rule, and the typed measurement receipts),
+`dag/gunbc/guarantee_stall/parse_population_carrier_reader_beside_grammar_stall.dag` (the stall row — the
+authoritative status of the unexecuted tree tie),
+`dag/test/claim/parse_population_baseline_roster_witness.dag` (the rostered claims, all `test fn`, with the
+discriminating pairs), and this report. The shell scaffolds (`run_evidence.sh`, `stage_roster_roots.sh`) were
+withdrawn (review 98836; route B declined) and ship in no merge.
 
-### 9b. Later-stage acquisitions and the review-98443 code change
+Everything an earlier draft of this file restated by hand now has one home, and this section is a pointer
+index rather than a copy (`single_authority`, `source_annotations`, `how_to_work`'s "hand-authored projection
+the model should generate"):
 
-- **SPLIT (review 98809 F1–F4 / 98836, ruled by warm-fox-517) — SUPERSEDES the "committed runner" bullets below.**
-  This merge lands only the `.dag` side: `dag/gunbc/parse_population_baseline_roster.dag`,
-  `dag/test/claim/parse_population_baseline_roster_witness.dag`, and this report. The two shell scaffolds
-  (`test/parse_population_baseline_roster/run_evidence.sh`, `…/stage_roster_roots.sh`) and their `awk`/`grep`/`sed`
-  carrier reader and hand reconciliation were **removed from the PR**. Consequence for the honesty seam: the
-  carrier↔tree reconciliation and the roster-driven staging are **gaps pending route A**, not executed checks —
-  every "executed runner / committed runner / green-by-execution run link" claim in the review-98443 and
-  review-98730 bullets below is historical (those runners are no longer in the diff). The gap is ROSTERED as a
-  stall per `gunbc.design_argument::guarantee_ladder` at
-  `gunbc.guarantee_stall.parse_population_carrier_reader_beside_grammar_stall`
-  (`dag/gunbc/guarantee_stall/parse_population_carrier_reader_beside_grammar_stall.dag`, review 98901 F2 and
-  98937 F2 — first filed as a rung drop, converted because its `previous: StructurallyGuaranteed` recorded a rung
-  that was never held; the carrier holds no copy of its text), stating plainly that no executed reader of the rows
-  ships here; its claimed rung is that the typed `.dag` predicates model and discriminate the selection order over
-  hand-built slices. **Route B (operator scaffold sanction) is declined** (neat-badger-614); route A (bold-cat-668's
-  measurement-first planning row) is the only path, and §4b shows `gunbc compile` already emits the 170 rows as
-  typed Rust, so route A needs no new Rust. No heavy acquisition was used for the split.
+- **Cell values** (runs, wall/RSS/module/refusal/rc counters, artifact sha, tree sha, host, boot): the typed
+  binding `parse_population_measurement_receipts`; the witness publishability legs consume it.
+- **Acquisition counts and slot accounting** (productive runs, instant-refused touches, the instrument-check
+  leg): derived from the receipts (`runs` per cell plus the E leg) and the heavy-slot log lines quoted in the
+  PR #17037 evidence comments — event record, not report prose.
+- **Stall status and rungs**: the stall row (see §4a); the ladder renders it, this report does not.
+- **Review and guard history** (which controls were deleted, renamed, or re-polarized at which review): the
+  PR #17037 review thread — events belong to the PR, not to a projection.
+- **Execution status of the claims**: honest tier labels sit on each claim in the witness and in the
+  acceptance request; "parses + required lane" vs "green by execution in run <link>" per the work-item
+  lifecycle. The srv1 re-execution (A/B/C) is the open acquisition, held by the lane manager until the head
+  is final.
 
-- **Instrument-check leg (tranche 1)**: one further srv1 heavy-slot acquisition (`HEAVY_OWNER=bright-hawk-891`,
-  `heavy-slot: slot 1/12 acquired bright-hawk-891 @2026-11-25T21:47:48Z`) ran `/usr/bin/time -v` (getrusage,
-  not perf) over the smallest population (roots_pop5, 5 modules, 0 refusals) to prove the non-perf counters are
-  present and nonzero: `utime=28.92 stime=0.61 maxrss=653284KB minflt=160128 nvcsw=2 nivcsw=212`, `majflt=0`
-  (legitimate: Major "requiring I/O" faults on a page-cache-warm CPU run; the run faults via 160128 minor faults).
-  So productive acquisitions = **10** (9 baseline sweep + 1 instrument-check leg); total touched = **14**. This
-  figure is authoritative and agrees with the lane-manager status messages (an earlier "five" was an understatement).
-
-- **Review 98443 code change — used no heavy acquisition** (free `gunbc compile --target rust` gate only,
-  `0 blocking errors`). What changed on the carriers, and what it implies for the run link:
-  1. Deleted the four transitively-dead declarations: `parse_population_baseline_report`,
-     `parse_population_five_largest_count_check`, `parse_population_one_hundred_sixty_five_count_check`, and
-     `parse_population_total_count` (its only callers were those three). No consumer remained (§4a's reconciliation
-     leg, not a String report, is now the load-bearing surface).
-  2. Replaced the planted `byte_size(count: 999)` red control with a **real-wrong-row** red control
-     (`parse_population_cardinality_refuses_mistyped_real_row_holds`, promoted to a `test fn` per warm-fox F5)
-     and added the discriminating comparison-predicate arms
-     (`parse_population_reconcile_predicate_refuses_bad_row_holds`); the real carrier↔tree comparison had moved to
-     the executed runner `test/parse_population_baseline_roster/run_evidence.sh` (review 98730) and that runner has
-     since been deleted from the PR (route B declined), so the comparison is the stall's open item again.
-  3. Stripped the load-bearing status/authorization/review-number prose out of the carrier `//` comments to
-     one-line pointers (`gunbc.design_argument::source_annotations`).
-  **The claim name-set therefore changed** (old executed set included `parse_population_roster_red_control_refuses`,
-  which no longer exists; the new set adds `..._reconcile_predicate_refuses_bad_row_holds` and renames the red control). The
-  executed run link recorded earlier (`c426cbf322`, 8 names) is **superseded** by this change and must be
-  re-executed at the new head. Both the BOOT-bearing srv1 run of the §4a reconciliation leg and the re-executed
-  rostered claim at the new head are **pending a lane-manager acquisition GO** (tranche 2 re-offer).
-
-- **Review 98730 — route (i)/(a), used no heavy acquisition** (free `gunbc compile --target rust` gate + host-independent
-  runner validation only). The rung-inflation finding (the `.dag` "reconciles to tree" test compares two hand-built
-  slices, reads neither the tree nor the 170 rows; the only tree tie was awk/sed/diff committed inside this markdown)
-  was fixed by making the real checks executed named runners and renaming the `.dag` claim to what it runs:
-  - `test/parse_population_baseline_roster/run_evidence.sh` — the last execution of the roster↔tree path (§4a): reads
-    the pinned sha + rows out of the carrier, diffs against `git ls-tree`, drives its own red (mistyped row must fail
-    by name or exit 1). SCAFFOLD dissolve-on names both retirement triggers; the reason prose is about this case (a
-    `.dag` function cannot read the tree; CI executes no claims), mirroring the accepted precedent
-    `test/compiler_gate_contract_stamp/run_evidence.sh`.
-  - `test/parse_population_baseline_roster/stage_roster_roots.sh` — the measurement-level consumer (§4b, route (a)):
-    builds each population's verb roots FROM the roster, byte+path-checked at the pinned sha, refusing by name on a
-    mismatch so a wrong row turns the VERB INPUT red.
-  - `.dag` test renamed to `parse_population_reconcile_predicate_refuses_bad_row_holds`; carrier comments no longer
-    claim a tree read.
-  - Author-side validation: run_evidence.sh rc 0 (170 rows reconcile, injected mistype on `roadmap_authority.dag`
-    turns it red); stage_roster_roots.sh `five` rc 0 (staged 5, bytes 4575463), `--selftest-mistype` rc 1 (4 of 5);
-    carrier + witness compile `--target rust` rc 0, 0 blocking.
-  - Base updated by merging `origin/main a58ba3e3` (a merge commit, not a force push); my four/five files are
-    branch-only, so no content collision.
-  - Tranche 2 (three acquisitions declared to the lane-manager, executed on srv1 post-cutover at the final head):
-    A = staging-plus-verb (`stage_roster_roots.sh` then the parse-population verb over the roster-staged roots,
-    both populations); B = the reconcile pair run-link on srv1 (green rc 0 + count; mistype rc 1 naming the path);
-    C = the rostered claim re-exec by name (set now includes `parse_population_reconcile_predicate_refuses_bad_row_holds`,
-    no longer the planted name).
+What remains in this file is deliberately only what no `.dag` carrier can hold: the premise finding (§1), the
+host-capability readings with their real exit codes (§2), the emittedness proof (§3), the staging/byte-identity
+procedure (§4), the verbatim runner prints (§5), the attribution reasoning and its honest negative (§6–§7), and
+the relay observation (§8).
