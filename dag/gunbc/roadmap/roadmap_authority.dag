@@ -3439,6 +3439,100 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "fallback-retirement", contribution: "What a run acts on is declared, not inferred from what happens to be set."),
     ),
     roadmap_node(
+      identity: "rn_Y7AXY6R3KGRWGV5GAYSZBXW4SM",
+      id: "claim-loop-is-tight",
+      owner: "debt",
+      carriers: carrier(path: "src/v1/stage0/src/target_invocation_host.rs"),
+      line: ticket(t: level_fields(
+          headline: "Running a claim and landing a planning change take minutes, not hours",
+          boundary: "The friction one planning change met on 2026-11-26 (gunbc#17167): six claim files verified by exact label took about 80 minutes, a 2-claim file took 981 seconds, a branch build took 14 minutes, and the help text named selection forms that select nothing. Members are the frictions no node owned. Those already owned stay there: the per-process whole-tree front end with claim-route-loads-by-layout-demand, and claims absent from the required check with required-check-named-witnesses-runs-no-claim-module.",
+          approach: "Members: claim-selection-forms-are-stated (landed by gunbc#17167), one-claim-process-serves-many-modules, a-branch-build-is-not-a-quarter-hour, roadmap-claims-hold-on-main, a-verification-run-does-not-hold-publication. Each is measured before and after on srv1 heavy-slot, and the measurement names its instrument.",
+          red_control: "A member that makes a slow step cheaper to repeat (a cache, a wider pool, a timeout) without removing the repeated work is not payoff, by gunbc.design_argument minimize_redundancy.",
+          displaced_cost: "Slow verification is why claims stopped being run regularly: authors and agents batch, wait, or skip, and the wait is where defects accumulate unseen.",
+          handback: "Per member: the step's before and after on the same instrument, and the surplus work deleted rather than cached."
+        )),
+      parent: in_project(project: "debt-payoff", contribution: "The loop every change goes through stops charging for work no change asked for."),
+    ),
+    roadmap_node(
+      identity: "rn_7LUWKLFHXJCGO7TEYGXBYPCXNQ",
+      id: "claim-selection-forms-are-stated",
+      owner: "debt",
+      carriers: carrier(path: "dag/gunbc/cli_dispatch_surface.dag"),
+      line: ticket(t: fields(
+          headline: "gunbc test's help and refusals name the claim selection forms that work",
+          boundary: "The test operand doc promised labels under //dag/test/claim and that a bare //dag/test/claim/x selects a package. Labels have no dag/ prefix, and a bare label is bazel shorthand for the one claim x:x, so it selected nothing after the whole-tree index was paid. The verb doc said set forms run only on the native route, while //pkg/... runs on the claim route. The help now states the working forms, the :all refusal names the operand's /... form, and an empty selection from a single label names the subtree form.",
+          displaced_cost: "Each wrong form cost a run of minutes before it reported nothing, and every agent that reads the help repeats it.",
+          red_control: "target_invocation_host unit tests: the :all refusal names //test/claim/x/...; an empty single-label selection names //test/claim/a/b/... while a subtree-only selection keeps the plain note that claim_batch_unobserved_exit_witness reads.",
+          out_of_scope: "Changing the grammar: :all stays refused under gunbc.design_ruling::claim_execution_has_one_v1_entrypoint, and a bare label keeps its bazel meaning.",
+          handback: "Landed by gunbc#17167."
+        )),
+      parent: in_project(project: "claim-loop-is-tight", contribution: "A reader of the help selects the claims they meant on the first run."),
+    ),
+    roadmap_node(
+      identity: "rn_YCI5MTHYVH4H3TMLMH4Z3746ZU",
+      id: "one-claim-process-serves-many-modules",
+      owner: "harness",
+      carriers: carrier(path: "src/v1/stage0/src/target_invocation_host.rs"),
+      line: ticket(t: fields(
+          headline: "Verifying a change runs its claims in one process, so the fixed front end is paid once",
+          boundary: "gunbc test already runs several operands in one process, and //pkg/... selects a module. On 2026-11-26 one process per claim file cost 786 to 1012 seconds each, with every claim evaluating in under a second, so six files cost about 80 minutes of a front end paid six times. The member makes one process the route a change's verification takes: the selection a change demands is computed once and handed to one invocation, by agents and by the harness.",
+          displaced_cost: "Verification time scales with the number of files touched rather than with the claims they hold, which is what pushes authors to skip it.",
+          first_slice: "Measure one invocation over the six files of gunbc#17167 against the per-file runs on the same binary, and record whether the front end is paid once.",
+          red_control: "A one-process run over N modules whose wall time grows like N times the single-module front end refutes the premise and stops the member.",
+          out_of_scope: "Shrinking the front end itself (claim-route-loads-by-layout-demand).",
+          handback: "The measured ratio, and the verification route using one process."
+        )),
+      parent: in_project(project: "claim-loop-is-tight", contribution: "Verification costs one front end, not one per file."),
+    ),
+    roadmap_node(
+      identity: "rn_EKC22PHSEUTGDPAKAZRZXAIMLQ",
+      id: "a-branch-build-is-not-a-quarter-hour",
+      owner: "ci-cost",
+      carriers: carrier(path: ".cargo/config.toml"),
+      line: ticket(t: fields(
+          headline: "Building gunbc for a branch takes minutes, not a quarter hour",
+          boundary: "On 2026-11-26 a release build of gunbc in a fresh srv1 worktree took 14m11s, and every branch worktree pays it again. .cargo/config.toml caps every cargo run at jobs = 2, and nearly all the time is one crate, v1-compiler, recompiled whole on any edit (cli_run.rs alone is over 44,000 lines). That the single crate dominates is inferred from the build log, not measured.",
+          displaced_cost: "Every branch verification starts with a quarter hour no change asked for, which is why agents reuse stale binaries.",
+          first_slice: "Measure with cargo build --timings on srv1: the time in v1-compiler against its dependencies, and whether jobs = 2 binds on a host with the memory to lift it.",
+          red_control: "A change that only adds a cache in front of the same whole-crate compile is not this member.",
+          out_of_scope: "Remote build serving (the remote-build program).",
+          handback: "The timing breakdown, and the build split or reconfigured so an edit to one area does not recompile the seed whole."
+        )),
+      parent: in_project(project: "claim-loop-is-tight", contribution: "A branch is verifiable without a quarter-hour build first."),
+    ),
+    roadmap_node(
+      identity: "rn_A3K5DE6O5SZ34H6XLJQAWOFQSQ",
+      id: "roadmap-claims-hold-on-main",
+      owner: "planning",
+      carriers: carrier(path: "dag/gunbc/roadmap/roadmap_intention_binding.dag"),
+      line: ticket(t: fields(
+          headline: "The roadmap intention-binding claims hold on main",
+          boundary: "Two roadmap_intention_binding_witness claims do not hold at daf23d4fb46 or at main: no_node_is_bound_twice, because work-exec-5-ci-verdict-from-receipt serves both gunbc.plans.github_actions_retirement and gunbc.plans.factory_dogfood; and every_binding_reaches_a_terminal_of_its_intention, because no terminal of gunbc.plans.planning_consolidation reaches roadmap-work-item-projection-unbound-coverage. Nothing runs these claims on main, so the reds stood unnoticed (gunbc.recurring_failure_mode witnesses_red_on_main_with_no_failure_mode_row).",
+          displaced_cost: "Every planning change that verifies the roadmap claims must first rule these out by hand.",
+          first_slice: "The owner of each binding decides: one intention for work-exec-5-ci-verdict-from-receipt, and an edge or an unbinding for roadmap-work-item-projection-unbound-coverage.",
+          red_control: "Both claims already discriminate; they turn green.",
+          out_of_scope: "Putting roadmap claims in the required check (required-check-named-witnesses-runs-no-claim-module).",
+          handback: "roadmap_intention_binding_witness 11 of 11 held on main."
+        )),
+      parent: in_project(project: "claim-loop-is-tight", contribution: "A planning change starts from green roadmap claims."),
+    ),
+    roadmap_node(
+      identity: "rn_X35I5NNHLCMATWA2UT5HKTPCHU",
+      id: "a-verification-run-does-not-hold-publication",
+      owner: "harness",
+      carriers: carrier(path: "dag/gunbc/harness/harness_guidance.dag"),
+      line: ticket(t: fields(
+          headline: "An agent publishes its change before a long verification finishes, and reports the run while it waits",
+          boundary: "On 2026-11-26 a finished planning change sat unpublished for over an hour while its claim runs completed one file at a time, and the operator saw no progress. The operator reports the same stall across agents: a step is agreed, then the agent waits silently on a long run. The change can be published at once and its verification reported into it as each result lands; the wait is then visible and nothing downstream of review is held.",
+          displaced_cost: "Review and discussion that could proceed beside verification are serialized behind it, and the operator cannot tell a waiting agent from a stuck one.",
+          first_slice: "State the order in gunbc.harness.harness_guidance: publish first, report each running step with its expected duration, fill checks in as they land.",
+          red_control: "A session whose change exists locally while a verification it launched is still running, with no pull request and no progress line, is the failure.",
+          out_of_scope: "Making the verification itself faster (one-claim-process-serves-many-modules, a-branch-build-is-not-a-quarter-hour, claim-route-loads-by-layout-demand).",
+          handback: "The brief carrying the order, and the next long verification observed published first."
+        )),
+      parent: in_project(project: "claim-loop-is-tight", contribution: "Waiting on a run is visible and holds nothing else."),
+    ),
+    roadmap_node(
       identity: "rn_B766TJR5AXG2AHSG4EJ5AP5DBE",
       id: "printed-chassis-python-kernel-retirement",
       owner: "debt",
