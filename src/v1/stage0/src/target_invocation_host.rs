@@ -275,7 +275,7 @@ pub enum TargetProducer {
     NativeServeProgram {
         entry: &'static str,
     },
-    /// `CliWireProgramProducer { entry, function }`: wet interpreter eval of a CliWireResponse
+    /// Generated from a CliWireProgramProducer declaration: wet interpreter eval of a CliWireResponse
     /// fold. Generic over entry and function so a second such instrument is a registry row.
     CliWireProgram {
         entry: &'static str,
@@ -5317,8 +5317,7 @@ mod registry_rows_identity_tests {
         format!("//{package}:{target_name}")
     }
 
-    /// The rows are read ONCE per process: each read drives the wet interpreter over the whole
-    /// corpus, and both tests join against the same reading.
+    /// The identity and mutation controls share one observation of the declared rows.
     fn read_rows() -> &'static BTreeMap<String, RowReading> {
         static ROWS: std::sync::OnceLock<BTreeMap<String, RowReading>> = std::sync::OnceLock::new();
         ROWS.get_or_init(evaluate_rows)
@@ -5327,14 +5326,13 @@ mod registry_rows_identity_tests {
     fn evaluate_rows() -> BTreeMap<String, RowReading> {
         let reader = cli_run::workspace_root().join("dag/gunbc/instrument_targets.dag");
         let roots = cli_run::default_source_roots();
-        let (graph, source_indices) =
-            cli_run::resolve_entry_graph(&roots, reader.to_str().expect("utf8 path"))
-                .expect("resolve rows");
-        let ctx = cli_run::make_eval_context(
-            graph.as_ref(),
-            source_indices,
+        let (_, ctx) = cli_run::load_entry_for_functions(
+            &roots,
+            reader.to_str().expect("utf8 path"),
+            &["instrument_bindings".to_string()],
             crate::v1_interpreter::ExecutionMode::Wet,
-        );
+        )
+        .expect("resolve instrument_bindings");
         let value =
             crate::v1_interpreter::run_in_context_with_args(&ctx, "instrument_bindings", &[], true)
                 .expect("instrument_bindings");
@@ -5355,11 +5353,27 @@ mod registry_rows_identity_tests {
             else {
                 panic!("{label}: producer is not a variant")
             };
-            let reading = (
-                ctx.resolve(*variant_name),
-                text(&ctx, producer, "entry"),
-                text(&ctx, producer, "function"),
-            );
+            let (entry, function) = if ctx.sym_eq(*variant_name, "CliWireProgramProducer") {
+                let Some(Value::Record { fields: target, .. }) = ctx.field(producer, "target")
+                else {
+                    panic!("{label}: CliWire target missing")
+                };
+                let Some(Value::Record {
+                    fields: declaration,
+                    ..
+                }) = ctx.field(target, "declaration")
+                else {
+                    panic!("{label}: target declaration missing")
+                };
+                let module = text(&ctx, declaration, "module_path").expect("declaration module");
+                let name = text(&ctx, declaration, "decl_name").expect("declaration name");
+                let path = cli_run::source_layout_lookup::module_storage_relative(&module)
+                    .expect("repository entry path");
+                (Some(path), Some(name))
+            } else {
+                (text(&ctx, producer, "entry"), None)
+            };
+            let reading = (ctx.resolve(*variant_name), entry, function);
             assert!(
                 rows.insert(label.clone(), reading).is_none(),
                 "duplicate row {label}"
