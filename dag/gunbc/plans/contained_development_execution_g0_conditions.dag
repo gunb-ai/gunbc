@@ -1,29 +1,44 @@
 module gunbc.plans.contained_development_execution_g0_conditions
 
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { NonEmptyStr }
 
 // Single typed carrier for the G0 done-when conditions and the lifting count, so the
 // count and conditions live in a typed carrier (gunbc.design_argument::source_annotations)
 // and the lifting rule is a conjunction consumed by execution
-// (gunbc.design_argument::fail_closed — not a string grep over plan prose). The plan
+// (gunbc.design_argument::fail_closed - not a string grep over plan prose). The plan
 // module gunbc.plans.contained_development_execution_g0 renders human-readable prose and
 // the lifting rule cites these symbols by name; it does not hold the count.
 
-// The five states G0's headline names (roadmap_dispatch_actuator::g0_contained_development_execution).
+// BY CONSTRUCTION (review 98833 F1, gunbc.design_argument::fail_closed: "making it
+// unwritable beats catching it"): the condition rows are the ARMS of one exhaustive
+// match over G0ConditionKey (fn g0_condition) and the state group is DERIVED from the
+// key by a second exhaustive match (fn g0_group_of). The compiler rules out a missing,
+// duplicated or wrongly-grouped condition row; completeness is the enum itself. The
+// count is the enum size, read off data g0_all_condition_keys (a List<G0ConditionKey>:
+// membership type-checked, so a fabricated key does not parse; a dropped key turns the
+// lifting join and the witness red, never silently green).
+
+// The five states G0 headline names (roadmap_dispatch_actuator::g0_contained_development_execution).
 type G0StateGroup = OperatorHome | Credentials | PrivilegeGroups | ControlPlaneStores | SharedState
 
-// Typed identity for each condition row, selected BY VARIANT (never by matching free text in
-// requires — gunbc.design_argument::fail_closed: a .contains() grep over free text is not a
-// consumer; review 98735 F-KEY: a reword must not silently unselect a row).
+// Typed identity for each condition row, selected BY VARIANT (never by matching free text)
+// - gunbc.design_argument::fail_closed; review 98735 F-KEY: a reword must not silently
+// unselect a row. The enum IS the condition set: change a variant and the exhaustive
+// matches below refuse to typecheck until the row exists.
 type G0ConditionKey = ProtectHomeReadonlyRendered | OperatorHomeNotInHandedReadWritePaths | ProtectSystemStrictRendered | NoCredentialPathsInHandedSet | NoPerAttemptSecretsReach | NoSshPrivateKeyReach | SupplementaryGroupsNoRootEquivalent | NoNewPrivilegesAndRestrictSuid | NoPamInProperties | NoFabricHmacKeyInUnit | WritePathsUnderInstanceRoot | ProviderEventsLedgerScoped | SharedStateUmask0002 | NoEventCarrierWorktreeWrites | NoSpoolInFlightWrites
 
-// One done-when condition: its typed key, which state it belongs to, what unreachability
-// requires of a worker, and the repository symbol that models the state it protects.
+// One done-when condition. key and group are NOT fields: the key is the match arm and
+// the group is derived from the key by fn g0_group_of, so neither can disagree with the
+// key (review 98833 F1). requires states the plain-language invariant plus its negative
+// case with NO module::symbol spellings - unmarked text is never a reference
+// (gunbc.design_argument::source_annotations, review 98833 F2); every repository symbol
+// a row leans on is a typed DeclarationRef in modelled_by or citations, each resolved
+// against the parsed declaration pool by the witness.
 type G0DoneWhenCondition = G0DoneWhenCondition {
-  key: G0ConditionKey,
-  group: G0StateGroup,
   requires: String,
   modelled_by: DeclarationRef,
+  citations: List<DeclarationRef>,
 }
 
 data g0_state_groups: List<G0StateGroup> = [
@@ -34,47 +49,94 @@ data g0_state_groups: List<G0StateGroup> = [
   SharedState,
 ]
 
-// One row per done-when condition across the five state groups. The count is never
-// written down; it is read off this list by g0_condition_count.
-data g0_done_when_conditions: List<G0DoneWhenCondition> = [
-  G0DoneWhenCondition { key: ProtectHomeReadonlyRendered, group: OperatorHome, requires: "The worker unit property list rendered by gunbc.roadmap.roadmap_dispatch_actuator::dispatch_worker_unit_properties on the UnitRunOnSystemManager route contains ProtectHome=read-only (emitted by gunbc.roadmap.dispatch_worker_unit_confinement::dispatch_worker_unit_stream_properties), rendered to text by gunbc.extdeps.systemd.systemd_run::systemd_run_property_assignment, and the non-hardened route arm does NOT contain it. The negative case: if the check passes on the stripped render, it does not measure the property.", modelled_by: DeclarationRef { module_path: "gunbc.roadmap.dispatch_worker_unit_confinement", decl_name: "dispatch_worker_unit_stream_properties", field: WholeDeclaration } },
-  G0DoneWhenCondition { key: OperatorHomeNotInHandedReadWritePaths, group: OperatorHome, requires: "No rendered ReadWritePaths= entry from the handed set (gunbc.roadmap.dispatch_worker_handed_set) begins with the operator home prefix (/home/<login>) unless the entry lies under the instance's own root. The srv2 preview root is under operator home by design (see the [srv2-root-inside-operator-home] finding). The negative case: a hand-constructed handed set containing /home/briansrls/some-path-outside-the-instance-root makes the check fail.", modelled_by: DeclarationRef { module_path: "gunbc.roadmap.roadmap_dashboard_instance", decl_name: "srv2_dashboard_preview_root", field: WholeDeclaration } },
-  G0DoneWhenCondition { key: ProtectSystemStrictRendered, group: Credentials, requires: "The worker unit property list rendered by gunbc.roadmap.roadmap_dispatch_actuator::dispatch_worker_unit_properties contains ProtectSystem=strict (emitted by gunbc.roadmap.dispatch_worker_unit_confinement::dispatch_worker_unit_stream_properties) and the non-hardened route arm does not. The negative case: if the check passes on the stripped render, it does not measure the property.", modelled_by: DeclarationRef { module_path: "gunbc.roadmap.dispatch_worker_unit_confinement", decl_name: "dispatch_worker_unit_stream_properties", field: WholeDeclaration } },
-  G0DoneWhenCondition { key: NoCredentialPathsInHandedSet, group: Credentials, requires: "No ReadWritePaths= entry from the handed set equals any HostCredentialCustodyRow's path field, the rendered unit carries no EnvironmentFile= pointing at a custody path, and no custody path appears in any ExecStart= argument. The negative case: a hand-crafted handed set or unit naming the fabric HMAC key path (/etc/gunbc-fabric-storage/state-writer-mac-key) makes the check fail.", modelled_by: DeclarationRef { module_path: "gunbc.fleet.host_credential_custody_roster", decl_name: "HostCredentialCustodyRow", field: WholeDeclaration } },
-  G0DoneWhenCondition { key: NoPerAttemptSecretsReach, group: Credentials, requires: "No EnvironmentFile=, ReadWritePaths=, nor ExecStart= argument reaches the per-attempt credential snapshot path derived by gunbc.roadmap.roadmap_dispatch_actuator::dispatch_credential_snapshot_path_for_attempt (the seal is gunbc.dispatch_credential_snapshot::TakenCredentialSnapshot). The negative case: a hand-crafted unit naming the snapshot path makes the check fail.", modelled_by: DeclarationRef { module_path: "gunbc.roadmap.roadmap_dispatch_actuator", decl_name: "dispatch_credential_snapshot_path_for_attempt", field: WholeDeclaration } },
-  G0DoneWhenCondition { key: NoSshPrivateKeyReach, group: Credentials, requires: "No EnvironmentFile=, ReadWritePaths=, nor ExecStart= argument reaches SSH private key material (the GKE-pinned SecretRef gunbc.fleet.fleet_ssh_access::fleet_automation_ssh_privkey_secret). The negative case: a hand-crafted unit with EnvironmentFile= naming the fleet-automation private key secret makes the check fail.", modelled_by: DeclarationRef { module_path: "gunbc.fleet.fleet_ssh_access", decl_name: "fleet_automation_ssh_privkey_secret", field: WholeDeclaration } },
-  G0DoneWhenCondition { key: SupplementaryGroupsNoRootEquivalent, group: PrivilegeGroups, requires: "The intersection of the worker's declared supplementary group list (gunbc.fleet.fleet_posix_accounts::fleet_posix_worker_supplementary_groups) and the declared root-equivalent group list (gunbc.fleet.fleet_root_equivalent_groups::fleet_root_equivalent_group_names) is empty. The negative case: a hand-modified supplementary group list containing \"docker\" makes the check fail.", modelled_by: DeclarationRef { module_path: "gunbc.fleet.fleet_posix_accounts", decl_name: "fleet_posix_worker_supplementary_groups", field: WholeDeclaration } },
-  G0DoneWhenCondition { key: NoNewPrivilegesAndRestrictSuid, group: PrivilegeGroups, requires: "The rendered hardened unit contains NoNewPrivileges=yes, RestrictSUIDSGID=yes, and (in SystemManager mode) the empty-valued bounding-set assignment CapabilityBoundingSet= (the token gunbc.extdeps.systemd.systemd_run::systemd_run_empty_capability_bounding_set_assignment emits for the EmptyCapabilityBoundingSet arm; there is no systemd directive named EmptyCapabilityBoundingSet assigned to yes); the stripped render does not contain them. The negative case: if the check passes on the stripped render, it does not measure the properties.", modelled_by: DeclarationRef { module_path: "extdeps.systemd.systemd_run", decl_name: "systemd_run_empty_capability_bounding_set_assignment", field: WholeDeclaration } },
-  G0DoneWhenCondition { key: NoPamInProperties, group: PrivilegeGroups, requires: "The rendered unit contains no PAM substring in any property assignment (no PAMName=, no PAMTasksMax=). The negative case: a hand-crafted unit with PAMName=su makes the check fail.", modelled_by: DeclarationRef { module_path: "extdeps.systemd.systemd_run", decl_name: "systemd_run_property_assignment", field: WholeDeclaration } },
-  G0DoneWhenCondition { key: NoFabricHmacKeyInUnit, group: ControlPlaneStores, requires: "The rendered unit text does not contain the fabric HMAC key path (gunbc.fabric.fabric_storage_state_location::fabric_state_key_host_path), does not contain EnvironmentFile= pointing at it, and no Environment= line names the fabric storage URL from gunbc.fabric.fabric_storage_client::fabric_storage_binding. The negative case: a hand-crafted unit with Environment=FABRIC_URL=... or EnvironmentFile= naming the HMAC key path makes the check fail.", modelled_by: DeclarationRef { module_path: "gunbc.fabric.fabric_storage_state_location", decl_name: "fabric_state_key_host_path", field: WholeDeclaration } },
-  G0DoneWhenCondition { key: WritePathsUnderInstanceRoot, group: ControlPlaneStores, requires: "Every ReadWritePaths= entry is under the instance's own attempt-state root (gunbc.roadmap.roadmap_dashboard_instance::dashboard_instance_dispatch_attempt_state_root); no entry names another instance's attempts member. The negative case: a hand-crafted handed set with a path under another instance's root makes the check fail.", modelled_by: DeclarationRef { module_path: "gunbc.roadmap.roadmap_dashboard_instance", decl_name: "dashboard_instance_dispatch_attempt_state_root", field: WholeDeclaration } },
-  G0DoneWhenCondition { key: ProviderEventsLedgerScoped, group: ControlPlaneStores, requires: "The provider-events ledger absolute path (from gunbc.roadmap.roadmap_attempt_state_store::attempt_state_directory_segment, joined with the worker-events file name) contains the instance's attempt-state root prefix and the attempt-key infix. The negative case: a path that omits the attempt-key infix or instance-root prefix makes the check fail.", modelled_by: DeclarationRef { module_path: "gunbc.roadmap.roadmap_attempt_state_store", decl_name: "attempt_state_directory_segment", field: WholeDeclaration } },
-  G0DoneWhenCondition { key: SharedStateUmask0002, group: SharedState, requires: "The rendered hardened unit contains UMask=0002 (from gunbc.roadmap.dispatch_worker_unit_confinement::dispatch_dedicated_worker_umask, emitted by gunbc.roadmap.dispatch_worker_unit_confinement::dispatch_worker_umask_properties); the stripped render does not. The negative case: if the check passes on the stripped render, it does not measure the property.", modelled_by: DeclarationRef { module_path: "gunbc.roadmap.dispatch_worker_unit_confinement", decl_name: "dispatch_dedicated_worker_umask", field: WholeDeclaration } },
-  G0DoneWhenCondition { key: NoEventCarrierWorktreeWrites, group: SharedState, requires: "No ReadWritePaths= entry contains the event-carrier worktree path from gunbc.roadmap.roadmap_event_carrier_directory::roadmap_event_carrier_directory for the instance. The negative case: a hand-crafted unit with the carrier directory in ReadWritePaths= makes the check fail.", modelled_by: DeclarationRef { module_path: "gunbc.roadmap.roadmap_event_carrier_directory", decl_name: "roadmap_event_carrier_directory", field: WholeDeclaration } },
-  G0DoneWhenCondition { key: NoSpoolInFlightWrites, group: SharedState, requires: "No ReadWritePaths= entry contains the spool in_flight segment under the instance root (gunbc.host.host_layout::attempt_unit_spool_root). The negative case: a path containing in_flight under the instance root makes the check fail.", modelled_by: DeclarationRef { module_path: "gunbc.host.host_layout", decl_name: "attempt_unit_spool_root", field: WholeDeclaration } },
+// Every condition key, exactly once. A duplicate makes the lifting join red (one proof
+// cannot appear exactly once twice); a dropped key leaves a row the conjunction and the
+// witness selection guard go red over; the enum itself is the authority - the exhaustive
+// matches below refuse to typecheck if it changes (review 98833 F1).
+data g0_all_condition_keys: List<G0ConditionKey> = [
+  ProtectHomeReadonlyRendered,
+  OperatorHomeNotInHandedReadWritePaths,
+  ProtectSystemStrictRendered,
+  NoCredentialPathsInHandedSet,
+  NoPerAttemptSecretsReach,
+  NoSshPrivateKeyReach,
+  SupplementaryGroupsNoRootEquivalent,
+  NoNewPrivilegesAndRestrictSuid,
+  NoPamInProperties,
+  NoFabricHmacKeyInUnit,
+  WritePathsUnderInstanceRoot,
+  ProviderEventsLedgerScoped,
+  SharedStateUmask0002,
+  NoEventCarrierWorktreeWrites,
+  NoSpoolInFlightWrites,
 ]
 
-// The count is computed by reading the list off the carrier; nothing in this repo writes
-// the number down.
+// THE CARRIER BY CONSTRUCTION: one arm per G0ConditionKey variant; the exhaustive match
+// rules out a missing or duplicated row (review 98833 F1). requires carries only
+// plain-language invariants and negative cases; symbols live in modelled_by / citations.
+fn g0_condition(k: G0ConditionKey) -> G0DoneWhenCondition {
+  match k {
+    ProtectHomeReadonlyRendered => G0DoneWhenCondition { requires: "The worker unit property list rendered by dispatch_worker_unit_properties on the UnitRunOnSystemManager route contains ProtectHome=read-only (emitted by dispatch_worker_unit_stream_properties), rendered to text by systemd_run_property_assignment, and the non-hardened route arm does NOT contain it. The negative case: if the check passes on the stripped render, it does not measure the property.", modelled_by: DeclarationRef { module_path: "gunbc.roadmap.dispatch_worker_unit_confinement" as NonEmptyStr, decl_name: "dispatch_worker_unit_stream_properties" as NonEmptyStr, field: WholeDeclaration }, citations: [DeclarationRef { module_path: "gunbc.roadmap.roadmap_dispatch_actuator" as NonEmptyStr, decl_name: "dispatch_worker_unit_properties" as NonEmptyStr, field: WholeDeclaration }, DeclarationRef { module_path: "gunbc.roadmap.dispatch_worker_unit_confinement" as NonEmptyStr, decl_name: "dispatch_worker_unit_stream_properties" as NonEmptyStr, field: WholeDeclaration }, DeclarationRef { module_path: "extdeps.systemd.systemd_run" as NonEmptyStr, decl_name: "systemd_run_property_assignment" as NonEmptyStr, field: WholeDeclaration }] },
+    OperatorHomeNotInHandedReadWritePaths => G0DoneWhenCondition { requires: "No rendered ReadWritePaths= entry from the handed set (dispatch_worker_handed_set) begins with the operator home prefix (/home/<login>) unless the entry lies under the instance's own root. The srv2 preview root is under operator home by design (see the [srv2-root-inside-operator-home] finding). The negative case: a hand-constructed handed set containing /home/briansrls/some-path-outside-the-instance-root makes the check fail.", modelled_by: DeclarationRef { module_path: "gunbc.roadmap.roadmap_dashboard_instance" as NonEmptyStr, decl_name: "srv2_dashboard_preview_root" as NonEmptyStr, field: WholeDeclaration }, citations: [DeclarationRef { module_path: "gunbc.roadmap.dispatch_worker_handed_set" as NonEmptyStr, decl_name: "HandedEntry" as NonEmptyStr, field: WholeDeclaration }] },
+    ProtectSystemStrictRendered => G0DoneWhenCondition { requires: "The worker unit property list rendered by dispatch_worker_unit_properties contains ProtectSystem=strict (emitted by dispatch_worker_unit_stream_properties) and the non-hardened route arm does not. The negative case: if the check passes on the stripped render, it does not measure the property.", modelled_by: DeclarationRef { module_path: "gunbc.roadmap.dispatch_worker_unit_confinement" as NonEmptyStr, decl_name: "dispatch_worker_unit_stream_properties" as NonEmptyStr, field: WholeDeclaration }, citations: [DeclarationRef { module_path: "gunbc.roadmap.roadmap_dispatch_actuator" as NonEmptyStr, decl_name: "dispatch_worker_unit_properties" as NonEmptyStr, field: WholeDeclaration }, DeclarationRef { module_path: "gunbc.roadmap.dispatch_worker_unit_confinement" as NonEmptyStr, decl_name: "dispatch_worker_unit_stream_properties" as NonEmptyStr, field: WholeDeclaration }] },
+    NoCredentialPathsInHandedSet => G0DoneWhenCondition { requires: "No ReadWritePaths= entry from the handed set equals any HostCredentialCustodyRow's path field, the rendered unit carries no EnvironmentFile= pointing at a custody path, and no custody path appears in any ExecStart= argument. The negative case: a hand-crafted handed set or unit naming the fabric HMAC key path (/etc/gunbc-fabric-storage/state-writer-mac-key) makes the check fail.", modelled_by: DeclarationRef { module_path: "gunbc.fleet.host_credential_custody_roster" as NonEmptyStr, decl_name: "HostCredentialCustodyRow" as NonEmptyStr, field: WholeDeclaration }, citations: [] },
+    NoPerAttemptSecretsReach => G0DoneWhenCondition { requires: "No EnvironmentFile=, ReadWritePaths=, nor ExecStart= argument reaches the per-attempt credential snapshot path derived by dispatch_credential_snapshot_path_for_attempt (the seal is TakenCredentialSnapshot). The negative case: a hand-crafted unit naming the snapshot path makes the check fail.", modelled_by: DeclarationRef { module_path: "gunbc.roadmap.roadmap_dispatch_actuator" as NonEmptyStr, decl_name: "dispatch_credential_snapshot_path_for_attempt" as NonEmptyStr, field: WholeDeclaration }, citations: [DeclarationRef { module_path: "gunbc.roadmap.roadmap_dispatch_actuator" as NonEmptyStr, decl_name: "dispatch_credential_snapshot_path_for_attempt" as NonEmptyStr, field: WholeDeclaration }, DeclarationRef { module_path: "gunbc.dispatch_credential_snapshot" as NonEmptyStr, decl_name: "TakenCredentialSnapshot" as NonEmptyStr, field: WholeDeclaration }] },
+    NoSshPrivateKeyReach => G0DoneWhenCondition { requires: "No EnvironmentFile=, ReadWritePaths=, nor ExecStart= argument reaches SSH private key material (the GKE-pinned SecretRef fleet_automation_ssh_privkey_secret). The negative case: a hand-crafted unit with EnvironmentFile= naming the fleet-automation private key secret makes the check fail.", modelled_by: DeclarationRef { module_path: "gunbc.fleet.fleet_ssh_access" as NonEmptyStr, decl_name: "fleet_automation_ssh_privkey_secret" as NonEmptyStr, field: WholeDeclaration }, citations: [DeclarationRef { module_path: "gunbc.fleet.fleet_ssh_access" as NonEmptyStr, decl_name: "fleet_automation_ssh_privkey_secret" as NonEmptyStr, field: WholeDeclaration }] },
+    SupplementaryGroupsNoRootEquivalent => G0DoneWhenCondition { requires: "The intersection of the worker's declared supplementary group list (fleet_posix_worker_supplementary_groups) and the declared root-equivalent group list (fleet_root_equivalent_group_names) is empty. The negative case: a hand-modified supplementary group list containing \"docker\" makes the check fail.", modelled_by: DeclarationRef { module_path: "gunbc.fleet.fleet_posix_accounts" as NonEmptyStr, decl_name: "fleet_posix_worker_supplementary_groups" as NonEmptyStr, field: WholeDeclaration }, citations: [DeclarationRef { module_path: "gunbc.fleet.fleet_posix_accounts" as NonEmptyStr, decl_name: "fleet_posix_worker_supplementary_groups" as NonEmptyStr, field: WholeDeclaration }, DeclarationRef { module_path: "gunbc.fleet.fleet_root_equivalent_groups" as NonEmptyStr, decl_name: "fleet_root_equivalent_group_names" as NonEmptyStr, field: WholeDeclaration }] },
+    NoNewPrivilegesAndRestrictSuid => G0DoneWhenCondition { requires: "The rendered hardened unit contains NoNewPrivileges=yes, RestrictSUIDSGID=yes, and (in SystemManager mode) the empty-valued bounding-set assignment CapabilityBoundingSet= (the token systemd_run_empty_capability_bounding_set_assignment emits for the EmptyCapabilityBoundingSet arm; there is no systemd directive named EmptyCapabilityBoundingSet assigned to yes); the stripped render does not contain them. The negative case: if the check passes on the stripped render, it does not measure the properties.", modelled_by: DeclarationRef { module_path: "extdeps.systemd.systemd_run" as NonEmptyStr, decl_name: "systemd_run_empty_capability_bounding_set_assignment" as NonEmptyStr, field: WholeDeclaration }, citations: [DeclarationRef { module_path: "extdeps.systemd.systemd_run" as NonEmptyStr, decl_name: "systemd_run_empty_capability_bounding_set_assignment" as NonEmptyStr, field: WholeDeclaration }] },
+    NoPamInProperties => G0DoneWhenCondition { requires: "The rendered unit contains no PAM substring in any property assignment (no PAMName=, no PAMTasksMax=). The negative case: a hand-crafted unit with PAMName=su makes the check fail.", modelled_by: DeclarationRef { module_path: "extdeps.systemd.systemd_run" as NonEmptyStr, decl_name: "systemd_run_property_assignment" as NonEmptyStr, field: WholeDeclaration }, citations: [] },
+    NoFabricHmacKeyInUnit => G0DoneWhenCondition { requires: "The rendered unit text does not contain the fabric HMAC key path (fabric_state_key_host_path), does not contain EnvironmentFile= pointing at it, and no Environment= line names the fabric storage URL from fabric_storage_binding. The negative case: a hand-crafted unit with Environment=FABRIC_URL=... or EnvironmentFile= naming the HMAC key path makes the check fail.", modelled_by: DeclarationRef { module_path: "gunbc.fabric.fabric_storage_state_location" as NonEmptyStr, decl_name: "fabric_state_key_host_path" as NonEmptyStr, field: WholeDeclaration }, citations: [DeclarationRef { module_path: "gunbc.fabric.fabric_storage_state_location" as NonEmptyStr, decl_name: "fabric_state_key_host_path" as NonEmptyStr, field: WholeDeclaration }, DeclarationRef { module_path: "gunbc.fabric.fabric_storage_binding" as NonEmptyStr, decl_name: "fabric_storage_binding_for" as NonEmptyStr, field: WholeDeclaration }] },
+    WritePathsUnderInstanceRoot => G0DoneWhenCondition { requires: "Every ReadWritePaths= entry is under the instance's own attempt-state root (dashboard_instance_dispatch_attempt_state_root); no entry names another instance's attempts member. The negative case: a hand-crafted handed set with a path under another instance's root makes the check fail.", modelled_by: DeclarationRef { module_path: "gunbc.roadmap.roadmap_dashboard_instance" as NonEmptyStr, decl_name: "dashboard_instance_dispatch_attempt_state_root" as NonEmptyStr, field: WholeDeclaration }, citations: [DeclarationRef { module_path: "gunbc.roadmap.roadmap_dashboard_instance" as NonEmptyStr, decl_name: "dashboard_instance_dispatch_attempt_state_root" as NonEmptyStr, field: WholeDeclaration }] },
+    ProviderEventsLedgerScoped => G0DoneWhenCondition { requires: "The provider-events ledger absolute path (from attempt_state_directory_segment, joined with the worker-events file name) contains the instance's attempt-state root prefix and the attempt-key infix. The negative case: a path that omits the attempt-key infix or instance-root prefix makes the check fail.", modelled_by: DeclarationRef { module_path: "gunbc.roadmap.roadmap_attempt_state_store" as NonEmptyStr, decl_name: "attempt_state_directory_segment" as NonEmptyStr, field: WholeDeclaration }, citations: [DeclarationRef { module_path: "gunbc.roadmap.roadmap_attempt_state_store" as NonEmptyStr, decl_name: "attempt_state_directory_segment" as NonEmptyStr, field: WholeDeclaration }] },
+    SharedStateUmask0002 => G0DoneWhenCondition { requires: "The rendered hardened unit contains UMask=0002 (from dispatch_dedicated_worker_umask, emitted by dispatch_worker_umask_properties); the stripped render does not. The negative case: if the check passes on the stripped render, it does not measure the property.", modelled_by: DeclarationRef { module_path: "gunbc.roadmap.dispatch_worker_unit_confinement" as NonEmptyStr, decl_name: "dispatch_dedicated_worker_umask" as NonEmptyStr, field: WholeDeclaration }, citations: [DeclarationRef { module_path: "gunbc.roadmap.dispatch_worker_unit_confinement" as NonEmptyStr, decl_name: "dispatch_dedicated_worker_umask" as NonEmptyStr, field: WholeDeclaration }, DeclarationRef { module_path: "gunbc.roadmap.dispatch_worker_unit_confinement" as NonEmptyStr, decl_name: "dispatch_worker_umask_properties" as NonEmptyStr, field: WholeDeclaration }] },
+    NoEventCarrierWorktreeWrites => G0DoneWhenCondition { requires: "No ReadWritePaths= entry contains the event-carrier worktree path from roadmap_event_carrier_directory for the instance. The negative case: a hand-crafted unit with the carrier directory in ReadWritePaths= makes the check fail.", modelled_by: DeclarationRef { module_path: "gunbc.roadmap.roadmap_event_carrier_directory" as NonEmptyStr, decl_name: "roadmap_event_carrier_directory" as NonEmptyStr, field: WholeDeclaration }, citations: [DeclarationRef { module_path: "gunbc.roadmap.roadmap_event_carrier_directory" as NonEmptyStr, decl_name: "roadmap_event_carrier_directory" as NonEmptyStr, field: WholeDeclaration }] },
+    NoSpoolInFlightWrites => G0DoneWhenCondition { requires: "No ReadWritePaths= entry contains the spool in_flight segment under the instance root (attempt_unit_spool_root). The negative case: a path containing in_flight under the instance root makes the check fail.", modelled_by: DeclarationRef { module_path: "gunbc.host.host_layout" as NonEmptyStr, decl_name: "attempt_unit_spool_root" as NonEmptyStr, field: WholeDeclaration }, citations: [DeclarationRef { module_path: "gunbc.host.host_layout" as NonEmptyStr, decl_name: "attempt_unit_spool_root" as NonEmptyStr, field: WholeDeclaration }] },
+  }
+}
+
+// The state a condition belongs to, DERIVED from its key by one exhaustive match: a
+// key/group mismatch is unwritable (review 98833 F1; gunbc.design_argument::fail_closed)
+// - the old rows carried group as a free field that could name any group.
+fn g0_group_of(k: G0ConditionKey) -> G0StateGroup {
+  match k {
+    ProtectHomeReadonlyRendered => OperatorHome,
+    OperatorHomeNotInHandedReadWritePaths => OperatorHome,
+    ProtectSystemStrictRendered => Credentials,
+    NoCredentialPathsInHandedSet => Credentials,
+    NoPerAttemptSecretsReach => Credentials,
+    NoSshPrivateKeyReach => Credentials,
+    SupplementaryGroupsNoRootEquivalent => PrivilegeGroups,
+    NoNewPrivilegesAndRestrictSuid => PrivilegeGroups,
+    NoPamInProperties => PrivilegeGroups,
+    NoFabricHmacKeyInUnit => ControlPlaneStores,
+    WritePathsUnderInstanceRoot => ControlPlaneStores,
+    ProviderEventsLedgerScoped => ControlPlaneStores,
+    SharedStateUmask0002 => SharedState,
+    NoEventCarrierWorktreeWrites => SharedState,
+    NoSpoolInFlightWrites => SharedState,
+  }
+}
+
+// The count is computed by reading the key list off the carrier; nothing writes the
+// number down (review 98398; the plan cites this fn, never a literal).
 fn g0_condition_count() -> Int {
-  count(g0_done_when_conditions)
+  count(g0_all_condition_keys)
 }
 
 // One proof bound to the condition row it proves, joined on the typed key
 // (review 98801 FINDING 2). A bare Bool cannot say WHICH condition it proves.
 type G0ConditionProof = G0ConditionProof { key: G0ConditionKey, proof: Bool }
 
-// The lifting rule as a conjunction — an IDENTITY JOIN, not a count equality
+// The lifting rule as a conjunction - an IDENTITY JOIN, not a count equality
 // (review 98801 FINDING 2, gunbc.design_argument::fail_closed: "Completeness is an
 // identity join, not a count equality"). A proof carries the G0ConditionKey of the row
-// it proves; the conjunction holds exactly when EVERY condition row is proved EXACTLY
-// ONCE (its key appears exactly once among the supplied proofs) and every supplied
-// proof is true. Fifteen copies of one proof, a mislabelled or duplicated key, a
-// dropped row, or an empty list all fail; the required count is COMPUTED via fn
-// g0_condition_count, never written down.
+// it proves; the conjunction holds exactly when EVERY key in the carrier is proved
+// EXACTLY ONCE among the supplied proofs and every supplied proof is true. Fifteen
+// copies of one proof, a mislabelled or duplicated key, a dropped row, or an empty list
+// all fail; the required count is COMPUTED via fn g0_condition_count, never written down.
 fn g0_lift_conjunction_holds(proofs: List<G0ConditionProof>) -> Bool {
   count(proofs) == g0_condition_count()
-    && all(g0_done_when_conditions, c => g0_condition_proved_once(proofs, c.key))
+    && all(g0_all_condition_keys, k => g0_condition_proved_once(proofs, k))
     && all(proofs, pf => pf.proof)
 }
 
@@ -82,27 +144,22 @@ fn g0_condition_proved_once(proofs: List<G0ConditionProof>, k: G0ConditionKey) -
   count(filter(proofs, pf => pf.key == k)) == 1
 }
 
-// The rows carrying one typed key (selection by VARIANT, review 98735 F-KEY).
-fn g0_conditions_with_key(k: G0ConditionKey) -> List<G0DoneWhenCondition> {
-  filter(g0_done_when_conditions, c => c.key == k)
-}
-
-// Identity guard: every key occurs EXACTLY ONCE. Duplicating a key (the writable wrong state)
-// makes this red, so selection can never be quietly ambiguous
-// (gunbc.design_argument::fail_closed: making it unwritable beats catching it).
-fn g0_condition_keys_are_unique() -> Bool {
-  all(g0_done_when_conditions, c => count(g0_conditions_with_key(c.key)) == 1)
-}
-
-// Every declared state group has at least one condition row.
+// Every declared state group has at least one condition key. Group membership is decided
+// by fn g0_group_of (the derived exhaustive match), never on a rendered label
+// (review 98676 FINDING 4).
 fn g0_groups_covered() -> Bool {
-  all(g0_state_groups, group => count(g0_conditions_for_group(group)) > 0)
+  all(g0_state_groups, group => count(g0_keys_for_group(group)) > 0)
 }
 
-// The done-when conditions belonging to one group. Group membership is decided on the G0StateGroup
-// VARIANT directly, never on a rendered label (review 98676 FINDING 4;
-// gunbc.design_argument::fail_closed: making the wrong state unwritable beats catching it --
-// two labels edited to the same text cannot silently merge groups).
-fn g0_conditions_for_group(g: G0StateGroup) -> List<G0DoneWhenCondition> {
-  filter(g0_done_when_conditions, c => c.group == g)
+// The condition keys of one group (variant match via fn g0_group_of).
+fn g0_keys_for_group(g: G0StateGroup) -> List<G0ConditionKey> {
+  filter(g0_all_condition_keys, k => g0_group_of(k) == g)
 }
+
+// The done-when conditions belonging to one group, rendered from the carrier by
+// construction: keys of the group mapped through fn g0_condition. The plan renders its
+// per-group done-when lists from this - it holds no second copy of any condition.
+fn g0_conditions_for_group(g: G0StateGroup) -> List<G0DoneWhenCondition> {
+  map(g0_keys_for_group(g), k => g0_condition(k))
+}
+

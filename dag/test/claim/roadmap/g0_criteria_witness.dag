@@ -6,8 +6,11 @@ module test.claim.roadmap.g0_criteria_witness
 //   * the rendered capability key is read from the OUTPUT of the renderer (dispatch_worker_unit_properties
 //     -> systemd_run_property_assignment), not assembled with sed; and
 //   * the condition set and the lifting count are read from the TYPED condition carrier
-//     gunbc.plans.contained_development_execution_g0_conditions (data g0_done_when_conditions; count via
-//     g0_condition_count; lifting via g0_lift_conjunction_holds), NOT from a grep of the plan's prose.
+//     gunbc.plans.contained_development_execution_g0_conditions (fn g0_condition — an EXHAUSTIVE
+//     match over G0ConditionKey, rows by construction, review 98833 F1; data g0_all_condition_keys;
+//     count via g0_condition_count; lifting via g0_lift_conjunction_holds), NOT from a grep of the
+//     plan's prose. Symbol citations are typed DeclarationRefs (modelled_by / citations), resolved
+//     here against the declaration pool (review 98833 F2).
 //   * every modelled_by citation in the condition carrier is a DeclarationRef that RESOLVES against the
 //     parsed declaration pool (v2.std.decl_index.decl_facts) — a stale or module-only citation goes red.
 // Each check is deterministic and fails its NAMED negative case in the same run (run --claim-run turns a
@@ -23,7 +26,7 @@ import std.markdown { MarkdownBlock, MarkdownInline, MarkdownListItem, TextInlin
 import std.measure { kibibyte }
 import gunbc.markdown_helpers { p, li, ul }
 import gunbc.plans.contained_development_execution_g0 { contained_development_execution_g0_plan }
-import gunbc.plans.contained_development_execution_g0_conditions { g0_done_when_conditions, g0_condition_count, g0_lift_conjunction_holds, g0_groups_covered, g0_conditions_with_key, g0_condition_keys_are_unique, G0ConditionKey, G0ConditionProof }
+import gunbc.plans.contained_development_execution_g0_conditions { g0_all_condition_keys, g0_condition, g0_condition_count, g0_lift_conjunction_holds, g0_groups_covered, G0ConditionKey, G0ConditionProof }
 import gunbc.roadmap.dispatch_worker_unit_confinement { session_process_bounds }
 import gunbc.roadmap.roadmap_dispatch_actuator { dispatch_worker_unit_properties }
 import gunbc.roadmap.roadmap_attempt_occurrence { UnitRunOnSystemManager }
@@ -104,9 +107,12 @@ fn g0_system_manager_props() -> List<SystemdRunProperty> {
 }
 
 // ── CHECK 2: conditions and the lifting count are a TYPED carrier, consumed here (no prose scrape) ──
-// The count is read off the typed rows by g0_condition_count (never a literal); the lifting rule is the
-// conjunction g0_lift_conjunction_holds over an IDENTITY JOIN of the proofs on the typed
-// G0ConditionKey — each row proved exactly once, not a count equality (review 98801 FINDING 2).
+// The count is read off the typed key list by g0_condition_count (never a literal); the rows come
+// from fn g0_condition — one exhaustive match per G0ConditionKey, so a missing, duplicated or
+// wrongly-grouped row is unwritable (review 98833 F1; gunbc.design_argument::fail_closed: making it
+// unwritable beats catching it). The lifting rule is the conjunction g0_lift_conjunction_holds over an
+// IDENTITY JOIN of the proofs on the typed G0ConditionKey — each key proved exactly once, not a count
+// equality (review 98801 FINDING 2).
 // Real consumer green by execution
 // (gunbc.design_argument::fail_closed), and the count lives in a typed carrier
 // (gunbc.design_argument::source_annotations). The plan's prose is no longer read here.
@@ -117,7 +123,7 @@ test fn g0_condition_count_is_nonzero_and_groups_covered() -> Bool {
 // THE PREDICATE consumed: all-proven lifts; one unproven row does not; the empty proof set does not.
 // NAMED negative [lift_missing_key]: a proof set omitting one condition row's key does not lift.
 test fn g0_lift_conjunction_accepts_all_proven_and_rejects_a_hole() -> Bool {
-  let proven = map(g0_done_when_conditions, c => G0ConditionProof { key: c.key, proof: true })
+  let proven = map(g0_all_condition_keys, k => G0ConditionProof { key: k, proof: true })
   let hole = filter(proven, pf => !(pf.key == SharedStateUmask0002))
   g0_lift_conjunction_holds(proven)
     && !g0_lift_conjunction_holds(hole)
@@ -129,29 +135,37 @@ test fn g0_lift_conjunction_accepts_all_proven_and_rejects_a_hole() -> Bool {
 // row's proof is a duplicate of another key and the real row is unproved. The identity join
 // over G0ConditionKey rejects it; the old count equality would have lifted G0.
 test fn g0_lift_conjunction_rejects_duplicate_key() -> Bool {
-  let dup = map(g0_done_when_conditions, c =>
-    if c.key == SharedStateUmask0002 {
+  let dup = map(g0_all_condition_keys, k =>
+    if k == SharedStateUmask0002 {
       G0ConditionProof { key: NoSshPrivateKeyReach, proof: true }
     } else {
-      G0ConditionProof { key: c.key, proof: true }
+      G0ConditionProof { key: k, proof: true }
     })
   count(dup) == g0_condition_count() && !g0_lift_conjunction_holds(dup)
 }
 
-// TYPED ROW SELECTION (review 98735 F-KEY): rows are selected by their G0ConditionKey VARIANT.
-// The selection is exact (exactly one row carries the selected key), keys are pairwise unique (a
-// duplicated key makes this red), and the complement is exactly count-1. Rewording any requires
-// text cannot move this selection (demonstrated red-invariant in the lane run).
-test fn g0_condition_key_selection_is_exact_and_keys_unique() -> Bool {
-  count(g0_conditions_with_key(SharedStateUmask0002)) == 1
-    && g0_condition_keys_are_unique()
-    && g0_condition_count() - count(g0_conditions_with_key(SharedStateUmask0002)) == g0_condition_count() - 1
+// TYPED ROW SELECTION (review 98735 F-KEY; carrier by construction per review 98833 F1): the row for
+// a key is the arm of the exhaustive match fn g0_condition — selection happens by VARIANT, so
+// rewording any requires text cannot move it (demonstrated red-invariant in the lane run). The
+// run-time row-uniqueness/missing-row validators are DELETED: the exhaustive match makes those
+// states unwritable, and a validator for an un-writable state is decoration. What this guard still
+// checks is the key-LIST carrier (data g0_all_condition_keys): the selected key appears exactly
+// once in the list, and EVERY arm supplies a real requires text carrying its negative case (an
+// empty or placeholder arm goes red — no plausible value is fabricated).
+test fn g0_condition_key_selection_is_exact() -> Bool {
+  count(filter(g0_all_condition_keys, k => k == SharedStateUmask0002)) == 1
+    && string_contains(g0_condition(SharedStateUmask0002).requires, "negative case")
+    && all(g0_all_condition_keys, k => string_contains(g0_condition(k).requires, "negative case"))
+    && all(g0_all_condition_keys, k => count(filter(g0_all_condition_keys, k2 => k2 == k)) == 1)
 }
 
-// NAMED negative [stale_modelled_by_ref] (review 98584 FINDING 2): every condition's modelled_by is a
-// DeclarationRef, checked here by execution against the parsed declaration pool -- not an unchecked
-// string. The row set must be non-empty, EVERY ref must resolve to a declaration the index reports, and
-// a deliberately bogus ref must NOT resolve (the search can go red; an empty pool cannot pass).
+// NAMED negative [stale_modelled_by_ref] (review 98584 FINDING 2; citations per review 98833 F2):
+// every condition's modelled_by AND every typed citation is a DeclarationRef, checked here by
+// execution against the parsed declaration pool -- not an unchecked string in prose (unmarked text
+// is never a reference, gunbc.design_argument::source_annotations). The row set must be non-empty,
+// the citation extraction must be NON-VACUOUS (the selected row carries at least one citation),
+// EVERY ref must resolve to a declaration the index reports, and deliberately bogus refs must NOT
+// resolve (the search can go red; an empty pool cannot pass).
 fn g0_ref_resolves(facts: List<DeclFact>, ref: DeclarationRef) -> Bool {
   any(xs: facts, predicate: f => f.qualified_name == concat(ref.module_path as String, ".", ref.decl_name as String))
 }
@@ -162,10 +176,24 @@ data g0_stale_ref_probe: DeclarationRef = DeclarationRef {
   field: WholeDeclaration,
 }
 
-test fn g0_condition_modelled_by_refs_resolve_in_the_declaration_pool() -> Bool {
+data g0_stale_citation_probe: DeclarationRef = DeclarationRef {
+  module_path: "gunbc.fabric.fabric_storage_client" as NonEmptyStr,
+  decl_name: "fabric_storage_binding" as NonEmptyStr,
+  field: WholeDeclaration,
+}
+
+test fn g0_condition_modelled_by_and_citations_resolve_in_the_declaration_pool() -> Bool {
   let facts = decl_facts(pool_roots: ["dag"])
-  let unresolved = filter(g0_done_when_conditions, c => !g0_ref_resolves(facts, c.modelled_by))
-  count(g0_done_when_conditions) > 0 && count(facts) > 0 && count(unresolved) == 0 && !g0_ref_resolves(facts, g0_stale_ref_probe)
+  let rows = map(g0_all_condition_keys, k => g0_condition(k))
+  let unresolved_modelled = filter(rows, c => !g0_ref_resolves(facts, c.modelled_by))
+  let unresolved_citations = filter(rows, c => !all(c.citations, r => g0_ref_resolves(facts, r)))
+  count(rows) > 0
+    && count(facts) > 0
+    && count(unresolved_modelled) == 0
+    && count(unresolved_citations) == 0
+    && count(g0_condition(SharedStateUmask0002).citations) > 0
+    && !g0_ref_resolves(facts, g0_stale_ref_probe)
+    && !g0_ref_resolves(facts, g0_stale_citation_probe)
 }
 
 // ── CHECK 3: rendered capability key, executed on the renderer's OUTPUT ────────────────────────────
