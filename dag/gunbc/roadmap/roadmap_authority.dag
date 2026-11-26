@@ -6657,6 +6657,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         out_of_scope: "Does not change the fast-lane decision, its read-set rules, or which steps carry continue-on-error. Does not audit heal.yml or any other workflow. Does not add a claim that no workflow skips heavy work today: such a census claim passes only while the defect exists and would go red the day behaviour becomes correct, so it belongs in the handback's printed evidence and not in the shipped witness.",
         handback: "Return the witness module path, the raw PASS lines naming all three claims, the claim_batch exit status as the command printed it, the heavy-slot acquisition line, the released-binary sha256 read from disk, the consumer count with its per-file breakdown, the emitter file:line for each consumer, and the observed refusal from the inverted-consumer mutation with its tree sha and its parent sha."
       )),
+      dispatch: dispatchable(),
       parent: in_project(project: "ci-end-to-end-execution", contribution: "A lane that can classify itself out of doing work is only honest if its consumers fail closed; this row keeps that polarity under a claim instead of under habit."),
     ),
     roadmap_node(
@@ -6673,6 +6674,7 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         out_of_scope: "Does not change the compiler, the resolver, or whether std members require an import -- the twin pair already measured that behaviour and it is not in dispute. Does not audit the other 154 importless modules under dag/test/claim beyond reporting their count, and does not widen this row into a class-wide claim without a census whose population was read rather than guessed. Does not touch required_floor.dag or floor_expected_red.dag except to state this module's enrolment counts, which are 0 today.",
         handback: "Return: the raw PASS and FAIL lines for all three legs with each command's own exit status; the released binaries' sha256 read from disk inside each log; the heavy-slot acquisition line per leg; the restored-imports module's diff; the full 18-test verdict list at the fixed head, not three of them; the roster decision with the reader wired or the deletion shown, and the grep counts that establish the roster had no reader before and does after."
       )),
+      dispatch: dispatchable(),
       parent: in_project(project: "factory", contribution: "Coverage that cannot execute is not coverage, and a roster nobody reads is not an execution route; the factory is only as honest as the checks that actually run."),
     ),
 
