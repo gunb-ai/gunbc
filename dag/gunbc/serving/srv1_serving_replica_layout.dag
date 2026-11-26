@@ -3453,3 +3453,135 @@ data srv1_test_only_artifacts_frontier: FrontierRow = frontier_row_decl(
   reason: "six test-only artifacts sit on srv1 under ~/lil owned by no module: no receipt pins their bytes, no witness reads them, and any of them could be deleted or edited unnoticed. Each must either be adopted into the repo as a hash-pinned receipt owned by a module, or deleted by an explicit operator decision. nccl_test.py additionally may be consumed by lane A (nccl_probe.py on #16116), so its disposition needs lane A's input too.",
   dissolution: unbound_dissolution(description: "every member of srv1_test_only_artifacts has a disposition: a repo module owns an adopted, hash-pinned copy, or the operator recorded a deletion. SUFFICIENT when the inventory is empty with a recorded disposition per member."),
 )
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// THE BOOT PATH AS INSTALLED, RE-READ 2026-11-24 / 25: WHAT THE HOST HOLDS THAT THIS MODULE DOES NOT RENDER
+//
+// srv1_replica_launcher_lines and srv1_render_replica_engine_args render the two files the replicas start
+// from, and srv1_installed_boot_path_artifacts_2026_11_09 is the receipt that they matched the host on
+// 2026-11-09. They do not match today. The operator raised each replica's LMCache RAM tier from 12 GiB to
+// 48 GiB and the container's memory/swap/shm with it, by hand, at ~19:28 and ~19:38 UTC on 2026-11-24 --
+// the change Part B4 is about, and the sibling PR that re-renders these two files at L1 48 / memory 72g /
+// swap 72g / shm 56g is warm-badger-640's (branch session/warm-badger-640). Until that PR lands, the render
+// and the host disagree, and the disagreement is RECORDED rather than papered over: the rows below carry the
+// digest sha256sum printed on srv1, the instrument, the read time, and the field-by-field difference from
+// what these renderers emit. That is the honest state of affairs, and it is also the falsifier the re-render
+// has to clear -- when warm-badger-640's rows match, these digests become the check that it did.
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+// One installed file this module renders, where the host's bytes and the render no longer agree, and what
+// is owed to make them agree again. Deliberately parallel to Srv1InstalledArtifact, whose two digests are
+// equal by construction: a divergence needs a reason and an owner, which an install receipt does not.
+type Srv1InstalledArtifactDivergence {
+  host_path: NonEmptyStr
+  rendered_by: NonEmptyStr
+  sha256_computed_on_host: NonEmptyStr
+  read_on_utc: NonEmptyStr
+  instrument: NonEmptyStr
+  // What the host holds that the render does not, field by field, in the render's own terms.
+  differs_in: List<NonEmptyStr>
+  why: NonEmptyStr
+  // Which change closes it, and who owns that change.
+  closed_by: NonEmptyStr
+}
+
+// BOTH ENTRIES CLOSED 2026-11-26, by gunbc#17089 (warm-badger-640) merging: the re-render at L1 48 /
+// memory 72g / swap 72g / shm 56g now hash-matches the host reads -- srv1_installed_boot_path_artifacts_
+// 2026_11_24 carries lil-replica-launch 1ad7de0857a4e06168aa603fd5b8d92f1a2ebc6395c84aa64900d5b968dc12ea
+// and replica-{0,1}.args 76737a58839259d3ecf4626a47bee489aea4d959cd64789e24f4e1b9bef95aca with
+// render_sha256 equal to installed_sha256_computed_on_host (digests read on srv1 with sha256sum over ssh
+// 2026-11-24T22:03-22:05Z, in the pass that also read the engine flags off the file's docker run line; the
+// two args files hash identically, verified not assumed), and the executed comparison is
+// gunbc.serving.srv1_replica_rendered_boot_path_witness::install_row_digest_matches. The rows this list
+// carried said: if that PR has merged by the time this row is read, it is a receipt to be converted, not a
+// divergence to be kept. So converted, with the measurements they carried kept here rather than repainted
+// (gunbc.design_argument::epistemic_humility -- they are the evidence the raise rested on, and srv1_lmcache_
+// l1_configured itself is a bare figure): the 12 GiB L1 was the staging buffer every checkpoint passes
+// through on its way to the NVMe tier under --l2-store-policy checkpoint_on_evict, so it sat at 90-99% full
+// and the evict-immediately path deleted fresh pages 0.07-1 s after creation without writing them (~740k
+// pages on GPU0 in 3.9 h; 2,760 of 4,224 saves on GPU0 and GPU1 got only 48%/43% of the space asked for),
+// same-card returns missed 50-75%; at 48 GiB the same-card unchanged-prefix warm rate measured 96-99%
+// against 86-90% (the operator's trial figures, 2026-11-24 addendum), which is why the container's memory
+// and shm went with it. An empty list keeps its type and its fold: the next divergence must still name its
+// differs_in, its owner and its instrument.
+data srv1_boot_path_divergences_of_the_2026_11_24_pass: List<Srv1InstalledArtifactDivergence> = []
+
+// One thing the pass saw happen to a replica, kept as an event rather than a state: the restarts that
+// applied the new flags, and the interruption that did not come from this module's boot path.
+type Srv1ReplicaEvent {
+  replica_index: Nat
+  event: NonEmptyStr
+  at_utc: NonEmptyStr
+  said_by: NonEmptyStr
+  consequence: NonEmptyStr
+}
+
+data srv1_replica_events_of_the_2026_11_24_25_pass: List<Srv1ReplicaEvent> = [
+  Srv1ReplicaEvent {
+    replica_index: 0,
+    event: "systemctl restart lil-replica@0, to pick up the raised memory, swap and shm flags" as NonEmptyStr,
+    at_utc: "started 2026-11-24T19:28:12Z, healthy 2026-11-24T19:37:17Z" as NonEmptyStr,
+    said_by: "systemctl on srv1 in the pass; the healthy time is the same unit's readiness read, and both sit inside the 600 s bar srv1_boot_path_ready_deadline sets" as NonEmptyStr,
+    consequence: "the replica came back on the new container flags; its LMCache tiers had to warm from cold, which is why the warm-rate figures that motivated the change are read after this restart and not before it" as NonEmptyStr,
+  },
+  Srv1ReplicaEvent {
+    replica_index: 1,
+    event: "systemctl restart lil-replica@1, then a second stop the next morning for someone else's trial, and the deletion of this replica's LMCache disk tier by the operator's decision" as NonEmptyStr,
+    at_utc: "restart started 2026-11-24T19:38:04Z, healthy 2026-11-24T19:47:33Z; stopped 2026-11-25T01:31Z, restarted 04:49Z; tier read as deleted at the ~06:10Z pass" as NonEmptyStr,
+    said_by: "systemctl and the filesystem on srv1 in the pass; the deletion is the operator's own decision, recorded in the pass's notes, and the 50 GB read at 06:10 UTC is a du of ~/lil/kv-gpu1 as it refills" as NonEmptyStr,
+    consequence: "the GPU1 replica's disk tier (~84 GB of ~/lil/kv-gpu1, the path the launcher names as KV=kv-gpu1 for this replica) was removed, so same-card warm on GPU1 runs cold and refills; the pass expected GPU1's warm rate to climb toward GPU0's 97-98% as it does. Nothing in the model can see this: the disk tier's size is an assumption in srv1_lmcache_l2_configured, not a reading, and a deleted tier and an empty one look identical to every consumer." as NonEmptyStr,
+  },
+]
+
+// The disk the replicas' tiers live on, which ran out on 2026-11-25 and was cleared by the operator, twice.
+// Recorded here rather than in a fleet log because the deletions fell inside what THIS module's launcher
+// declares: the GPU1 KV tier, the quarantine the worktree janitor holds, and LMCache's on-disk layout.
+type Srv1DiskCleanupRecord {
+  at_utc: NonEmptyStr
+  approved_by: NonEmptyStr
+  removed: List<NonEmptyStr>
+  free_before: NonEmptyStr
+  free_after: NonEmptyStr
+  note: NonEmptyStr
+}
+
+data srv1_disk_cleanups_of_2026_11_25: List<Srv1DiskCleanupRecord> = [
+  Srv1DiskCleanupRecord {
+    at_utc: "~06:05-06:10Z 2026-11-25, when the disk hit 100% with 10 GB free" as NonEmptyStr,
+    approved_by: "the operator, item by item, during the pass" as NonEmptyStr,
+    removed: [
+      "~/.worktree-janitor-quarantine, all four batches (57 GB)" as NonEmptyStr,
+      "13 dead-session directories under ~/.local/share/session-dashboard/session-tmp (7.2 GB)" as NonEmptyStr,
+      "~/lil/kv-gpu1 (84 GB) -- the GPU1 replica's LMCache disk tier, whose consequence is recorded in srv1_replica_events_of_the_2026_11_24_25_pass" as NonEmptyStr,
+      "all Hyperflare checkpoint and engine data (~200 GB)" as NonEmptyStr,
+    ],
+    free_before: "10 GB (100% used) at ~06:05 UTC" as NonEmptyStr,
+    free_after: "208 GB" as NonEmptyStr,
+    note: "The sizes are the pass's du readings, not a df differential; the two together are the only account of where the space went." as NonEmptyStr,
+  },
+  Srv1DiskCleanupRecord {
+    at_utc: "~06:30Z 2026-11-25, second pass" as NonEmptyStr,
+    approved_by: "the operator, again item by item" as NonEmptyStr,
+    removed: [
+      "17 scratch directories that were not a live session and untouched 24 h or more (43 GB)" as NonEmptyStr,
+      "a stale 2026-11-08 LMCache layout on GPU0 (6bf86ae..., 55 GB)" as NonEmptyStr,
+      "~/hyperflare (9 GB)" as NonEmptyStr,
+      "the journal, vacuumed to 1 GB; the uv cache (13 GB)" as NonEmptyStr,
+      "old work directories bright-ibex-regen, t6-run, gunbc-16604, ck-16373, wt-16251, acc-16251 (~70 GB), each clean or non-git and untouched 6+ days" as NonEmptyStr,
+      "~/.local/share/gunbc-dashboard-instances/codex-provider-feedback-v0 (35 GB, last modified 2026-10-20)" as NonEmptyStr,
+    ],
+    free_before: "208 GB" as NonEmptyStr,
+    free_after: "437 GB free, 76% used" as NonEmptyStr,
+    note: "Two things the operator did NOT authorise and one mistake, both worth keeping. Not authorised: bold-stag-227's and loyal-ant-144's live session-tmp (156 GB and 71 GB), which were left for those sessions to clean -- so the disk's headroom is borrowed from two running sessions, not won. The mistake: a `git worktree prune` was run on srv1 ~/gunbc in error; it was verified harmless, none of the 61 worktrees pointing into that repository lost its record. And what is still unbounded: nothing caps per-session scratch or reaps a dead session's directories -- the worktree janitor covers worktrees only -- which is why the same disk will need this pass again, and which is ctrl's gap to close, not this module's." as NonEmptyStr,
+  },
+]
+
+// The divergences are only useful as a check if somebody asks the question. Both must be non-empty and
+// carry a closure owner, or the pass has recorded a mystery instead of a divergence.
+fn every_srv1_boot_path_divergence_names_its_closure() -> Bool {
+  fold(srv1_boot_path_divergences_of_the_2026_11_24_pass, init: true, f: (ok, d) =>
+    ok && d.differs_in.length() > 0
+      && (d.closed_by as String) != ""
+      && (d.instrument as String) != ""
+      && (d.sha256_computed_on_host as String) != "")
+}

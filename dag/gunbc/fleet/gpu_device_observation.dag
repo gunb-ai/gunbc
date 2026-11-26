@@ -118,7 +118,7 @@ data current_gpu_device_observations: List<GpuDeviceObservation> = [
     power_limit_current: watt(count: 300),
     power_limit_default: Present { value: watt(count: 300) },
     power_limit_control: NvidiaSmiPowerLimit,
-    read_on: "2026-11-08 srv1 nvidia-smi" as NonEmptyStr,
+    read_on: "2026-11-08 srv1 nvidia-smi, re-read unchanged at the 2026-11-24 22:03-22:05 UTC ssh pass (nvidia-smi power.limit 300.00 W; the operator asked whether srv1 had changed and it had not)" as NonEmptyStr,
   },
   // srv1's Workstation card, re-read 2026-11-08: it NOW ENUMERATES -- UUID
   // GPU-96b749dc-e2ea-5b6f-2e45-ee868b1a9750, serial 1792726101367, VBIOS 98.02.81.00.07, 97887 MiB, ECC
@@ -135,9 +135,20 @@ data current_gpu_device_observations: List<GpuDeviceObservation> = [
     power_limit_current: watt(count: 300),
     power_limit_default: Present { value: watt(count: 600) },
     power_limit_control: NvidiaSmiPowerLimit,
-    read_on: "2026-11-08 srv1 nvidia-smi" as NonEmptyStr,
+    read_on: "2026-11-08 srv1 nvidia-smi, re-read unchanged at the 2026-11-24 22:03-22:05 UTC ssh pass (nvidia-smi power.limit 300.00 W; the operator asked whether srv1 had changed and it had not)" as NonEmptyStr,
   },
-  // srv4's RTX 2000 Ada pair, 2026-11-07 15:35Z (fleet survey, jolly-moth-61). The UUIDs were not read.
+  // srv4's RTX 2000 Ada pair, first read 2026-11-07 15:35Z (fleet survey, jolly-moth-61); the CURRENT limit
+  // below is the 2026-11-24 re-read over ssh, which is where the row stands today. What changed is not the
+  // card's own report of its range -- minimum 30 W, maximum 70 W, both still the manufacturer's envelope --
+  // but where the limit sits inside it: the operator took srv4 from 40 W to 30 W on 2026-11-24 for power
+  // after the surge-strip trips, and added an SM clock lock, both by hand-editing
+  // /etc/systemd/system/gpu-power-cap.service (the mechanism, its bytes and its digest are
+  // gunbc.fleet.gpu_power_cap_boot_state's srv4 row; the sweep that chose 210-1500 MHz is named there). This
+  // row is the device's side of that: what nvidia-smi says the limit IS, read as power_limit_current and
+  // never as a verdict that the boot mechanism succeeded -- that question stays with
+  // gunbc.fleet.gpu_power_cap_converge. The UUIDs were never read, so the row still cannot be joined to a
+  // boot unit that addresses cards by UUID; srv4's unit addresses none, which is why the two still line up.
+  // The UUIDs were not read.
   GpuDeviceEnumerated {
     host: operator_host_srv4,
     board: gpu_board_05,
@@ -145,10 +156,10 @@ data current_gpu_device_observations: List<GpuDeviceObservation> = [
     pci_address: "0000:01:00.0" as PciAddress,
     power_limit_minimum: watt(count: 30),
     power_limit_maximum: watt(count: 70),
-    power_limit_current: watt(count: 40),
+    power_limit_current: watt(count: 30),
     power_limit_default: Absent,
     power_limit_control: NvidiaSmiPowerLimit,
-    read_on: "2026-11-07 srv4 nvidia-smi (fleet survey)" as NonEmptyStr,
+    read_on: "nvidia-smi power.limit over ssh, 2026-11-24 22:03-22:05 UTC pass (30.00 W); range and its 2026-11-07 15:35Z fleet-survey origin unchanged since" as NonEmptyStr,
   },
   GpuDeviceEnumerated {
     host: operator_host_srv4,
@@ -157,10 +168,10 @@ data current_gpu_device_observations: List<GpuDeviceObservation> = [
     pci_address: "0004:01:00.0" as PciAddress,
     power_limit_minimum: watt(count: 30),
     power_limit_maximum: watt(count: 70),
-    power_limit_current: watt(count: 40),
+    power_limit_current: watt(count: 30),
     power_limit_default: Absent,
     power_limit_control: NvidiaSmiPowerLimit,
-    read_on: "2026-11-07 srv4 nvidia-smi (fleet survey)" as NonEmptyStr,
+    read_on: "nvidia-smi power.limit over ssh, 2026-11-24 22:03-22:05 UTC pass (30.00 W); range and its 2026-11-07 15:35Z fleet-survey origin unchanged since" as NonEmptyStr,
   },
   // srv14/butch's four NVIDIA A2 readings (gpu_board_07..10, read 2026-11-10) are NOT in this list and never
   // will be again: the operator's 2026-11-17 report says all four cards were physically removed from butch to
@@ -199,7 +210,7 @@ data current_gpu_device_observations: List<GpuDeviceObservation> = [
     power_limit_current: watt(count: 210),
     power_limit_default: Present { value: watt(count: 300) },
     power_limit_control: AmdgpuHwmonPowerCap { attribute: Power1Cap },
-    read_on: "2026-11-12 host-6ce85c amdgpu sysfs/hwmon (read_r9700_device.sh)" as NonEmptyStr,
+    read_on: "2026-11-12 host-6ce85c amdgpu sysfs/hwmon (read_r9700_device.sh); the 2026-11-24 22:03-22:05 UTC ssh pass found the cap unchanged at the card's 210 W floor" as NonEmptyStr,
   },
   // host-6ce85c's SECOND R9700: installed (operator, 2026-11-12) and absent from the bus. Every 1002:7551 function
   // the host lists is 0000:83:00.0, which is gpu_board_02 (r9700_device_reading.txt at 16:31Z; lspci re-read the same

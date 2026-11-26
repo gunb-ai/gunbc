@@ -10,8 +10,8 @@ import gunbc.plans.fleet_hardware_fact_consumption {
   migration_evidence_text, peer_access_phrase, pair_readings_phrase, first_hand_phrase, acs_phrase,
   iommu_phrase, reread_phrase, explanation_phrase, unit_lines_phrase, cap_below_default_phrase,
   max_q_phrase, journal_phrase, gunbc_unit_phrase,
-  cap_mechanisms_recorded_phrase, cap_reaches_every_card_phrase, cap_digests_marked_phrase,
-  cpu_ceiling_unsaid_phrase, confounded_wattage_phrase, hand_applied_power_cap_evidence,
+  cap_mechanisms_recorded_phrase, cap_reaches_every_card_phrase, cap_digests_verifiable_phrase,
+  cpu_ceiling_standing_phrase, confounded_wattage_phrase, hand_applied_power_cap_evidence,
 }
 import gunbc.fleet.gpu_interconnect_observation { gpu_pair_peer_access_is_absent }
 import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
@@ -114,10 +114,10 @@ test fn rows_that_owe_no_readings_say_so() -> Bool {
 // host, or type a whole digest without discharging its frontier row, and the rendered cell changes and this test
 // goes red.
 test fn the_hand_applied_cap_rows_evidence_is_the_joins_answer() -> Bool {
-  cap_mechanisms_recorded_phrase() == "both hand-applied GPU caps on their hosts"
+  cap_mechanisms_recorded_phrase() == "all three hand-applied GPU caps on their hosts"
     && cap_reaches_every_card_phrase() == "each cap reaches every card on its host"
-    && cap_digests_marked_phrase() == "every cap file digest is a marking carrying the hash read it owes"
-    && cpu_ceiling_unsaid_phrase() == "both CPU ceilings unsaid, each carrying the standing read it owes"
+    && cap_digests_verifiable_phrase() == "every cap file digest is read and rendered, or a marking carrying the hash read it owes"
+    && cpu_ceiling_standing_phrase() == "all four CPU ceilings stand under a read; none answers without the read it owes"
     && confounded_wattage_phrase() == "the cap-day wattages stay out of the priced figures, both hosts still inferred"
-    && (hand_applied_power_cap_evidence() as String) == "both hand-applied GPU caps on their hosts; each cap reaches every card on its host; every cap file digest is a marking carrying the hash read it owes; both CPU ceilings unsaid, each carrying the standing read it owes; the cap-day wattages stay out of the priced figures, both hosts still inferred"
+    && (hand_applied_power_cap_evidence() as String) == "all three hand-applied GPU caps on their hosts; each cap reaches every card on its host; every cap file digest is read and rendered, or a marking carrying the hash read it owes; all four CPU ceilings stand under a read; none answers without the read it owes; the cap-day wattages stay out of the priced figures, both hosts still inferred"
 }

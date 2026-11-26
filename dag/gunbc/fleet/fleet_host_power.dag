@@ -120,21 +120,21 @@ type ConfoundedHostPowerReading {
 
 data srv4_confounded_cpu_power_reading_2026_11_24: ConfoundedHostPowerReading = ConfoundedHostPowerReading {
   host: "srv4",
-  sensor: "CPU package power",
+  sensor: "hwmon apm_xgene \"CPU power\" (the Altra CPU package power input), read over ssh",
   earlier_watts: watt(count: 101),
   later_low_watts: watt(count: 39),
   later_high_watts: watt(count: 42),
-  observed_on: "2026-11-24, operator hand read around the GPU cap and the CPU frequency cap going in",
+  observed_on: "2026-11-24, operator hand read around the GPU cap and the CPU frequency cap going in; the earlier figure was taken with the cores at their 3.0 GHz ceiling and the 39-42 W band with scaling_max_freq at 2000000 kHz -- the ceiling itself is gunbc.fleet.cpu_freq_cap_boot_state's, and what moved between these reads was the load as well as the clock",
   confound: "the load on the host changed between the two readings, so the 101 W to 39-42 W step is not attributable to the caps alone",
 }
 
 data srv3_confounded_cpu_power_reading_2026_11_24: ConfoundedHostPowerReading = ConfoundedHostPowerReading {
   host: "srv3",
-  sensor: "CPU package power",
+  sensor: "hwmon apm_xgene \"CPU power\" (the Altra CPU package power input), read over ssh",
   earlier_watts: watt(count: 65),
   later_low_watts: watt(count: 29),
   later_high_watts: watt(count: 31),
-  observed_on: "2026-11-24, operator hand read around the GPU cap and the CPU frequency cap going in",
+  observed_on: "2026-11-24, operator hand read around the GPU cap and the CPU frequency cap going in; the earlier figure was taken with the cores at their 3.0 GHz ceiling and the 29-31 W band with scaling_max_freq at 2000000 kHz -- the ceiling itself is gunbc.fleet.cpu_freq_cap_boot_state's, and what moved between these reads was the load as well as the clock",
   confound: "the load on the host changed between the two readings, so the 65 W to 29-31 W step is not attributable to the caps alone",
 }
 
