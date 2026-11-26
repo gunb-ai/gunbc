@@ -1,0 +1,156 @@
+module test.claim.serving.srv4_daily_engine_front_witness
+
+// Claim witness for the srv4 engine-front render rung. srv4's TLS front is produced from the roster (so /metrics is
+// never droppable) by the GENERAL engine-front render in gunbc.serving.serving_observability -- srv4 supplies only
+// its parameter data (gunbc.serving.srv4_daily_engine_front::srv4_daily_engine_front_inputs) and its one divergence
+// row. The render refuses while srv4's own parameters are unread, and the divergence records both shas pending. The
+// render never touches the host; it only produces bytes and their standing.
+
+import std.types { String, Bool, NonEmptyStr, List, Int }
+import std.optional { Present, Absent }
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.algebra { length }
+import extdeps.external_authority { cited_figure_read_obligation }
+import extdeps.proxy.openresty {
+  ObservedFrontRoster, observed_front_locations,
+  observed_prefix, Serves, Rejects,
+}
+import gunbc.serving.serving_observability {
+  engine_front_server_directives, engine_front_proxies_route, engine_front_unserved_consumers,
+  UnservedFront, ObservedFrontUnreadable,
+  Built, RefusedToken,
+  EngineFrontInputs, EngineFrontRendered, EngineFrontUnread, EngineFrontInvalidToken,
+  Read, Unread, engine_front_render, engine_front_rendered_sha,
+}
+import gunbc.serving.srv4_daily_engine_front {
+  srv4_daily_engine_front_inputs, srv4_engine_front_divergence,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn metrics_reader_ref() -> DeclarationRef {
+  decl_ref(module_path: "gunbc.serving.engine_progress", decl_name: "engine_progress_read")
+}
+
+// /metrics has TWO readers on the roster (operator finding 2026-11-25): the progress stall reader and the
+// availability probe. srv4's front withholding /metrics must shut out BOTH, so the model must name both.
+fn availability_reader_ref() -> DeclarationRef {
+  decl_ref(module_path: "gunbc.serving.serving_availability", decl_name: "serving_availability_bracketing_read")
+}
+
+fn chat_reader_ref() -> DeclarationRef {
+  decl_ref(module_path: "gunbc.serving.serving_front_door", decl_name: "front_door_admit")
+}
+
+fn consumer_count_in(list: List<DeclarationRef>, ref: DeclarationRef) -> Int {
+  length(filter(list, c => declaration_ref_eq(a: c, b: ref)))
+}
+
+// srv4's hand-managed front, as the host WRITES it: a `/v1/` prefix that proxies and a `/` prefix that returns 404.
+// Whether each route is served is decided by nginx's longest-prefix rule, so /v1/models and /v1/chat/completions
+// are served (the /v1/ prefix carries them) while /metrics is swallowed by the 404 location.
+fn srv4_observed_locations() -> ObservedFrontRoster {
+  observed_front_locations(observations: [
+    observed_prefix(path: "/v1/", action: Serves),
+    observed_prefix(path: "/", action: Rejects),
+  ])
+}
+
+// A fixture front whose every parameter is Read. These are TEST values proving the render path works once parameters
+// are read; they are NOT srv4's recorded values (which are all Unread) and are never recorded as srv4's sha.
+fn fixture_read_inputs() -> EngineFrontInputs {
+  EngineFrontInputs {
+    bind_address: Read { value: "0.0.0.0", provenance: "witness fixture (not srv4's recorded value)" },
+    listen_port: Read { value: 8443, provenance: "witness fixture (not srv4's recorded value)" },
+    tls_cert: Read { value: "/etc/tls/engine.crt", provenance: "witness fixture (not srv4's recorded value)" },
+    tls_key: Read { value: "/etc/tls/engine.key", provenance: "witness fixture (not srv4's recorded value)" },
+    engine_host: Read { value: "127.0.0.1", provenance: "witness fixture (not srv4's recorded value)" },
+    engine_port: Read { value: 8080, provenance: "witness fixture (not srv4's recorded value)" },
+  }
+}
+
+// CONTROL on the srv4 render: once its parameters are Read, the render opens and produces bytes, and the digest is
+// computed from those bytes. Discriminating against the unread case below (same fn, Unread inputs -> refused, no sha).
+test fn srv4_front_render_opens_and_shas_when_params_are_read() -> Bool {
+  match engine_front_render(inputs: fixture_read_inputs()) {
+    EngineFrontRendered { text: _ } => match engine_front_rendered_sha(inputs: fixture_read_inputs()) {
+      Present { value: _ } => true
+      Absent => false
+    }
+    EngineFrontUnread { parameter: _, obligation: _ } => false
+    EngineFrontInvalidToken { token: _ } => false
+  }
+}
+
+// RED: srv4's OWN parameters are all Unread, so the general render, fed srv4's data row, REFUSES -- typed, located on
+// the first unread parameter -- instead of rendering placeholder bytes. There is no arm that emits bytes from
+// missing inputs.
+test fn srv4_front_render_refuses_until_params_are_read() -> Bool {
+  match engine_front_render(inputs: srv4_daily_engine_front_inputs) {
+    EngineFrontUnread { parameter: p, obligation: o } => (p as String) == "bind_address" && length(o) > 0
+    EngineFrontRendered { text: _ } => false
+    EngineFrontInvalidToken { token: _ } => false
+  }
+}
+
+// Never a sha of a placeholder render: while srv4's parameters are Unread, no digest is recorded.
+test fn srv4_rendered_sha_is_absent_while_params_are_unread() -> Bool {
+  match engine_front_rendered_sha(inputs: srv4_daily_engine_front_inputs) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// RED (the misconfiguration, on the roster the front is built from): the OBSERVED host front -- a `/v1/` prefix
+// that proxies and a `/` prefix that returns 404 -- is decided by nginx's longest-prefix rule. It blocks EXACTLY
+// the two readers of /metrics (the engine_progress stall reader AND the availability probe, whose models+metrics
+// bracketing read needs /metrics too) and does NOT block the routes the /v1/ prefix carries. An exact-string match
+// on hand-expanded paths would have wrongly reported /v1/models blocked (the host never writes that path).
+test fn a_front_that_omits_metrics_shuts_out_both_metrics_readers() -> Bool {
+  match engine_front_unserved_consumers(observed: srv4_observed_locations()) {
+    UnservedFront { blocked_routes: routes, blocked_readers: readers } =>
+      length(routes) == 1
+        && any(routes, p => (p as String) == "/metrics")
+        && !any(routes, p => (p as String) == "/v1/models")
+        && length(readers) == 2
+        && consumer_count_in(list: readers, ref: metrics_reader_ref()) == 1
+        && consumer_count_in(list: readers, ref: availability_reader_ref()) == 1
+        && consumer_count_in(list: readers, ref: chat_reader_ref()) == 0
+    ObservedFrontUnreadable { location: _, reason: _ } => false
+  }
+}
+
+// CONTROL (roster-derived, not hand-listed): the render the srv4 front uses -- built from the roster with the srv4
+// fixture parameters -- always proxies /metrics (and the /v1/ routes) to the engine. Discriminating: a non-roster
+// route (/debug) is NOT proxied, so this is not vacuously true.
+test fn the_roster_derived_front_forwards_metrics_to_the_engine() -> Bool {
+  match engine_front_server_directives(
+    bind_address: "0.0.0.0" as NonEmptyStr,
+    listen_port: 8443,
+    tls_cert: "/etc/tls/engine.crt" as NonEmptyStr,
+    tls_key: "/etc/tls/engine.key" as NonEmptyStr,
+    engine_host: "127.0.0.1" as NonEmptyStr,
+    engine_port: 8080,
+  ) {
+    Built { directives: rows } =>
+      engine_front_proxies_route(ds: rows, route: "/metrics" as NonEmptyStr)
+        && engine_front_proxies_route(ds: rows, route: "/v1/chat/completions" as NonEmptyStr)
+        && engine_front_proxies_route(ds: rows, route: "/v1/models" as NonEmptyStr)
+        && !engine_front_proxies_route(ds: rows, route: "/debug" as NonEmptyStr)
+    RefusedToken { token: _ } => false
+  }
+}
+
+// The declared divergence records the honest disagreement: the host omitted /metrics (transcribed observation with
+// its read obligation), and BOTH shas are pending -- the host digest was never captured (host_file_sha is the Unread
+// FrontParam carrying the owed read) and the render has not happened (rendered_sha is Absent, the canonical absence
+// carrier), its located reason being engine_front_render refusing on an Unread parameter. No placeholder value is
+// asserted as a digest. That the MODEL render forwards /metrics is NOT restated here as a stored Bool (review 98790):
+// it is guaranteed by construction and asserted on the rendered bytes in
+// the_roster_derived_front_forwards_metrics_to_the_engine.
+test fn the_divergence_records_the_omission_and_both_shas_pending() -> Bool {
+  match srv4_engine_front_divergence.host_file_sha { Unread { obligation: _ } => true Read { value: _, provenance: _ } => false }
+    && match srv4_engine_front_divergence.rendered_sha { Absent => true Present { value: _ } => false }
+    && match cited_figure_read_obligation(srv4_engine_front_divergence.host_forwarded) { Present { value: o } => length(o) > 0 Absent => false }
+}

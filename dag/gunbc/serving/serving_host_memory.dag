@@ -14,7 +14,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 import extdeps.accounting.budget { Appropriation, LineItem }
 import product.budget_tree { BudgetNode, BudgetClaim, Guaranteed, node_conserves_local }
 import product.host_identity { HostIdentity }
-import gunbc.fleet.fleet_host_identity { operator_host_6ce85c }
+import gunbc.fleet.fleet_host_identity { operator_host_6ce85c, operator_host_srv3, operator_host_srv4 }
 import gunbc.host.host_memory_carrier { HostUsableRam, HostUsableRamMeasured, HostUsableRamConservativeLowerBound, HostUsableRamUnmeasured, HostFixedOverhead, HostFixedOverheadMeasured, HostFixedOverheadAllowance, HostFixedOverheadUnmeasured }
 
 // WHAT A SERVING HOST'S RAM IS SPENT ON, AND WHETHER IT FITS WITH NO SWAP. A serving engine keeps the
@@ -676,4 +676,171 @@ data ken_strata_engine_memory: ServingEngineMemory = ServingEngineMemory {
   // budget above (the field has no provenance carrier of its own, so the read is here: Nat? is the carrier for
   // the count). The operator's report of the trim says slots went 24 -> 6; the cfg is what this value rests on.
   conversation_slots: Present { value: 6 },
+}
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+// THE ENGINE CONFIGURATION FILES AS THE HOSTS HOLD THEM (the 2026-11-24 / 25 host pass)
+//
+// The rows above are what the model believes each engine is configured with, read at various dates through
+// ssh or from /metrics. The rows below are the FILES the engines actually start from, as the serving
+// session's pass of 2026-11-24 / 25 found them: path, digest, when, with what instrument, and how each
+// differs from the row above that answers the same question. They exist because three of the day's fixes
+// were hand edits into these files, and a hand edit that is not recorded becomes a row that quietly stops
+// describing the fleet -- which is how srv4's cap came to be read as 56 GiB while the engine ran under
+// 96/112, and how two h11 engines served with their conversation cache off while the row above them said
+// 8 GiB. Cite: gunbc.design_argument::epistemic_humility (a figure with no instrument behind it is not a
+// figure), and the pass's own account of how each number was taken, which each row carries.
+//
+// No row here renders anything. Where the pass did not transcribe a file's bytes, the row says so and
+// names the reading that would replace it; it does not reconstruct text from a digest, and a candidate
+// render can only be verified once someone with a host principal supplies the bytes
+// (gunbc.design_argument::fail_closed -- a render that cannot be checked against the host refuses).
+// ══════════════════════════════════════════════════════════════════════════════════════════════════
+
+// How a host's configuration file stands against the declaration that should answer for its figures.
+// Three cases, deliberately not two: a file whose bytes were never transcribed cannot be said to render
+// from anything, and an observation that blurred that into "diverges" would hide the read still owed.
+type ServingHostConfigStanding
+  = FieldsAgreeWithTheModelRow { model_row: NonEmptyStr }
+  | DeclaredDivergenceFromTheModelRow {
+      model_row: NonEmptyStr,
+      diverging_fields: List<NonEmptyStr>,
+      why: NonEmptyStr,
+      owed_by: NonEmptyStr,
+    }
+  | BytesUnreadAgainstTheModelRow {
+      model_row: NonEmptyStr,
+      diverging_fields: List<NonEmptyStr>,
+      why: NonEmptyStr,
+      owed_by: NonEmptyStr,
+      read_obligation: NonEmptyStr,
+    }
+
+// One configuration file on one serving host, as the pass read it.
+type ServingHostConfigObservation {
+  host: HostIdentity
+  config_path: NonEmptyStr
+  read_on_utc: NonEmptyStr
+  instrument: NonEmptyStr
+  sha256_computed_on_host: NonEmptyStr
+  // What the file decides, in the file's own terms, and the figure the pass read out of it.
+  what_it_holds: NonEmptyStr
+  // The backup the pass found beside the file, when there was one: the hand edit's own receipt.
+  backup: NonEmptyStr
+  standing: ServingHostConfigStanding
+}
+
+// srv4's engine cgroup cap. This one the pass DID transcribe, and its bytes hash to the digest below;
+// they are not reproduced here because a second copy of a systemd fragment in the repo is a second
+// fragment (gunbc.design_argument::minimize_redundancy), and because the fields the model needs are the
+// two cgroup limits, which the row carries against the reading that must replace it.
+data srv4_engine_l1_cap_drop_in_observation_2026_11_24: ServingHostConfigObservation = ServingHostConfigObservation {
+  host: operator_host_srv4,
+  config_path: "/etc/systemd/system/gunbc-srv4-daily-engine.service.d/60-expert-l1-cap.conf" as NonEmptyStr,
+  read_on_utc: "2026-11-24T22:03-22:05Z; applied live ~21:33 UTC the same day" as NonEmptyStr,
+  instrument: "sha256sum over ssh on srv4; the two cgroup figures read from the file's [Service] lines, and the failure it was written against read from the engine's own log lines (\"skip parking (physical RAM admission ...)\")" as NonEmptyStr,
+  sha256_computed_on_host: "eb2b16e57eea76f2dd534c0bbb7aa016024462ad580cfb3836a1e8fad8bf581b" as NonEmptyStr,
+  what_it_holds: "MemoryHigh=96G and MemoryMax=112G on the daily engine's service -- srv3's numbers, up from the 56G/64G the 2026-11-09 repair left. The file's own comments date the raise and name the cause: the mmap-ed experts' page cache is charged to this cgroup, so at 64G the conversation cache had ~2-3 GB of room and refused to park every conversation, re-reading 75-95k-token prompts cold every turn; the slice above (gunbc-srv4-daily.slice) caps at 96G/120G." as NonEmptyStr,
+  backup: "the 2026-11-09 drop-in it replaced is not listed as kept; the engine config beside it is, as engine.json.bak-20261109-pre-mmap (named in srv4_serving_engine_memory's provenance)" as NonEmptyStr,
+  // The divergence this pass filed is CLOSED: the model row now carries the operator's figures,
+  // derived from the terms that share the cgroup rather than hand-set -- the debt this row's
+  // owed_by named has been paid by the srv4 memory-budget class (gunbc.serving.serving_layout::
+  // serving_cgroup_terms refuses a cap whose terms do not fit), and srv4's runner seat is charged
+  // from srv4_serving_engine_memory.memory_max itself, not restated (gunbc.serving.serving_reservation).
+  standing: FieldsAgreeWithTheModelRow {
+    model_row: "srv4_serving_engine_memory (memory_cap 96 GiB / memory_max 112 GiB -- the operator's 2026-11-24 raise, the figure this pass read on the host; the ceiling derived from its terms)" as NonEmptyStr,
+  },
+}
+
+// srv3's engine launch configuration. The pass read the digest and the one line it changed; the file's text
+// is not in anything the repo holds, so no render of this file can be verified from here -- which is why
+// the row below is BytesUnread and not a divergence with a reconstructed body.
+data srv3_engine_cfg_json_observation_2026_11_24: ServingHostConfigObservation = ServingHostConfigObservation {
+  host: operator_host_srv3,
+  config_path: "/home/ubuntu/strata-pool/cfg.json" as NonEmptyStr,
+  read_on_utc: "2026-11-24T22:03-22:05Z; the line was changed earlier the same day and the engine restarted 19:56:36 UTC, after which the host also rebooted at ~21:57 UTC when the surge strip tripped a second time" as NonEmptyStr,
+  instrument: "sha256sum over ssh on srv3, and the file read as text in the same pass for the one key it records" as NonEmptyStr,
+  sha256_computed_on_host: "daf4b85aba56f797136ca655a036c4ec259d9fcebf1a77a7c2f0fe5f6097ab31" as NonEmptyStr,
+  what_it_holds: "\"parallel\": 2, where this module's profile carries 8 -- strata_srv3_layer_split_profile.active_slots, THE ONE BATCH INPUT from which srv3's fixed RAM, its retention and its router admission all derive. It is also the file that carries --mmap-experts (added 2026-11-09, gunbc.design_ruling::srv3_experts_mmap_under_service_cap)." as NonEmptyStr,
+  backup: "cfg.json.bak-before-parallel2-20261124T195635Z, kept beside the file on srv3" as NonEmptyStr,
+  standing: BytesUnreadAgainstTheModelRow {
+    model_row: "strata_srv3_layer_split_profile.active_slots (8, read over ssh 2026-11-08)" as NonEmptyStr,
+    diverging_fields: ["parallel" as NonEmptyStr],
+    why: "The operator lowered the engine's parallelism from 8 to 2 on 2026-11-24. The measurement behind it: on these cards MoE concurrency buys little in aggregate -- srv3's own engine log put one turn at 100-125k at ~30 tok/s while windows with two groups in flight ran ~26 tok/s in aggregate (the medians behind srv3's anchor, 3,657 windows, 2026-11-08) -- so eight configured slots pay active-slot RAM for less work than fewer would. The model row still says 8, because active_slots is not a tuning knob here: it is the single input the anchor's grant, the retention rung and the router's cap are derived from, and setting it by hand in a file no row renders leaves those derivations describing a machine nobody runs. The relationship -- engine parallelism and the router's per-upstream cap are two numbers for one fact -- is the concurrency-authority class, whose PR is open (zesty-pike-406, gunbc#17060) with this recording as its named follow-up." as NonEmptyStr,
+    owed_by: "the engine-concurrency class (B3), which must make active_slots derived rather than hand-typed, and whose follow-up needs the file's bytes to verify a render" as NonEmptyStr,
+    read_obligation: "Read /home/ubuntu/strata-pool/cfg.json on srv3 in full over a host principal, transcribe it, and hash the transcription against daf4b85aba56f797136ca655a036c4ec259d9fcebf1a77a7c2f0fe5f6097ab31. The named consumer of that transcription is the srv3 strata-pool engine-cfg renderer the concurrency class owes: zesty-pike-406's follow-up to gunbc#17060, whose trigger is the row gunbc.recurring_failure_mode::engine_slots_written_beside_the_admission_that_bounds_them (named there once that PR lands) -- that renderer accepts a candidate render only when its bytes hash to this digest, and refuses until the text exists. Until that hash succeeds, no candidate render of this file may be said to match the host, whatever it contains." as NonEmptyStr,
+  },
+}
+
+// h11's two live engine launch configurations. THE FINDING IS NOT THE SLOT COUNT. Both files reached
+// 2026-11-24 with NO conversation-cache argument at all, so those engines served with the cache at its
+// default of zero -- off -- while the row above them (host_6ce85c_engine_as_launched) reported 8192 MiB
+// read from a third engine's file. The pass appended the arguments; the fail-open default that let an
+// engine serve for weeks with the cache silently disabled is the defect, and it belongs to the
+// conversation-cache class (B1), not to this record.
+data h11_engine_cfg_83_observation_2026_11_24: ServingHostConfigObservation = ServingHostConfigObservation {
+  host: operator_host_6ce85c,
+  config_path: "/home/ubuntu/strata-pool/cfg-83.json" as NonEmptyStr,
+  read_on_utc: "2026-11-24T22:03-22:05Z; h11-strata@83 was restarted at 21:35 UTC to pick the appended arguments up, and the host then went down in the ~21:57 UTC strip trip and came back with both engines starting on their own" as NonEmptyStr,
+  instrument: "sha256sum over ssh on h11-a16; the two arguments read from the file's argv list in the same pass" as NonEmptyStr,
+  sha256_computed_on_host: "4a2345f803863c0a4f5af57973383382b4dc48dc1253c3302d1980c766dfa806" as NonEmptyStr,
+  what_it_holds: "--conversation-cache-mib 8192 and --conversation-cache-slots 4, both appended by the 2026-11-24 pass. Before that the file carried neither, so this engine ran with the cache at its 0 default while the model's h11 engine row reported an 8 GiB cache for the fleet's buses." as NonEmptyStr,
+  backup: "unnamed in the pass; the file's own history is the append" as NonEmptyStr,
+  standing: BytesUnreadAgainstTheModelRow {
+    model_row: "host_6ce85c_engine_as_launched (conversation_cache 8192 MiB from cfg-87.json, conversation_slots 6)" as NonEmptyStr,
+    diverging_fields: ["conversation-cache-slots" as NonEmptyStr, "which engines the row describes" as NonEmptyStr],
+    why: "Two divergences, one direction each way. The slot count: the host runs 4, the row says 6 -- and the row's provenance is one engine's file (cfg-87.json, the value convcache-8g.sh set on every bus 2026-10-27) generalised to a template every bus shares, which these two files show it is not. The cache itself: the model row read as though every h11 engine parked conversations in 8 GiB; two of them had the feature at its default of off, and nothing in the model could tell that, because ServingMemoryRead has no arm for \"the argument is absent, so the engine's own default applies\". What the right figure IS -- whether slots follow the card, the context cap or the RAM the engine may hold -- is the conversation-cache class (B1)." as NonEmptyStr,
+    owed_by: "the conversation-cache class (B1), which owns the fail-open default: an engine that serves with its cache disabled must not be representable as a row that reports a cache" as NonEmptyStr,
+    read_obligation: "Read both live cfg files in full over a host principal and hash them against 4a2345f803863c0a4f5af57973383382b4dc48dc1253c3302d1980c766dfa806 and 38eb8256e7adf87c6f25a9ed105b7e4802a1c351f2a7985f1cc0131d410b7438; and read /metrics on each h11 engine for conversation_cache_mib rather than trusting an argument list for what the engine actually allocated." as NonEmptyStr,
+  },
+}
+
+// The second live h11 engine, same pass, same two arguments. Its own row rather than a note on the first:
+// two engines, two files, two digests, and the finding is exactly that the files differ from each other
+// and from what the shared row asserts.
+data h11_engine_cfg_c3_observation_2026_11_24: ServingHostConfigObservation = ServingHostConfigObservation {
+  host: operator_host_6ce85c,
+  config_path: "/home/ubuntu/strata-pool/cfg-c3.json" as NonEmptyStr,
+  read_on_utc: "2026-11-24T22:03-22:05Z; h11-strata@c3 restarted 21:39 UTC" as NonEmptyStr,
+  instrument: "sha256sum over ssh on h11-a16; the two arguments read from the file's argv list in the same pass" as NonEmptyStr,
+  sha256_computed_on_host: "38eb8256e7adf87c6f25a9ed105b7e4802a1c351f2a7985f1cc0131d410b7438" as NonEmptyStr,
+  what_it_holds: "The same two arguments appended to the same file shape: --conversation-cache-mib 8192, --conversation-cache-slots 4, neither present before the 2026-11-24 pass." as NonEmptyStr,
+  backup: "unnamed in the pass; the file's own history is the append" as NonEmptyStr,
+  standing: BytesUnreadAgainstTheModelRow {
+    model_row: "host_6ce85c_engine_as_launched (conversation_cache 8192 MiB, conversation_slots 6)" as NonEmptyStr,
+    diverging_fields: ["conversation-cache-slots" as NonEmptyStr, "which engines the row describes" as NonEmptyStr],
+    why: "As cfg-83.json: 4 slots against the row's 6, and the cache argument absent until the pass wrote it. Read together, the two rows are the evidence that host_6ce85c_engine_as_launched is a template inferred from one bus, not a render of the fleet's h11 launch -- which is the same finding the router's live rows make from the other side (gunbc.serving.router_dev_policy::srv1_router_live_rows_2026_11_25 lists h11-03 and h11-83 as rows no naming row produces)." as NonEmptyStr,
+    owed_by: "the conversation-cache class (B1), and the h11 naming/layout drift the router rows record" as NonEmptyStr,
+    read_obligation: "Read /home/ubuntu/strata-pool/cfg-c3.json on h11 in full over a host principal, transcribe it, and hash the transcription against 38eb8256e7adf87c6f25a9ed105b7e4802a1c351f2a7985f1cc0131d410b7438 (cfg-83.json carries its own digest, 4a2345f803863c0a4f5af57973383382b4dc48dc1253c3302d1980c766dfa806, and is owed the same treatment). Then read each engine's own /metrics rather than its argv, since the argument list is what was edited and /metrics is what the engine actually allocated." as NonEmptyStr,
+  },
+}
+
+// The pass's host-config record as one population, so a reader can ask what is unaccounted for.
+data serving_host_config_observations_of_the_2026_11_24_pass: List<ServingHostConfigObservation> = [
+  srv4_engine_l1_cap_drop_in_observation_2026_11_24,
+  srv3_engine_cfg_json_observation_2026_11_24,
+  h11_engine_cfg_83_observation_2026_11_24,
+  h11_engine_cfg_c3_observation_2026_11_24,
+]
+
+// Every observation names the declaration it departs from, states which fields depart, gives a reason, and
+// names who owes the model change. An observation without a reason is the thing this population exists to
+// prevent: a hand edit recorded as a fact.
+fn every_serving_host_config_observation_is_accounted_for() -> Bool {
+  fold(serving_host_config_observations_of_the_2026_11_24_pass, init: true, f: (ok, o) =>
+    ok && (o.sha256_computed_on_host as String) != "" && (o.instrument as String) != "" && match o.standing {
+      FieldsAgreeWithTheModelRow { model_row: m } => (m as String) != ""
+      DeclaredDivergenceFromTheModelRow { model_row: m, diverging_fields: f, why: w, owed_by: b } =>
+        (m as String) != "" && f.length() > 0 && (w as String) != "" && (b as String) != ""
+      BytesUnreadAgainstTheModelRow { model_row: m, diverging_fields: f, why: w, owed_by: b, read_obligation: r } =>
+        (m as String) != "" && f.length() > 0 && (w as String) != "" && (b as String) != "" && (r as String) != ""
+    })
+}
+
+// Which of these files still owe their bytes -- the list a renderer must refuse to guess about.
+fn serving_host_config_observations_with_unread_bytes() -> List<ServingHostConfigObservation> {
+  serving_host_config_observations_of_the_2026_11_24_pass.filter(o => match o.standing {
+    BytesUnreadAgainstTheModelRow { model_row: _, diverging_fields: _, why: _, owed_by: _, read_obligation: _ } => true
+    _ => false
+  })
 }
