@@ -8466,9 +8466,15 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     // The capture-count debt admitted by the plan rather than by its author (vivid-swift-693, 2026-11-25):
     // the consumer row DissolutionCondition names this row, so the trigger is the plan own, not the worker own.
     edge(child: "source-annotation-fold-carries-absorbed-capture-count", parent: "parse-comment-gap-attachment-v2-consumed"),
-    // The substitution skip holds list-append-refuses-an-element-argument: its repro stays silently accepted while
-    // substitute_generics_apply never visits the subtree of a TypeVariable-inferred formal. See the row's boundary.
-    edge(child: "list-append-refuses-an-element-argument", parent: "generic-substitution-skips-the-subtree-under-a-type-variable-inferred-node"),
+    // NO EDGE between list-append-refuses-an-element-argument and the substitution-skip row, on purpose.
+    // edges here are prerequisites (roadmap_model.dag roadmap_parent_ids preserves every prerequisite; roadmap_spawner.dag
+    // node_unmet_parent_ids and roadmap_readiness.dag readiness_dependency_gaps turn an unmet parent into a blocking
+    // GapDependencies), and the substitution row declares its own red NOT DISPATCHABLE UNTIL OBSERVED - so an edge would
+    // gate a dispatchable node behind an undispatchable one. The causal sentence that motivated the edge was WITHDRAWN
+    // against executed evidence: the arm-1 census over 16508 generic applications returned SWALLOW=0, so arm-1
+    // non-traversal swallows nothing in that population and cannot explain the repro silence. The relation is a
+    // HYPOTHESIS and lives in prose: see dag/gunbc/recurring_failure_mode/a_text_actual_at_a_free_monoid_run_carrier_is_unjudged.dag,
+    // which names the substitution row as a hypothesis and carries both withdrawn claims plus the census blind spot.
     // The bare-124 class: the shared receipt lands with the boot probe's row.
     edge(child: "bare-124-timeout-readers-consume-the-bound-observation", parent: "boot-probe-must-not-read-a-bare-124-as-a-deadline"),
     // ---- #gunbc.plans.fabric_market::fabric_market_plan (2026-11-23), including the existing consumers of its common contracts:
