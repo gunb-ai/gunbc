@@ -59,7 +59,9 @@ fn acceptance_identity_from_accepted(accepted: List<RoadmapNodeId>) -> Fnv1a64St
   )
 }
 
-fn subject_identity_for_projection(proj: RoadmapAuthorityProjection) -> Fnv1a64Structural {
+// The dispatch body is SUPPLIED by the one render that also serves it (render_roadmap_site_surface_bundle_for_projection),
+// rather than rendered a second time here over the same projection.
+fn subject_identity_for_projection(proj: RoadmapAuthorityProjection, dispatch_body: String) -> Fnv1a64Structural {
   match proj {
     RoadmapAuthorityProjectionRefused { detail: detail } =>
       content_hash_tagged_structural(
@@ -71,7 +73,7 @@ fn subject_identity_for_projection(proj: RoadmapAuthorityProjection) -> Fnv1a64S
         left: acceptance_identity_from_accepted(accepted: accepted),
         right: content_hash_combine_structural(
           left: site_artifact_digest(body: expected_roadmap_md_for_projection(proj: proj)),
-          right: site_artifact_digest(body: roadmap_dispatch_file_content_for_projection(proj: proj)),
+          right: site_artifact_digest(body: dispatch_body),
         ),
       )
   }
@@ -90,9 +92,9 @@ fn bundle_identity_from_artifacts(
 }
 
 fn render_roadmap_site_surface_bundle_for_projection(proj: RoadmapAuthorityProjection) -> RoadmapSiteSurfaceBundle {
-  let subject_identity = subject_identity_for_projection(proj: proj)
-  let producer_identity = roadmap_site_surface_producer_identity()
   let dispatch_body = roadmap_dispatch_file_content_for_projection(proj: proj)
+  let subject_identity = subject_identity_for_projection(proj: proj, dispatch_body: dispatch_body)
+  let producer_identity = roadmap_site_surface_producer_identity()
   let daily_body = served_page_body(
     page: roadmap_daily_workspace_page_for_projection_observed(
       proj: proj,

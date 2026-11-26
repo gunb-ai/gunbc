@@ -1,25 +1,47 @@
 module gunbc.roadmap.roadmap_runtime_plan
 
 import gunbc.roadmap.roadmap_authority {
-  RoadmapAuthorityProjection, roadmap_authority_projection_with, roadmap_acceptance_event_history_load,
-  roadmap_acceptance_event_history_load_over, roadmap_retired_node_ids_load, roadmap_retired_node_ids_load_over,
-  roadmap_retired_node_ids_of_read,
+  RoadmapAuthorityProjection, roadmap_authority_projection_with, roadmap_retired_node_ids_of_read,
 }
 import gunbc.roadmap.roadmap_operator_acceptance { roadmap_operator_acceptance_history_of_read, roadmap_all_events_after_snapshot_close }
 import gunbc.roadmap.roadmap_event_carrier {
-  RoadmapEventCarrierLayout, RoadmapEventCarrierScopedLayout, CarrierReadScopedDetached, roadmap_events_read_all,
+  RoadmapEventCarrierLayout, RoadmapEventCarrierScopedLayout, RoadmapAllEventsRead,
+  CarrierReadAttached, CarrierReadScopedDetached, roadmap_events_read_all, roadmap_event_carrier_layout_for_instance,
 }
+import gunbc.roadmap.roadmap_dashboard_instance { HostDashboardInstance, srv1_live_dashboard_instance }
 
 // THE ONE PLAN, folded over a caller-supplied carrier layout. Same rows, same folding, same typed refusal —
 // only WHICH principal reads the log changes. This is the seam the live-deploy candidate uses: it renders the
 // expected surface from the SAME remote branch the service syncs to, under the CI job's own principal, instead
 // of reading through the instance layout it cannot read (gunbc.live_deploy.candidate). The single-read property
 // (gunbc.live_deploy.candidate_identity) is preserved: exactly one plan projection per candidate observation.
+//
+// ONE READ, NOT TWO. This used to fold history and retired from two separate attached reads
+// (roadmap_acceptance_event_history_load_over and roadmap_retired_node_ids_load_over), so every projection
+// paid two snapshot worktree add / fetch / reset --hard / read-every-event / remove cycles, and the two
+// halves could describe two different event sets if an event landed between them. The scoped arm below was
+// already single-read; the attached arm now shares its fold (roadmap_plan_projection_of_read), so the
+// single-read property gunbc.live_deploy.candidate_identity states holds on both arms.
 fn roadmap_plan_projection_over_layout(layout: RoadmapEventCarrierLayout) -> RoadmapAuthorityProjection {
+  roadmap_plan_projection_of_read(read: roadmap_all_events_after_snapshot_close(read: roadmap_events_read_all(read: CarrierReadAttached { attached: layout })))
+}
+
+// THE SHARED PLAN FOLD over an already-taken read, so history and retired always describe the SAME event set.
+fn roadmap_plan_projection_of_read(read: RoadmapAllEventsRead) -> RoadmapAuthorityProjection {
   roadmap_authority_projection_with(
-    history: roadmap_acceptance_event_history_load_over(layout: layout),
+    history: roadmap_operator_acceptance_history_of_read(read: read),
     runtime: [],
-    retired: roadmap_retired_node_ids_load_over(layout: layout))
+    retired: roadmap_retired_node_ids_of_read(read: read))
+}
+
+// THE PLAN AN INSTANCE SERVES IS READ FROM THAT INSTANCE'S OWN CARRIER. The instance is a parameter, never a
+// pin: a serve entry, belt pass or served observation running for the srv1 lab reads the lab's carrier
+// (its own repo_root and worktree), and only the srv1 live instance reads /opt/gunbc/gunbc. Before this,
+// every such caller went through roadmap_plan_projection(), which is pinned to srv1_live_dashboard_instance,
+// so each lab /healthz probe added and removed a git worktree in PRODUCTION's repository (incident
+// 2026-11-26, srv1-lab-codex-feedback-v0 at a58ba3e3).
+fn roadmap_plan_projection_for_instance(instance: HostDashboardInstance) -> RoadmapAuthorityProjection {
+  roadmap_plan_projection_over_layout(layout: roadmap_event_carrier_layout_for_instance(instance: instance))
 }
 
 // THE SAME PLAN, folded over the LAUNCHER's scoped layout. It reaches the log through the ScopedDetached arm of
@@ -29,18 +51,15 @@ fn roadmap_plan_projection_over_layout(layout: RoadmapEventCarrierLayout) -> Roa
 // history and retired always describe the SAME event set (candidate_identity's single-read property, held even
 // more tightly here than the two-read service path).
 fn roadmap_plan_projection_over_scoped(scoped: RoadmapEventCarrierScopedLayout) -> RoadmapAuthorityProjection {
-  let read = roadmap_all_events_after_snapshot_close(read: roadmap_events_read_all(read: CarrierReadScopedDetached { scoped: scoped }))
-  roadmap_authority_projection_with(
-    history: roadmap_operator_acceptance_history_of_read(read: read),
-    runtime: [],
-    retired: roadmap_retired_node_ids_of_read(read: read))
+  roadmap_plan_projection_of_read(read: roadmap_all_events_after_snapshot_close(read: roadmap_events_read_all(read: CarrierReadScopedDetached { scoped: scoped })))
 }
 
 // THE ONE PLAN: the declared rows and closing-contract pairs of gunbc.roadmap.roadmap_authority, with the
 // acceptance history, folded into the one RoadmapDocument every consumer reads. There is no second
 // definition source: the fabric runtime task store was deleted on 2026-11-08
 // (gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08), so a task is defined only by a
-// row in the repository and its status lives in the event log.
+// row in the repository and its status lives in the event log. This nullary is the srv1 LIVE instance's
+// binding of roadmap_plan_projection_for_instance and nothing else; a caller that holds an instance passes it.
 fn roadmap_plan_projection() -> RoadmapAuthorityProjection {
-  roadmap_authority_projection_with(history: roadmap_acceptance_event_history_load(), runtime: [], retired: roadmap_retired_node_ids_load())
+  roadmap_plan_projection_for_instance(instance: srv1_live_dashboard_instance())
 }
