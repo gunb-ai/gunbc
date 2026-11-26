@@ -12,7 +12,7 @@ module test.claim.workspace_old_bytes_readback_witness
 import std.types { Bool, String, NonEmptyStr }
 import std.optional { Absent, Present }
 import extdeps.shell
-import extdeps.filesystem.filesystem_io { FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused, FilesystemCreateKindUnrecognized }
+import extdeps.filesystem.filesystem_io { Filesystem, FilesystemCreated, FilesystemCreateTargetOccupied, FilesystemCreateRefused, FilesystemCreateKindUnrecognized }
 import std.durable_compare_and_set { cas_generation_first }
 import std.measure { money_amount_micro }
 import extdeps.currency.currency { Usd }

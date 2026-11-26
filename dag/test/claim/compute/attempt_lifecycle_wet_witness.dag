@@ -659,12 +659,10 @@ test fn a_build_record_round_trips_and_a_dependent_resolves_verified_binaries() 
   }
   let log = Filesystem.Write(path: compute_work_log_path(records: layout.records), content: "built\n")
   let g = Filesystem.WriteCreateNew(path: join([root_path, "/w.gunbc"], ""), content: "gunbc-bytes")
-  let c = Filesystem.WriteCreateNew(path: join([root_path, "/w.claim_batch"], ""), content: "claim-batch-bytes")
   let tree = match git_object_id_from_untagged_hex(hex: "1111111111111111111111111111111111111111") { Present { value: oid } => oid  Absent => "1111111111111111111111111111111111111111" }
   let request = ComputeWorkRequest { subject: fixture_subject(tree: tree), operation: work_default_build(), toolchain: fixture_toolchain(rustc: "rustc fixture") }
   let outcome = WorkSucceeded { identity: "fixture-identity", outputs: [
     WorkOutput { declared: "release/gunbc", blob: "b1" },
-    WorkOutput { declared: "release/claim_batch", blob: "b2" },
   ], log_path: compute_work_log_path(records: layout.records) }
   let committed = compute_store_commit(
     materialization: ComputeMaterialization { store: root, request: request, plan: ComputeMemoized },
@@ -678,12 +676,12 @@ test fn a_build_record_round_trips_and_a_dependent_resolves_verified_binaries() 
   let other_operation = compute_store_read(store: root, req: ComputeWorkRequest { subject: fixture_subject(tree: tree), operation: CompileEntry { entry: "dag/t.dag" as FilePath }, toolchain: fixture_toolchain(rustc: "rustc fixture") })
   let stage_left = Filesystem.Read(path: join([root_path, "/w.gunbc"], "")).success
   let removed = shell.Remove.RecursiveForce(path: root_path)
-  log.success && g.success && c.success
+  log.success && g.success
     && (match committed { ComputeCommitted => true  _ => false })
     && (match served { ComputeStoreServed { ending, identity, document: _ } => ending == "succeeded" && identity == "fixture-identity"  _ => false })
     && (match resolved {
       ComputeDependencyResolved { dependency } => match dependency {
-        VerifiedBuildBinaries { gunbc, claim_batch } => starts_with(s: fabric_blob_reading_path(reading: gunbc) as String, prefix: root_path) && starts_with(s: fabric_blob_reading_path(reading: claim_batch) as String, prefix: root_path) && fabric_blob_reading_path(reading: gunbc) != fabric_blob_reading_path(reading: claim_batch)
+        VerifiedBuildBinaries { gunbc } => starts_with(s: fabric_blob_reading_path(reading: gunbc) as String, prefix: root_path)
         _ => false
       }
       ComputeDependencyRefused { detail: _ } => false
@@ -709,10 +707,8 @@ fn target_lifetime_settle(root_path: String, write_log: Bool) -> ProvideResult {
   let built = Filesystem.Write(path: join([layout.target_dir, "/artifact"], ""), content: "bytes")
   let log = if write_log { Filesystem.Write(path: compute_work_log_path(records: layout.records), content: "built\n").success } else { true }
   let g = Filesystem.WriteCreateNew(path: join([root_path, "/w.gunbc"], ""), content: "gunbc-bytes")
-  let c = Filesystem.WriteCreateNew(path: join([root_path, "/w.claim_batch"], ""), content: "claim-batch-bytes")
   let outcome = WorkSucceeded { identity: "fixture-identity", outputs: [
     WorkOutput { declared: "release/gunbc", blob: "b1" },
-    WorkOutput { declared: "release/claim_batch", blob: "b2" },
   ], log_path: compute_work_log_path(records: layout.records) }
   compute_settled_record(
     materialization: ComputeMaterialization { store: reuse_store(root_path: root_path), request: ComputeWorkRequest { subject: fixture_subject(tree: reuse_tree()), operation: work_default_build(), toolchain: fixture_toolchain(rustc: "rustc fixture") }, plan: ComputeMemoized },
@@ -782,11 +778,9 @@ fn reuse_commit_detail(root_path: String) -> String {
   }
   let log = Filesystem.Write(path: compute_work_log_path(records: layout.records), content: "built\n")
   let g = Filesystem.WriteCreateNew(path: join([root_path, "/w.gunbc"], ""), content: "gunbc-bytes")
-  let c = Filesystem.WriteCreateNew(path: join([root_path, "/w.claim_batch"], ""), content: "claim-batch-bytes")
   let request = ComputeWorkRequest { subject: fixture_subject(tree: reuse_tree()), operation: work_default_build(), toolchain: fixture_toolchain(rustc: "rustc fixture") }
   let outcome = WorkSucceeded { identity: "fixture-identity", outputs: [
     WorkOutput { declared: "release/gunbc", blob: "b1" },
-    WorkOutput { declared: "release/claim_batch", blob: "b2" },
   ], log_path: compute_work_log_path(records: layout.records) }
   let committed = compute_store_commit(
     materialization: ComputeMaterialization { store: reuse_store(root_path: root_path), request: request, plan: ComputeMemoized },
@@ -885,7 +879,7 @@ fn reuse_served_and_resolved(root_path: String) -> Bool {
 
 fn reuse_gunbc_part_path(root_path: String) -> String {
   match compute_dependency_read(store: reuse_store(root_path: root_path), build: reuse_request()) {
-    ComputeDependencyResolved { dependency } => match dependency { VerifiedBuildBinaries { gunbc, claim_batch: _ } => fabric_blob_reading_path(reading: gunbc) as String  _ => "" }
+    ComputeDependencyResolved { dependency } => match dependency { VerifiedBuildBinaries { gunbc } => fabric_blob_reading_path(reading: gunbc) as String  _ => "" }
     ComputeDependencyRefused { detail: _ } => ""
   }
 }
@@ -927,26 +921,24 @@ test fn a_build_whose_declared_output_is_missing_commits_no_record() -> Bool {
     records: fixture_records(root: root_path),
   }
   let log = Filesystem.Write(path: compute_work_log_path(records: layout.records), content: "built\n")
-  let g = Filesystem.WriteCreateNew(path: join([root_path, "/w.gunbc"], ""), content: "gunbc-bytes")
   let outcome = WorkSucceeded { identity: "fixture-identity", outputs: [
     WorkOutput { declared: "release/gunbc", blob: "b1" },
-    WorkOutput { declared: "release/claim_batch", blob: "b2" },
   ], log_path: compute_work_log_path(records: layout.records) }
   let committed = compute_store_commit(
     materialization: ComputeMaterialization { store: reuse_store(root_path: root_path), request: reuse_request(), plan: ComputeMemoized },
     layout: layout, op: work_default_build(), outcome: outcome,
     document: work_outcome_wire(o: outcome, subject: fixture_subject(tree: reuse_tree()), op: work_default_build()))
   let after = compute_store_read(store: reuse_store(root_path: root_path), req: reuse_request())
-  // Positive control: the same commit with BOTH outputs staged lands, so the refusal above is the missing output and nothing else.
+  // Positive control: the same commit with the declared output staged lands, so the refusal above
+  // is the missing output and nothing else.
   let g2 = Filesystem.Write(path: join([root_path, "/w.gunbc"], ""), content: "gunbc-bytes")
-  let c2 = Filesystem.Write(path: join([root_path, "/w.claim_batch"], ""), content: "claim-batch-bytes")
   let recommitted = compute_store_commit(
     materialization: ComputeMaterialization { store: reuse_store(root_path: root_path), request: reuse_request(), plan: ComputeMemoized },
     layout: layout, op: work_default_build(), outcome: outcome,
     document: work_outcome_wire(o: outcome, subject: fixture_subject(tree: reuse_tree()), op: work_default_build()))
   let removed = shell.Remove.RecursiveForce(path: root_path)
-  log.success && g.success && g2.success && c2.success
-    && (match committed { ComputeCommitRefused { detail } => string_contains(s: detail, pattern: "w.claim_batch")  _ => false })
+  log.success && g2.success
+    && (match committed { ComputeCommitRefused { detail } => string_contains(s: detail, pattern: "w.gunbc")  _ => false })
     && (match after { ComputeStoreAbsent => true  _ => false })
     && (match recommitted { ComputeCommitted => true  _ => false })
 }

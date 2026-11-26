@@ -8,7 +8,7 @@ import gunbc.host.boot_medium_served_readback {
   BootMediumServedRecordUnreadable, BootMediumServedRecordMalformed, BootMediumServedRecordDisagrees, BootMediumServedNotAdmitted,
   BootMediumServedCheck, BootMediumServedMeasureOnly, BootMediumServedRecordFirst, BootMediumServedCheckRefused,
   boot_medium_served_join, boot_medium_served_path, boot_medium_served_argv, boot_medium_served_refusal,
-  boot_medium_served_refusal_before_filing, boot_medium_served_refusal_before_attach, remote_answer_of,
+  boot_medium_served_refusal_before_filing, boot_medium_served_refusal_before_attach,
   boot_medium_served_record_argv, boot_medium_served_record_refusal, boot_medium_served_after_check, boot_medium_served_readback,
 }
 import std.optional { Present, Absent }
@@ -332,21 +332,6 @@ test fn control_c_refusal_names_the_subject_and_the_host_its_receipt_recorded() 
     && !string_contains(s: second_record_refusal, pattern: srv2 as String)
     && string_contains(s: mtcollins1_record_refusal, pattern: srv2 as String)
     && !string_contains(s: mtcollins1_record_refusal, pattern: "census2-exporter")
-}
-
-// INHABITANCE OF THE RETIRING SEAM (gunbc.design_argument::witness_one_interface, the pairing obligation): remote_answer_of is
-// still the seam for the modules not yet migrated (boot_medium_reader_probe, network_install_host_reader,
-// export_host_reader_converge). Both arms execute here so a swapped stdout/stderr or a wrong refusal code
-// is red in this claim. It documents that the seam STILL returns 255 on a refusal -- this is the value the
-// 255-family HostLeg follow-up retires; it must not gain callers, and is deleted when those importers migrate.
-// The served-path never-run / real-255 behaviour is covered by the distinctness claim below.
-test fn remote_answer_of_carries_a_converged_result_field_for_field_and_a_refusal_as_exit_255() -> Bool {
-  let converged = remote_answer_of(outcome: TypedArgvExecConverged {
-    result: SshSessionExecResult { exit_code: 3, success: false, stdout: "out-text", stderr: "err-text", wall_deadline_seconds: Absent },
-  })
-  let refusal = remote_answer_of(outcome: TypedArgvExecRefused { reason: "witness: transport refused" })
-  converged.exit_code == 3 && converged.stdout == "out-text" && converged.stderr == "err-text"
-    && refusal.exit_code == 255 && refusal.stdout == "" && refusal.stderr == "witness: transport refused"
 }
 
 // THE REPLACEMENT REQUIREMENT (reviewer ask): a leg that was never dispatched is unreadable BY ITS CAUSE

@@ -1,0 +1,22 @@
+module gunbc.rung_drop.fleet_converge_autonomous_jobs_declared_beside_their_authority
+
+import std.types { NonEmptyStr }
+import std.algebra { FreeSemigroup }
+import gunbc.rung_drop { RungDrop, Standing, TypedDeclaration, Enumerated, ReplacementStaged }
+import gunbc.guarantee_rung { MechanicallyPreventable, StructurallyGuaranteed }
+
+data fleet_converge_autonomous_jobs_declared_beside_their_authority: RungDrop = RungDrop {
+  identity: "fleet_converge_autonomous_jobs_declared_beside_their_authority" as NonEmptyStr,
+
+  subject: "the runner-host drain bound's population includes fleet-converge's scheduled fleet-pool jobs (plan-revision, build) as WRITTEN rows (gunbc.runner.runner_fleet_job_timeout_census fleet_converge_autonomous_job_rows) rather than reading their Job values from gunbc.fleet.fleet_converge_workflow, which the census cannot import: that module imports gunbc.runner.runner_host_cap_bracket, which imports the census",
+
+  declared: "2026-11-24",
+
+  standing: Standing { declaration: TypedDeclaration {
+    previous: StructurallyGuaranteed,
+    temporary: MechanicallyPreventable,
+    reason: ReplacementStaged { replacement: "moving fleet-converge's scheduled jobs (plan-revision and build, their step lists and the conditions they are admitted under) into a module upstream of gunbc.runner.runner_host_cap_bracket, so the census folds their Job values like every other censused row" },
+    population: Enumerated { members: FreeSemigroup { head: "two rows: plan-revision (70 minutes) and build (100 minutes), the fleet-pool jobs of fleet-converge that its daily schedule starts. The copy is held by an executing control, test.claim.runner.runner_fleet_job_timeout_bound_witness fleet_converge_autonomous_jobs_are_exactly_the_declared_rows, which reads the workflow and requires exactly these ids at exactly these declared timeouts. RESIDUAL: that control is a witness, so the copy is safe only while the witness runs; a timeout edit merged without running it leaves the bound short until it does.", tail: [] } },
+    restoration_trigger: "the census folds fleet-converge's scheduled jobs from their own Job values: plan-revision and build (with the step lists their timeouts sum and the conditions they are admitted under) live in a module the census can import without reaching gunbc.runner.runner_host_cap_bracket, fleet_converge_autonomous_job_rows is deleted, and the bound witness's equality claim becomes a membership claim over the read jobs. SUFFICIENT FOR closing the drop: the census must read the jobs' declared timeouts and admission, not a projection of them written beside it"
+  } }
+}
