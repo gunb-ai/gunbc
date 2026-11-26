@@ -159,14 +159,30 @@ fn remote_build_runtime_max_at(wall: RemoteBuildWall, launch_now: EpochSecs) -> 
   }
 }
 
-// THE HOST CLOCK AT LAUNCH, as a typed EpochSecs instant, read through the clock's one millis-to-seconds
-// conversion. An unreadable clock means the entry cannot bound the run, so it declines (the caller refuses
-// to start).
-fn remote_build_launch_now() -> EpochSecs? {
+// THE HOST CLOCK AT A UNIT LAUNCH, or the honest reason it could not be read. A clock the host cannot
+// read is NOT a request that waited past its budget -- it is the host failing to bound the request at
+// all, and it gets its own typed answer (gunbc.design_argument::fail_closed: no plausible cause is
+// fabricated). The instant crosses as the clock's own millis-to-seconds conversion.
+type RemoteBuildLaunchClock
+  = LaunchClockAt { at: EpochSecs }
+  | LaunchClockUnreadable { detail: String }
+
+fn remote_build_launch_clock() -> RemoteBuildLaunchClock {
   match clock_unix_millis_read() {
-    ClockUnixMillisRefused { detail: _ } => none
-    ClockUnixMillisObserved { millis } => Present { value: epoch_secs_of_millis(millis: millis) }
+    ClockUnixMillisRefused { detail } => LaunchClockUnreadable { detail: detail }
+    ClockUnixMillisObserved { millis } => LaunchClockAt { at: epoch_secs_of_millis(millis: millis) }
   }
+}
+
+// THE CLOCK-UNREADABLE ANSWER. The host could not read its own clock, so it cannot bound the run; it
+// declines with the cannot-serve ending (the request moves to a host that can read its clock), carrying
+// the clock's own detail -- never the wait-bound refusal, which would claim a wait that did not happen
+// and a retry allowance the host never granted.
+fn remote_build_clock_unreadable_refusal(detail: String) -> CliWireResponse {
+  remote_build_serve_answer(
+    ending: ServeHostCannotServe,
+    text: concat("remote-build: the serving host cannot read its clock to bound the request: ", detail),
+  )
 }
 
 // THE REFUSE-TO-START RECEIPT. The wait-bound decline is the room/readiness ending (ServeHostFull), which
@@ -322,9 +338,9 @@ fn remote_build_provide_on(instance: HostDashboardInstance, work: RemoteBuildWor
 fn remote_build_serve_provide(instance: HostDashboardInstance, work: RemoteBuildWork, wall: RemoteBuildWall) -> CliWireResponse {
   match remote_build_dependency_rule(op: work.operation) {
     RemoteBuildCarriesItsOwnSeedBuild =>
-      match remote_build_launch_now() {
-        Absent => remote_build_wait_bound_refusal(wall: wall)
-        Present { value: now } => match remote_build_runtime_max_at(wall: wall, launch_now: now) {
+      match remote_build_launch_clock() {
+        LaunchClockUnreadable { detail } => remote_build_clock_unreadable_refusal(detail: detail)
+        LaunchClockAt { at: now } => match remote_build_runtime_max_at(wall: wall, launch_now: now) {
           Absent => remote_build_wait_bound_refusal(wall: wall)
           Present { value: runtime_max } => remote_build_serve_settled(
             instance: instance,
@@ -333,9 +349,9 @@ fn remote_build_serve_provide(instance: HostDashboardInstance, work: RemoteBuild
         }
       }
     RemoteBuildBuildsTheSeedFirst =>
-      match remote_build_launch_now() {
-        Absent => remote_build_wait_bound_refusal(wall: wall)
-        Present { value: build_now } => match remote_build_runtime_max_at(wall: wall, launch_now: build_now) {
+      match remote_build_launch_clock() {
+        LaunchClockUnreadable { detail } => remote_build_clock_unreadable_refusal(detail: detail)
+        LaunchClockAt { at: build_now } => match remote_build_runtime_max_at(wall: wall, launch_now: build_now) {
           Absent => remote_build_wait_bound_refusal(wall: wall)
           Present { value: build_max } =>
             let build = remote_build_provide_on(instance: instance, work: work, op: remote_build_dependency_operation(), runtime_max: Present { value: build_max })
@@ -344,9 +360,9 @@ fn remote_build_serve_provide(instance: HostDashboardInstance, work: RemoteBuild
                 // The operation launches after the build, so its bound is what remains of the SAME deadline
                 // at its own launch instant: the wall carries one deadline, both units are bounded by it, and
                 // the operation is refused rather than started past it. One budget, spent once.
-                match remote_build_launch_now() {
-                  Absent => remote_build_wait_bound_refusal(wall: wall)
-                  Present { value: work_now } => match remote_build_runtime_max_at(wall: wall, launch_now: work_now) {
+                match remote_build_launch_clock() {
+                  LaunchClockUnreadable { detail } => remote_build_clock_unreadable_refusal(detail: detail)
+                  LaunchClockAt { at: work_now } => match remote_build_runtime_max_at(wall: wall, launch_now: work_now) {
                     Absent => remote_build_wait_bound_refusal(wall: wall)
                     Present { value: work_max } => remote_build_serve_settled(
                       instance: instance,

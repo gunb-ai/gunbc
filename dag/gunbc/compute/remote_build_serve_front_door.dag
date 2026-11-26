@@ -191,7 +191,7 @@ fn remote_build_serve_front_door_cli(host: String, serve_binary: String, repo_ro
   // something it has no way to stop (gunbc.design_argument::fail_closed).
   match clock_unix_millis_read() {
     ClockUnixMillisRefused { detail } =>
-      remote_build_serve_answer(ending: ServeHostFull, text: concat("remote-build: the front door cannot read its clock to bound the request: ", detail))
+      remote_build_serve_answer(ending: ServeHostCannotServe, text: concat("remote-build: the front door cannot read its clock to bound the request: ", detail))
     ClockUnixMillisObserved { millis: accepted } =>
       match remote_build_serve_front_door_turn(
         host: host,

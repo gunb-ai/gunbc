@@ -35,7 +35,7 @@ import gunbc.compute.remote_build_serve {
   remote_build_authorized_keys_lines, remote_build_render_entry, RemoteBuildEntryUnrenderable, remote_build_unrenderable_line, remote_build_installable_line,
   ServeBinaryIdentity, ServeIdentityAbsent, ServeIdentityObserved, ServeIdentityRefused,
   parse_serve_binary_identity, read_serve_binary_identity, serve_receipt_with_identity, ServeReceiptAugment, ReceiptAugmented, ReceiptRefused,
-  remote_build_runtime_max_at, RemoteBuildWall, remote_build_wait_bound_refusal, remote_build_forced_command_words,
+  remote_build_runtime_max_at, RemoteBuildWall, remote_build_wait_bound_refusal, remote_build_clock_unreadable_refusal, remote_build_forced_command_words,
 }
 import gunbc.compute.unit_bounds { compute_grant_unit_properties }
 import gunbc.fleet.fleet_known_hosts_anchor { fleet_leg_wall_deadline, HostBuildLeg }
@@ -397,6 +397,24 @@ test fn a_request_that_waited_past_its_ceiling_refuses_to_start() -> Bool {
     Absent => false
   }
   refused_at_ceiling && refused_past_ceiling && starts_inside
+}
+
+// AN UNREADABLE HOST CLOCK IS ITS OWN ANSWER, not the wait-bound refusal. The host that cannot read its
+// clock never measured a wait, so it must not claim "waited past its budget" nor grant a retry delay it
+// never named (gunbc.design_argument::fail_closed: no plausible cause is fabricated). It answers
+// cannot-serve (the request moves to a host that can read its clock), carrying the clock's own detail.
+// RED CONTROL: route the clock failure through remote_build_wait_bound_refusal and this goes red.
+test fn an_unreadable_host_clock_is_a_cannot_serve_answer_not_a_wait_refusal() -> Bool {
+  let bytes = match remote_build_clock_unreadable_refusal(detail: "clock: realtime clock unavailable") {
+    CliWirePrintable { bytes: b, exit: _ } => b
+    _ => ""
+  }
+  let honest_cause = bytes.contains("cannot read its clock") && !bytes.contains("waited past") && !bytes.contains("retry_after")
+  let answer = remote_build_answer_from_exit(exit_code: remote_build_serve_exit_code(e: ServeHostCannotServe), stdout: bytes, stderr: "")
+  match answer {
+    HostCannotServe { detail: _ } => honest_cause && remote_build_answer_moves_on(a: answer)
+    _ => false
+  }
 }
 
 // THE REFUSE-TO-START IS CAPACITY-LIMITED AND RETRY-ALLOWED, read back through the REAL client parser.
