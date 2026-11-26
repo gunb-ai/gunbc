@@ -29,6 +29,7 @@ import gunbc.parse_population_baseline_roster {
   parse_population_selection_refuses_misordered_tie,
   parse_population_carrier_reader_rung_drop_ledger_line,
   parse_population_carrier_reader_beside_grammar_stall_capability,
+  parse_population_stall_next_rung_capability,
   ParsePopulationMeasurementReceipt,
   ParsePopulationCellMeasurement,
   parse_population_measurement_receipts,
@@ -158,41 +159,53 @@ test fn parse_population_cardinality_refuses_mistyped_real_row_holds() -> Bool {
 
 
 // THE STALL GUARD IS DISCRIMINATING, NOT A DECORATION (review 98901 F1; design_argument::fail_closed: "a
-// discriminating input that goes red when the behavior is wrong"). GREEN: the ledger line renders the
-// ROSTERED stall row (gunbc.guarantee_stall.parse_population_carrier_reader_beside_grammar_stall) -- row
-// identity plus the next-rung capability, which must name THE CAPABILITY (the word "CAPABILITY" is what the
-// trigger must state, and stall_trigger_admission refuses an empty one).
+// discriminating input that goes red when the behavior is wrong"). Review 99025 F2: the earlier form hunted
+// for the uppercase token "CAPABILITY", a token the carrier never emits (uppercase CAPABILITY = 0 occurrences
+// in both the stall file and the roster file, with lowercase capability = 3 and 8 as the non-vacuous control),
+// so the second conjunct was false on every input. Asserted now: what the ledger ACTUALLY renders -- the
+// rostered row identity AND the row's real next-rung capability content, a substring the fixed prefix alone
+// cannot supply. If the capability is emptied or dropped from the ledger line, this leg goes red.
 test fn parse_population_carrier_reader_rung_drop_declared_holds() -> Bool {
-  string_contains(s: parse_population_carrier_reader_rung_drop_ledger_line(), pattern: "parse_population_carrier_reader_beside_grammar_stall") && string_contains(s: parse_population_carrier_reader_rung_drop_ledger_line(), pattern: "CAPABILITY")
+  string_contains(s: parse_population_carrier_reader_rung_drop_ledger_line(), pattern: "parse_population_carrier_reader_beside_grammar_stall") && string_contains(s: parse_population_carrier_reader_rung_drop_ledger_line(), pattern: "emitted, declared route")
 }
 
-// RED CONTROL, POLARITY FIXED (warm-fox F4): the earlier form asserted real-extraction == planted-extraction,
-// which FAILS under BOTH the correct and the shape-blind implementation (two different strings either way)
-// -- a control that cannot tell the broken world from the working one. The discriminating assertion is the
-// planted row extracting to "": it HELDs today (the extraction matches the declared NextRungTrigger shape
-// and the planted trigger is a bare record outside that match) and breaks the moment the extraction stops
-// honoring the declared shape. Correct world: HELD/HELD. Broken world: HELD/FAILED.
-test fn parse_population_stall_capability_extraction_refuses_planted_row_holds() -> Bool {
-  parse_population_planted_trigger_probe() == ""
+// THE EXTRACTION, TESTED THROUGH THE CARRIER'S OWN FUNCTION (review 99025 F1: no local copy -- a witness that
+// re-implements the thing it guards can only ever test its own copy). The red is AUTHORABLE as a changed
+// capability VALUE: gunbc.guarantee_stall declares NextRungTrigger as a single record type, so a "bare record
+// outside the declared constructors" is not a representable forbidden state, and the earlier leg asserting the
+// planted row extracted to "" failed in the correct world. The two planted stalls below are the same
+// GuaranteeStall shape the declared constructor climbs_when_awaiting builds; they differ ONLY in the
+// capability value. Correct world: HELD (empty extracts to "", named extracts to its text, and the two are
+// distinguishable). Broken world -- an extraction that ignores the trigger's value (returns a constant or
+// reaches past the field): FAILED, because the two probes collapse or the empty one yields text.
+test fn parse_population_stall_capability_extraction_distinguishes_planted_values_holds() -> Bool {
+  parse_population_planted_empty_capability_probe() == "" && parse_population_planted_named_capability_probe() == "CAPABILITY: planted text the ledger must carry" && parse_population_planted_empty_capability_probe() != parse_population_planted_named_capability_probe()
 }
 
-// THE PLANTED FORBIDDEN STATE: a stall whose next_rung_trigger is a BARE NextRungTrigger record built
-// outside the declared constructors -- the shape the extraction must refuse. Its capability text is
-// non-empty, so an extraction that reached past the declared shape (or returned the field unconditionally)
-// would yield this text instead of "" and the held leg above goes red.
-data parse_population_planted_stall_row: GuaranteeStall = GuaranteeStall {
-  subject: "planted: bare trigger record outside the declared constructors",
+data parse_population_planted_empty_capability_stall: GuaranteeStall = GuaranteeStall {
+  subject: "planted: stall whose next-rung capability is empty",
   current: Mitigatable,
   ceiling: StructurallyGuaranteed,
   blocker: ClimbableButUnbuilt,
   population: BoundedPopulation { members: ["planted member"] },
-  next_rung_trigger: NextRungTrigger { capability: "CAPABILITY: planted text that a shape-blind extraction would wrongly accept", awaiting: [] }
+  next_rung_trigger: NextRungTrigger { capability: "", awaiting: [] }
 }
 
-fn parse_population_planted_trigger_probe() -> String {
-  match parse_population_planted_stall_row.next_rung_trigger {
-    NextRungTrigger { capability: c, awaiting: _ } => c
-  }
+data parse_population_planted_named_capability_stall: GuaranteeStall = GuaranteeStall {
+  subject: "planted: stall whose next-rung capability names the capability",
+  current: Mitigatable,
+  ceiling: StructurallyGuaranteed,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: ["planted member"] },
+  next_rung_trigger: NextRungTrigger { capability: "CAPABILITY: planted text the ledger must carry", awaiting: [] }
+}
+
+fn parse_population_planted_empty_capability_probe() -> String {
+  parse_population_stall_next_rung_capability(stall: parse_population_planted_empty_capability_stall)
+}
+
+fn parse_population_planted_named_capability_probe() -> String {
+  parse_population_stall_next_rung_capability(stall: parse_population_planted_named_capability_stall)
 }
 
 // ---- measurement receipts (review 98937 F4: receipts get a typed home, this witness is its

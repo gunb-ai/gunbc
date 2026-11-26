@@ -6,7 +6,7 @@ import std.measure { ByteSize, Microsecond, byte_size, microsecond, measure_add,
 import std.keyed_row { KeyedRow }
 import std.keyed_roster { KeyedRosterBuild, KeyedRosterBuilt, keyed_roster_build }
 import std.algebra { count_where, fold_list, list_push, string_contains }
-import gunbc.guarantee_stall { NextRungTrigger }
+import gunbc.guarantee_stall { NextRungTrigger, GuaranteeStall }
 import gunbc.guarantee_stall.parse_population_carrier_reader_beside_grammar_stall {
   parse_population_carrier_reader_beside_grammar_stall,
 }
@@ -746,14 +746,21 @@ fn parse_population_reconcile_refuses_mistyped_slice() -> Bool {
 }
 
 // THE EXTRACTION THE LEDGER LINE AND THE WITNESS SHARE: the next-rung trigger's capability is readable ONLY
-// through the declared NextRungTrigger constructor. Any other shape yields "" -- and the witness red control
-// asserts exactly that -- so the capability text cannot be quietly deleted or bypassed while the 170-to-tree
-// reconciliation is still unexecuted (review 98901 F1: presence-of-a-prefix is a decoration; the
-// discriminating pair is the guard).
-fn parse_population_carrier_reader_beside_grammar_stall_capability() -> String {
-  match parse_population_carrier_reader_beside_grammar_stall.next_rung_trigger {
+// through the declared NextRungTrigger constructor (gunbc.guarantee_stall declares it as a single record, and
+// climbs_when_awaiting is the declared constructor), so the extraction is declared as a function over a
+// stall that pattern-matches that shape. The WITNESS PLANTS STALLS AND CALLS THIS (review 99025 F1: a witness
+// that re-implements the thing it guards can only test its own copy), including a planted empty-capability
+// stall -- the authorable red is a changed CAPABILITY VALUE, never a bare record "outside the declared
+// constructors", which NextRungTrigger cannot represent. The extraction must not gain an unconditional or
+// field-bypassing arm: the planted empty stays "" only while it honours the declared shape.
+fn parse_population_stall_next_rung_capability(stall: GuaranteeStall) -> String {
+  match stall.next_rung_trigger {
     NextRungTrigger { capability: c, awaiting: _ } => c
   }
+}
+
+fn parse_population_carrier_reader_beside_grammar_stall_capability() -> String {
+  parse_population_stall_next_rung_capability(stall: parse_population_carrier_reader_beside_grammar_stall)
 }
 
 // DECLARED STALL -- ROSTERED, NOT A LOCAL STRING (review 98937 F2: this class was first written as a rung
