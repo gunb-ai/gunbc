@@ -240,7 +240,6 @@ fn typed_argv_exec_over_fleet_ssh_fresh_connection(
         FleetPrincipalLegRefused { cause: why } => TypedArgvExecRefused { reason: why as String }
         FleetPrincipalLegOverran { deadline: d } => TypedArgvExecOverran { deadline: d }
         FleetPrincipalLegWireInconsistent { fault: f } => TypedArgvExecWireInconsistent { fault: f }
-        FleetPrincipalLegOverran { deadline: d } => TypedArgvExecOverran { deadline: d }
         FleetPrincipalLegRan { session: _, result: r } => TypedArgvExecConverged { result: r }
       }
   }
@@ -268,7 +267,6 @@ fn typed_argv_exec_over_fleet_ssh(
         FleetPrincipalLegRefused { cause: why } => TypedArgvExecRefused { reason: why as String }
         FleetPrincipalLegOverran { deadline: d } => TypedArgvExecOverran { deadline: d }
         FleetPrincipalLegWireInconsistent { fault: f } => TypedArgvExecWireInconsistent { fault: f }
-        FleetPrincipalLegOverran { deadline: d } => TypedArgvExecOverran { deadline: d }
         FleetPrincipalLegRan { session: _, result: r } => TypedArgvExecConverged { result: r }
       }
   }
@@ -300,7 +298,6 @@ fn typed_argv_exec_over_fleet_ssh_with_stdin(
         FleetPrincipalLegRefused { cause: why } => TypedArgvExecRefused { reason: why as String }
         FleetPrincipalLegOverran { deadline: d } => TypedArgvExecOverran { deadline: d }
         FleetPrincipalLegWireInconsistent { fault: f } => TypedArgvExecWireInconsistent { fault: f }
-        FleetPrincipalLegOverran { deadline: d } => TypedArgvExecOverran { deadline: d }
         FleetPrincipalLegRan { session: _, result: r } => TypedArgvExecConverged { result: r }
       }
   }
@@ -312,6 +309,7 @@ fn read_fleet_login_shell(target: SshTarget, context: FleetSshExecutionContext) 
   match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: ["getent", "passwd", target.principal as String], kind: ProbeLeg) {
     TypedArgvExecRefused { reason: why } => LoginShellUnreadable { principal: target.principal, reason: why }
     TypedArgvExecOverran { deadline: _ } => LoginShellUnreadable { principal: target.principal, reason: "the login-shell read overran its wall-clock deadline" }
+    TypedArgvExecWireInconsistent { fault: f } => LoginShellUnreadable { principal: target.principal, reason: typed_argv_exec_wire_inconsistent_reason(leg_hint: "the login-shell read", fault: f) }
     TypedArgvExecConverged { result: r } => login_shell_standing(target: target, success: r.success, output: r.stdout)
   }
 }
@@ -324,6 +322,7 @@ fn read_posix_remote_route(target: SshTarget, context: FleetSshExecutionContext,
   match typed_argv_exec_over_fleet_ssh(target: target, context: context, argv: openssh_server_version_argv(binary: fleet_openssh_server_binary), kind: ProbeLeg) {
     TypedArgvExecRefused { reason: why } => posix_remote_route_standing(proof: proof, client_success: client.success, client_output: client.stderr, server_success: false, server_output: why)
     TypedArgvExecOverran { deadline: _ } => posix_remote_route_standing(proof: proof, client_success: client.success, client_output: client.stderr, server_success: false, server_output: "the server-version read overran its wall-clock deadline")
+    TypedArgvExecWireInconsistent { fault: f } => posix_remote_route_standing(proof: proof, client_success: client.success, client_output: client.stderr, server_success: false, server_output: typed_argv_exec_wire_inconsistent_reason(leg_hint: "the server-version read", fault: f))
     TypedArgvExecConverged { result: r } => posix_remote_route_standing(proof: proof, client_success: client.success, client_output: client.stderr, server_success: r.success, server_output: r.stderr)
   }
 }
@@ -359,7 +358,6 @@ fn typed_argv_exec_over_fleet_ssh_posix(
                 FleetPrincipalLegRefused { cause: why } => TypedArgvExecRefused { reason: why as String }
                 FleetPrincipalLegOverran { deadline: d } => TypedArgvExecOverran { deadline: d }
                 FleetPrincipalLegWireInconsistent { fault: f } => TypedArgvExecWireInconsistent { fault: f }
-                FleetPrincipalLegOverran { deadline: d } => TypedArgvExecOverran { deadline: d }
                 FleetPrincipalLegRan { session: _, result: r } => TypedArgvExecConverged { result: r }
               }
           }

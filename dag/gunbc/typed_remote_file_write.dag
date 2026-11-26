@@ -625,6 +625,13 @@ fn typed_remote_file_write_over_fleet_ssh(
                 TypedRemoteFileWriteOutcomeRefused {
                   reason: typed_argv_exec_overran_reason(leg_hint: "typed remote file write", deadline: d) as String
                 }
+            // THE LEG WAS DISPATCHED AND ITS REPLY ARRIVED IN AN INCONSISTENT WIRE SHAPE. As with the
+            // ceiling, the write's content is NOT established absent and not established present -- the
+            // remedy is a re-read, never a retry and never "not written".
+            FleetPrincipalLegWireInconsistent { session: _, fault: f } =>
+              TypedRemoteFileWriteOutcomeRefused {
+                reason: typed_argv_exec_wire_inconsistent_reason(leg_hint: "typed remote file write", fault: f) as String
+              }
             FleetPrincipalLegRan { session: _, result: result } =>
               typed_remote_file_write_outcome_after_ssh_exec(write: write, result: result)
           }

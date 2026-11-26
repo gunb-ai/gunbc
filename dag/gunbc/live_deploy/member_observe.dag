@@ -156,6 +156,8 @@ fn remote_leg(transport: HostEffectTransport, argv: List<String>, leg: String) -
       else { LegOut { stdout: r.stdout } }
       TypedArgvExecOverran { deadline: d } =>
         LegRefused { cause: join([leg, ": ", typed_argv_exec_overran_reason(leg_hint: leg, deadline: d)], "") }
+      TypedArgvExecWireInconsistent { fault: f } =>
+        LegRefused { cause: join([leg, ": ", typed_argv_exec_wire_inconsistent_reason(leg_hint: leg, fault: f)], "") }
   }
 }
 
@@ -864,6 +866,8 @@ fn subtree_readback_leg(arm: ObservationArm, instance: HostDashboardInstance, ch
         TypedArgvExecConverged { result: r } => SubtreeReadOut { receipt: r.stdout }
         TypedArgvExecOverran { deadline: d } =>
           SubtreeReadUnobservable { cause: typed_argv_exec_overran_reason(leg_hint: "member observe subtree read", deadline: d) }
+        TypedArgvExecWireInconsistent { fault: f } =>
+          SubtreeReadUnobservable { cause: typed_argv_exec_wire_inconsistent_reason(leg_hint: "member observe subtree read", fault: f) }
       }
   }
 }
@@ -975,6 +979,8 @@ fn posture_config_leg(arm: ObservationArm, repo: FilePath, key: NonEmptyStr) -> 
           else { PostureConfigUnobservable { cause: join([read_failure_cause, " failed: git exited ", to_string(r.exit_code)], "") } }
           TypedArgvExecOverran { deadline: d } =>
             PostureConfigUnobservable { cause: join([read_failure_cause, ": ", typed_argv_exec_overran_reason(leg_hint: "member observe posture read", deadline: d)], "") }
+          TypedArgvExecWireInconsistent { fault: f } =>
+            PostureConfigUnobservable { cause: join([read_failure_cause, ": ", typed_argv_exec_wire_inconsistent_reason(leg_hint: "member observe posture read", fault: f)], "") }
       }
   }
 }
@@ -1068,6 +1074,8 @@ fn privileged_directory_read(arm: ObservationArm, op: ExecutorPrivilegedOperatio
           else { ObserverReadFailed { origin: ObserverExited { exit_code: r.exit_code, stderr: r.stderr } } }
           TypedArgvExecOverran { deadline: d } =>
             ObserverReadFailed { origin: ObserverTransportRefused { cause: typed_argv_exec_overran_reason(leg_hint: "member observe executor read", deadline: d) } }
+          TypedArgvExecWireInconsistent { fault: f } =>
+            ObserverReadFailed { origin: ObserverTransportRefused { cause: typed_argv_exec_wire_inconsistent_reason(leg_hint: "member observe executor read", fault: f) } }
       }
   }
 }

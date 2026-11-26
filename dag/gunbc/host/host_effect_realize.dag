@@ -193,7 +193,7 @@ import gunbc.retained_shell_script {
   RetainedShellScript,
   retained_shell_script_to_transport,
 }
-import extdeps.ssh.session { ssh_session_exec_script }
+import extdeps.ssh.session { ssh_session_exec_script, SshSessionWireFault }
 import gunbc.typed_argv_exec {
   typed_argv_exec_over_ssh,
   typed_argv_exec_over_ssh_with_stdin,
@@ -2728,7 +2728,7 @@ fn srv3_dpkg_package_installed(package: NonEmptyStr, transport: HostEffectTransp
     Absent => Srv3PredicateUnobserved { reason: "this transport has no typed exec that keeps a query's exit code and stderr, so the package state is not read" }
     Present { value: TypedArgvExecOverran { deadline: d } } =>
       Srv3PredicateUnobserved { reason: host_effect_typed_argv_overran_reason(leg_hint: "dpkg query", deadline: d) }
-    TypedArgvExecWireInconsistent { fault: f } =>
+    Present { value: TypedArgvExecWireInconsistent { fault: f } } =>
       Srv3PredicateUnobserved { reason: typed_argv_exec_wire_inconsistent_reason(leg_hint: "dpkg query", fault: f) }
     Present { value: TypedArgvExecRefused { reason: why } } => Srv3PredicateUnobserved { reason: why }
     Present { value: TypedArgvExecConverged { result: r } } =>
@@ -3869,6 +3869,11 @@ type HostEffectArgvOutcome
   = HostEffectArgvObserved { observed: ShellExecObserved }
   | HostEffectArgvRefused { reason: String }
   | HostEffectArgvOverran { deadline: Second }
+  // The leg was DISPATCHED over the wire and the reply came back unreadable or self-inconsistent, so
+  // the effect is not known. It is neither a refusal (something was asked of the host) nor an overrun
+  // (no deadline tripped), so it is its own arm on the preserving carrier -- collapsing it into
+  // Refused would let a leg that ran read as "never attempted".
+  | HostEffectArgvWireInconsistent { fault: SshSessionWireFault }
 
 // ONE MAPPING FOR BOTH TRANSPORT RUNNERS. run_argv_over_host_effect_transport and
 // run_argv_stdin_over_host_effect_transport differ only in which typed call carries the leg; what an
@@ -3902,6 +3907,8 @@ fn host_effect_argv_outcome_of(typed: TypedArgvExecOutcome) -> HostEffectArgvOut
       }
     TypedArgvExecOverran { deadline: d } =>
       HostEffectArgvOverran { deadline: d }
+    TypedArgvExecWireInconsistent { fault: f } =>
+      HostEffectArgvWireInconsistent { fault: f }
   }
 }
 
@@ -3916,6 +3923,10 @@ fn run_argv_transport_outcome_of(preserving: HostEffectArgvOutcome) -> RunArgvTr
     HostEffectArgvOverran { deadline: d } =>
       RunArgvTransportRefused {
         reason: host_effect_typed_argv_overran_reason(leg_hint: "transport argv", deadline: d),
+      }
+    HostEffectArgvWireInconsistent { fault: f } =>
+      RunArgvTransportRefused {
+        reason: typed_argv_exec_wire_inconsistent_reason(leg_hint: "transport argv", fault: f),
       }
   }
 }
@@ -9080,7 +9091,7 @@ fn realize_live_deploy_dispatch_readback_on_host(
             applied: intent,
         }
         TypedArgvExecWireInconsistent { fault: f } => NotConverged {
-            reason: host_effect_typed_argv_overran_reason(leg_hint: "live-deploy digest readback (fleet)", deadline: d),
+            reason: typed_argv_exec_wire_inconsistent_reason(leg_hint: "live-deploy digest readback (fleet)", fault: f),
             applied: intent,
         }
         TypedArgvExecRefused { reason: why } => NotConverged { reason: why, applied: intent }

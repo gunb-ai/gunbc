@@ -18,6 +18,7 @@ import gunbc.fleet.fleet_bootstrap_principal_session {
   FleetPrincipalLegOverran, FleetPrincipalLegWireInconsistent,
   }
 import extdeps.exec.command { shell_quote }
+import gunbc.typed_argv_exec { typed_argv_exec_wire_inconsistent_reason }
 import extdeps.ssh.session { ssh_client_error_exit_status }
 import gunbc.spark.remote_leg_began { remote_leg_began_payload_line, remote_leg_reported_began, remote_leg_stdout_without_began, remote_stdout_as_one_word }
 import gunbc.fleet.fleet_known_hosts_anchor {
@@ -1032,6 +1033,9 @@ fn spark_argv_run_of_unreachable(cause: String, reach: SparkLegUnreachability) -
     LegNotAttempted { cause: _ } => ArgvLegDidNotRun { cause: cause }
     LegBeginUnobserved { endpoint: _, stderr: _ } => ArgvLegMayHaveRun { cause: cause }
     LegOverran { endpoint: _, deadline: _ } => ArgvLegMayHaveRun { cause: cause }
+    // The leg WAS dispatched and its reply arrived inconsistent, so the container may or may not have
+    // run -- a release read, not a "sent nothing" claim. Same as the overrun: it may have run.
+    LegWireInconsistent { endpoint: _, cause: _ } => ArgvLegMayHaveRun { cause: cause }
   }
 }
 

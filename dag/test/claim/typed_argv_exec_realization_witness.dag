@@ -185,6 +185,7 @@ test fn witness_ssh_argv_exec_clean_token_holds() -> Bool {
     TypedArgvExecConverged { result: r } => r.success
     TypedArgvExecRefused { reason: _ } => false
     TypedArgvExecOverran { deadline: _ } => false
+    TypedArgvExecWireInconsistent { fault: _ } => false
   }
 }
 
@@ -252,6 +253,7 @@ test fn witness_ssh_sudo_probe_argv_shape_matches_local_authority() -> Bool {
         TypedArgvExecConverged { result: r } => r.success
         TypedArgvExecRefused { reason: _ } => false
         TypedArgvExecOverran { deadline: _ } => false
+        TypedArgvExecWireInconsistent { fault: _ } => false
       }
     }
     NopasswdGrantListCheck => false
@@ -266,6 +268,7 @@ test fn witness_ssh_sudo_grant_list_argv_shape_matches_local_authority() -> Bool
     TypedArgvExecConverged { result: r } => r.success
     TypedArgvExecRefused { reason: _ } => false
     TypedArgvExecOverran { deadline: _ } => false
+    TypedArgvExecWireInconsistent { fault: _ } => false
   }
 }
 

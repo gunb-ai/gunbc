@@ -83,6 +83,11 @@ fn hostname_set_cas_from_outcome(outcome: TypedArgvExecOutcome) -> HostnameSetCa
       if r.success { HostnameSetCasApplied } else { HostnameSetCasApplyFailed { stderr: r.stderr } }
       TypedArgvExecOverran { deadline: d } =>
         HostnameSetCasApplyFailed { stderr: concat("leg NOT attempted: ", typed_argv_exec_overran_reason(leg_hint: "hostname set", deadline: d)) }
+    // The hostname leg WAS dispatched and its reply arrived inconsistent, so whether the hostname
+    // took is not known. It is rendered with its own cause and NOT as "leg NOT attempted" -- a leg
+    // that ran must not read as one never sent.
+    TypedArgvExecWireInconsistent { fault: f } =>
+      HostnameSetCasApplyFailed { stderr: typed_argv_exec_wire_inconsistent_reason(leg_hint: "hostname set", fault: f) }
     TypedArgvExecRefused { reason: why } =>
       HostnameSetCasApplyFailed { stderr: concat("leg NOT attempted: ", why) }
   }

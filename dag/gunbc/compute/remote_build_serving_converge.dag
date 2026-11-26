@@ -582,6 +582,7 @@ fn serving_leg_slice_cap(target: SshTarget, context: FleetSshExecutionContext, u
         // UNKNOWN on every control, never presented as capped or uncapped.
         TypedArgvExecRefused { reason: reason } => serving_slice_cap_refused(concat("ssh refused: ", reason))
         TypedArgvExecOverran { deadline: d } => serving_slice_cap_refused(concat("ssh refused: ", typed_argv_exec_overran_reason(leg_hint: "remote build serving", deadline: d)))
+        TypedArgvExecWireInconsistent { fault: f } => serving_slice_cap_refused(concat("ssh refused: ", typed_argv_exec_wire_inconsistent_reason(leg_hint: "remote build serving", fault: f)))
         // `systemctl show` ran: its exit code and streams decide the cap under the classified reading.
         TypedArgvExecConverged { result: r } => serving_slice_cap_of_exec(exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr)
       }
@@ -1519,6 +1520,7 @@ fn converge_exec_step(outcome: TypedArgvExecOutcome) -> ConvergeStep {
     // so the write is unobserved -- StepFailed with the overrun as its cause, never StepDone
     // (gunbc.design_argument::fail_closed; the re-observe cannot rescue an unobserved write either).
     TypedArgvExecOverran { deadline: d } => StepFailed { cause: typed_argv_exec_overran_reason(leg_hint: "serving converge write", deadline: d) }
+    TypedArgvExecWireInconsistent { fault: f } => StepFailed { cause: typed_argv_exec_wire_inconsistent_reason(leg_hint: "serving converge write", fault: f) }
   }
 }
 
@@ -1679,6 +1681,7 @@ fn serving_leg_seat_census(elevation: ObservationAttempt<Bool, ServingLegFailure
             TypedArgvExecRefused { reason: r } => RecoverCatalogLegUnknown { detail: join(["the census run was refused before it executed: ", r], "") }
             // an overran census leg says nothing about the seat: unknown census, never a settled read.
             TypedArgvExecOverran { deadline: dl } => RecoverCatalogLegUnknown { detail: typed_argv_exec_overran_reason(leg_hint: "serving seat census", deadline: dl) }
+            TypedArgvExecWireInconsistent { fault: f } => RecoverCatalogLegUnknown { detail: typed_argv_exec_wire_inconsistent_reason(leg_hint: "serving seat census", fault: f) }
             // The exit is read through the SAME declared table as the other two doors (review 97280,
             // finding 2): the census door speaks 0 when established and 2 when unknown, and this leg
             // honors the number before the rendering — an exit the table does not speak is an unknown
@@ -1729,7 +1732,7 @@ fn converge_recover_stale_seat(target: SshTarget, context: FleetSshExecutionCont
               TypedArgvExecRefused { reason: r } => StepFailed { cause: join(["the recovery run was refused before it executed: ", r], "") }
               // an overran recovery write is never a settled write: the step fails, the next assessment re-decides.
               TypedArgvExecOverran { deadline: dl } => StepFailed { cause: typed_argv_exec_overran_reason(leg_hint: join(["serving recovery write ", reference as String]), deadline: dl) }
-              TypedArgvExecWireInconsistent { fault: f } => StepFailed { cause: typed_argv_exec_overran_reason(leg_hint: join(["serving recovery write ", reference as String]), deadline: dl) }
+              TypedArgvExecWireInconsistent { fault: f } => StepFailed { cause: typed_argv_exec_wire_inconsistent_reason(leg_hint: join(["serving recovery write ", reference as String]), fault: f) }
               TypedArgvExecConverged { result: r } => match recover_door_verdict(code: r.exit_code) {
                 RecoverDoorSettled => converge_recover_readbacks(target: target, context: context, d: d, reference: reference, runtime_dir: runtime_dir)
                 RecoverDoorDeclined => StepFailed { cause: join(["the model declined the recovery write for ", reference as String, ": the seat is legitimately held between plan and apply, and the next assessment re-decides"], "") }
@@ -1840,6 +1843,7 @@ fn converge_stage_from(outcome: TypedArgvExecOutcome) -> ConvergeStage {
       // host answered, so there is no path to stage into. StageFailed carrying the ceiling, never
       // StageReady with an unobserved path (gunbc.design_argument::fail_closed).
       TypedArgvExecOverran { deadline: d } => StageFailed { cause: concat("mktemp -d (private staging dir): ", typed_argv_exec_overran_reason(leg_hint: "private staging dir", deadline: d)) }
+      TypedArgvExecWireInconsistent { fault: f } => StageFailed { cause: concat("mktemp -d (private staging dir): ", typed_argv_exec_wire_inconsistent_reason(leg_hint: "private staging dir", fault: f)) }
     }
   }
 }

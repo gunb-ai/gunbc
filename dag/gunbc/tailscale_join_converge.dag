@@ -311,6 +311,8 @@ fn tailscale_join_package_verdict_of(outcome: TypedArgvExecOutcome) -> DpkgInsta
     // takes, carrying the ceiling, and the join waits for a read that actually happened.
     TypedArgvExecOverran { deadline: d } =>
       DpkgQueryUndecidable { reason: typed_argv_exec_overran_reason(leg_hint: "tailscale join package", deadline: d) }
+    TypedArgvExecWireInconsistent { fault: f } =>
+      DpkgQueryUndecidable { reason: typed_argv_exec_wire_inconsistent_reason(leg_hint: "tailscale join package", fault: f) }
     TypedArgvExecRefused { reason: reason } => DpkgQueryUndecidable { reason: reason }
     TypedArgvExecConverged { result: r } =>
       dpkg_query_status_verdict_of(

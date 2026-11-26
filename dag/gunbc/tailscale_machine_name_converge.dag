@@ -578,6 +578,8 @@ fn tailscale_machine_name_device_names_leg(
   ) {
   TypedArgvExecOverran { deadline: d } =>
     NamesUnreadable { cause: StatusLegRefused { detail: typed_argv_exec_overran_reason(leg_hint: "tailscale machine name", deadline: d) } }
+    TypedArgvExecWireInconsistent { fault: f } =>
+      NamesUnreadable { cause: StatusLegRefused { detail: typed_argv_exec_wire_inconsistent_reason(leg_hint: "tailscale machine name", fault: f) } }
     TypedArgvExecRefused { reason: reason } =>
       NamesUnreadable { cause: StatusLegRefused { detail: reason } }
     TypedArgvExecConverged { result: status_result } =>
@@ -593,6 +595,8 @@ fn tailscale_machine_name_device_names_leg(
         ) {
         TypedArgvExecOverran { deadline: d } =>
           NamesUnreadable { cause: OsNameLegRefused { detail: typed_argv_exec_overran_reason(leg_hint: "tailscale machine name", deadline: d) } }
+          TypedArgvExecWireInconsistent { fault: f } =>
+            NamesUnreadable { cause: OsNameLegRefused { detail: typed_argv_exec_wire_inconsistent_reason(leg_hint: "tailscale machine name", fault: f) } }
           TypedArgvExecRefused { reason: reason } =>
             NamesUnreadable { cause: OsNameLegRefused { detail: reason } }
           TypedArgvExecConverged { result: os_result } =>

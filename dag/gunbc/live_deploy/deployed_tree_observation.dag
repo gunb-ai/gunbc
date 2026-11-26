@@ -17,7 +17,8 @@ import extdeps.git {
 import extdeps.exec.command { ArgvCommand, argv_words }
 import extdeps.tools.gnu_coreutils { rm_force_command }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_eq, git_object_id_wire_hex }
-import extdeps.ssh.session { SshSessionExecResult }
+import extdeps.ssh.session { SshSessionExecResult, SshSessionWireFault }
+import gunbc.typed_argv_exec { typed_argv_exec_wire_inconsistent_reason }
 import gunbc.fleet.fleet_known_hosts_anchor { ProbeLeg,FleetSshExecutionContext, SshTarget, SshTargetResolution, SshTargetResolved, SshTargetRefused, ssh_target_refusal_text, ssh_target_wire }
 import gunbc.live_deploy.candidate { scan_checkout_status, scan_ignored_deployed_paths }
 import gunbc.host.host_effect_realize {
@@ -30,6 +31,7 @@ import gunbc.host.host_effect_realize {
   HostEffectArgvObserved,
   HostEffectArgvRefused,
   HostEffectArgvOverran,
+  HostEffectArgvWireInconsistent,
   HostEffectTransport,
   FleetSsh,
 }
@@ -308,6 +310,10 @@ type DeployedTreeLegOutcome
   = DeployedTreeLegRan { result: SshSessionExecResult }
   | DeployedTreeLegOverran { deadline: Second }
   | DeployedTreeLegNotAttempted { reason: String }
+  // The leg was DISPATCHED and its reply came back unreadable or self-inconsistent, so the effect is
+  // not known. It is neither not-attempted (the host WAS asked) nor an overrun (no deadline tripped),
+  // so it keeps its own arm; the cause carries the kind of wire failure, not a hard-coded "deadline".
+  | DeployedTreeLegWireInconsistent { cause: String }
 
 // THE HOST STRING A DEADLINE RECEIPT NAMES. Derived from the locus's own resolved target, so the host a
 // leg overran on is spelled the one way it can be; the local arm has no ssh target to name, and naming
@@ -341,6 +347,8 @@ fn deployed_tree_leg_outcome_of_preserving(observed: HostEffectArgvOutcome) -> D
       }
     HostEffectArgvRefused { reason: why } => DeployedTreeLegNotAttempted { reason: why }
     HostEffectArgvOverran { deadline: d } => DeployedTreeLegOverran { deadline: d }
+    HostEffectArgvWireInconsistent { fault: f } =>
+      DeployedTreeLegWireInconsistent { cause: typed_argv_exec_wire_inconsistent_reason(leg_hint: "deployed tree", fault: f) }
   }
 }
 
@@ -387,6 +395,11 @@ type DeployedTreeUnobservableCause
   // was asked of the host) nor a command failure (the host never answered), so it is its own arm,
   // and it carries the deadline as a VALUE alongside the host and the exact argv it tripped on.
   | TreeLegDeadlineExceeded { leg: String, host: String, argv: List<String>, deadline: Second }
+  // The leg was DISPATCHED and its reply arrived in an inconsistent wire shape, so whether it took
+  // effect is not known -- neither a refusal (the host was asked) nor a command failure (no usable
+  // answer came back) nor a deadline overrun (nothing tripped a wall). The cause carries the kind of
+  // wire failure rather than reusing the overrun sentence.
+  | TreeLegWireInconsistent { leg: String, host: String, cause: String }
   | TreeRevisionUndecodable { text: String }
   | TreeStatusUnreadable { detail: String }
 
@@ -408,6 +421,10 @@ fn deployed_tree_unobservable_text(cause: DeployedTreeUnobservableCause) -> Stri
         "s wall-clock deadline (argv=", join(argv, " "),
         "); it ran too long and its process group was killed before the host answered -- an overrun is neither a refusal nor a command failure",
       ], "")
+    TreeLegWireInconsistent { leg: leg, host: host, cause: c } =>
+      join([
+        "the ", leg, " leg on host ", host, " was DISPATCHED but its reply arrived in an inconsistent wire shape, so whether it took effect is not known: ", c,
+      ], "")
     TreeRevisionUndecodable { text: t } =>
       join(["the revision was read but is not a decodable git object id: ", t], "")
     TreeStatusUnreadable { detail: d } =>
@@ -424,6 +441,16 @@ fn deployed_tree_leg_overran_cause(
   deadline: Second,
 ) -> DeployedTreeUnobservableCause {
   TreeLegDeadlineExceeded { leg: leg, host: host, argv: argv, deadline: deadline }
+}
+
+// The ONE construction of the wire-inconsistent cause, mirroring the deadline one: the shape
+// (leg, host, cause) has a single spelling and a single witness.
+fn deployed_tree_leg_wire_inconsistent_cause(
+  leg: String,
+  host: String,
+  cause: String,
+) -> DeployedTreeUnobservableCause {
+  TreeLegWireInconsistent { leg: leg, host: host, cause: cause }
 }
 
 // MODIFIED CARRIES THE PATHS IT SAW, as a NonEmptyStr so that "modified, with nothing to show for it"
@@ -540,6 +567,7 @@ fn deployed_tree_discard_index(
   match cleanup {
     DeployedTreeLegRan { result: _ } => verdict
     DeployedTreeLegOverran { deadline: _ } => verdict
+    DeployedTreeLegWireInconsistent { cause: _ } => verdict
     DeployedTreeLegNotAttempted { reason: _ } => verdict
   }
 }
@@ -566,6 +594,14 @@ fn observe_deployed_tree_owned(
             deadline: d,
           ),
       }
+    DeployedTreeLegWireInconsistent { cause: c } =>
+      DeployedTreeUnobservable {
+        cause: deployed_tree_leg_wire_inconsistent_cause(
+            leg: "revision",
+            host: deployed_tree_locus_host_text(locus: locus),
+            cause: c,
+          ),
+      }
     DeployedTreeLegRan { result: rev } =>
       if rev.exit_code != 0 {
         DeployedTreeUnobservable {
@@ -589,6 +625,14 @@ fn observe_deployed_tree_owned(
                       host: deployed_tree_locus_host_text(locus: locus),
                       argv: argv_words(command: git_in_trusted_repository_head_root_tree_command(repo: deployed_tree_locus_repo(locus: locus))),
                       deadline: d,
+                    ),
+                }
+              DeployedTreeLegWireInconsistent { cause: c } =>
+                DeployedTreeUnobservable {
+                  cause: deployed_tree_leg_wire_inconsistent_cause(
+                      leg: "root tree",
+                      host: deployed_tree_locus_host_text(locus: locus),
+                      cause: c,
                     ),
                 }
               DeployedTreeLegRan { result: tr } =>
@@ -647,6 +691,14 @@ fn observe_deployed_tree_against_revision(
             deadline: d,
           ),
       }
+    DeployedTreeLegWireInconsistent { cause: c } =>
+      DeployedTreeUnobservable {
+        cause: deployed_tree_leg_wire_inconsistent_cause(
+            leg: "index materialization",
+            host: deployed_tree_locus_host_text(locus: locus),
+            cause: c,
+          ),
+      }
     DeployedTreeLegRan { result: rt } =>
       if rt.exit_code != 0 {
         DeployedTreeUnobservable {
@@ -673,6 +725,14 @@ fn observe_deployed_tree_against_revision(
                   deadline: d,
                 ),
             }
+          DeployedTreeLegWireInconsistent { cause: c } =>
+            DeployedTreeUnobservable {
+              cause: deployed_tree_leg_wire_inconsistent_cause(
+                  leg: "worktree comparison",
+                  host: deployed_tree_locus_host_text(locus: locus),
+                  cause: c,
+                ),
+            }
           DeployedTreeLegRan { result: st } =>
             if st.exit_code != 0 {
               DeployedTreeUnobservable {
@@ -697,6 +757,14 @@ fn observe_deployed_tree_against_revision(
                         host: deployed_tree_locus_host_text(locus: locus),
                         argv: argv_words(command: git_in_trusted_repository_ls_files_ignored_command(repo: deployed_tree_locus_repo(locus: locus), index_path: index_path)),
                         deadline: d,
+                      ),
+                  }
+                DeployedTreeLegWireInconsistent { cause: c } =>
+                  DeployedTreeUnobservable {
+                    cause: deployed_tree_leg_wire_inconsistent_cause(
+                        leg: "ignored deployed paths",
+                        host: deployed_tree_locus_host_text(locus: locus),
+                        cause: c,
                       ),
                   }
                 DeployedTreeLegRan { result: ig } =>

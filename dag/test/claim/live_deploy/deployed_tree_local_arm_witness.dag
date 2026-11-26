@@ -32,8 +32,10 @@ import gunbc.host.host_effect_realize {
   RunArgvTransportOutcome,
   RunArgvTransportObserved,
   RunArgvTransportRefused,
+  HostEffectArgvWireInconsistent,
   ShellExecObserved,
 }
+import extdeps.ssh.session { OverrunWithoutDeadline }
 import product.host_identity { HostIdentity }
 import gunbc.hostname_allocation { ObservedHostSelectorAgreed }
 import extdeps.git { git_in_trusted_repository_status_command }
@@ -48,7 +50,12 @@ import gunbc.live_deploy.deployed_tree_observation {
   DeployedTreeLegOutcome,
   DeployedTreeLegRan,
   DeployedTreeLegNotAttempted,
+  DeployedTreeLegOverran,
+  DeployedTreeLegWireInconsistent,
   deployed_tree_leg_outcome_of,
+  deployed_tree_leg_outcome_of_preserving,
+  deployed_tree_unobservable_text,
+  TreeLegWireInconsistent,
   deployed_tree_temp_index_path,
   deployed_tree_local_admission_verdict,
   local_admission_from_verdict,
@@ -199,4 +206,34 @@ test fn witness_each_run_delivers_its_own_index() -> Bool {
         && !any(words_b, w => w == join(["GIT_INDEX_FILE=", path_a], ""))
     }
   }
+}
+
+// CONTROLS for the post-invocation wire-inconsistent leg (the #16984 follow-up: a 4th arm on the
+// preserving carrier). A leg whose reply arrived in an inconsistent wire shape was DISPATCHED -- its
+// effect is not known -- so it must take its OWN arm and never collapse to DeployedTreeLegNotAttempted
+// ("never asked"), which is what a TypedArgvExecRefused encoding did before and which the converge fold
+// (reload_uncertain) then read as "sshd was not reloaded", skipping its recovery readbacks. These pin
+// the production fold and its one rendering; they call the extracted decision, not a re-derived value.
+
+test fn witness_a_wire_inconsistent_leg_is_never_read_as_not_attempted() -> Bool {
+  match deployed_tree_leg_outcome_of_preserving(
+    observed: HostEffectArgvWireInconsistent { fault: OverrunWithoutDeadline },
+  ) {
+    DeployedTreeLegWireInconsistent { cause: c } =>
+      string_contains(s: c, pattern: "DISPATCHED")
+        && string_contains(s: c, pattern: "inconsistent wire shape")
+        && !string_contains(s: c, pattern: "never attempted")
+    DeployedTreeLegNotAttempted { reason: _ } => false
+    DeployedTreeLegRan { result: _ } => false
+    DeployedTreeLegOverran { deadline: _ } => false
+  }
+}
+
+test fn witness_a_wire_inconsistent_cause_says_effect_not_known() -> Bool {
+  let text = deployed_tree_unobservable_text(
+    cause: TreeLegWireInconsistent { leg: "revision", host: "srv9", cause: "echoed a wall deadline but overran=false" },
+  )
+  string_contains(s: text, pattern: "DISPATCHED")
+    && string_contains(s: text, pattern: "not known")
+    && !string_contains(s: text, pattern: "never attempted")
 }

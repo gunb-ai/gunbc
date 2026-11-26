@@ -55,6 +55,7 @@ import gunbc.fleet.fleet_ssh_locus {
 }
 import gunbc.typed_argv_exec {
   typed_argv_exec_over_fleet_ssh, TypedArgvExecOutcome, TypedArgvExecConverged, TypedArgvExecRefused, TypedArgvExecOverran,
+  TypedArgvExecWireInconsistent, typed_argv_exec_wire_inconsistent_reason,
 }
 
 // READ-ONLY HOST MEMORY ENVELOPE. Modeled on gunbc.host.host_memory_observation
@@ -551,6 +552,11 @@ fn host_memory_quiescent_read_over_ssh(
       HostMemQuiescentReadRefused {
         host: host,
         reason: concat("host_memory_envelope_observe: the read leg on ", host as String, " overran its ProbeLeg wall ceiling; refusing to report memory (never a zero or an absent figure)"),
+      }
+    TypedArgvExecWireInconsistent { fault: f } =>
+      HostMemQuiescentReadRefused {
+        host: host,
+        reason: concat(concat("host_memory_envelope_observe: the read leg on ", host as String, " was dispatched but its reply arrived inconsistent; refusing to report memory (never a zero or an absent figure): "), typed_argv_exec_wire_inconsistent_reason(leg_hint: "host memory read", fault: f)),
       }
     TypedArgvExecConverged { result: r } =>
       if r.exit_code != 0 {

@@ -42,7 +42,8 @@ import gunbc.typed_argv_exec {
   typed_argv_exec_over_ssh,
   TypedArgvExecOutcome,
   TypedArgvExecConverged,
-  TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason }
+  TypedArgvExecRefused, TypedArgvExecOverran, typed_argv_exec_overran_reason,
+  TypedArgvExecWireInconsistent, typed_argv_exec_wire_inconsistent_reason }
 import gunbc.output_policy { OutcomeIsData }
 import gunbc.roadmap.roadmap_belt_actuate {
   BeltNodeLookup,
@@ -214,6 +215,10 @@ fn verification_exec(
         // never as a verification that ran with empty output.
         TypedArgvExecOverran { deadline: d } =>
           VerificationExecTransportRefused { reason: typed_argv_exec_overran_reason(leg_hint: "roadmap verification", deadline: d) }
+        // The leg WAS dispatched but its reply arrived inconsistent, so the verification may or may not
+        // have run: recorded as transport-refused with the wire cause, never a verification that ran empty.
+        TypedArgvExecWireInconsistent { fault: f } =>
+          VerificationExecTransportRefused { reason: typed_argv_exec_wire_inconsistent_reason(leg_hint: "roadmap verification", fault: f) }
       }
   }
 }

@@ -337,6 +337,8 @@ fn live_deploy_healthz_get_ssh_within(url: NonEmptyStr, host: NonEmptyStr, deadl
           )
           TypedArgvExecOverran { deadline: d } =>
             HealthzProbeRefused { probe_error: typed_argv_exec_overran_reason(leg_hint: "live deploy readiness", deadline: d) }
+          TypedArgvExecWireInconsistent { fault: f } =>
+            HealthzProbeRefused { probe_error: typed_argv_exec_wire_inconsistent_reason(leg_hint: "live deploy readiness", fault: f) }
         TypedArgvExecRefused { reason: why } =>
           HealthzProbeRefused { probe_error: why }
       }

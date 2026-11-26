@@ -156,6 +156,8 @@ fn systemd_run_transient_wait_outcome_from_exec(
       )
       TypedArgvExecOverran { deadline: d } =>
         SystemdRunTransientWaitTransportRefused { reason: typed_argv_exec_overran_reason(leg_hint: "systemd transient run", deadline: d) }
+    TypedArgvExecWireInconsistent { fault: f } =>
+      SystemdRunTransientWaitTransportRefused { reason: typed_argv_exec_wire_inconsistent_reason(leg_hint: "systemd transient run", fault: f) }
     TypedArgvExecRefused { reason: why } =>
       SystemdRunTransientWaitTransportRefused { reason: why }
   }
