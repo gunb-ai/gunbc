@@ -15,7 +15,7 @@ import gunbc.fleet.gpu_power_cap_boot_state {
   srv1_power_cap_boot_units, srv1_gunbc_cap_unit_presence,
   boot_unit_addresses, cap_application_claims_on, cap_boot_unit_for, device_uuid_of,
   gunbc_cap_unit_is_installed, installed_unit_addresses_board, unit_lines_can_fail,
-  unit_lines_run_with_full_privileges,
+  unit_lines_run_with_full_privileges, boot_unit_restores_unpriced_cap,
 }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -190,3 +190,49 @@ test fn agreeing_numbers_do_not_become_an_act_this_module_didnt_record() -> Bool
     && installed_unit_addresses_board(host: operator_host_srv1, board: gpu_board_01)
 }
 
+// A UNIT THAT PINS THE CLOCK REFUSES ITS OWN LINE. The census asks the verbatim line what it writes; an
+// -lgc line is a second actuator and part of the operating point the watts were measured under, and no
+// candidate prices 30 W under a 1500 MHz ceiling for a unit whose row carries no typed ceiling. The unit on
+// srv1 today writes only -pl, so this outcome exists only for the fixture -- and it exists as a refusal,
+// never as a pricing that quietly calls the pinned card unlocked (#gunbc.design_argument::fail_closed).
+test fn a_unit_that_pins_the_clock_refuses_its_own_line() -> Bool {
+  let clock_unit = PowerCapBootUnit {
+    host: operator_host_srv1,
+    unit_path: "/etc/systemd/system/gpu-cap-clock@fixture.service" as NonEmptyStr,
+    content_sha256: "fixture: authored for the witness; no host read" as NonEmptyStr,
+    description: "fixture unit that pins the SM clock beside the cap" as NonEmptyStr,
+    unit_type: "service" as NonEmptyStr,
+    wants: [],
+    after: [],
+    wanted_by: [],
+    pre_commands: [],
+    persistence_requested: true,
+    cap_commands: [
+      BootCapCommand {
+        addressed_gpu_uuid: "GPU-fixture-clock-pinned" as NonEmptyStr,
+        target_watts: watt(count: 30),
+        line: BootCommandLine {
+          as_written: "/usr/bin/nvidia-smi -i GPU-fixture-clock-pinned -pl 30 -lgc 1500" as NonEmptyStr,
+          tolerates_failure: false,
+          runs_with_full_privileges: false,
+        },
+      },
+    ],
+    enabled: true,
+    active_state: "active (exited)" as NonEmptyStr,
+    since: "fixture" as NonEmptyStr,
+    read_on: "fixture: authored for the witness; no host read" as NonEmptyStr,
+  }
+  // srv1's breaker has never opened and states no bound, so without the clock guard this line would have
+  // been admitted on the no-constraint warrant -- which is exactly the fabrication this refusal exists to
+  // prevent, and why the fixture asks with no candidates beside it.
+  match boot_unit_restores_unpriced_cap(unit: clock_unit, candidates: [], ask: Absent) {
+    Present { value: why } =>
+      string_contains(s: why as String, pattern: "-lgc 1500")
+        && string_contains(s: why as String, pattern: "no typed ceiling")
+    Absent => false
+  } && match boot_unit_restores_unpriced_cap(unit: clock_unit, candidates: [], ask: Absent) {
+    Present { value: why } => !string_contains(s: why as String, pattern: "decode")
+    Absent => false
+  }
+}

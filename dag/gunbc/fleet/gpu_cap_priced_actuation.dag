@@ -51,6 +51,7 @@ import gunbc.serving.gpu_power_cap_pricing {
   CapCandidate, ConditionRead, ConditionUnread,
   DecodeRead, DecodeUnread, DrawRead, DrawUnread, ShareRead, ShareUnread,
   SmClockCeiling, CappedWithin, CeilingUnread, Unlocked, PowerAsk, AskUnstated, CircuitRelief,
+  CpuFrequencySetting, CappedAt, Uncapped, SettingUnread,
   candidate_cap, candidate_is_on, oversubscription_defects,
 }
 
@@ -142,6 +143,25 @@ type ActuationAdmission
       request: ActuationRequest,
       circuit: NonEmptyStr,
       defect: NonEmptyStr,
+    }
+  // TWO CANDIDATES PRICE THE ONE OPERATING POINT THE REQUEST STATES. Not a tie to break by list order --
+  // two measurements claiming the same watts, the same unlocked clock, the same uncapped cpu, with different
+  // consequences beside them. The fold owns the choice between candidates (its verdict would be a
+  // std.decision receipt); the gate has no verdict, so it reports both claims and refuses
+  // (#gunbc.design_argument::single_authority).
+  | ActuationCandidatesAmbiguousRefused {
+      request: ActuationRequest,
+      point: NonEmptyStr,
+      candidates: List<NonEmptyStr>,
+    }
+  // THE UNIT WRITES THE CLOCK AND CARRIES NO TYPED CEILING FOR IT. -pl alone leaves the card finding its own
+  // clock; -lgc pins it, and a pinned clock is part of the operating point the watts were measured under.
+  // BootCapCommand today carries the cap line and the verbatim line, not a typed -lgc value -- so a unit whose
+  // verbatim line contains -lgc cannot be priced, and says so, rather than being priced as unlocked
+  // (#gunbc.design_argument::fail_closed: no plausible output is fabricated).
+  | ClockLineUnpricedRefused {
+      request: ActuationRequest,
+      line: NonEmptyStr,
     }
 
 // ── THE DEMONSTRATED CONSTRAINT ─────────────────────────────────────────────────────────────────────
@@ -431,23 +451,68 @@ fn price_the_request(
   candidates: List<CapCandidate>,
   ask: Optional<PowerAsk>,
 ) -> ActuationAdmission {
-  price_the_actuation(
-    request: request,
-    candidate: candidate_pricing(candidates: candidates, host: request.host, cap: request.cap),
-    ask: ask,
-  )
+  let matches = candidates_pricing_the_point(candidates: candidates, request: request)
+  if matches.length() > 1 {
+    ActuationCandidatesAmbiguousRefused {
+      request: request,
+      point: operating_point_text(request: request),
+      candidates: map(matches, c => c.label),
+    }
+  } else {
+    price_the_actuation(
+      request: request,
+      candidate: matches.first(),
+      ask: ask,
+    )
+  }
 }
 
-// The candidate that prices exactly this admission's operating point on this machine, if one exists. The
-// clock ceiling is deliberately NOT matched here: it is not on the admission (no -lgc line exists there), and
-// matching it at lookup time would hide a ceiling mismatch inside a "no candidate" refusal instead of
-// reporting it as the mismatch it is.
-fn candidate_pricing(
+// THE FULL OPERATING POINT, MATCHED -- not host and watts alone. A request writes what it writes: watts, and
+// no clock lock when its ceiling is Absent. A candidate that prices 30 W with the SM clock unlocked is a
+// different operating point from 30 W under a 1500 MHz ceiling, and both differ from 30 W on a machine held
+// at 2.0 GHz by a cpu cap the actuation never writes. Picking among these by list order would be a second
+// selection the fold does not own, and pricing a watts-only actuation by a cpu-capped candidate would fabricate
+// a control the actuation does not perform (#gunbc.design_argument::single_authority, ::fail_closed).
+fn candidate_prices_the_point(candidate: CapCandidate, request: ActuationRequest) -> Bool {
+  candidate_is_on(c: candidate, host: request.host)
+    && candidate_watts(c: candidate) == watt_count(w: request.cap)
+    && (
+      match request.ceiling {
+        Absent => match candidate.sm_clock {
+          Unlocked => true
+          _ => false
+        }
+        Present { value: v } => match candidate.sm_clock {
+          CappedWithin { maximum: m } => hertz_count(h: m) == hertz_count(h: v)
+          _ => false
+        }
+      }
+    )
+    && match candidate.cpu_cap {
+      Uncapped => true
+      _ => false
+    }
+}
+
+// Everything that prices exactly this operating point. One is the candidate; more is two claims about one
+// point and the gate refuses rather than picking; none is the unpriced refusal, naming what to read.
+fn candidates_pricing_the_point(
   candidates: List<CapCandidate>,
-  host: HostIdentity,
-  cap: Watt,
-) -> Optional<CapCandidate> {
-  filter(candidates, c => candidate_is_on(c: c, host: host) && candidate_watts(c: c) == watt_count(w: cap)).first()
+  request: ActuationRequest,
+) -> List<CapCandidate> {
+  filter(candidates, c => candidate_prices_the_point(candidate: c, request: request))
+}
+
+fn operating_point_text(request: ActuationRequest) -> NonEmptyStr {
+  join([
+    to_string(watt_count(w: request.cap)),
+    " W with clock ",
+    match request.ceiling {
+      Absent => "unlocked"
+      Present { value: v } => join(["pinned to ", to_string(hertz_count(h: v) / 1000000), " MHz"], ""),
+    },
+    " and cpu uncapped (the actuation writes only the power limit)",
+  ], "") as NonEmptyStr
 }
 
 // There is no accessor between an admission and the watt value: the converge matches this sum and reads
@@ -465,6 +530,8 @@ fn actuation_admits(a: ActuationAdmission) -> Bool {
     ActuationAskUnstatedRefused { request: _, candidate_label: _, said: _ } => false
     ActuationAskUnservedRefused { request: _, candidate_label: _, asked_for: _, demonstrated: _ } => false
     ContradictoryConstraintRefused { request: _, circuit: _, defect: _ } => false
+    ActuationCandidatesAmbiguousRefused { request: _, point: _, candidates: _ } => false
+    ClockLineUnpricedRefused { request: _, line: _ } => false
   }
 }
 
@@ -495,6 +562,15 @@ fn actuation_refusal_text(a: ActuationAdmission) -> String {
     ], "")
     ContradictoryConstraintRefused { request: _, circuit: l, defect: d } => join([
       "the constraint the ask serves contradicts its own declaration: ", l as String, " -- ", d as String,
+    ], "")
+    ActuationCandidatesAmbiguousRefused { request: r, point: pt, candidates: cs } => join([
+      "two candidates price this operating point (", pt as String, ") with different consequences beside them: ",
+      join(map(cs, c => c as String), " | "),
+      " -- reconcile the readings or let the fold's verdict choose; the gate does not break ties by list order",
+    ], "")
+    ClockLineUnpricedRefused { request: _, line: l } => join([
+      "the unit's own line pins the SM clock (", l as String,
+      ") but BootCapCommand carries no typed ceiling for it: an -lgc line is part of the operating point and has never been priced as one; model the ceiling beside the line",
     ], "")
     ActuationPriced { actuation: _ } => ""
     NoDemonstratedConstraint { request: _, warrant: w } => w as String

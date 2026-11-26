@@ -45,7 +45,8 @@ import extdeps.uri { Uri, Https }
 import gunbc.serving.gpu_power_cap_pricing {
   CapCandidate, PowerAsk, AskUnstated, CircuitRelief,
   srv4_sweep_unlocked_candidate, srv4_sweep_1500_candidate, srv4_sweep_1200_candidate,
-  srv3_40w_candidate, srv3_30w_2ghz_candidate, strip_relief_ask_2026_11_24, priced_candidates_on,
+  srv3_40w_candidate, srv3_30w_2ghz_candidate, srv4_30w_30ghz_candidate,
+  strip_relief_ask_2026_11_24, priced_candidates_on, priced_candidates_all,
   recorded_ask_for_host,
   candidate_cap,
 }
@@ -56,6 +57,7 @@ import gunbc.fleet.gpu_cap_priced_actuation {
   ContradictoryConstraintRefused,
   price_the_actuation, price_the_actuation_against, actuation_admits, actuation_refusal_text,
   actuation_still_owed, under_demonstrated_constraint, demonstrated_constraints_on,
+  price_the_request, ActuationCandidatesAmbiguousRefused,
 }
 
 data live_uuid: NonEmptyStr = "GPU-30000000-0000-4000-8000-000000000004" as NonEmptyStr
@@ -505,4 +507,85 @@ test fn the_same_actuation_under_a_circuit_that_fits_is_admitted() -> Bool {
       admitted(a) && declaration_ref_eq(a: circuit_identity(c: p.circuit), b: circuit_identity(c: within))
     _ => false
   }
+}
+
+// ── THE LOOKUP MATCHES THE WHOLE OPERATING POINT ───────────────────────────────────────────────────
+//
+// Several candidates share 30 W on srv4: unlocked, under six ceilings, on a 2.0 GHz cpu, on a released cpu.
+// A lookup that keyed on watts and took the first was a second selection -- list order decided what got
+// checked, a 1500 MHz request could be paired with the unlocked reading and refused as a mismatch, and a
+// watts-only actuation could be admitted on a candidate whose point includes a cpu cap it never writes.
+// The gate now matches every actuator the request states and refuses, typed, when the rows leave it a choice.
+
+test fn the_lookup_prices_the_whole_operating_point_not_just_the_watts() -> Bool {
+  let point_list = [srv4_sweep_unlocked_candidate, srv4_sweep_1500_candidate, srv4_30w_20ghz_candidate]
+  let unlocked = price_the_request(
+    request: srv4_request(w: 30, ceiling: Absent),
+    candidates: point_list,
+    ask: strip_ask(),
+  )
+  let pinned = price_the_request(
+    request: srv4_request(w: 30, ceiling: Present { value: mhz(1500) }),
+    candidates: point_list,
+    ask: strip_ask(),
+  )
+  let missing = price_the_request(
+    request: srv4_request(w: 30, ceiling: Present { value: mhz(1500) }),
+    candidates: [srv4_sweep_unlocked_candidate],
+    ask: strip_ask(),
+  )
+  match unlocked {
+    // The only entry at 30 W, clock unlocked, cpu uncapped: not the 2.0 GHz row (cpu cap the actuation
+    // does not write), not the 1500 MHz row (a clock lock the actuation does not pin).
+    ActuationPriced { actuation: p } => string_contains(s: p.candidate.label as String, pattern: "clock unlocked")
+    _ => false
+  } && match pinned {
+    // The 1500 MHz request finds the row that measured 1500 MHz -- list order no longer mispairs it with
+    // the unlocked reading and reports a mismatch that was really a lookup error.
+    ActuationPriced { actuation: p } => string_contains(s: p.candidate.label as String, pattern: "1500 MHz")
+    _ => false
+  } && match missing {
+    // And where no row prices the point, the refusal is the unpriced one naming what to read -- never a
+    // mismatch against a candidate that was never this operating point.
+    UnpricedActuationRefused { request: _, circuits: _, missing: ms } => ms.length() == 4
+    _ => false
+  }
+}
+
+test fn two_readings_of_one_point_refuse_as_ambiguous_not_by_list_order() -> Bool {
+  // The fleet's own rows: 30 W with the clock unlocked was measured twice, under a released cpu in the
+  // sweep and again as the CPU cap came off, with different figures beside them. The gate has no verdict
+  // from the fold, so it reports both claims and refuses; the fix is a reading or a verdict, never an order.
+  let a = price_the_request(
+    request: srv4_request(w: 30, ceiling: Absent),
+    candidates: priced_candidates_all(),
+    ask: strip_ask(),
+  )
+  match a {
+    ActuationCandidatesAmbiguousRefused { request: _, point: pt, candidates: cs } =>
+      cs.length() == 2
+        && string_contains(s: pt as String, pattern: "30 W with clock unlocked")
+        && any(cs, c => string_contains(s: c as String, pattern: "869 MHz"))
+        && any(cs, c => string_contains(s: c as String, pattern: "3.0 GHz"))
+    _ => false
+  } && !admitted(a)
+}
+
+test fn a_cpu_capped_point_never_prices_a_watts_only_actuation() -> Bool {
+  // srv3's only 40 W reading is the one taken with the cpu held at 2.0 GHz. An actuation that writes only
+  // -pl 40 does not hold the cpu there, so that reading cannot price it: the refusal is the unpriced one,
+  // naming what to read -- not an admission on watts the actuation never performed the controls for.
+  let r = ActuationRequest {
+    host: operator_host_srv3,
+    board: Absent,
+    gpu_uuid: "GPU-srv3-lookup-fixture" as NonEmptyStr,
+    cap: watt(count: 40),
+    ceiling: Absent,
+  }
+  let a = price_the_request(request: r, candidates: [srv3_40w_candidate], ask: strip_ask())
+  match a {
+    UnpricedActuationRefused { request: _, circuits: cs, missing: ms } =>
+      ms.length() == 4 && any(cs, c => string_contains(s: c as String, pattern: "surge strip"))
+    _ => false
+  } && !admitted(a)
 }

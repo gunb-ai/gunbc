@@ -59,6 +59,7 @@ import gunbc.fleet.gpu_device_observation {
 import gunbc.serving.gpu_power_cap_pricing { CapCandidate, PowerAsk }
 import gunbc.fleet.gpu_cap_priced_actuation {
   ActuationAdmission, ActuationRequest, actuation_admits, actuation_refusal_text, price_the_request,
+  ClockLineUnpricedRefused,
 }
 
 // A LINE AS SYSTEMD WILL RUN IT, with the two prefixes recorded as the separate facts they are. systemd gives
@@ -146,14 +147,27 @@ fn boot_command_actuation(
     // actually is and the rows; which candidate prices that operating point is decided once, in
     // gunbc.fleet.gpu_cap_priced_actuation -- a private filter here would be a second rule about what counts
     // as this operating point, and the boot path and the converge path would drift apart (#gunbc.design_argument::single_authority).
-    admission: price_the_request(
-      request: boot_command_request(unit: unit, command: command),
-      candidates: candidates,
-      ask: ask,
-    ),
+    // The verbatim line is asked first whether it pins the clock: it is the only record of what the unit
+    // writes, and pricing an -lgc line as if it left the clock unlocked would fabricate the fact the header
+    // exists to protect (#gunbc.design_argument::fail_closed).
+    admission: if string_contains(s: command.line.as_written as String, pattern: "-lgc") {
+      ClockLineUnpricedRefused {
+        request: boot_command_request(unit: unit, command: command),
+        line: command.line.as_written,
+      }
+    } else {
+      price_the_request(
+        request: boot_command_request(unit: unit, command: command),
+        candidates: candidates,
+        ask: ask,
+      )
+    },
   }
 }
 
+// The request a cap line IS: watts, and -- because the caller has already established the verbatim line
+// writes no clock lock -- an actuation that leaves the SM clock to find itself. That last field is derived
+// from the verbatim line, not asserted beside it; a unit that does pin the clock never reaches this function.
 fn boot_command_request(unit: PowerCapBootUnit, command: BootCapCommand) -> ActuationRequest {
   ActuationRequest {
     host: unit.host,
