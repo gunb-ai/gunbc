@@ -92,12 +92,11 @@ import gunbc.compute.work_request { DeclaredOutput, CheckoutRoot }
 import gunbc.compute.compute_attempt_slots_root { compute_seat_path, ComputeFlatSeat }
 import gunbc.compute.compute_work_records { ComputeWorkRecords, compute_work_log_path, compute_work_consumption_path }
 import gunbc.compute.compute_producer_lease { compute_producer_leases_reading_path }
-import gunbc.compute.compute_exec { ComputeExecOk, ComputeExecFailed }
+import gunbc.compute.compute_exec { ComputeExecOk, ComputeExecFailed, compute_exec }
 import gunbc.compute.work_provider_local {
   ComputeLayout,
   OutputsMismatch,
   OutputsReturned,
-  compute_exec,
   compute_ensure_dir,
   compute_layout,
   compute_program,

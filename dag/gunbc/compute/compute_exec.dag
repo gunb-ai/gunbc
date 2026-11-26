@@ -27,8 +27,18 @@ module gunbc.compute.compute_exec
 // the type (//test/claim/compute/output_capture_absence_wet_witness and
 // //test/claim/compute/work_request_witness) hold at the same tally as before the move.
 
-import std.types { String, Int }
+import std.types { String, Int, List, FilePath }
+import extdeps.gunbc
+import gunbc.output_policy { OutcomeIsData }
 
 type ComputeExec
   = ComputeExecOk { stdout: String, stderr: String }
   | ComputeExecFailed { exit_code: Int, stdout: String, stderr: String }
+
+// THE ONE WAY THAT SHAPE IS PRODUCED: one process, its working directory, its arguments, its
+// reading. Moved with the type so neither half can be re-derived somewhere else; the host-side
+// provider imports both (gunbc.design_argument::single_authority).
+fn compute_exec(program: String, workdir: String, args: List<String>) -> ComputeExec {
+  let r = gunbc.WitnessBin.Run(workdir: workdir as FilePath, bin_path: program as FilePath, args: args, expect: OutcomeIsData)
+  if r.success { ComputeExecOk { stdout: r.stdout, stderr: r.stderr } } else { ComputeExecFailed { exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr } }
+}

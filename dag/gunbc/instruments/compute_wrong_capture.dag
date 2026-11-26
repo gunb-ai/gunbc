@@ -15,9 +15,9 @@ import gunbc.roadmap.roadmap_dashboard_instance { fleet_compute_hermetic_dashboa
 import gunbc.compute.host_capacity { compute_root }
 import gunbc.compute.work_request { work_default_build, work_declared_outputs, WorkOutput }
 import gunbc.compute.compute_producer_lease { compute_producer_leases_reading_label }
-import gunbc.compute.compute_exec { ComputeExecOk, ComputeExecFailed }
+import gunbc.compute.compute_exec { ComputeExecOk, ComputeExecFailed, compute_exec }
 import gunbc.compute.work_provider_local {
-  ComputeLayout, compute_layout, compute_exec, ComputeExecOk, ComputeExecFailed,
+  ComputeLayout, compute_layout,
   compute_build_command_argv, compute_operation_env, compute_run_unit, ComputeUnitRunExecuted, ComputeUnitRunRefused,
   ComputeUnitStopObservation, ComputeUnitStopObservationRefused,
   NoStopObservation, NoPathVirtualization,

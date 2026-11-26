@@ -257,13 +257,18 @@ test fn no_declared_outputs_is_the_empty_return_never_a_refusal() -> Bool {
 
 data compute_pool_roots: List<String> = ["dag/gunbc/compute"]
 data provider_module: String = "gunbc.compute.work_provider_local"
+// THE EXEC PRODUCER MOVED OUT OF THE PROVIDER (gunbc.compute.compute_exec, remote-build-client-
+// closure-cost L1), so the walk has to be allowed to cross that edge and the qualified name it
+// expects is the leaf's. The row below still asserts the SAME fact -- the capture route reaches the
+// one exec producer -- it names the authority's home, which is all a qualified name is for.
+data exec_leaf_module: String = "gunbc.compute.compute_exec"
 
 fn reached_names_from(entry: String) -> List<String> {
   let reach = call_reachable_decls_from_root(
     entry_module: provider_module,
     fn_name: entry,
     terminal_callee_symbols: [],
-    closure_modules: [provider_module],
+    closure_modules: [provider_module, exec_leaf_module],
     decls: fn_arrow_decl_facts_live(pool_roots: compute_pool_roots, pool_files: [])
   )
   list_map(xs: reach.reached, f: fn(d) { d.qualified_name })
@@ -271,6 +276,11 @@ fn reached_names_from(entry: String) -> List<String> {
 
 fn reached_contains(entry: String, fn_name: String) -> Bool {
   any(xs: reached_names_from(entry: entry), predicate: fn(q) { q == join([provider_module, ".", fn_name], "") })
+}
+
+// The same question asked of the declaration that now lives in the exec leaf.
+fn exec_reached_contains(entry: String, fn_name: String) -> Bool {
+  any(xs: reached_names_from(entry: entry), predicate: fn(q) { q == join([exec_leaf_module, ".", fn_name], "") })
 }
 
 // POSITIVE CONTROL: the walk reaches the deepest leaf from the route, so every row below excludes a
@@ -301,7 +311,7 @@ test fn the_capture_runs_through_the_shared_continuation() -> Bool {
 // shape these rows pin (route -> continuation -> step, with the producer under the route) breaks.
 test fn the_producer_of_readings_is_what_production_runs() -> Bool {
   reached_contains(entry: "compute_return_outputs", fn_name: "compute_capture_readings_of_output")
-    && reached_contains(entry: "compute_capture_readings_of_output", fn_name: "compute_exec")
+    && exec_reached_contains(entry: "compute_capture_readings_of_output", fn_name: "compute_exec")
 }
 
 // THE FOLD IS THE CONTINUATION, NOT A SECOND RULE: the hermetic fold reaches the continuation (and

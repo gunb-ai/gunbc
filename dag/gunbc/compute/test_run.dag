@@ -45,7 +45,7 @@ fn test_git_program(instance: HostDashboardInstance) -> String {
 }
 
 fn test_exec(git: String, workdir: String, args: List<String>) -> gunbc.compute.compute_exec.ComputeExec {
-  gunbc.compute.work_provider_local.compute_exec(program: git, workdir: workdir, args: args)
+  gunbc.compute.compute_exec.compute_exec(program: git, workdir: workdir, args: args)
 }
 
 // Stage everything, write the tree, wrap it in a dangling commit parented on HEAD. `git add -A` is

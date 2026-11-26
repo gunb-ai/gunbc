@@ -1,6 +1,6 @@
 module gunbc.compute.work_provider_local
 
-import gunbc.compute.compute_exec { ComputeExec, ComputeExecOk, ComputeExecFailed }
+import gunbc.compute.compute_exec { ComputeExec, ComputeExecOk, ComputeExecFailed, compute_exec }
 import gunbc.durable_create_once { create_once_record, CreateOnceRecording, CreateOnceRecorded, CreateOnceAlreadyRecorded, CreateOnceRefused, directory_admission, DirectoryAdmitted, DirectoryNotAdmitted }
 import gunbc.compute.compute_attempt_slots_root {
   compute_attempt_slots, ComputeSeat, ComputeFlatSeat, compute_seat_of, compute_seat_directory, compute_seat_holder_line,
@@ -275,11 +275,6 @@ type ComputeUnitRunReading
   // be rendered, and starting the seat anyway would leave a seat whose end no reading can ever show --
   // the condition this route exists to close, so it refuses the launch instead of degrading into it.
   | ComputeUnitStopObservationRefused { cause: String }
-
-fn compute_exec(program: String, workdir: String, args: List<String>) -> ComputeExec {
-  let r = gunbc.WitnessBin.Run(workdir: workdir as FilePath, bin_path: program as FilePath, args: args, expect: OutcomeIsData)
-  if r.success { ComputeExecOk { stdout: r.stdout, stderr: r.stderr } } else { ComputeExecFailed { exit_code: r.exit_code, stdout: r.stdout, stderr: r.stderr } }
-}
 
 fn compute_program(instance: HostDashboardInstance, cap: ExecutionCapability) -> String {
   dispatch_capability_program(environment: instance.execution_environment, cap: cap)
