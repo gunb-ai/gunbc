@@ -387,7 +387,11 @@ fn host_ruled_build_pool_reservation(host: HostIdentity) -> ByteSize? {
 // ken's 22 GiB ruling into two 11 GiB seats, each under his 18.2 GiB measured build peak.
 fn host_ruled_build_pool_seat_count(host: HostIdentity) -> Nat? {
   match first_where(ruled_build_pool_reservations, r => (r.host as String) == (host as String)) {
-    Present { value: r } => Present { value: r.seats }
+    // THE ROW ALREADY CARRIES THE OPTIONAL. seats is a Nat? on the row; this arm hands that layer
+    // through UNWRAPPED -- wrapping it again would build a Nat?? where the declared Nat? answers,
+    // and a double layer reads as "the row said Absent" only because the layer silently collapses,
+    // losing the distinction v2.std.optional_layers exists to preserve (review 99032).
+    Present { value: r } => r.seats
     Absent => Absent
   }
 }
