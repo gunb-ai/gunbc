@@ -42,3 +42,5 @@ After the original helper has been restored, place the digest of the real edited
 ## An unchanged file with a different occurrence allocator
 
 On a full fresh front-end call, changing the helper's one-digit integer literal should preserve the complete authored occurrence transport for this fixed-shape edit. Prepending a second file with a named declaration should move the helper's occurrence IDs, even though its bytes, logical path and full newline index stay equal. Compare the same ordered occurrences in the helper by authored spelling and source span. The second prediction challenges using file contents alone as the key for occurrence allocation.
+
+The recorded observations, including the first mismatched diagnostic expectation, are in [RESULTS.md](RESULTS.md).

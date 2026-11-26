@@ -35,6 +35,7 @@ data materialization_shadow_seed_growth_justification: SeedGrowthJustification =
     decl_ref(module_path: "v1_compiler.tests.materialization_shadow", decl_name: "write_helper"),
     decl_ref(module_path: "v1_compiler.tests.materialization_shadow", decl_name: "run"),
     decl_ref(module_path: "v1_compiler.tests.materialization_shadow", decl_name: "sample"),
+    decl_ref(module_path: "v1_compiler.tests.materialization_shadow", decl_name: "a_new_provider_under_an_admitted_root_refuses_before_shadow_observation"),
     decl_ref(module_path: "v1_compiler.tests.materialization_shadow", decl_name: "fresh_process_predictions_match_observed_compiler_results"),
     decl_ref(module_path: "v1_compiler.tests.materialization_shadow", decl_name: "body_edits_change_some_compiler_answers_and_preserve_others"),
     decl_ref(module_path: "v1_compiler.tests.materialization_shadow_questions", decl_name: "evaluate"),

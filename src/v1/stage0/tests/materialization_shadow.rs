@@ -34,6 +34,7 @@ struct Reading {
 }
 
 struct Experiment {
+    source_roots: Vec<PathBuf>,
     repo: PathBuf,
     dir: PathBuf,
 }
@@ -61,7 +62,11 @@ fn create_experiment() -> Experiment {
         "module shadow.unrelated\nfn nobody_calls() -> Bool { true }\n",
     )
     .unwrap();
-    let case = Experiment { repo, dir };
+    let case = Experiment {
+        source_roots: vec![dir.join("src")],
+        repo,
+        dir,
+    };
     write_helper(&case, 1);
     case
 }
@@ -77,12 +82,11 @@ fn write_helper(case: &Experiment, literal: i32) {
 fn run(case: &Experiment, store: Option<&Path>, expected_code: i32) -> Reading {
     let src = case.dir.join("src");
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_gunbc"));
-    cmd.current_dir(&case.repo)
-        .env_remove(STORE_ENV)
-        .arg("run")
-        .arg("--source-root")
-        .arg(&src)
-        .arg("--entry")
+    cmd.current_dir(&case.repo).env_remove(STORE_ENV).arg("run");
+    for root in &case.source_roots {
+        cmd.arg("--source-root").arg(root);
+    }
+    cmd.arg("--entry")
         .arg(src.join("entry.dag"))
         .args(["--function", "main"]);
     if let Some(store) = store {
@@ -153,6 +157,58 @@ fn sample<'a>(
         );
     }
     first
+}
+
+#[test]
+fn a_new_provider_under_an_admitted_root_refuses_before_shadow_observation() {
+    let mut case = create_experiment();
+    let second = case.dir.join("zz-second");
+    fs::create_dir(&second).unwrap();
+    case.source_roots.push(second.clone());
+    let store = case.dir.join("store");
+    let baseline = run(&case, Some(&store), 0);
+    let original_hits = |reading: &Reading| {
+        for file in ["entry.dag", "helper.dag"] {
+            let original = sample(&case, &baseline, file, "miss", "absent");
+            let current = sample(&case, reading, file, "hit", "equal");
+            assert_eq!(
+                (&current.input_digest, &current.output_digest),
+                (&original.input_digest, &original.output_digest),
+            );
+        }
+        assert_eq!(reading.stdout, baseline.stdout);
+    };
+    original_hits(&run(&case, Some(&store), 0));
+
+    let helper = case.dir.join("src/helper.dag");
+    let competing = second.join("other.dag");
+    fs::write(
+        &competing,
+        "module shadow.helper\nfn answer() -> Int { 2 }\n",
+    )
+    .unwrap();
+    let expected = format!(
+        "cause: module shadow.helper is declared in both {} and {}",
+        helper.strip_prefix(&case.repo).unwrap().display(),
+        competing.strip_prefix(&case.repo).unwrap().display(),
+    );
+    for selected_store in [&store, &case.dir.join("empty-store")] {
+        let refused = run(&case, Some(selected_store), 1);
+        let causes: Vec<_> = refused
+            .stderr
+            .lines()
+            .map(str::trim_start)
+            .filter(|line| line.starts_with("cause:"))
+            .collect();
+        assert_eq!(causes, [expected.as_str()], "{}", refused.stderr);
+        assert!(refused.stdout.is_empty());
+        assert!(refused.events.is_empty());
+        assert!(!refused.stderr.contains("[materialization-shadow-error]"));
+    }
+
+    fs::remove_file(competing).unwrap();
+    original_hits(&run(&case, Some(&store), 0));
+    fs::remove_dir_all(&case.dir).unwrap();
 }
 
 #[test]
