@@ -1,0 +1,145 @@
+module gunbc.compute.seat_cgroup_absence
+
+// THE ABSENT UNIT CGROUP IS A GENERIC END PROOF. A unit's own cgroup directory under the capped work
+// slice is created by the kernel when the unit's first process forks into it and removed only when
+// EVERY process that was ever in it has ended; while any survives, the directory and its cgroup.events
+// stand. So ENOENT on the seat's own cgroup directory proves nothing the unit launched can still run
+// -- the same fact the stop-hook record carries when the hook got to write it, obtainable here even
+// for seats launched before the hook existed, with no per-seat operator ruling. This mirrors
+// gunbc.compute.recorded_cgroup_drain, which seals on exactly this evidence for the belt cgroup; the
+// difference is only WHERE the path comes from: the belt path was recorded at acquisition, the seat
+// path is DERIVED through the one placement authority -- user services launched with
+// Slice=gunbc-user-work.slice (gunbc.compute.unit_bounds user_work_binding_settings) land under
+// /user.slice/user-<uid>.slice/user@<uid>.service/<slice>/<unit>.service -- from the unit name the
+// attempt record already carries and the launching uid this process shares with the seat's manager.
+// TWO GUARDS keep a wrong spelling from ever releasing a live seat. First, the slice PREFIX must be
+// listed successfully before the unit's absence inside it is read as a fact: a read of cgroup.events
+// fails NotFound for missing ANCESTORS too (extdeps.filesystem.filesystem_io FilesystemExactPathAbsent),
+// and a prefix that cannot be listed is unobservable, never absent. Second, the caller must have
+// reached this through the manager's authoritative not-found reading (LoadState=not-found, guarded in
+// gunbc.compute.work_provider_local unit_lifecycle_unpopulated): an unread manager is not a dead unit.
+// populated 1 PRESERVES: a manager that forgot a unit while its processes run keeps its charge. An
+// unreadable file or prefix preserves too -- gunbc.design_argument::fail_closed: a located diagnostic,
+// never a release.
+
+import std.types { String, NonEmptyStr }
+import std.nat { Nat }
+import std.optional { Present, Absent }
+import extdeps.linux.cgroup_v2 {
+  cgroup_v2_mount_point, cgroup_v2_child_path, cgroup_v2_events_path,
+  CgroupEventsDecoded, CgroupEventsUnparseable, decode_cgroup_events_populated,
+}
+import gunbc.live_deploy.slice_bounds { user_work_slice_unit_name }
+import gunbc.compute.host_capacity { compute_launching_uid }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  FilesystemExactRead, FilesystemExactPathRead, FilesystemExactPathAbsent,
+  FilesystemExactPathUnreadable, FilesystemExactPathKindUnrecognized, filesystem_exact_read,
+}
+
+data seat_user_slice_prefix_head: String = "user-"
+data seat_user_slice_suffix: String = ".slice"
+data seat_user_service_head: String = "user@"
+data seat_user_service_tail: String = ".service"
+
+// THE DERIVATION. Two facts fix the path: the placement rule above and the uid the seat's user manager
+// runs as. Nothing here takes a caller's path string.
+fn seat_unit_cgroup_prefix(mount: NonEmptyStr, uid: Nat) -> NonEmptyStr {
+  cgroup_v2_child_path(
+    parent: cgroup_v2_child_path(
+      parent: cgroup_v2_child_path(
+        parent: cgroup_v2_child_path(parent: mount, child: "user.slice" as NonEmptyStr),
+        child: join([seat_user_slice_prefix_head, to_string(value: uid), seat_user_slice_suffix], "") as NonEmptyStr),
+      child: join([seat_user_service_head, to_string(value: uid), seat_user_service_tail], "") as NonEmptyStr),
+    child: user_work_slice_unit_name)
+}
+
+fn seat_unit_cgroup_dir(mount: NonEmptyStr, uid: Nat, unit: NonEmptyStr) -> NonEmptyStr {
+  cgroup_v2_child_path(parent: seat_unit_cgroup_prefix(mount: mount, uid: uid), child: unit)
+}
+
+// WHAT THE OBSERVER CAN COME BACK WITH. The prefix arms and the file arms are kept apart because they
+// license different conclusions only through the decider below, never here.
+type SeatCgroupStanding
+  = SeatCgroupPrefixUnobservable { detail: String }
+  | SeatCgroupAbsent { detail: String }
+  | SeatCgroupPopulated { detail: String }
+  | SeatCgroupEmpty { detail: String }
+  | SeatCgroupUnreadable { detail: String }
+
+// WHAT THE FOLD MAY ACT ON: ended, preserve, or say nothing. No caller composes these by hand.
+type SeatCgroupEndProof
+  = SeatCgroupEnded { detail: String }
+  | SeatCgroupPreserve { detail: String }
+  | SeatCgroupUnobservable { detail: String }
+
+fn seat_cgroup_end_proof(standing: SeatCgroupStanding) -> SeatCgroupEndProof {
+  match standing {
+    SeatCgroupAbsent { detail: d } => SeatCgroupEnded { detail: d }
+    SeatCgroupEmpty { detail: d } => SeatCgroupEnded { detail: d }
+    SeatCgroupPopulated { detail: d } => SeatCgroupPreserve { detail: d }
+    SeatCgroupPrefixUnobservable { detail: d } => SeatCgroupUnobservable { detail: d }
+    SeatCgroupUnreadable { detail: d } => SeatCgroupUnobservable { detail: d }
+  }
+}
+
+fn seat_cgroup_standing_from_events_body(body: String, at: NonEmptyStr) -> SeatCgroupStanding {
+  match decode_cgroup_events_populated(body: body) {
+    CgroupEventsDecoded { populated: true } =>
+      SeatCgroupPopulated { detail: join(["processes remain in ", at as String], "") }
+    CgroupEventsDecoded { populated: false } =>
+      SeatCgroupEmpty { detail: join([at as String, " reports populated 0: drained, not yet reaped", ""] , "") }
+    CgroupEventsUnparseable { cause: c } =>
+      SeatCgroupUnreadable { detail: join([at as String, ": cgroup.events could not be decoded: ", c], "") }
+  }
+}
+
+fn seat_cgroup_standing_from_exact_read(read: FilesystemExactRead, at: NonEmptyStr) -> SeatCgroupStanding {
+  match read {
+    FilesystemExactPathRead { path: _, content: body } => seat_cgroup_standing_from_events_body(body: body, at: at)
+    FilesystemExactPathAbsent { path: _ } =>
+      // Safe ONLY because the prefix listing below succeeded first: with the slice directory proven to
+      // stand, NotFound on the unit directory inside it is about the unit, not about the spelling.
+      SeatCgroupAbsent { detail: join(["no cgroup directory stands at ", at as String, "; nothing the unit launched can still run", ""], "") }
+    FilesystemExactPathUnreadable { path: _, kind: _, error: e } =>
+      SeatCgroupUnreadable { detail: join([at as String, " could not be read: ", e], "") }
+    FilesystemExactPathKindUnrecognized { path: _, observed: o, error: e } =>
+      SeatCgroupUnreadable { detail: join([at as String, ": ", o, ": ", e], "") }
+  }
+}
+
+// THE OBSERVATION, at a mount the witness can fake. Production passes the kernel's own row through
+// observe_seat_cgroup_end_proof below; a witness plants a whole tree under its own directory.
+fn observe_seat_cgroup(mount: NonEmptyStr, uid: Nat, unit: NonEmptyStr) -> SeatCgroupStanding {
+  let prefix = seat_unit_cgroup_prefix(mount: mount, uid: uid)
+  let listing = Filesystem.List(path: prefix as String)
+  if !listing.success {
+    // Absent prefix and unreadable prefix are ONE arm, and it licenses nothing: both say the
+    // derivation's root could not be established, which is a fact about this read, not about the seat.
+    SeatCgroupPrefixUnobservable { detail: join(["the work slice at ", prefix as String, " could not be listed: ", listing.error], "") }
+  } else {
+    let dir = seat_unit_cgroup_dir(mount: mount, uid: uid, unit: unit)
+    let events_path = cgroup_v2_events_path(cgroup_path: dir)
+    let raw = Filesystem.Read(path: events_path as String)
+    seat_cgroup_standing_from_exact_read(
+      read: filesystem_exact_read(
+        path: events_path as String,
+        content: raw.content,
+        success: raw.success,
+        error: raw.error,
+        error_kind: raw.error_kind),
+      at: dir)
+  }
+}
+
+// THE PRODUCTION ENTRY: the seat's uid is THIS process's own effective uid -- the seat's unit and this
+// recovery route were launched by the same service principal, so /proc/self/status is the authority
+// (gunbc.compute.host_capacity compute_launching_uid, the one spelling); a route that cannot name it
+// says so, it does not guess. The mount is the kernel's unified row.
+fn observe_seat_cgroup_end_proof(unit: NonEmptyStr) -> SeatCgroupEndProof {
+  match compute_launching_uid() {
+    Absent => SeatCgroupUnobservable { detail: "this route cannot name the uid whose user manager ran the seat, so its cgroup path cannot be derived" }
+    Present { value: uid } => seat_cgroup_end_proof(
+      standing: observe_seat_cgroup(mount: cgroup_v2_mount_point, uid: uid, unit: unit))
+  }
+}
