@@ -1,0 +1,76 @@
+module v2.test.claim.parse.when_guard_probe
+
+// WHAT PARSES A BRACKETED RUN ON A CALL'S RESULT. `g(a) [when cond]` (host-effect admission) is corpus
+// syntax -- it compiles on main -- and it is not in this grammar under a `when` keyword, so which
+// production reads it decides whether the bracketed-list wall may keep its guard on the INDEX SUFFIX
+// too. Each claim states one position the wall must have right: the admitted-condition form still parses,
+// the index suffix still parses, and a juxtaposed list still refuses. The last two claims classify the
+// corpus module that the wall flagged, so a false refusal there cannot be argued about from the grammar
+// alone.
+
+import v2.compiler.parse_acceptance_census { parse_acceptance_of_text }
+import v2.std.text { String, char_eq }
+import std.algebra { is_prefix_of }
+
+fn accepted(observed: String) -> Bool {
+  observed == "accepted"
+}
+
+fn wall_refused(observed: String) -> Bool {
+  is_prefix_of(prefix: "refused parse_list_element_separator_missing", xs: observed, eq: char_eq)
+}
+
+fn classify(text: String, path: String) -> String {
+  parse_acceptance_of_text(text: text, path: path)
+}
+
+data admitted_condition_source: String = "module p\ndata x: Nat = f(a) [when b != none]\n"
+
+test fn the_admitted_condition_form_still_parses_holds() -> Bool {
+  accepted(classify(text: admitted_condition_source, path: "probe/w1.dag"))
+}
+
+data index_suffix_source: String = "module p\ndata x: Nat = xs[1]\n"
+
+test fn the_index_suffix_still_parses_holds() -> Bool {
+  accepted(classify(text: index_suffix_source, path: "probe/w2.dag"))
+}
+
+data juxtaposed_list_source: String = "module p\ndata xs: List<Nat> = [1 2]\n"
+
+test fn a_juxtaposed_list_refuses_holds() -> Bool {
+  wall_refused(classify(text: juxtaposed_list_source, path: "probe/w3.dag"))
+}
+
+data single_element_list_source: String = "module p\ndata xs: List<Nat> = [1]\n"
+
+test fn a_single_element_list_parses_holds() -> Bool {
+  accepted(classify(text: single_element_list_source, path: "probe/w4.dag"))
+}
+
+data admitted_condition_in_pattern_source: String = "module p\npattern f(a: Nat) -> Nat {\n  y = g(a) [when a != none]\n  return a\n}\n"
+
+test fn the_admitted_condition_in_a_pattern_body_parses_holds() -> Bool {
+  accepted(classify(text: admitted_condition_in_pattern_source, path: "probe/w5.dag"))
+}
+
+data impersonation_module_path: String = "dag/gunbc/auth/optional_impersonation.dag"
+
+test fn the_corpus_admitted_condition_module_parses_holds() -> Bool {
+  let path = impersonation_module_path
+  accepted(classify(text: filesystem_read(path: path).content, path: path))
+}
+
+data openai_module_path: String = "dag/extdeps/llm/openai.dag"
+
+test fn the_corpus_openai_module_parses_holds() -> Bool {
+  let path = openai_module_path
+  accepted(classify(text: filesystem_read(path: path).content, path: path))
+}
+
+data e1b_module_path: String = "dag/product/p4261/e1_b.dag"
+
+test fn the_corpus_e1b_module_parses_holds() -> Bool {
+  let path = e1b_module_path
+  accepted(classify(text: filesystem_read(path: path).content, path: path))
+}

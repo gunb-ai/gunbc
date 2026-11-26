@@ -155,7 +155,7 @@ data decl_ref_disposition_roster: List<DeclRefDisposition> = [
   DeclRefDisposition { subject: CitedSpan { text: "v2.workflow.floor_unimported_bare_provider_debt" }, reason: HistoricalReceipt { commit: "954ce1b0596294634bc415b79ee0ffa3b5b36bc4" } },
   DeclRefDisposition { subject: CitedSpan { text: "v2.workflow.floor_unimported_bare_provider_debt_roster" }, reason: HistoricalReceipt { commit: "39750802d5683330a10b2b7bf50a2b289be1fa92" } },
   DeclRefDisposition { subject: CitedSpan { text: "v2.workflow.floor_wet_route" }, reason: HistoricalReceipt { commit: "fd17c9f1766025937c8eb775ae45293056510f71" } },
-  DeclRefDisposition { subject: CitedSpan { text: "v2.workflow.source_root_ingest_gate" }, reason: HistoricalReceipt { commit: "1ee213e26f60a3741cebf9cbd1a925ad58c8b1d9" } }
+  DeclRefDisposition { subject: CitedSpan { text: "v2.workflow.source_root_ingest_gate" }, reason: HistoricalReceipt { commit: "1ee213e26f60a3741cebf9cbd1a925ad58c8b1d9" } },
   DeclRefDisposition { subject: CitedSpan { text: "v2.test.claim.body_lowering.anonymous_record_test" }, reason: HistoricalReceipt { commit: "5dbac90fea6f35d780a4353ed05e57665dd82449" } },
   DeclRefDisposition { subject: CitedSpan { text: "test.decl.shared_fn" }, reason: IllustrativeName },
   DeclRefDisposition { subject: CitedSpan { text: "test.user" }, reason: IllustrativeName },

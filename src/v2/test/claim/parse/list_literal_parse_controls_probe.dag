@@ -1,0 +1,52 @@
+module v2.test.claim.parse.list_literal_parse_controls_probe
+
+// THE GATED PRODUCTION NEEDS ITS OWN ACCEPT CONTROLS. This wall gates the bracketed list literal, and
+// the displaced cost on the node was a separator specimen that survived regen, the whole-corpus compile,
+// fixed-point verify and a 15-case matrix -- every control in the family asserted a REFUSAL or exercised
+// some OTHER bracketed form (index suffix, admission `when`, call-argument comma list), so no control
+// ever pushed a bare non-empty list literal through the production the wall actually changed. These are
+// those controls: each legitimate shape the wall must accept -- one element, several elements, a trailing
+// comma, a nested list, no elements -- asserted as ACCEPTED, at head and at main alike. A refusal arm
+// that can fire at a closing bracket shows up here first, and it cannot be argued away from the grammar
+// text because the answer comes from the live parser through the census instrument.
+
+import v2.compiler.parse_acceptance_census { parse_acceptance_of_text }
+import v2.std.text { String }
+
+fn accepted(observed: String) -> Bool {
+  observed == "accepted"
+}
+
+fn classify(text: String, path: String) -> String {
+  parse_acceptance_of_text(text: text, path: path)
+}
+
+data one_element_source: String = "module p\ndata xs: List<Nat> = [1]\n"
+
+test fn a_one_element_list_literal_parses_holds() -> Bool {
+  accepted(classify(text: one_element_source, path: "probe/l1.dag"))
+}
+
+data several_elements_source: String = "module p\ndata xs: List<Nat> = [1, 2, 3]\n"
+
+test fn a_several_element_list_literal_parses_holds() -> Bool {
+  accepted(classify(text: several_elements_source, path: "probe/l2.dag"))
+}
+
+data trailing_comma_source: String = "module p\ndata xs: List<Nat> = [1, 2, 3,]\n"
+
+test fn a_trailing_comma_list_literal_parses_holds() -> Bool {
+  accepted(classify(text: trailing_comma_source, path: "probe/l3.dag"))
+}
+
+data nested_list_source: String = "module p\ndata xs: List<List<Nat>> = [[1], [2, 3]]\n"
+
+test fn a_nested_list_literal_parses_holds() -> Bool {
+  accepted(classify(text: nested_list_source, path: "probe/l4.dag"))
+}
+
+data no_elements_source: String = "module p\ndata xs: List<Nat> = []\n"
+
+test fn an_empty_list_literal_parses_holds() -> Bool {
+  accepted(classify(text: no_elements_source, path: "probe/l5.dag"))
+}

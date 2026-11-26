@@ -1,0 +1,135 @@
+module v2.test.claim.parse.list_separator_formation_wall
+
+import v2.compiler.parse_acceptance_census { parse_acceptance_of_text }
+import v2.std.text { String, char_eq }
+import std.algebra { is_prefix_of }
+
+// THE SEPARATOR WALL, PROBE-PAIRED. The bracketed list literal (`[ .. ]`) used the comma-list
+// combinator that makes EVERY inter-element comma optional, so a dropped `,` parsed the two
+// neighbours as juxtaposed elements and silently changed the list's arity -- a program whose shape
+// depends on which commas the author typed. Now the separator is REQUIRED between elements (a trailing
+// comma is still admitted, and `[]` / `[x]` still parse): the juxtaposition refuses at parse as
+// parse_list_element_separator_missing, located at the juxtaposed element. These probes are the pair:
+// they are RED while the separator is optional (the classifier says "accepted") and GREEN once the
+// refusal lands. The call-argument and record-init controls below are NO-REGRESSION controls only: they
+// pin that this wall did not spill outside the bracketed list. Juxtaposition in THOSE forms (`g(1 2)`,
+// `{ a: 1 b: 2 }`) is the same silent-arity defect and is NOT claimed correct here -- it is recorded, with
+// its reason and its trigger, as gunbc.integration_concern.optional_comma_list_separator_outside_the_bracketed_list_wall.
+
+// ---- SEPARATOR PROBES (the wall): a dropped list separator refuses, located at the juxtaposed element.
+
+data sep_drop_all_source: String = "module p\ndata v: List<Int> = [1 2 3]\n"
+
+data sep_drop_middle_source: String = "module p\ndata v: List<Int> = [1, 2 3]\n"
+
+data sep_drop_first_source: String = "module p\ndata v: List<Int> = [1 2, 3]\n"
+
+// The classifier reports a separator refusal when it begins `refused parse_list_element_separator_missing`
+// (the range suffix is the located token's extent, asserted separately by the exact-string probes below).
+// On main the same specimen classifies as "accepted", so each probe is RED while the separator is
+// optional and GREEN once the refusal lands -- the flip the wall is measured by.
+fn separator_refused(observed: String) -> Bool {
+  is_prefix_of(
+    prefix: "refused parse_list_element_separator_missing",
+    xs: observed,
+    eq: char_eq
+  )
+}
+
+test fn separator_dropped_all_commas_refuses_holds() -> Bool {
+  separator_refused(parse_acceptance_of_text(text: sep_drop_all_source, path: "probe/sep_drop_all.dag"))
+}
+
+test fn separator_dropped_middle_comma_refuses_holds() -> Bool {
+  separator_refused(parse_acceptance_of_text(text: sep_drop_middle_source, path: "probe/sep_drop_middle.dag"))
+}
+
+test fn separator_dropped_first_comma_refuses_holds() -> Bool {
+  separator_refused(parse_acceptance_of_text(text: sep_drop_first_source, path: "probe/sep_drop_first.dag"))
+}
+
+// ---- CORPUS-SHAPED SPECIMEN (the wall, on the shape the corpus actually used): minimized from
+// dag/gunbc/instrument_targets.dag::instrument_source_roots_rows at main, where five
+// `InstrumentSourceRootsRow { name: ".." roots: .. }` elements sat in one bracketed list with no separator
+// between them. Record fields carry no separator at all (that is the record form), so the missing comma was
+// exactly at the list level -- invisible to every check except a human diff read (review 45347), and the
+// list silently held five elements either way. Kept small so the witness is readable; the shape, not the
+// size, is what is being pinned.
+
+data corpus_shaped_juxtaposed_source: String =
+  "module p\ntype Row {\n  name: String\n  roots: List<String>\n}\ndata rows: List<Row> = [Row { name: \"a\" roots: [\"x\"] } Row { name: \"b\" roots: [\"y\"] }]\n"
+
+data corpus_shaped_separated_source: String =
+  "module p\ntype Row {\n  name: String\n  roots: List<String>\n}\ndata rows: List<Row> = [Row { name: \"a\" roots: [\"x\"] }, Row { name: \"b\" roots: [\"y\"] }]\n"
+
+test fn corpus_shaped_juxtaposed_records_refuse_holds() -> Bool {
+  separator_refused(
+    parse_acceptance_of_text(text: corpus_shaped_juxtaposed_source, path: "probe/corpus_juxtaposed.dag")
+  )
+}
+
+test fn corpus_shaped_separated_records_parse_holds() -> Bool {
+  parse_acceptance_of_text(text: corpus_shaped_separated_source, path: "probe/corpus_separated.dag") == "accepted"
+}
+
+// ---- LEGITIMATE-LIST CONTROLS (green): the legitimate list shapes the wall must never refuse.
+
+data list_commas_source: String = "module p\ndata v: List<Int> = [1, 2, 3]\n"
+
+data list_single_source: String = "module p\ndata v: List<Int> = [7]\n"
+
+data list_empty_source: String = "module p\ndata v: List<Int> = []\n"
+
+data list_trailing_source: String = "module p\ndata v: List<Int> = [1, 2, 3,]\n"
+
+data list_single_trailing_source: String = "module p\ndata v: List<Int> = [9,]\n"
+
+test fn legitimate_list_commas_parses_holds() -> Bool {
+  parse_acceptance_of_text(text: list_commas_source, path: "probe/l1.dag") == "accepted"
+}
+
+test fn legitimate_list_single_parses_holds() -> Bool {
+  parse_acceptance_of_text(text: list_single_source, path: "probe/l2.dag") == "accepted"
+}
+
+test fn legitimate_list_empty_parses_holds() -> Bool {
+  parse_acceptance_of_text(text: list_empty_source, path: "probe/l3.dag") == "accepted"
+}
+
+test fn legitimate_list_trailing_comma_parses_holds() -> Bool {
+  parse_acceptance_of_text(text: list_trailing_source, path: "probe/l4.dag") == "accepted"
+}
+
+test fn legitimate_list_single_trailing_comma_parses_holds() -> Bool {
+  parse_acceptance_of_text(text: list_single_trailing_source, path: "probe/l5.dag") == "accepted"
+}
+
+// ---- OUT-OF-SCOPE CONTROL: call-argument and record-init comma-lists are NOT this wall. They stay
+// green (the legitimate forms parse), proving the change did not reach outside the bracketed list.
+
+data call_args_source: String = "module p\ndata n: Nat = g(1, 2)\n"
+
+data record_init_source: String = "module p\ndata r: Rec = { a: 1, b: 2 }\n"
+
+test fn call_args_comma_list_parses_holds() -> Bool {
+  parse_acceptance_of_text(text: call_args_source, path: "probe/c1.dag") == "accepted"
+}
+
+test fn record_init_comma_list_parses_holds() -> Bool {
+  parse_acceptance_of_text(text: record_init_source, path: "probe/r1.dag") == "accepted"
+}
+
+// ---- COMPLETENESS CONTROL (the paired half, already landed on main): a block after a bare identifier
+// in if-condition position parses as the block it is -- the false refusal is closed. Carried green.
+
+data if_block_bare_ident_source: String = "module p\ndata n: Nat = if ok { 1 } else { 2 }\n"
+
+data if_block_bare_ident_no_else_source: String = "module p\ndata n: Nat = if ok { 1 }\n"
+
+test fn if_block_after_bare_identifier_parses_holds() -> Bool {
+  parse_acceptance_of_text(text: if_block_bare_ident_source, path: "probe/i1.dag") == "accepted"
+}
+
+test fn if_block_after_bare_identifier_no_else_parses_holds() -> Bool {
+  parse_acceptance_of_text(text: if_block_bare_ident_no_else_source, path: "probe/i2.dag") == "accepted"
+}

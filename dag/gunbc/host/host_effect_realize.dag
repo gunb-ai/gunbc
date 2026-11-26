@@ -11358,7 +11358,7 @@ fn microvm_controller_starts_no_instance_refusal(step: MicrovmControllerInstallS
     join([
       microvm_controller_install_edge, " refuses before any operation ran: step '",
       microvm_controller_step_name(step: step),
-      "' carries the systemctl lifecycle verb '", offending
+      "' carries the systemctl lifecycle verb '", offending,
       "', which would start or alter instance state; this edge writes template units and reloads the manager only (systemd(1)), and slot instances start at their own edge",
     ], "")
   }

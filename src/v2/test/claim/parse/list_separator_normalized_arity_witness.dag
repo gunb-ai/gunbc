@@ -1,0 +1,351 @@
+module v2.test.claim.parse.list_separator_normalized_arity_witness
+
+import std.types { List }
+import v2.compiler.normalized_tree { NormalizedTree, normalized_tree_roots_to_nodes }
+import v2.compiler.program_assembly { module_roots_from_source_root_ingest }
+import v2.compiler.source_authority { DagSourceReadWitness, SourceRootIngest }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.cross_tree.import_model { DagTree }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.node {
+  Authored,
+  ComputationNode,
+  Edge,
+  Node,
+  NotADeclaration,
+  Positional,
+  Symbol,
+  Transform,
+  node_subtree_nodes,
+  node_with_occurrence_id,
+}
+import v2.std.qualified_name { QualifiedName, declaration_reference_node }
+import v2.std.list_introduction { list_introduction_elements_optional, lower_list_introduction_at }
+import v2.extdeps.languages.dag { dag_language_model }
+import std.optional { Absent, Optional, Present, optional_absent, optional_present }
+import v2.std.text { String }
+import std.algebra { Cons, Empty, fold_list, length }
+import extdeps.communication.medium { Lossless, Medium }
+import std.occurrence_identity { OccurrenceSynthetic }
+
+// EVERY LEGITIMATE LIST KEEPS ITS ARITY AT THE LOWERED FORM, AND THE WALL IS THE ONLY THING THAT
+// CHANGES. The displaced cost on this node was a separator specimen that survived regen, the
+// whole-corpus compile, fixed-point verify and a 15-case matrix because the ACCEPTED list was
+// silently reshaped -- a witness that only asks "did it parse" cannot see it, and neither can the
+// reference floor. So each specimen is loaded as an inline carried-Medium source (hermetic: no
+// filesystem_read, no source_root_walk) through the same route the resolver is handed,
+// program_assembly.module_roots_from_source_root_ingest with the live dag grammar, and every
+// canonical list introduction in the loaded module is counted ONLY through the one canonical reader
+// v2.std.list_introduction.list_introduction_elements_optional -- a leaked comma node or a stray
+// optional wrapper changes the count and the claim goes red instead of counting something plausible.
+//
+// NON-VACUITY: every specimen module ALSO carries a known-good two-element list (ff_ctl), and each
+// claim asserts BOTH the number of canonical lists and their TOTAL element count, so "no lowered
+// list" can never pass because the route failed to run at all. The juxtaposed specimen is the flip:
+// the wall refuses the module, so the counts collapse to 0/0 at head while main silently lowers it
+// to three elements -- the same claim, expected text, run against both trees with one runner.
+//
+// The two hand-built claims prove the reader itself has teeth: a canonical introduction built by
+// lower_list_introduction_at counts its elements, and a Transform whose head edge is not positional
+// is refused. Without them a reader that answered Present for anything would pass the suite.
+
+type Ff639Stats {
+  lists: Int
+  elements: Int
+}
+
+data ff639_three_source: String = "module ff639.arity.three\n\nimport std.types { Bool }\n\nfn ff_take(xs: List<Bool>) -> Bool { true }\n\nfn ff_probe(x: Bool) -> Bool { ff_take(xs: [x, x, x]) }\n\nfn ff_ctl(x: Bool) -> List<Bool> { [x, x] }"
+
+data ff639_single_source: String = "module ff639.arity.single\n\nimport std.types { Bool }\n\nfn ff_take(xs: List<Bool>) -> Bool { true }\n\nfn ff_probe(x: Bool) -> Bool { ff_take(xs: [x]) }\n\nfn ff_ctl(x: Bool) -> List<Bool> { [x, x] }"
+
+data ff639_two_source: String = "module ff639.arity.two\n\nimport std.types { Bool }\n\nfn ff_take(xs: List<Bool>) -> Bool { true }\n\nfn ff_probe(x: Bool) -> Bool { ff_take(xs: [x, x]) }\n\nfn ff_ctl(x: Bool) -> List<Bool> { [x, x] }"
+
+data ff639_trailing_source: String = "module ff639.arity.trailing\n\nimport std.types { Bool }\n\nfn ff_take(xs: List<Bool>) -> Bool { true }\n\nfn ff_probe(x: Bool) -> Bool { ff_take(xs: [x, x, x,]) }\n\nfn ff_ctl(x: Bool) -> List<Bool> { [x, x] }"
+
+data ff639_empty_source: String = "module ff639.arity.empty\n\nimport std.types { Bool }\n\nfn ff_take(xs: List<Bool>) -> Bool { true }\n\nfn ff_probe(x: Bool) -> Bool { ff_take(xs: []) }\n\nfn ff_ctl(x: Bool) -> List<Bool> { [x, x] }"
+
+data ff639_nested_source: String = "module ff639.arity.nested\n\nimport std.types { Bool }\n\nfn ff_take(xs: List<Bool>) -> Bool { true }\n\nfn ff_probe(x: Bool) -> Bool { ff_take(xs: [[x, x], [x]]) }\n\nfn ff_ctl(x: Bool) -> List<Bool> { [x, x] }"
+
+data ff639_juxtaposed_source: String = "module ff639.arity.juxtaposed\n\nimport std.types { Bool }\n\nfn ff_take(xs: List<Bool>) -> Bool { true }\n\nfn ff_probe(x: Bool) -> Bool { ff_take(xs: [x x x]) }\n\nfn ff_ctl(x: Bool) -> List<Bool> { [x, x] }"
+
+fn ff639_read(source: String, id: Symbol, unit: Symbol, path: String) -> DagSourceReadWitness {
+  DagSourceReadWitness {
+    source: Medium { carried: source, fidelity: Lossless },
+    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+    compilation_unit: unit,
+    source_root: DagTree
+  }
+}
+
+fn ff639_count(node: Node, acc: Ff639Stats) -> Ff639Stats {
+  match list_introduction_elements_optional(node: node) {
+    Present { value: elements } =>
+      Ff639Stats { lists: acc.lists + 1, elements: acc.elements + length(xs: elements) }
+    Absent => acc
+  }
+}
+
+
+fn ff639_loads(source: String, id: Symbol, unit: Symbol, path: String) -> Bool {
+  match module_roots_from_source_root_ingest(
+    ingest: Cons { head: ff639_read(source: source, id: id, unit: unit, path: path), tail: Empty },
+    lm: dag_language_model()
+  ) {
+    Accepted { value: roots, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn ff639_has_list(source: String, id: Symbol, unit: Symbol, path: String) -> Bool {
+  ff639_stats(source: source, id: id, unit: unit, path: path).lists >= 1
+}
+
+fn ff639_stats(source: String, id: Symbol, unit: Symbol, path: String) -> Ff639Stats {
+  match module_roots_from_source_root_ingest(
+    ingest: Cons { head: ff639_read(source: source, id: id, unit: unit, path: path), tail: Empty },
+    lm: dag_language_model()
+  ) {
+    Accepted { value: roots, diagnostics: _ } =>
+      fold_list(
+        xs: normalized_tree_roots_to_nodes(roots: roots),
+        empty: Ff639Stats { lists: 0, elements: 0 },
+        cons: fn(acc, root) {
+          fold_list(
+            xs: node_subtree_nodes(root: root),
+            empty: acc,
+            cons: fn(inner, n) { ff639_count(node: n, acc: inner) }
+          )
+        }
+      )
+    Rejected { diagnostics: _ } => Ff639Stats { lists: 0, elements: 0 }
+  }
+}
+
+fn ff639_stats_is(source: String, id: Symbol, unit: Symbol, path: String, lists: Int, elements: Int) -> Bool {
+  let s = ff639_stats(source: source, id: id, unit: unit, path: path)
+  s.lists == lists && s.elements == elements
+}
+
+test fn ff639_three_lowered_arity_holds() -> Bool {
+  ff639_stats_is(
+    source: ff639_three_source,
+    id: ^ff639_three_artifact,
+    unit: ^ff639_three_cu,
+    path: "src/v2/test/fixture/parse/ff639_arity_three.dag",
+    lists: 5,
+    elements: 8
+  )
+}
+
+test fn ff639_single_lowered_arity_holds() -> Bool {
+  ff639_stats_is(
+    source: ff639_single_source,
+    id: ^ff639_single_artifact,
+    unit: ^ff639_single_cu,
+    path: "src/v2/test/fixture/parse/ff639_arity_single.dag",
+    lists: 5,
+    elements: 6
+  )
+}
+
+test fn ff639_two_lowered_arity_holds() -> Bool {
+  ff639_stats_is(
+    source: ff639_two_source,
+    id: ^ff639_two_artifact,
+    unit: ^ff639_two_cu,
+    path: "src/v2/test/fixture/parse/ff639_arity_two.dag",
+    lists: 5,
+    elements: 7
+  )
+}
+
+test fn ff639_trailing_lowered_arity_holds() -> Bool {
+  ff639_stats_is(
+    source: ff639_trailing_source,
+    id: ^ff639_trailing_artifact,
+    unit: ^ff639_trailing_cu,
+    path: "src/v2/test/fixture/parse/ff639_arity_trailing.dag",
+    lists: 5,
+    elements: 8
+  )
+}
+
+test fn ff639_empty_lowered_arity_holds() -> Bool {
+  ff639_stats_is(
+    source: ff639_empty_source,
+    id: ^ff639_empty_artifact,
+    unit: ^ff639_empty_cu,
+    path: "src/v2/test/fixture/parse/ff639_arity_empty.dag",
+    lists: 5,
+    elements: 5
+  )
+}
+
+test fn ff639_nested_lowered_arity_holds() -> Bool {
+  ff639_stats_is(
+    source: ff639_nested_source,
+    id: ^ff639_nested_artifact,
+    unit: ^ff639_nested_cu,
+    path: "src/v2/test/fixture/parse/ff639_arity_nested.dag",
+    lists: 7,
+    elements: 10
+  )
+}
+
+test fn ff639_three_module_loads_holds() -> Bool {
+  ff639_loads(
+    source: ff639_three_source,
+    id: ^ff639_three_load_artifact,
+    unit: ^ff639_three_load_cu,
+    path: "src/v2/test/fixture/parse/ff639_arity_three_load.dag"
+  )
+}
+
+test fn ff639_three_has_canonical_list_holds() -> Bool {
+  ff639_has_list(
+    source: ff639_three_source,
+    id: ^ff639_three_walk_artifact,
+    unit: ^ff639_three_walk_cu,
+    path: "src/v2/test/fixture/parse/ff639_arity_three_walk.dag"
+  )
+}
+
+test fn ff639_single_module_loads_holds() -> Bool {
+  ff639_loads(
+    source: ff639_single_source,
+    id: ^ff639_single_load_artifact,
+    unit: ^ff639_single_load_cu,
+    path: "src/v2/test/fixture/parse/ff639_arity_single_load.dag"
+  )
+}
+
+test fn ff639_single_has_canonical_list_holds() -> Bool {
+  ff639_has_list(
+    source: ff639_single_source,
+    id: ^ff639_single_walk_artifact,
+    unit: ^ff639_single_walk_cu,
+    path: "src/v2/test/fixture/parse/ff639_arity_single_walk.dag"
+  )
+}
+
+test fn ff639_two_module_loads_holds() -> Bool {
+  ff639_loads(
+    source: ff639_two_source,
+    id: ^ff639_two_load_artifact,
+    unit: ^ff639_two_load_cu,
+    path: "src/v2/test/fixture/parse/ff639_arity_two_load.dag"
+  )
+}
+
+test fn ff639_two_has_canonical_list_holds() -> Bool {
+  ff639_has_list(
+    source: ff639_two_source,
+    id: ^ff639_two_walk_artifact,
+    unit: ^ff639_two_walk_cu,
+    path: "src/v2/test/fixture/parse/ff639_arity_two_walk.dag"
+  )
+}
+
+test fn ff639_trailing_module_loads_holds() -> Bool {
+  ff639_loads(
+    source: ff639_trailing_source,
+    id: ^ff639_trailing_load_artifact,
+    unit: ^ff639_trailing_load_cu,
+    path: "src/v2/test/fixture/parse/ff639_arity_trailing_load.dag"
+  )
+}
+
+test fn ff639_trailing_has_canonical_list_holds() -> Bool {
+  ff639_has_list(
+    source: ff639_trailing_source,
+    id: ^ff639_trailing_walk_artifact,
+    unit: ^ff639_trailing_walk_cu,
+    path: "src/v2/test/fixture/parse/ff639_arity_trailing_walk.dag"
+  )
+}
+
+test fn ff639_empty_module_loads_holds() -> Bool {
+  ff639_loads(
+    source: ff639_empty_source,
+    id: ^ff639_empty_load_artifact,
+    unit: ^ff639_empty_load_cu,
+    path: "src/v2/test/fixture/parse/ff639_arity_empty_load.dag"
+  )
+}
+
+test fn ff639_empty_has_canonical_list_holds() -> Bool {
+  ff639_has_list(
+    source: ff639_empty_source,
+    id: ^ff639_empty_walk_artifact,
+    unit: ^ff639_empty_walk_cu,
+    path: "src/v2/test/fixture/parse/ff639_arity_empty_walk.dag"
+  )
+}
+
+test fn ff639_nested_module_loads_holds() -> Bool {
+  ff639_loads(
+    source: ff639_nested_source,
+    id: ^ff639_nested_load_artifact,
+    unit: ^ff639_nested_load_cu,
+    path: "src/v2/test/fixture/parse/ff639_arity_nested_load.dag"
+  )
+}
+
+test fn ff639_nested_has_canonical_list_holds() -> Bool {
+  ff639_has_list(
+    source: ff639_nested_source,
+    id: ^ff639_nested_walk_artifact,
+    unit: ^ff639_nested_walk_cu,
+    path: "src/v2/test/fixture/parse/ff639_arity_nested_walk.dag"
+  )
+}
+
+// THE PINNED TOTALS ARE MEASURED, NOT GUESSED. Each specimen module lowers to a fixed spine of
+// three further canonical introductions carrying three elements between them -- the argument and
+// parameter introductions the lowering materialises for the module's two functions -- on top of the
+// AUTHORED lists (the probe list plus the two-element control). So the pins are: [x, x, x] + [x, x]
+// -> (lists 5, elements 8); [x] + [x, x] -> (5, 6); [x, x] + [x, x] -> (5, 7); [x, x, x,] + [x, x]
+// -> (5, 8); [] + [x, x] -> (5, 5); and [[x, x], [x]] + [x, x] -> (7, 10), the nested probe adding
+// two introductions of two and one elements. They were bracketed with monotone >= claims and then
+// pinned by a one-candidate-passes equality pass, because an earlier draft of this witness pinned
+// hand-guessed totals and was red for a reason that had nothing to do with the wall. Any change to
+// an authored element count -- which is exactly what a dropped separator used to do silently --
+// moves these numbers.
+//
+// THE FLIP CLAIM. THE WALL'S OWN WORDS AT THE FILE LEVEL: this text is the three-element specimen
+// above with two commas removed, and it must not load. Green at head; on main the same claim is red,
+// because there the module loads and its list lowers to three elements -- the silent arity change
+// this node exists to close. It is the only claim in this file whose verdict differs across the
+// trees; every shape above must hold on BOTH, which is the inertness control for the wall.
+test fn ff639_juxtaposed_module_refused_holds() -> Bool {
+  !ff639_loads(
+    source: ff639_juxtaposed_source,
+    id: ^ff639_juxtaposed_load_artifact,
+    unit: ^ff639_juxtaposed_load_cu,
+    path: "src/v2/test/fixture/parse/ff639_arity_juxtaposed_load.dag"
+  )
+}
+
+test fn ff639_canonical_reader_counts_handbuilt_introduction() -> Bool {
+  let a = declaration_reference_node(qn: [^ff639_a], occurrence_id: OccurrenceSynthetic)
+  let b = declaration_reference_node(qn: [^ff639_b], occurrence_id: OccurrenceSynthetic)
+  match list_introduction_elements_optional(
+    node: lower_list_introduction_at(elements: [a, b], occurrence_id: OccurrenceSynthetic)
+  ) {
+    Present { value: elements } => length(xs: elements) == 2
+    Absent => false
+  }
+}
+
+test fn ff639_canonical_reader_refuses_non_positional_head() -> Bool {
+  let a = declaration_reference_node(qn: [^ff639_a], occurrence_id: OccurrenceSynthetic)
+  let smuggled = node_with_occurrence_id(
+    kind: ComputationNode { behavior: Transform },
+    children: [Edge { label: Authored { name: ^ff639_head }, target: a, declaration: NotADeclaration }],
+    occurrence_id: OccurrenceSynthetic
+  )
+  match list_introduction_elements_optional(node: smuggled) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
