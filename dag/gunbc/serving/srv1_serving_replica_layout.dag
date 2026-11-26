@@ -982,10 +982,13 @@ fn srv1_checkpoint_protection_standing(r: Srv1CheckpointProtectionReading) -> Op
 // what an outcome=none line looks like from outside the process. Whether that plain reading is the right one
 // is exactly the open obligation; this row states the contradiction a reader has to discharge, and nothing
 // more. Guarded on a share above zero so a profile that declares no protection at all is not called
-// contradictory for it.
+// contradictory for it. BOTH arms carry the same qualifier in their names, deliberately: this is the plain
+// reading of a knob whose mechanism is on record as UNREAD and whose protective effect is on record as REFUTED
+// (srv1_checkpoint_protection_reading carries that standing), so neither arm may be consumed as a fact about
+// LMCache. A consumer that wants the resolved answer takes it from the read obligation, not from this verdict.
 type Srv1CheckpointProtectionVerdict
   = KnobsConsistentUnderTheirPlainReading
-  | EvictionAndProtectionContradict {
+  | ContradictUnderTheirPlainReading {
       evictable_share: BasisPoint
       watermark_target: BasisPoint
       why: NonEmptyStr
@@ -1000,7 +1003,7 @@ fn srv1_checkpoint_protection_verdict(
   // the conversion is stated rather than assumed because the two rows live in different modules.
   let target = permille_count(p: watermark) * 10
   if share > 0 && 10000 - share < target {
-    EvictionAndProtectionContradict {
+    ContradictUnderTheirPlainReading {
       evictable_share: basis_point(count: 10000 - share),
       watermark_target: basis_point(count: target),
       why: "the protected share leaves less evictable than the watermark demands, so the eviction the contract depends on is the eviction the protection forbids — which is the shape of a controller reporting outcome=none" as NonEmptyStr,

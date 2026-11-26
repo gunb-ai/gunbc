@@ -77,7 +77,7 @@ import gunbc.serving.srv1_serving_replica_layout {
   // parameterised discharge that makes the ladder authorable (class B4 follow-up)
   Srv1CheckpointProtectionReading, ProtectionConfirmedByUpstreamRead, ProtectionRefutedByRun, ProtectionUnread,
   srv1_checkpoint_protection_reading, srv1_checkpoint_protection_is_backed, srv1_checkpoint_protection_standing,
-  Srv1CheckpointProtectionVerdict, KnobsConsistentUnderTheirPlainReading, EvictionAndProtectionContradict,
+  Srv1CheckpointProtectionVerdict, KnobsConsistentUnderTheirPlainReading, ContradictUnderTheirPlainReading,
   srv1_checkpoint_protection_verdict, srv1_checkpoint_protection_verdict_for_srv1,
   srv1_l1_staging_discharge_with_reading,
   // the disk end of the same contract: the anchor, the sum over the roster, the store-sharing permission
@@ -1863,7 +1863,7 @@ test fn no_tier_size_buys_the_contract_while_the_knob_is_unread() -> Bool {
 // reachable is consistent, and a profile that declares no protection at all is not called contradictory.
 test fn the_two_declared_numbers_are_priced_against_each_other() -> Bool {
   let srv1_verdict_ok = match srv1_checkpoint_protection_verdict_for_srv1 {
-    EvictionAndProtectionContradict { evictable_share: e, watermark_target: w, why: reason } =>
+    ContradictUnderTheirPlainReading { evictable_share: e, watermark_target: w, why: reason } =>
       basis_point_count(bp: e) == 5000
         && basis_point_count(bp: w) == 8000
         && string_contains(s: reason as String, pattern: "outcome=none")
@@ -1877,7 +1877,7 @@ test fn the_two_declared_numbers_are_priced_against_each_other() -> Bool {
     watermark: srv1_lmcache_l2_eviction_watermark
   ) {
     KnobsConsistentUnderTheirPlainReading => true
-    EvictionAndProtectionContradict { evictable_share: _, watermark_target: _, why: _ } => false
+    ContradictUnderTheirPlainReading { evictable_share: _, watermark_target: _, why: _ } => false
   }
   let unprotected = match srv1_checkpoint_protection_verdict(
     retention: Srv1CheckpointRetentionPolicy {
@@ -1887,7 +1887,7 @@ test fn the_two_declared_numbers_are_priced_against_each_other() -> Bool {
     watermark: srv1_lmcache_l2_eviction_watermark
   ) {
     KnobsConsistentUnderTheirPlainReading => true
-    EvictionAndProtectionContradict { evictable_share: _, watermark_target: _, why: _ } => false
+    ContradictUnderTheirPlainReading { evictable_share: _, watermark_target: _, why: _ } => false
   }
   srv1_verdict_ok
     && reachable
