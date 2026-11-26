@@ -7,8 +7,8 @@ import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_6ce85c, operator_host_srv1, operator_host_srv3, operator_host_srv4 }
 import gunbc.fleet.fleet_tailnet { tailnet_host_from }
 import gunbc.serving.serving_layout { host_6ce85c_layout, srv3_layout, srv4_layout, ServingLayoutResult, ServingLayoutConfigured, ServingLayoutRefused }
-import gunbc.serving.serving_capacity_anchor { ServingCapacityShape, ServingShapeDerived, ServingShapeEstimated, ServingShapeRefused, ShapeThroughputUnread, serving_shape_refusal_message, serving_replica_grant_for }
-import gunbc.serving.serving_replica_profile { srv1_vllm_replica_0_profile, srv1_vllm_replica_1_profile, replica_shape_named, srv3_strata_profile, srv4_strata_profile, h11_strata_profile, replica_shape_named_with_grant, ServingReplicaProfile }
+import gunbc.serving.serving_capacity_anchor { ServingCapacityShape, ServingShapeDerived, ServingShapeEstimated, ServingShapeRefused, ShapeThroughputUnread, serving_shape_refusal_message }
+import gunbc.serving.serving_replica_profile { srv1_vllm_replica_0_profile, srv1_vllm_replica_1_profile, replica_shape_named, srv3_strata_profile, srv4_strata_profile, h11_strata_profile, replica_admission_named, ServingReplicaProfile }
 import extdeps.external_authority { ExternalAuthority, CitedFigureStanding, TranscribedUncited, cited_figure_read_obligation }
 import extdeps.uri { uri_https, uri_wire }
 import extdeps.currency.currency { CurrencyCode, Usd, currency_alphabetic_code }
@@ -1165,12 +1165,15 @@ fn router_dev_h11_naming(name: String, port: Nat, bus: String, retiring: List<St
 // figures/rungs/warm store come from the profile the row names (h11/srv3/srv4 each carry the profile their old
 // fixed anchor bound), so a host -- its figures, its possible unread state -- is decided by its ROW, not a
 // per-host arm. The GRANT is a composition fact the JOIN decides: read per replica from the host layout's own
-// group via the fold (serving_replica_grant_for), never baked into the profile. One root prices every host; the
-// row's capacity tracks the layout that actually grants it (root_generalization; per-replica cut-over, step 2).
+// group via the fold, never baked into the profile -- and it runs through the ONE joined-admission function
+// (serving_replica_profile::replica_admission_named) that the engine's batch slots also read, so cap and
+// --parallel are the same number by derivation, not by agreement (operator review of #17060, 2026-11-25).
+// One root prices every host; the row's capacity tracks the layout that actually grants it
+// (root_generalization; per-replica cut-over, step 2).
 fn router_dev_replica_shape(n: RouterDevReplicaNaming, layout: ServingLayoutResult) -> ServingCapacityShape {
   match n.anchor {
     AnchorStrataProfile { profile: p } =>
-      replica_shape_named_with_grant(p: p, grant: serving_replica_grant_for(layout: layout, deployment: n.name, group: n.group as NonEmptyStr), deployment: n.name)
+      replica_admission_named(p: p, layout: layout, deployment: n.name, group: n.group as NonEmptyStr)
   }
 }
 

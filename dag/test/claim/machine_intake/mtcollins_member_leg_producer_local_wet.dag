@@ -10,11 +10,11 @@ module test.claim.machine_intake.mtcollins_member_leg_producer_local_wet
 // reading reasons would carry `exit=`/`-1`, failing the negative assertions.
 //
 // It is a `_local_wet` module because `answer_on` on a LocalCommandHost performs a real local exec;
-// execute it by hand with `gunbc run --claim-run --entry` (no --dry-run).
+// execute it by hand with `gunbc test --wet //test/claim/machine_intake/mtcollins_member_leg_producer_local_wet:<test fn>`.
 
 import std.types { Bool, NonEmptyStr, String }
 import gunbc.machine_intake.mtcollins1_census_member_readback {
-  answer_on, HostLeg, LegAnswered, LegNotDispatched,
+  answer_on, HostLeg, LegAnswered, LegNotDispatched, LegUnanswered,
   MemberRead, MemberUnread, IsoMeasured, IsoUnmeasured,
   member_reading_of_measure, iso_reading_of, member_reading_after_extract, digest_of_sha256sum,
 }
@@ -34,6 +34,7 @@ test fn a_never_spawned_readback_leg_is_unread_by_its_cause_never_a_fabricated_e
   let leg = answer_on(host: LocalCommandHost, command: never_spawned_readback_executable())
   match leg {
     LegAnswered { exit_code: _, stdout: _, stderr: _ } => false
+    LegUnanswered { cause: _ } => false
     LegNotDispatched { reason: cause } =>
       cause != ""
         && !string_contains(s: cause, pattern: "exit=")

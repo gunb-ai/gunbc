@@ -202,7 +202,6 @@ data seed_retention_frontier_join_roster: List<SeedRetentionFrontierRow> = [
   retained_reason_undeclared(path: "src/closure_identity.rs", cause: SeedRetainedIntrinsicSource),
   retained_reason_undeclared(path: "src/recorded_fixture.rs", cause: SeedRetainedIntrinsicSource),
   retained_reason_undeclared(path: "src/phase_profile.rs", cause: SeedRetainedIntrinsicSource),
-  retained_reason_undeclared(path: "src/pre_push.rs", cause: SeedRetainedIntrinsicSource),
   retained_reason_undeclared(path: "src/memory_governor.rs", cause: SeedRetainedIntrinsicSource),
   retained_reason_elsewhere(path: "src/cssl_seed_linked_closure_assembly.rs", cause: SeedRetainedIntrinsicSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "pre_existing_hand_retained_registration_backfill_note"),
   retained_reason_elsewhere(path: "src/required_regen_host.rs", cause: SeedRetainedIntrinsicSource, module_path: "v2.compiler.self_host.stage0_crate_layout", decl_name: "pre_existing_hand_retained_registration_backfill_note"),

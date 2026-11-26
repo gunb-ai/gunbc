@@ -33,10 +33,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // gunbc.ci.ci_layer_roots long_lane_exclusion_note): each witness tokenizes/parses a module through
 // the interpreted v2 frontend with the full dag language model, ~5s+ per witness, over the per-PR
 // fast-lane eval budget - discovery excludes test/claim/long/ at dir grain and the run-29892063728
-// receipt shows all 12 witnesses EvalBudgetExceeded in place. Recipe: claim_batch --source-root
+// receipt shows all 12 witnesses EvalBudgetExceeded in place. Recipe: gunbc run --source-root
 // src/v2 --source-root dag --entry src/v2/test/claim/long/mandatory_tag_gate_witness.dag
-// --functions <csv of the test fns> --claim-run --wet (~2min; run receipted green 2026-07-22,
-// 12/12 PASS). Parse grain carries the full declaration (name lexeme, type annotation, value
+// --function <test fn>, once per test fn; the interpreter reports each Bool in its refusal line
+// (the claim_batch recipe it replaces ran all 12 in ~2min, receipted green 2026-07-22, 12/12 PASS). Parse grain carries the full declaration (name lexeme, type annotation, value
 // vocabulary), so every arm is exercised there, including the misnamed-anchor control - the exact
 // #6991 regression class this wall makes unwritable. Normalize grain lowers a data declaration to a named
 // nullary Arrow member (body_lower_data_decl_to_member, #12197, 2026-09-24), which the gate reads

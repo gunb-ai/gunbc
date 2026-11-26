@@ -243,6 +243,12 @@ fn uncataloged_program(invocation: NonEmptyStr) -> ProgramIdentity
     decl_ref(module_path: "gunbc.gunbc_cli_command", decl_name: "gunbc_test_command"),
     decl_ref(module_path: "gunbc.gunbc_cli_command", decl_name: "gunbc_run_command"),
     decl_ref(module_path: "gunbc.gunbc_cli_command", decl_name: "gunbc_installed_run_with_named_arguments_command"),
+    // The `gunbc test` BATCH mints the SAME program as `gunbc_test_command` -- the release `gunbc` under
+    // `release_bin_rel_path` -- so this adds a mint SITE, not a new entry to the census of what gunbc
+    // executes. It is the invocation that replaces the two legacy claim entrypoints, whose own program rows
+    // (`claim_batch`) leave the census in the same change that deletes the binary
+    // (gunbc.plans.claim_execution_consolidation).
+    decl_ref(module_path: "gunbc.gunbc_cli_command", decl_name: "gunbc_test_batch_command"),
     decl_ref(module_path: "extdeps.browser.chromium", decl_name: "chromium_version_command"),
     decl_ref(module_path: "gunbc.harness.harness_shell_job", decl_name: "harness_backstopped_shell_command"),
     // The census member readback fail-closed producer control builds a guaranteed-nonexistent executable
