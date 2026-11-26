@@ -17,6 +17,7 @@ import gunbc.serving.serving_context_cap { serving_fleet_context_cap }
 import gunbc.serving.strata_ada_pair_cell { srv3_strata_ada_pair_plan }
 import std.algebra { list_append }
 import std.content_hash { sha256_hex_of_text }
+import std.decl_ref { DeclarationRef, decl_ref }
 import gunbc.serving.router_proxy_config { router_request_body_limit, router_request_body_buffer }
 import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_int, json_string, json_array, json_object, json_bool, serialize_json }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
@@ -1528,18 +1529,26 @@ type RouterFileComparison
   | DeclaredDivergenceFromRender
   | DigestIdentifiesTheFileOnly { why: NonEmptyStr }
 
-// Which declaration answers the question this file answers. `NotRenderedAnywhere` names the absence rather
-// than leaving the field blank, because "no row renders this file" is itself the finding.
+// Which declaration answers the question this file answers. The symbol is a std.decl_ref DeclarationRef,
+// resolvable against the Node tree, so a rename of the renderer reddens its consumers instead of leaving
+// this row quietly stale (gunbc.design_argument::single_authority: "A stale symbol is decidable from the
+// Node tree"). HOW the render's bytes reach the host -- staging, writing, the deploy-time key join -- is
+// delivery, not identity, and lives in its own field rather than being spliced into the symbol.
+// `NotRenderedAnywhere` names the absence rather than leaving the field blank, because "no row renders
+// this file" is itself the finding.
 type RouterFileRenderAuthority
-  = RenderedBy { symbol: NonEmptyStr }
+  = RenderedBy { declaration: DeclarationRef, how_bytes_reach_the_host: NonEmptyStr }
   | NotRenderedAnywhere { since: NonEmptyStr }
 
 // One file read off the host: where it lives, who read it and with what, what it held, and how that relates
 // to the render. `instrument` is not a comment: a sha256 with no instrument behind it is a number, and the
 // pass read these over ssh with sha256sum, which is the only thing that makes the value checkable later.
+// `read_on_utc` is the instant alone -- which pass read it, and when the file last moved, is read_context,
+// so the instant stays comparable and orderable (an event belongs in a typed carrier, not in prose).
 type RouterInstalledFileObservation {
   host_path: NonEmptyStr
   read_on_utc: NonEmptyStr
+  read_context: NonEmptyStr
   instrument: NonEmptyStr
   sha256_computed_on_host: NonEmptyStr
   rendered_by: RouterFileRenderAuthority
@@ -1553,10 +1562,14 @@ type RouterInstalledFileObservation {
 // below recomputes those bytes, so the divergence is re-derivable here rather than transcribed.
 data srv1_router_nginx_conf_observation: RouterInstalledFileObservation = RouterInstalledFileObservation {
   host_path: "/home/briansrls/router/nginx.conf" as NonEmptyStr,
-  read_on_utc: "2026-11-25T06:10Z (the pass that recorded the 2026-11-24/25 fleet changes; the file's last hand edit was the 05:36 UTC rule of 2026-11-25)" as NonEmptyStr,
+  read_on_utc: "2026-11-25T06:10Z" as NonEmptyStr,
+  read_context: "The pass that recorded the 2026-11-24/25 fleet changes; the file's last hand edit was the 05:36 UTC rule of 2026-11-25." as NonEmptyStr,
   instrument: "sha256sum over ssh on srv1, in the operator's home; the pass read the file's Lua bodies as text and the digests with the same command" as NonEmptyStr,
   sha256_computed_on_host: "dbe82cd6d21b456b8d1626255f64890029e51bcfa43ec6d4daf2fb8e88d136c0" as NonEmptyStr,
-  rendered_by: RenderedBy { symbol: "router_dev_config (at router_dev_srv1_site), staged by router_dev_srv1_write_candidate and written by router_dev_srv1_write_config" as NonEmptyStr },
+  rendered_by: RenderedBy {
+    declaration: decl_ref(module_path: "gunbc.serving.router_dev_policy", decl_name: "router_dev_config"),
+    how_bytes_reach_the_host: "router_dev_config at the router_dev_srv1_site; staged by router_dev_srv1_write_candidate and written in place by router_dev_srv1_write_config." as NonEmptyStr,
+  },
   comparison: DeclaredDivergenceFromRender,
   why_it_differs: "The proxy on the host carries turn-admission and relocation behaviour this module does not render: an oldest-live-waiter-first fair queue, a long-wait escape, sideways moves allowed only on measured imbalance, a rule making a long wait stop overriding retain (2026-11-25 04:31 UTC), and a rule letting a waiter bound 600 s or longer take a free rented overflow slot (2026-11-25 05:36 UTC). Each is itemised in srv1_router_nginx_hand_edits_2026_11_24_25 with the backup it replaced, and the semantics are left to the scheduler class the operator asked for on 2026-11-25 rather than asserted here.",
 }
@@ -1566,10 +1579,14 @@ data srv1_router_nginx_conf_observation: RouterInstalledFileObservation = Router
 // the row-by-row account is srv1_router_live_rows_2026_11_25.
 data srv1_router_upstreams_json_observation: RouterInstalledFileObservation = RouterInstalledFileObservation {
   host_path: "/home/briansrls/router/upstreams.json" as NonEmptyStr,
-  read_on_utc: "2026-11-25T06:10Z (same pass; rows had been hand-edited at 19:56 and 20:09 UTC on 2026-11-24 and once more after the 22:03-22:05 read)" as NonEmptyStr,
+  read_on_utc: "2026-11-25T06:10Z" as NonEmptyStr,
+  read_context: "Same pass as the proxy read; the rows had been hand-edited at 19:56 and 20:09 UTC on 2026-11-24 and once more after the 22:03-22:05 read." as NonEmptyStr,
   instrument: "sha256sum over ssh on srv1; the row fields were read as JSON text in the same pass" as NonEmptyStr,
   sha256_computed_on_host: "92bd52eddd87dcfda969b926ffb23f1bc1109373fef8156fbddc1884139f7537" as NonEmptyStr,
-  rendered_by: RenderedBy { symbol: "router_dev_first_party (through router_dev_first_party_for_roster), whose keyless bytes are written by router_dev_srv1_write_first_party_upstreams for the deploy to join keys into" as NonEmptyStr },
+  rendered_by: RenderedBy {
+    declaration: decl_ref(module_path: "gunbc.serving.router_dev_policy", decl_name: "router_dev_first_party"),
+    how_bytes_reach_the_host: "router_dev_first_party through router_dev_first_party_for_roster; its keyless bytes are written by router_dev_srv1_write_first_party_upstreams for the deploy to join keys into." as NonEmptyStr,
+  },
   comparison: DigestIdentifiesTheFileOnly {
     why: "The live file carries the per-upstream keys the deploy joins in by name, which are secrets and are in no row; so this digest identifies the live row set and cannot be compared with router_dev_first_party_json. What IS comparable -- the per-row fields the render does produce -- is accounted for row by row in srv1_router_live_rows_2026_11_25." as NonEmptyStr,
   },
@@ -1585,7 +1602,8 @@ data srv1_router_upstreams_json_observation: RouterInstalledFileObservation = Ro
 // reason to leave the boot path unrecorded -- so the file is recorded by its digest, with the gap named.
 data srv1_router_boot_unit_observation: RouterInstalledFileObservation = RouterInstalledFileObservation {
   host_path: "/etc/systemd/system/gunbc-router.service" as NonEmptyStr,
-  read_on_utc: "2026-11-24T22:03-22:05Z" as NonEmptyStr,
+  read_on_utc: "2026-11-24T22:03Z" as NonEmptyStr,
+  read_context: "The boot pass read this unit during the 22:03-22:05Z window on 2026-11-24; read_on_utc records the window's start." as NonEmptyStr,
   instrument: "sha256sum over ssh on srv1; the unit's text was read in the same pass and is what the two lines below summarise" as NonEmptyStr,
   sha256_computed_on_host: "965a551b3d5422f9f8b32fee5082881b742ebac13a9248e5394dcf05333d89c0" as NonEmptyStr,
   rendered_by: NotRenderedAnywhere { since: "created on the host 2026-11-23; it has never existed in any repo" as NonEmptyStr },

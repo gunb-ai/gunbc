@@ -149,7 +149,7 @@ test fn the_router_boot_unit_is_recorded_by_digest_with_the_gap_named() -> Bool 
           DigestIdentifiesTheFileOnly { why: w } => (w as String) != ""
           _ => false
         }
-    RenderedBy { symbol: _ } => false
+    RenderedBy { declaration: _, how_bytes_reach_the_host: _ } => false
   }
 }
 
