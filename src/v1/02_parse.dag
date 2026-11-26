@@ -6869,9 +6869,25 @@ fn parse_expr_list_until_acc(tokens: TokenStream, ctx: ParseContext, end_expecte
   } else {
     let r = parse_expr(tokens: tokens, ctx: ctx)
     if has_err(err: r.err) { return ExprsResult { exprs: [], tokens: r.tokens, ctx: r.ctx, err: r.err } }
-    let e = eat(tokens: r.tokens, expected: ExpectComma)
-    let tokens = skip_newlines(tokens: match e { EatConsumed { token: _, tokens: __ec } => __ec  EatUnchanged { tokens: _ } => r.tokens })
-    parse_expr_list_until_acc(tokens: tokens, ctx: parse_context_after_node(ctx: r.ctx, node: r.expr), end_expected: end_expected, acc: list_push(acc, r.expr))
+    match eat(tokens: r.tokens, expected: ExpectComma) {
+    EatConsumed { token: _, tokens: __ec } =>
+      parse_expr_list_until_acc(tokens: skip_newlines(tokens: __ec), ctx: parse_context_after_node(ctx: r.ctx, node: r.expr), end_expected: end_expected, acc: list_push(acc, r.expr))
+    EatUnchanged { tokens: _ } =>
+      let next = skip_newlines(tokens: r.tokens)
+      let at_end_after = match token_stream_first(stream: next) {
+        Present { value: t } => token_matches_expected(token: t, expected: end_expected)
+        Absent => true
+      }
+      if at_end_after || tok_is_eof(tok: token_stream_first(stream: next)) {
+        parse_expr_list_until_acc(tokens: next, ctx: parse_context_after_node(ctx: r.ctx, node: r.expr), end_expected: end_expected, acc: list_push(acc, r.expr))
+      } else {
+        let found = match token_stream_first(stream: next) {
+          Present { value: t } => token_display_name(token: t)
+          Absent => "EOF"
+        }
+        ExprsResult { exprs: [], tokens: next, ctx: r.ctx, err: Present { value: parse_error(msg: concat("expected separator ',' between list elements, found ", found), span: token_span(tok: token_stream_first(stream: next))) } }
+      }
+    }
   }
 }
 
