@@ -6,8 +6,7 @@ module test.claim.compute.remote_build_serving_converge_witness
 // state, and that it NEVER leaks a secret (the authorized_keys forced-command line is printed
 // only by NAME, never by value). The value-comparison and the indeterminate-vs-drift red
 // controls live in test.claim.compute.remote_build_serving_setup_witness. Run:
-//   gunbc run --source-root dag --source-root src/v2 \
-//     --entry dag/test/claim/compute/remote_build_serving_converge_witness.dag --claim-run
+//   gunbc test //test/claim/compute/remote_build_serving_converge_witness:<test fn>   (one operand per test fn)
 
 import std.optional { Present, Absent }
 import gunbc.compute.host_capacity { user_work_slice_memory_max_for_host, compute_root }

@@ -238,6 +238,42 @@ fn admit_test_operands(
   }
 }
 
+// AN EXACT LABEL THE REGISTRY DOES NOT BIND, WHOSE MODULE RESOLVES IN THE ROOTS, IS A CLAIM.
+//
+// `admit_test_operand` decides by pattern containment alone, so an exact label outside both universes is the registry's
+// to answer. That was right for `//gunbc/instruments:<name>` and wrong for every claim outside `//test/claim/...`: a
+// pinned validation oracle under dag/test/manual, or a parse control under src/v1/tests/claim, named exactly by its
+// label, was refused as an unknown target although its module resolves and its `test fn` exists (found after the
+// claim-execution cutover: `roadmap_launch_canary_execution_contract` spawned exactly that refusal, exit 2). The claim
+// route already selects from every module the given roots hold, so the defect was the admission, and the repair is here.
+//
+// THE REGISTRY IS ASKED FIRST, so a bound instrument subject keeps its producer even if a module of the same path
+// exists, and an unbound label whose module does NOT resolve keeps its `TargetIsUnknown` refusal: a typo is still a typo.
+// Only an exact label moves; a set form outside both universes stays refused by the fold above, because no executor
+// enumerates it. Both questions are PARAMETERS -- the registry's binding and the corpus's resolution are owned elsewhere
+// (`gunbc.instrument_targets`, the roots' module index), and a fold that reached for either would be checkable only
+// against a transcription of it.
+fn admit_resolvable_exact_targets(
+  selection: TestOperandSelection,
+  registry_binds: fn(Label) -> Bool,
+  module_resolves: fn(Label) -> Bool
+) -> TestOperandSelection {
+  match selection {
+    TestOperandsEmpty => TestOperandsEmpty
+    TestOperandsRefused { operand: o, cause: c } => TestOperandsRefused { operand: o, cause: c }
+    TestOperandsSelected { exact: e, native: n, claim: c, seen: s } => TestOperandsSelected {
+      exact: filter(e, l => registry_binds(l) || !module_resolves(l)),
+      native: n,
+      claim: fold(
+        filter(e, l => !registry_binds(l) && module_resolves(l)),
+        init: c,
+        f: (acc, l) => append(acc, SingleTarget { label: l })
+      ),
+      seen: s
+    }
+  }
+}
+
 // WHICH BATCH A SELECTION IS, DECIDED FROM WHAT IT CONTAINS RATHER THAN FROM A SPELLING. The option admissions below
 // (`admit_test_execution_mode`, `admit_test_source_roots`) refuse on this, and the refusal must name a batch that
 // exists: an option belonging to the claim route is refused on a native batch, an instrument batch, or a batch that
