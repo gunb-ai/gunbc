@@ -2,6 +2,7 @@ module test.claim.compute.remote_build_client_witness
 
 import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
 import std.optional { Present, Absent }
+import std.retry_law { RetryHintNone }
 import product.host_identity { HostIdentity }
 import extdeps.clock { ClockUnixMillisObserved, ClockUnixMillisRefused }
 import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex }
@@ -108,7 +109,7 @@ test fn a_run_is_served_only_when_every_request_was_served() -> Bool {
   let op = RemoteCompileEntry { entry: "dag/x.dag" as FilePath }
   let served = RemoteBuildRequestResult { operation: op, step: RemoteBuildAnswered { host: "srv1" as HostIdentity, answer: HostServed { receipt: "{}" } } }
   let failed = RemoteBuildRequestResult { operation: op, step: RemoteBuildAnswered { host: "srv1" as HostIdentity, answer: HostWorkFailed { receipt: "{}" } } }
-  let full = RemoteBuildRequestResult { operation: op, step: RemoteBuildNoHostAvailable { attempts: [RemoteBuildAttempt { host: "srv1" as HostIdentity, answer: HostCapacityFull { detail: "full" } }] } }
+  let full = RemoteBuildRequestResult { operation: op, step: RemoteBuildNoHostAvailable { attempts: [RemoteBuildAttempt { host: "srv1" as HostIdentity, answer: HostCapacityFull { detail: "full", retry: RetryHintNone } }] } }
   remote_build_run_served(r: w_run(results: [served, served]))
     && !remote_build_run_served(r: w_run(results: [served, failed]))
     && !remote_build_run_served(r: w_run(results: [full]))

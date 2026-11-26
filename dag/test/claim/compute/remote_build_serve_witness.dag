@@ -4,7 +4,9 @@ import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
 import std.optional { Present, Absent }
 import product.host_identity { HostIdentity }
 import std.process { ExitSuccess, ExitFailure }
-import std.measure { Kibibyte, kibibyte }
+import std.measure { Kibibyte, kibibyte, second, second_count }
+import std.nat { nat_to_decimal_string }
+import std.retry_law { RetryHintDelay }
 import extdeps.git.object_store { git_object_id_from_untagged_hex, git_null_sha1_object_id }
 import gunbc.cli_wire { CliWirePrintable, CliWireUnprintable }
 import gunbc.compute.work_request {
@@ -20,7 +22,7 @@ import gunbc.compute.remote_build {
   RemoteBuildWork, RemoteCompileEntry, remote_build_source_ref,
   RemoteBuildWorkDecoded, RemoteBuildRequestRefused, RequestWordNotPortable, remote_build_decode_request,
   remote_build_answer_from_exit,
-  remote_build_ending_of_outcome, remote_build_answer_moves_on,
+  remote_build_ending_of_outcome, remote_build_answer_moves_on, remote_build_capacity_retry_floor,
   RemoteBuildHostAnswer, HostServed, HostWorkFailed, HostWorkInFlight, HostCapacityFull, HostCannotServe,
   HostUnreachable, HostRefusedRequest, HostOutcomeUnknown,
   RemoteBuildProbe, ProbeReady, ProbeUnreachable, ProbeCannotServe, remote_build_probe_from_exit, remote_build_probe_answer,
@@ -33,7 +35,12 @@ import gunbc.compute.remote_build_serve {
   remote_build_authorized_keys_lines, remote_build_render_entry, RemoteBuildEntryUnrenderable, remote_build_unrenderable_line, remote_build_installable_line,
   ServeBinaryIdentity, ServeIdentityAbsent, ServeIdentityObserved, ServeIdentityRefused,
   parse_serve_binary_identity, read_serve_binary_identity, serve_receipt_with_identity, ServeReceiptAugment, ReceiptAugmented, ReceiptRefused,
+  remote_build_runtime_max_at, RemoteBuildWall, remote_build_wait_bound_refusal, remote_build_forced_command_words,
 }
+import gunbc.compute.unit_bounds { compute_grant_unit_properties }
+import gunbc.fleet.fleet_known_hosts_anchor { fleet_leg_wall_deadline, HostBuildLeg }
+import extdeps.systemd { RuntimeMaxSecProperty }
+import extdeps.systemd.systemd_run { NamedUnitSetting }
 import extdeps.languages.json.emit { JsonString }
 import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable, json_object_unique_member, JsonMemberFound }
 import gunbc.compute.work_provider_local { ProvideAttached, ProvideFresh, HostRecordWritten }
@@ -66,7 +73,7 @@ test fn every_ending_reads_back_as_its_own_answer() -> Bool {
   match w_answer_of(e: ServeServed) { HostServed { receipt } => receipt == "doc"  _ => false }
     && match w_answer_of(e: ServeWorkEndedUnsuccessfully) { HostWorkFailed { receipt } => receipt == "doc"  _ => false }
     && match w_answer_of(e: ServeRequestRefused) { HostRefusedRequest { detail: _ } => true  _ => false }
-    && match w_answer_of(e: ServeHostFull) { HostCapacityFull { detail: _ } => true  _ => false }
+    && match w_answer_of(e: ServeHostFull) { HostCapacityFull { detail: _, retry: _ } => true  _ => false }
     && match w_answer_of(e: ServeWorkInFlight) { HostWorkInFlight { receipt: _ } => true  _ => false }
     && match w_answer_of(e: ServeHostCannotServe) { HostCannotServe { detail: _ } => true  _ => false }
     && match w_answer_of(e: ServeReady) { HostOutcomeUnknown { detail: _ } => true  _ => false }
@@ -243,6 +250,10 @@ fn w_entry_is_restricted_and_forced(candidate: RemoteBuildCandidate, client_key:
         && line.contains(join(["'--arg' 'host=", candidate.host as String, "'"], ""))
         && line.contains(join(["'--arg' 'serve_binary=", candidate.instance.serve_binary as String, "'"], ""))
         && line.contains(join(["'--arg' 'repo_root=", candidate.instance.repo_root as String, "'"], ""))
+        // The host-declared leg ceiling rides in the installed line, rendered from the same authority the
+        // client arms its leg with -- so an old client cannot bypass it and a ceiling change needs a
+        // reconverge to reach authorized_keys.
+        && line.contains(join(["'--arg' 'leg_ceiling=", nat_to_decimal_string(value: second_count(s: fleet_leg_wall_deadline(kind: HostBuildLeg))), "'"], ""))
         && line.contains(client_key.public_key.material as String)
     }
   }
@@ -367,5 +378,68 @@ test fn the_real_read_route_reads_a_preplaced_identity_file() -> Bool {
   match read_serve_binary_identity(serve_binary: "dag/test/claim/compute/serve_identity_inhabitant") {
     ServeIdentityObserved { revision: revision, sha256: sha256 } => revision == w_identity_revision && sha256 == w_identity_sha256
     _ => false
+  }
+}
+
+// ── THE HOST-SIDE WALL BOUNDS (remote-build-request-host-wall-bounds) ────────────────────────────────
+
+// THE WAIT BOUND: a request that waited past its leg ceiling refuses to START, and one still inside it
+// starts with the remaining budget as its run bound. RED CONTROL: remove the bound (always start) and the
+// first two arms go red; always refuse and the third goes red. This is the srv3 orphan class -- a request
+// held 17h before its unit ran -- made impossible at the one decision that launches the unit.
+test fn a_request_that_waited_past_its_ceiling_refuses_to_start() -> Bool {
+  let wall = RemoteBuildWall { ceiling_seconds: 900, accepted_at_seconds: 1000 }
+  let refused_at_ceiling = match remote_build_runtime_max_at(wall: wall, launch_now_seconds: 1900) { Absent => true  Present { value: _ } => false }
+  let refused_past_ceiling = match remote_build_runtime_max_at(wall: wall, launch_now_seconds: 2000) { Absent => true  Present { value: _ } => false }
+  let starts_inside = match remote_build_runtime_max_at(wall: wall, launch_now_seconds: 1800) {
+    Present { value: s } => second_count(s: s) == 100
+    Absent => false
+  }
+  refused_at_ceiling && refused_past_ceiling && starts_inside
+}
+
+// THE REFUSE-TO-START IS CAPACITY-LIMITED AND RETRY-ALLOWED, read back through the REAL client parser.
+// The host's refusal bytes, admitted by remote_build_answer_from_exit, must land as HostCapacityFull (which
+// moves the request on) carrying a RetryHintDelay equal to the declared floor -- never the final
+// ServeRequestRefused, which would stop the whole roster off one loaded host (operator direction
+// 2026-11-26: one router, capacity-limited answers carry a retry allowance).
+test fn a_wait_bound_refusal_is_capacity_limited_and_retry_allowed() -> Bool {
+  let wall = RemoteBuildWall { ceiling_seconds: 900, accepted_at_seconds: 1000 }
+  let bytes = match remote_build_wait_bound_refusal(wall: wall) {
+    CliWirePrintable { bytes: b, exit: _ } => b
+    _ => ""
+  }
+  let answer = remote_build_answer_from_exit(exit_code: remote_build_serve_exit_code(e: ServeHostFull), stdout: bytes, stderr: "")
+  match answer {
+    HostCapacityFull { detail: _, retry: RetryHintDelay { delay: d } } =>
+      second_count(s: d) == second_count(s: remote_build_capacity_retry_floor)
+        && remote_build_answer_moves_on(a: answer)
+    _ => false
+  }
+}
+
+// THE RUN BOUND LANDS ON THE GRANTED UNIT. compute_grant_unit_properties is the one grant->unit authority;
+// given a remaining budget it emits RuntimeMaxSec=<count>, and given none it emits NO RuntimeMaxSec.
+// RED CONTROL: remove the threading (always none) and the first arm goes red -- the child outlives its leg.
+test fn the_granted_unit_carries_its_remaining_wall_budget() -> Bool {
+  let bounded = compute_grant_unit_properties(granted: kibibyte(count: 1024), working_directory: "/tmp", process_bounds: Absent, runtime_max: Present { value: second(count: 900) })
+  let unbounded = compute_grant_unit_properties(granted: kibibyte(count: 1024), working_directory: "/tmp", process_bounds: Absent, runtime_max: Absent)
+  bounded |> any(p => match p { NamedUnitSetting { property: RuntimeMaxSecProperty, value: v } => v == "900"  _ => false })
+    && !(unbounded |> any(p => match p { NamedUnitSetting { property: RuntimeMaxSecProperty, value: _ } => true  _ => false }))
+}
+
+// THE BOUND IS ON THE GRANTED UNIT, NOT ON THE PROCESS THAT PRINTS THE ANSWER. The forced command runs the
+// front door (which prints the header), and it carries the host-declared ceiling only as a WORD -- never a
+// RuntimeMaxSec on the serve process. Killing the answer printer would turn a slow build into a headerless
+// HostOutcomeUnknown that halts the roster (loyal-badger-240's constraint), so the serve process's own
+// lifetime stays outside the unit bound.
+test fn the_wall_bound_is_on_the_granted_unit_not_the_answer_printer() -> Bool {
+  match remote_build_candidates() |> first {
+    Present { value: c } =>
+      let words = join(map(remote_build_forced_command_words(candidate: c), w => w as String), " ")
+      !words.contains("RuntimeMaxSec")
+        && (compute_grant_unit_properties(granted: kibibyte(count: 1024), working_directory: "/tmp", process_bounds: Absent, runtime_max: Present { value: second(count: 900) })
+            |> any(p => match p { NamedUnitSetting { property: RuntimeMaxSecProperty, value: _ } => true  _ => false }))
+    Absent => false
   }
 }

@@ -524,7 +524,7 @@ fn remote_build_answer_word(a: RemoteBuildHostAnswer) -> String {
     HostServed { receipt: _ } => "served"
     HostWorkFailed { receipt: _ } => "work-failed"
     HostWorkInFlight { receipt: _ } => "work-in-flight"
-    HostCapacityFull { detail: _ } => "capacity-full"
+    HostCapacityFull { detail: _, retry: _ } => "capacity-full"
     HostCannotServe { detail: _ } => "cannot-serve"
     HostUnreachable { detail: _ } => "unreachable"
     HostRefusedRequest { detail: _ } => "request-refused"
@@ -542,7 +542,7 @@ fn remote_build_answer_text(a: RemoteBuildHostAnswer) -> String {
     HostServed { receipt } => receipt
     HostWorkFailed { receipt } => receipt
     HostWorkInFlight { receipt } => receipt
-    HostCapacityFull { detail } => detail
+    HostCapacityFull { detail, retry: _ } => detail
     HostCannotServe { detail } => detail
     // The detail IS the verdict, rendered by fabric; nothing here re-describes it.
     HostExecutionClassRefused { admission: _, detail } => detail
@@ -690,7 +690,7 @@ fn remote_gate_step_outcome(s: RemoteBuildStep) -> RemoteGateOutcome {
         HostWorkFailed { receipt: _ } => GateVerdictOnCode
         HostRefusedRequest { detail: _ } => GateRequestRejected
         HostWorkInFlight { receipt: _ } => GateNoHostAdmitted
-        HostCapacityFull { detail: _ } => GateNoHostAdmitted
+        HostCapacityFull { detail: _, retry: _ } => GateNoHostAdmitted
         HostCannotServe { detail: _ } => GateNoHostAdmitted
         HostUnreachable { detail: _ } => GateNoHostAdmitted
         // A host the fleet's execution class refused never judged the code either: the work was refused

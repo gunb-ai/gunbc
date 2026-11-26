@@ -107,7 +107,7 @@ import gunbc.roadmap.roadmap_attempt_exit_spool {
   AttemptExitRecordFound, AttemptExitRecordNone, AttemptExitRecordUnreadable, AttemptExitRecordWriterUnsubstituted,
   AttemptProcessEnd, AttemptProcessExitedWith, AttemptProcessSignaled,
 }
-import std.measure { Kibibyte, kibibyte_count, kibibyte_to_byte_size, kibibyte, byte_size_count }
+import std.measure { Kibibyte, kibibyte_count, kibibyte_to_byte_size, kibibyte, byte_size_count, Second }
 import gunbc.compute.work_class_grant {
   WorkClass, work_class_of, work_class_wire, WorkClassGrant, GrantAtCeiling, GrantSized, ClassRetryAfterGrantExceeded,
   work_class_grant, work_class_grant_rows, work_class_grant_amount, work_class_grant_is_ceiling, work_class_grant_wire,
@@ -914,9 +914,9 @@ fn compute_dependency_program(dependency: ComputeDependency, bin: GunbcBinary) -
 // THE PROPERTIES ARE A FOLD SO THE BOUND POLICY IS CHECKABLE, and the fold is
 // gunbc.compute.unit_bounds compute_grant_unit_properties -- the one authority from a grant to a
 // unit, shared with the agent session's unit. A compute unit states no process bounds.
-fn compute_unit_properties(layout: ComputeLayout, granted: Kibibyte, path_virtualization: ComputeUnitPathVirtualization) -> List<SystemdRunProperty> {
+fn compute_unit_properties(layout: ComputeLayout, granted: Kibibyte, path_virtualization: ComputeUnitPathVirtualization, runtime_max: Second? = none) -> List<SystemdRunProperty> {
   concat(
-    compute_grant_unit_properties(granted: granted, working_directory: compute_unit_working_directory(layout: layout, path_virtualization: path_virtualization), process_bounds: none),
+    compute_grant_unit_properties(granted: granted, working_directory: compute_unit_working_directory(layout: layout, path_virtualization: path_virtualization), process_bounds: none, runtime_max: runtime_max),
     compute_path_virtualization_properties(layout: layout, path_virtualization: path_virtualization),
   )
 }
@@ -1200,7 +1200,7 @@ fn compute_seat_stop_observations(instance: HostDashboardInstance, identity: Str
 // launcher_env is applied to the systemd-run process via env(1), not as unit --setenv. Empty is
 // inherit; a cold instrument supplies XDG_RUNTIME_DIR / DBUS_SESSION_BUS_ADDRESS when the job env
 // has none. One fold: production and the instrument both call this.
-fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, identity_hex: String, argv: List<String>, env: List<SystemdSetenvBinding>, launcher_env: List<EnvBinding>, granted: Kibibyte, user_runtime_dir: FilePath, stop_observations: List<ComputeUnitStopObservation>, path_virtualization: ComputeUnitPathVirtualization) -> ComputeUnitRunReading {
+fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, identity_hex: String, argv: List<String>, env: List<SystemdSetenvBinding>, launcher_env: List<EnvBinding>, granted: Kibibyte, user_runtime_dir: FilePath, stop_observations: List<ComputeUnitStopObservation>, path_virtualization: ComputeUnitPathVirtualization, runtime_max: Second? = none) -> ComputeUnitRunReading {
   let systemd_run = match instance.toolchain.systemd_run { Present { value: p } => p as String  Absent => "" }
   if systemd_run == "" {
     ComputeUnitRunExecuted { run: ComputeUnitRun {
@@ -1219,7 +1219,7 @@ fn compute_run_unit(instance: HostDashboardInstance, layout: ComputeLayout, iden
     StopObservationPropertiesOk { properties: stop_properties } =>
     match gunbc_user_work_wait_command(
       unit: compute_unit_name(identity_hex: identity_hex),
-      properties: concat(compute_unit_properties(layout: layout, granted: granted, path_virtualization: path_virtualization), stop_properties),
+      properties: concat(compute_unit_properties(layout: layout, granted: granted, path_virtualization: path_virtualization, runtime_max: runtime_max), stop_properties),
       setenv_bindings: concat(
         concat(
           [
@@ -3153,6 +3153,7 @@ fn compute_provide_leaf(
   op: WorkOperation,
   toolchain: AdmittedToolchain,
   dependency: ComputeDependency,
+  runtime_max: Second? = none,
 ) -> ProvideResult {
   let request = ComputeWorkRequest { subject: subject, operation: op, toolchain: toolchain }
   let identity = compute_work_identity(subject: subject, op: op, toolchain: toolchain)
@@ -3167,8 +3168,8 @@ fn compute_provide_leaf(
           ProvideAttached { identity: stored_identity, ending: ending, document: document, host_record: HostRecordWritten }
         ComputeStoreRefused { detail } =>
           compute_fresh(outcome: WorkRefusedByInfrastructure { identity: identity, cause: StoreUnavailable { detail: detail } }, subject: subject, op: op)
-        ComputeStoreAbsent => compute_provide_produce(instance: instance, owner: owner, materialization: materialization, commit: commit, layout: layout, identity: identity, subject: subject, op: op, dependency: dependency)
-        ComputeStoreNotConsulted => compute_provide_produce(instance: instance, owner: owner, materialization: materialization, commit: commit, layout: layout, identity: identity, subject: subject, op: op, dependency: dependency)
+        ComputeStoreAbsent => compute_provide_produce(instance: instance, owner: owner, materialization: materialization, commit: commit, layout: layout, identity: identity, subject: subject, op: op, dependency: dependency, runtime_max: runtime_max)
+        ComputeStoreNotConsulted => compute_provide_produce(instance: instance, owner: owner, materialization: materialization, commit: commit, layout: layout, identity: identity, subject: subject, op: op, dependency: dependency, runtime_max: runtime_max)
       }
     }
   }
@@ -3187,6 +3188,7 @@ fn compute_provide_produce(
   subject: WorkSubject,
   op: WorkOperation,
   dependency: ComputeDependency,
+  runtime_max: Second? = none,
 ) -> ProvideResult {
   match layout.leases {
     ComputeProducerLeasesUnready { detail: d } =>
@@ -3643,7 +3645,7 @@ fn compute_spawn_and_collect(
   if is_compute_command_refused(command: command) {
     compute_claim_refusal_attempt(identity: identity, command: command, launched: launched)
   } else {
-    match compute_run_unit(instance: instance, layout: layout, identity_hex: identity, argv: compute_command_argv_words_of(command: command), env: compute_operation_env(op: op), launcher_env: [], granted: granted, user_runtime_dir: user_runtime_dir, stop_observations: compute_seat_stop_observations(instance: instance, identity: identity), path_virtualization: NoPathVirtualization) {
+    match compute_run_unit(instance: instance, layout: layout, identity_hex: identity, argv: compute_command_argv_words_of(command: command), env: compute_operation_env(op: op), launcher_env: [], granted: granted, user_runtime_dir: user_runtime_dir, stop_observations: compute_seat_stop_observations(instance: instance, identity: identity), path_virtualization: NoPathVirtualization, runtime_max: runtime_max) {
     ComputeUnitRunRefused { cause: cause } =>
       ComputeAttempt {
         outcome: WorkRefusedByInfrastructure { identity: identity, cause: UnitLaunchRefused { cause: cause } },
@@ -3694,8 +3696,8 @@ fn compute_unspawned_summary() -> SystemdRunWaitSummary {
 // request: attached if stored, produced once otherwise, and compile/claims consume its store. A wet
 // claim run is a FreshEffect the ladder answers Recompute (compute_materialization_plan): it runs per
 // occurrence, never reads the store and is never committed, so it is served here rather than refused.
-fn compute_provide(instance: HostDashboardInstance, owner: AttemptOwner, commit: String, op: WorkOperation, target: WorkTarget) -> ProvideResult {
-  compute_provide_admitted(instance: instance, owner: owner, commit: commit, op: op, target: target)
+fn compute_provide(instance: HostDashboardInstance, owner: AttemptOwner, commit: String, op: WorkOperation, target: WorkTarget, runtime_max: Second? = none) -> ProvideResult {
+  compute_provide_admitted(instance: instance, owner: owner, commit: commit, op: op, target: target, runtime_max: runtime_max)
 }
 
 fn compute_refuse_unresolved(cause: WorkInfrastructureRefusal, op: WorkOperation) -> ProvideResult {
@@ -3705,7 +3707,7 @@ fn compute_refuse_unresolved(cause: WorkInfrastructureRefusal, op: WorkOperation
 
 // The subject is resolved FIRST because the declared release is read from the subject's own
 // rust-toolchain.toml; the observed toolchain is then admitted against that requirement.
-fn compute_provide_admitted(instance: HostDashboardInstance, owner: AttemptOwner, commit: String, op: WorkOperation, target: WorkTarget) -> ProvideResult {
+fn compute_provide_admitted(instance: HostDashboardInstance, owner: AttemptOwner, commit: String, op: WorkOperation, target: WorkTarget, runtime_max: Second? = none) -> ProvideResult {
   match compute_resolve_subject(instance: instance, commit: commit) {
     SubjectResolutionRefused { detail } => compute_refuse_unresolved(cause: SubjectUnresolved { detail: detail }, op: op)
     SubjectResolved { subject, toolchain_file } =>
@@ -3726,9 +3728,9 @@ fn compute_provide_admitted(instance: HostDashboardInstance, owner: AttemptOwner
                     Present { value: store } =>
                       match op {
                         BuildGunbcBinaries { profile: _, bins: _ } =>
-                          compute_provide_leaf(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: op, toolchain: toolchain, dependency: NoComputeDependency)
-                        CompileEntry { entry: _ } => compute_provide_dependent(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: op, toolchain: toolchain)
-                        RunClaims { entry: _, functions: _, hermetic: _, window: _ } => compute_provide_dependent(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: op, toolchain: toolchain)
+                          compute_provide_leaf(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: op, toolchain: toolchain, dependency: NoComputeDependency, runtime_max: runtime_max)
+                        CompileEntry { entry: _ } => compute_provide_dependent(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: op, toolchain: toolchain, runtime_max: runtime_max)
+                        RunClaims { entry: _, functions: _, hermetic: _, window: _ } => compute_provide_dependent(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: op, toolchain: toolchain, runtime_max: runtime_max)
                         // A LEAF, deliberately: the gate subject carries its own seed build inside its
                         // argv (compute_operation_argv's arm), because the dependent route hands the
                         // operation the build's binary as a store blob and `gunbc test` cannot judge one
@@ -3736,7 +3738,7 @@ fn compute_provide_admitted(instance: HostDashboardInstance, owner: AttemptOwner
                         // reservations at once, which the dependent route would: the build's charge plus
                         // the gate profile's, and on a carved host those do not both fit.
                         TestGateSubject { label: _ } =>
-                          compute_provide_leaf(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: op, toolchain: toolchain, dependency: NoComputeDependency)
+                          compute_provide_leaf(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: op, toolchain: toolchain, dependency: NoComputeDependency, runtime_max: runtime_max)
                       }
                   }
               }
@@ -3750,8 +3752,8 @@ fn compute_provide_admitted(instance: HostDashboardInstance, owner: AttemptOwner
 // the fact that the BUILD failed to record its side facts -- the stuck lease or the lost consumption
 // reading vanished at exactly the seam where nobody was left to report it (side-chat review at
 // f5344b28). The work contract is untouched; only the host-record fact is joined.
-fn compute_provide_dependent(store: ComputeStore, instance: HostDashboardInstance, owner: AttemptOwner, commit: String, subject: WorkSubject, op: WorkOperation, toolchain: AdmittedToolchain) -> ProvideResult {
-  let build = compute_provide_leaf(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: work_default_build(), toolchain: toolchain, dependency: NoComputeDependency)
+fn compute_provide_dependent(store: ComputeStore, instance: HostDashboardInstance, owner: AttemptOwner, commit: String, subject: WorkSubject, op: WorkOperation, toolchain: AdmittedToolchain, runtime_max: Second? = none) -> ProvideResult {
+  let build = compute_provide_leaf(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: work_default_build(), toolchain: toolchain, dependency: NoComputeDependency, runtime_max: runtime_max)
   if provide_result_succeeded(r: build) {
     let build_identity = provide_result_identity(r: build)
     let identity = compute_work_identity(subject: subject, op: op, toolchain: toolchain)
@@ -3762,7 +3764,7 @@ fn compute_provide_dependent(store: ComputeStore, instance: HostDashboardInstanc
           carried: provide_result_host_record(r: build))
       ComputeDependencyResolved { dependency } =>
         provide_result_with_host_record(
-          r: compute_provide_leaf(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: op, toolchain: toolchain, dependency: dependency),
+          r: compute_provide_leaf(store: store, instance: instance, owner: owner, commit: commit, subject: subject, op: op, toolchain: toolchain, dependency: dependency, runtime_max: runtime_max),
           carried: provide_result_host_record(r: build))
     }
   } else {
