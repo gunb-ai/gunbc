@@ -2,7 +2,11 @@ module extdeps.strata.serve_flags
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.nat { Nat }
-import std.measure { TokenCount, token_count_value, Mebibyte, mebibyte_count, PositiveSlotCount, positive_slot_count_value }
+import std.measure {
+  TokenCount, token_count_value, Mebibyte, mebibyte_count, PositiveSlotCount, positive_slot_count_value,
+  PositiveMeasureCount, PositiveMeasureCountBuilt, PositiveMeasureCountRefused,
+  positive_measure_count_from_int, positive_measure_count_value,
+}
 import std.optional { Present, Absent }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
@@ -90,11 +94,53 @@ type StrataExpertResidency
 // is absent" is not a policy the author chose and not even a stable fact: it is the build deciding.
 // Carrying it as an absent optional field would let a launch row silently inherit that decision, which
 // is the fail-open default gunbc.design_argument::declared_intent refuses; making it a required arm
-// means every modeled launch names which of the three it is, and `Unset` -- legal as the transcription
+// means every modeled launch names which of the four it is, and `Unset` -- legal as the transcription
 // of an argv as read -- is the arm a serving launch must refuse (gunbc.serving.serving_replica_profile
 // strata_launch_parking_agreement).
+//
+// WHY THE BUDGET IS A POSITIVE MEASURE AND NOT A Mebibyte: the engine reads `--conversation-cache-mib 0`
+// as OFF -- the same thing the `Off` arm means, and the same word `Off` renders. A `Mebibyte` budget would
+// therefore let a row write `Budget { budget: 0 MiB, slots: K }`, which the engine obeys by parking
+// NOTHING while this model's agreement records it as agreeing to park K conversations -- a plausible
+// fabrication of exactly the kind this class exists to prevent. Over `PositiveMeasureCount`, zero has no
+// constructor instead of a value that silently means a different arm (gunbc.design_argument::fail_closed,
+// and the guarantee ladder's preference for unwritable over checked). The shape is std.measure's own for a
+// bounded quantity (FiniteByteSize), declared HERE rather than in std.measure because the unit is a fact of
+// THIS flag -- mebibytes are what `--conversation-cache-mib` takes -- and a new std measure owes the native
+// mirror in src/v1/stage0/src/std_measure.rs, which a flag's unit does not warrant.
+type StrataConversationCacheMebibytes
+  = StrataConversationCacheMebibytesValue { count: PositiveMeasureCount }
+
+// What a MiB figure READ from somewhere (an argv, a doc, an operator note) is until it is checked: zero and
+// anything below it come back as the non-positive arm naming what was observed, because a read that saw a
+// zero has read the OFF word and must route to `StrataConversationCacheOff`, not to a budget.
+type StrataConversationCacheMebibytesBuild
+  = StrataConversationCacheMebibytesBuilt { budget: StrataConversationCacheMebibytes }
+  | StrataConversationCacheMebibytesNonPositive { observed: Int }
+
+fn strata_conversation_cache_mebibytes(count: PositiveMeasureCount) -> StrataConversationCacheMebibytes {
+  StrataConversationCacheMebibytesValue { count: count }
+}
+
+fn strata_conversation_cache_mebibytes_from_int(observed: Int) -> StrataConversationCacheMebibytesBuild {
+  match positive_measure_count_from_int(count: observed) {
+    PositiveMeasureCountBuilt { count: positive } =>
+      StrataConversationCacheMebibytesBuilt { budget: strata_conversation_cache_mebibytes(count: positive) }
+    PositiveMeasureCountRefused { cause: cause } =>
+      StrataConversationCacheMebibytesNonPositive { observed: cause.observed }
+  }
+}
+
+fn strata_conversation_cache_mebibytes_value(budget: StrataConversationCacheMebibytes) -> Int {
+  match budget {
+    StrataConversationCacheMebibytesValue { count: count } => positive_measure_count_value(count: count)
+  }
+}
+
 type StrataConversationCache
-  = StrataConversationCacheBudget { budget: Mebibyte, slots: PositiveSlotCount } // a bounded cache: K conversations inside N Mebibyte of host RAM
+  // A bounded cache: K conversations parked inside N Mebibyte of host RAM. N is positive by construction --
+  // see above -- so this arm can never be the engine's off word wearing a budget's name.
+  = StrataConversationCacheBudget { budget: StrataConversationCacheMebibytes, slots: PositiveSlotCount }
   // The engine parks nothing. Spelled ON THE COMMAND LINE as the docs' own off word, so a launch that
   // chose it says so in its argv instead of relying on a build default; the reason names why a launch
   // would choose it (a benchmark cell measuring the cold path, for instance).
@@ -252,7 +298,7 @@ fn strata_optional_words(present: Bool, words: List<String>) -> List<String> {
 fn strata_conversation_cache_words(cache: StrataConversationCache) -> List<String> {
   match cache {
     StrataConversationCacheBudget { budget: n, slots: k } =>
-      ["--conversation-cache-mib", to_string(mebibyte_count(m: n)), "--conversation-cache-slots", to_string(positive_slot_count_value(slots: k))]
+      ["--conversation-cache-mib", to_string(strata_conversation_cache_mebibytes_value(budget: n)), "--conversation-cache-slots", to_string(positive_slot_count_value(slots: k))]
     StrataConversationCacheOff { reason: _ } => ["--conversation-cache-mib", "0"]
     // Neither silence nor unread renders a word: to emit one would be to write an argv nobody launched
     // (gunbc.design_argument::fail_closed -- no plausible text for a fact never read).

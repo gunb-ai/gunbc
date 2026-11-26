@@ -36,6 +36,9 @@ import extdeps.strata.serve_flags {
   StrataConversationCache,
   StrataConversationCacheBudget, StrataConversationCacheOff, StrataConversationCacheUnset,
   StrataConversationCacheUnread,
+  StrataConversationCacheMebibytes, StrataConversationCacheMebibytesBuilt,
+  StrataConversationCacheMebibytesNonPositive, strata_conversation_cache_mebibytes,
+  strata_conversation_cache_mebibytes_from_int, strata_conversation_cache_mebibytes_value,
   strata_conversation_cache_words, strata_names_a_conversation_cache,
 }
 import gunbc.serving.serving_replica_profile {
@@ -64,7 +67,10 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // argv is built here rather than borrowed so each test names exactly what its launch said.
 
 fn fx_cache_budget(mib: Nat, slots: Nat) -> StrataConversationCache {
-  StrataConversationCacheBudget { budget: mebibyte(count: mib), slots: positive_slot_count(count: positive_measure_count(predecessor: slots - 1)) }
+  StrataConversationCacheBudget {
+    budget: strata_conversation_cache_mebibytes(count: positive_measure_count(predecessor: mib - 1)),
+    slots: positive_slot_count(count: positive_measure_count(predecessor: slots - 1)),
+  }
 }
 
 fn fx_cache_off(why: String) -> StrataConversationCache {
@@ -154,6 +160,39 @@ test fn witness_an_explicit_off_renders_the_docs_off_word() -> Bool {
   let w = strata_conversation_cache_words(cache: fx_cache_off("the operator's no-park launch for the cold-read measurement"))
   join(w, " ") == "--conversation-cache-mib 0"
     && strata_names_a_conversation_cache(flags: fx_flags(cache: fx_cache_off("chosen"), slots: 1))
+}
+
+test fn witness_a_zero_mebibyte_budget_has_no_constructor() -> Bool {
+  // The RED this class ends on, at the boundary where the budget is WRITTEN. Zero mebibytes is not a very
+  // small cache: docs/DETAILS.md spells the engine's OFF as `--conversation-cache-mib 0`, which is the word
+  // the `Off` arm renders. Under a plain Mebibyte a row could therefore write a Budget of 0 that the engine
+  // obeys by parking NOTHING while this model's agreement recorded it as agreeing to park K conversations --
+  // the plausible fabrication this PR exists to stop. The positive measure makes that state unauthorable
+  // rather than checked (gunbc.design_argument::fail_closed, gunbc.design_argument::guarantee_ladder): a
+  // read of 0, or below it, comes back as the non-positive arm naming what it observed, the smallest budget
+  // that can exist renders 1, and the off word keeps exactly one route -- the `Off` arm, whose refusal the
+  // agreement gives with the reason its author chose.
+  let zero = strata_conversation_cache_mebibytes_from_int(observed: 0)
+  let below = strata_conversation_cache_mebibytes_from_int(observed: -1)
+  let smallest = strata_conversation_cache_mebibytes_from_int(observed: 1)
+  let zero_refused = match zero {
+    StrataConversationCacheMebibytesNonPositive { observed: o } => o == 0
+    StrataConversationCacheMebibytesBuilt { budget: _ } => false
+  }
+  let below_refused = match below {
+    StrataConversationCacheMebibytesNonPositive { observed: o } => o == -1
+    StrataConversationCacheMebibytesBuilt { budget: _ } => false
+  }
+  let smallest_renders_one = match smallest {
+    StrataConversationCacheMebibytesBuilt { budget: b } =>
+      strata_conversation_cache_mebibytes_value(budget: b) == 1
+        && join(strata_conversation_cache_words(cache: StrataConversationCacheBudget {
+              budget: b,
+              slots: positive_slot_count(count: positive_measure_count(predecessor: 0)),
+            }), " ") == "--conversation-cache-mib 1 --conversation-cache-slots 1"
+    StrataConversationCacheMebibytesNonPositive { observed: _ } => false
+  }
+  zero_refused && below_refused && smallest_renders_one
 }
 
 test fn witness_silence_renders_nothing_and_names_nothing() -> Bool {

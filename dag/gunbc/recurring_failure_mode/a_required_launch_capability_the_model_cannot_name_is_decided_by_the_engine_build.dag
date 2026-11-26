@@ -68,5 +68,6 @@ data a_required_launch_capability_the_model_cannot_name_is_decided_by_the_engine
     DeclarationRef { module_path: "test.claim.serving.strata_conversation_cache_parking_witness", decl_name: "witness_read_silence_and_an_unread_argv_are_different_facts", field: WholeDeclaration },
     DeclarationRef { module_path: "test.claim.serving.strata_conversation_cache_parking_witness", decl_name: "witness_the_live_slot_count_is_read_from_the_launch_record_and_not_from_a_second_flags_struct", field: WholeDeclaration },
     DeclarationRef { module_path: "test.claim.serving.strata_conversation_cache_parking_witness", decl_name: "witness_a_launch_that_admits_no_turn_is_located_rather_than_agreed", field: WholeDeclaration },
+    DeclarationRef { module_path: "test.claim.serving.strata_conversation_cache_parking_witness", decl_name: "witness_a_zero_mebibyte_budget_has_no_constructor", field: WholeDeclaration },
   ]
 }
