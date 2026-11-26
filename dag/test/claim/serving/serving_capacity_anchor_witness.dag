@@ -18,7 +18,6 @@ import gunbc.serving.serving_capacity_anchor {
   ServingSwapMechanism, SwapByEngineEviction, SwapByRouterSlotFile, ServingSwapDurability, LostWithProcess, SurvivesProcessRestart,
   ServingRungSharing, RungAdds, RungInclusiveOfHotter, RungSharingUnread,
   serving_capacity_shape, serving_conversation_policy,
-  serving_card_cap, ServingCardCap, CardCap, CardCapUnread, CardCapRefused, CardCapBinder, Shape, GpuKv, GpuKvNotBinding,
   ServingGpuKvPool, GpuKvPoolRead, GpuKvPoolNotBinding, GpuKvPoolUnread,
 }
 import gunbc.serving.serving_replica_profile {
@@ -375,9 +374,9 @@ test fn the_router_admits_an_estimate_only_under_an_admission_and_carries_its_ob
   let estimate = serving_capacity_shape(a: ca_anchor_standing(throughput: uncited, prefill: ca_cited(), warm: ca_cited()), p: ca_policy())
   let derived = serving_capacity_shape(a: ca_anchor_standing(throughput: ca_cited(), prefill: ca_cited(), warm: ca_cited()), p: ca_policy())
   let admitted = AdmitEstimatedCapacity { directive: "fixture" as NonEmptyStr }
-  ca_opt_is(x: ca_shaped_rests(r: router_dev_shaped_under(shape: estimate, pool: ca_gpu_kv_pool(), admission: admitted, row: (c, r, o) => ca_row_of(cap: c, retention: r, rests: o))), n: 1)
-    && ca_opt_absent(x: ca_shaped_rests(r: router_dev_shaped_under(shape: estimate, pool: ca_gpu_kv_pool(), admission: AdmitDerivedCapacityOnly, row: (c, r, o) => ca_row_of(cap: c, retention: r, rests: o))))
-    && ca_opt_is(x: ca_shaped_rests(r: router_dev_shaped_under(shape: derived, pool: ca_gpu_kv_pool(), admission: AdmitDerivedCapacityOnly, row: (c, r, o) => ca_row_of(cap: c, retention: r, rests: o))), n: 0)
+  ca_opt_is(x: ca_shaped_rests(r: router_dev_shaped_under(shape: estimate, admission: admitted, row: (c, r, o) => ca_row_of(cap: c, retention: r, rests: o))), n: 1)
+    && ca_opt_absent(x: ca_shaped_rests(r: router_dev_shaped_under(shape: estimate, admission: AdmitDerivedCapacityOnly, row: (c, r, o) => ca_row_of(cap: c, retention: r, rests: o))))
+    && ca_opt_is(x: ca_shaped_rests(r: router_dev_shaped_under(shape: derived, admission: AdmitDerivedCapacityOnly, row: (c, r, o) => ca_row_of(cap: c, retention: r, rests: o))), n: 0)
 }
 
 // EVERY shipped first-party row's capacity is an estimate, so every row carries what it rests on: no row is
@@ -566,39 +565,19 @@ test fn witness_srv3_anchor_keeps_only_the_engine_rung() -> Bool {
 }
 
 
-// ── THE GPU KV POOL AS THE SECOND CAP BOUND (gunbc.plans.fabric_serving_scheduler, B5 count->memory) ─────────
-// The cap the router renders is the SMALLER of the shape's throughput turns and the card's on-GPU KV pool floor
-// (pool tokens at the policy anchor context). The srv1 cap-6 trial was a count cap the pool could not hold: it
-// filled the GPU KV pool to 99% for +2% output with turns 60% slower (operator-observed receipt, ad-hoc engine-log
-// reads). These cases make that a RENDERED outcome, not a runtime surprise: a card configured above its pool is
-// capped to the pool, and an unread pool refuses the row. Helpers below read the cap's terms.
+// ── THE GPU KV POOL AS A SHAPE TERM (the ONE number both consumers read) ─────────────────────────────────
+// The capacity shape's turns ARE a replica's admitted concurrency: the number the router row caps the upstream at
+// AND the number the Strata engine reserves --parallel slots for. within_gpu_kv_pool lowers THOSE turns to the card's
+// GPU KV pool floor (pool tokens at the policy anchor context), applied once at the shared shape builder
+// (serving_replica_profile::replica_shaped) that both consumers call -- so cap == --parallel == floor structurally.
+// The srv1 cap-6 trial was a count cap the pool could not hold: it filled the GPU KV pool to 99% for +2% output with
+// turns 60% slower (operator-observed receipt, ad-hoc engine-log reads). These cases make that a MODELLED outcome,
+// not a runtime surprise: a shape over its pool is lowered to the pool's floor and records that the pool bound it,
+// and an unread or too-small pool REFUSES the shape (never a seat-count fall-back). Helpers read the shape's terms.
 
-fn cap_turns_is(c: ServingCardCap, n: Nat) -> Bool {
-  match c { CardCap { turns: t, bound_by: _ } => t == n, CardCapUnread { obligation: _ } => false, CardCapRefused { reason: _ } => false }
-}
-
-fn cap_bound_is(c: ServingCardCap, want: String) -> Bool {
-  match c {
-    CardCap { turns: _, bound_by: b } => match b { Shape {} => want == "shape", GpuKv { pool_tokens: _ } => want == "gpu_kv", GpuKvNotBinding { reason: _ } => want == "not_binding" }
-    CardCapUnread { obligation: _ } => false
-    CardCapRefused { reason: _ } => false
-  }
-}
-
-fn cap_unread(c: ServingCardCap) -> Bool {
-  match c { CardCap { turns: _, bound_by: _ } => false, CardCapUnread { obligation: _ } => true, CardCapRefused { reason: _ } => false }
-}
-
-// A card whose GPU KV pool cannot hold even one conversation at the policy context is REFUSED (a typed refusal),
-// never a CardCap whose turns are 0 -- which the cap derivation would render as an in_service upstream that
-// silently admits nothing.
-fn cap_refused(c: ServingCardCap) -> Bool {
-  match c { CardCap { turns: _, bound_by: _ } => false, CardCapUnread { obligation: _ } => false, CardCapRefused { reason: _ } => true }
-}
-
-// A pool fixture for the cap tests: the srv1 GPU KV pool figure (744,477 tokens, derived from the topology
-// measurement's TP=1 row via srv1_gpu_kv_pool) carried with its standing. The cap tests exercise the cap FOLD over
-// this typed pool; the engine-kind that chooses the pool is the router's decision, tested by router_host_keyed_witness.
+// A pool fixture for the fold tests: the srv1 GPU KV pool figure (744,477 tokens, derived from the topology
+// measurement's TP=1 row via srv1_gpu_kv_pool) carried with its standing. The fold is applied to the SHAPE, keyed
+// on the profile's per-card gpu_kv_pool field -- not chosen by the router or by an engine-kind string.
 fn ca_gpu_kv_pool() -> ServingGpuKvPool {
   GpuKvPoolRead {
     tokens: token_count(count: 744477),
@@ -607,60 +586,13 @@ fn ca_gpu_kv_pool() -> ServingGpuKvPool {
   }
 }
 
-// DISCRIMINATING: a vLLM card asking for MORE seats (10) than its on-GPU pool holds at the policy anchor context
-// (744,477 / 100,000 = 7) is capped to the pool's floor of 7, and the binder records the pool bound it. A pool a
-// card could overflow is no longer renderable as a free count.
-test fn a_card_over_its_gpu_kv_pool_is_capped_to_the_pool() -> Bool {
-  let over = serving_card_cap(pool: ca_gpu_kv_pool(), shape_turns: 10, anchor_context: serving_conversation_policy.anchor_context)
-  cap_turns_is(c: over, n: 7) && cap_bound_is(c: over, want: "gpu_kv")
-}
-
-// CONTROL: srv1's real shape turns (4) sit under the pool floor (7), so the throughput shape binds and the cap
-// stays 4. The pool term is present and always computed but non-binding on today's fleet -- as the parent's
-// reading of the anchor predicts, and stated plainly.
-test fn a_card_under_its_gpu_kv_pool_keeps_the_shape_turns() -> Bool {
-  let under = serving_card_cap(pool: ca_gpu_kv_pool(), shape_turns: 4, anchor_context: serving_conversation_policy.anchor_context)
-  cap_turns_is(c: under, n: 4) && cap_bound_is(c: under, want: "shape")
-}
-
-// A STRATA CARD parks its sessions in host RAM, so the GPU KV pool does NOT bind it: the cap is the shape's turns
-// and the binder records GpuKvNotBinding. The pool is chosen by engine kind (router_dev_gpu_kv_pool), never a name.
-test fn a_strata_card_is_not_gpu_kv_bound() -> Bool {
-  let s = serving_card_cap(
-    pool: GpuKvPoolNotBinding { reason: "Strata parks sessions in host RAM" as NonEmptyStr, trigger: "a Strata deployment moves onto a GPU KV pool" as NonEmptyStr },
-    shape_turns: 9,
-    anchor_context: serving_conversation_policy.anchor_context,
-  )
-  cap_turns_is(c: s, n: 9) && cap_bound_is(c: s, want: "not_binding")
-}
-
-// FAIL CLOSED: a GPU card with no pool reading is CardCapUnread -- which the cap derivation (router_dev_shaped_under)
-// renders as a REFUSED row, never a free cap.
-test fn an_unread_gpu_kv_pool_refuses_the_card_cap() -> Bool {
-  cap_unread(c: serving_card_cap(
-    pool: GpuKvPoolUnread { obligation: "read the engine's reported KV pool" as NonEmptyStr },
-    shape_turns: 4,
-    anchor_context: serving_conversation_policy.anchor_context,
-  ))
-}
-
-// DISCRIMINATING: a pool too small to hold even ONE conversation at the policy anchor context (pool 50k < the 100k
-// context -> floor 0) is REFUSED with a typed reason, NOT rendered as CardCap { turns: 0 }. Pre-fix, the zero floor
-// fell through to the GpuKv arm and the cap derivation rendered an in_service upstream with OwnedCap { turns: 0 } --
-// a live row that silently admits nothing. Same rung as B3's refusal of a zero-turn shape; a partial seat is never
-// counted, and neither is a zero seat.
-test fn a_pool_holding_no_conversation_at_the_policy_context_is_refused() -> Bool {
-  cap_refused(c: serving_card_cap(
-    pool: GpuKvPoolRead { tokens: token_count(count: 50000), standing: ca_cited(), provenance: "fixture: pool below one conversation at the policy context" as NonEmptyStr },
-    shape_turns: 4,
-    anchor_context: serving_conversation_policy.anchor_context,
-  ))
-}
-
-// ── THE GPU KV POOL AS A SHAPE TERM (both consumers' source), not a router-only floor ─────────────────────
-// within_gpu_kv_pool lowers the SHAPE's turns (the one number the router cap and the engine --parallel both read),
-// so cap == --parallel structurally. These cases stand where the cap tests below will go once the shape carries the
-// floor (requirements 1 and 2). Helpers read the shape's terms.
+// DISCRIMINATING (over-its-pool): a shape asking for MORE turns (10) than its on-GPU pool holds at the policy
+// anchor context (744,477 / 100,000 = 7) is lowered to the pool's floor of 7, and the shape records the pool bound
+// it -- the same number the router caps at and the engine reserves --parallel for. A pool a card could overflow is
+// no longer renderable as a free count.
+// (The four former serving_card_cap cases -- over, under, not-binding, unread -- now live in the within_gpu_kv_pool
+// shape tests below, which are the one place the floor is applied; a card configured past its pool is a shape the
+// model will not produce, not a runtime surprise.)
 
 fn ca_shape(n: Nat) -> ServingCapacityShape {
   ServingShapeDerived { deployment: "fixture-card" as NonEmptyStr, turns: n, held: n, bound: HeldByActiveShare, cold_reread: millisecond(count: 1) }

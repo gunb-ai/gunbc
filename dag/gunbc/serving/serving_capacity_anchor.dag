@@ -127,40 +127,12 @@ fn srv1_gpu_kv_pool() -> ServingGpuKvPool {
   }
 }
 
-// THE CARD CAP: the smaller of the shape's throughput-derived turns and the GPU KV pool's floor (pool tokens at
-// the policy anchor context), so a card configured for more seats than its on-GPU pool holds is capped to the
-// pool. `bound_by` records WHICH term bound -- the witness that makes the discrimination reads it; the rendered
-// nginx row consumes only `turns`. An Unread pool yields CardCapUnread, which the cap derivation renders as a
-// refused row (fail_closed): a card with no pool reading does not fall through to a free cap. Nat division
-// floors, so a partial seat is never counted. The pool reading is chosen by the card's ENGINE KIND
-// (ServingEngineKind) at the router boundary -- router_dev_gpu_kv_pool -- not by a match on the deployment name.
-type CardCapBinder = Shape {} | GpuKv { pool_tokens: Nat } | GpuKvNotBinding { reason: NonEmptyStr }
-
-type ServingCardCap = CardCap { turns: Nat, bound_by: CardCapBinder } | CardCapUnread { obligation: NonEmptyStr } | CardCapRefused { reason: NonEmptyStr }
-
-fn serving_card_cap(pool: ServingGpuKvPool, shape_turns: Nat, anchor_context: TokenCount) -> ServingCardCap {
-  match pool {
-    GpuKvPoolRead { tokens: tokens, standing: _, provenance: _ } =>
-      gpu_kv_floor_cap(pool_tokens: token_count_value(t: tokens), shape_turns: shape_turns, context: token_count_value(t: anchor_context))
-    GpuKvPoolNotBinding { reason: r, trigger: _ } => CardCap { turns: shape_turns, bound_by: GpuKvNotBinding { reason: r } }
-    GpuKvPoolUnread { obligation: o } => CardCapUnread { obligation: o }
-  }
-}
-
-// The pool floor is the whole seats it can carry at the per-conversation context; Nat division floors, so a
-// partial seat is never counted. The shape's throughput turns win when they are already the smaller figure.
-fn gpu_kv_floor_cap(pool_tokens: Nat, shape_turns: Nat, context: Nat) -> ServingCardCap {
-  // A zero anchor context is a broken policy input, not a real concurrency: the pool floor (pool tokens / context)
-  // is undefined, so the pool cannot be consulted. Refusing -- never reporting that the seat count bound the cap,
-  // which would be a fabricated answer that hides the unread pool (fail_closed: a failure arm refuses, never widens).
-  if context == 0 { CardCapUnread { obligation: "policy anchor_context is zero, so the GPU KV pool floor (pool tokens / context) is undefined and the pool was never consulted; the serving_conversation_policy anchor_context must be read before this card's cap renders" as NonEmptyStr } }
-  else {
-    let kv_floor = pool_tokens / context
-    if kv_floor == 0 { CardCapRefused { reason: "the GPU KV pool holds fewer than one conversation at the policy anchor context (pool tokens below the context), so this card could serve no turn: render a refused row, then re-read the pool or lower the policy context -- never an in_service upstream with a zero cap that silently admits nothing (fail_closed)" as NonEmptyStr } }
-    else if kv_floor < shape_turns { CardCap { turns: kv_floor, bound_by: GpuKv { pool_tokens: pool_tokens } } }
-    else { CardCap { turns: shape_turns, bound_by: Shape {} } }
-  }
-}
+// THE POOL FLOOR now folds into the replica's capacity SHAPE, not into a router-only cap: see
+// gunbc.serving.serving_replica_profile::replica_shaped, which calls within_gpu_kv_pool once, at the shared
+// shape builder both the router row's cap and the engine's --parallel read. An earlier serving_card_cap /
+// gpu_kv_floor_cap helper is deleted -- a second application at the router renderer would cap the router while
+// the engine's --parallel (which reads the same shape's turns, not the router) still reserved more slots than
+// the card's pool holds (one-number-two-ends, single_authority; #17060 closed the same split one boundary up).
 
 type ServingWarmStore
   = WarmStoreKeeps { conversations: Nat }

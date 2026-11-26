@@ -1,7 +1,7 @@
 module gunbc.systemd_unit_names
 
 import std.types { String, Int, NonEmptyStr }
-import extdeps.systemd { SystemdUnitNameAdmission, SystemdUnitNameStemEmpty, systemd_service_unit_name }
+import extdeps.systemd { SystemdUnitNameAdmission, SystemdUnitNameStemEmpty, SystemdUnitNameDisallowedCharacter, SystemdUnitNameOverlong, systemd_service_unit_name }
 
 // ONE HOME FOR THE NAMES GUNBC GIVES ITS OWN TRANSIENT UNITS. Every route that launches work mints a unit
 // name from the identity it holds, and every route that later reads that unit's fate -- the exit spool, the
@@ -101,4 +101,26 @@ fn compute_unit_name(identity_hex: String) -> NonEmptyStr {
 
 fn compute_unit_name_admission(identity_hex: String) -> SystemdUnitNameAdmission {
   systemd_service_unit_name(stem: compute_unit_stem(identity_hex: identity_hex))
+}
+
+// THE IDENTITY A SEAT UNIT NAME CARRIES BACK, minted by THIS authority's own stem. The exit-spool
+// subject a seat's stop hook files under is the identity_hex that compute_unit_stem spelled into the
+// unit name, so the only honest extraction strips THIS prefix and re-admits the remainder through
+// compute_unit_name_admission: a name that does not round-trip (not minted here, or whose remainder
+// carries what the manager would refuse) yields absent, and the caller keeps the manager-only
+// reading rather than naming a spool partition no hook could have authored for it.
+fn compute_unit_identity_from_name(unit: String) -> String? {
+  let prefix = compute_unit_stem(identity_hex: "")
+  if !starts_with(s: unit, prefix: prefix) {
+    none
+  } else {
+    let identity_hex = substring(s: unit, start: string_length(s: prefix), end: string_length(s: unit))
+    match compute_unit_name_admission(identity_hex: identity_hex) {
+      SystemdUnitNameAdmitted { name: _ } =>
+        if (compute_unit_name(identity_hex: identity_hex) as String) == unit { Present { value: identity_hex } } else { none }
+      SystemdUnitNameStemEmpty => none
+      SystemdUnitNameDisallowedCharacter { stem: _, character: _ } => none
+      SystemdUnitNameOverlong { length: _ } => none
+    }
+  }
 }

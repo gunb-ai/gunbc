@@ -18,9 +18,8 @@ module test.claim.fleet.machine_lifecycle_witness
 // live machine is rebound to it or retired below.
 //
 // RUN ATTESTING THESE CLAIMS (the receipt cited in the PR; the required v2-bootstrap job evaluates no
-// witness outside its two emitted closures, so the witness is executed directly, with BOTH source roots):
-//   gunbc run --claim-run --source-root dag --source-root src/v2 \
-//     --entry dag/test/claim/fleet/machine_lifecycle_witness.dag
+// witness outside its two emitted closures, so the witness is executed directly):
+//   gunbc test //test/claim/fleet/machine_lifecycle_witness:<test fn>   (one operand per test fn)
 
 import std.types { Bool, List, NonEmptyStr, String }
 import std.optional { Absent, Present }

@@ -200,9 +200,9 @@ fn ei_text_doubled(seed: String, doublings: Int) -> String {
 // by SLICE. The shape this replaces unfolded the lexeme to scalars and rebuilt the body one Cons at a
 // time (skip + list_init), and list_init recursed once per member — so a literal past ~10^5 scalars
 // overflowed the seed interpreter. The producer that re-derives it (gunbc.design_argument::how_to_work: name the
-// instrument, never transcribe its output) is THIS claim run by the claim-batch binary,
-// src/v1/stage0/src/bin/claim_batch.rs, with --entry naming this file and --functions
-// naming this claim and --claim-run; on the replaced shape that run aborts by stack
+// instrument, never transcribe its output) is THIS claim run by the seed interpreter,
+// `gunbc --dry-run run --entry <this file> --function <this claim>` (the claim-batch binary that ran it
+// is deleted); on the replaced shape that run aborts by stack
 // overflow rather than answering false, which is what makes it the RED.
 // v2.test.claim.derived_roster_seed_agreement
 // rung_drop_standing_acquires_with_its_derived_roster hit the same depth through std.algebra list_init.

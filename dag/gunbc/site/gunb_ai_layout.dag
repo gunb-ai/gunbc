@@ -49,7 +49,7 @@ import gunbc.design.gunb_ai_hues {
 // page layers consume: they ask for rules, never for a preset.
 //
 // Consumers (gunbc.design_argument::consumption): gunbc.site.gunb_ai_layout_review (writes the ballot to the
-// srv1 review site) and test.claim.site_gunb_ai_layout_witness (claim-run over the
+// srv1 review site) and test.claim.site_gunb_ai_layout_witness (the claim route over the
 // RENDERED combinations).
 
 // ------------------------------------------------------------------ axis 1: the grid

@@ -14,9 +14,8 @@ module test.claim.product.p4261_photograph_witness
 // and run each name below:
 //
 //   cargo build --release -p v1-compiler --bin gunbc
-//   GUNBC_MEMORY_BUDGET_BYTES=6442450944 ./target/release/gunbc run --claim-run \
-//     --source-root dag --source-root src/v2 \
-//     --entry dag/test/claim/product/p4261_photograph_witness.dag --function <name>
+//   GUNBC_MEMORY_BUDGET_BYTES=6442450944 ./target/release/gunbc test \
+//     //test/claim/product/p4261_photograph_witness:<name>
 //
 // (unset GUNBC_RESOLVED_GRAPH_CACHE_DIR and GUNBC_NATIVE_CACHE_ROOT first).
 

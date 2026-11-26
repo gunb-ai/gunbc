@@ -19,7 +19,7 @@ import extdeps.transports.rest {
   RestExchangeStatusRefused, RestExchangeCommitAmbiguous, RestExchangeUnreached, RestExchangeUndecodable,
 }
 import gunbc.auth.access_token_source { WorkloadIdentityToken, ensure_access_token, AccessTokenReady, AccessTokenUpsertRequired, AccessTokenEnsureRefused }
-import gunbc.host_command_binding { LocalCommandHost, HostCommandDone, HostCommandFailed, HostCommandUnconfirmed, HostCommandNotDispatched, host_command, host_command_outcome_text, HostCommandOutcome }
+import gunbc.host_command_binding { LocalCommandHost, HostCommandDone, HostCommandFailed, HostCommandUnconfirmed, HostCommandNotDispatched, HostCommandUnanswered, host_command, host_command_outcome_text, HostCommandOutcome }
 import gunbc.secret_provision_actuator { observe_secret_container, create_secret_container, SecretContainerObserved, SecretContainerAbsent, SecretObservationRefused, SecretContainerCreated, SecretContainerCreationRefused, SecretContainerCreationOutcomeUnknown }
 import gunbc.host.boot_medium_reader_key { boot_medium_reader_ssh_privkey_secret }
 import gunbc.fleet.fleet_ssh_access { mtcollins1_ssh_host_key_secret }
@@ -190,6 +190,7 @@ fn fleet_keypair_generate_pair(subject: FleetKeypairMintSubject) -> FleetKeypair
     HostCommandFailed { exit_code: _, stderr: _ } => HostCommandNotDispatched { reason: "the directory was not created" }
     HostCommandUnconfirmed { exit_code: _, stdout: _, stderr: _ } => HostCommandNotDispatched { reason: "the directory was not created" }
     HostCommandNotDispatched { reason: _ } => HostCommandNotDispatched { reason: "the directory was not created" }
+    HostCommandUnanswered { cause: _ } => HostCommandNotDispatched { reason: "the directory was not created" }
   }
   match fleet_keypair_mint_dir_verdict(made: made, fstype: fstype) {
     MintDirRefusedAt { cause: c, created: created } => {
@@ -266,10 +267,12 @@ fn fleet_keypair_mint_dir_verdict(made: HostCommandOutcome, fstype: HostCommandO
         HostCommandFailed { exit_code: _, stderr: _ } => MintDirRefusedAt { cause: concat("findmnt could not report the mint directory's filesystem: ", command_text(o: fstype)), created: true }
         HostCommandUnconfirmed { exit_code: _, stdout: _, stderr: _ } => MintDirRefusedAt { cause: concat("findmnt could not report the mint directory's filesystem: ", command_text(o: fstype)), created: true }
         HostCommandNotDispatched { reason: _ } => MintDirRefusedAt { cause: concat("findmnt could not report the mint directory's filesystem: ", command_text(o: fstype)), created: true }
+        HostCommandUnanswered { cause: _ } => MintDirRefusedAt { cause: concat("findmnt could not report the mint directory's filesystem: ", command_text(o: fstype)), created: true }
       }
     HostCommandFailed { exit_code: _, stderr: _ } => MintDirRefusedAt { cause: concat("the mint directory could not be created create-only (an earlier mint may have died there; treat any key it added as exposed and rotate): ", command_text(o: made)), created: false }
     HostCommandUnconfirmed { exit_code: _, stdout: _, stderr: _ } => MintDirRefusedAt { cause: concat("the mint directory's creation is unconfirmed: ", command_text(o: made)), created: false }
     HostCommandNotDispatched { reason: _ } => MintDirRefusedAt { cause: concat("the mint directory could not be created: ", command_text(o: made)), created: false }
+    HostCommandUnanswered { cause: _ } => MintDirRefusedAt { cause: concat("the mint directory's creation is unanswered: ", command_text(o: made)), created: false }
   }
 }
 
@@ -332,12 +335,14 @@ fn fleet_keypair_generation_verdict(
                 HostCommandFailed { exit_code: _, stderr: _ } => GenerationRefusedWith { cause: refused_generation_text(what: "the fingerprint could not be read", outcome: fingerprint, private_half: private_text) }
                 HostCommandUnconfirmed { exit_code: _, stdout: _, stderr: _ } => GenerationRefusedWith { cause: refused_generation_text(what: "the fingerprint could not be read", outcome: fingerprint, private_half: private_text) }
                 HostCommandNotDispatched { reason: _ } => GenerationRefusedWith { cause: refused_generation_text(what: "the fingerprint could not be read", outcome: fingerprint, private_half: private_text) }
+                HostCommandUnanswered { cause: _ } => GenerationRefusedWith { cause: refused_generation_text(what: "the fingerprint could not be read", outcome: fingerprint, private_half: private_text) }
               }
           }
         }
       HostCommandFailed { exit_code: _, stderr: _ } => GenerationRefusedWith { cause: refused_generation_text(what: "ssh-keygen refused", outcome: generated, private_half: private_text) }
       HostCommandUnconfirmed { exit_code: _, stdout: _, stderr: _ } => GenerationRefusedWith { cause: refused_generation_text(what: "ssh-keygen's outcome was unconfirmed", outcome: generated, private_half: private_text) }
       HostCommandNotDispatched { reason: _ } => GenerationRefusedWith { cause: refused_generation_text(what: "ssh-keygen was never dispatched", outcome: generated, private_half: private_text) }
+      HostCommandUnanswered { cause: _ } => GenerationRefusedWith { cause: refused_generation_text(what: "ssh-keygen was dispatched but got no answer", outcome: generated, private_half: private_text) }
     }
   }
 }
@@ -355,6 +360,7 @@ fn fingerprint_text(o: HostCommandOutcome) -> String {
     HostCommandFailed { exit_code: _, stderr: _ } => command_text(o: o)
     HostCommandUnconfirmed { exit_code: _, stdout: _, stderr: _ } => command_text(o: o)
     HostCommandNotDispatched { reason: _ } => command_text(o: o)
+    HostCommandUnanswered { cause: _ } => command_text(o: o)
   }
 }
 
