@@ -156,8 +156,9 @@ test fn staged_front_end_unbound_value_name_refuses_with_its_own_reason() -> Boo
 // positive control that a comment-bearing module walks all four stages through the authored parse, and
 // the guard's DISCRIMINATING PAIR -- a graph the fold made from the same captures is accepted, a graph
 // missing an edge capture is refused. The guard asks COVERAGE, not multiplicity (an interior loss stays
-// unseen by it, which its own claim pins by executing it and whose end is typed in
-// v2.compiler.staged_front_end front_end_capture_interior_loss_next_rung). The v1/v2 agreement half --
+// unseen by it, which its own claim pins by executing it, and whose exit is the gunbc roadmap node
+// rn_ZR45MIQ7KTC56XVLT23LXQ3W4A (source-annotation-fold-carries-absorbed-capture-count). The v1/v2
+// agreement half --
 // WHICH gap a capture landed in -- is the MANUAL, UNGATED control
 // v2.test.claim.manual.annotation_gap_v1_v2_agreement, whose probe pair
 // v2.test.claim.manual.annotation_gap_v1_v2_agreement_probe_pair re-derives that control's rung from
@@ -264,8 +265,9 @@ test fn front_end_placement_next_rung_is_declared_and_names_the_control() -> Boo
 // so no claim in this file can certify a graph the authority would not itself have produced. The third claim
 // is the honest half, and it names BOTH of the guard's limits -- an interior loss inside a joined block, and
 // a capture naming a different file -- because a claim that advertises only one of them is how the other gets
-// forgotten. That is a weaker guard with DECLARED limits, typed in v2.compiler.staged_front_end
-// front_end_capture_interior_loss_next_rung -- not left for a reader to infer from a green tick.
+// forgotten. That is a weaker guard with DECLARED limits, whose exit is recorded once in the roadmap --
+// rn_ZR45MIQ7KTC56XVLT23LXQ3W4A (source-annotation-fold-carries-absorbed-capture-count) -- not left for a
+// reader to infer from a green tick.
 fn guard_fixture_captures() -> List<UnboundSourceAnnotation> {
   [
     guard_fixture_capture(text: "// one", start: 0, end: 6, adjacent: false),
@@ -332,8 +334,9 @@ fn fold_fixture_missing_middle() -> List<NormalizedAnnotationCapture> {
 // of either SourceSpan -- so a
 // capture naming a DIFFERENT FILE than the row covering it reads as contained, which makes this a
 // SINGLE-MODULE attach check and nothing more. Nothing in production refuses either case today; the moment
-// they become checkable is declared in front_end_capture_interior_loss_next_rung, and the count that would
-// make them checkable is the debt front_end_capture_count_next_rung names.
+// they become checkable is recorded once in the roadmap -- gunbc roadmap node
+// rn_ZR45MIQ7KTC56XVLT23LXQ3W4A (source-annotation-fold-carries-absorbed-capture-count), because a fold that
+// carries its own per-row capture count can answer both by the authority that decides attachment.
 // WHAT IT ALSO DOES NOT SEE: WHICH gap a capture landed in. Placement is checked only by the v1/v2 agreement
 // control (v2.test.claim.manual.annotation_gap_v1_v2_agreement), which publishes its identity AND its rung as
 // carriers there -- this comment states no rung, because a status written twice is a status that can lie:
@@ -356,7 +359,8 @@ fn front_end_capture_origin_as_the_fold_sees(capture: UnboundSourceAnnotation) -
 // WHAT THIS DOES NOT REMOVE, stated rather than left to be inferred: with no ordering decision available from the
 // authority -- std.source_annotation::region_contains answers containment for ONE pair and nothing else -- "does
 // SOME row cover this span" must still be asked pair by pair in the worst case. Removing that residue is the
-// fold's work, not a consumer's: it is the field front_end_capture_count_next_rung names, because a consumer that
+// fold's work, not a consumer's: it is the per-row absorbed-capture count that
+// rn_ZR45MIQ7KTC56XVLT23LXQ3W4A asks the fold to carry, because a consumer that
 // guessed where a row ends would be deciding std.source_annotation annotation_attach_step's join rule in a second
 // place (gunbc.design_argument::single_authority, and how_to_work on a proven cost-shape defect being always
 // fixed). The consumer's own waste -- one authority call per pair, and visits after the answer was known -- is
