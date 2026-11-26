@@ -552,7 +552,7 @@ test fn refused_and_failed_verdicts_are_distinct_on_the_wire() -> Bool {
     },
   }
   let failed = ValidationFailed {
-    command: "gunbc run --claim-run",
+    command: "gunbc test",
     exit_code: 1,
     detail: "",
   }
@@ -583,7 +583,7 @@ test fn refusal_quoting_passed_does_not_decode_as_passed() -> Bool {
   )
   let genuine = validation_receipt_json(
     verdict: ValidationPassed {
-      command: "gunbc run --claim-run",
+      command: "gunbc test",
       oracle_identity: pinned_identity(),
     },
     observations: observe_witness(
@@ -610,7 +610,7 @@ test fn refusal_quoting_passed_does_not_decode_as_passed() -> Bool {
 
 test fn truncated_receipt_with_passed_prefix_is_not_passed() -> Bool {
   let genuine = receipt_for(verdict: ValidationPassed {
-    command: "gunbc run --claim-run",
+    command: "gunbc test",
     oracle_identity: pinned_identity(),
   })
   let truncated = substring(
@@ -752,11 +752,11 @@ fn verdict_round_trips(verdict: ValidationVerdict) -> Bool {
 test fn every_verdict_the_emitter_writes_is_one_the_reader_accepts() -> Bool {
   verdict_round_trips(verdict: ValidationNotRun)
     && verdict_round_trips(verdict: ValidationPassed {
-      command: "gunbc run --claim-run",
+      command: "gunbc test",
       oracle_identity: pinned_identity(),
     })
     && verdict_round_trips(verdict: ValidationFailed {
-      command: "gunbc run --claim-run",
+      command: "gunbc test",
       exit_code: 1,
       detail: "a witness went red",
     })
@@ -858,7 +858,7 @@ fn verify_lamp_evidence(receipt: String) -> WorkflowAttemptEvidence {
     provider_events: "{\"type\":\"turn.completed\",\"usage\":\{\}\}\n",
     provider_events_error: "",
     process: WorkerProcessExited { exit_code: 0, last_command: "codex" },
-    validation_summary: "gunbc run --claim-run",
+    validation_summary: "gunbc test",
     verification_subject: VerificationSubjectObserved {
       subject: verify_fixture_subject(),
     },
@@ -923,7 +923,12 @@ fn receipt_for(verdict: ValidationVerdict) -> String {
           command: ModeledValidationCommand {
             label: "gunbc-claim" as NonEmptyStr,
             program: "/opt/gunbc/bin/gunbc" as FilePath,
-            args: ["run", "--claim-run"],
+            args: [
+              "test",
+              "--source-root", "dag",
+              "--source-root", "src/v2",
+              "//test/claim/roadmap/roadmap_validation_oracle_witness:verify_lamp_stays_pending_without_a_receipt",
+            ],
           },
           exit_code: if validation_verdict_key(verdict: verdict) == "failed" { 1 } else { 0 },
           stdout: if validation_verdict_key(verdict: verdict) == "passed" { "true\n" } else { "" },
@@ -961,7 +966,7 @@ test fn verify_lamp_stays_pending_without_a_receipt() -> Bool {
 
 test fn verify_lamp_completes_only_on_a_passed_receipt() -> Bool {
   verify_lamp_state(receipt: receipt_for(verdict: ValidationPassed {
-    command: "gunbc run --claim-run",
+    command: "gunbc test",
     oracle_identity: pinned_identity(),
   })) == "complete"
 }
@@ -979,7 +984,7 @@ test fn verify_lamp_shows_a_refusal_as_refused_not_failed() -> Bool {
   ))
   let failed = verify_lamp_state(receipt: receipt_for(
     verdict: ValidationFailed {
-      command: "gunbc run --claim-run",
+      command: "gunbc test",
       exit_code: 1,
       detail: "claim returned false",
     },
@@ -1016,7 +1021,7 @@ test fn verify_lamp_shows_cross_family_refusal_as_refused_not_moved() -> Bool {
 test fn not_run_receipt_is_distinct_from_every_recorded_verdict() -> Bool {
   let not_run = receipt_for(verdict: ValidationNotRun)
   let passed = receipt_for(verdict: ValidationPassed {
-    command: "gunbc run --claim-run",
+    command: "gunbc test",
     oracle_identity: pinned_identity(),
   })
   let decoded_key = exact_head_receipt_verdict_key(receipt: not_run)

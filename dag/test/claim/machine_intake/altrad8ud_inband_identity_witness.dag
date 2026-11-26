@@ -1,4 +1,5 @@
 module test.claim.machine_intake.altrad8ud_inband_identity_witness
+import extdeps.filesystem.filesystem_io { Filesystem }
 
 // THE ALTRAD8UD IDENTITY READERS, OVER THE COMMITTED CAPTURES OF REAL RECOVERY RUNS.
 //

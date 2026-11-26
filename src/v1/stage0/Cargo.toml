@@ -72,14 +72,6 @@ path = "src/main.rs"
 name = "cssl_assemble"
 path = "src/bin/cssl_assemble.rs"
 
-# Batch claim runner: resolve one --entry closure once, run many witnesses.
-# Hand-written CI tool (like regen_stage0); reuses the v1-compiler lib, does NOT
-# go through the generated main.rs / emit stage. Amortizes the per-row full-tree
-# resolve in the v2 node-frontier CI gate's green pass.
-[[bin]]
-name = "claim_batch"
-path = "src/bin/claim_batch.rs"
-
 # Batch claim executor: host transport for the v2.workflow.executor .dag. Reads
 # the executor-decided batches (List<List<ClaimRef>>) from a plan function and
 # runs the v2 claim suite batch-by-batch, claims-in-parallel. The .dag is the
@@ -132,10 +124,12 @@ name = "bootstrap_witness"
 path = "src/bin/bootstrap_witness.rs"
 
 # Host-physics floor witness for the v1 interpreter recorded-fixture record ->
-# hermetic-replay -> fail-closed lifecycle (gunbc.design_argument::fail_closed determinism). Drives the real
-# claim_batch binary with --record/--hermetic/--fixture-store + mutates fixtures on
-# disk to prove fail-closed. SCAFFOLD — dissolves when the record/replay lifecycle
-# is modeled + executed in the v2 .dag floor (open thread: v2.std.determinism).
+# hermetic-replay -> fail-closed lifecycle (gunbc.design_argument::fail_closed determinism). Drove the real
+# claim_batch binary with --record/--hermetic/--fixture-store + mutated fixtures on
+# disk to prove fail-closed; the binary was deleted in the claim-execution cutover
+# (gunbc.plans.claim_execution_consolidation), and this scaffold's retarget onto the
+# `gunbc test` route is an open floor-lane thread, not a silent edit. SCAFFOLD — dissolves when the
+# record/replay lifecycle is modeled + executed in the v2 .dag floor (open thread: v2.std.determinism).
 [[bin]]
 name = "interp_recorded_fixture_witness"
 path = "src/bin/interp_recorded_fixture_witness.rs"

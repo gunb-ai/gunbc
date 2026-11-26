@@ -75,9 +75,11 @@ import gunbc.compute.work_provider_local {
   compute_recover_catalog_for, compute_recover_catalog_entry_line, compute_recover_catalog_cli, compute_attempt_record,
   compute_recover_catalog_serving_cli, compute_recover_serving_cli, compute_recover_readback_serving_cli,
   compute_open_attempt, compute_settle_attempt,
+  compute_seat_exit_spool_dir, ComputeSeatExitSpoolDirResolved, ComputeSeatExitSpoolDirUidUnreadable,
   AttemptGate, AttemptGateReady, AttemptGateRefused, AttemptOwner, DirectInvocation, DispatchOwned,
   AttemptSettlement, AttemptSettled, AttemptNotSettled, AttemptUnsettleable,
 }
+import gunbc.compute.host_capacity { attempt_exit_spool_done_dir }
 import gunbc.cli_wire { CliWireResponse, CliWirePrintable, CliWireUnprintable }
 
 // A DIRECTORY THIS CLAIM OWNS, created per claim: srv1 hosts several runner instances sharing /tmp, and a
@@ -204,7 +206,7 @@ fn census_of_an_empty_seat_names_no_reference() -> Bool {
   match seat_store_of(root: root, seat: ComputeFlatSeat) {
     Absent => false
     Present { value: store } =>
-      match compute_recover_catalog_for(stores: [store]) {
+      match compute_recover_catalog_for(instance: instance_at(root: root), stores: [store]) {
         RecoverCatalogEstablished { entries: es } => count_where(xs: es, predicate: e => true) == 0
         RecoverCatalogUnknown { detail: _ } => false
       }
@@ -227,7 +229,7 @@ fn attempt_inside_its_window_is_a_hold() -> Bool {
     Absent => false
     Present { value: store } =>
       opened
-        && match compute_recover_catalog_for(stores: [store]) {
+        && match compute_recover_catalog_for(instance: instance_at(root: root), stores: [store]) {
           RecoverCatalogEstablished { entries: es } =>
             count_where(xs: es, predicate: e => true) == 1
               && entry_for(entries: es, reference: reference)
@@ -270,7 +272,7 @@ fn terminal_record_without_unit_proof_is_a_hold() -> Bool {
               AttemptNotSettled { detail: _ } => false
               AttemptUnsettleable { detail: _ } => false
               AttemptSettled =>
-                match compute_recover_catalog_for(stores: [store]) {
+                match compute_recover_catalog_for(instance: instance_at(root: root), stores: [store]) {
                   RecoverCatalogEstablished { entries: _ } => false
                   RecoverCatalogUnknown { detail: d } =>
                     string_contains(s: d, pattern: reference as String)
@@ -301,7 +303,7 @@ fn past_window_attempt_is_a_write_the_census_names() -> Bool {
     Absent => false
     Present { value: store } =>
       opened
-        && match compute_recover_catalog_for(stores: [store]) {
+        && match compute_recover_catalog_for(instance: instance_at(root: root), stores: [store]) {
           RecoverCatalogEstablished { entries: es } =>
             count_where(xs: es, predicate: e => true) == 1
               && entry_for(entries: es, reference: reference)
@@ -342,7 +344,7 @@ fn one_reference_in_two_seat_directories_is_unknown() -> Bool {
             AttemptSlotHeld { record: rec, generation: _ } =>
               match attempt_open(store: dispatch.slots, record: rec) {
                 AttemptAdvanced { state: _, generation: _ } =>
-                  match compute_recover_catalog_for(stores: [flat, dispatch]) {
+                  match compute_recover_catalog_for(instance: instance_at(root: root), stores: [flat, dispatch]) {
                     RecoverCatalogEstablished { entries: _ } => false
                     RecoverCatalogUnknown { detail: d } => string_contains(s: d, pattern: reference as String)
                   }
@@ -369,10 +371,10 @@ fn censusing_the_same_slot_twice_settles_nothing() -> Bool {
     Absent => false
     Present { value: store } =>
       opened
-        && match compute_recover_catalog_for(stores: [store]) {
+        && match compute_recover_catalog_for(instance: instance_at(root: root), stores: [store]) {
           RecoverCatalogUnknown { detail: _ } => false
           RecoverCatalogEstablished { entries: first } =>
-            match compute_recover_catalog_for(stores: [store]) {
+            match compute_recover_catalog_for(instance: instance_at(root: root), stores: [store]) {
               RecoverCatalogUnknown { detail: _ } => false
               RecoverCatalogEstablished { entries: second } =>
                 count_where(xs: first, predicate: e => true) == count_where(xs: second, predicate: e => true)
@@ -477,6 +479,9 @@ fn run_compute_recover_catalog_witness() -> ProcessExit {
     check_or_name(name: "the_serving_census_door_answers_unknown_where_the_seat_home_is_absent", held: the_serving_census_door_answers_unknown_where_the_seat_home_is_absent()),
     check_or_name(name: "the_serving_recover_door_exits_unknown_off_the_roster", held: the_serving_recover_door_exits_unknown_off_the_roster()),
     check_or_name(name: "the_serving_readback_door_carries_its_unknown_detail", held: the_serving_readback_door_carries_its_unknown_detail()),
+    check_or_name(name: "the_census_names_what_the_seat_exit_spool_said", held: census_reports_the_seat_spool_reading_when_it_holds_no_record()),
+    check_or_name(name: "the_census_carries_a_planted_stop_hook_record", held: census_carries_the_planted_stop_hook_record()),
+    check_or_name(name: "the_door_refusal_carries_the_planted_stop_hook_record", held: door_carries_the_same_spool_reading_and_still_keeps_the_seat()),
   ], "")
   if red == "" {
     ExitSuccess
@@ -485,32 +490,139 @@ fn run_compute_recover_catalog_witness() -> ProcessExit {
   }
 }
 
+// ── THE DOOR READS BOTH: THE MANAGER AND THE SEAT'S OWN EXIT SPOOL ─────────────────
+// The widening named in code (work_provider_local unit_lifecycle_from_source; recurring_failure_mode
+// hold_recovered_by_age_not_observed_holder_death's rung): unit_lifecycle_unpopulated issues the ended
+// arm ONLY beside SeatStopRecordFound, and until ObserveUnitLifecycleWithSeatRecord the recovery doors
+// carried SeatStopRecordNotConsulted and could never reach it. On THIS lane the user manager answers
+// nothing, so the lifecycle stays UNKNOWN and the refusal stands whatever the spool says -- fail-closed
+// is not what these claims test. They pin the READING: a door that opened the seat's partition reports
+// it, with what it found, and that signal cannot appear while the route still holds the manager only.
 
-fn diagnose_claim_three() -> ProcessExit {
-  let root = witness_root(kind: "diag-three")
-  let reference = "0000000000000000000000000000000000000000000000000000000000000003" as NonEmptyStr
-  let opened = open_slot(root: root, seat: ComputeFlatSeat, identity: "123456789abcdef0", reference: reference)
+fn witness_settle_slot(root: String, store: ComputeSeatStore, reference: NonEmptyStr) -> Bool {
+  match attempt_slot_read(store: store.slots, reference: reference) {
+    AttemptSlotAbsent => false
+    AttemptSlotUnreadable { detail: _ } => false
+    AttemptSlotHeld { record: rec, generation: g } =>
+      match compute_settle_attempt(
+        instance: instance_at(root: root),
+        gate: AttemptGateReady { record: rec, generation: g },
+        verdict: AttemptWorkEnded { ending: WorkEndedSucceeded },
+        detail: "the witness closes the slot it opened") {
+        AttemptSettled => true
+        AttemptNotSettled { detail: _ } => false
+        AttemptUnsettleable { detail: _ } => false
+      }
+  }
+}
+
+fn spool_done_dir_of(root: String) -> String? {
+  match compute_seat_exit_spool_dir(instance: instance_at(root: root)) {
+    ComputeSeatExitSpoolDirUidUnreadable { cause: _ } => Absent
+    ComputeSeatExitSpoolDirResolved { store } => Present { value: attempt_exit_spool_done_dir(store: store) }
+  }
+}
+
+// CONTROL: THE SPOOL WAS OPENED AND HELD NOTHING. The census must say what it read -- "no record for
+// this seat" -- and never that it consulted no spool at all. Red before the widening: the manager-only
+// reading printed no spool text anywhere.
+fn census_reports_the_seat_spool_reading_when_it_holds_no_record() -> Bool {
+  let root = witness_root(kind: "spool-none")
+  let reference = "0000000000000000000000000000000000000000000000000000000000000007" as NonEmptyStr
+  let opened = open_slot(root: root, seat: ComputeFlatSeat, identity: "7000000000000000", reference: reference)
   match seat_store_of(root: root, seat: ComputeFlatSeat) {
-    Absent => ExitFailure { code: 1, reason: "no store" }
-    Present { value: store } => match attempt_slot_read(store: store.slots, reference: reference) {
-      AttemptSlotAbsent => ExitFailure { code: 1, reason: "slot absent" }
-      AttemptSlotUnreadable { detail: d } => ExitFailure { code: 1, reason: join(["unreadable: ", d], "") }
-      AttemptSlotHeld { record: rec, generation: g } =>
-        match compute_settle_attempt(
-          instance: instance_at(root: root), gate: AttemptGateReady { record: rec, generation: g },
-          verdict: AttemptWorkEnded { ending: WorkEndedSucceeded }, detail: "diag") {
-          AttemptNotSettled { detail: d } => ExitFailure { code: 1, reason: join(["not settled: ", d], "") }
-          AttemptUnsettleable { detail: d } => ExitFailure { code: 1, reason: join(["unsettleable: ", d], "") }
-          AttemptSettled => match compute_recover_catalog_for(stores: [store]) {
-            RecoverCatalogEstablished { entries: es } =>
-              ExitFailure { code: 1, reason: join(["census established: ", render_entries(entries: es)], "") }
+    Absent => false
+    Present { value: store } => match spool_done_dir_of(root: root) {
+      Absent => false
+      Present { value: done_dir } =>
+        let _made = shell.Mkdir.Parents(path: done_dir as FilePath)
+        opened
+          && witness_settle_slot(root: root, store: store, reference: reference)
+          && match compute_recover_catalog_for(instance: instance_at(root: root), stores: [store]) {
+            RecoverCatalogEstablished { entries: _ } => false
             RecoverCatalogUnknown { detail: d } =>
-              ExitFailure {
-                code: 1,
-                reason: join(["census unknown: ", d, " | door=", door_word(instance: instance_at(root: root), reference: reference)], ""),
-              }
+              string_contains(s: d, pattern: reference as String)
+                && string_contains(s: d, pattern: "the exit-spool reading:")
+                && string_contains(s: d, pattern: "no record for this seat")
+                && !string_contains(s: d, pattern: "this route consulted no exit spool")
           }
-        }
     }
   }
+}
+
+test fn the_census_names_what_the_seat_exit_spool_said() -> Bool {
+  census_reports_the_seat_spool_reading_when_it_holds_no_record()
+}
+
+// CONTROL: THE SEAT'S OWN HOOK RECORDED ITS END. One real entry in the done directory, named exactly
+// the way the manager's ExecStopPost names it (identity+invocation+result+code+status, the compute
+// seat's five parts). The lifecycle stays UNKNOWN on this lane (no manager), so the seat is STILL kept
+// -- what the claim pins is that the hook's word reaches the reading: "recorded end exit(0) under
+// invocation …". This is the arm srv1's terminal seats turn on: beside a manager that answers
+// not-found, this same record is the ended arm, and the seat comes back.
+fn census_carries_the_planted_stop_hook_record() -> Bool {
+  let root = witness_root(kind: "spool-found")
+  let reference = "0000000000000000000000000000000000000000000000000000000000000008" as NonEmptyStr
+  let identity = "7000000000000001"
+  let invocation = "0123456789abcdef0123456789abcdef"
+  let opened = open_slot(root: root, seat: ComputeFlatSeat, identity: identity, reference: reference)
+  match seat_store_of(root: root, seat: ComputeFlatSeat) {
+    Absent => false
+    Present { value: store } => match spool_done_dir_of(root: root) {
+      Absent => false
+      Present { value: done_dir } =>
+        let _made = shell.Mkdir.Parents(path: done_dir as FilePath)
+        let _planted = shell.Mkdir.Parents(path: join([done_dir, "/", identity, "+", invocation, "+success+exited+0"], "") as FilePath)
+        opened
+          && witness_settle_slot(root: root, store: store, reference: reference)
+          && match compute_recover_catalog_for(instance: instance_at(root: root), stores: [store]) {
+            RecoverCatalogEstablished { entries: _ } => false
+            RecoverCatalogUnknown { detail: d } =>
+              string_contains(s: d, pattern: reference as String)
+                && string_contains(s: d, pattern: "the exit-spool reading:")
+                && string_contains(s: d, pattern: join(["recorded end exit(0) under invocation ", invocation], ""))
+          }
+    }
+  }
+}
+
+test fn the_census_carries_a_planted_stop_hook_record() -> Bool {
+  census_carries_the_planted_stop_hook_record()
+}
+
+// CONTROL: THE DOOR CARRIES THE SAME READING THE CENSUS CARRIED. The write path (compute_recover_cli's
+// attempt door) and the census read through one source, so on the same planted record the door's refusal
+// names the hook's word too -- and STAYS a refusal: on this lane the manager never answered, so the seat
+// is kept whatever the spool says. Red before the widening: the door's detail was the manager-only
+// sentence and named no spool.
+fn door_carries_the_same_spool_reading_and_still_keeps_the_seat() -> Bool {
+  let root = witness_root(kind: "door-spool")
+  let reference = "0000000000000000000000000000000000000000000000000000000000000009" as NonEmptyStr
+  let identity = "7000000000000002"
+  let invocation = "fedcba9876543210fedcba9876543210"
+  let opened = open_slot(root: root, seat: ComputeFlatSeat, identity: identity, reference: reference)
+  match seat_store_of(root: root, seat: ComputeFlatSeat) {
+    Absent => false
+    Present { value: store } => match spool_done_dir_of(root: root) {
+      Absent => false
+      Present { value: done_dir } =>
+        let _made = shell.Mkdir.Parents(path: done_dir as FilePath)
+        let _planted = shell.Mkdir.Parents(path: join([done_dir, "/", identity, "+", invocation, "+success+exited+0"], "") as FilePath)
+        opened
+          && witness_settle_slot(root: root, store: store, reference: reference)
+          && match compute_recover_attempt(instance: instance_at(root: root), reference: reference) {
+            RecoveryRefused { detail: d } =>
+              string_contains(s: d, pattern: "the exit-spool reading:")
+                && string_contains(s: d, pattern: join(["recorded end exit(0) under invocation ", invocation], ""))
+            RecoveryReleased { reference: _, verdict: _, seat: _ } => false
+            RecoverySettledButHeld { reference: _, verdict: _, seat: _ } => false
+            RecoveryNothingHeld { reference: _, verdict: _, detail: _ } => false
+            RecoveryDeclined { reference: _, why: _ } => false
+          }
+    }
+  }
+}
+
+test fn the_door_refusal_carries_the_planted_stop_hook_record() -> Bool {
+  door_carries_the_same_spool_reading_and_still_keeps_the_seat()
 }

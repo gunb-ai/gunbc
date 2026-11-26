@@ -2,7 +2,16 @@ module gunbc.instruments.merge_admission_capture_transport
 
 import extdeps.git.inspect
 import extdeps.gunbc
-import gunbc.cli_invoke { release_bin_rel_path }
+import gunbc.instruments.host_prelude {
+  ClaimRun,
+  TestClaimsArgv,
+  TestClaimsArgvBuilt,
+  TestClaimsArgvRefused,
+  WetBatch,
+  gunbc_release_bin_name,
+  gunbc_test_claims_argv,
+  witness_bin_release_path,
+}
 import std.types { FilePath, String, List }
 
 // The pre-walk capture transport is a typed argv invocation, not shell-as-string and not an ad-hoc executor command. claim_executor resolves this narrow transport entry, supplies the plan-authored source roots and claim identity, and evaluates this function. gunbc.WitnessBin.Run launches the already-built claim_batch child; the child alone resolves and evaluates capture_tested_subject, so address-space death structurally reclaims its evaluator arena before discovery. A nonzero child exit returns false and the executor reports a located pre-walk refusal before batch 1.
@@ -12,19 +21,32 @@ fn source_root_argv(roots: List<String>) -> List<String> {
   })
 }
 
+// THE CAPTURE RUNS ITS CLAIM THROUGH THE ONE ROUTE. The argv is the prelude's own instrument
+// (`gunbc.instruments.host_prelude` `gunbc_test_claims_argv`) rather than a second spelling that happens to
+// agree, and the mode is `WetBatch` because this capture performs the merge admissions it then observes --
+// Hermetic would refuse the effects and report an empty capture as a clean admission. The bin name comes from
+// `gunbc.ci.ci_release_bins` `gunbc_release_bin_name`, the same authority the release roster and the pack
+// listing read.
+//
+// A ROW THAT NAMES NO CLAIM ADMITS NO SUBPROCESS. `claim_batch` took this caller's entry and function and ran
+// whatever it found at that location; here an unnameable row fails the capture -- the same verdict a failing
+// child gives -- without paying for a child whose only output would be an exit 2.
 fn run_merge_admission_capture_subprocess(
   source_roots: List<String>,
   claim_entry: String,
   claim_function: String
 ) -> Bool {
   let root = git.Inspect.Toplevel().path
-  let args = concat(
-    source_root_argv(roots: source_roots),
-    ["--entry", claim_entry, "--function", claim_function, "--claim-run", "--wet"]
-  )
-  gunbc.WitnessBin.Run(
-    workdir: root,
-    bin_path: concat(concat(root as String, "/"), release_bin_rel_path(bin_name: "claim_batch")) as FilePath,
-    args: args
-  ).success
+  match gunbc_test_claims_argv(
+    source_roots: source_roots,
+    claims: [ClaimRun { entry: claim_entry, function: claim_function }],
+    mode: WetBatch
+  ) {
+    TestClaimsArgvRefused { entry: _, function: _, reason: _ } => false
+    TestClaimsArgvBuilt { argv: argv } => gunbc.WitnessBin.Run(
+      workdir: root,
+      bin_path: witness_bin_release_path(root: root, bin_name: gunbc_release_bin_name) as FilePath,
+      args: argv
+    ).success
+  }
 }

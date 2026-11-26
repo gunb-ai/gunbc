@@ -6,7 +6,7 @@ import gunbc.roadmap.roadmap_validation_oracle {
   ValidationRefusalCause, validation_refusal_cause_detail,
   ValidationContractUnspecified, ValidationContractClosesNothing, ValidationNotAgentWork, ValidationOracleUnpinnable, ValidationOracleMissing,
   ValidationOracleAmbiguous, ValidationOracleUnpinnedDependency, ValidationOracleMoved, ValidationOracleCrossFamilyIdentityIncomparable,
-  ValidationOraclePinUnrecorded, ValidationPinReceiptUnreadable, ValidationCommandUnrealized, ValidationCommandRefused,
+  ValidationOraclePinUnrecorded, ValidationPinReceiptUnreadable, ValidationCommandUnrealized, ValidationSubjectUnnameable, ValidationCommandRefused,
   ValidationComputeInfrastructureRefused, ValidationChangeWindowRefused,
 }
 import gunbc.roadmap.roadmap_verification_receipt {
@@ -78,6 +78,7 @@ fn refusal_cause_class(cause: ValidationRefusalCause) -> RefusalCauseClass {
     ValidationOraclePinUnrecorded { channel: _ } => RefusalCauseCandidate
     ValidationPinReceiptUnreadable { detail: _ } => RefusalCauseCandidate
     ValidationCommandUnrealized => RefusalCauseCandidate
+    ValidationSubjectUnnameable { entry: _, function: _, reason: _ } => RefusalCauseCandidate
     ValidationCommandRefused { program: _, reason: _ } => RefusalCauseCandidate
     ValidationChangeWindowRefused { cause: _ } => RefusalCauseCandidate
   }
