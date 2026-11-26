@@ -1,0 +1,240 @@
+module gunbc.compute.remote_build_wire
+
+import std.types { String, Int, List, NonEmptyStr }
+import std.algebra { trim, skip, list_append }
+import std.optional { Present, Absent }
+import std.process { ExitSuccess, ExitFailure }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable }
+
+// THE REMOTE-BUILD WIRE CONTRACT: what a leg SENDS that names no work, and what a leg PRINTS.
+//
+// THIS MODULE EXISTS SO A LEG CAN ANSWER WHAT IT WAS ASKED. The serving entry
+// (gunbc.compute.remote_build_serve) carries the whole request path in its import closure -- fetch,
+// seed build, provider, ledger -- because the engine resolves an entry's import closure before it
+// runs any function. A probe prints a constant and admits a principal; it consumed that closure only
+// because the words it recognizes and the answer it prints were declared on the far side of it.
+// The vocabulary and the answer mint live here, at the leaf both ends read, so the probe's demand
+// graph stops at the probe (gunbc.design_argument::demand_before_materialization step 1: the
+// repetition was authored duplication, and caching it would have suppressed the signal that ranked
+// it for deletion).
+//
+// This is NOT a second authority. Every name below moved here from gunbc.compute.remote_build (the
+// answer vocabulary, the probe word, the protocol word) and from gunbc.compute.remote_build_serve
+// (the answer mint), and the request grammar -- the compile/claims/gate words, the request encoding
+// and decoding, the host-answer walk -- stays where it was. Both directions still read ONE table
+// (review 95521); a caller that wants a wire word imports THIS module, never a copy.
+
+// ── THE SERVING SIDE'S ANSWER, ONE CONTRACT FOR BOTH ENDS ────────────────────────────────────────────
+//
+// The serving entry (gunbc.compute.remote_build_serve) prints a HEADER LINE naming its ending, then the
+// provider's document, and exits with the ending's code. The client reads the answer from the header,
+// not from the code alone: the serving process is the gunbc binary, whose own refusals (an unreadable
+// source root, an entry that does not load or typecheck) also exit 1 or 2 before this contract runs,
+// so a bare code cannot tell "the work failed" from "this host could not even start" (review 95521).
+// An answer is admitted only when the header is present AND its ending's code is the exit code; every
+// other combination is a host that did not run this contract, and moves the request on. 255 with no
+// header is OpenSSH's own connection failure (ssh(1), EXIT STATUS). Both directions read THIS table.
+type RemoteBuildServeEnding
+  = ServeServed
+  | ServeWorkEndedUnsuccessfully
+  | ServeRequestRefused
+  | ServeHostFull
+  | ServeWorkInFlight
+  | ServeHostCannotServe
+  | ServeReady
+
+fn remote_build_serve_exit_code(e: RemoteBuildServeEnding) -> Int {
+  match e {
+    ServeServed => 0
+    ServeWorkEndedUnsuccessfully => 1
+    ServeRequestRefused => 2
+    ServeHostFull => 3
+    ServeWorkInFlight => 4
+    ServeHostCannotServe => 5
+    ServeReady => 6
+  }
+}
+
+fn remote_build_serve_ending_word(e: RemoteBuildServeEnding) -> NonEmptyStr {
+  match e {
+    ServeServed => "served"
+    ServeWorkEndedUnsuccessfully => "work-ended-unsuccessfully"
+    ServeRequestRefused => "request-refused"
+    ServeHostFull => "host-full"
+    ServeWorkInFlight => "work-in-flight"
+    ServeHostCannotServe => "host-cannot-serve"
+    ServeReady => "ready"
+  }
+}
+
+data remote_build_serve_endings: List<RemoteBuildServeEnding> = [
+  ServeServed, ServeWorkEndedUnsuccessfully, ServeRequestRefused, ServeHostFull, ServeWorkInFlight, ServeHostCannotServe, ServeReady,
+]
+
+fn remote_build_serve_header(e: RemoteBuildServeEnding) -> String {
+  join([remote_build_protocol_word as String, " ending=", remote_build_serve_ending_word(e: e) as String], "")
+}
+
+fn remote_build_serve_ending_of_header(line: String) -> RemoteBuildServeEnding? {
+  remote_build_serve_endings |> filter(e => remote_build_serve_header(e: e) == line) |> first
+}
+
+data openssh_connection_failed_exit_code: Int = 255
+
+fn remote_build_split_answer(stdout: String) -> RemoteBuildAnswerText {
+  let lines = split(s: stdout, delimiter: "\n")
+  RemoteBuildAnswerText {
+    header: match lines |> first { Present { value: l } => l  Absent => "" },
+    body: join(lines |> skip(n: 1), "\n"),
+  }
+}
+
+type RemoteBuildAnswerText {
+  header: String
+  body: String
+}
+
+// THE ONE MINT THAT TURNS AN ENDING INTO THE BYTES AND THE EXIT CODE A LEG PRINTS. Both serving
+// entries answer through this -- the front door for a probe, the serving entry for everything else --
+// so "what a remote-build answer looks like" has one spelling (gunbc.design_argument::single_authority).
+fn remote_build_serve_answer(ending: RemoteBuildServeEnding, text: String) -> CliWireResponse {
+  let code = remote_build_serve_exit_code(e: ending)
+  // The bytes go to an SSH channel read by a program, not to a terminal: the header line the client
+  // reads the answer from (gunbc.compute.remote_build remote_build_answer_from_exit), then the document,
+  // written as-is rather than projected through a terminal capability.
+  CliWirePrintable {
+    bytes: join([remote_build_serve_header(e: ending), "\n", text, "\n"], ""),
+    exit: if code == 0 { ExitSuccess } else { ExitFailure { code: code, reason: "" } },
+  }
+}
+
+// ── THE PROBE: REACHABILITY THAT CANNOT START WORK ───────────────────────────────────────────────────
+//
+// Whether a host is reachable and runs this contract is asked FIRST, with a request that names no work:
+// the serving entry answers it after admitting its instance and before reading any operation, so no
+// probe answer can follow a started producer. Only a probe failure moves a request to the next host;
+// after the work request is sent, a lost or inconsistent answer is HostOutcomeUnknown.
+// THE PROTOCOL WORD, shared by the request grammar (gunbc.compute.remote_build, which encodes and
+// decodes requests whose first word is this) and by every answer header below. It lives here because
+// both ends read it; neither may re-spell it.
+data remote_build_protocol_word: NonEmptyStr = "remote-build-v1"
+
+data remote_build_probe_text: NonEmptyStr = "remote-build-v1 probe"
+
+// ── THE ARGV OF EACH SERVING ENTRY, DECLARED ONCE ───────────────────────────────────────────────────
+//
+// The sshd forced command (gunbc.compute.remote_build_serve remote_build_forced_command_words) and the
+// probe front door's hand-off (gunbc.compute.remote_build_serve_front_door) are TWO CONSUMERS of one
+// fact: what it takes to run a serving entry with this binary, in this checkout, for this host. It is
+// spelled here once. The front door never re-splits a command string into words -- the boundary
+// between arguments is carried, not inferred (the reason extdeps.shell.exec mints RunArgv beside Run),
+// and the child's request still arrives only as SSH_ORIGINAL_COMMAND, which the front door never
+// re-sends: it reads that variable only to recognize the probe, so a client cannot aim the hand-off
+// at anything.
+//
+// THE ENTRY FILE NAMES ARE NOT PARAMETERS. A hand-off that took its target entry as an argument would
+// let whatever renders the forced command aim the serving route at an arbitrary module; the names are
+// derived here, beside the contract they belong to.
+
+data remote_build_serve_entry_file: NonEmptyStr = "dag/gunbc/compute/remote_build_serve.dag"
+data remote_build_serve_cli_function: NonEmptyStr = "remote_build_serve_cli"
+data remote_build_serve_front_door_entry_file: NonEmptyStr = "dag/gunbc/compute/remote_build_serve_front_door.dag"
+data remote_build_serve_front_door_function: NonEmptyStr = "remote_build_serve_front_door_cli"
+
+fn remote_build_run_words(
+  serve_binary: NonEmptyStr,
+  repo_root: NonEmptyStr,
+  entry_file: NonEmptyStr,
+  function: NonEmptyStr,
+  host: String,
+) -> List<NonEmptyStr> {
+  [
+    serve_binary, "run",
+    "--source-root", concat(repo_root as String, "/dag") as NonEmptyStr,
+    "--source-root", concat(repo_root as String, "/src/v2") as NonEmptyStr,
+    "--entry", concat(repo_root as String, "/", entry_file as String) as NonEmptyStr,
+    "--function", function,
+    "--arg", concat("host=", host) as NonEmptyStr,
+  ]
+}
+
+// THE REQUEST LEG'S ENTRY, as sshd runs it: the full serving entry, which pays the resolve the
+// request needs. Rendered by the forced command, and by nothing else.
+fn remote_build_serve_run_words(serve_binary: NonEmptyStr, repo_root: NonEmptyStr, host: String) -> List<NonEmptyStr> {
+  remote_build_run_words(
+    serve_binary: serve_binary,
+    repo_root: repo_root,
+    entry_file: remote_build_serve_entry_file,
+    function: remote_build_serve_cli_function,
+    host: host,
+  )
+}
+
+// THE PROBE LEG'S ENTRY, as sshd runs it: the front door, whose closure stops at the probe. It carries
+// the serving binary and the checkout as arguments -- the same two facts the authorized_keys line itself
+// spells today, which the door needs because it is the one that runs the request entry -- while the
+// entry and function the child runs stay fixed data here.
+fn remote_build_serve_front_door_run_words(serve_binary: NonEmptyStr, repo_root: NonEmptyStr, host: String) -> List<NonEmptyStr> {
+  list_append(
+    remote_build_run_words(
+      serve_binary: serve_binary,
+      repo_root: repo_root,
+      entry_file: remote_build_serve_front_door_entry_file,
+      function: remote_build_serve_front_door_function,
+      host: host,
+    ),
+    [
+      "--arg", concat("serve_binary=", serve_binary as String) as NonEmptyStr,
+      "--arg", concat("repo_root=", repo_root as String) as NonEmptyStr,
+    ],
+  )
+}
+
+// WHERE THE REQUEST ARRIVES. sshd replaces whatever the client asked to run with the forced command and
+// leaves the client's own command in this variable (OpenSSH's sshd(8), FORCED COMMANDS); it is the only
+// channel a client has, and the only one either serving entry reads.
+data remote_build_ssh_command_variable: NonEmptyStr = "SSH_ORIGINAL_COMMAND"
+
+// IS THIS LEG THE PROBE? THE ONE RECOGNIZER. Trimmed equality with the probe text -- not a prefix, not a
+// substring: a request whose first words happen to begin like the probe is a request. Only the front door
+// (gunbc.compute.remote_build_serve_front_door) asks; the request entry refuses the probe rather than
+// answering it, so "ready" can only ever come from the entry whose closure stops at the probe.
+fn remote_build_leg_is_probe(raw: String) -> Bool {
+  trim(s: raw) == (remote_build_probe_text as String)
+}
+
+// DID THAT PROCESS ANSWER THE CONTRACT? The one reading of "the first line is a header this contract
+// mints", used by the client when it decides what an answer means and by the front door when it decides
+// whether the child's stderr is still evidence. Both read HERE (gunbc.design_argument::single_authority).
+fn remote_build_stdout_answers_contract(stdout: String) -> Bool {
+  match remote_build_serve_ending_of_header(line: (remote_build_split_answer(stdout: stdout)).header) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// THE HAND-OFF: what the front door runs for anything that is not the probe -- the request entry, with
+// THIS binary, in THIS checkout, for THIS host. It is the forced command's own argv projected into the
+// shape the exec seam takes (a program and its arguments, never one string the door re-splits), so the
+// child's argument boundaries are carried and the two consumers still read ONE rendering. The child's
+// request still arrives only as SSH_ORIGINAL_COMMAND, which the door never re-sends.
+type RemoteBuildHandOff {
+  program: NonEmptyStr
+  workdir: NonEmptyStr
+  arguments: List<String>
+}
+
+fn remote_build_serve_hand_off(serve_binary: NonEmptyStr, repo_root: NonEmptyStr, host: String) -> RemoteBuildHandOff {
+  let words = remote_build_serve_run_words(serve_binary: serve_binary, repo_root: repo_root, host: host)
+  match first(words) {
+    Present { value: program } => RemoteBuildHandOff {
+      program: program,
+      workdir: repo_root,
+      arguments: skip(xs: map(words, w => w as String), n: 1),
+    }
+    Absent =>
+      // UNWRITABLE IN PROSPECT: remote_build_run_words always puts the binary first. Matching is here
+      // because the alternative is a fabricated program.
+      RemoteBuildHandOff { program: serve_binary, workdir: repo_root, arguments: [] }
+  }
+}
