@@ -9,7 +9,7 @@ import product.host_identity { HostIdentity }
 import gunbc.compute.remote_build_hosts { remote_build_host_is_serving }
 import gunbc.fleet.fleet_host_identity { operator_host_srv14, operator_host_e2d4b7 }
 import gunbc.design_ruling { srv14_serving_memory_charge_retirement_operator_approved_2026_11_24, ken_build_pool_one_seat_default_approved_2026_11_26 }
-import gunbc.roadmap.roadmap_dashboard_instance { dashboard_instance_for_host, DashboardInstanceForHost, DashboardInstanceHostUnknown }
+import gunbc.roadmap.roadmap_dashboard_instance { dashboard_instance_for_host, DashboardInstanceForHost, DashboardInstanceHostUnknown, compute_build_memory_ceiling_default }
 
 // THE PER-SLOT ROW, APART FROM THE FLEET ALLOCATION THAT CONSUMES IT. What one runner slot is
 // granted is a leaf fact; gunbc.runner.runner_slot_allocation derives widths, walls and floor-outcome
@@ -356,7 +356,10 @@ data ruled_build_pool_reservations: List<RuledBuildPoolReservation> = [
     // lives beside the RUNNING ken-strata engine (~69 GiB RSS of 125 GiB at the
     // 2026-11-26 14:18Z read); one ceiling-sized seat fits the measured 18.2 GiB
     // build peak, and only one build fits. Fires only once the roster admits ken.
-    reservation: byte_size(23622320128),
+    // THE CEILING, READ FROM ITS OWN ROW -- not a copy: one seat of
+    // gunbc.compute.roadmap_dashboard_instance::compute_build_memory_ceiling_default. If the fleet
+    // ceiling moves, ken's ruled pool moves with it; a literal here would be a second source.
+    reservation: compute_build_memory_ceiling_default,
     seats: 1,
   },
 ]

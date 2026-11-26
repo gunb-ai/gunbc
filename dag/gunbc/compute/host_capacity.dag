@@ -537,7 +537,15 @@ fn host_capacity_build_seat(host: HostIdentity) -> ByteSize {
 // at once. This is what keeps a ruling from re-pricing a machine that has not been enrolled.
 fn build_pool_ruled_seat_count_for_host(host: HostIdentity) -> Nat? {
   if host_build_pool_is_ruled(host: host) && remote_build_host_is_serving(host: host) {
-    host_ruled_build_pool_seat_count(host: host)
+    match host_ruled_build_pool_seat_count(host: host) {
+      // A RULED POOL IS A POOL: it has at least one seat, and this is the single division site, so
+      // the zero divisor is clamped HERE -- a "0-seat" 22 GiB pool would otherwise divide by zero.
+      // The rows themselves are pinned positive by the witness (every seat count > 0); std.integer's
+      // PositiveInt is not usable in the table because its constructor returns an Outcome, which a
+      // data row cannot unwrap.
+      Present { value: n } => if n > 0 { Present { value: n } } else { Present { value: 1 } }
+      Absent => Absent
+    }
   } else {
     Absent
   }

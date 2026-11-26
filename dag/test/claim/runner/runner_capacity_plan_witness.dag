@@ -34,7 +34,7 @@ import gunbc.compute.host_capacity {
   user_work_slice_memory_max_for_host,
   compute_pool_slots,
 }
-import gunbc.roadmap.roadmap_dashboard_instance { host_capacity_ledger_home }
+import gunbc.roadmap.roadmap_dashboard_instance { host_capacity_ledger_home, compute_build_memory_ceiling_default }
 import gunbc.runner.runner_slot_desired {
   build_pool_carve_is_due,
   host_carries_own_ledger,
@@ -325,24 +325,25 @@ test fn every_ruled_build_pool_host_is_ruled_out_of_ci_and_carries_no_ledger() -
 // zero, seat conversion absent), so the ruling does not re-price a host the roster has not admitted --
 // the unrostered figure the surveying lane read (the 44 GiB unreserved user-work slice) stands until step 6.
 test fn ken_ruled_pool_is_one_ceiling_seat_and_the_carve_never_refuses_it() -> Bool {
+  let pool = compute_build_memory_ceiling_default
   match first_where(ruled_build_pool_reservations, r => (r.host as String) == "host-e2d4b7") {
     Present { value: r } =>
       (r.ruling.module_path as String) == "gunbc.design_ruling"
         && (r.ruling.decl_name as String) == "ken_build_pool_one_seat_default_approved_2026_11_26"
-        && byte_size_count(b: r.reservation) == 23622320128
-        && byte_size_count(b: r.reservation) != 47244640256
+        && byte_size_count(b: r.reservation) == byte_size_count(b: pool)
+        && byte_size_count(b: r.reservation) != byte_size_count(b: pool) * 2
         && r.seats == 1
     Absent => false
   }
     && all(ruled_build_pool_reservations, r => r.seats > 0)
-    && byte_size_count(b: byte_size(byte_size_count(b: byte_size(23622320128)) / 1)) == 23622320128
-    && byte_size_count(b: byte_size(byte_size_count(b: byte_size(23622320128)) / 2)) < 23622320128
+    && byte_size_count(b: byte_size(byte_size_count(b: pool) / 1)) == byte_size_count(b: pool)
+    && byte_size_count(b: byte_size(byte_size_count(b: pool) / 2)) < byte_size_count(b: pool)
     && build_pool_carve_is_due(rostered: true, carries_own_ledger: false)
     && byte_size_count(
       b: build_pool_reservation_of_ruling(
-        ruled: Present { value: byte_size(23622320128) },
+        ruled: Present { value: pool },
         carve_due: true,
-      )) == 23622320128
+      )) == byte_size_count(b: pool)
     && host_ci_width_is_ruled_zero(host: operator_host_e2d4b7)
     && remote_build_pool_slot_reservation(host: operator_host_e2d4b7) == 0
     && match committed_width_after_reservation(
