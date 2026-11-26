@@ -47,6 +47,9 @@ import gunbc.site.gunb_ai_site { gunb_ai_site_stage_dir }
 //
 // The job holds `pages: write` and `id-token: write` because actions/deploy-pages requires both, and runs
 // in the `github-pages` environment that Pages creates, whose branch rule is the second fence on main.
+//
+// It is exempt from the Actions wind-down (gunbc.design_ruling::gunb_ai_pages_deploy_is_exempt_from_the_actions_wind_down_2026_11_26): when gunb.ai needs
+// more than a static site, the deploy moves to a route that is not GitHub Pages and this module is deleted.
 
 data gunb_ai_pages_workflow_name: String = "gunb-ai-pages"
 data gunb_ai_pages_job_id: String = "deploy"

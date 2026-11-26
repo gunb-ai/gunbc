@@ -1594,6 +1594,7 @@ fn design_rulings() -> List<DesignRuling> {
     live_router_changes_of_2026_11_23_are_requirements_evidence,
     gunb_ai_deploys_from_gunbc_2026_11_24,
     gunb_ai_pages_job_runs_on_the_fleet_within_30_minutes_2026_11_24,
+    gunb_ai_pages_deploy_is_exempt_from_the_actions_wind_down_2026_11_26,
   ]
 }
 
@@ -1797,6 +1798,13 @@ data gunb_ai_pages_job_runs_on_the_fleet_within_30_minutes_2026_11_24: DesignRul
   decided: "2026-11-24",
   governs: decl_ref(module_path: "gunbc.design_document", decl_name: "ci_contract_blocks"),
   provenance: "Operator, 2026-11-24, by dashboard escalation msg_9862fa60-ddc3-4a64-a278-a5ede31bf30e from session merry-eagle-717, decided in msg_c8c78089-0808-4efe-a15b-78b5271de0f6. Asked, verbatim: \"gunb.ai deploy job (PR #17049): approve adding it, run it on our own runners, with a 30-minute limit?\", with the options \"approve as drafted (own runners, 30 min)\" (recommended), \"approve on GitHub-hosted runners, 30 min\" and \"hold, I'll set the figures on the PR\", the operator chose \"approve as drafted (own runners, 30 min)\". RULED: the deploy job admitted by gunbc.design_ruling::gunb_ai_deploys_from_gunbc_2026_11_24 runs on the self-hosted fleet (gunbc.site.gunb_ai_pages_workflow::gunb_ai_pages_runner = FleetSelfHosted), and is bounded at 30 minutes (gunbc.site.gunb_ai_pages_workflow::gunb_ai_pages_timeout), the budgets that gunbc.design_ruling::ci_job_budgets_closed_to_growth reserves to the operator. No memory figure was asked or granted: the job runs in the fleet slot's declared shape (gunbc.runner.runner_slot_desired). Raising either figure, or moving the job off the fleet, is a new ask. SCOPE NOTE: gunbc.design_ruling::job_roster_closed_to_growth governs the jobs CI runs on pull requests and merge groups; this job runs only on a push to main, so that ruling does not reach it, and the operator's approval of adding it is recorded here and in gunbc.design_ruling::gunb_ai_deploys_from_gunbc_2026_11_24 rather than as a roster admission.",
+}
+
+data gunb_ai_pages_deploy_is_exempt_from_the_actions_wind_down_2026_11_26: DesignRuling = DesignRuling {
+  reference: decl_ref(module_path: "gunbc.design_ruling", decl_name: "gunb_ai_pages_deploy_is_exempt_from_the_actions_wind_down_2026_11_26"),
+  decided: "2026-11-26",
+  governs: decl_ref(module_path: "gunbc.design_document", decl_name: "ci_contract_blocks"),
+  provenance: "Operator, directly in the chat of session merry-eagle-717 on 2026-11-26, after merry-eagle-717 reported that gunbc.design_ruling::github_actions_are_wound_down_entirely_2026_11_24 (intention gunbc.plans.github_actions_retirement) reached main after the gunb.ai Pages deploy (gunbc.site.gunb_ai_pages_workflow) was written, and asked whether to land the deploy anyway, hold it, or deploy without Actions. Verbatim: \"i think the github pages deployment can be exempt specifically from that - this will be onen of the last to be deprecated (when we need more than a static site - okay maybe sooner than later - basically this should be dpeloyedvia a non github pages route at that time)\". RULED, IN THOSE WORDS: the GitHub Pages deployment is exempt, specifically, from the Actions wind-down; it is among the last Actions uses to be deprecated, and when gunb.ai needs more than a static site it moves to a route that is not GitHub Pages. INTERPRETATION, NOT OPERATOR WORDS (merry-eagle-717): the exemption covers exactly the one workflow gunbc.site.gunb_ai_pages_workflow emits and the pages and id-token grants its job holds, nothing else; it does not admit any other Actions workflow, runner registration or workload-identity pool; the dissolution trigger is gunb.ai needing more than static hosting, at which point the deploy is re-targeted off GitHub Pages and this workflow is deleted under gunbc.plans.github_actions_retirement.",
 }
 
 data executed_red_control_names_its_failing_commit: DesignRuling = DesignRuling {
