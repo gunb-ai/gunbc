@@ -270,3 +270,84 @@ test fn flat_binding_operand_emits_without_redundant_parens_holds() -> Bool {
     && !(string_contains(s: emitted_text_for(path: conj_path, name: conj_name), pattern: ") && "))
     && !(string_contains(s: emitted_text_for(path: conj_path, name: conj_name), pattern: "(a && b)"))
 }
+
+// ---- REASON-NAMING BATTERY for the composite row subject (2026-11-26, red-control naming) ----
+// corpus_probes_emits_holds FAILs at this head; the Bool cannot say WHICH named arm refuses the
+// composite subject (Conj of [binding, PREFIX !closed_alias, comparison resolved_child_count > 0]).
+// One exact-equality test per candidate refusal lexeme carried verbatim from the emitter sources
+// (src/v2/std/compilers/target_model.dag), so the PASSing name in the log IS the arm, no inference.
+// This battery adds no emitter behavior: it only reads the same door's diagnostics. If the composite
+// EMITS, corpus_emits_at_head_holds PASSes and every reason test below FAILs, and the pair member
+// "the composite refuses" does not exist — that outcome is reported, not worked around.
+
+test fn corpus_emits_at_head_holds() -> Bool {
+  reason_for(path: corpus_path, name: corpus_name) == "artifact-produced"
+}
+
+test fn corpus_refusal_is_emission_stage_holds() -> Bool {
+  stage_for(path: corpus_path, name: corpus_name) == "emission"
+}
+
+test fn corpus_refusal_reason_transform_shape_invalid_holds() -> Bool {
+  reason_for(path: corpus_path, name: corpus_name) == "target_value_expr_reason_transform_shape_invalid"
+}
+
+test fn corpus_refusal_reason_logical_connective_operand_count_invalid_holds() -> Bool {
+  reason_for(path: corpus_path, name: corpus_name) == "target_value_expr_reason_logical_connective_operand_count_invalid"
+}
+
+test fn corpus_refusal_reason_computation_value_not_a_value_expression_holds() -> Bool {
+  reason_for(path: corpus_path, name: corpus_name) == "target_value_expr_reason_computation_value_not_a_value_expression"
+}
+
+test fn corpus_refusal_reason_type_instantiation_not_a_value_expression_holds() -> Bool {
+  reason_for(path: corpus_path, name: corpus_name) == "target_value_expr_reason_type_instantiation_not_a_value_expression"
+}
+
+test fn corpus_refusal_reason_body_scope_binding_invalid_holds() -> Bool {
+  reason_for(path: corpus_path, name: corpus_name) == "target_value_expr_reason_body_scope_binding_invalid"
+}
+
+test fn corpus_refusal_reason_arrow_body_form_unsupported_holds() -> Bool {
+  reason_for(path: corpus_path, name: corpus_name) == "target_value_expr_reason_arrow_body_form_unsupported"
+}
+
+test fn corpus_refusal_reason_function_type_position_unrealized_holds() -> Bool {
+  reason_for(path: corpus_path, name: corpus_name) == "target_value_expr_reason_function_type_position_unrealized"
+}
+
+test fn corpus_refusal_reason_closure_parameter_order_absent_holds() -> Bool {
+  reason_for(path: corpus_path, name: corpus_name) == "target_value_expr_reason_closure_parameter_order_absent"
+}
+
+test fn corpus_refusal_emit_unsupported_kind_holds() -> Bool {
+  reason_for(path: corpus_path, name: corpus_name) == "target_value_expression_emit_unsupported_kind"
+}
+
+test fn corpus_refusal_emit_operator_shape_unsupported_holds() -> Bool {
+  reason_for(path: corpus_path, name: corpus_name) == "target_value_expression_emit_operator_shape_unsupported"
+}
+
+test fn corpus_refusal_emit_primitive_apply_arity_invalid_holds() -> Bool {
+  reason_for(path: corpus_path, name: corpus_name) == "target_value_expression_emit_primitive_apply_arity_invalid"
+}
+
+test fn corpus_refusal_emit_comparison_operand_is_comparison_holds() -> Bool {
+  reason_for(path: corpus_path, name: corpus_name) == "target_value_expression_emit_comparison_operand_is_comparison"
+}
+
+test fn corpus_refusal_emit_comparison_nesting_policy_undeclared_holds() -> Bool {
+  reason_for(path: corpus_path, name: corpus_name) == "target_value_expression_emit_comparison_nesting_policy_undeclared"
+}
+
+test fn corpus_refusal_operator_realization_catalog_miss_holds() -> Bool {
+  reason_for(path: corpus_path, name: corpus_name) == "target_operator_realization_catalog_miss"
+}
+
+test fn corpus_refusal_operator_realization_catalog_ambiguous_holds() -> Bool {
+  reason_for(path: corpus_path, name: corpus_name) == "target_operator_realization_catalog_ambiguous"
+}
+
+test fn corpus_refusal_operator_realization_wire_malformed_holds() -> Bool {
+  reason_for(path: corpus_path, name: corpus_name) == "target_operator_realization_wire_malformed"
+}
