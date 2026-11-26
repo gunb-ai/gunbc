@@ -69,6 +69,8 @@ import gunbc.roadmap.roadmap_site_surface_types {
   HealthzEffectiveRead, HealthzBodyRead, HealthzAnsweredUnhealthy, HealthzProbeRefused,
 }
 import gunbc.roadmap.roadmap_site_surface_render { healthz_body_with_release_identity }
+import std.measure { second }
+import extdeps.http.client { http_client_localhost_connect_timeout_flag, http_client_max_time_flag, http_client_get_with_status_argv }
 import test.claim.live_deploy.readiness { witness_expected_surface_identity }
 import test.claim.live_deploy.apply { fixture_converged_mutation }
 import gunbc.live_deploy.apply {
