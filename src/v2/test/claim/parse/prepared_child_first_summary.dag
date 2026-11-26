@@ -1,0 +1,569 @@
+module v2.test.claim.parse.prepared_child_first_summary
+
+// SUBJECT: v2.compiler.parse prepare_grammar_expr and compile_choice_plan, the choice preparation
+// that hands each alternative's suffix to the shared-prefix rule. A child's FIRST summary is built
+// once, bottom-up, by the preparation fold; the consumer of a shared-prefix choice must READ that
+// built value, not walk the child's subtree again to recover it.
+// BOUNDARY: what preparation BUILDS and CARRIES per child. It does NOT cover the validation-to-parse
+// handoff (gunbc.roadmap node parse-prepared-grammar-analysis-carried owns that), nor the parse-time
+// memo, nor which plan shape a choice earns.
+// THE RED: preparation that drops a child's built summary and re-derives it later. This file holds
+// the claims that are TRUE EITHER WAY — the probe grammars earn the shared-prefix rule, and the
+// serialized prepared `.dag` grammar whose bytes must not move across the change. The fix-dependent
+// half (the retained summary is the one consumed, and it equals the independent rebuild) lives in
+// prepared_child_first_summary_retained.dag, which REDS at the pre-change head with one resolution
+// error naming the field that does not exist there.
+// INSTRUMENT (runtime, not a grep): claim_batch's [recompute-trace] ledger, enabled with
+// GUNBC_RECOMPUTE_TRACE=1, reports per-function duplicate demands of the form
+//   [recompute-trace] dup fn=<name> count=<N> total_ms=.. wasted_ms=..
+// The underlying function whose work is counted is v2.compiler.parse expr_first_fold_from_prepared
+// (the whole-subtree FIRST rebuild) together with the FIRST-union and guard-summary
+// work it drives: expr_first_fold_choice and first_list_union for the union, and
+// first_keys_classes for the guard key rows. The counter is the interpreter's own
+// per-function duplicate-demand ledger keyed on (function, arguments); no per-.dag-function call
+// counter is reachable from a claim, and adding one would mean editing the frozen v1 seed Rust,
+// which is outside this lane's authority. Raw rows are pasted in the PR body for both legs.
+// DIFFERENTIAL IDENTITY: pcfs_write_dag_prepared_output serializes the PreparedGrammar that the
+// production door dag_prepared_grammar returns and writes it through the modeled Filesystem.Write
+// effect, so the legs can be compared by sha256 outside the claim. The serializer projects the
+// semantic content the parser consumes: each production's prepared tree shape, its FIRST row, the
+// analysis nullable set, the choice-residue rows, and every choice plan including its token/word
+// dispatch tables. It deliberately does NOT project a retained child summary: that field is derived
+// data, and its correctness is the retained half's oracle claim. No committed or emitted artifact in
+// this repository serializes a PreparedGrammarExpr — the only readers of that type in the whole tree
+// are parse.dag itself and these two claim files (hit counts printed in the PR body).
+
+import std.types { Bool, Int, List, Map, String }
+import std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import std.host_text { string_length }
+import std.algebra { Cons, Empty, fold_list, length, empty_map, map_insert, map_lookup, string_concat_join }
+import std.optional { Absent, Present }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node { Symbol, symbol_lexeme }
+import v2.std.grammar { Choice, GrammarExpr, GrammarProduction, ModeledGrammar, Nonterminal, Sequence, StampBinding, StampClass, StampLexeme, Terminal, TerminalStampMode, grammar_atom }
+import v2.std.grammar_choice_ambiguity { GrammarChoiceAmbiguityRow }
+import v2.compiler.parse { ChoiceByToken, ChoiceByWord, ChoiceOrderedBacktrack, ChoiceParseOne, ChoiceReject, ChoiceSharedPrefix, ChoiceTokenPrefix, FirstAnyOfClass, FirstExactWord, FirstKey, GrammarExprFirstFold, GrammarFirstAnalysis, PreparedAfterLineBreak, PreparedChoice, PreparedChoicePlan, PreparedExpect, PreparedExprFold, PreparedGrammar, PreparedGrammarExpr, PreparedInfixTable, PreparedModeled, PreparedNonterminal, PreparedNotPredicate, PreparedOptional, PreparedRefuseOnMatch, PreparedRepeat, PreparedSequence, PreparedTerminal, PreparedVoidGrammar, TokenPrefixRow, prepare_grammar_expr }
+import v2.compiler.program_assembly { dag_prepared_grammar }
+import v2.extdeps.languages.dag { dag_grammar }
+import extdeps.filesystem.filesystem_io { Filesystem }
+
+// ----------------------------------------------------------------------------------------------
+// Concatenation. The language has no int-to-string projection and no string builder, so counts are
+// written in unary and every projection is built from fixed-arity concatenations.
+// ----------------------------------------------------------------------------------------------
+
+fn pcfs_cat2(a: String, b: String) -> String {
+  string_concat_join(fields: Cons { head: a, tail: Cons { head: b, tail: Empty } }, separator: "")
+}
+
+fn pcfs_cat3(a: String, b: String, c: String) -> String { pcfs_cat2(a: a, b: pcfs_cat2(a: b, b: c)) }
+fn pcfs_cat4(a: String, b: String, c: String, d: String) -> String { pcfs_cat2(a: pcfs_cat2(a: a, b: b), b: pcfs_cat2(a: c, b: d)) }
+fn pcfs_cat5(a: String, b: String, c: String, d: String, e: String) -> String { pcfs_cat2(a: pcfs_cat3(a: a, b: b, c: c), b: pcfs_cat2(a: d, b: e)) }
+fn pcfs_cat6(a: String, b: String, c: String, d: String, e: String, f: String) -> String { pcfs_cat2(a: pcfs_cat3(a: a, b: b, c: c), b: pcfs_cat3(a: d, b: e, c: f)) }
+
+// A count written in unary, so a movement in a cardinality is visible in the bytes.
+fn pcfs_marks(n: Int) -> String {
+  if n <= 0 { "" } else { pcfs_cat2(a: "r", b: pcfs_marks(n: n - 1)) }
+}
+
+fn pcfs_join(parts: List<String>, sep: String) -> String {
+  fold_list(xs: parts, empty: "", cons: fn(acc, p) { if acc == "" { p } else { pcfs_cat3(a: acc, b: sep, c: p) } })
+}
+
+fn pcfs_sym(sym: Symbol) -> String { pcfs_cat3(a: "s<", b: symbol_lexeme(sym: sym), c: ">") }
+
+fn pcfs_bool(value: Bool) -> String { if value { "1" } else { "0" } }
+
+fn pcfs_sym_parts(items: List<Symbol>) -> List<String> {
+  fold_list(xs: items, empty: Empty, cons: fn(acc, s) { Cons { head: pcfs_sym(sym: s), tail: acc } })
+}
+
+fn pcfs_symbol_text(items: List<Symbol>) -> String { pcfs_join(parts: pcfs_sym_parts(items: items), sep: ",") }
+
+// ----------------------------------------------------------------------------------------------
+// The probe grammars, authored HERE so the workload the instrument reads is fixed by the claim and
+// not by the evolving `.dag` grammar.
+// ----------------------------------------------------------------------------------------------
+
+// This module performs one modeled effect (Filesystem.Write) to publish the serialized prepared
+// output for the byte-level leg comparison, so it declares its live-tree disposition.
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data pcfs_class_alpha: Symbol = ^pcfs_alpha
+data pcfs_class_beta: Symbol = ^pcfs_beta
+data pcfs_class_gamma: Symbol = ^pcfs_gamma
+data pcfs_class_delta: Symbol = ^pcfs_delta
+data pcfs_class_epsilon: Symbol = ^pcfs_epsilon
+
+fn pcfs_terminal(sym: Symbol) -> GrammarExpr {
+  Terminal { token_class: sym, stamp: StampClass }
+}
+
+// A left-nested sequence of the given token classes: deep enough that rebuilding its summary is a
+// subtree walk, which is the work the change removes.
+fn pcfs_terminals(items: List<Symbol>) -> GrammarExpr {
+  match items {
+    Cons { head: h, tail: t } =>
+      match t {
+        Cons { head: _, tail: _ } => Sequence { left: pcfs_terminal(sym: h), right: pcfs_terminals(items: t) }
+        Empty => pcfs_terminal(sym: h)
+      }
+    Empty => pcfs_terminal(sym: ^pcfs_absent)
+  }
+}
+
+fn pcfs_alt(first: Symbol, second: Symbol, third: Symbol) -> GrammarExpr {
+  pcfs_terminals(items: Cons { head: first, tail: Cons { head: second, tail: Cons { head: third, tail: Empty } } })
+}
+
+// An alternative of a shared-prefix choice: alpha followed by a right child. Every alternative of
+// such a choice must be a sequence whose LEFT atom is the shared prefix -- that is the rule
+// prepared_sequence_left_atom + choice_shared_prefix_suffixes_from enforce -- so the probes are
+// built in exactly that shape.
+fn pcfs_alt_under_alpha(right: GrammarExpr) -> GrammarExpr {
+  Sequence { left: pcfs_terminal(sym: pcfs_class_alpha), right: right }
+}
+
+// The repeated population: beta . gamma. Two alternatives carrying THIS same right child are what
+// makes the rebuild a duplicate demand rather than two distinct calls.
+fn pcfs_suffix_x() -> GrammarExpr {
+  Sequence { left: pcfs_terminal(sym: pcfs_class_beta), right: pcfs_terminal(sym: pcfs_class_gamma) }
+}
+
+fn pcfs_suffix_y() -> GrammarExpr {
+  pcfs_terminal(sym: pcfs_class_delta)
+}
+
+// A right child that is itself a sequence of sequences, so a retained summary must be right at
+// every depth and not merely at the outermost node.
+fn pcfs_suffix_deep() -> GrammarExpr {
+  Sequence {
+    left: Sequence {
+      left: pcfs_terminal(sym: pcfs_class_beta),
+      right: pcfs_terminal(sym: pcfs_class_gamma)
+    },
+    right: Sequence {
+      left: pcfs_terminal(sym: pcfs_class_gamma),
+      right: pcfs_terminal(sym: pcfs_class_delta)
+    }
+  }
+}
+
+// THE ENTRY THE PARSER'S OWN PREPARATION CALLS. prepare_grammar_expr is what
+// compute_grammar_first_analysis_given runs over every production of the grammar being prepared, and
+// in that fold it passes token_dispatch: true (src/v2/compiler/parse.dag, the arm that fills
+// prepared_exprs). So token_dispatch: true is not a flag this module invents to reach an internal
+// function: it is what grammar preparation itself passes, and the probe calls the public entry on a
+// whole production expression and reads the plan the grammar SHAPE chose. Which route the shape took
+// is printed by CLAIM 4: ChoiceByToken over a ChoiceSharedPrefix bucket means the bucket route that
+// runs compile_choice_alts; ChoiceOrderedBacktrack means ordered_backtrack_emit, and a leg whose
+// plan chose the latter is void for this node whatever the ledger prints.
+fn pcfs_prepare_production(expr: GrammarExpr) -> PreparedExprFold {
+  prepare_grammar_expr(
+    expr: expr,
+    nullable_set: Empty,
+    first_rows: empty_map(),
+    productions: pcfs_production_map(expr: expr),
+    production: ^pcfs_probe,
+    token_dispatch: true
+  )
+}
+
+fn pcfs_production_map(expr: GrammarExpr) -> Map<Symbol, GrammarProduction> {
+  map_insert(m: empty_map(), key: ^pcfs_probe, value: pcfs_probe_production(expr: expr))
+}
+
+fn pcfs_probe_production(expr: GrammarExpr) -> GrammarProduction {
+  GrammarProduction { name: ^pcfs_probe, expression: expr, emitted: grammar_atom(identity: ^pcfs_probe) }
+}
+
+// PROBE A. A choice of three alternatives, every one a sequence under the SAME leading class, two of
+// them carrying the IDENTICAL right child. prepared_sequence_left_atom then makes the leading atom
+// the shared prefix for the whole bucket, so the suffix builder walks the same right child twice:
+// the same function on the same arguments, twice. That repeated population is what lets the
+// [recompute-trace] ledger read MORE than one on the pre-change leg. Without it the ledger would
+// read distinct calls and could not say "more than once" -- a ledger row that reads one on a
+// defective tree is a decoration, not an instrument.
+fn pcfs_choice_repeat() -> GrammarExpr {
+  Choice {
+    left: pcfs_alt_under_alpha(right: pcfs_suffix_x()),
+    right: Choice {
+      left: pcfs_alt_under_alpha(right: pcfs_suffix_x()),
+      right: pcfs_alt_under_alpha(right: pcfs_suffix_y())
+    }
+  }
+}
+
+// PROBE B, the contrast production: same shared prefix, same rule, three DISTINCT right children, so
+// each rebuild is a distinct call. A ledger that reads more than one on probe A and one on probe B is
+// discriminating on duplicate demand, not merely on the path being walked.
+fn pcfs_choice_distinct() -> GrammarExpr {
+  Choice {
+    left: pcfs_alt_under_alpha(right: pcfs_suffix_x()),
+    right: Choice {
+      left: pcfs_alt_under_alpha(right: pcfs_suffix_y()),
+      right: pcfs_alt_under_alpha(right: pcfs_terminal(sym: pcfs_class_epsilon))
+    }
+  }
+}
+
+fn pcfs_plan_prefix_is_alpha(expr: PreparedGrammarExpr) -> Bool {
+  match expr {
+    PreparedTerminal { token_class: token_class, stamp: _ } => token_class == pcfs_class_alpha
+    _ => false
+  }
+}
+
+// Walks the compiled plan the way the parser does, looking for the shared-prefix bucket. The
+// ordered-backtrack arm deliberately returns false: it is the OTHER route, and reading true there
+// would let a probe that never walked the defective path pass a shape claim.
+fn pcfs_plan_holds_shared_prefix(plan: PreparedChoicePlan) -> Bool {
+  match plan {
+    ChoiceSharedPrefix { prefix: prefix, suffix: suffix } =>
+      pcfs_plan_prefix_is_alpha(expr: prefix) || pcfs_plan_holds_shared_prefix(plan: suffix)
+    ChoiceTokenPrefix { rows: rows } => pcfs_rows_hold_shared_prefix(rows: rows)
+    ChoiceByToken { on_token: on_token, on_other: on_other, on_end: on_end } =>
+      pcfs_token_map_holds_shared_prefix(entries: on_token) ||
+        pcfs_plan_holds_shared_prefix(plan: on_other) ||
+        pcfs_plan_holds_shared_prefix(plan: on_end)
+    ChoiceByWord { on_word: on_word, on_other: on_other } =>
+      pcfs_word_map_holds_shared_prefix(entries: on_word) ||
+        pcfs_plan_holds_shared_prefix(plan: on_other)
+    ChoiceOrderedBacktrack { alternatives: _ } => false
+    ChoiceParseOne { expr: _ } => false
+    ChoiceReject => false
+  }
+}
+
+// fold_list, not a Cons pattern: the element type of a kernel container is carried through
+// fold_list's closure, while binding it through a Cons match pattern left it an unresolved type
+// variable and the field lookup on it failed ("no field 'next' on type 'T'"). Same idiom as
+// pcfs_prefix_rows below, which is the proven walker for this row type.
+fn pcfs_rows_hold_shared_prefix(rows: List<TokenPrefixRow>) -> Bool {
+  fold_list(
+    xs: rows,
+    empty: false,
+    cons: fn(acc, row) { acc || pcfs_plan_holds_shared_prefix(plan: row.next) }
+  )
+}
+
+fn pcfs_token_map_holds_shared_prefix(entries: Map<Symbol, PreparedChoicePlan>) -> Bool {
+  match sorted_map_keys(m: entries) {
+    Empty => false
+    keys => pcfs_token_keys_hold(entries: entries, keys: keys)
+  }
+}
+
+fn pcfs_token_keys_hold(entries: Map<Symbol, PreparedChoicePlan>, keys: List<Symbol>) -> Bool {
+  fold_list(
+    xs: keys,
+    empty: false,
+    cons: fn(acc, k) { acc || pcfs_plan_holds_shared_prefix(plan: pcfs_plan_for(entries: entries, key: k)) }
+  )
+}
+
+fn pcfs_word_map_holds_shared_prefix(entries: Map<String, PreparedChoicePlan>) -> Bool {
+  match sorted_map_keys(m: entries) {
+    Empty => false
+    keys => pcfs_word_keys_hold(entries: entries, keys: keys)
+  }
+}
+
+fn pcfs_word_keys_hold(entries: Map<String, PreparedChoicePlan>, keys: List<String>) -> Bool {
+  fold_list(
+    xs: keys,
+    empty: false,
+    cons: fn(acc, k) { acc || pcfs_plan_holds_shared_prefix(plan: pcfs_word_plan_for(entries: entries, key: k)) }
+  )
+}
+
+fn pcfs_probe_a_plan() -> PreparedChoicePlan {
+  pcfs_choice_tree_plan(tree: pcfs_prepare_production(expr: pcfs_choice_repeat()).tree)
+}
+
+fn pcfs_probe_b_plan() -> PreparedChoicePlan {
+  pcfs_choice_tree_plan(tree: pcfs_prepare_production(expr: pcfs_choice_distinct()).tree)
+}
+
+fn pcfs_choice_tree_plan(tree: PreparedGrammarExpr) -> PreparedChoicePlan {
+  match tree {
+    PreparedChoice { plan: plan, first: _ } => plan
+    _ => ChoiceReject
+  }
+}
+
+// CLAIM 1 (shape, true on both legs): driving the preparation entry on probe A's production earns
+// the shared-prefix rule. If this fails, the leg never walked the defective path and the leg is void
+// -- which is why it is asserted and printed, not assumed.
+test fn pcfs_probe_a_earns_the_shared_prefix_rule() -> Bool {
+  pcfs_plan_holds_shared_prefix(plan: pcfs_probe_a_plan())
+}
+
+// CLAIM 2 (shape, true on both legs): the contrast production earns it too, so the two probes differ
+// in duplicate demand only, not in whether the rule fires.
+test fn pcfs_probe_b_earns_the_shared_prefix_rule() -> Bool {
+  pcfs_plan_holds_shared_prefix(plan: pcfs_probe_b_plan())
+}
+
+// CLAIM 3 (workload, true on both legs): both productions' prepared FIRST is exactly the shared
+// class -- the same summary value the change carries down, computed by the bottom-up union
+// preparation already runs. If the probe's FIRST were not the shared class the probes would not be
+// exercising the summary the ticket is about.
+test fn pcfs_probes_carry_the_shared_class_summary() -> Bool {
+  pcfs_prepare_production(expr: pcfs_choice_repeat()).first == pcfs_expected_alpha_fold() &&
+    pcfs_prepare_production(expr: pcfs_choice_distinct()).first == pcfs_expected_alpha_fold()
+}
+
+fn pcfs_expected_alpha_fold() -> GrammarExprFirstFold {
+  GrammarExprFirstFold {
+    terminals: Cons { head: FirstAnyOfClass { token_class: pcfs_class_alpha }, tail: Empty },
+    nullable: false
+  }
+}
+
+// ----------------------------------------------------------------------------------------------
+// The serialized prepared `.dag` grammar — the differential-identity artifact.
+// ----------------------------------------------------------------------------------------------
+
+fn pcfs_stamp(stamp: TerminalStampMode) -> String {
+  match stamp {
+    StampClass => "class"
+    StampLexeme => "lexeme"
+    StampBinding { binding: b } => pcfs_cat3(a: "binding(", b: pcfs_sym(sym: b), c: ")")
+  }
+}
+
+fn pcfs_first_key(key: FirstKey) -> String {
+  match key {
+    FirstAnyOfClass { token_class: c } => pcfs_cat3(a: "ac(", b: pcfs_sym(sym: c), c: ")")
+    FirstExactWord { token_class: c, lexeme: w } => pcfs_cat5(a: "ew(", b: pcfs_sym(sym: c), c: ",", d: pcfs_sym(sym: w), e: ")")
+  }
+}
+
+fn pcfs_first_key_parts(keys: List<FirstKey>) -> List<String> {
+  fold_list(xs: keys, empty: Empty, cons: fn(acc, k) { Cons { head: pcfs_first_key(key: k), tail: acc } })
+}
+
+fn pcfs_first_key_list(keys: List<FirstKey>) -> String { pcfs_join(parts: pcfs_first_key_parts(keys: keys), sep: ",") }
+
+fn pcfs_first_fold(first: GrammarExprFirstFold) -> String {
+  pcfs_cat5(
+    a: "F(",
+    b: pcfs_first_key_list(keys: first.terminals),
+    c: ";",
+    d: pcfs_bool(value: first.nullable),
+    e: ")"
+  )
+}
+
+fn pcfs_expr(expr: PreparedGrammarExpr) -> String {
+  match expr {
+    PreparedTerminal { token_class: c, stamp: s } => pcfs_cat4(a: "T(", b: pcfs_sym(sym: c), c: pcfs_cat2(a: ",", b: pcfs_stamp(stamp: s)), d: ")")
+    PreparedLiteralTerminal { token_class: c, lexeme: w } => pcfs_cat5(a: "L(", b: pcfs_sym(sym: c), c: ",", d: pcfs_sym(sym: w), e: ")")
+    PreparedNonterminal { production: p } => pcfs_cat3(a: "N(", b: pcfs_sym(sym: p), c: ")")
+    PreparedSequence { left: left, right: right } => pcfs_cat4(a: "S(", b: pcfs_expr(expr: left), c: pcfs_cat2(a: ",", b: pcfs_expr(expr: right)), d: ")")
+    PreparedOptional { element: e } => pcfs_cat3(a: "O(", b: pcfs_expr(expr: e), c: ")")
+    PreparedRepeat { element: e } => pcfs_cat3(a: "R(", b: pcfs_expr(expr: e), c: ")")
+    PreparedExpect { element: e, reason: _ } => pcfs_cat3(a: "E(", b: pcfs_expr(expr: e), c: ")")
+    PreparedRefuseOnMatch { element: e, reason: _ } => pcfs_cat3(a: "X(", b: pcfs_expr(expr: e), c: ")")
+    PreparedAfterLineBreak { element: e } => pcfs_cat3(a: "B(", b: pcfs_expr(expr: e), c: ")")
+    PreparedNotPredicate { element: e, first: first } => pcfs_cat4(a: "P(", b: pcfs_expr(expr: e), c: pcfs_cat2(a: ",", b: pcfs_first_fold(first: first)), d: ")")
+    PreparedInfixTable { operand: _, continuation_guard: _, operators: _, first: first } => pcfs_cat3(a: "I(", b: pcfs_first_fold(first: first), c: ")")
+    PreparedChoice { plan: plan, first: first } => pcfs_cat4(a: "C(", b: pcfs_plan(plan: plan), c: pcfs_cat2(a: ",", b: pcfs_first_fold(first: first)), d: ")")
+  }
+}
+
+fn pcfs_plan(plan: PreparedChoicePlan) -> String {
+  match plan {
+    ChoiceSharedPrefix { prefix: prefix, suffix: suffix } => pcfs_cat4(a: "SP(", b: pcfs_expr(expr: prefix), c: pcfs_cat2(a: "|", b: pcfs_plan(plan: suffix)), d: ")")
+    ChoiceOrderedBacktrack { alternatives: alternatives } => pcfs_cat3(a: "OB[", b: pcfs_expr_list(items: alternatives), c: "]")
+    ChoiceParseOne { expr: e } => pcfs_cat3(a: "PO(", b: pcfs_expr(expr: e), c: ")")
+    ChoiceReject => "RJ"
+    ChoiceTokenPrefix { rows: rows } => pcfs_cat3(a: "TP[", b: pcfs_prefix_rows(rows: rows), c: "]")
+    ChoiceByWord { on_word: w, on_other: o } => pcfs_cat4(a: "BW(", b: pcfs_word_map(entries: w), c: pcfs_cat2(a: "|", b: pcfs_plan(plan: o)), d: ")")
+    ChoiceByToken { on_token: t, on_other: o, on_end: en } => pcfs_cat6(a: "BT(", b: pcfs_token_map(entries: t), c: "|", d: pcfs_plan(plan: o), e: "|", f: pcfs_cat2(a: pcfs_plan(plan: en), b: ")"))
+  }
+}
+
+fn pcfs_prefix_rows(rows: List<TokenPrefixRow>) -> String {
+  pcfs_join(
+    parts: fold_list(xs: rows, empty: Empty, cons: fn(acc, row) { Cons { head: pcfs_cat4(a: "(", b: pcfs_symbol_text(items: row.prefix), c: "=>", d: pcfs_cat2(a: pcfs_plan(plan: row.next), b: ")")), tail: acc } }),
+    sep: ";"
+  )
+}
+
+// Maps are walked in sorted_map_keys order — canonical, never HostUnspecifiedOrder.
+fn pcfs_token_map(entries: Map<Symbol, PreparedChoicePlan>) -> String {
+  pcfs_join(
+    parts: fold_list(xs: sorted_map_keys(m: entries), empty: Empty, cons: fn(acc, k) { Cons { head: pcfs_cat3(a: pcfs_sym(sym: k), b: "=", c: pcfs_plan(plan: pcfs_plan_for(entries: entries, key: k))), tail: acc } }),
+    sep: ";"
+  )
+}
+
+fn pcfs_word_map(entries: Map<String, PreparedChoicePlan>) -> String {
+  pcfs_join(
+    parts: fold_list(xs: sorted_map_keys(m: entries), empty: Empty, cons: fn(acc, k) { Cons { head: pcfs_cat3(a: k, b: "=", c: pcfs_plan(plan: pcfs_word_plan_for(entries: entries, key: k))), tail: acc } }),
+    sep: ";"
+  )
+}
+
+fn pcfs_expr_list(items: List<PreparedGrammarExpr>) -> String {
+  pcfs_join(parts: fold_list(xs: items, empty: Empty, cons: fn(acc, e) { Cons { head: pcfs_expr(expr: e), tail: acc } }), sep: ";")
+}
+
+// Residue rows carry FreeMonoid<Symbol> terminal sets; only their cardinalities are projected (in
+// unary) and the two identity-bearing fields, which is enough for a movement in either to change
+// the bytes. Rows are ambiguity data the change does not touch.
+fn pcfs_residue_row(row: GrammarChoiceAmbiguityRow) -> String {
+  pcfs_cat6(
+    a: "AR(",
+    b: pcfs_sym(sym: row.production),
+    c: pcfs_cat4(a: "|l:", b: pcfs_marks(n: length(xs: row.left_first_terminals)), c: "|r:", d: pcfs_marks(n: length(xs: row.right_first_terminals))),
+    d: pcfs_cat2(a: "|o:", b: pcfs_marks(n: length(xs: row.overlap_terminals))),
+    e: pcfs_cat2(a: "|bn:", b: pcfs_bool(value: row.both_nullable)),
+    f: ")"
+  )
+}
+
+fn pcfs_absent_expr() -> PreparedGrammarExpr { PreparedNonterminal { production: ^pcfs_absent } }
+
+fn pcfs_plan_for(entries: Map<Symbol, PreparedChoicePlan>, key: Symbol) -> PreparedChoicePlan {
+  match map_lookup(m: entries, key: key) {
+    Present { value: p } => p
+    Absent => ChoiceReject
+  }
+}
+
+fn pcfs_word_plan_for(entries: Map<String, PreparedChoicePlan>, key: String) -> PreparedChoicePlan {
+  match map_lookup(m: entries, key: key) {
+    Present { value: p } => p
+    Absent => ChoiceReject
+  }
+}
+
+fn pcfs_tree_for(analysis: GrammarFirstAnalysisView, name: Symbol) -> PreparedGrammarExpr {
+  match map_lookup(m: analysis.prepared_exprs, key: name) {
+    Present { value: e } => e
+    Absent => pcfs_absent_expr()
+  }
+}
+
+fn pcfs_rows_for(analysis: GrammarFirstAnalysisView, name: Symbol) -> List<FirstKey> {
+  match map_lookup(m: analysis.first_rows, key: name) {
+    Present { value: r } => r
+    Absent => Empty
+  }
+}
+
+// Everything preparation carried for one production. A production absent from the carrier is a
+// refusal to serialize, not a silent gap: it projects as the sentinel N(#absent).
+fn pcfs_production_serial(analysis: GrammarFirstAnalysisView, name: Symbol) -> String {
+  pcfs_cat5(
+    a: pcfs_sym(sym: name),
+    b: "=",
+    c: pcfs_expr(expr: pcfs_tree_for(analysis: analysis, name: name)),
+    d: "|rows:",
+    e: pcfs_cat2(a: pcfs_first_key_list(keys: pcfs_rows_for(analysis: analysis, name: name)), b: ";")
+  )
+}
+
+// The analysis half of PreparedGrammar, named once so the serializer reads as one projection.
+type GrammarFirstAnalysisView {
+  nullable_set: List<Symbol>
+  first_rows: Map<Symbol, List<FirstKey>>
+  prepared_exprs: Map<Symbol, PreparedGrammarExpr>
+  choice_residue: List<GrammarChoiceAmbiguityRow>
+}
+
+fn pcfs_dag_prepared_serial() -> String {
+  match dag_prepared_grammar() {
+    Accepted { value: prepared, diagnostics: _ } =>
+      match prepared {
+        PreparedModeled { modeled: modeled } =>
+          pcfs_cat6(
+            a: "PREPARED_V1;",
+            b: pcfs_production_section(analysis: pcfs_analysis_view(modeled.analysis), names: pcfs_production_names()),
+            c: "|nullable:",
+            d: pcfs_symbol_text(items: modeled.analysis.nullable_set),
+            e: "|residue:",
+            f: pcfs_cat2(a: pcfs_marks(n: length(xs: modeled.analysis.choice_residue)), b: pcfs_residue_section(rows: modeled.analysis.choice_residue))
+          )
+        PreparedVoidGrammar => "PREPARED_VOID"
+      }
+    Rejected { diagnostics: _ } => "PREPARED_REFUSED"
+  }
+}
+
+fn pcfs_analysis_view(analysis: GrammarFirstAnalysis) -> GrammarFirstAnalysisView {
+  GrammarFirstAnalysisView {
+    nullable_set: analysis.nullable_set,
+    first_rows: analysis.first_rows,
+    prepared_exprs: analysis.prepared_exprs,
+    choice_residue: analysis.choice_residue
+  }
+}
+
+fn pcfs_production_section(analysis: GrammarFirstAnalysisView, names: List<Symbol>) -> String {
+  pcfs_join(
+    parts: fold_list(xs: names, empty: Empty, cons: fn(acc, name) { Cons { head: pcfs_production_serial(analysis: analysis, name: name), tail: acc } }),
+    sep: ""
+  )
+}
+
+fn pcfs_residue_section(rows: List<GrammarChoiceAmbiguityRow>) -> String {
+  pcfs_join(parts: fold_list(xs: rows, empty: Empty, cons: fn(acc, row) { Cons { head: pcfs_residue_row(row: row), tail: acc } }), sep: ";")
+}
+
+fn pcfs_production_names() -> List<Symbol> {
+  fold_list(xs: pcfs_dag_productions(), empty: Empty, cons: fn(acc, p) { Cons { head: p.name, tail: acc } })
+}
+
+// The authored production list, so the walk order never depends on map iteration.
+fn pcfs_dag_productions() -> List<GrammarProduction> {
+  match dag_grammar() {
+    ModeledGrammar { root: root } => root.productions
+    _ => Empty
+  }
+}
+
+// CLAIM 4 (differential identity): write the serialized prepared `.dag` grammar through the modeled
+// Filesystem.Write effect so the legs can be compared by sha256 outside the claim, and refuse when
+// the effect does not report writing exactly the bytes the serializer produced.
+test fn pcfs_write_dag_prepared_output() -> Bool {
+  let text = pcfs_dag_prepared_serial()
+  let written = Filesystem.Write(path: "target/pcfs_prepared_dag_output.txt", content: text)
+  written.success && written.bytes_written == string_length(text: text)
+}
+
+// CLAIM 5 (differential identity, gated): the serialized prepared `.dag` grammar is this many bytes.
+// Recorded from the pre-change leg; the post-change leg must report the same byte count, and the
+// sha256 of the file claim 4 writes is the byte-level check.
+data pcfs_dag_prepared_output_bytes: Int = 8608884
+
+// DIAGNOSTIC (runs on both legs): publish the two probes' compiled plans next to the ledger, so a
+// FAIL of a shape claim can be read rather than guessed at. The claim itself only asserts the work
+// is the shape it claims to be (three alternatives each) and that the write succeeded.
+test fn pcfs_probe_plans_are_instrumented() -> Bool {
+  let serial_a = pcfs_plan(plan: pcfs_probe_a_plan())
+  let serial_b = pcfs_plan(plan: pcfs_probe_b_plan())
+  let text = pcfs_cat3(
+    a: "A=",
+    b: serial_a,
+    c: pcfs_cat3(a: "|B=", b: serial_b, c: "|")
+  )
+  let written = Filesystem.Write(path: "target/pcfs_probe_plans.txt", content: text)
+  written.success && string_length(text: text) > 0
+}
+
+test fn pcfs_dag_prepared_output_byte_count_matches_recorded() -> Bool {
+  string_length(text: pcfs_dag_prepared_serial()) == pcfs_dag_prepared_output_bytes
+}
+
+// Run recipe (srv1, behind the shared limiter, one stage per acquisition):
+//   HEAVY_OWNER=<session> /home/briansrls/bin/heavy-slot bash -lc \
+//     "cd ~/scratch/<session>/gunbc && GUNBC_RECOMPUTE_TRACE=1 GUNBC_INTERP_PROFILE=1 \
+//      ./target/release/claim_batch --wet --source-root dag --source-root src/v2 \
+//      --entry src/v2/test/claim/parse/prepared_child_first_summary.dag \
+//      --functions pcfs_probe_a_earns_the_shared_prefix_rule,pcfs_probe_b_earns_the_shared_prefix_rule,pcfs_probes_carry_the_shared_class_summary,pcfs_write_dag_prepared_output"
+// The [recompute-trace] rows naming expr_first_fold_from_prepared are the instrument; the [witness]
+// lines carry eval_steps per claim.
