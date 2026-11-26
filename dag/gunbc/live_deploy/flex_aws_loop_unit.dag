@@ -1,6 +1,6 @@
 module gunbc.live_deploy.flex_aws_loop_unit
 
-import std.types { List, NonEmptyStr, String }
+import std.types { Bool, List, NonEmptyStr, String }
 import std.measure { ByteSize, byte_size }
 import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, Description, After, Wants,
@@ -11,7 +11,9 @@ import extdeps.systemd.unit_file {
 import gunbc.executor_privileged_operation { gunbc_entry_run_argv }
 import gunbc.live_deploy.release_locus { ReleaseRevisionBinding, release_locus_dir, release_locus_tree_subdirs }
 import gunbc.live_deploy.serve_binary { serve_binary_path }
-import gunbc.live_deploy.spec { DeploymentSpec }
+import gunbc.live_deploy.spec { DeploymentSpec, deployment_owns_the_host_approval_broker }
+import product.host_identity { host_identity_eq }
+import gunbc.fleet.fleet_host_identity { operator_host_srv1 }
 import gunbc.live_deploy.emit { release_locus_workspace_root_environment }
 
 // THE AWS SPOT DEMAND FILLER AS A SERVICE OF SRV1 (gunbc.plans.aws_spot_serving, roadmap leaf
@@ -27,6 +29,12 @@ import gunbc.live_deploy.emit { release_locus_workspace_root_environment }
 // and per-card files live in the flex custody directory (gunbc.flex_aws_credential), not in the release.
 
 data flex_aws_loop_unit_name: NonEmptyStr = "gunbc-flex-aws-loop.service"
+
+// WHO RUNS IT: the deployment that owns srv1's approval broker (the loop rides that release), on srv1 (the
+// router's host). Apply converges the unit on every run, and retract tears it down, under this one predicate.
+fn flex_aws_loop_hosted_by(spec: DeploymentSpec) -> Bool {
+  deployment_owns_the_host_approval_broker(spec: spec) && host_identity_eq(a: spec.target.host.identity, b: operator_host_srv1)
+}
 
 fn flex_aws_loop_unit_path() -> NonEmptyStr {
   join(["/etc/systemd/system/", flex_aws_loop_unit_name as String], "") as NonEmptyStr

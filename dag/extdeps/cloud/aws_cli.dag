@@ -913,6 +913,17 @@ fn aws_cli_get_secure_parameter(credentials_file: FilePath, region: NonEmptyStr,
 }
 
 // A SecureString whose value is READ FROM A FILE (file://), so the secret never appears in argv.
+// CREATE ONCE: a SecureString put WITHOUT --overwrite. A second put of the same name answers
+// ParameterAlreadyExists, which the caller reads as the value already delivered and keeps.
+data aws_cli_parameter_exists: String = "ParameterAlreadyExists"
+data aws_cli_parameter_absent: String = "ParameterNotFound"
+
+fn aws_cli_create_secure_parameter(credentials_file: FilePath, region: NonEmptyStr, name: NonEmptyStr, value_file: FilePath, tags: List<AwsEc2Tag>) -> ArgvCommand {
+  aws_cli_command(credentials_file: credentials_file, region: region, service: "ssm" as NonEmptyStr, operation: "put-parameter" as NonEmptyStr,
+    arguments: concat(["--name", name as String, "--type", "SecureString", "--value", join(["file://", value_file as String], "")],
+      if count(tags) == 0 { [] } else { concat(["--tags"], map(tags, t => join(["Key=", t.key as String, ",Value=", t.value], ""))) }))
+}
+
 fn aws_cli_put_secure_parameter(credentials_file: FilePath, region: NonEmptyStr, name: NonEmptyStr, value_file: FilePath) -> ArgvCommand {
   aws_cli_command(credentials_file: credentials_file, region: region, service: "ssm" as NonEmptyStr, operation: "put-parameter" as NonEmptyStr,
     arguments: ["--name", name as String, "--type", "SecureString", "--overwrite", "--value", join(["file://", value_file as String], "")])
@@ -935,9 +946,12 @@ fn aws_cli_get_queue_url(credentials_file: FilePath, region: NonEmptyStr, queue_
 }
 
 // Up to ten messages, without waiting: the pass reads what is queued now and returns.
-fn aws_cli_receive_messages(credentials_file: FilePath, region: NonEmptyStr, queue_url: NonEmptyStr) -> ArgvCommand {
+// ReceiveMessage hides what it returns for the visibility timeout (SQS developer guide). A reader that will
+// act on and then delete the messages takes them for a minute; a reader that only looks (a Plan pass) takes
+// them with timeout 0, so it hides nothing from the reader that acts.
+fn aws_cli_receive_messages(credentials_file: FilePath, region: NonEmptyStr, queue_url: NonEmptyStr, visibility_seconds: Int) -> ArgvCommand {
   aws_cli_command(credentials_file: credentials_file, region: region, service: "sqs" as NonEmptyStr, operation: "receive-message" as NonEmptyStr,
-    arguments: ["--queue-url", queue_url as String, "--max-number-of-messages", "10", "--wait-time-seconds", "0", "--visibility-timeout", "60"])
+    arguments: ["--queue-url", queue_url as String, "--max-number-of-messages", "10", "--wait-time-seconds", "0", "--visibility-timeout", to_string(visibility_seconds)])
 }
 
 fn aws_cli_delete_message(credentials_file: FilePath, region: NonEmptyStr, queue_url: NonEmptyStr, receipt_handle: NonEmptyStr) -> ArgvCommand {
@@ -1091,6 +1105,21 @@ fn aws_cli_put_target(credentials_file: FilePath, region: NonEmptyStr, rule: Non
     arguments: ["--rule", rule as String, "--targets", serialize_json(v: json_array(elements: [json_object(members: [json_kv(key: "Id", value: json_string(s: target_id as String)), json_kv(key: "Arn", value: json_string(s: target_arn as String))])]))])
 }
 
+// PutTargets answers 200 even when a target was not installed: FailedEntryCount and FailedEntries say so
+// (EventBridge API reference, PutTargets). A count other than zero, or an answer without one, is a refusal.
+fn aws_cli_read_put_targets(stdout: String) -> AwsCliRead<Int> {
+  match aws_cli_document(stdout: stdout) {
+    AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: c }
+    AwsCliReadOk { value: doc } => match json_field(obj: doc, key: "FailedEntryCount") {
+      FieldRead { value: v } => match aws_cli_whole(v: v) {
+        Present { value: n } => if n == 0 { AwsCliReadOk { value: 0 } } else { AwsCliReadRefused { cause: join([to_string(n), " target(s) failed: ", serialize_json(v: match json_field(obj: doc, key: "FailedEntries") { FieldRead { value: e } => e  _ => json_array(elements: []) })], "") } }
+        Absent => AwsCliReadRefused { cause: "FailedEntryCount is not a whole number" }
+      }
+      _ => AwsCliReadRefused { cause: "the PutTargets answer carries no FailedEntryCount" }
+    }
+  }
+}
+
 // S3 HeadBucket: exit 0 when the bucket exists and the caller may list it; a 404 when it does not.
 data aws_cli_bucket_absent: String = "Not Found"
 
@@ -1116,10 +1145,13 @@ fn aws_cli_put_bucket_tagging(credentials_file: FilePath, region: NonEmptyStr, b
 }
 
 // A server-side copy of one prefix from a bucket in another region; objects already present with the same
-// size and time are skipped, so a re-run copies only what is missing.
+// size and time are skipped, so a re-run copies only what is missing. --copy-props none: the CLI otherwise
+// reads and rewrites each object's tags on a multipart copy (GetObjectTagging, measured 2026-11-25 as the
+// provisioner's AccessDenied on every file over the multipart threshold); the weights carry no tags or
+// metadata that matter, and the copy is verified by count and bytes.
 fn aws_cli_s3_sync_prefix(credentials_file: FilePath, region: NonEmptyStr, source_region: NonEmptyStr, source_bucket: NonEmptyStr, bucket: NonEmptyStr, prefix: NonEmptyStr) -> ArgvCommand {
   aws_cli_command(credentials_file: credentials_file, region: region, service: "s3" as NonEmptyStr, operation: "sync" as NonEmptyStr,
-    arguments: [join(["s3://", source_bucket as String, "/", prefix as String], ""), join(["s3://", bucket as String, "/", prefix as String], ""), "--source-region", source_region as String, "--only-show-errors"])
+    arguments: [join(["s3://", source_bucket as String, "/", prefix as String], ""), join(["s3://", bucket as String, "/", prefix as String], ""), "--source-region", source_region as String, "--copy-props", "none", "--only-show-errors"])
 }
 
 // The object count and total bytes under a prefix (the CLI pages ListObjectsV2 and applies the query to

@@ -19,7 +19,7 @@ import extdeps.cloud.aws_cli {
   aws_cli_describe_security_group_named, aws_cli_read_security_group_ids, aws_cli_create_security_group, aws_cli_read_group_id,
   aws_cli_authorize_ingress_tcp, aws_cli_duplicate_permission,
   aws_cli_create_queue, aws_cli_get_queue_url, aws_cli_read_queue_url, aws_cli_get_queue_arn, aws_cli_read_queue_arn, aws_cli_set_queue_attributes,
-  aws_cli_put_rule, aws_cli_read_rule_arn, aws_cli_put_target,
+  aws_cli_put_rule, aws_cli_read_rule_arn, aws_cli_put_target, aws_cli_read_put_targets,
   aws_cli_head_bucket, aws_cli_bucket_absent, aws_cli_create_bucket, aws_cli_block_public_access, aws_cli_put_bucket_tagging,
   aws_cli_get_parameter, aws_cli_read_parameter_value, aws_cli_put_string_parameter,
   aws_cli_s3_sync_prefix, aws_cli_prefix_census, aws_cli_read_prefix_census,
@@ -195,7 +195,10 @@ fn flex_aws_put_rule(region: NonEmptyStr, name: NonEmptyStr, detail_type: String
       AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: join(["rule ", name as String, ": ", c], "") }
       AwsCliReadOk { value: arn } => match flex_aws_outcome(outcome: run_shell_command_capture(command: aws_cli_put_target(credentials_file: flex_aws_provisioner(), region: region, rule: name, target_id: flex_aws_notice_queue, target_arn: queue_arn), transport: LocalExec)) {
         AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: join(["target of ", name as String, ": ", c], "") }
-        AwsCliReadOk { value: _ } => AwsCliReadOk { value: arn }
+        AwsCliReadOk { value: t2 } => match aws_cli_read_put_targets(stdout: t2) {
+          AwsCliReadOk { value: _ } => AwsCliReadOk { value: arn }
+          AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: join(["target of ", name as String, ": ", c], "") }
+        }
       }
     }
   }
@@ -333,18 +336,23 @@ fn converge(mode: String, regions: String) -> ProcessExit {
       Present { value: rs } => {
         let apply = match m { Apply => true  Plan => false }
         let facts = flex_aws_provision_facts()
+        let region_lines = flat_map(rs, r => flex_aws_converge_region(apply: apply, region: r, facts: facts))
+        let not_ready = region_lines |> filter(l => l.starts_with("region ") && !l.ends_with(" READY"))
         let text = join(concat(
           [join(["aws-regions mode=", if apply { "apply" } else { "plan" }, match facts {
             FlexAwsProvisionFactsRead { account: _, cidr: c, source: s } => join([" ingress=", c as String, " source=", join(map(s, w => join([w.prefix as String, "=", to_string(w.want.objects), "/", to_string(w.want.bytes)], "")), ",")], "")
             FlexAwsProvisionFactsRefused { cause: c } => concat(" REFUSED ", c)
           }], "")],
-          flat_map(rs, r => flex_aws_converge_region(apply: apply, region: r, facts: facts))), "\n")
+          region_lines), "\n")
         let written = Filesystem.Write(path: flex_aws_regions_receipt_path(), content: text)
         if !written.success { exit_failure(reason: concat("THE RECEIPT COULD NOT BE WRITTEN: ", written.error)) }
         else {
           match facts {
             FlexAwsProvisionFactsRefused { cause: c } => exit_failure(reason: c)
-            FlexAwsProvisionFactsRead { account: _, cidr: _, source: _ } => ExitSuccess
+            // A region left NOT-READY fails the run: the receipt says which step, and nothing reads a
+            // half-set-up region as converged (review of fb2594de). The pass never launches there anyway: a
+            // region without its readable notice queue offers no candidates.
+            FlexAwsProvisionFactsRead { account: _, cidr: _, source: _ } => if count(not_ready) == 0 { ExitSuccess } else { exit_failure(reason: concat("not ready: ", join(not_ready, "; "))) }
           }
         }
       }

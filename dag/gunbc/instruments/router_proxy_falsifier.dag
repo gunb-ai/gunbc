@@ -6,8 +6,8 @@ import std.algebra { skip, list_append }
 import std.measure { byte_size, token_count }
 import std.compiler_entry { CompilerEntryDriver, NativeClaimDriver, NativeClaimReport, NativeClaimTerminal, NativeClaimHeld, NativeClaimNotHeld, NativeClaimNoObservation }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, json_object_members_named }
-import extdeps.languages.json.emit { JsonValue, JsonString, JsonBool, JsonArray, JsonObject, json_int, json_string, json_object, json_kv }
+import extdeps.languages.json.parse { parse_json_document, JsonDocumentParsed, json_object_members_named, json_field, FieldRead }
+import extdeps.languages.json.emit { JsonValue, JsonString, JsonBool, JsonArray, JsonObject, JsonNumber, json_int, json_string, json_object, json_kv, serialize_json }
 import extdeps.docker.cli_service { DockerCli, SignalHangup }
 import extdeps.container.curlimages_curl { curlimages_curl_8_11_1_image }
 import extdeps.proxy.openresty {
@@ -21,6 +21,7 @@ import gunbc.serving.serving_replica_profile { srv3_strata_profile, srv_strata_p
 import product.host_identity { HostIdentity }
 import gunbc.fleet.fleet_host_identity { operator_host_6ce85c, operator_host_srv2, operator_host_srv3, operator_host_srv4, operator_host_srv9 }
 import gunbc.serving.serving_host_memory { ServingMemoryUnread }
+import gunbc.serving.flex_aws_router_rows { flex_aws_read_router_stats, FlexAwsStatsReadOk, FlexAwsStatsRefused }
 import gunbc.serving.router_proxy_config {
   RouterProxyConfig, RouterProxyConfigRendered, RouterProxyConfigRefused, router_proxy_config, router_proxy_vocabulary, router_proxy_directives,
 }
@@ -687,6 +688,24 @@ fn has_line(text: String, want: String) -> Bool {
   any(text_lines(text: text), l => l == want || l == concat(want, "\r"))
 }
 
+// The /router/stats JSON line of a curl answer (the line carrying the usage meter), as the AWS loop reads it.
+fn stats_line(text: String) -> String {
+  fold(filter(text_lines(text: text), l => contains(s: l, p: "\"usage_all\"")), init: "", f: (acc, l) => l)
+}
+
+fn pending_total(text: String) -> Int {
+  match parse_json_document(s: stats_line(text: text)) {
+    JsonDocumentParsed { value: d } => match json_field(obj: d, key: "pending") {
+      FieldRead { value: p } => match json_field(obj: p, key: "total") {
+        FieldRead { value: JsonNumber { lexeme: _ } } => match parse_int(s: serialize_json(v: match json_field(obj: p, key: "total") { FieldRead { value: v } => v  _ => json_int(n: 0) })) { Present { value: n } => n  Absent => -1 }
+        _ => -1
+      }
+      _ => -1
+    }
+    _ => -1
+  }
+}
+
 fn body_doc(text: String, marker: String) -> JsonValue {
   let found = filter(text_lines(text: text), l => contains(s: l, p: marker))
   if count(found) == 1 {
@@ -1215,6 +1234,15 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
     case_of(identity: "dev_bound_session_on_a_cap_0_engine_is_refused_and_never_counted", held: contains(s: cap_0_bound, p: "\n429 exit=0") && contains(s: cap_0_bound, p: "at its active-turn cap") && !contains(s: cap_0_bound, p: "upstream=") && contains(s: cap_0_stats, p: "\"active:f1\":0") && !contains(s: cap_0_stats, p: "\"upstream:f1:429\""), observed: concat(one_line(s: cap_0_bound), one_line(s: cap_0_stats))),
     case_of(identity: "dev_bound_session_on_any_owned_row_at_cap_answers_429_and_never_moves", held: contains(s: own_contended, p: "HTTP/1.1 429") && contains(s: own_contended, p: "Retry-After") && contains(s: own_contended, p: "upstream=f1 auth=Bearer ks1") && !contains(s: own_contended, p: "auth=Bearer ks2"), observed: one_line(s: own_contended)),
     case_of(identity: "dev_retention_refuses_a_new_session_and_a_bound_session_returns", held: contains(s: ret_1, p: "auth=Bearer kr") && contains(s: ret_1, p: "\n200 exit=0") && contains(s: ret_2, p: "\n429 exit=0") && !contains(s: ret_2, p: "upstream=") && contains(s: ret_1_again, p: "auth=Bearer kr") && contains(s: ret_1_again, p: "\n200 exit=0"), observed: concat(one_line(s: ret_2), one_line(s: ret_1_again))),
+    // RENDER TO DECISION (review of fb2594de: the reader was witnessed only against JSON modeled on the live host,
+    // and the checked-in router emitted none of the fields it required). The real stats answer of the rendered
+    // dev router, holding a waiter bound to its own full engine (own-1 on s1) and an unbound one refused by
+    // retention (ret-2), is read by the AWS allocator's own reader: the router counts rented demand itself,
+    // and the waiter held for its own engine is not part of it.
+    case_of(identity: "dev_rented_demand_reads_into_the_allocator", held: match flex_aws_read_router_stats(body: stats_line(text: pending_stats), instance_ids: []) {
+      FlexAwsStatsReadOk { reading: r } => (r.waiting >= 1) && (r.waiting < pending_total(text: pending_stats))
+      FlexAwsStatsRefused { cause: _ } => false
+    }, observed: one_line(s: pending_stats)),
     case_of(identity: "dev_refused_turns_are_stranded_demand_cleared_on_success", held: contains(s: pending_stats, p: "\"m-r\":\{") && contains(s: pending_stats, p: "\"m-s\":\{") && contains(s: pending_stats, p: "\"oldest_s\"") && contains(s: own_after, p: "\n200 exit=0") && !contains(s: cleared_stats, p: "\"m-s\":\{") && contains(s: cleared_stats, p: "\"m-r\":\{"), observed: one_line(s: pending_stats)),
     case_of(identity: "dev_rented_turns_are_metered_and_the_rented_pool_reported", held: contains(s: rented_stats, p: "\"usage_all\"") && contains(s: rented_stats, p: "\"billing\":\"rented\"") && contains(s: rented_stats, p: "\"unmeasured_requests\":11") && contains(s: rented_stats, p: "\"rented\":\{") && contains(s: rented_stats, p: "\"full\":"), observed: one_line(s: rented_stats)),
     case_of(identity: "dev_capped_overflow_row_refuses_at_its_cap", held: contains(s: overflow_contended, p: "HTTP/1.1 429") && contains(s: overflow_contended, p: "Retry-After") && occurrences(s: overflow_contended, needle: "auth=Bearer ko") == 1, observed: one_line(s: overflow_contended)),

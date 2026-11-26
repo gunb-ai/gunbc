@@ -134,7 +134,7 @@ import extdeps.systemd.systemctl { systemctl_enable_argv }
 import gunbc.live_deploy.serve_binary { fixed_serve_binary_path }
 import gunbc.live_deploy.emit { live_deploy_device_crypto_sidecar_unit_file, device_crypto_sidecar_binary_path, device_crypto_deployed_digest_env_file_path }
 import gunbc.live_deploy.spec { gunbc_device_crypto_sidecar_unit_name, gunbc_device_crypto_sidecar_unit_path }
-import gunbc.live_deploy.flex_aws_loop_unit { flex_aws_loop_unit_name, flex_aws_loop_unit_path, flex_aws_loop_unit_file }
+import gunbc.live_deploy.flex_aws_loop_unit { flex_aws_loop_unit_name, flex_aws_loop_unit_path, flex_aws_loop_unit_file, flex_aws_loop_hosted_by }
 import gunbc.live_deploy.spec { deployment_oidc_config_steps, tailscale_default_https_port, deployment_plan_host_identity }
 import gunbc.auth.approval_broker_endpoint { approval_broker_approve_front_door, approval_broker_listen_port }
 import gunbc.auth.approval_device_crypto_realization { approval_device_crypto_deployed_digest_env_name }
@@ -1071,8 +1071,15 @@ fn deploy_apply_broker_unit_write_legs(spec: DeploymentSpec, revision: ReleaseRe
   }
 }
 
-// The AWS spot demand filler rides the broker's release (gunbc.live_deploy.flex_aws_loop_unit): its unit is
-// written after the broker's own and enabled and restarted onto the new revision with it.
+// THE AWS SPOT DEMAND FILLER (gunbc.live_deploy.flex_aws_loop_unit) rides the broker's release, and is
+// converged on EVERY apply by the deployment that hosts it, not only when the serve unit is rewritten (review
+// of fb2594de: an unchanged apply skipped a missing or stopped unit). The unit is written, enabled, and
+// restarted onto the deployed revision; restarting a stateless loop costs one resolve, and its cards' state
+// lives on the cards.
+fn deploy_apply_flex_aws_loop_plan(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> DeployApplyPlan {
+  if !flex_aws_loop_hosted_by(spec: spec) { ApplyPlanReady { legs: [] } } else { ApplyPlanReady { legs: deploy_apply_flex_aws_loop_legs(spec: spec, revision: revision) } }
+}
+
 fn deploy_apply_flex_aws_loop_legs(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> List<DeployApplyLeg> {
   concat([
     apply_staged_leg(step: "flex-aws-loop-unit", dest: flex_aws_loop_unit_path() as String, payload: serialize_systemd_unit_file(file: flex_aws_loop_unit_file(spec: spec, revision: revision))),
@@ -1082,7 +1089,7 @@ fn deploy_apply_flex_aws_loop_legs(spec: DeploymentSpec, revision: ReleaseRevisi
 
 fn deploy_apply_broker_unit_write_legs_owned(spec: DeploymentSpec, revision: ReleaseRevisionBinding, broker_base_url: NonEmptyStr) -> List<DeployApplyLeg> {
   let owner = spec.approval_broker.service_user
-  concat(concat(concat([
+  concat(concat([
     ApplyLegBrokerTree { revision: revision },
     ApplyLegDigestEnvFile {
       step: "device-crypto-digest-env",
@@ -1099,7 +1106,7 @@ fn deploy_apply_broker_unit_write_legs_owned(spec: DeploymentSpec, revision: Rel
       step: "approval-broker-unit",
       dest: gunbc_approval_broker_unit_path() as String,
       payload: serialize_systemd_unit_file(file: live_deploy_approval_broker_unit_file_on(spec: spec, revision: revision, port: spec.approval_broker.listen.port, broker_base_url: broker_base_url))),
-  ]), deploy_apply_flex_aws_loop_legs(spec: spec, revision: revision))
+  ])
 }
 
 fn deploy_apply_lifecycle_legs(spec: DeploymentSpec, plan: ReleaseEffectPlan) -> List<DeployApplyLeg> {
@@ -1311,8 +1318,11 @@ fn deploy_apply_unit_plan_body(spec: DeploymentSpec, plan: ReleaseEffectPlan, oi
           rest: deploy_apply_chain(
             first: deploy_apply_srv1_gpu_power_cap_plan(spec: spec, revision: revision),
             rest: deploy_apply_chain(
+              first: deploy_apply_flex_aws_loop_plan(spec: spec, revision: revision),
+              rest: deploy_apply_chain(
               first: deploy_apply_srv1_serving_engine_plan(spec: spec),
               rest: ApplyPlanReady { legs: deploy_apply_lifecycle_legs(spec: spec, plan: plan) },
+              ),
             ),
           ),
         ),

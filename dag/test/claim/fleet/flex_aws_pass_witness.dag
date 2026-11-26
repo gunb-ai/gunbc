@@ -1,0 +1,39 @@
+module test.claim.fleet.flex_aws_pass_witness
+
+import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.types { Bool, String, NonEmptyStr, List }
+import std.optional { Present, Absent }
+import std.measure { MoneyPerHour, money_amount_micro }
+import extdeps.currency.currency { Usd }
+import product.fabric.flex_aws_row { FlexAwsCandidate, FlexAwsSpot }
+import product.fabric.flex_aws_apply { FlexAwsLaunch, FlexAwsHold, FlexAwsDrain, FlexAwsDrainIdle }
+import gunbc.serving.flex_aws_router_rows { FlexAwsRouterReading, FlexAwsCardUse }
+import gunbc.fleet.flex_aws_pass { flex_aws_reload_owed, flex_aws_inventory_gate }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// SUPPLIED at the pass's pure seams: what the converge wants routed, and what the running router reports.
+
+fn use_of(id: String, enrolled: Bool) -> FlexAwsCardUse { FlexAwsCardUse { instance_id: id as NonEmptyStr, enrolled: enrolled, in_flight: 0, seen_recent: 0 } }
+
+fn reading(cards: List<FlexAwsCardUse>) -> FlexAwsRouterReading { FlexAwsRouterReading { waiting: 0, full: false, rented_rows: 1, cards: cards } }
+
+// THE SECOND PASS AFTER A FAILED RELOAD (review of fb2594de): the files already say i-0new is routed (so the
+// converge writes nothing and sends no HUP), but the running router does not route it -- the reload is owed
+// and is sent again. The same for a withdrawn card the running router still routes. When the router agrees
+// with the files, nothing is owed.
+test fn a_reload_the_router_has_not_taken_is_owed_on_the_next_pass() -> Bool {
+  flex_aws_reload_owed(desired: ["i-0new"], reading: reading(cards: [use_of(id: "i-0new", enrolled: false)]), known: ["i-0new"])
+    && flex_aws_reload_owed(desired: [], reading: reading(cards: [use_of(id: "i-0old", enrolled: true)]), known: ["i-0old"])
+    && !flex_aws_reload_owed(desired: ["i-0new"], reading: reading(cards: [use_of(id: "i-0new", enrolled: true)]), known: ["i-0new"])
+    && !flex_aws_reload_owed(desired: [], reading: reading(cards: []), known: [])
+}
+
+// AN UNREADABLE REGION BLOCKS EVERY LAUNCH, and only launches: draining a card that was seen still goes ahead.
+test fn an_incomplete_inventory_launches_nothing() -> Bool {
+  let c = FlexAwsCandidate { region: "us-east-1" as NonEmptyStr, zone: "us-east-1b" as NonEmptyStr, instance_type: "g7e.2xlarge" as NonEmptyStr, market: FlexAwsSpot, gpus: 1, vcpus: 8, rate: Present { value: MoneyPerHour { amount: money_amount_micro(count: 1000000), currency: Usd } }, per_gpu_hour_micros: Present { value: 1000000 }, walls: [] }
+  let launch = FlexAwsLaunch { candidate: c, max_price: MoneyPerHour { amount: money_amount_micro(count: 1000000), currency: Usd }, fallbacks: [] }
+  (match flex_aws_inventory_gate(decision: launch, blind: ["eu-west-2"]) { FlexAwsHold { why: w } => w.contains("eu-west-2")  _ => false })
+    && (match flex_aws_inventory_gate(decision: launch, blind: []) { FlexAwsLaunch { candidate: _, max_price: _, fallbacks: _ } => true  _ => false })
+    && (match flex_aws_inventory_gate(decision: FlexAwsDrain { instance_id: "i-0a" as NonEmptyStr, why: FlexAwsDrainIdle { idle_seconds: 1800 } }, blind: ["eu-west-2"]) { FlexAwsDrain { instance_id: _, why: _ } => true  _ => false })
+}

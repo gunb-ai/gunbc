@@ -5,11 +5,12 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import std.optional { Present, Absent }
 import extdeps.access.aws_iam {
-  PolicyDocument, Statement, ConditionEntry, Allow, ServicePrincipal,
+  PolicyDocument, Statement, ConditionEntry, Allow, Deny, ServicePrincipal,
   aws_iam_policy_version, aws_iam_policy_document_json,
 }
 import product.fabric.flex_aws_row { flex_aws_owner_tag_key, flex_aws_owner_tag_value, flex_aws_type_pattern }
 import product.fabric.flex_aws_apply { flex_aws_mark_key_pattern }
+import product.fabric.flex_ec2_boot { flex_ec2_card_instance_tag_key }
 
 // THE TWO AWS PRINCIPALS OF THE FLEX SPOT LOOP AND WHAT EACH MAY DO, as policy documents rather than JSON
 // typed by hand. The deleted plan gunbc.plans.flex_supplier_generalization (section 4, recovered from
@@ -121,7 +122,7 @@ data flex_aws_loop_policy: PolicyDocument = PolicyDocument {
     // The AMI is read per region from AWS's public parameters (the Deep Learning Base image's latest id).
     flex_aws_allow(sid: "FlexPublicImageIds", actions: ["ssm:GetParameter"], resources: ["arn:aws:ssm:*::parameter/aws/service/*"], conditions: []),
     // The per-card POOL_API_KEY is written after RunInstances answers and deleted on enrollment.
-    flex_aws_allow(sid: "FlexParameters", actions: ["ssm:PutParameter", "ssm:DeleteParameter", "ssm:GetParameter"], resources: [flex_aws_parameter_arn()], conditions: []),
+    flex_aws_allow(sid: "FlexParameters", actions: ["ssm:PutParameter", "ssm:DeleteParameter", "ssm:GetParameter", "ssm:AddTagsToResource"], resources: [flex_aws_parameter_arn()], conditions: []),
     // The interruption and rebalance notices, delivered by EventBridge to the flex queues.
     flex_aws_allow(sid: "FlexNotices", actions: ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes", "sqs:GetQueueUrl"], resources: [join(["arn:aws:sqs:*:*:", flex_aws_queue_name_prefix as String, "*"], "")], conditions: []),
   ],
@@ -151,10 +152,43 @@ data flex_aws_card_policy: PolicyDocument = PolicyDocument {
     flex_aws_allow(sid: "CardListWeights", actions: ["s3:ListBucket"], resources: [join(["arn:aws:s3:::", flex_aws_bucket_name_prefix as String, "*"], "")], conditions: []),
     flex_aws_allow(sid: "CardReadWeightsAndCache", actions: ["s3:GetObject"], resources: [join(["arn:aws:s3:::", flex_aws_bucket_name_prefix as String, "*/*"], "")], conditions: []),
     flex_aws_allow(sid: "CardPublishTuningCache", actions: ["s3:PutObject"], resources: [join(["arn:aws:s3:::", flex_aws_bucket_name_prefix as String, "*/jit/*"], "")], conditions: []),
-    flex_aws_allow(sid: "CardReadParameters", actions: ["ssm:GetParameter"], resources: [flex_aws_parameter_arn()], conditions: []),
-    // The card publishes its own TLS certificate (public material) for the loop to pin.
-    flex_aws_allow(sid: "CardPublishCertificate", actions: ["ssm:PutParameter"], resources: [join(["arn:aws:ssm:*:*:parameter", flex_aws_parameter_prefix as String, "/card-cert/*"], "")], conditions: []),
+    // THE SHARED READS boot needs: the weights bucket's name and the loop's heartbeat (product.fabric.flex_ec2_boot).
+    flex_aws_allow(sid: "CardReadShared", actions: ["ssm:GetParameter"], resources: [flex_aws_named_parameter_arn(name: "/weights-bucket"), flex_aws_named_parameter_arn(name: "/heartbeat")], conditions: []),
+    // ITS OWN KEY ONLY (review of fb2594de: the role read every card's key): a pool key the loop created tagged
+    // with this card's instance ARN, compared against the session's own ec2:SourceInstanceARN.
+    flex_aws_allow(sid: "CardReadOwnKey", actions: ["ssm:GetParameter"], resources: [flex_aws_named_parameter_arn(name: "/pool-key/*")], conditions: [flex_aws_own_card(key: concat("ssm:resourceTag/", flex_ec2_card_instance_tag_key as String))]),
+    // ITS OWN CERTIFICATE ONLY: created (never overwritten) carrying this card's instance ARN as its tag.
+    flex_aws_allow(sid: "CardPublishOwnCertificate", actions: ["ssm:PutParameter", "ssm:AddTagsToResource"], resources: [flex_aws_named_parameter_arn(name: "/card-cert/*")], conditions: [flex_aws_own_card(key: concat("aws:RequestTag/", flex_ec2_card_instance_tag_key as String))]),
+    // AND NOTHING ELSE OF ANOTHER CARD'S, whatever another attached policy grants: AmazonSSMManagedInstanceCore
+    // (flex_aws_card_managed_policy_arns) allows ssm:GetParameter(s) on every parameter, so the denial is explicit.
+    Statement {
+      sid: Present { value: flex_aws_ne(s: "CardDenyOtherCardsKeys") },
+      effect: Deny,
+      principal: none,
+      actions: map(["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParameterHistory"], a => flex_aws_ne(s: a)),
+      resources: [flex_aws_ne(s: flex_aws_named_parameter_arn(name: "/pool-key/*"))],
+      conditions: [flex_aws_cond(operator: "StringNotEquals", key: concat("ssm:resourceTag/", flex_ec2_card_instance_tag_key as String), values: ["$\{ec2:SourceInstanceARN}"])],
+    },
+    Statement {
+      sid: Present { value: flex_aws_ne(s: "CardDenyParameterWalks") },
+      effect: Deny,
+      principal: none,
+      actions: [flex_aws_ne(s: "ssm:GetParametersByPath")],
+      resources: [flex_aws_ne(s: join(["arn:aws:ssm:*:*:parameter", flex_aws_parameter_prefix as String, "*"], ""))],
+      conditions: [],
+    },
   ],
+}
+
+fn flex_aws_named_parameter_arn(name: String) -> String {
+  join(["arn:aws:ssm:*:*:parameter", flex_aws_parameter_prefix as String, name], "")
+}
+
+// The condition that names THIS card: the tag (on the parameter, or on the request creating it) equals the
+// instance ARN of the session making the request (IAM: any single-valued global condition key is a policy
+// variable; ec2:SourceInstanceARN is the instance an instance-profile session was issued to).
+fn flex_aws_own_card(key: String) -> ConditionEntry {
+  flex_aws_cond(operator: "StringEquals", key: key, values: ["$\{ec2:SourceInstanceARN}"])
 }
 
 // ---- the interruption test --------------------------------------------------------------------------

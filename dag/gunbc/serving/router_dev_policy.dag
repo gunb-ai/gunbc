@@ -242,6 +242,19 @@ fn router_dev_row_lines() -> List<String> {
     "for _, u in ipairs(ROUTER_UPSTREAMS) do owner_of[u.name] = u.name end",
     "for _, u in ipairs(ROUTER_UPSTREAMS) do for _, old in ipairs(u.retiring_names or \{}) do owner_of[old] = u.name end end",
     "local function active(u) local st = ngx.shared.router_state local n = st:get('active:' .. u.name) or 0 for _, old in ipairs(u.retiring_names or \{}) do n = n + (st:get('active:' .. old) or 0) end return n end",
+    // WHETHER A WAITING CONVERSATION IS HELD FOR ITS OWN ENGINE -- the one statement of it, read by the routing
+    // rule (a bound conversation is served by its engine or refused while that engine answers its model, is in
+    // service and is not ejected) and by the stats (every other waiter would take any compatible free slot, a
+    // rented card's included, so the rented-demand count is the waiters for which this is false). A binding to a
+    // retired name belongs to the row that retires it.
+    "local function waiter_keeps_its_engine(model, bound_name)",
+    "  local name = bound_name and (owner_of[bound_name] or bound_name)",
+    "  if not name or name == '' then return false end",
+    "  for _, u in ipairs(ROUTER_UPSTREAMS) do",
+    "    if u.name == name then return u.in_service ~= false and (model == ROUTER_ALIAS or model == u.model) and not ngx.shared.router_state:get('unavailable:' .. u.name) end",
+    "  end",
+    "  return false",
+    "end",
   ]
 }
 
@@ -422,7 +435,7 @@ fn router_dev_access_lines() -> List<String> {
     "end",
     "local function retains(c) return c.retain == nil or c.name == stuck or bound_count(c.name) < c.retain end",
     "local bound = (stuck and stuck ~= '') and candidates[stuck] or nil",
-    "if bound and available(bound) then",
+    "if bound and waiter_keeps_its_engine(body.model, stuck) then",
     // A bound session is served by ITS engine or refused, on every owned row and every capped rented row: no
     // path from here reaches the pick loop while the engine is available. Falling through would migrate the
     // very session this rule exists to keep in place (operator 2026-10-28: deliberate moves come only through
@@ -660,6 +673,10 @@ fn router_dev_trim_lines() -> List<String> {
 }
 
 // GET /router/stats with a client key: the tallies and the active turns per upstream, as JSON.
+// THE RECENT-USE WINDOW a rented row's conversations are counted over: a row none of whose conversations was
+// seen within it, and with nothing in flight, is unused (the AWS loop's idle clock starts there).
+fn router_dev_recent_use_window() -> Second { second(count: 600) }
+
 fn router_dev_stats_lines() -> List<String> {
   list_append(left: router_dev_row_lines(), right: [
     "local cjson = require('cjson.safe')",
@@ -735,6 +752,27 @@ fn router_dev_stats_lines() -> List<String> {
     "  end",
     "end",
     "rented.full = any_rented and rented.uncapped == 0 and capped_active >= rented.cap",
+    // RENTED DEMAND, decided by this router's own routing rule (operator 2026-11-25: rent a card on surplus
+    // demand the router could place on it). `waiting` counts the waiting conversations NOT held for their own
+    // engine (waiter_keeps_its_engine), i.e. the ones a rented card's free slot would serve; `rows` is each
+    // rented row in service with its turns in flight and the conversations bound to it seen within the recent
+    // window. The AWS loop rents on these and nothing else, so the eligibility rule is never restated outside it.
+    "rented.waiting = 0",
+    "for _, k in ipairs(state:get_keys(0)) do",
+    "  local m, s = k:match('^pending:(.-)|(.+)$')",
+    "  if m and state:get(k) and not waiter_keeps_its_engine(m, state:get('session:' .. s)) then rented.waiting = rented.waiting + 1 end",
+    "end",
+    "rented.rows = \{}",
+    "for _, u in ipairs(ROUTER_UPSTREAMS) do",
+    "  if u.overflow and u.in_service ~= false then",
+    "    local recent = 0",
+    "    for _, k in ipairs(state:get_keys(0)) do",
+    "      local b = k:sub(1, 8) == 'session:' and state:get(k)",
+    "      if b and (owner_of[b] or b) == u.name and ngx.now() - (state:get('seen:' .. k:sub(9)) or 0) < " + to_string(second_count(s: router_dev_recent_use_window())) + " then recent = recent + 1 end",
+    "    end",
+    "    rented.rows[#rented.rows + 1] = \{name = u.name, active = active(u), seen_recent = recent}",
+    "  end",
+    "end",
     "out.rented = rented",
     "for _, k in ipairs(state:get_keys(0)) do if k:find('^status:') or k:find('^upstream:') or k:find('^active:') then out[k] = state:get(k) end end",
     "ngx.header['Content-Type'] = 'application/json'",

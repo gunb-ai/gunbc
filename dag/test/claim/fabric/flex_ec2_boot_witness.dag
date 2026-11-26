@@ -63,7 +63,7 @@ test fn the_real_user_data_renders_within_the_ec2_limit_and_carries_the_one_onst
 // the heartbeat and the stale window; the unit restarts the watcher if it dies.
 test fn the_dead_man_starts_before_the_boot_can_hang() -> Bool {
   let t = rendered()
-  let before = match split(s: t, delimiter: "# flex EC2 boot pre-step").first() { Present { value: h } => h  Absent => "" }
+  let before = match split(s: t, delimiter: "L=/var/log/flex-boot.log").first() { Present { value: h } => h  Absent => "" }
   (t != "")
     && before.contains("systemctl enable --now flex-deadman.service")
     && before.contains("/etc/systemd/system/flex-deadman.service")
@@ -71,6 +71,19 @@ test fn the_dead_man_starts_before_the_boot_can_hang() -> Bool {
     && t.contains("HEARTBEAT_PARAM=/gunbc-flex/heartbeat")
     && t.contains("HEARTBEAT_STALE_S=1800")
     && t.contains("Restart=always")
+}
+
+// THE CARD PUBLISHES ONLY ITS OWN CERTIFICATE (review of fb2594de): created once, never overwritten, tagged
+// with its own instance ARN (built from the instance identity document), which is the only certificate its role
+// may write; an existing one (a reboot re-running boot) is kept.
+test fn the_certificate_is_published_once_and_tagged_with_the_card() -> Bool {
+  let t = rendered()
+  t.contains("CARD_TAG_KEY=gunbc-flex-instance")
+    && t.contains("instance-identity/document")
+    && t.contains("CARD_ARN=\"arn:aws:ec2:$AWS_DEFAULT_REGION:$ACCT:instance/$IID\"")
+    && t.contains("--tags \"Key=$CARD_TAG_KEY,Value=$CARD_ARN\"")
+    && t.contains("grep -q ParameterAlreadyExists")
+    && !t.contains("put-parameter --name \"$CERT_PREFIX/$IID\" --type String --overwrite")
 }
 
 // THE TUNING-CACHE KEY is what selects the kernels: the serving profile and hardware class ride in the
