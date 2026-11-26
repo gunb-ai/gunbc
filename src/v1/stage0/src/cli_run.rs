@@ -17992,7 +17992,7 @@ pub fn bind_seed_build_identity(identity: &'static str) {
 pub fn load_entry_for_functions(
     source_roots: &[String],
     entry_file: &str,
-    functions: &[String],
+    functions: &[impl AsRef<str>],
     execution_mode: v1_interpreter::ExecutionMode,
 ) -> Result<
     (
@@ -18005,6 +18005,7 @@ pub fn load_entry_for_functions(
     let requested: Vec<String> = functions
         .iter()
         .map(|designation| {
+            let designation = designation.as_ref();
             designation
                 .rsplit('.')
                 .next()
