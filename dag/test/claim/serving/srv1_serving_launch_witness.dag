@@ -77,7 +77,7 @@ test fn the_rendered_argv_equals_the_container_cmd_tail() -> Bool {
 // it is pinned by its render check (above for vLLM; extdeps.strata.serve_flags for Strata).
 test fn both_pool_engines_carry_the_one_context_cap() -> Bool {
   (match srv1_serving_launch.engine.max_model_len { Present { value: n } => n == serving_fleet_context_cap _ => false })
-    && srv3_strata_flags.max_context == serving_fleet_context_cap
+    && srv3_strata_flags.launch.max_context == serving_fleet_context_cap
     && token_count_value(t: serving_fleet_context_cap) == 229376
 }
 
