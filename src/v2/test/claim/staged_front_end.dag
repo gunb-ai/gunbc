@@ -1,16 +1,20 @@
 module v2.test.claim.staged_front_end
 
 import std.types { List, SourceSpan }
-import std.algebra { fold_list, length, string_contains }
+import std.algebra { Cons, Empty, fold_list, FreeMonoid, length, string_contains }
 import std.dissolution { dissolution_is_bound }
 import std.source_annotation {
   LeadingAfterLineIndent,
   NormalizedAnnotationCapture,
   SourceAnnotationGraph,
   attach_annotations,
-  source_annotation_graph_rows
+  region_contains,
+  SourceAnnotationDebt,
+  source_annotation_graph_rows,
 }
+import std.list { first_where }
 import v2.std.compilers.lexing { UnboundSourceAnnotation }
+import v2.std.node { Symbol }
 import v2.std.qualified_name { qualified_name_to_dotted_string }
 import v2.compiler.parse { authored_normalized_capture }
 import v2.compiler.staged_front_end {
@@ -24,19 +28,15 @@ import v2.compiler.staged_front_end {
   FrontEndStageRejected,
   FrontEndStageReceipt,
   ParsedModule,
-  front_end_capture_count_next_rung,
-  front_end_capture_interior_loss_next_rung,
   front_end_placement_control_next_rung,
   front_end_stage_index,
   front_end_run_outcome,
   front_end_bounded_diagnostics,
-  front_end_capture_authority_declarer,
   front_end_incomplete_diagnostics,
-  front_end_unlanded_annotation_diagnostic,
   run_front_end,
-  run_front_end_to
+  run_front_end_to,
 }
-import v2.std.diagnostic { Accepted, DeclarerRefused, Diagnostic, Unavailable }
+import v2.std.diagnostic { Accepted, DeclarerRefused, Diagnostic, Unavailable, invariant_port_locus }
 import std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.optional { Absent, Optional, Present }
 import v2.std.text { String }
@@ -171,7 +171,7 @@ data annotated_candidate_source: String = "module m\n\n// why the reader needs t
 fn parse_stage_passed_with_nodes(run: FrontEndRun) -> Bool {
   fold(run.steps, init: false, f: fn(acc, step) {
     match step {
-      FrontEndStagePassed { stage: FrontEndParse, receipt: ParsedModule { node_count: n }, diagnostics: _ } =>
+      FrontEndStagePassed { stage: FrontEndParse, receipt: ParsedModule { node_count: n, annotation_count: _ }, diagnostics: _ } =>
         acc || n > 0
       FrontEndStagePassed { stage: _, receipt: _, diagnostics: _ } => acc
       FrontEndStageRejected { stage: _, diagnostics: _ } => acc
@@ -179,35 +179,42 @@ fn parse_stage_passed_with_nodes(run: FrontEndRun) -> Bool {
   })
 }
 
-// POSITIVE CONTROL ON THE PRODUCTION ROUTE: the production parse step calls parse_module_authored and a module
-// carrying a comment above a declaration reaches resolve -- which is exactly this row's handback claim ("A
-// production route calls parse_module_authored -- fn front_end_parse_step in v2.compiler.staged_front_end --
-// and its consumer claim staged_front_end_produces_the_authored_parse_for_an_annotated_module passes by name").
-// WHAT IT DOES NOT PROVE, AND NOW SAYS SO: since the loss guard moved out of the production path, a module
-// whose comment was silently dropped still reaches resolve. LANDING is decided by the guard witnesses below,
-// executed by name; this claim is control over the ROUTE, not over the attachment.
+// THE ROW'S HANDBACK CLAIM, AND THE CONSUMER THE CONSUMPTION ARGUMENT REQUIRES. The production parse stage
+// calls parse_module_authored, a module carrying a comment reaches resolve, and the annotation half that call
+// produced is read back out of the stage's own receipt: a positive annotation_count for the commented module and
+// zero for the uncommented one. The zero leg is the point -- a read that returns a positive number whatever the
+// input is decoration, and the two legs together are what make the read mean something. Falsifiable both ways:
+// delete the comment line from annotated_candidate_source and the positive leg goes red; add one to
+// candidate_accepted_source and the negative leg goes red.
+// WHAT IT DOES NOT PROVE, SAID RATHER THAN LEFT TO BE ASSUMED: the count comes from the fold and is only
+// counted here, so it shows the fold emitted rows for the capture -- not WHICH gap a capture landed in
+// (placement is the v1/v2 agreement control's question), and not that an interior loss inside a joined block is
+// caught. Deciding coverage is the guard below, executed by name.
+fn parse_stage_annotation_count(run: FrontEndRun) -> Int {
+  fold(run.steps, init: 0, f: fn(acc, step) {
+    match step {
+      FrontEndStagePassed { stage: FrontEndParse, receipt: ParsedModule { node_count: _, annotation_count: a }, diagnostics: _ } =>
+        acc + a
+      FrontEndStagePassed { stage: _, receipt: _, diagnostics: _ } => acc
+      FrontEndStageRejected { stage: _, diagnostics: _ } => acc
+    }
+  })
+}
+
 test fn staged_front_end_produces_the_authored_parse_for_an_annotated_module() -> Bool {
   let run = run_front_end(source: annotated_candidate_source, file: ^candidate_module)
+  let bare = run_front_end(source: candidate_accepted_source, file: ^candidate_module)
   match run.completion {
     FrontEndResolvedModule { resolved: _ } =>
-      passed_stage_count(run: run) == 4 && parse_stage_passed_with_nodes(run: run)
+      passed_stage_count(run: run) == 4
+        && parse_stage_passed_with_nodes(run: run)
+        && parse_stage_annotation_count(run: run) > 0
+        && parse_stage_annotation_count(run: bare) == 0
     FrontEndBoundReached { last: _ } => false
     FrontEndRefused => false
   }
 }
 
-// THE LOSS CHECK IS INTERIM, AND THE RUNG SAYS SO IN A TYPE. A count read back out of the fold's rows would
-// decide std.source_annotation annotation_attach_step's join rule in a second place, which
-// gunbc.design_argument::single_authority forbids, so the guard asks only a coverage question and the limit is
-// declared in a DissolutionCondition beside it. This claim decides the one thing a predicate CAN decide without
-// re-typing the carrier's prose: the condition is UNBOUND, because the fold carries no per-row capture count
-// today. It refuses the moment the rung is bound while the count still does not exist -- and it deliberately
-// does NOT restate what the carrier says, because a conjunct that greps this module's own description can only
-// go red when its own author edits the sentence, which is not a witness (the leg-lifecycle rule;
-// gunbc.design_argument::fail_closed). What the carrier commits to is read from the carrier.
-test fn front_end_capture_count_next_rung_declares_the_interim_guard_it_leaves() -> Bool {
-  !dissolution_is_bound(condition: front_end_capture_count_next_rung)
-}
 
 // THE FIXTURES FOR THE GUARD'S DISCRIMINATING PAIR. Three comment captures at adjacent offsets, spelled
 // TWICE: as the lexer emits them (guard_fixture_capture, what the guard is given) and as the fold consumes
@@ -293,6 +300,132 @@ fn fold_fixture_missing_middle() -> List<NormalizedAnnotationCapture> {
   ]
 }
 
+
+// THE LOSS GUARD, WHERE THE LANE THAT EXECUTES IT LIVES. It was authored in v2.compiler.staged_front_end and
+// moved here (manager ruling 2026-11-26, carrying neat-badger's modified REINSTATE ruling): no production module
+// ships a loss check that no executing route reaches, and containment stays enforced on the gated route that
+// actually runs these witnesses. It borrows the containment predicate verbatim from
+// std.source_annotation::region_contains and mints no geometry of its own; its worst case is captures x rows
+// calls to that predicate, which is why it is not production's cost to pay. Its exit is gunbc roadmap node
+// rn_ZR45MIQ7KTC56XVLT23LXQ3W4A (source-annotation-fold-carries-absorbed-capture-count): when the fold carries
+// a per-row capture count the authority can answer coverage once per row and the scan disappears.
+// attach_annotations is total by construction -- every capture lies in some gap, the file's at worst -- so a
+// capture whose span NO row's origin covers was lost by the attachment itself: the fold, not the source, is
+// wrong, and gunbc.design_argument::fail_closed refuses to let dropped authored prose pass quietly.
+// WHAT THE GATED CLAIM READS, AND WHAT THAT READ CANNOT SEE. attach_annotations is total by
+// construction: every capture lies in some gap, the file's at worst -- so a capture whose span NO row's
+// origin covers was lost by the attachment itself. The fold, not the source, is wrong, and a compiler that
+// silently drops authored prose at the parse stage is exactly what gunbc.design_argument::fail_closed
+// refuses to let happen quietly. The check is language-neutral: it asks a coverage question, it does not
+// interpret.
+// IT OWNS NO GEOMETRY. Whether one span lies inside another is answered by the ONE predicate the authority
+// that decides attachment already uses -- std.source_annotation::region_contains -- and the span a capture
+// is measured against is the span the fold itself was given for it, taken through
+// v2.compiler.parse::authored_normalized_capture (its `annotation_text` is the identity here because only
+// `.origin` is read, never the text). No offset is compared anywhere in this module, so nothing in this
+// module can disagree with the fold about containment (gunbc.design_argument::single_authority).
+// WHAT IT CANNOT SEE, BOTH LIMITS STATED HERE AND CARRIED IN ONE TYPE BESIDE IT. (1) INTERIOR LOSS: an
+// ADJACENT block joins into ONE row whose origin runs from its first capture's start to its last capture's
+// end (std.source_annotation annotation_attach_step), so a capture lost in the MIDDLE of such a block leaves
+// every capture's span still covered -- coverage is not multiplicity. (2) FILE-BLINDNESS: the predicate this
+// guard borrows, std.source_annotation::region_contains, compares start and end only and reads no file field
+// of either SourceSpan -- so a
+// capture naming a DIFFERENT FILE than the row covering it reads as contained, which makes this a
+// SINGLE-MODULE attach check and nothing more. Nothing in production refuses either case today; the moment
+// they become checkable is declared in front_end_capture_interior_loss_next_rung, and the count that would
+// make them checkable is the debt front_end_capture_count_next_rung names.
+// WHAT IT ALSO DOES NOT SEE: WHICH gap a capture landed in. Placement is checked only by the v1/v2 agreement
+// control (v2.test.claim.manual.annotation_gap_v1_v2_agreement), which publishes its identity AND its rung as
+// carriers there -- this comment states no rung, because a status written twice is a status that can lie:
+// probe_pair_rung_agrees_with_the_floors_own_admission re-derives it from v2.workflow.required_floor
+// required_gate_admits. Read that carrier: while it reads ManualUngated, a placement divergence is caught only
+// when someone runs the control by hand, so THIS guard is a loss guard and nothing more. The moment that
+// changes is declared, not deferred: front_end_placement_control_next_rung
+// (gunbc.design_argument::guarantee_ladder, no untracked stall).
+fn front_end_capture_origin_as_the_fold_sees(capture: UnboundSourceAnnotation) -> SourceSpan {
+  // Identity stripping, because only the span is read. Routing through the fold's own normalization is the
+  // point: the guard measures a capture by the span attachment was handed, never by one it minted itself.
+  authored_normalized_capture(capture: capture, annotation_text: fn(t) { t }).origin
+}
+
+// A capture is landed when SOME row's origin covers its span -- asked of the authority's own predicate, with no
+// local comparison of offsets. THE SCAN IS THE REPO'S OWN SHORT-CIRCUITING ONE and the capture's span is built
+// ONCE per capture rather than once per (capture, row) pair: std.list::first_where stops calling the predicate as
+// soon as it holds a witness, so the rows stop being visited the moment the answer is known, and
+// authored_normalized_capture runs exactly once per capture instead of once per pair.
+// WHAT THIS DOES NOT REMOVE, stated rather than left to be inferred: with no ordering decision available from the
+// authority -- std.source_annotation::region_contains answers containment for ONE pair and nothing else -- "does
+// SOME row cover this span" must still be asked pair by pair in the worst case. Removing that residue is the
+// fold's work, not a consumer's: it is the field front_end_capture_count_next_rung names, because a consumer that
+// guessed where a row ends would be deciding std.source_annotation annotation_attach_step's join rule in a second
+// place (gunbc.design_argument::single_authority, and how_to_work on a proven cost-shape defect being always
+// fixed). The consumer's own waste -- one authority call per pair, and visits after the answer was known -- is
+// what is fixed here.
+fn front_end_capture_is_covered(
+  capture: UnboundSourceAnnotation,
+  rows: List<SourceAnnotationDebt>
+) -> Bool {
+  let origin = front_end_capture_origin_as_the_fold_sees(capture: capture)
+  match first_where(xs: rows, keep: fn(row) {
+    region_contains(extent: row.origin, origin: origin)
+  }) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+// The outer scan short-circuits the same way: the FIRST capture no row covers decides the whole answer, so a
+// module that is already refused does not pay for the captures that follow it.
+fn front_end_captures_all_covered(
+  captures: List<UnboundSourceAnnotation>,
+  rows: List<SourceAnnotationDebt>
+) -> Bool {
+  match first_where(xs: captures, keep: fn(capture) {
+    !front_end_capture_is_covered(capture: capture, rows: rows)
+  }) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+// WHO REFUSED, IN A FORM A CENSUS CAN JOIN ON. An uncovered capture means the fold, not the source, is
+// wrong, so the refusal names the declarer whose contract it depends on instead of shrugging with
+// ExternalContractUnknown: std.source_annotation::annotation_attach_step, the fold that decides both the join
+// rule and the containment predicate this guard borrows. Carried as the qualified path in SEGMENTS, exactly as
+// DeclarationLocus carries one (v2.std.diagnostic NoCorrectionReason DeclarerRefused), so a census joins on the
+// identity and never on the reason's prose. v2.test.claim.staged_front_end
+// front_end_unlanded_capture_refusal_names_the_fold_as_the_refused_declarer pins it, and
+// front_end_sibling_refusals_name_no_refused_declarer keeps the arm from being a default.
+fn front_end_capture_authority_declarer() -> FreeMonoid<Symbol> {
+  Cons {
+    head: ^std,
+    tail: Cons { head: ^source_annotation, tail: Cons { head: ^annotation_attach_step, tail: Empty } }
+  }
+}
+
+fn front_end_unlanded_annotation_diagnostic(
+  captures: List<UnboundSourceAnnotation>,
+  graph: SourceAnnotationGraph
+) -> Optional<Diagnostic> {
+  if front_end_captures_all_covered(
+    captures: captures,
+    rows: source_annotation_graph_rows(graph: graph)
+  ) {
+    Absent
+  } else {
+    Present {
+      value: Diagnostic {
+        reason: ^staged_front_end_annotation_capture_unlanded,
+        at: invariant_port_locus(
+          port: ^staged_front_end_locus_port,
+          invariant: ^staged_front_end_annotation_capture_unlanded
+        ),
+        correction: Unavailable { reason: DeclarerRefused { declarer: front_end_capture_authority_declarer() } }
+      }
+    }
+  }
+}
+
 // THE ACCEPTED LEG. A graph the fold produced from exactly the captures the lexer made must be silent: this
 // is also the positive control that keeps the refused leg from passing because the guard refuses everything.
 test fn front_end_annotation_guard_accepts_the_graph_the_fold_made_from_the_same_captures() -> Bool {
@@ -363,14 +496,12 @@ test fn front_end_annotation_guard_declares_both_limits_interior_loss_and_file_b
     }
   let row_file = fold_list(xs: rows, empty: "", cons: fn(acc, row) { acc + row.origin.file })
   let foreign_file = authored_normalized_capture(capture: foreign_capture, annotation_text: fn(t) { t }).origin.file
-  let condition = front_end_capture_interior_loss_next_rung
   length(xs: rows) == 1
     && interior_loss_silent
     && string_contains(s: foreign_file, pattern: "another_module")
     && string_contains(s: row_file, pattern: "candidate.dag")
     && !string_contains(s: foreign_file, pattern: "candidate")
     && foreign_capture_silent
-    && !dissolution_is_bound(condition: condition)
 }
 
 // FINDING 2, POSITIVE: THE REFUSAL NAMES WHO REFUSED. An uncovered capture is the fold's defect, not the
