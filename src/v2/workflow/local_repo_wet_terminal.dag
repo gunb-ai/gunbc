@@ -879,6 +879,24 @@ fn local_repo_wet_schedule() -> List<WetScheduledClaim> {
       expectation: ExpectedToHold {}
     },
     WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.seat_cgroup_absence_witness", function: "a_live_scope_seat_in_the_slice_is_still_running" },
+      entry: "dag/test/claim/compute/seat_cgroup_absence_witness.dag",
+      function: "a_live_scope_seat_in_the_slice_is_still_running",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.seat_cgroup_absence_witness", function: "a_live_scope_seat_in_the_default_app_slice_is_still_running" },
+      entry: "dag/test/claim/compute/seat_cgroup_absence_witness.dag",
+      function: "a_live_scope_seat_in_the_default_app_slice_is_still_running",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
+      identity: WitnessIdentity { module_path: "test.claim.compute.seat_cgroup_absence_witness", function: "a_drained_scope_seat_is_seen_ended" },
+      entry: "dag/test/claim/compute/seat_cgroup_absence_witness.dag",
+      function: "a_drained_scope_seat_is_seen_ended",
+      expectation: ExpectedToHold {}
+    },
+    WetScheduledClaim {
       identity: WitnessIdentity { module_path: "test.claim.compute.seat_cgroup_absence_witness", function: "the_placement_set_names_the_documented_parents" },
       entry: "dag/test/claim/compute/seat_cgroup_absence_witness.dag",
       function: "the_placement_set_names_the_documented_parents",

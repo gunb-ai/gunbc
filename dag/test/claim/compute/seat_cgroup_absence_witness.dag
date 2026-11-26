@@ -18,6 +18,7 @@ module test.claim.compute.seat_cgroup_absence_witness
 import std.types { Bool, String, NonEmptyStr, FilePath }
 import std.nat { Nat }
 import std.algebra { string_contains }
+import std.list { first_where }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
@@ -26,7 +27,10 @@ import gunbc.compute.seat_cgroup_absence {
   ParentUnobservable, ParentNotContainingUnit, ParentHasUnitEventsUnreadable, ParentHasUnitPopulated, ParentHasUnitEmpty,
   SeatCgroupEnded, SeatCgroupPreserve, SeatCgroupUnobservable,
   seat_cgroup_end_proof_from_parents, observe_seat_cgroup, seat_unit_cgroup_prefix, seat_unit_cgroup_dir,
-  seat_user_service_dir, seat_cgroup_candidate_parents,
+  seat_user_service_dir, seat_cgroup_candidate_parents, seat_unit_kinds, seat_unit_dir_name,
+}
+import gunbc.compute.unit_bounds {
+  user_work_scope_service_unit_suffix, user_work_scope_scope_unit_suffix,
 }
 import gunbc.live_deploy.slice_bounds { user_work_slice_unit_name }
 import gunbc.compute.attempt_lifecycle {
@@ -56,12 +60,18 @@ fn plant_usrd(root: String) -> Bool {
   shell.Mkdir.Parents(path: usrd(root) as FilePath).success
 }
 
-// Plant <root>/user.slice/user-<uid>.slice/user@<uid>.service/<parent>/<unit>.service/cgroup.events
-fn plant_unit(root: String, parent: String, unit: String, body: String) -> Bool {
-  let dir = join([usrd(root), "/", parent, "/", unit, ".service"], "")
+// Plant <root>/user.slice/user-<uid>.slice/user@<uid>.service/<parent>/<unit><kind>/cgroup.events
+fn plant_unit_kind(root: String, parent: String, unit: String, kind: String, body: String) -> Bool {
+  let dir = join([usrd(root), "/", parent, "/", unit, kind], "")
   let made = shell.Mkdir.Parents(path: dir as FilePath).success
   let wrote = Filesystem.Write(path: join([dir, "/cgroup.events"], ""), content: body)
   made && wrote.success
+}
+
+fn plant_unit(root: String, parent: String, unit: String, body: String) -> Bool {
+  plant_unit_kind(
+    root: root, parent: parent, unit: unit,
+    kind: user_work_scope_service_unit_suffix as String, body: body)
 }
 
 // ── THE PURE MAPPING (fixed supplied standings) ───────────────────────────────────────────────
@@ -169,6 +179,47 @@ fn a_seat_in_the_historical_app_slice_is_still_seen() -> Bool {
       }
 }
 
+// THE REVIEW 99036 CONTROL: the historical floor-demand recipe wrapped with systemd-run --user
+// --scope, so its unit directory carries the .scope suffix. A containment check that only ever
+// looked for ".service" would list the parent successfully, name nothing, report "contained
+// nowhere", and RELEASE A RUNNING SCOPE SEAT. A live scope seat must PRESERVE, in either parent.
+fn a_live_scope_seat_in_the_slice_is_still_running() -> Bool {
+  let root = witness_root(kind: "scope-live")
+  plant_usrd(root: root)
+    && plant_unit_kind(
+        root: root, parent: user_work_slice_unit_name as String, unit: "gunbc-compute-scope-live",
+        kind: user_work_scope_scope_unit_suffix as String, body: "populated 1\n")
+    && match observe_seat_cgroup(mount: root as NonEmptyStr, uid: uid_of(), unit: "gunbc-compute-scope-live" as NonEmptyStr) {
+        SeatCgroupPreserve { detail: d } => string_contains(s: d, pattern: "still running")
+        _ => false
+      }
+}
+
+fn a_live_scope_seat_in_the_default_app_slice_is_still_running() -> Bool {
+  let root = witness_root(kind: "scope-app")
+  plant_usrd(root: root)
+    && plant_unit_kind(
+        root: root, parent: "app.slice", unit: "gunbc-compute-scope-legacy",
+        kind: user_work_scope_scope_unit_suffix as String, body: "populated 1\n")
+    && match observe_seat_cgroup(mount: root as NonEmptyStr, uid: uid_of(), unit: "gunbc-compute-scope-legacy" as NonEmptyStr) {
+        SeatCgroupPreserve { detail: d } => string_contains(s: d, pattern: "app.slice")
+        _ => false
+      }
+}
+
+// The drained SCOPE seat must still END: the fix enumerates kinds, it does not widen the proof.
+fn a_drained_scope_seat_is_seen_ended() -> Bool {
+  let root = witness_root(kind: "scope-drained")
+  plant_usrd(root: root)
+    && plant_unit_kind(
+        root: root, parent: user_work_slice_unit_name as String, unit: "gunbc-compute-scope-drained",
+        kind: user_work_scope_scope_unit_suffix as String, body: "populated 0\n")
+    && match observe_seat_cgroup(mount: root as NonEmptyStr, uid: uid_of(), unit: "gunbc-compute-scope-drained" as NonEmptyStr) {
+        SeatCgroupEnded { detail: d } => string_contains(s: d, pattern: "populated 0")
+        _ => false
+      }
+}
+
 // THE WRONG-SPELLING / UNREADABLE-ROOT GUARD: with no user@ directory to enumerate, the unit file is
 // certainly missing too -- and this claim requires the UNOBSERVABLE arm, never the ended one.
 fn a_missing_manager_directory_is_unobservable_not_absent() -> Bool {
@@ -194,6 +245,16 @@ fn garbage_events_are_unreadable_not_ended() -> Bool {
 // this claim is what turns that into a red witness.
 fn the_placement_set_names_the_documented_parents() -> Bool {
   join(seat_cgroup_candidate_parents(), "|") == concat(user_work_slice_unit_name as String, concat("|", "app.slice"))
+    && match first_where(seat_unit_kinds(), keep: k => k == user_work_scope_service_unit_suffix as String) {
+        Present { value: _ } => true
+        Absent => false
+      }
+    && match first_where(seat_unit_kinds(), keep: k => k == user_work_scope_scope_unit_suffix as String) {
+        Present { value: _ } => true
+        Absent => false
+      }
+    && seat_unit_dir_name(unit: "gunbc-compute-ab12" as NonEmptyStr, kind: user_work_scope_scope_unit_suffix as String)
+      == "gunbc-compute-ab12.scope"
 }
 
 // THE DERIVATION PINNED TO THE PLACEMENT RULE, one exact string for the declared-slice placement.
@@ -309,6 +370,9 @@ fn run_seat_cgroup_absence_witness() -> ProcessExit {
     check_or_name(name: "the_observer_reports_a_populated_unit_populated", held: the_observer_reports_a_populated_unit_populated()),
     check_or_name(name: "the_observer_reports_a_drained_unit_empty", held: the_observer_reports_a_drained_unit_empty()),
     check_or_name(name: "a_seat_in_the_historical_app_slice_is_still_seen", held: a_seat_in_the_historical_app_slice_is_still_seen()),
+    check_or_name(name: "a_live_scope_seat_in_the_slice_is_still_running", held: a_live_scope_seat_in_the_slice_is_still_running()),
+    check_or_name(name: "a_live_scope_seat_in_the_default_app_slice_is_still_running", held: a_live_scope_seat_in_the_default_app_slice_is_still_running()),
+    check_or_name(name: "a_drained_scope_seat_is_seen_ended", held: a_drained_scope_seat_is_seen_ended()),
     check_or_name(name: "a_missing_manager_directory_is_unobservable_not_absent", held: a_missing_manager_directory_is_unobservable_not_absent()),
     check_or_name(name: "garbage_events_are_unreadable_not_ended", held: garbage_events_are_unreadable_not_ended()),
     check_or_name(name: "the_placement_set_names_the_documented_parents", held: the_placement_set_names_the_documented_parents()),

@@ -29,8 +29,13 @@ module gunbc.compute.seat_cgroup_absence
 //      cgroup stands at user@<uid>.service/gunbc-user-work.slice/<unit>.service.
 //   2. The historical floor-demand recipe wrapped with NO Slice= ("systemd-run --user --scope -p
 //      MemoryMax=64G with no Slice=", unit_bounds above :131); a transient unit with no Slice= lands
-//      under the manager's default placement, user@<uid>.service/app.slice/<unit>.service (the
-//      spelling the fleet already observes: test.claim.live_deploy.user_work_slice_witness).
+//      under the manager's default placement, user@<uid>.service/app.slice/<unit>.<kind> (the
+//      spelling the fleet already observes: test.claim.live_deploy.user_work_slice_witness). That
+//      recipe used --scope, so its unit directory carries the .scope suffix, not .service: a
+//      containment check that only ever looked for ".service" would report a RUNNING scope seat as
+//      contained nowhere and release it alive (review 99036). Unit KINDS are therefore enumerated
+//      from the placement authority's own data (user_work_scope_service_unit_suffix,
+//      user_work_scope_scope_unit_suffix), never re-minted here.
 // ROW: seat_user_service_cgroup_placement_standing -- SUBJECT: a seat unit whose cgroup stands under
 // user@<uid>.service at a path OUTSIDE the two parents above. ENUMERATED SITES: none; every route
 // that launches a compute seat composes its unit settings through gunbc.compute.unit_bounds (the
@@ -56,6 +61,9 @@ import extdeps.linux.cgroup_v2 {
   CgroupEventsDecoded, CgroupEventsUnparseable, decode_cgroup_events_populated,
 }
 import gunbc.live_deploy.slice_bounds { user_work_slice_unit_name }
+import gunbc.compute.unit_bounds {
+  user_work_scope_service_unit_suffix, user_work_scope_scope_unit_suffix,
+}
 import gunbc.compute.host_capacity { compute_launching_uid }
 import extdeps.filesystem.filesystem_io {
   Filesystem,
@@ -75,7 +83,16 @@ data seat_slice_directory: String = "user.slice"
 // parent's grandparent. Both are children of the user manager's own directory, which is the ROOT of
 // every enumeration below: if it cannot be listed, no absence anywhere under it is established.
 data seat_default_app_slice: String = "app.slice"
-data seat_unit_suffix: String = ".service"
+// The unit KIND is owned by the placement authority (gunbc.compute.unit_bounds): the documented
+// launch route yields .service, and the historical floor-demand recipe ran systemd-run --user
+// --scope, yielding .scope. Both are enumerated, consumed from that authority rather than
+// re-minted, so no kind can be silently dropped (review 99036).
+fn seat_unit_kinds() -> List<String> {
+  [user_work_scope_service_unit_suffix as String, user_work_scope_scope_unit_suffix as String]
+}
+fn seat_unit_dir_name(unit: NonEmptyStr, kind: String) -> String {
+  join([unit as String, kind, ""], "")
+}
 // Which parents a seat unit's cgroup can stand under, RELATIVE to user@<uid>.service, as one
 // authority. The observer enumerates exactly this list; the witness claims it against the placement
 // authority's words.
@@ -182,6 +199,8 @@ fn parent_standing_for(mount: NonEmptyStr, uid: Nat, unit: NonEmptyStr, root_ent
   // the root listing DOES name, but which then fails to list, is a truly unreadable census member.
   let parent_stands = parent_relative == "." || filesystem_listing_names_entry(listing: root_entries, name: parent_relative)
   let listing = Filesystem.List(path: parent_dir as String)
+  let named = first_where(seat_unit_kinds(), keep: k =>
+    filesystem_listing_names_entry(listing: listing.entries, name: seat_unit_dir_name(unit: unit, kind: k)))
   if !listing.success {
     if parent_stands {
       // A failed listing of a directory the root just named is NOT an absence (the
@@ -191,10 +210,19 @@ fn parent_standing_for(mount: NonEmptyStr, uid: Nat, unit: NonEmptyStr, root_ent
     } else {
       ParentNotContainingUnit { parent: parent_dir as String }
     }
-  } else if !filesystem_listing_names_entry(listing: listing.entries, name: concat(unit as String, seat_unit_suffix, "")) {
+  } else if match named {
+    // No unit-kind directory the placement authority can produce is named by this parent's
+    // successful listing -- the enumeration establishes the unit does not stand here.
+    Present { value: _ } => false
+    Absent => true
+  } {
     ParentNotContainingUnit { parent: parent_dir as String }
   } else {
-    let unit_dir = cgroup_v2_child_path(parent: parent_dir, child: join([unit as String, seat_unit_suffix, ""], "") as NonEmptyStr)
+    let kind = match named {
+      Present { value: k } => k
+      Absent => user_work_scope_service_unit_suffix as String
+    }
+    let unit_dir = cgroup_v2_child_path(parent: parent_dir, child: seat_unit_dir_name(unit: unit, kind: kind) as NonEmptyStr)
     let events_path = cgroup_v2_events_path(cgroup_path: unit_dir)
     let raw = Filesystem.Read(path: events_path as String)
     parent_standing_from_exact_read(
