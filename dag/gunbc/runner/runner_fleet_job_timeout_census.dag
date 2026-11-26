@@ -195,6 +195,10 @@ fn fleet_census_emissions() -> List<FleetCensusEmission> {
       match branch_run_grant_broker_workflow_of() {
         Accepted { value: wf } => [Emitted { artifact: BranchRunGrantBrokerWorkflowYamlArtifact, workflow: wf }]
         Rejected { diagnostics: d } => [Refused { artifact: BranchRunGrantBrokerWorkflowYamlArtifact, reason: concat("the committed branch-run-grant-broker workflow's run-step emission was refused: ", diagnostics_reason_lexemes(diagnostics: d)) }]
+      },
+      match gunb_ai_pages_workflow() {
+        Accepted { value: wf } => [Emitted { artifact: GunbAiPagesWorkflowYamlArtifact, workflow: wf }]
+        Rejected { diagnostics: d } => [Refused { artifact: GunbAiPagesWorkflowYamlArtifact, reason: concat("the committed gunb.ai pages workflow's run-step emission was refused: ", diagnostics_reason_lexemes(diagnostics: d)) }]
       }
     )
   )
@@ -223,15 +227,7 @@ fn fleet_workflow_census_rows() -> List<FleetWorkflowCensusRow> {
           }
         }
       )
-    ),
-    // gunb_ai_pages is handed over as a plain committed row: its producer gunb_ai_pages_workflow() returns a
-    // Workflow directly (it is not a run-step emitter this change retyped), so it carries no emission refusal and
-    // needs no arm in fleet_census_emissions. branch_run_grant_broker, by contrast, is retyped to
-    // branch_run_grant_broker_workflow_of() -> Outcome<Workflow> and reaches this census through the emissions
-    // ledger above, so it is deliberately NOT repeated here as a plain row.
-    [
-      FleetWorkflowCensusRow { artifact: GunbAiPagesWorkflowYamlArtifact, workflow: gunb_ai_pages_workflow() },
-    ]
+    )
   )
 }
 
