@@ -46,7 +46,7 @@ fn native_claim_report() -> NativeClaimReport uses counter: AllocationCounter {
   let qualified = [
     roster_membership_row(prefix: "carrier", family: Carriers),
     discrimination_row(prefix: "carrier", family: Carriers),
-    execution_row(prefix: "carrier", axis: "v2", block_id: "family", e: v2_evidence())
+    execution_row(prefix: "carrier", axis: "v2", block_id: "family", e: v2_evidence()),
     execution_mechanism_refuses_unproven_claims(prefix: "carrier")
   ]
   battery_report(concat(measured, concat(audit, qualified)))
