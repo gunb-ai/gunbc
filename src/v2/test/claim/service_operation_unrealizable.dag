@@ -12,7 +12,7 @@ import v2.test.claim.caller_admission_native_wall { wall_decl_ref_target }
 import std.optional { Absent, Present }
 // `concat` is the built-in two-list append, not a std.algebra declaration; `Empty` is.
 import std.algebra { Empty }
-import v2.std.diagnostic { None, Some, Suggested, Unavailable, diagnostics_has_reason }
+import v2.std.diagnostic { BinderUseExplicitnessRequired, None, Some, Suggested, Unavailable, diagnostics_has_reason }
 import v2.std.logic { Bool }
 
 
@@ -63,6 +63,7 @@ test fn a_call_to_an_unrealizable_operation_refuses_at_the_call_holds() -> Bool 
               OccurrenceSynthetic => false
             }
           Unavailable { reason: _ } => false
+          BinderUseExplicitnessRequired { binder: _ } => false
         }
   }
 }

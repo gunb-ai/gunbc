@@ -7,6 +7,11 @@ import std.disposition { SingleAuthority }
 
 import std.algebra { FreeMonoid, Empty, Cons, list_append, list_snoc_item, count_where, fold_list, fold_list_right, length, list_flat_map, list_map, non_empty, zip_eq }
 import v2.std.diagnostic {
+  AuthoredBinderKind,
+  BinderUseExplicitnessRequired,
+  LambdaParameterBinder,
+  LetBinder,
+  ParameterBinder,
   Outcome,
   DeclarationLocus,
   Diagnostic,
@@ -1210,6 +1215,26 @@ fn witness_validity_correction_node(c: Correction) -> Node {
         ],
         occurrence_id: OccurrenceSynthetic
 }
+    BinderUseExplicitnessRequired { binder: k } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          Edge {
+            label: Authored { name: ^witness_validity_correction_tag_binder_use_explicitness_required },
+            target: witness_validity_authored_binder_kind_node(kind: k),
+            declaration: NotADeclaration
+          }
+        ],
+        occurrence_id: OccurrenceSynthetic
+}
+  }
+}
+
+fn witness_validity_authored_binder_kind_node(kind: AuthoredBinderKind) -> Node {
+  match kind {
+    LetBinder => witness_validity_symbol_atom_node(s: ^witness_validity_authored_binder_kind_let)
+    ParameterBinder => witness_validity_symbol_atom_node(s: ^witness_validity_authored_binder_kind_parameter)
+    LambdaParameterBinder => witness_validity_symbol_atom_node(s: ^witness_validity_authored_binder_kind_lambda_parameter)
   }
 }
 
