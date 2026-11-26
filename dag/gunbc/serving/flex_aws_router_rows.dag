@@ -201,8 +201,9 @@ type FlexAwsCardUse {
 
 // WHAT THE ROUTER SAYS ABOUT RENTED CAPACITY, as it decides it (gunbc.serving.router_dev_policy, `rented` in
 // /router/stats): how many waiting conversations a rented card's free slot would serve (its routing rule's
-// waiter_keeps_its_engine, never restated here), whether its rented pool is full, how many rented rows it routes,
-// and how each of our cards is used.
+// waiter_keeps_its_engine, never restated here) -- counted for the model the card serves and the router's alias,
+// the two a rented row of that model is a candidate for (the router's candidate rule) -- whether its rented pool
+// is full, how many rented rows it routes, and how each of our cards is used.
 type FlexAwsRouterReading {
   waiting: Int
   full: Bool
@@ -269,15 +270,44 @@ fn flex_aws_card_use(stats: JsonValue, rows: List<FlexAwsRentedRow>, instance_id
   }
 }
 
+fn flex_aws_rented_waiting(rented: JsonValue, model: NonEmptyStr) -> Int? {
+  match flex_aws_field(v: rented, key: "alias") {
+    Present { value: JsonString { value: alias } } => match flex_aws_field(v: rented, key: "waiting_by_model") {
+      Present { value: v } => match flex_aws_json_object_members(v: v) {
+        Present { value: ms } => flex_aws_waiting_for(by_model: ms, alias: alias, model: model)
+        Absent => none
+      }
+      Absent => none
+    }
+    _ => none
+  }
+}
+
+// An object's members; the router's encoder writes an EMPTY table as {} or [], so an empty array is no members.
+fn flex_aws_json_object_members(v: JsonValue) -> List<JsonKeyValue>? {
+  match v {
+    JsonObject { members: ms } => Present { value: ms }
+    JsonArray { elements: es } => if count(es) == 0 { Present { value: [] } } else { none }
+    _ => none
+  }
+}
+
 // THE ROUTER'S READING, for the cards we own. Every field is required: a stats answer missing one is refused,
 // never read as no demand or as an unused card.
-fn flex_aws_read_router_stats(body: String, instance_ids: List<NonEmptyStr>) -> FlexAwsStatsRead {
+fn flex_aws_waiting_for(by_model: List<JsonKeyValue>, alias: String, model: NonEmptyStr) -> Int? {
+  fold(by_model |> filter(m => (m.key == alias) || (m.key == (model as String))), init: Present { value: 0 }, f: (acc, m) => match acc {
+    Absent => acc
+    Present { value: n } => match flex_aws_json_number(v: m.value) { Present { value: k } => Present { value: n + k }  Absent => none }
+  })
+}
+
+fn flex_aws_read_router_stats(body: String, instance_ids: List<NonEmptyStr>, model: NonEmptyStr) -> FlexAwsStatsRead {
   match parse_json_document(s: body) {
     JsonDocumentUnreadable { gap: _ } => FlexAwsStatsRefused { cause: "router stats are not one JSON document" }
     JsonDocumentParsed { value: d } => match flex_aws_field(v: d, key: "rented") {
       Absent => FlexAwsStatsRefused { cause: "router stats carry no rented object" }
-      Present { value: rented } => match flex_aws_int_field(v: rented, key: "waiting") {
-        Absent => FlexAwsStatsRefused { cause: "router stats carry no rented.waiting (the router predates rented demand)" }
+      Present { value: rented } => match flex_aws_rented_waiting(rented: rented, model: model) {
+        Absent => FlexAwsStatsRefused { cause: "router stats carry no rented.waiting_by_model and rented.alias (the router predates rented demand)" }
         Present { value: waiting } => match flex_aws_field(v: rented, key: "full") {
           Present { value: JsonBool { value: full } } => match flex_aws_field(v: rented, key: "rows") {
             Absent => FlexAwsStatsRefused { cause: "router stats carry no rented.rows" }

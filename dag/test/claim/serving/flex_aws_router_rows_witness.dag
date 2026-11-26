@@ -84,24 +84,25 @@ test fn nothing_of_ours_to_change_is_not_a_change() -> Bool {
 // enrolled card with two turns in flight and three recent conversations, and a withdrawn row whose last
 // turn is still running.
 fn stats(waiting: String, full: String) -> String {
-  join(["\{\"pending\": \{\"total\": 31}, \"rented\": \{\"active\": 2, \"cap\": 4, \"uncapped\": 0, \"full\": ", full, ", \"waiting\": ", waiting,
+  join(["\{\"pending\": \{\"total\": 31}, \"rented\": \{\"active\": 2, \"cap\": 4, \"uncapped\": 0, \"full\": ", full, ", \"alias\": \"flash-next\", \"waiting_by_model\": \{\"flash-next\": ", waiting, ", \"qwen3.8-flash-next-iq3_s\": 7}",
     ", \"rows\": [\{\"name\": \"aws-i-0a\", \"active\": 2, \"seen_recent\": 3}]}",
     ", \"active:aws-i-0a\": 2, \"active:aws-i-0gone\": 1}"], "")
 }
 
 fn reading_of(body: String, ids: List<String>) -> FlexAwsRouterReading? {
-  match flex_aws_read_router_stats(body: body, instance_ids: map(ids, i => i as NonEmptyStr)) {
+  match flex_aws_read_router_stats(body: body, instance_ids: map(ids, i => i as NonEmptyStr), model: "Qwen3.8-Flash-Next" as NonEmptyStr) {
     FlexAwsStatsReadOk { reading: r } => Present { value: r }
     FlexAwsStatsRefused { cause: _ } => none
   }
 }
 
-// THE ROUTER'S OWN COUNTS ARE READ AS THEY ARE: how many waiters a rented card could serve and whether the
-// rented pool is full; nothing is recomputed here.
+// THE ROUTER'S OWN COUNTS ARE READ AS THEY ARE: the waiters a rented card could serve, for the card's model and
+// the router's alias only (seven waiting for the Strata GGUF model are no demand for this card, nor nine for an
+// unrelated model), and whether the rented pool is full; nothing is recomputed here.
 test fn the_router_decides_rented_demand_and_the_reader_takes_it() -> Bool {
   (match reading_of(body: stats(waiting: "0", full: "false"), ids: []) { Present { value: r } => (r.waiting == 0) && !r.full && (r.rented_rows == 1)  Absent => false })
     && (match reading_of(body: stats(waiting: "5", full: "true"), ids: []) { Present { value: r } => (r.waiting == 5) && r.full  Absent => false })
-    && (match reading_of(body: "\{\"rented\": \{\"active\": 0, \"cap\": 0, \"full\": false, \"waiting\": 2, \"rows\": \{}}}", ids: []) { Present { value: r } => (r.rented_rows == 0) && (r.waiting == 2)  Absent => false })
+    && (match reading_of(body: "\{\"rented\": \{\"active\": 0, \"cap\": 0, \"full\": false, \"alias\": \"flash-next\", \"waiting_by_model\": \{\"Qwen3.8-Flash-Next\": 2, \"flash-next\": 1, \"other-model\": 9}, \"rows\": \{}}}", ids: []) { Present { value: r } => (r.rented_rows == 0) && (r.waiting == 3)  Absent => false })
 }
 
 // EACH CARD'S USE: an enrolled card's turns and recent conversations; a card the router no longer routes
@@ -123,23 +124,23 @@ test fn each_card_reads_its_enrollment_turns_and_recent_conversations() -> Bool 
 // A STATS ANSWER MISSING A FIELD IS REFUSED, never read as no demand or an unused card -- in particular a
 // router that predates rented demand (the checked-in renderer before this change emitted no rented.waiting).
 test fn stats_missing_a_field_are_refused() -> Bool {
-  (match flex_aws_read_router_stats(body: "\{\"rented\": \{\"active\": 0, \"cap\": 0, \"full\": false}}", instance_ids: []) {
-    FlexAwsStatsRefused { cause: c } => c.contains("rented.waiting")
+  (match flex_aws_read_router_stats(body: "\{\"rented\": \{\"active\": 0, \"cap\": 0, \"full\": false, \"waiting\": 3}}", instance_ids: [], model: "Qwen3.8-Flash-Next" as NonEmptyStr) {
+    FlexAwsStatsRefused { cause: c } => c.contains("waiting_by_model")
     _ => false
   })
-  && (match flex_aws_read_router_stats(body: "\{\"pending\": \{\"total\": 3}}", instance_ids: []) {
+  && (match flex_aws_read_router_stats(body: "\{\"pending\": \{\"total\": 3}}", instance_ids: [], model: "Qwen3.8-Flash-Next" as NonEmptyStr) {
     FlexAwsStatsRefused { cause: c } => c.contains("rented")
     _ => false
   })
-  && (match flex_aws_read_router_stats(body: "not json", instance_ids: []) {
+  && (match flex_aws_read_router_stats(body: "not json", instance_ids: [], model: "Qwen3.8-Flash-Next" as NonEmptyStr) {
     FlexAwsStatsRefused { cause: _ } => true
     _ => false
   })
-  && (match flex_aws_read_router_stats(body: "\{\"rented\": \{\"full\": false, \"waiting\": 0, \"rows\": [\{\"name\": \"aws-i-0a\", \"active\": 1}]}}", instance_ids: ["i-0a" as NonEmptyStr]) {
+  && (match flex_aws_read_router_stats(body: "\{\"rented\": \{\"full\": false, \"alias\": \"flash-next\", \"waiting_by_model\": \{}, \"rows\": [\{\"name\": \"aws-i-0a\", \"active\": 1}]}}", instance_ids: ["i-0a" as NonEmptyStr], model: "Qwen3.8-Flash-Next" as NonEmptyStr) {
     FlexAwsStatsRefused { cause: c } => c.contains("seen_recent")
     _ => false
   })
-  && (match flex_aws_read_router_stats(body: "\{\"rented\": \{\"full\": false, \"waiting\": 0, \"rows\": []}, \"active:aws-i-0a\": \"two\"}", instance_ids: ["i-0a" as NonEmptyStr]) {
+  && (match flex_aws_read_router_stats(body: "\{\"rented\": \{\"full\": false, \"alias\": \"flash-next\", \"waiting_by_model\": \{}, \"rows\": []}, \"active:aws-i-0a\": \"two\"}", instance_ids: ["i-0a" as NonEmptyStr], model: "Qwen3.8-Flash-Next" as NonEmptyStr) {
     FlexAwsStatsRefused { cause: c } => c.contains("not a number")
     _ => false
   })

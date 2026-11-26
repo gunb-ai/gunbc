@@ -441,7 +441,7 @@ fn flex_aws_router_demand(max_cards: Int, instance_ids: List<NonEmptyStr>) -> Aw
               let removed = Filesystem.Delete(path: header_path)
               match answer {
                 AwsCliReadRefused { cause: c } => AwsCliReadRefused { cause: concat("router stats: ", c) }
-                AwsCliReadOk { value: body } => match flex_aws_read_router_stats(body: body, instance_ids: instance_ids) {
+                AwsCliReadOk { value: body } => match flex_aws_read_router_stats(body: body, instance_ids: instance_ids, model: flex_aws_row_facts.model) {
                   FlexAwsStatsReadOk { reading: r } => AwsCliReadOk { value: FlexAwsDemandRouter { router: r, max_cards: max_cards } }
                   FlexAwsStatsRefused { cause: c } => AwsCliReadRefused { cause: c }
                 }
@@ -641,7 +641,9 @@ fn flex_aws_scan_line(s: FlexAwsRegionScan) -> String {
   let owned = match s.owned { AwsCliReadOk { value: ow } => concat(" owned=", to_string(count(ow)))  AwsCliReadRefused { cause: c } => concat(" owned=UNREADABLE ", c) }
   match s.launchable {
     FlexAwsRegionSkipped { why: w } => join(["scan ", s.region as String, " skipped: ", w, owned], "")
-    FlexAwsRegionScanned { quota: _, observation: o, queue: qu } => join([flex_aws_region_line(o: o), " notices=", match qu { FlexAwsQueueRead { url: _, messages: ms } => to_string(count(ms))  FlexAwsQueueRefused { cause: c } => concat("REFUSED ", c) }, owned], "")
+    // The observation's own line already counts the cards it read; the independent read is shown only
+    // when the observation did not carry it.
+    FlexAwsRegionScanned { quota: _, observation: o, queue: qu } => join([flex_aws_region_line(o: o), " notices=", match qu { FlexAwsQueueRead { url: _, messages: ms } => to_string(count(ms))  FlexAwsQueueRefused { cause: c } => concat("REFUSED ", c) }, match o { FlexAwsRegionObserved { region: _, offerings: _, types: _, prices: _, spot_quota_vcpus: _, on_demand_quota_vcpus: _, owned: _ } => ""  _ => owned }], "")
   }
 }
 

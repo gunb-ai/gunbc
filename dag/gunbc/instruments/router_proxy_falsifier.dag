@@ -693,6 +693,13 @@ fn stats_line(text: String) -> String {
   fold(filter(text_lines(text: text), l => contains(s: l, p: "\"usage_all\"")), init: "", f: (acc, l) => l)
 }
 
+fn rented_waiting_for(text: String, model: String) -> Int {
+  match flex_aws_read_router_stats(body: stats_line(text: text), instance_ids: [], model: model as NonEmptyStr) {
+    FlexAwsStatsReadOk { reading: r } => r.waiting
+    FlexAwsStatsRefused { cause: _ } => -1
+  }
+}
+
 fn pending_total(text: String) -> Int {
   match parse_json_document(s: stats_line(text: text)) {
     JsonDocumentParsed { value: d } => match json_field(obj: d, key: "pending") {
@@ -1236,13 +1243,10 @@ fn falsifier_cases(daemon_control: DaemonReading) -> List<FalsifierCase> {
     case_of(identity: "dev_retention_refuses_a_new_session_and_a_bound_session_returns", held: contains(s: ret_1, p: "auth=Bearer kr") && contains(s: ret_1, p: "\n200 exit=0") && contains(s: ret_2, p: "\n429 exit=0") && !contains(s: ret_2, p: "upstream=") && contains(s: ret_1_again, p: "auth=Bearer kr") && contains(s: ret_1_again, p: "\n200 exit=0"), observed: concat(one_line(s: ret_2), one_line(s: ret_1_again))),
     // RENDER TO DECISION (review of fb2594de: the reader was witnessed only against JSON modeled on the live host,
     // and the checked-in router emitted none of the fields it required). The real stats answer of the rendered
-    // dev router, holding a waiter bound to its own full engine (own-1 on s1) and an unbound one refused by
-    // retention (ret-2), is read by the AWS allocator's own reader: the router counts rented demand itself,
-    // and the waiter held for its own engine is not part of it.
-    case_of(identity: "dev_rented_demand_reads_into_the_allocator", held: match flex_aws_read_router_stats(body: stats_line(text: pending_stats), instance_ids: []) {
-      FlexAwsStatsReadOk { reading: r } => (r.waiting >= 1) && (r.waiting < pending_total(text: pending_stats))
-      FlexAwsStatsRefused { cause: _ } => false
-    }, observed: one_line(s: pending_stats)),
+    // dev router, holding a waiter bound to its own full engine (own-1 on s1, model m-s) and an unbound one
+    // refused by retention (ret-2, model m-r), is read by the AWS allocator's own reader: the router counts the
+    // unbound waiter as demand a rented m-r card could serve, and the waiter held for its own engine as none.
+    case_of(identity: "dev_rented_demand_reads_into_the_allocator", held: (rented_waiting_for(text: pending_stats, model: "m-r") >= 1) && (rented_waiting_for(text: pending_stats, model: "m-s") == 0) && contains(s: pending_stats, p: "\"m-s\":\{"), observed: one_line(s: pending_stats)),
     case_of(identity: "dev_refused_turns_are_stranded_demand_cleared_on_success", held: contains(s: pending_stats, p: "\"m-r\":\{") && contains(s: pending_stats, p: "\"m-s\":\{") && contains(s: pending_stats, p: "\"oldest_s\"") && contains(s: own_after, p: "\n200 exit=0") && !contains(s: cleared_stats, p: "\"m-s\":\{") && contains(s: cleared_stats, p: "\"m-r\":\{"), observed: one_line(s: pending_stats)),
     case_of(identity: "dev_rented_turns_are_metered_and_the_rented_pool_reported", held: contains(s: rented_stats, p: "\"usage_all\"") && contains(s: rented_stats, p: "\"billing\":\"rented\"") && contains(s: rented_stats, p: "\"unmeasured_requests\":11") && contains(s: rented_stats, p: "\"rented\":\{") && contains(s: rented_stats, p: "\"full\":"), observed: one_line(s: rented_stats)),
     case_of(identity: "dev_capped_overflow_row_refuses_at_its_cap", held: contains(s: overflow_contended, p: "HTTP/1.1 429") && contains(s: overflow_contended, p: "Retry-After") && occurrences(s: overflow_contended, needle: "auth=Bearer ko") == 1, observed: one_line(s: overflow_contended)),

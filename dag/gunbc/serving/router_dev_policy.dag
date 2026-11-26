@@ -757,10 +757,14 @@ fn router_dev_stats_lines() -> List<String> {
     // engine (waiter_keeps_its_engine), i.e. the ones a rented card's free slot would serve; `rows` is each
     // rented row in service with its turns in flight and the conversations bound to it seen within the recent
     // window. The AWS loop rents on these and nothing else, so the eligibility rule is never restated outside it.
-    "rented.waiting = 0",
+    // Counted per REQUESTED MODEL, with the alias beside it: a rented card serves its own model and the alias, so
+    // a reader adds the two entries for the card it would rent and nothing else (a waiter for another model is
+    // demand no such card could meet).
+    "rented.waiting_by_model = \{}",
+    "rented.alias = ROUTER_ALIAS",
     "for _, k in ipairs(state:get_keys(0)) do",
     "  local m, s = k:match('^pending:(.-)|(.+)$')",
-    "  if m and state:get(k) and not waiter_keeps_its_engine(m, state:get('session:' .. s)) then rented.waiting = rented.waiting + 1 end",
+    "  if m and state:get(k) and not waiter_keeps_its_engine(m, state:get('session:' .. s)) then rented.waiting_by_model[m] = (rented.waiting_by_model[m] or 0) + 1 end",
     "end",
     "rented.rows = \{}",
     "for _, u in ipairs(ROUTER_UPSTREAMS) do",
