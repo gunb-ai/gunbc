@@ -44,7 +44,7 @@ import std.materialization_provider {
   ManifestDecoded, ManifestKindUndeclared, ManifestPartUndeclared, ManifestPartRepeated, LegacyIncompleteArtifact,
 }
 import std.measure { byte_size }
-import gunbc.compute.compute_exec { ComputeExecOk }
+import gunbc.compute.compute_exec { ComputeExecOk, ComputeExecFailed }
 import gunbc.compute.work_provider_local {
   compute_work_identity, compute_execution_identity, compute_toolchain_decide, ToolchainObserved, ToolchainObservationRefused,
   compute_materialization_plan, ComputeMaterializationPlanned, ComputeMaterializationRefused,

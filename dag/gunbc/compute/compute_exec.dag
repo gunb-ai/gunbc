@@ -17,15 +17,19 @@ module gunbc.compute.compute_exec
 // repetition is shared work that should be carried or shared, and a type both sides read is
 // exactly that), so the repair is at the earliest unjustified boundary
 // (gunbc.design_argument::earliest_unjustified_boundary): the declaration's home, not a cache in
-// front of the resolve. The declaration MOVES here -- std.types is this file's only import -- and
-// work_provider_local imports this module, so there is still one authority for the shape
-// (gunbc.design_argument::single_authority) and no consumer decides it twice.
+// front of the resolve. Both declarations moved here, and this file's imports are std.types,
+// extdeps.gunbc and gunbc.output_policy -- nothing from gunbc.compute, so no consumer can reach the
+// provider through them. work_provider_local imports THIS module, so there is still one authority
+// for the shape and for its production (gunbc.design_argument::single_authority) and no consumer
+// decides either twice.
 //
-// MECHANICAL MOVE ONLY. The three lines below are byte-identical to the ones removed from
-// dag/gunbc/compute/work_provider_local.dag:268-270; every consumer's import was re-pointed in the
-// same commit, and no behaviour, receipt, or answer changes. Evidence: the witness lanes that read
-// the type (//test/claim/compute/output_capture_absence_wet_witness and
-// //test/claim/compute/work_request_witness) hold at the same tally as before the move.
+// MECHANICAL MOVE ONLY. The type and the function below are byte-identical to what
+// gunbc.compute.work_provider_local declared there; every consumer's import was re-pointed in the
+// same commit, and no behaviour, receipt, or answer changes. Evidence, green by execution
+// (gunbc.design_argument::fail_closed), posted on the PR: the claim lanes that read them --
+// //test/claim/compute/output_capture_absence_witness, //test/claim/compute/work_request_witness
+// and //test/claim/compute/output_capture_absence_wet_witness -- hold at the tally they held
+// before the move, and the client entry still resolves.
 
 import std.types { String, Int, List, FilePath }
 import extdeps.gunbc
