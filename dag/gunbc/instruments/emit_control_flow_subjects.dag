@@ -157,7 +157,7 @@ fn cf_measurement_rows() -> List<BatteryRow> uses counter: AllocationCounter {
   let bind = cf_window(subject: CfBindOnce, src: src)
   let bind_remade = cf_window(subject: CfBindRematerializedPerRead, src: src)
   let match_owned = cf_window(subject: CfMatchOwnedTemporary, src: src)
-  let match_copied = cf_window(subject: CfMatchOwnedRetainedAfterMatch, src: src)
+  let match_owned_retained = cf_window(subject: CfMatchOwnedRetainedAfterMatch, src: src)
   let match_borrowed = cf_window(subject: CfMatchBorrowedSharedSum, src: src)
   let match_retained = cf_window(subject: CfMatchBorrowedRetainedAfterMatch, src: src)
   concat(concat([plain_row(c: availability_case(prefix: "control_flow"))], calibration_rows(prefix: "control_flow", empty: empty, empty_again: empty_again, known: known)), concat(concat(concat(
@@ -165,7 +165,7 @@ fn cf_measurement_rows() -> List<BatteryRow> uses counter: AllocationCounter {
       [subject_case(prefix: "control_flow", block_id: "branch", own: branch), violation_case(prefix: "control_flow", block_id: "branch", viol: branch_copied, contract_arm: branch)]),
       concat(
       [subject_case(prefix: "control_flow", block_id: "bind", own: bind), violation_case(prefix: "control_flow", block_id: "bind", viol: bind_remade, contract_arm: bind)],
-      [subject_case(prefix: "control_flow", block_id: "match_owned_temporary", own: match_owned), violation_case(prefix: "control_flow", block_id: "match_owned_temporary", viol: match_copied, contract_arm: match_owned)])),
+      [subject_case(prefix: "control_flow", block_id: "match_owned_temporary", own: match_owned), violation_case(prefix: "control_flow", block_id: "match_owned_temporary", viol: match_owned_retained, contract_arm: match_owned)])),
       [subject_case(prefix: "control_flow", block_id: "match_borrowed_shared_sum", own: match_borrowed), violation_case(prefix: "control_flow", block_id: "match_borrowed_shared_sum", viol: match_retained, contract_arm: match_borrowed)]))
 }
 
@@ -179,9 +179,18 @@ fn cf_red_rows() -> List<BatteryRow> uses counter: AllocationCounter {
   let branch_copied = cf_window(subject: CfBranchCopiesUnchangedContext, src: src)
   let bind = cf_window(subject: CfBindOnce, src: src)
   let bind_remade = cf_window(subject: CfBindRematerializedPerRead, src: src)
+  let match_owned = cf_window(subject: CfMatchOwnedTemporary, src: src)
+  let match_owned_retained = cf_window(subject: CfMatchOwnedRetainedAfterMatch, src: src)
   let match_borrowed = cf_window(subject: CfMatchBorrowedSharedSum, src: src)
   let match_retained = cf_window(subject: CfMatchBorrowedRetainedAfterMatch, src: src)
   [
+    // THE OWNED TEMPORARY WAS MISSING HERE, and the gap was found by enumerating the two builders against
+    // each other rather than by reading the red entry: this block had its reading and its above-contract
+    // row in the green entry and no row at all in the red entry, so its violating variant could never go
+    // red. The row's red_control asks for a violating variant on EVERY specimen that goes through the same
+    // path and goes red, so the arm existed and was only ever judged on the green side. The pair below
+    // routes CfMatchOwnedRetainedAfterMatch through the same path as the contract arm, asked the other way.
+    violation_contract_holds_case(prefix: "control_flow", block_id: "match_owned_temporary", viol: match_owned_retained, contract_arm: match_owned),
     violation_contract_holds_case(prefix: "control_flow", block_id: "transform", viol: transform_rebuilt, contract_arm: transform),
     violation_contract_holds_case(prefix: "control_flow", block_id: "branch", viol: branch_copied, contract_arm: branch),
     violation_contract_holds_case(prefix: "control_flow", block_id: "bind", viol: bind_remade, contract_arm: bind),

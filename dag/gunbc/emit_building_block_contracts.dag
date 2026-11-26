@@ -173,6 +173,74 @@ type MispairedProbe {
   expected_refusal: StructuralInapplicability
 }
 
+// ── HOW TO READ A VERDICT WITHOUT RE-READING THE HARNESS ────────────────────────────────────
+// Four families each ship TWO labels, so eight in all: emit_<family>_observation (expects rc 0) and
+// emit_<family>_violation (expects rc 1), where <family> is value_shape, control_flow, accumulator or
+// carrier. A third exit exists and is not a judgement: rc 2 means the meter read nothing at all. Every row
+// below is built by gunbc.instruments.allocation_battery from the typed violation_form on the roster rows
+// underneath this note, so the axis a row measures is FIXED HERE BY THE FIELD and by nothing else; what
+// this note gives you is the identity of every row an entry can print, which single row carries each
+// entry's claim, and the test that separates a real not_held from an instrument artefact. Row identities
+// are concat(prefix, "_", block_id, suffix) with the suffixes:
+//
+//   _reading_taken                              the PASS arm's own reading           allocation_battery:78
+//   _violating_variant_above_contract_arm       the violating arm is visible         allocation_battery:129
+//   _violating_variant_within_contract_arm      the violating arm is NOT visible     allocation_battery:140
+//   _observation_calibrates_a_measured_floor_with_a_difference, _meter_discriminates_a_copying_arm_above_empty
+//                                               the meter's floor and its ability to see a copy
+//   _availability_provider_registered_by_the_selecting_main   the counter is wired
+//   _family_roster_is_nonempty, _every_contract_is_carrier_applicable,
+//   _the_three_named_violating_forms_are_exercised, _guard_fires_on_every_deliberate_mis_pairing,
+//   _roster_membership_printed_for_every_contract, _contract_refusal_not_hit_by_the_population_<name>
+//
+// WHICH AXIS A ROW MEASURES. A BatteryWindow carries three quantities: kept (the handles the caller still
+// holds when the window closes, reported as kept_len), and the operations and bytes the counter moved
+// across the window. The judgement is EXCLUSIVE (see form_is_owning_retain above), so for a given block
+// exactly one of these is the axis:
+//
+//   violation_form = OwningRetainAddedToObservation   judged on kept alone
+//   violation_form = PerStepAllocation                 judged on operations and bytes alone
+//   violation_form = CopyOfUnchangedContext            judged on operations and bytes alone
+//
+// To know which one a block is on, read the last argument of that block's block(...) call below -- do not
+// trust any transcription of it, including one that used to sit in this comment. The printed line carries
+// its own answer as discriminator= form= detected_on=, and that printing is produced from the field, never
+// the other way round.
+//
+// THE SINGLE DISCRIMINATING ROW PER LABEL, which is the row whose verdict is the entry's claim:
+//
+//   emit_<family>_observation   ->   <prefix>_<block>_violating_variant_above_contract_arm, for every block
+//       of the family. The whole entry exits 0 only when each of these is held on its own axis, alongside
+//       the readings, the calibration pair and the audits. This is the row that says the instrument can see
+//       the violation the contract names.
+//   emit_<family>_violation     ->   <prefix>_<block>_violating_variant_within_contract_arm, for every block
+//       the family puts through its red entry: value_shape has value_scalar, value_record,
+//       value_nonrecursive_variant, generic_over_scalar, generic_over_payload; control_flow has transform,
+//       branch, bind, match_borrowed_shared_sum and match_owned_temporary; accumulator has
+//       loop_record_accumulator, field_read, record_rebuild_one_field, local_closure, escaping_closure;
+//       carrier has sequence_build, sequential_traversal, element_read,
+//       persistent_sequence_carrier_snapshot, index_build, index_lookup, index_traversal,
+//       persistent_map_carrier_snapshot. Those twenty-three rows are expected NOT held, and the entry exits
+//       0 only if the meter has stopped discriminating.
+//
+// IS A not_held REAL, OR THE INSTRUMENT? Three signatures, read off the same line, no harness needed:
+//
+//   1. detected_on=none while the family's calibration rows are held. The violating arm added nothing on any
+//      axis: the arm is a second copy of the contract arm and its extra work never executed. That is an arm
+//      defect, and it is the shape this row was created to refuse -- two arms were rewritten for exactly
+//      this reason, quoting violating_ops=38 equal to contract_arm_ops=38 with violating_kept=2 against
+//      contract_arm_kept=1.
+//   2. detected_on= names an axis that is NOT the block's discriminator. The violation is real but it is not
+//      the violation the contract speaks of -- an allocation witnessing a retain. Reported as a finding about
+//      the instrument, never recorded as a red.
+//   3. detected_on= contains the discriminator and the row is still not held. The measured quantity on the
+//      judged axis did not clear the contract arm. That is a real not_held and the contract needs the
+//      numbers to say so.
+//
+// If the family's calibration rows are not held, or the availability row fails, nothing in that entry is
+// evidence either way: a sampler that stopped reading answers rc 2, which is why that exit exists
+// (gunbc.design_ruling::instrument_is_a_row_not_a_flag).
+//
 // ── The roster ───────────────────────────────────────────────────────────────────────────────
 // `observation` is what the PASS arm does; `violation` is the violating variant that goes through the
 // same path and must go red (the row's red_control, verbatim: an owning retain added to the observation,
