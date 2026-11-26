@@ -1,0 +1,59 @@
+module test.claim.live_deploy.serve_entry_verdict_plan_pointer_pair_witness
+
+import std.types { Bool, NonEmptyStr }
+import std.algebra { trim }
+import gunbc.live_deploy.pre_swap_admission { deployment_requires_plan_serve_entry_verdict }
+import gunbc.live_deploy.desired { srv1_lab_desired_deployment }
+import gunbc.actions_run_binding { actions_variable_trimmed }
+import gunbc.fleet.fleet_converge_plan_revision { fleet_converge_plan_pointer_env_name }
+
+// THE HISTORICAL PAIR, EXECUTED AS A HISTORICAL PAIR (optB red control).
+//
+// This module is deliberately written against the API BOTH heads have -- the predicate under its name,
+// and the lab roster row -- so the SAME source file, the SAME labels and the SAME input (the lab
+// pointer env set to an admitted plan run id) run at red_at (the main sha at dispatch) and at
+// green_at (this PR's head), one binary per tree, and the flipping leg produces the IDENTICAL failure
+// text at both. At red_at it fails: the lab row is not the fleet prod-role holder, so the predicate
+// exempted it, the wet step took the cold serve-entry compile arm, and the ~22-minute class compile met
+// deploy2 run 45749803682's 60-minute bound. At green_at it passes: the predicate keys on the admitted
+// plan pointer, which is the fact the exemption was always justified by.
+//
+// THE INPUT IS THE POINTER ITSELF, not a marker invented for the test: FLEET_CONVERGE_PLAN_RUN_POINTER
+// is the dispatch input the plan-run-pointer admission reads (gunbc.fleet.fleet_converge_plan_revision
+// fleet_converge_plan_pointer_env_name), which the generated deploy step hands to the wet step. The
+// pair runs set it; a standing claim run does not, and there the conditional below is what a claim may
+// assert -- a witness may only demand the verdict of a transaction that carries an admitted plan.
+//
+// THE LEGS ARE A PAIR, not a before-and-after of two different claims: the flipping leg names the
+// defect, and the leg that stays green at BOTH heads is the last-good-pair behaviour -- an
+// operator-local run with no plan job keeps the cold serve-entry compile, slowness and all, unchanged.
+// If the fix ever made the cold compile unreachable, that leg would fail at green and the
+// operator-local route would have been broken by the fix.
+
+fn pointer_in_environment() -> String {
+  actions_variable_trimmed(name: fleet_converge_plan_pointer_env_name as NonEmptyStr)
+}
+
+// THE FLIPPING LEG. With an admitted pointer in the environment: the lab row's swap must demand the
+// plan's verdict. red_at (main, the pointer env set): false -- the lab row was exempt by prod-role
+// identity -> FAIL, batch rc 1. green_at (this head, same input): true -> PASS. With no pointer the
+// transaction has no plan job and the demand is vacuous, which is the case the leg below owns.
+test fn the_lab_row_under_an_admitted_pointer_demands_the_plan_verdict() -> Bool {
+  if trim(s: pointer_in_environment()) == "" {
+    true
+  } else {
+    deployment_requires_plan_serve_entry_verdict(deployment: srv1_lab_desired_deployment())
+  }
+}
+
+// THE LEG THAT STAYS GREEN AT BOTH HEADS: with no pointer in the environment -- the operator-local
+// route, which has no plan job -- the lab row is NOT required to carry a plan verdict, so it keeps the
+// cold serve-entry compile. When a pointer IS present this leg has nothing to say, and the leg above
+// carries the claim.
+test fn the_lab_row_without_a_pointer_keeps_the_cold_compile_route() -> Bool {
+  if trim(s: pointer_in_environment()) == "" {
+    !deployment_requires_plan_serve_entry_verdict(deployment: srv1_lab_desired_deployment())
+  } else {
+    true
+  }
+}

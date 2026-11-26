@@ -15,7 +15,6 @@ import gunbc.live_deploy.pre_swap_admission {
   ServeEntryCompileAdmitted,
   ServeEntryCompileBlocked,
   ServeEntryCompileUnobserved,
-  ServeEntryCompileChild,
   CompileChildVerdictDocumentRead,
   CompileChildServeCommandSpawn,
   swap_serve_entry_compile_child_under,

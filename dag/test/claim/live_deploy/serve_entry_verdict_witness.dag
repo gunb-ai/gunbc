@@ -1,11 +1,10 @@
 module test.claim.live_deploy.serve_entry_verdict_witness
 
-import std.types { Bool, Int, List, String }
-import std.algebra { string_contains }
+import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.algebra { string_contains, trim }
 import gunbc.live_deploy.pre_swap_admission {
   deployment_requires_plan_serve_entry_verdict,
   ServeEntryVerdictRecord,
-  ServeEntryVerdictDocumentDecode,
   ServeEntryVerdictDocumentDecoded,
   ServeEntryVerdictSchemaMismatch,
   ServeEntryVerdictUndecoded,
@@ -20,11 +19,9 @@ import gunbc.live_deploy.pre_swap_admission {
   ServeEntryCompileAdmitted,
   ServeEntryCompileBlocked,
   ServeEntryCompileUnobserved,
-  ServeEntryVerdictRowSelect,
   RowSelected,
   RowMissing,
   serve_entry_verdict_row_select,
-  ServeEntryVerdictRosterAdmission,
   RosterRowsAdmitted,
   RosterRowForeign,
   serve_entry_verdict_roster_admission,
@@ -39,25 +36,22 @@ import gunbc.live_deploy.pre_swap_admission {
   serve_entry_argv_digest,
   admit_plan_serve_entry_verdict,
   serve_entry_verdict_as_compile_verdict,
-  ServeEntryVerdictDirAdmission,
   ServeEntryVerdictDirWritable,
   ServeEntryVerdictDirRefused,
   serve_entry_verdict_dir_admission,
   serve_entry_verdict_dir_refusal_text,
-  SwapServeEntryCompileArm,
   SwapServeEntryCompileFromPlanVerdict,
   SwapServeEntryCompileByColdResolve,
   swap_serve_entry_compile_arm_under,
   swap_serve_entry_compile_arm,
-  ServeEntryCompileChild,
   CompileChildVerdictDocumentRead,
   CompileChildServeCommandSpawn,
   swap_serve_entry_compile_child_under,
   admitted_plan_pointer_present_under,
 }
 import gunbc.fleet.fleet_converge_plan_revision { fleet_converge_plan_pointer_env_name }
+import gunbc.actions_run_binding { actions_variable_trimmed }
 import gunbc.live_deploy.desired {
-  DesiredDeployment,
   srv1_production_desired_deployment,
   srv1_lab_desired_deployment,
   selected_deployment_spec,
@@ -73,9 +67,7 @@ import gunbc.live_deploy.apply {
 import gunbc.live_deploy.plan_serve_entry_verdict {
   PlanCoveredRosterRows,
   plan_covered_roster_rows,
-  ServeEntryCompileIdentity,
   serve_entry_compile_identity_of,
-  ServeEntryCompileDemand,
   plan_serve_entry_compile_demands,
   ServeEntryCompileResult,
   plan_serve_entry_compile_for_identity,
@@ -714,13 +706,6 @@ test fn the_operator_local_route_refusal_names_the_dissolution_and_the_surviving
 // ~22-minute class compile met the 60-minute bound. The exemption's stated reason was operator-local
 // (no plan job); its implementation was role identity. These legs hold the rule to the stated reason.
 
-// THE HISTORICAL PAIR'S LEG (red control): with an admitted pointer present, the LAB row demands the
-// plan verdict. At red_at (main 26259a07) this returns false -- the lab row was exempt by role -- and
-// the batch exits 1 with this label; at green_at it passes. Same label, same input, both runs.
-test fn the_lab_row_under_an_admitted_pointer_demands_the_plan_verdict() -> Bool {
-  deployment_requires_plan_serve_entry_verdict(deployment: srv1_lab_desired_deployment())
-}
-
 // THE POINTER IS THE ONLY KEY, both rows, both states: present = the verdict arm for BOTH the
 // prod-role row and the lab row; absent = the cold compile arm for both (the operator-local route
 // keeps the pre-gap mechanism UNCHANGED, slowness and all).
@@ -795,12 +780,20 @@ test fn the_pointer_presence_reads_the_admissions_own_env_name() -> Bool {
     && !admitted_plan_pointer_present_under(pointer: "   ")
 }
 
-// THE ARM THE WET PROCESS TAKES IN A CLAIM RUN -- no pointer in the environment -- is the cold
-// compile: the operator-local route is the one that still pays the compile, and it pays it UNCHANGED.
-test fn the_claim_run_takes_the_cold_compile_arm() -> Bool {
+// THE ARM THE RUNNING PROCESS TAKES AGREES WITH THE POINTER IT ACTUALLY READS -- the environment
+// under the one constant, not a text this file invented. In a claim run there is no pointer, so the
+// cold compile arm is the one that runs and the operator-local route pays the compile UNCHANGED; a run
+// that carried a pointer must take the verdict arm and demand the verdict. Either way the arm, the
+// predicate and the environment have to agree, which is what a leg that compared a hand-written label
+// could never check.
+test fn the_run_takes_the_arm_its_own_pointer_reading_gives_it() -> Bool {
+  let pointer = actions_variable_trimmed(name: fleet_converge_plan_pointer_env_name as NonEmptyStr)
+  let present = admitted_plan_pointer_present_under(pointer: pointer)
   match swap_serve_entry_compile_arm(deployment: srv1_lab_desired_deployment()) {
-    SwapServeEntryCompileByColdResolve { row: _ } => !deployment_requires_plan_serve_entry_verdict(deployment: srv1_lab_desired_deployment())
-    SwapServeEntryCompileFromPlanVerdict { row: _ } => false
+    SwapServeEntryCompileByColdResolve { row: _ } =>
+      !present && !deployment_requires_plan_serve_entry_verdict(deployment: srv1_lab_desired_deployment())
+    SwapServeEntryCompileFromPlanVerdict { row: _ } =>
+      present && deployment_requires_plan_serve_entry_verdict(deployment: srv1_lab_desired_deployment())
   }
 }
 
