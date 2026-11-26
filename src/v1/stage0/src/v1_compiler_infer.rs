@@ -1730,7 +1730,7 @@ pub fn unlisted_variant_use_diagnostics(
 }
 
 pub fn declared_field_is_required(sf: Rc<Node>) -> bool {
-    (sf.body.clone() == std::option::Option::None)
+    (sf.body.clone() != std::option::Option::None)
 }
 
 pub fn bare_variant_reference_missing_field_diagnostics(

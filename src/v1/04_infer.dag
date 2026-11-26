@@ -1098,7 +1098,7 @@ fn unlisted_variant_use_diagnostics(scope: InferScope, name: String, span: Sourc
 // (infer_record_lit_structural) and the bare-name path below read it, so the two spellings
 // of a construction cannot disagree about which fields are owed.
 fn declared_field_is_required(sf: Node) -> Bool {
-  sf.body == none
+  sf.body != none
 }
 
 // A BARE VARIANT NAME IN EXPRESSION POSITION IS A CONSTRUCTION SUPPLYING ZERO FIELDS. When
