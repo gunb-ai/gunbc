@@ -8595,10 +8595,10 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       ],
       line: ticket(t: fields(
         headline: "A request is wall-bounded on the host: a bound on how long it may wait to start, and one on how long it may run",
-        boundary: "The plan's done-when 4. The leg's ceiling is carried in the wire words (gunbc.compute.remote_build_wire), and the front door's hand-off runs the child under it; a request whose start is delayed past its bound refuses instead of queueing. Both bounds are enforced host-side, so a client that gives up, or is merely old, cannot hold a seat for hours. The survey read exactly that on srv3: a request from srv2 held since 2026-11-25 12:46 with the TCP connection still established, and a claim-run unit running since 06:07.",
+        boundary: "The plan's done-when 4. The leg's ceiling is carried in the wire words (gunbc.compute.remote_build_wire), and the front door's hand-off runs the child under it; a request whose start is delayed past its bound refuses instead of queueing. Both bounds are enforced host-side, so a client that gives up, or is merely old, cannot hold a seat for hours. And a request refused before it starts is a capacity-limited answer WITH a retry allowance -- std.retry_law's RetryHint, mapped to HTTP by gunbc.retry_http_hint -- never a final refusal (operator direction, 2026-11-26): the refusal is the front's capacity answer, and the allowance is what stops a capacity answer from becoming a dead end. The survey read exactly that on srv3: a request from srv2 held since 2026-11-25 12:46 with the TCP connection still established, and a claim-run unit running since 06:07.",
         displaced_cost: "a seat held by a request nobody is waiting for is bandwidth the fleet does not have, and srv3 is the one host currently serving.",
         first_slice: "Carry the leg ceiling in the wire words and run the door's child under it, then add the bound on waiting before start.",
-        red_control: "Removing the bound reproduces a child that outlives its leg.",
+        red_control: "Removing the bound reproduces a child that outlives its leg. A request refused before start that answers a final refusal where a capacity-limited answer with a retry allowance is owed.",
         out_of_scope: "the serving probe leg's ceiling figure, which is a host read (remote-build-serving-probe-ceiling-from-host-read); the operator's decision on the request held since 2026-11-25 (plan section 5); client-side timeouts, which are not enforcement.",
         handback: "A host that refuses an over-bound request with a typed cause, and a seat that returns without hand cleanup when a client gives up.",
       )),
@@ -8901,6 +8901,27 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
       parent: in_project(project: "remote-build-bandwidth", contribution: "The serve entry checks the binary it runs against what the settle installed, so a receipt's binary identity says something about the host that answered."),
     ),
     roadmap_node(
+      identity: "rn_S2ZVJQP9J6259SDHDBKDYZ8Q4R",
+      id: "remote-build-front-is-the-serving-router",
+      owner: "fleet",
+      carriers: [
+        Pointer { label: "authority", path: "dag/gunbc/compute/remote_build_client.dag" },
+        Pointer { label: "authority", path: "dag/gunbc/compute/remote_build_serve_front_door.dag" },
+      ],
+      line: ticket(t: fields(
+        headline: "One front answers remote-build requests in the serving router's vocabulary, and the client stops walking hosts",
+        boundary: "Today the client walks remote_build_serving_hosts() itself: probe each candidate, HostCapacityFull moves the walk to the next host, HostOutcomeUnknown stops it (gunbc.compute.remote_build_client, remote_build_try_host). Operator direction, 2026-11-26: the end user should see one front with load-balancer semantics -- served, capacity-limited with a retry allowance, or a final refusal -- and those semantics must not diverge from the serving router that already exists (gunbc.plans.fabric_serving_router, gunbc.serving.router_proxy_config, extdeps.proxy.openresty), because the processing is stateless and simple on both sides. Design first: map every arm of RemoteBuildHostAnswer (HostServed, HostWorkFailed, HostWorkInFlight, HostCapacityFull, HostCannotServe, HostUnreachable, HostRefusedRequest, HostOutcomeUnknown, and the wall-clock arm) onto the router's answer classes, name each divergence and say whether it is removable, and say where std.retry_law's RetryHint is applied on the client side when the answer is capacity-limited.",
+        displaced_cost: "every client re-decides capacity, reachability and unknown-outcome per leg -- the session image, the gate plumbing and CI each carry their own routing vocabulary -- so the front the operator asked for never exists and a capacity answer means something different in each of them.",
+        first_slice: "A design note mapping every RemoteBuildHostAnswer arm onto the serving router's answer classes, naming each divergence and whether it is removable.",
+        red_control: "A remote-build answer class the serving router has no counterpart for.",
+        out_of_scope: "the transport -- ssh forced command versus HTTP -- is not decided in the first slice; the router's own capacity policy and placement (gunbc.plans.fabric_serving_router); the host-side bounds themselves (remote-build-request-host-wall-bounds).",
+        handback: "The mapping, each divergence named and either removed or ruled a real difference, with the retry vocabulary named on both sides.",
+      )),
+      centering: plan(text: "remote_build_bandwidth_plan: done-when 1 is met by a front the client can trust, not by a walk each client repeats. Target: gunbc.compute.remote_build_client's host walk, against the serving router's answer classes."),
+      dispatch: dispatchable(),
+      parent: in_project(project: "remote-build-bandwidth", contribution: "Host choice moves behind one front that answers in the router's vocabulary, so every client gets the same served / capacity-limited / refusal answer."),
+    ),
+    roadmap_node(
       identity: "rn_DVC3CE7CXHTBW0N7XRT459H34E",
       id: "remote-build-serve-protocol-version-client-checkable",
       owner: "fleet",
@@ -9124,6 +9145,7 @@ fn declared_roadmap_edges() -> List<RoadmapEdge> {
     edge(child: "remote-build-srv1-serves", parent: "remote-build-census-observed-bound-admits-recorded-scope"),
     edge(child: "remote-build-srv3-serves", parent: "remote-build-census-observed-bound-admits-recorded-scope"),
     edge(child: "remote-build-srv4-serves", parent: "remote-build-census-observed-bound-admits-recorded-scope"),
+    edge(child: "remote-build-front-is-the-serving-router", parent: "remote-build-request-host-wall-bounds"),
     edge(child: "remote-build-serving-probe-ceiling-from-host-read", parent: "remote-build-srv3-serves"),
     // The capture-count debt admitted by the plan rather than by its author (vivid-swift-693, 2026-11-25):
     // the consumer row DissolutionCondition names this row, so the trigger is the plan own, not the worker own.
