@@ -48,6 +48,8 @@ Two clean builds of the actual seed used the same Git tree and an empty commit b
 
 This validates one provenance-only rebuild for this question and host. A production identity also needs the build inputs that can alter behavior on its admitted hosts, including native compiler and linker inputs, build-script environment and target ABI. A question that reads revision metadata would include it among its own inputs.
 
+The producer-side capture now pairs each measured build with the image reported by the running compiler. Edits outside the observed build inputs preserved the candidate. Changing one character mapping in the newline-index producer changed both the candidate and the actual answer while the fixture continued to pass. Pairing a successful run with the other build refused on its image digest even though both answers agreed. Rebuilding the original head restored the candidate, answer, and executable bytes. The active shadow key still uses the physical image. [Predictions, controls, and captured identities](observed/compiler-executable-binding.json)
+
 ## Running the behavioral assertions
 
 Run the integration tests from the repository root in its supported build environment.
