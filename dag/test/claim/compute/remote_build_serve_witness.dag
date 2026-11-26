@@ -388,10 +388,11 @@ test fn the_real_read_route_reads_a_preplaced_identity_file() -> Bool {
 // first two arms go red; always refuse and the third goes red. This is the srv3 orphan class -- a request
 // held 17h before its unit ran -- made impossible at the one decision that launches the unit.
 test fn a_request_that_waited_past_its_ceiling_refuses_to_start() -> Bool {
-  let wall = RemoteBuildWall { ceiling_seconds: 900, accepted_at_seconds: 1000 }
-  let refused_at_ceiling = match remote_build_runtime_max_at(wall: wall, launch_now_seconds: 1900) { Absent => true  Present { value: _ } => false }
-  let refused_past_ceiling = match remote_build_runtime_max_at(wall: wall, launch_now_seconds: 2000) { Absent => true  Present { value: _ } => false }
-  let starts_inside = match remote_build_runtime_max_at(wall: wall, launch_now_seconds: 1800) {
+  // One deadline at accept+ceiling = 1900; the launch instant decides, never a second remaining.
+  let wall = RemoteBuildWall { ceiling: second(count: 900), accepted_at: 1000 }
+  let refused_at_ceiling = match remote_build_runtime_max_at(wall: wall, launch_now: 1900) { Absent => true  Present { value: _ } => false }
+  let refused_past_ceiling = match remote_build_runtime_max_at(wall: wall, launch_now: 2000) { Absent => true  Present { value: _ } => false }
+  let starts_inside = match remote_build_runtime_max_at(wall: wall, launch_now: 1800) {
     Present { value: s } => second_count(s: s) == 100
     Absent => false
   }
@@ -404,7 +405,7 @@ test fn a_request_that_waited_past_its_ceiling_refuses_to_start() -> Bool {
 // ServeRequestRefused, which would stop the whole roster off one loaded host (operator direction
 // 2026-11-26: one router, capacity-limited answers carry a retry allowance).
 test fn a_wait_bound_refusal_is_capacity_limited_and_retry_allowed() -> Bool {
-  let wall = RemoteBuildWall { ceiling_seconds: 900, accepted_at_seconds: 1000 }
+  let wall = RemoteBuildWall { ceiling: second(count: 900), accepted_at: 1000 }
   let bytes = match remote_build_wait_bound_refusal(wall: wall) {
     CliWirePrintable { bytes: b, exit: _ } => b
     _ => ""

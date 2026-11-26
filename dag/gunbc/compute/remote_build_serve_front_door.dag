@@ -17,7 +17,7 @@ import gunbc.compute.remote_build_wire {
   remote_build_ending_of_answer,
   RemoteBuildHandOff, remote_build_serve_hand_off, remote_build_ssh_command_variable,
 }
-import extdeps.clock { clock_unix_millis_read, ClockUnixMillisObserved, ClockUnixMillisRefused }
+import extdeps.clock { clock_unix_millis_read, epoch_secs_of_millis, ClockUnixMillisObserved, ClockUnixMillisRefused }
 import std.integer { int_to_decimal_string }
 import gunbc.compute.remote_build_serve_principal {
   RemoteBuildServePrincipal, RemoteBuildServePrincipalAdmitted, RemoteBuildServePrincipalRefused,
@@ -198,7 +198,7 @@ fn remote_build_serve_front_door_cli(host: String, serve_binary: String, repo_ro
         serve_binary: serve_binary,
         repo_root: repo_root,
         leg_ceiling: leg_ceiling,
-        accept_instant: int_to_decimal_string(value: (accepted as Int) / 1000),
+        accept_instant: int_to_decimal_string(value: epoch_secs_of_millis(millis: accepted)),
         raw_command: shell.Env.Get(name: remote_build_ssh_command_variable).value,
         principal: remote_build_serve_probe_principal(),
       ) {

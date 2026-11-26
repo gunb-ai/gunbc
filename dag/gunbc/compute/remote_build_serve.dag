@@ -1,14 +1,13 @@
 module gunbc.compute.remote_build_serve
 
-import std.types { String, Bool, Int, List, NonEmptyStr, FilePath }
+import std.types { String, Bool, Int, List, NonEmptyStr, FilePath, EpochSecs, checked_int_to_epoch_secs }
 import std.optional { Present, Absent }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.algebra { trim }
 import std.measure { Second, second, second_count }
 import std.nat { nat_to_decimal_string }
-import std.integer { int_to_decimal_string }
 import std.checked_arithmetic { checked_int_to_nat }
-import extdeps.clock { clock_unix_millis_read, ClockUnixMillisObserved, ClockUnixMillisRefused }
+import extdeps.clock { clock_unix_millis_read, epoch_secs_of_millis, ClockUnixMillisObserved, ClockUnixMillisRefused }
 import gunbc.fleet.fleet_known_hosts_anchor { fleet_leg_wall_deadline, HostBuildLeg }
 import extdeps.shell
 import extdeps.ssh.keys {
@@ -95,49 +94,61 @@ import gunbc.compute.remote_build {
 // instead let one host answer twice -- the subject at the host home under the host's service root, the
 // principal from an instance row that need not exist -- so srv3 and srv4, serving hosts with no dashboard
 // instance of their own, refused the ledger they were writing.
-// THE HOST-SIDE WALL BOUND, carried from the front door. The ceiling is the leg's wall budget (the Second
-// the fleet authority mints for HostBuildLeg, projected to a count in the forced command); the accept
-// instant is the door's own host-clock reading, in epoch seconds, at the moment it accepted the request.
-// Both are host-local (no cross-host skew). The request entry subtracts the wait already spent from the
-// ceiling at each unit launch and runs the granted unit under what remains, so the wait-before-start bound
-// and the run bound are the SAME budget spent once, and a request can never hold a seat longer than its
-// client waits.
+// THE HOST-SIDE WALL BOUND, carried from the front door. The ceiling is the leg's wall budget, carried as
+// the std.measure Second the fleet authority mints for HostBuildLeg (projected to a count only in the
+// forced command's word); the accept instant is the door's own host-clock reading at the moment it accepted,
+// carried as std.types EpochSecs -- a host-clock instant is never a bare Int (gunbc.spark.awaited_incarnation,
+// review 76436). Both are host-local (no cross-host skew). The wall carries ONE absolute deadline (accept +
+// ceiling): every unit derives its run bound from THAT deadline, so the wait-before-start bound and the run
+// bound are the SAME budget spent once by construction -- there is no second remaining to drift -- and a
+// request can never hold a seat past the instant its own client stopped waiting.
 type RemoteBuildWall {
-  ceiling_seconds: Int
-  accepted_at_seconds: Int
+  ceiling: Second
+  accepted_at: EpochSecs
 }
 
-// THE BOUND IS PARSED, NOT ASSUMED. A ceiling or accept instant that does not parse, or a non-positive
-// ceiling, is no bound at all: the entry refuses rather than running a request it cannot stop.
+// THE BOUND IS PARSED, NOT ASSUMED. A ceiling or accept instant that does not parse, a non-positive
+// ceiling, or a pre-epoch accept instant is no bound at all: the entry refuses rather than running a
+// request it cannot stop. The typed carriers are minted by their sanctioned checked crossings
+// (checked_int_to_nat for the duration, checked_int_to_epoch_secs for the instant), never by a cast.
 fn remote_build_wall_of_arguments(leg_ceiling: String, accept_instant: String) -> RemoteBuildWall? {
-  match parse_int(s: trim(leg_ceiling)) {
+  match parse_int(s: trim(s: leg_ceiling)) {
     Absent => none
     Present { value: ceiling } =>
       if ceiling <= 0 {
         none
       } else {
-        match parse_int(s: trim(accept_instant)) {
+        match checked_int_to_nat(n: ceiling) {
           Absent => none
-          Present { value: accepted } =>
-            if accepted < 0 { none } else { Present { value: RemoteBuildWall { ceiling_seconds: ceiling, accepted_at_seconds: accepted } } }
+          Present { value: ceiling_n } =>
+            match parse_int(s: trim(s: accept_instant)) {
+              Absent => none
+              Present { value: accepted } =>
+                match checked_int_to_epoch_secs(n: accepted) {
+                  Absent => none
+                  Present { value: accepted_at } =>
+                    Present { value: RemoteBuildWall { ceiling: second(count: ceiling_n), accepted_at: accepted_at } }
+                }
+            }
         }
       }
   }
 }
 
-// THE REMAINING BUDGET AT ONE UNIT LAUNCH: the ceiling less the wait already spent since the door accepted.
-// A non-positive remaining means the request waited out its whole leg budget before this launch.
-fn remote_build_wall_remaining(wall: RemoteBuildWall, launch_now_seconds: Int) -> Int {
-  wall.ceiling_seconds - (launch_now_seconds - wall.accepted_at_seconds)
+// THE ONE ABSOLUTE DEADLINE: the instant the request must finish by, derived once from the accept instant
+// and the ceiling (EpochSecs + a Second projected to a count, the retry-law instant+duration shape). This
+// is the single budget; both units are bounded by it, so "spent once" is structural, not two recomputations.
+fn remote_build_deadline(wall: RemoteBuildWall) -> EpochSecs {
+  wall.accepted_at + (second_count(s: wall.ceiling) as Int)
 }
 
 // THE RUN CEILING FOR A UNIT LAUNCHED NOW, or Absent when the request has already spent its whole leg
-// budget (the caller reads Absent as refuse-to-start). The Int remaining crosses to Nat through
-// std.checked_arithmetic's sanctioned checked_int_to_nat -- an `as Nat` cast over an arbitrary Int is
-// refused by the checker (std.coercion refinement_cast_rules) -- and a non-positive remaining is Absent
-// before the crossing, so a request that waited past its ceiling never starts a unit.
-fn remote_build_runtime_max_at(wall: RemoteBuildWall, launch_now_seconds: Int) -> Second? {
-  let remaining = remote_build_wall_remaining(wall: wall, launch_now_seconds: launch_now_seconds)
+// budget (the caller reads Absent as refuse-to-start). The remaining is the deadline less the launch
+// instant (EpochSecs - EpochSecs lands in Int); a non-positive remaining is Absent before any crossing,
+// and the positive remaining crosses to Nat through std.checked_arithmetic's sanctioned checked_int_to_nat
+// (an `as Nat` cast over an arbitrary Int is refused by the checker, std.coercion refinement_cast_rules).
+fn remote_build_runtime_max_at(wall: RemoteBuildWall, launch_now: EpochSecs) -> Second? {
+  let remaining = remote_build_deadline(wall: wall) - launch_now
   if remaining <= 0 {
     none
   } else {
@@ -148,12 +159,13 @@ fn remote_build_runtime_max_at(wall: RemoteBuildWall, launch_now_seconds: Int) -
   }
 }
 
-// THE HOST CLOCK AT LAUNCH, in epoch seconds, read the same way the door read the accept instant. An
-// unreadable clock means the entry cannot bound the run, so it declines (the caller refuses to start).
-fn remote_build_launch_now_seconds() -> Int? {
+// THE HOST CLOCK AT LAUNCH, as a typed EpochSecs instant, read through the clock's one millis-to-seconds
+// conversion. An unreadable clock means the entry cannot bound the run, so it declines (the caller refuses
+// to start).
+fn remote_build_launch_now() -> EpochSecs? {
   match clock_unix_millis_read() {
     ClockUnixMillisRefused { detail: _ } => none
-    ClockUnixMillisObserved { millis: ms } => Present { value: (ms as Int) / 1000 }
+    ClockUnixMillisObserved { millis } => Present { value: epoch_secs_of_millis(millis: millis) }
   }
 }
 
@@ -171,7 +183,7 @@ fn remote_build_wait_bound_refusal(wall: RemoteBuildWall) -> CliWireResponse {
     ending: ServeHostFull,
     text: remote_build_capacity_body(
       retry_after: remote_build_capacity_retry_floor,
-      detail: join(["remote-build: the request waited past its ", int_to_decimal_string(value: wall.ceiling_seconds), "s host leg budget before its unit could start; the seat is released and the request moves on"], ""),
+      detail: join(["remote-build: the request waited past its ", nat_to_decimal_string(value: second_count(s: wall.ceiling)), "s host leg budget before its unit could start; the seat is released and the request moves on"], ""),
     ),
   )
 }
@@ -310,9 +322,9 @@ fn remote_build_provide_on(instance: HostDashboardInstance, work: RemoteBuildWor
 fn remote_build_serve_provide(instance: HostDashboardInstance, work: RemoteBuildWork, wall: RemoteBuildWall) -> CliWireResponse {
   match remote_build_dependency_rule(op: work.operation) {
     RemoteBuildCarriesItsOwnSeedBuild =>
-      match remote_build_launch_now_seconds() {
+      match remote_build_launch_now() {
         Absent => remote_build_wait_bound_refusal(wall: wall)
-        Present { value: now } => match remote_build_runtime_max_at(wall: wall, launch_now_seconds: now) {
+        Present { value: now } => match remote_build_runtime_max_at(wall: wall, launch_now: now) {
           Absent => remote_build_wait_bound_refusal(wall: wall)
           Present { value: runtime_max } => remote_build_serve_settled(
             instance: instance,
@@ -321,19 +333,20 @@ fn remote_build_serve_provide(instance: HostDashboardInstance, work: RemoteBuild
         }
       }
     RemoteBuildBuildsTheSeedFirst =>
-      match remote_build_launch_now_seconds() {
+      match remote_build_launch_now() {
         Absent => remote_build_wait_bound_refusal(wall: wall)
-        Present { value: build_now } => match remote_build_runtime_max_at(wall: wall, launch_now_seconds: build_now) {
+        Present { value: build_now } => match remote_build_runtime_max_at(wall: wall, launch_now: build_now) {
           Absent => remote_build_wait_bound_refusal(wall: wall)
           Present { value: build_max } =>
             let build = remote_build_provide_on(instance: instance, work: work, op: remote_build_dependency_operation(), runtime_max: Present { value: build_max })
             match remote_build_ending_of_provide(r: build) {
               ServeServed =>
-                // The operation launches after the build, so recompute the remaining: the two units share
-                // ONE budget spent once, and the operation is refused rather than started past the ceiling.
-                match remote_build_launch_now_seconds() {
+                // The operation launches after the build, so its bound is what remains of the SAME deadline
+                // at its own launch instant: the wall carries one deadline, both units are bounded by it, and
+                // the operation is refused rather than started past it. One budget, spent once.
+                match remote_build_launch_now() {
                   Absent => remote_build_wait_bound_refusal(wall: wall)
-                  Present { value: work_now } => match remote_build_runtime_max_at(wall: wall, launch_now_seconds: work_now) {
+                  Present { value: work_now } => match remote_build_runtime_max_at(wall: wall, launch_now: work_now) {
                     Absent => remote_build_wait_bound_refusal(wall: wall)
                     Present { value: work_max } => remote_build_serve_settled(
                       instance: instance,
