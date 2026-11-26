@@ -203,14 +203,16 @@ fn remote_build_leg_is_probe(raw: String) -> Bool {
   trim(s: raw) == (remote_build_probe_text as String)
 }
 
-// DID THAT PROCESS ANSWER THE CONTRACT? The one reading of "the first line is a header this contract
-// mints", used by the client when it decides what an answer means and by the front door when it decides
-// whether the child's stderr is still evidence. Both read HERE (gunbc.design_argument::single_authority).
-fn remote_build_stdout_answers_contract(stdout: String) -> Bool {
-  match remote_build_serve_ending_of_header(line: (remote_build_split_answer(stdout: stdout)).header) {
-    Present { value: _ } => true
-    Absent => false
-  }
+// THE ONE READING OF A RECEIVED BODY: which ending this contract minted, or nothing. Splitting the bytes
+// and matching the header is ONE act, in ONE place, and every consumer asks for the ending rather than
+// re-deriving it: the client's probe reading (`gunbc.compute.remote_build remote_build_probe_from_exit`),
+// the client's answer reading (`remote_build_answer_from_exit`, same module), and the front door's decision
+// whether the child's stderr is still evidence (`gunbc.compute.remote_build_serve_front_door
+// remote_build_answer_body_is_a_receipt`). A consumer that matched the header itself would be a second
+// recognizer of one contract (gunbc.design_argument::single_authority), and a recognizer no production
+// path asks for would be dangling (gunbc.design_argument::consumption).
+fn remote_build_ending_of_answer(stdout: String) -> RemoteBuildServeEnding? {
+  remote_build_serve_ending_of_header(line: (remote_build_split_answer(stdout: stdout)).header)
 }
 
 // THE HAND-OFF: what the front door runs for anything that is not the probe -- the request entry, with

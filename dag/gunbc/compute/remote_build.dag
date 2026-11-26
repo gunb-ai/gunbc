@@ -41,8 +41,9 @@ import gunbc.compute.remote_build_hosts { remote_build_serving_hosts }
 import gunbc.compute.remote_build_wire {
   remote_build_protocol_word, RemoteBuildServeEnding, ServeServed, ServeWorkEndedUnsuccessfully,
   ServeRequestRefused, ServeHostFull, ServeWorkInFlight, ServeHostCannotServe, ServeReady,
-  remote_build_serve_exit_code, remote_build_serve_ending_word, remote_build_serve_ending_of_header,
+  remote_build_serve_exit_code, remote_build_serve_ending_word,
   openssh_connection_failed_exit_code, remote_build_split_answer, remote_build_serve_cli_function,
+  remote_build_ending_of_answer,
 }
 import product.fabric.work {
   ExecutionRequirements, Shape, HardRequirements, CapacityClass, ControlPlaneCapacity,
@@ -936,7 +937,7 @@ type RemoteBuildProbe
 
 fn remote_build_probe_from_exit(exit_code: Int, stdout: String, stderr: String) -> RemoteBuildProbe {
   let answer = remote_build_split_answer(stdout: stdout)
-  match remote_build_serve_ending_of_header(line: answer.header) {
+  match remote_build_ending_of_answer(stdout: stdout) {
     Present { value: ServeReady } =>
       if exit_code == remote_build_serve_exit_code(e: ServeReady) {
         ProbeReady
@@ -972,7 +973,7 @@ fn remote_build_probe_answer(p: RemoteBuildProbe) -> RemoteBuildHostAnswer? {
 // host runs the contract, so a missing answer here is not evidence that the work did not start.
 fn remote_build_answer_from_exit(exit_code: Int, stdout: String, stderr: String) -> RemoteBuildHostAnswer {
   let answer = remote_build_split_answer(stdout: stdout)
-  match remote_build_serve_ending_of_header(line: answer.header) {
+  match remote_build_ending_of_answer(stdout: stdout) {
     Absent =>
       HostOutcomeUnknown { detail: join(["the request was sent and the serving command exited ", to_string(value: exit_code), " without a remote-build answer: ", stderr], "") }
     Present { value: ending } =>

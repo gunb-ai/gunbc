@@ -14,7 +14,7 @@ import gunbc.compute.remote_build_wire {
   RemoteBuildServeEnding, ServeReady, ServeRequestRefused, ServeHostCannotServe,
   ServeServed, ServeWorkEndedUnsuccessfully, ServeWorkInFlight,
   remote_build_protocol_word, remote_build_leg_is_probe, remote_build_serve_answer,
-  remote_build_serve_ending_of_header, remote_build_split_answer,
+  remote_build_ending_of_answer,
   RemoteBuildHandOff, remote_build_serve_hand_off, remote_build_ssh_command_variable,
 }
 import gunbc.compute.remote_build_serve_principal {
@@ -217,7 +217,7 @@ fn remote_build_serve_front_door_hand_off(hand_off: RemoteBuildHandOff) -> CliWi
 // the child's stderr is the only account of what happened, and the client's own refusal text reads
 // body and stderr together. One reading of the header, from the wire module, both sides.
 fn remote_build_answer_body_is_a_receipt(stdout: String) -> Bool {
-  match remote_build_serve_ending_of_header(line: (remote_build_split_answer(stdout: stdout)).header) {
+  match remote_build_ending_of_answer(stdout: stdout) {
     Present { value: e } => e == ServeServed || e == ServeWorkEndedUnsuccessfully || e == ServeWorkInFlight
     Absent => false
   }

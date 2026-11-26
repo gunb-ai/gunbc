@@ -14,7 +14,7 @@ import gunbc.compute.remote_build_wire {
   ServeWorkInFlight, ServeHostCannotServe, ServeReady, remote_build_serve_exit_code,
   remote_build_serve_header, remote_build_serve_answer,
   remote_build_probe_text, remote_build_protocol_word, remote_build_leg_is_probe,
-  remote_build_stdout_answers_contract, remote_build_serve_run_words, remote_build_serve_hand_off,
+  remote_build_ending_of_answer, remote_build_serve_run_words, remote_build_serve_hand_off,
   remote_build_serve_front_door_run_words,
 }
 import gunbc.compute.remote_build_serve_principal {
@@ -262,7 +262,12 @@ test fn the_hand_off_and_the_request_legs_words_are_one_rendering() -> Bool {
 test fn words_that_do_not_name_the_contract_are_refused_with_a_header() -> Bool {
   match w_turn(raw: Present { value: "ls -la /opt/gunbc" }, principal: w_principal_admitted()) {
     FrontDoorAnswer { ending: ServeRequestRefused, detail: _ } =>
-      remote_build_stdout_answers_contract(stdout: w_answer_bytes(ending: ServeRequestRefused))
+      // THE REFUSAL CARRIES A HEADER THE CLIENT'S OWN READING FINDS, and it round-trips to the ending the
+      // door decided on -- read through the ONE reading production uses, not a second recognizer.
+      match remote_build_ending_of_answer(stdout: w_answer_bytes(ending: ServeRequestRefused)) {
+        Present { value: ServeRequestRefused } => true
+        _ => false
+      }
         && match remote_build_answer_of_ending(ending: ServeRequestRefused, body: "witness", stderr: "") {
              HostRefusedRequest { detail: _ } => true
              _ => false
@@ -327,8 +332,14 @@ test fn a_receipt_goes_out_byte_exact_and_a_refusal_keeps_its_stderr() -> Bool {
     && remote_build_answer_body_is_a_receipt(stdout: join([remote_build_serve_header(e: ServeWorkInFlight), "\n{}"], ""))
     && remote_build_answer_body_is_a_receipt(stdout: join([remote_build_serve_header(e: ServeWorkEndedUnsuccessfully), "\n{}"], ""))
     && !remote_build_answer_body_is_a_receipt(stdout: empty)
-    && !remote_build_stdout_answers_contract(stdout: empty)
-    && remote_build_stdout_answers_contract(stdout: served)
+    // THE SAME READING THE CLIENT READS AN ANSWER WITH, on the same bytes: no header is no ending, and a
+    // receipt header is that ending. (Before this the witness checked a Bool the door did not use; the
+    // review that caught it is the point -- evidence must be about the interface production runs.)
+    && match remote_build_ending_of_answer(stdout: empty) { Absent => true  _ => false }
+    && match remote_build_ending_of_answer(stdout: served) {
+         Present { value: ServeServed } => true
+         _ => false
+       }
 }
 
 // ── THE CLOSURE LEDGER: what the probe entry may read ─────────────────────────────────────────────
