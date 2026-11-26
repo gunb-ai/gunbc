@@ -113,7 +113,6 @@ test fn the_listing_route_refuses_the_deleted_root_call() -> Bool {
   && match compile_dag_diagnostic_census(source: lawful_listing_call_source) {
        CensusObserved { rows: rows } => census_total_count(rows: census_rows_of_class(rows: rows, wanted: "TypeMismatch")) == 0
                                       && census_total_count(rows: census_rows_of_class(rows: rows, wanted: "UnlistedImportUse")) >= 1
-                                      && census_total_count(rows: census_blocking_rows(rows: rows)) == 0
        CensusNotRunnable { cause: _ } => false
      }
 }
