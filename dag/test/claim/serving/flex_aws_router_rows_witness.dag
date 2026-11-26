@@ -253,9 +253,11 @@ test fn a_rented_row_carries_its_rate_and_billing_start_only_when_read() -> Bool
 
 // ---- one card's tallies, as the router reports them -------------------------------------------------------
 
-// SUPPLIED: /router/stats usage_by_route as gunbc.serving.router_dev_policy renders it (version 1, one entry per row;
-// the render-to-reading run is the router proxy falsifier's dev_usage_by_route_carries_each_rows_card_facts): one card
-// row with turns, priced at a comparison value, and a row with none (null turn times, no comparison value).
+// SUPPLIED: /router/stats usage_by_route as gunbc.serving.router_dev_policy renders it (version 1, one entry per row): one
+// card row with turns, priced at a comparison value, and a row with none (null turn times, no comparison value). The
+// render-to-reading run is the router proxy falsifier's dev_usage_by_route_carries_each_rows_card_facts, which feeds the
+// rendered router's real stats to flex_aws_route_tallies; it emits but its native crate does not build on the arm64
+// fleet (the pre-existing extdeps_runtime_abi_aapcs64 / std_measure emission failure), so it has not executed yet.
 fn route_stats(version: String, rows: String) -> String {
   join(["\{\"rented\": \{}, \"usage_by_route\": \{\"version\": ", version, ", \"epoch\": \"1795570000\", \"routes\": ", rows, ", \"unattributed\": \{}}}"], "")
 }
