@@ -54,6 +54,7 @@ import v2.workflow.floor_preparation_split {
   floor_preparation_strip_prefix,
   floor_preparation_strip_suffix,
   floor_preparation_has_exact_row,
+  floor_preparation_any_row_starts_with,
   floor_preparation_split_report,
   floor_preparation_ask,
   floor_preparation_report_sentinel,
@@ -61,7 +62,15 @@ import v2.workflow.floor_preparation_split {
   floor_preparation_classify_report_line,
   floor_preparation_contains,
   FloorPreparationPopulationRow,
-  floor_preparation_population_rows
+  floor_preparation_population_rows,
+  floor_preparation_pass_prefix,
+  floor_preparation_fail_prefix,
+  floor_preparation_unobserved_prefix,
+  floor_preparation_cause_refused,
+  floor_preparation_cause_unobserved,
+  floor_preparation_cause_no_verdict,
+  floor_preparation_graded_disposition,
+  floor_preparation_excluded_disposition
 }
 import v2.workflow.floor_preparation_diff_scope {
   floor_preparation_scope_line_parse,
@@ -96,10 +105,20 @@ import v2.workflow.floor_preparation_diff_scope {
 //     FLOOR_HEAVY_SLOT=$HOME/bin/heavy-slot \
 //     FLOOR_CLAIM_BATCH=$HOME/scratch/$HEAVY_OWNER/bin/unpacked/claim_batch \
 //     FLOOR_GUNBC=$HOME/scratch/$HEAVY_OWNER/bin/unpacked/gunbc \
+//     FLOOR_LEG_DRIVER=$HOME/scratch/$HEAVY_OWNER/bin/eagle-leg-driver \
 //     FLOOR_MANIFEST=$HOME/scratch/$HEAVY_OWNER/bin/bins/release-bins.manifest
 //   gunbc run --source-root dag --source-root src/v1 --source-root src/v2 \
 //     --entry src/v2/workflow/floor_preparation_capture_runner.dag \
 //     --function floor_preparation_capture_run
+//
+// The leg driver is this fixed text (its sha256 is the pinned supply value above; recreate with
+// cat > "$FLOOR_LEG_DRIVER" exactly, chmod +x, and the supply gate re-derives the sha at run time):
+//
+//   #!/usr/bin/sh
+//   LOG="$1"
+//   shift
+//   : > "$LOG"
+//   exec >>"$LOG" 2>&1 "$@"
 //
 // The digests below pin the RELEASE, not a machine, so a reader on any host re-derives the split
 // against the same release.
@@ -117,7 +136,7 @@ fn floor_preparation_session_owner() -> String {
 
 fn floor_preparation_required_env_missing() -> String {
   let missing = filter(
-    ["FLOOR_CHECKOUT", "FLOOR_HEAVY_SLOT", "FLOOR_CLAIM_BATCH", "FLOOR_GUNBC", "FLOOR_MANIFEST", "HEAVY_OWNER"],
+    ["FLOOR_CHECKOUT", "FLOOR_HEAVY_SLOT", "FLOOR_CLAIM_BATCH", "FLOOR_GUNBC", "FLOOR_MANIFEST", "FLOOR_LEG_DRIVER", "HEAVY_OWNER"],
     predicate: fn(v) { floor_preparation_env_value(name: v) == "" })
   if length(xs: missing) > 0 { join(missing, ",") } else { "" }
 }
@@ -142,6 +161,10 @@ fn floor_preparation_manifest_path() -> String {
   floor_preparation_env_value(name: "FLOOR_MANIFEST")
 }
 
+fn floor_preparation_leg_driver_binary() -> String {
+  floor_preparation_env_value(name: "FLOOR_LEG_DRIVER")
+}
+
 
 data floor_preparation_timeout_binary: String = "/usr/bin/timeout"
 
@@ -156,6 +179,20 @@ data floor_preparation_pinned_claim_batch_sha: String =
 
 data floor_preparation_pinned_gunbc_sha: String =
   "3283cc8aeccd690d175a349d23eacd2c2a5d4c8215557dcdadad4f703bed6e7f"
+
+// THE LEG DRIVER (run9e). The seed's RunArgv host keeps stdout to 8 MiB but reduces STDERR to a
+// 16 KiB TAIL (v1_interpreter.rs MAX_STDERR_TRACE = 16384, measured 2026-11-26: a leg's early
+// [floor-phase] lines were gone from the in-memory stream while its PASS lines -- stdout, not
+// tailed -- survived). The phase lines ARE the measurement, so a leg must write its COMPLETE
+// stream to disk itself. /usr/bin/script cannot do it in argv form (util-linux 2.39.3 rejects
+// `script -qef LOG -- CMD` outright; the -c form would route every leg argument through a shell
+// string -- a second authority over argv, refused). The driver is a pinned, sha256-verified
+// supply like claim_batch: argv[1] is the log path, the rest is program+arguments passed verbatim
+// to exec with the streams appended to that file. No shell string is built from leg data; the
+// driver is a fixed lane tool, not generated text, and a tampered driver cannot fake the verdict
+// lines the census claim cross-checks against the retained log.
+data floor_preparation_pinned_leg_driver_sha: String =
+  "a86094e69ce71dd96eb1e00e63188d77de2b92eb254f1b50f1ca9379f858fa33"
 
 data floor_preparation_source_roots: List<String> = ["dag", "src/v1", "src/v2"]
 
@@ -386,31 +423,28 @@ fn floor_preparation_spawn_slot_captured(label: String, bound: Second, binary: S
   match floor_preparation_bound_operand(bound: bound) {
     Absent => floor_preparation_bound_refused(bound: bound)
     Present { value: operand } =>
+      // THE CAPTURE IS A PINNED DRIVER, NOT A PTY GRAFT AND NOT AN IN-MEMORY COPY
+      // (measured, srv1 2026-11-26). Two failed shapes: /usr/bin/script -qef LOG -- CMD is
+      // rejected outright by util-linux 2.39.3 ("unexpected number of arguments"; the -c form
+      // would route leg argv through a shell string -- refused as a second authority), and
+      // copying ran.stdout+ran.stderr into the log replays the seed's own truncation, because
+      // the RunArgv host tails STDERR at 16 KiB (v1_interpreter.rs MAX_STDERR_TRACE) -- which
+      // deletes the early [floor-phase] lines that ARE the measurement. The pinned driver takes
+      // the log path as argv[1] and exec's program+arguments verbatim with both streams appended
+      // to that file, so the transcript is complete before any host drain touches it. The
+      // observation's rc is the leg's real rc through the exec chain; read_captured is the only
+      // transcript source, and an empty log reads as zero verdicts -- never as an empty-but-honest
+      // run.
       let ran = shell.Exec.RunArgv(
         program: floor_preparation_timeout_binary,
         arguments: concat(
           [to_string(second_count(s: bound) + 300), floor_preparation_env_binary,
            concat("HEAVY_OWNER=", floor_preparation_session_owner()),
-           floor_preparation_heavy_slot_binary(), binary],
+           floor_preparation_heavy_slot_binary(),
+           floor_preparation_leg_driver_binary(), floor_preparation_leg_log_path(label), binary],
           args)
       )
-      // THE CAPTURE IS A MODELLED WRITE, NOT A PTY GRAFT (measured defect, srv1 2026-11-25). This spawn
-      // used /usr/bin/script -qef LOG -- CMD; util-linux 2.39.3 rejects that form outright -- the command
-      // needs -c, and a positional after -- is read as the TYPESCRIPT FILE ("unexpected number of
-      // arguments"; reproduced standalone, rc=1, no log). The -c form would route every leg argument
-      // through a shell string, a second authority over the argv this module builds as DATA -- refused.
-      // The transcript is instead the run's own captured streams moved into the artifact file through
-      // Filesystem.Write, the service header (c) already admits for exactly this job. Zero bytes still
-      // means zero verdicts: every downstream hard-fail rule reads THIS file, so a missing capture stays
-      // loud, and a CAPTURE_WRITE_FAILED marker rides the observation so a silent write loss cannot read
-      // as an empty-but-honest run.
-      let transcript = concat(ran.stdout, ran.stderr)
-      let written = Filesystem.Write(path: floor_preparation_leg_log_path(label), content: transcript)
-      FloorPreparationSpawnObservation {
-        rc: ran.exit_code,
-        stdout: ran.stdout,
-        stderr: if written.success { ran.stderr } else { concat(ran.stderr, "\nCAPTURE_WRITE_FAILED") }
-      }
+      FloorPreparationSpawnObservation { rc: ran.exit_code, stdout: ran.stdout, stderr: ran.stderr }
   }
 }
 
@@ -848,6 +882,145 @@ fn floor_preparation_provenance(
     init: "", f: (acc, s) => concat(acc, s))
 }
 
+// A LANE-TOOL supply check. release-bins.manifest lists release binaries only; the leg driver is
+// a lane tool, so its identity is the PINNED sha plus the same anti-hoax guards (nonzero bytes,
+// never the empty-string digest). A manifest line that DOES exist must still agree.
+fn floor_preparation_tool_supply_check(name: String, path: String, expected: String) -> FloorPreparationSupplyReceipt {
+  let digest_opt = floor_preparation_sha_of(path: path)
+  let bytes_opt = floor_preparation_bytes_of(path: path)
+  let manifest = floor_preparation_manifest_sha(kind: name)
+  let admitted = match digest_opt {
+    Present { value: d } => match bytes_opt {
+      Present { value: b } => d != floor_preparation_empty_sha && d == expected
+        && (manifest == "" || manifest == d) && byte_size_count(b) > 0
+      Absent {} => false
+    }
+    Absent {} => false
+  }
+  FloorPreparationSupplyReceipt {
+    name: name,
+    digest: digest_opt,
+    bytes: bytes_opt,
+    manifest: manifest,
+    expected: expected,
+    admitted: admitted,
+  }
+}
+
+// ----------------------------------------------------------------------------------------------
+// THE SPLICE (run9e). The five capture functions in the authority are GENERATED, and until now
+// the run printed a "splice-capture-rows blocks=5" receipt without writing anything -- a receipt
+// that described intent, not an effect. That is exactly the shape the fold claims exist to catch:
+// an empty capture read as a completed measurement. The splice now reads the authority, replaces
+// ONLY the text between the two markers with rendered rows from THIS run's transcripts, writes it
+// back through the modelled write effect, and reports what it actually wrote. A missing marker,
+// a failed read or a failed write refuses the splice; a refused splice refuses the terminal gate;
+// and a capture whose kept rows contain no [floor-phase] row at all -- the signature of a
+// truncated transcript -- refuses too, because a green split over zero costed lines measures
+// nothing. Row rendering escapes backslash first, then quote, so any byte of a leg line survives
+// the round trip into source.
+// ----------------------------------------------------------------------------------------------
+
+fn floor_preparation_render_row(row: String) -> String {
+  let escaped_backslash = row.replace(pattern: "\\", replacement: "\\\\")
+  let escaped = escaped_backslash.replace(pattern: "\"", replacement: "\\\"")
+  concat(concat("\"", escaped), "\",")
+}
+
+fn floor_preparation_render_fn_block(name: String, rows: List<String>) -> List<String> {
+  let body = fold(rows, init: [concat(concat("fn ", name), "() -> List<String> {")],
+    f: (acc, row) => list_push(xs: acc, item: floor_preparation_render_row(row: row)))
+  list_push(xs: body, item: "}")
+}
+
+// The census rows the split's honesty witnesses parse: module|claim|disposition|cause, where a
+// claim is graded only if it printed PASS in the UNTRIMMED capture, and every excluded claim
+// names the verdict line that actually appeared for it (or names no_verdict_line when neither a
+// FAIL nor an UNOBSERVED row exists). Rendered from the same captures the witness re-checks, so
+// the census is checkable, not merely stated.
+fn floor_preparation_render_requested_row(row: FloorPreparationPopulationRow, untrimmed: List<String>) -> String {
+  let pass_row = concat(floor_preparation_pass_prefix, row.claim)
+  let fail_row = concat(floor_preparation_fail_prefix, row.claim)
+  let head = concat(concat(row.entry, "|"), row.claim)
+  if floor_preparation_has_exact_row(rows: untrimmed, wanted: pass_row) {
+    concat(concat(head, "|"), concat(floor_preparation_graded_disposition, "|"))
+  } else {
+    let cause = if floor_preparation_has_exact_row(rows: untrimmed, wanted: fail_row) {
+      floor_preparation_cause_refused
+    } else {
+      if floor_preparation_any_row_starts_with(rows: untrimmed,
+          prefix: concat(floor_preparation_unobserved_prefix, row.claim)) {
+        floor_preparation_cause_unobserved
+      } else {
+        floor_preparation_cause_no_verdict
+      }
+    }
+    concat(concat(concat(concat(head, "|"), floor_preparation_excluded_disposition), "|"), cause)
+  }
+}
+
+fn floor_preparation_render_requested_rows(untrimmed: List<String>) -> List<String> {
+  fold(floor_preparation_population_rows(), init: [],
+    f: (acc, row) =>
+      list_push(xs: acc, item: floor_preparation_render_requested_row(row: row, untrimmed: untrimmed)))
+}
+
+fn floor_preparation_render_capture_block(
+    untrimmed: List<String>, graded: List<String>,
+    provenance: List<String>, requested: List<String>) -> List<String> {
+  concat(
+    concat(
+      concat(
+        floor_preparation_render_fn_block(name: "floor_preparation_capture", rows: graded),
+        floor_preparation_render_fn_block(name: "floor_preparation_capture_provenance", rows: provenance)),
+      concat(
+        floor_preparation_render_fn_block(name: "floor_preparation_untrimmed_capture", rows: untrimmed),
+        floor_preparation_render_fn_block(name: "floor_preparation_untrimmed_capture_provenance", rows: provenance))),
+    floor_preparation_render_fn_block(name: "floor_preparation_requested_rows", rows: requested))
+}
+
+// Split at the markers with ONE fold; absence of either marker (or end before begin) is Absent,
+// never a partial write. The before/after lists are exactly the file outside the block.
+type FloorPreparationSpliceState {
+  inside: Bool,
+  closed: Bool,
+  before: List<String>,
+  after: List<String>,
+}
+
+fn floor_preparation_spliced(original: String, block: List<String>) -> String? {
+  let folded = fold(floor_preparation_lines(text: original),
+    init: FloorPreparationSpliceState { inside: false, closed: false, before: [], after: [] },
+    f: (acc, line) =>
+      if !acc.inside && floor_preparation_contains(haystack: line, needle: floor_preparation_block_begin) {
+        FloorPreparationSpliceState { inside: true, closed: false, before: acc.before, after: acc.after }
+      } else {
+        if acc.inside && !acc.closed && floor_preparation_contains(haystack: line, needle: floor_preparation_block_end) {
+          FloorPreparationSpliceState { inside: false, closed: true, before: acc.before, after: acc.after }
+        } else {
+          if !acc.inside {
+            FloorPreparationSpliceState { inside: acc.inside, closed: acc.closed, before: list_push(xs: acc.before, item: line), after: acc.after }
+          } else {
+            FloorPreparationSpliceState { inside: acc.inside, closed: acc.closed, before: acc.before, after: list_push(xs: acc.after, item: line) }
+          }
+        }
+      })
+  if folded.closed {
+    Present { value: concat(concat(join(list_push(xs: folded.before,
+        item: concat("// === ", floor_preparation_block_begin)), "\n"),
+      concat("\n", concat(join(block, "\n"), "\n"))),
+      concat(concat("// === ", floor_preparation_block_end),
+        concat("\n", join(folded.after, "\n")))) }
+  } else {
+    Absent {}
+  }
+}
+
+fn floor_preparation_has_phase_row(rows: List<String>) -> Bool {
+  fold(rows, init: false, f: (acc, row) =>
+    acc || starts_with(s: row, prefix: "[floor-phase] "))
+}
+
 fn floor_preparation_capture_run() -> String {
   let env_missing = floor_preparation_required_env_missing()
   let env_receipt = floor_preparation_supply_env_receipt(
@@ -859,7 +1032,10 @@ fn floor_preparation_capture_run() -> String {
       expected: floor_preparation_pinned_claim_batch_sha),
     floor_preparation_supply_check(name: "gunbc",
       path: floor_preparation_pinned_gunbc(),
-      expected: floor_preparation_pinned_gunbc_sha)
+      expected: floor_preparation_pinned_gunbc_sha),
+    floor_preparation_tool_supply_check(name: "leg-driver",
+      path: floor_preparation_leg_driver_binary(),
+      expected: floor_preparation_pinned_leg_driver_sha)
   ]
   let supplies = floor_preparation_supply_lines(receipts: supply_receipts)
   let verify_receipt = floor_preparation_receipt("verify-pinned-supplies",
@@ -920,6 +1096,42 @@ fn floor_preparation_capture_run() -> String {
       concat(concat("kept_untrimmed=", to_string(length(xs: kept_untrimmed))),
         concat(" kept_graded=", to_string(length(xs: kept_graded)))))
     let retained = floor_preparation_retained_body(untrimmed_stdout: untrimmed_transcript, graded_stdout: graded_transcript)
+    // THE SPLICE IS AN EFFECT, NOT A RECEIPT (measured defect, srv1 2026-11-26). This run printed
+    // "splice-capture-rows blocks=5" while writing nothing: the empty committed capture the
+    // witness then checked was the skeleton, not the run. The splice now reads the authority,
+    // replaces ONLY the marker region, and writes it back through the modelled write effect --
+    // BEFORE the claims leg runs, so the committed-capture witnesses check this run's bytes. A
+    // kept stream with no [floor-phase] row at all is the truncated-transcript signature and
+    // refuses the splice outright: a green split over zero costed rows measures nothing.
+    let phase_rows_present = floor_preparation_has_phase_row(rows: kept_untrimmed)
+      && (length(xs: survivors) == 0 || floor_preparation_has_phase_row(rows: kept_graded))
+    let requested_rows_rendered = floor_preparation_render_requested_rows(untrimmed: kept_untrimmed)
+    let provenance_rows = [
+      floor_preparation_provenance(leg: "untrimmed",
+        binary_sha: floor_preparation_pinned_claim_batch_sha,
+        binary_bytes: floor_preparation_byte_text(value: untrimmed_record.bytes),
+        head_sha: head_sha, tree_sha: tree_sha,
+        rc: untrimmed_record.rc, kept_count: untrimmed_record.kept_count),
+      floor_preparation_provenance(leg: "graded",
+        binary_sha: floor_preparation_pinned_claim_batch_sha,
+        binary_bytes: floor_preparation_byte_text(value: graded_record.bytes),
+        head_sha: head_sha, tree_sha: tree_sha,
+        rc: graded_record.rc, kept_count: graded_record.kept_count)]
+    let capture_block = floor_preparation_render_capture_block(
+      untrimmed: kept_untrimmed, graded: kept_graded,
+      provenance: provenance_rows, requested: requested_rows_rendered)
+    let authority_path_abs = concat(concat(floor_preparation_runner_root(), "/"), floor_preparation_authority_path)
+    let authority_read = Filesystem.Read(path: authority_path_abs)
+    let spliced_content = if authority_read.success && phase_rows_present {
+      floor_preparation_spliced(original: authority_read.content, block: capture_block)
+    } else {
+      Absent {}
+    }
+    let splice_written = match spliced_content {
+      Present { value: body } => (Filesystem.Write(path: authority_path_abs, content: body)).success
+      Absent {} => false
+    }
+    let splice_ok = phase_rows_present && splice_written
     let claims_args = concat(
       fold(floor_preparation_source_roots, init: [], f: (acc, root) => concat(acc, ["--source-root", root])),
       ["--entry", floor_preparation_witness_module,
@@ -951,7 +1163,12 @@ fn floor_preparation_capture_run() -> String {
     let build_argv_receipt = floor_preparation_receipt("build-argv-from-population",
       concat("entries=", to_string(length(xs: entries))))
     let splice_receipt = floor_preparation_receipt("splice-capture-rows",
-      concat("blocks=5 target=", floor_preparation_authority_path))
+      concat(concat("blocks=", if splice_ok { "5" } else { "NONE" }),
+        concat(concat(" rows_untrimmed=", to_string(length(xs: kept_untrimmed))),
+          concat(concat(" rows_graded=", to_string(length(xs: kept_graded))),
+            concat(concat(" rows_requested=", to_string(length(xs: requested_rows_rendered))),
+              concat(concat(" phase_rows=", if phase_rows_present { "present" } else { "ABSENT" }),
+                concat(" write=", if splice_written { "ok" } else { "failed_or_refused" })))))))
     // The host prints the returned String on the REFUSAL line -- observed on this host: the
     // report text arrives on STDERR inside "error: function `floor_preparation_split_report`
     // returned `...`, not `ProcessExit`", so the report lines are read from stderr.
@@ -1024,7 +1241,7 @@ fn floor_preparation_capture_run() -> String {
       if w1.success { "retained=written" } else { "retained=WRITE_FAILED" }
     } else { "retained=skipped legs not clean" }
     let all_receipts = list_push(xs: receipts, item: floor_preparation_receipt("write-retained", write_receipt))
-    if !report_ok || length(xs: missing) > 0 {
+    if !report_ok || length(xs: missing) > 0 || !splice_ok {
       concat(join(all_receipts, "\n"), "\nRUNNER_REFUSED: gates not green -- see receipts above")
     } else {
       concat(join(all_receipts, "\n"),
