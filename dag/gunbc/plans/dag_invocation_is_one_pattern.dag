@@ -1,0 +1,41 @@
+module gunbc.plans.dag_invocation_is_one_pattern
+
+import std.dissolution { unbound_dissolution }
+import gunbc.plan { Plan, PlanRetiresWhen, PlanIsAuthorityOnly }
+import std.markdown { MarkdownBlock }
+import gunbc.markdown_helpers { h2, p, li, ul, quote }
+
+fn dag_invocation_is_one_pattern_body() -> List<MarkdownBlock> {
+  [
+    quote(blocks: [
+      p(text: "**This plan is written as an intention** (`gunbc.design_argument::plans_are_intentions`): what the repository should become, why, and done-when. The work items that realize it name this plan and are not listed here."),
+      p(text: "**Grounding:** `gunbc.design_argument::single_authority`, `gunbc.design_argument::root_generalization`, `gunbc.design_argument::interface_realization_policy`, `gunbc.design_argument::declared_intent` (transparent reference, restriction, distinct identity), `gunbc.design_argument::conformance`, and `gunbc.design_ruling::operations_are_declarations_with_realizations`."),
+    ]),
+    h2(text: "1. Intention"),
+    p(text: "**What:** invoking a declared function has one pattern. A request names the declaration and binds its inputs by name; a realization (interpreted by the seed, emitted native, a transport) is selected separately; an outcome is observed. `gunbc run` is the canonical, unbound form: the caller names entry, function and arguments. Every other spelling that invokes a `.dag` function (`gunbc build`, `gunbc converge`, each `gunbc test` producer that calls a function) is a **command binding** of that pattern: it fixes some inputs, maps its operands and options to parameters, and declares its own result contract. A spelling is an **alias** only when operation, bound inputs, authority and observable result are all the same (a transparent reference). The word *nickname* keeps its existing meaning, a defect (`gunbc.product_names`)."),
+    p(text: "**Why (operator, 2026-11-26):** the consolidation of seed execution routes (one demand-scoped resolve and evaluate shared by `run`, `build`, `converge` and the CliWire test producers) needs a named pattern for the next command to conform to, otherwise each new command grows its own resolve, its own exit mapping and its own vocabulary. The pattern already exists in the corpus: `std.operation_argv` `BoundOperationInvocation` (an operation identity paired with named input bindings, carrying no transport fact) and `v2.std.operation_realization` (a realization selected per grant, a dispatch record, an observation). The `.dag`-function spellings are siblings of it that each answer the same question their own way: `gunbc.ci.repository_ci_profile` `DagInvocation` (two strings), `gunbc.cli_dispatch_surface` `CliBootstrapDagOperationBinding` and the `run_verb` host-symbol arm of `CliArmRealization`, and `gunbc.target_binding` `TargetProducer`."),
+    p(text: "**What is shared and what is not.** Resolution and evaluation are the shared realization. The result contract is not shared: an evaluator error before the function returns exits 1 under `run` and is `SubjectUnreached` (exit 2) under `test`; `build` and `converge` complete only by reading their receipt back; a CliWire producer refuses a function returning a bare `ProcessExit`. Merging those contracts would turn \"no reading was taken\" into \"a defect was found\" (`gunbc.design_argument::fail_closed`). So the binding carries the result contract, and the shared path ends at the evaluated value."),
+    h2(text: "2. Done when"),
+    p(text: "Each is assessed against the tree unless marked as the operator's judgement."),
+    ul(items: [
+      li(text: "The pattern is a ruling in `gunbc.design_ruling` and a conformance domain in `gunbc.design_argument` `conformance_domains`, whose homes are the existing invocation and realization carriers, so a reviewer asks of every change that invokes a declared function whether it conforms."),
+      li(text: "Every interpreted invocation of a `.dag` function by a seed command or target producer reaches one demand-scoped resolve and evaluate; no command or producer keeps its own whole-tree resolve. Shown by one before/after measurement on the same entry and arguments, and by controls: a missing bootstrap receipt still refuses, a CliWire evaluator error still reads `SubjectUnreached`, a wrong return type still refuses."),
+      li(text: "The `.dag`-function request has one carrier: a declaration identity (`std.decl_ref` `DeclarationRef`, the entry path derived through `gunbc.source_layout`, never stored beside it) plus named input bindings. `DagInvocation`, the bootstrap operation binding, the `run_verb` host-symbol arm and the function-calling `TargetProducer` arms are bindings over it or deleted; none restates entry and function as free strings."),
+      li(text: "Operator's judgement: whether `std.operation_argv` `OperationRef` (path, service, operation strings) becomes a `DeclarationRef`, so that shell and REST operations and `.dag` functions share one request type, as `gunbc.design_ruling::operations_are_declarations_with_realizations` implies. Until decided it is a declared frontier, not a condition of this plan."),
+    ]),
+    h2(text: "3. Not this plan"),
+    ul(items: [
+      li(text: "What a bound operation does (its effects, its evidence, plan versus apply authority) stays with the operation's own module."),
+      li(text: "Native-serve and native-claim producers promise evidence from a built process, not a function call; they are producers of a different contract and are not bindings of this pattern."),
+      li(text: "Deploy transactions run from the lab or CI, and roadmap acceptance checked against its revision, are separate intentions."),
+    ]),
+  ]
+}
+
+data dag_invocation_is_one_pattern_plan: Plan = Plan {
+  projection: PlanIsAuthorityOnly,
+  slug: "dag-invocation-is-one-pattern",
+  title: "Invoking a declared function is one pattern; commands are bindings of it",
+  body: dag_invocation_is_one_pattern_body(),
+  retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "Section 2 holds on the tree, or for the judgement condition the operator has decided it, and the conformance domain then carries the pattern alone.") },
+}

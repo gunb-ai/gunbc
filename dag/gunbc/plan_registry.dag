@@ -29,6 +29,7 @@ import gunbc.plans.gunbhub_source_of_truth { gunbhub_source_of_truth_plan }
 import gunbc.plans.claim_execution_consolidation { claim_execution_consolidation_plan }
 import gunbc.plans.fabric_market { fabric_market_plan }
 import gunbc.plans.required_lane_claim_clause_grain { required_lane_claim_clause_grain_plan }
+import gunbc.plans.dag_invocation_is_one_pattern { dag_invocation_is_one_pattern_plan }
 
 // THE PLANS THAT SURVIVED THE 2026-11-08 RESET (gunbc.design_ruling::plans_reset_and_audit_recommendations_2026_11_08):
 // only plans a live consumer reads. Every other gunbc.plans carrier was deleted; git history keeps them.
@@ -61,6 +62,7 @@ import gunbc.plans.required_lane_claim_clause_grain { required_lane_claim_clause
 // so a failure-mode row that QUOTES the phrase about a lane the roster does not roster is refused as if it denied that
 // lane. Its done-when requires the pair in one clause or one ledger row, with controls for both the narrowing and the
 // quotation case. Its realization is a work item naming this intention; it is not realized by the measurement that filed it.
+// dag_invocation_is_one_pattern names invoking a declared function as one pattern with command bindings (operator, 2026-11-26).
 // Each deletes with its last consumer.
 data all_plans: List<Plan> = [
   cli_run_hollowing_plan, extdeps_modeling_preflight_plan, demand_engine_program_plan,
@@ -74,4 +76,5 @@ data all_plans: List<Plan> = [
   derived_types_keep_their_name_plan,
   gunbhub_source_of_truth_plan,
   required_lane_claim_clause_grain_plan,
+  dag_invocation_is_one_pattern_plan,
 ]
